@@ -32,9 +32,11 @@ export default async function HomePage() {
               <span className="fm-small">מעלים תמונה, בוחרים עולמות, מקבלים לינק. פחות מדקה.</span>
             </div>
           </div>
-          <div className="hero__demo" aria-label="הדגמה חיה">
-            <span className="fm-badge fm-badge--berry hero__demo-label">נסו! מצליחים למצוא את מאיה?</span>
-            <LandingDemo config={demo} />
+          <div className="hero__demo-wrap">
+            <span className="fm-badge fm-badge--berry hero__demo-label">👆 נסו עכשיו: מצליחים למצוא את מאיה?</span>
+            <div className="hero__demo" aria-label="הדגמה חיה">
+              <LandingDemo config={demo} />
+            </div>
           </div>
         </section>
 

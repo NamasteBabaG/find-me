@@ -31,6 +31,7 @@ npm run dev        # http://localhost:3000
 | `npm run dev`             | שרת פיתוח                                 |
 | `npm run check`           | typecheck + בדיקות (החוזה לפני commit)   |
 | `npm run scenes:validate` | ולידציה של כל קובצי הסצנות + אזהרות       |
+| `npm run smoke`           | בדיקת קצה־לקצה בלי דפדפן: רכישה → יצירה → לינק |
 | `npm run db:studio`       | Prisma Studio                             |
 | `npm run db:reset`        | איפוס ה־DB המקומי                         |
 

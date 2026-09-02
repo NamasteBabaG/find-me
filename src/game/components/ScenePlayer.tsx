@@ -88,6 +88,8 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
         const t = setTimeout(() => {
           setBubble(null);
           dispatch({ type: "FOUND_DONE", now: Date.now() });
+          // show the whole world again for the next search
+          apiRef.current?.reset();
         }, FOUND_MS);
         return () => clearTimeout(t);
       }

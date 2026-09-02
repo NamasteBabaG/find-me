@@ -65,11 +65,14 @@ export async function handlePaymentWebhook(c: Container, rawBody: string, header
   if (!order) return { status: 404, body: "unknown order" };
 
   // Idempotency: the unique (provider, providerEventId) makes a replay a no-op.
+  const seen = await c.db.paymentEvent.findUnique({ where: { provider_providerEventId: { provider: c.payment.id, providerEventId: ev.providerEventId } } });
+  if (seen) return { status: 200, body: "duplicate event ignored" };
   try {
     await c.db.paymentEvent.create({
       data: { id: newId("pev"), orderId: order.id, provider: c.payment.id, providerEventId: ev.providerEventId, kind: ev.kind, payloadJson: JSON.stringify(ev.raw) },
     });
   } catch {
+    // lost a race with a concurrent delivery of the same event
     return { status: 200, body: "duplicate event ignored" };
   }
 

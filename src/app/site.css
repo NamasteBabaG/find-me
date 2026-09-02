@@ -6,7 +6,8 @@
 .hero__copy { display: flex; flex-direction: column; gap: var(--space-3); }
 .hero__title { font-size: var(--fs-800); line-height: var(--lh-800); font-family: var(--font-display); font-weight: 600; }
 .hero__demo { position: relative; aspect-ratio: 16 / 11; min-height: 360px; border-radius: var(--radius-4); overflow: hidden; box-shadow: var(--shadow-3); background: var(--sea-soft); }
-.hero__demo-label { position: absolute; top: var(--space-2); inset-inline-start: var(--space-2); z-index: var(--z-sticky); }
+.hero__demo-wrap { display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-start; }
+.hero__demo-label { animation: fm-pulse 2.4s var(--ease-in-out) infinite; }
 .hero__demo > .game { position: absolute; inset: 0; }
 .steps { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); counter-reset: step; }
 .step { background: var(--white); border-radius: var(--radius-3); padding: var(--space-3); box-shadow: var(--shadow-1); display: flex; flex-direction: column; gap: var(--space-1); }

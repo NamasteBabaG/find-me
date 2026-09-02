@@ -16,7 +16,8 @@
     "db:reset": "prisma db push --force-reset",
     "postinstall": "prisma generate",
     "setup": "prisma generate && prisma db push",
-    "scenes:validate": "tsx scripts/validate-scenes.ts"
+    "scenes:validate": "tsx scripts/validate-scenes.ts",
+    "smoke": "tsx scripts/e2e-smoke.ts"
   },
   "prisma": {
     "schema": "prisma/schema.prisma"
