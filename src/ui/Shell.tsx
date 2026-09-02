@@ -15,7 +15,7 @@ export async function SiteHeader({ user, isAdmin }: { user: { email: string } | 
           </span>
           <span>{t.common.brand}</span>
         </Link>
-        <nav className="fm-nav fm-hide-mobile" aria-label="Main">
+        <nav className="fm-nav fm-nav--main" aria-label="Main">
           <Link href="/#demo">{t.nav.demo}</Link>
           <Link href="/#how">{t.nav.how}</Link>
           <Link href="/#gift">{t.nav.gift}</Link>
