@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" width="320" height="200">
+  <rect width="320" height="200" fill="#FBEFD9"/>
+  <rect x="8" y="8" width="304" height="184" rx="16" fill="none" stroke="#C9A227" stroke-width="4" stroke-dasharray="12 8"/>
+  <text x="160" y="110" font-family="sans-serif" font-size="22" text-anchor="middle" fill="#8A8798">בקרוב</text>
+</svg>

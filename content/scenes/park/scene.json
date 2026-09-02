@@ -1,0 +1,67 @@
+{
+  "id": "scene_park",
+  "slug": "park",
+  "name": "הפארק",
+  "tagline": "עפיפונים, ברווזים ופיקניק על הדשא.",
+  "version": 1,
+  "active": false,
+  "artStatus": "placeholder",
+  "art": {
+    "width": 1600,
+    "height": 1000,
+    "base": "/scenes/_placeholder/base.svg",
+    "thumbnail": "/scenes/_placeholder/thumb.svg",
+    "palette": { "sky": "#E1F5FE", "ground": "#8BC34A", "accent": "#F25C7A" }
+  },
+  "targets": [
+    {
+      "id": "kite",
+      "targetType": "park_kite",
+      "bodyTemplate": "park_kite",
+      "difficulty": 1,
+      "mission": "מצאו את {name} מעיף/ה עפיפון",
+      "item": "עפיפון",
+      "success": ["הייתי קרוב ממש!", "העפיפון כמעט לקח אותי!", "מצאתם! תראו כמה גבוה הוא עף!"],
+      "animation": "wave",
+      "slots": [
+        { "id": "park_kite_a", "x": 0.3, "y": 0.6, "scale": 0.07, "hintZone": { "x": 0.3, "y": 0.6, "r": 0.1 }, "hintText": "חפשו על הגבעה." },
+        { "id": "park_kite_b", "x": 0.75, "y": 0.5, "scale": 0.07, "hintZone": { "x": 0.75, "y": 0.5, "r": 0.1 }, "hintText": "חפשו ליד העץ הגדול." }
+      ]
+    },
+    {
+      "id": "picnic",
+      "targetType": "park_picnic",
+      "bodyTemplate": "park_picnic",
+      "difficulty": 2,
+      "mission": "מצאו את {name} ליד שמיכת הפיקניק",
+      "item": "שמיכת פיקניק",
+      "success": ["אכלתי כריך ומצאתם אותי!", "הנמלים כמעט לקחו לי את העוגה!", "מצאתם! רוצים אבטיח?"],
+      "animation": "wiggle",
+      "slots": [
+        { "id": "park_picnic_a", "x": 0.5, "y": 0.85, "scale": 0.06, "hintZone": { "x": 0.5, "y": 0.85, "r": 0.1 }, "hintText": "חפשו ליד השמיכה המשובצת." },
+        { "id": "park_picnic_b", "x": 0.15, "y": 0.8, "scale": 0.06, "hintZone": { "x": 0.15, "y": 0.8, "r": 0.1 }, "hintText": "חפשו ליד האגם." }
+      ]
+    },
+    {
+      "id": "pony",
+      "targetType": "park_pony",
+      "bodyTemplate": "park_pony",
+      "difficulty": 3,
+      "mission": "מצאו את {name} רוכב/ת על פוני בקרוסלה",
+      "item": "פוני",
+      "success": ["הפוני שלי הכי מהיר בקרוסלה!", "עיני נץ!", "סיבוב אחד ומצאתם!"],
+      "animation": "bounce",
+      "slots": [
+        { "id": "park_pony_a", "x": 0.85, "y": 0.72, "scale": 0.05, "layer": "behindForeground", "hintZone": { "x": 0.85, "y": 0.72, "r": 0.09 }, "hintText": "חפשו בקרוסלה." },
+        { "id": "park_pony_b", "x": 0.6, "y": 0.68, "scale": 0.05, "layer": "behindForeground", "flip": true, "hintZone": { "x": 0.6, "y": 0.68, "r": 0.09 }, "hintText": "חפשו בצד השני של הקרוסלה." }
+      ]
+    }
+  ],
+  "ambient": [
+    { "id": "duck", "label": "ברווז צולל", "x": 0.1, "y": 0.9, "w": 0.06, "h": 0.05, "animation": "bounce", "sound": "splash", "reaction": "קוואק!", "glyph": "🦆" },
+    { "id": "squirrel", "label": "סנאי קופץ", "x": 0.65, "y": 0.3, "w": 0.05, "h": 0.06, "animation": "hop", "sound": "pop", "reaction": "בלוט! שלי!", "glyph": "🐿️" }
+  ],
+  "celebration": { "kind": "leaves", "completeText": "מצאתם את {name} שלוש פעמים בפארק!" },
+  "collectible": { "id": "kite", "name": "עפיפון מהפארק", "icon": "🪁" },
+  "sounds": {}
+}

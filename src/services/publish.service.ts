@@ -1,0 +1,43 @@
+import type { Container } from "./container";
+import { statusOf, transitionGame } from "./game-status";
+import { ensurePlayerLink } from "./share-link.service";
+import { createMagicLink } from "./auth.service";
+import { gameReadyEmail } from "./email/templates";
+import { deleteAsset } from "./asset.service";
+import { audit, type Actor } from "./audit.service";
+
+/**
+ * QA_PENDING → APPROVED → READY → (email) → DELIVERED.
+ * Also enforces the privacy default: the original photo is deleted once the
+ * game is approved, unless the parent explicitly chose to keep it.
+ */
+export async function publishGame(c: Container, gameId: string, actor: Actor): Promise<{ playUrl: string }> {
+  const game = await c.db.game.findUniqueOrThrow({ where: { id: gameId }, include: { childProfile: true, owner: true, scenes: true } });
+  const status = statusOf(game);
+  if (status === "QA_PENDING" || status === "MANUAL_REVIEW") {
+    if (status === "MANUAL_REVIEW") await transitionGame(c, gameId, "QA_PENDING", actor);
+    await transitionGame(c, gameId, "APPROVED", actor);
+    c.analytics.track("qa_approved", { gameId });
+  }
+  if (statusOf(await c.db.game.findUniqueOrThrow({ where: { id: gameId }, select: { status: true } })) === "APPROVED") {
+    await transitionGame(c, gameId, "READY", actor);
+    c.analytics.track("game_ready", { gameId, sceneCount: game.scenes.length });
+  }
+
+  const link = await ensurePlayerLink(c, gameId);
+
+  // Privacy default: drop the original photo after approval.
+  if (game.childProfile && !game.childProfile.retainOriginalPhoto && game.childProfile.originalPhotoAssetId) {
+    await deleteAsset(c, game.childProfile.originalPhotoAssetId);
+    await c.db.childProfile.update({ where: { id: game.childProfile.id }, data: { originalPhotoAssetId: null } });
+    await audit(c, actor, "photo:deleted-after-qa", "ChildProfile", game.childProfile.id);
+  }
+
+  const current = statusOf(await c.db.game.findUniqueOrThrow({ where: { id: gameId }, select: { status: true } }));
+  if (current === "READY" && game.owner && game.childProfile) {
+    const libraryLink = await createMagicLink(c, game.owner.id, `/library/${gameId}`);
+    await c.email.send(gameReadyEmail({ to: game.owner.email, childName: game.childProfile.displayName, playLink: link.url, libraryLink, sceneCount: game.scenes.length }));
+    await transitionGame(c, gameId, "DELIVERED", actor);
+  }
+  return { playUrl: link.url };
+}

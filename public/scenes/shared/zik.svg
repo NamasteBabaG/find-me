@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <!-- זיק — the curious firefly (brand bonus character, placeholder) -->
+  <circle cx="50" cy="60" r="28" fill="#FFB61E" opacity="0.35"/>
+  <ellipse cx="50" cy="62" rx="16" ry="20" fill="#FFB61E" stroke="#2B2A33" stroke-width="3"/>
+  <ellipse cx="50" cy="40" rx="13" ry="12" fill="#2B2A33"/>
+  <circle cx="45" cy="38" r="3" fill="#FFF8EC"/><circle cx="55" cy="38" r="3" fill="#FFF8EC"/>
+  <ellipse cx="32" cy="48" rx="14" ry="7" fill="#CFEFFB" stroke="#2B2A33" stroke-width="2" transform="rotate(-30 32 48)"/>
+  <ellipse cx="68" cy="48" rx="14" ry="7" fill="#CFEFFB" stroke="#2B2A33" stroke-width="2" transform="rotate(30 68 48)"/>
+  <path d="M42 30 q-6 -10 -12 -8 M58 30 q6 -10 12 -8" fill="none" stroke="#2B2A33" stroke-width="2"/>
+</svg>

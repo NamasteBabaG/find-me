@@ -1,0 +1,293 @@
+// ─────────────────────────────────────────────────────────────
+// איפה אני? — Prisma schema
+//
+// Dev runs on SQLite (zero setup). Production runs on Postgres:
+// change `provider` to "postgresql" and run `prisma migrate`.
+// The schema deliberately avoids SQLite-incompatible features
+// (enums, Json) so that switch is a one-line change:
+//   • enums   → String columns validated by domain unions (src/domain)
+//   • json    → String columns holding JSON validated by zod
+// ─────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Identity ────────────────────────────────────────────────
+
+model User {
+  id          String    @id
+  email       String    @unique
+  locale      String    @default("he")
+  createdAt   DateTime  @default(now())
+  lastLoginAt DateTime?
+
+  childProfiles ChildProfile[]
+  games         Game[]
+  orders        Order[]
+  sessions      Session[]
+  magicLinks    MagicLinkToken[]
+  assets        Asset[]
+}
+
+model MagicLinkToken {
+  id        String    @id
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Session {
+  id        String   @id
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── Child ───────────────────────────────────────────────────
+
+model ChildProfile {
+  id                   String    @id
+  ownerId              String?
+  displayName          String
+  avatarAssetId        String?   // illustrated sticker/avatar (kept so games keep working)
+  originalPhotoAssetId String?   // private; deleted after QA unless retainOriginalPhoto
+  retainOriginalPhoto  Boolean   @default(false)
+  photoCropJson        String?   // { x, y, w, h } normalized crop chosen by the parent
+  createdAt            DateTime  @default(now())
+  deletedAt            DateTime?
+
+  owner User?  @relation(fields: [ownerId], references: [id])
+  games Game[]
+}
+
+// ─── Game (the product instance) ─────────────────────────────
+
+model Game {
+  id             String    @id
+  ownerId        String?   // null while the draft has no email yet
+  childProfileId String?
+  packageTier    String?   // SMALL | BIG | WORLD  (domain/package.ts)
+  title          String?
+  status         String    @default("DRAFT") // domain/order-state.ts
+  sceneCount     Int       @default(0)
+  styleVersion   String    @default("collage-v1")
+  draftToken     String?   @unique // owns the draft before login
+  giftJson       String?   // { fromName?, message?, openAt? }
+  configJson     String?   // composed GameConfig (domain/game/config.ts) — never includes the original photo
+  lastError      String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  paidAt         DateTime?
+  readyAt        DateTime?
+  deliveredAt    DateTime?
+  deletedAt      DateTime?
+
+  owner        User?           @relation(fields: [ownerId], references: [id])
+  childProfile ChildProfile?   @relation(fields: [childProfileId], references: [id])
+  scenes       GameScene[]
+  orders       Order[]
+  shareLinks   ShareLink[]
+  jobs         GenerationJob[]
+  playSessions PlaySession[]
+}
+
+model GameScene {
+  id               String  @id
+  gameId           String
+  sceneSlug        String
+  sceneVersion     Int
+  orderIndex       Int
+  generationStatus String  @default("PENDING") // PENDING | GENERATING | GENERATED | QA_OK | NEEDS_REGENERATION
+  configJson       String? // per-scene composed config
+
+  game    Game             @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  targets TargetInstance[]
+
+  @@unique([gameId, sceneSlug])
+  @@index([gameId, orderIndex])
+}
+
+model TargetInstance {
+  id            String  @id
+  gameSceneId   String
+  targetId      String  // id inside the SceneDefinition
+  targetType    String
+  spriteKind    String  @default("composed") // composed (body template + face sticker) | image (generated sprite)
+  spriteAssetId String?
+  slotAId       String
+  slotBId       String
+  status        String  @default("PENDING") // PENDING | GENERATED | APPROVED | NEEDS_REGENERATION
+  adjustJson    String? // admin nudges: { dx, dy, scale } applied on top of the slot
+  attempts      Int     @default(0)
+  costCents     Int     @default(0)
+
+  gameScene GameScene @relation(fields: [gameSceneId], references: [id], onDelete: Cascade)
+
+  @@unique([gameSceneId, targetId])
+}
+
+// ─── Assets ──────────────────────────────────────────────────
+
+model Asset {
+  id                String    @id
+  ownerId           String?
+  type              String    // ORIGINAL_PHOTO | AVATAR | TARGET_SPRITE | THUMBNAIL
+  visibility        String    @default("PRIVATE") // PRIVATE (owner/admin only) | GAME (signed url, safe to ship to players)
+  storagePath       String
+  mimeType          String
+  width             Int?
+  height            Int?
+  bytes             Int?
+  provider          String    @default("upload")
+  providerRequestId String?
+  costCents         Int       @default(0)
+  status            String    @default("READY") // READY | DELETED | FAILED
+  createdAt         DateTime  @default(now())
+  deletedAt         DateTime?
+
+  owner User? @relation(fields: [ownerId], references: [id])
+}
+
+// ─── Commerce ────────────────────────────────────────────────
+
+model Order {
+  id                String    @id
+  userId            String
+  gameId            String
+  amountAgorot      Int
+  currency          String    @default("ILS")
+  packageTier       String
+  paymentStatus     String    @default("PENDING") // PENDING | PAID | FAILED | REFUNDED | CANCELLED
+  provider          String
+  providerPaymentId String?
+  checkoutUrl       String?
+  createdAt         DateTime  @default(now())
+  paidAt            DateTime?
+  refundedAt        DateTime?
+
+  user   User           @relation(fields: [userId], references: [id])
+  game   Game           @relation(fields: [gameId], references: [id])
+  events PaymentEvent[]
+
+  @@index([userId])
+  @@index([gameId])
+}
+
+// Every webhook we accept is recorded here first — this is what makes
+// payment handling idempotent (same providerEventId twice → no-op).
+model PaymentEvent {
+  id              String   @id
+  orderId         String
+  provider        String
+  providerEventId String
+  kind            String   // PAID | FAILED | REFUNDED
+  payloadJson     String
+  receivedAt      DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerEventId])
+}
+
+// ─── Sharing ─────────────────────────────────────────────────
+
+model ShareLink {
+  id        String    @id
+  gameId    String
+  kind      String    @default("PLAYER") // PLAYER | OWNER
+  tokenHash String    @unique
+  active    Boolean   @default(true)
+  pinHash   String?
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId])
+}
+
+// ─── Generation workflow ─────────────────────────────────────
+
+model GenerationJob {
+  id          String   @id
+  gameId      String
+  status      String   @default("QUEUED") // QUEUED | RUNNING | DONE | FAILED
+  currentStep String?
+  attempts    Int      @default(0)
+  lastError   String?
+  stepsJson   String   @default("{}") // { [stepName]: { status, startedAt, finishedAt, error? } }
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId])
+}
+
+// ─── Play telemetry (aggregate, no PII) ──────────────────────
+
+model PlaySession {
+  id                 String    @id
+  gameId             String
+  anonymousSessionId String
+  deviceType         String?
+  startedAt          DateTime  @default(now())
+  completedAt        DateTime?
+
+  game   Game            @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  events ProgressEvent[]
+
+  @@index([gameId])
+}
+
+model ProgressEvent {
+  id        String   @id
+  sessionId String
+  sceneSlug String?
+  targetId  String?
+  eventType String   // scene_started | target_found | hint_used | scene_completed | game_completed | game_replayed
+  hintsUsed Int      @default(0)
+  createdAt DateTime @default(now())
+
+  session PlaySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+}
+
+// ─── Catalog overrides + audit ───────────────────────────────
+
+// Scene definitions live in /content/scenes/*.json (version-controlled, authored with chat).
+// The DB only stores operational toggles so admins can pull a world without a deploy.
+model SceneOverride {
+  slug      String   @id
+  active    Boolean  @default(true)
+  note      String?
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id         String   @id
+  actorType  String   // SYSTEM | USER | ADMIN | WEBHOOK
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String
+  metaJson   String?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+}

@@ -1,0 +1,112 @@
+/* ─────────────────────────────────────────────────────────────
+   איפה אני? — Design tokens ("Storybook Collage")
+   Everything on an 8px grid. Components consume tokens only —
+   no magic numbers in component CSS.
+   ───────────────────────────────────────────────────────────── */
+:root {
+  /* Spacing — 8pt grid. --space-0-5 (4px) is reserved for icon/text nudges. */
+  --space-0-5: 4px;
+  --space-1: 8px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --space-4: 32px;
+  --space-5: 40px;
+  --space-6: 48px;
+  --space-8: 64px;
+  --space-10: 80px;
+  --space-12: 96px;
+  --space-16: 128px;
+
+  /* Radii — paper cut-outs are soft, never sharp. */
+  --radius-1: 8px;
+  --radius-2: 16px;
+  --radius-3: 24px;
+  --radius-4: 32px;
+  --radius-pill: 999px;
+
+  /* Sizes */
+  --touch-min: 48px;   /* adult UI */
+  --touch-kid: 64px;   /* anything a child taps */
+  --control-h: 56px;
+  --control-h-sm: 40px;
+  --container: 1120px;
+  --container-narrow: 640px;
+  --measure: 60ch;
+
+  /* Paper & ink */
+  --paper: #fff8ec;
+  --paper-2: #fbefd9;
+  --paper-3: #f3e3c3;
+  --white: #ffffff;
+  --ink: #2b2a33;
+  --ink-2: #5b5868;
+  --ink-3: #8a8798;
+  --ink-4: #c4c2cc;
+  --line: #ecdfc4;
+
+  /* Brand gouache */
+  --sun: #ffb61e;
+  --sun-deep: #e39a00;
+  --sun-soft: #ffe9b8;
+  --sea: #2fa4d6;
+  --sea-deep: #1b6fa8;
+  --sea-soft: #cfefFB;
+  --berry: #f25c7a;
+  --berry-deep: #c93a58;
+  --berry-soft: #ffd6df;
+  --leaf: #5bbf6b;
+  --leaf-deep: #3e8e4e;
+  --leaf-soft: #d9f3dd;
+  --grape: #8c6bd9;
+  --grape-soft: #e6ddf8;
+  --sand: #f7d9a0;
+  --night: #1b1f4b;
+
+  /* Semantic */
+  --success: #3faf6e;
+  --danger: #e5533c;
+  --warning: #e39a00;
+  --focus: #1b6fa8;
+
+  /* Shadows — cut paper lifted off the page */
+  --shadow-1: 0 2px 0 rgba(43, 42, 51, 0.06), 0 4px 12px rgba(43, 42, 51, 0.08);
+  --shadow-2: 0 4px 0 rgba(43, 42, 51, 0.06), 0 12px 32px rgba(43, 42, 51, 0.12);
+  --shadow-3: 0 8px 0 rgba(43, 42, 51, 0.06), 0 24px 48px rgba(43, 42, 51, 0.16);
+  --shadow-sticker: 0 4px 10px rgba(43, 42, 51, 0.22);
+  --sticker-outline: 0 0 0 4px var(--white);
+
+  /* Typography — sizes sit on the 8px baseline */
+  --font-display: var(--font-fredoka), "Rubik", "Heebo", system-ui, sans-serif;
+  --font-body: var(--font-rubik), "Heebo", system-ui, sans-serif;
+  --fs-100: 14px; --lh-100: 24px;
+  --fs-200: 16px; --lh-200: 24px;
+  --fs-300: 20px; --lh-300: 32px;
+  --fs-400: 24px; --lh-400: 32px;
+  --fs-500: 32px; --lh-500: 40px;
+  --fs-600: 40px; --lh-600: 48px;
+  --fs-700: 56px; --lh-700: 64px;
+  --fs-800: 72px; --lh-800: 80px;
+
+  /* Motion — snappy, springy, short */
+  --ease-pop: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-1: 150ms;
+  --dur-2: 300ms;
+  --dur-3: 600ms;
+  --dur-4: 1200ms;
+
+  /* Layers */
+  --z-ui: 10;
+  --z-sticky: 20;
+  --z-overlay: 100;
+  --z-toast: 200;
+}
+
+@media (max-width: 720px) {
+  :root {
+    --fs-600: 32px; --lh-600: 40px;
+    --fs-700: 40px; --lh-700: 48px;
+    --fs-800: 48px; --lh-800: 56px;
+  }
+}

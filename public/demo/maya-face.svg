@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!-- Demo child "מאיה" — an illustrated face sticker (no real photo is ever used in the demo). -->
+  <circle cx="100" cy="100" r="96" fill="#FFFFFF"/>
+  <circle cx="100" cy="100" r="88" fill="#F5C9A5"/>
+  <path d="M20 96 Q28 30 100 22 Q172 30 180 96 Q160 60 100 66 Q40 60 20 96 Z" fill="#5A3A22"/>
+  <circle cx="34" cy="120" r="18" fill="#5A3A22"/><circle cx="166" cy="120" r="18" fill="#5A3A22"/>
+  <circle cx="72" cy="104" r="8" fill="#2B2A33"/><circle cx="128" cy="104" r="8" fill="#2B2A33"/>
+  <circle cx="75" cy="101" r="3" fill="#fff"/><circle cx="131" cy="101" r="3" fill="#fff"/>
+  <circle cx="58" cy="128" r="10" fill="#F25C7A" opacity="0.45"/><circle cx="142" cy="128" r="10" fill="#F25C7A" opacity="0.45"/>
+  <path d="M78 136 Q100 158 122 136" fill="none" stroke="#2B2A33" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="100" cy="100" r="92" fill="none" stroke="#FFFFFF" stroke-width="8"/>
+</svg>

@@ -1,0 +1,67 @@
+{
+  "id": "scene_city",
+  "slug": "city",
+  "name": "העיר הגדולה",
+  "tagline": "אוטובוסים, רמזורים וחלונות צבעוניים.",
+  "version": 1,
+  "active": false,
+  "artStatus": "placeholder",
+  "art": {
+    "width": 1600,
+    "height": 1000,
+    "base": "/scenes/_placeholder/base.svg",
+    "thumbnail": "/scenes/_placeholder/thumb.svg",
+    "palette": { "sky": "#E3F2FD", "ground": "#9E9E9E", "accent": "#FFB61E" }
+  },
+  "targets": [
+    {
+      "id": "bus",
+      "targetType": "city_bus",
+      "bodyTemplate": "city_bus",
+      "difficulty": 1,
+      "mission": "מצאו את {name} ליד האוטובוס",
+      "item": "אוטובוס",
+      "success": ["העיר גדולה, אבל לא מספיק גדולה!", "כמעט עליתי על האוטובוס!", "ביפ ביפ! מצאתם!"],
+      "animation": "wave",
+      "slots": [
+        { "id": "city_bus_a", "x": 0.3, "y": 0.75, "scale": 0.07, "hintZone": { "x": 0.3, "y": 0.75, "r": 0.1 }, "hintText": "חפשו ליד התחנה." },
+        { "id": "city_bus_b", "x": 0.7, "y": 0.8, "scale": 0.07, "hintZone": { "x": 0.7, "y": 0.8, "r": 0.1 }, "hintText": "חפשו ליד האוטובוס הצהוב." }
+      ]
+    },
+    {
+      "id": "scooter",
+      "targetType": "city_scooter",
+      "bodyTemplate": "city_scooter",
+      "difficulty": 2,
+      "mission": "מצאו את {name} רוכב/ת על קורקינט",
+      "item": "קורקינט",
+      "success": ["וווש! מצאתם אותי בדרך!", "הקורקינט שלי הכי מהיר!", "עצרתי ברמזור ומצאתם!"],
+      "animation": "wiggle",
+      "slots": [
+        { "id": "city_scooter_a", "x": 0.5, "y": 0.88, "scale": 0.06, "hintZone": { "x": 0.5, "y": 0.88, "r": 0.1 }, "hintText": "חפשו בשביל של האופניים." },
+        { "id": "city_scooter_b", "x": 0.15, "y": 0.9, "scale": 0.06, "hintZone": { "x": 0.15, "y": 0.9, "r": 0.1 }, "hintText": "חפשו ליד הפארק הקטן." }
+      ]
+    },
+    {
+      "id": "window",
+      "targetType": "city_window",
+      "bodyTemplate": "city_window",
+      "difficulty": 3,
+      "mission": "מצאו את {name} מנופף/ת מחלון צבעוני",
+      "item": "חלון",
+      "success": ["מלמעלה רואים הכול!", "עיני נץ!", "החלון שלי הכי צבעוני!"],
+      "animation": "peek",
+      "slots": [
+        { "id": "city_window_a", "x": 0.62, "y": 0.35, "scale": 0.05, "layer": "behindForeground", "hintZone": { "x": 0.62, "y": 0.35, "r": 0.09 }, "hintText": "חפשו בבניין עם החלונות הצבעוניים." },
+        { "id": "city_window_b", "x": 0.2, "y": 0.3, "scale": 0.05, "layer": "behindForeground", "flip": true, "hintZone": { "x": 0.2, "y": 0.3, "r": 0.09 }, "hintText": "חפשו בקומה הגבוהה." }
+      ]
+    }
+  ],
+  "ambient": [
+    { "id": "traffic_light", "label": "רמזור מתחלף", "x": 0.42, "y": 0.55, "w": 0.04, "h": 0.12, "animation": "blink", "sound": "pop", "reaction": "ירוק! אפשר לעבור!", "glyph": "🚦" },
+    { "id": "pigeon", "label": "יונה חוטפת פירור", "x": 0.8, "y": 0.9, "w": 0.05, "h": 0.05, "animation": "hop", "sound": "whoosh", "reaction": "פירור! שלי!", "glyph": "🕊️" }
+  ],
+  "celebration": { "kind": "confetti", "completeText": "מצאתם את {name} שלוש פעמים בעיר!" },
+  "collectible": { "id": "taxi", "name": "מונית קטנה", "icon": "🚕" },
+  "sounds": {}
+}

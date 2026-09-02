@@ -1,0 +1,151 @@
+{
+  "id": "scene_beach",
+  "slug": "beach",
+  "name": "חוף הים",
+  "tagline": "שמשיות, ארמונות חול והמון הפתעות.",
+  "version": 1,
+  "active": true,
+  "artStatus": "placeholder",
+  "art": {
+    "width": 1600,
+    "height": 1000,
+    "base": "/scenes/beach/base.svg",
+    "foreground": "/scenes/beach/foreground.svg",
+    "thumbnail": "/scenes/beach/thumb.svg",
+    "palette": { "sky": "#CFEFFB", "ground": "#F7D9A0", "accent": "#2FA4D6" }
+  },
+  "intro": {
+    "from": { "x": 0.3, "y": 0.6, "zoom": 1.6 },
+    "to": { "x": 0.5, "y": 0.5, "zoom": 1 },
+    "durationMs": 1600
+  },
+  "targets": [
+    {
+      "id": "float",
+      "targetType": "beach_float",
+      "bodyTemplate": "beach_float",
+      "difficulty": 1,
+      "mission": "מצאו את {name} עם גלגל הים",
+      "item": "גלגל ים",
+      "success": ["ידעתי שתמצאו אותי!", "גלגל הים הסגיר אותי…", "וואו, זה היה מהיר!"],
+      "animation": "bounce",
+      "slots": [
+        {
+          "id": "beach_float_a",
+          "x": 0.2,
+          "y": 0.78,
+          "scale": 0.075,
+          "hintZone": { "x": 0.17, "y": 0.75, "r": 0.1 },
+          "hintText": "חפשו ליד משהו מתוק וקר."
+        },
+        {
+          "id": "beach_float_b",
+          "x": 0.79,
+          "y": 0.7,
+          "scale": 0.07,
+          "hintZone": { "x": 0.82, "y": 0.66, "r": 0.1 },
+          "hintText": "חפשו ליד מי ששומר על כולם בחוף."
+        }
+      ]
+    },
+    {
+      "id": "sandcastle",
+      "targetType": "beach_sandcastle",
+      "bodyTemplate": "beach_sandcastle",
+      "difficulty": 2,
+      "mission": "מצאו את {name} בונה ארמון חול",
+      "item": "ארמון חול",
+      "success": ["התחבאתי ממש טוב!", "רגע, כמעט סיימתי את המגדל!", "מצאתם אותי! רוצים לעזור לבנות?"],
+      "animation": "wiggle",
+      "slots": [
+        {
+          "id": "beach_castle_a",
+          "x": 0.31,
+          "y": 0.9,
+          "scale": 0.06,
+          "hintZone": { "x": 0.29, "y": 0.9, "r": 0.09 },
+          "hintText": "חפשו ליד משהו שבנו מחול."
+        },
+        {
+          "id": "beach_castle_b",
+          "x": 0.7,
+          "y": 0.92,
+          "scale": 0.06,
+          "hintZone": { "x": 0.66, "y": 0.92, "r": 0.09 },
+          "hintText": "חפשו ליד מגבת צבעונית."
+        }
+      ]
+    },
+    {
+      "id": "umbrella",
+      "targetType": "beach_umbrella_peek",
+      "bodyTemplate": "beach_umbrella_peek",
+      "difficulty": 3,
+      "mission": "מצאו את {name} מציץ/ה מאחורי שמשייה",
+      "item": "שמשייה",
+      "success": ["עיני נץ!", "לא הצלחתי להתחבא מכם!", "השמשייה כמעט הסתירה אותי…"],
+      "animation": "peek",
+      "slots": [
+        {
+          "id": "beach_umbrella_a",
+          "x": 0.565,
+          "y": 0.845,
+          "scale": 0.055,
+          "layer": "behindForeground",
+          "hintZone": { "x": 0.55, "y": 0.82, "r": 0.09 },
+          "hintText": "חפשו ליד משהו שנותן צל."
+        },
+        {
+          "id": "beach_umbrella_b",
+          "x": 0.365,
+          "y": 0.775,
+          "scale": 0.055,
+          "layer": "behindForeground",
+          "flip": true,
+          "hintZone": { "x": 0.35, "y": 0.76, "r": 0.09 },
+          "hintText": "חפשו ליד השמשייה הכי צבעונית."
+        }
+      ]
+    }
+  ],
+  "ambient": [
+    {
+      "id": "crab_bucket",
+      "label": "סרטן בדלי",
+      "x": 0.43,
+      "y": 0.9,
+      "w": 0.05,
+      "h": 0.06,
+      "animation": "hop",
+      "sound": "boing",
+      "reaction": "היי! זה הדלי שלי!",
+      "glyph": "🦀"
+    },
+    {
+      "id": "wave_flipflops",
+      "label": "גל שוטף כפכפים",
+      "x": 0.47,
+      "y": 0.64,
+      "w": 0.08,
+      "h": 0.05,
+      "animation": "slide",
+      "sound": "splash",
+      "reaction": "שששש… הכפכפים ברחו!",
+      "glyph": "🩴"
+    }
+  ],
+  "bonus": {
+    "id": "zik",
+    "name": "זיק",
+    "sprite": "/scenes/shared/zik.svg",
+    "scale": 0.035,
+    "prompt": "רוצים למצוא גם את זיק?",
+    "slots": [
+      { "id": "beach_zik_a", "x": 0.9, "y": 0.35, "scale": 0.035, "hintZone": { "x": 0.9, "y": 0.35, "r": 0.06 }, "hintText": "זיק אוהב מקומות גבוהים." },
+      { "id": "beach_zik_b", "x": 0.08, "y": 0.5, "scale": 0.035, "hintZone": { "x": 0.08, "y": 0.5, "r": 0.06 }, "hintText": "זיק מרחף מעל המים." }
+    ]
+  },
+  "celebration": { "kind": "bubbles", "completeText": "מצאתם את {name} שלוש פעמים בחוף!" },
+  "collectible": { "id": "shell", "name": "צדף מהחוף", "icon": "🐚" },
+  "sounds": { "ambient": "waves" }
+}

@@ -1,0 +1,49 @@
+/* Shared keyframes. Names are referenced from scene JSON (animation fields)
+   via the renderer, so keep them stable. */
+@keyframes fm-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@keyframes fm-spin { to { transform: rotate(360deg); } }
+@keyframes fm-pop-in { 0% { transform: scale(0.6); opacity: 0; } 60% { transform: scale(1.08); opacity: 1; } 100% { transform: scale(1); } }
+@keyframes fm-fade-up { from { transform: translateY(var(--space-2)); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes fm-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+@keyframes fm-ripple { from { transform: scale(0.2); opacity: 0.9; } to { transform: scale(2.4); opacity: 0; } }
+@keyframes fm-wiggle { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-8deg); } 75% { transform: rotate(8deg); } }
+@keyframes fm-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6%); } }
+@keyframes fm-glow { 0%, 100% { opacity: 0.35; } 50% { opacity: 0.75; } }
+@keyframes fm-tear { to { transform: translateX(-120%) rotate(-12deg); opacity: 0; } }
+@keyframes fm-tear-rtl { to { transform: translateX(120%) rotate(12deg); opacity: 0; } }
+@keyframes fm-stamp { 0% { transform: scale(2) rotate(-12deg); opacity: 0; } 70% { transform: scale(0.95) rotate(-8deg); opacity: 1; } 100% { transform: scale(1) rotate(-8deg); } }
+@keyframes fm-confetti-fall { 0% { transform: translate3d(0, -10%, 0) rotate(0); opacity: 1; } 100% { transform: translate3d(var(--dx, 0), 110vh, 0) rotate(720deg); opacity: 0; } }
+@keyframes fm-rise { 0% { transform: translate3d(0, 20%, 0) scale(0.6); opacity: 0; } 20% { opacity: 1; } 100% { transform: translate3d(var(--dx, 0), -110vh, 0) scale(1.1); opacity: 0; } }
+@keyframes fm-magnifier { 0% { transform: translate(-40%, -40%) scale(1.3); opacity: 0; } 20% { opacity: 1; } 100% { transform: translate(0, 0) scale(1); opacity: 1; } }
+
+/* Target found animations — applied to .tgt-anim wrapper */
+.anim-bounce { animation: tgt-bounce var(--dur-3) var(--ease-pop) 2; }
+.anim-wave { animation: tgt-wave var(--dur-3) var(--ease-in-out) 2; transform-origin: 50% 100%; }
+.anim-wiggle { animation: fm-wiggle var(--dur-2) var(--ease-in-out) 3; }
+.anim-spin { animation: tgt-spin var(--dur-3) var(--ease-pop) 1; }
+.anim-float { animation: tgt-float var(--dur-3) var(--ease-in-out) 2; }
+.anim-peek { animation: tgt-peek var(--dur-3) var(--ease-pop) 1; }
+.anim-salute { animation: tgt-salute var(--dur-3) var(--ease-pop) 1; }
+.anim-jump { animation: tgt-jump var(--dur-3) var(--ease-pop) 2; }
+
+@keyframes tgt-bounce { 0%, 100% { transform: translateY(0) scale(1); } 40% { transform: translateY(-40%) scale(1.1); } 70% { transform: translateY(0) scale(0.95, 1.05); } }
+@keyframes tgt-wave { 0%, 100% { transform: rotate(0); } 30% { transform: rotate(-12deg); } 60% { transform: rotate(10deg); } }
+@keyframes tgt-spin { to { transform: rotate(360deg); } }
+@keyframes tgt-float { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-30%) rotate(8deg); } }
+@keyframes tgt-peek { 0% { transform: translateY(0); } 40% { transform: translateY(-35%) scale(1.15); } 100% { transform: translateY(0) scale(1); } }
+@keyframes tgt-salute { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(-6deg) translateY(-10%); } }
+@keyframes tgt-jump { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-60%) scale(1.15); } }
+
+/* Ambient reactions — applied to .amb-anim */
+.amb-hop { animation: tgt-jump var(--dur-3) var(--ease-pop) 1; }
+.amb-spin { animation: tgt-spin var(--dur-3) var(--ease-pop) 1; }
+.amb-shake { animation: fm-wiggle var(--dur-2) var(--ease-in-out) 3; }
+.amb-pop { animation: fm-pop-in var(--dur-3) var(--ease-pop) 1; }
+.amb-slide { animation: amb-slide var(--dur-3) var(--ease-in-out) 1; }
+.amb-blink { animation: amb-blink var(--dur-3) steps(2) 3; }
+.amb-bounce { animation: tgt-bounce var(--dur-3) var(--ease-pop) 1; }
+.amb-float { animation: tgt-float var(--dur-4) var(--ease-in-out) 1; }
+.amb-flash { animation: amb-flash var(--dur-3) var(--ease-out) 1; }
+@keyframes amb-slide { 0% { transform: translateX(0); } 50% { transform: translateX(30%); } 100% { transform: translateX(0); } }
+@keyframes amb-blink { 0% { filter: hue-rotate(0); } 100% { filter: hue-rotate(180deg); } }
+@keyframes amb-flash { 0% { filter: brightness(1); transform: scale(1); } 30% { filter: brightness(2); transform: scale(1.3); } 100% { filter: brightness(1); transform: scale(1); } }

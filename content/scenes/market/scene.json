@@ -1,0 +1,67 @@
+{
+  "id": "scene_market",
+  "slug": "market",
+  "name": "השוק הצבעוני",
+  "tagline": "אבטיחים, תבלינים ותוכי אחד מצחיק.",
+  "version": 1,
+  "active": false,
+  "artStatus": "placeholder",
+  "art": {
+    "width": 1600,
+    "height": 1000,
+    "base": "/scenes/_placeholder/base.svg",
+    "thumbnail": "/scenes/_placeholder/thumb.svg",
+    "palette": { "sky": "#FFF3E0", "ground": "#BCAAA4", "accent": "#F25C7A" }
+  },
+  "targets": [
+    {
+      "id": "watermelon",
+      "targetType": "market_watermelon",
+      "bodyTemplate": "market_watermelon",
+      "difficulty": 1,
+      "mission": "מצאו את {name} מחזיק/ה אבטיח",
+      "item": "אבטיח",
+      "success": ["איזה מזל שלא התחבאתי בתוך האבטיח!", "האבטיח הזה כבד!", "מצאתם! רוצים פלח?"],
+      "animation": "bounce",
+      "slots": [
+        { "id": "market_melon_a", "x": 0.25, "y": 0.7, "scale": 0.07, "hintZone": { "x": 0.25, "y": 0.7, "r": 0.1 }, "hintText": "חפשו ליד ערימת האבטיחים." },
+        { "id": "market_melon_b", "x": 0.72, "y": 0.75, "scale": 0.07, "hintZone": { "x": 0.72, "y": 0.75, "r": 0.1 }, "hintText": "חפשו ליד המשקל הגדול." }
+      ]
+    },
+    {
+      "id": "flowers",
+      "targetType": "market_flowers",
+      "bodyTemplate": "market_flowers",
+      "difficulty": 2,
+      "mission": "מצאו את {name} ליד דוכן הפרחים",
+      "item": "פרחים",
+      "success": ["הפרחים הסתירו אותי!", "מצאתם! הבאתי לכם פרח!", "אפצ׳י! אלרגיה… ומצאתם!"],
+      "animation": "wave",
+      "slots": [
+        { "id": "market_flowers_a", "x": 0.5, "y": 0.6, "scale": 0.06, "hintZone": { "x": 0.5, "y": 0.6, "r": 0.1 }, "hintText": "חפשו איפה שהכי צבעוני." },
+        { "id": "market_flowers_b", "x": 0.85, "y": 0.55, "scale": 0.06, "hintZone": { "x": 0.85, "y": 0.55, "r": 0.1 }, "hintText": "חפשו ליד הדליים עם המים." }
+      ]
+    },
+    {
+      "id": "spices",
+      "targetType": "market_spices_peek",
+      "bodyTemplate": "market_spices_peek",
+      "difficulty": 3,
+      "mission": "מצאו את {name} מציץ/ה מאחורי שקי התבלינים",
+      "item": "שקי תבלינים",
+      "success": ["אפצ׳י! הפלפל!", "עיני נץ!", "השקים האלה ריחניים…"],
+      "animation": "peek",
+      "slots": [
+        { "id": "market_spices_a", "x": 0.4, "y": 0.85, "scale": 0.05, "layer": "behindForeground", "hintZone": { "x": 0.4, "y": 0.85, "r": 0.09 }, "hintText": "חפשו ליד השקים הכתומים." },
+        { "id": "market_spices_b", "x": 0.12, "y": 0.5, "scale": 0.05, "layer": "behindForeground", "flip": true, "hintZone": { "x": 0.12, "y": 0.5, "r": 0.09 }, "hintText": "חפשו בדוכן בפינה." }
+      ]
+    }
+  ],
+  "ambient": [
+    { "id": "orange_roll", "label": "תפוז מתגלגל", "x": 0.6, "y": 0.8, "w": 0.06, "h": 0.06, "animation": "slide", "sound": "boing", "reaction": "אופס! התפוז ברח!", "glyph": "🍊" },
+    { "id": "parrot", "label": "תוכי חוזר על צליל", "x": 0.9, "y": 0.2, "w": 0.05, "h": 0.07, "animation": "shake", "sound": "chirp", "reaction": "קרררר! מצאתם! מצאתם!", "glyph": "🦜" }
+  ],
+  "celebration": { "kind": "fruit", "completeText": "מצאתם את {name} שלוש פעמים בשוק!" },
+  "collectible": { "id": "basket", "name": "סלסילת פירות", "icon": "🧺" },
+  "sounds": {}
+}

@@ -1,0 +1,165 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" width="1600" height="1000">
+  <!-- PLACEHOLDER ART — חוף הים. Replace with the illustrated scene (same 1600×1000 frame). -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#BFE8FA"/>
+      <stop offset="1" stop-color="#EAF8FE"/>
+    </linearGradient>
+    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2FA4D6"/>
+      <stop offset="1" stop-color="#7CD0EC"/>
+    </linearGradient>
+    <linearGradient id="sand" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F9E2B0"/>
+      <stop offset="1" stop-color="#F2CF8B"/>
+    </linearGradient>
+    <pattern id="stripesPink" width="24" height="24" patternUnits="userSpaceOnUse" patternTransform="rotate(90)">
+      <rect width="12" height="24" fill="#F25C7A"/><rect x="12" width="12" height="24" fill="#FFF8EC"/>
+    </pattern>
+    <pattern id="stripesBlue" width="24" height="24" patternUnits="userSpaceOnUse" patternTransform="rotate(90)">
+      <rect width="12" height="24" fill="#2FA4D6"/><rect x="12" width="12" height="24" fill="#FFB61E"/>
+    </pattern>
+    <pattern id="stripesRed" width="24" height="24" patternUnits="userSpaceOnUse" patternTransform="rotate(90)">
+      <rect width="12" height="24" fill="#E5533C"/><rect x="12" width="12" height="24" fill="#FFF8EC"/>
+    </pattern>
+  </defs>
+
+  <!-- sky -->
+  <rect width="1600" height="460" fill="url(#sky)"/>
+  <circle cx="210" cy="130" r="68" fill="#FFB61E"/>
+  <circle cx="210" cy="130" r="88" fill="#FFB61E" opacity="0.25"/>
+  <g fill="#FFFFFF" opacity="0.95">
+    <ellipse cx="520" cy="120" rx="90" ry="34"/><ellipse cx="570" cy="100" rx="60" ry="40"/>
+    <ellipse cx="1180" cy="150" rx="110" ry="36"/><ellipse cx="1230" cy="128" rx="70" ry="44"/>
+    <ellipse cx="880" cy="70" rx="60" ry="24"/>
+  </g>
+  <!-- seagulls -->
+  <g fill="none" stroke="#2B2A33" stroke-width="4" stroke-linecap="round">
+    <path d="M700 200 q15 -18 30 0 q15 -18 30 0"/><path d="M760 250 q12 -14 24 0 q12 -14 24 0"/><path d="M1350 240 q15 -18 30 0 q15 -18 30 0"/>
+  </g>
+
+  <!-- pier (top right) -->
+  <g>
+    <rect x="1330" y="430" width="270" height="26" rx="6" fill="#B07D4C"/>
+    <rect x="1360" y="456" width="14" height="90" fill="#8A5F36"/><rect x="1440" y="456" width="14" height="90" fill="#8A5F36"/><rect x="1520" y="456" width="14" height="90" fill="#8A5F36"/>
+    <!-- fisher on pier -->
+    <circle cx="1410" cy="392" r="16" fill="#F5C9A5"/><rect x="1396" y="408" width="28" height="30" rx="8" fill="#8C6BD9"/>
+    <path d="M1424 416 L1490 380 L1500 470" fill="none" stroke="#2B2A33" stroke-width="3"/>
+  </g>
+
+  <!-- sea -->
+  <rect y="440" width="1600" height="220" fill="url(#sea)"/>
+  <g fill="none" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round" opacity="0.7">
+    <path d="M40 500 q40 -14 80 0 t80 0 t80 0"/><path d="M420 560 q40 -14 80 0 t80 0"/><path d="M900 520 q40 -14 80 0 t80 0 t80 0"/><path d="M1200 590 q40 -14 80 0 t80 0"/><path d="M300 620 q40 -14 80 0 t80 0"/>
+  </g>
+  <!-- swimmers -->
+  <g>
+    <circle cx="560" cy="560" r="16" fill="#F5C9A5"/><ellipse cx="560" cy="580" rx="30" ry="10" fill="#FFB61E"/>
+    <circle cx="640" cy="590" r="14" fill="#E0AC82"/><ellipse cx="640" cy="608" rx="26" ry="9" fill="#F25C7A"/>
+    <circle cx="1120" cy="600" r="15" fill="#F5C9A5"/><ellipse cx="1120" cy="620" rx="28" ry="9" fill="#5BBF6B"/>
+  </g>
+  <!-- boat -->
+  <g transform="translate(960 555)">
+    <path d="M-80 0 L80 0 L60 34 L-60 34 Z" fill="#E5533C"/>
+    <rect x="-4" y="-90" width="8" height="90" fill="#8A5F36"/>
+    <path d="M4 -88 L64 -12 L4 -12 Z" fill="#FFF8EC"/><path d="M-4 -70 L-52 -12 L-4 -12 Z" fill="#FFB61E"/>
+  </g>
+  <!-- beach ball floating -->
+  <circle cx="380" cy="600" r="18" fill="#F25C7A"/><path d="M362 600 a18 18 0 0 0 36 0" fill="#2FA4D6"/>
+
+  <!-- sand -->
+  <path d="M0 640 Q400 610 800 650 T1600 630 L1600 1000 L0 1000 Z" fill="url(#sand)"/>
+  <g fill="#E9BF78" opacity="0.5">
+    <ellipse cx="300" cy="820" rx="120" ry="18"/><ellipse cx="1100" cy="700" rx="140" ry="16"/><ellipse cx="800" cy="960" rx="160" ry="16"/>
+  </g>
+
+  <!-- palm tree (left) -->
+  <g>
+    <path d="M60 720 q30 -140 20 -300" fill="none" stroke="#8A5F36" stroke-width="22" stroke-linecap="round"/>
+    <g fill="#5BBF6B">
+      <ellipse cx="60" cy="410" rx="120" ry="30" transform="rotate(-20 60 410)"/>
+      <ellipse cx="90" cy="420" rx="110" ry="28" transform="rotate(25 90 420)"/>
+      <ellipse cx="70" cy="390" rx="100" ry="26" transform="rotate(70 70 390)"/>
+    </g>
+    <circle cx="70" cy="440" r="10" fill="#8A5F36"/><circle cx="90" cy="450" r="10" fill="#8A5F36"/>
+  </g>
+
+  <!-- ice cream cart (x≈240,y≈720) -->
+  <g>
+    <rect x="200" y="690" width="110" height="60" rx="10" fill="#FFF8EC" stroke="#2B2A33" stroke-width="3"/>
+    <text x="255" y="730" font-size="30" text-anchor="middle">🍦</text>
+    <circle cx="222" cy="762" r="14" fill="#2B2A33"/><circle cx="288" cy="762" r="14" fill="#2B2A33"/>
+    <rect x="252" y="600" width="6" height="90" fill="#8A5F36"/>
+    <path d="M170 610 Q255 540 340 610 Z" fill="url(#stripesPink)" stroke="#2B2A33" stroke-width="3"/>
+    <!-- vendor -->
+    <circle cx="330" cy="680" r="16" fill="#E0AC82"/><rect x="316" y="696" width="28" height="36" rx="8" fill="#2FA4D6"/>
+  </g>
+
+  <!-- umbrella 1 (pink) x=584 -->
+  <g>
+    <rect x="581" y="690" width="6" height="140" fill="#8A5F36"/>
+    <path d="M454 700 Q584 600 714 700 Z" fill="url(#stripesPink)" stroke="#2B2A33" stroke-width="3"/>
+  </g>
+  <!-- umbrella 2 (blue/yellow) x=904 -->
+  <g>
+    <rect x="901" y="760" width="6" height="120" fill="#8A5F36"/>
+    <path d="M774 770 Q904 670 1034 770 Z" fill="url(#stripesBlue)" stroke="#2B2A33" stroke-width="3"/>
+  </g>
+  <!-- umbrella 3 (red) x=1150 -->
+  <g>
+    <rect x="1147" y="800" width="6" height="110" fill="#8A5F36"/>
+    <path d="M1030 810 Q1150 720 1270 810 Z" fill="url(#stripesRed)" stroke="#2B2A33" stroke-width="3"/>
+    <circle cx="1210" cy="880" r="16" fill="#F5C9A5"/><rect x="1196" y="896" width="28" height="30" rx="8" fill="#FFB61E"/>
+  </g>
+
+  <!-- lifeguard hut (x≈1312, y≈600) -->
+  <g>
+    <rect x="1292" y="600" width="12" height="70" fill="#8A5F36"/><rect x="1336" y="600" width="12" height="70" fill="#8A5F36"/>
+    <rect x="1276" y="590" width="88" height="14" rx="4" fill="#B07D4C"/>
+    <rect x="1284" y="536" width="72" height="56" fill="#FFF8EC" stroke="#2B2A33" stroke-width="3"/>
+    <path d="M1272 538 L1320 500 L1368 538 Z" fill="#E5533C"/>
+    <rect x="1362" y="470" width="4" height="70" fill="#2B2A33"/><path d="M1366 472 L1400 484 L1366 496 Z" fill="#FFB61E"/>
+    <circle cx="1320" cy="566" r="12" fill="#E0AC82"/>
+  </g>
+
+  <!-- sandcastle (x≈440, y≈905) -->
+  <g>
+    <rect x="400" y="880" width="90" height="50" fill="#E9BF78" stroke="#C9A227" stroke-width="3"/>
+    <rect x="392" y="850" width="26" height="80" fill="#E9BF78" stroke="#C9A227" stroke-width="3"/>
+    <rect x="472" y="850" width="26" height="80" fill="#E9BF78" stroke="#C9A227" stroke-width="3"/>
+    <rect x="431" y="860" width="28" height="30" fill="#E9BF78" stroke="#C9A227" stroke-width="3"/>
+    <rect x="444" y="826" width="3" height="36" fill="#2B2A33"/><path d="M447 828 L468 836 L447 844 Z" fill="#F25C7A"/>
+  </g>
+
+  <!-- towel (x≈1000..1120, y≈905) -->
+  <rect x="990" y="900" width="130" height="44" rx="6" fill="url(#stripesBlue)" stroke="#2B2A33" stroke-width="3" transform="rotate(-6 1055 922)"/>
+
+  <!-- bucket + spade (ambient crab lives here, x≈688..768 y≈900..960) -->
+  <g>
+    <path d="M700 905 L760 905 L752 958 L708 958 Z" fill="#F25C7A" stroke="#2B2A33" stroke-width="3"/>
+    <path d="M700 905 Q730 880 760 905" fill="none" stroke="#2B2A33" stroke-width="3"/>
+    <rect x="770" y="900" width="6" height="50" fill="#2FA4D6"/><path d="M760 950 L786 950 L773 970 Z" fill="#2FA4D6"/>
+  </g>
+
+  <!-- flip-flops at water edge (x≈752..880, y≈640..690) -->
+  <g>
+    <ellipse cx="785" cy="662" rx="16" ry="26" fill="#F25C7A" stroke="#2B2A33" stroke-width="3" transform="rotate(-20 785 662)"/>
+    <ellipse cx="830" cy="668" rx="16" ry="26" fill="#F25C7A" stroke="#2B2A33" stroke-width="3" transform="rotate(15 830 668)"/>
+  </g>
+
+  <!-- decoy people (paper cut-outs) -->
+  <g>
+    <circle cx="150" cy="890" r="16" fill="#F5C9A5"/><rect x="136" y="906" width="28" height="34" rx="8" fill="#5BBF6B"/><circle cx="185" cy="930" r="12" fill="#FFB61E"/>
+    <circle cx="700" cy="720" r="16" fill="#E0AC82"/><rect x="686" y="736" width="28" height="34" rx="8" fill="#8C6BD9"/>
+    <circle cx="1000" cy="820" r="16" fill="#F5C9A5"/><rect x="986" y="836" width="28" height="30" rx="8" fill="#F25C7A"/>
+    <circle cx="1400" cy="900" r="16" fill="#E0AC82"/><rect x="1386" y="916" width="28" height="34" rx="8" fill="#2FA4D6"/>
+    <circle cx="860" cy="950" r="14" fill="#F5C9A5"/><rect x="848" y="964" width="24" height="28" rx="8" fill="#FFB61E"/>
+    <circle cx="900" cy="955" r="14" fill="#E0AC82"/><rect x="888" y="969" width="24" height="28" rx="8" fill="#5BBF6B"/>
+    <circle cx="1500" cy="760" r="16" fill="#F5C9A5"/><rect x="1486" y="776" width="28" height="34" rx="8" fill="#F25C7A"/>
+    <circle cx="560" cy="920" r="16" fill="#E0AC82"/><rect x="546" y="936" width="28" height="34" rx="8" fill="#2FA4D6"/>
+  </g>
+  <!-- small crab -->
+  <g transform="translate(1200 962)"><ellipse rx="16" ry="10" fill="#E5533C"/><circle cx="-6" cy="-8" r="3" fill="#2B2A33"/><circle cx="6" cy="-8" r="3" fill="#2B2A33"/></g>
+  <!-- starfish + shells -->
+  <text x="330" y="985" font-size="26">⭐</text><text x="1300" y="985" font-size="26">🐚</text>
+</svg>

@@ -1,0 +1,226 @@
+import { z } from "zod";
+import { TARGETS_PER_SCENE } from "../package";
+
+/**
+ * SceneDefinition — the authoring contract for a world.
+ *
+ * A scene is a fixed, shared asset (art + level design). Only the child's
+ * sprites and per-game configuration are personal. Scenes are authored as
+ * JSON in /content/scenes/<slug>/scene.json (see docs/SCENE_AUTHORING.md)
+ * and validated with `validateSceneDefinition` at load time and in CI.
+ *
+ * All coordinates are normalized (0..1) against the base art size so the
+ * same scene works on every viewport.
+ */
+
+export const Unit = z.number().min(0).max(1);
+
+export const TARGET_ANIMATIONS = ["bounce", "wave", "wiggle", "spin", "float", "peek", "salute", "jump"] as const;
+export const TargetAnimation = z.enum(TARGET_ANIMATIONS);
+export type TargetAnimation = z.infer<typeof TargetAnimation>;
+
+export const CELEBRATION_KINDS = ["bubbles", "stars", "leaves", "confetti", "crowd", "fruit", "sparkles", "hearts", "snow"] as const;
+export const CelebrationKind = z.enum(CELEBRATION_KINDS);
+export type CelebrationKind = z.infer<typeof CelebrationKind>;
+
+export const AMBIENT_ANIMATIONS = ["hop", "spin", "shake", "pop", "slide", "blink", "bounce", "float", "flash"] as const;
+export const AmbientAnimation = z.enum(AMBIENT_ANIMATIONS);
+export type AmbientAnimation = z.infer<typeof AmbientAnimation>;
+
+export const SOUND_CUES = ["pop", "tap", "success", "fanfare", "splash", "chirp", "whoosh", "boing", "twinkle", "crowd", "waves", "jungle", "space"] as const;
+export const SoundCue = z.enum(SOUND_CUES);
+export type SoundCue = z.infer<typeof SoundCue>;
+
+export const ART_STATUSES = ["placeholder", "draft", "final"] as const;
+
+export const SlotSchema = z.object({
+  id: z.string().min(1),
+  /** Anchor point (sprite centre), normalized to base art. */
+  x: Unit,
+  y: Unit,
+  /** Sprite height as a fraction of scene height. Spec target: ~0.04 / 0.03 / 0.025. */
+  scale: z.number().min(0.015).max(0.25),
+  rotation: z.number().min(-45).max(45).default(0),
+  zIndex: z.number().int().min(0).max(100).default(10),
+  /** `behindForeground` renders under the foreground overlay so the art occludes part of the sprite. */
+  layer: z.enum(["front", "behindForeground"]).default("front"),
+  flip: z.boolean().default(false),
+  /** Level-2 hint: the glowing area. Radius is a fraction of scene width. Must contain (x,y). */
+  hintZone: z.object({ x: Unit, y: Unit, r: z.number().min(0.03).max(0.5) }),
+  /** Level-1 hint: a gentle verbal nudge specific to this hiding spot. */
+  hintText: z.string().min(1),
+});
+export type Slot = z.infer<typeof SlotSchema>;
+
+export const TargetSchema = z.object({
+  id: z.string().min(1),
+  /** Stable key such as "beach_float" → body template + future generation prompt. */
+  targetType: z.string().min(1),
+  bodyTemplate: z.string().min(1),
+  difficulty: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+  /** e.g. "מצאו את {name} עם גלגל ים צהוב" */
+  mission: z.string().min(1),
+  /** Short noun phrase for the mission thumbnail label, e.g. "גלגל ים". */
+  item: z.string().min(1),
+  /** Lines the child says when found. Rotated between plays. */
+  success: z.array(z.string().min(1)).min(1),
+  animation: TargetAnimation,
+  /** Exactly two hiding spots: A (canonical, first play) and B (replay). */
+  slots: z.tuple([SlotSchema, SlotSchema]),
+});
+export type Target = z.infer<typeof TargetSchema>;
+
+export const AmbientSchema = z.object({
+  id: z.string().min(1),
+  /** Accessible label + admin label, e.g. "סרטן בדלי". */
+  label: z.string().min(1),
+  x: Unit,
+  y: Unit,
+  w: z.number().min(0.01).max(1),
+  h: z.number().min(0.01).max(1),
+  animation: AmbientAnimation,
+  sound: SoundCue.optional(),
+  /** Optional funny bubble, e.g. "היי! זה הדלי שלי!" */
+  reaction: z.string().optional(),
+  /** Optional emoji/glyph shown while the art is a placeholder. */
+  glyph: z.string().optional(),
+  cooldownMs: z.number().int().min(0).max(10000).default(1500),
+});
+export type Ambient = z.infer<typeof AmbientSchema>;
+
+export const BonusSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  /** Sprite src (public path). */
+  sprite: z.string().min(1),
+  scale: z.number().min(0.015).max(0.25),
+  prompt: z.string().min(1),
+  slots: z.tuple([SlotSchema, SlotSchema]),
+});
+export type Bonus = z.infer<typeof BonusSchema>;
+
+export const SceneDefinitionSchema = z.object({
+  id: z.string().min(1),
+  slug: z
+    .string()
+    .min(1)
+    .regex(/^[a-z][a-z0-9-]*$/, "slug must be kebab-case"),
+  name: z.string().min(1),
+  tagline: z.string().min(1),
+  version: z.number().int().min(1),
+  active: z.boolean(),
+  artStatus: z.enum(ART_STATUSES),
+  art: z.object({
+    width: z.number().int().min(320),
+    height: z.number().int().min(320),
+    base: z.string().min(1),
+    foreground: z.string().optional(),
+    thumbnail: z.string().min(1),
+    palette: z.object({ sky: z.string(), ground: z.string(), accent: z.string() }),
+  }),
+  /** Optional 1–2s establishing pan on entry. */
+  intro: z
+    .object({
+      from: z.object({ x: Unit, y: Unit, zoom: z.number().min(1).max(4) }),
+      to: z.object({ x: Unit, y: Unit, zoom: z.number().min(1).max(4) }),
+      durationMs: z.number().int().min(300).max(4000).default(1600),
+    })
+    .optional(),
+  targets: z.array(TargetSchema).length(TARGETS_PER_SCENE),
+  ambient: z.array(AmbientSchema).min(2).max(6),
+  bonus: BonusSchema.optional(),
+  celebration: z.object({
+    kind: CelebrationKind,
+    /** e.g. "מצאתם את {name} שלוש פעמים בחוף!" */
+    completeText: z.string().min(1),
+  }),
+  collectible: z.object({ id: z.string().min(1), name: z.string().min(1), icon: z.string().min(1) }),
+  sounds: z.object({ ambient: SoundCue.optional() }).default({}),
+});
+export type SceneDefinition = z.infer<typeof SceneDefinitionSchema>;
+
+// ─── Validation beyond the shape ─────────────────────────────
+
+export interface SceneValidation {
+  ok: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
+function dist(ax: number, ay: number, bx: number, by: number): number {
+  return Math.hypot(ax - bx, ay - by);
+}
+
+export function validateSceneDefinition(input: unknown): SceneValidation & { scene?: SceneDefinition } {
+  const parsed = SceneDefinitionSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      errors: parsed.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`),
+      warnings: [],
+    };
+  }
+  const scene = parsed.data;
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  const slotIds = new Set<string>();
+  const targetIds = new Set<string>();
+  const seenDifficulty: number[] = [];
+
+  for (const target of scene.targets) {
+    if (targetIds.has(target.id)) errors.push(`duplicate target id "${target.id}"`);
+    targetIds.add(target.id);
+    seenDifficulty.push(target.difficulty);
+
+    for (const slot of target.slots) {
+      if (slotIds.has(slot.id)) errors.push(`duplicate slot id "${slot.id}"`);
+      slotIds.add(slot.id);
+      const d = dist(slot.x, slot.y, slot.hintZone.x, slot.hintZone.y);
+      if (d > slot.hintZone.r) {
+        errors.push(`slot "${slot.id}": hintZone does not contain the anchor (distance ${d.toFixed(3)} > r ${slot.hintZone.r})`);
+      }
+      if (slot.scale > 0.08) warnings.push(`slot "${slot.id}": scale ${slot.scale} is large; children should have to look`);
+      if (slot.scale < 0.02) warnings.push(`slot "${slot.id}": scale ${slot.scale} may be too small to recognise a face`);
+    }
+    const [a, b] = target.slots;
+    if (dist(a.x, a.y, b.x, b.y) < 0.08) {
+      warnings.push(`target "${target.id}": slots A and B are very close — replay will feel the same`);
+    }
+    if (!target.mission.includes("{name}")) warnings.push(`target "${target.id}": mission copy does not mention {name}`);
+  }
+
+  const sortedDifficulty = [...seenDifficulty].sort((x, y) => x - y);
+  if (sortedDifficulty.join() !== "1,2,3") {
+    warnings.push(`difficulties are ${seenDifficulty.join(",")}; expected one each of 1,2,3 (easy → hard)`);
+  }
+
+  // Targets should not overlap each other in the same variant set.
+  const anchorsA = scene.targets.map((t) => t.slots[0]);
+  for (let i = 0; i < anchorsA.length; i++) {
+    for (let j = i + 1; j < anchorsA.length; j++) {
+      const p = anchorsA[i]!;
+      const q = anchorsA[j]!;
+      if (dist(p.x, p.y, q.x, q.y) < 0.06) warnings.push(`slots "${p.id}" and "${q.id}" are very close in variant A`);
+    }
+  }
+
+  const ambientIds = new Set<string>();
+  for (const a of scene.ambient) {
+    if (ambientIds.has(a.id)) errors.push(`duplicate ambient id "${a.id}"`);
+    ambientIds.add(a.id);
+    if (a.x + a.w > 1.0001 || a.y + a.h > 1.0001) errors.push(`ambient "${a.id}" extends outside the scene`);
+  }
+
+  if (scene.bonus) {
+    for (const slot of scene.bonus.slots) {
+      if (slotIds.has(slot.id)) errors.push(`duplicate slot id "${slot.id}" (bonus)`);
+      slotIds.add(slot.id);
+    }
+  }
+
+  if (!scene.celebration.completeText.includes("{name}")) warnings.push("celebration.completeText does not mention {name}");
+  if (scene.artStatus === "placeholder" && scene.active) warnings.push("scene is active with placeholder art");
+
+  return { ok: errors.length === 0, errors, warnings, scene };
+}
