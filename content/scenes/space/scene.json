@@ -1,40 +1,22 @@
 {
   "id": "scene_space",
   "slug": "space",
-  "name": {
-    "en": "Outer Space",
-    "he": "החלל"
-  },
-  "tagline": {
-    "en": "Stars, aliens and zero-gravity hiding spots.",
-    "he": "כוכבים, חייזרים ומחבואים בלי כוח משיכה."
-  },
-  "version": 1,
+  "name": { "en": "Outer Space", "he": "החלל" },
+  "tagline": { "en": "A moon base, a rocket and friendly aliens.", "he": "בסיס ירח, רקטה וחייזרים ידידותיים." },
+  "version": 2,
   "active": true,
-  "artStatus": "placeholder",
+  "artStatus": "draft",
   "art": {
-    "width": 1600,
-    "height": 1000,
-    "base": "/scenes/space/base.svg",
-    "foreground": "/scenes/space/foreground.svg",
-    "thumbnail": "/scenes/space/thumb.svg",
-    "palette": {
-      "sky": "#1B1F4B",
-      "ground": "#8E8FA8",
-      "accent": "#FFB61E"
-    }
+    "width": 1672,
+    "height": 941,
+    "base": "/scenes/space/base.webp",
+    "foreground": "/scenes/space/foreground.webp",
+    "thumbnail": "/scenes/space/thumb.webp",
+    "palette": { "sky": "#1B1F4B", "ground": "#8E8FA8", "accent": "#FFB61E" }
   },
   "intro": {
-    "from": {
-      "x": 0.5,
-      "y": 0.3,
-      "zoom": 1.5
-    },
-    "to": {
-      "x": 0.5,
-      "y": 0.5,
-      "zoom": 1
-    },
+    "from": { "x": 0.65, "y": 0.45, "zoom": 1.5 },
+    "to": { "x": 0.5, "y": 0.5, "zoom": 1 },
     "durationMs": 1600
   },
   "targets": [
@@ -43,60 +25,17 @@
       "targetType": "space_astronaut",
       "bodyTemplate": "space_astronaut",
       "difficulty": 1,
-      "mission": {
-        "en": "Find {name} in a spacesuit",
-        "he": "מצאו את {name} בחליפת אסטרונאוט"
-      },
-      "item": {
-        "en": "a spacesuit",
-        "he": "חליפת אסטרונאוט"
-      },
+      "mission": { "en": "Find {name} in a spacesuit", "he": "מצאו את {name} בחליפת אסטרונאוט" },
+      "item": { "en": "a spacesuit", "he": "חליפת אסטרונאוט" },
       "success": [
-        {
-          "en": "You found me all the way to the moon!",
-          "he": "מצאתם אותי עד הירח!"
-        },
-        {
-          "en": "No gravity here, but you found me!",
-          "he": "אין פה כוח משיכה, אבל מצאתם!"
-        },
-        {
-          "en": "Beep-boop… you found me!",
-          "he": "ביפ־בופ… מצאתם אותי!"
-        }
+        { "en": "You found me all the way to the moon!", "he": "מצאתם אותי עד הירח!" },
+        { "en": "No gravity here, but you found me!", "he": "אין פה כוח משיכה, אבל מצאתם!" },
+        { "en": "Beep-boop… you found me!", "he": "ביפ־בופ… מצאתם אותי!" }
       ],
       "animation": "float",
       "slots": [
-        {
-          "id": "space_astro_a",
-          "x": 0.3,
-          "y": 0.36,
-          "scale": 0.075,
-          "hintZone": {
-            "x": 0.3,
-            "y": 0.35,
-            "r": 0.1
-          },
-          "hintText": {
-            "en": "Look near the big spaceship.",
-            "he": "חפשו ליד החללית הגדולה."
-          }
-        },
-        {
-          "id": "space_astro_b",
-          "x": 0.7,
-          "y": 0.24,
-          "scale": 0.07,
-          "hintZone": {
-            "x": 0.7,
-            "y": 0.24,
-            "r": 0.1
-          },
-          "hintText": {
-            "en": "Look near the brightest star.",
-            "he": "חפשו ליד הכוכב הכי בוהק."
-          }
-        }
+        { "id": "space_astro_a", "x": 0.66, "y": 0.47, "scale": 0.085, "hintZone": { "x": 0.68, "y": 0.44, "r": 0.1 }, "hintText": { "en": "Look near the big rocket.", "he": "חפשו ליד הרקטה הגדולה." } },
+        { "id": "space_astro_b", "x": 0.3, "y": 0.22, "scale": 0.075, "hintZone": { "x": 0.28, "y": 0.2, "r": 0.1 }, "hintText": { "en": "Look near the ringed planet.", "he": "חפשו ליד כוכב הלכת עם הטבעת." } }
       ]
     },
     {
@@ -104,60 +43,17 @@
       "targetType": "space_rover",
       "bodyTemplate": "space_rover",
       "difficulty": 2,
-      "mission": {
-        "en": "Find {name} in a moon rover",
-        "he": "מצאו את {name} בתוך רכב ירח"
-      },
-      "item": {
-        "en": "a moon rover",
-        "he": "רכב ירח"
-      },
+      "mission": { "en": "Find {name} in a moon rover", "he": "מצאו את {name} בתוך רכב ירח" },
+      "item": { "en": "a moon rover", "he": "רכב ירח" },
       "success": [
-        {
-          "en": "Vroom vroom! You found me!",
-          "he": "וורום וורום! מצאתם!"
-        },
-        {
-          "en": "Driving on the moon is bumpy!",
-          "he": "נסעתי על הירח וזה מקפיץ!"
-        },
-        {
-          "en": "This rover isn't fast enough for you!",
-          "he": "הרכב הזה לא מהיר מספיק בשבילכם!"
-        }
+        { "en": "Vroom vroom! You found me!", "he": "וורום וורום! מצאתם!" },
+        { "en": "Driving on the moon is bumpy!", "he": "נסעתי על הירח וזה מקפיץ!" },
+        { "en": "This rover isn't fast enough for you!", "he": "הרכב הזה לא מהיר מספיק בשבילכם!" }
       ],
       "animation": "bounce",
       "slots": [
-        {
-          "id": "space_rover_a",
-          "x": 0.56,
-          "y": 0.8,
-          "scale": 0.06,
-          "hintZone": {
-            "x": 0.55,
-            "y": 0.8,
-            "r": 0.1
-          },
-          "hintText": {
-            "en": "Look on the moon's surface, near the flag.",
-            "he": "חפשו על אדמת הירח, ליד הדגל."
-          }
-        },
-        {
-          "id": "space_rover_b",
-          "x": 0.18,
-          "y": 0.88,
-          "scale": 0.06,
-          "hintZone": {
-            "x": 0.18,
-            "y": 0.87,
-            "r": 0.1
-          },
-          "hintText": {
-            "en": "Look near the small crater.",
-            "he": "חפשו ליד המכתש הקטן."
-          }
-        }
+        { "id": "space_rover_a", "x": 0.64, "y": 0.68, "scale": 0.075, "hintZone": { "x": 0.62, "y": 0.66, "r": 0.1 }, "hintText": { "en": "Look near the moon buggy.", "he": "חפשו ליד הבאגי של הירח." } },
+        { "id": "space_rover_b", "x": 0.85, "y": 0.92, "scale": 0.075, "hintZone": { "x": 0.85, "y": 0.9, "r": 0.1 }, "hintText": { "en": "Look near the small crater, down low.", "he": "חפשו ליד המכתש הקטן, למטה." } }
       ]
     },
     {
@@ -165,165 +61,36 @@
       "targetType": "space_aliens",
       "bodyTemplate": "space_aliens",
       "difficulty": 3,
-      "mission": {
-        "en": "Find {name} hiding next to friendly aliens",
-        "he": "מצאו את {name} מתחבא/ת ליד חייזרים ידידותיים"
-      },
-      "item": {
-        "en": "aliens",
-        "he": "חייזרים"
-      },
+      "mission": { "en": "Find {name} hiding next to friendly aliens", "he": "מצאו את {name} מתחבא/ת ליד חייזרים ידידותיים" },
+      "item": { "en": "aliens", "he": "חייזרים" },
       "success": [
-        {
-          "en": "The aliens said you wouldn't find me. Wrong!",
-          "he": "החייזרים אמרו שלא תמצאו. טעות!"
-        },
-        {
-          "en": "My new friends are green!",
-          "he": "החברים החדשים שלי ירוקים!"
-        },
-        {
-          "en": "Eagle eyes!",
-          "he": "עיני נץ!"
-        }
+        { "en": "The aliens said you wouldn't find me. Wrong!", "he": "החייזרים אמרו שלא תמצאו. טעות!" },
+        { "en": "My new friends are green!", "he": "החברים החדשים שלי ירוקים!" },
+        { "en": "Eagle eyes!", "he": "עיני נץ!" }
       ],
       "animation": "wave",
       "slots": [
-        {
-          "id": "space_alien_a",
-          "x": 0.8,
-          "y": 0.72,
-          "scale": 0.055,
-          "layer": "behindForeground",
-          "hintZone": {
-            "x": 0.8,
-            "y": 0.7,
-            "r": 0.09
-          },
-          "hintText": {
-            "en": "Look behind a moon rock.",
-            "he": "חפשו מאחורי סלע ירח."
-          }
-        },
-        {
-          "id": "space_alien_b",
-          "x": 0.45,
-          "y": 0.6,
-          "scale": 0.055,
-          "layer": "behindForeground",
-          "flip": true,
-          "hintZone": {
-            "x": 0.45,
-            "y": 0.6,
-            "r": 0.09
-          },
-          "hintText": {
-            "en": "Look near the flying saucer.",
-            "he": "חפשו ליד הצלחת המעופפת."
-          }
-        }
+        { "id": "space_alien_a", "x": 0.93, "y": 0.37, "scale": 0.07, "layer": "behindForeground", "flip": true, "hintZone": { "x": 0.92, "y": 0.4, "r": 0.09 }, "hintText": { "en": "Look behind a moon rock, on the right.", "he": "חפשו מאחורי סלע ירח, בצד ימין." } },
+        { "id": "space_alien_b", "x": 0.79, "y": 0.22, "scale": 0.07, "hintZone": { "x": 0.81, "y": 0.18, "r": 0.09 }, "hintText": { "en": "Look near the flying saucer.", "he": "חפשו ליד הצלחת המעופפת." } }
       ]
     }
   ],
   "ambient": [
-    {
-      "id": "shooting_star",
-      "label": {
-        "en": "Shooting star",
-        "he": "כוכב נופל"
-      },
-      "x": 0.12,
-      "y": 0.1,
-      "w": 0.08,
-      "h": 0.06,
-      "animation": "flash",
-      "sound": "twinkle",
-      "reaction": {
-        "en": "Make a wish!",
-        "he": "בקשו משאלה!"
-      },
-      "glyph": "🌠"
-    },
-    {
-      "id": "alien_color",
-      "label": {
-        "en": "Color-changing alien",
-        "he": "חייזר משנה צבע"
-      },
-      "x": 0.86,
-      "y": 0.44,
-      "w": 0.05,
-      "h": 0.07,
-      "animation": "blink",
-      "sound": "chirp",
-      "reaction": {
-        "en": "Blip! Bloop!",
-        "he": "בליפ! בלופ!"
-      },
-      "glyph": "👽"
-    }
+    { "id": "shooting_star", "label": { "en": "Satellite", "he": "לוויין" }, "x": 0.3, "y": 0.02, "w": 0.08, "h": 0.1, "animation": "flash", "sound": "twinkle", "reaction": { "en": "Make a wish!", "he": "בקשו משאלה!" }, "glyph": "🌠" },
+    { "id": "alien_color", "label": { "en": "Green alien", "he": "חייזר ירוק" }, "x": 0.93, "y": 0.76, "w": 0.06, "h": 0.12, "animation": "blink", "sound": "chirp", "reaction": { "en": "Blip! Bloop!", "he": "בליפ! בלופ!" }, "glyph": "👽" }
   ],
   "bonus": {
     "id": "zik",
-    "name": {
-      "en": "Zik",
-      "he": "זיק"
-    },
+    "name": { "en": "Zik", "he": "זיק" },
     "sprite": "/scenes/shared/zik.svg",
-    "scale": 0.035,
-    "prompt": {
-      "en": "Want to find Zik too?",
-      "he": "רוצים למצוא גם את זיק?"
-    },
+    "scale": 0.04,
+    "prompt": { "en": "Want to find Zik too?", "he": "רוצים למצוא גם את זיק?" },
     "slots": [
-      {
-        "id": "space_zik_a",
-        "x": 0.06,
-        "y": 0.5,
-        "scale": 0.035,
-        "hintZone": {
-          "x": 0.06,
-          "y": 0.5,
-          "r": 0.06
-        },
-        "hintText": {
-          "en": "Zik hovers off to the side.",
-          "he": "זיק מרחף בצד."
-        }
-      },
-      {
-        "id": "space_zik_b",
-        "x": 0.95,
-        "y": 0.15,
-        "scale": 0.035,
-        "hintZone": {
-          "x": 0.95,
-          "y": 0.15,
-          "r": 0.06
-        },
-        "hintText": {
-          "en": "Zik is near the stars.",
-          "he": "זיק ליד הכוכבים."
-        }
-      }
+      { "id": "space_zik_a", "x": 0.45, "y": 0.9, "scale": 0.04, "hintZone": { "x": 0.45, "y": 0.9, "r": 0.06 }, "hintText": { "en": "Zik hovers over the moon dust.", "he": "זיק מרחף מעל אבק הירח." } },
+      { "id": "space_zik_b", "x": 0.13, "y": 0.3, "scale": 0.04, "hintZone": { "x": 0.13, "y": 0.3, "r": 0.06 }, "hintText": { "en": "Zik is near the café.", "he": "זיק ליד הקפה." } }
     ]
   },
-  "celebration": {
-    "kind": "stars",
-    "completeText": {
-      "en": "You found {name} three times in space!",
-      "he": "מצאתם את {name} שלוש פעמים בחלל!"
-    }
-  },
-  "collectible": {
-    "id": "star",
-    "name": {
-      "en": "A star from space",
-      "he": "כוכב מהחלל"
-    },
-    "icon": "⭐"
-  },
-  "sounds": {
-    "ambient": "space"
-  }
+  "celebration": { "kind": "stars", "completeText": { "en": "You found {name} three times in space!", "he": "מצאתם את {name} שלוש פעמים בחלל!" } },
+  "collectible": { "id": "star", "name": { "en": "A star from space", "he": "כוכב מהחלל" }, "icon": "⭐" },
+  "sounds": { "ambient": "space" }
 }

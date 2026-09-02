@@ -53,6 +53,8 @@ export interface PlayStoreOptions {
   demo?: boolean;
   skipGift?: boolean;
   autoStartScene?: string;
+  /** Landing demo: only the first (easiest) mission of a scene. */
+  singleMission?: boolean;
   copy: ReducerCopy;
 }
 
@@ -94,7 +96,8 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       if (!scene) return;
       sounds().unlock();
       const history = sceneProgress(get().progress, slug);
-      const plan = planScenePlay(scene, { plays: history.plays, lastVariants: history.lastVariants, lastOrder: history.lastOrder }, get().config.gameId);
+      let plan = planScenePlay(scene, { plays: history.plays, lastVariants: history.lastVariants, lastOrder: history.lastOrder }, get().config.gameId);
+      if (opts.singleMission) plan = { ...plan, order: plan.order.slice(0, 1) };
       const mission = createMissionState(slug, plan);
       telemetry.track({ eventType: history.plays > 0 ? "game_replayed" : "scene_started", sceneSlug: slug });
       if (history.plays > 0) telemetry.track({ eventType: "scene_started", sceneSlug: slug });

@@ -21,6 +21,8 @@ interface Props {
   parentZoneHref?: string;
   /** Open this scene immediately (landing demo). */
   autoStartScene?: string;
+  /** Landing demo: one mission only, minimal chrome. */
+  singleMission?: boolean;
 }
 
 /**
@@ -36,9 +38,9 @@ export function GameShell(props: Props) {
   );
 }
 
-function Shell({ config, demo = false, skipGift = false, parentZoneHref, autoStartScene }: Props) {
+function Shell({ config, demo = false, skipGift = false, parentZoneHref, autoStartScene, singleMission = false }: Props) {
   const { g } = useGameText();
-  const [store] = useState(() => createPlayStore(config, { demo, skipGift, autoStartScene, copy: getDict(config.locale).game.copy }));
+  const [store] = useState(() => createPlayStore(config, { demo, skipGift, autoStartScene, singleMission, copy: getDict(config.locale).game.copy }));
   const state = useStore(store);
   const scene = state.scene();
   const landscapeTip = useLandscapeTip();

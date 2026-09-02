@@ -182,25 +182,34 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
   const elapsed = mission.phase === "searching" ? now - mission.missionStartedAt : 0;
   const hintPulse = mission.phase === "searching" && shouldPulseHint({ misses: mission.misses, elapsedMs: elapsed, hintLevel: mission.hintLevel });
   const foundIds = Object.keys(mission.found);
+  const total = mission.plan.order.length;
 
   return (
     <div className="scene" style={{ ["--scene-sky" as string]: scene.art.palette.sky, ["--scene-accent" as string]: scene.art.palette.accent }}>
       <header className="scene__bar">
-        <button type="button" className="fm-btn fm-btn--secondary fm-btn--kid" onClick={onBack} aria-label={g.scene.backToMap}>
-          🗺️
-        </button>
-        <div className="scene__title">
-          <span className="scene__name">{scene.name}</span>
-          <span className="scene__count">{Math.min(mission.currentIndex + 1, 3)}/3</span>
-        </div>
+        {store.demo ? (
+          <span />
+        ) : (
+          <button type="button" className="scene__btn" onClick={onBack} aria-label={g.scene.backToMap}>
+            🗺️
+          </button>
+        )}
+        {total > 1 ? (
+          <div className="scene__title">
+            <span className="scene__name">{scene.name}</span>
+            <span className="scene__count">
+              {Math.min(mission.currentIndex + 1, total)}/{total}
+            </span>
+          </div>
+        ) : null}
         <div className="scene__tools">
-          <button type="button" className="fm-btn fm-btn--secondary fm-btn--kid" onClick={() => apiRef.current?.zoomBy(1.5)} aria-label={g.scene.zoomIn}>
+          <button type="button" className="scene__btn" onClick={() => apiRef.current?.zoomBy(1.5)} aria-label={g.scene.zoomIn}>
             ＋
           </button>
-          <button type="button" className="fm-btn fm-btn--secondary fm-btn--kid" onClick={() => apiRef.current?.reset()} aria-label={g.scene.reset}>
+          <button type="button" className="scene__btn" onClick={() => apiRef.current?.reset()} aria-label={g.scene.reset}>
             ⤢
           </button>
-          <button type="button" className="fm-btn fm-btn--secondary fm-btn--kid" onClick={store.toggleMute} aria-label={store.muted ? g.scene.unmute : g.scene.mute}>
+          <button type="button" className="scene__btn" onClick={store.toggleMute} aria-label={store.muted ? g.scene.unmute : g.scene.mute}>
             {store.muted ? "🔇" : "🔊"}
           </button>
         </div>
@@ -216,8 +225,8 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
 
       {mission.phase !== "complete" ? (
         <MissionCard
-          index={Math.min(mission.currentIndex + 1, 3)}
-          total={3}
+          index={Math.min(mission.currentIndex + 1, total)}
+          total={total}
           target={currentTarget}
           found={foundIds}
           order={mission.plan.order}
@@ -253,7 +262,8 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store }: { scene: Sce
         <div className="complete__stamp" aria-hidden>
           {g.complete.stamp}
         </div>
-        <h2 className="complete__title">{scene.celebration.completeText}</h2>
+        <h2 className="complete__title">{store.demo ? tf(g.complete.demoFound, { name: store.config.child.name }) : scene.celebration.completeText}</h2>
+        {store.demo ? null : (
         <div className="complete__loot">
           <span className="complete__icon" aria-hidden>
             {scene.collectible.icon}
@@ -262,6 +272,7 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store }: { scene: Sce
           {hintsUsed === 0 ? <span className="fm-badge fm-badge--leaf">{g.complete.eagle}</span> : null}
           {bonusFound ? <span className="fm-badge fm-badge--sea">{g.complete.zik}</span> : null}
         </div>
+        )}
         <div className="complete__actions">
           {store.demo ? (
             <a href="/create" className="fm-btn fm-btn--lg">

@@ -17,16 +17,16 @@ interface SectionProps {
   locale: Locale;
 }
 
-/* ─── Marquee ─── */
+/* ─── Marquee: world chips ─── */
 export function Marquee({ scenes, locale }: { scenes: SceneDefinition[]; locale: Locale }) {
-  const items = scenes.map((s) => ({ key: s.slug, glyph: WORLD_GLYPHS[s.slug] ?? "✨", name: pick(s.name, locale) }));
+  const items = scenes.map((s) => ({ key: s.slug, glyph: WORLD_GLYPHS[s.slug] ?? "✨", name: pick(s.name, locale), soon: !s.active }));
   const all = [...items, ...items];
   return (
     <div className="marquee" aria-hidden>
       <div className="marquee__track">
         {all.map((it, i) => (
-          <span key={`${it.key}-${i}`}>
-            <span>{it.glyph}</span> {it.name}
+          <span key={`${it.key}-${i}`} className={`chip${it.soon ? " chip--soon" : ""}`}>
+            <span className="chip__glyph">{it.glyph}</span> {it.name}
           </span>
         ))}
       </div>
@@ -148,33 +148,13 @@ export function GiftSection({ t }: SectionProps) {
     <section id="gift" className="gift-sec">
       <div className="fm-container">
         <div className="fm-sheet fm-sheet--lavender">
+          <Reveal className="sec-head">
+            <span className="fm-pill">{g.pill}</span>
+            <h2>{g.title}</h2>
+            <p className="fm-lead">{g.lead}</p>
+          </Reveal>
           <div className="gift-grid">
-            <div className="fm-stack fm-stack--4">
-              <Reveal className="sec-head sec-head--start" delay={0}>
-                <span className="fm-pill">{g.pill}</span>
-                <h2>{g.title}</h2>
-                <p className="fm-lead">{g.lead}</p>
-              </Reveal>
-              <Reveal delay={100}>
-                <ul className="gift-features">
-                  {g.features.map((f) => (
-                    <li key={f}>{f}</li>
-                  ))}
-                </ul>
-              </Reveal>
-              <ul className="occasions">
-                {g.occasions.map((o, i) => (
-                  <Reveal as="li" key={o.title} className="occasion" delay={i * 70}>
-                    <span className="occasion__icon" aria-hidden>
-                      {OCCASION_ICONS[i] ?? "🎁"}
-                    </span>
-                    <h3>{o.title}</h3>
-                    <p>{o.text}</p>
-                  </Reveal>
-                ))}
-              </ul>
-            </div>
-            <Reveal className="gift-visual" delay={150}>
+            <Reveal className="gift-visual" delay={80}>
               <div className="gift-box" aria-hidden>
                 <span className="gift-box__ribbon" />
                 <span className="gift-box__ribbon gift-box__ribbon--h" />
@@ -184,7 +164,23 @@ export function GiftSection({ t }: SectionProps) {
                   <span className="fm-small">{g.tagFrom}</span>
                 </div>
               </div>
+              <ul className="gift-features">
+                {g.features.map((f) => (
+                  <li key={f}>{f}</li>
+                ))}
+              </ul>
             </Reveal>
+            <ul className="occasions">
+              {g.occasions.map((o, i) => (
+                <Reveal as="li" key={o.title} className="occasion" delay={i * 70}>
+                  <span className="occasion__icon" aria-hidden>
+                    {OCCASION_ICONS[i] ?? "🎁"}
+                  </span>
+                  <h3>{o.title}</h3>
+                  <p>{o.text}</p>
+                </Reveal>
+              ))}
+            </ul>
           </div>
         </div>
       </div>
