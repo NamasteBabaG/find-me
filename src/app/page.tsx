@@ -20,8 +20,9 @@ export default async function HomePage() {
     <>
       <SiteHeader user={user} isAdmin={isAdminEmail(user?.email)} />
       <main>
-        <Hero />
-        <Marquee scenes={scenes} locale={locale} />
+        <Hero>
+          <Marquee scenes={scenes} locale={locale} />
+        </Hero>
         <DemoSection config={demo} />
         <HowItWorks t={t} locale={locale} />
         <Inside t={t} locale={locale} />

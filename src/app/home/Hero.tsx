@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useI18n } from "@/i18n/client";
 import { seededRng } from "@/lib/random";
 
@@ -24,7 +24,7 @@ interface Doodle {
   rot: number;
 }
 
-export function Hero() {
+export function Hero({ children }: { children?: ReactNode }) {
   const { t } = useI18n();
   const h = t.home.hero;
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -139,6 +139,7 @@ export function Hero() {
           </a>
         </div>
       </div>
+      {children ? <div className="hero3__marquee">{children}</div> : null}
     </section>
   );
 }
