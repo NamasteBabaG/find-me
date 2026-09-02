@@ -14,7 +14,7 @@ import { seededRng } from "@/lib/random";
  */
 const DOODLES = ["🐚", "⭐", "🍃", "🪁", "⚓", "🍉", "🚀", "🦜", "🏰", "🛟", "🌴", "🐒", "👽", "🎈", "🦀", "🔭", "⛵", "🍦", "🦋", "🪐", "🐋", "🎪", "🐢", "🌋"];
 const NOA_DESKTOP = { x: 0.74, y: 0.6 };
-const NOA_MOBILE = { x: 0.82, y: 0.9 };
+const NOA_MOBILE = { x: 0.82, y: 0.76 };
 
 interface Doodle {
   glyph: string;
