@@ -197,7 +197,7 @@
 @media (prefers-reduced-motion: reduce) { .rv { opacity: 1; transform: none; } }
 
 /* Utility */
-.fm-hide-mobile { display: initial; }
+/* .fm-hide-mobile only hides below 860px; it must not override the element's own display (buttons are inline-flex). */
 @media (max-width: 860px) { .fm-hide-mobile { display: none !important; } }
 .fm-only-mobile { display: none; }
 @media (max-width: 860px) { .fm-only-mobile { display: initial; } }
