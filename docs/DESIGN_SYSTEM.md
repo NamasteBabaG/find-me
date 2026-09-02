@@ -36,7 +36,7 @@ React: `Button`, `LinkButton` (`src/ui/Button.tsx`), `SiteHeader`, `SiteFooter` 
 
 ## Landing anatomy
 
-Hero (editable child name in the headline, postcards + peeking demo child) → marquee of worlds → full-width live demo in a night sheet (`#demo`) → how it works (4 steps) → bento "what's inside" (6 tiles) → gifting sheet (lavender) → worlds grid → pricing (middle plan elevated, dark) → trust sheet (aqua) → FAQ → final CTA sheet (sun gradient).
+Hero ("Where Am I?" over the real beach art with a searchlight that follows the pointer and reveals Noa) → world chips → full-bleed live demo (`#demo`, one mission, world at true 16:9, translucent compact UI) → how it works (4 steps) → bento "what's inside" (6 tiles) → gifting sheet (lavender) → worlds grid → pricing (middle plan elevated, dark) → trust sheet (aqua) → FAQ → final CTA sheet (sun gradient).
 
 ## The game
 
