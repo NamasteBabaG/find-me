@@ -6,7 +6,10 @@ import { formatMoney, pick, tf } from "@/i18n";
 import { PACKAGES, isPackageTier } from "@/domain/package";
 import { MockPay } from "./MockPay";
 
-export const metadata = { robots: { index: false } };
+export async function generateMetadata() {
+  const { t } = await getI18n();
+  return { title: t.create.mock.title, robots: { index: false } };
+}
 
 /** Stand-in for the PSP's hosted checkout page. Dev only. */
 export default async function MockCheckoutPage({ searchParams }: { searchParams: Promise<{ orderId?: string; success?: string; cancel?: string }> }) {

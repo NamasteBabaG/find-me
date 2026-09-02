@@ -11,7 +11,8 @@
 
 /* ── Gift ── */
 .gift { flex: 1; display: grid; place-items: center; padding: var(--space-4); text-align: center; }
-.gift__wrap { position: relative; width: min(92vw, 520px); min-height: 420px; display: grid; place-items: center; }
+.gift__wrap { position: relative; width: min(100%, 520px); min-height: 420px; display: grid; place-items: center; }
+@media (max-width: 720px) { .gift { padding: var(--space-2); } .gift__wrap { min-height: 360px; } }
 .gift__paper { position: absolute; inset: 0; border-radius: var(--radius-4); background: repeating-linear-gradient(135deg, var(--coral) 0 var(--space-3), var(--sun) var(--space-3) var(--space-6)); box-shadow: var(--shadow-3); }
 .gift__paper--l { clip-path: polygon(0 0, 52% 0, 48% 100%, 0 100%); }
 .gift__paper--r { clip-path: polygon(52% 0, 100% 0, 100% 100%, 48% 100%); }
