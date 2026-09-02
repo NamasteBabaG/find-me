@@ -128,16 +128,16 @@
 
 /* Stepper */
 .fm-stepper { display: flex; align-items: center; gap: var(--space-1); justify-content: center; }
-.fm-stepper__dot { width: var(--space-1); height: var(--space-1); border-radius: var(--radius-pill); background: var(--ink-4); transition: width var(--dur-2) var(--ease-out), background var(--dur-2); }
+.fm-stepper__dot { width: var(--space-1); height: var(--space-1); border-radius: var(--radius-pill); background: var(--line); transition: width var(--dur-2) var(--ease-out), background var(--dur-2); }
 .fm-stepper__dot--active { width: var(--space-4); background: var(--sun); }
-.fm-stepper__dot--done { background: var(--aqua); }
+.fm-stepper__dot--done { background: var(--ink-3); }
 .fm-stepper__label { font-family: var(--font-display); font-size: var(--fs-100); font-weight: 700; color: var(--ink-3); margin-inline-start: var(--space-1); }
 
 /* Header / footer */
 .fm-header { position: sticky; top: 0; z-index: var(--z-sticky); background: color-mix(in srgb, var(--paper) 80%, transparent); backdrop-filter: blur(16px); }
 .fm-header__inner { min-height: var(--space-10); display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: nowrap; }
 .fm-logo { font-family: var(--font-display); font-weight: 900; font-size: var(--fs-400); letter-spacing: -0.02em; text-decoration: none; color: var(--ink); display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; }
-.fm-logo__mark { width: var(--space-5); height: var(--space-5); border-radius: var(--radius-2); background: var(--grad-sun); display: grid; place-items: center; font-size: var(--fs-300); transform: rotate(-6deg); box-shadow: var(--shadow-1); transition: transform var(--dur-2) var(--ease-pop); }
+.fm-logo__mark { width: var(--space-6); height: var(--space-6); border-radius: var(--radius-2); background: var(--grad-sun); display: grid; place-items: center; font-size: var(--fs-400); transform: rotate(-6deg); box-shadow: var(--shadow-1); transition: transform var(--dur-2) var(--ease-pop); }
 .fm-logo:hover .fm-logo__mark { transform: rotate(6deg) scale(1.08); }
 .fm-nav { display: flex; align-items: center; gap: var(--space-0-5); flex-wrap: nowrap; }
 .fm-nav--main { display: none; }
@@ -201,3 +201,11 @@
 @media (max-width: 860px) { .fm-hide-mobile { display: none !important; } }
 .fm-only-mobile { display: none; }
 @media (max-width: 860px) { .fm-only-mobile { display: initial; } }
+
+/* Phone overrides — last on purpose so they win over the base rules above */
+@media (max-width: 720px) {
+  .fm-section { padding-block: var(--space-5); }
+  .fm-card--pad-4, .fm-card--pad-6 { padding: var(--space-3); }
+  .fm-header__inner { min-height: var(--space-8); }
+  .fm-sheet { padding: var(--space-5) var(--space-3); }
+}

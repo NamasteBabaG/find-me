@@ -51,7 +51,7 @@ export function ScenePicker({ scenes, want, preselected }: { scenes: SceneOption
         <input key={slug} type="hidden" name="scene" value={slug} />
       ))}
       {state && !state.ok ? <p className="fm-error fm-center">{errorText(t, state)}</p> : null}
-      <div className="create__actions">
+      <div className="create__actions create__actions--sticky">
         <LinkButton href="/create/package" variant="ghost">
           {t.common.back}
         </LinkButton>

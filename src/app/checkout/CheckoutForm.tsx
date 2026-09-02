@@ -22,9 +22,11 @@ export function CheckoutForm({ defaultEmail, priceLabel, cancelled }: { defaultE
         <p className="fm-hint">{ck.emailHint}</p>
         {state && !state.ok ? <p className="fm-error">{errorText(t, state)}</p> : null}
       </div>
-      <Button type="submit" size="lg" block loading={pending}>
-        {tf(ck.pay, { price: priceLabel })}
-      </Button>
+      <div className="create__actions create__actions--sticky create__actions--single">
+        <Button type="submit" size="lg" block loading={pending}>
+          {tf(ck.pay, { price: priceLabel })}
+        </Button>
+      </div>
       <LinkButton href="/create/scenes" variant="ghost">
         {ck.backScenes}
       </LinkButton>

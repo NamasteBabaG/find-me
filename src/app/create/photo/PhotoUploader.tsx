@@ -125,11 +125,14 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode }: Props) {
             <input type="file" accept="image/jpeg,image/png,image/webp" className="visually-hidden" onChange={(e) => pick(e.target.files?.[0])} />
             <span className="fm-btn fm-btn--secondary">{p.pickButton}</span>
           </label>
-          <ul className="tips">
-            {p.tips.map((tip) => (
-              <li key={tip}>{tip}</li>
-            ))}
-          </ul>
+          <div className="tips">
+            <p className="tips__title">{p.tipsTitle}</p>
+            <ul className="tips__list">
+              {p.tips.map((tip) => (
+                <li key={tip}>{tip}</li>
+              ))}
+            </ul>
+          </div>
           {hasPhoto ? (
             <div className="create__actions" style={{ width: "100%" }}>
               <Notice kind="success">{p.hasPhoto}</Notice>
@@ -155,7 +158,7 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode }: Props) {
             <span className="fm-hint">{p.zoom}</span>
             <input type="range" className="cropper__zoom" min={1} max={3} step={0.01} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} />
           </label>
-          <div className="create__actions" style={{ width: "100%" }}>
+          <div className="create__actions create__actions--sticky" style={{ width: "100%" }}>
             <Button
               variant="ghost"
               type="button"

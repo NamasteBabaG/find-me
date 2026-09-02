@@ -40,7 +40,7 @@ export function PackagePicker({ options, defaultTier }: { options: Option[]; def
         })}
       </div>
       {state && !state.ok ? <p className="fm-error fm-center">{errorText(t, state)}</p> : null}
-      <div className="create__actions">
+      <div className="create__actions create__actions--sticky">
         <LinkButton href="/create/photo" variant="ghost">
           {t.common.back}
         </LinkButton>

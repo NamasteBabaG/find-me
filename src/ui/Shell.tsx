@@ -9,11 +9,10 @@ export async function SiteHeader({ user, isAdmin }: { user: { email: string } | 
   return (
     <header className="fm-header">
       <div className="fm-container fm-header__inner">
-        <Link href="/" className="fm-logo" aria-label={t.common.brand}>
+        <Link href="/" className="fm-logo" aria-label={t.common.brand} title={t.common.brand}>
           <span className="fm-logo__mark" aria-hidden>
             👀
           </span>
-          <span>{t.common.brand}</span>
         </Link>
         <nav className="fm-nav fm-nav--main" aria-label="Main">
           <Link href="/#demo">{t.nav.demo}</Link>
