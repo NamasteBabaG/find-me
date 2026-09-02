@@ -2,9 +2,9 @@ import { redirect } from "next/navigation";
 import { getContainer } from "@/services/container";
 import { draftSummary } from "@/services/create-flow.service";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
-import { searchesFor } from "@/domain/package";
+import { priceFor, searchesFor } from "@/domain/package";
 import { getI18n } from "@/i18n/server";
-import { formatPrice, pick, tf } from "@/i18n";
+import { currencyFor, formatMoney, pick, tf } from "@/i18n";
 import { CreateFrame } from "../create/CreateLayout";
 import { currentDraft } from "../create/actions";
 import { CheckoutForm } from "./CheckoutForm";
@@ -21,7 +21,8 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
   const summary = await draftSummary(c, draft.id);
   if (!summary?.pkg || summary.scenes.length !== summary.pkg.sceneCount) redirect("/create/scenes");
   const ck = t.create.checkout;
-  const price = formatPrice(summary.pkg.priceAgorot, locale);
+  const currency = currencyFor(summary.game.locale === "he" ? "he" : "en");
+  const price = formatMoney(priceFor(summary.pkg.tier, currency), currency, locale);
   const name = summary.child?.displayName ?? "";
 
   return (

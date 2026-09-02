@@ -1,4 +1,5 @@
 import { TargetAdjustSchema } from "@/domain/game/config";
+import { isCurrency, type Currency } from "@/domain/package";
 import { isAwaitingQa, isPlayable, type GameStatus } from "@/domain/order-state";
 import type { Container } from "./container";
 import { statusOf, transitionGame } from "./game-status";
@@ -37,6 +38,7 @@ export async function listOrdersForAdmin(c: Container, filter: AdminFilter) {
     packageTier: g.packageTier,
     sceneCount: g.scenes.length,
     amountAgorot: g.orders[0]?.amountAgorot ?? 0,
+    currency: g.orders[0]?.currency ?? "ILS",
     paymentStatus: g.orders[0]?.paymentStatus ?? "—",
     updatedAt: g.updatedAt,
     lastError: g.lastError,
@@ -97,6 +99,9 @@ export async function retryGeneration(c: Container, gameId: string, actor: Actor
   await c.jobs.enqueue("generate-game", { gameId });
 }
 
+/** Rough FX used only for the margin estimate on the cost dashboard (not for billing). */
+const APPROX_ILS_PER_USD = 3.7;
+
 export async function costDashboard(c: Container) {
   const games = await c.db.game.findMany({ where: { deletedAt: null, status: { in: ["READY", "DELIVERED", "QA_PENDING", "MANUAL_REVIEW", "APPROVED"] } }, include: { orders: true, childProfile: true, scenes: { include: { targets: true } } } });
   const rows = [];
@@ -106,7 +111,11 @@ export async function costDashboard(c: Container) {
     const generationCents = assets.reduce((n, a) => n + a.costCents, 0);
     const paid = g.orders.find((o) => o.paymentStatus === "PAID" || o.paymentStatus === "REFUNDED");
     const attempts = g.scenes.reduce((n, s) => n + s.targets.reduce((m, t) => m + t.attempts, 0), 0);
-    rows.push({ gameId: g.id, childName: g.childProfile?.displayName ?? "", priceAgorot: paid?.amountAgorot ?? 0, generationCents, attempts, marginPct: paid ? Math.round(((paid.amountAgorot - generationCents) / paid.amountAgorot) * 100) : null });
+    const currency: Currency = paid && isCurrency(paid.currency) ? paid.currency : "ILS";
+    const priceMinor = paid?.amountAgorot ?? 0;
+    // Generation costs are tracked in USD cents; ILS revenue is converted with a rough rate so the margin column stays comparable.
+    const priceUsdCents = currency === "USD" ? priceMinor : priceMinor / APPROX_ILS_PER_USD;
+    rows.push({ gameId: g.id, childName: g.childProfile?.displayName ?? "", priceMinor, currency, generationCents, attempts, marginPct: paid && priceUsdCents > 0 ? Math.round(((priceUsdCents - generationCents) / priceUsdCents) * 100) : null });
   }
   return rows;
 }

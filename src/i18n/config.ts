@@ -29,9 +29,10 @@ export function pick(text: LocalizedText, locale: Locale): string {
   return text[locale] ?? text[DEFAULT_LOCALE];
 }
 
-/** Intl-style number/price formatting per locale. Prices are in agorot (ILS). */
-export function formatPrice(agorot: number, locale: Locale): string {
-  const n = agorot / 100;
-  const s = Number.isInteger(n) ? String(n) : n.toFixed(2);
-  return locale === "he" ? `${s} ₪` : `₪${s}`;
+/** The currency follows the language for now: Hebrew site → ILS, English site → USD. (Geo detection will refine this.) */
+export function currencyFor(locale: Locale): import("@/domain/package").Currency {
+  return locale === "he" ? "ILS" : "USD";
 }
+
+/** Single implementation lives in the domain; re-exported so UI code can import money helpers next to `tf`/`pick`. */
+export { formatMoney, type Currency } from "@/domain/package";

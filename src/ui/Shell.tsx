@@ -24,7 +24,7 @@ export async function SiteHeader({ user, isAdmin }: { user: { email: string } | 
         </nav>
         <div className="fm-header__cta">
           <LanguageSwitcher />
-          <Link href="/library" className="fm-btn fm-btn--ghost fm-btn--sm fm-hide-mobile">
+          <Link href="/library" className="fm-btn fm-btn--secondary fm-btn--sm fm-hide-mobile">
             {user ? t.common.myGames : t.common.signIn}
           </Link>
           <Link href="/create" className="fm-btn fm-btn--sm">

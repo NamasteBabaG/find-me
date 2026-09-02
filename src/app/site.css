@@ -8,9 +8,9 @@
 .hero3 { position: relative; overflow: hidden; background: var(--grad-night); color: var(--white); min-height: min(88vh, 860px); display: flex; align-items: center; }
 .hero3__stage { position: absolute; inset: 0; cursor: crosshair; touch-action: pan-y; }
 .hero3__stars { position: absolute; inset: 0; pointer-events: none; background-image: radial-gradient(rgba(255, 255, 255, 0.7) 1px, transparent 1.5px), radial-gradient(rgba(255, 255, 255, 0.4) 1px, transparent 1.5px); background-size: 180px 180px, 110px 110px; background-position: 0 0, 60px 40px; opacity: 0.45; }
-.hero3__hidden { position: absolute; inset: 0; pointer-events: none; -webkit-mask-image: radial-gradient(circle at var(--lx, 50%) var(--ly, 50%), #000 0, #000 120px, rgba(0, 0, 0, 0.55) 200px, transparent 320px); mask-image: radial-gradient(circle at var(--lx, 50%) var(--ly, 50%), #000 0, #000 120px, rgba(0, 0, 0, 0.55) 200px, transparent 320px); }
+.hero3__hidden { position: absolute; inset: 0; pointer-events: none; -webkit-mask-image: radial-gradient(circle at var(--lx, 50%) var(--ly, 50%), #000 0, #000 64px, rgba(0, 0, 0, 0.6) 110px, transparent 190px); mask-image: radial-gradient(circle at var(--lx, 50%) var(--ly, 50%), #000 0, #000 64px, rgba(0, 0, 0, 0.6) 110px, transparent 190px); }
 .hero3__doodle { position: absolute; line-height: 1; filter: saturate(0.85) drop-shadow(0 2px 6px rgba(0, 0, 0, 0.35)); user-select: none; }
-.hero3__beam { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(circle at var(--lx, 50%) var(--ly, 50%), rgba(255, 214, 107, 0.22) 0, rgba(255, 214, 107, 0.1) 160px, transparent 340px); mix-blend-mode: screen; }
+.hero3__beam { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(circle at var(--lx, 50%) var(--ly, 50%), rgba(255, 234, 170, 0.6) 0, rgba(255, 206, 98, 0.36) 56px, rgba(255, 176, 64, 0.14) 120px, transparent 200px); mix-blend-mode: screen; }
 .hero3__noa { position: absolute; width: 104px; height: 104px; transform: translate(-50%, -50%) scale(0.9); transition: transform var(--dur-3) var(--ease-pop), filter var(--dur-2), opacity var(--dur-2); filter: brightness(0.22) saturate(0.4); opacity: 0.85; pointer-events: none; }
 .hero3__noa-img { width: 104px; height: 104px; }
 .hero3__noa.is-lit { transform: translate(-50%, -50%) scale(1.15); filter: brightness(1); opacity: 1; }
@@ -28,8 +28,6 @@
 @keyframes hero-q { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(10deg) translateY(-4px); } }
 .hero3__lead { font-size: var(--fs-400); line-height: var(--lh-400); color: rgba(255, 255, 255, 0.82); max-width: 44ch; }
 .hero3__cta { display: flex; gap: var(--space-2); align-items: center; justify-content: center; flex-wrap: wrap; margin-top: var(--space-1); }
-.hero3__facts { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: flex; gap: var(--space-1); flex-wrap: wrap; justify-content: center; }
-.hero3__facts li { display: inline-flex; align-items: center; min-height: var(--space-5); padding-inline: var(--space-2); border-radius: var(--radius-pill); background: rgba(255, 255, 255, 0.08); backdrop-filter: blur(8px); color: rgba(255, 255, 255, 0.9); font-size: var(--fs-100); line-height: var(--lh-100); font-weight: 600; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16); }
 @media (max-width: 720px) { .hero3 { min-height: 0; } .hero3__content { padding-block: var(--space-8) var(--space-6); } .hero3__hint { display: none; } .hero3__noa { width: 72px; height: 72px; } .hero3__noa-img { width: 72px; height: 72px; } }
 
 /* World chips (between hero and demo) */

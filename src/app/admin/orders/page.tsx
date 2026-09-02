@@ -63,7 +63,7 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
                   {r.packageTier} · {r.sceneCount}
                 </td>
                 <td>
-                  {formatPriceILS(r.amountAgorot)} · {r.paymentStatus}
+                  {formatPriceILS(r.amountAgorot, r.currency === "USD" ? "USD" : "ILS")} · {r.paymentStatus}
                 </td>
                 <td>{r.updatedAt.toLocaleString("he-IL")}</td>
                 <td>

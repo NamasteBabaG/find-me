@@ -1,6 +1,6 @@
 import { newId } from "@/lib/ids";
-import { PACKAGES, isPackageTier } from "@/domain/package";
-import { pick, type Locale } from "@/i18n/config";
+import { PACKAGES, isPackageTier, priceFor } from "@/domain/package";
+import { currencyFor, pick, type Locale } from "@/i18n/config";
 import { flowError, type FlowError } from "@/i18n/errors";
 import type { Container } from "./container";
 import { ensureUser } from "./auth.service";
@@ -34,12 +34,14 @@ export async function startCheckout(c: Container, input: { gameId: string; email
   await c.db.childProfile.update({ where: { id: game.childProfile.id }, data: { ownerId: user.id } });
 
   const pkg = PACKAGES[game.packageTier];
+  const currency = currencyFor(locale);
+  const amount = priceFor(pkg.tier, currency); // minor units of `currency`
   const existing = await c.db.order.findFirst({ where: { gameId: game.id, paymentStatus: "PENDING" }, orderBy: { createdAt: "desc" } });
   let order = existing;
-  if (!order || order.amountAgorot !== pkg.priceAgorot || order.userId !== user.id) {
+  if (!order || order.amountAgorot !== amount || order.currency !== currency || order.userId !== user.id) {
     if (order) await c.db.order.update({ where: { id: order.id }, data: { paymentStatus: "CANCELLED" } });
     order = await c.db.order.create({
-      data: { id: newId("ord"), userId: user.id, gameId: game.id, amountAgorot: pkg.priceAgorot, currency: "ILS", packageTier: pkg.tier, provider: c.payment.id },
+      data: { id: newId("ord"), userId: user.id, gameId: game.id, amountAgorot: amount, currency, packageTier: pkg.tier, provider: c.payment.id },
     });
   }
 

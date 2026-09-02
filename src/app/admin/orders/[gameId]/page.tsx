@@ -136,7 +136,7 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
               </dd>
               <dt>תשלום</dt>
               <dd>
-                {order ? `${formatPriceILS(order.amountAgorot)} · ${order.paymentStatus} · ${order.provider}` : "—"}
+                {order ? `${formatPriceILS(order.amountAgorot, order.currency === "USD" ? "USD" : "ILS")} · ${order.paymentStatus} · ${order.provider}` : "—"}
               </dd>
               <dt>עלות יצירה</dt>
               <dd>{(costCents / 100).toFixed(2)} ₪</dd>

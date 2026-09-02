@@ -168,8 +168,8 @@ model Order {
   id                String    @id
   userId            String
   gameId            String
-  amountAgorot      Int
-  currency          String    @default("ILS")
+  amountAgorot      Int       // minor units of `currency` (agorot or cents) — column name kept for compatibility
+  currency          String    @default("ILS") // ILS | USD
   packageTier       String
   paymentStatus     String    @default("PENDING") // PENDING | PAID | FAILED | REFUNDED | CANCELLED
   provider          String

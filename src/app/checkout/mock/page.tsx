@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { isDev } from "@/lib/env";
 import { getContainer } from "@/services/container";
 import { getI18n } from "@/i18n/server";
-import { formatPrice, tf } from "@/i18n";
+import { formatMoney, tf } from "@/i18n";
 import { MockPay } from "./MockPay";
 
 export const metadata = { robots: { index: false } };
@@ -15,7 +15,7 @@ export default async function MockCheckoutPage({ searchParams }: { searchParams:
   const order = params.orderId ? await c.db.order.findUnique({ where: { id: params.orderId }, include: { game: { include: { childProfile: true } } } }) : null;
   if (!order) notFound();
   const m = t.create.mock;
-  const amount = formatPrice(order.amountAgorot, locale);
+  const amount = formatMoney(order.amountAgorot, order.currency === "USD" ? "USD" : "ILS", locale);
   return (
     <main className="fm-container fm-container--narrow fm-section fm-stack fm-stack--4">
       <div className="fm-center fm-stack fm-stack--1">

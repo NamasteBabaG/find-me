@@ -78,7 +78,7 @@ export function Hero() {
       const rect = el.getBoundingClientRect();
       const noa = noaRef.current;
       const d = Math.hypot((p.x - noa.x) * rect.width, (p.y - noa.y) * rect.height);
-      setLit(d < Math.max(110, rect.width * 0.08));
+      setLit(d < Math.max(84, rect.width * 0.06));
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -136,11 +136,6 @@ export function Hero() {
             {h.demo}
           </a>
         </div>
-        <ul className="hero3__facts">
-          {h.facts.map((f) => (
-            <li key={f}>{f}</li>
-          ))}
-        </ul>
       </div>
     </section>
   );

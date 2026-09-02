@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { SceneDefinition } from "@/domain/scene/schema";
-import { PACKAGES, PACKAGE_ORDER, searchesFor } from "@/domain/package";
-import { formatPrice, pick, tf, type Dictionary, type Locale } from "@/i18n";
+import { PACKAGES, PACKAGE_ORDER, priceFor, searchesFor } from "@/domain/package";
+import { currencyFor, formatMoney, pick, tf, type Dictionary, type Locale } from "@/i18n";
 import { Reveal } from "./Reveal";
 
 export const WORLD_GLYPHS: Record<string, string> = { beach: "🏖️", jungle: "🌴", space: "🚀", city: "🏙️", ship: "⚓", stadium: "🏟️", market: "🍉", park: "🪁", volcano: "🌋" };
@@ -217,7 +217,7 @@ export function Pricing({ t, locale, activeCount }: SectionProps & { activeCount
                   <li className="plan__feat">{p.feats.link}</li>
                   <li className="plan__feat">{p.feats.wrap}</li>
                 </ul>
-                <div className="plan__price">{formatPrice(pkg.priceAgorot, locale)}</div>
+                <div className="plan__price">{formatMoney(priceFor(tier, currencyFor(locale)), currencyFor(locale), locale)}</div>
                 {available ? (
                   <Link href="/create" className={`fm-btn fm-btn--lg${pkg.popular ? "" : " fm-btn--secondary"}`}>
                     {tf(p.choose, { name })}
