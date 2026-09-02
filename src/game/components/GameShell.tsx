@@ -2,13 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useStore } from "zustand";
+import Link from "next/link";
 import type { GameConfig } from "@/domain/game/config";
+import { dirOf, getDict } from "@/i18n";
 import { createPlayStore } from "../store/play-store";
+import { GameI18nProvider, useGameText } from "../i18n";
 import { GiftReveal } from "./GiftReveal";
 import { WorldMap } from "./WorldMap";
 import { ScenePlayer } from "./ScenePlayer";
 import { Passport } from "./Passport";
-import Link from "next/link";
 
 interface Props {
   config: GameConfig;
@@ -17,14 +19,26 @@ interface Props {
   skipGift?: boolean;
   /** Adult-only link shown under the map (never inside the scene). */
   parentZoneHref?: string;
+  /** Open this scene immediately (landing demo). */
+  autoStartScene?: string;
 }
 
 /**
  * Screens: gift → map → scene → passport. The store owns the state; this
  * component only routes between screens and injects global chrome.
+ * The game renders in its own locale (config.locale), with its own direction.
  */
-export function GameShell({ config, demo = false, skipGift = false, parentZoneHref }: Props) {
-  const [store] = useState(() => createPlayStore(config, { demo, skipGift }));
+export function GameShell(props: Props) {
+  return (
+    <GameI18nProvider locale={props.config.locale}>
+      <Shell {...props} />
+    </GameI18nProvider>
+  );
+}
+
+function Shell({ config, demo = false, skipGift = false, parentZoneHref, autoStartScene }: Props) {
+  const { g } = useGameText();
+  const [store] = useState(() => createPlayStore(config, { demo, skipGift, autoStartScene, copy: getDict(config.locale).game.copy }));
   const state = useStore(store);
   const scene = state.scene();
   const landscapeTip = useLandscapeTip();
@@ -52,17 +66,17 @@ export function GameShell({ config, demo = false, skipGift = false, parentZoneHr
             <WorldMap config={config} progress={state.progress} onOpen={state.openScene} onPassport={state.openPassport} demo={demo} />
             {parentZoneHref ? (
               <p className="game__parents">
-                <Link href={parentZoneHref}>לאזור ההורים</Link>
+                <Link href={parentZoneHref}>{g.parents}</Link>
               </p>
             ) : null}
           </>
         );
     }
-  }, [state, scene, config, demo, parentZoneHref]);
+  }, [state, scene, config, demo, parentZoneHref, g.parents]);
 
   return (
-    <div className={`game${demo ? " game--demo" : ""}`} dir="rtl">
-      {landscapeTip && state.screen === "scene" ? <div className="game__tip">המשחק הכי כיף כשהטלפון לרוחב 📱↔️</div> : null}
+    <div className={`game${demo ? " game--demo" : ""}`} dir={dirOf(config.locale)} lang={config.locale}>
+      {landscapeTip && state.screen === "scene" ? <div className="game__tip">{g.landscapeTip}</div> : null}
       {body}
     </div>
   );

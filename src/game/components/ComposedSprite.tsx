@@ -110,8 +110,8 @@ export function ComposedSprite({ faceUrl, bodyTemplate, className, title }: { fa
   }
 
   return (
-    <svg viewBox="0 0 100 140" className={className} role="img" aria-label={title ?? t.label} overflow="visible">
-      <title>{title ?? t.label}</title>
+    <svg viewBox="0 0 100 140" className={className} role="img" aria-label={title ?? t.label.en} overflow="visible">
+      <title>{title ?? t.label.en}</title>
       {body}
     </svg>
   );

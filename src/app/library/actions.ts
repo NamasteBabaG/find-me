@@ -8,14 +8,16 @@ import { destroySession, requestMagicLink } from "@/services/auth.service";
 import { deleteGame, updateGift } from "@/services/game.service";
 import { rotatePlayerLink } from "@/services/share-link.service";
 import { SESSION_COOKIE, clearSessionCookie, currentUser } from "@/lib/server/session";
-import type { ActionResult } from "../create/actions";
+import { getLocale } from "@/i18n/server";
+import { flowError, type FlowResult } from "@/i18n/errors";
 
-export type LoginResult = { ok: true; email: string } | { ok: false; reason: string } | null;
+export type LoginResult = { ok: true; email: string } | { ok: false; reason: string; code?: string } | null;
 
 export async function requestMagicLinkAction(_prev: LoginResult, formData: FormData): Promise<LoginResult> {
   const email = String(formData.get("email") ?? "");
-  const res = await requestMagicLink(getContainer(), email, "/library");
-  return res.ok ? { ok: true, email } : res;
+  const locale = await getLocale();
+  const res = await requestMagicLink(getContainer(), email, "/library", locale);
+  return res.ok ? { ok: true, email } : { ok: false, reason: res.reason, code: "INVALID_EMAIL" };
 }
 
 export async function logoutAction(): Promise<void> {
@@ -25,12 +27,12 @@ export async function logoutAction(): Promise<void> {
   redirect("/");
 }
 
-export async function updateGiftAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+export async function updateGiftAction(_prev: FlowResult | null, formData: FormData): Promise<FlowResult> {
   const user = await currentUser();
   if (!user) redirect("/library");
   const gameId = String(formData.get("gameId") ?? "");
   const ok = await updateGift(getContainer(), gameId, user.id, { fromName: String(formData.get("fromName") ?? ""), message: String(formData.get("message") ?? "") });
-  if (!ok) return { ok: false, reason: "המשחק לא נמצא." };
+  if (!ok) return flowError("DRAFT_NOT_FOUND", "המשחק לא נמצא.");
   revalidatePath(`/library/${gameId}`);
   return { ok: true };
 }

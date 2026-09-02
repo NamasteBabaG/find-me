@@ -3,6 +3,8 @@ import { normalizeChildName } from "@/lib/copy";
 import { PACKAGES, defaultSceneSelection, isPackageTier, purchasableTiers, type PackageTier } from "@/domain/package";
 import { isEditableDraft } from "@/domain/order-state";
 import type { CropBox } from "@/infra/generation/types";
+import { pick, type Locale } from "@/i18n/config";
+import { flowError, type FlowResult } from "@/i18n/errors";
 import type { Container } from "./container";
 import { checkPhoto, deleteAsset, storeAsset } from "./asset.service";
 import { transitionGame, statusOf } from "./game-status";
@@ -12,6 +14,7 @@ import { SYSTEM } from "./audit.service";
 /**
  * The parent's creation flow, step by step. A "draft" is just a Game in
  * an editable status, owned by a cookie token until an email arrives.
+ * Errors are returned as codes so the UI can speak the visitor's language.
  */
 
 export type DraftGame = NonNullable<Awaited<ReturnType<typeof loadDraft>>>;
@@ -26,18 +29,22 @@ export function draftBelongsTo(game: { draftToken: string | null; ownerId: strin
   return false;
 }
 
-export async function createDraft(c: Container, ownerId: string | null): Promise<{ gameId: string; draftToken: string }> {
+export function gameLocale(game: { locale: string }): Locale {
+  return game.locale === "he" ? "he" : "en";
+}
+
+export async function createDraft(c: Container, ownerId: string | null, locale: Locale): Promise<{ gameId: string; draftToken: string }> {
   const draftToken = newDraftToken();
-  const game = await c.db.game.create({ data: { id: newId("game"), draftToken, ownerId, status: "DRAFT" } });
+  const game = await c.db.game.create({ data: { id: newId("game"), draftToken, ownerId, status: "DRAFT", locale } });
   c.analytics.track("create_started", {});
   return { gameId: game.id, draftToken };
 }
 
-export async function setChildName(c: Container, gameId: string, rawName: string): Promise<{ ok: true } | { ok: false; reason: string }> {
+export async function setChildName(c: Container, gameId: string, rawName: string): Promise<FlowResult> {
   const name = normalizeChildName(rawName);
-  if (name.length < 2) return { ok: false, reason: "כתבו שם של לפחות שתי אותיות." };
+  if (name.length < 2) return flowError("NAME_TOO_SHORT", "כתבו שם של לפחות שתי אותיות.");
   const game = await loadDraft(c, gameId);
-  if (!game || !isEditableDraft(statusOf(game))) return { ok: false, reason: "הטיוטה כבר לא ניתנת לעריכה." };
+  if (!game || !isEditableDraft(statusOf(game))) return flowError("DRAFT_LOCKED", "הטיוטה כבר לא ניתנת לעריכה.");
 
   if (game.childProfile) {
     await c.db.childProfile.update({ where: { id: game.childProfile.id }, data: { displayName: name } });
@@ -45,25 +52,23 @@ export async function setChildName(c: Container, gameId: string, rawName: string
     const child = await c.db.childProfile.create({ data: { id: newId("chl"), ownerId: game.ownerId, displayName: name } });
     await c.db.game.update({ where: { id: gameId }, data: { childProfileId: child.id } });
   }
-  await c.db.game.update({ where: { id: gameId }, data: { title: `איפה ${name}?` } });
+  await c.db.game.update({ where: { id: gameId }, data: { title: pick({ en: `Where's ${name}?`, he: `איפה ${name}?` }, gameLocale(game)) } });
   return { ok: true };
 }
 
-export type PhotoResult = { ok: true } | { ok: false; reason: string };
-
-export async function attachPhoto(c: Container, gameId: string, input: { buffer: Buffer; mimeType: string; crop: CropBox | null }): Promise<PhotoResult> {
+export async function attachPhoto(c: Container, gameId: string, input: { buffer: Buffer; mimeType: string; crop: CropBox | null }): Promise<FlowResult> {
   const game = await loadDraft(c, gameId);
-  if (!game || !game.childProfile) return { ok: false, reason: "קודם צריך להכניס שם." };
-  if (!isEditableDraft(statusOf(game))) return { ok: false, reason: "הטיוטה כבר לא ניתנת לעריכה." };
+  if (!game || !game.childProfile) return flowError("NEED_NAME", "קודם צריך להכניס שם.");
+  if (!isEditableDraft(statusOf(game))) return flowError("DRAFT_LOCKED", "הטיוטה כבר לא ניתנת לעריכה.");
 
   await transitionGame(c, gameId, "PHOTO_UPLOADED", SYSTEM);
   await transitionGame(c, gameId, "PHOTO_VALIDATING", SYSTEM);
   const check = await checkPhoto(input.buffer, input.mimeType);
   if (!check.ok) {
-    await c.db.game.update({ where: { id: gameId }, data: { lastError: check.reason } });
+    await c.db.game.update({ where: { id: gameId }, data: { lastError: `${check.code}: ${check.reason}` } });
     await transitionGame(c, gameId, "PHOTO_REJECTED", SYSTEM, { code: check.code });
     c.analytics.track("photo_rejected", { reason: check.code });
-    return { ok: false, reason: check.reason };
+    return flowError(check.code, check.reason);
   }
 
   // Replace any previous photo (and drop a stale avatar — it must be regenerated).
@@ -95,16 +100,16 @@ export async function availablePackages(c: Container) {
   return purchasableTiers(active.length);
 }
 
-export async function selectPackage(c: Container, gameId: string, tierRaw: string): Promise<{ ok: true } | { ok: false; reason: string }> {
-  if (!isPackageTier(tierRaw)) return { ok: false, reason: "חבילה לא מוכרת." };
+export async function selectPackage(c: Container, gameId: string, tierRaw: string): Promise<FlowResult> {
+  if (!isPackageTier(tierRaw)) return flowError("UNKNOWN_PACKAGE", "חבילה לא מוכרת.");
   const tier: PackageTier = tierRaw;
   const game = await loadDraft(c, gameId);
-  if (!game || !isEditableDraft(statusOf(game))) return { ok: false, reason: "הטיוטה כבר לא ניתנת לעריכה." };
+  if (!game || !isEditableDraft(statusOf(game))) return flowError("DRAFT_LOCKED", "הטיוטה כבר לא ניתנת לעריכה.");
   const status = statusOf(game);
-  if (status === "DRAFT" || status === "PHOTO_UPLOADED" || status === "PHOTO_REJECTED") return { ok: false, reason: "קודם צריך להעלות תמונה." };
+  if (status === "DRAFT" || status === "PHOTO_UPLOADED" || status === "PHOTO_REJECTED") return flowError("PHOTO_FIRST", "קודם צריך להעלות תמונה.");
 
   const active = await activeSceneSlugs(c);
-  if (!purchasableTiers(active.length).some((p) => p.tier === tier)) return { ok: false, reason: "החבילה הזאת עדיין לא זמינה." };
+  if (!purchasableTiers(active.length).some((p) => p.tier === tier)) return flowError("PACKAGE_UNAVAILABLE", "החבילה הזאת עדיין לא זמינה.");
 
   const selection = defaultSceneSelection(tier, active);
   await c.db.game.update({ where: { id: gameId }, data: { packageTier: tier, sceneCount: PACKAGES[tier].sceneCount } });
@@ -114,15 +119,15 @@ export async function selectPackage(c: Container, gameId: string, tierRaw: strin
   return { ok: true };
 }
 
-export async function selectScenes(c: Container, gameId: string, slugs: string[]): Promise<{ ok: true } | { ok: false; reason: string }> {
+export async function selectScenes(c: Container, gameId: string, slugs: string[]): Promise<FlowResult> {
   const game = await loadDraft(c, gameId);
-  if (!game || !isEditableDraft(statusOf(game))) return { ok: false, reason: "הטיוטה כבר לא ניתנת לעריכה." };
-  if (!game.packageTier || !isPackageTier(game.packageTier)) return { ok: false, reason: "קודם בוחרים חבילה." };
+  if (!game || !isEditableDraft(statusOf(game))) return flowError("DRAFT_LOCKED", "הטיוטה כבר לא ניתנת לעריכה.");
+  if (!game.packageTier || !isPackageTier(game.packageTier)) return flowError("PICK_PACKAGE_FIRST", "קודם בוחרים חבילה.");
   const want = PACKAGES[game.packageTier].sceneCount;
   const unique = Array.from(new Set(slugs));
-  if (unique.length !== want) return { ok: false, reason: `בחרו בדיוק ${want} עולמות.` };
+  if (unique.length !== want) return flowError("WRONG_SCENE_COUNT", `בחרו בדיוק ${want} עולמות.`, { want });
   const active = new Set(await activeSceneSlugs(c));
-  if (!unique.every((s) => active.has(s))) return { ok: false, reason: "אחד העולמות אינו זמין." };
+  if (!unique.every((s) => active.has(s))) return flowError("SCENE_UNAVAILABLE", "אחד העולמות אינו זמין.");
   await replaceScenes(c, gameId, unique);
   c.analytics.track("scenes_selected", { sceneCount: unique.length });
   return { ok: true };

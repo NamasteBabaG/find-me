@@ -12,6 +12,7 @@ import { SceneViewport, targetScreenPoint, type Hit } from "./SceneViewport";
 import { MissionCard } from "./MissionCard";
 import { CelebrationOverlay } from "./CelebrationOverlay";
 import type { PlayStore } from "../store/play-store";
+import { useGameText } from "../i18n";
 
 interface Props {
   scene: SceneConfig;
@@ -25,6 +26,7 @@ const FOUND_MS = 1500;
 
 /** One world: viewport + mission card + top bar + feedback choreography. */
 export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: Props) {
+  const { g, tf } = useGameText();
   const apiRef = useRef<ViewportApi | null>(null);
   const [bubble, setBubble] = useState<{ text: string; x: number; y: number; key: number } | null>(null);
   const [burst, setBurst] = useState<{ key: number; small: boolean } | null>(null);
@@ -108,7 +110,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
         sounds().play("twinkle");
         if (scene.bonus && api) {
           const slot = mission.plan.bonusVariant === "A" ? scene.bonus.slots[0] : scene.bonus.slots[1];
-          const p = targetScreenPoint(api, scene, { ...scene.targets[0]!, slots: [slot, slot] }, "A");
+          const p = stageToScreen(api.transform, slot.x * scene.art.width, slot.y * scene.art.height);
           setBubble({ text: fb.bubble, x: p.x, y: p.y, key: Date.now() });
         }
         const t = setTimeout(() => setBubble(null), 1800);
@@ -155,6 +157,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
 
   const onHit = useCallback(
     (hit: Hit) => {
+      sounds().unlock();
       switch (hit.kind) {
         case "target":
           dispatch({ type: "TAP_TARGET", targetId: hit.id, now: Date.now() });
@@ -183,30 +186,28 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
   return (
     <div className="scene" style={{ ["--scene-sky" as string]: scene.art.palette.sky, ["--scene-accent" as string]: scene.art.palette.accent }}>
       <header className="scene__bar">
-        <button type="button" className="fm-btn fm-btn--secondary fm-btn--kid" onClick={onBack} aria-label="חזרה למפה">
+        <button type="button" className="fm-btn fm-btn--secondary fm-btn--kid" onClick={onBack} aria-label={g.scene.backToMap}>
           🗺️
         </button>
         <div className="scene__title">
           <span className="scene__name">{scene.name}</span>
-          <span className="scene__count">
-            {Math.min(mission.currentIndex + 1, 3)}/3
-          </span>
+          <span className="scene__count">{Math.min(mission.currentIndex + 1, 3)}/3</span>
         </div>
         <div className="scene__tools">
-          <button type="button" className="fm-btn fm-btn--secondary fm-btn--kid" onClick={() => apiRef.current?.zoomBy(1.5)} aria-label="הגדלה">
+          <button type="button" className="fm-btn fm-btn--secondary fm-btn--kid" onClick={() => apiRef.current?.zoomBy(1.5)} aria-label={g.scene.zoomIn}>
             ＋
           </button>
-          <button type="button" className="fm-btn fm-btn--secondary fm-btn--kid" onClick={() => apiRef.current?.reset()} aria-label="להראות את כל העולם">
+          <button type="button" className="fm-btn fm-btn--secondary fm-btn--kid" onClick={() => apiRef.current?.reset()} aria-label={g.scene.reset}>
             ⤢
           </button>
-          <button type="button" className="fm-btn fm-btn--secondary fm-btn--kid" onClick={store.toggleMute} aria-label={store.muted ? "הפעלת צליל" : "השתקה"}>
+          <button type="button" className="fm-btn fm-btn--secondary fm-btn--kid" onClick={store.toggleMute} aria-label={store.muted ? g.scene.unmute : g.scene.mute}>
             {store.muted ? "🔇" : "🔊"}
           </button>
         </div>
       </header>
 
       <div className="scene__stage">
-        <SceneViewport scene={scene} mission={mission} hintLevel={mission.hintLevel} bonusFound={mission.bonusFound} onHit={onHit} onReady={onReady}>
+        <SceneViewport scene={scene} mission={mission} hintLevel={mission.hintLevel} bonusFound={mission.bonusFound} onHit={onHit} onReady={onReady} ariaLabel={tf(g.scene.sceneAria, { name: scene.name })}>
           {() => (bubble ? <SpeechBubble key={bubble.key} text={bubble.text} x={bubble.x} y={bubble.y} /> : null)}
         </SceneViewport>
         {burst ? <CelebrationOverlay key={burst.key} kind={scene.celebration.kind} small={burst.small} seed={burst.key} /> : null}
@@ -243,41 +244,46 @@ function SpeechBubble({ text, x, y }: { text: string; x: number; y: number }) {
 }
 
 function SceneCompleteCard({ scene, bonusFound, hintsUsed, store }: { scene: SceneConfig; bonusFound: boolean; hintsUsed: number; store: PlayStore }) {
+  const { g, tf } = useGameText();
   const next = store.nextScene();
   const allDone = next === null;
   return (
-    <div className="complete" role="dialog" aria-label="סיום עולם">
+    <div className="complete" role="dialog" aria-label={g.complete.dialogAria}>
       <div className="complete__card">
         <div className="complete__stamp" aria-hidden>
-          מצאתי!
+          {g.complete.stamp}
         </div>
         <h2 className="complete__title">{scene.celebration.completeText}</h2>
         <div className="complete__loot">
           <span className="complete__icon" aria-hidden>
             {scene.collectible.icon}
           </span>
-          <span>
-            קיבלתם: <strong>{scene.collectible.name}</strong>
-          </span>
-          {hintsUsed === 0 ? <span className="fm-badge fm-badge--leaf">🦅 עיני נץ — בלי רמזים!</span> : null}
-          {bonusFound ? <span className="fm-badge fm-badge--sea">✨ מצאתם גם את זיק</span> : null}
+          <span>{tf(g.complete.loot, { item: scene.collectible.name })}</span>
+          {hintsUsed === 0 ? <span className="fm-badge fm-badge--leaf">{g.complete.eagle}</span> : null}
+          {bonusFound ? <span className="fm-badge fm-badge--sea">{g.complete.zik}</span> : null}
         </div>
         <div className="complete__actions">
-          {allDone ? (
+          {store.demo ? (
+            <a href="/create" className="fm-btn fm-btn--lg">
+              {g.complete.demoCta}
+            </a>
+          ) : allDone ? (
             <button type="button" className="fm-btn fm-btn--lg" onClick={store.openPassport}>
-              לתיק ההרפתקאות 🎒
+              {g.complete.bag}
             </button>
           ) : (
             <button type="button" className="fm-btn fm-btn--lg" onClick={() => next && store.openScene(next)}>
-              לעולם הבא ➜
+              {g.complete.next}
             </button>
           )}
           <button type="button" className="fm-btn fm-btn--secondary" onClick={store.replayScene}>
-            לשחק שוב (המחבואים משתנים!)
+            {g.complete.again}
           </button>
-          <button type="button" className="fm-btn fm-btn--ghost" onClick={store.goToMap}>
-            למפה
-          </button>
+          {!store.demo ? (
+            <button type="button" className="fm-btn fm-btn--ghost" onClick={store.goToMap}>
+              {g.complete.map}
+            </button>
+          ) : null}
         </div>
       </div>
     </div>

@@ -3,34 +3,19 @@ import { getContainer } from "@/services/container";
 import { listGamesForUser } from "@/services/game.service";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
 import { isDev } from "@/lib/env";
+import { getI18n } from "@/i18n/server";
+import { formatDate, pick, tf } from "@/i18n";
 import { SiteFooter, SiteHeader, Notice } from "@/ui/Shell";
 import { LinkButton } from "@/ui/Button";
 import { LoginForm } from "./LoginForm";
 import { logoutAction } from "./actions";
 
-export const metadata = { title: "המשחקים שלי", robots: { index: false } };
-
-const STATUS_HE: Record<string, string> = {
-  CHECKOUT_PENDING: "ממתין לתשלום",
-  PAYMENT_FAILED: "התשלום נכשל",
-  PAID: "בהכנה",
-  AVATAR_GENERATING: "בהכנה",
-  TARGETS_GENERATING: "בהכנה",
-  SCENES_COMPOSING: "בהכנה",
-  QA_PENDING: "בבדיקה אחרונה",
-  MANUAL_REVIEW: "בבדיקה אחרונה",
-  NEEDS_REGENERATION: "בבדיקה אחרונה",
-  NEEDS_NEW_PHOTO: "נדרשת תמונה חדשה",
-  APPROVED: "כמעט מוכן",
-  READY: "מוכן",
-  DELIVERED: "מוכן",
-  GENERATION_FAILED: "תקלה ביצירה",
-  REFUNDED: "הוחזר",
-};
+export const metadata = { robots: { index: false } };
 
 export default async function LibraryPage({ searchParams }: { searchParams: Promise<{ error?: string; deleted?: string }> }) {
-  const [user, params] = await Promise.all([currentUser(), searchParams]);
+  const [user, params, { t, locale }] = await Promise.all([currentUser(), searchParams, getI18n()]);
   const isAdmin = isAdminEmail(user?.email);
+  const l = t.library;
 
   if (!user) {
     return (
@@ -38,10 +23,10 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
         <SiteHeader user={null} isAdmin={false} />
         <main className="fm-container fm-container--narrow fm-section fm-stack fm-stack--4">
           <div className="create__head">
-            <h1 className="create__title">המשחקים שלי</h1>
-            <p className="fm-lead">בלי סיסמה. נשלח לכם קישור כניסה למייל.</p>
+            <h1 className="create__title">{l.title}</h1>
+            <p className="fm-lead">{l.loginLead}</p>
           </div>
-          {params.error === "expired" ? <Notice kind="warn">הקישור פג תוקף או כבר נוצל. בקשו קישור חדש.</Notice> : null}
+          {params.error === "expired" ? <Notice kind="warn">{l.expired}</Notice> : null}
           <LoginForm devOutbox={isDev()} />
         </main>
         <SiteFooter />
@@ -56,24 +41,24 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
       <main className="fm-container fm-section fm-stack fm-stack--4">
         <div className="fm-row fm-row--between">
           <div>
-            <h1>המשחקים שלי</h1>
+            <h1>{l.title}</h1>
             <p className="fm-muted">{user.email}</p>
           </div>
           <div className="fm-row">
-            <LinkButton href="/create">צרו עוד משחק</LinkButton>
+            <LinkButton href="/create">{l.createMore}</LinkButton>
             <form action={logoutAction}>
               <button type="submit" className="fm-btn fm-btn--ghost">
-                יציאה
+                {l.signOut}
               </button>
             </form>
           </div>
         </div>
-        {params.deleted === "1" ? <Notice kind="success">המשחק נמחק, כולל הדמות והתמונה.</Notice> : null}
+        {params.deleted === "1" ? <Notice kind="success">{l.deleted}</Notice> : null}
         {games.length === 0 ? (
           <div className="fm-card fm-card--pad-6 fm-center fm-stack fm-stack--3">
-            <p className="fm-lead">עוד אין כאן משחקים.</p>
+            <p className="fm-lead">{l.empty}</p>
             <LinkButton href="/create" size="lg">
-              יוצרים משחק ראשון
+              {l.createFirst}
             </LinkButton>
           </div>
         ) : (
@@ -92,23 +77,21 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
                 </div>
                 <div>
                   <h2 className="lib__title">{g.title}</h2>
-                  <p className="lib__meta">
-                    {g.packageName} · {g.sceneCount} עולמות · {g.createdAt.toLocaleDateString("he-IL")}
-                  </p>
+                  <p className="lib__meta">{tf(l.meta, { pkg: pick(g.packageName, locale), worlds: g.sceneCount, date: formatDate(g.createdAt, locale) })}</p>
                 </div>
-                <span className={`fm-badge ${g.playable ? "fm-badge--leaf" : "fm-badge--outline"}`}>{STATUS_HE[g.status] ?? g.status}</span>
+                <span className={`fm-badge ${g.playable ? "fm-badge--leaf" : "fm-badge--outline"}`}>{l.statuses[g.status] ?? g.status}</span>
                 <div className="lib__actions">
                   {g.playUrl ? (
                     <LinkButton href={g.playUrl} size="sm">
-                      שחקו
+                      {l.play}
                     </LinkButton>
                   ) : (
                     <LinkButton href={`/creating/${g.id}`} size="sm" variant="secondary">
-                      סטטוס
+                      {l.status}
                     </LinkButton>
                   )}
                   <Link href={`/library/${g.id}`} className="fm-btn fm-btn--secondary fm-btn--sm">
-                    ניהול ושיתוף
+                    {l.manage}
                   </Link>
                 </div>
               </article>

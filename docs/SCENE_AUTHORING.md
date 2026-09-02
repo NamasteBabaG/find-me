@@ -16,6 +16,8 @@
 
 ## 2. קובץ ההגדרה — `content/scenes/<slug>/scene.json`
 
+**כל שדה טקסט הוא דו־לשוני**: `{ "en": "Find {name} with the float ring", "he": "מצאו את {name} עם גלגל הים" }`. זה חל על `name`, `tagline`, `mission`, `item`, `success[]`, `hintText`, `label`, `reaction`, `bonus.name/prompt`, `celebration.completeText`, `collectible.name`. הולידציה דורשת `{name}` בשתי השפות.
+
 הסכמה: `src/domain/scene/schema.ts` (zod). דוגמה מלאה: `content/scenes/beach/scene.json`.
 
 ```jsonc
@@ -65,4 +67,4 @@
 
 ## 4. תשעת העולמות
 
-`beach`, `jungle`, `space` פעילים (ארט placeholder). `city`, `ship`, `stadium`, `market`, `park`, `volcano` מוגדרים במלואם לפי האפיון (משימות, אינטראקציות, חגיגה, פריט) ומצביעים על `/scenes/_placeholder/` — כשמגיע ארט: מחליפים נתיבים, מכיילים סלוטים, `active: true`.
+`beach` פעיל עם ארט אמיתי (`draft`, 1672×941, `assets/Beach.png` → `public/scenes/beach/base.webp`; ה־foreground הוא שני כיסויי שמשייה שנחתכו מאותה תמונה, כך שהדמות מציצה מאחוריהן). `jungle`, `space` פעילים עם placeholder. `city`, `ship`, `stadium`, `market`, `park`, `volcano` מוגדרים במלואם לפי האפיון (משימות, אינטראקציות, חגיגה, פריט) ומצביעים על `/scenes/_placeholder/` — כשמגיע ארט: מחליפים נתיבים, מכיילים סלוטים, `active: true`.

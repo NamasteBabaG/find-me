@@ -32,7 +32,7 @@ export default async function AdminScenesPage() {
                   <img src={scene.art.thumbnail} alt="" width={96} height={60} style={{ borderRadius: 8 }} />
                 </td>
                 <td>
-                  <strong>{scene.name}</strong>
+                  <strong>{scene.name.he}</strong>
                   <div className="fm-small">{scene.slug}</div>
                 </td>
                 <td>v{scene.version}</td>

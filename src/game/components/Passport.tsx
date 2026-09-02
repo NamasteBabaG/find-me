@@ -2,9 +2,11 @@
 
 import type { GameConfig } from "@/domain/game/config";
 import { sceneProgress, completedScenes, type GameProgress } from "@/domain/game/progress";
+import { useGameText } from "../i18n";
 
-/** "תיק ההרפתקאות": every collectible earned so far. */
+/** The adventure bag: every keepsake earned so far. */
 export function Passport({ config, progress, onMap, onOpen }: { config: GameConfig; progress: GameProgress; onMap: () => void; onOpen: (slug: string) => void }) {
+  const { g, tf } = useGameText();
   const done = completedScenes(progress);
   const total = config.scenes.length;
   const complete = done >= total;
@@ -14,16 +16,16 @@ export function Passport({ config, progress, onMap, onOpen }: { config: GameConf
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={config.child.avatarUrl} alt="" className="fm-sticker" width={80} height={80} />
         <div>
-          <h1 className="passport__title">תיק ההרפתקאות של {config.child.name}</h1>
-          <p className="map__sub">{complete ? "הכול נאסף! איזה כיף." : `${done} מתוך ${total} פריטים נאספו`}</p>
+          <h1 className="passport__title">{tf(g.passport.title, { name: config.child.name })}</h1>
+          <p className="map__sub">{complete ? g.passport.complete : tf(g.passport.progress, { done, total })}</p>
         </div>
       </header>
-      <ul className="passport__grid" aria-label="פריטים שנאספו">
+      <ul className="passport__grid" aria-label={g.passport.itemsAria}>
         {config.scenes.map((scene) => {
           const sp = sceneProgress(progress, scene.slug);
           return (
             <li key={scene.slug} className={`loot${sp.collectible ? " loot--got" : ""}`}>
-              <button type="button" className="loot__btn" onClick={() => onOpen(scene.slug)} aria-label={`${scene.collectible.name} — ${sp.collectible ? "נאסף" : "עוד לא"}`}>
+              <button type="button" className="loot__btn" onClick={() => onOpen(scene.slug)} aria-label={`${scene.collectible.name} — ${sp.collectible ? g.passport.collected : g.passport.notYet}`}>
                 <span className="loot__icon" aria-hidden>
                   {sp.collectible ? scene.collectible.icon : "❔"}
                 </span>
@@ -39,14 +41,14 @@ export function Passport({ config, progress, onMap, onOpen }: { config: GameConf
       {complete ? (
         <div className="passport__done">
           <div className="complete__stamp complete__stamp--big" aria-hidden>
-            מצאתי הכול!
+            {g.passport.allStamp}
           </div>
-          <p className="fm-lead">כל המחבואים משתנים בכל משחק חוזר. רוצים לנסות שוב?</p>
+          <p className="fm-lead">{g.passport.replayLead}</p>
         </div>
       ) : null}
       <div className="fm-row fm-row--center">
         <button type="button" className="fm-btn" onClick={onMap}>
-          למפת העולמות
+          {g.passport.map}
         </button>
       </div>
     </div>

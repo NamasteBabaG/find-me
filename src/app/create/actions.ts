@@ -7,8 +7,10 @@ import { startCheckout } from "@/services/order.service";
 import { isEditableDraft } from "@/domain/order-state";
 import { statusOf } from "@/services/game-status";
 import { currentUser, draftTokenFromCookie, setDraftCookie } from "@/lib/server/session";
+import { getLocale } from "@/i18n/server";
+import { flowError, type FlowResult } from "@/i18n/errors";
 
-export type ActionResult = { ok: true } | { ok: false; reason: string };
+export type ActionResult = FlowResult;
 
 /** The draft this browser is working on (by cookie), if it is still editable. */
 export async function currentDraft() {
@@ -27,12 +29,12 @@ export async function saveNameAction(_prev: ActionResult | null, formData: FormD
   const name = String(formData.get("name") ?? "");
   let draft = await currentDraft();
   if (!draft) {
-    const user = await currentUser();
-    const created = await createDraft(c, user?.id ?? null);
+    const [user, locale] = await Promise.all([currentUser(), getLocale()]);
+    const created = await createDraft(c, user?.id ?? null, locale);
     await setDraftCookie(created.draftToken);
     draft = await loadDraft(c, created.gameId);
   }
-  if (!draft) return { ok: false, reason: "לא הצלחנו להתחיל טיוטה. נסו שוב." };
+  if (!draft) return flowError("DRAFT_NOT_FOUND", "לא הצלחנו להתחיל טיוטה.");
   const res = await setChildName(c, draft.id, name);
   if (!res.ok) return res;
   redirect("/create/photo");

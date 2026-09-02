@@ -1,21 +1,21 @@
 {
   "id": "scene_beach",
   "slug": "beach",
-  "name": "חוף הים",
-  "tagline": "שמשיות, ארמונות חול והמון הפתעות.",
-  "version": 1,
+  "name": { "en": "The Beach", "he": "חוף הים" },
+  "tagline": { "en": "Parasols, sandcastles and lots of surprises.", "he": "שמשיות, ארמונות חול והמון הפתעות." },
+  "version": 2,
   "active": true,
-  "artStatus": "placeholder",
+  "artStatus": "draft",
   "art": {
-    "width": 1600,
-    "height": 1000,
-    "base": "/scenes/beach/base.svg",
-    "foreground": "/scenes/beach/foreground.svg",
-    "thumbnail": "/scenes/beach/thumb.svg",
-    "palette": { "sky": "#CFEFFB", "ground": "#F7D9A0", "accent": "#2FA4D6" }
+    "width": 1672,
+    "height": 941,
+    "base": "/scenes/beach/base.webp",
+    "foreground": "/scenes/beach/foreground.webp",
+    "thumbnail": "/scenes/beach/thumb.webp",
+    "palette": { "sky": "#8FD3F4", "ground": "#F1CF86", "accent": "#F25C7A" }
   },
   "intro": {
-    "from": { "x": 0.3, "y": 0.6, "zoom": 1.6 },
+    "from": { "x": 0.68, "y": 0.62, "zoom": 1.6 },
     "to": { "x": 0.5, "y": 0.5, "zoom": 1 },
     "durationMs": 1600
   },
@@ -25,26 +25,30 @@
       "targetType": "beach_float",
       "bodyTemplate": "beach_float",
       "difficulty": 1,
-      "mission": "מצאו את {name} עם גלגל הים",
-      "item": "גלגל ים",
-      "success": ["ידעתי שתמצאו אותי!", "גלגל הים הסגיר אותי…", "וואו, זה היה מהיר!"],
+      "mission": { "en": "Find {name} with the float ring", "he": "מצאו את {name} עם גלגל הים" },
+      "item": { "en": "a float ring", "he": "גלגל ים" },
+      "success": [
+        { "en": "I knew you'd find me!", "he": "ידעתי שתמצאו אותי!" },
+        { "en": "The float ring gave me away…", "he": "גלגל הים הסגיר אותי…" },
+        { "en": "Wow, that was fast!", "he": "וואו, זה היה מהיר!" }
+      ],
       "animation": "bounce",
       "slots": [
         {
           "id": "beach_float_a",
-          "x": 0.2,
-          "y": 0.78,
-          "scale": 0.075,
-          "hintZone": { "x": 0.17, "y": 0.75, "r": 0.1 },
-          "hintText": "חפשו ליד משהו מתוק וקר."
+          "x": 0.655,
+          "y": 0.66,
+          "scale": 0.085,
+          "hintZone": { "x": 0.68, "y": 0.64, "r": 0.1 },
+          "hintText": { "en": "Look near something sweet and cold.", "he": "חפשו ליד משהו מתוק וקר." }
         },
         {
           "id": "beach_float_b",
-          "x": 0.79,
-          "y": 0.7,
-          "scale": 0.07,
-          "hintZone": { "x": 0.82, "y": 0.66, "r": 0.1 },
-          "hintText": "חפשו ליד מי ששומר על כולם בחוף."
+          "x": 0.335,
+          "y": 0.47,
+          "scale": 0.08,
+          "hintZone": { "x": 0.31, "y": 0.45, "r": 0.1 },
+          "hintText": { "en": "Look near the one who keeps everyone safe at the beach.", "he": "חפשו ליד מי ששומר על כולם בחוף." }
         }
       ]
     },
@@ -53,26 +57,30 @@
       "targetType": "beach_sandcastle",
       "bodyTemplate": "beach_sandcastle",
       "difficulty": 2,
-      "mission": "מצאו את {name} בונה ארמון חול",
-      "item": "ארמון חול",
-      "success": ["התחבאתי ממש טוב!", "רגע, כמעט סיימתי את המגדל!", "מצאתם אותי! רוצים לעזור לבנות?"],
+      "mission": { "en": "Find {name} building a sandcastle", "he": "מצאו את {name} בונה ארמון חול" },
+      "item": { "en": "a sandcastle", "he": "ארמון חול" },
+      "success": [
+        { "en": "I was hiding so well!", "he": "התחבאתי ממש טוב!" },
+        { "en": "Wait, I almost finished the tower!", "he": "רגע, כמעט סיימתי את המגדל!" },
+        { "en": "You found me! Want to help build?", "he": "מצאתם אותי! רוצים לעזור לבנות?" }
+      ],
       "animation": "wiggle",
       "slots": [
         {
           "id": "beach_castle_a",
-          "x": 0.31,
-          "y": 0.9,
-          "scale": 0.06,
-          "hintZone": { "x": 0.29, "y": 0.9, "r": 0.09 },
-          "hintText": "חפשו ליד משהו שבנו מחול."
+          "x": 0.36,
+          "y": 0.71,
+          "scale": 0.075,
+          "hintZone": { "x": 0.33, "y": 0.69, "r": 0.1 },
+          "hintText": { "en": "Look near something built from sand.", "he": "חפשו ליד משהו שבנו מחול." }
         },
         {
           "id": "beach_castle_b",
-          "x": 0.7,
-          "y": 0.92,
-          "scale": 0.06,
-          "hintZone": { "x": 0.66, "y": 0.92, "r": 0.09 },
-          "hintText": "חפשו ליד מגבת צבעונית."
+          "x": 0.585,
+          "y": 0.86,
+          "scale": 0.075,
+          "hintZone": { "x": 0.57, "y": 0.87, "r": 0.1 },
+          "hintText": { "en": "Look near a colorful towel.", "he": "חפשו ליד מגבת צבעונית." }
         }
       ]
     },
@@ -81,29 +89,33 @@
       "targetType": "beach_umbrella_peek",
       "bodyTemplate": "beach_umbrella_peek",
       "difficulty": 3,
-      "mission": "מצאו את {name} מציץ/ה מאחורי שמשייה",
-      "item": "שמשייה",
-      "success": ["עיני נץ!", "לא הצלחתי להתחבא מכם!", "השמשייה כמעט הסתירה אותי…"],
+      "mission": { "en": "Find {name} peeking from behind a parasol", "he": "מצאו את {name} מציץ/ה מאחורי שמשייה" },
+      "item": { "en": "a parasol", "he": "שמשייה" },
+      "success": [
+        { "en": "Eagle eyes!", "he": "עיני נץ!" },
+        { "en": "I couldn't hide from you!", "he": "לא הצלחתי להתחבא מכם!" },
+        { "en": "The parasol almost hid me…", "he": "השמשייה כמעט הסתירה אותי…" }
+      ],
       "animation": "peek",
       "slots": [
         {
           "id": "beach_umbrella_a",
-          "x": 0.565,
-          "y": 0.845,
-          "scale": 0.055,
+          "x": 0.245,
+          "y": 0.4,
+          "scale": 0.07,
           "layer": "behindForeground",
-          "hintZone": { "x": 0.55, "y": 0.82, "r": 0.09 },
-          "hintText": "חפשו ליד משהו שנותן צל."
+          "hintZone": { "x": 0.245, "y": 0.42, "r": 0.09 },
+          "hintText": { "en": "Look near something that gives shade.", "he": "חפשו ליד משהו שנותן צל." }
         },
         {
           "id": "beach_umbrella_b",
-          "x": 0.365,
-          "y": 0.775,
-          "scale": 0.055,
+          "x": 0.95,
+          "y": 0.6,
+          "scale": 0.07,
           "layer": "behindForeground",
           "flip": true,
-          "hintZone": { "x": 0.35, "y": 0.76, "r": 0.09 },
-          "hintText": "חפשו ליד השמשייה הכי צבעונית."
+          "hintZone": { "x": 0.94, "y": 0.62, "r": 0.09 },
+          "hintText": { "en": "Look near the most colorful parasol.", "he": "חפשו ליד השמשייה הכי צבעונית." }
         }
       ]
     }
@@ -111,41 +123,41 @@
   "ambient": [
     {
       "id": "crab_bucket",
-      "label": "סרטן בדלי",
-      "x": 0.43,
-      "y": 0.9,
+      "label": { "en": "Crab in a bucket", "he": "סרטן בדלי" },
+      "x": 0.42,
+      "y": 0.83,
       "w": 0.05,
-      "h": 0.06,
+      "h": 0.07,
       "animation": "hop",
       "sound": "boing",
-      "reaction": "היי! זה הדלי שלי!",
+      "reaction": { "en": "Hey! That's my bucket!", "he": "היי! זה הדלי שלי!" },
       "glyph": "🦀"
     },
     {
       "id": "wave_flipflops",
-      "label": "גל שוטף כפכפים",
-      "x": 0.47,
-      "y": 0.64,
-      "w": 0.08,
+      "label": { "en": "A wave washing flip-flops", "he": "גל שוטף כפכפים" },
+      "x": 0.395,
+      "y": 0.91,
+      "w": 0.06,
       "h": 0.05,
       "animation": "slide",
       "sound": "splash",
-      "reaction": "שששש… הכפכפים ברחו!",
+      "reaction": { "en": "Whoosh… the flip-flops escaped!", "he": "שששש… הכפכפים ברחו!" },
       "glyph": "🩴"
     }
   ],
   "bonus": {
     "id": "zik",
-    "name": "זיק",
+    "name": { "en": "Zik", "he": "זיק" },
     "sprite": "/scenes/shared/zik.svg",
-    "scale": 0.035,
-    "prompt": "רוצים למצוא גם את זיק?",
+    "scale": 0.04,
+    "prompt": { "en": "Want to find Zik too?", "he": "רוצים למצוא גם את זיק?" },
     "slots": [
-      { "id": "beach_zik_a", "x": 0.9, "y": 0.35, "scale": 0.035, "hintZone": { "x": 0.9, "y": 0.35, "r": 0.06 }, "hintText": "זיק אוהב מקומות גבוהים." },
-      { "id": "beach_zik_b", "x": 0.08, "y": 0.5, "scale": 0.035, "hintZone": { "x": 0.08, "y": 0.5, "r": 0.06 }, "hintText": "זיק מרחף מעל המים." }
+      { "id": "beach_zik_a", "x": 0.9, "y": 0.1, "scale": 0.04, "hintZone": { "x": 0.9, "y": 0.1, "r": 0.06 }, "hintText": { "en": "Zik likes high places.", "he": "זיק אוהב מקומות גבוהים." } },
+      { "id": "beach_zik_b", "x": 0.05, "y": 0.62, "scale": 0.04, "hintZone": { "x": 0.05, "y": 0.62, "r": 0.06 }, "hintText": { "en": "Zik hovers above the water.", "he": "זיק מרחף מעל המים." } }
     ]
   },
-  "celebration": { "kind": "bubbles", "completeText": "מצאתם את {name} שלוש פעמים בחוף!" },
-  "collectible": { "id": "shell", "name": "צדף מהחוף", "icon": "🐚" },
+  "celebration": { "kind": "bubbles", "completeText": { "en": "You found {name} three times at the beach!", "he": "מצאתם את {name} שלוש פעמים בחוף!" } },
+  "collectible": { "id": "shell", "name": { "en": "A seashell from the beach", "he": "צדף מהחוף" }, "icon": "🐚" },
   "sounds": { "ambient": "waves" }
 }

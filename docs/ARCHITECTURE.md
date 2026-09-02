@@ -96,6 +96,10 @@ User · MagicLinkToken · Session · ChildProfile · Game · GameScene · Target
 
 בכוונה **ללא enums ו־Json**: מחרוזות המאומתות בדומיין/zod, כדי ש־SQLite (dev) ו־Postgres (prod) יהיו זהים. מעבר ל־Postgres: `provider = "postgresql"` + `prisma migrate`.
 
+## 7b. שפות
+
+ראה `docs/I18N.md`. בקצרה: `Game.locale` נקבע ביצירת הטיוטה משפת האתר, `composeGameConfig` בוחר את השפה מהסצנה הדו־לשונית, וה־renderer קורא `config.locale`.
+
 ## 8. פרטיות ובטיחות
 
 - אין חשבון/פרופיל לילד, אין גלריה, אין פרסומות, אין CTA בתוך המשחק.

@@ -1,6 +1,7 @@
 import { composeGame, composeScene, type TargetSpriteInput } from "@/domain/game/compose";
 import { TargetAdjustSchema, type GameConfig, type SceneConfig, type SpriteRef } from "@/domain/game/config";
 import { isPackageTier } from "@/domain/package";
+import type { Locale } from "@/i18n/config";
 import type { Container } from "../container";
 import { signedAssetUrl } from "../asset.service";
 import { sceneBySlug } from "../scene-catalog.service";
@@ -23,6 +24,7 @@ export async function composeGameConfig(c: Container, gameId: string): Promise<G
   if (avatar.visibility !== "GAME") throw new Error("composeGameConfig: avatar asset must be GAME-visible");
   const avatarUrl = signedAssetUrl(c, avatar.id);
   const child = { name: game.childProfile.displayName, avatarUrl };
+  const locale: Locale = game.locale === "he" ? "he" : "en";
 
   const scenes: SceneConfig[] = [];
   for (const gs of game.scenes) {
@@ -42,12 +44,12 @@ export async function composeGameConfig(c: Container, gameId: string): Promise<G
       const adjust = t.adjustJson ? TargetAdjustSchema.parse(JSON.parse(t.adjustJson)) : undefined;
       sprites.push({ targetId: t.targetId, sprite, adjust });
     }
-    scenes.push(composeScene(def, child, sprites));
+    scenes.push(composeScene(def, child, sprites, locale));
   }
 
   const gift = game.giftJson ? (JSON.parse(game.giftJson) as { fromName?: string; message?: string }) : undefined;
 
-  return composeGame({ gameId: game.id, child, packageTier: game.packageTier, styleVersion: game.styleVersion, scenes, gift });
+  return composeGame({ gameId: game.id, child, packageTier: game.packageTier, styleVersion: game.styleVersion, locale, scenes, gift });
 }
 
 export async function persistGameConfig(c: Container, gameId: string): Promise<GameConfig> {

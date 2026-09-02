@@ -11,6 +11,14 @@ import { sounds } from "../audio/sounds";
 
 export type Screen = "gift" | "map" | "scene" | "passport";
 
+/** Language-specific strings the pure reducer needs (see MissionCopy). */
+export interface ReducerCopy {
+  wrongTarget: string;
+  wrongTargetNoItem: string;
+  bonus: string;
+  fallbackSuccess: string;
+}
+
 export interface PlayStore {
   config: GameConfig;
   progress: GameProgress;
@@ -33,19 +41,27 @@ export interface PlayStore {
   toggleMute(): void;
 }
 
-function missionCopy(scene: SceneConfig): MissionCopy {
+function missionCopy(scene: SceneConfig, copy: ReducerCopy): MissionCopy {
   return {
     successByTarget: Object.fromEntries(scene.targets.map((t) => [t.id, t.success])),
     itemByTarget: Object.fromEntries(scene.targets.map((t) => [t.id, t.item])),
+    ...copy,
   };
 }
 
-export function createPlayStore(config: GameConfig, opts: { demo?: boolean; skipGift?: boolean } = {}) {
+export interface PlayStoreOptions {
+  demo?: boolean;
+  skipGift?: boolean;
+  autoStartScene?: string;
+  copy: ReducerCopy;
+}
+
+export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
   const demo = Boolean(opts.demo);
   const initialProgress = demo ? { v: 1 as const, gameId: config.gameId, revealed: true, scenes: {} } : loadProgress(config.gameId);
   const telemetry = new Telemetry(config.gameId, !demo);
 
-  return create<PlayStore>((set, get) => ({
+  const store = create<PlayStore>((set, get) => ({
     config,
     progress: initialProgress,
     screen: demo || opts.skipGift || initialProgress.revealed ? "map" : "gift",
@@ -90,7 +106,7 @@ export function createPlayStore(config: GameConfig, opts: { demo?: boolean; skip
       const { mission } = get();
       const scene = get().scene();
       if (!mission || !scene) return;
-      const next = missionReducer(mission, action, missionCopy(scene));
+      const next = missionReducer(mission, action, missionCopy(scene, opts.copy));
       if (next === mission) return;
       if (action.type === "TAP_TARGET" && next.lastFeedback?.kind === "hit") {
         telemetry.track({ eventType: "target_found", sceneSlug: scene.slug, targetId: action.targetId, hintsUsed: mission.hintLevel });
@@ -141,6 +157,9 @@ export function createPlayStore(config: GameConfig, opts: { demo?: boolean; skip
       set({ muted });
     },
   }));
+
+  if (opts.autoStartScene) store.getState().openScene(opts.autoStartScene);
+  return store;
 }
 
 export type PlayStoreApi = ReturnType<typeof createPlayStore>;

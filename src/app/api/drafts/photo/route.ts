@@ -9,14 +9,14 @@ export const runtime = "nodejs";
 export async function POST(req: Request) {
   const c = getContainer();
   const token = await draftTokenFromCookie();
-  if (!token) return NextResponse.json({ ok: false, reason: "הטיוטה לא נמצאה. התחילו מחדש." }, { status: 400 });
+  if (!token) return NextResponse.json({ ok: false, code: "DRAFT_NOT_FOUND", reason: "הטיוטה לא נמצאה. התחילו מחדש." }, { status: 400 });
   const game = await c.db.game.findUnique({ where: { draftToken: token } });
   const user = await currentUser();
-  if (!game || !draftBelongsTo(game, token, user?.id ?? null)) return NextResponse.json({ ok: false, reason: "הטיוטה לא נמצאה." }, { status: 404 });
+  if (!game || !draftBelongsTo(game, token, user?.id ?? null)) return NextResponse.json({ ok: false, code: "DRAFT_NOT_FOUND", reason: "הטיוטה לא נמצאה." }, { status: 404 });
 
   const form = await req.formData();
   const file = form.get("file");
-  if (!(file instanceof File)) return NextResponse.json({ ok: false, reason: "לא התקבל קובץ." }, { status: 400 });
+  if (!(file instanceof File)) return NextResponse.json({ ok: false, code: "NO_FILE", reason: "לא התקבל קובץ." }, { status: 400 });
   let crop: { x: number; y: number; w: number; h: number } | null = null;
   const rawCrop = form.get("crop");
   if (typeof rawCrop === "string") {

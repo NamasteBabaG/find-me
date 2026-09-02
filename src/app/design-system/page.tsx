@@ -136,7 +136,7 @@ export default async function DesignSystemPage() {
           <div className="fm-row">
             {["beach_float", "beach_sandcastle", "beach_umbrella_peek", "jungle_binoculars", "jungle_boat", "space_astronaut", "space_rover", "ship_captain"].map((id) => (
               <div key={id} style={{ width: 96, height: 134 }}>
-                <ComposedSprite faceUrl="/demo/maya-face.svg" bodyTemplate={id} />
+                <ComposedSprite faceUrl="/demo/noa-face.png" bodyTemplate={id} />
               </div>
             ))}
           </div>

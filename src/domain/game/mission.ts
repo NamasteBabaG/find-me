@@ -3,7 +3,8 @@ import { nextHintLevel } from "./hints";
 import type { ScenePlayPlan } from "./replay";
 
 /**
- * Mission reducer — the heart of one scene play. Pure and fully testable.
+ * Mission reducer — the heart of one scene play. Pure, language-agnostic
+ * and fully testable: every string it emits comes in via MissionCopy.
  *
  * Phases:
  *   intro      → establishing pan, mission card slides in
@@ -57,8 +58,13 @@ export type MissionAction =
 export interface MissionCopy {
   /** Success lines per target, already personalised. */
   successByTarget: Record<string, string[]>;
-  /** Item names per target, e.g. "גלגל ים". */
+  /** Item names per target, e.g. "a float ring". */
   itemByTarget: Record<string, string>;
+  /** "It's me! But right now you're looking for me with {item}…" */
+  wrongTarget: string;
+  wrongTargetNoItem: string;
+  bonus: string;
+  fallbackSuccess: string;
 }
 
 export function createMissionState(sceneSlug: string, plan: ScenePlayPlan): MissionState {
@@ -105,13 +111,13 @@ export function missionReducer(state: MissionState, action: MissionAction, copy:
         // Tapping one of the other versions of the child is a friendly nudge, not a failure.
         if (isFound(state, action.targetId)) return state; // already found — ignore
         const item = copy.itemByTarget[current] ?? "";
-        const bubble = item ? `זה אני! אבל עכשיו מחפשים אותי עם ${item}…` : "זה אני! אבל עכשיו מחפשים גרסה אחרת שלי…";
+        const bubble = item ? copy.wrongTarget.replace("{item}", item) : copy.wrongTargetNoItem;
         return { ...state, misses: state.misses + 1, lastFeedback: { kind: "wrongTarget", targetId: action.targetId, bubble } };
       }
 
-      const lines = copy.successByTarget[current] ?? ["מצאתם אותי!"];
+      const lines = copy.successByTarget[current] ?? [copy.fallbackSuccess];
       const idx = state.plan.successIndex[current] ?? 0;
-      const bubble = lines[idx % lines.length] ?? "מצאתם אותי!";
+      const bubble = lines[idx % lines.length] ?? copy.fallbackSuccess;
       const elapsedMs = Math.max(0, action.now - state.missionStartedAt);
       return {
         ...state,
@@ -131,7 +137,7 @@ export function missionReducer(state: MissionState, action: MissionAction, copy:
 
     case "TAP_BONUS": {
       if (state.bonusFound || state.phase === "intro") return state;
-      return { ...state, bonusFound: true, lastFeedback: { kind: "bonus", bubble: "מצאתם גם אותי! זזזז…" } };
+      return { ...state, bonusFound: true, lastFeedback: { kind: "bonus", bubble: copy.bonus } };
     }
 
     case "TAP_AMBIENT": {

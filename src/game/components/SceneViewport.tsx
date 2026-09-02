@@ -19,6 +19,7 @@ interface Props {
   bonusFound: boolean;
   onHit: (hit: Hit) => void;
   onReady?: (api: ViewportApi) => void;
+  ariaLabel?: string;
   /** Screen-space overlays get the transform via render prop. */
   children?: (api: ViewportApi) => React.ReactNode;
 }
@@ -34,7 +35,7 @@ interface Ripple {
  * All hit-testing is math on normalized coordinates (no DOM hit targets), so a
  * tap resolves the same way on every device and at every zoom.
  */
-export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, onReady, children }: Props) {
+export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, onReady, ariaLabel, children }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stage = useMemo(() => ({ width: scene.art.width, height: scene.art.height }), [scene.art.width, scene.art.height]);
   const [ripples, setRipples] = useState<Ripple[]>([]);
@@ -136,7 +137,7 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
   };
 
   return (
-    <div ref={containerRef} className={`viewport${api.isDragging ? " viewport--dragging" : ""}`} {...api.bind} role="application" aria-label={`סצנת ${scene.name}`}>
+    <div ref={containerRef} className={`viewport${api.isDragging ? " viewport--dragging" : ""}`} {...api.bind} role="application" aria-label={ariaLabel ?? scene.name}>
       <div className="stage" style={stageStyle}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={scene.art.base} alt="" width={stage.width} height={stage.height} className="stage__layer" draggable={false} />

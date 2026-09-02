@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AmbientSchema, BonusSchema, CelebrationKind, SlotSchema, SoundCue, TargetAnimation } from "../scene/schema";
+import { CelebrationKind, SoundCue, TargetAnimation, Unit, AmbientAnimation } from "../scene/schema";
 import type { PackageTier } from "../package";
 
 /**
@@ -8,6 +8,7 @@ import type { PackageTier } from "../package";
  * It is composed once per game (SceneComposer) and stored on Game.configJson.
  * It must NEVER contain the original photo, the parent's email, or any
  * owner-only data: the same JSON is shipped to anyone holding the play link.
+ * All copy is already in the game's locale and personalised.
  */
 
 export const SpriteRefSchema = z.discriminatedUnion("kind", [
@@ -34,20 +35,59 @@ export const TargetAdjustSchema = z.object({
 });
 export type TargetAdjust = z.infer<typeof TargetAdjustSchema>;
 
+/** A slot with its hint already localised. */
+export const PlaySlotSchema = z.object({
+  id: z.string(),
+  x: Unit,
+  y: Unit,
+  scale: z.number(),
+  rotation: z.number().default(0),
+  zIndex: z.number().int().default(10),
+  layer: z.enum(["front", "behindForeground"]).default("front"),
+  flip: z.boolean().default(false),
+  hintZone: z.object({ x: Unit, y: Unit, r: z.number() }),
+  hintText: z.string(),
+});
+export type PlaySlot = z.infer<typeof PlaySlotSchema>;
+
 export const TargetConfigSchema = z.object({
   id: z.string(),
   targetType: z.string(),
   difficulty: z.union([z.literal(1), z.literal(2), z.literal(3)]),
-  /** Already personalised ("מצאו את נועה עם גלגל ים צהוב"). */
+  /** Already personalised ("Find Noa with the float ring"). */
   mission: z.string(),
   item: z.string(),
   success: z.array(z.string()).min(1),
   animation: TargetAnimation,
-  slots: z.tuple([SlotSchema, SlotSchema]),
+  slots: z.tuple([PlaySlotSchema, PlaySlotSchema]),
   sprite: SpriteRefSchema,
   adjust: TargetAdjustSchema.optional(),
 });
 export type TargetConfig = z.infer<typeof TargetConfigSchema>;
+
+export const PlayAmbientSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  x: Unit,
+  y: Unit,
+  w: z.number(),
+  h: z.number(),
+  animation: AmbientAnimation,
+  sound: SoundCue.optional(),
+  reaction: z.string().optional(),
+  glyph: z.string().optional(),
+  cooldownMs: z.number().int().default(1500),
+});
+export type PlayAmbient = z.infer<typeof PlayAmbientSchema>;
+
+export const PlayBonusSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  sprite: z.string(),
+  scale: z.number(),
+  prompt: z.string(),
+  slots: z.tuple([PlaySlotSchema, PlaySlotSchema]),
+});
 
 export const SceneConfigSchema = z.object({
   slug: z.string(),
@@ -71,8 +111,8 @@ export const SceneConfigSchema = z.object({
     })
     .optional(),
   targets: z.array(TargetConfigSchema).length(3),
-  ambient: z.array(AmbientSchema),
-  bonus: BonusSchema.optional(),
+  ambient: z.array(PlayAmbientSchema),
+  bonus: PlayBonusSchema.optional(),
   celebration: z.object({ kind: CelebrationKind, completeText: z.string() }),
   collectible: z.object({ id: z.string(), name: z.string(), icon: z.string() }),
   sounds: z.object({ ambient: SoundCue.optional() }).default({}),
@@ -82,6 +122,7 @@ export type SceneConfig = z.infer<typeof SceneConfigSchema>;
 export const GameConfigSchema = z.object({
   version: z.literal(1),
   gameId: z.string(),
+  locale: z.enum(["en", "he"]),
   child: z.object({
     name: z.string(),
     /** Signed URL of the illustrated sticker used on the cover, map and passport. */

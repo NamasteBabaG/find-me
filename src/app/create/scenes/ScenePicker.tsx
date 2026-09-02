@@ -2,6 +2,8 @@
 
 import { useActionState, useState } from "react";
 import { Button, LinkButton } from "@/ui/Button";
+import { useI18n } from "@/i18n/client";
+import { errorText } from "@/i18n/errors";
 import { chooseScenesAction, type ActionResult } from "../actions";
 
 interface SceneOption {
@@ -12,6 +14,8 @@ interface SceneOption {
 }
 
 export function ScenePicker({ scenes, want, preselected }: { scenes: SceneOption[]; want: number; preselected: string[] }) {
+  const { t, tf } = useI18n();
+  const s = t.create.scenes;
   const [picked, setPicked] = useState<string[]>(preselected.slice(0, want));
   const [state, action, pending] = useActionState<ActionResult | null, FormData>(chooseScenesAction, null);
   const full = picked.length >= want;
@@ -19,28 +23,26 @@ export function ScenePicker({ scenes, want, preselected }: { scenes: SceneOption
 
   const toggle = (slug: string) => {
     if (allSelected) return;
-    setPicked((p) => (p.includes(slug) ? p.filter((s) => s !== slug) : full ? p : [...p, slug]));
+    setPicked((p) => (p.includes(slug) ? p.filter((x) => x !== slug) : full ? p : [...p, slug]));
   };
 
   return (
     <form action={action} className="fm-stack fm-stack--4">
       <div className="pick__counter fm-center">
-        <span className={`fm-badge ${full ? "fm-badge--leaf" : "fm-badge--sea"}`}>
-          בחרתם {picked.length} מתוך {want}
-        </span>
+        <span className={`fm-badge ${full ? "fm-badge--leaf" : "fm-badge--sea"}`}>{tf(s.counter, { picked: picked.length, want })}</span>
       </div>
-      <div className="picker" role="group" aria-label="עולמות">
-        {scenes.map((s) => {
-          const on = picked.includes(s.slug);
+      <div className="picker" role="group">
+        {scenes.map((sc) => {
+          const on = picked.includes(sc.slug);
           return (
-            <button key={s.slug} type="button" className={`fm-card fm-card--selectable pick${on ? " fm-card--selected" : ""}`} onClick={() => toggle(s.slug)} aria-pressed={on} disabled={!on && full}>
+            <button key={sc.slug} type="button" className={`fm-card fm-card--selectable pick${on ? " fm-card--selected" : ""}`} onClick={() => toggle(sc.slug)} aria-pressed={on} disabled={!on && full}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={s.thumbnail} alt="" />
+              <img src={sc.thumbnail} alt="" />
               <span className="pick__check" aria-hidden>
                 {on ? "✓" : ""}
               </span>
-              <span className="pick__name">{s.name}</span>
-              <span className="pick__tag">{s.tagline}</span>
+              <span className="pick__name">{sc.name}</span>
+              <span className="pick__tag">{sc.tagline}</span>
             </button>
           );
         })}
@@ -48,13 +50,13 @@ export function ScenePicker({ scenes, want, preselected }: { scenes: SceneOption
       {picked.map((slug) => (
         <input key={slug} type="hidden" name="scene" value={slug} />
       ))}
-      {state && !state.ok ? <p className="fm-error fm-center">{state.reason}</p> : null}
+      {state && !state.ok ? <p className="fm-error fm-center">{errorText(t, state)}</p> : null}
       <div className="create__actions">
         <LinkButton href="/create/package" variant="ghost">
-          ➜ חזרה
+          {t.common.back}
         </LinkButton>
         <Button type="submit" size="lg" loading={pending} disabled={!full}>
-          לסיכום ותשלום ➜
+          {s.next}
         </Button>
       </div>
     </form>

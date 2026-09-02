@@ -1,8 +1,14 @@
 {
   "id": "scene_volcano",
   "slug": "volcano",
-  "name": "אי הר הגעש",
-  "tagline": "דינוזאורים קטנים, כדור פורח וניצוצות צבעוניים.",
+  "name": {
+    "en": "Volcano Island",
+    "he": "אי הר הגעש"
+  },
+  "tagline": {
+    "en": "Baby dinosaurs, a hot-air balloon and colorful sparks.",
+    "he": "דינוזאורים קטנים, כדור פורח וניצוצות צבעוניים."
+  },
   "version": 1,
   "active": false,
   "artStatus": "placeholder",
@@ -11,7 +17,11 @@
     "height": 1000,
     "base": "/scenes/_placeholder/base.svg",
     "thumbnail": "/scenes/_placeholder/thumb.svg",
-    "palette": { "sky": "#FFE0B2", "ground": "#6D4C41", "accent": "#F25C7A" }
+    "palette": {
+      "sky": "#FFE0B2",
+      "ground": "#6D4C41",
+      "accent": "#F25C7A"
+    }
   },
   "targets": [
     {
@@ -19,13 +29,60 @@
       "targetType": "volcano_helmet",
       "bodyTemplate": "volcano_helmet",
       "difficulty": 1,
-      "mission": "מצאו את {name} עם קסדת חוקר",
-      "item": "קסדת חוקר",
-      "success": ["חם פה… אבל מצאתם אותי!", "חוקרים לא מתחבאים טוב!", "מצאתם! גיליתי אבן נוצצת!"],
+      "mission": {
+        "en": "Find {name} in an explorer's helmet",
+        "he": "מצאו את {name} עם קסדת חוקר"
+      },
+      "item": {
+        "en": "an explorer's helmet",
+        "he": "קסדת חוקר"
+      },
+      "success": [
+        {
+          "en": "It's hot here… but you found me!",
+          "he": "חם פה… אבל מצאתם אותי!"
+        },
+        {
+          "en": "Explorers aren't good at hiding!",
+          "he": "חוקרים לא מתחבאים טוב!"
+        },
+        {
+          "en": "You found me! I discovered a shiny gem!",
+          "he": "מצאתם! גיליתי אבן נוצצת!"
+        }
+      ],
       "animation": "jump",
       "slots": [
-        { "id": "volcano_helmet_a", "x": 0.3, "y": 0.7, "scale": 0.07, "hintZone": { "x": 0.3, "y": 0.7, "r": 0.1 }, "hintText": "חפשו ליד הסלעים הגדולים." },
-        { "id": "volcano_helmet_b", "x": 0.7, "y": 0.6, "scale": 0.07, "hintZone": { "x": 0.7, "y": 0.6, "r": 0.1 }, "hintText": "חפשו ליד המערה." }
+        {
+          "id": "volcano_helmet_a",
+          "x": 0.3,
+          "y": 0.7,
+          "scale": 0.07,
+          "hintZone": {
+            "x": 0.3,
+            "y": 0.7,
+            "r": 0.1
+          },
+          "hintText": {
+            "en": "Look near the big rocks.",
+            "he": "חפשו ליד הסלעים הגדולים."
+          }
+        },
+        {
+          "id": "volcano_helmet_b",
+          "x": 0.7,
+          "y": 0.6,
+          "scale": 0.07,
+          "hintZone": {
+            "x": 0.7,
+            "y": 0.6,
+            "r": 0.1
+          },
+          "hintText": {
+            "en": "Look near the cave.",
+            "he": "חפשו ליד המערה."
+          }
+        }
       ]
     },
     {
@@ -33,13 +90,60 @@
       "targetType": "volcano_egg",
       "bodyTemplate": "volcano_egg",
       "difficulty": 2,
-      "mission": "מצאו את {name} ליד ביצת דינוזאור",
-      "item": "ביצת דינוזאור",
-      "success": ["ששש… הביצה עומדת לבקוע!", "מצאתם! הדינוזאור הקטן אמר שלום!", "הביצה הזאת ענקית!"],
+      "mission": {
+        "en": "Find {name} next to a dinosaur egg",
+        "he": "מצאו את {name} ליד ביצת דינוזאור"
+      },
+      "item": {
+        "en": "a dinosaur egg",
+        "he": "ביצת דינוזאור"
+      },
+      "success": [
+        {
+          "en": "Shhh… the egg is about to hatch!",
+          "he": "ששש… הביצה עומדת לבקוע!"
+        },
+        {
+          "en": "You found me! The baby dino said hi!",
+          "he": "מצאתם! הדינוזאור הקטן אמר שלום!"
+        },
+        {
+          "en": "This egg is enormous!",
+          "he": "הביצה הזאת ענקית!"
+        }
+      ],
       "animation": "wiggle",
       "slots": [
-        { "id": "volcano_egg_a", "x": 0.5, "y": 0.85, "scale": 0.06, "hintZone": { "x": 0.5, "y": 0.85, "r": 0.1 }, "hintText": "חפשו ליד הקן." },
-        { "id": "volcano_egg_b", "x": 0.15, "y": 0.88, "scale": 0.06, "hintZone": { "x": 0.15, "y": 0.88, "r": 0.1 }, "hintText": "חפשו ליד הדקלים." }
+        {
+          "id": "volcano_egg_a",
+          "x": 0.5,
+          "y": 0.85,
+          "scale": 0.06,
+          "hintZone": {
+            "x": 0.5,
+            "y": 0.85,
+            "r": 0.1
+          },
+          "hintText": {
+            "en": "Look near the nest.",
+            "he": "חפשו ליד הקן."
+          }
+        },
+        {
+          "id": "volcano_egg_b",
+          "x": 0.15,
+          "y": 0.88,
+          "scale": 0.06,
+          "hintZone": {
+            "x": 0.15,
+            "y": 0.88,
+            "r": 0.1
+          },
+          "hintText": {
+            "en": "Look near the palm trees.",
+            "he": "חפשו ליד הדקלים."
+          }
+        }
       ]
     },
     {
@@ -47,21 +151,118 @@
       "targetType": "volcano_balloon",
       "bodyTemplate": "volcano_balloon",
       "difficulty": 3,
-      "mission": "מצאו את {name} בתוך כדור פורח מעל האי",
-      "item": "כדור פורח",
-      "success": ["מלמעלה האי נראה קטנטן!", "עיני נץ!", "הכדור הפורח שלי הכי גבוה!"],
+      "mission": {
+        "en": "Find {name} in a hot-air balloon above the island",
+        "he": "מצאו את {name} בתוך כדור פורח מעל האי"
+      },
+      "item": {
+        "en": "a hot-air balloon",
+        "he": "כדור פורח"
+      },
+      "success": [
+        {
+          "en": "From up here the island looks tiny!",
+          "he": "מלמעלה האי נראה קטנטן!"
+        },
+        {
+          "en": "Eagle eyes!",
+          "he": "עיני נץ!"
+        },
+        {
+          "en": "My balloon is the highest!",
+          "he": "הכדור הפורח שלי הכי גבוה!"
+        }
+      ],
       "animation": "float",
       "slots": [
-        { "id": "volcano_balloon_a", "x": 0.8, "y": 0.2, "scale": 0.05, "layer": "behindForeground", "hintZone": { "x": 0.8, "y": 0.2, "r": 0.09 }, "hintText": "חפשו בשמיים." },
-        { "id": "volcano_balloon_b", "x": 0.2, "y": 0.15, "scale": 0.05, "layer": "behindForeground", "flip": true, "hintZone": { "x": 0.2, "y": 0.15, "r": 0.09 }, "hintText": "חפשו ליד הענן." }
+        {
+          "id": "volcano_balloon_a",
+          "x": 0.8,
+          "y": 0.2,
+          "scale": 0.05,
+          "layer": "behindForeground",
+          "hintZone": {
+            "x": 0.8,
+            "y": 0.2,
+            "r": 0.09
+          },
+          "hintText": {
+            "en": "Look in the sky.",
+            "he": "חפשו בשמיים."
+          }
+        },
+        {
+          "id": "volcano_balloon_b",
+          "x": 0.2,
+          "y": 0.15,
+          "scale": 0.05,
+          "layer": "behindForeground",
+          "flip": true,
+          "hintZone": {
+            "x": 0.2,
+            "y": 0.15,
+            "r": 0.09
+          },
+          "hintText": {
+            "en": "Look near the cloud.",
+            "he": "חפשו ליד הענן."
+          }
+        }
       ]
     }
   ],
   "ambient": [
-    { "id": "heart_smoke", "label": "עשן בצורת לב", "x": 0.5, "y": 0.1, "w": 0.08, "h": 0.1, "animation": "float", "sound": "whoosh", "reaction": "פוף! לב!", "glyph": "💨" },
-    { "id": "dino_hatch", "label": "דינוזאור בוקע", "x": 0.55, "y": 0.9, "w": 0.06, "h": 0.06, "animation": "pop", "sound": "boing", "reaction": "רואר קטן!", "glyph": "🦕" }
+    {
+      "id": "heart_smoke",
+      "label": {
+        "en": "Heart-shaped smoke",
+        "he": "עשן בצורת לב"
+      },
+      "x": 0.5,
+      "y": 0.1,
+      "w": 0.08,
+      "h": 0.1,
+      "animation": "float",
+      "sound": "whoosh",
+      "reaction": {
+        "en": "Poof! A heart!",
+        "he": "פוף! לב!"
+      },
+      "glyph": "💨"
+    },
+    {
+      "id": "dino_hatch",
+      "label": {
+        "en": "Hatching dinosaur",
+        "he": "דינוזאור בוקע"
+      },
+      "x": 0.55,
+      "y": 0.9,
+      "w": 0.06,
+      "h": 0.06,
+      "animation": "pop",
+      "sound": "boing",
+      "reaction": {
+        "en": "A tiny roar!",
+        "he": "רואר קטן!"
+      },
+      "glyph": "🦕"
+    }
   ],
-  "celebration": { "kind": "sparkles", "completeText": "מצאתם את {name} שלוש פעמים באי הר הגעש!" },
-  "collectible": { "id": "gem", "name": "אבן נוצצת", "icon": "💎" },
+  "celebration": {
+    "kind": "sparkles",
+    "completeText": {
+      "en": "You found {name} three times on Volcano Island!",
+      "he": "מצאתם את {name} שלוש פעמים באי הר הגעש!"
+    }
+  },
+  "collectible": {
+    "id": "gem",
+    "name": {
+      "en": "A shiny gem",
+      "he": "אבן נוצצת"
+    },
+    "icon": "💎"
+  },
   "sounds": {}
 }

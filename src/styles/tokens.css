@@ -1,10 +1,11 @@
 /* ─────────────────────────────────────────────────────────────
-   איפה אני? — Design tokens ("Storybook Collage")
-   Everything on an 8px grid. Components consume tokens only —
-   no magic numbers in component CSS.
+   איפה אני? — Design tokens · "Playful Premium"
+   8px grid everywhere. Components consume tokens only.
+   Two audiences share one system: parents buy (clean, confident,
+   premium), kids play (big, bright, immediate).
    ───────────────────────────────────────────────────────────── */
 :root {
-  /* Spacing — 8pt grid. --space-0-5 (4px) is reserved for icon/text nudges. */
+  /* Spacing — 8pt grid. --space-0-5 (4px) only for icon/text nudges. */
   --space-0-5: 4px;
   --space-1: 8px;
   --space-2: 16px;
@@ -16,51 +17,71 @@
   --space-10: 80px;
   --space-12: 96px;
   --space-16: 128px;
+  --space-20: 160px;
 
-  /* Radii — paper cut-outs are soft, never sharp. */
+  /* Radii */
   --radius-1: 8px;
   --radius-2: 16px;
   --radius-3: 24px;
   --radius-4: 32px;
+  --radius-5: 48px;
   --radius-pill: 999px;
 
   /* Sizes */
-  --touch-min: 48px;   /* adult UI */
-  --touch-kid: 64px;   /* anything a child taps */
+  --touch-min: 48px;
+  --touch-kid: 64px;
   --control-h: 56px;
   --control-h-sm: 40px;
-  --container: 1120px;
-  --container-narrow: 640px;
+  --container: 1440px;
+  --container-narrow: 720px;
+  --container-text: 880px;
+  --gutter: 24px;
   --measure: 60ch;
 
-  /* Paper & ink */
-  --paper: #fff8ec;
-  --paper-2: #fbefd9;
-  --paper-3: #f3e3c3;
+  /* Ground & ink */
+  --paper: #fbf8f2;
+  --paper-2: #f4eee3;
+  --paper-3: #ebe2d0;
   --white: #ffffff;
-  --ink: #2b2a33;
-  --ink-2: #5b5868;
-  --ink-3: #8a8798;
-  --ink-4: #c4c2cc;
-  --line: #ecdfc4;
+  --ink: #17162b;
+  --ink-2: #4b4a63;
+  --ink-3: #807e96;
+  --ink-4: #cbc9d8;
+  --line: #e9e3d8;
 
-  /* Brand gouache */
-  --sun: #ffb61e;
-  --sun-deep: #e39a00;
-  --sun-soft: #ffe9b8;
-  --sea: #2fa4d6;
-  --sea-deep: #1b6fa8;
-  --sea-soft: #cfefFB;
+  /* Night (dramatic sections, the demo stage) */
+  --night: #14173a;
+  --night-2: #1f2359;
+  --night-3: #2b2f73;
+
+  /* Brand gouache — saturated, warm, happy */
+  --sun: #ffc53d;
+  --sun-deep: #f2a900;
+  --sun-soft: #fff0c2;
+  --coral: #ff6b6b;
+  --coral-deep: #e04e4e;
+  --coral-soft: #ffdcdc;
   --berry: #f25c7a;
   --berry-deep: #c93a58;
   --berry-soft: #ffd6df;
+  --aqua: #2ed3c3;
+  --aqua-deep: #14a99b;
+  --aqua-soft: #d3f7f2;
+  --sea: #2fa4d6;
+  --sea-deep: #1b6fa8;
+  --sea-soft: #d6effb;
+  --lime: #b8f26b;
+  --lime-deep: #7fcb2b;
+  --lime-soft: #eafbd3;
+  --lavender: #c4b5fd;
+  --lavender-deep: #8b6cf6;
+  --lavender-soft: #ece6ff;
+  --grape: #8c6bd9;
+  --grape-soft: #e6ddf8;
   --leaf: #5bbf6b;
   --leaf-deep: #3e8e4e;
   --leaf-soft: #d9f3dd;
-  --grape: #8c6bd9;
-  --grape-soft: #e6ddf8;
   --sand: #f7d9a0;
-  --night: #1b1f4b;
 
   /* Semantic */
   --success: #3faf6e;
@@ -68,26 +89,39 @@
   --warning: #e39a00;
   --focus: #1b6fa8;
 
-  /* Shadows — cut paper lifted off the page */
-  --shadow-1: 0 2px 0 rgba(43, 42, 51, 0.06), 0 4px 12px rgba(43, 42, 51, 0.08);
-  --shadow-2: 0 4px 0 rgba(43, 42, 51, 0.06), 0 12px 32px rgba(43, 42, 51, 0.12);
-  --shadow-3: 0 8px 0 rgba(43, 42, 51, 0.06), 0 24px 48px rgba(43, 42, 51, 0.16);
-  --shadow-sticker: 0 4px 10px rgba(43, 42, 51, 0.22);
+  /* Gradients */
+  --grad-sun: linear-gradient(135deg, #ffd86b 0%, #ffb020 100%);
+  --grad-coral: linear-gradient(135deg, #ff8a80 0%, #ff5c7a 100%);
+  --grad-aqua: linear-gradient(135deg, #5ee7d6 0%, #2fa4d6 100%);
+  --grad-lavender: linear-gradient(135deg, #d9cdff 0%, #a78bfa 100%);
+  --grad-night: linear-gradient(160deg, #1f2359 0%, #14173a 60%, #0f1130 100%);
+  --grad-rainbow: linear-gradient(90deg, #ffc53d, #ff6b6b, #c4b5fd, #2ed3c3, #b8f26b);
+
+  /* Shadows — soft, layered, premium */
+  --shadow-1: 0 1px 2px rgba(23, 22, 43, 0.04), 0 8px 24px rgba(23, 22, 43, 0.06);
+  --shadow-2: 0 2px 4px rgba(23, 22, 43, 0.05), 0 16px 48px rgba(23, 22, 43, 0.1);
+  --shadow-3: 0 4px 8px rgba(23, 22, 43, 0.06), 0 32px 80px rgba(23, 22, 43, 0.18);
+  --shadow-glow-sun: 0 12px 32px rgba(255, 197, 61, 0.45);
+  --shadow-glow-coral: 0 12px 32px rgba(255, 107, 107, 0.4);
+  --shadow-sticker: 0 6px 16px rgba(23, 22, 43, 0.22);
   --sticker-outline: 0 0 0 4px var(--white);
 
-  /* Typography — sizes sit on the 8px baseline */
-  --font-display: var(--font-fredoka), "Rubik", "Heebo", system-ui, sans-serif;
+  /* Typography — Rubik for the site (400–900), Fredoka for kid UI */
+  --font-display: var(--font-rubik), "Heebo", system-ui, sans-serif;
   --font-body: var(--font-rubik), "Heebo", system-ui, sans-serif;
+  --font-kid: var(--font-fredoka), var(--font-rubik), system-ui, sans-serif;
+  --fs-50: 12px;  --lh-50: 16px;
   --fs-100: 14px; --lh-100: 24px;
   --fs-200: 16px; --lh-200: 24px;
   --fs-300: 20px; --lh-300: 32px;
   --fs-400: 24px; --lh-400: 32px;
   --fs-500: 32px; --lh-500: 40px;
   --fs-600: 40px; --lh-600: 48px;
-  --fs-700: 56px; --lh-700: 64px;
-  --fs-800: 72px; --lh-800: 80px;
+  --fs-700: 48px; --lh-700: 56px;
+  --fs-800: 64px; --lh-800: 72px;
+  --fs-900: 88px; --lh-900: 96px;
 
-  /* Motion — snappy, springy, short */
+  /* Motion */
   --ease-pop: cubic-bezier(0.34, 1.56, 0.64, 1);
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
@@ -103,10 +137,27 @@
   --z-toast: 200;
 }
 
-@media (max-width: 720px) {
+@media (min-width: 960px) {
   :root {
-    --fs-600: 32px; --lh-600: 40px;
-    --fs-700: 40px; --lh-700: 48px;
+    --gutter: 48px;
+  }
+}
+
+@media (max-width: 960px) {
+  :root {
+    --fs-900: 56px; --lh-900: 64px;
     --fs-800: 48px; --lh-800: 56px;
+    --fs-700: 40px; --lh-700: 48px;
+    --fs-600: 32px; --lh-600: 40px;
+  }
+}
+
+@media (max-width: 600px) {
+  :root {
+    --fs-900: 44px; --lh-900: 48px;
+    --fs-800: 36px; --lh-800: 40px;
+    --fs-700: 32px; --lh-700: 40px;
+    --fs-600: 28px; --lh-600: 32px;
+    --fs-500: 24px; --lh-500: 32px;
   }
 }

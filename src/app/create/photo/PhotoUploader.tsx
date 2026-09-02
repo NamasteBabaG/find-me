@@ -3,21 +3,25 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, LinkButton } from "@/ui/Button";
-import { Notice } from "@/ui/Shell";
+import { Notice } from "@/ui/primitives";
+import { useI18n } from "@/i18n/client";
+import { errorText } from "@/i18n/errors";
 
 interface Props {
   childName: string;
   hasPhoto: boolean;
-  rejectedReason: string | null;
+  rejectedCode: string | null;
 }
 
-const TIPS = ["😊 פנים ברורות", "☀️ תאורה טובה", "🧍 אדם אחד בתמונה", "🧢 בלי כובע שמסתיר", "📸 מהכתפיים ומעלה"];
+const BOX = 320;
 
 /**
  * Pick → crop (drag + zoom inside a circle) → upload.
  * The crop is sent as a normalized box; the server makes the sticker.
  */
-export function PhotoUploader({ childName, hasPhoto, rejectedReason }: Props) {
+export function PhotoUploader({ childName, hasPhoto, rejectedCode }: Props) {
+  const { t, tf } = useI18n();
+  const p = t.create.photo;
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [url, setUrl] = useState<string | null>(null);
@@ -25,10 +29,9 @@ export function PhotoUploader({ childName, hasPhoto, rejectedReason }: Props) {
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(rejectedReason);
+  const [error, setError] = useState<string | null>(rejectedCode ? errorText(t, { code: rejectedCode }) : null);
   const [over, setOver] = useState(false);
   const drag = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
-  const BOX = 320;
 
   useEffect(() => () => {
     if (url) URL.revokeObjectURL(url);
@@ -37,7 +40,7 @@ export function PhotoUploader({ childName, hasPhoto, rejectedReason }: Props) {
   const pick = (f: File | undefined) => {
     if (!f) return;
     if (!f.type.startsWith("image/")) {
-      setError("אפשר להעלות JPG, PNG או WebP.");
+      setError(p.badType);
       return;
     }
     setError(null);
@@ -53,10 +56,7 @@ export function PhotoUploader({ childName, hasPhoto, rejectedReason }: Props) {
   const drawW = natural ? natural.w * scale : 0;
   const drawH = natural ? natural.h * scale : 0;
   const clampOffset = useCallback(
-    (o: { x: number; y: number }) => ({
-      x: Math.min(0, Math.max(BOX - drawW, o.x)),
-      y: Math.min(0, Math.max(BOX - drawH, o.y)),
-    }),
+    (o: { x: number; y: number }) => ({ x: Math.min(0, Math.max(BOX - drawW, o.x)), y: Math.min(0, Math.max(BOX - drawH, o.y)) }),
     [drawW, drawH],
   );
 
@@ -79,22 +79,21 @@ export function PhotoUploader({ childName, hasPhoto, rejectedReason }: Props) {
     if (!file || !natural) return;
     setBusy(true);
     setError(null);
-    // Visible circle in image pixels → normalized crop box.
     const crop = { x: -offset.x / scale / natural.w, y: -offset.y / scale / natural.h, w: BOX / scale / natural.w, h: BOX / scale / natural.h };
     const fd = new FormData();
     fd.append("file", file);
     fd.append("crop", JSON.stringify(crop));
     try {
       const res = await fetch("/api/drafts/photo", { method: "POST", body: fd });
-      const data = (await res.json()) as { ok: boolean; reason?: string };
+      const data = (await res.json()) as { ok: boolean; code?: string; reason?: string };
       if (!data.ok) {
-        setError(data.reason ?? "משהו השתבש. נסו תמונה אחרת.");
+        setError(errorText(t, { code: data.code ?? "UPLOAD_FAILED", reason: data.reason }) || p.failed);
         setBusy(false);
         return;
       }
       router.push("/create/package");
     } catch {
-      setError("החיבור נכשל. נסו שוב.");
+      setError(p.network);
       setBusy(false);
     }
   };
@@ -121,27 +120,27 @@ export function PhotoUploader({ childName, hasPhoto, rejectedReason }: Props) {
             <span className="dropzone__icon" aria-hidden>
               📷
             </span>
-            <span className="fm-label">בוחרים תמונה של {childName}</span>
-            <span className="fm-hint">JPG, PNG או WebP · עד 12MB · אפשר גם לגרור לכאן</span>
+            <span className="fm-label">{tf(p.pick, { name: childName })}</span>
+            <span className="fm-hint">{p.pickHint}</span>
             <input type="file" accept="image/jpeg,image/png,image/webp" className="visually-hidden" onChange={(e) => pick(e.target.files?.[0])} />
-            <span className="fm-btn fm-btn--secondary">בחירת תמונה</span>
+            <span className="fm-btn fm-btn--secondary">{p.pickButton}</span>
           </label>
-          <ul className="tips" aria-label="טיפים לתמונה טובה">
-            {TIPS.map((t) => (
-              <li key={t}>{t}</li>
+          <ul className="tips">
+            {p.tips.map((tip) => (
+              <li key={tip}>{tip}</li>
             ))}
           </ul>
           {hasPhoto ? (
             <div className="create__actions" style={{ width: "100%" }}>
-              <Notice kind="success">כבר יש תמונה מאושרת. אפשר להחליף או להמשיך.</Notice>
-              <LinkButton href="/create/package">ממשיכים ➜</LinkButton>
+              <Notice kind="success">{p.hasPhoto}</Notice>
+              <LinkButton href="/create/package">{t.common.continue} ➜</LinkButton>
             </div>
           ) : null}
         </>
       ) : (
         <>
-          <p className="fm-lead fm-center">מזיזים ומגדילים כך שהפנים ימלאו את העיגול.</p>
-          <div className="cropper" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} role="img" aria-label="חיתוך התמונה">
+          <p className="fm-lead fm-center">{p.cropLead}</p>
+          <div className="cropper" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} role="img" aria-label={p.cropAria}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={url}
@@ -153,7 +152,7 @@ export function PhotoUploader({ childName, hasPhoto, rejectedReason }: Props) {
             <div className="cropper__ring" aria-hidden />
           </div>
           <label className="fm-field" style={{ alignItems: "center" }}>
-            <span className="fm-hint">הגדלה</span>
+            <span className="fm-hint">{p.zoom}</span>
             <input type="range" className="cropper__zoom" min={1} max={3} step={0.01} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} />
           </label>
           <div className="create__actions" style={{ width: "100%" }}>
@@ -166,15 +165,15 @@ export function PhotoUploader({ childName, hasPhoto, rejectedReason }: Props) {
                 setNatural(null);
               }}
             >
-              תמונה אחרת
+              {p.another}
             </Button>
             <Button size="lg" onClick={upload} loading={busy} disabled={!natural}>
-              זו התמונה ➜
+              {p.confirm}
             </Button>
           </div>
         </>
       )}
-      <p className="fm-small fm-center">התמונה משמשת רק ליצירת הדמות ונמחקת אחרי אישור המשחק.</p>
+      <p className="fm-small fm-center">{p.privacy}</p>
     </div>
   );
 }

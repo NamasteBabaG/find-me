@@ -14,6 +14,7 @@
 8. **Analytics ללא PII.** רק מפתחות מ־`ALLOWED_PROPS`. לא שם ילד, לא מייל.
 9. **חוק ה־8 וטוקנים בלבד** ב־CSS. מינימום 48px למבוגר, 64px לילד. לילד אין X אדום, אין "נסו שוב", אין חנות.
 10. **עברית ניטרלית מגדרית** בקופי (״מצאו את {name}״, הילד מדבר בגוף ראשון).
+11. **אין טקסט קשיח לצרכן.** כל מחרוזת עוברת דרך `src/i18n` (en = מקור האמת, he מוקלד לפי `Dictionary`). שגיאות משירותים חוזרות כקודים (`FlowErrorCode`). ראה `docs/I18N.md`.
 
 ## לפני commit
 
@@ -25,7 +26,8 @@ npm run scenes:validate # אם נגעת בסצנות
 ## מפת תיקיות
 
 ```
-content/scenes/*       הגדרות עולמות (JSON) + catalog loader
+content/scenes/*       הגדרות עולמות (JSON דו־לשוני) + catalog loader
+src/i18n               מילונים en/he, cookie שפה, מתג, קודי שגיאה
 content/body-templates גופים לדמות המורכבת
 public/scenes/*        ארט (base/foreground/thumb)
 prisma/schema.prisma   DB (SQLite dev / Postgres prod; ללא enums/Json בכוונה)

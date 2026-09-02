@@ -1,8 +1,14 @@
 {
   "id": "scene_jungle",
   "slug": "jungle",
-  "name": "הג׳ונגל",
-  "tagline": "עלים ענקיים, קופים שובבים ונהר שקט.",
+  "name": {
+    "en": "The Jungle",
+    "he": "הג׳ונגל"
+  },
+  "tagline": {
+    "en": "Giant leaves, cheeky monkeys and a quiet river.",
+    "he": "עלים ענקיים, קופים שובבים ונהר שקט."
+  },
   "version": 1,
   "active": true,
   "artStatus": "placeholder",
@@ -12,11 +18,23 @@
     "base": "/scenes/jungle/base.svg",
     "foreground": "/scenes/jungle/foreground.svg",
     "thumbnail": "/scenes/jungle/thumb.svg",
-    "palette": { "sky": "#DDF3D5", "ground": "#3E8E4E", "accent": "#FFB61E" }
+    "palette": {
+      "sky": "#DDF3D5",
+      "ground": "#3E8E4E",
+      "accent": "#FFB61E"
+    }
   },
   "intro": {
-    "from": { "x": 0.6, "y": 0.4, "zoom": 1.5 },
-    "to": { "x": 0.5, "y": 0.5, "zoom": 1 },
+    "from": {
+      "x": 0.6,
+      "y": 0.4,
+      "zoom": 1.5
+    },
+    "to": {
+      "x": 0.5,
+      "y": 0.5,
+      "zoom": 1
+    },
     "durationMs": 1600
   },
   "targets": [
@@ -25,13 +43,60 @@
       "targetType": "jungle_binoculars",
       "bodyTemplate": "jungle_binoculars",
       "difficulty": 1,
-      "mission": "מצאו את {name} עם משקפת",
-      "item": "משקפת",
-      "success": ["ששש… כמעט הערתם את הקוף!", "ראיתי אתכם במשקפת!", "מצאתם אותי בין העצים!"],
+      "mission": {
+        "en": "Find {name} with binoculars",
+        "he": "מצאו את {name} עם משקפת"
+      },
+      "item": {
+        "en": "binoculars",
+        "he": "משקפת"
+      },
+      "success": [
+        {
+          "en": "Shhh… you almost woke the monkey!",
+          "he": "ששש… כמעט הערתם את הקוף!"
+        },
+        {
+          "en": "I saw you through the binoculars!",
+          "he": "ראיתי אתכם במשקפת!"
+        },
+        {
+          "en": "You found me among the trees!",
+          "he": "מצאתם אותי בין העצים!"
+        }
+      ],
       "animation": "wave",
       "slots": [
-        { "id": "jungle_bino_a", "x": 0.3, "y": 0.56, "scale": 0.075, "hintZone": { "x": 0.3, "y": 0.55, "r": 0.1 }, "hintText": "חפשו על גזע עץ שנפל." },
-        { "id": "jungle_bino_b", "x": 0.74, "y": 0.42, "scale": 0.07, "hintZone": { "x": 0.74, "y": 0.42, "r": 0.1 }, "hintText": "חפשו גבוה, ליד הגשר." }
+        {
+          "id": "jungle_bino_a",
+          "x": 0.3,
+          "y": 0.56,
+          "scale": 0.075,
+          "hintZone": {
+            "x": 0.3,
+            "y": 0.55,
+            "r": 0.1
+          },
+          "hintText": {
+            "en": "Look on a fallen tree trunk.",
+            "he": "חפשו על גזע עץ שנפל."
+          }
+        },
+        {
+          "id": "jungle_bino_b",
+          "x": 0.74,
+          "y": 0.42,
+          "scale": 0.07,
+          "hintZone": {
+            "x": 0.74,
+            "y": 0.42,
+            "r": 0.1
+          },
+          "hintText": {
+            "en": "Look up high, near the bridge.",
+            "he": "חפשו גבוה, ליד הגשר."
+          }
+        }
       ]
     },
     {
@@ -39,13 +104,60 @@
       "targetType": "jungle_boat",
       "bodyTemplate": "jungle_boat",
       "difficulty": 2,
-      "mission": "מצאו את {name} בתוך סירה קטנה",
-      "item": "סירה",
-      "success": ["שטתי לכם ממש מתחת לאף!", "הנהר לקח אותי רחוק… אבל מצאתם!", "אהוי! מצאתם אותי!"],
+      "mission": {
+        "en": "Find {name} in a little boat",
+        "he": "מצאו את {name} בתוך סירה קטנה"
+      },
+      "item": {
+        "en": "a boat",
+        "he": "סירה"
+      },
+      "success": [
+        {
+          "en": "I sailed right under your nose!",
+          "he": "שטתי לכם ממש מתחת לאף!"
+        },
+        {
+          "en": "The river took me far… but you found me!",
+          "he": "הנהר לקח אותי רחוק… אבל מצאתם!"
+        },
+        {
+          "en": "Ahoy! You found me!",
+          "he": "אהוי! מצאתם אותי!"
+        }
+      ],
       "animation": "float",
       "slots": [
-        { "id": "jungle_boat_a", "x": 0.56, "y": 0.8, "scale": 0.06, "hintZone": { "x": 0.55, "y": 0.8, "r": 0.1 }, "hintText": "חפשו על המים." },
-        { "id": "jungle_boat_b", "x": 0.2, "y": 0.86, "scale": 0.06, "hintZone": { "x": 0.2, "y": 0.86, "r": 0.1 }, "hintText": "חפשו איפה שהנהר מתעקל." }
+        {
+          "id": "jungle_boat_a",
+          "x": 0.56,
+          "y": 0.8,
+          "scale": 0.06,
+          "hintZone": {
+            "x": 0.55,
+            "y": 0.8,
+            "r": 0.1
+          },
+          "hintText": {
+            "en": "Look on the water.",
+            "he": "חפשו על המים."
+          }
+        },
+        {
+          "id": "jungle_boat_b",
+          "x": 0.2,
+          "y": 0.86,
+          "scale": 0.06,
+          "hintZone": {
+            "x": 0.2,
+            "y": 0.86,
+            "r": 0.1
+          },
+          "hintText": {
+            "en": "Look where the river bends.",
+            "he": "חפשו איפה שהנהר מתעקל."
+          }
+        }
       ]
     },
     {
@@ -53,32 +165,165 @@
       "targetType": "jungle_leaf_peek",
       "bodyTemplate": "jungle_leaf_peek",
       "difficulty": 3,
-      "mission": "מצאו את {name} מסתתר/ת מאחורי עלה ענק",
-      "item": "עלה ענק",
-      "success": ["העלה הזה ענק, אבל אתם עיני נץ!", "אוי, העלה זז…", "לא הצלחתי להתחבא מכם!"],
+      "mission": {
+        "en": "Find {name} hiding behind a giant leaf",
+        "he": "מצאו את {name} מסתתר/ת מאחורי עלה ענק"
+      },
+      "item": {
+        "en": "a giant leaf",
+        "he": "עלה ענק"
+      },
+      "success": [
+        {
+          "en": "That leaf is huge, but you've got eagle eyes!",
+          "he": "העלה הזה ענק, אבל אתם עיני נץ!"
+        },
+        {
+          "en": "Oops, the leaf moved…",
+          "he": "אוי, העלה זז…"
+        },
+        {
+          "en": "I couldn't hide from you!",
+          "he": "לא הצלחתי להתחבא מכם!"
+        }
+      ],
       "animation": "peek",
       "slots": [
-        { "id": "jungle_leaf_a", "x": 0.85, "y": 0.77, "scale": 0.055, "layer": "behindForeground", "hintZone": { "x": 0.85, "y": 0.75, "r": 0.09 }, "hintText": "חפשו ליד העלה הכי גדול." },
-        { "id": "jungle_leaf_b", "x": 0.12, "y": 0.62, "scale": 0.055, "layer": "behindForeground", "flip": true, "hintZone": { "x": 0.12, "y": 0.6, "r": 0.09 }, "hintText": "חפשו ליד עלה שמישהו מציץ ממנו." }
+        {
+          "id": "jungle_leaf_a",
+          "x": 0.85,
+          "y": 0.77,
+          "scale": 0.055,
+          "layer": "behindForeground",
+          "hintZone": {
+            "x": 0.85,
+            "y": 0.75,
+            "r": 0.09
+          },
+          "hintText": {
+            "en": "Look near the biggest leaf.",
+            "he": "חפשו ליד העלה הכי גדול."
+          }
+        },
+        {
+          "id": "jungle_leaf_b",
+          "x": 0.12,
+          "y": 0.62,
+          "scale": 0.055,
+          "layer": "behindForeground",
+          "flip": true,
+          "hintZone": {
+            "x": 0.12,
+            "y": 0.6,
+            "r": 0.09
+          },
+          "hintText": {
+            "en": "Look for a leaf someone is peeking from.",
+            "he": "חפשו ליד עלה שמישהו מציץ ממנו."
+          }
+        }
       ]
     }
   ],
   "ambient": [
-    { "id": "monkey_banana", "label": "קוף זורק בננה", "x": 0.6, "y": 0.26, "w": 0.06, "h": 0.08, "animation": "shake", "sound": "boing", "reaction": "אופס! בננה!", "glyph": "🐒" },
-    { "id": "bush_eyes", "label": "עיניים בשיח", "x": 0.4, "y": 0.68, "w": 0.06, "h": 0.05, "animation": "blink", "sound": "pop", "reaction": "מי שם?!", "glyph": "👀" }
+    {
+      "id": "monkey_banana",
+      "label": {
+        "en": "Monkey throwing a banana",
+        "he": "קוף זורק בננה"
+      },
+      "x": 0.6,
+      "y": 0.26,
+      "w": 0.06,
+      "h": 0.08,
+      "animation": "shake",
+      "sound": "boing",
+      "reaction": {
+        "en": "Oops! Banana!",
+        "he": "אופס! בננה!"
+      },
+      "glyph": "🐒"
+    },
+    {
+      "id": "bush_eyes",
+      "label": {
+        "en": "Eyes in the bush",
+        "he": "עיניים בשיח"
+      },
+      "x": 0.4,
+      "y": 0.68,
+      "w": 0.06,
+      "h": 0.05,
+      "animation": "blink",
+      "sound": "pop",
+      "reaction": {
+        "en": "Who's there?!",
+        "he": "מי שם?!"
+      },
+      "glyph": "👀"
+    }
   ],
   "bonus": {
     "id": "zik",
-    "name": "זיק",
+    "name": {
+      "en": "Zik",
+      "he": "זיק"
+    },
     "sprite": "/scenes/shared/zik.svg",
     "scale": 0.035,
-    "prompt": "רוצים למצוא גם את זיק?",
+    "prompt": {
+      "en": "Want to find Zik too?",
+      "he": "רוצים למצוא גם את זיק?"
+    },
     "slots": [
-      { "id": "jungle_zik_a", "x": 0.5, "y": 0.2, "scale": 0.035, "hintZone": { "x": 0.5, "y": 0.2, "r": 0.06 }, "hintText": "זיק מרחף בין הצמרות." },
-      { "id": "jungle_zik_b", "x": 0.92, "y": 0.55, "scale": 0.035, "hintZone": { "x": 0.92, "y": 0.55, "r": 0.06 }, "hintText": "זיק בצד של הגשר." }
+      {
+        "id": "jungle_zik_a",
+        "x": 0.5,
+        "y": 0.2,
+        "scale": 0.035,
+        "hintZone": {
+          "x": 0.5,
+          "y": 0.2,
+          "r": 0.06
+        },
+        "hintText": {
+          "en": "Zik hovers among the treetops.",
+          "he": "זיק מרחף בין הצמרות."
+        }
+      },
+      {
+        "id": "jungle_zik_b",
+        "x": 0.92,
+        "y": 0.55,
+        "scale": 0.035,
+        "hintZone": {
+          "x": 0.92,
+          "y": 0.55,
+          "r": 0.06
+        },
+        "hintText": {
+          "en": "Zik is by the bridge.",
+          "he": "זיק בצד של הגשר."
+        }
+      }
     ]
   },
-  "celebration": { "kind": "leaves", "completeText": "מצאתם את {name} שלוש פעמים בג׳ונגל!" },
-  "collectible": { "id": "leaf", "name": "עלה מהג׳ונגל", "icon": "🍃" },
-  "sounds": { "ambient": "jungle" }
+  "celebration": {
+    "kind": "leaves",
+    "completeText": {
+      "en": "You found {name} three times in the jungle!",
+      "he": "מצאתם את {name} שלוש פעמים בג׳ונגל!"
+    }
+  },
+  "collectible": {
+    "id": "leaf",
+    "name": {
+      "en": "A leaf from the jungle",
+      "he": "עלה מהג׳ונגל"
+    },
+    "icon": "🍃"
+  },
+  "sounds": {
+    "ambient": "jungle"
+  }
 }

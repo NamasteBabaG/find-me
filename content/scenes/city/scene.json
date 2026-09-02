@@ -1,8 +1,14 @@
 {
   "id": "scene_city",
   "slug": "city",
-  "name": "העיר הגדולה",
-  "tagline": "אוטובוסים, רמזורים וחלונות צבעוניים.",
+  "name": {
+    "en": "The Big City",
+    "he": "העיר הגדולה"
+  },
+  "tagline": {
+    "en": "Buses, traffic lights and colorful windows.",
+    "he": "אוטובוסים, רמזורים וחלונות צבעוניים."
+  },
   "version": 1,
   "active": false,
   "artStatus": "placeholder",
@@ -11,7 +17,11 @@
     "height": 1000,
     "base": "/scenes/_placeholder/base.svg",
     "thumbnail": "/scenes/_placeholder/thumb.svg",
-    "palette": { "sky": "#E3F2FD", "ground": "#9E9E9E", "accent": "#FFB61E" }
+    "palette": {
+      "sky": "#E3F2FD",
+      "ground": "#9E9E9E",
+      "accent": "#FFB61E"
+    }
   },
   "targets": [
     {
@@ -19,13 +29,60 @@
       "targetType": "city_bus",
       "bodyTemplate": "city_bus",
       "difficulty": 1,
-      "mission": "מצאו את {name} ליד האוטובוס",
-      "item": "אוטובוס",
-      "success": ["העיר גדולה, אבל לא מספיק גדולה!", "כמעט עליתי על האוטובוס!", "ביפ ביפ! מצאתם!"],
+      "mission": {
+        "en": "Find {name} next to the bus",
+        "he": "מצאו את {name} ליד האוטובוס"
+      },
+      "item": {
+        "en": "a bus",
+        "he": "אוטובוס"
+      },
+      "success": [
+        {
+          "en": "The city is big, but not big enough!",
+          "he": "העיר גדולה, אבל לא מספיק גדולה!"
+        },
+        {
+          "en": "I almost got on the bus!",
+          "he": "כמעט עליתי על האוטובוס!"
+        },
+        {
+          "en": "Beep beep! You found me!",
+          "he": "ביפ ביפ! מצאתם!"
+        }
+      ],
       "animation": "wave",
       "slots": [
-        { "id": "city_bus_a", "x": 0.3, "y": 0.75, "scale": 0.07, "hintZone": { "x": 0.3, "y": 0.75, "r": 0.1 }, "hintText": "חפשו ליד התחנה." },
-        { "id": "city_bus_b", "x": 0.7, "y": 0.8, "scale": 0.07, "hintZone": { "x": 0.7, "y": 0.8, "r": 0.1 }, "hintText": "חפשו ליד האוטובוס הצהוב." }
+        {
+          "id": "city_bus_a",
+          "x": 0.3,
+          "y": 0.75,
+          "scale": 0.07,
+          "hintZone": {
+            "x": 0.3,
+            "y": 0.75,
+            "r": 0.1
+          },
+          "hintText": {
+            "en": "Look near the bus stop.",
+            "he": "חפשו ליד התחנה."
+          }
+        },
+        {
+          "id": "city_bus_b",
+          "x": 0.7,
+          "y": 0.8,
+          "scale": 0.07,
+          "hintZone": {
+            "x": 0.7,
+            "y": 0.8,
+            "r": 0.1
+          },
+          "hintText": {
+            "en": "Look near the yellow bus.",
+            "he": "חפשו ליד האוטובוס הצהוב."
+          }
+        }
       ]
     },
     {
@@ -33,13 +90,60 @@
       "targetType": "city_scooter",
       "bodyTemplate": "city_scooter",
       "difficulty": 2,
-      "mission": "מצאו את {name} רוכב/ת על קורקינט",
-      "item": "קורקינט",
-      "success": ["וווש! מצאתם אותי בדרך!", "הקורקינט שלי הכי מהיר!", "עצרתי ברמזור ומצאתם!"],
+      "mission": {
+        "en": "Find {name} riding a scooter",
+        "he": "מצאו את {name} רוכב/ת על קורקינט"
+      },
+      "item": {
+        "en": "a scooter",
+        "he": "קורקינט"
+      },
+      "success": [
+        {
+          "en": "Whoosh! You found me on the way!",
+          "he": "וווש! מצאתם אותי בדרך!"
+        },
+        {
+          "en": "My scooter is the fastest!",
+          "he": "הקורקינט שלי הכי מהיר!"
+        },
+        {
+          "en": "I stopped at the light and you found me!",
+          "he": "עצרתי ברמזור ומצאתם!"
+        }
+      ],
       "animation": "wiggle",
       "slots": [
-        { "id": "city_scooter_a", "x": 0.5, "y": 0.88, "scale": 0.06, "hintZone": { "x": 0.5, "y": 0.88, "r": 0.1 }, "hintText": "חפשו בשביל של האופניים." },
-        { "id": "city_scooter_b", "x": 0.15, "y": 0.9, "scale": 0.06, "hintZone": { "x": 0.15, "y": 0.9, "r": 0.1 }, "hintText": "חפשו ליד הפארק הקטן." }
+        {
+          "id": "city_scooter_a",
+          "x": 0.5,
+          "y": 0.88,
+          "scale": 0.06,
+          "hintZone": {
+            "x": 0.5,
+            "y": 0.88,
+            "r": 0.1
+          },
+          "hintText": {
+            "en": "Look on the bike path.",
+            "he": "חפשו בשביל של האופניים."
+          }
+        },
+        {
+          "id": "city_scooter_b",
+          "x": 0.15,
+          "y": 0.9,
+          "scale": 0.06,
+          "hintZone": {
+            "x": 0.15,
+            "y": 0.9,
+            "r": 0.1
+          },
+          "hintText": {
+            "en": "Look near the little park.",
+            "he": "חפשו ליד הפארק הקטן."
+          }
+        }
       ]
     },
     {
@@ -47,21 +151,118 @@
       "targetType": "city_window",
       "bodyTemplate": "city_window",
       "difficulty": 3,
-      "mission": "מצאו את {name} מנופף/ת מחלון צבעוני",
-      "item": "חלון",
-      "success": ["מלמעלה רואים הכול!", "עיני נץ!", "החלון שלי הכי צבעוני!"],
+      "mission": {
+        "en": "Find {name} waving from a colorful window",
+        "he": "מצאו את {name} מנופף/ת מחלון צבעוני"
+      },
+      "item": {
+        "en": "a window",
+        "he": "חלון"
+      },
+      "success": [
+        {
+          "en": "You can see everything from up here!",
+          "he": "מלמעלה רואים הכול!"
+        },
+        {
+          "en": "Eagle eyes!",
+          "he": "עיני נץ!"
+        },
+        {
+          "en": "My window is the most colorful!",
+          "he": "החלון שלי הכי צבעוני!"
+        }
+      ],
       "animation": "peek",
       "slots": [
-        { "id": "city_window_a", "x": 0.62, "y": 0.35, "scale": 0.05, "layer": "behindForeground", "hintZone": { "x": 0.62, "y": 0.35, "r": 0.09 }, "hintText": "חפשו בבניין עם החלונות הצבעוניים." },
-        { "id": "city_window_b", "x": 0.2, "y": 0.3, "scale": 0.05, "layer": "behindForeground", "flip": true, "hintZone": { "x": 0.2, "y": 0.3, "r": 0.09 }, "hintText": "חפשו בקומה הגבוהה." }
+        {
+          "id": "city_window_a",
+          "x": 0.62,
+          "y": 0.35,
+          "scale": 0.05,
+          "layer": "behindForeground",
+          "hintZone": {
+            "x": 0.62,
+            "y": 0.35,
+            "r": 0.09
+          },
+          "hintText": {
+            "en": "Look at the building with the colorful windows.",
+            "he": "חפשו בבניין עם החלונות הצבעוניים."
+          }
+        },
+        {
+          "id": "city_window_b",
+          "x": 0.2,
+          "y": 0.3,
+          "scale": 0.05,
+          "layer": "behindForeground",
+          "flip": true,
+          "hintZone": {
+            "x": 0.2,
+            "y": 0.3,
+            "r": 0.09
+          },
+          "hintText": {
+            "en": "Look on the top floor.",
+            "he": "חפשו בקומה הגבוהה."
+          }
+        }
       ]
     }
   ],
   "ambient": [
-    { "id": "traffic_light", "label": "רמזור מתחלף", "x": 0.42, "y": 0.55, "w": 0.04, "h": 0.12, "animation": "blink", "sound": "pop", "reaction": "ירוק! אפשר לעבור!", "glyph": "🚦" },
-    { "id": "pigeon", "label": "יונה חוטפת פירור", "x": 0.8, "y": 0.9, "w": 0.05, "h": 0.05, "animation": "hop", "sound": "whoosh", "reaction": "פירור! שלי!", "glyph": "🕊️" }
+    {
+      "id": "traffic_light",
+      "label": {
+        "en": "Changing traffic light",
+        "he": "רמזור מתחלף"
+      },
+      "x": 0.42,
+      "y": 0.55,
+      "w": 0.04,
+      "h": 0.12,
+      "animation": "blink",
+      "sound": "pop",
+      "reaction": {
+        "en": "Green! You can cross!",
+        "he": "ירוק! אפשר לעבור!"
+      },
+      "glyph": "🚦"
+    },
+    {
+      "id": "pigeon",
+      "label": {
+        "en": "Pigeon grabbing a crumb",
+        "he": "יונה חוטפת פירור"
+      },
+      "x": 0.8,
+      "y": 0.9,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "hop",
+      "sound": "whoosh",
+      "reaction": {
+        "en": "A crumb! Mine!",
+        "he": "פירור! שלי!"
+      },
+      "glyph": "🕊️"
+    }
   ],
-  "celebration": { "kind": "confetti", "completeText": "מצאתם את {name} שלוש פעמים בעיר!" },
-  "collectible": { "id": "taxi", "name": "מונית קטנה", "icon": "🚕" },
+  "celebration": {
+    "kind": "confetti",
+    "completeText": {
+      "en": "You found {name} three times in the city!",
+      "he": "מצאתם את {name} שלוש פעמים בעיר!"
+    }
+  },
+  "collectible": {
+    "id": "taxi",
+    "name": {
+      "en": "A little taxi",
+      "he": "מונית קטנה"
+    },
+    "icon": "🚕"
+  },
   "sounds": {}
 }

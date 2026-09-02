@@ -1,5 +1,7 @@
 import { newId } from "@/lib/ids";
 import { PACKAGES, isPackageTier } from "@/domain/package";
+import { pick, type Locale } from "@/i18n/config";
+import { flowError, type FlowError } from "@/i18n/errors";
 import type { Container } from "./container";
 import { ensureUser } from "./auth.service";
 import { loadDraft } from "./create-flow.service";
@@ -10,22 +12,24 @@ import { WEBHOOK, audit, type Actor } from "./audit.service";
  * Checkout + payment webhook. The webhook is the single source of truth for
  * "paid"; the redirect back from the PSP only shows a waiting screen.
  */
-export async function startCheckout(c: Container, input: { gameId: string; email: string }): Promise<{ ok: true; checkoutUrl: string; userId: string } | { ok: false; reason: string }> {
+export async function startCheckout(c: Container, input: { gameId: string; email: string }): Promise<{ ok: true; checkoutUrl: string; userId: string } | FlowError> {
   const game = await loadDraft(c, input.gameId);
-  if (!game || !game.childProfile) return { ok: false, reason: "הטיוטה לא נמצאה." };
+  if (!game || !game.childProfile) return flowError("DRAFT_NOT_FOUND", "הטיוטה לא נמצאה.");
   const status = statusOf(game);
-  if (status !== "PACKAGE_SELECTED" && status !== "CHECKOUT_PENDING" && status !== "PAYMENT_FAILED") return { ok: false, reason: "צריך לסיים את השלבים הקודמים." };
-  if (!game.packageTier || !isPackageTier(game.packageTier)) return { ok: false, reason: "קודם בוחרים חבילה." };
-  if (game.scenes.length !== PACKAGES[game.packageTier].sceneCount) return { ok: false, reason: "בחירת העולמות לא הושלמה." };
+  if (status !== "PACKAGE_SELECTED" && status !== "CHECKOUT_PENDING" && status !== "PAYMENT_FAILED") return flowError("PREVIOUS_STEPS", "צריך לסיים את השלבים הקודמים.");
+  if (!game.packageTier || !isPackageTier(game.packageTier)) return flowError("PICK_PACKAGE_FIRST", "קודם בוחרים חבילה.");
+  if (game.scenes.length !== PACKAGES[game.packageTier].sceneCount) return flowError("SCENES_INCOMPLETE", "בחירת העולמות לא הושלמה.");
 
   let user;
   try {
     user = await ensureUser(c, input.email);
   } catch {
-    return { ok: false, reason: "כתובת המייל לא נראית תקינה." };
+    return flowError("INVALID_EMAIL", "כתובת המייל לא נראית תקינה.");
   }
 
-  // Attach the soft account to the draft + child profile.
+  // Attach the soft account to the draft + child profile; remember the parent's language.
+  const locale: Locale = game.locale === "he" ? "he" : "en";
+  await c.db.user.update({ where: { id: user.id }, data: { locale } });
   await c.db.game.update({ where: { id: game.id }, data: { ownerId: user.id } });
   await c.db.childProfile.update({ where: { id: game.childProfile.id }, data: { ownerId: user.id } });
 
@@ -43,7 +47,7 @@ export async function startCheckout(c: Container, input: { gameId: string; email
     orderId: order.id,
     amountAgorot: order.amountAgorot,
     currency: order.currency,
-    description: `איפה ${game.childProfile.displayName}? — ${pkg.name}`,
+    description: `${pick({ en: `Where's ${game.childProfile.displayName}?`, he: `איפה ${game.childProfile.displayName}?` }, locale)} — ${pick(pkg.name, locale)}`,
     customerEmail: user.email,
     successUrl: `${c.appUrl}/creating/${game.id}`,
     cancelUrl: `${c.appUrl}/checkout?cancelled=1`,

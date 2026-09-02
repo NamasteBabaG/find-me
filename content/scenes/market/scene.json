@@ -1,8 +1,14 @@
 {
   "id": "scene_market",
   "slug": "market",
-  "name": "השוק הצבעוני",
-  "tagline": "אבטיחים, תבלינים ותוכי אחד מצחיק.",
+  "name": {
+    "en": "The Colorful Market",
+    "he": "השוק הצבעוני"
+  },
+  "tagline": {
+    "en": "Watermelons, spices and one funny parrot.",
+    "he": "אבטיחים, תבלינים ותוכי אחד מצחיק."
+  },
   "version": 1,
   "active": false,
   "artStatus": "placeholder",
@@ -11,7 +17,11 @@
     "height": 1000,
     "base": "/scenes/_placeholder/base.svg",
     "thumbnail": "/scenes/_placeholder/thumb.svg",
-    "palette": { "sky": "#FFF3E0", "ground": "#BCAAA4", "accent": "#F25C7A" }
+    "palette": {
+      "sky": "#FFF3E0",
+      "ground": "#BCAAA4",
+      "accent": "#F25C7A"
+    }
   },
   "targets": [
     {
@@ -19,13 +29,60 @@
       "targetType": "market_watermelon",
       "bodyTemplate": "market_watermelon",
       "difficulty": 1,
-      "mission": "מצאו את {name} מחזיק/ה אבטיח",
-      "item": "אבטיח",
-      "success": ["איזה מזל שלא התחבאתי בתוך האבטיח!", "האבטיח הזה כבד!", "מצאתם! רוצים פלח?"],
+      "mission": {
+        "en": "Find {name} holding a watermelon",
+        "he": "מצאו את {name} מחזיק/ה אבטיח"
+      },
+      "item": {
+        "en": "a watermelon",
+        "he": "אבטיח"
+      },
+      "success": [
+        {
+          "en": "Lucky I didn't hide inside the watermelon!",
+          "he": "איזה מזל שלא התחבאתי בתוך האבטיח!"
+        },
+        {
+          "en": "This watermelon is heavy!",
+          "he": "האבטיח הזה כבד!"
+        },
+        {
+          "en": "You found me! Want a slice?",
+          "he": "מצאתם! רוצים פלח?"
+        }
+      ],
       "animation": "bounce",
       "slots": [
-        { "id": "market_melon_a", "x": 0.25, "y": 0.7, "scale": 0.07, "hintZone": { "x": 0.25, "y": 0.7, "r": 0.1 }, "hintText": "חפשו ליד ערימת האבטיחים." },
-        { "id": "market_melon_b", "x": 0.72, "y": 0.75, "scale": 0.07, "hintZone": { "x": 0.72, "y": 0.75, "r": 0.1 }, "hintText": "חפשו ליד המשקל הגדול." }
+        {
+          "id": "market_melon_a",
+          "x": 0.25,
+          "y": 0.7,
+          "scale": 0.07,
+          "hintZone": {
+            "x": 0.25,
+            "y": 0.7,
+            "r": 0.1
+          },
+          "hintText": {
+            "en": "Look near the pile of watermelons.",
+            "he": "חפשו ליד ערימת האבטיחים."
+          }
+        },
+        {
+          "id": "market_melon_b",
+          "x": 0.72,
+          "y": 0.75,
+          "scale": 0.07,
+          "hintZone": {
+            "x": 0.72,
+            "y": 0.75,
+            "r": 0.1
+          },
+          "hintText": {
+            "en": "Look near the big scale.",
+            "he": "חפשו ליד המשקל הגדול."
+          }
+        }
       ]
     },
     {
@@ -33,13 +90,60 @@
       "targetType": "market_flowers",
       "bodyTemplate": "market_flowers",
       "difficulty": 2,
-      "mission": "מצאו את {name} ליד דוכן הפרחים",
-      "item": "פרחים",
-      "success": ["הפרחים הסתירו אותי!", "מצאתם! הבאתי לכם פרח!", "אפצ׳י! אלרגיה… ומצאתם!"],
+      "mission": {
+        "en": "Find {name} by the flower stall",
+        "he": "מצאו את {name} ליד דוכן הפרחים"
+      },
+      "item": {
+        "en": "flowers",
+        "he": "פרחים"
+      },
+      "success": [
+        {
+          "en": "The flowers hid me!",
+          "he": "הפרחים הסתירו אותי!"
+        },
+        {
+          "en": "You found me! I brought you a flower!",
+          "he": "מצאתם! הבאתי לכם פרח!"
+        },
+        {
+          "en": "Achoo! Allergies… and you found me!",
+          "he": "אפצ׳י! אלרגיה… ומצאתם!"
+        }
+      ],
       "animation": "wave",
       "slots": [
-        { "id": "market_flowers_a", "x": 0.5, "y": 0.6, "scale": 0.06, "hintZone": { "x": 0.5, "y": 0.6, "r": 0.1 }, "hintText": "חפשו איפה שהכי צבעוני." },
-        { "id": "market_flowers_b", "x": 0.85, "y": 0.55, "scale": 0.06, "hintZone": { "x": 0.85, "y": 0.55, "r": 0.1 }, "hintText": "חפשו ליד הדליים עם המים." }
+        {
+          "id": "market_flowers_a",
+          "x": 0.5,
+          "y": 0.6,
+          "scale": 0.06,
+          "hintZone": {
+            "x": 0.5,
+            "y": 0.6,
+            "r": 0.1
+          },
+          "hintText": {
+            "en": "Look where it's most colorful.",
+            "he": "חפשו איפה שהכי צבעוני."
+          }
+        },
+        {
+          "id": "market_flowers_b",
+          "x": 0.85,
+          "y": 0.55,
+          "scale": 0.06,
+          "hintZone": {
+            "x": 0.85,
+            "y": 0.55,
+            "r": 0.1
+          },
+          "hintText": {
+            "en": "Look near the buckets of water.",
+            "he": "חפשו ליד הדליים עם המים."
+          }
+        }
       ]
     },
     {
@@ -47,21 +151,118 @@
       "targetType": "market_spices_peek",
       "bodyTemplate": "market_spices_peek",
       "difficulty": 3,
-      "mission": "מצאו את {name} מציץ/ה מאחורי שקי התבלינים",
-      "item": "שקי תבלינים",
-      "success": ["אפצ׳י! הפלפל!", "עיני נץ!", "השקים האלה ריחניים…"],
+      "mission": {
+        "en": "Find {name} peeking from behind the spice sacks",
+        "he": "מצאו את {name} מציץ/ה מאחורי שקי התבלינים"
+      },
+      "item": {
+        "en": "spice sacks",
+        "he": "שקי תבלינים"
+      },
+      "success": [
+        {
+          "en": "Achoo! The pepper!",
+          "he": "אפצ׳י! הפלפל!"
+        },
+        {
+          "en": "Eagle eyes!",
+          "he": "עיני נץ!"
+        },
+        {
+          "en": "These sacks smell amazing…",
+          "he": "השקים האלה ריחניים…"
+        }
+      ],
       "animation": "peek",
       "slots": [
-        { "id": "market_spices_a", "x": 0.4, "y": 0.85, "scale": 0.05, "layer": "behindForeground", "hintZone": { "x": 0.4, "y": 0.85, "r": 0.09 }, "hintText": "חפשו ליד השקים הכתומים." },
-        { "id": "market_spices_b", "x": 0.12, "y": 0.5, "scale": 0.05, "layer": "behindForeground", "flip": true, "hintZone": { "x": 0.12, "y": 0.5, "r": 0.09 }, "hintText": "חפשו בדוכן בפינה." }
+        {
+          "id": "market_spices_a",
+          "x": 0.4,
+          "y": 0.85,
+          "scale": 0.05,
+          "layer": "behindForeground",
+          "hintZone": {
+            "x": 0.4,
+            "y": 0.85,
+            "r": 0.09
+          },
+          "hintText": {
+            "en": "Look near the orange sacks.",
+            "he": "חפשו ליד השקים הכתומים."
+          }
+        },
+        {
+          "id": "market_spices_b",
+          "x": 0.12,
+          "y": 0.5,
+          "scale": 0.05,
+          "layer": "behindForeground",
+          "flip": true,
+          "hintZone": {
+            "x": 0.12,
+            "y": 0.5,
+            "r": 0.09
+          },
+          "hintText": {
+            "en": "Look at the stall in the corner.",
+            "he": "חפשו בדוכן בפינה."
+          }
+        }
       ]
     }
   ],
   "ambient": [
-    { "id": "orange_roll", "label": "תפוז מתגלגל", "x": 0.6, "y": 0.8, "w": 0.06, "h": 0.06, "animation": "slide", "sound": "boing", "reaction": "אופס! התפוז ברח!", "glyph": "🍊" },
-    { "id": "parrot", "label": "תוכי חוזר על צליל", "x": 0.9, "y": 0.2, "w": 0.05, "h": 0.07, "animation": "shake", "sound": "chirp", "reaction": "קרררר! מצאתם! מצאתם!", "glyph": "🦜" }
+    {
+      "id": "orange_roll",
+      "label": {
+        "en": "Rolling orange",
+        "he": "תפוז מתגלגל"
+      },
+      "x": 0.6,
+      "y": 0.8,
+      "w": 0.06,
+      "h": 0.06,
+      "animation": "slide",
+      "sound": "boing",
+      "reaction": {
+        "en": "Oops! The orange escaped!",
+        "he": "אופס! התפוז ברח!"
+      },
+      "glyph": "🍊"
+    },
+    {
+      "id": "parrot",
+      "label": {
+        "en": "Parrot repeating sounds",
+        "he": "תוכי חוזר על צליל"
+      },
+      "x": 0.9,
+      "y": 0.2,
+      "w": 0.05,
+      "h": 0.07,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Squawk! Found! Found!",
+        "he": "קרררר! מצאתם! מצאתם!"
+      },
+      "glyph": "🦜"
+    }
   ],
-  "celebration": { "kind": "fruit", "completeText": "מצאתם את {name} שלוש פעמים בשוק!" },
-  "collectible": { "id": "basket", "name": "סלסילת פירות", "icon": "🧺" },
+  "celebration": {
+    "kind": "fruit",
+    "completeText": {
+      "en": "You found {name} three times at the market!",
+      "he": "מצאתם את {name} שלוש פעמים בשוק!"
+    }
+  },
+  "collectible": {
+    "id": "basket",
+    "name": {
+      "en": "A basket of fruit",
+      "he": "סלסילת פירות"
+    },
+    "icon": "🧺"
+  },
   "sounds": {}
 }

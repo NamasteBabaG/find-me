@@ -2,8 +2,8 @@
    Game renderer styles. Kid-facing: big targets (64px), no chrome,
    no menus, no marketing. Tokens only.
    ───────────────────────────────────────────────────────────── */
-.game { min-height: 100dvh; display: flex; flex-direction: column; background: var(--paper); }
-.game--demo { min-height: 0; height: 100%; border-radius: var(--radius-4); overflow: hidden; box-shadow: var(--shadow-3); }
+.game { --font-display: var(--font-kid); min-height: 100dvh; display: flex; flex-direction: column; background: var(--paper); }
+.game--demo { min-height: 0; height: 100%; overflow: hidden; }
 .game__tip { text-align: center; font-family: var(--font-display); font-size: var(--fs-100); line-height: var(--lh-100); background: var(--sun-soft); padding: var(--space-0-5) var(--space-2); }
 .game__parents { text-align: center; padding: var(--space-3); font-size: var(--fs-100); }
 .game__parents a { color: var(--ink-3); }

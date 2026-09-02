@@ -2,6 +2,7 @@ import { hashToken, newId, newSecretToken } from "@/lib/ids";
 import type { Container } from "./container";
 import { magicLinkEmail } from "./email/templates";
 import { audit } from "./audit.service";
+import type { Locale } from "@/i18n/config";
 
 const MAGIC_LINK_TTL_MS = 15 * 60 * 1000;
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -32,12 +33,13 @@ export async function createMagicLink(c: Container, userId: string, next = "/lib
   return url.toString();
 }
 
-export async function requestMagicLink(c: Container, rawEmail: string, next = "/library"): Promise<{ ok: true } | { ok: false; reason: string }> {
+export async function requestMagicLink(c: Container, rawEmail: string, next = "/library", locale: Locale = "en"): Promise<{ ok: true } | { ok: false; reason: string }> {
   const email = normalizeEmail(rawEmail);
-  if (!isValidEmail(email)) return { ok: false, reason: "כתובת המייל לא נראית תקינה." };
+  if (!isValidEmail(email)) return { ok: false, reason: locale === "he" ? "כתובת המייל לא נראית תקינה." : "That email address doesn't look right." };
   const user = await ensureUser(c, email);
+  await c.db.user.update({ where: { id: user.id }, data: { locale } });
   const link = await createMagicLink(c, user.id, next);
-  await c.email.send(magicLinkEmail({ to: email, link }));
+  await c.email.send(magicLinkEmail({ to: email, link, locale }));
   return { ok: true };
 }
 

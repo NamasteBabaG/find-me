@@ -10,10 +10,15 @@ import { TARGETS_PER_SCENE } from "../package";
  * and validated with `validateSceneDefinition` at load time and in CI.
  *
  * All coordinates are normalized (0..1) against the base art size so the
- * same scene works on every viewport.
+ * same scene works on every viewport. All copy is bilingual (en/he); the
+ * game is composed in the locale the parent purchased in.
  */
 
 export const Unit = z.number().min(0).max(1);
+
+/** Every player-facing string ships in both languages. */
+export const LocalizedTextSchema = z.object({ en: z.string().min(1), he: z.string().min(1) });
+export type LocalizedText = z.infer<typeof LocalizedTextSchema>;
 
 export const TARGET_ANIMATIONS = ["bounce", "wave", "wiggle", "spin", "float", "peek", "salute", "jump"] as const;
 export const TargetAnimation = z.enum(TARGET_ANIMATIONS);
@@ -48,7 +53,7 @@ export const SlotSchema = z.object({
   /** Level-2 hint: the glowing area. Radius is a fraction of scene width. Must contain (x,y). */
   hintZone: z.object({ x: Unit, y: Unit, r: z.number().min(0.03).max(0.5) }),
   /** Level-1 hint: a gentle verbal nudge specific to this hiding spot. */
-  hintText: z.string().min(1),
+  hintText: LocalizedTextSchema,
 });
 export type Slot = z.infer<typeof SlotSchema>;
 
@@ -58,12 +63,12 @@ export const TargetSchema = z.object({
   targetType: z.string().min(1),
   bodyTemplate: z.string().min(1),
   difficulty: z.union([z.literal(1), z.literal(2), z.literal(3)]),
-  /** e.g. "מצאו את {name} עם גלגל ים צהוב" */
-  mission: z.string().min(1),
-  /** Short noun phrase for the mission thumbnail label, e.g. "גלגל ים". */
-  item: z.string().min(1),
+  /** e.g. "Find {name} with the float ring" */
+  mission: LocalizedTextSchema,
+  /** Short noun phrase used in bubbles, e.g. "a float ring". */
+  item: LocalizedTextSchema,
   /** Lines the child says when found. Rotated between plays. */
-  success: z.array(z.string().min(1)).min(1),
+  success: z.array(LocalizedTextSchema).min(1),
   animation: TargetAnimation,
   /** Exactly two hiding spots: A (canonical, first play) and B (replay). */
   slots: z.tuple([SlotSchema, SlotSchema]),
@@ -72,16 +77,16 @@ export type Target = z.infer<typeof TargetSchema>;
 
 export const AmbientSchema = z.object({
   id: z.string().min(1),
-  /** Accessible label + admin label, e.g. "סרטן בדלי". */
-  label: z.string().min(1),
+  /** Accessible label + admin label. */
+  label: LocalizedTextSchema,
   x: Unit,
   y: Unit,
   w: z.number().min(0.01).max(1),
   h: z.number().min(0.01).max(1),
   animation: AmbientAnimation,
   sound: SoundCue.optional(),
-  /** Optional funny bubble, e.g. "היי! זה הדלי שלי!" */
-  reaction: z.string().optional(),
+  /** Optional funny bubble. */
+  reaction: LocalizedTextSchema.optional(),
   /** Optional emoji/glyph shown while the art is a placeholder. */
   glyph: z.string().optional(),
   cooldownMs: z.number().int().min(0).max(10000).default(1500),
@@ -90,11 +95,11 @@ export type Ambient = z.infer<typeof AmbientSchema>;
 
 export const BonusSchema = z.object({
   id: z.string().min(1),
-  name: z.string().min(1),
+  name: LocalizedTextSchema,
   /** Sprite src (public path). */
   sprite: z.string().min(1),
   scale: z.number().min(0.015).max(0.25),
-  prompt: z.string().min(1),
+  prompt: LocalizedTextSchema,
   slots: z.tuple([SlotSchema, SlotSchema]),
 });
 export type Bonus = z.infer<typeof BonusSchema>;
@@ -105,8 +110,8 @@ export const SceneDefinitionSchema = z.object({
     .string()
     .min(1)
     .regex(/^[a-z][a-z0-9-]*$/, "slug must be kebab-case"),
-  name: z.string().min(1),
-  tagline: z.string().min(1),
+  name: LocalizedTextSchema,
+  tagline: LocalizedTextSchema,
   version: z.number().int().min(1),
   active: z.boolean(),
   artStatus: z.enum(ART_STATUSES),
@@ -131,10 +136,10 @@ export const SceneDefinitionSchema = z.object({
   bonus: BonusSchema.optional(),
   celebration: z.object({
     kind: CelebrationKind,
-    /** e.g. "מצאתם את {name} שלוש פעמים בחוף!" */
-    completeText: z.string().min(1),
+    /** e.g. "You found {name} three times at the beach!" */
+    completeText: LocalizedTextSchema,
   }),
-  collectible: z.object({ id: z.string().min(1), name: z.string().min(1), icon: z.string().min(1) }),
+  collectible: z.object({ id: z.string().min(1), name: LocalizedTextSchema, icon: z.string().min(1) }),
   sounds: z.object({ ambient: SoundCue.optional() }).default({}),
 });
 export type SceneDefinition = z.infer<typeof SceneDefinitionSchema>;
@@ -149,6 +154,10 @@ export interface SceneValidation {
 
 function dist(ax: number, ay: number, bx: number, by: number): number {
   return Math.hypot(ax - bx, ay - by);
+}
+
+function mentionsName(t: LocalizedText): boolean {
+  return t.en.includes("{name}") && t.he.includes("{name}");
 }
 
 export function validateSceneDefinition(input: unknown): SceneValidation & { scene?: SceneDefinition } {
@@ -187,7 +196,7 @@ export function validateSceneDefinition(input: unknown): SceneValidation & { sce
     if (dist(a.x, a.y, b.x, b.y) < 0.08) {
       warnings.push(`target "${target.id}": slots A and B are very close — replay will feel the same`);
     }
-    if (!target.mission.includes("{name}")) warnings.push(`target "${target.id}": mission copy does not mention {name}`);
+    if (!mentionsName(target.mission)) warnings.push(`target "${target.id}": mission copy does not mention {name} in both languages`);
   }
 
   const sortedDifficulty = [...seenDifficulty].sort((x, y) => x - y);
@@ -219,7 +228,7 @@ export function validateSceneDefinition(input: unknown): SceneValidation & { sce
     }
   }
 
-  if (!scene.celebration.completeText.includes("{name}")) warnings.push("celebration.completeText does not mention {name}");
+  if (!mentionsName(scene.celebration.completeText)) warnings.push("celebration.completeText does not mention {name} in both languages");
   if (scene.artStatus === "placeholder" && scene.active) warnings.push("scene is active with placeholder art");
 
   return { ok: errors.length === 0, errors, warnings, scene };

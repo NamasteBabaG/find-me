@@ -1,36 +1,77 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { getI18n } from "@/i18n/server";
+import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
 
 /** Adult-facing page chrome. The game itself never shows this header. */
-export function SiteHeader({ user, isAdmin }: { user: { email: string } | null; isAdmin: boolean }) {
+export async function SiteHeader({ user, isAdmin }: { user: { email: string } | null; isAdmin: boolean }) {
+  const { t } = await getI18n();
   return (
     <header className="fm-header">
       <div className="fm-container fm-header__inner">
-        <Link href="/" className="fm-logo" aria-label="איפה אני? — דף הבית">
+        <Link href="/" className="fm-logo" aria-label={t.common.brand}>
           <span className="fm-logo__mark" aria-hidden>
             👀
           </span>
-          איפה אני?
+          <span>{t.common.brand}</span>
         </Link>
-        <nav className="fm-nav" aria-label="ניווט">
-          <Link href="/create">יוצרים משחק</Link>
-          <Link href="/library">{user ? "המשחקים שלי" : "כניסה"}</Link>
-          {isAdmin ? <Link href="/admin/orders">אדמין</Link> : null}
+        <nav className="fm-nav fm-hide-mobile" aria-label="Main">
+          <Link href="/#demo">{t.nav.demo}</Link>
+          <Link href="/#how">{t.nav.how}</Link>
+          <Link href="/#gift">{t.nav.gift}</Link>
+          <Link href="/#pricing">{t.nav.pricing}</Link>
+          {isAdmin ? <Link href="/admin/orders">{t.common.admin}</Link> : null}
         </nav>
+        <div className="fm-header__cta">
+          <LanguageSwitcher />
+          <Link href="/library" className="fm-btn fm-btn--ghost fm-btn--sm fm-hide-mobile">
+            {user ? t.common.myGames : t.common.signIn}
+          </Link>
+          <Link href="/create" className="fm-btn fm-btn--sm">
+            {t.common.createGame}
+          </Link>
+        </div>
       </div>
     </header>
   );
 }
 
-export function SiteFooter() {
+export async function SiteFooter() {
+  const { t } = await getI18n();
   return (
     <footer className="fm-footer">
-      <div className="fm-container fm-row fm-row--between">
-        <span>© {new Date().getFullYear()} איפה אני? · המשחק נשמר בספרייה שלכם וזמין ללא הגבלת זמן, בכפוף לתנאי השירות.</span>
-        <span className="fm-row">
-          <Link href="/design-system">מערכת העיצוב</Link>
-          <Link href="/dev/outbox">תיבת דואר (dev)</Link>
-        </span>
+      <div className="fm-container">
+        <div className="fm-footer__grid">
+          <div className="fm-footer__col">
+            <Link href="/" className="fm-logo" aria-label={t.common.brand}>
+              <span className="fm-logo__mark" aria-hidden>
+                👀
+              </span>
+              <span>{t.common.brand}</span>
+            </Link>
+            <p className="fm-measure">{t.footer.blurb}</p>
+          </div>
+          <div className="fm-footer__col">
+            <span className="fm-footer__title">{t.footer.product}</span>
+            <Link href="/create">{t.common.createGame}</Link>
+            <Link href="/#worlds">{t.footer.worlds}</Link>
+            <Link href="/#pricing">{t.footer.pricing}</Link>
+            <Link href="/#faq">{t.footer.faq}</Link>
+          </div>
+          <div className="fm-footer__col">
+            <span className="fm-footer__title">{t.footer.account}</span>
+            <Link href="/library">{t.common.myGames}</Link>
+            <Link href="/#trust">{t.footer.privacy}</Link>
+            <Link href="/design-system">{t.footer.designSystem}</Link>
+            <Link href="/dev/outbox">{t.footer.outbox}</Link>
+          </div>
+        </div>
+        <div className="fm-footer__bottom">
+          <span>
+            © {new Date().getFullYear()} {t.common.brand} · {t.footer.madeWith}
+          </span>
+          <span>{t.footer.terms}</span>
+        </div>
       </div>
     </footer>
   );
@@ -40,30 +81,4 @@ export function Page({ children, narrow = false }: { children: ReactNode; narrow
   return <main className={`fm-container${narrow ? " fm-container--narrow" : ""} fm-section`}>{children}</main>;
 }
 
-export function Stepper({ steps, current }: { steps: string[]; current: number }) {
-  return (
-    <div className="fm-stepper" role="list" aria-label="שלבי היצירה">
-      {steps.map((label, i) => (
-        <span
-          key={label}
-          role="listitem"
-          aria-current={i === current ? "step" : undefined}
-          aria-label={`${label}${i < current ? " — הושלם" : i === current ? " — שלב נוכחי" : ""}`}
-          className={`fm-stepper__dot${i === current ? " fm-stepper__dot--active" : i < current ? " fm-stepper__dot--done" : ""}`}
-        />
-      ))}
-      <span className="fm-stepper__label" aria-hidden>
-        {steps[current]}
-      </span>
-    </div>
-  );
-}
-
-export function Notice({ kind = "info", children }: { kind?: "info" | "danger" | "success" | "warn"; children: ReactNode }) {
-  const cls = kind === "warn" ? "fm-notice" : `fm-notice fm-notice--${kind}`;
-  return (
-    <div className={cls} role={kind === "danger" ? "alert" : "status"}>
-      {children}
-    </div>
-  );
-}
+export { Notice, Stepper } from "./primitives";

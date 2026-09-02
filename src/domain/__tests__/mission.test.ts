@@ -13,6 +13,10 @@ const plan: ScenePlayPlan = {
 const copy: MissionCopy = {
   successByTarget: { float: ["מצאתם אותי!"], sandcastle: ["כמעט!"], umbrella: ["עיני נץ!"] },
   itemByTarget: { float: "גלגל ים", sandcastle: "ארמון חול", umbrella: "שמשייה" },
+  wrongTarget: "זה אני! אבל עכשיו מחפשים אותי עם {item}…",
+  wrongTargetNoItem: "זה אני! אבל עכשיו מחפשים גרסה אחרת שלי…",
+  bonus: "מצאתם גם אותי! זזזז…",
+  fallbackSuccess: "מצאתם אותי!",
 };
 
 describe("missionReducer", () => {

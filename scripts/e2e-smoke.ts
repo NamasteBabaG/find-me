@@ -33,7 +33,7 @@ async function main() {
     if (!cond) throw new Error(`ASSERT: ${msg}`);
   };
 
-  const { gameId } = await createDraft(c, null);
+  const { gameId } = await createDraft(c, null, process.env.SMOKE_LOCALE === "he" ? "he" : "en");
   log(`draft ${gameId}`);
   assert((await setChildName(c, gameId, "נועה")).ok, "set name");
 

@@ -1,8 +1,14 @@
 {
   "id": "scene_stadium",
   "slug": "stadium",
-  "name": "איצטדיון כדורגל",
-  "tagline": "קהל, דגלים ושער אחד ענק.",
+  "name": {
+    "en": "The Stadium",
+    "he": "איצטדיון כדורגל"
+  },
+  "tagline": {
+    "en": "A crowd, flags and one giant goal.",
+    "he": "קהל, דגלים ושער אחד ענק."
+  },
   "version": 1,
   "active": false,
   "artStatus": "placeholder",
@@ -11,7 +17,11 @@
     "height": 1000,
     "base": "/scenes/_placeholder/base.svg",
     "thumbnail": "/scenes/_placeholder/thumb.svg",
-    "palette": { "sky": "#D9E8FF", "ground": "#4CAF50", "accent": "#F25C7A" }
+    "palette": {
+      "sky": "#D9E8FF",
+      "ground": "#4CAF50",
+      "accent": "#F25C7A"
+    }
   },
   "targets": [
     {
@@ -19,13 +29,60 @@
       "targetType": "stadium_scarf",
       "bodyTemplate": "stadium_scarf",
       "difficulty": 1,
-      "mission": "מצאו את {name} עם צעיף של הקבוצה",
-      "item": "צעיף",
-      "success": ["גוווול! מצאתם אותי!", "הצעיף שלי הכי צבעוני ביציע!", "כל הקהל ראה שמצאתם אותי!"],
+      "mission": {
+        "en": "Find {name} with the team scarf",
+        "he": "מצאו את {name} עם צעיף של הקבוצה"
+      },
+      "item": {
+        "en": "a scarf",
+        "he": "צעיף"
+      },
+      "success": [
+        {
+          "en": "Goooal! You found me!",
+          "he": "גוווול! מצאתם אותי!"
+        },
+        {
+          "en": "My scarf is the most colorful in the stands!",
+          "he": "הצעיף שלי הכי צבעוני ביציע!"
+        },
+        {
+          "en": "The whole crowd saw you find me!",
+          "he": "כל הקהל ראה שמצאתם אותי!"
+        }
+      ],
       "animation": "jump",
       "slots": [
-        { "id": "stadium_scarf_a", "x": 0.25, "y": 0.45, "scale": 0.07, "hintZone": { "x": 0.25, "y": 0.45, "r": 0.1 }, "hintText": "חפשו ביציע, ליד הדגל הגדול." },
-        { "id": "stadium_scarf_b", "x": 0.75, "y": 0.4, "scale": 0.07, "hintZone": { "x": 0.75, "y": 0.4, "r": 0.1 }, "hintText": "חפשו ביציע שממול." }
+        {
+          "id": "stadium_scarf_a",
+          "x": 0.25,
+          "y": 0.45,
+          "scale": 0.07,
+          "hintZone": {
+            "x": 0.25,
+            "y": 0.45,
+            "r": 0.1
+          },
+          "hintText": {
+            "en": "Look in the stands, near the big flag.",
+            "he": "חפשו ביציע, ליד הדגל הגדול."
+          }
+        },
+        {
+          "id": "stadium_scarf_b",
+          "x": 0.75,
+          "y": 0.4,
+          "scale": 0.07,
+          "hintZone": {
+            "x": 0.75,
+            "y": 0.4,
+            "r": 0.1
+          },
+          "hintText": {
+            "en": "Look in the stands across the pitch.",
+            "he": "חפשו ביציע שממול."
+          }
+        }
       ]
     },
     {
@@ -33,13 +90,60 @@
       "targetType": "stadium_ball",
       "bodyTemplate": "stadium_ball",
       "difficulty": 2,
-      "mission": "מצאו את {name} מחזיק/ה כדור",
-      "item": "כדור",
-      "success": ["תפסתי את הכדור, ואתם תפסתם אותי!", "בעיטה! ומצאתם!", "השופט אמר שמצאתם אותי!"],
+      "mission": {
+        "en": "Find {name} holding a ball",
+        "he": "מצאו את {name} מחזיק/ה כדור"
+      },
+      "item": {
+        "en": "a ball",
+        "he": "כדור"
+      },
+      "success": [
+        {
+          "en": "I caught the ball, and you caught me!",
+          "he": "תפסתי את הכדור, ואתם תפסתם אותי!"
+        },
+        {
+          "en": "Kick! And you found me!",
+          "he": "בעיטה! ומצאתם!"
+        },
+        {
+          "en": "The referee says you found me!",
+          "he": "השופט אמר שמצאתם אותי!"
+        }
+      ],
       "animation": "bounce",
       "slots": [
-        { "id": "stadium_ball_a", "x": 0.5, "y": 0.78, "scale": 0.06, "hintZone": { "x": 0.5, "y": 0.78, "r": 0.1 }, "hintText": "חפשו על הדשא, ליד הקו הלבן." },
-        { "id": "stadium_ball_b", "x": 0.2, "y": 0.85, "scale": 0.06, "hintZone": { "x": 0.2, "y": 0.85, "r": 0.1 }, "hintText": "חפשו ליד השער." }
+        {
+          "id": "stadium_ball_a",
+          "x": 0.5,
+          "y": 0.78,
+          "scale": 0.06,
+          "hintZone": {
+            "x": 0.5,
+            "y": 0.78,
+            "r": 0.1
+          },
+          "hintText": {
+            "en": "Look on the grass, near the white line.",
+            "he": "חפשו על הדשא, ליד הקו הלבן."
+          }
+        },
+        {
+          "id": "stadium_ball_b",
+          "x": 0.2,
+          "y": 0.85,
+          "scale": 0.06,
+          "hintZone": {
+            "x": 0.2,
+            "y": 0.85,
+            "r": 0.1
+          },
+          "hintText": {
+            "en": "Look near the goal.",
+            "he": "חפשו ליד השער."
+          }
+        }
       ]
     },
     {
@@ -47,21 +151,120 @@
       "targetType": "stadium_flag",
       "bodyTemplate": "stadium_flag",
       "difficulty": 3,
-      "mission": "מצאו את {name} מנופף/ת בדגל ביציע",
-      "item": "דגל",
-      "success": ["הדגל שלי הכי גבוה!", "עיני נץ!", "מצאתם אותי בין כל האוהדים!"],
+      "mission": {
+        "en": "Find {name} waving a flag in the stands",
+        "he": "מצאו את {name} מנופף/ת בדגל ביציע"
+      },
+      "item": {
+        "en": "a flag",
+        "he": "דגל"
+      },
+      "success": [
+        {
+          "en": "My flag is the highest!",
+          "he": "הדגל שלי הכי גבוה!"
+        },
+        {
+          "en": "Eagle eyes!",
+          "he": "עיני נץ!"
+        },
+        {
+          "en": "You found me among all the fans!",
+          "he": "מצאתם אותי בין כל האוהדים!"
+        }
+      ],
       "animation": "wave",
       "slots": [
-        { "id": "stadium_flag_a", "x": 0.85, "y": 0.3, "scale": 0.05, "layer": "behindForeground", "hintZone": { "x": 0.85, "y": 0.3, "r": 0.09 }, "hintText": "חפשו למעלה למעלה ביציע." },
-        { "id": "stadium_flag_b", "x": 0.12, "y": 0.28, "scale": 0.05, "layer": "behindForeground", "flip": true, "hintZone": { "x": 0.12, "y": 0.28, "r": 0.09 }, "hintText": "חפשו בפינה של היציע." }
+        {
+          "id": "stadium_flag_a",
+          "x": 0.85,
+          "y": 0.3,
+          "scale": 0.05,
+          "layer": "behindForeground",
+          "hintZone": {
+            "x": 0.85,
+            "y": 0.3,
+            "r": 0.09
+          },
+          "hintText": {
+            "en": "Look way up in the stands.",
+            "he": "חפשו למעלה למעלה ביציע."
+          }
+        },
+        {
+          "id": "stadium_flag_b",
+          "x": 0.12,
+          "y": 0.28,
+          "scale": 0.05,
+          "layer": "behindForeground",
+          "flip": true,
+          "hintZone": {
+            "x": 0.12,
+            "y": 0.28,
+            "r": 0.09
+          },
+          "hintText": {
+            "en": "Look in the corner of the stands.",
+            "he": "חפשו בפינה של היציע."
+          }
+        }
       ]
     }
   ],
   "ambient": [
-    { "id": "goalkeeper", "label": "שוער מזנק", "x": 0.14, "y": 0.72, "w": 0.06, "h": 0.1, "animation": "hop", "sound": "whoosh", "reaction": "הצלה!", "glyph": "🧤" },
-    { "id": "scoreboard", "label": "לוח תוצאות", "x": 0.45, "y": 0.08, "w": 0.1, "h": 0.06, "animation": "flash", "sound": "crowd", "reaction": "1:0 ל{name}!", "glyph": "🔢" }
+    {
+      "id": "goalkeeper",
+      "label": {
+        "en": "Diving goalkeeper",
+        "he": "שוער מזנק"
+      },
+      "x": 0.14,
+      "y": 0.72,
+      "w": 0.06,
+      "h": 0.1,
+      "animation": "hop",
+      "sound": "whoosh",
+      "reaction": {
+        "en": "Saved!",
+        "he": "הצלה!"
+      },
+      "glyph": "🧤"
+    },
+    {
+      "id": "scoreboard",
+      "label": {
+        "en": "Scoreboard",
+        "he": "לוח תוצאות"
+      },
+      "x": 0.45,
+      "y": 0.08,
+      "w": 0.1,
+      "h": 0.06,
+      "animation": "flash",
+      "sound": "crowd",
+      "reaction": {
+        "en": "1–0 to {name}!",
+        "he": "1:0 ל{name}!"
+      },
+      "glyph": "🔢"
+    }
   ],
-  "celebration": { "kind": "crowd", "completeText": "מצאתם את {name} שלוש פעמים באיצטדיון!" },
-  "collectible": { "id": "ball", "name": "כדור מהמשחק", "icon": "⚽" },
-  "sounds": { "ambient": "crowd" }
+  "celebration": {
+    "kind": "crowd",
+    "completeText": {
+      "en": "You found {name} three times at the stadium!",
+      "he": "מצאתם את {name} שלוש פעמים באיצטדיון!"
+    }
+  },
+  "collectible": {
+    "id": "ball",
+    "name": {
+      "en": "A ball from the match",
+      "he": "כדור מהמשחק"
+    },
+    "icon": "⚽"
+  },
+  "sounds": {
+    "ambient": "crowd"
+  }
 }

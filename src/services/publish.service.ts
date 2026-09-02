@@ -36,7 +36,8 @@ export async function publishGame(c: Container, gameId: string, actor: Actor): P
   const current = statusOf(await c.db.game.findUniqueOrThrow({ where: { id: gameId }, select: { status: true } }));
   if (current === "READY" && game.owner && game.childProfile) {
     const libraryLink = await createMagicLink(c, game.owner.id, `/library/${gameId}`);
-    await c.email.send(gameReadyEmail({ to: game.owner.email, childName: game.childProfile.displayName, playLink: link.url, libraryLink, sceneCount: game.scenes.length }));
+    const locale = game.locale === "he" ? "he" : "en";
+    await c.email.send(gameReadyEmail({ to: game.owner.email, childName: game.childProfile.displayName, playLink: link.url, libraryLink, sceneCount: game.scenes.length, locale }));
     await transitionGame(c, gameId, "DELIVERED", actor);
   }
   return { playUrl: link.url };

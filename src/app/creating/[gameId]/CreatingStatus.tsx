@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { LinkButton } from "@/ui/Button";
-import { Notice } from "@/ui/Shell";
+import { Notice } from "@/ui/primitives";
+import { useI18n } from "@/i18n/client";
 
 interface Status {
   status: string;
@@ -15,8 +16,10 @@ interface Status {
 }
 
 export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string; childName: string; isAdmin: boolean }) {
+  const { t, tf } = useI18n();
+  const cr = t.create.creating;
   const [s, setS] = useState<Status | null>(null);
-  const steps = [`יוצרים את הדמות של ${childName}`, `מחביאים את ${childName} בעולמות`, "מוסיפים הפתעות", "בודקים שהכול מוכן"];
+  const steps = cr.steps.map((x) => tf(x, { name: childName }));
 
   useEffect(() => {
     let alive = true;
@@ -41,9 +44,9 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
   if (s.status === "CHECKOUT_PENDING" || s.status === "PACKAGE_SELECTED" || s.status === "PAYMENT_FAILED") {
     return (
       <div className="fm-stack fm-stack--3">
-        <Notice kind="warn">{s.status === "PAYMENT_FAILED" ? "התשלום לא הושלם." : "עדיין מחכים לאישור התשלום…"}</Notice>
+        <Notice kind="warn">{s.status === "PAYMENT_FAILED" ? cr.paymentFailed : cr.waitingPayment}</Notice>
         <LinkButton href="/checkout" variant="secondary">
-          חזרה לתשלום
+          {cr.backToCheckout}
         </LinkButton>
       </div>
     );
@@ -52,7 +55,7 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
   if (s.failed) {
     return (
       <Notice kind="danger">
-        משהו השתבש ביצירה. אנחנו על זה — ונעדכן במייל. {isAdmin ? <Link href={`/admin/orders/${gameId}`}>לאדמין</Link> : null}
+        {cr.failed} {isAdmin ? <Link href={`/admin/orders/${gameId}`}>{cr.adminLink}</Link> : null}
       </Notice>
     );
   }
@@ -63,13 +66,13 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
         <span style={{ fontSize: "var(--fs-800)", lineHeight: 1 }} aria-hidden>
           🎉
         </span>
-        <h2>המשחק של {childName} מוכן!</h2>
-        <p className="fm-lead">שלחנו גם מייל עם הקישור הפרטי וקישור לספרייה.</p>
+        <h2>{tf(cr.readyTitle, { name: childName })}</h2>
+        <p className="fm-lead">{cr.readyLead}</p>
         <LinkButton href={s.playUrl} size="lg">
-          לפתיחת המשחק
+          {cr.open}
         </LinkButton>
         <Link href="/library" className="fm-small">
-          ניהול המשחק בספרייה שלי
+          {cr.manage}
         </Link>
       </div>
     );
@@ -77,7 +80,7 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
 
   return (
     <div className="fm-stack fm-stack--3">
-      <ol className="progress" aria-label="התקדמות">
+      <ol className="progress">
         {steps.map((label, i) => {
           const n = i + 1;
           const cls = n < s.step ? "done" : n === s.step ? "active" : "todo";
@@ -93,7 +96,7 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
       </ol>
       {s.awaitingQa ? (
         <Notice kind="info">
-          בדיקה אחרונה לפני המסירה. {isAdmin ? <Link href={`/admin/orders/${gameId}`}>לבדיקת QA באדמין</Link> : "נשלח מייל ברגע שהכול מאושר."}
+          {cr.qa} {isAdmin ? <Link href={`/admin/orders/${gameId}`}>{cr.qaAdmin}</Link> : cr.qaParent}
         </Notice>
       ) : null}
     </div>

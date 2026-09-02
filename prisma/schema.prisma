@@ -84,6 +84,7 @@ model Game {
   status         String    @default("DRAFT") // domain/order-state.ts
   sceneCount     Int       @default(0)
   styleVersion   String    @default("collage-v1")
+  locale         String    @default("en") // en | he — frozen at creation; the game and its emails use it
   draftToken     String?   @unique // owns the draft before login
   giftJson       String?   // { fromName?, message?, openAt? }
   configJson     String?   // composed GameConfig (domain/game/config.ts) — never includes the original photo

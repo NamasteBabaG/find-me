@@ -1,8 +1,14 @@
 {
   "id": "scene_ship",
   "slug": "ship",
-  "name": "אונייה בלב ים",
-  "tagline": "קפטן, טלסקופ ולווייתן שמתיז מים.",
+  "name": {
+    "en": "A Ship at Sea",
+    "he": "אונייה בלב ים"
+  },
+  "tagline": {
+    "en": "A captain, a telescope and a whale that splashes.",
+    "he": "קפטן, טלסקופ ולווייתן שמתיז מים."
+  },
   "version": 1,
   "active": false,
   "artStatus": "placeholder",
@@ -11,7 +17,11 @@
     "height": 1000,
     "base": "/scenes/_placeholder/base.svg",
     "thumbnail": "/scenes/_placeholder/thumb.svg",
-    "palette": { "sky": "#E0F7FA", "ground": "#1B6FA8", "accent": "#FFB61E" }
+    "palette": {
+      "sky": "#E0F7FA",
+      "ground": "#1B6FA8",
+      "accent": "#FFB61E"
+    }
   },
   "targets": [
     {
@@ -19,13 +29,60 @@
       "targetType": "ship_captain",
       "bodyTemplate": "ship_captain",
       "difficulty": 1,
-      "mission": "מצאו את {name} עם כובע קפטן",
-      "item": "כובע קפטן",
-      "success": ["קפטן נמצא!", "אהוי! מצאתם אותי!", "כל הצוות ראה!"],
+      "mission": {
+        "en": "Find {name} in a captain's hat",
+        "he": "מצאו את {name} עם כובע קפטן"
+      },
+      "item": {
+        "en": "a captain's hat",
+        "he": "כובע קפטן"
+      },
+      "success": [
+        {
+          "en": "Captain found!",
+          "he": "קפטן נמצא!"
+        },
+        {
+          "en": "Ahoy! You found me!",
+          "he": "אהוי! מצאתם אותי!"
+        },
+        {
+          "en": "The whole crew saw!",
+          "he": "כל הצוות ראה!"
+        }
+      ],
       "animation": "salute",
       "slots": [
-        { "id": "ship_captain_a", "x": 0.5, "y": 0.4, "scale": 0.07, "hintZone": { "x": 0.5, "y": 0.4, "r": 0.1 }, "hintText": "חפשו ליד ההגה." },
-        { "id": "ship_captain_b", "x": 0.2, "y": 0.55, "scale": 0.07, "hintZone": { "x": 0.2, "y": 0.55, "r": 0.1 }, "hintText": "חפשו בחרטום." }
+        {
+          "id": "ship_captain_a",
+          "x": 0.5,
+          "y": 0.4,
+          "scale": 0.07,
+          "hintZone": {
+            "x": 0.5,
+            "y": 0.4,
+            "r": 0.1
+          },
+          "hintText": {
+            "en": "Look near the wheel.",
+            "he": "חפשו ליד ההגה."
+          }
+        },
+        {
+          "id": "ship_captain_b",
+          "x": 0.2,
+          "y": 0.55,
+          "scale": 0.07,
+          "hintZone": {
+            "x": 0.2,
+            "y": 0.55,
+            "r": 0.1
+          },
+          "hintText": {
+            "en": "Look at the bow.",
+            "he": "חפשו בחרטום."
+          }
+        }
       ]
     },
     {
@@ -33,13 +90,60 @@
       "targetType": "ship_telescope",
       "bodyTemplate": "ship_telescope",
       "difficulty": 2,
-      "mission": "מצאו את {name} מביט/ה בטלסקופ",
-      "item": "טלסקופ",
-      "success": ["ראיתי אתכם מרחוק!", "יבשה! לא… זה אתם!", "מצאתם אותי לפני שמצאתי אי!"],
+      "mission": {
+        "en": "Find {name} looking through a telescope",
+        "he": "מצאו את {name} מביט/ה בטלסקופ"
+      },
+      "item": {
+        "en": "a telescope",
+        "he": "טלסקופ"
+      },
+      "success": [
+        {
+          "en": "I saw you from far away!",
+          "he": "ראיתי אתכם מרחוק!"
+        },
+        {
+          "en": "Land ho! No… it's you!",
+          "he": "יבשה! לא… זה אתם!"
+        },
+        {
+          "en": "You found me before I found an island!",
+          "he": "מצאתם אותי לפני שמצאתי אי!"
+        }
+      ],
       "animation": "wiggle",
       "slots": [
-        { "id": "ship_tele_a", "x": 0.7, "y": 0.25, "scale": 0.06, "hintZone": { "x": 0.7, "y": 0.25, "r": 0.1 }, "hintText": "חפשו למעלה, ליד המפרש." },
-        { "id": "ship_tele_b", "x": 0.85, "y": 0.6, "scale": 0.06, "hintZone": { "x": 0.85, "y": 0.6, "r": 0.1 }, "hintText": "חפשו בירכתיים." }
+        {
+          "id": "ship_tele_a",
+          "x": 0.7,
+          "y": 0.25,
+          "scale": 0.06,
+          "hintZone": {
+            "x": 0.7,
+            "y": 0.25,
+            "r": 0.1
+          },
+          "hintText": {
+            "en": "Look up, near the sail.",
+            "he": "חפשו למעלה, ליד המפרש."
+          }
+        },
+        {
+          "id": "ship_tele_b",
+          "x": 0.85,
+          "y": 0.6,
+          "scale": 0.06,
+          "hintZone": {
+            "x": 0.85,
+            "y": 0.6,
+            "r": 0.1
+          },
+          "hintText": {
+            "en": "Look at the stern.",
+            "he": "חפשו בירכתיים."
+          }
+        }
       ]
     },
     {
@@ -47,21 +151,120 @@
       "targetType": "ship_lifebuoy",
       "bodyTemplate": "ship_lifebuoy",
       "difficulty": 3,
-      "mission": "מצאו את {name} עם גלגל הצלה",
-      "item": "גלגל הצלה",
-      "success": ["גלגל ההצלה הציל אותי מלהתחבא יותר!", "עיני נץ!", "מצאתם אותי ליד המים!"],
+      "mission": {
+        "en": "Find {name} with a life ring",
+        "he": "מצאו את {name} עם גלגל הצלה"
+      },
+      "item": {
+        "en": "a life ring",
+        "he": "גלגל הצלה"
+      },
+      "success": [
+        {
+          "en": "The life ring saved me from hiding any longer!",
+          "he": "גלגל ההצלה הציל אותי מלהתחבא יותר!"
+        },
+        {
+          "en": "Eagle eyes!",
+          "he": "עיני נץ!"
+        },
+        {
+          "en": "You found me by the water!",
+          "he": "מצאתם אותי ליד המים!"
+        }
+      ],
       "animation": "bounce",
       "slots": [
-        { "id": "ship_buoy_a", "x": 0.35, "y": 0.78, "scale": 0.05, "layer": "behindForeground", "hintZone": { "x": 0.35, "y": 0.78, "r": 0.09 }, "hintText": "חפשו ליד הסירות הקטנות." },
-        { "id": "ship_buoy_b", "x": 0.62, "y": 0.82, "scale": 0.05, "layer": "behindForeground", "flip": true, "hintZone": { "x": 0.62, "y": 0.82, "r": 0.09 }, "hintText": "חפשו ליד המעקה." }
+        {
+          "id": "ship_buoy_a",
+          "x": 0.35,
+          "y": 0.78,
+          "scale": 0.05,
+          "layer": "behindForeground",
+          "hintZone": {
+            "x": 0.35,
+            "y": 0.78,
+            "r": 0.09
+          },
+          "hintText": {
+            "en": "Look near the little boats.",
+            "he": "חפשו ליד הסירות הקטנות."
+          }
+        },
+        {
+          "id": "ship_buoy_b",
+          "x": 0.62,
+          "y": 0.82,
+          "scale": 0.05,
+          "layer": "behindForeground",
+          "flip": true,
+          "hintZone": {
+            "x": 0.62,
+            "y": 0.82,
+            "r": 0.09
+          },
+          "hintText": {
+            "en": "Look near the railing.",
+            "he": "חפשו ליד המעקה."
+          }
+        }
       ]
     }
   ],
   "ambient": [
-    { "id": "whale", "label": "לווייתן מתיז מים", "x": 0.1, "y": 0.85, "w": 0.1, "h": 0.08, "animation": "bounce", "sound": "splash", "reaction": "פששש!", "glyph": "🐋" },
-    { "id": "flag", "label": "דגל האונייה", "x": 0.5, "y": 0.05, "w": 0.05, "h": 0.06, "animation": "shake", "sound": "whoosh", "reaction": "הרוח חזקה היום!", "glyph": "🏴‍☠️" }
+    {
+      "id": "whale",
+      "label": {
+        "en": "Whale splashing",
+        "he": "לווייתן מתיז מים"
+      },
+      "x": 0.1,
+      "y": 0.85,
+      "w": 0.1,
+      "h": 0.08,
+      "animation": "bounce",
+      "sound": "splash",
+      "reaction": {
+        "en": "Pssshhh!",
+        "he": "פששש!"
+      },
+      "glyph": "🐋"
+    },
+    {
+      "id": "flag",
+      "label": {
+        "en": "The ship's flag",
+        "he": "דגל האונייה"
+      },
+      "x": 0.5,
+      "y": 0.05,
+      "w": 0.05,
+      "h": 0.06,
+      "animation": "shake",
+      "sound": "whoosh",
+      "reaction": {
+        "en": "The wind is strong today!",
+        "he": "הרוח חזקה היום!"
+      },
+      "glyph": "🏴‍☠️"
+    }
   ],
-  "celebration": { "kind": "bubbles", "completeText": "מצאתם את {name} שלוש פעמים באונייה!" },
-  "collectible": { "id": "anchor", "name": "עוגן קטן", "icon": "⚓" },
-  "sounds": { "ambient": "waves" }
+  "celebration": {
+    "kind": "bubbles",
+    "completeText": {
+      "en": "You found {name} three times on the ship!",
+      "he": "מצאתם את {name} שלוש פעמים באונייה!"
+    }
+  },
+  "collectible": {
+    "id": "anchor",
+    "name": {
+      "en": "A little anchor",
+      "he": "עוגן קטן"
+    },
+    "icon": "⚓"
+  },
+  "sounds": {
+    "ambient": "waves"
+  }
 }
