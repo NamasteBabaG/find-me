@@ -206,6 +206,9 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           <button type="button" className="scene__btn" onClick={() => apiRef.current?.zoomBy(1.5)} aria-label={g.scene.zoomIn}>
             ＋
           </button>
+          <button type="button" className="scene__btn" onClick={() => apiRef.current?.zoomBy(1 / 1.5)} aria-label={g.scene.zoomOut}>
+            −
+          </button>
           <button type="button" className="scene__btn" onClick={() => apiRef.current?.reset()} aria-label={g.scene.reset}>
             ⤢
           </button>

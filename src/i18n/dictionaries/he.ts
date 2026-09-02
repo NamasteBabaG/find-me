@@ -338,6 +338,7 @@ export const he: Dictionary = {
     scene: {
       backToMap: "חזרה למפה",
       zoomIn: "הגדלה",
+      zoomOut: "הקטנה",
       reset: "להראות את כל העולם",
       mute: "השתקה",
       unmute: "הפעלת צליל",

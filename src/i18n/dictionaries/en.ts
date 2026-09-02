@@ -339,6 +339,7 @@ export const en = {
     scene: {
       backToMap: "Back to the map",
       zoomIn: "Zoom in",
+      zoomOut: "Zoom out",
       reset: "Show the whole world",
       mute: "Mute",
       unmute: "Turn sound on",

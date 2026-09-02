@@ -1,27 +1,66 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "@/i18n/client";
+import { seededRng } from "@/lib/random";
 
 /**
- * Hero: "Where Am I?" over a real world, with a searchlight that follows the
- * pointer (and roams by itself when idle). Noa is tucked into the scene; when
- * the light finds her she pops up with "Found me!". The whole product in one
- * gesture: a busy illustrated world, a child hiding in it, you searching.
+ * Hero: "Where Am I?" on a dark stage. A searchlight follows the pointer
+ * (and roams on its own) and reveals a hidden layer of little doodles —
+ * shells, kites, rockets — invisible outside the beam. Noa hides in there
+ * too; when the light finds her she pops up with "Found me!".
+ * No world image here: the real world lives in the demo right below.
  */
-export function Hero({ sceneSrc }: { sceneSrc: string }) {
+const DOODLES = ["🐚", "⭐", "🍃", "🪁", "⚓", "🍉", "🚀", "🦜", "🏰", "🛟", "🌴", "🐒", "👽", "🎈", "🦀", "🔭", "⛵", "🍦", "🦋", "🪐", "🐋", "🎪", "🐢", "🌋"];
+const NOA_DESKTOP = { x: 0.74, y: 0.6 };
+const NOA_MOBILE = { x: 0.82, y: 0.9 };
+
+interface Doodle {
+  glyph: string;
+  x: number;
+  y: number;
+  size: number;
+  rot: number;
+}
+
+export function Hero() {
   const { t } = useI18n();
   const h = t.home.hero;
-  const sceneRef = useRef<HTMLDivElement | null>(null);
-  const pointer = useRef({ x: 0.5, y: 0.55, active: false, last: 0 });
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const pointer = useRef({ x: 0.5, y: 0.5, active: false, last: 0 });
   const [lit, setLit] = useState(false);
+  const [narrow, setNarrow] = useState(false);
+  const noaRef = useRef(NOA_DESKTOP);
 
-  // Noa's spot inside the scene strip (fractions of the strip, not the art).
-  const NOA = { x: 0.76, y: 0.62 };
+  // Noa moves out of the way of the copy on small screens.
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 720px)");
+    const apply = () => {
+      setNarrow(mq.matches);
+      noaRef.current = mq.matches ? NOA_MOBILE : NOA_DESKTOP;
+    };
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+
+  // Deterministic scatter (same on server and client → no hydration mismatch).
+  const doodles = useMemo<Doodle[]>(() => {
+    const rng = seededRng("hero-doodles");
+    const out: Doodle[] = [];
+    for (let i = 0; i < 56; i++) {
+      const x = rng();
+      const y = rng();
+      // keep the headline area a little clearer
+      if (y > 0.28 && y < 0.62 && x > 0.2 && x < 0.8 && rng() < 0.7) continue;
+      out.push({ glyph: DOODLES[i % DOODLES.length] ?? "✨", x, y, size: 20 + Math.round(rng() * 28), rot: Math.round((rng() - 0.5) * 50) });
+    }
+    return out;
+  }, []);
 
   useEffect(() => {
-    const el = sceneRef.current;
+    const el = stageRef.current;
     if (!el) return;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     let raf = 0;
@@ -31,23 +70,22 @@ export function Hero({ sceneSrc }: { sceneSrc: string }) {
       const idle = !p.active || now - p.last > 2500;
       if (idle && !reduced) {
         const s = (now - start) / 1000;
-        p.x = 0.5 + 0.38 * Math.cos(s * 0.35);
-        p.y = 0.55 + 0.25 * Math.sin(s * 0.55);
+        p.x = 0.5 + 0.4 * Math.cos(s * 0.33);
+        p.y = 0.5 + 0.3 * Math.sin(s * 0.5);
       }
       el.style.setProperty("--lx", `${(p.x * 100).toFixed(2)}%`);
       el.style.setProperty("--ly", `${(p.y * 100).toFixed(2)}%`);
       const rect = el.getBoundingClientRect();
-      const dx = (p.x - NOA.x) * rect.width;
-      const dy = (p.y - NOA.y) * rect.height;
-      setLit(Math.hypot(dx, dy) < Math.max(120, rect.width * 0.09));
+      const noa = noaRef.current;
+      const d = Math.hypot((p.x - noa.x) * rect.width, (p.y - noa.y) * rect.height);
+      setLit(d < Math.max(110, rect.width * 0.08));
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+  const track = (e: React.PointerEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     pointer.current = { x: (e.clientX - rect.left) / rect.width, y: (e.clientY - rect.top) / rect.height, active: true, last: performance.now() };
   };
@@ -55,22 +93,39 @@ export function Hero({ sceneSrc }: { sceneSrc: string }) {
   const title = h.title.endsWith("?") ? (
     <>
       {h.title.slice(0, -1)}
-      <span className="hero2__q">?</span>
+      <span className="hero3__q">?</span>
     </>
   ) : (
     h.title
   );
 
   return (
-    <section className="hero2" aria-labelledby="hero-title">
-      <div className="hero2__stars" aria-hidden />
-      <div className="fm-container hero2__content">
-        <span className="fm-pill fm-pill--night hero2__pill">{h.pill}</span>
-        <h1 id="hero-title" className="hero2__title">
+    <section className="hero3" aria-labelledby="hero-title">
+      <div ref={stageRef} className="hero3__stage" onPointerMove={track} onPointerDown={track} aria-hidden>
+        <div className="hero3__stars" />
+        <div className="hero3__hidden">
+          {doodles.map((d, i) => (
+            <span key={i} className="hero3__doodle" style={{ left: `${d.x * 100}%`, top: `${d.y * 100}%`, fontSize: d.size, transform: `translate(-50%, -50%) rotate(${d.rot}deg)` }}>
+              {d.glyph}
+            </span>
+          ))}
+        </div>
+        <div className="hero3__beam" />
+        <div className={`hero3__noa${lit ? " is-lit" : ""}`} style={{ left: `${(narrow ? NOA_MOBILE : NOA_DESKTOP).x * 100}%`, top: `${(narrow ? NOA_MOBILE : NOA_DESKTOP).y * 100}%` }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/demo/noa-face.png" alt="" className="fm-sticker hero3__noa-img" width={104} height={104} draggable={false} />
+          <span className="hero3__bubble">{h.found}</span>
+        </div>
+        <span className="hero3__hint fm-pill fm-pill--night">{h.searchHint}</span>
+      </div>
+
+      <div className="fm-container hero3__content">
+        <span className="fm-pill fm-pill--night hero3__pill">{h.pill}</span>
+        <h1 id="hero-title" className="hero3__title">
           {title}
         </h1>
-        <p className="hero2__lead">{h.lead}</p>
-        <div className="hero2__cta">
+        <p className="hero3__lead">{h.lead}</p>
+        <div className="hero3__cta">
           <Link href="/create" className="fm-btn fm-btn--xl">
             {h.cta}
             <span className="fm-btn__arrow" aria-hidden>
@@ -81,21 +136,7 @@ export function Hero({ sceneSrc }: { sceneSrc: string }) {
             {h.demo}
           </a>
         </div>
-      </div>
-
-      <div ref={sceneRef} className="hero2__scene" onPointerMove={onPointerMove} aria-hidden>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={sceneSrc} alt="" className="hero2__img hero2__img--dim" draggable={false} />
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={sceneSrc} alt="" className="hero2__img hero2__img--lit" draggable={false} />
-        <div className="hero2__fade" />
-        <div className={`hero2__noa${lit ? " is-lit" : ""}`} style={{ left: `${NOA.x * 100}%`, top: `${NOA.y * 100}%` }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/demo/noa-face.png" alt="" className="fm-sticker hero2__noa-img" width={96} height={96} draggable={false} />
-          <span className="hero2__bubble">{h.found}</span>
-        </div>
-        <span className="hero2__hint fm-pill fm-pill--night">{h.searchHint}</span>
-        <ul className="hero2__facts">
+        <ul className="hero3__facts">
           {h.facts.map((f) => (
             <li key={f}>{f}</li>
           ))}

@@ -2,10 +2,8 @@ import Link from "next/link";
 import type { SceneDefinition } from "@/domain/scene/schema";
 import { PACKAGES, PACKAGE_ORDER, searchesFor } from "@/domain/package";
 import { formatPrice, pick, tf, type Dictionary, type Locale } from "@/i18n";
-import { ComposedSprite } from "@/game/components/ComposedSprite";
 import { Reveal } from "./Reveal";
 
-const DEMO_FACE = "/demo/noa-face.png";
 export const WORLD_GLYPHS: Record<string, string> = { beach: "🏖️", jungle: "🌴", space: "🚀", city: "🏙️", ship: "⚓", stadium: "🏟️", market: "🍉", park: "🪁", volcano: "🌋" };
 const STEP_ICONS = ["📷", "🗺️", "💌", "🎉"] as const;
 const STEP_TONES = ["sun", "aqua", "lavender", "coral"] as const;
@@ -65,10 +63,12 @@ export function HowItWorks({ t }: SectionProps) {
   );
 }
 
-/* ─── Bento: what's inside ─── */
+/* ─── What's inside: six equal cards with a check ─── */
+const INSIDE_ORDER = ["three", "hints", "noFail", "replay", "bag", "link"] as const;
+const INSIDE_TONES = ["sun", "aqua", "coral", "lavender", "lime", "sea"] as const;
+
 export function Inside({ t }: SectionProps) {
   const s = t.home.inside;
-  const tiles = s.tiles;
   return (
     <section id="inside" className="fm-section">
       <div className="fm-container">
@@ -77,64 +77,19 @@ export function Inside({ t }: SectionProps) {
           <h2>{s.title}</h2>
           <p className="fm-lead">{s.lead}</p>
         </Reveal>
-        <div className="bento">
-          <Reveal className="tile tile--wide tile--sun">
-            <div className="tile__art">
-              <ComposedSprite faceUrl={DEMO_FACE} bodyTemplate="beach_float" className="tile__sprite" />
-              <ComposedSprite faceUrl={DEMO_FACE} bodyTemplate="beach_sandcastle" className="tile__sprite" />
-              <ComposedSprite faceUrl={DEMO_FACE} bodyTemplate="beach_umbrella_peek" className="tile__sprite" />
-            </div>
-            <h3>{tiles.three.title}</h3>
-            <p>{tiles.three.text}</p>
-          </Reveal>
-          <Reveal className="tile tile--aqua" delay={80}>
-            <div className="tile__art">
-              <span className="tile__hint" aria-hidden>
-                💡
-              </span>
-            </div>
-            <h3>{tiles.hints.title}</h3>
-            <p>{tiles.hints.text}</p>
-          </Reveal>
-          <Reveal className="tile tile--coral" delay={160}>
-            <div className="tile__art">
-              <span className="tile__ripple" aria-hidden />
-            </div>
-            <h3>{tiles.noFail.title}</h3>
-            <p>{tiles.noFail.text}</p>
-          </Reveal>
-          <Reveal className="tile tile--lavender" delay={60}>
-            <div className="tile__art">
-              <div className="tile__ab" aria-hidden>
-                <span>A</span>
-                <span>B</span>
-              </div>
-            </div>
-            <h3>{tiles.replay.title}</h3>
-            <p>{tiles.replay.text}</p>
-          </Reveal>
-          <Reveal className="tile tile--lime" delay={120}>
-            <div className="tile__art">
-              <div className="tile__glyphs" aria-hidden>
-                <span className="tile__glyph">🐚</span>
-                <span className="tile__glyph">🍃</span>
-                <span className="tile__glyph">⭐</span>
-                <span className="tile__glyph tile__glyph--dim">⚓</span>
-                <span className="tile__glyph tile__glyph--dim">💎</span>
-              </div>
-            </div>
-            <h3>{tiles.bag.title}</h3>
-            <p>{tiles.bag.text}</p>
-          </Reveal>
-          <Reveal className="tile tile--night" delay={180}>
-            <div className="tile__art">
-              <span className="tile__link" aria-hidden>
-                🔗
-              </span>
-            </div>
-            <h3>{tiles.link.title}</h3>
-            <p>{tiles.link.text}</p>
-          </Reveal>
+        <div className="features">
+          {INSIDE_ORDER.map((key, i) => {
+            const tile = s.tiles[key];
+            return (
+              <Reveal key={key} className={`feature feature--${INSIDE_TONES[i] ?? "sun"}`} delay={(i % 3) * 80}>
+                <span className="feature__check" aria-hidden>
+                  ✓
+                </span>
+                <h3>{tile.title}</h3>
+                <p>{tile.text}</p>
+              </Reveal>
+            );
+          })}
         </div>
       </div>
     </section>

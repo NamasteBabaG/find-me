@@ -15,13 +15,12 @@ export default async function HomePage() {
   const [user, active, { locale, t }] = await Promise.all([currentUser(), activeSceneSlugs(c), getI18n()]);
   const scenes = SCENE_CATALOG.map((e) => e.scene);
   const demo = buildDemoConfig(locale, "beach");
-  const heroScene = scenes.find((s) => s.slug === "beach")?.art.base ?? "/scenes/beach/base.webp";
 
   return (
     <>
       <SiteHeader user={user} isAdmin={isAdminEmail(user?.email)} />
       <main>
-        <Hero sceneSrc={heroScene} />
+        <Hero />
         <Marquee scenes={scenes} locale={locale} />
         <DemoSection config={demo} />
         <HowItWorks t={t} locale={locale} />

@@ -29,7 +29,7 @@ export interface ViewportApi {
     onPointerMove: (e: ReactPointerEvent<HTMLDivElement>) => void;
     onPointerUp: (e: ReactPointerEvent<HTMLDivElement>) => void;
     onPointerCancel: (e: ReactPointerEvent<HTMLDivElement>) => void;
-    onWheel: (e: ReactWheelEvent<HTMLDivElement>) => void;
+    onWheel?: (e: ReactWheelEvent<HTMLDivElement>) => void;
   };
   toNormalized: (clientX: number, clientY: number) => { x: number; y: number } | null;
   zoomBy: (factor: number) => void;
@@ -40,7 +40,7 @@ export interface ViewportApi {
 
 const MAX_ZOOM_FACTOR = 4;
 
-export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>, stage: Size, onTap: (nx: number, ny: number) => void): ViewportApi {
+export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>, stage: Size, onTap: (nx: number, ny: number) => void, options: { wheelZoom?: boolean } = {}): ViewportApi {
   const [viewport, setViewport] = useState<Size>({ width: 0, height: 0 });
   const [transform, setTransform] = useState<ViewTransform>({ scale: 1, tx: 0, ty: 0 });
   const [isDragging, setDragging] = useState(false);
@@ -264,7 +264,8 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
     viewport,
     fit,
     isDragging,
-    bind: { onPointerDown, onPointerMove, onPointerUp: (e) => endPointer(e, false), onPointerCancel: (e) => endPointer(e, true), onWheel },
+    // Wheel zoom is opt-in: on the landing page the wheel must scroll the page, not the world.
+    bind: { onPointerDown, onPointerMove, onPointerUp: (e) => endPointer(e, false), onPointerCancel: (e) => endPointer(e, true), ...(options.wheelZoom ? { onWheel } : {}) },
     toNormalized,
     zoomBy,
     reset,
