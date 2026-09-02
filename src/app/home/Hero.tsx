@@ -70,8 +70,10 @@ export function Hero() {
       const idle = !p.active || now - p.last > 2500;
       if (idle && !reduced) {
         const s = (now - start) / 1000;
-        p.x = 0.5 + 0.4 * Math.cos(s * 0.33);
-        p.y = 0.5 + 0.3 * Math.sin(s * 0.5);
+        const tx = 0.5 + 0.4 * Math.cos(s * 0.14);
+        const ty = 0.5 + 0.3 * Math.sin(s * 0.21);
+        p.x += (tx - p.x) * 0.02;
+        p.y += (ty - p.y) * 0.02;
       }
       el.style.setProperty("--lx", `${(p.x * 100).toFixed(2)}%`);
       el.style.setProperty("--ly", `${(p.y * 100).toFixed(2)}%`);

@@ -109,7 +109,6 @@ export function LanguageSwitcher() {
               className={`fm-lang__item${l === locale ? " is-active" : ""}`}
               onClick={() => choose(l)}
               lang={l}
-              dir={l === "he" ? "rtl" : "ltr"}
             >
               <Flag locale={l} />
               <span className="fm-lang__name">{t.common.languages[l]}</span>
