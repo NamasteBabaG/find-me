@@ -10,15 +10,15 @@ import { ComposedSprite } from "@/game/components/ComposedSprite";
 import { Reveal } from "./Reveal";
 
 /**
- * Two optional files turn this section into the real thing:
- *  - public/demo/example-photo.jpg      the "uploaded" photo (a generic child, shoulders and up)
- *  - public/demo/example-character.png  the same child illustrated in our style, full or half body,
- *                                        transparent background, roughly 500×700
- * Until they exist: a dashed placeholder for the photo, and the system's own composed
- * character (face sticker + body template) — which is also exactly what the game hides.
+ * Example pair for the landing page (generated from assets/random-girl*.png by
+ * scripts/build-demo-assets.ts):
+ *  - public/demo/example-photo.jpg       the "uploaded" photo, shoulders and up, 4:5
+ *  - public/demo/example-character.webp  the same girl illustrated in our style, half body, transparent
+ * If either file is missing the card falls back to a placeholder / the system's own
+ * composed character (face sticker + body template), so the page never breaks.
  */
 const PHOTO = { url: "/demo/example-photo.jpg", file: path.join(process.cwd(), "public", "demo", "example-photo.jpg") };
-const CHARACTER = { url: "/demo/example-character.png", file: path.join(process.cwd(), "public", "demo", "example-character.png") };
+const CHARACTER = { url: "/demo/example-character.webp", file: path.join(process.cwd(), "public", "demo", "example-character.webp") };
 const DEMO_TEMPLATE = "beach_float";
 
 /**
@@ -36,13 +36,14 @@ export async function Transformation() {
   const templateLabel = pick(BODY_TEMPLATES[DEMO_TEMPLATE]!.label, locale);
   const hasPhoto = existsSync(PHOTO.file);
   const hasCharacter = existsSync(CHARACTER.file);
+  const tag = hasCharacter ? `${child.name} · ${tr.characterTag}` : `${child.name} · ${templateLabel}`;
 
   const figure = (className: string) =>
     hasCharacter ? (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src={CHARACTER.url} alt="" className={className} loading="lazy" draggable={false} />
+      <img src={CHARACTER.url} alt="" className={`${className} tf-figure--art`} loading="lazy" draggable={false} />
     ) : (
-      <ComposedSprite faceUrl={child.avatarUrl} bodyTemplate={DEMO_TEMPLATE} className={className} title={`${child.name} · ${templateLabel}`} />
+      <ComposedSprite faceUrl={child.avatarUrl} bodyTemplate={DEMO_TEMPLATE} className={className} title={tag} />
     );
 
   return (
@@ -59,7 +60,7 @@ export async function Transformation() {
             <div className="tf-card__media tf-card__media--photo">
               {hasPhoto ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={PHOTO.url} alt={tr.photoAlt} loading="lazy" />
+                <img src={PHOTO.url} alt={tr.photoAlt} loading="lazy" width={800} height={1000} />
               ) : (
                 <div className="tf-placeholder" role="img" aria-label={tr.photoAlt}>
                   <span className="tf-placeholder__icon" aria-hidden>
@@ -73,20 +74,18 @@ export async function Transformation() {
             <p className="tf-card__text">{tr.photo.text}</p>
           </Reveal>
 
-          <Reveal as="li" className="tf-card" delay={90}>
-            <div className="tf-card__media tf-card__media--sticker" role="img" aria-label={tr.characterAlt}>
+          <Reveal as="li" className="tf-card" delay={160}>
+            <div className={`tf-card__media tf-card__media--sticker${hasCharacter ? " tf-card__media--art" : ""}`} role="img" aria-label={tr.characterAlt}>
               {figure("tf-figure tf-figure--big")}
-              <span className="tf-tag">
-                {child.name} · {templateLabel}
-              </span>
+              <span className="tf-tag">{tag}</span>
             </div>
             <span className="tf-card__label">{tr.character.label}</span>
             <p className="tf-card__text">{tr.character.text}</p>
           </Reveal>
 
-          <Reveal as="li" className="tf-card" delay={180}>
+          <Reveal as="li" className="tf-card" delay={320}>
             <div className="tf-card__media tf-card__media--world" style={{ backgroundImage: `url(${beach.art.base})` }} role="img" aria-label={tr.worldAlt}>
-              <div className="tf-world__spot">
+              <div className={`tf-world__spot${hasCharacter ? " tf-world__spot--art" : ""}`}>
                 <span className="tf-world__bubble">{foundLine}</span>
                 {figure("tf-figure tf-figure--found")}
               </div>

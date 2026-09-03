@@ -67,6 +67,7 @@ export const en = {
       photo: { label: "1 · Your photo", text: "Face clear, good light, shoulders and up. No forms, no story to write." },
       character: { label: "2 · Their character", text: "The face from the photo on an illustrated body, in the style of the worlds. Same hair, same smile, recognizable at a glance." },
       world: { label: "3 · Hidden in the world", text: "Three hiding spots per world, each with its own look: with a float ring, building a sandcastle, peeking from behind a parasol. Found? The whole character lights up and speaks." },
+      characterTag: "straw hat & ice cream",
       placeholder: "Real photo · shoulders and up",
       photoAlt: "A clear photo of a child, shoulders and up",
       characterAlt: "The illustrated character made from the photo",
