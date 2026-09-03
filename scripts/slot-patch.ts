@@ -17,8 +17,9 @@
  *       <out>/beach-sandcastle-A.json             (rect in px and in art fractions, slot anchor)
  *       work/patches/beach-sandcastle-A.preview.png (the patch composited on the world, for a quick look)
  *
- *   npx tsx scripts/slot-patch.ts generate beach sandcastle A [--ref=public/demo/example-character.webp] [--quality=high] [--out=...]
- *     → export + OpenAI image edit (gpt-image-1, mask + character reference) + import, in one go.
+ *   npx tsx scripts/slot-patch.ts generate beach sandcastle A [--ref=public/demo/example-character.webp] [--model=gpt-image-2] [--quality=high] [--out=...]
+ *     → export + OpenAI image edit (mask + character reference) + import, in one go.
+ *       Default model gpt-image-2; falls back to gpt-image-1 automatically if the account cannot use it.
  *       Needs OPENAI_API_KEY (environment or .env). Costs one image generation per run.
  */
 import sharp from "sharp";
@@ -189,20 +190,33 @@ async function generate(slug: string, targetId: string, variantArg?: string) {
   for (let i = 0; i < alpha.length; i++) alpha[i] = paint[i]! > 128 ? 0 : 255;
   const mask = await sharp(crop).ensureAlpha().removeAlpha().joinChannel(alpha, { raw: { width: size, height: size, channels: 1 } }).png().toBuffer();
   const ref = await sharp(refPath).resize({ width: size, height: size, fit: "contain", background: { r: 255, g: 255, b: 255, alpha: 0 } }).png().toBuffer();
-  const form = new FormData();
-  form.append("model", "gpt-image-1");
-  form.append("image[]", new Blob([new Uint8Array(crop)], { type: "image/png" }), "scene.png");
-  form.append("image[]", new Blob([new Uint8Array(ref)], { type: "image/png" }), "character.png");
-  form.append("mask", new Blob([new Uint8Array(mask)], { type: "image/png" }), "mask.png");
-  form.append("prompt", `${c.prompt} The first image is the scene to edit; the second image is the character reference (do not copy its background).`);
-  form.append("size", `${size}x${size}`);
-  form.append("quality", flag("quality", "high"));
-  form.append("n", "1");
-  console.log("calling OpenAI images/edits (gpt-image-1)…");
-  const res = await fetch("https://api.openai.com/v1/images/edits", { method: "POST", headers: { Authorization: `Bearer ${key}` }, body: form });
-  const json = (await res.json()) as { data?: Array<{ b64_json?: string }>; error?: { message?: string } };
-  if (!res.ok || !json.data?.[0]?.b64_json) throw new Error(`OpenAI error: ${json.error?.message ?? res.status}`);
-  const out = Buffer.from(json.data[0].b64_json, "base64");
+  const prompt = `${c.prompt} The first image is the scene to edit; the second image is the character reference (do not copy its background).`;
+  const call = async (model: string, fidelity: boolean) => {
+    const form = new FormData();
+    form.append("model", model);
+    form.append("image[]", new Blob([new Uint8Array(crop)], { type: "image/png" }), "scene.png");
+    form.append("image[]", new Blob([new Uint8Array(ref)], { type: "image/png" }), "character.png");
+    form.append("mask", new Blob([new Uint8Array(mask)], { type: "image/png" }), "mask.png");
+    form.append("prompt", prompt);
+    form.append("size", `${size}x${size}`);
+    form.append("quality", flag("quality", "high"));
+    if (fidelity) form.append("input_fidelity", "high");
+    form.append("n", "1");
+    console.log(`calling OpenAI images/edits (${model}${fidelity ? ", input_fidelity=high" : ""})…`);
+    const res = await fetch("https://api.openai.com/v1/images/edits", { method: "POST", headers: { Authorization: `Bearer ${key}` }, body: form });
+    const json = (await res.json()) as { data?: Array<{ b64_json?: string }>; error?: { message?: string; param?: string; code?: string } };
+    return { ok: res.ok && Boolean(json.data?.[0]?.b64_json), status: res.status, json };
+  };
+  const requested = flag("model", "gpt-image-2");
+  let attempt = await call(requested, true);
+  if (!attempt.ok && /input_fidelity/i.test(attempt.json.error?.message ?? attempt.json.error?.param ?? "")) attempt = await call(requested, false);
+  if (!attempt.ok && requested !== "gpt-image-1" && /model|not found|does not exist|access|permission|verif/i.test(attempt.json.error?.message ?? "")) {
+    console.log(`${requested} unavailable (${attempt.json.error?.message}); falling back to gpt-image-1`);
+    attempt = await call("gpt-image-1", true);
+    if (!attempt.ok && /input_fidelity/i.test(attempt.json.error?.message ?? "")) attempt = await call("gpt-image-1", false);
+  }
+  if (!attempt.ok) throw new Error(`OpenAI error ${attempt.status}: ${attempt.json.error?.message ?? "unknown"}`);
+  const out = Buffer.from(attempt.json.data![0]!.b64_json!, "base64");
   const editedPath = path.join(WORK, `${c.name}.edited.png`);
   await sharp(out).resize(c.rect.w, c.rect.h, { kernel: "lanczos3" }).png().toFile(editedPath);
   console.log(`edited crop saved: work/patches/${c.name}.edited.png`);
