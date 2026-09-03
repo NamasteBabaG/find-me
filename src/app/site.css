@@ -336,7 +336,8 @@
 .tf-tag { position: absolute; bottom: var(--space-2); inset-inline: var(--space-2); display: inline-flex; justify-content: center; align-items: center; min-height: var(--space-4); padding-inline: var(--space-2); border-radius: var(--radius-pill); background: var(--white); box-shadow: var(--shadow-1); font-family: var(--font-display); font-weight: 700; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); }
 .tf-card__media--world { background: var(--sea-soft); aspect-ratio: 4 / 5; }
 .tf-world__layer { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 20% 50%; }
-.tf-world__layer--fg { z-index: 2; pointer-events: none; }
+.tf-world__patch { position: absolute; z-index: 1; object-fit: fill; }
+.tf-world__bubble--free { bottom: auto; translate: -50% calc(-100% - 6px); z-index: 3; }
 .tf-figure { display: block; }
 .tf-figure--big { width: 44%; max-width: 168px; aspect-ratio: 100 / 140; filter: drop-shadow(0 6px 10px rgba(43, 42, 51, 0.25)); }
 .tf-world__spot { position: absolute; left: 50%; top: 40%; height: 9%; aspect-ratio: 100 / 140; transform: translate(-50%, -50%); z-index: 1; }

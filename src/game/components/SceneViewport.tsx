@@ -122,11 +122,16 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
     const justFound = mission.lastFeedback?.kind === "hit" && mission.lastFeedback.targetId === p.target.id;
     const h = p.anchor.scale * stage.height;
     const w = h * spriteAspect(p.target.sprite);
+    const rect = p.target.sprite.kind === "image" ? p.target.sprite.rect : undefined;
+    // A slot patch is a piece of the world painted with the child: draw it exactly where it was cut from.
+    const box = rect
+      ? { left: rect.x * stage.width, top: rect.y * stage.height, width: rect.w * stage.width, height: rect.h * stage.height, zIndex: p.slot.zIndex, transform: p.slot.flip ? "scaleX(-1)" : undefined }
+      : { left: p.anchor.x * stage.width, top: p.anchor.y * stage.height, width: w, height: h, zIndex: p.slot.zIndex, transform: `translate(-50%, -50%) rotate(${p.slot.rotation}deg)${p.slot.flip ? " scaleX(-1)" : ""}` };
     return (
       <div
         key={p.target.id}
         className={`stage__target${found ? " stage__target--found" : ""}`}
-        style={{ left: p.anchor.x * stage.width, top: p.anchor.y * stage.height, width: w, height: h, zIndex: p.slot.zIndex, transform: `translate(-50%, -50%) rotate(${p.slot.rotation}deg)${p.slot.flip ? " scaleX(-1)" : ""}` }}
+        style={box}
         data-target={p.target.id}
       >
         <div className={`tgt-anim${justFound ? ` anim-${p.target.animation}` : ""}`}>

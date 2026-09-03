@@ -24,6 +24,12 @@ export const SpriteRefSchema = z.discriminatedUnion("kind", [
     url: z.string().min(1),
     width: z.number().int().positive(),
     height: z.number().int().positive(),
+    /**
+     * Slot patch: the sprite is a piece of the world with the child painted in
+     * (see docs/SPRITE_PATCHES.md). Drawn at this rect (fractions of the art)
+     * instead of the slot anchor; hit-testing still uses the slot footprint.
+     */
+    rect: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1), w: z.number().positive().max(1), h: z.number().positive().max(1) }).optional(),
   }),
 ]);
 export type SpriteRef = z.infer<typeof SpriteRefSchema>;

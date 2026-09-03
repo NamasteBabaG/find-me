@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import Link from "next/link";
 import { BODY_TEMPLATES } from "../../../content/body-templates";
@@ -28,7 +28,17 @@ const DEMO_TEMPLATE = "beach_float";
  */
 const WORLD_ASPECT = 4 / 5;
 const WORLD_POS_X = 0.2;
-const WORLD_SPOT = { x: 0.257, y: 0.62, height: 0.072 };
+/** Slot patch for the example (docs/SPRITE_PATCHES.md): produced by `slot-patch import beach sandcastle A`. */
+const PATCH_META = path.join(process.cwd(), "public", "demo", "patches", "beach-sandcastle-A.json");
+type PatchMeta = { url: string; rect: { x: number; y: number; w: number; h: number }; slot: { x: number; y: number; scale: number }; art: { width: number; height: number } };
+function readPatch(): PatchMeta | null {
+  if (!existsSync(PATCH_META)) return null;
+  try {
+    return JSON.parse(readFileSync(PATCH_META, "utf-8")) as PatchMeta;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * "From photo to character": photo → the illustrated character → that character
@@ -44,7 +54,10 @@ export async function Transformation() {
   const foundLine = castleTarget?.success[0] ? pick(castleTarget.success[0], locale) : t.home.hero.found;
   const visibleW = beach.art.height * WORLD_ASPECT;
   const windowLeft = (beach.art.width - visibleW) * WORLD_POS_X;
-  const spotStyle = { left: `${((WORLD_SPOT.x * beach.art.width - windowLeft) / visibleW) * 100}%`, top: `${WORLD_SPOT.y * 100}%`, height: `${WORLD_SPOT.height * 100}%` };
+  const patch = readPatch();
+  const pct = (px: number) => `${((px - windowLeft) / visibleW) * 100}%`;
+  const patchStyle = patch ? { left: pct(patch.rect.x), top: `${(patch.rect.y / patch.art.height) * 100}%`, width: `${(patch.rect.w / visibleW) * 100}%`, height: `${(patch.rect.h / patch.art.height) * 100}%` } : undefined;
+  const bubbleStyle = patch ? { left: pct(patch.slot.x * patch.art.width), top: `${(patch.slot.y - patch.slot.scale * 0.55) * 100}%` } : undefined;
   const templateLabel = pick(BODY_TEMPLATES[DEMO_TEMPLATE]!.label, locale);
   const hasPhoto = existsSync(PHOTO.file);
   const hasCharacter = existsSync(CHARACTER.file);
@@ -99,13 +112,14 @@ export async function Transformation() {
             <div className="tf-card__media tf-card__media--world" role="img" aria-label={tr.worldAlt}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={beach.art.base} alt="" className="tf-world__layer" width={beach.art.width} height={beach.art.height} />
-              <div className={`tf-world__spot${hasCharacter ? " tf-world__spot--art" : ""}`} style={spotStyle}>
-                <span className="tf-world__bubble">{foundLine}</span>
-                {figure("tf-figure tf-figure--found")}
-              </div>
-              {beach.art.foreground ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={beach.art.foreground} alt="" className="tf-world__layer tf-world__layer--fg" width={beach.art.width} height={beach.art.height} />
+              {patch ? (
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={patch.url} alt="" className="tf-figure tf-figure--found tf-world__patch" style={patchStyle} width={patch.rect.w} height={patch.rect.h} />
+                  <span className="tf-world__bubble tf-world__bubble--free" style={bubbleStyle}>
+                    {foundLine}
+                  </span>
+                </>
               ) : null}
             </div>
             <span className="tf-card__label">{tr.world.label}</span>

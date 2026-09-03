@@ -68,3 +68,7 @@
 ## 4. תשעת העולמות
 
 `beach` פעיל עם ארט אמיתי (`draft`, 1672×941, `assets/Beach.png` → `public/scenes/beach/base.webp`; ה־foreground הוא שני כיסויי שמשייה שנחתכו מאותה תמונה, כך שהדמות מציצה מאחוריהן). `jungle`, `space` פעילים עם placeholder. `city`, `ship`, `stadium`, `market`, `park`, `volcano` מוגדרים במלואם לפי האפיון (משימות, אינטראקציות, חגיגה, פריט) ומצביעים על `/scenes/_placeholder/` — כשמגיע ארט: מחליפים נתיבים, מכיילים סלוטים, `active: true`.
+
+## Painting the child into a world
+
+See `docs/SPRITE_PATCHES.md`: per-slot context crops, inpainting, and the `scripts/slot-patch.ts` export/import tool.
