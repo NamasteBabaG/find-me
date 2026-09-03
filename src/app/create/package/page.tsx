@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getContainer } from "@/services/container";
 import { availablePackages } from "@/services/create-flow.service";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
-import { PACKAGES, PACKAGE_ORDER, priceFor, searchesFor, type PackageTier } from "@/domain/package";
+import { PACKAGES, PACKAGE_ORDER, boardsFor, priceFor, searchesFor, type PackageTier } from "@/domain/package";
 import { getCurrency, getI18n } from "@/i18n/server";
 import { formatMoney, pick, tf } from "@/i18n";
 import { CreateFrame } from "../CreateLayout";
@@ -27,13 +27,14 @@ export default async function CreatePackagePage() {
     return {
       tier,
       name: pick(p.name, locale),
-      sceneCount: p.sceneCount,
+      worldCount: p.worldCount,
+      boardCount: boardsFor(tier),
       meta: tf(t.create.package.spots, { n: searchesFor(tier), time: pick(p.playtime, locale) }),
       price: formatMoney(priceFor(tier, currency), currency, locale),
       popular: p.popular,
     };
   });
-  const fallbackTier = available.has("BIG") ? "BIG" : (options[0]?.tier ?? "SMALL");
+  const fallbackTier = available.has("TWO_WORLDS") ? "TWO_WORLDS" : (options[0]?.tier ?? "ONE_WORLD");
   const defaultTier = draft.packageTier && available.has(draft.packageTier as PackageTier) ? draft.packageTier : fallbackTier;
   return (
     <CreateFrame step={2} title={t.create.package.title} lead={tf(t.create.package.lead, { name: draft.childProfile.displayName })} user={user} isAdmin={isAdminEmail(user?.email)}>

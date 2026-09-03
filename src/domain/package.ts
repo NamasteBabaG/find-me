@@ -1,64 +1,62 @@
 import type { LocalizedText } from "@/i18n/config";
 
 /**
- * Packages are the only pricing axis: more worlds, more searches.
- * Every world always has exactly TARGETS_PER_SCENE missions.
+ * What a parent buys is a WORLD: nine boards, twenty-seven searches, one
+ * illustrated journey. Packages differ only in how many worlds are included.
  *
  * Prices are per currency, in minor units (agorot / cents). The currency
- * follows the parent's language (he → ILS, en → USD); see i18n/config.
+ * follows the visitor's location; see i18n/server.
  */
-export const TARGETS_PER_SCENE = 3 as const;
+export const BOARDS_PER_WORLD = 9 as const;
+export const MISSIONS_PER_BOARD = 3 as const;
+/** Kept under the old name because scene JSON and the renderer still say "scene". */
+export const TARGETS_PER_SCENE = MISSIONS_PER_BOARD;
 
-export type PackageTier = "SMALL" | "BIG" | "WORLD";
+export type PackageTier = "ONE_WORLD" | "TWO_WORLDS" | "ALL_WORLDS";
 export type Currency = "ILS" | "USD";
 
 export interface PackageDefinition {
   tier: PackageTier;
   name: LocalizedText;
-  sceneCount: number;
+  worldCount: number;
   /** Minor units per currency: ILS agorot, USD cents. */
   prices: Record<Currency, number>;
   /** Approximate first-play time, shown as a product target — not a promise. */
   playtime: LocalizedText;
   popular: boolean;
-  /** Pre-selected worlds so a parent can just continue. */
-  recommendedScenes: string[];
 }
 
 export const PACKAGES: Record<PackageTier, PackageDefinition> = {
-  SMALL: {
-    tier: "SMALL",
-    name: { en: "Little Taste", he: "טעימה קטנה" },
-    sceneCount: 3,
-    prices: { ILS: 2900, USD: 990 },
-    playtime: { en: "10–15 min", he: "10–15 דקות" },
-    popular: false,
-    recommendedScenes: ["beach", "jungle", "space"],
-  },
-  BIG: {
-    tier: "BIG",
-    name: { en: "Big Adventure", he: "ההרפתקה הגדולה" },
-    sceneCount: 6,
-    prices: { ILS: 3900, USD: 1990 },
-    playtime: { en: "20–30 min", he: "20–30 דקות" },
-    popular: true,
-    recommendedScenes: ["beach", "jungle", "space", "city", "ship", "stadium"],
-  },
-  WORLD: {
-    tier: "WORLD",
-    name: { en: "Around the World", he: "מסביב לעולם" },
-    sceneCount: 9,
-    prices: { ILS: 5900, USD: 2990 },
+  ONE_WORLD: {
+    tier: "ONE_WORLD",
+    name: { en: "First Adventure", he: "ההרפתקה הראשונה" },
+    worldCount: 1,
+    prices: { ILS: 3900, USD: 990 },
     playtime: { en: "35–50 min", he: "35–50 דקות" },
     popular: false,
-    recommendedScenes: ["beach", "jungle", "space", "city", "ship", "stadium", "market", "park", "volcano"],
+  },
+  TWO_WORLDS: {
+    tier: "TWO_WORLDS",
+    name: { en: "Big Journey", he: "המסע הגדול" },
+    worldCount: 2,
+    prices: { ILS: 6900, USD: 1990 },
+    playtime: { en: "1–2 hours", he: "שעה–שעתיים" },
+    popular: true,
+  },
+  ALL_WORLDS: {
+    tier: "ALL_WORLDS",
+    name: { en: "All Worlds", he: "כל העולמות" },
+    worldCount: 3,
+    prices: { ILS: 9900, USD: 2990 },
+    playtime: { en: "2–3 hours", he: "שעתיים–שלוש" },
+    popular: false,
   },
 };
 
-export const PACKAGE_ORDER: PackageTier[] = ["SMALL", "BIG", "WORLD"];
+export const PACKAGE_ORDER: PackageTier[] = ["ONE_WORLD", "TWO_WORLDS", "ALL_WORLDS"];
 
 export function isPackageTier(value: unknown): value is PackageTier {
-  return value === "SMALL" || value === "BIG" || value === "WORLD";
+  return value === "ONE_WORLD" || value === "TWO_WORLDS" || value === "ALL_WORLDS";
 }
 
 export function isCurrency(value: unknown): value is Currency {
@@ -69,17 +67,67 @@ export function priceFor(tier: PackageTier, currency: Currency): number {
   return PACKAGES[tier].prices[currency];
 }
 
+export function boardsFor(tier: PackageTier): number {
+  return PACKAGES[tier].worldCount * BOARDS_PER_WORLD;
+}
+
 export function searchesFor(tier: PackageTier): number {
-  return PACKAGES[tier].sceneCount * TARGETS_PER_SCENE;
+  return boardsFor(tier) * MISSIONS_PER_BOARD;
+}
+
+export function tierForWorldCount(worldCount: number): PackageTier | null {
+  return PACKAGE_ORDER.find((t) => PACKAGES[t].worldCount === worldCount) ?? null;
+}
+
+/** A tier is purchasable only when enough worlds exist to fill it. */
+export function purchasableTiers(activeWorldCount: number): PackageDefinition[] {
+  return PACKAGE_ORDER.map((t) => PACKAGES[t]).filter((p) => p.worldCount <= activeWorldCount);
+}
+
+// ─── Upgrades ────────────────────────────────────────────────
+
+export interface UpgradeOffer {
+  /** How many worlds this offer adds. */
+  addsWorlds: number;
+  /** What the parent will own afterwards. */
+  totalWorlds: number;
+  tier: PackageTier;
+  price: number;
 }
 
 /**
- * A tier is purchasable only when enough worlds are active.
- * This is the feature flag that hides 6/9 while only 3 worlds exist.
+ * The price of adding worlds is the difference between what you own and what
+ * you would own. That is not a discount policy, it is the whole rule: buying
+ * one world and upgrading twice costs exactly the same as buying all three, so
+ * nobody is ever punished for starting small.
  */
-export function purchasableTiers(activeSceneCount: number): PackageDefinition[] {
-  return PACKAGE_ORDER.map((t) => PACKAGES[t]).filter((p) => p.sceneCount <= activeSceneCount);
+export function upgradePrice(ownedWorlds: number, targetWorlds: number, currency: Currency): number | null {
+  const from = tierForWorldCount(ownedWorlds);
+  const to = tierForWorldCount(targetWorlds);
+  if (!to || targetWorlds <= ownedWorlds) return null;
+  const base = from ? priceFor(from, currency) : 0;
+  return priceFor(to, currency) - base;
 }
+
+/**
+ * What to offer a parent who already owns some worlds: one more, or all the
+ * rest. Nothing at all once they own everything that exists.
+ */
+export function upgradeOffers(ownedWorlds: number, availableWorlds: number, currency: Currency): UpgradeOffer[] {
+  const offers: UpgradeOffer[] = [];
+  const most = Math.min(availableWorlds, PACKAGES.ALL_WORLDS.worldCount);
+  for (const totalWorlds of [ownedWorlds + 1, most]) {
+    if (totalWorlds <= ownedWorlds || totalWorlds > most) continue;
+    if (offers.some((o) => o.totalWorlds === totalWorlds)) continue;
+    const tier = tierForWorldCount(totalWorlds);
+    const price = upgradePrice(ownedWorlds, totalWorlds, currency);
+    if (!tier || price === null) continue;
+    offers.push({ addsWorlds: totalWorlds - ownedWorlds, totalWorlds, tier, price });
+  }
+  return offers;
+}
+
+// ─── Money ───────────────────────────────────────────────────
 
 /** Minor units → display string with the currency's own convention. */
 export function formatMoney(minor: number, currency: Currency, locale: "en" | "he" = "en"): string {
@@ -94,10 +142,7 @@ export function formatPriceILS(minor: number, currency: Currency = "ILS"): strin
   return formatMoney(minor, currency, "he");
 }
 
-/** Default worlds for a tier, restricted to the ones currently active, filled from the rest. */
-export function defaultSceneSelection(tier: PackageTier, activeSlugs: readonly string[]): string[] {
-  const want = PACKAGES[tier].sceneCount;
-  const preferred = PACKAGES[tier].recommendedScenes.filter((s) => activeSlugs.includes(s));
-  const rest = activeSlugs.filter((s) => !preferred.includes(s));
-  return [...preferred, ...rest].slice(0, want);
+/** The worlds a tier includes, in world order, restricted to what is active. */
+export function defaultWorldSelection(tier: PackageTier, activeSlugs: readonly string[]): string[] {
+  return activeSlugs.slice(0, PACKAGES[tier].worldCount);
 }

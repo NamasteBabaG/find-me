@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { getContainer } from "@/services/container";
 import { getCurrency } from "@/i18n/server";
-import { createDraft, draftBelongsTo, loadDraft, selectPackage, selectScenes, setChildName } from "@/services/create-flow.service";
+import { createDraft, draftBelongsTo, loadDraft, selectPackage, selectWorlds, setChildName } from "@/services/create-flow.service";
 import { startCheckout } from "@/services/order.service";
 import { isEditableDraft } from "@/domain/order-state";
 import { statusOf } from "@/services/game-status";
@@ -62,7 +62,7 @@ export async function chooseScenesAction(_prev: ActionResult | null, formData: F
   const res = await guardDb(async () => {
     const draft = await currentDraft();
     if (!draft) return flowError("DRAFT_NOT_FOUND", "הטיוטה לא נמצאה.");
-    return selectScenes(c, draft.id, slugs);
+    return selectWorlds(c, draft.id, slugs);
   });
   if (!res.ok) return res;
   redirect("/checkout");

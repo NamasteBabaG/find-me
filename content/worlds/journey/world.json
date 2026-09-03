@@ -1,0 +1,39 @@
+{
+  "slug": "journey",
+  "order": 1,
+  "name": { "en": "The Wonderful Journey", "he": "המסע המופלא" },
+  "tagline": { "en": "Nine destinations, from the beach all the way to space", "he": "תשעה יעדים, מהחוף ועד לחלל" },
+  "intro": { "en": "A magical passport is taking {name} around the world. Ready?", "he": "דרכון קסום לוקח את {name} מסביב לעולם. מוכנים?" },
+  "map": {
+    "width": 1536,
+    "height": 1024,
+    "art": "/worlds/journey/map.webp",
+    "artPortrait": "/worlds/journey/map-sm.webp",
+    "palette": { "sky": "#bfe9ff", "ground": "#f6dfae", "accent": "#ff9a4d" }
+  },
+  "nodes": [
+    { "boardSlug": "beach", "routeIndex": 1, "x": 0.11, "y": 0.82, "iconAsset": "/worlds/journey/nodes/beach.webp", "travelStyle": "walk" },
+    { "boardSlug": "ship", "routeIndex": 2, "x": 0.26, "y": 0.66, "iconAsset": "/worlds/journey/nodes/ship.webp", "travelStyle": "sail" },
+    { "boardSlug": "city", "routeIndex": 3, "x": 0.4, "y": 0.79, "iconAsset": "/worlds/journey/nodes/city.webp", "travelStyle": "walk" },
+    { "boardSlug": "market", "routeIndex": 4, "x": 0.53, "y": 0.63, "iconAsset": "/worlds/journey/nodes/market.webp", "travelStyle": "walk" },
+    { "boardSlug": "park", "routeIndex": 5, "x": 0.63, "y": 0.8, "iconAsset": "/worlds/journey/nodes/park.webp", "travelStyle": "walk" },
+    { "boardSlug": "stadium", "routeIndex": 6, "x": 0.76, "y": 0.64, "iconAsset": "/worlds/journey/nodes/stadium.webp", "travelStyle": "hop" },
+    { "boardSlug": "jungle", "routeIndex": 7, "x": 0.86, "y": 0.45, "iconAsset": "/worlds/journey/nodes/jungle.webp", "travelStyle": "walk" },
+    { "boardSlug": "volcano", "routeIndex": 8, "x": 0.71, "y": 0.28, "iconAsset": "/worlds/journey/nodes/volcano.webp", "travelStyle": "hop" },
+    { "boardSlug": "space", "routeIndex": 9, "x": 0.85, "y": 0.13, "iconAsset": "/worlds/journey/nodes/space.webp", "travelStyle": "rocket" }
+  ],
+  "collectible": {
+    "id": "passport",
+    "name": { "en": "adventure passport", "he": "דרכון ההרפתקאות" },
+    "piece": { "en": "stamp", "he": "חותמת" },
+    "icon": "🛂"
+  },
+  "completion": {
+    "title": { "en": "What a journey!", "he": "איזה מסע!" },
+    "text": { "en": "{name} found every hiding place in this world. The passport is full!", "he": "{name} מצאו את כל המחבואים בעולם הזה. הדרכון מלא!" },
+    "icon": "🌍"
+  },
+  "active": true,
+  "purchasable": true,
+  "version": 1
+}

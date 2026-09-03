@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { SceneDefinition } from "@/domain/scene/schema";
-import { PACKAGES, PACKAGE_ORDER, priceFor, searchesFor } from "@/domain/package";
+import { PACKAGES, PACKAGE_ORDER, boardsFor, priceFor, searchesFor } from "@/domain/package";
 import { formatMoney, pick, tf, type Currency, type Dictionary, type Locale } from "@/i18n";
 import { Reveal } from "./Reveal";
 
@@ -202,18 +202,18 @@ export function Pricing({ t, locale, activeCount, currency }: SectionProps & { a
         <div className="pricing">
           {PACKAGE_ORDER.map((tier, i) => {
             const pkg = PACKAGES[tier];
-            const available = pkg.sceneCount <= activeCount;
+            const available = pkg.worldCount <= activeCount;
             const name = pick(pkg.name, locale);
             return (
               <Reveal key={tier} className={`plan${pkg.popular ? " plan--hot" : ""}${available ? "" : " plan--soon"}`} delay={i * 90}>
                 {pkg.popular ? <span className="fm-sticker-badge plan__ribbon">{t.common.popular} 💛</span> : null}
                 <h3>{name}</h3>
                 <div className="plan__worlds">
-                  {pkg.sceneCount}
+                  {pkg.worldCount}
                   <small>{p.worlds}</small>
                 </div>
                 <ul className="plan__feats">
-                  <li className="plan__feat">{tf(p.feats.spots, { n: searchesFor(tier) })}</li>
+                  <li className="plan__feat">{tf(p.feats.boards, { boards: boardsFor(tier), n: searchesFor(tier) })}</li>
                   <li className="plan__feat">{tf(p.feats.time, { time: pick(pkg.playtime, locale) })}</li>
                   <li className="plan__feat">{p.feats.link}</li>
                   <li className="plan__feat">{p.feats.wrap}</li>

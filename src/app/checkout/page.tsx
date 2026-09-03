@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
 import { getContainer } from "@/services/container";
 import { draftSummary } from "@/services/create-flow.service";
-import { activeSceneSlugs } from "@/services/scene-catalog.service";
+import { purchasableWorldSlugs } from "@/services/world-catalog.service";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
-import { priceFor, searchesFor } from "@/domain/package";
+import { boardsFor, priceFor, searchesFor } from "@/domain/package";
 import { getCurrency, getI18n } from "@/i18n/server";
 import { formatMoney, pick, tf } from "@/i18n";
 import { CreateFrame } from "../create/CreateLayout";
@@ -19,10 +19,10 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
   const c = getContainer();
   const [user, draft, params, { t, locale }] = await Promise.all([currentUser(), currentDraft(), searchParams, getI18n()]);
   if (!draft?.childProfile) redirect("/create");
-  const [summary, activeCount] = await Promise.all([draftSummary(c, draft.id), activeSceneSlugs(c).then((s) => s.length)]);
-  if (!summary?.pkg || summary.scenes.length !== summary.pkg.sceneCount) redirect("/create/scenes");
-  // When the package takes every active world, the worlds step was skipped, so "back" means the package step.
-  const backHref = activeCount === summary.pkg.sceneCount ? "/create/package" : "/create/scenes";
+  const [summary, worldCount] = await Promise.all([draftSummary(c, draft.id), purchasableWorldSlugs(c).then((w) => w.length)]);
+  if (!summary?.pkg || summary.scenes.length !== boardsFor(summary.pkg.tier)) redirect("/create/scenes");
+  // When the package takes every world there is, the worlds step was skipped, so "back" means the package step.
+  const backHref = worldCount === summary.pkg.worldCount ? "/create/package" : "/create/scenes";
   const ck = t.create.checkout;
   const currency = await getCurrency();
   const price = formatMoney(priceFor(summary.pkg.tier, currency), currency, locale);
@@ -37,7 +37,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
             <img src="/api/drafts/photo" alt="" className="fm-sticker" width={80} height={80} style={{ width: 80, height: 80 }} />
             <div>
               <h3>{tf(ck.gameTitle, { name })}</h3>
-              <p className="fm-muted">{tf(ck.summaryLine, { pkg: pick(summary.pkg.name, locale), worlds: summary.pkg.sceneCount, spots: searchesFor(summary.pkg.tier) })}</p>
+              <p className="fm-muted">{tf(ck.summaryLine, { pkg: pick(summary.pkg.name, locale), worlds: summary.pkg.worldCount, spots: searchesFor(summary.pkg.tier) })}</p>
             </div>
           </div>
           <div className="summary__scenes">

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { CelebrationKind, SoundCue, TargetAnimation, Unit, AmbientAnimation } from "../scene/schema";
-import type { PackageTier } from "../package";
+import { isPackageTier, type PackageTier } from "../package";
 
 /**
  * GameConfig — everything the player runtime needs, and nothing more.
@@ -149,7 +149,7 @@ export const GameConfigSchema = z.object({
     avatarUrl: z.string(),
   }),
   styleVersion: z.string(),
-  packageTier: z.custom<PackageTier>((v) => v === "SMALL" || v === "BIG" || v === "WORLD"),
+  packageTier: z.custom<PackageTier>(isPackageTier),
   scenes: z.array(SceneConfigSchema).min(1),
   gift: z
     .object({

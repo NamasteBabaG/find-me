@@ -62,5 +62,5 @@ export function buildDemoConfig(locale: Locale, slug = "beach", name?: string): 
     }),
     locale,
   );
-  return composeGame({ gameId: "demo", child, packageTier: "SMALL", styleVersion: "collage-v1", locale, scenes: [sceneConfig], now: new Date(0) });
+  return composeGame({ gameId: "demo", child, packageTier: "ONE_WORLD", styleVersion: "collage-v1", locale, scenes: [sceneConfig], now: new Date(0) });
 }

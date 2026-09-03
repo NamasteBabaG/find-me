@@ -1,5 +1,5 @@
 import { newId } from "@/lib/ids";
-import { PACKAGES, isPackageTier, priceFor } from "@/domain/package";
+import { boardsFor, PACKAGES, isPackageTier, priceFor } from "@/domain/package";
 import { type Currency, currencyFor, pick, type Locale } from "@/i18n/config";
 import { flowError, type FlowError } from "@/i18n/errors";
 import type { Container } from "./container";
@@ -18,7 +18,7 @@ export async function startCheckout(c: Container, input: { gameId: string; email
   const status = statusOf(game);
   if (status !== "PACKAGE_SELECTED" && status !== "CHECKOUT_PENDING" && status !== "PAYMENT_FAILED") return flowError("PREVIOUS_STEPS", "צריך לסיים את השלבים הקודמים.");
   if (!game.packageTier || !isPackageTier(game.packageTier)) return flowError("PICK_PACKAGE_FIRST", "קודם בוחרים חבילה.");
-  if (game.scenes.length !== PACKAGES[game.packageTier].sceneCount) return flowError("SCENES_INCOMPLETE", "בחירת העולמות לא הושלמה.");
+  if (game.scenes.length !== boardsFor(game.packageTier)) return flowError("SCENES_INCOMPLETE", "בחירת העולמות לא הושלמה.");
 
   let user;
   try {

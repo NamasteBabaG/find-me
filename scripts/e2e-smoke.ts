@@ -2,7 +2,7 @@
  * End-to-end smoke test against the real dev stack (SQLite, local storage,
  * mock providers). Walks the whole vertical slice without a browser:
  *
- *   draft → name → photo → package → scenes → checkout → webhook(PAID)
+ *   draft → name → photo → package → worlds → checkout → webhook(PAID)
  *   → generation pipeline → (auto) publish → play link resolves → config is clean
  *
  * Usage:  npm run smoke   (see package.json)  — prints the play URL at the end.
@@ -19,7 +19,7 @@ process.env.QA_AUTO_APPROVE = process.env.SMOKE_MANUAL_QA === "1" ? "false" : "t
 
 async function main() {
   const { getContainer } = await import("../src/services/container");
-  const { createDraft, setChildName, attachPhoto, selectPackage, selectScenes } = await import("../src/services/create-flow.service");
+  const { createDraft, setChildName, attachPhoto, selectPackage, selectWorlds } = await import("../src/services/create-flow.service");
   const { startCheckout, handlePaymentWebhook } = await import("../src/services/order.service");
   const { MockPaymentProvider } = await import("../src/infra/payment/mock");
   const { resolvePlayToken, ensurePlayerLink } = await import("../src/services/share-link.service");
@@ -42,11 +42,11 @@ async function main() {
   assert(photoRes.ok, `photo: ${!photoRes.ok ? photoRes.reason : ""}`);
   log("photo approved");
 
-  const pkg = await selectPackage(c, gameId, "SMALL");
+  const pkg = await selectPackage(c, gameId, "ONE_WORLD");
   assert(pkg.ok, `package: ${!pkg.ok ? pkg.reason : ""}`);
-  const scenes = await selectScenes(c, gameId, ["beach", "jungle", "space"]);
-  assert(scenes.ok, `scenes: ${!scenes.ok ? scenes.reason : ""}`);
-  log("package + scenes selected");
+  const worlds = await selectWorlds(c, gameId, ["journey"]);
+  assert(worlds.ok, `worlds: ${!worlds.ok ? worlds.reason : ""}`);
+  log("package + world selected");
 
   const email = process.env.SMOKE_EMAIL ?? "smoke@example.com";
   const checkout = await startCheckout(c, { gameId, email });
@@ -86,8 +86,8 @@ async function main() {
   const resolved = await resolvePlayToken(c, link.token);
   assert(resolved.ok, "play token resolves");
   const config = parseGameConfig(resolved.ok ? (resolved.game.configJson as string) : "{}");
-  assert(config.scenes.length === 3, "3 scenes in config");
-  assert(config.scenes.every((s) => s.targets.length === 3), "3 targets per scene");
+  assert(config.scenes.length === 9, "9 boards in config");
+  assert(config.scenes.every((s) => s.targets.length === 3), "3 missions per board");
   assert(!JSON.stringify(config).includes("private/"), "config must not reference private storage");
 
   const child = await c.db.childProfile.findFirstOrThrow({ where: { games: { some: { id: gameId } } } });

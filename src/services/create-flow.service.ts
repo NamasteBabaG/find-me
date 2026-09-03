@@ -1,6 +1,6 @@
 import { newDraftToken, newId } from "@/lib/ids";
 import { normalizeChildName } from "@/lib/copy";
-import { PACKAGES, defaultSceneSelection, isPackageTier, purchasableTiers, type PackageTier } from "@/domain/package";
+import { PACKAGES, defaultWorldSelection, isPackageTier, purchasableTiers, type PackageTier } from "@/domain/package";
 import { isEditableDraft } from "@/domain/order-state";
 import type { CropBox } from "@/infra/generation/types";
 import { pick, type Locale } from "@/i18n/config";
@@ -8,7 +8,8 @@ import { flowError, type FlowResult } from "@/i18n/errors";
 import type { Container } from "./container";
 import { checkPhoto, deleteAsset, storeAsset } from "./asset.service";
 import { transitionGame, statusOf } from "./game-status";
-import { activeScenes, activeSceneSlugs, sceneBySlug } from "./scene-catalog.service";
+import { activeScenes, sceneBySlug } from "./scene-catalog.service";
+import { boardsOfWorlds, purchasableWorldSlugs, worldBySlug } from "./world-catalog.service";
 import { SYSTEM } from "./audit.service";
 
 /**
@@ -101,8 +102,7 @@ export async function attachPhoto(c: Container, gameId: string, input: { buffer:
 }
 
 export async function availablePackages(c: Container) {
-  const active = await activeSceneSlugs(c);
-  return purchasableTiers(active.length);
+  return purchasableTiers((await purchasableWorldSlugs(c)).length);
 }
 
 export async function selectPackage(c: Container, gameId: string, tierRaw: string): Promise<FlowResult> {
@@ -113,28 +113,32 @@ export async function selectPackage(c: Container, gameId: string, tierRaw: strin
   const status = statusOf(game);
   if (status === "DRAFT" || status === "PHOTO_UPLOADED" || status === "PHOTO_REJECTED") return flowError("PHOTO_FIRST", "קודם צריך להעלות תמונה.");
 
-  const active = await activeSceneSlugs(c);
-  if (!purchasableTiers(active.length).some((p) => p.tier === tier)) return flowError("PACKAGE_UNAVAILABLE", "החבילה הזאת עדיין לא זמינה.");
+  const worlds = await purchasableWorldSlugs(c);
+  if (!purchasableTiers(worlds.length).some((p) => p.tier === tier)) return flowError("PACKAGE_UNAVAILABLE", "החבילה הזאת עדיין לא זמינה.");
 
-  const selection = defaultSceneSelection(tier, active);
-  await c.db.game.update({ where: { id: gameId }, data: { packageTier: tier, sceneCount: PACKAGES[tier].sceneCount } });
-  await replaceScenes(c, gameId, selection);
+  // A package buys worlds; the boards follow from them, in journey order.
+  const boards = boardsOfWorlds(defaultWorldSelection(tier, worlds));
+  await c.db.game.update({ where: { id: gameId }, data: { packageTier: tier, sceneCount: boards.length } });
+  await replaceScenes(c, gameId, boards);
   if (status !== "PACKAGE_SELECTED") await transitionGame(c, gameId, "PACKAGE_SELECTED", SYSTEM, { tier });
-  c.analytics.track("package_selected", { packageTier: tier, sceneCount: PACKAGES[tier].sceneCount });
+  c.analytics.track("package_selected", { packageTier: tier, sceneCount: boards.length });
   return { ok: true };
 }
 
-export async function selectScenes(c: Container, gameId: string, slugs: string[]): Promise<FlowResult> {
+/** The parent picks WORLDS; each one brings its nine boards with it. */
+export async function selectWorlds(c: Container, gameId: string, slugs: string[]): Promise<FlowResult> {
   const game = await loadDraft(c, gameId);
   if (!game || !isEditableDraft(statusOf(game))) return flowError("DRAFT_LOCKED", "הטיוטה כבר לא ניתנת לעריכה.");
   if (!game.packageTier || !isPackageTier(game.packageTier)) return flowError("PICK_PACKAGE_FIRST", "קודם בוחרים חבילה.");
-  const want = PACKAGES[game.packageTier].sceneCount;
+  const want = PACKAGES[game.packageTier].worldCount;
   const unique = Array.from(new Set(slugs));
   if (unique.length !== want) return flowError("WRONG_SCENE_COUNT", `בחרו בדיוק ${want} עולמות.`, { want });
-  const active = new Set(await activeSceneSlugs(c));
-  if (!unique.every((s) => active.has(s))) return flowError("SCENE_UNAVAILABLE", "אחד העולמות אינו זמין.");
-  await replaceScenes(c, gameId, unique);
-  c.analytics.track("scenes_selected", { sceneCount: unique.length });
+  const available = new Set(await purchasableWorldSlugs(c));
+  if (!unique.every((s) => available.has(s))) return flowError("SCENE_UNAVAILABLE", "אחד העולמות אינו זמין.");
+  const boards = boardsOfWorlds(unique);
+  await c.db.game.update({ where: { id: gameId }, data: { sceneCount: boards.length } });
+  await replaceScenes(c, gameId, boards);
+  c.analytics.track("scenes_selected", { sceneCount: boards.length });
   return { ok: true };
 }
 

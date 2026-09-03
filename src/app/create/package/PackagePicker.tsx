@@ -9,7 +9,8 @@ import { choosePackageAction, type ActionResult } from "../actions";
 interface Option {
   tier: string;
   name: string;
-  sceneCount: number;
+  worldCount: number;
+  boardCount: number;
   meta: string;
   price: string;
   popular: boolean;
@@ -30,7 +31,7 @@ export function PackagePicker({ options, defaultTier }: { options: Option[]; def
               <input type="radio" name="tier" value={o.tier} className="visually-hidden" checked={selected} onChange={() => setTier(o.tier)} />
               {o.popular ? <span className="fm-sticker-badge package__ribbon">{t.common.popular}</span> : null}
               <h3>{o.name}</h3>
-              <span className="package__worlds">{tf(t.common.worldsCount, { n: o.sceneCount })}</span>
+              <span className="package__worlds">{tf(t.common.worldsCount, { n: o.worldCount })}</span>
               <span className="fm-muted">{o.meta}</span>
               <span className="package__price">{o.price}</span>
               <span className="fm-badge fm-badge--sea">{selected ? p.selected : p.choose}</span>

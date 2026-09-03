@@ -124,7 +124,7 @@ export const en = {
       pill: "💛 Simple pricing",
       title: "How many worlds?",
       lead: "The only difference between packages is the number of worlds. Every world = three hiding spots. Everything's included: gift wrap, library, replays.",
-      feats: { spots: "{n} hiding spots to discover", time: "{time} first play, then more", link: "Private link + library", wrap: "Digital gift wrap" },
+      feats: { boards: "{boards} places · {n} hiding spots", time: "{time} first play, then more", link: "Private link + library", wrap: "Digital gift wrap" },
       choose: "Choose {name}",
       soon: "Unlocks when enough worlds are ready",
       note: "Launch pricing. Billed in ₪ in Israel and in USD elsewhere; VAT included where it applies.",
