@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getContainer } from "@/services/container";
 import { creationStep, isPlayable } from "@/domain/order-state";
 import { statusOf } from "@/services/game-status";
+import { RESUMABLE_STATUSES } from "@/services/generation/pipeline";
 import { ensurePlayerLink } from "@/services/share-link.service";
 import { currentUser, draftTokenFromCookie, isAdminEmail } from "@/lib/server/session";
 
@@ -18,5 +19,8 @@ export async function GET(_req: Request, ctx: { params: Promise<{ gameId: string
   const status = statusOf(game);
   const step = creationStep(status);
   const playUrl = isPlayable(status) ? (await ensurePlayerLink(c, gameId)).url : null;
-  return NextResponse.json({ status, ...step, playUrl, awaitingQa: status === "QA_PENDING" || status === "MANUAL_REVIEW" }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json(
+    { status, ...step, playUrl, awaitingQa: status === "QA_PENDING" || status === "MANUAL_REVIEW", pending: RESUMABLE_STATUSES.includes(status) },
+    { headers: { "Cache-Control": "no-store" } },
+  );
 }

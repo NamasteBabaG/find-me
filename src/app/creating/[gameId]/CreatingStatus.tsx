@@ -8,6 +8,8 @@ import { useI18n } from "@/i18n/client";
 
 interface Status {
   status: string;
+  /** True while generation still has work to do — the page then nudges it along. */
+  pending?: boolean;
   step: 1 | 2 | 3 | 4;
   done: boolean;
   failed: boolean;
@@ -23,10 +25,25 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
 
   useEffect(() => {
     let alive = true;
+    let working = false;
     const tick = async () => {
       try {
         const res = await fetch(`/api/games/${gameId}/status`, { cache: "no-store" });
-        if (res.ok && alive) setS((await res.json()) as Status);
+        if (!res.ok || !alive) return;
+        const status = (await res.json()) as Status;
+        setS(status);
+        // Generating a game takes minutes, more than a serverless request lives.
+        // While this page is open it is the clock: each nudge does another slice
+        // of the work. A cron does the same for a parent who closed the tab, and
+        // both are safe to run at once (every step is idempotent).
+        if (status.pending && !working) {
+          working = true;
+          try {
+            await fetch(`/api/jobs/tick?gameId=${gameId}`, { method: "POST", cache: "no-store" });
+          } finally {
+            working = false;
+          }
+        }
       } catch {
         /* retry on next tick */
       }

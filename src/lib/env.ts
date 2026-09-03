@@ -33,6 +33,8 @@ const EnvSchema = z.object({
   PAYME_WEBHOOK_SECRET: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
+  /** Vercel sets this and sends it as a bearer token on scheduled invocations. */
+  CRON_SECRET: z.string().optional(),
   /** Image model for the character sheet and the slot patches. */
   GENERATION_MODEL: z.string().default("gpt-image-2"),
   GENERATION_QUALITY: z.enum(["low", "medium", "high"]).default("medium"),

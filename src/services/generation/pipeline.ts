@@ -20,13 +20,26 @@ import { generateSlotPatch, type PatchOutcome, type Variant } from "./slot-patch
 type StepName = "avatar" | "targets" | "compose" | "qa";
 type StepRecord = { status: "done" | "failed" | "running"; startedAt: string; finishedAt?: string; error?: string };
 
-const RESUMABLE: GameStatus[] = ["PAID", "AVATAR_GENERATING", "TARGETS_GENERATING", "SCENES_COMPOSING", "NEEDS_REGENERATION", "NEEDS_NEW_PHOTO", "GENERATION_FAILED"];
+/** States the pipeline can pick up and carry forward — the queue asks the same question. */
+export const RESUMABLE_STATUSES: readonly GameStatus[] = ["PAID", "AVATAR_GENERATING", "TARGETS_GENERATING", "SCENES_COMPOSING", "NEEDS_REGENERATION", "GENERATION_FAILED"];
 
-export async function runGenerationPipeline(c: Container, gameId: string): Promise<void> {
+export interface PipelineOptions {
+  /**
+   * Stop after the hiding spot that is running when this passes, leaving the job
+   * RUNNING so the next tick picks it up.
+   *
+   * A real generation is ~55s per hiding spot and a three-world game is nine of
+   * them, which no serverless request will survive. The steps were always
+   * resumable; this makes stopping deliberate instead of a timeout.
+   */
+  deadlineAt?: number;
+}
+
+export async function runGenerationPipeline(c: Container, gameId: string, options: PipelineOptions = {}): Promise<void> {
   const game = await c.db.game.findUnique({ where: { id: gameId }, include: { childProfile: true, scenes: { include: { targets: true }, orderBy: { orderIndex: "asc" } } } });
   if (!game || !game.childProfile) return;
   const status = statusOf(game);
-  if (!RESUMABLE.includes(status)) return; // nothing to do (idempotent)
+  if (!RESUMABLE_STATUSES.includes(status)) return; // nothing to do (idempotent)
 
   const job =
     (await c.db.generationJob.findFirst({ where: { gameId, status: { in: ["QUEUED", "RUNNING", "FAILED"] } }, orderBy: { createdAt: "desc" } })) ??
@@ -121,9 +134,14 @@ export async function runGenerationPipeline(c: Container, gameId: string): Promi
     const variants: Variant[] = flag("GENERATION_BOTH_VARIANTS") ? ["A", "B"] : ["A"];
     const outcomes: PatchOutcome[] = [];
 
+    let ranOutOfTime = false;
     for (const gs of game.scenes) {
       const def = sceneBySlug(gs.sceneSlug);
       for (const target of def.targets) {
+        if (options.deadlineAt && Date.now() > options.deadlineAt) {
+          ranOutOfTime = true;
+          break;
+        }
         const row =
           gs.targets.find((t) => t.targetId === target.id) ??
           (await c.db.targetInstance.create({
@@ -154,6 +172,7 @@ export async function runGenerationPipeline(c: Container, gameId: string): Promi
           await c.db.targetInstance.update({ where: { id: row.id }, data: { spriteKind: "image", spriteAssetId: sprite.id, status: "GENERATED", attempts: { increment: 1 }, costCents: { increment: out.costCents } } });
         }
       }
+      if (ranOutOfTime) break;
       await c.db.gameScene.update({ where: { id: gs.id }, data: { generationStatus: "GENERATED" } });
     }
     if (outcomes.length > 0) {
@@ -162,6 +181,13 @@ export async function runGenerationPipeline(c: Container, gameId: string): Promi
       console.log(`[generate] ${gameId}: ${outcomes.length - failed.length}/${outcomes.length} hiding spots, ${(spent / 100).toFixed(2)} USD, ${Math.round(outcomes.reduce((n, o) => n + o.durationMs, 0) / 1000)}s`);
       for (const f of failed) console.warn(`[generate] ${gameId}: ${f.sceneSlug}/${f.targetId}/${f.variant} failed - ${f.error}`);
       c.analytics.track("patches_generated", { generated: outcomes.length - failed.length, failed: failed.length, costCents: spent });
+    }
+    if (ranOutOfTime) {
+      // Leave the job RUNNING: nothing is lost, the next tick resumes here.
+      await mark("targets", { status: "running" });
+      await c.db.generationJob.update({ where: { id: job.id }, data: { status: "RUNNING", currentStep: "targets" } });
+      console.log(`[generate] ${gameId}: out of time, ${outcomes.length} hiding spots done this slice`);
+      return;
     }
     await mark("targets", { status: "done", finishedAt: new Date().toISOString() });
 
