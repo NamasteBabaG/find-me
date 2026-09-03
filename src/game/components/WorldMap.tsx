@@ -68,6 +68,13 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, demo, trave
     return () => clearTimeout(id);
   }, [from, reduced]);
 
+  const [teaser, setTeaser] = useState<string | null>(null);
+  useEffect(() => {
+    if (!teaser) return;
+    const id = setTimeout(() => setTeaser(null), 2600);
+    return () => clearTimeout(id);
+  }, [teaser]);
+
   const at = travelling && from ? from : marker;
   const currentBoard = boards.get(marker.boardSlug);
   // Two real paths rather than one with a dash offset: mixing pathLength with a
@@ -106,7 +113,7 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, demo, trave
           </svg>
 
           {/* Nine buttons, in route order: this list is the map for a keyboard. */}
-          <ol className="wmap__nodes" aria-label={g.map.worldsAria}>
+          <ol className="wmap__nodes" aria-label={g.map.stopsAria}>
             {world.nodes.map((node) => {
               const board = boards.get(node.boardSlug);
               const state: NodeState = states[node.boardSlug] ?? "future";
@@ -118,7 +125,11 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, demo, trave
                   <button
                     type="button"
                     className="wmap__dot"
-                    onClick={() => (playable ? onOpen(node.boardSlug) : undefined)}
+                    onClick={() => (playable ? onOpen(node.boardSlug) : setTeaser(node.boardSlug))}
+                    // Kept focusable and announced rather than `disabled`: a child
+                    // should be able to reach a later destination and be told, in a
+                    // friendly way, that it is still ahead of them.
+                    aria-disabled={playable ? undefined : true}
                     aria-current={state === "current" ? "step" : undefined}
                     aria-label={`${node.routeIndex}. ${label} — ${stateLabel(g, state, sp.completed)}`}
                     data-board={node.boardSlug}
@@ -136,6 +147,11 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, demo, trave
                   <span className={`wmap__label wmap__label--${node.labelAnchor}`} aria-hidden>
                     {label}
                   </span>
+                  {teaser === node.boardSlug ? (
+                    <span className="wmap__teaser" role="status">
+                      {g.map.notYet}
+                    </span>
+                  ) : null}
                 </li>
               );
             })}
