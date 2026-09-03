@@ -12,12 +12,12 @@
  *       work/patches/beach-sandcastle-A.mask.png   (where to paint; optional for models that take a mask)
  *       work/patches/beach-sandcastle-A.json       (rect, slot, prompt)
  *
- *   npx tsx scripts/slot-patch.ts import beach sandcastle A path/to/edited.png [--threshold=28] [--feather=6] [--grow=2.2] [--out=public/demo/patches] [--no-clip]
+ *   npx tsx scripts/slot-patch.ts import beach sandcastle A path/to/edited.png [--threshold=28] [--outer=2.2] [--feather=6] [--grow=2.2] [--keep=0.12] [--out=public/demo/patches] [--no-clip]
  *     → <out>/beach-sandcastle-A.webp             (transparent patch: only what changed)
  *       <out>/beach-sandcastle-A.json             (rect in px and in art fractions, slot anchor)
  *       work/patches/beach-sandcastle-A.preview.png (the patch composited on the world, for a quick look)
  *
- *   npx tsx scripts/slot-patch.ts generate beach sandcastle A [--ref=public/demo/example-character.webp] [--model=gpt-image-2] [--quality=high] [--out=...]
+ *   npx tsx scripts/slot-patch.ts generate beach sandcastle A [--ref=public/demo/example-character.webp] [--model=gpt-image-2] [--quality=low] [--out=...]
  *     → export + OpenAI image edit (mask + character reference) + import, in one go.
  *       Default model gpt-image-2; falls back to gpt-image-1 automatically if the account cannot use it.
  *       Needs OPENAI_API_KEY (environment or .env). Costs one image generation per run.
@@ -152,12 +152,16 @@ async function importPatch(slug: string, targetId: string, variantArg: string | 
   //    (grown by --grow, default 2.2×) so model drift elsewhere in the crop is ignored.
   const rawMask = { raw: { width: c.rect.w, height: c.rect.h, channels: 1 as const } };
   const grow = Number(flag("grow", "2.2"));
+  const outerFactor = Number(flag("outer", "2.2"));
   const allow = has("no-clip") ? null : await sharp(maskSvg(c, grow)).extractChannel(0).raw().toBuffer();
+  const inner = await sharp(maskSvg(c, 1.15)).extractChannel(0).raw().toBuffer();
   const diff = Buffer.alloc(n);
   for (let i = 0; i < n; i++) {
     if (allow && allow[i]! < 128) continue;
     const d = Math.max(Math.abs(edited.data[i * 3]! - original[i * 3]!), Math.abs(edited.data[i * 3 + 1]! - original[i * 3 + 1]!), Math.abs(edited.data[i * 3 + 2]! - original[i * 3 + 2]!));
-    diff[i] = d > threshold ? 255 : 0;
+    // Outside the paint ellipse only strong changes count (the child), not re-render drift on sand and castle.
+    const limit = inner[i]! >= 128 ? threshold : threshold * outerFactor;
+    diff[i] = d > limit ? 255 : 0;
   }
   // 2. Open (erode → dilate) to drop compression speckle, then feather the edge.
   //    sharp applies operations in a fixed order per pipeline, so each step is its own pass.
@@ -242,7 +246,7 @@ async function generate(slug: string, targetId: string, variantArg?: string) {
     form.append("mask", new Blob([new Uint8Array(mask)], { type: "image/png" }), "mask.png");
     form.append("prompt", prompt);
     form.append("size", `${size}x${size}`);
-    form.append("quality", flag("quality", "high"));
+    form.append("quality", flag("quality", "low"));
     if (fidelity) form.append("input_fidelity", "high");
     form.append("n", "1");
     console.log(`calling OpenAI images/edits (${model}${fidelity ? ", input_fidelity=high" : ""})…`);
@@ -251,7 +255,7 @@ async function generate(slug: string, targetId: string, variantArg?: string) {
     return { ok: res.ok && Boolean(json.data?.[0]?.b64_json), status: res.status, json };
   };
   const requested = flag("model", "gpt-image-2");
-  let attempt = await call(requested, true);
+  let attempt = await call(requested, requested === "gpt-image-1");
   if (!attempt.ok && /input_fidelity/i.test(attempt.json.error?.message ?? attempt.json.error?.param ?? "")) attempt = await call(requested, false);
   if (!attempt.ok && requested !== "gpt-image-1" && /model|not found|does not exist|access|permission|verif/i.test(attempt.json.error?.message ?? "")) {
     console.log(`${requested} unavailable (${attempt.json.error?.message}); falling back to gpt-image-1`);
