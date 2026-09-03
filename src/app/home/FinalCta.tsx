@@ -14,7 +14,7 @@ export function FinalCta() {
           <h2 className="final__title">{f.title}</h2>
           <p className="final__lead">{f.lead}</p>
           <div className="final__cta fm-row fm-row--center">
-            <Link href="/create" className="fm-btn fm-btn--night fm-btn--xl">
+            <Link href="/create" className="fm-btn fm-btn--night fm-btn--lg">
               {f.cta}
               <span className="fm-btn__arrow" aria-hidden>
                 ➜

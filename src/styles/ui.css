@@ -138,7 +138,6 @@
 .fm-stepper__dot { width: var(--space-1); height: var(--space-1); border-radius: var(--radius-pill); background: var(--line); transition: width var(--dur-2) var(--ease-out), background var(--dur-2); }
 .fm-stepper__dot--active { width: var(--space-4); background: var(--sun); }
 .fm-stepper__dot--done { background: var(--ink-3); }
-.fm-stepper__label { font-family: var(--font-display); font-size: var(--fs-100); font-weight: 700; color: var(--ink-3); margin-inline-start: var(--space-1); }
 
 /* Header / footer */
 .fm-header { position: sticky; top: 0; z-index: var(--z-sticky); background: color-mix(in srgb, var(--paper) 80%, transparent); backdrop-filter: blur(16px); }

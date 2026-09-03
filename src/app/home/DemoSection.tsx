@@ -17,6 +17,8 @@ const GameShell = dynamic(() => import("@/game/components/GameShell").then((m) =
 export function DemoSection({ config }: { config: GameConfig }) {
   const { t } = useI18n();
   const d = t.home.demo;
+  // Match the frame to the artwork so the world fills it exactly (no letterbox bars).
+  const art = config.scenes[0]?.art;
   return (
     <section id="demo" className="demo">
       <div className="demo__stars" aria-hidden />
@@ -26,7 +28,7 @@ export function DemoSection({ config }: { config: GameConfig }) {
           <h2 className="demo__title">{d.title}</h2>
           <p className="demo__lead">{d.lead}</p>
         </div>
-        <div className="demo__frame">
+        <div className="demo__frame" style={art ? { aspectRatio: `${art.width} / ${art.height}` } : undefined}>
           {/* The play store is created once per mount; remount on a language switch so the demo speaks the new locale. */}
           <GameShell key={config.locale} config={config} demo autoStartScene="beach" singleMission />
         </div>

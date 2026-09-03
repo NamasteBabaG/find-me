@@ -80,7 +80,7 @@ export function Hero({ children }: { children?: ReactNode }) {
       const rect = el.getBoundingClientRect();
       const noa = noaRef.current;
       const d = Math.hypot((p.x - noa.x) * rect.width, (p.y - noa.y) * rect.height);
-      setLit(d < 90);
+      setLit(d < 78);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -128,7 +128,7 @@ export function Hero({ children }: { children?: ReactNode }) {
         </h1>
         <p className="hero3__lead">{h.lead}</p>
         <div className="hero3__cta">
-          <Link href="/create" className="fm-btn fm-btn--xl">
+          <Link href="/create" className="fm-btn fm-btn--lg">
             {h.cta}
             <span className="fm-btn__arrow" aria-hidden>
               ➜

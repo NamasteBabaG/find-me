@@ -10,9 +10,6 @@ export function Stepper({ steps, current }: { steps: readonly string[]; current:
       {steps.map((label, i) => (
         <span key={label} role="listitem" aria-current={i === current ? "step" : undefined} aria-label={label} className={`fm-stepper__dot${i === current ? " fm-stepper__dot--active" : i < current ? " fm-stepper__dot--done" : ""}`} />
       ))}
-      <span className="fm-stepper__label" aria-hidden>
-        {steps[current]}
-      </span>
     </div>
   );
 }
