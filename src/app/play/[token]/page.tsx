@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { getContainer } from "@/services/container";
 import { resolvePlayToken } from "@/services/share-link.service";
 import { parseGameConfig } from "@/domain/game/config";
+import { withFreshAssetUrls } from "@/services/asset.service";
 import { getI18n } from "@/i18n/server";
 import { GameShell } from "@/game/components/GameShell";
 
@@ -31,6 +32,7 @@ export default async function PlayPage({ params }: { params: Promise<{ token: st
     );
   }
 
-  const config = parseGameConfig(resolved.game.configJson);
+  // Signatures expire, so the config is re-signed on the way to the player.
+  const config = withFreshAssetUrls(getContainer(), parseGameConfig(resolved.game.configJson));
   return <GameShell key={config.locale} config={config} parentZoneHref="/library" />;
 }

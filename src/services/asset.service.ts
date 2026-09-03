@@ -2,7 +2,8 @@ import sharp, { type Metadata } from "sharp";
 import { hmacSign, newId, safeEqual } from "@/lib/ids";
 import type { Container } from "./container";
 
-export type AssetType = "ORIGINAL_PHOTO" | "AVATAR" | "TARGET_SPRITE" | "THUMBNAIL";
+/** IDENTITY_SHEET is the child drawn in the worlds style: PRIVATE, a reference, never shipped to a player. */
+export type AssetType = "ORIGINAL_PHOTO" | "AVATAR" | "IDENTITY_SHEET" | "TARGET_SPRITE" | "THUMBNAIL";
 export type AssetVisibility = "PRIVATE" | "GAME";
 
 const MAX_UPLOAD_BYTES = 12 * 1024 * 1024;
@@ -61,28 +62,50 @@ export async function storeAsset(
  * GAME-visibility assets (avatar sticker, sprites) are addressed by an
  * unguessable signed URL — safe to embed in the play config. PRIVATE assets
  * (the original photo) never get a signed URL; they need an owner/admin session.
+ *
+ * A signature expires, so a link that leaks out of a game stops working. The
+ * config is re-signed every time it is served (see `withFreshAssetUrls`), so the
+ * lifetime only has to outlast one sitting, not the game.
  */
-function assetSignature(secret: string, assetId: string): string {
-  return hmacSign(`asset:${assetId}`, secret).slice(0, 32);
+export const ASSET_URL_TTL_SECONDS = 7 * 24 * 60 * 60;
+
+function assetSignature(secret: string, assetId: string, expires: number): string {
+  return hmacSign(`asset:${assetId}:${expires}`, secret).slice(0, 32);
 }
 
-export function signedAssetUrl(c: Container, assetId: string): string {
-  return `/api/assets/${assetId}?s=${assetSignature(c.secret, assetId)}`;
+export function signedAssetUrl(c: Pick<Container, "secret">, assetId: string, ttlSeconds = ASSET_URL_TTL_SECONDS): string {
+  const expires = Math.floor(Date.now() / 1000) + ttlSeconds;
+  return `/api/assets/${assetId}?e=${expires}&s=${assetSignature(c.secret, assetId, expires)}`;
 }
 
 /** Only `secret` is read from the container, so this stays trivially unit-testable. */
-export function verifyAssetSignature(c: Pick<Container, "secret">, assetId: string, sig: string | null): boolean {
-  if (!sig) return false;
-  return safeEqual(assetSignature(c.secret, assetId), sig);
+export function verifyAssetSignature(c: Pick<Container, "secret">, assetId: string, sig: string | null, expires: string | null, now = Date.now()): boolean {
+  if (!sig || !expires) return false;
+  const exp = Number(expires);
+  if (!Number.isFinite(exp) || exp * 1000 < now) return false;
+  return safeEqual(assetSignature(c.secret, assetId, exp), sig);
 }
 
-export type AssetViewer = { userId: string | null; isAdmin: boolean; signature: string | null };
+/**
+ * Re-sign every asset URL in a stored game config.
+ *
+ * The config is composed once and kept, but its signatures expire — so the
+ * moment a config is handed to a player (or an admin), the URLs are refreshed.
+ * Matching on the asset id rather than the whole URL means a config written by
+ * an older version is upgraded on the way out.
+ */
+export function withFreshAssetUrls<T>(c: Pick<Container, "secret">, config: T, ttlSeconds = ASSET_URL_TTL_SECONDS): T {
+  const json = JSON.stringify(config).replace(/\/api\/assets\/([A-Za-z0-9_-]+)(\?[^"\\]*)?/g, (_m, id: string) => signedAssetUrl(c, id, ttlSeconds));
+  return JSON.parse(json) as T;
+}
+
+export type AssetViewer = { userId: string | null; isAdmin: boolean; signature: string | null; expires: string | null };
 
 export async function readAsset(c: Container, assetId: string, viewer: AssetViewer): Promise<{ buffer: Buffer; mimeType: string } | { error: 404 | 403 }> {
   const asset = await c.db.asset.findUnique({ where: { id: assetId } });
   if (!asset || asset.status === "DELETED") return { error: 404 };
   const allowed =
-    (asset.visibility === "GAME" && verifyAssetSignature(c, assetId, viewer.signature)) ||
+    (asset.visibility === "GAME" && verifyAssetSignature(c, assetId, viewer.signature, viewer.expires)) ||
     viewer.isAdmin ||
     (asset.ownerId !== null && asset.ownerId === viewer.userId);
   if (!allowed) return { error: 403 };

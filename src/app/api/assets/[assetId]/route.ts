@@ -13,7 +13,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ assetId: string
   const { assetId } = await ctx.params;
   const url = new URL(req.url);
   const user = await currentUser();
-  const result = await readAsset(getContainer(), assetId, { userId: user?.id ?? null, isAdmin: isAdminEmail(user?.email), signature: url.searchParams.get("s") });
+  const result = await readAsset(getContainer(), assetId, { userId: user?.id ?? null, isAdmin: isAdminEmail(user?.email), signature: url.searchParams.get("s"), expires: url.searchParams.get("e") });
   if ("error" in result) return new Response(result.error === 404 ? "not found" : "forbidden", { status: result.error });
   const isSigned = url.searchParams.has("s");
   return new Response(new Uint8Array(result.buffer), {

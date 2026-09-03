@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getContainer } from "@/services/container";
 import { catalogForAdmin } from "@/services/scene-catalog.service";
+import { demoPatchCoverage } from "@/services/demo";
 import { setSceneActiveAction } from "../actions";
 
 export default async function AdminScenesPage() {
@@ -19,6 +20,7 @@ export default async function AdminScenesPage() {
               <th>עולם</th>
               <th>גרסה</th>
               <th>ארט</th>
+              <th>מחבואים מוכנים</th>
               <th>פעיל</th>
               <th>אזהרות</th>
               <th></th>
@@ -38,6 +40,25 @@ export default async function AdminScenesPage() {
                 <td>v{scene.version}</td>
                 <td>
                   <span className={`fm-badge ${scene.artStatus === "final" ? "fm-badge--leaf" : scene.artStatus === "draft" ? "fm-badge--sea" : "fm-badge--outline"}`}>{scene.artStatus}</span>
+                </td>
+                <td>
+                  {(() => {
+                    // How many of the six hiding spots have been proven with a real child.
+                    const cover = demoPatchCoverage(scene.slug, scene.targets);
+                    const tone = cover.ready === cover.total ? "fm-badge--leaf" : cover.ready > 0 ? "fm-badge--sea" : "fm-badge--outline";
+                    return (
+                      <>
+                        <span className={`fm-badge ${tone}`} dir="ltr">
+                          {cover.ready}/{cover.total}
+                        </span>
+                        {cover.missing.length > 0 ? (
+                          <div className="fm-small" dir="ltr">
+                            {cover.missing.join(" · ")}
+                          </div>
+                        ) : null}
+                      </>
+                    );
+                  })()}
                 </td>
                 <td>
                   <span className={`fm-badge ${effectiveActive ? "fm-badge--leaf" : "fm-badge--outline"}`}>{effectiveActive ? "פעיל" : "כבוי"}</span>

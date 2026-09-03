@@ -62,10 +62,11 @@ model ChildProfile {
   id                   String    @id
   ownerId              String?
   displayName          String
-  avatarAssetId        String?   // illustrated sticker/avatar (kept so games keep working)
-  originalPhotoAssetId String?   // private; deleted after QA unless retainOriginalPhoto
+  avatarAssetId        String? // illustrated sticker/avatar (kept so games keep working)
+  identityAssetId      String? // identity sheet: the child drawn from a few angles, the reference every slot patch is painted from
+  originalPhotoAssetId String? // private; deleted after QA unless retainOriginalPhoto
   retainOriginalPhoto  Boolean   @default(false)
-  photoCropJson        String?   // { x, y, w, h } normalized crop chosen by the parent
+  photoCropJson        String? // { x, y, w, h } normalized crop chosen by the parent
   createdAt            DateTime  @default(now())
   deletedAt            DateTime?
 
@@ -77,17 +78,17 @@ model ChildProfile {
 
 model Game {
   id             String    @id
-  ownerId        String?   // null while the draft has no email yet
+  ownerId        String? // null while the draft has no email yet
   childProfileId String?
-  packageTier    String?   // SMALL | BIG | WORLD  (domain/package.ts)
+  packageTier    String? // SMALL | BIG | WORLD  (domain/package.ts)
   title          String?
   status         String    @default("DRAFT") // domain/order-state.ts
   sceneCount     Int       @default(0)
   styleVersion   String    @default("collage-v1")
   locale         String    @default("en") // en | he — frozen at creation; the game and its emails use it
   draftToken     String?   @unique // owns the draft before login
-  giftJson       String?   // { fromName?, message?, openAt? }
-  configJson     String?   // composed GameConfig (domain/game/config.ts) — never includes the original photo
+  giftJson       String? // { fromName?, message?, openAt? }
+  configJson     String? // composed GameConfig (domain/game/config.ts) — never includes the original photo
   lastError      String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -124,7 +125,7 @@ model GameScene {
 model TargetInstance {
   id            String  @id
   gameSceneId   String
-  targetId      String  // id inside the SceneDefinition
+  targetId      String // id inside the SceneDefinition
   targetType    String
   spriteKind    String  @default("composed") // composed (body template + face sticker) | image (generated sprite)
   spriteAssetId String?
@@ -135,9 +136,42 @@ model TargetInstance {
   attempts      Int     @default(0)
   costCents     Int     @default(0)
 
-  gameScene GameScene @relation(fields: [gameSceneId], references: [id], onDelete: Cascade)
+  gameScene GameScene            @relation(fields: [gameSceneId], references: [id], onDelete: Cascade)
+  variants  TargetVariantAsset[]
 
   @@unique([gameSceneId, targetId])
+}
+
+/// One generated hiding spot: the child painted into the world at slot A or B.
+/// A slot patch belongs to ONE spot, so cost, QA and regeneration are per variant —
+/// `TargetInstance.spriteAssetId` cannot express that. Geometry lives here too,
+/// because where the patch is drawn is not where the child can be tapped
+/// (see docs/SPRITE_PATCHES.md and src/game/engine/target-geometry.ts).
+model TargetVariantAsset {
+  id               String   @id
+  targetInstanceId String
+  variant          String // A | B
+  slotId           String
+  assetId          String?
+  rectJson         String? // { x, y, w, h } in art fractions — where the patch is drawn
+  hitRectJson      String? // the painted child's own footprint — what a tap must hit
+  headAnchorJson   String? // { x, y } top-centre of the head — bubbles and hints
+  provider         String   @default("mock")
+  model            String?
+  promptVersion    String?
+  attempts         Int      @default(0)
+  costCents        Int      @default(0)
+  usageJson        String? // provider-reported token usage, for the real cost model
+  durationMs       Int      @default(0)
+  status           String   @default("PENDING") // PENDING | GENERATED | APPROVED | FAILED | NEEDS_REGENERATION
+  lastError        String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  targetInstance TargetInstance @relation(fields: [targetInstanceId], references: [id], onDelete: Cascade)
+
+  @@unique([targetInstanceId, variant])
+  @@index([status])
 }
 
 // ─── Assets ──────────────────────────────────────────────────
@@ -145,7 +179,7 @@ model TargetInstance {
 model Asset {
   id                String    @id
   ownerId           String?
-  type              String    // ORIGINAL_PHOTO | AVATAR | TARGET_SPRITE | THUMBNAIL
+  type              String // ORIGINAL_PHOTO | AVATAR | IDENTITY_SHEET | TARGET_SPRITE | THUMBNAIL
   visibility        String    @default("PRIVATE") // PRIVATE (owner/admin only) | GAME (signed url, safe to ship to players)
   storagePath       String
   mimeType          String
@@ -168,7 +202,7 @@ model Order {
   id                String    @id
   userId            String
   gameId            String
-  amountAgorot      Int       // minor units of `currency` (agorot or cents) — column name kept for compatibility
+  amountAgorot      Int // minor units of `currency` (agorot or cents) — column name kept for compatibility
   currency          String    @default("ILS") // ILS | USD
   packageTier       String
   paymentStatus     String    @default("PENDING") // PENDING | PAID | FAILED | REFUNDED | CANCELLED
@@ -194,7 +228,7 @@ model PaymentEvent {
   orderId         String
   provider        String
   providerEventId String
-  kind            String   // PAID | FAILED | REFUNDED
+  kind            String // PAID | FAILED | REFUNDED
   payloadJson     String
   receivedAt      DateTime @default(now())
 
@@ -260,7 +294,7 @@ model ProgressEvent {
   sessionId String
   sceneSlug String?
   targetId  String?
-  eventType String   // scene_started | target_found | hint_used | scene_completed | game_completed | game_replayed
+  eventType String // scene_started | target_found | hint_used | scene_completed | game_completed | game_replayed
   hintsUsed Int      @default(0)
   createdAt DateTime @default(now())
 
@@ -282,7 +316,7 @@ model SceneOverride {
 
 model AuditLog {
   id         String   @id
-  actorType  String   // SYSTEM | USER | ADMIN | WEBHOOK
+  actorType  String // SYSTEM | USER | ADMIN | WEBHOOK
   actorId    String?
   action     String
   entityType String

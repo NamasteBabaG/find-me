@@ -26,7 +26,8 @@ export type FlowErrorCode =
   | "NO_FILE"
   | "UPLOAD_FAILED"
   | "CONSENT_REQUIRED"
-  | "SERVICE_UNAVAILABLE";
+  | "SERVICE_UNAVAILABLE"
+  | "TOO_MANY_REQUESTS";
 
 export interface FlowError {
   ok: false;

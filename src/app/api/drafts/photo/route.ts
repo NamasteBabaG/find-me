@@ -2,11 +2,15 @@ import { NextResponse } from "next/server";
 import { getContainer } from "@/services/container";
 import { attachPhoto, draftBelongsTo } from "@/services/create-flow.service";
 import { currentUser, draftTokenFromCookie } from "@/lib/server/session";
+import { LIMITS, callerKey, rateLimit, tooManyRequests } from "@/lib/server/rate-limit";
 
 export const runtime = "nodejs";
 
 /** Multipart upload of the child's photo for the current draft. */
 export async function POST(req: Request) {
+  // Uploads cost storage and generation, so a stranger gets a handful per window.
+  const limited = rateLimit(callerKey(req, "photo"), LIMITS.photoUpload.limit, LIMITS.photoUpload.windowMs);
+  if (!limited.ok) return tooManyRequests(limited);
   const c = getContainer();
   const token = await draftTokenFromCookie();
   if (!token) return NextResponse.json({ ok: false, code: "DRAFT_NOT_FOUND", reason: "הטיוטה לא נמצאה. התחילו מחדש." }, { status: 400 });

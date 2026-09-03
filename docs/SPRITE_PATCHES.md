@@ -44,18 +44,26 @@ missing either field, and `/admin/scenes/<slug>` draws the hitbox and head point
 
 ## Cost
 
-One inpaint call per slot. 3 worlds × 3 spots × 2 variants = 18 calls (54 for 9 worlds); ship
-variant A only (9 calls for 3 worlds) and generate B lazily on the first replay.
+One inpaint call per slot, plus one identity sheet per child.
 
-**The per-call cost is not yet measured.** The script currently uses `gpt-image-2`, which is billed by
-image input/output tokens rather than a flat per-image price, and the account is rate-limited on images
-per minute — so a real run needs a queue, not a burst of 18 calls. Before committing to a price, record
-`usage`, retries, model and wall-clock for every call and derive the real number from a batch of ten
-children. Cheaper inpaint models (Flux Fill / SDXL-inpaint class) are the fallback if the measured cost
-does not fit the margin. The face sticker (avatar) stays a single generation that seeds every patch with
-the same likeness.
+**Measured**, generating every hiding spot of all nine worlds (`gpt-image-2`, quality `medium`,
+1024x1024, two input images):
 
-## Tooling (today: manual, with the image model in chat)
+| | |
+| --- | --- |
+| per hiding spot | **~$0.07** and ~55s |
+| a 3-world game, variant A only | 1 sheet + 9 spots = **~$0.70** |
+| a 3-world game, both variants | 1 sheet + 18 spots = **~$1.33** |
+| all nine worlds, variant A | 27 spots = ~$1.90 |
+
+At ILS 39 for three worlds that is about 8% of revenue on generation for a variant-A game — inside the
+margin, with room for the retries a hard photo needs. Every call records its real `usage`, model,
+attempts and duration on the `TargetVariantAsset` row, so this table is refreshed from data rather than
+re-estimated. `npx tsx scripts/prepare-boards.ts generate` writes the same numbers to
+`work/boards/cost.json`. Cheaper inpaint models (Flux Fill / SDXL-inpaint class) are the fallback if
+the mix shifts.
+
+## Tooling
 
 ```bash
 # 1. export the crop + mask + prompt for a slot
@@ -77,13 +85,54 @@ The landing page's "From photo to character" section reads `public/demo/patches/
 automatically: once the patch exists, the world card shows the character painted into the beach,
 glowing, with the speech bubble anchored at the slot. Without it, the card shows the world alone.
 
-## Production pipeline (when a real generation provider is wired)
+## The production pipeline
 
-`GenerationProvider.generateTargetSprite()` receives `{ scene, target, slot, contextCrop, mask, avatar, prompt }`
-and returns the edited crop. `runGenerationPipeline` then runs the same diff step (shared with the
-script), stores the patch as a `GAME` asset and writes the sprite as
-`{ kind: "image", url, width, height, rect, hitRect, anchor }` (fractions of the art) into the config.
-QA in `/admin` shows the patch on the world exactly as the player sees it; "regenerate" re-runs one slot.
+`GENERATION_PROVIDER=openai` turns this on. `runGenerationPipeline` then does, per game:
+
+1. **Identity sheet** (one call). `AvatarProvider.createCharacter()` redraws the uploaded photo as a
+   2x2 sheet of the same child — portrait, standing, from behind, crouching — in the worlds' style.
+   It is stored PRIVATE as an `IDENTITY_SHEET` asset and is the reference for every patch, which is
+   what keeps her the same child in nine worlds. The round cover avatar is cut from its top-left
+   quadrant, so it costs nothing extra.
+2. **One call per hiding spot.** `AvatarProvider.editSlotCrop()` gets the context crop, the mask and
+   the sheet. The result goes through the shared `diffToPatch`, and the patch is stored as a `GAME`
+   asset with its geometry on a `TargetVariantAsset` row — one row per (target, variant), with its
+   own status, attempts, model, token usage, duration and cost. That is the unit QA approves and
+   "regenerate" re-runs; a bad spot B never touches a good spot A.
+3. **Compose.** `composeGameConfig` reads those rows into `spriteByVariant`, each sprite carrying
+   `rect`, `hitRect` and `anchor`. `automatedQa` refuses a patch missing either of the last two.
+
+`GENERATION_BOTH_VARIANTS=true` generates spot B as well; by default only A is generated, which is a
+complete playable game at half the cost. Rate limiting lives in the provider (`GENERATION_RPM`), so
+27 spots pace themselves instead of bursting into a 429.
+
+## Preparing a board
+
+A world is ready to receive a child when all six of its spots are places a child can be painted into.
+That is a property of the scene, not of any child, so it is checked without spending anything:
+
+```bash
+npx tsx scripts/prepare-boards.ts audit           # every world; work/boards/index.html to look at
+npx tsx scripts/prepare-boards.ts generate beach  # real patches + measured cost per spot
+```
+
+`audit` renders the six windows of each world with the paint area drawn on top, and refuses a slot that
+is jammed against an edge (the model cannot paint an occluder that is outside the window), too small to
+recognise, or too big to be hiding.
+
+## Isolating the child
+
+`images/edits` does not paint only inside the mask: it returns a fresh rendering of the whole crop that
+merely resembles the input. Three things turn that into a clean patch, and all three are needed:
+
+1. **Colour match.** Fit the edited crop back to the original on the pixels *outside* the paint area,
+   where nothing should have changed. This removes the global drift that otherwise leaves sand and
+   castle edges in the patch.
+2. **Two-tier threshold + main blobs.** Inside the paint ellipse a small difference counts; outside it
+   only a large one does. What survives is reduced to the largest connected blob plus nearby fragments
+   (a hat brim behind a post is part of her; flip-flops two metres away are not).
+3. **Shape check.** `childProblem()` refuses a patch that is not roughly the height we asked for,
+   is wider than it is tall, or is centred away from the slot. Area alone passes a repainted sandcastle.
 
 ## Rules that keep it excellent
 

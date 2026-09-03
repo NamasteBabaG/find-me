@@ -8,6 +8,7 @@ import { MockPaymentProvider } from "@/infra/payment/mock";
 import { PayMeProvider } from "@/infra/payment/payme";
 import type { AvatarProvider, FaceDetector } from "@/infra/generation/types";
 import { MockAvatarProvider, NoopFaceDetector } from "@/infra/generation/mock";
+import { OpenAiAvatarProvider } from "@/infra/generation/openai";
 import type { EmailProvider } from "@/infra/email/types";
 import { ConsoleEmailProvider } from "@/infra/email/console";
 import { ResendEmailProvider } from "@/infra/email/resend";
@@ -47,7 +48,7 @@ function build(): Container {
     throw new Error(`${key}=${value} is not implemented yet — use ${use} (src/services/container.ts)`);
   };
   if (e.STORAGE_PROVIDER === "supabase") notBuilt("STORAGE_PROVIDER", e.STORAGE_PROVIDER, '"db" or "local"');
-  if (e.GENERATION_PROVIDER !== "mock") notBuilt("GENERATION_PROVIDER", e.GENERATION_PROVIDER, '"mock"');
+  if (e.GENERATION_PROVIDER === "replicate") notBuilt("GENERATION_PROVIDER", e.GENERATION_PROVIDER, '"openai" or "mock"');
   if (e.ANALYTICS_PROVIDER === "posthog") notBuilt("ANALYTICS_PROVIDER", e.ANALYTICS_PROVIDER, '"console" or "none"');
   const storage: StorageProvider = e.STORAGE_PROVIDER === "db" ? new DbStorage(prisma) : new LocalDiskStorage(storageRoot);
 
@@ -61,7 +62,10 @@ function build(): Container {
     db: prisma,
     storage,
     payment,
-    avatars: new MockAvatarProvider(),
+    avatars:
+      e.GENERATION_PROVIDER === "openai"
+        ? new OpenAiAvatarProvider(e.OPENAI_API_KEY ?? "", { model: e.GENERATION_MODEL, quality: e.GENERATION_QUALITY, perMinute: e.GENERATION_RPM })
+        : new MockAvatarProvider(),
     faces: new NoopFaceDetector(),
     email,
     analytics,
@@ -92,6 +96,7 @@ function warnAboutMocks(e: ReturnType<typeof env>): void {
   if (e.PAYMENT_PROVIDER === "mock") mocks.push("payments are simulated (no money moves)");
   if (e.EMAIL_PROVIDER === "console") mocks.push("email is written to disk, not sent");
   if (e.STORAGE_PROVIDER === "local") mocks.push("assets go to local disk, which a serverless host throws away");
-  mocks.push("child sprites come from the procedural mock, not a real generator");
+  if (e.GENERATION_PROVIDER === "mock") mocks.push("child sprites come from the procedural mock, not a real generator");
+  if (mocks.length === 0) return;
   console.warn(`[container] PRODUCTION IS RUNNING ON MOCKS: ${mocks.join("; ")}.`);
 }

@@ -14,7 +14,7 @@ import { sceneBySlug } from "../scene-catalog.service";
 export async function composeGameConfig(c: Container, gameId: string): Promise<GameConfig> {
   const game = await c.db.game.findUniqueOrThrow({
     where: { id: gameId },
-    include: { childProfile: true, scenes: { orderBy: { orderIndex: "asc" }, include: { targets: true } } },
+    include: { childProfile: true, scenes: { orderBy: { orderIndex: "asc" }, include: { targets: { include: { variants: true } } } } },
   });
   if (!game.childProfile) throw new Error("composeGameConfig: game has no child profile");
   if (!game.childProfile.avatarAssetId) throw new Error("composeGameConfig: avatar not generated yet");
@@ -31,18 +31,31 @@ export async function composeGameConfig(c: Container, gameId: string): Promise<G
     const def = sceneBySlug(gs.sceneSlug);
     const sprites: TargetSpriteInput[] = [];
     for (const t of gs.targets) {
-      let sprite: SpriteRef;
-      if (t.spriteKind === "image" && t.spriteAssetId) {
+      const target = def.targets.find((x) => x.id === t.targetId);
+      if (!target) throw new Error(`target ${t.targetId} missing from scene ${def.slug}`);
+      const fallback: SpriteRef = { kind: "composed", faceUrl: avatarUrl, bodyTemplate: target.bodyTemplate };
+
+      // A slot patch belongs to ONE hiding spot, so each variant has its own.
+      const byVariant: { A?: SpriteRef; B?: SpriteRef } = {};
+      for (const v of t.variants ?? []) {
+        if (v.status !== "GENERATED" && v.status !== "APPROVED") continue;
+        const ref = await patchSprite(c, v);
+        if (ref) byVariant[v.variant === "B" ? "B" : "A"] = ref;
+      }
+
+      let sprite: SpriteRef | undefined = byVariant.A ?? byVariant.B;
+      if (!sprite && t.spriteKind === "image" && t.spriteAssetId) {
         const asset = await c.db.asset.findUniqueOrThrow({ where: { id: t.spriteAssetId } });
         if (asset.visibility !== "GAME") throw new Error(`sprite asset ${asset.id} must be GAME-visible`);
         sprite = { kind: "image", url: signedAssetUrl(c, asset.id), width: asset.width ?? 512, height: asset.height ?? 512 };
-      } else {
-        const target = def.targets.find((x) => x.id === t.targetId);
-        if (!target) throw new Error(`target ${t.targetId} missing from scene ${def.slug}`);
-        sprite = { kind: "composed", faceUrl: avatarUrl, bodyTemplate: target.bodyTemplate };
       }
       const adjust = t.adjustJson ? TargetAdjustSchema.parse(JSON.parse(t.adjustJson)) : undefined;
-      sprites.push({ targetId: t.targetId, sprite, adjust });
+      sprites.push({
+        targetId: t.targetId,
+        sprite: sprite ?? fallback,
+        spriteByVariant: byVariant.A || byVariant.B ? byVariant : undefined,
+        adjust,
+      });
     }
     scenes.push(composeScene(def, child, sprites, locale));
   }
@@ -59,4 +72,26 @@ export async function persistGameConfig(c: Container, gameId: string): Promise<G
     await c.db.gameScene.update({ where: { gameId_sceneSlug: { gameId, sceneSlug: scene.slug } }, data: { configJson: JSON.stringify(scene) } });
   }
   return config;
+}
+
+/**
+ * One generated hiding spot → the sprite the renderer draws. The geometry
+ * travels with the sprite because where a patch is drawn is not where the child
+ * can be tapped (see src/game/engine/target-geometry.ts).
+ */
+async function patchSprite(c: Container, v: { assetId: string | null; rectJson: string | null; hitRectJson: string | null; headAnchorJson: string | null }): Promise<SpriteRef | null> {
+  if (!v.assetId) return null;
+  const asset = await c.db.asset.findUnique({ where: { id: v.assetId } });
+  if (!asset || asset.status !== "READY") return null;
+  if (asset.visibility !== "GAME") throw new Error(`patch asset ${asset.id} must be GAME-visible`);
+  const json = <T,>(raw: string | null): T | undefined => (raw ? (JSON.parse(raw) as T) : undefined);
+  return {
+    kind: "image",
+    url: signedAssetUrl(c, asset.id),
+    width: asset.width ?? 512,
+    height: asset.height ?? 512,
+    rect: json<{ x: number; y: number; w: number; h: number }>(v.rectJson),
+    hitRect: json<{ x: number; y: number; w: number; h: number }>(v.hitRectJson),
+    anchor: json<{ x: number; y: number }>(v.headAnchorJson),
+  };
 }

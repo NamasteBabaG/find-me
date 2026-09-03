@@ -32,6 +32,14 @@ const EnvSchema = z.object({
   PAYME_SELLER_ID: z.string().optional(),
   PAYME_WEBHOOK_SECRET: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
+  OPENAI_API_KEY: z.string().optional(),
+  /** Image model for the character sheet and the slot patches. */
+  GENERATION_MODEL: z.string().default("gpt-image-2"),
+  GENERATION_QUALITY: z.enum(["low", "medium", "high"]).default("medium"),
+  /** Images per minute this OpenAI account may request (tier 1 is 5). */
+  GENERATION_RPM: z.coerce.number().int().positive().default(5),
+  /** Generate hiding spot B as well. Off by default: one spot per target is a playable game. */
+  GENERATION_BOTH_VARIANTS: z.enum(["true", "false"]).default("false"),
   EMAIL_FROM: z.string().default("איפה אני? <hello@example.com>"),
 });
 
@@ -65,6 +73,6 @@ export function adminEmails(): string[] {
     .filter(Boolean);
 }
 
-export function flag(name: "FEATURE_GIFT_WRAP" | "FEATURE_BONUS_CHARACTER" | "QA_AUTO_APPROVE"): boolean {
+export function flag(name: "FEATURE_GIFT_WRAP" | "FEATURE_BONUS_CHARACTER" | "QA_AUTO_APPROVE" | "GENERATION_BOTH_VARIANTS"): boolean {
   return env()[name] === "true";
 }

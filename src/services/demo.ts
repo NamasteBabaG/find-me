@@ -28,6 +28,24 @@ function demoPatch(slug: string, targetId: string, variant: "A" | "B"): SpriteRe
     return null;
   }
 }
+/**
+ * Which hiding spots of a world already have a patch of the demo child.
+ *
+ * This is how "is this board ready to receive a child?" is answered in the
+ * admin: a world with 6 of 6 has been proven end to end, a world with 0 has
+ * only ever been looked at.
+ */
+export function demoPatchCoverage(slug: string, targets: readonly { id: string }[]): { ready: number; total: number; missing: string[] } {
+  const missing: string[] = [];
+  for (const t of targets) {
+    for (const variant of ["A", "B"] as const) {
+      if (!demoPatch(slug, t.id, variant)) missing.push(`${t.id}/${variant}`);
+    }
+  }
+  const total = targets.length * 2;
+  return { ready: total - missing.length, total, missing };
+}
+
 const DEMO_NAME: Record<Locale, string> = { en: "Anna", he: "נועה" };
 /** The hiding spot the landing demo uses: she kneels by the sandcastle, hat and all. */
 export const DEMO_TARGET_ID = "sandcastle";

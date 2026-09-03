@@ -10,6 +10,7 @@ export type IdPrefix =
   | "game"
   | "gsc"
   | "tgt"
+  | "tva"
   | "ast"
   | "ord"
   | "pev"

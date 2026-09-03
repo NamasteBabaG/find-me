@@ -10,6 +10,7 @@ import { sceneBySlug } from "../scene-catalog.service";
 import { SYSTEM, audit } from "../audit.service";
 import { persistGameConfig } from "./scene-composer";
 import { publishGame } from "../publish.service";
+import { generateSlotPatch, type PatchOutcome, type Variant } from "./slot-patches";
 
 /**
  * Background generation. Every step is idempotent and resumable:
@@ -55,20 +56,53 @@ export async function runGenerationPipeline(c: Container, gameId: string): Promi
       const original = await c.db.asset.findUniqueOrThrow({ where: { id: child.originalPhotoAssetId } });
       const photo = await readAssetBuffer(c, original.id);
       const crop = child.photoCropJson ? (JSON.parse(child.photoCropJson) as CropBox) : null;
-      const out = await c.avatars.createAvatar({ originalPhoto: photo, mimeType: original.mimeType, crop, childName: child.displayName });
-      const avatarAsset = await storeAsset(c, {
-        ownerId: child.ownerId,
-        type: "AVATAR",
-        visibility: "GAME",
-        buffer: out.png,
-        mimeType: "image/png",
-        width: out.width,
-        height: out.height,
-        provider: c.avatars.id,
-        providerRequestId: out.providerRequestId,
-        costCents: out.costCents,
-      });
-      await c.db.childProfile.update({ where: { id: child.id }, data: { avatarAssetId: avatarAsset.id } });
+      const request = { originalPhoto: photo, mimeType: original.mimeType, crop, childName: child.displayName };
+      if (c.avatars.createCharacter) {
+        // One drawing of the child in the worlds own style, from several angles:
+        // the reference every hiding spot is painted from, which is what keeps
+        // her the same child in nine worlds. The cover avatar is cut from it.
+        const character = await c.avatars.createCharacter(request);
+        const sheet = await storeAsset(c, {
+          ownerId: child.ownerId,
+          type: "IDENTITY_SHEET",
+          visibility: "PRIVATE",
+          buffer: character.sheetPng,
+          mimeType: "image/png",
+          width: character.sheetWidth,
+          height: character.sheetHeight,
+          provider: c.avatars.id,
+          providerRequestId: character.providerRequestId,
+          costCents: character.costCents,
+        });
+        const avatarAsset = await storeAsset(c, {
+          ownerId: child.ownerId,
+          type: "AVATAR",
+          visibility: "GAME",
+          buffer: character.avatarPng,
+          mimeType: "image/png",
+          width: character.avatarWidth,
+          height: character.avatarHeight,
+          provider: c.avatars.id,
+          providerRequestId: character.providerRequestId,
+          costCents: 0,
+        });
+        await c.db.childProfile.update({ where: { id: child.id }, data: { avatarAssetId: avatarAsset.id, identityAssetId: sheet.id } });
+      } else {
+        const out = await c.avatars.createAvatar(request);
+        const avatarAsset = await storeAsset(c, {
+          ownerId: child.ownerId,
+          type: "AVATAR",
+          visibility: "GAME",
+          buffer: out.png,
+          mimeType: "image/png",
+          width: out.width,
+          height: out.height,
+          provider: c.avatars.id,
+          providerRequestId: out.providerRequestId,
+          costCents: out.costCents,
+        });
+        await c.db.childProfile.update({ where: { id: child.id }, data: { avatarAssetId: avatarAsset.id } });
+      }
     } else if (status === "PAID" || status === "NEEDS_NEW_PHOTO" || status === "GENERATION_FAILED") {
       await transitionGame(c, gameId, "AVATAR_GENERATING", SYSTEM);
     }
@@ -81,6 +115,12 @@ export async function runGenerationPipeline(c: Container, gameId: string): Promi
     const refreshedChild = await c.db.childProfile.findUniqueOrThrow({ where: { id: game.childProfile.id } });
     const avatarPng = await readAssetBuffer(c, refreshedChild.avatarAssetId as string);
 
+    // Painting the child into a world needs the identity sheet, not the round avatar.
+    const canPatch = Boolean(c.avatars.editSlotCrop) && Boolean(refreshedChild.identityAssetId);
+    const reference = canPatch ? await readAssetBuffer(c, refreshedChild.identityAssetId as string) : null;
+    const variants: Variant[] = flag("GENERATION_BOTH_VARIANTS") ? ["A", "B"] : ["A"];
+    const outcomes: PatchOutcome[] = [];
+
     for (const gs of game.scenes) {
       const def = sceneBySlug(gs.sceneSlug);
       for (const target of def.targets) {
@@ -90,6 +130,22 @@ export async function runGenerationPipeline(c: Container, gameId: string): Promi
             data: { id: newId("tgt"), gameSceneId: gs.id, targetId: target.id, targetType: target.targetType, slotAId: target.slots[0].id, slotBId: target.slots[1].id },
           }));
         if (row.status === "GENERATED" || row.status === "APPROVED") continue;
+        if (canPatch && reference) {
+          let spent = 0;
+          let ok = 0;
+          for (const variant of variants) {
+            const outcome = await generateSlotPatch(c, { targetInstanceId: row.id, scene: def, target, variant, reference, childName: refreshedChild.displayName, ownerId: refreshedChild.ownerId });
+            outcomes.push(outcome);
+            spent += outcome.costCents;
+            if (outcome.status === "GENERATED") ok++;
+          }
+          // One good hiding spot is a playable target; none is one a human must look at.
+          await c.db.targetInstance.update({
+            where: { id: row.id },
+            data: { spriteKind: "image", status: ok > 0 ? "GENERATED" : "NEEDS_REGENERATION", attempts: { increment: 1 }, costCents: { increment: spent } },
+          });
+          continue;
+        }
         const out = await c.avatars.createTargetSprite({ avatarPng, sceneSlug: def.slug, targetType: target.targetType, bodyTemplate: target.bodyTemplate, childName: refreshedChild.displayName });
         if (out.kind === "composed") {
           await c.db.targetInstance.update({ where: { id: row.id }, data: { spriteKind: "composed", spriteAssetId: null, status: "GENERATED", attempts: { increment: 1 } } });
@@ -99,6 +155,13 @@ export async function runGenerationPipeline(c: Container, gameId: string): Promi
         }
       }
       await c.db.gameScene.update({ where: { id: gs.id }, data: { generationStatus: "GENERATED" } });
+    }
+    if (outcomes.length > 0) {
+      const spent = outcomes.reduce((n, o) => n + o.costCents, 0);
+      const failed = outcomes.filter((o) => o.status === "FAILED");
+      console.log(`[generate] ${gameId}: ${outcomes.length - failed.length}/${outcomes.length} hiding spots, ${(spent / 100).toFixed(2)} USD, ${Math.round(outcomes.reduce((n, o) => n + o.durationMs, 0) / 1000)}s`);
+      for (const f of failed) console.warn(`[generate] ${gameId}: ${f.sceneSlug}/${f.targetId}/${f.variant} failed - ${f.error}`);
+      c.analytics.track("patches_generated", { generated: outcomes.length - failed.length, failed: failed.length, costCents: spent });
     }
     await mark("targets", { status: "done", finishedAt: new Date().toISOString() });
 
