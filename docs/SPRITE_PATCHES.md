@@ -51,10 +51,11 @@ One inpaint call per slot, plus one identity sheet per child.
 
 | | |
 | --- | --- |
-| per hiding spot | **~$0.07** and ~55s |
-| a 3-world game, variant A only | 1 sheet + 9 spots = **~$0.70** |
-| a 3-world game, both variants | 1 sheet + 18 spots = **~$1.33** |
-| all nine worlds, variant A | 27 spots = ~$1.90 |
+| one model call | **$0.07** and ~55s (2,944 tokens: 1,188 in, 1,756 out) |
+| per hiding spot | one call for 26 of 27 spots; budget **~$0.08** with retries |
+| a 3-world game, variant A only | 1 sheet + 9 spots = **~$0.70**, ~10 minutes |
+| a 3-world game, both variants | 1 sheet + 18 spots = **~$1.30** |
+| all nine worlds, variant A | 27 spots = ~$2.00 |
 
 At ILS 39 for three worlds that is about 8% of revenue on generation for a variant-A game — inside the
 margin, with room for the retries a hard photo needs. Every call records its real `usage`, model,
@@ -136,26 +137,30 @@ merely resembles the input. Three things turn that into a clean patch, and all t
 
 ## When a spot fails
 
-Roughly one roll in four comes back unusable, in one of two ways, and both are
-caught rather than shipped:
+`scripts/compare-edit.ts` tells the three cases apart in one call — it measures
+how much of the crop actually changed:
 
-* **Nothing was painted.** The diff finds only blurry fragments of scenery — the
-  model ignored the request for that window. `childProblem()` rejects it as too
-  small or not child-shaped.
-* **The whole crop was repainted.** `images/edits` re-rendered the window instead
-  of editing it, so the "patch" is the entire 648px crop. Rejected as far taller
-  than the child we asked for.
+* **She was painted where we were not looking.** High diff, empty patch. This was
+  eight of twenty-seven spots on the first run: `images/edits` reads the mask as
+  "where you may edit", not "put her exactly here", so she lands a little outside
+  the ellipse and a tight clip throws her away. The search area (`--grow`,
+  default 3.6x the child) is what fixes it, not another roll.
+* **The whole window was re-rendered.** High diff everywhere, and the "patch" is
+  the entire 648px crop. `childProblem()` rejects it as far taller than the child
+  we asked for. Another roll usually works.
+* **The picture came back untouched.** Mean diff near zero, "no changed pixels".
+  Another roll, and if it persists the slot is the problem.
 
-Both are stochastic, so the fix is another roll: `prepare-boards generate` skips
-spots that already have a patch, which makes a retry pass cheap and targeted.
+`prepare-boards generate` skips spots that already have a patch, so a retry pass
+is cheap and targeted:
 
 ```bash
 npx tsx scripts/prepare-boards.ts generate park ship --tries=4   # only the missing spots
 ```
 
-A spot that keeps failing is usually telling you something about the slot: too
-little to hide behind, or a situation the model cannot picture. `--pose` gives it
-a concrete instruction, and moving the slot is a legitimate answer.
+A spot that keeps failing is telling you something about the slot: too little to
+hide behind, or a situation the model cannot picture. `--pose` gives it a
+concrete instruction, and moving the slot is a legitimate answer.
 
 ## Rules that keep it excellent
 
