@@ -49,13 +49,20 @@ One inpaint call per slot, plus one identity sheet per child.
 **Measured**, generating every hiding spot of all nine worlds (`gpt-image-2`, quality `medium`,
 1024x1024, two input images):
 
+A world is nine boards of three missions each, so **one world is 27 hiding
+spots** — not nine. (That arithmetic was wrong here until a live game counted
+itself.)
+
 | | |
 | --- | --- |
 | one model call | **$0.07** and ~55s (2,944 tokens: 1,188 in, 1,756 out) |
-| per hiding spot | one call for 26 of 27 spots; budget **~$0.08** with retries |
-| a 3-world game, variant A only | 1 sheet + 9 spots = **~$0.70**, ~10 minutes |
-| a 3-world game, both variants | 1 sheet + 18 spots = **~$1.30** |
-| all nine worlds, variant A | 27 spots = ~$2.00 |
+| per hiding spot | one call for 26 of 27 in the authoring run; budget **~$0.08** with retries |
+| **one world, variant A** | 1 identity sheet + 27 spots = **~$2.00** and ~25 minutes |
+| one world, both variants | 1 sheet + 54 spots = **~$3.85** |
+
+At ILS 39 that is roughly a fifth of the revenue for a one-world game — workable,
+but it is the number that decides whether `GENERATION_BOTH_VARIANTS` can ever be
+turned on, and the number to beat with a cheaper inpaint model.
 
 At ILS 39 for three worlds that is about 8% of revenue on generation for a variant-A game — inside the
 margin, with room for the retries a hard photo needs. Every call records its real `usage`, model,

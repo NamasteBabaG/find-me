@@ -65,9 +65,11 @@ fails at startup rather than quietly serving a mock.
 ## Cost per game
 
 `GENERATION_BOTH_VARIANTS=false` (the default) generates one hiding spot per target: a complete
-playable game at half the price. Measured at quality `medium`: $0.07 and ~55s per model call, and 26
-of 27 spots needed exactly one call. A three-world game is one identity sheet plus nine spots — about
-**$0.70** and ten minutes. At ILS 39 that is roughly 8% of revenue.
+playable game at half the price. Measured at quality `medium`: $0.07 and ~55s per model call.
+
+A world is nine boards of three missions, so one world is **27 hiding spots** plus one identity
+sheet: about **$2.00 and 25 minutes**. At ILS 39 that is roughly a fifth of the revenue. Turning on
+both variants doubles it, which is why it stays off.
 
 Ten minutes is longer than any serverless request, so generation runs in slices. `POST /api/jobs/tick`
 does as much of one game as fits in four minutes and returns; the job stays RUNNING and the next tick
