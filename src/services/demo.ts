@@ -6,8 +6,9 @@ import type { Locale } from "@/i18n/config";
 import { sceneBySlug } from "./scene-catalog.service";
 
 /**
- * Landing-page demo: a fixed illustrated child ("Maya") hiding in the beach.
- * Pure data — no DB, no photo — so the demo is safe to serve to anyone.
+ * Landing-page demo: a fixed illustrated child (Anna / נועה) hiding in a world.
+ * Pure data — no DB, no photo — so the demo is safe to serve to anyone, and it
+ * uses whatever slot patches exist for that world (all nine have some).
  */
 const DEMO_FACE = "/demo/noa-face.png";
 
@@ -26,6 +27,7 @@ function demoPatch(slug: string, targetId: string, variant: "A" | "B"): SpriteRe
     return null;
   }
 }
+
 /**
  * Which hiding spots of a world already have a patch of the demo child.
  *
