@@ -356,7 +356,7 @@
 @keyframes tf-nudge { 0%, 100% { translate: 0 0; } 50% { translate: 4px 0; } }
 @keyframes tf-nudge-rtl { 0%, 100% { translate: 0 0; } 50% { translate: -4px 0; } }
 .tf-card__media--art { align-items: end; overflow: hidden; }
-.tf-card__media--art .tf-figure--art { position: absolute; left: 0; right: 0; bottom: 0; margin-inline: auto; height: 92%; width: auto; max-width: 94%; aspect-ratio: auto; object-fit: contain; object-position: bottom center; filter: drop-shadow(0 8px 12px rgba(43, 42, 51, 0.22)); animation: tf-float 5s var(--ease-in-out) infinite; }
+.tf-card__media--art .tf-figure--art { position: absolute; left: 0; right: 0; bottom: 0; margin-inline: auto; height: 92%; width: auto; max-width: 94%; aspect-ratio: 730 / 900; object-fit: contain; object-position: bottom center; filter: drop-shadow(0 8px 12px rgba(43, 42, 51, 0.22)); animation: tf-float 5s var(--ease-in-out) infinite; }
 @keyframes tf-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 .tf-card__media--art::before, .tf-card__media--art::after { content: "✨"; position: absolute; line-height: 1; pointer-events: none; animation: tf-twinkle 2.8s var(--ease-in-out) infinite; }
 .tf-card__media--art::before { top: 12%; inset-inline-start: 12%; font-size: var(--fs-500); }

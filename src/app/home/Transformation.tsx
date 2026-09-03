@@ -41,7 +41,7 @@ export async function Transformation() {
   const figure = (className: string) =>
     hasCharacter ? (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src={CHARACTER.url} alt="" className={`${className} tf-figure--art`} loading="lazy" draggable={false} />
+      <img src={CHARACTER.url} alt="" className={`${className} tf-figure--art`} width={730} height={900} draggable={false} />
     ) : (
       <ComposedSprite faceUrl={child.avatarUrl} bodyTemplate={DEMO_TEMPLATE} className={className} title={tag} />
     );
@@ -60,7 +60,7 @@ export async function Transformation() {
             <div className="tf-card__media tf-card__media--photo">
               {hasPhoto ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={PHOTO.url} alt={tr.photoAlt} loading="lazy" width={800} height={1000} />
+                <img src={PHOTO.url} alt={tr.photoAlt} width={800} height={1000} />
               ) : (
                 <div className="tf-placeholder" role="img" aria-label={tr.photoAlt}>
                   <span className="tf-placeholder__icon" aria-hidden>
