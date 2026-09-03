@@ -1,0 +1,31 @@
+{
+  "slug": "beach",
+  "targetId": "sandcastle",
+  "variant": "B",
+  "url": "/demo/patches/beach-sandcastle-B.webp",
+  "rect": {
+    "x": 1603,
+    "y": 1498,
+    "w": 309,
+    "h": 328
+  },
+  "rectNorm": {
+    "x": 0.5218098958333334,
+    "y": 0.7314453125,
+    "w": 0.1005859375,
+    "h": 0.16015625
+  },
+  "slot": {
+    "x": 0.585,
+    "y": 0.86,
+    "scale": 0.075
+  },
+  "anchor": {
+    "x": 1690,
+    "y": 1506
+  },
+  "art": {
+    "width": 3072,
+    "height": 2048
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "slug": "beach",
+  "targetId": "umbrella",
+  "variant": "B",
+  "url": "/demo/patches/beach-umbrella-B.webp",
+  "rect": {
+    "x": 2810,
+    "y": 1152,
+    "w": 164,
+    "h": 158
+  },
+  "rectNorm": {
+    "x": 0.9147135416666666,
+    "y": 0.5625,
+    "w": 0.053385416666666664,
+    "h": 0.0771484375
+  },
+  "slot": {
+    "x": 0.95,
+    "y": 0.6,
+    "scale": 0.07
+  },
+  "anchor": {
+    "x": 2888,
+    "y": 1160
+  },
+  "art": {
+    "width": 3072,
+    "height": 2048
+  }
+}
