@@ -40,9 +40,15 @@ async function isAllowed(req: Request, gameId: string | null): Promise<boolean> 
   const header = req.headers.get("authorization");
   if (secret && header && safeEqual(`Bearer ${secret}`, header)) return true;
   if (!gameId) return false;
-  // Otherwise this only advances a game the caller can already see.
-  const c = getContainer();
-  const [game, user, draftToken] = await Promise.all([c.db.game.findUnique({ where: { id: gameId }, select: { ownerId: true, draftToken: true } }), currentUser(), draftTokenFromCookie()]);
-  if (!game) return false;
-  return Boolean((draftToken && game.draftToken === draftToken) || (user && game.ownerId === user.id) || isAdminEmail(user?.email));
+  // Otherwise this only advances a game the caller can already see. A database
+  // that is missing or broken means "no", not a 500 on a public endpoint.
+  try {
+    const c = getContainer();
+    const [game, user, draftToken] = await Promise.all([c.db.game.findUnique({ where: { id: gameId }, select: { ownerId: true, draftToken: true } }), currentUser(), draftTokenFromCookie()]);
+    if (!game) return false;
+    return Boolean((draftToken && game.draftToken === draftToken) || (user && game.ownerId === user.id) || isAdminEmail(user?.email));
+  } catch (err) {
+    console.warn("[jobs/tick] cannot check access:", err instanceof Error ? err.message.split("\n")[0] : err);
+    return false;
+  }
 }
