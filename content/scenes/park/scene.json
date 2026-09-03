@@ -10,18 +10,19 @@
     "he": "עפיפונים, ברווזים ופיקניק על הדשא."
   },
   "version": 1,
-  "active": false,
-  "artStatus": "placeholder",
+  "active": true,
+  "artStatus": "draft",
   "art": {
-    "width": 1600,
-    "height": 1000,
-    "base": "/scenes/_placeholder/base.svg",
-    "thumbnail": "/scenes/_placeholder/thumb.svg",
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/park/base.webp",
+    "thumbnail": "/scenes/park/thumb.webp",
     "palette": {
       "sky": "#E1F5FE",
       "ground": "#8BC34A",
       "accent": "#F25C7A"
-    }
+    },
+    "foreground": "/scenes/park/foreground.webp"
   },
   "targets": [
     {
@@ -55,32 +56,32 @@
       "slots": [
         {
           "id": "park_kite_a",
-          "x": 0.3,
-          "y": 0.6,
-          "scale": 0.07,
+          "x": 0.56,
+          "y": 0.205,
+          "scale": 0.045,
           "hintZone": {
-            "x": 0.3,
-            "y": 0.6,
-            "r": 0.1
+            "x": 0.58,
+            "y": 0.18,
+            "r": 0.09
           },
           "hintText": {
-            "en": "Look on the hill.",
-            "he": "חפשו על הגבעה."
+            "en": "Look near the children flying kites.",
+            "he": "חפשו ליד הילדים שמעיפים עפיפונים."
           }
         },
         {
           "id": "park_kite_b",
-          "x": 0.75,
-          "y": 0.5,
-          "scale": 0.07,
+          "x": 0.705,
+          "y": 0.405,
+          "scale": 0.045,
           "hintZone": {
-            "x": 0.75,
-            "y": 0.5,
-            "r": 0.1
+            "x": 0.68,
+            "y": 0.38,
+            "r": 0.08
           },
           "hintText": {
-            "en": "Look near the big tree.",
-            "he": "חפשו ליד העץ הגדול."
+            "en": "Look near the little kite by the pond.",
+            "he": "חפשו ליד העפיפון הקטן ליד האגם."
           }
         }
       ]
@@ -116,32 +117,32 @@
       "slots": [
         {
           "id": "park_picnic_a",
-          "x": 0.5,
-          "y": 0.85,
-          "scale": 0.06,
+          "x": 0.36,
+          "y": 0.865,
+          "scale": 0.05,
           "hintZone": {
-            "x": 0.5,
-            "y": 0.85,
-            "r": 0.1
+            "x": 0.3,
+            "y": 0.84,
+            "r": 0.09
           },
           "hintText": {
-            "en": "Look near the checkered blanket.",
-            "he": "חפשו ליד השמיכה המשובצת."
+            "en": "Look near the picnic blanket with the guitar.",
+            "he": "חפשו ליד שמיכת הפיקניק עם הגיטרה."
           }
         },
         {
           "id": "park_picnic_b",
-          "x": 0.15,
+          "x": 0.55,
           "y": 0.8,
-          "scale": 0.06,
+          "scale": 0.05,
           "hintZone": {
-            "x": 0.15,
-            "y": 0.8,
-            "r": 0.1
+            "x": 0.52,
+            "y": 0.77,
+            "r": 0.09
           },
           "hintText": {
-            "en": "Look near the lake.",
-            "he": "חפשו ליד האגם."
+            "en": "Look near the picnic in the middle of the lawn.",
+            "he": "חפשו ליד הפיקניק באמצע הדשא."
           }
         }
       ]
@@ -177,35 +178,32 @@
       "slots": [
         {
           "id": "park_pony_a",
-          "x": 0.85,
-          "y": 0.72,
+          "x": 0.715,
+          "y": 0.8,
           "scale": 0.05,
-          "layer": "behindForeground",
           "hintZone": {
-            "x": 0.85,
-            "y": 0.72,
+            "x": 0.74,
+            "y": 0.78,
             "r": 0.09
           },
           "hintText": {
-            "en": "Look at the carousel.",
-            "he": "חפשו בקרוסלה."
+            "en": "Look next to the pony's head.",
+            "he": "חפשו ליד הראש של הפוני."
           }
         },
         {
           "id": "park_pony_b",
-          "x": 0.6,
-          "y": 0.68,
-          "scale": 0.05,
-          "layer": "behindForeground",
-          "flip": true,
+          "x": 0.835,
+          "y": 0.7,
+          "scale": 0.045,
           "hintZone": {
-            "x": 0.6,
-            "y": 0.68,
-            "r": 0.09
+            "x": 0.82,
+            "y": 0.72,
+            "r": 0.08
           },
           "hintText": {
-            "en": "Look on the other side of the carousel.",
-            "he": "חפשו בצד השני של הקרוסלה."
+            "en": "Look behind the pony.",
+            "he": "חפשו מאחורי הפוני."
           }
         }
       ]
@@ -218,10 +216,10 @@
         "en": "Diving duck",
         "he": "ברווז צולל"
       },
-      "x": 0.1,
-      "y": 0.9,
-      "w": 0.06,
-      "h": 0.05,
+      "x": 0.6,
+      "y": 0.42,
+      "w": 0.04,
+      "h": 0.04,
       "animation": "bounce",
       "sound": "splash",
       "reaction": {
@@ -236,9 +234,9 @@
         "en": "Jumping squirrel",
         "he": "סנאי קופץ"
       },
-      "x": 0.65,
-      "y": 0.3,
-      "w": 0.05,
+      "x": 0.91,
+      "y": 0.13,
+      "w": 0.04,
       "h": 0.06,
       "animation": "hop",
       "sound": "pop",

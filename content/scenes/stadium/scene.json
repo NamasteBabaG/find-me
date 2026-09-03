@@ -10,18 +10,19 @@
     "he": "קהל, דגלים ושער אחד ענק."
   },
   "version": 1,
-  "active": false,
-  "artStatus": "placeholder",
+  "active": true,
+  "artStatus": "draft",
   "art": {
-    "width": 1600,
-    "height": 1000,
-    "base": "/scenes/_placeholder/base.svg",
-    "thumbnail": "/scenes/_placeholder/thumb.svg",
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/stadium/base.webp",
+    "thumbnail": "/scenes/stadium/thumb.webp",
     "palette": {
       "sky": "#D9E8FF",
       "ground": "#4CAF50",
       "accent": "#F25C7A"
-    }
+    },
+    "foreground": "/scenes/stadium/foreground.webp"
   },
   "targets": [
     {
@@ -55,32 +56,32 @@
       "slots": [
         {
           "id": "stadium_scarf_a",
-          "x": 0.25,
-          "y": 0.45,
-          "scale": 0.07,
+          "x": 0.065,
+          "y": 0.55,
+          "scale": 0.045,
           "hintZone": {
-            "x": 0.25,
-            "y": 0.45,
-            "r": 0.1
+            "x": 0.08,
+            "y": 0.53,
+            "r": 0.09
           },
           "hintText": {
-            "en": "Look in the stands, near the big flag.",
-            "he": "חפשו ביציע, ליד הדגל הגדול."
+            "en": "Look among the fans on the left, near a scarf.",
+            "he": "חפשו בין האוהדים משמאל, ליד צעיף."
           }
         },
         {
           "id": "stadium_scarf_b",
-          "x": 0.75,
-          "y": 0.4,
-          "scale": 0.07,
+          "x": 0.88,
+          "y": 0.6,
+          "scale": 0.045,
           "hintZone": {
-            "x": 0.75,
-            "y": 0.4,
-            "r": 0.1
+            "x": 0.86,
+            "y": 0.58,
+            "r": 0.09
           },
           "hintText": {
-            "en": "Look in the stands across the pitch.",
-            "he": "חפשו ביציע שממול."
+            "en": "Look among the fans on the right.",
+            "he": "חפשו בין האוהדים מימין."
           }
         }
       ]
@@ -116,32 +117,32 @@
       "slots": [
         {
           "id": "stadium_ball_a",
-          "x": 0.5,
-          "y": 0.78,
-          "scale": 0.06,
+          "x": 0.25,
+          "y": 0.845,
+          "scale": 0.05,
           "hintZone": {
-            "x": 0.5,
-            "y": 0.78,
-            "r": 0.1
+            "x": 0.22,
+            "y": 0.83,
+            "r": 0.09
           },
           "hintText": {
-            "en": "Look on the grass, near the white line.",
-            "he": "חפשו על הדשא, ליד הקו הלבן."
+            "en": "Look near the ball at the bottom left.",
+            "he": "חפשו ליד הכדור למטה משמאל."
           }
         },
         {
           "id": "stadium_ball_b",
-          "x": 0.2,
-          "y": 0.85,
-          "scale": 0.06,
+          "x": 0.52,
+          "y": 0.555,
+          "scale": 0.04,
           "hintZone": {
-            "x": 0.2,
-            "y": 0.85,
-            "r": 0.1
+            "x": 0.5,
+            "y": 0.54,
+            "r": 0.08
           },
           "hintText": {
-            "en": "Look near the goal.",
-            "he": "חפשו ליד השער."
+            "en": "Look on the pitch, near the player with the ball.",
+            "he": "חפשו במגרש, ליד מי שמשחק עם הכדור."
           }
         }
       ]
@@ -177,35 +178,32 @@
       "slots": [
         {
           "id": "stadium_flag_a",
-          "x": 0.85,
-          "y": 0.3,
+          "x": 0.625,
+          "y": 0.72,
           "scale": 0.05,
-          "layer": "behindForeground",
           "hintZone": {
-            "x": 0.85,
-            "y": 0.3,
+            "x": 0.65,
+            "y": 0.69,
             "r": 0.09
           },
           "hintText": {
-            "en": "Look way up in the stands.",
-            "he": "חפשו למעלה למעלה ביציע."
+            "en": "Look near the big green and yellow flag.",
+            "he": "חפשו ליד הדגל הגדול בירוק וצהוב."
           }
         },
         {
           "id": "stadium_flag_b",
-          "x": 0.12,
-          "y": 0.28,
-          "scale": 0.05,
-          "layer": "behindForeground",
-          "flip": true,
+          "x": 0.8,
+          "y": 0.6,
+          "scale": 0.045,
           "hintZone": {
-            "x": 0.12,
-            "y": 0.28,
+            "x": 0.82,
+            "y": 0.56,
             "r": 0.09
           },
           "hintText": {
-            "en": "Look in the corner of the stands.",
-            "he": "חפשו בפינה של היציע."
+            "en": "Look near the blue flag with the ball.",
+            "he": "חפשו ליד הדגל הכחול עם הכדור."
           }
         }
       ]
@@ -218,10 +216,10 @@
         "en": "Diving goalkeeper",
         "he": "שוער מזנק"
       },
-      "x": 0.14,
-      "y": 0.72,
+      "x": 0.4,
+      "y": 0.33,
       "w": 0.06,
-      "h": 0.1,
+      "h": 0.08,
       "animation": "hop",
       "sound": "whoosh",
       "reaction": {
@@ -236,9 +234,9 @@
         "en": "Scoreboard",
         "he": "לוח תוצאות"
       },
-      "x": 0.45,
-      "y": 0.08,
-      "w": 0.1,
+      "x": 0.3,
+      "y": 0.13,
+      "w": 0.08,
       "h": 0.06,
       "animation": "flash",
       "sound": "crowd",

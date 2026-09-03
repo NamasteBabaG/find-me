@@ -10,18 +10,19 @@
     "he": "אבטיחים, תבלינים ותוכי אחד מצחיק."
   },
   "version": 1,
-  "active": false,
-  "artStatus": "placeholder",
+  "active": true,
+  "artStatus": "draft",
   "art": {
-    "width": 1600,
-    "height": 1000,
-    "base": "/scenes/_placeholder/base.svg",
-    "thumbnail": "/scenes/_placeholder/thumb.svg",
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/market/base.webp",
+    "thumbnail": "/scenes/market/thumb.webp",
     "palette": {
       "sky": "#FFF3E0",
       "ground": "#BCAAA4",
       "accent": "#F25C7A"
-    }
+    },
+    "foreground": "/scenes/market/foreground.webp"
   },
   "targets": [
     {
@@ -54,33 +55,33 @@
       "animation": "bounce",
       "slots": [
         {
-          "id": "market_melon_a",
-          "x": 0.25,
-          "y": 0.7,
-          "scale": 0.07,
+          "id": "market_watermelon_a",
+          "x": 0.415,
+          "y": 0.72,
+          "scale": 0.05,
           "hintZone": {
-            "x": 0.25,
+            "x": 0.45,
             "y": 0.7,
-            "r": 0.1
+            "r": 0.08
           },
           "hintText": {
-            "en": "Look near the pile of watermelons.",
-            "he": "חפשו ליד ערימת האבטיחים."
+            "en": "Look near the cart full of watermelons.",
+            "he": "חפשו ליד העגלה המלאה באבטיחים."
           }
         },
         {
-          "id": "market_melon_b",
-          "x": 0.72,
-          "y": 0.75,
-          "scale": 0.07,
+          "id": "market_watermelon_b",
+          "x": 0.85,
+          "y": 0.675,
+          "scale": 0.05,
           "hintZone": {
-            "x": 0.72,
-            "y": 0.75,
-            "r": 0.1
+            "x": 0.84,
+            "y": 0.66,
+            "r": 0.08
           },
           "hintText": {
-            "en": "Look near the big scale.",
-            "he": "חפשו ליד המשקל הגדול."
+            "en": "Look near the watermelons on the right.",
+            "he": "חפשו ליד האבטיחים בצד ימין."
           }
         }
       ]
@@ -116,32 +117,32 @@
       "slots": [
         {
           "id": "market_flowers_a",
-          "x": 0.5,
-          "y": 0.6,
-          "scale": 0.06,
+          "x": 0.105,
+          "y": 0.725,
+          "scale": 0.05,
           "hintZone": {
-            "x": 0.5,
-            "y": 0.6,
-            "r": 0.1
+            "x": 0.08,
+            "y": 0.75,
+            "r": 0.08
           },
           "hintText": {
-            "en": "Look where it's most colorful.",
-            "he": "חפשו איפה שהכי צבעוני."
+            "en": "Look near the flower seller at the bottom left.",
+            "he": "חפשו ליד מי שמוכר פרחים למטה משמאל."
           }
         },
         {
           "id": "market_flowers_b",
-          "x": 0.85,
-          "y": 0.55,
-          "scale": 0.06,
+          "x": 0.765,
+          "y": 0.32,
+          "scale": 0.045,
           "hintZone": {
-            "x": 0.85,
-            "y": 0.55,
-            "r": 0.1
+            "x": 0.75,
+            "y": 0.28,
+            "r": 0.08
           },
           "hintText": {
-            "en": "Look near the buckets of water.",
-            "he": "חפשו ליד הדליים עם המים."
+            "en": "Look near the big bunch of flowers.",
+            "he": "חפשו ליד זר הפרחים הגדול."
           }
         }
       ]
@@ -177,35 +178,32 @@
       "slots": [
         {
           "id": "market_spices_a",
-          "x": 0.4,
-          "y": 0.85,
+          "x": 0.63,
+          "y": 0.775,
           "scale": 0.05,
-          "layer": "behindForeground",
           "hintZone": {
-            "x": 0.4,
-            "y": 0.85,
+            "x": 0.66,
+            "y": 0.8,
             "r": 0.09
           },
           "hintText": {
-            "en": "Look near the orange sacks.",
-            "he": "חפשו ליד השקים הכתומים."
+            "en": "Look between the sacks of spices.",
+            "he": "חפשו בין שקי התבלינים."
           }
         },
         {
           "id": "market_spices_b",
-          "x": 0.12,
-          "y": 0.5,
+          "x": 0.82,
+          "y": 0.905,
           "scale": 0.05,
-          "layer": "behindForeground",
-          "flip": true,
           "hintZone": {
-            "x": 0.12,
-            "y": 0.5,
+            "x": 0.8,
+            "y": 0.88,
             "r": 0.09
           },
           "hintText": {
-            "en": "Look at the stall in the corner.",
-            "he": "חפשו בדוכן בפינה."
+            "en": "Look near the spice sacks in the corner.",
+            "he": "חפשו ליד שקי התבלינים בפינה."
           }
         }
       ]
@@ -218,10 +216,10 @@
         "en": "Rolling orange",
         "he": "תפוז מתגלגל"
       },
-      "x": 0.6,
-      "y": 0.8,
-      "w": 0.06,
-      "h": 0.06,
+      "x": 0.175,
+      "y": 0.665,
+      "w": 0.03,
+      "h": 0.045,
       "animation": "slide",
       "sound": "boing",
       "reaction": {
@@ -236,10 +234,10 @@
         "en": "Parrot repeating sounds",
         "he": "תוכי חוזר על צליל"
       },
-      "x": 0.9,
+      "x": 0.66,
       "y": 0.2,
-      "w": 0.05,
-      "h": 0.07,
+      "w": 0.16,
+      "h": 0.15,
       "animation": "shake",
       "sound": "chirp",
       "reaction": {

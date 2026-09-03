@@ -10,18 +10,19 @@
     "he": "קפטן, טלסקופ ולווייתן שמתיז מים."
   },
   "version": 1,
-  "active": false,
-  "artStatus": "placeholder",
+  "active": true,
+  "artStatus": "draft",
   "art": {
-    "width": 1600,
-    "height": 1000,
-    "base": "/scenes/_placeholder/base.svg",
-    "thumbnail": "/scenes/_placeholder/thumb.svg",
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/ship/base.webp",
+    "thumbnail": "/scenes/ship/thumb.webp",
     "palette": {
       "sky": "#E0F7FA",
       "ground": "#1B6FA8",
       "accent": "#FFB61E"
-    }
+    },
+    "foreground": "/scenes/ship/foreground.webp"
   },
   "targets": [
     {
@@ -55,32 +56,32 @@
       "slots": [
         {
           "id": "ship_captain_a",
-          "x": 0.5,
-          "y": 0.4,
-          "scale": 0.07,
+          "x": 0.585,
+          "y": 0.28,
+          "scale": 0.045,
           "hintZone": {
-            "x": 0.5,
-            "y": 0.4,
-            "r": 0.1
+            "x": 0.56,
+            "y": 0.26,
+            "r": 0.08
           },
           "hintText": {
-            "en": "Look near the wheel.",
-            "he": "חפשו ליד ההגה."
+            "en": "Look right next to the captain.",
+            "he": "חפשו ממש ליד הקפטן."
           }
         },
         {
           "id": "ship_captain_b",
-          "x": 0.2,
-          "y": 0.55,
-          "scale": 0.07,
+          "x": 0.49,
+          "y": 0.3,
+          "scale": 0.045,
           "hintZone": {
-            "x": 0.2,
-            "y": 0.55,
-            "r": 0.1
+            "x": 0.5,
+            "y": 0.28,
+            "r": 0.08
           },
           "hintText": {
-            "en": "Look at the bow.",
-            "he": "חפשו בחרטום."
+            "en": "Look near the ship's wheel.",
+            "he": "חפשו ליד ההגה של הספינה."
           }
         }
       ]
@@ -115,33 +116,33 @@
       "animation": "wiggle",
       "slots": [
         {
-          "id": "ship_tele_a",
-          "x": 0.7,
-          "y": 0.25,
-          "scale": 0.06,
+          "id": "ship_telescope_a",
+          "x": 0.105,
+          "y": 0.42,
+          "scale": 0.045,
           "hintZone": {
-            "x": 0.7,
-            "y": 0.25,
-            "r": 0.1
+            "x": 0.1,
+            "y": 0.4,
+            "r": 0.08
           },
           "hintText": {
-            "en": "Look up, near the sail.",
-            "he": "חפשו למעלה, ליד המפרש."
+            "en": "Look on the left side of the ship, near a telescope.",
+            "he": "חפשו בצד שמאל של הספינה, ליד משקפת."
           }
         },
         {
-          "id": "ship_tele_b",
-          "x": 0.85,
-          "y": 0.6,
-          "scale": 0.06,
+          "id": "ship_telescope_b",
+          "x": 0.44,
+          "y": 0.47,
+          "scale": 0.045,
           "hintZone": {
-            "x": 0.85,
-            "y": 0.6,
-            "r": 0.1
+            "x": 0.43,
+            "y": 0.46,
+            "r": 0.08
           },
           "hintText": {
-            "en": "Look at the stern.",
-            "he": "חפשו בירכתיים."
+            "en": "Look in the middle of the deck, near the telescope.",
+            "he": "חפשו באמצע הסיפון, ליד המשקפת."
           }
         }
       ]
@@ -176,36 +177,33 @@
       "animation": "bounce",
       "slots": [
         {
-          "id": "ship_buoy_a",
-          "x": 0.35,
-          "y": 0.78,
-          "scale": 0.05,
-          "layer": "behindForeground",
+          "id": "ship_lifebuoy_a",
+          "x": 0.47,
+          "y": 0.38,
+          "scale": 0.045,
           "hintZone": {
-            "x": 0.35,
-            "y": 0.78,
-            "r": 0.09
+            "x": 0.5,
+            "y": 0.37,
+            "r": 0.08
           },
           "hintText": {
-            "en": "Look near the little boats.",
-            "he": "חפשו ליד הסירות הקטנות."
+            "en": "Look near the orange life ring on the upper deck.",
+            "he": "חפשו ליד גלגל ההצלה הכתום בסיפון העליון."
           }
         },
         {
-          "id": "ship_buoy_b",
-          "x": 0.62,
-          "y": 0.82,
-          "scale": 0.05,
-          "layer": "behindForeground",
-          "flip": true,
+          "id": "ship_lifebuoy_b",
+          "x": 0.92,
+          "y": 0.68,
+          "scale": 0.045,
           "hintZone": {
-            "x": 0.62,
-            "y": 0.82,
+            "x": 0.9,
+            "y": 0.7,
             "r": 0.09
           },
           "hintText": {
-            "en": "Look near the railing.",
-            "he": "חפשו ליד המעקה."
+            "en": "Look in the water, among the swimmers on the right.",
+            "he": "חפשו במים, בין השחיינים מימין."
           }
         }
       ]
@@ -218,10 +216,10 @@
         "en": "Whale splashing",
         "he": "לווייתן מתיז מים"
       },
-      "x": 0.1,
-      "y": 0.85,
-      "w": 0.1,
-      "h": 0.08,
+      "x": 0.87,
+      "y": 0.3,
+      "w": 0.2,
+      "h": 0.16,
       "animation": "bounce",
       "sound": "splash",
       "reaction": {
@@ -236,10 +234,10 @@
         "en": "The ship's flag",
         "he": "דגל האונייה"
       },
-      "x": 0.5,
-      "y": 0.05,
-      "w": 0.05,
-      "h": 0.06,
+      "x": 0.55,
+      "y": 0.07,
+      "w": 0.1,
+      "h": 0.1,
       "animation": "shake",
       "sound": "whoosh",
       "reaction": {

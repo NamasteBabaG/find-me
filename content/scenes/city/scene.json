@@ -10,18 +10,19 @@
     "he": "אוטובוסים, רמזורים וחלונות צבעוניים."
   },
   "version": 1,
-  "active": false,
-  "artStatus": "placeholder",
+  "active": true,
+  "artStatus": "draft",
   "art": {
-    "width": 1600,
-    "height": 1000,
-    "base": "/scenes/_placeholder/base.svg",
-    "thumbnail": "/scenes/_placeholder/thumb.svg",
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/city/base.webp",
+    "thumbnail": "/scenes/city/thumb.webp",
     "palette": {
       "sky": "#E3F2FD",
       "ground": "#9E9E9E",
       "accent": "#FFB61E"
-    }
+    },
+    "foreground": "/scenes/city/foreground.webp"
   },
   "targets": [
     {
@@ -55,32 +56,32 @@
       "slots": [
         {
           "id": "city_bus_a",
-          "x": 0.3,
-          "y": 0.75,
-          "scale": 0.07,
+          "x": 0.355,
+          "y": 0.485,
+          "scale": 0.05,
           "hintZone": {
-            "x": 0.3,
-            "y": 0.75,
-            "r": 0.1
+            "x": 0.33,
+            "y": 0.47,
+            "r": 0.08
           },
           "hintText": {
-            "en": "Look near the bus stop.",
-            "he": "חפשו ליד התחנה."
+            "en": "Look near the front door of the big bus.",
+            "he": "חפשו ליד הדלת הקדמית של האוטובוס הגדול."
           }
         },
         {
           "id": "city_bus_b",
-          "x": 0.7,
-          "y": 0.8,
-          "scale": 0.07,
+          "x": 0.185,
+          "y": 0.535,
+          "scale": 0.05,
           "hintZone": {
-            "x": 0.7,
-            "y": 0.8,
-            "r": 0.1
+            "x": 0.2,
+            "y": 0.52,
+            "r": 0.08
           },
           "hintText": {
-            "en": "Look near the yellow bus.",
-            "he": "חפשו ליד האוטובוס הצהוב."
+            "en": "Look behind the bus, on the sidewalk.",
+            "he": "חפשו מאחורי האוטובוס, על המדרכה."
           }
         }
       ]
@@ -116,32 +117,32 @@
       "slots": [
         {
           "id": "city_scooter_a",
-          "x": 0.5,
-          "y": 0.88,
-          "scale": 0.06,
+          "x": 0.565,
+          "y": 0.865,
+          "scale": 0.05,
           "hintZone": {
-            "x": 0.5,
-            "y": 0.88,
-            "r": 0.1
+            "x": 0.59,
+            "y": 0.87,
+            "r": 0.08
           },
           "hintText": {
-            "en": "Look on the bike path.",
-            "he": "חפשו בשביל של האופניים."
+            "en": "Look near the red scooter.",
+            "he": "חפשו ליד הקטנוע האדום."
           }
         },
         {
           "id": "city_scooter_b",
-          "x": 0.15,
-          "y": 0.9,
-          "scale": 0.06,
+          "x": 0.655,
+          "y": 0.845,
+          "scale": 0.05,
           "hintZone": {
-            "x": 0.15,
-            "y": 0.9,
-            "r": 0.1
+            "x": 0.63,
+            "y": 0.86,
+            "r": 0.08
           },
           "hintText": {
-            "en": "Look near the little park.",
-            "he": "חפשו ליד הפארק הקטן."
+            "en": "Look on the other side of the red scooter.",
+            "he": "חפשו בצד השני של הקטנוע האדום."
           }
         }
       ]
@@ -177,35 +178,32 @@
       "slots": [
         {
           "id": "city_window_a",
-          "x": 0.62,
-          "y": 0.35,
-          "scale": 0.05,
-          "layer": "behindForeground",
+          "x": 0.11,
+          "y": 0.3,
+          "scale": 0.045,
           "hintZone": {
-            "x": 0.62,
-            "y": 0.35,
+            "x": 0.09,
+            "y": 0.25,
             "r": 0.09
           },
           "hintText": {
-            "en": "Look at the building with the colorful windows.",
-            "he": "חפשו בבניין עם החלונות הצבעוניים."
+            "en": "Look at the windows of the red building on the left.",
+            "he": "חפשו בחלונות של הבניין האדום משמאל."
           }
         },
         {
           "id": "city_window_b",
-          "x": 0.2,
+          "x": 0.9,
           "y": 0.3,
-          "scale": 0.05,
-          "layer": "behindForeground",
-          "flip": true,
+          "scale": 0.045,
           "hintZone": {
-            "x": 0.2,
-            "y": 0.3,
+            "x": 0.92,
+            "y": 0.27,
             "r": 0.09
           },
           "hintText": {
-            "en": "Look on the top floor.",
-            "he": "חפשו בקומה הגבוהה."
+            "en": "Look at the windows of the building on the right.",
+            "he": "חפשו בחלונות הבניין מימין."
           }
         }
       ]
@@ -218,10 +216,10 @@
         "en": "Changing traffic light",
         "he": "רמזור מתחלף"
       },
-      "x": 0.42,
-      "y": 0.55,
+      "x": 0.755,
+      "y": 0.62,
       "w": 0.04,
-      "h": 0.12,
+      "h": 0.14,
       "animation": "blink",
       "sound": "pop",
       "reaction": {
@@ -236,10 +234,10 @@
         "en": "Pigeon grabbing a crumb",
         "he": "יונה חוטפת פירור"
       },
-      "x": 0.8,
-      "y": 0.9,
-      "w": 0.05,
-      "h": 0.05,
+      "x": 0.895,
+      "y": 0.925,
+      "w": 0.06,
+      "h": 0.07,
       "animation": "hop",
       "sound": "whoosh",
       "reaction": {
