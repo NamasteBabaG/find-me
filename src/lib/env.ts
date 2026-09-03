@@ -60,6 +60,13 @@ export function env(): Env {
   if (parsed.data.NODE_ENV === "production" && parsed.data.SESSION_SECRET === DEV_SESSION_SECRET) {
     throw new Error("SESSION_SECRET is still the development default — set a real one before deploying (it signs sessions and asset URLs).");
   }
+  // APP_URL ends up in share links, emails and payment redirects, so a localhost
+  // fallback in production is silently wrong in the worst possible places.
+  // VERCEL_URL is per-deployment and would bake a throwaway hostname into a
+  // link a grandparent keeps, so it is a fallback, never the answer.
+  if (parsed.data.NODE_ENV === "production" && /localhost|127\.0\.0\.1/.test(parsed.data.APP_URL)) {
+    throw new Error(`APP_URL is ${parsed.data.APP_URL} in production — set it to the real domain; share links and payment redirects are built from it.`);
+  }
   cached = parsed.data;
   return cached;
 }

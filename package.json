@@ -18,7 +18,8 @@
     "postinstall": "node scripts/prisma-generate.mjs",
     "setup": "prisma generate && prisma db push",
     "scenes:validate": "tsx scripts/validate-scenes.ts",
-    "smoke": "tsx scripts/e2e-smoke.ts"
+    "smoke": "tsx scripts/e2e-smoke.ts",
+    "db:check": "tsx scripts/check-db-url.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

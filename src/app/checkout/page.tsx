@@ -37,7 +37,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
             <img src="/api/drafts/photo" alt="" className="fm-sticker" width={80} height={80} style={{ width: 80, height: 80 }} />
             <div>
               <h3>{tf(ck.gameTitle, { name })}</h3>
-              <p className="fm-muted">{tf(ck.summaryLine, { pkg: pick(summary.pkg.name, locale), worlds: summary.pkg.worldCount, spots: searchesFor(summary.pkg.tier) })}</p>
+              <p className="fm-muted">{tf(ck.summaryLine, { pkg: pick(summary.pkg.name, locale), boards: boardsFor(summary.pkg.tier), spots: searchesFor(summary.pkg.tier) })}</p>
             </div>
           </div>
           <div className="summary__scenes">
