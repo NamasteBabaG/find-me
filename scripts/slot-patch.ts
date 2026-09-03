@@ -17,7 +17,7 @@
  *       <out>/beach-sandcastle-A.json             (rect in px and in art fractions, slot anchor)
  *       work/patches/beach-sandcastle-A.preview.png (the patch composited on the world, for a quick look)
  *
- *   npx tsx scripts/slot-patch.ts generate beach sandcastle A [--ref=public/demo/example-character.webp] [--model=gpt-image-2] [--quality=low] [--out=...]
+ *   npx tsx scripts/slot-patch.ts generate beach sandcastle A [--ref=public/demo/example-character.webp] [--model=gpt-image-2] [--quality=low] [--pose="hiding behind the sandcastle, only head and shoulders visible"] [--out=...]
  *     → export + OpenAI image edit (mask + character reference) + import, in one go.
  *       Default model gpt-image-2; falls back to gpt-image-1 automatically if the account cannot use it.
  *       Needs OPENAI_API_KEY (environment or .env). Costs one image generation per run.
@@ -82,10 +82,11 @@ async function context(slug: string, targetId: string, variantArg: string | unde
   const childPx = Math.round(slot.scale * H);
   const template = BODY_TEMPLATES[target.bodyTemplate];
   const mission = target.mission.en.replace("{name}", "the child");
+  const pose = flag("pose", "");
   const prompt = [
     `Paint one child into this illustration, in exactly the same style, colours, line quality and warm daylight as the picture (storybook collage).`,
     `Use the attached character reference for the child (same face, hair, hat and outfit).`,
-    `Situation: ${mission}${template ? ` (${template.label.en})` : ""}.`,
+    `Situation: ${mission}${template ? ` (${template.label.en})` : ""}.${pose ? ` ${pose}` : ""}`,
     `Place the child inside the white area of the mask, about ${childPx}px tall so they match the people nearby, partly hidden by whatever is naturally in front, with a soft matching shadow.`,
     `The child should be findable but not the centre of attention. Keep every other pixel of the scene unchanged.`,
   ].join(" ");

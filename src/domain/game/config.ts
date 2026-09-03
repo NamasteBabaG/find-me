@@ -67,6 +67,8 @@ export const TargetConfigSchema = z.object({
   animation: TargetAnimation,
   slots: z.tuple([PlaySlotSchema, PlaySlotSchema]),
   sprite: SpriteRefSchema,
+  /** Per-variant sprites (slot patches differ between hiding spot A and B); `sprite` stays the default/fallback. */
+  spriteByVariant: z.object({ A: SpriteRefSchema.optional(), B: SpriteRefSchema.optional() }).optional(),
   adjust: TargetAdjustSchema.optional(),
 });
 export type TargetConfig = z.infer<typeof TargetConfigSchema>;

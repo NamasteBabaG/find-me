@@ -13,8 +13,12 @@ const EnvSchema = z.object({
   PAYMENT_PROVIDER: z.enum(["mock", "payme"]).default("mock"),
   GENERATION_PROVIDER: z.enum(["mock", "replicate", "openai"]).default("mock"),
   EMAIL_PROVIDER: z.enum(["console", "resend"]).default("console"),
-  STORAGE_PROVIDER: z.enum(["local", "supabase"]).default("local"),
+  STORAGE_PROVIDER: z.enum(["local", "supabase", "db"]).default("local"),
   ANALYTICS_PROVIDER: z.enum(["console", "posthog", "none"]).default("console"),
+  /** "inline" runs generation inside the request (serverless hosts); "in-process" defers to the next tick (dev). */
+  JOBS_MODE: z.enum(["in-process", "inline"]).default("in-process"),
+  /** Dev/test fallback for geo detection when no edge header is present (e.g. "IL"). */
+  DEFAULT_COUNTRY: z.string().optional(),
 
   ADMIN_EMAILS: z.string().default(""),
   QA_AUTO_APPROVE: z.enum(["true", "false"]).default("false"),

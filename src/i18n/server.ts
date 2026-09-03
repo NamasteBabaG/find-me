@@ -1,16 +1,37 @@
-import { cookies } from "next/headers";
-import { DEFAULT_LOCALE, LOCALE_COOKIE, isLocale, type Locale } from "./config";
+import { cookies, headers } from "next/headers";
+import { DEFAULT_LOCALE, LOCALE_COOKIE, isLocale, type Currency, type Locale } from "./config";
 import { getDict, type Dictionary } from "./index";
 
+export const COUNTRY_COOKIE = "findme_country";
+
 /**
- * Server-side locale resolution. Order: cookie → default (en).
- * Geo/IP detection will slot in here (Vercel's `x-vercel-ip-country` header
- * → "IL" ⇒ he) without touching any page.
+ * Visitor country (ISO-3166 alpha-2, upper case). Order: dev/test override
+ * cookie → Vercel edge header → Cloudflare header → DEFAULT_COUNTRY env → "".
+ */
+export async function getCountry(): Promise<string> {
+  const jar = await cookies();
+  const override = jar.get(COUNTRY_COOKIE)?.value;
+  if (override && /^[A-Za-z]{2}$/.test(override)) return override.toUpperCase();
+  const h = await headers();
+  const fromEdge = h.get("x-vercel-ip-country") ?? h.get("cf-ipcountry") ?? h.get("x-country");
+  if (fromEdge && /^[A-Za-z]{2}$/.test(fromEdge)) return fromEdge.toUpperCase();
+  return (process.env.DEFAULT_COUNTRY ?? "").toUpperCase();
+}
+
+/** Currency follows the visitor's location, not the UI language: Israel pays in ₪, everyone else in USD. */
+export async function getCurrency(): Promise<Currency> {
+  return (await getCountry()) === "IL" ? "ILS" : "USD";
+}
+
+/**
+ * Server-side locale resolution. Order: cookie (the parent's explicit choice)
+ * → visitor country (Israel ⇒ Hebrew) → default (en).
  */
 export async function getLocale(): Promise<Locale> {
   const jar = await cookies();
   const v = jar.get(LOCALE_COOKIE)?.value;
-  return isLocale(v) ? v : DEFAULT_LOCALE;
+  if (isLocale(v)) return v;
+  return (await getCountry()) === "IL" ? "he" : DEFAULT_LOCALE;
 }
 
 export async function getI18n(): Promise<{ locale: Locale; t: Dictionary }> {

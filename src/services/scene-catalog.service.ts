@@ -7,8 +7,14 @@ import type { Container } from "./container";
  * A world is sellable only if it is active in both.
  */
 export async function activeScenes(c: Container): Promise<SceneDefinition[]> {
-  const overrides = await c.db.sceneOverride.findMany();
-  const off = new Set(overrides.filter((o) => !o.active).map((o) => o.slug));
+  // Admin overrides live in the DB; the catalog is the source of truth, so a missing DB only disables the overrides.
+  let off = new Set<string>();
+  try {
+    const overrides = await c.db.sceneOverride.findMany();
+    off = new Set(overrides.filter((o) => !o.active).map((o) => o.slug));
+  } catch (err) {
+    console.warn("[scenes] overrides unavailable, using the catalog as-is:", err instanceof Error ? err.message.split("\n")[0] : err);
+  }
   return SCENE_CATALOG.map((e) => e.scene).filter((s) => s.active && !off.has(s.slug));
 }
 

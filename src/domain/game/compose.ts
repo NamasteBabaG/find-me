@@ -19,6 +19,7 @@ export interface ComposeChild {
 export interface TargetSpriteInput {
   targetId: string;
   sprite: SpriteRef;
+  spriteByVariant?: { A?: SpriteRef; B?: SpriteRef };
   adjust?: TargetAdjust;
 }
 
@@ -39,6 +40,7 @@ export function composeScene(scene: SceneDefinition, child: ComposeChild, sprite
       animation: t.animation,
       slots: t.slots.map((s) => ({ ...s, hintText: l(s.hintText) })) as TargetConfig["slots"],
       sprite: spriteInput.sprite,
+      spriteByVariant: spriteInput.spriteByVariant,
       adjust: spriteInput.adjust,
     };
   });

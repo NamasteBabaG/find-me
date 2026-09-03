@@ -127,7 +127,7 @@ export const en = {
       feats: { spots: "{n} hiding spots to discover", time: "{time} first play, then more", link: "Private link + library", wrap: "Digital gift wrap" },
       choose: "Choose {name}",
       soon: "Unlocks when enough worlds are ready",
-      note: "Launch pricing. All prices in USD.",
+      note: "Launch pricing. Billed in ₪ in Israel and in USD elsewhere; VAT included where it applies.",
       worlds: "worlds",
     },
     trust: {

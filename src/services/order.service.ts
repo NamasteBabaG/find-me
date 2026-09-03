@@ -1,6 +1,6 @@
 import { newId } from "@/lib/ids";
 import { PACKAGES, isPackageTier, priceFor } from "@/domain/package";
-import { currencyFor, pick, type Locale } from "@/i18n/config";
+import { type Currency, currencyFor, pick, type Locale } from "@/i18n/config";
 import { flowError, type FlowError } from "@/i18n/errors";
 import type { Container } from "./container";
 import { ensureUser } from "./auth.service";
@@ -12,7 +12,7 @@ import { WEBHOOK, audit, type Actor } from "./audit.service";
  * Checkout + payment webhook. The webhook is the single source of truth for
  * "paid"; the redirect back from the PSP only shows a waiting screen.
  */
-export async function startCheckout(c: Container, input: { gameId: string; email: string }): Promise<{ ok: true; checkoutUrl: string; userId: string } | FlowError> {
+export async function startCheckout(c: Container, input: { gameId: string; email: string; currency?: Currency }): Promise<{ ok: true; checkoutUrl: string; userId: string } | FlowError> {
   const game = await loadDraft(c, input.gameId);
   if (!game || !game.childProfile) return flowError("DRAFT_NOT_FOUND", "הטיוטה לא נמצאה.");
   const status = statusOf(game);
@@ -34,7 +34,7 @@ export async function startCheckout(c: Container, input: { gameId: string; email
   await c.db.childProfile.update({ where: { id: game.childProfile.id }, data: { ownerId: user.id } });
 
   const pkg = PACKAGES[game.packageTier];
-  const currency = currencyFor(locale);
+  const currency: Currency = input.currency ?? currencyFor(locale);
   const amount = priceFor(pkg.tier, currency); // minor units of `currency`
   const existing = await c.db.order.findFirst({ where: { gameId: game.id, paymentStatus: "PENDING" }, orderBy: { createdAt: "desc" } });
   let order = existing;

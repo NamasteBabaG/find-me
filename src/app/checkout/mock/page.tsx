@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import { isDev } from "@/lib/env";
 import { getContainer } from "@/services/container";
 import { getI18n } from "@/i18n/server";
 import { formatMoney, pick, tf } from "@/i18n";
@@ -13,9 +12,9 @@ export async function generateMetadata() {
 
 /** Stand-in for the PSP's hosted checkout page. Dev only. */
 export default async function MockCheckoutPage({ searchParams }: { searchParams: Promise<{ orderId?: string; success?: string; cancel?: string }> }) {
-  if (!isDev()) notFound();
-  const [params, { t, locale }] = await Promise.all([searchParams, getI18n()]);
   const c = getContainer();
+  if (c.payment.id !== "mock") notFound();
+  const [params, { t, locale }] = await Promise.all([searchParams, getI18n()]);
   const order = params.orderId ? await c.db.order.findUnique({ where: { id: params.orderId }, include: { game: { include: { childProfile: true } } } }) : null;
   if (!order) notFound();
   const m = t.create.mock;

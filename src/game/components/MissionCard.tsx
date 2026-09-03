@@ -15,15 +15,25 @@ interface Props {
   hintPulse: boolean;
   hintText: string | null;
   onHint: () => void;
+  /** The child's face sticker; shown instead of the sprite when the sprite is a world patch. */
+  avatarUrl?: string;
 }
 
 /** Floating mission pill: who to look for, (progress when there is more than one), and the hint button. */
-export function MissionCard({ index, total, target, found, order, hintLevel, hintPulse, hintText, onHint }: Props) {
+export function MissionCard({ index, total, target, found, order, hintLevel, hintPulse, hintText, onHint, avatarUrl }: Props) {
   const { g, tf } = useGameText();
+  const isPatch = target?.sprite.kind === "image" && Boolean(target.sprite.rect);
   return (
     <section className="mission" aria-live="polite">
       <div className="mission__thumb" aria-hidden>
-        {target ? <Sprite sprite={target.sprite} className="mission__sprite" /> : null}
+        {target ? (
+          isPatch && avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={avatarUrl} alt="" className="mission__sprite mission__face" draggable={false} />
+          ) : (
+            <Sprite sprite={target.sprite} className="mission__sprite" />
+          )
+        ) : null}
       </div>
       <div className="mission__body">
         {total > 1 ? (

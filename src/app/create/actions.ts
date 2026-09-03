@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { getContainer } from "@/services/container";
+import { getCurrency } from "@/i18n/server";
 import { createDraft, draftBelongsTo, loadDraft, selectPackage, selectScenes, setChildName } from "@/services/create-flow.service";
 import { startCheckout } from "@/services/order.service";
 import { isEditableDraft } from "@/domain/order-state";
@@ -64,7 +65,7 @@ export async function checkoutAction(_prev: ActionResult | null, formData: FormD
   const draft = await currentDraft();
   if (!draft) redirect("/create");
   const email = String(formData.get("email") ?? "");
-  const res = await startCheckout(c, { gameId: draft.id, email });
+  const res = await startCheckout(c, { gameId: draft.id, email, currency: await getCurrency() });
   if (!res.ok) return res;
   redirect(res.checkoutUrl);
 }

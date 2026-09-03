@@ -10,3 +10,4 @@ prisma/*.db-journal
 .DS_Store
 tsconfig.tsbuildinfo
 work/
+prisma/generated/

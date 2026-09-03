@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { SceneDefinition } from "@/domain/scene/schema";
 import { PACKAGES, PACKAGE_ORDER, priceFor, searchesFor } from "@/domain/package";
-import { currencyFor, formatMoney, pick, tf, type Dictionary, type Locale } from "@/i18n";
+import { formatMoney, pick, tf, type Currency, type Dictionary, type Locale } from "@/i18n";
 import { Reveal } from "./Reveal";
 
 export const WORLD_GLYPHS: Record<string, string> = { beach: "🏖️", jungle: "🌴", space: "🚀", city: "🏙️", ship: "⚓", stadium: "🏟️", market: "🍉", park: "🪁", volcano: "🌋" };
@@ -189,7 +189,7 @@ export function Worlds({ t, locale, scenes, activeSlugs }: SectionProps & { scen
 }
 
 /* ─── Pricing ─── */
-export function Pricing({ t, locale, activeCount }: SectionProps & { activeCount: number }) {
+export function Pricing({ t, locale, activeCount, currency }: SectionProps & { activeCount: number; currency: Currency }) {
   const p = t.home.pricing;
   return (
     <section id="pricing" className="pricing-sec">
@@ -218,7 +218,7 @@ export function Pricing({ t, locale, activeCount }: SectionProps & { activeCount
                   <li className="plan__feat">{p.feats.link}</li>
                   <li className="plan__feat">{p.feats.wrap}</li>
                 </ul>
-                <div className="plan__price">{formatMoney(priceFor(tier, currencyFor(locale)), currencyFor(locale), locale)}</div>
+                <div className="plan__price">{formatMoney(priceFor(tier, currency), currency, locale)}</div>
                 {available ? (
                   <Link href="/create" className={`fm-btn fm-btn--lg${pkg.popular ? "" : " fm-btn--secondary"}`}>
                     {tf(p.choose, { name })}

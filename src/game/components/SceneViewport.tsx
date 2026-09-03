@@ -51,7 +51,8 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
         const variant = mission.plan.variants[t.id] ?? "A";
         const slot = slotFor(scene, t.id, variant);
         const adj = t.adjust ?? { dx: 0, dy: 0, scale: 1 };
-        return { target: t, slot, anchor: { x: slot.x + adj.dx, y: slot.y + adj.dy, scale: slot.scale * adj.scale } };
+        const sprite = t.spriteByVariant?.[variant] ?? t.sprite;
+        return { target: t, slot, sprite, anchor: { x: slot.x + adj.dx, y: slot.y + adj.dy, scale: slot.scale * adj.scale } };
       }),
     [scene, mission.plan.variants],
   );
@@ -72,7 +73,7 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
       const candidates: HitCandidate<Hit>[] = [];
       for (const p of placedTargets) {
         if (isFound(m, p.target.id)) continue;
-        const rect = spriteRect(p.anchor, stage, spriteAspect(p.target.sprite));
+        const rect = spriteRect(p.anchor, stage, spriteAspect(p.sprite));
         const pad = hitPadding(rect, stage, scale);
         candidates.push({ id: { kind: "target", id: p.target.id }, rect: expandRect(rect, pad.padX, pad.padY), zIndex: 50 + p.slot.zIndex });
       }
@@ -121,8 +122,8 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
     const found = isFound(mission, p.target.id);
     const justFound = mission.lastFeedback?.kind === "hit" && mission.lastFeedback.targetId === p.target.id;
     const h = p.anchor.scale * stage.height;
-    const w = h * spriteAspect(p.target.sprite);
-    const rect = p.target.sprite.kind === "image" ? p.target.sprite.rect : undefined;
+    const w = h * spriteAspect(p.sprite);
+    const rect = p.sprite.kind === "image" ? p.sprite.rect : undefined;
     // A slot patch is a piece of the world painted with the child: draw it exactly where it was cut from.
     const box = rect
       ? { left: rect.x * stage.width, top: rect.y * stage.height, width: rect.w * stage.width, height: rect.h * stage.height, zIndex: p.slot.zIndex, transform: p.slot.flip ? "scaleX(-1)" : undefined }
@@ -135,7 +136,7 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
         data-target={p.target.id}
       >
         <div className={`tgt-anim${justFound ? ` anim-${p.target.animation}` : ""}`}>
-          <Sprite sprite={p.target.sprite} title={p.target.item} className="stage__sprite" />
+          <Sprite sprite={p.sprite} title={p.target.item} className="stage__sprite" />
         </div>
       </div>
     );

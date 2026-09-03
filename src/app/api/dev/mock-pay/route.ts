@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { isDev } from "@/lib/env";
 import { getContainer } from "@/services/container";
 import { handlePaymentWebhook } from "@/services/order.service";
 
@@ -10,8 +9,8 @@ export const runtime = "nodejs";
  * feeds it through the exact same handler production will use.
  */
 export async function POST(req: Request) {
-  if (!isDev()) return NextResponse.json({ ok: false, body: "not available" }, { status: 404 });
   const c = getContainer();
+  if (c.payment.id !== "mock") return NextResponse.json({ ok: false, body: "not available" }, { status: 404 });
   const payment = c.payment as { id: string; sign?: (raw: string) => string };
   if (payment.id !== "mock" || typeof payment.sign !== "function") return NextResponse.json({ ok: false, body: "PAYMENT_PROVIDER is not mock" }, { status: 400 });
   const { orderId, kind } = (await req.json()) as { orderId?: string; kind?: "PAID" | "FAILED" | "REFUNDED" };

@@ -292,3 +292,11 @@ model AuditLog {
 
   @@index([entityType, entityId])
 }
+
+/// Blob storage for STORAGE_PROVIDER=db (pilot hosting without object storage).
+model FileBlob {
+  key         String   @id
+  data        Bytes
+  contentType String
+  createdAt   DateTime @default(now())
+}

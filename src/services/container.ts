@@ -15,6 +15,8 @@ import type { AnalyticsSink } from "@/infra/analytics/types";
 import { ConsoleAnalytics, NoopAnalytics } from "@/infra/analytics/console";
 import type { JobRunner } from "@/infra/jobs/types";
 import { InProcessJobRunner } from "@/infra/jobs/in-process";
+import { InlineJobRunner } from "@/infra/jobs/inline";
+import { DbStorage } from "@/infra/storage/db";
 import { runGenerationPipeline } from "./generation/pipeline";
 
 /**
@@ -39,7 +41,8 @@ function build(): Container {
   const e = env();
   const storageRoot = path.resolve(process.cwd(), e.STORAGE_LOCAL_DIR);
 
-  const storage: StorageProvider = e.STORAGE_PROVIDER === "local" ? new LocalDiskStorage(storageRoot) : new LocalDiskStorage(storageRoot); // TODO supabase adapter
+  if (e.STORAGE_PROVIDER === "supabase") throw new Error("STORAGE_PROVIDER=supabase is not implemented yet — use \"db\" or \"local\"");
+  const storage: StorageProvider = e.STORAGE_PROVIDER === "db" ? new DbStorage(prisma) : new LocalDiskStorage(storageRoot);
 
   const payment: PaymentProvider = e.PAYMENT_PROVIDER === "payme" ? new PayMeProvider(e.PAYME_SELLER_ID ?? "", e.PAYME_WEBHOOK_SECRET ?? "") : new MockPaymentProvider(e.APP_URL, e.SESSION_SECRET);
 
@@ -55,7 +58,7 @@ function build(): Container {
     faces: new NoopFaceDetector(),
     email,
     analytics,
-    jobs: new InProcessJobRunner(),
+    jobs: e.JOBS_MODE === "inline" ? new InlineJobRunner() : new InProcessJobRunner(),
     appUrl: e.APP_URL,
     secret: e.SESSION_SECRET,
   };

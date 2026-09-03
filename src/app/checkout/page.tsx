@@ -4,8 +4,8 @@ import { draftSummary } from "@/services/create-flow.service";
 import { activeSceneSlugs } from "@/services/scene-catalog.service";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
 import { priceFor, searchesFor } from "@/domain/package";
-import { getI18n } from "@/i18n/server";
-import { currencyFor, formatMoney, pick, tf } from "@/i18n";
+import { getCurrency, getI18n } from "@/i18n/server";
+import { formatMoney, pick, tf } from "@/i18n";
 import { CreateFrame } from "../create/CreateLayout";
 import { currentDraft } from "../create/actions";
 import { CheckoutForm } from "./CheckoutForm";
@@ -24,7 +24,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
   // When the package takes every active world, the worlds step was skipped, so "back" means the package step.
   const backHref = activeCount === summary.pkg.sceneCount ? "/create/package" : "/create/scenes";
   const ck = t.create.checkout;
-  const currency = currencyFor(summary.game.locale === "he" ? "he" : "en");
+  const currency = await getCurrency();
   const price = formatMoney(priceFor(summary.pkg.tier, currency), currency, locale);
   const name = summary.child?.displayName ?? "";
 
