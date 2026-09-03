@@ -13,7 +13,6 @@ interface Option {
   meta: string;
   price: string;
   popular: boolean;
-  available: boolean;
 }
 
 export function PackagePicker({ options, defaultTier }: { options: Option[]; defaultTier: string }) {
@@ -27,14 +26,14 @@ export function PackagePicker({ options, defaultTier }: { options: Option[]; def
         {options.map((o) => {
           const selected = o.tier === tier;
           return (
-            <label key={o.tier} className={`fm-card fm-card--pad-4 package fm-card--selectable${selected ? " fm-card--selected" : ""}${o.available ? "" : " package--soon"}`}>
-              <input type="radio" name="tier" value={o.tier} className="visually-hidden" checked={selected} disabled={!o.available} onChange={() => setTier(o.tier)} />
+            <label key={o.tier} className={`fm-card fm-card--pad-4 package fm-card--selectable${selected ? " fm-card--selected" : ""}`}>
+              <input type="radio" name="tier" value={o.tier} className="visually-hidden" checked={selected} onChange={() => setTier(o.tier)} />
               {o.popular ? <span className="fm-sticker-badge package__ribbon">{t.common.popular}</span> : null}
               <h3>{o.name}</h3>
               <span className="package__worlds">{tf(t.common.worldsCount, { n: o.sceneCount })}</span>
               <span className="fm-muted">{o.meta}</span>
               <span className="package__price">{o.price}</span>
-              {!o.available ? <span className="fm-badge fm-badge--outline">{t.common.soon}</span> : <span className="fm-badge fm-badge--sea">{selected ? p.selected : p.choose}</span>}
+              <span className="fm-badge fm-badge--sea">{selected ? p.selected : p.choose}</span>
             </label>
           );
         })}
@@ -46,6 +45,9 @@ export function PackagePicker({ options, defaultTier }: { options: Option[]; def
         </LinkButton>
         <Button type="submit" size="lg" loading={pending}>
           {p.next}
+          <span className="fm-btn__arrow" aria-hidden>
+            ➜
+          </span>
         </Button>
       </div>
     </form>

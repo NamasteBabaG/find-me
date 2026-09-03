@@ -27,7 +27,8 @@ export function DemoSection({ config }: { config: GameConfig }) {
           <p className="demo__lead">{d.lead}</p>
         </div>
         <div className="demo__frame">
-          <GameShell config={config} demo autoStartScene="beach" singleMission />
+          {/* The play store is created once per mount; remount on a language switch so the demo speaks the new locale. */}
+          <GameShell key={config.locale} config={config} demo autoStartScene="beach" singleMission />
         </div>
         <div className="demo__foot">
           <p>{d.foot}</p>

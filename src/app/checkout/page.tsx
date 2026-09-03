@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getContainer } from "@/services/container";
 import { draftSummary } from "@/services/create-flow.service";
+import { activeSceneSlugs } from "@/services/scene-catalog.service";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
 import { priceFor, searchesFor } from "@/domain/package";
 import { getI18n } from "@/i18n/server";
@@ -18,8 +19,10 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
   const c = getContainer();
   const [user, draft, params, { t, locale }] = await Promise.all([currentUser(), currentDraft(), searchParams, getI18n()]);
   if (!draft?.childProfile) redirect("/create");
-  const summary = await draftSummary(c, draft.id);
+  const [summary, activeCount] = await Promise.all([draftSummary(c, draft.id), activeSceneSlugs(c).then((s) => s.length)]);
   if (!summary?.pkg || summary.scenes.length !== summary.pkg.sceneCount) redirect("/create/scenes");
+  // When the package takes every active world, the worlds step was skipped, so "back" means the package step.
+  const backHref = activeCount === summary.pkg.sceneCount ? "/create/package" : "/create/scenes";
   const ck = t.create.checkout;
   const currency = currencyFor(summary.game.locale === "he" ? "he" : "en");
   const price = formatMoney(priceFor(summary.pkg.tier, currency), currency, locale);
@@ -56,7 +59,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
           </div>
           <p className="fm-small">{ck.vat}</p>
         </div>
-        <CheckoutForm defaultEmail={user?.email ?? ""} priceLabel={price} cancelled={params.cancelled === "1"} />
+        <CheckoutForm defaultEmail={user?.email ?? ""} priceLabel={price} cancelled={params.cancelled === "1"} backHref={backHref} />
       </div>
     </CreateFrame>
   );

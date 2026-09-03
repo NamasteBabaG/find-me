@@ -45,6 +45,12 @@ function Shell({ config, demo = false, skipGift = false, parentZoneHref, autoSta
   const scene = state.scene();
   const landscapeTip = useLandscapeTip();
 
+  // Saved progress lives in localStorage: read it only after mount so the first
+  // client render matches the server (returning players then jump to the map).
+  useEffect(() => {
+    store.getState().hydrate();
+  }, [store]);
+
   useEffect(() => {
     const onUnload = () => state.telemetry.flush();
     window.addEventListener("pagehide", onUnload);

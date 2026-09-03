@@ -55,9 +55,14 @@ export function hmacSign(payload: string, secret: string): string {
   return createHmac("sha256", secret).update(payload).digest("base64url");
 }
 
+/** Constant-time string comparison (length mismatch → false, never throws). */
+export function safeEqual(expected: string, given: string): boolean {
+  const a = Buffer.from(expected);
+  const b = Buffer.from(given);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
 export function hmacVerify(payload: string, signature: string, secret: string): boolean {
-  const expected = Buffer.from(hmacSign(payload, secret));
-  const given = Buffer.from(signature);
-  if (expected.length !== given.length) return false;
-  return timingSafeEqual(expected, given);
+  return safeEqual(hmacSign(payload, secret), signature);
 }

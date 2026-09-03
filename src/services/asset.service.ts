@@ -1,5 +1,5 @@
 import sharp from "sharp";
-import { hmacSign, hmacVerify, newId } from "@/lib/ids";
+import { hmacSign, newId, safeEqual } from "@/lib/ids";
 import type { Container } from "./container";
 
 export type AssetType = "ORIGINAL_PHOTO" | "AVATAR" | "TARGET_SPRITE" | "THUMBNAIL";
@@ -62,15 +62,18 @@ export async function storeAsset(
  * unguessable signed URL — safe to embed in the play config. PRIVATE assets
  * (the original photo) never get a signed URL; they need an owner/admin session.
  */
-export function signedAssetUrl(c: Container, assetId: string): string {
-  const sig = hmacSign(`asset:${assetId}`, c.secret).slice(0, 32);
-  return `/api/assets/${assetId}?s=${sig}`;
+function assetSignature(secret: string, assetId: string): string {
+  return hmacSign(`asset:${assetId}`, secret).slice(0, 32);
 }
 
-export function verifyAssetSignature(c: Container, assetId: string, sig: string | null): boolean {
+export function signedAssetUrl(c: Container, assetId: string): string {
+  return `/api/assets/${assetId}?s=${assetSignature(c.secret, assetId)}`;
+}
+
+/** Only `secret` is read from the container, so this stays trivially unit-testable. */
+export function verifyAssetSignature(c: Pick<Container, "secret">, assetId: string, sig: string | null): boolean {
   if (!sig) return false;
-  const full = hmacSign(`asset:${assetId}`, c.secret).slice(0, 32);
-  return hmacVerify(full, sig, c.secret) || full === sig;
+  return safeEqual(assetSignature(c.secret, assetId), sig);
 }
 
 export type AssetViewer = { userId: string | null; isAdmin: boolean; signature: string | null };

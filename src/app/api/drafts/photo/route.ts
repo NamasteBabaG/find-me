@@ -15,6 +15,8 @@ export async function POST(req: Request) {
   if (!game || !draftBelongsTo(game, token, user?.id ?? null)) return NextResponse.json({ ok: false, code: "DRAFT_NOT_FOUND", reason: "הטיוטה לא נמצאה." }, { status: 404 });
 
   const form = await req.formData();
+  // Parental consent is a hard requirement: no photo of a child is stored without it.
+  if (form.get("consent") !== "1") return NextResponse.json({ ok: false, code: "CONSENT_REQUIRED", reason: "צריך לאשר שאתם ההורה או האפוטרופוס." }, { status: 400 });
   const file = form.get("file");
   if (!(file instanceof File)) return NextResponse.json({ ok: false, code: "NO_FILE", reason: "לא התקבל קובץ." }, { status: 400 });
   let crop: { x: number; y: number; w: number; h: number } | null = null;

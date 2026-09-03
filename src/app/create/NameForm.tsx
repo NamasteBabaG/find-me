@@ -24,6 +24,9 @@ export function NameForm({ initialName }: { initialName: string }) {
         <span className="fm-small">{tf(t.common.stepOf, { n: 1, total: 5 })}</span>
         <Button type="submit" size="lg" loading={pending}>
           {n.next}
+          <span className="fm-btn__arrow" aria-hidden>
+            ➜
+          </span>
         </Button>
       </div>
     </form>

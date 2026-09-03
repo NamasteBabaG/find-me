@@ -46,9 +46,12 @@
 .island__name { font-family: var(--font-display); font-weight: 600; font-size: var(--fs-300); line-height: var(--lh-300); padding-inline: var(--space-1); }
 .island__meta { font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-3); padding-inline: var(--space-1); padding-bottom: var(--space-1); }
 
-/* ── Scene: the stage fills the box; all chrome floats on top ── */
-.scene { position: relative; flex: 1; min-height: 100dvh; background: var(--scene-sky, var(--sea-soft)); }
-.game--demo .scene { min-height: 0; height: 100%; }
+/* ── Scene: the stage fills the box; all chrome floats on top ──
+   The scene is a flex child of .game (min-height: 100dvh), so it takes whatever
+   the landscape tip leaves — never more than the viewport, so the mission card
+   and the hint button always stay on screen in portrait. */
+.scene { position: relative; flex: 1; min-height: 0; background: var(--scene-sky, var(--sea-soft)); }
+.game--demo .scene { height: 100%; }
 .scene__stage { position: absolute; inset: 0; overflow: hidden; }
 .scene__intro-veil { position: absolute; inset: 0; pointer-events: auto; }
 .scene__bar { position: absolute; left: 0; right: 0; top: 0; z-index: var(--z-ui); display: flex; align-items: center; justify-content: space-between; gap: var(--space-1); padding: var(--space-2); pointer-events: none; }

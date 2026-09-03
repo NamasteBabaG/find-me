@@ -15,11 +15,18 @@ export function StaticScenePreview({ scene, variant, showZones = false, labels =
   const render = (layer: "front" | "behindForeground") =>
     items
       .filter((i) => (i.slot.layer ?? "front") === layer)
-      .map(({ t, slot, x, y, scale }) => (
-        <div key={t.id} className="scene-preview__sprite" style={{ left: `${x * 100}%`, top: `${y * 100}%`, height: `${scale * 100}%`, aspectRatio: String(spriteAspect(t.sprite)), zIndex: slot.zIndex, transform: `translate(-50%, -50%) rotate(${slot.rotation}deg)${slot.flip ? " scaleX(-1)" : ""}` }}>
-          <Sprite sprite={t.sprite} className="stage__sprite" title={t.item} />
-        </div>
-      ));
+      .map(({ t, slot, x, y, scale }) => {
+        const rect = t.sprite.kind === "image" ? t.sprite.rect : undefined;
+        // A slot patch is a piece of the world painted with the child: draw it exactly where it was cut from (same as SceneViewport).
+        const box: React.CSSProperties = rect
+          ? { left: `${rect.x * 100}%`, top: `${rect.y * 100}%`, width: `${rect.w * 100}%`, height: `${rect.h * 100}%`, zIndex: slot.zIndex, transform: slot.flip ? "scaleX(-1)" : "none" }
+          : { left: `${x * 100}%`, top: `${y * 100}%`, height: `${scale * 100}%`, aspectRatio: String(spriteAspect(t.sprite)), zIndex: slot.zIndex, transform: `translate(-50%, -50%) rotate(${slot.rotation}deg)${slot.flip ? " scaleX(-1)" : ""}` };
+        return (
+          <div key={t.id} className="scene-preview__sprite" style={box}>
+            <Sprite sprite={t.sprite} className="stage__sprite" title={t.item} />
+          </div>
+        );
+      });
 
   return (
     <div className="scene-preview" style={{ aspectRatio: `${scene.art.width} / ${scene.art.height}` }}>

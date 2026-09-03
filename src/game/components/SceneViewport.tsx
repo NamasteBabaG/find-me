@@ -213,8 +213,12 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
   );
 }
 
-export function targetScreenPoint(api: ViewportApi, scene: SceneConfig, target: TargetConfig, variant: "A" | "B") {
+/**
+ * Where a target sits in stage pixels. Overlays keep this and project it with
+ * the *current* transform on every render, so they follow zooms and pans.
+ */
+export function targetStagePoint(scene: SceneConfig, target: TargetConfig, variant: "A" | "B"): { x: number; y: number } {
   const slot = variant === "A" ? target.slots[0] : target.slots[1];
   const adj = target.adjust ?? { dx: 0, dy: 0, scale: 1 };
-  return stageToScreen(api.transform, (slot.x + adj.dx) * scene.art.width, (slot.y + adj.dy) * scene.art.height);
+  return { x: (slot.x + adj.dx) * scene.art.width, y: (slot.y + adj.dy) * scene.art.height };
 }

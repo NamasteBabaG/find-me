@@ -32,5 +32,5 @@ export default async function PlayPage({ params }: { params: Promise<{ token: st
   }
 
   const config = parseGameConfig(resolved.game.configJson);
-  return <GameShell config={config} parentZoneHref="/library" />;
+  return <GameShell key={config.locale} config={config} parentZoneHref="/library" />;
 }

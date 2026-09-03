@@ -29,6 +29,7 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode }: Props) {
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [busy, setBusy] = useState(false);
+  const [consent, setConsent] = useState(false);
   const [error, setError] = useState<string | null>(rejectedCode ? errorText(t, { code: rejectedCode }) : null);
   const [over, setOver] = useState(false);
   const drag = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
@@ -93,13 +94,14 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode }: Props) {
   const onPointerUp = () => (drag.current = null);
 
   const upload = async () => {
-    if (!file || !natural) return;
+    if (!file || !natural || !consent) return;
     setBusy(true);
     setError(null);
     const crop = { x: -offset.x / scale / natural.w, y: -offset.y / scale / natural.h, w: BOX / scale / natural.w, h: BOX / scale / natural.h };
     const fd = new FormData();
     fd.append("file", file);
     fd.append("crop", JSON.stringify(crop));
+    fd.append("consent", "1");
     try {
       const res = await fetch("/api/drafts/photo", { method: "POST", body: fd });
       const data = (await res.json().catch(() => ({ ok: false, code: "UPLOAD_FAILED", reason: `HTTP ${res.status}` }))) as { ok: boolean; code?: string; reason?: string };
@@ -114,6 +116,13 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode }: Props) {
       setBusy(false);
     }
   };
+
+  const consentBox = (
+    <label className="uploader__consent">
+      <input type="checkbox" name="consent" checked={consent} onChange={(e) => setConsent(e.target.checked)} required />
+      <span>{p.consent}</span>
+    </label>
+  );
 
   return (
     <div className="uploader">
@@ -154,10 +163,16 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode }: Props) {
               ))}
             </ul>
           </div>
+          {consentBox}
           {hasPhoto ? (
             <div className="create__actions" style={{ width: "100%" }}>
               <Notice kind="success">{p.hasPhoto}</Notice>
-              <LinkButton href="/create/package">{t.common.continue} ➜</LinkButton>
+              <LinkButton href="/create/package">
+                {t.common.continue}
+                <span className="fm-btn__arrow" aria-hidden>
+                  ➜
+                </span>
+              </LinkButton>
             </div>
           ) : null}
         </>
@@ -185,6 +200,7 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode }: Props) {
             <span className="fm-hint">{p.zoom}</span>
             <input type="range" className="cropper__zoom" min={1} max={3} step={0.01} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} />
           </label>
+          {consentBox}
           <div className="create__actions create__actions--sticky" style={{ width: "100%" }}>
             <Button
               variant="ghost"
@@ -197,8 +213,11 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode }: Props) {
             >
               {p.another}
             </Button>
-            <Button size="lg" onClick={upload} loading={busy} disabled={!natural}>
+            <Button size="lg" onClick={upload} loading={busy} disabled={!natural || !consent}>
               {p.confirm}
+              <span className="fm-btn__arrow" aria-hidden>
+                ➜
+              </span>
             </Button>
           </div>
         </>

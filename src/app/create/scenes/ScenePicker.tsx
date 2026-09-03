@@ -57,6 +57,9 @@ export function ScenePicker({ scenes, want, preselected }: { scenes: SceneOption
         </LinkButton>
         <Button type="submit" size="lg" loading={pending} disabled={!full}>
           {s.next}
+          <span className="fm-btn__arrow" aria-hidden>
+            ➜
+          </span>
         </Button>
       </div>
     </form>

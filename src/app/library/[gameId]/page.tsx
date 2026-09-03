@@ -26,6 +26,9 @@ export default async function ManageGamePage({ params }: { params: Promise<{ gam
       <SiteHeader user={user} isAdmin={isAdminEmail(user.email)} />
       <main className="fm-container fm-container--narrow fm-section fm-stack fm-stack--4">
         <Link href="/library" className="fm-small">
+          <span className="fm-btn__arrow fm-btn__arrow--back" aria-hidden>
+            ➜
+          </span>{" "}
           {l.allGames}
         </Link>
         <div className="fm-row">

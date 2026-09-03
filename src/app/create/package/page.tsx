@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getContainer } from "@/services/container";
 import { availablePackages } from "@/services/create-flow.service";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
-import { PACKAGES, PACKAGE_ORDER, priceFor, searchesFor } from "@/domain/package";
+import { PACKAGES, PACKAGE_ORDER, priceFor, searchesFor, type PackageTier } from "@/domain/package";
 import { getI18n } from "@/i18n/server";
 import { currencyFor, formatMoney, pick, tf } from "@/i18n";
 import { CreateFrame } from "../CreateLayout";
@@ -20,7 +20,8 @@ export default async function CreatePackagePage() {
   if (!draft?.childProfile) redirect("/create");
   if (!draft.childProfile.originalPhotoAssetId) redirect("/create/photo");
   const available = new Set((await availablePackages(c)).map((p) => p.tier));
-  const options = PACKAGE_ORDER.map((tier) => {
+  // Only tiers that can actually be bought right now (enough active worlds) are shown.
+  const options = PACKAGE_ORDER.filter((tier) => available.has(tier)).map((tier) => {
     const p = PACKAGES[tier];
     return {
       tier,
@@ -29,10 +30,10 @@ export default async function CreatePackagePage() {
       meta: tf(t.create.package.spots, { n: searchesFor(tier), time: pick(p.playtime, locale) }),
       price: formatMoney(priceFor(tier, currencyFor(locale)), currencyFor(locale), locale),
       popular: p.popular,
-      available: available.has(tier),
     };
   });
-  const defaultTier = draft.packageTier ?? (available.has("BIG") ? "BIG" : "SMALL");
+  const fallbackTier = available.has("BIG") ? "BIG" : (options[0]?.tier ?? "SMALL");
+  const defaultTier = draft.packageTier && available.has(draft.packageTier as PackageTier) ? draft.packageTier : fallbackTier;
   return (
     <CreateFrame step={2} title={t.create.package.title} lead={tf(t.create.package.lead, { name: draft.childProfile.displayName })} user={user} isAdmin={isAdminEmail(user?.email)}>
       <PackagePicker options={options} defaultTier={defaultTier} />

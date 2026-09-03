@@ -8,7 +8,7 @@ import { slotFor } from "@/domain/game/replay";
 import { sounds } from "../audio/sounds";
 import { stageToScreen } from "../engine/viewport-math";
 import type { ViewportApi } from "../engine/useViewport";
-import { SceneViewport, targetScreenPoint, type Hit } from "./SceneViewport";
+import { SceneViewport, targetStagePoint, type Hit } from "./SceneViewport";
 import { MissionCard } from "./MissionCard";
 import { CelebrationOverlay } from "./CelebrationOverlay";
 import type { PlayStore } from "../store/play-store";
@@ -28,6 +28,9 @@ const FOUND_MS = 1500;
 export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: Props) {
   const { g, tf } = useGameText();
   const apiRef = useRef<ViewportApi | null>(null);
+  // Bubbles live in stage pixels and are projected to the screen on every render
+  // (see the SceneViewport render prop), so they stay glued to the sprite while
+  // the "found" zoom plays.
   const [bubble, setBubble] = useState<{ text: string; x: number; y: number; key: number } | null>(null);
   const [burst, setBurst] = useState<{ key: number; small: boolean } | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -71,9 +74,9 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
     const api = apiRef.current;
     const placeBubble = (targetId: string, text: string) => {
       const target = scene.targets.find((t) => t.id === targetId);
-      if (!target || !api) return;
+      if (!target) return;
       const variant = mission.plan.variants[targetId] ?? "A";
-      const p = targetScreenPoint(api, scene, target, variant);
+      const p = targetStagePoint(scene, target, variant);
       setBubble({ text, x: p.x, y: p.y, key: Date.now() });
     };
     switch (fb.kind) {
@@ -108,10 +111,9 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
         return;
       case "bonus": {
         sounds().play("twinkle");
-        if (scene.bonus && api) {
+        if (scene.bonus) {
           const slot = mission.plan.bonusVariant === "A" ? scene.bonus.slots[0] : scene.bonus.slots[1];
-          const p = stageToScreen(api.transform, slot.x * scene.art.width, slot.y * scene.art.height);
-          setBubble({ text: fb.bubble, x: p.x, y: p.y, key: Date.now() });
+          setBubble({ text: fb.bubble, x: slot.x * scene.art.width, y: slot.y * scene.art.height, key: Date.now() });
         }
         const t = setTimeout(() => setBubble(null), 1800);
         dispatch({ type: "CLEAR_FEEDBACK" });
@@ -121,9 +123,8 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
         const a = scene.ambient.find((x) => x.id === fb.ambientId);
         if (a?.sound) sounds().play(a.sound);
         else sounds().play("tap");
-        if (a?.reaction && api) {
-          const p = stageToScreen(api.transform, (a.x + a.w / 2) * scene.art.width, a.y * scene.art.height);
-          setBubble({ text: a.reaction, x: p.x, y: p.y, key: Date.now() });
+        if (a?.reaction) {
+          setBubble({ text: a.reaction, x: (a.x + a.w / 2) * scene.art.width, y: a.y * scene.art.height, key: Date.now() });
         }
         const t = setTimeout(() => setBubble(null), 1600);
         dispatch({ type: "CLEAR_FEEDBACK" });
@@ -220,7 +221,11 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
 
       <div className="scene__stage">
         <SceneViewport scene={scene} mission={mission} hintLevel={mission.hintLevel} bonusFound={mission.bonusFound} onHit={onHit} onReady={onReady} ariaLabel={tf(g.scene.sceneAria, { name: scene.name })}>
-          {() => (bubble ? <SpeechBubble key={bubble.key} text={bubble.text} x={bubble.x} y={bubble.y} /> : null)}
+          {(vp) => {
+            if (!bubble) return null;
+            const p = stageToScreen(vp.transform, bubble.x, bubble.y);
+            return <SpeechBubble key={bubble.key} text={bubble.text} x={p.x} y={p.y} />;
+          }}
         </SceneViewport>
         {burst ? <CelebrationOverlay key={burst.key} kind={scene.celebration.kind} small={burst.small} seed={burst.key} /> : null}
         {mission.phase === "intro" ? <div className="scene__intro-veil" aria-hidden /> : null}
@@ -288,6 +293,9 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store }: { scene: Sce
           ) : (
             <button type="button" className="fm-btn fm-btn--lg" onClick={() => next && store.openScene(next)}>
               {g.complete.next}
+              <span className="fm-btn__arrow" aria-hidden>
+                ➜
+              </span>
             </button>
           )}
           <button type="button" className="fm-btn fm-btn--secondary" onClick={store.replayScene}>

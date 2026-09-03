@@ -7,7 +7,7 @@ import { useI18n } from "@/i18n/client";
 import { errorText } from "@/i18n/errors";
 import { checkoutAction, type ActionResult } from "../create/actions";
 
-export function CheckoutForm({ defaultEmail, priceLabel, cancelled }: { defaultEmail: string; priceLabel: string; cancelled: boolean }) {
+export function CheckoutForm({ defaultEmail, priceLabel, cancelled, backHref }: { defaultEmail: string; priceLabel: string; cancelled: boolean; backHref: "/create/scenes" | "/create/package" }) {
   const { t, tf } = useI18n();
   const ck = t.create.checkout;
   const [state, action, pending] = useActionState<ActionResult | null, FormData>(checkoutAction, null);
@@ -27,8 +27,11 @@ export function CheckoutForm({ defaultEmail, priceLabel, cancelled }: { defaultE
           {tf(ck.pay, { price: priceLabel })}
         </Button>
       </div>
-      <LinkButton href="/create/scenes" variant="ghost">
-        {ck.backScenes}
+      <LinkButton href={backHref} variant="ghost">
+        <span className="fm-btn__arrow fm-btn__arrow--back" aria-hidden>
+          ➜
+        </span>
+        {backHref === "/create/package" ? ck.backPackage : ck.backScenes}
       </LinkButton>
     </form>
   );

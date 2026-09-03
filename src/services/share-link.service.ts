@@ -1,4 +1,4 @@
-import { hashToken, hmacSign, hmacVerify, newId } from "@/lib/ids";
+import { hashToken, hmacSign, newId, safeEqual } from "@/lib/ids";
 import { isPlayable } from "@/domain/order-state";
 import type { Container } from "./container";
 import { statusOf } from "./game-status";
@@ -11,8 +11,19 @@ import { audit, type Actor } from "./audit.service";
  * The DB keeps only a SHA-256 of the token for lookups/forensics.
  * Rotation = revoke row + create a new one (old links stop working instantly).
  */
-export function tokenForLink(c: Container, link: { id: string; createdAt: Date }): string {
-  return `${link.id}.${hmacSign(`share:${link.id}:${link.createdAt.getTime()}`, c.secret)}`;
+export function linkSignature(c: Pick<Container, "secret">, link: { id: string; createdAt: Date }): string {
+  return hmacSign(`share:${link.id}:${link.createdAt.getTime()}`, c.secret);
+}
+
+export function tokenForLink(c: Pick<Container, "secret">, link: { id: string; createdAt: Date }): string {
+  return `${link.id}.${linkSignature(c, link)}`;
+}
+
+/** Constant-time check of a `<linkId>.<hmac>` token against the link row. */
+export function verifyLinkToken(c: Pick<Container, "secret">, link: { id: string; createdAt: Date }, token: string): boolean {
+  const [id, sig] = token.split(".");
+  if (!id || !sig || id !== link.id) return false;
+  return safeEqual(linkSignature(c, link), sig);
 }
 
 export function playUrl(c: Container, token: string): string {
@@ -51,8 +62,7 @@ export async function resolvePlayToken(c: Container, token: string): Promise<Res
   if (!id || !sig || !id.startsWith("shr_")) return { ok: false, reason: "invalid" };
   const link = await c.db.shareLink.findUnique({ where: { id }, include: { game: { select: { id: true, status: true, configJson: true, title: true, deletedAt: true } } } });
   if (!link) return { ok: false, reason: "invalid" };
-  const expected = hmacSign(`share:${link.id}:${link.createdAt.getTime()}`, c.secret);
-  if (!hmacVerify(expected, sig, c.secret) && expected !== sig) return { ok: false, reason: "invalid" };
+  if (!verifyLinkToken(c, link, token)) return { ok: false, reason: "invalid" };
   if (hashToken(token) !== link.tokenHash) return { ok: false, reason: "invalid" };
   if (!link.active || (link.expiresAt && link.expiresAt.getTime() < Date.now()) || link.game.deletedAt) return { ok: false, reason: "revoked" };
   if (!isPlayable(statusOf(link.game))) return { ok: false, reason: "not-ready" };

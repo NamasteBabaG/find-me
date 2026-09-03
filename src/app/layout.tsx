@@ -18,10 +18,11 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
+// No maximumScale / userScalable: browser zoom stays available (a11y). The game
+// handles its own pinch gestures inside the viewport (touch-action: none).
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
   viewportFit: "cover",
   themeColor: "#FBF8F2",
 };

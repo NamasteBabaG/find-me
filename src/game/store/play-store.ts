@@ -4,7 +4,7 @@ import { create } from "zustand";
 import type { GameConfig, SceneConfig } from "@/domain/game/config";
 import { createMissionState, missionReducer, sceneSummary, type MissionAction, type MissionCopy, type MissionState } from "@/domain/game/mission";
 import { planScenePlay } from "@/domain/game/replay";
-import { collectibles, completedScenes, recordSceneCompleted, sceneProgress, type GameProgress } from "@/domain/game/progress";
+import { collectibles, completedScenes, emptyProgress, recordSceneCompleted, sceneProgress, type GameProgress } from "@/domain/game/progress";
 import { loadProgress, saveProgress } from "../engine/progress-storage";
 import { Telemetry } from "../engine/telemetry";
 import { sounds } from "../audio/sounds";
@@ -30,6 +30,8 @@ export interface PlayStore {
   telemetry: Telemetry;
 
   scene(): SceneConfig | null;
+  /** Load saved progress from this browser (after mount — the first render must match the server). */
+  hydrate(): void;
   reveal(): void;
   goToMap(): void;
   openScene(slug: string): void;
@@ -60,13 +62,15 @@ export interface PlayStoreOptions {
 
 export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
   const demo = Boolean(opts.demo);
-  const initialProgress = demo ? { v: 1 as const, gameId: config.gameId, revealed: true, scenes: {} } : loadProgress(config.gameId);
+  // Never touch localStorage here: the store is created during render, on the
+  // server too. Saved progress arrives via hydrate() after mount.
+  const initialProgress: GameProgress = demo ? { v: 1, gameId: config.gameId, revealed: true, scenes: {} } : emptyProgress(config.gameId);
   const telemetry = new Telemetry(config.gameId, !demo);
 
   const store = create<PlayStore>((set, get) => ({
     config,
     progress: initialProgress,
-    screen: demo || opts.skipGift || initialProgress.revealed ? "map" : "gift",
+    screen: demo || opts.skipGift ? "map" : "gift",
     sceneSlug: null,
     mission: null,
     muted: false,
@@ -76,6 +80,13 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     scene() {
       const slug = get().sceneSlug;
       return slug ? (get().config.scenes.find((s) => s.slug === slug) ?? null) : null;
+    },
+
+    hydrate() {
+      if (demo) return;
+      const progress = loadProgress(config.gameId);
+      const { screen } = get();
+      set({ progress, screen: screen === "gift" && progress.revealed ? "map" : screen });
     },
 
     reveal() {

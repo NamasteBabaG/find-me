@@ -86,8 +86,15 @@
 .fm-btn--block { width: 100%; }
 .fm-btn--icon { width: var(--control-h); padding-inline: 0; }
 .fm-btn--kid { min-height: var(--touch-kid); min-width: var(--touch-kid); font-family: var(--font-kid); font-size: var(--fs-400); }
+/* CTA arrows: one glyph (➜, pointing forward in LTR), flipped by CSS for RTL and for "back". Hover nudges it the way it points. */
 .fm-btn__arrow { display: inline-block; transition: transform var(--dur-2) var(--ease-out); }
-.fm-btn:hover .fm-btn__arrow { transform: translateX(-4px); }
+.fm-btn:hover .fm-btn__arrow { transform: translateX(4px); }
+[dir="rtl"] .fm-btn__arrow { transform: scaleX(-1); }
+[dir="rtl"] .fm-btn:hover .fm-btn__arrow { transform: scaleX(-1) translateX(4px); }
+.fm-btn__arrow--back { transform: scaleX(-1); }
+.fm-btn:hover .fm-btn__arrow--back { transform: scaleX(-1) translateX(4px); }
+[dir="rtl"] .fm-btn__arrow--back { transform: none; }
+[dir="rtl"] .fm-btn:hover .fm-btn__arrow--back { transform: translateX(4px); }
 
 /* Cards & surfaces */
 .fm-card { background: var(--white); border-radius: var(--radius-4); padding: var(--space-4); box-shadow: var(--shadow-1); border: 2px solid transparent; }

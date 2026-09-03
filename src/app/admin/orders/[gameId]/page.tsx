@@ -80,7 +80,14 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
                       const adj = t.adjust ?? { dx: 0, dy: 0, scale: 1 };
                       return (
                         <div key={t.id} className="target-row">
-                          <div className="target-row__thumb">{t.sprite.kind === "composed" ? <ComposedSprite faceUrl={t.sprite.faceUrl} bodyTemplate={t.sprite.bodyTemplate} /> : null}</div>
+                          <div className="target-row__thumb">
+                            {t.sprite.kind === "composed" ? (
+                              <ComposedSprite faceUrl={t.sprite.faceUrl} bodyTemplate={t.sprite.bodyTemplate} />
+                            ) : (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={t.sprite.url} alt={t.item} />
+                            )}
+                          </div>
                           <div className="fm-stack fm-stack--1">
                             <strong>{t.mission}</strong>
                             <span className="fm-small">

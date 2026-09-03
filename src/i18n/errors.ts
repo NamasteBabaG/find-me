@@ -24,7 +24,8 @@ export type FlowErrorCode =
   | "TOO_SMALL"
   | "UNREADABLE"
   | "NO_FILE"
-  | "UPLOAD_FAILED";
+  | "UPLOAD_FAILED"
+  | "CONSENT_REQUIRED";
 
 export interface FlowError {
   ok: false;
