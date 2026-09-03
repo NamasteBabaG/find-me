@@ -51,6 +51,8 @@ interface SpotReport {
   /** How much of the window the child will fill — small means "hard to find". */
   fill: number;
   problems: string[];
+  /** Whether a patch has been generated for this spot yet. */
+  generated: boolean;
 }
 
 /** Is this a place a child can be hidden well? */
@@ -79,7 +81,39 @@ function checkSpot(c: SlotInfo): SpotReport {
     problems.push("the paint area touches the edge of the window — nothing can occlude her there");
   }
   if (!c.target.slots.every((s) => s.hintZone)) problems.push("slot has no hint zone");
-  return { name: c.name, childPx, fill, problems };
+  // If this spot has already been generated, the hint has to point at where the
+  // child actually ended up — the model places her inside the paint area, not on
+  // the slot dot, and a hint that glows somewhere else is worse than no hint.
+  const meta = patchMeta(c);
+  if (meta) {
+    const cx = meta.hitRectNorm.x + meta.hitRectNorm.w / 2;
+    const cy = meta.hitRectNorm.y + meta.hitRectNorm.h / 2;
+    // The glow is a circle of radius `r` in width units, centred on the zone.
+    const dx = (cx - c.slot.hintZone.x) * c.art.width;
+    const dy = (cy - c.slot.hintZone.y) * c.art.height;
+    const r = c.slot.hintZone.r * c.art.width;
+    if (Math.hypot(dx, dy) > r) {
+      problems.push(`the generated child is outside the hint zone (${Math.round(Math.hypot(dx, dy))}px away, zone radius ${Math.round(r)}px)`);
+    }
+  }
+  return { name: c.name, childPx, fill, problems, generated: Boolean(meta) };
+}
+
+interface PatchMeta {
+  hitRectNorm: { x: number; y: number; w: number; h: number };
+  anchorNorm: { x: number; y: number };
+}
+
+/** The finished patch for this spot, if one has been generated. */
+function patchMeta(c: SlotInfo): PatchMeta | null {
+  const file = path.join(ROOT, flag("out", "public/demo/patches"), `${c.name}.json`);
+  if (!existsSync(file)) return null;
+  try {
+    const meta = JSON.parse(readFileSync(file, "utf-8")) as Partial<PatchMeta>;
+    return meta.hitRectNorm && meta.anchorNorm ? (meta as PatchMeta) : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The six windows of one world, with the paint area drawn, as one sheet. */
@@ -132,7 +166,11 @@ async function audit(slugs: string[]) {
     const { spots } = await contactSheet(slug);
     rows.push({ slug, spots });
     const bad = spots.filter((s) => s.problems.length > 0);
-    console.log(`${bad.length === 0 ? "ok  " : "warn"} ${slug.padEnd(9)} ${spots.length} spots, child ${Math.min(...spots.map((s) => s.childPx))}–${Math.max(...spots.map((s) => s.childPx))}px` + (bad.length ? `, ${bad.length} to look at` : ""));
+    const made = spots.filter((s) => s.generated).length;
+    console.log(
+      `${bad.length === 0 ? "ok  " : "warn"} ${slug.padEnd(9)} ${spots.length} spots, ${made} generated, child ${Math.min(...spots.map((s) => s.childPx))}–${Math.max(...spots.map((s) => s.childPx))}px` +
+        (bad.length ? `, ${bad.length} to look at` : ""),
+    );
     for (const s of bad) for (const p of s.problems) console.log(`       ${s.name}: ${p}`);
   }
   const html = [
