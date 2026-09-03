@@ -1,0 +1,8 @@
+assets/
+work/
+storage/
+prisma/*.db
+prisma/*.db-journal
+.next/
+node_modules/
+*.log

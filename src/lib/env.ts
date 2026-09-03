@@ -38,7 +38,9 @@ let cached: Env | null = null;
 
 export function env(): Env {
   if (cached) return cached;
-  const parsed = EnvSchema.safeParse(process.env);
+  const vercelUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL;
+  const raw = { ...process.env, APP_URL: process.env.APP_URL ?? (vercelUrl ? `https://${vercelUrl}` : undefined) };
+  const parsed = EnvSchema.safeParse(raw);
   if (!parsed.success) {
     throw new Error(`Invalid environment: ${parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(", ")}`);
   }

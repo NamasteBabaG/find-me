@@ -107,7 +107,7 @@ async function exportCrop(slug: string, targetId: string, variantArg?: string) {
 }
 
 /** Binary mask → the largest 4-connected blob plus blobs of at least `keep` × its area. */
-function keepMainBlobs(mask: Buffer, w: number, h: number, keep: number): Buffer {
+function keepMainBlobs(mask: Buffer, w: number, h: number, keep: number): { out: Buffer; largest: number; kept: number } {
   const n = w * h;
   const label = new Int32Array(n).fill(-1);
   const areas: number[] = [];
@@ -134,11 +134,12 @@ function keepMainBlobs(mask: Buffer, w: number, h: number, keep: number): Buffer
     const id = label[i] ?? -1;
     if (id >= 0 && (areas[id] ?? 0) >= largest * keep) out[i] = 255;
   }
-  console.log(`blobs: ${areas.length}, largest ${largest}px, kept ${areas.filter((a) => a >= largest * keep).length}`);
-  return out;
+  const kept = areas.filter((a) => a >= largest * keep).length;
+  console.log(`blobs: ${areas.length}, largest ${largest}px, kept ${kept}`);
+  return { out, largest, kept };
 }
 
-async function importPatch(slug: string, targetId: string, variantArg: string | undefined, editedPath: string) {
+async function importPatch(slug: string, targetId: string, variantArg: string | undefined, editedPath: string): Promise<{ largest: number; expected: number }> {
   const c = await context(slug, targetId, variantArg);
   const threshold = Number(flag("threshold", "28"));
   const feather = Number(flag("feather", "6"));
@@ -174,7 +175,8 @@ async function importPatch(slug: string, targetId: string, variantArg: string | 
   cleaned = await step(cleaned, (s) => s.threshold(60));
   // 2b. Keep the child: the largest connected blob plus any blob at least --keep (default 12%) of its area.
   //     Thin re-render drift on castle edges and such becomes small islands and is dropped here.
-  cleaned = keepMainBlobs(cleaned, c.rect.w, c.rect.h, Number(flag("keep", "0.12")));
+  const blobs = keepMainBlobs(cleaned, c.rect.w, c.rect.h, Number(flag("keep", "0.12")));
+  cleaned = blobs.out;
   cleaned = await step(cleaned, (s) => s.blur(feather));
   // 3. Bounding box of the kept pixels (+ margin) so the patch stays small.
   let minX = c.rect.w, minY = c.rect.h, maxX = -1, maxY = -1;
@@ -218,6 +220,8 @@ async function importPatch(slug: string, targetId: string, variantArg: string | 
   await sharp(preview).extract({ left: c.rect.x, top: c.rect.y, width: c.rect.w, height: c.rect.h }).png().toFile(path.join(WORK, `${c.name}.preview.png`));
   console.log(`imported ${c.name}: patch ${rect.w}×${rect.h} at (${rect.x},${rect.y}) → ${meta.url}`);
   console.log(`preview: work/patches/${c.name}.preview.png`);
+  // Expected footprint of a child of childPx height (roughly 0.75 wide, ~55% of the box filled).
+  return { largest: blobs.largest, expected: Math.round(c.childPx * c.childPx * 0.75 * 0.55) };
 }
 
 /**
@@ -256,19 +260,30 @@ async function generate(slug: string, targetId: string, variantArg?: string) {
     return { ok: res.ok && Boolean(json.data?.[0]?.b64_json), status: res.status, json };
   };
   const requested = flag("model", "gpt-image-2");
-  let attempt = await call(requested, requested === "gpt-image-1");
-  if (!attempt.ok && /input_fidelity/i.test(attempt.json.error?.message ?? attempt.json.error?.param ?? "")) attempt = await call(requested, false);
-  if (!attempt.ok && requested !== "gpt-image-1" && /model|not found|does not exist|access|permission|verif/i.test(attempt.json.error?.message ?? "")) {
-    console.log(`${requested} unavailable (${attempt.json.error?.message}); falling back to gpt-image-1`);
-    attempt = await call("gpt-image-1", true);
-    if (!attempt.ok && /input_fidelity/i.test(attempt.json.error?.message ?? "")) attempt = await call("gpt-image-1", false);
+  const tries = Number(flag("tries", "3"));
+  for (let attemptNo = 1; attemptNo <= tries; attemptNo++) {
+    console.log(`attempt ${attemptNo}/${tries}`);
+    let attempt = await call(requested, requested === "gpt-image-1");
+    if (!attempt.ok && /input_fidelity/i.test(attempt.json.error?.message ?? attempt.json.error?.param ?? "")) attempt = await call(requested, false);
+    if (!attempt.ok && requested !== "gpt-image-1" && /model|not found|does not exist|access|permission|verif/i.test(attempt.json.error?.message ?? "")) {
+      console.log(`${requested} unavailable (${attempt.json.error?.message}); falling back to gpt-image-1`);
+      attempt = await call("gpt-image-1", true);
+      if (!attempt.ok && /input_fidelity/i.test(attempt.json.error?.message ?? "")) attempt = await call("gpt-image-1", false);
+    }
+    if (!attempt.ok) throw new Error(`OpenAI error ${attempt.status}: ${attempt.json.error?.message ?? "unknown"}`);
+    const out = Buffer.from(attempt.json.data![0]!.b64_json!, "base64");
+    const editedPath = path.join(WORK, `${c.name}.edited.png`);
+    await sharp(out).resize(c.rect.w, c.rect.h, { kernel: "lanczos3" }).png().toFile(editedPath);
+    console.log(`edited crop saved: work/patches/${c.name}.edited.png`);
+    const result = await importPatch(slug, targetId, c.variant, editedPath).catch((e: Error) => ({ largest: 0, expected: 1, error: e.message }));
+    // Accept only when the largest painted blob is a plausible child (≥ 35% of the expected footprint).
+    if (result.largest >= result.expected * 0.35) {
+      console.log(`✓ accepted (${result.largest}px vs expected ≈ ${result.expected}px)`);
+      return;
+    }
+    console.log(`✗ rejected: painted blob ${result.largest}px, expected ≈ ${result.expected}px${"error" in result ? ` (${result.error})` : ""}`);
   }
-  if (!attempt.ok) throw new Error(`OpenAI error ${attempt.status}: ${attempt.json.error?.message ?? "unknown"}`);
-  const out = Buffer.from(attempt.json.data![0]!.b64_json!, "base64");
-  const editedPath = path.join(WORK, `${c.name}.edited.png`);
-  await sharp(out).resize(c.rect.w, c.rect.h, { kernel: "lanczos3" }).png().toFile(editedPath);
-  console.log(`edited crop saved: work/patches/${c.name}.edited.png`);
-  await importPatch(slug, targetId, c.variant, editedPath);
+  throw new Error(`gave up after ${tries} attempts — try a simpler --pose or a different slot`);
 }
 
 async function main() {
