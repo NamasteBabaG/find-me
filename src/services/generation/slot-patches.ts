@@ -4,7 +4,7 @@ import type { SceneDefinition, Target as SceneTarget } from "@/domain/scene/sche
 import { BODY_TEMPLATES } from "../../../content/body-templates";
 import type { Container } from "../container";
 import { storeAsset } from "../asset.service";
-import { diffToPatch, isPlausibleChild, paintMask, slotContext, slotPrompt, PROMPT_VERSION } from "./patch";
+import { childProblem, diffToPatch, paintMask, slotContext, slotPrompt, PROMPT_VERSION } from "./patch";
 import { loadSceneArt } from "./scene-art";
 
 /**
@@ -28,9 +28,6 @@ export interface PatchOutcome {
   model?: string;
   error?: string;
 }
-
-/** How much bigger than the child the painted blob may be before we call it a repaint. */
-const MAX_BLOB_FACTOR = 6;
 
 export function slotOf(target: SceneTarget, variant: Variant) {
   return variant === "A" ? target.slots[0] : target.slots[1];
@@ -100,14 +97,12 @@ export async function generateSlotPatch(
       model = edit.model;
       usage = edit.usage ?? usage;
       const patch = await diffToPatch({ originalCrop: crop, editedCrop: edit.png, ctx, art, slot });
-      // Too small means the model painted scenery, not a child; far too large
-      // means it re-rendered the whole crop and the "patch" is the window.
-      if (!isPlausibleChild(patch)) {
-        lastError = `painted blob ${patch.largest}px, expected ≈ ${patch.expected}px`;
-        continue;
-      }
-      if (patch.largest > patch.expected * MAX_BLOB_FACTOR) {
-        lastError = `the model repainted the crop (${patch.largest}px vs ≈ ${patch.expected}px)`;
+      // Store WHY a roll was rejected, not a generic summary. "too small",
+      // "wider than tall" and "painted somewhere else" need different fixes, and
+      // the stored reason is the only way to tell them apart afterwards.
+      const problem = childProblem(patch);
+      if (problem) {
+        lastError = problem;
         continue;
       }
       const asset = await storeAsset(c, {
