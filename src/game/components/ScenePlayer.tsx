@@ -247,6 +247,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           hintText={currentSlot?.hintText ?? null}
           onHint={() => dispatch({ type: "REQUEST_HINT" })}
           avatarUrl={store.config.child.avatarUrl}
+          minimal={store.demo}
         />
       ) : null}
 

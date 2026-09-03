@@ -17,15 +17,17 @@ interface Props {
   onHint: () => void;
   /** The child's face sticker; shown instead of the sprite when the sprite is a world patch. */
   avatarUrl?: string;
+  /** Landing demo: the question and the face, nothing else. */
+  minimal?: boolean;
 }
 
 /** Floating mission pill: who to look for, (progress when there is more than one), and the hint button. */
-export function MissionCard({ index, total, target, found, order, hintLevel, hintPulse, hintText, onHint, avatarUrl }: Props) {
+export function MissionCard({ index, total, target, found, order, hintLevel, hintPulse, hintText, onHint, avatarUrl, minimal = false }: Props) {
   const { g, tf } = useGameText();
   const isPatch = target?.sprite.kind === "image" && Boolean(target.sprite.rect);
   return (
     <section className="mission" aria-live="polite">
-      <div className="mission__thumb" aria-hidden>
+      <div className={`mission__thumb${isPatch && avatarUrl ? " mission__thumb--face" : ""}`} aria-hidden>
         {target ? (
           isPatch && avatarUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -49,11 +51,13 @@ export function MissionCard({ index, total, target, found, order, hintLevel, hin
           </div>
         ) : null}
         <h2 className="mission__text">{target?.mission ?? ""}</h2>
-        {hintLevel >= 1 && hintText ? <p className="mission__hint">💡 {hintText}</p> : null}
+        {!minimal && hintLevel >= 1 && hintText ? <p className="mission__hint">💡 {hintText}</p> : null}
       </div>
-      <button type="button" className={`mission__hintbtn${hintPulse ? " mission__hintbtn--pulse" : ""}`} onClick={onHint} aria-label={hintLevel >= 3 ? g.scene.hintLast : g.scene.hint} title={g.scene.hint} disabled={hintLevel >= 3}>
-        <span aria-hidden>💡</span>
-      </button>
+      {minimal ? null : (
+        <button type="button" className={`mission__hintbtn${hintPulse ? " mission__hintbtn--pulse" : ""}`} onClick={onHint} aria-label={hintLevel >= 3 ? g.scene.hintLast : g.scene.hint} title={g.scene.hint} disabled={hintLevel >= 3}>
+          <span aria-hidden>💡</span>
+        </button>
+      )}
     </section>
   );
 }

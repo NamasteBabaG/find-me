@@ -117,6 +117,7 @@
 /* Worlds */
 .worlds-sec { padding-block: var(--space-12); }
 .worlds { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+@media (min-width: 1024px) { .worlds { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); } }
 .world { position: relative; overflow: hidden; border-radius: var(--radius-4); background: var(--white); box-shadow: var(--shadow-1); transition: transform var(--dur-2) var(--ease-out), box-shadow var(--dur-2); }
 .world:hover { transform: translateY(-6px); box-shadow: var(--shadow-2); }
 .world__img { aspect-ratio: 16 / 10; overflow: hidden; }
