@@ -23,7 +23,7 @@ function config(sprite: SpriteRef, spriteByVariant?: { A?: SpriteRef; B?: Sprite
     locale: "en",
     child: { name: "Noa", avatarUrl: "/a.png" },
     styleVersion: "collage-v1",
-    packageTier: "SMALL",
+    packageTier: "ONE_WORLD",
     composedAt: new Date(0).toISOString(),
     scenes: [
       {
