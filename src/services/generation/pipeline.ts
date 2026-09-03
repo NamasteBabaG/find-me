@@ -65,6 +65,9 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
     data: { status: "RUNNING", attempts: { increment: 1 }, lastError: null },
   });
   if (claimed.count === 0) return; // someone else is already working on this game
+  // A game that failed and is being retried must not keep wearing the old error:
+  // a finished game carrying one makes "did this succeed?" impossible to answer.
+  if (game.lastError) await c.db.game.update({ where: { id: gameId }, data: { lastError: null } });
   const steps: Record<string, StepRecord> = JSON.parse(job.stepsJson || "{}");
   if (status === "PAID") c.analytics.track("generation_started", { gameId });
 
@@ -205,9 +208,12 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
       c.analytics.track("patches_generated", { generated: outcomes.length - failed.length, failed: failed.length, costCents: spent });
     }
     if (ranOutOfTime) {
-      // Leave the job RUNNING: nothing is lost, the next tick resumes here.
+      // Hand the lease back. Leaving it RUNNING would make the next tick wait
+      // for the lease to go stale, so a game would advance one slice every six
+      // minutes instead of continuously. Nothing is lost: the next tick resumes
+      // at the next unfinished hiding spot.
       await mark("targets", { status: "running" });
-      await c.db.generationJob.update({ where: { id: job.id }, data: { status: "RUNNING", currentStep: "targets" } });
+      await c.db.generationJob.update({ where: { id: job.id }, data: { status: "QUEUED", currentStep: "targets" } });
       console.log(`[generate] ${gameId}: out of time, ${outcomes.length} hiding spots done this slice`);
       return;
     }
