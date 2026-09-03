@@ -19,6 +19,14 @@ export function NameForm({ initialName }: { initialName: string }) {
         <input id="name" name="name" className="fm-input fm-input--lg" defaultValue={initialName} placeholder={n.placeholder} maxLength={24} minLength={2} required autoFocus autoComplete="off" />
         <p className="fm-hint">{n.hint}</p>
         {state && !state.ok ? <p className="fm-error">{errorText(t, state)}</p> : null}
+        {/* Nothing to create right now — at least hand them the thing that does work. */}
+        {state && !state.ok && state.code === "SERVICE_UNAVAILABLE" ? (
+          <p>
+            <a className="fm-btn fm-btn--secondary fm-btn--sm" href="/#demo">
+              {t.home.hero.demo}
+            </a>
+          </p>
+        ) : null}
       </div>
       <div className="create__actions">
         <span className="fm-small">{tf(t.common.stepOf, { n: 1, total: 5 })}</span>

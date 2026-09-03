@@ -22,9 +22,10 @@
  *       Default model gpt-image-2; falls back to gpt-image-1 automatically if the account cannot use it.
  *       Needs OPENAI_API_KEY (environment or .env). Costs one image generation per run.
  */
-import sharp from "sharp";
+import sharp, { type Sharp } from "sharp";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { hitBoxFromAlpha } from "./patch-hitbox";
 
 const ROOT = process.cwd();
 const WORK = path.join(ROOT, "work", "patches");
@@ -168,8 +169,8 @@ async function importPatch(slug: string, targetId: string, variantArg: string | 
   // 2. Open (erode → dilate) to drop compression speckle, then feather the edge.
   //    sharp applies operations in a fixed order per pipeline, so each step is its own pass.
   //    (blur promotes a single band to sRGB, so every pass is forced back to one channel.)
-  const step = async (buf: Buffer, apply: (s: sharp.Sharp) => sharp.Sharp) => apply(sharp(buf, rawMask)).extractChannel(0).raw().toBuffer();
-  let cleaned = await step(diff, (s) => s.blur(2));
+  const step = async (buf: Buffer, apply: (s: Sharp) => Sharp) => apply(sharp(buf, rawMask)).extractChannel(0).raw().toBuffer();
+  let cleaned: Buffer = await step(diff, (s) => s.blur(2));
   cleaned = await step(cleaned, (s) => s.threshold(150));
   cleaned = await step(cleaned, (s) => s.blur(3));
   cleaned = await step(cleaned, (s) => s.threshold(60));
@@ -191,11 +192,6 @@ async function importPatch(slug: string, targetId: string, variantArg: string | 
     }
   }
   if (maxX < 0) throw new Error("no changed pixels found — is this the edited version of the exported crop?");
-  // Where the head is: centre of the kept pixels in the top quarter of the blob — the bubble hangs from here.
-  let headSum = 0, headCount = 0;
-  const headBand = minY + Math.max(4, Math.round((maxY - minY) * 0.25));
-  for (let y = minY; y <= headBand; y++) for (let x = minX; x <= maxX; x++) if (cleaned[y * c.rect.w + x]! > 128) { headSum += x; headCount++; }
-  const anchor = { x: c.rect.x + (headCount ? headSum / headCount : (minX + maxX) / 2), y: c.rect.y + minY };
   const m = 8;
   const box = { left: Math.max(0, minX - m), top: Math.max(0, minY - m), width: Math.min(c.rect.w, maxX + m + 1) - Math.max(0, minX - m), height: Math.min(c.rect.h, maxY + m + 1) - Math.max(0, minY - m) };
   const rgba = await sharp(edited.data, { raw: { width: c.rect.w, height: c.rect.h, channels: 3 } }).joinChannel(cleaned, rawMask).png().toBuffer();
@@ -203,6 +199,11 @@ async function importPatch(slug: string, targetId: string, variantArg: string | 
   const patchPath = path.join(outDir, `${c.name}.webp`);
   writeFileSync(patchPath, patch);
   const rect: Rect = { x: c.rect.x + box.left, y: c.rect.y + box.top, w: box.width, h: box.height };
+  // The tap contract: the patch is DRAWN at `rect`, but a child taps the painted
+  // figure and the bubble hangs from her head — never the slot this was generated
+  // at, which sits lower (see src/game/engine/target-geometry.ts).
+  const solid = await sharp(patch).ensureAlpha().extractChannel(3).raw().toBuffer({ resolveWithObject: true });
+  const hb = hitBoxFromAlpha(solid.data, solid.info.width, solid.info.height);
   const meta = {
     slug,
     targetId,
@@ -210,9 +211,13 @@ async function importPatch(slug: string, targetId: string, variantArg: string | 
     url: `/${path.relative(path.join(ROOT, "public"), patchPath).split(path.sep).join("/")}`,
     rect,
     rectNorm: { x: rect.x / c.W, y: rect.y / c.H, w: rect.w / c.W, h: rect.h / c.H },
+    /** The painted child's own footprint, in art fractions: this is the hitbox. */
+    hitRectNorm: { x: (rect.x + hb.hitRect.x) / c.W, y: (rect.y + hb.hitRect.y) / c.H, w: hb.hitRect.w / c.W, h: hb.hitRect.h / c.H },
+    /** Top-centre of the head, in art fractions: bubbles and hints point here. */
+    anchorNorm: { x: (rect.x + hb.anchor.x) / c.W, y: (rect.y + hb.anchor.y) / c.H },
     slot: { x: c.slot.x, y: c.slot.y, scale: c.slot.scale },
-    /** Top-centre of the painted child in art pixels (speech bubbles hang from here). */
-    anchor: { x: Math.round(anchor.x), y: Math.round(anchor.y) },
+    /** Top-centre of the painted child in art pixels. */
+    anchor: { x: Math.round(rect.x + hb.anchor.x), y: Math.round(rect.y + hb.anchor.y) },
     art: { width: c.W, height: c.H },
   };
   writeFileSync(path.join(outDir, `${c.name}.json`), JSON.stringify(meta, null, 2));

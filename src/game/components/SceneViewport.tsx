@@ -4,11 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SceneConfig, TargetConfig } from "@/domain/game/config";
 import type { MissionState } from "@/domain/game/mission";
 import { currentTargetId, isFound } from "@/domain/game/mission";
-import { slotFor } from "@/domain/game/replay";
 import type { HintLevel } from "@/domain/game/hints";
 import { expandRect, hitPadding, hitTest, spriteRect, stageToScreen, type HitCandidate, type NormRect } from "../engine/viewport-math";
+import { spriteAspect, targetGeometry } from "../engine/target-geometry";
 import { useViewport, type ViewportApi } from "../engine/useViewport";
-import { Sprite, spriteAspect } from "./Sprite";
+import { Sprite } from "./Sprite";
 
 export type Hit = { kind: "target"; id: string } | { kind: "bonus" } | { kind: "ambient"; id: string } | { kind: "miss"; x: number; y: number };
 
@@ -46,14 +46,7 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
   bonusFoundRef.current = bonusFound;
 
   const placedTargets = useMemo(
-    () =>
-      scene.targets.map((t) => {
-        const variant = mission.plan.variants[t.id] ?? "A";
-        const slot = slotFor(scene, t.id, variant);
-        const adj = t.adjust ?? { dx: 0, dy: 0, scale: 1 };
-        const sprite = t.spriteByVariant?.[variant] ?? t.sprite;
-        return { target: t, slot, sprite, anchor: { x: slot.x + adj.dx, y: slot.y + adj.dy, scale: slot.scale * adj.scale } };
-      }),
+    () => scene.targets.map((t) => ({ target: t, ...targetGeometry(scene, t, mission.plan.variants[t.id] ?? "A") })),
     [scene, mission.plan.variants],
   );
 
@@ -73,9 +66,10 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
       const candidates: HitCandidate<Hit>[] = [];
       for (const p of placedTargets) {
         if (isFound(m, p.target.id)) continue;
-        const rect = spriteRect(p.anchor, stage, spriteAspect(p.sprite));
-        const pad = hitPadding(rect, stage, scale);
-        candidates.push({ id: { kind: "target", id: p.target.id }, rect: expandRect(rect, pad.padX, pad.padY), zIndex: 50 + p.slot.zIndex });
+        // p.hitRect is the child's own footprint — for a slot patch that is not
+        // the slot anchor, so the head is inside it (see target-geometry).
+        const pad = hitPadding(p.hitRect, stage, scale);
+        candidates.push({ id: { kind: "target", id: p.target.id }, rect: expandRect(p.hitRect, pad.padX, pad.padY), zIndex: 50 + p.slot.zIndex });
       }
       if (bonus && !bonusFoundRef.current) {
         const rect = spriteRect(bonus.anchor, stage, 1);
@@ -200,7 +194,7 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
         })}
         {hintLevel >= 3 && currentPlaced
           ? (() => {
-              const p = stageToScreen(transform, currentPlaced.anchor.x * stage.width, currentPlaced.anchor.y * stage.height);
+              const p = stageToScreen(transform, currentPlaced.head.x * stage.width, currentPlaced.head.y * stage.height);
               return (
                 <span key={`mag-${current}`} className="magnifier" style={{ left: p.x, top: p.y }}>
                   🔍
@@ -215,11 +209,10 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
 }
 
 /**
- * Where a target sits in stage pixels. Overlays keep this and project it with
- * the *current* transform on every render, so they follow zooms and pans.
+ * Where a target's head sits in stage pixels. Overlays keep this and project it
+ * with the *current* transform on every render, so they follow zooms and pans.
  */
 export function targetStagePoint(scene: SceneConfig, target: TargetConfig, variant: "A" | "B"): { x: number; y: number } {
-  const slot = variant === "A" ? target.slots[0] : target.slots[1];
-  const adj = target.adjust ?? { dx: 0, dy: 0, scale: 1 };
-  return { x: (slot.x + adj.dx) * scene.art.width, y: (slot.y + adj.dy) * scene.art.height };
+  const { head } = targetGeometry(scene, target, variant);
+  return { x: head.x * scene.art.width, y: head.y * scene.art.height };
 }

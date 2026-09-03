@@ -74,7 +74,7 @@ export const en = {
       photoAlt: "A clear photo of a child, shoulders and up",
       characterAlt: "The illustrated character made from the photo",
       worldAlt: "The character found in the beach world, glowing, with a speech bubble",
-      points: ["Drawn to resemble your child, not a generic avatar", "Same illustration style as the worlds, so hiding is fair", "The photo is deleted once the character is ready"],
+      points: ["Drawn to resemble your child, not a generic avatar", "Same illustration style as the worlds, so hiding is fair", "The photo is deleted once the game is approved"],
     },
     how: {
       pill: "⏱️ Under a minute of work for the parent",
@@ -426,7 +426,7 @@ export const en = {
     UNREADABLE: "We couldn't read that file.",
     NO_FILE: "No file was received.",
     UPLOAD_FAILED: "Something went wrong. Try another photo.",
-    SERVICE_UNAVAILABLE: "Creating games is paused for a moment. The demo below works — please try again shortly.",
+    SERVICE_UNAVAILABLE: "Creating games is paused for a moment. Try the live demo on the home page, and come back in a little while.",
     CONSENT_REQUIRED: "Please confirm you're the parent or guardian, or have permission to upload this photo.",
   } as Record<string, string>,
   email: {

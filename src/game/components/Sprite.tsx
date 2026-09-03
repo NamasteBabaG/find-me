@@ -9,9 +9,3 @@ export function Sprite({ sprite, className, title }: { sprite: SpriteRef; classN
   }
   return <ComposedSprite faceUrl={sprite.faceUrl} bodyTemplate={sprite.bodyTemplate} className={className} title={title} />;
 }
-
-/** Aspect of the child's footprint (used for hit-testing and non-patch drawing). A patch hides a child of roughly 3:4. */
-export function spriteAspect(sprite: SpriteRef): number {
-  if (sprite.kind === "image") return sprite.rect ? 0.75 : sprite.width / sprite.height;
-  return 100 / 140;
-}

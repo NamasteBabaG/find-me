@@ -13,7 +13,8 @@ import { sceneBySlug } from "./scene-catalog.service";
  */
 const DEMO_FACE = "/demo/noa-face.png";
 
-type PatchMeta = { url: string; rect: { w: number; h: number }; rectNorm: { x: number; y: number; w: number; h: number } };
+type ArtRect = { x: number; y: number; w: number; h: number };
+type PatchMeta = { url: string; rect: { w: number; h: number }; rectNorm: ArtRect; hitRectNorm?: ArtRect; anchorNorm?: { x: number; y: number } };
 
 /** A slot patch made by scripts/slot-patch.ts for this scene/target/variant, if present. */
 function demoPatch(slug: string, targetId: string, variant: "A" | "B"): SpriteRef | null {
@@ -21,7 +22,8 @@ function demoPatch(slug: string, targetId: string, variant: "A" | "B"): SpriteRe
   if (!existsSync(file)) return null;
   try {
     const m = JSON.parse(readFileSync(file, "utf-8")) as PatchMeta;
-    return { kind: "image", url: m.url, width: m.rect.w, height: m.rect.h, rect: m.rectNorm };
+    // hitRect/anchor come from the patch's own alpha: tapping the head has to count.
+    return { kind: "image", url: m.url, width: m.rect.w, height: m.rect.h, rect: m.rectNorm, hitRect: m.hitRectNorm, anchor: m.anchorNorm };
   } catch {
     return null;
   }

@@ -1,5 +1,6 @@
 import type { SceneConfig } from "@/domain/game/config";
-import { Sprite, spriteAspect } from "./Sprite";
+import { spriteAspect, targetGeometry } from "../engine/target-geometry";
+import { Sprite } from "./Sprite";
 
 /**
  * Non-interactive render of a scene with all three targets at one variant.
@@ -7,21 +8,16 @@ import { Sprite, spriteAspect } from "./Sprite";
  * keeps it exact at any size because the box has the art's aspect ratio.
  */
 export function StaticScenePreview({ scene, variant, showZones = false, labels = true }: { scene: SceneConfig; variant: "A" | "B"; showZones?: boolean; labels?: boolean }) {
-  const items = scene.targets.map((t) => {
-    const slot = variant === "A" ? t.slots[0] : t.slots[1];
-    const adj = t.adjust ?? { dx: 0, dy: 0, scale: 1 };
-    const sprite = t.spriteByVariant?.[variant] ?? t.sprite;
-    return { t, slot, sprite, x: slot.x + adj.dx, y: slot.y + adj.dy, scale: slot.scale * adj.scale };
-  });
+  const items = scene.targets.map((t) => ({ t, ...targetGeometry(scene, t, variant) }));
   const render = (layer: "front" | "behindForeground") =>
     items
       .filter((i) => (i.slot.layer ?? "front") === layer)
-      .map(({ t, slot, sprite, x, y, scale }) => {
+      .map(({ t, slot, sprite, anchor, isPatch }) => {
         const rect = sprite.kind === "image" ? sprite.rect : undefined;
         // A slot patch is a piece of the world painted with the child: draw it exactly where it was cut from (same as SceneViewport).
-        const box: React.CSSProperties = rect
+        const box: React.CSSProperties = isPatch && rect
           ? { left: `${rect.x * 100}%`, top: `${rect.y * 100}%`, width: `${rect.w * 100}%`, height: `${rect.h * 100}%`, zIndex: slot.zIndex, transform: slot.flip ? "scaleX(-1)" : "none" }
-          : { left: `${x * 100}%`, top: `${y * 100}%`, height: `${scale * 100}%`, aspectRatio: String(spriteAspect(sprite)), zIndex: slot.zIndex, transform: `translate(-50%, -50%) rotate(${slot.rotation}deg)${slot.flip ? " scaleX(-1)" : ""}` };
+          : { left: `${anchor.x * 100}%`, top: `${anchor.y * 100}%`, height: `${anchor.scale * 100}%`, aspectRatio: String(spriteAspect(sprite)), zIndex: slot.zIndex, transform: `translate(-50%, -50%) rotate(${slot.rotation}deg)${slot.flip ? " scaleX(-1)" : ""}` };
         return (
           <div key={t.id} className="scene-preview__sprite" style={box}>
             <Sprite sprite={sprite} className="stage__sprite" title={t.item} />
@@ -44,9 +40,17 @@ export function StaticScenePreview({ scene, variant, showZones = false, labels =
             <div key={`${t.id}-zone`} className="scene-preview__zone" style={{ left: `${slot.hintZone.x * 100}%`, top: `${slot.hintZone.y * 100}%`, width: `${slot.hintZone.r * 200}%`, aspectRatio: "1", zIndex: 30 }} />
           ))
         : null}
+      {/* QA: the box a child actually taps, and the point the bubble hangs from. */}
+      {showZones
+        ? items.map(({ t, hitRect, head }) => (
+            <div key={`${t.id}-hit`} className="scene-preview__hit" style={{ left: `${hitRect.x0 * 100}%`, top: `${hitRect.y0 * 100}%`, width: `${(hitRect.x1 - hitRect.x0) * 100}%`, height: `${(hitRect.y1 - hitRect.y0) * 100}%`, zIndex: 32 }}>
+              <span className="scene-preview__head" style={{ left: `${((head.x - hitRect.x0) / (hitRect.x1 - hitRect.x0)) * 100}%`, top: `${((head.y - hitRect.y0) / (hitRect.y1 - hitRect.y0)) * 100}%` }} />
+            </div>
+          ))
+        : null}
       {labels
-        ? items.map(({ t, x, y, scale }) => (
-            <span key={`${t.id}-label`} className="scene-preview__label" style={{ left: `${x * 100}%`, top: `calc(${(y + scale / 2) * 100}% + 4px)`, zIndex: 31 }}>
+        ? items.map(({ t, anchor }) => (
+            <span key={`${t.id}-label`} className="scene-preview__label" style={{ left: `${anchor.x * 100}%`, top: `calc(${(anchor.y + anchor.scale / 2) * 100}% + 4px)`, zIndex: 33 }}>
               {t.item} · {variant}
             </span>
           ))

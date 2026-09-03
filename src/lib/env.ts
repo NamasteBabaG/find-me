@@ -4,11 +4,14 @@ import { z } from "zod";
  * Server-side environment, validated once. Everything defaults to a mock
  * so `npm run dev` works with zero external accounts.
  */
+/** The one value that must never reach production: it signs sessions and asset URLs. */
+const DEV_SESSION_SECRET = "dev-only-session-secret-change-me";
+
 const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   DATABASE_URL: z.string().default("file:./dev.db"),
   APP_URL: z.string().url().default("http://localhost:3000"),
-  SESSION_SECRET: z.string().min(16).default("dev-only-session-secret-change-me"),
+  SESSION_SECRET: z.string().min(16).default(DEV_SESSION_SECRET),
 
   PAYMENT_PROVIDER: z.enum(["mock", "payme"]).default("mock"),
   GENERATION_PROVIDER: z.enum(["mock", "replicate", "openai"]).default("mock"),
@@ -43,6 +46,9 @@ export function env(): Env {
   const parsed = EnvSchema.safeParse(raw);
   if (!parsed.success) {
     throw new Error(`Invalid environment: ${parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(", ")}`);
+  }
+  if (parsed.data.NODE_ENV === "production" && parsed.data.SESSION_SECRET === DEV_SESSION_SECRET) {
+    throw new Error("SESSION_SECRET is still the development default — set a real one before deploying (it signs sessions and asset URLs).");
   }
   cached = parsed.data;
   return cached;

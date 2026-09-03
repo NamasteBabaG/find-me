@@ -41,7 +41,14 @@ function build(): Container {
   const e = env();
   const storageRoot = path.resolve(process.cwd(), e.STORAGE_LOCAL_DIR);
 
-  if (e.STORAGE_PROVIDER === "supabase") throw new Error("STORAGE_PROVIDER=supabase is not implemented yet — use \"db\" or \"local\"");
+  // A provider that is named but not built must never fall back silently: that is
+  // how a deploy ends up "configured for OpenAI" while quietly serving mocks.
+  const notBuilt = (key: string, value: string, use: string) => {
+    throw new Error(`${key}=${value} is not implemented yet — use ${use} (src/services/container.ts)`);
+  };
+  if (e.STORAGE_PROVIDER === "supabase") notBuilt("STORAGE_PROVIDER", e.STORAGE_PROVIDER, '"db" or "local"');
+  if (e.GENERATION_PROVIDER !== "mock") notBuilt("GENERATION_PROVIDER", e.GENERATION_PROVIDER, '"mock"');
+  if (e.ANALYTICS_PROVIDER === "posthog") notBuilt("ANALYTICS_PROVIDER", e.ANALYTICS_PROVIDER, '"console" or "none"');
   const storage: StorageProvider = e.STORAGE_PROVIDER === "db" ? new DbStorage(prisma) : new LocalDiskStorage(storageRoot);
 
   const payment: PaymentProvider = e.PAYMENT_PROVIDER === "payme" ? new PayMeProvider(e.PAYME_SELLER_ID ?? "", e.PAYME_WEBHOOK_SECRET ?? "") : new MockPaymentProvider(e.APP_URL, e.SESSION_SECRET);
@@ -64,6 +71,7 @@ function build(): Container {
   };
 
   container.jobs.register("generate-game", ({ gameId }) => runGenerationPipeline(container, gameId));
+  warnAboutMocks(e);
   return container;
 }
 
@@ -72,4 +80,18 @@ const g = globalThis as unknown as { __findmeContainer?: Container };
 export function getContainer(): Container {
   if (!g.__findmeContainer) g.__findmeContainer = build();
   return g.__findmeContainer;
+}
+
+/**
+ * Production may run on mocks on purpose (the public demo does), but it must say
+ * so out loud — "it looked configured" is not an acceptable way to lose a payment.
+ */
+function warnAboutMocks(e: ReturnType<typeof env>): void {
+  if (e.NODE_ENV !== "production") return;
+  const mocks: string[] = [];
+  if (e.PAYMENT_PROVIDER === "mock") mocks.push("payments are simulated (no money moves)");
+  if (e.EMAIL_PROVIDER === "console") mocks.push("email is written to disk, not sent");
+  if (e.STORAGE_PROVIDER === "local") mocks.push("assets go to local disk, which a serverless host throws away");
+  mocks.push("child sprites come from the procedural mock, not a real generator");
+  console.warn(`[container] PRODUCTION IS RUNNING ON MOCKS: ${mocks.join("; ")}.`);
 }

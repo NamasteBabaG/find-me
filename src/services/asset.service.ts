@@ -1,4 +1,4 @@
-import sharp from "sharp";
+import sharp, { type Metadata } from "sharp";
 import { hmacSign, newId, safeEqual } from "@/lib/ids";
 import type { Container } from "./container";
 
@@ -14,7 +14,7 @@ export type PhotoCheck = { ok: true; width: number; height: number; mimeType: st
 /** Photo quality gate — the parent-facing reasons are mapped in the UI copy. */
 export async function checkPhoto(buffer: Buffer, declaredMime: string): Promise<PhotoCheck> {
   if (buffer.byteLength > MAX_UPLOAD_BYTES) return { ok: false, code: "TOO_LARGE", reason: "התמונה גדולה מדי (עד 12MB)." };
-  let meta: sharp.Metadata;
+  let meta: Metadata;
   try {
     meta = await sharp(buffer, { failOn: "none" }).metadata();
   } catch {

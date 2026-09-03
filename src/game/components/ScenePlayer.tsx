@@ -7,6 +7,7 @@ import { shouldPulseHint } from "@/domain/game/hints";
 import { slotFor } from "@/domain/game/replay";
 import { sounds } from "../audio/sounds";
 import { stageToScreen } from "../engine/viewport-math";
+import { targetGeometry } from "../engine/target-geometry";
 import type { ViewportApi } from "../engine/useViewport";
 import { SceneViewport, targetStagePoint, type Hit } from "./SceneViewport";
 import { MissionCard } from "./MissionCard";
@@ -85,8 +86,8 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
         const target = scene.targets.find((t) => t.id === fb.targetId);
         if (target && api) {
           const variant = mission.plan.variants[fb.targetId] ?? "A";
-          const slot = slotFor(scene, fb.targetId, variant);
-          api.focusOn(slot.x, slot.y, Math.max(1.6, api.transform.scale / api.fit), 450);
+          const { center } = targetGeometry(scene, target, variant);
+          api.focusOn(center.x, center.y, Math.max(1.6, api.transform.scale / api.fit), 450);
           setTimeout(() => placeBubble(fb.targetId, fb.bubble), 460);
         }
         setBurst({ key: Date.now(), small: true });
@@ -304,7 +305,8 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store }: { scene: Sce
               </span>
             </button>
           )}
-          <button type="button" className="fm-btn fm-btn--secondary" onClick={store.replayScene}>
+          {/* In the demo the frame is short, so replay is a quiet second option. */}
+          <button type="button" className={`fm-btn ${store.demo ? "fm-btn--ghost fm-btn--sm" : "fm-btn--secondary"}`} onClick={store.replayScene}>
             {g.complete.again}
           </button>
           {!store.demo ? (

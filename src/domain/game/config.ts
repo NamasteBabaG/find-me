@@ -11,6 +11,10 @@ import type { PackageTier } from "../package";
  * All copy is already in the game's locale and personalised.
  */
 
+/** A rectangle in fractions of the scene art (0..1), the same space slots use. */
+const ArtRectSchema = z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1), w: z.number().positive().max(1), h: z.number().positive().max(1) });
+export type ArtRect = z.infer<typeof ArtRectSchema>;
+
 export const SpriteRefSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("composed"),
@@ -27,9 +31,17 @@ export const SpriteRefSchema = z.discriminatedUnion("kind", [
     /**
      * Slot patch: the sprite is a piece of the world with the child painted in
      * (see docs/SPRITE_PATCHES.md). Drawn at this rect (fractions of the art)
-     * instead of the slot anchor; hit-testing still uses the slot footprint.
+     * instead of the slot anchor.
      */
-    rect: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1), w: z.number().positive().max(1), h: z.number().positive().max(1) }).optional(),
+    rect: ArtRectSchema.optional(),
+    /**
+     * Where the child inside the patch can be tapped (fractions of the art).
+     * The patch rect can carry shadow and repainted scenery, so this is the
+     * child's own footprint. Falls back to `rect`.
+     */
+    hitRect: ArtRectSchema.optional(),
+    /** Top-centre of the head (fractions of the art): bubbles and hints point here. */
+    anchor: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) }).optional(),
   }),
 ]);
 export type SpriteRef = z.infer<typeof SpriteRefSchema>;

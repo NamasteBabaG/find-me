@@ -229,7 +229,9 @@ export function validateSceneDefinition(input: unknown): SceneValidation & { sce
   }
 
   if (!mentionsName(scene.celebration.completeText)) warnings.push("celebration.completeText does not mention {name} in both languages");
-  if (scene.artStatus === "placeholder" && scene.active) warnings.push("scene is active with placeholder art");
+  // Publish gate: a world children actually play must have finished art. Draft art
+  // is fine while authoring — just not with active: true.
+  if (scene.artStatus !== "final" && scene.active) errors.push(`scene is active with ${scene.artStatus} art — set artStatus to "final" or active to false`);
 
   return { ok: errors.length === 0, errors, warnings, scene };
 }

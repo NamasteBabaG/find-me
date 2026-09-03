@@ -147,7 +147,29 @@ export function automatedQa(config: unknown): string[] {
       for (const s of t.slots) {
         if (s.x < 0.02 || s.x > 0.98 || s.y < 0.02 || s.y > 0.98) problems.push(`${scene.slug}/${t.id}: slot ${s.id} too close to the edge`);
       }
-      if (t.sprite.kind === "image" && !t.sprite.url) problems.push(`${scene.slug}/${t.id}: sprite has no url`);
+      // Check every sprite that can actually be drawn, not just the default:
+      // a per-variant slot patch belongs to one hiding spot (spriteByVariant).
+      const drawn: [string, typeof t.sprite][] = [["sprite", t.sprite]];
+      if (t.spriteByVariant?.A) drawn.push(["variant A", t.spriteByVariant.A]);
+      if (t.spriteByVariant?.B) drawn.push(["variant B", t.spriteByVariant.B]);
+      for (const [label, sprite] of drawn) {
+        if (sprite.kind !== "image") continue;
+        if (!sprite.url) problems.push(`${scene.slug}/${t.id}: ${label} has no url`);
+        if (!sprite.rect) continue;
+        const r = sprite.rect;
+        if (r.x + r.w > 1.0001 || r.y + r.h > 1.0001) problems.push(`${scene.slug}/${t.id}: ${label} patch extends outside the scene`);
+        // Without these a tap on the child's head misses (see target-geometry).
+        if (!sprite.hitRect) problems.push(`${scene.slug}/${t.id}: ${label} patch has no hitRect`);
+        if (!sprite.anchor) problems.push(`${scene.slug}/${t.id}: ${label} patch has no head anchor`);
+        const hit = sprite.hitRect;
+        if (hit && (hit.x < r.x - 0.001 || hit.y < r.y - 0.001 || hit.x + hit.w > r.x + r.w + 0.001 || hit.y + hit.h > r.y + r.h + 0.001)) {
+          problems.push(`${scene.slug}/${t.id}: ${label} hitRect is not inside the patch`);
+        }
+        const a = sprite.anchor;
+        if (a && hit && (a.x < hit.x - 0.001 || a.x > hit.x + hit.w + 0.001 || a.y < hit.y - 0.001 || a.y > hit.y + hit.h + 0.001)) {
+          problems.push(`${scene.slug}/${t.id}: ${label} head anchor is outside the hitRect`);
+        }
+      }
     }
   }
   if (!parsed.data.child.avatarUrl) problems.push("missing avatar");

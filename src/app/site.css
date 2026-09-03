@@ -302,6 +302,8 @@
 .scene-preview__sprite { position: absolute; transform: translate(-50%, -50%); }
 .scene-preview__label { position: absolute; transform: translate(-50%, 0); font-size: 10px; line-height: 16px; background: var(--ink); color: var(--white); padding: 0 var(--space-0-5); border-radius: var(--radius-1); white-space: nowrap; }
 .scene-preview__zone { position: absolute; transform: translate(-50%, -50%); border-radius: var(--radius-pill); border: 2px dashed var(--berry); opacity: 0.6; }
+.scene-preview__hit { position: absolute; border: 2px solid var(--grape); border-radius: var(--radius-1); opacity: 0.8; }
+.scene-preview__head { position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: var(--grape); }
 .target-row { display: grid; grid-template-columns: auto 1fr auto; gap: var(--space-2); align-items: center; background: var(--white); border-radius: var(--radius-2); padding: var(--space-2); box-shadow: var(--shadow-1); }
 .target-row__thumb { width: var(--space-8); height: var(--space-10); background: var(--paper-2); border-radius: var(--radius-1); display: grid; place-items: center; }
 .target-row__thumb svg, .target-row__thumb img { width: 100%; height: 100%; object-fit: contain; }

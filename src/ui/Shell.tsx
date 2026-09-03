@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { isDev } from "@/lib/env";
 import { getI18n } from "@/i18n/server";
 import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
 
@@ -61,8 +62,13 @@ export async function SiteFooter() {
             <span className="fm-footer__title">{t.footer.account}</span>
             <Link href="/library">{t.common.myGames}</Link>
             <Link href="/#trust">{t.footer.privacy}</Link>
-            <Link href="/design-system">{t.footer.designSystem}</Link>
-            <Link href="/dev/outbox">{t.footer.outbox}</Link>
+            {/* Developer pages: /dev/outbox is 404 in production and the design system is not for visitors. */}
+            {isDev() ? (
+              <>
+                <Link href="/design-system">{t.footer.designSystem}</Link>
+                <Link href="/dev/outbox">{t.footer.outbox}</Link>
+              </>
+            ) : null}
           </div>
         </div>
         <div className="fm-footer__bottom">

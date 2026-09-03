@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { getContainer } from "@/services/container";
 import { activeScenes } from "@/services/scene-catalog.service";
-import { selectScenes } from "@/services/create-flow.service";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
 import { PACKAGES, isPackageTier } from "@/domain/package";
 import { getI18n } from "@/i18n/server";
@@ -24,12 +23,11 @@ export default async function CreateScenesPage() {
   const active = await activeScenes(c);
   const preselected = draft.scenes.map((s) => s.sceneSlug);
 
-  // Nothing to choose: the package takes every active world. Select them all and go straight to checkout.
-  if (active.length === want) {
-    const all = active.map((s) => s.slug);
-    const alreadySelected = preselected.length === want && all.every((slug) => preselected.includes(slug));
-    if (alreadySelected || (await selectScenes(c, draft.id, all)).ok) redirect("/checkout");
-  }
+  // Nothing to choose: the package takes every active world, and the package step
+  // already stored that selection. Rendering a page must never write, so we only
+  // skip ahead when the draft is already complete; otherwise the picker posts it.
+  const all = active.map((s) => s.slug);
+  if (active.length === want && preselected.length === want && all.every((slug) => preselected.includes(slug))) redirect("/checkout");
 
   const scenes = active.map((s) => ({ slug: s.slug, name: pick(s.name, locale), tagline: pick(s.tagline, locale), thumbnail: s.art.thumbnail }));
   return (
