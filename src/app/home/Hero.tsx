@@ -80,7 +80,7 @@ export function Hero({ children }: { children?: ReactNode }) {
       const rect = el.getBoundingClientRect();
       const noa = noaRef.current;
       const d = Math.hypot((p.x - noa.x) * rect.width, (p.y - noa.y) * rect.height);
-      setLit(d < Math.max(84, rect.width * 0.06));
+      setLit(d < 90);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);

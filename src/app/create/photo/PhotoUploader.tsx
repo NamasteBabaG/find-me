@@ -13,7 +13,7 @@ interface Props {
   rejectedCode: string | null;
 }
 
-const BOX = 320;
+const BOX_MAX = 320;
 
 /**
  * Pick → crop (drag + zoom inside a circle) → upload.
@@ -32,6 +32,23 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode }: Props) {
   const [error, setError] = useState<string | null>(rejectedCode ? errorText(t, { code: rejectedCode }) : null);
   const [over, setOver] = useState(false);
   const drag = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
+  const cropperRef = useRef<HTMLDivElement | null>(null);
+  const errorRef = useRef<HTMLDivElement | null>(null);
+  // The visible crop box: 320px on desktop, narrower on phones. The crop math must use the real size.
+  const [BOX, setBox] = useState(BOX_MAX);
+
+  useEffect(() => {
+    const el = cropperRef.current;
+    if (!el) return;
+    const measure = () => setBox(Math.round(el.getBoundingClientRect().width) || BOX_MAX);
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [url]);
+
+  useEffect(() => {
+    if (error) errorRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [error]);
 
   useEffect(() => () => {
     if (url) URL.revokeObjectURL(url);
@@ -85,7 +102,7 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode }: Props) {
     fd.append("crop", JSON.stringify(crop));
     try {
       const res = await fetch("/api/drafts/photo", { method: "POST", body: fd });
-      const data = (await res.json()) as { ok: boolean; code?: string; reason?: string };
+      const data = (await res.json().catch(() => ({ ok: false, code: "UPLOAD_FAILED", reason: `HTTP ${res.status}` }))) as { ok: boolean; code?: string; reason?: string };
       if (!data.ok) {
         setError(errorText(t, { code: data.code ?? "UPLOAD_FAILED", reason: data.reason }) || p.failed);
         setBusy(false);
@@ -100,7 +117,11 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode }: Props) {
 
   return (
     <div className="uploader">
-      {error ? <Notice kind="danger">{error}</Notice> : null}
+      {error ? (
+        <div ref={errorRef} className="uploader__error">
+          <Notice kind="danger">{error}</Notice>
+        </div>
+      ) : null}
 
       {!url ? (
         <>
@@ -143,12 +164,18 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode }: Props) {
       ) : (
         <>
           <p className="fm-lead fm-center">{p.cropLead}</p>
-          <div className="cropper" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} role="img" aria-label={p.cropAria}>
+          <div ref={cropperRef} className="cropper" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} role="img" aria-label={p.cropAria}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={url}
               alt=""
               onLoad={(e) => setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+              onError={() => {
+                setError(p.unreadable);
+                setFile(null);
+                setUrl(null);
+                setNatural(null);
+              }}
               style={{ width: drawW || undefined, height: drawH || undefined, transform: `translate(${offset.x}px, ${offset.y}px)` }}
               draggable={false}
             />

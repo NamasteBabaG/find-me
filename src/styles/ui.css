@@ -204,7 +204,7 @@
 
 /* Phone overrides — last on purpose so they win over the base rules above */
 @media (max-width: 720px) {
-  .fm-section { padding-block: var(--space-5); }
+  .fm-section { padding-block: var(--space-3); }
   .fm-card--pad-4, .fm-card--pad-6 { padding: var(--space-3); }
   .fm-header__inner { min-height: var(--space-8); }
   .fm-sheet { padding: var(--space-5) var(--space-3); }

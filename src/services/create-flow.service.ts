@@ -59,8 +59,13 @@ export async function setChildName(c: Container, gameId: string, rawName: string
 export async function attachPhoto(c: Container, gameId: string, input: { buffer: Buffer; mimeType: string; crop: CropBox | null }): Promise<FlowResult> {
   const game = await loadDraft(c, gameId);
   if (!game || !game.childProfile) return flowError("NEED_NAME", "קודם צריך להכניס שם.");
-  if (!isEditableDraft(statusOf(game))) return flowError("DRAFT_LOCKED", "הטיוטה כבר לא ניתנת לעריכה.");
+  const status = statusOf(game);
+  if (!isEditableDraft(status)) return flowError("DRAFT_LOCKED", "הטיוטה כבר לא ניתנת לעריכה.");
 
+  // Coming back from checkout: the state machine only allows a photo change from the package step,
+  // so rewind first (the unpaid order simply stays pending and is reused at the next checkout).
+  if (status === "PAYMENT_FAILED") await transitionGame(c, gameId, "CHECKOUT_PENDING", SYSTEM, { reason: "photo change" });
+  if (status === "CHECKOUT_PENDING" || status === "PAYMENT_FAILED") await transitionGame(c, gameId, "PACKAGE_SELECTED", SYSTEM, { reason: "photo change" });
   await transitionGame(c, gameId, "PHOTO_UPLOADED", SYSTEM);
   await transitionGame(c, gameId, "PHOTO_VALIDATING", SYSTEM);
   const check = await checkPhoto(input.buffer, input.mimeType);

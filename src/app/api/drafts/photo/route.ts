@@ -30,8 +30,13 @@ export async function POST(req: Request) {
     }
   }
   const buffer = Buffer.from(await file.arrayBuffer());
-  const result = await attachPhoto(c, game.id, { buffer, mimeType: file.type, crop });
-  return NextResponse.json(result, { status: result.ok ? 200 : 422 });
+  try {
+    const result = await attachPhoto(c, game.id, { buffer, mimeType: file.type, crop });
+    return NextResponse.json(result, { status: result.ok ? 200 : 422 });
+  } catch (err) {
+    console.error("[photo upload] failed", err);
+    return NextResponse.json({ ok: false, code: "UPLOAD_FAILED", reason: err instanceof Error ? err.message : "unknown" }, { status: 500 });
+  }
 }
 
 function clamp01(n: number): number {

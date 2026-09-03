@@ -175,6 +175,7 @@ export const en = {
       confirm: "That's the one ➜",
       privacy: "The photo is only used to create the character and is deleted after the game is approved.",
       badType: "Please upload a JPG, PNG or WebP.",
+      unreadable: "We couldn't open that image. Try a JPG or PNG straight from your phone or camera.",
       failed: "Something went wrong. Try another photo.",
       network: "Connection failed. Please try again.",
     },
