@@ -29,6 +29,17 @@ export interface PatchOutcome {
   error?: string;
 }
 
+/**
+ * How many rolls one hiding spot may ever cost, across all ticks.
+ *
+ * Retrying is normal — most spots land within four — but a slot the model
+ * simply cannot paint will fail forever, and nothing stopped it: one spot spent
+ * thirteen rolls and a third of a game's budget before this existed. A spot
+ * that hits the cap is left FAILED for a human to look at; the game still ships,
+ * because a target with no patch falls back to the procedural sprite.
+ */
+const MAX_ATTEMPTS_PER_SPOT = 6;
+
 export function slotOf(target: SceneTarget, variant: Variant) {
   return variant === "A" ? target.slots[0] : target.slots[1];
 }
@@ -59,6 +70,9 @@ export async function generateSlotPatch(
 
   const existing = await c.db.targetVariantAsset.findUnique({ where: { targetInstanceId_variant: { targetInstanceId: input.targetInstanceId, variant } } });
   if (existing && (existing.status === "GENERATED" || existing.status === "APPROVED")) return { ...base, costCents: existing.costCents, attempts: existing.attempts };
+  if (existing && existing.attempts >= MAX_ATTEMPTS_PER_SPOT) {
+    return { ...base, costCents: existing.costCents, attempts: existing.attempts, error: `gave up after ${existing.attempts} attempts: ${existing.lastError ?? "no reason recorded"}` };
+  }
   const row =
     existing ??
     (await c.db.targetVariantAsset.create({
