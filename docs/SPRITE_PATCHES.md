@@ -134,6 +134,29 @@ merely resembles the input. Three things turn that into a clean patch, and all t
 3. **Shape check.** `childProblem()` refuses a patch that is not roughly the height we asked for,
    is wider than it is tall, or is centred away from the slot. Area alone passes a repainted sandcastle.
 
+## When a spot fails
+
+Roughly one roll in four comes back unusable, in one of two ways, and both are
+caught rather than shipped:
+
+* **Nothing was painted.** The diff finds only blurry fragments of scenery — the
+  model ignored the request for that window. `childProblem()` rejects it as too
+  small or not child-shaped.
+* **The whole crop was repainted.** `images/edits` re-rendered the window instead
+  of editing it, so the "patch" is the entire 648px crop. Rejected as far taller
+  than the child we asked for.
+
+Both are stochastic, so the fix is another roll: `prepare-boards generate` skips
+spots that already have a patch, which makes a retry pass cheap and targeted.
+
+```bash
+npx tsx scripts/prepare-boards.ts generate park ship --tries=4   # only the missing spots
+```
+
+A spot that keeps failing is usually telling you something about the slot: too
+little to hide behind, or a situation the model cannot picture. `--pose` gives it
+a concrete instruction, and moving the slot is a legitimate answer.
+
 ## Rules that keep it excellent
 
 - The context crop must include the objects that will occlude the child (castle, parasol, rock): the
