@@ -104,6 +104,8 @@ export interface OpenAiOptions {
   perMinute?: number;
   /** How many times to retry one image before giving up. */
   tries?: number;
+  /** Give up on a single request after this long. */
+  timeoutMs?: number;
 }
 
 export class OpenAiAvatarProvider implements AvatarProvider {
@@ -112,12 +114,14 @@ export class OpenAiAvatarProvider implements AvatarProvider {
   private readonly model: string;
   private readonly quality: string;
   private readonly tries: number;
+  private readonly timeoutMs: number;
 
   constructor(private readonly apiKey: string, options: OpenAiOptions = {}) {
     if (!apiKey) throw new Error("OPENAI_API_KEY is required for GENERATION_PROVIDER=openai");
     this.model = options.model ?? "gpt-image-2";
     this.quality = options.quality ?? "medium";
     this.tries = options.tries ?? 3;
+    this.timeoutMs = options.timeoutMs ?? 180_000;
     this.limiter = new RateLimiter(options.perMinute ?? 5);
   }
 
@@ -136,7 +140,13 @@ export class OpenAiAvatarProvider implements AvatarProvider {
       form.append("size", parts.size);
       form.append("quality", this.quality);
       form.append("n", "1");
-      const res = await fetch(API, { method: "POST", headers: { Authorization: `Bearer ${this.apiKey}` }, body: form });
+      // Without a deadline one hung request stalls every remaining hiding spot;
+      // a generation that has not answered in three minutes is not coming back.
+      const res = await fetch(API, { method: "POST", headers: { Authorization: `Bearer ${this.apiKey}` }, body: form, signal: AbortSignal.timeout(this.timeoutMs) }).catch((err: Error) => err);
+      if (res instanceof Error) {
+        lastError = res.name === "TimeoutError" ? `timed out after ${Math.round(this.timeoutMs / 1000)}s` : res.message;
+        continue;
+      }
       const json = (await res.json()) as { data?: Array<{ b64_json?: string }>; usage?: Usage; error?: { message?: string } };
       const b64 = json.data?.[0]?.b64_json;
       if (res.ok && b64) {

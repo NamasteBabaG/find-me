@@ -4,6 +4,7 @@ import { getContainer } from "@/services/container";
 import { orderDetailForAdmin } from "@/services/admin.service";
 import { ensurePlayerLink } from "@/services/share-link.service";
 import { parseGameConfig } from "@/domain/game/config";
+import { withFreshAssetUrls } from "@/services/asset.service";
 import { formatPriceILS } from "@/domain/package";
 import { isPlayable } from "@/domain/order-state";
 import { StaticScenePreview } from "@/game/components/StaticScenePreview";
@@ -18,7 +19,8 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
   const detail = await orderDetailForAdmin(c, gameId);
   if (!detail) notFound();
   const { game, status, costCents, activity, awaitingQa, playable } = detail;
-  const config = game.configJson ? parseGameConfig(game.configJson) : null;
+  // Asset signatures expire; the stored config is re-signed on the way out.
+  const config = game.configJson ? withFreshAssetUrls(getContainer(), parseGameConfig(game.configJson)) : null;
   const order = game.orders[0] ?? null;
   const playUrl = isPlayable(status) ? (await ensurePlayerLink(c, gameId)).url : null;
   const avatarId = game.childProfile?.avatarAssetId;

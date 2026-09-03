@@ -15,6 +15,7 @@ Parent Web App (Next.js App Router)
 Services (src/services) ── use-cases, receive the Container explicitly
   create-flow · order · publish · game · share-link · auth · asset
   scene-catalog · progress · admin · generation/pipeline · generation/scene-composer
+  generation/patch (slot-patch maths) · generation/slot-patches · generation/scene-art
         │
         ├── Domain (src/domain) — pure TS, tested
         │     package · order-state (state machine) · scene/schema (zod)
@@ -22,7 +23,7 @@ Services (src/services) ── use-cases, receive the Container explicitly
         │
         └── Infra (src/infra) — one interface per provider, mock by default
               db (Prisma) · storage (local | supabase*) · payment (mock | payme*)
-              generation (mock sticker | replicate* | openai*) · email (console | resend)
+              generation (mock sticker | openai identity sheet + inpaint | replicate*) · email (console | resend)
               analytics (console | posthog*) · jobs (in-process | trigger*/inngest*)
                                                   * = adapter stub / to be written
 ```
@@ -63,7 +64,11 @@ edge: GENERATION_FAILED · CANCELLED · REFUNDED · DELETED
 4. **Checkout** — המייל יוצר `User` רך, `Order(PENDING)`, `PaymentProvider.createCheckout()` → redirect.
 5. **Webhook** — `POST /api/webhooks/payment` → `handlePaymentWebhook`: אימות חתימה, `PaymentEvent` ייחודי (idempotency), אימות סכום, `PAID`, `jobs.enqueue("generate-game")`.
 6. **Pipeline** (`services/generation/pipeline.ts`) — צעדים אידמפוטנטיים עם `GenerationJob.stepsJson`:
-   `avatar` (מדלג אם קיים) → `targets` (יוצר `TargetInstance` חסרים, מדלג על GENERATED) → `compose` → `qa` (בדיקות מבניות).
+   `avatar` → `targets` → `compose` → `qa`.
+   עם ספק אמיתי (`GENERATION_PROVIDER=openai`) הצעד הראשון מייצר **גיליון זהות** אחד לילד
+   (`IDENTITY_SHEET`, PRIVATE) והאווטאר נחתך ממנו; הצעד השני מצייר את הילד **לתוך** העולם, מחבוא
+   אחד בכל פעם, ושומר שורת `TargetVariantAsset` לכל (מטרה, וריאנט) עם גאומטריה, מודל, usage, נסיונות
+   ועלות. כך אפשר לאשר, לדחות ולייצר מחדש מחבוא בודד. ראה `docs/SPRITE_PATCHES.md`.
 7. **Publish** (`publish.service.ts`) — `APPROVED → READY`, יצירת `ShareLink`, **מחיקת תמונת המקור** (אלא אם `retainOriginalPhoto`), מייל, `DELIVERED`.
 8. **Play** — `/play/<token>` → `resolvePlayToken` → `GameShell(config)`.
 
@@ -92,7 +97,7 @@ GameShell (screens: gift → map → scene → passport)
 
 ## 7. נתונים (prisma/schema.prisma)
 
-User · MagicLinkToken · Session · ChildProfile · Game · GameScene · TargetInstance · Asset · Order · PaymentEvent · ShareLink · GenerationJob · PlaySession · ProgressEvent · SceneOverride · AuditLog.
+User · MagicLinkToken · Session · ChildProfile · Game · GameScene · TargetInstance · **TargetVariantAsset** · Asset · Order · PaymentEvent · ShareLink · GenerationJob · PlaySession · ProgressEvent · SceneOverride · AuditLog.
 
 בכוונה **ללא enums ו־Json**: מחרוזות המאומתות בדומיין/zod, כדי ש־SQLite (dev) ו־Postgres (prod) יהיו זהים. מעבר ל־Postgres: `provider = "postgresql"` + `prisma migrate`.
 

@@ -17,7 +17,7 @@
  *     → a real patch per spot, plus the measured cost per spot. Needs OPENAI_API_KEY.
  */
 import sharp, { type OverlayOptions } from "sharp";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { allScenes } from "../content/scenes";
 import type { SceneDefinition } from "../src/domain/scene/schema";
@@ -163,6 +163,7 @@ async function generateAll(slugs: string[]) {
   const outDir = path.join(ROOT, flag("out", "public/demo/patches"));
   const tries = Number(flag("tries", "3"));
   const only = flag("target", "");
+  const force = process.argv.includes("--force");
 
   const results: Array<{ name: string; ok: boolean; cents: number; ms: number; attempts: number; model?: string; note?: string }> = [];
   for (const slug of slugs) {
@@ -171,6 +172,11 @@ async function generateAll(slugs: string[]) {
       if (only && target.id !== only) continue;
       for (const variant of variants) {
         const c = slotOf(slug, target.id, variant);
+        // Restarting a run should never pay again for a spot that is already done.
+        if (!force && existsSync(path.join(outDir, `${c.name}.webp`))) {
+          console.log(`skip ${c.name} (already generated; --force to redo)`);
+          continue;
+        }
         const started = Date.now();
         let cents = 0;
         let attempts = 0;

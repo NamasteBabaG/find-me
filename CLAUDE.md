@@ -32,13 +32,24 @@ content/body-templates גופים לדמות המורכבת
 public/scenes/*        ארט (base/foreground/thumb)
 prisma/schema.prisma   DB (SQLite dev / Postgres prod; ללא enums/Json בכוונה)
 src/domain             חוקים טהורים: package, order-state, scene/schema, game/*
-src/infra              אדפטרים: db, storage, payment, generation, email, analytics, jobs
+src/infra              אדפטרים: db, storage, payment, generation (mock | openai), email, analytics, jobs
 src/services           use-cases; container.ts הוא ה־composition root
+src/services/generation patch.ts (חשבון ה־slot patch, משותף לסקריפט ולצינור), slot-patches, pipeline
 src/game               renderer: engine (viewport, gestures), store, components, audio
 src/ui + src/styles    מערכת העיצוב
 src/app                routes (דקים — קוראים ל־services)
 docs/                  תיעוד
 ```
+
+## המחבואים (slot patches)
+
+הרקעים מרונדרים פעם אחת. מה שמתרנדר לכל ילד זה רק **המחבוא**: חלון קטן מהעולם שהילד מצויר לתוכו.
+החשבון היחיד נמצא ב־`src/services/generation/patch.ts` — הסקריפט והצינור חייבים לעבור דרכו.
+
+- לכל פאץ' יש חוזה לחיצה: `rect` (איפה מציירים), `hitRect` (הגבולות האמיתיים של הילד), `anchor` (הראש).
+  `src/game/engine/target-geometry.ts` הוא המקום היחיד שמחשב אותם — ציור, לחיצה ובועה חייבים לקרוא לו.
+- `npx tsx scripts/prepare-boards.ts audit` בודק את כל 54 המחבואים בלי לשלם, ומצייר את החלון של כל אחד.
+- ראה `docs/SPRITE_PATCHES.md`.
 
 ## איך מוסיפים עולם
 
