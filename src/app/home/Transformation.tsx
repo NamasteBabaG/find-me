@@ -20,10 +20,15 @@ import { Reveal } from "./Reveal";
 const PHOTO = { url: "/demo/example-photo.jpg", file: path.join(process.cwd(), "public", "demo", "example-photo.jpg") };
 const CHARACTER = { url: "/demo/example-character.webp", file: path.join(process.cwd(), "public", "demo", "example-character.webp") };
 const DEMO_TEMPLATE = "beach_float";
-/** The world card is a 4:5 crop of the beach; the character sits at a real "peek from behind the parasol" slot, sized like the other beach people. */
+/**
+ * The world card is a 4:5 crop of the beach. The character hides behind the sandcastle:
+ * the beach foreground layer carries a copy of the castle (scripts/add-foreground-patch.ts),
+ * so her lower half is covered and only head and shoulders peek out, sized like the beach people.
+ * Coordinates are fractions of the base art; height is a fraction of the art height.
+ */
 const WORLD_ASPECT = 4 / 5;
 const WORLD_POS_X = 0.2;
-const WORLD_FIGURE_BOOST = 1.3;
+const WORLD_SPOT = { x: 0.257, y: 0.62, height: 0.072 };
 
 /**
  * "From photo to character": photo → the illustrated character → that character
@@ -35,12 +40,11 @@ export async function Transformation() {
   const demo = buildDemoConfig(locale, "beach");
   const child = demo.child;
   const beach = sceneBySlug("beach");
-  const peekTarget = beach.targets.find((x) => x.slots.some((s) => s.layer === "behindForeground")) ?? beach.targets[0];
-  const slot = peekTarget?.slots.find((s) => s.layer === "behindForeground") ?? peekTarget?.slots[0];
-  const foundLine = peekTarget?.success[0] ? pick(peekTarget.success[0], locale) : t.home.hero.found;
+  const castleTarget = beach.targets.find((x) => x.bodyTemplate === "beach_sandcastle") ?? beach.targets[0];
+  const foundLine = castleTarget?.success[0] ? pick(castleTarget.success[0], locale) : t.home.hero.found;
   const visibleW = beach.art.height * WORLD_ASPECT;
   const windowLeft = (beach.art.width - visibleW) * WORLD_POS_X;
-  const spotStyle = slot ? { left: `${((slot.x * beach.art.width - windowLeft) / visibleW) * 100}%`, top: `${slot.y * 100}%`, height: `${slot.scale * WORLD_FIGURE_BOOST * 100}%` } : undefined;
+  const spotStyle = { left: `${((WORLD_SPOT.x * beach.art.width - windowLeft) / visibleW) * 100}%`, top: `${WORLD_SPOT.y * 100}%`, height: `${WORLD_SPOT.height * 100}%` };
   const templateLabel = pick(BODY_TEMPLATES[DEMO_TEMPLATE]!.label, locale);
   const hasPhoto = existsSync(PHOTO.file);
   const hasCharacter = existsSync(CHARACTER.file);
