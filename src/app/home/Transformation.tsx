@@ -1,24 +1,49 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import Link from "next/link";
+import { BODY_TEMPLATES } from "../../../content/body-templates";
 import { getI18n } from "@/i18n/server";
+import { pick } from "@/i18n";
+import { buildDemoConfig } from "@/services/demo";
+import { sceneBySlug } from "@/services/scene-catalog.service";
+import { ComposedSprite } from "@/game/components/ComposedSprite";
 import { Reveal } from "./Reveal";
 
-/** Drop a real photo (shoulders and up) here and the placeholder card disappears. */
-const EXAMPLE_PHOTO_URL = "/demo/example-photo.jpg";
-const EXAMPLE_PHOTO_FILE = path.join(process.cwd(), "public", "demo", "example-photo.jpg");
-/** The illustrated character made from that photo (Noa's sticker until the real pair exists). */
-const EXAMPLE_STICKER_URL = "/demo/noa-face.png";
+/**
+ * Two optional files turn this section into the real thing:
+ *  - public/demo/example-photo.jpg      the "uploaded" photo (a generic child, shoulders and up)
+ *  - public/demo/example-character.png  the same child illustrated in our style, full or half body,
+ *                                        transparent background, roughly 500×700
+ * Until they exist: a dashed placeholder for the photo, and the system's own composed
+ * character (face sticker + body template) — which is also exactly what the game hides.
+ */
+const PHOTO = { url: "/demo/example-photo.jpg", file: path.join(process.cwd(), "public", "demo", "example-photo.jpg") };
+const CHARACTER = { url: "/demo/example-character.png", file: path.join(process.cwd(), "public", "demo", "example-character.png") };
+const DEMO_TEMPLATE = "beach_float";
 
 /**
- * "From photo to character": the one thing a parent has to believe before
- * paying — the illustration really looks like their child, and that is who
- * gets hidden in the worlds. Photo → character → hidden in the world.
+ * "From photo to character": photo → the illustrated character → that character
+ * hidden in a world, glowing with a speech bubble the way it does when found.
  */
 export async function Transformation() {
-  const { t } = await getI18n();
+  const { t, locale } = await getI18n();
   const tr = t.home.transform;
-  const hasPhoto = existsSync(EXAMPLE_PHOTO_FILE);
+  const demo = buildDemoConfig(locale, "beach");
+  const child = demo.child;
+  const beach = sceneBySlug("beach");
+  const floatTarget = beach.targets.find((x) => x.bodyTemplate === DEMO_TEMPLATE) ?? beach.targets[0];
+  const foundLine = floatTarget?.success[0] ? pick(floatTarget.success[0], locale) : t.home.hero.found;
+  const templateLabel = pick(BODY_TEMPLATES[DEMO_TEMPLATE]!.label, locale);
+  const hasPhoto = existsSync(PHOTO.file);
+  const hasCharacter = existsSync(CHARACTER.file);
+
+  const figure = (className: string) =>
+    hasCharacter ? (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={CHARACTER.url} alt="" className={className} loading="lazy" draggable={false} />
+    ) : (
+      <ComposedSprite faceUrl={child.avatarUrl} bodyTemplate={DEMO_TEMPLATE} className={className} title={`${child.name} · ${templateLabel}`} />
+    );
 
   return (
     <section id="transform" className="tf" aria-labelledby="tf-title">
@@ -34,7 +59,7 @@ export async function Transformation() {
             <div className="tf-card__media tf-card__media--photo">
               {hasPhoto ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={EXAMPLE_PHOTO_URL} alt={tr.photoAlt} loading="lazy" />
+                <img src={PHOTO.url} alt={tr.photoAlt} loading="lazy" />
               ) : (
                 <div className="tf-placeholder" role="img" aria-label={tr.photoAlt}>
                   <span className="tf-placeholder__icon" aria-hidden>
@@ -49,20 +74,22 @@ export async function Transformation() {
           </Reveal>
 
           <Reveal as="li" className="tf-card" delay={90}>
-            <div className="tf-card__media tf-card__media--sticker">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={EXAMPLE_STICKER_URL} alt={tr.characterAlt} className="fm-sticker tf-sticker" width={168} height={168} loading="lazy" />
-              <span className="tf-tag">{tr.characterTag}</span>
+            <div className="tf-card__media tf-card__media--sticker" role="img" aria-label={tr.characterAlt}>
+              {figure("tf-figure tf-figure--big")}
+              <span className="tf-tag">
+                {child.name} · {templateLabel}
+              </span>
             </div>
             <span className="tf-card__label">{tr.character.label}</span>
             <p className="tf-card__text">{tr.character.text}</p>
           </Reveal>
 
           <Reveal as="li" className="tf-card" delay={180}>
-            <div className="tf-card__media tf-card__media--world" style={{ backgroundImage: "url(/scenes/beach/base.webp)" }} role="img" aria-label={tr.world.label}>
-              <span className="tf-world__ring" aria-hidden />
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={EXAMPLE_STICKER_URL} alt="" className="fm-sticker tf-world__noa" width={64} height={64} loading="lazy" />
+            <div className="tf-card__media tf-card__media--world" style={{ backgroundImage: `url(${beach.art.base})` }} role="img" aria-label={tr.worldAlt}>
+              <div className="tf-world__spot">
+                <span className="tf-world__bubble">{foundLine}</span>
+                {figure("tf-figure tf-figure--found")}
+              </div>
             </div>
             <span className="tf-card__label">{tr.world.label}</span>
             <p className="tf-card__text">{tr.world.text}</p>

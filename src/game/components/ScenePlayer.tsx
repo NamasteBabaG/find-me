@@ -98,7 +98,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
       case "wrongTarget": {
         sounds().play("boing");
         placeBubble(fb.targetId, fb.bubble);
-        const t = setTimeout(() => setBubble(null), 1800);
+        const t = setTimeout(() => setBubble(null), 2600);
         dispatch({ type: "CLEAR_FEEDBACK" });
         return () => clearTimeout(t);
       }

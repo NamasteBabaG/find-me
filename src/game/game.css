@@ -65,7 +65,8 @@
 .stage__layer { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
 .stage__layer--fg { z-index: 20; }
 .stage__target { position: absolute; pointer-events: none; }
-.stage__target--found { filter: drop-shadow(0 0 6px var(--sun)); }
+.stage__target--found { z-index: 29; animation: tgt-shine 1.4s var(--ease-in-out) infinite; }
+@keyframes tgt-shine { 0%, 100% { filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 8px var(--sun)) drop-shadow(0 0 18px rgba(255, 182, 30, 0.7)); } 50% { filter: drop-shadow(0 0 3px #fff) drop-shadow(0 0 14px var(--sun)) drop-shadow(0 0 30px rgba(255, 182, 30, 1)); } }
 .tgt-anim { width: 100%; height: 100%; transform-origin: 50% 90%; }
 .stage__sprite { width: 100%; height: 100%; display: block; filter: drop-shadow(0 2px 2px rgba(43, 42, 51, 0.35)); }
 .stage__bonus { position: absolute; transform: translate(-50%, -50%); pointer-events: none; z-index: 30; animation: fm-float 3s var(--ease-in-out) infinite; }

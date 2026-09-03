@@ -22,7 +22,7 @@ export function ComposedSprite({ faceUrl, bodyTemplate, className, title }: { fa
   const face = (cx: number, cy: number, r: number) => (
     <g>
       <circle cx={cx} cy={cy} r={r + 2} fill="#fff" />
-      <image href={faceUrl} x={cx - r} y={cy - r} width={r * 2} height={r * 2} clipPath={`circle(${r}px at ${cx}px ${cy}px)`} preserveAspectRatio="xMidYMid slice" />
+      <image href={faceUrl} x={cx - r} y={cy - r} width={r * 2} height={r * 2} clipPath={`circle(${r}px at ${r}px ${r}px)`} preserveAspectRatio="xMidYMid slice" />
     </g>
   );
 
