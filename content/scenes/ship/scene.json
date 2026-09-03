@@ -216,10 +216,10 @@
         "en": "Whale splashing",
         "he": "לווייתן מתיז מים"
       },
-      "x": 0.87,
+      "x": 0.8,
       "y": 0.3,
-      "w": 0.2,
-      "h": 0.16,
+      "w": 0.17,
+      "h": 0.14,
       "animation": "bounce",
       "sound": "splash",
       "reaction": {
