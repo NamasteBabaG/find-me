@@ -71,7 +71,7 @@ function Shell({ config, demo = false, skipGift = false, parentZoneHref, autoSta
       default:
         return (
           <>
-            <WorldMap config={config} progress={state.progress} onOpen={state.openScene} onPassport={state.openPassport} demo={demo} />
+            <WorldMap config={config} progress={state.progress} onOpen={state.openScene} onPassport={state.openPassport} demo={demo} travelFrom={state.travelFrom} onTravelDone={state.endTravel} />
             {parentZoneHref ? (
               <p className="game__parents">
                 <Link href={parentZoneHref}>{g.parents}</Link>

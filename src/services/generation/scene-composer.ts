@@ -1,10 +1,11 @@
-import { composeGame, composeScene, type TargetSpriteInput } from "@/domain/game/compose";
+import { composeGame, composeScene, composeWorld, type TargetSpriteInput } from "@/domain/game/compose";
 import { TargetAdjustSchema, type GameConfig, type SceneConfig, type SpriteRef } from "@/domain/game/config";
 import { isPackageTier } from "@/domain/package";
 import type { Locale } from "@/i18n/config";
 import type { Container } from "../container";
 import { signedAssetUrl } from "../asset.service";
 import { sceneBySlug } from "../scene-catalog.service";
+import { worldForBoard } from "../world-catalog.service";
 
 /**
  * Resolves DB rows into the player-facing GameConfig. This is the ONLY place
@@ -62,7 +63,19 @@ export async function composeGameConfig(c: Container, gameId: string): Promise<G
 
   const gift = game.giftJson ? (JSON.parse(game.giftJson) as { fromName?: string; message?: string }) : undefined;
 
-  return composeGame({ gameId: game.id, child, packageTier: game.packageTier, styleVersion: game.styleVersion, locale, scenes, gift });
+  // The journey these boards belong to. A game spanning several worlds shows the
+  // one it is currently in; the world hub is what moves between them.
+  const world = worldForBoard(game.scenes[0]?.sceneSlug ?? "");
+  return composeGame({
+    gameId: game.id,
+    child,
+    packageTier: game.packageTier,
+    styleVersion: game.styleVersion,
+    locale,
+    scenes,
+    world: world ? composeWorld(world, child, locale) : undefined,
+    gift,
+  });
 }
 
 export async function persistGameConfig(c: Container, gameId: string): Promise<GameConfig> {

@@ -149,3 +149,75 @@
   .game--demo .complete__title { font-size: var(--fs-400); line-height: var(--lh-400); }
   .game--demo .complete__stamp { top: calc(var(--space-1) * -1); font-size: var(--fs-200); padding: var(--space-0-5) var(--space-2); }
 }
+
+/* ── World map ──────────────────────────────────────────────
+   One painted illustration with the journey drawn on top. The art is
+   scenery; every node, label and the marker is a DOM layer, so they follow
+   progress, language and direction. Node state is never colour alone: a
+   completed node carries a stamp, the current one carries the child. */
+/* The map keeps its own shape, so the column centres around it rather than
+   stretching a landscape picture down a portrait screen. */
+.wmap { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: var(--space-3); padding: var(--space-3); background: linear-gradient(180deg, var(--wmap-sky, var(--sea-soft)) 0%, var(--paper) 100%); }
+.wmap__bar { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); max-width: var(--container); width: 100%; margin-inline: auto; }
+.wmap__who { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.wmap__face { width: var(--space-8); height: var(--space-8); flex-shrink: 0; }
+.wmap__title { font-size: var(--fs-500); line-height: var(--lh-500); }
+.wmap__sub { color: var(--ink-2); font-size: var(--fs-200); line-height: var(--lh-200); }
+
+.wmap__frame { flex: 0 1 auto; min-height: 0; display: grid; place-items: center; }
+.wmap__art { position: relative; width: 100%; max-width: min(100%, calc((100dvh - var(--space-20)) * var(--wmap-ratio, 1.5))); max-height: 100%; border-radius: var(--radius-4); overflow: hidden; box-shadow: var(--shadow-3); }
+.wmap__img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+.wmap__route { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.wmap__route-line { fill: none; stroke: rgba(255, 255, 255, 0.7); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 10 14; vector-effect: non-scaling-stroke; }
+.wmap__route-done { fill: none; stroke: var(--sun); stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; transition: stroke-dashoffset var(--dur-3) var(--ease-out); }
+
+.wmap__nodes { position: absolute; inset: 0; list-style: none; margin: 0; padding: 0; }
+.wmap__node { position: absolute; transform: translate(-50%, -50%); }
+.wmap__dot { display: grid; place-items: center; width: var(--touch-kid); height: var(--touch-kid); border-radius: 50%; background: rgba(255, 255, 255, 0.9); box-shadow: 0 2px 6px rgba(23, 22, 43, 0.35), inset 0 0 0 3px var(--white); transition: transform var(--dur-1) var(--ease-out); }
+.wmap__dot:hover { transform: scale(1.06); }
+.wmap__icon { width: 78%; height: 78%; border-radius: 50%; overflow: hidden; display: block; }
+.wmap__icon img { width: 100%; height: 100%; object-fit: cover; }
+.wmap__stamp { position: absolute; inset-inline-end: -2px; top: -2px; font-size: var(--fs-200); line-height: 1; background: var(--white); border-radius: 50%; padding: 2px; box-shadow: var(--shadow-1); }
+.wmap__label { position: absolute; left: 50%; transform: translateX(-50%); top: calc(100% + 4px); white-space: nowrap; font-family: var(--font-display); font-weight: 600; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--white); background: rgba(23, 22, 43, 0.72); padding: 2px var(--space-1); border-radius: var(--radius-1); pointer-events: none; }
+.wmap__label--top { top: auto; bottom: calc(100% + 4px); }
+
+/* Completed: full colour and a stamp. Current: the child is standing on it.
+   Next: gently breathing. Future: quieter, never a padlock. */
+.wmap__node--future .wmap__dot { opacity: 0.55; filter: saturate(0.55); }
+.wmap__node--future .wmap__label { opacity: 0.7; }
+.wmap__node--next .wmap__dot { animation: fm-pulse 2.4s var(--ease-in-out) infinite; }
+.wmap__node--current .wmap__dot { box-shadow: 0 0 0 4px var(--sun), 0 4px 10px rgba(23, 22, 43, 0.4); }
+.wmap__node--completed .wmap__dot { box-shadow: 0 0 0 3px var(--leaf), 0 2px 6px rgba(23, 22, 43, 0.3); }
+
+.wmap__marker { position: absolute; transform: translate(-50%, -85%); z-index: 5; pointer-events: none; transition: left var(--dur-3) var(--ease-in-out), top var(--dur-3) var(--ease-in-out); }
+.wmap__marker .fm-sticker { width: var(--space-6); height: var(--space-6); display: block; filter: drop-shadow(0 3px 4px rgba(23, 22, 43, 0.45)); }
+.wmap__marker--travel .fm-sticker { animation: wmap-bob 0.45s var(--ease-in-out) infinite; }
+.wmap__marker--rocket.wmap__marker--travel .fm-sticker { animation: wmap-float 0.9s var(--ease-in-out) infinite; }
+.wmap__marker--sail.wmap__marker--travel .fm-sticker { animation: wmap-float 1.2s var(--ease-in-out) infinite; }
+@keyframes wmap-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+@keyframes wmap-float { 0%, 100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-6px) rotate(2deg); } }
+
+.wmap__skip { align-self: center; min-height: var(--control-h-sm); padding-inline: var(--space-3); border-radius: var(--radius-pill); background: rgba(23, 22, 43, 0.5); color: var(--white); font-size: var(--fs-100); }
+
+@media (max-width: 720px) {
+  .wmap { padding: var(--space-2); gap: var(--space-1); }
+  .wmap__title { font-size: var(--fs-400); line-height: var(--lh-400); }
+  .wmap__label { display: none; }
+  .wmap__dot { width: var(--touch-min); height: var(--touch-min); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wmap__marker { transition: none; }
+  .wmap__marker .fm-sticker, .wmap__node--next .wmap__dot { animation: none; }
+}
+
+/* The one obvious action, under the map. */
+.wmap__go { display: flex; align-items: center; gap: var(--space-2); align-self: center; width: min(100%, 420px); min-height: var(--touch-kid); padding: var(--space-1) var(--space-3) var(--space-1) var(--space-1); border-radius: var(--radius-pill); background: var(--sun); color: var(--ink); box-shadow: var(--shadow-2); text-align: start; transition: transform var(--dur-1) var(--ease-out); }
+.wmap__go:hover { transform: translateY(-2px); }
+.wmap__go-thumb { width: var(--space-8); height: var(--space-8); flex-shrink: 0; border-radius: 50%; overflow: hidden; box-shadow: inset 0 0 0 3px var(--white); }
+.wmap__go-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.wmap__go-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.wmap__go-kicker { font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); }
+.wmap__go-name { font-family: var(--font-display); font-weight: 600; font-size: var(--fs-300); line-height: var(--lh-300); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wmap__go-arrow { font-size: var(--fs-400); }

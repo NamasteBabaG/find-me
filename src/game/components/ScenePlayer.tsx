@@ -311,7 +311,7 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store }: { scene: Sce
             {g.complete.again}
           </button>
           {!store.demo ? (
-            <button type="button" className="fm-btn fm-btn--ghost" onClick={store.goToMap}>
+            <button type="button" className="fm-btn fm-btn--ghost" onClick={() => store.goToMap(scene.slug)}>
               {g.complete.map}
             </button>
           ) : null}

@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { composeGame, composeScene } from "@/domain/game/compose";
+import { composeGame, composeScene, composeWorld } from "@/domain/game/compose";
+import { worldOfBoard } from "../../content/worlds";
 import type { GameConfig, SpriteRef } from "@/domain/game/config";
 import type { Locale } from "@/i18n/config";
 import { sceneBySlug } from "./scene-catalog.service";
@@ -62,5 +63,15 @@ export function buildDemoConfig(locale: Locale, slug = "beach", name?: string): 
     }),
     locale,
   );
-  return composeGame({ gameId: "demo", child, packageTier: "ONE_WORLD", styleVersion: "collage-v1", locale, scenes: [sceneConfig], now: new Date(0) });
+  const world = worldOfBoard(scene.slug);
+  return composeGame({
+    gameId: "demo",
+    child,
+    packageTier: "ONE_WORLD",
+    styleVersion: "collage-v1",
+    locale,
+    scenes: [sceneConfig],
+    world: world ? composeWorld(world, child, locale) : undefined,
+    now: new Date(0),
+  });
 }

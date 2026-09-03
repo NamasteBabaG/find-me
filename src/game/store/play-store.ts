@@ -33,7 +33,10 @@ export interface PlayStore {
   /** Load saved progress from this browser (after mount — the first render must match the server). */
   hydrate(): void;
   reveal(): void;
-  goToMap(): void;
+  /** The board the marker should walk away from, once. */
+  travelFrom: string | null;
+  goToMap(travelFrom?: string | null): void;
+  endTravel(): void;
   openScene(slug: string): void;
   dispatch(action: MissionAction): void;
   completeScene(): void;
@@ -73,6 +76,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     screen: demo || opts.skipGift ? "map" : "gift",
     sceneSlug: null,
     mission: null,
+    travelFrom: null,
     muted: false,
     demo,
     telemetry,
@@ -97,9 +101,18 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       set({ progress, screen: "map" });
     },
 
-    goToMap() {
+    /**
+     * Back to the map. `travelFrom` asks the map to walk the marker from the
+     * board just finished to the next one — presentation only: the progress it
+     * animates was already saved by completeScene().
+     */
+    goToMap(travelFrom = null) {
       sounds().stopAmbient();
-      set({ screen: "map", sceneSlug: null, mission: null });
+      set({ screen: "map", sceneSlug: null, mission: null, travelFrom });
+    },
+
+    endTravel() {
+      if (get().travelFrom) set({ travelFrom: null });
     },
 
     openScene(slug) {
@@ -113,7 +126,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       telemetry.track({ eventType: history.plays > 0 ? "game_replayed" : "scene_started", sceneSlug: slug });
       if (history.plays > 0) telemetry.track({ eventType: "scene_started", sceneSlug: slug });
       sounds().startAmbient(scene.sounds.ambient);
-      set({ screen: "scene", sceneSlug: slug, mission });
+      set({ screen: "scene", sceneSlug: slug, mission, travelFrom: null });
     },
 
     dispatch(action) {

@@ -2,7 +2,8 @@ import type { SceneDefinition } from "../scene/schema";
 import type { PackageTier } from "../package";
 import { fillTemplate } from "@/lib/copy";
 import { pick, type Locale } from "@/i18n/config";
-import type { GameConfig, SceneConfig, SpriteRef, TargetAdjust, TargetConfig } from "./config";
+import type { GameConfig, PlayWorld, SceneConfig, SpriteRef, TargetAdjust, TargetConfig } from "./config";
+import type { WorldDefinition } from "../world";
 
 /**
  * Pure composition: SceneDefinition + child + sprites + locale → SceneConfig.
@@ -64,6 +65,23 @@ export function composeScene(scene: SceneDefinition, child: ComposeChild, sprite
   };
 }
 
+/** WorldDefinition + child + locale → the map the player runtime draws. */
+export function composeWorld(world: WorldDefinition, child: ComposeChild, locale: Locale): PlayWorld {
+  const vars = { name: child.name };
+  const l = (text: { en: string; he: string }) => fillTemplate(pick(text, locale), vars);
+  return {
+    slug: world.slug,
+    version: world.version,
+    name: l(world.name),
+    tagline: l(world.tagline),
+    intro: l(world.intro),
+    map: world.map,
+    nodes: [...world.nodes].sort((a, b) => a.routeIndex - b.routeIndex),
+    collectible: { id: world.collectible.id, name: l(world.collectible.name), piece: l(world.collectible.piece), icon: world.collectible.icon },
+    completion: { title: l(world.completion.title), text: l(world.completion.text), icon: world.completion.icon },
+  };
+}
+
 export function composeGame(input: {
   gameId: string;
   child: ComposeChild;
@@ -71,6 +89,7 @@ export function composeGame(input: {
   styleVersion: string;
   locale: Locale;
   scenes: SceneConfig[];
+  world?: PlayWorld;
   gift?: { fromName?: string; message?: string };
   now?: Date;
 }): GameConfig {
@@ -82,6 +101,7 @@ export function composeGame(input: {
     styleVersion: input.styleVersion,
     packageTier: input.packageTier,
     scenes: input.scenes,
+    world: input.world,
     gift: input.gift,
     composedAt: (input.now ?? new Date()).toISOString(),
   };

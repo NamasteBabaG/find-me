@@ -57,7 +57,7 @@ export const WorldDefinitionSchema = z.object({
   collectible: z.object({
     id: z.string().min(1),
     name: LocalizedTextSchema,
-    /** The single piece — a stamp, a jewel, a cog. */
+    /** What one board is worth, as a plural count noun: stamps, jewels, cogs. */
     piece: LocalizedTextSchema,
     icon: z.string().min(1),
   }),
@@ -73,8 +73,17 @@ export const WorldDefinitionSchema = z.object({
 });
 export type WorldDefinition = z.infer<typeof WorldDefinitionSchema>;
 
+/**
+ * The progression functions need only the route, so they take this rather than a
+ * full WorldDefinition — which lets the player runtime use them on the composed,
+ * localised world in the game config without a cast.
+ */
+export interface RouteLike {
+  nodes: readonly { boardSlug: string; routeIndex: number }[];
+}
+
 /** The board slugs of a world, in journey order. */
-export function boardSlugs(world: WorldDefinition): string[] {
+export function boardSlugs(world: RouteLike): string[] {
   return [...world.nodes].sort((a, b) => a.routeIndex - b.routeIndex).map((n) => n.boardSlug);
 }
 
@@ -104,7 +113,7 @@ export const EMPTY_PROGRESS: WorldProgress = { completedBoards: [] };
  */
 export type NodeState = "completed" | "current" | "next" | "future";
 
-export function nodeStates(world: WorldDefinition, progress: WorldProgress): Record<string, NodeState> {
+export function nodeStates(world: RouteLike, progress: WorldProgress): Record<string, NodeState> {
   const done = new Set(progress.completedBoards);
   const order = boardSlugs(world);
   const states: Record<string, NodeState> = {};
@@ -121,21 +130,21 @@ export function nodeStates(world: WorldDefinition, progress: WorldProgress): Rec
 }
 
 /** Where the marker stands. A finished world puts it on the last destination. */
-export function currentBoard(world: WorldDefinition, progress: WorldProgress): string {
+export function currentBoard(world: RouteLike, progress: WorldProgress): string {
   const order = boardSlugs(world);
   const done = new Set(progress.completedBoards);
   return order.find((slug) => !done.has(slug)) ?? order[order.length - 1]!;
 }
 
 /** Where the marker travels after finishing `boardSlug`, or null at the end of the journey. */
-export function nextBoard(world: WorldDefinition, progress: WorldProgress): string | null {
+export function nextBoard(world: RouteLike, progress: WorldProgress): string | null {
   const order = boardSlugs(world);
   const done = new Set(progress.completedBoards);
   const remaining = order.filter((slug) => !done.has(slug));
   return remaining[0] ?? null;
 }
 
-export function isWorldComplete(world: WorldDefinition, progress: WorldProgress): boolean {
+export function isWorldComplete(world: RouteLike, progress: WorldProgress): boolean {
   const done = new Set(progress.completedBoards);
   return boardSlugs(world).every((slug) => done.has(slug));
 }
@@ -153,7 +162,7 @@ export function isBoardPlayable(world: WorldDefinition, progress: WorldProgress,
 }
 
 /** How many of the world's nine pieces the child holds. */
-export function collectedPieces(world: WorldDefinition, progress: WorldProgress): number {
+export function collectedPieces(world: RouteLike, progress: WorldProgress): number {
   const inWorld = new Set(boardSlugs(world));
   return progress.completedBoards.filter((slug) => inWorld.has(slug)).length;
 }

@@ -139,6 +139,45 @@ export const SceneConfigSchema = z.object({
 });
 export type SceneConfig = z.infer<typeof SceneConfigSchema>;
 
+/**
+ * The world the boards belong to, already localised and personalised: the map,
+ * the journey order, and what the child is collecting along it.
+ *
+ * Optional, so a config written before worlds existed still parses and simply
+ * falls back to the plain list of boards.
+ */
+export const PlayWorldSchema = z.object({
+  slug: z.string(),
+  version: z.number().int(),
+  name: z.string(),
+  tagline: z.string(),
+  intro: z.string(),
+  map: z.object({
+    width: z.number().int().positive(),
+    height: z.number().int().positive(),
+    art: z.string().min(1),
+    artPortrait: z.string().optional(),
+    palette: z.object({ sky: z.string(), ground: z.string(), accent: z.string() }),
+  }),
+  nodes: z
+    .array(
+      z.object({
+        boardSlug: z.string(),
+        routeIndex: z.number().int().positive(),
+        x: Unit,
+        y: Unit,
+        iconAsset: z.string(),
+        labelAnchor: z.enum(["top", "bottom", "start", "end"]),
+        markerScale: z.number().positive(),
+        travelStyle: z.enum(["walk", "hop", "sail", "float", "rocket"]),
+      }),
+    )
+    .min(1),
+  collectible: z.object({ id: z.string(), name: z.string(), piece: z.string(), icon: z.string() }),
+  completion: z.object({ title: z.string(), text: z.string(), icon: z.string() }),
+});
+export type PlayWorld = z.infer<typeof PlayWorldSchema>;
+
 export const GameConfigSchema = z.object({
   version: z.literal(1),
   gameId: z.string(),
@@ -151,6 +190,8 @@ export const GameConfigSchema = z.object({
   styleVersion: z.string(),
   packageTier: z.custom<PackageTier>(isPackageTier),
   scenes: z.array(SceneConfigSchema).min(1),
+  /** The journey these boards form. Absent in configs written before worlds. */
+  world: PlayWorldSchema.optional(),
   gift: z
     .object({
       fromName: z.string().optional(),
