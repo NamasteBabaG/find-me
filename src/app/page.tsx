@@ -2,6 +2,7 @@ import { SCENE_CATALOG } from "../../content/scenes";
 import { buildDemoConfig } from "@/services/demo";
 import { getContainer } from "@/services/container";
 import { activeSceneSlugs } from "@/services/scene-catalog.service";
+import { purchasableWorldSlugs } from "@/services/world-catalog.service";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
 import { getCurrency, getI18n } from "@/i18n/server";
 import { SiteFooter, SiteHeader } from "@/ui/Shell";
@@ -13,7 +14,7 @@ import { Faq, GiftSection, HowItWorks, Inside, Marquee, Pricing, Trust, Worlds }
 
 export default async function HomePage() {
   const c = getContainer();
-  const [user, active, { locale, t }, currency] = await Promise.all([currentUser(), activeSceneSlugs(c), getI18n(), getCurrency()]);
+  const [user, active, worlds, { locale, t }, currency] = await Promise.all([currentUser(), activeSceneSlugs(c), purchasableWorldSlugs(c), getI18n(), getCurrency()]);
   const scenes = SCENE_CATALOG.map((e) => e.scene);
   const demo = buildDemoConfig(locale, "beach");
 
@@ -30,7 +31,7 @@ export default async function HomePage() {
         <Inside t={t} locale={locale} />
         <GiftSection t={t} locale={locale} />
         <Worlds t={t} locale={locale} scenes={scenes} activeSlugs={active} />
-        <Pricing t={t} locale={locale} activeCount={active.length} currency={currency} />
+        <Pricing t={t} locale={locale} activeCount={worlds.length} currency={currency} />
         <Trust t={t} locale={locale} />
         <Faq t={t} locale={locale} />
         <FinalCta />

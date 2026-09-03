@@ -206,11 +206,11 @@ export function Pricing({ t, locale, activeCount, currency }: SectionProps & { a
             const name = pick(pkg.name, locale);
             return (
               <Reveal key={tier} className={`plan${pkg.popular ? " plan--hot" : ""}${available ? "" : " plan--soon"}`} delay={i * 90}>
-                {pkg.popular ? <span className="fm-sticker-badge plan__ribbon">{t.common.popular} 💛</span> : null}
+                {pkg.popular && available ? <span className="fm-sticker-badge plan__ribbon">{t.common.popular} 💛</span> : null}
                 <h3>{name}</h3>
                 <div className="plan__worlds">
                   {pkg.worldCount}
-                  <small>{p.worlds}</small>
+                  <small>{pkg.worldCount === 1 ? p.world : p.worlds}</small>
                 </div>
                 <ul className="plan__feats">
                   <li className="plan__feat">{tf(p.feats.boards, { boards: boardsFor(tier), n: searchesFor(tier) })}</li>

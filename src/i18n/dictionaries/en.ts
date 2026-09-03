@@ -88,7 +88,7 @@ export const en = {
     inside: {
       pill: "🎒 What's inside",
       title: "Not “another book with your kid's name”. A game.",
-      lead: "Every world is real level design: three hiding spots of rising difficulty, environmental surprises, animations and sound.",
+      lead: "Every place is real level design: three hiding spots of rising difficulty, environmental surprises, animations and sound.",
       tiles: {
         three: { title: "Your child appears three times in every world", text: "With a float ring, building a sandcastle, peeking from behind a parasol. Each time you search for a different one, easy to hard." },
         hints: { title: "Hints in three levels", text: "A gentle sentence, a glowing area, then a magnifying glass. No kid ever gets stuck." },
@@ -117,17 +117,18 @@ export const en = {
       pill: "🗺️ The worlds",
       titleWorlds: "worlds.",
       titleSpots: "hiding spots.",
-      lead: "Each world is illustrated in a storybook-collage style, with dozens of characters and objects, two environmental surprises and a keepsake to collect.",
+      lead: "Each place is illustrated in a storybook-collage style, with dozens of characters and objects, two environmental surprises and a keepsake to collect.",
       spotsAria: "The hiding spots",
     },
     pricing: {
       pill: "💛 Simple pricing",
       title: "How many worlds?",
-      lead: "The only difference between packages is the number of worlds. Every world = three hiding spots. Everything's included: gift wrap, library, replays.",
+      lead: "The only difference between packages is how many worlds. Every world is a journey of nine places and 27 hiding spots. Everything's included: gift wrap, library, replays.",
       feats: { boards: "{boards} places · {n} hiding spots", time: "{time} first play, then more", link: "Private link + library", wrap: "Digital gift wrap" },
       choose: "Choose {name}",
       soon: "Unlocks when enough worlds are ready",
       note: "Launch pricing. Billed in ₪ in Israel and in USD elsewhere; VAT included where it applies.",
+      world: "world",
       worlds: "worlds",
     },
     trust: {
@@ -343,12 +344,12 @@ export const en = {
       open: "🎁 Open the gift",
       made: "We made a game just for {name}",
       title: "Where's {name}?",
-      lead: "{name} is hiding in {count} worlds. Three hiding spots in each.",
+      lead: "{name} is hiding in {count} places. Three hiding spots in each.",
       start: "Start the adventure ✨",
     },
     map: {
       title: "Where's {name}?",
-      subStart: "{name} is hiding in {count} worlds. Pick one!",
+      subStart: "{name} is hiding in {count} places. Pick where to go!",
       subProgress: "{done} of {total} worlds done",
       subDone: "All worlds done! 🎉",
       bag: "🎒 Adventure bag",
@@ -445,7 +446,7 @@ export const en = {
     ready: {
       subject: "{name}'s game is ready!",
       title: "{name}'s game is ready! 🎉",
-      body: "{name} is now hiding in {count} worlds. Every world hides three surprises.",
+      body: "{name} is now hiding in {count} places. Every one of them hides three surprises.",
       button: "Open the game",
       manageLead: "The link is private. You can send it to grandparents, and manage, share or delete it from your library:",
       manage: "Manage the game in my library",
