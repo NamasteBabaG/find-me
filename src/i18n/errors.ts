@@ -25,7 +25,8 @@ export type FlowErrorCode =
   | "UNREADABLE"
   | "NO_FILE"
   | "UPLOAD_FAILED"
-  | "CONSENT_REQUIRED";
+  | "CONSENT_REQUIRED"
+  | "SERVICE_UNAVAILABLE";
 
 export interface FlowError {
   ok: false;

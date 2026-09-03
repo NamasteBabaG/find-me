@@ -424,6 +424,7 @@ export const en = {
     UNREADABLE: "We couldn't read that file.",
     NO_FILE: "No file was received.",
     UPLOAD_FAILED: "Something went wrong. Try another photo.",
+    SERVICE_UNAVAILABLE: "Creating games is paused for a moment. The demo below works — please try again shortly.",
     CONSENT_REQUIRED: "Please confirm you're the parent or guardian, or have permission to upload this photo.",
   } as Record<string, string>,
   email: {

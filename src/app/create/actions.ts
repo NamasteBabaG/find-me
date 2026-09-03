@@ -10,6 +10,7 @@ import { statusOf } from "@/services/game-status";
 import { currentUser, draftTokenFromCookie, setDraftCookie } from "@/lib/server/session";
 import { getLocale } from "@/i18n/server";
 import { flowError, type FlowResult } from "@/i18n/errors";
+import { guardDb } from "@/lib/server/db-guard";
 
 export type ActionResult = FlowResult;
 
@@ -28,6 +29,7 @@ export async function currentDraft() {
 export async function saveNameAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   const c = getContainer();
   const name = String(formData.get("name") ?? "");
+  const guarded = await guardDb(async () => {
   let draft = await currentDraft();
   if (!draft) {
     const [user, locale] = await Promise.all([currentUser(), getLocale()]);
@@ -35,27 +37,33 @@ export async function saveNameAction(_prev: ActionResult | null, formData: FormD
     await setDraftCookie(created.draftToken);
     draft = await loadDraft(c, created.gameId);
   }
-  if (!draft) return flowError("DRAFT_NOT_FOUND", "לא הצלחנו להתחיל טיוטה.");
-  const res = await setChildName(c, draft.id, name);
-  if (!res.ok) return res;
+    if (!draft) return flowError("DRAFT_NOT_FOUND", "לא הצלחנו להתחיל טיוטה.");
+    return setChildName(c, draft.id, name);
+  });
+  if (!guarded.ok) return guarded;
   redirect("/create/photo");
 }
 
 export async function choosePackageAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   const c = getContainer();
-  const draft = await currentDraft();
-  if (!draft) redirect("/create");
-  const res = await selectPackage(c, draft.id, String(formData.get("tier") ?? ""));
+  const tier = String(formData.get("tier") ?? "");
+  const res = await guardDb(async () => {
+    const draft = await currentDraft();
+    if (!draft) return flowError("DRAFT_NOT_FOUND", "הטיוטה לא נמצאה.");
+    return selectPackage(c, draft.id, tier);
+  });
   if (!res.ok) return res;
   redirect("/create/scenes");
 }
 
 export async function chooseScenesAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   const c = getContainer();
-  const draft = await currentDraft();
-  if (!draft) redirect("/create");
   const slugs = formData.getAll("scene").map(String);
-  const res = await selectScenes(c, draft.id, slugs);
+  const res = await guardDb(async () => {
+    const draft = await currentDraft();
+    if (!draft) return flowError("DRAFT_NOT_FOUND", "הטיוטה לא נמצאה.");
+    return selectScenes(c, draft.id, slugs);
+  });
   if (!res.ok) return res;
   redirect("/checkout");
 }
@@ -65,7 +73,8 @@ export async function checkoutAction(_prev: ActionResult | null, formData: FormD
   const draft = await currentDraft();
   if (!draft) redirect("/create");
   const email = String(formData.get("email") ?? "");
-  const res = await startCheckout(c, { gameId: draft.id, email, currency: await getCurrency() });
+  const currency = await getCurrency();
+  const res = await guardDb(() => startCheckout(c, { gameId: draft.id, email, currency }));
   if (!res.ok) return res;
   redirect(res.checkoutUrl);
 }
