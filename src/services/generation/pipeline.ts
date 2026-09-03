@@ -21,6 +21,13 @@ type StepName = "avatar" | "targets" | "compose" | "qa";
 type StepRecord = { status: "done" | "failed" | "running"; startedAt: string; finishedAt?: string; error?: string };
 
 /** States the pipeline can pick up and carry forward — the queue asks the same question. */
+export /**
+ * How long a run may go quiet before another may take over. Longer than one
+ * slice, so a healthy run is never interrupted; short enough that a crashed one
+ * does not strand the game.
+ */
+const LEASE_MS = 6 * 60_000;
+
 export const RESUMABLE_STATUSES: readonly GameStatus[] = ["PAID", "AVATAR_GENERATING", "TARGETS_GENERATING", "SCENES_COMPOSING", "NEEDS_REGENERATION", "GENERATION_FAILED"];
 
 export interface PipelineOptions {
@@ -41,11 +48,24 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
   const status = statusOf(game);
   if (!RESUMABLE_STATUSES.includes(status)) return; // nothing to do (idempotent)
 
+  // One job row per game, at a deterministic id: two runners racing to create
+  // one cannot end up with two, and two rows would mean two leases and no
+  // mutual exclusion at all.
+  const jobId = `job_${gameId}`;
   const job =
-    (await c.db.generationJob.findFirst({ where: { gameId, status: { in: ["QUEUED", "RUNNING", "FAILED"] } }, orderBy: { createdAt: "desc" } })) ??
-    (await c.db.generationJob.create({ data: { id: newId("job"), gameId } }));
+    (await c.db.generationJob.findUnique({ where: { id: jobId } })) ??
+    (await c.db.generationJob.create({ data: { id: jobId, gameId } }).catch(() => c.db.generationJob.findUniqueOrThrow({ where: { id: jobId } })));
+
+  // Claim the lease. The page nudges this on every poll and a cron nudges it
+  // every five minutes, so concurrent runs are normal, not exceptional — and
+  // without this each one saw "no avatar yet" and drew its own, which cost real
+  // money three times over on the first live game.
+  const claimed = await c.db.generationJob.updateMany({
+    where: { id: jobId, OR: [{ status: { not: "RUNNING" } }, { updatedAt: { lt: new Date(Date.now() - LEASE_MS) } }] },
+    data: { status: "RUNNING", attempts: { increment: 1 }, lastError: null },
+  });
+  if (claimed.count === 0) return; // someone else is already working on this game
   const steps: Record<string, StepRecord> = JSON.parse(job.stepsJson || "{}");
-  await c.db.generationJob.update({ where: { id: job.id }, data: { status: "RUNNING", attempts: { increment: 1 }, lastError: null } });
   if (status === "PAID") c.analytics.track("generation_started", { gameId });
 
   const mark = async (name: StepName, rec: Partial<StepRecord>) => {
@@ -162,6 +182,8 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
             where: { id: row.id },
             data: { spriteKind: "image", status: ok > 0 ? "GENERATED" : "NEEDS_REGENERATION", attempts: { increment: 1 }, costCents: { increment: spent } },
           });
+          // Heartbeat: a minute of painting must not let the lease go stale.
+          await c.db.generationJob.update({ where: { id: jobId }, data: { currentStep: "targets" } });
           continue;
         }
         const out = await c.avatars.createTargetSprite({ avatarPng, sceneSlug: def.slug, targetType: target.targetType, bodyTemplate: target.bodyTemplate, childName: refreshedChild.displayName });

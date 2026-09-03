@@ -71,6 +71,19 @@ async function main() {
     if (["READY", "DELIVERED", "QA_PENDING", "MANUAL_REVIEW", "GENERATION_FAILED", "NEEDS_NEW_PHOTO"].includes(status)) break;
   }
   log(`generation finished with status ${status}`);
+
+  // The page nudges the queue on every poll and a cron nudges it too, so two
+  // runners overlapping is normal. Without a lease each one saw "no avatar yet"
+  // and drew its own — which billed a real customer three times on the first
+  // live game. Running the pipeline twice at once must change nothing.
+  const { runGenerationPipeline } = await import("../src/services/generation/pipeline");
+  const before = new Date();
+  await Promise.all([runGenerationPipeline(c, gameId), runGenerationPipeline(c, gameId), runGenerationPipeline(c, gameId)]);
+  const newAssets = await c.db.asset.count({ where: { createdAt: { gte: before } } });
+  const jobs = await c.db.generationJob.count({ where: { gameId } });
+  assert(newAssets === 0, `concurrent runs created ${newAssets} assets, expected none`);
+  assert(jobs === 1, `concurrent runs made ${jobs} job rows, expected 1`);
+  log("concurrent pipeline runs are a no-op (no new assets, one job)");
   if (status === "GENERATION_FAILED") {
     const g = await c.db.game.findUniqueOrThrow({ where: { id: gameId } });
     throw new Error(`generation failed: ${g.lastError}`);
