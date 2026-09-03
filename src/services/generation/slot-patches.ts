@@ -80,7 +80,10 @@ export async function generateSlotPatch(
   });
   const label = `${scene.slug}/${target.id}/${variant}`;
 
-  const tries = input.tries ?? 3;
+  // Default to a single roll: inside a request with a deadline, three rolls of
+  // ~55s each is enough to overrun it. A spot that fails is not marked done, so
+  // the next tick tries it again — the retries happen across ticks, not inside one.
+  const tries = input.tries ?? 1;
   let spent = 0;
   let attempts = 0;
   let elapsed = 0;

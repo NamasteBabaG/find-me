@@ -9,8 +9,16 @@ export const runtime = "nodejs";
 /** Generating one hiding spot is ~55s, so the slice needs room for at least one. */
 export const maxDuration = 300;
 
-/** Leave time to write the result and return before the platform kills us. */
-const SLICE_MS = 240_000;
+/**
+ * Stop starting new hiding spots after this long.
+ *
+ * This is not the request budget: it is the last moment at which starting more
+ * work is safe. A spot takes ~55s and its provider may retry, so the one that
+ * starts last can still run for a couple of minutes — and a 240s cutoff against
+ * a 300s ceiling produced exactly the "Task timed out after 300 seconds" that
+ * killed slices mid-spot and left the lease held.
+ */
+const SLICE_MS = 90_000;
 
 /**
  * Move generation forward.
