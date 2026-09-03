@@ -145,17 +145,17 @@
         },
         {
           "id": "beach_castle_b",
-          "x": 0.585,
-          "y": 0.86,
+          "x": 0.4,
+          "y": 0.6,
           "scale": 0.075,
           "hintZone": {
-            "x": 0.57,
-            "y": 0.87,
-            "r": 0.1
+            "x": 0.42,
+            "y": 0.58,
+            "r": 0.09
           },
           "hintText": {
-            "en": "Look near a colorful towel.",
-            "he": "חפשו ליד מגבת צבעונית."
+            "en": "Look near the small sandcastles beside the big one.",
+            "he": "חפשו ליד ארמונות החול הקטנים שליד הגדול."
           }
         }
       ]
