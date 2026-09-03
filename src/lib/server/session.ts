@@ -15,8 +15,7 @@ export async function currentUser() {
     return await userFromSession(getContainer(), token);
   } catch (err) {
     // No database (or a broken one) must not take the public pages down: treat the visitor as signed out.
-    console.warn("[session] lookup failed:", err instanceof Error ? err.message.split("
-")[0] : err);
+    console.warn("[session] lookup failed:", err instanceof Error ? err.message.split("\n")[0] : err);
     return null;
   }
 }
