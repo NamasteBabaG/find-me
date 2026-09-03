@@ -19,19 +19,19 @@ export async function publishGame(c: Container, gameId: string, actor: Actor): P
     await transitionGame(c, gameId, "APPROVED", actor);
     c.analytics.track("qa_approved", { gameId });
   }
+  // Privacy default: drop the original photo once approved — before the game becomes playable.
+  if (game.childProfile && !game.childProfile.retainOriginalPhoto && game.childProfile.originalPhotoAssetId) {
+    await deleteAsset(c, game.childProfile.originalPhotoAssetId);
+    await c.db.childProfile.update({ where: { id: game.childProfile.id }, data: { originalPhotoAssetId: null } });
+    await audit(c, actor, "photo:deleted-after-qa", "ChildProfile", game.childProfile.id);
+  }
+
   if (statusOf(await c.db.game.findUniqueOrThrow({ where: { id: gameId }, select: { status: true } })) === "APPROVED") {
     await transitionGame(c, gameId, "READY", actor);
     c.analytics.track("game_ready", { gameId, sceneCount: game.scenes.length });
   }
 
   const link = await ensurePlayerLink(c, gameId);
-
-  // Privacy default: drop the original photo after approval.
-  if (game.childProfile && !game.childProfile.retainOriginalPhoto && game.childProfile.originalPhotoAssetId) {
-    await deleteAsset(c, game.childProfile.originalPhotoAssetId);
-    await c.db.childProfile.update({ where: { id: game.childProfile.id }, data: { originalPhotoAssetId: null } });
-    await audit(c, actor, "photo:deleted-after-qa", "ChildProfile", game.childProfile.id);
-  }
 
   const current = statusOf(await c.db.game.findUniqueOrThrow({ where: { id: gameId }, select: { status: true } }));
   if (current === "READY" && game.owner && game.childProfile) {
