@@ -1,5 +1,13 @@
-/** How much of the crop the model actually changed — the fastest way to tell a
- *  refusal ("it handed the picture back") from a bad paint. */
+/**
+ * How much of the crop the model actually changed.
+ *
+ * The fastest way to tell three failures apart when a spot will not generate:
+ * the model handed the picture back untouched (mean diff near zero), it painted
+ * the child somewhere we were not looking (high diff, empty patch — widen
+ * `--grow`), or it re-rendered the whole window (high diff everywhere).
+ *
+ *   npx tsx scripts/compare-edit.ts park kite [A|B]
+ */
 import sharp from "sharp";
 import path from "node:path";
 import { readFileSync } from "node:fs";
