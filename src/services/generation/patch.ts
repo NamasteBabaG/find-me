@@ -272,8 +272,12 @@ export async function diffToPatch(input: {
   const o = input.options ?? {};
   const threshold = o.threshold ?? 28;
   const outerFactor = o.outer ?? 2.2;
-  const grow = o.grow ?? 2.2;
-  const keep = o.keep ?? 0.12;
+  // The model treats the mask as "where you may edit", not "put her exactly
+  // here": it often paints the child a little outside the ellipse. A tight
+  // search area threw those away as if nothing had been painted, so the area is
+  // generous and the blob filter plus the shape check decide what is a child.
+  const grow = o.grow ?? 3.6;
+  const keep = o.keep ?? 0.2;
   const feather = o.feather ?? 6;
   const { w, h } = ctx.rect;
   const n = w * h;

@@ -135,8 +135,8 @@ async function importPatch(slug: string, targetId: string, variantArg: string | 
     options: {
       threshold: Number(flag("threshold", "28")),
       outer: Number(flag("outer", "2.2")),
-      grow: Number(flag("grow", "2.2")),
-      keep: Number(flag("keep", "0.12")),
+      grow: Number(flag("grow", "3.6")),
+      keep: Number(flag("keep", "0.2")),
       feather: Number(flag("feather", "6")),
     },
   });

@@ -41,6 +41,15 @@ export interface TargetGeometry {
   head: { x: number; y: number };
   /** Middle of the tap area — where the camera centres after a find. Normalized. */
   center: { x: number; y: number };
+  /**
+   * Where the level-2 glow and the level-3 zoom point.
+   *
+   * The authored zone is the level designer's intent for the slot, but the image
+   * model places the painted child where it likes inside the window — sometimes
+   * just outside that circle. A hint that glows next to her is worse than none,
+   * so a patch keeps the authored radius and moves the centre onto the child.
+   */
+  hintZone: { x: number; y: number; r: number };
   isPatch: boolean;
 }
 
@@ -57,9 +66,19 @@ export function targetGeometry(scene: SceneConfig, target: TargetConfig, variant
   if (patch) {
     const r = patch.hitRect;
     const hitRect: NormRect = { x0: r.x, y0: r.y, x1: r.x + r.w, y1: r.y + r.h };
-    return { slot, sprite, anchor, hitRect, head: patch.anchor ?? { x: r.x + r.w / 2, y: r.y }, center: middle(hitRect), isPatch: true };
+    const center = middle(hitRect);
+    return {
+      slot,
+      sprite,
+      anchor,
+      hitRect,
+      head: patch.anchor ?? { x: r.x + r.w / 2, y: r.y },
+      center,
+      hintZone: { x: center.x, y: center.y, r: slot.hintZone.r },
+      isPatch: true,
+    };
   }
   const stage: Size = { width: scene.art.width, height: scene.art.height };
   const hitRect = spriteRect(anchor, stage, spriteAspect(sprite));
-  return { slot, sprite, anchor, hitRect, head: { x: anchor.x, y: anchor.y }, center: { x: anchor.x, y: anchor.y }, isPatch: false };
+  return { slot, sprite, anchor, hitRect, head: { x: anchor.x, y: anchor.y }, center: { x: anchor.x, y: anchor.y }, hintZone: slot.hintZone, isPatch: false };
 }

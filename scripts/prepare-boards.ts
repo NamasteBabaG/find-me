@@ -92,8 +92,11 @@ function checkSpot(c: SlotInfo): SpotReport {
     const dx = (cx - c.slot.hintZone.x) * c.art.width;
     const dy = (cy - c.slot.hintZone.y) * c.art.height;
     const r = c.slot.hintZone.r * c.art.width;
-    if (Math.hypot(dx, dy) > r) {
-      problems.push(`the generated child is outside the hint zone (${Math.round(Math.hypot(dx, dy))}px away, zone radius ${Math.round(r)}px)`);
+    // The hint follows the patch at play time (target-geometry), so this only
+    // fires when she is so far from the slot that the spot no longer matches the
+    // level design — i.e. the model hid her somewhere else entirely.
+    if (Math.hypot(dx, dy) > r * 2) {
+      problems.push(`the generated child is ${Math.round(Math.hypot(dx, dy))}px from the hiding spot, more than twice the hint radius (${Math.round(r)}px)`);
     }
   }
   return { name: c.name, childPx, fill, problems, generated: Boolean(meta) };

@@ -189,10 +189,10 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
           <div
             className="stage__glow"
             style={{
-              left: currentPlaced.slot.hintZone.x * stage.width,
-              top: currentPlaced.slot.hintZone.y * stage.height,
-              width: currentPlaced.slot.hintZone.r * 2 * stage.width,
-              height: currentPlaced.slot.hintZone.r * 2 * stage.width,
+              left: currentPlaced.hintZone.x * stage.width,
+              top: currentPlaced.hintZone.y * stage.height,
+              width: currentPlaced.hintZone.r * 2 * stage.width,
+              height: currentPlaced.hintZone.r * 2 * stage.width,
             }}
             aria-hidden
           />

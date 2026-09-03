@@ -118,4 +118,17 @@ describe("target geometry", () => {
     expect(targetGeometry(scene(t), t, "B").head).toEqual({ x: 0.38, y: 0.569 });
     expect(targetGeometry(scene(t), t, "A").head).toEqual({ x: 0.3763, y: 0.5933 });
   });
+
+  it("moves the hint onto the painted child, keeping the authored radius", () => {
+    const t = target(patchSprite);
+    const g = targetGeometry(scene(t), t, "A");
+    // The slot sits at 0.71; she was painted centred near 0.675.
+    expect(g.hintZone.x).toBeCloseTo(g.center.x, 5);
+    expect(g.hintZone.y).toBeCloseTo(g.center.y, 5);
+    expect(g.hintZone.r).toBe(g.slot.hintZone.r);
+    expect(Math.abs(g.hintZone.y - g.slot.hintZone.y)).toBeGreaterThan(0.01);
+    // An ordinary sprite keeps the authored zone exactly.
+    const plain = target({ kind: "composed", faceUrl: "/f.png", bodyTemplate: "crouch" });
+    expect(targetGeometry(scene(plain), plain, "A").hintZone).toEqual(plain.slots[0].hintZone);
+  });
 });

@@ -135,9 +135,10 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
         sounds().play("twinkle");
         if (fb.level === 3 && api) {
           const id = currentTargetId(mission);
-          if (id) {
-            const slot = slotFor(scene, id, mission.plan.variants[id] ?? "A");
-            api.focusOn(slot.hintZone.x, slot.hintZone.y, 1.8, 600);
+          const target = id ? scene.targets.find((t) => t.id === id) : null;
+          if (target) {
+            const { hintZone } = targetGeometry(scene, target, mission.plan.variants[target.id] ?? "A");
+            api.focusOn(hintZone.x, hintZone.y, 1.8, 600);
           }
         }
         dispatch({ type: "CLEAR_FEEDBACK" });
