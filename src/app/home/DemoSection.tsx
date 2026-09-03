@@ -15,8 +15,9 @@ const GameShell = dynamic(() => import("@/game/components/GameShell").then((m) =
  * the world at its true 16:9 ratio with the UI floating on top.
  */
 export function DemoSection({ config }: { config: GameConfig }) {
-  const { t } = useI18n();
+  const { t, tf } = useI18n();
   const d = t.home.demo;
+  const name = config.child.name;
   // Match the frame to the artwork so the world fills it exactly (no letterbox bars).
   const art = config.scenes[0]?.art;
   return (
@@ -25,8 +26,8 @@ export function DemoSection({ config }: { config: GameConfig }) {
       <div className="fm-container demo__inner">
         <div className="demo__head">
           <span className="fm-pill fm-pill--night">{d.pill}</span>
-          <h2 className="demo__title">{d.title}</h2>
-          <p className="demo__lead">{d.lead}</p>
+          <h2 className="demo__title">{tf(d.title, { name })}</h2>
+          <p className="demo__lead">{tf(d.lead, { name })}</p>
         </div>
         <div className="demo__frame" style={art ? { aspectRatio: `${art.width} / ${art.height}` } : undefined}>
           {/* The play store is created once per mount; remount on a language switch so the demo speaks the new locale. */}

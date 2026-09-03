@@ -55,8 +55,10 @@ export const en = {
     },
     demo: {
       pill: "🎮 Live demo · play right here",
-      title: "Can you find Noa?",
-      lead: "Drag, zoom, and tap Noa when you spot her. No failure screens, just like the real game.",
+      title: "Can you find {name}?",
+      lead: "Drag, zoom, and tap {name} when you spot her. No failure screens, just like the real game.",
+      mission: "Find {name} with the straw hat",
+      item: "a straw hat",
       foot: "Now imagine your child hiding in there.",
       cta: "Create a game",
     },

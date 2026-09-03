@@ -205,17 +205,21 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
         ) : null}
         <div className="scene__tools">
           <button type="button" className="scene__btn" onClick={() => apiRef.current?.zoomBy(1.5)} aria-label={g.scene.zoomIn}>
-            ＋
+            <ToolIcon name="zoom-in" />
           </button>
           <button type="button" className="scene__btn" onClick={() => apiRef.current?.zoomBy(1 / 1.5)} aria-label={g.scene.zoomOut}>
-            −
+            <ToolIcon name="zoom-out" />
           </button>
-          <button type="button" className="scene__btn" onClick={() => apiRef.current?.reset()} aria-label={g.scene.reset}>
-            ⤢
-          </button>
-          <button type="button" className="scene__btn" onClick={store.toggleMute} aria-label={store.muted ? g.scene.unmute : g.scene.mute}>
-            {store.muted ? "🔇" : "🔊"}
-          </button>
+          {store.demo ? null : (
+            <>
+              <button type="button" className="scene__btn" onClick={() => apiRef.current?.reset()} aria-label={g.scene.reset}>
+                <ToolIcon name="fit" />
+              </button>
+              <button type="button" className="scene__btn" onClick={store.toggleMute} aria-label={store.muted ? g.scene.unmute : g.scene.mute}>
+                <ToolIcon name={store.muted ? "sound-off" : "sound-on"} />
+              </button>
+            </>
+          )}
         </div>
       </header>
 
@@ -310,5 +314,36 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store }: { scene: Sce
         </div>
       </div>
     </div>
+  );
+}
+
+/** Monochrome toolbar icons: emoji looked like leftovers on top of the artwork. */
+function ToolIcon({ name }: { name: "zoom-in" | "zoom-out" | "fit" | "sound-on" | "sound-off" }) {
+  const common = { fill: "none", stroke: "currentColor", strokeWidth: 2.4, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+  return (
+    <svg className="scene__icon" viewBox="0 0 24 24" aria-hidden focusable="false">
+      {name === "zoom-in" || name === "zoom-out" ? (
+        <g {...common}>
+          <circle cx="10.5" cy="10.5" r="6.5" />
+          <path d="M15.4 15.4 21 21" />
+          <path d="M7.5 10.5h6" />
+          {name === "zoom-in" ? <path d="M10.5 7.5v6" /> : null}
+        </g>
+      ) : null}
+      {name === "fit" ? (
+        <g {...common}>
+          <path d="M4 9V4h5" />
+          <path d="M20 9V4h-5" />
+          <path d="M4 15v5h5" />
+          <path d="M20 15v5h-5" />
+        </g>
+      ) : null}
+      {name === "sound-on" || name === "sound-off" ? (
+        <g {...common}>
+          <path d="M4 9.5h3.5L12 5.5v13L7.5 14.5H4z" />
+          {name === "sound-on" ? <path d="M16 9.2a4 4 0 0 1 0 5.6M18.6 6.6a7.6 7.6 0 0 1 0 10.8" /> : <path d="m16.5 9.5 5 5m0-5-5 5" />}
+        </g>
+      ) : null}
+    </svg>
   );
 }
