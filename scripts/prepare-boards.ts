@@ -226,12 +226,60 @@ async function generateAll(slugs: string[]) {
   console.log(`per-spot cost recorded in work/boards/cost.json`);
 }
 
+// ── placed ───────────────────────────────────────────────────
+
+/**
+ * Every world with the child actually in it, at the size a player sees her.
+ *
+ * This is the "are the boards ready" picture: if she is not in a world here, it
+ * has no patch yet; if she looks pasted on, the spot needs another try.
+ */
+async function placed(slugs: string[]) {
+  const outDir = path.join(ROOT, flag("out", "public/demo/patches"));
+  const width = Number(flag("width", "1100"));
+  const rows: Array<{ slug: string; placed: number; total: number }> = [];
+  mkdirSync(BOARDS, { recursive: true });
+  for (const slug of slugs) {
+    const scene = SCENES.find((s) => s.slug === slug)!;
+    const base = path.join(ROOT, "public", scene.art.base);
+    const layers: OverlayOptions[] = [];
+    let count = 0;
+    for (const target of scene.targets) {
+      for (const variant of VARIANTS) {
+        const metaPath = path.join(outDir, `${slug}-${target.id}-${variant}.json`);
+        if (!existsSync(metaPath)) continue;
+        const meta = JSON.parse(readFileSync(metaPath, "utf-8")) as { rect: { x: number; y: number }; url: string };
+        const webp = path.join(outDir, `${slug}-${target.id}-${variant}.webp`);
+        if (!existsSync(webp)) continue;
+        layers.push({ input: readFileSync(webp), left: meta.rect.x, top: meta.rect.y });
+        count++;
+      }
+    }
+    const composed = layers.length ? await sharp(base).composite(layers).png().toBuffer() : readFileSync(base);
+    await sharp(composed).resize({ width }).png().toFile(path.join(BOARDS, `${slug}-placed.png`));
+    rows.push({ slug, placed: count, total: scene.targets.length * VARIANTS.length });
+    console.log(`${count === 0 ? "none" : "ok  "} ${slug.padEnd(9)} ${count}/${scene.targets.length * VARIANTS.length} hiding spots placed`);
+  }
+  const html = [
+    `<!doctype html><meta charset="utf-8"><title>Boards with the child</title>`,
+    `<style>body{font:14px system-ui;background:#f0eee9;margin:0;padding:24px}h2{margin:24px 0 4px}img{max-width:100%;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.18)}p{color:#555;margin:2px 0 12px}</style>`,
+    `<h1>Every board, with the child in it</h1>`,
+    `<p>All generated hiding spots composited onto the world art at once. In a game a child sees one at a time.</p>`,
+    ...rows.map((r) => `<h2>${r.slug}</h2><p>${r.placed} of ${r.total} hiding spots</p><img src="${r.slug}-placed.png" alt="${r.slug}">`),
+  ].join("\n");
+  writeFileSync(path.join(BOARDS, "placed.html"), html);
+  const done = rows.filter((r) => r.placed > 0).length;
+  console.log(`\n${done}/${rows.length} worlds have at least one hiding spot ready`);
+  console.log("work/boards/placed.html");
+}
+
 async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
   const slugs = slugsFrom(rest);
   if (cmd === "audit") return audit(slugs);
   if (cmd === "generate") return generateAll(slugs);
-  console.error("usage:\n  prepare-boards audit [slug…]\n  prepare-boards generate [slug…] [--ref=path] [--variants=A|AB] [--quality=medium] [--tries=3]");
+  if (cmd === "placed") return placed(slugs);
+  console.error("usage:\n  prepare-boards audit [slug…]\n  prepare-boards generate [slug…] [--ref=path] [--variants=A|AB] [--quality=medium] [--tries=3]\n  prepare-boards placed [slug…]");
   process.exit(1);
 }
 

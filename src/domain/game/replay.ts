@@ -50,7 +50,15 @@ export function planScenePlay(scene: SceneConfig, history: ScenePlayHistory, see
   }
 
   const variants: Record<string, SlotVariant> = {};
-  for (const id of ids) {
+  for (const target of scene.targets) {
+    const id = target.id;
+    const usable = usableVariants(target);
+    if (usable.length === 1) {
+      // Only one hiding spot was generated for this child: always use it, or the
+      // renderer would draw her at spot A while the hints point at spot B.
+      variants[id] = usable[0]!;
+      continue;
+    }
     if (playIndex === 0) {
       variants[id] = "A";
     } else {
@@ -75,6 +83,20 @@ export function planScenePlay(scene: SceneConfig, history: ScenePlayHistory, see
 
 function sameOrder(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
+/**
+ * The hiding spots this target can actually be played at.
+ *
+ * A slot patch belongs to one spot, and a game may have been generated with
+ * only spot A (the default: half the cost, still a complete game). A procedural
+ * sprite works at either spot, so it keeps both.
+ */
+export function usableVariants(target: SceneConfig["targets"][number]): SlotVariant[] {
+  const byVariant = target.spriteByVariant;
+  if (!byVariant) return ["A", "B"];
+  const usable = (["A", "B"] as const).filter((v) => byVariant[v]);
+  return usable.length > 0 ? [...usable] : ["A", "B"];
 }
 
 export function slotFor(scene: SceneConfig, targetId: string, variant: SlotVariant) {

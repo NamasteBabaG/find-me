@@ -50,4 +50,24 @@ describe("planScenePlay", () => {
     const b = planScenePlay(scene, { plays: 4, lastVariants: { hard: "A" } }, "game_9");
     expect(a).toEqual(b);
   });
+
+  it("never picks a hiding spot that was not generated for this child", () => {
+    // Only spot A has a patch: the planner must stay on A on every replay, or
+    // the renderer draws her at A while the hints point at B.
+    const onlyA = {
+      ...scene,
+      targets: scene.targets.map((t) => ({ ...t, spriteByVariant: { A: { kind: "image", url: "/a.webp", width: 10, height: 10, rect: { x: 0.1, y: 0.1, w: 0.1, h: 0.1 } } } })),
+    } as typeof scene;
+    for (let plays = 0; plays < 6; plays++) {
+      const plan = planScenePlay(onlyA, { plays, lastVariants: { [onlyA.targets[0]!.id]: "A" } }, "seed");
+      for (const t of onlyA.targets) expect(plan.variants[t.id]).toBe("A");
+    }
+    // With both spots generated the alternation is back.
+    const both = {
+      ...scene,
+      targets: scene.targets.map((t) => ({ ...t, spriteByVariant: { A: { kind: "image", url: "/a.webp", width: 10, height: 10, rect: { x: 0.1, y: 0.1, w: 0.1, h: 0.1 } }, B: { kind: "image", url: "/b.webp", width: 10, height: 10, rect: { x: 0.2, y: 0.2, w: 0.1, h: 0.1 } } } })),
+    } as typeof scene;
+    const id = both.targets[0]!.id;
+    expect(planScenePlay(both, { plays: 1, lastVariants: { [id]: "A" } }, "seed").variants[id]).toBe("B");
+  });
 });
