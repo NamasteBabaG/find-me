@@ -380,7 +380,8 @@
   .tf { padding-block: var(--space-8); }
   .tf-flow { grid-template-columns: minmax(0, 1fr); gap: var(--space-6); max-width: 420px; margin-inline: auto; }
   [dir] .tf-card:not(:last-child)::after { top: auto; bottom: calc(-1 * (var(--space-3) + var(--space-2))); inset-inline-end: calc(50% - var(--space-2-5, 20px)); transform: rotate(90deg); }
-  .tf-card__media { aspect-ratio: 4 / 3; }
+  /* The uploaded photo keeps its own 4:5 shape: a 4:3 box cropped the child's chin. */
+  .tf-card__media:not(.tf-card__media--photo) { aspect-ratio: 4 / 3; }
   .tf-card__media--world { aspect-ratio: 4 / 5; }
   .tf-figure--big { width: 34%; }
   [dir] .tf-card:not(:last-child)::after { animation-name: tf-nudge-down; }
