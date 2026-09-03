@@ -31,8 +31,8 @@
       "bodyTemplate": "stadium_scarf",
       "difficulty": 1,
       "mission": {
-        "en": "Find {name} with the team scarf",
-        "he": "מצאו את {name} עם צעיף של הקבוצה"
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
       },
       "item": {
         "en": "a scarf",

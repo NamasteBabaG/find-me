@@ -31,8 +31,8 @@
       "bodyTemplate": "city_bus",
       "difficulty": 1,
       "mission": {
-        "en": "Find {name} next to the bus",
-        "he": "מצאו את {name} ליד האוטובוס"
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
       },
       "item": {
         "en": "a bus",

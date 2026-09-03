@@ -31,8 +31,8 @@
       "bodyTemplate": "volcano_helmet",
       "difficulty": 1,
       "mission": {
-        "en": "Find {name} in an explorer's helmet",
-        "he": "מצאו את {name} עם קסדת חוקר"
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
       },
       "item": {
         "en": "an explorer's helmet",

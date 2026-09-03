@@ -31,8 +31,8 @@
       "bodyTemplate": "market_watermelon",
       "difficulty": 1,
       "mission": {
-        "en": "Find {name} holding a watermelon",
-        "he": "מצאו את {name} מחזיק/ה אבטיח"
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
       },
       "item": {
         "en": "a watermelon",

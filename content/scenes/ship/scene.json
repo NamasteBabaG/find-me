@@ -31,8 +31,8 @@
       "bodyTemplate": "ship_captain",
       "difficulty": 1,
       "mission": {
-        "en": "Find {name} in a captain's hat",
-        "he": "מצאו את {name} עם כובע קפטן"
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
       },
       "item": {
         "en": "a captain's hat",

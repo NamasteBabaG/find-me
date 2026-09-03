@@ -31,8 +31,8 @@
       "bodyTemplate": "park_kite",
       "difficulty": 1,
       "mission": {
-        "en": "Find {name} flying a kite",
-        "he": "מצאו את {name} מעיף/ה עפיפון"
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
       },
       "item": {
         "en": "a kite",

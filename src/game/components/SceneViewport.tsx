@@ -64,8 +64,11 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
       const scale = api?.transform.scale ?? 1;
       const m = missionRef.current;
       const candidates: HitCandidate<Hit>[] = [];
+      // Only the child being looked for is on the board, so she is the only
+      // target that can be tapped (see the note on `onBoard` below).
+      const current = currentTargetId(m);
       for (const p of placedTargets) {
-        if (isFound(m, p.target.id)) continue;
+        if (p.target.id !== current || isFound(m, p.target.id)) continue;
         // p.hitRect is the child's own footprint — for a slot patch that is not
         // the slot anchor, so the head is inside it (see target-geometry).
         const pad = hitPadding(p.hitRect, stage, scale);
@@ -105,6 +108,16 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
 
   const current = currentTargetId(mission);
   const currentPlaced = placedTargets.find((p) => p.target.id === current) ?? null;
+  /**
+   * One child on the board at a time.
+   *
+   * The game asks "where am I?" — she cannot be in three places at once, and
+   * three of her at once also makes a mission like "the one with the hat"
+   * meaningless. So only the child of the current mission is drawn; she stays
+   * through the found celebration (the mission advances on FOUND_DONE) and is
+   * replaced by the next one.
+   */
+  const onBoard = placedTargets.filter((p) => p.target.id === current);
   const { transform } = api;
   const stageStyle: React.CSSProperties = {
     width: stage.width,
@@ -141,12 +154,12 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
       <div className="stage" style={stageStyle}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={scene.art.base} alt="" width={stage.width} height={stage.height} className="stage__layer" draggable={false} />
-        <div className="stage__layer">{placedTargets.filter((p) => p.slot.layer === "behindForeground").map(renderTarget)}</div>
+        <div className="stage__layer">{onBoard.filter((p) => p.slot.layer === "behindForeground").map(renderTarget)}</div>
         {scene.art.foreground ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={scene.art.foreground} alt="" width={stage.width} height={stage.height} className="stage__layer stage__layer--fg" draggable={false} />
         ) : null}
-        <div className="stage__layer">{placedTargets.filter((p) => p.slot.layer !== "behindForeground").map(renderTarget)}</div>
+        <div className="stage__layer">{onBoard.filter((p) => p.slot.layer !== "behindForeground").map(renderTarget)}</div>
 
         {bonus && scene.bonus ? (
           <div

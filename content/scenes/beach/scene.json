@@ -44,8 +44,8 @@
       "bodyTemplate": "beach_float",
       "difficulty": 1,
       "mission": {
-        "en": "Find {name} with the float ring",
-        "he": "מצאו את {name} עם גלגל הים"
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
       },
       "item": {
         "en": "a float ring",

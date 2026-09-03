@@ -44,8 +44,8 @@
       "bodyTemplate": "space_astronaut",
       "difficulty": 1,
       "mission": {
-        "en": "Find {name} in a spacesuit",
-        "he": "מצאו את {name} בחליפת אסטרונאוט"
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
       },
       "item": {
         "en": "a spacesuit",

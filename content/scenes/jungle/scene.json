@@ -44,8 +44,8 @@
       "bodyTemplate": "jungle_binoculars",
       "difficulty": 1,
       "mission": {
-        "en": "Find {name} with binoculars",
-        "he": "מצאו את {name} עם משקפת"
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
       },
       "item": {
         "en": "binoculars",
