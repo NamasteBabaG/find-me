@@ -9,9 +9,12 @@ export const COUNTRY_COOKIE = "findme_country";
  * cookie → Vercel edge header → Cloudflare header → DEFAULT_COUNTRY env → "".
  */
 export async function getCountry(): Promise<string> {
-  const jar = await cookies();
-  const override = jar.get(COUNTRY_COOKIE)?.value;
-  if (override && /^[A-Za-z]{2}$/.test(override)) return override.toUpperCase();
+  // The override cookie is a dev/QA tool only: in production it would let a visitor pick their own currency.
+  if (process.env.NODE_ENV !== "production") {
+    const jar = await cookies();
+    const override = jar.get(COUNTRY_COOKIE)?.value;
+    if (override && /^[A-Za-z]{2}$/.test(override)) return override.toUpperCase();
+  }
   const h = await headers();
   const fromEdge = h.get("x-vercel-ip-country") ?? h.get("cf-ipcountry") ?? h.get("x-country");
   if (fromEdge && /^[A-Za-z]{2}$/.test(fromEdge)) return fromEdge.toUpperCase();
