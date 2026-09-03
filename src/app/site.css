@@ -321,6 +321,36 @@
 .spacing-box { background: var(--sea); border-radius: var(--radius-1); }
 .type-sample { display: flex; flex-direction: column; gap: var(--space-2); }
 
+/* From photo to character (photo → sticker → hidden in the world) */
+.tf { padding-block: var(--space-12); background: var(--white); }
+.tf-flow { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-6); }
+.tf-card { position: relative; display: flex; flex-direction: column; gap: var(--space-1); background: var(--paper); border-radius: var(--radius-4); padding: var(--space-3); box-shadow: var(--shadow-1); }
+.tf-card:not(:last-child)::after { content: "➜"; position: absolute; top: calc(40% - var(--space-2)); inset-inline-end: calc(-1 * (var(--space-3) + var(--space-2))); width: var(--space-5); height: var(--space-5); display: grid; place-items: center; border-radius: var(--radius-pill); background: var(--sun); color: var(--ink); font-size: var(--fs-300); box-shadow: var(--shadow-1); z-index: 1; }
+[dir="rtl"] .tf-card:not(:last-child)::after { transform: scaleX(-1); }
+.tf-card__media { position: relative; aspect-ratio: 4 / 5; border-radius: var(--radius-3); overflow: hidden; display: grid; place-items: center; background: var(--paper-2); }
+.tf-card__media--photo img { width: 100%; height: 100%; object-fit: cover; }
+.tf-placeholder { position: absolute; inset: var(--space-2); border: 3px dashed var(--ink-4); border-radius: var(--radius-2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-1); padding: var(--space-2); text-align: center; color: var(--ink-3); font-family: var(--font-display); font-weight: 700; font-size: var(--fs-100); line-height: var(--lh-100); }
+.tf-placeholder__icon { font-size: var(--fs-700); line-height: 1; }
+.tf-card__media--sticker { background: var(--grad-lavender); }
+.tf-sticker { width: 168px; height: 168px; }
+.tf-tag { position: absolute; bottom: var(--space-2); inset-inline: var(--space-2); display: inline-flex; justify-content: center; align-items: center; min-height: var(--space-4); padding-inline: var(--space-2); border-radius: var(--radius-pill); background: var(--white); box-shadow: var(--shadow-1); font-family: var(--font-display); font-weight: 700; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); }
+.tf-card__media--world { background-size: cover; background-position: 38% 70%; }
+.tf-world__noa { position: absolute; width: 64px; height: 64px; left: calc(50% - 32px); top: calc(50% - 32px); }
+.tf-world__ring { position: absolute; width: 104px; height: 104px; left: calc(50% - 52px); top: calc(50% - 52px); border-radius: var(--radius-pill); border: 4px solid var(--sun); box-shadow: 0 0 0 6px rgba(255, 209, 102, 0.25); animation: fm-pulse 1.6s var(--ease-in-out) infinite; }
+.tf-card__label { font-family: var(--font-display); font-weight: 800; font-size: var(--fs-300); line-height: var(--lh-300); margin-top: var(--space-1); }
+.tf-card__text { color: var(--ink-2); }
+.tf-points { list-style: none; margin: var(--space-6) auto 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); max-width: 1100px; }
+.tf-points li { display: grid; grid-template-columns: var(--space-3) minmax(0, 1fr); gap: var(--space-1-5, 12px); align-items: start; font-weight: 600; text-align: start; }
+.tf-points li::before { content: "✓"; width: var(--space-3); height: var(--space-3); border-radius: var(--radius-pill); background: var(--ink); color: var(--white); display: grid; place-items: center; font-size: var(--fs-50); }
+.tf-cta { display: flex; justify-content: center; margin-top: var(--space-5); }
+@media (max-width: 720px) {
+  .tf { padding-block: var(--space-8); }
+  .tf-flow { grid-template-columns: minmax(0, 1fr); gap: var(--space-6); max-width: 420px; margin-inline: auto; }
+  [dir] .tf-card:not(:last-child)::after { top: auto; bottom: calc(-1 * (var(--space-3) + var(--space-2))); inset-inline-end: calc(50% - var(--space-2-5, 20px)); transform: rotate(90deg); }
+  .tf-card__media { aspect-ratio: 4 / 3; }
+  .tf-points { grid-template-columns: minmax(0, 1fr); gap: var(--space-2); margin-top: var(--space-5); }
+}
+
 /* ═══ Phone overrides (kept last on purpose: same specificity as the desktop rules above) ═══ */
 /* Phone rhythm: half the desktop section padding */
 @media (max-width: 720px) {

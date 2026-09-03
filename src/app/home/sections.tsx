@@ -7,7 +7,8 @@ import { Reveal } from "./Reveal";
 export const WORLD_GLYPHS: Record<string, string> = { beach: "🏖️", jungle: "🌴", space: "🚀", city: "🏙️", ship: "⚓", stadium: "🏟️", market: "🍉", park: "🪁", volcano: "🌋" };
 const STEP_ICONS = ["📷", "🗺️", "💌", "🎉"] as const;
 const STEP_TONES = ["sun", "aqua", "lavender", "coral"] as const;
-const OCCASION_ICONS = ["🎂", "✈️", "👵", "🕎"] as const;
+/** The holiday icon follows the locale: Hebrew site → menorah, everywhere else → a generic tree. */
+const occasionIcons = (locale: Locale) => ["🎂", "✈️", "👵", locale === "he" ? "🕎" : "🎄"] as const;
 const TRUST_ICONS = ["🗑️", "🔒", "🚫", "🧠"] as const;
 
 interface SectionProps {
@@ -97,7 +98,7 @@ export function Inside({ t }: SectionProps) {
 }
 
 /* ─── Gift ─── */
-export function GiftSection({ t }: SectionProps) {
+export function GiftSection({ t, locale }: SectionProps) {
   const g = t.home.gift;
   return (
     <section id="gift" className="gift-sec">
@@ -129,7 +130,7 @@ export function GiftSection({ t }: SectionProps) {
               {g.occasions.map((o, i) => (
                 <Reveal as="li" key={o.title} className="occasion" delay={i * 70}>
                   <span className="occasion__icon" aria-hidden>
-                    {OCCASION_ICONS[i] ?? "🎁"}
+                    {occasionIcons(locale)[i] ?? "🎁"}
                   </span>
                   <h3>{o.title}</h3>
                   <p>{o.text}</p>

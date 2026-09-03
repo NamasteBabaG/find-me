@@ -44,3 +44,7 @@ Hero ("Where Am I?" over the real beach art with a searchlight that follows the 
 - Feedback 300–800ms; world-specific particles; speech bubbles in screen space, Fredoka 20/32.
 - Top bar: map · world name · 1/3 · zoom · reset · sound. Nothing else.
 - Portrait phones: scene covers height, drag to explore, gentle "landscape is more fun" tip, never blocking.
+
+## Photo → character section (`src/app/home/Transformation.tsx`)
+
+Sits right after the live demo. Three cards: the parent's photo, the illustrated character, the character hidden in a world crop. The photo card reads `public/demo/example-photo.jpg`; until that file exists it renders a dashed placeholder, so drop a real photo (shoulders and up) there and pair it with the matching sticker in `EXAMPLE_STICKER_URL`.

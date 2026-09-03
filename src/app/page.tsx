@@ -7,6 +7,7 @@ import { getI18n } from "@/i18n/server";
 import { SiteFooter, SiteHeader } from "@/ui/Shell";
 import { Hero } from "./home/Hero";
 import { DemoSection } from "./home/DemoSection";
+import { Transformation } from "./home/Transformation";
 import { FinalCta } from "./home/FinalCta";
 import { Faq, GiftSection, HowItWorks, Inside, Marquee, Pricing, Trust, Worlds } from "./home/sections";
 
@@ -24,6 +25,7 @@ export default async function HomePage() {
           <Marquee scenes={scenes} locale={locale} />
         </Hero>
         <DemoSection config={demo} />
+        <Transformation />
         <HowItWorks t={t} locale={locale} />
         <Inside t={t} locale={locale} />
         <GiftSection t={t} locale={locale} />
