@@ -30,7 +30,7 @@ const WORLD_ASPECT = 4 / 5;
 const WORLD_POS_X = 0.2;
 /** Slot patch for the example (docs/SPRITE_PATCHES.md): produced by `slot-patch import beach sandcastle A`. */
 const PATCH_META = path.join(process.cwd(), "public", "demo", "patches", "beach-sandcastle-A.json");
-type PatchMeta = { url: string; rect: { x: number; y: number; w: number; h: number }; slot: { x: number; y: number; scale: number }; art: { width: number; height: number } };
+type PatchMeta = { url: string; rect: { x: number; y: number; w: number; h: number }; slot: { x: number; y: number; scale: number }; anchor?: { x: number; y: number }; art: { width: number; height: number } };
 function readPatch(): PatchMeta | null {
   if (!existsSync(PATCH_META)) return null;
   try {
@@ -57,7 +57,7 @@ export async function Transformation() {
   const patch = readPatch();
   const pct = (px: number) => `${((px - windowLeft) / visibleW) * 100}%`;
   const patchStyle = patch ? { left: pct(patch.rect.x), top: `${(patch.rect.y / patch.art.height) * 100}%`, width: `${(patch.rect.w / visibleW) * 100}%`, height: `${(patch.rect.h / patch.art.height) * 100}%` } : undefined;
-  const bubbleStyle = patch ? { left: pct(patch.slot.x * patch.art.width), top: `${(patch.slot.y - patch.slot.scale * 0.55) * 100}%` } : undefined;
+  const bubbleStyle = patch ? (patch.anchor ? { left: pct(patch.anchor.x), top: `${(patch.anchor.y / patch.art.height) * 100}%` } : { left: pct(patch.slot.x * patch.art.width), top: `${(patch.slot.y - patch.slot.scale * 0.55) * 100}%` }) : undefined;
   const templateLabel = pick(BODY_TEMPLATES[DEMO_TEMPLATE]!.label, locale);
   const hasPhoto = existsSync(PHOTO.file);
   const hasCharacter = existsSync(CHARACTER.file);

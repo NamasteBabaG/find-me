@@ -337,7 +337,7 @@
 .tf-card__media--world { background: var(--sea-soft); aspect-ratio: 4 / 5; }
 .tf-world__layer { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 20% 50%; }
 .tf-world__patch { position: absolute; z-index: 1; object-fit: fill; }
-.tf-world__bubble--free { bottom: auto; translate: -50% calc(-100% - 6px); z-index: 3; }
+.tf-world__bubble.tf-world__bubble--free { bottom: auto; translate: -50% calc(-100% - 6px); z-index: 3; }
 .tf-figure { display: block; }
 .tf-figure--big { width: 44%; max-width: 168px; aspect-ratio: 100 / 140; filter: drop-shadow(0 6px 10px rgba(43, 42, 51, 0.25)); }
 .tf-world__spot { position: absolute; left: 50%; top: 40%; height: 9%; aspect-ratio: 100 / 140; transform: translate(-50%, -50%); z-index: 1; }

@@ -12,7 +12,7 @@
  *       work/patches/beach-sandcastle-A.mask.png   (where to paint; optional for models that take a mask)
  *       work/patches/beach-sandcastle-A.json       (rect, slot, prompt)
  *
- *   npx tsx scripts/slot-patch.ts import beach sandcastle A path/to/edited.png [--threshold=28] [--feather=6] [--out=public/demo/patches] [--no-clip]
+ *   npx tsx scripts/slot-patch.ts import beach sandcastle A path/to/edited.png [--threshold=28] [--feather=6] [--grow=2.2] [--out=public/demo/patches] [--no-clip]
  *     → <out>/beach-sandcastle-A.webp             (transparent patch: only what changed)
  *       <out>/beach-sandcastle-A.json             (rect in px and in art fractions, slot anchor)
  *       work/patches/beach-sandcastle-A.preview.png (the patch composited on the world, for a quick look)
@@ -105,6 +105,38 @@ async function exportCrop(slug: string, targetId: string, variantArg?: string) {
   console.log(`Files: work/patches/${c.name}.crop.png  work/patches/${c.name}.mask.png`);
 }
 
+/** Binary mask → the largest 4-connected blob plus blobs of at least `keep` × its area. */
+function keepMainBlobs(mask: Buffer, w: number, h: number, keep: number): Buffer {
+  const n = w * h;
+  const label = new Int32Array(n).fill(-1);
+  const areas: number[] = [];
+  const stack: number[] = [];
+  for (let i = 0; i < n; i++) {
+    if (mask[i]! < 128 || label[i] !== -1) continue;
+    const id = areas.length;
+    let area = 0;
+    stack.push(i);
+    label[i] = id;
+    while (stack.length) {
+      const p = stack.pop()!;
+      area++;
+      const x = p % w;
+      const y = (p - x) / w;
+      const nb = [x > 0 ? p - 1 : -1, x < w - 1 ? p + 1 : -1, y > 0 ? p - w : -1, y < h - 1 ? p + w : -1];
+      for (const q of nb) if (q >= 0 && mask[q]! >= 128 && label[q] === -1) { label[q] = id; stack.push(q); }
+    }
+    areas.push(area);
+  }
+  const largest = Math.max(0, ...areas);
+  const out = Buffer.alloc(n);
+  for (let i = 0; i < n; i++) {
+    const id = label[i] ?? -1;
+    if (id >= 0 && (areas[id] ?? 0) >= largest * keep) out[i] = 255;
+  }
+  console.log(`blobs: ${areas.length}, largest ${largest}px, kept ${areas.filter((a) => a >= largest * keep).length}`);
+  return out;
+}
+
 async function importPatch(slug: string, targetId: string, variantArg: string | undefined, editedPath: string) {
   const c = await context(slug, targetId, variantArg);
   const threshold = Number(flag("threshold", "28"));
@@ -117,9 +149,10 @@ async function importPatch(slug: string, targetId: string, variantArg: string | 
   const edited = await sharp(editedPath).resize({ width: c.rect.w, height: c.rect.h, fit: "cover" }).removeAlpha().raw().toBuffer({ resolveWithObject: true });
   const n = c.rect.w * c.rect.h;
   // 1. Changed pixels (max channel difference above the threshold), clipped to the paint area
-  //    (grown by 40%) so model drift elsewhere in the crop is ignored.
+  //    (grown by --grow, default 2.2×) so model drift elsewhere in the crop is ignored.
   const rawMask = { raw: { width: c.rect.w, height: c.rect.h, channels: 1 as const } };
-  const allow = has("no-clip") ? null : await sharp(maskSvg(c, 1.4)).extractChannel(0).raw().toBuffer();
+  const grow = Number(flag("grow", "2.2"));
+  const allow = has("no-clip") ? null : await sharp(maskSvg(c, grow)).extractChannel(0).raw().toBuffer();
   const diff = Buffer.alloc(n);
   for (let i = 0; i < n; i++) {
     if (allow && allow[i]! < 128) continue;
@@ -134,6 +167,9 @@ async function importPatch(slug: string, targetId: string, variantArg: string | 
   cleaned = await step(cleaned, (s) => s.threshold(150));
   cleaned = await step(cleaned, (s) => s.blur(3));
   cleaned = await step(cleaned, (s) => s.threshold(60));
+  // 2b. Keep the child: the largest connected blob plus any blob at least --keep (default 12%) of its area.
+  //     Thin re-render drift on castle edges and such becomes small islands and is dropped here.
+  cleaned = keepMainBlobs(cleaned, c.rect.w, c.rect.h, Number(flag("keep", "0.12")));
   cleaned = await step(cleaned, (s) => s.blur(feather));
   // 3. Bounding box of the kept pixels (+ margin) so the patch stays small.
   let minX = c.rect.w, minY = c.rect.h, maxX = -1, maxY = -1;
@@ -148,6 +184,11 @@ async function importPatch(slug: string, targetId: string, variantArg: string | 
     }
   }
   if (maxX < 0) throw new Error("no changed pixels found — is this the edited version of the exported crop?");
+  // Where the head is: centre of the kept pixels in the top quarter of the blob — the bubble hangs from here.
+  let headSum = 0, headCount = 0;
+  const headBand = minY + Math.max(4, Math.round((maxY - minY) * 0.25));
+  for (let y = minY; y <= headBand; y++) for (let x = minX; x <= maxX; x++) if (cleaned[y * c.rect.w + x]! > 128) { headSum += x; headCount++; }
+  const anchor = { x: c.rect.x + (headCount ? headSum / headCount : (minX + maxX) / 2), y: c.rect.y + minY };
   const m = 8;
   const box = { left: Math.max(0, minX - m), top: Math.max(0, minY - m), width: Math.min(c.rect.w, maxX + m + 1) - Math.max(0, minX - m), height: Math.min(c.rect.h, maxY + m + 1) - Math.max(0, minY - m) };
   const rgba = await sharp(edited.data, { raw: { width: c.rect.w, height: c.rect.h, channels: 3 } }).joinChannel(cleaned, rawMask).png().toBuffer();
@@ -163,6 +204,8 @@ async function importPatch(slug: string, targetId: string, variantArg: string | 
     rect,
     rectNorm: { x: rect.x / c.W, y: rect.y / c.H, w: rect.w / c.W, h: rect.h / c.H },
     slot: { x: c.slot.x, y: c.slot.y, scale: c.slot.scale },
+    /** Top-centre of the painted child in art pixels (speech bubbles hang from here). */
+    anchor: { x: Math.round(anchor.x), y: Math.round(anchor.y) },
     art: { width: c.W, height: c.H },
   };
   writeFileSync(path.join(outDir, `${c.name}.json`), JSON.stringify(meta, null, 2));
