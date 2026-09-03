@@ -20,6 +20,10 @@ import { Reveal } from "./Reveal";
 const PHOTO = { url: "/demo/example-photo.jpg", file: path.join(process.cwd(), "public", "demo", "example-photo.jpg") };
 const CHARACTER = { url: "/demo/example-character.webp", file: path.join(process.cwd(), "public", "demo", "example-character.webp") };
 const DEMO_TEMPLATE = "beach_float";
+/** The world card is a 4:5 crop of the beach; the character sits at a real "peek from behind the parasol" slot, sized like the other beach people. */
+const WORLD_ASPECT = 4 / 5;
+const WORLD_POS_X = 0.2;
+const WORLD_FIGURE_BOOST = 1.3;
 
 /**
  * "From photo to character": photo → the illustrated character → that character
@@ -31,8 +35,12 @@ export async function Transformation() {
   const demo = buildDemoConfig(locale, "beach");
   const child = demo.child;
   const beach = sceneBySlug("beach");
-  const floatTarget = beach.targets.find((x) => x.bodyTemplate === DEMO_TEMPLATE) ?? beach.targets[0];
-  const foundLine = floatTarget?.success[0] ? pick(floatTarget.success[0], locale) : t.home.hero.found;
+  const peekTarget = beach.targets.find((x) => x.slots.some((s) => s.layer === "behindForeground")) ?? beach.targets[0];
+  const slot = peekTarget?.slots.find((s) => s.layer === "behindForeground") ?? peekTarget?.slots[0];
+  const foundLine = peekTarget?.success[0] ? pick(peekTarget.success[0], locale) : t.home.hero.found;
+  const visibleW = beach.art.height * WORLD_ASPECT;
+  const windowLeft = (beach.art.width - visibleW) * WORLD_POS_X;
+  const spotStyle = slot ? { left: `${((slot.x * beach.art.width - windowLeft) / visibleW) * 100}%`, top: `${slot.y * 100}%`, height: `${slot.scale * WORLD_FIGURE_BOOST * 100}%` } : undefined;
   const templateLabel = pick(BODY_TEMPLATES[DEMO_TEMPLATE]!.label, locale);
   const hasPhoto = existsSync(PHOTO.file);
   const hasCharacter = existsSync(CHARACTER.file);
@@ -84,11 +92,17 @@ export async function Transformation() {
           </Reveal>
 
           <Reveal as="li" className="tf-card" delay={320}>
-            <div className="tf-card__media tf-card__media--world" style={{ backgroundImage: `url(${beach.art.base})` }} role="img" aria-label={tr.worldAlt}>
-              <div className={`tf-world__spot${hasCharacter ? " tf-world__spot--art" : ""}`}>
+            <div className="tf-card__media tf-card__media--world" role="img" aria-label={tr.worldAlt}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={beach.art.base} alt="" className="tf-world__layer" width={beach.art.width} height={beach.art.height} />
+              <div className={`tf-world__spot${hasCharacter ? " tf-world__spot--art" : ""}`} style={spotStyle}>
                 <span className="tf-world__bubble">{foundLine}</span>
                 {figure("tf-figure tf-figure--found")}
               </div>
+              {beach.art.foreground ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={beach.art.foreground} alt="" className="tf-world__layer tf-world__layer--fg" width={beach.art.width} height={beach.art.height} />
+              ) : null}
             </div>
             <span className="tf-card__label">{tr.world.label}</span>
             <p className="tf-card__text">{tr.world.text}</p>
