@@ -187,7 +187,27 @@ npx tsx scripts/slot-patch.ts diagnose market spices A
 
 A run of height rejections at one slot is usually not a bad model but a slot whose `scale` disagrees
 with the board's own perspective — the model paints a person the size that spot really is. `diagnose`
-prints the scale that would match what it painted.
+prints the scale that would match one render; for the whole picture, ask the game:
+
+```bash
+npm run game:status -- <gameId> --scales
+```
+
+That re-measures every render the game already threw away, so it costs nothing, and reports the
+median painted height against the asked height per spot. One render being off is chance, so it only
+calls a slot wrong on three or more. From the validation game:
+
+```
+park/picnic         1.75x over  5 renders   slot scale 0.05    → 1.7x bigger than this slot asks
+jungle/binoculars   3.11x over  8 renders   slot scale 0.06    → 3.1x bigger than this slot asks
+space/astronaut     0.53x over  4 renders   slot scale 0.055   → 1.9x smaller than this slot asks
+```
+
+`jungle/binoculars` had failed nine times across three runs, and every render was a child, in the
+right place, about three times too large — the model will not be talked out of the board's own
+perspective. The answer is usually to **move the slot**, not to raise its `scale`: the scale that
+would match here is 0.187, and `scenes:validate` already warns above 0.085, because a child that big
+does not have to be looked for.
 
 `scripts/compare-edit.ts` tells the three cases apart in one call — it measures
 how much of the crop actually changed:
