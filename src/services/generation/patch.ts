@@ -228,6 +228,8 @@ export interface DiffOptions {
   outer?: number;
   /** How far the full-sensitivity area reaches, in multiples of the paint ellipse. */
   inner?: number;
+  /** Set false to keep the soft alpha instead of making the body opaque. */
+  solidify?: boolean;
   /** How far past the ellipse a painted pixel may still belong to the child. */
   grow?: number;
   /** Blobs smaller than this fraction of the largest are dropped. */
@@ -361,6 +363,12 @@ export async function diffToPatch(input: {
   // A piece of the same child is never more than a fraction of her height away.
   const blobs = keepMainBlobs(cleaned, w, h, keep, ctx.childPx * 0.25);
   cleaned = await step(blobs.out, (s) => s.blur(feather));
+  // Feathering the whole mask left the child herself half-transparent: across
+  // one nine-board game only a fifth of the drawn pixels were fully opaque, and
+  // in the board that reads as a washed-out, pasted-on child you can see the bus
+  // through. The edge still needs to be soft, so the curve pushes the body to
+  // opaque and keeps a narrow band of anti-aliasing at the rim.
+  if (o.solidify !== false) cleaned = await step(cleaned, (s) => s.linear(255 / 64, -(255 / 64) * 40));
 
   // Trim to what is left (+ a small margin) so the patch stays small.
   const box = hitBoxFromAlpha(cleaned, w, h, 9);

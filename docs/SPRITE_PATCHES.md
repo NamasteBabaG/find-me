@@ -139,7 +139,12 @@ merely resembles the input. Three things turn that into a clean patch, and all t
 2. **Two-tier threshold + main blobs.** Inside the paint ellipse a small difference counts; outside it
    only a large one does. What survives is reduced to the largest connected blob plus nearby fragments
    (a hat brim behind a post is part of her; flip-flops two metres away are not).
-3. **Shape check.** `childProblem()` refuses a patch that is not roughly the height we asked for,
+3. **Solid body, soft rim.** Feathering the whole mask left the child herself half-transparent —
+   across one nine-board game only a fifth of the drawn pixels were fully opaque, which in the board
+   reads as a washed-out child you can see the bus through. A curve on the alpha pushes the body to
+   opaque and keeps a narrow band of anti-aliasing at the edge: 50% → 89% opaque on a measured patch,
+   with no change to what the shape checks accept. `solidify: false` restores the old behaviour.
+4. **Shape check.** `childProblem()` refuses a patch that is not roughly the height we asked for,
    is wider than it is tall, is scattered rather than solid, or sits away from the slot. Area alone
    passes a repainted sandcastle, so the rule looks at proportions instead.
 
