@@ -19,9 +19,12 @@
 ## לפני commit
 
 ```bash
-npm run check           # tsc + vitest
-npm run scenes:validate # אם נגעת בסצנות
+git config core.hooksPath .githooks   # פעם אחת לכל clone — חוסם commit עם סוד
+npm run check                          # tsc + vitest
+npm run scenes:validate                # אם נגעת בסצנות
 ```
+
+**לעולם לא `git add -A`.** פעמיים סיסמת דאטהבייס חיה נכנסה לריפו הציבורי בדיוק ככה — קובץ שאף אחד לא קרא נסחף פנימה. מוסיפים קבצים בשם, וקוראים את ה־diff לפני commit.
 
 ## מפת תיקיות
 

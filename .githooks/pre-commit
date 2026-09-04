@@ -1,0 +1,45 @@
+#!/bin/sh
+# Refuse a commit that stages a credential.
+#
+# The credential test in `npm run check` already states this rule, and it did
+# catch it — twice. Both times the value was committed anyway, because a rule
+# that runs somewhere in a long command can be stepped past without noticing:
+# `npm run check | grep …` succeeds on the grep even when the tests fail, and
+# `git add -A` had already staged a file nobody read.
+#
+# So the rule also runs here, where it can say no. It reads only what is staged,
+# takes a moment, and is the last thing between a live password and a public
+# repository. Enable it once per clone:
+#
+#   git config core.hooksPath .githooks
+#
+# To commit anyway (you had better be sure): git commit --no-verify
+
+fail=0
+
+# A database URL whose password is not an obvious placeholder.
+if git diff --cached -U0 --diff-filter=ACM | grep -nE '^\+.*postgres(ql)?://[^:[:space:]"]+:(\[|YOUR|PASSWORD|password|\*\*\*|xxx|<)' >/dev/null; then
+  : # a placeholder, fine
+fi
+if git diff --cached -U0 --diff-filter=ACM |
+  grep -nE '^\+' |
+  grep -vE 'postgres(ql)?://[^:[:space:]"]+:(\[|YOUR|PASSWORD|password|\*\*\*|xxx|<)' |
+  grep -nE 'postgres(ql)?://[^:[:space:]"]+:[^@[:space:]"]{6,}@' >/dev/null; then
+  echo "pre-commit: a database URL with a real password is staged." >&2
+  fail=1
+fi
+
+for pattern in 'sk-[A-Za-z0-9_-]{20,}' 'sb_(secret|publishable)_[A-Za-z0-9_-]{10,}' 'AKIA[0-9A-Z]{16}' '-----BEGIN( RSA| EC| OPENSSH)? PRIVATE KEY-----'; do
+  if git diff --cached -U0 --diff-filter=ACM | grep -nE "^\+.*$pattern" >/dev/null; then
+    echo "pre-commit: a credential matching /$pattern/ is staged." >&2
+    fail=1
+  fi
+done
+
+if [ "$fail" -ne 0 ]; then
+  echo "" >&2
+  echo "Rotate it first — removing the line later does not remove it from history." >&2
+  echo "Then unstage the file and commit again." >&2
+  exit 1
+fi
+exit 0
