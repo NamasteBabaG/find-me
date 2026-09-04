@@ -58,14 +58,24 @@ export async function composeGameConfig(c: Container, gameId: string): Promise<G
         adjust,
       });
     }
-    scenes.push(composeScene(def, child, sprites, locale));
+    const world = worldForBoard(gs.sceneSlug);
+    scenes.push({ ...composeScene(def, child, sprites, locale), worldSlug: world?.slug });
   }
 
   const gift = game.giftJson ? (JSON.parse(game.giftJson) as { fromName?: string; message?: string }) : undefined;
 
-  // The journey these boards belong to. A game spanning several worlds shows the
-  // one it is currently in; the world hub is what moves between them.
-  const world = worldForBoard(game.scenes[0]?.sceneSlug ?? "");
+  // Every journey these boards belong to, in order, each with its own map and
+  // keepsake. This used to be `worldForBoard(scenes[0])` — one world, taken from
+  // whichever board happened to be first — so a two-world game drew all eighteen
+  // boards on world one's map and counted them 10/9 against its nine nodes.
+  const worlds = [];
+  const seen = new Set<string>();
+  for (const gs of game.scenes) {
+    const world = worldForBoard(gs.sceneSlug);
+    if (!world || seen.has(world.slug)) continue;
+    seen.add(world.slug);
+    worlds.push(composeWorld(world, child, locale));
+  }
   return composeGame({
     gameId: game.id,
     child,
@@ -73,7 +83,7 @@ export async function composeGameConfig(c: Container, gameId: string): Promise<G
     styleVersion: game.styleVersion,
     locale,
     scenes,
-    world: world ? composeWorld(world, child, locale) : undefined,
+    worlds,
     gift,
   });
 }

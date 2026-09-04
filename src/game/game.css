@@ -221,3 +221,37 @@
 .wmap__go-kicker { font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); }
 .wmap__go-name { font-family: var(--font-display); font-weight: 600; font-size: var(--fs-300); line-height: var(--lh-300); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wmap__go-arrow { font-size: var(--fs-400); }
+
+/* ─── The hub: which journey next ───────────────────────────────────────────
+   Only a multi-world game reaches this. Each row is one world in its own map
+   colours, so the choice is made by looking rather than by reading. */
+.hub { max-width: 720px; margin-inline: auto; padding: var(--space-6) var(--gutter) var(--space-10); }
+.hub__head { text-align: center; margin-block-end: var(--space-5); }
+.hub__title { font-family: var(--font-display); font-size: var(--fs-700); line-height: var(--lh-700); color: var(--ink); }
+.hub__lead { font-size: var(--fs-300); line-height: var(--lh-300); color: var(--ink-3); margin-block-start: var(--space-1); }
+.hub__list { display: flex; flex-direction: column; gap: var(--space-3); list-style: none; padding: 0; margin: 0; }
+.hub__world {
+  display: flex; align-items: center; gap: var(--space-3);
+  inline-size: 100%; min-height: 96px;
+  padding: var(--space-3);
+  border: 3px solid var(--ink);
+  border-radius: var(--radius-4);
+  background: linear-gradient(135deg, var(--hub-sky, var(--paper-2)), var(--hub-ground, var(--paper-3)));
+  box-shadow: var(--shadow-2);
+  color: var(--ink);
+  text-align: start;
+  cursor: pointer;
+  transition: transform var(--dur-2) var(--ease-pop), box-shadow var(--dur-2);
+}
+.hub__world:hover, .hub__world:focus-visible { transform: translateY(-3px); box-shadow: var(--shadow-3); }
+.hub__world.is-current { outline: 4px solid var(--sun); outline-offset: 3px; }
+.hub__world.is-done { filter: saturate(0.9); }
+.hub__icon { font-size: var(--fs-600); line-height: 1; flex: 0 0 auto; }
+.hub__body { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-inline-size: 0; }
+.hub__name { font-family: var(--font-display); font-size: var(--fs-400); line-height: var(--lh-400); }
+.hub__tagline { font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); }
+.hub__count { font-size: var(--fs-100); line-height: var(--lh-100); font-weight: 700; }
+.hub__go { font-size: var(--fs-500); flex: 0 0 auto; }
+.hub__bag { display: flex; justify-content: center; margin-block-start: var(--space-5); }
+.wmap__actions { display: flex; gap: var(--space-1); align-items: center; }
+

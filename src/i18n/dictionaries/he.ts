@@ -355,6 +355,11 @@ export const he: Dictionary = {
       lead: "{name} מתחבא/ת ב־{count} מקומות. בכל אחד — שלושה מחבואים.",
       start: "לפתיחת ההרפתקה ✨",
     },
+    hub: {
+      title: "לאן ממשיכים, {name}?",
+      lead: "{done} מתוך {total} מסעות הושלמו",
+      back: "כל המסעות",
+    },
     map: {
       title: "איפה {name}?",
       subStart: "{name} מתחבא/ת ב־{count} מקומות. בחרו לאן יוצאים!",

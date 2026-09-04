@@ -1,17 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { GameConfig, PlayWorld } from "@/domain/game/config";
-import { completedScenes, sceneProgress, type GameProgress } from "@/domain/game/progress";
+import { gameWorlds, scenesOfWorld, type GameConfig, type PlayWorld } from "@/domain/game/config";
+import { sceneProgress, type GameProgress } from "@/domain/game/progress";
 import { nodeStates, type NodeState } from "@/domain/world";
 import { useGameText } from "../i18n";
 import { IslandGrid } from "./IslandGrid";
 
 interface Props {
   config: GameConfig;
+  /** Which journey to draw. Defaults to the first, for a one-world game. */
+  world?: PlayWorld | null;
   progress: GameProgress;
   onOpen: (slug: string) => void;
   onPassport: () => void;
+  /** Back to the hub. Absent when the game has only one world. */
+  onWorlds?: (() => void) | null;
   demo?: boolean;
   /** The board just finished: the marker travels from it to the next one. */
   travelFrom?: string | null;
@@ -30,18 +34,22 @@ const TRAVEL_MS = 1500;
  * an ordered list of nine buttons for anyone using a keyboard or a screen
  * reader. A game composed before worlds existed falls back to the island grid.
  */
-export function WorldMap({ config, progress, onOpen, onPassport, demo, travelFrom, onTravelDone }: Props) {
-  const world = config.world;
+export function WorldMap({ config, world: shown, progress, onOpen, onPassport, onWorlds, demo, travelFrom, onTravelDone }: Props) {
+  const world = shown ?? gameWorlds(config)[0];
   if (!world) return <IslandGrid config={config} progress={progress} onOpen={onOpen} onPassport={onPassport} demo={demo} />;
-  return <WorldMapView config={config} world={world} progress={progress} onOpen={onOpen} onPassport={onPassport} demo={demo} travelFrom={travelFrom} onTravelDone={onTravelDone} />;
+  return <WorldMapView config={config} world={world} progress={progress} onOpen={onOpen} onPassport={onPassport} onWorlds={onWorlds} demo={demo} travelFrom={travelFrom} onTravelDone={onTravelDone} />;
 }
 
-function WorldMapView({ config, world, progress, onOpen, onPassport, demo, travelFrom, onTravelDone }: Props & { world: PlayWorld }) {
+function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, demo, travelFrom, onTravelDone }: Props & { world: PlayWorld }) {
   const { g, tf } = useGameText();
-  const completed = useMemo(() => config.scenes.filter((s) => sceneProgress(progress, s.slug).completed).map((s) => s.slug), [config.scenes, progress]);
+  // Only this world's boards. Counting the whole game against nine nodes is
+  // how a two-world game reported 10/9 — and how world two's map lit up
+  // because world one had been finished.
+  const mine = useMemo(() => scenesOfWorld(config, world.slug), [config, world.slug]);
+  const completed = useMemo(() => mine.filter((s) => sceneProgress(progress, s.slug).completed).map((s) => s.slug), [mine, progress]);
   const states = useMemo(() => nodeStates(world, { completedBoards: completed }), [world.nodes, completed]);
-  const boards = useMemo(() => new Map(config.scenes.map((s) => [s.slug, s])), [config.scenes]);
-  const done = completedScenes(progress);
+  const boards = useMemo(() => new Map(mine.map((s) => [s.slug, s])), [mine]);
+  const done = completed.length;
   const total = world.nodes.length;
 
   // The marker's position is saved progress; the travel is only its presentation.
@@ -94,11 +102,18 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, demo, trave
             <p className="wmap__sub">{done === 0 ? world.tagline : tf(g.map.stamps, { done, total, piece: world.collectible.piece })}</p>
           </div>
         </div>
-        {done > 0 ? (
-          <button type="button" className="fm-btn fm-btn--secondary fm-btn--sm" onClick={onPassport}>
-            {world.collectible.icon} {done}/{total}
-          </button>
-        ) : null}
+        <div className="wmap__actions">
+          {onWorlds ? (
+            <button type="button" className="fm-btn fm-btn--secondary fm-btn--sm" onClick={onWorlds}>
+              🗺️ {g.hub.back}
+            </button>
+          ) : null}
+          {done > 0 ? (
+            <button type="button" className="fm-btn fm-btn--secondary fm-btn--sm" onClick={onPassport}>
+              {world.collectible.icon} {done}/{total}
+            </button>
+          ) : null}
+        </div>
       </header>
 
       <div className="wmap__frame">

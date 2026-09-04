@@ -8,7 +8,9 @@ import { dirOf, getDict } from "@/i18n";
 import { createPlayStore } from "../store/play-store";
 import { GameI18nProvider, useGameText } from "../i18n";
 import { GiftReveal } from "./GiftReveal";
+import { gameWorlds } from "@/domain/game/config";
 import { WorldMap } from "./WorldMap";
+import { WorldHub } from "./WorldHub";
 import { ScenePlayer } from "./ScenePlayer";
 import { Passport } from "./Passport";
 
@@ -43,6 +45,8 @@ function Shell({ config, demo = false, skipGift = false, parentZoneHref, autoSta
   const [store] = useState(() => createPlayStore(config, { demo, skipGift, autoStartScene, singleMission, copy: getDict(config.locale).game.copy }));
   const state = useStore(store);
   const scene = state.scene();
+  // One world needs no hub: the map is the whole journey.
+  const multiWorld = gameWorlds(config).length > 1;
   const landscapeTip = useLandscapeTip();
 
   // Saved progress lives in localStorage: read it only after mount so the first
@@ -67,11 +71,23 @@ function Shell({ config, demo = false, skipGift = false, parentZoneHref, autoSta
         ) : null;
       case "passport":
         return <Passport config={config} progress={state.progress} onMap={state.goToMap} onOpen={state.openScene} />;
+      case "worlds":
+        return <WorldHub config={config} progress={state.progress} currentWorld={state.worldSlug} onEnter={(slug) => state.goToMap(null, slug)} onPassport={state.openPassport} />;
       case "map":
       default:
         return (
           <>
-            <WorldMap config={config} progress={state.progress} onOpen={state.openScene} onPassport={state.openPassport} demo={demo} travelFrom={state.travelFrom} onTravelDone={state.endTravel} />
+            <WorldMap
+              config={config}
+              world={state.world()}
+              progress={state.progress}
+              onOpen={state.openScene}
+              onPassport={state.openPassport}
+              onWorlds={multiWorld ? state.goToWorlds : null}
+              demo={demo}
+              travelFrom={state.travelFrom}
+              onTravelDone={state.endTravel}
+            />
             {parentZoneHref ? (
               <p className="game__parents">
                 <Link href={parentZoneHref}>{g.parents}</Link>

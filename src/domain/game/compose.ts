@@ -89,6 +89,7 @@ export function composeGame(input: {
   styleVersion: string;
   locale: Locale;
   scenes: SceneConfig[];
+  worlds?: PlayWorld[];
   world?: PlayWorld;
   gift?: { fromName?: string; message?: string };
   now?: Date;
@@ -101,7 +102,9 @@ export function composeGame(input: {
     styleVersion: input.styleVersion,
     packageTier: input.packageTier,
     scenes: input.scenes,
-    world: input.world,
+    worlds: input.worlds,
+    // Still written so a runtime that only knows about one world keeps working.
+    world: input.world ?? input.worlds?.[0],
     gift: input.gift,
     composedAt: (input.now ?? new Date()).toISOString(),
   };

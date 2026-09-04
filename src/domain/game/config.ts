@@ -112,6 +112,8 @@ export const PlayBonusSchema = z.object({
 export const SceneConfigSchema = z.object({
   slug: z.string(),
   version: z.number().int(),
+  /** Which journey this board belongs to. Absent in configs written before worlds. */
+  worldSlug: z.string().optional(),
   name: z.string(),
   tagline: z.string(),
   artStatus: z.enum(["placeholder", "draft", "final"]),
@@ -190,7 +192,16 @@ export const GameConfigSchema = z.object({
   styleVersion: z.string(),
   packageTier: z.custom<PackageTier>(isPackageTier),
   scenes: z.array(SceneConfigSchema).min(1),
-  /** The journey these boards form. Absent in configs written before worlds. */
+  /**
+   * Every journey this game spans, in order.
+   *
+   * A package can be one world or three, and each brings its own map, its own
+   * nine boards and its own keepsake. `world` is what a single-world game used
+   * to carry and is still written, so a config composed before this reads back
+   * unchanged; `gameWorlds()` is what code should ask.
+   */
+  worlds: z.array(PlayWorldSchema).optional(),
+  /** @deprecated The first world. Kept so older configs still parse. */
   world: PlayWorldSchema.optional(),
   gift: z
     .object({
@@ -205,3 +216,34 @@ export type GameConfig = z.infer<typeof GameConfigSchema>;
 export function parseGameConfig(json: string): GameConfig {
   return GameConfigSchema.parse(JSON.parse(json));
 }
+
+/** Every world this game spans, in journey order. */
+export function gameWorlds(config: GameConfig): PlayWorld[] {
+  if (config.worlds && config.worlds.length > 0) return config.worlds;
+  return config.world ? [config.world] : [];
+}
+
+/**
+ * The world a board belongs to.
+ *
+ * Reads the board's own `worldSlug` first and falls back to whichever world
+ * lists it, so a config written before worlds existed still resolves.
+ */
+export function worldOfScene(config: GameConfig, slug: string): PlayWorld | undefined {
+  const worlds = gameWorlds(config);
+  const scene = config.scenes.find((sc) => sc.slug === slug);
+  if (scene?.worldSlug) {
+    const named = worlds.find((w) => w.slug === scene.worldSlug);
+    if (named) return named;
+  }
+  return worlds.find((w) => w.nodes.some((n) => n.boardSlug === slug)) ?? worlds[0];
+}
+
+/** The boards of one world that this game actually contains, in route order. */
+export function scenesOfWorld(config: GameConfig, worldSlug: string): SceneConfig[] {
+  const world = gameWorlds(config).find((w) => w.slug === worldSlug);
+  if (!world) return [];
+  const mine = new Map(config.scenes.map((sc) => [sc.slug, sc]));
+  return world.nodes.map((n) => mine.get(n.boardSlug)).filter((sc): sc is SceneConfig => Boolean(sc));
+}
+

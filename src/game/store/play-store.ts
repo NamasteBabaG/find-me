@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import type { GameConfig, SceneConfig } from "@/domain/game/config";
+import { gameWorlds, scenesOfWorld, worldOfScene, type GameConfig, type PlayWorld, type SceneConfig } from "@/domain/game/config";
 import { createMissionState, missionReducer, sceneSummary, type MissionAction, type MissionCopy, type MissionState } from "@/domain/game/mission";
 import { planScenePlay } from "@/domain/game/replay";
 import { collectibles, completedScenes, emptyProgress, recordSceneCompleted, sceneProgress, type GameProgress } from "@/domain/game/progress";
@@ -9,7 +9,8 @@ import { loadProgress, saveProgress } from "../engine/progress-storage";
 import { Telemetry } from "../engine/telemetry";
 import { sounds } from "../audio/sounds";
 
-export type Screen = "gift" | "map" | "scene" | "passport";
+/** `worlds` is the hub between journeys; a one-world game never shows it. */
+export type Screen = "gift" | "worlds" | "map" | "scene" | "passport";
 
 /** Language-specific strings the pure reducer needs (see MissionCopy). */
 export interface ReducerCopy {
@@ -29,13 +30,22 @@ export interface PlayStore {
   demo: boolean;
   telemetry: Telemetry;
 
+  /** The journey the player is standing in. Never null: a game has at least one. */
+  worldSlug: string;
+
   scene(): SceneConfig | null;
+  /** The current world's map, or null for a config composed before worlds. */
+  world(): PlayWorld | null;
+  /** The boards of the current world that this game contains. */
+  worldScenes(): SceneConfig[];
   /** Load saved progress from this browser (after mount — the first render must match the server). */
   hydrate(): void;
   reveal(): void;
   /** The board the marker should walk away from, once. */
   travelFrom: string | null;
-  goToMap(travelFrom?: string | null): void;
+  goToMap(travelFrom?: string | null, worldSlug?: string): void;
+  /** The hub. Only meaningful when the game spans more than one world. */
+  goToWorlds(): void;
   endTravel(): void;
   openScene(slug: string): void;
   dispatch(action: MissionAction): void;
@@ -74,12 +84,23 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     config,
     progress: initialProgress,
     screen: demo || opts.skipGift ? "map" : "gift",
+    worldSlug: gameWorlds(config)[0]?.slug ?? "",
     sceneSlug: null,
     mission: null,
     travelFrom: null,
     muted: false,
     demo,
     telemetry,
+
+    world() {
+      const worlds = gameWorlds(get().config);
+      return worlds.find((w) => w.slug === get().worldSlug) ?? worlds[0] ?? null;
+    },
+
+    worldScenes() {
+      const world = get().world();
+      return world ? scenesOfWorld(get().config, world.slug) : get().config.scenes;
+    },
 
     scene() {
       const slug = get().sceneSlug;
@@ -98,7 +119,8 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       sounds().play("fanfare");
       const progress = { ...get().progress, revealed: true, openedAt: get().progress.openedAt ?? new Date().toISOString() };
       if (!demo) saveProgress(progress);
-      set({ progress, screen: "map" });
+      // More than one journey means the first choice is which one.
+      set({ progress, screen: gameWorlds(get().config).length > 1 ? "worlds" : "map" });
     },
 
     /**
@@ -106,9 +128,14 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
      * board just finished to the next one — presentation only: the progress it
      * animates was already saved by completeScene().
      */
-    goToMap(travelFrom = null) {
+    goToMap(travelFrom = null, worldSlug) {
       sounds().stopAmbient();
-      set({ screen: "map", sceneSlug: null, mission: null, travelFrom });
+      set({ screen: "map", sceneSlug: null, mission: null, travelFrom, ...(worldSlug ? { worldSlug } : {}) });
+    },
+
+    goToWorlds() {
+      sounds().stopAmbient();
+      set({ screen: "worlds", sceneSlug: null, mission: null, travelFrom: null });
     },
 
     endTravel() {
@@ -126,7 +153,10 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       telemetry.track({ eventType: history.plays > 0 ? "game_replayed" : "scene_started", sceneSlug: slug });
       if (history.plays > 0) telemetry.track({ eventType: "scene_started", sceneSlug: slug });
       sounds().startAmbient(scene.sounds.ambient);
-      set({ screen: "scene", sceneSlug: slug, mission, travelFrom: null });
+      // A board carries its own world, so entering one from the hub, a link or
+      // the passport lands the player on the right map when they come back.
+      const world = worldOfScene(get().config, slug);
+      set({ screen: "scene", sceneSlug: slug, mission, travelFrom: null, ...(world ? { worldSlug: world.slug } : {}) });
     },
 
     dispatch(action) {

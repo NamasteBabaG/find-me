@@ -356,6 +356,11 @@ export const en = {
       lead: "{name} is hiding in {count} places. Three hiding spots in each.",
       start: "Start the adventure ✨",
     },
+    hub: {
+      title: "Where to next, {name}?",
+      lead: "{done} of {total} journeys finished",
+      back: "All journeys",
+    },
     map: {
       title: "Where's {name}?",
       subStart: "{name} is hiding in {count} places. Pick where to go!",
