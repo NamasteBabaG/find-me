@@ -4,6 +4,7 @@ import type { SceneDefinition, Target as SceneTarget } from "@/domain/scene/sche
 import { BODY_TEMPLATES } from "../../../content/body-templates";
 import type { Container } from "../container";
 import { storeAsset } from "../asset.service";
+import type { PatchJudgement } from "@/infra/generation/types";
 import { childProblem, diffToPatch, paintMask, slotContext, slotPrompt, PROMPT_VERSION } from "./patch";
 import { loadSceneArt } from "./scene-art";
 
@@ -111,6 +112,7 @@ export async function generateSlotPatch(
   let elapsed = 0;
   let model: string | undefined;
   let usage: Record<string, number> | undefined;
+  let judged: PatchJudgement | null = null;
   let lastError = "";
   // Rejected renders are kept, not dropped. "Painted 40px tall" says a roll was
   // wrong; only the picture says HOW - the model painted an adult, or a second
@@ -127,6 +129,7 @@ export async function generateSlotPatch(
     try {
       const edit = await c.avatars.editSlotCrop({ crop, paintMask: mask, reference: input.reference, prompt, label });
       spent += edit.costCents;
+      judged = null;
       elapsed += edit.durationMs;
       model = edit.model;
       usage = edit.usage ?? usage;
@@ -134,7 +137,13 @@ export async function generateSlotPatch(
       // Store WHY a roll was rejected, not a generic summary. "too small",
       // "wider than tall" and "painted somewhere else" need different fixes, and
       // the stored reason is the only way to tell them apart afterwards.
-      const problem = childProblem(patch);
+      // Shape first, because it is free; identity second, because it costs a
+      // fraction of a cent and only patches that already look like a child are
+      // worth asking about.
+      const shape = childProblem(patch);
+      judged = shape ? null : await judgeOf(c, patch.webp, input, label);
+      if (judged) spent += judged.costCents;
+      const problem = shape ?? (judged?.verdict === "bad" ? `does not show ${input.childName}: ${judged.reason}` : null);
       if (problem) {
         lastError = problem;
         const keep = await storeAsset(c, {
@@ -179,6 +188,7 @@ export async function generateSlotPatch(
           costCents: { increment: spent },
           usageJson: usage ? JSON.stringify(usage) : null,
           rejectedAssetIdsJson: rejected.length > 0 ? JSON.stringify(rejected) : null,
+          judgeJson: judged ? JSON.stringify({ verdict: judged.verdict, reason: judged.reason, model: judged.model }) : null,
           durationMs: elapsed,
           status: "GENERATED",
           lastError: null,
@@ -216,6 +226,25 @@ export async function generateSlotPatch(
   };
 }
 
+/**
+ * Is the thing we painted actually this child?
+ *
+ * The shape checks accept a scooter, a horse's head and a pair of legs — over
+ * one nine-board game, four of twenty-six patches that passed them were not the
+ * child at all, and nothing further down could tell: the composer places what it
+ * is given and automated QA measures rectangles. So the picture is looked at.
+ *
+ * Returns a rejection reason, or null to let the patch through. A judge that
+ * cannot answer ("unknown") lets it through and says so on the row, because
+ * refusing work over a misconfigured judge would be worse than the problem —
+ * the pipeline turns those into a game a human has to approve.
+ */
+async function judgeOf(c: Container, webp: Buffer, input: { reference: Buffer; childName: string }, label: string): Promise<PatchJudgement> {
+  return c.judge.judge({ patchPng: webp, reference: input.reference, childName: input.childName, label }).catch(
+    (err: unknown): PatchJudgement => ({ verdict: "unknown", reason: err instanceof Error ? err.message.slice(0, 120) : "judge failed", costCents: 0 }),
+  );
+}
+
 function existingRejected(json: string | null | undefined): string[] | null {
   if (!json) return null;
   try {
@@ -235,6 +264,30 @@ function existingRejected(json: string | null | undefined): string[] | null {
  * fell back to a procedural sprite and automated QA, which only checks the
  * shapes it is given, waved it through.
  */
+/**
+ * Finished spots that nothing actually looked at.
+ *
+ * Only meaningful when a judge is configured: if one is, a spot it could not
+ * answer for is a spot whose picture nobody checked, and a game made of those
+ * should be seen by a person rather than delivered on the strength of its
+ * rectangles.
+ */
+export async function spotsUnjudged(c: Container, gameId: string): Promise<number> {
+  if (c.judge.id === "none") return 0;
+  const rows = await c.db.targetVariantAsset.findMany({
+    where: { targetInstance: { gameScene: { gameId } }, status: { in: ["GENERATED", "APPROVED"] } },
+    select: { judgeJson: true },
+  });
+  return rows.filter((r) => {
+    if (!r.judgeJson) return true;
+    try {
+      return (JSON.parse(r.judgeJson) as { verdict?: string }).verdict !== "ok";
+    } catch {
+      return true;
+    }
+  }).length;
+}
+
 export async function spotsOutstanding(c: Container, gameId: string, variants: Variant[]): Promise<{ retryable: number; capped: number }> {
   const rows = await c.db.targetInstance.findMany({
     where: { gameScene: { gameId }, status: { notIn: ["GENERATED", "APPROVED"] } },

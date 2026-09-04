@@ -6,9 +6,10 @@ import { LocalDiskStorage } from "@/infra/storage/local";
 import type { PaymentProvider } from "@/infra/payment/types";
 import { MockPaymentProvider } from "@/infra/payment/mock";
 import { PayMeProvider } from "@/infra/payment/payme";
-import type { AvatarProvider, FaceDetector } from "@/infra/generation/types";
+import type { AvatarProvider, FaceDetector, PatchJudge } from "@/infra/generation/types";
 import { MockAvatarProvider, NoopFaceDetector } from "@/infra/generation/mock";
 import { OpenAiAvatarProvider } from "@/infra/generation/openai";
+import { NoPatchJudge, OpenAiPatchJudge } from "@/infra/generation/judge";
 import type { EmailProvider } from "@/infra/email/types";
 import { ConsoleEmailProvider } from "@/infra/email/console";
 import { ResendEmailProvider } from "@/infra/email/resend";
@@ -30,6 +31,8 @@ export interface Container {
   storage: StorageProvider;
   payment: PaymentProvider;
   avatars: AvatarProvider;
+  /** Checks a finished hiding spot actually shows the child. */
+  judge: PatchJudge;
   faces: FaceDetector;
   email: EmailProvider;
   analytics: AnalyticsSink;
@@ -66,6 +69,9 @@ function build(): Container {
       e.GENERATION_PROVIDER === "openai"
         ? new OpenAiAvatarProvider(e.OPENAI_API_KEY ?? "", { model: e.GENERATION_MODEL, quality: e.GENERATION_QUALITY, perMinute: e.GENERATION_RPM })
         : new MockAvatarProvider(),
+    // Whoever draws also judges: an account that can paint a child can look at
+    // one, and a deployment on mocks should not be sending every spot to review.
+    judge: e.GENERATION_PROVIDER === "openai" && e.OPENAI_API_KEY ? new OpenAiPatchJudge(e.OPENAI_API_KEY, { model: e.JUDGE_MODEL }) : new NoPatchJudge(),
     faces: new NoopFaceDetector(),
     email,
     analytics,

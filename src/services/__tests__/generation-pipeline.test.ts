@@ -155,12 +155,16 @@ async function paintChild(req: SlotPatchRequest): Promise<Buffer> {
 
 // ── Seeding ─────────────────────────────────────────────────────────────────
 
+/** What the stub judge should say; a test flips this to exercise a rejection. */
+let verdict: () => "ok" | "bad" | "unknown" = () => "ok";
+
 function container(avatars: AvatarProvider): Container {
   return {
     db,
     storage: new mod.LocalDiskStorage(path.join(dir, "storage")),
     payment: null as never,
     avatars,
+    judge: { id: "stub", judge: async () => ({ verdict: verdict(), reason: "stub", costCents: 0 }) },
     faces: { detect: async () => ({ count: 1, box: null }) },
     email: { id: "console", send: async () => ({ id: "mail_test" }) } as never,
     analytics: new mod.NoopAnalytics(),
@@ -205,7 +209,37 @@ const gameOf = (gameId: string) => db.game.findUniqueOrThrow({ where: { id: game
 describe("generation pipeline", () => {
   beforeEach(() => {
     seq += 100; // ids stay unique even if a test seeds several games
+    verdict = () => "ok";
   });
+
+  it("rejects a patch the judge says is not the child", async () => {
+    // The shape checks pass a scooter, a horse's head and a pair of legs — over
+    // one real game, four of twenty-six accepted patches were not her.
+    verdict = () => "bad";
+    const p = painter(["child"]);
+    const c = container(p);
+    const gameId = await seedGame(c);
+    await mod.runGenerationPipeline(c, gameId);
+
+    const spots = await spotsIn(gameId);
+    expect(spots.every((s) => s.status === "NEEDS_REGENERATION")).toBe(true);
+    expect(spots[0]!.variants[0]!.lastError).toContain("does not show");
+    expect(spots[0]!.variants[0]!.assetId).toBeNull(); // nothing that failed identity is kept as the sprite
+    expect((await job(gameId)).status).toBe("QUEUED"); // a retry, not a finished game
+  }, 120_000);
+
+  it("sends a game to a human when nothing could check the pictures", async () => {
+    verdict = () => "unknown";
+    const c = container(painter(["child"]));
+    const gameId = await seedGame(c);
+    await mod.runGenerationPipeline(c, gameId);
+
+    const spots = await spotsIn(gameId);
+    expect(spots.every((s) => s.status === "GENERATED")).toBe(true); // a broken judge must not throw work away
+    const game = await gameOf(gameId);
+    expect(game.status).toBe("MANUAL_REVIEW");
+    expect(game.lastError).toContain("never checked");
+  }, 120_000);
 
   it("paints every hiding spot and leaves the game waiting for QA", async () => {
     const p = painter(["child"]);

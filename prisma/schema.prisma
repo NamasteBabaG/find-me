@@ -163,6 +163,7 @@ model TargetVariantAsset {
   costCents        Int      @default(0)
   usageJson        String? // provider-reported token usage, for the real cost model
   rejectedAssetIdsJson String? // ids of renders QA threw out - the only way to see WHY a spot keeps failing
+  judgeJson        String? // { verdict, reason, model } - did anything check this patch is actually the child?
   durationMs       Int      @default(0)
   status           String   @default("PENDING") // PENDING | GENERATED | APPROVED | FAILED | NEEDS_REGENERATION
   lastError        String?

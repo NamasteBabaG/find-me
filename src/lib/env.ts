@@ -38,6 +38,8 @@ const EnvSchema = z.object({
   /** Image model for the character sheet and the slot patches. */
   GENERATION_MODEL: z.string().default("gpt-image-2"),
   GENERATION_QUALITY: z.enum(["low", "medium", "high"]).default("medium"),
+  /** A vision-capable chat model that checks a finished patch is really the child. */
+  JUDGE_MODEL: z.string().default("gpt-4o-mini"),
   /** Images per minute this OpenAI account may request (tier 1 is 5). */
   GENERATION_RPM: z.coerce.number().int().positive().default(5),
   /** Generate hiding spot B as well. Off by default: one spot per target is a playable game. */

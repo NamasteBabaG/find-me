@@ -149,6 +149,7 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
                     <figcaption className="fm-small" dir="ltr">
                       {spot.sceneSlug}/{spot.targetId}
                       {spot.attempts > 1 ? ` · ${spot.attempts}` : ""}
+                      {spot.judge ? <div title={spot.judge.reason}>{spot.judge.verdict === "ok" ? "✓ נבדק" : "⚠ לא נבדק"}</div> : <div>⚠ לא נבדק</div>}
                     </figcaption>
                     <form action={regenTargetAction}>
                       <input type="hidden" name="gameId" value={gameId} />

@@ -102,6 +102,29 @@ export interface AvatarProvider {
   editSlotCrop?(request: SlotPatchRequest): Promise<SlotPatchResponse>;
 }
 
+/** What a judge concluded about one finished patch. */
+export type PatchVerdict = "ok" | "bad" | "unknown";
+
+export interface PatchJudgement {
+  verdict: PatchVerdict;
+  /** A few words, stored so a rejection can be understood later. */
+  reason: string;
+  costCents: number;
+  model?: string;
+}
+
+/**
+ * Looks at a finished patch beside the child's identity sheet and says whether
+ * the patch is that child.
+ *
+ * Separate from AvatarProvider on purpose: drawing and judging are different
+ * capabilities, and a deployment may reasonably want one without the other.
+ */
+export interface PatchJudge {
+  readonly id: string;
+  judge(input: { patchPng: Buffer; reference: Buffer; childName: string; label: string }): Promise<PatchJudgement>;
+}
+
 export interface FaceDetection {
   count: number;
   /** Suggested square crop around the most prominent face, if any. */

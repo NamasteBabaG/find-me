@@ -11,7 +11,7 @@ import { sceneBySlug } from "../scene-catalog.service";
 import { SYSTEM, audit } from "../audit.service";
 import { persistGameConfig } from "./scene-composer";
 import { publishGame } from "../publish.service";
-import { generateSlotPatch, slotOf, spotsOutstanding, type PatchOutcome, type Variant } from "./slot-patches";
+import { generateSlotPatch, slotOf, spotsOutstanding, spotsUnjudged, type PatchOutcome, type Variant } from "./slot-patches";
 import { styleReference } from "./patch";
 import { loadSceneArt } from "./scene-art";
 
@@ -276,9 +276,11 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
     // to a procedural sprite because the painter gave up on it. That is exactly
     // the case a human has to see, so it is added here where the count is known.
     const unfinished = overBudget ? outstanding.retryable + outstanding.capped : outstanding.capped;
+    const unjudged = canPatch ? await spotsUnjudged(c, gameId) : 0;
     const problems = [
       ...automatedQa(config),
       ...(unfinished > 0 ? [`${unfinished} hiding spots could not be painted and fell back to a drawn sprite${overBudget ? " (the world reached its spending ceiling)" : ""}`] : []),
+      ...(unjudged > 0 ? [`${unjudged} hiding spots were never checked against the child — nothing confirmed the picture is her`] : []),
     ];
     if (problems.length > 0) {
       await c.db.game.update({ where: { id: gameId }, data: { lastError: problems.join("; ") } });

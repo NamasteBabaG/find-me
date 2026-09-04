@@ -91,7 +91,18 @@ export async function paintedSpotsForAdmin(c: Container, gameId: string) {
     targetId: r.targetInstance.targetId,
     variant: r.variant,
     attempts: r.attempts,
+    judge: parseJudge(r.judgeJson),
   }));
+}
+
+function parseJudge(json: string | null): { verdict: string; reason: string } | null {
+  if (!json) return null;
+  try {
+    const raw = JSON.parse(json) as { verdict?: unknown; reason?: unknown };
+    return typeof raw.verdict === "string" ? { verdict: raw.verdict, reason: typeof raw.reason === "string" ? raw.reason : "" } : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
