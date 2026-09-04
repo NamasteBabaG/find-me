@@ -54,7 +54,7 @@ export const UPCOMING_WORLDS: readonly UpcomingWorld[] = [
       t("The robot workshop", "מעבדת הרובוטים"),
       t("Beyond the stars", "מעבר לכוכבים"),
     ],
-    boards: ["dinovalley", "pyramids", "tournament", "piratecove", "wildwest", "steamrail", "futurecity", "robotlab", "space"],
+    boards: ["dinovalley", "pyramids", "tournament", "piratecove", "wildwest", "steamrail", "futurecity", "robotlab", "beyondstars"],
     palette: { sky: "#8FD6E8", ground: "#2E5F6E", accent: "#FF8A3D" },
     glyph: "⏳",
   },

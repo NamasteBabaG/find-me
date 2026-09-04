@@ -1,0 +1,292 @@
+{
+  "id": "scene_beyondstars",
+  "slug": "beyondstars",
+  "name": {
+    "en": "Beyond the Stars",
+    "he": "מעבר לכוכבים"
+  },
+  "tagline": {
+    "en": "Grey dust, a parked rover and the Earth hanging in the sky.",
+    "he": "אבק אפור, רכב ירח חונה וכדור הארץ תלוי בשמיים."
+  },
+  "version": 1,
+  "active": false,
+  "artStatus": "draft",
+  "art": {
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/beyondstars/base.webp",
+    "thumbnail": "/scenes/beyondstars/thumb.webp",
+    "palette": {
+      "sky": "#1B2340",
+      "ground": "#8E93A3",
+      "accent": "#FF8A3D"
+    },
+    "foreground": "/scenes/beyondstars/foreground.webp"
+  },
+  "targets": [
+    {
+      "id": "rover",
+      "targetType": "beyondstars_rover",
+      "bodyTemplate": "beyondstars_rover",
+      "difficulty": 1,
+      "mission": {
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
+      },
+      "item": {
+        "en": "a six-wheeled moon rover parked on the dust",
+        "he": "רכב ירח בעל שישה גלגלים חונה על האבק"
+      },
+      "success": [
+        {
+          "en": "It drives itself!",
+          "he": "הוא נוסע לבד!"
+        },
+        {
+          "en": "You found me! I steered a bit.",
+          "he": "מצאתם! נהגתי קצת."
+        },
+        {
+          "en": "The tracks go all the way over there.",
+          "he": "הסימנים ממשיכים עד לשם."
+        }
+      ],
+      "animation": "bounce",
+      "slots": [
+        {
+          "id": "beyondstars_rover_a",
+          "x": 0.36,
+          "y": 0.38,
+          "scale": 0.068,
+          "hintZone": {
+            "x": 0.36,
+            "y": 0.365,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the rover.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "beyondstars_rover_b",
+          "x": 0.155,
+          "y": 0.43,
+          "scale": 0.062,
+          "hintZone": {
+            "x": 0.155,
+            "y": 0.415,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the rover.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "crates",
+      "targetType": "beyondstars_crates",
+      "bodyTemplate": "beyondstars_crates",
+      "difficulty": 2,
+      "mission": {
+        "en": "Find {name} by the moon rock crates",
+        "he": "מצאו את {name} ליד ארגזי אבני הירח"
+      },
+      "item": {
+        "en": "open crates full of glowing moon rocks",
+        "he": "ארגזים פתוחים מלאים באבני ירח זוהרות"
+      },
+      "success": [
+        {
+          "en": "This one is warm!",
+          "he": "זו חמה!"
+        },
+        {
+          "en": "You found me! Look at the colours.",
+          "he": "מצאתם! תראו את הצבעים."
+        },
+        {
+          "en": "I am keeping the purple one.",
+          "he": "את הסגולה אני שומר/ת."
+        }
+      ],
+      "animation": "wiggle",
+      "slots": [
+        {
+          "id": "beyondstars_crates_a",
+          "x": 0.545,
+          "y": 0.565,
+          "scale": 0.075,
+          "hintZone": {
+            "x": 0.545,
+            "y": 0.5499999999999999,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the crates.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "beyondstars_crates_b",
+          "x": 0.735,
+          "y": 0.56,
+          "scale": 0.07,
+          "hintZone": {
+            "x": 0.735,
+            "y": 0.545,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the crates.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "lander",
+      "targetType": "beyondstars_lander",
+      "bodyTemplate": "beyondstars_lander",
+      "difficulty": 3,
+      "mission": {
+        "en": "Find {name} hiding behind the lander",
+        "he": "מצאו את {name} מתחבא/ת מאחורי הנחתת"
+      },
+      "item": {
+        "en": "the landing craft standing on four wide feet",
+        "he": "הנחתת עומדת על ארבע רגליים רחבות"
+      },
+      "success": [
+        {
+          "en": "It is still warm underneath!",
+          "he": "עדיין חם מתחת!"
+        },
+        {
+          "en": "You found me! I counted the stars.",
+          "he": "מצאתם! ספרתי את הכוכבים."
+        },
+        {
+          "en": "Earth is the blue one.",
+          "he": "כדור הארץ הוא הכחול."
+        }
+      ],
+      "animation": "peek",
+      "slots": [
+        {
+          "id": "beyondstars_lander_a",
+          "x": 0.66,
+          "y": 0.305,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.66,
+            "y": 0.29,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the lander.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "beyondstars_lander_b",
+          "x": 0.79,
+          "y": 0.29,
+          "scale": 0.052,
+          "hintZone": {
+            "x": 0.79,
+            "y": 0.27499999999999997,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the lander.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    }
+  ],
+  "artNotes": [
+    "a six-wheeled moon rover parked on the dust",
+    "a landing craft standing on four wide feet",
+    "open crates of glowing moon rocks",
+    "a domed greenhouse with green plants inside",
+    "children in white suits planting a flag",
+    "the Earth hanging small and blue in the sky"
+  ],
+  "artComposition": "A moon base on grey dust in bright sunlight, with a landing craft standing on four wide feet, a six-wheeled rover parked beside it, a domed greenhouse, open crates of glowing rocks, and the Earth hanging small and blue in a deep sky full of stars. No written words anywhere in the picture.",
+  "ambient": [
+    {
+      "id": "a1",
+      "label": {
+        "en": "Something stirs",
+        "he": "משהו זז"
+      },
+      "x": 0.3,
+      "y": 0.78,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Did you see that?",
+        "he": "ראיתם את זה?"
+      },
+      "glyph": "✨"
+    },
+    {
+      "id": "a2",
+      "label": {
+        "en": "A little light",
+        "he": "אור קטן"
+      },
+      "x": 0.55,
+      "y": 0.3,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "blink",
+      "sound": "twinkle",
+      "reaction": {
+        "en": "It moved!",
+        "he": "זה זז!"
+      },
+      "glyph": "⏳"
+    },
+    {
+      "id": "a3",
+      "label": {
+        "en": "A quiet sound",
+        "he": "צליל שקט"
+      },
+      "x": 0.82,
+      "y": 0.68,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "pop",
+      "sound": "space",
+      "reaction": {
+        "en": "Listen!",
+        "he": "תקשיבו!"
+      },
+      "glyph": "🎵"
+    }
+  ],
+  "collectible": {
+    "id": "shard_stars",
+    "name": {
+      "en": "A starlight shard",
+      "he": "רסיס זמן של הכוכבים"
+    },
+    "icon": "⭐"
+  },
+  "celebration": {
+    "kind": "stars",
+    "completeText": {
+      "en": "You found {name} three times Beyond the Stars!",
+      "he": "מצאתם את {name} שלוש פעמים מעבר לכוכבים!"
+    }
+  }
+}

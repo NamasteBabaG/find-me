@@ -24,6 +24,7 @@ import wildwest from "./wildwest/scene.json";
 import steamrail from "./steamrail/scene.json";
 import futurecity from "./futurecity/scene.json";
 import robotlab from "./robotlab/scene.json";
+import beyondstars from "./beyondstars/scene.json";
 import newyork from "./newyork/scene.json";
 import beach from "./beach/scene.json";
 import jungle from "./jungle/scene.json";
@@ -41,7 +42,7 @@ import volcano from "./volcano/scene.json";
  *
  * Order here is the display order on the map and in the picker.
  */
-const RAW_SCENES: unknown[] = [newyork, robotlab, futurecity, steamrail, wildwest, piratecove, tournament, pyramids, dinovalley, nightcarnival, giantlibrary, sweetworkshop, cloudcity, underwater, icepalace, dragoncave, fairyforest, castlegate, antarctica, sydney, greatwall, tokyo, giza, marrakech, paris, amazon, beach, jungle, space, city, ship, stadium, market, park, volcano];
+const RAW_SCENES: unknown[] = [newyork, beyondstars, robotlab, futurecity, steamrail, wildwest, piratecove, tournament, pyramids, dinovalley, nightcarnival, giantlibrary, sweetworkshop, cloudcity, underwater, icepalace, dragoncave, fairyforest, castlegate, antarctica, sydney, greatwall, tokyo, giza, marrakech, paris, amazon, beach, jungle, space, city, ship, stadium, market, park, volcano];
 
 export interface CatalogEntry {
   scene: SceneDefinition;

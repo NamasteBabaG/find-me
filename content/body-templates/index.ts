@@ -27,6 +27,9 @@ const t = (en: string, he: string): LocalizedText => ({ en, he });
 
 export const BODY_TEMPLATES: Record<string, BodyTemplate> = {
   // ── world 3: journey through time ──
+  beyondstars_rover: { id: "beyondstars_rover", label: t("by the moon rover", "ליד רכב הירח"), pose: "standing", accessory: { glyph: "🛞", place: "front" }, outfit: { primary: "#FF8A3D", secondary: "#FFF8EC" } },
+  beyondstars_crates: { id: "beyondstars_crates", label: t("by the moon rock crates", "ליד ארגזי אבני הירח"), pose: "holding", accessory: { glyph: "💎", place: "hand" }, outfit: { primary: "#8C6BD9", secondary: "#BFE9FF" } },
+  beyondstars_lander: { id: "beyondstars_lander", label: t("behind the lander", "מאחורי הנחתת"), pose: "peeking", accessory: { glyph: "", place: "none" }, outfit: { primary: "#C1443B", secondary: "#4A5B6B" } },
   dinovalley_nest: { id: "dinovalley_nest", label: t("by the dinosaur nest", "ליד קן הדינוזאורים"), pose: "standing", accessory: { glyph: "🥚", place: "front" }, outfit: { primary: "#FFD24D", secondary: "#4E7C3A" } },
   dinovalley_fern: { id: "dinovalley_fern", label: t("by the giant ferns", "ליד השרכים הענקיים"), pose: "holding", accessory: { glyph: "🌿", place: "hand" }, outfit: { primary: "#5BBF6B", secondary: "#FFF8EC" } },
   dinovalley_log: { id: "dinovalley_log", label: t("behind the fallen log", "מאחורי הגזע שנפל"), pose: "peeking", accessory: { glyph: "", place: "none" }, outfit: { primary: "#8B5E3C", secondary: "#5BBF6B" } },
