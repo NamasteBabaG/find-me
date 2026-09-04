@@ -217,14 +217,20 @@ async function diagnose(slug: string, targetId: string, variantArg: string | und
   };
   const patch = await diffToPatch({ originalCrop: await cropOf(c), editedCrop: readFileSync(editedPath), ctx: c.ctx, art: c.art, slot: c.slot, options });
   const s = patch.shape;
-  const drift = Math.hypot(s.centerX - s.slotX, s.centerY - s.slotY) / s.childPx;
+  // Measured exactly as childProblem measures them, or this report talks the
+  // author out of a slot the rule would have kept — and it is read far more
+  // often than the rule is.
+  const drift = Math.hypot(s.centerX - s.slotX, s.centerY - s.slotY) / Math.max(s.height, s.childPx);
+  const askedWide = 0.75 * s.childPx;
   console.log(`${c.name}  ${path.relative(ROOT, editedPath)}`);
   console.log(`  verdict     ${childProblem(patch) ?? "accepted"}`);
   console.log(`  painted     ${Math.round(s.width)}x${Math.round(s.height)}px, blob ${patch.largest}px`);
   console.log(`  asked for   ~${s.childPx}px tall, blob ~${patch.expected}px   (slot scale ${c.slot.scale})`);
   console.log(`  height      ${(s.height / s.childPx).toFixed(2)}x what was asked   (accepted between 0.45 and 2.20)`);
   console.log(`  shape       ${(s.width / Math.max(1, s.height)).toFixed(2)} wide:tall   (accepted below 1.60)`);
-  console.log(`  drift       ${drift.toFixed(2)} child-heights from the spot   (accepted below 1.60)`);
+  console.log(`  across      ${(s.width / Math.max(1, askedWide)).toFixed(2)}x the ~${Math.round(askedWide)}px a child is here   (accepted between 0.38 and 1.40)`);
+  console.log(`  pieces      ${(patch.largest / Math.max(1, patch.painted) * 100).toFixed(0)}% of what was drawn is one body   (accepted above 95%)`);
+  console.log(`  drift       ${drift.toFixed(2)} child-heights from the spot   (accepted below 2.50)`);
   // The fix for a height rejection is almost never another roll.
   const ratio = s.height / s.childPx;
   if (ratio < 0.45 || ratio > 2.2) {
