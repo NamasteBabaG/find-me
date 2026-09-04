@@ -45,6 +45,23 @@ a live schema without asking, `--force-reset` empties it, and both take their
 target from the end of a URL. `npm run db:guard` (wired into both) refuses a
 Postgres URL that does not name its schema.
 
+## The shop is paused
+
+`find-me` is paused in Vercel and answers 503 on every domain. It was serving
+`payment=mock` beside `generation=openai` — the audit's first blocker, live and
+public, on a build old enough to predate the ownership check on
+`/api/dev/mock-pay`. Anyone who found the URL could have marked an order paid
+and spent OpenAI budget.
+
+Vercel Authentication is not available for production deployments on this plan,
+so pausing is what actually closes it. All work happens in QA until PayMe is
+wired; then unpause and deploy.
+
+Unpausing without deciding what the shop is will not start: the invariants in
+`src/lib/env.ts` refuse `payment=mock` with real generation under
+`APP_ENV=production`. Either wire PayMe, or set `GENERATION_PROVIDER=mock` so
+the public site can show the art without being able to spend anything.
+
 ## The URL
 
 **https://find-me-qa-smallheroes-projects.vercel.app**
