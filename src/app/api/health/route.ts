@@ -33,14 +33,27 @@ export async function GET() {
   return NextResponse.json(body, { status: db.ok ? 200 : 503, headers: { "Cache-Control": "no-store" } });
 }
 
-async function checkDb(): Promise<{ ok: boolean; error?: string }> {
+async function checkDb(): Promise<{ ok: boolean; code?: string; error?: string }> {
   try {
     // The cheapest query that proves a real round trip, and reads nobody's data.
     await getContainer().db.$queryRaw`select 1`;
     return { ok: true };
   } catch (err) {
-    return { ok: false, error: scrub(err) };
+    // Prisma's code is the useful half and leaks nothing: P1000 is a rejected
+    // password, P1001 is a server it cannot reach. Scrubbing the message can
+    // leave it empty, which is the least helpful thing to say at the one moment
+    // anyone reads this.
+    const code = typeof (err as { code?: unknown })?.code === "string" ? ((err as { code: string }).code) : undefined;
+    const name = err instanceof Error ? err.name : "Error";
+    return { ok: false, code: code ?? name, error: scrub(err) || meaningOf(code) };
   }
+}
+
+function meaningOf(code: string | undefined): string {
+  if (code === "P1000") return "the database rejected the credentials in DATABASE_URL";
+  if (code === "P1001") return "the database host cannot be reached from here";
+  if (code === "P1002") return "the database host timed out";
+  return "no detail available";
 }
 
 /**
