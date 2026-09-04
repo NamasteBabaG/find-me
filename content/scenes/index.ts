@@ -1,4 +1,5 @@
 import { validateSceneDefinition, type SceneDefinition } from "@/domain/scene/schema";
+import newyork from "./newyork/scene.json";
 import beach from "./beach/scene.json";
 import jungle from "./jungle/scene.json";
 import space from "./space/scene.json";
@@ -15,7 +16,7 @@ import volcano from "./volcano/scene.json";
  *
  * Order here is the display order on the map and in the picker.
  */
-const RAW_SCENES: unknown[] = [beach, jungle, space, city, ship, stadium, market, park, volcano];
+const RAW_SCENES: unknown[] = [newyork, beach, jungle, space, city, ship, stadium, market, park, volcano];
 
 export interface CatalogEntry {
   scene: SceneDefinition;

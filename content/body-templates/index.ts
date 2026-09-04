@@ -26,6 +26,10 @@ export interface BodyTemplate {
 const t = (en: string, he: string): LocalizedText => ({ en, he });
 
 export const BODY_TEMPLATES: Record<string, BodyTemplate> = {
+  // ── new york ──
+  newyork_taxi: { id: "newyork_taxi", label: t("by a yellow taxi", "ליד מונית צהובה"), pose: "standing", accessory: { glyph: "🚕", place: "front" }, outfit: { primary: "#F5B301", secondary: "#2B2B2B" } },
+  newyork_pretzel: { id: "newyork_pretzel", label: t("with a warm pretzel", "עם בייגלה חם"), pose: "holding", accessory: { glyph: "🥨", place: "hand" }, outfit: { primary: "#C1443B", secondary: "#FFF8EC" } },
+  newyork_bench_peek: { id: "newyork_bench_peek", label: t("behind a park bench", "מאחורי ספסל בפארק"), pose: "peeking", accessory: { glyph: "", place: "none" }, outfit: { primary: "#5BBF6B", secondary: "#C9A227" } },
   // ── beach ──
   beach_float: { id: "beach_float", label: t("with a float ring", "עם גלגל ים"), pose: "standing", accessory: { glyph: "🛟", place: "body" }, outfit: { primary: "#FFB61E", secondary: "#F25C7A" } },
   beach_sandcastle: { id: "beach_sandcastle", label: t("building a sandcastle", "בונה ארמון חול"), pose: "sitting", accessory: { glyph: "🏰", place: "front" }, outfit: { primary: "#2FA4D6", secondary: "#FFF8EC" } },

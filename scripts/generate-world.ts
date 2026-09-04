@@ -41,10 +41,22 @@ function envKey(name: string): string | undefined {
   return undefined;
 }
 
-/** Shared art direction — must stay consistent across worlds. */
+/**
+ * Shared art direction — must stay consistent across worlds.
+ *
+ * The style traits are named one by one, and the wrong style is named too,
+ * because "the same style as the references" is not enough on its own: asked
+ * that way for an autumn New York, the model returned a lovely picture in a
+ * soft painterly style with a muted palette, nothing like the boards it was
+ * shown. A child drawn to match the real boards would have looked pasted onto
+ * it — the same failure the character sheet had, for the same reason.
+ */
 const STYLE = [
-  "Extremely detailed, joyful storybook illustration in the same painterly digital style, colour treatment, line quality and level of detail as the reference pictures (a modern 'search and find' children's book, like a Where's Wally page).",
-  "Wide landscape composition seen from a slightly elevated angle, even warm daylight, saturated but soft colours, clean outlines.",
+  "Extremely detailed, joyful storybook illustration in EXACTLY the style of the reference pictures (a modern 'search and find' children's book, like a Where's Wally page).",
+  "Copy that style precisely: SOFT WARM outlines in brown, not heavy black ink; gentle painterly shading with a speckled colour texture; and simplified cheerful cartoon faces with large round eyes.",
+  "Keep the palette bright, warm and saturated even where the subject would not be — grey streets, cold places and night scenes all stay sunny and colourful here.",
+  "Do NOT paint it realistically, and do NOT ink it like a comic: no photographic faces, no muted or dusty palette, no hard black outlines — however much the subject invites it.",
+  "Wide landscape composition seen from a slightly elevated angle, even warm daylight, clean outlines.",
   "The picture is DENSELY packed edge to edge: at least 150 small, diverse, cheerful children and adults plus animals, all busy with funny little activities. No big foreground figures, no empty areas, no plain sky taking more than the top tenth — every part of the picture is full of small things to look at.",
   "Every person is tiny, at most 4% of the picture height (a crowd seen from a lookout tower), so that one particular child is genuinely hard to find and takes a few moments of searching.",
   "Plenty of nooks and natural hiding places: things to peek out from behind (bushes, vehicles, tents, stalls, walls, rocks).",
@@ -60,13 +72,22 @@ interface Scene {
   artStatus: string;
   targets: Array<{ item: LocalizedText; mission: LocalizedText }>;
   ambient?: Array<{ label: LocalizedText }>;
+  /**
+   * Extra art direction for the generator alone.
+   *
+   * `ambient` entries are interactive hotspots with positions, so they cannot be
+   * written until the art exists — but the picture is much richer when the
+   * prompt asks for those details in the first place. This is the chicken and
+   * the egg, written down.
+   */
+  artNotes?: string[];
   bonus?: { label?: LocalizedText; item?: LocalizedText };
   collectible?: { name: LocalizedText };
 }
 
 function prompt(scene: Scene): string {
   const items = scene.targets.map((t) => t.item.en).join(", ");
-  const ambient = (scene.ambient ?? []).map((a) => a.label.en).join("; ");
+  const ambient = [...(scene.artNotes ?? []), ...(scene.ambient ?? []).map((a) => a.label.en)].join("; ");
   return [
     `${STYLE}`,
     `Paint a brand-new world: "${scene.name.en}" — ${scene.tagline.en}`,

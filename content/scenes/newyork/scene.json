@@ -1,0 +1,291 @@
+{
+  "id": "scene_newyork",
+  "slug": "newyork",
+  "name": {
+    "en": "New York",
+    "he": "ניו יורק"
+  },
+  "tagline": {
+    "en": "Yellow taxis, a giant park and a warm pretzel.",
+    "he": "מוניות צהובות, פארק ענק ובייגלה חם."
+  },
+  "version": 1,
+  "active": false,
+  "artStatus": "draft",
+  "art": {
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/newyork/base.webp",
+    "thumbnail": "/scenes/newyork/thumb.webp",
+    "palette": {
+      "sky": "#DCE9F5",
+      "ground": "#B9A98F",
+      "accent": "#F5B301"
+    },
+    "foreground": "/scenes/newyork/foreground.webp"
+  },
+  "targets": [
+    {
+      "id": "taxi",
+      "targetType": "newyork_taxi",
+      "bodyTemplate": "newyork_taxi",
+      "difficulty": 1,
+      "mission": {
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
+      },
+      "item": {
+        "en": "yellow taxis stopped at a crossing",
+        "he": "מוניות צהובות עוצרות במעבר חצייה"
+      },
+      "success": [
+        {
+          "en": "Taxi! ...no thanks, I like walking.",
+          "he": "מונית! ...לא תודה, אני אוהבת ללכת."
+        },
+        {
+          "en": "You found me between the taxis!",
+          "he": "מצאתם אותי בין המוניות!"
+        },
+        {
+          "en": "Everything here is so tall!",
+          "he": "הכול פה כל כך גבוה!"
+        }
+      ],
+      "animation": "bounce",
+      "slots": [
+        {
+          "id": "newyork_taxi_a",
+          "x": 0.34,
+          "y": 0.58,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.34,
+            "y": 0.57,
+            "r": 0.09
+          },
+          "hintText": {
+            "en": "Look by the yellow taxis at the crossing.",
+            "he": "חפשו ליד המוניות הצהובות במעבר החצייה."
+          }
+        },
+        {
+          "id": "newyork_taxi_b",
+          "x": 0.63,
+          "y": 0.52,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.63,
+            "y": 0.51,
+            "r": 0.09
+          },
+          "hintText": {
+            "en": "Look by the taxis on the right.",
+            "he": "חפשו ליד המוניות בצד ימין."
+          }
+        }
+      ]
+    },
+    {
+      "id": "pretzel",
+      "targetType": "newyork_pretzel",
+      "bodyTemplate": "newyork_pretzel",
+      "difficulty": 2,
+      "mission": {
+        "en": "Find {name} by the pretzel cart",
+        "he": "מצאו את {name} ליד עגלת הבייגלה"
+      },
+      "item": {
+        "en": "a street cart selling warm pretzels",
+        "he": "עגלת רחוב שמוכרת בייגלה חם"
+      },
+      "success": [
+        {
+          "en": "It was still warm!",
+          "he": "הוא עוד היה חם!"
+        },
+        {
+          "en": "You found me! Want half?",
+          "he": "מצאתם! רוצים חצי?"
+        },
+        {
+          "en": "The salt got on my nose.",
+          "he": "המלח נדבק לי לאף."
+        }
+      ],
+      "animation": "wiggle",
+      "slots": [
+        {
+          "id": "newyork_pretzel_a",
+          "x": 0.72,
+          "y": 0.63,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.72,
+            "y": 0.62,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look by the pretzel cart.",
+            "he": "חפשו ליד עגלת הבייגלה."
+          }
+        },
+        {
+          "id": "newyork_pretzel_b",
+          "x": 0.22,
+          "y": 0.66,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.22,
+            "y": 0.65,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look by the second cart on the left.",
+            "he": "חפשו ליד העגלה השנייה משמאל."
+          }
+        }
+      ]
+    },
+    {
+      "id": "bench",
+      "targetType": "newyork_bench",
+      "bodyTemplate": "newyork_bench_peek",
+      "difficulty": 3,
+      "mission": {
+        "en": "Find {name} hiding behind a park bench",
+        "he": "מצאו את {name} מתחבאת מאחורי ספסל בפארק"
+      },
+      "item": {
+        "en": "park benches under autumn trees, with pigeons",
+        "he": "ספסלי פארק מתחת לעצי סתיו, עם יונים"
+      },
+      "success": [
+        {
+          "en": "The pigeons almost gave me away!",
+          "he": "היונים כמעט הסגירו אותי!"
+        },
+        {
+          "en": "You found me! The leaves are so orange.",
+          "he": "מצאתם! העלים כל כך כתומים."
+        },
+        {
+          "en": "Shhh, one more minute!",
+          "he": "ששש, עוד רגע אחד!"
+        }
+      ],
+      "animation": "peek",
+      "slots": [
+        {
+          "id": "newyork_bench_a",
+          "x": 0.47,
+          "y": 0.74,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.47,
+            "y": 0.73,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look behind the benches in the park.",
+            "he": "חפשו מאחורי הספסלים בפארק."
+          }
+        },
+        {
+          "id": "newyork_bench_b",
+          "x": 0.86,
+          "y": 0.78,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.86,
+            "y": 0.77,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look behind the bench on the right.",
+            "he": "חפשו מאחורי הספסל בצד ימין."
+          }
+        }
+      ]
+    }
+  ],
+  "ambient": [
+    {
+      "id": "pigeons",
+      "label": {
+        "en": "Pigeons taking off",
+        "he": "יונים ממריאות"
+      },
+      "x": 0.5,
+      "y": 0.8,
+      "w": 0.06,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Whoosh! Off they go!",
+        "he": "פרררר! הן עפו!"
+      },
+      "glyph": "🕊️"
+    },
+    {
+      "id": "steam",
+      "label": {
+        "en": "Steam from a manhole",
+        "he": "אדים ממכסה ביוב"
+      },
+      "x": 0.28,
+      "y": 0.72,
+      "w": 0.05,
+      "h": 0.06,
+      "animation": "slide",
+      "sound": "boing",
+      "reaction": {
+        "en": "The street is breathing!",
+        "he": "הרחוב נושם!"
+      },
+      "glyph": "💨"
+    },
+    {
+      "id": "violin",
+      "label": {
+        "en": "A street violinist",
+        "he": "נגן רחוב"
+      },
+      "x": 0.13,
+      "y": 0.6,
+      "w": 0.05,
+      "h": 0.08,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "One more song!",
+        "he": "עוד שיר אחד!"
+      },
+      "glyph": "🎻"
+    }
+  ],
+  "artNotes": [
+    "a dog walker holding six leads at once",
+    "steam rising from a manhole",
+    "a street musician with a violin case open",
+    "chess players on a stone table",
+    "a hot dog stand with a striped umbrella",
+    "orange autumn leaves blowing across the pavement"
+  ],
+  "collectible": {
+    "id": "stamp_usa",
+    "name": {
+      "en": "A New York stamp",
+      "he": "חותמת ניו יורק"
+    },
+    "icon": "🗽"
+  },
+  "celebration": {
+    "kind": "confetti",
+    "completeText": {
+      "en": "You found {name} three times in New York!",
+      "he": "מצאתם את {name} שלוש פעמים בניו יורק!"
+    }
+  }
+}
