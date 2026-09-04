@@ -3,6 +3,11 @@
  * them into one sheet to look at.
  *
  *   npx tsx scripts/patch-sheet.ts --dir=work/w2 [--out=work/sheet.png] [--pad=70] [--cols=5]
+ *   npx tsx scripts/patch-sheet.ts --game=game_xxx      the same, for a real game
+ *
+ * `--dir` reads what an authoring run left on disk; `--game` reads a finished
+ * game out of the database, which is the only way to look at a child that a
+ * parent uploaded. Point DATABASE_URL at whichever environment holds it.
  *
  * This is the last step before a world goes on sale, and it is not optional.
  * Geometry and the judge between them are a filter, not a guarantee: across one
@@ -39,9 +44,49 @@ interface Sidecar {
   rect: { x: number; y: number; w: number; h: number };
 }
 
+interface Job {
+  label: string;
+  slug: string;
+  rect: Sidecar["rect"];
+  read: () => Promise<Buffer>;
+}
+
+/** Every finished hiding spot of one game, straight from the database. */
+async function fromGame(gameId: string): Promise<Job[]> {
+  const [{ getContainer }, { readAssetBuffer }] = await Promise.all([import("../src/services/container"), import("../src/services/asset.service")]);
+  const c = getContainer();
+  const rows = await c.db.targetVariantAsset.findMany({
+    where: { targetInstance: { gameScene: { gameId } }, status: { in: ["GENERATED", "APPROVED"] }, assetId: { not: null } },
+    include: { targetInstance: { include: { gameScene: { select: { sceneSlug: true, orderIndex: true } } } } },
+    orderBy: [{ targetInstance: { gameScene: { orderIndex: "asc" } } }, { createdAt: "asc" }],
+  });
+  const out: Job[] = [];
+  for (const r of rows) {
+    if (!r.rectJson) continue;
+    const slug = r.targetInstance.gameScene.sceneSlug;
+    const board = await sharp(path.join(ROOT, "public", "scenes", slug, "base.webp")).metadata();
+    // The database keeps the rect in art fractions; the sheet works in pixels.
+    const n = JSON.parse(r.rectJson) as { x: number; y: number; w: number; h: number };
+    const assetId = r.assetId as string;
+    out.push({
+      label: `${slug}/${r.targetInstance.targetId}/${r.variant}`,
+      slug,
+      rect: {
+        x: Math.round(n.x * (board.width ?? 0)),
+        y: Math.round(n.y * (board.height ?? 0)),
+        w: Math.round(n.w * (board.width ?? 0)),
+        h: Math.round(n.h * (board.height ?? 0)),
+      },
+      read: async () => sharp(await readAssetBuffer(c, assetId)).png().toBuffer(),
+    });
+  }
+  return out;
+}
+
 async function main() {
+  const gameId = flag("game", "");
   const dirs = flag("dir", "").split(",").filter(Boolean);
-  if (!dirs.length) throw new Error("usage: npx tsx scripts/patch-sheet.ts --dir=work/w2[,work/fix] [--out=…]");
+  if (!dirs.length && !gameId) throw new Error("usage: npx tsx scripts/patch-sheet.ts --dir=work/w2[,work/fix] | --game=game_xxx [--out=…]");
   const pad = Number(flag("pad", "70"));
   const cols = Number(flag("cols", "5"));
   const cell = Number(flag("cell", "300"));
@@ -58,14 +103,21 @@ async function main() {
     }
   }
   const keys = [...found.keys()].sort();
-  if (!keys.length) throw new Error(`no patches in ${dirs.join(", ")}`);
+  const jobs: Job[] = [
+    ...keys.map((key) => {
+      const { dir, name, meta } = found.get(key)!;
+      return { label: key, slug: meta.slug, rect: meta.rect, read: async () => sharp(path.join(dir, `${name}.webp`)).png().toBuffer() };
+    }),
+    ...(gameId ? await fromGame(gameId) : []),
+  ];
+  if (!jobs.length) throw new Error(gameId ? `no finished hiding spots in ${gameId}` : `no patches in ${dirs.join(", ")}`);
 
   // A fresh pipeline per patch: a sharp instance carries the operations queued
   // on it, so reusing one board across nine spots composites nine children.
   const sizes = new Map<string, { width: number; height: number }>();
   const tiles: Buffer[] = [];
-  for (const key of keys) {
-    const { dir, name, meta } = found.get(key)!;
+  for (const job of jobs) {
+    const meta = { slug: job.slug, rect: job.rect };
     const boardPath = path.join(ROOT, "public", "scenes", meta.slug, "base.webp");
     if (!sizes.has(meta.slug)) {
       const m = await sharp(boardPath).metadata();
@@ -80,7 +132,7 @@ async function main() {
       width: Math.min(width, meta.rect.x + meta.rect.w + pad) - left,
       height: Math.min(height, meta.rect.y + meta.rect.h + pad) - top,
     };
-    const patch = await sharp(path.join(dir, `${name}.webp`)).png().toBuffer();
+    const patch = await job.read();
     const onBoard = await sharp(boardPath)
       .composite([{ input: patch, left: meta.rect.x, top: meta.rect.y }])
       .png()
@@ -98,7 +150,7 @@ async function main() {
   writeFileSync(out, sheet);
 
   console.log(`${path.relative(ROOT, out)}  ${cols}x${rows}, ${tiles.length} spots`);
-  keys.forEach((k, i) => console.log(`  ${String(i + 1).padStart(2)}. ${k}`));
+  jobs.forEach((j, i) => console.log(`  ${String(i + 1).padStart(2)}. ${j.label}`));
   console.log("");
   console.log("Look at every one. A spot is only finished when it reads as a child hiding in that place.");
 }
