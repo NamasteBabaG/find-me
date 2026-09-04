@@ -18,7 +18,7 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
   const c = getContainer();
   const detail = await orderDetailForAdmin(c, gameId);
   if (!detail) notFound();
-  const { game, status, costCents, activity, failedSpots, awaitingQa, playable } = detail;
+  const { game, status, costCents, activity, failedSpots, paintedSpots, awaitingQa, playable } = detail;
   // Asset signatures expire; the stored config is re-signed on the way out.
   const config = game.configJson ? withFreshAssetUrls(getContainer(), parseGameConfig(game.configJson)) : null;
   const order = game.orders[0] ?? null;
@@ -129,6 +129,39 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
           ) : (
             <Notice kind="info">עדיין אין קונפיגורציה — המשחק לא הורכב.</Notice>
           )}
+
+          {paintedSpots.length > 0 ? (
+            <section className="fm-card fm-stack fm-stack--2">
+              <h3>המחבואים שיצאו ({paintedSpots.length})</h3>
+              <p className="fm-small">
+                הבדיקות מאשרות צורה, לא זהות — ילד בגודל ובמקום הנכונים עובר גם אם הוא בכלל לא הילד/ה. בתוך הסצנה קשה לראות את זה; בשורה כזאת ראש
+                של סוס קופץ לעין תוך שנייה.
+              </p>
+              <div className="fm-row" style={{ flexWrap: "wrap", gap: "var(--space-2)" }}>
+                {paintedSpots.map((spot) => (
+                  <figure key={spot.id} className="fm-stack fm-stack--1" style={{ width: 108, margin: 0 }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={`/api/assets/${spot.assetId}`}
+                      alt={`${spot.sceneSlug}/${spot.targetId}`}
+                      style={{ width: 108, height: 150, objectFit: "contain", background: "var(--surface-2)", borderRadius: "var(--radius-2)" }}
+                    />
+                    <figcaption className="fm-small" dir="ltr">
+                      {spot.sceneSlug}/{spot.targetId}
+                      {spot.attempts > 1 ? ` · ${spot.attempts}` : ""}
+                    </figcaption>
+                    <form action={regenTargetAction}>
+                      <input type="hidden" name="gameId" value={gameId} />
+                      <input type="hidden" name="targetInstanceId" value={spot.targetInstanceId} />
+                      <button className="fm-btn fm-btn--ghost fm-btn--sm" type="submit">
+                        ↻
+                      </button>
+                    </form>
+                  </figure>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
           {failedSpots.length > 0 ? (
             <section className="fm-card fm-stack fm-stack--2">

@@ -62,7 +62,36 @@ export async function orderDetailForAdmin(c: Container, gameId: string) {
   if (!game) return null;
   const assets = await c.db.asset.findMany({ where: { id: { in: [game.childProfile?.avatarAssetId, game.childProfile?.identityAssetId, game.childProfile?.originalPhotoAssetId, ...game.scenes.flatMap((s) => s.targets.map((t) => t.spriteAssetId))].filter((x): x is string => Boolean(x)) } } });
   const activity = await c.db.auditLog.findMany({ where: { entityType: "Game", entityId: gameId }, orderBy: { createdAt: "desc" }, take: 40 });
-  return { game, status: statusOf(game), costCents: await generationCostCents(c, gameId), assets, activity, failedSpots: await failedSpotsForAdmin(c, gameId), awaitingQa: isAwaitingQa(statusOf(game)), playable: isPlayable(statusOf(game)) };
+  const [failedSpots, paintedSpots] = await Promise.all([failedSpotsForAdmin(c, gameId), paintedSpotsForAdmin(c, gameId)]);
+  return { game, status: statusOf(game), costCents: await generationCostCents(c, gameId), assets, activity, failedSpots, paintedSpots, awaitingQa: isAwaitingQa(statusOf(game)), playable: isPlayable(statusOf(game)) };
+}
+
+/**
+ * Every hiding spot that was accepted, as the cut-out patch on its own.
+ *
+ * The checks that accept a patch look at its shape — about the right height,
+ * taller than wide, solid, near the spot — and never at whether the thing
+ * painted is the child. Over one nine-board game that let through a scooter with
+ * nobody on it, a horse's head and a pair of legs, alongside twenty good ones.
+ * Seen inside the scene each is easy to miss; seen as a row of cut-outs, a
+ * horse's head takes a second to spot. Until something can judge identity rather
+ * than shape, this row is the check.
+ */
+export async function paintedSpotsForAdmin(c: Container, gameId: string) {
+  const rows = await c.db.targetVariantAsset.findMany({
+    where: { targetInstance: { gameScene: { gameId } }, status: { in: ["GENERATED", "APPROVED"] }, assetId: { not: null } },
+    include: { targetInstance: { include: { gameScene: { select: { sceneSlug: true, orderIndex: true } } } } },
+    orderBy: [{ targetInstance: { gameScene: { orderIndex: "asc" } } }, { createdAt: "asc" }],
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    targetInstanceId: r.targetInstanceId,
+    assetId: r.assetId as string,
+    sceneSlug: r.targetInstance.gameScene.sceneSlug,
+    targetId: r.targetInstance.targetId,
+    variant: r.variant,
+    attempts: r.attempts,
+  }));
 }
 
 /**
