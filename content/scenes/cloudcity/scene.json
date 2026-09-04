@@ -154,7 +154,7 @@
       "difficulty": 3,
       "mission": {
         "en": "Find {name} hiding inside a cloud",
-        "he": "מצאו את {name} מתחבאת בתוך ענן"
+        "he": "מצאו את {name} מתחבא/ת בתוך ענן"
       },
       "item": {
         "en": "thick fluffy clouds you can sink into up to your shoulders",

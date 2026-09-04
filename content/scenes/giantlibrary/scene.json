@@ -154,7 +154,7 @@
       "difficulty": 3,
       "mission": {
         "en": "Find {name} hiding inside an open book",
-        "he": "מצאו את {name} מתחבאת בתוך ספר פתוח"
+        "he": "מצאו את {name} מתחבא/ת בתוך ספר פתוח"
       },
       "item": {
         "en": "enormous open books standing like tents on the floor",

@@ -154,7 +154,7 @@
       "difficulty": 3,
       "mission": {
         "en": "Find {name} hiding under the dragon's wing",
-        "he": "מצאו את {name} מתחבאת מתחת לכנף הדרקון"
+        "he": "מצאו את {name} מתחבא/ת מתחת לכנף הדרקון"
       },
       "item": {
         "en": "the dragon's huge folded wing making a warm tent",

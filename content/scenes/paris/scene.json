@@ -154,7 +154,7 @@
       "difficulty": 3,
       "mission": {
         "en": "Find {name} hiding behind the café awning",
-        "he": "מצאו את {name} מתחבאת מאחורי הסוכך של בית הקפה"
+        "he": "מצאו את {name} מתחבא/ת מאחורי הסוכך של בית הקפה"
       },
       "item": {
         "en": "café tables under striped awnings",

@@ -154,7 +154,7 @@
       "difficulty": 3,
       "mission": {
         "en": "Find {name} hiding inside the coral",
-        "he": "מצאו את {name} מתחבאת בתוך האלמוג"
+        "he": "מצאו את {name} מתחבא/ת בתוך האלמוג"
       },
       "item": {
         "en": "tall branching coral with hollows big enough to hide in",

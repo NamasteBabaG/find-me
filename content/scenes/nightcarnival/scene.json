@@ -154,7 +154,7 @@
       "difficulty": 3,
       "mission": {
         "en": "Find {name} hiding behind the toffee apple stall",
-        "he": "מצאו את {name} מתחבאת מאחורי דוכן תפוחי הסוכר"
+        "he": "מצאו את {name} מתחבא/ת מאחורי דוכן תפוחי הסוכר"
       },
       "item": {
         "en": "a glowing red toffee apple stall with rows of apples on sticks",
