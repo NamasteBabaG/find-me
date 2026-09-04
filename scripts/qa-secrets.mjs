@@ -1,33 +1,40 @@
 /**
- * Puts the QA deployment's three secrets into Vercel, in one command.
+ * Puts the QA deployment's three secrets into Vercel, in one go.
  *
- *   DATABASE_URL="postgresql://…?schema=qa" OPENAI_API_KEY="sk-…" node scripts/qa-secrets.mjs
+ *   PowerShell:
+ *     $env:DATABASE_URL="postgresql://…?schema=qa"; $env:OPENAI_API_KEY="sk-…"
+ *     node scripts/qa-secrets.mjs
+ *     Remove-Item Env:DATABASE_URL, Env:OPENAI_API_KEY
+ *
+ *   bash/zsh (the leading space keeps it out of history):
+ *      DATABASE_URL="postgresql://…?schema=qa" OPENAI_API_KEY="sk-…" node scripts/qa-secrets.mjs
  *
  * SESSION_SECRET is generated here and never printed: it is new on purpose,
  * because it signs sessions and asset URLs, and sharing the shop's would make a
  * QA session valid against real data.
  *
- * The other two are read from the environment of this process, handed to the
- * Vercel CLI on stdin, and never written to a file, a log or the terminal. Pass
- * them as shown above rather than typing them at a prompt, so they do not end up
- * in shell history either (a leading space stops that in bash and zsh).
+ * The other two are read from this process's environment, handed to the Vercel
+ * CLI on stdin, and never written to a file, a log or the terminal.
  *
- * Nothing here is clever. It exists so that setting up QA is one line instead of
- * six dashboard fields, and so the DATABASE_URL is checked before it is stored:
- * a URL without `schema=qa` points at the shop's own tables.
+ * Nothing here is clever. It exists so setting up QA is one line instead of six
+ * dashboard fields, and so the DATABASE_URL is checked before it is stored: a
+ * URL that does not name the `qa` schema is pointing at the shop's own tables.
  */
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 
 const PROJECT = "find-me-qa";
 const SCOPE = "smallheroes-projects";
+const ORG_ID = "team_2bLUDGyHayGB1UHIvcCBgyWh";
+const PROJECT_ID = "prj_LbqCRqwU8WfZpeaWU7HTXM4SsfG4";
 const TARGET = "production";
+const pwsh = process.platform === "win32";
 
 function set(name, value) {
   execFileSync("npx", ["vercel", "env", "add", name, TARGET, "--scope", SCOPE, "--force"], {
     input: value,
     stdio: ["pipe", "ignore", "pipe"],
-    shell: process.platform === "win32",
+    shell: pwsh,
   });
   console.log(`  set ${name}`);
 }
@@ -41,10 +48,13 @@ const dbUrl = process.env.DATABASE_URL;
 const openaiKey = process.env.OPENAI_API_KEY;
 
 if (!dbUrl || !openaiKey) {
-  die(
-    'usage: DATABASE_URL="postgresql://…?schema=qa" OPENAI_API_KEY="sk-…" node scripts/qa-secrets.mjs\n' +
-      "  (run it from a directory linked to find-me-qa: npx vercel link --project find-me-qa)",
-  );
+  const usage = pwsh
+    ? 'usage (PowerShell — it has no inline env prefix):\n' +
+      '    $env:DATABASE_URL="postgresql://…?schema=qa"; $env:OPENAI_API_KEY="sk-…"\n' +
+      "    node scripts/qa-secrets.mjs\n" +
+      "    Remove-Item Env:DATABASE_URL, Env:OPENAI_API_KEY"
+    : 'usage: DATABASE_URL="postgresql://…?schema=qa" OPENAI_API_KEY="sk-…" node scripts/qa-secrets.mjs';
+  die(`${usage}\n\n  Run it from a directory linked to find-me-qa:\n    npx vercel link --project ${PROJECT} --scope ${SCOPE} --yes`);
 }
 
 let parsed;
@@ -69,7 +79,14 @@ set("SESSION_SECRET", randomBytes(32).toString("base64url"));
 set("DATABASE_URL", dbUrl);
 set("OPENAI_API_KEY", openaiKey);
 
-console.log("\n  Next:");
-console.log("    npm run db:push:postgres          # creates the tables in the qa schema");
-console.log("    VERCEL_ORG_ID=team_2bLUDGyHayGB1UHIvcCBgyWh VERCEL_PROJECT_ID=prj_LbqCRqwU8WfZpeaWU7HTXM4SsfG4 npx vercel deploy --prod");
-console.log("    then GET /api/health should say appEnv \"qa\", db.ok true, payment \"mock\"\n");
+console.log("\n  Next — create the tables in the qa schema (DATABASE_URL is still set in this shell):");
+console.log("    npm run db:push:postgres");
+console.log("\n  Then deploy:");
+if (pwsh) {
+  console.log(`    $env:VERCEL_ORG_ID="${ORG_ID}"; $env:VERCEL_PROJECT_ID="${PROJECT_ID}"`);
+  console.log("    npx vercel deploy --prod");
+} else {
+  console.log(`    VERCEL_ORG_ID=${ORG_ID} VERCEL_PROJECT_ID=${PROJECT_ID} npx vercel deploy --prod`);
+}
+console.log('\n  Health should then say appEnv "qa", db.ok true, payment "mock".');
+console.log(pwsh ? "  Finally: Remove-Item Env:DATABASE_URL, Env:OPENAI_API_KEY\n" : "\n");

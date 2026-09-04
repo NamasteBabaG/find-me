@@ -50,9 +50,13 @@ Postgres URL that does not name its schema.
 The projects are not linked to GitHub, so deployment is a command rather than a
 push. From the repo root, without disturbing the shop's own link:
 
-```bash
-VERCEL_ORG_ID=team_2bLUDGyHayGB1UHIvcCBgyWh VERCEL_PROJECT_ID=prj_LbqCRqwU8WfZpeaWU7HTXM4SsfG4 npx vercel deploy --prod
+```powershell
+$env:VERCEL_ORG_ID="team_2bLUDGyHayGB1UHIvcCBgyWh"; $env:VERCEL_PROJECT_ID="prj_LbqCRqwU8WfZpeaWU7HTXM4SsfG4"
+npx vercel deploy --prod
 ```
+
+If Prisma fails with `EPERM … query_engine-windows.dll.node`, a dev server is
+holding the file: stop `npm run dev` and run it again.
 
 The shop is the same command with its own project id, and should only run after
 QA has been looked at.
@@ -60,6 +64,19 @@ QA has been looked at.
 ## Secrets
 
 From a directory linked to the QA project (`npx vercel link --project find-me-qa`):
+
+PowerShell — it has no inline `VAR=value command` prefix, so set, run, clear:
+
+```powershell
+$env:DATABASE_URL="postgresql://…?schema=qa"; $env:OPENAI_API_KEY="sk-…"
+node scripts/qa-secrets.mjs
+npm run db:push:postgres
+$env:VERCEL_ORG_ID="team_2bLUDGyHayGB1UHIvcCBgyWh"; $env:VERCEL_PROJECT_ID="prj_LbqCRqwU8WfZpeaWU7HTXM4SsfG4"
+npx vercel deploy --prod
+Remove-Item Env:DATABASE_URL, Env:OPENAI_API_KEY
+```
+
+bash — the leading space keeps it out of history:
 
 ```bash
  DATABASE_URL="postgresql://…?schema=qa" OPENAI_API_KEY="sk-…" node scripts/qa-secrets.mjs
@@ -89,12 +106,9 @@ What each one is, and why:
 ## First run
 
 The build generates the Prisma client but never migrates, so the `qa` schema
-starts empty. Once `DATABASE_URL` is set, push the tables into it once:
-
-```bash
-node scripts/prisma-generate.mjs
-npx prisma db push --schema prisma/generated/schema.postgres.prisma
-```
+starts empty. `npm run db:push:postgres` fills it — but it reads DATABASE_URL
+from the shell (falling back to `.env`, which is SQLite), so run it in the same
+shell where you just set the QA URL, or it will quietly push to `dev.db`.
 
 Then check the deployment agrees with all of the above:
 
