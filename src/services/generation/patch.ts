@@ -216,6 +216,8 @@ export interface DiffOptions {
   threshold?: number;
   /** Outside the ellipse the threshold is multiplied by this, so re-render drift is ignored. */
   outer?: number;
+  /** How far the full-sensitivity area reaches, in multiples of the paint ellipse. */
+  inner?: number;
   /** How far past the ellipse a painted pixel may still belong to the child. */
   grow?: number;
   /** Blobs smaller than this fraction of the largest are dropped. */
@@ -307,6 +309,17 @@ export async function diffToPatch(input: {
   // search area threw those away as if nothing had been painted, so the area is
   // generous and the blob filter plus the shape check decide what is a child.
   const grow = o.grow ?? 3.6;
+  // How far the child may be painted and still be seen at full sensitivity.
+  //
+  // Barely wider than the paint ellipse, which looks wrong — the model often
+  // puts her a body-height or two out, and out there she is judged at 2.2x the
+  // threshold, so a pale child on pale ground comes back as a few edges. Raising
+  // it to 2.0 was tried against the thirty renders on disk and made things worse,
+  // not better: the extra sensitivity picks up the scene's own re-render drift
+  // faster than it picks up the child, and two renders that had been fine
+  // started failing as repainted crops. The option is here so the next person
+  // can re-run that experiment, not because 1.15 is a guess.
+  const inner = o.inner ?? 1.15;
   const keep = o.keep ?? 0.2;
   const feather = o.feather ?? 6;
   const { w, h } = ctx.rect;
@@ -316,7 +329,7 @@ export async function diffToPatch(input: {
   const original = await sharp(input.originalCrop).resize({ width: w, height: h, fit: "cover" }).removeAlpha().raw().toBuffer();
   const edited = await sharp(input.editedCrop).resize({ width: w, height: h, fit: "cover" }).removeAlpha().raw().toBuffer();
   const allow = await sharp(paintMask(ctx, art, slot, grow)).extractChannel(0).raw().toBuffer();
-  const inner = await sharp(paintMask(ctx, art, slot, 1.15)).extractChannel(0).raw().toBuffer();
+  const near = await sharp(paintMask(ctx, art, slot, inner)).extractChannel(0).raw().toBuffer();
 
   const matched = colourMatch(edited, original, allow, n);
   const diff = Buffer.alloc(n);
@@ -327,7 +340,7 @@ export async function diffToPatch(input: {
       Math.abs(matched[i * 3 + 1]! - original[i * 3 + 1]!),
       Math.abs(matched[i * 3 + 2]! - original[i * 3 + 2]!),
     );
-    diff[i] = d > (inner[i]! >= 128 ? threshold : threshold * outerFactor) ? 255 : 0;
+    diff[i] = d > (near[i]! >= 128 ? threshold : threshold * outerFactor) ? 255 : 0;
   }
 
   const step = async (buf: Buffer, apply: (s: Sharp) => Sharp) => apply(sharp(buf, raw1)).extractChannel(0).raw().toBuffer();
