@@ -424,6 +424,7 @@ export const en = {
     PICK_PACKAGE_FIRST: "Please pick a package first.",
     WRONG_SCENE_COUNT: "Please choose exactly {want} worlds.",
     SCENE_UNAVAILABLE: "One of those worlds isn't available.",
+    WORLDS_OUT_OF_ORDER: "The worlds are a journey — the next one opens after the one before it.",
     PREVIOUS_STEPS: "Please finish the previous steps first.",
     INVALID_EMAIL: "That email address doesn't look right.",
     SCENES_INCOMPLETE: "The world selection isn't complete.",

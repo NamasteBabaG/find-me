@@ -423,6 +423,7 @@ export const he: Dictionary = {
     PICK_PACKAGE_FIRST: "קודם בוחרים חבילה.",
     WRONG_SCENE_COUNT: "בחרו בדיוק {want} עולמות.",
     SCENE_UNAVAILABLE: "אחד העולמות אינו זמין.",
+    WORLDS_OUT_OF_ORDER: "העולמות הם מסע — הבא נפתח אחרי זה שלפניו.",
     PREVIOUS_STEPS: "צריך לסיים את השלבים הקודמים.",
     INVALID_EMAIL: "כתובת המייל לא נראית תקינה.",
     SCENES_INCOMPLETE: "בחירת העולמות לא הושלמה.",

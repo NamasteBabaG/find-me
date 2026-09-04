@@ -9,6 +9,7 @@ import {
   isWorldComplete,
   nextBoard,
   nodeStates,
+  outOfOrderWorlds,
   WorldDefinitionSchema,
   type WorldDefinition,
 } from "@/domain/world";
@@ -84,5 +85,32 @@ describe("progression", () => {
 
   it("counts only pieces from this world", () => {
     expect(collectedPieces(world, { completedBoards: ["beach", "somewhere-else"] })).toBe(1);
+  });
+});
+
+describe("worlds are bought in order", () => {
+  const world = (slug: string, order: number) => ({ slug, order }) as never;
+  const three = [world("journey", 1), world("second", 2), world("third", 3)];
+
+  it("accepts the first world on its own", () => {
+    expect(outOfOrderWorlds(["journey"], three)).toEqual([]);
+  });
+
+  it("accepts the first two", () => {
+    expect(outOfOrderWorlds(["journey", "second"], three)).toEqual([]);
+  });
+
+  it("does not care what order they were listed in", () => {
+    expect(outOfOrderWorlds(["second", "journey"], three)).toEqual([]);
+  });
+
+  it("refuses the second world without the first", () => {
+    // A journey that starts in the middle, with the harder boards, for a child
+    // who has not played the easier ones.
+    expect(outOfOrderWorlds(["second"], three)).toEqual(["journey"]);
+  });
+
+  it("refuses a gap in the middle", () => {
+    expect(outOfOrderWorlds(["journey", "third"], three)).toEqual(["second"]);
   });
 });

@@ -2,6 +2,7 @@ import { newDraftToken, newId } from "@/lib/ids";
 import { normalizeChildName } from "@/lib/copy";
 import { PACKAGES, defaultWorldSelection, isPackageTier, purchasableTiers, type PackageTier } from "@/domain/package";
 import { isEditableDraft } from "@/domain/order-state";
+import { outOfOrderWorlds } from "@/domain/world";
 import type { CropBox } from "@/infra/generation/types";
 import { pick, type Locale } from "@/i18n/config";
 import { flowError, type FlowResult } from "@/i18n/errors";
@@ -9,7 +10,7 @@ import type { Container } from "./container";
 import { checkPhoto, deleteAsset, storeAsset } from "./asset.service";
 import { transitionGame, statusOf } from "./game-status";
 import { activeScenes, sceneBySlug } from "./scene-catalog.service";
-import { boardsOfWorlds, purchasableWorldSlugs, worldBySlug } from "./world-catalog.service";
+import { boardsOfWorlds, purchasableWorlds, purchasableWorldSlugs, worldBySlug } from "./world-catalog.service";
 import { SYSTEM } from "./audit.service";
 
 /**
@@ -133,8 +134,13 @@ export async function selectWorlds(c: Container, gameId: string, slugs: string[]
   const want = PACKAGES[game.packageTier].worldCount;
   const unique = Array.from(new Set(slugs));
   if (unique.length !== want) return flowError("WRONG_SCENE_COUNT", `בחרו בדיוק ${want} עולמות.`, { want });
-  const available = new Set(await purchasableWorldSlugs(c));
+  const offered = await purchasableWorlds(c);
+  const available = new Set(offered.map((w) => w.slug));
   if (!unique.every((s) => available.has(s))) return flowError("SCENE_UNAVAILABLE", "אחד העולמות אינו זמין.");
+  // The worlds are a ladder, so buying the second without the first would start
+  // a journey in the middle — and hand a beginner the harder boards.
+  const missing = outOfOrderWorlds(unique, offered);
+  if (missing.length > 0) return flowError("WORLDS_OUT_OF_ORDER", "העולמות הם מסע — הבא נפתח אחרי זה שלפניו.", { missing: missing.join(", ") });
   const boards = boardsOfWorlds(unique);
   await c.db.game.update({ where: { id: gameId }, data: { sceneCount: boards.length } });
   await replaceScenes(c, gameId, boards);

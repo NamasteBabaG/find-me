@@ -83,6 +83,22 @@ export interface RouteLike {
 }
 
 /** The board slugs of a world, in journey order. */
+/**
+ * Worlds are bought from the first one on.
+ *
+ * The worlds are a ladder, not a menu: each one is meant to look and feel a
+ * step beyond the last, and the second is built assuming a child has played
+ * the first. Selling the third on its own would hand a beginner the hardest
+ * boards and spend the surprise of the ladder in one go — so a selection of N
+ * worlds has to be the first N, in order.
+ */
+export function outOfOrderWorlds(chosen: readonly string[], all: readonly WorldDefinition[]): string[] {
+  const order = [...all].sort((a, b) => a.order - b.order).map((w) => w.slug);
+  const want = order.slice(0, chosen.length);
+  const picked = new Set(chosen);
+  return want.filter((slug) => !picked.has(slug));
+}
+
 export function boardSlugs(world: RouteLike): string[] {
   return [...world.nodes].sort((a, b) => a.routeIndex - b.routeIndex).map((n) => n.boardSlug);
 }
