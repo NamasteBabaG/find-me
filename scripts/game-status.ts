@@ -9,6 +9,12 @@
  * the picture says how — the model painted an adult, or a second child, or
  * repainted the whole crop, or put her somewhere the diff could not find her.
  *
+ * With `--scales` it re-measures every rejected render this game already paid
+ * for and reports, per spot, how big the model actually painted the child
+ * against how big the slot asked. A spot that is consistently off is not a bad
+ * model — it is a slot whose `scale` disagrees with the board's own perspective,
+ * and the suggested value is printed.
+ *
  * Read-only apart from those files. Reads whatever DATABASE_URL points at, so
  * against production it needs a production URL in the environment.
  */
@@ -70,6 +76,8 @@ async function main() {
     }
   }
 
+  if (process.argv.includes("--scales")) await reportScales(c, gameId, rows);
+
   // The identity sheet is drawn once and every spot is painted from it.
   const sheetId = game.childProfile?.identityAssetId;
   const sheet = sheetId ? await c.db.asset.findUnique({ where: { id: sheetId }, select: { costCents: true } }) : null;
@@ -77,6 +85,58 @@ async function main() {
   console.log("");
   console.log(`${done}/${rows.length} painted · ${rolls} rolls · ${(rolls / Math.max(1, done)).toFixed(1)} per finished spot`);
   console.log(`${(cents / 100).toFixed(2)} USD on hiding spots + ${((sheet?.costCents ?? 0) / 100).toFixed(2)} on the identity sheet = ${(total / 100).toFixed(2)} USD`);
+}
+
+/**
+ * How big the model actually paints a child at each spot, against what we asked.
+ *
+ * Measured off renders already paid for, so it costs nothing. One render being
+ * off is chance; a spot that is off the same way every time is a slot in the
+ * wrong place — the model paints a person the size that spot really is, and no
+ * number of retries will talk it out of the board's own perspective.
+ */
+async function reportScales(
+  c: Awaited<ReturnType<typeof import("../src/services/container").getContainer>>,
+  gameId: string,
+  rows: Array<{ rejectedAssetIdsJson: string | null; variant: string; targetInstance: { targetId: string; gameScene: { sceneSlug: string } } }>,
+) {
+  const { readAssetBuffer } = await import("../src/services/asset.service");
+  const { diffToPatch } = await import("../src/services/generation/patch");
+  const { slotOf, cropOf } = await import("./slot-patch");
+  console.log("");
+  console.log("painted height ÷ asked height, from the renders that were thrown away:");
+  for (const r of rows) {
+    if (!r.rejectedAssetIdsJson) continue;
+    const ids = JSON.parse(r.rejectedAssetIdsJson) as string[];
+    if (ids.length === 0) continue;
+    const name = `${r.targetInstance.gameScene.sceneSlug}/${r.targetInstance.targetId}`;
+    let info;
+    try {
+      info = slotOf(r.targetInstance.gameScene.sceneSlug, r.targetInstance.targetId, r.variant);
+    } catch {
+      continue;
+    }
+    const original = await cropOf(info);
+    const ratios: number[] = [];
+    for (const id of ids) {
+      const edited = await readAssetBuffer(c, id).catch(() => null);
+      if (!edited) continue;
+      const patch = await diffToPatch({ originalCrop: original, editedCrop: edited, ctx: info.ctx, art: info.art, slot: info.slot }).catch(() => null);
+      if (patch && patch.largest > 0) ratios.push(patch.shape.height / patch.shape.childPx);
+    }
+    if (ratios.length === 0) continue;
+    ratios.sort((a, b) => a - b);
+    const median = ratios[Math.floor(ratios.length / 2)]!;
+    // One render being off is chance, and a suggestion drawn from it is worse
+    // than none — it invites someone to edit a scene on a coin flip.
+    const trusted = ratios.length >= 3 && (median < 0.6 || median > 1.7);
+    console.log(
+      `${name.padEnd(24)} ${median.toFixed(2)}x over ${String(ratios.length).padStart(2)} renders   slot scale ${info.slot.scale}` +
+        (trusted
+          ? `  → the board paints her ${(median > 1 ? median : 1 / median).toFixed(1)}x ${median > 1 ? "bigger" : "smaller"} than this slot asks; the scale does not match the perspective there`
+          : ""),
+    );
+  }
 }
 
 main()
