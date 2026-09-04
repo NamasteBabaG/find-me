@@ -70,18 +70,22 @@
   transition: transform 900ms cubic-bezier(0.65, 0, 0.35, 1), opacity 300ms ease 700ms;
   will-change: transform;
 }
+/* The cloudy inner edge: a column of round lumps straddling the bank's edge.
+   The circles have real sizes — with percentage stops they were sized to the
+   tile's corner, every one covered the whole tile, and the "clouds" were a
+   flat white bar down the middle of the screen. Between lumps the OTHER bank's
+   sky shows through, which is why both banks are the same colour and overlap
+   by a quarter of the stage while shut: nothing behind them is ever visible. */
 .scene__cloud::after {
   content: ""; position: absolute; top: 0; bottom: 0; width: 34%;
   background-image:
-    radial-gradient(circle at 50% 8%, #fff 0 46%, transparent 47%),
-    radial-gradient(circle at 20% 26%, #fff 0 42%, transparent 43%),
-    radial-gradient(circle at 70% 40%, #fff 0 48%, transparent 49%),
-    radial-gradient(circle at 30% 58%, #fff 0 44%, transparent 45%),
-    radial-gradient(circle at 65% 76%, #fff 0 46%, transparent 47%),
-    radial-gradient(circle at 25% 92%, #fff 0 42%, transparent 43%);
-  background-size: 100% 22%;
+    radial-gradient(circle 7vmin at 62% 10%, #fff 97%, transparent 100%),
+    radial-gradient(circle 5.5vmin at 40% 30%, #fff 97%, transparent 100%),
+    radial-gradient(circle 8vmin at 68% 50%, #fff 97%, transparent 100%),
+    radial-gradient(circle 6vmin at 42% 70%, #fff 97%, transparent 100%),
+    radial-gradient(circle 7vmin at 64% 90%, #fff 97%, transparent 100%);
+  background-size: 100% 40vmin;
   background-repeat: repeat-y;
-  filter: drop-shadow(0 0 0 #fff);
 }
 .scene__cloud--l { left: 0; }
 .scene__cloud--l::after { right: -17%; }
@@ -167,11 +171,15 @@
 .mission__thumb { width: var(--space-5); height: calc(var(--space-6) + var(--space-1)); flex-shrink: 0; display: grid; place-items: center; }
 .mission__sprite { width: 100%; height: 100%; }
 .mission__body { display: flex; flex-direction: column; min-width: 0; }
+/* The quiet fold sets the `hidden` attribute; a class with `display: flex`
+   outranks the browser's own [hidden] rule, so without this the card never
+   actually folded — the class changed and the text stayed on the board. */
+.mission__body[hidden] { display: none; }
 .mission__meta { display: flex; align-items: center; gap: var(--space-1); }
 .mission__ticks { display: inline-flex; gap: var(--space-0-5); }
 .mission__tick { width: var(--space-2); height: var(--space-2); border-radius: var(--radius-pill); border: 2px solid var(--ink-4); display: grid; place-items: center; font-size: 10px; line-height: 1; color: var(--white); }
 .mission__tick--done { background: var(--leaf); border-color: var(--leaf); animation: fm-pop-in var(--dur-2) var(--ease-pop); }
-.mission__count { font-size: var(--fs-50); line-height: var(--lh-50); font-weight: 700; color: var(--ink-3); letter-spacing: 0.02em; }
+.mission__count { font-size: var(--fs-50); line-height: var(--lh-50); font-weight: 700; color: var(--ink-3); letter-spacing: 0.02em; white-space: nowrap; }
 .mission__text { font-family: var(--font-display); font-size: var(--fs-300); line-height: var(--lh-300); font-weight: 600; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mission__hint { font-size: var(--fs-100); line-height: var(--lh-100); color: var(--sea-deep); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; animation: fm-fade-up var(--dur-2) var(--ease-out); }
 .mission__hintbtn { width: var(--touch-kid); height: var(--touch-kid); flex-shrink: 0; border-radius: var(--radius-pill); background: var(--sun); box-shadow: var(--shadow-1); display: grid; place-items: center; font-size: var(--fs-400); line-height: 1; transition: transform var(--dur-1) var(--ease-out); }

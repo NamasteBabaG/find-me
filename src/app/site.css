@@ -557,6 +557,10 @@
 
 /* Not decorative: a QA box is a production build with a pretend till, and the
    only thing separating it from the shop is that it says so. */
+/* Except inside the game. The board is sized to the viewport, so a 48px banner
+   above it made the page scroll by 48px: a cream strip on top, the mission
+   card cut off at the bottom. The child does not need to know it is a QA box. */
+body:has(.scene) .qa-banner { display: none; }
 .qa-banner {
   position: sticky; inset-block-start: 0; z-index: 100;
   display: flex; align-items: center; justify-content: center; gap: var(--space-1);
