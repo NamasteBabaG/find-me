@@ -62,9 +62,17 @@ function meaningOf(code: string | undefined): string {
  */
 function scrub(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
-  return raw
-    .split("\n")[0]!
+  // Prisma's messages open with a blank line and an "Invalid invocation" banner,
+  // so taking line zero returned an empty string — which is this route's whole
+  // purpose going missing at the one moment anyone reads it.
+  const line =
+    raw
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0 && !/^invalid `?prisma/i.test(l))
+      .join(" ") || raw.trim();
+  return line
     .replace(/postgres(?:ql)?:\/\/\S+/gi, "<url>")
     .replace(/\b[\w.-]+\.(?:supabase\.co|pooler\.supabase\.com)\b/gi, "<host>")
-    .slice(0, 160);
+    .slice(0, 200);
 }
