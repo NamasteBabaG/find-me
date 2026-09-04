@@ -474,12 +474,16 @@
    child painted into them. */
 .world__img--veiled { position: relative; }
 /* Beats `.world--soon`, which greys a tile out: a world you can buy should look
-   inviting behind the glass, not switched off. */
+   inviting behind the glass, not switched off.
+
+   Enough blur that you cannot play the board, little enough that you can see
+   what it is — a castle, a reef, a ferris wheel. At 14px it was frosted glass
+   and every locked world looked the same, which sells nothing. */
 .world--soon .world__img--veiled img,
-.world__img--veiled img { filter: blur(14px) saturate(1.2); transform: scale(1.12); }
+.world__img--veiled img { filter: blur(6px) saturate(1.15); transform: scale(1.06); }
 .world__img--veiled::after {
   content: ""; position: absolute; inset: 0;
-  background: linear-gradient(180deg, rgba(23,22,43,.05), rgba(23,22,43,.35));
+  background: linear-gradient(180deg, rgba(23,22,43,.03), rgba(23,22,43,.28));
 }
 .world__lockmark {
   position: absolute; inset-block-start: 50%; inset-inline-start: 50%;
