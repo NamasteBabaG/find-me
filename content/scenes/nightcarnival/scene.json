@@ -153,37 +153,37 @@
       "bodyTemplate": "nightcarnival_stall",
       "difficulty": 3,
       "mission": {
-        "en": "Find {name} hiding behind the duck pond stall",
-        "he": "מצאו את {name} מתחבא/ת מאחורי דוכן הברווזים"
+        "en": "Find {name} hiding by the toffee apple stall",
+        "he": "מצאו את {name} מתחבא/ת ליד דוכן תפוחי הסוכר"
       },
       "item": {
-        "en": "the duck pond stall, with yellow ducks floating round and round",
-        "he": "דוכן הברווזים, עם ברווזים צהובים שמסתובבים במים"
+        "en": "a glowing toffee apple stall with rows of apples on sticks",
+        "he": "דוכן תפוחי סוכר זוהר עם שורות תפוחים על מקלות"
       },
       "success": [
         {
-          "en": "I nearly caught one!",
-          "he": "כמעט תפסתי אחד!"
+          "en": "They are sticky!",
+          "he": "הם דביקים!"
         },
         {
-          "en": "You found me! They keep going round.",
-          "he": "מצאתם! הם ממשיכים להסתובב."
+          "en": "You found me! It smells of sugar.",
+          "he": "מצאתם! מריח פה סוכר."
         },
         {
-          "en": "Every duck has a number.",
-          "he": "לכל ברווז יש מספר."
+          "en": "I only licked one.",
+          "he": "ליקקתי רק אחד."
         }
       ],
       "animation": "peek",
       "slots": [
         {
           "id": "nightcarnival_stall_a",
-          "x": 0.8,
-          "y": 0.69,
-          "scale": 0.075,
+          "x": 0.783,
+          "y": 0.788,
+          "scale": 0.078,
           "hintZone": {
-            "x": 0.8,
-            "y": 0.6749999999999999,
+            "x": 0.783,
+            "y": 0.773,
             "r": 0.075
           },
           "hintText": {
@@ -195,7 +195,7 @@
           "id": "nightcarnival_stall_b",
           "x": 0.905,
           "y": 0.76,
-          "scale": 0.08,
+          "scale": 0.07,
           "hintZone": {
             "x": 0.905,
             "y": 0.745,
