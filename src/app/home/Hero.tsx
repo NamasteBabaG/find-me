@@ -1,28 +1,35 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useI18n } from "@/i18n/client";
-import { seededRng } from "@/lib/random";
 
 /**
- * Hero: "Where Am I?" on a dark stage. A searchlight follows the pointer
- * (and roams on its own) and reveals a hidden layer of little doodles —
- * shells, kites, rockets — invisible outside the beam. Noa hides in there
- * too; when the light finds her she pops up with "Found me!".
- * No world image here: the real world lives in the demo right below.
+ * Hero: a torch sweeping a real world.
+ *
+ * This used to be a dark stage scattered with emoji — shells, kites, rockets —
+ * that the beam uncovered, and a comment saying "no world image here: the real
+ * world lives in the demo below". That was a fair trade when there were nine
+ * boards. There are twenty-seven now, they are the best thing the product has,
+ * and a visitor met a screen of emoji before seeing any of them.
+ *
+ * So the beam lights the paintings themselves. The board sits under a deep blue
+ * wash — legible as a place, too dark to search — and the torch restores full
+ * colour wherever it lands, which is exactly what the game is. It moves through
+ * one board per world, so the first ten seconds of the page say "there are
+ * worlds in here" without a word of copy.
+ *
+ * Art is built from the boards themselves:
+ *   sharp(base.webp).resize(1400, 934, { fit: "cover", position: "attention" }).webp({ quality: 58 })
  */
-const DOODLES = ["🐚", "⭐", "🍃", "🪁", "⚓", "🍉", "🚀", "🦜", "🏰", "🛟", "🌴", "🐒", "👽", "🎈", "🦀", "🔭", "⛵", "🍦", "🦋", "🪐", "🐋", "🎪", "🐢", "🌋"];
-const NOA_DESKTOP = { x: 0.74, y: 0.6 };
-const NOA_MOBILE = { x: 0.82, y: 0.76 };
-
-interface Doodle {
-  glyph: string;
-  x: number;
-  y: number;
-  size: number;
-  rot: number;
-}
+const WORLDS = [
+  { slug: "newyork", src: "/home/hero-newyork.webp" },
+  { slug: "dragoncave", src: "/home/hero-dragoncave.webp" },
+  { slug: "futurecity", src: "/home/hero-futurecity.webp" },
+];
+const HOLD_MS = 7000;
+const NOA_DESKTOP = { x: 0.87, y: 0.66 };
+const NOA_MOBILE = { x: 0.8, y: 0.74 };
 
 export function Hero({ children }: { children?: ReactNode }) {
   const { t } = useI18n();
@@ -31,6 +38,7 @@ export function Hero({ children }: { children?: ReactNode }) {
   const pointer = useRef({ x: 0.5, y: 0.5, active: false, last: 0 });
   const [lit, setLit] = useState(false);
   const [narrow, setNarrow] = useState(false);
+  const [at, setAt] = useState(0);
   const noaRef = useRef(NOA_DESKTOP);
 
   // Noa moves out of the way of the copy on small screens.
@@ -45,18 +53,11 @@ export function Hero({ children }: { children?: ReactNode }) {
     return () => mq.removeEventListener("change", apply);
   }, []);
 
-  // Deterministic scatter (same on server and client → no hydration mismatch).
-  const doodles = useMemo<Doodle[]>(() => {
-    const rng = seededRng("hero-doodles");
-    const out: Doodle[] = [];
-    for (let i = 0; i < 56; i++) {
-      const x = rng();
-      const y = rng();
-      // keep the headline area a little clearer
-      if (y > 0.28 && y < 0.62 && x > 0.2 && x < 0.8 && rng() < 0.7) continue;
-      out.push({ glyph: DOODLES[i % DOODLES.length] ?? "✨", x, y, size: 20 + Math.round(rng() * 28), rot: Math.round((rng() - 0.5) * 50) });
-    }
-    return out;
+  // One world at a time. Held still for anyone who reads motion as noise.
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const id = setInterval(() => setAt((n) => (n + 1) % WORLDS.length), HOLD_MS);
+    return () => clearInterval(id);
   }, []);
 
   useEffect(() => {
@@ -67,11 +68,15 @@ export function Hero({ children }: { children?: ReactNode }) {
     const start = performance.now();
     const tick = (now: number) => {
       const p = pointer.current;
+      // The torch roams on its own until a pointer takes it, and goes back to
+      // roaming when one is put down. On a phone there is no pointer at all,
+      // so roaming is the whole show — which is why none of this is hidden on
+      // small screens any more.
       const idle = !p.active || now - p.last > 2500;
       if (idle && !reduced) {
         const s = (now - start) / 1000;
-        const tx = 0.5 + 0.4 * Math.cos(s * 0.14);
-        const ty = 0.5 + 0.3 * Math.sin(s * 0.21);
+        const tx = 0.5 + 0.34 * Math.cos(s * 0.16);
+        const ty = 0.5 + 0.26 * Math.sin(s * 0.23);
         p.x += (tx - p.x) * 0.02;
         p.y += (ty - p.y) * 0.02;
       }
@@ -80,7 +85,7 @@ export function Hero({ children }: { children?: ReactNode }) {
       const rect = el.getBoundingClientRect();
       const noa = noaRef.current;
       const d = Math.hypot((p.x - noa.x) * rect.width, (p.y - noa.y) * rect.height);
-      setLit(d < 78);
+      setLit(d < 96);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -101,18 +106,29 @@ export function Hero({ children }: { children?: ReactNode }) {
     h.title
   );
 
+  // Both layers are the same file, so lighting a world costs no second download.
+  const plates = (className: string) =>
+    WORLDS.map((w, i) => (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        key={w.slug}
+        src={w.src}
+        alt=""
+        className={`${className}${i === at ? " is-on" : ""}`}
+        loading={i === 0 ? "eager" : "lazy"}
+        fetchPriority={i === 0 ? "high" : "low"}
+        draggable={false}
+      />
+    ));
+
   return (
     <section className="hero3" aria-labelledby="hero-title">
       <div ref={stageRef} className="hero3__stage" onPointerMove={track} onPointerDown={track} aria-hidden>
+        <div className="hero3__dark">{plates("hero3__plate")}</div>
         <div className="hero3__stars" />
-        <div className="hero3__hidden">
-          {doodles.map((d, i) => (
-            <span key={i} className="hero3__doodle" style={{ left: `${d.x * 100}%`, top: `${d.y * 100}%`, fontSize: d.size, transform: `translate(-50%, -50%) rotate(${d.rot}deg)` }}>
-              {d.glyph}
-            </span>
-          ))}
-        </div>
+        <div className="hero3__hidden">{plates("hero3__plate")}</div>
         <div className="hero3__beam" />
+        <div className="hero3__ring" />
         <div className={`hero3__noa${lit ? " is-lit" : ""}`} style={{ left: `${(narrow ? NOA_MOBILE : NOA_DESKTOP).x * 100}%`, top: `${(narrow ? NOA_MOBILE : NOA_DESKTOP).y * 100}%` }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/demo/noa-face.png" alt="" className="fm-sticker hero3__noa-img" width={104} height={104} draggable={false} />
