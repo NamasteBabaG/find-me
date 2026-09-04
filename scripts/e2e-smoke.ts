@@ -149,7 +149,14 @@ async function main() {
   assert(replay.body.includes("duplicate"), "webhook replay must be a no-op");
   log("webhook PAID (+ replay ignored)");
 
-  const status = await waitForGeneration(c, gameId, log);
+  let status = await waitForGeneration(c, gameId, log);
+  // The in-process job runs the pipeline once. A real world hands the lease back
+  // between slices whenever a hiding spot still has attempts left, and nothing
+  // re-triggers it here — so drive it the way the cron does, until it settles.
+  if (!SETTLED.includes(status)) {
+    await finish(c, gameId, log, assert);
+    status = statusOf(await c.db.game.findUniqueOrThrow({ where: { id: gameId }, select: { status: true } }));
+  }
 
   // The page nudges the queue on every poll and a cron nudges it too, so two
   // runners overlapping is normal. Without a lease each one saw "no avatar yet"

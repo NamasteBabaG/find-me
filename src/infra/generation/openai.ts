@@ -112,6 +112,15 @@ export interface OpenAiOptions {
   model?: string;
   /** "low" | "medium" | "high" — medium is the quality the worlds were made at. */
   quality?: string;
+  /**
+   * Quality for the hiding spots alone.
+   *
+   * The identity sheet is drawn once per child and every one of her 27 hiding
+   * spots is painted from it, so saving a few cents there would blur the source
+   * of everything downstream. The spots are where the money is — 27 rolls
+   * against one — so they are the only place worth turning down.
+   */
+  patchQuality?: string;
   /** Images per minute this account may request. */
   perMinute?: number;
   /** How many times to retry one image before giving up. */
@@ -127,6 +136,7 @@ export class OpenAiAvatarProvider implements AvatarProvider {
   private readonly limiter: RateLimiter;
   private readonly model: string;
   private readonly quality: string;
+  private readonly patchQuality: string;
   private readonly tries: number;
   private readonly timeoutMs: number;
   private readonly budgetMs: number;
@@ -135,6 +145,7 @@ export class OpenAiAvatarProvider implements AvatarProvider {
     if (!apiKey) throw new Error("OPENAI_API_KEY is required for GENERATION_PROVIDER=openai");
     this.model = options.model ?? "gpt-image-2";
     this.quality = options.quality ?? "medium";
+    this.patchQuality = options.patchQuality ?? this.quality;
     this.tries = options.tries ?? 3;
     this.timeoutMs = options.timeoutMs ?? 120_000;
     // Three retries of three minutes is nine minutes of work inside a request
@@ -146,7 +157,7 @@ export class OpenAiAvatarProvider implements AvatarProvider {
   }
 
   /** One multipart edit call, with the model fallback and retries. */
-  private async call(parts: { images: Array<{ buffer: Buffer; name: string }>; mask?: Buffer; prompt: string; size: string; label: string }): Promise<CallResult> {
+  private async call(parts: { images: Array<{ buffer: Buffer; name: string }>; mask?: Buffer; prompt: string; size: string; label: string; quality?: string }): Promise<CallResult> {
     const started = Date.now();
     let lastError = "";
     let model = this.model;
@@ -167,7 +178,7 @@ export class OpenAiAvatarProvider implements AvatarProvider {
       if (parts.mask) form.append("mask", new Blob([new Uint8Array(parts.mask)], { type: "image/png" }), "mask.png");
       form.append("prompt", parts.prompt);
       form.append("size", parts.size);
-      form.append("quality", this.quality);
+      form.append("quality", parts.quality ?? this.quality);
       form.append("n", "1");
       // Without a deadline one hung request stalls every remaining hiding spot;
       // a generation that has not answered in three minutes is not coming back.
@@ -269,6 +280,7 @@ export class OpenAiAvatarProvider implements AvatarProvider {
       mask,
       prompt: `${request.prompt} The first image is the scene to edit; the second image is the character reference sheet for the child (use her face, hair and outfit; do not copy its background or its grid).`,
       size: `${size}x${size}`,
+      quality: this.patchQuality,
       label: request.label,
     });
     // Back to the crop's own pixels so the diff compares like with like.

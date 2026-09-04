@@ -163,7 +163,7 @@ async function generate(slug: string, targetId: string, variantArg?: string) {
   const key = envKey("OPENAI_API_KEY");
   if (!key) throw new Error("OPENAI_API_KEY is not set — add it to .env (never commit it) and run again.");
   const c = slotOf(slug, targetId, variantArg, flag("pose", "") || undefined);
-  const provider = new OpenAiAvatarProvider(key, { model: flag("model", "gpt-image-2"), quality: flag("quality", "medium"), perMinute: Number(flag("rpm", "5")) });
+  const provider = new OpenAiAvatarProvider(key, { model: flag("model", "gpt-image-2"), quality: flag("quality", "medium"), patchQuality: flag("patch-quality", "") || undefined, perMinute: Number(flag("rpm", "5")) });
   const reference = readFileSync(path.join(ROOT, flag("ref", "public/demo/example-character.webp")));
   const originalCrop = await cropOf(c);
   const mask = paintMask(c.ctx, c.art, c.slot);
