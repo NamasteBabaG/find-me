@@ -148,42 +148,42 @@
       ]
     },
     {
-      "id": "cloud",
-      "targetType": "cloudcity_cloud",
-      "bodyTemplate": "cloudcity_cloud",
+      "id": "pots",
+      "targetType": "cloudcity_pots",
+      "bodyTemplate": "cloudcity_pots",
       "difficulty": 3,
       "mission": {
-        "en": "Find {name} hiding inside a cloud",
-        "he": "מצאו את {name} מתחבא/ת בתוך ענן"
+        "en": "Find {name} hiding behind the flower pots",
+        "he": "מצאו את {name} מתחבא/ת מאחורי עציצי הפרחים"
       },
       "item": {
-        "en": "thick fluffy clouds you can sink into up to your shoulders",
-        "he": "עננים סמיכים ורכים שאפשר לשקוע בהם עד הכתפיים"
+        "en": "tall flower pots on the flying ship's deck",
+        "he": "עציצי פרחים גבוהים על סיפון הספינה המעופפת"
       },
       "success": [
         {
-          "en": "It is like a giant pillow!",
-          "he": "זה כמו כרית ענקית!"
+          "en": "A bee found me first!",
+          "he": "דבורה מצאה אותי לפניכם!"
         },
         {
-          "en": "You found me! I was almost invisible.",
-          "he": "מצאתם! כמעט הייתי בלתי נראית."
+          "en": "You found me! The deck rocks.",
+          "he": "מצאתם! הסיפון מתנדנד."
         },
         {
-          "en": "Cold and tickly.",
-          "he": "קר ומדגדג."
+          "en": "I was under the leaves.",
+          "he": "הייתי מתחת לעלים."
         }
       ],
       "animation": "peek",
       "slots": [
         {
-          "id": "cloudcity_cloud_a",
-          "x": 0.455,
-          "y": 0.735,
-          "scale": 0.062,
+          "id": "cloudcity_pots_a",
+          "x": 0.447,
+          "y": 0.912,
+          "scale": 0.075,
           "hintZone": {
-            "x": 0.455,
-            "y": 0.72,
+            "x": 0.447,
+            "y": 0.897,
             "r": 0.075
           },
           "hintText": {
@@ -192,13 +192,13 @@
           }
         },
         {
-          "id": "cloudcity_cloud_b",
-          "x": 0.215,
-          "y": 0.49,
-          "scale": 0.05,
+          "id": "cloudcity_pots_b",
+          "x": 0.145,
+          "y": 0.895,
+          "scale": 0.07,
           "hintZone": {
-            "x": 0.215,
-            "y": 0.475,
+            "x": 0.145,
+            "y": 0.88,
             "r": 0.075
           },
           "hintText": {
