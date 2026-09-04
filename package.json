@@ -20,7 +20,8 @@
     "scenes:validate": "tsx scripts/validate-scenes.ts",
     "smoke": "tsx scripts/e2e-smoke.ts",
     "db:check": "tsx scripts/check-db-url.ts",
-    "game:status": "tsx scripts/game-status.ts"
+    "game:status": "tsx scripts/game-status.ts",
+    "patches:judge": "tsx scripts/judge-patches.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
