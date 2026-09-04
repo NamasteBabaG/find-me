@@ -38,7 +38,7 @@ export default async function CreateScenesPage() {
     thumbnail: w.map.artPortrait ?? w.map.art,
   }));
   return (
-    <CreateFrame step={3} title={t.create.scenes.title} lead={t.create.scenes.lead} user={user} isAdmin={isAdminEmail(user?.email)}>
+    <CreateFrame width="mid" step={3} title={t.create.scenes.title} lead={t.create.scenes.lead} user={user} isAdmin={isAdminEmail(user?.email)}>
       <ScenePicker scenes={options} want={want} preselected={chosen.map((w) => w.slug)} />
     </CreateFrame>
   );

@@ -202,11 +202,25 @@
 
 /* ═══ Create flow ═══ */
 .create { display: flex; flex-direction: column; gap: var(--space-4); }
-.create__head { display: flex; flex-direction: column; gap: var(--space-2); align-items: center; text-align: center; }
+.create__head { display: flex; flex-direction: column; gap: var(--space-2); align-items: center; text-align: center; max-width: 64ch; margin-inline: auto; }
 .create__title { font-size: var(--fs-700); line-height: var(--lh-700); letter-spacing: -0.02em; }
 .create__actions { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .create__actions--single { justify-content: stretch; }
 .create__actions--single > * { flex: 1; }
+/* A phone on its side: 375px tall, and the header, dots and title used to take
+   all of it. The step's content has to be on screen before anyone scrolls. */
+@media (max-height: 480px) and (orientation: landscape) {
+  .create.fm-section { padding-block: var(--space-2); }
+  .create { gap: var(--space-2); }
+  .create__head { gap: var(--space-0-5); }
+  .create__title { font-size: var(--fs-500); line-height: var(--lh-500); }
+  .create__head .fm-lead { font-size: var(--fs-100); line-height: var(--lh-100); }
+  .create__actions--sticky { padding-block: var(--space-1); }
+}
+@media (min-width: 1024px) {
+  .create--mid { gap: var(--space-6); }
+  .create--mid .picker, .create--mid .packages { gap: var(--space-4); }
+}
 @media (max-width: 720px) {
   .create { gap: var(--space-3); }
   .create__head { gap: var(--space-1); }
@@ -253,7 +267,7 @@
 .cropper__zoom { width: min(80vw, 320px); accent-color: var(--sea); }
 
 /* Package picker (create) */
-.packages { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); align-items: stretch; }
+.packages { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); align-items: stretch; }
 .package { position: relative; display: flex; flex-direction: column; gap: var(--space-2); text-align: center; align-items: center; }
 .package__price { font-family: var(--font-display); font-size: var(--fs-600); line-height: var(--lh-600); font-weight: 900; }
 .package__worlds { font-family: var(--font-display); font-size: var(--fs-400); line-height: var(--lh-400); font-weight: 800; }
@@ -261,9 +275,10 @@
 [dir="rtl"] .package__ribbon { transform: translateX(50%) rotate(-3deg); }
 
 /* Scene picker */
-.picker { display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+.picker { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
 .pick { position: relative; display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-1); text-align: start; }
-.pick img { border-radius: var(--radius-3); aspect-ratio: 16 / 10; object-fit: cover; width: 100%; }
+/* The world paintings are 3:2; cropping them to 16:10 took the sky off every one. */
+.pick img { border-radius: var(--radius-3); aspect-ratio: 3 / 2; object-fit: cover; width: 100%; }
 .pick__name { font-family: var(--font-display); font-weight: 800; font-size: var(--fs-300); line-height: var(--lh-300); padding-inline: var(--space-1); }
 .pick__tag { font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-3); padding-inline: var(--space-1); padding-bottom: var(--space-1); }
 .pick__check { position: absolute; top: var(--space-2); inset-inline-end: var(--space-2); width: var(--space-4); height: var(--space-4); border-radius: var(--radius-pill); background: var(--white); box-shadow: var(--shadow-1); display: grid; place-items: center; font-weight: 700; color: var(--white); }

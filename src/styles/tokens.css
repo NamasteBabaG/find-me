@@ -34,6 +34,8 @@
   --control-h-sm: 40px;
   --container: 1440px;
   --container-narrow: 880px;
+  /* Card grids (packages, worlds, checkout): three cards with room to breathe. */
+  --container-mid: 1120px;
   --container-text: 880px;
   --gutter: 24px;
   --measure: 60ch;

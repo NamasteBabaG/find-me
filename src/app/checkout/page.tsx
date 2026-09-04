@@ -29,7 +29,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
   const name = summary.child?.displayName ?? "";
 
   return (
-    <CreateFrame step={4} title={ck.title} lead={ck.lead} user={user} isAdmin={isAdminEmail(user?.email)}>
+    <CreateFrame width="mid" step={4} title={ck.title} lead={ck.lead} user={user} isAdmin={isAdminEmail(user?.email)}>
       <div className="summary">
         <div className="fm-card fm-card--pad-4 fm-stack fm-stack--3">
           <div className="fm-row">
