@@ -10,8 +10,8 @@
     "he": "גינות בשמיים, מגדלי זכוכית ומכוניות שלא נוגעות בקרקע."
   },
   "version": 1,
-  "active": false,
-  "artStatus": "draft",
+  "active": true,
+  "artStatus": "final",
   "art": {
     "width": 3072,
     "height": 2048,

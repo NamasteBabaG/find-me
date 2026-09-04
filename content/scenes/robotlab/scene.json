@@ -10,8 +10,8 @@
     "he": "רובוטים בהרכבה, כלים על כל קיר ואחד שהולך אחריכם."
   },
   "version": 1,
-  "active": false,
-  "artStatus": "draft",
+  "active": true,
+  "artStatus": "final",
   "art": {
     "width": 3072,
     "height": 2048,

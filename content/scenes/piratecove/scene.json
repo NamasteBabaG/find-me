@@ -10,8 +10,8 @@
     "he": "ספינה על החול ותיבה שלא נסגרת."
   },
   "version": 1,
-  "active": false,
-  "artStatus": "draft",
+  "active": true,
+  "artStatus": "final",
   "art": {
     "width": 3072,
     "height": 2048,

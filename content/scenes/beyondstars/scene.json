@@ -10,8 +10,8 @@
     "he": "אבק אפור, רכב ירח חונה וכדור הארץ תלוי בשמיים."
   },
   "version": 1,
-  "active": false,
-  "artStatus": "draft",
+  "active": true,
+  "artStatus": "final",
   "art": {
     "width": 3072,
     "height": 2048,

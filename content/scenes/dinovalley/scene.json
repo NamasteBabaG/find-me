@@ -10,8 +10,8 @@
     "he": "צווארים ארוכים, שרכים חמים וקן של ביצים ענקיות."
   },
   "version": 1,
-  "active": false,
-  "artStatus": "draft",
+  "active": true,
+  "artStatus": "final",
   "art": {
     "width": 3072,
     "height": 2048,

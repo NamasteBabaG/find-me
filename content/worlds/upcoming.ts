@@ -37,25 +37,4 @@ export interface UpcomingWorld {
 
 const t = (en: string, he: string): LocalizedText => ({ en, he });
 
-export const UPCOMING_WORLDS: readonly UpcomingWorld[] = [
-  {
-    slug: "timetravel",
-    order: 3,
-    name: t("Journey Through Time", "מסע בזמן"),
-    tagline: t("Dinosaurs, pirates and a city that has not been built yet.", "דינוזאורים, פיראטים ועיר שעוד לא נבנתה."),
-    places: [
-      t("The valley of dinosaurs", "עמק הדינוזאורים"),
-      t("The pyramid builders", "בוני הפירמידות"),
-      t("The knights' tournament", "טורניר האבירים"),
-      t("The pirate cove", "מפרץ הפיראטים"),
-      t("The wild west", "המערב הפרוע"),
-      t("The steam railway", "רכבת הקיטור"),
-      t("The future city", "העיר העתידנית"),
-      t("The robot workshop", "מעבדת הרובוטים"),
-      t("Beyond the stars", "מעבר לכוכבים"),
-    ],
-    boards: ["dinovalley", "pyramids", "tournament", "piratecove", "wildwest", "steamrail", "futurecity", "robotlab", "beyondstars"],
-    palette: { sky: "#8FD6E8", ground: "#2E5F6E", accent: "#FF8A3D" },
-    glyph: "⏳",
-  },
-];
+export const UPCOMING_WORLDS: readonly UpcomingWorld[] = [];

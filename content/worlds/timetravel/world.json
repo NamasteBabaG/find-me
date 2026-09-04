@@ -128,9 +128,10 @@
     "text": {
       "en": "{name} found every hiding place from the dinosaurs to the stars — nine shards, one hourglass.",
       "he": "{name} מצא/ה כל מחבוא מהדינוזאורים ועד הכוכבים — תשעה רסיסים, שעון חול אחד."
-    }
+    },
+    "icon": "⌛"
   },
-  "active": false,
+  "active": true,
   "purchasable": false,
   "version": 1
 }
