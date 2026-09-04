@@ -52,6 +52,10 @@ export interface PlayStore {
   completeScene(): void;
   replayScene(): void;
   nextScene(): string | null;
+  /** Every board of the current journey is done. */
+  worldDone(): boolean;
+  /** Every board of every journey is done. */
+  gameDone(): boolean;
   openPassport(): void;
   toggleMute(): void;
 }
@@ -192,8 +196,11 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     },
 
     nextScene() {
-      const { config, progress, sceneSlug } = get();
-      const order = config.scenes.map((s) => s.slug);
+      const { progress, sceneSlug } = get();
+      // Within this journey only. Wrapping across the whole game sent a child
+      // straight from the last board of one world to the first of the next,
+      // with no moment of having finished anything and never passing the hub.
+      const order = get().worldScenes().map((s) => s.slug);
       const idx = sceneSlug ? order.indexOf(sceneSlug) : -1;
       // next not-yet-completed scene after the current one, wrapping around
       for (let i = 1; i <= order.length; i++) {
@@ -201,6 +208,17 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
         if (slug && !sceneProgress(progress, slug).completed) return slug;
       }
       return null;
+    },
+
+    worldDone() {
+      const { progress } = get();
+      const mine = get().worldScenes();
+      return mine.length > 0 && mine.every((s) => sceneProgress(progress, s.slug).completed);
+    },
+
+    gameDone() {
+      const { config, progress } = get();
+      return config.scenes.every((s) => sceneProgress(progress, s.slug).completed);
     },
 
     openPassport() {

@@ -294,6 +294,15 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store }: { scene: Sce
             <a href="/create" className="fm-btn fm-btn--lg">
               {g.complete.demoCta}
             </a>
+          ) : allDone && !store.gameDone() ? (
+            // This journey is finished but the game is not: the next choice is
+            // which world to go to, not which board.
+            <button type="button" className="fm-btn fm-btn--lg" onClick={store.goToWorlds}>
+              {g.hub.back}
+              <span className="fm-btn__arrow" aria-hidden>
+                ➜
+              </span>
+            </button>
           ) : allDone ? (
             <button type="button" className="fm-btn fm-btn--lg" onClick={store.openPassport}>
               {g.complete.bag}
