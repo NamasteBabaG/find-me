@@ -19,7 +19,8 @@
     "setup": "prisma generate && prisma db push",
     "scenes:validate": "tsx scripts/validate-scenes.ts",
     "smoke": "tsx scripts/e2e-smoke.ts",
-    "db:check": "tsx scripts/check-db-url.ts"
+    "db:check": "tsx scripts/check-db-url.ts",
+    "game:status": "tsx scripts/game-status.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
