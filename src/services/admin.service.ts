@@ -62,7 +62,45 @@ export async function orderDetailForAdmin(c: Container, gameId: string) {
   if (!game) return null;
   const assets = await c.db.asset.findMany({ where: { id: { in: [game.childProfile?.avatarAssetId, game.childProfile?.identityAssetId, game.childProfile?.originalPhotoAssetId, ...game.scenes.flatMap((s) => s.targets.map((t) => t.spriteAssetId))].filter((x): x is string => Boolean(x)) } } });
   const activity = await c.db.auditLog.findMany({ where: { entityType: "Game", entityId: gameId }, orderBy: { createdAt: "desc" }, take: 40 });
-  return { game, status: statusOf(game), costCents: await generationCostCents(c, gameId), assets, activity, awaitingQa: isAwaitingQa(statusOf(game)), playable: isPlayable(statusOf(game)) };
+  return { game, status: statusOf(game), costCents: await generationCostCents(c, gameId), assets, activity, failedSpots: await failedSpotsForAdmin(c, gameId), awaitingQa: isAwaitingQa(statusOf(game)), playable: isPlayable(statusOf(game)) };
+}
+
+/**
+ * The hiding spots that did not come out, and the pictures that show why.
+ *
+ * A rejection reason ("painted 40px tall") says a roll was wrong; only the
+ * render says how — an adult, a second child, a repainted crop, a child hidden
+ * so well the rule could not see her. Before these were kept, the only way to
+ * find out was to pay for another roll.
+ */
+export async function failedSpotsForAdmin(c: Container, gameId: string) {
+  const rows = await c.db.targetVariantAsset.findMany({
+    where: { targetInstance: { gameScene: { gameId } }, status: { notIn: ["GENERATED", "APPROVED"] } },
+    include: { targetInstance: { include: { gameScene: { select: { sceneSlug: true } } } } },
+    orderBy: { updatedAt: "desc" },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    targetInstanceId: r.targetInstanceId,
+    sceneSlug: r.targetInstance.gameScene.sceneSlug,
+    targetId: r.targetInstance.targetId,
+    variant: r.variant,
+    status: r.status,
+    attempts: r.attempts,
+    costCents: r.costCents,
+    lastError: r.lastError,
+    rejectedAssetIds: parseIds(r.rejectedAssetIdsJson),
+  }));
+}
+
+function parseIds(json: string | null): string[] {
+  if (!json) return [];
+  try {
+    const parsed: unknown = JSON.parse(json);
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -102,6 +140,13 @@ export async function approveAndPublish(c: Container, gameId: string, actor: Act
 export async function markTargetForRegeneration(c: Container, targetInstanceId: string, actor: Actor): Promise<void> {
   const t = await c.db.targetInstance.findUniqueOrThrow({ where: { id: targetInstanceId }, include: { gameScene: true } });
   await c.db.targetInstance.update({ where: { id: t.id }, data: { status: "NEEDS_REGENERATION" } });
+  // A spot that ran out of attempts is refused by the painter until someone with
+  // a reason overrides it. Asking for it again IS that reason — without this the
+  // button would look like it worked and quietly change nothing.
+  await c.db.targetVariantAsset.updateMany({
+    where: { targetInstanceId: t.id, status: { notIn: ["GENERATED", "APPROVED"] } },
+    data: { attempts: 0, status: "PENDING" },
+  });
   await c.db.gameScene.update({ where: { id: t.gameSceneId }, data: { generationStatus: "NEEDS_REGENERATION" } });
   const game = await c.db.game.findUniqueOrThrow({ where: { id: t.gameScene.gameId }, select: { status: true } });
   const s = statusOf(game);

@@ -18,7 +18,7 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
   const c = getContainer();
   const detail = await orderDetailForAdmin(c, gameId);
   if (!detail) notFound();
-  const { game, status, costCents, activity, awaitingQa, playable } = detail;
+  const { game, status, costCents, activity, failedSpots, awaitingQa, playable } = detail;
   // Asset signatures expire; the stored config is re-signed on the way out.
   const config = game.configJson ? withFreshAssetUrls(getContainer(), parseGameConfig(game.configJson)) : null;
   const order = game.orders[0] ?? null;
@@ -129,6 +129,47 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
           ) : (
             <Notice kind="info">עדיין אין קונפיגורציה — המשחק לא הורכב.</Notice>
           )}
+
+          {failedSpots.length > 0 ? (
+            <section className="fm-card fm-stack fm-stack--2">
+              <h3>מחבואים שלא יצאו ({failedSpots.length})</h3>
+              <p className="fm-small">התמונות הן מה שהמודל צייר בפועל — הן היחידות שמראות למה נדחה.</p>
+              {failedSpots.map((spot) => (
+                <div key={spot.id} className="fm-stack fm-stack--1">
+                  <div className="fm-row fm-row--between">
+                    <strong dir="ltr">
+                      {spot.sceneSlug}/{spot.targetId}/{spot.variant}
+                    </strong>
+                    <span className="fm-small">
+                      {spot.status} · ניסיונות {spot.attempts} · {(spot.costCents / 100).toFixed(2)} USD
+                    </span>
+                  </div>
+                  {spot.lastError ? (
+                    <span className="fm-small" dir="ltr">
+                      {spot.lastError}
+                    </span>
+                  ) : null}
+                  {spot.rejectedAssetIds.length > 0 ? (
+                    <div className="fm-row">
+                      {spot.rejectedAssetIds.map((assetId) => (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img key={assetId} src={`/api/assets/${assetId}`} alt="ניסיון שנדחה" className="photo-thumb" />
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="fm-small">אין תמונות שמורות מהניסיונות האלה.</span>
+                  )}
+                  <form action={regenTargetAction}>
+                    <input type="hidden" name="gameId" value={gameId} />
+                    <input type="hidden" name="targetInstanceId" value={spot.targetInstanceId} />
+                    <button className="fm-btn fm-btn--ghost fm-btn--sm" type="submit">
+                      ↻ נסו שוב את המחבוא הזה
+                    </button>
+                  </form>
+                </div>
+              ))}
+            </section>
+          ) : null}
         </div>
 
         <aside className="fm-stack fm-stack--3">

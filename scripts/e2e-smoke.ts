@@ -6,6 +6,11 @@
  *   → generation pipeline → (auto) publish → play link resolves → config is clean
  *
  * Usage:  npm run smoke   (see package.json)  — prints the play URL at the end.
+ *
+ * Against the real image model it is the same walk, just slower:
+ *
+ *   GENERATION_PROVIDER=openai SMOKE_PHOTO=assets/random-girl.png npm run smoke
+ *   SMOKE_GAME_ID=game_… npm run smoke     # carry on with a game already paid for
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -16,6 +21,82 @@ for (const line of readFileSync(path.resolve(process.cwd(), ".env"), "utf8").spl
   if (m && m[1] && process.env[m[1]] === undefined) process.env[m[1]] = (m[2] ?? "").trim();
 }
 process.env.QA_AUTO_APPROVE = process.env.SMOKE_MANUAL_QA === "1" ? "false" : "true";
+
+/** Statuses that mean the pipeline has stopped, one way or another. */
+const SETTLED = ["READY", "DELIVERED", "QA_PENDING", "MANUAL_REVIEW", "GENERATION_FAILED", "NEEDS_NEW_PHOTO"];
+
+/**
+ * Wait for generation, for as long as this provider actually needs.
+ *
+ * The mock finishes in milliseconds; the real model paints one hiding spot in
+ * about a minute, so a nine-board world is half an hour. A fixed fifteen-second
+ * wait quietly turned a real run into "expected READY, got AVATAR_GENERATING"
+ * and then killed the job it was waiting for.
+ */
+async function waitForGeneration(c: Awaited<ReturnType<typeof import("../src/services/container").getContainer>>, gameId: string, log: (m: string) => void): Promise<string> {
+  const { statusOf } = await import("../src/services/game-status");
+  const mock = (process.env.GENERATION_PROVIDER ?? "mock") === "mock";
+  const budgetMs = Number(process.env.SMOKE_TIMEOUT_MS ?? (mock ? 30_000 : 90 * 60_000));
+  const every = mock ? 250 : 5_000;
+  const until = Date.now() + budgetMs;
+  let status = "";
+  let painted = -1;
+  while (Date.now() < until) {
+    await new Promise((r) => setTimeout(r, every));
+    status = statusOf(await c.db.game.findUniqueOrThrow({ where: { id: gameId }, select: { status: true } }));
+    if (!mock) {
+      const done = await c.db.targetVariantAsset.count({ where: { targetInstance: { gameScene: { gameId } }, status: { in: ["GENERATED", "APPROVED"] } } });
+      if (done !== painted) {
+        const rolls = await c.db.targetVariantAsset.aggregate({ where: { targetInstance: { gameScene: { gameId } } }, _sum: { attempts: true, costCents: true } });
+        log(`${done} hiding spots painted · ${rolls._sum.attempts ?? 0} rolls · ${((rolls._sum.costCents ?? 0) / 100).toFixed(2)} USD · ${status}`);
+        painted = done;
+      }
+    }
+    if (SETTLED.includes(status)) break;
+  }
+  log(`generation finished with status ${status}`);
+  return status;
+}
+
+/** Carry an already-paid game to the end, printing what it costs on the way. */
+async function finish(
+  c: Awaited<ReturnType<typeof import("../src/services/container").getContainer>>,
+  gameId: string,
+  log: (m: string) => void,
+  assert: (cond: unknown, msg: string) => void,
+) {
+  const { runGenerationPipeline } = await import("../src/services/generation/pipeline");
+  const { statusOf } = await import("../src/services/game-status");
+  const { ensurePlayerLink } = await import("../src/services/share-link.service");
+  log(`resuming ${gameId}`);
+  const budgetMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 90 * 60_000);
+  const until = Date.now() + budgetMs;
+  let status = statusOf(await c.db.game.findUniqueOrThrow({ where: { id: gameId }, select: { status: true } }));
+  let last = "";
+  while (!SETTLED.includes(status) && Date.now() < until) {
+    await runGenerationPipeline(c, gameId);
+    status = statusOf(await c.db.game.findUniqueOrThrow({ where: { id: gameId }, select: { status: true } }));
+    const sum = await c.db.targetVariantAsset.aggregate({ where: { targetInstance: { gameScene: { gameId } } }, _sum: { attempts: true, costCents: true } });
+    const done = await c.db.targetVariantAsset.count({ where: { targetInstance: { gameScene: { gameId } }, status: { in: ["GENERATED", "APPROVED"] } } });
+    const line = `${done} painted · ${sum._sum.attempts ?? 0} rolls · ${((sum._sum.costCents ?? 0) / 100).toFixed(2)} USD · ${status}`;
+    if (line !== last) log(line);
+    last = line;
+    // A run that changes nothing means another runner holds the lease — a real
+    // one, or one that died and whose lease has not gone stale yet. Either way,
+    // asking again immediately is a spin loop, not progress.
+    const job = await c.db.generationJob.findUnique({ where: { id: `job_${gameId}` }, select: { status: true, updatedAt: true } });
+    if (job?.status === "RUNNING") {
+      const heldFor = Math.round((Date.now() - job.updatedAt.getTime()) / 1000);
+      log(`the lease is held (${heldFor}s) — waiting for it to be released or go stale`);
+      await new Promise((r) => setTimeout(r, 30_000));
+    } else {
+      await new Promise((r) => setTimeout(r, 2_000));
+    }
+  }
+  assert(!["GENERATION_FAILED", "NEEDS_NEW_PHOTO"].includes(status), `generation ended at ${status}`);
+  if (["READY", "DELIVERED"].includes(status)) log(`play ${(await ensurePlayerLink(c, gameId)).url}`);
+  else log(`waiting for QA at /admin/orders/${gameId}`);
+}
 
 async function main() {
   const { getContainer } = await import("../src/services/container");
@@ -32,6 +113,11 @@ async function main() {
   const assert = (cond: unknown, msg: string) => {
     if (!cond) throw new Error(`ASSERT: ${msg}`);
   };
+
+  // Generation is resumable, so a run that was cut short (a real world takes
+  // half an hour) is continued rather than paid for again.
+  const resuming = process.env.SMOKE_GAME_ID;
+  if (resuming) return finish(c, resuming, log, assert);
 
   const { gameId } = await createDraft(c, null, process.env.SMOKE_LOCALE === "he" ? "he" : "en");
   log(`draft ${gameId}`);
@@ -63,14 +149,7 @@ async function main() {
   assert(replay.body.includes("duplicate"), "webhook replay must be a no-op");
   log("webhook PAID (+ replay ignored)");
 
-  // Wait for the in-process job.
-  let status = "";
-  for (let i = 0; i < 60; i++) {
-    await new Promise((r) => setTimeout(r, 250));
-    status = statusOf(await c.db.game.findUniqueOrThrow({ where: { id: gameId }, select: { status: true } }));
-    if (["READY", "DELIVERED", "QA_PENDING", "MANUAL_REVIEW", "GENERATION_FAILED", "NEEDS_NEW_PHOTO"].includes(status)) break;
-  }
-  log(`generation finished with status ${status}`);
+  const status = await waitForGeneration(c, gameId, log);
 
   // The page nudges the queue on every poll and a cron nudges it too, so two
   // runners overlapping is normal. Without a lease each one saw "no avatar yet"
