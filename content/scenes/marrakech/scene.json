@@ -1,0 +1,291 @@
+{
+  "id": "scene_marrakech",
+  "slug": "marrakech",
+  "name": {
+    "en": "Marrakech",
+    "he": "מרקש"
+  },
+  "tagline": {
+    "en": "Lanterns, carpets and a mountain of spices.",
+    "he": "פנסים, שטיחים והר של תבלינים."
+  },
+  "version": 1,
+  "active": false,
+  "artStatus": "draft",
+  "art": {
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/marrakech/base.webp",
+    "thumbnail": "/scenes/marrakech/thumb.webp",
+    "palette": {
+      "sky": "#DCE9F5",
+      "ground": "#B9A98F",
+      "accent": "#F5B301"
+    },
+    "foreground": "/scenes/marrakech/foreground.webp"
+  },
+  "targets": [
+    {
+      "id": "lanterns",
+      "targetType": "marrakech_lanterns",
+      "bodyTemplate": "marrakech_lanterns",
+      "difficulty": 1,
+      "mission": {
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
+      },
+      "item": {
+        "en": "hundreds of metal lanterns hanging above a stall",
+        "he": "מאות פנסי מתכת תלויים מעל דוכן"
+      },
+      "success": [
+        {
+          "en": "They jingled when I moved!",
+          "he": "הם צלצלו כשזזתי!"
+        },
+        {
+          "en": "You found me! Look how they shine.",
+          "he": "מצאתם! תראו איך הם נוצצים."
+        },
+        {
+          "en": "So many little lights.",
+          "he": "כל כך הרבה אורות קטנים."
+        }
+      ],
+      "animation": "bounce",
+      "slots": [
+        {
+          "id": "marrakech_lanterns_a",
+          "x": 0.3,
+          "y": 0.55,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.3,
+            "y": 0.54,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look under the hanging lanterns.",
+            "he": "חפשו מתחת לפנסים התלויים."
+          }
+        },
+        {
+          "id": "marrakech_lanterns_b",
+          "x": 0.74,
+          "y": 0.52,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.74,
+            "y": 0.51,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look at the lantern stall on the right.",
+            "he": "חפשו בדוכן הפנסים מימין."
+          }
+        }
+      ]
+    },
+    {
+      "id": "carpets",
+      "targetType": "marrakech_carpets",
+      "bodyTemplate": "marrakech_carpets",
+      "difficulty": 2,
+      "mission": {
+        "en": "Find {name} by the carpets",
+        "he": "מצאו את {name} ליד השטיחים"
+      },
+      "item": {
+        "en": "tall stacks of carpets in deep reds and blues",
+        "he": "ערימות שטיחים גבוהות באדום ובכחול"
+      },
+      "success": [
+        {
+          "en": "They are so soft!",
+          "he": "הם כל כך רכים!"
+        },
+        {
+          "en": "You found me! I counted twenty.",
+          "he": "מצאתם! ספרתי עשרים."
+        },
+        {
+          "en": "One was flying, I think.",
+          "he": "אחד עף, נדמה לי."
+        }
+      ],
+      "animation": "wiggle",
+      "slots": [
+        {
+          "id": "marrakech_carpets_a",
+          "x": 0.62,
+          "y": 0.63,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.62,
+            "y": 0.62,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look between the stacks of carpets.",
+            "he": "חפשו בין ערימות השטיחים."
+          }
+        },
+        {
+          "id": "marrakech_carpets_b",
+          "x": 0.19,
+          "y": 0.6,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.19,
+            "y": 0.59,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look at the carpets on the left.",
+            "he": "חפשו בשטיחים משמאל."
+          }
+        }
+      ]
+    },
+    {
+      "id": "spices",
+      "targetType": "marrakech_spices",
+      "bodyTemplate": "marrakech_spices",
+      "difficulty": 3,
+      "mission": {
+        "en": "Find {name} hiding behind the spices",
+        "he": "מצאו את {name} מתחבאת מאחורי התבלינים"
+      },
+      "item": {
+        "en": "tall cones of orange, red and yellow spices in open sacks",
+        "he": "חרוטי תבלינים כתומים אדומים וצהובים בשקים פתוחים"
+      },
+      "success": [
+        {
+          "en": "I sneezed once. Only once!",
+          "he": "התעטשתי פעם אחת. רק אחת!"
+        },
+        {
+          "en": "You found me! It smells amazing.",
+          "he": "מצאתם! מריח מדהים."
+        },
+        {
+          "en": "My hands are orange now.",
+          "he": "הידיים שלי כתומות עכשיו."
+        }
+      ],
+      "animation": "peek",
+      "slots": [
+        {
+          "id": "marrakech_spices_a",
+          "x": 0.47,
+          "y": 0.7,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.47,
+            "y": 0.69,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look behind the cones of spices.",
+            "he": "חפשו מאחורי חרוטי התבלינים."
+          }
+        },
+        {
+          "id": "marrakech_spices_b",
+          "x": 0.85,
+          "y": 0.74,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.85,
+            "y": 0.73,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look at the spice sacks on the right.",
+            "he": "חפשו בשקי התבלינים מימין."
+          }
+        }
+      ]
+    }
+  ],
+  "artNotes": [
+    "hundreds of metal lanterns hanging from a stall roof",
+    "stacked carpets in deep reds and blues",
+    "cones of coloured spices",
+    "a mint tea seller with a tall silver pot",
+    "a donkey cart loaded with baskets",
+    "striped cloth stretched overhead for shade"
+  ],
+  "collectible": {
+    "id": "stamp_morocco",
+    "name": {
+      "en": "A Marrakech stamp",
+      "he": "חותמת מרקש"
+    },
+    "icon": "🏮"
+  },
+  "celebration": {
+    "kind": "fruit",
+    "completeText": {
+      "en": "You found {name} three times in Marrakech!",
+      "he": "מצאתם את {name} שלוש פעמים במרקש!"
+    }
+  },
+  "ambient": [
+    {
+      "id": "teapot",
+      "label": {
+        "en": "Mint tea poured high",
+        "he": "תה נענע נמזג מגבוה"
+      },
+      "x": 0.3,
+      "y": 0.78,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Not a drop spilled!",
+        "he": "לא נשפכה טיפה!"
+      },
+      "glyph": "🫖"
+    },
+    {
+      "id": "donkey",
+      "label": {
+        "en": "A donkey cart",
+        "he": "עגלת חמור"
+      },
+      "x": 0.55,
+      "y": 0.3,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "slide",
+      "sound": "boing",
+      "reaction": {
+        "en": "Coming through!",
+        "he": "פנו דרך!"
+      },
+      "glyph": "🫏"
+    },
+    {
+      "id": "lantern",
+      "label": {
+        "en": "A swinging lantern",
+        "he": "פנס מתנדנד"
+      },
+      "x": 0.82,
+      "y": 0.68,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "It jingles!",
+        "he": "הוא מצלצל!"
+      },
+      "glyph": "🏮"
+    }
+  ]
+}

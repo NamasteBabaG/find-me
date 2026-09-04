@@ -1,0 +1,291 @@
+{
+  "id": "scene_greatwall",
+  "slug": "greatwall",
+  "name": {
+    "en": "The Great Wall",
+    "he": "החומה הסינית"
+  },
+  "tagline": {
+    "en": "Endless steps, a paper dragon and mist on the hills.",
+    "he": "מדרגות אינסופיות, דרקון נייר וערפל על הגבעות."
+  },
+  "version": 1,
+  "active": false,
+  "artStatus": "draft",
+  "art": {
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/greatwall/base.webp",
+    "thumbnail": "/scenes/greatwall/thumb.webp",
+    "palette": {
+      "sky": "#DCE9F5",
+      "ground": "#B9A98F",
+      "accent": "#F5B301"
+    },
+    "foreground": "/scenes/greatwall/foreground.webp"
+  },
+  "targets": [
+    {
+      "id": "dragon",
+      "targetType": "greatwall_dragon",
+      "bodyTemplate": "greatwall_dragon",
+      "difficulty": 1,
+      "mission": {
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
+      },
+      "item": {
+        "en": "a long paper dragon carried by many children",
+        "he": "דרקון נייר ארוך שילדים רבים נושאים"
+      },
+      "success": [
+        {
+          "en": "I was one of the legs!",
+          "he": "הייתי אחת הרגליים!"
+        },
+        {
+          "en": "You found me! He is very long.",
+          "he": "מצאתם! הוא ארוך מאוד."
+        },
+        {
+          "en": "The drum went boom.",
+          "he": "התוף עשה בום."
+        }
+      ],
+      "animation": "bounce",
+      "slots": [
+        {
+          "id": "greatwall_dragon_a",
+          "x": 0.42,
+          "y": 0.58,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.42,
+            "y": 0.57,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look under the paper dragon.",
+            "he": "חפשו מתחת לדרקון הנייר."
+          }
+        },
+        {
+          "id": "greatwall_dragon_b",
+          "x": 0.7,
+          "y": 0.54,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.7,
+            "y": 0.53,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look at the dragon's tail.",
+            "he": "חפשו בזנב הדרקון."
+          }
+        }
+      ]
+    },
+    {
+      "id": "lanterns",
+      "targetType": "greatwall_lanterns",
+      "bodyTemplate": "greatwall_lanterns",
+      "difficulty": 2,
+      "mission": {
+        "en": "Find {name} by the red lanterns",
+        "he": "מצאו את {name} ליד הפנסים האדומים"
+      },
+      "item": {
+        "en": "red lanterns strung between poles along the wall",
+        "he": "פנסים אדומים מתוחים בין עמודים לאורך החומה"
+      },
+      "success": [
+        {
+          "en": "They swing in the wind!",
+          "he": "הם מתנדנדים ברוח!"
+        },
+        {
+          "en": "You found me! Count them.",
+          "he": "מצאתם! תספרו אותם."
+        },
+        {
+          "en": "Red everywhere.",
+          "he": "אדום בכל מקום."
+        }
+      ],
+      "animation": "wiggle",
+      "slots": [
+        {
+          "id": "greatwall_lanterns_a",
+          "x": 0.24,
+          "y": 0.5,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.24,
+            "y": 0.49,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look by the red lanterns.",
+            "he": "חפשו ליד הפנסים האדומים."
+          }
+        },
+        {
+          "id": "greatwall_lanterns_b",
+          "x": 0.82,
+          "y": 0.47,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.82,
+            "y": 0.45999999999999996,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look at the lanterns further along.",
+            "he": "חפשו בפנסים הלאה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "tower",
+      "targetType": "greatwall_tower",
+      "bodyTemplate": "greatwall_tower",
+      "difficulty": 3,
+      "mission": {
+        "en": "Find {name} hiding in the watchtower",
+        "he": "מצאו את {name} מתחבאת במגדל השמירה"
+      },
+      "item": {
+        "en": "stone watchtowers with narrow windows",
+        "he": "מגדלי שמירה מאבן עם חלונות צרים"
+      },
+      "success": [
+        {
+          "en": "I can see the whole wall!",
+          "he": "אני רואה את כל החומה!"
+        },
+        {
+          "en": "You found me! Climb up.",
+          "he": "מצאתם! תעלו."
+        },
+        {
+          "en": "The steps never end.",
+          "he": "המדרגות לא נגמרות."
+        }
+      ],
+      "animation": "peek",
+      "slots": [
+        {
+          "id": "greatwall_tower_a",
+          "x": 0.55,
+          "y": 0.35,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.55,
+            "y": 0.33999999999999997,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look in the watchtower.",
+            "he": "חפשו במגדל השמירה."
+          }
+        },
+        {
+          "id": "greatwall_tower_b",
+          "x": 0.13,
+          "y": 0.4,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.13,
+            "y": 0.39,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look at the tower on the left.",
+            "he": "חפשו במגדל משמאל."
+          }
+        }
+      ]
+    }
+  ],
+  "artNotes": [
+    "a long paper dragon carried by many children",
+    "stone steps climbing over green hills",
+    "watchtowers along the wall",
+    "red lanterns strung between poles",
+    "kite flyers on the highest tower",
+    "mist sitting in the valleys below"
+  ],
+  "collectible": {
+    "id": "stamp_china",
+    "name": {
+      "en": "A Great Wall stamp",
+      "he": "חותמת החומה"
+    },
+    "icon": "🐉"
+  },
+  "celebration": {
+    "kind": "confetti",
+    "completeText": {
+      "en": "You found {name} three times in The Great Wall!",
+      "he": "מצאתם את {name} שלוש פעמים בהחומה הסינית!"
+    }
+  },
+  "ambient": [
+    {
+      "id": "dragon",
+      "label": {
+        "en": "The paper dragon",
+        "he": "דרקון הנייר"
+      },
+      "x": 0.3,
+      "y": 0.78,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Boom, boom!",
+        "he": "בום, בום!"
+      },
+      "glyph": "🐉"
+    },
+    {
+      "id": "kite",
+      "label": {
+        "en": "A kite on the tower",
+        "he": "עפיפון על המגדל"
+      },
+      "x": 0.55,
+      "y": 0.3,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "slide",
+      "sound": "boing",
+      "reaction": {
+        "en": "Higher!",
+        "he": "יותר גבוה!"
+      },
+      "glyph": "🪁"
+    },
+    {
+      "id": "lantern",
+      "label": {
+        "en": "A red lantern",
+        "he": "פנס אדום"
+      },
+      "x": 0.82,
+      "y": 0.68,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "It swings.",
+        "he": "הוא מתנדנד."
+      },
+      "glyph": "🏮"
+    }
+  ]
+}

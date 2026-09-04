@@ -1,0 +1,291 @@
+{
+  "id": "scene_amazon",
+  "slug": "amazon",
+  "name": {
+    "en": "The Amazon",
+    "he": "האמזונס"
+  },
+  "tagline": {
+    "en": "A green river, a wooden canoe and a very loud macaw.",
+    "he": "נהר ירוק, קאנו מעץ ותוכי רועש מאוד."
+  },
+  "version": 1,
+  "active": false,
+  "artStatus": "draft",
+  "art": {
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/amazon/base.webp",
+    "thumbnail": "/scenes/amazon/thumb.webp",
+    "palette": {
+      "sky": "#DCE9F5",
+      "ground": "#B9A98F",
+      "accent": "#F5B301"
+    },
+    "foreground": "/scenes/amazon/foreground.webp"
+  },
+  "targets": [
+    {
+      "id": "canoe",
+      "targetType": "amazon_canoe",
+      "bodyTemplate": "amazon_canoe",
+      "difficulty": 1,
+      "mission": {
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
+      },
+      "item": {
+        "en": "wooden canoes on the green river",
+        "he": "קאנו מעץ על הנהר הירוק"
+      },
+      "success": [
+        {
+          "en": "The river carried me!",
+          "he": "הנהר סחף אותי!"
+        },
+        {
+          "en": "You found me! Paddle with me?",
+          "he": "מצאתם! חותרים איתי?"
+        },
+        {
+          "en": "A dolphin said hello.",
+          "he": "דולפין אמר לי שלום."
+        }
+      ],
+      "animation": "bounce",
+      "slots": [
+        {
+          "id": "amazon_canoe_a",
+          "x": 0.44,
+          "y": 0.6,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.44,
+            "y": 0.59,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look by the canoes on the river.",
+            "he": "חפשו ליד הקאנו על הנהר."
+          }
+        },
+        {
+          "id": "amazon_canoe_b",
+          "x": 0.71,
+          "y": 0.55,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.71,
+            "y": 0.54,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look by the second canoe.",
+            "he": "חפשו ליד הקאנו השני."
+          }
+        }
+      ]
+    },
+    {
+      "id": "macaw",
+      "targetType": "amazon_macaw",
+      "bodyTemplate": "amazon_macaw",
+      "difficulty": 2,
+      "mission": {
+        "en": "Find {name} by the macaws",
+        "he": "מצאו את {name} ליד התוכים"
+      },
+      "item": {
+        "en": "bright macaws on a low branch",
+        "he": "תוכים צבעוניים על ענף נמוך"
+      },
+      "success": [
+        {
+          "en": "He repeated my name!",
+          "he": "הוא חזר על השם שלי!"
+        },
+        {
+          "en": "You found me! He is very loud.",
+          "he": "מצאתם! הוא רועש נורא."
+        },
+        {
+          "en": "Shhh, he will tell everyone.",
+          "he": "ששש, הוא יספר לכולם."
+        }
+      ],
+      "animation": "wiggle",
+      "slots": [
+        {
+          "id": "amazon_macaw_a",
+          "x": 0.24,
+          "y": 0.47,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.24,
+            "y": 0.45999999999999996,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look by the macaws on the branch.",
+            "he": "חפשו ליד התוכים על הענף."
+          }
+        },
+        {
+          "id": "amazon_macaw_b",
+          "x": 0.83,
+          "y": 0.44,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.83,
+            "y": 0.43,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look at the branch on the right.",
+            "he": "חפשו בענף בצד ימין."
+          }
+        }
+      ]
+    },
+    {
+      "id": "roots",
+      "targetType": "amazon_roots",
+      "bodyTemplate": "amazon_roots",
+      "difficulty": 3,
+      "mission": {
+        "en": "Find {name} hiding behind the giant roots",
+        "he": "מצאו את {name} מתחבאת מאחורי השורשים הענקיים"
+      },
+      "item": {
+        "en": "huge tangled tree roots at the water's edge",
+        "he": "שורשי עץ ענקיים בקצה המים"
+      },
+      "success": [
+        {
+          "en": "The roots are bigger than me!",
+          "he": "השורשים גדולים ממני!"
+        },
+        {
+          "en": "You found me! It is cool in here.",
+          "he": "מצאתם! קריר פה."
+        },
+        {
+          "en": "A frog was hiding too.",
+          "he": "גם צפרדע התחבאה פה."
+        }
+      ],
+      "animation": "peek",
+      "slots": [
+        {
+          "id": "amazon_roots_a",
+          "x": 0.16,
+          "y": 0.72,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.16,
+            "y": 0.71,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look between the big roots.",
+            "he": "חפשו בין השורשים הגדולים."
+          }
+        },
+        {
+          "id": "amazon_roots_b",
+          "x": 0.63,
+          "y": 0.78,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.63,
+            "y": 0.77,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look at the roots by the water.",
+            "he": "חפשו בשורשים ליד המים."
+          }
+        }
+      ]
+    }
+  ],
+  "artNotes": [
+    "a sloth hanging upside down from a branch",
+    "pink river dolphins surfacing",
+    "giant lily pads with a frog on one",
+    "a rope bridge between two trees",
+    "children in a wooden canoe with paddles",
+    "butterflies over the water"
+  ],
+  "collectible": {
+    "id": "stamp_brazil",
+    "name": {
+      "en": "An Amazon stamp",
+      "he": "חותמת האמזונס"
+    },
+    "icon": "🦜"
+  },
+  "celebration": {
+    "kind": "leaves",
+    "completeText": {
+      "en": "You found {name} three times in The Amazon!",
+      "he": "מצאתם את {name} שלוש פעמים בהאמזונס!"
+    }
+  },
+  "ambient": [
+    {
+      "id": "sloth",
+      "label": {
+        "en": "A sloth waking up",
+        "he": "עצלן מתעורר"
+      },
+      "x": 0.3,
+      "y": 0.78,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Slooowly does it!",
+        "he": "לאאאט לאאאט!"
+      },
+      "glyph": "🦥"
+    },
+    {
+      "id": "dolphin",
+      "label": {
+        "en": "A pink river dolphin",
+        "he": "דולפין נהר ורוד"
+      },
+      "x": 0.55,
+      "y": 0.3,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "slide",
+      "sound": "boing",
+      "reaction": {
+        "en": "He splashed me!",
+        "he": "הוא התיז עליי!"
+      },
+      "glyph": "🐬"
+    },
+    {
+      "id": "frog",
+      "label": {
+        "en": "A frog on a lily pad",
+        "he": "צפרדע על עלה"
+      },
+      "x": 0.82,
+      "y": 0.68,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Ribbit! Found!",
+        "he": "קרווו! מצאתם!"
+      },
+      "glyph": "🐸"
+    }
+  ]
+}

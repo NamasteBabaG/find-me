@@ -26,6 +26,31 @@ export interface BodyTemplate {
 const t = (en: string, he: string): LocalizedText => ({ en, he });
 
 export const BODY_TEMPLATES: Record<string, BodyTemplate> = {
+  // ── world 1: destinations ──
+  amazon_canoe: { id: "amazon_canoe", label: t("in a wooden canoe", "בקאנו מעץ"), pose: "riding", accessory: { glyph: "🛶", place: "front" }, outfit: { primary: "#2FA4D6", secondary: "#FFF8EC" } },
+  amazon_macaw: { id: "amazon_macaw", label: t("with a macaw", "עם תוכי"), pose: "holding", accessory: { glyph: "🦜", place: "hand" }, outfit: { primary: "#F25C7A", secondary: "#5BBF6B" } },
+  amazon_roots: { id: "amazon_roots", label: t("behind giant roots", "מאחורי שורשים ענקיים"), pose: "peeking", accessory: { glyph: "", place: "none" }, outfit: { primary: "#5BBF6B", secondary: "#C9A227" } },
+  paris_bakery: { id: "paris_bakery", label: t("with a baguette", "עם באגט"), pose: "holding", accessory: { glyph: "🥖", place: "hand" }, outfit: { primary: "#C1443B", secondary: "#FFF8EC" } },
+  paris_carousel: { id: "paris_carousel", label: t("on the carousel", "על הקרוסלה"), pose: "riding", accessory: { glyph: "🎠", place: "front" }, outfit: { primary: "#8C6BD9", secondary: "#FFB61E" } },
+  paris_awning: { id: "paris_awning", label: t("behind a café awning", "מאחורי סוכך של בית קפה"), pose: "peeking", accessory: { glyph: "", place: "none" }, outfit: { primary: "#2FA4D6", secondary: "#F25C7A" } },
+  marrakech_lanterns: { id: "marrakech_lanterns", label: t("under the lanterns", "מתחת לפנסים"), pose: "standing", accessory: { glyph: "🏮", place: "front" }, outfit: { primary: "#F25C7A", secondary: "#FFB61E" } },
+  marrakech_carpets: { id: "marrakech_carpets", label: t("between the carpets", "בין השטיחים"), pose: "peeking", accessory: { glyph: "🧶", place: "body" }, outfit: { primary: "#C1443B", secondary: "#2FA4D6" } },
+  marrakech_spices: { id: "marrakech_spices", label: t("behind the spice cones", "מאחורי חרוטי התבלינים"), pose: "peeking", accessory: { glyph: "", place: "none" }, outfit: { primary: "#C9A227", secondary: "#5BBF6B" } },
+  giza_camel: { id: "giza_camel", label: t("on a camel", "על גמל"), pose: "riding", accessory: { glyph: "🐫", place: "front" }, outfit: { primary: "#C9A227", secondary: "#F25C7A" } },
+  giza_stall: { id: "giza_stall", label: t("by the scarf stall", "ליד דוכן הצעיפים"), pose: "standing", accessory: { glyph: "🧣", place: "hand" }, outfit: { primary: "#8C6BD9", secondary: "#FFB61E" } },
+  giza_stones: { id: "giza_stones", label: t("behind the big stones", "מאחורי אבני הענק"), pose: "peeking", accessory: { glyph: "", place: "none" }, outfit: { primary: "#B9A98F", secondary: "#2FA4D6" } },
+  tokyo_crossing: { id: "tokyo_crossing", label: t("at the crossing", "בצומת"), pose: "standing", accessory: { glyph: "🚦", place: "front" }, outfit: { primary: "#2FA4D6", secondary: "#FFF8EC" } },
+  tokyo_stall: { id: "tokyo_stall", label: t("by a festival stall", "ליד דוכן פסטיבל"), pose: "holding", accessory: { glyph: "🎏", place: "hand" }, outfit: { primary: "#F25C7A", secondary: "#FFB61E" } },
+  tokyo_blossom: { id: "tokyo_blossom", label: t("under the blossom tree", "מתחת לעץ הפריחה"), pose: "peeking", accessory: { glyph: "", place: "none" }, outfit: { primary: "#F7C6D9", secondary: "#5BBF6B" } },
+  greatwall_dragon: { id: "greatwall_dragon", label: t("under the paper dragon", "מתחת לדרקון הנייר"), pose: "standing", accessory: { glyph: "🐉", place: "front" }, outfit: { primary: "#C1443B", secondary: "#FFB61E" } },
+  greatwall_lanterns: { id: "greatwall_lanterns", label: t("by the red lanterns", "ליד הפנסים האדומים"), pose: "holding", accessory: { glyph: "🏮", place: "hand" }, outfit: { primary: "#F25C7A", secondary: "#C9A227" } },
+  greatwall_tower: { id: "greatwall_tower", label: t("in the watchtower", "במגדל השמירה"), pose: "peeking", accessory: { glyph: "", place: "none" }, outfit: { primary: "#B9A98F", secondary: "#5BBF6B" } },
+  sydney_ferry: { id: "sydney_ferry", label: t("on the ferry", "על המעבורת"), pose: "riding", accessory: { glyph: "⛴️", place: "front" }, outfit: { primary: "#2FA4D6", secondary: "#5BBF6B" } },
+  sydney_surfboards: { id: "sydney_surfboards", label: t("by the surfboards", "ליד הגלשנים"), pose: "standing", accessory: { glyph: "🏄", place: "front" }, outfit: { primary: "#FFB61E", secondary: "#F25C7A" } },
+  sydney_rocks: { id: "sydney_rocks", label: t("behind the harbour rocks", "מאחורי סלעי המפרץ"), pose: "peeking", accessory: { glyph: "", place: "none" }, outfit: { primary: "#B9A98F", secondary: "#2FA4D6" } },
+  antarctica_penguins: { id: "antarctica_penguins", label: t("among the penguins", "בין הפינגווינים"), pose: "standing", accessory: { glyph: "🐧", place: "front" }, outfit: { primary: "#FFF8EC", secondary: "#2B2B2B" } },
+  antarctica_sledge: { id: "antarctica_sledge", label: t("on a sledge", "על מזחלת"), pose: "riding", accessory: { glyph: "🛷", place: "front" }, outfit: { primary: "#C1443B", secondary: "#2FA4D6" } },
+  antarctica_ice: { id: "antarctica_ice", label: t("behind a block of ice", "מאחורי גוש קרח"), pose: "peeking", accessory: { glyph: "", place: "none" }, outfit: { primary: "#BFE9FF", secondary: "#FFF8EC" } },
   // ── new york ──
   newyork_taxi: { id: "newyork_taxi", label: t("by a yellow taxi", "ליד מונית צהובה"), pose: "standing", accessory: { glyph: "🚕", place: "front" }, outfit: { primary: "#F5B301", secondary: "#2B2B2B" } },
   newyork_pretzel: { id: "newyork_pretzel", label: t("with a warm pretzel", "עם בייגלה חם"), pose: "holding", accessory: { glyph: "🥨", place: "hand" }, outfit: { primary: "#C1443B", secondary: "#FFF8EC" } },

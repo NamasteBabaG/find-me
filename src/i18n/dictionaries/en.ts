@@ -120,6 +120,13 @@ export const en = {
       titleSpots: "hiding spots.",
       lead: "Each place is illustrated in a storybook-collage style, with dozens of characters and objects, two environmental surprises and a keepsake to collect.",
       spotsAria: "The hiding spots",
+      worldOf: "World {n} of {total}",
+      prev: "Previous world",
+      next: "Next world",
+      locked: "Locked",
+      opensAfter: "Opens after {world}",
+      inTheMaking: "Being painted now",
+      harder: "Harder hiding spots",
     },
     pricing: {
       pill: "💛 Simple pricing",

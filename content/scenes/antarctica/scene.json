@@ -1,0 +1,291 @@
+{
+  "id": "scene_antarctica",
+  "slug": "antarctica",
+  "name": {
+    "en": "Antarctica",
+    "he": "אנטארקטיקה"
+  },
+  "tagline": {
+    "en": "Penguins, a red hut and the whitest snow there is.",
+    "he": "פינגווינים, בקתה אדומה והשלג הלבן ביותר שיש."
+  },
+  "version": 1,
+  "active": false,
+  "artStatus": "draft",
+  "art": {
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/antarctica/base.webp",
+    "thumbnail": "/scenes/antarctica/thumb.webp",
+    "palette": {
+      "sky": "#DCE9F5",
+      "ground": "#B9A98F",
+      "accent": "#F5B301"
+    },
+    "foreground": "/scenes/antarctica/foreground.webp"
+  },
+  "targets": [
+    {
+      "id": "penguins",
+      "targetType": "antarctica_penguins",
+      "bodyTemplate": "antarctica_penguins",
+      "difficulty": 1,
+      "mission": {
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
+      },
+      "item": {
+        "en": "a long line of penguins waddling across the snow",
+        "he": "שורה ארוכה של פינגווינים מתנדנדים על השלג"
+      },
+      "success": [
+        {
+          "en": "They walk funnier than me!",
+          "he": "הם הולכים מצחיק ממני!"
+        },
+        {
+          "en": "You found me! One followed me.",
+          "he": "מצאתם! אחד עקב אחריי."
+        },
+        {
+          "en": "They all look the same!",
+          "he": "כולם נראים אותו דבר!"
+        }
+      ],
+      "animation": "bounce",
+      "slots": [
+        {
+          "id": "antarctica_penguins_a",
+          "x": 0.4,
+          "y": 0.66,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.4,
+            "y": 0.65,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look among the penguins.",
+            "he": "חפשו בין הפינגווינים."
+          }
+        },
+        {
+          "id": "antarctica_penguins_b",
+          "x": 0.68,
+          "y": 0.62,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.68,
+            "y": 0.61,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look at the second group of penguins.",
+            "he": "חפשו בקבוצת הפינגווינים השנייה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "sledge",
+      "targetType": "antarctica_sledge",
+      "bodyTemplate": "antarctica_sledge",
+      "difficulty": 2,
+      "mission": {
+        "en": "Find {name} by the sledges",
+        "he": "מצאו את {name} ליד המזחלות"
+      },
+      "item": {
+        "en": "wooden sledges loaded with boxes and rope",
+        "he": "מזחלות עץ עמוסות בארגזים וחבל"
+      },
+      "success": [
+        {
+          "en": "Downhill is the best part!",
+          "he": "במורד זה הכי כיף!"
+        },
+        {
+          "en": "You found me! Push me again.",
+          "he": "מצאתם! תדחפו אותי עוד פעם."
+        },
+        {
+          "en": "My cheeks are freezing.",
+          "he": "הלחיים שלי קפואות."
+        }
+      ],
+      "animation": "wiggle",
+      "slots": [
+        {
+          "id": "antarctica_sledge_a",
+          "x": 0.25,
+          "y": 0.72,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.25,
+            "y": 0.71,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look by the sledges.",
+            "he": "חפשו ליד המזחלות."
+          }
+        },
+        {
+          "id": "antarctica_sledge_b",
+          "x": 0.8,
+          "y": 0.68,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.8,
+            "y": 0.67,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look at the sledge on the right.",
+            "he": "חפשו במזחלת מימין."
+          }
+        }
+      ]
+    },
+    {
+      "id": "ice",
+      "targetType": "antarctica_ice",
+      "bodyTemplate": "antarctica_ice",
+      "difficulty": 3,
+      "mission": {
+        "en": "Find {name} hiding behind a block of ice",
+        "he": "מצאו את {name} מתחבאת מאחורי גוש קרח"
+      },
+      "item": {
+        "en": "big blue blocks of ice with a shining arch",
+        "he": "גושי קרח כחולים גדולים עם קשת נוצצת"
+      },
+      "success": [
+        {
+          "en": "You can see through it!",
+          "he": "אפשר לראות דרכו!"
+        },
+        {
+          "en": "You found me! It is blue inside.",
+          "he": "מצאתם! הוא כחול מבפנים."
+        },
+        {
+          "en": "Brrr. Worth it.",
+          "he": "ברררר. שווה את זה."
+        }
+      ],
+      "animation": "peek",
+      "slots": [
+        {
+          "id": "antarctica_ice_a",
+          "x": 0.57,
+          "y": 0.75,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.57,
+            "y": 0.74,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look behind the ice blocks.",
+            "he": "חפשו מאחורי גושי הקרח."
+          }
+        },
+        {
+          "id": "antarctica_ice_b",
+          "x": 0.1,
+          "y": 0.7,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.1,
+            "y": 0.69,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look at the ice on the left.",
+            "he": "חפשו בקרח משמאל."
+          }
+        }
+      ]
+    }
+  ],
+  "artNotes": [
+    "a crowd of penguins waddling in a line",
+    "a bright red research hut with round windows",
+    "children pulling wooden sledges",
+    "a blue ice arch over the water",
+    "seals lying on a flat floe",
+    "a striped weather balloon being filled"
+  ],
+  "collectible": {
+    "id": "stamp_antarctica",
+    "name": {
+      "en": "An Antarctica stamp",
+      "he": "חותמת אנטארקטיקה"
+    },
+    "icon": "🐧"
+  },
+  "celebration": {
+    "kind": "snow",
+    "completeText": {
+      "en": "You found {name} three times in Antarctica!",
+      "he": "מצאתם את {name} שלוש פעמים באנטארקטיקה!"
+    }
+  },
+  "ambient": [
+    {
+      "id": "penguin",
+      "label": {
+        "en": "A penguin sliding",
+        "he": "פינגווין מחליק"
+      },
+      "x": 0.3,
+      "y": 0.78,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Wheee!",
+        "he": "ייייי!"
+      },
+      "glyph": "🐧"
+    },
+    {
+      "id": "seal",
+      "label": {
+        "en": "A seal yawning",
+        "he": "כלב ים מפהק"
+      },
+      "x": 0.55,
+      "y": 0.3,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "slide",
+      "sound": "boing",
+      "reaction": {
+        "en": "Ahhh.",
+        "he": "אאאה."
+      },
+      "glyph": "🦭"
+    },
+    {
+      "id": "balloon",
+      "label": {
+        "en": "A weather balloon",
+        "he": "בלון מזג אוויר"
+      },
+      "x": 0.82,
+      "y": 0.68,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Up it goes!",
+        "he": "הוא עולה!"
+      },
+      "glyph": "🎈"
+    }
+  ]
+}

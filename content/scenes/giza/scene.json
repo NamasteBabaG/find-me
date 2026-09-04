@@ -1,0 +1,291 @@
+{
+  "id": "scene_giza",
+  "slug": "giza",
+  "name": {
+    "en": "Giza",
+    "he": "גיזה"
+  },
+  "tagline": {
+    "en": "Camels, stone giants and a very old riddle.",
+    "he": "גמלים, ענקי אבן וחידה עתיקה מאוד."
+  },
+  "version": 1,
+  "active": false,
+  "artStatus": "draft",
+  "art": {
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/giza/base.webp",
+    "thumbnail": "/scenes/giza/thumb.webp",
+    "palette": {
+      "sky": "#DCE9F5",
+      "ground": "#B9A98F",
+      "accent": "#F5B301"
+    },
+    "foreground": "/scenes/giza/foreground.webp"
+  },
+  "targets": [
+    {
+      "id": "camel",
+      "targetType": "giza_camel",
+      "bodyTemplate": "giza_camel",
+      "difficulty": 1,
+      "mission": {
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
+      },
+      "item": {
+        "en": "camels with bright woven blankets",
+        "he": "גמלים עם שמיכות ארוגות צבעוניות"
+      },
+      "success": [
+        {
+          "en": "He is taller than a bus!",
+          "he": "הוא גבוה מאוטובוס!"
+        },
+        {
+          "en": "You found me! He hums.",
+          "he": "מצאתם! הוא מזמזם."
+        },
+        {
+          "en": "Hold on tight!",
+          "he": "תחזיקו חזק!"
+        }
+      ],
+      "animation": "bounce",
+      "slots": [
+        {
+          "id": "giza_camel_a",
+          "x": 0.36,
+          "y": 0.63,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.36,
+            "y": 0.62,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look by the camels.",
+            "he": "חפשו ליד הגמלים."
+          }
+        },
+        {
+          "id": "giza_camel_b",
+          "x": 0.72,
+          "y": 0.58,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.72,
+            "y": 0.57,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look by the second camel.",
+            "he": "חפשו ליד הגמל השני."
+          }
+        }
+      ]
+    },
+    {
+      "id": "stall",
+      "targetType": "giza_stall",
+      "bodyTemplate": "giza_stall",
+      "difficulty": 2,
+      "mission": {
+        "en": "Find {name} by the scarf stall",
+        "he": "מצאו את {name} ליד דוכן הצעיפים"
+      },
+      "item": {
+        "en": "a stall of coloured scarves flapping in the wind",
+        "he": "דוכן צעיפים צבעוניים מתנופפים ברוח"
+      },
+      "success": [
+        {
+          "en": "A scarf wrapped around me!",
+          "he": "צעיף התעטף עליי!"
+        },
+        {
+          "en": "You found me! Pick a colour.",
+          "he": "מצאתם! בחרו צבע."
+        },
+        {
+          "en": "The wind helped me hide.",
+          "he": "הרוח עזרה לי להתחבא."
+        }
+      ],
+      "animation": "wiggle",
+      "slots": [
+        {
+          "id": "giza_stall_a",
+          "x": 0.2,
+          "y": 0.66,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.2,
+            "y": 0.65,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look by the scarf stall.",
+            "he": "חפשו ליד דוכן הצעיפים."
+          }
+        },
+        {
+          "id": "giza_stall_b",
+          "x": 0.86,
+          "y": 0.62,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.86,
+            "y": 0.61,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look at the stalls on the right.",
+            "he": "חפשו בדוכנים מימין."
+          }
+        }
+      ]
+    },
+    {
+      "id": "stones",
+      "targetType": "giza_stones",
+      "bodyTemplate": "giza_stones",
+      "difficulty": 3,
+      "mission": {
+        "en": "Find {name} hiding behind the great stones",
+        "he": "מצאו את {name} מתחבאת מאחורי אבני הענק"
+      },
+      "item": {
+        "en": "enormous cut stone blocks at the foot of a pyramid",
+        "he": "גושי אבן ענקיים למרגלות הפירמידה"
+      },
+      "success": [
+        {
+          "en": "These stones are ancient!",
+          "he": "האבנים האלה עתיקות!"
+        },
+        {
+          "en": "You found me! It is cool in the shade.",
+          "he": "מצאתם! קריר בצל."
+        },
+        {
+          "en": "Somebody built this by hand.",
+          "he": "מישהו בנה את זה בידיים."
+        }
+      ],
+      "animation": "peek",
+      "slots": [
+        {
+          "id": "giza_stones_a",
+          "x": 0.58,
+          "y": 0.72,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.58,
+            "y": 0.71,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look behind the big stone blocks.",
+            "he": "חפשו מאחורי גושי האבן."
+          }
+        },
+        {
+          "id": "giza_stones_b",
+          "x": 0.11,
+          "y": 0.76,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.11,
+            "y": 0.75,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look at the stones on the left.",
+            "he": "חפשו באבנים משמאל."
+          }
+        }
+      ]
+    }
+  ],
+  "artNotes": [
+    "three great pyramids behind the crowd",
+    "camels with bright woven blankets",
+    "the sphinx watching from one side",
+    "stalls selling scarves and little clay pots",
+    "archaeologists brushing sand off a stone",
+    "hot air shimmering over the sand"
+  ],
+  "collectible": {
+    "id": "stamp_egypt",
+    "name": {
+      "en": "A Giza stamp",
+      "he": "חותמת גיזה"
+    },
+    "icon": "🐫"
+  },
+  "celebration": {
+    "kind": "confetti",
+    "completeText": {
+      "en": "You found {name} three times in Giza!",
+      "he": "מצאתם את {name} שלוש פעמים בגיזה!"
+    }
+  },
+  "ambient": [
+    {
+      "id": "camel",
+      "label": {
+        "en": "A camel humming",
+        "he": "גמל מזמזם"
+      },
+      "x": 0.3,
+      "y": 0.78,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Hmmmm.",
+        "he": "המממ."
+      },
+      "glyph": "🐫"
+    },
+    {
+      "id": "brush",
+      "label": {
+        "en": "An archaeologist brushing",
+        "he": "ארכיאולוג מבריש"
+      },
+      "x": 0.55,
+      "y": 0.3,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "slide",
+      "sound": "boing",
+      "reaction": {
+        "en": "Careful now.",
+        "he": "בזהירות."
+      },
+      "glyph": "🪶"
+    },
+    {
+      "id": "scarf",
+      "label": {
+        "en": "A scarf in the wind",
+        "he": "צעיף ברוח"
+      },
+      "x": 0.82,
+      "y": 0.68,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Catch it!",
+        "he": "תפסו אותו!"
+      },
+      "glyph": "🧣"
+    }
+  ]
+}

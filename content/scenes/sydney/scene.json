@@ -1,0 +1,291 @@
+{
+  "id": "scene_sydney",
+  "slug": "sydney",
+  "name": {
+    "en": "Sydney",
+    "he": "סידני"
+  },
+  "tagline": {
+    "en": "A blue harbour, white sails and a surfboard or ten.",
+    "he": "מפרץ כחול, מפרשים לבנים ועשרה גלשנים."
+  },
+  "version": 1,
+  "active": false,
+  "artStatus": "draft",
+  "art": {
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/sydney/base.webp",
+    "thumbnail": "/scenes/sydney/thumb.webp",
+    "palette": {
+      "sky": "#DCE9F5",
+      "ground": "#B9A98F",
+      "accent": "#F5B301"
+    },
+    "foreground": "/scenes/sydney/foreground.webp"
+  },
+  "targets": [
+    {
+      "id": "ferry",
+      "targetType": "sydney_ferry",
+      "bodyTemplate": "sydney_ferry",
+      "difficulty": 1,
+      "mission": {
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
+      },
+      "item": {
+        "en": "green and yellow ferries crossing the harbour",
+        "he": "מעבורות ירוקות־צהובות חוצות את המפרץ"
+      },
+      "success": [
+        {
+          "en": "The wind took my hat!",
+          "he": "הרוח לקחה לי את הכובע!"
+        },
+        {
+          "en": "You found me! Wave at the bridge.",
+          "he": "מצאתם! תנופפו לגשר."
+        },
+        {
+          "en": "The water is so blue.",
+          "he": "המים כל כך כחולים."
+        }
+      ],
+      "animation": "bounce",
+      "slots": [
+        {
+          "id": "sydney_ferry_a",
+          "x": 0.58,
+          "y": 0.52,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.58,
+            "y": 0.51,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look on the ferry.",
+            "he": "חפשו על המעבורת."
+          }
+        },
+        {
+          "id": "sydney_ferry_b",
+          "x": 0.3,
+          "y": 0.49,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.3,
+            "y": 0.48,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look at the second ferry.",
+            "he": "חפשו במעבורת השנייה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "surfboards",
+      "targetType": "sydney_surfboards",
+      "bodyTemplate": "sydney_surfboards",
+      "difficulty": 2,
+      "mission": {
+        "en": "Find {name} by the surfboards",
+        "he": "מצאו את {name} ליד הגלשנים"
+      },
+      "item": {
+        "en": "surfboards standing upright in a row on the sand",
+        "he": "גלשנים עומדים בשורה על החול"
+      },
+      "success": [
+        {
+          "en": "I picked the stripy one!",
+          "he": "בחרתי את המפוספס!"
+        },
+        {
+          "en": "You found me! The sand is hot.",
+          "he": "מצאתם! החול חם."
+        },
+        {
+          "en": "A wave nearly got me.",
+          "he": "גל כמעט תפס אותי."
+        }
+      ],
+      "animation": "wiggle",
+      "slots": [
+        {
+          "id": "sydney_surfboards_a",
+          "x": 0.21,
+          "y": 0.7,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.21,
+            "y": 0.69,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look by the surfboards.",
+            "he": "חפשו ליד הגלשנים."
+          }
+        },
+        {
+          "id": "sydney_surfboards_b",
+          "x": 0.79,
+          "y": 0.72,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.79,
+            "y": 0.71,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look at the boards on the right.",
+            "he": "חפשו בגלשנים מימין."
+          }
+        }
+      ]
+    },
+    {
+      "id": "rocks",
+      "targetType": "sydney_rocks",
+      "bodyTemplate": "sydney_rocks",
+      "difficulty": 3,
+      "mission": {
+        "en": "Find {name} hiding behind the harbour rocks",
+        "he": "מצאו את {name} מתחבאת מאחורי סלעי המפרץ"
+      },
+      "item": {
+        "en": "big pale rocks at the edge of the harbour with rock pools",
+        "he": "סלעים בהירים גדולים בקצה המפרץ עם שלוליות"
+      },
+      "success": [
+        {
+          "en": "There was a crab in there!",
+          "he": "היה שם סרטן!"
+        },
+        {
+          "en": "You found me! Look in the pool.",
+          "he": "מצאתם! תסתכלו בשלולית."
+        },
+        {
+          "en": "The rocks are warm.",
+          "he": "הסלעים חמים."
+        }
+      ],
+      "animation": "peek",
+      "slots": [
+        {
+          "id": "sydney_rocks_a",
+          "x": 0.12,
+          "y": 0.78,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.12,
+            "y": 0.77,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look behind the rocks.",
+            "he": "חפשו מאחורי הסלעים."
+          }
+        },
+        {
+          "id": "sydney_rocks_b",
+          "x": 0.88,
+          "y": 0.8,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.88,
+            "y": 0.79,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look at the rocks on the right.",
+            "he": "חפשו בסלעים מימין."
+          }
+        }
+      ]
+    }
+  ],
+  "artNotes": [
+    "the white shell roofs of the opera house",
+    "green and yellow ferries crossing the harbour",
+    "surfboards standing in a row on the sand",
+    "a big steel arch bridge",
+    "cockatoos stealing chips from a table",
+    "lifeguards on a tall wooden chair"
+  ],
+  "collectible": {
+    "id": "stamp_australia",
+    "name": {
+      "en": "A Sydney stamp",
+      "he": "חותמת סידני"
+    },
+    "icon": "🏄"
+  },
+  "celebration": {
+    "kind": "confetti",
+    "completeText": {
+      "en": "You found {name} three times in Sydney!",
+      "he": "מצאתם את {name} שלוש פעמים בסידני!"
+    }
+  },
+  "ambient": [
+    {
+      "id": "cockatoo",
+      "label": {
+        "en": "A cockatoo stealing chips",
+        "he": "קקדו גונב צ'יפס"
+      },
+      "x": 0.3,
+      "y": 0.78,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Hey! Those are mine!",
+        "he": "היי! אלה שלי!"
+      },
+      "glyph": "🦜"
+    },
+    {
+      "id": "ferry",
+      "label": {
+        "en": "A ferry horn",
+        "he": "צופר מעבורת"
+      },
+      "x": 0.55,
+      "y": 0.3,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "slide",
+      "sound": "boing",
+      "reaction": {
+        "en": "Toot!",
+        "he": "טוווט!"
+      },
+      "glyph": "⛴️"
+    },
+    {
+      "id": "crab",
+      "label": {
+        "en": "A crab in a rock pool",
+        "he": "סרטן בשלולית"
+      },
+      "x": 0.82,
+      "y": 0.68,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Snip snip!",
+        "he": "קליק קליק!"
+      },
+      "glyph": "🦀"
+    }
+  ]
+}

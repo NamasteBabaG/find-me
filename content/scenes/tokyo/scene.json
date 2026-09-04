@@ -1,0 +1,291 @@
+{
+  "id": "scene_tokyo",
+  "slug": "tokyo",
+  "name": {
+    "en": "Tokyo",
+    "he": "טוקיו"
+  },
+  "tagline": {
+    "en": "Pink blossom, festival stalls and a very busy crossing.",
+    "he": "פריחה ורודה, דוכני פסטיבל וצומת עמוס מאוד."
+  },
+  "version": 1,
+  "active": false,
+  "artStatus": "draft",
+  "art": {
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/tokyo/base.webp",
+    "thumbnail": "/scenes/tokyo/thumb.webp",
+    "palette": {
+      "sky": "#DCE9F5",
+      "ground": "#B9A98F",
+      "accent": "#F5B301"
+    },
+    "foreground": "/scenes/tokyo/foreground.webp"
+  },
+  "targets": [
+    {
+      "id": "crossing",
+      "targetType": "tokyo_crossing",
+      "bodyTemplate": "tokyo_crossing",
+      "difficulty": 1,
+      "mission": {
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
+      },
+      "item": {
+        "en": "a huge pedestrian crossing full of people",
+        "he": "צומת חצייה ענק מלא אנשים"
+      },
+      "success": [
+        {
+          "en": "Everyone crossed at once!",
+          "he": "כולם חצו בבת אחת!"
+        },
+        {
+          "en": "You found me! Which way now?",
+          "he": "מצאתם! לאן עכשיו?"
+        },
+        {
+          "en": "So many umbrellas.",
+          "he": "כל כך הרבה מטריות."
+        }
+      ],
+      "animation": "bounce",
+      "slots": [
+        {
+          "id": "tokyo_crossing_a",
+          "x": 0.46,
+          "y": 0.57,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.46,
+            "y": 0.5599999999999999,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look at the busy crossing.",
+            "he": "חפשו בצומת העמוס."
+          }
+        },
+        {
+          "id": "tokyo_crossing_b",
+          "x": 0.28,
+          "y": 0.53,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.28,
+            "y": 0.52,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look at the other side of the crossing.",
+            "he": "חפשו בצד השני של הצומת."
+          }
+        }
+      ]
+    },
+    {
+      "id": "stall",
+      "targetType": "tokyo_stall",
+      "bodyTemplate": "tokyo_stall",
+      "difficulty": 2,
+      "mission": {
+        "en": "Find {name} by the festival stalls",
+        "he": "מצאו את {name} ליד דוכני הפסטיבל"
+      },
+      "item": {
+        "en": "festival stalls with paper lanterns, masks and goldfish bowls",
+        "he": "דוכני פסטיבל עם פנסי נייר, מסכות וקערות דגי זהב"
+      },
+      "success": [
+        {
+          "en": "I won a goldfish!",
+          "he": "זכיתי בדג זהב!"
+        },
+        {
+          "en": "You found me! Try the masks.",
+          "he": "מצאתם! תמדדו מסכות."
+        },
+        {
+          "en": "It smells like pancakes.",
+          "he": "מריח פה כמו פנקייק."
+        }
+      ],
+      "animation": "wiggle",
+      "slots": [
+        {
+          "id": "tokyo_stall_a",
+          "x": 0.74,
+          "y": 0.61,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.74,
+            "y": 0.6,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look by the festival stalls.",
+            "he": "חפשו ליד דוכני הפסטיבל."
+          }
+        },
+        {
+          "id": "tokyo_stall_b",
+          "x": 0.15,
+          "y": 0.64,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.15,
+            "y": 0.63,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look at the stalls on the left.",
+            "he": "חפשו בדוכנים משמאל."
+          }
+        }
+      ]
+    },
+    {
+      "id": "blossom",
+      "targetType": "tokyo_blossom",
+      "bodyTemplate": "tokyo_blossom",
+      "difficulty": 3,
+      "mission": {
+        "en": "Find {name} hiding under the blossom tree",
+        "he": "מצאו את {name} מתחבאת מתחת לעץ הפריחה"
+      },
+      "item": {
+        "en": "cherry trees heavy with pink blossom",
+        "he": "עצי דובדבן עמוסים בפריחה ורודה"
+      },
+      "success": [
+        {
+          "en": "Petals in my hair!",
+          "he": "עלי כותרת בשיער!"
+        },
+        {
+          "en": "You found me! It rains pink here.",
+          "he": "מצאתם! יורד פה ורוד."
+        },
+        {
+          "en": "One landed on my nose.",
+          "he": "אחד נחת לי על האף."
+        }
+      ],
+      "animation": "peek",
+      "slots": [
+        {
+          "id": "tokyo_blossom_a",
+          "x": 0.63,
+          "y": 0.42,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.63,
+            "y": 0.41,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look under the blossom tree.",
+            "he": "חפשו מתחת לעץ הפריחה."
+          }
+        },
+        {
+          "id": "tokyo_blossom_b",
+          "x": 0.34,
+          "y": 0.38,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.34,
+            "y": 0.37,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look at the second blossom tree.",
+            "he": "חפשו בעץ הפריחה השני."
+          }
+        }
+      ]
+    }
+  ],
+  "artNotes": [
+    "cherry trees dropping pink blossom over everything",
+    "festival stalls with paper lanterns and masks",
+    "a huge crossing full of people walking every way",
+    "children in yukata holding goldfish bags",
+    "a vending machine glowing on a corner",
+    "paper fans and windmills on a stand"
+  ],
+  "collectible": {
+    "id": "stamp_japan",
+    "name": {
+      "en": "A Tokyo stamp",
+      "he": "חותמת טוקיו"
+    },
+    "icon": "🌸"
+  },
+  "celebration": {
+    "kind": "confetti",
+    "completeText": {
+      "en": "You found {name} three times in Tokyo!",
+      "he": "מצאתם את {name} שלוש פעמים בטוקיו!"
+    }
+  },
+  "ambient": [
+    {
+      "id": "goldfish",
+      "label": {
+        "en": "A goldfish in a bag",
+        "he": "דג זהב בשקית"
+      },
+      "x": 0.3,
+      "y": 0.78,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Blub!",
+        "he": "בלוב!"
+      },
+      "glyph": "🐠"
+    },
+    {
+      "id": "blossom",
+      "label": {
+        "en": "Blossom falling",
+        "he": "פריחה נושרת"
+      },
+      "x": 0.55,
+      "y": 0.3,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "slide",
+      "sound": "boing",
+      "reaction": {
+        "en": "It rains pink!",
+        "he": "יורד ורוד!"
+      },
+      "glyph": "🌸"
+    },
+    {
+      "id": "fan",
+      "label": {
+        "en": "A paper windmill",
+        "he": "טחנת נייר"
+      },
+      "x": 0.82,
+      "y": 0.68,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "It spins!",
+        "he": "היא מסתובבת!"
+      },
+      "glyph": "🎐"
+    }
+  ]
+}

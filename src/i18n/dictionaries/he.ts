@@ -119,6 +119,13 @@ export const he: Dictionary = {
       titleSpots: "מחבואים.",
       lead: "כל מקום מאויר בסגנון קולאז׳ של ספר ילדים, עם עשרות דמויות וחפצים, שתי הפתעות סביבתיות ופריט לאיסוף.",
       spotsAria: "המחבואים",
+      worldOf: "עולם {n} מתוך {total}",
+      prev: "העולם הקודם",
+      next: "העולם הבא",
+      locked: "נעול",
+      opensAfter: "נפתח אחרי {world}",
+      inTheMaking: "מצויר עכשיו",
+      harder: "מחבואים קשים יותר",
     },
     pricing: {
       pill: "💛 מחירים פשוטים",

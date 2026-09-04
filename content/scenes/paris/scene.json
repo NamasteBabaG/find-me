@@ -1,0 +1,291 @@
+{
+  "id": "scene_paris",
+  "slug": "paris",
+  "name": {
+    "en": "Paris",
+    "he": "פריז"
+  },
+  "tagline": {
+    "en": "A carousel, warm bread and a tower above the roofs.",
+    "he": "קרוסלה, לחם חם ומגדל מעל הגגות."
+  },
+  "version": 1,
+  "active": false,
+  "artStatus": "draft",
+  "art": {
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/paris/base.webp",
+    "thumbnail": "/scenes/paris/thumb.webp",
+    "palette": {
+      "sky": "#DCE9F5",
+      "ground": "#B9A98F",
+      "accent": "#F5B301"
+    },
+    "foreground": "/scenes/paris/foreground.webp"
+  },
+  "targets": [
+    {
+      "id": "bakery",
+      "targetType": "paris_bakery",
+      "bodyTemplate": "paris_bakery",
+      "difficulty": 1,
+      "mission": {
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
+      },
+      "item": {
+        "en": "a bakery window full of baguettes and pastries",
+        "he": "חלון מאפייה מלא באגטים ומאפים"
+      },
+      "success": [
+        {
+          "en": "It was still warm!",
+          "he": "הוא עוד היה חם!"
+        },
+        {
+          "en": "You found me! Want a bite?",
+          "he": "מצאתם! רוצים ביס?"
+        },
+        {
+          "en": "Crumbs everywhere.",
+          "he": "פירורים בכל מקום."
+        }
+      ],
+      "animation": "bounce",
+      "slots": [
+        {
+          "id": "paris_bakery_a",
+          "x": 0.27,
+          "y": 0.62,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.27,
+            "y": 0.61,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look by the bakery window.",
+            "he": "חפשו ליד חלון המאפייה."
+          }
+        },
+        {
+          "id": "paris_bakery_b",
+          "x": 0.69,
+          "y": 0.6,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.69,
+            "y": 0.59,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look by the second shop.",
+            "he": "חפשו ליד החנות השנייה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "carousel",
+      "targetType": "paris_carousel",
+      "bodyTemplate": "paris_carousel",
+      "difficulty": 2,
+      "mission": {
+        "en": "Find {name} on the carousel",
+        "he": "מצאו את {name} על הקרוסלה"
+      },
+      "item": {
+        "en": "a carousel with painted horses",
+        "he": "קרוסלה עם סוסים מצוירים"
+      },
+      "success": [
+        {
+          "en": "Round and round!",
+          "he": "סחור סחור!"
+        },
+        {
+          "en": "You found me! One more ride?",
+          "he": "מצאתם! עוד סיבוב?"
+        },
+        {
+          "en": "I picked the blue horse.",
+          "he": "בחרתי את הסוס הכחול."
+        }
+      ],
+      "animation": "wiggle",
+      "slots": [
+        {
+          "id": "paris_carousel_a",
+          "x": 0.55,
+          "y": 0.5,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.55,
+            "y": 0.49,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look at the carousel.",
+            "he": "חפשו בקרוסלה."
+          }
+        },
+        {
+          "id": "paris_carousel_b",
+          "x": 0.36,
+          "y": 0.45,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.36,
+            "y": 0.44,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look at the other side of the carousel.",
+            "he": "חפשו בצד השני של הקרוסלה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "awning",
+      "targetType": "paris_awning",
+      "bodyTemplate": "paris_awning",
+      "difficulty": 3,
+      "mission": {
+        "en": "Find {name} hiding behind the café awning",
+        "he": "מצאו את {name} מתחבאת מאחורי הסוכך של בית הקפה"
+      },
+      "item": {
+        "en": "café tables under striped awnings",
+        "he": "שולחנות קפה מתחת לסוככים מפוספסים"
+      },
+      "success": [
+        {
+          "en": "Nobody looked up!",
+          "he": "אף אחד לא הסתכל למעלה!"
+        },
+        {
+          "en": "You found me! The chairs are tiny.",
+          "he": "מצאתם! הכיסאות זעירים."
+        },
+        {
+          "en": "It smells like chocolate.",
+          "he": "מריח פה שוקולד."
+        }
+      ],
+      "animation": "peek",
+      "slots": [
+        {
+          "id": "paris_awning_a",
+          "x": 0.14,
+          "y": 0.68,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.14,
+            "y": 0.67,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look behind the café awning.",
+            "he": "חפשו מאחורי סוכך בית הקפה."
+          }
+        },
+        {
+          "id": "paris_awning_b",
+          "x": 0.88,
+          "y": 0.66,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.88,
+            "y": 0.65,
+            "r": 0.08
+          },
+          "hintText": {
+            "en": "Look at the café on the right.",
+            "he": "חפשו בבית הקפה מימין."
+          }
+        }
+      ]
+    }
+  ],
+  "artNotes": [
+    "a carousel with painted horses",
+    "a bakery window full of baguettes and pastries",
+    "artists painting at easels",
+    "flower boxes on every balcony",
+    "a green newspaper kiosk",
+    "the Eiffel tower small on the horizon"
+  ],
+  "collectible": {
+    "id": "stamp_france",
+    "name": {
+      "en": "A Paris stamp",
+      "he": "חותמת פריז"
+    },
+    "icon": "🗼"
+  },
+  "celebration": {
+    "kind": "confetti",
+    "completeText": {
+      "en": "You found {name} three times in Paris!",
+      "he": "מצאתם את {name} שלוש פעמים בפריז!"
+    }
+  },
+  "ambient": [
+    {
+      "id": "carousel",
+      "label": {
+        "en": "The carousel turning",
+        "he": "הקרוסלה מסתובבת"
+      },
+      "x": 0.3,
+      "y": 0.78,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Round and round!",
+        "he": "סחור סחור!"
+      },
+      "glyph": "🎠"
+    },
+    {
+      "id": "pigeon",
+      "label": {
+        "en": "A pigeon on a hat",
+        "he": "יונה על כובע"
+      },
+      "x": 0.55,
+      "y": 0.3,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "slide",
+      "sound": "boing",
+      "reaction": {
+        "en": "Excuse me, that is a hat!",
+        "he": "סליחה, זה כובע!"
+      },
+      "glyph": "🕊️"
+    },
+    {
+      "id": "painter",
+      "label": {
+        "en": "A painter at an easel",
+        "he": "צייר ליד כן"
+      },
+      "x": 0.82,
+      "y": 0.68,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Do not move!",
+        "he": "אל תזוזו!"
+      },
+      "glyph": "🎨"
+    }
+  ]
+}

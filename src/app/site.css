@@ -417,3 +417,45 @@
   .fm-footer__grid { gap: var(--space-4); padding-bottom: var(--space-4); }
 }
 @media (max-width: 600px) { .features { grid-auto-rows: auto; } }
+
+/* ── The worlds carousel ── */
+/* One world on screen at a time: the ladder is the thing being chosen between,
+   and a flat grid of every board hid it. */
+.wc { display: grid; gap: var(--space-3); }
+.wc__bar { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--space-3); }
+.wc__title { display: grid; justify-items: center; text-align: center; gap: 2px; }
+.wc__title strong { font-size: var(--text-4); }
+.wc__glyph { font-size: var(--text-5); line-height: 1; }
+.wc__count { font-size: var(--text-1); color: var(--ink-soft); letter-spacing: .04em; }
+.wc__arrow {
+  inline-size: 56px; block-size: 56px; border-radius: var(--radius-round);
+  border: 2px solid var(--line); background: var(--surface-1); color: var(--ink);
+  font-size: var(--text-5); line-height: 1; cursor: pointer;
+  transition: transform var(--dur-2) var(--ease-out), background var(--dur-2) var(--ease-out);
+}
+.wc__arrow:hover { background: var(--wc-accent, var(--surface-2)); transform: scale(1.06); }
+.wc__arrow:active { transform: scale(0.96); }
+.wc__lock {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+  gap: var(--space-2); margin: 0; font-size: var(--text-1); color: var(--ink-soft);
+}
+.wc__soon {
+  padding: 2px var(--space-2); border-radius: var(--radius-2);
+  background: var(--surface-2); color: var(--ink-soft);
+}
+/* A world nobody has painted yet shows its places, not a picture it does not have. */
+.worlds--upcoming .world__img {
+  display: grid; place-items: center;
+  background: linear-gradient(160deg, var(--wc-sky), var(--wc-ground));
+}
+.world__veil { font-size: 48px; opacity: .55; filter: grayscale(.2); }
+.wc__dots { display: flex; justify-content: center; gap: var(--space-2); }
+.wc__dot {
+  inline-size: 10px; block-size: 10px; padding: 0; border: 0; cursor: pointer;
+  border-radius: var(--radius-round); background: var(--line);
+}
+.wc__dot.is-on { background: var(--wc-accent, var(--ink)); transform: scale(1.3); }
+@media (max-width: 640px) {
+  .wc__arrow { inline-size: 48px; block-size: 48px; }
+  .wc__title strong { font-size: var(--text-3); }
+}

@@ -1,4 +1,12 @@
 import { validateSceneDefinition, type SceneDefinition } from "@/domain/scene/schema";
+import amazon from "./amazon/scene.json";
+import paris from "./paris/scene.json";
+import marrakech from "./marrakech/scene.json";
+import giza from "./giza/scene.json";
+import tokyo from "./tokyo/scene.json";
+import greatwall from "./greatwall/scene.json";
+import sydney from "./sydney/scene.json";
+import antarctica from "./antarctica/scene.json";
 import newyork from "./newyork/scene.json";
 import beach from "./beach/scene.json";
 import jungle from "./jungle/scene.json";
@@ -16,7 +24,7 @@ import volcano from "./volcano/scene.json";
  *
  * Order here is the display order on the map and in the picker.
  */
-const RAW_SCENES: unknown[] = [newyork, beach, jungle, space, city, ship, stadium, market, park, volcano];
+const RAW_SCENES: unknown[] = [newyork, antarctica, sydney, greatwall, tokyo, giza, marrakech, paris, amazon, beach, jungle, space, city, ship, stadium, market, park, volcano];
 
 export interface CatalogEntry {
   scene: SceneDefinition;

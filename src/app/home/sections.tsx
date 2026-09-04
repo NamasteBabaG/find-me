@@ -3,6 +3,7 @@ import type { SceneDefinition } from "@/domain/scene/schema";
 import { PACKAGES, PACKAGE_ORDER, boardsFor, priceFor, searchesFor } from "@/domain/package";
 import { formatMoney, pick, tf, type Currency, type Dictionary, type Locale } from "@/i18n";
 import { Reveal } from "./Reveal";
+import { WorldsCarousel, type CarouselWorld } from "./WorldsCarousel";
 
 export const WORLD_GLYPHS: Record<string, string> = { beach: "🏖️", jungle: "🌴", space: "🚀", city: "🏙️", ship: "⚓", stadium: "🏟️", market: "🍉", park: "🪁", volcano: "🌋" };
 const STEP_ICONS = ["📷", "🗺️", "💌", "🎉"] as const;
@@ -145,7 +146,7 @@ export function GiftSection({ t, locale }: SectionProps) {
 }
 
 /* ─── Worlds ─── */
-export function Worlds({ t, locale, scenes, activeSlugs }: SectionProps & { scenes: SceneDefinition[]; activeSlugs: string[] }) {
+export function Worlds({ t, locale, scenes, activeSlugs, carousel }: SectionProps & { scenes: SceneDefinition[]; activeSlugs: string[]; carousel: CarouselWorld[] }) {
   const w = t.home.worlds;
   const total = scenes.length;
   return (
@@ -158,31 +159,19 @@ export function Worlds({ t, locale, scenes, activeSlugs }: SectionProps & { scen
           </h2>
           <p className="fm-lead">{w.lead}</p>
         </Reveal>
-        <div className="worlds">
-          {scenes.map((scene, i) => {
-            const isActive = activeSlugs.includes(scene.slug);
-            return (
-              <Reveal key={scene.slug} className={`world${isActive ? "" : " world--soon"}`} delay={(i % 3) * 80}>
-                <div className="world__img">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={scene.art.thumbnail} alt="" loading="lazy" />
-                </div>
-                {!isActive ? <span className="fm-sticker-badge fm-sticker-badge--sun world__soon">{t.common.soon}</span> : null}
-                <div className="world__body">
-                  <span className="world__name">
-                    <span aria-hidden>{WORLD_GLYPHS[scene.slug] ?? "✨"}</span> {pick(scene.name, locale)}
-                  </span>
-                  <span className="fm-small">{pick(scene.tagline, locale)}</span>
-                  <div className="world__items" aria-label={w.spotsAria}>
-                    {scene.targets.map((tg) => (
-                      <span key={tg.id}>{pick(tg.item, locale)}</span>
-                    ))}
-                  </div>
-                </div>
-              </Reveal>
-            );
-          })}
-        </div>
+        <WorldsCarousel
+          worlds={carousel}
+          copy={{
+            worldOf: w.worldOf,
+            prev: w.prev,
+            next: w.next,
+            locked: w.locked,
+            opensAfter: w.opensAfter,
+            inTheMaking: w.inTheMaking,
+            harder: w.harder,
+            spotsAria: w.spotsAria,
+          }}
+        />
       </div>
     </section>
   );

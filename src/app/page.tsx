@@ -11,6 +11,7 @@ import { DemoSection } from "./home/DemoSection";
 import { Transformation } from "./home/Transformation";
 import { FinalCta } from "./home/FinalCta";
 import { Faq, GiftSection, HowItWorks, Inside, Marquee, Pricing, Trust, Worlds } from "./home/sections";
+import { carouselWorlds } from "./home/worlds-data";
 
 export default async function HomePage() {
   const c = getContainer();
@@ -30,7 +31,7 @@ export default async function HomePage() {
         <HowItWorks t={t} locale={locale} />
         <Inside t={t} locale={locale} />
         <GiftSection t={t} locale={locale} />
-        <Worlds t={t} locale={locale} scenes={scenes} activeSlugs={active} />
+        <Worlds t={t} locale={locale} scenes={scenes} activeSlugs={active} carousel={carouselWorlds(locale)} />
         <Pricing t={t} locale={locale} activeCount={worlds.length} currency={currency} />
         <Trust t={t} locale={locale} />
         <Faq t={t} locale={locale} />
