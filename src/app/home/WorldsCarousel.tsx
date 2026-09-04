@@ -65,9 +65,6 @@ export function WorldsCarousel({ worlds, copy }: { worlds: CarouselWorld[]; copy
           ‹
         </button>
         <div className="wc__title">
-          <span className="wc__glyph" aria-hidden>
-            {world.glyph}
-          </span>
           <strong>{world.name}</strong>
           <span className="fm-small">{world.tagline}</span>
           <span className="wc__count">{fill(copy.worldOf, { n: at + 1, total: worlds.length })}</span>

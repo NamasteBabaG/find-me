@@ -426,9 +426,8 @@
 .wc__title { display: grid; justify-items: center; text-align: center; gap: var(--space-0-5); }
 /* The world's name is the thing being chosen between, so it carries the section
    rather than sitting under the heading as a caption. */
-.wc__title strong { font-size: var(--fs-600); line-height: 1.05; letter-spacing: -0.01em; }
+.wc__title strong { font-size: var(--fs-500); line-height: 1.1; letter-spacing: -0.01em; }
 .wc__title .fm-small { font-size: var(--fs-200); }
-.wc__glyph { font-size: var(--fs-500); line-height: 1; }
 .wc__count {
   font-size: var(--fs-100); letter-spacing: .08em; text-transform: uppercase;
   color: var(--ink); background: var(--sun);

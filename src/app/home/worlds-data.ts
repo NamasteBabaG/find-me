@@ -15,27 +15,34 @@ import { WORLD_GLYPHS } from "./sections";
  * meet it here, where it reads as a journey, rather than at checkout where it
  * would read as a refusal.
  */
-export function carouselWorlds(locale: Locale): CarouselWorld[] {
+export function carouselWorlds(locale: Locale, owned: readonly string[] = []): CarouselWorld[] {
   const real = allWorlds();
-  const out: CarouselWorld[] = real.map((world, i) => ({
-    slug: world.slug,
-    name: pick(world.name, locale),
-    tagline: pick(world.tagline, locale),
-    glyph: pick(world.collectible.name, locale).slice(0, 0) || world.collectible.icon,
-    upcoming: false,
-    opensAfter: i === 0 ? undefined : pick(real[i - 1]!.name, locale),
-    palette: world.map.palette,
-    tiles: boardSlugs(world).map((slug) => {
-      const scene = findScene(slug);
-      return {
-        key: slug,
-        label: `${WORLD_GLYPHS[slug] ?? "✨"} ${scene ? pick(scene.name, locale) : slug}`,
-        thumb: scene?.art.thumbnail,
-        spots: scene?.targets.map((t) => pick(t.item, locale)),
-        soon: !scene?.active,
-      };
-    }),
-  }));
+  const out: CarouselWorld[] = real.map((world, i) => {
+    // Bought worlds carry no lock, whichever order they were bought in — and a
+    // world still behind the lock shows its paintings behind glass, which is
+    // the same rule whether it is finished or still being painted.
+    const locked = i > 0 && !owned.includes(world.slug);
+    return {
+      slug: world.slug,
+      name: pick(world.name, locale),
+      tagline: pick(world.tagline, locale),
+      glyph: world.collectible.icon,
+      upcoming: false,
+      opensAfter: locked ? pick(real[i - 1]!.name, locale) : undefined,
+      palette: world.map.palette,
+      tiles: boardSlugs(world).map((slug) => {
+        const scene = findScene(slug);
+        return {
+          key: slug,
+          label: `${WORLD_GLYPHS[slug] ?? "✨"} ${scene ? pick(scene.name, locale) : slug}`,
+          thumb: scene?.art.thumbnail,
+          spots: locked ? undefined : scene?.targets.map((t) => pick(t.item, locale)),
+          blurred: locked,
+          soon: !scene?.active,
+        };
+      }),
+    };
+  });
 
   const previous = (order: number): string => {
     const before = [...real.map((w) => ({ order: w.order, name: pick(w.name, locale) })), ...UPCOMING_WORLDS.map((w) => ({ order: w.order, name: pick(w.name, locale) }))]
