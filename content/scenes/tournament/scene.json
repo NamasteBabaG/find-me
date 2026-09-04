@@ -1,0 +1,292 @@
+{
+  "id": "scene_tournament",
+  "slug": "tournament",
+  "name": {
+    "en": "The Knights' Tournament",
+    "he": "טורניר האבירים"
+  },
+  "tagline": {
+    "en": "Striped tents, wooden stands and a great deal of cheering.",
+    "he": "אוהלים מפוספסים, יציעי עץ והרבה מאוד תרועות."
+  },
+  "version": 1,
+  "active": false,
+  "artStatus": "draft",
+  "art": {
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/tournament/base.webp",
+    "thumbnail": "/scenes/tournament/thumb.webp",
+    "palette": {
+      "sky": "#BFE3F5",
+      "ground": "#6BA84F",
+      "accent": "#C1443B"
+    },
+    "foreground": "/scenes/tournament/foreground.webp"
+  },
+  "targets": [
+    {
+      "id": "tents",
+      "targetType": "tournament_tents",
+      "bodyTemplate": "tournament_tents",
+      "difficulty": 1,
+      "mission": {
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
+      },
+      "item": {
+        "en": "striped tents with pennants at the edge of the field",
+        "he": "אוהלים מפוספסים עם דגלונים בקצה המגרש"
+      },
+      "success": [
+        {
+          "en": "A horse said hello!",
+          "he": "סוס אמר לי שלום!"
+        },
+        {
+          "en": "You found me! The trumpets are loud.",
+          "he": "מצאתם! החצוצרות רועשות."
+        },
+        {
+          "en": "I want a pennant too.",
+          "he": "אני רוצה גם דגלון."
+        }
+      ],
+      "animation": "bounce",
+      "slots": [
+        {
+          "id": "tournament_tents_a",
+          "x": 0.4,
+          "y": 0.52,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.4,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the tents.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "tournament_tents_b",
+          "x": 0.6599999999999999,
+          "y": 0.6,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.6599999999999999,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the tents.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "shields",
+      "targetType": "tournament_shields",
+      "bodyTemplate": "tournament_shields",
+      "difficulty": 2,
+      "mission": {
+        "en": "Find {name} by the shield rack",
+        "he": "מצאו את {name} ליד מתלה המגנים"
+      },
+      "item": {
+        "en": "a wooden rack of painted shields and helmets",
+        "he": "מתלה עץ של מגנים וקסדות צבועים"
+      },
+      "success": [
+        {
+          "en": "This one is heavier than me!",
+          "he": "זה כבד ממני!"
+        },
+        {
+          "en": "You found me! Every shield is different.",
+          "he": "מצאתם! כל מגן שונה."
+        },
+        {
+          "en": "I picked the one with the lion.",
+          "he": "בחרתי את זה עם האריה."
+        }
+      ],
+      "animation": "salute",
+      "slots": [
+        {
+          "id": "tournament_shields_a",
+          "x": 0.46,
+          "y": 0.52,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.46,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the shields.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "tournament_shields_b",
+          "x": 0.62,
+          "y": 0.6,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.62,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the shields.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "fence",
+      "targetType": "tournament_fence",
+      "bodyTemplate": "tournament_fence",
+      "difficulty": 3,
+      "mission": {
+        "en": "Find {name} hiding behind the wooden fence",
+        "he": "מצאו את {name} מתחבא/ת מאחורי גדר העץ"
+      },
+      "item": {
+        "en": "the low wooden fence running down the middle of the field",
+        "he": "גדר העץ הנמוכה שחוצה את המגרש"
+      },
+      "success": [
+        {
+          "en": "The ground shook when they rode past!",
+          "he": "האדמה רעדה כשהם דהרו!"
+        },
+        {
+          "en": "You found me! I peeked through a gap.",
+          "he": "מצאתם! הצצתי דרך חריץ."
+        },
+        {
+          "en": "Best seat here.",
+          "he": "המקום הכי טוב פה."
+        }
+      ],
+      "animation": "peek",
+      "slots": [
+        {
+          "id": "tournament_fence_a",
+          "x": 0.52,
+          "y": 0.52,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.52,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the fence.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "tournament_fence_b",
+          "x": 0.58,
+          "y": 0.6,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.58,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the fence.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    }
+  ],
+  "artNotes": [
+    "striped tents with pennants along the field",
+    "wooden stands packed with cheering people",
+    "two knights on horses facing each other",
+    "a wooden rack of painted shields and helmets",
+    "a herald with a long trumpet",
+    "dogs running along the fence"
+  ],
+  "artComposition": "A jousting field on a bright day, with striped tents down one side, wooden stands full of cheering people, knights on horses at either end and a low wooden fence running down the middle.",
+  "ambient": [
+    {
+      "id": "a1",
+      "label": {
+        "en": "Something stirs",
+        "he": "משהו זז"
+      },
+      "x": 0.3,
+      "y": 0.78,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Did you see that?",
+        "he": "ראיתם את זה?"
+      },
+      "glyph": "✨"
+    },
+    {
+      "id": "a2",
+      "label": {
+        "en": "A little light",
+        "he": "אור קטן"
+      },
+      "x": 0.55,
+      "y": 0.3,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "blink",
+      "sound": "twinkle",
+      "reaction": {
+        "en": "It moved!",
+        "he": "זה זז!"
+      },
+      "glyph": "⏳"
+    },
+    {
+      "id": "a3",
+      "label": {
+        "en": "A quiet sound",
+        "he": "צליל שקט"
+      },
+      "x": 0.82,
+      "y": 0.68,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "pop",
+      "sound": "boing",
+      "reaction": {
+        "en": "Listen!",
+        "he": "תקשיבו!"
+      },
+      "glyph": "🎵"
+    }
+  ],
+  "collectible": {
+    "id": "shard_knight",
+    "name": {
+      "en": "A tournament shard",
+      "he": "רסיס זמן של הטורניר"
+    },
+    "icon": "🛡️"
+  },
+  "celebration": {
+    "kind": "crowd",
+    "completeText": {
+      "en": "You found {name} three times in The Knights' Tournament!",
+      "he": "מצאתם את {name} שלוש פעמים בטורניר האבירים!"
+    }
+  }
+}

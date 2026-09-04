@@ -16,6 +16,14 @@ import cloudcity from "./cloudcity/scene.json";
 import sweetworkshop from "./sweetworkshop/scene.json";
 import giantlibrary from "./giantlibrary/scene.json";
 import nightcarnival from "./nightcarnival/scene.json";
+import dinovalley from "./dinovalley/scene.json";
+import pyramids from "./pyramids/scene.json";
+import tournament from "./tournament/scene.json";
+import piratecove from "./piratecove/scene.json";
+import wildwest from "./wildwest/scene.json";
+import steamrail from "./steamrail/scene.json";
+import futurecity from "./futurecity/scene.json";
+import robotlab from "./robotlab/scene.json";
 import newyork from "./newyork/scene.json";
 import beach from "./beach/scene.json";
 import jungle from "./jungle/scene.json";
@@ -33,7 +41,7 @@ import volcano from "./volcano/scene.json";
  *
  * Order here is the display order on the map and in the picker.
  */
-const RAW_SCENES: unknown[] = [newyork, nightcarnival, giantlibrary, sweetworkshop, cloudcity, underwater, icepalace, dragoncave, fairyforest, castlegate, antarctica, sydney, greatwall, tokyo, giza, marrakech, paris, amazon, beach, jungle, space, city, ship, stadium, market, park, volcano];
+const RAW_SCENES: unknown[] = [newyork, robotlab, futurecity, steamrail, wildwest, piratecove, tournament, pyramids, dinovalley, nightcarnival, giantlibrary, sweetworkshop, cloudcity, underwater, icepalace, dragoncave, fairyforest, castlegate, antarctica, sydney, greatwall, tokyo, giza, marrakech, paris, amazon, beach, jungle, space, city, ship, stadium, market, park, volcano];
 
 export interface CatalogEntry {
   scene: SceneDefinition;

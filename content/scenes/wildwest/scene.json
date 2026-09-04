@@ -1,0 +1,292 @@
+{
+  "id": "scene_wildwest",
+  "slug": "wildwest",
+  "name": {
+    "en": "The Wild West",
+    "he": "המערב הפרוע"
+  },
+  "tagline": {
+    "en": "A dusty street, a wooden porch and horses waiting.",
+    "he": "רחוב מאובק, מרפסת עץ וסוסים שמחכים."
+  },
+  "version": 1,
+  "active": false,
+  "artStatus": "draft",
+  "art": {
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/wildwest/base.webp",
+    "thumbnail": "/scenes/wildwest/thumb.webp",
+    "palette": {
+      "sky": "#F7D9A0",
+      "ground": "#C98F5A",
+      "accent": "#8B5E3C"
+    },
+    "foreground": "/scenes/wildwest/foreground.webp"
+  },
+  "targets": [
+    {
+      "id": "horses",
+      "targetType": "wildwest_horses",
+      "bodyTemplate": "wildwest_horses",
+      "difficulty": 1,
+      "mission": {
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
+      },
+      "item": {
+        "en": "horses tied at the wooden hitching rail",
+        "he": "סוסים קשורים למעקה העץ"
+      },
+      "success": [
+        {
+          "en": "This one likes apples!",
+          "he": "זה אוהב תפוחים!"
+        },
+        {
+          "en": "You found me! He nudged me.",
+          "he": "מצאתם! הוא דחף אותי באף."
+        },
+        {
+          "en": "I brushed his mane.",
+          "he": "סירקתי לו את הרעמה."
+        }
+      ],
+      "animation": "bounce",
+      "slots": [
+        {
+          "id": "wildwest_horses_a",
+          "x": 0.4,
+          "y": 0.52,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.4,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the horses.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "wildwest_horses_b",
+          "x": 0.6599999999999999,
+          "y": 0.6,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.6599999999999999,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the horses.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "porch",
+      "targetType": "wildwest_porch",
+      "bodyTemplate": "wildwest_porch",
+      "difficulty": 2,
+      "mission": {
+        "en": "Find {name} on the wooden porch",
+        "he": "מצאו את {name} על מרפסת העץ"
+      },
+      "item": {
+        "en": "the covered wooden porch in front of the store",
+        "he": "מרפסת העץ המקורה מול החנות"
+      },
+      "success": [
+        {
+          "en": "The boards creak!",
+          "he": "הקרשים חורקים!"
+        },
+        {
+          "en": "You found me! It is shady up here.",
+          "he": "מצאתם! מוצל פה למעלה."
+        },
+        {
+          "en": "Someone is playing music.",
+          "he": "מישהו מנגן."
+        }
+      ],
+      "animation": "wiggle",
+      "slots": [
+        {
+          "id": "wildwest_porch_a",
+          "x": 0.46,
+          "y": 0.52,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.46,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the porch.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "wildwest_porch_b",
+          "x": 0.62,
+          "y": 0.6,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.62,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the porch.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "wagon",
+      "targetType": "wildwest_wagon",
+      "bodyTemplate": "wildwest_wagon",
+      "difficulty": 3,
+      "mission": {
+        "en": "Find {name} hiding behind the wagon",
+        "he": "מצאו את {name} מתחבא/ת מאחורי העגלה"
+      },
+      "item": {
+        "en": "a loaded wagon with a canvas cover at the roadside",
+        "he": "עגלה עמוסה עם כיסוי בד בצד הדרך"
+      },
+      "success": [
+        {
+          "en": "It is full of flour sacks!",
+          "he": "היא מלאה שקי קמח!"
+        },
+        {
+          "en": "You found me! Dusty in here.",
+          "he": "מצאתם! מאובק פה."
+        },
+        {
+          "en": "The wheel is taller than me.",
+          "he": "הגלגל גבוה ממני."
+        }
+      ],
+      "animation": "peek",
+      "slots": [
+        {
+          "id": "wildwest_wagon_a",
+          "x": 0.52,
+          "y": 0.52,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.52,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the wagon.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "wildwest_wagon_b",
+          "x": 0.58,
+          "y": 0.6,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.58,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the wagon.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    }
+  ],
+  "artNotes": [
+    "wooden storefronts with covered porches",
+    "horses tied at a hitching rail",
+    "a tall wooden water tower",
+    "a loaded wagon with a canvas cover",
+    "barrels and a water trough",
+    "red rock mesas behind the town"
+  ],
+  "artComposition": "A dusty frontier main street in strong afternoon light, wooden storefronts with covered porches down both sides, horses tied at a hitching rail, a tall water tower and a loaded wagon, with red rock mesas behind the town.",
+  "ambient": [
+    {
+      "id": "a1",
+      "label": {
+        "en": "Something stirs",
+        "he": "משהו זז"
+      },
+      "x": 0.3,
+      "y": 0.78,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Did you see that?",
+        "he": "ראיתם את זה?"
+      },
+      "glyph": "✨"
+    },
+    {
+      "id": "a2",
+      "label": {
+        "en": "A little light",
+        "he": "אור קטן"
+      },
+      "x": 0.55,
+      "y": 0.3,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "blink",
+      "sound": "twinkle",
+      "reaction": {
+        "en": "It moved!",
+        "he": "זה זז!"
+      },
+      "glyph": "⏳"
+    },
+    {
+      "id": "a3",
+      "label": {
+        "en": "A quiet sound",
+        "he": "צליל שקט"
+      },
+      "x": 0.82,
+      "y": 0.68,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "pop",
+      "sound": "boing",
+      "reaction": {
+        "en": "Listen!",
+        "he": "תקשיבו!"
+      },
+      "glyph": "🎵"
+    }
+  ],
+  "collectible": {
+    "id": "shard_west",
+    "name": {
+      "en": "A frontier shard",
+      "he": "רסיס זמן של המערב"
+    },
+    "icon": "🤠"
+  },
+  "celebration": {
+    "kind": "sparkles",
+    "completeText": {
+      "en": "You found {name} three times in The Wild West!",
+      "he": "מצאתם את {name} שלוש פעמים בהמערב הפרוע!"
+    }
+  }
+}

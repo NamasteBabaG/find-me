@@ -1,0 +1,292 @@
+{
+  "id": "scene_dinovalley",
+  "slug": "dinovalley",
+  "name": {
+    "en": "The Valley of Dinosaurs",
+    "he": "עמק הדינוזאורים"
+  },
+  "tagline": {
+    "en": "Long necks, warm ferns and a nest of enormous eggs.",
+    "he": "צווארים ארוכים, שרכים חמים וקן של ביצים ענקיות."
+  },
+  "version": 1,
+  "active": false,
+  "artStatus": "draft",
+  "art": {
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/dinovalley/base.webp",
+    "thumbnail": "/scenes/dinovalley/thumb.webp",
+    "palette": {
+      "sky": "#A8DFF0",
+      "ground": "#4E7C3A",
+      "accent": "#FF8A3D"
+    },
+    "foreground": "/scenes/dinovalley/foreground.webp"
+  },
+  "targets": [
+    {
+      "id": "nest",
+      "targetType": "dinovalley_nest",
+      "bodyTemplate": "dinovalley_nest",
+      "difficulty": 1,
+      "mission": {
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
+      },
+      "item": {
+        "en": "a nest of enormous speckled eggs on open ground",
+        "he": "קן של ביצים ענקיות ומנוקדות על הקרקע"
+      },
+      "success": [
+        {
+          "en": "One of them wobbled!",
+          "he": "אחת מהן זזה!"
+        },
+        {
+          "en": "You found me! They are warm.",
+          "he": "מצאתם! הן חמות."
+        },
+        {
+          "en": "I did not touch anything.",
+          "he": "לא נגעתי בכלום."
+        }
+      ],
+      "animation": "bounce",
+      "slots": [
+        {
+          "id": "dinovalley_nest_a",
+          "x": 0.4,
+          "y": 0.52,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.4,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the nest.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "dinovalley_nest_b",
+          "x": 0.6599999999999999,
+          "y": 0.6,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.6599999999999999,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the nest.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "fern",
+      "targetType": "dinovalley_fern",
+      "bodyTemplate": "dinovalley_fern",
+      "difficulty": 2,
+      "mission": {
+        "en": "Find {name} by the giant ferns",
+        "he": "מצאו את {name} ליד השרכים הענקיים"
+      },
+      "item": {
+        "en": "giant ferns growing taller than a grown-up",
+        "he": "שרכים ענקיים גבוהים ממבוגר"
+      },
+      "success": [
+        {
+          "en": "A leaf tickled my ear!",
+          "he": "עלה דגדג לי באוזן!"
+        },
+        {
+          "en": "You found me! It is cool in the shade.",
+          "he": "מצאתם! קריר בצל."
+        },
+        {
+          "en": "Something big walked past.",
+          "he": "משהו גדול עבר פה."
+        }
+      ],
+      "animation": "wiggle",
+      "slots": [
+        {
+          "id": "dinovalley_fern_a",
+          "x": 0.46,
+          "y": 0.52,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.46,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the fern.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "dinovalley_fern_b",
+          "x": 0.62,
+          "y": 0.6,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.62,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the fern.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "log",
+      "targetType": "dinovalley_log",
+      "bodyTemplate": "dinovalley_log",
+      "difficulty": 3,
+      "mission": {
+        "en": "Find {name} hiding behind the fallen log",
+        "he": "מצאו את {name} מתחבא/ת מאחורי הגזע שנפל"
+      },
+      "item": {
+        "en": "a huge fallen log lying across the valley path",
+        "he": "גזע ענק שנפל לרוחב השביל"
+      },
+      "success": [
+        {
+          "en": "It is hollow inside!",
+          "he": "הוא חלול בפנים!"
+        },
+        {
+          "en": "You found me! I heard footsteps.",
+          "he": "מצאתם! שמעתי צעדים."
+        },
+        {
+          "en": "Beetles live in here.",
+          "he": "חיפושיות גרות פה."
+        }
+      ],
+      "animation": "peek",
+      "slots": [
+        {
+          "id": "dinovalley_log_a",
+          "x": 0.52,
+          "y": 0.52,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.52,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the log.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "dinovalley_log_b",
+          "x": 0.58,
+          "y": 0.6,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.58,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the log.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    }
+  ],
+  "artNotes": [
+    "gentle long-necked dinosaurs grazing",
+    "a nest of enormous speckled eggs on open ground",
+    "giant ferns and cycads taller than a person",
+    "a small stegosaurus drinking at a stream",
+    "pterosaurs gliding high up",
+    "a fallen log lying across the path"
+  ],
+  "artComposition": "A wide green valley in bright daylight with gentle long-necked dinosaurs grazing among giant ferns, a nest of huge eggs on the near ground, and a calm volcano far away on the horizon.",
+  "ambient": [
+    {
+      "id": "a1",
+      "label": {
+        "en": "Something stirs",
+        "he": "משהו זז"
+      },
+      "x": 0.3,
+      "y": 0.78,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Did you see that?",
+        "he": "ראיתם את זה?"
+      },
+      "glyph": "✨"
+    },
+    {
+      "id": "a2",
+      "label": {
+        "en": "A little light",
+        "he": "אור קטן"
+      },
+      "x": 0.55,
+      "y": 0.3,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "blink",
+      "sound": "twinkle",
+      "reaction": {
+        "en": "It moved!",
+        "he": "זה זז!"
+      },
+      "glyph": "⏳"
+    },
+    {
+      "id": "a3",
+      "label": {
+        "en": "A quiet sound",
+        "he": "צליל שקט"
+      },
+      "x": 0.82,
+      "y": 0.68,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "pop",
+      "sound": "boing",
+      "reaction": {
+        "en": "Listen!",
+        "he": "תקשיבו!"
+      },
+      "glyph": "🎵"
+    }
+  ],
+  "collectible": {
+    "id": "shard_dino",
+    "name": {
+      "en": "A dinosaur shard",
+      "he": "רסיס זמן של הדינוזאורים"
+    },
+    "icon": "🦕"
+  },
+  "celebration": {
+    "kind": "leaves",
+    "completeText": {
+      "en": "You found {name} three times in The Valley of Dinosaurs!",
+      "he": "מצאתם את {name} שלוש פעמים בעמק הדינוזאורים!"
+    }
+  }
+}

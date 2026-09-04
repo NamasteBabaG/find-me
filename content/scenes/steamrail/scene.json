@@ -1,0 +1,292 @@
+{
+  "id": "scene_steamrail",
+  "slug": "steamrail",
+  "name": {
+    "en": "The Steam Railway",
+    "he": "רכבת הקיטור"
+  },
+  "tagline": {
+    "en": "A great engine, a clock, and steam everywhere.",
+    "he": "קטר ענק, שעון והרבה קיטור."
+  },
+  "version": 1,
+  "active": false,
+  "artStatus": "draft",
+  "art": {
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/steamrail/base.webp",
+    "thumbnail": "/scenes/steamrail/thumb.webp",
+    "palette": {
+      "sky": "#D9E4EC",
+      "ground": "#4A5B6B",
+      "accent": "#FF8A3D"
+    },
+    "foreground": "/scenes/steamrail/foreground.webp"
+  },
+  "targets": [
+    {
+      "id": "trolley",
+      "targetType": "steamrail_trolley",
+      "bodyTemplate": "steamrail_trolley",
+      "difficulty": 1,
+      "mission": {
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
+      },
+      "item": {
+        "en": "a luggage trolley piled high with leather trunks",
+        "he": "עגלת מזוודות עמוסה בתיקי עור"
+      },
+      "success": [
+        {
+          "en": "One trunk has stickers from everywhere!",
+          "he": "על מזוודה אחת יש מדבקות מכל העולם!"
+        },
+        {
+          "en": "You found me! I was guarding these.",
+          "he": "מצאתם! שמרתי עליהן."
+        },
+        {
+          "en": "Mine is the small one.",
+          "he": "שלי היא הקטנה."
+        }
+      ],
+      "animation": "bounce",
+      "slots": [
+        {
+          "id": "steamrail_trolley_a",
+          "x": 0.4,
+          "y": 0.52,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.4,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the trolley.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "steamrail_trolley_b",
+          "x": 0.6599999999999999,
+          "y": 0.6,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.6599999999999999,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the trolley.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "clock",
+      "targetType": "steamrail_clock",
+      "bodyTemplate": "steamrail_clock",
+      "difficulty": 2,
+      "mission": {
+        "en": "Find {name} under the station clock",
+        "he": "מצאו את {name} מתחת לשעון התחנה"
+      },
+      "item": {
+        "en": "the big station clock hanging from a stone pillar",
+        "he": "שעון התחנה הגדול תלוי מעמוד אבן"
+      },
+      "success": [
+        {
+          "en": "It ticks very loudly!",
+          "he": "הוא מתקתק ממש חזק!"
+        },
+        {
+          "en": "You found me! Two minutes to go.",
+          "he": "מצאתם! נשארו שתי דקות."
+        },
+        {
+          "en": "Everyone meets here.",
+          "he": "כולם נפגשים פה."
+        }
+      ],
+      "animation": "wave",
+      "slots": [
+        {
+          "id": "steamrail_clock_a",
+          "x": 0.46,
+          "y": 0.52,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.46,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the clock.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "steamrail_clock_b",
+          "x": 0.62,
+          "y": 0.6,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.62,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the clock.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "wheels",
+      "targetType": "steamrail_wheels",
+      "bodyTemplate": "steamrail_wheels",
+      "difficulty": 3,
+      "mission": {
+        "en": "Find {name} hiding by the engine's wheels",
+        "he": "מצאו את {name} מתחבא/ת ליד גלגלי הקטר"
+      },
+      "item": {
+        "en": "the locomotive's huge red driving wheels",
+        "he": "גלגלי ההנעה האדומים והענקיים של הקטר"
+      },
+      "success": [
+        {
+          "en": "They are twice as tall as me!",
+          "he": "הם גבוהים ממני פי שניים!"
+        },
+        {
+          "en": "You found me! The steam tickles.",
+          "he": "מצאתם! הקיטור מדגדג."
+        },
+        {
+          "en": "It is warm down here.",
+          "he": "חם פה למטה."
+        }
+      ],
+      "animation": "peek",
+      "slots": [
+        {
+          "id": "steamrail_wheels_a",
+          "x": 0.52,
+          "y": 0.52,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.52,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the wheels.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "steamrail_wheels_b",
+          "x": 0.58,
+          "y": 0.6,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.58,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the wheels.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    }
+  ],
+  "artNotes": [
+    "a big steam locomotive at the platform",
+    "luggage trolleys piled with leather trunks",
+    "a large station clock hanging from a stone pillar",
+    "a glass roof with daylight coming through",
+    "a guard with a whistle and a green flag",
+    "a tea trolley on the platform"
+  ],
+  "artComposition": "A grand old railway station under a glass roof with daylight streaming through, a big steam locomotive at the platform letting off steam, luggage trolleys piled with trunks, and a large station clock on a stone pillar.",
+  "ambient": [
+    {
+      "id": "a1",
+      "label": {
+        "en": "Something stirs",
+        "he": "משהו זז"
+      },
+      "x": 0.3,
+      "y": 0.78,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Did you see that?",
+        "he": "ראיתם את זה?"
+      },
+      "glyph": "✨"
+    },
+    {
+      "id": "a2",
+      "label": {
+        "en": "A little light",
+        "he": "אור קטן"
+      },
+      "x": 0.55,
+      "y": 0.3,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "blink",
+      "sound": "twinkle",
+      "reaction": {
+        "en": "It moved!",
+        "he": "זה זז!"
+      },
+      "glyph": "⏳"
+    },
+    {
+      "id": "a3",
+      "label": {
+        "en": "A quiet sound",
+        "he": "צליל שקט"
+      },
+      "x": 0.82,
+      "y": 0.68,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "pop",
+      "sound": "boing",
+      "reaction": {
+        "en": "Listen!",
+        "he": "תקשיבו!"
+      },
+      "glyph": "🎵"
+    }
+  ],
+  "collectible": {
+    "id": "shard_steam",
+    "name": {
+      "en": "A railway shard",
+      "he": "רסיס זמן של הרכבת"
+    },
+    "icon": "🚂"
+  },
+  "celebration": {
+    "kind": "sparkles",
+    "completeText": {
+      "en": "You found {name} three times in The Steam Railway!",
+      "he": "מצאתם את {name} שלוש פעמים ברכבת הקיטור!"
+    }
+  }
+}

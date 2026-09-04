@@ -1,0 +1,292 @@
+{
+  "id": "scene_futurecity",
+  "slug": "futurecity",
+  "name": {
+    "en": "The Future City",
+    "he": "העיר העתידנית"
+  },
+  "tagline": {
+    "en": "Sky gardens, glass towers and cars that do not touch the ground.",
+    "he": "גינות בשמיים, מגדלי זכוכית ומכוניות שלא נוגעות בקרקע."
+  },
+  "version": 1,
+  "active": false,
+  "artStatus": "draft",
+  "art": {
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/futurecity/base.webp",
+    "thumbnail": "/scenes/futurecity/thumb.webp",
+    "palette": {
+      "sky": "#BFE9FF",
+      "ground": "#4FB3C9",
+      "accent": "#8C6BD9"
+    },
+    "foreground": "/scenes/futurecity/foreground.webp"
+  },
+  "targets": [
+    {
+      "id": "planter",
+      "targetType": "futurecity_planter",
+      "bodyTemplate": "futurecity_planter",
+      "difficulty": 1,
+      "mission": {
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
+      },
+      "item": {
+        "en": "big planters full of green plants along the plaza",
+        "he": "עציצים גדולים מלאים בצמחים לאורך הכיכר"
+      },
+      "success": [
+        {
+          "en": "The plants grow by themselves!",
+          "he": "הצמחים גדלים לבד!"
+        },
+        {
+          "en": "You found me! It smells green.",
+          "he": "מצאתם! מריח פה ירוק."
+        },
+        {
+          "en": "This one is taller than yesterday.",
+          "he": "זה גבוה יותר מאתמול."
+        }
+      ],
+      "animation": "bounce",
+      "slots": [
+        {
+          "id": "futurecity_planter_a",
+          "x": 0.4,
+          "y": 0.52,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.4,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the planter.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "futurecity_planter_b",
+          "x": 0.6599999999999999,
+          "y": 0.6,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.6599999999999999,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the planter.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "pod",
+      "targetType": "futurecity_pod",
+      "bodyTemplate": "futurecity_pod",
+      "difficulty": 2,
+      "mission": {
+        "en": "Find {name} by the delivery pod",
+        "he": "מצאו את {name} ליד רחפן המשלוחים"
+      },
+      "item": {
+        "en": "a delivery pod resting on its landing pad",
+        "he": "רחפן משלוחים נח על משטח הנחיתה"
+      },
+      "success": [
+        {
+          "en": "It said my name!",
+          "he": "הוא אמר את השם שלי!"
+        },
+        {
+          "en": "You found me! It waited for me.",
+          "he": "מצאתם! הוא חיכה לי."
+        },
+        {
+          "en": "It hums when it lifts.",
+          "he": "הוא מזמזם כשהוא ממריא."
+        }
+      ],
+      "animation": "wave",
+      "slots": [
+        {
+          "id": "futurecity_pod_a",
+          "x": 0.46,
+          "y": 0.52,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.46,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the pod.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "futurecity_pod_b",
+          "x": 0.62,
+          "y": 0.6,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.62,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the pod.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "lift",
+      "targetType": "futurecity_lift",
+      "bodyTemplate": "futurecity_lift",
+      "difficulty": 3,
+      "mission": {
+        "en": "Find {name} hiding inside the tube lift",
+        "he": "מצאו את {name} מתחבא/ת בתוך מעלית הצינור"
+      },
+      "item": {
+        "en": "a transparent tube lift running up the side of a tower",
+        "he": "מעלית צינור שקופה בצד המגדל"
+      },
+      "success": [
+        {
+          "en": "You can see the whole city!",
+          "he": "רואים את כל העיר!"
+        },
+        {
+          "en": "You found me! It goes so fast.",
+          "he": "מצאתם! היא נוסעת מהר."
+        },
+        {
+          "en": "My ears popped.",
+          "he": "האוזניים שלי נסתמו."
+        }
+      ],
+      "animation": "peek",
+      "slots": [
+        {
+          "id": "futurecity_lift_a",
+          "x": 0.52,
+          "y": 0.52,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.52,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the lift.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "futurecity_lift_b",
+          "x": 0.58,
+          "y": 0.6,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.58,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the lift.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    }
+  ],
+  "artNotes": [
+    "glass towers with green gardens on every level",
+    "small cars gliding along raised skyways",
+    "a solid tiled plaza with benches and big planters",
+    "a delivery pod resting on a landing pad",
+    "a transparent tube lift running up a tower",
+    "screens showing friendly animations"
+  ],
+  "artComposition": "A bright daytime city of the future seen from a wide public terrace, with glass towers, green sky gardens on every level, small cars gliding along raised skyways, and people walking on a solid tiled plaza in the foreground.",
+  "ambient": [
+    {
+      "id": "a1",
+      "label": {
+        "en": "Something stirs",
+        "he": "משהו זז"
+      },
+      "x": 0.3,
+      "y": 0.78,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Did you see that?",
+        "he": "ראיתם את זה?"
+      },
+      "glyph": "✨"
+    },
+    {
+      "id": "a2",
+      "label": {
+        "en": "A little light",
+        "he": "אור קטן"
+      },
+      "x": 0.55,
+      "y": 0.3,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "blink",
+      "sound": "twinkle",
+      "reaction": {
+        "en": "It moved!",
+        "he": "זה זז!"
+      },
+      "glyph": "⏳"
+    },
+    {
+      "id": "a3",
+      "label": {
+        "en": "A quiet sound",
+        "he": "צליל שקט"
+      },
+      "x": 0.82,
+      "y": 0.68,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "pop",
+      "sound": "boing",
+      "reaction": {
+        "en": "Listen!",
+        "he": "תקשיבו!"
+      },
+      "glyph": "🎵"
+    }
+  ],
+  "collectible": {
+    "id": "shard_future",
+    "name": {
+      "en": "A future shard",
+      "he": "רסיס זמן של העתיד"
+    },
+    "icon": "🛸"
+  },
+  "celebration": {
+    "kind": "sparkles",
+    "completeText": {
+      "en": "You found {name} three times in The Future City!",
+      "he": "מצאתם את {name} שלוש פעמים בהעיר העתידנית!"
+    }
+  }
+}

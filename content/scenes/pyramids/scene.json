@@ -1,0 +1,292 @@
+{
+  "id": "scene_pyramids",
+  "slug": "pyramids",
+  "name": {
+    "en": "The Pyramid Builders",
+    "he": "בוני הפירמידות"
+  },
+  "tagline": {
+    "en": "A pyramid only half built, and everyone is busy.",
+    "he": "פירמידה שנבנתה רק עד החצי, וכולם עסוקים."
+  },
+  "version": 1,
+  "active": false,
+  "artStatus": "draft",
+  "art": {
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/pyramids/base.webp",
+    "thumbnail": "/scenes/pyramids/thumb.webp",
+    "palette": {
+      "sky": "#FFE3A8",
+      "ground": "#C8A05A",
+      "accent": "#4FB3C9"
+    },
+    "foreground": "/scenes/pyramids/foreground.webp"
+  },
+  "targets": [
+    {
+      "id": "blocks",
+      "targetType": "pyramids_blocks",
+      "bodyTemplate": "pyramids_blocks",
+      "difficulty": 1,
+      "mission": {
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
+      },
+      "item": {
+        "en": "rows of cut limestone blocks stacked on the sand",
+        "he": "שורות של אבני גיר חתוכות ערומות על החול"
+      },
+      "success": [
+        {
+          "en": "They are taller than me!",
+          "he": "הן גבוהות ממני!"
+        },
+        {
+          "en": "You found me! The stone is hot.",
+          "he": "מצאתם! האבן חמה."
+        },
+        {
+          "en": "I counted forty of them.",
+          "he": "ספרתי ארבעים כאלה."
+        }
+      ],
+      "animation": "bounce",
+      "slots": [
+        {
+          "id": "pyramids_blocks_a",
+          "x": 0.4,
+          "y": 0.52,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.4,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the blocks.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "pyramids_blocks_b",
+          "x": 0.6599999999999999,
+          "y": 0.6,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.6599999999999999,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the blocks.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "ramp",
+      "targetType": "pyramids_ramp",
+      "bodyTemplate": "pyramids_ramp",
+      "difficulty": 2,
+      "mission": {
+        "en": "Find {name} on the builders' ramp",
+        "he": "מצאו את {name} על רמפת הבונים"
+      },
+      "item": {
+        "en": "the long earth ramp up the side of the pyramid",
+        "he": "רמפת העפר הארוכה בצד הפירמידה"
+      },
+      "success": [
+        {
+          "en": "I brought them water!",
+          "he": "הבאתי להם מים!"
+        },
+        {
+          "en": "You found me! It is a long way up.",
+          "he": "מצאתם! זו דרך ארוכה למעלה."
+        },
+        {
+          "en": "Everyone pulls together.",
+          "he": "כולם מושכים ביחד."
+        }
+      ],
+      "animation": "wave",
+      "slots": [
+        {
+          "id": "pyramids_ramp_a",
+          "x": 0.46,
+          "y": 0.52,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.46,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the ramp.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "pyramids_ramp_b",
+          "x": 0.62,
+          "y": 0.6,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.62,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the ramp.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "sled",
+      "targetType": "pyramids_sled",
+      "bodyTemplate": "pyramids_sled",
+      "difficulty": 3,
+      "mission": {
+        "en": "Find {name} hiding behind a stone sled",
+        "he": "מצאו את {name} מתחבא/ת מאחורי מזחלת האבן"
+      },
+      "item": {
+        "en": "a heavy wooden sled with a block still on it",
+        "he": "מזחלת עץ כבדה עם אבן עליה"
+      },
+      "success": [
+        {
+          "en": "Nobody looked down here!",
+          "he": "אף אחד לא הסתכל לפה!"
+        },
+        {
+          "en": "You found me! It smells of rope.",
+          "he": "מצאתם! מריח פה חבלים."
+        },
+        {
+          "en": "I was very still.",
+          "he": "הייתי בלי לזוז."
+        }
+      ],
+      "animation": "peek",
+      "slots": [
+        {
+          "id": "pyramids_sled_a",
+          "x": 0.52,
+          "y": 0.52,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.52,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the sled.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "pyramids_sled_b",
+          "x": 0.58,
+          "y": 0.6,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.58,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the sled.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    }
+  ],
+  "artNotes": [
+    "a pyramid open at the top, still being built",
+    "a long earth ramp with workers hauling a stone block",
+    "cut limestone blocks stacked in rows on the sand",
+    "wooden sleds and rollers",
+    "water carriers with clay jars",
+    "a scribe sitting cross-legged with a tablet"
+  ],
+  "artComposition": "A great pyramid still under construction, open at the top with wooden scaffolding and a long earth ramp up one side, hundreds of workers hauling stone blocks on wooden sleds, palm trees and a river beyond.",
+  "ambient": [
+    {
+      "id": "a1",
+      "label": {
+        "en": "Something stirs",
+        "he": "משהו זז"
+      },
+      "x": 0.3,
+      "y": 0.78,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Did you see that?",
+        "he": "ראיתם את זה?"
+      },
+      "glyph": "✨"
+    },
+    {
+      "id": "a2",
+      "label": {
+        "en": "A little light",
+        "he": "אור קטן"
+      },
+      "x": 0.55,
+      "y": 0.3,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "blink",
+      "sound": "twinkle",
+      "reaction": {
+        "en": "It moved!",
+        "he": "זה זז!"
+      },
+      "glyph": "⏳"
+    },
+    {
+      "id": "a3",
+      "label": {
+        "en": "A quiet sound",
+        "he": "צליל שקט"
+      },
+      "x": 0.82,
+      "y": 0.68,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "pop",
+      "sound": "boing",
+      "reaction": {
+        "en": "Listen!",
+        "he": "תקשיבו!"
+      },
+      "glyph": "🎵"
+    }
+  ],
+  "collectible": {
+    "id": "shard_pyramid",
+    "name": {
+      "en": "A builders' shard",
+      "he": "רסיס זמן של הבונים"
+    },
+    "icon": "🔺"
+  },
+  "celebration": {
+    "kind": "sparkles",
+    "completeText": {
+      "en": "You found {name} three times in The Pyramid Builders!",
+      "he": "מצאתם את {name} שלוש פעמים בבוני הפירמידות!"
+    }
+  }
+}

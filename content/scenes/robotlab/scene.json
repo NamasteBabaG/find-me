@@ -1,0 +1,292 @@
+{
+  "id": "scene_robotlab",
+  "slug": "robotlab",
+  "name": {
+    "en": "The Robot Workshop",
+    "he": "מעבדת הרובוטים"
+  },
+  "tagline": {
+    "en": "Robots half built, tools on every wall and one that follows you.",
+    "he": "רובוטים בהרכבה, כלים על כל קיר ואחד שהולך אחריכם."
+  },
+  "version": 1,
+  "active": false,
+  "artStatus": "draft",
+  "art": {
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/robotlab/base.webp",
+    "thumbnail": "/scenes/robotlab/thumb.webp",
+    "palette": {
+      "sky": "#E8F0F5",
+      "ground": "#5A7A8C",
+      "accent": "#FFD24D"
+    },
+    "foreground": "/scenes/robotlab/foreground.webp"
+  },
+  "targets": [
+    {
+      "id": "bigbot",
+      "targetType": "robotlab_bigbot",
+      "bodyTemplate": "robotlab_bigbot",
+      "difficulty": 1,
+      "mission": {
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
+      },
+      "item": {
+        "en": "an enormous friendly robot standing half built on the floor",
+        "he": "רובוט ענק וידידותי עומד בהרכבה על הרצפה"
+      },
+      "success": [
+        {
+          "en": "His hand is bigger than me!",
+          "he": "היד שלו גדולה ממני!"
+        },
+        {
+          "en": "You found me! He blinked.",
+          "he": "מצאתם! הוא מצמץ."
+        },
+        {
+          "en": "He needs one more arm.",
+          "he": "חסרה לו עוד יד."
+        }
+      ],
+      "animation": "bounce",
+      "slots": [
+        {
+          "id": "robotlab_bigbot_a",
+          "x": 0.4,
+          "y": 0.52,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.4,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the bigbot.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "robotlab_bigbot_b",
+          "x": 0.6599999999999999,
+          "y": 0.6,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.6599999999999999,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the bigbot.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "bench",
+      "targetType": "robotlab_bench",
+      "bodyTemplate": "robotlab_bench",
+      "difficulty": 2,
+      "mission": {
+        "en": "Find {name} by the workbench",
+        "he": "מצאו את {name} ליד שולחן העבודה"
+      },
+      "item": {
+        "en": "a long workbench covered in tools and small parts",
+        "he": "שולחן עבודה ארוך מלא בכלים וחלקים קטנים"
+      },
+      "success": [
+        {
+          "en": "I fixed the little one!",
+          "he": "תיקנתי את הקטן!"
+        },
+        {
+          "en": "You found me! Do not touch that one.",
+          "he": "מצאתם! אל תיגעו בזה."
+        },
+        {
+          "en": "Every tool has its place.",
+          "he": "לכל כלי יש מקום."
+        }
+      ],
+      "animation": "wiggle",
+      "slots": [
+        {
+          "id": "robotlab_bench_a",
+          "x": 0.46,
+          "y": 0.52,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.46,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the bench.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "robotlab_bench_b",
+          "x": 0.62,
+          "y": 0.6,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.62,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the bench.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "crates",
+      "targetType": "robotlab_crates",
+      "bodyTemplate": "robotlab_crates",
+      "difficulty": 3,
+      "mission": {
+        "en": "Find {name} hiding behind the parts crates",
+        "he": "מצאו את {name} מתחבא/ת מאחורי ארגזי החלקים"
+      },
+      "item": {
+        "en": "wooden crates of spare parts stacked into a wall",
+        "he": "ארגזי עץ של חלקי חילוף ערומים כמו קיר"
+      },
+      "success": [
+        {
+          "en": "Something in here is beeping!",
+          "he": "משהו פה מצפצף!"
+        },
+        {
+          "en": "You found me! The little robot told you.",
+          "he": "מצאתם! הרובוט הקטן הלשין."
+        },
+        {
+          "en": "I found a spare eye.",
+          "he": "מצאתי עין רזרבית."
+        }
+      ],
+      "animation": "peek",
+      "slots": [
+        {
+          "id": "robotlab_crates_a",
+          "x": 0.52,
+          "y": 0.52,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.52,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the crates.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "robotlab_crates_b",
+          "x": 0.58,
+          "y": 0.6,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.58,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the crates.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    }
+  ],
+  "artNotes": [
+    "friendly robots of every size, some half built",
+    "a long workbench covered in tools",
+    "a wall of tools hung in neat rows",
+    "wooden crates of spare parts stacked up",
+    "a small round robot rolling about",
+    "tall windows letting in daylight"
+  ],
+  "artComposition": "A big bright workshop with tall windows, friendly robots of every size standing half built on the floor, a long workbench covered in tools, a wall of tools in neat rows, and wooden crates of spare parts stacked along the near side.",
+  "ambient": [
+    {
+      "id": "a1",
+      "label": {
+        "en": "Something stirs",
+        "he": "משהו זז"
+      },
+      "x": 0.3,
+      "y": 0.78,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Did you see that?",
+        "he": "ראיתם את זה?"
+      },
+      "glyph": "✨"
+    },
+    {
+      "id": "a2",
+      "label": {
+        "en": "A little light",
+        "he": "אור קטן"
+      },
+      "x": 0.55,
+      "y": 0.3,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "blink",
+      "sound": "twinkle",
+      "reaction": {
+        "en": "It moved!",
+        "he": "זה זז!"
+      },
+      "glyph": "⏳"
+    },
+    {
+      "id": "a3",
+      "label": {
+        "en": "A quiet sound",
+        "he": "צליל שקט"
+      },
+      "x": 0.82,
+      "y": 0.68,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "pop",
+      "sound": "boing",
+      "reaction": {
+        "en": "Listen!",
+        "he": "תקשיבו!"
+      },
+      "glyph": "🎵"
+    }
+  ],
+  "collectible": {
+    "id": "shard_robot",
+    "name": {
+      "en": "A workshop shard",
+      "he": "רסיס זמן של המעבדה"
+    },
+    "icon": "🤖"
+  },
+  "celebration": {
+    "kind": "sparkles",
+    "completeText": {
+      "en": "You found {name} three times in The Robot Workshop!",
+      "he": "מצאתם את {name} שלוש פעמים במעבדת הרובוטים!"
+    }
+  }
+}

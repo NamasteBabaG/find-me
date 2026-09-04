@@ -1,0 +1,136 @@
+{
+  "slug": "timetravel",
+  "order": 3,
+  "name": {
+    "en": "Journey Through Time",
+    "he": "מסע בזמן"
+  },
+  "tagline": {
+    "en": "Dinosaurs, pirates and a city that has not been built yet.",
+    "he": "דינוזאורים, פיראטים ועיר שעוד לא נבנתה."
+  },
+  "intro": {
+    "en": "The clock is wound. {name}, we start a very long time ago.",
+    "he": "השעון מכוון. {name}, מתחילים לפני המון זמן."
+  },
+  "map": {
+    "width": 1536,
+    "height": 1024,
+    "art": "/worlds/timetravel/map.webp",
+    "artPortrait": "/worlds/timetravel/map-sm.webp",
+    "palette": {
+      "sky": "#8FD6E8",
+      "ground": "#2E5F6E",
+      "accent": "#FF8A3D"
+    },
+    "artNote": "This map is a single winding timeline, not a place: it begins in a green prehistoric valley at the bottom left and ends among the stars at the top right, passing a half-built pyramid, a tournament field, a pirate cove, a frontier town, a railway viaduct, a city of glass towers and a robot workshop. The trail is a ribbon of clock-face cobbles, and each stop sits a little further along it, so a child reading left to right is reading forwards in time."
+  },
+  "nodes": [
+    {
+      "boardSlug": "dinovalley",
+      "routeIndex": 1,
+      "x": 0.115,
+      "y": 0.845,
+      "labelAnchor": "top",
+      "markerScale": 0.09,
+      "travelStyle": "walk"
+    },
+    {
+      "boardSlug": "pyramids",
+      "routeIndex": 2,
+      "x": 0.235,
+      "y": 0.615,
+      "labelAnchor": "top",
+      "markerScale": 0.09,
+      "travelStyle": "walk"
+    },
+    {
+      "boardSlug": "tournament",
+      "routeIndex": 3,
+      "x": 0.155,
+      "y": 0.335,
+      "labelAnchor": "bottom",
+      "markerScale": 0.09,
+      "travelStyle": "hop"
+    },
+    {
+      "boardSlug": "piratecove",
+      "routeIndex": 4,
+      "x": 0.375,
+      "y": 0.185,
+      "labelAnchor": "bottom",
+      "markerScale": 0.09,
+      "travelStyle": "sail"
+    },
+    {
+      "boardSlug": "wildwest",
+      "routeIndex": 5,
+      "x": 0.545,
+      "y": 0.335,
+      "labelAnchor": "top",
+      "markerScale": 0.09,
+      "travelStyle": "walk"
+    },
+    {
+      "boardSlug": "steamrail",
+      "routeIndex": 6,
+      "x": 0.505,
+      "y": 0.635,
+      "labelAnchor": "top",
+      "markerScale": 0.09,
+      "travelStyle": "walk"
+    },
+    {
+      "boardSlug": "futurecity",
+      "routeIndex": 7,
+      "x": 0.695,
+      "y": 0.815,
+      "labelAnchor": "top",
+      "markerScale": 0.09,
+      "travelStyle": "walk"
+    },
+    {
+      "boardSlug": "robotlab",
+      "routeIndex": 8,
+      "x": 0.855,
+      "y": 0.585,
+      "labelAnchor": "bottom",
+      "markerScale": 0.09,
+      "travelStyle": "hop"
+    },
+    {
+      "boardSlug": "space",
+      "routeIndex": 9,
+      "x": 0.875,
+      "y": 0.215,
+      "labelAnchor": "bottom",
+      "markerScale": 0.09,
+      "travelStyle": "rocket"
+    }
+  ],
+  "collectible": {
+    "id": "shards",
+    "name": {
+      "en": "Time shards",
+      "he": "רסיסי זמן"
+    },
+    "piece": {
+      "en": "shards",
+      "he": "רסיסים"
+    },
+    "icon": "⏳"
+  },
+  "completion": {
+    "title": {
+      "en": "All of time, found",
+      "he": "כל הזמן, נמצא"
+    },
+    "text": {
+      "en": "{name} found every hiding place from the dinosaurs to the stars — nine shards, one hourglass.",
+      "he": "{name} מצא/ה כל מחבוא מהדינוזאורים ועד הכוכבים — תשעה רסיסים, שעון חול אחד."
+    }
+  },
+  "active": false,
+  "purchasable": false,
+  "version": 1
+}

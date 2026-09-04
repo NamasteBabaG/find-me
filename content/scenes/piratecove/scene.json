@@ -1,0 +1,292 @@
+{
+  "id": "scene_piratecove",
+  "slug": "piratecove",
+  "name": {
+    "en": "The Pirate Cove",
+    "he": "מפרץ הפיראטים"
+  },
+  "tagline": {
+    "en": "A ship pulled up on the sand and a chest that will not close.",
+    "he": "ספינה על החול ותיבה שלא נסגרת."
+  },
+  "version": 1,
+  "active": false,
+  "artStatus": "draft",
+  "art": {
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/piratecove/base.webp",
+    "thumbnail": "/scenes/piratecove/thumb.webp",
+    "palette": {
+      "sky": "#9EDCEF",
+      "ground": "#E8C98A",
+      "accent": "#C1443B"
+    },
+    "foreground": "/scenes/piratecove/foreground.webp"
+  },
+  "targets": [
+    {
+      "id": "chest",
+      "targetType": "piratecove_chest",
+      "bodyTemplate": "piratecove_chest",
+      "difficulty": 1,
+      "mission": {
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
+      },
+      "item": {
+        "en": "an open treasure chest spilling coins onto the sand",
+        "he": "תיבת אוצר פתוחה ומטבעות נשפכים לחול"
+      },
+      "success": [
+        {
+          "en": "There is a crown in there!",
+          "he": "יש שם כתר!"
+        },
+        {
+          "en": "You found me! It will not close.",
+          "he": "מצאתם! היא לא נסגרת."
+        },
+        {
+          "en": "I put one coin back.",
+          "he": "החזרתי מטבע אחד."
+        }
+      ],
+      "animation": "bounce",
+      "slots": [
+        {
+          "id": "piratecove_chest_a",
+          "x": 0.4,
+          "y": 0.52,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.4,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the chest.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "piratecove_chest_b",
+          "x": 0.6599999999999999,
+          "y": 0.6,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.6599999999999999,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the chest.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "barrels",
+      "targetType": "piratecove_barrels",
+      "bodyTemplate": "piratecove_barrels",
+      "difficulty": 2,
+      "mission": {
+        "en": "Find {name} by the barrels",
+        "he": "מצאו את {name} ליד החביות"
+      },
+      "item": {
+        "en": "barrels and crates stacked on the wooden jetty",
+        "he": "חביות וארגזים ערומים על מזח העץ"
+      },
+      "success": [
+        {
+          "en": "The parrot copied me!",
+          "he": "התוכי חיקה אותי!"
+        },
+        {
+          "en": "You found me! It smells of salt.",
+          "he": "מצאתם! מריח פה מלח."
+        },
+        {
+          "en": "One barrel is full of limes.",
+          "he": "חבית אחת מלאה בלימונים."
+        }
+      ],
+      "animation": "wave",
+      "slots": [
+        {
+          "id": "piratecove_barrels_a",
+          "x": 0.46,
+          "y": 0.52,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.46,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the barrels.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "piratecove_barrels_b",
+          "x": 0.62,
+          "y": 0.6,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.62,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the barrels.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "rowboat",
+      "targetType": "piratecove_rowboat",
+      "bodyTemplate": "piratecove_rowboat",
+      "difficulty": 3,
+      "mission": {
+        "en": "Find {name} hiding under the upturned boat",
+        "he": "מצאו את {name} מתחבא/ת מתחת לסירה ההפוכה"
+      },
+      "item": {
+        "en": "a small rowing boat lying upside down on the sand",
+        "he": "סירת משוטים קטנה הפוכה על החול"
+      },
+      "success": [
+        {
+          "en": "It is like a little cave!",
+          "he": "זו כמו מערה קטנה!"
+        },
+        {
+          "en": "You found me! I heard you walking.",
+          "he": "מצאתם! שמעתי אתכם הולכים."
+        },
+        {
+          "en": "A crab lives under here.",
+          "he": "סרטן גר פה מתחת."
+        }
+      ],
+      "animation": "peek",
+      "slots": [
+        {
+          "id": "piratecove_rowboat_a",
+          "x": 0.52,
+          "y": 0.52,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.52,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the rowboat.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "piratecove_rowboat_b",
+          "x": 0.58,
+          "y": 0.6,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.58,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the rowboat.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    }
+  ],
+  "artNotes": [
+    "a wooden pirate ship pulled up onto the sand",
+    "an open treasure chest spilling coins on the beach",
+    "barrels and crates stacked on a wooden jetty",
+    "a rowing boat upside down on the sand",
+    "a parrot on a crate",
+    "a map nailed to a palm tree"
+  ],
+  "artComposition": "A sandy cove in bright sun with a wooden pirate ship pulled up onto the beach, a wooden jetty stacked with barrels and crates, palm trees, and an open treasure chest on the sand.",
+  "ambient": [
+    {
+      "id": "a1",
+      "label": {
+        "en": "Something stirs",
+        "he": "משהו זז"
+      },
+      "x": 0.3,
+      "y": 0.78,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Did you see that?",
+        "he": "ראיתם את זה?"
+      },
+      "glyph": "✨"
+    },
+    {
+      "id": "a2",
+      "label": {
+        "en": "A little light",
+        "he": "אור קטן"
+      },
+      "x": 0.55,
+      "y": 0.3,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "blink",
+      "sound": "twinkle",
+      "reaction": {
+        "en": "It moved!",
+        "he": "זה זז!"
+      },
+      "glyph": "⏳"
+    },
+    {
+      "id": "a3",
+      "label": {
+        "en": "A quiet sound",
+        "he": "צליל שקט"
+      },
+      "x": 0.82,
+      "y": 0.68,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "pop",
+      "sound": "boing",
+      "reaction": {
+        "en": "Listen!",
+        "he": "תקשיבו!"
+      },
+      "glyph": "🎵"
+    }
+  ],
+  "collectible": {
+    "id": "shard_pirate",
+    "name": {
+      "en": "A pirate shard",
+      "he": "רסיס זמן של הפיראטים"
+    },
+    "icon": "🏴‍☠️"
+  },
+  "celebration": {
+    "kind": "sparkles",
+    "completeText": {
+      "en": "You found {name} three times in The Pirate Cove!",
+      "he": "מצאתם את {name} שלוש פעמים במפרץ הפיראטים!"
+    }
+  }
+}
