@@ -108,7 +108,7 @@ export async function styleReference(art: Buffer, size: Size, slot: SlotPoint, o
   return sharp(art).extract({ left: rect.x, top: rect.y, width: rect.w, height: rect.h }).resize(out, out, { fit: "cover" }).png().toBuffer();
 }
 
-export const PROMPT_VERSION = "slot-patch-v3";
+export const PROMPT_VERSION = "slot-patch-v4";
 
 /**
  * The instruction the image model gets. Built from scene data, never hard-coded copy.
@@ -119,16 +119,58 @@ export const PROMPT_VERSION = "slot-patch-v3";
  * the diff is the entire crop rather than one child. Asking for the picture back
  * "with one child added" frames it as an edit; "paint a child into this
  * illustration" was read as an invitation to repaint the illustration.
+ *
+ * The reference decides WHO; the picture decides everything else. Told "same
+ * face, hair and outfit", the model put one green jacket in nine countries and
+ * lit it from the studio the sheet was drawn in — a child in a coat on a beach,
+ * brighter than the sand under her. So the sheet is identity only: the clothes
+ * belong to the place, and the light, saturation and contrast belong to the
+ * board. Occlusion is asked for, not required: a child half behind a market
+ * sack is the best hiding there is, and a child fully in view is still a find.
  */
-export function slotPrompt(input: { mission: string; bodyLabel?: string; childPx: number; pose?: string }): string {
+export interface SlotPromptInput {
+  mission: string;
+  bodyLabel?: string;
+  childPx: number;
+  pose?: string;
+  /** The place, in English, with its one-line description — what the child is dressed for. */
+  place?: string;
+  placeNote?: string;
+  /** What the face is doing; see expressionFor(). */
+  expression?: string;
+}
+
+export function slotPrompt(input: SlotPromptInput): string {
+  const where = input.place ? ` (${input.place}${input.placeNote ? ` — ${input.placeNote}` : ""})` : "";
   return [
     `Return this exact picture with ONE child added to it. Do not redraw, restyle, re-render or improve any part of the picture: every pixel outside the child must come back byte for byte as it went in.`,
     `The child goes inside the white area of the mask, about ${input.childPx} pixels tall, the size of the people already standing near that spot.`,
-    `Draw the child in the picture's own style, colours, line quality and warm daylight, and use the attached character reference for who this child is (same face, hair and outfit).`,
+    `The attached character reference decides WHO this child is: copy the face, hair, skin tone and build exactly. This picture decides everything else: draw the child in its own style, line quality and palette, lit by the same light from the same direction, with the same colour temperature, saturation and contrast, so they look painted by the same hand at the same hour.`,
+    `Dress the child for this place${where}: everyday clothes a child would really wear here, in two or three flat colours taken from the picture's own palette, and let the weather show — a coat and hat in snow, a swimsuit or shorts on a beach, boots in a jungle — even when only the head and shoulders are in view. The clothes in the reference are not a uniform — only the child is the same.`,
+    `Give the child a natural, specific expression for the moment — ${input.expression ?? expressionFor()} — never a fixed, posed smile.`,
     `Situation: ${input.mission}${input.bodyLabel ? ` (${input.bodyLabel})` : ""}.${input.pose ? ` ${input.pose}` : ""}`,
     `Let whatever is naturally in front of the child overlap them, and give them a soft shadow that matches the others. They should be findable, not the centre of attention.`,
     `Change nothing else.`,
   ].join(" ");
+}
+
+/**
+ * What the face is doing, from how the body is hiding. Asked only for "the
+ * child", the model draws the same faint airbrushed smile in all twenty-seven
+ * places; a child crouched behind a log is mid-giggle, and one carrying a
+ * bucket is concentrating on it.
+ */
+export function expressionFor(pose?: string): string {
+  switch (pose) {
+    case "peeking":
+      return "mischievous and delighted, eyes wide, mid-giggle, as if about to be spotted";
+    case "holding":
+      return "absorbed in what they are holding, proud or concentrating, mouth relaxed";
+    case "standing":
+      return "curious and cheerful, looking at something happening nearby";
+    default:
+      return "relaxed and curious, as if nobody is watching";
+  }
 }
 
 /**
@@ -242,6 +284,8 @@ export interface DiffOptions {
   keep?: number;
   /** Edge softness, in pixels. */
   feather?: number;
+  /** Pull the child's saturation and contrast toward the board around them (default on). */
+  tone?: boolean;
 }
 
 export interface PatchResult {
@@ -299,6 +343,72 @@ export function colourMatch(edited: Buffer, original: Buffer, outside: Buffer, n
       b = (sy - sx) / count;
     }
     for (let i = 0; i < n; i++) out[i * 3 + ch] = Math.max(0, Math.min(255, Math.round(a * edited[i * 3 + ch]! + b)));
+  }
+  return out;
+}
+
+/**
+ * Match the painted child's saturation and contrast to the board around them.
+ *
+ * `colourMatch` removes the model's global drift; it cannot help when the model
+ * paints the child in its own house style — softer, paler and flatter than the
+ * gouache around her, which is what one parent saw in four boards out of nine:
+ * "not the same saturation and brightness as the picture". So the child's
+ * pixels are measured against the crop's own pixels around her and pulled
+ * toward them, gently. Saturation only ever goes up, by at most a third;
+ * contrast is stretched about the child's own mean by at most a quarter and
+ * never squeezed below nine tenths. Her mean brightness is left alone — a red
+ * coat on white snow is supposed to be darker than the snow.
+ */
+export function toneMatch(edited: Buffer, original: Buffer, alpha: Buffer, allow: Buffer, n: number): Buffer {
+  interface Stat {
+    count: number;
+    meanL: number;
+    stdL: number;
+    meanS: number;
+  }
+  const stat = (src: Buffer, pick: (i: number) => boolean): Stat => {
+    let count = 0;
+    let sumL = 0;
+    let sumL2 = 0;
+    let sumS = 0;
+    for (let i = 0; i < n; i++) {
+      if (!pick(i)) continue;
+      const r = src[i * 3]!;
+      const g = src[i * 3 + 1]!;
+      const b = src[i * 3 + 2]!;
+      const L = 0.299 * r + 0.587 * g + 0.114 * b;
+      const mx = Math.max(r, g, b);
+      const mn = Math.min(r, g, b);
+      sumL += L;
+      sumL2 += L * L;
+      sumS += mx > 0 ? (mx - mn) / mx : 0;
+      count++;
+    }
+    if (count === 0) return { count, meanL: 0, stdL: 0, meanS: 0 };
+    const meanL = sumL / count;
+    return { count, meanL, stdL: Math.sqrt(Math.max(0, sumL2 / count - meanL * meanL)), meanS: sumS / count };
+  };
+  const child = stat(edited, (i) => alpha[i]! >= 128);
+  // The board right around her; the whole crop if the search area is nearly all child.
+  let around = stat(original, (i) => alpha[i]! < 128 && allow[i]! >= 128);
+  if (around.count < 400) around = stat(original, (i) => alpha[i]! < 128);
+  if (child.count < 200 || around.count < 400) return edited;
+  const satGain = Math.min(1.35, Math.max(1, around.meanS / Math.max(0.02, child.meanS)));
+  const conGain = Math.min(1.25, Math.max(0.9, around.stdL / Math.max(1, child.stdL)));
+  if (satGain < 1.02 && Math.abs(conGain - 1) < 0.02) return edited;
+  const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
+  const out = Buffer.from(edited);
+  for (let i = 0; i < n; i++) {
+    if (alpha[i]! === 0) continue; // the feathered rim is her too
+    const r = edited[i * 3]!;
+    const g = edited[i * 3 + 1]!;
+    const b = edited[i * 3 + 2]!;
+    const L = 0.299 * r + 0.587 * g + 0.114 * b;
+    const L2 = child.meanL + (L - child.meanL) * conGain;
+    out[i * 3] = clamp(L2 + (r - L) * satGain);
+    out[i * 3 + 1] = clamp(L2 + (g - L) * satGain);
+    out[i * 3 + 2] = clamp(L2 + (b - L) * satGain);
   }
   return out;
 }
@@ -394,7 +504,9 @@ export async function diffToPatch(input: {
   const top = Math.max(0, box.hitRect.y - m);
   const crop = { left, top, width: Math.min(w, box.hitRect.x + box.hitRect.w + m) - left, height: Math.min(h, box.hitRect.y + box.hitRect.h + m) - top };
 
-  const rgba = await sharp(matched, { raw: { width: w, height: h, channels: 3 } }).joinChannel(cleaned, raw1).png().toBuffer();
+  // Only now, with her outline known: the child's own pixels, toned to the board.
+  const toned = o.tone === false ? matched : toneMatch(matched, original, cleaned, allow, n);
+  const rgba = await sharp(toned, { raw: { width: w, height: h, channels: 3 } }).joinChannel(cleaned, raw1).png().toBuffer();
   const webp = await sharp(rgba).extract(crop).webp({ quality: 92, alphaQuality: 100 }).toBuffer();
 
   // The tap contract, measured on the finished patch and expressed in art fractions.

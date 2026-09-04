@@ -429,3 +429,27 @@ npx tsx scripts/character.ts assets/random-girl.png --out=work/plain --style=non
   but big drift (a re-rendered crop) produces a patch as large as the crop.
 - Keep `slot.scale` honest — it drives the crop size, the mask and the prompt. It no longer drives the
   hit-test: that comes from the patch itself.
+
+## The sheet says who; the board says what to wear
+
+Prompt v4 (`slot-patch-v4`). Told "same face, hair and outfit", the model put
+one green jacket in nine countries and lit it from the studio the sheet was
+drawn in. Now the sheet is identity only — face, hair, skin tone, build — and
+the board decides the rest: the clothes are "what a child would really wear
+here", in the board's palette, with the weather showing (a coat and hat in
+snow, a swimsuit on a beach); the light, colour temperature, saturation and
+contrast are the board's. The body template's pose picks an expression
+(`expressionFor`): a peeking child is mid-giggle, a holding child is
+concentrating on what they hold. "Never a fixed, posed smile" is in the prompt
+because that is what came back otherwise. The judge is told the clothes may
+differ from the sheet, so a different coat is not a different child.
+
+After the diff, `toneMatch` pulls the child's own pixels toward the board
+around her: saturation only ever up, by at most a third; contrast about her
+own mean, by at most a quarter. Her mean brightness is left alone — a red coat
+on white snow is supposed to be darker than the snow. `colourMatch` removes the
+model's global drift; this removes its house style.
+
+Occlusion stays a wish in the prompt ("let whatever is naturally in front of
+the child overlap them"), not a rule in `childProblem`: a child in full view is
+still a find, and rejecting her for it would cost a roll and buy nothing.

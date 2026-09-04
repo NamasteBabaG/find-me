@@ -232,11 +232,11 @@ export class OpenAiAvatarProvider implements AvatarProvider {
       // photographic child, who then cannot be painted into a cel-shaded world
       // without looking pasted on.
       styled ? `Do NOT draw a soft, airbrushed, painterly or realistic illustration. No photographic skin, no rendered strands of hair, no subtle gradients.` : ``,
-      `Keep the child recognisable from the photograph — the same hair colour and hairstyle, skin tone, eye colour and expression${styled ? `, simplified into that style` : ``}.`,
+      `Keep the child recognisable from the photograph — the same hair colour and hairstyle, skin tone, eye colour and face shape${styled ? `, simplified into that style` : ``} — with a relaxed, natural expression rather than a posed photo smile.`,
       `Return one square image divided into a clean 2 by 2 grid of four drawings of the SAME child on a plain flat light background, with no text, no labels and no frames:`,
       `top-left a head-and-shoulders portrait facing the viewer; top-right the full body standing, facing the viewer;`,
       `bottom-left the full body from behind, three-quarter view; bottom-right the child crouching and peeking, as if hiding.`,
-      `Same outfit in all four drawings.`,
+      `Same simple everyday outfit in all four drawings: plain clothes in two flat colours, nothing that reads as a costume or a uniform. The clothes will change from place to place; the child will not.`,
     ]
       .filter(Boolean)
       .join(" ");
@@ -278,7 +278,7 @@ export class OpenAiAvatarProvider implements AvatarProvider {
         { buffer: reference, name: "character.png" },
       ],
       mask,
-      prompt: `${request.prompt} The first image is the scene to edit; the second image is the character reference sheet for the child (use that face, hair and outfit; do not copy its background or its grid).`,
+      prompt: `${request.prompt} The first image is the scene to edit; the second image is the character reference sheet for the child (that is who the child is: the same face, hair, skin tone and build; the clothes may change to suit the place; do not copy its background or its grid).`,
       size: `${size}x${size}`,
       quality: request.quality ?? this.patchQuality,
       label: request.label,

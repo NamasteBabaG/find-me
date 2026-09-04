@@ -30,7 +30,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { BODY_TEMPLATES } from "../content/body-templates";
 import { sceneBySlug } from "../src/services/scene-catalog.service";
-import { childProblem, diffToPatch, paintMask, slotContext, slotPrompt, type PatchResult } from "../src/services/generation/patch";
+import { childProblem, diffToPatch, expressionFor, paintMask, slotContext, slotPrompt, type PatchResult } from "../src/services/generation/patch";
 import { OpenAiAvatarProvider } from "../src/infra/generation/openai";
 import { OpenAiPatchJudge } from "../src/infra/generation/judge";
 
@@ -63,11 +63,16 @@ export function slotOf(slug: string, targetId: string, variantArg: string | unde
   const slot = target.slots[variant === "A" ? 0 : 1] ?? target.slots[0];
   const art = { width: scene.art.width, height: scene.art.height };
   const ctx = slotContext(art, slot);
+  // The same prompt the pipeline sends, so a render here predicts a render there.
+  const body = BODY_TEMPLATES[target.bodyTemplate];
   const prompt = slotPrompt({
     mission: target.mission.en.replace("{name}", "the child"),
-    bodyLabel: BODY_TEMPLATES[target.bodyTemplate]?.label.en,
+    bodyLabel: body?.label.en,
     childPx: ctx.childPx,
     pose,
+    place: scene.name.en,
+    placeNote: scene.tagline.en,
+    expression: expressionFor(body?.pose),
   });
   return { scene, target, variant: variant as "A" | "B", slot, art, ctx, prompt, name: `${slug}-${targetId}-${variant}` };
 }

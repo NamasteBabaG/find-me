@@ -5,7 +5,7 @@ import { BODY_TEMPLATES } from "../../../content/body-templates";
 import type { Container } from "../container";
 import { storeAsset } from "../asset.service";
 import type { PatchJudgement } from "@/infra/generation/types";
-import { childProblem, diffToPatch, paintMask, slotContext, slotPrompt, PROMPT_VERSION } from "./patch";
+import { childProblem, diffToPatch, paintMask, slotContext, expressionFor, slotPrompt, PROMPT_VERSION } from "./patch";
 import { loadSceneArt } from "./scene-art";
 
 /**
@@ -98,10 +98,15 @@ export async function generateSlotPatch(
   const sceneArt = await loadSceneArt(c.appUrl, scene.art.base);
   const crop = await sharp(sceneArt).extract({ left: ctx.rect.x, top: ctx.rect.y, width: ctx.rect.w, height: ctx.rect.h }).png().toBuffer();
   const mask = paintMask(ctx, art, slot);
+  const body = BODY_TEMPLATES[target.bodyTemplate];
   const prompt = slotPrompt({
     mission: target.mission.en.replace("{name}", input.childName),
-    bodyLabel: BODY_TEMPLATES[target.bodyTemplate]?.label.en,
+    bodyLabel: body?.label.en,
     childPx: ctx.childPx,
+    // The place dresses and lights the child; the sheet only says who they are.
+    place: scene.name.en,
+    placeNote: scene.tagline.en,
+    expression: expressionFor(body?.pose),
   });
   const label = `${scene.slug}/${target.id}/${variant}`;
 
