@@ -222,17 +222,17 @@ export class OpenAiAvatarProvider implements AvatarProvider {
     const styled = Boolean(input.styleRef);
     const prompt = [
       styled
-        ? `The FIRST image is a photograph of a child. The SECOND image is a piece of the illustrated world she has to live inside, drawn by the illustrator you are standing in for.`
+        ? `The FIRST image is a photograph of a child. The SECOND image is a piece of the illustrated world the child has to live inside, drawn by the illustrator you are standing in for.`
         : `The image is a photograph of a child.`,
       styled
-        ? `Draw her as a character in the SECOND image's style, copied exactly: the same dark ink outline around every shape, the same flat cel shading and speckled paper texture, the same saturated colours and warm daylight, the same simplified cartoon faces with large eyes. She has to look cut out of that picture and dropped on a blank sheet — one of those children, not a guest.`
-        : `Redraw her as an illustrated character in a warm storybook collage style: soft gouache texture, clean confident outlines, friendly proportions, bright daylight palette.`,
+        ? `Draw the child as a character in the SECOND image's style, copied exactly: the same dark ink outline around every shape, the same flat cel shading and speckled paper texture, the same saturated colours and warm daylight, the same simplified cartoon faces with large eyes. The child has to look cut out of that picture and dropped on a blank sheet — one of those children, not a guest.`
+        : `Redraw the child as an illustrated character in a warm storybook collage style: soft gouache texture, clean confident outlines, friendly proportions, bright daylight palette.`,
       // Naming the failure is what stops it. Asked only for "an illustration",
       // the model reaches for its own house style — a soft, airbrushed, almost
       // photographic child, who then cannot be painted into a cel-shaded world
       // without looking pasted on.
       styled ? `Do NOT draw a soft, airbrushed, painterly or realistic illustration. No photographic skin, no rendered strands of hair, no subtle gradients.` : ``,
-      `Keep her recognisable from the photograph — the same hair colour and hairstyle, skin tone, eye colour and expression${styled ? `, simplified into that style` : ``}.`,
+      `Keep the child recognisable from the photograph — the same hair colour and hairstyle, skin tone, eye colour and expression${styled ? `, simplified into that style` : ``}.`,
       `Return one square image divided into a clean 2 by 2 grid of four drawings of the SAME child on a plain flat light background, with no text, no labels and no frames:`,
       `top-left a head-and-shoulders portrait facing the viewer; top-right the full body standing, facing the viewer;`,
       `bottom-left the full body from behind, three-quarter view; bottom-right the child crouching and peeking, as if hiding.`,
@@ -278,7 +278,7 @@ export class OpenAiAvatarProvider implements AvatarProvider {
         { buffer: reference, name: "character.png" },
       ],
       mask,
-      prompt: `${request.prompt} The first image is the scene to edit; the second image is the character reference sheet for the child (use her face, hair and outfit; do not copy its background or its grid).`,
+      prompt: `${request.prompt} The first image is the scene to edit; the second image is the character reference sheet for the child (use that face, hair and outfit; do not copy its background or its grid).`,
       size: `${size}x${size}`,
       quality: request.quality ?? this.patchQuality,
       label: request.label,

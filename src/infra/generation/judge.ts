@@ -70,8 +70,9 @@ export class OpenAiPatchJudge implements PatchJudge {
     const prompt = [
       `The FIRST image is one cut-out taken from an illustrated hidden-object picture.`,
       `The SECOND image is the reference sheet for ${input.childName}, the child that cut-out is supposed to show.`,
-      `Answer only whether the cut-out shows HER, drawn whole as far as it goes.`,
-      `"ok" — it is her, her face can be seen, and what is there is complete in itself: a head and shoulders over a wall, or a child cut off at the waist by something in front of her, both count.`,
+      `Do not assume the child is a girl or a boy: the reference sheet is the only thing that says who they are.`,
+      `Answer only whether the cut-out shows THAT CHILD, drawn whole as far as it goes.`,
+      `"ok" — it is that child, their face can be seen, and what is there is complete in itself: a head and shoulders over a wall, or a child cut off at the waist by something in front of them, both count.`,
       `"bad" — it is an object, an animal, scenery, a different person, a body with no face, half a face with the other half cut clean away, or nothing recognisable.`,
       `Reply with JSON only: {"verdict":"ok"|"bad","reason":"<at most eight words>"}`,
     ].join(" ");

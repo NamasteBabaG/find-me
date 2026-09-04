@@ -95,12 +95,12 @@ describe("childProblem", () => {
     expect(childProblem(render({ largest: 7056, painted: 9143, expected: 8435, width: 130, height: 155, childPx: 143 }))).toContain("in pieces");
   });
 
-  it("rejects a cut-out too narrow to be her, and one too wide to be only her", () => {
+  it("rejects a cut-out too narrow to be the child, and one too wide to be only the child", () => {
     // dragoncave/hoard was a vertical strip of hair and one eye, 24px across
     // where a child there is ~77px: childlike in height, density and position,
     // and nothing else could see it. giantlibrary/book was the largest, most
     // confident blob of the whole run — and held three other children.
-    expect(childProblem(render({ largest: 1049, expected: 4292, width: 24, height: 63, childPx: 102 }))).toContain("a strip of her");
+    expect(childProblem(render({ largest: 1049, expected: 4292, width: 24, height: 63, childPx: 102 }))).toContain("a strip of the child");
     expect(childProblem(render({ largest: 17801, expected: 8435, width: 173, height: 172, childPx: 143 }))).toContain("more than one child");
   });
 

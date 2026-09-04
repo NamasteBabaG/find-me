@@ -123,10 +123,10 @@ export const PROMPT_VERSION = "slot-patch-v3";
 export function slotPrompt(input: { mission: string; bodyLabel?: string; childPx: number; pose?: string }): string {
   return [
     `Return this exact picture with ONE child added to it. Do not redraw, restyle, re-render or improve any part of the picture: every pixel outside the child must come back byte for byte as it went in.`,
-    `The child goes inside the white area of the mask, about ${input.childPx} pixels tall, so she is the size of the people already standing near that spot.`,
-    `Draw her in the picture's own style, colours, line quality and warm daylight, and use the attached character reference for who she is (same face, hair and outfit).`,
+    `The child goes inside the white area of the mask, about ${input.childPx} pixels tall, the size of the people already standing near that spot.`,
+    `Draw the child in the picture's own style, colours, line quality and warm daylight, and use the attached character reference for who this child is (same face, hair and outfit).`,
     `Situation: ${input.mission}${input.bodyLabel ? ` (${input.bodyLabel})` : ""}.${input.pose ? ` ${input.pose}` : ""}`,
-    `Let whatever is naturally in front of her overlap her, and give her a soft shadow that matches the others. She should be findable, not the centre of attention.`,
+    `Let whatever is naturally in front of the child overlap them, and give them a soft shadow that matches the others. They should be findable, not the centre of attention.`,
     `Change nothing else.`,
   ].join(" ");
 }
@@ -473,8 +473,8 @@ export function childProblem(result: PatchResult): string | null {
   // twenty-seven renders the next narrowest was 0.45 and the next widest 1.21.
   const askedWide = 0.75 * s.childPx;
   const across = s.width / Math.max(1, askedWide);
-  if (across < 0.38) return `painted ${Math.round(s.width)}px across where a child is ~${Math.round(askedWide)}px — a strip of her, not her`;
-  if (across > 1.4) return `painted ${Math.round(s.width)}px across where a child is ~${Math.round(askedWide)}px — more than one child, or her and the scenery`;
+  if (across < 0.38) return `painted ${Math.round(s.width)}px across where a child is ~${Math.round(askedWide)}px — a strip of the child, not the child`;
+  if (across > 1.4) return `painted ${Math.round(s.width)}px across where a child is ~${Math.round(askedWide)}px — more than one child, or the child and the scenery`;
   // A body fills roughly half its own bounding box, even mostly hidden; specks
   // and scenery edges scattered across a box fill very little of one.
   const density = result.largest / Math.max(1, s.width * s.height);
