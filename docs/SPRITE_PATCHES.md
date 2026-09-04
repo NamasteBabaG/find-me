@@ -314,6 +314,31 @@ ones that do not are the awkward spots, and they get the better model. `GENERATI
 governs the identity sheet, which is drawn once per child and is the reference every spot is painted
 from — there is nothing to save there.
 
+## Size the slot to the children already standing there
+
+A slot's `scale` is not "how big should she be": it is "how big is a child at
+this depth in this painting". Get it wrong and the model does the right thing
+and the rules blame it. The ice-palace spot sat out on the open rink asking for
+a 92px child among skaters half that size; the model painted her at the scale of
+the scene, the diff caught a slice of her, and three rolls in a row were thrown
+away for it. Measure a painted child near the spot and match her.
+
+The scene validator warns above `scale: 0.08` — a child that fills a twelfth of
+the board does not have to be looked for. On boards where the foreground figures
+are that large, the hiding places belong in the middle band, not at the front.
+
+## The rules are a filter, not a guarantee
+
+Of six broken patches in one world's run, geometry caught three, the judge two,
+and the last one only turned up when the patch was blown up seven times and half
+her face was missing. Before that I had looked at the same patch on a contact
+sheet, called it a good child, and started loosening the judge's prompt to let
+it through.
+
+So the last step of putting a world on sale is looking at all twenty-seven
+patches, large. `npx tsx scripts/judge-patches.ts --dir=work/<run> --ref=<sheet>`
+narrows it down; it does not replace the looking.
+
 ## Where a slot may not go
 
 Placing eighteen boards' worth of slots and running one real render on each turned up the same
