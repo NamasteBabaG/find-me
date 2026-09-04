@@ -10,7 +10,9 @@ import { sceneBySlug } from "../scene-catalog.service";
 import { SYSTEM, audit } from "../audit.service";
 import { persistGameConfig } from "./scene-composer";
 import { publishGame } from "../publish.service";
-import { generateSlotPatch, type PatchOutcome, type Variant } from "./slot-patches";
+import { generateSlotPatch, slotOf, spotsOutstanding, type PatchOutcome, type Variant } from "./slot-patches";
+import { styleReference } from "./patch";
+import { loadSceneArt } from "./scene-art";
 
 /**
  * Background generation. Every step is idempotent and resumable:
@@ -21,12 +23,12 @@ type StepName = "avatar" | "targets" | "compose" | "qa";
 type StepRecord = { status: "done" | "failed" | "running"; startedAt: string; finishedAt?: string; error?: string };
 
 /** States the pipeline can pick up and carry forward — the queue asks the same question. */
-export /**
+/**
  * How long a run may go quiet before another may take over. Longer than one
  * slice, so a healthy run is never interrupted; short enough that a crashed one
  * does not strand the game.
  */
-const LEASE_MS = 6 * 60_000;
+export const LEASE_MS = 6 * 60_000;
 
 export const RESUMABLE_STATUSES: readonly GameStatus[] = ["PAID", "AVATAR_GENERATING", "TARGETS_GENERATING", "SCENES_COMPOSING", "NEEDS_REGENERATION", "GENERATION_FAILED"];
 
@@ -92,7 +94,7 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
       const original = await c.db.asset.findUniqueOrThrow({ where: { id: child.originalPhotoAssetId } });
       const photo = await readAssetBuffer(c, original.id);
       const crop = child.photoCropJson ? (JSON.parse(child.photoCropJson) as CropBox) : null;
-      const request = { originalPhoto: photo, mimeType: original.mimeType, crop, childName: child.displayName };
+      const request = { originalPhoto: photo, mimeType: original.mimeType, crop, childName: child.displayName, styleRef: await boardStyle(c, game.scenes) };
       if (c.avatars.createCharacter) {
         // One drawing of the child in the worlds own style, from several angles:
         // the reference every hiding spot is painted from, which is what keeps
@@ -177,7 +179,7 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
           for (const variant of variants) {
             const outcome = await generateSlotPatch(c, { targetInstanceId: row.id, scene: def, target, variant, reference, childName: refreshedChild.displayName, ownerId: refreshedChild.ownerId });
             outcomes.push(outcome);
-            spent += outcome.costCents;
+            spent += outcome.newCostCents;
             if (outcome.status === "GENERATED") ok++;
           }
           // One good hiding spot is a playable target; none is one a human must look at.
@@ -198,14 +200,25 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
         }
       }
       if (ranOutOfTime) break;
-      await c.db.gameScene.update({ where: { id: gs.id }, data: { generationStatus: "GENERATED" } });
+      // Only once every hiding spot in this world landed. Marking the world
+      // GENERATED with a target still missing is what let a board ship with the
+      // child absent from it.
+      const left = await c.db.targetInstance.count({ where: { gameSceneId: gs.id, status: { notIn: ["GENERATED", "APPROVED"] } } });
+      await c.db.gameScene.update({ where: { id: gs.id }, data: { generationStatus: left === 0 ? "GENERATED" : "NEEDS_REGENERATION" } });
     }
     if (outcomes.length > 0) {
-      const spent = outcomes.reduce((n, o) => n + o.costCents, 0);
+      // Count what happened, not what is left over. A SKIPPED spot is one this
+      // slice did not touch — counting it as generated made a slice that painted
+      // nothing report a full board, and hid the failures underneath.
+      const spent = outcomes.reduce((n, o) => n + o.newCostCents, 0);
+      const generated = outcomes.filter((o) => o.status === "GENERATED").length;
       const failed = outcomes.filter((o) => o.status === "FAILED");
-      console.log(`[generate] ${gameId}: ${outcomes.length - failed.length}/${outcomes.length} hiding spots, ${(spent / 100).toFixed(2)} USD, ${Math.round(outcomes.reduce((n, o) => n + o.durationMs, 0) / 1000)}s`);
-      for (const f of failed) console.warn(`[generate] ${gameId}: ${f.sceneSlug}/${f.targetId}/${f.variant} failed - ${f.error}`);
-      c.analytics.track("patches_generated", { generated: outcomes.length - failed.length, failed: failed.length, costCents: spent });
+      const skipped = outcomes.filter((o) => o.status === "SKIPPED").length;
+      console.log(
+        `[generate] ${gameId}: ${generated} painted, ${failed.length} failed, ${skipped} skipped, ${(spent / 100).toFixed(2)} USD, ${Math.round(outcomes.reduce((n, o) => n + o.durationMs, 0) / 1000)}s`,
+      );
+      for (const f of failed) console.warn(`[generate] ${gameId}: ${f.sceneSlug}/${f.targetId}/${f.variant} failed${f.capped ? " (out of attempts)" : ""} - ${f.error}`);
+      c.analytics.track("patches_generated", { generated, failed: failed.length, skipped, costCents: spent });
     }
     if (ranOutOfTime) {
       // Hand the lease back. Leaving it RUNNING would make the next tick wait
@@ -217,7 +230,16 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
       console.log(`[generate] ${gameId}: out of time, ${outcomes.length} hiding spots done this slice`);
       return;
     }
-    await mark("targets", { status: "done", finishedAt: new Date().toISOString() });
+    // A spot that failed this slice but has attempts left is unfinished work, not
+    // a result. Composing here is what shipped a world with a child missing.
+    const outstanding = canPatch ? await spotsOutstanding(c, gameId, variants) : { retryable: 0, capped: 0 };
+    if (outstanding.retryable > 0) {
+      await mark("targets", { status: "running" });
+      await c.db.generationJob.update({ where: { id: job.id }, data: { status: "QUEUED", currentStep: "targets" } });
+      console.log(`[generate] ${gameId}: ${outstanding.retryable} hiding spots still to retry, handing back for the next tick`);
+      return;
+    }
+    await mark("targets", { status: "done", finishedAt: new Date().toISOString(), error: outstanding.capped > 0 ? `${outstanding.capped} hiding spots out of attempts` : undefined });
 
     // ── Step 3: compose ──
     await mark("compose", { status: "running", startedAt: new Date().toISOString() });
@@ -227,7 +249,10 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
 
     // ── Step 4: automated QA ──
     await mark("qa", { status: "running", startedAt: new Date().toISOString() });
-    const problems = automatedQa(config);
+    // automatedQa checks the shapes it is given; it cannot know a target fell back
+    // to a procedural sprite because the painter gave up on it. That is exactly
+    // the case a human has to see, so it is added here where the count is known.
+    const problems = [...automatedQa(config), ...(outstanding.capped > 0 ? [`${outstanding.capped} hiding spots could not be painted and fell back to a drawn sprite`] : [])];
     if (problems.length > 0) {
       await c.db.game.update({ where: { id: gameId }, data: { lastError: problems.join("; ") } });
       await transitionGame(c, gameId, "QA_PENDING", SYSTEM, { problems });
@@ -250,6 +275,29 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
     const now = statusOf(await c.db.game.findUniqueOrThrow({ where: { id: gameId }, select: { status: true } }));
     if (isGenerating(now)) await transitionGame(c, gameId, "GENERATION_FAILED", SYSTEM, { error: message });
     c.analytics.track("generation_failed", { gameId, reason: message.slice(0, 80) });
+  }
+}
+
+/**
+ * A piece of the child's first world, as the style her drawing has to match.
+ *
+ * Described only in words the model drew a soft, nearly photographic child, who
+ * then had to be painted into saturated gouache: she looked pasted on, and the
+ * inpaints were rejected for it. Showing it one board fixes both. Never fatal —
+ * a missing board file must not stop a paid game, it only costs the guidance.
+ */
+async function boardStyle(c: Container, scenes: Array<{ sceneSlug: string }>): Promise<Buffer | undefined> {
+  const first = scenes[0];
+  if (!first) return undefined;
+  try {
+    const def = sceneBySlug(first.sceneSlug);
+    const target = def.targets[0];
+    if (!target) return undefined;
+    const art = await loadSceneArt(c.appUrl, def.art.base);
+    return await styleReference(art, { width: def.art.width, height: def.art.height }, slotOf(target, "A"));
+  } catch (err) {
+    console.warn("[generate] no style reference for the character sheet:", err instanceof Error ? err.message : err);
+    return undefined;
   }
 }
 

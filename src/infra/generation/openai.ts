@@ -106,6 +106,8 @@ export interface OpenAiOptions {
   tries?: number;
   /** Give up on a single request after this long. */
   timeoutMs?: number;
+  /** Give up on one image ENTIRELY after this long, retries included. */
+  budgetMs?: number;
 }
 
 export class OpenAiAvatarProvider implements AvatarProvider {
@@ -115,13 +117,19 @@ export class OpenAiAvatarProvider implements AvatarProvider {
   private readonly quality: string;
   private readonly tries: number;
   private readonly timeoutMs: number;
+  private readonly budgetMs: number;
 
   constructor(private readonly apiKey: string, options: OpenAiOptions = {}) {
     if (!apiKey) throw new Error("OPENAI_API_KEY is required for GENERATION_PROVIDER=openai");
     this.model = options.model ?? "gpt-image-2";
     this.quality = options.quality ?? "medium";
     this.tries = options.tries ?? 3;
-    this.timeoutMs = options.timeoutMs ?? 180_000;
+    this.timeoutMs = options.timeoutMs ?? 120_000;
+    // Three retries of three minutes is nine minutes of work inside a request
+    // the platform kills at five, and that is exactly how slices died mid-spot
+    // with the lease still held. The retry count is the ceiling; this is the
+    // limit that actually binds.
+    this.budgetMs = options.budgetMs ?? 150_000;
     this.limiter = new RateLimiter(options.perMinute ?? 5);
   }
 
@@ -130,7 +138,16 @@ export class OpenAiAvatarProvider implements AvatarProvider {
     const started = Date.now();
     let lastError = "";
     let model = this.model;
+    const deadline = started + this.budgetMs;
     for (let attempt = 1; attempt <= this.tries; attempt++) {
+      // Never start a request there is no time to finish. Returning the reason
+      // beats being killed halfway: the spot stays unfinished and retryable
+      // instead of taking the whole slice down with it.
+      const left = deadline - Date.now();
+      if (left < 15_000) {
+        lastError = lastError || `out of time after ${Math.round((Date.now() - started) / 1000)}s`;
+        break;
+      }
       await this.limiter.take();
       const form = new FormData();
       form.append("model", model);
@@ -142,9 +159,10 @@ export class OpenAiAvatarProvider implements AvatarProvider {
       form.append("n", "1");
       // Without a deadline one hung request stalls every remaining hiding spot;
       // a generation that has not answered in three minutes is not coming back.
-      const res = await fetch(API, { method: "POST", headers: { Authorization: `Bearer ${this.apiKey}` }, body: form, signal: AbortSignal.timeout(this.timeoutMs) }).catch((err: Error) => err);
+      const perRequest = Math.min(this.timeoutMs, deadline - Date.now());
+      const res = await fetch(API, { method: "POST", headers: { Authorization: `Bearer ${this.apiKey}` }, body: form, signal: AbortSignal.timeout(perRequest) }).catch((err: Error) => err);
       if (res instanceof Error) {
-        lastError = res.name === "TimeoutError" ? `timed out after ${Math.round(this.timeoutMs / 1000)}s` : res.message;
+        lastError = res.name === "TimeoutError" ? `timed out after ${Math.round(perRequest / 1000)}s` : res.message;
         continue;
       }
       const json = (await res.json()) as { data?: Array<{ b64_json?: string }>; usage?: Usage; error?: { message?: string } };
@@ -168,7 +186,7 @@ export class OpenAiAvatarProvider implements AvatarProvider {
         continue;
       }
       if (res.status === 429 || res.status >= 500) {
-        await new Promise((r) => setTimeout(r, 2000 * attempt));
+        await new Promise((r) => setTimeout(r, Math.min(2000 * attempt, Math.max(0, deadline - Date.now()))));
         continue;
       }
       break;
@@ -178,16 +196,24 @@ export class OpenAiAvatarProvider implements AvatarProvider {
 
   async createCharacter(input: AvatarInput): Promise<CharacterOutput> {
     const photo = await squarePhoto(input.originalPhoto, input.crop, SHEET_SIZE);
+    const styled = Boolean(input.styleRef);
     const prompt = [
-      `Redraw the child in this photo as a single illustrated character in a warm storybook collage style:`,
-      `soft gouache texture, clean confident outlines, friendly proportions, bright daylight palette.`,
-      `Keep the child recognisable — same face shape, skin tone, hair colour and hairstyle, same expression — but illustrated, not photographic.`,
+      styled
+        ? `The FIRST image is a photograph of a child. The SECOND image is a piece of the illustrated world this child has to live inside.`
+        : `The image is a photograph of a child.`,
+      `Redraw the child as an illustrated character${styled ? ` in EXACTLY the style of the second image` : ` in a warm storybook collage style`}:`,
+      styled
+        ? `the same brush and gouache texture, the same outline weight, the same saturation and the same warm daylight. She must look like one of the children already painted in that picture — not a softer, more realistic drawing placed next to them.`
+        : `soft gouache texture, clean confident outlines, friendly proportions, bright daylight palette.`,
+      `Keep her recognisable — same face shape, skin tone, hair colour and hairstyle, same expression — but painted, never photographic and never airbrushed.`,
       `Return one square image divided into a clean 2 by 2 grid of four drawings of the SAME child on a plain flat light background, with no text, no labels and no frames:`,
       `top-left a head-and-shoulders portrait facing the viewer; top-right the full body standing, facing the viewer;`,
       `bottom-left the full body from behind, three-quarter view; bottom-right the child crouching and peeking, as if hiding.`,
       `Same outfit in all four drawings.`,
     ].join(" ");
-    const out = await this.call({ images: [{ buffer: photo, name: "photo.png" }], prompt, size: `${SHEET_SIZE}x${SHEET_SIZE}`, label: `character:${input.childName}` });
+    const images = [{ buffer: photo, name: "photo.png" }];
+    if (input.styleRef) images.push({ buffer: await sharp(input.styleRef).resize(SHEET_SIZE, SHEET_SIZE, { fit: "cover" }).png().toBuffer(), name: "style.png" });
+    const out = await this.call({ images, prompt, size: `${SHEET_SIZE}x${SHEET_SIZE}`, label: `character:${input.childName}` });
     const sheet = await sharp(out.png).resize(SHEET_SIZE, SHEET_SIZE, { fit: "cover" }).png().toBuffer();
     return {
       sheetPng: sheet,

@@ -35,10 +35,22 @@ export async function publishGame(c: Container, gameId: string, actor: Actor): P
 
   const current = statusOf(await c.db.game.findUniqueOrThrow({ where: { id: gameId }, select: { status: true } }));
   if (current === "READY" && game.owner && game.childProfile) {
-    const libraryLink = await createMagicLink(c, game.owner.id, `/library/${gameId}`);
-    const locale = game.locale === "he" ? "he" : "en";
-    await c.email.send(gameReadyEmail({ to: game.owner.email, childName: game.childProfile.displayName, playLink: link.url, libraryLink, sceneCount: game.scenes.length, locale }));
-    await transitionGame(c, gameId, "DELIVERED", actor);
+    // The game is already playable at this point: the link works and the parent
+    // can open it from their library. So a mail server having a bad afternoon
+    // must not throw out of here — that turned a finished game into a FAILED job
+    // and put an email error in front of the parent as if generation had broken.
+    // It stays READY rather than DELIVERED, which is exactly what happened.
+    try {
+      const libraryLink = await createMagicLink(c, game.owner.id, `/library/${gameId}`);
+      const locale = game.locale === "he" ? "he" : "en";
+      await c.email.send(gameReadyEmail({ to: game.owner.email, childName: game.childProfile.displayName, playLink: link.url, libraryLink, sceneCount: game.scenes.length, locale }));
+      await transitionGame(c, gameId, "DELIVERED", actor);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[publish] ${gameId} is ready but the email did not go out:`, message);
+      await audit(c, actor, "email:failed", "Game", gameId, { error: message.slice(0, 200) });
+      c.analytics.track("delivery_email_failed", { gameId });
+    }
   }
   return { playUrl: link.url };
 }

@@ -22,11 +22,22 @@ export interface PatchOutcome {
   targetId: string;
   variant: Variant;
   status: "GENERATED" | "FAILED" | "SKIPPED";
+  /** What this hiding spot has cost in total, across every tick. For display. */
   costCents: number;
+  /**
+   * What THIS call spent. Zero for a spot that was already done or is out of
+   * attempts. The two are separate because the pipeline adds cost to a running
+   * total every tick: handing back the lifetime figure made a spot that failed
+   * repeatedly re-add its whole history each time, and a game's reported cost
+   * grew without anyone spending anything.
+   */
+  newCostCents: number;
   attempts: number;
   durationMs: number;
   model?: string;
   error?: string;
+  /** Out of attempts: a later tick must not retry this, a human has to look. */
+  capped?: boolean;
 }
 
 /**
@@ -38,7 +49,7 @@ export interface PatchOutcome {
  * that hits the cap is left FAILED for a human to look at; the game still ships,
  * because a target with no patch falls back to the procedural sprite.
  */
-const MAX_ATTEMPTS_PER_SPOT = 6;
+export const MAX_ATTEMPTS_PER_SPOT = 6;
 
 export function slotOf(target: SceneTarget, variant: Variant) {
   return variant === "A" ? target.slots[0] : target.slots[1];
@@ -65,13 +76,13 @@ export async function generateSlotPatch(
 ): Promise<PatchOutcome> {
   const { scene, target, variant } = input;
   const slot = slotOf(target, variant);
-  const base: PatchOutcome = { sceneSlug: scene.slug, targetId: target.id, variant, status: "SKIPPED", costCents: 0, attempts: 0, durationMs: 0 };
+  const base: PatchOutcome = { sceneSlug: scene.slug, targetId: target.id, variant, status: "SKIPPED", costCents: 0, newCostCents: 0, attempts: 0, durationMs: 0 };
   if (!c.avatars.editSlotCrop) return { ...base, error: `${c.avatars.id} cannot paint slot patches` };
 
   const existing = await c.db.targetVariantAsset.findUnique({ where: { targetInstanceId_variant: { targetInstanceId: input.targetInstanceId, variant } } });
   if (existing && (existing.status === "GENERATED" || existing.status === "APPROVED")) return { ...base, costCents: existing.costCents, attempts: existing.attempts };
   if (existing && existing.attempts >= MAX_ATTEMPTS_PER_SPOT) {
-    return { ...base, costCents: existing.costCents, attempts: existing.attempts, error: `gave up after ${existing.attempts} attempts: ${existing.lastError ?? "no reason recorded"}` };
+    return { ...base, costCents: existing.costCents, attempts: existing.attempts, capped: true, error: `gave up after ${existing.attempts} attempts: ${existing.lastError ?? "no reason recorded"}` };
   }
   const row =
     existing ??
@@ -101,12 +112,21 @@ export async function generateSlotPatch(
   let model: string | undefined;
   let usage: Record<string, number> | undefined;
   let lastError = "";
+  // Rejected renders are kept, not dropped. "Painted 40px tall" says a roll was
+  // wrong; only the picture says HOW - the model painted an adult, or a second
+  // child, or repainted the whole crop. Without them the only way to see a bad
+  // spot was to pay for another roll.
+  const rejected: string[] = existingRejected(existing?.rejectedAssetIdsJson) ?? [];
 
   for (let attempt = 1; attempt <= tries; attempt++) {
+    // One roll, one attempt — counted here so every way out of this iteration
+    // counts the same. Adding the provider's own retry count and then adding
+    // another on the way through the catch charged two attempts for one call,
+    // and quietly halved the budget a spot was allowed.
+    attempts += 1;
     try {
       const edit = await c.avatars.editSlotCrop({ crop, paintMask: mask, reference: input.reference, prompt, label });
       spent += edit.costCents;
-      attempts += edit.attempts;
       elapsed += edit.durationMs;
       model = edit.model;
       usage = edit.usage ?? usage;
@@ -117,6 +137,20 @@ export async function generateSlotPatch(
       const problem = childProblem(patch);
       if (problem) {
         lastError = problem;
+        const keep = await storeAsset(c, {
+          ownerId: input.ownerId,
+          type: "REJECTED_PATCH",
+          visibility: "PRIVATE",
+          buffer: edit.png,
+          mimeType: "image/png",
+          provider: c.avatars.id,
+          providerRequestId: edit.providerRequestId,
+          costCents: edit.costCents,
+        }).catch((err: unknown) => {
+          console.warn(`[patch] ${label}: cannot keep the rejected render:`, err instanceof Error ? err.message : err);
+          return null;
+        });
+        if (keep) rejected.push(keep.id);
         continue;
       }
       const asset = await storeAsset(c, {
@@ -144,21 +178,77 @@ export async function generateSlotPatch(
           attempts: { increment: attempts },
           costCents: { increment: spent },
           usageJson: usage ? JSON.stringify(usage) : null,
+          rejectedAssetIdsJson: rejected.length > 0 ? JSON.stringify(rejected) : null,
           durationMs: elapsed,
           status: "GENERATED",
           lastError: null,
         },
       });
-      return { ...base, status: "GENERATED", costCents: spent, attempts, durationMs: elapsed, model };
+      return { ...base, status: "GENERATED", costCents: (existing?.costCents ?? 0) + spent, newCostCents: spent, attempts, durationMs: elapsed, model };
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
-      attempts += 1;
     }
   }
 
+  const totalAttempts = (existing?.attempts ?? 0) + attempts;
   await c.db.targetVariantAsset.update({
     where: { id: row.id },
-    data: { status: "FAILED", lastError: lastError.slice(0, 500), attempts: { increment: attempts }, costCents: { increment: spent }, durationMs: elapsed, model },
+    data: {
+      status: "FAILED",
+      lastError: lastError.slice(0, 500),
+      attempts: { increment: attempts },
+      costCents: { increment: spent },
+      rejectedAssetIdsJson: rejected.length > 0 ? JSON.stringify(rejected) : null,
+      durationMs: elapsed,
+      model,
+    },
   });
-  return { ...base, status: "FAILED", costCents: spent, attempts, durationMs: elapsed, model, error: lastError };
+  return {
+    ...base,
+    status: "FAILED",
+    costCents: (existing?.costCents ?? 0) + spent,
+    newCostCents: spent,
+    attempts,
+    durationMs: elapsed,
+    model,
+    error: lastError,
+    capped: totalAttempts >= MAX_ATTEMPTS_PER_SPOT,
+  };
+}
+
+function existingRejected(json: string | null | undefined): string[] | null {
+  if (!json) return null;
+  try {
+    const parsed: unknown = JSON.parse(json);
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * What this game still owes: hiding spots that are unfinished but not yet out of
+ * attempts, and spots nobody may retry again.
+ *
+ * The pipeline used to compose as soon as it had walked the list once, so a
+ * world whose child failed on this tick shipped without her - the tap target
+ * fell back to a procedural sprite and automated QA, which only checks the
+ * shapes it is given, waved it through.
+ */
+export async function spotsOutstanding(c: Container, gameId: string, variants: Variant[]): Promise<{ retryable: number; capped: number }> {
+  const rows = await c.db.targetInstance.findMany({
+    where: { gameScene: { gameId }, status: { notIn: ["GENERATED", "APPROVED"] } },
+    select: { variants: { select: { variant: true, attempts: true, status: true } } },
+  });
+  let retryable = 0;
+  let capped = 0;
+  for (const row of rows) {
+    const stuck = variants.every((v) => {
+      const asset = row.variants.find((a) => a.variant === v);
+      return Boolean(asset && asset.status !== "GENERATED" && asset.status !== "APPROVED" && asset.attempts >= MAX_ATTEMPTS_PER_SPOT);
+    });
+    if (stuck) capped++;
+    else retryable++;
+  }
+  return { retryable, capped };
 }

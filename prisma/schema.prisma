@@ -80,7 +80,7 @@ model Game {
   id             String    @id
   ownerId        String? // null while the draft has no email yet
   childProfileId String?
-  packageTier    String? // SMALL | BIG | WORLD  (domain/package.ts)
+  packageTier    String? // ONE_WORLD | TWO_WORLDS | ALL_WORLDS  (domain/package.ts)
   title          String?
   status         String    @default("DRAFT") // domain/order-state.ts
   sceneCount     Int       @default(0)
@@ -162,6 +162,7 @@ model TargetVariantAsset {
   attempts         Int      @default(0)
   costCents        Int      @default(0)
   usageJson        String? // provider-reported token usage, for the real cost model
+  rejectedAssetIdsJson String? // ids of renders QA threw out - the only way to see WHY a spot keeps failing
   durationMs       Int      @default(0)
   status           String   @default("PENDING") // PENDING | GENERATED | APPROVED | FAILED | NEEDS_REGENERATION
   lastError        String?
@@ -179,7 +180,7 @@ model TargetVariantAsset {
 model Asset {
   id                String    @id
   ownerId           String?
-  type              String // ORIGINAL_PHOTO | AVATAR | IDENTITY_SHEET | TARGET_SPRITE | THUMBNAIL
+  type              String // ORIGINAL_PHOTO | AVATAR | IDENTITY_SHEET | TARGET_SPRITE | THUMBNAIL | REJECTED_PATCH
   visibility        String    @default("PRIVATE") // PRIVATE (owner/admin only) | GAME (signed url, safe to ship to players)
   storagePath       String
   mimeType          String

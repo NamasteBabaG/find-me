@@ -140,6 +140,10 @@ async function importPatch(slug: string, targetId: string, variantArg: string | 
       feather: Number(flag("feather", "6")),
     },
   });
+  // diffToPatch no longer throws when nothing changed (in production that is an
+  // ordinary rejection), so importing by hand has to say so itself — here the
+  // overwhelmingly likely cause is passing the wrong file.
+  if (patch.largest === 0) throw new Error(`${editedPath} changed nothing in the crop — is this the edited version of the exported crop?`);
   const url = await writePatch(c, patch, outDir);
   const preview = await writePreview(c, patch);
   console.log(`imported ${c.name}: patch ${patch.width}x${patch.height} -> ${url}`);

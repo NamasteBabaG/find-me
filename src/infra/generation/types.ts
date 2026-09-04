@@ -11,6 +11,15 @@ export interface AvatarInput {
   mimeType: string;
   crop: CropBox | null;
   childName: string;
+  /**
+   * A piece of a real board, as the style to match.
+   *
+   * Words alone do not carry a painting style: described only as "warm
+   * storybook collage", the model drew a soft, near-photographic child who then
+   * had to be painted into saturated gouache — she looked pasted in, and half
+   * the inpaints were rejected for it. Showing the style is what fixes both.
+   */
+  styleRef?: Buffer;
 }
 
 export interface AvatarOutput {

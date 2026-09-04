@@ -3,7 +3,8 @@ import { hmacSign, newId, safeEqual } from "@/lib/ids";
 import type { Container } from "./container";
 
 /** IDENTITY_SHEET is the child drawn in the worlds style: PRIVATE, a reference, never shipped to a player. */
-export type AssetType = "ORIGINAL_PHOTO" | "AVATAR" | "IDENTITY_SHEET" | "TARGET_SPRITE" | "THUMBNAIL";
+/** REJECTED_PATCH is a render QA threw out, kept private so a failing spot can be looked at. */
+export type AssetType = "ORIGINAL_PHOTO" | "AVATAR" | "IDENTITY_SHEET" | "TARGET_SPRITE" | "THUMBNAIL" | "REJECTED_PATCH";
 export type AssetVisibility = "PRIVATE" | "GAME";
 
 const MAX_UPLOAD_BYTES = 12 * 1024 * 1024;

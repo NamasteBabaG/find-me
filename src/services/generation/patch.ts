@@ -88,6 +88,26 @@ export function paintMask(ctx: SlotContext, art: Size, slot: SlotPoint, grow = 1
   );
 }
 
+/**
+ * A piece of a board to hand the character generator as the style to copy.
+ *
+ * A whole board downscaled to 1024 loses the brush texture that makes the style
+ * what it is; a slot-sized crop keeps the texture but may hold nothing but sand.
+ * Three child-heights around the slot is the compromise: near enough to keep the
+ * grain, wide enough to catch the painted people the child has to stand among.
+ */
+export async function styleReference(art: Buffer, size: Size, slot: SlotPoint, out = 1024): Promise<Buffer> {
+  const childPx = slot.scale * size.height;
+  const want = clamp(Math.round(childPx * 3), 384, Math.min(size.width, size.height));
+  const rect: PixelRect = {
+    x: clamp(Math.round(slot.x * size.width - want / 2), 0, size.width - want),
+    y: clamp(Math.round(slot.y * size.height - want / 2), 0, size.height - want),
+    w: want,
+    h: want,
+  };
+  return sharp(art).extract({ left: rect.x, top: rect.y, width: rect.w, height: rect.h }).resize(out, out, { fit: "cover" }).png().toBuffer();
+}
+
 export const PROMPT_VERSION = "slot-patch-v2";
 
 /** The instruction the image model gets. Built from scene data, never hard-coded copy. */
@@ -311,7 +331,11 @@ export async function diffToPatch(input: {
 
   // Trim to what is left (+ a small margin) so the patch stays small.
   const box = hitBoxFromAlpha(cleaned, w, h, 9);
-  if (blobs.largest === 0) throw new Error("no changed pixels found — is this the edited version of the exported crop?");
+  // Nothing changed. This used to throw, which in production was wrong twice
+  // over: the roll cost money and was charged as two attempts (one for the call,
+  // one for the exception), and the render that shows WHY nothing was painted
+  // was thrown away with it. It is an ordinary rejection — childProblem says so.
+  if (blobs.largest === 0) return nothingPainted(ctx, art, slot);
   const m = 8;
   const left = Math.max(0, box.hitRect.x - m);
   const top = Math.max(0, box.hitRect.y - m);
@@ -348,6 +372,20 @@ export async function diffToPatch(input: {
   };
 }
 
+/** A result that fails every check: the model returned the crop unchanged. */
+function nothingPainted(ctx: SlotContext, art: Size, slot: SlotPoint): PatchResult {
+  const zero = { x: 0, y: 0, w: 0, h: 0 };
+  return {
+    webp: Buffer.alloc(0),
+    width: 0,
+    height: 0,
+    geometry: { rect: zero, hitRect: zero, anchor: { x: 0, y: 0 } },
+    largest: 0,
+    expected: Math.round(ctx.childPx * ctx.childPx * 0.75 * 0.55),
+    shape: { width: 0, height: 0, centerX: 0, centerY: 0, childPx: ctx.childPx, slotX: slot.x * art.width, slotY: slot.y * art.height },
+  };
+}
+
 /**
  * Did the model paint a child, or just nudge the scenery?
  *
@@ -357,6 +395,7 @@ export async function diffToPatch(input: {
  */
 export function childProblem(result: PatchResult): string | null {
   const s = result.shape;
+  if (result.largest === 0) return "painted nothing — the crop came back unchanged";
   if (result.largest < result.expected * 0.35) return `painted blob ${result.largest}px, expected ~${result.expected}px`;
   const h = s.height / s.childPx;
   if (h < 0.45) return `painted ${Math.round(s.height)}px tall, a child here is ~${s.childPx}px`;

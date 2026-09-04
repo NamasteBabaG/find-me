@@ -12,8 +12,16 @@ export class ConsoleEmailProvider implements EmailProvider {
 
   async send(message: EmailMessage): Promise<{ id: string }> {
     const id = `mail_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    await fs.mkdir(this.outboxDir, { recursive: true });
-    await fs.writeFile(path.join(this.outboxDir, `${id}.json`), JSON.stringify({ id, sentAt: new Date().toISOString(), ...message }, null, 2));
+    // The outbox file is for /dev/outbox to read. A serverless filesystem is
+    // read-only, so writing it there fails — and failing the send meant a
+    // finished game reported a broken pipeline because a dev convenience could
+    // not write a file nobody was going to look at.
+    try {
+      await fs.mkdir(this.outboxDir, { recursive: true });
+      await fs.writeFile(path.join(this.outboxDir, `${id}.json`), JSON.stringify({ id, sentAt: new Date().toISOString(), ...message }, null, 2));
+    } catch (err) {
+      console.warn(`[email:console] cannot write the outbox at ${this.outboxDir}:`, err instanceof Error ? err.message : err);
+    }
     console.info(`\n📬 [email:${message.tag}] to ${message.to} — ${message.subject}\n${message.text}\n`);
     return { id };
   }
