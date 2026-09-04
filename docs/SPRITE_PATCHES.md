@@ -339,6 +339,33 @@ So the last step of putting a world on sale is looking at all twenty-seven
 patches, large. `npx tsx scripts/judge-patches.ts --dir=work/<run> --ref=<sheet>`
 narrows it down; it does not replace the looking.
 
+### Look at them on the board, never on white
+
+```bash
+npx tsx scripts/patch-sheet.ts --dir=work/<run> --out=work/sheet.png
+```
+
+A patch holds only the pixels the model changed. On a white background that
+means you see every scrap of scenery it dragged along and none of what an
+occluder was hiding, so a girl peeking out of a reef looks like a severed head
+and a girl in a lit doorway looks like she is trailing a lump of rubble.
+Composited back, both are right — the scenery lands on the identical scenery it
+was cut from.
+
+I got this wrong in both directions in one afternoon: rejected good hiding
+places that looked like fragments on white, and started loosening the judge's
+prompt to admit a patch whose face turned out to be half missing. Two spots
+were moved on the strength of a contact sheet thumbnail and did not need
+moving. Judge at full size, on the board.
+
+### Variant B is placed but unrendered
+
+Every target carries two hiding places. `GENERATION_BOTH_VARIANTS` is off, so
+only A is ever generated, and only A has been through a real render. The 54 B
+slots are positions chosen by eye against the paintings and nothing more. Turn
+that flag on and expect to spend an afternoon moving them, the same way A's
+were moved.
+
 ## Where a slot may not go
 
 Placing eighteen boards' worth of slots and running one real render on each turned up the same

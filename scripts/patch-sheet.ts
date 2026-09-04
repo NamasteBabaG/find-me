@@ -1,0 +1,111 @@
+/**
+ * Puts every finished hiding spot back on the board it was cut from, and tiles
+ * them into one sheet to look at.
+ *
+ *   npx tsx scripts/patch-sheet.ts --dir=work/w2 [--out=work/sheet.png] [--pad=70] [--cols=5]
+ *
+ * This is the last step before a world goes on sale, and it is not optional.
+ * Geometry and the judge between them are a filter, not a guarantee: across one
+ * world's twenty-seven spots the rules passed six patches that were broken, and
+ * the sixth only showed itself when a patch was blown up seven times.
+ *
+ * It has to be the board, not a white background. A patch holds only the pixels
+ * the model changed, so on white it shows every scrap of scenery it dragged
+ * along and every part of the child an occluder hid — a girl peeking out of a
+ * reef looks like a severed head, and a girl in a lit doorway looks like she is
+ * trailing a lump of rubble. Composited back, both are exactly right, because
+ * the scenery lands on the identical scenery it came from. Judging patches on
+ * white had me rejecting good hiding places and loosening the rules to let bad
+ * ones through.
+ *
+ * Reads whatever `slot-patch generate --out=<dir>` left behind: each patch is a
+ * .webp beside a .json holding its slug and its rect in board pixels.
+ */
+import sharp from "sharp";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+
+const ROOT = process.cwd();
+
+function flag(name: string, fallback: string): string {
+  const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
+  return hit ? hit.slice(name.length + 3) : fallback;
+}
+
+interface Sidecar {
+  slug: string;
+  targetId: string;
+  variant: string;
+  rect: { x: number; y: number; w: number; h: number };
+}
+
+async function main() {
+  const dirs = flag("dir", "").split(",").filter(Boolean);
+  if (!dirs.length) throw new Error("usage: npx tsx scripts/patch-sheet.ts --dir=work/w2[,work/fix] [--out=…]");
+  const pad = Number(flag("pad", "70"));
+  const cols = Number(flag("cols", "5"));
+  const cell = Number(flag("cell", "300"));
+  const out = path.resolve(ROOT, flag("out", "work/patch-sheet.png"));
+
+  // A spot can be re-rendered into a second folder after a slot moves, and the
+  // later folder is the one that counts — the sheet has to show what would ship.
+  const found = new Map<string, { dir: string; name: string; meta: Sidecar }>();
+  for (const dir of dirs) {
+    const abs = path.resolve(ROOT, dir);
+    for (const f of readdirSync(abs).filter((n) => n.endsWith(".json"))) {
+      const meta = JSON.parse(readFileSync(path.join(abs, f), "utf8")) as Sidecar;
+      found.set(`${meta.slug}/${meta.targetId}/${meta.variant}`, { dir: abs, name: f.slice(0, -5), meta });
+    }
+  }
+  const keys = [...found.keys()].sort();
+  if (!keys.length) throw new Error(`no patches in ${dirs.join(", ")}`);
+
+  // A fresh pipeline per patch: a sharp instance carries the operations queued
+  // on it, so reusing one board across nine spots composites nine children.
+  const sizes = new Map<string, { width: number; height: number }>();
+  const tiles: Buffer[] = [];
+  for (const key of keys) {
+    const { dir, name, meta } = found.get(key)!;
+    const boardPath = path.join(ROOT, "public", "scenes", meta.slug, "base.webp");
+    if (!sizes.has(meta.slug)) {
+      const m = await sharp(boardPath).metadata();
+      sizes.set(meta.slug, { width: m.width ?? 0, height: m.height ?? 0 });
+    }
+    const { width, height } = sizes.get(meta.slug)!;
+    const left = Math.max(0, meta.rect.x - pad);
+    const top = Math.max(0, meta.rect.y - pad);
+    const crop = {
+      left,
+      top,
+      width: Math.min(width, meta.rect.x + meta.rect.w + pad) - left,
+      height: Math.min(height, meta.rect.y + meta.rect.h + pad) - top,
+    };
+    const patch = await sharp(path.join(dir, `${name}.webp`)).png().toBuffer();
+    const onBoard = await sharp(boardPath)
+      .composite([{ input: patch, left: meta.rect.x, top: meta.rect.y }])
+      .png()
+      .toBuffer();
+    tiles.push(await sharp(onBoard).extract(crop).resize(cell, cell, { fit: "inside" }).png().toBuffer());
+  }
+
+  const rows = Math.ceil(tiles.length / cols);
+  const cw = cell + 8;
+  const ch = cell + 8;
+  const sheet = await sharp({ create: { width: cols * cw, height: rows * ch, channels: 3, background: "#ffffff" } })
+    .composite(tiles.map((t, i) => ({ input: t, left: (i % cols) * cw + 4, top: Math.floor(i / cols) * ch + 4 })))
+    .png()
+    .toBuffer();
+  writeFileSync(out, sheet);
+
+  console.log(`${path.relative(ROOT, out)}  ${cols}x${rows}, ${tiles.length} spots`);
+  keys.forEach((k, i) => console.log(`  ${String(i + 1).padStart(2)}. ${k}`));
+  console.log("");
+  console.log("Look at every one. A spot is only finished when it reads as a child hiding in that place.");
+}
+
+main()
+  .then(() => process.exit(0))
+  .catch((e) => {
+    console.error(e instanceof Error ? e.message : e);
+    process.exit(1);
+  });
