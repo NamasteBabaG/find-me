@@ -60,10 +60,39 @@ export async function orderDetailForAdmin(c: Container, gameId: string) {
     include: { childProfile: true, owner: true, orders: { orderBy: { createdAt: "desc" } }, scenes: { orderBy: { orderIndex: "asc" }, include: { targets: true } }, jobs: { orderBy: { createdAt: "desc" }, take: 3 }, shareLinks: true },
   });
   if (!game) return null;
-  const assets = await c.db.asset.findMany({ where: { id: { in: [game.childProfile?.avatarAssetId, game.childProfile?.originalPhotoAssetId, ...game.scenes.flatMap((s) => s.targets.map((t) => t.spriteAssetId))].filter((x): x is string => Boolean(x)) } } });
-  const cost = assets.reduce((n, a) => n + a.costCents, 0);
+  const assets = await c.db.asset.findMany({ where: { id: { in: [game.childProfile?.avatarAssetId, game.childProfile?.identityAssetId, game.childProfile?.originalPhotoAssetId, ...game.scenes.flatMap((s) => s.targets.map((t) => t.spriteAssetId))].filter((x): x is string => Boolean(x)) } } });
   const activity = await c.db.auditLog.findMany({ where: { entityType: "Game", entityId: gameId }, orderBy: { createdAt: "desc" }, take: 40 });
-  return { game, status: statusOf(game), costCents: cost, assets, activity, awaitingQa: isAwaitingQa(statusOf(game)), playable: isPlayable(statusOf(game)) };
+  return { game, status: statusOf(game), costCents: await generationCostCents(c, gameId), assets, activity, awaitingQa: isAwaitingQa(statusOf(game)), playable: isPlayable(statusOf(game)) };
+}
+
+/**
+ * What a game cost to make, in USD cents.
+ *
+ * The hiding spots are the money, and they are not where this used to look: a
+ * slot patch belongs to a TargetVariantAsset, so summing the assets hanging off
+ * TargetInstance.spriteAssetId reported a real game as very nearly free. The
+ * variant rows are also the only place a rejected roll is counted, and rejected
+ * rolls are about half of what a game spends.
+ *
+ * Counted from the variant rows plus the identity sheet, never from both sides:
+ * the asset created from a successful roll carries the same cents again.
+ */
+export async function generationCostCents(c: Container, gameId: string): Promise<number> {
+  const [variants, child] = await Promise.all([
+    c.db.targetVariantAsset.findMany({ where: { targetInstance: { gameScene: { gameId } } }, select: { costCents: true } }),
+    c.db.game.findUnique({ where: { id: gameId }, select: { childProfile: { select: { identityAssetId: true, avatarAssetId: true } }, scenes: { select: { targets: { select: { spriteAssetId: true, variants: { select: { id: true } } } } } } } }),
+  ]);
+  let cents = variants.reduce((n, v) => n + v.costCents, 0);
+  // The identity sheet is drawn once and every spot is painted from it.
+  const oneOff = [child?.childProfile?.identityAssetId, child?.childProfile?.avatarAssetId].filter((x): x is string => Boolean(x));
+  // Targets drawn the old way (a whole sprite, no patch) still keep their cost on the asset.
+  const legacy = (child?.scenes ?? []).flatMap((s) => s.targets.filter((t) => t.variants.length === 0).map((t) => t.spriteAssetId)).filter((x): x is string => Boolean(x));
+  const ids = [...oneOff, ...legacy];
+  if (ids.length > 0) {
+    const assets = await c.db.asset.findMany({ where: { id: { in: ids } }, select: { costCents: true } });
+    cents += assets.reduce((n, a) => n + a.costCents, 0);
+  }
+  return cents;
 }
 
 export async function approveAndPublish(c: Container, gameId: string, actor: Actor) {
@@ -106,9 +135,7 @@ export async function costDashboard(c: Container) {
   const games = await c.db.game.findMany({ where: { deletedAt: null, status: { in: ["READY", "DELIVERED", "QA_PENDING", "MANUAL_REVIEW", "APPROVED"] } }, include: { orders: true, childProfile: true, scenes: { include: { targets: true } } } });
   const rows = [];
   for (const g of games) {
-    const ids = [g.childProfile?.avatarAssetId, ...g.scenes.flatMap((s) => s.targets.map((t) => t.spriteAssetId))].filter((x): x is string => Boolean(x));
-    const assets = ids.length ? await c.db.asset.findMany({ where: { id: { in: ids } } }) : [];
-    const generationCents = assets.reduce((n, a) => n + a.costCents, 0);
+    const generationCents = await generationCostCents(c, g.id);
     const paid = g.orders.find((o) => o.paymentStatus === "PAID" || o.paymentStatus === "REFUNDED");
     const attempts = g.scenes.reduce((n, s) => n + s.targets.reduce((m, t) => m + t.attempts, 0), 0);
     const currency: Currency = paid && isCurrency(paid.currency) ? paid.currency : "ILS";

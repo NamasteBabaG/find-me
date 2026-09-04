@@ -199,18 +199,24 @@ export class OpenAiAvatarProvider implements AvatarProvider {
     const styled = Boolean(input.styleRef);
     const prompt = [
       styled
-        ? `The FIRST image is a photograph of a child. The SECOND image is a piece of the illustrated world this child has to live inside.`
+        ? `The FIRST image is a photograph of a child. The SECOND image is a piece of the illustrated world she has to live inside, drawn by the illustrator you are standing in for.`
         : `The image is a photograph of a child.`,
-      `Redraw the child as an illustrated character${styled ? ` in EXACTLY the style of the second image` : ` in a warm storybook collage style`}:`,
       styled
-        ? `the same brush and gouache texture, the same outline weight, the same saturation and the same warm daylight. She must look like one of the children already painted in that picture — not a softer, more realistic drawing placed next to them.`
-        : `soft gouache texture, clean confident outlines, friendly proportions, bright daylight palette.`,
-      `Keep her recognisable — same face shape, skin tone, hair colour and hairstyle, same expression — but painted, never photographic and never airbrushed.`,
+        ? `Draw her as a character in the SECOND image's style, copied exactly: the same dark ink outline around every shape, the same flat cel shading and speckled paper texture, the same saturated colours and warm daylight, the same simplified cartoon faces with large eyes. She has to look cut out of that picture and dropped on a blank sheet — one of those children, not a guest.`
+        : `Redraw her as an illustrated character in a warm storybook collage style: soft gouache texture, clean confident outlines, friendly proportions, bright daylight palette.`,
+      // Naming the failure is what stops it. Asked only for "an illustration",
+      // the model reaches for its own house style — a soft, airbrushed, almost
+      // photographic child, who then cannot be painted into a cel-shaded world
+      // without looking pasted on.
+      styled ? `Do NOT draw a soft, airbrushed, painterly or realistic illustration. No photographic skin, no rendered strands of hair, no subtle gradients.` : ``,
+      `Keep her recognisable from the photograph — the same hair colour and hairstyle, skin tone, eye colour and expression${styled ? `, simplified into that style` : ``}.`,
       `Return one square image divided into a clean 2 by 2 grid of four drawings of the SAME child on a plain flat light background, with no text, no labels and no frames:`,
       `top-left a head-and-shoulders portrait facing the viewer; top-right the full body standing, facing the viewer;`,
       `bottom-left the full body from behind, three-quarter view; bottom-right the child crouching and peeking, as if hiding.`,
       `Same outfit in all four drawings.`,
-    ].join(" ");
+    ]
+      .filter(Boolean)
+      .join(" ");
     const images = [{ buffer: photo, name: "photo.png" }];
     if (input.styleRef) images.push({ buffer: await sharp(input.styleRef).resize(SHEET_SIZE, SHEET_SIZE, { fit: "cover" }).png().toBuffer(), name: "style.png" });
     const out = await this.call({ images, prompt, size: `${SHEET_SIZE}x${SHEET_SIZE}`, label: `character:${input.childName}` });

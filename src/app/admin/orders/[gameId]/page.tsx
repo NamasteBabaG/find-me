@@ -148,7 +148,7 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
                 {order ? `${formatPriceILS(order.amountAgorot, order.currency === "USD" ? "USD" : "ILS")} · ${order.paymentStatus} · ${order.provider}` : "—"}
               </dd>
               <dt>עלות יצירה</dt>
-              <dd>{(costCents / 100).toFixed(2)} ₪</dd>
+              <dd>{(costCents / 100).toFixed(2)} USD</dd>
               <dt>Game id</dt>
               <dd>{game.id}</dd>
               <dt>קישור</dt>

@@ -140,9 +140,48 @@ merely resembles the input. Three things turn that into a clean patch, and all t
    only a large one does. What survives is reduced to the largest connected blob plus nearby fragments
    (a hat brim behind a post is part of her; flip-flops two metres away are not).
 3. **Shape check.** `childProblem()` refuses a patch that is not roughly the height we asked for,
-   is wider than it is tall, or is centred away from the slot. Area alone passes a repainted sandcastle.
+   is wider than it is tall, is scattered rather than solid, or sits away from the slot. Area alone
+   passes a repainted sandcastle, so the rule looks at proportions instead.
+
+### What the shape check measures, and against what
+
+Every threshold here decides whether a roll that has already been paid for is kept, so each one is
+measured against something that is actually on the canvas:
+
+| Check | Measured as | Rejected when |
+| --- | --- | --- |
+| Height | painted height ÷ the height asked for | below 0.45 or above 2.2 |
+| Proportion | painted width ÷ painted height | above 1.6 |
+| Solidity | blob area ÷ the painted bounding box | below 0.22 |
+| Distance | offset ÷ **max(painted height, height asked for)** | above 1.6 |
+
+Two of these used to be measured against the wrong thing, and between them they threw away roughly
+half of every roll paid for:
+
+* **Solidity used to be absolute area** — the blob against the area a whole child would cover. A child
+  crouched behind market sacks shows a third of her silhouette, which is exactly the hiding the prompt
+  asked for, and she was rejected for it. Judged against her own outline she passes, while scenery
+  edges scattered across a person-sized box still do not.
+* **Distance used to be measured in the height we asked for.** A child painted 1.7× larger than
+  requested stands proportionally further from the slot point, so one deviation was counted twice.
+
+Both are pinned by `src/services/__tests__/child-problem.test.ts`, whose cases are real renders with
+their real numbers. Move a threshold and that file should be what argues with you.
 
 ## When a spot fails
+
+**Look at the render before paying for another.** Rejected renders are kept: the pipeline stores them
+privately against the variant row (`rejectedAssetIdsJson`), and the authoring script leaves the last one
+at `work/patches/<world>-<spot>-<variant>.edited.png`. `diagnose` reads one back and prints the numbers
+above, for free:
+
+```bash
+npx tsx scripts/slot-patch.ts diagnose market spices A
+```
+
+A run of height rejections at one slot is usually not a bad model but a slot whose `scale` disagrees
+with the board's own perspective — the model paints a person the size that spot really is. `diagnose`
+prints the scale that would match what it painted.
 
 `scripts/compare-edit.ts` tells the three cases apart in one call — it measures
 how much of the crop actually changed:
@@ -168,6 +207,19 @@ npx tsx scripts/prepare-boards.ts generate park ship --tries=4   # only the miss
 A spot that keeps failing is telling you something about the slot: too little to
 hide behind, or a situation the model cannot picture. `--pose` gives it a
 concrete instruction, and moving the slot is a legitimate answer.
+
+## The child has to be painted in the boards' style
+
+The identity sheet is generated from a **piece of a real board** (`styleReference()`), not from a
+description of one. Words do not carry a painting style: asked for "warm storybook collage", the model
+draws its own house style — a soft, nearly photographic child — who then cannot be painted into a
+cel-shaded world without looking pasted on. The prompt names the failure explicitly ("no photographic
+skin, no rendered strands of hair") because naming it is what stops it.
+
+```bash
+npx tsx scripts/character.ts assets/random-girl.png --out=work/char --style=beach
+npx tsx scripts/character.ts assets/random-girl.png --out=work/plain --style=none   # the old behaviour
+```
 
 ## Rules that keep it excellent
 

@@ -389,20 +389,35 @@ function nothingPainted(ctx: SlotContext, art: Size, slot: SlotPoint): PatchResu
 /**
  * Did the model paint a child, or just nudge the scenery?
  *
- * A patch that passes has to look like a person standing where we asked:
- * roughly the height we specified, taller than it is wide, and centred near the
- * slot. Area alone is not enough — a re-rendered sandcastle has plenty of area.
+ * A patch that passes has to look like a person: roughly the height we asked
+ * for, taller than wide, solid rather than scattered, and near the spot.
+ *
+ * Two of these checks used to be measured against the wrong thing, and between
+ * them they threw away most of the good work — about half of every roll paid
+ * for. A child crouched behind market sacks shows a fraction of her silhouette,
+ * so judging her by the area a whole child would cover rejected exactly the best
+ * hiding we asked for; and a child painted larger than requested drifts further
+ * from the spot in proportion, so measuring that drift in the height we asked
+ * for rejected her twice for one deviation. Both now measure what is actually
+ * on the canvas: how solid the blob is inside its own outline, and how far it
+ * sits in terms of its own size.
  */
 export function childProblem(result: PatchResult): string | null {
   const s = result.shape;
   if (result.largest === 0) return "painted nothing — the crop came back unchanged";
-  if (result.largest < result.expected * 0.35) return `painted blob ${result.largest}px, expected ~${result.expected}px`;
   const h = s.height / s.childPx;
   if (h < 0.45) return `painted ${Math.round(s.height)}px tall, a child here is ~${s.childPx}px`;
   if (h > 2.2) return `painted ${Math.round(s.height)}px tall, far more than the ~${s.childPx}px asked for (the model repainted the crop)`;
   const ratio = s.width / Math.max(1, s.height);
   if (ratio > 1.6) return `painted ${Math.round(s.width)}x${Math.round(s.height)}, wider than tall, not a standing child`;
-  const drift = Math.hypot(s.centerX - s.slotX, s.centerY - s.slotY) / s.childPx;
+  // A body fills roughly half its own bounding box, even mostly hidden; specks
+  // and scenery edges scattered across a box fill very little of one.
+  const density = result.largest / Math.max(1, s.width * s.height);
+  if (density < 0.22) return `painted ${Math.round(density * 100)}% of its own outline — scattered marks, not a child`;
+  // Judge the distance by the child who was painted, never by a smaller one we
+  // imagined; but an undersized child is still held to the size we asked for.
+  const yardstick = Math.max(s.height, s.childPx);
+  const drift = Math.hypot(s.centerX - s.slotX, s.centerY - s.slotY) / yardstick;
   if (drift > 1.6) return `painted ${drift.toFixed(1)} child-heights away from the hiding spot`;
   return null;
 }

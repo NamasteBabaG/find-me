@@ -17,6 +17,13 @@
  *
  *   npx tsx scripts/slot-patch.ts generate beach sandcastle A [--ref=public/demo/example-character.webp] [--quality=medium] [--pose="..."] [--tries=3]
  *     → export + OpenAI images/edits + import, in one go. Needs OPENAI_API_KEY.
+ *
+ *   npx tsx scripts/slot-patch.ts diagnose beach sandcastle A [path/to/edited.png]
+ *     → why a render was rejected, in numbers: painted height against the height
+ *       asked for, shape, and how far from the spot. Costs nothing — it re-reads
+ *       a render that was already paid for (work/patches/<name>.edited.png by
+ *       default). A spot that is always rejected for height is usually not a bad
+ *       model but a slot whose scale disagrees with the board's own perspective.
  */
 import sharp from "sharp";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -184,9 +191,34 @@ async function generate(slug: string, targetId: string, variantArg?: string) {
   throw new Error(`gave up after ${tries} attempts — try a simpler --pose or a different slot`);
 }
 
+/** Read the numbers off a render we already have. No API call, no cost. */
+async function diagnose(slug: string, targetId: string, variantArg: string | undefined, editedArg: string | undefined) {
+  const c = slotOf(slug, targetId, variantArg, flag("pose", "") || undefined);
+  const editedPath = editedArg ? path.resolve(editedArg) : path.join(WORK, `${c.name}.edited.png`);
+  if (!existsSync(editedPath)) throw new Error(`no render at ${path.relative(ROOT, editedPath)} — run "generate" first, or pass one`);
+  const patch = await diffToPatch({ originalCrop: await cropOf(c), editedCrop: readFileSync(editedPath), ctx: c.ctx, art: c.art, slot: c.slot });
+  const s = patch.shape;
+  const drift = Math.hypot(s.centerX - s.slotX, s.centerY - s.slotY) / s.childPx;
+  console.log(`${c.name}  ${path.relative(ROOT, editedPath)}`);
+  console.log(`  verdict     ${childProblem(patch) ?? "accepted"}`);
+  console.log(`  painted     ${Math.round(s.width)}x${Math.round(s.height)}px, blob ${patch.largest}px`);
+  console.log(`  asked for   ~${s.childPx}px tall, blob ~${patch.expected}px   (slot scale ${c.slot.scale})`);
+  console.log(`  height      ${(s.height / s.childPx).toFixed(2)}x what was asked   (accepted between 0.45 and 2.20)`);
+  console.log(`  shape       ${(s.width / Math.max(1, s.height)).toFixed(2)} wide:tall   (accepted below 1.60)`);
+  console.log(`  drift       ${drift.toFixed(2)} child-heights from the spot   (accepted below 1.60)`);
+  // The fix for a height rejection is almost never another roll.
+  const ratio = s.height / s.childPx;
+  if (ratio < 0.45 || ratio > 2.2) {
+    console.log(`  → the model painted a person ${ratio < 1 ? "smaller" : "larger"} than this slot asks for.`);
+    console.log(`    If it keeps doing that, the board's perspective disagrees with the slot:`);
+    console.log(`    scale ${(c.slot.scale * ratio).toFixed(3)} would match what it painted (now ${c.slot.scale}).`);
+  }
+}
+
 async function main() {
   const [cmd, slug, targetId, variant, edited] = process.argv.slice(2).filter((a) => !a.startsWith("--"));
   if (cmd === "export" && slug && targetId) return exportCrop(slug, targetId, variant);
+  if (cmd === "diagnose" && slug && targetId) return diagnose(slug, targetId, variant, edited);
   if (cmd === "import" && slug && targetId && variant && edited) {
     await importPatch(slug, targetId, variant, edited);
     return;
