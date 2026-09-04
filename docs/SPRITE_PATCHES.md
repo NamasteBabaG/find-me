@@ -208,6 +208,27 @@ jungle/binoculars   3.11x over  8 renders   slot scale 0.06    → 3.1x bigger t
 space/astronaut     0.53x over  4 renders   slot scale 0.055   → 1.9x smaller than this slot asks
 ```
 
+### Asking a vision model instead does not work
+
+The obvious saving is to skip the paid render: the board is full of painted people, so ask a vision
+model how tall a person is beside each slot and derive the scale for a quarter of a cent. It was
+built twice and thrown away twice, measured against the three spots where real renders had already
+settled the answer:
+
+| | jungle/binoculars | park/picnic | space/astronaut |
+| --- | --- | --- | --- |
+| real renders | 3.11x | 1.75x | 0.53x |
+| "what fraction of the image is a person" | 0.75x | 0.76x | 0.55x |
+| "is this drawn bar too tall or too short" | 0.50x | 0.50x | 1.00x |
+
+The first answered a near-constant 0.75 everywhere — a bias, not a measurement. The second answered
+only 1.0 or 0.5 and got the direction backwards on the one spot that matters most. Both would have
+written a confidently wrong `scale` into a scene file, which is worse than no tool.
+
+Place slots by looking at the board, and let the first real render settle it. A person reading the
+picture spotted the `jungle/binoculars` problem immediately — the slot sits on top of a large
+foreground figure — which is the same judgement the model could not make.
+
 `jungle/binoculars` had failed nine times across three runs, and every render was a child, in the
 right place, about three times too large — the model will not be talked out of the board's own
 perspective. The answer is usually to **move the slot**, not to raise its `scale`: the scale that
