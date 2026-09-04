@@ -196,7 +196,14 @@ async function diagnose(slug: string, targetId: string, variantArg: string | und
   const c = slotOf(slug, targetId, variantArg, flag("pose", "") || undefined);
   const editedPath = editedArg ? path.resolve(editedArg) : path.join(WORK, `${c.name}.edited.png`);
   if (!existsSync(editedPath)) throw new Error(`no render at ${path.relative(ROOT, editedPath)} — run "generate" first, or pass one`);
-  const patch = await diffToPatch({ originalCrop: await cropOf(c), editedCrop: readFileSync(editedPath), ctx: c.ctx, art: c.art, slot: c.slot });
+  const options = {
+    threshold: Number(flag("threshold", "28")),
+    outer: Number(flag("outer", "2.2")),
+    inner: Number(flag("inner", "1.15")),
+    grow: Number(flag("grow", "3.6")),
+    keep: Number(flag("keep", "0.2")),
+  };
+  const patch = await diffToPatch({ originalCrop: await cropOf(c), editedCrop: readFileSync(editedPath), ctx: c.ctx, art: c.art, slot: c.slot, options });
   const s = patch.shape;
   const drift = Math.hypot(s.centerX - s.slotX, s.centerY - s.slotY) / s.childPx;
   console.log(`${c.name}  ${path.relative(ROOT, editedPath)}`);

@@ -212,7 +212,17 @@ export function keepMainBlobs(mask: Buffer, w: number, h: number, keep: number, 
 }
 
 export interface DiffOptions {
-  /** Colour distance (0–255) above which a pixel counts as painted, inside the paint ellipse. */
+  /**
+   * Colour distance (0–255) above which a pixel counts as painted, inside the paint ellipse.
+   *
+   * Lowering it to rescue a render that was rejected as too sparse is tempting
+   * and wrong: on a city crop where the child was painted out of reach, dropping
+   * it from 28 to 12 turned the rejection into an acceptance whose patch did not
+   * contain the child at all — paving drift, person-shaped. The shape checks are
+   * necessary, not sufficient, and the solidity check is what stops that from
+   * shipping. Re-diffing a paid-for render more sensitively trades correct
+   * rejections for false positives; pay for another roll instead.
+   */
   threshold?: number;
   /** Outside the ellipse the threshold is multiplied by this, so re-render drift is ignored. */
   outer?: number;
