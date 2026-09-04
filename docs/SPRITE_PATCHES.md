@@ -216,6 +216,28 @@ A spot that keeps failing is telling you something about the slot: too little to
 hide behind, or a situation the model cannot picture. `--pose` gives it a
 concrete instruction, and moving the slot is a legitimate answer.
 
+## A bigger child is a cheaper child
+
+From one nine-board run (27 spots, 33 rolls), grouped by the height the slot asks for:
+
+| Child height | Painted | Rolls per finished spot |
+| --- | --- | --- |
+| 140px+ | 3 of 3 | 1.3 |
+| 110–139px | 2 of 5 | 2.5 |
+| 95–109px | 7 of 11 | 1.9 |
+| under 95px | 5 of 8 | 2.4 |
+
+One run and 27 spots is not a law, but the top row is worth noticing: the largest slots landed every
+time on barely more than one roll each, and everything smaller cost roughly twice as much. That is
+the honest tension in slot authoring — `scenes:validate` warns when a slot is large because "children
+should have to look", and this is what the difficulty costs. A slot that keeps failing for height is
+also usually one whose `scale` disagrees with the board's own perspective; `diagnose` prints the scale
+that would have matched.
+
+The most expensive failure mode by far is the model returning a fresh painting of the whole window.
+It is inherent to `images/edits` — the mask guides the model, it does not constrain it — so the prompt
+is written against it and the retry is the fallback.
+
 ## The child has to be painted in the boards' style
 
 The identity sheet is generated from a **piece of a real board** (`styleReference()`), not from a
