@@ -60,9 +60,16 @@ describe("childProblem", () => {
     expect(childProblem(render({ largest: 400, expected: 3500, width: 14, height: 25, childPx: 92 }))).toMatch(/a child here is/);
   });
 
-  it("still rejects a child painted somewhere else", () => {
-    // park/kite: two whole child-heights from the hiding spot.
-    expect(childProblem(render({ largest: 9000, expected: 9000, width: 90, height: 190, childPx: 190, centerX: 380, slotX: 0 }))).toMatch(/away from the hiding spot/);
+  it("accepts a child standing at the landmark rather than on the slot point", () => {
+    // ship/lifebuoy: painted two body-heights from the slot — behind the lifebuoy,
+    // which is where the mission actually sends the player. The search area
+    // already bounds how far she can be found; this rule only has to catch the
+    // edge of it.
+    expect(childProblem(render({ largest: 9000, expected: 9000, width: 90, height: 190, childPx: 190, centerX: 380, slotX: 0 }))).toBeNull();
+  });
+
+  it("still rejects a child painted somewhere else entirely", () => {
+    expect(childProblem(render({ largest: 9000, expected: 9000, width: 90, height: 190, childPx: 190, centerX: 610, slotX: 0 }))).toMatch(/away from the hiding spot/);
   });
 
   it("rejects scattered marks that fill a person-sized box", () => {

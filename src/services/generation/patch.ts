@@ -108,16 +108,26 @@ export async function styleReference(art: Buffer, size: Size, slot: SlotPoint, o
   return sharp(art).extract({ left: rect.x, top: rect.y, width: rect.w, height: rect.h }).resize(out, out, { fit: "cover" }).png().toBuffer();
 }
 
-export const PROMPT_VERSION = "slot-patch-v2";
+export const PROMPT_VERSION = "slot-patch-v3";
 
-/** The instruction the image model gets. Built from scene data, never hard-coded copy. */
+/**
+ * The instruction the image model gets. Built from scene data, never hard-coded copy.
+ *
+ * It opens by refusing the re-render and closes by refusing it again, because
+ * that is the failure that costs the most: `images/edits` will happily return a
+ * fresh painting of the whole window that merely resembles the input, and then
+ * the diff is the entire crop rather than one child. Asking for the picture back
+ * "with one child added" frames it as an edit; "paint a child into this
+ * illustration" was read as an invitation to repaint the illustration.
+ */
 export function slotPrompt(input: { mission: string; bodyLabel?: string; childPx: number; pose?: string }): string {
   return [
-    `Paint one child into this illustration, in exactly the same style, colours, line quality and warm daylight as the picture (storybook collage).`,
-    `Use the attached character reference for the child (same face, hair, hat and outfit).`,
+    `Return this exact picture with ONE child added to it. Do not redraw, restyle, re-render or improve any part of the picture: every pixel outside the child must come back byte for byte as it went in.`,
+    `The child goes inside the white area of the mask, about ${input.childPx} pixels tall, so she is the size of the people already standing near that spot.`,
+    `Draw her in the picture's own style, colours, line quality and warm daylight, and use the attached character reference for who she is (same face, hair and outfit).`,
     `Situation: ${input.mission}${input.bodyLabel ? ` (${input.bodyLabel})` : ""}.${input.pose ? ` ${input.pose}` : ""}`,
-    `Place the child inside the white area of the mask, about ${input.childPx}px tall so they match the people nearby, partly hidden by whatever is naturally in front, with a soft matching shadow.`,
-    `The child should be findable but not the centre of attention. Keep every other pixel of the scene unchanged.`,
+    `Let whatever is naturally in front of her overlap her, and give her a soft shadow that matches the others. She should be findable, not the centre of attention.`,
+    `Change nothing else.`,
   ].join(" ");
 }
 
@@ -416,9 +426,17 @@ export function childProblem(result: PatchResult): string | null {
   if (density < 0.22) return `painted ${Math.round(density * 100)}% of its own outline — scattered marks, not a child`;
   // Judge the distance by the child who was painted, never by a smaller one we
   // imagined; but an undersized child is still held to the size we asked for.
+  //
+  // The limit is loose on purpose. The search area (`grow`, 3.6x the ellipse)
+  // already decides how far from the slot a child can be found at all, so a
+  // second, tighter rule here only threw away good work: the model reads the
+  // mask as "where you may edit", puts her at the nearest place that makes sense
+  // — beside the lifebuoy, in front of the bus, under the kite — and that is
+  // two body-heights out often enough. She is still at the landmark the mission
+  // names, and the tap contract follows the patch, not the slot.
   const yardstick = Math.max(s.height, s.childPx);
   const drift = Math.hypot(s.centerX - s.slotX, s.centerY - s.slotY) / yardstick;
-  if (drift > 1.6) return `painted ${drift.toFixed(1)} child-heights away from the hiding spot`;
+  if (drift > 2.5) return `painted ${drift.toFixed(1)} child-heights away from the hiding spot`;
   return null;
 }
 
