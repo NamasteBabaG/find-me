@@ -25,6 +25,7 @@ let dir: string;
 let db: Db;
 let mod: {
   runGenerationPipeline: (c: Container, gameId: string, options?: { deadlineAt?: number }) => Promise<void>;
+  handlePaymentWebhook: (c: Container, rawBody: string, headers: Record<string, string | undefined>) => Promise<{ status: number; body: string }>;
   spotsOutstanding: (c: Container, gameId: string, variants: Array<"A" | "B">) => Promise<{ retryable: number; capped: number }>;
   MAX_ATTEMPTS_PER_SPOT: number;
   storeAsset: (c: Container, input: Record<string, unknown>) => Promise<{ id: string }>;
@@ -66,8 +67,10 @@ beforeAll(async () => {
     import("@/infra/analytics/console"),
     import("../scene-catalog.service"),
   ]);
+  const order = await import("../order.service");
   mod = {
     runGenerationPipeline: pipeline.runGenerationPipeline,
+    handlePaymentWebhook: order.handlePaymentWebhook as never,
     spotsOutstanding: patches.spotsOutstanding,
     MAX_ATTEMPTS_PER_SPOT: patches.MAX_ATTEMPTS_PER_SPOT,
     storeAsset: asset.storeAsset as never,
@@ -406,3 +409,47 @@ describe("publishing", () => {
     expect(game.readyAt).not.toBeNull();
   }, 120_000);
 });
+
+/**
+ * The payment webhook is a webhook, not a worker.
+ *
+ * It used to `await c.jobs.enqueue(...)` with a runner that calls the handler in
+ * the calling request, so the PSP's socket was held open for the whole pipeline:
+ * dozens of renders, judgements and retries. The parent was charged and then
+ * waited on a request that could only time out — and a webhook the PSP gives up
+ * on is a webhook it will redeliver.
+ */
+describe("the payment webhook", () => {
+  it("marks the game paid and returns, without generating anything", async () => {
+    const c = container(painter(["child"]));
+    const gameId = await seedGame(c);
+    await db.game.update({ where: { id: gameId }, data: { status: "CHECKOUT_PENDING", paidAt: null } });
+    const game = await gameOf(gameId);
+    const ownerId = game.ownerId;
+    if (!ownerId) throw new Error("seeded game has no owner");
+    const order = await db.order.create({
+      data: { id: `ord_hook_${gameId}`, gameId, userId: ownerId, provider: "stub", packageTier: "ONE_WORLD", amountAgorot: 9900, currency: "ILS", paymentStatus: "PENDING" },
+    });
+
+    const paid = {
+      ok: true as const,
+      event: { orderId: order.id, providerEventId: `evt_${order.id}`, kind: "PAID" as const, amountAgorot: order.amountAgorot, providerPaymentId: "pay_1", raw: {} },
+    };
+    const withPayment = { ...c, payment: { id: "stub", parseWebhook: async () => paid } as never };
+
+    const outcome = await mod.handlePaymentWebhook(withPayment, "{}", {});
+
+    expect(outcome.status).toBe(200);
+    expect((await gameOf(gameId)).status).toBe("PAID");
+    // The thing that must NOT have happened: no hiding spot was even created,
+    // let alone rendered. Generation is the queue's job, and the game row this
+    // transaction wrote is what `nextPendingGame` selects on.
+    expect(await spotsIn(gameId)).toHaveLength(0);
+    expect(await db.generationJob.findUnique({ where: { id: `job_${gameId}` } })).toBeNull();
+
+    // And the queue does pick it up from exactly that row.
+    await mod.runGenerationPipeline(withPayment, gameId);
+    expect((await spotsIn(gameId)).length).toBeGreaterThan(0);
+  });
+});
+

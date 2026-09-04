@@ -91,7 +91,18 @@ export async function handlePaymentWebhook(c: Container, rawBody: string, header
       await c.db.order.update({ where: { id: order.id }, data: { paymentStatus: "PAID", paidAt: new Date(), providerPaymentId: ev.providerPaymentId } });
       await transitionGame(c, order.gameId, "PAID", WEBHOOK, { orderId: order.id });
       c.analytics.track("payment_completed", { gameId: order.gameId, packageTier: order.packageTier });
-      await c.jobs.enqueue("generate-game", { gameId: order.gameId });
+      // Deliberately no enqueue here. `c.jobs` runs the handler in the calling
+      // request, so this line used to hold the PSP's webhook open for the whole
+      // pipeline — dozens of renders, judgements and retries, none of which are
+      // work an HTTP request should be doing. The parent was charged and then
+      // waited on a socket that could only time out.
+      //
+      // Marking the game PAID *is* the enqueue: `nextPendingGame` selects on
+      // game status, so the row this transaction just wrote is the durable
+      // queue entry. The cron at /api/jobs/tick picks it up within five
+      // minutes, and the /creating page the parent lands on ticks it
+      // immediately, in slices, with a deadline and a lease.
+    
     }
     return { status: 200, body: "ok" };
   }
