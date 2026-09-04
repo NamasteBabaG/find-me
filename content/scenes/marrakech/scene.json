@@ -56,13 +56,13 @@
       "slots": [
         {
           "id": "marrakech_lanterns_a",
-          "x": 0.3,
-          "y": 0.55,
-          "scale": 0.05,
+          "x": 0.145,
+          "y": 0.345,
+          "scale": 0.055,
           "hintZone": {
-            "x": 0.3,
-            "y": 0.54,
-            "r": 0.08
+            "x": 0.145,
+            "y": 0.32999999999999996,
+            "r": 0.075
           },
           "hintText": {
             "en": "Look under the hanging lanterns.",
@@ -71,13 +71,13 @@
         },
         {
           "id": "marrakech_lanterns_b",
-          "x": 0.74,
-          "y": 0.52,
-          "scale": 0.05,
+          "x": 0.3,
+          "y": 0.3,
+          "scale": 0.048,
           "hintZone": {
-            "x": 0.74,
-            "y": 0.51,
-            "r": 0.08
+            "x": 0.3,
+            "y": 0.285,
+            "r": 0.075
           },
           "hintText": {
             "en": "Look at the lantern stall on the right.",
@@ -117,13 +117,13 @@
       "slots": [
         {
           "id": "marrakech_carpets_a",
-          "x": 0.62,
-          "y": 0.63,
-          "scale": 0.05,
+          "x": 0.175,
+          "y": 0.545,
+          "scale": 0.07,
           "hintZone": {
-            "x": 0.62,
-            "y": 0.62,
-            "r": 0.08
+            "x": 0.175,
+            "y": 0.53,
+            "r": 0.075
           },
           "hintText": {
             "en": "Look between the stacks of carpets.",
@@ -132,13 +132,13 @@
         },
         {
           "id": "marrakech_carpets_b",
-          "x": 0.19,
+          "x": 0.078,
           "y": 0.6,
-          "scale": 0.05,
+          "scale": 0.078,
           "hintZone": {
-            "x": 0.19,
-            "y": 0.59,
-            "r": 0.08
+            "x": 0.078,
+            "y": 0.585,
+            "r": 0.075
           },
           "hintText": {
             "en": "Look at the carpets on the left.",
@@ -178,13 +178,13 @@
       "slots": [
         {
           "id": "marrakech_spices_a",
-          "x": 0.47,
-          "y": 0.7,
-          "scale": 0.045,
+          "x": 0.475,
+          "y": 0.475,
+          "scale": 0.058,
           "hintZone": {
-            "x": 0.47,
-            "y": 0.69,
-            "r": 0.08
+            "x": 0.475,
+            "y": 0.45999999999999996,
+            "r": 0.075
           },
           "hintText": {
             "en": "Look behind the cones of spices.",
@@ -193,13 +193,13 @@
         },
         {
           "id": "marrakech_spices_b",
-          "x": 0.85,
-          "y": 0.74,
-          "scale": 0.045,
+          "x": 0.585,
+          "y": 0.42,
+          "scale": 0.05,
           "hintZone": {
-            "x": 0.85,
-            "y": 0.73,
-            "r": 0.08
+            "x": 0.585,
+            "y": 0.40499999999999997,
+            "r": 0.075
           },
           "hintText": {
             "en": "Look at the spice sacks on the right.",

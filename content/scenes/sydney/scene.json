@@ -56,13 +56,13 @@
       "slots": [
         {
           "id": "sydney_ferry_a",
-          "x": 0.58,
-          "y": 0.52,
-          "scale": 0.05,
+          "x": 0.5,
+          "y": 0.352,
+          "scale": 0.038,
           "hintZone": {
-            "x": 0.58,
-            "y": 0.51,
-            "r": 0.08
+            "x": 0.5,
+            "y": 0.33699999999999997,
+            "r": 0.075
           },
           "hintText": {
             "en": "Look on the ferry.",
@@ -71,13 +71,13 @@
         },
         {
           "id": "sydney_ferry_b",
-          "x": 0.3,
-          "y": 0.49,
-          "scale": 0.05,
+          "x": 0.72,
+          "y": 0.3,
+          "scale": 0.032,
           "hintZone": {
-            "x": 0.3,
-            "y": 0.48,
-            "r": 0.08
+            "x": 0.72,
+            "y": 0.285,
+            "r": 0.075
           },
           "hintText": {
             "en": "Look at the second ferry.",
@@ -117,13 +117,13 @@
       "slots": [
         {
           "id": "sydney_surfboards_a",
-          "x": 0.21,
-          "y": 0.7,
-          "scale": 0.05,
+          "x": 0.18,
+          "y": 0.64,
+          "scale": 0.078,
           "hintZone": {
-            "x": 0.21,
-            "y": 0.69,
-            "r": 0.08
+            "x": 0.18,
+            "y": 0.625,
+            "r": 0.075
           },
           "hintText": {
             "en": "Look by the surfboards.",
@@ -132,13 +132,13 @@
         },
         {
           "id": "sydney_surfboards_b",
-          "x": 0.79,
-          "y": 0.72,
-          "scale": 0.05,
+          "x": 0.045,
+          "y": 0.6,
+          "scale": 0.075,
           "hintZone": {
-            "x": 0.79,
-            "y": 0.71,
-            "r": 0.08
+            "x": 0.045,
+            "y": 0.585,
+            "r": 0.075
           },
           "hintText": {
             "en": "Look at the boards on the right.",
@@ -178,13 +178,13 @@
       "slots": [
         {
           "id": "sydney_rocks_a",
-          "x": 0.12,
-          "y": 0.78,
-          "scale": 0.045,
+          "x": 0.7,
+          "y": 0.665,
+          "scale": 0.08,
           "hintZone": {
-            "x": 0.12,
-            "y": 0.77,
-            "r": 0.08
+            "x": 0.7,
+            "y": 0.65,
+            "r": 0.075
           },
           "hintText": {
             "en": "Look behind the rocks.",
@@ -193,13 +193,13 @@
         },
         {
           "id": "sydney_rocks_b",
-          "x": 0.88,
-          "y": 0.8,
-          "scale": 0.045,
+          "x": 0.855,
+          "y": 0.67,
+          "scale": 0.078,
           "hintZone": {
-            "x": 0.88,
-            "y": 0.79,
-            "r": 0.08
+            "x": 0.855,
+            "y": 0.655,
+            "r": 0.075
           },
           "hintText": {
             "en": "Look at the rocks on the right.",

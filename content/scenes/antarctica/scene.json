@@ -56,13 +56,13 @@
       "slots": [
         {
           "id": "antarctica_penguins_a",
-          "x": 0.4,
-          "y": 0.66,
-          "scale": 0.05,
+          "x": 0.485,
+          "y": 0.7,
+          "scale": 0.078,
           "hintZone": {
-            "x": 0.4,
-            "y": 0.65,
-            "r": 0.08
+            "x": 0.485,
+            "y": 0.6849999999999999,
+            "r": 0.075
           },
           "hintText": {
             "en": "Look among the penguins.",
@@ -71,13 +71,13 @@
         },
         {
           "id": "antarctica_penguins_b",
-          "x": 0.68,
-          "y": 0.62,
-          "scale": 0.05,
+          "x": 0.655,
+          "y": 0.52,
+          "scale": 0.058,
           "hintZone": {
-            "x": 0.68,
-            "y": 0.61,
-            "r": 0.08
+            "x": 0.655,
+            "y": 0.505,
+            "r": 0.075
           },
           "hintText": {
             "en": "Look at the second group of penguins.",
@@ -117,13 +117,13 @@
       "slots": [
         {
           "id": "antarctica_sledge_a",
-          "x": 0.25,
-          "y": 0.72,
-          "scale": 0.05,
+          "x": 0.505,
+          "y": 0.59,
+          "scale": 0.068,
           "hintZone": {
-            "x": 0.25,
-            "y": 0.71,
-            "r": 0.08
+            "x": 0.505,
+            "y": 0.575,
+            "r": 0.075
           },
           "hintText": {
             "en": "Look by the sledges.",
@@ -132,13 +132,13 @@
         },
         {
           "id": "antarctica_sledge_b",
-          "x": 0.8,
-          "y": 0.68,
-          "scale": 0.05,
+          "x": 0.755,
+          "y": 0.665,
+          "scale": 0.08,
           "hintZone": {
-            "x": 0.8,
-            "y": 0.67,
-            "r": 0.08
+            "x": 0.755,
+            "y": 0.65,
+            "r": 0.075
           },
           "hintText": {
             "en": "Look at the sledge on the right.",
@@ -178,13 +178,13 @@
       "slots": [
         {
           "id": "antarctica_ice_a",
-          "x": 0.57,
-          "y": 0.75,
-          "scale": 0.045,
+          "x": 0.1,
+          "y": 0.705,
+          "scale": 0.078,
           "hintZone": {
-            "x": 0.57,
-            "y": 0.74,
-            "r": 0.08
+            "x": 0.1,
+            "y": 0.69,
+            "r": 0.075
           },
           "hintText": {
             "en": "Look behind the ice blocks.",
@@ -193,13 +193,13 @@
         },
         {
           "id": "antarctica_ice_b",
-          "x": 0.1,
-          "y": 0.7,
-          "scale": 0.045,
+          "x": 0.045,
+          "y": 0.64,
+          "scale": 0.072,
           "hintZone": {
-            "x": 0.1,
-            "y": 0.69,
-            "r": 0.08
+            "x": 0.045,
+            "y": 0.625,
+            "r": 0.075
           },
           "hintText": {
             "en": "Look at the ice on the left.",
