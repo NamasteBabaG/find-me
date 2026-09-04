@@ -124,7 +124,7 @@ export const en = {
       worldOf: "World {n} of {total}",
       prev: "Previous world",
       next: "Next world",
-      locked: "Locked",
+      owned: "In your library",
       opensAfter: "Opens after {world}",
       inTheMaking: "Being painted now",
       harder: "Harder hiding spots",

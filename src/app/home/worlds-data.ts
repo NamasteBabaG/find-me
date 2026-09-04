@@ -10,25 +10,26 @@ import { WORLD_GLYPHS } from "./sections";
  * The worlds as the shop shows them: the finished ones first, then the ones
  * being painted, all in one carousel.
  *
- * Worlds are bought in order, so every world after the first says which one
- * opens it. That is the same rule the create flow enforces — a parent should
- * meet it here, where it reads as a journey, rather than at checkout where it
- * would read as a refusal.
+ * Every world is on show — its paintings, its places, its hiding spots. The
+ * blur and the padlock that used to sit on the second and third worlds were
+ * hiding the thing being sold; what a visitor needs to know is said in words
+ * instead. Three facts, kept apart: a world you own ("in your library"), a
+ * world you can buy next (worlds are a ladder, so each one names the one
+ * before it), and a world still being painted. Ownership is read from the
+ * database and passed in, so it survives closing the tab.
  */
 export function carouselWorlds(locale: Locale, owned: readonly string[] = []): CarouselWorld[] {
   const real = allWorlds();
   const out: CarouselWorld[] = real.map((world, i) => {
-    // Bought worlds carry no lock, whichever order they were bought in — and a
-    // world still behind the lock shows its paintings behind glass, which is
-    // the same rule whether it is finished or still being painted.
-    const locked = i > 0 && !owned.includes(world.slug);
+    const isOwned = owned.includes(world.slug);
     return {
       slug: world.slug,
       name: pick(world.name, locale),
       tagline: pick(world.tagline, locale),
       glyph: world.collectible.icon,
       upcoming: false,
-      opensAfter: locked ? pick(real[i - 1]!.name, locale) : undefined,
+      owned: isOwned,
+      opensAfter: i > 0 && !isOwned ? pick(real[i - 1]!.name, locale) : undefined,
       palette: world.map.palette,
       tiles: boardSlugs(world).map((slug) => {
         const scene = findScene(slug);
@@ -36,8 +37,7 @@ export function carouselWorlds(locale: Locale, owned: readonly string[] = []): C
           key: slug,
           label: `${WORLD_GLYPHS[slug] ?? "✨"} ${scene ? pick(scene.name, locale) : slug}`,
           thumb: scene?.art.thumbnail,
-          spots: locked ? undefined : scene?.targets.map((t) => pick(t.item, locale)),
-          blurred: locked,
+          spots: scene?.targets.map((t) => pick(t.item, locale)),
           soon: !scene?.active,
         };
       }),
@@ -58,13 +58,13 @@ export function carouselWorlds(locale: Locale, owned: readonly string[] = []): C
       tagline: pick(world.tagline, locale),
       glyph: world.glyph,
       upcoming: true,
+      owned: false,
       opensAfter: previous(world.order),
       palette: world.palette,
       tiles: world.places.map((place, i) => {
-        // Real art if it has been painted, blurred by the carousel; the place
-        // name alone if it has not.
+        // Real art if it has been painted; the place name alone if it has not.
         const scene = world.boards?.[i] ? findScene(world.boards[i]!) : undefined;
-        return { key: `${world.slug}-${i}`, label: pick(place, locale), thumb: scene?.art.thumbnail, blurred: Boolean(scene), soon: true };
+        return { key: `${world.slug}-${i}`, label: pick(place, locale), thumb: scene?.art.thumbnail, soon: true };
       }),
     });
   }

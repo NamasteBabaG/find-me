@@ -123,7 +123,7 @@ export const he: Dictionary = {
       worldOf: "עולם {n} מתוך {total}",
       prev: "העולם הקודם",
       next: "העולם הבא",
-      locked: "נעול",
+      owned: "בספרייה שלכם",
       opensAfter: "נפתח אחרי {world}",
       inTheMaking: "מצויר עכשיו",
       harder: "מחבואים קשים יותר",

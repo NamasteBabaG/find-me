@@ -555,28 +555,6 @@
   .wc__title strong { font-size: var(--fs-400); }
 }
 
-/* A world you have not bought shows its paintings behind glass. The blur is a
-   curtain, not a lock — the boards are the shop window, and what is bought is a
-   child painted into them. */
-.world__img--veiled { position: relative; }
-/* Beats `.world--soon`, which greys a tile out: a world you can buy should look
-   inviting behind the glass, not switched off.
-
-   Enough blur that you cannot play the board, little enough that you can see
-   what it is — a castle, a reef, a ferris wheel. At 14px it was frosted glass
-   and every locked world looked the same, which sells nothing. */
-.world--soon .world__img--veiled img,
-.world__img--veiled img { filter: blur(6px) saturate(1.15); transform: scale(1.06); }
-.world__img--veiled::after {
-  content: ""; position: absolute; inset: 0;
-  background: linear-gradient(180deg, rgba(23,22,43,.03), rgba(23,22,43,.28));
-}
-.world__lockmark {
-  position: absolute; inset-block-start: 50%; inset-inline-start: 50%;
-  transform: translate(-50%, -50%); font-size: var(--fs-500); z-index: 1;
-  filter: drop-shadow(0 2px 6px rgba(23,22,43,.5));
-}
-
 /* Not decorative: a QA box is a production build with a pretend till, and the
    only thing separating it from the shop is that it says so. */
 .qa-banner {

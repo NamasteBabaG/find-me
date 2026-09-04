@@ -10,8 +10,12 @@ import { Reveal } from "./Reveal";
  * "these are three worlds, and they are a ladder" — which is the thing a parent
  * is actually choosing between. One world on screen at a time, with its own
  * name and keepsake, makes the ladder visible; the worlds still being painted
- * sit in the same carousel, locked, so the shape of what is coming is part of
- * the offer instead of a bigger number in the price table.
+ * sit in the same carousel so the shape of what is coming is part of the offer
+ * instead of a bigger number in the price table.
+ *
+ * Nothing is behind glass. A world is shown whole — paintings, places, spots —
+ * and one line under its name says what it is to this visitor: theirs already,
+ * next on the journey, or still being painted.
  */
 
 export interface CarouselTile {
@@ -20,8 +24,6 @@ export interface CarouselTile {
   thumb?: string;
   spots?: string[];
   soon?: boolean;
-  /** Shown behind glass: the painting exists, this world is not bought yet. */
-  blurred?: boolean;
 }
 
 export interface CarouselWorld {
@@ -31,7 +33,9 @@ export interface CarouselWorld {
   glyph: string;
   /** Not yet painted: the tiles are place names, not pictures. */
   upcoming: boolean;
-  /** Cannot be bought on its own — the name of the world that opens it. */
+  /** Already in this visitor's library. */
+  owned: boolean;
+  /** Worlds are a ladder: the name of the world that comes before this one. */
   opensAfter?: string;
   palette: { sky: string; ground: string; accent: string };
   tiles: CarouselTile[];
@@ -41,7 +45,7 @@ export interface WorldsCopy {
   worldOf: string;
   prev: string;
   next: string;
-  locked: string;
+  owned: string;
   opensAfter: string;
   inTheMaking: string;
   harder: string;
@@ -74,10 +78,13 @@ export function WorldsCarousel({ worlds, copy }: { worlds: CarouselWorld[]; copy
         </button>
       </div>
 
-      {world.opensAfter ? (
+      {world.owned ? (
         <p className="wc__lock">
-          <span className="fm-sticker-badge fm-sticker-badge--sun">🔒 {copy.locked}</span>
-          <span>{fill(copy.opensAfter, { world: world.opensAfter })}</span>
+          <span className="fm-sticker-badge fm-sticker-badge--sun">✓ {copy.owned}</span>
+        </p>
+      ) : world.opensAfter ? (
+        <p className="wc__lock">
+          <span className="fm-badge fm-badge--sea">🧭 {fill(copy.opensAfter, { world: world.opensAfter })}</span>
           {world.upcoming ? <span className="wc__soon">{copy.inTheMaking}</span> : null}
           <span className="wc__soon">{copy.harder}</span>
         </p>
@@ -86,7 +93,7 @@ export function WorldsCarousel({ worlds, copy }: { worlds: CarouselWorld[]; copy
       <div className={`worlds${world.upcoming ? " worlds--upcoming" : ""}`}>
         {world.tiles.map((tile, i) => (
           <Reveal key={tile.key} className={`world${tile.soon ? " world--soon" : ""}`} delay={(i % 3) * 60}>
-            <div className={`world__img${tile.blurred ? " world__img--veiled" : ""}`}>
+            <div className="world__img">
               {tile.thumb ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={tile.thumb} alt="" loading="lazy" />
@@ -95,11 +102,6 @@ export function WorldsCarousel({ worlds, copy }: { worlds: CarouselWorld[]; copy
                   {world.glyph}
                 </span>
               )}
-              {tile.blurred ? (
-                <span className="world__lockmark" aria-hidden>
-                  🔒
-                </span>
-              ) : null}
             </div>
             <div className="world__body">
               <span className="world__name">{tile.label}</span>

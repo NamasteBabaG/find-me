@@ -179,7 +179,7 @@ export function Worlds({ t, locale, scenes, activeSlugs, carousel }: SectionProp
             worldOf: w.worldOf,
             prev: w.prev,
             next: w.next,
-            locked: w.locked,
+            owned: w.owned,
             opensAfter: w.opensAfter,
             inTheMaking: w.inTheMaking,
             harder: w.harder,
