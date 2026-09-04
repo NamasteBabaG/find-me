@@ -413,6 +413,45 @@ describe("publishing", () => {
     expect(game.status).toBe("READY"); // ready, just not delivered
     expect(game.readyAt).not.toBeNull();
   }, 120_000);
+
+  it("a game with no owner email goes to the fallback inbox, stamped, and stays READY", async () => {
+    const c = container(painter(["child"]));
+    const sent: Array<{ to: string; subject: string; text: string; html: string }> = [];
+    c.email = { id: "console", send: async (m: { to: string; subject: string; text: string; html: string }) => { sent.push(m); return { id: "m" }; } } as never;
+    c.emailFallbackTo = "ops@example.com";
+    const gameId = await seedGame(c);
+    await mod.runGenerationPipeline(c, gameId);
+    // The link is written to a log nobody reads unless somebody is told.
+    await db.game.update({ where: { id: gameId }, data: { ownerId: null } });
+
+    const { publishGame } = await import("../publish.service");
+    const { SYSTEM } = await import("../audit.service");
+    await publishGame(c, gameId, SYSTEM);
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.to).toBe("ops@example.com");
+    expect(sent[0]!.subject.startsWith("[FALLBACK")).toBe(true);
+    expect(sent[0]!.text).toContain("no recipient");
+    expect(sent[0]!.text).not.toContain("{library}");
+    expect((await gameOf(gameId)).status).toBe("READY"); // the parent does not have it
+  }, 120_000);
+
+  it("sends nothing and says so when there is no recipient and no fallback", async () => {
+    const c = container(painter(["child"]));
+    let sends = 0;
+    c.email = { id: "console", send: async () => { sends++; return { id: "m" }; } } as never;
+    c.emailFallbackTo = null;
+    const gameId = await seedGame(c);
+    await mod.runGenerationPipeline(c, gameId);
+    await db.game.update({ where: { id: gameId }, data: { ownerId: null } });
+
+    const { publishGame } = await import("../publish.service");
+    const { SYSTEM } = await import("../audit.service");
+    await publishGame(c, gameId, SYSTEM);
+
+    expect(sends).toBe(0);
+    expect((await gameOf(gameId)).status).toBe("READY");
+  }, 120_000);
 });
 
 /**

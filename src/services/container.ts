@@ -39,6 +39,8 @@ export interface Container {
   jobs: JobRunner;
   appUrl: string;
   secret: string;
+  /** Where a game-ready mail goes when the game has no owner email. Unset means it does not go. */
+  emailFallbackTo?: string | null;
 }
 
 function build(): Container {
@@ -78,6 +80,7 @@ function build(): Container {
     jobs: e.JOBS_MODE === "inline" ? new InlineJobRunner() : new InProcessJobRunner(),
     appUrl: e.APP_URL,
     secret: e.SESSION_SECRET,
+    emailFallbackTo: e.EMAIL_FALLBACK_TO ?? null,
   };
 
   container.jobs.register("generate-game", ({ gameId }) => runGenerationPipeline(container, gameId));

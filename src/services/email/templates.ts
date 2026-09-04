@@ -33,9 +33,14 @@ export function magicLinkEmail(input: { to: string; link: string; locale: Locale
   };
 }
 
-export function gameReadyEmail(input: { to: string; childName: string; playLink: string; libraryLink: string; sceneCount: number; locale: Locale }): EmailMessage {
+/** `libraryLink` is absent when the game has no owner account to open a library for. */
+export function gameReadyEmail(input: { to: string; childName: string; playLink: string; libraryLink?: string; sceneCount: number; locale: Locale }): EmailMessage {
   const r = getDict(input.locale).email.ready;
-  const vars = { name: input.childName, count: input.sceneCount, play: input.playLink, library: input.libraryLink };
+  const vars = { name: input.childName, count: input.sceneCount, play: input.playLink, library: input.libraryLink ?? "" };
+  const manage = input.libraryLink
+    ? `<p style="font-size:14px;line-height:24px;">${r.manageLead}</p>
+       <p><a href="${input.libraryLink}" style="color:#1B6FA8;font-size:14px;">${r.manage}</a></p>`
+    : "";
   return {
     to: input.to,
     tag: "game-ready",
@@ -45,9 +50,12 @@ export function gameReadyEmail(input: { to: string; childName: string; playLink:
       tf(r.title, vars),
       `<p style="font-size:16px;line-height:24px;">${tf(r.body, vars)}</p>
        ${button(input.playLink, r.button)}
-       <p style="font-size:14px;line-height:24px;">${r.manageLead}</p>
-       <p><a href="${input.libraryLink}" style="color:#1B6FA8;font-size:14px;">${r.manage}</a></p>`,
+       ${manage}`,
     ),
-    text: tf(r.text, vars),
+    text: r.text
+      .split("\n")
+      .filter((line) => input.libraryLink || !line.includes("{library}"))
+      .map((line) => tf(line, vars))
+      .join("\n"),
   };
 }

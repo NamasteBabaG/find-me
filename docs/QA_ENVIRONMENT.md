@@ -133,6 +133,33 @@ What each one is, and why:
 - **`OPENAI_API_KEY`** — the same key. Generation is real here; that is the
   point, and `GENERATION_ENABLED=off` stops it without a deploy.
 
+### Email
+
+The console provider writes the mail to a file on the server, and on Vercel
+that file cannot be written — so on QA every "your game is ready" went nowhere
+and the outbox page stayed empty. QA sends real mail through Resend. Set only
+`RESEND_API_KEY` and the script does just the email part (it must not touch
+`SESSION_SECRET`, which would log every QA session out):
+
+```powershell
+$env:RESEND_API_KEY="re_…"; $env:EMAIL_FALLBACK_TO="you@example.com"
+node scripts/qa-secrets.mjs
+npx vercel deploy --prod
+Remove-Item Env:RESEND_API_KEY, Env:EMAIL_FALLBACK_TO
+```
+
+- **`EMAIL_FROM`** — without a verified domain Resend sends only from
+  `onboarding@resend.dev`, and only to the address that owns the Resend
+  account. That is enough for QA, where we are the buyers; the shop needs a
+  verified domain.
+- **`EMAIL_FALLBACK_TO`** — an operator's inbox for a finished game that has
+  nobody to send it to. Every such mail is stamped `[FALLBACK — no recipient]`
+  in the subject and at the top of the body, and the game stays READY rather
+  than DELIVERED, because the parent does not have it. Temporary: the stamp is
+  the reminder to remove it once every path into a paid game carries an address.
+- A mail that fails to send leaves the game READY and writes an `email:failed`
+  audit entry with the provider's error; the link still works from the library.
+
 ## First run
 
 The build generates the Prisma client but never migrates, so the `qa` schema

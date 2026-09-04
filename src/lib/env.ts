@@ -67,6 +67,12 @@ const EnvSchema = z.object({
   /** Generate hiding spot B as well. Off by default: one spot per target is a playable game. */
   GENERATION_BOTH_VARIANTS: z.enum(["true", "false"]).default("false"),
   EMAIL_FROM: z.string().default("איפה אני? <hello@example.com>"),
+  /**
+   * An operator's inbox for a finished game that has nobody to send it to.
+   * Every such mail is stamped "[FALLBACK — no recipient]"; the game stays
+   * READY rather than DELIVERED, because the parent does not have it.
+   */
+  EMAIL_FALLBACK_TO: z.string().email().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

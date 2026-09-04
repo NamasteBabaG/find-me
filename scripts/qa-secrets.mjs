@@ -9,6 +9,12 @@
  *   bash/zsh (the leading space keeps it out of history):
  *      DATABASE_URL="postgresql://…?schema=qa" OPENAI_API_KEY="sk-…" node scripts/qa-secrets.mjs
  *
+ *   Email only — real delivery through Resend, and the inbox that catches a game
+ *   with nobody to send it to (set only RESEND_API_KEY and the script does just this):
+ *     $env:RESEND_API_KEY="re_…"; $env:EMAIL_FALLBACK_TO="you@example.com"
+ *     node scripts/qa-secrets.mjs
+ *     Remove-Item Env:RESEND_API_KEY, Env:EMAIL_FALLBACK_TO
+ *
  * SESSION_SECRET is generated here and never printed: it is new on purpose,
  * because it signs sessions and asset URLs, and sharing the shop's would make a
  * QA session valid against real data.
@@ -46,6 +52,30 @@ function die(message) {
 
 const dbUrl = process.env.DATABASE_URL;
 const openaiKey = process.env.OPENAI_API_KEY;
+const resendKey = process.env.RESEND_API_KEY;
+
+// Email on its own: the database and OpenAI keys are already there, and this
+// must not regenerate SESSION_SECRET (that would log every QA session out).
+if (resendKey && !dbUrl && !openaiKey) {
+  if (/[…]|%E2%80%A6/.test(resendKey) || !/^re_[A-Za-z0-9_-]{10,}$/.test(resendKey)) {
+    die("RESEND_API_KEY does not look like a Resend key (expected re_ followed by the key). Paste the real one.");
+  }
+  // Without a verified domain, Resend only delivers from onboarding@resend.dev, and only
+  // to the address that owns the Resend account — enough for QA, where we are the buyers.
+  const from = process.env.EMAIL_FROM || "איפה אני? <onboarding@resend.dev>";
+  const fallback = process.env.EMAIL_FALLBACK_TO;
+  if (fallback && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(fallback)) die("EMAIL_FALLBACK_TO is not an email address.");
+  console.log(`\n  ${PROJECT} · email through Resend, from "${from}"${fallback ? `, fallback inbox ${fallback}` : ""}\n`);
+  set("RESEND_API_KEY", resendKey);
+  set("EMAIL_PROVIDER", "resend");
+  set("EMAIL_FROM", from);
+  if (fallback) set("EMAIL_FALLBACK_TO", fallback);
+  console.log("\n  Redeploy for it to take effect:");
+  console.log(pwsh ? `    $env:VERCEL_ORG_ID="${ORG_ID}"; $env:VERCEL_PROJECT_ID="${PROJECT_ID}"; npx vercel deploy --prod` : `    VERCEL_ORG_ID=${ORG_ID} VERCEL_PROJECT_ID=${PROJECT_ID} npx vercel deploy --prod`);
+  console.log(`  Health should then say email "resend".`);
+  console.log(pwsh ? "  Finally: Remove-Item Env:RESEND_API_KEY, Env:EMAIL_FALLBACK_TO\n" : "\n");
+  process.exit(0);
+}
 
 if (!dbUrl || !openaiKey) {
   const usage = pwsh

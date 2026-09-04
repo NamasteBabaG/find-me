@@ -19,6 +19,7 @@ export const ANALYTICS_EVENTS = [
   "qa_approved",
   "game_ready",
   "delivery_email_failed",
+  "delivery_email_fallback",
   "game_opened",
   "scene_started",
   "target_found",

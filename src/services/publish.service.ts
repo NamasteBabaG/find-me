@@ -3,6 +3,7 @@ import { statusOf, transitionGame } from "./game-status";
 import { ensurePlayerLink } from "./share-link.service";
 import { createMagicLink } from "./auth.service";
 import { gameReadyEmail } from "./email/templates";
+import { routeMail } from "./email/fallback";
 import { deleteAsset } from "./asset.service";
 import { audit, type Actor } from "./audit.service";
 
@@ -34,17 +35,34 @@ export async function publishGame(c: Container, gameId: string, actor: Actor): P
   const link = await ensurePlayerLink(c, gameId);
 
   const current = statusOf(await c.db.game.findUniqueOrThrow({ where: { id: gameId }, select: { status: true } }));
-  if (current === "READY" && game.owner && game.childProfile) {
+  if (current === "READY" && game.childProfile) {
     // The game is already playable at this point: the link works and the parent
     // can open it from their library. So a mail server having a bad afternoon
     // must not throw out of here — that turned a finished game into a FAILED job
     // and put an email error in front of the parent as if generation had broken.
     // It stays READY rather than DELIVERED, which is exactly what happened.
     try {
-      const libraryLink = await createMagicLink(c, game.owner.id, `/library/${gameId}`);
+      const owner = game.owner;
+      const libraryLink = owner ? await createMagicLink(c, owner.id, `/library/${gameId}`) : undefined;
       const locale = game.locale === "he" ? "he" : "en";
-      await c.email.send(gameReadyEmail({ to: game.owner.email, childName: game.childProfile.displayName, playLink: link.url, libraryLink, sceneCount: game.scenes.length, locale }));
-      await transitionGame(c, gameId, "DELIVERED", actor);
+      const mail = gameReadyEmail({ to: owner?.email ?? "", childName: game.childProfile.displayName, playLink: link.url, libraryLink, sceneCount: game.scenes.length, locale });
+      // A game with nobody to send it to is a game nobody will open. Until every
+      // path into a paid game guarantees an address, an operator's inbox takes
+      // it, stamped — and the game stays READY, because the parent does not have it.
+      const routed = routeMail(mail, c.emailFallbackTo);
+      if (!routed) {
+        console.error(`[publish] ${gameId} is ready but has no recipient email (set EMAIL_FALLBACK_TO to catch these)`);
+        await audit(c, actor, "email:no-recipient", "Game", gameId);
+        c.analytics.track("delivery_email_failed", { gameId });
+      } else if (routed.viaFallback) {
+        console.warn(`[email:fallback] ${gameId}: no owner email — delivered to the fallback inbox instead`);
+        await c.email.send(routed.message);
+        await audit(c, actor, "email:fallback", "Game", gameId);
+        c.analytics.track("delivery_email_fallback", { gameId });
+      } else {
+        await c.email.send(routed.message);
+        await transitionGame(c, gameId, "DELIVERED", actor);
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error(`[publish] ${gameId} is ready but the email did not go out:`, message);
