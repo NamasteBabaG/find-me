@@ -280,7 +280,7 @@ export class OpenAiAvatarProvider implements AvatarProvider {
       mask,
       prompt: `${request.prompt} The first image is the scene to edit; the second image is the character reference sheet for the child (use her face, hair and outfit; do not copy its background or its grid).`,
       size: `${size}x${size}`,
-      quality: this.patchQuality,
+      quality: request.quality ?? this.patchQuality,
       label: request.label,
     });
     // Back to the crop's own pixels so the diff compares like with like.

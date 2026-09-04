@@ -40,6 +40,15 @@ const EnvSchema = z.object({
   GENERATION_QUALITY: z.enum(["low", "medium", "high"]).default("medium"),
   /** Hiding spots only. Unset means "the same as GENERATION_QUALITY". */
   GENERATION_PATCH_QUALITY: z.enum(["low", "medium", "high"]).optional(),
+  /**
+   * Quality for a hiding spot's SECOND and later attempts.
+   *
+   * Set this with a cheaper GENERATION_PATCH_QUALITY to pay little for the rolls
+   * that work and more for the ones that do not: most spots land on the first
+   * roll, and the ones that need another are the awkward ones worth spending on.
+   * Unset means every attempt costs the same.
+   */
+  GENERATION_PATCH_RETRY_QUALITY: z.enum(["low", "medium", "high"]).optional(),
   /** A vision-capable chat model that checks a finished patch is really the child. */
   JUDGE_MODEL: z.string().default("gpt-4o-mini"),
   /** Images per minute this OpenAI account may request (tier 1 is 5). */

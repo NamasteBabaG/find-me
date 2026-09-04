@@ -80,6 +80,8 @@ export interface SlotPatchRequest {
   prompt: string;
   /** For logs: "beach/sandcastle/A". */
   label: string;
+  /** Overrides the provider's default for this one call. */
+  quality?: string;
 }
 
 export interface SlotPatchResponse extends GenerationCost {

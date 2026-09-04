@@ -1,5 +1,5 @@
 import { newId } from "@/lib/ids";
-import { flag } from "@/lib/env";
+import { env, flag } from "@/lib/env";
 import { isGenerating, type GameStatus } from "@/domain/order-state";
 import { BOARDS_PER_WORLD } from "@/domain/package";
 import { GameConfigSchema } from "@/domain/game/config";
@@ -196,7 +196,15 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
           let spent = 0;
           let ok = 0;
           for (const variant of variants) {
-            const outcome = await generateSlotPatch(c, { targetInstanceId: row.id, scene: def, target, variant, reference, childName: refreshedChild.displayName, ownerId: refreshedChild.ownerId });
+            // Cheap first, careful on the retry. Most hiding spots land on the
+            // first roll, and at low quality that roll costs 2 cents instead of
+            // 7; the ones that do not are exactly the awkward spots, and those
+            // get the better model. Measured over one world: 26 of 27 spots at
+            // low for $1.01, against $4.5 at medium — but a visible minority of
+            // low patches come out soft or fragmentary, which is what the
+            // retry is for.
+            const quality = env().GENERATION_PATCH_RETRY_QUALITY && row.attempts > 0 ? env().GENERATION_PATCH_RETRY_QUALITY : undefined;
+            const outcome = await generateSlotPatch(c, { targetInstanceId: row.id, scene: def, target, variant, reference, childName: refreshedChild.displayName, ownerId: refreshedChild.ownerId, quality });
             outcomes.push(outcome);
             spent += outcome.newCostCents;
             if (outcome.status === "GENERATED") ok++;

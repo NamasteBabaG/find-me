@@ -265,6 +265,34 @@ A judge that cannot answer never guesses. The patch is kept, the row records `un
 pipeline sends that game to `MANUAL_REVIEW` rather than delivering it on the strength of its
 rectangles. With no judge configured (the default, and every mock setup) nothing changes.
 
+## What a hiding spot costs, and what quality buys
+
+Measured from 26 recorded rolls, a medium 1024x1024 inpaint is **$0.070**, and three quarters of that
+is the image the model draws:
+
+```
+text in      200 tokens  @ $5/M   = $0.0010
+image in    2048 tokens  @ $8/M   = $0.0164   the crop + her identity sheet
+image out   1756 tokens  @ $30/M  = $0.0527   the picture it draws
+```
+
+Low quality is **$0.020**. Two whole worlds, same nine boards, both reaching 26 of 27 spots:
+
+| | rolls per finished spot | all in |
+| --- | --- | --- |
+| medium | 2.2 | ~$4.50 |
+| low | 1.7 | $1.01 |
+
+Low is not simply worse — over four spots generated at both qualities from the same identity sheet,
+two were indistinguishable and two were clearly better at medium (one low patch came out blurred with
+her head cut off). It fails *differently*, not more often.
+
+So the setting worth using is both: `GENERATION_PATCH_QUALITY=low` with
+`GENERATION_PATCH_RETRY_QUALITY=medium`. Most spots land on the first roll and cost two cents; the
+ones that do not are the awkward spots, and they get the better model. `GENERATION_QUALITY` still
+governs the identity sheet, which is drawn once per child and is the reference every spot is painted
+from — there is nothing to save there.
+
 ## A bigger child is a cheaper child
 
 From one nine-board run (27 spots, 33 rolls), grouped by the height the slot asks for:

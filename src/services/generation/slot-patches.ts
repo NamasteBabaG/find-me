@@ -73,6 +73,8 @@ export async function generateSlotPatch(
     childName: string;
     ownerId: string | null;
     tries?: number;
+    /** Overrides the provider's quality for this attempt. */
+    quality?: string;
   },
 ): Promise<PatchOutcome> {
   const { scene, target, variant } = input;
@@ -130,7 +132,7 @@ export async function generateSlotPatch(
     // and quietly halved the budget a spot was allowed.
     attempts += 1;
     try {
-      const edit = await c.avatars.editSlotCrop({ crop, paintMask: mask, reference: input.reference, prompt, label });
+      const edit = await c.avatars.editSlotCrop({ crop, paintMask: mask, reference: input.reference, prompt, label, quality: input.quality });
       spent += edit.costCents;
       judged = null;
       elapsed += edit.durationMs;
