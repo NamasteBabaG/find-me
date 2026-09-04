@@ -2,11 +2,16 @@
  * Ask the patch judge about every hiding spot a game already has.
  *
  *   npx tsx scripts/judge-patches.ts <gameId> [--model=gpt-4o-mini] [--out=work/judged]
+ *   npx tsx scripts/judge-patches.ts --dir=work/w2 --ref=work/sheet.png [--name=Noa]
  *
  * Reads finished patches out of the database and prints a verdict for each, with
  * what the whole pass cost. Nothing is written back — this is how the judge is
  * measured against patches whose answers are already known before it is allowed
  * to reject anything a customer paid for.
+ *
+ * The `--dir` form asks the same question of a folder of loose patches, which is
+ * how a world is checked before it is put on sale: the authoring run leaves one
+ * render per hiding spot on disk, and geometry has already had its say.
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -21,11 +26,36 @@ function flag(name: string, fallback = ""): string {
   return hit ? hit.slice(name.length + 3) : fallback;
 }
 
+async function judgeDir(dir: string, key: string) {
+  const { readdirSync } = await import("node:fs");
+  const { OpenAiPatchJudge } = await import("../src/infra/generation/judge");
+  const ref = flag("ref");
+  if (!ref) throw new Error("--dir needs --ref=<identity sheet>");
+  const reference = readFileSync(path.resolve(process.cwd(), ref));
+  const childName = flag("name", "the child");
+  const files = readdirSync(path.resolve(process.cwd(), dir)).filter((f) => /\.(webp|png)$/i.test(f)).sort();
+  const judge = new OpenAiPatchJudge(key, { model: flag("model", "gpt-4o-mini") });
+  let cents = 0;
+  const counts = { ok: 0, bad: 0, unknown: 0 };
+  for (const f of files) {
+    const label = f.replace(/\.(webp|png)$/i, "");
+    const patchPng = readFileSync(path.resolve(process.cwd(), dir, f));
+    const v = await judge.judge({ patchPng, reference, childName, label });
+    cents += v.costCents;
+    counts[v.verdict]++;
+    console.log(`${v.verdict === "ok" ? " ok " : v.verdict === "bad" ? "BAD " : " ?  "} ${label.padEnd(26)} ${v.reason}`);
+  }
+  console.log("");
+  console.log(`${counts.ok} ok · ${counts.bad} rejected · ${counts.unknown} unknown · ${(cents / 100).toFixed(3)} USD for ${files.length} judgements`);
+}
+
 async function main() {
-  const gameId = process.argv.slice(2).find((a) => !a.startsWith("--"));
-  if (!gameId) throw new Error("usage: npx tsx scripts/judge-patches.ts <gameId>");
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new Error("OPENAI_API_KEY is not set");
+  const dir = flag("dir");
+  if (dir) return judgeDir(dir, key);
+  const gameId = process.argv.slice(2).find((a) => !a.startsWith("--"));
+  if (!gameId) throw new Error("usage: npx tsx scripts/judge-patches.ts <gameId> | --dir=<folder> --ref=<sheet>");
 
   const { getContainer } = await import("../src/services/container");
   const { readAssetBuffer } = await import("../src/services/asset.service");

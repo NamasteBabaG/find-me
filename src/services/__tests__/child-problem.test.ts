@@ -95,14 +95,23 @@ describe("childProblem", () => {
     expect(childProblem(render({ largest: 7056, painted: 9143, expected: 8435, width: 130, height: 155, childPx: 143 }))).toContain("in pieces");
   });
 
-  it("keeps the twenty-five that came back whole", () => {
+  it("rejects a cut-out too narrow to be her, and one too wide to be only her", () => {
+    // dragoncave/hoard was a vertical strip of hair and one eye, 24px across
+    // where a child there is ~77px: childlike in height, density and position,
+    // and nothing else could see it. giantlibrary/book was the largest, most
+    // confident blob of the whole run — and held three other children.
+    expect(childProblem(render({ largest: 1049, expected: 4292, width: 24, height: 63, childPx: 102 }))).toContain("a strip of her");
+    expect(childProblem(render({ largest: 17801, expected: 8435, width: 173, height: 172, childPx: 143 }))).toContain("more than one child");
+  });
+
+  it("keeps the ones that came back whole", () => {
     // Same run, the accepted ones: one connected shape, to the pixel.
     for (const [largest, width, height, childPx] of [
       [4167, 43, 143, 113],
       [9281, 71, 208, 133],
       [13189, 84, 222, 113],
       [3701, 57, 90, 154],
-      [17801, 173, 172, 143],
+      [5405, 59, 134, 113],
     ] as const) {
       expect(childProblem(render({ largest, painted: largest, expected: largest, width, height, childPx }))).toBeNull();
     }

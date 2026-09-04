@@ -459,6 +459,16 @@ export function childProblem(result: PatchResult): string | null {
   if (h > 2.2) return `painted ${Math.round(s.height)}px tall, far more than the ~${s.childPx}px asked for (the model repainted the crop)`;
   const ratio = s.width / Math.max(1, s.height);
   if (ratio > 1.6) return `painted ${Math.round(s.width)}x${Math.round(s.height)}, wider than tall, not a standing child`;
+  // The prompt asks for a child about 0.75 x childPx across, so width is worth
+  // measuring against that and not only against her own height — a vertical
+  // strip of hair and one eye has a perfectly childlike height, density and
+  // position, and is none of the things the other rules look at. Both limits
+  // rest on a single sample each, but each sits in a clean gap: across
+  // twenty-seven renders the next narrowest was 0.45 and the next widest 1.21.
+  const askedWide = 0.75 * s.childPx;
+  const across = s.width / Math.max(1, askedWide);
+  if (across < 0.38) return `painted ${Math.round(s.width)}px across where a child is ~${Math.round(askedWide)}px — a strip of her, not her`;
+  if (across > 1.4) return `painted ${Math.round(s.width)}px across where a child is ~${Math.round(askedWide)}px — more than one child, or her and the scenery`;
   // A body fills roughly half its own bounding box, even mostly hidden; specks
   // and scenery edges scattered across a box fill very little of one.
   const density = result.largest / Math.max(1, s.width * s.height);

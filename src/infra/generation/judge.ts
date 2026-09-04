@@ -15,7 +15,20 @@ import type { PatchJudge, PatchJudgement } from "./types";
  * one the game itself needs: **her face has to be visible and it has to be her**.
  * A child peeking over a basket with only her head showing passes — that is the
  * hiding we asked for. A pair of legs does not, because a player cannot find
- * "Noa" in something with no face.
+ * "Noa" in something with no face. Nor does a face sliced down its middle, nor a
+ * cut-out holding three other children and not her at all — the largest, most
+ * confident blob of a whole world's run was exactly that, and every rule that
+ * measures rectangles waved it through.
+ *
+ * On world 2's twenty-seven spots it rejected three, and all three were real:
+ * two children with half a face cut clean away, and one cut-out holding three
+ * other children. I had looked at one of those on a contact sheet, called it a
+ * good child and started loosening the prompt to let it through; at seven times
+ * the size the missing half of her face is obvious. The judge was right twice
+ * and I was wrong once, which is the whole reason it exists.
+ *
+ * Sheer narrowness is left to `childProblem`, which can measure it for nothing:
+ * this asks only what looking can answer.
  */
 
 const API = "https://api.openai.com/v1/chat/completions";
@@ -57,9 +70,9 @@ export class OpenAiPatchJudge implements PatchJudge {
     const prompt = [
       `The FIRST image is one cut-out taken from an illustrated hidden-object picture.`,
       `The SECOND image is the reference sheet for ${input.childName}, the child that cut-out is supposed to show.`,
-      `Answer only whether the cut-out shows HER, with her face visible.`,
-      `"ok" — it is her, and her face can be seen, even if the rest of her is hidden behind something.`,
-      `"bad" — it is an object, an animal, scenery, a different person, a body with no face, or nothing recognisable.`,
+      `Answer only whether the cut-out shows HER, drawn whole as far as it goes.`,
+      `"ok" — it is her, her face can be seen, and what is there is complete in itself: a head and shoulders over a wall, or a child cut off at the waist by something in front of her, both count.`,
+      `"bad" — it is an object, an animal, scenery, a different person, a body with no face, half a face with the other half cut clean away, or nothing recognisable.`,
       `Reply with JSON only: {"verdict":"ok"|"bad","reason":"<at most eight words>"}`,
     ].join(" ");
 
