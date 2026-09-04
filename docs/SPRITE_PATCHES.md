@@ -314,6 +314,25 @@ ones that do not are the awkward spots, and they get the better model. `GENERATI
 governs the identity sheet, which is drawn once per child and is the reference every spot is painted
 from — there is nothing to save there.
 
+## Where a slot may not go
+
+Placing eighteen boards' worth of slots and running one real render on each turned up the same
+failure again and again, and it is never the model's fault. The child gets painted correctly; she
+just cannot be **separated** from what is behind her. Three places do this:
+
+| Place | What comes back | Seen on |
+| --- | --- | --- |
+| Open water | The whole crop lights up: re-rendering a surface with no structure changes every pixel | Sydney's ferry, the Amazon's canoe |
+| A dense, dark or night crowd | Her outline survives the threshold and her body does not — "scattered marks" | Tokyo's blossom, the dragon's cave crystals |
+| Inside something busy and lit | Same, from texture rather than darkness | The fairy forest's hollow tree |
+
+The fix is always to **move the slot**, never to roll again: all five of these landed on the first
+try once moved to ground with something solid behind it, and none of them would have landed at the
+old spot however many rolls were paid for.
+
+None of this is visible in a scene file, and no static check finds it. One render per target, at two
+cents, does — which is why a world is not activated until every target has produced one.
+
 ## A bigger child is a cheaper child
 
 From one nine-board run (27 spots, 33 rolls), grouped by the height the slot asks for:
