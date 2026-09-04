@@ -15,6 +15,9 @@ import { CelebrationOverlay } from "./CelebrationOverlay";
 import type { PlayStore } from "../store/play-store";
 import { useGameText } from "../i18n";
 
+/** How long the clouds take to part. Matches the CSS transition. */
+const CURTAIN_MS = 900;
+
 interface Props {
   scene: SceneConfig;
   mission: MissionState;
@@ -51,22 +54,35 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
     return () => document.removeEventListener("visibilitychange", onVis);
   }, []);
 
-  const onReady = useCallback(
-    (api: ViewportApi) => {
-      apiRef.current = api;
-      if (mission.phase !== "intro") return;
-      const intro = scene.intro;
-      if (intro) {
-        api.focusOn(intro.from.x, intro.from.y, intro.from.zoom, 0);
-        setTimeout(() => api.focusOn(intro.to.x, intro.to.y, intro.to.zoom, intro.durationMs), 60);
-        setTimeout(() => dispatch({ type: "START", now: Date.now() }), intro.durationMs + 200);
-      } else {
-        dispatch({ type: "START", now: Date.now() });
-      }
-    },
+  // The curtain is drawn shut from the very first render and opens only when
+  // the viewport has a size AND every picture has decoded. There is no frame,
+  // not even the first, in which the world is visible without the child in it.
+  const [viewportReady, setViewportReady] = useState(false);
+  const [assetsReady, setAssetsReady] = useState(false);
+  const onReady = useCallback((api: ViewportApi) => {
+    apiRef.current = api;
+    setViewportReady(true);
+  }, []);
+  const onAssetsReady = useCallback(() => setAssetsReady(true), []);
+  const revealed = viewportReady && assetsReady;
+
+  useEffect(() => {
+    if (!revealed || mission.phase !== "intro") return;
+    const api = apiRef.current;
+    if (!api) return;
+    const intro = scene.intro;
+    // Let the clouds part before the camera starts moving, so the pan is seen.
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    if (intro) {
+      api.focusOn(intro.from.x, intro.from.y, intro.from.zoom, 0);
+      timers.push(setTimeout(() => api.focusOn(intro.to.x, intro.to.y, intro.to.zoom, intro.durationMs), CURTAIN_MS * 0.6));
+      timers.push(setTimeout(() => dispatch({ type: "START", now: Date.now() }), CURTAIN_MS * 0.6 + intro.durationMs + 200));
+    } else {
+      timers.push(setTimeout(() => dispatch({ type: "START", now: Date.now() }), CURTAIN_MS));
+    }
+    return () => timers.forEach(clearTimeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [scene.slug],
-  );
+  }, [revealed, scene.slug]);
 
   // React to reducer feedback: sounds, bubbles, particles, timers.
   const fb = mission.lastFeedback;
@@ -226,7 +242,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
       </header>
 
       <div className="scene__stage">
-        <SceneViewport scene={scene} mission={mission} hintLevel={mission.hintLevel} bonusFound={mission.bonusFound} onHit={onHit} onReady={onReady} ariaLabel={tf(g.scene.sceneAria, { name: scene.name })}>
+        <SceneViewport scene={scene} mission={mission} hintLevel={mission.hintLevel} bonusFound={mission.bonusFound} onHit={onHit} onReady={onReady} onAssetsReady={onAssetsReady} ariaLabel={tf(g.scene.sceneAria, { name: scene.name })}>
           {(vp) => {
             if (!bubble) return null;
             const p = stageToScreen(vp.transform, bubble.x, bubble.y);
@@ -235,6 +251,10 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
         </SceneViewport>
         {burst ? <CelebrationOverlay key={burst.key} kind={scene.celebration.kind} small={burst.small} seed={burst.key} /> : null}
         {mission.phase === "intro" ? <div className="scene__intro-veil" aria-hidden /> : null}
+        <div className={`scene__curtain${revealed ? " is-open" : ""}`} aria-hidden>
+          <div className="scene__cloud scene__cloud--l" />
+          <div className="scene__cloud scene__cloud--r" />
+        </div>
       </div>
 
       {mission.phase !== "complete" ? (

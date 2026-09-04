@@ -19,6 +19,8 @@ interface Props {
   bonusFound: boolean;
   onHit: (hit: Hit) => void;
   onReady?: (api: ViewportApi) => void;
+  /** Every image this board can show has decoded — base, foreground, all three children, the bonus. */
+  onAssetsReady?: () => void;
   ariaLabel?: string;
   /** Screen-space overlays get the transform via render prop. */
   children?: (api: ViewportApi) => React.ReactNode;
@@ -47,7 +49,7 @@ const SPARKS = [
   { x: 0.05, y: 0.85, d: 140 },
 ];
 
-export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, onReady, ariaLabel, children }: Props) {
+export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, onReady, onAssetsReady, ariaLabel, children }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stage = useMemo(() => ({ width: scene.art.width, height: scene.art.height }), [scene.art.width, scene.art.height]);
   const [ripples, setRipples] = useState<Ripple[]>([]);
@@ -112,6 +114,58 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
 
   const api = useViewport(containerRef, stage, onTap);
   apiRef.current = api;
+
+  // The board webp is static and fast; a child's patch is a signed database
+  // asset and is not. Drawn as they arrive, the world appeared first and the
+  // child popped into it a second later — which is the answer, shown before the
+  // question. And because only the current target is drawn, the same pop-in
+  // would spoil every later mission too. So every picture the board can ever
+  // show is decoded up front, and the curtain in ScenePlayer stays shut until
+  // this fires. One bad asset must not shut the game forever: ten seconds, then
+  // we open regardless and let the <img> show its own failure.
+  const assetUrls = useMemo(() => {
+    const urls = new Set<string>([scene.art.base]);
+    if (scene.art.foreground) urls.add(scene.art.foreground);
+    for (const p of placedTargets) urls.add(p.sprite.kind === "image" ? p.sprite.url : p.sprite.faceUrl);
+    if (scene.bonus?.sprite) urls.add(scene.bonus.sprite);
+    return [...urls];
+  }, [scene, placedTargets]);
+  const assetsReadyRef = useRef(onAssetsReady);
+  assetsReadyRef.current = onAssetsReady;
+  useEffect(() => {
+    let settled = false;
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(fallback);
+      assetsReadyRef.current?.();
+    };
+    const fallback = setTimeout(() => {
+      console.warn(`[scene] ${scene.slug}: not every asset decoded in 10s, opening anyway`);
+      settle();
+    }, 10_000);
+    Promise.all(
+      assetUrls.map(
+        (url) =>
+          new Promise<void>((resolve) => {
+            // onload, not decode(): a background tab defers decoding until it
+            // is looked at, and a parent who opens the link behind another
+            // tab would sit on clouds until then. onload means the bytes are
+            // here; the browser decodes on first paint, which is when it matters.
+            const img = new Image();
+            img.onload = () => resolve();
+            img.onerror = () => resolve();
+            img.src = url;
+          }),
+      ),
+    ).then(settle);
+    return () => {
+      settled = true;
+      clearTimeout(fallback);
+    };
+    // Once per board: the URL list only changes when the scene does.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scene.slug]);
 
   useEffect(() => {
     if (api.viewport.width > 0) onReady?.(api);

@@ -55,6 +55,44 @@
 .game--demo .scene { height: 100%; }
 .scene__stage { position: absolute; inset: 0; overflow: hidden; }
 .scene__intro-veil { position: absolute; inset: 0; pointer-events: auto; }
+
+/* ─── The curtain ────────────────────────────────────────────────────────────
+   Two banks of cloud, fully opaque, covering the stage from the first paint.
+   They part only when every picture the board needs has decoded — so there is
+   no frame in which a child can be seen arriving. Each bank is the scene's own
+   sky with white cloud lumps along its inner edge; in the design system's
+   palette that reads as a picture-book page turning, not a loading screen. */
+.scene__curtain { position: absolute; inset: 0; z-index: calc(var(--z-ui) - 1); pointer-events: auto; overflow: hidden; }
+.scene__curtain.is-open { pointer-events: none; }
+.scene__cloud {
+  position: absolute; top: -10%; bottom: -10%; width: 62%;
+  background: var(--scene-sky, #BFE9FF);
+  transition: transform 900ms cubic-bezier(0.65, 0, 0.35, 1), opacity 300ms ease 700ms;
+  will-change: transform;
+}
+.scene__cloud::after {
+  content: ""; position: absolute; top: 0; bottom: 0; width: 34%;
+  background-image:
+    radial-gradient(circle at 50% 8%, #fff 0 46%, transparent 47%),
+    radial-gradient(circle at 20% 26%, #fff 0 42%, transparent 43%),
+    radial-gradient(circle at 70% 40%, #fff 0 48%, transparent 49%),
+    radial-gradient(circle at 30% 58%, #fff 0 44%, transparent 45%),
+    radial-gradient(circle at 65% 76%, #fff 0 46%, transparent 47%),
+    radial-gradient(circle at 25% 92%, #fff 0 42%, transparent 43%);
+  background-size: 100% 22%;
+  background-repeat: repeat-y;
+  filter: drop-shadow(0 0 0 #fff);
+}
+.scene__cloud--l { left: 0; }
+.scene__cloud--l::after { right: -17%; }
+.scene__cloud--r { right: 0; }
+.scene__cloud--r::after { left: -17%; transform: scaleX(-1); }
+.scene__curtain.is-open .scene__cloud--l { transform: translateX(-118%); opacity: 0; }
+.scene__curtain.is-open .scene__cloud--r { transform: translateX(118%); opacity: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .scene__cloud { transition: opacity 250ms ease; }
+  .scene__curtain.is-open .scene__cloud--l, .scene__curtain.is-open .scene__cloud--r { transform: none; }
+}
 .scene__bar { position: absolute; left: 0; right: 0; top: 0; z-index: var(--z-ui); display: flex; align-items: center; justify-content: space-between; gap: var(--space-1); padding: var(--space-2); pointer-events: none; }
 .scene__bar > * { pointer-events: auto; }
 .scene__tools { display: flex; gap: var(--space-1); }
