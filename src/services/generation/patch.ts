@@ -167,7 +167,7 @@ export function hitBoxFromAlpha(alpha: Buffer, w: number, h: number, solid = 128
  * area are kept too — but only if they are close to it. A pair of flip-flops
  * two metres away in the sand is drift, not part of her.
  */
-export function keepMainBlobs(mask: Buffer, w: number, h: number, keep: number, nearPx = Infinity): { out: Buffer; largest: number; kept: number } {
+export function keepMainBlobs(mask: Buffer, w: number, h: number, keep: number, nearPx = Infinity): { out: Buffer; largest: number; kept: number; keptArea: number } {
   const n = w * h;
   const label = new Int32Array(n).fill(-1);
   const areas: number[] = [];
@@ -208,7 +208,13 @@ export function keepMainBlobs(mask: Buffer, w: number, h: number, keep: number, 
   }
   const out = Buffer.alloc(n);
   for (let i = 0; i < n; i++) if (keepIds.has(label[i] ?? -1)) out[i] = 255;
-  return { out, largest, kept: keepIds.size };
+  // `kept` counts the blobs; `keptArea` counts their pixels. The difference
+  // matters: reading one for the other made the one-piece rule compare a pixel
+  // count against the number 2 and pass everything, while its unit test stayed
+  // green because the test supplied the number the rule was meant to get.
+  let keptArea = 0;
+  for (const id of keepIds) keptArea += areas[id] ?? 0;
+  return { out, largest, kept: keepIds.size, keptArea };
 }
 
 export interface DiffOptions {
@@ -405,7 +411,7 @@ export async function diffToPatch(input: {
       anchor: { x: (px.x + hb.anchor.x) / art.width, y: (px.y + hb.anchor.y) / art.height },
     },
     largest: pieces.largest,
-    painted: pieces.kept,
+    painted: pieces.keptArea,
     // A child of `childPx` fills roughly 0.75 × childPx wide and ~55% of that box.
     expected: Math.round(ctx.childPx * ctx.childPx * 0.75 * 0.55),
     shape: {

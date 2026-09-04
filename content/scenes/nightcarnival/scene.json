@@ -153,37 +153,37 @@
       "bodyTemplate": "nightcarnival_stall",
       "difficulty": 3,
       "mission": {
-        "en": "Find {name} hiding behind the toffee apple stall",
-        "he": "מצאו את {name} מתחבא/ת מאחורי דוכן תפוחי הסוכר"
+        "en": "Find {name} hiding behind the duck pond stall",
+        "he": "מצאו את {name} מתחבא/ת מאחורי דוכן הברווזים"
       },
       "item": {
-        "en": "a glowing red toffee apple stall with rows of apples on sticks",
-        "he": "דוכן תפוחי סוכר אדום וזוהר עם שורות תפוחים על מקלות"
+        "en": "the duck pond stall, with yellow ducks floating round and round",
+        "he": "דוכן הברווזים, עם ברווזים צהובים שמסתובבים במים"
       },
       "success": [
         {
-          "en": "I got sugar on my nose!",
-          "he": "נדבק לי סוכר על האף!"
+          "en": "I nearly caught one!",
+          "he": "כמעט תפסתי אחד!"
         },
         {
-          "en": "You found me! Want one?",
-          "he": "מצאתם! רוצים אחד?"
+          "en": "You found me! They keep going round.",
+          "he": "מצאתם! הם ממשיכים להסתובב."
         },
         {
-          "en": "It is warm behind here.",
-          "he": "חמים פה מאחור."
+          "en": "Every duck has a number.",
+          "he": "לכל ברווז יש מספר."
         }
       ],
       "animation": "peek",
       "slots": [
         {
           "id": "nightcarnival_stall_a",
-          "x": 0.735,
-          "y": 0.79,
-          "scale": 0.08,
+          "x": 0.8,
+          "y": 0.69,
+          "scale": 0.075,
           "hintZone": {
-            "x": 0.735,
-            "y": 0.775,
+            "x": 0.8,
+            "y": 0.6749999999999999,
             "r": 0.075
           },
           "hintText": {
@@ -193,12 +193,12 @@
         },
         {
           "id": "nightcarnival_stall_b",
-          "x": 0.7,
-          "y": 0.7,
-          "scale": 0.07,
+          "x": 0.905,
+          "y": 0.76,
+          "scale": 0.08,
           "hintZone": {
-            "x": 0.7,
-            "y": 0.6849999999999999,
+            "x": 0.905,
+            "y": 0.745,
             "r": 0.075
           },
           "hintText": {

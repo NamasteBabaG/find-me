@@ -117,12 +117,12 @@
       "slots": [
         {
           "id": "giantlibrary_globe_a",
-          "x": 0.185,
-          "y": 0.61,
-          "scale": 0.05,
+          "x": 0.128,
+          "y": 0.648,
+          "scale": 0.04,
           "hintZone": {
-            "x": 0.185,
-            "y": 0.595,
+            "x": 0.128,
+            "y": 0.633,
             "r": 0.075
           },
           "hintText": {
@@ -132,12 +132,12 @@
         },
         {
           "id": "giantlibrary_globe_b",
-          "x": 0.075,
-          "y": 0.59,
-          "scale": 0.05,
+          "x": 0.262,
+          "y": 0.641,
+          "scale": 0.045,
           "hintZone": {
-            "x": 0.075,
-            "y": 0.575,
+            "x": 0.262,
+            "y": 0.626,
             "r": 0.075
           },
           "hintText": {
@@ -148,42 +148,42 @@
       ]
     },
     {
-      "id": "book",
-      "targetType": "giantlibrary_book",
-      "bodyTemplate": "giantlibrary_book",
+      "id": "doorway",
+      "targetType": "giantlibrary_doorway",
+      "bodyTemplate": "giantlibrary_doorway",
       "difficulty": 3,
       "mission": {
-        "en": "Find {name} hiding inside an open book",
-        "he": "מצאו את {name} מתחבא/ת בתוך ספר פתוח"
+        "en": "Find {name} hiding in the doorway",
+        "he": "מצאו את {name} מתחבא/ת בפתח הדלת"
       },
       "item": {
-        "en": "enormous open books standing like tents on the floor",
-        "he": "ספרים ענקיים פתוחים עומדים כמו אוהלים על הרצפה"
+        "en": "the tall doorway into the reading room",
+        "he": "פתח הדלת הגבוה לחדר הקריאה"
       },
       "success": [
         {
-          "en": "The pages are like walls!",
-          "he": "הדפים כמו קירות!"
+          "en": "It is quiet in here!",
+          "he": "שקט פה!"
         },
         {
-          "en": "You found me! Shhh, it is a library.",
-          "he": "מצאתם! ששש, זו ספרייה."
+          "en": "You found me! The lantern gave me away.",
+          "he": "מצאתם! הפנס הלשין עליי."
         },
         {
-          "en": "The giant nearly turned the page.",
-          "he": "הענק כמעט הפך את הדף."
+          "en": "Nobody looks at doors.",
+          "he": "אף אחד לא מסתכל על דלתות."
         }
       ],
       "animation": "peek",
       "slots": [
         {
-          "id": "giantlibrary_book_a",
-          "x": 0.475,
-          "y": 0.8,
+          "id": "giantlibrary_doorway_a",
+          "x": 0.411,
+          "y": 0.575,
           "scale": 0.07,
           "hintZone": {
-            "x": 0.475,
-            "y": 0.785,
+            "x": 0.411,
+            "y": 0.5599999999999999,
             "r": 0.075
           },
           "hintText": {
@@ -192,13 +192,13 @@
           }
         },
         {
-          "id": "giantlibrary_book_b",
-          "x": 0.815,
-          "y": 0.79,
-          "scale": 0.07,
+          "id": "giantlibrary_doorway_b",
+          "x": 0.352,
+          "y": 0.64,
+          "scale": 0.072,
           "hintZone": {
-            "x": 0.815,
-            "y": 0.775,
+            "x": 0.352,
+            "y": 0.625,
             "r": 0.075
           },
           "hintText": {
