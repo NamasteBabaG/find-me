@@ -30,8 +30,8 @@ export default async function HomePage() {
         <Transformation />
         <HowItWorks t={t} locale={locale} />
         <Inside t={t} locale={locale} />
-        <GiftSection t={t} locale={locale} />
         <Worlds t={t} locale={locale} scenes={scenes} activeSlugs={active} carousel={carouselWorlds(locale)} />
+        <GiftSection t={t} locale={locale} />
         <Pricing t={t} locale={locale} activeCount={worlds.length} currency={currency} />
         <Trust t={t} locale={locale} />
         <Faq t={t} locale={locale} />
