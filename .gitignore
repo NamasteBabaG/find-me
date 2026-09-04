@@ -15,3 +15,14 @@ tsconfig.tsbuildinfo
 
 # Agent worktrees are scratch checkouts, never part of the repository.
 .claude/worktrees/
+
+# Raw board generations (assets/<Slug>.png, ~14MB each).
+#
+# The nine original boards are tracked and stay tracked — gitignore does not
+# untrack. New ones are not: eighteen more worlds at fourteen megabytes each
+# would push this repo past half a gigabyte, and what actually ships is
+# public/scenes/<slug>/base.webp. To re-derive the web assets from a raw file
+# you still have locally: generate-world.ts <slug> --from-asset
+assets/*.png
+!assets/random-girl*.png
+!assets/noa-face.beach-original.png
