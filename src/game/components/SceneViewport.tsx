@@ -35,6 +35,18 @@ interface Ripple {
  * All hit-testing is math on normalized coordinates (no DOM hit targets), so a
  * tap resolves the same way on every device and at every zoom.
  */
+/** Where the sparks fly to, as fractions of the halo box, and how late each starts. */
+const SPARKS = [
+  { x: -0.55, y: -0.6, d: 0 },
+  { x: 0.6, y: -0.5, d: 60 },
+  { x: -0.7, y: 0.1, d: 120 },
+  { x: 0.7, y: 0.15, d: 40 },
+  { x: -0.35, y: 0.65, d: 160 },
+  { x: 0.4, y: 0.7, d: 100 },
+  { x: 0, y: -0.8, d: 200 },
+  { x: 0.05, y: 0.85, d: 140 },
+];
+
 export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, onReady, ariaLabel, children }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stage = useMemo(() => ({ width: scene.art.width, height: scene.art.height }), [scene.art.width, scene.art.height]);
@@ -135,16 +147,39 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
     const box = rect
       ? { left: rect.x * stage.width, top: rect.y * stage.height, width: rect.w * stage.width, height: rect.h * stage.height, zIndex: p.slot.zIndex, transform: p.slot.flip ? "scaleX(-1)" : undefined }
       : { left: p.anchor.x * stage.width, top: p.anchor.y * stage.height, width: w, height: h, zIndex: p.slot.zIndex, transform: `translate(-50%, -50%) rotate(${p.slot.rotation}deg)${p.slot.flip ? " scaleX(-1)" : ""}` };
-    return (
-      <div
-        key={p.target.id}
-        className={`stage__target${found ? " stage__target--found" : ""}`}
-        style={box}
-        data-target={p.target.id}
-      >
-        <div className={`tgt-anim${justFound ? ` anim-${p.target.animation}` : ""}`}>
-          <Sprite sprite={p.sprite} title={p.target.item} className="stage__sprite" />
+    // A painted-in child is a piece of the picture. Bouncing or jumping her on
+    // a find moved the patch, and for that half-second her cut edge showed —
+    // she read as a sticker on top of the world rather than someone in it. So
+    // the patch never moves: the celebration is a halo and sparks drawn around
+    // her footprint, outside the sprite, and the persistent glow is a filter
+    // that follows her silhouette. Composed stickers still get their bounce;
+    // they were never pretending to be part of the painting.
+    const celebrate = justFound && !p.isPatch ? ` anim-${p.target.animation}` : "";
+    const halo =
+      justFound && p.isPatch ? (
+        <div
+          className="stage__halo"
+          style={{
+            left: p.center.x * stage.width,
+            top: p.center.y * stage.height,
+            width: Math.max(48, (p.hitRect.x1 - p.hitRect.x0) * stage.width * 1.6),
+            height: Math.max(48, (p.hitRect.y1 - p.hitRect.y0) * stage.height * 1.25),
+          }}
+          aria-hidden
+        >
+          {SPARKS.map((sp, i) => (
+            <span key={i} className="stage__spark" style={{ ["--sx" as string]: sp.x, ["--sy" as string]: sp.y, ["--sd" as string]: `${sp.d}ms` }} />
+          ))}
         </div>
+      ) : null;
+    return (
+      <div key={p.target.id}>
+        <div className={`stage__target${found ? " stage__target--found" : ""}`} style={box} data-target={p.target.id}>
+          <div className={`tgt-anim${celebrate}`}>
+            <Sprite sprite={p.sprite} title={p.target.item} className="stage__sprite" />
+          </div>
+        </div>
+        {halo}
       </div>
     );
   };
