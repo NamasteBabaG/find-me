@@ -1,6 +1,7 @@
 import { newId } from "@/lib/ids";
 import { flag } from "@/lib/env";
 import { isGenerating, type GameStatus } from "@/domain/order-state";
+import { BOARDS_PER_WORLD } from "@/domain/package";
 import { GameConfigSchema } from "@/domain/game/config";
 import type { CropBox } from "@/infra/generation/types";
 import type { Container } from "../container";
@@ -31,6 +32,18 @@ type StepRecord = { status: "done" | "failed" | "running"; startedAt: string; fi
 export const LEASE_MS = 6 * 60_000;
 
 export const RESUMABLE_STATUSES: readonly GameStatus[] = ["PAID", "AVATAR_GENERATING", "TARGETS_GENERATING", "SCENES_COMPOSING", "NEEDS_REGENERATION", "GENERATION_FAILED"];
+
+/**
+ * The most a single world may spend before a human is asked to look.
+ *
+ * Retrying until every spot is out of attempts is right when spots fail one at a
+ * time, and ruinous when the model is having a bad day: 27 spots x 6 attempts is
+ * around eleven dollars against a world that sells for about ten. A world costs
+ * roughly three dollars when things go well and the worst real one so far cost
+ * $5.18, so this is a ceiling on the pathological case, not a target — a game
+ * that reaches it stops and goes to MANUAL_REVIEW with whatever it has.
+ */
+const MAX_CENTS_PER_WORLD = 600;
 
 export interface PipelineOptions {
   /**
@@ -159,6 +172,11 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
     const variants: Variant[] = flag("GENERATION_BOTH_VARIANTS") ? ["A", "B"] : ["A"];
     const outcomes: PatchOutcome[] = [];
 
+    // Spend already booked to this game, across every tick that has run.
+    const spentSoFar = (await c.db.targetVariantAsset.aggregate({ where: { targetInstance: { gameScene: { gameId } } }, _sum: { costCents: true } }))._sum.costCents ?? 0;
+    const budgetCents = MAX_CENTS_PER_WORLD * Math.max(1, game.scenes.length / BOARDS_PER_WORLD);
+    let overBudget = spentSoFar >= budgetCents;
+
     let ranOutOfTime = false;
     for (const gs of game.scenes) {
       const def = sceneBySlug(gs.sceneSlug);
@@ -167,6 +185,7 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
           ranOutOfTime = true;
           break;
         }
+        if (overBudget) break;
         const row =
           gs.targets.find((t) => t.targetId === target.id) ??
           (await c.db.targetInstance.create({
@@ -189,6 +208,7 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
           });
           // Heartbeat: a minute of painting must not let the lease go stale.
           await c.db.generationJob.update({ where: { id: jobId }, data: { currentStep: "targets" } });
+          if (spentSoFar + outcomes.reduce((n, o) => n + o.newCostCents, 0) >= budgetCents) overBudget = true;
           continue;
         }
         const out = await c.avatars.createTargetSprite({ avatarPng, sceneSlug: def.slug, targetType: target.targetType, bodyTemplate: target.bodyTemplate, childName: refreshedChild.displayName });
@@ -199,7 +219,7 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
           await c.db.targetInstance.update({ where: { id: row.id }, data: { spriteKind: "image", spriteAssetId: sprite.id, status: "GENERATED", attempts: { increment: 1 }, costCents: { increment: out.costCents } } });
         }
       }
-      if (ranOutOfTime) break;
+      if (ranOutOfTime || overBudget) break;
       // Only once every hiding spot in this world landed. Marking the world
       // GENERATED with a target still missing is what let a board ship with the
       // child absent from it.
@@ -233,7 +253,10 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
     // A spot that failed this slice but has attempts left is unfinished work, not
     // a result. Composing here is what shipped a world with a child missing.
     const outstanding = canPatch ? await spotsOutstanding(c, gameId, variants) : { retryable: 0, capped: 0 };
-    if (outstanding.retryable > 0) {
+    if (overBudget) {
+      const spent = spentSoFar + outcomes.reduce((n, o) => n + o.newCostCents, 0);
+      console.warn(`[generate] ${gameId}: stopped at ${(spent / 100).toFixed(2)} USD (ceiling ${(budgetCents / 100).toFixed(2)}), ${outstanding.retryable + outstanding.capped} hiding spots unfinished`);
+    } else if (outstanding.retryable > 0) {
       await mark("targets", { status: "running" });
       await c.db.generationJob.update({ where: { id: job.id }, data: { status: "QUEUED", currentStep: "targets" } });
       console.log(`[generate] ${gameId}: ${outstanding.retryable} hiding spots still to retry, handing back for the next tick`);
@@ -252,7 +275,11 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
     // automatedQa checks the shapes it is given; it cannot know a target fell back
     // to a procedural sprite because the painter gave up on it. That is exactly
     // the case a human has to see, so it is added here where the count is known.
-    const problems = [...automatedQa(config), ...(outstanding.capped > 0 ? [`${outstanding.capped} hiding spots could not be painted and fell back to a drawn sprite`] : [])];
+    const unfinished = overBudget ? outstanding.retryable + outstanding.capped : outstanding.capped;
+    const problems = [
+      ...automatedQa(config),
+      ...(unfinished > 0 ? [`${unfinished} hiding spots could not be painted and fell back to a drawn sprite${overBudget ? " (the world reached its spending ceiling)" : ""}`] : []),
+    ];
     if (problems.length > 0) {
       await c.db.game.update({ where: { id: gameId }, data: { lastError: problems.join("; ") } });
       await transitionGame(c, gameId, "QA_PENDING", SYSTEM, { problems });

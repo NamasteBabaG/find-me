@@ -66,6 +66,14 @@ function flatUsage(usage: Usage | undefined): Record<string, number> | undefined
 /**
  * Image endpoints are rate-limited per minute (5/min on tier 1), and a game is
  * up to 27 calls, so the provider paces itself instead of bursting and failing.
+ *
+ * This counts only what THIS instance has sent. On a serverless host every
+ * function instance has its own, so several games generating at once can still
+ * exceed the account's limit between them — deliberately: the alternative is a
+ * shared counter in the database on the hot path of every image. What actually
+ * protects the account is the 429 handling below, and the fact that the job
+ * lease allows one runner per game. If this ever becomes the binding constraint,
+ * the fix is a queue with a global concurrency of one, not a cleverer limiter.
  */
 class RateLimiter {
   private times: number[] = [];

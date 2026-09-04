@@ -98,7 +98,7 @@ interface Painter extends AvatarProvider {
  * blob-cleaning and shape checks rather than around them. "nothing" returns the
  * crop untouched, which is what a rejected roll actually looks like.
  */
-function painter(script: Array<"child" | "nothing" | "throw"> = ["child"]): Painter {
+function painter(script: Array<"child" | "nothing" | "throw"> = ["child"], costCents = 4): Painter {
   const p: Painter = {
     id: "openai",
     calls: 0,
@@ -113,8 +113,8 @@ function painter(script: Array<"child" | "nothing" | "throw"> = ["child"]): Pain
       const step = p.script[Math.min(p.calls, p.script.length - 1)] ?? "child";
       p.calls++;
       if (step === "throw") throw new Error("provider exploded");
-      if (step === "nothing") return { png: req.crop, costCents: 4, attempts: 1, durationMs: 10, model: "stub" };
-      return { png: await paintChild(req), costCents: 4, attempts: 1, durationMs: 10, model: "stub" };
+      if (step === "nothing") return { png: req.crop, costCents, attempts: 1, durationMs: 10, model: "stub" };
+      return { png: await paintChild(req), costCents, attempts: 1, durationMs: 10, model: "stub" };
     },
   };
   return p;
@@ -305,6 +305,25 @@ describe("generation pipeline", () => {
     const paid = p.calls * 4;
     expect(total).toBe(paid);
   }, 180_000);
+
+  it("stops a world that reaches its spending ceiling and asks for a human", async () => {
+    // Retrying every spot until it is out of attempts is right when spots fail
+    // one at a time and ruinous when the model is having a bad day: six rolls
+    // across twenty-seven spots costs more than the world sells for.
+    const p = painter(["nothing"], 250);
+    const c = container(p);
+    const gameId = await seedGame(c);
+    await mod.runGenerationPipeline(c, gameId);
+
+    expect(p.calls).toBe(3); // stopped at 7.50 USD against a 6.00 ceiling, not 18 rolls later
+    const game = await gameOf(gameId);
+    expect(game.status).toBe("MANUAL_REVIEW");
+    expect(game.lastError).toContain("spending ceiling");
+
+    // And it stays stopped: another tick must not quietly start spending again.
+    await mod.runGenerationPipeline(c, gameId);
+    expect(p.calls).toBe(3);
+  }, 120_000);
 
   it("keeps the renders it rejected so a failing spot can be looked at", async () => {
     const c = container(painter(["nothing"]));
