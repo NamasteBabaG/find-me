@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { WORLD_CATALOG, activeWorlds, allWorlds, findWorld, worldOfBoard } from "./index";
+import { UPCOMING_WORLDS } from "./upcoming";
 import { allScenes } from "../scenes";
 import { BOARDS_PER_WORLD, boardSlugs, nodeFor } from "@/domain/world";
 
@@ -44,5 +45,19 @@ describe("world catalog", () => {
     expect(findWorld(first.slug)).toBe(first);
     expect(findWorld("nope")).toBeUndefined();
     expect(nodeFor(first, boardSlugs(first)[0]!)).toBeDefined();
+  });
+
+  it("never teases a world it already ships", () => {
+    // The shop reads both lists. A world in each would appear twice in the
+    // carousel — once playable, once locked and "being painted now" — which is
+    // the sort of thing nobody notices until a customer does.
+    const shipped = new Set(allWorlds().map((w) => w.slug));
+    const teased = UPCOMING_WORLDS.map((w) => w.slug);
+    expect(teased.filter((slug) => shipped.has(slug))).toEqual([]);
+  });
+
+  it("gives every world a distinct order, shipped or not", () => {
+    const orders = [...allWorlds().map((w) => w.order), ...UPCOMING_WORLDS.map((w) => w.order)];
+    expect(new Set(orders).size).toBe(orders.length);
   });
 });

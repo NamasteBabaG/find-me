@@ -1,0 +1,137 @@
+{
+  "slug": "kingdom",
+  "order": 2,
+  "name": {
+    "en": "The Enchanted Kingdom",
+    "he": "ממלכת הקסם"
+  },
+  "tagline": {
+    "en": "Castles, dragons and a forest that whispers back.",
+    "he": "טירות, דרקונים ויער שלוחש בחזרה."
+  },
+  "intro": {
+    "en": "The gate is open. {name}, the kingdom is expecting you.",
+    "he": "השער פתוח. {name}, הממלכה מחכה לך."
+  },
+  "map": {
+    "width": 1536,
+    "height": 1024,
+    "art": "/worlds/kingdom/map.webp",
+    "artPortrait": "/worlds/kingdom/map-sm.webp",
+    "palette": {
+      "sky": "#C9B6F5",
+      "ground": "#6B4FA8",
+      "accent": "#FFD24D"
+    },
+    "artNote": "This map is one enchanted realm, not the real world: a castle on a crag, a deep forest, a dragon's mountain, a palace of ice, a lagoon opening to a kingdom under the water, islands floating in the clouds above, a workshop with a chocolate river, a giant's tower of books, and a carnival lit up at the far end. The trail is a cobbled path, and it climbs and crosses bridges rather than crossing oceans."
+  },
+  "nodes": [
+    {
+      "boardSlug": "castlegate",
+      "routeIndex": 1,
+      "x": 0.1,
+      "y": 0.76,
+      "labelAnchor": "bottom",
+      "markerScale": 0.09,
+      "travelStyle": "walk"
+    },
+    {
+      "boardSlug": "fairyforest",
+      "routeIndex": 2,
+      "x": 0.22,
+      "y": 0.52,
+      "labelAnchor": "top",
+      "markerScale": 0.09,
+      "travelStyle": "walk"
+    },
+    {
+      "boardSlug": "dragoncave",
+      "routeIndex": 3,
+      "x": 0.33,
+      "y": 0.74,
+      "labelAnchor": "bottom",
+      "markerScale": 0.09,
+      "travelStyle": "hop"
+    },
+    {
+      "boardSlug": "icepalace",
+      "routeIndex": 4,
+      "x": 0.45,
+      "y": 0.48,
+      "labelAnchor": "top",
+      "markerScale": 0.09,
+      "travelStyle": "walk"
+    },
+    {
+      "boardSlug": "underwater",
+      "routeIndex": 5,
+      "x": 0.55,
+      "y": 0.72,
+      "labelAnchor": "bottom",
+      "markerScale": 0.09,
+      "travelStyle": "sail"
+    },
+    {
+      "boardSlug": "cloudcity",
+      "routeIndex": 6,
+      "x": 0.66,
+      "y": 0.44,
+      "labelAnchor": "top",
+      "markerScale": 0.09,
+      "travelStyle": "hop"
+    },
+    {
+      "boardSlug": "sweetworkshop",
+      "routeIndex": 7,
+      "x": 0.76,
+      "y": 0.68,
+      "labelAnchor": "bottom",
+      "markerScale": 0.09,
+      "travelStyle": "walk"
+    },
+    {
+      "boardSlug": "giantlibrary",
+      "routeIndex": 8,
+      "x": 0.86,
+      "y": 0.44,
+      "labelAnchor": "top",
+      "markerScale": 0.09,
+      "travelStyle": "walk"
+    },
+    {
+      "boardSlug": "nightcarnival",
+      "routeIndex": 9,
+      "x": 0.92,
+      "y": 0.72,
+      "labelAnchor": "bottom",
+      "markerScale": 0.09,
+      "travelStyle": "hop"
+    }
+  ],
+  "collectible": {
+    "id": "gems",
+    "name": {
+      "en": "Gems",
+      "he": "אבני חן"
+    },
+    "piece": {
+      "en": "gems",
+      "he": "אבני חן"
+    },
+    "icon": "💎"
+  },
+  "completion": {
+    "title": {
+      "en": "The kingdom is yours",
+      "he": "הממלכה שלך"
+    },
+    "text": {
+      "en": "{name} found every hiding place in the Enchanted Kingdom — nine gems, one crown.",
+      "he": "{name} מצאה כל מחבוא בממלכת הקסם — תשע אבני חן, כתר אחד."
+    },
+    "icon": "👑"
+  },
+  "active": false,
+  "purchasable": false,
+  "version": 1
+}
