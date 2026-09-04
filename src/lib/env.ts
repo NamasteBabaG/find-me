@@ -15,6 +15,8 @@ const EnvSchema = z.object({
 
   PAYMENT_PROVIDER: z.enum(["mock", "payme"]).default("mock"),
   GENERATION_PROVIDER: z.enum(["mock", "replicate", "openai"]).default("mock"),
+  /** Kill switch. Set to "off" to stop every paid render without a deploy. */
+  GENERATION_ENABLED: z.enum(["on", "off"]).default("on"),
   EMAIL_PROVIDER: z.enum(["console", "resend"]).default("console"),
   STORAGE_PROVIDER: z.enum(["local", "supabase", "db"]).default("local"),
   ANALYTICS_PROVIDER: z.enum(["console", "posthog", "none"]).default("console"),
@@ -79,6 +81,24 @@ export function env(): Env {
   // link a grandparent keeps, so it is a fallback, never the answer.
   if (parsed.data.NODE_ENV === "production" && /localhost|127\.0\.0\.1/.test(parsed.data.APP_URL)) {
     throw new Error(`APP_URL is ${parsed.data.APP_URL} in production — set it to the real domain; share links and payment redirects are built from it.`);
+  }
+  // A production that pays OpenAI per render but takes no money is not a
+  // half-configured shop, it is a hole with a public URL: /api/dev/mock-pay
+  // marks any order PAID from its id alone, and the id is in the checkout link.
+  // Refusing to boot is deliberate — the alternative is unbounded spend that
+  // nobody notices until the invoice.
+  if (parsed.data.NODE_ENV === "production" && parsed.data.GENERATION_PROVIDER !== "mock" && parsed.data.PAYMENT_PROVIDER !== "payme") {
+    throw new Error(
+      `GENERATION_PROVIDER is "${parsed.data.GENERATION_PROVIDER}" while PAYMENT_PROVIDER is "${parsed.data.PAYMENT_PROVIDER}" in production: every game would cost real money and collect none. Set PAYMENT_PROVIDER=payme, or GENERATION_PROVIDER=mock.`,
+    );
+  }
+  // Same shape of problem one step later: the render is paid for, the parent is
+  // charged, and the link to the thing they bought is written to a file on a
+  // server they cannot reach.
+  if (parsed.data.NODE_ENV === "production" && parsed.data.GENERATION_PROVIDER !== "mock" && parsed.data.EMAIL_PROVIDER !== "resend") {
+    throw new Error(
+      `EMAIL_PROVIDER is "${parsed.data.EMAIL_PROVIDER}" while GENERATION_PROVIDER is "${parsed.data.GENERATION_PROVIDER}" in production: games would be generated and never delivered. Set EMAIL_PROVIDER=resend.`,
+    );
   }
   cached = parsed.data;
   return cached;

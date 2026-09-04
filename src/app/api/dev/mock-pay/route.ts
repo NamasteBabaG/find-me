@@ -1,14 +1,21 @@
 import { NextResponse } from "next/server";
 import { getContainer } from "@/services/container";
 import { handlePaymentWebhook } from "@/services/order.service";
+import { isDev } from "@/lib/env";
 
 export const runtime = "nodejs";
 
 /**
  * Dev helper that plays the PSP: builds a signed webhook for the order and
  * feeds it through the exact same handler production will use.
+ *
+ * It takes an order id and a word, and the order id is printed in the mock
+ * checkout URL — no session, no ownership check, nothing to forge. That is fine
+ * on a laptop and catastrophic on a public host, so the environment decides
+ * whether this file exists at all, not the provider that happens to be wired.
  */
 export async function POST(req: Request) {
+  if (!isDev()) return NextResponse.json({ ok: false, body: "not found" }, { status: 404 });
   const c = getContainer();
   if (c.payment.id !== "mock") return NextResponse.json({ ok: false, body: "not available" }, { status: 404 });
   const payment = c.payment as { id: string; sign?: (raw: string) => string };

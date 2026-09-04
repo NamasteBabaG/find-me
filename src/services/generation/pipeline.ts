@@ -58,6 +58,14 @@ export interface PipelineOptions {
 }
 
 export async function runGenerationPipeline(c: Container, gameId: string, options: PipelineOptions = {}): Promise<void> {
+  // The kill switch. Spend is the one thing here that cannot be undone by a
+  // rollback, so stopping it must not need a deploy: flipping GENERATION_ENABLED
+  // leaves every job exactly where it is, and the next tick picks them up when
+  // it goes back on.
+  if (env().GENERATION_ENABLED === "off") {
+    console.warn(`[generate] ${gameId}: GENERATION_ENABLED=off — leaving the job for later`);
+    return;
+  }
   const game = await c.db.game.findUnique({ where: { id: gameId }, include: { childProfile: true, scenes: { include: { targets: true }, orderBy: { orderIndex: "asc" } } } });
   if (!game || !game.childProfile) return;
   const status = statusOf(game);
