@@ -10,7 +10,7 @@
     "he": "שמשיות, ארמונות חול והמון הפתעות."
   },
   "version": 3,
-  "active": true,
+  "active": false,
   "artStatus": "final",
   "art": {
     "width": 3072,

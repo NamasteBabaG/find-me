@@ -2,12 +2,12 @@
   "slug": "journey",
   "order": 1,
   "name": {
-    "en": "The Wonderful Journey",
-    "he": "המסע המופלא"
+    "en": "Around the World",
+    "he": "מסביב לעולם"
   },
   "tagline": {
-    "en": "Nine destinations, from the beach all the way to space",
-    "he": "תשעה יעדים, מהחוף ועד לחלל"
+    "en": "Nine countries, one magical passport.",
+    "he": "תשע מדינות, דרכון קסום אחד."
   },
   "intro": {
     "en": "A magical passport is taking {name} around the world. Ready?",
@@ -19,82 +19,101 @@
     "art": "/worlds/journey/map.webp",
     "artPortrait": "/worlds/journey/map-sm.webp",
     "palette": {
-      "sky": "#bfe9ff",
-      "ground": "#f6dfae",
-      "accent": "#ff9a4d"
-    }
+      "sky": "#7EC8E3",
+      "ground": "#E9D8A6",
+      "accent": "#FF9A4D"
+    },
+    "artNote": "This map is the whole world: paint stylised continents and blue oceans in a soft storybook way, with each of the nine regions sitting on the continent it really belongs to — New York and the Amazon in the Americas on the left, Paris, Marrakech and Giza in Europe and Africa in the middle, Tokyo and the Great Wall in Asia, Sydney below them, and Antarctica as a band of ice along the bottom. The trail crosses the oceans as a dotted flight path. Do not draw country borders or any kind of grid."
   },
   "nodes": [
     {
-      "boardSlug": "beach",
+      "boardSlug": "newyork",
       "routeIndex": 1,
-      "x": 0.1,
-      "y": 0.83,
-      "iconAsset": "/worlds/journey/nodes/beach.webp",
+      "x": 0.13,
+      "y": 0.215,
+      "iconAsset": "/worlds/journey/nodes/newyork.webp",
+      "labelAnchor": "bottom",
+      "markerScale": 0.09,
       "travelStyle": "walk"
     },
     {
-      "boardSlug": "ship",
+      "boardSlug": "amazon",
       "routeIndex": 2,
-      "x": 0.13,
-      "y": 0.24,
-      "iconAsset": "/worlds/journey/nodes/ship.webp",
+      "x": 0.165,
+      "y": 0.66,
+      "iconAsset": "/worlds/journey/nodes/amazon.webp",
+      "labelAnchor": "top",
+      "markerScale": 0.09,
       "travelStyle": "sail"
     },
     {
-      "boardSlug": "city",
+      "boardSlug": "paris",
       "routeIndex": 3,
-      "x": 0.38,
-      "y": 0.16,
-      "iconAsset": "/worlds/journey/nodes/city.webp",
+      "x": 0.5,
+      "y": 0.125,
+      "iconAsset": "/worlds/journey/nodes/paris.webp",
+      "labelAnchor": "bottom",
+      "markerScale": 0.09,
       "travelStyle": "walk"
     },
     {
-      "boardSlug": "market",
+      "boardSlug": "marrakech",
       "routeIndex": 4,
-      "x": 0.76,
-      "y": 0.2,
-      "iconAsset": "/worlds/journey/nodes/market.webp",
+      "x": 0.43,
+      "y": 0.385,
+      "iconAsset": "/worlds/journey/nodes/marrakech.webp",
+      "labelAnchor": "top",
+      "markerScale": 0.09,
       "travelStyle": "walk"
     },
     {
-      "boardSlug": "stadium",
+      "boardSlug": "giza",
       "routeIndex": 5,
-      "x": 0.845,
-      "y": 0.47,
-      "iconAsset": "/worlds/journey/nodes/stadium.webp",
+      "x": 0.545,
+      "y": 0.58,
+      "iconAsset": "/worlds/journey/nodes/giza.webp",
+      "labelAnchor": "bottom",
+      "markerScale": 0.09,
       "travelStyle": "hop"
     },
     {
-      "boardSlug": "park",
+      "boardSlug": "tokyo",
       "routeIndex": 6,
-      "x": 0.47,
-      "y": 0.47,
-      "iconAsset": "/worlds/journey/nodes/park.webp",
+      "x": 0.83,
+      "y": 0.17,
+      "iconAsset": "/worlds/journey/nodes/tokyo.webp",
+      "labelAnchor": "bottom",
+      "markerScale": 0.09,
       "travelStyle": "walk"
     },
     {
-      "boardSlug": "jungle",
+      "boardSlug": "greatwall",
       "routeIndex": 7,
-      "x": 0.32,
-      "y": 0.8,
-      "iconAsset": "/worlds/journey/nodes/jungle.webp",
+      "x": 0.78,
+      "y": 0.44,
+      "iconAsset": "/worlds/journey/nodes/greatwall.webp",
+      "labelAnchor": "top",
+      "markerScale": 0.09,
       "travelStyle": "walk"
     },
     {
-      "boardSlug": "volcano",
+      "boardSlug": "sydney",
       "routeIndex": 8,
-      "x": 0.6,
-      "y": 0.76,
-      "iconAsset": "/worlds/journey/nodes/volcano.webp",
-      "travelStyle": "hop"
+      "x": 0.86,
+      "y": 0.705,
+      "iconAsset": "/worlds/journey/nodes/sydney.webp",
+      "labelAnchor": "top",
+      "markerScale": 0.09,
+      "travelStyle": "sail"
     },
     {
-      "boardSlug": "space",
+      "boardSlug": "antarctica",
       "routeIndex": 9,
-      "x": 0.88,
-      "y": 0.79,
-      "iconAsset": "/worlds/journey/nodes/space.webp",
+      "x": 0.54,
+      "y": 0.87,
+      "iconAsset": "/worlds/journey/nodes/antarctica.webp",
+      "labelAnchor": "top",
+      "markerScale": 0.09,
       "travelStyle": "rocket"
     }
   ],
@@ -123,5 +142,5 @@
   },
   "active": true,
   "purchasable": true,
-  "version": 1
+  "version": 2
 }

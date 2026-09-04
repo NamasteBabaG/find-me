@@ -45,7 +45,7 @@ interface WorldFile {
   slug: string;
   name: { en: string; he: string };
   tagline: { en: string; he: string };
-  map: { width: number; height: number; art: string; artPortrait?: string };
+  map: { width: number; height: number; art: string; artPortrait?: string; artNote?: string };
   nodes: Array<{ boardSlug: string; routeIndex: number }>;
 }
 
@@ -57,7 +57,12 @@ function prompt(world: WorldFile, boardNames: string[]): string {
     `The nine regions, in the order the path visits them: ${route}.`,
     `Each region should read at a glance as its own place, even when the map is shown small on a phone.`,
     `The path starts at the bottom left and ends at the top right.`,
-  ].join(" ");
+    // Worlds differ in what their map even is: a journey between real countries
+    // wants continents and oceans, an enchanted kingdom does not.
+    world.map.artNote ?? "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 async function main() {

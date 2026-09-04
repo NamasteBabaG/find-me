@@ -32,6 +32,7 @@ import { BODY_TEMPLATES } from "../content/body-templates";
 import { sceneBySlug } from "../src/services/scene-catalog.service";
 import { childProblem, diffToPatch, paintMask, slotContext, slotPrompt, type PatchResult } from "../src/services/generation/patch";
 import { OpenAiAvatarProvider } from "../src/infra/generation/openai";
+import { OpenAiPatchJudge } from "../src/infra/generation/judge";
 
 const ROOT = process.cwd();
 const WORK = path.join(ROOT, "work", "patches");
@@ -164,6 +165,7 @@ async function generate(slug: string, targetId: string, variantArg?: string) {
   if (!key) throw new Error("OPENAI_API_KEY is not set — add it to .env (never commit it) and run again.");
   const c = slotOf(slug, targetId, variantArg, flag("pose", "") || undefined);
   const provider = new OpenAiAvatarProvider(key, { model: flag("model", "gpt-image-2"), quality: flag("quality", "medium"), patchQuality: flag("patch-quality", "") || undefined, perMinute: Number(flag("rpm", "5")) });
+  const judge = new OpenAiPatchJudge(key, { model: flag("judge-model", "gpt-4o-mini") });
   const reference = readFileSync(path.join(ROOT, flag("ref", "public/demo/example-character.webp")));
   const originalCrop = await cropOf(c);
   const mask = paintMask(c.ctx, c.art, c.slot);
@@ -184,6 +186,16 @@ async function generate(slug: string, targetId: string, variantArg?: string) {
       console.log(`rejected: ${problem}`);
       continue;
     }
+    // The same bar the pipeline applies. Without it this script accepted a boy
+    // in jeans for one spot and a canoe with an arm for another — both the right
+    // shape, neither the child — and those are exactly the patches a slot test
+    // must not call a success.
+    const verdict = await judge.judge({ patchPng: patch.webp, reference, childName: flag("name", "the child"), label: c.name });
+    if (verdict.verdict === "bad") {
+      console.log(`rejected by the judge: ${verdict.reason}`);
+      continue;
+    }
+    if (verdict.verdict === "unknown") console.log(`(judge could not answer: ${verdict.reason})`);
     await importPatch(slug, targetId, c.variant, editedPath);
     console.log(`accepted (${patch.largest}px vs expected ~${patch.expected}px), ${(edit.costCents / 100).toFixed(3)} USD on ${edit.model}`);
     return;

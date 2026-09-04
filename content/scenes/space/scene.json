@@ -10,7 +10,7 @@
     "he": "בסיס ירח, רקטה וחייזרים ידידותיים."
   },
   "version": 2,
-  "active": true,
+  "active": false,
   "artStatus": "final",
   "art": {
     "width": 3072,

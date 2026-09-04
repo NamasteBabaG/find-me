@@ -10,7 +10,7 @@
     "he": "קהל, דגלים ושער אחד ענק."
   },
   "version": 1,
-  "active": true,
+  "active": false,
   "artStatus": "final",
   "art": {
     "width": 3072,

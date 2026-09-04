@@ -10,8 +10,8 @@
     "he": "נהר ירוק, קאנו מעץ ותוכי רועש מאוד."
   },
   "version": 1,
-  "active": false,
-  "artStatus": "draft",
+  "active": true,
+  "artStatus": "final",
   "art": {
     "width": 3072,
     "height": 2048,
@@ -56,12 +56,12 @@
       "slots": [
         {
           "id": "amazon_canoe_a",
-          "x": 0.455,
-          "y": 0.495,
-          "scale": 0.054,
+          "x": 0.7,
+          "y": 0.64,
+          "scale": 0.075,
           "hintZone": {
-            "x": 0.455,
-            "y": 0.48,
+            "x": 0.7,
+            "y": 0.625,
             "r": 0.075
           },
           "hintText": {

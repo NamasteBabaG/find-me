@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { allWorlds } from "../worlds";
+import { boardSlugs } from "@/domain/world";
 import { SCENE_CATALOG } from "./index";
 import { BODY_TEMPLATES } from "../body-templates";
 
@@ -15,9 +17,15 @@ describe("scene catalog", () => {
     }
   });
 
-  it("has three active worlds for the MVP package", () => {
-    const active = SCENE_CATALOG.filter((e) => e.scene.active).map((e) => e.scene.slug);
-    expect(active).toEqual(expect.arrayContaining(["beach", "jungle", "space"]));
+  it("has every board of every world active, and no active board outside one", () => {
+    // Naming three slugs pinned the MVP's boards, and went stale the moment
+    // world 1 became nine real destinations. The invariant is the one that
+    // actually matters: a board a world sends a child to has to be playable,
+    // and an active board nobody can reach is a board nobody is looking after.
+    const active = new Set(SCENE_CATALOG.filter((e) => e.scene.active).map((e) => e.scene.slug));
+    const inWorlds = new Set(allWorlds().flatMap((w) => boardSlugs(w)));
+    expect([...inWorlds].filter((slug) => !active.has(slug))).toEqual([]);
+    expect([...active].filter((slug) => !inWorlds.has(slug))).toEqual([]);
   });
 
   it("prints authoring warnings (non-blocking)", () => {

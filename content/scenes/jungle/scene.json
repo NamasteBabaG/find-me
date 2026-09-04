@@ -10,7 +10,7 @@
     "he": "עלים ענקיים, קופים שובבים ומפל."
   },
   "version": 2,
-  "active": true,
+  "active": false,
   "artStatus": "final",
   "art": {
     "width": 3072,

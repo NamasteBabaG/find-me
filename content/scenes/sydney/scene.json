@@ -10,8 +10,8 @@
     "he": "מפרץ כחול, מפרשים לבנים ועשרה גלשנים."
   },
   "version": 1,
-  "active": false,
-  "artStatus": "draft",
+  "active": true,
+  "artStatus": "final",
   "art": {
     "width": 3072,
     "height": 2048,
@@ -35,8 +35,8 @@
         "he": "מצאו את {name}"
       },
       "item": {
-        "en": "green and yellow ferries crossing the harbour",
-        "he": "מעבורות ירוקות־צהובות חוצות את המפרץ"
+        "en": "green and yellow ferries at the water edge",
+        "he": "מעבורות ירוקות־צהובות בקו המים"
       },
       "success": [
         {
@@ -56,32 +56,32 @@
       "slots": [
         {
           "id": "sydney_ferry_a",
-          "x": 0.5,
-          "y": 0.352,
-          "scale": 0.038,
+          "x": 0.545,
+          "y": 0.478,
+          "scale": 0.052,
           "hintZone": {
-            "x": 0.5,
-            "y": 0.33699999999999997,
+            "x": 0.545,
+            "y": 0.46299999999999997,
             "r": 0.075
           },
           "hintText": {
-            "en": "Look on the ferry.",
-            "he": "חפשו על המעבורת."
+            "en": "Look at the water edge by the ferry.",
+            "he": "חפשו בקו המים ליד המעבורת."
           }
         },
         {
           "id": "sydney_ferry_b",
-          "x": 0.72,
-          "y": 0.3,
-          "scale": 0.032,
+          "x": 0.635,
+          "y": 0.52,
+          "scale": 0.058,
           "hintZone": {
-            "x": 0.72,
-            "y": 0.285,
+            "x": 0.635,
+            "y": 0.505,
             "r": 0.075
           },
           "hintText": {
-            "en": "Look at the second ferry.",
-            "he": "חפשו במעבורת השנייה."
+            "en": "Look further along the water.",
+            "he": "חפשו הלאה לאורך המים."
           }
         }
       ]

@@ -10,7 +10,7 @@
     "he": "אבטיחים, תבלינים ותוכי אחד מצחיק."
   },
   "version": 1,
-  "active": true,
+  "active": false,
   "artStatus": "final",
   "art": {
     "width": 3072,
