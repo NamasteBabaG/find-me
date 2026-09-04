@@ -26,3 +26,5 @@ tsconfig.tsbuildinfo
 assets/*.png
 !assets/random-girl*.png
 !assets/noa-face.beach-original.png
+
+.env*.local

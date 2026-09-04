@@ -5,23 +5,41 @@ import Link from "next/link";
 import { LinkButton } from "@/ui/Button";
 import { Notice } from "@/ui/primitives";
 import { useI18n } from "@/i18n/client";
+import { CREATION_MILESTONES, type CreationMilestone, type MilestoneState } from "@/domain/creation-progress";
 
 interface Status {
   status: string;
   /** True while generation still has work to do — the page then nudges it along. */
   pending?: boolean;
-  step: 1 | 2 | 3 | 4;
   done: boolean;
   failed: boolean;
   playUrl: string | null;
   awaitingQa: boolean;
+  percent: number;
+  milestones: Record<CreationMilestone, MilestoneState>;
+  current: CreationMilestone | null;
+  characterReady: boolean;
+  /** The illustrated sticker — a GAME asset, never the photograph. */
+  avatarUrl: string | null;
+  spotsDone: number;
+  spotsTotal: number;
+  /** The board being painted right now. */
+  place: { slug: string; name: string } | null;
 }
 
+/**
+ * The wait, as a small game of its own.
+ *
+ * A parent has just paid and is now looking at the one screen in the product
+ * that takes minutes. Everything here is drawn from the pipeline's own facts:
+ * the character appears the moment it exists, the bar moves with every hiding
+ * spot painted, and the line under the sticker names the board being painted.
+ * Nothing is timed, so nothing can lie.
+ */
 export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string; childName: string; isAdmin: boolean }) {
   const { t, tf } = useI18n();
   const cr = t.create.creating;
   const [s, setS] = useState<Status | null>(null);
-  const steps = cr.steps.map((x) => tf(x, { name: childName }));
 
   useEffect(() => {
     let alive = true;
@@ -50,9 +68,16 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
     };
     void tick();
     const id = setInterval(tick, 2500);
+    // A phone that went to sleep, a tab that was switched away from: the moment
+    // it is looked at again the page catches up instead of waiting out the interval.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void tick();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       alive = false;
       clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [gameId]);
 
@@ -79,10 +104,17 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
 
   if (s.done && s.playUrl) {
     return (
-      <div className="fm-card fm-card--pad-6 fm-stack fm-stack--3 fm-center">
-        <span style={{ fontSize: "var(--fs-800)", lineHeight: 1 }} aria-hidden>
-          🎉
-        </span>
+      <div className="fm-card fm-card--pad-6 fm-stack fm-stack--3 fm-center cp cp--done">
+        <div className="cp__stage cp__stage--done">
+          {s.avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={s.avatarUrl} alt="" className="cp__avatar" width={160} height={160} />
+          ) : (
+            <span className="cp__party" aria-hidden>
+              🎉
+            </span>
+          )}
+        </div>
         <h2>{tf(cr.readyTitle, { name: childName })}</h2>
         <p className="fm-lead">{cr.readyLead}</p>
         <LinkButton href={s.playUrl} size="lg">
@@ -95,27 +127,69 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
     );
   }
 
+  const percent = Math.max(0, Math.min(100, s.percent));
+  const labels: Record<CreationMilestone, string> = {
+    photo: cr.milestones.photo,
+    character: tf(cr.milestones.character, { name: childName }),
+    hiding: tf(cr.milestones.hiding, { name: childName }),
+    assemble: cr.milestones.assemble,
+    check: cr.milestones.check,
+  };
+
   return (
-    <div className="fm-stack fm-stack--3">
-      <ol className="progress">
-        {steps.map((label, i) => {
-          const n = i + 1;
-          const cls = n < s.step ? "done" : n === s.step ? "active" : "todo";
+    <div className="fm-stack fm-stack--3 cp">
+      <section className="fm-card cp__card" aria-live="polite">
+        <div className={`cp__stage${s.avatarUrl ? " cp__stage--met" : ""}`}>
+          {s.avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={s.avatarUrl} alt="" className="cp__avatar" width={160} height={160} />
+          ) : (
+            <span className="cp__pencil" aria-hidden>
+              ✏️
+            </span>
+          )}
+        </div>
+        <h2 className="cp__title">{s.avatarUrl ? tf(cr.meet, { name: childName }) : tf(cr.drawing, { name: childName })}</h2>
+        <p className="cp__lead">{s.place ? tf(cr.nowIn, { name: childName, place: s.place.name }) : s.avatarUrl ? cr.meetLead : cr.drawingLead}</p>
+
+        <div className="cp__bar" role="progressbar" aria-label={cr.progressAria} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
+          <div className="cp__fill" style={{ width: `${percent}%` }} />
+          <span className="cp__rider" style={{ insetInlineStart: `${percent}%` }} aria-hidden>
+            {s.avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={s.avatarUrl} alt="" width={40} height={40} />
+            ) : (
+              "✨"
+            )}
+          </span>
+        </div>
+        <p className="cp__percent">{tf(cr.percent, { percent })}</p>
+      </section>
+
+      <ol className="cp__steps">
+        {CREATION_MILESTONES.map((m, i) => {
+          const state = s.milestones[m];
           return (
-            <li key={label} className={`progress__step progress__step--${cls}`} aria-current={cls === "active" ? "step" : undefined}>
-              <span className="progress__dot" aria-hidden>
-                {cls === "done" ? "✓" : cls === "active" ? <span className="fm-spinner" /> : n}
+            <li key={m} className={`cp__step cp__step--${state}`} aria-current={state === "active" ? "step" : undefined}>
+              <span className="cp__dot" aria-hidden>
+                {state === "done" ? "✓" : state === "active" ? <span className="fm-spinner" /> : i + 1}
               </span>
-              {label}
+              <span className="cp__label">
+                {labels[m]}
+                {m === "hiding" && s.spotsTotal > 0 && state !== "todo" ? <span className="cp__count">{tf(cr.spotsCount, { done: s.spotsDone, total: s.spotsTotal })}</span> : null}
+              </span>
             </li>
           );
         })}
       </ol>
+
       {s.awaitingQa ? (
         <Notice kind="info">
           {cr.qa} {isAdmin ? <Link href={`/admin/orders/${gameId}`}>{cr.qaAdmin}</Link> : cr.qaParent}
         </Notice>
-      ) : null}
+      ) : (
+        <p className="fm-small fm-center">{cr.usually}</p>
+      )}
     </div>
   );
 }

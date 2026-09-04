@@ -294,15 +294,63 @@
 .psp__foot { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); }
 @media (max-width: 720px) { .psp__card { border-radius: var(--radius-3); } .psp__body { gap: var(--space-2); padding: var(--space-2); } .psp__body h1 { font-size: var(--fs-400); line-height: var(--lh-400); } .psp .fm-input { min-height: var(--touch-min); } .psp .fm-field { gap: var(--space-0-5); } .psp .fm-label { font-size: var(--fs-200); line-height: var(--lh-200); } }
 
-/* Creating */
-.progress { display: flex; flex-direction: column; gap: var(--space-2); }
-.progress__step { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: var(--radius-3); background: var(--white); box-shadow: var(--shadow-1); font-family: var(--font-display); font-weight: 600; font-size: var(--fs-300); line-height: var(--lh-300); }
-.progress__step--done { color: var(--ink-2); }
-.progress__step--active { box-shadow: 0 0 0 3px var(--sun-soft), var(--shadow-1); }
-.progress__step--todo { color: var(--ink-3); }
-.progress__dot { width: var(--space-4); height: var(--space-4); border-radius: var(--radius-pill); display: grid; place-items: center; background: var(--paper-2); }
-.progress__step--done .progress__dot { background: var(--ink); color: var(--white); }
-.progress__step--active .progress__dot { background: var(--sun-soft); }
+/* Creating — the wait as a small game: the sticker appears when it exists,
+   the bar moves with every hiding spot painted, the child rides the bar. */
+.cp__card { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); text-align: center; padding: var(--space-4); overflow: hidden; }
+.cp__stage {
+  position: relative; width: var(--space-20); height: var(--space-20); border-radius: var(--radius-pill);
+  display: grid; place-items: center;
+  background: radial-gradient(circle at 50% 40%, var(--sun-soft), var(--paper-2) 72%);
+  box-shadow: inset 0 0 0 3px var(--white);
+}
+.cp__stage::before {
+  content: ""; position: absolute; inset: -6px; border-radius: inherit;
+  border: 3px dashed var(--sun); opacity: 0.7;
+  animation: cp-spin 14s linear infinite;
+}
+.cp__stage--met::before { border-style: solid; animation: cp-bloom var(--dur-3) var(--ease-out) both; }
+.cp__stage--done::before { border-style: solid; animation: none; }
+.cp__avatar { width: var(--space-16); height: var(--space-16); border-radius: var(--radius-pill); object-fit: cover; box-shadow: var(--sticker-outline), var(--shadow-sticker); background: var(--white); animation: cp-pop var(--dur-3) var(--ease-out) both; }
+.cp__pencil { font-size: var(--fs-800); line-height: 1; animation: cp-scribble 1.6s ease-in-out infinite; transform-origin: 80% 80%; }
+.cp__party { font-size: var(--fs-800); line-height: 1; }
+.cp__title { font-family: var(--font-display); font-size: var(--fs-500); line-height: var(--lh-500); font-weight: 800; letter-spacing: -0.01em; }
+.cp__lead { color: var(--ink-2); font-size: var(--fs-200); line-height: var(--lh-200); min-height: var(--lh-200); }
+.cp__bar { position: relative; width: 100%; height: var(--space-2); margin-top: var(--space-3); border-radius: var(--radius-pill); background: var(--paper-2); box-shadow: inset 0 0 0 2px var(--line); }
+.cp__fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--sun), var(--sun-deep)); transition: width var(--dur-4) var(--ease-out); }
+[dir="rtl"] .cp__fill { background: linear-gradient(270deg, var(--sun), var(--sun-deep)); }
+.cp__rider {
+  position: absolute; top: 50%; width: var(--space-5); height: var(--space-5); margin-inline-start: calc(var(--space-5) * -0.5);
+  display: grid; place-items: center; transform: translateY(-50%);
+  border-radius: var(--radius-pill); background: var(--white); box-shadow: var(--sticker-outline), var(--shadow-sticker);
+  font-size: var(--fs-200); line-height: 1; overflow: hidden;
+  transition: inset-inline-start var(--dur-4) var(--ease-out);
+}
+.cp__rider img { width: 100%; height: 100%; object-fit: cover; }
+.cp__percent { font-family: var(--font-display); font-weight: 800; font-size: var(--fs-200); line-height: var(--lh-200); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.cp__steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.cp__step { display: flex; align-items: center; gap: var(--space-2); min-height: var(--touch-min); padding: var(--space-1) var(--space-2); border-radius: var(--radius-3); background: var(--white); box-shadow: var(--shadow-1); font-family: var(--font-display); font-weight: 600; font-size: var(--fs-200); line-height: var(--lh-200); }
+.cp__step--done { color: var(--ink-2); }
+.cp__step--active { box-shadow: 0 0 0 3px var(--sun-soft), var(--shadow-1); }
+.cp__step--todo { color: var(--ink-3); }
+.cp__dot { flex-shrink: 0; width: var(--space-4); height: var(--space-4); border-radius: var(--radius-pill); display: grid; place-items: center; background: var(--paper-2); font-size: var(--fs-100); }
+.cp__step--done .cp__dot { background: var(--leaf); color: var(--white); }
+.cp__step--active .cp__dot { background: var(--sun-soft); }
+.cp__label { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-0-5) var(--space-1); }
+.cp__count { font-family: var(--font-body); font-weight: 600; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+@keyframes cp-spin { to { transform: rotate(360deg); } }
+@keyframes cp-bloom { 0% { transform: scale(0.85); opacity: 0; } 100% { transform: none; opacity: 0.7; } }
+@keyframes cp-pop { 0% { transform: scale(0.4) rotate(-8deg); opacity: 0; } 60% { transform: scale(1.08) rotate(2deg); opacity: 1; } 100% { transform: none; } }
+@keyframes cp-scribble { 0%, 100% { transform: rotate(-8deg) translateX(-2px); } 50% { transform: rotate(6deg) translateX(3px); } }
+@media (prefers-reduced-motion: reduce) {
+  .cp__stage::before, .cp__pencil, .cp__avatar { animation: none; }
+  .cp__fill, .cp__rider { transition: none; }
+}
+@media (max-width: 720px) {
+  .cp__card { padding: var(--space-3); }
+  .cp__stage { width: var(--space-16); height: var(--space-16); }
+  .cp__avatar { width: var(--space-12); height: var(--space-12); }
+  .cp__title { font-size: var(--fs-400); line-height: var(--lh-400); }
+}
 
 /* ═══ Library ═══ */
 .library { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
