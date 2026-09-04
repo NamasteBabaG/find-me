@@ -14,6 +14,8 @@ interface Props {
   hintLevel: HintLevel;
   hintPulse: boolean;
   hintText: string | null;
+  /** Used for the mission line before any hint has been asked for. */
+  childName: string;
   onHint: () => void;
   /** The child's face sticker; shown instead of the sprite when the sprite is a world patch. */
   avatarUrl?: string;
@@ -22,7 +24,7 @@ interface Props {
 }
 
 /** Floating mission pill: who to look for, (progress when there is more than one), and the hint button. */
-export function MissionCard({ index, total, target, found, order, hintLevel, hintPulse, hintText, onHint, avatarUrl, minimal = false }: Props) {
+export function MissionCard({ index, total, target, found, order, hintLevel, hintPulse, hintText, onHint, avatarUrl, childName, minimal = false }: Props) {
   const { g, tf } = useGameText();
   const isPatch = target?.sprite.kind === "image" && Boolean(target.sprite.rect);
   return (
@@ -50,7 +52,10 @@ export function MissionCard({ index, total, target, found, order, hintLevel, hin
             </span>
           </div>
         ) : null}
-        <h2 className="mission__text">{target?.mission ?? ""}</h2>
+        {/* The authored mission names the place — "hiding behind the fallen
+            log" — which is the answer, printed above the picture. It is the
+            first hint now; until then the game only says who to look for. */}
+        <h2 className="mission__text">{hintLevel >= 1 ? (target?.mission ?? "") : tf(g.scene.findChild, { name: childName })}</h2>
         {!minimal && hintLevel >= 1 && hintText ? <p className="mission__hint">💡 {hintText}</p> : null}
       </div>
       {minimal ? null : (

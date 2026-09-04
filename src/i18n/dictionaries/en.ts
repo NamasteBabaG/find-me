@@ -389,6 +389,7 @@ export const en = {
       reset: "Show the whole world",
       mute: "Mute",
       unmute: "Turn sound on",
+      findChild: "Find {name}!",
       missionOf: "Mission {n} of {total}",
       foundOf: "{found} of {total} found",
       hint: "Hint",

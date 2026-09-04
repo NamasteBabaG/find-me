@@ -388,6 +388,7 @@ export const he: Dictionary = {
       reset: "להראות את כל העולם",
       mute: "השתקה",
       unmute: "הפעלת צליל",
+      findChild: "מצאו את {name}!",
       missionOf: "משימה {n} מתוך {total}",
       foundOf: "{found} מתוך {total} נמצאו",
       hint: "רמז",
