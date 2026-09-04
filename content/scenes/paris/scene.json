@@ -6,8 +6,8 @@
     "he": "פריז"
   },
   "tagline": {
-    "en": "A carousel, warm bread and a tower above the roofs.",
-    "he": "קרוסלה, לחם חם ומגדל מעל הגגות."
+    "en": "The tower above a great square, a carousel and warm bread.",
+    "he": "המגדל מעל כיכר גדולה, קרוסלה ולחם חם."
   },
   "version": 1,
   "active": false,
@@ -210,12 +210,12 @@
     }
   ],
   "artNotes": [
-    "a carousel with painted horses",
+    "the Eiffel tower large and complete in the middle of the picture",
+    "a wide stone plaza in front of it, full of tiny people",
+    "a carousel with painted horses at one edge of the plaza",
     "a bakery window full of baguettes and pastries",
-    "artists painting at easels",
-    "flower boxes on every balcony",
-    "a green newspaper kiosk",
-    "the Eiffel tower small on the horizon"
+    "artists painting at easels facing the tower",
+    "flower boxes on every balcony around the square"
   ],
   "collectible": {
     "id": "stamp_france",
@@ -287,5 +287,6 @@
       },
       "glyph": "🎨"
     }
-  ]
+  ],
+  "artComposition": "The Eiffel Tower is the subject: draw it LARGE and complete, from its four feet to its tip, standing in the middle of the picture at the far side of a wide open plaza. It should be the first thing anyone sees. The plaza in front of it is full of tiny people, with the carousel, the bakery and the café tables around its edges."
 }

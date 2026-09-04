@@ -54,9 +54,9 @@ function envKey(name: string): string | undefined {
 const STYLE = [
   "Extremely detailed, joyful storybook illustration in EXACTLY the style of the reference pictures (a modern 'search and find' children's book, like a Where's Wally page).",
   "Copy that style precisely: SOFT WARM outlines in brown, not heavy black ink; gentle painterly shading with a speckled colour texture; and simplified cheerful cartoon faces with large round eyes.",
-  "Keep the palette bright, warm and saturated even where the subject would not be — grey streets, cold places and night scenes all stay sunny and colourful here.",
+  "Keep the palette bright, warm and saturated even where the subject would not be — grey streets and cold places stay sunny and colourful here, unless the composition note below asks for something else.",
   "Do NOT paint it realistically, and do NOT ink it like a comic: no photographic faces, no muted or dusty palette, no hard black outlines — however much the subject invites it.",
-  "Wide landscape composition seen from a slightly elevated angle, even warm daylight, clean outlines.",
+  "Wide landscape composition seen from a slightly elevated angle, even warm daylight, clean outlines — unless the composition note below overrides the angle or the light.",
   "The picture is DENSELY packed edge to edge: at least 150 small, diverse, cheerful children and adults plus animals, all busy with funny little activities. No big foreground figures, no empty areas, no plain sky taking more than the top tenth — every part of the picture is full of small things to look at.",
   "Every person is tiny, at most 4% of the picture height (a crowd seen from a lookout tower), so that one particular child is genuinely hard to find and takes a few moments of searching.",
   "Plenty of nooks and natural hiding places: things to peek out from behind (bushes, vehicles, tents, stalls, walls, rocks).",
@@ -81,6 +81,15 @@ interface Scene {
    * the egg, written down.
    */
   artNotes?: string[];
+  /**
+   * Per-scene composition and lighting, which may override the shared style.
+   *
+   * Some places are only themselves from a particular angle or in a particular
+   * light: Paris needs the tower large and central, Tokyo is neon at night. The
+   * shared style says elevated and sunny because that is right nine times out of
+   * ten, and this is how the tenth says otherwise.
+   */
+  artComposition?: string;
   bonus?: { label?: LocalizedText; item?: LocalizedText };
   collectible?: { name: LocalizedText };
 }
@@ -91,6 +100,7 @@ function prompt(scene: Scene): string {
   return [
     `${STYLE}`,
     `Paint a brand-new world: "${scene.name.en}" — ${scene.tagline.en}`,
+    scene.artComposition ? `Composition note, which overrides the angle and light above: ${scene.artComposition}` : "",
     `It must contain, as clearly visible props spread across the scene: ${items}.`,
     ambient ? `Small delightful details to include: ${ambient}.` : "",
     `Leave several spots where a child could plausibly hide: next to or partly behind those props.`,

@@ -6,8 +6,8 @@
     "he": "טוקיו"
   },
   "tagline": {
-    "en": "Pink blossom, festival stalls and a very busy crossing.",
-    "he": "פריחה ורודה, דוכני פסטיבל וצומת עמוס מאוד."
+    "en": "Neon at night, cherry blossom and a very busy crossing.",
+    "he": "נאון בלילה, פריחת דובדבן וצומת עמוס מאוד."
   },
   "version": 1,
   "active": false,
@@ -210,12 +210,12 @@
     }
   ],
   "artNotes": [
-    "cherry trees dropping pink blossom over everything",
-    "festival stalls with paper lanterns and masks",
-    "a huge crossing full of people walking every way",
-    "children in yukata holding goldfish bags",
+    "walls of glowing neon signs in pink, blue, green and gold",
+    "the wet street reflecting the neon in long colourful streaks",
+    "paper lanterns glowing orange over the festival stalls",
+    "cherry trees in blossom lit pink by the signs above them",
     "a vending machine glowing on a corner",
-    "paper fans and windmills on a stand"
+    "children in yukata holding goldfish bags"
   ],
   "collectible": {
     "id": "stamp_japan",
@@ -287,5 +287,6 @@
       },
       "glyph": "🎐"
     }
-  ]
+  ],
+  "artComposition": "NIGHT, not daylight: this one is lit by neon. Towers of glowing signs in pink, blue, green and gold cover the buildings on every side and reflect in the wet street below, and paper lanterns glow orange over the festival stalls. Keep it bright and colourful — the neon does the work the sun does elsewhere. The cherry blossom stays, lit pink by the signs above it."
 }

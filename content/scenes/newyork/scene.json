@@ -6,8 +6,8 @@
     "he": "ניו יורק"
   },
   "tagline": {
-    "en": "Yellow taxis, a giant park and a warm pretzel.",
-    "he": "מוניות צהובות, פארק ענק ובייגלה חם."
+    "en": "Yellow taxis under towers of glass, and a warm pretzel.",
+    "he": "מוניות צהובות מתחת למגדלי זכוכית, ובייגלה חם."
   },
   "version": 1,
   "active": false,
@@ -266,12 +266,12 @@
     }
   ],
   "artNotes": [
+    "a canyon of glass and brick skyscrapers going up out of frame",
+    "wooden water towers on the rooftops",
+    "black iron fire escapes zigzagging down the buildings",
     "a dog walker holding six leads at once",
-    "steam rising from a manhole",
-    "a street musician with a violin case open",
-    "chess players on a stone table",
-    "a hot dog stand with a striped umbrella",
-    "orange autumn leaves blowing across the pavement"
+    "steam rising from a manhole between the taxis",
+    "chess players on a stone table at the park edge"
   ],
   "collectible": {
     "id": "stamp_usa",
@@ -287,5 +287,6 @@
       "en": "You found {name} three times in New York!",
       "he": "מצאתם את {name} שלוש פעמים בניו יורק!"
     }
-  }
+  },
+  "artComposition": "Keep the elevated angle over the crowd, but make the SKYLINE dominate: a canyon of very tall skyscrapers fills the whole upper half on both sides and recedes into the distance, so the city is unmistakable at a glance. Water towers on the roofs, fire escapes down the brick fronts, a steel suspension bridge far behind. The street below is a wide crossing with yellow taxis."
 }
