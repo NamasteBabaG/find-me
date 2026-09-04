@@ -178,10 +178,27 @@
 .mission__hintbtn:hover { transform: translateY(-1px); }
 .mission__hintbtn:disabled { opacity: 0.4; }
 .mission__hintbtn--pulse { animation: fm-pulse 1.2s var(--ease-in-out) infinite; box-shadow: 0 0 0 6px var(--sun-soft), var(--shadow-1); }
+/* Folded: the face and the bulb, nothing else. It is a button now — a tap on
+   it unfolds the mission — so it keeps a real hit size and its pointer events. */
+.mission--quiet { pointer-events: auto; cursor: pointer; padding-inline-start: var(--space-1); gap: var(--space-0-5); }
+.mission--quiet .mission__hint { display: none; }
+.mission { transition: transform var(--dur-2) var(--ease-out), gap var(--dur-2) var(--ease-out); }
+
 @media (max-width: 720px) {
   .mission { bottom: var(--space-1); gap: var(--space-1); }
-  .mission__text { font-size: var(--fs-200); line-height: var(--lh-200); }
+  .mission__text { font-size: var(--fs-200); line-height: var(--lh-200); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .mission__hintbtn { width: var(--touch-min); height: var(--touch-min); font-size: var(--fs-300); }
+  /* The chrome sits over the picture, so it stays as small as a finger allows. */
+  .scene__bar { padding: var(--space-1); }
+  .scene__btn { width: 44px; height: 44px; }
+  .scene__title { min-height: 36px; padding-inline: var(--space-1); }
+}
+/* Landscape on a phone: the board is short, so the top bar hugs the corners
+   and leaves the middle of the top edge to the picture. */
+@media (max-height: 480px) and (orientation: landscape) {
+  .scene__bar { padding: var(--space-0-5) var(--space-1); }
+  .scene__title { display: none; }
+  .mission { bottom: var(--space-0-5); }
 }
 
 /* Scene complete */

@@ -16,6 +16,13 @@ interface Props {
   hintText: string | null;
   /** Used for the mission line before any hint has been asked for. */
   childName: string;
+  /**
+   * Collapsed to the face and the hint button. On a phone the full card covers
+   * the bottom of the board — exactly where a child tends to be hidden — so
+   * once the mission has been read it folds away and unfolds on a tap.
+   */
+  quiet?: boolean;
+  onExpand?: () => void;
   onHint: () => void;
   /** The child's face sticker; shown instead of the sprite when the sprite is a world patch. */
   avatarUrl?: string;
@@ -24,11 +31,11 @@ interface Props {
 }
 
 /** Floating mission pill: who to look for, (progress when there is more than one), and the hint button. */
-export function MissionCard({ index, total, target, found, order, hintLevel, hintPulse, hintText, onHint, avatarUrl, childName, minimal = false }: Props) {
+export function MissionCard({ index, total, target, found, order, hintLevel, hintPulse, hintText, onHint, avatarUrl, childName, quiet = false, onExpand, minimal = false }: Props) {
   const { g, tf } = useGameText();
   const isPatch = target?.sprite.kind === "image" && Boolean(target.sprite.rect);
   return (
-    <section className="mission" aria-live="polite">
+    <section className={`mission${quiet ? " mission--quiet" : ""}`} aria-live="polite" onClick={quiet ? onExpand : undefined}>
       <div className={`mission__thumb${isPatch && avatarUrl ? " mission__thumb--face" : ""}`} aria-hidden>
         {target ? (
           isPatch && avatarUrl ? (
@@ -39,7 +46,7 @@ export function MissionCard({ index, total, target, found, order, hintLevel, hin
           )
         ) : null}
       </div>
-      <div className="mission__body">
+      <div className="mission__body" hidden={quiet}>
         {total > 1 ? (
           <div className="mission__meta">
             <span className="mission__count">{tf(g.scene.missionOf, { n: index, total })}</span>

@@ -85,7 +85,10 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
         if (p.target.id !== current || isFound(m, p.target.id)) continue;
         // p.hitRect is the child's own footprint — for a slot patch that is not
         // the slot anchor, so the head is inside it (see target-geometry).
-        const pad = hitPadding(p.hitRect, stage, scale);
+        // 64px, not 48: this is tapped by a four-year-old, and the design
+        // system's floor for a child's target is 64. A peeking head on a phone
+        // can be twenty pixels across; the padding is what makes it findable.
+        const pad = hitPadding(p.hitRect, stage, scale, 64);
         candidates.push({ id: { kind: "target", id: p.target.id }, rect: expandRect(p.hitRect, pad.padX, pad.padY), zIndex: 50 + p.slot.zIndex });
       }
       if (bonus && !bonusFoundRef.current) {

@@ -17,6 +17,8 @@ import { useGameText } from "../i18n";
 
 /** How long the clouds take to part. Matches the CSS transition. */
 const CURTAIN_MS = 900;
+/** How long a mission stays fully open before folding to face + bulb. */
+const QUIET_AFTER_MS = 6000;
 
 interface Props {
   scene: SceneConfig;
@@ -200,6 +202,18 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
   const currentSlot = currentId ? slotFor(scene, currentId, mission.plan.variants[currentId] ?? "A") : null;
   const elapsed = mission.phase === "searching" ? now - mission.missionStartedAt : 0;
   const hintPulse = mission.phase === "searching" && shouldPulseHint({ misses: mission.misses, elapsedMs: elapsed, hintLevel: mission.hintLevel });
+
+  // The card folds to a face and a bulb a few seconds into the search, and
+  // unfolds whenever there is something new to read: a hint, a find, a new
+  // mission, or a tap on it. A phone screen is mostly board, and the bottom of
+  // the board is where a child tends to hide.
+  const [quiet, setQuiet] = useState(false);
+  useEffect(() => {
+    setQuiet(false);
+    if (mission.phase !== "searching") return;
+    const t = setTimeout(() => setQuiet(true), QUIET_AFTER_MS);
+    return () => clearTimeout(t);
+  }, [mission.phase, mission.currentIndex, mission.hintLevel, mission.lastFeedback]);
   const foundIds = Object.keys(mission.found);
   const total = mission.plan.order.length;
 
@@ -270,6 +284,8 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           onHint={() => dispatch({ type: "REQUEST_HINT" })}
           avatarUrl={store.config.child.avatarUrl}
           childName={store.config.child.name}
+          quiet={quiet && !store.demo}
+          onExpand={() => setQuiet(false)}
           minimal={store.demo}
         />
       ) : null}
