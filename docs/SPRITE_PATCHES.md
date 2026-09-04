@@ -153,7 +153,7 @@ measured against something that is actually on the canvas:
 | Height | painted height ÷ the height asked for | below 0.45 or above 2.2 |
 | Proportion | painted width ÷ painted height | above 1.6 |
 | Solidity | blob area ÷ the painted bounding box | below 0.22 |
-| Distance | offset ÷ **max(painted height, height asked for)** | above 1.6 |
+| Distance | offset ÷ **max(painted height, height asked for)** | above 2.5 |
 
 Two of these used to be measured against the wrong thing, and between them they threw away roughly
 half of every roll paid for:
@@ -162,8 +162,14 @@ half of every roll paid for:
   crouched behind market sacks shows a third of her silhouette, which is exactly the hiding the prompt
   asked for, and she was rejected for it. Judged against her own outline she passes, while scenery
   edges scattered across a person-sized box still do not.
-* **Distance used to be measured in the height we asked for.** A child painted 1.7× larger than
-  requested stands proportionally further from the slot point, so one deviation was counted twice.
+* **Distance used to be measured in the height we asked for, and held to 1.6.** A child painted 1.7×
+  larger than requested stands proportionally further from the slot point, so one deviation was
+  counted twice — and the limit itself was too tight. The model reads the mask as "where you may
+  edit" and puts her at the nearest place that makes sense: behind the lifebuoy, in front of the bus,
+  under the kite. That is two body-heights out often enough, she is still at the landmark the mission
+  names, and the tap contract follows the patch rather than the slot, so she is perfectly playable.
+  The search area (`grow`) already bounds how far she can be found at all; this rule only has to catch
+  the edge of it.
 
 Both are pinned by `src/services/__tests__/child-problem.test.ts`, whose cases are real renders with
 their real numbers. Move a threshold and that file should be what argues with you.
@@ -193,7 +199,9 @@ how much of the crop actually changed:
   default 3.6x the child) is what fixes it, not another roll.
 * **The whole window was re-rendered.** High diff everywhere, and the "patch" is
   the entire 648px crop. `childProblem()` rejects it as far taller than the child
-  we asked for. Another roll usually works.
+  we asked for. This is the most expensive failure mode left, and the prompt is
+  built against it — it opens and closes by refusing to redraw anything. Another
+  roll usually works.
 * **The picture came back untouched.** Mean diff near zero, "no changed pixels".
   Another roll, and if it persists the slot is the problem.
 
