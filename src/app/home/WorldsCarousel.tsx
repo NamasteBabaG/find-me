@@ -56,7 +56,10 @@ export function WorldsCarousel({ worlds, copy }: { worlds: CarouselWorld[]; copy
   const fill = (s: string, vars: Record<string, string | number>) => s.replace(/\{(\w+)\}/g, (_, k: string) => String(vars[k] ?? ""));
 
   return (
-    <div className="wc" style={{ ["--wc-accent" as string]: world.palette.accent, ["--wc-ground" as string]: world.palette.ground, ["--wc-sky" as string]: world.palette.sky }}>
+    // The world's palette tints its own tiles and nothing else: the arrows, the
+    // counter and the dots are the product's furniture, and a carousel that
+    // repaints them per world has no design system left.
+    <div className="wc" style={{ ["--wc-ground" as string]: world.palette.ground, ["--wc-sky" as string]: world.palette.sky }}>
       <div className="wc__bar">
         <button type="button" className="wc__arrow" onClick={() => go(-1)} aria-label={copy.prev}>
           ‹
