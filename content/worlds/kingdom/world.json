@@ -131,7 +131,7 @@
     },
     "icon": "👑"
   },
-  "active": false,
-  "purchasable": false,
+  "active": true,
+  "purchasable": true,
   "version": 1
 }

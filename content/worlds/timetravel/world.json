@@ -132,6 +132,6 @@
     "icon": "⌛"
   },
   "active": true,
-  "purchasable": false,
+  "purchasable": true,
   "version": 1
 }
