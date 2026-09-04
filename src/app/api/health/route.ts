@@ -1,3 +1,4 @@
+import { promises as dns } from "node:dns";
 import { NextResponse } from "next/server";
 import { getContainer } from "@/services/container";
 import { env } from "@/lib/env";
@@ -24,6 +25,7 @@ export async function GET() {
   const body = {
     ok: db.ok,
     db,
+    host: await hostCheck(),
     providers: { storage: e.STORAGE_PROVIDER, generation: e.GENERATION_PROVIDER, payment: e.PAYMENT_PROVIDER, email: e.EMAIL_PROVIDER },
     patchQuality: e.GENERATION_PATCH_QUALITY ?? e.GENERATION_QUALITY,
     patchRetryQuality: e.GENERATION_PATCH_RETRY_QUALITY ?? null,
@@ -46,6 +48,36 @@ async function checkDb(): Promise<{ ok: boolean; code?: string; error?: string }
     const code = typeof (err as { code?: unknown })?.code === "string" ? ((err as { code: string }).code) : undefined;
     const name = err instanceof Error ? err.name : "Error";
     return { ok: false, code: code ?? name, error: scrub(err) || meaningOf(code) };
+  }
+}
+
+/**
+ * Where DATABASE_URL points, and whether that can be reached over IPv4.
+ *
+ * The classic failure on this stack is not a bad password: Supabase's direct
+ * host is IPv6-only and a serverless function egresses IPv4, so the same URL
+ * works from a laptop and never from production. Reporting which addresses
+ * resolve tells those two apart at a glance.
+ *
+ * The pooler hostname is a shared regional endpoint and names nobody, so it is
+ * safe to print. The direct host carries the project ref, so it is not.
+ */
+async function hostCheck(): Promise<{ host: string; port: string; ipv4: number; ipv6: number; error?: string }> {
+  let host = "";
+  let port = "";
+  try {
+    const u = new URL(process.env.DATABASE_URL ?? "");
+    host = u.hostname;
+    port = u.port;
+  } catch {
+    return { host: "<unparseable>", port: "", ipv4: 0, ipv6: 0, error: "DATABASE_URL is not a URL" };
+  }
+  const shown = /\.pooler\.supabase\.com$/i.test(host) ? host : "<direct host>";
+  try {
+    const [v4, v6] = await Promise.all([dns.resolve4(host).catch(() => []), dns.resolve6(host).catch(() => [])]);
+    return { host: shown, port, ipv4: v4.length, ipv6: v6.length, ...(v4.length === 0 && v6.length === 0 ? { error: "this hostname does not resolve" } : {}) };
+  } catch (err) {
+    return { host: shown, port, ipv4: 0, ipv6: 0, error: err instanceof Error ? err.message.slice(0, 80) : "lookup failed" };
   }
 }
 
