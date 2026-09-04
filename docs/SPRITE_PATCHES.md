@@ -216,6 +216,30 @@ A spot that keeps failing is telling you something about the slot: too little to
 hide behind, or a situation the model cannot picture. `--pose` gives it a
 concrete instruction, and moving the slot is a legitimate answer.
 
+## Shape is not identity
+
+The checks above ask whether the patch is shaped like a child. They do not ask whether it *is* the
+child, and over one nine-board game four of twenty-six accepted patches were not: a scooter with
+nobody on it, a horse's head, a pair of legs, and a partial body. Nothing downstream could tell —
+the composer places what it is given and automated QA measures rectangles.
+
+So a vision model looks at the cut-out beside the identity sheet and answers one narrow question:
+**is this her, with her face visible?** That is the test the game itself needs. A child peeking over a
+market basket with only her head showing passes, because that is the hiding we asked for; a pair of
+legs does not, because nobody can find "Noa" in something with no face.
+
+```bash
+npx tsx scripts/judge-patches.ts <gameId> --out=work/judged   # judge a game's finished patches, write back nothing
+```
+
+That script is how the judge was measured before it was allowed to reject anything a customer had
+paid for: on those twenty-six patches it rejected exactly the four bad ones — naming the horse — and
+passed all twenty-two good ones. It costs about $0.0026 a judgement against $0.07 for a roll.
+
+A judge that cannot answer never guesses. The patch is kept, the row records `unknown`, and the
+pipeline sends that game to `MANUAL_REVIEW` rather than delivering it on the strength of its
+rectangles. With no judge configured (the default, and every mock setup) nothing changes.
+
 ## A bigger child is a cheaper child
 
 From one nine-board run (27 spots, 33 rolls), grouped by the height the slot asks for:
