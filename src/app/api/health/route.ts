@@ -26,6 +26,7 @@ export async function GET() {
     ok: db.ok,
     db,
     host: await hostCheck(),
+    appEnv: e.APP_ENV,
     providers: { storage: e.STORAGE_PROVIDER, generation: e.GENERATION_PROVIDER, payment: e.PAYMENT_PROVIDER, email: e.EMAIL_PROVIDER, generationEnabled: e.GENERATION_ENABLED === "on" },
     patchQuality: e.GENERATION_PATCH_QUALITY ?? e.GENERATION_QUALITY,
     patchRetryQuality: e.GENERATION_PATCH_RETRY_QUALITY ?? null,

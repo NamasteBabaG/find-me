@@ -9,6 +9,15 @@ const DEV_SESSION_SECRET = "dev-only-session-secret-change-me";
 
 const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  /**
+   * What this deployment *is*, which NODE_ENV cannot say.
+   *
+   * A staging box runs a production build and is not a shop: it may pay with the
+   * mock provider while generating for real, because the only money at risk is
+   * ours and the only buyers are us. Saying so explicitly is the difference
+   * between a deliberate QA environment and a shop that quietly takes no money.
+   */
+  APP_ENV: z.enum(["development", "qa", "production"]).optional(),
   DATABASE_URL: z.string().default("file:./dev.db"),
   APP_URL: z.string().url().default("http://localhost:3000"),
   SESSION_SECRET: z.string().min(16).default(DEV_SESSION_SECRET),
@@ -82,30 +91,36 @@ export function env(): Env {
   if (parsed.data.NODE_ENV === "production" && /localhost|127\.0\.0\.1/.test(parsed.data.APP_URL)) {
     throw new Error(`APP_URL is ${parsed.data.APP_URL} in production — set it to the real domain; share links and payment redirects are built from it.`);
   }
-  // A production that pays OpenAI per render but takes no money is not a
-  // half-configured shop, it is a hole with a public URL: /api/dev/mock-pay
-  // marks any order PAID from its id alone, and the id is in the checkout link.
-  // Refusing to boot is deliberate — the alternative is unbounded spend that
-  // nobody notices until the invoice.
-  if (parsed.data.NODE_ENV === "production" && parsed.data.GENERATION_PROVIDER !== "mock" && parsed.data.PAYMENT_PROVIDER !== "payme") {
+  // A shop that pays OpenAI per render and collects nothing is not
+  // half-configured, it is a hole with a public URL. On a QA deployment that is
+  // the intended state - we are the only buyers and it is our own money - so
+  // the rule is keyed on what the deployment says it is, not on NODE_ENV, which
+  // cannot tell a staging box from the real thing.
+  const appEnv = parsed.data.APP_ENV ?? (parsed.data.NODE_ENV === "production" ? "production" : "development");
+  if (appEnv === "production" && parsed.data.GENERATION_PROVIDER !== "mock" && parsed.data.PAYMENT_PROVIDER !== "payme") {
     throw new Error(
-      `GENERATION_PROVIDER is "${parsed.data.GENERATION_PROVIDER}" while PAYMENT_PROVIDER is "${parsed.data.PAYMENT_PROVIDER}" in production: every game would cost real money and collect none. Set PAYMENT_PROVIDER=payme, or GENERATION_PROVIDER=mock.`,
+      `GENERATION_PROVIDER is "${parsed.data.GENERATION_PROVIDER}" while PAYMENT_PROVIDER is "${parsed.data.PAYMENT_PROVIDER}": every game would cost real money and collect none. Set PAYMENT_PROVIDER=payme, or GENERATION_PROVIDER=mock - or, if this deployment is a staging box, set APP_ENV=qa.`,
     );
   }
-  // Same shape of problem one step later: the render is paid for, the parent is
+  // The same problem one step later: the render is paid for, the parent is
   // charged, and the link to the thing they bought is written to a file on a
   // server they cannot reach.
-  if (parsed.data.NODE_ENV === "production" && parsed.data.GENERATION_PROVIDER !== "mock" && parsed.data.EMAIL_PROVIDER !== "resend") {
+  if (appEnv === "production" && parsed.data.GENERATION_PROVIDER !== "mock" && parsed.data.EMAIL_PROVIDER !== "resend") {
     throw new Error(
-      `EMAIL_PROVIDER is "${parsed.data.EMAIL_PROVIDER}" while GENERATION_PROVIDER is "${parsed.data.GENERATION_PROVIDER}" in production: games would be generated and never delivered. Set EMAIL_PROVIDER=resend.`,
+      `EMAIL_PROVIDER is "${parsed.data.EMAIL_PROVIDER}" while GENERATION_PROVIDER is "${parsed.data.GENERATION_PROVIDER}": games would be generated and never delivered. Set EMAIL_PROVIDER=resend, or APP_ENV=qa.`,
     );
   }
-  cached = parsed.data;
+  cached = { ...parsed.data, APP_ENV: appEnv };
   return cached;
 }
 
 export function isDev(): boolean {
   return env().NODE_ENV !== "production";
+}
+
+/** The real shop. A laptop and a staging box are not it. */
+export function isLiveShop(): boolean {
+  return env().APP_ENV === "production";
 }
 
 export function adminEmails(): string[] {

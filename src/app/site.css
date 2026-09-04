@@ -513,3 +513,16 @@
   transform: translate(-50%, -50%); font-size: var(--fs-500); z-index: 1;
   filter: drop-shadow(0 2px 6px rgba(23,22,43,.5));
 }
+
+/* Not decorative: a QA box is a production build with a pretend till, and the
+   only thing separating it from the shop is that it says so. */
+.qa-banner {
+  position: sticky; inset-block-start: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: center; gap: var(--space-1);
+  min-height: var(--space-6);
+  padding: var(--space-0-5) var(--gutter);
+  background: repeating-linear-gradient(135deg, var(--sun-deep) 0 12px, var(--sun) 12px 24px);
+  color: var(--ink);
+  font-size: var(--fs-100); line-height: var(--lh-100); font-weight: 700;
+  text-align: center;
+}

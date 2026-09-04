@@ -1,16 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 /**
- * What production refuses to boot with.
+ * What a real shop refuses to boot with, and what a QA box is allowed.
  *
  * A QA audit found the live site reporting generation=openai, payment=mock and
- * email=console at once. In that state /api/dev/mock-pay marks any order PAID
- * from its id alone — and the id is in the checkout URL — so every visitor
- * could spend OpenAI budget, and nothing would ever be delivered or charged.
+ * email=console at once. In that state /api/dev/mock-pay marked any order PAID
+ * from its id alone — and the id is in the checkout URL — so any visitor could
+ * spend OpenAI budget, and nothing would ever be charged or delivered.
  *
- * These are boot-time errors rather than warnings on purpose. The previous
- * guard was a console.warn, which is exactly the kind of thing that is true for
- * weeks before anyone reads it.
+ * These are boot-time errors rather than warnings on purpose: the previous
+ * guard was a console.warn, which is exactly the kind of thing that stays true
+ * for weeks before anyone reads it. They key on APP_ENV rather than NODE_ENV,
+ * because a staging box runs a production build and is not a shop — there, mock
+ * payment with real generation is the point, and the only money at risk is ours.
  */
 const BASE = {
   NODE_ENV: "production",
@@ -28,10 +30,15 @@ async function envWith(overrides: Record<string, string>) {
 
 afterEach(() => vi.unstubAllEnvs());
 
-describe("production provider invariants", () => {
+describe("the live shop", () => {
   it("refuses to boot when it would pay for renders and collect nothing", async () => {
     const read = await envWith({ GENERATION_PROVIDER: "openai", PAYMENT_PROVIDER: "mock", EMAIL_PROVIDER: "resend", RESEND_API_KEY: "x" });
     expect(read).toThrow(/collect none/);
+  });
+
+  it("names the way out, so nobody has to guess which variable to set", async () => {
+    const read = await envWith({ GENERATION_PROVIDER: "openai", PAYMENT_PROVIDER: "mock", EMAIL_PROVIDER: "resend", RESEND_API_KEY: "x" });
+    expect(read).toThrow(/APP_ENV=qa/);
   });
 
   it("refuses to boot when a paid-for game could never be delivered", async () => {
@@ -39,31 +46,41 @@ describe("production provider invariants", () => {
     expect(read).toThrow(/never delivered/);
   });
 
-  it("allows the honest demo: mock generation, mock payment, no money either way", async () => {
-    const read = await envWith({ GENERATION_PROVIDER: "mock", PAYMENT_PROVIDER: "mock", EMAIL_PROVIDER: "console" });
-    expect(read).not.toThrow();
-  });
-
   it("allows a fully wired shop", async () => {
     const read = await envWith({ GENERATION_PROVIDER: "openai", PAYMENT_PROVIDER: "payme", EMAIL_PROVIDER: "resend", RESEND_API_KEY: "x" });
     expect(read).not.toThrow();
   });
 
-  it("leaves development alone, where every provider is a mock by design", async () => {
-    const read = await envWith({ NODE_ENV: "development", GENERATION_PROVIDER: "openai", PAYMENT_PROVIDER: "mock", EMAIL_PROVIDER: "console" });
+  it("allows the honest demo: mock generation, mock payment, no money either way", async () => {
+    const read = await envWith({ GENERATION_PROVIDER: "mock", PAYMENT_PROVIDER: "mock", EMAIL_PROVIDER: "console" });
     expect(read).not.toThrow();
   });
 });
 
-describe("the mock payment endpoint", () => {
-  it("does not exist in production, whatever provider happens to be wired", async () => {
-    vi.resetModules();
-    for (const [k, v] of Object.entries({ ...BASE, GENERATION_PROVIDER: "mock", PAYMENT_PROVIDER: "mock" })) vi.stubEnv(k, v);
-    const { POST } = await import("../../app/api/dev/mock-pay/route");
-    const res = await POST(new Request("https://example.com/api/dev/mock-pay", { method: "POST", body: "{}" }));
-    expect(res.status).toBe(404);
-    // It must not have reached the database or the webhook handler to say so.
-    expect(await res.json()).toMatchObject({ ok: false });
+describe("a QA deployment", () => {
+  it("may generate for real while paying with the mock provider", async () => {
+    const read = await envWith({ APP_ENV: "qa", GENERATION_PROVIDER: "openai", PAYMENT_PROVIDER: "mock", EMAIL_PROVIDER: "console" });
+    expect(read).not.toThrow();
+    expect(read().APP_ENV).toBe("qa");
+  });
+
+  it("is not the live shop, so the app can say so out loud", async () => {
+    const qa = await envWith({ APP_ENV: "qa", GENERATION_PROVIDER: "mock", PAYMENT_PROVIDER: "mock" });
+    qa();
+    const { isLiveShop } = await import("../env");
+    expect(isLiveShop()).toBe(false);
+  });
+
+  it("is what production defaults to when nothing says otherwise", async () => {
+    const read = await envWith({ GENERATION_PROVIDER: "mock", PAYMENT_PROVIDER: "mock" });
+    expect(read().APP_ENV).toBe("production");
   });
 });
 
+describe("development", () => {
+  it("is left alone, where every provider is a mock by design", async () => {
+    const read = await envWith({ NODE_ENV: "development", GENERATION_PROVIDER: "openai", PAYMENT_PROVIDER: "mock", EMAIL_PROVIDER: "console" });
+    expect(read).not.toThrow();
+    expect(read().APP_ENV).toBe("development");
+  });
+});

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Fredoka, Rubik } from "next/font/google";
 import { I18nProvider } from "@/i18n/client";
 import { getI18n } from "@/i18n/server";
+import { env } from "@/lib/env";
 import { dirOf } from "@/i18n/config";
 import "./globals.css";
 
@@ -33,9 +34,26 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang={locale} dir={dirOf(locale)} className={`${rubik.variable} ${fredoka.variable}`}>
       <body>
         <I18nProvider locale={locale} dict={t}>
+          <QaBanner />
           {children}
         </I18nProvider>
       </body>
     </html>
+  );
+}
+
+/**
+ * A staging box runs a production build against a real image model and a
+ * pretend till. It must never be mistaken for the shop — by us, or by anyone we
+ * send a link to.
+ */
+function QaBanner() {
+  const e = env();
+  if (e.APP_ENV !== "qa") return null;
+  return (
+    <div className="qa-banner" role="status">
+      QA environment - payments are simulated, nothing is charged
+      {e.GENERATION_PROVIDER !== "mock" ? " (generation is real)" : null}
+    </div>
   );
 }
