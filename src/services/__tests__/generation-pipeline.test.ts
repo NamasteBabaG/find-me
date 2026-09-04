@@ -26,6 +26,8 @@ let db: Db;
 let mod: {
   runGenerationPipeline: (c: Container, gameId: string, options?: { deadlineAt?: number }) => Promise<void>;
   handlePaymentWebhook: (c: Container, rawBody: string, headers: Record<string, string | undefined>) => Promise<{ status: number; body: string }>;
+  deleteGame: (c: Container, gameId: string, actor: unknown, userId?: string) => Promise<boolean>;
+  SYSTEM: unknown;
   spotsOutstanding: (c: Container, gameId: string, variants: Array<"A" | "B">) => Promise<{ retryable: number; capped: number }>;
   MAX_ATTEMPTS_PER_SPOT: number;
   storeAsset: (c: Container, input: Record<string, unknown>) => Promise<{ id: string }>;
@@ -68,9 +70,12 @@ beforeAll(async () => {
     import("../scene-catalog.service"),
   ]);
   const order = await import("../order.service");
+  const [game, auditMod] = await Promise.all([import("../game.service"), import("../audit.service")]);
   mod = {
     runGenerationPipeline: pipeline.runGenerationPipeline,
     handlePaymentWebhook: order.handlePaymentWebhook as never,
+    deleteGame: game.deleteGame as never,
+    SYSTEM: auditMod.SYSTEM,
     spotsOutstanding: patches.spotsOutstanding,
     MAX_ATTEMPTS_PER_SPOT: patches.MAX_ATTEMPTS_PER_SPOT,
     storeAsset: asset.storeAsset as never,
@@ -450,6 +455,54 @@ describe("the payment webhook", () => {
     // And the queue does pick it up from exactly that row.
     await mod.runGenerationPipeline(withPayment, gameId);
     expect((await spotsIn(gameId)).length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * "Deleting a game removes the photo and everything made from it. This cannot
+ * be undone." That sentence is on the manage page, so it has to be true of the
+ * whole graph.
+ *
+ * It was not. Deletion took the composed sprite per spot, and the avatar and
+ * original photo when no other game needed them. It left the slot patches, the
+ * renders QA rejected — kept deliberately, so a failing spot can be looked at —
+ * and the identity sheet, which is the child drawn from several angles.
+ */
+describe("deleting a game", () => {
+  it("leaves no picture of the child anywhere", async () => {
+    const c = container(painter(["child"]));
+    const gameId = await seedGame(c);
+    await mod.runGenerationPipeline(c, gameId);
+
+    const game = await gameOf(gameId);
+    const childId = game.childProfileId;
+    if (!childId) throw new Error("seeded game has no child");
+
+    // The two things deletion used to miss. The identity sheet is whatever the
+    // pipeline actually made — replacing it here would only orphan the real one
+    // and test the replacement. The rejected render is added by hand because a
+    // painter that always succeeds never produces one.
+    const seeded = await db.childProfile.findUniqueOrThrow({ where: { id: childId } });
+    expect(seeded.identityAssetId, "the pipeline should have drawn an identity sheet").toBeTruthy();
+    const rejected = await mod.storeAsset(c, { ownerId: game.ownerId, type: "TARGET_SPRITE", visibility: "PRIVATE", buffer: await solid(64, 64, "#456"), mimeType: "image/png", width: 64, height: 64 });
+    const [firstVariant] = await db.targetVariantAsset.findMany({ where: { targetInstance: { gameScene: { gameId } } }, take: 1 });
+    if (!firstVariant) throw new Error("the pipeline produced no variants to delete");
+    await db.targetVariantAsset.update({ where: { id: firstVariant.id }, data: { rejectedAssetIdsJson: JSON.stringify([rejected.id]) } });
+
+    const before = await db.asset.count({ where: { ownerId: game.ownerId, status: { not: "DELETED" } } });
+    expect(before).toBeGreaterThan(3);
+
+    expect(await mod.deleteGame(c, gameId, mod.SYSTEM)).toBe(true);
+
+    const live = await db.asset.findMany({ where: { ownerId: game.ownerId, status: { not: "DELETED" } }, select: { id: true, type: true } });
+    expect(live, `still live: ${live.map((a) => `${a.type}:${a.id}`).join(", ")}`).toEqual([]);
+
+    // And the rows no longer point at anything.
+    const profile = await db.childProfile.findUniqueOrThrow({ where: { id: childId } });
+    expect(profile.identityAssetId).toBeNull();
+    expect(profile.originalPhotoAssetId).toBeNull();
+    const variants = await db.targetVariantAsset.findMany({ where: { targetInstance: { gameScene: { gameId } } } });
+    expect(variants.every((v) => v.assetId === null && v.rejectedAssetIdsJson === null)).toBe(true);
   });
 });
 

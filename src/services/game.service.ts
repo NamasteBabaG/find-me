@@ -60,17 +60,58 @@ export async function updateGift(c: Container, gameId: string, userId: string, g
 }
 
 /** Soft delete + purge personal assets. Scene art is shared and untouched. */
+/**
+ * Every picture of this child that the game produced, not just the ones the
+ * game draws with.
+ *
+ * Deletion used to take the composed sprite per hiding spot and, if no other
+ * game needed them, the avatar and the original photo. It left behind the slot
+ * patches themselves, every render QA threw out — kept on purpose, so a failing
+ * spot can be looked at — and the identity sheet, which is the child drawn from
+ * several angles and the single most identifying asset in the system.
+ *
+ * The copy promises deletion is complete and cannot be undone. That has to be
+ * true of the whole graph or it is not true at all.
+ */
+function rejectedIds(json: string | null): string[] {
+  if (!json) return [];
+  try {
+    const parsed: unknown = JSON.parse(json);
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function deleteGame(c: Container, gameId: string, actor: Actor, userId?: string): Promise<boolean> {
-  const g = await c.db.game.findFirst({ where: { id: gameId, ...(userId ? { ownerId: userId } : {}), deletedAt: null }, include: { childProfile: true, scenes: { include: { targets: true } } } });
+  const g = await c.db.game.findFirst({
+    where: { id: gameId, ...(userId ? { ownerId: userId } : {}), deletedAt: null },
+    include: { childProfile: true, scenes: { include: { targets: { include: { variants: true } } } } },
+  });
   if (!g) return false;
   await revokePlayerLinks(c, gameId, actor);
-  for (const s of g.scenes) for (const t of s.targets) await deleteAsset(c, t.spriteAssetId);
+  for (const s of g.scenes) {
+    for (const t of s.targets) {
+      await deleteAsset(c, t.spriteAssetId);
+      for (const v of t.variants) {
+        await deleteAsset(c, v.assetId);
+        for (const id of rejectedIds(v.rejectedAssetIdsJson)) await deleteAsset(c, id);
+      }
+      // The rows keep their shape for the audit trail; they stop pointing at
+      // pictures.
+      await c.db.targetVariantAsset.updateMany({ where: { targetInstanceId: t.id }, data: { assetId: null, rejectedAssetIdsJson: null } });
+    }
+  }
   if (g.childProfile) {
     const otherGames = await c.db.game.count({ where: { childProfileId: g.childProfile.id, deletedAt: null, NOT: { id: gameId } } });
     if (otherGames === 0) {
       await deleteAsset(c, g.childProfile.avatarAssetId);
       await deleteAsset(c, g.childProfile.originalPhotoAssetId);
-      await c.db.childProfile.update({ where: { id: g.childProfile.id }, data: { avatarAssetId: null, originalPhotoAssetId: null, deletedAt: new Date() } });
+      await deleteAsset(c, g.childProfile.identityAssetId);
+      await c.db.childProfile.update({
+        where: { id: g.childProfile.id },
+        data: { avatarAssetId: null, originalPhotoAssetId: null, identityAssetId: null, photoCropJson: null, deletedAt: new Date() },
+      });
     }
   }
   await c.db.game.update({ where: { id: gameId }, data: { configJson: null } });
