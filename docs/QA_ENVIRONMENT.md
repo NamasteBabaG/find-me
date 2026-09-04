@@ -45,6 +45,19 @@ a live schema without asking, `--force-reset` empties it, and both take their
 target from the end of a URL. `npm run db:guard` (wired into both) refuses a
 Postgres URL that does not name its schema.
 
+## The URL
+
+**https://find-me-qa-smallheroes-projects.vercel.app**
+
+`find-me-qa.vercel.app` is listed on the project and does not serve: a bare
+`.vercel.app` subdomain is unique across all of Vercel and that one is taken.
+
+Deployment protection is off, so the site answers anyone who has the link — which
+is the point, since half of what needs testing is what a visitor who has not
+signed in and not bought anything sees. Nothing links to it and nothing indexes
+it, but generation here is real: `GENERATION_ENABLED=off` stops all spending
+without a deploy if that ever matters.
+
 ## Deploying to it
 
 The projects are not linked to GitHub, so deployment is a command rather than a
