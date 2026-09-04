@@ -19,6 +19,40 @@ const BOX_MAX = 320;
  * Pick → crop (drag + zoom inside a circle) → upload.
  * The crop is sent as a normalized box; the server makes the sticker.
  */
+/**
+ * The picture that actually goes over the wire.
+ *
+ * A phone photo is routinely 5-12MB and the serverless host rejects a request
+ * body over 4.5MB before any of our code runs, so the parent would have got an
+ * opaque failure on a perfectly ordinary photo of their child. (The one that
+ * found this was 6.7MB.)
+ *
+ * Re-encoding also drops EXIF, which is where the camera writes the GPS
+ * coordinates of the place the picture was taken — of a child. Nothing
+ * downstream ever wanted it: the identity sheet is drawn at 1024px.
+ *
+ * The crop is sent separately and is normalised to the image, so resizing here
+ * leaves it correct.
+ */
+const MAX_EDGE = 2048;
+
+async function forUpload(file: File): Promise<Blob> {
+  const bitmap = await createImageBitmap(file).catch(() => null);
+  if (!bitmap) return file; // let the server judge a file we cannot even decode
+  const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
+  const w = Math.round(bitmap.width * scale);
+  const h = Math.round(bitmap.height * scale);
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return file;
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  bitmap.close();
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
+  return blob ?? file;
+}
+
 export function PhotoUploader({ childName, hasPhoto, rejectedCode }: Props) {
   const { t, tf } = useI18n();
   const p = t.create.photo;
@@ -99,7 +133,7 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode }: Props) {
     setError(null);
     const crop = { x: -offset.x / scale / natural.w, y: -offset.y / scale / natural.h, w: BOX / scale / natural.w, h: BOX / scale / natural.h };
     const fd = new FormData();
-    fd.append("file", file);
+    fd.append("file", await forUpload(file));
     fd.append("crop", JSON.stringify(crop));
     fd.append("consent", "1");
     try {

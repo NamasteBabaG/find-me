@@ -441,6 +441,7 @@ export const en = {
     TOO_SMALL: "The photo is too small. A clear shoulders-up shot works best.",
     UNREADABLE: "We couldn't read that file.",
     NO_FILE: "No file was received.",
+    PHOTO_TOO_LARGE: "That photo is too large. Try one straight from the camera roll.",
     UPLOAD_FAILED: "Something went wrong. Try another photo.",
     SERVICE_UNAVAILABLE: "Creating games is paused for a moment. Try the live demo on the home page, and come back in a little while.",
     TOO_MANY_REQUESTS: "That is a lot of tries in a short time. Give it a couple of minutes and try again.",

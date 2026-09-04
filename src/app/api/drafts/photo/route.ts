@@ -7,6 +7,9 @@ import { LIMITS, callerKey, rateLimit, tooManyRequests } from "@/lib/server/rate
 export const runtime = "nodejs";
 
 /** Multipart upload of the child's photo for the current draft. */
+/** Comfortably above what the client sends, comfortably below the host's own limit. */
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+
 export async function POST(req: Request) {
   // Uploads cost storage and generation, so a stranger gets a handful per window.
   const limited = rateLimit(callerKey(req, "photo"), LIMITS.photoUpload.limit, LIMITS.photoUpload.windowMs);
@@ -17,6 +20,14 @@ export async function POST(req: Request) {
   const game = await c.db.game.findUnique({ where: { draftToken: token } });
   const user = await currentUser();
   if (!game || !draftBelongsTo(game, token, user?.id ?? null)) return NextResponse.json({ ok: false, code: "DRAFT_NOT_FOUND", reason: "הטיוטה לא נמצאה." }, { status: 404 });
+
+  // The browser downscales before sending, so anything this big is either a
+  // client that could not re-encode or someone poking the endpoint. Either way
+  // it must fail as a readable message and not as the host's opaque 413.
+  const declared = Number(req.headers.get("content-length") ?? 0);
+  if (declared > MAX_UPLOAD_BYTES) {
+    return NextResponse.json({ ok: false, code: "PHOTO_TOO_LARGE", reason: "הקובץ גדול מדי." }, { status: 413 });
+  }
 
   const form = await req.formData();
   // Parental consent is a hard requirement: no photo of a child is stored without it.
@@ -36,6 +47,9 @@ export async function POST(req: Request) {
     }
   }
   const buffer = Buffer.from(await file.arrayBuffer());
+  if (buffer.byteLength > MAX_UPLOAD_BYTES) {
+    return NextResponse.json({ ok: false, code: "PHOTO_TOO_LARGE", reason: "הקובץ גדול מדי." }, { status: 413 });
+  }
   try {
     const result = await attachPhoto(c, game.id, { buffer, mimeType: file.type, crop });
     return NextResponse.json(result, { status: result.ok ? 200 : 422 });
