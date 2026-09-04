@@ -54,6 +54,12 @@ try {
 
 const schema = parsed.searchParams.get("schema");
 const target = `${parsed.hostname}:${parsed.port || "5432"}`;
+
+// A placeholder pasted from instructions is a URL that parses. It should not
+// reach Prisma and come back as "Can't reach database server at %E2%80%A6".
+if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(parsed.hostname)) {
+  die([`Refusing: DATABASE_URL points at "${parsed.hostname}", which is not a hostname.`, ``, `That is usually a placeholder pasted verbatim. Use the real connection string.`]);
+}
 const allowPublic = process.argv.includes("--allow-public");
 
 if (!schema) {

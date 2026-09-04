@@ -57,11 +57,28 @@ if (!dbUrl || !openaiKey) {
   die(`${usage}\n\n  Run it from a directory linked to find-me-qa:\n    npx vercel link --project ${PROJECT} --scope ${SCOPE} --yes`);
 }
 
+// The usage text uses "…" as a placeholder, and a placeholder pasted verbatim
+// is a URL that parses, encodes to %E2%80%A6, and stores perfectly happily. Ask
+// whether the host could be a real machine before believing it.
+const PLACEHOLDER = /[…]|%E2%80%A6/;
+if (PLACEHOLDER.test(dbUrl) || PLACEHOLDER.test(openaiKey)) {
+  die('That is the placeholder from the usage text ("…"), not the real value. Paste the actual URL and key.');
+}
+if (!/^sk-[A-Za-z0-9_-]{20,}$/.test(openaiKey)) {
+  die("OPENAI_API_KEY does not look like a key (expected sk- followed by at least twenty characters).");
+}
+
 let parsed;
 try {
   parsed = new URL(dbUrl);
 } catch {
   die("DATABASE_URL is not a URL this can read.");
+}
+if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(parsed.hostname)) {
+  die(`DATABASE_URL points at "${parsed.hostname}", which is not a hostname. Paste the real Supabase pooler URL.`);
+}
+if (!parsed.password) {
+  die("DATABASE_URL has no password in it. Copy the full connection string from Supabase.");
 }
 const schema = parsed.searchParams.get("schema");
 if (schema !== "qa") {
