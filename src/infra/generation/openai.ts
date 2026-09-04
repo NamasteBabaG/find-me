@@ -49,7 +49,11 @@ function costCentsFrom(model: string, usage: Usage | undefined): number {
   const imageIn = usage?.input_tokens_details?.image_tokens ?? Math.max(0, (usage?.input_tokens ?? 0) - textIn);
   const imageOut = usage?.output_tokens ?? 0;
   const usd = (textIn * rate.textIn + imageIn * rate.imageIn + imageOut * rate.imageOut) / 1_000_000;
-  return Math.ceil(usd * 100);
+  // Round, do not ceil. A roll costs about 7.0 cents, and rounding every one of
+  // them up to 8 overstated a nine-board game by roughly 14% — an error that
+  // only ever pointed one way, in the number used to judge whether the product
+  // makes money. Sub-cent precision is lost either way; a bias is not.
+  return Math.round(usd * 100);
 }
 
 function flatUsage(usage: Usage | undefined): Record<string, number> | undefined {

@@ -107,6 +107,9 @@ export async function generateSlotPatch(
   // ~55s each is enough to overrun it. A spot that fails is not marked done, so
   // the next tick tries it again — the retries happen across ticks, not inside one.
   const tries = input.tries ?? 1;
+  // Fractions of a cent, because judging costs about a quarter of one and
+  // dropping that per spot would hide roughly a quarter of a dollar per game.
+  // Rounded once, at the point it is written to a whole-cent column.
   let spent = 0;
   let attempts = 0;
   let elapsed = 0;
@@ -185,7 +188,7 @@ export async function generateSlotPatch(
           model,
           promptVersion: PROMPT_VERSION,
           attempts: { increment: attempts },
-          costCents: { increment: spent },
+          costCents: { increment: Math.round(spent) },
           usageJson: usage ? JSON.stringify(usage) : null,
           rejectedAssetIdsJson: rejected.length > 0 ? JSON.stringify(rejected) : null,
           judgeJson: judged ? JSON.stringify({ verdict: judged.verdict, reason: judged.reason, model: judged.model }) : null,
@@ -207,7 +210,7 @@ export async function generateSlotPatch(
       status: "FAILED",
       lastError: lastError.slice(0, 500),
       attempts: { increment: attempts },
-      costCents: { increment: spent },
+      costCents: { increment: Math.round(spent) },
       rejectedAssetIdsJson: rejected.length > 0 ? JSON.stringify(rejected) : null,
       durationMs: elapsed,
       model,

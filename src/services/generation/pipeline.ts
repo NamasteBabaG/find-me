@@ -204,7 +204,7 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
           // One good hiding spot is a playable target; none is one a human must look at.
           await c.db.targetInstance.update({
             where: { id: row.id },
-            data: { spriteKind: "image", status: ok > 0 ? "GENERATED" : "NEEDS_REGENERATION", attempts: { increment: 1 }, costCents: { increment: spent } },
+            data: { spriteKind: "image", status: ok > 0 ? "GENERATED" : "NEEDS_REGENERATION", attempts: { increment: 1 }, costCents: { increment: Math.round(spent) } },
           });
           // Heartbeat: a minute of painting must not let the lease go stale.
           await c.db.generationJob.update({ where: { id: jobId }, data: { currentStep: "targets" } });
