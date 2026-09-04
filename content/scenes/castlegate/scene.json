@@ -1,0 +1,292 @@
+{
+  "id": "scene_castlegate",
+  "slug": "castlegate",
+  "name": {
+    "en": "The Castle Gate",
+    "he": "שער הטירה"
+  },
+  "tagline": {
+    "en": "Banners, a drawbridge and a very sleepy guard.",
+    "he": "דגלים, גשר מתרומם ושומר מנומנם מאוד."
+  },
+  "version": 1,
+  "active": false,
+  "artStatus": "draft",
+  "art": {
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/castlegate/base.webp",
+    "thumbnail": "/scenes/castlegate/thumb.webp",
+    "palette": {
+      "sky": "#C9B6F5",
+      "ground": "#6B4FA8",
+      "accent": "#FFD24D"
+    },
+    "foreground": "/scenes/castlegate/foreground.webp"
+  },
+  "targets": [
+    {
+      "id": "banner",
+      "targetType": "castlegate_banner",
+      "bodyTemplate": "castlegate_banner",
+      "difficulty": 1,
+      "mission": {
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
+      },
+      "item": {
+        "en": "long striped banners hanging from the gate",
+        "he": "דגלים מפוספסים ארוכים תלויים מהשער"
+      },
+      "success": [
+        {
+          "en": "The wind nearly blew me away!",
+          "he": "הרוח כמעט הפילה אותי!"
+        },
+        {
+          "en": "You found me! It smells of flags.",
+          "he": "מצאתם! מריח פה דגלים."
+        },
+        {
+          "en": "I counted every stone.",
+          "he": "ספרתי כל אבן."
+        }
+      ],
+      "animation": "bounce",
+      "slots": [
+        {
+          "id": "castlegate_banner_a",
+          "x": 0.4,
+          "y": 0.52,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.4,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the banner.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "castlegate_banner_b",
+          "x": 0.6599999999999999,
+          "y": 0.6,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.6599999999999999,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the banner.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "swan",
+      "targetType": "castlegate_swan",
+      "bodyTemplate": "castlegate_swan",
+      "difficulty": 2,
+      "mission": {
+        "en": "Find {name} by the swans",
+        "he": "מצאו את {name} ליד הברבורים"
+      },
+      "item": {
+        "en": "white swans on a green moat with children feeding them",
+        "he": "ברבורים לבנים באגם ירוק וילדים מאכילים אותם"
+      },
+      "success": [
+        {
+          "en": "One nibbled my finger!",
+          "he": "אחד נשך לי את האצבע!"
+        },
+        {
+          "en": "You found me! They are huge.",
+          "he": "מצאתם! הם ענקיים."
+        },
+        {
+          "en": "Swans are bossy.",
+          "he": "ברבורים הם שתלטנים."
+        }
+      ],
+      "animation": "wiggle",
+      "slots": [
+        {
+          "id": "castlegate_swan_a",
+          "x": 0.46,
+          "y": 0.52,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.46,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the swan.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "castlegate_swan_b",
+          "x": 0.62,
+          "y": 0.6,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.62,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the swan.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "barrel",
+      "targetType": "castlegate_barrel",
+      "bodyTemplate": "castlegate_barrel",
+      "difficulty": 3,
+      "mission": {
+        "en": "Find {name} hiding inside a barrel",
+        "he": "מצאו את {name} מתחבאת בתוך חבית"
+      },
+      "item": {
+        "en": "stacked wooden barrels beside the tents",
+        "he": "חביות עץ ערומות ליד האוהלים"
+      },
+      "success": [
+        {
+          "en": "It smelled of apples in there!",
+          "he": "הריח שם היה של תפוחים!"
+        },
+        {
+          "en": "You found me! I was very quiet.",
+          "he": "מצאתם! הייתי ממש בשקט."
+        },
+        {
+          "en": "Shhh, the guard is waking up.",
+          "he": "ששש, השומר מתעורר."
+        }
+      ],
+      "animation": "peek",
+      "slots": [
+        {
+          "id": "castlegate_barrel_a",
+          "x": 0.52,
+          "y": 0.52,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.52,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the barrel.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "castlegate_barrel_b",
+          "x": 0.58,
+          "y": 0.6,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.58,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the barrel.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    }
+  ],
+  "artNotes": [
+    "a drawbridge down over a green moat",
+    "striped tents and banners in the courtyard",
+    "a guard asleep standing up with his spear",
+    "children feeding swans on the moat",
+    "a juggler on a barrel",
+    "ivy climbing the gate towers"
+  ],
+  "artComposition": "A tall stone castle fills the back of the picture with a drawbridge down over a moat, and a busy market of tents crowds the ground in front of it.",
+  "ambient": [
+    {
+      "id": "a1",
+      "label": {
+        "en": "Something stirs",
+        "he": "משהו זז"
+      },
+      "x": 0.3,
+      "y": 0.78,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Did you see that?",
+        "he": "ראיתם את זה?"
+      },
+      "glyph": "✨"
+    },
+    {
+      "id": "a2",
+      "label": {
+        "en": "A little light",
+        "he": "אור קטן"
+      },
+      "x": 0.55,
+      "y": 0.3,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "slide",
+      "sound": "boing",
+      "reaction": {
+        "en": "It moved!",
+        "he": "זה זז!"
+      },
+      "glyph": "🔮"
+    },
+    {
+      "id": "a3",
+      "label": {
+        "en": "A quiet sound",
+        "he": "צליל שקט"
+      },
+      "x": 0.82,
+      "y": 0.68,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Listen!",
+        "he": "תקשיבו!"
+      },
+      "glyph": "🎵"
+    }
+  ],
+  "collectible": {
+    "id": "gem_castle",
+    "name": {
+      "en": "A castle gem",
+      "he": "אבן חן של הטירה"
+    },
+    "icon": "🏰"
+  },
+  "celebration": {
+    "kind": "confetti",
+    "completeText": {
+      "en": "You found {name} three times in The Castle Gate!",
+      "he": "מצאתם את {name} שלוש פעמים בשער הטירה!"
+    }
+  }
+}

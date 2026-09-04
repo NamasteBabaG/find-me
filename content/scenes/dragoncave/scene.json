@@ -1,0 +1,292 @@
+{
+  "id": "scene_dragoncave",
+  "slug": "dragoncave",
+  "name": {
+    "en": "The Dragon's Cave",
+    "he": "מערת הדרקון"
+  },
+  "tagline": {
+    "en": "Gold, crystals and one enormous friendly dragon.",
+    "he": "זהב, גבישים ודרקון ענק וידידותי אחד."
+  },
+  "version": 1,
+  "active": false,
+  "artStatus": "draft",
+  "art": {
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/dragoncave/base.webp",
+    "thumbnail": "/scenes/dragoncave/thumb.webp",
+    "palette": {
+      "sky": "#C9B6F5",
+      "ground": "#6B4FA8",
+      "accent": "#FFD24D"
+    },
+    "foreground": "/scenes/dragoncave/foreground.webp"
+  },
+  "targets": [
+    {
+      "id": "hoard",
+      "targetType": "dragoncave_hoard",
+      "bodyTemplate": "dragoncave_hoard",
+      "difficulty": 1,
+      "mission": {
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
+      },
+      "item": {
+        "en": "a great heap of gold coins and goblets",
+        "he": "ערימה גדולה של מטבעות זהב וגביעים"
+      },
+      "success": [
+        {
+          "en": "I only touched one coin!",
+          "he": "נגעתי רק במטבע אחד!"
+        },
+        {
+          "en": "You found me! It is all shiny.",
+          "he": "מצאתם! הכול נוצץ."
+        },
+        {
+          "en": "The dragon is still asleep.",
+          "he": "הדרקון עוד ישן."
+        }
+      ],
+      "animation": "bounce",
+      "slots": [
+        {
+          "id": "dragoncave_hoard_a",
+          "x": 0.4,
+          "y": 0.52,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.4,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the hoard.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "dragoncave_hoard_b",
+          "x": 0.6599999999999999,
+          "y": 0.6,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.6599999999999999,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the hoard.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "crystal",
+      "targetType": "dragoncave_crystal",
+      "bodyTemplate": "dragoncave_crystal",
+      "difficulty": 2,
+      "mission": {
+        "en": "Find {name} by the crystals",
+        "he": "מצאו את {name} ליד הגבישים"
+      },
+      "item": {
+        "en": "tall purple and blue crystals growing from the walls",
+        "he": "גבישים סגולים וכחולים גבוהים צומחים מהקירות"
+      },
+      "success": [
+        {
+          "en": "They hum when you sing!",
+          "he": "הם מזמזמים כששרים!"
+        },
+        {
+          "en": "You found me! Look at the colours.",
+          "he": "מצאתם! תראו את הצבעים."
+        },
+        {
+          "en": "Cold and glowy.",
+          "he": "קר ונוצץ."
+        }
+      ],
+      "animation": "wiggle",
+      "slots": [
+        {
+          "id": "dragoncave_crystal_a",
+          "x": 0.46,
+          "y": 0.52,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.46,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the crystal.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "dragoncave_crystal_b",
+          "x": 0.62,
+          "y": 0.6,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.62,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the crystal.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "wing",
+      "targetType": "dragoncave_wing",
+      "bodyTemplate": "dragoncave_wing",
+      "difficulty": 3,
+      "mission": {
+        "en": "Find {name} hiding under the dragon's wing",
+        "he": "מצאו את {name} מתחבאת מתחת לכנף הדרקון"
+      },
+      "item": {
+        "en": "the dragon's huge folded wing making a warm tent",
+        "he": "כנף הדרקון הענקית מקפלת אוהל חמים"
+      },
+      "success": [
+        {
+          "en": "It is warm under here!",
+          "he": "חם פה מתחת!"
+        },
+        {
+          "en": "You found me! He snores.",
+          "he": "מצאתם! הוא נוחר."
+        },
+        {
+          "en": "Do not wake him.",
+          "he": "אל תעירו אותו."
+        }
+      ],
+      "animation": "peek",
+      "slots": [
+        {
+          "id": "dragoncave_wing_a",
+          "x": 0.52,
+          "y": 0.52,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.52,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the wing.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "dragoncave_wing_b",
+          "x": 0.58,
+          "y": 0.6,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.58,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the wing.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    }
+  ],
+  "artNotes": [
+    "a huge friendly dragon asleep around a hoard of gold",
+    "crystals growing out of the cave walls",
+    "piles of coins and goblets",
+    "rope bridges across a chasm",
+    "baby dragons chasing each other",
+    "lanterns hung along the cave ledges"
+  ],
+  "artComposition": "A vast cave lit warm gold by crystals and a treasure hoard, with a huge friendly sleeping dragon curled around it and children exploring the ledges.",
+  "ambient": [
+    {
+      "id": "a1",
+      "label": {
+        "en": "Something stirs",
+        "he": "משהו זז"
+      },
+      "x": 0.3,
+      "y": 0.78,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Did you see that?",
+        "he": "ראיתם את זה?"
+      },
+      "glyph": "✨"
+    },
+    {
+      "id": "a2",
+      "label": {
+        "en": "A little light",
+        "he": "אור קטן"
+      },
+      "x": 0.55,
+      "y": 0.3,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "slide",
+      "sound": "boing",
+      "reaction": {
+        "en": "It moved!",
+        "he": "זה זז!"
+      },
+      "glyph": "🔮"
+    },
+    {
+      "id": "a3",
+      "label": {
+        "en": "A quiet sound",
+        "he": "צליל שקט"
+      },
+      "x": 0.82,
+      "y": 0.68,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Listen!",
+        "he": "תקשיבו!"
+      },
+      "glyph": "🎵"
+    }
+  ],
+  "collectible": {
+    "id": "gem_dragon",
+    "name": {
+      "en": "A dragon gem",
+      "he": "אבן חן של הדרקון"
+    },
+    "icon": "🐲"
+  },
+  "celebration": {
+    "kind": "confetti",
+    "completeText": {
+      "en": "You found {name} three times in The Dragon's Cave!",
+      "he": "מצאתם את {name} שלוש פעמים במערת הדרקון!"
+    }
+  }
+}

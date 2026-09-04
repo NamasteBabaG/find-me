@@ -1,0 +1,292 @@
+{
+  "id": "scene_nightcarnival",
+  "slug": "nightcarnival",
+  "name": {
+    "en": "The Night Carnival",
+    "he": "קרנבל הלילה"
+  },
+  "tagline": {
+    "en": "A lit-up big wheel, masks and a thousand little lamps.",
+    "he": "גלגל ענק מואר, מסכות ואלף מנורות קטנות."
+  },
+  "version": 1,
+  "active": false,
+  "artStatus": "draft",
+  "art": {
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/nightcarnival/base.webp",
+    "thumbnail": "/scenes/nightcarnival/thumb.webp",
+    "palette": {
+      "sky": "#C9B6F5",
+      "ground": "#6B4FA8",
+      "accent": "#FFD24D"
+    },
+    "foreground": "/scenes/nightcarnival/foreground.webp"
+  },
+  "targets": [
+    {
+      "id": "wheel",
+      "targetType": "nightcarnival_wheel",
+      "bodyTemplate": "nightcarnival_wheel",
+      "difficulty": 1,
+      "mission": {
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
+      },
+      "item": {
+        "en": "a big wheel outlined in hundreds of warm bulbs",
+        "he": "גלגל ענק מתוחם במאות נורות חמות"
+      },
+      "success": [
+        {
+          "en": "You can see the whole carnival!",
+          "he": "רואים משם את כל הקרנבל!"
+        },
+        {
+          "en": "You found me! One more turn?",
+          "he": "מצאתם! עוד סיבוב?"
+        },
+        {
+          "en": "It stopped at the top.",
+          "he": "הוא נעצר למעלה."
+        }
+      ],
+      "animation": "bounce",
+      "slots": [
+        {
+          "id": "nightcarnival_wheel_a",
+          "x": 0.4,
+          "y": 0.52,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.4,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the wheel.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "nightcarnival_wheel_b",
+          "x": 0.6599999999999999,
+          "y": 0.6,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.6599999999999999,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the wheel.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "mask",
+      "targetType": "nightcarnival_mask",
+      "bodyTemplate": "nightcarnival_mask",
+      "difficulty": 2,
+      "mission": {
+        "en": "Find {name} by the masked dancers",
+        "he": "מצאו את {name} ליד רקדני המסכות"
+      },
+      "item": {
+        "en": "dancers in tall feathered masks",
+        "he": "רקדנים במסכות נוצות גבוהות"
+      },
+      "success": [
+        {
+          "en": "Nobody knew it was me!",
+          "he": "אף אחד לא ידע שזו אני!"
+        },
+        {
+          "en": "You found me! Even with the mask.",
+          "he": "מצאתם! אפילו עם המסכה."
+        },
+        {
+          "en": "The feathers tickle.",
+          "he": "הנוצות מדגדגות."
+        }
+      ],
+      "animation": "wiggle",
+      "slots": [
+        {
+          "id": "nightcarnival_mask_a",
+          "x": 0.46,
+          "y": 0.52,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.46,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the mask.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "nightcarnival_mask_b",
+          "x": 0.62,
+          "y": 0.6,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.62,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the mask.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "stall",
+      "targetType": "nightcarnival_stall",
+      "bodyTemplate": "nightcarnival_stall",
+      "difficulty": 3,
+      "mission": {
+        "en": "Find {name} hiding behind the toffee apple stall",
+        "he": "מצאו את {name} מתחבאת מאחורי דוכן תפוחי הסוכר"
+      },
+      "item": {
+        "en": "a glowing red toffee apple stall with rows of apples on sticks",
+        "he": "דוכן תפוחי סוכר אדום וזוהר עם שורות תפוחים על מקלות"
+      },
+      "success": [
+        {
+          "en": "I got sugar on my nose!",
+          "he": "נדבק לי סוכר על האף!"
+        },
+        {
+          "en": "You found me! Want one?",
+          "he": "מצאתם! רוצים אחד?"
+        },
+        {
+          "en": "It is warm behind here.",
+          "he": "חמים פה מאחור."
+        }
+      ],
+      "animation": "peek",
+      "slots": [
+        {
+          "id": "nightcarnival_stall_a",
+          "x": 0.52,
+          "y": 0.52,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.52,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the stall.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "nightcarnival_stall_b",
+          "x": 0.58,
+          "y": 0.6,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.58,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the stall.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    }
+  ],
+  "artNotes": [
+    "a big wheel outlined in warm bulbs",
+    "a helter-skelter with a spiral slide",
+    "dancers in feathered masks",
+    "strings of little lamps overhead",
+    "a shooting gallery with tin ducks",
+    "a toffee apple stall glowing red"
+  ],
+  "artComposition": "A carnival at night lit by thousands of warm bulbs and lanterns: a big wheel, a helter-skelter, masked dancers and stalls. Warm and glowing, never gloomy.",
+  "ambient": [
+    {
+      "id": "a1",
+      "label": {
+        "en": "Something stirs",
+        "he": "משהו זז"
+      },
+      "x": 0.3,
+      "y": 0.78,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Did you see that?",
+        "he": "ראיתם את זה?"
+      },
+      "glyph": "✨"
+    },
+    {
+      "id": "a2",
+      "label": {
+        "en": "A little light",
+        "he": "אור קטן"
+      },
+      "x": 0.55,
+      "y": 0.3,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "slide",
+      "sound": "boing",
+      "reaction": {
+        "en": "It moved!",
+        "he": "זה זז!"
+      },
+      "glyph": "🔮"
+    },
+    {
+      "id": "a3",
+      "label": {
+        "en": "A quiet sound",
+        "he": "צליל שקט"
+      },
+      "x": 0.82,
+      "y": 0.68,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Listen!",
+        "he": "תקשיבו!"
+      },
+      "glyph": "🎵"
+    }
+  ],
+  "collectible": {
+    "id": "gem_carnival",
+    "name": {
+      "en": "A carnival gem",
+      "he": "אבן חן של הקרנבל"
+    },
+    "icon": "🎡"
+  },
+  "celebration": {
+    "kind": "confetti",
+    "completeText": {
+      "en": "You found {name} three times in The Night Carnival!",
+      "he": "מצאתם את {name} שלוש פעמים בקרנבל הלילה!"
+    }
+  }
+}

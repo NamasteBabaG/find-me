@@ -1,0 +1,292 @@
+{
+  "id": "scene_sweetworkshop",
+  "slug": "sweetworkshop",
+  "name": {
+    "en": "The Sweet Workshop",
+    "he": "סדנת הממתקים"
+  },
+  "tagline": {
+    "en": "Chocolate rivers, candy machines and a lot of sprinkles.",
+    "he": "נהרות שוקולד, מכונות סוכריות והמון סוכריות צבעוניות."
+  },
+  "version": 1,
+  "active": false,
+  "artStatus": "draft",
+  "art": {
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/sweetworkshop/base.webp",
+    "thumbnail": "/scenes/sweetworkshop/thumb.webp",
+    "palette": {
+      "sky": "#C9B6F5",
+      "ground": "#6B4FA8",
+      "accent": "#FFD24D"
+    },
+    "foreground": "/scenes/sweetworkshop/foreground.webp"
+  },
+  "targets": [
+    {
+      "id": "river",
+      "targetType": "sweetworkshop_river",
+      "bodyTemplate": "sweetworkshop_river",
+      "difficulty": 1,
+      "mission": {
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
+      },
+      "item": {
+        "en": "a warm chocolate river with a little bridge over it",
+        "he": "נהר שוקולד חמים עם גשר קטן מעליו"
+      },
+      "success": [
+        {
+          "en": "I did not drink any. Much.",
+          "he": "לא שתיתי בכלל. כמעט."
+        },
+        {
+          "en": "You found me! It smells amazing.",
+          "he": "מצאתם! מריח מדהים."
+        },
+        {
+          "en": "My shoes are sticky.",
+          "he": "הנעליים שלי דביקות."
+        }
+      ],
+      "animation": "bounce",
+      "slots": [
+        {
+          "id": "sweetworkshop_river_a",
+          "x": 0.4,
+          "y": 0.52,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.4,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the river.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "sweetworkshop_river_b",
+          "x": 0.6599999999999999,
+          "y": 0.6,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.6599999999999999,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the river.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "lollipop",
+      "targetType": "sweetworkshop_lollipop",
+      "bodyTemplate": "sweetworkshop_lollipop",
+      "difficulty": 2,
+      "mission": {
+        "en": "Find {name} by the giant lollipops",
+        "he": "מצאו את {name} ליד הסוכריות הענקיות"
+      },
+      "item": {
+        "en": "giant swirled lollipops standing like trees",
+        "he": "סוכריות ענק מסולסלות עומדות כמו עצים"
+      },
+      "success": [
+        {
+          "en": "It is bigger than my head!",
+          "he": "היא גדולה מהראש שלי!"
+        },
+        {
+          "en": "You found me! Pick a colour.",
+          "he": "מצאתם! בחרו צבע."
+        },
+        {
+          "en": "Sticky but worth it.",
+          "he": "דביק אבל שווה."
+        }
+      ],
+      "animation": "wiggle",
+      "slots": [
+        {
+          "id": "sweetworkshop_lollipop_a",
+          "x": 0.46,
+          "y": 0.52,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.46,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the lollipop.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "sweetworkshop_lollipop_b",
+          "x": 0.62,
+          "y": 0.6,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.62,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the lollipop.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "crate",
+      "targetType": "sweetworkshop_crate",
+      "bodyTemplate": "sweetworkshop_crate",
+      "difficulty": 3,
+      "mission": {
+        "en": "Find {name} hiding behind the candy crates",
+        "he": "מצאו את {name} מתחבאת מאחורי ארגזי הסוכריות"
+      },
+      "item": {
+        "en": "wooden crates packed with striped candy canes",
+        "he": "ארגזי עץ מלאים בסוכריות מקל מפוספסות"
+      },
+      "success": [
+        {
+          "en": "I only ate one. Or three.",
+          "he": "אכלתי רק אחת. או שלוש."
+        },
+        {
+          "en": "You found me! Do not tell.",
+          "he": "מצאתם! אל תספרו."
+        },
+        {
+          "en": "It is minty in here.",
+          "he": "מריח פה מנטה."
+        }
+      ],
+      "animation": "peek",
+      "slots": [
+        {
+          "id": "sweetworkshop_crate_a",
+          "x": 0.52,
+          "y": 0.52,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.52,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the crate.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "sweetworkshop_crate_b",
+          "x": 0.58,
+          "y": 0.6,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.58,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the crate.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    }
+  ],
+  "artNotes": [
+    "a chocolate river with a little bridge over it",
+    "brass machines pouring sprinkles into jars",
+    "conveyor belts of biscuits",
+    "giant lollipops standing like trees",
+    "a cocoa cauldron with steam curling up",
+    "striped candy canes stacked in crates"
+  ],
+  "artComposition": "A huge warm workshop of brass machines making sweets, with a chocolate river running through it, conveyor belts of biscuits and children helping everywhere.",
+  "ambient": [
+    {
+      "id": "a1",
+      "label": {
+        "en": "Something stirs",
+        "he": "משהו זז"
+      },
+      "x": 0.3,
+      "y": 0.78,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Did you see that?",
+        "he": "ראיתם את זה?"
+      },
+      "glyph": "✨"
+    },
+    {
+      "id": "a2",
+      "label": {
+        "en": "A little light",
+        "he": "אור קטן"
+      },
+      "x": 0.55,
+      "y": 0.3,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "slide",
+      "sound": "boing",
+      "reaction": {
+        "en": "It moved!",
+        "he": "זה זז!"
+      },
+      "glyph": "🔮"
+    },
+    {
+      "id": "a3",
+      "label": {
+        "en": "A quiet sound",
+        "he": "צליל שקט"
+      },
+      "x": 0.82,
+      "y": 0.68,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Listen!",
+        "he": "תקשיבו!"
+      },
+      "glyph": "🎵"
+    }
+  ],
+  "collectible": {
+    "id": "gem_sweet",
+    "name": {
+      "en": "A candy gem",
+      "he": "אבן חן של ממתקים"
+    },
+    "icon": "🍬"
+  },
+  "celebration": {
+    "kind": "fruit",
+    "completeText": {
+      "en": "You found {name} three times in The Sweet Workshop!",
+      "he": "מצאתם את {name} שלוש פעמים בסדנת הממתקים!"
+    }
+  }
+}

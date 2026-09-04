@@ -1,0 +1,292 @@
+{
+  "id": "scene_underwater",
+  "slug": "underwater",
+  "name": {
+    "en": "The Underwater Kingdom",
+    "he": "הממלכה שמתחת למים"
+  },
+  "tagline": {
+    "en": "Coral towers, seahorse riders and a sunken ship.",
+    "he": "מגדלי אלמוגים, רוכבי סוסוני ים וספינה טרופה."
+  },
+  "version": 1,
+  "active": false,
+  "artStatus": "draft",
+  "art": {
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/underwater/base.webp",
+    "thumbnail": "/scenes/underwater/thumb.webp",
+    "palette": {
+      "sky": "#C9B6F5",
+      "ground": "#6B4FA8",
+      "accent": "#FFD24D"
+    },
+    "foreground": "/scenes/underwater/foreground.webp"
+  },
+  "targets": [
+    {
+      "id": "seahorse",
+      "targetType": "underwater_seahorse",
+      "bodyTemplate": "underwater_seahorse",
+      "difficulty": 1,
+      "mission": {
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
+      },
+      "item": {
+        "en": "children riding bright seahorses between the towers",
+        "he": "ילדים רוכבים על סוסוני ים צבעוניים בין המגדלים"
+      },
+      "success": [
+        {
+          "en": "He is faster than he looks!",
+          "he": "הוא מהיר ממה שנראה!"
+        },
+        {
+          "en": "You found me! Hold the reins.",
+          "he": "מצאתם! תחזיקו במושכות."
+        },
+        {
+          "en": "Bubbles everywhere.",
+          "he": "בועות בכל מקום."
+        }
+      ],
+      "animation": "bounce",
+      "slots": [
+        {
+          "id": "underwater_seahorse_a",
+          "x": 0.4,
+          "y": 0.52,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.4,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the seahorse.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "underwater_seahorse_b",
+          "x": 0.6599999999999999,
+          "y": 0.6,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.6599999999999999,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the seahorse.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "shipwreck",
+      "targetType": "underwater_shipwreck",
+      "bodyTemplate": "underwater_shipwreck",
+      "difficulty": 2,
+      "mission": {
+        "en": "Find {name} by the sunken ship",
+        "he": "מצאו את {name} ליד הספינה הטרופה"
+      },
+      "item": {
+        "en": "an old wooden ship resting on the sand with fish swimming through it",
+        "he": "ספינת עץ ישנה על החול ודגים שוחים דרכה"
+      },
+      "success": [
+        {
+          "en": "There was a chest inside!",
+          "he": "היה שם ארגז!"
+        },
+        {
+          "en": "You found me! Careful, it creaks.",
+          "he": "מצאתם! זהירות, זה חורק."
+        },
+        {
+          "en": "A crab lives in the wheel.",
+          "he": "סרטן גר בהגה."
+        }
+      ],
+      "animation": "wiggle",
+      "slots": [
+        {
+          "id": "underwater_shipwreck_a",
+          "x": 0.46,
+          "y": 0.52,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.46,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the shipwreck.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "underwater_shipwreck_b",
+          "x": 0.62,
+          "y": 0.6,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.62,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the shipwreck.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "coral",
+      "targetType": "underwater_coral",
+      "bodyTemplate": "underwater_coral",
+      "difficulty": 3,
+      "mission": {
+        "en": "Find {name} hiding inside the coral",
+        "he": "מצאו את {name} מתחבאת בתוך האלמוג"
+      },
+      "item": {
+        "en": "tall branching coral with hollows big enough to hide in",
+        "he": "אלמוג מסועף וגבוה עם חללים גדולים מספיק להתחבא בהם"
+      },
+      "success": [
+        {
+          "en": "The fish gave me away!",
+          "he": "הדגים הסגירו אותי!"
+        },
+        {
+          "en": "You found me! It tickles.",
+          "he": "מצאתם! זה מדגדג."
+        },
+        {
+          "en": "Do not tell the octopus.",
+          "he": "אל תספרו לתמנון."
+        }
+      ],
+      "animation": "peek",
+      "slots": [
+        {
+          "id": "underwater_coral_a",
+          "x": 0.52,
+          "y": 0.52,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.52,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the coral.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "underwater_coral_b",
+          "x": 0.58,
+          "y": 0.6,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.58,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the coral.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    }
+  ],
+  "artNotes": [
+    "coral towers in pink and orange like a little city",
+    "children riding seahorses",
+    "a sunken wooden ship on the sand",
+    "shoals of tiny fish turning together",
+    "a giant friendly octopus juggling shells",
+    "pearl lanterns on the coral"
+  ],
+  "artComposition": "A bright underwater city of coral towers with shafts of sunlight coming down, fish everywhere, and a friendly sunken ship on the sand. Blue and turquoise, never dark.",
+  "ambient": [
+    {
+      "id": "a1",
+      "label": {
+        "en": "Something stirs",
+        "he": "משהו זז"
+      },
+      "x": 0.3,
+      "y": 0.78,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Did you see that?",
+        "he": "ראיתם את זה?"
+      },
+      "glyph": "✨"
+    },
+    {
+      "id": "a2",
+      "label": {
+        "en": "A little light",
+        "he": "אור קטן"
+      },
+      "x": 0.55,
+      "y": 0.3,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "slide",
+      "sound": "boing",
+      "reaction": {
+        "en": "It moved!",
+        "he": "זה זז!"
+      },
+      "glyph": "🔮"
+    },
+    {
+      "id": "a3",
+      "label": {
+        "en": "A quiet sound",
+        "he": "צליל שקט"
+      },
+      "x": 0.82,
+      "y": 0.68,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Listen!",
+        "he": "תקשיבו!"
+      },
+      "glyph": "🎵"
+    }
+  ],
+  "collectible": {
+    "id": "gem_sea",
+    "name": {
+      "en": "A sea gem",
+      "he": "אבן חן של הים"
+    },
+    "icon": "🐚"
+  },
+  "celebration": {
+    "kind": "confetti",
+    "completeText": {
+      "en": "You found {name} three times in The Underwater Kingdom!",
+      "he": "מצאתם את {name} שלוש פעמים בהממלכה שמתחת למים!"
+    }
+  }
+}

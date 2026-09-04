@@ -1,0 +1,292 @@
+{
+  "id": "scene_fairyforest",
+  "slug": "fairyforest",
+  "name": {
+    "en": "The Fairy Forest",
+    "he": "יער הפיות"
+  },
+  "tagline": {
+    "en": "Glowing mushrooms, tiny doors and a forest that whispers.",
+    "he": "פטריות זוהרות, דלתות זעירות ויער שלוחש."
+  },
+  "version": 1,
+  "active": false,
+  "artStatus": "draft",
+  "art": {
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/fairyforest/base.webp",
+    "thumbnail": "/scenes/fairyforest/thumb.webp",
+    "palette": {
+      "sky": "#C9B6F5",
+      "ground": "#6B4FA8",
+      "accent": "#FFD24D"
+    },
+    "foreground": "/scenes/fairyforest/foreground.webp"
+  },
+  "targets": [
+    {
+      "id": "mushroom",
+      "targetType": "fairyforest_mushroom",
+      "bodyTemplate": "fairyforest_mushroom",
+      "difficulty": 1,
+      "mission": {
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
+      },
+      "item": {
+        "en": "rings of glowing mushrooms on the forest floor",
+        "he": "מעגלי פטריות זוהרות על קרקע היער"
+      },
+      "success": [
+        {
+          "en": "They light up when you touch them!",
+          "he": "הן נדלקות כשנוגעים!"
+        },
+        {
+          "en": "You found me! Careful where you step.",
+          "he": "מצאתם! זהירות איפה שאתם דורכים."
+        },
+        {
+          "en": "The forest is humming.",
+          "he": "היער מזמזם."
+        }
+      ],
+      "animation": "bounce",
+      "slots": [
+        {
+          "id": "fairyforest_mushroom_a",
+          "x": 0.4,
+          "y": 0.52,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.4,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the mushroom.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "fairyforest_mushroom_b",
+          "x": 0.6599999999999999,
+          "y": 0.6,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.6599999999999999,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the mushroom.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "door",
+      "targetType": "fairyforest_door",
+      "bodyTemplate": "fairyforest_door",
+      "difficulty": 2,
+      "mission": {
+        "en": "Find {name} by the tiny doors",
+        "he": "מצאו את {name} ליד הדלתות הזעירות"
+      },
+      "item": {
+        "en": "small round doors set into the tree trunks",
+        "he": "דלתות עגולות קטנות בגזעי העצים"
+      },
+      "success": [
+        {
+          "en": "Somebody knocked back!",
+          "he": "מישהו דפק בחזרה!"
+        },
+        {
+          "en": "You found me! Who lives here?",
+          "he": "מצאתם! מי גר פה?"
+        },
+        {
+          "en": "It was locked. Probably.",
+          "he": "היא הייתה נעולה. כנראה."
+        }
+      ],
+      "animation": "wiggle",
+      "slots": [
+        {
+          "id": "fairyforest_door_a",
+          "x": 0.46,
+          "y": 0.52,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.46,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the door.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "fairyforest_door_b",
+          "x": 0.62,
+          "y": 0.6,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.62,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the door.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "hollow",
+      "targetType": "fairyforest_hollow",
+      "bodyTemplate": "fairyforest_hollow",
+      "difficulty": 3,
+      "mission": {
+        "en": "Find {name} hiding inside a hollow tree",
+        "he": "מצאו את {name} מתחבאת בתוך גזע חלול"
+      },
+      "item": {
+        "en": "a huge hollow tree trunk you could stand inside",
+        "he": "גזע עץ ענק וחלול שאפשר לעמוד בתוכו"
+      },
+      "success": [
+        {
+          "en": "It is like a little room!",
+          "he": "זה כמו חדר קטן!"
+        },
+        {
+          "en": "You found me! An owl lives upstairs.",
+          "he": "מצאתם! ינשוף גר למעלה."
+        },
+        {
+          "en": "I could hear you coming.",
+          "he": "שמעתי אתכם באים."
+        }
+      ],
+      "animation": "peek",
+      "slots": [
+        {
+          "id": "fairyforest_hollow_a",
+          "x": 0.52,
+          "y": 0.52,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.52,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the hollow.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "fairyforest_hollow_b",
+          "x": 0.58,
+          "y": 0.6,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.58,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the hollow.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    }
+  ],
+  "artNotes": [
+    "glowing mushrooms in rings on the forest floor",
+    "little round doors in the tree trunks",
+    "fairies with dragonfly wings",
+    "a rope ladder up to a treehouse",
+    "a stream with stepping stones",
+    "fireflies drifting between the trunks"
+  ],
+  "artComposition": "Enormous old trees with little round doors in their trunks, glowing mushrooms lighting the forest floor, and soft beams of light coming down through the leaves.",
+  "ambient": [
+    {
+      "id": "a1",
+      "label": {
+        "en": "Something stirs",
+        "he": "משהו זז"
+      },
+      "x": 0.3,
+      "y": 0.78,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Did you see that?",
+        "he": "ראיתם את זה?"
+      },
+      "glyph": "✨"
+    },
+    {
+      "id": "a2",
+      "label": {
+        "en": "A little light",
+        "he": "אור קטן"
+      },
+      "x": 0.55,
+      "y": 0.3,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "slide",
+      "sound": "boing",
+      "reaction": {
+        "en": "It moved!",
+        "he": "זה זז!"
+      },
+      "glyph": "🔮"
+    },
+    {
+      "id": "a3",
+      "label": {
+        "en": "A quiet sound",
+        "he": "צליל שקט"
+      },
+      "x": 0.82,
+      "y": 0.68,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Listen!",
+        "he": "תקשיבו!"
+      },
+      "glyph": "🎵"
+    }
+  ],
+  "collectible": {
+    "id": "gem_forest",
+    "name": {
+      "en": "A forest gem",
+      "he": "אבן חן של היער"
+    },
+    "icon": "🍄"
+  },
+  "celebration": {
+    "kind": "leaves",
+    "completeText": {
+      "en": "You found {name} three times in The Fairy Forest!",
+      "he": "מצאתם את {name} שלוש פעמים ביער הפיות!"
+    }
+  }
+}

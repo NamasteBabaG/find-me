@@ -1,0 +1,292 @@
+{
+  "id": "scene_giantlibrary",
+  "slug": "giantlibrary",
+  "name": {
+    "en": "The Giant's Library",
+    "he": "ספריית הענק"
+  },
+  "tagline": {
+    "en": "Books like doors, ladders to the ceiling and a sleeping giant.",
+    "he": "ספרים כמו דלתות, סולמות לתקרה וענק ישן."
+  },
+  "version": 1,
+  "active": false,
+  "artStatus": "draft",
+  "art": {
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/giantlibrary/base.webp",
+    "thumbnail": "/scenes/giantlibrary/thumb.webp",
+    "palette": {
+      "sky": "#C9B6F5",
+      "ground": "#6B4FA8",
+      "accent": "#FFD24D"
+    },
+    "foreground": "/scenes/giantlibrary/foreground.webp"
+  },
+  "targets": [
+    {
+      "id": "ladder",
+      "targetType": "giantlibrary_ladder",
+      "bodyTemplate": "giantlibrary_ladder",
+      "difficulty": 1,
+      "mission": {
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
+      },
+      "item": {
+        "en": "tall rolling ladders on rails along the shelves",
+        "he": "סולמות מתגלגלים גבוהים על מסילות לאורך המדפים"
+      },
+      "success": [
+        {
+          "en": "It rolls all the way along!",
+          "he": "הוא מתגלגל לאורך כל המדף!"
+        },
+        {
+          "en": "You found me! Hold on tight.",
+          "he": "מצאתם! תחזיקו חזק."
+        },
+        {
+          "en": "So many books.",
+          "he": "כל כך הרבה ספרים."
+        }
+      ],
+      "animation": "bounce",
+      "slots": [
+        {
+          "id": "giantlibrary_ladder_a",
+          "x": 0.4,
+          "y": 0.52,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.4,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the ladder.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "giantlibrary_ladder_b",
+          "x": 0.6599999999999999,
+          "y": 0.6,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.6599999999999999,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the ladder.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "globe",
+      "targetType": "giantlibrary_globe",
+      "bodyTemplate": "giantlibrary_globe",
+      "difficulty": 2,
+      "mission": {
+        "en": "Find {name} by the giant globe",
+        "he": "מצאו את {name} ליד הגלובוס הענק"
+      },
+      "item": {
+        "en": "a globe bigger than a house, slowly turning",
+        "he": "גלובוס גדול מבית, מסתובב לאט"
+      },
+      "success": [
+        {
+          "en": "I found our house on it!",
+          "he": "מצאתי עליו את הבית שלנו!"
+        },
+        {
+          "en": "You found me! Spin it.",
+          "he": "מצאתם! סובבו אותו."
+        },
+        {
+          "en": "The whole world fits here.",
+          "he": "כל העולם נכנס פה."
+        }
+      ],
+      "animation": "wiggle",
+      "slots": [
+        {
+          "id": "giantlibrary_globe_a",
+          "x": 0.46,
+          "y": 0.52,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.46,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the globe.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "giantlibrary_globe_b",
+          "x": 0.62,
+          "y": 0.6,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.62,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the globe.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "book",
+      "targetType": "giantlibrary_book",
+      "bodyTemplate": "giantlibrary_book",
+      "difficulty": 3,
+      "mission": {
+        "en": "Find {name} hiding inside an open book",
+        "he": "מצאו את {name} מתחבאת בתוך ספר פתוח"
+      },
+      "item": {
+        "en": "enormous open books standing like tents on the floor",
+        "he": "ספרים ענקיים פתוחים עומדים כמו אוהלים על הרצפה"
+      },
+      "success": [
+        {
+          "en": "The pages are like walls!",
+          "he": "הדפים כמו קירות!"
+        },
+        {
+          "en": "You found me! Shhh, it is a library.",
+          "he": "מצאתם! ששש, זו ספרייה."
+        },
+        {
+          "en": "The giant nearly turned the page.",
+          "he": "הענק כמעט הפך את הדף."
+        }
+      ],
+      "animation": "peek",
+      "slots": [
+        {
+          "id": "giantlibrary_book_a",
+          "x": 0.52,
+          "y": 0.52,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.52,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the book.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "giantlibrary_book_b",
+          "x": 0.58,
+          "y": 0.6,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.58,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the book.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    }
+  ],
+  "artNotes": [
+    "bookshelves going up beyond the top of the picture",
+    "books as tall as doors leaning open",
+    "rolling ladders on rails",
+    "a giant asleep in an armchair",
+    "paper birds flying between the shelves",
+    "a globe bigger than a house"
+  ],
+  "artComposition": "A library built for a giant: shelves going up out of sight, books as tall as doors, rolling ladders, and normal-sized children climbing among them like mice.",
+  "ambient": [
+    {
+      "id": "a1",
+      "label": {
+        "en": "Something stirs",
+        "he": "משהו זז"
+      },
+      "x": 0.3,
+      "y": 0.78,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Did you see that?",
+        "he": "ראיתם את זה?"
+      },
+      "glyph": "✨"
+    },
+    {
+      "id": "a2",
+      "label": {
+        "en": "A little light",
+        "he": "אור קטן"
+      },
+      "x": 0.55,
+      "y": 0.3,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "slide",
+      "sound": "boing",
+      "reaction": {
+        "en": "It moved!",
+        "he": "זה זז!"
+      },
+      "glyph": "🔮"
+    },
+    {
+      "id": "a3",
+      "label": {
+        "en": "A quiet sound",
+        "he": "צליל שקט"
+      },
+      "x": 0.82,
+      "y": 0.68,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Listen!",
+        "he": "תקשיבו!"
+      },
+      "glyph": "🎵"
+    }
+  ],
+  "collectible": {
+    "id": "gem_book",
+    "name": {
+      "en": "A story gem",
+      "he": "אבן חן של סיפור"
+    },
+    "icon": "📚"
+  },
+  "celebration": {
+    "kind": "confetti",
+    "completeText": {
+      "en": "You found {name} three times in The Giant's Library!",
+      "he": "מצאתם את {name} שלוש פעמים בספריית הענק!"
+    }
+  }
+}

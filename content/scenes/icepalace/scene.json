@@ -1,0 +1,292 @@
+{
+  "id": "scene_icepalace",
+  "slug": "icepalace",
+  "name": {
+    "en": "The Ice Palace",
+    "he": "ארמון הקרח"
+  },
+  "tagline": {
+    "en": "Blue towers, frozen fountains and a slide made of ice.",
+    "he": "מגדלים כחולים, מזרקות קפואות ומגלשת קרח."
+  },
+  "version": 1,
+  "active": false,
+  "artStatus": "draft",
+  "art": {
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/icepalace/base.webp",
+    "thumbnail": "/scenes/icepalace/thumb.webp",
+    "palette": {
+      "sky": "#C9B6F5",
+      "ground": "#6B4FA8",
+      "accent": "#FFD24D"
+    },
+    "foreground": "/scenes/icepalace/foreground.webp"
+  },
+  "targets": [
+    {
+      "id": "slide",
+      "targetType": "icepalace_slide",
+      "bodyTemplate": "icepalace_slide",
+      "difficulty": 1,
+      "mission": {
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
+      },
+      "item": {
+        "en": "a long curving slide carved from ice",
+        "he": "מגלשה ארוכה ומעוקלת חצובה בקרח"
+      },
+      "success": [
+        {
+          "en": "That was so fast!",
+          "he": "זה היה כל כך מהיר!"
+        },
+        {
+          "en": "You found me! Again, again!",
+          "he": "מצאתם! עוד פעם, עוד פעם!"
+        },
+        {
+          "en": "My hands are freezing.",
+          "he": "הידיים שלי קפואות."
+        }
+      ],
+      "animation": "bounce",
+      "slots": [
+        {
+          "id": "icepalace_slide_a",
+          "x": 0.4,
+          "y": 0.52,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.4,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the slide.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "icepalace_slide_b",
+          "x": 0.6599999999999999,
+          "y": 0.6,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.6599999999999999,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the slide.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "fountain",
+      "targetType": "icepalace_fountain",
+      "bodyTemplate": "icepalace_fountain",
+      "difficulty": 2,
+      "mission": {
+        "en": "Find {name} by the frozen fountain",
+        "he": "מצאו את {name} ליד המזרקה הקפואה"
+      },
+      "item": {
+        "en": "a fountain frozen in the middle of a splash",
+        "he": "מזרקה שקפאה באמצע ההתזה"
+      },
+      "success": [
+        {
+          "en": "The water stopped in the air!",
+          "he": "המים עצרו באוויר!"
+        },
+        {
+          "en": "You found me! It is like glass.",
+          "he": "מצאתם! זה כמו זכוכית."
+        },
+        {
+          "en": "Do not lick it.",
+          "he": "אל תלקקו את זה."
+        }
+      ],
+      "animation": "wiggle",
+      "slots": [
+        {
+          "id": "icepalace_fountain_a",
+          "x": 0.46,
+          "y": 0.52,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.46,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the fountain.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "icepalace_fountain_b",
+          "x": 0.62,
+          "y": 0.6,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.62,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the fountain.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "pillar",
+      "targetType": "icepalace_pillar",
+      "bodyTemplate": "icepalace_pillar",
+      "difficulty": 3,
+      "mission": {
+        "en": "Find {name} hiding behind an ice pillar",
+        "he": "מצאו את {name} מתחבאת מאחורי עמוד קרח"
+      },
+      "item": {
+        "en": "thick pillars of cloudy ice holding up the hall",
+        "he": "עמודי קרח עבים ועכורים מחזיקים את האולם"
+      },
+      "success": [
+        {
+          "en": "You can almost see through it!",
+          "he": "כמעט אפשר לראות דרכו!"
+        },
+        {
+          "en": "You found me! Brrr.",
+          "he": "מצאתם! ברררר."
+        },
+        {
+          "en": "My breath makes clouds.",
+          "he": "הנשימה שלי עושה עננים."
+        }
+      ],
+      "animation": "peek",
+      "slots": [
+        {
+          "id": "icepalace_pillar_a",
+          "x": 0.52,
+          "y": 0.52,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.52,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the pillar.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "icepalace_pillar_b",
+          "x": 0.58,
+          "y": 0.6,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.58,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the pillar.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    }
+  ],
+  "artNotes": [
+    "towers of translucent pale blue ice",
+    "a frozen fountain caught mid-splash",
+    "a long curving ice slide with children on it",
+    "sleighs pulled by white reindeer",
+    "icicles hanging like chandeliers",
+    "skaters on a mirror-smooth courtyard"
+  ],
+  "artComposition": "A palace carved entirely from pale blue ice, with translucent towers, frozen fountains and a long ice slide, lit cool and bright rather than dark.",
+  "ambient": [
+    {
+      "id": "a1",
+      "label": {
+        "en": "Something stirs",
+        "he": "משהו זז"
+      },
+      "x": 0.3,
+      "y": 0.78,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Did you see that?",
+        "he": "ראיתם את זה?"
+      },
+      "glyph": "✨"
+    },
+    {
+      "id": "a2",
+      "label": {
+        "en": "A little light",
+        "he": "אור קטן"
+      },
+      "x": 0.55,
+      "y": 0.3,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "slide",
+      "sound": "boing",
+      "reaction": {
+        "en": "It moved!",
+        "he": "זה זז!"
+      },
+      "glyph": "🔮"
+    },
+    {
+      "id": "a3",
+      "label": {
+        "en": "A quiet sound",
+        "he": "צליל שקט"
+      },
+      "x": 0.82,
+      "y": 0.68,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Listen!",
+        "he": "תקשיבו!"
+      },
+      "glyph": "🎵"
+    }
+  ],
+  "collectible": {
+    "id": "gem_ice",
+    "name": {
+      "en": "An ice gem",
+      "he": "אבן חן של הקרח"
+    },
+    "icon": "❄️"
+  },
+  "celebration": {
+    "kind": "snow",
+    "completeText": {
+      "en": "You found {name} three times in The Ice Palace!",
+      "he": "מצאתם את {name} שלוש פעמים בארמון הקרח!"
+    }
+  }
+}

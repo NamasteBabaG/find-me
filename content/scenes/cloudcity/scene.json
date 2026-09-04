@@ -1,0 +1,292 @@
+{
+  "id": "scene_cloudcity",
+  "slug": "cloudcity",
+  "name": {
+    "en": "The City in the Clouds",
+    "he": "העיר שבעננים"
+  },
+  "tagline": {
+    "en": "Rope bridges, airships and stairs made of sky.",
+    "he": "גשרי חבלים, ספינות אוויר ומדרגות מרקיע."
+  },
+  "version": 1,
+  "active": false,
+  "artStatus": "draft",
+  "art": {
+    "width": 3072,
+    "height": 2048,
+    "base": "/scenes/cloudcity/base.webp",
+    "thumbnail": "/scenes/cloudcity/thumb.webp",
+    "palette": {
+      "sky": "#C9B6F5",
+      "ground": "#6B4FA8",
+      "accent": "#FFD24D"
+    },
+    "foreground": "/scenes/cloudcity/foreground.webp"
+  },
+  "targets": [
+    {
+      "id": "bridge",
+      "targetType": "cloudcity_bridge",
+      "bodyTemplate": "cloudcity_bridge",
+      "difficulty": 1,
+      "mission": {
+        "en": "Find {name}",
+        "he": "מצאו את {name}"
+      },
+      "item": {
+        "en": "swinging rope bridges between the cloud islands",
+        "he": "גשרי חבלים מתנדנדים בין איי העננים"
+      },
+      "success": [
+        {
+          "en": "Do not look down!",
+          "he": "אל תסתכלו למטה!"
+        },
+        {
+          "en": "You found me! It wobbles.",
+          "he": "מצאתם! זה מתנדנד."
+        },
+        {
+          "en": "The clouds are springy.",
+          "he": "העננים קפיציים."
+        }
+      ],
+      "animation": "bounce",
+      "slots": [
+        {
+          "id": "cloudcity_bridge_a",
+          "x": 0.4,
+          "y": 0.52,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.4,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the bridge.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "cloudcity_bridge_b",
+          "x": 0.6599999999999999,
+          "y": 0.6,
+          "scale": 0.055,
+          "hintZone": {
+            "x": 0.6599999999999999,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the bridge.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "airship",
+      "targetType": "cloudcity_airship",
+      "bodyTemplate": "cloudcity_airship",
+      "difficulty": 2,
+      "mission": {
+        "en": "Find {name} by the airships",
+        "he": "מצאו את {name} ליד ספינות האוויר"
+      },
+      "item": {
+        "en": "small airships moored to the cloud towers",
+        "he": "ספינות אוויר קטנות קשורות למגדלי העננים"
+      },
+      "success": [
+        {
+          "en": "It floats even when you sit!",
+          "he": "היא צפה גם כשיושבים!"
+        },
+        {
+          "en": "You found me! Untie the rope?",
+          "he": "מצאתם! להתיר את החבל?"
+        },
+        {
+          "en": "It smells of rain.",
+          "he": "מריח כמו גשם."
+        }
+      ],
+      "animation": "wiggle",
+      "slots": [
+        {
+          "id": "cloudcity_airship_a",
+          "x": 0.46,
+          "y": 0.52,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.46,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the airship.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "cloudcity_airship_b",
+          "x": 0.62,
+          "y": 0.6,
+          "scale": 0.05,
+          "hintZone": {
+            "x": 0.62,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the airship.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    },
+    {
+      "id": "cloud",
+      "targetType": "cloudcity_cloud",
+      "bodyTemplate": "cloudcity_cloud",
+      "difficulty": 3,
+      "mission": {
+        "en": "Find {name} hiding inside a cloud",
+        "he": "מצאו את {name} מתחבאת בתוך ענן"
+      },
+      "item": {
+        "en": "thick fluffy clouds you can sink into up to your shoulders",
+        "he": "עננים סמיכים ורכים שאפשר לשקוע בהם עד הכתפיים"
+      },
+      "success": [
+        {
+          "en": "It is like a giant pillow!",
+          "he": "זה כמו כרית ענקית!"
+        },
+        {
+          "en": "You found me! I was almost invisible.",
+          "he": "מצאתם! כמעט הייתי בלתי נראית."
+        },
+        {
+          "en": "Cold and tickly.",
+          "he": "קר ומדגדג."
+        }
+      ],
+      "animation": "peek",
+      "slots": [
+        {
+          "id": "cloudcity_cloud_a",
+          "x": 0.52,
+          "y": 0.52,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.52,
+            "y": 0.505,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the cloud.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        },
+        {
+          "id": "cloudcity_cloud_b",
+          "x": 0.58,
+          "y": 0.6,
+          "scale": 0.045,
+          "hintZone": {
+            "x": 0.58,
+            "y": 0.585,
+            "r": 0.075
+          },
+          "hintText": {
+            "en": "Look near the cloud.",
+            "he": "חפשו ליד המקום הזה."
+          }
+        }
+      ]
+    }
+  ],
+  "artNotes": [
+    "houses standing on solid fluffy clouds",
+    "rope bridges between the cloud islands",
+    "small airships moored to towers",
+    "children with feathered wings on their backs",
+    "laundry drying on a line between clouds",
+    "a windmill turning slowly on a cloud"
+  ],
+  "artComposition": "Little houses and towers standing on solid fluffy clouds, joined by rope bridges and ladders, with airships moored between them and blue sky all around.",
+  "ambient": [
+    {
+      "id": "a1",
+      "label": {
+        "en": "Something stirs",
+        "he": "משהו זז"
+      },
+      "x": 0.3,
+      "y": 0.78,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Did you see that?",
+        "he": "ראיתם את זה?"
+      },
+      "glyph": "✨"
+    },
+    {
+      "id": "a2",
+      "label": {
+        "en": "A little light",
+        "he": "אור קטן"
+      },
+      "x": 0.55,
+      "y": 0.3,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "slide",
+      "sound": "boing",
+      "reaction": {
+        "en": "It moved!",
+        "he": "זה זז!"
+      },
+      "glyph": "🔮"
+    },
+    {
+      "id": "a3",
+      "label": {
+        "en": "A quiet sound",
+        "he": "צליל שקט"
+      },
+      "x": 0.82,
+      "y": 0.68,
+      "w": 0.05,
+      "h": 0.05,
+      "animation": "shake",
+      "sound": "chirp",
+      "reaction": {
+        "en": "Listen!",
+        "he": "תקשיבו!"
+      },
+      "glyph": "🎵"
+    }
+  ],
+  "collectible": {
+    "id": "gem_cloud",
+    "name": {
+      "en": "A sky gem",
+      "he": "אבן חן של השמיים"
+    },
+    "icon": "☁️"
+  },
+  "celebration": {
+    "kind": "confetti",
+    "completeText": {
+      "en": "You found {name} three times in The City in the Clouds!",
+      "he": "מצאתם את {name} שלוש פעמים בהעיר שבעננים!"
+    }
+  }
+}
