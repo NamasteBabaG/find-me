@@ -53,6 +53,12 @@ async function waitForGeneration(c: Awaited<ReturnType<typeof import("../src/ser
       }
     }
     if (SETTLED.includes(status)) break;
+    // The in-process job hands the lease back between slices whenever a hiding
+    // spot still has attempts left. Nothing here re-triggers it, so waiting for
+    // a status that will never arrive just burns the budget — hand back to the
+    // caller, which drives the pipeline the way the cron does.
+    const job = await c.db.generationJob.findUnique({ where: { id: `job_${gameId}` }, select: { status: true } });
+    if (job?.status === "QUEUED") break;
   }
   log(`generation finished with status ${status}`);
   return status;

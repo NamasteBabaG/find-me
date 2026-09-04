@@ -238,7 +238,7 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
         `[generate] ${gameId}: ${generated} painted, ${failed.length} failed, ${skipped} skipped, ${(spent / 100).toFixed(2)} USD, ${Math.round(outcomes.reduce((n, o) => n + o.durationMs, 0) / 1000)}s`,
       );
       for (const f of failed) console.warn(`[generate] ${gameId}: ${f.sceneSlug}/${f.targetId}/${f.variant} failed${f.capped ? " (out of attempts)" : ""} - ${f.error}`);
-      c.analytics.track("patches_generated", { generated, failed: failed.length, skipped, costCents: spent });
+      c.analytics.track("patches_generated", { generated, failed: failed.length, skipped, costCents: Math.round(spent) });
     }
     if (ranOutOfTime) {
       // Hand the lease back. Leaving it RUNNING would make the next tick wait
