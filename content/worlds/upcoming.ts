@@ -21,6 +21,16 @@ export interface UpcomingWorld {
   tagline: LocalizedText;
   /** Nine short place names, so the tiles are not nine question marks. */
   places: LocalizedText[];
+  /**
+   * The board slugs, in the same order as `places`.
+   *
+   * A locked world shows its real paintings, blurred, as soon as they exist:
+   * a gradient with a place name promises something, a blurred painting shows
+   * that it is already there. The blur is a curtain and not a lock, which is
+   * fine — the boards are the shop window, and what is actually bought is a
+   * child painted into them.
+   */
+  boards?: string[];
   palette: { sky: string; ground: string; accent: string };
   glyph: string;
 }
@@ -44,6 +54,7 @@ export const UPCOMING_WORLDS: readonly UpcomingWorld[] = [
       t("The giant's library", "ספריית הענק"),
       t("The night carnival", "קרנבל הלילה"),
     ],
+    boards: ["castlegate", "fairyforest", "dragoncave", "icepalace", "underwater", "cloudcity", "sweetworkshop", "giantlibrary", "nightcarnival"],
     palette: { sky: "#C9B6F5", ground: "#6B4FA8", accent: "#FFD24D" },
     glyph: "🏰",
   },

@@ -16,7 +16,10 @@ import { carouselWorlds } from "./home/worlds-data";
 export default async function HomePage() {
   const c = getContainer();
   const [user, active, worlds, { locale, t }, currency] = await Promise.all([currentUser(), activeSceneSlugs(c), purchasableWorldSlugs(c), getI18n(), getCurrency()]);
-  const scenes = SCENE_CATALOG.map((e) => e.scene);
+  // Only what a parent can actually buy today. The catalog also holds boards
+  // retired from world 1 and boards being painted for world 2, and the hero
+  // marquee was scrolling those past as if they were part of the offer.
+  const scenes = SCENE_CATALOG.map((e) => e.scene).filter((s) => active.includes(s.slug));
   const demo = buildDemoConfig(locale, "beach");
 
   return (

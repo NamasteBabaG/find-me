@@ -53,7 +53,12 @@ export function carouselWorlds(locale: Locale): CarouselWorld[] {
       upcoming: true,
       opensAfter: previous(world.order),
       palette: world.palette,
-      tiles: world.places.map((place, i) => ({ key: `${world.slug}-${i}`, label: pick(place, locale), soon: true })),
+      tiles: world.places.map((place, i) => {
+        // Real art if it has been painted, blurred by the carousel; the place
+        // name alone if it has not.
+        const scene = world.boards?.[i] ? findScene(world.boards[i]!) : undefined;
+        return { key: `${world.slug}-${i}`, label: pick(place, locale), thumb: scene?.art.thumbnail, blurred: Boolean(scene), soon: true };
+      }),
     });
   }
   return out;

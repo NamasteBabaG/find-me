@@ -467,3 +467,21 @@
   .wc__arrow { inline-size: 56px; block-size: 56px; font-size: 32px; }
   .wc__title strong { font-size: var(--fs-400); }
 }
+
+/* A world you have not bought shows its paintings behind glass. The blur is a
+   curtain, not a lock — the boards are the shop window, and what is bought is a
+   child painted into them. */
+.world__img--veiled { position: relative; }
+/* Beats `.world--soon`, which greys a tile out: a world you can buy should look
+   inviting behind the glass, not switched off. */
+.world--soon .world__img--veiled img,
+.world__img--veiled img { filter: blur(14px) saturate(1.2); transform: scale(1.12); }
+.world__img--veiled::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(23,22,43,.05), rgba(23,22,43,.35));
+}
+.world__lockmark {
+  position: absolute; inset-block-start: 50%; inset-inline-start: 50%;
+  transform: translate(-50%, -50%); font-size: 34px; z-index: 1;
+  filter: drop-shadow(0 2px 6px rgba(23,22,43,.5));
+}

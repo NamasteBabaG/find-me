@@ -20,6 +20,8 @@ export interface CarouselTile {
   thumb?: string;
   spots?: string[];
   soon?: boolean;
+  /** Shown behind glass: the painting exists, this world is not bought yet. */
+  blurred?: boolean;
 }
 
 export interface CarouselWorld {
@@ -84,7 +86,7 @@ export function WorldsCarousel({ worlds, copy }: { worlds: CarouselWorld[]; copy
       <div className={`worlds${world.upcoming ? " worlds--upcoming" : ""}`}>
         {world.tiles.map((tile, i) => (
           <Reveal key={tile.key} className={`world${tile.soon ? " world--soon" : ""}`} delay={(i % 3) * 60}>
-            <div className="world__img">
+            <div className={`world__img${tile.blurred ? " world__img--veiled" : ""}`}>
               {tile.thumb ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={tile.thumb} alt="" loading="lazy" />
@@ -93,6 +95,11 @@ export function WorldsCarousel({ worlds, copy }: { worlds: CarouselWorld[]; copy
                   {world.glyph}
                 </span>
               )}
+              {tile.blurred ? (
+                <span className="world__lockmark" aria-hidden>
+                  🔒
+                </span>
+              ) : null}
             </div>
             <div className="world__body">
               <span className="world__name">{tile.label}</span>
