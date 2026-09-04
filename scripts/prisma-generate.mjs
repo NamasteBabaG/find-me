@@ -3,7 +3,10 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { execSync } from "node:child_process";
 
-const url = process.env.DATABASE_URL ?? "";
+// `--sqlite` forces the local client regardless of DATABASE_URL. Pushing to
+// Postgres regenerates the client for Postgres, which then rejects the SQLite
+// url every local test uses — so the push puts it back when it is done.
+const url = process.argv.includes("--sqlite") ? "file:./dev.db" : (process.env.DATABASE_URL ?? "");
 let schema = "prisma/schema.prisma";
 if (/^postgres(ql)?:\/\//.test(url)) {
   const src = readFileSync("prisma/schema.prisma", "utf-8").replace(/provider\s*=\s*"sqlite"/, 'provider = "postgresql"');

@@ -110,6 +110,12 @@ starts empty. `npm run db:push:postgres` fills it — but it reads DATABASE_URL
 from the shell (falling back to `.env`, which is SQLite), so run it in the same
 shell where you just set the QA URL, or it will quietly push to `dev.db`.
 
+It puts the local Prisma client back to SQLite afterwards. Generating the client
+for Postgres is a side effect of pushing, and a client built for Postgres
+rejects the `file:./dev.db` every local test uses — the whole suite fails with
+"the URL must start with the protocol postgresql://" and nothing about it
+mentions the push. `npm run db:client:local` does it on its own if needed.
+
 Then check the deployment agrees with all of the above:
 
 ```

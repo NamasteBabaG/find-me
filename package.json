@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "node scripts/prisma-generate.mjs && next build",
-    "db:push:postgres": "npm run db:guard && node scripts/prisma-generate.mjs && prisma db push --schema prisma/generated/schema.postgres.prisma --skip-generate",
+    "db:push:postgres": "npm run db:guard && node scripts/prisma-generate.mjs && prisma db push --schema prisma/generated/schema.postgres.prisma --skip-generate && npm run db:client:local",
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -22,7 +22,8 @@
     "db:check": "tsx scripts/check-db-url.ts",
     "game:status": "tsx scripts/game-status.ts",
     "patches:judge": "tsx scripts/judge-patches.ts",
-    "db:guard": "tsx scripts/guard-db-target.ts"
+    "db:guard": "tsx scripts/guard-db-target.ts",
+    "db:client:local": "node scripts/prisma-generate.mjs --sqlite"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
