@@ -245,6 +245,8 @@ export interface PatchResult {
   geometry: PatchGeometry;
   /** Largest painted blob, in pixels — the acceptance signal. */
   largest: number;
+  /** Every painted pixel that survived to the patch, largest blob included. */
+  painted: number;
   /** Roughly how big a child of `childPx` should be, for comparison. */
   expected: number;
   /** Shape of what was actually painted, for the acceptance check. */
@@ -371,12 +373,16 @@ export async function diffToPatch(input: {
   if (o.solidify !== false) cleaned = await step(cleaned, (s) => s.linear(255 / 64, -(255 / 64) * 40));
 
   // Trim to what is left (+ a small margin) so the patch stays small.
+  // Count the pieces on the finished alpha, not on the pre-feather mask: a
+  // child cut in two by a railing is joined back together by the feather, and
+  // rejecting her for that would be rejecting the occlusion we asked for.
+  const pieces = keepMainBlobs(cleaned, w, h, 0.05);
   const box = hitBoxFromAlpha(cleaned, w, h, 9);
   // Nothing changed. This used to throw, which in production was wrong twice
   // over: the roll cost money and was charged as two attempts (one for the call,
   // one for the exception), and the render that shows WHY nothing was painted
   // was thrown away with it. It is an ordinary rejection — childProblem says so.
-  if (blobs.largest === 0) return nothingPainted(ctx, art, slot);
+  if (pieces.largest === 0) return nothingPainted(ctx, art, slot);
   const m = 8;
   const left = Math.max(0, box.hitRect.x - m);
   const top = Math.max(0, box.hitRect.y - m);
@@ -398,7 +404,8 @@ export async function diffToPatch(input: {
       hitRect: { x: (px.x + hb.hitRect.x) / art.width, y: (px.y + hb.hitRect.y) / art.height, w: hb.hitRect.w / art.width, h: hb.hitRect.h / art.height },
       anchor: { x: (px.x + hb.anchor.x) / art.width, y: (px.y + hb.anchor.y) / art.height },
     },
-    largest: blobs.largest,
+    largest: pieces.largest,
+    painted: pieces.kept,
     // A child of `childPx` fills roughly 0.75 × childPx wide and ~55% of that box.
     expected: Math.round(ctx.childPx * ctx.childPx * 0.75 * 0.55),
     shape: {
@@ -422,6 +429,7 @@ function nothingPainted(ctx: SlotContext, art: Size, slot: SlotPoint): PatchResu
     height: 0,
     geometry: { rect: zero, hitRect: zero, anchor: { x: 0, y: 0 } },
     largest: 0,
+    painted: 0,
     expected: Math.round(ctx.childPx * ctx.childPx * 0.75 * 0.55),
     shape: { width: 0, height: 0, centerX: 0, centerY: 0, childPx: ctx.childPx, slotX: slot.x * art.width, slotY: slot.y * art.height },
   };
@@ -455,6 +463,12 @@ export function childProblem(result: PatchResult): string | null {
   // and scenery edges scattered across a box fill very little of one.
   const density = result.largest / Math.max(1, s.width * s.height);
   if (density < 0.22) return `painted ${Math.round(density * 100)}% of its own outline — scattered marks, not a child`;
+  // A child arrives in one piece. Across twenty-seven real renders every good
+  // one was a single connected shape and both exceptions were defects: one body
+  // severed at the waist, one child with a loose smear of scenery beside her.
+  // The retry costs two cents; a smudge on the board is what the child sees.
+  const whole = result.largest / Math.max(1, result.painted);
+  if (whole < 0.95) return `painted in pieces — the body holds only ${Math.round(whole * 100)}% of what was drawn`;
   // Judge the distance by the child who was painted, never by a smaller one we
   // imagined; but an undersized child is still held to the size we asked for.
   //

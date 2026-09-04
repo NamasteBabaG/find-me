@@ -12,7 +12,7 @@ import { childProblem, type PatchResult } from "../generation/patch";
  * same way.
  */
 
-function render(shape: Partial<PatchResult["shape"]> & { largest: number; expected: number }): PatchResult {
+function render(shape: Partial<PatchResult["shape"]> & { largest: number; expected: number; painted?: number }): PatchResult {
   const zero = { x: 0, y: 0, w: 0, h: 0 };
   return {
     webp: Buffer.alloc(0),
@@ -20,6 +20,7 @@ function render(shape: Partial<PatchResult["shape"]> & { largest: number; expect
     height: 0,
     geometry: { rect: zero, hitRect: zero, anchor: { x: 0, y: 0 } },
     largest: shape.largest,
+    painted: shape.painted ?? shape.largest,
     expected: shape.expected,
     shape: {
       width: shape.width ?? 100,
@@ -84,5 +85,26 @@ describe("childProblem", () => {
 
   it("rejects something wider than it is tall", () => {
     expect(childProblem(render({ largest: 20_000, expected: 9000, width: 340, height: 200, childPx: 200 }))).toMatch(/wider than tall/);
+  });
+
+  it("rejects a child severed at the waist, and the stray smear beside her", () => {
+    // icepalace/pillar came back as a torso and a pair of legs with a gap
+    // between them; fairyforest/mushroom as a whole child plus a loose brown
+    // blob of scenery. Both would have been drawn on the board as they are.
+    expect(childProblem(render({ largest: 1877, painted: 2745, expected: 3491, width: 31, height: 128, childPx: 92 }))).toContain("in pieces");
+    expect(childProblem(render({ largest: 7056, painted: 9143, expected: 8435, width: 130, height: 155, childPx: 143 }))).toContain("in pieces");
+  });
+
+  it("keeps the twenty-five that came back whole", () => {
+    // Same run, the accepted ones: one connected shape, to the pixel.
+    for (const [largest, width, height, childPx] of [
+      [4167, 43, 143, 113],
+      [9281, 71, 208, 133],
+      [13189, 84, 222, 113],
+      [3701, 57, 90, 154],
+      [17801, 173, 172, 143],
+    ] as const) {
+      expect(childProblem(render({ largest, painted: largest, expected: largest, width, height, childPx }))).toBeNull();
+    }
   });
 });
