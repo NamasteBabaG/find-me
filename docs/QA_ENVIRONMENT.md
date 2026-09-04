@@ -29,9 +29,21 @@ that combination refuses to boot (`src/lib/env.ts`).
 | Database | Supabase `find-me`, `public` schema | Supabase `find-me`, **`qa` schema** |
 
 One Supabase project, two schemas. QA games, orders and uploaded photos never
-appear in the shop's library because they are not in the same tables. A separate
-Supabase project would isolate the credentials too and costs $10/month; the
-schema is free and is one `DROP SCHEMA qa CASCADE` away from gone.
+appear in the shop's library because they are not in the same tables.
+
+A separate Supabase project would isolate the credentials, the instance and the
+backups as well, and costs $10/month. It is the right shape for a live product
+and is deliberately **not** what this is yet: before launch the shop's database
+holds no customers, no real orders and no photographs of anyone's child, so
+every argument for splitting it is an argument about a risk that does not exist
+yet. Open `find-me-qa` in Supabase at the same moment as the other launch
+chores — rotating the password, wiring PayMe, the first paying customer. There
+is nothing to migrate, because everything in `qa` until then is test data.
+
+What is *not* deferred is the one trap that is real either way: `db push` alters
+a live schema without asking, `--force-reset` empties it, and both take their
+target from the end of a URL. `npm run db:guard` (wired into both) refuses a
+Postgres URL that does not name its schema.
 
 ## Deploying to it
 
