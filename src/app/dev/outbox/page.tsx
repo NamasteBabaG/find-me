@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { isDev } from "@/lib/env";
+import { isLiveShop } from "@/lib/env";
 import { getContainer } from "@/services/container";
 import { ConsoleEmailProvider } from "@/infra/email/console";
 import { SiteHeader } from "@/ui/Shell";
@@ -8,9 +8,17 @@ import { currentUser, isAdminEmail } from "@/lib/server/session";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "תיבת דואר (dev)", robots: { index: false } };
 
-/** Dev-only: every email the app "sent", with clickable links. */
+/**
+ * Every email the app "sent", with clickable links.
+ *
+ * Gated on whether this is the live shop, not on NODE_ENV. A QA deployment runs
+ * a production build with EMAIL_PROVIDER=console, so `isDev()` was false there
+ * and this page 404ed — which meant the magic link needed to sign in was
+ * written to a mailbox nobody could open. The sign-in path was unusable on the
+ * one deployment that exists to test the sign-in path.
+ */
 export default async function OutboxPage() {
-  if (!isDev()) notFound();
+  if (isLiveShop()) notFound();
   const c = getContainer();
   const user = await currentUser();
   const mails = c.email instanceof ConsoleEmailProvider ? await c.email.list() : [];
