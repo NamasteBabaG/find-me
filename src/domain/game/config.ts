@@ -166,7 +166,7 @@ export const PlayWorldSchema = z.object({
         routeIndex: z.number().int().positive(),
         x: Unit,
         y: Unit,
-        iconAsset: z.string(),
+        iconAsset: z.string().optional(),
         labelAnchor: z.enum(["top", "bottom", "start", "end"]),
         markerScale: z.number().positive(),
         travelStyle: z.enum(["walk", "hop", "sail", "float", "rocket"]),

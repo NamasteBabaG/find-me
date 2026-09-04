@@ -31,7 +31,6 @@
       "routeIndex": 1,
       "x": 0.13,
       "y": 0.215,
-      "iconAsset": "/worlds/journey/nodes/newyork.webp",
       "labelAnchor": "bottom",
       "markerScale": 0.09,
       "travelStyle": "walk"
@@ -41,7 +40,6 @@
       "routeIndex": 2,
       "x": 0.165,
       "y": 0.66,
-      "iconAsset": "/worlds/journey/nodes/amazon.webp",
       "labelAnchor": "top",
       "markerScale": 0.09,
       "travelStyle": "sail"
@@ -51,7 +49,6 @@
       "routeIndex": 3,
       "x": 0.5,
       "y": 0.125,
-      "iconAsset": "/worlds/journey/nodes/paris.webp",
       "labelAnchor": "bottom",
       "markerScale": 0.09,
       "travelStyle": "walk"
@@ -61,7 +58,6 @@
       "routeIndex": 4,
       "x": 0.43,
       "y": 0.385,
-      "iconAsset": "/worlds/journey/nodes/marrakech.webp",
       "labelAnchor": "top",
       "markerScale": 0.09,
       "travelStyle": "walk"
@@ -71,7 +67,6 @@
       "routeIndex": 5,
       "x": 0.545,
       "y": 0.58,
-      "iconAsset": "/worlds/journey/nodes/giza.webp",
       "labelAnchor": "bottom",
       "markerScale": 0.09,
       "travelStyle": "hop"
@@ -81,7 +76,6 @@
       "routeIndex": 6,
       "x": 0.83,
       "y": 0.17,
-      "iconAsset": "/worlds/journey/nodes/tokyo.webp",
       "labelAnchor": "bottom",
       "markerScale": 0.09,
       "travelStyle": "walk"
@@ -91,7 +85,6 @@
       "routeIndex": 7,
       "x": 0.78,
       "y": 0.44,
-      "iconAsset": "/worlds/journey/nodes/greatwall.webp",
       "labelAnchor": "top",
       "markerScale": 0.09,
       "travelStyle": "walk"
@@ -101,7 +94,6 @@
       "routeIndex": 8,
       "x": 0.86,
       "y": 0.705,
-      "iconAsset": "/worlds/journey/nodes/sydney.webp",
       "labelAnchor": "top",
       "markerScale": 0.09,
       "travelStyle": "sail"
@@ -111,7 +103,6 @@
       "routeIndex": 9,
       "x": 0.54,
       "y": 0.87,
-      "iconAsset": "/worlds/journey/nodes/antarctica.webp",
       "labelAnchor": "top",
       "markerScale": 0.09,
       "travelStyle": "rocket"

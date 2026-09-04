@@ -27,8 +27,16 @@ export const MapNodeSchema = z.object({
   /** Normalized against the map art, like every other coordinate in the project. */
   x: Unit,
   y: Unit,
-  /** A medallion belonging to the world's own visual language — never an emoji. */
-  iconAsset: z.string().min(1),
+  /**
+   * A medallion of the world's own making, if one is ever drawn.
+   *
+   * Optional because nothing draws it: the map uses the board's own thumbnail
+   * as the node face, which is better anyway — the picture a child is about to
+   * play is the clearest possible label. It was required for a while, pointing
+   * at files that were never made, which is a 404 waiting for whoever wires it
+   * up next.
+   */
+  iconAsset: z.string().min(1).optional(),
   labelAnchor: z.enum(["top", "bottom", "start", "end"]).default("bottom"),
   markerScale: z.number().positive().max(1).default(0.09),
   travelStyle: TravelStyle.default("walk"),
