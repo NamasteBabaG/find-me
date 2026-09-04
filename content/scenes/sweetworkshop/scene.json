@@ -10,8 +10,8 @@
     "he": "נהרות שוקולד, מכונות סוכריות והמון סוכריות צבעוניות."
   },
   "version": 1,
-  "active": false,
-  "artStatus": "draft",
+  "active": true,
+  "artStatus": "final",
   "art": {
     "width": 3072,
     "height": 2048,

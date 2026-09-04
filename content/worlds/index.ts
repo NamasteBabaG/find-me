@@ -1,6 +1,7 @@
 import { findScene } from "../scenes";
 import { BOARDS_PER_WORLD, WorldDefinitionSchema, boardSlugs, type WorldDefinition } from "@/domain/world";
 import journey from "./journey/world.json";
+import kingdom from "./kingdom/world.json";
 
 /**
  * The world catalog is data, like the scene catalog. Adding a world = a folder
@@ -8,7 +9,7 @@ import journey from "./journey/world.json";
  *
  * Order here is the order worlds are offered and played.
  */
-const RAW_WORLDS: unknown[] = [journey];
+const RAW_WORLDS: unknown[] = [journey, kingdom];
 
 export interface WorldCatalogEntry {
   world: WorldDefinition;

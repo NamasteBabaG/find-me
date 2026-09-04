@@ -29,17 +29,17 @@
     {
       "boardSlug": "castlegate",
       "routeIndex": 1,
-      "x": 0.1,
-      "y": 0.76,
-      "labelAnchor": "bottom",
+      "x": 0.135,
+      "y": 0.82,
+      "labelAnchor": "top",
       "markerScale": 0.09,
       "travelStyle": "walk"
     },
     {
       "boardSlug": "fairyforest",
       "routeIndex": 2,
-      "x": 0.22,
-      "y": 0.52,
+      "x": 0.155,
+      "y": 0.5,
       "labelAnchor": "top",
       "markerScale": 0.09,
       "travelStyle": "walk"
@@ -47,8 +47,8 @@
     {
       "boardSlug": "dragoncave",
       "routeIndex": 3,
-      "x": 0.33,
-      "y": 0.74,
+      "x": 0.235,
+      "y": 0.19,
       "labelAnchor": "bottom",
       "markerScale": 0.09,
       "travelStyle": "hop"
@@ -56,17 +56,17 @@
     {
       "boardSlug": "icepalace",
       "routeIndex": 4,
-      "x": 0.45,
-      "y": 0.48,
-      "labelAnchor": "top",
+      "x": 0.475,
+      "y": 0.145,
+      "labelAnchor": "bottom",
       "markerScale": 0.09,
       "travelStyle": "walk"
     },
     {
       "boardSlug": "underwater",
       "routeIndex": 5,
-      "x": 0.55,
-      "y": 0.72,
+      "x": 0.47,
+      "y": 0.445,
       "labelAnchor": "bottom",
       "markerScale": 0.09,
       "travelStyle": "sail"
@@ -74,8 +74,8 @@
     {
       "boardSlug": "cloudcity",
       "routeIndex": 6,
-      "x": 0.66,
-      "y": 0.44,
+      "x": 0.755,
+      "y": 0.375,
       "labelAnchor": "top",
       "markerScale": 0.09,
       "travelStyle": "hop"
@@ -83,17 +83,17 @@
     {
       "boardSlug": "sweetworkshop",
       "routeIndex": 7,
-      "x": 0.76,
-      "y": 0.68,
-      "labelAnchor": "bottom",
+      "x": 0.8,
+      "y": 0.675,
+      "labelAnchor": "top",
       "markerScale": 0.09,
       "travelStyle": "walk"
     },
     {
       "boardSlug": "giantlibrary",
       "routeIndex": 8,
-      "x": 0.86,
-      "y": 0.44,
+      "x": 0.5,
+      "y": 0.79,
       "labelAnchor": "top",
       "markerScale": 0.09,
       "travelStyle": "walk"
@@ -101,8 +101,8 @@
     {
       "boardSlug": "nightcarnival",
       "routeIndex": 9,
-      "x": 0.92,
-      "y": 0.72,
+      "x": 0.86,
+      "y": 0.13,
       "labelAnchor": "bottom",
       "markerScale": 0.09,
       "travelStyle": "hop"
