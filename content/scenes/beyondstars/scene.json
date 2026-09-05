@@ -154,7 +154,7 @@
       "difficulty": 3,
       "mission": {
         "en": "Find {name} hiding behind the lander",
-        "he": "מצאו את {name} מתחבא/ת מאחורי הנחתת"
+        "he": "מצאו את {name} מאחורי הנחתת"
       },
       "item": {
         "en": "the landing craft standing on four wide feet",

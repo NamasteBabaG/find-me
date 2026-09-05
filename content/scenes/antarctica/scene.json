@@ -154,7 +154,7 @@
       "difficulty": 3,
       "mission": {
         "en": "Find {name} hiding behind a block of ice",
-        "he": "מצאו את {name} מתחבא/ת מאחורי גוש קרח"
+        "he": "מצאו את {name} מאחורי גוש קרח"
       },
       "item": {
         "en": "big blue blocks of ice with a shining arch",

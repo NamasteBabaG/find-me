@@ -154,7 +154,7 @@
       "difficulty": 3,
       "mission": {
         "en": "Find {name} hiding behind the spices",
-        "he": "מצאו את {name} מתחבא/ת מאחורי התבלינים"
+        "he": "מצאו את {name} מאחורי התבלינים"
       },
       "item": {
         "en": "tall cones of orange, red and yellow spices in open sacks",

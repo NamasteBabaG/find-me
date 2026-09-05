@@ -154,7 +154,7 @@
       "difficulty": 3,
       "mission": {
         "en": "Find {name} hiding behind the fallen log",
-        "he": "מצאו את {name} מתחבא/ת מאחורי הגזע שנפל"
+        "he": "מצאו את {name} מאחורי הגזע שנפל"
       },
       "item": {
         "en": "a huge fallen log lying across the valley path",

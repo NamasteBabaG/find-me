@@ -154,7 +154,7 @@
       "difficulty": 3,
       "mission": {
         "en": "Find {name} hiding behind the candy crates",
-        "he": "מצאו את {name} מתחבא/ת מאחורי ארגזי הסוכריות"
+        "he": "מצאו את {name} מאחורי ארגזי הסוכריות"
       },
       "item": {
         "en": "wooden crates packed with striped candy canes",

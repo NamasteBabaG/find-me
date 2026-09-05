@@ -154,7 +154,7 @@
       "difficulty": 3,
       "mission": {
         "en": "Find {name} hiding behind the parts crates",
-        "he": "מצאו את {name} מתחבא/ת מאחורי ארגזי החלקים"
+        "he": "מצאו את {name} מאחורי ארגזי החלקים"
       },
       "item": {
         "en": "wooden crates of spare parts stacked into a wall",

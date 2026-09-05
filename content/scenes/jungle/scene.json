@@ -167,7 +167,7 @@
       "difficulty": 3,
       "mission": {
         "en": "Find {name} hiding behind a giant leaf",
-        "he": "מצאו את {name} מסתתר/ת מאחורי עלה ענק"
+        "he": "מצאו את {name} מאחורי עלה ענק"
       },
       "item": {
         "en": "a giant leaf",

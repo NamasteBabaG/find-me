@@ -154,7 +154,7 @@
       "difficulty": 3,
       "mission": {
         "en": "Find {name} hiding behind an ice pillar",
-        "he": "מצאו את {name} מתחבא/ת מאחורי עמוד קרח"
+        "he": "מצאו את {name} מאחורי עמוד קרח"
       },
       "item": {
         "en": "thick pillars of cloudy ice holding up the hall",

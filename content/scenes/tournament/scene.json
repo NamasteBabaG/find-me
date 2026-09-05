@@ -154,7 +154,7 @@
       "difficulty": 3,
       "mission": {
         "en": "Find {name} hiding behind the wooden fence",
-        "he": "מצאו את {name} מתחבא/ת מאחורי גדר העץ"
+        "he": "מצאו את {name} מאחורי גדר העץ"
       },
       "item": {
         "en": "the low wooden fence running down the middle of the field",

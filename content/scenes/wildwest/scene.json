@@ -154,7 +154,7 @@
       "difficulty": 3,
       "mission": {
         "en": "Find {name} hiding behind the wagon",
-        "he": "מצאו את {name} מתחבא/ת מאחורי העגלה"
+        "he": "מצאו את {name} מאחורי העגלה"
       },
       "item": {
         "en": "a loaded wagon with a canvas cover at the roadside",

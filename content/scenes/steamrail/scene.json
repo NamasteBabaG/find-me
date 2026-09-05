@@ -154,7 +154,7 @@
       "difficulty": 3,
       "mission": {
         "en": "Find {name} hiding by the engine's wheels",
-        "he": "מצאו את {name} מתחבא/ת ליד גלגלי הקטר"
+        "he": "מצאו את {name} ליד גלגלי הקטר"
       },
       "item": {
         "en": "the locomotive's huge red driving wheels",

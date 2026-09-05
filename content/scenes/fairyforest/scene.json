@@ -154,7 +154,7 @@
       "difficulty": 3,
       "mission": {
         "en": "Find {name} hiding inside a hollow tree",
-        "he": "מצאו את {name} מתחבא/ת בתוך גזע חלול"
+        "he": "מצאו את {name} בתוך גזע חלול"
       },
       "item": {
         "en": "a huge hollow tree trunk you could stand inside",

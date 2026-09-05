@@ -32,7 +32,7 @@ export const PACKAGES: Record<PackageTier, PackageDefinition> = {
     name: { en: "First Adventure", he: "ההרפתקה הראשונה" },
     worldCount: 1,
     prices: { ILS: 3900, USD: 990 },
-    playtime: { en: "35–50 min", he: "35–50 דקות" },
+    playtime: { en: "around half an hour", he: "בערך חצי שעה" },
     popular: false,
   },
   TWO_WORLDS: {
@@ -40,7 +40,7 @@ export const PACKAGES: Record<PackageTier, PackageDefinition> = {
     name: { en: "Big Journey", he: "המסע הגדול" },
     worldCount: 2,
     prices: { ILS: 6900, USD: 1990 },
-    playtime: { en: "1–2 hours", he: "שעה–שעתיים" },
+    playtime: { en: "around an hour", he: "בערך שעה" },
     popular: true,
   },
   ALL_WORLDS: {
@@ -48,7 +48,7 @@ export const PACKAGES: Record<PackageTier, PackageDefinition> = {
     name: { en: "All Worlds", he: "כל העולמות" },
     worldCount: 3,
     prices: { ILS: 9900, USD: 2990 },
-    playtime: { en: "2–3 hours", he: "שעתיים–שלוש" },
+    playtime: { en: "an hour or two", he: "שעה–שעתיים" },
     popular: false,
   },
 };

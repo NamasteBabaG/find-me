@@ -154,7 +154,7 @@
       "difficulty": 3,
       "mission": {
         "en": "Find {name} hiding behind the harbour rocks",
-        "he": "מצאו את {name} מתחבא/ת מאחורי סלעי המפרץ"
+        "he": "מצאו את {name} מאחורי סלעי המפרץ"
       },
       "item": {
         "en": "big pale rocks at the edge of the harbour with rock pools",

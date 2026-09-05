@@ -154,7 +154,7 @@
       "difficulty": 3,
       "mission": {
         "en": "Find {name} hiding behind a stone sled",
-        "he": "מצאו את {name} מתחבא/ת מאחורי מזחלת האבן"
+        "he": "מצאו את {name} מאחורי מזחלת האבן"
       },
       "item": {
         "en": "a heavy wooden sled with a block still on it",

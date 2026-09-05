@@ -154,7 +154,7 @@
       "difficulty": 3,
       "mission": {
         "en": "Find {name} hiding inside the tube lift",
-        "he": "מצאו את {name} מתחבא/ת בתוך מעלית הצינור"
+        "he": "מצאו את {name} בתוך מעלית הצינור"
       },
       "item": {
         "en": "a transparent tube lift running up the side of a tower",

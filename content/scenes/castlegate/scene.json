@@ -154,7 +154,7 @@
       "difficulty": 3,
       "mission": {
         "en": "Find {name} hiding inside a barrel",
-        "he": "מצאו את {name} מתחבא/ת בתוך חבית"
+        "he": "מצאו את {name} בתוך חבית"
       },
       "item": {
         "en": "stacked wooden barrels beside the tents",
