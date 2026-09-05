@@ -115,7 +115,14 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       if (demo) return;
       const progress = loadProgress(config.gameId);
       const { screen } = get();
-      set({ progress, screen: screen === "gift" && progress.revealed ? "map" : screen });
+      // Back to the world the player was in, not the first one. A three-world
+      // game used to reopen on world one's map whatever had just been finished
+      // in world three; and a returning player who never picked a world gets
+      // the hub, where the choice is.
+      const worlds = gameWorlds(config);
+      const remembered = progress.lastWorld && worlds.some((w) => w.slug === progress.lastWorld) ? progress.lastWorld : null;
+      const landing = remembered ? "map" : worlds.length > 1 ? "worlds" : "map";
+      set({ progress, screen: screen === "gift" && progress.revealed ? landing : screen, ...(remembered ? { worldSlug: remembered } : {}) });
     },
 
     reveal() {
@@ -135,6 +142,11 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     goToMap(travelFrom = null, worldSlug) {
       sounds().stopAmbient();
       set({ screen: "map", sceneSlug: null, mission: null, travelFrom, ...(worldSlug ? { worldSlug } : {}) });
+      if (worldSlug && !demo) {
+        const progress = { ...get().progress, lastWorld: worldSlug };
+        saveProgress(progress);
+        set({ progress });
+      }
     },
 
     goToWorlds() {
@@ -161,6 +173,11 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       // the passport lands the player on the right map when they come back.
       const world = worldOfScene(get().config, slug);
       set({ screen: "scene", sceneSlug: slug, mission, travelFrom: null, ...(world ? { worldSlug: world.slug } : {}) });
+      if (world && !demo) {
+        const progress = { ...get().progress, lastWorld: world.slug, lastScene: slug };
+        saveProgress(progress);
+        set({ progress });
+      }
     },
 
     dispatch(action) {

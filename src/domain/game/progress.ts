@@ -23,6 +23,9 @@ export const GameProgressSchema = z.object({
   revealed: z.boolean().default(false),
   completedAt: z.string().optional(),
   scenes: z.record(SceneProgressSchema).default({}),
+  /** The world and board last opened, so a refresh returns to them. A board is only saved once completed — a half-finished search restarts, by design. */
+  lastWorld: z.string().optional(),
+  lastScene: z.string().optional(),
 });
 export type GameProgress = z.infer<typeof GameProgressSchema>;
 
