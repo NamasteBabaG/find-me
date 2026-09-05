@@ -1,5 +1,5 @@
 import path from "node:path";
-import { env } from "@/lib/env";
+import { adminEmails, env, flag } from "@/lib/env";
 import { prisma, type Db } from "@/infra/db/prisma";
 import type { StorageProvider } from "@/infra/storage/types";
 import { LocalDiskStorage } from "@/infra/storage/local";
@@ -41,6 +41,10 @@ export interface Container {
   secret: string;
   /** Where a game-ready mail goes when the game has no owner email. Unset means it does not go. */
   emailFallbackTo?: string | null;
+  /** No human gate: every finished game is delivered, and its problems go to the admins instead (QA_AUTO_APPROVE). */
+  autoApprove?: boolean;
+  /** Who is told when a game goes out with problems, or does not go out at all (ADMIN_EMAILS). */
+  adminEmails?: string[];
 }
 
 function build(): Container {
@@ -81,6 +85,8 @@ function build(): Container {
     appUrl: e.APP_URL,
     secret: e.SESSION_SECRET,
     emailFallbackTo: e.EMAIL_FALLBACK_TO ?? null,
+    autoApprove: flag("QA_AUTO_APPROVE"),
+    adminEmails: adminEmails(),
   };
 
   container.jobs.register("generate-game", ({ gameId }) => runGenerationPipeline(container, gameId));

@@ -59,3 +59,55 @@ export function gameReadyEmail(input: { to: string; childName: string; playLink:
       .join("\n"),
   };
 }
+
+export type AdminAlertKind = "delivered-with-problems" | "generation-failed" | "needs-new-photo";
+
+const ALERT_HEAD: Record<AdminAlertKind, { subject: string; lead: string }> = {
+  "delivered-with-problems": { subject: "⚠️ המשחק של {name} נשלח עם בעיות", lead: "המשחק נשלח להורה בכל מקרה. אלה הבעיות שנמצאו לפני השליחה:" },
+  "generation-failed": { subject: "❌ יצירת המשחק של {name} נכשלה", lead: "הצינור נעצר בשגיאה והמשחק לא נשלח. לפתוח באדמין, לקרוא את השגיאה ולהריץ מחדש." },
+  "needs-new-photo": { subject: "📷 המשחק של {name} צריך תמונה חדשה", lead: "אין תמונת מקור לצייר ממנה. ההורה רואה בקשה לתמונה חדשה בדף ההמתנה." },
+};
+
+/**
+ * What the admins get when a game needs a look. Internal, Hebrew like the
+ * admin area itself; the parent's mail is a different template and a different
+ * recipient. `to` is filled in per admin by the sender.
+ */
+export function adminAlertEmail(input: {
+  kind: AdminAlertKind;
+  gameId: string;
+  adminUrl: string;
+  childName: string;
+  ownerEmail: string | null;
+  status: string;
+  sceneCount: number;
+  problems: string[];
+  failedSpots: Array<{ where: string; attempts: number; reason: string }>;
+  costCents: number;
+  error?: string;
+}): Omit<EmailMessage, "to"> {
+  const head = ALERT_HEAD[input.kind];
+  const subject = tf(head.subject, { name: input.childName || input.gameId });
+  const facts = [
+    `משחק: ${input.gameId} · ${input.sceneCount} לוחות · סטטוס ${input.status}`,
+    `הורה: ${input.ownerEmail ?? "אין כתובת"}`,
+    `עלות עד עכשיו: $${(input.costCents / 100).toFixed(2)}`,
+  ];
+  const problems = input.problems.map((p) => `• ${p}`);
+  const spots = input.failedSpots.map((f) => `• ${f.where} — ${f.attempts} ניסיונות — ${f.reason || "בלי סיבה רשומה"}`);
+  const error = input.error ? [`שגיאה: ${input.error}`] : [];
+  const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const list = (title: string, lines: string[]) => (lines.length ? `<p style="font-size:14px;line-height:22px;margin:16px 0 4px;font-weight:700;">${title}</p><p style="font-size:14px;line-height:22px;margin:0;">${lines.map(esc).join("<br>")}</p>` : "");
+  const html = layout(
+    "he",
+    subject,
+    `<p style="font-size:16px;line-height:24px;">${head.lead}</p>
+     ${list("פרטים", facts)}
+     ${list("שגיאה", error)}
+     ${list("מה נמצא", problems)}
+     ${list("מחבואים שלא צוירו", spots)}
+     ${button(input.adminUrl, "לפתוח באדמין")}`,
+  );
+  const text = [subject, "", head.lead, "", ...facts, ...(error.length ? ["", ...error] : []), ...(problems.length ? ["", "מה נמצא:", ...problems] : []), ...(spots.length ? ["", "מחבואים שלא צוירו:", ...spots] : []), "", `לפתוח באדמין: ${input.adminUrl}`].join("\n");
+  return { tag: "admin-alert", subject, html, text };
+}

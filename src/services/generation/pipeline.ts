@@ -12,6 +12,7 @@ import { sceneBySlug } from "../scene-catalog.service";
 import { SYSTEM, audit } from "../audit.service";
 import { persistGameConfig } from "./scene-composer";
 import { publishGame } from "../publish.service";
+import { sendAdminAlert } from "../admin-alert.service";
 import { generateSlotPatch, slotOf, spotsOutstanding, spotsUnjudged, type PatchOutcome, type Variant } from "./slot-patches";
 import { styleReference } from "./patch";
 import { loadSceneArt } from "./scene-art";
@@ -126,6 +127,7 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
       if (!child.originalPhotoAssetId) {
         await transitionGame(c, gameId, "NEEDS_NEW_PHOTO", SYSTEM, { reason: "no original photo" });
         await mark("avatar", { status: "failed", error: "no original photo", finishedAt: new Date().toISOString() });
+        await sendAdminAlert(c, { gameId, kind: "needs-new-photo", error: "no original photo" }).catch((e: unknown) => console.error(`[admin-alert] ${gameId}:`, e));
         await c.db.generationJob.update({ where: { id: job.id }, data: { status: "FAILED", lastError: "no original photo" } });
         return;
       }
@@ -315,18 +317,18 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
       ...(unfinished > 0 ? [`${unfinished} hiding spots could not be painted and fell back to a drawn sprite${overBudget ? " (the world reached its spending ceiling)" : ""}`] : []),
       ...(unjudged > 0 ? [`${unjudged} hiding spots were never checked against the child — nothing confirmed the picture is her`] : []),
     ];
-    if (problems.length > 0) {
-      await c.db.game.update({ where: { id: gameId }, data: { lastError: problems.join("; ") } });
-      await transitionGame(c, gameId, "QA_PENDING", SYSTEM, { problems });
+    if (problems.length > 0) await c.db.game.update({ where: { id: gameId }, data: { lastError: problems.join("; ") } });
+    await transitionGame(c, gameId, "QA_PENDING", SYSTEM, problems.length > 0 ? { problems } : undefined);
+    await mark("qa", problems.length > 0 ? { status: "done", finishedAt: new Date().toISOString(), error: problems.join("; ") } : { status: "done", finishedAt: new Date().toISOString() });
+    if (c.autoApprove ?? flag("QA_AUTO_APPROVE")) {
+      // No human gate: the parent gets the game now, problems and all, and the
+      // admins get the problems. A game held for a look that nobody was going
+      // to take in time was a game the parent waited on for hours.
+      await audit(c, SYSTEM, "qa:auto-approved", "Game", gameId, problems.length > 0 ? { problems } : undefined);
+      await publishGame(c, gameId, SYSTEM);
+      if (problems.length > 0) await sendAdminAlert(c, { gameId, kind: "delivered-with-problems", problems });
+    } else if (problems.length > 0) {
       await transitionGame(c, gameId, "MANUAL_REVIEW", SYSTEM, { problems });
-      await mark("qa", { status: "done", finishedAt: new Date().toISOString(), error: problems.join("; ") });
-    } else {
-      await transitionGame(c, gameId, "QA_PENDING", SYSTEM);
-      await mark("qa", { status: "done", finishedAt: new Date().toISOString() });
-      if (flag("QA_AUTO_APPROVE")) {
-        await audit(c, SYSTEM, "qa:auto-approved", "Game", gameId);
-        await publishGame(c, gameId, SYSTEM);
-      }
     }
     await c.db.generationJob.update({ where: { id: job.id }, data: { status: "DONE", currentStep: null } });
   } catch (err) {
@@ -337,6 +339,8 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
     const now = statusOf(await c.db.game.findUniqueOrThrow({ where: { id: gameId }, select: { status: true } }));
     if (isGenerating(now)) await transitionGame(c, gameId, "GENERATION_FAILED", SYSTEM, { error: message });
     c.analytics.track("generation_failed", { gameId, reason: message.slice(0, 80) });
+    // The admins hear about a crash even when nobody is watching the admin page.
+    await sendAdminAlert(c, { gameId, kind: "generation-failed", error: message }).catch((e: unknown) => console.error(`[admin-alert] ${gameId}:`, e));
   }
 }
 

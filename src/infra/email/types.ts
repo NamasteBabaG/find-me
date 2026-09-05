@@ -4,7 +4,7 @@ export interface EmailMessage {
   html: string;
   text: string;
   /** Free-form tag for the outbox / provider dashboard (never PII). */
-  tag: "magic-link" | "game-ready" | "gift";
+  tag: "magic-link" | "game-ready" | "gift" | "admin-alert";
 }
 
 export interface EmailProvider {

@@ -176,6 +176,30 @@ Remove-Item Env:RESEND_API_KEY, Env:EMAIL_FALLBACK_TO
 - A mail that fails to send leaves the game READY and writes an `email:failed`
   audit entry with the provider's error; the link still works from the library.
 
+## No human gate
+
+`QA_AUTO_APPROVE=true` takes the person out of the loop: a finished game is
+delivered the moment it is done, problems and all, and the problems go to the
+admins instead. Right after the parent's "your game is ready" mail, every
+address in `ADMIN_EMAILS` gets one of these, each with the way in
+(`/admin/orders/<gameId>`):
+
+| when | subject |
+| --- | --- |
+| the game shipped with problems (a spot fell back to a drawn sprite, a spot the judge could not check, an automated-QA finding) | ⚠️ the game shipped with problems |
+| the pipeline crashed (the game is `GENERATION_FAILED`, nothing was sent) | ❌ generation failed |
+| there is no original photo to draw from | 📷 a new photo is needed |
+
+The mail lists the problems, the hiding spots that did not come out with their
+attempts and reasons, and what the game has cost. It is sent at most once per
+game, per kind, per six hours, so a crash that every tick repeats does not
+repeat the mail. A failed alert is logged and audited, never thrown: the
+parent already has the game.
+
+With the flag off, a clean game waits in `QA_PENDING` and a game with problems
+in `MANUAL_REVIEW` until an admin approves it — the launch setting, once a
+person is actually there to look.
+
 ## First run
 
 The build generates the Prisma client but never migrates, so the `qa` schema

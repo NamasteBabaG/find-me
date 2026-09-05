@@ -699,3 +699,48 @@ describe("deleting a game", () => {
   });
 });
 
+describe("no human gate", () => {
+  it("delivers a game with problems to the parent and tells the admins", async () => {
+    // Every spot runs out of attempts: the game ships with three drawn sprites
+    // and a note about it, instead of waiting for a person who is not there.
+    const p = painter(["nothing"]);
+    const c = container(p);
+    c.autoApprove = true;
+    c.adminEmails = ["ops@example.com"];
+    const sent: Array<{ to: string; subject: string; text: string; tag: string }> = [];
+    c.email = { id: "console", send: async (m: { to: string; subject: string; text: string; tag: string }) => { sent.push(m); return { id: "m" }; } } as never;
+    const gameId = await seedGame(c);
+    for (let i = 0; i < mod.MAX_ATTEMPTS_PER_SPOT + 1; i++) await mod.runGenerationPipeline(c, gameId);
+
+    expect((await gameOf(gameId)).status).toBe("DELIVERED");
+    const ready = sent.filter((m) => m.tag === "game-ready");
+    expect(ready).toHaveLength(1);
+    expect(ready[0]!.to).toMatch(/@example\.com$/);
+    const alerts = sent.filter((m) => m.tag === "admin-alert");
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]!.to).toBe("ops@example.com");
+    expect(alerts[0]!.text).toContain("could not be painted");
+    expect(alerts[0]!.text).toContain(`/admin/orders/${gameId}`);
+  }, 180_000);
+
+  it("a crash tells every admin once, not on every retry", async () => {
+    const p = painter(["child"]);
+    p.createCharacter = async () => {
+      throw new Error("sheet exploded");
+    };
+    const c = container(p);
+    c.autoApprove = true;
+    c.adminEmails = ["ops@example.com", "guy@example.com"];
+    const sent: Array<{ to: string; text: string; tag: string }> = [];
+    c.email = { id: "console", send: async (m: { to: string; text: string; tag: string }) => { sent.push(m); return { id: "m" }; } } as never;
+    const gameId = await seedGame(c);
+    await mod.runGenerationPipeline(c, gameId);
+    expect((await gameOf(gameId)).status).toBe("GENERATION_FAILED");
+    await mod.runGenerationPipeline(c, gameId); // the next tick fails the same way
+
+    const alerts = sent.filter((m) => m.tag === "admin-alert");
+    expect(alerts.map((m) => m.to)).toEqual(["ops@example.com", "guy@example.com"]);
+    expect(alerts[0]!.text).toContain("sheet exploded");
+    expect(alerts[0]!.text).toContain(`/admin/orders/${gameId}`);
+  }, 120_000);
+});
