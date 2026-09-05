@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getContainer } from "@/services/container";
 import { tickGeneration } from "@/services/generation/queue";
+import { runRetentionIfDue } from "@/services/retention.service";
 import { env } from "@/lib/env";
 import { currentUser, draftTokenFromCookie, isAdminEmail } from "@/lib/server/session";
 import { safeEqual } from "@/lib/ids";
@@ -35,7 +36,13 @@ export async function POST(req: Request) {
 
   if (!(await isAllowed(req, gameId))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   const result = await tickGeneration(c, gameId, SLICE_MS);
-  return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } });
+  // The retention policy rides the cron: about once an hour, after the work.
+  // A page's nudge (gameId given) never pays for it.
+  const retention = gameId ? null : await runRetentionIfDue(c).catch((err: unknown) => {
+    console.error("[retention] failed:", err instanceof Error ? err.message : err);
+    return null;
+  });
+  return NextResponse.json({ ...result, retention }, { headers: { "Cache-Control": "no-store" } });
 }
 
 /** Vercel Cron sends a GET with the CRON_SECRET bearer token. */
