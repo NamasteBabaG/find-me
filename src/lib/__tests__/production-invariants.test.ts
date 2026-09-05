@@ -58,10 +58,20 @@ describe("the live shop", () => {
 });
 
 describe("a QA deployment", () => {
-  it("may generate for real while paying with the mock provider", async () => {
-    const read = await envWith({ APP_ENV: "qa", GENERATION_PROVIDER: "openai", PAYMENT_PROVIDER: "mock", EMAIL_PROVIDER: "console" });
+  it("may generate for real while paying with the mock provider, once it knows who may spend", async () => {
+    const read = await envWith({ APP_ENV: "qa", GENERATION_PROVIDER: "openai", PAYMENT_PROVIDER: "mock", EMAIL_PROVIDER: "console", QA_TESTER_EMAILS: "tester@example.com" });
     expect(read).not.toThrow();
     expect(read().APP_ENV).toBe("qa");
+  });
+
+  it("refuses a real painter with nobody listed: that is a public URL spending the project's money", async () => {
+    const read = await envWith({ APP_ENV: "qa", GENERATION_PROVIDER: "openai", PAYMENT_PROVIDER: "mock", EMAIL_PROVIDER: "console", QA_TESTER_EMAILS: "" });
+    expect(read).toThrow(/QA_TESTER_EMAILS/);
+  });
+
+  it("does not need a tester list while the painter is a mock", async () => {
+    const read = await envWith({ APP_ENV: "qa", GENERATION_PROVIDER: "mock", PAYMENT_PROVIDER: "mock", QA_TESTER_EMAILS: "" });
+    expect(read).not.toThrow();
   });
 
   it("is not the live shop, so the app can say so out loud", async () => {

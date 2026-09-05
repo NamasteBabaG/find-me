@@ -133,6 +133,22 @@ What each one is, and why:
 - **`OPENAI_API_KEY`** — the same key. Generation is real here; that is the
   point, and `GENERATION_ENABLED=off` stops it without a deploy.
 
+### Who may spend
+
+A QA box is a production build with a pretend till and a real painter: it
+takes no money and spends real money, at a public URL. So it refuses to boot
+with a real `GENERATION_PROVIDER` unless `QA_TESTER_EMAILS` lists who may
+cause spend, and the rule is checked where the money would start — checkout,
+the sandbox till, and the pipeline itself — not on a button. Both are plain
+settings, not secrets:
+
+```powershell
+npx vercel env add QA_TESTER_EMAILS production      # you@example.com,other@example.com
+npx vercel env add GENERATION_DAILY_CENTS production # e.g. 2000 = $20 a day, then the painter waits for tomorrow
+```
+
+`GENERATION_ENABLED=off` still stops everything without a deploy.
+
 ### Email
 
 The console provider writes the mail to a file on the server, and on Vercel

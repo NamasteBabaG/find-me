@@ -1,5 +1,6 @@
 import { newId } from "@/lib/ids";
-import { env, flag } from "@/lib/env";
+import { env, flag, spendGuard } from "@/lib/env";
+import { spendAllowedFor, underDailyCeiling } from "@/domain/spend-policy";
 import { isGenerating, type GameStatus } from "@/domain/order-state";
 import { BOARDS_PER_WORLD } from "@/domain/package";
 import { GameConfigSchema } from "@/domain/game/config";
@@ -70,6 +71,22 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
   if (!game || !game.childProfile) return;
   const status = statusOf(game);
   if (!RESUMABLE_STATUSES.includes(status)) return; // nothing to do (idempotent)
+
+  // The last gate before the model is paid. Checkout and the sandbox till check
+  // the same rule; this one is for anything that reaches PAID some other way.
+  const guard = spendGuard();
+  if (guard.appEnv === "qa" && guard.realGeneration) {
+    const owner = game.ownerId ? await c.db.user.findUnique({ where: { id: game.ownerId }, select: { email: true } }) : null;
+    if (!spendAllowedFor(guard, owner?.email)) {
+      console.warn(`[generate] ${gameId}: the owner is not a listed QA tester — leaving the job untouched`);
+      return;
+    }
+  }
+  const ceiling = env().GENERATION_DAILY_CENTS;
+  if (!underDailyCeiling(await spentTodayCents(c), ceiling)) {
+    console.warn(`[generate] ${gameId}: today's spending ceiling (${ceiling} cents) is reached — leaving the job for tomorrow`);
+    return;
+  }
 
   // One job row per game, at a deterministic id: two runners racing to create
   // one cannot end up with two, and two rows would mean two leases and no
@@ -321,6 +338,18 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
     if (isGenerating(now)) await transitionGame(c, gameId, "GENERATION_FAILED", SYSTEM, { error: message });
     c.analytics.track("generation_failed", { gameId, reason: message.slice(0, 80) });
   }
+}
+
+/** Every cent the painter and the judge put on the account since midnight UTC. */
+async function spentTodayCents(c: Container): Promise<number> {
+  const start = new Date();
+  start.setUTCHours(0, 0, 0, 0);
+  const [assets, spots] = await Promise.all([
+    c.db.asset.aggregate({ _sum: { costCents: true }, where: { createdAt: { gte: start } } }),
+    c.db.targetVariantAsset.aggregate({ _sum: { costCents: true }, where: { updatedAt: { gte: start } } }),
+  ]);
+  // Assets carry the render cost; the spot rows carry judging and rejected rolls. Counted both, the number errs high, which is the right way for a ceiling to err.
+  return (assets._sum.costCents ?? 0) + (spots._sum.costCents ?? 0);
 }
 
 /**

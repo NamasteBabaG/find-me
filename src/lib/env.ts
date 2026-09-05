@@ -73,6 +73,12 @@ const EnvSchema = z.object({
    * READY rather than DELIVERED, because the parent does not have it.
    */
   EMAIL_FALLBACK_TO: z.string().email().optional(),
+  /** On a QA box with a real painter: the only emails allowed to cause spend (comma-separated). */
+  QA_TESTER_EMAILS: z.string().default(""),
+  /** Real spend per UTC day, in US cents, after which the painter waits for tomorrow. 0 = no ceiling. */
+  GENERATION_DAILY_CENTS: z.coerce.number().int().min(0).default(0),
+  /** The commit this build was made from, for /api/health. Set at deploy time. */
+  APP_COMMIT: z.string().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -116,6 +122,11 @@ export function env(): Env {
       `EMAIL_PROVIDER is "${parsed.data.EMAIL_PROVIDER}" while GENERATION_PROVIDER is "${parsed.data.GENERATION_PROVIDER}": games would be generated and never delivered. Set EMAIL_PROVIDER=resend, or APP_ENV=qa.`,
     );
   }
+  // A QA box with a real painter and no tester list is a public URL that spends
+  // the project's money for anyone who finds it.
+  if (appEnv === "qa" && parsed.data.GENERATION_PROVIDER !== "mock" && !parsed.data.QA_TESTER_EMAILS.trim()) {
+    throw new Error("QA_TESTER_EMAILS is empty while GENERATION_PROVIDER is real: anyone with the URL could put renders on the project's account. List the testers, or set GENERATION_PROVIDER=mock.");
+  }
   cached = { ...parsed.data, APP_ENV: appEnv };
   return cached;
 }
@@ -127,6 +138,19 @@ export function isDev(): boolean {
 /** The real shop. A laptop and a staging box are not it. */
 export function isLiveShop(): boolean {
   return env().APP_ENV === "production";
+}
+
+/** The spend policy, from the environment. */
+export function spendGuard(): { appEnv: "development" | "qa" | "production"; realGeneration: boolean; testers: string[] } {
+  const e = env();
+  return {
+    // env() always fills APP_ENV in; the schema's optional is for parsing only.
+    appEnv: e.APP_ENV ?? "development",
+    realGeneration: e.GENERATION_PROVIDER !== "mock",
+    testers: e.QA_TESTER_EMAILS.split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean),
+  };
 }
 
 export function adminEmails(): string[] {
