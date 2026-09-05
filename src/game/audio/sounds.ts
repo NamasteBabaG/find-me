@@ -5,16 +5,91 @@ import type { SoundCue } from "@/domain/scene/schema";
  * every cue is a few oscillators/noise bursts. Swap for real samples later by
  * keeping the same `play(cue)` API.
  *
+ * Every cue a child hears more than once has several voicings, and the kit
+ * never plays the same one twice in a row: the third find of a board should
+ * not sound like the first. Each voicing is also nudged a little in pitch, so
+ * even the same phrase is never exactly the same phrase.
+ *
  * Browsers block audio until a user gesture: call `unlock()` from the
  * "פתיחת ההרפתקה" button.
  */
 type Ctx = AudioContext;
+
+/** A note in a phrase: frequency, length, offset from the phrase start, voice and loudness. */
+type Note = readonly [freq: number, dur: number, at: number, type: OscillatorType, vol: number];
+
+/** Frequencies of the notes the phrases are written in (equal temperament, A4 = 440). */
+const N = {
+  C5: 523.25,
+  D5: 587.33,
+  E5: 659.25,
+  F5: 698.46,
+  G5: 783.99,
+  A5: 880,
+  B5: 987.77,
+  C6: 1046.5,
+  D6: 1174.66,
+  E6: 1318.51,
+  G6: 1567.98,
+  A6: 1760,
+  C7: 2093,
+};
+
+/** "Found!" — four short rising phrases. */
+const SUCCESS: readonly (readonly Note[])[] = [
+  [
+    [N.C5, 0.12, 0, "sine", 0.35],
+    [N.E5, 0.12, 0.1, "sine", 0.35],
+    [N.G5, 0.2, 0.2, "sine", 0.4],
+  ],
+  [
+    [N.D5, 0.1, 0, "triangle", 0.3],
+    [N.G5, 0.1, 0.08, "triangle", 0.3],
+    [N.B5, 0.1, 0.16, "triangle", 0.32],
+    [N.D6, 0.24, 0.24, "sine", 0.38],
+  ],
+  [
+    [N.G5, 0.16, 0, "sine", 0.34],
+    [N.C6, 0.3, 0.14, "sine", 0.4],
+    [N.E6, 0.3, 0.14, "sine", 0.12],
+  ],
+  [
+    [N.E5, 0.09, 0, "sine", 0.3],
+    [N.G5, 0.09, 0.07, "sine", 0.3],
+    [N.C6, 0.09, 0.14, "sine", 0.32],
+    [N.E6, 0.22, 0.21, "sine", 0.36],
+    [N.G6, 0.22, 0.21, "sine", 0.1],
+  ],
+];
+
+/** The board is done — three fanfares. */
+const FANFARE: readonly (readonly Note[])[] = [
+  [N.C5, N.E5, N.G5, N.C6, N.G5, N.C6].map((f, i): Note => [f, 0.16, i * 0.12, i % 2 ? "triangle" : "sine", 0.4]),
+  [N.G5, N.C6, N.E6, N.G6, N.E6, N.G6].map((f, i): Note => [f, 0.15, i * 0.11, i % 2 ? "sine" : "triangle", 0.38]),
+  [
+    [N.E5, 0.14, 0, "triangle", 0.36],
+    [N.G5, 0.14, 0.12, "triangle", 0.36],
+    [N.C6, 0.14, 0.24, "sine", 0.38],
+    [N.E6, 0.3, 0.36, "sine", 0.4],
+    [N.C6, 0.3, 0.36, "sine", 0.16],
+    [N.G6, 0.3, 0.6, "sine", 0.34],
+  ],
+];
+
+/** A hint or a bonus — three sparkles. */
+const TWINKLE: readonly (readonly Note[])[] = [
+  [N.E6, N.G6, N.C7].map((f, i): Note => [f, 0.1, i * 0.07, "sine", 0.25]),
+  [N.C7, N.G6, N.E6, N.G6].map((f, i): Note => [f, 0.09, i * 0.06, "sine", 0.22]),
+  [N.D6, N.A6, N.D6, N.A6].map((f, i): Note => [f, 0.08, i * 0.065, "triangle", 0.2]),
+];
 
 export class SoundManager {
   private ctx: Ctx | null = null;
   private master: GainNode | null = null;
   private ambient: { source: AudioBufferSourceNode; gain: GainNode } | null = null;
   private _muted = false;
+  /** Which voicing each cue played last, so the next one is different. */
+  private last: Partial<Record<SoundCue, number>> = {};
 
   get muted(): boolean {
     return this._muted;
@@ -51,25 +126,29 @@ export class SoundManager {
     const t = this.ctx.currentTime;
     switch (cue) {
       case "pop":
-        this.blip(520, 0.08, t, "sine", 0.4);
+        this.blip(between(440, 640), 0.08, t, "sine", 0.4);
         break;
       case "tap":
-        this.blip(300, 0.05, t, "triangle", 0.25);
+        this.blip(between(250, 360), 0.05, t, "triangle", 0.25);
         break;
       case "success":
-        this.blip(523, 0.12, t, "sine", 0.35);
-        this.blip(659, 0.12, t + 0.1, "sine", 0.35);
-        this.blip(784, 0.2, t + 0.2, "sine", 0.4);
+        this.phrase(SUCCESS[this.pick(cue, SUCCESS.length)]!, t, semitones(between(-2, 2)));
         break;
       case "fanfare":
-        [523, 659, 784, 1046, 784, 1046].forEach((f, i) => this.blip(f, 0.16, t + i * 0.12, i % 2 ? "triangle" : "sine", 0.4));
+        this.phrase(FANFARE[this.pick(cue, FANFARE.length)]!, t, semitones(between(-1, 1)));
         break;
       case "twinkle":
-        [1318, 1568, 2093].forEach((f, i) => this.blip(f, 0.1, t + i * 0.07, "sine", 0.25));
+        this.phrase(TWINKLE[this.pick(cue, TWINKLE.length)]!, t, semitones(between(-1, 2)));
         break;
-      case "boing":
-        this.sweep(600, 150, 0.25, t, "sine", 0.4);
+      case "boing": {
+        const v = this.pick(cue, 3);
+        if (v === 0) this.sweep(600, 150, 0.25, t, "sine", 0.4);
+        else if (v === 1) {
+          this.sweep(720, 220, 0.18, t, "sine", 0.38);
+          this.sweep(520, 160, 0.2, t + 0.16, "sine", 0.3);
+        } else this.sweep(480, 120, 0.32, t, "triangle", 0.34);
         break;
+      }
       case "chirp":
         this.sweep(800, 1600, 0.12, t, "square", 0.15);
         this.sweep(800, 1600, 0.12, t + 0.15, "square", 0.15);
@@ -139,6 +218,20 @@ export class SoundManager {
     this.ambient = null;
   }
 
+  /** A voicing for this cue that is not the one it played last time. */
+  private pick(cue: SoundCue, count: number): number {
+    if (count < 2) return 0;
+    const previous = this.last[cue];
+    let next = Math.floor(Math.random() * count);
+    if (next === previous) next = (next + 1 + Math.floor(Math.random() * (count - 1))) % count;
+    this.last[cue] = next;
+    return next;
+  }
+
+  private phrase(notes: readonly Note[], at: number, pitch: number): void {
+    for (const [freq, dur, offset, type, vol] of notes) this.blip(freq * pitch, dur, at + offset, type, vol);
+  }
+
   private blip(freq: number, dur: number, at: number, type: OscillatorType, vol: number): void {
     if (!this.ctx || !this.master) return;
     const osc = this.ctx.createOscillator();
@@ -182,6 +275,16 @@ export class SoundManager {
     src.connect(filter).connect(gain).connect(this.master);
     src.start(at);
   }
+}
+
+/** A random number in [lo, hi). */
+function between(lo: number, hi: number): number {
+  return lo + Math.random() * (hi - lo);
+}
+
+/** The frequency ratio of `n` semitones. */
+function semitones(n: number): number {
+  return Math.pow(2, n / 12);
 }
 
 let shared: SoundManager | null = null;
