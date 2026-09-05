@@ -65,8 +65,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the tents.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "On the field, just behind the blue knight's horse.",
+            "he": "על המגרש, ממש מאחורי הסוס של האביר הכחול."
           }
         },
         {
@@ -80,8 +80,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the tents.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "On the far side of the field, below the row of tents.",
+            "he": "בצד הרחוק של המגרש, מתחת לשורת האוהלים."
           }
         }
       ]
@@ -126,8 +126,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the shields.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "On the rack of shields on the left, up by the helmets.",
+            "he": "על מתלה המגנים משמאל, למעלה ליד הקסדות."
           }
         },
         {
@@ -141,8 +141,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the shields.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Lower on the shield rack, at the left edge, by the purple shield.",
+            "he": "נמוך יותר על מתלה המגנים, בקצה השמאלי, ליד המגן הסגול."
           }
         }
       ]
@@ -187,8 +187,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the fence.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "At the fence in the middle of the field, where the little dog runs.",
+            "he": "ליד הגדר באמצע המגרש, איפה שהכלב הקטן רץ."
           }
         },
         {
@@ -202,8 +202,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the fence.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "At the fence on the right, near the tables of the feast.",
+            "he": "ליד הגדר מימין, קרוב לשולחנות הסעודה."
           }
         }
       ]

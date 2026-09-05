@@ -65,8 +65,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the chest.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Just left of the open treasure chest, in the middle of the beach.",
+            "he": "ממש משמאל לתיבת האוצר הפתוחה, באמצע החוף."
           }
         },
         {
@@ -80,8 +80,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the chest.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "By the open lid of the treasure chest.",
+            "he": "ליד המכסה הפתוח של תיבת האוצר."
           }
         }
       ]
@@ -126,8 +126,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the barrels.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "On the wooden jetty on the right, by the barrels.",
+            "he": "על מזח העץ מימין, ליד החביות."
           }
         },
         {
@@ -141,8 +141,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the barrels.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Further along the jetty, by the stacked crates.",
+            "he": "רחוק יותר על המזח, ליד הארגזים הערומים."
           }
         }
       ]
@@ -187,8 +187,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the rowboat.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Bottom left, at the pointed end of the upside-down boat.",
+            "he": "למטה משמאל, בקצה המחודד של הסירה ההפוכה."
           }
         },
         {
@@ -202,8 +202,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the rowboat.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Bottom left, at the open end of the upside-down boat.",
+            "he": "למטה משמאל, בקצה הפתוח של הסירה ההפוכה."
           }
         }
       ]

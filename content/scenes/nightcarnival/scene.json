@@ -65,8 +65,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the wheel.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Right below the big wheel, in the crowd.",
+            "he": "ממש מתחת לגלגל הענק, בתוך הקהל."
           }
         },
         {
@@ -80,8 +80,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the wheel.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Below the big wheel, on the carousel side.",
+            "he": "מתחת לגלגל הענק, בצד של הקרוסלה."
           }
         }
       ]
@@ -126,8 +126,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the mask.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "In the middle, next to the dancer in the purple feathers.",
+            "he": "באמצע, ליד הרקדנית בנוצות הסגולות."
           }
         },
         {
@@ -141,8 +141,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the mask.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "On the left, among the dancers near the lantern.",
+            "he": "משמאל, בין הרקדנים ליד הפנס."
           }
         }
       ]
@@ -187,8 +187,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the stall.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Bottom right, in front of the toffee apple stall.",
+            "he": "למטה מימין, מול דוכן תפוחי הסוכר."
           }
         },
         {
@@ -202,8 +202,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the stall.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Behind the counter of the toffee apple stall.",
+            "he": "מאחורי הדלפק של דוכן תפוחי הסוכר."
           }
         }
       ]

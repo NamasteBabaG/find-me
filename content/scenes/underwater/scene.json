@@ -65,8 +65,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the seahorse.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "On the left, riding between the two coral towers.",
+            "he": "משמאל, בין שני מגדלי האלמוג."
           }
         },
         {
@@ -80,8 +80,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the seahorse.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "In the middle, above the ship's mast, by the purple tower.",
+            "he": "באמצע, מעל התורן של הספינה, ליד המגדל הסגול."
           }
         }
       ]
@@ -126,8 +126,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the shipwreck.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "On the deck of the sunken ship, near the middle.",
+            "he": "על הסיפון של הספינה השקועה, ליד האמצע."
           }
         },
         {
@@ -141,8 +141,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the shipwreck.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "At the back of the ship, on the high deck.",
+            "he": "בחלק האחורי של הספינה, על הסיפון הגבוה."
           }
         }
       ]
@@ -187,8 +187,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the coral.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Far left, low down, in a hollow near the glowing lantern.",
+            "he": "בקצה השמאלי, למטה, בגומחה ליד הפנס הזוהר."
           }
         },
         {
@@ -202,8 +202,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the coral.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "On the right edge, just past the back of the ship.",
+            "he": "בקצה הימני, ממש אחרי החלק האחורי של הספינה."
           }
         }
       ]

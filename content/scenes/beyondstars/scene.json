@@ -65,8 +65,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the rover.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Behind the big moon rover, by the little buggy.",
+            "he": "מאחורי רכב הירח הגדול, ליד הבאגי הקטן."
           }
         },
         {
@@ -80,8 +80,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the rover.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "On the left, by the rover's antenna.",
+            "he": "משמאל, ליד האנטנה של רכב הירח."
           }
         }
       ]
@@ -126,8 +126,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the crates.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "In the middle, by the crates of glowing rocks near the flag.",
+            "he": "באמצע, ליד ארגזי האבנים הזוהרות קרוב לדגל."
           }
         },
         {
@@ -141,8 +141,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the crates.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Right of the flag, by the crates near the glass dome.",
+            "he": "מימין לדגל, ליד הארגזים קרוב לכיפת הזכוכית."
           }
         }
       ]
@@ -187,8 +187,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the lander.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Up near the lander, under its left leg.",
+            "he": "למעלה ליד הנחתת, מתחת לרגל השמאלית שלה."
           }
         },
         {
@@ -202,8 +202,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the lander.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Under the lander's right leg, next to the glass dome.",
+            "he": "מתחת לרגל הימנית של הנחתת, ליד כיפת הזכוכית."
           }
         }
       ]

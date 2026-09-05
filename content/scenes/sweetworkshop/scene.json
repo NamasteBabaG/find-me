@@ -65,8 +65,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the river.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "On the left bank of the chocolate river, just below the little bridge.",
+            "he": "בגדה השמאלית של נהר השוקולד, ממש מתחת לגשר הקטן."
           }
         },
         {
@@ -80,8 +80,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the river.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Right under the little bridge, where the boats go.",
+            "he": "ממש מתחת לגשר הקטן, איפה שהסירות עוברות."
           }
         }
       ]
@@ -126,8 +126,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the lollipop.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Bottom right, between the giant lollipops and the candy cane crate.",
+            "he": "למטה מימין, בין הסוכריות הענקיות לארגז סוכריות המקל."
           }
         },
         {
@@ -141,8 +141,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the lollipop.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Top right, under the pink lollipops by the biscuit belt.",
+            "he": "למעלה מימין, מתחת לסוכריות הוורודות ליד מסוע העוגיות."
           }
         }
       ]
@@ -187,8 +187,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the crate.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "The crate of candy canes just right of the river.",
+            "he": "ארגז סוכריות המקל ממש מימין לנהר."
           }
         },
         {
@@ -202,8 +202,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the crate.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Bottom left, beside the big chocolate cauldron.",
+            "he": "למטה משמאל, ליד קדרת השוקולד הגדולה."
           }
         }
       ]

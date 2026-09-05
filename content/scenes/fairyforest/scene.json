@@ -65,8 +65,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the mushroom.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Bottom left, inside the ring of glowing mushrooms.",
+            "he": "למטה משמאל, בתוך מעגל הפטריות הזוהרות."
           }
         },
         {
@@ -80,8 +80,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the mushroom.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Bottom right, beside the red spotted mushroom house.",
+            "he": "למטה מימין, ליד בית הפטרייה האדום המנוקד."
           }
         }
       ]
@@ -126,8 +126,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the door.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Just right of the stream, under the big hollow tree.",
+            "he": "ממש מימין לנחל, מתחת לעץ החלול הגדול."
           }
         },
         {
@@ -141,8 +141,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the door.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Far left, low down, where the rabbit sits by a little door.",
+            "he": "בקצה השמאלי, למטה, איפה שהארנב יושב ליד דלת קטנה."
           }
         }
       ]
@@ -187,8 +187,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the hollow.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Inside the big lit-up tree on the right.",
+            "he": "בתוך העץ הגדול והמואר מימין."
           }
         },
         {
@@ -202,8 +202,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the hollow.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "On the left, halfway up, near the red mushroom cap.",
+            "he": "משמאל, באמצע הגובה, ליד כובע הפטרייה האדום."
           }
         }
       ]

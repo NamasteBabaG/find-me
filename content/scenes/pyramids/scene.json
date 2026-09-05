@@ -65,8 +65,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the blocks.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "On the left, among the stacked stone blocks near the wooden crane.",
+            "he": "משמאל, בין אבני הבנייה הערומות ליד מנוף העץ."
           }
         },
         {
@@ -80,8 +80,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the blocks.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "On the right, by the stone blocks near the striped tent.",
+            "he": "מימין, ליד אבני הבנייה קרוב לאוהל המפוספס."
           }
         }
       ]
@@ -126,8 +126,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the ramp.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "At the foot of the long ramp, in the middle of the picture.",
+            "he": "בתחתית הרמפה הארוכה, באמצע התמונה."
           }
         },
         {
@@ -141,8 +141,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the ramp.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Halfway up the ramp, near the block being pulled.",
+            "he": "באמצע הרמפה, ליד האבן שנגררת."
           }
         }
       ]
@@ -187,8 +187,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the sled.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "The sled at the bottom of the ramp.",
+            "he": "המזחלת בתחתית הרמפה."
           }
         },
         {
@@ -202,8 +202,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the sled.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "The loaded sled on the left, below the ramp.",
+            "he": "המזחלת העמוסה משמאל, מתחת לרמפה."
           }
         }
       ]

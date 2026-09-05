@@ -160,6 +160,29 @@ function mentionsName(t: LocalizedText): boolean {
   return t.en.includes("{name}") && t.he.includes("{name}");
 }
 
+/**
+ * Is this hint worth showing a child?
+ *
+ * 108 of 162 hiding spots shipped with "Look near the banner." / "חפשו ליד
+ * המקום הזה." — the scaffold a world is authored from, never replaced. The
+ * mission already names what she hides by; the hint is the sentence that
+ * narrows the picture, so it has to say something the mission does not.
+ * Returns the problem, or null.
+ */
+export function hintProblem(hint: LocalizedText, mission: LocalizedText, item: LocalizedText): string | null {
+  const en = hint.en.trim();
+  const he = hint.he.trim();
+  if (en.length < 12 || he.length < 8) return "too short to narrow the search";
+  // The scaffold is "Look near the <target id>." — one word. "Look near the
+  // flower seller at the bottom left." is a real hint and stays.
+  if (/^Look near the \w+\.?$/i.test(en)) return `"${en}" is the authoring placeholder`;
+  if (/^חפשו ליד המקום הזה\.?$/.test(he)) return `"${he}" is the authoring placeholder`;
+  const strip = (t: string) => t.replace(/\{name\}/g, "").replace(/[.!?,]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+  if (strip(en) === strip(mission.en) || strip(he) === strip(mission.he)) return "repeats the mission word for word";
+  if (strip(en) === strip(item.en) || strip(he) === strip(item.he)) return "only names the item again";
+  return null;
+}
+
 export function validateSceneDefinition(input: unknown): SceneValidation & { scene?: SceneDefinition } {
   const parsed = SceneDefinitionSchema.safeParse(input);
   if (!parsed.success) {
@@ -189,6 +212,10 @@ export function validateSceneDefinition(input: unknown): SceneValidation & { sce
       if (d > slot.hintZone.r) {
         errors.push(`slot "${slot.id}": hintZone does not contain the anchor (distance ${d.toFixed(3)} > r ${slot.hintZone.r})`);
       }
+      // A hint the child cannot use is a hole in the game, not a style note:
+      // it fails an active scene outright and only warns while authoring.
+      const hint = hintProblem(slot.hintText, target.mission, target.item);
+      if (hint) (scene.active ? errors : warnings).push(`slot "${slot.id}": hint ${hint}`);
       if (slot.scale > 0.08) warnings.push(`slot "${slot.id}": scale ${slot.scale} is large; children should have to look`);
       if (slot.scale < 0.02) warnings.push(`slot "${slot.id}": scale ${slot.scale} may be too small to recognise a face`);
     }

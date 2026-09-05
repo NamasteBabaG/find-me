@@ -65,8 +65,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the horses.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "In the middle, between the spotted horse and the water trough.",
+            "he": "באמצע, בין הסוס המנוקד לשוקת המים."
           }
         },
         {
@@ -80,8 +80,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the horses.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Left of the middle, by the black horse at the rail.",
+            "he": "משמאל לאמצע, ליד הסוס השחור במעקה."
           }
         }
       ]
@@ -126,8 +126,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the porch.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "On the porch of the green store on the left, by the barrel.",
+            "he": "על המרפסת של החנות הירוקה משמאל, ליד החבית."
           }
         },
         {
@@ -141,8 +141,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the porch.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "At the far left end of that porch.",
+            "he": "בקצה השמאלי הרחוק של אותה מרפסת."
           }
         }
       ]
@@ -187,8 +187,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the wagon.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "At the front wheel of the covered wagon, right of the trough.",
+            "he": "ליד הגלגל הקדמי של העגלה המכוסה, מימין לשוקת."
           }
         },
         {
@@ -202,8 +202,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the wagon.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "At the back of the covered wagon, among the luggage.",
+            "he": "בחלק האחורי של העגלה המכוסה, בין המזוודות."
           }
         }
       ]

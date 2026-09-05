@@ -65,8 +65,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the slide.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Near the bottom of the long ice slide, on the left.",
+            "he": "ליד סוף מגלשת הקרח הארוכה, בצד שמאל."
           }
         },
         {
@@ -80,8 +80,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the slide.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Higher up the slide, on the left, by the balcony.",
+            "he": "גבוה יותר על המגלשה, משמאל, ליד המרפסת."
           }
         }
       ]
@@ -126,8 +126,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the fountain.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "In the middle of the rink, just right of the frozen fountain, near the snowman.",
+            "he": "באמצע המשטח, ממש מימין למזרקה הקפואה, ליד איש השלג."
           }
         },
         {
@@ -141,8 +141,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the fountain.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Left of the fountain's icy base.",
+            "he": "משמאל לבסיס הקפוא של המזרקה."
           }
         }
       ]
@@ -187,8 +187,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the pillar.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Top right, by the stairs and the tall ice pillars.",
+            "he": "למעלה מימין, ליד המדרגות ועמודי הקרח הגבוהים."
           }
         },
         {
@@ -202,8 +202,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the pillar.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "On the right, behind the white reindeer pulling the sleigh.",
+            "he": "מימין, מאחורי האיילים הלבנים שמושכים את המזחלת."
           }
         }
       ]

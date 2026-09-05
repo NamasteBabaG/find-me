@@ -65,8 +65,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the nest.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "At the right edge of the big egg nest.",
+            "he": "בקצה הימני של קן הביצים הגדול."
           }
         },
         {
@@ -80,8 +80,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the nest.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "On the left side of the nest, between the eggs.",
+            "he": "בצד השמאלי של הקן, בין הביצים."
           }
         }
       ]
@@ -126,8 +126,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the fern.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "On the left, by the tall ferns beside the explorer in the yellow hat.",
+            "he": "משמאל, ליד השרכים הגבוהים ליד החוקר בכובע הצהוב."
           }
         },
         {
@@ -141,8 +141,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the fern.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "On the right, by the stream, near the stegosaurus.",
+            "he": "מימין, ליד הנחל, קרוב לסטגוזאורוס."
           }
         }
       ]
@@ -187,8 +187,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the log.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "The fallen log in the middle, near its hollow end.",
+            "he": "הגזע שנפל באמצע, ליד הקצה החלול שלו."
           }
         },
         {
@@ -202,8 +202,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the log.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "The left end of the fallen log.",
+            "he": "הקצה השמאלי של הגזע שנפל."
           }
         }
       ]

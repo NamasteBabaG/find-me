@@ -65,8 +65,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the planter.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "In the middle of the plaza, by a round planter near the boy in the hat.",
+            "he": "באמצע הכיכר, ליד עציץ עגול קרוב לילד עם הכובע."
           }
         },
         {
@@ -80,8 +80,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the planter.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Right of the middle, at the planter beside the white pod.",
+            "he": "מימין לאמצע, ליד העציץ שליד הרחפן הלבן."
           }
         }
       ]
@@ -126,8 +126,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the pod.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "In front of the white delivery pod, on its landing pad.",
+            "he": "מול רחפן המשלוחים הלבן, על משטח הנחיתה שלו."
           }
         },
         {
@@ -141,8 +141,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the pod.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "At the windshield of the white delivery pod.",
+            "he": "ליד השמשה של רחפן המשלוחים הלבן."
           }
         }
       ]
@@ -187,8 +187,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the lift.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "On the right edge, in the glass tube lift, the lower cabin.",
+            "he": "בקצה הימני, במעלית צינור הזכוכית, בתא התחתון."
           }
         },
         {
@@ -202,8 +202,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the lift.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "On the right edge, high up in the glass tube lift.",
+            "he": "בקצה הימני, גבוה במעלית צינור הזכוכית."
           }
         }
       ]

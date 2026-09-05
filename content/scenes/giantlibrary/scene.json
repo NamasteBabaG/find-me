@@ -65,8 +65,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the ladder.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "On the ladder leaning right beside the big globe.",
+            "he": "על הסולם שנשען ממש ליד הגלובוס הגדול."
           }
         },
         {
@@ -80,8 +80,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the ladder.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "On the right, on the ladder by the blue books, near the giant's chair.",
+            "he": "מימין, על הסולם ליד הספרים הכחולים, קרוב לכורסה של הענק."
           }
         }
       ]
@@ -126,8 +126,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the globe.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Far left, at the foot of the globe, by the open door.",
+            "he": "בקצה השמאלי, למרגלות הגלובוס, ליד הדלת הפתוחה."
           }
         },
         {
@@ -141,8 +141,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the globe.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Under the globe's stand, among the children on the floor.",
+            "he": "מתחת למעמד של הגלובוס, בין הילדים על הרצפה."
           }
         }
       ]
@@ -187,8 +187,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the book.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "The glowing doorway with the lantern, right of the globe.",
+            "he": "הפתח הזוהר עם הפנס, מימין לגלובוס."
           }
         },
         {
@@ -202,8 +202,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the book.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Just below that doorway, before the book tent.",
+            "he": "ממש מתחת לפתח הזה, לפני אוהל הספר."
           }
         }
       ]

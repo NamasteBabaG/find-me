@@ -65,8 +65,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the bridge.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "The rope bridge below the round tower, above the waterfall.",
+            "he": "גשר החבלים מתחת למגדל העגול, מעל המפל."
           }
         },
         {
@@ -80,8 +80,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the bridge.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "The rope bridge to the right of the round tower.",
+            "he": "גשר החבלים מימין למגדל העגול."
           }
         }
       ]
@@ -126,8 +126,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the airship.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Bottom right, in the basket of the striped blue airship.",
+            "he": "למטה מימין, בסל של ספינת האוויר הכחולה המפוספסת."
           }
         },
         {
@@ -141,8 +141,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the airship.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Bottom left, on the deck of the purple airship.",
+            "he": "למטה משמאל, על הסיפון של ספינת האוויר הסגולה."
           }
         }
       ]
@@ -187,8 +187,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the cloud.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "On the little balcony of the house on the left, among the flowers.",
+            "he": "על המרפסת הקטנה של הבית משמאל, בין הפרחים."
           }
         },
         {
@@ -202,8 +202,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the cloud.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Bottom left corner, at the front of the purple airship.",
+            "he": "בפינה השמאלית התחתונה, בחרטום של ספינת האוויר הסגולה."
           }
         }
       ]

@@ -65,8 +65,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the hoard.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "In the middle of the gold, between the little blue dragon and the big paw.",
+            "he": "באמצע הזהב, בין הדרקון הכחול הקטן לכף הרגל הגדולה."
           }
         },
         {
@@ -80,8 +80,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the hoard.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Bottom right, on the coins next to the purple baby dragon.",
+            "he": "למטה מימין, על המטבעות ליד גור הדרקון הסגול."
           }
         }
       ]
@@ -126,8 +126,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the crystal.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "On the left wall, above the rope bridge, among the tall purple crystals.",
+            "he": "על הקיר השמאלי, מעל גשר החבלים, בין הגבישים הסגולים הגבוהים."
           }
         },
         {
@@ -141,8 +141,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the crystal.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "On the rope bridge at the bottom left, near a lantern.",
+            "he": "על גשר החבלים למטה משמאל, ליד פנס."
           }
         }
       ]
@@ -187,8 +187,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the wing.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Under the wing, where it makes a little tent over the gold.",
+            "he": "מתחת לכנף, איפה שהיא עושה אוהל קטן מעל הזהב."
           }
         },
         {
@@ -202,8 +202,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the wing.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Up on the left edge of the wing, beside a lantern.",
+            "he": "למעלה בקצה השמאלי של הכנף, ליד פנס."
           }
         }
       ]

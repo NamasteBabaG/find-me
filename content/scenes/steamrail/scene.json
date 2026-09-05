@@ -65,8 +65,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the trolley.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "In the middle, in front of the pile of trunks on the trolley.",
+            "he": "באמצע, מול ערימת המזוודות שעל העגלה."
           }
         },
         {
@@ -80,8 +80,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the trolley.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "On the left side of the luggage trolley, by the big trunks.",
+            "he": "בצד השמאלי של עגלת המזוודות, ליד התיקים הגדולים."
           }
         }
       ]
@@ -126,8 +126,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the clock.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "At the foot of the stone pillar, right under the big clock.",
+            "he": "למרגלות עמוד האבן, ממש מתחת לשעון הגדול."
           }
         },
         {
@@ -141,8 +141,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the clock.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Just right of the clock's pillar, in the crowd.",
+            "he": "ממש מימין לעמוד של השעון, בתוך הקהל."
           }
         }
       ]
@@ -187,8 +187,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the wheels.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "By the big red wheels of the engine, near the steam.",
+            "he": "ליד הגלגלים האדומים הגדולים של הקטר, קרוב לאדים."
           }
         },
         {
@@ -202,8 +202,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the wheels.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "At the very front of the engine, near the cat.",
+            "he": "ממש בחזית הקטר, קרוב לחתול."
           }
         }
       ]

@@ -65,8 +65,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the bigbot.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "At the feet of the giant robot, by the little ladder.",
+            "he": "למרגלות הרובוט הענק, ליד הסולם הקטן."
           }
         },
         {
@@ -80,8 +80,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the bigbot.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Left of the giant robot's feet, by the orange cart.",
+            "he": "משמאל לרגלי הרובוט הענק, ליד העגלה הכתומה."
           }
         }
       ]
@@ -126,8 +126,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the bench.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "In the middle of the long workbench, by the small blue robot.",
+            "he": "באמצע שולחן העבודה הארוך, ליד הרובוט הכחול הקטן."
           }
         },
         {
@@ -141,8 +141,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the bench.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "At the left end of the workbench, near the open book.",
+            "he": "בקצה השמאלי של שולחן העבודה, ליד הספר הפתוח."
           }
         }
       ]
@@ -187,8 +187,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the crates.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Right of the middle, in front of the crates, near the dog.",
+            "he": "מימין לאמצע, מול הארגזים, קרוב לכלב."
           }
         },
         {
@@ -202,8 +202,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the crates.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "On the right, among the crates stacked by the wall.",
+            "he": "מימין, בין הארגזים הערומים ליד הקיר."
           }
         }
       ]

@@ -65,8 +65,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the banner.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Right of the big archway, where the ivy climbs the wall.",
+            "he": "מימין לשער הגדול, איפה שהקיסוס מטפס על הקיר."
           }
         },
         {
@@ -80,8 +80,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the banner.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "On the left tower, up by the blue and red flags.",
+            "he": "על המגדל השמאלי, למעלה ליד הדגלים הכחולים והאדומים."
           }
         }
       ]
@@ -126,8 +126,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the swan.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "On the left bank of the moat, among the white flowers.",
+            "he": "בגדה השמאלית של התעלה, בין הפרחים הלבנים."
           }
         },
         {
@@ -141,8 +141,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the swan.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "On the right bank of the moat, where the swans come to eat.",
+            "he": "בגדה הימנית של התעלה, איפה שהברבורים באים לאכול."
           }
         }
       ]
@@ -187,8 +187,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the barrel.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Between the moat and the bonfire, a barrel with a lid.",
+            "he": "בין התעלה למדורה, חבית עם מכסה."
           }
         },
         {
@@ -202,8 +202,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look near the barrel.",
-            "he": "חפשו ליד המקום הזה."
+            "en": "Under the orange tent on the right, by the stacked barrels.",
+            "he": "מתחת לאוהל הכתום מימין, ליד החביות הערומות."
           }
         }
       ]
