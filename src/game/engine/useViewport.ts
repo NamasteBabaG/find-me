@@ -46,6 +46,14 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
   const [isDragging, setDragging] = useState(false);
   const transformRef = useRef(transform);
   transformRef.current = transform;
+  // Every method below reads the viewport through this ref, never through the
+  // `viewport` state in its closure. The scene player keeps the API object it
+  // was handed at first layout and calls focusOn() from it for hints and
+  // finds; with closures over the state, a phone turned sideways mid-mission
+  // kept centring on a 1280×720 screen it no longer had, and the third hint
+  // pointed the camera at a child who was off the edge of the picture.
+  const viewportRef = useRef(viewport);
+  viewportRef.current = viewport;
 
   const fit = useMemo(() => (viewport.width && viewport.height ? fitScale(viewport, stage, chooseFitMode(viewport, stage)) : 1), [viewport, stage]);
   const fitRef = useRef(fit);
@@ -66,13 +74,13 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
 
   const apply = useCallback(
     (t: ViewTransform) => {
-      const vp = viewport;
+      const vp = viewportRef.current;
       const f = fitRef.current;
       const next = vp.width ? clampTransform(t, vp, stage, f, f * MAX_ZOOM_FACTOR) : t;
       transformRef.current = next;
       setTransform(next);
     },
-    [viewport, stage],
+    [stage],
   );
 
   // Measure the container and fit on first layout / resize.
@@ -84,6 +92,7 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
       const rect = entries[0]?.contentRect;
       if (!rect || !rect.width || !rect.height) return;
       const vp = { width: rect.width, height: rect.height };
+      viewportRef.current = vp;
       setViewport(vp);
       const f = fitScale(vp, stage, chooseFitMode(vp, stage));
       fitRef.current = f;
@@ -109,7 +118,7 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
     (target: ViewTransform, durationMs: number) => {
       cancelAnim();
       const from = transformRef.current;
-      const vp = viewport;
+      const vp = viewportRef.current;
       const f = fitRef.current;
       const to = vp.width ? clampTransform(target, vp, stage, f, f * MAX_ZOOM_FACTOR) : target;
       if (durationMs <= 0 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -128,7 +137,7 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
       };
       raf.current = requestAnimationFrame(step);
     },
-    [apply, stage, viewport],
+    [apply, stage],
   );
 
   const local = (clientX: number, clientY: number) => {
@@ -215,7 +224,7 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
           g.lastTap = 0;
           const p = local(e.clientX, e.clientY);
           const t = transformRef.current;
-          if (t.scale > fitRef.current * 2.2) animateTo(centeredTransform(viewport, stage, fitRef.current), 300);
+          if (t.scale > fitRef.current * 2.2) animateTo(centeredTransform(viewportRef.current, stage, fitRef.current), 300);
           else animateTo(zoomAt(t, p.x, p.y, 2), 300);
         } else {
           g.lastTap = now;
@@ -243,20 +252,21 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
 
   const zoomBy = useCallback(
     (factor: number) => {
-      animateTo(zoomAt(transformRef.current, viewport.width / 2, viewport.height / 2, factor), 240);
+      const vp = viewportRef.current;
+      animateTo(zoomAt(transformRef.current, vp.width / 2, vp.height / 2, factor), 240);
     },
-    [animateTo, viewport],
+    [animateTo],
   );
 
   const reset = useCallback(() => {
-    animateTo(centeredTransform(viewport, stage, fitRef.current), 320);
-  }, [animateTo, viewport, stage]);
+    animateTo(centeredTransform(viewportRef.current, stage, fitRef.current), 320);
+  }, [animateTo, stage]);
 
   const focusOn = useCallback(
     (nx: number, ny: number, zoomFactor: number, durationMs = 500) => {
-      animateTo(centerOnNormalized(nx, ny, fitRef.current * zoomFactor, viewport, stage), durationMs);
+      animateTo(centerOnNormalized(nx, ny, fitRef.current * zoomFactor, viewportRef.current, stage), durationMs);
     },
-    [animateTo, viewport, stage],
+    [animateTo, stage],
   );
 
   return {

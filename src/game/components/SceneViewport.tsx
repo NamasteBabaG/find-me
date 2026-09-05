@@ -170,10 +170,13 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scene.slug]);
 
+  // Handed over at first layout and again on every resize: the methods read
+  // live state now, but the snapshot fields (transform, fit, viewport) on the
+  // object the player keeps would otherwise describe a screen that is gone.
   useEffect(() => {
     if (api.viewport.width > 0) onReady?.(api);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api.viewport.width > 0]);
+  }, [api.viewport.width, api.viewport.height]);
 
   const current = currentTargetId(mission);
   const currentPlaced = placedTargets.find((p) => p.target.id === current) ?? null;
