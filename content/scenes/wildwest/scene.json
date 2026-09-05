@@ -66,7 +66,7 @@
           },
           "hintText": {
             "en": "In the middle, between the spotted horse and the water trough.",
-            "he": "באמצע, בין הסוס המנוקד לשוקת המים."
+            "he": "באמצע, בין הסוס המנוקד למיכל המים של הסוסים."
           }
         },
         {
@@ -81,7 +81,7 @@
           },
           "hintText": {
             "en": "Left of the middle, by the black horse at the rail.",
-            "he": "משמאל לאמצע, ליד הסוס השחור במעקה."
+            "he": "משמאל לאמצע, ליד הסוס השחור הקשור."
           }
         }
       ]
@@ -188,7 +188,7 @@
           },
           "hintText": {
             "en": "At the front wheel of the covered wagon, right of the trough.",
-            "he": "ליד הגלגל הקדמי של העגלה המכוסה, מימין לשוקת."
+            "he": "ליד הגלגל הקדמי של העגלה המכוסה, מימין למיכל המים."
           }
         },
         {
