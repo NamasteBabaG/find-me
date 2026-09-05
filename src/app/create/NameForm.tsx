@@ -28,7 +28,7 @@ export function NameForm({ initialName }: { initialName: string }) {
           </p>
         ) : null}
       </div>
-      <div className="create__actions">
+      <div className="create__actions create__actions--sticky">
         <span className="fm-small">{tf(t.common.stepOf, { n: 1, total: 5 })}</span>
         <Button type="submit" size="lg" loading={pending}>
           {n.next}

@@ -221,6 +221,12 @@
   .create--mid { gap: var(--space-6); }
   .create--mid .picker, .create--mid .packages { gap: var(--space-4); }
 }
+/* A laptop with a short window: the header, the dots and the title take the
+   top, and the step's button used to sit a few pixels under the fold. The
+   action stays on screen here too, at the bottom of whatever it belongs to. */
+@media (min-width: 721px) and (max-height: 760px) {
+  .create__actions--sticky { position: sticky; bottom: 0; z-index: var(--z-ui); padding-block: var(--space-1); background: color-mix(in srgb, var(--white) 92%, transparent); backdrop-filter: blur(8px); }
+}
 @media (max-width: 720px) {
   .create { gap: var(--space-3); }
   .create__head { gap: var(--space-1); }
