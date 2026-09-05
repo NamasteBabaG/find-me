@@ -1,4 +1,5 @@
 import { activeWorlds, allWorlds, findWorld, worldOfBoard } from "../../content/worlds";
+import { findScene } from "../../content/scenes";
 import { boardSlugs, type WorldDefinition } from "@/domain/world";
 import type { Container } from "./container";
 import { activeSceneSlugs } from "./scene-catalog.service";
@@ -39,6 +40,25 @@ export function boardsOfWorlds(worldSlugs: readonly string[]): string[] {
 export function worldsOwned(boardSlugsInGame: readonly string[]): WorldDefinition[] {
   const held = new Set(boardSlugsInGame);
   return activeWorlds().filter((w) => boardSlugs(w).every((slug) => held.has(slug)));
+}
+
+/**
+ * What a game holds, in the words the product uses.
+ *
+ * The library, the manage page, the admin and the mails all passed
+ * `scenes.length` into a sentence that said "worlds", so a one-world game read
+ * as "9 worlds" the moment the parent had paid for it. A game holds worlds,
+ * places and hiding spots; this is the one place that counts them.
+ */
+export interface GameShape {
+  worlds: number;
+  places: number;
+  spots: number;
+}
+
+export function gameShape(boardSlugsInGame: readonly string[]): GameShape {
+  const spots = boardSlugsInGame.reduce((n, slug) => n + (findScene(slug)?.targets.length ?? 3), 0);
+  return { worlds: worldsOwned(boardSlugsInGame).length, places: boardSlugsInGame.length, spots };
 }
 
 /** The world a board belongs to, for progress and the map. */

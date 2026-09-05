@@ -1,3 +1,5 @@
+import { gameShape } from "@/services/world-catalog.service";
+import { gameShapeLabel } from "@/i18n/game-shape";
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { getContainer } from "@/services/container";
@@ -38,7 +40,7 @@ export default async function ManageGamePage({ params }: { params: Promise<{ gam
           ) : null}
           <div>
             <h1>{game.title}</h1>
-            <p className="fm-muted">{tf(l.gameMeta, { worlds: game.scenes.length, date: formatDate(game.createdAt, locale) })}</p>
+            <p className="fm-muted">{tf(l.gameMeta, { shape: gameShapeLabel(t, gameShape(game.scenes.map((s) => s.sceneSlug))), date: formatDate(game.createdAt, locale) })}</p>
           </div>
         </div>
 

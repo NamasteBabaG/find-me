@@ -1,3 +1,4 @@
+import { gameShape } from "@/services/world-catalog.service";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getContainer } from "@/services/container";
@@ -216,7 +217,7 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
               <dd dir="ltr">{game.owner?.email}</dd>
               <dt>חבילה</dt>
               <dd>
-                {game.packageTier} · {game.scenes.length} עולמות
+                {game.packageTier} · {(() => { const s = gameShape(game.scenes.map((x) => x.sceneSlug)); return `${s.worlds} עולמות · ${s.places} מקומות · ${s.spots} מחבואים`; })()}
               </dd>
               <dt>תשלום</dt>
               <dd>

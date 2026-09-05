@@ -1,3 +1,5 @@
+import { gameShape } from "@/services/world-catalog.service";
+import { gameShapeLabel } from "@/i18n/game-shape";
 import Link from "next/link";
 import { getContainer } from "@/services/container";
 import { listGamesForUser } from "@/services/game.service";
@@ -77,7 +79,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
                 </div>
                 <div>
                   <h2 className="lib__title">{g.title}</h2>
-                  <p className="lib__meta">{tf(l.meta, { pkg: pick(g.packageName, locale), worlds: g.sceneCount, date: formatDate(g.createdAt, locale) })}</p>
+                  <p className="lib__meta">{tf(l.meta, { pkg: pick(g.packageName, locale), shape: gameShapeLabel(t, gameShape(g.sceneSlugs)), date: formatDate(g.createdAt, locale) })}</p>
                 </div>
                 <span className={`fm-badge ${g.playable ? "fm-badge--leaf" : "fm-badge--outline"}`}>{l.statuses[g.status] ?? g.status}</span>
                 <div className="lib__actions">
