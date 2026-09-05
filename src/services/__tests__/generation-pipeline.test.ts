@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -53,14 +52,13 @@ beforeAll(async () => {
   process.env.QA_AUTO_APPROVE = "false";
   process.env.GENERATION_BOTH_VARIANTS = "false";
 
-  execFileSync("npx", ["prisma", "db", "push", "--skip-generate", "--accept-data-loss"], {
-    env: { ...process.env, DATABASE_URL: url },
-    stdio: "pipe",
-    shell: process.platform === "win32",
-  });
-
+  // The schema as checked-in SQL, not `prisma db push`: no schema engine at
+  // test time, so a dev server holding the Prisma binaries cannot stop the
+  // suite. A stale file fails loudly (npm run db:sql) instead of testing the past.
   const { PrismaClient } = await import("@prisma/client");
   db = new PrismaClient({ datasources: { db: { url } } }) as unknown as Db;
+  const { applyTestSchema } = await import("@/lib/test-schema");
+  await applyTestSchema(db as unknown as { $executeRawUnsafe: (sql: string) => Promise<unknown> });
   const [pipeline, patches, asset, local, analytics, catalog] = await Promise.all([
     import("../generation/pipeline"),
     import("../generation/slot-patches"),
@@ -495,6 +493,70 @@ describe("a game sent back for a new photo", () => {
   }, 120_000);
 });
 
+describe("retention", () => {
+  const days = { abandonedDraft: 7, unansweredNewPhoto: 30, rejectedRender: 14, stuckFailure: 7 };
+  const backdate = (id: string, daysAgo: number) => db.game.update({ where: { id }, data: { updatedAt: new Date(Date.now() - daysAgo * 86_400_000) } });
+
+  it("closes an abandoned draft and deletes its photo, and leaves a fresh one alone", async () => {
+    const c = container(painter(["child"]));
+    const { runRetention } = await import("../retention.service");
+    const old = await seedGame(c);
+    const fresh = await seedGame(c);
+    await db.order.deleteMany({ where: { gameId: { in: [old, fresh] } } });
+    await db.game.updateMany({ where: { id: { in: [old, fresh] } }, data: { status: "PACKAGE_SELECTED", paidAt: null } });
+    await backdate(old, 8);
+    const photoOf = async (id: string) => (await db.game.findUniqueOrThrow({ where: { id }, include: { childProfile: true } })).childProfile!.originalPhotoAssetId;
+    const oldPhoto = await photoOf(old);
+
+    const report = await runRetention(c, new Date(), days);
+
+    expect(report.draftsPurged).toBe(1);
+    expect((await gameOf(old)).status).toBe("CANCELLED");
+    expect(await photoOf(old)).toBeNull();
+    expect((await db.asset.findUniqueOrThrow({ where: { id: oldPhoto! } })).status).toBe("DELETED");
+    expect((await gameOf(fresh)).status).toBe("PACKAGE_SELECTED");
+    expect(await photoOf(fresh)).not.toBeNull();
+  });
+
+  it("never touches a paid game, however old", async () => {
+    const c = container(painter(["child"]));
+    const { runRetention } = await import("../retention.service");
+    const gameId = await seedGame(c);
+    await backdate(gameId, 400);
+    await runRetention(c, new Date(), days);
+    const game = await gameOf(gameId);
+    expect(game.status).toBe("PAID");
+    expect((await db.game.findUniqueOrThrow({ where: { id: gameId }, include: { childProfile: true } })).childProfile!.originalPhotoAssetId).not.toBeNull();
+  });
+
+  it("drops rejected renders past their diagnostic life and the ids that pointed at them", async () => {
+    const c = container(painter(["nothing", "child"]));
+    const { runRetention } = await import("../retention.service");
+    const gameId = await seedGame(c);
+    await mod.runGenerationPipeline(c, gameId);
+    const rows = await db.targetVariantAsset.findMany({ where: { targetInstance: { gameScene: { gameId } }, rejectedAssetIdsJson: { not: null } } });
+    expect(rows.length).toBeGreaterThan(0);
+    const rejectedIds = rows.flatMap((r) => JSON.parse(r.rejectedAssetIdsJson!) as string[]);
+    await db.asset.updateMany({ where: { id: { in: rejectedIds } }, data: { createdAt: new Date(Date.now() - 15 * 86_400_000) } });
+
+    const report = await runRetention(c, new Date(), days);
+
+    expect(report.rejectedPurged).toBe(rejectedIds.length);
+    for (const id of rejectedIds) expect((await db.asset.findUniqueOrThrow({ where: { id } })).status).toBe("DELETED");
+    expect(await db.targetVariantAsset.count({ where: { targetInstance: { gameScene: { gameId } }, rejectedAssetIdsJson: { not: null } } })).toBe(0);
+  });
+
+  it("sends a generation that kept failing for a week to a person", async () => {
+    const c = container(painter(["child"]));
+    const { runRetention } = await import("../retention.service");
+    const gameId = await seedGame(c);
+    await db.game.update({ where: { id: gameId }, data: { status: "GENERATION_FAILED" } });
+    await backdate(gameId, 8);
+    await runRetention(c, new Date(), days);
+    expect((await gameOf(gameId)).status).toBe("MANUAL_REVIEW");
+  });
+});
+
 describe("the payment webhook", () => {
   it("marks the game paid and returns, without generating anything", async () => {
     const c = container(painter(["child"]));
@@ -526,6 +588,66 @@ describe("the payment webhook", () => {
     // And the queue does pick it up from exactly that row.
     await mod.runGenerationPipeline(withPayment, gameId);
     expect((await spotsIn(gameId)).length).toBeGreaterThan(0);
+  });
+
+  /** An order in CHECKOUT_PENDING with a fake provider that returns whatever event it is handed. */
+  async function pendingOrder(c: Container) {
+    const gameId = await seedGame(c);
+    await db.game.update({ where: { id: gameId }, data: { status: "CHECKOUT_PENDING", paidAt: null } });
+    const game = await gameOf(gameId);
+    const order = await db.order.create({
+      data: { id: `ord_${gameId}`, gameId, userId: game.ownerId!, provider: "stub", packageTier: "ONE_WORLD", amountAgorot: 9900, currency: "ILS", paymentStatus: "PENDING" },
+    });
+    const deliver = async (event: Record<string, unknown>) => {
+      const withPayment = { ...c, payment: { id: "stub", parseWebhook: async () => ({ ok: true as const, event }) } as never };
+      return mod.handlePaymentWebhook(withPayment, "{}", {});
+    };
+    const paid = (id: string, extra: Record<string, unknown> = {}) => ({ orderId: order.id, providerEventId: id, kind: "PAID", amountAgorot: 9900, currency: "ILS", providerPaymentId: "pay_1", raw: {}, ...extra });
+    return { gameId, order, deliver, paid };
+  }
+
+  it("answers a replayed event with success and no second effect", async () => {
+    const c = container(painter(["child"]));
+    const { gameId, order, deliver, paid } = await pendingOrder(c);
+    expect((await deliver(paid("evt_1"))).status).toBe(200);
+    const again = await deliver(paid("evt_1"));
+    expect(again.status).toBe(200);
+    expect(again.body).toMatch(/duplicate/);
+    expect(await db.paymentEvent.count({ where: { orderId: order.id } })).toBe(1);
+    expect((await db.order.findUniqueOrThrow({ where: { id: order.id } })).paymentStatus).toBe("PAID");
+    expect((await gameOf(gameId)).status).toBe("PAID");
+  });
+
+  it("ignores a decline that arrives after the money is in", async () => {
+    const c = container(painter(["child"]));
+    const { gameId, order, deliver, paid } = await pendingOrder(c);
+    await deliver(paid("evt_paid"));
+    const late = await deliver({ ...paid("evt_late"), kind: "FAILED" });
+    expect(late.status).toBe(200);
+    expect(late.body).toMatch(/ignored/);
+    expect((await db.order.findUniqueOrThrow({ where: { id: order.id } })).paymentStatus).toBe("PAID");
+    expect((await gameOf(gameId)).status).toBe("PAID");
+  });
+
+  it("refuses a payment of the right amount in the wrong currency", async () => {
+    const c = container(painter(["child"]));
+    const { gameId, order, deliver, paid } = await pendingOrder(c);
+    const wrong = await deliver(paid("evt_usd", { currency: "USD" }));
+    expect(wrong.status).toBe(400);
+    expect((await db.order.findUniqueOrThrow({ where: { id: order.id } })).paymentStatus).toBe("PENDING");
+    expect((await gameOf(gameId)).status).toBe("CHECKOUT_PENDING");
+    // And it is not recorded as seen: the corrected event must still be able to land.
+    expect(await db.paymentEvent.count({ where: { orderId: order.id } })).toBe(0);
+  });
+
+  it("does not refund an order that was never paid", async () => {
+    const c = container(painter(["child"]));
+    const { gameId, order, deliver, paid } = await pendingOrder(c);
+    const refund = await deliver({ ...paid("evt_refund"), kind: "REFUNDED" });
+    expect(refund.status).toBe(200);
+    expect(refund.body).toMatch(/ignored/);
+    expect((await db.order.findUniqueOrThrow({ where: { id: order.id } })).paymentStatus).toBe("PENDING");
+    expect((await gameOf(gameId)).status).toBe("CHECKOUT_PENDING");
   });
 });
 

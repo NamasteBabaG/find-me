@@ -30,7 +30,9 @@ export async function GET() {
     providers: { storage: e.STORAGE_PROVIDER, generation: e.GENERATION_PROVIDER, payment: e.PAYMENT_PROVIDER, email: e.EMAIL_PROVIDER, generationEnabled: e.GENERATION_ENABLED === "on" },
     patchQuality: e.GENERATION_PATCH_QUALITY ?? e.GENERATION_QUALITY,
     patchRetryQuality: e.GENERATION_PATCH_RETRY_QUALITY ?? null,
-    commit: (process.env.VERCEL_GIT_COMMIT_SHA ?? "local").slice(0, 7),
+    // CLI deploys carry no git sha; APP_COMMIT is set at deploy time so what is
+    // checked can be shown to be what is deployed.
+    commit: (process.env.APP_COMMIT ?? process.env.VERCEL_GIT_COMMIT_SHA ?? "local").slice(0, 7),
     tookMs: Date.now() - started,
   };
   return NextResponse.json(body, { status: db.ok ? 200 : 503, headers: { "Cache-Control": "no-store" } });
