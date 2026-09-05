@@ -33,7 +33,7 @@ export class MockPaymentProvider implements PaymentProvider {
   async parseWebhook(rawBody: string, headers: Record<string, string | undefined>): Promise<WebhookParseResult> {
     const signature = headers["x-mock-signature"];
     if (!signature || !hmacVerify(rawBody, signature, this.secret)) return { ok: false, reason: "bad signature" };
-    let body: { eventId?: string; orderId?: string; kind?: string; amountAgorot?: number };
+    let body: { eventId?: string; orderId?: string; kind?: string; amountAgorot?: number; currency?: string };
     try {
       body = JSON.parse(rawBody);
     } catch {
@@ -49,6 +49,7 @@ export class MockPaymentProvider implements PaymentProvider {
         kind: body.kind,
         providerPaymentId: `mockpay_${body.orderId}`,
         amountAgorot: body.amountAgorot,
+        ...(typeof body.currency === "string" ? { currency: body.currency } : {}),
         raw: body,
       },
     };

@@ -23,6 +23,8 @@ export interface PaymentWebhookEvent {
   kind: PaymentEventKind;
   providerPaymentId: string;
   amountAgorot: number;
+  /** Minor-unit currency code, when the provider says. A payment in the wrong currency is not a payment. */
+  currency?: string;
   raw: unknown;
 }
 
