@@ -35,7 +35,26 @@ export function MissionCard({ index, total, target, found, order, hintLevel, hin
   const { g, tf } = useGameText();
   const isPatch = target?.sprite.kind === "image" && Boolean(target.sprite.rect);
   return (
-    <section className={`mission${quiet ? " mission--quiet" : ""}`} aria-live="polite" onClick={quiet ? onExpand : undefined}>
+    <section
+      className={`mission${quiet ? " mission--quiet" : ""}`}
+      aria-live="polite"
+      onClick={quiet ? onExpand : undefined}
+      // Folded, the card is a control: a real button to a keyboard and a screen reader, not a div that happens to listen.
+      role={quiet ? "button" : undefined}
+      tabIndex={quiet ? 0 : undefined}
+      aria-expanded={quiet ? false : undefined}
+      aria-label={quiet ? g.scene.expandMission : undefined}
+      onKeyDown={
+        quiet
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onExpand?.();
+              }
+            }
+          : undefined
+      }
+    >
       <div className={`mission__thumb${isPatch && avatarUrl ? " mission__thumb--face" : ""}`} aria-hidden>
         {target ? (
           isPatch && avatarUrl ? (

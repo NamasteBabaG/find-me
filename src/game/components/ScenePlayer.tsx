@@ -28,7 +28,10 @@ interface Props {
   onSceneComplete: () => void;
 }
 
-const FOUND_MS = 1500;
+/** Long enough to read what she says. 1500 gave a reading child about a second. */
+const FOUND_MS = 2200;
+/** How long the page-turn covers the swap to the next child. */
+const TURN_MS = 480;
 
 /** One world: viewport + mission card + top bar + feedback choreography. */
 export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: Props) {
@@ -66,6 +69,18 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
     setViewportReady(true);
   }, []);
   const onAssetsReady = useCallback(() => setAssetsReady(true), []);
+  // Something the board cannot open without did not load: the picture, or the
+  // child. A calm screen with one big button, no red, and the way back.
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [retryToken, setRetryToken] = useState(0);
+  const onAssetsFailed = useCallback(() => setLoadFailed(true), []);
+  const retryLoad = () => {
+    setLoadFailed(false);
+    setRetryToken((n) => n + 1);
+  };
+  // A soft page-turn over the board while the found child is swapped for the
+  // next one, so nobody sees the next hiding spot pop into the picture.
+  const [turn, setTurn] = useState(false);
   const revealed = viewportReady && assetsReady;
 
   useEffect(() => {
@@ -109,13 +124,19 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           setTimeout(() => placeBubble(fb.targetId, fb.bubble), 460);
         }
         setBurst({ key: Date.now(), small: true });
+        let turnTimer: ReturnType<typeof setTimeout> | undefined;
         const t = setTimeout(() => {
           setBubble(null);
+          setTurn(true);
           dispatch({ type: "FOUND_DONE", now: Date.now() });
           // show the whole world again for the next search
           apiRef.current?.reset();
+          turnTimer = setTimeout(() => setTurn(false), TURN_MS);
         }, FOUND_MS);
-        return () => clearTimeout(t);
+        return () => {
+          clearTimeout(t);
+          if (turnTimer) clearTimeout(turnTimer);
+        };
       }
       case "wrongTarget": {
         sounds().play("boing");
@@ -256,7 +277,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
       </header>
 
       <div className="scene__stage">
-        <SceneViewport scene={scene} mission={mission} hintLevel={mission.hintLevel} bonusFound={mission.bonusFound} onHit={onHit} onReady={onReady} onAssetsReady={onAssetsReady} ariaLabel={tf(g.scene.sceneAria, { name: scene.name })}>
+        <SceneViewport scene={scene} mission={mission} hintLevel={mission.hintLevel} bonusFound={mission.bonusFound} onHit={onHit} onReady={onReady} onAssetsReady={onAssetsReady} onAssetsFailed={onAssetsFailed} retryToken={retryToken} ariaLabel={tf(g.scene.sceneAria, { name: scene.name })}>
           {(vp) => {
             if (!bubble) return null;
             const p = stageToScreen(vp.transform, bubble.x, bubble.y);
@@ -269,6 +290,25 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           <div className="scene__cloud scene__cloud--l" />
           <div className="scene__cloud scene__cloud--r" />
         </div>
+        <div className={`scene__turn${turn ? " is-on" : ""}`} aria-hidden />
+        {loadFailed ? (
+          <div className="scene__retry" role="dialog" aria-modal="true" aria-labelledby="scene-retry-title">
+            <div className="scene__retry-card">
+              <span className="scene__retry-cloud" aria-hidden>
+                ☁️
+              </span>
+              <h2 id="scene-retry-title" className="scene__retry-title">
+                {g.scene.loadTitle}
+              </h2>
+              <button type="button" className="fm-btn fm-btn--lg" onClick={retryLoad} autoFocus>
+                {g.scene.loadRetry}
+              </button>
+              <button type="button" className="fm-btn fm-btn--white" onClick={() => onBack()}>
+                {g.scene.loadBack}
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {mission.phase !== "complete" ? (
