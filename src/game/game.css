@@ -64,6 +64,15 @@
    palette that reads as a picture-book page turning, not a loading screen. */
 .scene__curtain { position: absolute; inset: 0; z-index: calc(var(--z-ui) - 1); pointer-events: auto; overflow: hidden; }
 .scene__curtain.is-open { pointer-events: none; }
+/* The page-turn: a soft white wash over the board for half a second while the
+   found child is swapped for the next one. */
+.scene__turn { position: absolute; inset: 0; z-index: calc(var(--z-ui) - 2); pointer-events: none; opacity: 0; background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.82) 55%, rgba(255, 255, 255, 0.7)); transition: opacity 260ms ease-out; }
+.scene__turn.is-on { opacity: 1; transition-duration: 120ms; }
+/* The retry screen: calm, no red, no scolding — the picture is late, that is all. */
+.scene__retry { position: absolute; inset: 0; z-index: var(--z-ui); display: grid; place-items: center; background: var(--scene-sky, #BFE9FF); }
+.scene__retry-card { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); padding: var(--space-4); border-radius: var(--radius-4); background: var(--white); box-shadow: var(--shadow-2); text-align: center; max-width: min(90vw, 360px); }
+.scene__retry-cloud { font-size: var(--fs-800); line-height: 1; }
+.scene__retry-title { font-family: var(--font-display); font-size: var(--fs-400); line-height: var(--lh-400); font-weight: 800; margin: 0; }
 .scene__cloud {
   position: absolute; top: -10%; bottom: -10%; width: 62%;
   background: var(--scene-sky, #BFE9FF);

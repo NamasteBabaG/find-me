@@ -5,6 +5,7 @@ import type { SceneConfig, TargetConfig } from "@/domain/game/config";
 import type { MissionState } from "@/domain/game/mission";
 import { currentTargetId, isFound } from "@/domain/game/mission";
 import type { HintLevel } from "@/domain/game/hints";
+import { assetPlan, preloadVerdict, type LoadResult } from "../engine/asset-plan";
 import { expandRect, hitPadding, hitTest, spriteRect, stageToScreen, type HitCandidate, type NormRect } from "../engine/viewport-math";
 import { spriteAspect, targetGeometry } from "../engine/target-geometry";
 import { useViewport, type ViewportApi } from "../engine/useViewport";
@@ -21,6 +22,10 @@ interface Props {
   onReady?: (api: ViewportApi) => void;
   /** Every image this board can show has decoded — base, foreground, all three children, the bonus. */
   onAssetsReady?: () => void;
+  /** Something the board cannot open without did not load. The player shows a calm retry. */
+  onAssetsFailed?: () => void;
+  /** Bumped by the player to load again after a failure. */
+  retryToken?: number;
   ariaLabel?: string;
   /** Screen-space overlays get the transform via render prop. */
   children?: (api: ViewportApi) => React.ReactNode;
@@ -49,7 +54,7 @@ const SPARKS = [
   { x: 0.05, y: 0.85, d: 140 },
 ];
 
-export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, onReady, onAssetsReady, ariaLabel, children }: Props) {
+export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, onReady, onAssetsReady, onAssetsFailed, retryToken = 0, ariaLabel, children }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stage = useMemo(() => ({ width: scene.art.width, height: scene.art.height }), [scene.art.width, scene.art.height]);
   const [ripples, setRipples] = useState<Ripple[]>([]);
@@ -126,49 +131,48 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
   // show is decoded up front, and the curtain in ScenePlayer stays shut until
   // this fires. One bad asset must not shut the game forever: ten seconds, then
   // we open regardless and let the <img> show its own failure.
-  const assetUrls = useMemo(() => {
-    const urls = new Set<string>([scene.art.base]);
-    if (scene.art.foreground) urls.add(scene.art.foreground);
-    for (const p of placedTargets) urls.add(p.sprite.kind === "image" ? p.sprite.url : p.sprite.faceUrl);
-    if (scene.bonus?.sprite) urls.add(scene.bonus.sprite);
-    return [...urls];
-  }, [scene, placedTargets]);
+  const plan = useMemo(() => assetPlan(scene, placedTargets.map((p) => (p.sprite.kind === "image" ? p.sprite.url : p.sprite.faceUrl))), [scene, placedTargets]);
   const assetsReadyRef = useRef(onAssetsReady);
   assetsReadyRef.current = onAssetsReady;
+  const assetsFailedRef = useRef(onAssetsFailed);
+  assetsFailedRef.current = onAssetsFailed;
   useEffect(() => {
     let settled = false;
-    const settle = () => {
+    const settle = (verdict: "ready" | "failed") => {
       if (settled) return;
       settled = true;
-      clearTimeout(fallback);
-      assetsReadyRef.current?.();
+      clearTimeout(slow);
+      if (verdict === "ready") assetsReadyRef.current?.();
+      else assetsFailedRef.current?.();
     };
-    const fallback = setTimeout(() => {
-      console.warn(`[scene] ${scene.slug}: not every asset decoded in 10s, opening anyway`);
-      settle();
-    }, 10_000);
+    // The board and the child in it are the game: without them there is
+    // nothing to find, so a missing one is a calm retry screen, never an open
+    // board with an impossible mission. The foreground and the bonus are
+    // decoration and may fail quietly. Twenty seconds is a slow phone on a
+    // slow network; what happens then is the retry screen, not a blind open.
+    const slow = setTimeout(() => settle("failed"), 20_000);
     Promise.all(
-      assetUrls.map(
+      [...plan.essential, ...plan.decorative].map(
         (url) =>
-          new Promise<void>((resolve) => {
+          new Promise<LoadResult>((resolve) => {
             // onload, not decode(): a background tab defers decoding until it
             // is looked at, and a parent who opens the link behind another
             // tab would sit on clouds until then. onload means the bytes are
             // here; the browser decodes on first paint, which is when it matters.
             const img = new Image();
-            img.onload = () => resolve();
-            img.onerror = () => resolve();
+            img.onload = () => resolve({ url, ok: true });
+            img.onerror = () => resolve({ url, ok: false });
             img.src = url;
           }),
       ),
-    ).then(settle);
+    ).then((results) => settle(preloadVerdict(plan, results)));
     return () => {
       settled = true;
-      clearTimeout(fallback);
+      clearTimeout(slow);
     };
-    // Once per board: the URL list only changes when the scene does.
+    // Once per board, and again on an explicit retry.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scene.slug]);
+  }, [scene.slug, retryToken]);
 
   // Handed over at first layout and again on every resize: the methods read
   // live state now, but the snapshot fields (transform, fit, viewport) on the
