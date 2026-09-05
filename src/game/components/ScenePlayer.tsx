@@ -12,6 +12,7 @@ import type { ViewportApi } from "../engine/useViewport";
 import { SceneViewport, targetStagePoint, type Hit } from "./SceneViewport";
 import { MissionCard } from "./MissionCard";
 import { CelebrationOverlay } from "./CelebrationOverlay";
+import { CloudBank } from "./Clouds";
 import type { PlayStore } from "../store/play-store";
 import { useGameText } from "../i18n";
 
@@ -30,8 +31,14 @@ interface Props {
 
 /** Long enough to read what she says. 1500 gave a reading child about a second. */
 const FOUND_MS = 2200;
-/** How long the page-turn covers the swap to the next child. */
-const TURN_MS = 480;
+/**
+ * The page-turn between two missions is the cloud curtain closing and opening
+ * again. The swap to the next child happens while it is shut: the clouds take
+ * TURN_CLOSE_MS to close (matches the CSS), the swap lands just after, and the
+ * curtain is let go a beat later so the new child is never seen arriving.
+ */
+const TURN_CLOSE_MS = 560;
+const TURN_HOLD_MS = 160;
 
 /** One world: viewport + mission card + top bar + feedback choreography. */
 export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: Props) {
@@ -78,10 +85,31 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
     setLoadFailed(false);
     setRetryToken((n) => n + 1);
   };
-  // A soft page-turn over the board while the found child is swapped for the
+  // The clouds close over the board while the found child is swapped for the
   // next one, so nobody sees the next hiding spot pop into the picture.
   const [turn, setTurn] = useState(false);
   const revealed = viewportReady && assetsReady;
+  // The found choreography ends with the swap, and the swap must not depend on
+  // the feedback that started it: it used to be scheduled inside the feedback
+  // effect, and the moment FOUND_DONE cleared the feedback that effect's
+  // cleanup cancelled the timer that would have ended the page-turn - the board
+  // stayed under a white wash for the rest of the world. So the timer lives in
+  // a ref, and only unmounting clears it.
+  const foundTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(foundTimer.current), []);
+  useEffect(() => {
+    if (!turn) return;
+    const swap = setTimeout(() => {
+      dispatch({ type: "FOUND_DONE", now: Date.now() });
+      // show the whole world again for the next search
+      apiRef.current?.reset();
+    }, TURN_CLOSE_MS);
+    const open = setTimeout(() => setTurn(false), TURN_CLOSE_MS + TURN_HOLD_MS);
+    return () => {
+      clearTimeout(swap);
+      clearTimeout(open);
+    };
+  }, [turn, dispatch]);
 
   useEffect(() => {
     if (!revealed || mission.phase !== "intro") return;
@@ -124,19 +152,16 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           setTimeout(() => placeBubble(fb.targetId, fb.bubble), 460);
         }
         setBurst({ key: Date.now(), small: true });
-        let turnTimer: ReturnType<typeof setTimeout> | undefined;
-        const t = setTimeout(() => {
+        // The last child of the board has nobody to be swapped for: the
+        // celebration follows straight on, with no clouds in between.
+        const last = Object.keys(mission.found).length >= mission.plan.order.length;
+        clearTimeout(foundTimer.current);
+        foundTimer.current = setTimeout(() => {
           setBubble(null);
-          setTurn(true);
-          dispatch({ type: "FOUND_DONE", now: Date.now() });
-          // show the whole world again for the next search
-          apiRef.current?.reset();
-          turnTimer = setTimeout(() => setTurn(false), TURN_MS);
+          if (last) dispatch({ type: "FOUND_DONE", now: Date.now() });
+          else setTurn(true);
         }, FOUND_MS);
-        return () => {
-          clearTimeout(t);
-          if (turnTimer) clearTimeout(turnTimer);
-        };
+        return;
       }
       case "wrongTarget": {
         sounds().play("boing");
@@ -286,11 +311,10 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
         </SceneViewport>
         {burst ? <CelebrationOverlay key={burst.key} kind={scene.celebration.kind} small={burst.small} seed={burst.key} /> : null}
         {mission.phase === "intro" ? <div className="scene__intro-veil" aria-hidden /> : null}
-        <div className={`scene__curtain${revealed ? " is-open" : ""}`} aria-hidden>
-          <div className="scene__cloud scene__cloud--l" />
-          <div className="scene__cloud scene__cloud--r" />
+        <div className={`scene__curtain${revealed && !turn ? " is-open" : ""}`} aria-hidden>
+          <CloudBank side="l" />
+          <CloudBank side="r" />
         </div>
-        <div className={`scene__turn${turn ? " is-on" : ""}`} aria-hidden />
         {loadFailed ? (
           <div className="scene__retry" role="dialog" aria-modal="true" aria-labelledby="scene-retry-title">
             <div className="scene__retry-card">

@@ -136,12 +136,15 @@ export function missionReducer(state: MissionState, action: MissionAction, copy:
     }
 
     case "TAP_BONUS": {
-      if (state.bonusFound || state.phase === "intro") return state;
+      // Only while searching: a tap during the found celebration used to change
+      // the feedback under the choreography that ends the mission, and the board
+      // never moved on.
+      if (state.bonusFound || state.phase !== "searching") return state;
       return { ...state, bonusFound: true, lastFeedback: { kind: "bonus", bubble: copy.bonus } };
     }
 
     case "TAP_AMBIENT": {
-      if (state.phase === "intro") return state;
+      if (state.phase !== "searching") return state;
       return { ...state, lastFeedback: { kind: "ambient", ambientId: action.ambientId } };
     }
 

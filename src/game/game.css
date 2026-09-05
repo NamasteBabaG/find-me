@@ -59,51 +59,60 @@
 /* ─── The curtain ────────────────────────────────────────────────────────────
    Two banks of cloud, fully opaque, covering the stage from the first paint.
    They part only when every picture the board needs has decoded — so there is
-   no frame in which a child can be seen arriving. Each bank is the scene's own
-   sky with white cloud lumps along its inner edge; in the design system's
-   palette that reads as a picture-book page turning, not a loading screen. */
+   no frame in which a child can be seen arriving — and they close again for
+   the page-turn between two missions, while the found child is swapped for
+   the next one. Each bank is the scene's own sky with a wall of cumulus along
+   its inner edge (see Clouds.tsx); in the design system's palette that reads
+   as a picture-book page turning, not a loading screen. */
 .scene__curtain { position: absolute; inset: 0; z-index: calc(var(--z-ui) - 1); pointer-events: auto; overflow: hidden; }
 .scene__curtain.is-open { pointer-events: none; }
-/* The page-turn: a soft white wash over the board for half a second while the
-   found child is swapped for the next one. */
-.scene__turn { position: absolute; inset: 0; z-index: calc(var(--z-ui) - 2); pointer-events: none; opacity: 0; background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.82) 55%, rgba(255, 255, 255, 0.7)); transition: opacity 260ms ease-out; }
-.scene__turn.is-on { opacity: 1; transition-duration: 120ms; }
+/* The sky behind the banks: deeper at the top, pale toward the horizon, with a
+   few far-off clouds. Because it covers the whole stage, the two banks can meet
+   at the middle with both cloud walls showing, and between the puffs it is sky
+   that shows through, never the board. It fades as the banks part. */
+.scene__curtain::before {
+  content: ""; position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse 22% 9% at 18% 22%, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(ellipse 16% 7% at 78% 16%, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(ellipse 26% 10% at 64% 78%, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(ellipse 18% 8% at 30% 70%, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(ellipse 60% 40% at 50% 100%, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0) 70%),
+    linear-gradient(180deg, color-mix(in srgb, var(--scene-sky, #BFE9FF) 62%, #5b93e6) 0%, var(--scene-sky, #BFE9FF) 48%, color-mix(in srgb, var(--scene-sky, #BFE9FF) 55%, #fff) 100%);
+  transition: opacity 0ms;
+}
+.scene__curtain.is-open::before { opacity: 0; transition: opacity 360ms ease-out 120ms; }
 /* The retry screen: calm, no red, no scolding — the picture is late, that is all. */
 .scene__retry { position: absolute; inset: 0; z-index: var(--z-ui); display: grid; place-items: center; background: var(--scene-sky, #BFE9FF); }
 .scene__retry-card { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); padding: var(--space-4); border-radius: var(--radius-4); background: var(--white); box-shadow: var(--shadow-2); text-align: center; max-width: min(90vw, 360px); }
 .scene__retry-cloud { font-size: var(--fs-800); line-height: 1; }
 .scene__retry-title { font-family: var(--font-display); font-size: var(--fs-400); line-height: var(--lh-400); font-weight: 800; margin: 0; }
+/* Shutting is quick (the base transition, used when .is-open comes off) and
+   opening is slow (the .is-open transition): a page turns faster than it
+   settles. The banks overlap by a quarter of the stage while shut, so between
+   the puffs of one bank the other bank's sky shows, never the board. */
 .scene__cloud {
-  position: absolute; top: -10%; bottom: -10%; width: 62%;
-  background: var(--scene-sky, #BFE9FF);
-  transition: transform 900ms cubic-bezier(0.65, 0, 0.35, 1), opacity 300ms ease 700ms;
+  position: absolute; top: -10%; bottom: -10%; width: 50%;
+  transition: transform 520ms cubic-bezier(0.5, 0, 0.2, 1), opacity 0ms;
   will-change: transform;
 }
-/* The cloudy inner edge: a column of round lumps straddling the bank's edge.
-   The circles have real sizes — with percentage stops they were sized to the
-   tile's corner, every one covered the whole tile, and the "clouds" were a
-   flat white bar down the middle of the screen. Between lumps the OTHER bank's
-   sky shows through, which is why both banks are the same colour and overlap
-   by a quarter of the stage while shut: nothing behind them is ever visible. */
-.scene__cloud::after {
-  content: ""; position: absolute; top: 0; bottom: 0; width: 34%;
-  background-image:
-    radial-gradient(circle 7vmin at 62% 10%, #fff 97%, transparent 100%),
-    radial-gradient(circle 5.5vmin at 40% 30%, #fff 97%, transparent 100%),
-    radial-gradient(circle 8vmin at 68% 50%, #fff 97%, transparent 100%),
-    radial-gradient(circle 6vmin at 42% 70%, #fff 97%, transparent 100%),
-    radial-gradient(circle 7vmin at 64% 90%, #fff 97%, transparent 100%);
-  background-size: 100% 40vmin;
-  background-repeat: repeat-y;
-}
+/* The wall of cumulus along the inner edge; the SVG tile scales with the bank
+   and spills past the edge, so its tufts hang out over the middle. */
+.scene__cloud-edge { position: absolute; top: 0; bottom: 0; width: 60%; animation: cloud-drift 9s ease-in-out infinite alternate; }
+.scene__cloud--r .scene__cloud-edge { animation-delay: -4.5s; }
+.scene__cloud-svg { position: absolute; top: 0; bottom: 0; right: 0; height: 100%; width: 100%; overflow: visible; filter: drop-shadow(0 8px 14px rgba(58, 84, 140, 0.18)); }
 .scene__cloud--l { left: 0; }
-.scene__cloud--l::after { right: -17%; }
+.scene__cloud--l .scene__cloud-edge { right: 0; }
 .scene__cloud--r { right: 0; }
-.scene__cloud--r::after { left: -17%; transform: scaleX(-1); }
+.scene__cloud--r .scene__cloud-edge { left: 0; }
+.scene__cloud--r .scene__cloud-svg { transform: scaleX(-1); }
+.scene__curtain.is-open .scene__cloud { transition: transform 900ms cubic-bezier(0.65, 0, 0.35, 1), opacity 300ms ease 700ms; }
 .scene__curtain.is-open .scene__cloud--l { transform: translateX(-118%); opacity: 0; }
 .scene__curtain.is-open .scene__cloud--r { transform: translateX(118%); opacity: 0; }
+@keyframes cloud-drift { from { transform: translateY(-1.5%); } to { transform: translateY(1.5%); } }
 @media (prefers-reduced-motion: reduce) {
-  .scene__cloud { transition: opacity 250ms ease; }
+  .scene__cloud, .scene__curtain.is-open .scene__cloud { transition: opacity 250ms ease; }
+  .scene__cloud-edge { animation: none; }
   .scene__curtain.is-open .scene__cloud--l, .scene__curtain.is-open .scene__cloud--r { transform: none; }
 }
 .scene__bar { position: absolute; left: 0; right: 0; top: 0; z-index: var(--z-ui); display: flex; align-items: center; justify-content: space-between; gap: var(--space-1); padding: var(--space-2); pointer-events: none; }
@@ -173,6 +182,8 @@
 .celebration__p { position: absolute; top: 0; line-height: 1; will-change: transform, opacity; }
 .celebration__p--fall { animation: fm-confetti-fall var(--dur-4) var(--ease-in-out) forwards; }
 .celebration__p--rise { top: auto; bottom: 0; animation: fm-rise var(--dur-4) var(--ease-out) forwards; }
+/* From the middle of the board outward, like a popped balloon. */
+.celebration__p--burst { top: 52%; animation: fm-burst var(--dur-4) var(--ease-out) forwards; }
 
 /* Mission pill — floats at the bottom, translucent, never a wall */
 .mission { position: absolute; z-index: var(--z-ui); pointer-events: none; bottom: var(--space-2); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: var(--space-2); max-width: calc(100% - var(--space-4)); background: rgba(255, 255, 255, 0.82); backdrop-filter: blur(12px); padding: var(--space-1); padding-inline-start: var(--space-2); border-radius: var(--radius-pill); box-shadow: var(--shadow-2); animation: fm-fade-up var(--dur-3) var(--ease-out); }
