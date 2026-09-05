@@ -207,7 +207,7 @@
   .mission__hintbtn { width: var(--touch-min); height: var(--touch-min); font-size: var(--fs-300); }
   /* The chrome sits over the picture, so it stays as small as a finger allows. */
   .scene__bar { padding: var(--space-1); }
-  .scene__btn { width: 44px; height: 44px; }
+  .scene__btn { width: 48px; height: 48px; }
   .scene__title { min-height: 36px; padding-inline: var(--space-1); }
 }
 /* Landscape on a phone: the board is short, so the top bar hugs the corners

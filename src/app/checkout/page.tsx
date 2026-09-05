@@ -46,13 +46,17 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
               <p className="fm-muted">{tf(ck.summaryLine, { pkg: pick(summary.pkg.name, locale), boards: boardsFor(summary.pkg.tier), spots: searchesFor(summary.pkg.tier) })}</p>
             </div>
           </div>
-          <div className="summary__scenes">
-            {summary.scenes.map((s) => (
-              <span key={s.slug} className="fm-badge fm-badge--sea">
-                {pick(s.name, locale)}
-              </span>
-            ))}
-          </div>
+          {/* The full list is there for whoever wants it; it is not the first thing on the page. */}
+          <details className="summary__more">
+            <summary>{tf(ck.places, { n: summary.scenes.length })}</summary>
+            <div className="summary__scenes">
+              {summary.scenes.map((s) => (
+                <span key={s.slug} className="fm-badge fm-badge--sea">
+                  {pick(s.name, locale)}
+                </span>
+              ))}
+            </div>
+          </details>
           <div>
             <div className="summary__row">
               <span>{pick(summary.pkg.name, locale)}</span>
@@ -65,7 +69,13 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
           </div>
           <p className="fm-small">{ck.vat}</p>
         </div>
-        <CheckoutForm defaultEmail={defaultEmail} priceLabel={price} outcome={outcome} backHref={backHref} />
+        <CheckoutForm
+          defaultEmail={defaultEmail}
+          priceLabel={price}
+          outcome={outcome}
+          backHref={backHref}
+          brief={{ name: tf(ck.gameTitle, { name }), shape: tf(ck.summaryLine, { pkg: pick(summary.pkg.name, locale), boards: boardsFor(summary.pkg.tier), spots: searchesFor(summary.pkg.tier) }) }}
+        />
       </div>
     </CreateFrame>
   );

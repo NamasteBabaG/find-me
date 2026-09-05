@@ -217,7 +217,34 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/
       ) : (
         <>
           <p className="fm-lead fm-center">{p.cropLead}</p>
-          <div ref={cropperRef} className="cropper" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} role="img" aria-label={p.cropAria}>
+          <div
+            ref={cropperRef}
+            className="cropper"
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
+            role="img"
+            aria-label={p.cropAria}
+            aria-describedby="cropper-keys"
+            tabIndex={0}
+            // Dragging is not the only way: the arrows nudge the photo, + and − zoom it.
+            onKeyDown={(e) => {
+              const step = 12;
+              const nudge: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+              if (nudge[e.key]) {
+                e.preventDefault();
+                const [dx, dy] = nudge[e.key]!;
+                setOffset((o) => clampOffset({ x: o.x + dx, y: o.y + dy }));
+              } else if (e.key === "+" || e.key === "=") {
+                e.preventDefault();
+                setZoom((z) => Math.min(3, +(z + 0.1).toFixed(2)));
+              } else if (e.key === "-" || e.key === "_") {
+                e.preventDefault();
+                setZoom((z) => Math.max(1, +(z - 0.1).toFixed(2)));
+              }
+            }}
+          >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={url}
@@ -236,6 +263,9 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/
           </div>
           <label className="fm-field" style={{ alignItems: "center" }}>
             <span className="fm-hint">{p.zoom}</span>
+            <span id="cropper-keys" className="visually-hidden">
+              {p.cropKeys}
+            </span>
             <input type="range" className="cropper__zoom" min={1} max={3} step={0.01} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} />
           </label>
           {consentBox}

@@ -293,6 +293,13 @@
 .summary__row { display: flex; justify-content: space-between; gap: var(--space-2); padding-block: var(--space-1); border-bottom: 1px solid var(--line); }
 .summary__row:last-child { border-bottom: 0; }
 .summary__scenes { display: flex; gap: var(--space-1); flex-wrap: wrap; }
+.summary__more > summary { cursor: pointer; font-weight: 700; color: var(--sea-deep); font-size: var(--fs-100); line-height: var(--lh-100); list-style: none; }
+.summary__more > summary::before { content: "▸ "; }
+.summary__more[open] > summary::before { content: "▾ "; }
+.summary__more[open] > summary { margin-bottom: var(--space-1); }
+.summary__brief { display: grid; gap: var(--space-0-5); padding: var(--space-2); border-radius: var(--radius-2); background: var(--paper-2); font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); }
+.summary__brief strong { font-family: var(--font-display); font-size: var(--fs-200); line-height: var(--lh-200); color: var(--ink); }
+.summary__brief-price { font-family: var(--font-display); font-weight: 800; color: var(--ink); }
 
 /* Mock payment (sandbox PSP page) */
 .psp { max-width: 560px; }
