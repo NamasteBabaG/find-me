@@ -71,6 +71,11 @@ export async function GET(_req: Request, ctx: { params: Promise<{ gameId: string
       playUrl,
       awaitingQa: status === "QA_PENDING" || status === "MANUAL_REVIEW",
       pending: RESUMABLE_STATUSES.includes(status),
+      // "Ready" and "sent" are different facts: DELIVERED means a real recipient
+      // got the mail. On a box whose mail provider is the console, nothing was.
+      delivered: status === "DELIVERED",
+      mailSimulated: c.email.id === "console",
+      newPhotoUrl: progress.state === "needs_new_photo" ? `/creating/${gameId}/photo` : null,
       characterReady,
       avatarUrl,
       spotsDone,

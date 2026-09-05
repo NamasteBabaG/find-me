@@ -62,11 +62,15 @@ describe("creation progress", () => {
     expect(creationProgress({ ...base, status: "READY" })).toMatchObject({ done: true, failed: false, percent: 100, current: null });
     expect(creationProgress({ ...base, status: "DELIVERED" }).done).toBe(true);
     expect(creationProgress({ ...base, status: "APPROVED" }).done).toBe(false);
-    const failed = creationProgress({ ...base, status: "GENERATION_FAILED", characterReady: true, spotsDone: 5 });
-    expect(failed.failed).toBe(true);
-    expect(failed.current).toBeNull();
-    // A retry resumes from here, so the bar keeps what was earned.
-    expect(failed.percent).toBeGreaterThan(20);
+    // A snag the next tick retries is not a dead end: the bar keeps what was earned.
+    const snag = creationProgress({ ...base, status: "GENERATION_FAILED", characterReady: true, spotsDone: 5 });
+    expect(snag.state).toBe("retrying");
+    expect(snag.failed).toBe(false);
+    expect(snag.percent).toBeGreaterThan(20);
+    expect(creationProgress({ ...base, status: "REFUNDED" })).toMatchObject({ state: "failed", failed: true, current: null });
+    expect(creationProgress({ ...base, status: "NEEDS_NEW_PHOTO" }).state).toBe("needs_new_photo");
+    expect(creationProgress({ ...base, status: "QA_PENDING" }).state).toBe("awaiting_review");
+    expect(creationProgress({ ...base, status: "TARGETS_GENERATING" }).state).toBe("working");
     expect(creationProgress({ ...base, status: "MANUAL_REVIEW" }).failed).toBe(false);
   });
 

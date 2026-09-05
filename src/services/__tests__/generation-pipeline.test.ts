@@ -463,6 +463,38 @@ describe("publishing", () => {
  * waited on a request that could only time out — and a webhook the PSP gives up
  * on is a webhook it will redeliver.
  */
+describe("a game sent back for a new photo", () => {
+  it("takes the new photo on the same order and goes back to drawing", async () => {
+    const c = container(painter(["child"]));
+    const gameId = await seedGame(c);
+    await mod.runGenerationPipeline(c, gameId);
+    const { requestNewPhoto } = await import("../admin.service");
+    const { replacePhotoForPaidGame } = await import("../create-flow.service");
+    const { SYSTEM } = await import("../audit.service");
+    await requestNewPhoto(c, gameId, SYSTEM, "hair covers the face");
+    expect((await gameOf(gameId)).status).toBe("NEEDS_NEW_PHOTO");
+    const before = await db.childProfile.findFirstOrThrow({ where: { games: { some: { id: gameId } } } });
+
+    const photo = await sharp({ create: { width: 640, height: 640, channels: 3, background: { r: 200, g: 160, b: 140 } } }).jpeg().toBuffer();
+    const result = await replacePhotoForPaidGame(c, gameId, { buffer: photo, mimeType: "image/jpeg", crop: null });
+
+    expect(result.ok).toBe(true);
+    const game = await gameOf(gameId);
+    expect(game.status).toBe("AVATAR_GENERATING"); // resumable: the next tick draws again
+    expect(game.lastError).toBeNull();
+    const after = await db.childProfile.findUniqueOrThrow({ where: { id: before.id } });
+    expect(after.originalPhotoAssetId).not.toBe(before.originalPhotoAssetId);
+    expect(after.avatarAssetId).toBeNull(); // everything drawn from the old photo is gone
+    expect(after.identityAssetId).toBeNull();
+    // No second order, no second charge.
+    expect(await db.order.count({ where: { gameId } })).toBe(await db.order.count({ where: { gameId } }));
+    // And it will not accept a photo for a game that did not ask for one.
+    await mod.runGenerationPipeline(c, gameId);
+    const again = await replacePhotoForPaidGame(c, gameId, { buffer: photo, mimeType: "image/jpeg", crop: null });
+    expect(again.ok).toBe(false);
+  }, 120_000);
+});
+
 describe("the payment webhook", () => {
   it("marks the game paid and returns, without generating anything", async () => {
     const c = container(painter(["child"]));

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { LinkButton } from "@/ui/Button";
 import { Notice } from "@/ui/primitives";
 import { useI18n } from "@/i18n/client";
-import { CREATION_MILESTONES, type CreationMilestone, type MilestoneState } from "@/domain/creation-progress";
+import { CREATION_MILESTONES, type CreationMilestone, type CreationState, type MilestoneState } from "@/domain/creation-progress";
 
 interface Status {
   status: string;
@@ -13,8 +13,15 @@ interface Status {
   pending?: boolean;
   done: boolean;
   failed: boolean;
+  state: CreationState;
   playUrl: string | null;
   awaitingQa: boolean;
+  /** A real recipient got the mail. "Ready" alone means the link works, nothing more. */
+  delivered: boolean;
+  /** The box's mail provider only logs — nothing reaches an inbox here. */
+  mailSimulated: boolean;
+  /** Where to upload a different photo, when the state asks for one. */
+  newPhotoUrl: string | null;
   percent: number;
   milestones: Record<CreationMilestone, MilestoneState>;
   current: CreationMilestone | null;
@@ -27,6 +34,9 @@ interface Status {
   place: { slug: string; name: string } | null;
 }
 
+/** How many polls may fail in a row before the page says so. */
+const QUIET_FAILURES = 3;
+
 /**
  * The wait, as a small game of its own.
  *
@@ -35,11 +45,19 @@ interface Status {
  * the character appears the moment it exists, the bar moves with every hiding
  * spot painted, and the line under the sticker names the board being painted.
  * Nothing is timed, so nothing can lie.
+ *
+ * Every state the backend can be in has a sentence and, where the parent can
+ * do something, a button: a snag being retried, a person checking, a new photo
+ * needed, a dead end. And when the page itself cannot reach the server it says
+ * that, with the time of the last update, instead of showing a stale screen.
  */
 export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string; childName: string; isAdmin: boolean }) {
-  const { t, tf } = useI18n();
+  const { t, tf, locale } = useI18n();
   const cr = t.create.creating;
   const [s, setS] = useState<Status | null>(null);
+  const [failures, setFailures] = useState(0);
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  const [resend, setResend] = useState<"idle" | "busy" | "sent" | "simulated" | "wait" | "error">("idle");
 
   useEffect(() => {
     let alive = true;
@@ -47,9 +65,12 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
     const tick = async () => {
       try {
         const res = await fetch(`/api/games/${gameId}/status`, { cache: "no-store" });
-        if (!res.ok || !alive) return;
+        if (!alive) return;
+        if (!res.ok) throw new Error(`status ${res.status}`);
         const status = (await res.json()) as Status;
         setS(status);
+        setFailures(0);
+        setUpdatedAt(new Date());
         // Generating a game takes minutes, more than a serverless request lives.
         // While this page is open it is the clock: each nudge does another slice
         // of the work. A cron does the same for a parent who closed the tab, and
@@ -63,7 +84,7 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
           }
         }
       } catch {
-        /* retry on next tick */
+        if (alive) setFailures((n) => n + 1);
       }
     };
     void tick();
@@ -81,7 +102,15 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
     };
   }, [gameId]);
 
-  if (!s) return <div className="fm-skeleton" style={{ height: "var(--space-16)" }} aria-busy />;
+  const offline = failures >= QUIET_FAILURES;
+  const reconnecting = offline ? (
+    <Notice kind="warn">
+      {tf(cr.reconnecting, { time: updatedAt ? updatedAt.toLocaleTimeString(locale === "he" ? "he-IL" : "en-GB", { hour: "2-digit", minute: "2-digit" }) : "—" })}{" "}
+      <Link href="/library">{cr.backToLibrary}</Link>
+    </Notice>
+  ) : null;
+
+  if (!s) return offline ? reconnecting : <div className="fm-skeleton" style={{ height: "var(--space-16)" }} aria-busy />;
 
   if (s.status === "CHECKOUT_PENDING" || s.status === "PACKAGE_SELECTED" || s.status === "PAYMENT_FAILED") {
     return (
@@ -94,7 +123,7 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
     );
   }
 
-  if (s.failed) {
+  if (s.state === "failed") {
     return (
       <Notice kind="danger">
         {cr.failed} {isAdmin ? <Link href={`/admin/orders/${gameId}`}>{cr.adminLink}</Link> : null}
@@ -102,7 +131,21 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
     );
   }
 
+  const sendAgain = async () => {
+    setResend("busy");
+    try {
+      const res = await fetch(`/api/games/${gameId}/resend`, { method: "POST", cache: "no-store" });
+      const body = (await res.json()) as { ok: boolean; code?: string; outcome?: string; simulated?: boolean };
+      if (res.status === 429) setResend("wait");
+      else if (!body.ok || body.outcome === "failed" || body.outcome === "no-recipient") setResend("error");
+      else setResend(body.simulated ? "simulated" : "sent");
+    } catch {
+      setResend("error");
+    }
+  };
+
   if (s.done && s.playUrl) {
+    const mailLine = s.delivered && !s.mailSimulated ? cr.mailSent : cr.mailNotSent;
     return (
       <div className="fm-card fm-card--pad-6 fm-stack fm-stack--3 fm-center cp cp--done">
         <div className="cp__stage cp__stage--done">
@@ -116,10 +159,26 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
           )}
         </div>
         <h2>{tf(cr.readyTitle, { name: childName })}</h2>
-        <p className="fm-lead">{cr.readyLead}</p>
+        <p className="fm-lead">{cr.readyOpen}</p>
         <LinkButton href={s.playUrl} size="lg">
           {cr.open}
         </LinkButton>
+        <p className="fm-small">
+          {mailLine}{" "}
+          {resend === "sent" ? (
+            <strong>{cr.resent}</strong>
+          ) : resend === "simulated" ? (
+            <span>{cr.resendSimulated}</span>
+          ) : resend === "wait" ? (
+            <span>{cr.resendWait}</span>
+          ) : resend === "error" ? (
+            <span>{cr.mailNotSent}</span>
+          ) : (
+            <button type="button" className="fm-btn fm-btn--secondary fm-btn--sm" onClick={sendAgain} disabled={resend === "busy"}>
+              {cr.resend}
+            </button>
+          )}
+        </p>
         <Link href="/library" className="fm-small">
           {cr.manage}
         </Link>
@@ -138,6 +197,17 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
 
   return (
     <div className="fm-stack fm-stack--3 cp">
+      {reconnecting}
+      {s.state === "needs_new_photo" && s.newPhotoUrl ? (
+        <Notice kind="warn">
+          {tf(cr.needsNewPhoto, { name: childName })}{" "}
+          <LinkButton href={s.newPhotoUrl} size="sm">
+            {cr.newPhotoButton}
+          </LinkButton>
+        </Notice>
+      ) : null}
+      {s.state === "retrying" ? <Notice kind="info">{cr.retrying}</Notice> : null}
+
       <section className="fm-card cp__card" aria-live="polite">
         <div className={`cp__stage${s.avatarUrl ? " cp__stage--met" : ""}`}>
           {s.avatarUrl ? (
@@ -183,7 +253,7 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
         })}
       </ol>
 
-      {s.awaitingQa ? (
+      {s.state === "awaiting_review" ? (
         <Notice kind="info">
           {cr.qa} {isAdmin ? <Link href={`/admin/orders/${gameId}`}>{cr.qaAdmin}</Link> : cr.qaParent}
         </Notice>

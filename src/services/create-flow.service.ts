@@ -126,6 +126,50 @@ export async function selectPackage(c: Container, gameId: string, tierRaw: strin
   return { ok: true };
 }
 
+/**
+ * A new photo for a game that is already paid for.
+ *
+ * QA can send a game back with "needs a new photo"; the state existed, the
+ * admin could set it, and the parent had no way to answer it — the creating
+ * page said "preparing" while the system waited for them. This is the answer:
+ * the photo is checked and stored the same way as at checkout, everything
+ * drawn from the old one is dropped, and the game goes back to drawing on the
+ * same order. Nothing is bought again.
+ */
+export async function replacePhotoForPaidGame(c: Container, gameId: string, input: { buffer: Buffer; mimeType: string; crop: CropBox | null }): Promise<FlowResult> {
+  const game = await c.db.game.findUnique({ where: { id: gameId }, include: { childProfile: true } });
+  if (!game || !game.childProfile) return flowError("DRAFT_NOT_FOUND", "המשחק לא נמצא.");
+  if (statusOf(game) !== "NEEDS_NEW_PHOTO") return flowError("DRAFT_LOCKED", "המשחק לא מחכה לתמונה חדשה.");
+  const check = await checkPhoto(input.buffer, input.mimeType);
+  if (!check.ok) {
+    c.analytics.track("photo_rejected", { reason: check.code });
+    return flowError(check.code, check.reason);
+  }
+  await deleteAsset(c, game.childProfile.originalPhotoAssetId);
+  await deleteAsset(c, game.childProfile.avatarAssetId);
+  await deleteAsset(c, game.childProfile.identityAssetId);
+  const asset = await storeAsset(c, {
+    ownerId: game.ownerId,
+    type: "ORIGINAL_PHOTO",
+    visibility: "PRIVATE",
+    buffer: input.buffer,
+    mimeType: check.mimeType,
+    width: check.width,
+    height: check.height,
+  });
+  await c.db.childProfile.update({
+    where: { id: game.childProfile.id },
+    data: { originalPhotoAssetId: asset.id, avatarAssetId: null, identityAssetId: null, photoCropJson: input.crop ? JSON.stringify(input.crop) : null },
+  });
+  await c.db.game.update({ where: { id: gameId }, data: { lastError: null } });
+  // Back to drawing. AVATAR_GENERATING is resumable, so the next tick — the
+  // creating page's or the cron's — picks the game up where it left off.
+  await transitionGame(c, gameId, "AVATAR_GENERATING", SYSTEM, { reason: "new photo" });
+  c.analytics.track("photo_uploaded", {});
+  c.analytics.track("photo_approved", {});
+  return { ok: true };
+}
+
 /** The parent picks WORLDS; each one brings its nine boards with it. */
 export async function selectWorlds(c: Container, gameId: string, slugs: string[]): Promise<FlowResult> {
   const game = await loadDraft(c, gameId);

@@ -14,6 +14,13 @@ import type { GameStatus } from "./order-state";
 export const CREATION_MILESTONES = ["photo", "character", "hiding", "assemble", "check"] as const;
 export type CreationMilestone = (typeof CREATION_MILESTONES)[number];
 export type MilestoneState = "done" | "active" | "todo";
+/**
+ * What the parent should be told, and what they can do about it. One word per
+ * situation, so the page, the API and the mail cannot each read the status
+ * differently: working (nothing to do), retrying (a snag, handled), awaiting
+ * review (a person checks), needs a new photo (the parent acts), ready, failed.
+ */
+export type CreationState = "working" | "retrying" | "awaiting_review" | "needs_new_photo" | "ready" | "failed";
 
 export interface CreationSignals {
   status: GameStatus;
@@ -27,6 +34,7 @@ export interface CreationSignals {
 export interface CreationProgress {
   /** 0–100. Moves forward through a healthy run; a regeneration may pull it back. */
   percent: number;
+  state: CreationState;
   milestones: Record<CreationMilestone, MilestoneState>;
   /** The milestone being worked on, or null once the game is done or has failed. */
   current: CreationMilestone | null;
@@ -41,7 +49,8 @@ export interface CreationProgress {
  */
 const AT = { photo: 4, drawing: 8, character: 20, hidingEnd: 84, assemble: 90, check: 96, done: 100 } as const;
 
-const FAILED: ReadonlySet<GameStatus> = new Set(["GENERATION_FAILED", "REFUNDED", "CANCELLED", "DELETED"]);
+// Dead ends only. GENERATION_FAILED is retried by the next tick, so it is a snag, not a failure.
+const FAILED: ReadonlySet<GameStatus> = new Set(["REFUNDED", "CANCELLED", "DELETED"]);
 
 /** 0 = paid, 1 = drawing the character, 2 = painting spots, 3 = composing, 4 = checking, 5 = ready. */
 function stageOf(status: GameStatus): number {
@@ -73,6 +82,7 @@ export function creationProgress(s: CreationSignals): CreationProgress {
   const stage = stageOf(s.status);
   const done = stage === 5;
   const failed = FAILED.has(s.status);
+  const state: CreationState = done ? "ready" : failed ? "failed" : s.status === "NEEDS_NEW_PHOTO" ? "needs_new_photo" : s.status === "GENERATION_FAILED" ? "retrying" : stage === 4 ? "awaiting_review" : "working";
   // The counters can be ahead of the status (a spot lands before the status
   // row is touched) and the status can be ahead of the counters (a regenerated
   // game re-enters painting with its old spots still counted). Either one is
@@ -95,5 +105,5 @@ export function creationProgress(s: CreationSignals): CreationProgress {
     percent = Math.round(AT.character + (AT.hidingEnd - AT.character) * ratio);
   } else percent = stage >= 1 ? AT.drawing : AT.photo;
 
-  return { percent, milestones, current, done, failed };
+  return { percent, milestones, current, done, failed, state };
 }

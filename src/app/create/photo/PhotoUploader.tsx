@@ -11,6 +11,10 @@ interface Props {
   childName: string;
   hasPhoto: boolean;
   rejectedCode: string | null;
+  /** Where the photo goes. The draft route by default; a paid game that needs a new photo has its own. */
+  endpoint?: string;
+  /** Where to go once it is accepted. */
+  nextHref?: string;
 }
 
 const BOX_MAX = 320;
@@ -53,7 +57,7 @@ async function forUpload(file: File): Promise<Blob> {
   return blob ?? file;
 }
 
-export function PhotoUploader({ childName, hasPhoto, rejectedCode }: Props) {
+export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/api/drafts/photo", nextHref = "/create/package" }: Props) {
   const { t, tf } = useI18n();
   const p = t.create.photo;
   const router = useRouter();
@@ -137,14 +141,14 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode }: Props) {
     fd.append("crop", JSON.stringify(crop));
     fd.append("consent", "1");
     try {
-      const res = await fetch("/api/drafts/photo", { method: "POST", body: fd });
+      const res = await fetch(endpoint, { method: "POST", body: fd });
       const data = (await res.json().catch(() => ({ ok: false, code: "UPLOAD_FAILED", reason: `HTTP ${res.status}` }))) as { ok: boolean; code?: string; reason?: string };
       if (!data.ok) {
         setError(errorText(t, { code: data.code ?? "UPLOAD_FAILED", reason: data.reason }) || p.failed);
         setBusy(false);
         return;
       }
-      router.push("/create/package");
+      router.push(nextHref);
     } catch {
       setError(p.network);
       setBusy(false);
