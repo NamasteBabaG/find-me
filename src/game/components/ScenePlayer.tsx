@@ -350,12 +350,12 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store }: { scene: Sce
   const next = store.nextScene();
   const allDone = next === null;
   return (
-    <div className="complete" role="dialog" aria-label={g.complete.dialogAria}>
+    <div className="complete" role="dialog" aria-modal="true" aria-label={g.complete.dialogAria} aria-labelledby="complete-title">
       <div className="complete__card">
         <div className="complete__stamp" aria-hidden>
           {g.complete.stamp}
         </div>
-        <h2 className="complete__title">{store.demo ? tf(g.complete.demoFound, { name: store.config.child.name }) : scene.celebration.completeText}</h2>
+        <h2 id="complete-title" className="complete__title">{store.demo ? tf(g.complete.demoFound, { name: store.config.child.name }) : scene.celebration.completeText}</h2>
         {store.demo ? null : (
         <div className="complete__loot">
           <span className="complete__icon" aria-hidden>
@@ -374,18 +374,18 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store }: { scene: Sce
           ) : allDone && !store.gameDone() ? (
             // This journey is finished but the game is not: the next choice is
             // which world to go to, not which board.
-            <button type="button" className="fm-btn fm-btn--lg" onClick={store.goToWorlds}>
+            <button type="button" className="fm-btn fm-btn--lg" onClick={store.goToWorlds} autoFocus>
               {g.hub.back}
               <span className="fm-btn__arrow" aria-hidden>
                 ➜
               </span>
             </button>
           ) : allDone ? (
-            <button type="button" className="fm-btn fm-btn--lg" onClick={store.openPassport}>
+            <button type="button" className="fm-btn fm-btn--lg" onClick={store.openPassport} autoFocus>
               {g.complete.bag}
             </button>
           ) : (
-            <button type="button" className="fm-btn fm-btn--lg" onClick={() => next && store.openScene(next)}>
+            <button type="button" className="fm-btn fm-btn--lg" onClick={() => next && store.openScene(next)} autoFocus>
               {g.complete.next}
               <span className="fm-btn__arrow" aria-hidden>
                 ➜
