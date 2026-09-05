@@ -26,7 +26,9 @@ export function MockPay({ orderId, successUrl, cancelUrl, amountLabel }: { order
         setBusy(null);
         return;
       }
-      window.location.href = kind === "PAID" ? successUrl : cancelUrl;
+      // A declined card and a closed window are different stories for the
+      // parent, so they go back to checkout under different flags.
+      window.location.href = kind === "PAID" ? successUrl : cancelUrl.replace("cancelled=1", "declined=1");
     } catch {
       setError(tf(m.rejected, { body: "network" }));
       setBusy(null);

@@ -7,13 +7,13 @@ import { useI18n } from "@/i18n/client";
 import { errorText } from "@/i18n/errors";
 import { checkoutAction, type ActionResult } from "../create/actions";
 
-export function CheckoutForm({ defaultEmail, priceLabel, cancelled, backHref }: { defaultEmail: string; priceLabel: string; cancelled: boolean; backHref: "/create/scenes" | "/create/package" }) {
+export function CheckoutForm({ defaultEmail, priceLabel, outcome, backHref }: { defaultEmail: string; priceLabel: string; outcome: "declined" | "cancelled" | null; backHref: "/create/scenes" | "/create/package" }) {
   const { t, tf } = useI18n();
   const ck = t.create.checkout;
   const [state, action, pending] = useActionState<ActionResult | null, FormData>(checkoutAction, null);
   return (
     <form action={action} className="fm-card fm-card--pad-4 fm-stack fm-stack--3">
-      {cancelled ? <Notice kind="warn">{ck.cancelled}</Notice> : null}
+      {outcome === "declined" ? <Notice kind="warn">{ck.declined}</Notice> : outcome === "cancelled" ? <Notice kind="warn">{ck.cancelled}</Notice> : null}
       <div className="fm-field">
         <label htmlFor="email" className="fm-label">
           {ck.emailLabel}

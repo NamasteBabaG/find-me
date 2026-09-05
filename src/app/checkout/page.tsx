@@ -15,7 +15,7 @@ export async function generateMetadata() {
   return { title: t.create.checkout.title };
 }
 
-export default async function CheckoutPage({ searchParams }: { searchParams: Promise<{ cancelled?: string }> }) {
+export default async function CheckoutPage({ searchParams }: { searchParams: Promise<{ cancelled?: string; declined?: string }> }) {
   const c = getContainer();
   const [user, draft, params, { t, locale }] = await Promise.all([currentUser(), currentDraft(), searchParams, getI18n()]);
   if (!draft?.childProfile) redirect("/create");
@@ -27,6 +27,12 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
   const currency = await getCurrency();
   const price = formatMoney(priceFor(summary.pkg.tier, currency), currency, locale);
   const name = summary.child?.displayName ?? "";
+  // The address the parent typed last time, not the account they happen to be
+  // signed in with: a grandparent buying a gift while logged in as themselves
+  // came back from a declined card to find their own email in the box.
+  const lastOrder = await c.db.order.findFirst({ where: { gameId: draft.id }, orderBy: { createdAt: "desc" }, include: { user: { select: { email: true } } } });
+  const defaultEmail = lastOrder?.user.email ?? user?.email ?? "";
+  const outcome = params.declined === "1" ? "declined" : params.cancelled === "1" ? "cancelled" : null;
 
   return (
     <CreateFrame width="mid" step={4} title={ck.title} lead={ck.lead} user={user} isAdmin={isAdminEmail(user?.email)}>
@@ -59,7 +65,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
           </div>
           <p className="fm-small">{ck.vat}</p>
         </div>
-        <CheckoutForm defaultEmail={user?.email ?? ""} priceLabel={price} cancelled={params.cancelled === "1"} backHref={backHref} />
+        <CheckoutForm defaultEmail={defaultEmail} priceLabel={price} outcome={outcome} backHref={backHref} />
       </div>
     </CreateFrame>
   );
