@@ -126,7 +126,7 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
   if (s.state === "failed") {
     return (
       <Notice kind="danger">
-        {cr.failed} {isAdmin ? <Link href={`/admin/orders/${gameId}`}>{cr.adminLink}</Link> : null}
+        {cr.failed} <Link href="/library">{cr.backToLibrary}</Link> {isAdmin ? <Link href={`/admin/orders/${gameId}`}>{cr.adminLink}</Link> : null}
       </Notice>
     );
   }
@@ -171,12 +171,13 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
             <span>{cr.resendSimulated}</span>
           ) : resend === "wait" ? (
             <span>{cr.resendWait}</span>
-          ) : resend === "error" ? (
-            <span>{cr.mailNotSent}</span>
           ) : (
-            <button type="button" className="fm-btn fm-btn--secondary fm-btn--sm" onClick={sendAgain} disabled={resend === "busy"}>
-              {cr.resend}
-            </button>
+            <>
+              {resend === "error" ? <span>{cr.resendError} </span> : null}
+              <button type="button" className="fm-btn fm-btn--secondary fm-btn--sm" onClick={sendAgain} disabled={resend === "busy"}>
+                {cr.resend}
+              </button>
+            </>
           )}
         </p>
         <Link href="/library" className="fm-small">

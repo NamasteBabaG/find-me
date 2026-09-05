@@ -126,8 +126,8 @@
       "he": "איזה מסע!"
     },
     "text": {
-      "en": "{name} found every hiding place in this world. The passport is full!",
-      "he": "{name} מצאו את כל המחבואים בעולם הזה. הדרכון מלא!"
+      "en": "{name}, every hiding spot in this world has been found! The passport is full!",
+      "he": "{name}, כל המחבואים בעולם הזה נמצאו! הדרכון מלא!"
     },
     "icon": "🌍"
   },

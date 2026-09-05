@@ -105,8 +105,8 @@
           "he": "תיקנתי את הקטן!"
         },
         {
-          "en": "You found me! Do not touch that one.",
-          "he": "מצאתם! אל תיגעו בזה."
+          "en": "You found me! I just finished.",
+          "he": "מצאתם! בדיוק סיימתי."
         },
         {
           "en": "Every tool has its place.",
@@ -170,8 +170,8 @@
           "he": "מצאתם! הרובוט הקטן הלשין."
         },
         {
-          "en": "I found a spare eye.",
-          "he": "מצאתי עין רזרבית."
+          "en": "I found a part for the robot!",
+          "he": "מצאתי חלק לרובוט!"
         }
       ],
       "animation": "peek",

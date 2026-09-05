@@ -126,8 +126,8 @@
       "he": "הממלכה שלך"
     },
     "text": {
-      "en": "{name} found every hiding place in the Enchanted Kingdom — nine gems, one crown.",
-      "he": "{name} מצא/ה כל מחבוא בממלכת הקסם — תשע אבני חן, כתר אחד."
+      "en": "{name}, every hiding spot in The Enchanted Kingdom has been found! Nine gems, one crown.",
+      "he": "{name}, כל המחבואים בממלכת הקסם נמצאו! תשע אבני חן, כתר אחד."
     },
     "icon": "👑"
   },

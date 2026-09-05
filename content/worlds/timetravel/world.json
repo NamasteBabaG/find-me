@@ -122,12 +122,12 @@
   },
   "completion": {
     "title": {
-      "en": "All of time, found",
-      "he": "כל הזמן, נמצא"
+      "en": "What a journey through time!",
+      "he": "איזה מסע בזמן!"
     },
     "text": {
-      "en": "{name} found every hiding place from the dinosaurs to the stars — nine shards, one hourglass.",
-      "he": "{name} מצא/ה כל מחבוא מהדינוזאורים ועד הכוכבים — תשעה רסיסים, שעון חול אחד."
+      "en": "{name}, every hiding spot in Journey Through Time has been found! Nine shards, one hourglass.",
+      "he": "{name}, כל המחבואים במסע בזמן נמצאו! תשעה רסיסים, שעון חול אחד."
     },
     "icon": "⌛"
   },
