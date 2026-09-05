@@ -125,6 +125,6 @@ describe("the hiding-spot prompt", () => {
   });
 
   it("was versioned, so old patches can be told from new ones", () => {
-    expect(PROMPT_VERSION).toBe("slot-patch-v4");
+    expect(PROMPT_VERSION).toBe("slot-patch-v5");
   });
 });

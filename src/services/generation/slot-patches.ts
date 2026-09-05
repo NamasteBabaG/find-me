@@ -5,7 +5,7 @@ import { BODY_TEMPLATES } from "../../../content/body-templates";
 import type { Container } from "../container";
 import { storeAsset } from "../asset.service";
 import type { PatchJudgement } from "@/infra/generation/types";
-import { childProblem, diffToPatch, paintMask, slotContext, expressionFor, slotPrompt, PROMPT_VERSION } from "./patch";
+import { childProblem, diffToPatch, modelSpaceHeight, paintMask, slotContext, expressionFor, slotPrompt, PROMPT_VERSION } from "./patch";
 import { loadSceneArt } from "./scene-art";
 
 /**
@@ -102,7 +102,8 @@ export async function generateSlotPatch(
   const prompt = slotPrompt({
     mission: target.mission.en.replace("{name}", input.childName),
     bodyLabel: body?.label.en,
-    childPx: ctx.childPx,
+    // In the pixels the model sees, not the art's: the provider scales the window.
+    childPx: modelSpaceHeight(ctx.childPx, ctx.rect.h, c.avatars.patchOutputPx),
     // The place dresses and lights the child; the sheet only says who they are.
     place: scene.name.en,
     placeNote: scene.tagline.en,

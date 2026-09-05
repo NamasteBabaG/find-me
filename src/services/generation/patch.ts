@@ -53,19 +53,38 @@ export interface SlotContext {
   rect: PixelRect;
   /** How tall the child should be, in art pixels. */
   childPx: number;
+  /** The multiple of the child's height the window was cut at. */
+  windowFactor: number;
 }
 
 function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, n));
 }
 
+/** The window as a multiple of the child's height. Seven is what every world was authored and measured at. */
+export const DEFAULT_WINDOW_FACTOR = 7;
+/** The window never shrinks below this or grows past this, whatever the factor. */
+export const WINDOW_MIN_PX = 384;
+export const WINDOW_MAX_PX = 768;
+
+export interface SlotContextOptions {
+  /** Overrides DEFAULT_WINDOW_FACTOR — an experiment's knob, not a scene's. */
+  windowFactor?: number;
+}
+
 /**
  * The window the model sees: ~7× the child's height, square, a multiple of 8,
  * clamped to the art. It must contain whatever will stand in front of the child
  * (castle, parasol, rock) or the model cannot paint them occluding her.
+ *
+ * `childPx` is in the art's own pixels, like the rect. The prompt must not
+ * repeat it as is: the provider scales the window to its own size, and the
+ * height it names has to be scaled the same way (modelSpaceHeight).
  */
-export function slotContext(art: Size, slot: SlotPoint): SlotContext {
-  const size = Math.min(art.width, art.height, Math.round(clamp(slot.scale * art.height * 7, 384, 768) / 8) * 8);
+export function slotContext(art: Size, slot: SlotPoint, options: SlotContextOptions = {}): SlotContext {
+  const factor = options.windowFactor ?? DEFAULT_WINDOW_FACTOR;
+  if (!(factor > 0)) throw new Error(`windowFactor must be positive, got ${factor}`);
+  const size = Math.min(art.width, art.height, Math.round(clamp(slot.scale * art.height * factor, WINDOW_MIN_PX, WINDOW_MAX_PX) / 8) * 8);
   return {
     rect: {
       x: clamp(Math.round(slot.x * art.width - size / 2), 0, art.width - size),
@@ -74,7 +93,23 @@ export function slotContext(art: Size, slot: SlotPoint): SlotContext {
       h: size,
     },
     childPx: Math.round(slot.scale * art.height),
+    windowFactor: factor,
   };
+}
+
+/**
+ * The child's height in the pixels the model actually sees.
+ *
+ * The window is cut at the art's resolution and the provider scales it to its
+ * own square (1024 for gpt-image). The prompt used to name the height in art
+ * pixels regardless: a 768px window with a 119px child was sent as 1024px with
+ * a child scaled to 159px, and the text still said 119 — a quarter under the
+ * size the mask asked for. The fraction of the window is what survives the
+ * scaling, so that is what is carried, and the number is derived from it.
+ */
+export function modelSpaceHeight(childPx: number, windowPx: number, outputPx: number | undefined): number {
+  if (!outputPx || outputPx === windowPx) return childPx;
+  return Math.round((childPx / windowPx) * outputPx);
 }
 
 /** White-on-black ellipse marking the paint area, in crop pixels. */
@@ -108,7 +143,12 @@ export async function styleReference(art: Buffer, size: Size, slot: SlotPoint, o
   return sharp(art).extract({ left: rect.x, top: rect.y, width: rect.w, height: rect.h }).resize(out, out, { fit: "cover" }).png().toBuffer();
 }
 
-export const PROMPT_VERSION = "slot-patch-v4";
+/**
+ * v5 is v4's wording with one number corrected: the height the prompt names
+ * is in the pixels the model sees, not the art's. Renders made under v4 were
+ * asked for a child up to a quarter smaller than their mask.
+ */
+export const PROMPT_VERSION = "slot-patch-v5";
 
 /**
  * The instruction the image model gets. Built from scene data, never hard-coded copy.
@@ -138,6 +178,14 @@ export interface SlotPromptInput {
   placeNote?: string;
   /** What the face is doing; see expressionFor(). */
   expression?: string;
+  /**
+   * An experiment's knobs, off in production: a named outfit for this place
+   * ("a yellow t-shirt and blue shorts") instead of "clothes a child would
+   * really wear here", and one plain, visible action ("looking at the
+   * surfboard") added to the situation.
+   */
+  wardrobe?: string;
+  action?: string;
 }
 
 export function slotPrompt(input: SlotPromptInput): string {
@@ -146,9 +194,11 @@ export function slotPrompt(input: SlotPromptInput): string {
     `Return this exact picture with ONE child added to it. Do not redraw, restyle, re-render or improve any part of the picture: every pixel outside the child must come back byte for byte as it went in.`,
     `The child goes inside the white area of the mask, about ${input.childPx} pixels tall, the size of the people already standing near that spot.`,
     `The attached character reference decides WHO this child is: copy the face, hair, skin tone and build exactly. This picture decides everything else: draw the child in its own style, line quality and palette, lit by the same light from the same direction, with the same colour temperature, saturation and contrast, so they look painted by the same hand at the same hour.`,
-    `Dress the child for this place${where}: everyday clothes a child would really wear here, in two or three flat colours taken from the picture's own palette, and let the weather show — a coat and hat in snow, a swimsuit or shorts on a beach, boots in a jungle — even when only the head and shoulders are in view. The clothes in the reference are not a uniform — only the child is the same.`,
+    input.wardrobe
+      ? `Dress the child in ${input.wardrobe}: plain everyday clothes for this place${where}, drawn in flat colours taken from the picture's own palette. The clothes in the reference are not a uniform — only the child is the same.`
+      : `Dress the child for this place${where}: everyday clothes a child would really wear here, in two or three flat colours taken from the picture's own palette, and let the weather show — a coat and hat in snow, a swimsuit or shorts on a beach, boots in a jungle — even when only the head and shoulders are in view. The clothes in the reference are not a uniform — only the child is the same.`,
     `Give the child a natural, specific expression for the moment — ${input.expression ?? expressionFor()} — never a fixed, posed smile.`,
-    `Situation: ${input.mission}${input.bodyLabel ? ` (${input.bodyLabel})` : ""}.${input.pose ? ` ${input.pose}` : ""}`,
+    `Situation: ${input.mission}${input.bodyLabel ? ` (${input.bodyLabel})` : ""}.${input.action ? ` ${input.action}` : ""}${input.pose ? ` ${input.pose}` : ""}`,
     `Let whatever is naturally in front of the child overlap them, and give them a soft shadow that matches the others. They should be findable, not the centre of attention.`,
     `Change nothing else.`,
   ].join(" ");

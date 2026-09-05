@@ -87,6 +87,10 @@ export interface SlotPatchRequest {
 export interface SlotPatchResponse extends GenerationCost {
   /** The edited crop, the same size as the crop that went in. */
   png: Buffer;
+  /** The model's own output before it was fitted back to the crop, when the provider has one. Evidence, never shipped. */
+  rawPng?: Buffer;
+  /** The prompt as it went over the wire, with whatever the provider added. */
+  promptSent?: string;
 }
 
 /**
@@ -102,6 +106,12 @@ export interface AvatarProvider {
   createCharacter?(input: AvatarInput): Promise<CharacterOutput>;
   /** Present only on providers that can inpaint her into a world. */
   editSlotCrop?(request: SlotPatchRequest): Promise<SlotPatchResponse>;
+  /**
+   * The square the provider sends the crop as, and gets the edit back as. The
+   * prompt names the child's height in that space (see modelSpaceHeight);
+   * undefined means the crop is sent at its own size.
+   */
+  readonly patchOutputPx?: number;
 }
 
 /** What a judge concluded about one finished patch. */

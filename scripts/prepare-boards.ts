@@ -242,7 +242,7 @@ async function generateAll(slugs: string[]) {
               continue;
             }
             await writePatch(c, patch, outDir);
-            await writePreview(c, patch);
+            await writePreview(c, patch, path.join(ROOT, "work", "patches"));
             ok = true;
             note = `${patch.width}x${patch.height}`;
           } catch (err) {

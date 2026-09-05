@@ -29,6 +29,7 @@ import { AVATAR_SIZE, avatarFromSheet } from "./avatar-cut";
 
 const API = "https://api.openai.com/v1/images/edits";
 const SHEET_SIZE = 1024;
+const PATCH_OUTPUT_PX = 1024;
 
 /**
  * Token prices in USD per million, by model. gpt-image models bill by image
@@ -133,6 +134,8 @@ export interface OpenAiOptions {
 
 export class OpenAiAvatarProvider implements AvatarProvider {
   readonly id = "openai" as const;
+  /** images/edits works in this square; the crop and the mask are fitted to it and the edit comes back in it. */
+  readonly patchOutputPx = PATCH_OUTPUT_PX;
   private readonly limiter: RateLimiter;
   private readonly model: string;
   private readonly quality: string;
@@ -262,7 +265,7 @@ export class OpenAiAvatarProvider implements AvatarProvider {
 
   async editSlotCrop(request: SlotPatchRequest): Promise<SlotPatchResponse> {
     const meta = await sharp(request.crop).metadata();
-    const size = 1024;
+    const size = PATCH_OUTPUT_PX;
     const crop = await sharp(request.crop).resize(size, size, { kernel: "lanczos3" }).png().toBuffer();
     // OpenAI's mask is an alpha channel: transparent where the model may paint.
     const paint = await sharp(request.paintMask).resize(size, size).extractChannel(0).raw().toBuffer();
@@ -272,20 +275,24 @@ export class OpenAiAvatarProvider implements AvatarProvider {
     // channel is unambiguously the alpha the API asks for.
     const mask = await sharp(crop).ensureAlpha().removeAlpha().joinChannel(alpha, { raw: { width: size, height: size, channels: 1 } }).png().toBuffer();
     const reference = await sharp(request.reference).resize({ width: size, height: size, fit: "contain", background: { r: 255, g: 255, b: 255, alpha: 0 } }).png().toBuffer();
+    const promptSent = `${request.prompt} The first image is the scene to edit; the second image is the character reference sheet for the child (that is who the child is: the same face, hair, skin tone and build; the clothes may change to suit the place; do not copy its background or its grid).`;
     const out = await this.call({
       images: [
         { buffer: crop, name: "scene.png" },
         { buffer: reference, name: "character.png" },
       ],
       mask,
-      prompt: `${request.prompt} The first image is the scene to edit; the second image is the character reference sheet for the child (that is who the child is: the same face, hair, skin tone and build; the clothes may change to suit the place; do not copy its background or its grid).`,
+      prompt: promptSent,
       size: `${size}x${size}`,
       quality: request.quality ?? this.patchQuality,
       label: request.label,
     });
-    // Back to the crop's own pixels so the diff compares like with like.
+    // Back to the crop's own pixels so the diff compares like with like. The
+    // model's own output is handed back too: it is the only picture that shows
+    // what was drawn before the downscale, and a rejection cannot be understood
+    // without it.
     const png = await sharp(out.png).resize(meta.width ?? size, meta.height ?? size, { kernel: "lanczos3" }).png().toBuffer();
-    return { png, costCents: out.costCents, model: out.model, usage: out.usage, providerRequestId: out.providerRequestId, durationMs: out.durationMs, attempts: out.attempts };
+    return { png, rawPng: out.png, promptSent, costCents: out.costCents, model: out.model, usage: out.usage, providerRequestId: out.providerRequestId, durationMs: out.durationMs, attempts: out.attempts };
   }
 
   /** The cover avatar comes from the character sheet, so it is never a second bill. */
