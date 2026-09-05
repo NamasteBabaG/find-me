@@ -11,7 +11,7 @@ export const metadata = { robots: { index: false } };
 export default async function CreatingPage({ params }: { params: Promise<{ gameId: string }> }) {
   const { gameId } = await params;
   const c = getContainer();
-  const [game, user, draftToken, { t }] = await Promise.all([c.db.game.findUnique({ where: { id: gameId }, include: { childProfile: true } }), currentUser(), draftTokenFromCookie(), getI18n()]);
+  const [game, user, draftToken, { t }] = await Promise.all([c.db.game.findUnique({ where: { id: gameId }, include: { childProfile: true, owner: { select: { email: true } } } }), currentUser(), draftTokenFromCookie(), getI18n()]);
   if (!game) notFound();
   const allowed = (draftToken && game.draftToken === draftToken) || (user && game.ownerId === user.id) || isAdminEmail(user?.email);
   if (!allowed) notFound();
@@ -25,7 +25,8 @@ export default async function CreatingPage({ params }: { params: Promise<{ gameI
           <h1 className="create__title">{tf(cr.title, { name })}</h1>
           <p className="fm-lead">{cr.lead}</p>
         </div>
-        <CreatingStatus gameId={gameId} childName={name} isAdmin={isAdminEmail(user?.email)} />
+        {/* The review link shows for an admin session, and for a game an admin owns: on a QA box the tester who paid is the person who approves, and was reading "a person checks" about themselves. */}
+        <CreatingStatus gameId={gameId} childName={name} isAdmin={isAdminEmail(user?.email) || isAdminEmail(game.owner?.email)} />
       </main>
     </>
   );
