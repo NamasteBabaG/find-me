@@ -9,6 +9,7 @@ import type {
   TargetSpriteInput,
   TargetSpriteOutput,
 } from "./types";
+import { AVATAR_SIZE, avatarFromSheet } from "./avatar-cut";
 
 /**
  * OpenAI image generation.
@@ -28,7 +29,6 @@ import type {
 
 const API = "https://api.openai.com/v1/images/edits";
 const SHEET_SIZE = 1024;
-const AVATAR_SIZE = 512;
 
 /**
  * Token prices in USD per million, by model. gpt-image models bill by image
@@ -248,7 +248,7 @@ export class OpenAiAvatarProvider implements AvatarProvider {
       sheetPng: sheet,
       sheetWidth: SHEET_SIZE,
       sheetHeight: SHEET_SIZE,
-      avatarPng: await avatarFromSheet(sheet),
+      avatarPng: await avatarFromSheet(sheet, SHEET_SIZE),
       avatarWidth: AVATAR_SIZE,
       avatarHeight: AVATAR_SIZE,
       costCents: out.costCents,
@@ -317,16 +317,4 @@ async function squarePhoto(photo: Buffer, crop: AvatarInput["crop"], size: numbe
     .resize({ width: size, height: size, fit: "contain", background: { r: 255, g: 255, b: 255, alpha: 1 } })
     .png()
     .toBuffer();
-}
-
-/** Round face sticker cut from the sheet's top-left portrait, with the white outline. */
-async function avatarFromSheet(sheet: Buffer): Promise<Buffer> {
-  const half = SHEET_SIZE / 2;
-  const portrait = await sharp(sheet).extract({ left: 0, top: 0, width: half, height: half }).resize(AVATAR_SIZE, AVATAR_SIZE).png().toBuffer();
-  const ring = 22;
-  const inner = AVATAR_SIZE / 2 - ring;
-  const circle = Buffer.from(`<svg width="${AVATAR_SIZE}" height="${AVATAR_SIZE}"><circle cx="${AVATAR_SIZE / 2}" cy="${AVATAR_SIZE / 2}" r="${inner}" fill="#fff"/></svg>`);
-  const outline = Buffer.from(`<svg width="${AVATAR_SIZE}" height="${AVATAR_SIZE}"><circle cx="${AVATAR_SIZE / 2}" cy="${AVATAR_SIZE / 2}" r="${AVATAR_SIZE / 2 - 2}" fill="#fff"/></svg>`);
-  const masked = await sharp(portrait).composite([{ input: circle, blend: "dest-in" }]).png().toBuffer();
-  return sharp(outline).composite([{ input: masked, blend: "over" }]).png().toBuffer();
 }

@@ -6,6 +6,8 @@ import { statusOf, transitionGame } from "./game-status";
 import { persistGameConfig } from "./generation/scene-composer";
 import { publishGame } from "./publish.service";
 import { audit, type Actor } from "./audit.service";
+import { deleteAsset, readAssetBuffer, storeAsset } from "./asset.service";
+import { AVATAR_SIZE, avatarFromSheet } from "@/infra/generation/avatar-cut";
 
 export type AdminFilter = "new" | "pending_payment" | "generating" | "qa" | "needs_photo" | "ready" | "failed" | "refunded" | "all";
 
@@ -201,6 +203,38 @@ export async function adjustTarget(c: Container, targetInstanceId: string, adjus
   await audit(c, actor, "target:adjusted", "TargetInstance", t.id, parsed);
   const game = await c.db.game.findUniqueOrThrow({ where: { id: t.gameScene.gameId } });
   if (game.configJson) await persistGameConfig(c, game.id);
+}
+
+/**
+ * Cut the round face sticker again from the child's identity sheet.
+ *
+ * For games made before the sticker was cut around the head: the old sticker
+ * showed the whole portrait quadrant, the face small in a big white circle.
+ * The new sticker replaces it everywhere the game shows it: the stored config
+ * is pointed at the new asset (its URLs are re-signed on the way out anyway),
+ * and the old one is dropped.
+ */
+export async function recutAvatar(c: Container, gameId: string, actor: Actor): Promise<{ ok: true } | { ok: false; code: "NO_SHEET" }> {
+  const game = await c.db.game.findUniqueOrThrow({ where: { id: gameId }, include: { childProfile: true } });
+  const child = game.childProfile;
+  if (!child?.identityAssetId) return { ok: false, code: "NO_SHEET" };
+  const sheetAsset = await c.db.asset.findUnique({ where: { id: child.identityAssetId } });
+  if (!sheetAsset || sheetAsset.status !== "READY") return { ok: false, code: "NO_SHEET" };
+  const sheet = await readAssetBuffer(c, child.identityAssetId);
+  const png = await avatarFromSheet(sheet, Math.min(sheetAsset.width ?? 1024, sheetAsset.height ?? 1024));
+  const asset = await storeAsset(c, { ownerId: child.ownerId, type: "AVATAR", visibility: "GAME", buffer: png, mimeType: "image/png", width: AVATAR_SIZE, height: AVATAR_SIZE, provider: sheetAsset.provider });
+  const previous = child.avatarAssetId;
+  await c.db.childProfile.update({ where: { id: child.id }, data: { avatarAssetId: asset.id } });
+  if (previous) {
+    const games = await c.db.game.findMany({ where: { childProfileId: child.id, configJson: { contains: `/api/assets/${previous}` } }, select: { id: true, configJson: true } });
+    for (const g of games) {
+      if (!g.configJson) continue;
+      await c.db.game.update({ where: { id: g.id }, data: { configJson: g.configJson.replaceAll(`/api/assets/${previous}`, `/api/assets/${asset.id}`) } });
+    }
+    await deleteAsset(c, previous);
+  }
+  await audit(c, actor, "avatar:recut", "ChildProfile", child.id, { assetId: asset.id, previous });
+  return { ok: true };
 }
 
 export async function requestNewPhoto(c: Container, gameId: string, actor: Actor, note: string): Promise<void> {

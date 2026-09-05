@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getContainer } from "@/services/container";
-import { adjustTarget, approveAndPublish, markTargetForRegeneration, requestNewPhoto, retryGeneration } from "@/services/admin.service";
+import { adjustTarget, approveAndPublish, markTargetForRegeneration, recutAvatar, requestNewPhoto, retryGeneration } from "@/services/admin.service";
 import { refundOrder } from "@/services/order.service";
 import { deleteGame } from "@/services/game.service";
 import { rotatePlayerLink } from "@/services/share-link.service";
@@ -37,6 +37,13 @@ export async function adjustTargetAction(fd: FormData): Promise<void> {
   const actor = await admin();
   await adjustTarget(getContainer(), str(fd, "targetInstanceId"), { dx: Number(fd.get("dx") ?? 0), dy: Number(fd.get("dy") ?? 0), scale: Number(fd.get("scale") ?? 1) }, actor);
   revalidatePath(`/admin/orders/${str(fd, "gameId")}`);
+}
+
+export async function recutAvatarAction(fd: FormData): Promise<void> {
+  const actor = await admin();
+  const gameId = str(fd, "gameId");
+  await recutAvatar(getContainer(), gameId, actor);
+  revalidatePath(`/admin/orders/${gameId}`);
 }
 
 export async function requestPhotoAction(fd: FormData): Promise<void> {

@@ -11,7 +11,7 @@ import { isPlayable } from "@/domain/order-state";
 import { StaticScenePreview } from "@/game/components/StaticScenePreview";
 import { ComposedSprite } from "@/game/components/ComposedSprite";
 import { Notice } from "@/ui/Shell";
-import { adjustTargetAction, adminDeleteAction, adminRotateLinkAction, approveAction, refundAction, regenTargetAction, requestPhotoAction, retryAction } from "../../actions";
+import { adjustTargetAction, adminDeleteAction, adminRotateLinkAction, approveAction, recutAvatarAction, refundAction, regenTargetAction, requestPhotoAction, retryAction } from "../../actions";
 
 export default async function AdminOrderPage({ params, searchParams }: { params: Promise<{ gameId: string }>; searchParams: Promise<{ v?: string }> }) {
   const [{ gameId }, { v }] = await Promise.all([params, searchParams]);
@@ -242,6 +242,17 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
                 <img src={`/api/assets/${avatarId}`} alt="אווטאר" className="photo-thumb" style={{ borderRadius: "999px" }} />
               ) : null}
             </div>
+            {game.childProfile?.identityAssetId ? (
+              // The sticker used to be the whole portrait quadrant, face small in
+              // a big circle. Games made before the cut moved to the head get it
+              // again from the same sheet, for nothing.
+              <form action={recutAvatarAction}>
+                <input type="hidden" name="gameId" value={gameId} />
+                <button className="fm-btn fm-btn--secondary fm-btn--sm" type="submit">
+                  ◎ לחתוך את האווטאר מחדש סביב הפנים
+                </button>
+              </form>
+            ) : null}
           </section>
 
           <section className="fm-card fm-stack fm-stack--2">
