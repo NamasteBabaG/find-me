@@ -430,6 +430,79 @@ npx tsx scripts/character.ts assets/random-girl.png --out=work/plain --style=non
 - Keep `slot.scale` honest — it drives the crop size, the mask and the prompt. It no longer drives the
   hit-test: that comes from the patch itself.
 
+## The height the prompt names is in the model's pixels (v5)
+
+The window is cut at the art's resolution and the provider scales it to its
+own square (1024 for gpt-image), mask included. Until prompt v5 the text kept
+the art's number: on the Great Wall a 119px child was drawn into a window
+where the mask asked for 159 — a quarter under. `modelSpaceHeight()` derives
+the number from the child's fraction of the window and the provider's declared
+`patchOutputPx`; the pipeline, the scripts and the sampling harness all go
+through it, and `src/services/__tests__/slot-units.test.ts` pins the fraction
+at 384, 472 and 768px windows. `slotContext()` takes a `windowFactor` for
+experiments (default 7, floor 384, cap 768); `--units=art` on the scripts
+reproduces the old prompt for a comparison.
+
+## Tools that keep the evidence
+
+- **`scripts/v4-sample.ts`** is a harness: one directory per cell (identity ×
+  spot) with the crop, the mask, the prompt as sent, the model's raw 1024
+  output, the same fitted to the crop, the alpha, the patch and the on-board
+  preview — kept for rejections too — plus `cell.json` with the numbers, the
+  verdicts and the questions a person answers. The manifest carries the
+  commit, a config hash, and the hashes of every board and reference. It
+  reserves the next call's cost before making it, asks the provider for one
+  attempt per cell, stops on a timeout (whose charge is unknown), and marks a
+  cell served by another model as not comparable. `--reference=head` sends
+  the head cut from the sheet instead of the whole sheet; `--art-direction`
+  adds a named outfit and action per scene.
+- **`scripts/extraction-matrix.ts`** re-extracts renders that were already
+  paid for across the existing knobs and lays the child's region out beside
+  the raw render at 2×, with the kept alpha tinted. On the full window the
+  results look identical, because a patch lands on the scenery it was cut
+  from; the differences are at the edge.
+- **`import` and `diagnose`** read the extraction flags through one parser
+  (`parseDiffOptions`); a flag neither honours is an error. `diagnose` says
+  "extracted alpha", not "painted": the alpha is what the extraction kept,
+  and a child who lost her hair to the threshold reads as short here.
+- **The ledger.** `costCents` is an integer column and used to be rounded on
+  every tick, so a 2-cent roll plus a 0.26-cent judgement was written as 2.
+  The exact figure now lives in `usageJson.ledger` with every attempt's roll,
+  judgement, outcome and request id; the column is rounded once from it; a
+  timed-out request is marked `unknownCost`, not zero.
+
+### What experiment 1 found (6 September 2026, no renders bought)
+
+Fourteen paid renders from the authoring runs, re-extracted with the eight
+combinations of threshold 28/24, keep 0.2/0.1 and feather 6/2, judged on
+zoomed strips beside the raw render and, for six cases, against coarse boxes
+drawn by hand around the face, the hair and the silhouette
+(`work/patch-quality/e1/`):
+
+- **Threshold 24 captures scenery.** It rejected four renders the baseline
+  accepts (the Great Wall, the library doorway, the carpets, the coral) and,
+  worse, on the coral board it accepted a blob that was not the child at all —
+  the boy and the clam the model had re-rendered a little. It did remove the
+  one residue the baseline leaves (the straw hat of the boy the model painted
+  over in the wild west), which is the trade: a lower threshold finds what the
+  model changed under the child and also everything it changed beside her.
+- **Feather 2** shrinks the alpha by ~5px a side and split the doorway child
+  into pieces. **keep 0.1** is identical to 0.2 everywhere except a peeking
+  head, where it keeps a strand of hair (coral: face box 85→97%).
+- **No combination improves the defects without a regression.** The defects
+  themselves are not threshold defects: a whole canoe the model added on open
+  water (rejected as "more than one child" — right about the shape, wrong
+  about the cause), a head above an ice block with hair falling beside it
+  (rejected as "in pieces" by every combination although the composite is
+  right), and the straw-hat residue. Two of those are now
+  `src/services/__tests__/extraction-fixtures.test.ts`, marked as expected
+  failures until the extraction or the rule changes.
+
+So the difference signal is what it is: the family's knobs trade residue for
+drift, and the cheap, useful change is `keep 0.1` for peeking spots, not a
+global threshold. The direction that addresses the causes is the review's
+§10 — an alpha the model provides — measured, not assumed.
+
 ## The sheet says who; the board says what to wear
 
 Prompt v4 (`slot-patch-v4`). Told "same face, hair and outfit", the model put

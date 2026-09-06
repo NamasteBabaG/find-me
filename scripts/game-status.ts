@@ -104,7 +104,7 @@ async function reportScales(
   const { diffToPatch } = await import("../src/services/generation/patch");
   const { slotOf, cropOf } = await import("./slot-patch");
   console.log("");
-  console.log("painted height ÷ asked height, from the renders that were thrown away:");
+  console.log("extracted alpha height ÷ asked height, from the renders that were thrown away (perspectiveUnverified: the alpha is what the extraction kept, not what the model drew):");
   for (const r of rows) {
     if (!r.rejectedAssetIdsJson) continue;
     const ids = JSON.parse(r.rejectedAssetIdsJson) as string[];
@@ -129,11 +129,11 @@ async function reportScales(
     const median = ratios[Math.floor(ratios.length / 2)]!;
     // One render being off is chance, and a suggestion drawn from it is worse
     // than none — it invites someone to edit a scene on a coin flip.
-    const trusted = ratios.length >= 3 && (median < 0.6 || median > 1.7);
+    const consistent = ratios.length >= 3 && (median < 0.6 || median > 1.7);
     console.log(
       `${name.padEnd(24)} ${median.toFixed(2)}x over ${String(ratios.length).padStart(2)} renders   slot scale ${info.slot.scale}` +
-        (trusted
-          ? `  → the board paints her ${(median > 1 ? median : 1 / median).toFixed(1)}x ${median > 1 ? "bigger" : "smaller"} than this slot asks; the scale does not match the perspective there`
+        (consistent
+          ? `  → the extracted alpha is consistently ${(median > 1 ? median : 1 / median).toFixed(1)}x ${median > 1 ? "larger" : "smaller"} than asked; look at the raw renders on the board before touching the slot — a lost body reads the same as a small child here`
           : ""),
     );
   }

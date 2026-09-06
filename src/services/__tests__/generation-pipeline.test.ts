@@ -744,3 +744,42 @@ describe("no human gate", () => {
     expect(alerts[0]!.text).toContain(`/admin/orders/${gameId}`);
   }, 120_000);
 });
+
+describe("the ledger", () => {
+  it("keeps fractions of a cent between ticks and rounds the column once", async () => {
+    // Two rolls that paint nothing, then one that works; every accepted roll is
+    // judged at 0.26 cents. Rounded per tick that judgement vanished.
+    const p = painter(["nothing", "nothing", "child"], 2);
+    const c = container(p);
+    c.judge = { id: "stub", judge: async () => ({ verdict: "ok", reason: "stub", costCents: 0.26 }) };
+    const gameId = await seedGame(c);
+    for (let i = 0; i < 4; i++) await mod.runGenerationPipeline(c, gameId);
+
+    const spots = await spotsIn(gameId);
+    const spot = spots.find((s) => s.variants[0]!.status === "GENERATED")!.variants[0]!;
+    const usage = JSON.parse(spot.usageJson ?? "{}") as { ledger?: { exactCents: number; unknownCost: boolean; attempts: Array<{ outcome: string; rollCents: number; judgeCents: number }> } };
+    // The script is shared by the board's three spots, so the first spot gets
+    // "nothing" on tick one and "child" on tick two: two rolls at 2 cents and
+    // one judgement at 0.26. Rounded per tick, the judgement vanished.
+    expect(usage.ledger?.exactCents).toBeCloseTo(4.26, 2);
+    expect(spot.costCents).toBe(4); // the column, rounded once from the exact figure
+    expect(usage.ledger?.unknownCost).toBe(false);
+    expect(usage.ledger?.attempts.map((a) => a.outcome.split(":")[0])).toEqual(["rejected", "accepted"]);
+    expect(usage.ledger?.attempts[1]!.judgeCents).toBe(0.26);
+  }, 120_000);
+
+  it("keeps a failed roll's usage and verdict, and marks a timeout's charge unknown", async () => {
+    const p = painter(["throw"]);
+    p.editSlotCrop = async () => {
+      throw new Error("timed out after 120s");
+    };
+    const c = container(p);
+    const gameId = await seedGame(c);
+    await mod.runGenerationPipeline(c, gameId);
+    const spot = (await spotsIn(gameId))[0]!.variants[0]!;
+    expect(spot.status).toBe("FAILED");
+    const usage = JSON.parse(spot.usageJson ?? "{}") as { ledger?: { unknownCost: boolean; attempts: Array<{ outcome: string }> } };
+    expect(usage.ledger?.unknownCost).toBe(true);
+    expect(usage.ledger?.attempts[0]!.outcome).toMatch(/^error: timed out/);
+  }, 120_000);
+});

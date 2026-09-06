@@ -130,6 +130,13 @@ export async function generateSlotPatch(
   // child, or repainted the whole crop. Without them the only way to see a bad
   // spot was to pay for another roll.
   const rejected: string[] = existingRejected(existing?.rejectedAssetIdsJson) ?? [];
+  // What this spot has really cost, to the hundredth of a cent, across every
+  // tick. costCents is an integer column and used to be rounded on every tick:
+  // a 2-cent roll plus a 0.26-cent judgement was written as 2, and over a
+  // world's twenty-seven judgements about seven cents vanished. The exact
+  // figure lives in the usage json; the column is rounded once, from it.
+  const ledger = readLedger(existing?.usageJson, existing?.costCents ?? 0);
+  const attemptLog: LedgerAttempt[] = [];
 
   for (let attempt = 1; attempt <= tries; attempt++) {
     // One roll, one attempt — counted here so every way out of this iteration
@@ -144,6 +151,7 @@ export async function generateSlotPatch(
       elapsed += edit.durationMs;
       model = edit.model;
       usage = edit.usage ?? usage;
+      attemptLog.push({ at: new Date().toISOString(), model: edit.model, rollCents: edit.costCents, judgeCents: 0, durationMs: edit.durationMs, requestId: edit.providerRequestId ?? null, outcome: "pending" });
       const patch = await diffToPatch({ originalCrop: crop, editedCrop: edit.png, ctx, art, slot });
       // Store WHY a roll was rejected, not a generic summary. "too small",
       // "wider than tall" and "painted somewhere else" need different fixes, and
@@ -154,7 +162,10 @@ export async function generateSlotPatch(
       const shape = childProblem(patch);
       judged = shape ? null : await judgeOf(c, patch.webp, input, label);
       if (judged) spent += judged.costCents;
+      const last = attemptLog[attemptLog.length - 1]!;
+      last.judgeCents = judged?.costCents ?? 0;
       const problem = shape ?? (judged?.verdict === "bad" ? `does not show ${input.childName}: ${judged.reason}` : null);
+      last.outcome = problem ? `rejected: ${problem.slice(0, 80)}` : "accepted";
       if (problem) {
         lastError = problem;
         const keep = await storeAsset(c, {
@@ -196,11 +207,11 @@ export async function generateSlotPatch(
           model,
           promptVersion: PROMPT_VERSION,
           attempts: { increment: attempts },
-          costCents: { increment: Math.round(spent) },
-          usageJson: usage ? JSON.stringify(usage) : null,
+          costCents: Math.round(ledger.exactCents + spent),
+          usageJson: JSON.stringify(withLedger(usage, ledger, spent, attemptLog, false)),
           rejectedAssetIdsJson: rejected.length > 0 ? JSON.stringify(rejected) : null,
-          judgeJson: judged ? JSON.stringify({ verdict: judged.verdict, reason: judged.reason, model: judged.model }) : null,
-          durationMs: elapsed,
+          judgeJson: judged ? JSON.stringify({ verdict: judged.verdict, reason: judged.reason, model: judged.model, costCents: judged.costCents }) : null,
+          durationMs: { increment: elapsed },
           status: "GENERATED",
           lastError: null,
         },
@@ -208,6 +219,12 @@ export async function generateSlotPatch(
       return { ...base, status: "GENERATED", costCents: (existing?.costCents ?? 0) + spent, newCostCents: spent, attempts, durationMs: elapsed, model };
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
+      // A request that timed out may or may not have been billed. That is not
+      // zero; it is unknown, and the ledger says so.
+      if (/timed out|out of time/i.test(lastError)) ledger.unknownCost = true;
+      const last = attemptLog[attemptLog.length - 1];
+      if (last && last.outcome === "pending") last.outcome = `error: ${lastError.slice(0, 80)}`;
+      else attemptLog.push({ at: new Date().toISOString(), model: model ?? null, rollCents: 0, judgeCents: 0, durationMs: 0, requestId: null, outcome: `error: ${lastError.slice(0, 80)}` });
     }
   }
 
@@ -218,9 +235,13 @@ export async function generateSlotPatch(
       status: "FAILED",
       lastError: lastError.slice(0, 500),
       attempts: { increment: attempts },
-      costCents: { increment: Math.round(spent) },
+      costCents: Math.round(ledger.exactCents + spent),
+      // A failed roll's usage and verdict used to be dropped with it, which
+      // left the most expensive rows in a game the least explained.
+      usageJson: JSON.stringify(withLedger(usage, ledger, spent, attemptLog, ledger.unknownCost)),
+      judgeJson: judged ? JSON.stringify({ verdict: judged.verdict, reason: judged.reason, model: judged.model, costCents: judged.costCents }) : null,
       rejectedAssetIdsJson: rejected.length > 0 ? JSON.stringify(rejected) : null,
-      durationMs: elapsed,
+      durationMs: { increment: elapsed },
       model,
     },
   });
@@ -254,6 +275,50 @@ async function judgeOf(c: Container, webp: Buffer, input: { reference: Buffer; c
   return c.judge.judge({ patchPng: webp, reference: input.reference, childName: input.childName, label }).catch(
     (err: unknown): PatchJudgement => ({ verdict: "unknown", reason: err instanceof Error ? err.message.slice(0, 120) : "judge failed", costCents: 0 }),
   );
+}
+
+/** One roll, as the ledger remembers it. */
+interface LedgerAttempt {
+  at: string;
+  model: string | null;
+  rollCents: number;
+  judgeCents: number;
+  durationMs: number;
+  requestId: string | null;
+  outcome: string;
+}
+
+/** The exact money so far, and whether any of it is unknown. */
+interface Ledger {
+  exactCents: number;
+  unknownCost: boolean;
+  attempts: LedgerAttempt[];
+}
+
+/**
+ * The ledger lives inside usageJson, beside the provider's token counts, so no
+ * column had to change. Rows written before it carry only the rounded column;
+ * that is what they start from.
+ */
+export function readLedger(usageJson: string | null | undefined, costCents: number): Ledger {
+  if (usageJson) {
+    try {
+      const raw = JSON.parse(usageJson) as { ledger?: Partial<Ledger> };
+      if (raw.ledger && typeof raw.ledger.exactCents === "number") {
+        return { exactCents: raw.ledger.exactCents, unknownCost: Boolean(raw.ledger.unknownCost), attempts: Array.isArray(raw.ledger.attempts) ? (raw.ledger.attempts as LedgerAttempt[]) : [] };
+      }
+    } catch {
+      /* not ours */
+    }
+  }
+  return { exactCents: costCents, unknownCost: false, attempts: [] };
+}
+
+function withLedger(usage: Record<string, number> | undefined, ledger: Ledger, spent: number, attempts: LedgerAttempt[], unknownCost: boolean): Record<string, unknown> {
+  return {
+    ...(usage ?? {}),
+    ledger: { exactCents: Math.round((ledger.exactCents + spent) * 100) / 100, unknownCost: unknownCost || ledger.unknownCost, attempts: [...ledger.attempts, ...attempts] },
+  };
 }
 
 function existingRejected(json: string | null | undefined): string[] | null {
