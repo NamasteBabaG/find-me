@@ -3,6 +3,15 @@
  * playful; never salesy. `{placeholders}` are filled with tf().
  */
 export const en = {
+  qaAccess: {
+    title: "Private testing area",
+    description: "Enter the QA password to explore FindMe Worlds and test game creation.",
+    password: "QA password",
+    submit: "Enter QA",
+    invalid: "That password did not match. Check it and try again.",
+    unavailable: "QA access is not configured yet. Please contact the project owner.",
+    note: "For invited testers only. Payments are simulated, but image generation costs real money. Access lasts 24 hours in this browser.",
+  },
   meta: {
     title: "Where Am I? — a personalized hide-and-seek game for kids",
     description: "A personal search-and-find game made from your child’s photo. Each world has nine illustrated places and three hiding spots per place. Play in a browser, with no app to install.",

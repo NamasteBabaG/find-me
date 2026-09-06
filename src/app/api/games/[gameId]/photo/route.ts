@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { qaAccessDenied } from "@/lib/server/qa-access";
 import { getContainer } from "@/services/container";
 import { replacePhotoForPaidGame } from "@/services/create-flow.service";
 import { currentUser, draftTokenFromCookie, isAdminEmail } from "@/lib/server/session";
@@ -9,6 +10,8 @@ const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 
 /** A new photo for a paid game that QA sent back. Visible to the draft owner, the account owner, or an admin. */
 export async function POST(req: Request, ctx: { params: Promise<{ gameId: string }> }) {
+  const denied = await qaAccessDenied(req);
+  if (denied) return denied;
   const { gameId } = await ctx.params;
   const c = getContainer();
   const [game, user, draftToken] = await Promise.all([c.db.game.findUnique({ where: { id: gameId }, select: { ownerId: true, draftToken: true } }), currentUser(), draftTokenFromCookie()]);

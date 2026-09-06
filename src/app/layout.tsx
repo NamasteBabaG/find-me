@@ -15,7 +15,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: { default: t.meta.title, template: `%s · ${t.common.brand}` },
     description: t.meta.description,
-    robots: { index: true, follow: true },
+    robots: { index: env().APP_ENV !== "qa", follow: env().APP_ENV !== "qa" },
   };
 }
 

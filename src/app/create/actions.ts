@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { requireQaAccess } from "@/lib/server/qa-access";
 import { getContainer } from "@/services/container";
 import { getCurrency } from "@/i18n/server";
 import { createDraft, draftBelongsTo, loadDraft, selectPackage, selectWorlds, setChildName } from "@/services/create-flow.service";
@@ -16,6 +17,7 @@ export type ActionResult = FlowResult;
 
 /** The draft this browser is working on (by cookie), if it is still editable. */
 export async function currentDraft() {
+  await requireQaAccess();
   const c = getContainer();
   const token = await draftTokenFromCookie();
   if (!token) return null;
@@ -27,6 +29,7 @@ export async function currentDraft() {
 }
 
 export async function saveNameAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+  await requireQaAccess();
   const c = getContainer();
   const name = String(formData.get("name") ?? "");
   const guarded = await guardDb(async () => {
@@ -45,6 +48,7 @@ export async function saveNameAction(_prev: ActionResult | null, formData: FormD
 }
 
 export async function choosePackageAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+  await requireQaAccess();
   const c = getContainer();
   const tier = String(formData.get("tier") ?? "");
   const res = await guardDb(async () => {
@@ -57,6 +61,7 @@ export async function choosePackageAction(_prev: ActionResult | null, formData: 
 }
 
 export async function chooseScenesAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+  await requireQaAccess();
   const c = getContainer();
   const slugs = formData.getAll("scene").map(String);
   const res = await guardDb(async () => {
@@ -69,6 +74,7 @@ export async function chooseScenesAction(_prev: ActionResult | null, formData: F
 }
 
 export async function checkoutAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+  await requireQaAccess();
   const c = getContainer();
   const draft = await currentDraft();
   if (!draft) redirect("/create");

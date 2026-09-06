@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { qaAccessDenied } from "@/lib/server/qa-access";
 import { getContainer } from "@/services/container";
 import { attachPhoto, draftBelongsTo } from "@/services/create-flow.service";
 import { currentUser, draftTokenFromCookie } from "@/lib/server/session";
@@ -11,6 +12,8 @@ export const runtime = "nodejs";
 const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 
 export async function POST(req: Request) {
+  const denied = await qaAccessDenied(req);
+  if (denied) return denied;
   // Uploads cost storage and generation, so a stranger gets a handful per window.
   const limited = rateLimit(callerKey(req, "photo"), LIMITS.photoUpload.limit, LIMITS.photoUpload.windowMs);
   if (!limited.ok) return tooManyRequests(limited);
@@ -64,7 +67,9 @@ function clamp01(n: number): number {
 }
 
 /** The draft owner's own photo (for the checkout summary). Never cached. */
-export async function GET() {
+export async function GET(req: Request) {
+  const denied = await qaAccessDenied(req);
+  if (denied) return denied;
   const c = getContainer();
   const token = await draftTokenFromCookie();
   if (!token) return new Response("not found", { status: 404 });

@@ -1,4 +1,5 @@
 import { getContainer } from "@/services/container";
+import { qaAccessDenied } from "@/lib/server/qa-access";
 import { readAsset } from "@/services/asset.service";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
 
@@ -10,6 +11,8 @@ export const runtime = "nodejs";
  *  • PRIVATE      — owner or admin session only, never cached
  */
 export async function GET(req: Request, ctx: { params: Promise<{ assetId: string }> }) {
+  const denied = await qaAccessDenied(req);
+  if (denied) return denied;
   const { assetId } = await ctx.params;
   const url = new URL(req.url);
   const user = await currentUser();

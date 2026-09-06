@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { qaAccessDenied } from "@/lib/server/qa-access";
 import { getContainer } from "@/services/container";
 import { tickGeneration } from "@/services/generation/queue";
 import { runRetentionIfDue } from "@/services/retention.service";
@@ -31,6 +32,8 @@ const SLICE_MS = 90_000;
  * finished hiding spot is skipped.
  */
 export async function POST(req: Request) {
+  const denied = await qaAccessDenied(req, true);
+  if (denied) return denied;
   const c = getContainer();
   const url = new URL(req.url);
   const gameId = url.searchParams.get("gameId");

@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { requireQaAccess } from "@/lib/server/qa-access";
 import { revalidatePath } from "next/cache";
 import { getContainer } from "@/services/container";
 import { adjustTarget, approveAndPublish, markTargetForRegeneration, recutAvatar, requestNewPhoto, retryGeneration } from "@/services/admin.service";
@@ -11,6 +12,7 @@ import { setSceneActive } from "@/services/scene-catalog.service";
 import { currentAdmin } from "@/lib/server/session";
 
 async function admin() {
+  await requireQaAccess();
   const a = await currentAdmin();
   if (!a) redirect("/library");
   return { type: "ADMIN" as const, id: a.id };

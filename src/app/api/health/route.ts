@@ -1,4 +1,5 @@
 import { promises as dns } from "node:dns";
+import { qaAccessDenied } from "@/lib/server/qa-access";
 import { NextResponse } from "next/server";
 import { getContainer } from "@/services/container";
 import { env } from "@/lib/env";
@@ -14,11 +15,13 @@ export const dynamic = "force-dynamic";
  * touched further in, and Vercel does not apply a changed environment variable
  * until the next deploy. This answers the question in one request.
  *
- * Public on purpose — it has to be checkable before anyone can sign in — so it
+ * Public outside QA; the QA password gate also covers diagnostics. It
  * says whether things work and never what they are. No hostnames, no
  * connection strings, no counts.
  */
-export async function GET() {
+export async function GET(req: Request) {
+  const denied = await qaAccessDenied(req);
+  if (denied) return denied;
   const started = Date.now();
   const e = env();
   const db = await checkDb();

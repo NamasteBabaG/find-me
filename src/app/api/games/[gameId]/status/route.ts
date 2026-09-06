@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { qaAccessDenied } from "@/lib/server/qa-access";
 import { getContainer } from "@/services/container";
 import { creationStep, isPlayable } from "@/domain/order-state";
 import { creationProgress } from "@/domain/creation-progress";
@@ -23,7 +24,9 @@ const PAINTED = new Set(["GENERATED", "APPROVED"]);
  * The avatar is a GAME asset (the illustrated sticker, never the photograph),
  * so a signed URL for it is safe to hand out.
  */
-export async function GET(_req: Request, ctx: { params: Promise<{ gameId: string }> }) {
+export async function GET(req: Request, ctx: { params: Promise<{ gameId: string }> }) {
+  const denied = await qaAccessDenied(req);
+  if (denied) return denied;
   const { gameId } = await ctx.params;
   const c = getContainer();
   const [game, user, draftToken] = await Promise.all([

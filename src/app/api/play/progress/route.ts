@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { qaAccessDenied } from "@/lib/server/qa-access";
 import { getContainer } from "@/services/container";
 import { ProgressBatchInput, recordProgress } from "@/services/progress.service";
 import { LIMITS, callerKey, rateLimit, tooManyRequests } from "@/lib/server/rate-limit";
@@ -7,6 +8,8 @@ export const runtime = "nodejs";
 
 /** Aggregate play events from the player (sendBeacon-friendly). */
 export async function POST(req: Request) {
+  const denied = await qaAccessDenied(req);
+  if (denied) return denied;
   const limited = rateLimit(callerKey(req, "progress"), LIMITS.progress.limit, LIMITS.progress.windowMs);
   if (!limited.ok) return tooManyRequests(limited);
   const c = getContainer();

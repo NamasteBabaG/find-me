@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { qaAccessDenied } from "@/lib/server/qa-access";
 import { getContainer } from "@/services/container";
 import { handlePaymentWebhook } from "@/services/order.service";
 import { currentUser, draftTokenFromCookie, isAdminEmail } from "@/lib/server/session";
@@ -23,6 +24,8 @@ export const runtime = "nodejs";
  * does nothing.
  */
 export async function POST(req: Request) {
+  const denied = await qaAccessDenied(req);
+  if (denied) return denied;
   const c = getContainer();
   if (c.payment.id !== "mock") return NextResponse.json({ ok: false, body: "not available" }, { status: 404 });
   const payment = c.payment as { id: string; sign?: (raw: string) => string };

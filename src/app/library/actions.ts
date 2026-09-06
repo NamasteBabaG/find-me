@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { requireQaAccess } from "@/lib/server/qa-access";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { getContainer } from "@/services/container";
@@ -15,6 +16,7 @@ import { flowError, type FlowResult } from "@/i18n/errors";
 export type LoginResult = { ok: true; email: string } | { ok: false; reason: string; code?: string } | null;
 
 export async function requestMagicLinkAction(_prev: LoginResult, formData: FormData): Promise<LoginResult> {
+  await requireQaAccess();
   const email = String(formData.get("email") ?? "");
   const locale = await getLocale();
   // This sends mail to an address the caller typed, so it is rate limited per
@@ -31,6 +33,7 @@ export async function requestMagicLinkAction(_prev: LoginResult, formData: FormD
 }
 
 export async function logoutAction(): Promise<void> {
+  await requireQaAccess();
   const jar = await cookies();
   await destroySession(getContainer(), jar.get(SESSION_COOKIE)?.value);
   await clearSessionCookie();
@@ -38,6 +41,7 @@ export async function logoutAction(): Promise<void> {
 }
 
 export async function updateGiftAction(_prev: FlowResult | null, formData: FormData): Promise<FlowResult> {
+  await requireQaAccess();
   const user = await currentUser();
   if (!user) redirect("/library");
   const gameId = String(formData.get("gameId") ?? "");
@@ -48,6 +52,7 @@ export async function updateGiftAction(_prev: FlowResult | null, formData: FormD
 }
 
 export async function rotateLinkAction(formData: FormData): Promise<void> {
+  await requireQaAccess();
   const user = await currentUser();
   if (!user) redirect("/library");
   const gameId = String(formData.get("gameId") ?? "");
@@ -58,6 +63,7 @@ export async function rotateLinkAction(formData: FormData): Promise<void> {
 }
 
 export async function deleteGameAction(formData: FormData): Promise<void> {
+  await requireQaAccess();
   const user = await currentUser();
   if (!user) redirect("/library");
   const gameId = String(formData.get("gameId") ?? "");

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { qaAccessDenied } from "@/lib/server/qa-access";
 import { getContainer } from "@/services/container";
 import { resendGameMail } from "@/services/publish.service";
 import { SYSTEM } from "@/services/audit.service";
@@ -7,7 +8,9 @@ import { currentUser, draftTokenFromCookie, isAdminEmail } from "@/lib/server/se
 export const runtime = "nodejs";
 
 /** "Email me the link" on the creating and library pages. Same visibility rule as the status route. */
-export async function POST(_req: Request, ctx: { params: Promise<{ gameId: string }> }) {
+export async function POST(req: Request, ctx: { params: Promise<{ gameId: string }> }) {
+  const denied = await qaAccessDenied(req);
+  if (denied) return denied;
   const { gameId } = await ctx.params;
   const c = getContainer();
   const [game, user, draftToken] = await Promise.all([c.db.game.findUnique({ where: { id: gameId }, select: { ownerId: true, draftToken: true } }), currentUser(), draftTokenFromCookie()]);
