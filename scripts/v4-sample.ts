@@ -39,7 +39,7 @@ import { OpenAiAvatarProvider } from "../src/infra/generation/openai";
 import { OpenAiPatchJudge } from "../src/infra/generation/judge";
 import { faceWindow } from "../src/infra/generation/avatar-cut";
 import { DEFAULT_WINDOW_FACTOR, PROMPT_VERSION, childProblem, diffToPatch, paintMask } from "../src/services/generation/patch";
-import { assertSameRun, cropOf, slotOf, writePatch, writePreview } from "../src/services/generation/authoring";
+import { assertSameRun, chargeCents, cropOf, slotOf, writePatch, writePreview } from "../src/services/generation/authoring";
 import { envKey } from "./slot-patch";
 
 const ROOT = process.cwd();
@@ -81,6 +81,18 @@ async function main() {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
+  // The actual inputs, hashed up front: the scene definition (the slot and its
+  // window live there) and the board art it points at. They go into the config
+  // hash, so --append refuses a resumed run whose inputs changed even on the
+  // same commit — a locally edited scene or repainted board is a different run.
+  const boardInputs: Record<string, { scene: string; art: string }> = {};
+  for (const board of boards) {
+    const slug = board.split(":")[0]!;
+    if (boardInputs[slug]) continue;
+    const sceneRaw = readFileSync(path.join(ROOT, "content", "scenes", slug, "scene.json"));
+    const artRel = (JSON.parse(sceneRaw.toString("utf8")) as { art: { base: string } }).art.base;
+    boardInputs[slug] = { scene: sha256(sceneRaw), art: sha256(readFileSync(path.join(ROOT, "public", artRel))) };
+  }
   const variant = flag("variant", "A");
   const quality = flag("quality", "low");
   const model = flag("model", "gpt-image-2");
@@ -99,6 +111,9 @@ async function main() {
   const provider = new OpenAiAvatarProvider(key, { model, quality, patchQuality: quality, perMinute: Number(flag("rpm", "5")), tries });
   const judge = judgeOn ? new OpenAiPatchJudge(key, { model: judgeModel }) : null;
   const commit = execSync("git rev-parse --short HEAD", { cwd: ROOT }).toString().trim();
+  // A commit identifies the code only when the checkout is clean where it matters.
+  const treeDirty = execSync("git status --porcelain -- scripts src content public/scenes", { cwd: ROOT }).toString().trim();
+  if (treeDirty) console.warn(`uncommitted changes under scripts/src/content/public — ${commit} does not identify this run:\n${treeDirty}`);
   const sheetHashes = Object.fromEntries(sheets.map((f) => [path.parse(f).name, sha256(readFileSync(path.join(sheetsDir, f)))]));
   const config = {
     promptVersion: PROMPT_VERSION,
@@ -107,6 +122,7 @@ async function main() {
     judgeModel: judgeOn ? judgeModel : null,
     variant,
     boards,
+    boardInputs,
     windowFactor,
     units,
     reference: referenceKind,
@@ -123,6 +139,7 @@ async function main() {
   const configHash = sha256(Buffer.from(JSON.stringify(config)));
 
   const cells: Array<Record<string, unknown>> = [];
+  const unknownCharges: string[] = [];
   let spent = 0;
   let stopped: string | null = null;
   const manifestPath = path.join(outDir, "manifest.json");
@@ -134,9 +151,12 @@ async function main() {
   // same run. A different commit or config refuses before anything is written
   // or paid for; old cells never end up under a new run's heading.
   if (has("append") && existsSync(manifestPath)) {
-    const prior = JSON.parse(readFileSync(manifestPath, "utf8")) as { commit?: string; configHash?: string; runId?: string; startedAt?: string; cells?: Array<Record<string, unknown>>; spentCents?: number; artHashes?: Record<string, string>; referenceHashes?: Record<string, { generation: string; judge: string }> };
+    const prior = JSON.parse(readFileSync(manifestPath, "utf8")) as { commit?: string; configHash?: string; runId?: string; startedAt?: string; treeDirty?: string; unknownCharges?: string[]; cells?: Array<Record<string, unknown>>; spentCents?: number; artHashes?: Record<string, string>; referenceHashes?: Record<string, { generation: string; judge: string }> };
     assertSameRun({ commit: prior.commit ?? "", configHash: prior.configHash ?? "" }, { commit, configHash });
+    if (treeDirty) throw new Error(`cannot resume on a dirty tree — the commit would not identify the code:\n${treeDirty}`);
+    if (prior.treeDirty) throw new Error("the prior run was made on a dirty tree, so its commit does not identify its code; start a new --out directory");
     cells.push(...(prior.cells ?? []));
+    unknownCharges.push(...(prior.unknownCharges ?? []));
     spent = prior.spentCents ?? 0;
     startedAt = prior.startedAt ?? startedAt;
     runId = prior.runId ?? runId;
@@ -146,7 +166,7 @@ async function main() {
   const write = () =>
     writeFileSync(
       manifestPath,
-      JSON.stringify({ runId, commit, configHash, config, budgetCents: budget, spentCents: Math.round(spent * 100) / 100, stopped, startedAt, updatedAt: new Date().toISOString(), artHashes, referenceHashes, cells }, null, 2),
+      JSON.stringify({ runId, commit, treeDirty: treeDirty || undefined, configHash, config, budgetCents: budget, spentCents: Math.round(spent * 100) / 100, unknownCharges, stopped, startedAt, updatedAt: new Date().toISOString(), artHashes, referenceHashes, cells }, null, 2),
     );
 
   const reserve = (RESERVE_CENTS[quality] ?? RESERVE_CENTS.high!) + (judge ? JUDGE_RESERVE_CENTS : 0);
@@ -164,6 +184,7 @@ async function main() {
     for (const [name, buf] of [[`reference.generation.png`, generationReference], [`reference.judge.png`, judgeReference]] as const) {
       const file = path.join(identityDir, name);
       if (!existsSync(file)) writeFileSync(file, buf);
+      else if (sha256(readFileSync(file)) !== sha256(buf)) throw new Error(`${file} does not match this run's sheet — the reference on disk came from different inputs`);
     }
     referenceHashes[identity] = { generation: sha256(generationReference), judge: sha256(judgeReference) };
     for (const board of boards) {
@@ -183,7 +204,11 @@ async function main() {
       const crop = await cropOf(c);
       const mask = paintMask(c.ctx, c.art, c.slot);
       const artFile = path.join(ROOT, "public", c.scene.art.base);
-      artHashes[slug] ??= sha256(readFileSync(artFile));
+      // Hashed as read NOW and checked against the hash taken at start — never
+      // a stale value carried over a local edit (Codex's second review).
+      const artHash = sha256(readFileSync(artFile));
+      if (artHash !== boardInputs[slug]?.art) throw new Error(`the art for ${slug} changed while the run was going`);
+      artHashes[slug] = artHash;
       writeFileSync(path.join(cellDir, "crop.png"), crop);
       await sharp(mask).png().toFile(path.join(cellDir, "mask.png"));
       writeFileSync(path.join(cellDir, "prompt.txt"), c.prompt);
@@ -214,7 +239,16 @@ async function main() {
       let judgeCost = 0;
       try {
         const edit = await provider.editSlotCrop({ crop, paintMask: mask, reference: generationReference, prompt: c.prompt, label: cellId, quality });
-        spent += edit.costCents;
+        // A successful answer without usage is an unknown charge, not a free
+        // one: it consumes the call's whole reserve from the budget and is
+        // listed in the manifest's unknownCharges. The run goes on — the image
+        // is real; only its price is not.
+        const charge = chargeCents(edit, RESERVE_CENTS[quality] ?? RESERVE_CENTS.high!);
+        spent += charge.cents;
+        if (charge.unknown) {
+          unknownCharges.push(cellId);
+          cell.costUnknown = true;
+        }
         Object.assign(cell, {
           model: edit.model,
           nonComparable: edit.model !== model || undefined,
@@ -259,7 +293,10 @@ async function main() {
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         const unknownCost = /timed out|out of time/i.test(message);
-        if (unknownCost) spent += reserve;
+        if (unknownCost) {
+          spent += reserve;
+          unknownCharges.push(cellId);
+        }
         Object.assign(cell, { error: message, costUnknown: unknownCost || undefined });
         console.error(`${cellId}: ${message}`);
         if (unknownCost) stopped = `a call timed out with an unknown charge (${reserve} cents reserved for it)`;

@@ -460,13 +460,25 @@ reproduces the old prompt for a comparison.
   judge was shown). `--art-direction` adds a named outfit and action per
   scene. `--append` resumes a run only if the commit and the config hash
   match the manifest's (`assertSameRun`); the hash covers the art-direction
-  file's content, the judge model, the boards and every sheet, so old cells
-  never sit under a new run's heading.
+  file's content, the judge model, the boards, every sheet and — since the
+  second review — each board's scene definition and art content, so old cells
+  never sit under a new run's heading. A resume also refuses a dirty
+  scripts/src/content/public tree (in either run), verifies reference files
+  on disk against the run's sheet, and re-hashes the art at every cell. A
+  successful answer without usage charges the call's whole reserve and lands
+  in the manifest's `unknownCharges` (`chargeCents` in authoring.ts).
 - **`scripts/extraction-matrix.ts`** re-extracts renders that were already
   paid for across the existing knobs and lays the child's region out beside
   the raw render at 2×, with the kept alpha tinted. On the full window the
   results look identical, because a patch lands on the scenery it was cut
   from; the differences are at the edge.
+- **`scripts/rejudge.ts`** judges EXISTING patches again, against the full
+  identity sheet — no new renders. Dry-run by default: it writes a plan with
+  every patch's hash, the judge-reference hash, the prior verdict and the
+  estimated cents, and stops before any paid call; `--go --budget-cents=N`
+  asks the judge for real and writes verdicts to a separate evaluation
+  directory, never touching the original manifest. Built for the confounded
+  head-reference arm (F) of the 6 September round.
 - **`import` and `diagnose`** read the extraction flags through one parser
   (`parseDiffOptions`); a flag neither honours is an error. `diagnose` says
   "extracted alpha", not "painted": the alpha is what the extraction kept,

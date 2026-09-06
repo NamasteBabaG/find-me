@@ -53,6 +53,15 @@ export interface Container {
   adminEmails?: string[];
 }
 
+/**
+ * The QA-only half of the no-human gate, held out as a pure function so the
+ * WIRING is under test, not only the pipeline: the flag alone never ships a
+ * game with problems outside APP_ENV=qa.
+ */
+export function deliverWithProblemsOf(qaAutoApprove: boolean, appEnv: string | undefined): boolean {
+  return qaAutoApprove && appEnv === "qa";
+}
+
 function build(): Container {
   const e = env();
   const storageRoot = path.resolve(process.cwd(), e.STORAGE_LOCAL_DIR);
@@ -92,7 +101,7 @@ function build(): Container {
     secret: e.SESSION_SECRET,
     emailFallbackTo: e.EMAIL_FALLBACK_TO ?? null,
     autoApprove: flag("QA_AUTO_APPROVE"),
-    deliverWithProblems: flag("QA_AUTO_APPROVE") && e.APP_ENV === "qa",
+    deliverWithProblems: deliverWithProblemsOf(flag("QA_AUTO_APPROVE"), e.APP_ENV),
     adminEmails: adminEmails(),
   };
 

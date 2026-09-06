@@ -152,6 +152,17 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
           providerRequestId: character.providerRequestId,
           costCents: character.costCents,
         });
+        // The sheet's exact charge, usage and unknown-charge state live in the
+        // audit log: Asset has no usage column and a migration is not on the
+        // table. An answer without usage is an unknown charge, not a free one.
+        await audit(c, SYSTEM, "sheet:painted", "Asset", sheet.id, {
+          gameId,
+          costCents: character.costCents,
+          costUnknown: character.costUnknown ?? undefined,
+          usage: character.usage ?? null,
+          model: character.model,
+          requestId: character.providerRequestId ?? null,
+        });
         const avatarAsset = await storeAsset(c, {
           ownerId: child.ownerId,
           type: "AVATAR",

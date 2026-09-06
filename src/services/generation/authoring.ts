@@ -165,3 +165,20 @@ export function assertSameRun(prior: RunIdentity, current: RunIdentity): void {
   if (prior.configHash !== current.configHash) differences.push(`config ${prior.configHash.slice(0, 8)} → ${current.configHash.slice(0, 8)}`);
   if (differences.length) throw new Error(`cannot resume into a different run (${differences.join(", ")}); start a new --out directory`);
 }
+
+/** What a provider said a call cost, as the caller sees it. */
+export interface ProviderCharge {
+  costCents: number;
+  costUnknown?: boolean;
+}
+
+/**
+ * What a call adds to a run's spend. A reported cost is taken as reported; an
+ * answer without usage is an UNKNOWN charge, not a free one — it consumes the
+ * whole reserve set aside for the call (or the reported figure, if somehow
+ * larger), and the caller records the uncertainty instead of erasing it.
+ */
+export function chargeCents(charge: ProviderCharge, reserveCents: number): { cents: number; unknown: boolean } {
+  if (!charge.costUnknown) return { cents: charge.costCents, unknown: false };
+  return { cents: Math.max(charge.costCents, reserveCents), unknown: true };
+}

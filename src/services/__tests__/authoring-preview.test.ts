@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import sharp from "sharp";
 import { afterAll, describe, expect, it } from "vitest";
-import { assertSameRun, parseDiffOptions, previewPath, slotOf, writePreview } from "../generation/authoring";
+import { assertSameRun, chargeCents, parseDiffOptions, previewPath, slotOf, writePreview } from "../generation/authoring";
 import type { PatchResult } from "../generation/patch";
 
 /**
@@ -76,5 +76,15 @@ describe("resuming a sampling run", () => {
     expect(() => assertSameRun(run, { ...run })).not.toThrow();
     expect(() => assertSameRun(run, { ...run, commit: "def5678" })).toThrow(/commit abc1234 → def5678/);
     expect(() => assertSameRun(run, { ...run, configHash: "fedcba9876543210" })).toThrow(/config 01234567 → fedcba98/);
+  });
+});
+
+describe("what a call adds to the spend", () => {
+  it("takes a reported cost as reported, and an unreported one as the whole reserve", () => {
+    expect(chargeCents({ costCents: 2.421 }, 2.5)).toEqual({ cents: 2.421, unknown: false });
+    // a successful answer without usage: unknown, charged as the reserve, never zero
+    expect(chargeCents({ costCents: 0, costUnknown: true }, 2.5)).toEqual({ cents: 2.5, unknown: true });
+    // and never less than what was actually reported
+    expect(chargeCents({ costCents: 3.1, costUnknown: true }, 2.5)).toEqual({ cents: 3.1, unknown: true });
   });
 });
