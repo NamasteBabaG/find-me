@@ -232,7 +232,7 @@
     "kind": "confetti",
     "completeText": {
       "en": "You found {name} three times in The Great Wall!",
-      "he": "מצאתם את {name} שלוש פעמים בהחומה הסינית!"
+      "he": "מצאתם את {name} שלוש פעמים בחומה הסינית!"
     }
   },
   "ambient": [
