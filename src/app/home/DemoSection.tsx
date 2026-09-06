@@ -22,10 +22,9 @@ export function DemoSection({ config }: { config: GameConfig }) {
   const art = config.scenes[0]?.art;
   return (
     <section id="demo" className="demo">
-      <div className="demo__stars" aria-hidden />
       <div className="fm-container demo__inner">
         <div className="demo__head">
-          <span className="fm-pill fm-pill--night">{d.pill}</span>
+          <span className="fm-pill">{d.pill}</span>
           <h2 className="demo__title">{tf(d.title, { name })}</h2>
           <p className="demo__lead">{tf(d.lead, { name })}</p>
         </div>
@@ -35,7 +34,7 @@ export function DemoSection({ config }: { config: GameConfig }) {
         </div>
         <div className="demo__foot">
           <p>{d.foot}</p>
-          <Link href="/create" className="fm-btn fm-btn--lg">
+          <Link href="/create" className="fm-btn fm-btn--night fm-btn--lg">
             {d.cta}
             <span className="fm-btn__arrow" aria-hidden>
               ➜

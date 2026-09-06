@@ -85,8 +85,10 @@ export function MissionCard({ index, total, target, found, order, hintLevel, hin
         {!minimal && hintLevel >= 1 && hintText ? <p className="mission__hint">💡 {hintText}</p> : null}
       </div>
       {minimal ? null : (
+        // A word, not a lightbulb: an icon needs decoding, and the child asks a
+        // grown-up anyway — the word is the design language (Guy).
         <button type="button" className={`mission__hintbtn${hintPulse ? " mission__hintbtn--pulse" : ""}`} onClick={onHint} aria-label={hintLevel >= 3 ? g.scene.hintLast : g.scene.hint} title={g.scene.hint} disabled={hintLevel >= 3}>
-          <span aria-hidden>💡</span>
+          {g.scene.hint}
         </button>
       )}
     </section>

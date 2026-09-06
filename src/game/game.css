@@ -179,11 +179,18 @@
 .bubble::after { content: ""; position: absolute; left: 50%; bottom: -14px; width: 16px; height: 16px; background: var(--white); border-inline-end: 3px solid var(--ink); border-bottom: 3px solid var(--ink); transform: translateX(-50%) rotate(45deg); }
 
 .celebration { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: var(--z-overlay); }
-.celebration__p { position: absolute; top: 0; line-height: 1; will-change: transform, opacity; }
-.celebration__p--fall { animation: fm-confetti-fall var(--dur-4) var(--ease-in-out) forwards; }
-.celebration__p--rise { top: auto; bottom: 0; animation: fm-rise var(--dur-4) var(--ease-out) forwards; }
-/* From the middle of the board outward, like a popped balloon. */
-.celebration__p--burst { top: 52%; animation: fm-burst var(--dur-4) var(--ease-out) forwards; }
+/* Confetti rain (see CelebrationOverlay.tsx): three transform layers per
+   piece. The outer flutters side to side (infinite, phase-shifted by a
+   negative delay); the middle falls at the piece's own speed and leaves past
+   the bottom; the inner tumbles. A piece waits above the top edge until its
+   fall begins, so no fill tricks are needed — and nothing fades mid-air. */
+.celebration__p { position: absolute; line-height: 1; will-change: transform; animation: fm-sway var(--swayDur, 1200ms) var(--ease-in-out) var(--phase, 0ms) infinite alternate; }
+.celebration__y { display: inline-block; will-change: transform; animation: fm-rain cubic-bezier(0.3, 0.05, 0.7, 0.95) both; }
+.celebration__r { display: inline-block; animation: fm-tumble linear both; animation-duration: inherit; animation-delay: inherit; }
+.celebration__c { display: block; border-radius: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .celebration__p, .celebration__y, .celebration__r { animation-duration: 1ms; animation-delay: 0ms; }
+}
 
 /* Mission pill — floats at the bottom, translucent, never a wall */
 .mission { position: absolute; z-index: var(--z-ui); pointer-events: none; bottom: var(--space-2); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: var(--space-2); max-width: calc(100% - var(--space-4)); background: rgba(255, 255, 255, 0.82); backdrop-filter: blur(12px); padding: var(--space-1); padding-inline-start: var(--space-2); border-radius: var(--radius-pill); box-shadow: var(--shadow-2); animation: fm-fade-up var(--dur-3) var(--ease-out); }
@@ -202,7 +209,7 @@
 .mission__count { font-size: var(--fs-50); line-height: var(--lh-50); font-weight: 700; color: var(--ink-3); letter-spacing: 0.02em; white-space: nowrap; }
 .mission__text { font-family: var(--font-display); font-size: var(--fs-300); line-height: var(--lh-300); font-weight: 600; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mission__hint { font-size: var(--fs-100); line-height: var(--lh-100); color: var(--sea-deep); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; animation: fm-fade-up var(--dur-2) var(--ease-out); }
-.mission__hintbtn { width: var(--touch-kid); height: var(--touch-kid); flex-shrink: 0; border-radius: var(--radius-pill); background: var(--sun); box-shadow: var(--shadow-1); display: grid; place-items: center; font-size: var(--fs-400); line-height: 1; transition: transform var(--dur-1) var(--ease-out); }
+.mission__hintbtn { min-height: var(--touch-kid); padding-inline: var(--space-3); flex-shrink: 0; border-radius: var(--radius-pill); background: var(--sun); box-shadow: var(--shadow-1); display: grid; place-items: center; font-family: var(--font-display); font-weight: 800; font-size: var(--fs-300); color: var(--ink); line-height: 1; transition: transform var(--dur-1) var(--ease-out); }
 .mission__hintbtn:hover { transform: translateY(-1px); }
 .mission__hintbtn:disabled { opacity: 0.4; }
 .mission__hintbtn--pulse { animation: fm-pulse 1.2s var(--ease-in-out) infinite; box-shadow: 0 0 0 6px var(--sun-soft), var(--shadow-1); }
@@ -215,7 +222,7 @@
 @media (max-width: 720px) {
   .mission { bottom: var(--space-1); gap: var(--space-1); }
   .mission__text { font-size: var(--fs-200); line-height: var(--lh-200); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .mission__hintbtn { width: var(--touch-min); height: var(--touch-min); font-size: var(--fs-300); }
+  .mission__hintbtn { min-height: var(--touch-min); padding-inline: var(--space-2); font-size: var(--fs-200); }
   /* The chrome sits over the picture, so it stays as small as a finger allows. */
   .scene__bar { padding: var(--space-1); }
   .scene__btn { width: 48px; height: 48px; }

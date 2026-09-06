@@ -24,14 +24,14 @@ interface SectionProps {
 
 /* ─── Marquee: world chips ─── */
 export function Marquee({ scenes, locale }: { scenes: SceneDefinition[]; locale: Locale }) {
-  const items = scenes.map((s) => ({ key: s.slug, glyph: WORLD_GLYPHS[s.slug] ?? "✨", name: pick(s.name, locale), soon: !s.active }));
+  const items = scenes.map((s) => ({ key: s.slug, name: pick(s.name, locale), soon: !s.active }));
   const all = [...items, ...items];
   return (
     <div className="marquee" aria-hidden>
       <div className="marquee__track">
         {all.map((it, i) => (
           <span key={`${it.key}-${i}`} className={`chip${it.soon ? " chip--soon" : ""}`}>
-            <span className="chip__glyph">{it.glyph}</span> {it.name}
+            {it.name}
           </span>
         ))}
       </div>

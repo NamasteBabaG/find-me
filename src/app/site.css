@@ -4,32 +4,38 @@
 
 /* ═══ Landing ═══ */
 
-/* Hero v3 — "Where Am I?" on a dark stage; the searchlight reveals hidden doodles and Noa */
-.hero3 { position: relative; overflow: hidden; background: var(--grad-night); color: var(--white); min-height: min(88vh, 860px); display: flex; align-items: center; }
+/* Hero v4 — "Where Am I?" on a pure white page; a hard-edged porthole reveals the board.
+   v3 was a night stage: the board dimmed and blurred under a blue wash, a
+   feathered spotlight with a warm beam. Guy read the dark hero plus the blue
+   demo as a colour island in a paper-white site — everything after scrolls
+   light — and asked for white, one hard circle, no fades. So the world is
+   invisible until the light lands on it (which is the game), the circle is cut
+   with 1px of anti-alias and ringed in ink like every sticker here, and the
+   only gradient left in the hero is the crossfade between worlds. Round two
+   (Guy): the ground is the nav's paper, not pure white, and a breath of the
+   board shows through it — clean, but you can tell something is hidden. */
+.hero3 { --torch: 160px; position: relative; overflow: hidden; background: var(--paper); color: var(--ink); min-height: min(88vh, 860px); display: flex; align-items: center; }
 .hero3__stage { position: absolute; inset: 0; cursor: crosshair; touch-action: pan-y; }
-.hero3__stars { position: absolute; inset: 0; pointer-events: none; background-image: radial-gradient(rgba(255, 255, 255, 0.7) 1px, transparent 1.5px), radial-gradient(rgba(255, 255, 255, 0.4) 1px, transparent 1.5px); background-size: 180px 180px, 110px 110px; background-position: 0 0, 60px 40px; opacity: 0.22; }
-/* The board twice over: once under a deep blue wash so the hero reads as a
-   painted place at a glance, once at full colour inside the torch. Same file,
-   so lighting a world costs no second download. */
 .hero3__plate { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 1200ms var(--ease-in-out); user-select: none; }
 .hero3__plate.is-on { opacity: 1; }
-/* Dark enough that it reads as unlit and the white copy holds, light enough
-   that you can still tell it is New York. Crushing it further made the hero a
-   texture instead of a place, which loses the only thing worth showing. The
-   copy gets its contrast from the scrim behind it, not from the whole image. */
-/* Out of the light the world is dark, soft and drained; inside the torch it is
-   sharp, bright and full colour. Blurring the unlit layer is what makes the
-   beam feel like focus and not just brightness — and it stops the eye reading
-   the whole board at once, which is the difference between a background image
-   and something worth searching. `scale` hides the blur bleeding at the edges. */
-.hero3__dark { position: absolute; inset: 0; pointer-events: none; overflow: hidden; filter: brightness(0.3) saturate(0.5) contrast(0.98) blur(5px); }
-.hero3__dark .hero3__plate { transform: scale(1.04); }
-.hero3__dark::after { content: ""; position: absolute; inset: 0; background: radial-gradient(120% 90% at 50% 52%, rgba(14, 13, 30, 0.72) 0, rgba(14, 13, 30, 0.5) 45%, rgba(14, 13, 30, 0.42) 72%, rgba(14, 13, 30, 0.7) 100%); }
-.hero3__hidden { position: absolute; inset: 0; pointer-events: none; -webkit-mask-image: radial-gradient(circle at var(--lx, 50%) var(--ly, 50%), #000 0, #000 var(--torch, 132px), transparent calc(var(--torch, 132px) + 26px)); mask-image: radial-gradient(circle at var(--lx, 50%) var(--ly, 50%), #000 0, #000 var(--torch, 132px), transparent calc(var(--torch, 132px) + 26px)); }
-.hero3__beam { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(circle at var(--lx, 50%) var(--ly, 50%), rgba(255, 236, 180, 0.34) 0, rgba(255, 224, 150, 0.22) calc(var(--torch, 132px) * 0.7), rgba(255, 214, 132, 0.14) var(--torch, 132px), transparent calc(var(--torch, 132px) + 34px)); mix-blend-mode: screen; }
-/* A rim on the torch: without it the lit circle fades into the dark and the
-   sweep reads as a smudge rather than a beam. */
-.hero3__ring { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(circle at var(--lx, 50%) var(--ly, 50%), transparent calc(var(--torch, 132px) - 3px), rgba(255, 226, 150, 0.5) calc(var(--torch, 132px) + 1px), transparent calc(var(--torch, 132px) + 16px)); }
+.hero3__hidden { position: absolute; inset: 0; pointer-events: none; -webkit-mask-image: radial-gradient(circle at var(--lx, 50%) var(--ly, 50%), #000 0, #000 var(--torch, 160px), transparent calc(var(--torch, 160px) + 1px)); mask-image: radial-gradient(circle at var(--lx, 50%) var(--ly, 50%), #000 0, #000 var(--torch, 160px), transparent calc(var(--torch, 160px) + 1px)); }
+/* The porthole's rim: a solid ink ring (hard stops, not a glow), the same
+   outline the bubbles and stickers wear. */
+.hero3__ring { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(circle at var(--lx, 50%) var(--ly, 50%), transparent calc(var(--torch, 160px) - 1px), var(--ink) var(--torch, 160px), var(--ink) calc(var(--torch, 160px) + 4px), transparent calc(var(--torch, 160px) + 5px)); }
+/* A breath of the board under the paper: blurred, nearly gone. You can just
+   tell something is hidden there — which is what makes the torch a torch and
+   the page a game, not a brochure. (Dropped for a yellow round, brought
+   straight back: the whisper was the part that worked.) */
+.hero3__ghost { position: absolute; inset: 0; pointer-events: none; opacity: 0.06; filter: blur(7px) saturate(0.8); overflow: hidden; }
+.hero3__ghost .hero3__plate { transform: scale(1.03); }
+/* The white copy of the words, shown only inside the circle. Same mask, same
+   container, and the vars sit on the section, so every layer agrees on where
+   the torch is. The ink copy stays underneath; the white glyphs cover it and
+   the whisper of an edge reads as an outline over the painting. */
+.hero3__lit { position: absolute; inset: 0; z-index: 2; pointer-events: none; display: flex; align-items: center; -webkit-mask-image: radial-gradient(circle at var(--lx, 50%) var(--ly, 50%), #000 0, #000 var(--torch, 160px), transparent calc(var(--torch, 160px) + 1px)); mask-image: radial-gradient(circle at var(--lx, 50%) var(--ly, 50%), #000 0, #000 var(--torch, 160px), transparent calc(var(--torch, 160px) + 1px)); }
+.hero3__content--lit .hero3__title, .hero3__content--lit .hero3__lead { color: var(--white); }
+.hero3__content--lit .hero3__title { text-wrap: balance; }
+.hero3__content--lit .hero3__pill, .hero3__content--lit .fm-btn { visibility: hidden; }
 .hero3__noa { position: absolute; width: 104px; height: 104px; transform: translate(-50%, -50%) scale(0.5); opacity: 0; transition: transform var(--dur-3) var(--ease-pop), opacity var(--dur-2) ease 160ms; pointer-events: none; }
 .hero3__noa-img { width: 104px; height: 104px; }
 .hero3__noa.is-lit { transform: translate(-50%, -50%) scale(1.15); opacity: 1; transition: transform var(--dur-3) var(--ease-pop), opacity var(--dur-1) ease; }
@@ -40,40 +46,64 @@
 .hero3__noa.is-lit .hero3__bubble { opacity: 1; transform: translate(-50%, 0) scale(1); }
 .hero3__hint { position: absolute; top: var(--space-3); inset-inline-start: var(--gutter); pointer-events: none; }
 .hero3__content { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--space-3); padding-block: var(--space-12) calc(var(--space-10) + 96px); pointer-events: none; }
-/* The torch roams wherever it likes, including behind the headline, and a lit
-   painting under white text is unreadable. This sits above the beam and below
-   the words, so the copy holds whatever the light is doing. */
-.hero3__content::before { content: ""; position: absolute; inset: -8% -12%; z-index: -1; pointer-events: none; background: radial-gradient(40% 32% at 50% 44%, rgba(14, 13, 30, 0.42) 0, rgba(14, 13, 30, 0.24) 60%, transparent 84%); }
 .hero3__content a, .hero3__content button { pointer-events: auto; }
 .hero3__pill { align-self: center; }
-.hero3__title { font-family: var(--font-display); font-size: clamp(56px, 9.5vw, 136px); line-height: 1; font-weight: 900; letter-spacing: -0.035em; color: var(--white); text-shadow: 0 8px 40px rgba(0, 0, 0, 0.35); }
-.hero3__q { color: var(--sun); display: inline-block; animation: hero-q 3s var(--ease-in-out) infinite; transform-origin: 50% 80%; }
+.hero3__title { font-family: var(--font-display); font-size: clamp(56px, 9.5vw, 136px); line-height: 1; font-weight: 900; letter-spacing: -0.035em; color: var(--ink); }
+.hero3__q { color: var(--sun-deep); display: inline-block; animation: hero-q 3s var(--ease-in-out) infinite; transform-origin: 50% 80%; }
 @keyframes hero-q { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(10deg) translateY(-4px); } }
-.hero3__lead { font-size: var(--fs-400); line-height: var(--lh-400); color: rgba(255, 255, 255, 0.88); max-width: 44ch; text-shadow: 0 2px 18px rgba(23, 22, 43, 0.7); }
+.hero3__lead { font-size: var(--fs-400); line-height: var(--lh-400); color: var(--ink-2); max-width: 44ch; }
 .hero3__cta { display: flex; gap: var(--space-2); align-items: center; justify-content: center; flex-wrap: wrap; margin-top: var(--space-1); }
-@media (max-width: 720px) { .hero3 { min-height: 0; --torch: 96px; } .hero3__content { padding-block: var(--space-6) calc(var(--space-5) + 88px); gap: var(--space-2); } .hero3__hint, .hero3__noa { display: none; } .hero3__stage { cursor: default; } .marquee { padding-block: var(--space-2); } .hero3__pill { white-space: normal; text-align: center; padding-block: var(--space-0-5); line-height: 20px; } }
+/* The hero's buttons hold still under a roaming light: the lift-on-hover read
+   as jitter here (Guy). The arrow still slides, and the hand cursor still
+   says "press me" — the chip itself just does not move. */
+.hero3 .fm-btn { cursor: pointer; }
+.hero3 .fm-btn:hover, .hero3 .fm-btn:active { transform: none; box-shadow: var(--shadow-1); }
+/* Desktop: the nav is glass at the very top — the board and the torch run
+   underneath it — and turns back into paper as the page scrolls (scroll-driven
+   where the browser can; elsewhere it simply stays glass on the home hero).
+   The hero climbs under it by exactly the header's height. */
+@media (min-width: 721px) {
+  .fm-header--clear { background: transparent; backdrop-filter: none; }
+  /* Links, not buttons (Guy): no pill, no shadow, no movement. The TORCH
+     passing under paints a link white — "readable over the lit board" — while
+     a mouse on it turns it the deep yellow: the difference between light
+     falling on a word and pointing at a live link. Hover is declared after
+     is-lit on purpose, so pointing always wins. */
+  .fm-header--clear .fm-nav a.is-lit { color: var(--white); }
+  .fm-header--clear .fm-nav a:hover { background: transparent; box-shadow: none; color: var(--sun-deep); }
+  @supports (animation-timeline: scroll()) {
+    .fm-header--clear { animation: fm-header-solidify linear both; animation-timeline: scroll(); animation-range: 0 200px; }
+  }
+  .hero3 { margin-top: calc(var(--space-10) * -1); }
+  .hero3__hint { top: calc(var(--space-10) + var(--space-3)); }
+}
+@keyframes fm-header-solidify { to { background: color-mix(in srgb, var(--paper) 80%, transparent); backdrop-filter: blur(16px); } }
+@media (max-width: 720px) { .hero3 { min-height: 0; --torch: 104px; } .hero3__content { padding-block: var(--space-6) calc(var(--space-5) + 88px); gap: var(--space-2); } .hero3__hint, .hero3__noa { display: none; } .hero3__stage { cursor: default; } .marquee { padding-block: var(--space-2); } .hero3__pill { white-space: normal; text-align: center; padding-block: var(--space-0-5); line-height: 20px; } }
 
 /* World chips (between hero and demo) */
 .marquee { overflow: hidden; padding-block: var(--space-3); }
 .hero3__marquee { position: absolute; inset-inline: 0; bottom: 0; z-index: 2; pointer-events: none; }
 .marquee__track { display: flex; gap: var(--space-2); width: max-content; animation: marquee 60s linear infinite; }
 .marquee:hover .marquee__track { animation-play-state: paused; }
-.chip { display: inline-flex; align-items: center; gap: var(--space-1); min-height: var(--space-6); padding-inline: var(--space-3); border-radius: var(--radius-pill); background: rgba(255, 255, 255, 0.1); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18); color: var(--white); font-family: var(--font-display); font-weight: 700; font-size: var(--fs-200); line-height: var(--lh-200); white-space: nowrap; }
-.chip__glyph { font-size: var(--fs-300); }
+/* Name only, translucent fill: an emoji per world cheapened the row (Guy),
+   and through the glass you catch the ghost board and the passing torch. */
+.chip { display: inline-flex; align-items: center; gap: var(--space-1); min-height: var(--space-6); padding-inline: var(--space-3); border-radius: var(--radius-pill); background: rgba(255, 255, 255, 0.6); box-shadow: inset 0 0 0 2px var(--line), var(--shadow-1); color: var(--ink); font-family: var(--font-display); font-weight: 700; font-size: var(--fs-200); line-height: var(--lh-200); white-space: nowrap; }
 .chip--soon { opacity: 0.55; }
 @keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 [dir="rtl"] .marquee__track { animation-name: marquee-rtl; }
 @keyframes marquee-rtl { from { transform: translateX(0); } to { transform: translateX(50%); } }
 @media (prefers-reduced-motion: reduce) { .marquee__track { animation: none; flex-wrap: wrap; width: auto; justify-content: center; } }
 
-/* Demo — full-bleed night stage */
-.demo { position: relative; background: var(--grad-night); color: var(--white); padding-block: var(--space-8) var(--space-12); overflow: hidden; }
-.demo::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 15% 20%, rgba(196, 181, 253, 0.28), transparent 40%), radial-gradient(circle at 85% 90%, rgba(46, 211, 195, 0.22), transparent 40%); pointer-events: none; }
+/* Demo — the brand's yellow, dressed like the final card (grad-sun plus the
+   soft corner moon), so the two yellow blocks at the top and bottom of the
+   page read as one family. */
+.demo { position: relative; background: var(--grad-sun); color: var(--ink); padding-block: var(--space-8) var(--space-12); overflow: hidden; }
+.demo::before { content: ""; position: absolute; width: 600px; height: 600px; border-radius: var(--radius-pill); background: rgba(255, 255, 255, 0.25); inset-inline-end: -200px; top: -300px; pointer-events: none; }
 .demo__inner { position: relative; z-index: 1; }
 .demo__head { display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--space-2); margin-bottom: var(--space-5); }
-.demo__title { font-size: var(--fs-800); line-height: var(--lh-800); font-weight: 900; letter-spacing: -0.02em; color: var(--white); }
-.demo__lead { color: rgba(255, 255, 255, 0.78); font-size: var(--fs-300); line-height: var(--lh-300); max-width: 52ch; }
-.demo__frame { position: relative; width: 100%; aspect-ratio: 3 / 2; border-radius: var(--radius-3); overflow: hidden; background: var(--night); box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.08), var(--shadow-3); }
+.demo__title { font-size: var(--fs-800); line-height: var(--lh-800); font-weight: 900; letter-spacing: -0.02em; color: var(--ink); }
+.demo__lead { color: var(--ink-2); font-size: var(--fs-300); line-height: var(--lh-300); max-width: 52ch; }
+.demo__frame { position: relative; width: 100%; aspect-ratio: 3 / 2; border-radius: var(--radius-3); overflow: hidden; background: var(--night); box-shadow: 0 0 0 6px var(--white), var(--shadow-3); }
 @media (max-width: 720px) { .demo__frame { border-radius: var(--radius-2); } }
 .demo__frame > .game { position: absolute; inset: 0; }
 .demo__foot { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); text-align: center; margin-top: var(--space-5); }

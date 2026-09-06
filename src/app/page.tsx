@@ -28,7 +28,7 @@ export default async function HomePage() {
 
   return (
     <>
-      <SiteHeader user={user} isAdmin={isAdminEmail(user?.email)} />
+      <SiteHeader user={user} isAdmin={isAdminEmail(user?.email)} clear />
       <main>
         <Hero>
           <Marquee scenes={scenes} locale={locale} />

@@ -5,10 +5,10 @@ import { getI18n } from "@/i18n/server";
 import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
 
 /** Adult-facing page chrome. The game itself never shows this header. */
-export async function SiteHeader({ user, isAdmin }: { user: { email: string } | null; isAdmin: boolean }) {
+export async function SiteHeader({ user, isAdmin, clear = false }: { user: { email: string } | null; isAdmin: boolean; clear?: boolean }) {
   const { t } = await getI18n();
   return (
-    <header className="fm-header">
+    <header className={`fm-header${clear ? " fm-header--clear" : ""}`}>
       <div className="fm-container fm-header__inner">
         <Link href="/" className="fm-logo" aria-label={t.common.brand} title={t.common.brand}>
           <span className="fm-logo__mark" aria-hidden>
