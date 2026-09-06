@@ -165,7 +165,10 @@ export async function generateSlotPatch(
       // worth asking about.
       const shape = childProblem(patch);
       judged = shape ? null : await judgeOf(c, patch.webp, input, label);
-      if (judged) spent += judged.costCents;
+      if (judged) {
+        spent += judged.costCents;
+        if (judged.costUnknown) ledger.unknownCost = true;
+      }
       const last = attemptLog[attemptLog.length - 1]!;
       last.judgeCents = judged?.costCents ?? 0;
       const problem = shape ?? (judged?.verdict === "bad" ? `does not show ${input.childName}: ${judged.reason}` : null);
@@ -214,7 +217,7 @@ export async function generateSlotPatch(
           costCents: Math.round(ledger.exactCents + spent),
           usageJson: JSON.stringify(withLedger(usage, ledger, spent, attemptLog, false)),
           rejectedAssetIdsJson: rejected.length > 0 ? JSON.stringify(rejected) : null,
-          judgeJson: judged ? JSON.stringify({ verdict: judged.verdict, reason: judged.reason, model: judged.model, costCents: judged.costCents }) : null,
+          judgeJson: judged ? JSON.stringify(judged) : null,
           durationMs: { increment: elapsed },
           status: "GENERATED",
           lastError: null,
@@ -243,7 +246,7 @@ export async function generateSlotPatch(
       // A failed roll's usage and verdict used to be dropped with it, which
       // left the most expensive rows in a game the least explained.
       usageJson: JSON.stringify(withLedger(usage, ledger, spent, attemptLog, ledger.unknownCost)),
-      judgeJson: judged ? JSON.stringify({ verdict: judged.verdict, reason: judged.reason, model: judged.model, costCents: judged.costCents }) : null,
+      judgeJson: judged ? JSON.stringify(judged) : null,
       rejectedAssetIdsJson: rejected.length > 0 ? JSON.stringify(rejected) : null,
       durationMs: { increment: elapsed },
       model,
@@ -277,7 +280,7 @@ export async function generateSlotPatch(
  */
 async function judgeOf(c: Container, webp: Buffer, input: { reference: Buffer; childName: string }, label: string): Promise<PatchJudgement> {
   return c.judge.judge({ patchPng: webp, reference: input.reference, childName: input.childName, label }).catch(
-    (err: unknown): PatchJudgement => ({ verdict: "unknown", reason: err instanceof Error ? err.message.slice(0, 120) : "judge failed", costCents: 0 }),
+    (err: unknown): PatchJudgement => ({ verdict: "unknown", reason: err instanceof Error ? err.message.slice(0, 120) : "judge failed", costCents: 0, costUnknown: true }),
   );
 }
 

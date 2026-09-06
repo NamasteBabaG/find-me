@@ -109,7 +109,7 @@ async function main() {
   mkdirSync(outDir, { recursive: true });
 
   const provider = new OpenAiAvatarProvider(key, { model, quality, patchQuality: quality, perMinute: Number(flag("rpm", "5")), tries });
-  const judge = judgeOn ? new OpenAiPatchJudge(key, { model: judgeModel }) : null;
+  const judge = judgeOn ? new OpenAiPatchJudge(key, { model: judgeModel, tries: 1 }) : null;
   const commit = execSync("git rev-parse --short HEAD", { cwd: ROOT }).toString().trim();
   // A commit identifies the code only when the checkout is clean where it matters.
   const treeDirty = execSync("git status --porcelain -- scripts src content public/scenes", { cwd: ROOT }).toString().trim();
@@ -283,9 +283,15 @@ async function main() {
         let verdictText = "unjudged";
         if (!shape && judge) {
           const verdict = await judge.judge({ patchPng: patch.webp, reference: judgeReference, childName: identity, label: cellId });
-          spent += verdict.costCents;
+          const judgeCharge = chargeCents(verdict, JUDGE_RESERVE_CENTS);
+          spent += judgeCharge.cents;
           judgeCost = verdict.costCents;
-          cell.judge = { model: verdict.model ?? null, verdict: verdict.verdict, reason: verdict.reason, costCents: verdict.costCents };
+          cell.judge = verdict;
+          if (judgeCharge.unknown) {
+            unknownCharges.push(`${cellId}:judge`);
+            cell.costUnknown = true;
+            stopped = "judge charge unknown; reserved and stopped before another call";
+          }
           verdictText = verdict.verdict;
         }
         cell.costCents = Math.round((edit.costCents + judgeCost) * 100) / 100;

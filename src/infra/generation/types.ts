@@ -124,7 +124,21 @@ export interface PatchJudgement {
   /** A few words, stored so a rejection can be understood later. */
   reason: string;
   costCents: number;
+  /** At least one attempted request has no trustworthy usage/pricing. Never free. */
+  costUnknown?: boolean;
   model?: string;
+  promptSent?: string;
+  attempts?: JudgeAttempt[];
+}
+
+export interface JudgeAttempt {
+  requestId: string | null;
+  model: string | null;
+  usage: Record<string, unknown> | null;
+  costCents: number;
+  costUnknown: boolean;
+  status: number | null;
+  responseText?: string;
 }
 
 /**

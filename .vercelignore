@@ -1,6 +1,9 @@
 /assets/
 /work/
 /storage/
+/output/
+/tmp/
+/*.pdf
 /prisma/*.db
 /prisma/*.db-journal
 /.next/

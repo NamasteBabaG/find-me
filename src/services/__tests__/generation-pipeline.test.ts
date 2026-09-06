@@ -787,6 +787,18 @@ describe("no human gate", () => {
 });
 
 describe("the ledger", () => {
+  it("keeps unknown judge billing and request evidence after accepting a patch", async () => {
+    const c = container(painter(["child"]));
+    c.judge = { id: "stub", judge: async () => ({ verdict: "ok", reason: "same child", costCents: 0, costUnknown: true, attempts: [{ requestId: "req_judge_test", model: "stub", usage: null, costCents: 0, costUnknown: true, status: 200 }] }) };
+    const gameId = await seedGame(c);
+    await mod.runGenerationPipeline(c, gameId);
+    const spot = (await spotsIn(gameId))[0]!.variants[0]!;
+    expect(JSON.parse(spot.usageJson ?? "{}").ledger.unknownCost).toBe(true);
+    const judged = JSON.parse(spot.judgeJson ?? "{}");
+    expect(judged.costUnknown).toBe(true);
+    expect(judged.attempts[0].requestId).toBe("req_judge_test");
+  }, 120_000);
+
   it("keeps fractions of a cent between ticks and rounds the column once", async () => {
     // Two rolls that paint nothing, then one that works; every accepted roll is
     // judged at 0.26 cents. Rounded per tick that judgement vanished.

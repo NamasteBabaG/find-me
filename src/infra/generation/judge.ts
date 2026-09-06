@@ -1,5 +1,5 @@
 import sharp from "sharp";
-import type { PatchJudge, PatchJudgement } from "./types";
+import type { JudgeAttempt, PatchJudge, PatchJudgement } from "./types";
 
 /**
  * Does this finished patch actually show the child?
@@ -36,17 +36,21 @@ const API = "https://api.openai.com/v1/chat/completions";
 /** Judging is cheap next to a roll (~7¢), so the budget here is generous. */
 const TIMEOUT_MS = 45_000;
 const TRIES = 2;
+const MAX_OUTPUT_TOKENS = 60;
 
 export interface JudgeOptions {
   /** A vision-capable chat model. */
   model?: string;
   timeoutMs?: number;
+  /** Budgeted experiments use exactly one wire request, without hidden retries. */
+  tries?: number;
 }
 
 export class OpenAiPatchJudge implements PatchJudge {
   readonly id = "openai" as const;
   private readonly model: string;
   private readonly timeoutMs: number;
+  private readonly tries: number;
 
   constructor(
     private readonly apiKey: string,
@@ -55,6 +59,8 @@ export class OpenAiPatchJudge implements PatchJudge {
     if (!apiKey) throw new Error("OPENAI_API_KEY is required for the patch judge");
     this.model = options.model ?? "gpt-4o-mini";
     this.timeoutMs = options.timeoutMs ?? TIMEOUT_MS;
+    this.tries = options.tries ?? TRIES;
+    if (!Number.isInteger(this.tries) || this.tries < 1 || this.tries > 2) throw new Error("judge tries must be 1 or 2");
   }
 
   async judge(input: { patchPng: Buffer; reference: Buffer; childName: string; label: string }): Promise<PatchJudgement> {
@@ -67,9 +73,76 @@ export class OpenAiPatchJudge implements PatchJudge {
       .toBuffer();
     const sheet = await sharp(input.reference).resize(512, 512, { fit: "inside" }).png().toBuffer();
 
-    const prompt = [
+    const prompt = judgePrompt(input.childName);
+    const attempts: JudgeAttempt[] = [];
+    const result = (verdict: PatchJudgement["verdict"], reason: string): PatchJudgement => ({
+      verdict, reason, promptSent: prompt,
+      costCents: attempts.reduce((sum, attempt) => sum + attempt.costCents, 0),
+      costUnknown: attempts.some((attempt) => attempt.costUnknown),
+      model: attempts.at(-1)?.model ?? this.model,
+      attempts,
+    });
+
+    let lastError = "";
+    for (let attempt = 1; attempt <= this.tries; attempt++) {
+      let res: Response;
+      try {
+        res = await fetch(API, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: this.model, max_tokens: MAX_OUTPUT_TOKENS, temperature: 0,
+            response_format: { type: "json_object" },
+            messages: [{ role: "user", content: [
+              { type: "text", text: prompt },
+              { type: "image_url", image_url: { url: `data:image/png;base64,${patch.toString("base64")}` } },
+              { type: "image_url", image_url: { url: `data:image/png;base64,${sheet.toString("base64")}` } },
+            ] }],
+          }),
+          signal: AbortSignal.timeout(this.timeoutMs),
+        });
+      } catch (err) {
+        lastError = err instanceof Error && err.name === "TimeoutError" ? `timed out after ${Math.round(this.timeoutMs / 1000)}s` : "judge transport failed";
+        attempts.push({ requestId: null, model: null, usage: null, costCents: 0, costUnknown: true, status: null });
+        // A lost answer may have been charged; another call cannot make it known.
+        break;
+      }
+      const requestId = res.headers.get("x-request-id");
+      let json: { model?: string; choices?: Array<{ message?: { content?: string } }>; usage?: Record<string, unknown>; error?: { message?: string } };
+      try {
+        const raw: unknown = await res.json();
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("invalid response object");
+        json = raw;
+      }
+      catch {
+        attempts.push({ requestId, model: null, usage: null, costCents: 0, costUnknown: true, status: res.status });
+        lastError = "could not read the provider response";
+        break;
+      }
+      const model = typeof json.model === "string" ? json.model : this.model;
+      const charge = judgeCharge(model, json.usage);
+      const content = json.choices?.[0]?.message?.content;
+      attempts.push({ requestId, model, usage: json.usage ?? null, ...charge, status: res.status, responseText: content });
+      if (!res.ok) {
+        lastError = json.error?.message ?? `HTTP ${res.status}`;
+        // Missing usage is conservatively unknown, including HTTP errors.
+        if (charge.costUnknown || /model|does not exist|access|permission/i.test(lastError)) break;
+        continue;
+      }
+      const parsed = parseVerdict(content);
+      if (parsed) return result(parsed.verdict, parsed.reason);
+      lastError = "could not read the verdict";
+      if (charge.costUnknown) break;
+    }
+    return result("unknown", lastError || "no answer");
+  }
+}
+
+/** Keep wording identical across old/new evaluations; capture it in evidence. */
+export function judgePrompt(childName: string): string {
+  return [
       `The FIRST image is one cut-out taken from an illustrated hidden-object picture.`,
-      `The SECOND image is the reference sheet for ${input.childName}, the child that cut-out is supposed to show.`,
+      `The SECOND image is the reference sheet for ${childName}, the child that cut-out is supposed to show.`,
       `Do not assume the child is a girl or a boy: the reference sheet is the only thing that says who they are.`,
       `The clothes may differ from the sheet — the child is dressed for the place. Judge by face, hair, skin tone and build, never by outfit.`,
       `Answer only whether the cut-out shows THAT CHILD, drawn whole as far as it goes.`,
@@ -78,57 +151,6 @@ export class OpenAiPatchJudge implements PatchJudge {
       `Reply with JSON only: {"verdict":"ok"|"bad","reason":"<at most eight words>"}`,
     ].join(" ");
 
-    let lastError = "";
-    for (let attempt = 1; attempt <= TRIES; attempt++) {
-      const res = await fetch(API, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: this.model,
-          max_tokens: 60,
-          temperature: 0,
-          response_format: { type: "json_object" },
-          messages: [
-            {
-              role: "user",
-              content: [
-                { type: "text", text: prompt },
-                { type: "image_url", image_url: { url: `data:image/png;base64,${patch.toString("base64")}` } },
-                { type: "image_url", image_url: { url: `data:image/png;base64,${sheet.toString("base64")}` } },
-              ],
-            },
-          ],
-        }),
-        signal: AbortSignal.timeout(this.timeoutMs),
-      }).catch((err: Error) => err);
-
-      if (res instanceof Error) {
-        lastError = res.name === "TimeoutError" ? `timed out after ${Math.round(this.timeoutMs / 1000)}s` : res.message;
-        continue;
-      }
-      const json = (await res.json()) as {
-        choices?: Array<{ message?: { content?: string } }>;
-        usage?: { prompt_tokens?: number; completion_tokens?: number };
-        error?: { message?: string };
-      };
-      if (!res.ok) {
-        lastError = json.error?.message ?? `HTTP ${res.status}`;
-        // A model this account cannot use is a configuration problem, not a
-        // flaky call — saying so once beats retrying into the same wall.
-        if (/model|does not exist|access|permission/i.test(lastError)) break;
-        continue;
-      }
-      const parsed = parseVerdict(json.choices?.[0]?.message?.content);
-      if (!parsed) {
-        lastError = "could not read the verdict";
-        continue;
-      }
-      return { ...parsed, costCents: costOf(this.model, json.usage), model: this.model };
-    }
-    // Never guess. A judge that cannot answer must not quietly approve, and must
-    // not reject work that may be perfectly good either.
-    return { verdict: "unknown", reason: lastError || "no answer", costCents: 0, model: this.model };
-  }
 }
 
 function parseVerdict(content: string | undefined): { verdict: "ok" | "bad"; reason: string } | null {
@@ -143,17 +165,29 @@ function parseVerdict(content: string | undefined): { verdict: "ok" | "bad"; rea
 }
 
 /**
- * Cents for one judgement. Rough on purpose: it is fractions of a cent against a
- * 7-cent roll, and it exists so the number shows up in the game's total rather
- * than hiding.
+ * Standard-rate cents from recorded usage, without per-request rounding.
+ * Cached-token discounts are not assumed; this is not an invoice total.
  */
-function costOf(model: string, usage: { prompt_tokens?: number; completion_tokens?: number } | undefined): number {
-  if (!usage) return 0;
-  const mini = /mini|small|nano/i.test(model);
-  const inPer1M = mini ? 15 : 250; // cents per million input tokens
-  const outPer1M = mini ? 60 : 1000;
-  const cents = ((usage.prompt_tokens ?? 0) * inPer1M + (usage.completion_tokens ?? 0) * outPer1M) / 1_000_000;
-  return Math.round(cents * 100) / 100;
+export function judgeCharge(model: string, usage: Record<string, unknown> | undefined): { costCents: number; costUnknown: boolean } {
+  const rates = /^gpt-4o-mini(?:-\d{4}-\d{2}-\d{2})?$/.test(model) ? [15, 60] : /^gpt-4o(?:-\d{4}-\d{2}-\d{2})?$/.test(model) ? [250, 1000] : null;
+  const input = usage?.prompt_tokens;
+  const output = usage?.completion_tokens;
+  if (!rates || typeof input !== "number" || !Number.isInteger(input) || input < 0 || typeof output !== "number" || !Number.isInteger(output) || output < 0) return { costCents: 0, costUnknown: true };
+  return { costCents: (input * rates[0]! + output * rates[1]!) / 1_000_000, costUnknown: false };
+}
+
+/**
+ * Conservative reservation for ONE existing 512px+512px mini judgement.
+ * Two images each use at most one tile: 2*(2833+5667) tokens; UTF-8 bytes
+ * upper-bound text tokens, plus 256 framing tokens, and max_tokens=60.
+ * Standard (uncached) rates checked 2026-09-06; discounts are not assumed.
+ * https://developers.openai.com/api/docs/guides/images-vision#calculating-costs
+ * https://developers.openai.com/api/docs/models/gpt-4o-mini
+ */
+export function judgeReserveCents(model: string, childName: string): number {
+  if (model !== "gpt-4o-mini") throw new Error("budgeted rejudge is priced only for gpt-4o-mini");
+  const input = 2 * (2833 + 5667) + Buffer.byteLength(judgePrompt(childName), "utf8") + 256;
+  return Math.ceil(((input * 15 + MAX_OUTPUT_TOKENS * 60) / 1_000_000) * 1_000_000) / 1_000_000;
 }
 
 /**
