@@ -6,6 +6,7 @@ import { LinkButton } from "@/ui/Button";
 import { Notice } from "@/ui/primitives";
 import { useI18n } from "@/i18n/client";
 import { CREATION_MILESTONES, type CreationMilestone, type CreationState, type MilestoneState } from "@/domain/creation-progress";
+import { startSerialPoll } from "@/lib/serial-poll";
 
 interface Status {
   status: string;
@@ -62,12 +63,12 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
   useEffect(() => {
     let alive = true;
     let working = false;
-    const tick = async () => {
-      try {
-        const res = await fetch(`/api/games/${gameId}/status`, { cache: "no-store" });
-        if (!alive) return;
+    const polling = startSerialPoll({
+      poll: async (signal) => {
+        const res = await fetch(`/api/games/${gameId}/status`, { cache: "no-store", signal });
         if (!res.ok) throw new Error(`status ${res.status}`);
         const status = (await res.json()) as Status;
+        if (!alive || signal.aborted) return false;
         setS(status);
         setFailures(0);
         setUpdatedAt(new Date());
@@ -77,27 +78,25 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
         // both are safe to run at once (every step is idempotent).
         if (status.pending && !working) {
           working = true;
-          try {
-            await fetch(`/api/jobs/tick?gameId=${gameId}`, { method: "POST", cache: "no-store" });
-          } finally {
-            working = false;
-          }
+          // A generation slice can take minutes. Keep status reads responsive,
+          // while allowing only one nudge from this mounted component at a time.
+          void fetch(`/api/jobs/tick?gameId=${gameId}`, { method: "POST", cache: "no-store" })
+            .catch(() => { /* The next status read is the source of truth. */ })
+            .finally(() => { working = false; });
         }
-      } catch {
-        if (alive) setFailures((n) => n + 1);
-      }
-    };
-    void tick();
-    const id = setInterval(tick, 2500);
+        return !status.done && !status.failed;
+      },
+      onError: () => { if (alive) setFailures((n) => n + 1); },
+    });
     // A phone that went to sleep, a tab that was switched away from: the moment
     // it is looked at again the page catches up instead of waiting out the interval.
     const onVisible = () => {
-      if (document.visibilityState === "visible") void tick();
+      if (document.visibilityState === "visible") polling.refresh();
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       alive = false;
-      clearInterval(id);
+      polling.stop();
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [gameId]);
