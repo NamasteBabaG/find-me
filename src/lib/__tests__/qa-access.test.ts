@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { middleware } from "@/middleware";
-import { createQaSession, QA_SESSION_SECONDS, qaAccessConfig, qaAccessConfigured, qaCookieName, qaCronAllowed, qaPasswordMatches, safeQaNext, validQaSession, type QaAccessConfig } from "../qa-access";
+import { createQaSession, QA_SESSION_SECONDS, qaAccessConfig, qaAccessConfigured, qaAccessProblem, qaCookieName, qaCronAllowed, qaPasswordMatches, safeQaNext, validQaSession, type QaAccessConfig } from "../qa-access";
 
 const fixture: QaAccessConfig = {
   enabled: true, secure: true, password: "synthetic-qa-password-for-tests", sessionSecret: "synthetic-session-key-for-tests", cronSecret: "synthetic-cron-key-for-tests",
@@ -18,6 +18,13 @@ function setQaEnv() {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("QA password and session contract", () => {
+  it("reports configuration codes without exposing values or hashes", () => {
+    expect(qaAccessProblem({ ...fixture, password: "" })).toBe("QA_PASSWORD_MISSING");
+    expect(qaAccessProblem({ ...fixture, password: "short" })).toBe("QA_PASSWORD_TOO_SHORT");
+    expect(qaAccessProblem({ ...fixture, password: "x".repeat(257) })).toBe("QA_PASSWORD_TOO_LONG");
+    expect(qaAccessProblem({ ...fixture, sessionSecret: "short" })).toBe("QA_SIGNING_KEY_INVALID");
+    expect(qaAccessProblem(fixture)).toBeNull();
+  });
   it("fails closed for missing, short, oversized and default credentials", async () => {
     for (const password of ["", "short", "a".repeat(257)]) {
       const c = { ...fixture, password };

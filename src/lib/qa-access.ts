@@ -9,20 +9,35 @@ export interface QaAccessConfig {
 
 export const QA_SESSION_SECONDS = 24 * 60 * 60;
 const encoder = new TextEncoder();
+let reportedProblem: string | null = null;
 
 export function qaAccessConfig(): QaAccessConfig {
-  return {
+  const config = {
     enabled: process.env.APP_ENV === "qa",
     password: process.env.QA_ACCESS_PASSWORD ?? "",
     sessionSecret: process.env.SESSION_SECRET ?? "",
     secure: process.env.NODE_ENV === "production",
     cronSecret: process.env.CRON_SECRET ?? "",
   };
+  const problem = config.enabled ? qaAccessProblem(config) : null;
+  if (problem && problem !== reportedProblem) {
+    // Codes only: no value, length, hash, prefix, or supplied password in logs.
+    console.warn(`[qa-access] configuration unavailable: ${problem}`);
+  }
+  reportedProblem = problem;
+  return config;
 }
 
 export function qaAccessConfigured(c: QaAccessConfig): boolean {
-  return c.password.length >= 16 && c.password.length <= 256 &&
-    c.sessionSecret.length >= 16 && c.sessionSecret !== "dev-only-session-secret-change-me";
+  return qaAccessProblem(c) === null;
+}
+
+export function qaAccessProblem(c: QaAccessConfig): string | null {
+  if (!c.password) return "QA_PASSWORD_MISSING";
+  if (c.password.length < 16) return "QA_PASSWORD_TOO_SHORT";
+  if (c.password.length > 256) return "QA_PASSWORD_TOO_LONG";
+  if (c.sessionSecret.length < 16 || c.sessionSecret === "dev-only-session-secret-change-me") return "QA_SIGNING_KEY_INVALID";
+  return null;
 }
 
 export function qaCookieName(c: QaAccessConfig): string {
