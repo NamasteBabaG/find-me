@@ -4,7 +4,7 @@ import Link from "next/link";
 import { getContainer } from "@/services/container";
 import { listGamesForUser } from "@/services/game.service";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
-import { isDev, isLiveShop } from "@/lib/env";
+import { isDev } from "@/lib/env";
 import { getI18n } from "@/i18n/server";
 import { formatDate, pick, tf } from "@/i18n";
 import { SiteFooter, SiteHeader, Notice } from "@/ui/Shell";
@@ -29,7 +29,8 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
             <p className="fm-lead">{l.loginLead}</p>
           </div>
           {params.error === "expired" ? <Notice kind="warn">{l.expired}</Notice> : null}
-          <LoginForm devOutbox={!isLiveShop()} />
+          {/* The outbox link is for a box whose mail goes to a file, not for a staging box whose mail is real. */}
+          <LoginForm devOutbox={getContainer().email.id === "console"} />
         </main>
         <SiteFooter />
       </>
