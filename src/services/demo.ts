@@ -5,6 +5,7 @@ import { worldOfBoard } from "../../content/worlds";
 import type { GameConfig, SpriteRef } from "@/domain/game/config";
 import type { Locale } from "@/i18n/config";
 import { sceneBySlug } from "./scene-catalog.service";
+import { beachDemoPatches } from "../../content/demo/beach-patches";
 
 /**
  * Landing-page demo: a fixed illustrated child (Anna / נועה) hiding in a world.
@@ -20,6 +21,8 @@ type PatchMeta = { url: string; rect: { w: number; h: number }; rectNorm: ArtRec
 
 /** A slot patch made by scripts/slot-patch.ts for this scene/target/variant, if present. */
 function demoPatch(slug: string, targetId: string, variant: "A" | "B"): SpriteRef | null {
+  // Explicit versioned set: a missing new asset must never restore a legacy hat.
+  if (slug === "beach") return variant === "A" ? beachDemoPatches[targetId] ?? null : null;
   const file = path.join(process.cwd(), "public", "demo", "patches", `${slug}-${targetId}-${variant}.json`);
   if (!existsSync(file)) return null;
   try {
@@ -65,6 +68,12 @@ export function buildDemoConfig(locale: Locale, slug = "beach", name?: string): 
     }),
     locale,
   );
+  if (scene.slug === "beach") {
+    // These inpainted patches already preserve the board's occluders. The old
+    // separate parasols were authored for earlier beach art and appear twice
+    // over the current 3072x2048 painting. Do not apply them to this demo set.
+    sceneConfig.art = { ...sceneConfig.art, foreground: undefined };
+  }
   const world = worldOfBoard(scene.slug);
   return composeGame({
     gameId: "demo",

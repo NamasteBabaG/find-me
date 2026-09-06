@@ -22,21 +22,23 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe("the photo-to-game proof", () => {
   it("keeps the selected example's eyes, nose and cheeks opaque over the board", async () => {
+    if (example.sprite.kind !== "image") throw new Error("Expected a generated patch");
     const { data, info } = await sharp(`public${example.sprite.url}`).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     // Manually reviewed face interior for THIS fixture, not a general face detector.
     let samples = 0;
-    for (let y = 42; y <= 88; y++) for (let x = 78; x <= 116; x++) {
-      if (((x - 97) / 19) ** 2 + ((y - 65) / 23) ** 2 > 1) continue;
+    for (let y = 46; y <= 82; y++) for (let x = 83; x <= 113; x++) {
+      if (((x - 98) / 15) ** 2 + ((y - 64) / 18) ** 2 > 1) continue;
       expect(data[(y * info.width + x) * 4 + 3]).toBe(255);
       samples++;
     }
-    expect(samples).toBe(1365);
+    expect(samples).toBe(839);
   });
   it("renders the real server composition, and waits for BOTH board and child before showing the bubble", async () => {
     const view = render(await Transformation());
     const board = view.container.querySelector(".tf-world__base")!;
     const patch = view.container.querySelector(".tf-world__patch")!;
-    expect(patch.getAttribute("src")).toBe(example.sprite.url);
+    expect(example.sprite.kind).toBe("image");
+    expect(patch.getAttribute("src")).toBe(example.sprite.kind === "image" ? example.sprite.url : "");
     expect(view.container.querySelector(".tf-portrait img")?.getAttribute("src")).toBe(example.identitySheet);
     expect(view.container.textContent).not.toContain("כובע");
     expect(view.container.querySelector(".tf-world__bubble")).toBeNull();
@@ -96,14 +98,15 @@ describe("the photo-to-game proof", () => {
     expect(geometry.head.y).not.toBe(target.slots[0]!.y);
   });
 
-  it("ships the selected existing demo art, and a hat-free identity cue without changing playable hiding spots", () => {
+  it("ships the newly rendered demo art with the same hat-free identity cue and marketing example", () => {
+    if (example.sprite.kind !== "image") throw new Error("Expected a generated patch");
     for (const src of [example.photo, example.identitySheet, example.sprite.url, "/demo/noa-portrait.png"]) expect(existsSync(`public${src}`)).toBe(true);
     const hash = (file: string) => createHash("sha256").update(readFileSync(file)).digest("hex");
     expect(hash(`public${example.identitySheet}`)).toBe("df0dd24d2aa1579b7ba5c7c761079632f59ba890ebed0b9be53b4390d40a7434");
     expect(hash("public/demo/noa-portrait.png")).toBe("df91e71f4aacd1679962ebfd124de5290a81811d47507088ed8e1e65697ecea6");
-    expect(hash(`public${example.sprite.url}`)).toBe("a5ed6cdfe4e10536dbe2219b0bbc78f6284829bbbc54613487828f3cf8e18311");
+    expect(hash(`public${example.sprite.url}`)).toBe("50211623632b36493c67e115f20620aa4f8aef7fd00f022eb94ab9cb62ae0479");
     const demo = buildDemoConfig("he");
     expect(demo.child.avatarUrl).toBe("/demo/noa-portrait.png");
-    expect(demo.scenes[0]!.targets.find(t => t.id === "sandcastle")!.sprite).toMatchObject({ url: "/demo/patches/beach-sandcastle-A.webp" });
+    expect(demo.scenes[0]!.targets.find(t => t.id === "sandcastle")!.sprite).toEqual(example.sprite);
   });
 });

@@ -14,8 +14,7 @@ export async function Transformation() {
   const tr = t.home.transform;
   const demo = buildDemoConfig(locale, example.scene);
   const child = demo.child;
-  const scene = { ...demo.scenes[0]!, targets: demo.scenes[0]!.targets.map(target => target.id === example.target
-    ? { ...target, sprite: example.sprite, spriteByVariant: { A: example.sprite } } : target) };
+  const scene = demo.scenes[0]!;
   const foundLine = scene.targets.find(target => target.id === example.target)?.success[0] ?? t.home.hero.found;
   const hasPhoto = existsSync(path.join(process.cwd(), "public", example.photo));
   const tag = `${child.name} · ${tr.characterTag}`;
