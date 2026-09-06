@@ -1,4 +1,6 @@
 /** QA's outer gate. Web Crypto keeps the same checks usable at the edge and in routes. */
+import { safeLocalPath } from "./safe-redirect";
+
 export interface QaAccessConfig {
   enabled: boolean;
   password: string;
@@ -113,14 +115,8 @@ export async function qaCronAllowed(req: Request, c: QaAccessConfig): Promise<bo
 
 /** No cross-origin redirects, backslashes, controls, or a login-loop destination. */
 export function safeQaNext(value: string | null | undefined): string {
-  if (!value || value.length > 4096 || !value.startsWith("/") || value.startsWith("//") || /[\\\u0000-\u0020]/.test(value)) return "/";
-  try {
-    const url = new URL(value, "https://qa.invalid");
-    if (url.origin !== "https://qa.invalid" || url.pathname.startsWith("/qa-access")) return "/";
-    return `${url.pathname}${url.search}${url.hash}`;
-  } catch {
-    return "/";
-  }
+  const next = safeLocalPath(value);
+  return new URL(next, "https://qa.invalid").pathname.startsWith("/qa-access") ? "/" : next;
 }
 
 export function qaDeniedResponse(c: QaAccessConfig): Response {
