@@ -52,7 +52,7 @@ export function CelebrationOverlay({ kind, small = false, seed = 0 }: { kind: Ce
       // A natural size crowd (Guy): everything a touch bigger, then a skewed
       // spread — most pieces stay near their base size, some grow a little,
       // a few grow a lot. Squaring the roll is what skews it.
-      const grow = 1.1 + rnd() * rnd() * 0.9;
+      const grow = 1.15 + Math.pow(rnd(), 2.2) * 1.85;
       const w = (shape === "rect" ? 9 + rnd() * 8 : shape === "strip" ? 5 + rnd() * 3 : shape === "dot" ? 7 + rnd() * 5 : 16 + rnd() * 10) * grow;
       const h = (shape === "rect" ? 14 + rnd() * 10 : shape === "strip" ? 20 + rnd() * 14 : 0) * grow || w;
       return {

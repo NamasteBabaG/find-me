@@ -25,8 +25,8 @@ const EDGE_X = 1060;
 
 /** The silhouette's lobes, top to bottom: radius + a sideways push. Irregular on purpose. */
 const LOBES: ReadonlyArray<readonly [number, number]> = [
-  [96, 24], [48, -18], [150, 30], [62, -26], [112, 16], [172, -30], [54, 22], [128, -14],
-  [70, 28], [148, -24], [58, 18], [104, -30], [86, 26], [136, -12], [50, 20], [118, -28], [76, 16], [124, -20],
+  [96, 24], [48, -18], [196, 34], [58, -26], [112, 16], [232, -36], [54, 22], [128, -14],
+  [70, 28], [176, -28], [56, 18], [104, -30], [86, 26], [208, -16], [50, 20], [118, -28], [76, 16], [148, -22],
 ];
 
 /** One continuous bumpy edge from above the top to below the bottom. */
@@ -61,9 +61,9 @@ function cloudlet(w: number): string {
 
 const PATH = silhouette();
 const PUFFS: ReadonlyArray<{ x: number; y: number; w: number; o: number }> = [
-  { x: 1092, y: 340, w: 150, o: 0.96 },
-  { x: 1140, y: 1110, w: 96, o: 0.88 },
-  { x: 1080, y: 1870, w: 176, o: 0.93 },
+  { x: 1160, y: 340, w: 110, o: 0.96 },
+  { x: 1146, y: 1110, w: 92, o: 0.88 },
+  { x: 1130, y: 1870, w: 140, o: 0.93 },
 ];
 
 export function CloudBank({ side }: { side: "l" | "r" }) {
