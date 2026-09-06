@@ -202,6 +202,16 @@ recipient. A mail the provider refused is audited as `admin-alert:<kind>:failed`
 and tried again on the next call and from the cron tick (`retryFailedAdminAlerts`,
 up to a day back); nothing here ever throws: the parent already has the game.
 
+Cron retries are not six-hour reminders: a success at or after a recipient's
+last failure resolves that failure, even after the six-hour throttle expires.
+Only failed recipients still in `ADMIN_EMAILS` are retried. The pass pages the
+day's outcomes, resolves recipients in bulk, and attempts up to 20 distinct
+pending game/kind pairs, oldest last attempt first. It does not take the last
+20 raw failure rows, which could all belong to one game. A fresh explicit alert
+still uses the six-hour throttle. This audit-backed mechanism is not an atomic
+outbox: overlapping workers or a failed post-send audit can still duplicate a
+mail. See `CODEX_HANDOFF_2026-09-06_ALERTS.md` for scope and regression coverage.
+
 With the flag off, a clean game waits in `QA_PENDING` and a game with problems
 in `MANUAL_REVIEW` until an admin approves it — the launch setting, once a
 person is actually there to look.
