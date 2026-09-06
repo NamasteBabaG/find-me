@@ -7,7 +7,7 @@ import { boardSlugs } from "@/domain/world";
 import { composeWorld } from "@/domain/game/compose";
 import type { GameConfig, PlayWorld } from "@/domain/game/config";
 import { emptyProgress, recordSceneCompleted, type GameProgress } from "@/domain/game/progress";
-import { getDict, type Locale } from "@/i18n";
+import { getDict, tf, type Locale } from "@/i18n";
 import { buildDemoConfig } from "@/services/demo";
 import { WorldMap } from "../components/WorldMap";
 import { GameShell } from "../components/GameShell";
@@ -42,12 +42,12 @@ function mount(config: GameConfig, progress: GameProgress, world = config.worlds
 }
 
 describe("a finished world's map", () => {
-  it.each(["en", "he"] as const)("uses each world's own completion copy in %s, with all nine places still replayable", locale => {
+  it.each(["en", "he"] as const)("uses each world's title and localized completion copy in %s, with all nine places still replayable", locale => {
     const config = fixture(locale, 3);
     for (const world of config.worlds!) {
       const view = mount(config, finish(config, boardSlugs(world)), world);
       const card = view.getByRole("region", { name: world.completion.title });
-      expect(within(card).getByText(world.completion.text)).toBeTruthy();
+      expect(within(card).getByText(tf(getDict(locale).game.map.completedText, { name: config.child.name }))).toBeTruthy();
       expect(card.textContent).not.toContain("{name}");
       expect(view.container.querySelector(".wmap__go")).toBeNull();
       expect(view.container.querySelector(".wmap__skip")).toBeNull();
@@ -56,6 +56,15 @@ describe("a finished world's map", () => {
       for (const node of view.container.querySelectorAll(".wmap__dot")) expect(node.getAttribute("aria-disabled")).toBeNull();
       cleanup();
     }
+  });
+
+  it("uses current neutral copy even when an old saved config contains retired wording", () => {
+    const config = fixture("he"); const original = config.worlds![0]!;
+    const world = { ...original, completion: { ...original.completion, text: "Test מצאו את כל המחבואים בעולם הזה. הדרכון מלא!" } };
+    const view = mount(config, finish(config, boardSlugs(world)), world);
+    expect(view.getByText("Test, כל המחבואים בעולם הזה נמצאו!")).toBeTruthy();
+    expect(view.queryByText(world.completion.text)).toBeNull();
+    expect(world.completion.text).toContain("מצאו"); // no migration or mutation
   });
 
   it.each([0, 8])("keeps the next-place action at %i of 9", done => {

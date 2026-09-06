@@ -133,7 +133,8 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
           <div className="wmap__complete-body">
             <div role="status">
               <h2 id={completionTitleId} className="wmap__complete-title">{world.completion.title}</h2>
-              <p className="wmap__complete-text">{world.completion.text}</p>
+              {/* Older saved configs can carry retired/gendered completion copy. */}
+              <p className="wmap__complete-text">{tf(g.map.completedText, { name: config.child.name })}</p>
             </div>
             <p className="wmap__complete-replay">{g.map.completedReplay}</p>
             <div className="wmap__complete-actions">
