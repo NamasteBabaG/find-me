@@ -9,6 +9,7 @@
     "en": "A green river, a wooden canoe and a very loud macaw.",
     "he": "נהר ירוק, קאנו מעץ ותוכי רועש מאוד."
   },
+  "wardrobe": "a thin light-green shirt and beige shorts",
   "version": 1,
   "active": true,
   "artStatus": "final",
@@ -27,6 +28,8 @@
   "targets": [
     {
       "id": "canoe",
+      "action": "The child is sitting in the canoe, looking straight ahead along the river.",
+      "expression": "calm, mouth relaxed and closed, eyes on the water ahead",
       "targetType": "amazon_canoe",
       "bodyTemplate": "amazon_canoe",
       "difficulty": 1,

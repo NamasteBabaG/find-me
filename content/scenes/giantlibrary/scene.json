@@ -9,6 +9,7 @@
     "en": "Books like doors, ladders to the ceiling and a sleeping giant.",
     "he": "ספרים כמו דלתות, סולמות לתקרה וענק ישן."
   },
+  "wardrobe": "a warm brown cardigan over a cream shirt and dark trousers",
   "version": 1,
   "active": true,
   "artStatus": "final",
@@ -149,6 +150,8 @@
     },
     {
       "id": "doorway",
+      "action": "The child is peeking out of the doorway, one hand on the door frame.",
+      "expression": "a small smile, peeking out",
       "targetType": "giantlibrary_doorway",
       "bodyTemplate": "giantlibrary_doorway",
       "difficulty": 3,

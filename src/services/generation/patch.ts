@@ -61,8 +61,19 @@ function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, n));
 }
 
-/** The window as a multiple of the child's height. Seven is what every world was authored and measured at. */
-export const DEFAULT_WINDOW_FACTOR = 7;
+/**
+ * The window as a multiple of the child's height.
+ *
+ * Every world was authored and measured at seven. Experiment 2 (6 September
+ * 2026: two identities, four hard boards, two repeats, three arms) found that
+ * with the height named in the model's own pixels, a 4x window doubled
+ * first-roll acceptance on open water and in the library doorway (1/4 → 3/4
+ * each), kept the beach at 4/4, kept the peeking, and drew the child at the
+ * size asked for (alpha ÷ asked 1.03 against 1.41 at 7x). The floor and the
+ * cap are unchanged, so a small child's window is the same 384 either way.
+ * The scripts take --window-factor=7 to reproduce the old window.
+ */
+export const DEFAULT_WINDOW_FACTOR = 4;
 /** The window never shrinks below this or grows past this, whatever the factor. */
 export const WINDOW_MIN_PX = 384;
 export const WINDOW_MAX_PX = 768;

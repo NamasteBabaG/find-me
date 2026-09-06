@@ -58,9 +58,9 @@ export function slotOf(slug: string, targetId: string, variantArg: string | unde
     pose: options.pose,
     place: scene.name.en,
     placeNote: scene.tagline.en,
-    expression: options.expression ?? expressionFor(body?.pose),
-    wardrobe: options.wardrobe,
-    action: options.action,
+    expression: options.expression ?? target.expression ?? expressionFor(body?.pose),
+    wardrobe: options.wardrobe ?? scene.wardrobe,
+    action: options.action ?? target.action,
   });
   return { scene, target, variant: variant as "A" | "B", slot, art, ctx, prompt, promptChildPx, name: `${slug}-${targetId}-${variant}` };
 }

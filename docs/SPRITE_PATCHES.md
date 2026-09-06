@@ -523,6 +523,18 @@ own mean, by at most a quarter. Her mean brightness is left alone — a red coat
 on white snow is supposed to be darker than the snow. `colourMatch` removes the
 model's global drift; this removes its house style.
 
+**Art direction in the scene (6 September 2026).** Told only "clothes a
+child would really wear here", the model answered with the sheet's own outfit
+nine places out of nine. A scene may now carry `wardrobe` ("a plain yellow
+t-shirt and blue shorts, bare feet") and a target `action` ("The child is
+sitting in the canoe, looking straight ahead along the river.") and
+`expression`; `slotPrompt` names them instead of the generic lines. Measured
+on four hard spots with two identities (experiment 3): first-roll acceptance
+10/16 → 13/16, the outfit followed in 16 of 16, and the action pulled the
+Great Wall child into the search area (0/4 → 3/4). A head-only reference was
+tried alongside and dropped: it cost one identity every time. The window is
+4× the child now (`DEFAULT_WINDOW_FACTOR`), from experiment 2.
+
 Occlusion stays a wish in the prompt ("let whatever is naturally in front of
 the child overlap them"), not a rule in `childProblem`: a child in full view is
 still a find, and rejecting her for it would cost a roll and buy nothing.

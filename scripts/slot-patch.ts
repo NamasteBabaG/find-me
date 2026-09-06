@@ -31,7 +31,7 @@
 import sharp from "sharp";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { childProblem, diffToPatch, paintMask, type PatchResult } from "../src/services/generation/patch";
+import { DEFAULT_WINDOW_FACTOR, childProblem, diffToPatch, paintMask, type PatchResult } from "../src/services/generation/patch";
 import { cropOf, parseDiffOptions, slotOf, writePatch, writePreview, type SlotInfo } from "../src/services/generation/authoring";
 import { OpenAiAvatarProvider } from "../src/infra/generation/openai";
 import { OpenAiPatchJudge } from "../src/infra/generation/judge";
@@ -63,7 +63,7 @@ const COMMON_FLAGS = ["out", "preview-dir", "pose", "window-factor", "units", "r
 
 /** The slot as the scripts see it: the window factor and the units are command-line knobs. */
 function slotFromFlags(slug: string, targetId: string, variantArg: string | undefined) {
-  const factor = Number(flag("window-factor", "7"));
+  const factor = Number(flag("window-factor", String(DEFAULT_WINDOW_FACTOR)));
   // "model": the height the prompt names is in the provider's 1024px space (the
   // fix). "art": the art's own number, the baseline that was shipped until it
   // was fixed — kept only so a comparison can reproduce it.

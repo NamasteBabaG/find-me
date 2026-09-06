@@ -9,6 +9,7 @@
     "en": "Endless steps, a paper dragon and mist on the hills.",
     "he": "מדרגות אינסופיות, דרקון נייר וערפל על הגבעות."
   },
+  "wardrobe": "a thin light-blue shirt and sand-coloured trousers",
   "version": 1,
   "active": true,
   "artStatus": "final",
@@ -88,6 +89,8 @@
     },
     {
       "id": "lanterns",
+      "action": "The child is standing on the wall, looking up at the red lantern.",
+      "expression": "curious, looking up at the lantern, mouth relaxed",
       "targetType": "greatwall_lanterns",
       "bodyTemplate": "greatwall_lanterns",
       "difficulty": 2,

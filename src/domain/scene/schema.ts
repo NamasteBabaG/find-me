@@ -72,6 +72,15 @@ export const TargetSchema = z.object({
   animation: TargetAnimation,
   /** Exactly two hiding spots: A (canonical, first play) and B (replay). */
   slots: z.tuple([SlotSchema, SlotSchema]),
+  /**
+   * For the painter, in English: one plain, visible thing the child is doing
+   * here ("The child is sitting in the canoe, looking straight ahead along the
+   * river."), and what the face does. Optional; without them the prompt uses
+   * the body template's pose. Experiment 3 (6 Sep 2026) took first-roll
+   * acceptance on four hard spots from 10/16 to 13/16 with these in place.
+   */
+  action: z.string().min(1).optional(),
+  expression: z.string().min(1).optional(),
 });
 export type Target = z.infer<typeof TargetSchema>;
 
@@ -112,6 +121,14 @@ export const SceneDefinitionSchema = z.object({
     .regex(/^[a-z][a-z0-9-]*$/, "slug must be kebab-case"),
   name: LocalizedTextSchema,
   tagline: LocalizedTextSchema,
+  /**
+   * For the painter, in English: one plain outfit for this place ("a plain
+   * yellow t-shirt and blue shorts, bare feet"). Everyday clothes for the
+   * weather and the activity, never a national costume. Optional; without it
+   * the prompt asks for "clothes a child would really wear here", which the
+   * model answered with the sheet's own outfit nine places out of nine.
+   */
+  wardrobe: z.string().min(1).optional(),
   version: z.number().int().min(1),
   active: z.boolean(),
   artStatus: z.enum(ART_STATUSES),

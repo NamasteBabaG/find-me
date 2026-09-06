@@ -107,7 +107,10 @@ export async function generateSlotPatch(
     // The place dresses and lights the child; the sheet only says who they are.
     place: scene.name.en,
     placeNote: scene.tagline.en,
-    expression: expressionFor(body?.pose),
+    // The scene's art direction, when it has any; the body template's pose otherwise.
+    wardrobe: scene.wardrobe,
+    action: target.action,
+    expression: target.expression ?? expressionFor(body?.pose),
   });
   const label = `${scene.slug}/${target.id}/${variant}`;
 

@@ -124,6 +124,15 @@ describe("the hiding-spot prompt", () => {
     expect(prompt.endsWith("Change nothing else.")).toBe(true);
   });
 
+  it("names the scene's outfit and the spot's action when it has them, instead of the generic clothes line", () => {
+    const directed = slotPrompt({ mission: "Noa is by the surfboards", childPx: 256, place: "Sydney", wardrobe: "a plain yellow t-shirt and blue shorts, bare feet", action: "The child is looking at the nearest surfboard.", expression: "a small, easy smile" });
+    expect(directed).toContain("Dress the child in a plain yellow t-shirt and blue shorts, bare feet");
+    expect(directed).not.toContain("clothes a child would really wear here");
+    expect(directed).toContain("The child is looking at the nearest surfboard.");
+    expect(directed).toContain("a small, easy smile");
+    expect(directed).toContain("not a uniform");
+  });
+
   it("was versioned, so old patches can be told from new ones", () => {
     expect(PROMPT_VERSION).toBe("slot-patch-v5");
   });

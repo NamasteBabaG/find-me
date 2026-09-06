@@ -38,7 +38,7 @@ import sharp from "sharp";
 import { OpenAiAvatarProvider } from "../src/infra/generation/openai";
 import { OpenAiPatchJudge } from "../src/infra/generation/judge";
 import { faceWindow } from "../src/infra/generation/avatar-cut";
-import { PROMPT_VERSION, childProblem, diffToPatch, paintMask } from "../src/services/generation/patch";
+import { DEFAULT_WINDOW_FACTOR, PROMPT_VERSION, childProblem, diffToPatch, paintMask } from "../src/services/generation/patch";
 import { cropOf, slotOf, writePatch, writePreview } from "../src/services/generation/authoring";
 import { envKey } from "./slot-patch";
 
@@ -84,7 +84,7 @@ async function main() {
   const variant = flag("variant", "A");
   const quality = flag("quality", "low");
   const model = flag("model", "gpt-image-2");
-  const windowFactor = Number(flag("window-factor", "7"));
+  const windowFactor = Number(flag("window-factor", String(DEFAULT_WINDOW_FACTOR)));
   const units = flag("units", "model");
   if (units !== "model" && units !== "art") throw new Error(`--units takes model or art, got "${units}"`);
   const referenceKind = flag("reference", "sheet");

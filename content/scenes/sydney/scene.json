@@ -9,6 +9,7 @@
     "en": "A blue harbour, white sails and a surfboard or ten.",
     "he": "מפרץ כחול, מפרשים לבנים ועשרה גלשנים."
   },
+  "wardrobe": "a plain yellow t-shirt and blue shorts, bare feet",
   "version": 1,
   "active": true,
   "artStatus": "final",
@@ -88,6 +89,8 @@
     },
     {
       "id": "surfboards",
+      "action": "The child is standing between the surfboards, looking at the nearest surfboard.",
+      "expression": "a small, easy smile, looking at the surfboard",
       "targetType": "sydney_surfboards",
       "bodyTemplate": "sydney_surfboards",
       "difficulty": 2,

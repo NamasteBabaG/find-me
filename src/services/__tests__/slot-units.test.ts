@@ -14,7 +14,7 @@ const OUTPUT = 1024;
 
 /** A slot whose default window lands on the given size, for the three sizes that matter. */
 const SLOTS = {
-  /** 0.03 × 2048 = 61px, ×7 = 430 → 432; the same slot at ×4 would fall to the 384 floor. */
+  /** 0.03 × 2048 = 61px: ×7 = 430 → 432, ×4 = 245 → the 384 floor. */
   small: { x: 0.5, y: 0.5, scale: 0.03 },
   /** 0.058 × 2048 = 119px, ×7 = 831 → capped at 768; ×4 = 475 → 472. */
   greatWall: { x: 0.5, y: 0.5, scale: 0.058 },
@@ -39,8 +39,8 @@ describe("the height the prompt names", () => {
     expect(modelSpaceHeight(ctx.childPx, ctx.rect.h, ctx.rect.h)).toBe(ctx.childPx);
   });
 
-  it("on the Great Wall says 159, not 119, for a 1024px edit", () => {
-    const ctx = slotContext(ART, SLOTS.greatWall);
+  it("on the Great Wall says 159, not 119, for a 1024px edit at the old window, and 258 at the new one", () => {
+    const ctx = slotContext(ART, SLOTS.greatWall, { windowFactor: 7 });
     expect(ctx.rect.h).toBe(WINDOW_MAX_PX);
     expect(ctx.childPx).toBe(119);
     expect(modelSpaceHeight(ctx.childPx, ctx.rect.h, OUTPUT)).toBe(159);
@@ -71,8 +71,8 @@ describe("the height the prompt names", () => {
 
 describe("the window", () => {
   it("shrinks with a smaller factor but never below the floor, and keeps the spot in the middle", () => {
-    const wide = slotContext(ART, SLOTS.small);
-    const tight = slotContext(ART, SLOTS.small, { windowFactor: 4 });
+    const wide = slotContext(ART, SLOTS.small, { windowFactor: 7 });
+    const tight = slotContext(ART, SLOTS.small);
     expect(wide.rect.w).toBe(432);
     expect(tight.rect.w).toBe(WINDOW_MIN_PX); // the floor, not 4 × 61
     for (const ctx of [wide, tight]) {
@@ -80,8 +80,9 @@ describe("the window", () => {
       expect(ctx.rect.y + ctx.rect.h / 2).toBe(SLOTS.small.y * ART.height);
       expect(ctx.childPx).toBe(61); // the child's size in the art does not change with the window
     }
-    expect(wide.windowFactor).toBe(DEFAULT_WINDOW_FACTOR);
-    expect(tight.windowFactor).toBe(4);
+    expect(wide.windowFactor).toBe(7);
+    expect(tight.windowFactor).toBe(DEFAULT_WINDOW_FACTOR);
+    expect(DEFAULT_WINDOW_FACTOR).toBe(4);
   });
 
   it("is capped at the top and is always a multiple of eight", () => {
