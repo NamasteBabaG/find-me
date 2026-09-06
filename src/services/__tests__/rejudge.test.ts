@@ -36,6 +36,16 @@ function judged(extra: Partial<PatchJudgement> = {}): PatchJudgement {
 function provider(impl = async () => judged()) { return { id: "test", judge: vi.fn(impl) } satisfies PatchJudge; }
 
 describe("the budgeted rejudge runner", () => {
+  it("labels the compact-JSON plan hash and verifies it from the stored pretty plan", async () => {
+    const f = fixture();
+    const r = await executeRejudge(f.plan, { out: f.out, budgetCents: 4, judge: provider() });
+    const bytes = readFileSync(path.join(f.out, "plan.json"));
+    const compact = JSON.stringify(JSON.parse(bytes.toString("utf8")));
+    expect(r.state.planHashFormat).toBe("sha256-json-stringify-utf8-v1");
+    expect(r.state.planHash).toBe(createHash("sha256").update(compact).digest("hex"));
+    expect(r.state.planHash).not.toBe(createHash("sha256").update(bytes).digest("hex"));
+  });
+
   it("dry-runs with no provider and no mutation of historical cells", async () => {
     const f = fixture(); const before = readFileSync(f.plan.rows[0]!.sourceCell);
     const r = await executeRejudge(f.plan, { out: f.out });

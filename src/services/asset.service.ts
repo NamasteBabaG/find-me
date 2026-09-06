@@ -70,13 +70,21 @@ export async function storeAsset(
  * lifetime only has to outlast one sitting, not the game.
  */
 export const ASSET_URL_TTL_SECONDS = 7 * 24 * 60 * 60;
+const ASSET_URL_BUCKET_SECONDS = 10 * 60;
 
 function assetSignature(secret: string, assetId: string, expires: number): string {
   return hmacSign(`asset:${assetId}:${expires}`, secret).slice(0, 32);
 }
 
 export function signedAssetUrl(c: Pick<Container, "secret">, assetId: string, ttlSeconds = ASSET_URL_TTL_SECONDS): string {
-  const expires = Math.floor(Date.now() / 1000) + ttlSeconds;
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  // The default week's URL stays stable across status polls and config reads.
+  // Round DOWN: validity is never extended beyond the requested lifetime.
+  // Custom TTLs remain exact, especially those shorter than a bucket.
+  const issuedAt = ttlSeconds === ASSET_URL_TTL_SECONDS
+    ? Math.floor(nowSeconds / ASSET_URL_BUCKET_SECONDS) * ASSET_URL_BUCKET_SECONDS
+    : nowSeconds;
+  const expires = issuedAt + ttlSeconds;
   return `/api/assets/${assetId}?e=${expires}&s=${assetSignature(c.secret, assetId, expires)}`;
 }
 

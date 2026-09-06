@@ -5,6 +5,11 @@
  * Existing output directories are never reused. After an interruption inspect
  * the pending reservation; do NOT simply rerun into a fresh directory.
  *
+ * results.planHash is SHA-256 of UTF-8 JSON.stringify(plan), NOT the pretty
+ * printed plan.json bytes. To verify a historical or current run, parse the
+ * stored plan.json and stringify it without indentation, preserving key order.
+ * This is whitespace-independent compact JSON, not sorted-key canonical JSON.
+ *
  * npx tsx scripts/rejudge.ts --out=work/patch-quality/f-review-unique
  * Add --go --budget-cents=4 only with spend approval.
  */
@@ -116,7 +121,7 @@ export async function executeRejudge(plan: RejudgePlan, options: { out: string; 
   const budget = options.budgetCents ?? 0;
   if (go && (!Number.isFinite(budget) || budget <= 0)) throw new Error("live rejudge needs a finite positive budget");
   const out = newOutput(plan, options.out);
-  const state = { planHash: sha256(JSON.stringify(plan)), budgetCents: budget, knownCostCents: 0, accountedCents: 0, stopped: null as string | null, pending: null as { id: string; reservedCents: number } | null, verdicts: [] as Array<{ id: string; chargedCents: number; result: PatchJudgement }> };
+  const state = { planHash: sha256(JSON.stringify(plan)), planHashFormat: "sha256-json-stringify-utf8-v1", budgetCents: budget, knownCostCents: 0, accountedCents: 0, stopped: null as string | null, pending: null as { id: string; reservedCents: number } | null, verdicts: [] as Array<{ id: string; chargedCents: number; result: PatchJudgement }> };
   const save = () => {
     const tmp = path.join(out, "results.pending.json");
     writeFileSync(tmp, JSON.stringify(state, null, 2));
