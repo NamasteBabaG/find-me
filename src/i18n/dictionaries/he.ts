@@ -407,6 +407,9 @@ export const he: Dictionary = {
       soon: "המקום הבא",
       later: "מקום בהמשך",
       skip: "לדלג למקום הבא",
+      completedReplay: "אפשר לחזור לכל מקום במפה ולחפש שוב.",
+      viewCollection: "לתיק ההרפתקאות",
+      replayWorld: "לעוד סיבוב בעולם הזה",
     },
     scene: {
       backToMap: "חזרה למפה",

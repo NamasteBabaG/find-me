@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { gameWorlds, scenesOfWorld, type GameConfig, type PlayWorld } from "@/domain/game/config";
 import { sceneProgress, type GameProgress } from "@/domain/game/progress";
-import { nodeStates, type NodeState } from "@/domain/world";
+import { boardSlugs, isWorldComplete, nodeStates, type NodeState } from "@/domain/world";
 import { useGameText } from "../i18n";
 import { IslandGrid } from "./IslandGrid";
 
@@ -51,17 +51,28 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
   const boards = useMemo(() => new Map(mine.map((s) => [s.slug, s])), [mine]);
   const done = completed.length;
   const total = world.nodes.length;
+  const complete = total > 0 && isWorldComplete(world, { completedBoards: completed });
+  const replayBoard = boardSlugs(world).find((slug) => boards.has(slug));
+  const completionTitleId = useId();
 
   // The marker's position is saved progress; the travel is only its presentation.
   const marker = world.nodes.find((n) => states[n.boardSlug] === "current") ?? world.nodes[world.nodes.length - 1]!;
-  const from = travelFrom ? world.nodes.find((n) => n.boardSlug === travelFrom) : undefined;
+  // A completed journey has no next stop: neither animate nor offer "skip next".
+  const from = travelFrom && !complete ? world.nodes.find((n) => n.boardSlug === travelFrom) : undefined;
   const [travelling, setTravelling] = useState(Boolean(from));
   const reduced = usePrefersReducedMotion();
   const doneRef = useRef(onTravelDone);
   doneRef.current = onTravelDone;
 
   useEffect(() => {
-    if (!from) return;
+    if (complete) {
+      setTravelling(false);
+      if (travelFrom) doneRef.current?.();
+    }
+  }, [complete, travelFrom]);
+
+  useEffect(() => {
+    if (complete || !from) return;
     if (reduced) {
       // No journey animation: the marker is simply already there.
       setTravelling(false);
@@ -74,7 +85,7 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
       doneRef.current?.();
     }, TRAVEL_MS);
     return () => clearTimeout(id);
-  }, [from, reduced]);
+  }, [from, reduced, complete]);
 
   const [teaser, setTeaser] = useState<string | null>(null);
   useEffect(() => {
@@ -115,6 +126,23 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
           ) : null}
         </div>
       </header>
+
+      {complete ? (
+        <section className="wmap__complete" aria-labelledby={completionTitleId}>
+          <div className="wmap__complete-count" aria-hidden>{done}/{total}</div>
+          <div className="wmap__complete-body">
+            <div role="status">
+              <h2 id={completionTitleId} className="wmap__complete-title">{world.completion.title}</h2>
+              <p className="wmap__complete-text">{world.completion.text}</p>
+            </div>
+            <p className="wmap__complete-replay">{g.map.completedReplay}</p>
+            <div className="wmap__complete-actions">
+              <button type="button" className="fm-btn fm-btn--kid" onClick={onPassport}>{g.map.viewCollection}</button>
+              {replayBoard ? <button type="button" className="fm-btn fm-btn--secondary fm-btn--kid" onClick={() => onOpen(replayBoard)}>{g.map.replayWorld}</button> : null}
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <div className="wmap__frame">
         <div className="wmap__art" style={{ aspectRatio: `${world.map.width} / ${world.map.height}` }}>
@@ -188,7 +216,7 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
           A landscape map on a portrait phone is letterboxed by its own shape, and
           a 48px dot is a small target for a four-year-old. This is the same tap,
           made unmissable — and it fills space that would otherwise be empty. */}
-      {travelling ? (
+      {complete ? null : travelling ? (
         <button type="button" className="wmap__skip" onClick={() => setTravelling(false)}>
           {g.map.skip}
         </button>

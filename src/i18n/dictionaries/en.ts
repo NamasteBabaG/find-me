@@ -408,6 +408,9 @@ export const en = {
       soon: "the next place",
       later: "a later place",
       skip: "Skip to the next place",
+      completedReplay: "Every place on this map is yours to visit again.",
+      viewCollection: "See my adventure bag",
+      replayWorld: "Play this world again",
     },
     scene: {
       backToMap: "Back to the map",
