@@ -10,6 +10,7 @@ import { expandRect, hitPadding, hitTest, spriteRect, stageToScreen, type HitCan
 import { spriteAspect, targetGeometry } from "../engine/target-geometry";
 import { useViewport, type ViewportApi } from "../engine/useViewport";
 import { Sprite } from "./Sprite";
+import { FoundParticles } from "./FoundParticles";
 
 export type Hit = { kind: "target"; id: string } | { kind: "bonus" } | { kind: "ambient"; id: string } | { kind: "miss"; x: number; y: number };
 
@@ -42,18 +43,6 @@ interface Ripple {
  * All hit-testing is math on normalized coordinates (no DOM hit targets), so a
  * tap resolves the same way on every device and at every zoom.
  */
-/** Where the sparks fly to, as fractions of the halo box, and how late each starts. */
-const SPARKS = [
-  { x: -0.55, y: -0.6, d: 0 },
-  { x: 0.6, y: -0.5, d: 60 },
-  { x: -0.7, y: 0.1, d: 120 },
-  { x: 0.7, y: 0.15, d: 40 },
-  { x: -0.35, y: 0.65, d: 160 },
-  { x: 0.4, y: 0.7, d: 100 },
-  { x: 0, y: -0.8, d: 200 },
-  { x: 0.05, y: 0.85, d: 140 },
-];
-
 export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, onReady, onAssetsReady, onAssetsFailed, retryToken = 0, ariaLabel, children }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stage = useMemo(() => ({ width: scene.art.width, height: scene.art.height }), [scene.art.width, scene.art.height]);
@@ -127,10 +116,9 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
   // asset and is not. Drawn as they arrive, the world appeared first and the
   // child popped into it a second later — which is the answer, shown before the
   // question. And because only the current target is drawn, the same pop-in
-  // would spoil every later mission too. So every picture the board can ever
-  // show is decoded up front, and the curtain in ScenePlayer stays shut until
-  // this fires. One bad asset must not shut the game forever: ten seconds, then
-  // we open regardless and let the <img> show its own failure.
+  // would spoil every later mission too. So every picture is preloaded up
+  // front, and the curtain in ScenePlayer stays shut until this succeeds.
+  // An essential failure or timeout shows a retry screen, never a blind open.
   const plan = useMemo(() => assetPlan(scene, placedTargets.map((p) => (p.sprite.kind === "image" ? p.sprite.url : p.sprite.faceUrl))), [scene, placedTargets]);
   const assetsReadyRef = useRef(onAssetsReady);
   assetsReadyRef.current = onAssetsReady;
@@ -203,7 +191,6 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
 
   const renderTarget = (p: (typeof placedTargets)[number]) => {
     const found = isFound(mission, p.target.id);
-    const justFound = mission.lastFeedback?.kind === "hit" && mission.lastFeedback.targetId === p.target.id;
     const h = p.anchor.scale * stage.height;
     const w = h * spriteAspect(p.sprite);
     const rect = p.sprite.kind === "image" ? p.sprite.rect : undefined;
@@ -211,39 +198,11 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
     const box = rect
       ? { left: rect.x * stage.width, top: rect.y * stage.height, width: rect.w * stage.width, height: rect.h * stage.height, zIndex: p.slot.zIndex, transform: p.slot.flip ? "scaleX(-1)" : undefined }
       : { left: p.anchor.x * stage.width, top: p.anchor.y * stage.height, width: w, height: h, zIndex: p.slot.zIndex, transform: `translate(-50%, -50%) rotate(${p.slot.rotation}deg)${p.slot.flip ? " scaleX(-1)" : ""}` };
-    // A painted-in child is a piece of the picture. Bouncing or jumping her on
-    // a find moved the patch, and for that half-second her cut edge showed —
-    // she read as a sticker on top of the world rather than someone in it. So
-    // the patch never moves: the celebration is a halo and sparks drawn around
-    // her footprint, outside the sprite, and the persistent glow is a filter
-    // that follows her silhouette. Composed stickers still get their bounce;
-    // they were never pretending to be part of the painting.
-    const celebrate = justFound && !p.isPatch ? ` anim-${p.target.animation}` : "";
-    const halo =
-      justFound && p.isPatch ? (
-        <div
-          className="stage__halo"
-          style={{
-            left: p.center.x * stage.width,
-            top: p.center.y * stage.height,
-            width: Math.max(48, (p.hitRect.x1 - p.hitRect.x0) * stage.width * 1.6),
-            height: Math.max(48, (p.hitRect.y1 - p.hitRect.y0) * stage.height * 1.25),
-          }}
-          aria-hidden
-        >
-          {SPARKS.map((sp, i) => (
-            <span key={i} className="stage__spark" style={{ ["--sx" as string]: sp.x, ["--sy" as string]: sp.y, ["--sd" as string]: `${sp.d}ms` }} />
-          ))}
-        </div>
-      ) : null;
+    // A find changes no pixels, filters, transforms or stacking of the child.
+    // Its feedback is rendered separately, above ALL board layers, below.
     return (
-      <div key={p.target.id}>
-        <div className={`stage__target${found ? " stage__target--found" : ""}`} style={box} data-target={p.target.id}>
-          <div className={`tgt-anim${celebrate}`}>
-            <Sprite sprite={p.sprite} title={p.target.item} className="stage__sprite" />
-          </div>
-        </div>
-        {halo}
+      <div key={p.target.id} className={`stage__target${p.isPatch ? " stage__target--patch" : ""}`} style={box} data-target={p.target.id} data-found={found}>
+        <Sprite sprite={p.sprite} title={p.target.item} className="stage__sprite" />
       </div>
     );
   };
@@ -284,7 +243,7 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
         })}
 
         {/* level-2 hint: glow over the hint zone (stage space so it pans with the art) */}
-        {hintLevel >= 2 && currentPlaced ? (
+        {hintLevel >= 2 && currentPlaced && mission.phase === "searching" ? (
           <div
             className="stage__glow"
             style={{
@@ -304,7 +263,7 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
           const p = stageToScreen(transform, r.x * stage.width, r.y * stage.height);
           return <span key={r.id} className="ripple" style={{ left: p.x, top: p.y }} />;
         })}
-        {hintLevel >= 3 && currentPlaced
+        {hintLevel >= 3 && currentPlaced && mission.phase === "searching"
           ? (() => {
               const p = stageToScreen(transform, currentPlaced.head.x * stage.width, currentPlaced.head.y * stage.height);
               return (
@@ -315,6 +274,14 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
             })()
           : null}
         {children?.(api)}
+      </div>
+      <div className="viewport__particles" aria-hidden>
+        {onBoard.filter(p => isFound(mission, p.target.id) && mission.lastFeedback?.kind === "hit" && mission.lastFeedback.targetId === p.target.id).map(p => {
+          const point = stageToScreen(transform, p.center.x * stage.width, p.center.y * stage.height);
+          return <FoundParticles key={p.target.id} x={point.x} y={point.y}
+            width={Math.max(48, (p.hitRect.x1 - p.hitRect.x0) * stage.width * transform.scale * 1.6)}
+            height={Math.max(48, (p.hitRect.y1 - p.hitRect.y0) * stage.height * transform.scale * 1.25)} />;
+        })}
       </div>
     </div>
   );

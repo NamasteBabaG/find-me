@@ -131,43 +131,28 @@
 .stage__layer { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
 .stage__layer--fg { z-index: 20; }
 .stage__target { position: absolute; pointer-events: none; }
-.stage__target--found { z-index: 29; animation: tgt-shine 1.4s var(--ease-in-out) infinite; }
-@keyframes tgt-shine { 0%, 100% { filter: drop-shadow(0 0 3px rgba(255, 209, 102, 0.9)) drop-shadow(0 0 10px rgba(255, 182, 30, 0.5)); } 50% { filter: drop-shadow(0 0 6px var(--sun)) drop-shadow(0 0 18px rgba(255, 182, 30, 0.8)); } }
-.tgt-anim { width: 100%; height: 100%; transform-origin: 50% 90%; }
 .stage__sprite { width: 100%; height: 100%; display: block; filter: drop-shadow(0 2px 2px rgba(43, 42, 51, 0.35)); }
+.stage__target--patch .stage__sprite { filter: none; }
 .stage__bonus { position: absolute; transform: translate(-50%, -50%); pointer-events: none; z-index: 30; animation: fm-float 3s var(--ease-in-out) infinite; }
 .stage__bonus--found { filter: drop-shadow(0 0 8px var(--sun)); animation: tgt-spin var(--dur-3) var(--ease-pop) 1; }
-/* The find. A ring blooms out of the child's footprint and a handful of sparks
-   fly off it; the child herself does not move a pixel. */
-.stage__halo { position: absolute; transform: translate(-50%, -50%); pointer-events: none; z-index: 31; }
-.stage__halo::before, .stage__halo::after {
-  content: ""; position: absolute; inset: 0; border-radius: 50%;
-  border: 4px solid var(--sun);
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.7), 0 0 18px rgba(255, 182, 30, 0.8);
-  animation: halo-bloom 900ms var(--ease-out) forwards;
-}
-.stage__halo::after { animation-delay: 220ms; border-width: 3px; }
-@keyframes halo-bloom {
-  0% { transform: scale(0.55); opacity: 0; }
-  20% { opacity: 1; }
-  100% { transform: scale(1.35); opacity: 0; }
-}
-.stage__spark {
-  position: absolute; left: 50%; top: 50%;
-  width: 10px; height: 10px; margin: -5px 0 0 -5px;
-  border-radius: 50%;
+/* Particle-only finds, in screen space above the complete painting and its
+   foreground. Never give the patch a halo, shadow or a higher art-layer z-index. */
+.viewport__particles { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: var(--z-overlay); }
+.found-particles { position: absolute; pointer-events: none; }
+.found-particles__spark {
+  position: absolute; left: 0; top: 0;
+  width: var(--space-1); height: var(--space-1); margin: calc(var(--space-1) / -2);
+  border-radius: var(--radius-pill);
   background: var(--sun);
-  box-shadow: 0 0 8px rgba(255, 209, 102, 0.95);
-  animation: spark-fly 760ms var(--ease-out) var(--sd, 0ms) both;
+  animation: spark-fly var(--dur-3) var(--ease-out) var(--spark-delay, 0ms) both;
 }
 @keyframes spark-fly {
   0% { transform: translate(0, 0) scale(0.6); opacity: 0; }
   15% { opacity: 1; }
-  100% { transform: translate(calc(var(--sx) * 60%), calc(var(--sy) * 60%)) scale(0); opacity: 0; }
+  100% { transform: translate(var(--spark-x), var(--spark-y)) scale(0); opacity: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .stage__halo::before, .stage__halo::after { animation-duration: 1ms; }
-  .stage__spark { display: none; }
+  .found-particles { display: none; }
 }
 .stage__ambient { position: absolute; pointer-events: none; z-index: 25; display: grid; place-items: center; }
 .stage__ambient-glyph { display: block; line-height: 1; }
@@ -254,13 +239,18 @@
 .passport { flex: 1; display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-4) var(--space-3); max-width: var(--container); width: 100%; margin-inline: auto; }
 .passport__head { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .passport__title { font-size: var(--fs-500); line-height: var(--lh-500); }
-.passport__grid { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
-.loot__btn { width: 100%; background: var(--paper-2); border-radius: var(--radius-3); padding: var(--space-3); display: flex; flex-direction: column; align-items: center; gap: var(--space-0-5); min-height: var(--space-16); opacity: 0.6; }
-.loot--got .loot__btn { background: var(--white); box-shadow: var(--shadow-1); opacity: 1; }
-.loot__icon { font-size: var(--fs-700); line-height: 1; }
-.loot__name { font-family: var(--font-display); font-weight: 600; }
-.loot__world { font-size: var(--fs-100); color: var(--ink-3); }
+.passport__grid { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.loot { min-width: 0; }
+.loot__btn { width: 100%; height: 100%; background: var(--white); border-radius: var(--radius-3); padding: var(--space-1); display: flex; flex-direction: column; align-items: stretch; gap: var(--space-1); min-height: var(--touch-kid); box-shadow: var(--shadow-1); text-align: start; }
+.loot__btn:focus-visible { outline: var(--space-0-5) solid var(--ink); outline-offset: var(--space-0-5); }
+.loot__image { position: relative; display: block; aspect-ratio: 16 / 9; overflow: hidden; border-radius: var(--radius-2); background: var(--paper-2); }
+.loot__image img { object-fit: cover; }
+.loot__completed { position: absolute; top: var(--space-1); inset-inline-end: var(--space-1); padding: var(--space-0-5) var(--space-2); border-radius: var(--radius-pill); background: var(--lime); color: var(--ink); font-weight: 700; box-shadow: var(--shadow-1); font-size: var(--fs-100); line-height: var(--lh-100); }
+.loot__name { padding: var(--space-1); font-family: var(--font-display); font-weight: 600; }
+@media (max-width: 960px) { .passport__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .passport__grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-2); } }
 .passport__done { text-align: center; display: flex; flex-direction: column; gap: var(--space-2); align-items: center; }
+.passport__done .complete__stamp { max-width: calc(100% - var(--space-4)); line-height: var(--lh-500); animation: none; }
 .mission__thumb--face { width: var(--space-6); height: var(--space-6); }
 .mission__face { width: 100%; height: 100%; border-radius: var(--radius-pill); object-fit: cover; background: var(--white); box-shadow: var(--sticker-outline); }
 

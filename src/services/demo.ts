@@ -11,7 +11,9 @@ import { sceneBySlug } from "./scene-catalog.service";
  * Pure data — no DB, no photo — so the demo is safe to serve to anyone, and it
  * uses whatever slot patches exist for that world (all nine have some).
  */
-const DEMO_FACE = "/demo/noa-face.png";
+// The identity cue is neutral: accessories belong to a hiding spot, not the face
+// the child is asked to recognise. Versioned URL also avoids stale hat avatars.
+const DEMO_FACE = "/demo/noa-portrait.png";
 
 type ArtRect = { x: number; y: number; w: number; h: number };
 type PatchMeta = { url: string; rect: { w: number; h: number }; rectNorm: ArtRect; hitRectNorm?: ArtRect; anchorNorm?: { x: number; y: number } };

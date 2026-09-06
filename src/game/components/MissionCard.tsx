@@ -2,7 +2,6 @@
 
 import type { TargetConfig } from "@/domain/game/config";
 import type { HintLevel } from "@/domain/game/hints";
-import { Sprite } from "./Sprite";
 import { useGameText } from "../i18n";
 
 interface Props {
@@ -24,7 +23,7 @@ interface Props {
   quiet?: boolean;
   onExpand?: () => void;
   onHint: () => void;
-  /** The child's face sticker; shown instead of the sprite when the sprite is a world patch. */
+  /** The illustrated identity cue, never the upload or a costumed hiding spot. */
   avatarUrl?: string;
   /** Landing demo: the question and the face, nothing else. */
   minimal?: boolean;
@@ -33,7 +32,6 @@ interface Props {
 /** Floating mission pill: who to look for, (progress when there is more than one), and the hint button. */
 export function MissionCard({ index, total, target, found, order, hintLevel, hintPulse, hintText, onHint, avatarUrl, childName, quiet = false, onExpand, minimal = false }: Props) {
   const { g, tf } = useGameText();
-  const isPatch = target?.sprite.kind === "image" && Boolean(target.sprite.rect);
   return (
     <section
       className={`mission${quiet ? " mission--quiet" : ""}`}
@@ -55,14 +53,10 @@ export function MissionCard({ index, total, target, found, order, hintLevel, hin
           : undefined
       }
     >
-      <div className={`mission__thumb${isPatch && avatarUrl ? " mission__thumb--face" : ""}`} aria-hidden>
-        {target ? (
-          isPatch && avatarUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={avatarUrl} alt="" className="mission__sprite mission__face" draggable={false} />
-          ) : (
-            <Sprite sprite={target.sprite} className="mission__sprite" />
-          )
+      <div className="mission__thumb mission__thumb--face" aria-hidden>
+        {avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={avatarUrl} alt="" className="mission__sprite mission__face" draggable={false} />
         ) : null}
       </div>
       <div className="mission__body" hidden={quiet}>

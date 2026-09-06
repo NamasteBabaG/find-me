@@ -216,3 +216,9 @@
   .fm-header__inner { min-height: var(--space-8); }
   .fm-sheet { padding: var(--space-5) var(--space-3); }
 }
+/* Keep the English CTA and language picker inside a 320px viewport. */
+@media (max-width: 380px) {
+  .fm-header__inner { gap: var(--space-1); }
+  .fm-header__cta .fm-btn--sm, .fm-header__cta .fm-lang__btn { padding-inline: var(--space-1); }
+  .fm-header__cta .fm-lang__menu { inset-inline-start: 0; inset-inline-end: auto; }
+}
