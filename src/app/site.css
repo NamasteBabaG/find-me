@@ -405,6 +405,16 @@
 @keyframes cp-bloom { 0% { transform: scale(0.85); opacity: 0; } 100% { transform: none; opacity: 0.7; } }
 @keyframes cp-pop { 0% { transform: scale(0.4) rotate(-8deg); opacity: 0; } 60% { transform: scale(1.08) rotate(2deg); opacity: 1; } 100% { transform: none; } }
 @keyframes cp-scribble { 0%, 100% { transform: rotate(-8deg) translateX(-2px); } 50% { transform: rotate(6deg) translateX(3px); } }
+/* Invite the parent when the playable link appears, then settle. Individual
+   translate leaves the shared button's hover/press transform intact. */
+@keyframes cp-invite {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 calc(-1 * var(--space-0-5)); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .cp__open { animation: cp-invite var(--dur-4) var(--ease-in-out) var(--dur-3) 2; }
+  .cp__open:hover, .cp__open:focus-visible, .cp__open:active { animation-play-state: paused; }
+}
 @media (prefers-reduced-motion: reduce) {
   .cp__stage::before, .cp__pencil, .cp__avatar { animation: none; }
   .cp__fill, .cp__rider { transition: none; }

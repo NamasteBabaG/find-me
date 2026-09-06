@@ -159,7 +159,7 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
         </div>
         <h2>{tf(cr.readyTitle, { name: childName })}</h2>
         <p className="fm-lead">{cr.readyOpen}</p>
-        <LinkButton href={s.playUrl} size="lg">
+        <LinkButton href={s.playUrl} size="lg" className="cp__open">
           {cr.open}
         </LinkButton>
         <p className="fm-small">
