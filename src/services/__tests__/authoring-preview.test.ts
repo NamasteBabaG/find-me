@@ -67,6 +67,8 @@ describe("the extraction flags", () => {
     expect(() => parseDiffOptions(["--threshold=soft"])).toThrow(/needs a number/);
     expect(() => parseDiffOptions(["--tone=maybe"])).toThrow(/true or false/);
     expect(parseDiffOptions(["--out=x"], ["out"])).toEqual({});
+    expect(parseDiffOptions(["--fillHoles=false"])).toEqual({fillHoles:false});
+    expect(() => parseDiffOptions(["--fillHoles=maybe"])).toThrow(/true or false/);
   });
 });
 

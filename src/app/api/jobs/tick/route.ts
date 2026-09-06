@@ -21,7 +21,9 @@ export const maxDuration = 300;
  * a 300s ceiling produced exactly the "Task timed out after 300 seconds" that
  * killed slices mid-spot and left the lease held.
  */
-const SLICE_MS = 90_000;
+// A final spot can spend 150s painting + 2×45s reviewing, plus image/DB work.
+// Stop launching after 30s so that last spot fits under the 300s host limit.
+const SLICE_MS = 30_000;
 
 /**
  * Move generation forward.

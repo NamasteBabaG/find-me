@@ -36,6 +36,8 @@ const EnvSchema = z.object({
 
   ADMIN_EMAILS: z.string().default(""),
   QA_AUTO_APPROVE: z.enum(["true", "false"]).default("false"),
+  /** Explicit diagnostic escape hatch, QA only. Broken games must not ship by default. */
+  QA_DELIVER_WITH_PROBLEMS: z.enum(["true", "false"]).default("false"),
   FEATURE_GIFT_WRAP: z.enum(["true", "false"]).default("true"),
   FEATURE_BONUS_CHARACTER: z.enum(["true", "false"]).default("false"),
   STORAGE_LOCAL_DIR: z.string().default("storage"),
@@ -160,6 +162,6 @@ export function adminEmails(): string[] {
     .filter(Boolean);
 }
 
-export function flag(name: "FEATURE_GIFT_WRAP" | "FEATURE_BONUS_CHARACTER" | "QA_AUTO_APPROVE" | "GENERATION_BOTH_VARIANTS"): boolean {
+export function flag(name: "FEATURE_GIFT_WRAP" | "FEATURE_BONUS_CHARACTER" | "QA_AUTO_APPROVE" | "QA_DELIVER_WITH_PROBLEMS" | "GENERATION_BOTH_VARIANTS"): boolean {
   return env()[name] === "true";
 }

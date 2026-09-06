@@ -129,6 +129,11 @@ export interface PatchJudgement {
   model?: string;
   promptSent?: string;
   attempts?: JudgeAttempt[];
+  version?: string;
+  checks?: import("./board-verdict").BoardChecks;
+  /** Hashes of the exact encoded images sent to the judge, in wire order. */
+  imageHashes?: string[];
+  reviews?: PatchJudgement[];
 }
 
 export interface JudgeAttempt {
@@ -150,7 +155,16 @@ export interface JudgeAttempt {
  */
 export interface PatchJudge {
   readonly id: string;
-  judge(input: { patchPng: Buffer; reference: Buffer; childName: string; label: string }): Promise<PatchJudgement>;
+  judge(input: PatchJudgeInput): Promise<PatchJudgement>;
+}
+
+export interface PatchJudgeInput {
+  patchPng: Buffer;
+  reference: Buffer;
+  childName: string;
+  label: string;
+  /** Final composition, not a raw generation or a white-background cut-out. */
+  boardCrop?: Buffer;
 }
 
 export interface FaceDetection {

@@ -115,7 +115,7 @@ export async function writePreview(c: SlotInfo, patch: PatchResult, outDir: stri
 }
 
 /** The extraction knobs a command line may set, and nothing else. */
-export const DIFF_FLAGS = ["threshold", "outer", "inner", "grow", "keep", "feather", "tone", "solidify"] as const;
+export const DIFF_FLAGS = ["threshold", "outer", "inner", "grow", "keep", "feather", "tone", "solidify", "fillHoles"] as const;
 
 /**
  * One reading of the extraction flags for every command.
@@ -135,7 +135,7 @@ export function parseDiffOptions(argv: readonly string[], allow: readonly string
     const value = eq < 0 ? "" : a.slice(eq + 1);
     if (allow.includes(name)) continue;
     if (!(DIFF_FLAGS as readonly string[]).includes(name)) throw new Error(`unknown flag --${name} (extraction flags: ${DIFF_FLAGS.map((f) => `--${f}`).join(", ")})`);
-    if (name === "tone" || name === "solidify") {
+    if (name === "tone" || name === "solidify" || name === "fillHoles") {
       if (value !== "true" && value !== "false") throw new Error(`--${name} takes true or false`);
       options[name] = value === "true";
       continue;

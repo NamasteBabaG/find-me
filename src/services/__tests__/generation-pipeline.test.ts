@@ -218,6 +218,26 @@ describe("generation pipeline", () => {
     verdict = () => "ok";
   });
 
+  it("sends the final board to the judge and keeps raw evidence private and linked", async () => {
+    const c=container(painter());let count=0;
+    c.judge={id:'stub',judge:async input=>{
+      expect(input.boardCrop).toBeInstanceOf(Buffer);
+      const meta=await sharp(input.boardCrop!).metadata();expect(meta.width).toBeGreaterThanOrEqual(320);
+      expect(input.boardCrop!.equals(input.patchPng)).toBe(false);count++;
+      return {verdict:'ok',reason:'intact on board',costCents:0};
+    }};
+    const id=await seedGame(c);await mod.runGenerationPipeline(c,id);expect(count).toBe(3);
+    const {renderEvidenceIds}=await import('../generation/render-evidence');
+    const rows=(await spotsIn(id)).flatMap(x=>x.variants);
+    for(const row of rows){const ids=renderEvidenceIds(row.usageJson);expect(ids).toHaveLength(1);const asset=await db.asset.findUniqueOrThrow({where:{id:ids[0]}});expect(asset.visibility).toBe('PRIVATE');expect(asset.type).toBe('PATCH_EVIDENCE');expect((await gameOf(id)).configJson).not.toContain(asset.id);}
+  },120000);
+
+  it("holds uncertain contextual QA even with clean-game auto delivery enabled",async()=>{
+    const c=container(painter());c.autoApprove=true;verdict=()=> 'unknown';
+    const id=await seedGame(c);await mod.runGenerationPipeline(c,id);
+    expect((await gameOf(id)).status).toBe('MANUAL_REVIEW');expect((await gameOf(id)).deliveredAt).toBeNull();
+  },120000);
+
   it("rejects a patch the judge says is not the child", async () => {
     // The shape checks pass a scooter, a horse's head and a pair of legs — over
     // one real game, four of twenty-six accepted patches were not her.
@@ -529,6 +549,17 @@ describe("retention", () => {
     expect((await db.game.findUniqueOrThrow({ where: { id: gameId }, include: { childProfile: true } })).childProfile!.originalPhotoAssetId).not.toBeNull();
   });
 
+  it("expires accepted raw evidence after fourteen days without deleting the playable patch",async()=>{
+    const c=container(painter());const id=await seedGame(c);await mod.runGenerationPipeline(c,id);
+    const {runRetention}=await import('../retention.service');const {renderEvidenceIds}=await import('../generation/render-evidence');
+    const rows=(await spotsIn(id)).flatMap(x=>x.variants);const ids=rows.flatMap(x=>renderEvidenceIds(x.usageJson));expect(ids).toHaveLength(3);
+    await db.asset.updateMany({where:{id:{in:ids}},data:{createdAt:new Date(Date.now()-15*86400000)}});
+    await runRetention(c,new Date(),days);
+    expect(await db.asset.count({where:{id:{in:ids},status:'READY'}})).toBe(0);
+    const current=(await spotsIn(id)).flatMap(x=>x.variants);expect(current.flatMap(x=>renderEvidenceIds(x.usageJson))).toHaveLength(0);
+    expect(await db.asset.count({where:{id:{in:current.map(x=>x.assetId!)},status:'READY'}})).toBe(3);
+  },120000);
+
   it("drops rejected renders past their diagnostic life and the ids that pointed at them", async () => {
     const c = container(painter(["nothing", "child"]));
     const { runRetention } = await import("../retention.service");
@@ -787,6 +818,22 @@ describe("no human gate", () => {
 });
 
 describe("the ledger", () => {
+  it("reserves each attempt in the database before calling the image provider", async () => {
+    const p = painter(["child"]);
+    const c = container(p);
+    const gameId = await seedGame(c);
+    const paint = p.editSlotCrop!;
+    p.editSlotCrop = async (input) => {
+      const rows = (await spotsIn(gameId)).flatMap(s => s.variants);
+      const pending = rows.find(row => row.status !== "GENERATED" && row.status !== "APPROVED");
+      expect(pending?.attempts).toBe(1);
+      return paint(input);
+    };
+    await mod.runGenerationPipeline(c, gameId);
+    expect(p.calls).toBe(3);
+    expect((await spotsIn(gameId)).every(s => s.variants.every(v => v.attempts === 1))).toBe(true);
+  }, 120_000);
+
   it("keeps unknown judge billing and request evidence after accepting a patch", async () => {
     const c = container(painter(["child"]));
     c.judge = { id: "stub", judge: async () => ({ verdict: "ok", reason: "same child", costCents: 0, costUnknown: true, attempts: [{ requestId: "req_judge_test", model: "stub", usage: null, costCents: 0, costUnknown: true, status: 200 }] }) };

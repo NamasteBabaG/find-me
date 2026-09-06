@@ -12,7 +12,7 @@ import { isPackageTier, type PackageTier } from "../package";
  */
 
 /** A rectangle in fractions of the scene art (0..1), the same space slots use. */
-const ArtRectSchema = z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1), w: z.number().positive().max(1), h: z.number().positive().max(1) });
+export const ArtRectSchema = z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1), w: z.number().positive().max(1), h: z.number().positive().max(1) });
 export type ArtRect = z.infer<typeof ArtRectSchema>;
 
 export const SpriteRefSchema = z.discriminatedUnion("kind", [
@@ -246,4 +246,3 @@ export function scenesOfWorld(config: GameConfig, worldSlug: string): SceneConfi
   const mine = new Map(config.scenes.map((sc) => [sc.slug, sc]));
   return world.nodes.map((n) => mine.get(n.boardSlug)).filter((sc): sc is SceneConfig => Boolean(sc));
 }
-

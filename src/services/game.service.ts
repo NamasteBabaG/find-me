@@ -6,6 +6,7 @@ import { statusOf, transitionGame } from "./game-status";
 import { ensurePlayerLink, revokePlayerLinks } from "./share-link.service";
 import { deleteAsset } from "./asset.service";
 import { audit, type Actor } from "./audit.service";
+import { renderEvidenceIds, removeRenderEvidence } from "./generation/render-evidence";
 
 /** Library + owner actions. Everything here requires the owner's user id. */
 export async function listGamesForUser(c: Container, userId: string) {
@@ -96,6 +97,9 @@ export async function deleteGame(c: Container, gameId: string, actor: Actor, use
       for (const v of t.variants) {
         await deleteAsset(c, v.assetId);
         for (const id of rejectedIds(v.rejectedAssetIdsJson)) await deleteAsset(c, id);
+        const evidenceIds = renderEvidenceIds(v.usageJson);
+        for (const id of evidenceIds) await deleteAsset(c, id);
+        if (evidenceIds.length) await c.db.targetVariantAsset.update({ where: { id: v.id }, data: { usageJson: removeRenderEvidence(v.usageJson, new Set(evidenceIds)) } });
       }
       // The rows keep their shape for the audit trail; they stop pointing at
       // pictures.

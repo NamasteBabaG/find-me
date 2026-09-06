@@ -3,6 +3,8 @@ import { qaAccessDenied } from "@/lib/server/qa-access";
 import { NextResponse } from "next/server";
 import { getContainer } from "@/services/container";
 import { env } from "@/lib/env";
+import { BOARD_JUDGE_VERSION } from "@/infra/generation/board-verdict";
+import { deliverWithProblemsOf } from "@/services/container";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,6 +35,7 @@ export async function GET(req: Request) {
     providers: { storage: e.STORAGE_PROVIDER, generation: e.GENERATION_PROVIDER, payment: e.PAYMENT_PROVIDER, email: e.EMAIL_PROVIDER, generationEnabled: e.GENERATION_ENABLED === "on" },
     patchQuality: e.GENERATION_PATCH_QUALITY ?? e.GENERATION_QUALITY,
     patchRetryQuality: e.GENERATION_PATCH_RETRY_QUALITY ?? null,
+    qualityGate: { version: BOARD_JUDGE_VERSION, autoApproveClean: e.QA_AUTO_APPROVE === "true", deliverWithProblems: deliverWithProblemsOf(e.QA_AUTO_APPROVE === "true", e.APP_ENV, e.QA_DELIVER_WITH_PROBLEMS === "true") },
     // CLI deploys carry no git sha; APP_COMMIT is set at deploy time so what is
     // checked can be shown to be what is deployed.
     commit: (process.env.APP_COMMIT ?? process.env.VERCEL_GIT_COMMIT_SHA ?? "local").slice(0, 7),

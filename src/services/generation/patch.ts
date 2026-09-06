@@ -159,7 +159,8 @@ export async function styleReference(art: Buffer, size: Size, slot: SlotPoint, o
  * is in the pixels the model sees, not the art's. Renders made under v4 were
  * asked for a child up to a quarter smaller than their mask.
  */
-export const PROMPT_VERSION = "slot-patch-v5";
+// v6 additionally requires a complete supported body behind real occluders.
+export const PROMPT_VERSION = "slot-patch-v6-supported-body";
 
 /**
  * The instruction the image model gets. Built from scene data, never hard-coded copy.
@@ -211,6 +212,7 @@ export function slotPrompt(input: SlotPromptInput): string {
     `Give the child a natural, specific expression for the moment — ${input.expression ?? expressionFor()} — never a fixed, posed smile.`,
     `Situation: ${input.mission}${input.bodyLabel ? ` (${input.bodyLabel})` : ""}.${input.action ? ` ${input.action}` : ""}${input.pose ? ` ${input.pose}` : ""}`,
     `Let whatever is naturally in front of the child overlap them, and give them a soft shadow that matches the others. They should be findable, not the centre of attention.`,
+    `Plan the complete body and its support before painting: feet on visible ground, a body seated on an actual seat, or a swimmer in water. Every hidden part must continue plausibly behind a specific object ALREADY in this picture. Keep the whole face intact. Never end a torso in open air, merge the child into another person, or sink a body through a solid floor. If this spot has no suitable occluder, show a complete small standing or crouching child instead of inventing a floating head.`,
     `Change nothing else.`,
   ].join(" ");
 }
@@ -321,6 +323,8 @@ export function keepMainBlobs(mask: Buffer, w: number, h: number, keep: number, 
 }
 
 export interface DiffOptions {
+  /** Preserve model RGB inside closed silhouette holes; false only for historical comparisons. */
+  fillHoles?: boolean;
   /**
    * Colour distance (0–255) above which a pixel counts as painted, inside the paint ellipse.
    *
@@ -362,6 +366,36 @@ export interface PatchResult {
   expected: number;
   /** Shape of what was actually painted, for the acceptance check. */
   shape: { width: number; height: number; centerX: number; centerY: number; childPx: number; slotX: number; slotY: number };
+}
+
+export const EXTRACTION_VERSION = "diff-v2-enclosed-interior";
+
+/** Restore enclosed interiors from the generated RGB, NOT from the board.
+ * A colour difference is not a segmentation mask: skin similar to sand can
+ * disappear inside an otherwise intact outline. Flood only background connected
+ * to an image edge (8-connected, so even a diagonal opening stays open). Nothing
+ * outside the existing silhouette is expanded. This cannot repair an open cut.
+ */
+export function fillEnclosedAlpha(alpha: Buffer, w: number, h: number): Buffer {
+  if (alpha.length !== w * h || w < 1 || h < 1) throw new Error("invalid alpha dimensions");
+  const outside = new Uint8Array(w * h);
+  const queue = new Int32Array(w * h);
+  let head = 0, tail = 0;
+  const add = (x: number, y: number) => {
+    const i = y * w + x;
+    if (alpha[i]! < 128 && !outside[i]) { outside[i] = 1; queue[tail++] = i; }
+  };
+  for (let x = 0; x < w; x++) { add(x, 0); add(x, h - 1); }
+  for (let y = 0; y < h; y++) { add(0, y); add(w - 1, y); }
+  while (head < tail) {
+    const i = queue[head++]!, x = i % w, y = Math.floor(i / w);
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (x + dx >= 0 && x + dx < w && y + dy >= 0 && y + dy < h) add(x + dx, y + dy);
+    }
+  }
+  const out = Buffer.from(alpha);
+  for (let i = 0; i < out.length; i++) if (!outside[i] && alpha[i]! < 128) out[i] = 255;
+  return out;
 }
 
 /**
@@ -541,7 +575,9 @@ export async function diffToPatch(input: {
   cleaned = await step(cleaned, (s) => s.threshold(60));
   // A piece of the same child is never more than a fraction of her height away.
   const blobs = keepMainBlobs(cleaned, w, h, keep, ctx.childPx * 0.25);
-  cleaned = await step(blobs.out, (s) => s.blur(feather));
+  // Fill BEFORE feathering; otherwise a missing cheek creates a soft transparent crater.
+  const interior = o.fillHoles === false ? blobs.out : fillEnclosedAlpha(blobs.out, w, h);
+  cleaned = await step(interior, (s) => s.blur(feather));
   // Feathering the whole mask left the child herself half-transparent: across
   // one nine-board game only a fifth of the drawn pixels were fully opaque, and
   // in the board that reads as a washed-out, pasted-on child you can see the bus

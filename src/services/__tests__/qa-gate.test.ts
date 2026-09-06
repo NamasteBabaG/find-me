@@ -8,7 +8,9 @@ import { deliverWithProblemsOf } from "../container";
  */
 describe("the QA-only half of the no-human gate", () => {
   it("is true only for the flag on a QA box", () => {
-    expect(deliverWithProblemsOf(true, "qa")).toBe(true);
+    expect(deliverWithProblemsOf(true, "qa")).toBe(false);
+    expect(deliverWithProblemsOf(true, "qa", true)).toBe(true);
+    expect(deliverWithProblemsOf(true, "production", true)).toBe(false);
     expect(deliverWithProblemsOf(true, "production")).toBe(false);
     expect(deliverWithProblemsOf(true, undefined)).toBe(false);
     expect(deliverWithProblemsOf(false, "qa")).toBe(false);

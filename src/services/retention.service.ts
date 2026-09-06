@@ -3,6 +3,7 @@ import type { Container } from "./container";
 import { deleteAsset } from "./asset.service";
 import { statusOf, transitionGame } from "./game-status";
 import { SYSTEM, audit } from "./audit.service";
+import { removeRenderEvidence } from "./generation/render-evidence";
 
 /**
  * How long each kind of thing lives, and what happens when it has lived too long.
@@ -75,7 +76,7 @@ export async function runRetention(c: Container, now = new Date(), days: Retenti
   }
 
   // 3. Rejected renders past their diagnostic life, and the ids that pointed at them.
-  const rejected = await c.db.asset.findMany({ where: { type: "REJECTED_PATCH", status: "READY", createdAt: { lt: daysAgo(now, days.rejectedRender) } }, select: { id: true } });
+  const rejected = await c.db.asset.findMany({ where: { type: { in: ["REJECTED_PATCH", "PATCH_EVIDENCE"] }, status: "READY", createdAt: { lt: daysAgo(now, days.rejectedRender) } }, select: { id: true } });
   if (rejected.length > 0) {
     const gone = new Set(rejected.map((a) => a.id));
     for (const id of gone) await deleteAsset(c, id);
@@ -91,6 +92,11 @@ export async function runRetention(c: Container, now = new Date(), days: Retenti
       if (kept.length !== ids.length) await c.db.targetVariantAsset.update({ where: { id: row.id }, data: { rejectedAssetIdsJson: kept.length > 0 ? JSON.stringify(kept) : null } });
     }
     report.rejectedPurged = gone.size;
+    const evidenceRows = await c.db.targetVariantAsset.findMany({ where: { usageJson: { not: null } }, select: { id: true, usageJson: true } });
+    for (const row of evidenceRows) {
+      const usageJson = removeRenderEvidence(row.usageJson, gone);
+      if (usageJson !== row.usageJson) await c.db.targetVariantAsset.update({ where: { id: row.id }, data: { usageJson } });
+    }
   }
 
   // 4. A failure the cron has been retrying for a week is not going to fix itself.

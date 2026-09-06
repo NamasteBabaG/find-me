@@ -1,8 +1,14 @@
 import sharp from "sharp";
-import type { JudgeAttempt, PatchJudge, PatchJudgement } from "./types";
+import { createHash } from "node:crypto";
+import type { JudgeAttempt, PatchJudge, PatchJudgement, PatchJudgeInput } from "./types";
+import { BOARD_JUDGE_VERSION, BOARD_JUDGE_MODEL, BOARD_FAST_JUDGE_MODEL, BOARD_JUDGE_MAX_TOKENS, boardJudgePrompt, parseBoardVerdict } from "./board-verdict";
 
 /**
- * Does this finished patch actually show the child?
+ * Production: inspect a final on-board composite with two complementary reviews.
+ * The narrow flat-patch path described below is retained ONLY for historical
+ * rejudge tools; generateSlotPatch always supplies boardCrop.
+ *
+ * Legacy identity-only check: does this finished patch actually show the child?
  *
  * The geometric checks in `childProblem` ask about shape — roughly the right
  * height, taller than wide, solid, near the spot — and a scooter, a horse's head
@@ -63,7 +69,22 @@ export class OpenAiPatchJudge implements PatchJudge {
     if (!Number.isInteger(this.tries) || this.tries < 1 || this.tries > 2) throw new Error("judge tries must be 1 or 2");
   }
 
-  async judge(input: { patchPng: Buffer; reference: Buffer; childName: string; label: string }): Promise<PatchJudgement> {
+  async judge(input: PatchJudgeInput): Promise<PatchJudgement> {
+    if (!input.boardCrop) return this.assess(input);
+    // Neither model is a release oracle. In captured defects, each missed a
+    // different placement error. Approval requires both; do not pay the second
+    // reviewer when the first has already rejected or could not decide.
+    const first = await this.assess(input, BOARD_FAST_JUDGE_MODEL);
+    if (first.verdict !== "ok") return first;
+    const second = await this.assess(input, BOARD_JUDGE_MODEL).catch((): PatchJudgement => ({
+      verdict: "unknown", reason: "second reviewer could not complete",
+      version: BOARD_JUDGE_VERSION, model: BOARD_JUDGE_MODEL,
+      costCents: 0, costUnknown: true, attempts: [],
+    }));
+    return { ...second, reviews: [first, second], attempts: [...first.attempts ?? [], ...second.attempts ?? []], costCents: first.costCents + second.costCents, costUnknown: Boolean(first.costUnknown || second.costUnknown) };
+  }
+
+  private async assess(input: PatchJudgeInput, contextModel?: string): Promise<PatchJudgement> {
     // The patch is transparent where it is not the child; flattened onto a flat
     // grey its silhouette reads clearly instead of dissolving into white.
     const patch = await sharp(input.patchPng)
@@ -73,30 +94,39 @@ export class OpenAiPatchJudge implements PatchJudge {
       .toBuffer();
     const sheet = await sharp(input.reference).resize(512, 512, { fit: "inside" }).png().toBuffer();
 
-    const prompt = judgePrompt(input.childName);
+    // Legacy flat rejudge experiments retain their exact prompt, model and token cap.
+    const contextual = Boolean(input.boardCrop);
+    const modelRequested = contextModel ?? this.model;
+    const reasoning = modelRequested === BOARD_JUDGE_MODEL;
+    const images = input.boardCrop
+      ? [await sharp(input.boardCrop).resize(768, 768, { fit: "inside" }).png().toBuffer(), patch, sheet]
+      : [patch, sheet];
+    const prompt = contextual ? boardJudgePrompt(input.childName) : judgePrompt(input.childName);
     const attempts: JudgeAttempt[] = [];
+    let checks: PatchJudgement["checks"];
     const result = (verdict: PatchJudgement["verdict"], reason: string): PatchJudgement => ({
       verdict, reason, promptSent: prompt,
       costCents: attempts.reduce((sum, attempt) => sum + attempt.costCents, 0),
       costUnknown: attempts.some((attempt) => attempt.costUnknown),
-      model: attempts.at(-1)?.model ?? this.model,
+      model: attempts.at(-1)?.model ?? modelRequested,
       attempts,
+      ...(contextual ? { version: BOARD_JUDGE_VERSION, checks, imageHashes: images.map(b => createHash("sha256").update(b).digest("hex")) } : {}),
     });
 
     let lastError = "";
-    for (let attempt = 1; attempt <= this.tries; attempt++) {
+    for (let attempt = 1; attempt <= (contextual ? 1 : this.tries); attempt++) {
       let res: Response;
       try {
         res = await fetch(API, {
           method: "POST",
           headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({
-            model: this.model, max_tokens: MAX_OUTPUT_TOKENS, temperature: 0,
+            model: modelRequested,
+            ...(reasoning ? { max_completion_tokens: BOARD_JUDGE_MAX_TOKENS, reasoning_effort: "medium" } : { max_tokens: contextual ? 320 : MAX_OUTPUT_TOKENS, temperature: 0 }),
             response_format: { type: "json_object" },
             messages: [{ role: "user", content: [
               { type: "text", text: prompt },
-              { type: "image_url", image_url: { url: `data:image/png;base64,${patch.toString("base64")}` } },
-              { type: "image_url", image_url: { url: `data:image/png;base64,${sheet.toString("base64")}` } },
+              ...images.map(b => ({ type: "image_url", image_url: { url: `data:image/png;base64,${b.toString("base64")}`, ...(contextual ? { detail: "high" } : {}) } })),
             ] }],
           }),
           signal: AbortSignal.timeout(this.timeoutMs),
@@ -119,7 +149,7 @@ export class OpenAiPatchJudge implements PatchJudge {
         lastError = "could not read the provider response";
         break;
       }
-      const model = typeof json.model === "string" ? json.model : this.model;
+      const model = typeof json.model === "string" ? json.model : modelRequested;
       const charge = judgeCharge(model, json.usage);
       const content = json.choices?.[0]?.message?.content;
       attempts.push({ requestId, model, usage: json.usage ?? null, ...charge, status: res.status, responseText: content });
@@ -129,8 +159,12 @@ export class OpenAiPatchJudge implements PatchJudge {
         if (charge.costUnknown || /model|does not exist|access|permission/i.test(lastError)) break;
         continue;
       }
-      const parsed = parseVerdict(content);
-      if (parsed) return result(parsed.verdict, parsed.reason);
+      if (contextual && (json.model !== modelRequested || charge.costUnknown)) return result("unknown", "judge model or usage could not be verified");
+      const parsed = contextual ? parseBoardVerdict(content) : parseVerdict(content);
+      if (parsed) {
+        if ("checks" in parsed) checks = parsed.checks;
+        return result(parsed.verdict, parsed.reason);
+      }
       lastError = "could not read the verdict";
       if (charge.costUnknown) break;
     }
@@ -169,7 +203,7 @@ function parseVerdict(content: string | undefined): { verdict: "ok" | "bad"; rea
  * Cached-token discounts are not assumed; this is not an invoice total.
  */
 export function judgeCharge(model: string, usage: Record<string, unknown> | undefined): { costCents: number; costUnknown: boolean } {
-  const rates = /^gpt-4o-mini(?:-\d{4}-\d{2}-\d{2})?$/.test(model) ? [15, 60] : /^gpt-4o(?:-\d{4}-\d{2}-\d{2})?$/.test(model) ? [250, 1000] : null;
+  const rates = model === BOARD_JUDGE_MODEL ? [250, 1500] : /^gpt-4o-mini(?:-\d{4}-\d{2}-\d{2})?$/.test(model) ? [15, 60] : /^gpt-4o(?:-\d{4}-\d{2}-\d{2})?$/.test(model) ? [250, 1000] : null;
   const input = usage?.prompt_tokens;
   const output = usage?.completion_tokens;
   if (!rates || typeof input !== "number" || !Number.isInteger(input) || input < 0 || typeof output !== "number" || !Number.isInteger(output) || output < 0) return { costCents: 0, costUnknown: true };

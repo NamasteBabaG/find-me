@@ -88,6 +88,7 @@
     },
     {
       "id": "carousel",
+      "action": "The child stands on the wooden carousel deck between the poles, watching the horses. Both shoes rest on TOP of the deck and the entire body rises above it. Do not put a head or torso through the deck, under a horse, or in the floor. Use an existing pole only as a narrow natural overlap, never as an excuse to erase the legs.",
       "targetType": "paris_carousel",
       "bodyTemplate": "paris_carousel",
       "difficulty": 2,
@@ -149,12 +150,13 @@
     },
     {
       "id": "awning",
+      "action": "The child stands on the stone paving under the striped cafe awning, peeking around the edge of the cafe doorframe. The awning is overhead, NOT a surface a child is inside. Keep the body connected from face to shoes on the paving; only an actual existing table or doorframe may cover part of it. Do not blend the legs into the pavement or another person's body.",
       "targetType": "paris_awning",
       "bodyTemplate": "paris_awning",
       "difficulty": 3,
       "mission": {
-        "en": "Find {name} hiding behind the café awning",
-        "he": "מצאו את {name} מאחורי הסוכך של בית הקפה"
+        "en": "Find {name} by the café",
+        "he": "מצאו את {name} ליד בית הקפה"
       },
       "item": {
         "en": "café tables under striped awnings",
@@ -162,8 +164,8 @@
       },
       "success": [
         {
-          "en": "Nobody looked up!",
-          "he": "אף אחד לא הסתכל למעלה!"
+          "en": "A little spot in the shade!",
+          "he": "פינה קטנה בצל!"
         },
         {
           "en": "You found me! The chairs are tiny.",
@@ -187,8 +189,8 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look behind the café awning.",
-            "he": "חפשו מאחורי סוכך בית הקפה."
+            "en": "Look under the café awning.",
+            "he": "חפשו מתחת לסוכך בית הקפה."
           }
         },
         {

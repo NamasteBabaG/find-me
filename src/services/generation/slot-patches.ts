@@ -1,12 +1,15 @@
 import sharp from "sharp";
+import { createHash } from "node:crypto";
 import { newId } from "@/lib/ids";
 import type { SceneDefinition, Target as SceneTarget } from "@/domain/scene/schema";
 import { BODY_TEMPLATES } from "../../../content/body-templates";
 import type { Container } from "../container";
 import { storeAsset } from "../asset.service";
 import type { PatchJudgement } from "@/infra/generation/types";
-import { childProblem, diffToPatch, modelSpaceHeight, paintMask, slotContext, expressionFor, slotPrompt, PROMPT_VERSION } from "./patch";
+import { childProblem, diffToPatch, modelSpaceHeight, paintMask, slotContext, expressionFor, slotPrompt, PROMPT_VERSION, EXTRACTION_VERSION } from "./patch";
 import { loadSceneArt } from "./scene-art";
+import { boardComposite } from "./board-composite";
+import { BOARD_JUDGE_VERSION, BOARD_CHECKS } from "@/infra/generation/board-verdict";
 
 /**
  * Generating the hiding spots of one world for one child.
@@ -47,8 +50,8 @@ export interface PatchOutcome {
  * Retrying is normal — most spots land within four — but a slot the model
  * simply cannot paint will fail forever, and nothing stopped it: one spot spent
  * thirteen rolls and a third of a game's budget before this existed. A spot
- * that hits the cap is left FAILED for a human to look at; the game still ships,
- * because a target with no patch falls back to the procedural sprite.
+ * that hits the cap is left FAILED for a human to look at. A procedural fallback
+ * may be composed for diagnostics but is held from automatic delivery by default.
  */
 export const MAX_ATTEMPTS_PER_SPOT = 6;
 
@@ -111,13 +114,13 @@ export async function generateSlotPatch(
     wardrobe: scene.wardrobe,
     action: target.action,
     expression: target.expression ?? expressionFor(body?.pose),
-  });
+  }) + repairInstruction(existing?.judgeJson);
   const label = `${scene.slug}/${target.id}/${variant}`;
 
   // Default to a single roll: inside a request with a deadline, three rolls of
   // ~55s each is enough to overrun it. A spot that fails is not marked done, so
   // the next tick tries it again — the retries happen across ticks, not inside one.
-  const tries = input.tries ?? 1;
+  const tries = Math.min(input.tries ?? 1, MAX_ATTEMPTS_PER_SPOT - (existing?.attempts ?? 0));
   // Fractions of a cent, because judging costs about a quarter of one and
   // dropping that per spot would hide roughly a quarter of a dollar per game.
   // Rounded once, at the point it is written to a whole-cent column.
@@ -147,6 +150,11 @@ export async function generateSlotPatch(
     // another on the way through the catch charged two attempts for one call,
     // and quietly halved the budget a spot was allowed.
     attempts += 1;
+    // Reserve the attempt before spending. A process killed between the render
+    // and final checkpoint must not get six fresh attempts on the next tick.
+    await c.db.targetVariantAsset.update({ where: { id: row.id }, data: {
+      attempts: { increment: 1 }, promptVersion: PROMPT_VERSION,
+    } });
     try {
       const edit = await c.avatars.editSlotCrop({ crop, paintMask: mask, reference: input.reference, prompt, label, quality: input.quality });
       spent += edit.costCents;
@@ -156,6 +164,22 @@ export async function generateSlotPatch(
       model = edit.model;
       usage = edit.usage ?? usage;
       attemptLog.push({ at: new Date().toISOString(), model: edit.model, rollCents: edit.costCents, judgeCents: 0, durationMs: edit.durationMs, requestId: edit.providerRequestId ?? null, outcome: "pending" });
+      const currentAttempt = attemptLog[attemptLog.length - 1]!;
+      // Keep accepted inputs too. Otherwise a face hole cannot be re-extracted
+      // without buying another render. Private; deletion + 14-day retention apply.
+      const raw = edit.rawPng ?? edit.png;
+      const evidence = await storeAsset(c, {
+        ownerId: input.ownerId, type: "PATCH_EVIDENCE", visibility: "PRIVATE",
+        buffer: raw, mimeType: "image/png", provider: c.avatars.id,
+        providerRequestId: edit.providerRequestId, costCents: 0,
+      });
+      Object.assign(currentAttempt, { evidenceAssetId: evidence.id, rawHash: hash(raw), fittedHash: hash(edit.png), cropHash: hash(crop), referenceHash: hash(input.reference), sceneHash: hash(Buffer.from(JSON.stringify(scene))), extractionVersion: EXTRACTION_VERSION, promptSent: edit.promptSent ?? prompt });
+      // Link before processing/judging: even an interrupted extraction remains
+      // discoverable by privacy deletion, and its known render charge survives.
+      await c.db.targetVariantAsset.update({ where: { id: row.id }, data: {
+        usageJson: JSON.stringify(withLedger(usage, ledger, spent, attemptLog, ledger.unknownCost)),
+        costCents: Math.round(ledger.exactCents + spent),
+      } });
       const patch = await diffToPatch({ originalCrop: crop, editedCrop: edit.png, ctx, art, slot });
       // Store WHY a roll was rejected, not a generic summary. "too small",
       // "wider than tall" and "painted somewhere else" need different fixes, and
@@ -164,7 +188,12 @@ export async function generateSlotPatch(
       // fraction of a cent and only patches that already look like a child are
       // worth asking about.
       const shape = childProblem(patch);
-      judged = shape ? null : await judgeOf(c, patch.webp, input, label);
+      const boardCrop = shape ? undefined : await boardComposite({
+        base: sceneArt,
+        foreground: scene.art.foreground ? await loadSceneArt(c.appUrl, scene.art.foreground) : undefined,
+        art, patch: patch.webp, rect: patch.geometry.rect, layer: slot.layer, flip: slot.flip,
+      });
+      judged = shape ? null : await judgeOf(c, patch.webp, input, label, boardCrop!);
       if (judged) {
         spent += judged.costCents;
         if (judged.costUnknown) ledger.unknownCost = true;
@@ -172,7 +201,7 @@ export async function generateSlotPatch(
       const last = attemptLog[attemptLog.length - 1]!;
       last.judgeCents = judged?.costCents ?? 0;
       const problem = shape ?? (judged?.verdict === "bad" ? `does not show ${input.childName}: ${judged.reason}` : null);
-      last.outcome = problem ? `rejected: ${problem.slice(0, 80)}` : "accepted";
+      last.outcome = problem ? `rejected: ${problem.slice(0, 80)}` : judged?.verdict === "unknown" ? "held: uncertain review" : "accepted";
       if (problem) {
         lastError = problem;
         const keep = await storeAsset(c, {
@@ -213,7 +242,6 @@ export async function generateSlotPatch(
           provider: c.avatars.id,
           model,
           promptVersion: PROMPT_VERSION,
-          attempts: { increment: attempts },
           costCents: Math.round(ledger.exactCents + spent),
           usageJson: JSON.stringify(withLedger(usage, ledger, spent, attemptLog, false)),
           rejectedAssetIdsJson: rejected.length > 0 ? JSON.stringify(rejected) : null,
@@ -241,7 +269,6 @@ export async function generateSlotPatch(
     data: {
       status: "FAILED",
       lastError: lastError.slice(0, 500),
-      attempts: { increment: attempts },
       costCents: Math.round(ledger.exactCents + spent),
       // A failed roll's usage and verdict used to be dropped with it, which
       // left the most expensive rows in a game the least explained.
@@ -278,8 +305,8 @@ export async function generateSlotPatch(
  * refusing work over a misconfigured judge would be worse than the problem —
  * the pipeline turns those into a game a human has to approve.
  */
-async function judgeOf(c: Container, webp: Buffer, input: { reference: Buffer; childName: string }, label: string): Promise<PatchJudgement> {
-  return c.judge.judge({ patchPng: webp, reference: input.reference, childName: input.childName, label }).catch(
+async function judgeOf(c: Container, webp: Buffer, input: { reference: Buffer; childName: string }, label: string, boardCrop: Buffer): Promise<PatchJudgement> {
+  return c.judge.judge({ patchPng: webp, reference: input.reference, childName: input.childName, label, boardCrop }).catch(
     (err: unknown): PatchJudgement => ({ verdict: "unknown", reason: err instanceof Error ? err.message.slice(0, 120) : "judge failed", costCents: 0, costUnknown: true }),
   );
 }
@@ -293,6 +320,25 @@ interface LedgerAttempt {
   durationMs: number;
   requestId: string | null;
   outcome: string;
+  evidenceAssetId?: string;
+}
+
+const hash = (b: Buffer) => createHash("sha256").update(b).digest("hex");
+
+/** Retry advice is selected from fixed code, never interpolated from model prose. */
+export function repairInstruction(judgeJson: string | null | undefined): string {
+  try {
+    const prior = JSON.parse(judgeJson ?? "{}") as PatchJudgement;
+    if (prior.verdict !== "bad") return "";
+    const checks = prior.checks;
+    const instructions = [
+      checks?.faceIntegrity === "fail" ? "Keep the entire face clear of occluders: both eyes, nose, mouth and continuous skin must be visible." : "",
+      checks?.bodyPlacement === "fail" ? "The previous placement was physically impossible. Draw a complete supported standing or seated body, with feet on a real visible surface; only existing foreground objects may hide it. Never use a floating head or a torso through the ground." : "",
+      checks?.identity === "fail" ? "Re-check the full reference sheet and preserve this child's face shape, curls or hairstyle, and skin tone." : "",
+      checks?.style === "fail" ? "Match the neighbouring painted people: same line weight, flat shading, texture and palette, not glossy or photographic." : "",
+    ].filter(Boolean);
+    return instructions.length ? ` Repair requirements: ${instructions.join(" ")}` : "";
+  } catch { return ""; }
 }
 
 /** The exact money so far, and whether any of it is unknown. */
@@ -324,7 +370,7 @@ export function readLedger(usageJson: string | null | undefined, costCents: numb
 function withLedger(usage: Record<string, number> | undefined, ledger: Ledger, spent: number, attempts: LedgerAttempt[], unknownCost: boolean): Record<string, unknown> {
   return {
     ...(usage ?? {}),
-    ledger: { exactCents: Math.round((ledger.exactCents + spent) * 100) / 100, unknownCost: unknownCost || ledger.unknownCost, attempts: [...ledger.attempts, ...attempts] },
+    ledger: { exactCents: Math.round((ledger.exactCents + spent) * 1_000_000) / 1_000_000, unknownCost: unknownCost || ledger.unknownCost, attempts: [...ledger.attempts, ...attempts] },
   };
 }
 
@@ -364,7 +410,11 @@ export async function spotsUnjudged(c: Container, gameId: string): Promise<numbe
   return rows.filter((r) => {
     if (!r.judgeJson) return true;
     try {
-      return (JSON.parse(r.judgeJson) as { verdict?: string }).verdict !== "ok";
+      const judgement = JSON.parse(r.judgeJson) as PatchJudgement;
+      if (judgement.verdict !== "ok") return true;
+      // Resuming old work must not promote a flat-background identity-only
+      // verdict into a current board-quality approval. Hold, without rerendering.
+      return c.judge.id === "openai" && (judgement.version !== BOARD_JUDGE_VERSION || BOARD_CHECKS.some(key => judgement.checks?.[key] !== "pass"));
     } catch {
       return true;
     }

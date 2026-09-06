@@ -88,7 +88,7 @@ export const BODY_TEMPLATES: Record<string, BodyTemplate> = {
   amazon_roots: { id: "amazon_roots", label: t("behind giant roots", "מאחורי שורשים ענקיים"), pose: "peeking", accessory: { glyph: "", place: "none" }, outfit: { primary: "#5BBF6B", secondary: "#C9A227" } },
   paris_bakery: { id: "paris_bakery", label: t("with a baguette", "עם באגט"), pose: "holding", accessory: { glyph: "🥖", place: "hand" }, outfit: { primary: "#C1443B", secondary: "#FFF8EC" } },
   paris_carousel: { id: "paris_carousel", label: t("on the carousel", "על הקרוסלה"), pose: "riding", accessory: { glyph: "🎠", place: "front" }, outfit: { primary: "#8C6BD9", secondary: "#FFB61E" } },
-  paris_awning: { id: "paris_awning", label: t("behind a café awning", "מאחורי סוכך של בית קפה"), pose: "peeking", accessory: { glyph: "", place: "none" }, outfit: { primary: "#2FA4D6", secondary: "#F25C7A" } },
+  paris_awning: { id: "paris_awning", label: t("by the café doorway under its awning", "ליד פתח בית הקפה, מתחת לסוכך"), pose: "peeking", accessory: { glyph: "", place: "none" }, outfit: { primary: "#2FA4D6", secondary: "#F25C7A" } },
   marrakech_lanterns: { id: "marrakech_lanterns", label: t("under the lanterns", "מתחת לפנסים"), pose: "standing", accessory: { glyph: "🏮", place: "front" }, outfit: { primary: "#F25C7A", secondary: "#FFB61E" } },
   marrakech_carpets: { id: "marrakech_carpets", label: t("between the carpets", "בין השטיחים"), pose: "peeking", accessory: { glyph: "🧶", place: "body" }, outfit: { primary: "#C1443B", secondary: "#2FA4D6" } },
   marrakech_spices: { id: "marrakech_spices", label: t("behind the spice cones", "מאחורי חרוטי התבלינים"), pose: "peeking", accessory: { glyph: "", place: "none" }, outfit: { primary: "#C9A227", secondary: "#5BBF6B" } },

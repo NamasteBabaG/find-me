@@ -334,8 +334,8 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
     const auto = c.autoApprove ?? flag("QA_AUTO_APPROVE");
     // A clean game may go out on its own anywhere. A game with problems goes
     // out on its own only where the buyers are the testers: the container's
-    // deliverWithProblems is true on a QA box and nowhere else. Everywhere else
-    // it waits for a person, and the person is told.
+    // deliverWithProblems requires a SEPARATE explicit diagnostic opt-in on QA.
+    // By default even QA waits for a person, and that person is told.
     if (auto && (problems.length === 0 || c.deliverWithProblems)) {
       await audit(c, SYSTEM, "qa:auto-approved", "Game", gameId, problems.length > 0 ? { problems } : undefined);
       await publishGame(c, gameId, SYSTEM);

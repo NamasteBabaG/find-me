@@ -45,8 +45,8 @@ export interface Container {
   autoApprove?: boolean;
   /**
    * A finished game WITH problems is delivered too, and the admins get the
-   * problems. Only true on a QA box, where the buyers are the testers: the
-   * flag's name says QA, this is what enforces it.
+   * problems. Only with explicit QA_DELIVER_WITH_PROBLEMS opt-in on a QA box.
+   * Disabled by default; QA_AUTO_APPROVE alone never enables this escape hatch.
    */
   deliverWithProblems?: boolean;
   /** Who is told when a game goes out with problems, or does not go out at all (ADMIN_EMAILS). */
@@ -56,10 +56,10 @@ export interface Container {
 /**
  * The QA-only half of the no-human gate, held out as a pure function so the
  * WIRING is under test, not only the pipeline: the flag alone never ships a
- * game with problems outside APP_ENV=qa.
+ * game with problems outside APP_ENV=qa, or without a separate diagnostic opt-in.
  */
-export function deliverWithProblemsOf(qaAutoApprove: boolean, appEnv: string | undefined): boolean {
-  return qaAutoApprove && appEnv === "qa";
+export function deliverWithProblemsOf(qaAutoApprove: boolean, appEnv: string | undefined, diagnosticOptIn = false): boolean {
+  return qaAutoApprove && appEnv === "qa" && diagnosticOptIn;
 }
 
 function build(): Container {
@@ -101,7 +101,7 @@ function build(): Container {
     secret: e.SESSION_SECRET,
     emailFallbackTo: e.EMAIL_FALLBACK_TO ?? null,
     autoApprove: flag("QA_AUTO_APPROVE"),
-    deliverWithProblems: deliverWithProblemsOf(flag("QA_AUTO_APPROVE"), e.APP_ENV),
+    deliverWithProblems: deliverWithProblemsOf(flag("QA_AUTO_APPROVE"), e.APP_ENV, flag("QA_DELIVER_WITH_PROBLEMS")),
     adminEmails: adminEmails(),
   };
 

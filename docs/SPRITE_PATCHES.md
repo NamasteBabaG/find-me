@@ -1,5 +1,13 @@
 # Slot patches — painting the child into a pre-rendered world
 
+## Current release gate (6 September 2026)
+
+See [Board quality gate](BOARD_QUALITY_GATE_2026-09-06.md) for the current extraction,
+two-reviewer on-board QA, private raw evidence and clean-only automatic delivery.
+The historical cost table below predates this gate and is not a current quotation.
+Fixed coordinates alone do not certify physically valid hiding; every sellable
+slot still needs on-board human validation across test identities.
+
 ## The problem
 
 Worlds are illustrated once and never re-rendered. The only thing that changes per game is the child.
