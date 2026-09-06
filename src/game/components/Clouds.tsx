@@ -1,104 +1,101 @@
 "use client";
 
 /**
- * A bank of picture-book clouds.
+ * A bank of picture-book clouds — drawn the way an illustrator draws one.
  *
- * The curtain over a board is two of these, one from each side, over a sky.
- * Each bank is a wall of cumulus along its inner edge: round lumps in three
- * sizes, each lit from its upper right and shaded toward its lower left,
- * painted back to front so every lump sits in front of the one behind it,
- * the way a cartoon cloud is drawn. A soft body behind them keeps the wall
- * from ever showing a gap. It is one SVG pattern tiled down the edge, so it
- * costs a few dozen circles and no images, and it scales with the board
- * rather than with the screen.
+ * The previous bank was dozens of individually shaded circles, and Guy read
+ * it exactly as that: a group of circles, not clouds. The difference between
+ * bubbles and a cumulus is that a cumulus has ONE silhouette: a single bumpy
+ * outline whose lobes vary in size and rhythm, shaded as a whole, with a
+ * pocket of shadow where lobe meets lobe — plus a couple of small detached
+ * clouds with the classic flat-bottom profile drifting off its edge.
  *
- * The old edge was a column of flat white discs on a plain bank, and it read
- * as a loading placeholder, not as clouds.
+ * So this is three copies of one continuous lobed path (a soft back
+ * silhouette, a shade layer peeking out along the lobes' undersides, and the
+ * white body lit toward its edge), and three little flat-bottomed cloudlets.
+ * The lobe radii are hand-tuned and irregular on purpose; nothing here is a
+ * free-standing circle.
+ *
+ * The right bank mirrors this SVG in CSS, so one drawing serves both sides.
  */
 
-/** One tile of the cloud wall; the bank's inner edge is x = EDGE. */
-const TILE_W = 900;
-const TILE_H = 820;
-const EDGE = 600;
+const W = 1280;
+const H = 2400;
+const EDGE_X = 1060;
 
-/** cx, cy, r — painted in this order: small lumps deep in the bank, the middle row, the big lumps on the edge, tufts beyond it. */
-const PUFFS: ReadonlyArray<readonly [number, number, number]> = [
-  // deep in the bank, small
-  [430, 60, 44],
-  [420, 250, 50],
-  [438, 430, 40],
-  [416, 610, 54],
-  [434, 780, 42],
-  // the middle row
-  [515, 140, 78],
-  [498, 330, 66],
-  [526, 500, 84],
-  [504, 690, 70],
-  // the edge, big: some lumps push out further than others
-  [600, 30, 100],
-  [650, 220, 124],
-  [586, 400, 96],
-  [662, 590, 118],
-  [604, 760, 94],
-  // tufts past the edge
-  [738, 120, 36],
-  [752, 330, 42],
-  [730, 480, 30],
-  [760, 680, 40],
+/** The silhouette's lobes, top to bottom: radius + a sideways push. Irregular on purpose. */
+const LOBES: ReadonlyArray<readonly [number, number]> = [
+  [96, 24], [48, -18], [150, 30], [62, -26], [112, 16], [172, -30], [54, 22], [128, -14],
+  [70, 28], [148, -24], [58, 18], [104, -30], [86, 26], [136, -12], [50, 20], [118, -28], [76, 16], [124, -20],
 ];
 
-/** A lump that crosses the tile's top or bottom is drawn again one tile away, so the wall tiles without a seam. */
-function tiled(): ReadonlyArray<readonly [number, number, number]> {
-  const out: Array<readonly [number, number, number]> = [];
-  for (const [cx, cy, r] of PUFFS) {
-    out.push([cx, cy, r]);
-    if (cy - r < 0) out.push([cx, cy + TILE_H, r]);
-    if (cy + r > TILE_H) out.push([cx, cy - TILE_H, r]);
+/** One continuous bumpy edge from above the top to below the bottom. */
+function silhouette(): string {
+  let x = EDGE_X;
+  let y = -80;
+  const parts = [`M 0 ${y}`, `L ${x} ${y}`];
+  for (const [r, dx] of LOBES) {
+    const dy = Math.round(r * 1.32);
+    parts.push(`a ${r} ${r} 0 0 1 ${dx} ${dy}`);
+    x += dx;
+    y += dy;
   }
-  return out;
+  parts.push(`L ${x} ${H + 80}`, `L 0 ${H + 80}`, "Z");
+  return parts.join(" ");
 }
 
-const WALL = tiled();
+/** The classic cloudlet: three arcs on a flat-bottomed base. */
+function cloudlet(w: number): string {
+  const h = w * 0.6;
+  return [
+    `M ${0.08 * w} ${0.78 * h}`,
+    `A ${0.2 * w} ${0.2 * w} 0 0 1 ${0.3 * w} ${0.34 * h}`,
+    `A ${0.26 * w} ${0.26 * w} 0 0 1 ${0.66 * w} ${0.3 * h}`,
+    `A ${0.2 * w} ${0.2 * w} 0 0 1 ${0.92 * w} ${0.78 * h}`,
+    `A ${0.08 * w} ${0.08 * w} 0 0 1 ${0.86 * w} ${0.92 * h}`,
+    `L ${0.14 * w} ${0.92 * h}`,
+    `A ${0.08 * w} ${0.08 * w} 0 0 1 ${0.08 * w} ${0.78 * h}`,
+    "Z",
+  ].join(" ");
+}
+
+const PATH = silhouette();
+const PUFFS: ReadonlyArray<{ x: number; y: number; w: number; o: number }> = [
+  { x: 1092, y: 340, w: 150, o: 0.96 },
+  { x: 1140, y: 1110, w: 96, o: 0.88 },
+  { x: 1080, y: 1870, w: 176, o: 0.93 },
+];
 
 export function CloudBank({ side }: { side: "l" | "r" }) {
   const id = `fm-cloud-${side}`;
   return (
     <div className={`scene__cloud scene__cloud--${side}`}>
       <div className="scene__cloud-edge">
-        <svg className="scene__cloud-svg" viewBox={`0 0 ${EDGE} 2400`} preserveAspectRatio="xMaxYMid slice" aria-hidden focusable="false">
+        <svg className="scene__cloud-svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMaxYMid slice" aria-hidden focusable="false">
           <defs>
-            {/* One lump: white, lit from the upper right, a breath of sky blue along its lower rim. */}
-            <radialGradient id={`${id}-lump`} cx="0.62" cy="0.3" r="0.82">
-              <stop offset="0" stopColor="#ffffff" />
-              <stop offset="0.55" stopColor="#ffffff" />
-              <stop offset="0.8" stopColor="#f1f6fe" />
-              <stop offset="1" stopColor="#c6d6ef" />
-            </radialGradient>
-            {/* The cloud body behind the lumps: sky-tinted deep in the bank, white at the edge. */}
+            {/* One light across the whole bank: deep side faintly sky-tinted, the edge bright. */}
             <linearGradient id={`${id}-body`} x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0" stopColor="#ffffff" stopOpacity="0" />
-              <stop offset="0.5" stopColor="#eef4fd" stopOpacity="0.9" />
-              <stop offset="1" stopColor="#f7faff" stopOpacity="1" />
+              <stop offset="0" stopColor="#f5f9ff" />
+              <stop offset="0.4" stopColor="#ffffff" />
+              <stop offset="1" stopColor="#ffffff" />
             </linearGradient>
-            <filter id={`${id}-soft`} x="-20%" y="-20%" width="140%" height="140%">
-              <feGaussianBlur stdDeviation="18" />
+            <filter id={`${id}-soft`} x="-15%" y="-5%" width="130%" height="110%">
+              <feGaussianBlur stdDeviation="14" />
             </filter>
-            <pattern id={`${id}-wall`} width={TILE_W} height={TILE_H} patternUnits="userSpaceOnUse">
-              {/* a soft halo so the wall melts into the sky rather than sitting on it */}
-              <g fill="#ffffff" opacity="0.45" filter={`url(#${id}-soft)`}>
-                {WALL.map(([cx, cy, r], i) => (
-                  <circle key={`h${i}`} cx={cx} cy={cy} r={r + 14} />
-                ))}
-              </g>
-              <rect x="380" y="0" width="240" height={TILE_H} fill={`url(#${id}-body)`} />
-              <g fill={`url(#${id}-lump)`}>
-                {WALL.map(([cx, cy, r], i) => (
-                  <circle key={`p${i}`} cx={cx} cy={cy} r={r} />
-                ))}
-              </g>
-            </pattern>
           </defs>
-          <rect x="0" y="0" width={TILE_W} height="2400" fill={`url(#${id}-wall)`} />
+          {/* a soft farther bank behind everything */}
+          <path d={PATH} transform="translate(-34 0)" fill="#e7effb" opacity="0.75" filter={`url(#${id}-soft)`} />
+          {/* the shade: the same silhouette peeking out under each lobe */}
+          <path d={PATH} transform="translate(-22 20)" fill="#d8e4f6" opacity="0.85" />
+          {/* the cloud itself */}
+          <path d={PATH} fill={`url(#${id}-body)`} />
+          {/* little travellers off the edge, flat-bottomed like every drawn cloud */}
+          {PUFFS.map((p, i) => (
+            <g key={i} transform={`translate(${p.x} ${p.y})`} opacity={p.o}>
+              <path d={cloudlet(p.w)} transform="translate(-4 5)" fill="#d8e4f6" opacity="0.8" />
+              <path d={cloudlet(p.w)} fill="#ffffff" />
+            </g>
+          ))}
         </svg>
       </div>
     </div>

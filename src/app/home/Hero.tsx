@@ -72,6 +72,30 @@ export function Hero({ children }: { children?: ReactNode }) {
     return () => clearInterval(id);
   }, []);
 
+  // The torch steps aside for anything clickable: while the pointer is on a
+  // nav link or a hero button the whole light fades out (fast, never a cut)
+  // and comes back the moment it leaves. A circle parked under a button felt
+  // stuck (Guy). Delegated listeners, so the header — a sibling — counts too.
+  useEffect(() => {
+    const el = sectionRef.current;
+    if (!el) return;
+    const clicky = (t: EventTarget | null) =>
+      t instanceof Element && t.closest(".hero3__content a, .hero3__content button, .fm-header a, .fm-header button") !== null;
+    const over = (e: PointerEvent) => {
+      if (clicky(e.target)) el.classList.add("hero3--hush");
+    };
+    const out = (e: PointerEvent) => {
+      if (clicky(e.target) && !clicky(e.relatedTarget)) el.classList.remove("hero3--hush");
+    };
+    document.addEventListener("pointerover", over);
+    document.addEventListener("pointerout", out);
+    return () => {
+      document.removeEventListener("pointerover", over);
+      document.removeEventListener("pointerout", out);
+      el.classList.remove("hero3--hush");
+    };
+  }, []);
+
   useEffect(() => {
     // The circle's vars live on the SECTION, so the stage layers, the ring and
     // the lit copy of the words all read the same torch.

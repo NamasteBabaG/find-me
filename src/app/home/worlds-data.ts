@@ -4,7 +4,6 @@ import { findScene } from "../../../content/scenes";
 import { boardSlugs } from "@/domain/world";
 import { pick, type Locale } from "@/i18n/config";
 import type { CarouselWorld } from "./WorldsCarousel";
-import { WORLD_GLYPHS } from "./sections";
 
 /**
  * The worlds as the shop shows them: the finished ones first, then the ones
@@ -35,7 +34,7 @@ export function carouselWorlds(locale: Locale, owned: readonly string[] = []): C
         const scene = findScene(slug);
         return {
           key: slug,
-          label: `${WORLD_GLYPHS[slug] ?? "✨"} ${scene ? pick(scene.name, locale) : slug}`,
+          label: scene ? pick(scene.name, locale) : slug,
           thumb: scene?.art.thumbnail,
           spots: scene?.targets.map((t) => pick(t.item, locale)),
           soon: !scene?.active,

@@ -96,9 +96,10 @@
   transition: transform 520ms cubic-bezier(0.5, 0, 0.2, 1), opacity 0ms;
   will-change: transform;
 }
-/* The wall of cumulus along the inner edge; the SVG tile scales with the bank
-   and spills past the edge, so its tufts hang out over the middle. */
-.scene__cloud-edge { position: absolute; top: 0; bottom: 0; width: 60%; animation: cloud-drift 9s ease-in-out infinite alternate; }
+/* The whole bank is the cloud: the SVG spans the full half, solid white from
+   the outer edge to the lobed line — a 60% strip left the rest showing sky
+   and read as cut off (Guy). Drift is vertical only, so full width is safe. */
+.scene__cloud-edge { position: absolute; top: 0; bottom: 0; width: 100%; animation: cloud-drift 9s ease-in-out infinite alternate; }
 .scene__cloud--r .scene__cloud-edge { animation-delay: -4.5s; }
 .scene__cloud-svg { position: absolute; top: 0; bottom: 0; right: 0; height: 100%; width: 100%; overflow: visible; filter: drop-shadow(0 8px 14px rgba(58, 84, 140, 0.18)); }
 .scene__cloud--l { left: 0; }
@@ -179,17 +180,17 @@
 .bubble::after { content: ""; position: absolute; left: 50%; bottom: -14px; width: 16px; height: 16px; background: var(--white); border-inline-end: 3px solid var(--ink); border-bottom: 3px solid var(--ink); transform: translateX(-50%) rotate(45deg); }
 
 .celebration { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: var(--z-overlay); }
-/* Confetti rain (see CelebrationOverlay.tsx): three transform layers per
-   piece. The outer flutters side to side (infinite, phase-shifted by a
-   negative delay); the middle falls at the piece's own speed and leaves past
-   the bottom; the inner tumbles. A piece waits above the top edge until its
-   fall begins, so no fill tricks are needed — and nothing fades mid-air. */
-.celebration__p { position: absolute; line-height: 1; will-change: transform; animation: fm-sway var(--swayDur, 1200ms) var(--ease-in-out) var(--phase, 0ms) infinite alternate; }
-.celebration__y { display: inline-block; will-change: transform; animation: fm-rain cubic-bezier(0.3, 0.05, 0.7, 0.95) both; }
-.celebration__r { display: inline-block; animation: fm-tumble linear both; animation-duration: inherit; animation-delay: inherit; }
-.celebration__c { display: block; border-radius: 2px; }
+/* Paper confetti (see CelebrationOverlay.tsx): three transform layers per
+   piece. The outer flutters side to side (infinite, phase-shifted); the
+   middle falls at the piece's own speed and leaves past the bottom; the
+   inner is the paper itself, spinning in 3D around its own random axis so it
+   thins to a line and flashes back the way falling paper does. A piece waits
+   above the top edge until its fall begins; nothing fades mid-air. */
+.celebration__p { position: absolute; will-change: transform; animation: fm-sway var(--swayDur, 1200ms) var(--ease-in-out) var(--phase, 0ms) infinite alternate; }
+.celebration__y { display: block; will-change: transform; animation: fm-rain cubic-bezier(0.25, 0.1, 0.6, 0.92) both; }
+.celebration__s { display: block; will-change: transform; animation: fm-flip linear infinite; }
 @media (prefers-reduced-motion: reduce) {
-  .celebration__p, .celebration__y, .celebration__r { animation-duration: 1ms; animation-delay: 0ms; }
+  .celebration__p, .celebration__y, .celebration__s { animation-duration: 1ms; animation-delay: 0ms; }
 }
 
 /* Mission pill — floats at the bottom, translucent, never a wall */

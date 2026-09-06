@@ -5,12 +5,6 @@ import { formatMoney, pick, tf, type Currency, type Dictionary, type Locale } fr
 import { Reveal } from "./Reveal";
 import { WorldsCarousel, type CarouselWorld } from "./WorldsCarousel";
 
-export const WORLD_GLYPHS: Record<string, string> = {
-  // Around the World
-  newyork: "🗽", amazon: "🦜", paris: "🎠", marrakech: "🏮", giza: "🐫", tokyo: "🌸", greatwall: "🐉", sydney: "🏄", antarctica: "🐧",
-  // Retired from world 1, kept for world 3 and for old games still in libraries
-  beach: "🏖️", jungle: "🌴", space: "🚀", city: "🏙️", ship: "⚓", stadium: "🏟️", market: "🍉", park: "🪁", volcano: "🌋",
-};
 const STEP_ICONS = ["📷", "🗺️", "💌", "🎉"] as const;
 const STEP_TONES = ["sun", "aqua", "lavender", "coral"] as const;
 /** The holiday icon follows the locale: Hebrew site → menorah, everywhere else → a generic tree. */

@@ -58,6 +58,12 @@
    says "press me" — the chip itself just does not move. */
 .hero3 .fm-btn { cursor: pointer; }
 .hero3 .fm-btn:hover, .hero3 .fm-btn:active { transform: none; box-shadow: var(--shadow-1); }
+/* The torch steps aside for anything clickable: hovering a nav link or a hero
+   button fades the whole light out fast and brings it back on leave — a
+   parked circle under a button read as stuck (Guy). Quick fades, never a cut. */
+.hero3__hidden, .hero3__ring, .hero3__lit { transition: opacity 170ms var(--ease-out); }
+.hero3--hush .hero3__hidden, .hero3--hush .hero3__ring, .hero3--hush .hero3__lit { opacity: 0; transition-duration: 110ms; }
+.hero3--hush .hero3__noa { opacity: 0; transition: opacity 110ms var(--ease-out); }
 /* Desktop: the nav is glass at the very top — the board and the torch run
    underneath it — and turns back into paper as the page scrolls (scroll-driven
    where the browser can; elsewhere it simply stays glass on the home hero).
