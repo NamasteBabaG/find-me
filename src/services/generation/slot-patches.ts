@@ -150,6 +150,7 @@ export async function generateSlotPatch(
     try {
       const edit = await c.avatars.editSlotCrop({ crop, paintMask: mask, reference: input.reference, prompt, label, quality: input.quality });
       spent += edit.costCents;
+      if (edit.costUnknown) ledger.unknownCost = true;
       judged = null;
       elapsed += edit.durationMs;
       model = edit.model;

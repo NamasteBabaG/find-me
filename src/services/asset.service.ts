@@ -54,7 +54,8 @@ export async function storeAsset(
       bytes: input.buffer.byteLength,
       provider: input.provider ?? "upload",
       providerRequestId: input.providerRequestId ?? null,
-      costCents: input.costCents ?? 0,
+      // A whole-cent column; the exact figure of a hiding spot lives in its variant row's ledger.
+      costCents: Math.round(input.costCents ?? 0),
     },
   });
 }

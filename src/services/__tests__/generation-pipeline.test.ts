@@ -706,6 +706,7 @@ describe("no human gate", () => {
     const p = painter(["nothing"]);
     const c = container(p);
     c.autoApprove = true;
+    c.deliverWithProblems = true; // a QA box
     c.adminEmails = ["ops@example.com"];
     const sent: Array<{ to: string; subject: string; text: string; tag: string }> = [];
     c.email = { id: "console", send: async (m: { to: string; subject: string; text: string; tag: string }) => { sent.push(m); return { id: "m" }; } } as never;
@@ -721,6 +722,46 @@ describe("no human gate", () => {
     expect(alerts[0]!.to).toBe("ops@example.com");
     expect(alerts[0]!.text).toContain("could not be painted");
     expect(alerts[0]!.text).toContain(`/admin/orders/${gameId}`);
+  }, 180_000);
+
+  it("outside QA the flag delivers only a clean game: one with problems waits for a person, who is told", async () => {
+    const p = painter(["nothing"]);
+    const c = container(p);
+    c.autoApprove = true;
+    c.deliverWithProblems = false; // the shop
+    c.adminEmails = ["ops@example.com"];
+    const sent: Array<{ to: string; subject: string; tag: string }> = [];
+    c.email = { id: "console", send: async (m: { to: string; subject: string; tag: string }) => { sent.push(m); return { id: "m" }; } } as never;
+    const gameId = await seedGame(c);
+    for (let i = 0; i < mod.MAX_ATTEMPTS_PER_SPOT + 1; i++) await mod.runGenerationPipeline(c, gameId);
+
+    expect((await gameOf(gameId)).status).toBe("MANUAL_REVIEW");
+    expect(sent.filter((m) => m.tag === "game-ready")).toHaveLength(0);
+    const alerts = sent.filter((m) => m.tag === "admin-alert");
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]!.subject).toContain("ממתין לבדיקה");
+  }, 180_000);
+
+  it("an alert the mail provider refuses after delivery leaves the game delivered and the job done", async () => {
+    const p = painter(["nothing"]);
+    const c = container(p);
+    c.autoApprove = true;
+    c.deliverWithProblems = true;
+    c.adminEmails = ["ops@example.com"];
+    c.email = {
+      id: "console",
+      send: async (m: { tag: string }) => {
+        if (m.tag === "admin-alert") throw new Error("mail provider down");
+        return { id: "m" };
+      },
+    } as never;
+    const gameId = await seedGame(c);
+    for (let i = 0; i < mod.MAX_ATTEMPTS_PER_SPOT + 1; i++) await mod.runGenerationPipeline(c, gameId);
+
+    expect((await gameOf(gameId)).status).toBe("DELIVERED");
+    expect((await job(gameId)).status).toBe("DONE");
+    const failed = await db.auditLog.findFirst({ where: { action: "admin-alert:delivered-with-problems:failed", entityId: gameId } });
+    expect(failed).not.toBeNull();
   }, 180_000);
 
   it("a crash tells every admin once, not on every retry", async () => {

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getContainer } from "@/services/container";
 import { tickGeneration } from "@/services/generation/queue";
 import { runRetentionIfDue } from "@/services/retention.service";
+import { retryFailedAdminAlerts } from "@/services/admin-alert.service";
 import { env } from "@/lib/env";
 import { currentUser, draftTokenFromCookie, isAdminEmail } from "@/lib/server/session";
 import { safeEqual } from "@/lib/ids";
@@ -38,6 +39,8 @@ export async function POST(req: Request) {
   const result = await tickGeneration(c, gameId, SLICE_MS);
   // The retention policy rides the cron: about once an hour, after the work.
   // A page's nudge (gameId given) never pays for it.
+  // An admin alert the mail provider refused is tried again here; it never throws.
+  if (!gameId) await retryFailedAdminAlerts(c);
   const retention = gameId ? null : await runRetentionIfDue(c).catch((err: unknown) => {
     console.error("[retention] failed:", err instanceof Error ? err.message : err);
     return null;

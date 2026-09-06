@@ -44,17 +44,23 @@ const RATES: Record<string, { textIn: number; imageIn: number; imageOut: number 
 
 type Usage = { total_tokens?: number; input_tokens?: number; output_tokens?: number; input_tokens_details?: { text_tokens?: number; image_tokens?: number } };
 
-function costCentsFrom(model: string, usage: Usage | undefined): number {
+/**
+ * Cents to a thousandth, never rounded to a whole cent here.
+ *
+ * Rounding every call to the cent read a 2.42-cent low roll as 2, and over
+ * the eighty renders of one comparison the recorded total was 160 cents
+ * against 193.6 recomputed from the very usage that was stored beside it —
+ * an 18% understatement in the number that says whether the product makes
+ * money. The whole-cent columns are rounded once, from the exact ledger
+ * (see slot-patches.ts); the provider keeps the fraction.
+ */
+export function costCentsFrom(model: string, usage: Usage | undefined): number {
   const rate = RATES[model] ?? RATES["gpt-image-1"]!;
   const textIn = usage?.input_tokens_details?.text_tokens ?? 0;
   const imageIn = usage?.input_tokens_details?.image_tokens ?? Math.max(0, (usage?.input_tokens ?? 0) - textIn);
   const imageOut = usage?.output_tokens ?? 0;
   const usd = (textIn * rate.textIn + imageIn * rate.imageIn + imageOut * rate.imageOut) / 1_000_000;
-  // Round, do not ceil. A roll costs about 7.0 cents, and rounding every one of
-  // them up to 8 overstated a nine-board game by roughly 14% — an error that
-  // only ever pointed one way, in the number used to judge whether the product
-  // makes money. Sub-cent precision is lost either way; a bias is not.
-  return Math.round(usd * 100);
+  return Math.round(usd * 100 * 1000) / 1000;
 }
 
 function flatUsage(usage: Usage | undefined): Record<string, number> | undefined {
@@ -103,6 +109,8 @@ interface CallResult {
   model: string;
   usage?: Record<string, number>;
   costCents: number;
+  /** The API answered without usage: the charge is unknown, not zero. */
+  costUnknown?: boolean;
   attempts: number;
   durationMs: number;
   providerRequestId?: string;
@@ -199,6 +207,7 @@ export class OpenAiAvatarProvider implements AvatarProvider {
           model,
           usage: flatUsage(json.usage),
           costCents: costCentsFrom(model, json.usage),
+          costUnknown: json.usage ? undefined : true,
           attempts: attempt,
           durationMs: Date.now() - started,
           providerRequestId: res.headers.get("x-request-id") ?? undefined,
@@ -255,6 +264,7 @@ export class OpenAiAvatarProvider implements AvatarProvider {
       avatarWidth: AVATAR_SIZE,
       avatarHeight: AVATAR_SIZE,
       costCents: out.costCents,
+      costUnknown: out.costUnknown,
       model: out.model,
       usage: out.usage,
       providerRequestId: out.providerRequestId,
@@ -292,7 +302,7 @@ export class OpenAiAvatarProvider implements AvatarProvider {
     // what was drawn before the downscale, and a rejection cannot be understood
     // without it.
     const png = await sharp(out.png).resize(meta.width ?? size, meta.height ?? size, { kernel: "lanczos3" }).png().toBuffer();
-    return { png, rawPng: out.png, promptSent, costCents: out.costCents, model: out.model, usage: out.usage, providerRequestId: out.providerRequestId, durationMs: out.durationMs, attempts: out.attempts };
+    return { png, rawPng: out.png, promptSent, costCents: out.costCents, costUnknown: out.costUnknown, model: out.model, usage: out.usage, providerRequestId: out.providerRequestId, durationMs: out.durationMs, attempts: out.attempts };
   }
 
   /** The cover avatar comes from the character sheet, so it is never a second bill. */

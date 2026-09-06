@@ -320,15 +320,18 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
     if (problems.length > 0) await c.db.game.update({ where: { id: gameId }, data: { lastError: problems.join("; ") } });
     await transitionGame(c, gameId, "QA_PENDING", SYSTEM, problems.length > 0 ? { problems } : undefined);
     await mark("qa", problems.length > 0 ? { status: "done", finishedAt: new Date().toISOString(), error: problems.join("; ") } : { status: "done", finishedAt: new Date().toISOString() });
-    if (c.autoApprove ?? flag("QA_AUTO_APPROVE")) {
-      // No human gate: the parent gets the game now, problems and all, and the
-      // admins get the problems. A game held for a look that nobody was going
-      // to take in time was a game the parent waited on for hours.
+    const auto = c.autoApprove ?? flag("QA_AUTO_APPROVE");
+    // A clean game may go out on its own anywhere. A game with problems goes
+    // out on its own only where the buyers are the testers: the container's
+    // deliverWithProblems is true on a QA box and nowhere else. Everywhere else
+    // it waits for a person, and the person is told.
+    if (auto && (problems.length === 0 || c.deliverWithProblems)) {
       await audit(c, SYSTEM, "qa:auto-approved", "Game", gameId, problems.length > 0 ? { problems } : undefined);
       await publishGame(c, gameId, SYSTEM);
       if (problems.length > 0) await sendAdminAlert(c, { gameId, kind: "delivered-with-problems", problems });
     } else if (problems.length > 0) {
       await transitionGame(c, gameId, "MANUAL_REVIEW", SYSTEM, { problems });
+      await sendAdminAlert(c, { gameId, kind: "held-for-review", problems });
     }
     await c.db.generationJob.update({ where: { id: job.id }, data: { status: "DONE", currentStep: null } });
   } catch (err) {

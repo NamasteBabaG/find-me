@@ -41,8 +41,14 @@ export interface Container {
   secret: string;
   /** Where a game-ready mail goes when the game has no owner email. Unset means it does not go. */
   emailFallbackTo?: string | null;
-  /** No human gate: every finished game is delivered, and its problems go to the admins instead (QA_AUTO_APPROVE). */
+  /** A finished game with no problems is delivered without a person (QA_AUTO_APPROVE). */
   autoApprove?: boolean;
+  /**
+   * A finished game WITH problems is delivered too, and the admins get the
+   * problems. Only true on a QA box, where the buyers are the testers: the
+   * flag's name says QA, this is what enforces it.
+   */
+  deliverWithProblems?: boolean;
   /** Who is told when a game goes out with problems, or does not go out at all (ADMIN_EMAILS). */
   adminEmails?: string[];
 }
@@ -86,6 +92,7 @@ function build(): Container {
     secret: e.SESSION_SECRET,
     emailFallbackTo: e.EMAIL_FALLBACK_TO ?? null,
     autoApprove: flag("QA_AUTO_APPROVE"),
+    deliverWithProblems: flag("QA_AUTO_APPROVE") && e.APP_ENV === "qa",
     adminEmails: adminEmails(),
   };
 

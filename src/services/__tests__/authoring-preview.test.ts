@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import sharp from "sharp";
 import { afterAll, describe, expect, it } from "vitest";
-import { parseDiffOptions, previewPath, slotOf, writePreview } from "../generation/authoring";
+import { assertSameRun, parseDiffOptions, previewPath, slotOf, writePreview } from "../generation/authoring";
 import type { PatchResult } from "../generation/patch";
 
 /**
@@ -67,5 +67,14 @@ describe("the extraction flags", () => {
     expect(() => parseDiffOptions(["--threshold=soft"])).toThrow(/needs a number/);
     expect(() => parseDiffOptions(["--tone=maybe"])).toThrow(/true or false/);
     expect(parseDiffOptions(["--out=x"], ["out"])).toEqual({});
+  });
+});
+
+describe("resuming a sampling run", () => {
+  it("is refused when the code or the configuration changed, and says which", () => {
+    const run = { commit: "abc1234", configHash: "0123456789abcdef" };
+    expect(() => assertSameRun(run, { ...run })).not.toThrow();
+    expect(() => assertSameRun(run, { ...run, commit: "def5678" })).toThrow(/commit abc1234 → def5678/);
+    expect(() => assertSameRun(run, { ...run, configHash: "fedcba9876543210" })).toThrow(/config 01234567 → fedcba98/);
   });
 });

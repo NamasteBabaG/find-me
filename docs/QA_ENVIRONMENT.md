@@ -179,22 +179,28 @@ Remove-Item Env:RESEND_API_KEY, Env:EMAIL_FALLBACK_TO
 ## No human gate
 
 `QA_AUTO_APPROVE=true` takes the person out of the loop: a finished game is
-delivered the moment it is done, problems and all, and the problems go to the
-admins instead. Right after the parent's "your game is ready" mail, every
+delivered the moment it is done, and the problems go to the admins instead.
+A game with problems goes out on its own **only on a QA box**: the container's
+`deliverWithProblems` is the flag AND `APP_ENV=qa`, so the same flag anywhere
+else delivers a clean game and holds one with problems in `MANUAL_REVIEW`,
+telling the admins. Right after the parent's "your game is ready" mail, every
 address in `ADMIN_EMAILS` gets one of these, each with the way in
 (`/admin/orders/<gameId>`):
 
 | when | subject |
 | --- | --- |
 | the game shipped with problems (a spot fell back to a drawn sprite, a spot the judge could not check, an automated-QA finding) | ⚠️ the game shipped with problems |
+| the game finished with problems outside QA and is waiting for a person (`MANUAL_REVIEW`, nothing was sent) | 🔎 the game is waiting for review |
 | the pipeline crashed (the game is `GENERATION_FAILED`, nothing was sent) | ❌ generation failed |
 | there is no original photo to draw from | 📷 a new photo is needed |
 
 The mail lists the problems, the hiding spots that did not come out with their
 attempts and reasons, and what the game has cost. It is sent at most once per
 game, per kind, per six hours, so a crash that every tick repeats does not
-repeat the mail. A failed alert is logged and audited, never thrown: the
-parent already has the game.
+repeat the mail — and only a mail that actually went out counts, per
+recipient. A mail the provider refused is audited as `admin-alert:<kind>:failed`
+and tried again on the next call and from the cron tick (`retryFailedAdminAlerts`,
+up to a day back); nothing here ever throws: the parent already has the game.
 
 With the flag off, a clean game waits in `QA_PENDING` and a game with problems
 in `MANUAL_REVIEW` until an admin approves it — the launch setting, once a

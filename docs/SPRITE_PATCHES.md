@@ -454,8 +454,14 @@ reproduces the old prompt for a comparison.
   reserves the next call's cost before making it, asks the provider for one
   attempt per cell, stops on a timeout (whose charge is unknown), and marks a
   cell served by another model as not comparable. `--reference=head` sends
-  the head cut from the sheet instead of the whole sheet; `--art-direction`
-  adds a named outfit and action per scene.
+  the head cut from the sheet to the painter instead of the whole sheet — the
+  judge always gets the whole sheet, whatever the painter got, and both hashes
+  are recorded per cell (a verdict is about the render, not about what the
+  judge was shown). `--art-direction` adds a named outfit and action per
+  scene. `--append` resumes a run only if the commit and the config hash
+  match the manifest's (`assertSameRun`); the hash covers the art-direction
+  file's content, the judge model, the boards and every sheet, so old cells
+  never sit under a new run's heading.
 - **`scripts/extraction-matrix.ts`** re-extracts renders that were already
   paid for across the existing knobs and lays the child's region out beside
   the raw render at 2×, with the kept alpha tinted. On the full window the
@@ -469,7 +475,10 @@ reproduces the old prompt for a comparison.
   every tick, so a 2-cent roll plus a 0.26-cent judgement was written as 2.
   The exact figure now lives in `usageJson.ledger` with every attempt's roll,
   judgement, outcome and request id; the column is rounded once from it; a
-  timed-out request is marked `unknownCost`, not zero.
+  timed-out request is marked `unknownCost`, not zero. The provider keeps
+  thousandths of a cent too (`costCentsFrom`): rounding every call to the
+  cent read a 2.42-cent low roll as 2, and eighty of them as 160 cents where
+  the usage said 193.6. An answer without `usage` carries `costUnknown`.
 
 ### What experiment 1 found (6 September 2026, no renders bought)
 
@@ -532,7 +541,11 @@ sitting in the canoe, looking straight ahead along the river.") and
 on four hard spots with two identities (experiment 3): first-roll acceptance
 10/16 → 13/16, the outfit followed in 16 of 16, and the action pulled the
 Great Wall child into the search area (0/4 → 3/4). A head-only reference was
-tried alongside and dropped: it cost one identity every time. The window is
+tried alongside; the judge in that arm was shown the same head cut, so its
+rejections do not separate the painter from the judge, and a blind review of
+the same renders found the identity intact in all sixteen. The full sheet
+stays the default until the arm is re-run with the judge on the full sheet
+(`docs/PATCH_QUALITY_ROUND_2026-09-06.md`, sections 6 and 8). The window is
 4× the child now (`DEFAULT_WINDOW_FACTOR`), from experiment 2.
 
 Occlusion stays a wish in the prompt ("let whatever is naturally in front of

@@ -45,6 +45,8 @@ export type TargetSpriteOutput =
 /** What a provider charged and how, so the real cost model comes from data. */
 export interface GenerationCost {
   costCents: number;
+  /** The provider answered without usage, so the charge is unknown — not zero. */
+  costUnknown?: boolean;
   model: string;
   /** Provider-reported token usage, stored verbatim. */
   usage?: Record<string, number>;

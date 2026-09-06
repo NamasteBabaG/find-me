@@ -146,3 +146,22 @@ export function parseDiffOptions(argv: readonly string[], allow: readonly string
   }
   return options;
 }
+
+/** What identifies a sampling run: the code and the configuration hash. */
+export interface RunIdentity {
+  commit: string;
+  configHash: string;
+}
+
+/**
+ * A resumed run has to be the same run. `--append` used to load the previous
+ * cells and spend and carry on under whatever the command line now said, so a
+ * changed sheet, board list or judge could sit next to old cells under a new
+ * heading. Refuse before anything is written or paid for, and say what differs.
+ */
+export function assertSameRun(prior: RunIdentity, current: RunIdentity): void {
+  const differences: string[] = [];
+  if (prior.commit !== current.commit) differences.push(`commit ${prior.commit} → ${current.commit}`);
+  if (prior.configHash !== current.configHash) differences.push(`config ${prior.configHash.slice(0, 8)} → ${current.configHash.slice(0, 8)}`);
+  if (differences.length) throw new Error(`cannot resume into a different run (${differences.join(", ")}); start a new --out directory`);
+}

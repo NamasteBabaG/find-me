@@ -39,7 +39,7 @@ import { OpenAiAvatarProvider } from "../src/infra/generation/openai";
 import { OpenAiPatchJudge } from "../src/infra/generation/judge";
 import { faceWindow } from "../src/infra/generation/avatar-cut";
 import { DEFAULT_WINDOW_FACTOR, PROMPT_VERSION, childProblem, diffToPatch, paintMask } from "../src/services/generation/patch";
-import { cropOf, slotOf, writePatch, writePreview } from "../src/services/generation/authoring";
+import { assertSameRun, cropOf, slotOf, writePatch, writePreview } from "../src/services/generation/authoring";
 import { envKey } from "./slot-patch";
 
 const ROOT = process.cwd();
@@ -93,31 +93,60 @@ async function main() {
   const artDirectionPath = flag("art-direction", "");
   const artDirection: Record<string, ArtDirection> = artDirectionPath ? (JSON.parse(readFileSync(path.resolve(ROOT, artDirectionPath), "utf8")) as Record<string, ArtDirection>) : {};
   const tries = Number(flag("tries", "1"));
+  const judgeModel = flag("judge-model", "gpt-4o-mini");
   mkdirSync(outDir, { recursive: true });
 
   const provider = new OpenAiAvatarProvider(key, { model, quality, patchQuality: quality, perMinute: Number(flag("rpm", "5")), tries });
-  const judge = judgeOn ? new OpenAiPatchJudge(key, { model: flag("judge-model", "gpt-4o-mini") }) : null;
+  const judge = judgeOn ? new OpenAiPatchJudge(key, { model: judgeModel }) : null;
   const commit = execSync("git rev-parse --short HEAD", { cwd: ROOT }).toString().trim();
-  const config = { promptVersion: PROMPT_VERSION, quality, model, variant, windowFactor, units, reference: referenceKind, artDirection: artDirectionPath || null, tries, judge: judgeOn, arm: flag("arm", ""), repeat: Number(flag("repeat", "1")) };
+  const sheetHashes = Object.fromEntries(sheets.map((f) => [path.parse(f).name, sha256(readFileSync(path.join(sheetsDir, f)))]));
+  const config = {
+    promptVersion: PROMPT_VERSION,
+    quality,
+    model,
+    judgeModel: judgeOn ? judgeModel : null,
+    variant,
+    boards,
+    windowFactor,
+    units,
+    reference: referenceKind,
+    artDirection: artDirectionPath || null,
+    artDirectionHash: artDirectionPath ? sha256(readFileSync(path.resolve(ROOT, artDirectionPath))) : null,
+    sheetHashes,
+    tries,
+    judge: judgeOn,
+    arm: flag("arm", ""),
+    repeat: Number(flag("repeat", "1")),
+  };
+  // Everything that shapes a cell is in the hash, so a resumed run cannot
+  // quietly become a different run.
   const configHash = sha256(Buffer.from(JSON.stringify(config)));
 
   const cells: Array<Record<string, unknown>> = [];
   let spent = 0;
   let stopped: string | null = null;
   const manifestPath = path.join(outDir, "manifest.json");
-  // Resume: a cell that already has its json is done.
+  let startedAt = new Date().toISOString();
+  let runId = createHash("sha256").update(`${outDir}:${startedAt}:${Math.random()}`).digest("hex").slice(0, 12);
+  const artHashes: Record<string, string> = {};
+  const referenceHashes: Record<string, { generation: string; judge: string }> = {};
+  // Resume: a cell that already has its json is done — provided this is the
+  // same run. A different commit or config refuses before anything is written
+  // or paid for; old cells never end up under a new run's heading.
   if (has("append") && existsSync(manifestPath)) {
-    const prior = JSON.parse(readFileSync(manifestPath, "utf8")) as { cells?: Array<Record<string, unknown>>; spentCents?: number };
+    const prior = JSON.parse(readFileSync(manifestPath, "utf8")) as { commit?: string; configHash?: string; runId?: string; startedAt?: string; cells?: Array<Record<string, unknown>>; spentCents?: number; artHashes?: Record<string, string>; referenceHashes?: Record<string, { generation: string; judge: string }> };
+    assertSameRun({ commit: prior.commit ?? "", configHash: prior.configHash ?? "" }, { commit, configHash });
     cells.push(...(prior.cells ?? []));
     spent = prior.spentCents ?? 0;
+    startedAt = prior.startedAt ?? startedAt;
+    runId = prior.runId ?? runId;
+    Object.assign(artHashes, prior.artHashes ?? {});
+    Object.assign(referenceHashes, prior.referenceHashes ?? {});
   }
-  const artHashes: Record<string, string> = {};
-  const referenceHashes: Record<string, string> = {};
-  const startedAt = new Date().toISOString();
   const write = () =>
     writeFileSync(
       manifestPath,
-      JSON.stringify({ commit, configHash, config, budgetCents: budget, spentCents: Math.round(spent * 100) / 100, stopped, startedAt, updatedAt: new Date().toISOString(), artHashes, referenceHashes, cells }, null, 2),
+      JSON.stringify({ runId, commit, configHash, config, budgetCents: budget, spentCents: Math.round(spent * 100) / 100, stopped, startedAt, updatedAt: new Date().toISOString(), artHashes, referenceHashes, cells }, null, 2),
     );
 
   const reserve = (RESERVE_CENTS[quality] ?? RESERVE_CENTS.high!) + (judge ? JUDGE_RESERVE_CENTS : 0);
@@ -127,9 +156,16 @@ async function main() {
     const sheet = readFileSync(path.join(sheetsDir, sheetFile));
     const identityDir = path.join(outDir, identity);
     mkdirSync(identityDir, { recursive: true });
-    const reference = referenceKind === "head" ? await headReference(sheet) : sheet;
-    writeFileSync(path.join(identityDir, `reference.${referenceKind}.png`), reference);
-    referenceHashes[identity] = sha256(reference);
+    // Two references, on purpose: what the painter is shown may vary by arm;
+    // what the judge compares against is the whole sheet in every arm, so a
+    // verdict is about the render, not about the reference the judge got.
+    const generationReference = referenceKind === "head" ? await headReference(sheet) : sheet;
+    const judgeReference = sheet;
+    for (const [name, buf] of [[`reference.generation.png`, generationReference], [`reference.judge.png`, judgeReference]] as const) {
+      const file = path.join(identityDir, name);
+      if (!existsSync(file)) writeFileSync(file, buf);
+    }
+    referenceHashes[identity] = { generation: sha256(generationReference), judge: sha256(judgeReference) };
     for (const board of boards) {
       const [slug, targetId] = board.split(":");
       if (!slug || !targetId) throw new Error(`--boards entries are slug:target, got "${board}"`);
@@ -165,7 +201,8 @@ async function main() {
         promptChildPx: c.promptChildPx,
         units,
         artHash: artHashes[slug],
-        referenceHash: referenceHashes[identity],
+        generationReferenceHash: referenceHashes[identity]!.generation,
+        judgeReferenceHash: referenceHashes[identity]!.judge,
         direction,
         promptVersion: PROMPT_VERSION,
         requestedModel: model,
@@ -176,7 +213,7 @@ async function main() {
       const started = Date.now();
       let judgeCost = 0;
       try {
-        const edit = await provider.editSlotCrop({ crop, paintMask: mask, reference, prompt: c.prompt, label: cellId, quality });
+        const edit = await provider.editSlotCrop({ crop, paintMask: mask, reference: generationReference, prompt: c.prompt, label: cellId, quality });
         spent += edit.costCents;
         Object.assign(cell, {
           model: edit.model,
@@ -211,7 +248,7 @@ async function main() {
         }
         let verdictText = "unjudged";
         if (!shape && judge) {
-          const verdict = await judge.judge({ patchPng: patch.webp, reference, childName: identity, label: cellId });
+          const verdict = await judge.judge({ patchPng: patch.webp, reference: judgeReference, childName: identity, label: cellId });
           spent += verdict.costCents;
           judgeCost = verdict.costCents;
           cell.judge = { model: verdict.model ?? null, verdict: verdict.verdict, reason: verdict.reason, costCents: verdict.costCents };

@@ -60,10 +60,11 @@ export function gameReadyEmail(input: { to: string; childName: string; playLink:
   };
 }
 
-export type AdminAlertKind = "delivered-with-problems" | "generation-failed" | "needs-new-photo";
+export type AdminAlertKind = "delivered-with-problems" | "held-for-review" | "generation-failed" | "needs-new-photo";
 
 const ALERT_HEAD: Record<AdminAlertKind, { subject: string; lead: string }> = {
   "delivered-with-problems": { subject: "⚠️ המשחק של {name} נשלח עם בעיות", lead: "המשחק נשלח להורה בכל מקרה. אלה הבעיות שנמצאו לפני השליחה:" },
+  "held-for-review": { subject: "🔎 המשחק של {name} ממתין לבדיקה", lead: "המשחק סיים עם בעיות ולא נשלח להורה: הוא מחכה לאדם. לפתוח באדמין, להסתכל על המחבואים, ולאשר או להריץ מחדש." },
   "generation-failed": { subject: "❌ יצירת המשחק של {name} נכשלה", lead: "הצינור נעצר בשגיאה והמשחק לא נשלח. לפתוח באדמין, לקרוא את השגיאה ולהריץ מחדש." },
   "needs-new-photo": { subject: "📷 המשחק של {name} צריך תמונה חדשה", lead: "אין תמונת מקור לצייר ממנה. ההורה רואה בקשה לתמונה חדשה בדף ההמתנה." },
 };
