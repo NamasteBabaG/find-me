@@ -25,9 +25,9 @@ describe("packages", () => {
   });
 
   it("prices the ladder as briefed", () => {
-    expect(formatMoney(priceFor("ONE_WORLD", "ILS"), "ILS", "he")).toBe("39 ₪");
-    expect(formatMoney(priceFor("TWO_WORLDS", "ILS"), "ILS", "he")).toBe("69 ₪");
-    expect(formatMoney(priceFor("ALL_WORLDS", "ILS"), "ILS", "he")).toBe("99 ₪");
+    expect(formatMoney(priceFor("ONE_WORLD", "ILS"), "ILS", "he")).toBe("59 ₪");
+    expect(formatMoney(priceFor("TWO_WORLDS", "ILS"), "ILS", "he")).toBe("109 ₪");
+    expect(formatMoney(priceFor("ALL_WORLDS", "ILS"), "ILS", "he")).toBe("159 ₪");
     expect(formatMoney(priceFor("ONE_WORLD", "USD"), "USD")).toBe("$9.90");
     expect(formatMoney(priceFor("ALL_WORLDS", "USD"), "USD")).toBe("$29.90");
   });
@@ -59,9 +59,9 @@ describe("upgrades", () => {
   });
 
   it("charges the difference, in both currencies", () => {
-    expect(formatMoney(upgradePrice(1, 2, "ILS")!, "ILS", "he")).toBe("30 ₪");
-    expect(formatMoney(upgradePrice(1, 3, "ILS")!, "ILS", "he")).toBe("60 ₪");
-    expect(formatMoney(upgradePrice(2, 3, "ILS")!, "ILS", "he")).toBe("30 ₪");
+    expect(formatMoney(upgradePrice(1, 2, "ILS")!, "ILS", "he")).toBe("50 ₪");
+    expect(formatMoney(upgradePrice(1, 3, "ILS")!, "ILS", "he")).toBe("100 ₪");
+    expect(formatMoney(upgradePrice(2, 3, "ILS")!, "ILS", "he")).toBe("50 ₪");
     expect(formatMoney(upgradePrice(1, 2, "USD")!, "USD")).toBe("$10");
   });
 
@@ -74,12 +74,12 @@ describe("upgrades", () => {
   it("offers one more world or all the rest, and nothing once everything is owned", () => {
     const one = upgradeOffers(1, 3, "ILS");
     expect(one.map((o) => [o.addsWorlds, o.price])).toEqual([
-      [1, 3000],
-      [2, 6000],
+      [1, 5000],
+      [2, 10000],
     ]);
     // With two owned, one more IS all the rest: offer it once, not twice.
     const two = upgradeOffers(2, 3, "ILS");
-    expect(two.map((o) => [o.addsWorlds, o.price])).toEqual([[1, 3000]]);
+    expect(two.map((o) => [o.addsWorlds, o.price])).toEqual([[1, 5000]]);
     expect(upgradeOffers(3, 3, "ILS")).toEqual([]);
     // A world that does not exist yet is never offered.
     expect(upgradeOffers(1, 1, "ILS")).toEqual([]);

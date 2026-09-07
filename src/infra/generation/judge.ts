@@ -1,7 +1,7 @@
 import sharp from "sharp";
 import { createHash } from "node:crypto";
 import type { JudgeAttempt, PatchJudge, PatchJudgement, PatchJudgeInput } from "./types";
-import { BOARD_JUDGE_VERSION, BOARD_JUDGE_MODEL, BOARD_FAST_JUDGE_MODEL, BOARD_JUDGE_MAX_TOKENS, boardJudgePrompt, parseBoardVerdict } from "./board-verdict";
+import { BOARD_JUDGE_VERSION, BOARD_JUDGE_MODEL, BOARD_JUDGE_EFFORT, BOARD_FAST_JUDGE_MODEL, BOARD_JUDGE_MAX_TOKENS, boardJudgePrompt, parseBoardVerdict } from "./board-verdict";
 
 /**
  * Production: inspect a final on-board composite with two complementary reviews.
@@ -98,6 +98,7 @@ export class OpenAiPatchJudge implements PatchJudge {
     const contextual = Boolean(input.boardCrop);
     const modelRequested = contextModel ?? this.model;
     const reasoning = modelRequested === BOARD_JUDGE_MODEL;
+    const requestTimeoutMs = reasoning ? Math.max(this.timeoutMs, 60_000) : this.timeoutMs;
     const images = input.boardCrop
       ? [await sharp(input.boardCrop).resize(768, 768, { fit: "inside" }).png().toBuffer(), patch, sheet]
       : [patch, sheet];
@@ -122,23 +123,25 @@ export class OpenAiPatchJudge implements PatchJudge {
           headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({
             model: modelRequested,
-            ...(reasoning ? { max_completion_tokens: BOARD_JUDGE_MAX_TOKENS, reasoning_effort: "medium" } : { max_tokens: contextual ? 320 : MAX_OUTPUT_TOKENS, temperature: 0 }),
+            ...(reasoning ? { max_completion_tokens: BOARD_JUDGE_MAX_TOKENS, reasoning_effort: BOARD_JUDGE_EFFORT, service_tier: "default", store: false } : { max_tokens: contextual ? 320 : MAX_OUTPUT_TOKENS, temperature: 0 }),
             response_format: { type: "json_object" },
             messages: [{ role: "user", content: [
               { type: "text", text: prompt },
               ...images.map(b => ({ type: "image_url", image_url: { url: `data:image/png;base64,${b.toString("base64")}`, ...(contextual ? { detail: "high" } : {}) } })),
             ] }],
           }),
-          signal: AbortSignal.timeout(this.timeoutMs),
+          // 150s image call + 45s precheck + 60s Sol + 30s slice + 15s I/O
+          // fits the 300s host ceiling. A timeout holds; never bypass review.
+          signal: AbortSignal.timeout(requestTimeoutMs),
         });
       } catch (err) {
-        lastError = err instanceof Error && err.name === "TimeoutError" ? `timed out after ${Math.round(this.timeoutMs / 1000)}s` : "judge transport failed";
+        lastError = err instanceof Error && err.name === "TimeoutError" ? `timed out after ${Math.round(requestTimeoutMs / 1000)}s` : "judge transport failed";
         attempts.push({ requestId: null, model: null, usage: null, costCents: 0, costUnknown: true, status: null });
         // A lost answer may have been charged; another call cannot make it known.
         break;
       }
       const requestId = res.headers.get("x-request-id");
-      let json: { model?: string; choices?: Array<{ message?: { content?: string } }>; usage?: Record<string, unknown>; error?: { message?: string } };
+      let json: { model?: string; service_tier?: string; choices?: Array<{ finish_reason?: string; message?: { content?: string } }>; usage?: Record<string, unknown>; error?: { message?: string } };
       try {
         const raw: unknown = await res.json();
         if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("invalid response object");
@@ -160,6 +163,10 @@ export class OpenAiPatchJudge implements PatchJudge {
         continue;
       }
       if (contextual && (json.model !== modelRequested || charge.costUnknown)) return result("unknown", "judge model or usage could not be verified");
+      if (reasoning && (json.choices?.[0]?.finish_reason !== "stop" || Number(json.usage?.completion_tokens) > BOARD_JUDGE_MAX_TOKENS || (json.service_tier && json.service_tier !== "default"))) {
+        if (json.service_tier && json.service_tier !== "default") attempts.at(-1)!.costUnknown = true;
+        return result("unknown", "judge completion, output cap or service tier could not be verified");
+      }
       const parsed = contextual ? parseBoardVerdict(content) : parseVerdict(content);
       if (parsed) {
         if ("checks" in parsed) checks = parsed.checks;
@@ -203,7 +210,9 @@ function parseVerdict(content: string | undefined): { verdict: "ok" | "bad"; rea
  * Cached-token discounts are not assumed; this is not an invoice total.
  */
 export function judgeCharge(model: string, usage: Record<string, unknown> | undefined): { costCents: number; costUnknown: boolean } {
-  const rates = model === BOARD_JUDGE_MODEL ? [250, 1500] : /^gpt-4o-mini(?:-\d{4}-\d{2}-\d{2})?$/.test(model) ? [15, 60] : /^gpt-4o(?:-\d{4}-\d{2}-\d{2})?$/.test(model) ? [250, 1000] : null;
+  // Keep historical 5.4 accounting stable. For Sol, count cache writes at the
+  // upper input rate, without assuming a discount; usage remains available.
+  const rates = model === "gpt-5.6-sol" ? [500, 2000] : model === "gpt-5.4-2026-03-05" ? [250, 1500] : /^gpt-4o-mini(?:-\d{4}-\d{2}-\d{2})?$/.test(model) ? [15, 60] : /^gpt-4o(?:-\d{4}-\d{2}-\d{2})?$/.test(model) ? [250, 1000] : null;
   const input = usage?.prompt_tokens;
   const output = usage?.completion_tokens;
   if (!rates || typeof input !== "number" || !Number.isInteger(input) || input < 0 || typeof output !== "number" || !Number.isInteger(output) || output < 0) return { costCents: 0, costUnknown: true };

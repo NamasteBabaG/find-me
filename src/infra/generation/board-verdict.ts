@@ -1,11 +1,12 @@
 import type { PatchJudgement } from "./types";
 import { childAgeDirection } from "@/domain/child-appearance";
 
-export const BOARD_JUDGE_VERSION = "board-quality-v4-age-anatomy";
-export const BOARD_JUDGE_MODEL = "gpt-5.4-2026-03-05";
+export const BOARD_JUDGE_VERSION = "board-quality-v5-sol-high";
+export const BOARD_JUDGE_MODEL = "gpt-5.6-sol";
+export const BOARD_JUDGE_EFFORT = "high" as const;
 export const BOARD_FAST_JUDGE_MODEL = "gpt-4o-2024-11-20";
 // Includes reasoning tokens; a truncated answer is unknown, never an approval.
-export const BOARD_JUDGE_MAX_TOKENS = 4096;
+export const BOARD_JUDGE_MAX_TOKENS = 8000;
 export const BOARD_CHECKS = ["identity", "faceIntegrity", "bodyPlacement", "ageProportions", "anatomy", "style"] as const;
 export type BoardChecks = Record<(typeof BOARD_CHECKS)[number], "pass" | "fail" | "uncertain">;
 
@@ -43,14 +44,16 @@ export function parseBoardVerdict(content: string | undefined): Pick<PatchJudgem
   } catch { return null; }
 }
 
-/** 768px board + two 512px images, high detail; standard rates, no cache discount.
- * Conservative 768px allowance for EACH image, 32px patches with 1.2 multiplier.
+/** 768px board + two 512px images, high detail; upper input rates, no discount.
+ * Sol allowance deliberately exceeds the measured 12k-input pilot bound.
  * https://developers.openai.com/api/docs/guides/images-vision
- * https://developers.openai.com/api/docs/models/gpt-5.4 (checked 2026-09-06).
+ * https://developers.openai.com/api/docs/models/gpt-5.6-sol (checked 2026-09-07).
  */
 export function boardJudgeReserveCents(childName: string): number {
   const text = Buffer.byteLength(boardJudgePrompt(childName), "utf8") + 512;
-  const reasoning = ((3 * Math.ceil(24 * 24 * 1.2) + text) * 250 + BOARD_JUDGE_MAX_TOKENS * 1500) / 1_000_000;
+  // Sol: reserve the same 12k image/input allowance as the measured pilot,
+  // or more for unusually long names. Cache writes ($5/M) are the upper rate.
+  const reasoning = (Math.max(12000, 3 * 4096 + text) * 500 + BOARD_JUDGE_MAX_TOKENS * 2000) / 1_000_000;
   const fast = ((3 * (85 + 4 * 170) + text) * 250 + 320 * 1000) / 1_000_000;
   return reasoning + fast;
 }

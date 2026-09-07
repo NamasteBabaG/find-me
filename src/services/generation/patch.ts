@@ -532,6 +532,8 @@ export async function diffToPatch(input: {
   art: Size;
   slot: SlotPoint;
   options?: DiffOptions;
+  /** Experimental semantic outline. Never inferred from colour differences. */
+  alphaMask?: Buffer;
 }): Promise<PatchResult> {
   const { ctx, art, slot } = input;
   const o = input.options ?? {};
@@ -593,6 +595,12 @@ export async function diffToPatch(input: {
   // opaque and keeps a narrow band of anti-aliasing at the rim.
   if (o.solidify !== false) cleaned = await step(cleaned, (s) => s.linear(255 / 64, -(255 / 64) * 40));
 
+  if (input.alphaMask) {
+    const meta = await sharp(input.alphaMask).metadata();
+    if (meta.width !== w || meta.height !== h) throw new Error("Semantic mask dimensions differ from crop");
+    cleaned = await sharp(input.alphaMask).extractChannel(0).raw().toBuffer();
+  }
+
   // Trim to what is left (+ a small margin) so the patch stays small.
   // Count the pieces on the finished alpha, not on the pre-feather mask: a
   // child cut in two by a railing is joined back together by the feather, and
@@ -610,7 +618,7 @@ export async function diffToPatch(input: {
   const crop = { left, top, width: Math.min(w, box.hitRect.x + box.hitRect.w + m) - left, height: Math.min(h, box.hitRect.y + box.hitRect.h + m) - top };
 
   // Only now, with her outline known: the child's own pixels, toned to the board.
-  const toned = o.tone === false ? matched : toneMatch(matched, original, cleaned, allow, n);
+  const toned = input.alphaMask ? edited : o.tone === false ? matched : toneMatch(matched, original, cleaned, allow, n);
   const rgba = await sharp(toned, { raw: { width: w, height: h, channels: 3 } }).joinChannel(cleaned, raw1).png().toBuffer();
   const webp = await sharp(rgba).extract(crop).webp({ quality: 92, alphaQuality: 100 }).toBuffer();
 
