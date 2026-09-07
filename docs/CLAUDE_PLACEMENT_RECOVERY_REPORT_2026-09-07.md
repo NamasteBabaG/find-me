@@ -207,3 +207,61 @@ wire changed, so the first world is rendered again under v8 in a new run.
 - A render that raises its occluder is not rejected automatically (numbers only).
 - The 27 spots under v8 (run pending), B variants, a second identity, medium quality.
 - The tick's deadline path on Vercel itself (unit-tested with a mock clock only).
+
+
+---
+
+# Round 3 — two QA games, and what the first world costs (7 September, night)
+
+## What changed between the games (commits 80e6faf, 8b292e8, 94bcb45)
+
+- Rolls at `medium` (196 → 1,756 output tokens; small heads stop coming out flat), the matte at `low`
+  (`GENERATION_MATTE_QUALITY`).
+- Four hides authored on the board itself (`scripts/author-hides.ts`): giza/stones, paris/bakery,
+  paris/carousel, sydney/ferry — the occluder traced as a polygon, its pixels copied out of the board
+  into the scene's foreground layer, the slot `behindForeground`, the painter asked for a whole child
+  in the open. Seven spots that were hard from the root (bench, roots, canoe, tokyo stall, ice, spices,
+  rocks) went back to their version-2 places (the 6 September game: 27/27 for $1.58). Version 3
+  archived. Asking gpt-image-2 to cut an object out of the board does not work (it re-composes it as a
+  sticker; 18¢, `scripts/cut-occluders.ts`).
+- `GENERATION_CONCURRENCY` (4 in QA), `GENERATION_WORLD_CENTS` (1500 in QA), attempts per spot 6 → 3
+  (`MAX_ATTEMPTS_PER_SPOT`, from the next game).
+
+## Game 1 — `game_2cmngpnf7ipan9gqibt3` (יובל, age 8; version-3 scenes; medium; one spot at a time)
+
+Stopped by Guy after 30 minutes: 3 spots done, then 5, 309¢, one attempt every two minutes. Parked in
+MANUAL_REVIEW by SQL with an audit row so it does not resume.
+
+## Game 2 — `game_hbdy0m0ihjv1faritkh0` (יובל, age 8; version-4 scenes; medium; four at a time)
+
+Finished in ~70 minutes including two stalls; held for review with 20 of 27 spots painted, 987¢.
+
+| spot | attempts | outcome |
+|---|---|---|
+| first roll accepted (10) | 1 | pretzel, macaw, roots, bakery, carpets, camel, crossing, greatwall lanterns, penguins, sledge |
+| accepted on a retry (10) | 2–5 | bench 2, awning 2, stall 2, tower 2, taxi 3, marrakech lanterns 3, dragon 3, ferry 3, carousel 5, tokyo stall 5 |
+| out of attempts (7) | 3–6 | canoe 6, spices 6, stones 6, blossom 6, rocks 5, surfboards 5, ice 3 |
+
+Last judge failure on the seven: bodyPlacement (spices, blossom, rocks), placement+anatomy (stones),
+identity+age (surfboards), style (ice), canoe alternated identity with the extraction guard catching a
+pre-existing swimmer (55%, 73%). First-roll acceptance 10/27 = 37%, the same as under version 3 at low
+(11/27); the judge is now the dominant cost: about six of every ten first rolls are rejected, and Guy
+judged several of the rejected boards acceptable by eye (spices, stones under version 3).
+
+The hides: bakery landed first roll; carousel and ferry landed on retries; stones failed six times
+under the fast judge ("torso ends abruptly in open space") after passing placement and anatomy with
+Noa in the harness — the composite the judge saw is in the game's private evidence, not on disk here.
+
+## Two stalls, one cause
+
+`GENERATION_DAILY_CENTS` counts today's spend twice (asset rows plus spot rows, by design "erring
+high"): 371 + 677 = 1,048 against 1,000 at 20:38, then 714 + 1,296 = 2,010 against 2,000 at 21:23. Each
+time the job sat QUEUED with no error. Raised to 4,000 for the day; documented in memory.
+
+## Honest assessment
+
+The extraction is solved and stayed solved across two identities (2 extraction failures in 27 spots
+under Noa, the canoe's two under Yuval were real bystanders). The cost is now the render–judge loop:
+~$10 per world at medium with three rolls a spot. The three-attempt cap halves the worst case; the
+real lever is deciding, with Guy's eye, which judge rejections are true (a labelled set of rejected
+boards), because the judge rejects boards he accepts.
