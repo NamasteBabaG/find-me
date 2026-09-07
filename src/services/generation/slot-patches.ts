@@ -6,11 +6,12 @@ import { BODY_TEMPLATES } from "../../../content/body-templates";
 import type { Container } from "../container";
 import { storeAsset } from "../asset.service";
 import type { PatchJudgement } from "@/infra/generation/types";
-import { childProblem, diffToPatch, modelSpaceHeight, paintMask, slotContext, expressionFor, slotPrompt, PROMPT_VERSION, EXTRACTION_VERSION } from "./patch";
+import { childProblem, matteHint, modelSpaceHeight, paintMask, slotContext, expressionFor, slotPrompt, PROMPT_VERSION } from "./patch";
+import { extractChild } from "./extract";
 import { loadSceneArt } from "./scene-art";
 import { boardComposite } from "./board-composite";
 import { BOARD_JUDGE_VERSION, BOARD_CHECKS } from "@/infra/generation/board-verdict";
-import { SLOT_WIRE_VERSION } from "@/infra/generation/openai";
+import { MATTE_WIRE_VERSION, SLOT_WIRE_VERSION } from "@/infra/generation/openai";
 
 /**
  * Generating the hiding spots of one world for one child.
@@ -177,14 +178,35 @@ export async function generateSlotPatch(
         buffer: raw, mimeType: "image/png", provider: c.avatars.id,
         providerRequestId: edit.providerRequestId, costCents: 0,
       });
-      Object.assign(currentAttempt, { evidenceAssetId: evidence.id, rawHash: hash(raw), fittedHash: hash(edit.png), cropHash: hash(crop), referenceHash: hash(input.reference), sceneHash: hash(Buffer.from(JSON.stringify(scene))), extractionVersion: EXTRACTION_VERSION, wireVersion: SLOT_WIRE_VERSION, promptSent: edit.promptSent ?? prompt });
+      Object.assign(currentAttempt, { evidenceAssetId: evidence.id, rawHash: hash(raw), fittedHash: hash(edit.png), cropHash: hash(crop), referenceHash: hash(input.reference), sceneHash: hash(Buffer.from(JSON.stringify(scene))), wireVersion: SLOT_WIRE_VERSION, promptSent: edit.promptSent ?? prompt });
       // Link before processing/judging: even an interrupted extraction remains
       // discoverable by privacy deletion, and its known render charge survives.
       await c.db.targetVariantAsset.update({ where: { id: row.id }, data: {
         usageJson: JSON.stringify(withLedger(usage, ledger, spent, attemptLog, ledger.unknownCost)),
         costCents: Math.round(ledger.exactCents + spent),
       } });
-      const patch = await diffToPatch({ originalCrop: crop, editedCrop: edit.png, ctx, art, slot });
+      // The child is cut out of the render by the provider's own matte when it
+      // has one (pass two), and by the colour difference otherwise. Pass two is
+      // a paid call: charged, checkpointed and kept like the roll itself.
+      const extracted = await extractChild({ provider: c.avatars, originalCrop: crop, editedCrop: edit.png, ctx, art, slot, hint: matteHint(slot), label, quality: input.quality });
+      const patch = extracted.patch;
+      Object.assign(currentAttempt, { extraction: extracted.method, extractionVersion: extracted.version, diffLargest: extracted.diff.largest });
+      if (extracted.matte) {
+        const matte = extracted.matte;
+        spent += matte.costCents;
+        if (matte.costUnknown) ledger.unknownCost = true;
+        elapsed += matte.durationMs ?? 0;
+        const matteEvidence = await storeAsset(c, {
+          ownerId: input.ownerId, type: "PATCH_EVIDENCE", visibility: "PRIVATE",
+          buffer: matte.rawPng ?? matte.png, mimeType: "image/png", provider: c.avatars.id,
+          providerRequestId: matte.providerRequestId, costCents: 0,
+        });
+        Object.assign(currentAttempt, { matteCents: matte.costCents, matteRequestId: matte.providerRequestId ?? null, matteEvidenceAssetId: matteEvidence.id, matteHash: hash(matte.png), matteWireVersion: MATTE_WIRE_VERSION, mattePromptSent: matte.promptSent });
+        await c.db.targetVariantAsset.update({ where: { id: row.id }, data: {
+          usageJson: JSON.stringify(withLedger(usage, ledger, spent, attemptLog, ledger.unknownCost)),
+          costCents: Math.round(ledger.exactCents + spent),
+        } });
+      }
       // Store WHY a roll was rejected, not a generic summary. "too small",
       // "wider than tall" and "painted somewhere else" need different fixes, and
       // the stored reason is the only way to tell them apart afterwards.
@@ -325,6 +347,11 @@ interface LedgerAttempt {
   requestId: string | null;
   outcome: string;
   evidenceAssetId?: string;
+  /** How the child was cut out of the render, and what pass two cost. */
+  extraction?: "matte" | "diff";
+  matteCents?: number;
+  matteRequestId?: string | null;
+  matteEvidenceAssetId?: string;
 }
 
 const hash = (b: Buffer) => createHash("sha256").update(b).digest("hex");

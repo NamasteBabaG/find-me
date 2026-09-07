@@ -7,6 +7,7 @@ import { demoPatchCoverage } from "../demo";
 import { loadSceneArt, clearSceneArtCache } from "../generation/scene-art";
 import release from "../../../content/scenes/releases/refresh-20260907.json";
 import archive from "../../../content/scenes/releases/pre-refresh-20260907.json";
+import prePlacement from "../../../content/scenes/releases/pre-placement-20260907.json";
 
 describe("new art must not replace an old game's geometry or image", () => {
   it("keeps all 27 previous definitions and selects an explicit version", () => {
@@ -14,7 +15,13 @@ describe("new art must not replace an old game's geometry or image", () => {
     for (const row of release.boards) {
       const old = sceneBySlug(row.slug, row.previousVersion), current = sceneBySlug(row.slug);
       expect(old.art.base).toBe(archive.find(a => a.slug === row.slug)!.art.base);
-      expect(old.version).toBe(1); expect(current.version).toBe(2);
+      expect(old.version).toBe(1);
+      // The refresh made version 2 of every board; the first world's nine boards went on to version 3
+      // when their hiding spots were re-planned (same art), and version 2 stays addressable for games pinned to it.
+      const rePlanned = prePlacement.some(p => p.slug === row.slug);
+      expect(current.version).toBe(rePlanned ? 3 : 2);
+      const v2 = sceneBySlug(row.slug, 2);
+      expect(v2.version).toBe(2); expect(v2.art.base).toBe(row.base);
       expect(current.art.base).toBe(row.base); expect(current.art.foreground).toBeUndefined();
       for (const file of [old.art.base, current.art.base, current.art.thumbnail]) expect(existsSync(path.join(process.cwd(), "public", file))).toBe(true);
       const bytes = readFileSync(path.join(process.cwd(), "public", current.art.base));

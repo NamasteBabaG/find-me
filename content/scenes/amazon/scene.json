@@ -10,7 +10,7 @@
     "he": "נהר ירוק, קאנו מעץ ותוכי רועש מאוד."
   },
   "wardrobe": "a thin light-green shirt and beige shorts",
-  "version": 2,
+  "version": 3,
   "active": true,
   "artStatus": "final",
   "art": {
@@ -59,19 +59,25 @@
       "slots": [
         {
           "id": "amazon_canoe_a",
-          "x": 0.7,
-          "y": 0.64,
-          "scale": 0.075,
+          "x": 0.7195,
+          "y": 0.724,
+          "scale": 0.125,
           "hintZone": {
-            "x": 0.7,
-            "y": 0.625,
+            "x": 0.7195,
+            "y": 0.709,
             "r": 0.075
           },
           "hintText": {
             "en": "Look by the canoes on the river.",
             "he": "חפשו ליד הקאנו על הנהר."
           },
-          "layer": "front"
+          "layer": "front",
+          "placement": {
+            "pose": "swimming",
+            "support": "The support point is the visible waterline at the child's mid-torso; the hips, legs, and feet continue naturally underwater.",
+            "occlusion": "Only the lower body is naturally submerged by visible river water; the face and upper torso remain intact.",
+            "instructions": "Show the child swimming upright in the open water between the middle and foreground canoes, with head, shoulders, upper torso, and arms above water. Use childlike proportions and a head size similar to children in the nearer canoe."
+          }
         },
         {
           "id": "amazon_canoe_b",
@@ -122,19 +128,25 @@
       "slots": [
         {
           "id": "amazon_macaw_a",
-          "x": 0.265,
-          "y": 0.455,
-          "scale": 0.058,
+          "x": 0.214,
+          "y": 0.3335,
+          "scale": 0.09,
           "hintZone": {
-            "x": 0.265,
-            "y": 0.44,
+            "x": 0.214,
+            "y": 0.3185,
             "r": 0.075
           },
           "hintText": {
             "en": "Look by the macaws on the branch.",
             "he": "חפשו ליד התוכים על הענף."
           },
-          "layer": "front"
+          "layer": "front",
+          "placement": {
+            "pose": "seated",
+            "support": "The support point is the top of the thick horizontal branch under the child's hips.",
+            "occlusion": "None; the branch supports the child from behind and does not cut across the face or torso.",
+            "instructions": "Seat the child side-saddle in the gap between the yellow-green and blue macaws. Keep the face in the clear foliage gap, with knees bent and both shoes hanging just below the branch. Match the apparent scale of the nearby child beneath the branch."
+          }
         },
         {
           "id": "amazon_macaw_b",
@@ -185,19 +197,25 @@
       "slots": [
         {
           "id": "amazon_roots_a",
-          "x": 0.155,
-          "y": 0.645,
-          "scale": 0.078,
+          "x": 0.2105,
+          "y": 0.653,
+          "scale": 0.116,
           "hintZone": {
-            "x": 0.155,
-            "y": 0.63,
+            "x": 0.2105,
+            "y": 0.638,
             "r": 0.075
           },
           "hintText": {
             "en": "Look between the big roots.",
             "he": "חפשו בין השורשים הגדולים."
           },
-          "layer": "front"
+          "layer": "front",
+          "placement": {
+            "pose": "peeking",
+            "support": "The support point marks the child's hidden feet on the root-floor ledge behind the foreground root.",
+            "occlusion": "The pictured diagonal root hides the lower chest, waist, legs, and feet; the head and face remain fully visible above it.",
+            "instructions": "Place the child upright in the dark opening among the giant roots, leaning slightly into view with head, shoulders, and one hand visible. Match the scale of the nearby children hiding in the root system. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown."
+          }
         },
         {
           "id": "amazon_roots_b",

@@ -39,8 +39,10 @@ import { OpenAiAvatarProvider } from "../src/infra/generation/openai";
 import { IMAGE_EDIT_RESERVE_CENTS } from "../src/infra/generation/image-edit-reserve";
 import { OpenAiPatchJudge } from "../src/infra/generation/judge";
 import { faceWindow } from "../src/infra/generation/avatar-cut";
-import { DEFAULT_WINDOW_FACTOR, PROMPT_VERSION, childProblem, diffToPatch, paintMask } from "../src/services/generation/patch";
+import { DEFAULT_WINDOW_FACTOR, PROMPT_VERSION, childProblem, matteHint, paintMask } from "../src/services/generation/patch";
+import { extractChild } from "../src/services/generation/extract";
 import { assertSameRun, chargeCents, cropOf, slotOf, writePatch, writePreview } from "../src/services/generation/authoring";
+import { boardComposite } from "../src/services/generation/board-composite";
 import { envKey } from "./slot-patch";
 
 const ROOT = process.cwd();
@@ -53,7 +55,9 @@ const DEFAULT_BOARDS = "greatwall:lanterns,sydney:surfboards,amazon:canoe,giantl
 
 /** Per-call allowance includes input; actual usage remains the cost of record. */
 const RESERVE_CENTS: Readonly<Record<string, number>> = IMAGE_EDIT_RESERVE_CENTS;
-const JUDGE_RESERVE_CENTS = 0.4;
+// The contextual judge (board crop + patch + sheet, then Sol HIGH on a pass) cost
+// about 2.4 cents per verdict in the 7 September trials; reserve for that.
+const JUDGE_RESERVE_CENTS = 3;
 
 interface ArtDirection {
   wardrobe?: string;
@@ -107,6 +111,8 @@ async function main() {
   const artDirection: Record<string, ArtDirection> = artDirectionPath ? (JSON.parse(readFileSync(path.resolve(ROOT, artDirectionPath), "utf8")) as Record<string, ArtDirection>) : {};
   const tries = Number(flag("tries", "1"));
   const judgeModel = flag("judge-model", "gpt-4o-mini");
+  // The age the prompt and the judge are told; production reads it from the child profile.
+  const ageYears = flag("age", "") ? Number(flag("age", "")) : undefined;
   mkdirSync(outDir, { recursive: true });
 
   const provider = new OpenAiAvatarProvider(key, { model, quality, patchQuality: quality, perMinute: Number(flag("rpm", "5")), tries });
@@ -170,7 +176,8 @@ async function main() {
       JSON.stringify({ runId, commit, treeDirty: treeDirty || undefined, configHash, config, budgetCents: budget, spentCents: Math.round(spent * 100) / 100, unknownCharges, stopped, startedAt, updatedAt: new Date().toISOString(), artHashes, referenceHashes, cells }, null, 2),
     );
 
-  const reserve = (RESERVE_CENTS[quality] ?? RESERVE_CENTS.high!) + (judge ? JUDGE_RESERVE_CENTS : 0);
+  // Two image calls per cell — the roll and its matte (pass two) — and the judge.
+  const reserve = 2 * (RESERVE_CENTS[quality] ?? RESERVE_CENTS.high!) + (judge ? JUDGE_RESERVE_CENTS : 0);
 
   outer: for (const sheetFile of sheets) {
     const identity = path.parse(sheetFile).name;
@@ -199,7 +206,7 @@ async function main() {
         break outer;
       }
       const direction: ArtDirection = { ...(artDirection[slug] ?? {}), ...(artDirection[`${slug}/${targetId}`] ?? {}) };
-      const c = slotOf(slug, targetId, variant, { windowFactor, outputPx: units === "model" ? provider.patchOutputPx : undefined, ...direction });
+      const c = slotOf(slug, targetId, variant, { windowFactor, outputPx: units === "model" ? provider.patchOutputPx : undefined, ageYears, ...direction });
       const cellDir = path.join(identityDir, `${slug}-${targetId}-${variant}`);
       mkdirSync(cellDir, { recursive: true });
       const crop = await cropOf(c);
@@ -269,10 +276,29 @@ async function main() {
         }
         writeFileSync(path.join(cellDir, "raw-crop.png"), edit.png);
         files.rawCrop = "raw-crop.png";
-        const patch = await diffToPatch({ originalCrop: crop, editedCrop: edit.png, ctx: c.ctx, art: c.art, slot: c.slot });
+        // Cut out exactly as the pipeline cuts: the provider's matte (pass two), or the difference when there is none.
+        const extracted = await extractChild({ provider, originalCrop: crop, editedCrop: edit.png, ctx: c.ctx, art: c.art, slot: c.slot, hint: matteHint(c.slot), label: cellId, quality });
+        const patch = extracted.patch;
+        let matteCost = 0;
+        if (extracted.matte) {
+          const matteCharge = chargeCents(extracted.matte, RESERVE_CENTS[quality] ?? RESERVE_CENTS.high!);
+          spent += matteCharge.cents;
+          matteCost = extracted.matte.costCents;
+          if (matteCharge.unknown) {
+            unknownCharges.push(`${cellId}:matte`);
+            cell.costUnknown = true;
+          }
+          writeFileSync(path.join(cellDir, "matte.png"), extracted.matte.png);
+          files.matte = "matte.png";
+          if (extracted.matte.rawPng) {
+            writeFileSync(path.join(cellDir, "matte-1024.png"), extracted.matte.rawPng);
+            files.matte1024 = "matte-1024.png";
+          }
+          cell.matte = { model: extracted.matte.model, requestId: extracted.matte.providerRequestId ?? null, usage: extracted.matte.usage ?? null, costCents: extracted.matte.costCents, inputFidelity: (extracted.matte as { inputFidelity?: string | null }).inputFidelity ?? null, promptSent: extracted.matte.promptSent ?? null };
+        }
         const shape = childProblem(patch);
         Object.assign(cell, {
-          extraction: { largest: patch.largest, painted: patch.painted, expected: patch.expected, shape: patch.shape, geometry: patch.width ? patch.geometry : null, patchSize: { width: patch.width, height: patch.height } },
+          extraction: { method: extracted.method, version: extracted.version, diff: extracted.diff, largest: patch.largest, painted: patch.painted, expected: patch.expected, shape: patch.shape, geometry: patch.width ? patch.geometry : null, patchSize: { width: patch.width, height: patch.height } },
           shapeProblem: shape,
         });
         if (patch.width > 0) {
@@ -283,7 +309,11 @@ async function main() {
         }
         let verdictText = "unjudged";
         if (!shape && judge) {
-          const verdict = await judge.judge({ patchPng: patch.webp, reference: judgeReference, childName: identity, label: cellId });
+          // Judged exactly as the pipeline judges: on the board, in context.
+          const boardCrop = await boardComposite({ base: readFileSync(artFile), art: c.art, patch: patch.webp, rect: patch.geometry.rect, layer: c.slot.layer, flip: c.slot.flip });
+          writeFileSync(path.join(cellDir, "board-crop.png"), boardCrop);
+          files.boardCrop = "board-crop.png";
+          const verdict = await judge.judge({ patchPng: patch.webp, reference: judgeReference, childName: identity, ageYears, label: cellId, boardCrop });
           const judgeCharge = chargeCents(verdict, JUDGE_RESERVE_CENTS);
           spent += judgeCharge.cents;
           judgeCost = verdict.costCents;
@@ -295,7 +325,7 @@ async function main() {
           }
           verdictText = verdict.verdict;
         }
-        cell.costCents = Math.round((edit.costCents + judgeCost) * 100) / 100;
+        cell.costCents = Math.round((edit.costCents + matteCost + judgeCost) * 100) / 100;
         console.log(`${cellId}: ${shape ? `rejected (${shape})` : verdictText}${cell.nonComparable ? " [served by another model: not comparable]" : ""} · ${(spent / 100).toFixed(3)} USD so far`);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

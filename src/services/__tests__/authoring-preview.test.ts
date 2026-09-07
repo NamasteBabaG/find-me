@@ -33,6 +33,7 @@ async function patchOf(colour: string, c: ReturnType<typeof slotOf>): Promise<Pa
     largest: size * size,
     painted: size * size,
     expected: size * size,
+    basis: "diff",
     shape: { width: size, height: size, centerX: c.slot.x * c.art.width, centerY: c.slot.y * c.art.height, childPx: c.ctx.childPx, slotX: c.slot.x * c.art.width, slotY: c.slot.y * c.art.height },
   };
 }

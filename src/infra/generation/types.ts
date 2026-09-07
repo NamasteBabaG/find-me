@@ -97,6 +97,36 @@ export interface SlotPatchResponse extends GenerationCost {
 }
 
 /**
+ * Pass two of a hiding spot: the render again, and the crop it was made
+ * from, so the model can cut the child out of its own work. A colour
+ * difference cannot: the model re-synthesises the whole masked window, so
+ * the difference is the window, not the child (see extractChild).
+ */
+export interface SlotMatteRequest {
+  /** The edited crop (the scene with the child painted in), at the crop's own size. */
+  edited: Buffer;
+  /** The crop before the edit, the same size. */
+  original: Buffer;
+  /** Which figure is the child: the placement recipe's pose and occlusion, or empty. */
+  hint: string;
+  /** For logs: "beach/sandcastle/A". */
+  label: string;
+  /** Overrides the provider's default for this one call. */
+  quality?: string;
+}
+
+export interface SlotMatteResponse extends GenerationCost {
+  /** RGBA PNG the size of the edited crop: the child opaque, everything else transparent. */
+  png: Buffer;
+  /** The model's own output before it was fitted back, when the provider has one. Evidence, never shipped. */
+  rawPng?: Buffer;
+  /** The prompt as it went over the wire. */
+  promptSent?: string;
+  /** The input fidelity the model actually served (null when it refused the parameter). */
+  inputFidelity?: "high" | "low" | null;
+}
+
+/**
  * Image generation behind an interface. The mock produces a real "photo
  * sticker" (crop + circle + white outline) so the whole product works with
  * zero generation credits; a real provider draws the child and paints her in.
@@ -109,6 +139,8 @@ export interface AvatarProvider {
   createCharacter?(input: AvatarInput): Promise<CharacterOutput>;
   /** Present only on providers that can inpaint her into a world. */
   editSlotCrop?(request: SlotPatchRequest): Promise<SlotPatchResponse>;
+  /** Present only on providers that can cut the child out of their own render (pass two; see extractChild). */
+  matteSlotCrop?(request: SlotMatteRequest): Promise<SlotMatteResponse>;
   /**
    * The square the provider sends the crop as, and gets the edit back as. The
    * prompt names the child's height in that space (see modelSpaceHeight);

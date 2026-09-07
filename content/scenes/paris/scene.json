@@ -9,7 +9,7 @@
     "en": "The tower above a great square, a carousel and warm bread.",
     "he": "המגדל מעל כיכר גדולה, קרוסלה ולחם חם."
   },
-  "version": 2,
+  "version": 3,
   "active": true,
   "artStatus": "final",
   "art": {
@@ -56,18 +56,18 @@
       "slots": [
         {
           "id": "paris_bakery_a",
-          "x": 0.79,
-          "y": 0.716,
-          "scale": 0.068,
+          "x": 0.8968,
+          "y": 0.7944,
+          "scale": 0.1392,
           "placement": {
             "pose": "peeking",
-            "support": "Both feet on the plaza paving just outside the bakery, behind the low flowers.",
-            "occlusion": "Only the existing low flower baskets may hide the lower legs; the entire face is above the flowers.",
-            "instructions": "A small school-age child peeks out beside the bakery flower display. Stay out of the glass pastry cabinet. Preserve every existing person, flower, pastry and frame. Do not extend another person's body. Plan a complete standing body behind the low flowers."
+            "support": "Cobblestone pavement immediately behind the wicker basket; footX and footY are the implied hidden shoe midpoint.",
+            "occlusion": "The original wicker basket and projecting baguettes hide the child from about the waist downward without covering the face.",
+            "instructions": "Stand behind the exterior baguette basket and lean forward slightly so the head and shoulders show against the bakery window. Keep the child comparable in implied height to nearby foreground children. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown."
           },
           "hintZone": {
-            "x": 0.79,
-            "y": 0.701,
+            "x": 0.8968,
+            "y": 0.7794,
             "r": 0.075
           },
           "hintText": {
@@ -126,18 +126,18 @@
       "slots": [
         {
           "id": "paris_carousel_a",
-          "x": 0.713,
-          "y": 0.521,
-          "scale": 0.045,
+          "x": 0.6071,
+          "y": 0.4749,
+          "scale": 0.1099,
           "placement": {
             "pose": "standing",
-            "support": "Both shoes rest on TOP of the wooden carousel deck in the gap between the two horses.",
-            "occlusion": "A narrow existing vertical carousel pole can overlap a shoulder, never the face; do not hide the body with the deck.",
-            "instructions": "Show a complete small child between the horses, not riding or fused into a horse. The child is at the depth of the riders but below their seated heads. Preserve the horses, poles and children waiting OUTSIDE the carousel. The lower edge of the deck must stay below the child's feet, not across their waist."
+            "support": "Wooden carousel deck; the projected shoe midpoint is hidden just behind the outer fascia.",
+            "occlusion": "The original red-and-gold carousel fascia hides the shoes and lower shins; it stays well below the face.",
+            "instructions": "Stand upright on the carousel deck behind its front rim, facing outward. Keep the face fully above the rim and use the same small perspective scale as the nearby carousel riders."
           },
           "hintZone": {
-            "x": 0.713,
-            "y": 0.506,
+            "x": 0.6071,
+            "y": 0.4599,
             "r": 0.075
           },
           "hintText": {
@@ -196,18 +196,18 @@
       "slots": [
         {
           "id": "paris_awning_a",
-          "x": 0.266,
-          "y": 0.592,
-          "scale": 0.053,
+          "x": 0.2767,
+          "y": 0.8626,
+          "scale": 0.172,
           "placement": {
             "pose": "standing",
-            "support": "Both shoes on the open stone pavement between the cafe chairs and the fruit cart.",
-            "occlusion": "No occlusion needed: keep the whole small standing body visible, with clear separation from the existing adults.",
-            "instructions": "The child is visiting the cafe, standing in the narrow open paved aisle. Keep the head below the nearby adults' shoulders at the same depth. Do not sit in the occupied chair, replace a diner, stand on the umbrella, or paint a floating head into the awning."
+            "support": "Solid cobblestone paving in front of the easel legs.",
+            "occlusion": "None; the child may naturally cover part of the easel and its legs behind them.",
+            "instructions": "Stand facing the viewer in front of the outer café easel, arms relaxed, with the whole face and both shoes visible. Match the scale of the nearby foreground children, not the adults."
           },
           "hintZone": {
-            "x": 0.266,
-            "y": 0.577,
+            "x": 0.2767,
+            "y": 0.8476,
             "r": 0.075
           },
           "hintText": {

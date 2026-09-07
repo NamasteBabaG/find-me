@@ -23,9 +23,11 @@ Don't render the child in isolation. Render the child **into the world**, but on
 2. **Inpaint.** Give an image model the crop, the mask, the child's reference (photo or the illustrated
    character) and a prompt built from the scene data (mission, body template). The model paints the
    child *in that spot*, in the picture's own style and light, behind whatever is naturally in front.
-3. **Diff to a patch.** Compare the result with the original crop and keep only the changed pixels
-   (threshold → open → feather). What remains is a small transparent image: the child, their shadow,
-   and any object the model redrew in front of them.
+3. **Cut the child out.** Pass two: give the model its own render and the crop it was made from and
+   ask for the child alone on transparency (`matteSlotCrop`, see *Pass two* below). What remains is
+   a small transparent image: the child, and nothing the scene already had. A provider that cannot
+   matte falls back to the colour difference (threshold → open → feather), which is also the free
+   first look that rejects an unchanged render before pass two spends anything.
 4. **Place.** The patch goes back at the exact same pixel coordinates. Backgrounds stay untouched.
    The patch is an `image` sprite carrying the whole tap contract (below).
 
@@ -138,8 +140,39 @@ recognise, or too big to be hiding.
 
 ## Isolating the child
 
+### Pass two: the model's own matte
+
 `images/edits` does not paint only inside the mask: it returns a fresh rendering of the whole crop that
-merely resembles the input. Three things turn that into a clean patch, and all three are needed:
+merely resembles the input. With the small masks of the first worlds, a colour difference against the
+original crop was enough to find the child. With the re-planned hiding spots of 7 September 2026 (a
+mask the size of the whole child, on dense refreshed art) it stopped being enough, and no threshold
+brings it back: on four good renders every alpha was the mask ellipse at threshold 28, 40 and 56,
+and above 72 the child broke into pieces before the ground let go (`scripts/threshold-sweep.ts` on
+`work/placement/proof-1`). gpt-image-2 re-synthesises the whole window, a little differently each
+time; "what changed" is the window, not the child.
+
+So the child is cut out by the model that drew her. `AvatarProvider.matteSlotCrop()` sends the
+render and the crop it was made from (two images, no mask) and asks for the render back with the same
+framing and everything that is not the child painted flat magenta, the parts the scene hides included
+(`mattePrompt` in `src/infra/generation/openai.ts`; `matteHint` tells it which figure, from the
+slot's placement recipe). `keyMagenta` turns the magenta into alpha: a pixel two or more inside the
+silhouette is the child whatever its colour (a pink shirt stays a pink shirt), the anti-aliased rim is
+un-blended against the body colour beside it. The API's `background: transparent` mode was tried first
+and is not usable for this: it turns the request into a sticker, and the child came back re-composed,
+three times her size in the middle of the frame, on all four proof renders. `matteToPatch` then only
+guards the answer: pixels outside the search area around the slot are dropped, specks and far pieces
+go the way they go in the difference, and the alpha is otherwise the model's own — no hole filling,
+no feather, no solidify, because those repaired a difference mask and a real matte has its own
+anti-aliased edge. Both paths end in the same `finishPatch`, so the tap contract is measured the same
+way whichever cut the child out.
+
+`extractChild` (`src/services/generation/extract.ts`) is the one place that decides: the difference
+first (free; an unchanged render is rejected there), then the matte when the provider has one. The
+pipeline and the harness both call it, so a sample shows what a game ships. Pass two is a paid image
+call of the same size as the roll: it is reserved before it is made, charged to the spot's ledger
+(`matteCents`, `matteRequestId`), and its output is kept as `PATCH_EVIDENCE` beside the render.
+
+The colour difference, kept as the fallback and the first look:
 
 1. **Colour match.** Fit the edited crop back to the original on the pixels *outside* the paint area,
    where nothing should have changed. This removes the global drift that otherwise leaves sand and

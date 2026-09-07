@@ -16,7 +16,8 @@ describe("fixed-slot qualification uses production wire inputs", () => {
     expect(data[(512 * 1024 + 512) * 4 + 3]).toBe(0);
     expect(data[3]).toBe(255);
     expect(wire.promptSent).toContain("Fixed placement for this exact board");
-    expect(wire.promptSent).toContain("TOP of the wooden carousel deck");
+    // The recipe as authored in the scene, whatever it says today — the prompt must carry it verbatim.
+    expect(wire.promptSent).toContain(c.slot.placement?.instructions ?? "no placement recipe on paris/carousel/A");
     // A placement recipe replaces the stale generic target situation, not appends a contradictory pose.
     expect(wire.promptSent).not.toContain("Situation:");
   });

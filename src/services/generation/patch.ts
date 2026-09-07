@@ -38,6 +38,22 @@ export interface SlotPoint {
   x: number;
   y: number;
   scale: number;
+  /** The placement recipe, when the slot has one; the shape rules read its pose. */
+  placement?: { pose: string } | null;
+}
+
+/**
+ * How much of the child the prompt asked to show, as a fraction of the height
+ * it asked for. A swimmer is painted from the waterline up, so a good
+ * swimmer's alpha is about half a child tall. A peek is asked for at a mask
+ * one and a half times the visible part (scripts/install-fixed-plans.ts), so
+ * what shows above the occluder is at most two thirds of that, and a head
+ * alone is less (newyork/bench, 7 September: 69 px of a 166 px ask). The
+ * other poses show the whole body.
+ */
+export function visibleFraction(slot: Pick<SlotPoint, "placement">): number {
+  const pose = slot.placement?.pose;
+  return pose === "swimming" ? 0.5 : pose === "peeking" ? 1 / 1.5 : 1;
 }
 
 /** The three numbers the renderer needs; see src/game/engine/target-geometry.ts. */
@@ -163,6 +179,12 @@ export async function styleReference(art: Buffer, size: Size, slot: SlotPoint, o
  */
 // v6 additionally requires a complete supported body behind real occluders.
 export const PROMPT_VERSION = "slot-patch-v7-age-placement";
+
+/** What pass two is told about which figure is the child: the placement recipe's pose and occlusion, when the slot has one. */
+export function matteHint(slot: { placement?: Slot["placement"] }): string {
+  const p = slot.placement;
+  return p ? `The child is ${p.pose}. ${p.occlusion}` : "";
+}
 
 /**
  * The instruction the image model gets. Built from scene data, never hard-coded copy.
@@ -373,7 +395,9 @@ export interface PatchResult {
   /** Roughly how big a child of `childPx` should be, for comparison. */
   expected: number;
   /** Shape of what was actually painted, for the acceptance check. */
-  shape: { width: number; height: number; centerX: number; centerY: number; childPx: number; slotX: number; slotY: number };
+  shape: { width: number; height: number; centerX: number; centerY: number; childPx: number; slotX: number; slotY: number; visible?: number };
+  /** How the alpha was made: the colour difference (a blob) or the model's matte (a silhouette). The shape rules read it. */
+  basis: "diff" | "matte";
 }
 
 export const EXTRACTION_VERSION = "diff-v2-enclosed-interior";
@@ -601,25 +625,99 @@ export async function diffToPatch(input: {
     cleaned = await sharp(input.alphaMask).extractChannel(0).raw().toBuffer();
   }
 
-  // Trim to what is left (+ a small margin) so the patch stays small.
   // Count the pieces on the finished alpha, not on the pre-feather mask: a
   // child cut in two by a railing is joined back together by the feather, and
   // rejecting her for that would be rejecting the occlusion we asked for.
   const pieces = keepMainBlobs(cleaned, w, h, 0.05);
-  const box = hitBoxFromAlpha(cleaned, w, h, 9);
   // Nothing changed. This used to throw, which in production was wrong twice
   // over: the roll cost money and was charged as two attempts (one for the call,
   // one for the exception), and the render that shows WHY nothing was painted
   // was thrown away with it. It is an ordinary rejection — childProblem says so.
   if (pieces.largest === 0) return nothingPainted(ctx, art, slot);
+  // Only now, with her outline known: the child's own pixels, toned to the board.
+  const toned = input.alphaMask ? edited : o.tone === false ? matched : toneMatch(matched, original, cleaned, allow, n);
+  return finishPatch({ rgb: toned, alpha: cleaned, w, h, ctx, art, slot, pieces, basis: "diff" });
+}
+
+export const MATTE_VERSION = "matte-v2-magenta-key";
+
+export interface MatteOptions {
+  /** Alpha at or above this belongs to a piece when the pieces are counted (0–255). */
+  cut?: number;
+  /** Blobs smaller than this fraction of the largest are dropped. */
+  keep?: number;
+  /** How far past the paint ellipse the child may be, in multiples of it. */
+  grow?: number;
+  /** Pull the child's saturation and contrast toward the board (default off: pass two copied a render that was already in context). */
+  tone?: boolean;
+}
+
+/**
+ * Turn the model's own matte of its render — the child opaque, everything
+ * else transparent — into a patch.
+ *
+ * This replaces the colour difference wherever the provider can matte. A
+ * difference finds where the render changed, and gpt-image-2 changes the
+ * whole masked window: it re-synthesises the ground around the child, a
+ * little differently each time. On the 7 September proof (four renders, all
+ * good) every alpha was the mask ellipse, at every threshold from 28 to 160
+ * (scripts/threshold-sweep.ts); above 72 the child broke into pieces before
+ * the ground let go. No threshold separates "the child" from "the window".
+ *
+ * The alpha is the model's; here it is only guarded. Pixels outside the
+ * search area around the slot are dropped (the model kept a bystander), and
+ * specks and far pieces go the way they go in diffToPatch. No hole filling,
+ * no feather, no solidify: those repaired a difference mask, and a real matte
+ * does not need them — its edge is the child's own anti-aliasing.
+ */
+export async function matteToPatch(input: { originalCrop: Buffer; mattePng: Buffer; ctx: SlotContext; art: Size; slot: SlotPoint; options?: MatteOptions }): Promise<PatchResult> {
+  const { ctx, art, slot } = input;
+  const o = input.options ?? {};
+  const cut = o.cut ?? 8;
+  const keep = o.keep ?? 0.2;
+  const { w, h } = ctx.rect;
+  const n = w * h;
+  const rgba = await sharp(input.mattePng).ensureAlpha().resize({ width: w, height: h, fit: "cover", kernel: "lanczos3" }).raw().toBuffer();
+  const allow = await sharp(paintMask(ctx, art, slot, o.grow ?? 3.6)).extractChannel(0).raw().toBuffer();
+  const rgb = Buffer.alloc(n * 3);
+  const soft = Buffer.alloc(n);
+  const hard = Buffer.alloc(n);
+  for (let i = 0; i < n; i++) {
+    rgb[i * 3] = rgba[i * 4]!;
+    rgb[i * 3 + 1] = rgba[i * 4 + 1]!;
+    rgb[i * 3 + 2] = rgba[i * 4 + 2]!;
+    const a = allow[i]! >= 128 ? rgba[i * 4 + 3]! : 0;
+    soft[i] = a;
+    hard[i] = a >= cut ? 255 : 0;
+  }
+  // A piece of the same child is never more than a fraction of her height away.
+  const blobs = keepMainBlobs(hard, w, h, keep, ctx.childPx * 0.25);
+  const alpha = Buffer.alloc(n);
+  for (let i = 0; i < n; i++) alpha[i] = blobs.out[i] ? soft[i]! : 0;
+  const pieces = keepMainBlobs(alpha, w, h, 0.05);
+  if (pieces.largest === 0) return nothingPainted(ctx, art, slot, "matte");
+  let toned: Buffer = rgb;
+  if (o.tone) {
+    const original = await sharp(input.originalCrop).resize({ width: w, height: h, fit: "cover" }).removeAlpha().raw().toBuffer();
+    toned = toneMatch(rgb, original, alpha, allow, n);
+  }
+  return finishPatch({ rgb: toned, alpha, w, h, ctx, art, slot, pieces, basis: "matte" });
+}
+
+/**
+ * From a finished alpha to a patch: trim to the child (plus a small margin)
+ * and measure the tap contract on the finished pixels. Shared by the
+ * difference and the matte, so the two can never disagree about where she
+ * is drawn, where she can be tapped, or where the bubble points.
+ */
+async function finishPatch(p: { rgb: Buffer; alpha: Buffer; w: number; h: number; ctx: SlotContext; art: Size; slot: SlotPoint; pieces: { largest: number; keptArea: number }; basis: PatchResult["basis"] }): Promise<PatchResult> {
+  const { rgb, alpha, w, h, ctx, art, slot, pieces } = p;
+  const box = hitBoxFromAlpha(alpha, w, h, 9);
   const m = 8;
   const left = Math.max(0, box.hitRect.x - m);
   const top = Math.max(0, box.hitRect.y - m);
   const crop = { left, top, width: Math.min(w, box.hitRect.x + box.hitRect.w + m) - left, height: Math.min(h, box.hitRect.y + box.hitRect.h + m) - top };
-
-  // Only now, with her outline known: the child's own pixels, toned to the board.
-  const toned = input.alphaMask ? edited : o.tone === false ? matched : toneMatch(matched, original, cleaned, allow, n);
-  const rgba = await sharp(toned, { raw: { width: w, height: h, channels: 3 } }).joinChannel(cleaned, raw1).png().toBuffer();
+  const rgba = await sharp(rgb, { raw: { width: w, height: h, channels: 3 } }).joinChannel(alpha, { raw: { width: w, height: h, channels: 1 } }).png().toBuffer();
   const webp = await sharp(rgba).extract(crop).webp({ quality: 92, alphaQuality: 100 }).toBuffer();
 
   // The tap contract, measured on the finished patch and expressed in art fractions.
@@ -647,12 +745,14 @@ export async function diffToPatch(input: {
       childPx: ctx.childPx,
       slotX: slot.x * art.width,
       slotY: slot.y * art.height,
+      visible: visibleFraction(slot),
     },
+    basis: p.basis,
   };
 }
 
 /** A result that fails every check: the model returned the crop unchanged. */
-function nothingPainted(ctx: SlotContext, art: Size, slot: SlotPoint): PatchResult {
+function nothingPainted(ctx: SlotContext, art: Size, slot: SlotPoint, basis: PatchResult["basis"] = "diff"): PatchResult {
   const zero = { x: 0, y: 0, w: 0, h: 0 };
   return {
     webp: Buffer.alloc(0),
@@ -663,6 +763,7 @@ function nothingPainted(ctx: SlotContext, art: Size, slot: SlotPoint): PatchResu
     painted: 0,
     expected: Math.round(ctx.childPx * ctx.childPx * 0.75 * 0.55),
     shape: { width: 0, height: 0, centerX: 0, centerY: 0, childPx: ctx.childPx, slotX: slot.x * art.width, slotY: slot.y * art.height },
+    basis,
   };
 }
 
@@ -686,7 +787,10 @@ export function childProblem(result: PatchResult): string | null {
   const s = result.shape;
   if (result.largest === 0) return "painted nothing — the crop came back unchanged";
   const h = s.height / s.childPx;
-  if (h < 0.45) return `painted ${Math.round(s.height)}px tall, a child here is ~${s.childPx}px`;
+  // Held to what was asked for: a swimmer is asked for from the waterline up
+  // (amazon/canoe, 7 September: a good one was 101 px of a 256 px child).
+  const visible = s.visible ?? 1;
+  if (h < 0.45 * visible) return `painted ${Math.round(s.height)}px tall, a child here is ~${Math.round(s.childPx * visible)}px${visible < 1 ? " where she shows" : ""}`;
   if (h > 2.2) return `painted ${Math.round(s.height)}px tall, far more than the ~${s.childPx}px asked for (the model repainted the crop)`;
   const ratio = s.width / Math.max(1, s.height);
   if (ratio > 1.6) return `painted ${Math.round(s.width)}x${Math.round(s.height)}, wider than tall, not a standing child`;
@@ -698,7 +802,14 @@ export function childProblem(result: PatchResult): string | null {
   // twenty-seven renders the next narrowest was 0.45 and the next widest 1.21.
   const askedWide = 0.75 * s.childPx;
   const across = s.width / Math.max(1, askedWide);
-  if (across < 0.38) return `painted ${Math.round(s.width)}px across where a child is ~${Math.round(askedWide)}px — a strip of the child, not the child`;
+  // The floor depends on what made the alpha. A difference blob carried the
+  // ground, the feather and the solidify curve, and 0.38 of the asked width
+  // sat in a clean gap below every real child. A matte is the silhouette
+  // itself: a standing child with her arms at her sides is 0.35 of her height
+  // across (newyork/taxi, 7 September: 78 x 226 px), which the blob floor
+  // called a strip. A strip of a matte — hair and one eye — is far narrower.
+  const strip = result.basis === "matte" ? s.width / Math.max(1, s.height) < 0.22 : across < 0.38;
+  if (strip) return `painted ${Math.round(s.width)}px across where a child is ~${Math.round(askedWide)}px — a strip of the child, not the child`;
   if (across > 1.4) return `painted ${Math.round(s.width)}px across where a child is ~${Math.round(askedWide)}px — more than one child, or the child and the scenery`;
   // A body fills roughly half its own bounding box, even mostly hidden; specks
   // and scenery edges scattered across a box fill very little of one.

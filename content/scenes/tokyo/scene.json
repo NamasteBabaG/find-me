@@ -9,7 +9,7 @@
     "en": "Neon at night, cherry blossom and a very busy crossing.",
     "he": "נאון בלילה, פריחת דובדבן וצומת עמוס מאוד."
   },
-  "version": 2,
+  "version": 3,
   "active": true,
   "artStatus": "final",
   "art": {
@@ -56,19 +56,25 @@
       "slots": [
         {
           "id": "tokyo_crossing_a",
-          "x": 0.505,
-          "y": 0.585,
-          "scale": 0.07,
+          "x": 0.454,
+          "y": 0.8415,
+          "scale": 0.137,
           "hintZone": {
-            "x": 0.505,
-            "y": 0.57,
+            "x": 0.454,
+            "y": 0.8265,
             "r": 0.075
           },
           "hintText": {
             "en": "Look at the busy crossing.",
             "he": "חפשו בצומת העמוס."
           },
-          "layer": "front"
+          "layer": "front",
+          "placement": {
+            "pose": "standing",
+            "support": "Both shoes rest on the dark asphalt at the near end of the pedestrian crossing.",
+            "occlusion": "None; the entire child remains visible in an open pavement gap.",
+            "instructions": "Place the child front-facing with relaxed arms and a clearly childlike build, roughly matching the nearby school-age children and distinctly shorter than adults."
+          }
         },
         {
           "id": "tokyo_crossing_b",
@@ -119,19 +125,25 @@
       "slots": [
         {
           "id": "tokyo_stall_a",
-          "x": 0.815,
-          "y": 0.645,
-          "scale": 0.08,
+          "x": 0.073,
+          "y": 0.848,
+          "scale": 0.117,
           "hintZone": {
-            "x": 0.815,
-            "y": 0.63,
+            "x": 0.073,
+            "y": 0.833,
             "r": 0.075
           },
           "hintText": {
             "en": "Look by the festival stalls.",
             "he": "חפשו ליד דוכני הפסטיבל."
           },
-          "layer": "front"
+          "layer": "front",
+          "placement": {
+            "pose": "peeking",
+            "support": "The implied feet stand on the stall floor behind the wooden mask display.",
+            "occlusion": "The dense foreground mask rack and its wooden bin hide the child from mid-torso through the feet.",
+            "instructions": "Show the child facing forward among the masks, with shoulders and upper torso visible and hands close to the rack edge. Use the same scale as foreground children. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown."
+          }
         },
         {
           "id": "tokyo_stall_b",
@@ -182,19 +194,25 @@
       "slots": [
         {
           "id": "tokyo_blossom_a",
-          "x": 0.865,
-          "y": 0.5,
-          "scale": 0.062,
+          "x": 0.519,
+          "y": 0.348,
+          "scale": 0.056,
           "hintZone": {
-            "x": 0.865,
-            "y": 0.485,
+            "x": 0.519,
+            "y": 0.333,
             "r": 0.075
           },
           "hintText": {
             "en": "Look under the blossom tree.",
             "he": "חפשו מתחת לעץ הפריחה."
           },
-          "layer": "front"
+          "layer": "front",
+          "placement": {
+            "pose": "standing",
+            "support": "Both shoes rest on the street immediately in front of the pale car; the child may naturally cover part of its bumper and hood.",
+            "occlusion": "None; the car is behind the child rather than blocking them.",
+            "instructions": "Stand the child directly beneath the central pink canopy, facing forward with arms close to the body. Make the child about three-quarters the height of nearby adults at this depth."
+          }
         },
         {
           "id": "tokyo_blossom_b",

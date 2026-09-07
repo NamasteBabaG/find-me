@@ -9,7 +9,7 @@
     "en": "Camels, stone giants and a very old riddle.",
     "he": "גמלים, ענקי אבן וחידה עתיקה מאוד."
   },
-  "version": 2,
+  "version": 3,
   "active": true,
   "artStatus": "final",
   "art": {
@@ -56,19 +56,25 @@
       "slots": [
         {
           "id": "giza_camel_a",
-          "x": 0.545,
-          "y": 0.615,
-          "scale": 0.075,
+          "x": 0.6395,
+          "y": 0.908,
+          "scale": 0.13,
           "hintZone": {
-            "x": 0.545,
-            "y": 0.6,
+            "x": 0.6395,
+            "y": 0.893,
             "r": 0.075
           },
           "hintText": {
             "en": "Look by the camels.",
             "he": "חפשו ליד הגמלים."
           },
-          "layer": "front"
+          "layer": "front",
+          "placement": {
+            "pose": "crouching",
+            "support": "Both shoes rest on the visible sand; footX and footY mark their midpoint.",
+            "occlusion": "None; the complete crouching child remains visible in front of the sand and loose camel ropes.",
+            "instructions": "Crouch facing the viewer with hands on knees beside the foreground kneeling camel. Match the scale of the nearest foreground children and remain clearly smaller than the workers."
+          }
         },
         {
           "id": "giza_camel_b",
@@ -119,19 +125,25 @@
       "slots": [
         {
           "id": "giza_stall_a",
-          "x": 0.215,
-          "y": 0.665,
-          "scale": 0.08,
+          "x": 0.236,
+          "y": 0.6625,
+          "scale": 0.12,
           "hintZone": {
-            "x": 0.215,
-            "y": 0.65,
+            "x": 0.236,
+            "y": 0.6475,
             "r": 0.075
           },
           "hintText": {
             "en": "Look by the scarf stall.",
             "he": "חפשו ליד דוכן הצעיפים."
           },
-          "layer": "front"
+          "layer": "front",
+          "placement": {
+            "pose": "seated",
+            "support": "footX and footY mark the seat point on the firm top of the folded textile stack; the shoes hang below it.",
+            "occlusion": "None; the entire seated child is in front of the scarf display.",
+            "instructions": "Sit upright on the front edge of the folded scarf stack, knees together and shoes dangling. Use roughly the head size of the nearby stall child and stay much smaller than the vendor."
+          }
         },
         {
           "id": "giza_stall_b",
@@ -182,19 +194,25 @@
       "slots": [
         {
           "id": "giza_stones_a",
-          "x": 0.645,
-          "y": 0.66,
-          "scale": 0.078,
+          "x": 0.6345,
+          "y": 0.71,
+          "scale": 0.057,
           "hintZone": {
-            "x": 0.645,
-            "y": 0.645,
+            "x": 0.6345,
+            "y": 0.695,
             "r": 0.075
           },
           "hintText": {
             "en": "Look behind the big stone blocks.",
             "he": "חפשו מאחורי גושי האבן."
           },
-          "layer": "front"
+          "layer": "front",
+          "placement": {
+            "pose": "peeking",
+            "support": "The hidden shoes stand on sand immediately behind the block at the given point; bodyHeight is the implied full head-to-shoe height.",
+            "occlusion": "The stone hides the child from the shoulders downward; the face stays wholly above its sloping top edge.",
+            "instructions": "Stand behind the enormous inscribed block and peek over it, showing the complete face and only a little shoulder. Use the height of the nearby foreground children, not an adult scale. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown."
+          }
         },
         {
           "id": "giza_stones_b",

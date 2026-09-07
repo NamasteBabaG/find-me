@@ -4,6 +4,8 @@ import type {
   AvatarOutput,
   AvatarProvider,
   CharacterOutput,
+  SlotMatteRequest,
+  SlotMatteResponse,
   SlotPatchRequest,
   SlotPatchResponse,
   TargetSpriteInput,
@@ -23,6 +25,11 @@ import { characterPrompt } from "./character-prompt";
  *      same child in nine different worlds.
  *   2. `editSlotCrop` — paint her into one window of a world, given the crop,
  *      a mask and that sheet.
+ *   3. `matteSlotCrop` — pass two of a hiding spot: given that render and the
+ *      crop it was made from, hand back the child alone on transparency. The
+ *      colour difference used to do this and cannot any more: gpt-image-2
+ *      re-synthesises the whole masked window, so the difference is the
+ *      window (see extractChild).
  *
  * Everything about *where* the crop comes from and *what* comes back out lives
  * in src/services/generation/patch.ts; this file only talks to the API.
@@ -139,6 +146,13 @@ export interface OpenAiOptions {
   timeoutMs?: number;
   /** Give up on one image ENTIRELY after this long, retries included. */
   budgetMs?: number;
+  /**
+   * How faithfully the matte copies the render it is cutting from. Sent only
+   * to a model that takes it (gpt-image-1; gpt-image-2 refuses the parameter,
+   * 7 September 2026). If a model refuses it anyway the call is repeated
+   * without it, and the response says which was served.
+   */
+  matteInputFidelity?: "high" | "low";
 }
 
 export class OpenAiAvatarProvider implements AvatarProvider {
@@ -152,6 +166,7 @@ export class OpenAiAvatarProvider implements AvatarProvider {
   private readonly tries: number;
   private readonly timeoutMs: number;
   private readonly budgetMs: number;
+  private readonly matteInputFidelity: "high" | "low" | undefined;
 
   constructor(private readonly apiKey: string, options: OpenAiOptions = {}) {
     if (!apiKey) throw new Error("OPENAI_API_KEY is required for GENERATION_PROVIDER=openai");
@@ -166,10 +181,11 @@ export class OpenAiAvatarProvider implements AvatarProvider {
     // limit that actually binds.
     this.budgetMs = options.budgetMs ?? 150_000;
     this.limiter = new RateLimiter(options.perMinute ?? 5);
+    this.matteInputFidelity = options.matteInputFidelity ?? (this.model === "gpt-image-1" ? "high" : undefined);
   }
 
   /** One multipart edit call, with bounded retries on the explicitly selected model. */
-  private async call(parts: { images: Array<{ buffer: Buffer; name: string }>; mask?: Buffer; prompt: string; size: string; label: string; quality?: string }): Promise<CallResult> {
+  private async call(parts: { images: Array<{ buffer: Buffer; name: string }>; mask?: Buffer; prompt: string; size: string; label: string; quality?: string; background?: "transparent"; outputFormat?: "png"; inputFidelity?: "high" | "low" }): Promise<CallResult> {
     const started = Date.now();
     let lastError = "";
     const model = this.model;
@@ -192,6 +208,9 @@ export class OpenAiAvatarProvider implements AvatarProvider {
       form.append("size", parts.size);
       form.append("quality", parts.quality ?? this.quality);
       form.append("n", "1");
+      if (parts.background) form.append("background", parts.background);
+      if (parts.outputFormat) form.append("output_format", parts.outputFormat);
+      if (parts.inputFidelity) form.append("input_fidelity", parts.inputFidelity);
       // Without a deadline one hung request stalls every remaining hiding spot;
       // a generation that has not answered in three minutes is not coming back.
       const perRequest = Math.min(this.timeoutMs, deadline - Date.now());
@@ -215,6 +234,13 @@ export class OpenAiAvatarProvider implements AvatarProvider {
         };
       }
       lastError = json.error?.message ?? `HTTP ${res.status}`;
+      // Not every image model takes input_fidelity. The matte is worth having
+      // without it, so drop the parameter and ask again rather than fail.
+      if (parts.inputFidelity && res.status === 400 && /input_fidelity/i.test(lastError)) {
+        delete parts.inputFidelity;
+        attempt -= 1; // nothing was generated; this is not one of the tries
+        continue;
+      }
       // The chosen image model is part of the content contract. Fail visibly
       // rather than spending again on an unapproved model with a different style.
       if (/model|not found|does not exist|access|permission|verif/i.test(lastError)) break;
@@ -274,6 +300,31 @@ export class OpenAiAvatarProvider implements AvatarProvider {
     return { png, rawPng: out.png, promptSent, costCents: out.costCents, costUnknown: out.costUnknown, model: out.model, usage: out.usage, providerRequestId: out.providerRequestId, durationMs: out.durationMs, attempts: out.attempts };
   }
 
+  async matteSlotCrop(request: SlotMatteRequest): Promise<SlotMatteResponse> {
+    const meta = await sharp(request.edited).metadata();
+    const { edited, original, promptSent, size } = await prepareSlotMatte(request);
+    const parts = {
+      images: [
+        { buffer: edited, name: "scene.png" },
+        { buffer: original, name: "before.png" },
+      ],
+      prompt: promptSent,
+      size: `${size}x${size}`,
+      quality: request.quality ?? this.patchQuality,
+      label: `${request.label}:matte`,
+      outputFormat: "png" as const,
+      inputFidelity: this.matteInputFidelity,
+    };
+    const out = await this.call(parts);
+    // The model answers with its own framing kept and everything but the child
+    // painted magenta (background: "transparent" was tried first and turned the
+    // request into a sticker: the child came back re-composed, three times her
+    // size, in the middle of the frame). The key turns the magenta into alpha,
+    // and the result is fitted back to the crop's pixels with that alpha intact.
+    const png = await fitMatte(out.png, meta.width ?? size, meta.height ?? size);
+    return { png, rawPng: out.png, promptSent, costCents: out.costCents, costUnknown: out.costUnknown, model: out.model, usage: out.usage, providerRequestId: out.providerRequestId, durationMs: out.durationMs, attempts: out.attempts, inputFidelity: parts.inputFidelity ?? null };
+  }
+
   /** The cover avatar comes from the character sheet, so it is never a second bill. */
   async createAvatar(input: AvatarInput): Promise<AvatarOutput> {
     const c = await this.createCharacter(input);
@@ -302,6 +353,154 @@ export async function prepareSlotEdit(request: SlotPatchRequest) {
   const reference = await sharp(request.reference).resize({ width: size, height: size, fit: "contain", background: { r: 255, g: 255, b: 255, alpha: 0 } }).png().toBuffer();
   const promptSent = `${request.prompt} The first image is the scene to edit; the second image is the character reference sheet for the child (that is who the child is: the same face, hair, skin tone and build; the clothes may change to suit the place; do not copy its background or its grid).`;
   return { size, crop, mask, reference, promptSent };
+}
+
+/** Shared wire inputs of pass two; the harness and the pipeline send the same thing. No API call. */
+export const MATTE_WIRE_VERSION = "matte-wire-v2-magenta-key";
+
+/**
+ * Magenta to alpha.
+ *
+ * The key is whatever the model painted, measured from the frame's border:
+ * one render came back on (248,10,223), another on (245,8,240), and a fixed
+ * tolerance around #FF00FF read the first as "no key at all". A pixel's
+ * opacity is how far it sits from that key along the magenta axis — how much
+ * less "red-and-blue over green" it is than the key — which is the same for
+ * a dark hair strand and a pale cheek, where a plain colour distance is not
+ * (a half blend of key and dark hair is far from the key and looked opaque).
+ *
+ * Where a pixel is decides the rest. A pixel two or more pixels inside the
+ * half-opaque silhouette is the child, opaque, whatever its colour — so a pink
+ * shirt stays a pink shirt. The rim keeps its measured alpha with the key's
+ * share of colour taken out (pixel = a·child + (1−a)·key, solved for the
+ * child). Purple clothes would key partly at their rim; the prompt forbids
+ * them on the child.
+ */
+export const MAGENTA_KEY = { border: 4, minKey: 120, solid: 0.5, erode: 2, reach: 3, faint: 0.08, speck: 0.25 } as const;
+export async function keyMagenta(png: Buffer): Promise<Buffer> {
+  const { data, info } = await sharp(png).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const w = info.width, h = info.height, n = w * h;
+  // The key: the mean colour of the frame's border.
+  const key = [0, 0, 0]; let count = 0;
+  const B = MAGENTA_KEY.border;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (y >= B && y < h - B && x >= B && x < w - B) continue;
+    const i = (y * w + x) * 3;
+    key[0] = key[0]! + data[i]!; key[1] = key[1]! + data[i + 1]!; key[2] = key[2]! + data[i + 2]!; count++;
+  }
+  for (let k = 0; k < 3; k++) key[k] = key[k]! / count;
+  const magentaOf = (r: number, g: number, b: number) => Math.min(r, b) - g;
+  const keyMagenta = magentaOf(key[0]!, key[1]!, key[2]!);
+  if (keyMagenta < MAGENTA_KEY.minKey) throw new Error(`the matte did not come back on a magenta key (border is ${key.map((v) => Math.round(v)).join(",")})`);
+  // Opacity along the magenta axis, per pixel.
+  const est = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const m = magentaOf(data[i * 3]!, data[i * 3 + 1]!, data[i * 3 + 2]!);
+    est[i] = Math.max(0, Math.min(1, 1 - m / keyMagenta));
+  }
+  // Inside: every pixel within `erode` of it is at least half opaque. The
+  // frame's edge counts as inside, so a child cut by the crop keeps her edge.
+  const solid = new Uint8Array(n);
+  for (let i = 0; i < n; i++) solid[i] = est[i]! >= MAGENTA_KEY.solid ? 1 : 0;
+  const inside = new Uint8Array(n);
+  const e = MAGENTA_KEY.erode;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x;
+    if (!solid[i]) continue;
+    let ok = 1, sum = 0, count = 0;
+    for (let dy = -e; dy <= e && ok; dy++) for (let dx = -e; dx <= e; dx++) {
+      const yy = y + dy, xx = x + dx;
+      if (yy < 0 || yy >= h || xx < 0 || xx >= w) continue;
+      const j = yy * w + xx;
+      if (!solid[j]) { ok = 0; break; }
+      sum += est[j]!; count++;
+    }
+    // A speck of key the model left between hair strands sits well inside the
+    // silhouette but is far more magenta than the hair around it; a pink shirt
+    // is as pink as its neighbours. The speck is rim, the shirt is body.
+    inside[i] = ok && est[i]! >= sum / Math.max(1, count) - MAGENTA_KEY.speck ? 1 : 0;
+  }
+  const out = Buffer.alloc(n * 4);
+  const R = MAGENTA_KEY.reach;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x;
+    let alpha: number;
+    if (inside[i]) alpha = 1;
+    else if (est[i]! < MAGENTA_KEY.faint) alpha = 0;
+    else {
+      // The rim, measured against the body beside it: a dark or greenish body
+      // sits below zero on the magenta axis, and a half blend of it with the
+      // key reads above half unless the body's own value is taken into account.
+      // The nearest body pixels, ring by ring, so a rim pixel where the hair
+      // meets the collar borrows from one of them and not from a mix of both.
+      const body = new Float64Array(3); let count = 0;
+      for (let ring = 1; ring <= R && count === 0; ring++) {
+        for (let dy = -ring; dy <= ring; dy++) for (let dx = -ring; dx <= ring; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue;
+          const yy = y + dy, xx = x + dx;
+          if (yy < 0 || yy >= h || xx < 0 || xx >= w) continue;
+          const j = yy * w + xx;
+          if (!inside[j]) continue;
+          for (let k = 0; k < 3; k++) body[k] = body[k]! + data[j * 3 + k]!;
+          count++;
+        }
+      }
+      const bodyMagenta = count > 0 ? magentaOf(body[0]! / count, body[1]! / count, body[2]! / count) : 0;
+      const pixelMagenta = magentaOf(data[i * 3]!, data[i * 3 + 1]!, data[i * 3 + 2]!);
+      alpha = Math.max(0, Math.min(1, (keyMagenta - pixelMagenta) / Math.max(1, keyMagenta - bodyMagenta)));
+      if (alpha < MAGENTA_KEY.faint) alpha = 0;
+      if (alpha > 0) {
+        if (count > 0) {
+          // The rim is the body's own colour at the measured opacity: the
+          // model's anti-aliasing mixed the key into these pixels, and a
+          // strand of hair that keeps a pink cast reads as a sticker edge.
+          for (let k = 0; k < 3; k++) out[i * 4 + k] = Math.round(body[k]! / count);
+        } else {
+          // A strand with no body beside it: un-blend, then cap what magenta is left.
+          const spill = 1 - alpha;
+          const c = [0, 1, 2].map((k) => Math.max(0, Math.min(255, Math.round((data[i * 3 + k]! - spill * key[k]!) / alpha))));
+          const cap = c[1]! + 8;
+          out[i * 4] = Math.min(c[0]!, cap); out[i * 4 + 1] = c[1]!; out[i * 4 + 2] = Math.min(c[2]!, cap);
+        }
+        out[i * 4 + 3] = Math.round(alpha * 255);
+        continue;
+      }
+    }
+    if (alpha <= 0) { out[i * 4 + 3] = 0; continue; }
+    out[i * 4] = data[i * 3]!; out[i * 4 + 1] = data[i * 3 + 1]!; out[i * 4 + 2] = data[i * 3 + 2]!;
+    out[i * 4 + 3] = 255;
+  }
+  return sharp(out, { raw: { width: w, height: h, channels: 4 } }).png().toBuffer();
+}
+
+/** The model's own magenta output, keyed and fitted back to the crop's pixels with its alpha intact. */
+export async function fitMatte(rawPng: Buffer, width: number, height: number): Promise<Buffer> {
+  const keyed = await keyMagenta(rawPng);
+  return sharp(keyed).resize(width, height, { kernel: "lanczos3" }).png().toBuffer();
+}
+
+export async function prepareSlotMatte(request: SlotMatteRequest) {
+  const size = PATCH_OUTPUT_PX;
+  const edited = await sharp(request.edited).resize(size, size, { kernel: "lanczos3" }).removeAlpha().png().toBuffer();
+  const original = await sharp(request.original).resize(size, size, { kernel: "lanczos3" }).removeAlpha().png().toBuffer();
+  return { size, edited, original, promptSent: mattePrompt(request.hint) };
+}
+
+/**
+ * What pass two is asked. The child must not be redrawn, moved or completed:
+ * the matte is placed on the board at the render's own coordinates, and a
+ * part the scene hides has to stay hidden or she stops being behind anything.
+ */
+export function mattePrompt(hint: string): string {
+  return [
+    "Use case: isolating one character from an illustration by keying.",
+    "The first image is a scene into which one child was just painted; the second image is the same scene before that child was added.",
+    "Return the first image with exactly the same framing: the child stays at the identical position and size in the frame, with the same pose, colours, linework and lighting. Do not zoom in, crop, move, resize, redraw, restyle or complete the child.",
+    "Paint every pixel that is not the child's own body, hair and clothes with flat, uniform, pure magenta #FF00FF: ground, water, sky, buildings, furniture, objects, animals, other people and shadows.",
+    "An object between the viewer and the child (a bench, a barrel, a railing, a wall) is not the child: paint it magenta as well, including where it overlaps her, so only the part of the child that is visible in front of it remains and the edge follows that object's outline. Do not paint the hidden part of the child.",
+    "No magenta, pink or purple tint anywhere on the child; no outline, glow, shadow or text on the magenta.",
+    hint ? `Which child: ${hint}` : "",
+  ].filter(Boolean).join(" ");
 }
 
 /** The parent's crop applied, padded to a square the model can read. */

@@ -22,6 +22,7 @@ function render(shape: Partial<PatchResult["shape"]> & { largest: number; expect
     largest: shape.largest,
     painted: shape.painted ?? shape.largest,
     expected: shape.expected,
+    basis: "diff",
     shape: {
       width: shape.width ?? 100,
       height: shape.height ?? 200,

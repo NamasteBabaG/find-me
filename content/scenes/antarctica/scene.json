@@ -9,7 +9,7 @@
     "en": "Penguins, a red hut and the whitest snow there is.",
     "he": "פינגווינים, בקתה אדומה והשלג הלבן ביותר שיש."
   },
-  "version": 2,
+  "version": 3,
   "active": true,
   "artStatus": "final",
   "art": {
@@ -56,19 +56,25 @@
       "slots": [
         {
           "id": "antarctica_penguins_a",
-          "x": 0.485,
-          "y": 0.7,
-          "scale": 0.078,
+          "x": 0.435,
+          "y": 0.746,
+          "scale": 0.108,
           "hintZone": {
-            "x": 0.485,
-            "y": 0.6849999999999999,
+            "x": 0.435,
+            "y": 0.731,
             "r": 0.075
           },
           "hintText": {
             "en": "Look among the penguins.",
             "he": "חפשו בין הפינגווינים."
           },
-          "layer": "front"
+          "layer": "front",
+          "placement": {
+            "pose": "standing",
+            "support": "Both boots on the open snow just left of the penguin line, below the sledge dog.",
+            "occlusion": "None; the complete child is visible, standing beside the penguins without covering any of them.",
+            "instructions": "A child in winter clothes stands on open snow to the left of the marching penguins, facing them, at the same size as the nearby children. Do not cover any penguin or child."
+          }
         },
         {
           "id": "antarctica_penguins_b",
@@ -119,19 +125,25 @@
       "slots": [
         {
           "id": "antarctica_sledge_a",
-          "x": 0.505,
-          "y": 0.59,
-          "scale": 0.068,
+          "x": 0.6167,
+          "y": 0.8895,
+          "scale": 0.165,
           "hintZone": {
-            "x": 0.505,
-            "y": 0.575,
+            "x": 0.6167,
+            "y": 0.8745,
             "r": 0.075
           },
           "hintText": {
             "en": "Look by the sledges.",
             "he": "חפשו ליד המזחלות."
           },
-          "layer": "front"
+          "layer": "front",
+          "placement": {
+            "pose": "seated",
+            "support": "The support point is the seat on the wooden side beam; both boots descend toward the lower runner.",
+            "occlusion": "None; place the child in front of the cargo, allowing the body to cover only boxes, rope, and sledge boards behind it.",
+            "instructions": "Sit upright and sideways on the left portion of the freight sledge, knees bent toward the viewer and hands in the lap. Use the same foreground scale as the nearby seated child."
+          }
         },
         {
           "id": "antarctica_sledge_b",
@@ -182,19 +194,25 @@
       "slots": [
         {
           "id": "antarctica_ice_a",
-          "x": 0.1,
-          "y": 0.705,
-          "scale": 0.078,
+          "x": 0.714,
+          "y": 0.135,
+          "scale": 0.048,
           "hintZone": {
-            "x": 0.1,
-            "y": 0.69,
+            "x": 0.714,
+            "y": 0.12,
             "r": 0.075
           },
           "hintText": {
             "en": "Look behind the ice blocks.",
             "he": "חפשו מאחורי גושי הקרח."
           },
-          "layer": "front"
+          "layer": "front",
+          "placement": {
+            "pose": "peeking",
+            "support": "The support point is hidden on the snowy shelf behind the ice buttress; the implied child stands normally there.",
+            "occlusion": "The visible blue ice buttress hides the child from the upper chest through the shoes; no invisible cutoff is used.",
+            "instructions": "Peek over the right blue ice buttress with the full hat, face, and tops of both shoulders visible; one mitten may appear beside the cheek. Scale slightly larger than the distant ridge walkers because this ledge is closer. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown."
+          }
         },
         {
           "id": "antarctica_ice_b",

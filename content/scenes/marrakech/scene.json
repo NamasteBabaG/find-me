@@ -9,7 +9,7 @@
     "en": "Lanterns, carpets and a mountain of spices.",
     "he": "פנסים, שטיחים והר של תבלינים."
   },
-  "version": 2,
+  "version": 3,
   "active": true,
   "artStatus": "final",
   "art": {
@@ -56,19 +56,25 @@
       "slots": [
         {
           "id": "marrakech_lanterns_a",
-          "x": 0.145,
-          "y": 0.345,
-          "scale": 0.055,
+          "x": 0.1855,
+          "y": 0.35,
+          "scale": 0.078,
           "hintZone": {
-            "x": 0.145,
-            "y": 0.32999999999999996,
+            "x": 0.1855,
+            "y": 0.335,
             "r": 0.075
           },
           "hintText": {
             "en": "Look under the hanging lanterns.",
             "he": "חפשו מתחת לפנסים התלויים."
           },
-          "layer": "front"
+          "layer": "front",
+          "placement": {
+            "pose": "standing",
+            "support": "Both shoes rest on the narrow raised stall platform beneath the hanging lantern display.",
+            "occlusion": "None; the child is drawn in front of the lanterns and stored wares.",
+            "instructions": "Place a small child facing the viewer before the lantern wall, arms relaxed and face unobstructed. Match the short background children, clearly smaller than the nearby adults."
+          }
         },
         {
           "id": "marrakech_lanterns_b",
@@ -119,19 +125,25 @@
       "slots": [
         {
           "id": "marrakech_carpets_a",
-          "x": 0.175,
-          "y": 0.545,
-          "scale": 0.07,
+          "x": 0.145,
+          "y": 0.5375,
+          "scale": 0.145,
           "hintZone": {
-            "x": 0.175,
-            "y": 0.53,
+            "x": 0.145,
+            "y": 0.5225,
             "r": 0.075
           },
           "hintText": {
             "en": "Look between the stacks of carpets.",
             "he": "חפשו בין ערימות השטיחים."
           },
-          "layer": "front"
+          "layer": "front",
+          "placement": {
+            "pose": "seated",
+            "support": "The support point is the child's seat on the flat top carpet; the shoes hang against the front of the pile.",
+            "occlusion": "None; the child naturally covers part of the carpet pattern behind the body.",
+            "instructions": "Seat the child on the top of the folded red-and-blue carpet pile, facing slightly right with hands in the lap and legs dangling toward the aisle. Use the scale of nearby foreground children."
+          }
         },
         {
           "id": "marrakech_carpets_b",
@@ -182,19 +194,25 @@
       "slots": [
         {
           "id": "marrakech_spices_a",
-          "x": 0.475,
-          "y": 0.475,
-          "scale": 0.058,
+          "x": 0.488,
+          "y": 0.573,
+          "scale": 0.075,
           "hintZone": {
-            "x": 0.475,
-            "y": 0.45999999999999996,
+            "x": 0.488,
+            "y": 0.558,
             "r": 0.075
           },
           "hintText": {
             "en": "Look behind the cones of spices.",
             "he": "חפשו מאחורי חרוטי התבלינים."
           },
-          "layer": "front"
+          "layer": "front",
+          "placement": {
+            "pose": "peeking",
+            "support": "Hidden feet on the ground behind the blue-and-white patterned barrel; the child stands normally there.",
+            "occlusion": "The blue-and-white patterned barrel in front hides the child from the chest down; only the head and shoulders show above its rim.",
+            "instructions": "A child peeks out above the blue-and-white patterned barrel that stands in front of the yellow spice cone, between the vendor in the cream robe on the left and the vendor in the green robe on the right. Only the head and shoulders are visible above the barrel; keep the whole face clear and do not touch either vendor. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown."
+          }
         },
         {
           "id": "marrakech_spices_b",

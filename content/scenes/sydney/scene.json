@@ -10,7 +10,7 @@
     "he": "מפרץ כחול, מפרשים לבנים ועשרה גלשנים."
   },
   "wardrobe": "a plain yellow t-shirt and blue shorts, bare feet",
-  "version": 2,
+  "version": 3,
   "active": true,
   "artStatus": "final",
   "art": {
@@ -57,19 +57,25 @@
       "slots": [
         {
           "id": "sydney_ferry_a",
-          "x": 0.545,
-          "y": 0.478,
-          "scale": 0.052,
+          "x": 0.4345,
+          "y": 0.3755,
+          "scale": 0.078,
           "hintZone": {
-            "x": 0.545,
-            "y": 0.46299999999999997,
+            "x": 0.4345,
+            "y": 0.3605,
             "r": 0.075
           },
           "hintText": {
             "en": "Look at the water edge by the ferry.",
             "he": "חפשו בקו המים ליד המעבורת."
           },
-          "layer": "front"
+          "layer": "front",
+          "placement": {
+            "pose": "standing",
+            "support": "Feet rest on the forward deck of the central green-and-yellow ferry, behind its bow rail.",
+            "occlusion": "The green bow rail and side panel hide the lower legs and shoes; the face and torso remain fully visible.",
+            "instructions": "Stand facing forward with arms close to the body. Match the small scale of people aboard the ferry while remaining clearly child-shaped."
+          }
         },
         {
           "id": "sydney_ferry_b",
@@ -122,19 +128,25 @@
       "slots": [
         {
           "id": "sydney_surfboards_a",
-          "x": 0.18,
-          "y": 0.64,
-          "scale": 0.078,
+          "x": 0.186,
+          "y": 0.6835,
+          "scale": 0.135,
           "hintZone": {
-            "x": 0.18,
-            "y": 0.625,
+            "x": 0.186,
+            "y": 0.6685,
             "r": 0.075
           },
           "hintText": {
             "en": "Look by the surfboards.",
             "he": "חפשו ליד הגלשנים."
           },
-          "layer": "front"
+          "layer": "front",
+          "placement": {
+            "pose": "standing",
+            "support": "Both shoes rest on clear sand immediately in front of the upright surfboard row.",
+            "occlusion": "None; the child stands in front of the boards with the full body and face visible.",
+            "instructions": "Stand front-facing with relaxed arms in front of the orange surfboard. Use about the same scale as the nearby red-shirt child, slightly larger for the lower position."
+          }
         },
         {
           "id": "sydney_surfboards_b",
@@ -185,19 +197,25 @@
       "slots": [
         {
           "id": "sydney_rocks_a",
-          "x": 0.7,
-          "y": 0.665,
-          "scale": 0.08,
+          "x": 0.7895,
+          "y": 0.867,
+          "scale": 0.158,
           "hintZone": {
-            "x": 0.7,
-            "y": 0.65,
+            "x": 0.7895,
+            "y": 0.852,
             "r": 0.075
           },
           "hintText": {
             "en": "Look behind the rocks.",
             "he": "חפשו מאחורי הסלעים."
           },
-          "layer": "front"
+          "layer": "front",
+          "placement": {
+            "pose": "peeking",
+            "support": "The hidden feet stand on a shallow ledge behind the foreground harbour rock; the support point is concealed by the rock.",
+            "occlusion": "The near pale rock hides the lower torso, legs, and shoes along its visible top contour; the face remains unobstructed.",
+            "instructions": "Peek forward with both forearms resting on the rock top. Show the head, shoulders, and upper torso; use an implied standing height like children on adjacent foreground rocks. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown."
+          }
         },
         {
           "id": "sydney_rocks_b",

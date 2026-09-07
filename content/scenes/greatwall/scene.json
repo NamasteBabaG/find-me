@@ -10,7 +10,7 @@
     "he": "מדרגות אינסופיות, דרקון נייר וערפל על הגבעות."
   },
   "wardrobe": "a thin light-blue shirt and sand-coloured trousers",
-  "version": 2,
+  "version": 3,
   "active": true,
   "artStatus": "final",
   "art": {
@@ -57,19 +57,25 @@
       "slots": [
         {
           "id": "greatwall_dragon_a",
-          "x": 0.44,
-          "y": 0.605,
-          "scale": 0.072,
+          "x": 0.4737,
+          "y": 0.7705,
+          "scale": 0.1,
           "hintZone": {
-            "x": 0.44,
-            "y": 0.59,
+            "x": 0.4737,
+            "y": 0.7555,
             "r": 0.075
           },
           "hintText": {
             "en": "Look under the paper dragon.",
             "he": "חפשו מתחת לדרקון הנייר."
           },
-          "layer": "front"
+          "layer": "front",
+          "placement": {
+            "pose": "seated",
+            "support": "footX and footY mark the child’s seat contact on the flat stone paving; bodyHeight is the implied standing height.",
+            "occlusion": "None. The seated child is fully foreground and may cover a small piece of scenery behind.",
+            "instructions": "Seat the child cross-legged on the clear paving directly below the dragon’s middle. Face forward with hands in the lap; use the same head size as nearby children."
+          }
         },
         {
           "id": "greatwall_dragon_b",
@@ -122,18 +128,18 @@
       "slots": [
         {
           "id": "greatwall_lanterns_a",
-          "x": 0.4744,
-          "y": 0.76,
-          "scale": 0.057,
+          "x": 0.5001,
+          "y": 0.8838,
+          "scale": 0.108,
           "placement": {
             "pose": "standing",
-            "support": "Both feet on the open paved walkway behind the nearest hanging red lantern, between the seated visitors and the pole.",
-            "occlusion": "Keep the complete body visible. The nearby low wall can overlap a shoe only, never the face or torso.",
-            "instructions": "A school-age child stands watching a red lantern, separated from the seated visitors on the left and standing visitors on the right. The dragon parade is FARTHER BACK; do not put this child on, inside or attached to the dragon. Preserve every existing person and lantern. Use the small child's height at this foreground depth, not the height of the older visitors."
+            "support": "Both shoes rest on the visible stone step; footX and footY are the midpoint between them.",
+            "occlusion": "None. Draw the child in front of the lantern, tassel, and pole; those objects may be partly covered behind the child.",
+            "instructions": "Stand the child on the broad lower stone step, in front of the low red lantern and just left of the tall pole. Match the scale of children on the nearby foreground landing."
           },
           "hintZone": {
-            "x": 0.4744,
-            "y": 0.745,
+            "x": 0.5001,
+            "y": 0.8688,
             "r": 0.075
           },
           "hintText": {
@@ -166,8 +172,8 @@
       "bodyTemplate": "greatwall_tower",
       "difficulty": 3,
       "mission": {
-        "en": "Find {name} hiding in the watchtower",
-        "he": "מצאו את {name} במגדל השמירה"
+        "en": "Find {name} at the watchtower",
+        "he": "מצאו את {name} ליד מגדל השמירה"
       },
       "item": {
         "en": "stone watchtowers with narrow windows",
@@ -191,19 +197,25 @@
       "slots": [
         {
           "id": "greatwall_tower_a",
-          "x": 0.205,
-          "y": 0.315,
-          "scale": 0.042,
+          "x": 0.085,
+          "y": 0.4925,
+          "scale": 0.075,
           "hintZone": {
-            "x": 0.205,
-            "y": 0.3,
+            "x": 0.085,
+            "y": 0.4775,
             "r": 0.075
           },
           "hintText": {
-            "en": "Look in the watchtower.",
-            "he": "חפשו במגדל השמירה."
+            "en": "Look at the steps beside the watchtower.",
+            "he": "חפשו במדרגות ליד מגדל השמירה."
           },
-          "layer": "front"
+          "layer": "front",
+          "placement": {
+            "pose": "standing",
+            "support": "Both shoes on the empty stone steps at the foot of the watchtower, in the tower's shadow.",
+            "occlusion": "None; the low stone parapet on the right may overlap a shoe only.",
+            "instructions": "A small child stands on the empty flight of stone steps beside the watchtower, below the children higher up the stairs, looking up at the tower. Use the height of the children on the stairs, not the adults. Do not touch the children on the steps above."
+          }
         },
         {
           "id": "greatwall_tower_b",
