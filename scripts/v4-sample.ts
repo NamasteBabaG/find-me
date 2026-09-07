@@ -36,6 +36,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import path from "node:path";
 import sharp from "sharp";
 import { OpenAiAvatarProvider } from "../src/infra/generation/openai";
+import { IMAGE_EDIT_RESERVE_CENTS } from "../src/infra/generation/image-edit-reserve";
 import { OpenAiPatchJudge } from "../src/infra/generation/judge";
 import { faceWindow } from "../src/infra/generation/avatar-cut";
 import { DEFAULT_WINDOW_FACTOR, PROMPT_VERSION, childProblem, diffToPatch, paintMask } from "../src/services/generation/patch";
@@ -50,8 +51,8 @@ const sha256 = (b: Buffer) => createHash("sha256").update(b).digest("hex");
 /** The four boards the review chose: a partial child, a beach in a jacket, open water, a dark doorway. */
 const DEFAULT_BOARDS = "greatwall:lanterns,sydney:surfboards,amazon:canoe,giantlibrary:doorway";
 
-/** What one call is likely to cost, in cents, so the budget is reserved before the call, not counted after it. */
-const RESERVE_CENTS: Record<string, number> = { low: 2.5, medium: 8, high: 20 };
+/** Per-call allowance includes input; actual usage remains the cost of record. */
+const RESERVE_CENTS: Readonly<Record<string, number>> = IMAGE_EDIT_RESERVE_CENTS;
 const JUDGE_RESERVE_CENTS = 0.4;
 
 interface ArtDirection {
