@@ -1,6 +1,6 @@
 import { newId } from "@/lib/ids";
-import { boardsFor, PACKAGES, isPackageTier, priceFor } from "@/domain/package";
-import { type Currency, currencyFor, pick, type Locale } from "@/i18n/config";
+import { boardsFor, PACKAGES, isPackageTier, isCurrency, priceFor } from "@/domain/package";
+import { type Currency, pick, type Locale } from "@/i18n/config";
 import { flowError, type FlowError } from "@/i18n/errors";
 import type { Container } from "./container";
 import { spendAllowedFor } from "@/domain/spend-policy";
@@ -15,7 +15,10 @@ import { WEBHOOK, audit, type Actor } from "./audit.service";
  * Checkout + payment webhook. The webhook is the single source of truth for
  * "paid"; the redirect back from the PSP only shows a waiting screen.
  */
-export async function startCheckout(c: Container, input: { gameId: string; email: string; currency?: Currency }): Promise<{ ok: true; checkoutUrl: string; userId: string } | FlowError> {
+export async function startCheckout(c: Container, input: { gameId: string; email: string; currency: Currency }): Promise<{ ok: true; checkoutUrl: string; userId: string } | FlowError> {
+  // Server callers must resolve geography explicitly. Never infer money from
+  // the child's game language, and fail before side effects on invalid input.
+  if (!isCurrency(input.currency)) throw new Error("Checkout requires a server-resolved currency");
   // On a QA box with a real painter, the money starts here.
   if (!spendAllowedFor(spendGuard(), input.email)) return flowError("QA_TESTERS_ONLY", "זו סביבת בדיקה. רק בודקים רשומים יכולים ליצור כאן משחקים.");
   const game = await loadDraft(c, input.gameId);
@@ -39,7 +42,7 @@ export async function startCheckout(c: Container, input: { gameId: string; email
   await c.db.childProfile.update({ where: { id: game.childProfile.id }, data: { ownerId: user.id } });
 
   const pkg = PACKAGES[game.packageTier];
-  const currency: Currency = input.currency ?? currencyFor(locale);
+  const currency = input.currency;
   const amount = priceFor(pkg.tier, currency); // minor units of `currency`
   const existing = await c.db.order.findFirst({ where: { gameId: game.id, paymentStatus: "PENDING" }, orderBy: { createdAt: "desc" } });
   let order = existing;

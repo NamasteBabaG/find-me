@@ -1,7 +1,7 @@
 /**
  * Locales. English is the default (LTR); Hebrew is a first-class citizen
- * (RTL). Detection by IP/geo is planned; today the parent switches with the
- * globe button and the choice lives in a cookie. Each game is frozen in the
+ * (RTL). Geo sets the initial language; the parent can override it with the
+ * language button and the choice lives in a cookie. Each game is frozen in the
  * locale it was purchased in (Game.locale) so links behave the same for
  * everyone who opens them.
  */
@@ -27,11 +27,6 @@ export type LocalizedText = Record<Locale, string>;
 
 export function pick(text: LocalizedText, locale: Locale): string {
   return text[locale] ?? text[DEFAULT_LOCALE];
-}
-
-/** The currency follows the language for now: Hebrew site → ILS, English site → USD. (Geo detection will refine this.) */
-export function currencyFor(locale: Locale): import("@/domain/package").Currency {
-  return locale === "he" ? "ILS" : "USD";
 }
 
 /** Single implementation lives in the domain; re-exported so UI code can import money helpers next to `tf`/`pick`. */

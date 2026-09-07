@@ -141,7 +141,7 @@ async function main() {
   log("package + world selected");
 
   const email = process.env.SMOKE_EMAIL ?? "smoke@example.com";
-  const checkout = await startCheckout(c, { gameId, email });
+  const checkout = await startCheckout(c, { gameId, email, currency: "ILS" });
   assert(checkout.ok, `checkout: ${!checkout.ok ? checkout.reason : ""}`);
   log(`checkout url ${checkout.ok ? checkout.checkoutUrl : ""}`);
 

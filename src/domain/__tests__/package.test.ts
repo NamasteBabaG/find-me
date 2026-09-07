@@ -28,8 +28,9 @@ describe("packages", () => {
     expect(formatMoney(priceFor("ONE_WORLD", "ILS"), "ILS", "he")).toBe("59 ₪");
     expect(formatMoney(priceFor("TWO_WORLDS", "ILS"), "ILS", "he")).toBe("109 ₪");
     expect(formatMoney(priceFor("ALL_WORLDS", "ILS"), "ILS", "he")).toBe("159 ₪");
-    expect(formatMoney(priceFor("ONE_WORLD", "USD"), "USD")).toBe("$9.90");
-    expect(formatMoney(priceFor("ALL_WORLDS", "USD"), "USD")).toBe("$29.90");
+    expect(formatMoney(priceFor("ONE_WORLD", "USD"), "USD")).toBe("$22");
+    expect(formatMoney(priceFor("TWO_WORLDS", "USD"), "USD")).toBe("$39");
+    expect(formatMoney(priceFor("ALL_WORLDS", "USD"), "USD")).toBe("$56");
   });
 
   it("hides tiers there are not enough worlds for", () => {
@@ -62,7 +63,9 @@ describe("upgrades", () => {
     expect(formatMoney(upgradePrice(1, 2, "ILS")!, "ILS", "he")).toBe("50 ₪");
     expect(formatMoney(upgradePrice(1, 3, "ILS")!, "ILS", "he")).toBe("100 ₪");
     expect(formatMoney(upgradePrice(2, 3, "ILS")!, "ILS", "he")).toBe("50 ₪");
-    expect(formatMoney(upgradePrice(1, 2, "USD")!, "USD")).toBe("$10");
+    expect(formatMoney(upgradePrice(1, 2, "USD")!, "USD")).toBe("$17");
+    expect(formatMoney(upgradePrice(2, 3, "USD")!, "USD")).toBe("$17");
+    expect(formatMoney(upgradePrice(1, 3, "USD")!, "USD")).toBe("$34");
   });
 
   it("refuses a downgrade or a world count that is not sold", () => {
