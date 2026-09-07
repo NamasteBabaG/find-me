@@ -218,6 +218,50 @@ describe("generation pipeline", () => {
     verdict = () => "ok";
   });
 
+  it("carries the parent's age from the database into identity, every patch and every board review", async () => {
+    const p = painter(), c = container(p);
+    let identityAge: number | null | undefined;
+    const create = p.createCharacter!;
+    p.createCharacter = async input => { identityAge = input.ageYears; return create(input); };
+    const edit = p.editSlotCrop!;
+    const prompts: string[] = [];
+    p.editSlotCrop = async input => { prompts.push(input.prompt); return edit(input); };
+    const ages: Array<number | null | undefined> = [];
+    c.judge = { id: "stub", judge: async input => { ages.push(input.ageYears); return { verdict: "ok", reason: "stub", costCents: 0 }; } };
+    const id = await seedGame(c);
+    const game = await gameOf(id);
+    await db.childProfile.update({ where: { id: game.childProfileId! }, data: { ageYears: 8 } });
+    await mod.runGenerationPipeline(c, id);
+    expect(identityAge).toBe(8);
+    expect(ages).toEqual([8, 8, 8]);
+    expect(prompts).toHaveLength(3);
+    expect(prompts.every(prompt => prompt.includes("8"))).toBe(true);
+    expect((await gameOf(id)).configJson).not.toContain('"ageYears"');
+  }, 120000);
+
+  it("composes a pinned old scene with its old art after the catalog has advanced", async () => {
+    const c = container(painter());
+    const id = await seedGame(c);
+    await db.gameScene.updateMany({ where: { gameId: id }, data: { sceneSlug: "paris", sceneVersion: 1 } });
+    await mod.runGenerationPipeline(c, id);
+    const config = (await gameOf(id)).configJson!;
+    expect(config).toContain("/scenes/paris/base.webp");
+    expect(config).not.toContain("refresh-20260907");
+  }, 120000);
+
+  it("refuses an unavailable pinned version before buying the identity sheet", async () => {
+    const p = painter(), c = container(p);
+    let calls = 0;
+    const create = p.createCharacter!;
+    p.createCharacter = async input => { calls++; return create(input); };
+    const id = await seedGame(c);
+    await db.gameScene.updateMany({ where: { gameId: id }, data: { sceneSlug: "paris", sceneVersion: 999 } });
+    await mod.runGenerationPipeline(c, id);
+    expect(calls).toBe(0);
+    expect(p.calls).toBe(0);
+    expect((await job(id)).status).toBe("FAILED");
+  }, 120000);
+
   it("sends the final board to the judge and keeps raw evidence private and linked", async () => {
     const c=container(painter());let count=0;
     c.judge={id:'stub',judge:async input=>{

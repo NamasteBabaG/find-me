@@ -35,6 +35,8 @@ import { DEFAULT_WINDOW_FACTOR, childProblem, diffToPatch, paintMask, type Patch
 import { cropOf, parseDiffOptions, slotOf, writePatch, writePreview, type SlotInfo } from "../src/services/generation/authoring";
 import { OpenAiAvatarProvider } from "../src/infra/generation/openai";
 import { OpenAiPatchJudge } from "../src/infra/generation/judge";
+import { boardComposite } from "../src/services/generation/board-composite";
+import { validChildAge } from "../src/domain/child-appearance";
 
 export { cropOf, slotOf, writePatch, writePreview, type SlotInfo };
 
@@ -59,7 +61,7 @@ export function envKey(name: string): string | undefined {
 }
 
 /** The flags every command may carry besides the extraction knobs. */
-const COMMON_FLAGS = ["out", "preview-dir", "pose", "window-factor", "units", "ref", "quality", "patch-quality", "model", "judge-model", "rpm", "tries", "name"];
+const COMMON_FLAGS = ["out", "preview-dir", "pose", "window-factor", "units", "ref", "quality", "patch-quality", "model", "judge-model", "rpm", "tries", "name", "age"];
 
 /** The slot as the scripts see it: the window factor and the units are command-line knobs. */
 function slotFromFlags(slug: string, targetId: string, variantArg: string | undefined) {
@@ -69,7 +71,9 @@ function slotFromFlags(slug: string, targetId: string, variantArg: string | unde
   // was fixed — kept only so a comparison can reproduce it.
   const units = flag("units", "model");
   if (units !== "model" && units !== "art") throw new Error(`--units takes model or art, got "${units}"`);
-  return slotOf(slug, targetId, variantArg, { pose: flag("pose", "") || undefined, windowFactor: factor, outputPx: units === "model" ? 1024 : undefined });
+  const age = flag("age", "");
+  if (age && !validChildAge(Number(age))) throw new Error("--age must be an integer from 2 to 10");
+  return slotOf(slug, targetId, variantArg, { ageYears: age ? Number(age) : undefined, pose: flag("pose", "") || undefined, windowFactor: factor, outputPx: units === "model" ? 1024 : undefined });
 }
 
 async function exportCrop(slug: string, targetId: string, variantArg?: string) {
@@ -141,12 +145,13 @@ async function generate(slug: string, targetId: string, variantArg?: string) {
     // in jeans for one spot and a canoe with an arm for another — both the right
     // shape, neither the child — and those are exactly the patches a slot test
     // must not call a success.
-    const verdict = await judge.judge({ patchPng: patch.webp, reference, childName: flag("name", "the child"), label: c.name });
+    const boardCrop = await boardComposite({ base: readFileSync(path.join(ROOT, "public", c.scene.art.base)), foreground: c.scene.art.foreground ? readFileSync(path.join(ROOT, "public", c.scene.art.foreground)) : undefined, art: c.art, patch: patch.webp, rect: patch.geometry.rect, layer: c.slot.layer, flip: c.slot.flip });
+    const verdict = await judge.judge({ patchPng: patch.webp, reference, childName: flag("name", "the child"), ageYears: flag("age", "") ? Number(flag("age", "")) : undefined, label: c.name, boardCrop });
     if (verdict.verdict === "bad") {
       console.log(`rejected by the judge: ${verdict.reason}`);
       continue;
     }
-    if (verdict.verdict === "unknown") console.log(`(judge could not answer: ${verdict.reason})`);
+    if (verdict.verdict === "unknown") throw new Error(`Not certified: judge could not answer: ${verdict.reason}`);
     await importPatch(slug, targetId, c.variant, editedPath);
     console.log(`accepted (${patch.largest}px vs expected ~${patch.expected}px), ${(edit.costCents / 100).toFixed(3)} USD on ${edit.model}`);
     return;

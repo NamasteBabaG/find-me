@@ -1,5 +1,6 @@
 import { newDraftToken, newId } from "@/lib/ids";
 import { normalizeChildName } from "@/lib/copy";
+import { validChildAge } from "@/domain/child-appearance";
 import { PACKAGES, defaultWorldSelection, isPackageTier, purchasableTiers, type PackageTier } from "@/domain/package";
 import { isEditableDraft } from "@/domain/order-state";
 import { outOfOrderWorlds } from "@/domain/world";
@@ -42,16 +43,17 @@ export async function createDraft(c: Container, ownerId: string | null, locale: 
   return { gameId: game.id, draftToken };
 }
 
-export async function setChildName(c: Container, gameId: string, rawName: string): Promise<FlowResult> {
+export async function setChildName(c: Container, gameId: string, rawName: string, ageYears?: number): Promise<FlowResult> {
   const name = normalizeChildName(rawName);
   if (name.length < 2) return flowError("NAME_TOO_SHORT", "כתבו שם של לפחות שתי אותיות.");
+  if (ageYears !== undefined && !validChildAge(ageYears)) return flowError("INVALID_CHILD_AGE", "בחרו את הגיל בתמונה, בין 2 ל־10.");
   const game = await loadDraft(c, gameId);
   if (!game || !isEditableDraft(statusOf(game))) return flowError("DRAFT_LOCKED", "הטיוטה כבר לא ניתנת לעריכה.");
 
   if (game.childProfile) {
-    await c.db.childProfile.update({ where: { id: game.childProfile.id }, data: { displayName: name } });
+    await c.db.childProfile.update({ where: { id: game.childProfile.id }, data: { displayName: name, ...(ageYears === undefined ? {} : { ageYears }) } });
   } else {
-    const child = await c.db.childProfile.create({ data: { id: newId("chl"), ownerId: game.ownerId, displayName: name } });
+    const child = await c.db.childProfile.create({ data: { id: newId("chl"), ownerId: game.ownerId, displayName: name, ageYears } });
     await c.db.game.update({ where: { id: gameId }, data: { childProfileId: child.id } });
   }
   await c.db.game.update({ where: { id: gameId }, data: { title: pick({ en: `Where's ${name}?`, he: `איפה ${name}?` }, gameLocale(game)) } });

@@ -9,20 +9,20 @@
     "en": "Rope bridges, airships and stairs made of sky.",
     "he": "גשרי חבלים, ספינות אוויר ומדרגות מרקיע."
   },
-  "version": 1,
+  "version": 2,
   "active": true,
   "artStatus": "final",
   "art": {
     "width": 3072,
     "height": 2048,
-    "base": "/scenes/cloudcity/base.webp",
-    "thumbnail": "/scenes/cloudcity/thumb.webp",
+    "base": "/scenes/cloudcity/refresh-20260907/base.webp",
+    "thumbnail": "/scenes/cloudcity/refresh-20260907/thumb.webp",
     "palette": {
       "sky": "#C9B6F5",
       "ground": "#6B4FA8",
       "accent": "#FFD24D"
     },
-    "foreground": "/scenes/cloudcity/foreground.webp"
+    "sha256": "fbe21abf94ba13f374653a1923c1c55a8bd1358ef2d7529697cee0c89f86d402"
   },
   "targets": [
     {
@@ -67,7 +67,8 @@
           "hintText": {
             "en": "The rope bridge below the round tower, above the waterfall.",
             "he": "גשר החבלים מתחת למגדל העגול, מעל המפל."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "cloudcity_bridge_b",
@@ -82,7 +83,8 @@
           "hintText": {
             "en": "The rope bridge to the right of the round tower.",
             "he": "גשר החבלים מימין למגדל העגול."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -128,7 +130,8 @@
           "hintText": {
             "en": "Bottom right, in the basket of the striped blue airship.",
             "he": "למטה מימין, בסל של ספינת האוויר הכחולה המפוספסת."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "cloudcity_airship_b",
@@ -143,7 +146,8 @@
           "hintText": {
             "en": "Bottom left, on the deck of the purple airship.",
             "he": "למטה משמאל, על הסיפון של ספינת האוויר הסגולה."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -189,7 +193,8 @@
           "hintText": {
             "en": "On the little balcony of the house on the left, among the flowers.",
             "he": "על המרפסת הקטנה של הבית משמאל, בין הפרחים."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "cloudcity_pots_b",
@@ -204,7 +209,8 @@
           "hintText": {
             "en": "Bottom left corner, at the front of the purple airship.",
             "he": "בפינה השמאלית התחתונה, בקצה הקדמי של ספינת האוויר הסגולה."
-          }
+          },
+          "layer": "front"
         }
       ]
     }

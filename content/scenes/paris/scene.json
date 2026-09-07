@@ -9,20 +9,20 @@
     "en": "The tower above a great square, a carousel and warm bread.",
     "he": "המגדל מעל כיכר גדולה, קרוסלה ולחם חם."
   },
-  "version": 1,
+  "version": 2,
   "active": true,
   "artStatus": "final",
   "art": {
     "width": 3072,
     "height": 2048,
-    "base": "/scenes/paris/base.webp",
-    "thumbnail": "/scenes/paris/thumb.webp",
+    "base": "/scenes/paris/refresh-20260907/base.webp",
+    "thumbnail": "/scenes/paris/refresh-20260907/thumb.webp",
     "palette": {
       "sky": "#DCE9F5",
       "ground": "#B9A98F",
       "accent": "#F5B301"
     },
-    "foreground": "/scenes/paris/foreground.webp"
+    "sha256": "1779a9015128795440b29d197ebc6fc09ad3931a71391f1b17e9679fc00b5a94"
   },
   "targets": [
     {
@@ -57,17 +57,24 @@
         {
           "id": "paris_bakery_a",
           "x": 0.79,
-          "y": 0.64,
-          "scale": 0.078,
+          "y": 0.716,
+          "scale": 0.068,
+          "placement": {
+            "pose": "peeking",
+            "support": "Both feet on the plaza paving just outside the bakery, behind the low flowers.",
+            "occlusion": "Only the existing low flower baskets may hide the lower legs; the entire face is above the flowers.",
+            "instructions": "A small school-age child peeks out beside the bakery flower display. Stay out of the glass pastry cabinet. Preserve every existing person, flower, pastry and frame. Do not extend another person's body. Plan a complete standing body behind the low flowers."
+          },
           "hintZone": {
             "x": 0.79,
-            "y": 0.625,
+            "y": 0.701,
             "r": 0.075
           },
           "hintText": {
             "en": "Look by the bakery window.",
             "he": "חפשו ליד חלון המאפייה."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "paris_bakery_b",
@@ -82,7 +89,8 @@
           "hintText": {
             "en": "Look by the second shop.",
             "he": "חפשו ליד החנות השנייה."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -118,18 +126,25 @@
       "slots": [
         {
           "id": "paris_carousel_a",
-          "x": 0.695,
-          "y": 0.545,
-          "scale": 0.05,
+          "x": 0.713,
+          "y": 0.521,
+          "scale": 0.045,
+          "placement": {
+            "pose": "standing",
+            "support": "Both shoes rest on TOP of the wooden carousel deck in the gap between the two horses.",
+            "occlusion": "A narrow existing vertical carousel pole can overlap a shoulder, never the face; do not hide the body with the deck.",
+            "instructions": "Show a complete small child between the horses, not riding or fused into a horse. The child is at the depth of the riders but below their seated heads. Preserve the horses, poles and children waiting OUTSIDE the carousel. The lower edge of the deck must stay below the child's feet, not across their waist."
+          },
           "hintZone": {
-            "x": 0.695,
-            "y": 0.53,
+            "x": 0.713,
+            "y": 0.506,
             "r": 0.075
           },
           "hintText": {
             "en": "Look at the carousel.",
             "he": "חפשו בקרוסלה."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "paris_carousel_b",
@@ -144,7 +159,8 @@
           "hintText": {
             "en": "Look at the other side of the carousel.",
             "he": "חפשו בצד השני של הקרוסלה."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -180,18 +196,25 @@
       "slots": [
         {
           "id": "paris_awning_a",
-          "x": 0.205,
-          "y": 0.56,
-          "scale": 0.062,
+          "x": 0.266,
+          "y": 0.592,
+          "scale": 0.053,
+          "placement": {
+            "pose": "standing",
+            "support": "Both shoes on the open stone pavement between the cafe chairs and the fruit cart.",
+            "occlusion": "No occlusion needed: keep the whole small standing body visible, with clear separation from the existing adults.",
+            "instructions": "The child is visiting the cafe, standing in the narrow open paved aisle. Keep the head below the nearby adults' shoulders at the same depth. Do not sit in the occupied chair, replace a diner, stand on the umbrella, or paint a floating head into the awning."
+          },
           "hintZone": {
-            "x": 0.205,
-            "y": 0.545,
+            "x": 0.266,
+            "y": 0.577,
             "r": 0.075
           },
           "hintText": {
-            "en": "Look under the café awning.",
-            "he": "חפשו מתחת לסוכך בית הקפה."
-          }
+            "en": "Look beside the café tables.",
+            "he": "חפשו ליד שולחנות בית הקפה."
+          },
+          "layer": "front"
         },
         {
           "id": "paris_awning_b",
@@ -206,7 +229,8 @@
           "hintText": {
             "en": "Look at the café on the right.",
             "he": "חפשו בבית הקפה מימין."
-          }
+          },
+          "layer": "front"
         }
       ]
     }

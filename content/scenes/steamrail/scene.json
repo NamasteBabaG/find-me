@@ -9,20 +9,20 @@
     "en": "A great engine, a clock, and steam everywhere.",
     "he": "קטר ענק, שעון והרבה קיטור."
   },
-  "version": 1,
+  "version": 2,
   "active": true,
   "artStatus": "final",
   "art": {
     "width": 3072,
     "height": 2048,
-    "base": "/scenes/steamrail/base.webp",
-    "thumbnail": "/scenes/steamrail/thumb.webp",
+    "base": "/scenes/steamrail/refresh-20260907/base.webp",
+    "thumbnail": "/scenes/steamrail/refresh-20260907/thumb.webp",
     "palette": {
       "sky": "#D9E4EC",
       "ground": "#4A5B6B",
       "accent": "#FF8A3D"
     },
-    "foreground": "/scenes/steamrail/foreground.webp"
+    "sha256": "7a8086044f53395951e4280fce25d29dcc9e9b580ea5cee98d3abb7dfc27f3c9"
   },
   "targets": [
     {
@@ -67,7 +67,8 @@
           "hintText": {
             "en": "In the middle, in front of the pile of trunks on the trolley.",
             "he": "באמצע, מול ערימת המזוודות שעל העגלה."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "steamrail_trolley_b",
@@ -82,7 +83,8 @@
           "hintText": {
             "en": "On the left side of the luggage trolley, by the big trunks.",
             "he": "בצד השמאלי של עגלת המזוודות, ליד התיקים הגדולים."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -128,7 +130,8 @@
           "hintText": {
             "en": "At the foot of the stone pillar, right under the big clock.",
             "he": "למרגלות עמוד האבן, ממש מתחת לשעון הגדול."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "steamrail_clock_b",
@@ -143,7 +146,8 @@
           "hintText": {
             "en": "Just right of the clock's pillar, in the crowd.",
             "he": "ממש מימין לעמוד של השעון, בתוך הקהל."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -189,7 +193,8 @@
           "hintText": {
             "en": "By the big red wheels of the engine, near the steam.",
             "he": "ליד הגלגלים האדומים הגדולים של הקטר, קרוב לאדים."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "steamrail_wheels_b",
@@ -204,7 +209,8 @@
           "hintText": {
             "en": "At the very front of the engine, near the cat.",
             "he": "ממש בחזית הקטר, קרוב לחתול."
-          }
+          },
+          "layer": "front"
         }
       ]
     }

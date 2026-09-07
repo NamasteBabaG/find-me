@@ -22,9 +22,9 @@ export async function activeSceneSlugs(c: Container): Promise<string[]> {
   return (await activeScenes(c)).map((s) => s.slug);
 }
 
-export function sceneBySlug(slug: string): SceneDefinition {
-  const s = findScene(slug);
-  if (!s) throw new Error(`Unknown scene "${slug}"`);
+export function sceneBySlug(slug: string, version?: number): SceneDefinition {
+  const s = findScene(slug, version);
+  if (!s) throw new Error(`Unknown scene "${slug}"${version === undefined ? "" : ` version ${version}`}`);
   return s;
 }
 

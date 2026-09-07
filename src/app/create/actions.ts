@@ -7,6 +7,7 @@ import { getCurrency } from "@/i18n/server";
 import { createDraft, draftBelongsTo, loadDraft, selectPackage, selectWorlds, setChildName } from "@/services/create-flow.service";
 import { startCheckout } from "@/services/order.service";
 import { isEditableDraft } from "@/domain/order-state";
+import { validChildAge } from "@/domain/child-appearance";
 import { statusOf } from "@/services/game-status";
 import { currentUser, draftTokenFromCookie, setDraftCookie } from "@/lib/server/session";
 import { getLocale } from "@/i18n/server";
@@ -32,6 +33,8 @@ export async function saveNameAction(_prev: ActionResult | null, formData: FormD
   await requireQaAccess();
   const c = getContainer();
   const name = String(formData.get("name") ?? "");
+  const ageYears = Number(formData.get("ageYears"));
+  if (!validChildAge(ageYears)) return flowError("INVALID_CHILD_AGE", "בחרו את הגיל בתמונה, בין 2 ל־10.");
   const guarded = await guardDb(async () => {
   let draft = await currentDraft();
   if (!draft) {
@@ -41,7 +44,7 @@ export async function saveNameAction(_prev: ActionResult | null, formData: FormD
     draft = await loadDraft(c, created.gameId);
   }
     if (!draft) return flowError("DRAFT_NOT_FOUND", "לא הצלחנו להתחיל טיוטה.");
-    return setChildName(c, draft.id, name);
+    return setChildName(c, draft.id, name, ageYears);
   });
   if (!guarded.ok) return guarded;
   redirect("/create/photo");

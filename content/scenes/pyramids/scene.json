@@ -9,20 +9,20 @@
     "en": "A pyramid only half built, and everyone is busy.",
     "he": "פירמידה שנבנתה רק עד החצי, וכולם עסוקים."
   },
-  "version": 1,
+  "version": 2,
   "active": true,
   "artStatus": "final",
   "art": {
     "width": 3072,
     "height": 2048,
-    "base": "/scenes/pyramids/base.webp",
-    "thumbnail": "/scenes/pyramids/thumb.webp",
+    "base": "/scenes/pyramids/refresh-20260907/base.webp",
+    "thumbnail": "/scenes/pyramids/refresh-20260907/thumb.webp",
     "palette": {
       "sky": "#FFE3A8",
       "ground": "#C8A05A",
       "accent": "#4FB3C9"
     },
-    "foreground": "/scenes/pyramids/foreground.webp"
+    "sha256": "e55700f1c59bbee422a72308fc1cf32ccf6dad3563425f3d8e06ee4bdfbc3c00"
   },
   "targets": [
     {
@@ -67,7 +67,8 @@
           "hintText": {
             "en": "On the left, among the stacked stone blocks near the wooden crane.",
             "he": "משמאל, בין ערימות אבני הבנייה, ליד מנוף העץ."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "pyramids_blocks_b",
@@ -82,7 +83,8 @@
           "hintText": {
             "en": "On the right, by the stone blocks near the striped tent.",
             "he": "מימין, ליד אבני הבנייה קרוב לאוהל המפוספס."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -128,7 +130,8 @@
           "hintText": {
             "en": "At the foot of the long ramp, in the middle of the picture.",
             "he": "בתחתית הרמפה הארוכה, באמצע התמונה."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "pyramids_ramp_b",
@@ -143,7 +146,8 @@
           "hintText": {
             "en": "Halfway up the ramp, near the block being pulled.",
             "he": "באמצע הרמפה, ליד האבן שנגררת."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -189,7 +193,8 @@
           "hintText": {
             "en": "The sled at the bottom of the ramp.",
             "he": "המזחלת בתחתית הרמפה."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "pyramids_sled_b",
@@ -204,7 +209,8 @@
           "hintText": {
             "en": "The loaded sled on the left, below the ramp.",
             "he": "המזחלת העמוסה משמאל, מתחת לרמפה."
-          }
+          },
+          "layer": "front"
         }
       ]
     }

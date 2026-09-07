@@ -22,6 +22,7 @@ import { expressionFor, modelSpaceHeight, slotContext, slotPrompt, type DiffOpti
 const ROOT = process.cwd();
 
 export interface SlotOfOptions {
+  ageYears?: number | null;
   pose?: string;
   /** The context window as a multiple of the child's height; the pipeline's default is 7. */
   windowFactor?: number;
@@ -52,6 +53,8 @@ export function slotOf(slug: string, targetId: string, variantArg: string | unde
   // The same prompt the pipeline sends, so a render here predicts a render there.
   const body = BODY_TEMPLATES[target.bodyTemplate];
   const prompt = slotPrompt({
+    ageYears: options.ageYears,
+    placement: slot.placement,
     mission: target.mission.en.replace("{name}", "the child"),
     bodyLabel: body?.label.en,
     childPx: promptChildPx,
@@ -81,6 +84,8 @@ export async function writePatch(c: SlotInfo, patch: PatchResult, outDir: string
   const url = `/${path.relative(path.join(ROOT, "public"), patchPath).split(path.sep).join("/")}`;
   const meta = {
     slug: c.scene.slug,
+    sceneVersion: c.scene.version,
+    artSha256: c.scene.art.sha256,
     targetId: c.target.id,
     variant: c.variant,
     url,

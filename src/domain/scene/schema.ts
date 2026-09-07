@@ -54,6 +54,13 @@ export const SlotSchema = z.object({
   hintZone: z.object({ x: Unit, y: Unit, r: z.number().min(0.03).max(0.5) }),
   /** Level-1 hint: a gentle verbal nudge specific to this hiding spot. */
   hintText: LocalizedTextSchema,
+  /** Authored against this exact scene version. A recipe, NOT a render certificate. */
+  placement: z.object({
+    pose: z.enum(["standing", "seated", "crouching", "swimming", "peeking"]),
+    support: z.string().min(8),
+    occlusion: z.string().min(8),
+    instructions: z.string().min(12),
+  }).optional(),
 });
 export type Slot = z.infer<typeof SlotSchema>;
 
@@ -136,6 +143,8 @@ export const SceneDefinitionSchema = z.object({
     width: z.number().int().min(320),
     height: z.number().int().min(320),
     base: z.string().min(1),
+    /** SHA256 of the exact deployed base bytes for version-bound generation. */
+    sha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
     foreground: z.string().optional(),
     thumbnail: z.string().min(1),
     palette: z.object({ sky: z.string(), ground: z.string(), accent: z.string() }),

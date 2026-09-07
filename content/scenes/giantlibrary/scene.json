@@ -10,20 +10,20 @@
     "he": "ספרים כמו דלתות, סולמות לתקרה וענק ישן."
   },
   "wardrobe": "a warm brown cardigan over a cream shirt and dark trousers",
-  "version": 1,
+  "version": 2,
   "active": true,
   "artStatus": "final",
   "art": {
     "width": 3072,
     "height": 2048,
-    "base": "/scenes/giantlibrary/base.webp",
-    "thumbnail": "/scenes/giantlibrary/thumb.webp",
+    "base": "/scenes/giantlibrary/refresh-20260907/base.webp",
+    "thumbnail": "/scenes/giantlibrary/refresh-20260907/thumb.webp",
     "palette": {
       "sky": "#C9B6F5",
       "ground": "#6B4FA8",
       "accent": "#FFD24D"
     },
-    "foreground": "/scenes/giantlibrary/foreground.webp"
+    "sha256": "942839a63639a88efc83c450aca08c1eff9dff3f8935f07232fb4a3508f9dcc5"
   },
   "targets": [
     {
@@ -68,7 +68,8 @@
           "hintText": {
             "en": "On the ladder leaning right beside the big globe.",
             "he": "על הסולם שנשען ממש ליד הגלובוס הגדול."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "giantlibrary_ladder_b",
@@ -83,7 +84,8 @@
           "hintText": {
             "en": "On the right, on the ladder by the blue books, near the giant's chair.",
             "he": "מימין, על הסולם ליד הספרים הכחולים, קרוב לכורסה של הענק."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -129,7 +131,8 @@
           "hintText": {
             "en": "Far left, at the foot of the globe, by the open door.",
             "he": "בקצה השמאלי, למרגלות הגלובוס, ליד הדלת הפתוחה."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "giantlibrary_globe_b",
@@ -144,7 +147,8 @@
           "hintText": {
             "en": "Under the globe's stand, among the children on the floor.",
             "he": "מתחת למעמד של הגלובוס, בין הילדים על הרצפה."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -192,7 +196,8 @@
           "hintText": {
             "en": "The glowing doorway with the lantern, right of the globe.",
             "he": "הפתח הזוהר עם הפנס, מימין לגלובוס."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "giantlibrary_doorway_b",
@@ -207,7 +212,8 @@
           "hintText": {
             "en": "Just below that doorway, before the book tent.",
             "he": "ממש מתחת לפתח הזה, לפני אוהל הספר."
-          }
+          },
+          "layer": "front"
         }
       ]
     }

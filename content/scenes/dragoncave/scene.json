@@ -9,20 +9,20 @@
     "en": "Gold, crystals and one enormous friendly dragon.",
     "he": "זהב, גבישים ודרקון ענק וידידותי אחד."
   },
-  "version": 1,
+  "version": 2,
   "active": true,
   "artStatus": "final",
   "art": {
     "width": 3072,
     "height": 2048,
-    "base": "/scenes/dragoncave/base.webp",
-    "thumbnail": "/scenes/dragoncave/thumb.webp",
+    "base": "/scenes/dragoncave/refresh-20260907/base.webp",
+    "thumbnail": "/scenes/dragoncave/refresh-20260907/thumb.webp",
     "palette": {
       "sky": "#C9B6F5",
       "ground": "#6B4FA8",
       "accent": "#FFD24D"
     },
-    "foreground": "/scenes/dragoncave/foreground.webp"
+    "sha256": "2e9c130a0205d1e2677e548a58d6f9d730a43d9f7b712e78d0e4ad764ad6d6c6"
   },
   "targets": [
     {
@@ -67,7 +67,8 @@
           "hintText": {
             "en": "In the middle of the gold, between the little blue dragon and the big paw.",
             "he": "באמצע הזהב, בין הדרקון הכחול הקטן לכף הרגל הגדולה."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "dragoncave_hoard_b",
@@ -82,7 +83,8 @@
           "hintText": {
             "en": "Bottom right, on the coins next to the purple baby dragon.",
             "he": "למטה מימין, על המטבעות ליד גור הדרקון הסגול."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -128,7 +130,8 @@
           "hintText": {
             "en": "On the left wall, above the rope bridge, among the tall purple crystals.",
             "he": "על הקיר השמאלי, מעל גשר החבלים, בין הגבישים הסגולים הגבוהים."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "dragoncave_crystal_b",
@@ -143,7 +146,8 @@
           "hintText": {
             "en": "On the rope bridge at the bottom left, near a lantern.",
             "he": "על גשר החבלים למטה משמאל, ליד פנס."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -189,7 +193,8 @@
           "hintText": {
             "en": "Under the wing, where it makes a little tent over the gold.",
             "he": "מתחת לכנף, איפה שהיא עושה אוהל קטן מעל הזהב."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "dragoncave_wing_b",
@@ -204,7 +209,8 @@
           "hintText": {
             "en": "Up on the left edge of the wing, beside a lantern.",
             "he": "למעלה בקצה השמאלי של הכנף, ליד פנס."
-          }
+          },
+          "layer": "front"
         }
       ]
     }

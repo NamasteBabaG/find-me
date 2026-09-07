@@ -9,20 +9,20 @@
     "en": "Blue towers, frozen fountains and a slide made of ice.",
     "he": "מגדלים כחולים, מזרקות קפואות ומגלשת קרח."
   },
-  "version": 1,
+  "version": 2,
   "active": true,
   "artStatus": "final",
   "art": {
     "width": 3072,
     "height": 2048,
-    "base": "/scenes/icepalace/base.webp",
-    "thumbnail": "/scenes/icepalace/thumb.webp",
+    "base": "/scenes/icepalace/refresh-20260907/base.webp",
+    "thumbnail": "/scenes/icepalace/refresh-20260907/thumb.webp",
     "palette": {
       "sky": "#C9B6F5",
       "ground": "#6B4FA8",
       "accent": "#FFD24D"
     },
-    "foreground": "/scenes/icepalace/foreground.webp"
+    "sha256": "296e9542c3c03ddf55e79d4a761d9fe052d18cdeaf5d4c458e7d888732c729f5"
   },
   "targets": [
     {
@@ -67,7 +67,8 @@
           "hintText": {
             "en": "Near the bottom of the long ice slide, on the left.",
             "he": "ליד סוף מגלשת הקרח הארוכה, בצד שמאל."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "icepalace_slide_b",
@@ -82,7 +83,8 @@
           "hintText": {
             "en": "Higher up the slide, on the left, by the balcony.",
             "he": "גבוה יותר על המגלשה, משמאל, ליד המרפסת."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -128,7 +130,8 @@
           "hintText": {
             "en": "In the middle of the rink, just right of the frozen fountain, near the snowman.",
             "he": "באמצע המשטח, ממש מימין למזרקה הקפואה, ליד איש השלג."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "icepalace_fountain_b",
@@ -143,7 +146,8 @@
           "hintText": {
             "en": "Left of the fountain's icy base.",
             "he": "משמאל לבסיס הקפוא של המזרקה."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -189,7 +193,8 @@
           "hintText": {
             "en": "Top right, by the stairs and the tall ice pillars.",
             "he": "למעלה מימין, ליד המדרגות ועמודי הקרח הגבוהים."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "icepalace_pillar_b",
@@ -204,7 +209,8 @@
           "hintText": {
             "en": "On the right, behind the white reindeer pulling the sleigh.",
             "he": "מימין, מאחורי האיילים הלבנים שמושכים את המזחלת."
-          }
+          },
+          "layer": "front"
         }
       ]
     }

@@ -14,7 +14,7 @@ export default async function CreateNamePage({ searchParams }: { searchParams: P
   const initialName = draft?.childProfile?.displayName ?? (params.name ?? "").slice(0, 24);
   return (
     <CreateFrame step={0} title={t.create.name.title} lead={t.create.name.lead} user={user} isAdmin={isAdminEmail(user?.email)}>
-      <NameForm initialName={initialName} />
+      <NameForm initialName={initialName} initialAge={draft?.childProfile?.ageYears} />
     </CreateFrame>
   );
 }

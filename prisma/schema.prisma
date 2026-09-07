@@ -62,6 +62,7 @@ model ChildProfile {
   id                   String    @id
   ownerId              String?
   displayName          String
+  ageYears             Int? // age in the parent's photo; null for legacy profiles, never guessed
   avatarAssetId        String? // illustrated sticker/avatar (kept so games keep working)
   identityAssetId      String? // identity sheet: the child drawn from a few angles, the reference every slot patch is painted from
   originalPhotoAssetId String? // private; deleted after QA unless retainOriginalPhoto

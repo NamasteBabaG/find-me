@@ -9,20 +9,20 @@
     "en": "Chocolate rivers, candy machines and a lot of sprinkles.",
     "he": "נהרות שוקולד, מכונות סוכריות והמון סוכריות צבעוניות."
   },
-  "version": 1,
+  "version": 2,
   "active": true,
   "artStatus": "final",
   "art": {
     "width": 3072,
     "height": 2048,
-    "base": "/scenes/sweetworkshop/base.webp",
-    "thumbnail": "/scenes/sweetworkshop/thumb.webp",
+    "base": "/scenes/sweetworkshop/refresh-20260907/base.webp",
+    "thumbnail": "/scenes/sweetworkshop/refresh-20260907/thumb.webp",
     "palette": {
       "sky": "#C9B6F5",
       "ground": "#6B4FA8",
       "accent": "#FFD24D"
     },
-    "foreground": "/scenes/sweetworkshop/foreground.webp"
+    "sha256": "7f98e653bad444ded715aeca100b18e1129e7b87e93a8e8892572b00b21f5543"
   },
   "targets": [
     {
@@ -67,7 +67,8 @@
           "hintText": {
             "en": "On the left bank of the chocolate river, just below the little bridge.",
             "he": "בצד השמאלי של נהר השוקולד, ממש מתחת לגשר הקטן."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "sweetworkshop_river_b",
@@ -82,7 +83,8 @@
           "hintText": {
             "en": "Right under the little bridge, where the boats go.",
             "he": "ממש מתחת לגשר הקטן, איפה שהסירות עוברות."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -128,7 +130,8 @@
           "hintText": {
             "en": "Bottom right, between the giant lollipops and the candy cane crate.",
             "he": "למטה מימין, בין הסוכריות הענקיות לארגז סוכריות המקל."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "sweetworkshop_lollipop_b",
@@ -143,7 +146,8 @@
           "hintText": {
             "en": "Top right, under the pink lollipops by the biscuit belt.",
             "he": "למעלה מימין, מתחת לסוכריות הוורודות, ליד העוגיות שנוסעות על הסרט."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -189,7 +193,8 @@
           "hintText": {
             "en": "The crate of candy canes just right of the river.",
             "he": "ארגז סוכריות המקל ממש מימין לנהר."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "sweetworkshop_crate_b",
@@ -204,7 +209,8 @@
           "hintText": {
             "en": "Bottom left, beside the big chocolate cauldron.",
             "he": "למטה משמאל, ליד קדרת השוקולד הגדולה."
-          }
+          },
+          "layer": "front"
         }
       ]
     }

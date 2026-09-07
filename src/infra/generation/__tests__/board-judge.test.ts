@@ -3,7 +3,7 @@ import {afterEach,beforeAll,describe,it,expect,vi} from 'vitest';
 import {OpenAiPatchJudge} from '../judge';
 import {BOARD_JUDGE_MODEL,BOARD_FAST_JUDGE_MODEL,BOARD_JUDGE_VERSION,boardJudgeReserveCents,parseBoardVerdict} from '../board-verdict';
 let png:Buffer;beforeAll(async()=>{png=await sharp({create:{width:32,height:32,channels:4,background:'red'}}).png().toBuffer();});afterEach(()=>vi.unstubAllGlobals());
-const checks={identity:'pass',faceIntegrity:'pass',bodyPlacement:'pass',style:'pass'};
+const checks={identity:'pass',faceIntegrity:'pass',bodyPlacement:'pass',ageProportions:'pass',anatomy:'pass',style:'pass'};
 const input=()=>({patchPng:png,reference:png,boardCrop:png,childName:'test',label:'test'});
 const response=(model:string,extra={},withUsage=true)=>new Response(JSON.stringify({model,choices:[{message:{content:JSON.stringify({checks:{...checks,...extra},reason:'visible support and intact face'})}}],...(withUsage?{usage:{prompt_tokens:2000,completion_tokens:400}}:{})}),{headers:{'x-request-id':'req_'+model}});
 describe('contextual release judge',()=>{

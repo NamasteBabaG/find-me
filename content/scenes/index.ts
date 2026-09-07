@@ -35,6 +35,7 @@ import market from "./market/scene.json";
 import park from "./park/scene.json";
 import ship from "./ship/scene.json";
 import volcano from "./volcano/scene.json";
+import preRefresh from "./releases/pre-refresh-20260907.json";
 
 /**
  * The scene catalog is data. Adding a world = adding a folder with
@@ -71,6 +72,16 @@ export function allScenes(): SceneDefinition[] {
   return SCENE_CATALOG.map((e) => e.scene);
 }
 
-export function findScene(slug: string): SceneDefinition | undefined {
-  return SCENE_CATALOG.find((e) => e.scene.slug === slug)?.scene;
+// Old definitions remain addressable for paid games and interrupted jobs.
+// Never silently substitute current art for a requested historical version.
+const HISTORICAL_SCENES: readonly SceneDefinition[] = preRefresh.map(raw => {
+  const parsed = validateSceneDefinition(raw);
+  if (!parsed.ok || !parsed.scene) throw new Error(`Invalid archived scene ${raw.slug}: ${parsed.errors.join(", ")}`);
+  return parsed.scene;
+});
+
+export function findScene(slug: string, version?: number): SceneDefinition | undefined {
+  const current = SCENE_CATALOG.find((e) => e.scene.slug === slug)?.scene;
+  if (version === undefined || current?.version === version) return current;
+  return HISTORICAL_SCENES.find(scene => scene.slug === slug && scene.version === version);
 }

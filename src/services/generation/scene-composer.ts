@@ -29,7 +29,7 @@ export async function composeGameConfig(c: Container, gameId: string): Promise<G
 
   const scenes: SceneConfig[] = [];
   for (const gs of game.scenes) {
-    const def = sceneBySlug(gs.sceneSlug);
+    const def = sceneBySlug(gs.sceneSlug, gs.sceneVersion);
     const sprites: TargetSpriteInput[] = [];
     for (const t of gs.targets) {
       const target = def.targets.find((x) => x.id === t.targetId);

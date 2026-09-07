@@ -9,20 +9,20 @@
     "en": "Banners, a drawbridge and a very sleepy guard.",
     "he": "דגלים, גשר מתרומם ושומר מנומנם מאוד."
   },
-  "version": 1,
+  "version": 2,
   "active": true,
   "artStatus": "final",
   "art": {
     "width": 3072,
     "height": 2048,
-    "base": "/scenes/castlegate/base.webp",
-    "thumbnail": "/scenes/castlegate/thumb.webp",
+    "base": "/scenes/castlegate/refresh-20260907/base.webp",
+    "thumbnail": "/scenes/castlegate/refresh-20260907/thumb.webp",
     "palette": {
       "sky": "#C9B6F5",
       "ground": "#6B4FA8",
       "accent": "#FFD24D"
     },
-    "foreground": "/scenes/castlegate/foreground.webp"
+    "sha256": "f4d544846b3e406f3682913d0b2680d1d991972550c60d01d771962cbb2ff650"
   },
   "targets": [
     {
@@ -67,7 +67,8 @@
           "hintText": {
             "en": "Right of the big archway, where the ivy climbs the wall.",
             "he": "מימין לשער הגדול, איפה שהצמחים מטפסים על הקיר."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "castlegate_banner_b",
@@ -82,7 +83,8 @@
           "hintText": {
             "en": "On the left tower, up by the blue and red flags.",
             "he": "על המגדל השמאלי, למעלה ליד הדגלים הכחולים והאדומים."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -128,7 +130,8 @@
           "hintText": {
             "en": "On the left bank of the moat, among the white flowers.",
             "he": "בצד השמאלי של המים, בין הפרחים הלבנים."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "castlegate_swan_b",
@@ -143,7 +146,8 @@
           "hintText": {
             "en": "On the right bank of the moat, where the swans come to eat.",
             "he": "בצד הימני של המים, איפה שהברבורים באים לאכול."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -189,7 +193,8 @@
           "hintText": {
             "en": "Between the moat and the bonfire, a barrel with a lid.",
             "he": "בין התעלה למדורה, חבית עם מכסה."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "castlegate_barrel_b",
@@ -204,7 +209,8 @@
           "hintText": {
             "en": "Under the orange tent on the right, by the stacked barrels.",
             "he": "מתחת לאוהל הכתום מימין, ליד החביות שמונחות אחת על השנייה."
-          }
+          },
+          "layer": "front"
         }
       ]
     }

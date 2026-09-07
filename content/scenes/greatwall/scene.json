@@ -10,20 +10,20 @@
     "he": "מדרגות אינסופיות, דרקון נייר וערפל על הגבעות."
   },
   "wardrobe": "a thin light-blue shirt and sand-coloured trousers",
-  "version": 1,
+  "version": 2,
   "active": true,
   "artStatus": "final",
   "art": {
     "width": 3072,
     "height": 2048,
-    "base": "/scenes/greatwall/base.webp",
-    "thumbnail": "/scenes/greatwall/thumb.webp",
+    "base": "/scenes/greatwall/refresh-20260907/base.webp",
+    "thumbnail": "/scenes/greatwall/refresh-20260907/thumb.webp",
     "palette": {
       "sky": "#DCE9F5",
       "ground": "#B9A98F",
       "accent": "#F5B301"
     },
-    "foreground": "/scenes/greatwall/foreground.webp"
+    "sha256": "a137bdcc6ed1e7d2f227e22e196067d451709c86e2cda61bf39956a5929addb4"
   },
   "targets": [
     {
@@ -68,7 +68,8 @@
           "hintText": {
             "en": "Look under the paper dragon.",
             "he": "חפשו מתחת לדרקון הנייר."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "greatwall_dragon_b",
@@ -83,7 +84,8 @@
           "hintText": {
             "en": "Look at the dragon's tail.",
             "he": "חפשו בזנב הדרקון."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -120,18 +122,25 @@
       "slots": [
         {
           "id": "greatwall_lanterns_a",
-          "x": 0.315,
-          "y": 0.505,
-          "scale": 0.058,
+          "x": 0.4744,
+          "y": 0.76,
+          "scale": 0.057,
+          "placement": {
+            "pose": "standing",
+            "support": "Both feet on the open paved walkway behind the nearest hanging red lantern, between the seated visitors and the pole.",
+            "occlusion": "Keep the complete body visible. The nearby low wall can overlap a shoe only, never the face or torso.",
+            "instructions": "A school-age child stands watching a red lantern, separated from the seated visitors on the left and standing visitors on the right. The dragon parade is FARTHER BACK; do not put this child on, inside or attached to the dragon. Preserve every existing person and lantern. Use the small child's height at this foreground depth, not the height of the older visitors."
+          },
           "hintZone": {
-            "x": 0.315,
-            "y": 0.49,
+            "x": 0.4744,
+            "y": 0.745,
             "r": 0.075
           },
           "hintText": {
             "en": "Look by the red lanterns.",
             "he": "חפשו ליד הפנסים האדומים."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "greatwall_lanterns_b",
@@ -146,7 +155,8 @@
           "hintText": {
             "en": "Look at the lanterns further along.",
             "he": "חפשו בפנסים הלאה."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -192,7 +202,8 @@
           "hintText": {
             "en": "Look in the watchtower.",
             "he": "חפשו במגדל השמירה."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "greatwall_tower_b",
@@ -207,7 +218,8 @@
           "hintText": {
             "en": "Look at the tower on the left.",
             "he": "חפשו במגדל משמאל."
-          }
+          },
+          "layer": "front"
         }
       ]
     }

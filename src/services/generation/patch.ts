@@ -1,4 +1,6 @@
 import sharp, { type Sharp } from "sharp";
+import { childAgeDirection } from "@/domain/child-appearance";
+import type { Slot } from "@/domain/scene/schema";
 
 /**
  * The slot-patch engine: how a child gets painted INTO a pre-rendered world.
@@ -160,7 +162,7 @@ export async function styleReference(art: Buffer, size: Size, slot: SlotPoint, o
  * asked for a child up to a quarter smaller than their mask.
  */
 // v6 additionally requires a complete supported body behind real occluders.
-export const PROMPT_VERSION = "slot-patch-v6-supported-body";
+export const PROMPT_VERSION = "slot-patch-v7-age-placement";
 
 /**
  * The instruction the image model gets. Built from scene data, never hard-coded copy.
@@ -182,6 +184,8 @@ export const PROMPT_VERSION = "slot-patch-v6-supported-body";
  */
 export interface SlotPromptInput {
   mission: string;
+  ageYears?: number | null;
+  placement?: Slot["placement"];
   bodyLabel?: string;
   childPx: number;
   pose?: string;
@@ -204,15 +208,19 @@ export function slotPrompt(input: SlotPromptInput): string {
   const where = input.place ? ` (${input.place}${input.placeNote ? ` — ${input.placeNote}` : ""})` : "";
   return [
     `Return this exact picture with ONE child added to it. Do not redraw, restyle, re-render or improve any part of the picture: every pixel outside the child must come back byte for byte as it went in.`,
-    `The child goes inside the white area of the mask, about ${input.childPx} pixels tall, the size of the people already standing near that spot.`,
+    `The child goes inside the white area of the mask, about ${input.childPx} pixels tall. Match children of a similar age at the SAME depth, not whichever nearby adult is tallest. Do not enlarge the child to adult height to fill the mask. Seated and crouching bodies must imply a child-sized complete body.`,
+    childAgeDirection(input.ageYears),
     `The attached character reference decides WHO this child is: copy the face, hair, skin tone and build exactly. This picture decides everything else: draw the child in its own style, line quality and palette, lit by the same light from the same direction, with the same colour temperature, saturation and contrast, so they look painted by the same hand at the same hour.`,
     input.wardrobe
       ? `Dress the child in ${input.wardrobe}: plain everyday clothes for this place${where}, drawn in flat colours taken from the picture's own palette. The clothes in the reference are not a uniform — only the child is the same.`
       : `Dress the child for this place${where}: everyday clothes a child would really wear here, in two or three flat colours taken from the picture's own palette, and let the weather show — a coat and hat in snow, a swimsuit or shorts on a beach, boots in a jungle — even when only the head and shoulders are in view. The clothes in the reference are not a uniform — only the child is the same.`,
     `Give the child a natural, specific expression for the moment — ${input.expression ?? expressionFor()} — never a fixed, posed smile.`,
-    `Situation: ${input.mission}${input.bodyLabel ? ` (${input.bodyLabel})` : ""}.${input.action ? ` ${input.action}` : ""}${input.pose ? ` ${input.pose}` : ""}`,
+    input.placement
+      ? `Fixed placement for this exact board: pose ${input.placement.pose}. Support: ${input.placement.support}. Occlusion: ${input.placement.occlusion}. ${input.placement.instructions}`
+      : `Situation: ${input.mission}${input.bodyLabel ? ` (${input.bodyLabel})` : ""}.${input.action ? ` ${input.action}` : ""}${input.pose ? ` ${input.pose}` : ""}`,
     `Let whatever is naturally in front of the child overlap them, and give them a soft shadow that matches the others. They should be findable, not the centre of attention.`,
     `Plan the complete body and its support before painting: feet on visible ground, a body seated on an actual seat, or a swimmer in water. Every hidden part must continue plausibly behind a specific object ALREADY in this picture. Keep the whole face intact. Never end a torso in open air, merge the child into another person, or sink a body through a solid floor. If this spot has no suitable occluder, show a complete small standing or crouching child instead of inventing a floating head.`,
+    `One connected head and torso, two arms, two legs. Trace shoulders to elbows to wrists and hands, and hips to knees to feet. No extra limbs, duplicate hands, fused fingers or adult anatomy. Natural hidden limbs stay hidden behind the named object; do not add limbs to compensate.`,
     `Change nothing else.`,
   ].join(" ");
 }

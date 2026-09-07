@@ -9,6 +9,7 @@ export type FlowErrorCode =
   | "DRAFT_LOCKED"
   | "DRAFT_NOT_FOUND"
   | "NAME_TOO_SHORT"
+  | "INVALID_CHILD_AGE"
   | "NEED_NAME"
   | "PHOTO_FIRST"
   | "UNKNOWN_PACKAGE"

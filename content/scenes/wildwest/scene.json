@@ -9,20 +9,20 @@
     "en": "A dusty street, a wooden porch and horses waiting.",
     "he": "רחוב מאובק, מרפסת עץ וסוסים שמחכים."
   },
-  "version": 1,
+  "version": 2,
   "active": true,
   "artStatus": "final",
   "art": {
     "width": 3072,
     "height": 2048,
-    "base": "/scenes/wildwest/base.webp",
-    "thumbnail": "/scenes/wildwest/thumb.webp",
+    "base": "/scenes/wildwest/refresh-20260907/base.webp",
+    "thumbnail": "/scenes/wildwest/refresh-20260907/thumb.webp",
     "palette": {
       "sky": "#F7D9A0",
       "ground": "#C98F5A",
       "accent": "#8B5E3C"
     },
-    "foreground": "/scenes/wildwest/foreground.webp"
+    "sha256": "7eced36882b332877663adca7f0be791a98d0e52bf22a7ae08a6e25715f35820"
   },
   "targets": [
     {
@@ -67,7 +67,8 @@
           "hintText": {
             "en": "In the middle, between the spotted horse and the water trough.",
             "he": "באמצע, בין הסוס המנוקד למיכל המים של הסוסים."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "wildwest_horses_b",
@@ -82,7 +83,8 @@
           "hintText": {
             "en": "Left of the middle, by the black horse at the rail.",
             "he": "משמאל לאמצע, ליד הסוס השחור הקשור."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -128,7 +130,8 @@
           "hintText": {
             "en": "On the porch of the green store on the left, by the barrel.",
             "he": "על המרפסת של החנות הירוקה משמאל, ליד החבית."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "wildwest_porch_b",
@@ -143,7 +146,8 @@
           "hintText": {
             "en": "At the far left end of that porch.",
             "he": "בקצה השמאלי הרחוק של אותה מרפסת."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -189,7 +193,8 @@
           "hintText": {
             "en": "At the front wheel of the covered wagon, right of the trough.",
             "he": "ליד הגלגל הקדמי של העגלה המכוסה, מימין למיכל המים."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "wildwest_wagon_b",
@@ -204,7 +209,8 @@
           "hintText": {
             "en": "At the back of the covered wagon, among the luggage.",
             "he": "בחלק האחורי של העגלה המכוסה, בין המזוודות."
-          }
+          },
+          "layer": "front"
         }
       ]
     }

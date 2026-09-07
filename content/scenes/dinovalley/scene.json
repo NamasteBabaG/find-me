@@ -9,20 +9,20 @@
     "en": "Long necks, warm ferns and a nest of enormous eggs.",
     "he": "צווארים ארוכים, שרכים חמים וקן של ביצים ענקיות."
   },
-  "version": 1,
+  "version": 2,
   "active": true,
   "artStatus": "final",
   "art": {
     "width": 3072,
     "height": 2048,
-    "base": "/scenes/dinovalley/base.webp",
-    "thumbnail": "/scenes/dinovalley/thumb.webp",
+    "base": "/scenes/dinovalley/refresh-20260907/base.webp",
+    "thumbnail": "/scenes/dinovalley/refresh-20260907/thumb.webp",
     "palette": {
       "sky": "#A8DFF0",
       "ground": "#4E7C3A",
       "accent": "#FF8A3D"
     },
-    "foreground": "/scenes/dinovalley/foreground.webp"
+    "sha256": "015cdbc009852bc3b8d2547be56e28a0c9faa8ac656a0c0eadd090b519cd53a8"
   },
   "targets": [
     {
@@ -67,7 +67,8 @@
           "hintText": {
             "en": "At the right edge of the big egg nest.",
             "he": "בקצה הימני של קן הביצים הגדול."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "dinovalley_nest_b",
@@ -82,7 +83,8 @@
           "hintText": {
             "en": "On the left side of the nest, between the eggs.",
             "he": "בצד השמאלי של הקן, בין הביצים."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -128,7 +130,8 @@
           "hintText": {
             "en": "On the left, by the tall ferns beside the explorer in the yellow hat.",
             "he": "משמאל, ליד השרכים הגבוהים ליד החוקר בכובע הצהוב."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "dinovalley_fern_b",
@@ -143,7 +146,8 @@
           "hintText": {
             "en": "On the right, by the stream, near the stegosaurus.",
             "he": "מימין, ליד הנחל, קרוב לסטגוזאורוס."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -189,7 +193,8 @@
           "hintText": {
             "en": "The fallen log in the middle, near its hollow end.",
             "he": "הגזע שנפל באמצע, ליד הקצה החלול שלו."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "dinovalley_log_b",
@@ -204,7 +209,8 @@
           "hintText": {
             "en": "The left end of the fallen log.",
             "he": "הקצה השמאלי של הגזע שנפל."
-          }
+          },
+          "layer": "front"
         }
       ]
     }

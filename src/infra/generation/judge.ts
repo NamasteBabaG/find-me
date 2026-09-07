@@ -101,7 +101,7 @@ export class OpenAiPatchJudge implements PatchJudge {
     const images = input.boardCrop
       ? [await sharp(input.boardCrop).resize(768, 768, { fit: "inside" }).png().toBuffer(), patch, sheet]
       : [patch, sheet];
-    const prompt = contextual ? boardJudgePrompt(input.childName) : judgePrompt(input.childName);
+    const prompt = contextual ? boardJudgePrompt(input.childName, input.ageYears) : judgePrompt(input.childName);
     const attempts: JudgeAttempt[] = [];
     let checks: PatchJudgement["checks"];
     const result = (verdict: PatchJudgement["verdict"], reason: string): PatchJudgement => ({

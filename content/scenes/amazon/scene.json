@@ -10,20 +10,20 @@
     "he": "נהר ירוק, קאנו מעץ ותוכי רועש מאוד."
   },
   "wardrobe": "a thin light-green shirt and beige shorts",
-  "version": 1,
+  "version": 2,
   "active": true,
   "artStatus": "final",
   "art": {
     "width": 3072,
     "height": 2048,
-    "base": "/scenes/amazon/base.webp",
-    "thumbnail": "/scenes/amazon/thumb.webp",
+    "base": "/scenes/amazon/refresh-20260907/base.webp",
+    "thumbnail": "/scenes/amazon/refresh-20260907/thumb.webp",
     "palette": {
       "sky": "#DCE9F5",
       "ground": "#B9A98F",
       "accent": "#F5B301"
     },
-    "foreground": "/scenes/amazon/foreground.webp"
+    "sha256": "fd195a17c3d1cc8ce5fc029376ebeb88acc5a2d7d35c7d84b7535ae29fbf382a"
   },
   "targets": [
     {
@@ -70,7 +70,8 @@
           "hintText": {
             "en": "Look by the canoes on the river.",
             "he": "חפשו ליד הקאנו על הנהר."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "amazon_canoe_b",
@@ -85,7 +86,8 @@
           "hintText": {
             "en": "Look by the second canoe.",
             "he": "חפשו ליד הקאנו השני."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -131,7 +133,8 @@
           "hintText": {
             "en": "Look by the macaws on the branch.",
             "he": "חפשו ליד התוכים על הענף."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "amazon_macaw_b",
@@ -146,7 +149,8 @@
           "hintText": {
             "en": "Look at the branch on the right.",
             "he": "חפשו בענף בצד ימין."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -192,7 +196,8 @@
           "hintText": {
             "en": "Look between the big roots.",
             "he": "חפשו בין השורשים הגדולים."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "amazon_roots_b",
@@ -207,7 +212,8 @@
           "hintText": {
             "en": "Look at the roots by the water.",
             "he": "חפשו בשורשים ליד המים."
-          }
+          },
+          "layer": "front"
         }
       ]
     }

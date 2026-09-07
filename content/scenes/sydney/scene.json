@@ -10,20 +10,20 @@
     "he": "מפרץ כחול, מפרשים לבנים ועשרה גלשנים."
   },
   "wardrobe": "a plain yellow t-shirt and blue shorts, bare feet",
-  "version": 1,
+  "version": 2,
   "active": true,
   "artStatus": "final",
   "art": {
     "width": 3072,
     "height": 2048,
-    "base": "/scenes/sydney/base.webp",
-    "thumbnail": "/scenes/sydney/thumb.webp",
+    "base": "/scenes/sydney/refresh-20260907/base.webp",
+    "thumbnail": "/scenes/sydney/refresh-20260907/thumb.webp",
     "palette": {
       "sky": "#DCE9F5",
       "ground": "#B9A98F",
       "accent": "#F5B301"
     },
-    "foreground": "/scenes/sydney/foreground.webp"
+    "sha256": "c33b4c484df0c020acaddc927694d11c1672bc02d918c2e9efe2618a02bb7f2b"
   },
   "targets": [
     {
@@ -68,7 +68,8 @@
           "hintText": {
             "en": "Look at the water edge by the ferry.",
             "he": "חפשו בקו המים ליד המעבורת."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "sydney_ferry_b",
@@ -83,7 +84,8 @@
           "hintText": {
             "en": "Look further along the water.",
             "he": "חפשו הלאה לאורך המים."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -131,7 +133,8 @@
           "hintText": {
             "en": "Look by the surfboards.",
             "he": "חפשו ליד הגלשנים."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "sydney_surfboards_b",
@@ -146,7 +149,8 @@
           "hintText": {
             "en": "Look at the boards on the right.",
             "he": "חפשו בגלשנים מימין."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -192,7 +196,8 @@
           "hintText": {
             "en": "Look behind the rocks.",
             "he": "חפשו מאחורי הסלעים."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "sydney_rocks_b",
@@ -207,7 +212,8 @@
           "hintText": {
             "en": "Look at the rocks on the right.",
             "he": "חפשו בסלעים מימין."
-          }
+          },
+          "layer": "front"
         }
       ]
     }

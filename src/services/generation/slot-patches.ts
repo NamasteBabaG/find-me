@@ -10,6 +10,7 @@ import { childProblem, diffToPatch, modelSpaceHeight, paintMask, slotContext, ex
 import { loadSceneArt } from "./scene-art";
 import { boardComposite } from "./board-composite";
 import { BOARD_JUDGE_VERSION, BOARD_CHECKS } from "@/infra/generation/board-verdict";
+import { SLOT_WIRE_VERSION } from "@/infra/generation/openai";
 
 /**
  * Generating the hiding spots of one world for one child.
@@ -74,6 +75,7 @@ export async function generateSlotPatch(
     /** The child's identity sheet — the same reference for every spot. */
     reference: Buffer;
     childName: string;
+    ageYears?: number | null;
     ownerId: string | null;
     tries?: number;
     /** Overrides the provider's quality for this attempt. */
@@ -98,11 +100,13 @@ export async function generateSlotPatch(
 
   const art = { width: scene.art.width, height: scene.art.height };
   const ctx = slotContext(art, slot);
-  const sceneArt = await loadSceneArt(c.appUrl, scene.art.base);
+  const sceneArt = await loadSceneArt(c.appUrl, scene.art.base, scene.art.sha256);
   const crop = await sharp(sceneArt).extract({ left: ctx.rect.x, top: ctx.rect.y, width: ctx.rect.w, height: ctx.rect.h }).png().toBuffer();
   const mask = paintMask(ctx, art, slot);
   const body = BODY_TEMPLATES[target.bodyTemplate];
   const prompt = slotPrompt({
+    ageYears: input.ageYears,
+    placement: slot.placement,
     mission: target.mission.en.replace("{name}", input.childName),
     bodyLabel: body?.label.en,
     // In the pixels the model sees, not the art's: the provider scales the window.
@@ -173,7 +177,7 @@ export async function generateSlotPatch(
         buffer: raw, mimeType: "image/png", provider: c.avatars.id,
         providerRequestId: edit.providerRequestId, costCents: 0,
       });
-      Object.assign(currentAttempt, { evidenceAssetId: evidence.id, rawHash: hash(raw), fittedHash: hash(edit.png), cropHash: hash(crop), referenceHash: hash(input.reference), sceneHash: hash(Buffer.from(JSON.stringify(scene))), extractionVersion: EXTRACTION_VERSION, promptSent: edit.promptSent ?? prompt });
+      Object.assign(currentAttempt, { evidenceAssetId: evidence.id, rawHash: hash(raw), fittedHash: hash(edit.png), cropHash: hash(crop), referenceHash: hash(input.reference), sceneHash: hash(Buffer.from(JSON.stringify(scene))), extractionVersion: EXTRACTION_VERSION, wireVersion: SLOT_WIRE_VERSION, promptSent: edit.promptSent ?? prompt });
       // Link before processing/judging: even an interrupted extraction remains
       // discoverable by privacy deletion, and its known render charge survives.
       await c.db.targetVariantAsset.update({ where: { id: row.id }, data: {
@@ -305,8 +309,8 @@ export async function generateSlotPatch(
  * refusing work over a misconfigured judge would be worse than the problem —
  * the pipeline turns those into a game a human has to approve.
  */
-async function judgeOf(c: Container, webp: Buffer, input: { reference: Buffer; childName: string }, label: string, boardCrop: Buffer): Promise<PatchJudgement> {
-  return c.judge.judge({ patchPng: webp, reference: input.reference, childName: input.childName, label, boardCrop }).catch(
+async function judgeOf(c: Container, webp: Buffer, input: { reference: Buffer; childName: string; ageYears?: number | null }, label: string, boardCrop: Buffer): Promise<PatchJudgement> {
+  return c.judge.judge({ patchPng: webp, reference: input.reference, childName: input.childName, ageYears: input.ageYears, label, boardCrop }).catch(
     (err: unknown): PatchJudgement => ({ verdict: "unknown", reason: err instanceof Error ? err.message.slice(0, 120) : "judge failed", costCents: 0, costUnknown: true }),
   );
 }
@@ -335,6 +339,8 @@ export function repairInstruction(judgeJson: string | null | undefined): string 
       checks?.faceIntegrity === "fail" ? "Keep the entire face clear of occluders: both eyes, nose, mouth and continuous skin must be visible." : "",
       checks?.bodyPlacement === "fail" ? "The previous placement was physically impossible. Draw a complete supported standing or seated body, with feet on a real visible surface; only existing foreground objects may hide it. Never use a floating head or a torso through the ground." : "",
       checks?.identity === "fail" ? "Re-check the full reference sheet and preserve this child's face shape, curls or hairstyle, and skin tone." : "",
+      checks?.ageProportions === "fail" ? "The previous child looked the wrong age or size. Preserve the stated age, youthful face, narrow shoulders, small hands and child-sized limbs. Do not reuse adult proportions from nearby people or age up the reference." : "",
+      checks?.anatomy === "fail" ? "Repair the complete body with exactly two arms and two legs, coherent joints and each hand belonging to its own arm. Use a simple natural supported pose and preserve genuine occlusion." : "",
       checks?.style === "fail" ? "Match the neighbouring painted people: same line weight, flat shading, texture and palette, not glossy or photographic." : "",
     ].filter(Boolean);
     return instructions.length ? ` Repair requirements: ${instructions.join(" ")}` : "";

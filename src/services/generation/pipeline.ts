@@ -1,7 +1,7 @@
 import { newId } from "@/lib/ids";
 import { env, flag, spendGuard } from "@/lib/env";
 import { spendAllowedFor, underDailyCeiling } from "@/domain/spend-policy";
-import { isGenerating, type GameStatus } from "@/domain/order-state";
+import { canTransition, type GameStatus } from "@/domain/order-state";
 import { BOARDS_PER_WORLD } from "@/domain/package";
 import { GameConfigSchema } from "@/domain/game/config";
 import type { CropBox } from "@/infra/generation/types";
@@ -16,6 +16,7 @@ import { sendAdminAlert } from "../admin-alert.service";
 import { generateSlotPatch, slotOf, spotsOutstanding, spotsUnjudged, type PatchOutcome, type Variant } from "./slot-patches";
 import { styleReference } from "./patch";
 import { loadSceneArt } from "./scene-art";
+import { CHARACTER_PROMPT_VERSION } from "@/infra/generation/character-prompt";
 
 /**
  * Background generation. Every step is idempotent and resumable:
@@ -118,6 +119,9 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
   };
 
   try {
+    // Resolve every pinned version before any billable identity/patch work.
+    // A missing historical definition must never silently use today's board.
+    for (const gs of game.scenes) sceneBySlug(gs.sceneSlug, gs.sceneVersion);
     // ── Step 1: avatar ──
     await mark("avatar", { status: "running", startedAt: new Date().toISOString() });
     const child = await c.db.childProfile.findUniqueOrThrow({ where: { id: game.childProfile.id } });
@@ -134,7 +138,7 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
       const original = await c.db.asset.findUniqueOrThrow({ where: { id: child.originalPhotoAssetId } });
       const photo = await readAssetBuffer(c, original.id);
       const crop = child.photoCropJson ? (JSON.parse(child.photoCropJson) as CropBox) : null;
-      const request = { originalPhoto: photo, mimeType: original.mimeType, crop, childName: child.displayName, styleRef: await boardStyle(c, game.scenes) };
+      const request = { originalPhoto: photo, mimeType: original.mimeType, crop, childName: child.displayName, ageYears: child.ageYears, styleRef: await boardStyle(c, game.scenes) };
       if (c.avatars.createCharacter) {
         // One drawing of the child in the worlds own style, from several angles:
         // the reference every hiding spot is painted from, which is what keeps
@@ -157,6 +161,8 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
         // table. An answer without usage is an unknown charge, not a free one.
         await audit(c, SYSTEM, "sheet:painted", "Asset", sheet.id, {
           gameId,
+          promptVersion: CHARACTER_PROMPT_VERSION,
+          ageYears: child.ageYears,
           costCents: character.costCents,
           costUnknown: character.costUnknown ?? undefined,
           usage: character.usage ?? null,
@@ -217,7 +223,7 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
 
     let ranOutOfTime = false;
     for (const gs of game.scenes) {
-      const def = sceneBySlug(gs.sceneSlug);
+      const def = sceneBySlug(gs.sceneSlug, gs.sceneVersion);
       for (const target of def.targets) {
         if (options.deadlineAt && Date.now() > options.deadlineAt) {
           ranOutOfTime = true;
@@ -242,7 +248,7 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
             // low patches come out soft or fragmentary, which is what the
             // retry is for.
             const quality = env().GENERATION_PATCH_RETRY_QUALITY && row.attempts > 0 ? env().GENERATION_PATCH_RETRY_QUALITY : undefined;
-            const outcome = await generateSlotPatch(c, { targetInstanceId: row.id, scene: def, target, variant, reference, childName: refreshedChild.displayName, ownerId: refreshedChild.ownerId, quality });
+            const outcome = await generateSlotPatch(c, { targetInstanceId: row.id, scene: def, target, variant, reference, childName: refreshedChild.displayName, ageYears: refreshedChild.ageYears, ownerId: refreshedChild.ownerId, quality });
             outcomes.push(outcome);
             spent += outcome.newCostCents;
             if (outcome.status === "GENERATED") ok++;
@@ -351,7 +357,8 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
     await c.db.generationJob.update({ where: { id: job.id }, data: { status: "FAILED", lastError: message } });
     await c.db.game.update({ where: { id: gameId }, data: { lastError: message } });
     const now = statusOf(await c.db.game.findUniqueOrThrow({ where: { id: gameId }, select: { status: true } }));
-    if (isGenerating(now)) await transitionGame(c, gameId, "GENERATION_FAILED", SYSTEM, { error: message });
+    if (canTransition(now, "GENERATION_FAILED")) await transitionGame(c, gameId, "GENERATION_FAILED", SYSTEM, { error: message });
+    else if (now === "PAID") await transitionGame(c, gameId, "MANUAL_REVIEW", SYSTEM, { error: message });
     c.analytics.track("generation_failed", { gameId, reason: message.slice(0, 80) });
     // The admins hear about a crash even when nobody is watching the admin page.
     await sendAdminAlert(c, { gameId, kind: "generation-failed", error: message }).catch((e: unknown) => console.error(`[admin-alert] ${gameId}:`, e));
@@ -378,14 +385,14 @@ async function spentTodayCents(c: Container): Promise<number> {
  * inpaints were rejected for it. Showing it one board fixes both. Never fatal —
  * a missing board file must not stop a paid game, it only costs the guidance.
  */
-async function boardStyle(c: Container, scenes: Array<{ sceneSlug: string }>): Promise<Buffer | undefined> {
+async function boardStyle(c: Container, scenes: Array<{ sceneSlug: string; sceneVersion: number }>): Promise<Buffer | undefined> {
   const first = scenes[0];
   if (!first) return undefined;
   try {
-    const def = sceneBySlug(first.sceneSlug);
+    const def = sceneBySlug(first.sceneSlug, first.sceneVersion);
     const target = def.targets[0];
     if (!target) return undefined;
-    const art = await loadSceneArt(c.appUrl, def.art.base);
+    const art = await loadSceneArt(c.appUrl, def.art.base, def.art.sha256);
     return await styleReference(art, { width: def.art.width, height: def.art.height }, slotOf(target, "A"));
   } catch (err) {
     console.warn("[generate] no style reference for the character sheet:", err instanceof Error ? err.message : err);

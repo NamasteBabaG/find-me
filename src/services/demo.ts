@@ -17,7 +17,7 @@ import { beachDemoPatches } from "../../content/demo/beach-patches";
 const DEMO_FACE = "/demo/noa-portrait.png";
 
 type ArtRect = { x: number; y: number; w: number; h: number };
-type PatchMeta = { url: string; rect: { w: number; h: number }; rectNorm: ArtRect; hitRectNorm?: ArtRect; anchorNorm?: { x: number; y: number } };
+type PatchMeta = { sceneVersion?: number; artSha256?: string; url: string; rect: { w: number; h: number }; rectNorm: ArtRect; hitRectNorm?: ArtRect; anchorNorm?: { x: number; y: number } };
 
 /** A slot patch made by scripts/slot-patch.ts for this scene/target/variant, if present. */
 function demoPatch(slug: string, targetId: string, variant: "A" | "B"): SpriteRef | null {
@@ -27,6 +27,9 @@ function demoPatch(slug: string, targetId: string, variant: "A" | "B"): SpriteRe
   if (!existsSync(file)) return null;
   try {
     const m = JSON.parse(readFileSync(file, "utf-8")) as PatchMeta;
+    const scene = sceneBySlug(slug);
+    if (m.sceneVersion !== scene.version && !(m.sceneVersion === undefined && scene.version === 1)) return null;
+    if (scene.art.sha256 && m.artSha256 !== scene.art.sha256) return null;
     // hitRect/anchor come from the patch's own alpha: tapping the head has to count.
     return { kind: "image", url: m.url, width: m.rect.w, height: m.rect.h, rect: m.rectNorm, hitRect: m.hitRectNorm, anchor: m.anchorNorm };
   } catch {
@@ -37,9 +40,8 @@ function demoPatch(slug: string, targetId: string, variant: "A" | "B"): SpriteRe
 /**
  * Which hiding spots of a world already have a patch of the demo child.
  *
- * This is how "is this board ready to receive a child?" is answered in the
- * admin: a world with 6 of 6 has been proven end to end, a world with 0 has
- * only ever been looked at.
+ * Counts compatible saved demo assets, NOT independent quality certification.
+ * Old-art patches never count toward the newly adopted board's coverage.
  */
 export function demoPatchCoverage(slug: string, targets: readonly { id: string }[]): { ready: number; total: number; missing: string[] } {
   const missing: string[] = [];

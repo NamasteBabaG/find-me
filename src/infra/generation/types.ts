@@ -11,6 +11,7 @@ export interface AvatarInput {
   mimeType: string;
   crop: CropBox | null;
   childName: string;
+  ageYears?: number | null;
   /**
    * A piece of a real board, as the style to match.
    *
@@ -162,6 +163,7 @@ export interface PatchJudgeInput {
   patchPng: Buffer;
   reference: Buffer;
   childName: string;
+  ageYears?: number | null;
   label: string;
   /** Final composition, not a raw generation or a white-background cut-out. */
   boardCrop?: Buffer;

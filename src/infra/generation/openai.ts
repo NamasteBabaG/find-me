@@ -10,6 +10,7 @@ import type {
   TargetSpriteOutput,
 } from "./types";
 import { AVATAR_SIZE, avatarFromSheet } from "./avatar-cut";
+import { characterPrompt } from "./character-prompt";
 
 /**
  * OpenAI image generation.
@@ -117,7 +118,7 @@ interface CallResult {
 }
 
 export interface OpenAiOptions {
-  /** Preferred model; falls back to gpt-image-1 when the account cannot use it. */
+  /** Explicit model. Access failure never silently selects a different model. */
   model?: string;
   /** "low" | "medium" | "high" — medium is the quality the worlds were made at. */
   quality?: string;
@@ -167,11 +168,11 @@ export class OpenAiAvatarProvider implements AvatarProvider {
     this.limiter = new RateLimiter(options.perMinute ?? 5);
   }
 
-  /** One multipart edit call, with the model fallback and retries. */
+  /** One multipart edit call, with bounded retries on the explicitly selected model. */
   private async call(parts: { images: Array<{ buffer: Buffer; name: string }>; mask?: Buffer; prompt: string; size: string; label: string; quality?: string }): Promise<CallResult> {
     const started = Date.now();
     let lastError = "";
-    let model = this.model;
+    const model = this.model;
     const deadline = started + this.budgetMs;
     for (let attempt = 1; attempt <= this.tries; attempt++) {
       // Never start a request there is no time to finish. Returning the reason
@@ -214,12 +215,9 @@ export class OpenAiAvatarProvider implements AvatarProvider {
         };
       }
       lastError = json.error?.message ?? `HTTP ${res.status}`;
-      // An account without access to the newer model should not fail the game.
-      if (model !== "gpt-image-1" && /model|not found|does not exist|access|permission|verif/i.test(lastError)) {
-        console.warn(`[openai] ${model} unavailable for ${parts.label} (${lastError}); falling back to gpt-image-1`);
-        model = "gpt-image-1";
-        continue;
-      }
+      // The chosen image model is part of the content contract. Fail visibly
+      // rather than spending again on an unapproved model with a different style.
+      if (/model|not found|does not exist|access|permission|verif/i.test(lastError)) break;
       if (res.status === 429 || res.status >= 500) {
         await new Promise((r) => setTimeout(r, Math.min(2000 * attempt, Math.max(0, deadline - Date.now()))));
         continue;
@@ -232,26 +230,7 @@ export class OpenAiAvatarProvider implements AvatarProvider {
   async createCharacter(input: AvatarInput): Promise<CharacterOutput> {
     const photo = await squarePhoto(input.originalPhoto, input.crop, SHEET_SIZE);
     const styled = Boolean(input.styleRef);
-    const prompt = [
-      styled
-        ? `The FIRST image is a photograph of a child. The SECOND image is a piece of the illustrated world the child has to live inside, drawn by the illustrator you are standing in for.`
-        : `The image is a photograph of a child.`,
-      styled
-        ? `Draw the child as a character in the SECOND image's style, copied exactly: the same dark ink outline around every shape, the same flat cel shading and speckled paper texture, the same saturated colours and warm daylight, the same simplified cartoon faces with large eyes. The child has to look cut out of that picture and dropped on a blank sheet — one of those children, not a guest.`
-        : `Redraw the child as an illustrated character in a warm storybook collage style: soft gouache texture, clean confident outlines, friendly proportions, bright daylight palette.`,
-      // Naming the failure is what stops it. Asked only for "an illustration",
-      // the model reaches for its own house style — a soft, airbrushed, almost
-      // photographic child, who then cannot be painted into a cel-shaded world
-      // without looking pasted on.
-      styled ? `Do NOT draw a soft, airbrushed, painterly or realistic illustration. No photographic skin, no rendered strands of hair, no subtle gradients.` : ``,
-      `Keep the child recognisable from the photograph — the same hair colour and hairstyle, skin tone, eye colour and face shape${styled ? `, simplified into that style` : ``} — with a relaxed, natural expression rather than a posed photo smile.`,
-      `Return one square image divided into a clean 2 by 2 grid of four drawings of the SAME child on a plain flat light background, with no text, no labels and no frames:`,
-      `top-left a head-and-shoulders portrait facing the viewer; top-right the full body standing, facing the viewer;`,
-      `bottom-left the full body from behind, three-quarter view; bottom-right the child crouching and peeking, as if hiding.`,
-      `Same simple everyday outfit in all four drawings: plain clothes in two flat colours, nothing that reads as a costume or a uniform. The clothes will change from place to place; the child will not.`,
-    ]
-      .filter(Boolean)
-      .join(" ");
+    const prompt = characterPrompt({ styled, ageYears: input.ageYears });
     const images = [{ buffer: photo, name: "photo.png" }];
     if (input.styleRef) images.push({ buffer: await sharp(input.styleRef).resize(SHEET_SIZE, SHEET_SIZE, { fit: "cover" }).png().toBuffer(), name: "style.png" });
     const out = await this.call({ images, prompt, size: `${SHEET_SIZE}x${SHEET_SIZE}`, label: `character:${input.childName}` });
@@ -275,17 +254,7 @@ export class OpenAiAvatarProvider implements AvatarProvider {
 
   async editSlotCrop(request: SlotPatchRequest): Promise<SlotPatchResponse> {
     const meta = await sharp(request.crop).metadata();
-    const size = PATCH_OUTPUT_PX;
-    const crop = await sharp(request.crop).resize(size, size, { kernel: "lanczos3" }).png().toBuffer();
-    // OpenAI's mask is an alpha channel: transparent where the model may paint.
-    const paint = await sharp(request.paintMask).resize(size, size).extractChannel(0).raw().toBuffer();
-    const alpha = Buffer.alloc(size * size);
-    for (let i = 0; i < alpha.length; i++) alpha[i] = paint[i]! > 128 ? 0 : 255;
-    // ensureAlpha().removeAlpha() forces a known 3-channel image, so the joined
-    // channel is unambiguously the alpha the API asks for.
-    const mask = await sharp(crop).ensureAlpha().removeAlpha().joinChannel(alpha, { raw: { width: size, height: size, channels: 1 } }).png().toBuffer();
-    const reference = await sharp(request.reference).resize({ width: size, height: size, fit: "contain", background: { r: 255, g: 255, b: 255, alpha: 0 } }).png().toBuffer();
-    const promptSent = `${request.prompt} The first image is the scene to edit; the second image is the character reference sheet for the child (that is who the child is: the same face, hair, skin tone and build; the clothes may change to suit the place; do not copy its background or its grid).`;
+    const { crop, reference, mask, promptSent, size } = await prepareSlotEdit(request);
     const out = await this.call({
       images: [
         { buffer: crop, name: "scene.png" },
@@ -315,6 +284,24 @@ export class OpenAiAvatarProvider implements AvatarProvider {
   async createTargetSprite(_input: TargetSpriteInput): Promise<TargetSpriteOutput> {
     return { kind: "composed", costCents: 0 };
   }
+}
+
+/** Shared wire inputs: qualification tools must exercise the production mask/units. No API call. */
+export const SLOT_WIRE_VERSION = "slot-wire-v2-real-alpha";
+export async function prepareSlotEdit(request: SlotPatchRequest) {
+  const size = PATCH_OUTPUT_PX;
+  const crop = await sharp(request.crop).resize(size, size, { kernel: "lanczos3" }).png().toBuffer();
+  const paint = await sharp(request.paintMask).resize(size, size).extractChannel(0).raw().toBuffer();
+  const alpha = Buffer.alloc(size * size);
+  for (let i = 0; i < alpha.length; i++) alpha[i] = paint[i]! > 128 ? 0 : 255;
+  // Do NOT queue ensureAlpha/removeAlpha/joinChannel together: libvips operation
+  // order can restore a fully opaque channel, silently disabling the edit mask.
+  // Build an explicit RGB raw image and append exactly ONE alpha channel.
+  const mask = await sharp(Buffer.alloc(size * size * 3, 255), { raw: { width: size, height: size, channels: 3 } })
+    .joinChannel(alpha, { raw: { width: size, height: size, channels: 1 } }).png().toBuffer();
+  const reference = await sharp(request.reference).resize({ width: size, height: size, fit: "contain", background: { r: 255, g: 255, b: 255, alpha: 0 } }).png().toBuffer();
+  const promptSent = `${request.prompt} The first image is the scene to edit; the second image is the character reference sheet for the child (that is who the child is: the same face, hair, skin tone and build; the clothes may change to suit the place; do not copy its background or its grid).`;
+  return { size, crop, mask, reference, promptSent };
 }
 
 /** The parent's crop applied, padded to a square the model can read. */

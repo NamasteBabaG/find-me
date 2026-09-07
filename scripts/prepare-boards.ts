@@ -1,11 +1,8 @@
 /**
  * Get every board ready to receive a child.
  *
- * A world is "ready" when all six of its hiding spots (3 targets × 2 variants)
- * are places a child can actually be painted into: the window the model sees
- * contains something to hide behind, the child comes out the size of the people
- * around her, and the spot is not jammed against an edge. That is a property of
- * the scene data, not of any particular child, so it can be checked for free.
+ * The free audit checks geometry only. It cannot certify anatomy, support,
+ * occlusion or age. Those require real renders on this exact art and review.
  *
  *   npx tsx scripts/prepare-boards.ts audit [slug…]
  *     → work/boards/<slug>.png  — the six windows with the paint area drawn
@@ -26,7 +23,7 @@ import { OpenAiAvatarProvider } from "../src/infra/generation/openai";
 import { cropOf, envKey, slotOf, writePatch, writePreview, type SlotInfo } from "./slot-patch";
 
 const ROOT = process.cwd();
-const BOARDS = path.join(ROOT, "work", "boards");
+const BOARDS = path.resolve(ROOT, flag("audit-dir", "work/boards"));
 const VARIANTS = ["A", "B"] as const;
 const SCENES: SceneDefinition[] = allScenes();
 
@@ -103,6 +100,8 @@ function checkSpot(c: SlotInfo): SpotReport {
 }
 
 interface PatchMeta {
+  sceneVersion?: number;
+  artSha256?: string;
   hitRectNorm: { x: number; y: number; w: number; h: number };
   anchorNorm: { x: number; y: number };
 }
@@ -113,6 +112,8 @@ function patchMeta(c: SlotInfo): PatchMeta | null {
   if (!existsSync(file)) return null;
   try {
     const meta = JSON.parse(readFileSync(file, "utf-8")) as Partial<PatchMeta>;
+    if (meta.sceneVersion !== c.scene.version && !(meta.sceneVersion === undefined && c.scene.version === 1)) return null;
+    if (c.scene.art.sha256 && meta.artSha256 !== c.scene.art.sha256) return null;
     return meta.hitRectNorm && meta.anchorNorm ? (meta as PatchMeta) : null;
   } catch {
     return null;
@@ -171,7 +172,7 @@ async function audit(slugs: string[]) {
     const bad = spots.filter((s) => s.problems.length > 0);
     const made = spots.filter((s) => s.generated).length;
     console.log(
-      `${bad.length === 0 ? "ok  " : "warn"} ${slug.padEnd(9)} ${spots.length} spots, ${made} generated, child ${Math.min(...spots.map((s) => s.childPx))}–${Math.max(...spots.map((s) => s.childPx))}px` +
+      `${bad.length === 0 ? "geometry-only" : "geometry-warn"} ${slug.padEnd(9)} ${spots.length} spots, ${made} compatible patches, child ${Math.min(...spots.map((s) => s.childPx))}–${Math.max(...spots.map((s) => s.childPx))}px` +
         (bad.length ? `, ${bad.length} to look at` : ""),
     );
     for (const s of bad) for (const p of s.problems) console.log(`       ${s.name}: ${p}`);
@@ -179,18 +180,18 @@ async function audit(slugs: string[]) {
   const html = [
     `<!doctype html><meta charset="utf-8"><title>Boards</title>`,
     `<style>body{font:14px system-ui;background:#f0eee9;margin:0;padding:24px}h2{margin:24px 0 8px}img{max-width:100%;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.15)}p{color:#555;margin:4px 0 12px}</style>`,
-    `<h1>Hiding spots — every world</h1>`,
+    `<h1>Hiding spots — board geometry, NOT render certification</h1>`,
     `<p>Each tile is the window the image model sees for one spot; the dashed ellipse is where it may paint the child.</p>`,
     ...rows.map((r) => {
       const problems = r.spots.flatMap((s) => s.problems.map((p) => `${s.name}: ${p}`));
-      return `<h2>${r.slug}</h2>${problems.length ? `<p style="color:#b00">${problems.join("<br>")}</p>` : `<p>all six spots look placeable</p>`}<img src="${r.slug}.png" alt="${r.slug}">`;
+      return `<h2>${r.slug}</h2>${problems.length ? `<p style="color:#b00">${problems.join("<br>")}</p>` : `<p>Geometry checks passed — NOT render-certified. Inspect support, existing people, scale and occlusion.</p>`}<img src="${r.slug}.png" alt="${r.slug}">`;
     }),
   ].join("\n");
   writeFileSync(path.join(BOARDS, "index.html"), html);
   const total = rows.reduce((n, r) => n + r.spots.length, 0);
   const bad = rows.reduce((n, r) => n + r.spots.filter((s) => s.problems.length > 0).length, 0);
-  console.log(`\n${total} spots across ${rows.length} worlds, ${bad} with something to look at`);
-  console.log(`sheets: work/boards/index.html`);
+  console.log(`\n${total} spots across ${rows.length} boards, ${bad} geometry warnings. No slot is certified by this audit.`);
+  console.log(`sheets: ${path.join(BOARDS, "index.html")}`);
 }
 
 // ── generate ─────────────────────────────────────────────────

@@ -9,20 +9,20 @@
     "en": "Lanterns, carpets and a mountain of spices.",
     "he": "פנסים, שטיחים והר של תבלינים."
   },
-  "version": 1,
+  "version": 2,
   "active": true,
   "artStatus": "final",
   "art": {
     "width": 3072,
     "height": 2048,
-    "base": "/scenes/marrakech/base.webp",
-    "thumbnail": "/scenes/marrakech/thumb.webp",
+    "base": "/scenes/marrakech/refresh-20260907/base.webp",
+    "thumbnail": "/scenes/marrakech/refresh-20260907/thumb.webp",
     "palette": {
       "sky": "#DCE9F5",
       "ground": "#B9A98F",
       "accent": "#F5B301"
     },
-    "foreground": "/scenes/marrakech/foreground.webp"
+    "sha256": "061281629ab74225f78a4612497f9b6e1278de6149526315412693e03dc6fd85"
   },
   "targets": [
     {
@@ -67,7 +67,8 @@
           "hintText": {
             "en": "Look under the hanging lanterns.",
             "he": "חפשו מתחת לפנסים התלויים."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "marrakech_lanterns_b",
@@ -82,7 +83,8 @@
           "hintText": {
             "en": "Look at the lantern stall on the right.",
             "he": "חפשו בדוכן הפנסים מימין."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -128,7 +130,8 @@
           "hintText": {
             "en": "Look between the stacks of carpets.",
             "he": "חפשו בין ערימות השטיחים."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "marrakech_carpets_b",
@@ -143,7 +146,8 @@
           "hintText": {
             "en": "Look at the carpets on the left.",
             "he": "חפשו בשטיחים משמאל."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -189,7 +193,8 @@
           "hintText": {
             "en": "Look behind the cones of spices.",
             "he": "חפשו מאחורי חרוטי התבלינים."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "marrakech_spices_b",
@@ -204,7 +209,8 @@
           "hintText": {
             "en": "Look at the spice sacks on the right.",
             "he": "חפשו בשקי התבלינים מימין."
-          }
+          },
+          "layer": "front"
         }
       ]
     }

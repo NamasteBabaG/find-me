@@ -1,0 +1,278 @@
+{
+  "id": "refresh-20260907",
+  "userAcceptedArtWithKnownDefects": true,
+  "slotCertification": "pending",
+  "oldAssetsPreserved": true,
+  "boards": [
+    {
+      "slug": "newyork",
+      "previousVersion": 1,
+      "version": 2,
+      "sourceSha256": "c38eaf5f7f026ce30718d8ec7ad5e43120ab75f11131330039b041e75fe42f5c",
+      "runtimeSha256": "0997325d6c2771e5435a21a4dce134f619b14df866b376caef7e4a79155473b1",
+      "runtimeBytes": 3350252,
+      "base": "/scenes/newyork/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/newyork/refresh-20260907/thumb.webp"
+    },
+    {
+      "slug": "amazon",
+      "previousVersion": 1,
+      "version": 2,
+      "sourceSha256": "8e17aa23038595fd70693710d7c11bbe615076e1e7abdbf1eb695e8ccf646368",
+      "runtimeSha256": "fd195a17c3d1cc8ce5fc029376ebeb88acc5a2d7d35c7d84b7535ae29fbf382a",
+      "runtimeBytes": 3319080,
+      "base": "/scenes/amazon/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/amazon/refresh-20260907/thumb.webp"
+    },
+    {
+      "slug": "paris",
+      "previousVersion": 1,
+      "version": 2,
+      "sourceSha256": "d459fc88eaf432ddba480ac6540153ae64e4c006a2cafe1b1cffa8ee4b07fdad",
+      "runtimeSha256": "1779a9015128795440b29d197ebc6fc09ad3931a71391f1b17e9679fc00b5a94",
+      "runtimeBytes": 3010632,
+      "base": "/scenes/paris/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/paris/refresh-20260907/thumb.webp"
+    },
+    {
+      "slug": "marrakech",
+      "previousVersion": 1,
+      "version": 2,
+      "sourceSha256": "16b8ee63cc7b271f860900fb0cfd4635620c6356e80a2abf2ad64330f111b6ba",
+      "runtimeSha256": "061281629ab74225f78a4612497f9b6e1278de6149526315412693e03dc6fd85",
+      "runtimeBytes": 3368184,
+      "base": "/scenes/marrakech/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/marrakech/refresh-20260907/thumb.webp"
+    },
+    {
+      "slug": "giza",
+      "previousVersion": 1,
+      "version": 2,
+      "sourceSha256": "d7351393c6df64af6b8e54e74771896922b6c1fc5c75645879df201f9a0fbb60",
+      "runtimeSha256": "da3fe5115a04bc0e79d7c7daee17e14ce5167b9e74868289af91a85b5266bb09",
+      "runtimeBytes": 3224102,
+      "base": "/scenes/giza/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/giza/refresh-20260907/thumb.webp"
+    },
+    {
+      "slug": "tokyo",
+      "previousVersion": 1,
+      "version": 2,
+      "sourceSha256": "56fcc15d9643a9001ffb2cf327deac59f8cde8bbc737a3126cdc382822d8a566",
+      "runtimeSha256": "281052c6e87a94d0c1034ceffe46c67c96b2d9bd1cb8609f5b64aaaed63467e1",
+      "runtimeBytes": 3338940,
+      "base": "/scenes/tokyo/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/tokyo/refresh-20260907/thumb.webp"
+    },
+    {
+      "slug": "greatwall",
+      "previousVersion": 1,
+      "version": 2,
+      "sourceSha256": "2a075e1c9c254d43f52c50343ed0ad447f7de466e63f1c57a94648624ccd8f3f",
+      "runtimeSha256": "a137bdcc6ed1e7d2f227e22e196067d451709c86e2cda61bf39956a5929addb4",
+      "runtimeBytes": 3055708,
+      "base": "/scenes/greatwall/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/greatwall/refresh-20260907/thumb.webp"
+    },
+    {
+      "slug": "antarctica",
+      "previousVersion": 1,
+      "version": 2,
+      "sourceSha256": "e71039310d349bdb56d0ae7b6acc5a9a99ab2b773bbcef5b673f51ffbb1ccac1",
+      "runtimeSha256": "551bbb397f07047a940397e2c51522e7ab76d5b6585caa7188d3dd5e57c3de5e",
+      "runtimeBytes": 3360818,
+      "base": "/scenes/antarctica/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/antarctica/refresh-20260907/thumb.webp"
+    },
+    {
+      "slug": "castlegate",
+      "previousVersion": 1,
+      "version": 2,
+      "sourceSha256": "26dc549421ff08d56f97fa41ff6cc52cd30ee1dc7462a326283a2877d0ac2ce9",
+      "runtimeSha256": "f4d544846b3e406f3682913d0b2680d1d991972550c60d01d771962cbb2ff650",
+      "runtimeBytes": 3272402,
+      "base": "/scenes/castlegate/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/castlegate/refresh-20260907/thumb.webp"
+    },
+    {
+      "slug": "fairyforest",
+      "previousVersion": 1,
+      "version": 2,
+      "sourceSha256": "18e38d099a111ba7e1ee464d74d1940117333d3d7caf4817dec092758993ea0f",
+      "runtimeSha256": "6ba1e77b2d9dd9a1cd348eb1407d03cb68a703b297b1081c188a4417583d6b59",
+      "runtimeBytes": 3482868,
+      "base": "/scenes/fairyforest/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/fairyforest/refresh-20260907/thumb.webp"
+    },
+    {
+      "slug": "dragoncave",
+      "previousVersion": 1,
+      "version": 2,
+      "sourceSha256": "c3ff3c39c9cbdcf9d09d1a3fa7d8a4e913bb8500a795e621950f7afbaba505b2",
+      "runtimeSha256": "2e9c130a0205d1e2677e548a58d6f9d730a43d9f7b712e78d0e4ad764ad6d6c6",
+      "runtimeBytes": 3359306,
+      "base": "/scenes/dragoncave/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/dragoncave/refresh-20260907/thumb.webp"
+    },
+    {
+      "slug": "icepalace",
+      "previousVersion": 1,
+      "version": 2,
+      "sourceSha256": "5df48c9d3ee9832134245928af9bf50a63ee37da1da96477bec4e52401fa73c0",
+      "runtimeSha256": "296e9542c3c03ddf55e79d4a761d9fe052d18cdeaf5d4c458e7d888732c729f5",
+      "runtimeBytes": 3450572,
+      "base": "/scenes/icepalace/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/icepalace/refresh-20260907/thumb.webp"
+    },
+    {
+      "slug": "underwater",
+      "previousVersion": 1,
+      "version": 2,
+      "sourceSha256": "df8db4d1c822bac13acbd6d9c066bfb5ef34107aae9cfdfa32d2ce72ad36b8cd",
+      "runtimeSha256": "b11fec659347cf6c30187ad0ea5a11bcdf4cc1b8a8aa65e3d28518e6f9c3728c",
+      "runtimeBytes": 3301796,
+      "base": "/scenes/underwater/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/underwater/refresh-20260907/thumb.webp"
+    },
+    {
+      "slug": "cloudcity",
+      "previousVersion": 1,
+      "version": 2,
+      "sourceSha256": "48fdb8f5d83ed5a640003f53de2d91794f2d452e2a7059ec3afa431f17b2d709",
+      "runtimeSha256": "fbe21abf94ba13f374653a1923c1c55a8bd1358ef2d7529697cee0c89f86d402",
+      "runtimeBytes": 3063012,
+      "base": "/scenes/cloudcity/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/cloudcity/refresh-20260907/thumb.webp"
+    },
+    {
+      "slug": "sweetworkshop",
+      "previousVersion": 1,
+      "version": 2,
+      "sourceSha256": "547ffc79c2e9c93498859c4806b581f233cea2db381e9993304e0e00a63eaa85",
+      "runtimeSha256": "7f98e653bad444ded715aeca100b18e1129e7b87e93a8e8892572b00b21f5543",
+      "runtimeBytes": 3374100,
+      "base": "/scenes/sweetworkshop/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/sweetworkshop/refresh-20260907/thumb.webp"
+    },
+    {
+      "slug": "giantlibrary",
+      "previousVersion": 1,
+      "version": 2,
+      "sourceSha256": "070cba56f65b7146cf0dc60004e6dc502fa2b86aa24e4591e43803849f777973",
+      "runtimeSha256": "942839a63639a88efc83c450aca08c1eff9dff3f8935f07232fb4a3508f9dcc5",
+      "runtimeBytes": 3270078,
+      "base": "/scenes/giantlibrary/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/giantlibrary/refresh-20260907/thumb.webp"
+    },
+    {
+      "slug": "nightcarnival",
+      "previousVersion": 1,
+      "version": 2,
+      "sourceSha256": "cbad0dbf03cc5542e6dc0282c1c8371ee32bfb4afbb2aef0afcdc79413fdb151",
+      "runtimeSha256": "10ecc7ed0766d0594e98da55d0209728717c3aa167ff8c65333930053a521330",
+      "runtimeBytes": 3366372,
+      "base": "/scenes/nightcarnival/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/nightcarnival/refresh-20260907/thumb.webp"
+    },
+    {
+      "slug": "dinovalley",
+      "previousVersion": 1,
+      "version": 2,
+      "sourceSha256": "d08b79d529a906e102404c6e450ee5b9256f5831335caac3eb31edbec25f0602",
+      "runtimeSha256": "015cdbc009852bc3b8d2547be56e28a0c9faa8ac656a0c0eadd090b519cd53a8",
+      "runtimeBytes": 3485600,
+      "base": "/scenes/dinovalley/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/dinovalley/refresh-20260907/thumb.webp"
+    },
+    {
+      "slug": "pyramids",
+      "previousVersion": 1,
+      "version": 2,
+      "sourceSha256": "2aee14ebcf3db77fee7e0e20663d5b7da8e895090b70b4f44b41ec6891d72f8c",
+      "runtimeSha256": "e55700f1c59bbee422a72308fc1cf32ccf6dad3563425f3d8e06ee4bdfbc3c00",
+      "runtimeBytes": 3267458,
+      "base": "/scenes/pyramids/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/pyramids/refresh-20260907/thumb.webp"
+    },
+    {
+      "slug": "tournament",
+      "previousVersion": 1,
+      "version": 2,
+      "sourceSha256": "48d8c76a8c37245e2c0425d0c2a87447b343870e414753ce315d0731e18033b8",
+      "runtimeSha256": "544dc2fdaf328980db9d72a6af0f94f1a3e7d31e48203173b1df0960fbacd5f1",
+      "runtimeBytes": 3235996,
+      "base": "/scenes/tournament/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/tournament/refresh-20260907/thumb.webp"
+    },
+    {
+      "slug": "piratecove",
+      "previousVersion": 1,
+      "version": 2,
+      "sourceSha256": "8ec182bc3ebb91389fd127409a3b05ec219156267afa0c99b30e6e697979b9a1",
+      "runtimeSha256": "6307b897b32cd0979d17c975d3661edebbbd7d5d1804ec3a80f179299e10b49b",
+      "runtimeBytes": 3456330,
+      "base": "/scenes/piratecove/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/piratecove/refresh-20260907/thumb.webp"
+    },
+    {
+      "slug": "wildwest",
+      "previousVersion": 1,
+      "version": 2,
+      "sourceSha256": "a9a0d947a3cef95e76a42a6ed90e183c9239284601934d29868e9cf81cc2a582",
+      "runtimeSha256": "7eced36882b332877663adca7f0be791a98d0e52bf22a7ae08a6e25715f35820",
+      "runtimeBytes": 3162946,
+      "base": "/scenes/wildwest/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/wildwest/refresh-20260907/thumb.webp"
+    },
+    {
+      "slug": "steamrail",
+      "previousVersion": 1,
+      "version": 2,
+      "sourceSha256": "d91303895d567be3528ced08d75d657182abd70b9efc72a126ed9fa8e299ea23",
+      "runtimeSha256": "7a8086044f53395951e4280fce25d29dcc9e9b580ea5cee98d3abb7dfc27f3c9",
+      "runtimeBytes": 2949436,
+      "base": "/scenes/steamrail/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/steamrail/refresh-20260907/thumb.webp"
+    },
+    {
+      "slug": "futurecity",
+      "previousVersion": 1,
+      "version": 2,
+      "sourceSha256": "c82f97be3f25e59814bcfe7a6bd139be7c1fd34b01dd72712e04598cce591b39",
+      "runtimeSha256": "db2d36115a3963128053ed7f7a5906c1c30f39c2b1ea0aa620c70b38b96c717d",
+      "runtimeBytes": 3180146,
+      "base": "/scenes/futurecity/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/futurecity/refresh-20260907/thumb.webp"
+    },
+    {
+      "slug": "robotlab",
+      "previousVersion": 1,
+      "version": 2,
+      "sourceSha256": "d2e11d7c5a3e08c728fc755ecb09e9d353550247e0d9ab0dab4d5927dda499d0",
+      "runtimeSha256": "231ec13f0aec9e43db95f3ab32568cb865b1d4a8b2ace6ccc44d0756c93c275a",
+      "runtimeBytes": 3318338,
+      "base": "/scenes/robotlab/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/robotlab/refresh-20260907/thumb.webp"
+    },
+    {
+      "slug": "beyondstars",
+      "previousVersion": 1,
+      "version": 2,
+      "sourceSha256": "53608f518304e9487a0603aa3001c780cb106098500564e2d94606332e1e0e41",
+      "runtimeSha256": "47abfd2a14c13cbc98b95d12ca908d996960e935c82a5970616cc0a8fb6c7b02",
+      "runtimeBytes": 3352416,
+      "base": "/scenes/beyondstars/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/beyondstars/refresh-20260907/thumb.webp"
+    },
+    {
+      "slug": "sydney",
+      "previousVersion": 1,
+      "version": 2,
+      "sourceSha256": "d57668e72698c8a06341c4c187e4314e9d4f0f8c09896ab1fc9d4a579cd90cd0",
+      "runtimeSha256": "c33b4c484df0c020acaddc927694d11c1672bc02d918c2e9efe2618a02bb7f2b",
+      "runtimeBytes": 2674304,
+      "base": "/scenes/sydney/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/sydney/refresh-20260907/thumb.webp"
+    }
+  ]
+}

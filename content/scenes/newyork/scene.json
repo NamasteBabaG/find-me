@@ -9,20 +9,20 @@
     "en": "Yellow taxis under towers of glass, and a warm pretzel.",
     "he": "מוניות צהובות מתחת למגדלי זכוכית, ובייגלה חם."
   },
-  "version": 1,
+  "version": 2,
   "active": true,
   "artStatus": "final",
   "art": {
     "width": 3072,
     "height": 2048,
-    "base": "/scenes/newyork/base.webp",
-    "thumbnail": "/scenes/newyork/thumb.webp",
+    "base": "/scenes/newyork/refresh-20260907/base.webp",
+    "thumbnail": "/scenes/newyork/refresh-20260907/thumb.webp",
     "palette": {
       "sky": "#DCE9F5",
       "ground": "#B9A98F",
       "accent": "#F5B301"
     },
-    "foreground": "/scenes/newyork/foreground.webp"
+    "sha256": "0997325d6c2771e5435a21a4dce134f619b14df866b376caef7e4a79155473b1"
   },
   "targets": [
     {
@@ -67,7 +67,8 @@
           "hintText": {
             "en": "Look by the yellow taxis at the crossing.",
             "he": "חפשו ליד המוניות הצהובות במעבר החצייה."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "newyork_taxi_b",
@@ -82,7 +83,8 @@
           "hintText": {
             "en": "Look by the taxis on the right.",
             "he": "חפשו ליד המוניות בצד ימין."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -128,7 +130,8 @@
           "hintText": {
             "en": "Look by the pretzel cart.",
             "he": "חפשו ליד עגלת הבייגלה."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "newyork_pretzel_b",
@@ -143,7 +146,8 @@
           "hintText": {
             "en": "Look by the second cart on the left.",
             "he": "חפשו ליד העגלה השנייה משמאל."
-          }
+          },
+          "layer": "front"
         }
       ]
     },
@@ -189,7 +193,8 @@
           "hintText": {
             "en": "Look behind the benches in the park.",
             "he": "חפשו מאחורי הספסלים בפארק."
-          }
+          },
+          "layer": "front"
         },
         {
           "id": "newyork_bench_b",
@@ -204,7 +209,8 @@
           "hintText": {
             "en": "Look behind the bench on the right.",
             "he": "חפשו מאחורי הספסל בצד ימין."
-          }
+          },
+          "layer": "front"
         }
       ]
     }

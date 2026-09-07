@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { createHash } from "node:crypto";
 
 /**
  * The base art of a world.
@@ -13,11 +14,12 @@ import path from "node:path";
  */
 const cache = new Map<string, Buffer>();
 
-export async function loadSceneArt(appUrl: string, relativePath: string): Promise<Buffer> {
-  const key = relativePath;
+export async function loadSceneArt(appUrl: string, relativePath: string, expectedSha256?: string): Promise<Buffer> {
+  const key = `${relativePath}:${expectedSha256 ?? "legacy"}`;
   const hit = cache.get(key);
   if (hit) return hit;
   const buffer = (await fromDisk(relativePath)) ?? (await fromOrigin(appUrl, relativePath));
+  if (expectedSha256 && createHash("sha256").update(buffer).digest("hex") !== expectedSha256) throw new Error(`Scene art hash mismatch: ${relativePath}`);
   cache.set(key, buffer);
   return buffer;
 }

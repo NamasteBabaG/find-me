@@ -241,6 +241,9 @@
 .create__head { display: flex; flex-direction: column; gap: var(--space-2); align-items: center; text-align: center; max-width: 64ch; margin-inline: auto; }
 .create__title { font-size: var(--fs-700); line-height: var(--lh-700); letter-spacing: -0.02em; }
 .create__actions { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.create__child-fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
+.create__child-fields > .fm-field { min-width: 0; }
+@media (min-width: 721px) { .create__child-fields { grid-template-columns: minmax(0, 1fr) minmax(160px, 190px); } }
 .create__actions--single { justify-content: stretch; }
 .create__actions--single > * { flex: 1; }
 /* A phone on its side: 375px tall, and the header, dots and title used to take
