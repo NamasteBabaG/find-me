@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import sharp from "sharp";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AvatarProvider, SlotPatchRequest, SlotPatchResponse } from "@/infra/generation/types";
 import type { Container } from "../container";
 
@@ -23,7 +23,7 @@ type Db = Container["db"];
 let dir: string;
 let db: Db;
 let mod: {
-  runGenerationPipeline: (c: Container, gameId: string, options?: { deadlineAt?: number }) => Promise<void>;
+  runGenerationPipeline: (c: Container, gameId: string, options?: { deadlineAt?: number; hardDeadlineAt?: number }) => Promise<void>;
   handlePaymentWebhook: (c: Container, rawBody: string, headers: Record<string, string | undefined>) => Promise<{ status: number; body: string }>;
   deleteGame: (c: Container, gameId: string, actor: unknown, userId?: string) => Promise<boolean>;
   SYSTEM: unknown;
@@ -209,6 +209,67 @@ async function seedGame(c: Container): Promise<string> {
 const spotsIn = (gameId: string) => db.targetInstance.findMany({ where: { gameScene: { gameId } }, include: { variants: true } });
 const job = (gameId: string) => db.generationJob.findUniqueOrThrow({ where: { id: `job_${gameId}` } });
 const gameOf = (gameId: string) => db.game.findUniqueOrThrow({ where: { id: gameId } });
+
+/** A matte-capable painter: real wire-shaped buffers, fake HTTP, no external cost. */
+function mattePainter() {
+  const p = painter();
+  let matteCalls = 0;
+  p.matteSlotCrop = async request => {
+    matteCalls++;
+    const { data, info } = await sharp(request.edited).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    const keyed = Buffer.alloc(info.width * info.height * 3);
+    const rgba = Buffer.alloc(info.width * info.height * 4);
+    for (let i = 0; i < info.width * info.height; i++) {
+      const child = data[i * 3]! > 250 && data[i * 3 + 1]! < 5 && data[i * 3 + 2]! > 220;
+      keyed.set(child ? [200, 150, 100] : [255, 0, 255], i * 3);
+      rgba.set([200, 150, 100, child ? 255 : 0], i * 4);
+    }
+    return { png: await sharp(rgba, { raw: { width: info.width, height: info.height, channels: 4 } }).png().toBuffer(), rawPng: await sharp(keyed, { raw: { width: info.width, height: info.height, channels: 3 } }).png().toBuffer(), costCents: 2.341, model: "stub-matte", durationMs: 1, attempts: 1, providerRequestId: `matte_${matteCalls}`, usage: { outputTokens: 196 } };
+  };
+  return { p, count: () => matteCalls };
+}
+
+describe("two-pass pipeline recovery", () => {
+  it("delivers through both passes and deletion removes every private matte", async () => {
+    const { p, count } = mattePainter(); const c = container(p);
+    const id = await seedGame(c);
+    await mod.runGenerationPipeline(c, id);
+    expect(p.calls).toBe(3); expect(count()).toBe(3);
+    const rows = (await spotsIn(id)).flatMap(s => s.variants);
+    for (const row of rows) {
+      const ledger = JSON.parse(row.usageJson!).ledger;
+      expect(ledger.attempts).toHaveLength(1);
+      expect(ledger.exactCents).toBeCloseTo(6.341);
+      expect(ledger.attempts[0].matteEvidenceAssetId).toBeTruthy();
+    }
+    const game = await gameOf(id);
+    await mod.deleteGame(c, id, mod.SYSTEM);
+    expect(await db.asset.count({ where: { ownerId: game.ownerId, status: { not: "DELETED" } } })).toBe(0);
+  });
+
+  it("resumes even the sixth painted attempt without buying either image again", async () => {
+    const { p, count } = mattePainter(); const c = container(p);
+    let now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    const paint = p.editSlotCrop!;
+    p.editSlotCrop = async request => { const answer = await paint(request); now += 100_000; return answer; };
+    try {
+      const id = await seedGame(c);
+      await mod.runGenerationPipeline(c, id, { deadlineAt: now + 30_000, hardDeadlineAt: now + 170_000 });
+      expect(p.calls).toBe(1); expect(count()).toBe(1);
+      const first = (await spotsIn(id)).flatMap(s => s.variants)[0]!;
+      expect(JSON.parse(first.usageJson!).ledger.attempts[0].stage).toBe("matted");
+      await db.targetVariantAsset.update({ where: { id: first.id }, data: { attempts: 6 } });
+      p.editSlotCrop = paint;
+      await mod.runGenerationPipeline(c, id, { deadlineAt: now + 30_000, hardDeadlineAt: now + 270_000 });
+      expect(p.calls).toBe(3); expect(count()).toBe(3);
+      const done = await db.targetVariantAsset.findUniqueOrThrow({ where: { id: first.id } });
+      expect(done.status).toBe("GENERATED"); expect(done.attempts).toBe(6);
+      expect(JSON.parse(done.usageJson!).ledger.attempts).toHaveLength(1);
+      expect(JSON.parse(done.usageJson!).ledger.exactCents).toBeCloseTo(6.341);
+    } finally { clock.mockRestore(); }
+  });
+});
 
 // ── The tests ───────────────────────────────────────────────────────────────
 

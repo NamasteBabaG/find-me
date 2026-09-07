@@ -44,6 +44,8 @@ import { extractChild } from "../src/services/generation/extract";
 import { assertSameRun, chargeCents, cropOf, slotOf, writePatch, writePreview } from "../src/services/generation/authoring";
 import { boardComposite } from "../src/services/generation/board-composite";
 import { envKey } from "./slot-patch";
+import { GenerationBudget } from "./generation-budget";
+import { boardJudgeReserveCents } from "../src/infra/generation/board-verdict";
 
 const ROOT = process.cwd();
 const flag = (name: string, fallback: string) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3) ?? fallback;
@@ -57,7 +59,7 @@ const DEFAULT_BOARDS = "greatwall:lanterns,sydney:surfboards,amazon:canoe,giantl
 const RESERVE_CENTS: Readonly<Record<string, number>> = IMAGE_EDIT_RESERVE_CENTS;
 // The contextual judge (board crop + patch + sheet, then Sol HIGH on a pass) cost
 // about 2.4 cents per verdict in the 7 September trials; reserve for that.
-const JUDGE_RESERVE_CENTS = 3;
+const JUDGE_RESERVE_CENTS = boardJudgeReserveCents("sample-child");
 
 interface ArtDirection {
   wardrobe?: string;
@@ -100,6 +102,7 @@ async function main() {
   }
   const variant = flag("variant", "A");
   const quality = flag("quality", "low");
+  const matteQuality = flag("matte-quality", "low");
   const model = flag("model", "gpt-image-2");
   const windowFactor = Number(flag("window-factor", String(DEFAULT_WINDOW_FACTOR)));
   const units = flag("units", "model");
@@ -125,6 +128,7 @@ async function main() {
   const config = {
     promptVersion: PROMPT_VERSION,
     quality,
+    matteQuality,
     model,
     judgeModel: judgeOn ? judgeModel : null,
     variant,
@@ -144,6 +148,15 @@ async function main() {
   // Everything that shapes a cell is in the hash, so a resumed run cannot
   // quietly become a different run.
   const configHash = sha256(Buffer.from(JSON.stringify(config)));
+  const requestBudget = new GenerationBudget(path.join(outDir, "request-ledger"), budget, { configHash, commit, treeDirty });
+  const editCall = provider.editSlotCrop.bind(provider);
+  const matteCall = provider.matteSlotCrop.bind(provider);
+  provider.editSlotCrop = request => requestBudget.run(`${request.label}:paint`, RESERVE_CENTS[request.quality ?? quality] ?? RESERVE_CENTS.high!, () => editCall(request));
+  provider.matteSlotCrop = request => requestBudget.run(`${request.label}:matte`, RESERVE_CENTS[matteQuality] ?? RESERVE_CENTS.high!, () => matteCall({ ...request, quality: matteQuality }));
+  if (judge) {
+    const judgeCall = judge.judge.bind(judge);
+    judge.judge = request => requestBudget.run(`${request.label}:judge`, boardJudgeReserveCents(request.childName), () => judgeCall(request));
+  }
 
   const cells: Array<Record<string, unknown>> = [];
   const unknownCharges: string[] = [];
@@ -173,11 +186,11 @@ async function main() {
   const write = () =>
     writeFileSync(
       manifestPath,
-      JSON.stringify({ runId, commit, treeDirty: treeDirty || undefined, configHash, config, budgetCents: budget, spentCents: Math.round(spent * 100) / 100, unknownCharges, stopped, startedAt, updatedAt: new Date().toISOString(), artHashes, referenceHashes, cells }, null, 2),
+      JSON.stringify({ runId, commit, treeDirty: treeDirty || undefined, configHash, config, budgetCents: budget, spentCents: requestBudget.spent, unknownCharges, stopped, startedAt, updatedAt: new Date().toISOString(), artHashes, referenceHashes, cells }, null, 2),
     );
 
   // Two image calls per cell — the roll and its matte (pass two) — and the judge.
-  const reserve = 2 * (RESERVE_CENTS[quality] ?? RESERVE_CENTS.high!) + (judge ? JUDGE_RESERVE_CENTS : 0);
+  const reserve = (RESERVE_CENTS[quality] ?? RESERVE_CENTS.high!) + 2 * (RESERVE_CENTS[matteQuality] ?? RESERVE_CENTS.high!) + (judge ? JUDGE_RESERVE_CENTS : 0);
 
   outer: for (const sheetFile of sheets) {
     const identity = path.parse(sheetFile).name;
@@ -200,7 +213,8 @@ async function main() {
       if (!slug || !targetId) throw new Error(`--boards entries are slug:target, got "${board}"`);
       const cellId = `${identity}/${slug}-${targetId}-${variant}`;
       if (cells.some((c) => c.id === cellId)) continue;
-      if (spent + reserve > budget) {
+      spent = requestBudget.spent;
+      if (spent + reserve > budget || requestBudget.held) {
         stopped = `budget: ${spent.toFixed(2)} spent, ${reserve.toFixed(2)} reserved for the next call, ${budget} allowed`;
         console.warn(`stopping — ${stopped}`);
         break outer;
@@ -277,26 +291,27 @@ async function main() {
         writeFileSync(path.join(cellDir, "raw-crop.png"), edit.png);
         files.rawCrop = "raw-crop.png";
         // Cut out exactly as the pipeline cuts: the provider's matte (pass two), or the difference when there is none.
-        const extracted = await extractChild({ provider, originalCrop: crop, editedCrop: edit.png, ctx: c.ctx, art: c.art, slot: c.slot, hint: matteHint(c.slot), label: cellId, quality });
+        const extracted = await extractChild({ provider, originalCrop: crop, editedCrop: edit.png, ctx: c.ctx, art: c.art, slot: c.slot, hint: matteHint(c.slot), label: cellId, reference: judgeReference, quality: matteQuality });
         const patch = extracted.patch;
         let matteCost = 0;
-        if (extracted.matte) {
-          const matteCharge = chargeCents(extracted.matte, RESERVE_CENTS[quality] ?? RESERVE_CENTS.high!);
+        cell.matteAttempts = extracted.matteAttempts.map(({ png, rawPng, ...metadata }) => metadata);
+        for (const matte of extracted.matteAttempts) {
+          const matteCharge = chargeCents(matte, RESERVE_CENTS[matteQuality] ?? RESERVE_CENTS.high!);
           spent += matteCharge.cents;
-          matteCost = extracted.matte.costCents;
+          matteCost += matte.costCents;
           if (matteCharge.unknown) {
             unknownCharges.push(`${cellId}:matte`);
             cell.costUnknown = true;
           }
-          writeFileSync(path.join(cellDir, "matte.png"), extracted.matte.png);
+          if (matte.png.length) writeFileSync(path.join(cellDir, "matte.png"), matte.png);
           files.matte = "matte.png";
-          if (extracted.matte.rawPng) {
-            writeFileSync(path.join(cellDir, "matte-1024.png"), extracted.matte.rawPng);
+          if (matte.rawPng) {
+            writeFileSync(path.join(cellDir, "matte-1024.png"), matte.rawPng);
             files.matte1024 = "matte-1024.png";
           }
-          cell.matte = { model: extracted.matte.model, requestId: extracted.matte.providerRequestId ?? null, usage: extracted.matte.usage ?? null, costCents: extracted.matte.costCents, inputFidelity: (extracted.matte as { inputFidelity?: string | null }).inputFidelity ?? null, promptSent: extracted.matte.promptSent ?? null };
+          cell.matte = { model: matte.model, requestId: matte.providerRequestId ?? null, usage: matte.usage ?? null, costCents: matte.costCents, promptSent: matte.promptSent ?? null };
         }
-        const shape = childProblem(patch);
+        const shape = extracted.renderProblem ?? extracted.extractionProblem ?? (extracted.method === "deferred" ? "deferred" : childProblem(patch));
         Object.assign(cell, {
           extraction: { method: extracted.method, version: extracted.version, diff: extracted.diff, largest: patch.largest, painted: patch.painted, expected: patch.expected, shape: patch.shape, geometry: patch.width ? patch.geometry : null, patchSize: { width: patch.width, height: patch.height } },
           shapeProblem: shape,
@@ -336,9 +351,10 @@ async function main() {
         }
         Object.assign(cell, { error: message, costUnknown: unknownCost || undefined });
         console.error(`${cellId}: ${message}`);
-        if (unknownCost) stopped = `a call timed out with an unknown charge (${reserve} cents reserved for it)`;
+        if (unknownCost || requestBudget.held || /BUDGET_STOP/.test(message)) stopped = `request held: ${message}`;
       }
       cell.durationMs = Date.now() - started;
+      spent = requestBudget.spent;
       cells.push(cell);
       writeFileSync(path.join(cellDir, "cell.json"), JSON.stringify(cell, null, 2));
       write();

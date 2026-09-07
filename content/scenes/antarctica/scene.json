@@ -211,7 +211,37 @@
             "pose": "peeking",
             "support": "The support point is hidden on the snowy shelf behind the ice buttress; the implied child stands normally there.",
             "occlusion": "The visible blue ice buttress hides the child from the upper chest through the shoes; no invisible cutoff is used.",
-            "instructions": "Peek over the right blue ice buttress with the full hat, face, and tops of both shoulders visible; one mitten may appear beside the cheek. Scale slightly larger than the distant ridge walkers because this ledge is closer. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown."
+            "instructions": "Peek over the right blue ice buttress with the full hat, face, and tops of both shoulders visible; one mitten may appear beside the cheek. Scale slightly larger than the distant ridge walkers because this ledge is closer. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown.",
+            "foreground": [
+              {
+                "x": 0.699,
+                "y": 0.153
+              },
+              {
+                "x": 0.706,
+                "y": 0.147
+              },
+              {
+                "x": 0.714,
+                "y": 0.143
+              },
+              {
+                "x": 0.72,
+                "y": 0.148
+              },
+              {
+                "x": 0.727,
+                "y": 0.158
+              },
+              {
+                "x": 0.728,
+                "y": 0.188
+              },
+              {
+                "x": 0.698,
+                "y": 0.188
+              }
+            ]
           }
         },
         {

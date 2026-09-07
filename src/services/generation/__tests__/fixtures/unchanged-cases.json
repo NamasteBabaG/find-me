@@ -1,0 +1,44 @@
+{
+  "amazon-wrong": {
+    "cell": "amazon-canoe-A",
+    "source": "final",
+    "region": {
+      "left": 418,
+      "top": 167,
+      "width": 104,
+      "height": 123
+    },
+    "cropSize": {
+      "w": 768,
+      "h": 768
+    }
+  },
+  "amazon-right": {
+    "cell": "amazon-canoe-A",
+    "source": "codex-targeted-v4",
+    "region": {
+      "left": 302,
+      "top": 236,
+      "width": 168,
+      "height": 176
+    },
+    "cropSize": {
+      "w": 768,
+      "h": 768
+    }
+  },
+  "marrakech-right": {
+    "cell": "marrakech-carpets-A",
+    "source": "final",
+    "region": {
+      "left": 284,
+      "top": 220,
+      "width": 183,
+      "height": 302
+    },
+    "cropSize": {
+      "w": 768,
+      "h": 768
+    }
+  }
+}

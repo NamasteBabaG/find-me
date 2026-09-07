@@ -58,6 +58,12 @@ export interface PipelineOptions {
    * resumable; this makes stopping deliberate instead of a timeout.
    */
   deadlineAt?: number;
+  /**
+   * The request's hard limit. No pass (painting, pass two, judging) starts
+   * that cannot finish before it; a spot cut short keeps what it paid for and
+   * resumes on the next tick. `deadlineAt` is only when to stop starting spots.
+   */
+  hardDeadlineAt?: number;
 }
 
 export async function runGenerationPipeline(c: Container, gameId: string, options: PipelineOptions = {}): Promise<void> {
@@ -248,18 +254,23 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
             // low patches come out soft or fragmentary, which is what the
             // retry is for.
             const quality = env().GENERATION_PATCH_RETRY_QUALITY && row.attempts > 0 ? env().GENERATION_PATCH_RETRY_QUALITY : undefined;
-            const outcome = await generateSlotPatch(c, { targetInstanceId: row.id, scene: def, target, variant, reference, childName: refreshedChild.displayName, ageYears: refreshedChild.ageYears, ownerId: refreshedChild.ownerId, quality });
+            const outcome = await generateSlotPatch(c, { targetInstanceId: row.id, scene: def, target, variant, reference, childName: refreshedChild.displayName, ageYears: refreshedChild.ageYears, ownerId: refreshedChild.ownerId, quality, deadlineAt: options.hardDeadlineAt });
             outcomes.push(outcome);
             spent += outcome.newCostCents;
             if (outcome.status === "GENERATED") ok++;
+            // A pass deferred for lack of time ends the slice: the lease goes
+            // back and the next tick resumes from what was kept.
+            if (outcome.deferred) ranOutOfTime = true;
           }
           // One good hiding spot is a playable target; none is one a human must look at.
+          const deferredOnly = outcomes.slice(-variants.length).every((o) => o.deferred);
           await c.db.targetInstance.update({
             where: { id: row.id },
-            data: { spriteKind: "image", status: ok > 0 ? "GENERATED" : "NEEDS_REGENERATION", attempts: { increment: 1 }, costCents: { increment: Math.round(spent) } },
+            data: { spriteKind: "image", status: ok > 0 ? "GENERATED" : "NEEDS_REGENERATION", attempts: { increment: deferredOnly ? 0 : 1 }, costCents: { increment: Math.round(spent) } },
           });
           // Heartbeat: a minute of painting must not let the lease go stale.
           await c.db.generationJob.update({ where: { id: jobId }, data: { currentStep: "targets" } });
+          if (ranOutOfTime) break;
           if (spentSoFar + outcomes.reduce((n, o) => n + o.newCostCents, 0) >= budgetCents) overBudget = true;
           continue;
         }

@@ -211,6 +211,24 @@
             "pose": "peeking",
             "support": "Hidden feet are planted on the park path behind the bench; bodyHeight is the child's implied full standing height.",
             "occlusion": "The original bench backrest provides the exact cutoff across the lower shoulders; the crouched torso and legs remain behind it.",
+            "foreground": [
+              {
+                "x": 0.9,
+                "y": 0.724
+              },
+              {
+                "x": 0.95,
+                "y": 0.736
+              },
+              {
+                "x": 0.948,
+                "y": 0.769
+              },
+              {
+                "x": 0.903,
+                "y": 0.758
+              }
+            ],
             "instructions": "Crouch behind the bench and peek above its backrest with the full face and top of the shoulders visible. Keep hands and lower body hidden. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown."
           }
         },

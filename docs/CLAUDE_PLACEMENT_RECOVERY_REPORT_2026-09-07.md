@@ -124,7 +124,7 @@ Per spot in production at low: roll 2.6 + matte 2.3 + judge 0.7 (+2.3 on a pass)
   at board scale, passed both judges. A purple garment would key partly at its rim (the prompt forbids
   purple on the child).
 
-## 7. Changes (uncommitted at the time of writing; see the final message for the commit)
+## 7. Changes (commit 93db1de, pushed to origin/master; QA deploy of that commit in progress at the time of writing)
 
 - `src/infra/generation/types.ts` — `SlotMatteRequest/Response`, `matteSlotCrop?`.
 - `src/infra/generation/openai.ts` — `matteSlotCrop`, `prepareSlotMatte`, `mattePrompt`, `keyMagenta`,
@@ -155,3 +155,55 @@ Per spot in production at low: roll 2.6 + matte 2.3 + judge 0.7 (+2.3 on a pass)
 - `medium` quality; a second identity; the retry loop's repair instructions against these rejection reasons.
 - Boards with pink/purple palettes (tokyo blossom) under the magenta key.
 - `game-status.ts` still re-extracts rejected renders with the difference for its scale report.
+
+
+---
+
+# Round 2 — answers to Codex's review of 93db1de (7 September 2026, evening)
+
+Every finding was reproduced and fixed; the proof is on the same four renders, nothing was repainted.
+
+| # | finding | fix | proof |
+|---|---|---|---|
+| 1 P1 | amazon/canoe: pass two kept a girl who was already in the board | pass two is told **where** (the paint mask as an image) and **who** (the identity sheet), edits the render only (`matte-wire-v4-single-edit-target`); `unchangedFraction` refuses a silhouette the board already had (>20%) and asks pass two once more on the same render, as an *extraction* failure — the render is not bought again | the same render now yields Noa: judge ok 6/6 (`codex-targeted-v4`, 9.5¢: 2 mattes + judge). The wire that still sent the "before" crop kept the bystander again (`codex-targeted-v3`, 35%). Real fixture: `__tests__/fixtures/amazon-{wrong,right}-*` (60% vs 12% at the fixture's resolution; 48% vs 10% at native). |
+| 2 P2 | newyork/bench: the render raised the bench back; hands land on flowers | the occluder is a polygon on the slot (`placement.foreground`, 8 slots from the planning run; 3 moved-by-override slots skipped); the paint mask leaves it out, the matte is clipped by it, the prompt (v8) says objects stay where they are, the retry names the moved object | two numbers per attempt are recorded, none rejects: three geometric measures were tried on the renders on disk and none separates the raised bench from kept occluders with these polygons (§ below). Honest status: mitigated, not verified. |
+| 3 P1 | a known charge is lost when keying fails | `matteSlotCrop` never throws after the paid call (`problem` + bill + raw); `extractChild` checkpoints every answer via `onMatte` before keying; the tools reserve per request in a durable ledger (`scripts/generation-budget.ts`) | `recovery.test.ts`: Codex's blue-PNG reproduction returns the 2.341¢ bill, usage and request id; a second call that throws still leaves the first charge recorded |
+| 4 P1 | deletion misses the matte evidence | `renderEvidenceIds`/`removeRenderEvidence` walk `matteEvidenceAssetId` and `matteEvidenceAssetIds` | `recovery.test.ts` + pipeline test "delivers through both passes and deletion removes every private matte" (0 live assets after deleteGame) |
+| 5 P1 | two image calls with no shared deadline | `hardDeadlineAt` from the tick (270 s) reaches every pass; each starts only if it can finish (60/45/115 s); a pass that cannot is deferred with the render (and matte) kept and the attempt `pending`; the next tick resumes from the evidence without buying again | pipeline test "resumes even the sixth painted attempt without buying either image again" (mock clock: 1 paint + 1 matte, then resume → GENERATED, exact cents 6.341) |
+| 6 P2 | tools reserve 3¢ for a judge that cost 4.1¢ | both tools reserve `boardJudgeReserveCents` (≈26¢, the contract's upper bound) and the image reserve per pass, before every request | `matte-proof` refused to start a cell with 25¢ free ("38.12 reserved"); runs at 60¢ |
+
+## Occluder numbers, measured (why nothing rejects yet)
+
+| cell | occluder | colour distance in polygon | cut line above polygon top | verdict |
+|---|---|---|---|---|
+| proof-1 bench (raised, Codex's case) | bench back | 76 | 58% of child | — |
+| world1 bench (kept, hands on the rail) | bench back | 80 | 29% | ok |
+| giza/stones (kept) | stones | 21 | 17% | bad (render) |
+| antarctica/ice (kept, correct peek) | ice ledge | 50 | 69% | bad (render) |
+| paris/bakery | counter | 72 | −58% (matte kept scenery) | unknown |
+
+A third measure (nearest strong board edge below the cut line) read 10 px on both benches. The
+planning run's polygons are approximate (the ice ledge's begins well below the visual edge), so a
+limit would reject correct peeks before it rejects raised benches. The numbers stay in the ledger.
+
+## The four proof renders under the current code (`wire-v4`, `wire-v4b`)
+
+| spot | pass two | judge |
+|---|---|---|
+| marrakech/carpets | 1 answer | **ok** 6/6 |
+| amazon/canoe | 2 answers (first refused: bystander) | **ok** 6/6 |
+| newyork/taxi | 1 answer | bad: age (render) |
+| newyork/bench | 1 answer (clipped by the polygon) | bad: age (large head, tiny hands) and style (render); the raised bench itself is not caught |
+
+## Spend this round
+
+`codex-targeted-v3` 8.1¢, `codex-targeted-v4` 9.5¢, `wire-v4` 9.7¢, `wire-v4b` (bench) 6.6¢ — all in
+`work/placement/proof-1/requests-*/requests.json` with request ids; the interrupted 27-spot run
+(`world1-low`, 15 cells, 105¢, prompt v7) stays as evidence and is not resumed: the prompt and the
+wire changed, so the first world is rendered again under v8 in a new run.
+
+## Not verified in round 2
+
+- A render that raises its occluder is not rejected automatically (numbers only).
+- The 27 spots under v8 (run pending), B variants, a second identity, medium quality.
+- The tick's deadline path on Vercel itself (unit-tested with a mock clock only).

@@ -27,10 +27,13 @@ import { extractChild } from "../src/services/generation/extract";
 import { chargeCents, slotOf, writePatch, writePreview } from "../src/services/generation/authoring";
 import { boardComposite } from "../src/services/generation/board-composite";
 import { envKey } from "./slot-patch";
+import { GenerationBudget } from "./generation-budget";
+import { boardJudgeReserveCents } from "../src/infra/generation/board-verdict";
+import { createHash } from "node:crypto";
 
 const ROOT = process.cwd();
 const flag = (name: string, fallback: string) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3) ?? fallback;
-const JUDGE_RESERVE_CENTS = 3;
+const JUDGE_RESERVE_CENTS = boardJudgeReserveCents("sample-child");
 
 interface Cell {
   id: string;
@@ -60,15 +63,24 @@ async function main() {
   const rekey = flag("rekey", "");
   // --into=<name>: where this pass's files go (default "matte"); a rekey goes under its own name.
   const into = rekey || flag("into", "matte");
+  const quality = flag("matte-quality", "low");
+  const codeHash = createHash("sha256").update(["src/infra/generation/openai.ts", "src/services/generation/patch.ts", "src/services/generation/extract.ts", "scripts/matte-proof.ts"].map(f => readFileSync(f, "utf8")).join("\n")).digest("hex");
+  const requestBudget = new GenerationBudget(path.join(run, `requests-${into}`), budget, { codeHash, only, ageYears, quality, rekey, from: flag("from", "matte") });
   const provider = new OpenAiAvatarProvider(key, { model: flag("model", "gpt-image-2"), perMinute: Number(flag("rpm", "5")), tries: 1 });
   const judge = judgeOn ? new OpenAiPatchJudge(key, { model: judgeModel, tries: 1 }) : null;
+  const matteCall = provider.matteSlotCrop.bind(provider);
+  provider.matteSlotCrop = request => requestBudget.run(`${request.label}:matte`, IMAGE_EDIT_RESERVE_CENTS[quality as "low" | "medium" | "high"] ?? IMAGE_EDIT_RESERVE_CENTS.high, () => matteCall({ ...request, quality }));
+  if (judge) {
+    const judgeCall = judge.judge.bind(judge);
+    judge.judge = request => requestBudget.run(`${request.label}:judge`, boardJudgeReserveCents(request.childName), () => judgeCall(request));
+  }
 
   const manifestPath = path.join(run, into === "matte" ? "matte-manifest.json" : `matte-manifest-${into}.json`);
   const manifest = existsSync(manifestPath)
     ? (JSON.parse(readFileSync(manifestPath, "utf8")) as { spentCents: number; unknownCharges: string[]; cells: Array<Record<string, unknown>> })
     : { spentCents: 0, unknownCharges: [] as string[], cells: [] as Array<Record<string, unknown>> };
   let spent = manifest.spentCents;
-  const write = (stopped: string | null) => writeFileSync(manifestPath, JSON.stringify({ ...manifest, budgetCents: budget, spentCents: Math.round(spent * 100) / 100, stopped, updatedAt: new Date().toISOString() }, null, 2));
+  const write = (stopped: string | null) => writeFileSync(manifestPath, JSON.stringify({ ...manifest, codeHash, budgetCents: budget, spentCents: requestBudget.spent, stopped, updatedAt: new Date().toISOString() }, null, 2));
 
   const identities = readdirSync(run).filter((d) => statSync(path.join(run, d)).isDirectory() && existsSync(path.join(run, d, "reference.judge.png")));
   let stopped: string | null = null;
@@ -80,8 +92,9 @@ async function main() {
       if (only.length > 0 && !only.includes(cellName)) continue;
       if (manifest.cells.some((c) => c.id === `${identity}/${cellName}`)) continue;
       const cell = JSON.parse(readFileSync(path.join(dir, "cell.json"), "utf8")) as Cell;
-      const reserve = (rekey ? 0 : IMAGE_EDIT_RESERVE_CENTS[cell.quality as "low" | "medium" | "high"] ?? IMAGE_EDIT_RESERVE_CENTS.high) + (judge ? JUDGE_RESERVE_CENTS : 0);
-      if (spent + reserve > budget) {
+      const reserve = (rekey ? 0 : 2 * (IMAGE_EDIT_RESERVE_CENTS[quality as "low" | "medium" | "high"] ?? IMAGE_EDIT_RESERVE_CENTS.high)) + (judge ? JUDGE_RESERVE_CENTS : 0);
+      spent = requestBudget.spent;
+      if (spent + reserve > budget || requestBudget.held) {
         stopped = `budget: ${spent.toFixed(2)} spent, ${reserve.toFixed(2)} reserved for the next cell, ${budget} allowed`;
         console.warn(`stopping — ${stopped}`);
         break outer;
@@ -102,21 +115,23 @@ async function main() {
         const meta = await sharp(editedCrop).metadata();
         const extracted = rekey
           ? { patch: await matteToPatch({ originalCrop, mattePng: await fitMatte(readFileSync(savedRaw), meta.width!, meta.height!), ctx: c.ctx, art: c.art, slot: c.slot }), method: "matte" as const, version: MATTE_VERSION, matte: undefined, diff: null }
-          : await extractChild({ provider, originalCrop, editedCrop, ctx: c.ctx, art: c.art, slot: c.slot, hint: matteHint(c.slot), label: cell.id, quality: cell.quality });
+          : await extractChild({ provider, originalCrop, editedCrop, ctx: c.ctx, art: c.art, slot: c.slot, hint: matteHint(c.slot), label: cell.id, reference: judgeReference, quality });
         const patch = extracted.patch;
         if (rekey) writeFileSync(path.join(out, "matte.png"), await fitMatte(readFileSync(savedRaw), meta.width!, meta.height!));
         let matteCents = 0;
-        if (extracted.matte) {
-          const charge = chargeCents(extracted.matte, IMAGE_EDIT_RESERVE_CENTS[cell.quality as "low" | "medium" | "high"] ?? IMAGE_EDIT_RESERVE_CENTS.high);
+        const matteAttempts = "matteAttempts" in extracted ? extracted.matteAttempts : [];
+        result.matteAttempts = matteAttempts.map(({ png, rawPng, ...metadata }) => metadata);
+        for (const matte of matteAttempts) {
+          const charge = chargeCents(matte, IMAGE_EDIT_RESERVE_CENTS[quality as "low" | "medium" | "high"] ?? IMAGE_EDIT_RESERVE_CENTS.high);
           spent += charge.cents;
-          matteCents = extracted.matte.costCents;
+          matteCents += matte.costCents;
           if (charge.unknown) manifest.unknownCharges.push(`${cell.id}:matte`);
-          writeFileSync(path.join(out, "matte.png"), extracted.matte.png);
-          if (extracted.matte.rawPng) writeFileSync(path.join(out, "matte-1024.png"), extracted.matte.rawPng);
-          if (extracted.matte.promptSent) writeFileSync(path.join(out, "matte-prompt-sent.txt"), extracted.matte.promptSent);
-          result.matte = { model: extracted.matte.model, requestId: extracted.matte.providerRequestId ?? null, usage: extracted.matte.usage ?? null, costCents: extracted.matte.costCents, costUnknown: extracted.matte.costUnknown ?? false, inputFidelity: (extracted.matte as { inputFidelity?: string | null }).inputFidelity ?? null, durationMs: extracted.matte.durationMs };
+          if (matte.png.length) writeFileSync(path.join(out, "matte.png"), matte.png);
+          if (matte.rawPng) writeFileSync(path.join(out, "matte-1024.png"), matte.rawPng);
+          if (matte.promptSent) writeFileSync(path.join(out, "matte-prompt-sent.txt"), matte.promptSent);
+          result.matte = { model: matte.model, requestId: matte.providerRequestId ?? null, usage: matte.usage ?? null, costCents: matte.costCents, costUnknown: matte.costUnknown ?? false, durationMs: matte.durationMs };
         }
-        const shape = childProblem(patch);
+        const shape = ("renderProblem" in extracted ? extracted.renderProblem : null) ?? ("extractionProblem" in extracted ? extracted.extractionProblem : null) ?? childProblem(patch);
         Object.assign(result, {
           method: extracted.method,
           version: extracted.version,
@@ -156,8 +171,10 @@ async function main() {
           stopped = `a call timed out with an unknown charge (${reserve} cents reserved for it)`;
         }
         console.error(`${cell.id}: ${message}`);
+        if (requestBudget.held || /BUDGET_STOP/.test(message)) stopped = message;
       }
       result.durationMs = Date.now() - started;
+      spent = requestBudget.spent;
       writeFileSync(path.join(out, "result.json"), JSON.stringify(result, null, 2));
       manifest.cells.push(result);
       write(stopped);

@@ -63,7 +63,53 @@
             "pose": "peeking",
             "support": "Cobblestone pavement immediately behind the wicker basket; footX and footY are the implied hidden shoe midpoint.",
             "occlusion": "The original wicker basket and projecting baguettes hide the child from about the waist downward without covering the face.",
-            "instructions": "Stand behind the exterior baguette basket and lean forward slightly so the head and shoulders show against the bakery window. Keep the child comparable in implied height to nearby foreground children. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown."
+            "instructions": "Stand behind the exterior baguette basket and lean forward slightly so the head and shoulders show against the bakery window. Keep the child comparable in implied height to nearby foreground children. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown.",
+            "foreground": [
+              {
+                "x": 0.8577,
+                "y": 0.8447
+              },
+              {
+                "x": 0.862,
+                "y": 0.8276
+              },
+              {
+                "x": 0.8724,
+                "y": 0.8145
+              },
+              {
+                "x": 0.8838,
+                "y": 0.8081
+              },
+              {
+                "x": 0.8936,
+                "y": 0.8154
+              },
+              {
+                "x": 0.9043,
+                "y": 0.7998
+              },
+              {
+                "x": 0.9154,
+                "y": 0.8066
+              },
+              {
+                "x": 0.9251,
+                "y": 0.8242
+              },
+              {
+                "x": 0.931,
+                "y": 0.8447
+              },
+              {
+                "x": 0.9303,
+                "y": 0.9326
+              },
+              {
+                "x": 0.8574,
+                "y": 0.9326
+              }
+            ]
           },
           "hintZone": {
             "x": 0.8968,
@@ -133,7 +179,37 @@
             "pose": "standing",
             "support": "Wooden carousel deck; the projected shoe midpoint is hidden just behind the outer fascia.",
             "occlusion": "The original red-and-gold carousel fascia hides the shoes and lower shins; it stays well below the face.",
-            "instructions": "Stand upright on the carousel deck behind its front rim, facing outward. Keep the face fully above the rim and use the same small perspective scale as the nearby carousel riders."
+            "instructions": "Stand upright on the carousel deck behind its front rim, facing outward. Keep the face fully above the rim and use the same small perspective scale as the nearby carousel riders.",
+            "foreground": [
+              {
+                "x": 0.5853,
+                "y": 0.5215
+              },
+              {
+                "x": 0.5924,
+                "y": 0.5166
+              },
+              {
+                "x": 0.6022,
+                "y": 0.52
+              },
+              {
+                "x": 0.6136,
+                "y": 0.5161
+              },
+              {
+                "x": 0.625,
+                "y": 0.5215
+              },
+              {
+                "x": 0.6283,
+                "y": 0.5762
+              },
+              {
+                "x": 0.5859,
+                "y": 0.5762
+              }
+            ]
           },
           "hintZone": {
             "x": 0.6071,

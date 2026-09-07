@@ -38,8 +38,101 @@ export interface SlotPoint {
   x: number;
   y: number;
   scale: number;
-  /** The placement recipe, when the slot has one; the shape rules read its pose. */
-  placement?: { pose: string } | null;
+  /**
+   * The placement recipe, when the slot has one. The shape rules read its pose;
+   * `foreground` is the occluder in front of a peek, a polygon in art
+   * fractions: the paint mask leaves it out, the render is checked against it
+   * (occluderShift) and the matte is clipped by it.
+   */
+  placement?: { pose: string; foreground?: Array<{ x: number; y: number }> | null } | null;
+}
+
+/** The occluder polygon in crop pixels, as an SVG points attribute, or null when the slot has none. */
+function foregroundPoints(ctx: SlotContext, art: Size, slot: SlotPoint): string | null {
+  const poly = slot.placement?.foreground;
+  if (!poly || poly.length < 3) return null;
+  return poly.map((p) => `${(p.x * art.width - ctx.rect.x).toFixed(1)},${(p.y * art.height - ctx.rect.y).toFixed(1)}`).join(" ");
+}
+
+/** White-on-black occluder polygon in crop pixels, grown by `dilatePx`; null when the slot has none. */
+export async function polygonMask(ctx: SlotContext, art: Size, slot: SlotPoint, dilatePx = 0): Promise<Buffer | null> {
+  const points = foregroundPoints(ctx, art, slot);
+  if (!points) return null;
+  const stroke = dilatePx > 0 ? ` stroke="#fff" stroke-width="${dilatePx * 2}" stroke-linejoin="round"` : "";
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${ctx.rect.w}" height="${ctx.rect.h}"><rect width="100%" height="100%" fill="#000"/><polygon points="${points}" fill="#fff"${stroke}/></svg>`;
+  return sharp(Buffer.from(svg)).extractChannel(0).raw().toBuffer();
+}
+
+/**
+ * Did the painter move the object in front of the child?
+ *
+ * A peek is authored against a specific occluder in the board: the bench the
+ * hands rest on, the barrel the head shows above. The render is composed back
+ * onto the ORIGINAL board, so if the painter raised the bench (newyork/bench,
+ * 7 September: the backrest came back higher and the pigeon gone) the hands
+ * land on flowers. This measures how much the render differs from the board
+ * inside the occluder polygon (grown by two pixels), so the attempt can be
+ * rejected as a render failure before anything is cut out or judged.
+ */
+export async function occluderShift(input: { originalCrop: Buffer; editedCrop: Buffer; ctx: SlotContext; art: Size; slot: SlotPoint }): Promise<{ mean: number; pixels: number } | null> {
+  const { ctx, art, slot } = input;
+  const mask = await polygonMask(ctx, art, slot, 2);
+  if (!mask) return null;
+  const { w, h } = ctx.rect;
+  const original = await sharp(input.originalCrop).resize({ width: w, height: h, fit: "cover" }).removeAlpha().raw().toBuffer();
+  const edited = await sharp(input.editedCrop).resize({ width: w, height: h, fit: "cover" }).removeAlpha().raw().toBuffer();
+  let sum = 0, pixels = 0;
+  for (let i = 0; i < w * h; i++) {
+    if (mask[i]! < 128) continue;
+    sum += Math.hypot(edited[i * 3]! - original[i * 3]!, edited[i * 3 + 1]! - original[i * 3 + 1]!, edited[i * 3 + 2]! - original[i * 3 + 2]!);
+    pixels++;
+  }
+  return pixels < 50 ? null : { mean: sum / pixels, pixels };
+}
+
+/**
+ * Where the child's visible silhouette ends, relative to the top of the
+ * occluder in the BOARD, per column, as a median in pixels (positive: the
+ * child ends above the occluder). A peek is cut by the object in front of
+ * her; if the painter raised that object (newyork/bench, 7 September: the
+ * backrest came back higher, the hands on it), the cut line sits well above
+ * where the board's object begins, and the composite puts her hands in the
+ * air. Measured on the renders on disk: 58% of the child's height on the
+ * raised bench, 29% and 17% on peeks whose occluder stayed. The colour
+ * distance inside the polygon could not tell them apart (76 vs 80).
+ */
+export function occluderGap(alpha: Buffer, polygon: Buffer, w: number, h: number): { medianPx: number; columns: number } | null {
+  const gaps: number[] = [];
+  for (let x = 0; x < w; x++) {
+    let bottom = -1, top = -1;
+    for (let y = 0; y < h; y++) if (alpha[y * w + x]! >= 128) bottom = y;
+    if (bottom < 0) continue;
+    for (let y = 0; y < h; y++) if (polygon[y * w + x]! >= 128) { top = y; break; }
+    if (top >= 0) gaps.push(top - bottom);
+  }
+  if (gaps.length < 8) return null;
+  gaps.sort((a, b) => a - b);
+  return { medianPx: gaps[Math.floor(gaps.length / 2)]!, columns: gaps.length };
+}
+
+/**
+ * How much of a silhouette was already in the board.
+ *
+ * The child is new: where the matte says "child", the render differs from the
+ * original crop. A figure that was there before the edit — the other swimmer
+ * the matte kept on amazon/canoe — is re-synthesised close to the original, so
+ * inside its silhouette the render and the board mostly agree. Measured on
+ * nineteen mattes (7 September): real children 1–15%, kept bystanders and
+ * scenery 24–64%.
+ */
+export function unchangedFraction(alpha: Buffer, edited: Buffer, original: Buffer, n: number, threshold = 28): number {
+  let kept = 0, same = 0;
+  for (let i = 0; i < n; i++) {
+    if (alpha[i]! < 128) continue;
+    kept++;
+    if (Math.hypot(edited[i * 3]! - original[i * 3]!, edited[i * 3 + 1]! - original[i * 3 + 1]!, edited[i * 3 + 2]! - original[i * 3 + 2]!) < threshold) same++;
+  }
+  return kept === 0 ? 0 : same / kept;
 }
 
 /**
@@ -141,14 +234,20 @@ export function modelSpaceHeight(childPx: number, windowPx: number, outputPx: nu
   return Math.round((childPx / windowPx) * outputPx);
 }
 
-/** White-on-black ellipse marking the paint area, in crop pixels. */
+/**
+ * White-on-black ellipse marking the paint area, in crop pixels. A peek's
+ * occluder polygon is cut out of it: the object in front of the child is not
+ * the painter's to change.
+ */
 export function paintMask(ctx: SlotContext, art: Size, slot: SlotPoint, grow = 1): Buffer {
   const cx = slot.x * art.width - ctx.rect.x;
   const cy = slot.y * art.height - ctx.rect.y;
   const rx = Math.round(ctx.childPx * 0.55 * grow);
   const ry = Math.round(ctx.childPx * 0.8 * grow);
+  const points = foregroundPoints(ctx, art, slot);
+  const occluder = points ? `<polygon points="${points}" fill="#000"/>` : "";
   return Buffer.from(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${ctx.rect.w}" height="${ctx.rect.h}"><rect width="100%" height="100%" fill="#000"/><ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#fff"/></svg>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${ctx.rect.w}" height="${ctx.rect.h}"><rect width="100%" height="100%" fill="#000"/><ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#fff"/>${occluder}</svg>`,
   );
 }
 
@@ -178,7 +277,8 @@ export async function styleReference(art: Buffer, size: Size, slot: SlotPoint, o
  * asked for a child up to a quarter smaller than their mask.
  */
 // v6 additionally requires a complete supported body behind real occluders.
-export const PROMPT_VERSION = "slot-patch-v7-age-placement";
+// v8: what is already in the picture — above all a peek's occluder — stays where and as it is.
+export const PROMPT_VERSION = "slot-patch-v8-objects-stay";
 
 /** What pass two is told about which figure is the child: the placement recipe's pose and occlusion, when the slot has one. */
 export function matteHint(slot: { placement?: Slot["placement"] }): string {
@@ -238,7 +338,7 @@ export function slotPrompt(input: SlotPromptInput): string {
       : `Dress the child for this place${where}: everyday clothes a child would really wear here, in two or three flat colours taken from the picture's own palette, and let the weather show — a coat and hat in snow, a swimsuit or shorts on a beach, boots in a jungle — even when only the head and shoulders are in view. The clothes in the reference are not a uniform — only the child is the same.`,
     `Give the child a natural, specific expression for the moment — ${input.expression ?? expressionFor()} — never a fixed, posed smile.`,
     input.placement
-      ? `Fixed placement for this exact board: pose ${input.placement.pose}. Support: ${input.placement.support}. Occlusion: ${input.placement.occlusion}. ${input.placement.instructions}`
+      ? `Fixed placement for this exact board: pose ${input.placement.pose}. Support: ${input.placement.support}. Occlusion: ${input.placement.occlusion}. ${input.placement.instructions} Everything already in the picture, above all the object in front of the child and the one under them, stays exactly where and as it is: never moved, raised, enlarged, redrawn or removed.`
       : `Situation: ${input.mission}${input.bodyLabel ? ` (${input.bodyLabel})` : ""}.${input.action ? ` ${input.action}` : ""}${input.pose ? ` ${input.pose}` : ""}`,
     `Let whatever is naturally in front of the child overlap them, and give them a soft shadow that matches the others. They should be findable, not the centre of attention.`,
     `Plan the complete body and its support before painting: feet on visible ground, a body seated on an actual seat, or a swimmer in water. Every hidden part must continue plausibly behind a specific object ALREADY in this picture. Keep the whole face intact. Never end a torso in open air, merge the child into another person, or sink a body through a solid floor. If this spot has no suitable occluder, show a complete small standing or crouching child instead of inventing a floating head.`,
@@ -398,6 +498,10 @@ export interface PatchResult {
   shape: { width: number; height: number; centerX: number; centerY: number; childPx: number; slotX: number; slotY: number; visible?: number };
   /** How the alpha was made: the colour difference (a blob) or the model's matte (a silhouette). The shape rules read it. */
   basis: "diff" | "matte";
+  /** Matte only, when the render was given: how much of the silhouette was already in the board (unchangedFraction). */
+  unchanged?: number;
+  /** Matte only, slots with an occluder polygon: how far above the board's occluder the silhouette ends, as a fraction of the child's height (occluderGap). */
+  occluderGap?: number;
 }
 
 export const EXTRACTION_VERSION = "diff-v2-enclosed-interior";
@@ -670,7 +774,7 @@ export interface MatteOptions {
  * no feather, no solidify: those repaired a difference mask, and a real matte
  * does not need them — its edge is the child's own anti-aliasing.
  */
-export async function matteToPatch(input: { originalCrop: Buffer; mattePng: Buffer; ctx: SlotContext; art: Size; slot: SlotPoint; options?: MatteOptions }): Promise<PatchResult> {
+export async function matteToPatch(input: { originalCrop: Buffer; mattePng: Buffer; ctx: SlotContext; art: Size; slot: SlotPoint; options?: MatteOptions; /** The render the matte was cut from; when given, `unchanged` is measured. */ editedCrop?: Buffer }): Promise<PatchResult> {
   const { ctx, art, slot } = input;
   const o = input.options ?? {};
   const cut = o.cut ?? 8;
@@ -679,6 +783,8 @@ export async function matteToPatch(input: { originalCrop: Buffer; mattePng: Buff
   const n = w * h;
   const rgba = await sharp(input.mattePng).ensureAlpha().resize({ width: w, height: h, fit: "cover", kernel: "lanczos3" }).raw().toBuffer();
   const allow = await sharp(paintMask(ctx, art, slot, o.grow ?? 3.6)).extractChannel(0).raw().toBuffer();
+  // The occluder is in front of the child by definition: nothing of her shows there.
+  const occluder = await polygonMask(ctx, art, slot);
   const rgb = Buffer.alloc(n * 3);
   const soft = Buffer.alloc(n);
   const hard = Buffer.alloc(n);
@@ -686,7 +792,7 @@ export async function matteToPatch(input: { originalCrop: Buffer; mattePng: Buff
     rgb[i * 3] = rgba[i * 4]!;
     rgb[i * 3 + 1] = rgba[i * 4 + 1]!;
     rgb[i * 3 + 2] = rgba[i * 4 + 2]!;
-    const a = allow[i]! >= 128 ? rgba[i * 4 + 3]! : 0;
+    const a = allow[i]! >= 128 && !(occluder && occluder[i]! >= 128) ? rgba[i * 4 + 3]! : 0;
     soft[i] = a;
     hard[i] = a >= cut ? 255 : 0;
   }
@@ -697,11 +803,18 @@ export async function matteToPatch(input: { originalCrop: Buffer; mattePng: Buff
   const pieces = keepMainBlobs(alpha, w, h, 0.05);
   if (pieces.largest === 0) return nothingPainted(ctx, art, slot, "matte");
   let toned: Buffer = rgb;
-  if (o.tone) {
+  let unchanged: number | undefined;
+  if (o.tone || input.editedCrop) {
     const original = await sharp(input.originalCrop).resize({ width: w, height: h, fit: "cover" }).removeAlpha().raw().toBuffer();
-    toned = toneMatch(rgb, original, alpha, allow, n);
+    if (o.tone) toned = toneMatch(rgb, original, alpha, allow, n);
+    if (input.editedCrop) {
+      const edited = await sharp(input.editedCrop).resize({ width: w, height: h, fit: "cover" }).removeAlpha().raw().toBuffer();
+      unchanged = unchangedFraction(alpha, edited, original, n);
+    }
   }
-  return finishPatch({ rgb: toned, alpha, w, h, ctx, art, slot, pieces, basis: "matte" });
+  const patch = await finishPatch({ rgb: toned, alpha, w, h, ctx, art, slot, pieces, basis: "matte" });
+  const gap = occluder ? occluderGap(alpha, occluder, w, h) : null;
+  return { ...patch, ...(unchanged === undefined ? {} : { unchanged }), ...(gap ? { occluderGap: gap.medianPx / ctx.childPx } : {}) };
 }
 
 /**

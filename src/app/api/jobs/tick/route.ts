@@ -21,9 +21,13 @@ export const maxDuration = 300;
  * a 300s ceiling produced exactly the "Task timed out after 300 seconds" that
  * killed slices mid-spot and left the lease held.
  */
-// A final spot can spend 150s painting + 45s precheck + 60s Sol HIGH, plus I/O.
-// Stop launching after 30s so that last spot fits under the 300s host limit.
+// Stop launching spots after 30s. A spot is two image calls (painting, then
+// pass two) and two judges; each pass is started only if it can finish before
+// HARD_MS, and one that cannot is deferred with what came before it kept, so
+// the request never runs past the host's 300s (see slot-patches PASS_*_MIN_MS).
 const SLICE_MS = 30_000;
+/** The request's hard limit for generation work: the host's 300s less room for I/O and the answer. */
+const HARD_MS = 270_000;
 
 /**
  * Move generation forward.
@@ -41,7 +45,7 @@ export async function POST(req: Request) {
   const gameId = url.searchParams.get("gameId");
 
   if (!(await isAllowed(req, gameId))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  const result = await tickGeneration(c, gameId, SLICE_MS);
+  const result = await tickGeneration(c, gameId, SLICE_MS, HARD_MS);
   // The retention policy rides the cron: about once an hour, after the work.
   // A page's nudge (gameId given) never pays for it.
   // An admin alert the mail provider refused is tried again here; it never throws.

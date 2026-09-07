@@ -98,17 +98,16 @@ async function main() {
 async function reportScales(
   c: Awaited<ReturnType<typeof import("../src/services/container").getContainer>>,
   gameId: string,
-  rows: Array<{ rejectedAssetIdsJson: string | null; variant: string; targetInstance: { targetId: string; gameScene: { sceneSlug: string } } }>,
+  rows: Array<{ rejectedAssetIdsJson: string | null; usageJson: string | null; variant: string; targetInstance: { targetId: string; gameScene: { sceneSlug: string } } }>,
 ) {
   const { readAssetBuffer } = await import("../src/services/asset.service");
-  const { diffToPatch } = await import("../src/services/generation/patch");
+  const { diffToPatch, matteToPatch } = await import("../src/services/generation/patch");
+  const { fitMatte } = await import("../src/infra/generation/openai");
+  const { readLedger } = await import("../src/services/generation/slot-patches");
   const { slotOf, cropOf } = await import("./slot-patch");
   console.log("");
   console.log("extracted alpha height ÷ asked height, from the renders that were thrown away (perspectiveUnverified: the alpha is what the extraction kept, not what the model drew):");
   for (const r of rows) {
-    if (!r.rejectedAssetIdsJson) continue;
-    const ids = JSON.parse(r.rejectedAssetIdsJson) as string[];
-    if (ids.length === 0) continue;
     const name = `${r.targetInstance.gameScene.sceneSlug}/${r.targetInstance.targetId}`;
     let info;
     try {
@@ -118,11 +117,27 @@ async function reportScales(
     }
     const original = await cropOf(info);
     const ratios: number[] = [];
-    for (const id of ids) {
-      const edited = await readAssetBuffer(c, id).catch(() => null);
-      if (!edited) continue;
-      const patch = await diffToPatch({ originalCrop: original, editedCrop: edited, ctx: info.ctx, art: info.art, slot: info.slot }).catch(() => null);
+    // Since 7 September the alpha is the model's own matte (pass two), and the
+    // ledger names each attempt's matte evidence; the difference is only what
+    // older games have, and on whole-child masks it measures the window.
+    const mattes = readLedger(r.usageJson, 0).attempts.map((a) => a.matteEvidenceAssetId).filter((id): id is string => Boolean(id));
+    let basis = "matte";
+    for (const id of mattes) {
+      const raw = await readAssetBuffer(c, id).catch(() => null);
+      if (!raw) continue;
+      const patch = await fitMatte(raw, info.ctx.rect.w, info.ctx.rect.h)
+        .then((mattePng) => matteToPatch({ originalCrop: original, mattePng, ctx: info.ctx, art: info.art, slot: info.slot }))
+        .catch(() => null);
       if (patch && patch.largest > 0) ratios.push(patch.shape.height / patch.shape.childPx);
+    }
+    if (ratios.length === 0 && r.rejectedAssetIdsJson) {
+      basis = "difference";
+      for (const id of JSON.parse(r.rejectedAssetIdsJson) as string[]) {
+        const edited = await readAssetBuffer(c, id).catch(() => null);
+        if (!edited) continue;
+        const patch = await diffToPatch({ originalCrop: original, editedCrop: edited, ctx: info.ctx, art: info.art, slot: info.slot }).catch(() => null);
+        if (patch && patch.largest > 0) ratios.push(patch.shape.height / patch.shape.childPx);
+      }
     }
     if (ratios.length === 0) continue;
     ratios.sort((a, b) => a - b);
@@ -131,7 +146,7 @@ async function reportScales(
     // than none — it invites someone to edit a scene on a coin flip.
     const consistent = ratios.length >= 3 && (median < 0.6 || median > 1.7);
     console.log(
-      `${name.padEnd(24)} ${median.toFixed(2)}x over ${String(ratios.length).padStart(2)} renders   slot scale ${info.slot.scale}` +
+      `${name.padEnd(24)} ${median.toFixed(2)}x over ${String(ratios.length).padStart(2)} renders (${basis})   slot scale ${info.slot.scale}` +
         (consistent
           ? `  → the extracted alpha is consistently ${(median > 1 ? median : 1 / median).toFixed(1)}x ${median > 1 ? "larger" : "smaller"} than asked; look at the raw renders on the board before touching the slot — a lost body reads the same as a small child here`
           : ""),

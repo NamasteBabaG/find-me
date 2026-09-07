@@ -60,6 +60,12 @@ export const SlotSchema = z.object({
     support: z.string().min(8),
     occlusion: z.string().min(8),
     instructions: z.string().min(12),
+    /**
+     * The object in front of the child, as a polygon in art fractions. The
+     * paint mask leaves it out, a render that changes it is refused, and the
+     * matte is clipped by it. Authored against this exact art.
+     */
+    foreground: z.array(z.object({ x: Unit, y: Unit })).min(3).optional(),
   }).optional(),
 });
 export type Slot = z.infer<typeof SlotSchema>;

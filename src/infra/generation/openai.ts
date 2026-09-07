@@ -185,11 +185,13 @@ export class OpenAiAvatarProvider implements AvatarProvider {
   }
 
   /** One multipart edit call, with bounded retries on the explicitly selected model. */
-  private async call(parts: { images: Array<{ buffer: Buffer; name: string }>; mask?: Buffer; prompt: string; size: string; label: string; quality?: string; background?: "transparent"; outputFormat?: "png"; inputFidelity?: "high" | "low" }): Promise<CallResult> {
+  private async call(parts: { images: Array<{ buffer: Buffer; name: string }>; mask?: Buffer; prompt: string; size: string; label: string; quality?: string; background?: "transparent"; outputFormat?: "png"; inputFidelity?: "high" | "low"; deadlineAt?: number }): Promise<CallResult> {
     const started = Date.now();
     let lastError = "";
     const model = this.model;
-    const deadline = started + this.budgetMs;
+    // The caller's deadline binds too: a request the slice cannot wait for is
+    // not started, and one already running is cut at the slice's end.
+    const deadline = Math.min(started + this.budgetMs, parts.deadlineAt ?? Number.POSITIVE_INFINITY);
     for (let attempt = 1; attempt <= this.tries; attempt++) {
       // Never start a request there is no time to finish. Returning the reason
       // beats being killed halfway: the spot stays unfinished and retryable
@@ -200,6 +202,7 @@ export class OpenAiAvatarProvider implements AvatarProvider {
         break;
       }
       await this.limiter.take();
+      if (deadline - Date.now() < 15_000) throw new Error(`out of time before image request for ${parts.label}`);
       const form = new FormData();
       form.append("model", model);
       for (const img of parts.images) form.append("image[]", new Blob([new Uint8Array(img.buffer)], { type: "image/png" }), img.name);
@@ -291,6 +294,7 @@ export class OpenAiAvatarProvider implements AvatarProvider {
       size: `${size}x${size}`,
       quality: request.quality ?? this.patchQuality,
       label: request.label,
+      deadlineAt: request.deadlineAt,
     });
     // Back to the crop's own pixels so the diff compares like with like. The
     // model's own output is handed back too: it is the only picture that shows
@@ -302,27 +306,35 @@ export class OpenAiAvatarProvider implements AvatarProvider {
 
   async matteSlotCrop(request: SlotMatteRequest): Promise<SlotMatteResponse> {
     const meta = await sharp(request.edited).metadata();
-    const { edited, original, promptSent, size } = await prepareSlotMatte(request);
+    const width = meta.width ?? PATCH_OUTPUT_PX;
+    const height = meta.height ?? PATCH_OUTPUT_PX;
+    const { images, promptSent, size } = await prepareSlotMatte(request);
     const parts = {
-      images: [
-        { buffer: edited, name: "scene.png" },
-        { buffer: original, name: "before.png" },
-      ],
+      images,
       prompt: promptSent,
       size: `${size}x${size}`,
       quality: request.quality ?? this.patchQuality,
       label: `${request.label}:matte`,
       outputFormat: "png" as const,
       inputFidelity: this.matteInputFidelity,
+      deadlineAt: request.deadlineAt,
     };
     const out = await this.call(parts);
+    const bill = { rawPng: out.png, promptSent, costCents: out.costCents, costUnknown: out.costUnknown, model: out.model, usage: out.usage, providerRequestId: out.providerRequestId, durationMs: out.durationMs, attempts: out.attempts, inputFidelity: parts.inputFidelity ?? null };
     // The model answers with its own framing kept and everything but the child
     // painted magenta (background: "transparent" was tried first and turned the
     // request into a sticker: the child came back re-composed, three times her
     // size, in the middle of the frame). The key turns the magenta into alpha,
     // and the result is fitted back to the crop's pixels with that alpha intact.
-    const png = await fitMatte(out.png, meta.width ?? size, meta.height ?? size);
-    return { png, rawPng: out.png, promptSent, costCents: out.costCents, costUnknown: out.costUnknown, model: out.model, usage: out.usage, providerRequestId: out.providerRequestId, durationMs: out.durationMs, attempts: out.attempts, inputFidelity: parts.inputFidelity ?? null };
+    //
+    // From here on nothing may throw: the call above was paid for, and an
+    // exception would take its bill, its request id and its picture with it.
+    try {
+      const png = await fitMatte(out.png, width, height);
+      return { png, ...bill };
+    } catch (err) {
+      return { png: Buffer.alloc(0), ...bill, problem: err instanceof Error ? err.message : String(err) };
+    }
   }
 
   /** The cover avatar comes from the character sheet, so it is never a second bill. */
@@ -356,7 +368,7 @@ export async function prepareSlotEdit(request: SlotPatchRequest) {
 }
 
 /** Shared wire inputs of pass two; the harness and the pipeline send the same thing. No API call. */
-export const MATTE_WIRE_VERSION = "matte-wire-v2-magenta-key";
+export const MATTE_WIRE_VERSION = "matte-wire-v4-single-edit-target";
 
 /**
  * Magenta to alpha.
@@ -483,7 +495,16 @@ export async function prepareSlotMatte(request: SlotMatteRequest) {
   const size = PATCH_OUTPUT_PX;
   const edited = await sharp(request.edited).resize(size, size, { kernel: "lanczos3" }).removeAlpha().png().toBuffer();
   const original = await sharp(request.original).resize(size, size, { kernel: "lanczos3" }).removeAlpha().png().toBuffer();
-  return { size, edited, original, promptSent: mattePrompt(request.hint) };
+  const images = [
+    { buffer: edited, name: "scene.png" },
+  ];
+  // Where the child was asked to be, as a picture: a scene with two swimmers in
+  // it needs more than "the child is swimming" to say which one (amazon/canoe,
+  // 7 September: the matte kept a girl who was already in the board).
+  if (request.mask) images.push({ buffer: await sharp(request.mask).resize(size, size, { kernel: "nearest" }).removeAlpha().png().toBuffer(), name: "where.png" });
+  if (request.reference) images.push({ buffer: await sharp(request.reference).resize(size, size).removeAlpha().png().toBuffer(), name: "identity.png" });
+  const identityPrompt = request.reference ? ` The last image is the identity sheet of the child to keep. Match that child's face and hair; never keep another nearby child. The sheet is for identification only: do not copy its pose, framing or clothing.` : "";
+  return { size, edited, original, images, promptSent: mattePrompt(request.hint, Boolean(request.mask), request.retryHint) + identityPrompt };
 }
 
 /**
@@ -491,15 +512,17 @@ export async function prepareSlotMatte(request: SlotMatteRequest) {
  * the matte is placed on the board at the render's own coordinates, and a
  * part the scene hides has to stay hidden or she stops being behind anything.
  */
-export function mattePrompt(hint: string): string {
+export function mattePrompt(hint: string, withMask = false, retryHint?: string): string {
   return [
     "Use case: isolating one character from an illustration by keying.",
-    "The first image is a scene into which one child was just painted; the second image is the same scene before that child was added.",
+    "EDIT IMAGE 1 ONLY. It is the exact scene containing the target child. Do not rebuild it from any other input image. This is background removal from IMAGE 1, not a new illustration.",
+    withMask ? "Image 2 is only a location guide: the white area marks the target near its centre. Keep the matching child closest to the CENTRE of that white area, not a similar child farther away. The location guide is not an image to edit." : "",
     "Return the first image with exactly the same framing: the child stays at the identical position and size in the frame, with the same pose, colours, linework and lighting. Do not zoom in, crop, move, resize, redraw, restyle or complete the child.",
-    "Paint every pixel that is not the child's own body, hair and clothes with flat, uniform, pure magenta #FF00FF: ground, water, sky, buildings, furniture, objects, animals, other people and shadows.",
+    "Paint every pixel that is not that child's own body, hair and clothes with flat, uniform, pure magenta #FF00FF: ground, water, sky, buildings, furniture, objects, animals, and every other person or child.",
     "An object between the viewer and the child (a bench, a barrel, a railing, a wall) is not the child: paint it magenta as well, including where it overlaps her, so only the part of the child that is visible in front of it remains and the edge follows that object's outline. Do not paint the hidden part of the child.",
     "No magenta, pink or purple tint anywhere on the child; no outline, glow, shadow or text on the magenta.",
     hint ? `Which child: ${hint}` : "",
+    retryHint ? `Your previous answer was wrong: ${retryHint}` : "",
   ].filter(Boolean).join(" ");
 }
 

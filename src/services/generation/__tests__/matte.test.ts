@@ -1,7 +1,9 @@
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
-import { childProblem, matteHint, matteToPatch, type SlotContext } from "../patch";
-import { extractChild } from "../extract";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { childProblem, matteHint, matteToPatch, occluderGap, paintMask, polygonMask, unchangedFraction, type SlotContext } from "../patch";
+import { extractChild, UNCHANGED_LIMIT } from "../extract";
 
 /**
  * Pass two hands back the model's own matte: the child opaque, the rest
@@ -115,5 +117,78 @@ describe("matteHint", () => {
   it("tells pass two which figure is the child from the placement recipe, and nothing without one", () => {
     expect(matteHint({})).toBe("");
     expect(matteHint({ placement: { pose: "peeking", support: "s", occlusion: "The barrel hides the child from the chest down.", instructions: "i" } })).toBe("The child is peeking. The barrel hides the child from the chest down.");
+  });
+});
+
+/**
+ * The wrong-figure guard, on the real case that needed it. amazon/canoe,
+ * 7 September: pass two kept a girl who was already in the board (Codex's P1);
+ * the second wire kept Noa. Three cuts of the same crop, at native
+ * resolution, boxed to the silhouette: the original board, the render, and
+ * the alpha pass two produced. A figure that was already there is mostly
+ * unchanged between board and render; the new child is not.
+ */
+describe("unchangedFraction on the real cases", () => {
+  const FIX = path.join(__dirname, "fixtures");
+  const load = async (name: string) => {
+    const alpha = await sharp(path.join(FIX, `${name}-alpha.png`)).raw().toBuffer({ resolveWithObject: true });
+    const { width: w, height: h } = alpha.info;
+    const original = await sharp(path.join(FIX, `${name}-original.png`)).removeAlpha().raw().toBuffer();
+    const render = await sharp(path.join(FIX, `${name}-render.png`)).removeAlpha().raw().toBuffer();
+    return unchangedFraction(alpha.data, render, original, w * h);
+  };
+  it("the bystander pass two kept on amazon/canoe was mostly already in the board", async () => {
+    expect(await load("amazon-wrong")).toBeGreaterThan(UNCHANGED_LIMIT + 0.15);
+  });
+  it("the child herself is new to the board: amazon/canoe cut right, and marrakech/carpets", async () => {
+    expect(await load("amazon-right")).toBeLessThan(UNCHANGED_LIMIT);
+    expect(await load("marrakech-right")).toBeLessThan(UNCHANGED_LIMIT);
+  });
+  it("the fixtures are what the cases say they are", () => {
+    const cases = JSON.parse(readFileSync(path.join(FIX, "unchanged-cases.json"), "utf8")) as Record<string, { cell: string; source: string }>;
+    expect(cases["amazon-wrong"]?.cell).toBe("amazon-canoe-A");
+    expect(cases["amazon-right"]?.cell).toBe("amazon-canoe-A");
+    expect(cases["amazon-wrong"]?.source).not.toBe(cases["amazon-right"]?.source);
+  });
+});
+
+describe("the occluder polygon", () => {
+  // A bench back from row 238 down (0.62 of the frame), as a polygon in art fractions; the paint
+  // ellipse around the slot reaches from row 112 to 272.
+  const BENCH = [{ x: 0.2, y: 0.62 }, { x: 0.8, y: 0.62 }, { x: 0.8, y: 0.9 }, { x: 0.2, y: 0.9 }];
+  const PEEK = { ...SLOT, placement: { pose: "peeking", foreground: BENCH } };
+
+  it("is left out of the paint mask, so the painter is not asked to touch it", async () => {
+    const plain = await sharp(paintMask(CTX, ART, SLOT)).extractChannel(0).raw().toBuffer();
+    const cut = await sharp(paintMask(CTX, ART, PEEK)).extractChannel(0).raw().toBuffer();
+    const inside = (m: Buffer, x: number, y: number) => m[y * W + x]! >= 128;
+    // Inside the ellipse and inside the bench: painted without the polygon, not with it.
+    expect(inside(plain, 192, 255)).toBe(true);
+    expect(inside(cut, 192, 255)).toBe(false);
+    // Inside the ellipse and above the bench: painted in both.
+    expect(inside(plain, 192, 200)).toBe(true);
+    expect(inside(cut, 192, 200)).toBe(true);
+  });
+
+  it("clips the matte: nothing of the child is kept where the bench is in front", async () => {
+    // The model kept the child down into the bench (as it did on newyork/bench before the occluder wording).
+    const patch = await matteToPatch({ originalCrop: await flat(), mattePng: await syntheticMatte(), ctx: CTX, art: ART, slot: PEEK });
+    // The body runs to row 246 and the bench begins at 238: the last rows are cut away.
+    expect((patch.geometry.hitRect.y + patch.geometry.hitRect.h) * W).toBeLessThanOrEqual(0.62 * W + 2);
+    const low = { ...PEEK, placement: { pose: "peeking", foreground: [{ x: 0.2, y: 0.55 }, { x: 0.8, y: 0.55 }, { x: 0.8, y: 0.9 }, { x: 0.2, y: 0.9 }] } };
+    const clipped = await matteToPatch({ originalCrop: await flat(), mattePng: await syntheticMatte(), ctx: CTX, art: ART, slot: low });
+    expect((clipped.geometry.hitRect.y + clipped.geometry.hitRect.h) * W).toBeLessThanOrEqual(0.55 * W + 2);
+    expect(clipped.occluderGap).toBeDefined();
+  });
+
+  it("measures how far above the board's occluder the silhouette ends", async () => {
+    const poly = (await polygonMask(CTX, ART, PEEK))!;
+    const alpha = Buffer.alloc(W * W);
+    for (let y = 100; y <= 220; y++) for (let x = 150; x <= 230; x++) alpha[y * W + x] = 255;
+    const gap = occluderGap(alpha, poly, W, W)!;
+    // The bench begins at row 238 (0.62 x 384, as the rasteriser rounds it); the child ends at 220.
+    expect(gap.medianPx).toBeGreaterThanOrEqual(16);
+    expect(gap.medianPx).toBeLessThanOrEqual(19);
+    expect(gap.columns).toBe(81);
   });
 });

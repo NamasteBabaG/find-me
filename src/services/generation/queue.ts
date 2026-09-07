@@ -34,10 +34,11 @@ export async function nextPendingGame(c: Container): Promise<string | null> {
  * Do as much of one game as fits in `budgetMs`, then return. Safe to call
  * concurrently: every step is idempotent and a finished hiding spot is skipped.
  */
-export async function tickGeneration(c: Container, gameId: string | null, budgetMs: number): Promise<TickResult> {
+export async function tickGeneration(c: Container, gameId: string | null, budgetMs: number, hardMs = 270_000): Promise<TickResult> {
   const id = gameId ?? (await nextPendingGame(c));
   if (!id) return { gameId: null, status: null, pending: false };
-  await runGenerationPipeline(c, id, { deadlineAt: Date.now() + budgetMs });
+  const now = Date.now();
+  await runGenerationPipeline(c, id, { deadlineAt: now + budgetMs, hardDeadlineAt: now + hardMs });
   const after = await c.db.game.findUnique({ where: { id }, select: { status: true } });
   const status = after ? statusOf(after) : null;
   return { gameId: id, status, pending: status !== null && RESUMABLE_STATUSES.includes(status) };

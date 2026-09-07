@@ -5,9 +5,10 @@ import type { SceneDefinition, Target as SceneTarget } from "@/domain/scene/sche
 import { BODY_TEMPLATES } from "../../../content/body-templates";
 import type { Container } from "../container";
 import { storeAsset } from "../asset.service";
-import type { PatchJudgement } from "@/infra/generation/types";
+import type { PatchJudgement, SlotPatchResponse } from "@/infra/generation/types";
 import { childProblem, matteHint, modelSpaceHeight, paintMask, slotContext, expressionFor, slotPrompt, PROMPT_VERSION } from "./patch";
 import { extractChild } from "./extract";
+import { readAssetBuffer } from "../asset.service";
 import { loadSceneArt } from "./scene-art";
 import { boardComposite } from "./board-composite";
 import { BOARD_JUDGE_VERSION, BOARD_CHECKS } from "@/infra/generation/board-verdict";
@@ -44,6 +45,12 @@ export interface PatchOutcome {
   error?: string;
   /** Out of attempts: a later tick must not retry this, a human has to look. */
   capped?: boolean;
+  /**
+   * The slice ran out of time after a paid pass. What was paid for is kept
+   * (the render, or the render and its matte) and the next tick resumes from
+   * it without buying it again. Not a failure and not an attempt spent.
+   */
+  deferred?: boolean;
 }
 
 /**
@@ -56,6 +63,18 @@ export interface PatchOutcome {
  * may be composed for diagnostics but is held from automatic delivery by default.
  */
 export const MAX_ATTEMPTS_PER_SPOT = 6;
+
+/**
+ * Time a pass needs before it is started. The tick is one request with a hard
+ * limit; a pass that cannot finish inside it is deferred with what came
+ * before it kept, never started and killed. Painting has the provider's own
+ * budget (150 s with retries); a matte answers in 15–60 s; the judges take
+ * 15–45 s together and are not cut short.
+ */
+export const PASS_ONE_MIN_MS = 60_000;
+export const PASS_TWO_MIN_MS = 45_000;
+// 45s fast + 60s Sol + local encoding/checkpoint allowance.
+export const JUDGE_MIN_MS = 115_000;
 
 export function slotOf(target: SceneTarget, variant: Variant) {
   return variant === "A" ? target.slots[0] : target.slots[1];
@@ -81,6 +100,8 @@ export async function generateSlotPatch(
     tries?: number;
     /** Overrides the provider's quality for this attempt. */
     quality?: string;
+    /** The tick's hard limit: no pass starts that cannot finish before it. */
+    deadlineAt?: number;
   },
 ): Promise<PatchOutcome> {
   const { scene, target, variant } = input;
@@ -90,7 +111,10 @@ export async function generateSlotPatch(
 
   const existing = await c.db.targetVariantAsset.findUnique({ where: { targetInstanceId_variant: { targetInstanceId: input.targetInstanceId, variant } } });
   if (existing && (existing.status === "GENERATED" || existing.status === "APPROVED")) return { ...base, costCents: existing.costCents, attempts: existing.attempts };
-  if (existing && existing.attempts >= MAX_ATTEMPTS_PER_SPOT) {
+  const savedLedger = readLedger(existing?.usageJson, existing?.costCents ?? 0);
+  const hasPending = savedLedger.attempts.some(a => a.outcome.startsWith("pending") && a.evidenceAssetId);
+  if (savedLedger.unknownCost) return { ...base, costCents: existing?.costCents ?? 0, capped: true, error: "unknown charge requires reconciliation before another request" };
+  if (existing && existing.attempts >= MAX_ATTEMPTS_PER_SPOT && !hasPending) {
     return { ...base, costCents: existing.costCents, attempts: existing.attempts, capped: true, error: `gave up after ${existing.attempts} attempts: ${existing.lastError ?? "no reason recorded"}` };
   }
   const row =
@@ -119,7 +143,7 @@ export async function generateSlotPatch(
     wardrobe: scene.wardrobe,
     action: target.action,
     expression: target.expression ?? expressionFor(body?.pose),
-  }) + repairInstruction(existing?.judgeJson);
+  }) + repairInstruction(existing?.judgeJson) + (existing?.lastError && /moved the object/.test(existing.lastError) ? " In the previous attempt the object in front of the child was moved or redrawn; this time it stays exactly as it is in the picture, and the child's hands rest on it where it is." : "");
   const label = `${scene.slug}/${target.id}/${variant}`;
 
   // Default to a single roll: inside a request with a deadline, three rolls of
@@ -146,74 +170,134 @@ export async function generateSlotPatch(
   // a 2-cent roll plus a 0.26-cent judgement was written as 2, and over a
   // world's twenty-seven judgements about seven cents vanished. The exact
   // figure lives in the usage json; the column is rounded once, from it.
-  const ledger = readLedger(existing?.usageJson, existing?.costCents ?? 0);
-  const attemptLog: LedgerAttempt[] = [];
+  const ledger = savedLedger;
+  // The ledger's attempts carry over; a resumed attempt is completed in place.
+  const attemptLog: LedgerAttempt[] = ledger.attempts.slice();
+  // A slice that ran out of time after a paid pass left the attempt pending
+  // with what it bought. It is finished here, from that, before anything new
+  // is bought: the render is not painted again, and a kept matte is not
+  // bought again either.
+  const pendingIndex = attemptLog.findIndex((a) => a.outcome.startsWith("pending") && a.evidenceAssetId);
+  const resume = pendingIndex >= 0 ? attemptLog[pendingIndex]! : null;
+  const remaining = () => (input.deadlineAt === undefined ? Number.POSITIVE_INFINITY : input.deadlineAt - Date.now());
+  const checkpoint = () => c.db.targetVariantAsset.update({ where: { id: row.id }, data: {
+    usageJson: JSON.stringify(withLedger(usage, ledger, spent, attemptLog, ledger.unknownCost)),
+    costCents: Math.round(ledger.exactCents + spent),
+  } });
+  const deferred = (): PatchOutcome => ({ ...base, status: "SKIPPED", deferred: true, costCents: (existing?.costCents ?? 0) + spent, newCostCents: spent, attempts, durationMs: elapsed, model });
 
-  for (let attempt = 1; attempt <= tries; attempt++) {
-    // One roll, one attempt — counted here so every way out of this iteration
-    // counts the same. Adding the provider's own retry count and then adding
-    // another on the way through the catch charged two attempts for one call,
-    // and quietly halved the budget a spot was allowed.
-    attempts += 1;
-    // Reserve the attempt before spending. A process killed between the render
-    // and final checkpoint must not get six fresh attempts on the next tick.
-    await c.db.targetVariantAsset.update({ where: { id: row.id }, data: {
-      attempts: { increment: 1 }, promptVersion: PROMPT_VERSION,
-    } });
-    try {
-      const edit = await c.avatars.editSlotCrop({ crop, paintMask: mask, reference: input.reference, prompt, label, quality: input.quality });
-      spent += edit.costCents;
-      if (edit.costUnknown) ledger.unknownCost = true;
-      judged = null;
-      elapsed += edit.durationMs;
-      model = edit.model;
-      usage = edit.usage ?? usage;
-      attemptLog.push({ at: new Date().toISOString(), model: edit.model, rollCents: edit.costCents, judgeCents: 0, durationMs: edit.durationMs, requestId: edit.providerRequestId ?? null, outcome: "pending" });
-      const currentAttempt = attemptLog[attemptLog.length - 1]!;
-      // Keep accepted inputs too. Otherwise a face hole cannot be re-extracted
-      // without buying another render. Private; deletion + 14-day retention apply.
-      const raw = edit.rawPng ?? edit.png;
-      const evidence = await storeAsset(c, {
-        ownerId: input.ownerId, type: "PATCH_EVIDENCE", visibility: "PRIVATE",
-        buffer: raw, mimeType: "image/png", provider: c.avatars.id,
-        providerRequestId: edit.providerRequestId, costCents: 0,
-      });
-      Object.assign(currentAttempt, { evidenceAssetId: evidence.id, rawHash: hash(raw), fittedHash: hash(edit.png), cropHash: hash(crop), referenceHash: hash(input.reference), sceneHash: hash(Buffer.from(JSON.stringify(scene))), wireVersion: SLOT_WIRE_VERSION, promptSent: edit.promptSent ?? prompt });
-      // Link before processing/judging: even an interrupted extraction remains
-      // discoverable by privacy deletion, and its known render charge survives.
+  for (let attempt = 1; attempt <= Math.max(tries, resume ? 1 : 0); attempt++) {
+    const resuming = attempt === 1 && resume !== null;
+    if (!resuming && remaining() < PASS_ONE_MIN_MS) return deferred();
+    if (!resuming) {
+      // One roll, one attempt — counted here so every way out of this iteration
+      // counts the same. Adding the provider's own retry count and then adding
+      // another on the way through the catch charged two attempts for one call,
+      // and quietly halved the budget a spot was allowed.
+      attempts += 1;
+      // Reserve the attempt before spending. A process killed between the render
+      // and final checkpoint must not get six fresh attempts on the next tick.
       await c.db.targetVariantAsset.update({ where: { id: row.id }, data: {
-        usageJson: JSON.stringify(withLedger(usage, ledger, spent, attemptLog, ledger.unknownCost)),
-        costCents: Math.round(ledger.exactCents + spent),
+        attempts: { increment: 1 }, promptVersion: PROMPT_VERSION,
       } });
+    }
+    try {
+      let edit: SlotPatchResponse;
+      let currentAttempt: LedgerAttempt;
+      let priorMatte: Buffer | undefined;
+      if (resuming && resume) {
+        const saved = resume as LedgerAttempt & { cropHash?: string; referenceHash?: string; sceneHash?: string };
+        if (saved.cropHash !== hash(crop) || saved.referenceHash !== hash(input.reference) || saved.sceneHash !== hash(Buffer.from(JSON.stringify(scene)))) {
+          throw new Error("pending render inputs changed; do not reuse it against another scene/reference");
+        }
+        // The render that was paid for in an earlier slice, fitted back to the crop.
+        const raw = await readAssetBuffer(c, resume.evidenceAssetId!);
+        const png = await sharp(raw).resize(ctx.rect.w, ctx.rect.h, { kernel: "lanczos3" }).png().toBuffer();
+        edit = { png, rawPng: raw, costCents: 0, model: resume.model ?? "resumed", durationMs: 0, attempts: 0, providerRequestId: resume.requestId ?? undefined };
+        currentAttempt = resume;
+        currentAttempt.resumedAt = new Date().toISOString();
+        if (resume.matteEvidenceAssetId) priorMatte = await readAssetBuffer(c, resume.matteEvidenceAssetId);
+        model = model ?? resume.model ?? undefined;
+      } else {
+        edit = await c.avatars.editSlotCrop({ crop, paintMask: mask, reference: input.reference, prompt, label, quality: input.quality, deadlineAt: input.deadlineAt });
+        spent += edit.costCents;
+        if (edit.costUnknown) ledger.unknownCost = true;
+        judged = null;
+        elapsed += edit.durationMs;
+        model = edit.model;
+        usage = edit.usage ?? usage;
+        attemptLog.push({ at: new Date().toISOString(), model: edit.model, rollCents: edit.costCents, judgeCents: 0, durationMs: edit.durationMs, requestId: edit.providerRequestId ?? null, outcome: "pending" });
+        currentAttempt = attemptLog[attemptLog.length - 1]!;
+        // Keep accepted inputs too. Otherwise a face hole cannot be re-extracted
+        // without buying another render. Private; deletion + 14-day retention apply.
+        const raw = edit.rawPng ?? edit.png;
+        const evidence = await storeAsset(c, {
+          ownerId: input.ownerId, type: "PATCH_EVIDENCE", visibility: "PRIVATE",
+          buffer: raw, mimeType: "image/png", provider: c.avatars.id,
+          providerRequestId: edit.providerRequestId, costCents: 0,
+        });
+        Object.assign(currentAttempt, { evidenceAssetId: evidence.id, rawHash: hash(raw), fittedHash: hash(edit.png), cropHash: hash(crop), referenceHash: hash(input.reference), sceneHash: hash(Buffer.from(JSON.stringify(scene))), wireVersion: SLOT_WIRE_VERSION, promptSent: edit.promptSent ?? prompt });
+        // Link before processing/judging: even an interrupted extraction remains
+        // discoverable by privacy deletion, and its known render charge survives.
+        await checkpoint();
+      }
       // The child is cut out of the render by the provider's own matte when it
       // has one (pass two), and by the colour difference otherwise. Pass two is
-      // a paid call: charged, checkpointed and kept like the roll itself.
-      const extracted = await extractChild({ provider: c.avatars, originalCrop: crop, editedCrop: edit.png, ctx, art, slot, hint: matteHint(slot), label, quality: input.quality });
-      const patch = extracted.patch;
-      Object.assign(currentAttempt, { extraction: extracted.method, extractionVersion: extracted.version, diffLargest: extracted.diff.largest });
-      if (extracted.matte) {
-        const matte = extracted.matte;
-        spent += matte.costCents;
-        if (matte.costUnknown) ledger.unknownCost = true;
-        elapsed += matte.durationMs ?? 0;
-        const matteEvidence = await storeAsset(c, {
-          ownerId: input.ownerId, type: "PATCH_EVIDENCE", visibility: "PRIVATE",
-          buffer: matte.rawPng ?? matte.png, mimeType: "image/png", provider: c.avatars.id,
-          providerRequestId: matte.providerRequestId, costCents: 0,
+      // a paid call: charged, checkpointed and kept like the roll itself — every
+      // answer it gave, not only the last.
+      const recordMatte = async (matte: import("@/infra/generation/types").SlotMatteResponse) => {
+        const ids: string[] = currentAttempt.matteEvidenceAssetIds ?? [];
+        const requestIds: Array<string | null> = currentAttempt.matteRequestIds ?? [];
+          spent += matte.costCents;
+          if (matte.costUnknown) ledger.unknownCost = true;
+          elapsed += matte.durationMs ?? 0;
+          // Book the known charge even if writing the image subsequently fails.
+          currentAttempt.matteCents = (currentAttempt.matteCents ?? 0) + matte.costCents;
+          requestIds.push(matte.providerRequestId ?? null);
+          currentAttempt.matteRequestIds = requestIds;
+          currentAttempt.matteCalls = [...currentAttempt.matteCalls ?? [], { requestId: matte.providerRequestId ?? null, costCents: matte.costCents, usage: matte.usage, problem: matte.problem }];
+          await checkpoint();
+          const matteEvidence = await storeAsset(c, {
+            ownerId: input.ownerId, type: "PATCH_EVIDENCE", visibility: "PRIVATE",
+            buffer: matte.rawPng ?? matte.png, mimeType: "image/png", provider: c.avatars.id,
+            providerRequestId: matte.providerRequestId, costCents: 0,
+          });
+          ids.push(matteEvidence.id);
+        Object.assign(currentAttempt, {
+          matteRequestId: matte.providerRequestId ?? null, matteRequestIds: requestIds,
+          matteEvidenceAssetId: ids[ids.length - 1], matteEvidenceAssetIds: ids,
+          matteHash: hash(matte.png), matteWireVersion: MATTE_WIRE_VERSION, mattePromptSent: matte.promptSent,
         });
-        Object.assign(currentAttempt, { matteCents: matte.costCents, matteRequestId: matte.providerRequestId ?? null, matteEvidenceAssetId: matteEvidence.id, matteHash: hash(matte.png), matteWireVersion: MATTE_WIRE_VERSION, mattePromptSent: matte.promptSent });
-        await c.db.targetVariantAsset.update({ where: { id: row.id }, data: {
-          usageJson: JSON.stringify(withLedger(usage, ledger, spent, attemptLog, ledger.unknownCost)),
-          costCents: Math.round(ledger.exactCents + spent),
-        } });
+        await checkpoint();
+      };
+      const extracted = await extractChild({ provider: c.avatars, originalCrop: crop, editedCrop: edit.png, ctx, art, slot, hint: matteHint(slot), label, reference: input.reference, quality: input.quality, deadlineAt: input.deadlineAt === undefined ? undefined : input.deadlineAt - 5000, minPassTwoMs: PASS_TWO_MIN_MS, priorMatte, onMatte: recordMatte, maxNewMatteAttempts: Math.max(0, 2 - (currentAttempt.matteRequestIds?.length ?? 0)) });
+      const patch = extracted.patch;
+      Object.assign(currentAttempt, { extraction: extracted.method, extractionVersion: extracted.version, diffLargest: extracted.diff.largest, occluderShift: extracted.occluder?.mean });
+      if (extracted.method === "deferred") {
+        // Out of time before pass two: the render is kept, the next tick cuts it.
+        currentAttempt.outcome = "pending: pass two deferred (out of time)";
+        currentAttempt.stage = "painted";
+        await checkpoint();
+        return deferred();
       }
       // Store WHY a roll was rejected, not a generic summary. "too small",
       // "wider than tall" and "painted somewhere else" need different fixes, and
       // the stored reason is the only way to tell them apart afterwards.
       // Shape first, because it is free; identity second, because it costs a
       // fraction of a cent and only patches that already look like a child are
-      // worth asking about.
-      const shape = childProblem(patch);
+      // worth asking about. A render that moved the occluder, or a pass two
+      // that kept the wrong thing, is named as such so the retry knows what to
+      // do differently.
+      const shape = extracted.renderProblem ?? (extracted.extractionProblem ? `extraction: ${extracted.extractionProblem}` : childProblem(patch));
+      if (extracted.renderProblem) currentAttempt.renderProblem = extracted.renderProblem;
+      if (extracted.extractionProblem) currentAttempt.extractionProblem = extracted.extractionProblem;
+      if (!shape && remaining() < JUDGE_MIN_MS) {
+        // Out of time before judging: the render and its matte are kept.
+        currentAttempt.outcome = "pending: judging deferred (out of time)";
+        currentAttempt.stage = "matted";
+        await checkpoint();
+        return deferred();
+      }
       const boardCrop = shape ? undefined : await boardComposite({
         base: sceneArt,
         foreground: scene.art.foreground ? await loadSceneArt(c.appUrl, scene.art.foreground) : undefined,
@@ -224,10 +308,11 @@ export async function generateSlotPatch(
         spent += judged.costCents;
         if (judged.costUnknown) ledger.unknownCost = true;
       }
-      const last = attemptLog[attemptLog.length - 1]!;
+      const last = currentAttempt;
       last.judgeCents = judged?.costCents ?? 0;
       const problem = shape ?? (judged?.verdict === "bad" ? `does not show ${input.childName}: ${judged.reason}` : null);
       last.outcome = problem ? `rejected: ${problem.slice(0, 80)}` : judged?.verdict === "unknown" ? "held: uncertain review" : "accepted";
+      delete last.stage;
       if (problem) {
         lastError = problem;
         const keep = await storeAsset(c, {
@@ -284,7 +369,7 @@ export async function generateSlotPatch(
       // zero; it is unknown, and the ledger says so.
       if (/timed out|out of time/i.test(lastError)) ledger.unknownCost = true;
       const last = attemptLog[attemptLog.length - 1];
-      if (last && last.outcome === "pending") last.outcome = `error: ${lastError.slice(0, 80)}`;
+      if (last && last.outcome.startsWith("pending")) last.outcome = `error: ${lastError.slice(0, 80)}`;
       else attemptLog.push({ at: new Date().toISOString(), model: model ?? null, rollCents: 0, judgeCents: 0, durationMs: 0, requestId: null, outcome: `error: ${lastError.slice(0, 80)}` });
     }
   }
@@ -347,11 +432,20 @@ interface LedgerAttempt {
   requestId: string | null;
   outcome: string;
   evidenceAssetId?: string;
-  /** How the child was cut out of the render, and what pass two cost. */
-  extraction?: "matte" | "diff";
+  /** How the child was cut out of the render, and what pass two cost — over every answer it gave. */
+  extraction?: "matte" | "diff" | "deferred";
   matteCents?: number;
   matteRequestId?: string | null;
+  matteRequestIds?: Array<string | null>;
+  matteCalls?: Array<{ requestId: string | null; costCents: number; usage?: Record<string, number>; problem?: string }>;
+  /** The last pass-two answer, and all of them; each is a private PATCH_EVIDENCE asset. */
   matteEvidenceAssetId?: string;
+  matteEvidenceAssetIds?: string[];
+  /** Where a slice ran out of time: what this attempt has paid for and kept. */
+  stage?: "painted" | "matted";
+  resumedAt?: string;
+  renderProblem?: string;
+  extractionProblem?: string;
 }
 
 const hash = (b: Buffer) => createHash("sha256").update(b).digest("hex");
@@ -403,7 +497,7 @@ export function readLedger(usageJson: string | null | undefined, costCents: numb
 function withLedger(usage: Record<string, number> | undefined, ledger: Ledger, spent: number, attempts: LedgerAttempt[], unknownCost: boolean): Record<string, unknown> {
   return {
     ...(usage ?? {}),
-    ledger: { exactCents: Math.round((ledger.exactCents + spent) * 1_000_000) / 1_000_000, unknownCost: unknownCost || ledger.unknownCost, attempts: [...ledger.attempts, ...attempts] },
+    ledger: { exactCents: Math.round((ledger.exactCents + spent) * 1_000_000) / 1_000_000, unknownCost: unknownCost || ledger.unknownCost, attempts },
   };
 }
 

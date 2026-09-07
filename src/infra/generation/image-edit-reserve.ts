@@ -7,7 +7,8 @@
  * Keep actual usage accounting and stop-on-unknown/over-budget checks in place.
  */
 export const IMAGE_EDIT_RESERVE_CENTS: Readonly<Record<"low" | "medium" | "high", number>> = {
-  low: 3,
-  medium: 9,
-  high: 30,
+  // Matte v3 sends scene + original + mask + identity, not two images.
+  low: 6,
+  medium: 12,
+  high: 34,
 };

@@ -85,6 +85,8 @@ export interface SlotPatchRequest {
   label: string;
   /** Overrides the provider's default for this one call. */
   quality?: string;
+  /** Absolute time (ms since epoch) by which the answer must be back; the provider trims its own budget to it. */
+  deadlineAt?: number;
 }
 
 export interface SlotPatchResponse extends GenerationCost {
@@ -109,15 +111,30 @@ export interface SlotMatteRequest {
   original: Buffer;
   /** Which figure is the child: the placement recipe's pose and occlusion, or empty. */
   hint: string;
+  /** White-on-black paint area at the crop's size — where the child was asked to be. Sent as a third image, so a figure that was already in the scene is not mistaken for her. */
+  mask?: Buffer;
+  /** Identity sheet: distinguishes the inserted child from nearby background children. */
+  reference?: Buffer;
+  /** What the previous pass-two answer got wrong, when this is a retry on the same render. */
+  retryHint?: string;
   /** For logs: "beach/sandcastle/A". */
   label: string;
   /** Overrides the provider's default for this one call. */
   quality?: string;
+  /** Absolute time (ms since epoch) by which the answer must be back. */
+  deadlineAt?: number;
 }
 
 export interface SlotMatteResponse extends GenerationCost {
-  /** RGBA PNG the size of the edited crop: the child opaque, everything else transparent. */
+  /** RGBA PNG the size of the edited crop: the child opaque, everything else transparent. Empty when `problem` is set. */
   png: Buffer;
+  /**
+   * The paid answer came back but could not be turned into a matte (it was not
+   * on a magenta key, or the keying failed). The bill, the usage, the request
+   * id and the raw picture are all still here: a charge is never lost to a
+   * local failure. The caller treats it as a failed extraction, not a render.
+   */
+  problem?: string;
   /** The model's own output before it was fitted back, when the provider has one. Evidence, never shipped. */
   rawPng?: Buffer;
   /** The prompt as it went over the wire. */

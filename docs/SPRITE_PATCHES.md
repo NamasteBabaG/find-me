@@ -23,11 +23,12 @@ Don't render the child in isolation. Render the child **into the world**, but on
 2. **Inpaint.** Give an image model the crop, the mask, the child's reference (photo or the illustrated
    character) and a prompt built from the scene data (mission, body template). The model paints the
    child *in that spot*, in the picture's own style and light, behind whatever is naturally in front.
-3. **Cut the child out.** Pass two: give the model its own render and the crop it was made from and
-   ask for the child alone on transparency (`matteSlotCrop`, see *Pass two* below). What remains is
-   a small transparent image: the child, and nothing the scene already had. A provider that cannot
-   matte falls back to the colour difference (threshold → open → feather), which is also the free
-   first look that rejects an unchanged render before pass two spends anything.
+3. **Cut the child out.** Pass two: give the model its own render, a picture of where the child
+   was asked to be and her identity sheet, and ask for the render back with everything but her
+   painted magenta (`matteSlotCrop`, see *Pass two* below). What remains is a small transparent
+   image: the child, and nothing the scene already had. A provider that cannot matte falls back to
+   the colour difference (threshold → open → feather), which is also the free first look that
+   rejects an unchanged render before pass two spends anything.
 4. **Place.** The patch goes back at the exact same pixel coordinates. Backgrounds stay untouched.
    The patch is an `image` sprite carrying the whole tap contract (below).
 
@@ -152,10 +153,12 @@ and above 72 the child broke into pieces before the ground let go (`scripts/thre
 time; "what changed" is the window, not the child.
 
 So the child is cut out by the model that drew her. `AvatarProvider.matteSlotCrop()` sends the
-render and the crop it was made from (two images, no mask) and asks for the render back with the same
-framing and everything that is not the child painted flat magenta, the parts the scene hides included
-(`mattePrompt` in `src/infra/generation/openai.ts`; `matteHint` tells it which figure, from the
-slot's placement recipe). `keyMagenta` turns the magenta into alpha: a pixel two or more inside the
+render, the paint mask ("where she was asked to be") and the identity sheet, and asks for the render
+back with the same framing and everything that is not that child painted flat magenta, the parts the
+scene hides included (`mattePrompt` in `src/infra/generation/openai.ts`; `matteHint` adds the slot's
+pose and occlusion). The first wire sent the render and the crop it was made from instead: on
+amazon/canoe it kept a girl who was already in the board (Codex's review of 93db1de), and telling
+it where and who fixed that on the same render — the mask, not words, says which of two swimmers. `keyMagenta` turns the magenta into alpha: a pixel two or more inside the
 silhouette is the child whatever its colour (a pink shirt stays a pink shirt), the anti-aliased rim is
 un-blended against the body colour beside it. The API's `background: transparent` mode was tried first
 and is not usable for this: it turns the request into a sticker, and the child came back re-composed,
@@ -169,8 +172,36 @@ way whichever cut the child out.
 `extractChild` (`src/services/generation/extract.ts`) is the one place that decides: the difference
 first (free; an unchanged render is rejected there), then the matte when the provider has one. The
 pipeline and the harness both call it, so a sample shows what a game ships. Pass two is a paid image
-call of the same size as the roll: it is reserved before it is made, charged to the spot's ledger
-(`matteCents`, `matteRequestId`), and its output is kept as `PATCH_EVIDENCE` beside the render.
+call of the same size as the roll: it is reserved before it is made, charged to the spot's ledger the
+moment it answers (`onMatte`, before anything is keyed or judged — every answer, not only the last:
+`matteCents`, `matteRequestIds`), and each answer is kept as `PATCH_EVIDENCE` beside the render. An
+answer that cannot be keyed keeps its bill too (`SlotMatteResponse.problem`): nothing after the paid
+call may throw.
+
+Pass two is checked, not trusted. `unchangedFraction` measures how much of the silhouette the board
+already had — a real child is new, so inside her the render differs from the board; a kept bystander
+or the occluder is re-synthesised close to the original. Real children measured 1–15%, kept
+bystanders and scenery 24–64%; above 20% the answer is refused and pass two is asked once more on
+the same render, told what it got wrong. That is an extraction failure, named as such in the ledger
+(`extractionProblem`), and it does not buy a new render. The real amazon/canoe case is a fixture
+(`__tests__/fixtures/amazon-*`).
+
+A peek's occluder is a polygon on the slot (`placement.foreground`, art fractions, from the planning
+run; `scripts/install-occluders.ts`). The paint mask leaves it out, so the painter is not asked to
+touch it; the matte is clipped by it, so nothing of the child is kept where the object is in front;
+and the prompt (v8) says everything already in the picture stays where and as it is. Two numbers are
+recorded per attempt and do not reject — the render's colour distance from the board inside the
+polygon (`occluderShift`) and how far above the board's occluder the silhouette ends
+(`occluderGap`): on the one raised bench measured they read 76 and 58%, and on kept occluders 80 and
+17–69%, so with these polygons no limit separates them yet.
+
+**Time.** The tick is one request with a hard limit, and a spot is now two image calls and two
+judges. Each pass starts only if it can finish (`PASS_ONE_MIN_MS`, `PASS_TWO_MIN_MS`,
+`JUDGE_MIN_MS`), the provider trims its own budget to the deadline, and a pass that cannot start is
+deferred: the attempt stays `pending` with what it paid for (`stage: painted | matted`, the evidence
+asset ids), the lease goes back, and the next tick finishes that attempt from the kept render and
+matte without buying either again. The pipeline test "resumes even the sixth painted attempt"
+proves it with a mock clock.
 
 The colour difference, kept as the fallback and the first look:
 
