@@ -47,7 +47,7 @@
 .hero3__hint { position: absolute; top: var(--space-3); inset-inline-start: var(--gutter); pointer-events: none; }
 .hero3__content { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--space-3); padding-block: var(--space-12) calc(var(--space-10) + 96px); pointer-events: none; }
 .hero3__content a, .hero3__content button { pointer-events: auto; }
-.hero3__pill { align-self: center; }
+.hero3__pill { align-self: center; display: inline-block; padding: 6px 12px; border: 1px solid #dfddd7; border-radius: 8px; background: #f0eee8; color: #555266; font-size: var(--fs-100); font-weight: 500; line-height: 1.5; box-shadow: none; cursor: default; }
 .hero3__title { font-family: var(--font-display); font-size: clamp(56px, 9.5vw, 136px); line-height: 1; font-weight: 900; letter-spacing: -0.035em; color: var(--ink); }
 .hero3__q { color: var(--sun-deep); display: inline-block; animation: hero-q 3s var(--ease-in-out) infinite; transform-origin: 50% 80%; }
 @keyframes hero-q { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(10deg) translateY(-4px); } }
@@ -109,8 +109,21 @@
 .demo__head { display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--space-2); margin-bottom: var(--space-5); }
 .demo__title { font-size: var(--fs-800); line-height: var(--lh-800); font-weight: 900; letter-spacing: -0.02em; color: var(--ink); }
 .demo__lead { color: var(--ink-2); font-size: var(--fs-300); line-height: var(--lh-300); max-width: 52ch; }
-.demo__frame { position: relative; width: 100%; aspect-ratio: 3 / 2; border-radius: var(--radius-3); overflow: hidden; background: var(--night); box-shadow: 0 0 0 6px var(--white), var(--shadow-3); }
+.demo__frame { position: relative; width: 100%; aspect-ratio: var(--demo-art-ratio, 3 / 2); border-radius: var(--radius-3); overflow: hidden; background: var(--night); box-shadow: 0 0 0 6px var(--white), var(--shadow-3); }
 @media (max-width: 720px) { .demo__frame { border-radius: var(--radius-2); } }
+/* Give children a real search window, not a postcard scaled to phone width. */
+@media (max-width: 720px) and (orientation: portrait) {
+  .demo__frame { aspect-ratio: auto; height: clamp(420px, 78svh, 760px); }
+}
+@media (max-height: 480px) and (max-width: 1024px) and (orientation: landscape) {
+  .hero3 { margin-top: 0; }
+  .hero3__hint { display: none; }
+  .demo__frame { aspect-ratio: auto; height: calc(100dvh - 60px); min-height: 240px; }
+  .fm-header__inner { min-height: 52px; gap: 8px; }
+  .fm-logo__mark { width: 36px; height: 36px; font-size: 24px; border-radius: 10px; }
+  .fm-header__cta .fm-btn, .fm-header__cta .fm-lang__btn { min-height: 44px; padding-block: 4px; }
+  .fm-nav--main { display: none; }
+}
 .demo__frame > .game { position: absolute; inset: 0; }
 .demo__foot { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); text-align: center; margin-top: var(--space-5); }
 .demo__foot p { font-size: var(--fs-400); line-height: var(--lh-400); font-weight: 700; }
@@ -600,21 +613,4 @@
 @media (max-width: 640px) {
   .wc__arrow { inline-size: var(--space-6); block-size: var(--space-6); font-size: var(--fs-500); }
   .wc__title strong { font-size: var(--fs-400); }
-}
-
-/* Not decorative: a QA box is a production build with a pretend till, and the
-   only thing separating it from the shop is that it says so. */
-/* Except inside the game. The board is sized to the viewport, so a 48px banner
-   above it made the page scroll by 48px: a cream strip on top, the mission
-   card cut off at the bottom. The child does not need to know it is a QA box. */
-body:has(.scene) .qa-banner { display: none; }
-.qa-banner {
-  position: sticky; inset-block-start: 0; z-index: 100;
-  display: flex; align-items: center; justify-content: center; gap: var(--space-1);
-  min-height: var(--space-6);
-  padding: var(--space-0-5) var(--gutter);
-  background: repeating-linear-gradient(135deg, var(--sun-deep) 0 12px, var(--sun) 12px 24px);
-  color: var(--ink);
-  font-size: var(--fs-100); line-height: var(--lh-100); font-weight: 700;
-  text-align: center;
 }

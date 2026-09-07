@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useI18n } from "@/i18n/client";
+import heroArt from "../../../content/home/hero-art.json";
 
 /**
  * Hero: a torch sweeping a real world.
@@ -21,15 +22,11 @@ import { useI18n } from "@/i18n/client";
  * is. The circle moves through one board per world, so the first ten seconds
  * of the page say "there are worlds in here" without a word of copy.
  *
- * Art is built from the boards themselves:
- *   sharp(base.webp).resize(1400, 934, { fit: "cover", position: "attention" }).webp({ quality: 58 })
+ * Rebuild marketing copies with scripts/refresh-hero-art.ts --apply whenever
+ * board art changes. One manifest feeds BOTH ghost and flashlight layers.
  */
-const WORLDS = [
-  { slug: "newyork", src: "/home/hero-newyork.webp" },
-  { slug: "dragoncave", src: "/home/hero-dragoncave.webp" },
-  { slug: "futurecity", src: "/home/hero-futurecity.webp" },
-];
-const HOLD_MS = 7000;
+const WORLDS = heroArt;
+const HOLD_MS = 12000;
 const NOA_DESKTOP = { x: 0.87, y: 0.66 };
 const NOA_MOBILE = { x: 0.8, y: 0.74 };
 // The idle torch orbits AROUND the copy instead of wandering through it: ink
@@ -194,7 +191,7 @@ export function Hero({ children }: { children?: ReactNode }) {
       </div>
 
       <div className="fm-container hero3__content">
-        <span className="fm-pill fm-pill--sun hero3__pill">{h.pill}</span>
+        <span className="hero3__pill">{h.pill}</span>
         <h1 id="hero-title" className="hero3__title">
           {title}
         </h1>
@@ -216,7 +213,7 @@ export function Hero({ children }: { children?: ReactNode }) {
           never shows through — they hold the layout here, invisibly. */}
       <div className="hero3__lit" aria-hidden>
         <div className="fm-container hero3__content hero3__content--lit">
-          <span className="fm-pill fm-pill--sun hero3__pill">{h.pill}</span>
+          <span className="hero3__pill">{h.pill}</span>
           <div className="hero3__title">{title}</div>
           <p className="hero3__lead">{h.lead}</p>
           <div className="hero3__cta">

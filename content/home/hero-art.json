@@ -1,0 +1,32 @@
+[
+  {
+    "slug": "newyork",
+    "src": "/home/hero-newyork.webp?v=178d3992ca0f0de7",
+    "assetPath": "/home/hero-newyork.webp",
+    "assetSha256": "178d3992ca0f0de77bef381e06d7d68d8d9858431fcd611b3d6d3e840eac1912",
+    "bytes": 474130,
+    "source": "/scenes/newyork/refresh-20260907/base.webp",
+    "sourceSha256": "0997325d6c2771e5435a21a4dce134f619b14df866b376caef7e4a79155473b1",
+    "sceneVersion": 2
+  },
+  {
+    "slug": "dragoncave",
+    "src": "/home/hero-dragoncave.webp?v=f9f3aa4fbddff653",
+    "assetPath": "/home/hero-dragoncave.webp",
+    "assetSha256": "f9f3aa4fbddff6530d83c301e9b72d2ae42e3d0fe08a0053f5bc0ead03b16e71",
+    "bytes": 447188,
+    "source": "/scenes/dragoncave/refresh-20260907/base.webp",
+    "sourceSha256": "2e9c130a0205d1e2677e548a58d6f9d730a43d9f7b712e78d0e4ad764ad6d6c6",
+    "sceneVersion": 2
+  },
+  {
+    "slug": "futurecity",
+    "src": "/home/hero-futurecity.webp?v=fe56ce1df22aecc3",
+    "assetPath": "/home/hero-futurecity.webp",
+    "assetSha256": "fe56ce1df22aecc3b94a3987be4cb9b32607e84dc237be051b1b1d69a3473df3",
+    "bytes": 451884,
+    "source": "/scenes/futurecity/refresh-20260907/base.webp",
+    "sourceSha256": "db2d36115a3963128053ed7f7a5906c1c30f39c2b1ea0aa620c70b38b96c717d",
+    "sceneVersion": 2
+  }
+]

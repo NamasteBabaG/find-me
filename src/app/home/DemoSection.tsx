@@ -12,7 +12,7 @@ const GameShell = dynamic(() => import("@/game/components/GameShell").then((m) =
 
 /**
  * Full-bleed live demo: the real renderer, the demo child, one mission,
- * the world at its true 16:9 ratio with the UI floating on top.
+ * Desktop keeps the art ratio; portrait phones get a tall panning window.
  */
 export function DemoSection({ config }: { config: GameConfig }) {
   const { t, tf } = useI18n();
@@ -28,7 +28,7 @@ export function DemoSection({ config }: { config: GameConfig }) {
           <h2 className="demo__title">{tf(d.title, { name })}</h2>
           <p className="demo__lead">{tf(d.lead, { name })}</p>
         </div>
-        <div className="demo__frame" style={art ? { aspectRatio: `${art.width} / ${art.height}` } : undefined}>
+        <div className="demo__frame" style={art ? { "--demo-art-ratio": `${art.width} / ${art.height}` } as React.CSSProperties : undefined}>
           {/* The play store is created once per mount; remount on a language switch so the demo speaks the new locale. */}
           <GameShell key={config.locale} config={config} demo autoStartScene="beach" singleMission />
         </div>

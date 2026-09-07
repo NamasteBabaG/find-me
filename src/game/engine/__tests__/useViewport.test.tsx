@@ -42,6 +42,17 @@ beforeEach(() => {
 });
 
 describe("the viewport after a resize", () => {
+  it("fills a tall portrait search window and refits to landscape without retaining excessive zoom", () => {
+    const { result } = mount();
+    act(() => FakeResizeObserver.latest!.resize(390, 650));
+    expect(result.current.transform.scale).toBeCloseTo(650 / 2048);
+    expect(STAGE.width * result.current.transform.scale).toBeGreaterThan(390);
+    act(() => FakeResizeObserver.latest!.resize(844, 330));
+    expect(result.current.transform.scale).toBeCloseTo(844 / 3072);
+    expect(STAGE.width * result.current.transform.scale).toBeCloseTo(844);
+    act(() => FakeResizeObserver.latest!.resize(390, 650));
+    expect(result.current.transform.scale).toBeCloseTo(650 / 2048);
+  });
   it("a focusOn captured on a wide screen still centres the target on the narrow one", () => {
     const { result } = mount();
     act(() => FakeResizeObserver.latest!.resize(1280, 720));

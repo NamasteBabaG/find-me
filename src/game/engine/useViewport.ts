@@ -91,6 +91,8 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
     const ro = new ResizeObserver((entries) => {
       const rect = entries[0]?.contentRect;
       if (!rect || !rect.width || !rect.height) return;
+      const previousViewport = viewportRef.current;
+      const previousFit = fitRef.current;
       const vp = { width: rect.width, height: rect.height };
       viewportRef.current = vp;
       setViewport(vp);
@@ -102,7 +104,18 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
         transformRef.current = t;
         setTransform(clampTransform(t, vp, stage, f, f * MAX_ZOOM_FACTOR));
       } else {
-        setTransform((prev) => clampTransform(prev, vp, stage, f, f * MAX_ZOOM_FACTOR));
+        // Keep the place being searched and the user's RELATIVE zoom. Keeping
+        // absolute pixels made portrait → landscape stay unnecessarily zoomed.
+        if (raf.current) cancelAnimationFrame(raf.current);
+        raf.current = null;
+        pointers.current.clear();
+        setDragging(false);
+        const prev = transformRef.current;
+        const cx = (previousViewport.width / 2 - prev.tx) / prev.scale / stage.width;
+        const cy = (previousViewport.height / 2 - prev.ty) / prev.scale / stage.height;
+        const next = clampTransform(centerOnNormalized(cx, cy, f * (prev.scale / previousFit), vp, stage), vp, stage, f, f * MAX_ZOOM_FACTOR);
+        transformRef.current = next;
+        setTransform(next);
       }
     });
     ro.observe(el);

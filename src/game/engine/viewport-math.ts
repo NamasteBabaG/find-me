@@ -32,6 +32,9 @@ export function fitScale(viewport: Size, stage: Size, mode: FitMode): number {
  * height instead so the child pans a big scene (per spec §15).
  */
 export function chooseFitMode(viewport: Size, stage: Size): FitMode {
+  // A landscape phone should fill its WIDTH, with vertical panning, rather
+  // than shrink the painting to fit a 300px-high letterboxed strip.
+  if (viewport.height <= 480 && viewport.width <= 1024) return "cover";
   const viewportAspect = viewport.width / viewport.height;
   const stageAspect = stage.width / stage.height;
   return viewportAspect < stageAspect * 0.8 ? "cover" : "contain";
