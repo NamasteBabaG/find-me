@@ -46,7 +46,7 @@ export const RESUMABLE_STATUSES: readonly GameStatus[] = ["PAID", "AVATAR_GENERA
  * $5.18, so this is a ceiling on the pathological case, not a target — a game
  * that reaches it stops and goes to MANUAL_REVIEW with whatever it has.
  */
-const MAX_CENTS_PER_WORLD = 600;
+const MAX_CENTS_PER_WORLD = () => env().GENERATION_WORLD_CENTS;
 
 export interface PipelineOptions {
   /**
@@ -224,70 +224,86 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
 
     // Spend already booked to this game, across every tick that has run.
     const spentSoFar = (await c.db.targetVariantAsset.aggregate({ where: { targetInstance: { gameScene: { gameId } } }, _sum: { costCents: true } }))._sum.costCents ?? 0;
-    const budgetCents = MAX_CENTS_PER_WORLD * Math.max(1, game.scenes.length / BOARDS_PER_WORLD);
+    const budgetCents = MAX_CENTS_PER_WORLD() * Math.max(1, game.scenes.length / BOARDS_PER_WORLD);
     let overBudget = spentSoFar >= budgetCents;
 
     let ranOutOfTime = false;
+    // Every unfinished hiding spot of every world, painted `GENERATION_CONCURRENCY`
+    // at a time. The provider's rate limiter paces the image calls; the budget
+    // and the deadline are checked before each spot starts, so a pool of four
+    // never starts more than the slice can pay for or finish.
+    const work: Array<{ gs: (typeof game.scenes)[number]; def: ReturnType<typeof sceneBySlug>; target: ReturnType<typeof sceneBySlug>["targets"][number] }> = [];
     for (const gs of game.scenes) {
       const def = sceneBySlug(gs.sceneSlug, gs.sceneVersion);
-      for (const target of def.targets) {
-        if (options.deadlineAt && Date.now() > options.deadlineAt) {
-          ranOutOfTime = true;
-          break;
+      for (const target of def.targets) work.push({ gs, def, target });
+    }
+    const spentNow = () => spentSoFar + outcomes.reduce((n, o) => n + o.newCostCents, 0);
+    const paintOne = async ({ gs, def, target }: (typeof work)[number]) => {
+      if (ranOutOfTime || overBudget) return;
+      if (options.deadlineAt && Date.now() > options.deadlineAt) { ranOutOfTime = true; return; }
+      const row =
+        gs.targets.find((t) => t.targetId === target.id) ??
+        (await c.db.targetInstance.create({
+          data: { id: newId("tgt"), gameSceneId: gs.id, targetId: target.id, targetType: target.targetType, slotAId: target.slots[0].id, slotBId: target.slots[1].id },
+        }));
+      if (row.status === "GENERATED" || row.status === "APPROVED") return;
+      if (canPatch && reference) {
+        let spent = 0;
+        let ok = 0;
+        const mine: PatchOutcome[] = [];
+        for (const variant of variants) {
+          // Cheap first, careful on the retry. Most hiding spots land on the
+          // first roll, and at low quality that roll costs 2 cents instead of
+          // 7; the ones that do not are exactly the awkward spots, and those
+          // get the better model. Measured over one world: 26 of 27 spots at
+          // low for $1.01, against $4.5 at medium — but a visible minority of
+          // low patches come out soft or fragmentary, which is what the
+          // retry is for.
+          const quality = env().GENERATION_PATCH_RETRY_QUALITY && row.attempts > 0 ? env().GENERATION_PATCH_RETRY_QUALITY : undefined;
+          const outcome = await generateSlotPatch(c, { targetInstanceId: row.id, scene: def, target, variant, reference, childName: refreshedChild.displayName, ageYears: refreshedChild.ageYears, ownerId: refreshedChild.ownerId, quality, matteQuality: env().GENERATION_MATTE_QUALITY, deadlineAt: options.hardDeadlineAt });
+          outcomes.push(outcome);
+          mine.push(outcome);
+          spent += outcome.newCostCents;
+          if (outcome.status === "GENERATED") ok++;
+          // A pass deferred for lack of time ends the slice: the lease goes
+          // back and the next tick resumes from what was kept.
+          if (outcome.deferred) ranOutOfTime = true;
         }
-        if (overBudget) break;
-        const row =
-          gs.targets.find((t) => t.targetId === target.id) ??
-          (await c.db.targetInstance.create({
-            data: { id: newId("tgt"), gameSceneId: gs.id, targetId: target.id, targetType: target.targetType, slotAId: target.slots[0].id, slotBId: target.slots[1].id },
-          }));
-        if (row.status === "GENERATED" || row.status === "APPROVED") continue;
-        if (canPatch && reference) {
-          let spent = 0;
-          let ok = 0;
-          for (const variant of variants) {
-            // Cheap first, careful on the retry. Most hiding spots land on the
-            // first roll, and at low quality that roll costs 2 cents instead of
-            // 7; the ones that do not are exactly the awkward spots, and those
-            // get the better model. Measured over one world: 26 of 27 spots at
-            // low for $1.01, against $4.5 at medium — but a visible minority of
-            // low patches come out soft or fragmentary, which is what the
-            // retry is for.
-            const quality = env().GENERATION_PATCH_RETRY_QUALITY && row.attempts > 0 ? env().GENERATION_PATCH_RETRY_QUALITY : undefined;
-            const outcome = await generateSlotPatch(c, { targetInstanceId: row.id, scene: def, target, variant, reference, childName: refreshedChild.displayName, ageYears: refreshedChild.ageYears, ownerId: refreshedChild.ownerId, quality, matteQuality: env().GENERATION_MATTE_QUALITY, deadlineAt: options.hardDeadlineAt });
-            outcomes.push(outcome);
-            spent += outcome.newCostCents;
-            if (outcome.status === "GENERATED") ok++;
-            // A pass deferred for lack of time ends the slice: the lease goes
-            // back and the next tick resumes from what was kept.
-            if (outcome.deferred) ranOutOfTime = true;
-          }
-          // One good hiding spot is a playable target; none is one a human must look at.
-          const deferredOnly = outcomes.slice(-variants.length).every((o) => o.deferred);
-          await c.db.targetInstance.update({
-            where: { id: row.id },
-            data: { spriteKind: "image", status: ok > 0 ? "GENERATED" : "NEEDS_REGENERATION", attempts: { increment: deferredOnly ? 0 : 1 }, costCents: { increment: Math.round(spent) } },
-          });
-          // Heartbeat: a minute of painting must not let the lease go stale.
-          await c.db.generationJob.update({ where: { id: jobId }, data: { currentStep: "targets" } });
-          if (ranOutOfTime) break;
-          if (spentSoFar + outcomes.reduce((n, o) => n + o.newCostCents, 0) >= budgetCents) overBudget = true;
-          continue;
-        }
-        const out = await c.avatars.createTargetSprite({ avatarPng, sceneSlug: def.slug, targetType: target.targetType, bodyTemplate: target.bodyTemplate, childName: refreshedChild.displayName });
-        if (out.kind === "composed") {
-          await c.db.targetInstance.update({ where: { id: row.id }, data: { spriteKind: "composed", spriteAssetId: null, status: "GENERATED", attempts: { increment: 1 } } });
-        } else {
-          const sprite = await storeAsset(c, { ownerId: refreshedChild.ownerId, type: "TARGET_SPRITE", visibility: "GAME", buffer: out.png, mimeType: "image/png", width: out.width, height: out.height, provider: c.avatars.id, providerRequestId: out.providerRequestId, costCents: out.costCents });
-          await c.db.targetInstance.update({ where: { id: row.id }, data: { spriteKind: "image", spriteAssetId: sprite.id, status: "GENERATED", attempts: { increment: 1 }, costCents: { increment: out.costCents } } });
-        }
+        // One good hiding spot is a playable target; none is one a human must look at.
+        const deferredOnly = mine.every((o) => o.deferred);
+        await c.db.targetInstance.update({
+          where: { id: row.id },
+          data: { spriteKind: "image", status: ok > 0 ? "GENERATED" : "NEEDS_REGENERATION", attempts: { increment: deferredOnly ? 0 : 1 }, costCents: { increment: Math.round(spent) } },
+        });
+        // Heartbeat: a minute of painting must not let the lease go stale.
+        await c.db.generationJob.update({ where: { id: jobId }, data: { currentStep: "targets" } });
+        if (spentNow() >= budgetCents) overBudget = true;
+        return;
       }
-      if (ranOutOfTime || overBudget) break;
-      // Only once every hiding spot in this world landed. Marking the world
-      // GENERATED with a target still missing is what let a board ship with the
-      // child absent from it.
-      const left = await c.db.targetInstance.count({ where: { gameSceneId: gs.id, status: { notIn: ["GENERATED", "APPROVED"] } } });
-      await c.db.gameScene.update({ where: { id: gs.id }, data: { generationStatus: left === 0 ? "GENERATED" : "NEEDS_REGENERATION" } });
+      const out = await c.avatars.createTargetSprite({ avatarPng, sceneSlug: def.slug, targetType: target.targetType, bodyTemplate: target.bodyTemplate, childName: refreshedChild.displayName });
+      if (out.kind === "composed") {
+        await c.db.targetInstance.update({ where: { id: row.id }, data: { spriteKind: "composed", spriteAssetId: null, status: "GENERATED", attempts: { increment: 1 } } });
+      } else {
+        const sprite = await storeAsset(c, { ownerId: refreshedChild.ownerId, type: "TARGET_SPRITE", visibility: "GAME", buffer: out.png, mimeType: "image/png", width: out.width, height: out.height, provider: c.avatars.id, providerRequestId: out.providerRequestId, costCents: out.costCents });
+        await c.db.targetInstance.update({ where: { id: row.id }, data: { spriteKind: "image", spriteAssetId: sprite.id, status: "GENERATED", attempts: { increment: 1 }, costCents: { increment: out.costCents } } });
+      }
+    };
+    const width = Math.max(1, env().GENERATION_CONCURRENCY);
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(width, work.length) }, async () => {
+      while (next < work.length) {
+        const item = work[next++]!;
+        await paintOne(item);
+      }
+    }));
+    // Only once every hiding spot in a world landed. Marking the world
+    // GENERATED with a target still missing is what let a board ship with the
+    // child absent from it.
+    if (!ranOutOfTime && !overBudget) {
+      for (const gs of game.scenes) {
+        const left = await c.db.targetInstance.count({ where: { gameSceneId: gs.id, status: { notIn: ["GENERATED", "APPROVED"] } } });
+        await c.db.gameScene.update({ where: { id: gs.id }, data: { generationStatus: left === 0 ? "GENERATED" : "NEEDS_REGENERATION" } });
+      }
     }
     if (outcomes.length > 0) {
       // Count what happened, not what is left over. A SKIPPED spot is one this

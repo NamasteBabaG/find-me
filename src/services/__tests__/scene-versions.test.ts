@@ -16,13 +16,18 @@ describe("new art must not replace an old game's geometry or image", () => {
       const old = sceneBySlug(row.slug, row.previousVersion), current = sceneBySlug(row.slug);
       expect(old.art.base).toBe(archive.find(a => a.slug === row.slug)!.art.base);
       expect(old.version).toBe(1);
-      // The refresh made version 2 of every board; the first world's nine boards went on to version 3
-      // when their hiding spots were re-planned (same art), and version 2 stays addressable for games pinned to it.
+      // The refresh made version 2 of every board. The first world's nine boards went on to version 3
+      // when their hiding spots were re-planned and to version 4 when the hides were authored against the
+      // board's own occluders (same art throughout); versions 2 and 3 stay addressable for games pinned to them.
       const rePlanned = prePlacement.some(p => p.slug === row.slug);
-      expect(current.version).toBe(rePlanned ? 3 : 2);
+      expect(current.version).toBe(rePlanned ? 4 : 2);
       const v2 = sceneBySlug(row.slug, 2);
       expect(v2.version).toBe(2); expect(v2.art.base).toBe(row.base);
-      expect(current.art.base).toBe(row.base); expect(current.art.foreground).toBeUndefined();
+      if (rePlanned) { const v3 = sceneBySlug(row.slug, 3); expect(v3.version).toBe(3); expect(v3.art.base).toBe(row.base); }
+      expect(current.art.base).toBe(row.base);
+      // A foreground layer (the occluders cut out of the board) exists only where a hide was authored, and then the file exists.
+      if (current.art.foreground) expect(existsSync(path.join(process.cwd(), "public", current.art.foreground))).toBe(true);
+      else expect(current.art.foreground).toBeUndefined();
       for (const file of [old.art.base, current.art.base, current.art.thumbnail]) expect(existsSync(path.join(process.cwd(), "public", file))).toBe(true);
       const bytes = readFileSync(path.join(process.cwd(), "public", current.art.base));
       expect(createHash("sha256").update(bytes).digest("hex")).toBe(current.art.sha256);

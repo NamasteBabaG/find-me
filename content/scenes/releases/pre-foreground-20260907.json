@@ -1,0 +1,3115 @@
+[
+  {
+    "id": "scene_newyork",
+    "slug": "newyork",
+    "name": {
+      "en": "New York",
+      "he": "ניו יורק"
+    },
+    "tagline": {
+      "en": "Yellow taxis under towers of glass, and a warm pretzel.",
+      "he": "מוניות צהובות מתחת למגדלי זכוכית, ובייגלה חם."
+    },
+    "version": 3,
+    "active": true,
+    "artStatus": "final",
+    "art": {
+      "width": 3072,
+      "height": 2048,
+      "base": "/scenes/newyork/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/newyork/refresh-20260907/thumb.webp",
+      "palette": {
+        "sky": "#DCE9F5",
+        "ground": "#B9A98F",
+        "accent": "#F5B301"
+      },
+      "sha256": "0997325d6c2771e5435a21a4dce134f619b14df866b376caef7e4a79155473b1"
+    },
+    "targets": [
+      {
+        "id": "taxi",
+        "targetType": "newyork_taxi",
+        "bodyTemplate": "newyork_taxi",
+        "difficulty": 1,
+        "mission": {
+          "en": "Find {name}",
+          "he": "מצאו את {name}"
+        },
+        "item": {
+          "en": "yellow taxis stopped at a crossing",
+          "he": "מוניות צהובות עוצרות במעבר חצייה"
+        },
+        "success": [
+          {
+            "en": "Taxi! ...no thanks, I like walking.",
+            "he": "מונית! ...לא תודה, יותר כיף ברגל."
+          },
+          {
+            "en": "You found me between the taxis!",
+            "he": "מצאתם אותי בין המוניות!"
+          },
+          {
+            "en": "Everything here is so tall!",
+            "he": "הכול פה כל כך גבוה!"
+          }
+        ],
+        "animation": "bounce",
+        "slots": [
+          {
+            "id": "newyork_taxi_a",
+            "x": 0.344,
+            "y": 0.668,
+            "scale": 0.134,
+            "hintZone": {
+              "x": 0.344,
+              "y": 0.653,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look by the yellow taxis at the crossing.",
+              "he": "חפשו ליד המוניות הצהובות במעבר החצייה."
+            },
+            "layer": "front",
+            "placement": {
+              "pose": "standing",
+              "support": "Both shoes rest on the visible street immediately in front of the stopped yellow taxi.",
+              "occlusion": "None; the child is in front of the taxi and may naturally cover part of its door, panel, and lower trim.",
+              "instructions": "Stand facing the viewer with feet together and arms close. Use child proportions and make the child slightly shorter than nearby crossing pedestrians."
+            }
+          },
+          {
+            "id": "newyork_taxi_b",
+            "x": 0.6,
+            "y": 0.455,
+            "scale": 0.042,
+            "hintZone": {
+              "x": 0.6,
+              "y": 0.44,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look by the taxis on the right.",
+              "he": "חפשו ליד המוניות בצד ימין."
+            },
+            "layer": "front"
+          }
+        ]
+      },
+      {
+        "id": "pretzel",
+        "targetType": "newyork_pretzel",
+        "bodyTemplate": "newyork_pretzel",
+        "difficulty": 2,
+        "mission": {
+          "en": "Find {name} by the pretzel cart",
+          "he": "מצאו את {name} ליד עגלת הבייגלה"
+        },
+        "item": {
+          "en": "a street cart selling warm pretzels",
+          "he": "עגלת רחוב שמוכרת בייגלה חם"
+        },
+        "success": [
+          {
+            "en": "It was still warm!",
+            "he": "הוא עוד היה חם!"
+          },
+          {
+            "en": "You found me! Want half?",
+            "he": "מצאתם! רוצים חצי?"
+          },
+          {
+            "en": "The salt got on my nose.",
+            "he": "המלח נדבק לי לאף."
+          }
+        ],
+        "animation": "wiggle",
+        "slots": [
+          {
+            "id": "newyork_pretzel_a",
+            "x": 0.597,
+            "y": 0.845,
+            "scale": 0.14,
+            "hintZone": {
+              "x": 0.597,
+              "y": 0.83,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look by the pretzel cart.",
+              "he": "חפשו ליד עגלת הבייגלה."
+            },
+            "layer": "front",
+            "placement": {
+              "pose": "standing",
+              "support": "Both shoes on the paved sidewalk in front of the cart's right lower panel, between the small girl on the left and the vendor on the right.",
+              "occlusion": "None; the child stands in front of the cart and may cover part of its lower panel, bottles and wheel.",
+              "instructions": "A school-age child stands facing the pretzel cart, in the narrow gap between the small girl in the purple top on the left and the vendor in the apron on the right. Do not touch or merge with either of them; only the cart is behind the child."
+            }
+          },
+          {
+            "id": "newyork_pretzel_b",
+            "x": 0.205,
+            "y": 0.64,
+            "scale": 0.075,
+            "hintZone": {
+              "x": 0.205,
+              "y": 0.625,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look by the second cart on the left.",
+              "he": "חפשו ליד העגלה השנייה משמאל."
+            },
+            "layer": "front"
+          }
+        ]
+      },
+      {
+        "id": "bench",
+        "targetType": "newyork_bench",
+        "bodyTemplate": "newyork_bench_peek",
+        "difficulty": 3,
+        "mission": {
+          "en": "Find {name} hiding behind a park bench",
+          "he": "מצאו את {name} מאחורי ספסל בפארק"
+        },
+        "item": {
+          "en": "park benches under autumn trees, with pigeons",
+          "he": "ספסלי פארק מתחת לעצי סתיו, עם יונים"
+        },
+        "success": [
+          {
+            "en": "The pigeons almost gave me away!",
+            "he": "היונים כמעט הסגירו אותי!"
+          },
+          {
+            "en": "You found me! The leaves are so orange.",
+            "he": "מצאתם! העלים כל כך כתומים."
+          },
+          {
+            "en": "Shhh, one more minute!",
+            "he": "ששש, עוד רגע אחד!"
+          }
+        ],
+        "animation": "peek",
+        "slots": [
+          {
+            "id": "newyork_bench_a",
+            "x": 0.9205,
+            "y": 0.711,
+            "scale": 0.081,
+            "hintZone": {
+              "x": 0.9205,
+              "y": 0.696,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look behind the benches in the park.",
+              "he": "חפשו מאחורי הספסלים בפארק."
+            },
+            "layer": "front",
+            "placement": {
+              "pose": "peeking",
+              "support": "Hidden feet are planted on the park path behind the bench; bodyHeight is the child's implied full standing height.",
+              "occlusion": "The original bench backrest provides the exact cutoff across the lower shoulders; the crouched torso and legs remain behind it.",
+              "foreground": [
+                {
+                  "x": 0.9,
+                  "y": 0.724
+                },
+                {
+                  "x": 0.95,
+                  "y": 0.736
+                },
+                {
+                  "x": 0.948,
+                  "y": 0.769
+                },
+                {
+                  "x": 0.903,
+                  "y": 0.758
+                }
+              ],
+              "instructions": "Crouch behind the bench and peek above its backrest with the full face and top of the shoulders visible. Keep the lower body hidden. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown. Show the head, the top of the shoulders and both hands resting on the edge of the object in front, so the child is visibly holding on to it; never a head alone."
+            }
+          },
+          {
+            "id": "newyork_bench_b",
+            "x": 0.735,
+            "y": 0.598,
+            "scale": 0.066,
+            "hintZone": {
+              "x": 0.735,
+              "y": 0.583,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look behind the bench on the right.",
+              "he": "חפשו מאחורי הספסל בצד ימין."
+            },
+            "layer": "front"
+          }
+        ]
+      }
+    ],
+    "ambient": [
+      {
+        "id": "pigeons",
+        "label": {
+          "en": "Pigeons taking off",
+          "he": "יונים ממריאות"
+        },
+        "x": 0.5,
+        "y": 0.8,
+        "w": 0.06,
+        "h": 0.05,
+        "animation": "shake",
+        "sound": "chirp",
+        "reaction": {
+          "en": "Whoosh! Off they go!",
+          "he": "פרררר! הן עפו!"
+        },
+        "glyph": "🕊️"
+      },
+      {
+        "id": "steam",
+        "label": {
+          "en": "Steam from a manhole",
+          "he": "אדים ממכסה ביוב"
+        },
+        "x": 0.28,
+        "y": 0.72,
+        "w": 0.05,
+        "h": 0.06,
+        "animation": "slide",
+        "sound": "boing",
+        "reaction": {
+          "en": "The street is breathing!",
+          "he": "הרחוב נושם!"
+        },
+        "glyph": "💨"
+      },
+      {
+        "id": "violin",
+        "label": {
+          "en": "A street violinist",
+          "he": "נגן רחוב"
+        },
+        "x": 0.13,
+        "y": 0.6,
+        "w": 0.05,
+        "h": 0.08,
+        "animation": "shake",
+        "sound": "chirp",
+        "reaction": {
+          "en": "One more song!",
+          "he": "עוד שיר אחד!"
+        },
+        "glyph": "🎻"
+      }
+    ],
+    "artNotes": [
+      "a canyon of glass and brick skyscrapers going up out of frame",
+      "wooden water towers on the rooftops",
+      "black iron fire escapes zigzagging down the buildings",
+      "a dog walker holding six leads at once",
+      "steam rising from a manhole between the taxis",
+      "chess players on a stone table at the park edge"
+    ],
+    "collectible": {
+      "id": "stamp_usa",
+      "name": {
+        "en": "A New York stamp",
+        "he": "חותמת ניו יורק"
+      },
+      "icon": "🗽"
+    },
+    "celebration": {
+      "kind": "confetti",
+      "completeText": {
+        "en": "You found {name} three times in New York!",
+        "he": "מצאתם את {name} שלוש פעמים בניו יורק!"
+      }
+    },
+    "artComposition": "Keep the elevated angle over the crowd, but make the SKYLINE dominate: a canyon of very tall skyscrapers fills the whole upper half on both sides and recedes into the distance, so the city is unmistakable at a glance. Water towers on the roofs, fire escapes down the brick fronts, a steel suspension bridge far behind. The street below is a wide crossing with yellow taxis."
+  },
+  {
+    "id": "scene_amazon",
+    "slug": "amazon",
+    "name": {
+      "en": "The Amazon",
+      "he": "האמזונס"
+    },
+    "tagline": {
+      "en": "A green river, a wooden canoe and a very loud macaw.",
+      "he": "נהר ירוק, קאנו מעץ ותוכי רועש מאוד."
+    },
+    "wardrobe": "a thin light-green shirt and beige shorts",
+    "version": 3,
+    "active": true,
+    "artStatus": "final",
+    "art": {
+      "width": 3072,
+      "height": 2048,
+      "base": "/scenes/amazon/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/amazon/refresh-20260907/thumb.webp",
+      "palette": {
+        "sky": "#DCE9F5",
+        "ground": "#B9A98F",
+        "accent": "#F5B301"
+      },
+      "sha256": "fd195a17c3d1cc8ce5fc029376ebeb88acc5a2d7d35c7d84b7535ae29fbf382a"
+    },
+    "targets": [
+      {
+        "id": "canoe",
+        "action": "The child is sitting in the canoe, looking straight ahead along the river.",
+        "expression": "calm, mouth relaxed and closed, eyes on the water ahead",
+        "targetType": "amazon_canoe",
+        "bodyTemplate": "amazon_canoe",
+        "difficulty": 1,
+        "mission": {
+          "en": "Find {name}",
+          "he": "מצאו את {name}"
+        },
+        "item": {
+          "en": "wooden canoes on the green river",
+          "he": "קאנו מעץ על הנהר הירוק"
+        },
+        "success": [
+          {
+            "en": "The river carried me!",
+            "he": "הנהר סחף אותי!"
+          },
+          {
+            "en": "You found me! Paddle with me?",
+            "he": "מצאתם! חותרים איתי?"
+          },
+          {
+            "en": "A dolphin said hello.",
+            "he": "דולפין אמר לי שלום."
+          }
+        ],
+        "animation": "bounce",
+        "slots": [
+          {
+            "id": "amazon_canoe_a",
+            "x": 0.7195,
+            "y": 0.724,
+            "scale": 0.125,
+            "hintZone": {
+              "x": 0.7195,
+              "y": 0.709,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look by the canoes on the river.",
+              "he": "חפשו ליד הקאנו על הנהר."
+            },
+            "layer": "front",
+            "placement": {
+              "pose": "swimming",
+              "support": "The support point is the visible waterline at the child's mid-torso; the hips, legs, and feet continue naturally underwater.",
+              "occlusion": "Only the lower body is naturally submerged by visible river water; the face and upper torso remain intact.",
+              "instructions": "Show the child swimming upright in the open water between the middle and foreground canoes, with head, shoulders, upper torso, and arms above water. Use childlike proportions and a head size similar to children in the nearer canoe."
+            }
+          },
+          {
+            "id": "amazon_canoe_b",
+            "x": 0.605,
+            "y": 0.455,
+            "scale": 0.048,
+            "hintZone": {
+              "x": 0.605,
+              "y": 0.44,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look by the second canoe.",
+              "he": "חפשו ליד הקאנו השני."
+            },
+            "layer": "front"
+          }
+        ]
+      },
+      {
+        "id": "macaw",
+        "targetType": "amazon_macaw",
+        "bodyTemplate": "amazon_macaw",
+        "difficulty": 2,
+        "mission": {
+          "en": "Find {name} by the macaws",
+          "he": "מצאו את {name} ליד התוכים"
+        },
+        "item": {
+          "en": "bright macaws on a low branch",
+          "he": "תוכים צבעוניים על ענף נמוך"
+        },
+        "success": [
+          {
+            "en": "He repeated my name!",
+            "he": "הוא חזר על השם שלי!"
+          },
+          {
+            "en": "You found me! He is very loud.",
+            "he": "מצאתם! הוא רועש נורא."
+          },
+          {
+            "en": "Shhh, he will tell everyone.",
+            "he": "ששש, הוא יספר לכולם."
+          }
+        ],
+        "animation": "wiggle",
+        "slots": [
+          {
+            "id": "amazon_macaw_a",
+            "x": 0.214,
+            "y": 0.3335,
+            "scale": 0.09,
+            "hintZone": {
+              "x": 0.214,
+              "y": 0.3185,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look by the macaws on the branch.",
+              "he": "חפשו ליד התוכים על הענף."
+            },
+            "layer": "front",
+            "placement": {
+              "pose": "seated",
+              "support": "The support point is the top of the thick horizontal branch under the child's hips.",
+              "occlusion": "None; the branch supports the child from behind and does not cut across the face or torso.",
+              "instructions": "Seat the child side-saddle in the gap between the yellow-green and blue macaws. Keep the face in the clear foliage gap, with knees bent and both shoes hanging just below the branch. Match the apparent scale of the nearby child beneath the branch."
+            }
+          },
+          {
+            "id": "amazon_macaw_b",
+            "x": 0.155,
+            "y": 0.335,
+            "scale": 0.045,
+            "hintZone": {
+              "x": 0.155,
+              "y": 0.32,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look at the branch on the right.",
+              "he": "חפשו בענף בצד ימין."
+            },
+            "layer": "front"
+          }
+        ]
+      },
+      {
+        "id": "roots",
+        "targetType": "amazon_roots",
+        "bodyTemplate": "amazon_roots",
+        "difficulty": 3,
+        "mission": {
+          "en": "Find {name} hiding behind the giant roots",
+          "he": "מצאו את {name} מאחורי השורשים הענקיים"
+        },
+        "item": {
+          "en": "huge tangled tree roots at the water's edge",
+          "he": "שורשי עץ ענקיים בקצה המים"
+        },
+        "success": [
+          {
+            "en": "The roots are bigger than me!",
+            "he": "השורשים גדולים ממני!"
+          },
+          {
+            "en": "You found me! It is cool in here.",
+            "he": "מצאתם! קריר פה."
+          },
+          {
+            "en": "A frog was hiding too.",
+            "he": "גם צפרדע התחבאה פה."
+          }
+        ],
+        "animation": "peek",
+        "slots": [
+          {
+            "id": "amazon_roots_a",
+            "x": 0.2105,
+            "y": 0.653,
+            "scale": 0.116,
+            "hintZone": {
+              "x": 0.2105,
+              "y": 0.638,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look between the big roots.",
+              "he": "חפשו בין השורשים הגדולים."
+            },
+            "layer": "front",
+            "placement": {
+              "pose": "peeking",
+              "support": "The support point marks the child's hidden feet on the root-floor ledge behind the foreground root.",
+              "occlusion": "The pictured diagonal root hides the lower chest, waist, legs, and feet; the head and face remain fully visible above it.",
+              "instructions": "Place the child upright in the dark opening among the giant roots, leaning slightly into view with head, shoulders, and one hand visible. Match the scale of the nearby children hiding in the root system. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown. Show the head, the top of the shoulders and both hands resting on the edge of the object in front, so the child is visibly holding on to it; never a head alone.",
+              "foreground": [
+                {
+                  "x": 0.185,
+                  "y": 0.674
+                },
+                {
+                  "x": 0.191,
+                  "y": 0.657
+                },
+                {
+                  "x": 0.205,
+                  "y": 0.665
+                },
+                {
+                  "x": 0.219,
+                  "y": 0.681
+                },
+                {
+                  "x": 0.235,
+                  "y": 0.696
+                },
+                {
+                  "x": 0.229,
+                  "y": 0.713
+                },
+                {
+                  "x": 0.212,
+                  "y": 0.699
+                },
+                {
+                  "x": 0.198,
+                  "y": 0.684
+                }
+              ]
+            }
+          },
+          {
+            "id": "amazon_roots_b",
+            "x": 0.078,
+            "y": 0.548,
+            "scale": 0.066,
+            "hintZone": {
+              "x": 0.078,
+              "y": 0.533,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look at the roots by the water.",
+              "he": "חפשו בשורשים ליד המים."
+            },
+            "layer": "front"
+          }
+        ]
+      }
+    ],
+    "artNotes": [
+      "a sloth hanging upside down from a branch",
+      "pink river dolphins surfacing",
+      "giant lily pads with a frog on one",
+      "a rope bridge between two trees",
+      "children in a wooden canoe with paddles",
+      "butterflies over the water"
+    ],
+    "collectible": {
+      "id": "stamp_brazil",
+      "name": {
+        "en": "An Amazon stamp",
+        "he": "חותמת האמזונס"
+      },
+      "icon": "🦜"
+    },
+    "celebration": {
+      "kind": "leaves",
+      "completeText": {
+        "en": "You found {name} three times in The Amazon!",
+        "he": "מצאתם את {name} שלוש פעמים בהאמזונס!"
+      }
+    },
+    "ambient": [
+      {
+        "id": "sloth",
+        "label": {
+          "en": "A sloth waking up",
+          "he": "עצלן מתעורר"
+        },
+        "x": 0.3,
+        "y": 0.78,
+        "w": 0.05,
+        "h": 0.05,
+        "animation": "shake",
+        "sound": "chirp",
+        "reaction": {
+          "en": "Slooowly does it!",
+          "he": "לאאאט לאאאט!"
+        },
+        "glyph": "🦥"
+      },
+      {
+        "id": "dolphin",
+        "label": {
+          "en": "A pink river dolphin",
+          "he": "דולפין נהר ורוד"
+        },
+        "x": 0.55,
+        "y": 0.3,
+        "w": 0.05,
+        "h": 0.05,
+        "animation": "slide",
+        "sound": "boing",
+        "reaction": {
+          "en": "He splashed me!",
+          "he": "הוא התיז עליי!"
+        },
+        "glyph": "🐬"
+      },
+      {
+        "id": "frog",
+        "label": {
+          "en": "A frog on a lily pad",
+          "he": "צפרדע על עלה"
+        },
+        "x": 0.82,
+        "y": 0.68,
+        "w": 0.05,
+        "h": 0.05,
+        "animation": "shake",
+        "sound": "chirp",
+        "reaction": {
+          "en": "Ribbit! Found!",
+          "he": "קרווו! מצאתם!"
+        },
+        "glyph": "🐸"
+      }
+    ]
+  },
+  {
+    "id": "scene_paris",
+    "slug": "paris",
+    "name": {
+      "en": "Paris",
+      "he": "פריז"
+    },
+    "tagline": {
+      "en": "The tower above a great square, a carousel and warm bread.",
+      "he": "המגדל מעל כיכר גדולה, קרוסלה ולחם חם."
+    },
+    "version": 3,
+    "active": true,
+    "artStatus": "final",
+    "art": {
+      "width": 3072,
+      "height": 2048,
+      "base": "/scenes/paris/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/paris/refresh-20260907/thumb.webp",
+      "palette": {
+        "sky": "#DCE9F5",
+        "ground": "#B9A98F",
+        "accent": "#F5B301"
+      },
+      "sha256": "1779a9015128795440b29d197ebc6fc09ad3931a71391f1b17e9679fc00b5a94"
+    },
+    "targets": [
+      {
+        "id": "bakery",
+        "targetType": "paris_bakery",
+        "bodyTemplate": "paris_bakery",
+        "difficulty": 1,
+        "mission": {
+          "en": "Find {name}",
+          "he": "מצאו את {name}"
+        },
+        "item": {
+          "en": "a bakery window full of baguettes and pastries",
+          "he": "חלון מאפייה מלא באגטים ומאפים"
+        },
+        "success": [
+          {
+            "en": "It was still warm!",
+            "he": "הוא עוד היה חם!"
+          },
+          {
+            "en": "You found me! Want a bite?",
+            "he": "מצאתם! רוצים ביס?"
+          },
+          {
+            "en": "Crumbs everywhere.",
+            "he": "פירורים בכל מקום."
+          }
+        ],
+        "animation": "bounce",
+        "slots": [
+          {
+            "id": "paris_bakery_a",
+            "x": 0.8968,
+            "y": 0.7944,
+            "scale": 0.1392,
+            "placement": {
+              "pose": "peeking",
+              "support": "Cobblestone pavement immediately behind the wicker basket; footX and footY are the implied hidden shoe midpoint.",
+              "occlusion": "The original wicker basket and projecting baguettes hide the child from about the waist downward without covering the face.",
+              "instructions": "Stand behind the exterior baguette basket and lean forward slightly so the head and shoulders show against the bakery window. Keep the child comparable in implied height to nearby foreground children. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown. Show the head, the top of the shoulders and both hands resting on the edge of the object in front, so the child is visibly holding on to it; never a head alone.",
+              "foreground": [
+                {
+                  "x": 0.8577,
+                  "y": 0.8447
+                },
+                {
+                  "x": 0.862,
+                  "y": 0.8276
+                },
+                {
+                  "x": 0.8724,
+                  "y": 0.8145
+                },
+                {
+                  "x": 0.8838,
+                  "y": 0.8081
+                },
+                {
+                  "x": 0.8936,
+                  "y": 0.8154
+                },
+                {
+                  "x": 0.9043,
+                  "y": 0.7998
+                },
+                {
+                  "x": 0.9154,
+                  "y": 0.8066
+                },
+                {
+                  "x": 0.9251,
+                  "y": 0.8242
+                },
+                {
+                  "x": 0.931,
+                  "y": 0.8447
+                },
+                {
+                  "x": 0.9303,
+                  "y": 0.9326
+                },
+                {
+                  "x": 0.8574,
+                  "y": 0.9326
+                }
+              ]
+            },
+            "hintZone": {
+              "x": 0.8968,
+              "y": 0.7794,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look by the bakery window.",
+              "he": "חפשו ליד חלון המאפייה."
+            },
+            "layer": "front"
+          },
+          {
+            "id": "paris_bakery_b",
+            "x": 0.865,
+            "y": 0.605,
+            "scale": 0.07,
+            "hintZone": {
+              "x": 0.865,
+              "y": 0.59,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look by the second shop.",
+              "he": "חפשו ליד החנות השנייה."
+            },
+            "layer": "front"
+          }
+        ]
+      },
+      {
+        "id": "carousel",
+        "action": "The child stands on the wooden carousel deck between the poles, watching the horses. Both shoes rest on TOP of the deck and the entire body rises above it. Do not put a head or torso through the deck, under a horse, or in the floor. Use an existing pole only as a narrow natural overlap, never as an excuse to erase the legs.",
+        "targetType": "paris_carousel",
+        "bodyTemplate": "paris_carousel",
+        "difficulty": 2,
+        "mission": {
+          "en": "Find {name} on the carousel",
+          "he": "מצאו את {name} על הקרוסלה"
+        },
+        "item": {
+          "en": "a carousel with painted horses",
+          "he": "קרוסלה עם סוסים מצוירים"
+        },
+        "success": [
+          {
+            "en": "Round and round!",
+            "he": "סחור סחור!"
+          },
+          {
+            "en": "You found me! One more ride?",
+            "he": "מצאתם! עוד סיבוב?"
+          },
+          {
+            "en": "I picked the blue horse.",
+            "he": "בחרתי את הסוס הכחול."
+          }
+        ],
+        "animation": "wiggle",
+        "slots": [
+          {
+            "id": "paris_carousel_a",
+            "x": 0.6071,
+            "y": 0.4749,
+            "scale": 0.1099,
+            "placement": {
+              "pose": "standing",
+              "support": "Wooden carousel deck; the projected shoe midpoint is hidden just behind the outer fascia.",
+              "occlusion": "The original red-and-gold carousel fascia hides the shoes and lower shins; it stays well below the face.",
+              "instructions": "Stand upright on the carousel deck behind its front rim, facing outward. Keep the face fully above the rim and use the same small perspective scale as the nearby carousel riders.",
+              "foreground": [
+                {
+                  "x": 0.5853,
+                  "y": 0.5215
+                },
+                {
+                  "x": 0.5924,
+                  "y": 0.5166
+                },
+                {
+                  "x": 0.6022,
+                  "y": 0.52
+                },
+                {
+                  "x": 0.6136,
+                  "y": 0.5161
+                },
+                {
+                  "x": 0.625,
+                  "y": 0.5215
+                },
+                {
+                  "x": 0.6283,
+                  "y": 0.5762
+                },
+                {
+                  "x": 0.5859,
+                  "y": 0.5762
+                }
+              ]
+            },
+            "hintZone": {
+              "x": 0.6071,
+              "y": 0.4599,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look at the carousel.",
+              "he": "חפשו בקרוסלה."
+            },
+            "layer": "front"
+          },
+          {
+            "id": "paris_carousel_b",
+            "x": 0.775,
+            "y": 0.505,
+            "scale": 0.045,
+            "hintZone": {
+              "x": 0.775,
+              "y": 0.49,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look at the other side of the carousel.",
+              "he": "חפשו בצד השני של הקרוסלה."
+            },
+            "layer": "front"
+          }
+        ]
+      },
+      {
+        "id": "awning",
+        "action": "The child stands on the stone paving under the striped cafe awning, peeking around the edge of the cafe doorframe. The awning is overhead, NOT a surface a child is inside. Keep the body connected from face to shoes on the paving; only an actual existing table or doorframe may cover part of it. Do not blend the legs into the pavement or another person's body.",
+        "targetType": "paris_awning",
+        "bodyTemplate": "paris_awning",
+        "difficulty": 3,
+        "mission": {
+          "en": "Find {name} by the café",
+          "he": "מצאו את {name} ליד בית הקפה"
+        },
+        "item": {
+          "en": "café tables under striped awnings",
+          "he": "שולחנות קפה מתחת לסוככים מפוספסים"
+        },
+        "success": [
+          {
+            "en": "A little spot in the shade!",
+            "he": "פינה קטנה בצל!"
+          },
+          {
+            "en": "You found me! The chairs are tiny.",
+            "he": "מצאתם! הכיסאות זעירים."
+          },
+          {
+            "en": "It smells like chocolate.",
+            "he": "מריח פה שוקולד."
+          }
+        ],
+        "animation": "peek",
+        "slots": [
+          {
+            "id": "paris_awning_a",
+            "x": 0.2767,
+            "y": 0.8626,
+            "scale": 0.172,
+            "placement": {
+              "pose": "standing",
+              "support": "Solid cobblestone paving in front of the easel legs.",
+              "occlusion": "None; the child may naturally cover part of the easel and its legs behind them.",
+              "instructions": "Stand facing the viewer in front of the outer café easel, arms relaxed, with the whole face and both shoes visible. Match the scale of the nearby foreground children, not the adults."
+            },
+            "hintZone": {
+              "x": 0.2767,
+              "y": 0.8476,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look beside the café tables.",
+              "he": "חפשו ליד שולחנות בית הקפה."
+            },
+            "layer": "front"
+          },
+          {
+            "id": "paris_awning_b",
+            "x": 0.045,
+            "y": 0.52,
+            "scale": 0.058,
+            "hintZone": {
+              "x": 0.045,
+              "y": 0.505,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look at the café on the right.",
+              "he": "חפשו בבית הקפה מימין."
+            },
+            "layer": "front"
+          }
+        ]
+      }
+    ],
+    "artNotes": [
+      "the Eiffel tower large and complete in the middle of the picture",
+      "a wide stone plaza in front of it, full of tiny people",
+      "a carousel with painted horses at one edge of the plaza",
+      "a bakery window full of baguettes and pastries",
+      "artists painting at easels facing the tower",
+      "flower boxes on every balcony around the square"
+    ],
+    "collectible": {
+      "id": "stamp_france",
+      "name": {
+        "en": "A Paris stamp",
+        "he": "חותמת פריז"
+      },
+      "icon": "🗼"
+    },
+    "celebration": {
+      "kind": "confetti",
+      "completeText": {
+        "en": "You found {name} three times in Paris!",
+        "he": "מצאתם את {name} שלוש פעמים בפריז!"
+      }
+    },
+    "ambient": [
+      {
+        "id": "carousel",
+        "label": {
+          "en": "The carousel turning",
+          "he": "הקרוסלה מסתובבת"
+        },
+        "x": 0.3,
+        "y": 0.78,
+        "w": 0.05,
+        "h": 0.05,
+        "animation": "shake",
+        "sound": "chirp",
+        "reaction": {
+          "en": "Round and round!",
+          "he": "סחור סחור!"
+        },
+        "glyph": "🎠"
+      },
+      {
+        "id": "pigeon",
+        "label": {
+          "en": "A pigeon on a hat",
+          "he": "יונה על כובע"
+        },
+        "x": 0.55,
+        "y": 0.3,
+        "w": 0.05,
+        "h": 0.05,
+        "animation": "slide",
+        "sound": "boing",
+        "reaction": {
+          "en": "Excuse me, that is a hat!",
+          "he": "סליחה, זה כובע!"
+        },
+        "glyph": "🕊️"
+      },
+      {
+        "id": "painter",
+        "label": {
+          "en": "A painter at an easel",
+          "he": "צייר ליד כן"
+        },
+        "x": 0.82,
+        "y": 0.68,
+        "w": 0.05,
+        "h": 0.05,
+        "animation": "shake",
+        "sound": "chirp",
+        "reaction": {
+          "en": "Do not move!",
+          "he": "אל תזוזו!"
+        },
+        "glyph": "🎨"
+      }
+    ],
+    "artComposition": "The Eiffel Tower is the subject: draw it LARGE and complete, from its four feet to its tip, standing in the middle of the picture at the far side of a wide open plaza. It should be the first thing anyone sees. The plaza in front of it is full of tiny people, with the carousel, the bakery and the café tables around its edges."
+  },
+  {
+    "id": "scene_marrakech",
+    "slug": "marrakech",
+    "name": {
+      "en": "Marrakech",
+      "he": "מרקש"
+    },
+    "tagline": {
+      "en": "Lanterns, carpets and a mountain of spices.",
+      "he": "פנסים, שטיחים והר של תבלינים."
+    },
+    "version": 3,
+    "active": true,
+    "artStatus": "final",
+    "art": {
+      "width": 3072,
+      "height": 2048,
+      "base": "/scenes/marrakech/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/marrakech/refresh-20260907/thumb.webp",
+      "palette": {
+        "sky": "#DCE9F5",
+        "ground": "#B9A98F",
+        "accent": "#F5B301"
+      },
+      "sha256": "061281629ab74225f78a4612497f9b6e1278de6149526315412693e03dc6fd85"
+    },
+    "targets": [
+      {
+        "id": "lanterns",
+        "targetType": "marrakech_lanterns",
+        "bodyTemplate": "marrakech_lanterns",
+        "difficulty": 1,
+        "mission": {
+          "en": "Find {name}",
+          "he": "מצאו את {name}"
+        },
+        "item": {
+          "en": "hundreds of metal lanterns hanging above a stall",
+          "he": "מאות פנסי מתכת תלויים מעל דוכן"
+        },
+        "success": [
+          {
+            "en": "They jingled when I moved!",
+            "he": "הם צלצלו כשזזתי!"
+          },
+          {
+            "en": "You found me! Look how they shine.",
+            "he": "מצאתם! תראו איך הם נוצצים."
+          },
+          {
+            "en": "So many little lights.",
+            "he": "כל כך הרבה אורות קטנים."
+          }
+        ],
+        "animation": "bounce",
+        "slots": [
+          {
+            "id": "marrakech_lanterns_a",
+            "x": 0.1855,
+            "y": 0.35,
+            "scale": 0.078,
+            "hintZone": {
+              "x": 0.1855,
+              "y": 0.335,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look under the hanging lanterns.",
+              "he": "חפשו מתחת לפנסים התלויים."
+            },
+            "layer": "front",
+            "placement": {
+              "pose": "standing",
+              "support": "Both shoes rest on the narrow raised stall platform beneath the hanging lantern display.",
+              "occlusion": "None; the child is drawn in front of the lanterns and stored wares.",
+              "instructions": "Place a small child facing the viewer before the lantern wall, arms relaxed and face unobstructed. Match the short background children, clearly smaller than the nearby adults."
+            }
+          },
+          {
+            "id": "marrakech_lanterns_b",
+            "x": 0.3,
+            "y": 0.3,
+            "scale": 0.048,
+            "hintZone": {
+              "x": 0.3,
+              "y": 0.285,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look at the lantern stall on the right.",
+              "he": "חפשו בדוכן הפנסים מימין."
+            },
+            "layer": "front"
+          }
+        ]
+      },
+      {
+        "id": "carpets",
+        "targetType": "marrakech_carpets",
+        "bodyTemplate": "marrakech_carpets",
+        "difficulty": 2,
+        "mission": {
+          "en": "Find {name} by the carpets",
+          "he": "מצאו את {name} ליד השטיחים"
+        },
+        "item": {
+          "en": "tall stacks of carpets in deep reds and blues",
+          "he": "ערימות שטיחים גבוהות באדום ובכחול"
+        },
+        "success": [
+          {
+            "en": "They are so soft!",
+            "he": "הם כל כך רכים!"
+          },
+          {
+            "en": "You found me! I counted twenty.",
+            "he": "מצאתם! ספרתי עשרים."
+          },
+          {
+            "en": "One was flying, I think.",
+            "he": "אחד עף, נדמה לי."
+          }
+        ],
+        "animation": "wiggle",
+        "slots": [
+          {
+            "id": "marrakech_carpets_a",
+            "x": 0.145,
+            "y": 0.5375,
+            "scale": 0.145,
+            "hintZone": {
+              "x": 0.145,
+              "y": 0.5225,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look between the stacks of carpets.",
+              "he": "חפשו בין ערימות השטיחים."
+            },
+            "layer": "front",
+            "placement": {
+              "pose": "seated",
+              "support": "The support point is the child's seat on the flat top carpet; the shoes hang against the front of the pile.",
+              "occlusion": "None; the child naturally covers part of the carpet pattern behind the body.",
+              "instructions": "Seat the child on the top of the folded red-and-blue carpet pile, facing slightly right with hands in the lap and legs dangling toward the aisle. Use the scale of nearby foreground children."
+            }
+          },
+          {
+            "id": "marrakech_carpets_b",
+            "x": 0.078,
+            "y": 0.6,
+            "scale": 0.078,
+            "hintZone": {
+              "x": 0.078,
+              "y": 0.585,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look at the carpets on the left.",
+              "he": "חפשו בשטיחים משמאל."
+            },
+            "layer": "front"
+          }
+        ]
+      },
+      {
+        "id": "spices",
+        "targetType": "marrakech_spices",
+        "bodyTemplate": "marrakech_spices",
+        "difficulty": 3,
+        "mission": {
+          "en": "Find {name} hiding behind the spices",
+          "he": "מצאו את {name} מאחורי התבלינים"
+        },
+        "item": {
+          "en": "tall cones of orange, red and yellow spices in open sacks",
+          "he": "חרוטי תבלינים כתומים אדומים וצהובים בשקים פתוחים"
+        },
+        "success": [
+          {
+            "en": "I sneezed once. Only once!",
+            "he": "התעטשתי פעם אחת. רק אחת!"
+          },
+          {
+            "en": "You found me! It smells amazing.",
+            "he": "מצאתם! מריח מדהים."
+          },
+          {
+            "en": "My hands are orange now.",
+            "he": "הידיים שלי כתומות עכשיו."
+          }
+        ],
+        "animation": "peek",
+        "slots": [
+          {
+            "id": "marrakech_spices_a",
+            "x": 0.488,
+            "y": 0.573,
+            "scale": 0.075,
+            "hintZone": {
+              "x": 0.488,
+              "y": 0.558,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look behind the cones of spices.",
+              "he": "חפשו מאחורי חרוטי התבלינים."
+            },
+            "layer": "front",
+            "placement": {
+              "pose": "peeking",
+              "support": "Hidden feet on the ground behind the blue-and-white patterned barrel; the child stands normally there.",
+              "occlusion": "The blue-and-white patterned barrel in front hides the child from the chest down; only the head and shoulders show above its rim.",
+              "instructions": "A child peeks out above the blue-and-white patterned barrel that stands in front of the yellow spice cone, between the vendor in the cream robe on the left and the vendor in the green robe on the right. Only the head and shoulders are visible above the barrel; keep the whole face clear and do not touch either vendor. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown. Show the head, the top of the shoulders and both hands resting on the edge of the object in front, so the child is visibly holding on to it; never a head alone."
+            }
+          },
+          {
+            "id": "marrakech_spices_b",
+            "x": 0.585,
+            "y": 0.42,
+            "scale": 0.05,
+            "hintZone": {
+              "x": 0.585,
+              "y": 0.40499999999999997,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look at the spice sacks on the right.",
+              "he": "חפשו בשקי התבלינים מימין."
+            },
+            "layer": "front"
+          }
+        ]
+      }
+    ],
+    "artNotes": [
+      "hundreds of metal lanterns hanging from a stall roof",
+      "stacked carpets in deep reds and blues",
+      "cones of coloured spices",
+      "a mint tea seller with a tall silver pot",
+      "a donkey cart loaded with baskets",
+      "striped cloth stretched overhead for shade"
+    ],
+    "collectible": {
+      "id": "stamp_morocco",
+      "name": {
+        "en": "A Marrakech stamp",
+        "he": "חותמת מרקש"
+      },
+      "icon": "🏮"
+    },
+    "celebration": {
+      "kind": "fruit",
+      "completeText": {
+        "en": "You found {name} three times in Marrakech!",
+        "he": "מצאתם את {name} שלוש פעמים במרקש!"
+      }
+    },
+    "ambient": [
+      {
+        "id": "teapot",
+        "label": {
+          "en": "Mint tea poured high",
+          "he": "תה נענע נמזג מגבוה"
+        },
+        "x": 0.3,
+        "y": 0.78,
+        "w": 0.05,
+        "h": 0.05,
+        "animation": "shake",
+        "sound": "chirp",
+        "reaction": {
+          "en": "Not a drop spilled!",
+          "he": "לא נשפכה טיפה!"
+        },
+        "glyph": "🫖"
+      },
+      {
+        "id": "donkey",
+        "label": {
+          "en": "A donkey cart",
+          "he": "עגלת חמור"
+        },
+        "x": 0.55,
+        "y": 0.3,
+        "w": 0.05,
+        "h": 0.05,
+        "animation": "slide",
+        "sound": "boing",
+        "reaction": {
+          "en": "Coming through!",
+          "he": "פנו דרך!"
+        },
+        "glyph": "🫏"
+      },
+      {
+        "id": "lantern",
+        "label": {
+          "en": "A swinging lantern",
+          "he": "פנס מתנדנד"
+        },
+        "x": 0.82,
+        "y": 0.68,
+        "w": 0.05,
+        "h": 0.05,
+        "animation": "shake",
+        "sound": "chirp",
+        "reaction": {
+          "en": "It jingles!",
+          "he": "הוא מצלצל!"
+        },
+        "glyph": "🏮"
+      }
+    ]
+  },
+  {
+    "id": "scene_giza",
+    "slug": "giza",
+    "name": {
+      "en": "Giza",
+      "he": "גיזה"
+    },
+    "tagline": {
+      "en": "Camels, stone giants and a very old riddle.",
+      "he": "גמלים, ענקי אבן וחידה עתיקה מאוד."
+    },
+    "version": 3,
+    "active": true,
+    "artStatus": "final",
+    "art": {
+      "width": 3072,
+      "height": 2048,
+      "base": "/scenes/giza/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/giza/refresh-20260907/thumb.webp",
+      "palette": {
+        "sky": "#DCE9F5",
+        "ground": "#B9A98F",
+        "accent": "#F5B301"
+      },
+      "sha256": "da3fe5115a04bc0e79d7c7daee17e14ce5167b9e74868289af91a85b5266bb09"
+    },
+    "targets": [
+      {
+        "id": "camel",
+        "targetType": "giza_camel",
+        "bodyTemplate": "giza_camel",
+        "difficulty": 1,
+        "mission": {
+          "en": "Find {name}",
+          "he": "מצאו את {name}"
+        },
+        "item": {
+          "en": "camels with bright woven blankets",
+          "he": "גמלים עם שמיכות ארוגות צבעוניות"
+        },
+        "success": [
+          {
+            "en": "He is taller than a bus!",
+            "he": "הוא גבוה מאוטובוס!"
+          },
+          {
+            "en": "You found me! He hums.",
+            "he": "מצאתם! הוא מזמזם."
+          },
+          {
+            "en": "Hold on tight!",
+            "he": "תחזיקו חזק!"
+          }
+        ],
+        "animation": "bounce",
+        "slots": [
+          {
+            "id": "giza_camel_a",
+            "x": 0.6395,
+            "y": 0.908,
+            "scale": 0.13,
+            "hintZone": {
+              "x": 0.6395,
+              "y": 0.893,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look by the camels.",
+              "he": "חפשו ליד הגמלים."
+            },
+            "layer": "front",
+            "placement": {
+              "pose": "crouching",
+              "support": "Both shoes rest on the visible sand; footX and footY mark their midpoint.",
+              "occlusion": "None; the complete crouching child remains visible in front of the sand and loose camel ropes.",
+              "instructions": "Crouch facing the viewer with hands on knees beside the foreground kneeling camel. Match the scale of the nearest foreground children and remain clearly smaller than the workers."
+            }
+          },
+          {
+            "id": "giza_camel_b",
+            "x": 0.66,
+            "y": 0.44,
+            "scale": 0.055,
+            "hintZone": {
+              "x": 0.66,
+              "y": 0.425,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look by the second camel.",
+              "he": "חפשו ליד הגמל השני."
+            },
+            "layer": "front"
+          }
+        ]
+      },
+      {
+        "id": "stall",
+        "targetType": "giza_stall",
+        "bodyTemplate": "giza_stall",
+        "difficulty": 2,
+        "mission": {
+          "en": "Find {name} by the scarf stall",
+          "he": "מצאו את {name} ליד דוכן הצעיפים"
+        },
+        "item": {
+          "en": "a stall of coloured scarves flapping in the wind",
+          "he": "דוכן צעיפים צבעוניים מתנופפים ברוח"
+        },
+        "success": [
+          {
+            "en": "A scarf wrapped around me!",
+            "he": "צעיף התעטף עליי!"
+          },
+          {
+            "en": "You found me! Pick a colour.",
+            "he": "מצאתם! בחרו צבע."
+          },
+          {
+            "en": "The wind helped me hide.",
+            "he": "הרוח עזרה לי להתחבא."
+          }
+        ],
+        "animation": "wiggle",
+        "slots": [
+          {
+            "id": "giza_stall_a",
+            "x": 0.236,
+            "y": 0.6625,
+            "scale": 0.12,
+            "hintZone": {
+              "x": 0.236,
+              "y": 0.6475,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look by the scarf stall.",
+              "he": "חפשו ליד דוכן הצעיפים."
+            },
+            "layer": "front",
+            "placement": {
+              "pose": "seated",
+              "support": "footX and footY mark the seat point on the firm top of the folded textile stack; the shoes hang below it.",
+              "occlusion": "None; the entire seated child is in front of the scarf display.",
+              "instructions": "Sit upright on the front edge of the folded scarf stack, knees together and shoes dangling. Use roughly the head size of the nearby stall child and stay much smaller than the vendor."
+            }
+          },
+          {
+            "id": "giza_stall_b",
+            "x": 0.075,
+            "y": 0.6,
+            "scale": 0.072,
+            "hintZone": {
+              "x": 0.075,
+              "y": 0.585,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look at the stalls on the right.",
+              "he": "חפשו בדוכנים מימין."
+            },
+            "layer": "front"
+          }
+        ]
+      },
+      {
+        "id": "stones",
+        "targetType": "giza_stones",
+        "bodyTemplate": "giza_stones",
+        "difficulty": 3,
+        "mission": {
+          "en": "Find {name} hiding behind the great stones",
+          "he": "מצאו את {name} מאחורי אבני הענק"
+        },
+        "item": {
+          "en": "enormous cut stone blocks at the foot of a pyramid",
+          "he": "גושי אבן ענקיים למרגלות הפירמידה"
+        },
+        "success": [
+          {
+            "en": "These stones are ancient!",
+            "he": "האבנים האלה עתיקות!"
+          },
+          {
+            "en": "You found me! It is cool in the shade.",
+            "he": "מצאתם! קריר בצל."
+          },
+          {
+            "en": "Somebody built this by hand.",
+            "he": "מישהו בנה את זה בידיים."
+          }
+        ],
+        "animation": "peek",
+        "slots": [
+          {
+            "id": "giza_stones_a",
+            "x": 0.6345,
+            "y": 0.71,
+            "scale": 0.057,
+            "hintZone": {
+              "x": 0.6345,
+              "y": 0.695,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look behind the big stone blocks.",
+              "he": "חפשו מאחורי גושי האבן."
+            },
+            "layer": "front",
+            "placement": {
+              "pose": "peeking",
+              "support": "The hidden shoes stand on sand immediately behind the block at the given point; bodyHeight is the implied full head-to-shoe height.",
+              "occlusion": "The stone hides the child from the shoulders downward; the face stays wholly above its sloping top edge.",
+              "instructions": "Stand behind the enormous inscribed block and peek over it, showing the complete face and only a little shoulder. Use the height of the nearby foreground children, not an adult scale. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown. Show the head, the top of the shoulders and both hands resting on the edge of the object in front, so the child is visibly holding on to it; never a head alone.",
+              "foreground": [
+                {
+                  "x": 0.563,
+                  "y": 0.748
+                },
+                {
+                  "x": 0.592,
+                  "y": 0.713
+                },
+                {
+                  "x": 0.663,
+                  "y": 0.746
+                },
+                {
+                  "x": 0.663,
+                  "y": 0.831
+                },
+                {
+                  "x": 0.641,
+                  "y": 0.849
+                },
+                {
+                  "x": 0.568,
+                  "y": 0.817
+                }
+              ]
+            }
+          },
+          {
+            "id": "giza_stones_b",
+            "x": 0.8,
+            "y": 0.6,
+            "scale": 0.068,
+            "hintZone": {
+              "x": 0.8,
+              "y": 0.585,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look at the stones on the left.",
+              "he": "חפשו באבנים משמאל."
+            },
+            "layer": "front"
+          }
+        ]
+      }
+    ],
+    "artNotes": [
+      "three great pyramids behind the crowd",
+      "camels with bright woven blankets",
+      "the sphinx watching from one side",
+      "stalls selling scarves and little clay pots",
+      "archaeologists brushing sand off a stone",
+      "hot air shimmering over the sand"
+    ],
+    "collectible": {
+      "id": "stamp_egypt",
+      "name": {
+        "en": "A Giza stamp",
+        "he": "חותמת גיזה"
+      },
+      "icon": "🐫"
+    },
+    "celebration": {
+      "kind": "confetti",
+      "completeText": {
+        "en": "You found {name} three times in Giza!",
+        "he": "מצאתם את {name} שלוש פעמים בגיזה!"
+      }
+    },
+    "ambient": [
+      {
+        "id": "camel",
+        "label": {
+          "en": "A camel humming",
+          "he": "גמל מזמזם"
+        },
+        "x": 0.3,
+        "y": 0.78,
+        "w": 0.05,
+        "h": 0.05,
+        "animation": "shake",
+        "sound": "chirp",
+        "reaction": {
+          "en": "Hmmmm.",
+          "he": "המממ."
+        },
+        "glyph": "🐫"
+      },
+      {
+        "id": "brush",
+        "label": {
+          "en": "An archaeologist brushing",
+          "he": "ארכיאולוג מבריש"
+        },
+        "x": 0.55,
+        "y": 0.3,
+        "w": 0.05,
+        "h": 0.05,
+        "animation": "slide",
+        "sound": "boing",
+        "reaction": {
+          "en": "Careful now.",
+          "he": "בזהירות."
+        },
+        "glyph": "🪶"
+      },
+      {
+        "id": "scarf",
+        "label": {
+          "en": "A scarf in the wind",
+          "he": "צעיף ברוח"
+        },
+        "x": 0.82,
+        "y": 0.68,
+        "w": 0.05,
+        "h": 0.05,
+        "animation": "shake",
+        "sound": "chirp",
+        "reaction": {
+          "en": "Catch it!",
+          "he": "תפסו אותו!"
+        },
+        "glyph": "🧣"
+      }
+    ]
+  },
+  {
+    "id": "scene_tokyo",
+    "slug": "tokyo",
+    "name": {
+      "en": "Tokyo",
+      "he": "טוקיו"
+    },
+    "tagline": {
+      "en": "Neon at night, cherry blossom and a very busy crossing.",
+      "he": "נאון בלילה, פריחת דובדבן וצומת עמוס מאוד."
+    },
+    "version": 3,
+    "active": true,
+    "artStatus": "final",
+    "art": {
+      "width": 3072,
+      "height": 2048,
+      "base": "/scenes/tokyo/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/tokyo/refresh-20260907/thumb.webp",
+      "palette": {
+        "sky": "#DCE9F5",
+        "ground": "#B9A98F",
+        "accent": "#F5B301"
+      },
+      "sha256": "281052c6e87a94d0c1034ceffe46c67c96b2d9bd1cb8609f5b64aaaed63467e1"
+    },
+    "targets": [
+      {
+        "id": "crossing",
+        "targetType": "tokyo_crossing",
+        "bodyTemplate": "tokyo_crossing",
+        "difficulty": 1,
+        "mission": {
+          "en": "Find {name}",
+          "he": "מצאו את {name}"
+        },
+        "item": {
+          "en": "a huge pedestrian crossing full of people",
+          "he": "צומת חצייה ענק מלא אנשים"
+        },
+        "success": [
+          {
+            "en": "Everyone crossed at once!",
+            "he": "כולם חצו בבת אחת!"
+          },
+          {
+            "en": "You found me! Which way now?",
+            "he": "מצאתם! לאן עכשיו?"
+          },
+          {
+            "en": "So many umbrellas.",
+            "he": "כל כך הרבה מטריות."
+          }
+        ],
+        "animation": "bounce",
+        "slots": [
+          {
+            "id": "tokyo_crossing_a",
+            "x": 0.454,
+            "y": 0.8415,
+            "scale": 0.137,
+            "hintZone": {
+              "x": 0.454,
+              "y": 0.8265,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look at the busy crossing.",
+              "he": "חפשו בצומת העמוס."
+            },
+            "layer": "front",
+            "placement": {
+              "pose": "standing",
+              "support": "Both shoes rest on the dark asphalt at the near end of the pedestrian crossing.",
+              "occlusion": "None; the entire child remains visible in an open pavement gap.",
+              "instructions": "Place the child front-facing with relaxed arms and a clearly childlike build, roughly matching the nearby school-age children and distinctly shorter than adults."
+            }
+          },
+          {
+            "id": "tokyo_crossing_b",
+            "x": 0.395,
+            "y": 0.53,
+            "scale": 0.058,
+            "hintZone": {
+              "x": 0.395,
+              "y": 0.515,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look at the other side of the crossing.",
+              "he": "חפשו בצד השני של הצומת."
+            },
+            "layer": "front"
+          }
+        ]
+      },
+      {
+        "id": "stall",
+        "targetType": "tokyo_stall",
+        "bodyTemplate": "tokyo_stall",
+        "difficulty": 2,
+        "mission": {
+          "en": "Find {name} by the festival stalls",
+          "he": "מצאו את {name} ליד דוכני הפסטיבל"
+        },
+        "item": {
+          "en": "festival stalls with paper lanterns, masks and goldfish bowls",
+          "he": "דוכני פסטיבל עם פנסי נייר, מסכות וקערות דגי זהב"
+        },
+        "success": [
+          {
+            "en": "I won a goldfish!",
+            "he": "זכיתי בדג זהב!"
+          },
+          {
+            "en": "You found me! Try the masks.",
+            "he": "מצאתם! תמדדו מסכות."
+          },
+          {
+            "en": "It smells like pancakes.",
+            "he": "מריח פה כמו פנקייק."
+          }
+        ],
+        "animation": "wiggle",
+        "slots": [
+          {
+            "id": "tokyo_stall_a",
+            "x": 0.073,
+            "y": 0.848,
+            "scale": 0.117,
+            "hintZone": {
+              "x": 0.073,
+              "y": 0.833,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look by the festival stalls.",
+              "he": "חפשו ליד דוכני הפסטיבל."
+            },
+            "layer": "front",
+            "placement": {
+              "pose": "peeking",
+              "support": "The implied feet stand on the stall floor behind the wooden mask display.",
+              "occlusion": "The dense foreground mask rack and its wooden bin hide the child from mid-torso through the feet.",
+              "instructions": "Show the child facing forward among the masks, with shoulders and upper torso visible and hands close to the rack edge. Use the same scale as foreground children. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown. Show the head, the top of the shoulders and both hands resting on the edge of the object in front, so the child is visibly holding on to it; never a head alone.",
+              "foreground": [
+                {
+                  "x": 0.043,
+                  "y": 0.889
+                },
+                {
+                  "x": 0.05,
+                  "y": 0.883
+                },
+                {
+                  "x": 0.058,
+                  "y": 0.887
+                },
+                {
+                  "x": 0.066,
+                  "y": 0.878
+                },
+                {
+                  "x": 0.075,
+                  "y": 0.882
+                },
+                {
+                  "x": 0.083,
+                  "y": 0.875
+                },
+                {
+                  "x": 0.092,
+                  "y": 0.881
+                },
+                {
+                  "x": 0.101,
+                  "y": 0.878
+                },
+                {
+                  "x": 0.103,
+                  "y": 1
+                },
+                {
+                  "x": 0.043,
+                  "y": 1
+                }
+              ]
+            }
+          },
+          {
+            "id": "tokyo_stall_b",
+            "x": 0.14,
+            "y": 0.635,
+            "scale": 0.078,
+            "hintZone": {
+              "x": 0.14,
+              "y": 0.62,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look at the stalls on the left.",
+              "he": "חפשו בדוכנים משמאל."
+            },
+            "layer": "front"
+          }
+        ]
+      },
+      {
+        "id": "blossom",
+        "targetType": "tokyo_blossom",
+        "bodyTemplate": "tokyo_blossom",
+        "difficulty": 3,
+        "mission": {
+          "en": "Find {name} hiding under the blossom tree",
+          "he": "מצאו את {name} מתחת לעץ הפריחה"
+        },
+        "item": {
+          "en": "cherry trees heavy with pink blossom",
+          "he": "עצי דובדבן עמוסים בפריחה ורודה"
+        },
+        "success": [
+          {
+            "en": "Petals in my hair!",
+            "he": "עלי כותרת בשיער!"
+          },
+          {
+            "en": "You found me! It rains pink here.",
+            "he": "מצאתם! יורד פה ורוד."
+          },
+          {
+            "en": "One landed on my nose.",
+            "he": "אחד נחת לי על האף."
+          }
+        ],
+        "animation": "peek",
+        "slots": [
+          {
+            "id": "tokyo_blossom_a",
+            "x": 0.519,
+            "y": 0.348,
+            "scale": 0.056,
+            "hintZone": {
+              "x": 0.519,
+              "y": 0.333,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look under the blossom tree.",
+              "he": "חפשו מתחת לעץ הפריחה."
+            },
+            "layer": "front",
+            "placement": {
+              "pose": "standing",
+              "support": "Both shoes rest on the street immediately in front of the pale car; the child may naturally cover part of its bumper and hood.",
+              "occlusion": "None; the car is behind the child rather than blocking them.",
+              "instructions": "Stand the child directly beneath the central pink canopy, facing forward with arms close to the body. Make the child about three-quarters the height of nearby adults at this depth."
+            }
+          },
+          {
+            "id": "tokyo_blossom_b",
+            "x": 0.93,
+            "y": 0.59,
+            "scale": 0.068,
+            "hintZone": {
+              "x": 0.93,
+              "y": 0.575,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look at the second blossom tree.",
+              "he": "חפשו בעץ הפריחה השני."
+            },
+            "layer": "front"
+          }
+        ]
+      }
+    ],
+    "artNotes": [
+      "walls of glowing neon signs in pink, blue, green and gold",
+      "the wet street reflecting the neon in long colourful streaks",
+      "paper lanterns glowing orange over the festival stalls",
+      "cherry trees in blossom lit pink by the signs above them",
+      "a vending machine glowing on a corner",
+      "children in yukata holding goldfish bags"
+    ],
+    "collectible": {
+      "id": "stamp_japan",
+      "name": {
+        "en": "A Tokyo stamp",
+        "he": "חותמת טוקיו"
+      },
+      "icon": "🌸"
+    },
+    "celebration": {
+      "kind": "confetti",
+      "completeText": {
+        "en": "You found {name} three times in Tokyo!",
+        "he": "מצאתם את {name} שלוש פעמים בטוקיו!"
+      }
+    },
+    "ambient": [
+      {
+        "id": "goldfish",
+        "label": {
+          "en": "A goldfish in a bag",
+          "he": "דג זהב בשקית"
+        },
+        "x": 0.3,
+        "y": 0.78,
+        "w": 0.05,
+        "h": 0.05,
+        "animation": "shake",
+        "sound": "chirp",
+        "reaction": {
+          "en": "Blub!",
+          "he": "בלוב!"
+        },
+        "glyph": "🐠"
+      },
+      {
+        "id": "blossom",
+        "label": {
+          "en": "Blossom falling",
+          "he": "פריחה נושרת"
+        },
+        "x": 0.55,
+        "y": 0.3,
+        "w": 0.05,
+        "h": 0.05,
+        "animation": "slide",
+        "sound": "boing",
+        "reaction": {
+          "en": "It rains pink!",
+          "he": "יורד ורוד!"
+        },
+        "glyph": "🌸"
+      },
+      {
+        "id": "fan",
+        "label": {
+          "en": "A paper windmill",
+          "he": "טחנת נייר"
+        },
+        "x": 0.82,
+        "y": 0.68,
+        "w": 0.05,
+        "h": 0.05,
+        "animation": "shake",
+        "sound": "chirp",
+        "reaction": {
+          "en": "It spins!",
+          "he": "היא מסתובבת!"
+        },
+        "glyph": "🎐"
+      }
+    ],
+    "artComposition": "NIGHT, not daylight: this one is lit by neon. Towers of glowing signs in pink, blue, green and gold cover the buildings on every side and reflect in the wet street below, and paper lanterns glow orange over the festival stalls. Keep it bright and colourful — the neon does the work the sun does elsewhere. The cherry blossom stays, lit pink by the signs above it."
+  },
+  {
+    "id": "scene_greatwall",
+    "slug": "greatwall",
+    "name": {
+      "en": "The Great Wall",
+      "he": "החומה הסינית"
+    },
+    "tagline": {
+      "en": "Endless steps, a paper dragon and mist on the hills.",
+      "he": "מדרגות אינסופיות, דרקון נייר וערפל על הגבעות."
+    },
+    "wardrobe": "a thin light-blue shirt and sand-coloured trousers",
+    "version": 3,
+    "active": true,
+    "artStatus": "final",
+    "art": {
+      "width": 3072,
+      "height": 2048,
+      "base": "/scenes/greatwall/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/greatwall/refresh-20260907/thumb.webp",
+      "palette": {
+        "sky": "#DCE9F5",
+        "ground": "#B9A98F",
+        "accent": "#F5B301"
+      },
+      "sha256": "a137bdcc6ed1e7d2f227e22e196067d451709c86e2cda61bf39956a5929addb4"
+    },
+    "targets": [
+      {
+        "id": "dragon",
+        "targetType": "greatwall_dragon",
+        "bodyTemplate": "greatwall_dragon",
+        "difficulty": 1,
+        "mission": {
+          "en": "Find {name}",
+          "he": "מצאו את {name}"
+        },
+        "item": {
+          "en": "a long paper dragon carried by many children",
+          "he": "דרקון נייר ארוך שילדים רבים נושאים"
+        },
+        "success": [
+          {
+            "en": "I was one of the legs!",
+            "he": "הייתי אחת הרגליים!"
+          },
+          {
+            "en": "You found me! He is very long.",
+            "he": "מצאתם! הוא ארוך מאוד."
+          },
+          {
+            "en": "The drum went boom.",
+            "he": "התוף עשה בום."
+          }
+        ],
+        "animation": "bounce",
+        "slots": [
+          {
+            "id": "greatwall_dragon_a",
+            "x": 0.4737,
+            "y": 0.7705,
+            "scale": 0.1,
+            "hintZone": {
+              "x": 0.4737,
+              "y": 0.7555,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look under the paper dragon.",
+              "he": "חפשו מתחת לדרקון הנייר."
+            },
+            "layer": "front",
+            "placement": {
+              "pose": "seated",
+              "support": "footX and footY mark the child’s seat contact on the flat stone paving; bodyHeight is the implied standing height.",
+              "occlusion": "None. The seated child is fully foreground and may cover a small piece of scenery behind.",
+              "instructions": "Seat the child cross-legged on the clear paving directly below the dragon’s middle. Face forward with hands in the lap; use the same head size as nearby children. She sits on the flat stone paving of the wall's walkway, never on the hanging lantern, the pole or the dragon."
+            }
+          },
+          {
+            "id": "greatwall_dragon_b",
+            "x": 0.66,
+            "y": 0.635,
+            "scale": 0.075,
+            "hintZone": {
+              "x": 0.66,
+              "y": 0.62,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look at the dragon's tail.",
+              "he": "חפשו בזנב הדרקון."
+            },
+            "layer": "front"
+          }
+        ]
+      },
+      {
+        "id": "lanterns",
+        "action": "The child is standing on the wall, looking up at the red lantern.",
+        "expression": "curious, looking up at the lantern, mouth relaxed",
+        "targetType": "greatwall_lanterns",
+        "bodyTemplate": "greatwall_lanterns",
+        "difficulty": 2,
+        "mission": {
+          "en": "Find {name} by the red lanterns",
+          "he": "מצאו את {name} ליד הפנסים האדומים"
+        },
+        "item": {
+          "en": "red lanterns strung between poles along the wall",
+          "he": "פנסים אדומים מתוחים בין עמודים לאורך החומה"
+        },
+        "success": [
+          {
+            "en": "They swing in the wind!",
+            "he": "הם מתנדנדים ברוח!"
+          },
+          {
+            "en": "You found me! Count them.",
+            "he": "מצאתם! תספרו אותם."
+          },
+          {
+            "en": "Red everywhere.",
+            "he": "אדום בכל מקום."
+          }
+        ],
+        "animation": "wiggle",
+        "slots": [
+          {
+            "id": "greatwall_lanterns_a",
+            "x": 0.5001,
+            "y": 0.8838,
+            "scale": 0.108,
+            "placement": {
+              "pose": "standing",
+              "support": "Both shoes rest on the visible stone step; footX and footY are the midpoint between them.",
+              "occlusion": "None. Draw the child in front of the lantern, tassel, and pole; those objects may be partly covered behind the child.",
+              "instructions": "Stand the child on the broad lower stone step, in front of the low red lantern and just left of the tall pole. Match the scale of children on the nearby foreground landing."
+            },
+            "hintZone": {
+              "x": 0.5001,
+              "y": 0.8688,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look by the red lanterns.",
+              "he": "חפשו ליד הפנסים האדומים."
+            },
+            "layer": "front"
+          },
+          {
+            "id": "greatwall_lanterns_b",
+            "x": 0.78,
+            "y": 0.505,
+            "scale": 0.058,
+            "hintZone": {
+              "x": 0.78,
+              "y": 0.49,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look at the lanterns further along.",
+              "he": "חפשו בפנסים הלאה."
+            },
+            "layer": "front"
+          }
+        ]
+      },
+      {
+        "id": "tower",
+        "targetType": "greatwall_tower",
+        "bodyTemplate": "greatwall_tower",
+        "difficulty": 3,
+        "mission": {
+          "en": "Find {name} at the watchtower",
+          "he": "מצאו את {name} ליד מגדל השמירה"
+        },
+        "item": {
+          "en": "stone watchtowers with narrow windows",
+          "he": "מגדלי שמירה מאבן עם חלונות צרים"
+        },
+        "success": [
+          {
+            "en": "I can see the whole wall!",
+            "he": "אני רואה את כל החומה!"
+          },
+          {
+            "en": "You found me! Climb up.",
+            "he": "מצאתם! תעלו."
+          },
+          {
+            "en": "The steps never end.",
+            "he": "המדרגות לא נגמרות."
+          }
+        ],
+        "animation": "peek",
+        "slots": [
+          {
+            "id": "greatwall_tower_a",
+            "x": 0.085,
+            "y": 0.4925,
+            "scale": 0.075,
+            "hintZone": {
+              "x": 0.085,
+              "y": 0.4775,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look at the steps beside the watchtower.",
+              "he": "חפשו במדרגות ליד מגדל השמירה."
+            },
+            "layer": "front",
+            "placement": {
+              "pose": "standing",
+              "support": "Both shoes on the empty stone steps at the foot of the watchtower, in the tower's shadow.",
+              "occlusion": "None; the low stone parapet on the right may overlap a shoe only.",
+              "instructions": "A small child stands on the empty flight of stone steps beside the watchtower, below the children higher up the stairs, looking up at the tower. Use the height of the children on the stairs, not the adults. Do not touch the children on the steps above."
+            }
+          },
+          {
+            "id": "greatwall_tower_b",
+            "x": 0.135,
+            "y": 0.378,
+            "scale": 0.048,
+            "hintZone": {
+              "x": 0.135,
+              "y": 0.363,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look at the tower on the left.",
+              "he": "חפשו במגדל משמאל."
+            },
+            "layer": "front"
+          }
+        ]
+      }
+    ],
+    "artNotes": [
+      "a long paper dragon carried by many children",
+      "stone steps climbing over green hills",
+      "watchtowers along the wall",
+      "red lanterns strung between poles",
+      "kite flyers on the highest tower",
+      "mist sitting in the valleys below"
+    ],
+    "collectible": {
+      "id": "stamp_china",
+      "name": {
+        "en": "A Great Wall stamp",
+        "he": "חותמת החומה"
+      },
+      "icon": "🐉"
+    },
+    "celebration": {
+      "kind": "confetti",
+      "completeText": {
+        "en": "You found {name} three times in The Great Wall!",
+        "he": "מצאתם את {name} שלוש פעמים בחומה הסינית!"
+      }
+    },
+    "ambient": [
+      {
+        "id": "dragon",
+        "label": {
+          "en": "The paper dragon",
+          "he": "דרקון הנייר"
+        },
+        "x": 0.3,
+        "y": 0.78,
+        "w": 0.05,
+        "h": 0.05,
+        "animation": "shake",
+        "sound": "chirp",
+        "reaction": {
+          "en": "Boom, boom!",
+          "he": "בום, בום!"
+        },
+        "glyph": "🐉"
+      },
+      {
+        "id": "kite",
+        "label": {
+          "en": "A kite on the tower",
+          "he": "עפיפון על המגדל"
+        },
+        "x": 0.55,
+        "y": 0.3,
+        "w": 0.05,
+        "h": 0.05,
+        "animation": "slide",
+        "sound": "boing",
+        "reaction": {
+          "en": "Higher!",
+          "he": "יותר גבוה!"
+        },
+        "glyph": "🪁"
+      },
+      {
+        "id": "lantern",
+        "label": {
+          "en": "A red lantern",
+          "he": "פנס אדום"
+        },
+        "x": 0.82,
+        "y": 0.68,
+        "w": 0.05,
+        "h": 0.05,
+        "animation": "shake",
+        "sound": "chirp",
+        "reaction": {
+          "en": "It swings.",
+          "he": "הוא מתנדנד."
+        },
+        "glyph": "🏮"
+      }
+    ]
+  },
+  {
+    "id": "scene_sydney",
+    "slug": "sydney",
+    "name": {
+      "en": "Sydney",
+      "he": "סידני"
+    },
+    "tagline": {
+      "en": "A blue harbour, white sails and a surfboard or ten.",
+      "he": "מפרץ כחול, מפרשים לבנים ועשרה גלשנים."
+    },
+    "wardrobe": "a plain yellow t-shirt and blue shorts, bare feet",
+    "version": 3,
+    "active": true,
+    "artStatus": "final",
+    "art": {
+      "width": 3072,
+      "height": 2048,
+      "base": "/scenes/sydney/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/sydney/refresh-20260907/thumb.webp",
+      "palette": {
+        "sky": "#DCE9F5",
+        "ground": "#B9A98F",
+        "accent": "#F5B301"
+      },
+      "sha256": "c33b4c484df0c020acaddc927694d11c1672bc02d918c2e9efe2618a02bb7f2b"
+    },
+    "targets": [
+      {
+        "id": "ferry",
+        "targetType": "sydney_ferry",
+        "bodyTemplate": "sydney_ferry",
+        "difficulty": 1,
+        "mission": {
+          "en": "Find {name}",
+          "he": "מצאו את {name}"
+        },
+        "item": {
+          "en": "green and yellow ferries at the water edge",
+          "he": "מעבורות ירוקות־צהובות בקו המים"
+        },
+        "success": [
+          {
+            "en": "The wind took my hat!",
+            "he": "הרוח לקחה לי את הכובע!"
+          },
+          {
+            "en": "You found me! Wave at the bridge.",
+            "he": "מצאתם! תנופפו לגשר."
+          },
+          {
+            "en": "The water is so blue.",
+            "he": "המים כל כך כחולים."
+          }
+        ],
+        "animation": "bounce",
+        "slots": [
+          {
+            "id": "sydney_ferry_a",
+            "x": 0.4345,
+            "y": 0.3755,
+            "scale": 0.078,
+            "hintZone": {
+              "x": 0.4345,
+              "y": 0.3605,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look at the water edge by the ferry.",
+              "he": "חפשו בקו המים ליד המעבורת."
+            },
+            "layer": "front",
+            "placement": {
+              "pose": "standing",
+              "support": "Feet rest on the forward deck of the central green-and-yellow ferry, behind its bow rail.",
+              "occlusion": "The green bow rail and side panel hide the lower legs and shoes; the face and torso remain fully visible.",
+              "instructions": "Stand facing forward with arms close to the body. Match the small scale of people aboard the ferry while remaining clearly child-shaped.",
+              "foreground": [
+                {
+                  "x": 0.408,
+                  "y": 0.411
+                },
+                {
+                  "x": 0.414,
+                  "y": 0.399
+                },
+                {
+                  "x": 0.427,
+                  "y": 0.402
+                },
+                {
+                  "x": 0.441,
+                  "y": 0.405
+                },
+                {
+                  "x": 0.452,
+                  "y": 0.409
+                },
+                {
+                  "x": 0.452,
+                  "y": 0.447
+                },
+                {
+                  "x": 0.438,
+                  "y": 0.451
+                },
+                {
+                  "x": 0.423,
+                  "y": 0.446
+                },
+                {
+                  "x": 0.411,
+                  "y": 0.435
+                }
+              ]
+            }
+          },
+          {
+            "id": "sydney_ferry_b",
+            "x": 0.635,
+            "y": 0.52,
+            "scale": 0.058,
+            "hintZone": {
+              "x": 0.635,
+              "y": 0.505,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look further along the water.",
+              "he": "חפשו הלאה לאורך המים."
+            },
+            "layer": "front"
+          }
+        ]
+      },
+      {
+        "id": "surfboards",
+        "action": "The child is standing between the surfboards, looking at the nearest surfboard.",
+        "expression": "a small, easy smile, looking at the surfboard",
+        "targetType": "sydney_surfboards",
+        "bodyTemplate": "sydney_surfboards",
+        "difficulty": 2,
+        "mission": {
+          "en": "Find {name} by the surfboards",
+          "he": "מצאו את {name} ליד הגלשנים"
+        },
+        "item": {
+          "en": "surfboards standing upright in a row on the sand",
+          "he": "גלשנים עומדים בשורה על החול"
+        },
+        "success": [
+          {
+            "en": "I picked the stripy one!",
+            "he": "בחרתי את המפוספס!"
+          },
+          {
+            "en": "You found me! The sand is hot.",
+            "he": "מצאתם! החול חם."
+          },
+          {
+            "en": "A wave nearly got me.",
+            "he": "גל כמעט תפס אותי."
+          }
+        ],
+        "animation": "wiggle",
+        "slots": [
+          {
+            "id": "sydney_surfboards_a",
+            "x": 0.186,
+            "y": 0.6835,
+            "scale": 0.135,
+            "hintZone": {
+              "x": 0.186,
+              "y": 0.6685,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look by the surfboards.",
+              "he": "חפשו ליד הגלשנים."
+            },
+            "layer": "front",
+            "placement": {
+              "pose": "standing",
+              "support": "Both shoes rest on clear sand immediately in front of the upright surfboard row.",
+              "occlusion": "None; the child stands in front of the boards with the full body and face visible.",
+              "instructions": "Stand front-facing with relaxed arms in front of the orange surfboard. Use about the same scale as the nearby red-shirt child, slightly larger for the lower position."
+            }
+          },
+          {
+            "id": "sydney_surfboards_b",
+            "x": 0.045,
+            "y": 0.6,
+            "scale": 0.075,
+            "hintZone": {
+              "x": 0.045,
+              "y": 0.585,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look at the boards on the right.",
+              "he": "חפשו בגלשנים מימין."
+            },
+            "layer": "front"
+          }
+        ]
+      },
+      {
+        "id": "rocks",
+        "targetType": "sydney_rocks",
+        "bodyTemplate": "sydney_rocks",
+        "difficulty": 3,
+        "mission": {
+          "en": "Find {name} hiding behind the harbour rocks",
+          "he": "מצאו את {name} מאחורי סלעי המפרץ"
+        },
+        "item": {
+          "en": "big pale rocks at the edge of the harbour with rock pools",
+          "he": "סלעים בהירים גדולים בקצה המפרץ עם שלוליות"
+        },
+        "success": [
+          {
+            "en": "There was a crab in there!",
+            "he": "היה שם סרטן!"
+          },
+          {
+            "en": "You found me! Look in the pool.",
+            "he": "מצאתם! תסתכלו בשלולית."
+          },
+          {
+            "en": "The rocks are warm.",
+            "he": "הסלעים חמים."
+          }
+        ],
+        "animation": "peek",
+        "slots": [
+          {
+            "id": "sydney_rocks_a",
+            "x": 0.7895,
+            "y": 0.867,
+            "scale": 0.158,
+            "hintZone": {
+              "x": 0.7895,
+              "y": 0.852,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look behind the rocks.",
+              "he": "חפשו מאחורי הסלעים."
+            },
+            "layer": "front",
+            "placement": {
+              "pose": "peeking",
+              "support": "The hidden feet stand on a shallow ledge behind the foreground harbour rock; the support point is concealed by the rock.",
+              "occlusion": "The near pale rock hides the lower torso, legs, and shoes along its visible top contour; the face remains unobstructed.",
+              "instructions": "Peek forward with both forearms resting on the rock top. Show the head, shoulders, and upper torso; use an implied standing height like children on adjacent foreground rocks. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown. Show the head, the top of the shoulders and both hands resting on the edge of the object in front, so the child is visibly holding on to it; never a head alone."
+            }
+          },
+          {
+            "id": "sydney_rocks_b",
+            "x": 0.855,
+            "y": 0.67,
+            "scale": 0.078,
+            "hintZone": {
+              "x": 0.855,
+              "y": 0.655,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look at the rocks on the right.",
+              "he": "חפשו בסלעים מימין."
+            },
+            "layer": "front"
+          }
+        ]
+      }
+    ],
+    "artNotes": [
+      "the white shell roofs of the opera house",
+      "green and yellow ferries crossing the harbour",
+      "surfboards standing in a row on the sand",
+      "a big steel arch bridge",
+      "cockatoos stealing chips from a table",
+      "lifeguards on a tall wooden chair"
+    ],
+    "collectible": {
+      "id": "stamp_australia",
+      "name": {
+        "en": "A Sydney stamp",
+        "he": "חותמת סידני"
+      },
+      "icon": "🏄"
+    },
+    "celebration": {
+      "kind": "confetti",
+      "completeText": {
+        "en": "You found {name} three times in Sydney!",
+        "he": "מצאתם את {name} שלוש פעמים בסידני!"
+      }
+    },
+    "ambient": [
+      {
+        "id": "cockatoo",
+        "label": {
+          "en": "A cockatoo stealing chips",
+          "he": "קקדו גונב צ'יפס"
+        },
+        "x": 0.3,
+        "y": 0.78,
+        "w": 0.05,
+        "h": 0.05,
+        "animation": "shake",
+        "sound": "chirp",
+        "reaction": {
+          "en": "Hey! Those are mine!",
+          "he": "היי! אלה שלי!"
+        },
+        "glyph": "🦜"
+      },
+      {
+        "id": "ferry",
+        "label": {
+          "en": "A ferry horn",
+          "he": "צופר מעבורת"
+        },
+        "x": 0.55,
+        "y": 0.3,
+        "w": 0.05,
+        "h": 0.05,
+        "animation": "slide",
+        "sound": "boing",
+        "reaction": {
+          "en": "Toot!",
+          "he": "טוווט!"
+        },
+        "glyph": "⛴️"
+      },
+      {
+        "id": "crab",
+        "label": {
+          "en": "A crab in a rock pool",
+          "he": "סרטן בשלולית"
+        },
+        "x": 0.82,
+        "y": 0.68,
+        "w": 0.05,
+        "h": 0.05,
+        "animation": "shake",
+        "sound": "chirp",
+        "reaction": {
+          "en": "Snip snip!",
+          "he": "קליק קליק!"
+        },
+        "glyph": "🦀"
+      }
+    ]
+  },
+  {
+    "id": "scene_antarctica",
+    "slug": "antarctica",
+    "name": {
+      "en": "Antarctica",
+      "he": "אנטארקטיקה"
+    },
+    "tagline": {
+      "en": "Penguins, a red hut and the whitest snow there is.",
+      "he": "פינגווינים, בקתה אדומה והשלג הלבן ביותר שיש."
+    },
+    "version": 3,
+    "active": true,
+    "artStatus": "final",
+    "art": {
+      "width": 3072,
+      "height": 2048,
+      "base": "/scenes/antarctica/refresh-20260907/base.webp",
+      "thumbnail": "/scenes/antarctica/refresh-20260907/thumb.webp",
+      "palette": {
+        "sky": "#DCE9F5",
+        "ground": "#B9A98F",
+        "accent": "#F5B301"
+      },
+      "sha256": "551bbb397f07047a940397e2c51522e7ab76d5b6585caa7188d3dd5e57c3de5e"
+    },
+    "targets": [
+      {
+        "id": "penguins",
+        "targetType": "antarctica_penguins",
+        "bodyTemplate": "antarctica_penguins",
+        "difficulty": 1,
+        "mission": {
+          "en": "Find {name}",
+          "he": "מצאו את {name}"
+        },
+        "item": {
+          "en": "a long line of penguins waddling across the snow",
+          "he": "שורה ארוכה של פינגווינים מתנדנדים על השלג"
+        },
+        "success": [
+          {
+            "en": "They walk funnier than me!",
+            "he": "הם הולכים מצחיק ממני!"
+          },
+          {
+            "en": "You found me! One followed me.",
+            "he": "מצאתם! אחד עקב אחריי."
+          },
+          {
+            "en": "They all look the same!",
+            "he": "כולם נראים אותו דבר!"
+          }
+        ],
+        "animation": "bounce",
+        "slots": [
+          {
+            "id": "antarctica_penguins_a",
+            "x": 0.435,
+            "y": 0.746,
+            "scale": 0.108,
+            "hintZone": {
+              "x": 0.435,
+              "y": 0.731,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look among the penguins.",
+              "he": "חפשו בין הפינגווינים."
+            },
+            "layer": "front",
+            "placement": {
+              "pose": "standing",
+              "support": "Both boots on the open snow just left of the penguin line, below the sledge dog.",
+              "occlusion": "None; the complete child is visible, standing beside the penguins without covering any of them.",
+              "instructions": "A child in winter clothes stands on open snow to the left of the marching penguins, facing them, at the same size as the nearby children. Do not cover any penguin or child."
+            }
+          },
+          {
+            "id": "antarctica_penguins_b",
+            "x": 0.655,
+            "y": 0.52,
+            "scale": 0.058,
+            "hintZone": {
+              "x": 0.655,
+              "y": 0.505,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look at the second group of penguins.",
+              "he": "חפשו בקבוצת הפינגווינים השנייה."
+            },
+            "layer": "front"
+          }
+        ]
+      },
+      {
+        "id": "sledge",
+        "targetType": "antarctica_sledge",
+        "bodyTemplate": "antarctica_sledge",
+        "difficulty": 2,
+        "mission": {
+          "en": "Find {name} by the sledges",
+          "he": "מצאו את {name} ליד המזחלות"
+        },
+        "item": {
+          "en": "wooden sledges loaded with boxes and rope",
+          "he": "מזחלות עץ עמוסות בארגזים וחבל"
+        },
+        "success": [
+          {
+            "en": "Downhill is the best part!",
+            "he": "במורד זה הכי כיף!"
+          },
+          {
+            "en": "You found me! Push me again.",
+            "he": "מצאתם! תדחפו אותי עוד פעם."
+          },
+          {
+            "en": "My cheeks are freezing.",
+            "he": "הלחיים שלי קפואות."
+          }
+        ],
+        "animation": "wiggle",
+        "slots": [
+          {
+            "id": "antarctica_sledge_a",
+            "x": 0.6167,
+            "y": 0.8895,
+            "scale": 0.165,
+            "hintZone": {
+              "x": 0.6167,
+              "y": 0.8745,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look by the sledges.",
+              "he": "חפשו ליד המזחלות."
+            },
+            "layer": "front",
+            "placement": {
+              "pose": "seated",
+              "support": "The support point is the seat on the wooden side beam; both boots descend toward the lower runner.",
+              "occlusion": "None; place the child in front of the cargo, allowing the body to cover only boxes, rope, and sledge boards behind it.",
+              "instructions": "Sit upright and sideways on the left portion of the freight sledge, knees bent toward the viewer and hands in the lap. Use the same foreground scale as the nearby seated child."
+            }
+          },
+          {
+            "id": "antarctica_sledge_b",
+            "x": 0.755,
+            "y": 0.665,
+            "scale": 0.08,
+            "hintZone": {
+              "x": 0.755,
+              "y": 0.65,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look at the sledge on the right.",
+              "he": "חפשו במזחלת מימין."
+            },
+            "layer": "front"
+          }
+        ]
+      },
+      {
+        "id": "ice",
+        "targetType": "antarctica_ice",
+        "bodyTemplate": "antarctica_ice",
+        "difficulty": 3,
+        "mission": {
+          "en": "Find {name} hiding behind a block of ice",
+          "he": "מצאו את {name} מאחורי גוש קרח"
+        },
+        "item": {
+          "en": "big blue blocks of ice with a shining arch",
+          "he": "גושי קרח כחולים גדולים עם קשת נוצצת"
+        },
+        "success": [
+          {
+            "en": "You can see through it!",
+            "he": "אפשר לראות דרכו!"
+          },
+          {
+            "en": "You found me! It is blue inside.",
+            "he": "מצאתם! הוא כחול מבפנים."
+          },
+          {
+            "en": "Brrr. Worth it.",
+            "he": "ברררר. שווה את זה."
+          }
+        ],
+        "animation": "peek",
+        "slots": [
+          {
+            "id": "antarctica_ice_a",
+            "x": 0.714,
+            "y": 0.135,
+            "scale": 0.048,
+            "hintZone": {
+              "x": 0.714,
+              "y": 0.12,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look behind the ice blocks.",
+              "he": "חפשו מאחורי גושי הקרח."
+            },
+            "layer": "front",
+            "placement": {
+              "pose": "peeking",
+              "support": "The support point is hidden on the snowy shelf behind the ice buttress; the implied child stands normally there.",
+              "occlusion": "The visible blue ice buttress hides the child from the upper chest through the shoes; no invisible cutoff is used.",
+              "instructions": "Peek over the right blue ice buttress with the full hat, face, and tops of both shoulders visible; one mitten may appear beside the cheek. Scale slightly larger than the distant ridge walkers because this ledge is closer. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown. Show the head, the top of the shoulders and both hands resting on the edge of the object in front, so the child is visibly holding on to it; never a head alone.",
+              "foreground": [
+                {
+                  "x": 0.699,
+                  "y": 0.153
+                },
+                {
+                  "x": 0.706,
+                  "y": 0.147
+                },
+                {
+                  "x": 0.714,
+                  "y": 0.143
+                },
+                {
+                  "x": 0.72,
+                  "y": 0.148
+                },
+                {
+                  "x": 0.727,
+                  "y": 0.158
+                },
+                {
+                  "x": 0.728,
+                  "y": 0.188
+                },
+                {
+                  "x": 0.698,
+                  "y": 0.188
+                }
+              ]
+            }
+          },
+          {
+            "id": "antarctica_ice_b",
+            "x": 0.045,
+            "y": 0.64,
+            "scale": 0.072,
+            "hintZone": {
+              "x": 0.045,
+              "y": 0.625,
+              "r": 0.075
+            },
+            "hintText": {
+              "en": "Look at the ice on the left.",
+              "he": "חפשו בקרח משמאל."
+            },
+            "layer": "front"
+          }
+        ]
+      }
+    ],
+    "artNotes": [
+      "a crowd of penguins waddling in a line",
+      "a bright red research hut with round windows",
+      "children pulling wooden sledges",
+      "a blue ice arch over the water",
+      "seals lying on a flat floe",
+      "a striped weather balloon being filled"
+    ],
+    "collectible": {
+      "id": "stamp_antarctica",
+      "name": {
+        "en": "An Antarctica stamp",
+        "he": "חותמת אנטארקטיקה"
+      },
+      "icon": "🐧"
+    },
+    "celebration": {
+      "kind": "snow",
+      "completeText": {
+        "en": "You found {name} three times in Antarctica!",
+        "he": "מצאתם את {name} שלוש פעמים באנטארקטיקה!"
+      }
+    },
+    "ambient": [
+      {
+        "id": "penguin",
+        "label": {
+          "en": "A penguin sliding",
+          "he": "פינגווין מחליק"
+        },
+        "x": 0.3,
+        "y": 0.78,
+        "w": 0.05,
+        "h": 0.05,
+        "animation": "shake",
+        "sound": "chirp",
+        "reaction": {
+          "en": "Wheee!",
+          "he": "ייייי!"
+        },
+        "glyph": "🐧"
+      },
+      {
+        "id": "seal",
+        "label": {
+          "en": "A seal yawning",
+          "he": "כלב ים מפהק"
+        },
+        "x": 0.55,
+        "y": 0.3,
+        "w": 0.05,
+        "h": 0.05,
+        "animation": "slide",
+        "sound": "boing",
+        "reaction": {
+          "en": "Ahhh.",
+          "he": "אאאה."
+        },
+        "glyph": "🦭"
+      },
+      {
+        "id": "balloon",
+        "label": {
+          "en": "A weather balloon",
+          "he": "בלון מזג אוויר"
+        },
+        "x": 0.82,
+        "y": 0.68,
+        "w": 0.05,
+        "h": 0.05,
+        "animation": "shake",
+        "sound": "chirp",
+        "reaction": {
+          "en": "Up it goes!",
+          "he": "הוא עולה!"
+        },
+        "glyph": "🎈"
+      }
+    ]
+  }
+]

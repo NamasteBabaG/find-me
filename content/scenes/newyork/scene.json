@@ -9,7 +9,7 @@
     "en": "Yellow taxis under towers of glass, and a warm pretzel.",
     "he": "מוניות צהובות מתחת למגדלי זכוכית, ובייגלה חם."
   },
-  "version": 3,
+  "version": 4,
   "active": true,
   "artStatus": "final",
   "art": {
@@ -194,43 +194,19 @@
       "slots": [
         {
           "id": "newyork_bench_a",
-          "x": 0.9205,
-          "y": 0.711,
-          "scale": 0.081,
+          "x": 0.862,
+          "y": 0.668,
+          "scale": 0.078,
           "hintZone": {
-            "x": 0.9205,
-            "y": 0.696,
+            "x": 0.862,
+            "y": 0.653,
             "r": 0.075
           },
           "hintText": {
             "en": "Look behind the benches in the park.",
             "he": "חפשו מאחורי הספסלים בפארק."
           },
-          "layer": "front",
-          "placement": {
-            "pose": "peeking",
-            "support": "Hidden feet are planted on the park path behind the bench; bodyHeight is the child's implied full standing height.",
-            "occlusion": "The original bench backrest provides the exact cutoff across the lower shoulders; the crouched torso and legs remain behind it.",
-            "foreground": [
-              {
-                "x": 0.9,
-                "y": 0.724
-              },
-              {
-                "x": 0.95,
-                "y": 0.736
-              },
-              {
-                "x": 0.948,
-                "y": 0.769
-              },
-              {
-                "x": 0.903,
-                "y": 0.758
-              }
-            ],
-            "instructions": "Crouch behind the bench and peek above its backrest with the full face and top of the shoulders visible. Keep the lower body hidden. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown. Show the head, the top of the shoulders and both hands resting on the edge of the object in front, so the child is visibly holding on to it; never a head alone."
-          }
+          "layer": "front"
         },
         {
           "id": "newyork_bench_b",

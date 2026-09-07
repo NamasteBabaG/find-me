@@ -9,7 +9,7 @@
     "en": "Neon at night, cherry blossom and a very busy crossing.",
     "he": "נאון בלילה, פריחת דובדבן וצומת עמוס מאוד."
   },
-  "version": 3,
+  "version": 4,
   "active": true,
   "artStatus": "final",
   "art": {
@@ -125,67 +125,19 @@
       "slots": [
         {
           "id": "tokyo_stall_a",
-          "x": 0.073,
-          "y": 0.848,
-          "scale": 0.117,
+          "x": 0.815,
+          "y": 0.645,
+          "scale": 0.08,
           "hintZone": {
-            "x": 0.073,
-            "y": 0.833,
+            "x": 0.815,
+            "y": 0.63,
             "r": 0.075
           },
           "hintText": {
             "en": "Look by the festival stalls.",
             "he": "חפשו ליד דוכני הפסטיבל."
           },
-          "layer": "front",
-          "placement": {
-            "pose": "peeking",
-            "support": "The implied feet stand on the stall floor behind the wooden mask display.",
-            "occlusion": "The dense foreground mask rack and its wooden bin hide the child from mid-torso through the feet.",
-            "instructions": "Show the child facing forward among the masks, with shoulders and upper torso visible and hands close to the rack edge. Use the same scale as foreground children. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown. Show the head, the top of the shoulders and both hands resting on the edge of the object in front, so the child is visibly holding on to it; never a head alone.",
-            "foreground": [
-              {
-                "x": 0.043,
-                "y": 0.889
-              },
-              {
-                "x": 0.05,
-                "y": 0.883
-              },
-              {
-                "x": 0.058,
-                "y": 0.887
-              },
-              {
-                "x": 0.066,
-                "y": 0.878
-              },
-              {
-                "x": 0.075,
-                "y": 0.882
-              },
-              {
-                "x": 0.083,
-                "y": 0.875
-              },
-              {
-                "x": 0.092,
-                "y": 0.881
-              },
-              {
-                "x": 0.101,
-                "y": 0.878
-              },
-              {
-                "x": 0.103,
-                "y": 1
-              },
-              {
-                "x": 0.043,
-                "y": 1
-              }
-            ]
-          }
+          "layer": "front"
         },
         {
           "id": "tokyo_stall_b",

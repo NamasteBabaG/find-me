@@ -68,6 +68,20 @@ const EnvSchema = z.object({
    * it is a second image call per attempt, so it is the one to keep cheap.
    */
   GENERATION_MATTE_QUALITY: z.enum(["low", "medium", "high"]).default("low"),
+  /**
+   * How many hiding spots one tick paints at once. The provider's rate limit
+   * (GENERATION_RPM) still binds; at 1 a world of 27 spots with three rolls
+   * each took close to three hours (7 September), one attempt every two
+   * minutes against a limit that allows five images a minute.
+   */
+  GENERATION_CONCURRENCY: z.coerce.number().int().min(1).max(8).default(1),
+  /**
+   * The most a single world may spend before a human is asked to look, in
+   * cents. The default is the product's ceiling for the pathological case
+   * (a world sells for about ten dollars); QA raises it to measure a whole
+   * world at medium with retries.
+   */
+  GENERATION_WORLD_CENTS: z.coerce.number().int().min(100).default(600),
   /** A vision-capable chat model that checks a finished patch is really the child. */
   JUDGE_MODEL: z.string().default("gpt-4o-mini"),
   /** Images per minute this OpenAI account may request (tier 1 is 5). */

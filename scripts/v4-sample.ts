@@ -325,7 +325,7 @@ async function main() {
         let verdictText = "unjudged";
         if (!shape && judge) {
           // Judged exactly as the pipeline judges: on the board, in context.
-          const boardCrop = await boardComposite({ base: readFileSync(artFile), art: c.art, patch: patch.webp, rect: patch.geometry.rect, layer: c.slot.layer, flip: c.slot.flip });
+          const boardCrop = await boardComposite({ base: readFileSync(artFile), foreground: c.scene.art.foreground ? readFileSync(path.join(ROOT, "public", c.scene.art.foreground)) : undefined, art: c.art, patch: patch.webp, rect: patch.geometry.rect, layer: c.slot.layer, flip: c.slot.flip });
           writeFileSync(path.join(cellDir, "board-crop.png"), boardCrop);
           files.boardCrop = "board-crop.png";
           const verdict = await judge.judge({ patchPng: patch.webp, reference: judgeReference, childName: identity, ageYears, label: cellId, boardCrop });

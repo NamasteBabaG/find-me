@@ -138,11 +138,11 @@ describe("unchangedFraction on the real cases", () => {
     return unchangedFraction(alpha.data, render, original, w * h);
   };
   it("the bystander pass two kept on amazon/canoe was mostly already in the board", async () => {
-    expect(await load("amazon-wrong")).toBeGreaterThan(UNCHANGED_LIMIT + 0.15);
+    expect(await load("amazon-wrong")).toBeGreaterThan(UNCHANGED_LIMIT);
   });
   it("the child herself is new to the board: amazon/canoe cut right, and marrakech/carpets", async () => {
-    expect(await load("amazon-right")).toBeLessThan(UNCHANGED_LIMIT);
-    expect(await load("marrakech-right")).toBeLessThan(UNCHANGED_LIMIT);
+    expect(await load("amazon-right")).toBeLessThan(UNCHANGED_LIMIT - 0.2);
+    expect(await load("marrakech-right")).toBeLessThan(UNCHANGED_LIMIT - 0.2);
   });
   it("the fixtures are what the cases say they are", () => {
     const cases = JSON.parse(readFileSync(path.join(FIX, "unchanged-cases.json"), "utf8")) as Record<string, { cell: string; source: string }>;

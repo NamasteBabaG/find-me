@@ -9,7 +9,7 @@
     "en": "The tower above a great square, a carousel and warm bread.",
     "he": "המגדל מעל כיכר גדולה, קרוסלה ולחם חם."
   },
-  "version": 3,
+  "version": 4,
   "active": true,
   "artStatus": "final",
   "art": {
@@ -22,7 +22,8 @@
       "ground": "#B9A98F",
       "accent": "#F5B301"
     },
-    "sha256": "1779a9015128795440b29d197ebc6fc09ad3931a71391f1b17e9679fc00b5a94"
+    "sha256": "1779a9015128795440b29d197ebc6fc09ad3931a71391f1b17e9679fc00b5a94",
+    "foreground": "/scenes/paris/refresh-20260907/foreground.webp"
   },
   "targets": [
     {
@@ -56,14 +57,14 @@
       "slots": [
         {
           "id": "paris_bakery_a",
-          "x": 0.8968,
-          "y": 0.7944,
-          "scale": 0.1392,
+          "x": 0.8952,
+          "y": 0.835,
+          "scale": 0.166,
           "placement": {
-            "pose": "peeking",
-            "support": "Cobblestone pavement immediately behind the wicker basket; footX and footY are the implied hidden shoe midpoint.",
-            "occlusion": "The original wicker basket and projecting baguettes hide the child from about the waist downward without covering the face.",
-            "instructions": "Stand behind the exterior baguette basket and lean forward slightly so the head and shoulders show against the bakery window. Keep the child comparable in implied height to nearby foreground children. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown. Show the head, the top of the shoulders and both hands resting on the edge of the object in front, so the child is visibly holding on to it; never a head alone.",
+            "pose": "standing",
+            "support": "Hidden shoes on the cobblestones behind the wicker basket of baguettes.",
+            "occlusion": "The wicker basket of baguettes, drawn back in front of the child from the board, hides her from the waist down; the head, shoulders and chest show above it against the bakery window.",
+            "instructions": "Paint the child complete and unoccluded, standing at this spot exactly as if the wicker basket of baguettes were not there: the whole head, torso and arms, and the legs down to the feet on the ground. the wicker basket of baguettes is put back in front of the child afterwards from the board itself; do not paint it over the child, and do not paint any part of the child as hidden.",
             "foreground": [
               {
                 "x": 0.8577,
@@ -112,15 +113,15 @@
             ]
           },
           "hintZone": {
-            "x": 0.8968,
-            "y": 0.7794,
+            "x": 0.8952,
+            "y": 0.82,
             "r": 0.075
           },
           "hintText": {
             "en": "Look by the bakery window.",
             "he": "חפשו ליד חלון המאפייה."
           },
-          "layer": "front"
+          "layer": "behindForeground"
         },
         {
           "id": "paris_bakery_b",
@@ -173,13 +174,13 @@
         {
           "id": "paris_carousel_a",
           "x": 0.6071,
-          "y": 0.4749,
+          "y": 0.4822,
           "scale": 0.1099,
           "placement": {
             "pose": "standing",
-            "support": "Wooden carousel deck; the projected shoe midpoint is hidden just behind the outer fascia.",
-            "occlusion": "The original red-and-gold carousel fascia hides the shoes and lower shins; it stays well below the face.",
-            "instructions": "Stand upright on the carousel deck behind its front rim, facing outward. Keep the face fully above the rim and use the same small perspective scale as the nearby carousel riders.",
+            "support": "Both shoes on the carousel deck behind its front fascia.",
+            "occlusion": "The carousel fascia, drawn back in front of the child from the board, hides her shoes and shins; the rest of her shows above it among the riders.",
+            "instructions": "Paint the child complete and unoccluded, standing at this spot exactly as if the carousel's red-and-gold fascia were not there: the whole head, torso and arms, and the legs down to the feet on the ground. the carousel's red-and-gold fascia is put back in front of the child afterwards from the board itself; do not paint it over the child, and do not paint any part of the child as hidden.",
             "foreground": [
               {
                 "x": 0.5853,
@@ -213,14 +214,14 @@
           },
           "hintZone": {
             "x": 0.6071,
-            "y": 0.4599,
+            "y": 0.4672,
             "r": 0.075
           },
           "hintText": {
             "en": "Look at the carousel.",
             "he": "חפשו בקרוסלה."
           },
-          "layer": "front"
+          "layer": "behindForeground"
         },
         {
           "id": "paris_carousel_b",

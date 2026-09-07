@@ -60,8 +60,15 @@ export interface Extraction {
   occluder?: { mean: number; pixels: number };
 }
 
-/** Above this, the silhouette is mostly something the board already had. Real children measured 1–15%, kept bystanders and scenery 24–64% (7 September). */
-export const UNCHANGED_LIMIT = 0.2;
+/**
+ * Above this, the silhouette is mostly something the board already had.
+ * Measured 7 September: real children on varied ground 1–15%; a pale child
+ * against a pale wall or basket 29–30% (giza/stones, paris/bakery at medium:
+ * a white dress over sandstone is "unchanged" pixel by pixel and she is new);
+ * kept bystanders and scenery 45–64%. The limit sits in the gap above the
+ * pale cases, not below them.
+ */
+export const UNCHANGED_LIMIT = 0.4;
 /**
  * The occluder numbers (occluderShift, occluderGap) are recorded on every
  * attempt and do not reject. Three measures were tried on the renders on

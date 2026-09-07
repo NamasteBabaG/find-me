@@ -113,7 +113,9 @@ export async function writePreview(c: SlotInfo, patch: PatchResult, outDir: stri
   const base = path.join(ROOT, "public", c.scene.art.base);
   const left = Math.round(patch.geometry.rect.x * c.art.width);
   const top = Math.round(patch.geometry.rect.y * c.art.height);
-  const composed = await sharp(base).composite([{ input: patch.webp, left, top }]).png().toBuffer();
+  // The foreground layer goes over a slot behind it, as the game draws it.
+  const fg = c.scene.art.foreground && c.slot.layer === "behindForeground" ? [{ input: path.join(ROOT, "public", c.scene.art.foreground), left: 0, top: 0 }] : [];
+  const composed = await sharp(base).composite([{ input: patch.webp, left, top }, ...fg]).png().toBuffer();
   const out = previewPath(c, outDir);
   await sharp(composed).extract({ left: c.ctx.rect.x, top: c.ctx.rect.y, width: c.ctx.rect.w, height: c.ctx.rect.h }).png().toFile(out);
   return out;

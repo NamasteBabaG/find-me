@@ -147,7 +147,7 @@ async function main() {
           await writePreview(c, patch, out);
         }
         if (!shape && judge) {
-          const boardCrop = await boardComposite({ base: readFileSync(path.join(ROOT, "public", c.scene.art.base)), art: c.art, patch: patch.webp, rect: patch.geometry.rect, layer: c.slot.layer, flip: c.slot.flip });
+          const boardCrop = await boardComposite({ base: readFileSync(path.join(ROOT, "public", c.scene.art.base)), foreground: c.scene.art.foreground ? readFileSync(path.join(ROOT, "public", c.scene.art.foreground)) : undefined, art: c.art, patch: patch.webp, rect: patch.geometry.rect, layer: c.slot.layer, flip: c.slot.flip });
           writeFileSync(path.join(out, "board-crop.png"), boardCrop);
           const verdict = await judge.judge({ patchPng: patch.webp, reference: judgeReference, childName: identity, ageYears, label: cell.id, boardCrop });
           const charge = chargeCents(verdict, JUDGE_RESERVE_CENTS);

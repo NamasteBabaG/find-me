@@ -10,7 +10,7 @@
     "he": "נהר ירוק, קאנו מעץ ותוכי רועש מאוד."
   },
   "wardrobe": "a thin light-green shirt and beige shorts",
-  "version": 3,
+  "version": 4,
   "active": true,
   "artStatus": "final",
   "art": {
@@ -59,25 +59,19 @@
       "slots": [
         {
           "id": "amazon_canoe_a",
-          "x": 0.7195,
-          "y": 0.724,
-          "scale": 0.125,
+          "x": 0.7,
+          "y": 0.64,
+          "scale": 0.075,
           "hintZone": {
-            "x": 0.7195,
-            "y": 0.709,
+            "x": 0.7,
+            "y": 0.625,
             "r": 0.075
           },
           "hintText": {
             "en": "Look by the canoes on the river.",
             "he": "חפשו ליד הקאנו על הנהר."
           },
-          "layer": "front",
-          "placement": {
-            "pose": "swimming",
-            "support": "The support point is the visible waterline at the child's mid-torso; the hips, legs, and feet continue naturally underwater.",
-            "occlusion": "Only the lower body is naturally submerged by visible river water; the face and upper torso remain intact.",
-            "instructions": "Show the child swimming upright in the open water between the middle and foreground canoes, with head, shoulders, upper torso, and arms above water. Use childlike proportions and a head size similar to children in the nearer canoe."
-          }
+          "layer": "front"
         },
         {
           "id": "amazon_canoe_b",
@@ -197,59 +191,19 @@
       "slots": [
         {
           "id": "amazon_roots_a",
-          "x": 0.2105,
-          "y": 0.653,
-          "scale": 0.116,
+          "x": 0.155,
+          "y": 0.645,
+          "scale": 0.078,
           "hintZone": {
-            "x": 0.2105,
-            "y": 0.638,
+            "x": 0.155,
+            "y": 0.63,
             "r": 0.075
           },
           "hintText": {
             "en": "Look between the big roots.",
             "he": "חפשו בין השורשים הגדולים."
           },
-          "layer": "front",
-          "placement": {
-            "pose": "peeking",
-            "support": "The support point marks the child's hidden feet on the root-floor ledge behind the foreground root.",
-            "occlusion": "The pictured diagonal root hides the lower chest, waist, legs, and feet; the head and face remain fully visible above it.",
-            "instructions": "Place the child upright in the dark opening among the giant roots, leaning slightly into view with head, shoulders, and one hand visible. Match the scale of the nearby children hiding in the root system. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown. Show the head, the top of the shoulders and both hands resting on the edge of the object in front, so the child is visibly holding on to it; never a head alone.",
-            "foreground": [
-              {
-                "x": 0.185,
-                "y": 0.674
-              },
-              {
-                "x": 0.191,
-                "y": 0.657
-              },
-              {
-                "x": 0.205,
-                "y": 0.665
-              },
-              {
-                "x": 0.219,
-                "y": 0.681
-              },
-              {
-                "x": 0.235,
-                "y": 0.696
-              },
-              {
-                "x": 0.229,
-                "y": 0.713
-              },
-              {
-                "x": 0.212,
-                "y": 0.699
-              },
-              {
-                "x": 0.198,
-                "y": 0.684
-              }
-            ]
-          }
+          "layer": "front"
         },
         {
           "id": "amazon_roots_b",

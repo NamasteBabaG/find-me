@@ -38,6 +38,8 @@ import volcano from "./volcano/scene.json";
 import preRefresh from "./releases/pre-refresh-20260907.json";
 // The first world before its hiding spots were re-planned (version 2 of nine boards, same art).
 import prePlacement from "./releases/pre-placement-20260907.json";
+// The first world before its hides were authored against the board's own occluders (version 3 of nine boards, same art).
+import preForeground from "./releases/pre-foreground-20260907.json";
 
 /**
  * The scene catalog is data. Adding a world = adding a folder with
@@ -76,7 +78,7 @@ export function allScenes(): SceneDefinition[] {
 
 // Old definitions remain addressable for paid games and interrupted jobs.
 // Never silently substitute current art for a requested historical version.
-const HISTORICAL_SCENES: readonly SceneDefinition[] = [...preRefresh, ...prePlacement].map(raw => {
+const HISTORICAL_SCENES: readonly SceneDefinition[] = [...preRefresh, ...prePlacement, ...preForeground].map(raw => {
   const parsed = validateSceneDefinition(raw);
   if (!parsed.ok || !parsed.scene) throw new Error(`Invalid archived scene ${raw.slug}: ${parsed.errors.join(", ")}`);
   return parsed.scene;

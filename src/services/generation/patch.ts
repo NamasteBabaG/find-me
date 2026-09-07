@@ -45,12 +45,18 @@ export interface SlotPoint {
    * (occluderShift) and the matte is clipped by it.
    */
   placement?: { pose: string; foreground?: Array<{ x: number; y: number }> | null } | null;
+  /**
+   * `behindForeground`: the scene's foreground layer (the occluder, cut out
+   * of the board) is drawn over the child, so she is painted whole and the
+   * polygon is not cut from the paint mask nor from the matte.
+   */
+  layer?: string;
 }
 
 /** The occluder polygon in crop pixels, as an SVG points attribute, or null when the slot has none. */
 function foregroundPoints(ctx: SlotContext, art: Size, slot: SlotPoint): string | null {
   const poly = slot.placement?.foreground;
-  if (!poly || poly.length < 3) return null;
+  if (!poly || poly.length < 3 || slot.layer === "behindForeground") return null;
   return poly.map((p) => `${(p.x * art.width - ctx.rect.x).toFixed(1)},${(p.y * art.height - ctx.rect.y).toFixed(1)}`).join(" ");
 }
 

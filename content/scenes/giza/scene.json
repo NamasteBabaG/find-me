@@ -9,7 +9,7 @@
     "en": "Camels, stone giants and a very old riddle.",
     "he": "גמלים, ענקי אבן וחידה עתיקה מאוד."
   },
-  "version": 3,
+  "version": 4,
   "active": true,
   "artStatus": "final",
   "art": {
@@ -22,7 +22,8 @@
       "ground": "#B9A98F",
       "accent": "#F5B301"
     },
-    "sha256": "da3fe5115a04bc0e79d7c7daee17e14ce5167b9e74868289af91a85b5266bb09"
+    "sha256": "da3fe5115a04bc0e79d7c7daee17e14ce5167b9e74868289af91a85b5266bb09",
+    "foreground": "/scenes/giza/refresh-20260907/foreground.webp"
   },
   "targets": [
     {
@@ -194,48 +195,48 @@
       "slots": [
         {
           "id": "giza_stones_a",
-          "x": 0.6345,
-          "y": 0.71,
-          "scale": 0.057,
+          "x": 0.6185,
+          "y": 0.7405,
+          "scale": 0.14,
           "hintZone": {
-            "x": 0.6345,
-            "y": 0.695,
+            "x": 0.6185,
+            "y": 0.7255,
             "r": 0.075
           },
           "hintText": {
             "en": "Look behind the big stone blocks.",
             "he": "חפשו מאחורי גושי האבן."
           },
-          "layer": "front",
+          "layer": "behindForeground",
           "placement": {
-            "pose": "peeking",
-            "support": "The hidden shoes stand on sand immediately behind the block at the given point; bodyHeight is the implied full head-to-shoe height.",
-            "occlusion": "The stone hides the child from the shoulders downward; the face stays wholly above its sloping top edge.",
-            "instructions": "Stand behind the enormous inscribed block and peek over it, showing the complete face and only a little shoulder. Use the height of the nearby foreground children, not an adult scale. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown. Show the head, the top of the shoulders and both hands resting on the edge of the object in front, so the child is visibly holding on to it; never a head alone.",
+            "pose": "standing",
+            "support": "Hidden shoes on the sand behind the large inscribed block.",
+            "occlusion": "The large inscribed stone block, drawn back in front of the child from the board, hides her from the chest down; the head and shoulders show above it.",
+            "instructions": "Paint the child complete and unoccluded, standing at this spot exactly as if the large inscribed stone block were not there: the whole head, torso and arms, and the legs down to the feet on the ground. the large inscribed stone block is put back in front of the child afterwards from the board itself; do not paint it over the child, and do not paint any part of the child as hidden.",
             "foreground": [
               {
-                "x": 0.563,
-                "y": 0.748
+                "x": 0.5632,
+                "y": 0.7476
               },
               {
-                "x": 0.592,
-                "y": 0.713
+                "x": 0.5918,
+                "y": 0.7129
               },
               {
-                "x": 0.663,
-                "y": 0.746
+                "x": 0.6631,
+                "y": 0.7461
               },
               {
-                "x": 0.663,
-                "y": 0.831
+                "x": 0.6631,
+                "y": 0.8311
               },
               {
                 "x": 0.641,
-                "y": 0.849
+                "y": 0.8486
               },
               {
                 "x": 0.568,
-                "y": 0.817
+                "y": 0.8169
               }
             ]
           }

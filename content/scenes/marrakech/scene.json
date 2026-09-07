@@ -9,7 +9,7 @@
     "en": "Lanterns, carpets and a mountain of spices.",
     "he": "פנסים, שטיחים והר של תבלינים."
   },
-  "version": 3,
+  "version": 4,
   "active": true,
   "artStatus": "final",
   "art": {
@@ -194,25 +194,19 @@
       "slots": [
         {
           "id": "marrakech_spices_a",
-          "x": 0.488,
-          "y": 0.573,
-          "scale": 0.075,
+          "x": 0.475,
+          "y": 0.475,
+          "scale": 0.058,
           "hintZone": {
-            "x": 0.488,
-            "y": 0.558,
+            "x": 0.475,
+            "y": 0.45999999999999996,
             "r": 0.075
           },
           "hintText": {
             "en": "Look behind the cones of spices.",
             "he": "חפשו מאחורי חרוטי התבלינים."
           },
-          "layer": "front",
-          "placement": {
-            "pose": "peeking",
-            "support": "Hidden feet on the ground behind the blue-and-white patterned barrel; the child stands normally there.",
-            "occlusion": "The blue-and-white patterned barrel in front hides the child from the chest down; only the head and shoulders show above its rim.",
-            "instructions": "A child peeks out above the blue-and-white patterned barrel that stands in front of the yellow spice cone, between the vendor in the cream robe on the left and the vendor in the green robe on the right. Only the head and shoulders are visible above the barrel; keep the whole face clear and do not touch either vendor. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown. Show the head, the top of the shoulders and both hands resting on the edge of the object in front, so the child is visibly holding on to it; never a head alone."
-          }
+          "layer": "front"
         },
         {
           "id": "marrakech_spices_b",
