@@ -247,7 +247,7 @@ describe("two-pass pipeline recovery", () => {
     expect(await db.asset.count({ where: { ownerId: game.ownerId, status: { not: "DELETED" } } })).toBe(0);
   });
 
-  it("resumes even the sixth painted attempt without buying either image again", async () => {
+  it("resumes even the last painted attempt without buying either image again", async () => {
     const { p, count } = mattePainter(); const c = container(p);
     let now = Date.now();
     const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
@@ -259,12 +259,12 @@ describe("two-pass pipeline recovery", () => {
       expect(p.calls).toBe(1); expect(count()).toBe(1);
       const first = (await spotsIn(id)).flatMap(s => s.variants)[0]!;
       expect(JSON.parse(first.usageJson!).ledger.attempts[0].stage).toBe("matted");
-      await db.targetVariantAsset.update({ where: { id: first.id }, data: { attempts: 6 } });
+      await db.targetVariantAsset.update({ where: { id: first.id }, data: { attempts: mod.MAX_ATTEMPTS_PER_SPOT } });
       p.editSlotCrop = paint;
       await mod.runGenerationPipeline(c, id, { deadlineAt: now + 30_000, hardDeadlineAt: now + 270_000 });
       expect(p.calls).toBe(3); expect(count()).toBe(3);
       const done = await db.targetVariantAsset.findUniqueOrThrow({ where: { id: first.id } });
-      expect(done.status).toBe("GENERATED"); expect(done.attempts).toBe(6);
+      expect(done.status).toBe("GENERATED"); expect(done.attempts).toBe(mod.MAX_ATTEMPTS_PER_SPOT);
       expect(JSON.parse(done.usageJson!).ledger.attempts).toHaveLength(1);
       expect(JSON.parse(done.usageJson!).ledger.exactCents).toBeCloseTo(6.341);
     } finally { clock.mockRestore(); }

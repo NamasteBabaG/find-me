@@ -56,13 +56,15 @@ export interface PatchOutcome {
 /**
  * How many rolls one hiding spot may ever cost, across all ticks.
  *
- * Retrying is normal — most spots land within four — but a slot the model
- * simply cannot paint will fail forever, and nothing stopped it: one spot spent
- * thirteen rolls and a third of a game's budget before this existed. A spot
- * that hits the cap is left FAILED for a human to look at. A procedural fallback
- * may be composed for diagnostics but is held from automatic delivery by default.
+ * Retrying is normal, but a slot the model simply cannot paint will fail
+ * forever, and nothing stopped it: one spot spent thirteen rolls and a third
+ * of a game's budget before this existed. Three is Guy's rule (7 September):
+ * a spot that fails three times is hard from the root and is replaced, not
+ * insisted on; the fourth to sixth attempts on the amazon canoe cost as much
+ * as the first three and landed nowhere. A spot that hits the cap is left
+ * FAILED for a human to look at, and the game goes on to the next one.
  */
-export const MAX_ATTEMPTS_PER_SPOT = 6;
+export const MAX_ATTEMPTS_PER_SPOT = 3;
 
 /**
  * Time a pass needs before it is started. The tick is one request with a hard

@@ -200,7 +200,7 @@ judges. Each pass starts only if it can finish (`PASS_ONE_MIN_MS`, `PASS_TWO_MIN
 `JUDGE_MIN_MS`), the provider trims its own budget to the deadline, and a pass that cannot start is
 deferred: the attempt stays `pending` with what it paid for (`stage: painted | matted`, the evidence
 asset ids), the lease goes back, and the next tick finishes that attempt from the kept render and
-matte without buying either again. The pipeline test "resumes even the sixth painted attempt"
+matte without buying either again. The pipeline test "resumes even the last painted attempt"
 proves it with a mock clock.
 
 The colour difference, kept as the fallback and the first look:
