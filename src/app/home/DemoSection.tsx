@@ -4,6 +4,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import type { GameConfig } from "@/domain/game/config";
 import { useI18n } from "@/i18n/client";
+import { Reveal } from "./Reveal";
 
 const GameShell = dynamic(() => import("@/game/components/GameShell").then((m) => m.GameShell), {
   ssr: false,
@@ -23,11 +24,11 @@ export function DemoSection({ config }: { config: GameConfig }) {
   return (
     <section id="demo" className="demo">
       <div className="fm-container demo__inner">
-        <div className="demo__head">
+        <Reveal className="demo__head">
           <span className="fm-pill">{d.pill}</span>
           <h2 className="demo__title">{tf(d.title, { name })}</h2>
           <p className="demo__lead">{tf(d.lead, { name })}</p>
-        </div>
+        </Reveal>
         <div className="demo__frame" style={art ? { "--demo-art-ratio": `${art.width} / ${art.height}` } as React.CSSProperties : undefined}>
           {/* The play store is created once per mount; remount on a language switch so the demo speaks the new locale. */}
           <GameShell key={config.locale} config={config} demo autoStartScene="beach" singleMission />

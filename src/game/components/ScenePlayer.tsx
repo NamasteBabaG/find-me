@@ -9,6 +9,7 @@ import { sounds } from "../audio/sounds";
 import { stageToScreen } from "../engine/viewport-math";
 import { targetGeometry } from "../engine/target-geometry";
 import type { ViewportApi } from "../engine/useViewport";
+import { useScrollReveal } from "../engine/useScrollReveal";
 import { SceneViewport, targetStagePoint, type Hit } from "./SceneViewport";
 import { MissionCard } from "./MissionCard";
 import { CelebrationOverlay } from "./CelebrationOverlay";
@@ -44,6 +45,7 @@ const TURN_HOLD_MS = 160;
 export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: Props) {
   const { g, tf } = useGameText();
   const apiRef = useRef<ViewportApi | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
   // Bubbles live in stage pixels and are projected to the screen on every render
   // (see the SceneViewport render prop), so they stay glued to the sprite while
   // the "found" zoom plays.
@@ -88,7 +90,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
   // The clouds close over the board while the found child is swapped for the
   // next one, so nobody sees the next hiding spot pop into the picture.
   const [turn, setTurn] = useState(false);
-  const revealed = viewportReady && assetsReady;
+  const revealed = useScrollReveal(stageRef, store.demo, viewportReady && assetsReady);
   // The found choreography ends with the swap, and the swap must not depend on
   // the feedback that started it: it used to be scheduled inside the feedback
   // effect, and the moment FOUND_DONE cleared the feedback that effect's
@@ -301,7 +303,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
         </div>
       </header>
 
-      <div className="scene__stage">
+      <div className="scene__stage" ref={stageRef}>
         <SceneViewport scene={scene} mission={mission} hintLevel={mission.hintLevel} bonusFound={mission.bonusFound} onHit={onHit} onReady={onReady} onAssetsReady={onAssetsReady} onAssetsFailed={onAssetsFailed} retryToken={retryToken} ariaLabel={tf(g.scene.sceneAria, { name: scene.name })}>
           {(vp) => {
             if (!bubble) return null;
