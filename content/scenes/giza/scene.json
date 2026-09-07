@@ -211,7 +211,7 @@
             "pose": "peeking",
             "support": "The hidden shoes stand on sand immediately behind the block at the given point; bodyHeight is the implied full head-to-shoe height.",
             "occlusion": "The stone hides the child from the shoulders downward; the face stays wholly above its sloping top edge.",
-            "instructions": "Stand behind the enormous inscribed block and peek over it, showing the complete face and only a little shoulder. Use the height of the nearby foreground children, not an adult scale. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown.",
+            "instructions": "Stand behind the enormous inscribed block and peek over it, showing the complete face and only a little shoulder. Use the height of the nearby foreground children, not an adult scale. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown. Show the head, the top of the shoulders and both hands resting on the edge of the object in front, so the child is visibly holding on to it; never a head alone.",
             "foreground": [
               {
                 "x": 0.563,

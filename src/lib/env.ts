@@ -62,6 +62,12 @@ const EnvSchema = z.object({
    * Unset means every attempt costs the same.
    */
   GENERATION_PATCH_RETRY_QUALITY: z.enum(["low", "medium", "high"]).optional(),
+  /**
+   * Pass two, the matte. It copies a render that already has the detail, so
+   * low is enough (7 September: the same cut at low under a medium roll), and
+   * it is a second image call per attempt, so it is the one to keep cheap.
+   */
+  GENERATION_MATTE_QUALITY: z.enum(["low", "medium", "high"]).default("low"),
   /** A vision-capable chat model that checks a finished patch is really the child. */
   JUDGE_MODEL: z.string().default("gpt-4o-mini"),
   /** Images per minute this OpenAI account may request (tier 1 is 5). */

@@ -254,7 +254,7 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
             // low patches come out soft or fragmentary, which is what the
             // retry is for.
             const quality = env().GENERATION_PATCH_RETRY_QUALITY && row.attempts > 0 ? env().GENERATION_PATCH_RETRY_QUALITY : undefined;
-            const outcome = await generateSlotPatch(c, { targetInstanceId: row.id, scene: def, target, variant, reference, childName: refreshedChild.displayName, ageYears: refreshedChild.ageYears, ownerId: refreshedChild.ownerId, quality, deadlineAt: options.hardDeadlineAt });
+            const outcome = await generateSlotPatch(c, { targetInstanceId: row.id, scene: def, target, variant, reference, childName: refreshedChild.displayName, ageYears: refreshedChild.ageYears, ownerId: refreshedChild.ownerId, quality, matteQuality: env().GENERATION_MATTE_QUALITY, deadlineAt: options.hardDeadlineAt });
             outcomes.push(outcome);
             spent += outcome.newCostCents;
             if (outcome.status === "GENERATED") ok++;

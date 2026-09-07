@@ -102,6 +102,8 @@ export async function generateSlotPatch(
     quality?: string;
     /** The tick's hard limit: no pass starts that cannot finish before it. */
     deadlineAt?: number;
+    /** Pass two's quality; the render's quality when unset. */
+    matteQuality?: string;
   },
 ): Promise<PatchOutcome> {
   const { scene, target, variant } = input;
@@ -270,7 +272,7 @@ export async function generateSlotPatch(
         });
         await checkpoint();
       };
-      const extracted = await extractChild({ provider: c.avatars, originalCrop: crop, editedCrop: edit.png, ctx, art, slot, hint: matteHint(slot), label, reference: input.reference, quality: input.quality, deadlineAt: input.deadlineAt === undefined ? undefined : input.deadlineAt - 5000, minPassTwoMs: PASS_TWO_MIN_MS, priorMatte, onMatte: recordMatte, maxNewMatteAttempts: Math.max(0, 2 - (currentAttempt.matteRequestIds?.length ?? 0)) });
+      const extracted = await extractChild({ provider: c.avatars, originalCrop: crop, editedCrop: edit.png, ctx, art, slot, hint: matteHint(slot), label, reference: input.reference, quality: input.matteQuality ?? input.quality, deadlineAt: input.deadlineAt === undefined ? undefined : input.deadlineAt - 5000, minPassTwoMs: PASS_TWO_MIN_MS, priorMatte, onMatte: recordMatte, maxNewMatteAttempts: Math.max(0, 2 - (currentAttempt.matteRequestIds?.length ?? 0)) });
       const patch = extracted.patch;
       Object.assign(currentAttempt, { extraction: extracted.method, extractionVersion: extracted.version, diffLargest: extracted.diff.largest, occluderShift: extracted.occluder?.mean });
       if (extracted.method === "deferred") {

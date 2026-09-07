@@ -74,7 +74,7 @@
             "pose": "seated",
             "support": "footX and footY mark the child’s seat contact on the flat stone paving; bodyHeight is the implied standing height.",
             "occlusion": "None. The seated child is fully foreground and may cover a small piece of scenery behind.",
-            "instructions": "Seat the child cross-legged on the clear paving directly below the dragon’s middle. Face forward with hands in the lap; use the same head size as nearby children."
+            "instructions": "Seat the child cross-legged on the clear paving directly below the dragon’s middle. Face forward with hands in the lap; use the same head size as nearby children. She sits on the flat stone paving of the wall's walkway, never on the hanging lantern, the pole or the dragon."
           }
         },
         {

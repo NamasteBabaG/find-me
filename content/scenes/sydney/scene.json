@@ -252,7 +252,7 @@
             "pose": "peeking",
             "support": "The hidden feet stand on a shallow ledge behind the foreground harbour rock; the support point is concealed by the rock.",
             "occlusion": "The near pale rock hides the lower torso, legs, and shoes along its visible top contour; the face remains unobstructed.",
-            "instructions": "Peek forward with both forearms resting on the rock top. Show the head, shoulders, and upper torso; use an implied standing height like children on adjacent foreground rocks. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown."
+            "instructions": "Peek forward with both forearms resting on the rock top. Show the head, shoulders, and upper torso; use an implied standing height like children on adjacent foreground rocks. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown. Show the head, the top of the shoulders and both hands resting on the edge of the object in front, so the child is visibly holding on to it; never a head alone."
           }
         },
         {

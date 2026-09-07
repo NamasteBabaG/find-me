@@ -142,7 +142,7 @@
             "pose": "peeking",
             "support": "The implied feet stand on the stall floor behind the wooden mask display.",
             "occlusion": "The dense foreground mask rack and its wooden bin hide the child from mid-torso through the feet.",
-            "instructions": "Show the child facing forward among the masks, with shoulders and upper torso visible and hands close to the rack edge. Use the same scale as foreground children. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown.",
+            "instructions": "Show the child facing forward among the masks, with shoulders and upper torso visible and hands close to the rack edge. Use the same scale as foreground children. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown. Show the head, the top of the shoulders and both hands resting on the edge of the object in front, so the child is visibly holding on to it; never a head alone.",
             "foreground": [
               {
                 "x": 0.043,

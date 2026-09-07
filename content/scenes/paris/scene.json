@@ -63,7 +63,7 @@
             "pose": "peeking",
             "support": "Cobblestone pavement immediately behind the wicker basket; footX and footY are the implied hidden shoe midpoint.",
             "occlusion": "The original wicker basket and projecting baguettes hide the child from about the waist downward without covering the face.",
-            "instructions": "Stand behind the exterior baguette basket and lean forward slightly so the head and shoulders show against the bakery window. Keep the child comparable in implied height to nearby foreground children. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown.",
+            "instructions": "Stand behind the exterior baguette basket and lean forward slightly so the head and shoulders show against the bakery window. Keep the child comparable in implied height to nearby foreground children. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown. Show the head, the top of the shoulders and both hands resting on the edge of the object in front, so the child is visibly holding on to it; never a head alone.",
             "foreground": [
               {
                 "x": 0.8577,

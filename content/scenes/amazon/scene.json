@@ -214,7 +214,7 @@
             "pose": "peeking",
             "support": "The support point marks the child's hidden feet on the root-floor ledge behind the foreground root.",
             "occlusion": "The pictured diagonal root hides the lower chest, waist, legs, and feet; the head and face remain fully visible above it.",
-            "instructions": "Place the child upright in the dark opening among the giant roots, leaning slightly into view with head, shoulders, and one hand visible. Match the scale of the nearby children hiding in the root system. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown.",
+            "instructions": "Place the child upright in the dark opening among the giant roots, leaning slightly into view with head, shoulders, and one hand visible. Match the scale of the nearby children hiding in the root system. Only the part of the child above the occluder is painted; the rest of the body continues behind it and is not shown. Show the head, the top of the shoulders and both hands resting on the edge of the object in front, so the child is visibly holding on to it; never a head alone.",
             "foreground": [
               {
                 "x": 0.185,
