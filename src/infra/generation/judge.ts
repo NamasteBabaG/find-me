@@ -1,7 +1,7 @@
 import sharp from "sharp";
 import { createHash } from "node:crypto";
 import type { JudgeAttempt, PatchJudge, PatchJudgement, PatchJudgeInput } from "./types";
-import { BOARD_JUDGE_VERSION, BOARD_JUDGE_MODEL, BOARD_JUDGE_EFFORT, BOARD_FAST_JUDGE_MODEL, BOARD_JUDGE_MAX_TOKENS, boardJudgePrompt, parseBoardVerdict } from "./board-verdict";
+import { BOARD_JUDGE_VERSION, BOARD_JUDGE_MODEL, BOARD_JUDGE_EFFORT, BOARD_FAST_JUDGE_MODEL, BOARD_JUDGE_MAX_TOKENS, advisoryFor, boardJudgePrompt, parseBoardVerdict } from "./board-verdict";
 
 /**
  * Production: inspect a final on-board composite with two complementary reviews.
@@ -42,6 +42,7 @@ const API = "https://api.openai.com/v1/chat/completions";
 /** Judging is cheap next to a roll (~7¢), so the budget here is generous. */
 const TIMEOUT_MS = 45_000;
 export const STRONG_TIMEOUT_MS = 90_000;
+export const BOARD_IMAGE_PX = 1024;
 const TRIES = 2;
 const MAX_OUTPUT_TOKENS = 60;
 
@@ -140,8 +141,12 @@ export class OpenAiPatchJudge implements PatchJudge {
     // a timeout is an unknown charge. Ninety seconds inside the tick
     // (JUDGE_MIN_MS allows for it); a pilot may pass more.
     const requestTimeoutMs = reasoning ? Math.max(this.timeoutMs, STRONG_TIMEOUT_MS) : this.timeoutMs;
+    // The board at 1024: the same four 512-px tiles as 768 on the wire, so the
+    // same tokens, and a third more detail on a child who is a fifth of the
+    // window (the 4.5x window at 768 lost linework the strong reviewer then
+    // called a style fault; pilot of 8 September 2026).
     const images = input.boardCrop
-      ? [await sharp(input.boardCrop).resize(768, 768, { fit: "inside" }).png().toBuffer(), patch, sheet]
+      ? [await sharp(input.boardCrop).resize(BOARD_IMAGE_PX, BOARD_IMAGE_PX, { fit: "inside" }).png().toBuffer(), patch, sheet]
       : [patch, sheet];
     const prompt = contextual ? boardJudgePrompt(input.childName, input.ageYears, input.recipe) : judgePrompt(input.childName);
     const attempts: JudgeAttempt[] = [];
@@ -210,7 +215,7 @@ export class OpenAiPatchJudge implements PatchJudge {
         if (json.service_tier && json.service_tier !== "default") attempts.at(-1)!.costUnknown = true;
         return result("unknown", "judge completion, output cap or service tier could not be verified");
       }
-      const parsed = contextual ? parseBoardVerdict(content) : parseVerdict(content);
+      const parsed = contextual ? parseBoardVerdict(content, advisoryFor(input.recipe)) : parseVerdict(content);
       if (parsed) {
         if ("checks" in parsed) checks = parsed.checks;
         return result(parsed.verdict, parsed.reason);

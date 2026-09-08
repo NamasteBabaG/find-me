@@ -19,6 +19,38 @@ export const BOARD_JUDGE_MAX_TOKENS = 8000;
 export const BOARD_CHECKS = ["identity", "faceIntegrity", "bodyPlacement", "ageProportions", "anatomy", "style", "relativeScale"] as const;
 export type BoardChecks = Record<(typeof BOARD_CHECKS)[number], "pass" | "fail" | "uncertain">;
 
+/**
+ * Checks that hold a picture for a person instead of rejecting it outright.
+ *
+ * `style` is a real signal and stays measured, reported and shown in the admin
+ * strip — Guy has named the same defect himself ("she looks flat and
+ * unconnected to the board in style"). It is not a per-attempt defect a retry
+ * can repair: it is gpt-image-2's finish against gouache. In the pilot of 8
+ * September 2026 the strong reviewer failed it on seven of sixteen pictures
+ * the game had shipped and nobody had complained about, and failed it MORE at
+ * a higher wire resolution, not less. Rejecting on it would burn all three
+ * attempts of about half the spots and finish no game. So a style fail alone
+ * makes the verdict `unknown`: the patch is kept, nothing is re-rolled, and
+ * the game goes to a person with the reason on the row. A style fail beside
+ * any other failed check still rejects.
+ */
+export const ADVISORY_CHECKS = ["style"] as const;
+
+/**
+ * Which checks may reject, for this spot.
+ *
+ * `relativeScale` is only as good as the people it was told to measure
+ * against. Where the contract names them it was right five times out of five
+ * on the pictures a parent called wrong (the sledge, the stall, the ferry,
+ * the carousel). Where it has to choose its own comparators it guessed 1.4x
+ * on a child standing at a taxi and 1.7–2.0x on one seated high on a branch,
+ * both shipped and unremarked (pilot, 8 September 2026). Without comparators
+ * it holds the picture for a person instead of rejecting it.
+ */
+export function advisoryFor(recipe?: JudgeRecipe): readonly string[] {
+  return recipe?.comparators ? ADVISORY_CHECKS : [...ADVISORY_CHECKS, "relativeScale"];
+}
+
 /** What a correct picture of this spot is, in the judge's words. */
 export function recipeLines(recipe?: JudgeRecipe): string[] {
   if (!recipe) return [];
@@ -54,7 +86,7 @@ export function boardJudgePrompt(childName: string, ageYears?: number | null, re
 }
 
 /** The model cannot override a failed or omitted check with an overall "ok". */
-export function parseBoardVerdict(content: string | undefined): Pick<PatchJudgement, "verdict" | "reason" | "checks"> | null {
+export function parseBoardVerdict(content: string | undefined, advisory: readonly string[] = ADVISORY_CHECKS): Pick<PatchJudgement, "verdict" | "reason" | "checks"> | null {
   try {
     const raw = JSON.parse(content ?? "") as { checks?: Record<string, unknown>; reason?: unknown };
     if (!raw || !raw.checks || typeof raw.reason !== "string" || !raw.reason.trim()) return null;
@@ -64,8 +96,10 @@ export function parseBoardVerdict(content: string | undefined): Pick<PatchJudgem
       if (value !== "pass" && value !== "fail" && value !== "uncertain") return null;
       checks[key] = value;
     }
+    const blocking = BOARD_CHECKS.filter((k) => !advisory.includes(k)).map((k) => checks[k]);
     const values = Object.values(checks);
-    return { verdict: values.includes("fail") ? "bad" : values.includes("uncertain") ? "unknown" : "ok", checks, reason: raw.reason.slice(0, 800) };
+    const verdict = blocking.includes("fail") ? "bad" : values.includes("fail") || values.includes("uncertain") ? "unknown" : "ok";
+    return { verdict, checks, reason: raw.reason.slice(0, 800) };
   } catch { return null; }
 }
 

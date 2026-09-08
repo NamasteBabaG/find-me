@@ -60,6 +60,22 @@ missing feet. Every stage had a hand in it, and each got a fix
   uncertain fast answer goes to it as well. `scripts/judge-pilot.ts` measured
   the reviewers separately on a labelled set; `scripts/spot-trials.ts` renders
   a few spots through the whole chain against one durable ledger.
+- **`style` is advisory** (`ADVISORY_CHECKS`): a style fail alone makes the
+  verdict `unknown` — the patch is kept, nothing is re-rolled, and the game
+  goes to a person with the reason on the row. Beside any other failed check
+  it still rejects. In the pilot the strong reviewer failed style on seven of
+  sixteen pictures the game had shipped, and failed it *more* at a higher wire
+  resolution, not less: it is gpt-image-2's finish against gouache, which is
+  real, is the same thing Guy has named himself, and which no retry of one
+  attempt repairs. Rejecting on it would burn all three attempts of about half
+  the spots and finish no game.
+- **`relativeScale` rejects only where the contract names comparators**
+  (`advisoryFor`). With them the strong reviewer was right five times out of
+  five on the pictures a parent called wrong; without them it guessed 1.4x on
+  a child at a taxi and 1.7–2.0x on one seated high on a branch, both shipped
+  and unremarked. On a spot with no comparators a scale failure holds the
+  picture for a person instead of rejecting it. Giving a spot a contract is
+  therefore what turns the scale check on for it.
 - **Two spots moved**: sydney/ferry → sydney/lifeguard (crouching under the
   lifeguard chair; the ferry's passengers are 40 px heads, no child-sized
   child is recognisable there) and paris/awning → behind the painter's easel

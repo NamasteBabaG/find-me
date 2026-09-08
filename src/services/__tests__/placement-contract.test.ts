@@ -39,9 +39,10 @@ describe("the placement contract in childProblem", () => {
     expect(childProblem(render(SLEDGE, { width: 190, height: 300, centerX: c.supportX + 20, centerY: c.supportY - 150 }))).toBeNull();
     expect(childProblem(render(SLEDGE, { width: 220, height: Math.round(c.visiblePx * 1.2), centerX: c.supportX, centerY: c.supportY - c.visiblePx * 0.6 }))).toBeNull();
   });
-  it("rejects a body twice the height the contract shows, and one 4.9 standing-heights away", () => {
+  it("rejects a body twice the standing height, and one 4.9 standing-heights away", () => {
     const c = shapeContract(STONES, ART)!;
-    const twice = childProblem(render(STONES, { width: 140, height: c.visiblePx * 2, centerX: c.supportX, centerY: c.supportY - c.standingPx + c.visiblePx }));
+    // In layer mode the patch may be the whole child, so the limit is twice her STANDING height.
+    const twice = childProblem(render(STONES, { width: 140, height: c.standingPx * 2, centerX: c.supportX, centerY: c.supportY - c.standingPx + c.visiblePx }));
     expect(twice).toMatch(/larger than the children beside her/);
     const far = childProblem(render(STONES, { width: 120, height: c.visiblePx, centerX: c.supportX + 4.9 * c.standingPx, centerY: c.supportY - c.standingPx + c.visiblePx / 2 }));
     expect(far).toMatch(/standing-heights sideways/);
@@ -52,6 +53,23 @@ describe("the placement contract in childProblem", () => {
     // giza/stones attempt 3 of game 2: 119 x 160 px, over the block's top edge.
     expect(childProblem(render(STONES, { width: 119, height: 160, centerX: c.supportX + 15, centerY: c.supportY - c.standingPx + 80 }))).toBeNull();
   });
+  it("accepts a layer-mode render of the whole child, which the board's layer hides afterwards", () => {
+    // paris/awning and paris/carousel, 8 September 2026: the painter is asked for a
+    // complete child in layer mode and paints one; the layer hides her afterwards.
+    const c = shapeContract(STONES, ART)!;
+    expect(c.layer).toBe(true);
+    expect(childProblem(render(STONES, { width: 140, height: c.standingPx, centerX: c.supportX, centerY: c.supportY - c.standingPx / 2 }))).toBeNull();
+  });
+
+  it("refuses a child whose head, or whose feet, sit far from where the contract puts them", () => {
+    const c = shapeContract(STONES, ART)!;
+    const high = childProblem(render(STONES, { width: 119, height: 160, centerX: c.supportX, centerY: c.supportY - c.standingPx - 0.4 * c.standingPx + 80 }));
+    expect(high).toMatch(/top of the head/);
+    const s2 = shapeContract(SLEDGE, ART)!;
+    const low = childProblem(render(SLEDGE, { width: 190, height: 300, centerX: s2.supportX, centerY: s2.supportY + 0.5 * s2.standingPx }));
+    expect(low).toMatch(/feet or seat/);
+  });
+
   it("still refuses a child too small for the depth", () => {
     const c = shapeContract(STONES, ART)!;
     expect(childProblem(render(STONES, { width: 40, height: Math.round(c.visiblePx * 0.5), centerX: c.supportX, centerY: c.supportY - c.standingPx + 30 }))).toMatch(/too small for this depth/);
@@ -60,7 +78,7 @@ describe("the placement contract in childProblem", () => {
     expect(contractPx(SLEDGE, ART)).toEqual({ standing: 389, visible: 304 });
     expect(contractPx(SLEDGE, ART, 1024 / 768)).toEqual({ standing: 519, visible: 405 });
     expect(contractPx({ placement: null }, ART)).toBeNull();
-    expect(CONTRACT_HEIGHT_MAX).toBe(1.3);
+    expect(CONTRACT_HEIGHT_MAX).toBe(1.35);
   });
 });
 

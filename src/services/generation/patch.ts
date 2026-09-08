@@ -608,6 +608,16 @@ export interface ShapeContract {
   supportX: number;
   supportY: number;
   visibleAtTop: boolean;
+  /**
+   * Layer mode: the board's own layer hides part of her afterwards, and the
+   * painter — asked for a complete child — sometimes paints her complete and
+   * sometimes only what shows behind the object it can see in the crop
+   * (paris/awning trial, 8 September 2026: a head above the easel, 171 px,
+   * where the whole child would be 379). The patch may be either.
+   */
+  layer: boolean;
+  /** Seated, crouching or swimming: the support point is a seat or a waterline, and legs may hang below it. */
+  seated: boolean;
 }
 
 /*
@@ -1035,8 +1045,10 @@ export function shapeContract(slot: SlotPoint, art: Size): ShapeContract | null 
   const pose = slot.placement?.pose;
   // A peek shows the top of her over the object; everything else shows her
   // from the support up (feet, seat, waterline), whatever hides the rest.
-  const visibleAtTop = pose === "peeking" || (occlusionMode(slot) !== "open" && c.visibleFraction < 0.95);
-  return { standingPx: px.standing, visiblePx: px.visible, supportX: c.supportPoint.x * art.width, supportY: c.supportPoint.y * art.height, visibleAtTop };
+  const mode = occlusionMode(slot);
+  const visibleAtTop = pose === "peeking" || (mode !== "open" && c.visibleFraction < 0.95);
+  const seated = pose === "seated" || pose === "crouching" || pose === "swimming";
+  return { standingPx: px.standing, visiblePx: px.visible, supportX: c.supportPoint.x * art.width, supportY: c.supportPoint.y * art.height, visibleAtTop, layer: mode === "layer", seated };
 }
 
 /** A result that fails every check: the model returned the crop unchanged. */
@@ -1073,32 +1085,53 @@ function nothingPainted(ctx: SlotContext, art: Size, slot: SlotPoint, basis: Pat
  */
 /**
  * The contract's limits. A render is held to the board's own people, not to
- * the number the slot asked for: within 0.6–1.3 of the visible height the
- * contract expects, and with its visible part where the contract puts it.
+ * the number the slot asked for: within 0.6–1.35 of the height the contract
+ * expects, and with its visible part where the contract puts it.
+ *
  * Measured on game 2 (8 September 2026): the sledge child came back at 1.47
  * of the seated child beside her and the stall child at 1.41, both accepted
  * by every rule and both wrong to a parent's eye; the carousel rider at 1.06
- * is the judge's to decide. 4.9 standing heights of drift and a body twice
- * the height are the fixtures the limits were set against.
+ * is the judge's to decide. The band is as wide as it is because the
+ * contract itself is measured by eye: the first sledge contract read the
+ * seated boys 15% short, and a 1.2x render of a right-sized child was refused
+ * at 1.5x until the crop was re-measured (the trials of 8 September). 4.9
+ * standing heights of drift and a body twice the height are the fixtures.
+ *
+ * In layer mode the patch may be the whole child or only what shows
+ * (ShapeContract.layer), so its height is allowed anywhere between the visible
+ * part and the standing height. Place is checked on the edge that means
+ * something: the top of her where the top shows (a peek, a layer-mode hide),
+ * the bottom of her where the body meets its support (feet, seat, waterline).
  */
 export const CONTRACT_HEIGHT_MIN = 0.6;
-export const CONTRACT_HEIGHT_MAX = 1.3;
+export const CONTRACT_HEIGHT_MAX = 1.35;
 export const CONTRACT_DRIFT_X = 0.6;
-export const CONTRACT_DRIFT_Y = 0.45;
+/**
+ * How far the anchored edge may sit from the contract's place, in standing
+ * heights. A body may extend BELOW its support — a seated child's shoes hang
+ * under the seat, a swimmer's body under the waterline — so that direction is
+ * loose for those poses and tight for feet on the ground. Ending well ABOVE
+ * the support is floating, in every pose.
+ */
+export const CONTRACT_DRIFT_EDGE = 0.35;
+export const CONTRACT_HANG_SEATED = 0.4;
 
 export function childProblem(result: PatchResult): string | null {
   const s = result.shape;
   if (result.largest === 0) return "painted nothing — the crop came back unchanged";
   const c = s.contract;
   if (c) {
-    const ratio = s.height / Math.max(1, c.visiblePx);
-    if (ratio < CONTRACT_HEIGHT_MIN) return `painted ${Math.round(s.height)}px tall where the contract shows ~${c.visiblePx}px of a ${c.standingPx}px child (${ratio.toFixed(2)}x: too small for this depth)`;
-    if (ratio > CONTRACT_HEIGHT_MAX) return `painted ${Math.round(s.height)}px tall where the contract shows ~${c.visiblePx}px of a ${c.standingPx}px child (${ratio.toFixed(2)}x: larger than the children beside her)`;
-    // Where the visible part should be: the top of her over the object, or from the support up.
-    const expectedCy = c.visibleAtTop ? c.supportY - c.standingPx + c.visiblePx / 2 : c.supportY - c.visiblePx / 2;
+    const low = CONTRACT_HEIGHT_MIN * c.visiblePx;
+    const high = CONTRACT_HEIGHT_MAX * (c.layer ? c.standingPx : c.visiblePx);
+    if (s.height < low) return `painted ${Math.round(s.height)}px tall where the contract shows ~${c.visiblePx}px of a ${c.standingPx}px child (${(s.height / Math.max(1, c.visiblePx)).toFixed(2)}x: too small for this depth)`;
+    if (s.height > high) return `painted ${Math.round(s.height)}px tall where the contract shows ~${c.visiblePx}px of a ${c.standingPx}px child (${(s.height / Math.max(1, c.layer ? c.standingPx : c.visiblePx)).toFixed(2)}x: larger than the children beside her)`;
     const dx = Math.abs(s.centerX - c.supportX) / c.standingPx;
-    const dy = Math.abs(s.centerY - expectedCy) / c.standingPx;
-    if (dx > CONTRACT_DRIFT_X || dy > CONTRACT_DRIFT_Y) return `painted ${dx.toFixed(1)} standing-heights sideways and ${dy.toFixed(1)} up or down from the contract's place (support at ${Math.round(c.supportX)},${Math.round(c.supportY)})`;
+    if (dx > CONTRACT_DRIFT_X) return `painted ${dx.toFixed(1)} standing-heights sideways from the contract's place (support at ${Math.round(c.supportX)},${Math.round(c.supportY)})`;
+    const topAnchored = c.visibleAtTop || c.layer;
+    const top = s.centerY - s.height / 2, bottom = s.centerY + s.height / 2;
+    const off = topAnchored ? (top - (c.supportY - c.standingPx)) / c.standingPx : (bottom - c.supportY) / c.standingPx;
+    const below = !topAnchored && c.seated ? CONTRACT_HANG_SEATED : CONTRACT_DRIFT_EDGE;
+    if (off > below || off < -CONTRACT_DRIFT_EDGE) return `painted with ${topAnchored ? "the top of the head" : "the feet or seat"} ${Math.abs(off).toFixed(2)} standing-heights ${off < 0 ? "above" : "below"} where the contract puts ${topAnchored ? "it" : "them"} (support at ${Math.round(c.supportX)},${Math.round(c.supportY)})`;
   }
   const h = s.height / s.childPx;
   // Held to what was asked for: a swimmer is asked for from the waterline up

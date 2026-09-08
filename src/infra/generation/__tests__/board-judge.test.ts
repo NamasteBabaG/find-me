@@ -1,7 +1,7 @@
 import sharp from 'sharp';
 import {afterEach,beforeAll,describe,it,expect,vi} from 'vitest';
 import {OpenAiPatchJudge,fastMayDecide,judgementForJson} from '../judge';
-import {BOARD_CHECKS,BOARD_JUDGE_MODEL,BOARD_FAST_JUDGE_MODEL,BOARD_JUDGE_VERSION,boardJudgePrompt,boardJudgeReserveCents,parseBoardVerdict} from '../board-verdict';
+import {ADVISORY_CHECKS,advisoryFor,BOARD_CHECKS,BOARD_JUDGE_MODEL,BOARD_FAST_JUDGE_MODEL,BOARD_JUDGE_VERSION,boardJudgePrompt,boardJudgeReserveCents,parseBoardVerdict} from '../board-verdict';
 let png:Buffer;beforeAll(async()=>{png=await sharp({create:{width:32,height:32,channels:4,background:'red'}}).png().toBuffer();});afterEach(()=>vi.unstubAllGlobals());
 const checks={identity:'pass',faceIntegrity:'pass',bodyPlacement:'pass',ageProportions:'pass',anatomy:'pass',style:'pass',relativeScale:'pass'};
 const input=()=>({patchPng:png,reference:png,boardCrop:png,childName:'test',label:'test'});
@@ -27,7 +27,12 @@ describe('contextual release judge',()=>{
   const r=await new OpenAiPatchJudge('test').judge(input());expect(r.verdict).toBe('ok');expect(r.policy).toBe('screen:strong');expect(fetch).toHaveBeenCalledTimes(2);expect(r.reviews?.[0]?.verdict).toBe('bad');
   // And the strong reviewer can still say no.
   const again=vi.fn().mockResolvedValueOnce(response(BOARD_FAST_JUDGE_MODEL,{relativeScale:'fail'})).mockResolvedValueOnce(response(BOARD_JUDGE_MODEL,{relativeScale:'fail'}));vi.stubGlobal('fetch',again);
-  expect((await new OpenAiPatchJudge('test').judge(input())).verdict).toBe('bad');expect(again).toHaveBeenCalledTimes(2);
+  // On a spot whose contract names the people to measure against, a scale failure rejects.
+  const withRecipe={...input(),recipe:{pose:'seated',support:'on the sledge beam',occlusion:'None',occlusionMode:'open' as const,comparators:'the boy on the next sledge'}};
+  expect((await new OpenAiPatchJudge('test').judge(withRecipe)).verdict).toBe('bad');expect(again).toHaveBeenCalledTimes(2);
+  // Without comparators the same answer holds the picture for a person instead.
+  const noRecipe=vi.fn().mockResolvedValueOnce(response(BOARD_FAST_JUDGE_MODEL,{relativeScale:'fail'})).mockResolvedValueOnce(response(BOARD_JUDGE_MODEL,{relativeScale:'fail'}));vi.stubGlobal('fetch',noRecipe);
+  expect((await new OpenAiPatchJudge('test').judge(input())).verdict).toBe('unknown');
  });
  it('under the chain policy any fast failure ends it',async()=>{
   const fetch=vi.fn().mockResolvedValue(response(BOARD_FAST_JUDGE_MODEL,{bodyPlacement:'fail'}));vi.stubGlobal('fetch',fetch);
@@ -65,6 +70,16 @@ describe('contextual release judge',()=>{
   expect(parseBoardVerdict(JSON.stringify({verdict:'ok',checks:six,reason:'six of seven'}))).toBeNull();
   expect(parseBoardVerdict(JSON.stringify({verdict:'ok',checks:{...checks,faceIntegrity:'fail'},reason:'hole in forehead'}))?.verdict).toBe('bad');
   expect(parseBoardVerdict(JSON.stringify({verdict:'ok',checks:{...checks,relativeScale:'fail'},reason:'1.5x the child beside her'}))?.verdict).toBe('bad');
+  // style is advisory: alone it holds for a person, beside another failure it rejects.
+  expect(parseBoardVerdict(JSON.stringify({verdict:'ok',checks:{...checks,style:'fail'},reason:'softer than the board'}))?.verdict).toBe('unknown');
+  expect(parseBoardVerdict(JSON.stringify({verdict:'ok',checks:{...checks,style:'fail',bodyPlacement:'fail'},reason:'floating and soft'}))?.verdict).toBe('bad');
+  expect(ADVISORY_CHECKS).toEqual(['style']);
+  // relativeScale rejects only where the contract named the people to measure against.
+  const named={pose:'seated',support:'s',occlusion:'o',occlusionMode:'open' as const,comparators:'the boy on the next sledge'};
+  const scaled=JSON.stringify({verdict:'ok',checks:{...checks,relativeScale:'fail'},reason:'1.5x'});
+  expect(parseBoardVerdict(scaled,advisoryFor(named))?.verdict).toBe('bad');
+  expect(parseBoardVerdict(scaled,advisoryFor({...named,comparators:undefined}))?.verdict).toBe('unknown');
+  expect(parseBoardVerdict(scaled,advisoryFor(undefined))?.verdict).toBe('unknown');
   expect(BOARD_CHECKS).toContain('relativeScale');
  });
  it('tells the judge the recipe, so a peek is judged as a peek',()=>{

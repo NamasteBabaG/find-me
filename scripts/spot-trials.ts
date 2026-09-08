@@ -54,9 +54,13 @@ async function main() {
   const budget = new GenerationBudget(budgetDir, limit, { round: "judge-placement-20260908" });
   console.log(`budget: ${budget.spent.toFixed(2)} of ${limit} cents already spent in this round`);
 
+  // The same spot may be listed twice; every trial gets its own directory.
+  const seen = new Map<string, number>();
   for (const spot of spots) {
     const [slug, targetId] = spot.split("/") as [string, string];
-    for (let n = 1; n <= repeat; n++) {
+    for (let k = 1; k <= repeat; k++) {
+      const n = (seen.get(spot) ?? 0) + 1;
+      seen.set(spot, n);
       const info = slotOf(slug, targetId, "A", { ageYears: age, outputPx: provider.patchOutputPx });
       const dir = path.join(out, `${slug}-${targetId}-${n}`);
       mkdirSync(dir, { recursive: true });

@@ -25,7 +25,18 @@ export class GenerationBudget {
   get held() { return this.entries.some(e => e.state !== "known") || this.spent > this.limit; }
   private save() {
     const temp = `${this.file}.tmp`;
-    writeFileSync(temp, JSON.stringify({ fingerprint: this.fingerprint, limit: this.limit, spentCents: this.spent, held: this.held, entries: this.entries }, null, 2));
+    // The ledger records bills and verdicts, not pictures: a judgement carries
+    // the images it was shown as Buffers (wireImages), and fourteen of those
+    // made a 500 MB file that JSON.stringify then refused (8 September 2026).
+    // Buffers are dropped and long strings (prompts) cut; the pictures are the
+    // caller's to keep as files.
+    const compact = (_key: string, value: unknown): unknown => {
+      if (Buffer.isBuffer(value)) return undefined;
+      if (value && typeof value === "object" && (value as { type?: unknown }).type === "Buffer" && Array.isArray((value as { data?: unknown }).data)) return undefined;
+      if (typeof value === "string" && value.length > 4000) return `${value.slice(0, 4000)}…[${value.length} chars]`;
+      return value;
+    };
+    writeFileSync(temp, JSON.stringify({ fingerprint: this.fingerprint, limit: this.limit, spentCents: this.spent, held: this.held, entries: this.entries }, compact, 2));
     renameSync(temp, this.file);
   }
   async run<T extends Bill>(kind: string, reserve: number, fn: () => Promise<T>): Promise<T> {
