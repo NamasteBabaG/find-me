@@ -251,9 +251,15 @@ Code (all under `src/`, `content/`, `scripts/`, `docs/`; `work/` and `output/` a
 - Tests: `placement-contract.test.ts`, `occlusion-modes.test.ts`, `recipe.test.ts`, `admin-attempts.test.ts`, `board-judge.test.ts` (policy, seven checks, wire images, recipe), `recovery.test.ts` (new evidence ids), `generation-pipeline.test.ts` (three evidence pictures per attempt, stage and judgement on a rejected attempt), `scene-versions.test.ts` (version 5 and the archived layer), `tone-match.test.ts` (prompt v9).
 - Docs: `docs/SPRITE_PATCHES.md` (new first section), this report.
 
-Checks: `npm run check` (tsc + vitest) green — 71 files, 498 tests; `npm run scenes:validate` green (warnings only, all pre-existing). Commit `99a0b28` on `master`, pushed to the `find-me` remote, staged by file name after a secret-pattern scan of the staged diff; `work/`, `output/`, `tmp/` and the root PDFs were not staged.
+Second commit `a48a873` (everything the eight trials and the fifty judgements changed): `ShapeContract.layer` and `.seated` with the edge-anchored place check (`patch.ts`), `ADVISORY_CHECKS` and `advisoryFor` (`board-verdict.ts`), `BOARD_IMAGE_PX` 1024 and `STRONG_TIMEOUT_MS` 90 s (`judge.ts`), the ledger no longer storing Buffers (`generation-budget.ts`), `scripts/budget-reconcile.ts`, the pilot's dead v5 mode removed, per-trial directories, and their tests.
+
+Checks: `npm run check` (tsc + vitest) green at both commits — 71 files, 500 tests at `a48a873`; `npm run scenes:validate` green (warnings only, all pre-existing). Commit `99a0b28` on `master`, pushed to the `find-me` remote, staged by file name after a secret-pattern scan of the staged diff; `work/`, `output/`, `tmp/` and the root PDFs were not staged.
 
 Deploy: QA only (`find-me-qa`, alias `qa.findmeworlds.com`), deployment `dpl_9J7PoyvChg6Z29a6Z43gSiR2BjJ4`, state READY, `gitCommitSha 99a0b28…`, target production, built from the CLI upload with `APP_COMMIT=99a0b28`. The CLI printed "Not authorized" after "Deploying outputs…" (its final poll), but the deployment itself completed and is aliased — confirmed through the Vercel API (`get_deployment`). Deployed with no generation running (0 RUNNING jobs, 0 games in a generating status at the time; the two MANUAL_REVIEW games untouched). `/api/health` answers `QA_ACCESS_REQUIRED` from outside the gate, as designed. Production stays paused; no environment variable was added or changed (`JUDGE_POLICY` defaults to `screen` in code).
+
+Second deploy: `dpl_8iWjsM7xjNQDBJyLDVspYJi5mXaH`, state READY, `gitCommitSha a48a873…`, aliased to `qa.findmeworlds.com`, built with `APP_COMMIT=a48a873`. Checked again before deploying: 0 RUNNING jobs, 0 games in a generating status. **QA now runs the code this report describes.**
+
+**What I could not verify, and it matters:** the two admin screens were checked at build level only — the Next build type-checks and page-collects `/admin/orders/[gameId]` with the new attempt strip, and the unit tests cover `attemptsForAdmin` and `parseJudge` — but I did not log in behind the QA password gate to look at the rendered page. The first person to open game 2's order page should confirm that the per-attempt strip shows what it claims, because it is the screen the whole evidence argument rests on.
 
 ## 11. Can a new QA game be created now?
 
@@ -268,6 +274,7 @@ The precise risks that remain:
 - **The painter still draws too large** at the sledge, the stones and the stall. The contract now catches it; nothing yet fixes it. If a full run is wanted first, expect those spots to fail rather than ship badly.
 - **Twenty of the twenty-seven spots have no contract**, so they keep the old generic limits and the scale check stays advisory there. They are exactly as safe, and exactly as unsafe, as they were in game 2.
 - **`style` will hold most games for a person.** That is deliberate, and with `QA_DELIVER_WITH_PROBLEMS` on in QA the game still reaches the tester with an admin alert. On a real customer it would wait.
+- **Layer mode is unproven** (§8b). Four spots use it, the painter still paints around the object it was told to ignore, and only the carousel produced a passing render today. If one board is chosen for the small run, choose one without a layer-mode spot (newyork, marrakech, tokyo, greatwall, antarctica) to test the contract work on its own.
 - **The daily ceiling still double-counts** (memory note of 7 September): `GENERATION_DAILY_CENTS` is 4000 in QA and a game stalls silently at roughly half that. A world run should be started early in the UTC day.
 
 Safe next step, in order: one board, read the attempt strips, and if the guard's refusals look right, author contracts for the remaining twenty spots before spending a world.
