@@ -101,7 +101,9 @@ export const BODY_TEMPLATES: Record<string, BodyTemplate> = {
   greatwall_dragon: { id: "greatwall_dragon", label: t("under the paper dragon", "מתחת לדרקון הנייר"), pose: "standing", accessory: { glyph: "🐉", place: "front" }, outfit: { primary: "#C1443B", secondary: "#FFB61E" } },
   greatwall_lanterns: { id: "greatwall_lanterns", label: t("by the red lanterns", "ליד הפנסים האדומים"), pose: "holding", accessory: { glyph: "🏮", place: "hand" }, outfit: { primary: "#F25C7A", secondary: "#C9A227" } },
   greatwall_tower: { id: "greatwall_tower", label: t("in the watchtower", "במגדל השמירה"), pose: "peeking", accessory: { glyph: "", place: "none" }, outfit: { primary: "#B9A98F", secondary: "#5BBF6B" } },
+  // Kept for the archived version 4 of Sydney (game 2 pins it); version 5 hides under the lifeguard chair instead.
   sydney_ferry: { id: "sydney_ferry", label: t("by the ferry", "ליד המעבורת"), pose: "standing", accessory: { glyph: "⛴️", place: "front" }, outfit: { primary: "#2FA4D6", secondary: "#5BBF6B" } },
+  sydney_lifeguard: { id: "sydney_lifeguard", label: t("under the lifeguard chair", "מתחת לכיסא המציל"), pose: "peeking", accessory: { glyph: "", place: "none" }, outfit: { primary: "#F5B301", secondary: "#2FA4D6" } },
   sydney_surfboards: { id: "sydney_surfboards", label: t("by the surfboards", "ליד הגלשנים"), pose: "standing", accessory: { glyph: "🏄", place: "front" }, outfit: { primary: "#FFB61E", secondary: "#F25C7A" } },
   sydney_rocks: { id: "sydney_rocks", label: t("behind the harbour rocks", "מאחורי סלעי המפרץ"), pose: "peeking", accessory: { glyph: "", place: "none" }, outfit: { primary: "#B9A98F", secondary: "#2FA4D6" } },
   antarctica_penguins: { id: "antarctica_penguins", label: t("among the penguins", "בין הפינגווינים"), pose: "standing", accessory: { glyph: "🐧", place: "front" }, outfit: { primary: "#FFF8EC", secondary: "#2B2B2B" } },

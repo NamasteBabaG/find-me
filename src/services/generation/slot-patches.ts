@@ -1,17 +1,18 @@
 import sharp from "sharp";
 import { createHash } from "node:crypto";
 import { newId } from "@/lib/ids";
-import type { SceneDefinition, Target as SceneTarget } from "@/domain/scene/schema";
+import type { SceneDefinition, Slot, Target as SceneTarget } from "@/domain/scene/schema";
 import { BODY_TEMPLATES } from "../../../content/body-templates";
 import type { Container } from "../container";
 import { storeAsset } from "../asset.service";
-import type { PatchJudgement, SlotPatchResponse } from "@/infra/generation/types";
-import { childProblem, matteHint, modelSpaceHeight, paintMask, slotContext, expressionFor, slotPrompt, PROMPT_VERSION } from "./patch";
+import type { JudgeRecipe, PatchJudgement, SlotPatchResponse } from "@/infra/generation/types";
+import { childProblem, contractPx, matteHint, modelSpaceHeight, occlusionMode, paintMask, slotContext, expressionFor, slotPrompt, visibleGeometry, visibleFraction, PROMPT_VERSION, type PatchGeometry } from "./patch";
 import { extractChild } from "./extract";
 import { readAssetBuffer } from "../asset.service";
 import { loadSceneArt } from "./scene-art";
 import { boardComposite } from "./board-composite";
 import { BOARD_JUDGE_VERSION, BOARD_CHECKS } from "@/infra/generation/board-verdict";
+import { judgementForJson } from "@/infra/generation/judge";
 import { MATTE_WIRE_VERSION, SLOT_WIRE_VERSION } from "@/infra/generation/openai";
 
 /**
@@ -75,11 +76,43 @@ export const MAX_ATTEMPTS_PER_SPOT = 3;
  */
 export const PASS_ONE_MIN_MS = 60_000;
 export const PASS_TWO_MIN_MS = 45_000;
-// 45s fast + 60s Sol + local encoding/checkpoint allowance.
-export const JUDGE_MIN_MS = 115_000;
+// 45s fast + 90s Sol (STRONG_TIMEOUT_MS) + local encoding/checkpoint allowance.
+export const JUDGE_MIN_MS = 145_000;
+
+/**
+ * Above this, the board's foreground layer hides so much of the painted
+ * child that nothing findable is left: no face to tap, no head for a bubble.
+ */
+export const HIDDEN_LIMIT = 0.85;
 
 export function slotOf(target: SceneTarget, variant: Variant) {
   return variant === "A" ? target.slots[0] : target.slots[1];
+}
+
+/**
+ * What the judge is told a correct picture of this spot is.
+ *
+ * A slot with a placement recipe hands it over. One without (the seven
+ * spots restored to their version-2 positions on 7 September: spices,
+ * rocks, ice, canoe, roots, bench, tokyo/stall) still has a body template
+ * and a mission, and those say whether she is meant to be hiding behind
+ * something: judged without that, six good peeks between the spice cones
+ * were refused for their missing feet (game 2, 8 September 2026). The
+ * painter's prompt is not touched by this — only the judge's.
+ */
+export function recipeOf(slot: Slot, target?: Pick<SceneTarget, "bodyTemplate" | "item" | "mission">): JudgeRecipe | undefined {
+  const p = slot.placement;
+  if (p) return { pose: p.pose, support: p.support, occlusion: p.occlusion, occlusionMode: occlusionMode(slot), comparators: p.contract?.comparators, visibleFraction: visibleFraction(slot) };
+  if (!target) return undefined;
+  const body = BODY_TEMPLATES[target.bodyTemplate];
+  const pose = body?.pose === "peeking" ? "peeking" : body?.pose === "sitting" || body?.pose === "riding" ? "seated" : body?.pose === "floating" ? "swimming" : "standing";
+  const item = target.item.en;
+  return {
+    pose,
+    support: pose === "swimming" ? "The water; she shows from about the waist or chest up." : pose === "seated" ? "A seat in the picture: the object the mission names." : "The ground or floor of the picture where she stands.",
+    occlusion: pose === "peeking" ? `She hides behind ${item}: only the part of her that object leaves uncovered shows, and its edge is the cut-off.` : `None authored; whatever is naturally in front of her in the picture may overlap her.`,
+    occlusionMode: "open",
+  };
 }
 
 /**
@@ -130,16 +163,18 @@ export async function generateSlotPatch(
   const art = { width: scene.art.width, height: scene.art.height };
   const ctx = slotContext(art, slot);
   const sceneArt = await loadSceneArt(c.appUrl, scene.art.base, scene.art.sha256);
+  const foreground = scene.art.foreground ? await loadSceneArt(c.appUrl, scene.art.foreground) : undefined;
   const crop = await sharp(sceneArt).extract({ left: ctx.rect.x, top: ctx.rect.y, width: ctx.rect.w, height: ctx.rect.h }).png().toBuffer();
   const mask = paintMask(ctx, art, slot);
   const body = BODY_TEMPLATES[target.bodyTemplate];
+  // In the pixels the model sees, not the art's: the provider scales the window.
+  const promptChildPx = modelSpaceHeight(ctx.childPx, ctx.rect.h, c.avatars.patchOutputPx);
   const prompt = slotPrompt({
     ageYears: input.ageYears,
     placement: slot.placement,
     mission: target.mission.en.replace("{name}", input.childName),
     bodyLabel: body?.label.en,
-    // In the pixels the model sees, not the art's: the provider scales the window.
-    childPx: modelSpaceHeight(ctx.childPx, ctx.rect.h, c.avatars.patchOutputPx),
+    childPx: promptChildPx,
     // The place dresses and lights the child; the sheet only says who they are.
     place: scene.name.en,
     placeNote: scene.tagline.en,
@@ -147,8 +182,11 @@ export async function generateSlotPatch(
     wardrobe: scene.wardrobe,
     action: target.action,
     expression: target.expression ?? expressionFor(body?.pose),
-  }) + repairInstruction(existing?.judgeJson) + (existing?.lastError && /moved the object/.test(existing.lastError) ? " In the previous attempt the object in front of the child was moved or redrawn; this time it stays exactly as it is in the picture, and the child's hands rest on it where it is." : "");
+    contractPx: contractPx(slot, art, promptChildPx / Math.max(1, ctx.childPx)),
+    occlusion: occlusionMode(slot),
+  }) + repairInstruction(existing?.judgeJson, slot.placement) + (existing?.lastError && /moved the object/.test(existing.lastError) ? " In the previous attempt the object in front of the child was moved or redrawn; this time it stays exactly as it is in the picture, and the child's hands rest on it where it is." : "");
   const label = `${scene.slug}/${target.id}/${variant}`;
+  const recipe = recipeOf(slot, target);
 
   // Default to a single roll: inside a request with a deadline, three rolls of
   // ~55s each is enough to overrun it. A spot that fails is not marked done, so
@@ -189,6 +227,11 @@ export async function generateSlotPatch(
     costCents: Math.round(ledger.exactCents + spent),
   } });
   const deferred = (): PatchOutcome => ({ ...base, status: "SKIPPED", deferred: true, costCents: (existing?.costCents ?? 0) + spent, newCostCents: spent, attempts, durationMs: elapsed, model });
+  // Private evidence beside the attempt; a failure to write it is logged, never fatal, and never silently a missing picture: the id stays absent.
+  const keepEvidence = async (buffer: Buffer, mimeType: string, requestId?: string): Promise<string | null> =>
+    storeAsset(c, { ownerId: input.ownerId, type: "PATCH_EVIDENCE", visibility: "PRIVATE", buffer, mimeType, provider: c.avatars.id, providerRequestId: requestId, costCents: 0 })
+      .then((a) => a.id)
+      .catch((err: unknown) => { console.warn(`[patch] ${label}: cannot keep evidence:`, err instanceof Error ? err.message : err); return null; });
 
   for (let attempt = 1; attempt <= Math.max(tries, resume ? 1 : 0); attempt++) {
     const resuming = attempt === 1 && resume !== null;
@@ -276,7 +319,7 @@ export async function generateSlotPatch(
       };
       const extracted = await extractChild({ provider: c.avatars, originalCrop: crop, editedCrop: edit.png, ctx, art, slot, hint: matteHint(slot), label, reference: input.reference, quality: input.matteQuality ?? input.quality, deadlineAt: input.deadlineAt === undefined ? undefined : input.deadlineAt - 5000, minPassTwoMs: PASS_TWO_MIN_MS, priorMatte, onMatte: recordMatte, maxNewMatteAttempts: Math.max(0, 2 - (currentAttempt.matteRequestIds?.length ?? 0)) });
       const patch = extracted.patch;
-      Object.assign(currentAttempt, { extraction: extracted.method, extractionVersion: extracted.version, diffLargest: extracted.diff.largest, occluderShift: extracted.occluder?.mean });
+      Object.assign(currentAttempt, { extraction: extracted.method, extractionVersion: extracted.version, diffLargest: extracted.diff.largest, occluderShift: extracted.occluder?.mean, occluderGap: patch.occluderGap, unchanged: patch.unchanged });
       if (extracted.method === "deferred") {
         // Out of time before pass two: the render is kept, the next tick cuts it.
         currentAttempt.outcome = "pending: pass two deferred (out of time)";
@@ -291,10 +334,26 @@ export async function generateSlotPatch(
       // fraction of a cent and only patches that already look like a child are
       // worth asking about. A render that moved the occluder, or a pass two
       // that kept the wrong thing, is named as such so the retry knows what to
-      // do differently.
-      const shape = extracted.renderProblem ?? (extracted.extractionProblem ? `extraction: ${extracted.extractionProblem}` : childProblem(patch));
+      // do differently. Each is a stage, and the stage is written down.
+      let shape = extracted.renderProblem ?? (extracted.extractionProblem ? `extraction: ${extracted.extractionProblem}` : childProblem(patch));
+      let failedAt: LedgerAttempt["failedAt"] = extracted.renderProblem ? "painter" : extracted.extractionProblem ? "matte" : shape ? "geometry" : undefined;
       if (extracted.renderProblem) currentAttempt.renderProblem = extracted.renderProblem;
       if (extracted.extractionProblem) currentAttempt.extractionProblem = extracted.extractionProblem;
+      // What the player can tap once the board's foreground layer is drawn
+      // over her: the visible part, not the painted one. A child the layer
+      // hides almost entirely has nothing to find.
+      let geometry: PatchGeometry = patch.geometry;
+      if (!shape && slot.layer === "behindForeground" && foreground && patch.width > 0) {
+        const px = { left: Math.round(patch.geometry.rect.x * art.width), top: Math.round(patch.geometry.rect.y * art.height) };
+        const fgAtRect = await sharp(foreground).extract({ left: px.left, top: px.top, width: patch.width, height: patch.height }).png().toBuffer();
+        const seen = await visibleGeometry(patch, fgAtRect, art);
+        currentAttempt.hiddenFraction = Math.round(seen.hiddenFraction * 1000) / 1000;
+        if (seen.hiddenFraction > HIDDEN_LIMIT) { shape = `the foreground layer hides ${Math.round(seen.hiddenFraction * 100)}% of the painted child; nothing findable is left`; failedAt = "geometry"; }
+        else geometry = seen.geometry;
+      }
+      // The extracted patch itself, whatever happens next: the one picture that
+      // says what was cut out, as opposed to what was painted.
+      if (patch.width > 0) currentAttempt.patchAssetId = (await keepEvidence(patch.webp, "image/webp", edit.providerRequestId)) ?? undefined;
       if (!shape && remaining() < JUDGE_MIN_MS) {
         // Out of time before judging: the render and its matte are kept.
         currentAttempt.outcome = "pending: judging deferred (out of time)";
@@ -303,19 +362,29 @@ export async function generateSlotPatch(
         return deferred();
       }
       const boardCrop = shape ? undefined : await boardComposite({
-        base: sceneArt,
-        foreground: scene.art.foreground ? await loadSceneArt(c.appUrl, scene.art.foreground) : undefined,
+        base: sceneArt, foreground,
         art, patch: patch.webp, rect: patch.geometry.rect, layer: slot.layer, flip: slot.flip,
       });
-      judged = shape ? null : await judgeOf(c, patch.webp, input, label, boardCrop!);
+      if (boardCrop) currentAttempt.compositeAssetId = (await keepEvidence(boardCrop, "image/png", edit.providerRequestId)) ?? undefined;
+      judged = shape ? null : await judgeOf(c, patch.webp, input, label, boardCrop!, recipe);
       if (judged) {
         spent += judged.costCents;
         if (judged.costUnknown) ledger.unknownCost = true;
+        // The exact images the judge was shown, kept beside their hashes.
+        const wire = judged.wireImages ?? [];
+        const ids: string[] = [];
+        for (const image of wire) { const id = await keepEvidence(image, "image/png"); if (id) ids.push(id); }
+        if (ids.length) currentAttempt.judgeImageAssetIds = ids;
+        if (judged.imageHashes) currentAttempt.judgeImageHashes = judged.imageHashes;
+        currentAttempt.judgement = judgementForJson(judged);
       }
       const last = currentAttempt;
       last.judgeCents = judged?.costCents ?? 0;
       const problem = shape ?? (judged?.verdict === "bad" ? `does not show ${input.childName}: ${judged.reason}` : null);
+      if (!shape && judged?.verdict === "bad") failedAt = "judge";
       last.outcome = problem ? `rejected: ${problem.slice(0, 80)}` : judged?.verdict === "unknown" ? "held: uncertain review" : "accepted";
+      last.problem = problem ?? undefined;
+      last.failedAt = problem ? failedAt : judged?.verdict === "unknown" ? "judge-unknown" : undefined;
       delete last.stage;
       if (problem) {
         lastError = problem;
@@ -351,16 +420,16 @@ export async function generateSlotPatch(
         where: { id: row.id },
         data: {
           assetId: asset.id,
-          rectJson: JSON.stringify(patch.geometry.rect),
-          hitRectJson: JSON.stringify(patch.geometry.hitRect),
-          headAnchorJson: JSON.stringify(patch.geometry.anchor),
+          rectJson: JSON.stringify(geometry.rect),
+          hitRectJson: JSON.stringify(geometry.hitRect),
+          headAnchorJson: JSON.stringify(geometry.anchor),
           provider: c.avatars.id,
           model,
           promptVersion: PROMPT_VERSION,
           costCents: Math.round(ledger.exactCents + spent),
           usageJson: JSON.stringify(withLedger(usage, ledger, spent, attemptLog, false)),
           rejectedAssetIdsJson: rejected.length > 0 ? JSON.stringify(rejected) : null,
-          judgeJson: judged ? JSON.stringify(judged) : null,
+          judgeJson: judged ? JSON.stringify(judgementForJson(judged)) : null,
           durationMs: { increment: elapsed },
           status: "GENERATED",
           lastError: null,
@@ -373,8 +442,8 @@ export async function generateSlotPatch(
       // zero; it is unknown, and the ledger says so.
       if (/timed out|out of time/i.test(lastError)) ledger.unknownCost = true;
       const last = attemptLog[attemptLog.length - 1];
-      if (last && last.outcome.startsWith("pending")) last.outcome = `error: ${lastError.slice(0, 80)}`;
-      else attemptLog.push({ at: new Date().toISOString(), model: model ?? null, rollCents: 0, judgeCents: 0, durationMs: 0, requestId: null, outcome: `error: ${lastError.slice(0, 80)}` });
+      if (last && last.outcome.startsWith("pending")) { last.outcome = `error: ${lastError.slice(0, 80)}`; last.problem = lastError; last.failedAt = "error"; }
+      else attemptLog.push({ at: new Date().toISOString(), model: model ?? null, rollCents: 0, judgeCents: 0, durationMs: 0, requestId: null, outcome: `error: ${lastError.slice(0, 80)}`, problem: lastError, failedAt: "error" });
     }
   }
 
@@ -388,7 +457,7 @@ export async function generateSlotPatch(
       // A failed roll's usage and verdict used to be dropped with it, which
       // left the most expensive rows in a game the least explained.
       usageJson: JSON.stringify(withLedger(usage, ledger, spent, attemptLog, ledger.unknownCost)),
-      judgeJson: judged ? JSON.stringify(judged) : null,
+      judgeJson: judged ? JSON.stringify(judgementForJson(judged)) : null,
       rejectedAssetIdsJson: rejected.length > 0 ? JSON.stringify(rejected) : null,
       durationMs: { increment: elapsed },
       model,
@@ -408,26 +477,31 @@ export async function generateSlotPatch(
 }
 
 /**
- * Is the thing we painted actually this child?
+ * Is the thing we painted actually this child, where and how the spot says?
  *
  * The shape checks accept a scooter, a horse's head and a pair of legs — over
  * one nine-board game, four of twenty-six patches that passed them were not the
  * child at all, and nothing further down could tell: the composer places what it
- * is given and automated QA measures rectangles. So the picture is looked at.
+ * is given and automated QA measures rectangles. So the picture is looked at,
+ * and since 8 September 2026 the judge is told the spot's recipe, so a peek
+ * over a block is judged as a peek.
  *
  * Returns a rejection reason, or null to let the patch through. A judge that
  * cannot answer ("unknown") lets it through and says so on the row, because
  * refusing work over a misconfigured judge would be worse than the problem —
  * the pipeline turns those into a game a human has to approve.
  */
-async function judgeOf(c: Container, webp: Buffer, input: { reference: Buffer; childName: string; ageYears?: number | null }, label: string, boardCrop: Buffer): Promise<PatchJudgement> {
-  return c.judge.judge({ patchPng: webp, reference: input.reference, childName: input.childName, ageYears: input.ageYears, label, boardCrop }).catch(
+async function judgeOf(c: Container, webp: Buffer, input: { reference: Buffer; childName: string; ageYears?: number | null }, label: string, boardCrop: Buffer, recipe?: JudgeRecipe): Promise<PatchJudgement> {
+  return c.judge.judge({ patchPng: webp, reference: input.reference, childName: input.childName, ageYears: input.ageYears, label, boardCrop, recipe }).catch(
     (err: unknown): PatchJudgement => ({ verdict: "unknown", reason: err instanceof Error ? err.message.slice(0, 120) : "judge failed", costCents: 0, costUnknown: true }),
   );
 }
 
+/** Where an attempt failed, as the ledger names it. */
+export type FailedStage = "painter" | "matte" | "geometry" | "judge" | "judge-unknown" | "budget" | "error";
+
 /** One roll, as the ledger remembers it. */
-interface LedgerAttempt {
+export interface LedgerAttempt {
   at: string;
   model: string | null;
   rollCents: number;
@@ -450,19 +524,46 @@ interface LedgerAttempt {
   resumedAt?: string;
   renderProblem?: string;
   extractionProblem?: string;
+  /** The whole reason, where `outcome` keeps eighty characters. */
+  problem?: string;
+  /** The stage that rejected the attempt; absent on an accepted or pending one. */
+  failedAt?: FailedStage;
+  /** The patch cut from this render (PATCH_EVIDENCE), the composite the judge saw, and the exact images on the judge's wire with their hashes. */
+  patchAssetId?: string;
+  compositeAssetId?: string;
+  judgeImageAssetIds?: string[];
+  judgeImageHashes?: string[];
+  /** Every check and reason of this attempt's review, not only the row's last one. */
+  judgement?: PatchJudgement;
+  /** Layer mode: how much of the painted child the board's foreground layer hides. */
+  hiddenFraction?: number;
+  occluderGap?: number;
+  unchanged?: number;
 }
 
 const hash = (b: Buffer) => createHash("sha256").update(b).digest("hex");
 
-/** Retry advice is selected from fixed code, never interpolated from model prose. */
-export function repairInstruction(judgeJson: string | null | undefined): string {
+/**
+ * Retry advice is selected from fixed code, never interpolated from model
+ * prose. It keeps to the spot's recipe: a peek that failed bodyPlacement is
+ * asked for the same peek with its cut at the named object, never for "a
+ * complete standing body" — that swap was what turned a hide into a child in
+ * the open (game 2, 8 September 2026).
+ */
+export function repairInstruction(judgeJson: string | null | undefined, placement?: Slot["placement"] | null): string {
   try {
     const prior = JSON.parse(judgeJson ?? "{}") as PatchJudgement;
     if (prior.verdict !== "bad") return "";
     const checks = prior.checks;
+    const hidden = placement ? occlusionMode({ placement, layer: undefined }) !== "open" || placement.pose === "peeking" : false;
     const instructions = [
       checks?.faceIntegrity === "fail" ? "Keep the entire face clear of occluders: both eyes, nose, mouth and continuous skin must be visible." : "",
-      checks?.bodyPlacement === "fail" ? "The previous placement was physically impossible. Draw a complete supported standing or seated body, with feet on a real visible surface; only existing foreground objects may hide it. Never use a floating head or a torso through the ground." : "",
+      checks?.bodyPlacement === "fail"
+        ? (placement
+          ? `The previous placement was wrong. Keep exactly this recipe: pose ${placement.pose}; ${placement.support} ${hidden ? `The only thing that may hide any part of the child is the object the recipe names (${placement.occlusion}); the visible part ends at that object's edge and nowhere else.` : "The whole body is visible and supported as the recipe says."} Never a floating head, never a torso through the ground, never a different pose.`
+          : "The previous placement was physically impossible. Draw a complete supported standing or seated body, with feet on a real visible surface; only existing foreground objects may hide it. Never use a floating head or a torso through the ground.")
+        : "",
+      checks?.relativeScale === "fail" ? `The previous child was the wrong size for the people at her depth${placement?.contract?.comparators ? ` (${placement.contract.comparators})` : ""}: draw her exactly the size of the children beside the spot, clearly smaller than the adults there, and keep that size for every part of her.` : "",
       checks?.identity === "fail" ? "Re-check the full reference sheet and preserve this child's face shape, curls or hairstyle, and skin tone." : "",
       checks?.ageProportions === "fail" ? "The previous child looked the wrong age or size. Preserve the stated age, youthful face, narrow shoulders, small hands and child-sized limbs. Do not reuse adult proportions from nearby people or age up the reference." : "",
       checks?.anatomy === "fail" ? "Repair the complete body with exactly two arms and two legs, coherent joints and each hand belonging to its own arm. Use a simple natural supported pose and preserve genuine occlusion." : "",

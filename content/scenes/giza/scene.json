@@ -9,7 +9,7 @@
     "en": "Camels, stone giants and a very old riddle.",
     "he": "גמלים, ענקי אבן וחידה עתיקה מאוד."
   },
-  "version": 4,
+  "version": 5,
   "active": true,
   "artStatus": "final",
   "art": {
@@ -23,7 +23,7 @@
       "accent": "#F5B301"
     },
     "sha256": "da3fe5115a04bc0e79d7c7daee17e14ce5167b9e74868289af91a85b5266bb09",
-    "foreground": "/scenes/giza/refresh-20260907/foreground.webp"
+    "foreground": "/scenes/giza/refresh-20260907/foreground-20260908.webp"
   },
   "targets": [
     {
@@ -128,7 +128,7 @@
           "id": "giza_stall_a",
           "x": 0.236,
           "y": 0.6625,
-          "scale": 0.12,
+          "scale": 0.185,
           "hintZone": {
             "x": 0.236,
             "y": 0.6475,
@@ -143,7 +143,16 @@
             "pose": "seated",
             "support": "footX and footY mark the seat point on the firm top of the folded textile stack; the shoes hang below it.",
             "occlusion": "None; the entire seated child is in front of the scarf display.",
-            "instructions": "Sit upright on the front edge of the folded scarf stack, knees together and shoes dangling. Use roughly the head size of the nearby stall child and stay much smaller than the vendor."
+            "instructions": "Sit upright on the front edge of the folded scarf stack, knees together and shoes dangling. Use roughly the head size of the nearby stall child and stay much smaller than the vendor.",
+            "contract": {
+              "standingHeight": 0.185,
+              "visibleFraction": 0.75,
+              "supportPoint": {
+                "x": 0.236,
+                "y": 0.6934
+              },
+              "comparators": "the vendor's child behind the counter and the boy in red crouching at the right of the stall"
+            }
           }
         },
         {
@@ -238,7 +247,16 @@
                 "x": 0.568,
                 "y": 0.8169
               }
-            ]
+            ],
+            "contract": {
+              "standingHeight": 0.15,
+              "visibleFraction": 0.41,
+              "supportPoint": {
+                "x": 0.6185,
+                "y": 0.8105
+              },
+              "comparators": "the boy in yellow at the left of the block and the boy in blue seated at its right"
+            }
           }
         },
         {

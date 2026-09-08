@@ -94,16 +94,93 @@ export async function paintedSpotsForAdmin(c: Container, gameId: string) {
     variant: r.variant,
     attempts: r.attempts,
     judge: parseJudge(r.judgeJson),
+    history: attemptsForAdmin(r.usageJson),
   }));
 }
 
-function parseJudge(json: string | null): { verdict: string; reason: string } | null {
+/** The row's last review: `ok`, `bad`, `unknown` (a reviewer could not decide), or null when nothing reviewed it. */
+export function parseJudge(json: string | null): { verdict: string; reason: string; model?: string; version?: string; checks?: Record<string, string> } | null {
   if (!json) return null;
   try {
-    const raw = JSON.parse(json) as { verdict?: unknown; reason?: unknown };
-    return typeof raw.verdict === "string" ? { verdict: raw.verdict, reason: typeof raw.reason === "string" ? raw.reason : "" } : null;
+    const raw = JSON.parse(json) as { verdict?: unknown; reason?: unknown; model?: unknown; version?: unknown; checks?: unknown };
+    if (typeof raw.verdict !== "string") return null;
+    return {
+      verdict: raw.verdict,
+      reason: typeof raw.reason === "string" ? raw.reason : "",
+      model: typeof raw.model === "string" ? raw.model : undefined,
+      version: typeof raw.version === "string" ? raw.version : undefined,
+      checks: raw.checks && typeof raw.checks === "object" ? (raw.checks as Record<string, string>) : undefined,
+    };
   } catch {
     return null;
+  }
+}
+
+/**
+ * One attempt as the admin page shows it: what was painted, what pass two
+ * answered, what was cut out, what the judge saw, and what each stage said.
+ * Everything comes from the ledger in usageJson; an attempt written before
+ * a field existed simply lacks it, and the page says so instead of guessing.
+ */
+export interface AdminAttempt {
+  n: number;
+  at: string;
+  outcome: string;
+  /** The stage that rejected it, or "accepted" / "held" / "pending". */
+  stage: string;
+  problem: string | null;
+  cents: number;
+  renderAssetId: string | null;
+  matteAssetIds: string[];
+  patchAssetId: string | null;
+  compositeAssetId: string | null;
+  judgeImageAssetIds: string[];
+  judge: { verdict: string; reason: string; model?: string; policy?: string; checks?: Record<string, string>; reviews?: Array<{ model?: string; verdict: string; reason: string }> } | null;
+  hiddenFraction: number | null;
+  unchanged: number | null;
+}
+
+export function attemptsForAdmin(usageJson: string | null | undefined): AdminAttempt[] {
+  try {
+    const raw = JSON.parse(usageJson ?? "{}") as { ledger?: { attempts?: unknown[] } };
+    const attempts = Array.isArray(raw.ledger?.attempts) ? raw.ledger!.attempts! : [];
+    return attempts.map((a, i) => {
+      const x = (a ?? {}) as Record<string, unknown>;
+      const str = (v: unknown) => (typeof v === "string" ? v : null);
+      const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+      const list = (v: unknown) => (Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : []);
+      const outcome = str(x.outcome) ?? "";
+      const stage = str(x.failedAt) ?? (outcome === "accepted" ? "accepted" : outcome.startsWith("held") ? "judge-unknown" : outcome.startsWith("pending") ? "pending" : outcome.startsWith("rejected") ? "unrecorded" : outcome.startsWith("error") ? "error" : "unknown");
+      const j = x.judgement as Record<string, unknown> | undefined;
+      const judge = j && typeof j.verdict === "string"
+        ? {
+            verdict: j.verdict,
+            reason: str(j.reason) ?? "",
+            model: str(j.model) ?? undefined,
+            policy: str(j.policy) ?? undefined,
+            checks: j.checks && typeof j.checks === "object" ? (j.checks as Record<string, string>) : undefined,
+            reviews: Array.isArray(j.reviews) ? (j.reviews as Array<Record<string, unknown>>).map((r) => ({ model: str(r.model) ?? undefined, verdict: str(r.verdict) ?? "?", reason: str(r.reason) ?? "" })) : undefined,
+          }
+        : null;
+      return {
+        n: i + 1,
+        at: str(x.at) ?? "",
+        outcome,
+        stage,
+        problem: str(x.problem) ?? str(x.renderProblem) ?? str(x.extractionProblem) ?? null,
+        cents: (num(x.rollCents) ?? 0) + (num(x.matteCents) ?? 0) + (num(x.judgeCents) ?? 0),
+        renderAssetId: str(x.evidenceAssetId),
+        matteAssetIds: list(x.matteEvidenceAssetIds).length ? list(x.matteEvidenceAssetIds) : str(x.matteEvidenceAssetId) ? [str(x.matteEvidenceAssetId)!] : [],
+        patchAssetId: str(x.patchAssetId),
+        compositeAssetId: str(x.compositeAssetId),
+        judgeImageAssetIds: list(x.judgeImageAssetIds),
+        judge,
+        hiddenFraction: num(x.hiddenFraction),
+        unchanged: num(x.unchanged),
+      };
+    });
+  } catch {
+    return [];
   }
 }
 
@@ -132,6 +209,7 @@ export async function failedSpotsForAdmin(c: Container, gameId: string) {
     costCents: r.costCents,
     lastError: r.lastError,
     rejectedAssetIds: parseIds(r.rejectedAssetIdsJson),
+    history: attemptsForAdmin(r.usageJson),
   }));
 }
 

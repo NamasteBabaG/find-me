@@ -71,15 +71,34 @@ export const HIDES: Hide[] = [
     occlusion: "The carousel fascia, drawn back in front of the child from the board, hides her shoes and shins; the rest of her shows above it among the riders.",
   },
   {
-    slug: "sydney", target: "ferry", pose: "standing",
-    foot: { x: 0.434, y: 0.423 }, bodyHeight: 0.078,
-    // The ferry's green bow hull, from the planning run.
-    occluder: [{ x: 0.408, y: 0.411 }, { x: 0.414, y: 0.399 }, { x: 0.427, y: 0.402 }, { x: 0.441, y: 0.405 }, { x: 0.452, y: 0.409 }, { x: 0.452, y: 0.447 }, { x: 0.438, y: 0.451 }, { x: 0.423, y: 0.446 }, { x: 0.411, y: 0.435 }],
-    object: "the ferry's green bow hull",
-    support: "Both shoes on the ferry's bow deck behind the green hull and its rail.",
-    occlusion: "The green bow hull, drawn back in front of the child from the board, hides her from the waist down; the head, shoulders and chest show above the rail.",
+    // paris/awning, 8 September 2026. The spot used to be "in front of the
+    // outer café easel" in the open, and the accepted render stood her on top
+    // of the girl in the blue dress. Now she stands BEHIND the easel: her head
+    // shows above the canvas, her legs between its tripod legs. The polygon
+    // is the canvas, the tray and the three legs as one shape (the legs are
+    // teeth off the tray), traced at 3x on the board.
+    slug: "paris", target: "awning", pose: "standing",
+    foot: px(880, 1880), bodyHeight: 0.185,
+    occluder: [
+      px(815, 1600), px(958, 1568), px(972, 1790), // canvas: top-left, top-right, bottom-right
+      px(985, 1885), px(972, 1885), px(955, 1802), // right leg down and back up
+      px(913, 1802), px(911, 1885), px(898, 1885), px(898, 1802), // middle leg
+      px(840, 1804), px(814, 1885), px(801, 1885), px(826, 1806), // left leg
+      px(830, 1815), // canvas bottom-left
+    ],
+    object: "the painter's easel with its canvas and tripod legs",
+    support: "Hidden shoes on the cobblestones behind the easel's legs.",
+    occlusion: "The painter's easel, drawn back in front of the child from the board, hides her from the neck down except what shows between its legs; her head shows above the canvas.",
   },
+  // sydney/ferry was here until 8 September 2026: a bust at the bow came back
+  // three times the size of the ferry's passengers, whose heads are ~40 px on
+  // this art — no child-sized child is recognisable at that depth. The spot
+  // moved under the lifeguard chair (scripts/install-contracts.ts); Sydney's
+  // foreground layer is written without the hull.
 ];
+
+/** The foreground file is written beside the base under this tag, so an archived scene version keeps its own layer. */
+const TAG = process.argv.find((a) => a.startsWith("--tag="))?.slice(6) ?? "";
 
 function svgPolygon(points: Point[], art: { width: number; height: number }, offset: Point, grow = 0): string {
   const pts = points.map((p) => `${(p.x * art.width - offset.x).toFixed(1)},${(p.y * art.height - offset.y).toFixed(1)}`).join(" ");
@@ -145,7 +164,7 @@ async function main() {
       console.log(`${slug}/${h.target}: ${h.pose}, body ${h.bodyHeight} at ${h.foot.x},${h.foot.y}; occluder ${h.occluder.length} points`);
     }
     if (WRITE) {
-      const fgRel = `${path.dirname(art.base)}/foreground.webp`;
+      const fgRel = `${path.dirname(art.base)}/foreground${TAG ? `-${TAG}` : ""}.webp`;
       writeFileSync(path.join(ROOT, "public", fgRel), await sharp(layer).webp({ quality: 92, alphaQuality: 100 }).toBuffer());
       scene.art.foreground = fgRel;
       writeFileSync(scenePath, JSON.stringify(scene, null, 2) + "\n");

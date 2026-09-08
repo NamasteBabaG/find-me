@@ -8,6 +8,7 @@ import { loadSceneArt, clearSceneArtCache } from "../generation/scene-art";
 import release from "../../../content/scenes/releases/refresh-20260907.json";
 import archive from "../../../content/scenes/releases/pre-refresh-20260907.json";
 import prePlacement from "../../../content/scenes/releases/pre-placement-20260907.json";
+import preContract from "../../../content/scenes/releases/pre-contract-20260908.json";
 
 describe("new art must not replace an old game's geometry or image", () => {
   it("keeps all 27 previous definitions and selects an explicit version", () => {
@@ -18,12 +19,20 @@ describe("new art must not replace an old game's geometry or image", () => {
       expect(old.version).toBe(1);
       // The refresh made version 2 of every board. The first world's nine boards went on to version 3
       // when their hiding spots were re-planned and to version 4 when the hides were authored against the
-      // board's own occluders (same art throughout); versions 2 and 3 stay addressable for games pinned to them.
+      // board's own occluders; four of them (sydney, paris, giza, antarctica) went on to version 5 on
+      // 8 September 2026 when their spots got placement contracts and two spots moved (same art
+      // throughout); every earlier version stays addressable for games pinned to it.
       const rePlanned = prePlacement.some(p => p.slug === row.slug);
-      expect(current.version).toBe(rePlanned ? 4 : 2);
+      const contracted = preContract.some(p => p.slug === row.slug);
+      expect(current.version).toBe(contracted ? 5 : rePlanned ? 4 : 2);
       const v2 = sceneBySlug(row.slug, 2);
       expect(v2.version).toBe(2); expect(v2.art.base).toBe(row.base);
       if (rePlanned) { const v3 = sceneBySlug(row.slug, 3); expect(v3.version).toBe(3); expect(v3.art.base).toBe(row.base); }
+      if (contracted) {
+        const v4 = sceneBySlug(row.slug, 4); expect(v4.version).toBe(4); expect(v4.art.base).toBe(row.base);
+        // The archived version keeps its own foreground layer file; the current one may point at a newer file or none.
+        if (v4.art.foreground) expect(existsSync(path.join(process.cwd(), "public", v4.art.foreground))).toBe(true);
+      }
       expect(current.art.base).toBe(row.base);
       // A foreground layer (the occluders cut out of the board) exists only where a hide was authored, and then the file exists.
       if (current.art.foreground) expect(existsSync(path.join(process.cwd(), "public", current.art.foreground))).toBe(true);

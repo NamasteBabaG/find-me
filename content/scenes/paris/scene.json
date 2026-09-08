@@ -9,7 +9,7 @@
     "en": "The tower above a great square, a carousel and warm bread.",
     "he": "המגדל מעל כיכר גדולה, קרוסלה ולחם חם."
   },
-  "version": 4,
+  "version": 5,
   "active": true,
   "artStatus": "final",
   "art": {
@@ -23,7 +23,7 @@
       "accent": "#F5B301"
     },
     "sha256": "1779a9015128795440b29d197ebc6fc09ad3931a71391f1b17e9679fc00b5a94",
-    "foreground": "/scenes/paris/refresh-20260907/foreground.webp"
+    "foreground": "/scenes/paris/refresh-20260907/foreground-20260908.webp"
   },
   "targets": [
     {
@@ -110,7 +110,16 @@
                 "x": 0.8574,
                 "y": 0.9326
               }
-            ]
+            ],
+            "contract": {
+              "standingHeight": 0.17,
+              "visibleFraction": 0.4,
+              "supportPoint": {
+                "x": 0.8952,
+                "y": 0.918
+              },
+              "comparators": "the girl in the straw hat at the counter and the boy in blue at the basket"
+            }
           },
           "hintZone": {
             "x": 0.8952,
@@ -175,7 +184,7 @@
           "id": "paris_carousel_a",
           "x": 0.6071,
           "y": 0.4822,
-          "scale": 0.1099,
+          "scale": 0.147,
           "placement": {
             "pose": "standing",
             "support": "Both shoes on the carousel deck behind its front fascia.",
@@ -210,7 +219,16 @@
                 "x": 0.5859,
                 "y": 0.5762
               }
-            ]
+            ],
+            "contract": {
+              "standingHeight": 0.147,
+              "visibleFraction": 0.85,
+              "supportPoint": {
+                "x": 0.6071,
+                "y": 0.5371
+              },
+              "comparators": "the boy riding the white horse and the children at the carousel's edge"
+            }
           },
           "hintZone": {
             "x": 0.6071,
@@ -243,7 +261,7 @@
     },
     {
       "id": "awning",
-      "action": "The child stands on the stone paving under the striped cafe awning, peeking around the edge of the cafe doorframe. The awning is overhead, NOT a surface a child is inside. Keep the body connected from face to shoes on the paving; only an actual existing table or doorframe may cover part of it. Do not blend the legs into the pavement or another person's body.",
+      "action": "The child stands behind the painter's easel by the café, complete and upright, her head showing above the canvas and her legs between the easel's legs.",
       "targetType": "paris_awning",
       "bodyTemplate": "paris_awning",
       "difficulty": 3,
@@ -252,8 +270,8 @@
         "he": "מצאו את {name} ליד בית הקפה"
       },
       "item": {
-        "en": "café tables under striped awnings",
-        "he": "שולחנות קפה מתחת לסוככים מפוספסים"
+        "en": "a painter's easel by the café tables",
+        "he": "כן ציור ליד שולחנות בית הקפה"
       },
       "success": [
         {
@@ -273,25 +291,96 @@
       "slots": [
         {
           "id": "paris_awning_a",
-          "x": 0.2767,
-          "y": 0.8626,
-          "scale": 0.172,
+          "x": 0.2865,
+          "y": 0.8255,
+          "scale": 0.185,
           "placement": {
             "pose": "standing",
-            "support": "Solid cobblestone paving in front of the easel legs.",
-            "occlusion": "None; the child may naturally cover part of the easel and its legs behind them.",
-            "instructions": "Stand facing the viewer in front of the outer café easel, arms relaxed, with the whole face and both shoes visible. Match the scale of the nearby foreground children, not the adults."
+            "support": "Hidden shoes on the cobblestones behind the easel's legs.",
+            "occlusion": "The painter's easel, drawn back in front of the child from the board, hides her from the neck down except what shows between its legs; her head shows above the canvas.",
+            "instructions": "Paint the child complete and unoccluded, standing at this spot exactly as if the painter's easel with its canvas and tripod legs were not there: the whole head, torso and arms, and the legs down to the feet on the ground. the painter's easel with its canvas and tripod legs is put back in front of the child afterwards from the board itself; do not paint it over the child, and do not paint any part of the child as hidden.",
+            "foreground": [
+              {
+                "x": 0.2653,
+                "y": 0.7813
+              },
+              {
+                "x": 0.3118,
+                "y": 0.7656
+              },
+              {
+                "x": 0.3164,
+                "y": 0.874
+              },
+              {
+                "x": 0.3206,
+                "y": 0.9204
+              },
+              {
+                "x": 0.3164,
+                "y": 0.9204
+              },
+              {
+                "x": 0.3109,
+                "y": 0.8799
+              },
+              {
+                "x": 0.2972,
+                "y": 0.8799
+              },
+              {
+                "x": 0.2965,
+                "y": 0.9204
+              },
+              {
+                "x": 0.2923,
+                "y": 0.9204
+              },
+              {
+                "x": 0.2923,
+                "y": 0.8799
+              },
+              {
+                "x": 0.2734,
+                "y": 0.8809
+              },
+              {
+                "x": 0.265,
+                "y": 0.9204
+              },
+              {
+                "x": 0.2607,
+                "y": 0.9204
+              },
+              {
+                "x": 0.2689,
+                "y": 0.8818
+              },
+              {
+                "x": 0.2702,
+                "y": 0.8862
+              }
+            ],
+            "contract": {
+              "standingHeight": 0.185,
+              "visibleFraction": 0.25,
+              "supportPoint": {
+                "x": 0.2865,
+                "y": 0.918
+              },
+              "comparators": "the girl in the blue dress and the boy in orange beside the easel"
+            }
           },
           "hintZone": {
-            "x": 0.2767,
-            "y": 0.8476,
+            "x": 0.2865,
+            "y": 0.8105,
             "r": 0.075
           },
           "hintText": {
-            "en": "Look beside the café tables.",
-            "he": "חפשו ליד שולחנות בית הקפה."
+            "en": "Look behind the painter's easel by the café tables.",
+            "he": "חפשו מאחורי כן הציור ליד שולחנות בית הקפה."
           },
-          "layer": "front"
+          "layer": "behindForeground"
         },
         {
           "id": "paris_awning_b",
@@ -309,7 +398,8 @@
           },
           "layer": "front"
         }
-      ]
+      ],
+      "expression": "mischievous and delighted, eyes wide, mid-giggle, as if about to be spotted"
     }
   ],
   "artNotes": [

@@ -111,6 +111,13 @@ export interface SlotMatteRequest {
   original: Buffer;
   /** Which figure is the child: the placement recipe's pose and occlusion, or empty. */
   hint: string;
+  /**
+   * How the spot hides her (occlusionMode). In `layer` mode nothing in the
+   * render is in front of the child — the board's foreground layer is drawn
+   * over her afterwards — so pass two must keep her whole; in the other two
+   * an object in front of her is painted magenta and the visible part kept.
+   */
+  mode?: "open" | "clipped" | "layer";
   /** White-on-black paint area at the crop's size — where the child was asked to be. Sent as a third image, so a figure that was already in the scene is not mistaken for her. */
   mask?: Buffer;
   /** Identity sheet: distinguishes the inserted child from nearby background children. */
@@ -183,7 +190,15 @@ export interface PatchJudgement {
   checks?: import("./board-verdict").BoardChecks;
   /** Hashes of the exact encoded images sent to the judge, in wire order. */
   imageHashes?: string[];
+  /**
+   * The exact encoded images that went over the wire, in the same order as
+   * `imageHashes` — kept by the pipeline as private evidence per attempt and
+   * stripped before the judgement is written as JSON.
+   */
+  wireImages?: Buffer[];
   reviews?: PatchJudgement[];
+  /** Which reviewer decided, under which policy (see JudgePolicy). */
+  policy?: string;
 }
 
 export interface JudgeAttempt {
@@ -216,6 +231,25 @@ export interface PatchJudgeInput {
   label: string;
   /** Final composition, not a raw generation or a white-background cut-out. */
   boardCrop?: Buffer;
+  /**
+   * The spot's recipe, so the judge knows what a correct picture is: the
+   * pose, what holds her, what is in front of her, and the people she is
+   * to be measured against. Without it the judge demanded visible feet of a
+   * child peeking over a stone block (game 2, 8 September 2026).
+   */
+  recipe?: JudgeRecipe;
+}
+
+export interface JudgeRecipe {
+  pose: string;
+  support: string;
+  occlusion: string;
+  /** open: nothing authored in front; clipped/layer: the named object hides part of her by design. */
+  occlusionMode: "open" | "clipped" | "layer";
+  /** The neighbours a person measured, in words. */
+  comparators?: string;
+  /** How much of her is meant to show, as a fraction of her standing height. */
+  visibleFraction?: number;
 }
 
 export interface FaceDetection {

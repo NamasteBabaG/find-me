@@ -8,6 +8,71 @@ The historical cost table below predates this gate and is not a current quotatio
 Fixed coordinates alone do not certify physically valid hiding; every sellable
 slot still needs on-board human validation across test identities.
 
+## 8 September 2026: contracts, occlusion modes, evidence per attempt, judge policy
+
+Game 2 of the QA world (27 spots, 8 September) accepted five pictures a parent
+called wrong — a seated child 1.47× the child on the next sledge, a bust three
+times the ferry's passengers, a child standing on top of another child — and
+rejected six good peeks over a stone block and between spice cones for their
+missing feet. Every stage had a hand in it, and each got a fix
+(`docs/CLAUDE_JUDGE_PLACEMENT_FIX_REPORT_2026-09-08.md` has the chains):
+
+- **The placement contract** (`placement.contract` in the scene schema): what a
+  correct render measures, taken by a person from the board's own people next
+  to the spot — `standingHeight` (a child's full standing height at that depth),
+  `visibleFraction` (how much shows in this pose behind this object),
+  `supportPoint` (where the body meets what holds it) and `comparators` (who
+  was measured, in words). `childProblem` holds a render to it: 0.6–1.3 of the
+  visible height it expects, with the visible part where the contract puts it
+  (`CONTRACT_*` in patch.ts). The prompt names both heights in the model's
+  pixels; the judge is told the comparators. `scripts/install-contracts.ts`
+  installed seven; `scripts/contract-matrix.ts` draws every spot for review.
+- **Occlusion modes** (`occlusionMode`): `open` (nothing authored in front),
+  `clipped` (a polygon on a front-layer slot: the mask leaves it out, the
+  matte is clipped by it) and `layer` (the object is cut into the scene's
+  foreground layer and drawn over her afterwards). The painter, pass two and
+  the judge each get the wording of the mode — one wording for all three had
+  asked the painter to let the block overlap a child it was also asked to paint
+  complete, and told pass two to cut her at a block that was not in the render
+  (`slotPrompt` v9, `mattePrompt` wire v5, `matteHint`). The occluder polygon
+  is still measured in layer mode (`occluderShift`, `occluderGap`), because a
+  render that redrew the block is what those numbers are for.
+- **The tap contract after the layer** (`visibleGeometry`): in layer mode the
+  hit rect and the head anchor are measured on what the foreground leaves
+  uncovered; a child the layer hides more than 85% of is refused.
+- **Evidence per attempt**: besides the render and every pass-two answer, the
+  ledger now keeps the extracted patch, the composite the judge saw, the exact
+  images on the judge's wire (with their hashes), the whole judgement of THAT
+  attempt, the full problem text and the stage that refused it (`failedAt`:
+  painter / matte / geometry / judge / judge-unknown / error). Deletion and
+  retention walk all of them (`render-evidence.ts`). The admin page shows every
+  attempt stage by stage, tells an undecided review from a missing one, and
+  no longer offers dx/dy/scale for a painted patch (they never applied to one).
+- **Retries stay inside the recipe** (`repairInstruction`): a peek that failed
+  bodyPlacement is asked for the same peek cut at the named object, never for
+  "a complete standing body"; a relativeScale failure names the comparators.
+- **The judge** (`board-quality-v6-recipe-scale`): a seventh check,
+  `relativeScale`, against the people at the same depth; the spot's recipe in
+  the prompt (a peek without a polygon counts as hidden by design too); a 4.5×
+  window so the neighbours are in view. The policy (`JUDGE_POLICY`, default
+  `screen`): the fast reviewer may end it alone only on identity, face and
+  anatomy; placement, scale, age and style are the strong reviewer's, and an
+  uncertain fast answer goes to it as well. `scripts/judge-pilot.ts` measured
+  the reviewers separately on a labelled set; `scripts/spot-trials.ts` renders
+  a few spots through the whole chain against one durable ledger.
+- **Two spots moved**: sydney/ferry → sydney/lifeguard (crouching under the
+  lifeguard chair; the ferry's passengers are 40 px heads, no child-sized
+  child is recognisable there) and paris/awning → behind the painter's easel
+  (`scripts/author-hides.ts`, layer written under a date tag so version 4
+  keeps its own). Version 4 of sydney, paris, giza and antarctica is archived
+  in `content/scenes/releases/pre-contract-20260908.json`.
+- **Not done, on purpose**: a detector for a pass-two answer that moved the
+  child (amazon/canoe). Two measures were tried on the ten kept mattes of game
+  2 and neither separates the two moved answers from the eight faithful ones;
+  the numbers are in the report. Pass two is told her head, hands and feet
+  stay at the same pixels, `unchangedFraction` and the judge on the composite
+  remain the guards.
+
 ## The problem
 
 Worlds are illustrated once and never re-rendered. The only thing that changes per game is the child.

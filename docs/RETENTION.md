@@ -13,6 +13,7 @@ from that. The clocks are in `src/services/retention.service.ts`
 | … on a game QA sent back for a new photo | 30 days waiting | photo deleted; the game stays in `NEEDS_NEW_PHOTO` for a person to see |
 | Identity sheet (`IDENTITY_SHEET`, private) | as long as its game | deleted with the game; a regeneration is drawn from it, so it cannot go earlier |
 | Rejected renders (`REJECTED_PATCH`, private) | 14 days | deleted, and the ids that pointed at them stripped from the spot rows |
+| Attempt evidence (`PATCH_EVIDENCE`, private): every render, every pass-two answer, the cut-out patch, the composite the judge saw and the exact judge wire images, accepted attempts included | 14 days | deleted, and the ids stripped from the ledger in the spot rows (`renderEvidenceIds` / `removeRenderEvidence`); game deletion removes them at once |
 | Avatar sticker and hiding-spot patches (`GAME`) | as long as the game | deleted with the game (`deleteGame`) |
 | A game stuck in `GENERATION_FAILED` | 7 days of the cron retrying | moved to `MANUAL_REVIEW`; nothing deleted |
 | Audit log | indefinitely | contains ids and reasons, never a picture, a name or an address |

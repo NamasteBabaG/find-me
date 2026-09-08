@@ -334,7 +334,14 @@ describe("generation pipeline", () => {
     const id=await seedGame(c);await mod.runGenerationPipeline(c,id);expect(count).toBe(3);
     const {renderEvidenceIds}=await import('../generation/render-evidence');
     const rows=(await spotsIn(id)).flatMap(x=>x.variants);
-    for(const row of rows){const ids=renderEvidenceIds(row.usageJson);expect(ids).toHaveLength(1);const asset=await db.asset.findUniqueOrThrow({where:{id:ids[0]}});expect(asset.visibility).toBe('PRIVATE');expect(asset.type).toBe('PATCH_EVIDENCE');expect((await gameOf(id)).configJson).not.toContain(asset.id);}
+    for(const row of rows){
+      // The render, the patch cut from it and the composite the judge saw: three private pictures per attempt (the stub judge sends no wire images).
+      const ids=renderEvidenceIds(row.usageJson);expect(ids).toHaveLength(3);
+      const attempt=JSON.parse(row.usageJson!).ledger.attempts[0];
+      expect(ids.sort()).toEqual([attempt.evidenceAssetId,attempt.patchAssetId,attempt.compositeAssetId].sort());
+      expect(attempt.failedAt).toBeUndefined();expect(attempt.judgement.verdict).toBe('ok');
+      for(const assetId of ids){const asset=await db.asset.findUniqueOrThrow({where:{id:assetId}});expect(asset.visibility).toBe('PRIVATE');expect(asset.type).toBe('PATCH_EVIDENCE');expect((await gameOf(id)).configJson).not.toContain(asset.id);}
+    }
   },120000);
 
   it("holds uncertain contextual QA even with clean-game auto delivery enabled",async()=>{
@@ -357,6 +364,14 @@ describe("generation pipeline", () => {
     expect(spots[0]!.variants[0]!.lastError).toContain("does not show");
     expect(spots[0]!.variants[0]!.assetId).toBeNull(); // nothing that failed identity is kept as the sprite
     expect((await job(gameId)).status).toBe("QUEUED"); // a retry, not a finished game
+    // The attempt says which stage refused it and keeps the whole review beside the composite it judged.
+    const attempt = JSON.parse(spots[0]!.variants[0]!.usageJson!).ledger.attempts[0];
+    expect(attempt.failedAt).toBe("judge");
+    expect(attempt.judgement).toMatchObject({ verdict: "bad", reason: "stub" });
+    expect(attempt.problem).toContain("does not show");
+    expect(attempt.compositeAssetId).toBeTruthy();
+    expect(attempt.patchAssetId).toBeTruthy();
+    expect((await db.asset.findUniqueOrThrow({ where: { id: attempt.compositeAssetId } })).visibility).toBe("PRIVATE");
   }, 120_000);
 
   it("sends a game to a human when nothing could check the pictures", async () => {
@@ -657,7 +672,8 @@ describe("retention", () => {
   it("expires accepted raw evidence after fourteen days without deleting the playable patch",async()=>{
     const c=container(painter());const id=await seedGame(c);await mod.runGenerationPipeline(c,id);
     const {runRetention}=await import('../retention.service');const {renderEvidenceIds}=await import('../generation/render-evidence');
-    const rows=(await spotsIn(id)).flatMap(x=>x.variants);const ids=rows.flatMap(x=>renderEvidenceIds(x.usageJson));expect(ids).toHaveLength(3);
+    // Three spots, each with its render, its cut-out and the composite the judge saw (the stub judge sends no wire images).
+    const rows=(await spotsIn(id)).flatMap(x=>x.variants);const ids=rows.flatMap(x=>renderEvidenceIds(x.usageJson));expect(ids).toHaveLength(9);
     await db.asset.updateMany({where:{id:{in:ids}},data:{createdAt:new Date(Date.now()-15*86400000)}});
     await runRetention(c,new Date(),days);
     expect(await db.asset.count({where:{id:{in:ids},status:'READY'}})).toBe(0);

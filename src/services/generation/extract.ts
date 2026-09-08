@@ -1,5 +1,5 @@
 import type { AvatarProvider, SlotMatteResponse } from "@/infra/generation/types";
-import { diffToPatch, matteToPatch, occluderShift, paintMask, EXTRACTION_VERSION, MATTE_VERSION, type PatchResult, type Size, type SlotContext, type SlotPoint } from "./patch";
+import { diffToPatch, matteToPatch, occluderShift, occlusionMode, paintMask, EXTRACTION_VERSION, MATTE_VERSION, type PatchResult, type Size, type SlotContext, type SlotPoint } from "./patch";
 import { fitMatte } from "@/infra/generation/openai";
 
 /**
@@ -56,7 +56,7 @@ export interface Extraction {
   renderProblem?: string;
   /** Set when pass two could not produce the child; the render was fine. */
   extractionProblem?: string;
-  /** The occluder check, when the slot has a polygon. */
+  /** The occluder check, when the slot has a polygon (in every mode since 8 September 2026). */
   occluder?: { mean: number; pixels: number };
 }
 
@@ -71,16 +71,18 @@ export interface Extraction {
 export const UNCHANGED_LIMIT = 0.4;
 /**
  * The occluder numbers (occluderShift, occluderGap) are recorded on every
- * attempt and do not reject. Three measures were tried on the renders on
- * disk against the one raised bench (newyork/bench, proof-1) — the colour
- * distance inside the polygon (76 raised vs 80 kept), the cut line's height
- * above the polygon's top (58% raised vs 29% kept, but 69% on a correct peek
- * over the ice ledge), the nearest strong board edge below the cut line (10
- * px in both) — and none separates it from kept occluders with the planning
- * run's approximate polygons. The defence against a moved occluder is the
- * paint mask that leaves the polygon out, the prompt ("stays exactly where and
- * as it is"), the matte clipped by the polygon, and the judge on the board;
+ * attempt — since 8 September also on layer-mode slots, where a render that
+ * redrew the block behind the foreground layer is what they exist to show
+ * (giza/stones attempt 1 of game 2) — and do not reject. Three measures were
+ * tried on the renders on disk against the one raised bench (newyork/bench,
+ * proof-1) and none separates it from kept occluders with the planning run's
+ * approximate polygons. The defence against a moved occluder is the paint
+ * mask that leaves the polygon out, the prompt ("stays exactly where and as
+ * it is"), the matte clipped by the polygon, and the judge on the board;
  * the numbers are kept so a limit can be set once there are more cases.
+ *
+ * A pass-two answer that moved the child has no detector either; see the
+ * note above matteToPatch's options in patch.ts.
  */
 const PASS_TWO_TRIES = 2;
 const DEFAULT_MIN_PASS_TWO_MS = 45_000;
@@ -97,6 +99,7 @@ export async function extractChild(input: ExtractInput): Promise<Extraction> {
   const occluder = (await occluderShift({ originalCrop, editedCrop, ctx, art, slot })) ?? undefined;
 
   const mask = paintMask(ctx, art, slot);
+  const mode = occlusionMode(slot);
   const attempts: SlotMatteResponse[] = [];
   let problem: string | undefined;
   const newLimit = input.maxNewMatteAttempts ?? PASS_TWO_TRIES;
@@ -117,7 +120,7 @@ export async function extractChild(input: ExtractInput): Promise<Extraction> {
       if (input.deadlineAt !== undefined && input.deadlineAt - Date.now() < (input.minPassTwoMs ?? DEFAULT_MIN_PASS_TWO_MS)) {
         return none("deferred", MATTE_VERSION, { occluder, matteAttempts: attempts, matte: attempts.at(-1) });
       }
-      matte = await input.provider.matteSlotCrop({ edited: editedCrop, original: originalCrop, hint: input.hint, mask, reference: input.reference, retryHint: problem, label: input.label, quality: input.quality, deadlineAt: input.deadlineAt });
+      matte = await input.provider.matteSlotCrop({ edited: editedCrop, original: originalCrop, hint: input.hint, mode, mask, reference: input.reference, retryHint: problem, label: input.label, quality: input.quality, deadlineAt: input.deadlineAt });
       await input.onMatte?.(matte);
     }
     attempts.push(matte);

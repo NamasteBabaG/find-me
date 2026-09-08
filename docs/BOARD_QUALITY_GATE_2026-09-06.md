@@ -60,3 +60,7 @@ npx tsx scripts/audit-board-patch.ts --scene=paris --target=awning --variant=A -
 ```
 
 The geometry file may contain `geometry.rect`, `rectNorm` or a normalized `rect`. Add `--execute --budget-cents=12` only for an authorized paid audit. Pricing/reservation sources: [GPT-4o](https://developers.openai.com/api/docs/models/gpt-4o), [GPT-5.4](https://developers.openai.com/api/docs/models/gpt-5.4), [vision token calculation and limitations](https://developers.openai.com/api/docs/guides/images-vision). Standard rates, no assumed cache discount; reasoning output is included.
+
+## Superseded on 8 September 2026
+
+The judge is `board-quality-v6-recipe-scale` now: a seventh check (`relativeScale`), the spot's recipe and comparators in the prompt, a wider board window, and a policy (`JUDGE_POLICY`) under which the fast reviewer may end a review alone only on identity, face and anatomy. Every attempt keeps its judgement, the composite it was judged on and the exact wire images. See the first section of `docs/SPRITE_PATCHES.md` and `docs/CLAUDE_JUDGE_PLACEMENT_FIX_REPORT_2026-09-08.md`.

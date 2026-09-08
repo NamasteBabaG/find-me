@@ -38,6 +38,29 @@ export type SoundCue = z.infer<typeof SoundCue>;
 
 export const ART_STATUSES = ["placeholder", "draft", "final"] as const;
 
+/**
+ * What a correct render of a hiding spot measures.
+ *
+ * `slot.scale` says how tall a child is asked to be; it used to be the only
+ * number, and nothing checked the render against the board's own people. A
+ * seated child came back 1.45x the child on the next sledge and a bust at the
+ * ferry's bow 3x its passengers, and both passed every rule (game 2, 8
+ * September 2026). The contract is measured by a person on the board: how
+ * tall a child STANDS at this depth (the neighbours), how much of her shows in
+ * this pose behind this occluder, and where her body meets what holds her.
+ */
+export const PlacementContractSchema = z.object({
+  /** Implied full standing height of a child at this depth, as a fraction of the art height. */
+  standingHeight: z.number().min(0.015).max(0.35),
+  /** How much of that height shows for the pose and the occlusion: a head over a block ~0.35–0.45, seated ~0.75, standing in the open 1. */
+  visibleFraction: z.number().min(0.15).max(1),
+  /** Where the body meets its support (both feet on the ground, the seat), in art fractions. */
+  supportPoint: z.object({ x: Unit, y: Unit }),
+  /** The people measured for standingHeight, in words, so the judge compares against the same ones. */
+  comparators: z.string().min(8),
+});
+export type PlacementContract = z.infer<typeof PlacementContractSchema>;
+
 export const SlotSchema = z.object({
   id: z.string().min(1),
   /** Anchor point (sprite centre), normalized to base art. */
@@ -66,6 +89,14 @@ export const SlotSchema = z.object({
      * matte is clipped by it. Authored against this exact art.
      */
     foreground: z.array(z.object({ x: Unit, y: Unit })).min(3).optional(),
+    /**
+     * The placement contract (8 September 2026): what a correct render of this
+     * spot measures, taken from the board's own people next to it. The shape
+     * guard (`childProblem`) holds the render to it, the judge is told it, and
+     * the prompt names both numbers. A slot without one is held only to the
+     * loose generic limits.
+     */
+    contract: PlacementContractSchema.optional(),
   }).optional(),
 });
 export type Slot = z.infer<typeof SlotSchema>;
@@ -250,6 +281,20 @@ export function validateSceneDefinition(input: unknown): SceneValidation & { sce
       if (hint) (scene.active ? errors : warnings).push(`slot "${slot.id}": hint ${hint}`);
       if (slot.scale > 0.08) warnings.push(`slot "${slot.id}": scale ${slot.scale} is large; children should have to look`);
       if (slot.scale < 0.02) warnings.push(`slot "${slot.id}": scale ${slot.scale} may be too small to recognise a face`);
+      const contract = slot.placement?.contract;
+      if (contract) {
+        // The window, the mask and the prompt are cut from `scale`; a contract
+        // that disagrees with it asks the painter for one size and holds the
+        // render to another.
+        const off = Math.abs(contract.standingHeight - slot.scale) / contract.standingHeight;
+        if (off > 0.15) errors.push(`slot "${slot.id}": scale ${slot.scale} disagrees with the contract's standing height ${contract.standingHeight} by ${Math.round(off * 100)}%`);
+        // The body meets its support near the slot: the slot centre is the
+        // visible part, which sits above the support, never far to a side.
+        const dx = Math.abs(contract.supportPoint.x - slot.x);
+        if (dx > contract.standingHeight * 0.75) errors.push(`slot "${slot.id}": the contract's support point is ${dx.toFixed(3)} away from the slot sideways`);
+        const dy = slot.y - contract.supportPoint.y;
+        if (dy > 0.01 || dy < -contract.standingHeight * 1.1) errors.push(`slot "${slot.id}": the contract's support point is not below the slot within one standing height (dy ${dy.toFixed(3)})`);
+      }
     }
     const [a, b] = target.slots;
     if (dist(a.x, a.y, b.x, b.y) < 0.08) {

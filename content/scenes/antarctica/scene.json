@@ -9,7 +9,7 @@
     "en": "Penguins, a red hut and the whitest snow there is.",
     "he": "פינגווינים, בקתה אדומה והשלג הלבן ביותר שיש."
   },
-  "version": 4,
+  "version": 5,
   "active": true,
   "artStatus": "final",
   "art": {
@@ -142,7 +142,16 @@
             "pose": "seated",
             "support": "The support point is the seat on the wooden side beam; both boots descend toward the lower runner.",
             "occlusion": "None; place the child in front of the cargo, allowing the body to cover only boxes, rope, and sledge boards behind it.",
-            "instructions": "Sit upright and sideways on the left portion of the freight sledge, knees bent toward the viewer and hands in the lap. Use the same foreground scale as the nearby seated child."
+            "instructions": "Sit upright and sideways on the left portion of the freight sledge, knees bent toward the viewer and hands in the lap. Use the same foreground scale as the nearby seated child.",
+            "contract": {
+              "standingHeight": 0.17,
+              "visibleFraction": 0.8,
+              "supportPoint": {
+                "x": 0.6185,
+                "y": 0.918
+              },
+              "comparators": "the boy in the green jacket seated on the sledge and the boy in red standing beside it"
+            }
           }
         },
         {

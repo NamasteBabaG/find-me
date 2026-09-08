@@ -11,7 +11,16 @@ import { isPlayable } from "@/domain/order-state";
 import { StaticScenePreview } from "@/game/components/StaticScenePreview";
 import { ComposedSprite } from "@/game/components/ComposedSprite";
 import { Notice } from "@/ui/Shell";
+import { AttemptStrip } from "./AttemptStrip";
 import { adjustTargetAction, adminDeleteAction, adminRotateLinkAction, approveAction, recutAvatarAction, refundAction, regenTargetAction, requestPhotoAction, retryAction } from "../../actions";
+
+/** What the row's last review means to a person: reviewed and passed, reviewed and failed, could not decide, or never reviewed. */
+function judgeLabel(judge: { verdict: string; reason: string } | null): string {
+  if (!judge) return "⚠ לא נבדק";
+  if (judge.verdict === "ok") return "✓ נבדק";
+  if (judge.verdict === "bad") return "✗ נדחה בבדיקה";
+  return "? השופט לא הכריע";
+}
 
 export default async function AdminOrderPage({ params, searchParams }: { params: Promise<{ gameId: string }>; searchParams: Promise<{ v?: string }> }) {
   const [{ gameId }, { v }] = await Promise.all([params, searchParams]);
@@ -96,22 +105,29 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
                             <span className="fm-small">
                               {t.targetType} · {row?.status} · ניסיונות {row?.attempts ?? 0} · {t.sprite.kind}
                             </span>
-                            <form action={adjustTargetAction} className="adjust">
-                              <input type="hidden" name="gameId" value={gameId} />
-                              <input type="hidden" name="targetInstanceId" value={row?.id ?? ""} />
-                              <label className="fm-small">
-                                dx <input className="fm-input" name="dx" type="number" step="0.005" min="-0.2" max="0.2" defaultValue={adj.dx} />
-                              </label>
-                              <label className="fm-small">
-                                dy <input className="fm-input" name="dy" type="number" step="0.005" min="-0.2" max="0.2" defaultValue={adj.dy} />
-                              </label>
-                              <label className="fm-small">
-                                scale <input className="fm-input" name="scale" type="number" step="0.05" min="0.5" max="2" defaultValue={adj.scale} />
-                              </label>
-                              <button className="fm-btn fm-btn--secondary fm-btn--sm" type="submit" disabled={!row}>
-                                עדכון
-                              </button>
-                            </form>
+                            {t.sprite.kind === "image" && t.sprite.rect ? (
+                              // A painted patch is a piece of the world: it is drawn, tapped and
+                              // pointed at from its own alpha (target-geometry), and dx/dy/scale
+                              // do not apply to it. The form used to accept them and change nothing.
+                              <span className="fm-small">מחבוא מצויר: המיקום, אזור הלחיצה והראש באים מהפאץ׳ עצמו; אין כאן dx/dy/scale. לתיקון — ↻ Regenerate.</span>
+                            ) : (
+                              <form action={adjustTargetAction} className="adjust">
+                                <input type="hidden" name="gameId" value={gameId} />
+                                <input type="hidden" name="targetInstanceId" value={row?.id ?? ""} />
+                                <label className="fm-small">
+                                  dx <input className="fm-input" name="dx" type="number" step="0.005" min="-0.2" max="0.2" defaultValue={adj.dx} />
+                                </label>
+                                <label className="fm-small">
+                                  dy <input className="fm-input" name="dy" type="number" step="0.005" min="-0.2" max="0.2" defaultValue={adj.dy} />
+                                </label>
+                                <label className="fm-small">
+                                  scale <input className="fm-input" name="scale" type="number" step="0.05" min="0.5" max="2" defaultValue={adj.scale} />
+                                </label>
+                                <button className="fm-btn fm-btn--secondary fm-btn--sm" type="submit" disabled={!row}>
+                                  עדכון
+                                </button>
+                              </form>
+                            )}
                           </div>
                           <form action={regenTargetAction}>
                             <input type="hidden" name="gameId" value={gameId} />
@@ -136,30 +152,33 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
               <h3>המחבואים שיצאו ({paintedSpots.length})</h3>
               <p className="fm-small">
                 הבדיקות מאשרות צורה, לא זהות — ילד בגודל ובמקום הנכונים עובר גם אם הוא בכלל לא הילד/ה. בתוך הסצנה קשה לראות את זה; בשורה כזאת ראש
-                של סוס קופץ לעין תוך שנייה.
+                של סוס קופץ לעין תוך שנייה. מתחת לכל מחבוא: כל ניסיון, שלב אחרי שלב, עם ההרכבה שהשופט ראה ופסק הדין שלו.
               </p>
-              <div className="fm-row" style={{ flexWrap: "wrap", gap: "var(--space-2)" }}>
+              <div className="fm-stack fm-stack--2">
                 {paintedSpots.map((spot) => (
-                  <figure key={spot.id} className="fm-stack fm-stack--1" style={{ width: 108, margin: 0 }}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={`/api/assets/${spot.assetId}`}
-                      alt={`${spot.sceneSlug}/${spot.targetId}`}
-                      style={{ width: 108, height: 150, objectFit: "contain", background: "var(--surface-2)", borderRadius: "var(--radius-2)" }}
-                    />
-                    <figcaption className="fm-small" dir="ltr">
-                      {spot.sceneSlug}/{spot.targetId}
-                      {spot.attempts > 1 ? ` · ${spot.attempts}` : ""}
-                      {spot.judge ? <div title={spot.judge.reason}>{spot.judge.verdict === "ok" ? "✓ נבדק" : "⚠ לא נבדק"}</div> : <div>⚠ לא נבדק</div>}
-                    </figcaption>
-                    <form action={regenTargetAction}>
-                      <input type="hidden" name="gameId" value={gameId} />
-                      <input type="hidden" name="targetInstanceId" value={spot.targetInstanceId} />
-                      <button className="fm-btn fm-btn--ghost fm-btn--sm" type="submit">
-                        ↻
-                      </button>
-                    </form>
-                  </figure>
+                  <details key={spot.id} className="fm-stack fm-stack--1">
+                    <summary className="fm-row" style={{ gap: "var(--space-2)", cursor: "pointer" }}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={`/api/assets/${spot.assetId}`}
+                        alt={`${spot.sceneSlug}/${spot.targetId}`}
+                        style={{ width: 72, height: 100, objectFit: "contain", background: "var(--surface-2)", borderRadius: "var(--radius-2)" }}
+                      />
+                      <span className="fm-small" dir="ltr">
+                        {spot.sceneSlug}/{spot.targetId}
+                        {spot.attempts > 1 ? ` · ${spot.attempts} attempts` : ""}
+                        <div title={spot.judge?.reason ?? ""}>{judgeLabel(spot.judge)}{spot.judge?.model ? ` · ${spot.judge.model}` : ""}</div>
+                      </span>
+                      <form action={regenTargetAction}>
+                        <input type="hidden" name="gameId" value={gameId} />
+                        <input type="hidden" name="targetInstanceId" value={spot.targetInstanceId} />
+                        <button className="fm-btn fm-btn--ghost fm-btn--sm" type="submit">
+                          ↻
+                        </button>
+                      </form>
+                    </summary>
+                    <AttemptStrip attempts={spot.history} />
+                  </details>
                 ))}
               </div>
             </section>
@@ -168,7 +187,7 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
           {failedSpots.length > 0 ? (
             <section className="fm-card fm-stack fm-stack--2">
               <h3>מחבואים שלא יצאו ({failedSpots.length})</h3>
-              <p className="fm-small">התמונות הן מה שהמודל צייר בפועל — הן היחידות שמראות למה נדחה.</p>
+              <p className="fm-small">לכל ניסיון: מה הצייר צייר, מה המעבר השני ענה, מה נחתך, ומה השופט ראה — עם השלב שדחה אותו. ״לא נשמר״ הוא ניסיון שנרשם לפני שהראיה הזאת נשמרה, לא ראיה שנמחקה.</p>
               {failedSpots.map((spot) => (
                 <div key={spot.id} className="fm-stack fm-stack--1">
                   <div className="fm-row fm-row--between">
@@ -184,11 +203,13 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
                       {spot.lastError}
                     </span>
                   ) : null}
-                  {spot.rejectedAssetIds.length > 0 ? (
+                  {spot.history.length > 0 ? (
+                    <AttemptStrip attempts={spot.history} />
+                  ) : spot.rejectedAssetIds.length > 0 ? (
                     <div className="fm-row">
                       {spot.rejectedAssetIds.map((assetId) => (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img key={assetId} src={`/api/assets/${assetId}`} alt="ניסיון שנדחה" className="photo-thumb" />
+                        <img key={assetId} src={`/api/assets/${assetId}`} alt="ציור שנדחה" className="photo-thumb" />
                       ))}
                     </div>
                   ) : (

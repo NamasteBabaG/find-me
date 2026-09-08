@@ -92,7 +92,7 @@ function build(): Container {
         : new MockAvatarProvider(),
     // Whoever draws also judges: an account that can paint a child can look at
     // one, and a deployment on mocks should not be sending every spot to review.
-    judge: e.GENERATION_PROVIDER === "openai" && e.OPENAI_API_KEY ? new OpenAiPatchJudge(e.OPENAI_API_KEY, { model: e.JUDGE_MODEL }) : new NoPatchJudge(),
+    judge: e.GENERATION_PROVIDER === "openai" && e.OPENAI_API_KEY ? new OpenAiPatchJudge(e.OPENAI_API_KEY, { model: e.JUDGE_MODEL, policy: e.JUDGE_POLICY }) : new NoPatchJudge(),
     faces: new NoopFaceDetector(),
     email,
     analytics,

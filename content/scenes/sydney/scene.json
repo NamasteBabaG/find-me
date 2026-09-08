@@ -10,7 +10,7 @@
     "he": "מפרץ כחול, מפרשים לבנים ועשרה גלשנים."
   },
   "wardrobe": "a plain yellow t-shirt and blue shorts, bare feet",
-  "version": 4,
+  "version": 5,
   "active": true,
   "artStatus": "final",
   "art": {
@@ -23,112 +23,84 @@
       "ground": "#B9A98F",
       "accent": "#F5B301"
     },
-    "sha256": "c33b4c484df0c020acaddc927694d11c1672bc02d918c2e9efe2618a02bb7f2b",
-    "foreground": "/scenes/sydney/refresh-20260907/foreground.webp"
+    "sha256": "c33b4c484df0c020acaddc927694d11c1672bc02d918c2e9efe2618a02bb7f2b"
   },
   "targets": [
     {
-      "id": "ferry",
-      "targetType": "sydney_ferry",
-      "bodyTemplate": "sydney_ferry",
+      "id": "lifeguard",
+      "targetType": "sydney_lifeguard",
+      "bodyTemplate": "sydney_lifeguard",
       "difficulty": 1,
       "mission": {
-        "en": "Find {name}",
-        "he": "מצאו את {name}"
+        "en": "Find {name} under the lifeguard chair",
+        "he": "מצאו את {name} מתחת לכיסא המציל"
       },
       "item": {
-        "en": "green and yellow ferries at the water edge",
-        "he": "מעבורות ירוקות־צהובות בקו המים"
+        "en": "a tall white lifeguard chair with a red and yellow umbrella",
+        "he": "כיסא מציל לבן וגבוה עם שמשייה אדומה וצהובה"
       },
       "success": [
         {
-          "en": "The wind took my hat!",
-          "he": "הרוח לקחה לי את הכובע!"
+          "en": "The lifeguard did not see me!",
+          "he": "המציל לא ראה אותי!"
         },
         {
-          "en": "You found me! Wave at the bridge.",
-          "he": "מצאתם! תנופפו לגשר."
+          "en": "You found me! It is shady down here.",
+          "he": "מצאתם! יש פה צל נעים."
         },
         {
-          "en": "The water is so blue.",
-          "he": "המים כל כך כחולים."
+          "en": "I can see the whole beach from here.",
+          "he": "רואים מפה את כל החוף."
         }
       ],
-      "animation": "bounce",
+      "animation": "peek",
+      "action": "The child is crouching under the lifeguard chair between its front legs, one hand holding a leg, peeking out at the beach.",
+      "expression": "mischievous and delighted, eyes wide, mid-giggle, as if about to be spotted",
       "slots": [
         {
-          "id": "sydney_ferry_a",
-          "x": 0.434,
-          "y": 0.384,
-          "scale": 0.078,
+          "id": "sydney_lifeguard_a",
+          "x": 0.2783,
+          "y": 0.4277,
+          "scale": 0.093,
           "hintZone": {
-            "x": 0.434,
-            "y": 0.369,
+            "x": 0.2783,
+            "y": 0.4127,
             "r": 0.075
           },
           "hintText": {
-            "en": "Look at the water edge by the ferry.",
-            "he": "חפשו בקו המים ליד המעבורת."
+            "en": "Look between the legs of the tall white chair.",
+            "he": "חפשו בין הרגליים של הכיסא הלבן הגבוה."
           },
-          "layer": "behindForeground",
+          "layer": "front",
           "placement": {
-            "pose": "standing",
-            "support": "Both shoes on the ferry's bow deck behind the green hull and its rail.",
-            "occlusion": "The green bow hull, drawn back in front of the child from the board, hides her from the waist down; the head, shoulders and chest show above the rail.",
-            "instructions": "Paint the child complete and unoccluded, standing at this spot exactly as if the ferry's green bow hull were not there: the whole head, torso and arms, and the legs down to the feet on the ground. the ferry's green bow hull is put back in front of the child afterwards from the board itself; do not paint it over the child, and do not paint any part of the child as hidden.",
-            "foreground": [
-              {
-                "x": 0.408,
-                "y": 0.411
+            "pose": "crouching",
+            "support": "Crouching on the sand between the front legs of the lifeguard chair, under its platform; both feet on the sand.",
+            "occlusion": "The chair's white legs and cross-braces may overlap her where they cross; nothing else is in front of her, and the platform above her head stays where it is.",
+            "instructions": "Crouch under the lifeguard chair between its front legs, one hand holding a leg, facing the viewer with the whole face showing between the braces. Keep the chair, its legs, braces and platform exactly as they are; the child is small enough to fit under the platform.",
+            "contract": {
+              "standingHeight": 0.093,
+              "visibleFraction": 0.62,
+              "supportPoint": {
+                "x": 0.2783,
+                "y": 0.4565
               },
-              {
-                "x": 0.414,
-                "y": 0.399
-              },
-              {
-                "x": 0.427,
-                "y": 0.402
-              },
-              {
-                "x": 0.441,
-                "y": 0.405
-              },
-              {
-                "x": 0.452,
-                "y": 0.409
-              },
-              {
-                "x": 0.452,
-                "y": 0.447
-              },
-              {
-                "x": 0.438,
-                "y": 0.451
-              },
-              {
-                "x": 0.423,
-                "y": 0.446
-              },
-              {
-                "x": 0.411,
-                "y": 0.435
-              }
-            ]
+              "comparators": "the boy sitting on the sand at the left of the chair and the lifeguard seated on it"
+            }
           }
         },
         {
-          "id": "sydney_ferry_b",
-          "x": 0.635,
-          "y": 0.52,
-          "scale": 0.058,
+          "id": "sydney_lifeguard_b",
+          "x": 0.29,
+          "y": 0.28,
+          "scale": 0.08,
           "hintZone": {
-            "x": 0.635,
-            "y": 0.505,
+            "x": 0.29,
+            "y": 0.265,
             "r": 0.075
           },
           "hintText": {
-            "en": "Look further along the water.",
-            "he": "חפשו הלאה לאורך המים."
+            "en": "Look up by the umbrella.",
+            "he": "חפשו למעלה ליד השמשייה."
           },
           "layer": "front"
         }

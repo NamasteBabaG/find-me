@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { BODY_TEMPLATES } from "../../../content/body-templates";
 import { sceneBySlug } from "../scene-catalog.service";
-import { expressionFor, modelSpaceHeight, slotContext, slotPrompt, type DiffOptions, type PatchResult } from "./patch";
+import { contractPx, expressionFor, modelSpaceHeight, occlusionMode, slotContext, slotPrompt, type DiffOptions, type PatchResult } from "./patch";
 
 /**
  * Authoring a hiding spot from the command line: the same slot, window, prompt
@@ -64,6 +64,9 @@ export function slotOf(slug: string, targetId: string, variantArg: string | unde
     expression: options.expression ?? target.expression ?? expressionFor(body?.pose),
     wardrobe: options.wardrobe ?? scene.wardrobe,
     action: options.action ?? target.action,
+    // The contract in the model's pixels, scaled the same way as childPx.
+    contractPx: contractPx(slot, art, promptChildPx / Math.max(1, ctx.childPx)),
+    occlusion: occlusionMode(slot),
   });
   return { scene, target, variant: variant as "A" | "B", slot, art, ctx, prompt, promptChildPx, name: `${slug}-${targetId}-${variant}` };
 }

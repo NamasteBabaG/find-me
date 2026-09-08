@@ -41,8 +41,29 @@ const API = "https://api.openai.com/v1/chat/completions";
 
 /** Judging is cheap next to a roll (~7¢), so the budget here is generous. */
 const TIMEOUT_MS = 45_000;
+export const STRONG_TIMEOUT_MS = 90_000;
 const TRIES = 2;
 const MAX_OUTPUT_TOKENS = 60;
+
+/**
+ * Who decides on the board.
+ *
+ * - `chain`: the fast reviewer first; a fail ends it, an uncertain or a pass
+ *   goes to the strong reviewer, whose word is final. (Until 8 September an
+ *   uncertain ended it too, and a fast fail on bodyPlacement was the end of
+ *   six good peeks in one game.)
+ * - `screen`: the fast reviewer may only end it on the checks it is good at
+ *   — identity, faceIntegrity, anatomy — so a fast fail on placement, scale,
+ *   age or style is a question for the strong reviewer, not an answer.
+ * - `strong`: the strong reviewer alone.
+ *
+ * The pilot on the labelled set (docs/CLAUDE_JUDGE_PLACEMENT_FIX_REPORT_2026-09-08.md)
+ * chooses the default; the environment can override it (JUDGE_POLICY).
+ */
+export type JudgePolicy = "chain" | "screen" | "strong";
+export const DEFAULT_JUDGE_POLICY: JudgePolicy = "screen";
+/** The checks the fast reviewer is trusted to fail on its own under `screen`. */
+export const FAST_FINAL_CHECKS = ["identity", "faceIntegrity", "anatomy"] as const;
 
 export interface JudgeOptions {
   /** A vision-capable chat model. */
@@ -50,6 +71,7 @@ export interface JudgeOptions {
   timeoutMs?: number;
   /** Budgeted experiments use exactly one wire request, without hidden retries. */
   tries?: number;
+  policy?: JudgePolicy;
 }
 
 export class OpenAiPatchJudge implements PatchJudge {
@@ -57,6 +79,7 @@ export class OpenAiPatchJudge implements PatchJudge {
   private readonly model: string;
   private readonly timeoutMs: number;
   private readonly tries: number;
+  private readonly policy: JudgePolicy;
 
   constructor(
     private readonly apiKey: string,
@@ -66,22 +89,36 @@ export class OpenAiPatchJudge implements PatchJudge {
     this.model = options.model ?? "gpt-4o-mini";
     this.timeoutMs = options.timeoutMs ?? TIMEOUT_MS;
     this.tries = options.tries ?? TRIES;
+    this.policy = options.policy ?? DEFAULT_JUDGE_POLICY;
     if (!Number.isInteger(this.tries) || this.tries < 1 || this.tries > 2) throw new Error("judge tries must be 1 or 2");
   }
 
   async judge(input: PatchJudgeInput): Promise<PatchJudgement> {
     if (!input.boardCrop) return this.assess(input);
-    // Neither model is a release oracle. In captured defects, each missed a
-    // different placement error. Approval requires both; do not pay the second
-    // reviewer when the first has already rejected or could not decide.
-    const first = await this.assess(input, BOARD_FAST_JUDGE_MODEL);
-    if (first.verdict !== "ok") return first;
-    const second = await this.assess(input, BOARD_JUDGE_MODEL).catch((): PatchJudgement => ({
+    const strong = () => this.assess(input, BOARD_JUDGE_MODEL).catch((): PatchJudgement => ({
       verdict: "unknown", reason: "second reviewer could not complete",
       version: BOARD_JUDGE_VERSION, model: BOARD_JUDGE_MODEL,
       costCents: 0, costUnknown: true, attempts: [],
     }));
-    return { ...second, reviews: [first, second], attempts: [...first.attempts ?? [], ...second.attempts ?? []], costCents: first.costCents + second.costCents, costUnknown: Boolean(first.costUnknown || second.costUnknown) };
+    if (this.policy === "strong") return { ...(await strong()), policy: "strong" };
+    // Neither model is a release oracle. In captured defects, each missed a
+    // different placement error. Approval requires both.
+    const first = await this.assess(input, BOARD_FAST_JUDGE_MODEL);
+    if (first.verdict === "bad" && fastMayDecide(first, this.policy)) return { ...first, policy: `${this.policy}:fast` };
+    // An answer that could not be verified (another model served, no usage,
+    // no readable verdict) is not a doubt about the picture: it fails closed
+    // without a second paid call, as before.
+    if (first.verdict === "unknown" && !first.checks) return { ...first, policy: `${this.policy}:fast` };
+    // A fast reviewer that looked and could not decide, or failed on a check
+    // it is not trusted with, hands the picture to the strong reviewer with
+    // its own answer kept for the record and the bill.
+    const second = await strong();
+    return { ...second, policy: `${this.policy}:strong`, reviews: [first, second], attempts: [...first.attempts ?? [], ...second.attempts ?? []], costCents: first.costCents + second.costCents, costUnknown: Boolean(first.costUnknown || second.costUnknown) };
+  }
+
+  /** One named reviewer on its own, for pilots that measure the reviewers separately (scripts/judge-pilot.ts). Paid. */
+  async reviewWith(input: PatchJudgeInput, model: string): Promise<PatchJudgement> {
+    return this.assess(input, model);
   }
 
   private async assess(input: PatchJudgeInput, contextModel?: string): Promise<PatchJudgement> {
@@ -98,11 +135,15 @@ export class OpenAiPatchJudge implements PatchJudge {
     const contextual = Boolean(input.boardCrop);
     const modelRequested = contextModel ?? this.model;
     const reasoning = modelRequested === BOARD_JUDGE_MODEL;
-    const requestTimeoutMs = reasoning ? Math.max(this.timeoutMs, 60_000) : this.timeoutMs;
+    // The strong reviewer thinks before it answers; at 60 s it timed out on
+    // newyork/bench in game 2 and on the first pilot case (8 September), and
+    // a timeout is an unknown charge. Ninety seconds inside the tick
+    // (JUDGE_MIN_MS allows for it); a pilot may pass more.
+    const requestTimeoutMs = reasoning ? Math.max(this.timeoutMs, STRONG_TIMEOUT_MS) : this.timeoutMs;
     const images = input.boardCrop
       ? [await sharp(input.boardCrop).resize(768, 768, { fit: "inside" }).png().toBuffer(), patch, sheet]
       : [patch, sheet];
-    const prompt = contextual ? boardJudgePrompt(input.childName, input.ageYears) : judgePrompt(input.childName);
+    const prompt = contextual ? boardJudgePrompt(input.childName, input.ageYears, input.recipe) : judgePrompt(input.childName);
     const attempts: JudgeAttempt[] = [];
     let checks: PatchJudgement["checks"];
     const result = (verdict: PatchJudgement["verdict"], reason: string): PatchJudgement => ({
@@ -111,7 +152,9 @@ export class OpenAiPatchJudge implements PatchJudge {
       costUnknown: attempts.some((attempt) => attempt.costUnknown),
       model: attempts.at(-1)?.model ?? modelRequested,
       attempts,
-      ...(contextual ? { version: BOARD_JUDGE_VERSION, checks, imageHashes: images.map(b => createHash("sha256").update(b).digest("hex")) } : {}),
+      // The board and the patch as encoded for the wire; the sheet is the
+      // identity asset the game already keeps.
+      ...(contextual ? { version: BOARD_JUDGE_VERSION, checks, imageHashes: images.map(b => createHash("sha256").update(b).digest("hex")), wireImages: images.slice(0, 2) } : {}),
     });
 
     let lastError = "";
@@ -177,6 +220,20 @@ export class OpenAiPatchJudge implements PatchJudge {
     }
     return result("unknown", lastError || "no answer");
   }
+}
+
+/** Under `screen`, a fast fail decides only when one of the checks it is trusted with failed. */
+export function fastMayDecide(first: PatchJudgement, policy: JudgePolicy): boolean {
+  if (policy === "chain") return true;
+  const checks = first.checks;
+  if (!checks) return true;
+  return FAST_FINAL_CHECKS.some((key) => checks[key] === "fail");
+}
+
+/** The judgement as it is written to the row: without the wire images, which are kept as assets. */
+export function judgementForJson(judgement: PatchJudgement): PatchJudgement {
+  const { wireImages: _wire, reviews, ...rest } = judgement;
+  return { ...rest, ...(reviews ? { reviews: reviews.map(judgementForJson) } : {}) };
 }
 
 /** Keep wording identical across old/new evaluations; capture it in evidence. */

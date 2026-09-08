@@ -34,6 +34,14 @@ export interface ArtRect {
   h: number;
 }
 
+/** The placement contract as the patch maths needs it; see PlacementContractSchema. */
+export interface SlotContract {
+  standingHeight: number;
+  visibleFraction: number;
+  supportPoint: { x: number; y: number };
+  comparators?: string;
+}
+
 export interface SlotPoint {
   x: number;
   y: number;
@@ -42,9 +50,10 @@ export interface SlotPoint {
    * The placement recipe, when the slot has one. The shape rules read its pose;
    * `foreground` is the occluder in front of a peek, a polygon in art
    * fractions: the paint mask leaves it out, the render is checked against it
-   * (occluderShift) and the matte is clipped by it.
+   * (occluderShift) and the matte is clipped by it. `contract` is what a
+   * correct render measures (childProblem holds the render to it).
    */
-  placement?: { pose: string; foreground?: Array<{ x: number; y: number }> | null } | null;
+  placement?: { pose: string; foreground?: Array<{ x: number; y: number }> | null; occlusion?: string; support?: string; contract?: SlotContract | null } | null;
   /**
    * `behindForeground`: the scene's foreground layer (the occluder, cut out
    * of the board) is drawn over the child, so she is painted whole and the
@@ -53,16 +62,45 @@ export interface SlotPoint {
   layer?: string;
 }
 
-/** The occluder polygon in crop pixels, as an SVG points attribute, or null when the slot has none. */
-function foregroundPoints(ctx: SlotContext, art: Size, slot: SlotPoint): string | null {
+/**
+ * How this spot hides the child. The three modes ask the painter, pass two
+ * and the judge for different things, and one wording for all three is what
+ * produced a peek cut by an object that was then put back in front of it
+ * (game 2, 8 September 2026):
+ *
+ * - `open`: nothing authored in front of her; whatever the board naturally
+ *   overlaps is welcome, and a child in full view is still a find.
+ * - `clipped`: a polygon names the object in front; the paint mask leaves it
+ *   out, the matte is clipped by it, and she is painted as hidden by it.
+ * - `layer`: the object is cut out of the board into the scene's foreground
+ *   layer and drawn over her afterwards; she is painted complete, and
+ *   nothing in the render may cover her.
+ */
+export type OcclusionMode = "open" | "clipped" | "layer";
+export function occlusionMode(slot: Pick<SlotPoint, "placement" | "layer">): OcclusionMode {
+  if (slot.layer === "behindForeground") return "layer";
   const poly = slot.placement?.foreground;
-  if (!poly || poly.length < 3 || slot.layer === "behindForeground") return null;
+  return poly && poly.length >= 3 ? "clipped" : "open";
+}
+
+/**
+ * The occluder polygon in crop pixels, as an SVG points attribute, or null
+ * when the slot has none. For `cut` (the paint mask and the matte clip) a
+ * layer-mode slot has no polygon: the board's own layer does the hiding. For
+ * `diagnose` (occluderShift, occluderGap) the polygon is always used: a
+ * render that redrew the block behind the foreground layer is exactly what
+ * those numbers exist to show (giza/stones attempt 1, 8 September 2026).
+ */
+function foregroundPoints(ctx: SlotContext, art: Size, slot: SlotPoint, purpose: "cut" | "diagnose" = "cut"): string | null {
+  const poly = slot.placement?.foreground;
+  if (!poly || poly.length < 3) return null;
+  if (purpose === "cut" && slot.layer === "behindForeground") return null;
   return poly.map((p) => `${(p.x * art.width - ctx.rect.x).toFixed(1)},${(p.y * art.height - ctx.rect.y).toFixed(1)}`).join(" ");
 }
 
-/** White-on-black occluder polygon in crop pixels, grown by `dilatePx`; null when the slot has none. */
-export async function polygonMask(ctx: SlotContext, art: Size, slot: SlotPoint, dilatePx = 0): Promise<Buffer | null> {
-  const points = foregroundPoints(ctx, art, slot);
+/** White-on-black occluder polygon in crop pixels, grown by `dilatePx`; null when the slot has none (for the purpose). */
+export async function polygonMask(ctx: SlotContext, art: Size, slot: SlotPoint, dilatePx = 0, purpose: "cut" | "diagnose" = "cut"): Promise<Buffer | null> {
+  const points = foregroundPoints(ctx, art, slot, purpose);
   if (!points) return null;
   const stroke = dilatePx > 0 ? ` stroke="#fff" stroke-width="${dilatePx * 2}" stroke-linejoin="round"` : "";
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${ctx.rect.w}" height="${ctx.rect.h}"><rect width="100%" height="100%" fill="#000"/><polygon points="${points}" fill="#fff"${stroke}/></svg>`;
@@ -82,7 +120,7 @@ export async function polygonMask(ctx: SlotContext, art: Size, slot: SlotPoint, 
  */
 export async function occluderShift(input: { originalCrop: Buffer; editedCrop: Buffer; ctx: SlotContext; art: Size; slot: SlotPoint }): Promise<{ mean: number; pixels: number } | null> {
   const { ctx, art, slot } = input;
-  const mask = await polygonMask(ctx, art, slot, 2);
+  const mask = await polygonMask(ctx, art, slot, 2, "diagnose");
   if (!mask) return null;
   const { w, h } = ctx.rect;
   const original = await sharp(input.originalCrop).resize({ width: w, height: h, fit: "cover" }).removeAlpha().raw().toBuffer();
@@ -151,8 +189,21 @@ export function unchangedFraction(alpha: Buffer, edited: Buffer, original: Buffe
  * other poses show the whole body.
  */
 export function visibleFraction(slot: Pick<SlotPoint, "placement">): number {
+  const contract = slot.placement?.contract;
+  if (contract) return contract.visibleFraction;
   const pose = slot.placement?.pose;
   return pose === "swimming" ? 0.5 : pose === "peeking" ? 1 / 1.5 : 1;
+}
+
+/**
+ * The contract's numbers in the pixels a caller works in: the art's for the
+ * shape guard, the model's for the prompt (see modelSpaceHeight).
+ */
+export function contractPx(slot: Pick<SlotPoint, "placement">, art: Size, scale = 1): { standing: number; visible: number } | null {
+  const c = slot.placement?.contract;
+  if (!c) return null;
+  const standing = c.standingHeight * art.height * scale;
+  return { standing: Math.round(standing), visible: Math.round(standing * c.visibleFraction) };
 }
 
 /** The three numbers the renderer needs; see src/game/engine/target-geometry.ts. */
@@ -284,12 +335,25 @@ export async function styleReference(art: Buffer, size: Size, slot: SlotPoint, o
  */
 // v6 additionally requires a complete supported body behind real occluders.
 // v8: what is already in the picture — above all a peek's occluder — stays where and as it is.
-export const PROMPT_VERSION = "slot-patch-v8-objects-stay";
+// v9: the occlusion wording follows the spot's mode (open / clipped / layer), and a
+// contract names the standing height and the visible part in the model's pixels.
+export const PROMPT_VERSION = "slot-patch-v9-occlusion-modes";
 
-/** What pass two is told about which figure is the child: the placement recipe's pose and occlusion, when the slot has one. */
-export function matteHint(slot: { placement?: Slot["placement"] }): string {
+/**
+ * What pass two is told about which figure is the child and what may cover
+ * her: the placement recipe's pose and, by occlusion mode, whether anything
+ * in the render is in front of her at all. In layer mode the object that
+ * hides her is not in the render — the board's foreground layer supplies it
+ * afterwards — so pass two must keep her whole; told "the block hides her
+ * from the chest down" it cut her at the chest and the block was then drawn
+ * over the cut (giza/stones, 8 September 2026).
+ */
+export function matteHint(slot: { placement?: Slot["placement"]; layer?: string }): string {
   const p = slot.placement;
-  return p ? `The child is ${p.pose}. ${p.occlusion}` : "";
+  if (!p) return "";
+  const mode = occlusionMode({ placement: p, layer: slot.layer });
+  if (mode === "layer") return `The child is ${p.pose}, painted complete: nothing in this picture is in front of her, so keep her whole from head to feet. (${p.occlusion} — that object is NOT in this picture.)`;
+  return `The child is ${p.pose}. ${p.occlusion}`;
 }
 
 /**
@@ -330,13 +394,27 @@ export interface SlotPromptInput {
    */
   wardrobe?: string;
   action?: string;
+  /**
+   * The placement contract in the model's pixels (contractPx with the model
+   * scale): how tall a child stands at this depth and how much of her shows
+   * here. Named so a seated or peeking child is not drawn `childPx` tall
+   * from head to seat.
+   */
+  contractPx?: { standing: number; visible: number } | null;
+  /** How the spot hides her (occlusionMode); `open` when unknown. */
+  occlusion?: OcclusionMode;
 }
 
 export function slotPrompt(input: SlotPromptInput): string {
   const where = input.place ? ` (${input.place}${input.placeNote ? ` — ${input.placeNote}` : ""})` : "";
+  const mode = input.occlusion ?? "open";
+  const comparators = input.placement?.contract?.comparators;
+  const sizeLine = input.contractPx
+    ? `A child standing here is about ${input.contractPx.standing} pixels tall from head to feet${comparators ? ` — the same height as ${comparators}` : ""}; never taller than the children beside the spot. ${input.contractPx.visible < input.contractPx.standing ? `In this pose and place about ${input.contractPx.visible} pixels of her show${input.placement?.pose === "seated" || input.placement?.pose === "crouching" ? " from the head down to the seat" : mode === "open" ? "" : " above the object in front"}; the rest of the body continues below at the same scale.` : ""}`
+    : `The child goes inside the white area of the mask, about ${input.childPx} pixels tall.`;
   return [
     `Return this exact picture with ONE child added to it. Do not redraw, restyle, re-render or improve any part of the picture: every pixel outside the child must come back byte for byte as it went in.`,
-    `The child goes inside the white area of the mask, about ${input.childPx} pixels tall. Match children of a similar age at the SAME depth, not whichever nearby adult is tallest. Do not enlarge the child to adult height to fill the mask. Seated and crouching bodies must imply a child-sized complete body.`,
+    `${sizeLine} Match children of a similar age at the SAME depth, not whichever nearby adult is tallest. Do not enlarge the child to adult height to fill the mask. Seated and crouching bodies must imply a child-sized complete body.`,
     childAgeDirection(input.ageYears),
     `The attached character reference decides WHO this child is: copy the face, hair, skin tone and build exactly. This picture decides everything else: draw the child in its own style, line quality and palette, lit by the same light from the same direction, with the same colour temperature, saturation and contrast, so they look painted by the same hand at the same hour.`,
     input.wardrobe
@@ -346,8 +424,16 @@ export function slotPrompt(input: SlotPromptInput): string {
     input.placement
       ? `Fixed placement for this exact board: pose ${input.placement.pose}. Support: ${input.placement.support}. Occlusion: ${input.placement.occlusion}. ${input.placement.instructions} Everything already in the picture, above all the object in front of the child and the one under them, stays exactly where and as it is: never moved, raised, enlarged, redrawn or removed.`
       : `Situation: ${input.mission}${input.bodyLabel ? ` (${input.bodyLabel})` : ""}.${input.action ? ` ${input.action}` : ""}${input.pose ? ` ${input.pose}` : ""}`,
-    `Let whatever is naturally in front of the child overlap them, and give them a soft shadow that matches the others. They should be findable, not the centre of attention.`,
-    `Plan the complete body and its support before painting: feet on visible ground, a body seated on an actual seat, or a swimmer in water. Every hidden part must continue plausibly behind a specific object ALREADY in this picture. Keep the whole face intact. Never end a torso in open air, merge the child into another person, or sink a body through a solid floor. If this spot has no suitable occluder, show a complete small standing or crouching child instead of inventing a floating head.`,
+    // The occlusion wording follows the mode. One wording for all three asked
+    // for a complete child AND for whatever is in front of her to overlap her,
+    // and in layer mode the painter obliged by redrawing the block over her
+    // — which the board's own block was then drawn over a second time.
+    mode === "layer"
+      ? `Paint the child complete and in the open, with a soft shadow that matches the others: NOTHING in this picture may cover any part of her, and nothing is redrawn in front of her. The object that hides her lower body is put back in front of her later from the picture itself. She should be findable, not the centre of attention.`
+      : `Let whatever is naturally in front of the child overlap them, and give them a soft shadow that matches the others. They should be findable, not the centre of attention.`,
+    mode === "layer"
+      ? `Plan the complete body and its support before painting: feet on the ground where the support says, the whole body connected from the face to the shoes at one scale. Keep the whole face intact. Never end a torso in open air, merge the child into another person, or sink a body through a solid floor.`
+      : `Plan the complete body and its support before painting: feet on visible ground, a body seated on an actual seat, or a swimmer in water. Every hidden part must continue plausibly behind a specific object ALREADY in this picture. Keep the whole face intact. Never end a torso in open air, merge the child into another person, or sink a body through a solid floor. If this spot has no suitable occluder, show a complete small standing or crouching child instead of inventing a floating head.`,
     `One connected head and torso, two arms, two legs. Trace shoulders to elbows to wrists and hands, and hips to knees to feet. No extra limbs, duplicate hands, fused fingers or adult anatomy. Natural hidden limbs stay hidden behind the named object; do not add limbs to compensate.`,
     `Change nothing else.`,
   ].join(" ");
@@ -501,7 +587,7 @@ export interface PatchResult {
   /** Roughly how big a child of `childPx` should be, for comparison. */
   expected: number;
   /** Shape of what was actually painted, for the acceptance check. */
-  shape: { width: number; height: number; centerX: number; centerY: number; childPx: number; slotX: number; slotY: number; visible?: number };
+  shape: { width: number; height: number; centerX: number; centerY: number; childPx: number; slotX: number; slotY: number; visible?: number; contract?: ShapeContract };
   /** How the alpha was made: the colour difference (a blob) or the model's matte (a silhouette). The shape rules read it. */
   basis: "diff" | "matte";
   /** Matte only, when the render was given: how much of the silhouette was already in the board (unchangedFraction). */
@@ -509,6 +595,36 @@ export interface PatchResult {
   /** Matte only, slots with an occluder polygon: how far above the board's occluder the silhouette ends, as a fraction of the child's height (occluderGap). */
   occluderGap?: number;
 }
+
+/**
+ * The placement contract in art pixels, carried on the shape so the guard
+ * can hold the render to it: how tall a child stands here, how much of her
+ * shows, where the body meets its support, and whether the visible part is
+ * the top of her (a peek over an object) or the bottom (feet, seat, waterline).
+ */
+export interface ShapeContract {
+  standingPx: number;
+  visiblePx: number;
+  supportX: number;
+  supportY: number;
+  visibleAtTop: boolean;
+}
+
+/*
+ * A pass-two answer that moved the child (amazon/canoe, game 2, 8 September
+ * 2026: painted in the canoe, answered a body-width to the right in the
+ * water) has no automatic detector here. Two were tried on the ten kept
+ * mattes of that game and neither separates the two moved answers from the
+ * eight that sat where the painter put her: the colour distance between the
+ * matte's child and the render under it (the matte re-paints her colours,
+ * so it reads 37–75 at zero offset for faithful answers as well), and the
+ * normalised correlation of edge magnitudes (0.51–0.65 at zero for all ten,
+ * with "better" offsets of 0.1–0.7 child-heights everywhere). The numbers are
+ * in work/codex-judge-audit-20260908 and the report. What guards a moved
+ * matte is the wording of pass two ("her head, her hands and her feet stay
+ * at exactly the pixels where image 1 has them"), unchangedFraction, and the
+ * judge on the composite, which rejected all three moved canoe answers.
+ */
 
 export const EXTRACTION_VERSION = "diff-v2-enclosed-interior";
 
@@ -789,8 +905,11 @@ export async function matteToPatch(input: { originalCrop: Buffer; mattePng: Buff
   const n = w * h;
   const rgba = await sharp(input.mattePng).ensureAlpha().resize({ width: w, height: h, fit: "cover", kernel: "lanczos3" }).raw().toBuffer();
   const allow = await sharp(paintMask(ctx, art, slot, o.grow ?? 3.6)).extractChannel(0).raw().toBuffer();
-  // The occluder is in front of the child by definition: nothing of her shows there.
+  // The occluder is in front of the child by definition: nothing of her shows
+  // there — in clipped mode. In layer mode the board's own layer does that
+  // afterwards, and the polygon is only measured (occluderGap).
   const occluder = await polygonMask(ctx, art, slot);
+  const diagnostic = occluder ?? (await polygonMask(ctx, art, slot, 0, "diagnose"));
   const rgb = Buffer.alloc(n * 3);
   const soft = Buffer.alloc(n);
   const hard = Buffer.alloc(n);
@@ -819,8 +938,45 @@ export async function matteToPatch(input: { originalCrop: Buffer; mattePng: Buff
     }
   }
   const patch = await finishPatch({ rgb: toned, alpha, w, h, ctx, art, slot, pieces, basis: "matte" });
-  const gap = occluder ? occluderGap(alpha, occluder, w, h) : null;
+  const gap = diagnostic ? occluderGap(alpha, diagnostic, w, h) : null;
   return { ...patch, ...(unchanged === undefined ? {} : { unchanged }), ...(gap ? { occluderGap: gap.medianPx / ctx.childPx } : {}) };
+}
+
+/**
+ * The tap contract after the board's foreground layer is drawn over the
+ * child (layer mode). The patch's own alpha says where she was painted; the
+ * player can only tap what the layer leaves uncovered, and a bubble has to
+ * hang from the head that shows, not from one behind a stone block. Given
+ * the foreground layer cut at the patch's rect (same pixel size as the
+ * patch), this measures the visible alpha and returns the geometry from it,
+ * with how much of her the layer hides.
+ */
+export async function visibleGeometry(patch: PatchResult, foregroundAtRect: Buffer, art: Size): Promise<{ geometry: PatchGeometry; hiddenFraction: number; visiblePx: number }> {
+  const w = patch.width, h = patch.height;
+  const own = await sharp(patch.webp).ensureAlpha().extractChannel(3).raw().toBuffer();
+  const cover = await sharp(foregroundAtRect).ensureAlpha().resize(w, h, { fit: "fill" }).extractChannel(3).raw().toBuffer();
+  const visible = Buffer.alloc(w * h);
+  let painted = 0, shown = 0;
+  for (let i = 0; i < w * h; i++) {
+    if (own[i]! < 128) continue;
+    painted++;
+    if (cover[i]! >= 128) continue;
+    visible[i] = own[i]!;
+    shown++;
+  }
+  const hiddenFraction = painted === 0 ? 1 : 1 - shown / painted;
+  if (shown === 0) return { geometry: patch.geometry, hiddenFraction, visiblePx: 0 };
+  const hb = hitBoxFromAlpha(visible, w, h);
+  const px = { x: patch.geometry.rect.x * art.width, y: patch.geometry.rect.y * art.height };
+  return {
+    geometry: {
+      rect: patch.geometry.rect,
+      hitRect: { x: (px.x + hb.hitRect.x) / art.width, y: (px.y + hb.hitRect.y) / art.height, w: hb.hitRect.w / art.width, h: hb.hitRect.h / art.height },
+      anchor: { x: (px.x + hb.anchor.x) / art.width, y: (px.y + hb.anchor.y) / art.height },
+    },
+    hiddenFraction,
+    visiblePx: shown,
+  };
 }
 
 /**
@@ -865,9 +1021,22 @@ async function finishPatch(p: { rgb: Buffer; alpha: Buffer; w: number; h: number
       slotX: slot.x * art.width,
       slotY: slot.y * art.height,
       visible: visibleFraction(slot),
+      ...(shapeContract(slot, art) ? { contract: shapeContract(slot, art)! } : {}),
     },
     basis: p.basis,
   };
+}
+
+/** The slot's contract in art pixels, for the shape; null without one. */
+export function shapeContract(slot: SlotPoint, art: Size): ShapeContract | null {
+  const c = slot.placement?.contract;
+  if (!c) return null;
+  const px = contractPx(slot, art)!;
+  const pose = slot.placement?.pose;
+  // A peek shows the top of her over the object; everything else shows her
+  // from the support up (feet, seat, waterline), whatever hides the rest.
+  const visibleAtTop = pose === "peeking" || (occlusionMode(slot) !== "open" && c.visibleFraction < 0.95);
+  return { standingPx: px.standing, visiblePx: px.visible, supportX: c.supportPoint.x * art.width, supportY: c.supportPoint.y * art.height, visibleAtTop };
 }
 
 /** A result that fails every check: the model returned the crop unchanged. */
@@ -902,15 +1071,41 @@ function nothingPainted(ctx: SlotContext, art: Size, slot: SlotPoint, basis: Pat
  * on the canvas: how solid the blob is inside its own outline, and how far it
  * sits in terms of its own size.
  */
+/**
+ * The contract's limits. A render is held to the board's own people, not to
+ * the number the slot asked for: within 0.6–1.3 of the visible height the
+ * contract expects, and with its visible part where the contract puts it.
+ * Measured on game 2 (8 September 2026): the sledge child came back at 1.47
+ * of the seated child beside her and the stall child at 1.41, both accepted
+ * by every rule and both wrong to a parent's eye; the carousel rider at 1.06
+ * is the judge's to decide. 4.9 standing heights of drift and a body twice
+ * the height are the fixtures the limits were set against.
+ */
+export const CONTRACT_HEIGHT_MIN = 0.6;
+export const CONTRACT_HEIGHT_MAX = 1.3;
+export const CONTRACT_DRIFT_X = 0.6;
+export const CONTRACT_DRIFT_Y = 0.45;
+
 export function childProblem(result: PatchResult): string | null {
   const s = result.shape;
   if (result.largest === 0) return "painted nothing — the crop came back unchanged";
+  const c = s.contract;
+  if (c) {
+    const ratio = s.height / Math.max(1, c.visiblePx);
+    if (ratio < CONTRACT_HEIGHT_MIN) return `painted ${Math.round(s.height)}px tall where the contract shows ~${c.visiblePx}px of a ${c.standingPx}px child (${ratio.toFixed(2)}x: too small for this depth)`;
+    if (ratio > CONTRACT_HEIGHT_MAX) return `painted ${Math.round(s.height)}px tall where the contract shows ~${c.visiblePx}px of a ${c.standingPx}px child (${ratio.toFixed(2)}x: larger than the children beside her)`;
+    // Where the visible part should be: the top of her over the object, or from the support up.
+    const expectedCy = c.visibleAtTop ? c.supportY - c.standingPx + c.visiblePx / 2 : c.supportY - c.visiblePx / 2;
+    const dx = Math.abs(s.centerX - c.supportX) / c.standingPx;
+    const dy = Math.abs(s.centerY - expectedCy) / c.standingPx;
+    if (dx > CONTRACT_DRIFT_X || dy > CONTRACT_DRIFT_Y) return `painted ${dx.toFixed(1)} standing-heights sideways and ${dy.toFixed(1)} up or down from the contract's place (support at ${Math.round(c.supportX)},${Math.round(c.supportY)})`;
+  }
   const h = s.height / s.childPx;
   // Held to what was asked for: a swimmer is asked for from the waterline up
   // (amazon/canoe, 7 September: a good one was 101 px of a 256 px child).
   const visible = s.visible ?? 1;
-  if (h < 0.45 * visible) return `painted ${Math.round(s.height)}px tall, a child here is ~${Math.round(s.childPx * visible)}px${visible < 1 ? " where she shows" : ""}`;
-  if (h > 2.2) return `painted ${Math.round(s.height)}px tall, far more than the ~${s.childPx}px asked for (the model repainted the crop)`;
+  if (!c && h < 0.45 * visible) return `painted ${Math.round(s.height)}px tall, a child here is ~${Math.round(s.childPx * visible)}px${visible < 1 ? " where she shows" : ""}`;
+  if (!c && h > 2.2) return `painted ${Math.round(s.height)}px tall, far more than the ~${s.childPx}px asked for (the model repainted the crop)`;
   const ratio = s.width / Math.max(1, s.height);
   if (ratio > 1.6) return `painted ${Math.round(s.width)}x${Math.round(s.height)}, wider than tall, not a standing child`;
   // The prompt asks for a child about 0.75 x childPx across, so width is worth
@@ -952,7 +1147,7 @@ export function childProblem(result: PatchResult): string | null {
   // names, and the tap contract follows the patch, not the slot.
   const yardstick = Math.max(s.height, s.childPx);
   const drift = Math.hypot(s.centerX - s.slotX, s.centerY - s.slotY) / yardstick;
-  if (drift > 2.5) return `painted ${drift.toFixed(1)} child-heights away from the hiding spot`;
+  if (!c && drift > 2.5) return `painted ${drift.toFixed(1)} child-heights away from the hiding spot`;
   return null;
 }
 

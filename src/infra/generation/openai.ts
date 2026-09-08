@@ -368,7 +368,7 @@ export async function prepareSlotEdit(request: SlotPatchRequest) {
 }
 
 /** Shared wire inputs of pass two; the harness and the pipeline send the same thing. No API call. */
-export const MATTE_WIRE_VERSION = "matte-wire-v4-single-edit-target";
+export const MATTE_WIRE_VERSION = "matte-wire-v5-occlusion-modes";
 
 /**
  * Magenta to alpha.
@@ -504,22 +504,31 @@ export async function prepareSlotMatte(request: SlotMatteRequest) {
   if (request.mask) images.push({ buffer: await sharp(request.mask).resize(size, size, { kernel: "nearest" }).removeAlpha().png().toBuffer(), name: "where.png" });
   if (request.reference) images.push({ buffer: await sharp(request.reference).resize(size, size).removeAlpha().png().toBuffer(), name: "identity.png" });
   const identityPrompt = request.reference ? ` The last image is the identity sheet of the child to keep. Match that child's face and hair; never keep another nearby child. The sheet is for identification only: do not copy its pose, framing or clothing.` : "";
-  return { size, edited, original, images, promptSent: mattePrompt(request.hint, Boolean(request.mask), request.retryHint) + identityPrompt };
+  return { size, edited, original, images, promptSent: mattePrompt(request.hint, Boolean(request.mask), request.retryHint, request.mode) + identityPrompt };
 }
 
 /**
  * What pass two is asked. The child must not be redrawn, moved or completed:
  * the matte is placed on the board at the render's own coordinates, and a
  * part the scene hides has to stay hidden or she stops being behind anything.
+ *
+ * The occlusion sentence follows the spot's mode. In `layer` mode the object
+ * that hides her is NOT in the render — it is drawn over her afterwards from
+ * the board — so pass two must keep her whole; told that an object in front
+ * of her is not the child it painted the stone block magenta over her chest,
+ * and the board's own block was then drawn over the cut (giza/stones, game 2,
+ * 8 September 2026). MATTE_WIRE_VERSION v5.
  */
-export function mattePrompt(hint: string, withMask = false, retryHint?: string): string {
+export function mattePrompt(hint: string, withMask = false, retryHint?: string, mode: "open" | "clipped" | "layer" = "open"): string {
   return [
     "Use case: isolating one character from an illustration by keying.",
     "EDIT IMAGE 1 ONLY. It is the exact scene containing the target child. Do not rebuild it from any other input image. This is background removal from IMAGE 1, not a new illustration.",
     withMask ? "Image 2 is only a location guide: the white area marks the target near its centre. Keep the matching child closest to the CENTRE of that white area, not a similar child farther away. The location guide is not an image to edit." : "",
-    "Return the first image with exactly the same framing: the child stays at the identical position and size in the frame, with the same pose, colours, linework and lighting. Do not zoom in, crop, move, resize, redraw, restyle or complete the child.",
+    "Return the first image with exactly the same framing: the child stays at the identical position and size in the frame, with the same pose, colours, linework and lighting. Do not zoom in, crop, move, resize, redraw, restyle or complete the child. Her head, her hands and her feet stay at exactly the pixels where image 1 has them.",
     "Paint every pixel that is not that child's own body, hair and clothes with flat, uniform, pure magenta #FF00FF: ground, water, sky, buildings, furniture, objects, animals, and every other person or child.",
-    "An object between the viewer and the child (a bench, a barrel, a railing, a wall) is not the child: paint it magenta as well, including where it overlaps her, so only the part of the child that is visible in front of it remains and the edge follows that object's outline. Do not paint the hidden part of the child.",
+    mode === "layer"
+      ? "Nothing in image 1 is in front of this child: she was painted complete and in the open. Keep every visible part of her from the top of her head to her shoes; do not cut her at any object, and do not paint any part of her magenta because something in the scene seems close to her."
+      : "An object between the viewer and the child (a bench, a barrel, a railing, a wall) is not the child: paint it magenta as well, including where it overlaps her, so only the part of the child that is visible in front of it remains and the edge follows that object's outline. Do not paint the hidden part of the child.",
     "No magenta, pink or purple tint anywhere on the child; no outline, glow, shadow or text on the magenta.",
     hint ? `Which child: ${hint}` : "",
     retryHint ? `Your previous answer was wrong: ${retryHint}` : "",

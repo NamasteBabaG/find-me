@@ -30,6 +30,17 @@ describe("recovery boundaries", () => {
     expect(JSON.parse(next).ledger.exactCents).toBe(7);
   });
 
+  it("walks the patch, the composite and the judge's wire images of every attempt too", () => {
+    const json = JSON.stringify({ ledger: { exactCents: 9, attempts: [{ evidenceAssetId: "r", patchAssetId: "p", compositeAssetId: "c", judgeImageAssetIds: ["j1", "j2"], judgeImageHashes: ["h1", "h2"], judgement: { verdict: "bad" } }] } });
+    expect(renderEvidenceIds(json).sort()).toEqual(["c", "j1", "j2", "p", "r"]);
+    const half = JSON.parse(removeRenderEvidence(json, new Set(["p", "j1"]))!).ledger.attempts[0];
+    expect(half.patchAssetId).toBeUndefined();
+    expect(half.judgeImageAssetIds).toEqual(["j2"]);
+    expect(half.judgeImageHashes).toEqual(["h1", "h2"]);
+    expect(half.judgement.verdict).toBe("bad");
+    expect(renderEvidenceIds(removeRenderEvidence(json, new Set(["r", "p", "c", "j1", "j2"])))).toEqual([]);
+  });
+
   it("persists each paid matte before an error from a subsequent call", async () => {
     const original = await sharp({ create: { width: 384, height: 384, channels: 3, background: "#123456" } }).png().toBuffer();
     const edited = await sharp({ create: { width: 384, height: 384, channels: 3, background: "#fedcba" } }).png().toBuffer();
