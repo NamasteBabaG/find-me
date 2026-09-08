@@ -134,7 +134,8 @@ export interface AdminAttempt {
   matteAssetIds: string[];
   patchAssetId: string | null;
   compositeAssetId: string | null;
-  judgeImageAssetIds: string[];
+  /** What the judge was shown, in wire order: role, hash, and the private copy when one was kept. */
+  judgeImages: Array<{ role: string; sha256: string; assetId: string | null }>;
   judge: { verdict: string; reason: string; model?: string; policy?: string; checks?: Record<string, string>; reviews?: Array<{ model?: string; verdict: string; reason: string }> } | null;
   hiddenFraction: number | null;
   unchanged: number | null;
@@ -173,7 +174,11 @@ export function attemptsForAdmin(usageJson: string | null | undefined): AdminAtt
         matteAssetIds: list(x.matteEvidenceAssetIds).length ? list(x.matteEvidenceAssetIds) : str(x.matteEvidenceAssetId) ? [str(x.matteEvidenceAssetId)!] : [],
         patchAssetId: str(x.patchAssetId),
         compositeAssetId: str(x.compositeAssetId),
-        judgeImageAssetIds: list(x.judgeImageAssetIds),
+        judgeImages: Array.isArray(x.judgeImages)
+          ? (x.judgeImages as Array<Record<string, unknown>>).map((r) => ({ role: str(r?.role) ?? "unknown", sha256: str(r?.sha256) ?? "", assetId: str(r?.assetId) }))
+          // Rows written on 8 September before the records existed carried two parallel
+          // arrays whose indexes could disagree; their ids are shown without a role.
+          : list(x.judgeImageAssetIds).map((id) => ({ role: "unknown", sha256: "", assetId: id })),
         judge,
         hiddenFraction: num(x.hiddenFraction),
         unchanged: num(x.unchanged),

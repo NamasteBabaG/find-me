@@ -205,11 +205,11 @@
         {
           "id": "giza_stones_a",
           "x": 0.6185,
-          "y": 0.7405,
-          "scale": 0.14,
+          "y": 0.7355,
+          "scale": 0.15,
           "hintZone": {
             "x": 0.6185,
-            "y": 0.7255,
+            "y": 0.7205,
             "r": 0.075
           },
           "hintText": {
@@ -218,6 +218,15 @@
           },
           "layer": "behindForeground",
           "placement": {
+            "contract": {
+              "standingHeight": 0.15,
+              "visibleFraction": 0.41,
+              "supportPoint": {
+                "x": 0.6185,
+                "y": 0.8105
+              },
+              "comparators": "the boy in yellow at the left of the block and the boy in blue seated at its right"
+            },
             "pose": "standing",
             "support": "Hidden shoes on the sand behind the large inscribed block.",
             "occlusion": "The large inscribed stone block, drawn back in front of the child from the board, hides her from the chest down; the head and shoulders show above it.",
@@ -247,16 +256,7 @@
                 "x": 0.568,
                 "y": 0.8169
               }
-            ],
-            "contract": {
-              "standingHeight": 0.15,
-              "visibleFraction": 0.41,
-              "supportPoint": {
-                "x": 0.6185,
-                "y": 0.8105
-              },
-              "comparators": "the boy in yellow at the left of the block and the boy in blue seated at its right"
-            }
+            ]
           }
         },
         {

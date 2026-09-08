@@ -42,12 +42,15 @@ describe("occlusion modes", () => {
     expect(layer).not.toContain("Let whatever is naturally in front of the child overlap them");
     expect(layer).not.toContain("If this spot has no suitable occluder");
     expect(layer).toContain("about 300 pixels tall from head to feet");
-    expect(layer).toContain("about 135 pixels of her show above the object in front");
+    expect(layer).toContain("about 135 pixels of her are visible, measured from the top of her head to the lowest part of her that can be seen above the object in front of her");
     const clipped = slotPrompt({ ...common, placement: { ...placement, pose: "peeking" } as never, occlusion: "clipped" });
     expect(clipped).toContain("Let whatever is naturally in front of the child overlap them");
     expect(clipped).toContain("about 200 pixels tall");
+    // The same wording in every pose: the guard measures the whole visible
+    // silhouette, so the painter is told exactly that (Codex's second QA).
     const seated = slotPrompt({ ...common, placement: { ...placement, pose: "seated" } as never, occlusion: "open", contractPx: { standing: 390, visible: 303 } });
-    expect(seated).toContain("about 303 pixels of her show from the head down to the seat");
+    expect(seated).toContain("about 303 pixels of her are visible, measured from the top of her head to the lowest part of her that can be seen");
+    expect(seated).not.toContain("down to the seat");
   });
   it("repairs a placement failure inside the recipe, never by swapping the pose", () => {
     const bad = JSON.stringify({ verdict: "bad", reason: "no feet", checks: { bodyPlacement: "fail", relativeScale: "fail" } });

@@ -410,7 +410,14 @@ export function slotPrompt(input: SlotPromptInput): string {
   const mode = input.occlusion ?? "open";
   const comparators = input.placement?.contract?.comparators;
   const sizeLine = input.contractPx
-    ? `A child standing here is about ${input.contractPx.standing} pixels tall from head to feet${comparators ? ` — the same height as ${comparators}` : ""}; never taller than the children beside the spot. ${input.contractPx.visible < input.contractPx.standing ? `In this pose and place about ${input.contractPx.visible} pixels of her show${input.placement?.pose === "seated" || input.placement?.pose === "crouching" ? " from the head down to the seat" : mode === "open" ? "" : " above the object in front"}; the rest of the body continues below at the same scale.` : ""}`
+    // The two numbers must mean to the painter exactly what the guard
+    // measures, or the painter can obey and still be refused: until
+    // 8 September 2026 this said "from the head down to the seat" for a
+    // seated child while `childProblem` measured her whole silhouette
+    // including the legs she had been asked to draw (Codex's second QA).
+    // `visible` is now, in both places, the distance from the top of what
+    // shows to the bottom of what shows.
+    ? `A child standing here is about ${input.contractPx.standing} pixels tall from head to feet${comparators ? ` — the same height as ${comparators}` : ""}; never taller than the children beside the spot. ${input.contractPx.visible < input.contractPx.standing ? `In this pose and place about ${input.contractPx.visible} pixels of her are visible, measured from the top of her head to the lowest part of her that can be seen${mode === "open" ? "" : " above the object in front of her"}; whatever is hidden continues behind at the same scale.` : ""}`
     : `The child goes inside the white area of the mask, about ${input.childPx} pixels tall.`;
   return [
     `Return this exact picture with ONE child added to it. Do not redraw, restyle, re-render or improve any part of the picture: every pixel outside the child must come back byte for byte as it went in.`,
@@ -1047,7 +1054,11 @@ export function shapeContract(slot: SlotPoint, art: Size): ShapeContract | null 
   // from the support up (feet, seat, waterline), whatever hides the rest.
   const mode = occlusionMode(slot);
   const visibleAtTop = pose === "peeking" || (mode !== "open" && c.visibleFraction < 0.95);
-  const seated = pose === "seated" || pose === "crouching" || pose === "swimming";
+  // Only a seat lets the body hang below its support point. A crouching
+  // child's feet ARE her support, and a swimmer is cut at the waterline with
+  // nothing below it; giving those the seat's tolerance let a body sit 74 px
+  // under its own support unremarked (Codex's second QA, 8 September 2026).
+  const seated = pose === "seated";
   return { standingPx: px.standing, visiblePx: px.visible, supportX: c.supportPoint.x * art.width, supportY: c.supportPoint.y * art.height, visibleAtTop, layer: mode === "layer", seated };
 }
 

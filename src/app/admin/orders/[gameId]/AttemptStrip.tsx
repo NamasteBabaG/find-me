@@ -24,8 +24,12 @@ function Thumb({ id, label }: { id: string | null; label: string }) {
   return (
     <figure className="fm-stack fm-stack--1" style={{ width: 96, margin: 0 }}>
       {id ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={`/api/assets/${id}`} alt={label} style={{ width: 96, height: 96, objectFit: "contain", background: "var(--surface-2)", borderRadius: "var(--radius-2)" }} />
+        // A 96px thumbnail cannot settle a scale or a style question, which is
+        // what this strip is for: every picture opens at full size.
+        <a href={`/api/assets/${id}`} target="_blank" rel="noreferrer" title="לפתיחה בגודל מלא">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={`/api/assets/${id}`} alt={label} style={{ width: 96, height: 96, objectFit: "contain", background: "var(--surface-2)", borderRadius: "var(--radius-2)" }} />
+        </a>
       ) : (
         <div className="fm-small" style={{ width: 96, height: 96, display: "grid", placeItems: "center", background: "var(--surface-2)", borderRadius: "var(--radius-2)" }}>
           לא נשמר
@@ -58,6 +62,9 @@ export function AttemptStrip({ attempts }: { attempts: AdminAttempt[] }) {
             {a.matteAssetIds.length > 0 ? a.matteAssetIds.map((id, i) => <Thumb key={id} id={id} label={`מעבר שני ${i + 1}`} />) : <Thumb id={null} label="מעבר שני" />}
             <Thumb id={a.patchAssetId} label="החיתוך" />
             <Thumb id={a.compositeAssetId} label="מה שהשופט ראה" />
+            {a.judgeImages.filter((i) => i.assetId).map((i) => (
+              <Thumb key={i.assetId} id={i.assetId} label={`על החוט: ${i.role}`} />
+            ))}
           </div>
           {a.judge ? (
             <div className="fm-small" dir="ltr">

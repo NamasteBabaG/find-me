@@ -227,11 +227,29 @@ export async function generateSlotPatch(
     costCents: Math.round(ledger.exactCents + spent),
   } });
   const deferred = (): PatchOutcome => ({ ...base, status: "SKIPPED", deferred: true, costCents: (existing?.costCents ?? 0) + spent, newCostCents: spent, attempts, durationMs: elapsed, model });
-  // Private evidence beside the attempt; a failure to write it is logged, never fatal, and never silently a missing picture: the id stays absent.
-  const keepEvidence = async (buffer: Buffer, mimeType: string, requestId?: string): Promise<string | null> =>
-    storeAsset(c, { ownerId: input.ownerId, type: "PATCH_EVIDENCE", visibility: "PRIVATE", buffer, mimeType, provider: c.avatars.id, providerRequestId: requestId, costCents: 0 })
-      .then((a) => a.id)
+  /**
+   * Private evidence beside the attempt. A failure to write it is logged,
+   * never fatal, and never silently a missing picture: the id stays absent.
+   *
+   * Every id is also appended to `evidenceAssetIds`, which nothing ever
+   * overwrites, and the ledger is written before this returns. The pointers
+   * (`patchAssetId`, `compositeAssetId`) name the LATEST picture of their
+   * kind and are replaced when a deferred attempt resumes and re-extracts —
+   * and until 8 September 2026 the picture they had named was then referenced
+   * by nothing, so deletion of the game could not find it and a child's
+   * image outlived her game (Codex's second QA, reproduced by its
+   * `resume-privacy` test). The append-only list is what deletion and
+   * retention walk, so an overwritten pointer or a crash between the store
+   * and the next checkpoint can no longer orphan a picture.
+   */
+  const keepEvidence = async (attempt: LedgerAttempt, buffer: Buffer, mimeType: string, requestId?: string): Promise<string | null> => {
+    const stored = await storeAsset(c, { ownerId: input.ownerId, type: "PATCH_EVIDENCE", visibility: "PRIVATE", buffer, mimeType, provider: c.avatars.id, providerRequestId: requestId, costCents: 0 })
       .catch((err: unknown) => { console.warn(`[patch] ${label}: cannot keep evidence:`, err instanceof Error ? err.message : err); return null; });
+    if (!stored) return null;
+    attempt.evidenceAssetIds = [...(attempt.evidenceAssetIds ?? []), stored.id];
+    await checkpoint();
+    return stored.id;
+  };
 
   for (let attempt = 1; attempt <= Math.max(tries, resume ? 1 : 0); attempt++) {
     const resuming = attempt === 1 && resume !== null;
@@ -283,7 +301,7 @@ export async function generateSlotPatch(
           buffer: raw, mimeType: "image/png", provider: c.avatars.id,
           providerRequestId: edit.providerRequestId, costCents: 0,
         });
-        Object.assign(currentAttempt, { evidenceAssetId: evidence.id, rawHash: hash(raw), fittedHash: hash(edit.png), cropHash: hash(crop), referenceHash: hash(input.reference), sceneHash: hash(Buffer.from(JSON.stringify(scene))), wireVersion: SLOT_WIRE_VERSION, promptSent: edit.promptSent ?? prompt });
+        Object.assign(currentAttempt, { evidenceAssetId: evidence.id, evidenceAssetIds: [...(currentAttempt.evidenceAssetIds ?? []), evidence.id], rawHash: hash(raw), fittedHash: hash(edit.png), cropHash: hash(crop), referenceHash: hash(input.reference), sceneHash: hash(Buffer.from(JSON.stringify(scene))), wireVersion: SLOT_WIRE_VERSION, promptSent: edit.promptSent ?? prompt });
         // Link before processing/judging: even an interrupted extraction remains
         // discoverable by privacy deletion, and its known render charge survives.
         await checkpoint();
@@ -310,6 +328,7 @@ export async function generateSlotPatch(
             providerRequestId: matte.providerRequestId, costCents: 0,
           });
           ids.push(matteEvidence.id);
+          currentAttempt.evidenceAssetIds = [...(currentAttempt.evidenceAssetIds ?? []), matteEvidence.id];
         Object.assign(currentAttempt, {
           matteRequestId: matte.providerRequestId ?? null, matteRequestIds: requestIds,
           matteEvidenceAssetId: ids[ids.length - 1], matteEvidenceAssetIds: ids,
@@ -353,7 +372,7 @@ export async function generateSlotPatch(
       }
       // The extracted patch itself, whatever happens next: the one picture that
       // says what was cut out, as opposed to what was painted.
-      if (patch.width > 0) currentAttempt.patchAssetId = (await keepEvidence(patch.webp, "image/webp", edit.providerRequestId)) ?? undefined;
+      if (patch.width > 0) currentAttempt.patchAssetId = (await keepEvidence(currentAttempt, patch.webp, "image/webp", edit.providerRequestId)) ?? undefined;
       if (!shape && remaining() < JUDGE_MIN_MS) {
         // Out of time before judging: the render and its matte are kept.
         currentAttempt.outcome = "pending: judging deferred (out of time)";
@@ -365,17 +384,26 @@ export async function generateSlotPatch(
         base: sceneArt, foreground,
         art, patch: patch.webp, rect: patch.geometry.rect, layer: slot.layer, flip: slot.flip,
       });
-      if (boardCrop) currentAttempt.compositeAssetId = (await keepEvidence(boardCrop, "image/png", edit.providerRequestId)) ?? undefined;
+      if (boardCrop) currentAttempt.compositeAssetId = (await keepEvidence(currentAttempt, boardCrop, "image/png", edit.providerRequestId)) ?? undefined;
       judged = shape ? null : await judgeOf(c, patch.webp, input, label, boardCrop!, recipe);
       if (judged) {
         spent += judged.costCents;
         if (judged.costUnknown) ledger.unknownCost = true;
-        // The exact images the judge was shown, kept beside their hashes.
+        // The exact images the judge was shown, each with its own hash beside
+        // it. Two parallel arrays cannot be trusted here: the judge sends
+        // three images (board, patch, identity sheet) and only the first two
+        // are stored — the sheet is the game's own asset — and a store that
+        // fails shortens the id list without shortening the hashes. Read
+        // positionally, id 0 could then belong to hash 1 (Codex's second QA,
+        // 8 September 2026). One record per image says what it is.
         const wire = judged.wireImages ?? [];
-        const ids: string[] = [];
-        for (const image of wire) { const id = await keepEvidence(image, "image/png"); if (id) ids.push(id); }
-        if (ids.length) currentAttempt.judgeImageAssetIds = ids;
-        if (judged.imageHashes) currentAttempt.judgeImageHashes = judged.imageHashes;
+        const roles: Array<JudgeImage["role"]> = ["board", "patch", "sheet"];
+        const images: JudgeImage[] = [];
+        for (const [i, sha256] of (judged.imageHashes ?? []).entries()) {
+          const image = wire[i];
+          images.push({ role: roles[i] ?? "unknown", sha256, assetId: image ? (await keepEvidence(currentAttempt, image, "image/png")) : null });
+        }
+        if (images.length) currentAttempt.judgeImages = images;
         currentAttempt.judgement = judgementForJson(judged);
       }
       const last = currentAttempt;
@@ -497,6 +525,16 @@ async function judgeOf(c: Container, webp: Buffer, input: { reference: Buffer; c
   );
 }
 
+/**
+ * One image as it went over the judge's wire. The identity sheet is the
+ * game's own asset and is not stored a second time, so its `assetId` is null.
+ */
+export interface JudgeImage {
+  role: "board" | "patch" | "sheet" | "unknown";
+  sha256: string;
+  assetId: string | null;
+}
+
 /** Where an attempt failed, as the ledger names it. */
 export type FailedStage = "painter" | "matte" | "geometry" | "judge" | "judge-unknown" | "budget" | "error";
 
@@ -528,11 +566,17 @@ export interface LedgerAttempt {
   problem?: string;
   /** The stage that rejected the attempt; absent on an accepted or pending one. */
   failedAt?: FailedStage;
-  /** The patch cut from this render (PATCH_EVIDENCE), the composite the judge saw, and the exact images on the judge's wire with their hashes. */
+  /**
+   * Every private picture this attempt ever stored, in the order it stored
+   * them, appended and never rewritten. Deletion and retention walk this;
+   * the named pointers below are for display and may be replaced on a resume.
+   */
+  evidenceAssetIds?: string[];
+  /** The patch cut from this render (PATCH_EVIDENCE) and the composite the judge saw. */
   patchAssetId?: string;
   compositeAssetId?: string;
-  judgeImageAssetIds?: string[];
-  judgeImageHashes?: string[];
+  /** One record per image on the judge's wire: what it was, its hash, and the private copy if one was stored. */
+  judgeImages?: JudgeImage[];
   /** Every check and reason of this attempt's review, not only the row's last one. */
   judgement?: PatchJudgement;
   /** Layer mode: how much of the painted child the board's foreground layer hides. */

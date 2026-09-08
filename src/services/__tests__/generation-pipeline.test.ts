@@ -267,6 +267,16 @@ describe("two-pass pipeline recovery", () => {
       expect(done.status).toBe("GENERATED"); expect(done.attempts).toBe(mod.MAX_ATTEMPTS_PER_SPOT);
       expect(JSON.parse(done.usageJson!).ledger.attempts).toHaveLength(1);
       expect(JSON.parse(done.usageJson!).ledger.exactCents).toBeCloseTo(6.341);
+      // A resumed attempt re-extracts, so the patch and composite it had already
+      // stored are replaced in the ledger's pointers. Every picture it ever
+      // stored is still listed, and deleting the game must leave none of them
+      // behind: before this, one PATCH_EVIDENCE of a child survived deletion
+      // (Codex's second QA, 8 September 2026).
+      const owner = (await gameOf(id)).ownerId;
+      const before = await db.asset.count({ where: { ownerId: owner, type: "PATCH_EVIDENCE", status: "READY" } });
+      expect(before).toBeGreaterThan(3);
+      await mod.deleteGame(c, id, mod.SYSTEM);
+      expect(await db.asset.count({ where: { ownerId: owner, status: { not: "DELETED" } } })).toBe(0);
     } finally { clock.mockRestore(); }
   });
 });

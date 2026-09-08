@@ -22,6 +22,13 @@ Answering `docs/CODEX_BRIEF_JUDGE_PLACEMENT_2026-09-08.md`, section 9. Written b
 | new-2 | Painter redrew the block in layer mode (giza/stones att 1): matte cut along the *new* block, composite over the *old* one → torso over sand | confirmed; `occluderShift` now measured in layer mode (recorded, not rejecting) | `extract.ts` |
 | new-3 | Spots restored to v2 have no recipe, so the judge had no idea they were peeks | confirmed, fixed (recipe derived from body template + mission for the judge only) | `recipeOf` |
 | new-4 | **Layer mode asks the painter to ignore an object that is still in its crop**, and it often does not: it paints the child cut off behind the easel or the block, and the board's own copy of that object is then drawn over an already-cut child | confirmed twice (giza/stones att 1 of game 2; paris/awning trial of 8 Sep); **not fixed** — see §8b | `slotPrompt` layer branch |
+| qa2-1 | **A private child image survived game deletion.** A deferred attempt that resumes re-extracts and overwrites its own `patchAssetId`/`compositeAssetId`; the picture the pointer had named was then referenced by nothing, so `deleteGame` could not find it | confirmed by Codex's failing test, reproduced here, **fixed** | append-only `evidenceAssetIds` + checkpoint per picture; the check is now in the product suite |
+| qa2-2 | The carousel's foreground polygon sits on the **paving in front of the carousel**, not on its fascia, so the layer copied cobblestones over the child's legs and cut them in mid-air | confirmed on the board, **fixed** by making the spot an open standing spot with no layer | `author-hides.ts`, `content/scenes/paris/scene.json` |
+| qa2-3 | `author-hides.ts` replaced the whole `placement` object, so re-running it would have deleted all four contracts and restored an older scale | confirmed, **fixed**: it now carries the contract across and refuses a scale that disagrees with it by more than 15% | `author-hides.ts` |
+| qa2-4 | The contract's `visible` meant "head to seat" in the prompt and "the whole silhouette" in the guard, and crouching and swimming wrongly got the seat's hang tolerance | confirmed, **fixed**: one meaning in both places, and only a seat lets a body hang below its support | `slotPrompt`, `shapeContract` |
+| qa2-5 | The judge's wire evidence was two parallel arrays: three hashes, two stored pictures, and a failed store shifted the ids | confirmed, **fixed**: one `{role, sha256, assetId}` record per image, shown in the admin strip | `slot-patches.ts`, `render-evidence.ts` |
+| qa2-6 | "Eight renders" was reported as two spots fixed; the trials script also overwrote its own directories | confirmed, **corrected** in §2b: zero spots are approved end to end, and each trial now gets its own directory | §2b, `spot-trials.ts` |
+| qa2-7 | Admin thumbnails were 96 px and did not open, which is the one thing the strip exists for | confirmed, **fixed**: every picture opens at full size | `AttemptStrip.tsx` |
 | — | Codex hypothesis "sydney/ferry can be fixed by a better recipe" | contradicted: passengers' heads are ~40 px on the art, no child-sized child is recognisable; spot replaced | §5 |
 
 ## 2. Chains (before)
@@ -61,9 +68,13 @@ Stage attribution of game 2's rejections from the ledger (`usageJson.ledger`): a
 | paris/awning | 187 px | 379 / 95 (layer) | **refused**: her head sits 0.46 standing-heights above the authored support point — the painter put her behind the easel but further back than the spot |
 | giza/stall | 368 px | 379 / 284 | **refused**: a seated child whose shoes hang 0.44 standing-heights below her seat, and 1.30x the visible height |
 | sydney/lifeguard (2nd) | — | — | reached the judge; refused on identity, ageProportions and style ("oversized head, very short limbs, preschool build") |
-| giza/stall (2nd) | — | — | reached the judge; refused on style and relativeScale |
+| paris/awning (2nd) | — | — | refused by the guard, like the first |
 
-Six of the eight were refused, four of them by the free guard before a judge was paid. That is the round's main practical result: **the failures game 2 shipped are now caught at the cheapest stage**, and the two spots that pass are the two that were reauthored with a measured contract. It also says plainly that the painter still draws too large at these spots more often than not, so a full world run will cost more attempts than the last one, not fewer.
+**Corrected on 8 September after Codex's second QA.** Two errors in this table as first written. The trial script restarted its counter on each invocation and wrote to the same directory, so the second lifeguard and awning runs overwrote the first (fixed: each trial now gets its own directory). And the last row said "giza/stall (2nd)" where the ledger shows only one stall render — the eighth render was the second awning. The ledger's paint entries are the record: lifeguard 53 and 55, awning 58 and 60, stall 62, sledge 65, stones 67, carousel 69.
+
+Six of the eight were refused, four of them by the free guard before a judge was paid. That is the round's main practical result: **the failures game 2 shipped are now caught at the cheapest stage**. It also says plainly that the painter still draws too large at these spots more often than not, so a full world run will cost more attempts than the last one, not fewer.
+
+**What it does not say, and my first draft implied:** two spots passing the *guard* is not two spots approved. Only two new renders reached a judge at all, and both were refused. **Zero hiding spots have been approved end to end since the fixes** — guard, judge and a human look are three separate gates and only the first has been passed. The carousel's "pass" in this table is a geometry pass on a re-extraction, not a judgement.
 
 One correction found by these trials and fixed in code: the guard first refused `paris/carousel` and both `paris/awning` renders because a layer-mode patch may legitimately be the **whole** child (the board's layer hides her afterwards), and the guard was holding it to the visible fraction. `ShapeContract.layer` now allows anywhere between the visible part and the full standing height; a seated pose may also hang below its seat (`CONTRACT_HANG_SEATED`). Both are fixtures in `placement-contract.test.ts`.
 
@@ -227,7 +238,7 @@ Ledger: `work/codex-judge-audit-20260908/budget/requests.json` (every call reser
 | 2 | judge, targeted trials (the six others were refused by the guard before any judge) | 16.02 | 0 |
 | **82** | **total** | **408.07** | 2 |
 
-The two unknown bills are the strong reviewer timing out at 60 s (`newyork/bench` had done the same in game 2). Both were charged at their full 27-cent reservation rather than at zero, which is why the ledger reads higher than the sum of the answers received; the timeout is also why `STRONG_TIMEOUT_MS` is now 90 s and `JUDGE_MIN_MS` 145 s. No render was bought for a game, no game was created, no mail was sent, and `GENERATION_DAILY_CENTS` and `GENERATION_WORLD_CENTS` were not touched. Ledger: `work/codex-judge-audit-20260908/budget/requests.json` (every call reserved before it was made; limit 500 cents).
+The two entries charged at their reservation are **not both timeouts**, as this report first said. One is the strong reviewer timing out at 60 s (`newyork/bench` had done the same in game 2). The other is an answer that *arrived* and was lost when the ledger could not be written: it had grown to 500 MB because the judgement it stored carried its wire images as JSON arrays, and `JSON.stringify` refused. Of the 408.07 cents, **354.05 are backed by saved answers with a known cost and 54.03 are reservations consumed without the real bill ever becoming known**. Both were charged in full rather than at zero, which is why the ledger reads higher than the sum of the answers received; the timeout is also why `STRONG_TIMEOUT_MS` is now 90 s and `JUDGE_MIN_MS` 145 s. No render was bought for a game, no game was created, no mail was sent, and `GENERATION_DAILY_CENTS` and `GENERATION_WORLD_CENTS` were not touched. Ledger: `work/codex-judge-audit-20260908/budget/requests.json` (every call reserved before it was made; limit 500 cents).
 
 ## 10. Code, tests, commits, deploy
 
@@ -265,7 +276,7 @@ Second deploy: `dpl_8iWjsM7xjNQDBJyLDVspYJi5mXaH`, state READY, `gitCommitSha a4
 
 **Yes for a small run, not yet for a full world.**
 
-What is safe now: a new QA game on **one board** (three spots) or a regeneration of the reauthored spots, watched through the new admin view. Nothing blocks it — QA is deployed with this commit, no generation is running, the two review games are untouched, production stays paused, and the ceilings are unchanged.
+What is safe now: a **targeted harness run** (`scripts/spot-trials.ts`) over a handful of representative spots, watched through the new admin view. Not a customer game on one board — Codex is right that no such thing exists: the smallest package is nine boards and checkout enforces it, so "create a one-board game" was not an instruction anyone could follow. Nothing blocks it — QA is deployed with this commit, no generation is running, the two review games are untouched, production stays paused, and the ceilings are unchanged.
 
 Why not a full world tonight: of eight fresh renders on the contracted spots, six were refused, four of them by the free guard. That is the guard doing its job on renders game 2 would have shipped, but it means a 27-spot run would burn noticeably more attempts than the last one and would probably end with several spots unfinished at three attempts each. The cost of finding that out on a whole world is roughly $5–9; the cost of finding it out on one board is under a dollar.
 
@@ -278,3 +289,18 @@ The precise risks that remain:
 - **The daily ceiling still double-counts** (memory note of 7 September): `GENERATION_DAILY_CENTS` is 4000 in QA and a game stalls silently at roughly half that. A world run should be started early in the UTC day.
 
 Safe next step, in order: one board, read the attempt strips, and if the guard's refusals look right, author contracts for the remaining twenty spots before spending a world.
+
+## 12. Codex's second QA (same day), and what it changed
+
+Codex reviewed `de2a064` and found seven things this report had got wrong or left broken. Its package is `work/codex-qa-second-20260908/`. I reproduced every one before acting on it; all seven are fixed above, and three deserve naming here because they change what this report claims.
+
+**A child's picture survived deletion.** Codex shipped a failing test and it failed here too: after `defer → resume → delete`, one `PATCH_EVIDENCE` asset was still `READY`. A resumed attempt re-extracts and overwrites the pointer to the patch and composite it had already stored, and deletion only walks what the ledger still points at. Every picture an attempt stores is now appended to a list nothing rewrites, and the ledger is written before the store returns, so an overwritten pointer or a crash cannot orphan one. Codex's test passes; the same check is now in the product suite so it cannot come back. This is the most serious finding of the day and it was mine to have caught.
+
+**The carousel was never behind the carousel.** The polygon "from the planning run" sits on the paving in front of the carousel, and so did the contract's support point I installed on top of it. The layer was therefore copying cobblestones and a passing child over the painted child's legs. My §2b called this spot a pass. It was a pass of the guard on a picture that is wrong, which is exactly the confusion this round was supposed to end. The spot is now what the board actually affords — a child standing on the square in front of the carousel, open mode, no layer — and Paris keeps one layer-mode hide, the bakery basket.
+
+**"Two spots pass" was not true.** Only two new renders reached a judge at all and both were refused; the carousel's pass was a geometry re-check after I had changed the rule. **Zero hiding spots have been approved end to end since the fixes.** §2b now says so.
+
+Two of Codex's recommendations I have not done, and they stay open: a shared post-extraction evaluation used by both the product and the harness (the harness still records `hiddenFraction` without enforcing it), and an immutable run/attempt id with refusal to overwrite. Both are real; neither is a defect in what ships.
+
+Codex's decision — **the placement fix is not approved and the world should not be widened** — stands, and this report's own answer in §11 does not disagree with it.
+

@@ -58,9 +58,18 @@
         {
           "id": "paris_bakery_a",
           "x": 0.8952,
-          "y": 0.835,
-          "scale": 0.166,
+          "y": 0.833,
+          "scale": 0.17,
           "placement": {
+            "contract": {
+              "standingHeight": 0.17,
+              "visibleFraction": 0.4,
+              "supportPoint": {
+                "x": 0.8952,
+                "y": 0.918
+              },
+              "comparators": "the girl in the straw hat at the counter and the boy in blue at the basket"
+            },
             "pose": "standing",
             "support": "Hidden shoes on the cobblestones behind the wicker basket of baguettes.",
             "occlusion": "The wicker basket of baguettes, drawn back in front of the child from the board, hides her from the waist down; the head, shoulders and chest show above it against the bakery window.",
@@ -110,20 +119,11 @@
                 "x": 0.8574,
                 "y": 0.9326
               }
-            ],
-            "contract": {
-              "standingHeight": 0.17,
-              "visibleFraction": 0.4,
-              "supportPoint": {
-                "x": 0.8952,
-                "y": 0.918
-              },
-              "comparators": "the girl in the straw hat at the counter and the boy in blue at the basket"
-            }
+            ]
           },
           "hintZone": {
             "x": 0.8952,
-            "y": 0.82,
+            "y": 0.818,
             "r": 0.075
           },
           "hintText": {
@@ -152,13 +152,13 @@
     },
     {
       "id": "carousel",
-      "action": "The child stands on the wooden carousel deck between the poles, watching the horses. Both shoes rest on TOP of the deck and the entire body rises above it. Do not put a head or torso through the deck, under a horse, or in the floor. Use an existing pole only as a narrow natural overlap, never as an excuse to erase the legs.",
+      "action": "The child stands on the cobblestones directly in front of the carousel, facing the viewer, watching the horses go round. Both shoes are on the paving and the whole body is visible; nothing covers her.",
       "targetType": "paris_carousel",
       "bodyTemplate": "paris_carousel",
       "difficulty": 2,
       "mission": {
-        "en": "Find {name} on the carousel",
-        "he": "מצאו את {name} על הקרוסלה"
+        "en": "Find {name} by the carousel",
+        "he": "מצאו את {name} ליד הקרוסלה"
       },
       "item": {
         "en": "a carousel with painted horses",
@@ -187,47 +187,17 @@
           "scale": 0.147,
           "placement": {
             "pose": "standing",
-            "support": "Both shoes on the carousel deck behind its front fascia.",
-            "occlusion": "The carousel fascia, drawn back in front of the child from the board, hides her shoes and shins; the rest of her shows above it among the riders.",
-            "instructions": "Paint the child complete and unoccluded, standing at this spot exactly as if the carousel's red-and-gold fascia were not there: the whole head, torso and arms, and the legs down to the feet on the ground. the carousel's red-and-gold fascia is put back in front of the child afterwards from the board itself; do not paint it over the child, and do not paint any part of the child as hidden.",
-            "foreground": [
-              {
-                "x": 0.5853,
-                "y": 0.5215
-              },
-              {
-                "x": 0.5924,
-                "y": 0.5166
-              },
-              {
-                "x": 0.6022,
-                "y": 0.52
-              },
-              {
-                "x": 0.6136,
-                "y": 0.5161
-              },
-              {
-                "x": 0.625,
-                "y": 0.5215
-              },
-              {
-                "x": 0.6283,
-                "y": 0.5762
-              },
-              {
-                "x": 0.5859,
-                "y": 0.5762
-              }
-            ],
+            "support": "Both shoes on the cobblestones directly in front of the carousel's deck.",
+            "occlusion": "None; the whole child is visible in front of the carousel, and whatever is naturally in front of her in the picture may overlap her.",
+            "instructions": "Stand facing the viewer on the cobblestones in front of the carousel, watching the horses, with the whole face and both shoes visible. Match the height of the children standing on the square around her, not the riders on the horses, who are higher up.",
             "contract": {
               "standingHeight": 0.147,
-              "visibleFraction": 0.85,
+              "visibleFraction": 1,
               "supportPoint": {
                 "x": 0.6071,
                 "y": 0.5371
               },
-              "comparators": "the boy riding the white horse and the children at the carousel's edge"
+              "comparators": "the children standing on the cobblestones beside the carousel, not the riders on the horses"
             }
           },
           "hintZone": {
@@ -236,10 +206,10 @@
             "r": 0.075
           },
           "hintText": {
-            "en": "Look at the carousel.",
-            "he": "חפשו בקרוסלה."
+            "en": "Look on the stones in front of the carousel.",
+            "he": "חפשו על האבנים לפני הקרוסלה."
           },
-          "layer": "behindForeground"
+          "layer": "front"
         },
         {
           "id": "paris_carousel_b",
@@ -295,6 +265,15 @@
           "y": 0.8255,
           "scale": 0.185,
           "placement": {
+            "contract": {
+              "standingHeight": 0.185,
+              "visibleFraction": 0.25,
+              "supportPoint": {
+                "x": 0.2865,
+                "y": 0.918
+              },
+              "comparators": "the girl in the blue dress and the boy in orange beside the easel"
+            },
             "pose": "standing",
             "support": "Hidden shoes on the cobblestones behind the easel's legs.",
             "occlusion": "The painter's easel, drawn back in front of the child from the board, hides her from the neck down except what shows between its legs; her head shows above the canvas.",
@@ -360,16 +339,7 @@
                 "x": 0.2702,
                 "y": 0.8862
               }
-            ],
-            "contract": {
-              "standingHeight": 0.185,
-              "visibleFraction": 0.25,
-              "supportPoint": {
-                "x": 0.2865,
-                "y": 0.918
-              },
-              "comparators": "the girl in the blue dress and the boy in orange beside the easel"
-            }
+            ]
           },
           "hintZone": {
             "x": 0.2865,

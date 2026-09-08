@@ -61,15 +61,13 @@ export const HIDES: Hide[] = [
     support: "Hidden shoes on the cobblestones behind the wicker basket of baguettes.",
     occlusion: "The wicker basket of baguettes, drawn back in front of the child from the board, hides her from the waist down; the head, shoulders and chest show above it against the bakery window.",
   },
-  {
-    slug: "paris", target: "carousel", pose: "standing",
-    foot: { x: 0.6071, y: 0.5371 }, bodyHeight: 0.1099,
-    // The carousel's red-and-gold fascia and deck edge, from the planning run.
-    occluder: [{ x: 0.5853, y: 0.5215 }, { x: 0.5924, y: 0.5166 }, { x: 0.6022, y: 0.52 }, { x: 0.6136, y: 0.5161 }, { x: 0.625, y: 0.5215 }, { x: 0.6283, y: 0.5762 }, { x: 0.5859, y: 0.5762 }],
-    object: "the carousel's red-and-gold fascia",
-    support: "Both shoes on the carousel deck behind its front fascia.",
-    occlusion: "The carousel fascia, drawn back in front of the child from the board, hides her shoes and shins; the rest of her shows above it among the riders.",
-  },
+  // paris/carousel was here until 8 September 2026. The polygon "from the
+  // planning run" sits on the PAVING in front of the carousel, not on its
+  // fascia, and so did the contract's support point — so the layer copied
+  // cobblestones and a passing child over the painted child's legs and cut
+  // them in mid-air (Codex's second QA, `images/carousel-mask.png`). It is an
+  // ordinary standing spot on the square now, with no foreground of its own;
+  // the contract keeps the size that was measured against the riders.
   {
     // paris/awning, 8 September 2026. The spot used to be "in front of the
     // outer café easel" in the open, and the accepted render stood her on top
@@ -112,7 +110,7 @@ async function main() {
   for (const h of HIDES) byScene.set(h.slug, [...(byScene.get(h.slug) ?? []), h]);
   for (const [slug, hides] of byScene) {
     const scenePath = path.join(ROOT, "content", "scenes", slug, "scene.json");
-    const scene = JSON.parse(readFileSync(scenePath, "utf8")) as { art: { width: number; height: number; base: string; foreground?: string }; targets: Array<{ id: string; slots: Array<Record<string, unknown> & { x: number; y: number; scale: number; hintZone: { x: number; y: number; r: number }; placement?: Record<string, unknown> }> }> };
+    const scene = JSON.parse(readFileSync(scenePath, "utf8")) as { version: number; art: { width: number; height: number; base: string; foreground?: string }; targets: Array<{ id: string; slots: Array<Record<string, unknown> & { x: number; y: number; scale: number; hintZone: { x: number; y: number; r: number }; placement?: Record<string, unknown> & { contract?: { standingHeight: number } } }> }> };
     const art = scene.art;
     const base = sharp(path.join(ROOT, "public", art.base));
     const baseBuf = await base.png().toBuffer();
@@ -150,10 +148,24 @@ async function main() {
       writeFileSync(path.join(OUT, `${slug}-${h.target}.fg.png`), fgWin);
       await sharp(zoomed).composite([{ input: body, left: 0, top: 0 }, { input: fgWin, left: 0, top: 0 }]).png().toFile(path.join(OUT, `${slug}-${h.target}.hide.png`));
       if (WRITE) {
-        const scale = Math.round(Math.min(0.25, Math.max(0.03, h.bodyHeight)) * 10000) / 10000;
-        const y = Math.round((h.foot.y - h.bodyHeight / 2) * 10000) / 10000;
+        // A slot that already carries a placement contract is governed by it.
+        // This script's `bodyHeight` is the number that was measured when the
+        // hide was first traced, and it is older: the carousel still says
+        // .1099 here where the contract says .147. Replacing the whole
+        // `placement` object would also delete the contract outright. Both
+        // happened to be true on 8 September 2026 (Codex's second QA), so a
+        // disagreement is refused rather than silently written, and the
+        // contract is carried across.
+        const contract = slot.placement?.contract;
+        const bodyHeight = contract?.standingHeight ?? h.bodyHeight;
+        if (contract && Math.abs(contract.standingHeight - h.bodyHeight) / contract.standingHeight > 0.15) {
+          throw new Error(`${slug}/${h.target}: HIDES says bodyHeight ${h.bodyHeight} but the slot's contract says standingHeight ${contract.standingHeight}. Update the HIDES row (or the contract) deliberately; this script will not overwrite a measured contract.`);
+        }
+        const scale = Math.round(Math.min(0.25, Math.max(0.03, bodyHeight)) * 10000) / 10000;
+        const y = Math.round((h.foot.y - bodyHeight / 2) * 10000) / 10000;
         Object.assign(slot, { x: h.foot.x, y, scale, layer: "behindForeground", hintZone: { ...slot.hintZone, x: h.foot.x, y: Math.round(Math.max(0, y - 0.015) * 10000) / 10000 } });
         slot.placement = {
+          ...(contract ? { contract } : {}),
           pose: h.pose,
           support: h.support,
           occlusion: h.occlusion,
@@ -169,6 +181,11 @@ async function main() {
       scene.art.foreground = fgRel;
       writeFileSync(scenePath, JSON.stringify(scene, null, 2) + "\n");
       console.log(`${slug}: foreground layer written to ${fgRel}`);
+      // This script edits a live scene in place. It does not archive the old
+      // version or bump `version`, and a game pinned to the old version would
+      // then resolve the NEW slots against its own art. Whoever runs it has to
+      // do that afterwards; saying so here is the least this can do.
+      console.warn(`${slug}: version ${scene.version} was edited IN PLACE. Archive the previous definition into content/scenes/releases/ and bump "version" before any game is generated, or a pinned game will resolve today's slots.`);
     }
   }
   if (!WRITE) console.log(`overlays in ${path.relative(ROOT, OUT)}; pass --write to install`);
