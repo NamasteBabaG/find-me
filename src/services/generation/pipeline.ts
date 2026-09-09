@@ -17,6 +17,10 @@ import { generateSlotPatch, slotOf, spotsOutstanding, spotsUnjudged, type PatchO
 import { styleReference } from "./patch";
 import { loadSceneArt } from "./scene-art";
 import { CHARACTER_PROMPT_VERSION } from "@/infra/generation/character-prompt";
+import { isFixedWorldStyle } from "./fixed-world-stage-record";
+import { BOARD_WIZARD_STYLE, boardWizardEnabled, enrollBoardConditionedWizard, runBoardConditionedWizardSlice, preflightBoardConditionedWizard, reserveBoardWizardIdentity } from "./board-conditioned-wizard";
+import { sha256Bytes } from "./fixed-sprite";
+import { generateBoardWizardIdentity, holdBoardWizardIdentity, type BoardWizardIdentityClaim } from "./board-wizard-identity-lifecycle";
 
 /**
  * Background generation. Every step is idempotent and resumable:
@@ -77,6 +81,10 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
   }
   const game = await c.db.game.findUnique({ where: { id: gameId }, include: { childProfile: true, scenes: { include: { targets: true }, orderBy: { orderIndex: "asc" } } } });
   if (!game || !game.childProfile) return;
+  if (game.styleVersion === BOARD_WIZARD_STYLE) { await runBoardConditionedWizardSlice(c, gameId); return; }
+  // Fixed worlds only accept a complete qualified import. Legacy ticks must
+  // never paint, replace the frozen config, or apply automatic approval.
+  if (isFixedWorldStyle(game.styleVersion)) return;
   const status = statusOf(game);
   if (!RESUMABLE_STATUSES.includes(status)) return; // nothing to do (idempotent)
 
@@ -113,6 +121,14 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
     data: { status: "RUNNING", attempts: { increment: 1 }, lastError: null },
   });
   if (claimed.count === 0) return; // someone else is already working on this game
+  // Fixed games are enrolled before dispatch. Defensively recheck after the
+  // claim too: a stale caller must return its lease without rewriting a fixed
+  // capsule. The stager refuses RUNNING jobs after this recheck.
+  const leasedGame = await c.db.game.findUnique({ where: { id: gameId }, select: { styleVersion: true } });
+  if (leasedGame && isFixedWorldStyle(leasedGame.styleVersion)) {
+    await c.db.generationJob.updateMany({ where: { id: jobId, status: "RUNNING" }, data: { status: "DONE", currentStep: null } });
+    return;
+  }
   // A game that failed and is being retried must not keep wearing the old error:
   // a finished game carrying one makes "did this succeed?" impossible to answer.
   if (game.lastError) await c.db.game.update({ where: { id: gameId }, data: { lastError: null } });
@@ -124,13 +140,20 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
     await c.db.generationJob.update({ where: { id: job.id }, data: { currentStep: name, stepsJson: JSON.stringify(steps) } });
   };
 
+  let qaIdentityClaim: BoardWizardIdentityClaim | null = null;
   try {
     // Resolve every pinned version before any billable identity/patch work.
     // A missing historical definition must never silently use today's board.
     for (const gs of game.scenes) sceneBySlug(gs.sceneSlug, gs.sceneVersion);
+    if (boardWizardEnabled()) await preflightBoardConditionedWizard(c, gameId);
     // ── Step 1: avatar ──
     await mark("avatar", { status: "running", startedAt: new Date().toISOString() });
     const child = await c.db.childProfile.findUniqueOrThrow({ where: { id: game.childProfile.id } });
+    if (boardWizardEnabled() && game.ownerId) qaIdentityClaim = {
+      gameId, jobId: job.id, jobAttempt: job.attempts + 1, styleVersion: game.styleVersion, ownerId: game.ownerId,
+      childId: child.id, photoAssetId: child.originalPhotoAssetId ?? "", avatarAssetId: child.avatarAssetId, identityAssetId: child.identityAssetId,
+      childName: child.displayName, ageYears: child.ageYears,
+    };
     const avatarValid = child.avatarAssetId ? (await c.db.asset.findUnique({ where: { id: child.avatarAssetId } }))?.status === "READY" : false;
     if (!avatarValid) {
       if (status !== "AVATAR_GENERATING") await transitionGame(c, gameId, "AVATAR_GENERATING", SYSTEM);
@@ -146,6 +169,13 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
       const crop = child.photoCropJson ? (JSON.parse(child.photoCropJson) as CropBox) : null;
       const request = { originalPhoto: photo, mimeType: original.mimeType, crop, childName: child.displayName, ageYears: child.ageYears, styleRef: await boardStyle(c, game.scenes) };
       if (c.avatars.createCharacter) {
+        if (qaIdentityClaim) {
+          const persisted = await generateBoardWizardIdentity(c, qaIdentityClaim, {
+            reserve: () => reserveBoardWizardIdentity(c, gameId, { childId: child.id, photoAssetId: original.id, photoSha256: sha256Bytes(photo), styleSha256: request.styleRef ? sha256Bytes(request.styleRef) : null, name: child.displayName, ageYears: child.ageYears, crop, promptVersion: CHARACTER_PROMPT_VERSION, model: "gpt-image-2", quality: "medium", attempts: 1 }),
+            generate: () => c.avatars.createCharacter!(request),
+          });
+          if (!persisted) return; // Held/deleted/stale identity must never reach legacy retries.
+        } else {
         // One drawing of the child in the worlds own style, from several angles:
         // the reference every hiding spot is painted from, which is what keeps
         // her the same child in nine worlds. The cover avatar is cut from it.
@@ -188,6 +218,7 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
           costCents: 0,
         });
         await c.db.childProfile.update({ where: { id: child.id }, data: { avatarAssetId: avatarAsset.id, identityAssetId: sheet.id } });
+        }
       } else {
         const out = await c.avatars.createAvatar(request);
         const avatarAsset = await storeAsset(c, {
@@ -204,10 +235,15 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
         });
         await c.db.childProfile.update({ where: { id: child.id }, data: { avatarAssetId: avatarAsset.id } });
       }
-    } else if (status === "PAID" || status === "NEEDS_NEW_PHOTO" || status === "GENERATION_FAILED") {
+    } else if (!qaIdentityClaim && (status === "PAID" || status === "NEEDS_NEW_PHOTO" || status === "GENERATION_FAILED")) {
       await transitionGame(c, gameId, "AVATAR_GENERATING", SYSTEM);
     }
-    await mark("avatar", { status: "done", finishedAt: new Date().toISOString() });
+    if (!qaIdentityClaim) await mark("avatar", { status: "done", finishedAt: new Date().toISOString() });
+
+    if (qaIdentityClaim) {
+      await enrollBoardConditionedWizard(c, gameId, job.id, qaIdentityClaim.jobAttempt);
+      return; // The resumable QA queue owns the frozen board path from here.
+    }
 
     // ── Step 2: targets ──
     await mark("targets", { status: "running", startedAt: new Date().toISOString() });
@@ -379,6 +415,10 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
     }
     await c.db.generationJob.update({ where: { id: job.id }, data: { status: "DONE", currentStep: null } });
   } catch (err) {
+    if (qaIdentityClaim) {
+      await holdBoardWizardIdentity(c, qaIdentityClaim, "identity-enrollment-failed");
+      return;
+    }
     const message = err instanceof Error ? err.message : String(err);
     console.error(`generation pipeline failed for ${gameId}:`, err);
     await c.db.generationJob.update({ where: { id: job.id }, data: { status: "FAILED", lastError: message } });

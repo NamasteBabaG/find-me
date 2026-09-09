@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Container } from "../container";
 import { retryFailedAdminAlerts, sendAdminAlert } from "../admin-alert.service";
+import { adminAlertEmail } from "../email/templates";
 
 /**
  * The alert to the admins, with the database and the mail provider faked in
@@ -15,6 +16,7 @@ interface Sent {
   subject: string;
   tag: string;
   text: string;
+  html: string;
 }
 
 function fakes(opts: { admins: string[]; fail?: (to: string) => boolean }) {
@@ -56,7 +58,11 @@ function fakes(opts: { admins: string[]; fail?: (to: string) => boolean }) {
           return data;
         },
       },
-      game: { findUniqueOrThrow: async () => ({ status: "DELIVERED", childProfile: { displayName: "Noa" }, owner: { email: "p@example.com" }, scenes: [{}] }) },
+      game: {
+        findUniqueOrThrow: async () => ({ styleVersion: "collage-v1", status: "DELIVERED", childProfile: { displayName: "Noa" }, owner: { email: "p@example.com" }, scenes: [{}] }),
+        findUnique: async () => ({ childProfile: null, scenes: [] }),
+      },
+      generationJob: { findUnique: async () => null },
       targetVariantAsset: { findMany: async () => [] },
       asset: { findMany: async () => [] },
     },
@@ -84,6 +90,24 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("the admin alert", () => {
+  it("sends an explicit unknown cost when a fixed world has no completed capsule", async () => {
+    const f = fakes({ admins: ["ops@example.com"] });
+    vi.spyOn(f.c.db.game, "findUniqueOrThrow").mockResolvedValue({ styleVersion: "fixed-sprite-v3", status: "MANUAL_REVIEW", childProfile: { displayName: "Noa" }, owner: { email: "p@example.com" }, scenes: [] } as never);
+    await sendAdminAlert(f.c, { ...input, kind: "held-for-review" });
+    expect(f.sent).toHaveLength(1);
+    expect(f.sent[0]!.text).toContain("עלות עד עכשיו: לא ידועה");
+    expect(f.sent[0]!.html).toContain("עלות עד עכשיו: לא ידועה");
+    expect(f.sent[0]!.text).not.toContain("$0.00");
+    expect(f.sent[0]!.html).not.toContain("$0.00");
+  });
+
+  it.each([null, 0, 3345])("renders cost %s distinctly in plain and HTML mail", costCents => {
+    const mail = adminAlertEmail({ kind: "held-for-review", gameId: "game", adminUrl: "https://example.test/admin", childName: "Noa", ownerEmail: null, status: "MANUAL_REVIEW", sceneCount: 9, problems: [], failedSpots: [], costCents });
+    const label = costCents === null ? "לא ידועה" : `$${(costCents / 100).toFixed(2)}`;
+    expect(mail.text).toContain(`עלות עד עכשיו: ${label}`);
+    expect(mail.html).toContain(`עלות עד עכשיו: ${label}`);
+  });
+
   it("tries again after an outage instead of staying silent for six hours", async () => {
     const f = fakes({ admins: ["ops@example.com"], fail: () => true });
     const first = await sendAdminAlert(f.c, input);

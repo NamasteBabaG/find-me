@@ -1,7 +1,7 @@
 import type { Container } from "./container";
 import { audit, SYSTEM } from "./audit.service";
 import { statusOf } from "./game-status";
-import { failedSpotsForAdmin, generationCostCents } from "./admin.service";
+import { failedSpotsForAdmin, generationCostForDisplay } from "./admin.service";
 import { adminAlertEmail, type AdminAlertKind } from "./email/templates";
 
 /**
@@ -93,7 +93,7 @@ async function sendAlert(c: Container, input: AdminAlertInput, retryFailures?: M
 
     const game = await c.db.game.findUniqueOrThrow({ where: { id: input.gameId }, include: { childProfile: true, owner: { select: { email: true } }, scenes: true } });
     const failedSpots = await failedSpotsForAdmin(c, input.gameId).catch(() => []);
-    const costCents = await generationCostCents(c, input.gameId).catch(() => 0);
+    const costCents = await generationCostForDisplay(c, input.gameId);
     const mail = adminAlertEmail({
       kind: input.kind,
       gameId: input.gameId,

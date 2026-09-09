@@ -8,6 +8,21 @@ import { publishGame } from "./publish.service";
 import { audit, type Actor } from "./audit.service";
 import { deleteAsset, readAssetBuffer, storeAsset } from "./asset.service";
 import { AVATAR_SIZE, avatarFromSheet } from "@/infra/generation/avatar-cut";
+import { FixedWorldStageError, fixedStageAssert, isFixedWorldStyle, readFixedWorldStage } from "./generation/fixed-world-stage-record";
+import { fixedWorldJsonSha256 } from "./generation/fixed-world-materializer";
+import { auditWorldBudget } from "./generation/world-budget";
+import { PrismaWorldBudgetStore } from "@/infra/db/prisma-world-budget-store";
+
+async function assertLegacyMutation(c: Container, gameId: string) {
+  const game = await c.db.game.findUniqueOrThrow({ where: { id: gameId }, select: { styleVersion: true, childProfileId: true } });
+  fixedStageAssert(!isFixedWorldStyle(game.styleVersion), "unsupported", "A fixed world cannot be changed by legacy generation or placement controls");
+  return game;
+}
+
+async function assertNoFixedChildGames(c: Container, childProfileId: string) {
+  const games = await c.db.game.findMany({ where: { childProfileId, deletedAt: null }, select: { styleVersion: true } });
+  fixedStageAssert(!games.some(game => isFixedWorldStyle(game.styleVersion)), "unsupported", "This child is bound to a fixed world; its reviewed identity assets cannot be changed");
+}
 
 export type AdminFilter = "new" | "pending_payment" | "generating" | "qa" | "needs_photo" | "ready" | "failed" | "refunded" | "all";
 
@@ -65,7 +80,7 @@ export async function orderDetailForAdmin(c: Container, gameId: string) {
   const assets = await c.db.asset.findMany({ where: { id: { in: [game.childProfile?.avatarAssetId, game.childProfile?.identityAssetId, game.childProfile?.originalPhotoAssetId, ...game.scenes.flatMap((s) => s.targets.map((t) => t.spriteAssetId))].filter((x): x is string => Boolean(x)) } } });
   const activity = await c.db.auditLog.findMany({ where: { entityType: "Game", entityId: gameId }, orderBy: { createdAt: "desc" }, take: 40 });
   const [failedSpots, paintedSpots] = await Promise.all([failedSpotsForAdmin(c, gameId), paintedSpotsForAdmin(c, gameId)]);
-  return { game, status: statusOf(game), costCents: await generationCostCents(c, gameId), assets, activity, failedSpots, paintedSpots, awaitingQa: isAwaitingQa(statusOf(game)), playable: isPlayable(statusOf(game)) };
+  return { game, status: statusOf(game), costCents: await generationCostForDisplay(c, gameId), assets, activity, failedSpots, paintedSpots, awaitingQa: isAwaitingQa(statusOf(game)), playable: isPlayable(statusOf(game)) };
 }
 
 /**
@@ -241,6 +256,17 @@ function parseIds(json: string | null): string[] {
  * the asset created from a successful roll carries the same cents again.
  */
 export async function generationCostCents(c: Container, gameId: string): Promise<number> {
+  const game = await c.db.game.findUniqueOrThrow({ where: { id: gameId }, select: { styleVersion: true, ownerId: true, childProfileId: true } });
+  if (isFixedWorldStyle(game.styleVersion)) {
+    const job = await c.db.generationJob.findUnique({ where: { id: `job_${gameId}` } });
+    const record = job ? readFixedWorldStage(job.stepsJson) : null;
+    fixedStageAssert(record && record.state === "staged" && record.gameId === gameId && record.ownerId === game.ownerId && record.childProfileId === game.childProfileId, "integrity", "Fixed-world cost requires its complete bound capsule");
+    const budget = await new PrismaWorldBudgetStore(c.db).read(record.worldId);
+    fixedStageAssert(budget && fixedWorldJsonSha256(budget.snapshot) === record.budgetSnapshotSha256, "budget", "Fixed-world cost ledger changed or is unavailable");
+    const cost = auditWorldBudget(budget.snapshot);
+    fixedStageAssert(!cost.held && cost.reservedMicroUsd === 0 && cost.pendingRequestKeys.length === 0, "budget", "Fixed-world cost is unresolved; it must not appear free");
+    return cost.settledMicroUsd / 10_000;
+  }
   const [variants, child] = await Promise.all([
     c.db.targetVariantAsset.findMany({ where: { targetInstance: { gameScene: { gameId } } }, select: { costCents: true } }),
     c.db.game.findUnique({ where: { id: gameId }, select: { childProfile: { select: { identityAssetId: true, avatarAssetId: true } }, scenes: { select: { targets: { select: { spriteAssetId: true, variants: { select: { id: true } } } } } } } }),
@@ -258,12 +284,19 @@ export async function generationCostCents(c: Container, gameId: string): Promise
   return cents;
 }
 
+/** Display-only: unavailable or held accounting is unknown, never zero/free. */
+export async function generationCostForDisplay(c: Container, gameId: string): Promise<number | null> {
+  try { return await generationCostCents(c, gameId); }
+  catch { return null; }
+}
+
 export async function approveAndPublish(c: Container, gameId: string, actor: Actor) {
   return publishGame(c, gameId, actor);
 }
 
 export async function markTargetForRegeneration(c: Container, targetInstanceId: string, actor: Actor): Promise<void> {
   const t = await c.db.targetInstance.findUniqueOrThrow({ where: { id: targetInstanceId }, include: { gameScene: true } });
+  await assertLegacyMutation(c, t.gameScene.gameId);
   await c.db.targetInstance.update({ where: { id: t.id }, data: { status: "NEEDS_REGENERATION" } });
   // A spot that ran out of attempts is refused by the painter until someone with
   // a reason overrides it. Asking for it again IS that reason — without this the
@@ -282,6 +315,7 @@ export async function markTargetForRegeneration(c: Container, targetInstanceId: 
 export async function adjustTarget(c: Container, targetInstanceId: string, adjust: unknown, actor: Actor): Promise<void> {
   const parsed = TargetAdjustSchema.parse(adjust);
   const t = await c.db.targetInstance.findUniqueOrThrow({ where: { id: targetInstanceId }, include: { gameScene: true } });
+  await assertLegacyMutation(c, t.gameScene.gameId);
   await c.db.targetInstance.update({ where: { id: t.id }, data: { adjustJson: JSON.stringify(parsed) } });
   await audit(c, actor, "target:adjusted", "TargetInstance", t.id, parsed);
   const game = await c.db.game.findUniqueOrThrow({ where: { id: t.gameScene.gameId } });
@@ -299,7 +333,9 @@ export async function adjustTarget(c: Container, targetInstanceId: string, adjus
  */
 export async function recutAvatar(c: Container, gameId: string, actor: Actor): Promise<{ ok: true } | { ok: false; code: "NO_SHEET" }> {
   const game = await c.db.game.findUniqueOrThrow({ where: { id: gameId }, include: { childProfile: true } });
+  fixedStageAssert(!isFixedWorldStyle(game.styleVersion), "unsupported", "A fixed world's reviewed avatar cannot be recut");
   const child = game.childProfile;
+  if (child) await assertNoFixedChildGames(c, child.id);
   if (!child?.identityAssetId) return { ok: false, code: "NO_SHEET" };
   const sheetAsset = await c.db.asset.findUnique({ where: { id: child.identityAssetId } });
   if (!sheetAsset || sheetAsset.status !== "READY") return { ok: false, code: "NO_SHEET" };
@@ -307,13 +343,30 @@ export async function recutAvatar(c: Container, gameId: string, actor: Actor): P
   const png = await avatarFromSheet(sheet, Math.min(sheetAsset.width ?? 1024, sheetAsset.height ?? 1024));
   const asset = await storeAsset(c, { ownerId: child.ownerId, type: "AVATAR", visibility: "GAME", buffer: png, mimeType: "image/png", width: AVATAR_SIZE, height: AVATAR_SIZE, provider: sheetAsset.provider });
   const previous = child.avatarAssetId;
-  await c.db.childProfile.update({ where: { id: child.id }, data: { avatarAssetId: asset.id } });
+  try {
+    await c.db.$transaction(async tx => {
+      // The stager fences each Game row. Claim every sibling before changing
+      // the shared child, so a concurrent stage either wins or sees this edit.
+      const games = await tx.game.findMany({ where: { childProfileId: child.id, deletedAt: null }, select: { id: true, styleVersion: true, updatedAt: true, configJson: true } });
+      fixedStageAssert(!games.some(game => isFixedWorldStyle(game.styleVersion)), "unsupported", "This child became bound to a fixed world while the avatar was being cut");
+      for (const game of games) {
+        const claim = await tx.game.updateMany({ where: { id: game.id, childProfileId: child.id, deletedAt: null, styleVersion: game.styleVersion, updatedAt: game.updatedAt }, data: { updatedAt: new Date() } });
+        fixedStageAssert(claim.count === 1, "conflict", "A shared game changed while the avatar was being cut");
+      }
+      const changed = await tx.childProfile.updateMany({ where: { id: child.id, deletedAt: null, avatarAssetId: previous, identityAssetId: child.identityAssetId }, data: { avatarAssetId: asset.id } });
+      fixedStageAssert(changed.count === 1, "conflict", "The child's reviewed identity changed while the avatar was being cut");
+      if (previous) for (const game of games) {
+        if (game.configJson?.includes(`/api/assets/${previous}`)) await tx.game.update({ where: { id: game.id }, data: { configJson: game.configJson.replaceAll(`/api/assets/${previous}`, `/api/assets/${asset.id}`) } });
+      }
+    });
+  } catch (error) {
+    // Only our deliberate callback rejection proves no attachment committed.
+    // A storage/transaction exception may be a lost COMMIT acknowledgement:
+    // retain both assets rather than delete a possibly referenced new avatar.
+    if (error instanceof FixedWorldStageError) await deleteAsset(c, asset.id).catch(() => console.warn("[avatar:recut] unattached avatar cleanup failed"));
+    throw error;
+  }
   if (previous) {
-    const games = await c.db.game.findMany({ where: { childProfileId: child.id, configJson: { contains: `/api/assets/${previous}` } }, select: { id: true, configJson: true } });
-    for (const g of games) {
-      if (!g.configJson) continue;
-      await c.db.game.update({ where: { id: g.id }, data: { configJson: g.configJson.replaceAll(`/api/assets/${previous}`, `/api/assets/${asset.id}`) } });
-    }
     await deleteAsset(c, previous);
   }
   await audit(c, actor, "avatar:recut", "ChildProfile", child.id, { assetId: asset.id, previous });
@@ -321,11 +374,14 @@ export async function recutAvatar(c: Container, gameId: string, actor: Actor): P
 }
 
 export async function requestNewPhoto(c: Container, gameId: string, actor: Actor, note: string): Promise<void> {
+  const game = await assertLegacyMutation(c, gameId);
+  if (game.childProfileId) await assertNoFixedChildGames(c, game.childProfileId);
   await c.db.game.update({ where: { id: gameId }, data: { lastError: note || "נדרשת תמונה חדשה" } });
   await transitionGame(c, gameId, "NEEDS_NEW_PHOTO", actor, { note });
 }
 
 export async function retryGeneration(c: Container, gameId: string, actor: Actor): Promise<void> {
+  await assertLegacyMutation(c, gameId);
   await audit(c, actor, "generation:retry", "Game", gameId);
   await c.jobs.enqueue("generate-game", { gameId });
 }
@@ -337,14 +393,14 @@ export async function costDashboard(c: Container) {
   const games = await c.db.game.findMany({ where: { deletedAt: null, status: { in: ["READY", "DELIVERED", "QA_PENDING", "MANUAL_REVIEW", "APPROVED"] } }, include: { orders: true, childProfile: true, scenes: { include: { targets: true } } } });
   const rows = [];
   for (const g of games) {
-    const generationCents = await generationCostCents(c, g.id);
+    const generationCents = await generationCostForDisplay(c, g.id);
     const paid = g.orders.find((o) => o.paymentStatus === "PAID" || o.paymentStatus === "REFUNDED");
     const attempts = g.scenes.reduce((n, s) => n + s.targets.reduce((m, t) => m + t.attempts, 0), 0);
     const currency: Currency = paid && isCurrency(paid.currency) ? paid.currency : "ILS";
     const priceMinor = paid?.amountAgorot ?? 0;
     // Generation costs are tracked in USD cents; ILS revenue is converted with a rough rate so the margin column stays comparable.
     const priceUsdCents = currency === "USD" ? priceMinor : priceMinor / APPROX_ILS_PER_USD;
-    rows.push({ gameId: g.id, childName: g.childProfile?.displayName ?? "", priceMinor, currency, generationCents, attempts, marginPct: paid && priceUsdCents > 0 ? Math.round(((priceUsdCents - generationCents) / priceUsdCents) * 100) : null });
+    rows.push({ gameId: g.id, childName: g.childProfile?.displayName ?? "", priceMinor, currency, generationCents, attempts, marginPct: generationCents !== null && paid && priceUsdCents > 0 ? Math.round(((priceUsdCents - generationCents) / priceUsdCents) * 100) : null });
   }
   return rows;
 }

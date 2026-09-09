@@ -3,9 +3,11 @@
 /storage/
 /output/
 /tmp/
+/.claude/
 /*.pdf
 /prisma/*.db
 /prisma/*.db-journal
 /.next/
 node_modules/
 *.log
+.env*

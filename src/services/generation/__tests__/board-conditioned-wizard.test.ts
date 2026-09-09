@@ -1,0 +1,180 @@
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { PrismaClient } from "@prisma/client";
+import sharp from "sharp";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { applyTestSchema } from "../../../lib/test-schema";
+import { DbStorage } from "../../../infra/storage/db";
+import type { Container } from "../../container";
+import { findScene } from "../../../../content/scenes";
+import journey from "../../../../content/worlds/journey/world.json";
+import { sha256Bytes } from "../fixed-sprite";
+import { boardConditioningHash } from "../board-conditioned-source";
+import type { BoardConditionedCatalog } from "../board-conditioned-catalog";
+import { PrismaBoardConditionedCheckpointStore, boardConditionedCheckpointKeys } from "../../../infra/db/board-conditioned-checkpoints";
+
+const fakes = vi.hoisted(() => ({ catalog: null as unknown, input: null as unknown, png: null as unknown,
+  succeed: false, calls: [] as string[], measurementCalls: [] as (1 | 2)[], remeasureBoard: "", remeasureSuccess: false, failFirstSource: false, illegalRepaint: false,
+  reviews: [] as string[], testers: [] as string[], appEnv: "qa" }));
+vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: fakes.appEnv, GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: 0, GENERATION_PROVIDER: "openai", GENERATION_MODEL: "gpt-image-2", GENERATION_QUALITY: "medium", OPENAI_API_KEY: "synthetic-never-live" }), spendGuard: () => ({ appEnv: fakes.appEnv, realGeneration: true, testers: fakes.testers }) }));
+vi.mock("../board-conditioned-catalog", async original => {
+  const actual = await original<typeof import("../board-conditioned-catalog")>();
+  return { ...actual, readBoardConditionedCatalog: async () => ({ catalog: fakes.catalog, sha256: boardConditioningHash(fakes.catalog) }),
+    loadBoardConditionedCatalogBoard: async (_catalog: unknown, boardId: string, child: unknown) => ({ ...(fakes.input as object), boardId, child }) };
+});
+vi.mock("../board-conditioned-source", async original => {
+  const actual = await original<typeof import("../board-conditioned-source")>();
+  return { ...actual, prepareBoardConditionedSource: async (input: unknown) => ({ input, contractSha256: "a".repeat(64) }) };
+});
+vi.mock("../board-wizard-remeasurement", () => ({ needsBoardStandingRemeasurement: async (input: { boardId: string }, result: { state: string }) => result.state === "review-required" && input.boardId === fakes.remeasureBoard }));
+vi.mock("../board-conditioned-generation", () => ({ generateBoardConditionedAppearances: async (deps: { sources: { generate: (request: unknown) => Promise<unknown> }; checkpoints: { getMeasurement: (w: string, b: string, a?: 1 | 2) => Promise<unknown> } }, request: { worldId: string; input: { boardId: string }; measurementAttempt?: 1 | 2 }) => {
+  fakes.calls.push(request.input.boardId);
+  fakes.measurementCalls.push(request.measurementAttempt ?? 1);
+  if (request.measurementAttempt === 2) {
+    await deps.checkpoints.getMeasurement(request.worldId, request.input.boardId, 2);
+    if (fakes.illegalRepaint) await deps.sources.generate({});
+  }
+  if (request.input.boardId === fakes.remeasureBoard && fakes.failFirstSource && fakes.calls.filter(b => b === fakes.remeasureBoard).length === 1) return { state: "source-review-required" };
+  if (request.input.boardId === fakes.remeasureBoard) return request.measurementAttempt === 2 && fakes.remeasureSuccess
+    ? { state: "review-required", previewIsDiagnostic: false }
+    : { state: "review-required", previewIsDiagnostic: true, appearances: [] };
+  return fakes.succeed ? { state: "review-required", previewIsDiagnostic: false } : { state: "source-review-required" };
+} }));
+// These synthetic mocks verify orchestration only. Real extraction/player parity
+// and visual approval are covered elsewhere; no child or live provider is used.
+vi.mock("../board-conditioned-player", () => ({
+  prepareBoardConditionedPlayerBoard: async (r: { input: { boardId: string } }) => ({ playerBindingSha256: "c".repeat(64), assetWrites: [0, 1, 2, 3].map(i => ({ key: `${r.input.boardId}/${i}`, boardId: r.input.boardId, slotId: i ? `slot-${i}` : null, kind: i ? "premasked-sprite" : "static-board", png: fakes.png, sha256: "d".repeat(64), rgbaSha256: "e".repeat(64), width: 10, height: 10, contentType: "image/png", visibility: "PRIVATE" })) }),
+  bindBoardConditionedPlayerGame: async (r: { template: { scenes: { art: object; targets: object[] }[] }; receipts: { url: string }[] }) => ({ privateReviewConfig: { ...r.template, scenes: r.template.scenes.map(s => ({ ...s, art: { ...s.art, base: r.receipts[0]!.url }, targets: s.targets.map((t, i) => ({ ...t, sprite: { kind: "image", url: r.receipts[i + 1]!.url, width: 10, height: 10 } })) })) } }),
+}));
+vi.mock("../board-wizard-review-input", async original => {
+  const actual = await original<typeof import("../board-wizard-review-input")>();
+  return { ...actual, prepareBoardWizardReviews: async (worldId: string, attempt: number, input: { boardId: string }) => [1, 2, 3].map(i => ({ slotId: `slot-${i}`, assetKey: `${input.boardId}/${i}`, patchSha256: sha256Bytes(fakes.png as Buffer), contextKey: actual.boardWizardContextKey(worldId, input.boardId, `slot-${i}`, attempt), contextSha256: sha256Bytes(fakes.png as Buffer), context: fakes.png,
+    recipe: { pose: "synthetic", support: "synthetic", occlusion: "synthetic", occlusionMode: "layer", comparators: "synthetic" } })) };
+});
+vi.mock("../board-wizard-visual-judge", async original => {
+  const actual = await original<typeof import("../board-wizard-visual-judge")>();
+  return { ...actual, judgeBoardWizardAppearance: async (_deps: unknown, request: { boardId: string; slotId: string }) => {
+    fakes.reviews.push(`${request.boardId}/${request.slotId}`);
+    return { judgement: { verdict: fakes.reviews.length === 1 ? "unknown" : "ok", reason: "Synthetic review, no visual claim" }, receiptKey: "synthetic-receipt", fingerprint: "f".repeat(64), reused: false };
+  } };
+});
+import { BOARD_WIZARD_STYLE, boardWizardEnabled, enrollBoardConditionedWizard, runBoardConditionedWizardSlice, readBoardWizard, deleteBoardConditionedWizard } from "../board-conditioned-wizard";
+
+let db: PrismaClient, scratch: string, png: Buffer, counter = 0;
+beforeAll(async () => {
+  scratch = mkdtempSync(path.join(realpathSync(tmpdir()), "findme-wizard-"));
+  db = new PrismaClient({ datasources: { db: { url: `file:${path.join(scratch, "test.db").replace(/\\/g, "/")}` } } });
+  await applyTestSchema(db);
+  png = await sharp({ create: { width: 10, height: 10, channels: 4, background: "#384970" } }).png().toBuffer(); fakes.png = png;
+});
+beforeEach(() => { process.env.QA_BOARD_CONDITIONED_WIZARD = "true"; fakes.succeed = false; fakes.calls = []; fakes.measurementCalls = [];
+  fakes.remeasureBoard = ""; fakes.remeasureSuccess = false; fakes.failFirstSource = false; fakes.illegalRepaint = false; fakes.reviews = []; fakes.appEnv = "qa"; });
+afterAll(async () => {
+  delete process.env.QA_BOARD_CONDITIONED_WIZARD; await db.$disconnect();
+  const target = path.resolve(scratch); if (path.dirname(target) === realpathSync(tmpdir()) && path.basename(target).startsWith("findme-wizard-")) rmSync(target, { recursive: true, force: true });
+});
+async function fixture() {
+  const gameId = `wizard-${++counter}`, ownerId = `${gameId}-owner`, childId = `${gameId}-child`, identityId = `${gameId}-identity`, avatarId = `${gameId}-avatar`, email = `${gameId}@example.invalid`;
+  await db.user.create({ data: { id: ownerId, email } }); fakes.testers.push(email);
+  for (const [id, type, visibility] of [[identityId, "IDENTITY_SHEET", "PRIVATE"], [avatarId, "AVATAR", "GAME"]]) {
+    await db.asset.create({ data: { id: id!, ownerId, type: type!, visibility: visibility!, mimeType: "image/png", storagePath: `fixture/${id}`, bytes: png.length, width: 10, height: 10 } });
+    await db.fileBlob.create({ data: { key: `fixture/${id}`, contentType: "image/png", data: new Uint8Array(png) } });
+  }
+  await db.childProfile.create({ data: { id: childId, ownerId, displayName: "Synthetic", ageYears: 6, identityAssetId: identityId, avatarAssetId: avatarId } });
+  await db.game.create({ data: { id: gameId, ownerId, childProfileId: childId, status: "AVATAR_GENERATING", packageTier: "ONE_WORLD", sceneCount: 9, paidAt: new Date(), draftToken: `${gameId}-draft` } });
+  const ref = { path: "public/board-conditioned/fixture/board.png", sha256: sha256Bytes(png) };
+  const slots = (["front-peek", "side-lean", "seated"] as const).map((pose, i) => ({ slot: { id: `slot-${i + 1}`, pose, eye: { x: 2, y: 2 }, faceHeightPx: 2, window: { left: 0, top: 0, width: 10, height: 10 } }, context: { left: 0, top: 0, width: 10, height: 10 }, originalPeople: { left: 0, top: 0, width: 10, height: 10 }, poseDescription: `Synthetic ${pose}`, wardrobe: "Winter clothing", lighting: { key: "Sky light", fill: "Snow fill", shadows: "Blue shade", exposure: "Local value" }, foreground: ref, hintText: { he: "מחבוא", en: "Hiding spot" } }));
+  const boards = journey.nodes.map(n => ({ boardId: n.boardSlug, sceneVersion: findScene(n.boardSlug)!.version, board: ref, slots }));
+  fakes.catalog = { version: "board-conditioned-qa-catalog/v1", revision: "fixture", worldSlug: "journey", sourcePresentation: "local-composite/v5", boards } satisfies BoardConditionedCatalog;
+  fakes.input = { board: { png, sha256: sha256Bytes(png) }, slots };
+  for (const [i, b] of boards.entries()) await db.gameScene.create({ data: { id: `${gameId}-${i}`, gameId, sceneSlug: b.boardId, sceneVersion: b.sceneVersion, orderIndex: i } });
+  await db.generationJob.create({ data: { id: `job_${gameId}`, gameId, status: "RUNNING", stepsJson: JSON.stringify({ avatar: { status: "done" } }) } });
+  await db.auditLog.create({ data: { id: `${gameId}-bill`, actorType: "SYSTEM", action: "sheet:painted", entityType: "Asset", entityId: identityId, metaJson: JSON.stringify({ costCents: 7.25, requestId: `${gameId}-identity-request`, usage: { input_tokens: 10, output_tokens: 100 }, model: "gpt-image-2", costUnknown: false }) } });
+  const c = { db, storage: new DbStorage(db) } as unknown as Container;
+  return { c, gameId, ownerId, childId, identityId, boards, job: () => db.generationJob.findUniqueOrThrow({ where: { id: `job_${gameId}` } }) };
+}
+describe("actual wizard to durable QA world orchestration (synthetic engine, no paid calls)", () => {
+  it("is opt-in and cannot enable itself in production", () => { expect(boardWizardEnabled()).toBe(true); fakes.appEnv = "production"; expect(boardWizardEnabled()).toBe(false); });
+  it("adopts only its own newly generated identity while preserving checkout state and identity cost", async () => {
+    const f = await fixture(); await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
+    const g = await db.game.findUniqueOrThrow({ where: { id: f.gameId } });
+    expect(g).toMatchObject({ styleVersion: BOARD_WIZARD_STYLE, status: "TARGETS_GENERATING", configJson: null, draftToken: `${f.gameId}-draft` }); expect(g.paidAt).not.toBeNull();
+    expect(readBoardWizard((await f.job()).stepsJson)).toMatchObject({ childProfileId: f.childId, identityAssetId: f.identityId, capMicroUsd: 4_000_000, automaticRelease: false });
+    const l = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: `${f.gameId}:board-wizard` } });
+    expect(JSON.parse(l.snapshotJson).requests[0].evidence.amountMicroUsd).toBe(72_500);
+  });
+  it("visits all nine boards then retries once and never substitutes a fallback or publishes", async () => {
+    const f = await fixture(); await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
+    for (let i = 0; i < 18; i++) await runBoardConditionedWizardSlice(f.c, f.gameId);
+    expect(fakes.calls.slice(0, 9)).toEqual(f.boards.map(b => b.boardId)); expect(fakes.calls.slice(9)).toEqual(fakes.calls.slice(0, 9));
+    await expect(runBoardConditionedWizardSlice(f.c, f.gameId)).resolves.toEqual({ pending: false }); expect(fakes.calls).toHaveLength(18);
+    expect(readBoardWizard((await f.job()).stepsJson).boards.every(b => b.attempts === 2 && b.state === "needs-repair")).toBe(true);
+    expect(await db.game.findUniqueOrThrow({ where: { id: f.gameId } })).toMatchObject({ status: "MANUAL_REVIEW", configJson: null, readyAt: null, deliveredAt: null });
+    expect(await db.shareLink.count({ where: { gameId: f.gameId } })).toBe(0);
+  });
+  it("persists all27 exact private image refs and exposes only a review world, then purges their exact inventory", async () => {
+    const f = await fixture(); fakes.succeed = true; await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
+    for (let i = 0; i < 9; i++) await runBoardConditionedWizardSlice(f.c, f.gameId);
+    expect(fakes.reviews).toHaveLength(0);
+    expect((await db.game.findUniqueOrThrow({ where: { id: f.gameId } })).status).toBe("TARGETS_GENERATING");
+    for (let i = 0; i < 27; i++) await runBoardConditionedWizardSlice(f.c, f.gameId);
+    expect(fakes.reviews).toHaveLength(27); expect(fakes.calls).toHaveLength(9);
+    expect(readBoardWizard((await f.job()).stepsJson).boards[0]!.visual[0]!.state).toBe("review-required");
+    const g = await db.game.findUniqueOrThrow({ where: { id: f.gameId } }); expect(g.status).toBe("MANUAL_REVIEW"); expect(g.readyAt).toBeNull();
+    const config = JSON.parse(g.configJson!); expect(config.scenes).toHaveLength(9); expect(config.scenes.flatMap((s: { targets: { sprite: { kind: string } }[] }) => s.targets).every((t: { sprite: { kind: string } }) => t.sprite.kind === "image")).toBe(true);
+    expect(await db.asset.count({ where: { ownerId: f.ownerId, provider: "board-conditioned-wizard", visibility: "PRIVATE" } })).toBe(36);
+    const recoveryKeys = [f.boards[0]!.boardId, `${f.boards[0]!.boardId}--attempt-2`].map(id => boardConditionedCheckpointKeys(`${f.gameId}:board-wizard`, id, 2).measurement);
+    for (const key of recoveryKeys) await db.fileBlob.create({ data: { key, contentType: "application/json", data: new Uint8Array(Buffer.from("synthetic private landmarks")) } });
+    await expect(deleteBoardConditionedWizard(f.c, f.gameId, { type: "USER", id: f.ownerId }, f.ownerId)).resolves.toBe(true);
+    expect(await db.fileBlob.count({ where: { key: { in: recoveryKeys } } })).toBe(0);
+    expect(await db.asset.count({ where: { ownerId: f.ownerId, provider: "board-conditioned-wizard", status: "READY" } })).toBe(0);
+    expect(await db.worldBudgetLedger.count({ where: { worldId: `${f.gameId}:board-wizard` } })).toBe(1);
+  });
+  it.each([true, false])("remeasures one retained source on a later tick, never increments source count or rerenders (success=%s)", async success => {
+    const f = await fixture(); fakes.succeed = true; fakes.remeasureSuccess = success; fakes.remeasureBoard = f.boards[0]!.boardId;
+    await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
+    await runBoardConditionedWizardSlice(f.c, f.gameId);
+    expect(fakes.calls).toHaveLength(1); expect(fakes.measurementCalls).toEqual([1]);
+    expect(readBoardWizard((await f.job()).stepsJson).boards[0]).toMatchObject({ attempts: 1, state: "pending", remeasurements: [{ sourceAttempt: 1, state: "pending" }] });
+    for (let i = 0; i < 8; i++) await runBoardConditionedWizardSlice(f.c, f.gameId);
+    const lookup = vi.spyOn(PrismaBoardConditionedCheckpointStore.prototype, "getMeasurement");
+    await runBoardConditionedWizardSlice(f.c, f.gameId);
+    expect(lookup).toHaveBeenCalledWith(`${f.gameId}:board-wizard`, fakes.remeasureBoard, 2); lookup.mockRestore();
+    expect(fakes.measurementCalls).toEqual([...Array(9).fill(1), 2]);
+    expect(readBoardWizard((await f.job()).stepsJson).boards[0]).toMatchObject({ attempts: 1, state: success ? "geometry-ok" : "needs-repair", remeasurements: [{ sourceAttempt: 1, state: "done" }] });
+    for (let i = 0; i < 28; i++) await runBoardConditionedWizardSlice(f.c, f.gameId);
+    expect(fakes.calls).toHaveLength(10); // no third measurement and no source attempt2
+    expect((await db.game.findUniqueOrThrow({ where: { id: f.gameId } })).status).toBe("MANUAL_REVIEW");
+  });
+  it("holds recovery if a faulty core tries to purchase a replacement image", async () => {
+    const f = await fixture(); fakes.succeed = true; fakes.illegalRepaint = true; fakes.remeasureBoard = f.boards[0]!.boardId;
+    await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
+    for (let i = 0; i < 10; i++) await runBoardConditionedWizardSlice(f.c, f.gameId);
+    expect(readBoardWizard((await f.job()).stepsJson).state).toBe("held");
+    expect((await f.job()).lastError).toContain("must never purchase");
+    await expect(runBoardConditionedWizardSlice(f.c, f.gameId)).resolves.toEqual({ pending: false }); expect(fakes.calls).toHaveLength(10);
+  });
+  it("keeps recovery on source attempt2 in its original checkpoint namespace and never starts source3", async () => {
+    const f = await fixture(); fakes.succeed = true; fakes.failFirstSource = true; fakes.remeasureBoard = f.boards[0]!.boardId;
+    await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
+    for (let i = 0; i < 10; i++) await runBoardConditionedWizardSlice(f.c, f.gameId);
+    expect(readBoardWizard((await f.job()).stepsJson).boards[0]).toMatchObject({ attempts: 2, remeasurements: [{ sourceAttempt: 2, state: "pending" }] });
+    const lookup = vi.spyOn(PrismaBoardConditionedCheckpointStore.prototype, "getMeasurement");
+    await runBoardConditionedWizardSlice(f.c, f.gameId);
+    expect(lookup).toHaveBeenCalledWith(`${f.gameId}:board-wizard`, `${fakes.remeasureBoard}--attempt-2`, 2); lookup.mockRestore();
+    expect(readBoardWizard((await f.job()).stepsJson).boards[0]).toMatchObject({ attempts: 2, state: "needs-repair", remeasurements: [{ sourceAttempt: 2, state: "done" }] });
+    for (let i = 0; i < 25; i++) await runBoardConditionedWizardSlice(f.c, f.gameId);
+    expect(fakes.calls).toHaveLength(11); expect(fakes.measurementCalls.filter(a => a === 2)).toHaveLength(1);
+  });
+  it("refuses a changed child before any board dispatch", async () => {
+    const f = await fixture(); await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`); await db.childProfile.update({ where: { id: f.childId }, data: { ageYears: 8 } });
+    await expect(runBoardConditionedWizardSlice(f.c, f.gameId)).rejects.toThrow("identity changed"); expect(fakes.calls).toHaveLength(0);
+  });
+  it("does not let a stale identity runner enroll using a replacement job lease", async () => {
+    const f = await fixture();
+    await expect(enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`, 99)).rejects.toThrow("Lost wizard enrollment claim");
+    expect(await db.game.findUniqueOrThrow({ where: { id: f.gameId } })).toMatchObject({ styleVersion: "collage-v1", status: "AVATAR_GENERATING", configJson: null });
+    expect((await f.job()).status).toBe("RUNNING");
+  });
+});

@@ -51,7 +51,7 @@ async function main() {
 
   const provider = new OpenAiAvatarProvider(apiKey, { model: process.env.GENERATION_MODEL ?? "gpt-image-2", quality: "medium", patchQuality: quality, tries: 1 });
   const judge = new OpenAiPatchJudge(apiKey, { policy: (process.env.JUDGE_POLICY as "screen" | "chain" | "strong" | undefined) ?? "screen", timeoutMs: Number(flag("timeout-ms", "180000")) });
-  const budget = new GenerationBudget(budgetDir, limit, { round: "judge-placement-20260908" });
+  const budget = new GenerationBudget(budgetDir, limit, { round: flag("budget-tag", "judge-placement-20260908") });
   console.log(`budget: ${budget.spent.toFixed(2)} of ${limit} cents already spent in this round`);
 
   // The same spot may be listed twice; every trial gets its own directory.

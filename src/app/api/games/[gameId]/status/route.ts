@@ -7,9 +7,13 @@ import { statusOf } from "@/services/game-status";
 import { RESUMABLE_STATUSES } from "@/services/generation/pipeline";
 import { ensurePlayerLink } from "@/services/share-link.service";
 import { signedAssetUrl } from "@/services/asset.service";
+import { FIXED_WORLD_STYLE_VERSION, isFixedWorldStyle, readFixedWorldStage, fixedWorldConfigSha256 } from "@/services/generation/fixed-world-stage-record";
 import { findScene } from "../../../../../../content/scenes";
 import { currentUser, draftTokenFromCookie, isAdminEmail } from "@/lib/server/session";
 import { pick } from "@/i18n";
+import { BOARD_WIZARD_STYLE, readBoardWizard } from "@/services/generation/board-conditioned-wizard";
+import { env } from "@/lib/env";
+import { auditWorldBudget } from "@/services/generation/world-budget";
 
 export const runtime = "nodejs";
 
@@ -64,19 +68,59 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
     if (!place && def && done < total) place = { slug: def.slug, name: pick(def.name, locale) };
   }
 
-  const progress = creationProgress({ status, characterReady, spotsDone, spotsTotal });
-  const playUrl = isPlayable(status) ? (await ensurePlayerLink(c, gameId)).url : null;
+  const boardWizard = game.styleVersion === BOARD_WIZARD_STYLE;
+  let qaPreviewUrl: string | null = null;
+  let qaBoards: { boardId: string; name: string; state: string; attempts: number; slots: { slotId: string; state: string; reason: string | null }[] }[] | null = null;
+  let qaCost: { spentCents: number; reservedCents: number; capCents: number; held: boolean } | null = null;
+  let boardWizardPending = false;
+  if (boardWizard && env().APP_ENV === "qa") {
+    const job = await c.db.generationJob.findUnique({ where: { id: `job_${gameId}` }, select: { status: true, stepsJson: true } });
+    if (job) {
+      try {
+        const record = readBoardWizard(job.stepsJson);
+        qaBoards = record.boards.map(b => ({ boardId: b.boardId, name: pick(findScene(b.boardId)?.name ?? { he: b.boardId, en: b.boardId }, locale), state: b.state, attempts: b.attempts,
+          slots: record.catalog.boards.find(c => c.boardId === b.boardId)!.slots.map(slot => { const visual = b.visual.find(v => v.slotId === slot.slot.id); return { slotId: slot.slot.id, state: visual?.state ?? b.state, reason: visual?.reason ?? b.reason }; }) }));
+        const ledger = await c.db.worldBudgetLedger.findUnique({ where: { worldId: `${gameId}:board-wizard` } });
+        if (ledger) { const audit = auditWorldBudget(JSON.parse(ledger.snapshotJson)); qaCost = { spentCents: audit.settledMicroUsd / 10_000, reservedCents: audit.reservedMicroUsd / 10_000, capCents: record.capMicroUsd / 10_000, held: audit.held }; }
+        spotsTotal = 27;
+        spotsDone = record.boards.filter(b => b.state === "geometry-ok").length * 3;
+        boardWizardPending = record.state === "running";
+        const nextBoard = record.boards.find(b => b.state === "pending") ?? record.boards.find(b => b.visual.some(v => v.state === "pending"));
+        const nextDefinition = nextBoard ? findScene(nextBoard.boardId) : null;
+        place = nextDefinition ? { slug: nextDefinition.slug, name: pick(nextDefinition.name, locale) } : null;
+        if (["review-required", "held"].includes(record.state) && spotsDone === 27 && game.configJson && job.status === "DONE" && (user?.id === game.ownerId || isAdminEmail(user?.email))) qaPreviewUrl = `/qa-review/${gameId}`;
+      } catch { /* A corrupt capsule is not progress or a playable preview. */ }
+    }
+  }
+  const fixed = isFixedWorldStyle(game.styleVersion);
+  let fixedAssemblyReady: boolean | undefined;
+  if (fixed && !boardWizard) {
+    fixedAssemblyReady = false;
+    const job = await c.db.generationJob.findUnique({ where: { id: `job_${gameId}` }, select: { gameId: true, status: true, stepsJson: true } });
+    try {
+      const proof = job && job.gameId === gameId && job.status === "DONE" ? readFixedWorldStage(job.stepsJson) : null;
+      fixedAssemblyReady = !!(game.styleVersion === FIXED_WORLD_STYLE_VERSION && !game.deletedAt && proof?.state === "staged" &&
+        proof.gameId === game.id && proof.ownerId === game.ownerId && proof.childProfileId === game.childProfileId &&
+        game.configJson && fixedWorldConfigSha256(JSON.parse(game.configJson)) === proof.configSha256);
+    } catch { /* Missing or corrupt private proof must never announce a ready game. */ }
+  }
+  const progress = creationProgress({ status, characterReady, spotsDone, spotsTotal, fixedAssemblyReady });
+  const playUrl = isPlayable(status) && progress.done ? (await ensurePlayerLink(c, gameId)).url : null;
   return NextResponse.json(
     {
       status,
       ...step,
+      ...(fixedAssemblyReady === false ? { step: characterReady ? 2 : 1 } : {}),
       ...progress,
       playUrl,
-      awaitingQa: status === "QA_PENDING" || status === "MANUAL_REVIEW",
-      pending: RESUMABLE_STATUSES.includes(status),
+      qaPreviewUrl,
+      qaBoards,
+      qaCost,
+      awaitingQa: progress.state === "awaiting_review",
+      pending: boardWizard ? boardWizardPending : !fixed && RESUMABLE_STATUSES.includes(status),
       // "Ready" and "sent" are different facts: DELIVERED means a real recipient
       // got the mail. On a box whose mail provider is the console, nothing was.
-      delivered: status === "DELIVERED",
+      delivered: status === "DELIVERED" && progress.done,
       mailSimulated: c.email.id === "console",
       newPhotoUrl: progress.state === "needs_new_photo" ? `/creating/${gameId}/photo` : null,
       characterReady,

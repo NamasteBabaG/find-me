@@ -29,6 +29,8 @@ export interface CreationSignals {
   /** Hiding spots painted so far, and how many the game has in all. */
   spotsDone: number;
   spotsTotal: number;
+  /** Fixed-engine enrollment is held at QA_PENDING before any assembly exists. */
+  fixedAssemblyReady?: boolean;
 }
 
 export interface CreationProgress {
@@ -79,10 +81,11 @@ function stageOf(status: GameStatus): number {
 }
 
 export function creationProgress(s: CreationSignals): CreationProgress {
-  const stage = stageOf(s.status);
+  const fixedUnassembled = s.fixedAssemblyReady === false;
+  const stage = fixedUnassembled ? (s.characterReady ? 2 : 0) : stageOf(s.status);
   const done = stage === 5;
   const failed = FAILED.has(s.status);
-  const state: CreationState = done ? "ready" : failed ? "failed" : s.status === "NEEDS_NEW_PHOTO" ? "needs_new_photo" : s.status === "GENERATION_FAILED" ? "retrying" : stage === 4 ? "awaiting_review" : "working";
+  const state: CreationState = done ? "ready" : failed ? "failed" : fixedUnassembled ? "awaiting_review" : s.status === "NEEDS_NEW_PHOTO" ? "needs_new_photo" : s.status === "GENERATION_FAILED" ? "retrying" : stage === 4 ? "awaiting_review" : "working";
   // The counters can be ahead of the status (a spot lands before the status
   // row is touched) and the status can be ahead of the counters (a regenerated
   // game re-enters painting with its old spots still counted). Either one is

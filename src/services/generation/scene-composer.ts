@@ -6,6 +6,7 @@ import type { Container } from "../container";
 import { signedAssetUrl } from "../asset.service";
 import { sceneBySlug } from "../scene-catalog.service";
 import { worldForBoard } from "../world-catalog.service";
+import { fixedStageAssert, isFixedWorldStyle } from "./fixed-world-stage-record";
 
 /**
  * Resolves DB rows into the player-facing GameConfig. This is the ONLY place
@@ -17,6 +18,7 @@ export async function composeGameConfig(c: Container, gameId: string): Promise<G
     where: { id: gameId },
     include: { childProfile: true, scenes: { orderBy: { orderIndex: "asc" }, include: { targets: { include: { variants: true } } } } },
   });
+  fixedStageAssert(!isFixedWorldStyle(game.styleVersion), "unsupported", "Fixed worlds must retain their qualified config; legacy composition is forbidden");
   if (!game.childProfile) throw new Error("composeGameConfig: game has no child profile");
   if (!game.childProfile.avatarAssetId) throw new Error("composeGameConfig: avatar not generated yet");
   if (!game.packageTier || !isPackageTier(game.packageTier)) throw new Error("composeGameConfig: no package");

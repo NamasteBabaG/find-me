@@ -75,7 +75,7 @@ async function main() {
   if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
   // A pilot can wait for the strong reviewer longer than a tick can; a timeout is an unknown charge either way.
   const judge = new OpenAiPatchJudge(apiKey, { policy: "strong", timeoutMs: Number(flag("timeout-ms", "180000")) });
-  const budget = new GenerationBudget(budgetDir, limit, { round: "judge-placement-20260908" });
+  const budget = new GenerationBudget(budgetDir, limit, { round: flag("budget-tag", "judge-placement-20260908") });
   console.log(`budget: ${budget.spent.toFixed(2)} of ${limit} cents already spent in this round`);
 
   // There is no v5 mode: the ES module cannot be patched, and game 2's own records ARE the

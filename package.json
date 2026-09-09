@@ -5,7 +5,7 @@
   "description": "איפה אני? — משחק חפש־ומצא אישי לילדים",
   "scripts": {
     "dev": "next dev",
-    "build": "node scripts/prisma-generate.mjs && next build",
+    "build": "node scripts/prisma-generate.mjs && next build && node scripts/finalize-build-traces.mjs && node scripts/audit-board-catalog-tracing.mjs",
     "db:push:postgres": "npm run db:guard && node scripts/prisma-generate.mjs && prisma db push --schema prisma/generated/schema.postgres.prisma --skip-generate && npm run db:client:local",
     "start": "next start",
     "typecheck": "tsc --noEmit",

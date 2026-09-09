@@ -88,7 +88,8 @@ function build(): Container {
     payment,
     avatars:
       e.GENERATION_PROVIDER === "openai"
-        ? new OpenAiAvatarProvider(e.OPENAI_API_KEY ?? "", { model: e.GENERATION_MODEL, quality: e.GENERATION_QUALITY, patchQuality: e.GENERATION_PATCH_QUALITY, perMinute: e.GENERATION_RPM })
+        ? new OpenAiAvatarProvider(e.OPENAI_API_KEY ?? "", { model: e.GENERATION_MODEL, quality: e.GENERATION_QUALITY, patchQuality: e.GENERATION_PATCH_QUALITY, perMinute: e.GENERATION_RPM,
+          ...(e.APP_ENV === "qa" && process.env.QA_BOARD_CONDITIONED_WIZARD === "true" ? { tries: 1 } : {}) })
         : new MockAvatarProvider(),
     // Whoever draws also judges: an account that can paint a child can look at
     // one, and a deployment on mocks should not be sending every spot to review.

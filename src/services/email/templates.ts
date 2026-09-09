@@ -84,7 +84,7 @@ export function adminAlertEmail(input: {
   sceneCount: number;
   problems: string[];
   failedSpots: Array<{ where: string; attempts: number; reason: string }>;
-  costCents: number;
+  costCents: number | null;
   error?: string;
 }): Omit<EmailMessage, "to"> {
   const head = ALERT_HEAD[input.kind];
@@ -92,7 +92,7 @@ export function adminAlertEmail(input: {
   const facts = [
     `משחק: ${input.gameId} · ${input.sceneCount} לוחות · סטטוס ${input.status}`,
     `הורה: ${input.ownerEmail ?? "אין כתובת"}`,
-    `עלות עד עכשיו: $${(input.costCents / 100).toFixed(2)}`,
+    `עלות עד עכשיו: ${input.costCents === null ? "לא ידועה" : `$${(input.costCents / 100).toFixed(2)}`}`,
   ];
   const problems = input.problems.map((p) => `• ${p}`);
   const spots = input.failedSpots.map((f) => `• ${f.where} — ${f.attempts} ניסיונות — ${f.reason || "בלי סיבה רשומה"}`);

@@ -1,0 +1,2253 @@
+{
+  "version": "board-conditioned-qa-catalog/v1",
+  "revision": "world-fixed-20260909-v5",
+  "worldSlug": "journey",
+  "sourcePresentation": "local-composite/v5",
+  "boards": [
+    {
+      "boardId": "newyork",
+      "sceneVersion": 4,
+      "board": {
+        "path": "content/board-conditioned-qa/world-fixed-20260909-v5/newyork/board.png",
+        "sha256": "a6bf5754b1f8c88d46b883a5478d6697ea742676010cf83b8513c714d255510a"
+      },
+      "slots": [
+        {
+          "slot": {
+            "id": "newyork-open-taxi-shade-v2",
+            "pose": "standing",
+            "eye": {
+              "x": 1040,
+              "y": 1301
+            },
+            "faceHeightPx": 28.8,
+            "window": {
+              "left": 950,
+              "top": 1237,
+              "width": 180,
+              "height": 248
+            },
+            "mode": "open",
+            "pixelRefinement": "connected-crown-fringe-bounded-feet/v3",
+            "compositingTone": {
+              "version": "local-exposure-chroma/v1",
+              "exposureStops": -0.35,
+              "saturation": 0.68
+            },
+            "supportPointPx": {
+              "x": 1040,
+              "y": 1469
+            },
+            "standingHeightPx": 200
+          },
+          "context": {
+            "left": 950,
+            "top": 1237,
+            "width": 180,
+            "height": 248
+          },
+          "originalPeople": {
+            "left": 1080,
+            "top": 1394,
+            "width": 141,
+            "height": 382
+          },
+          "poseDescription": "Stand naturally beside the front wheel of the taxi, BOTH shoes on its existing dark pavement shadow. Arms relaxed, three-quarter right watching the violinist; recognizable face, no waving.",
+          "wardrobe": "Muted coral/pink autumn cardigan or light jacket over a cream shirt, blue trousers if visible. Same intrinsic outfit in all three slots; building shade and park shade alter lighting, not clothing identity. No bag, pigeon, taxi, windowsill or planter in the sprite.",
+          "lighting": {
+            "key": "Subdued late-afternoon daylight in the taxi and cart shade, not direct studio or front sunlight; Neutral warm-brown painted local palette with cool blue-grey shaded planes",
+            "fill": "Weak cool pavement fill and restrained warm vehicle or wood bounce; no orange hair rim or luminous face",
+            "shadows": "Broad coherent matte body shadow planes under chin, in hair, sleeves and legs. Existing pavement shade provides the ground context; do not draw a detached cast shadow or floor.",
+            "exposure": "Low-to-medium local exposure. Match original nearby pedestrians; suppress saturated pink and orange highlights on hair, skin and cardigan. The child must not be brighter than her neighbours."
+          },
+          "foreground": {
+            "path": "content/board-conditioned-qa/world-fixed-20260909-v5/newyork/foreground-1.png",
+            "sha256": "dcf6f20ab7cfd0746a37b2bc0b35398fcfbb65344e8f89c8506c1969eefa6c76"
+          },
+          "hintText": {
+            "he": "ליד המוניות הצהובות",
+            "en": "Near the yellow taxis"
+          }
+        },
+        {
+          "slot": {
+            "id": "newyork-open-crossing-v1",
+            "pose": "standing",
+            "eye": {
+              "x": 1264,
+              "y": 1176
+            },
+            "faceHeightPx": 27.200000000000003,
+            "window": {
+              "left": 1174,
+              "top": 1112,
+              "width": 180,
+              "height": 240
+            },
+            "mode": "open",
+            "pixelRefinement": "connected-crown-fringe-bounded-feet/v3",
+            "compositingTone": {
+              "version": "local-exposure-chroma/v1",
+              "exposureStops": -0.35,
+              "saturation": 0.68
+            },
+            "supportPointPx": {
+              "x": 1264,
+              "y": 1336
+            },
+            "standingHeightPx": 168
+          },
+          "context": {
+            "left": 1174,
+            "top": 1112,
+            "width": 180,
+            "height": 240
+          },
+          "originalPeople": {
+            "left": 1360,
+            "top": 1136,
+            "width": 99,
+            "height": 240
+          },
+          "poseDescription": "Stand on the crossing beside the rear of the taxi, both feet planted. Look three-quarter left toward the street with one hand gently holding the jacket lapel, no waving.",
+          "wardrobe": "Muted coral/pink autumn cardigan or light jacket over a cream shirt, blue trousers if visible. Same intrinsic outfit in all three slots; building shade and park shade alter lighting, not clothing identity. No bag, pigeon, taxi, windowsill or planter in the sprite.",
+          "lighting": {
+            "key": "Subdued late-afternoon daylight in the taxi and cart shade, not direct studio or front sunlight; Neutral warm-brown painted local palette with cool blue-grey shaded planes",
+            "fill": "Weak cool pavement fill and restrained warm vehicle or wood bounce; no orange hair rim or luminous face",
+            "shadows": "Broad coherent matte body shadow planes under chin, in hair, sleeves and legs. Existing pavement shade provides the ground context; do not draw a detached cast shadow or floor.",
+            "exposure": "Low-to-medium local exposure. Match original nearby pedestrians; suppress saturated pink and orange highlights on hair, skin and cardigan. The child must not be brighter than her neighbours."
+          },
+          "foreground": {
+            "path": "content/board-conditioned-qa/world-fixed-20260909-v5/newyork/foreground-2.png",
+            "sha256": "dcf6f20ab7cfd0746a37b2bc0b35398fcfbb65344e8f89c8506c1969eefa6c76"
+          },
+          "hintText": {
+            "he": "במעבר החצייה",
+            "en": "Around the pedestrian crossing"
+          }
+        },
+        {
+          "slot": {
+            "id": "newyork-open-pretzel-front-v1",
+            "pose": "standing",
+            "eye": {
+              "x": 1816,
+              "y": 1591
+            },
+            "faceHeightPx": 32,
+            "window": {
+              "left": 1726,
+              "top": 1527,
+              "width": 180,
+              "height": 278
+            },
+            "mode": "open",
+            "pixelRefinement": "connected-crown-fringe-bounded-feet/v3",
+            "compositingTone": {
+              "version": "local-exposure-chroma/v1",
+              "exposureStops": -0.25,
+              "saturation": 0.72
+            },
+            "supportPointPx": {
+              "x": 1816,
+              "y": 1789
+            },
+            "standingHeightPx": 230
+          },
+          "context": {
+            "left": 1726,
+            "top": 1527,
+            "width": 180,
+            "height": 278
+          },
+          "originalPeople": {
+            "left": 1536,
+            "top": 1488,
+            "width": 107,
+            "height": 280
+          },
+          "poseDescription": "Stand in front of the pretzel cart lower panel, both shoes on the shaded pavement. Turn three-quarter right toward the vendor, with a small conversational gesture close to the body. No food or prop in hands.",
+          "wardrobe": "Muted coral/pink autumn cardigan or light jacket over a cream shirt, blue trousers if visible. Same intrinsic outfit in all three slots; building shade and park shade alter lighting, not clothing identity. No bag, pigeon, taxi, windowsill or planter in the sprite.",
+          "lighting": {
+            "key": "Subdued late-afternoon daylight in the taxi and cart shade, not direct studio or front sunlight; Neutral warm-brown painted local palette with cool blue-grey shaded planes",
+            "fill": "Weak cool pavement fill and restrained warm vehicle or wood bounce; no orange hair rim or luminous face",
+            "shadows": "Broad coherent matte body shadow planes under chin, in hair, sleeves and legs. Existing pavement shade provides the ground context; do not draw a detached cast shadow or floor.",
+            "exposure": "Low-to-medium local exposure. Match original nearby pedestrians; suppress saturated pink and orange highlights on hair, skin and cardigan. The child must not be brighter than her neighbours."
+          },
+          "foreground": {
+            "path": "content/board-conditioned-qa/world-fixed-20260909-v5/newyork/foreground-3.png",
+            "sha256": "dcf6f20ab7cfd0746a37b2bc0b35398fcfbb65344e8f89c8506c1969eefa6c76"
+          },
+          "hintText": {
+            "he": "באזור עגלת הבייגלה",
+            "en": "Around the pretzel cart"
+          }
+        }
+      ]
+    },
+    {
+      "boardId": "amazon",
+      "sceneVersion": 4,
+      "board": {
+        "path": "content/board-conditioned-qa/world-fixed-20260909-v5/amazon/board.png",
+        "sha256": "83df96f30e1d85dd7c5e8ea9707abac0e171ce28cbb623235968896ea70ac11b"
+      },
+      "slots": [
+        {
+          "slot": {
+            "id": "amazon-root-pocket-compact-v2",
+            "pose": "standing",
+            "eye": {
+              "x": 626,
+              "y": 1230
+            },
+            "faceHeightPx": 24,
+            "window": {
+              "left": 330,
+              "top": 1090,
+              "width": 512,
+              "height": 512
+            },
+            "mode": "open",
+            "pixelRefinement": "connected-crown-fringe-bounded-feet/v3",
+            "compositingTone": {
+              "version": "local-exposure-chroma/v1",
+              "exposureStops": -0.65,
+              "saturation": 0.72
+            },
+            "supportPointPx": {
+              "x": 626,
+              "y": 1437
+            },
+            "standingHeightPx": 230,
+            "forbiddenRects": [
+              {
+                "left": 400,
+                "top": 1140,
+                "width": 112,
+                "height": 132,
+                "id": "original-head-0"
+              },
+              {
+                "left": 845,
+                "top": 1230,
+                "width": 110,
+                "height": 120,
+                "id": "original-head-1"
+              },
+              {
+                "left": 735,
+                "top": 1370,
+                "width": 125,
+                "height": 120,
+                "id": "original-head-2"
+              },
+              {
+                "left": 376,
+                "top": 1123,
+                "width": 160,
+                "height": 222,
+                "id": "original-person-protected-0"
+              }
+            ]
+          },
+          "context": {
+            "left": 330,
+            "top": 1090,
+            "width": 512,
+            "height": 512
+          },
+          "originalPeople": {
+            "left": 376,
+            "top": 1123,
+            "width": 160,
+            "height": 222
+          },
+          "poseDescription": "Draw a COMPLETE standing child from crown to both shoes, torso leaning slightly RIGHT and compact arms near chest. Three-quarter face watches the river. The figure stands on the sheltered root-bank ground behind the thick roots, which will be composited later. No roots, water, scenery or shadow in the source.",
+          "wardrobe": "Lightweight muted green/olive short-sleeved cotton top and blue/teal lower garment if visible, appropriate to humid forest. Preserve the same intrinsic outfit across the three slots with locally different shade and bounce. No log, rock, basket, fruit, canoe, leaf accessory or other prop generated.",
+          "lighting": {
+            "key": "Soft upper-left canopy opening; Deep olive canopy shade with muted warm accents",
+            "fill": "Restrained olive environmental reflection, never green skin",
+            "shadows": "Broad painted local shadow planes on face, hands, hair and clothes together. Preserve intrinsic complexion. Restrained highlights, no detached scenery or cast shadow.",
+            "exposure": "Low canopy exposure matching the nearby shaded original child; match neighboring original people; no luminous face, saturated portrait clothes or bright orange hair rim"
+          },
+          "foreground": {
+            "path": "content/board-conditioned-qa/world-fixed-20260909-v5/amazon/foreground-1.png",
+            "sha256": "92ee32e330fecd8d792dad7de9fbf6f417fef489585cf0bbcbf9680497cdd35c"
+          },
+          "hintText": {
+            "he": "באזור השורשים של העץ הגדול",
+            "en": "Around the big tree's roots"
+          }
+        },
+        {
+          "slot": {
+            "id": "amazon-open-shaded-fruit-bank-v4",
+            "pose": "standing",
+            "eye": {
+              "x": 2620,
+              "y": 954
+            },
+            "faceHeightPx": 28.8,
+            "window": {
+              "left": 2465,
+              "top": 870,
+              "width": 250,
+              "height": 294
+            },
+            "mode": "open",
+            "pixelRefinement": "connected-crown-fringe-bounded-feet/v3",
+            "compositingTone": {
+              "version": "local-exposure-chroma/v1",
+              "exposureStops": -0.5,
+              "saturation": 0.72
+            },
+            "supportPointPx": {
+              "x": 2620,
+              "y": 1120
+            },
+            "standingHeightPx": 185.6,
+            "forbiddenRects": [
+              {
+                "left": 2426,
+                "top": 883,
+                "width": 123,
+                "height": 299,
+                "id": "original-person-protected-0"
+              },
+              {
+                "left": 2530,
+                "top": 1105,
+                "width": 110,
+                "height": 125,
+                "id": "original-foreground-boy-head"
+              }
+            ]
+          },
+          "context": {
+            "left": 2465,
+            "top": 870,
+            "width": 250,
+            "height": 294
+          },
+          "originalPeople": {
+            "left": 2426,
+            "top": 883,
+            "width": 123,
+            "height": 299
+          },
+          "poseDescription": "Draw a COMPLETE standing child from crown to both shoes, on the shaded dry riverbank beside the fruit basket. Turn three-quarter LEFT watching the canoe, one hand loosely resting over the other at waist. Compact natural child, not a portrait pose. No basket, fruit, water, ground or shadow generated.",
+          "wardrobe": "Lightweight muted green/olive short-sleeved cotton top and blue/teal lower garment if visible, appropriate to humid forest. Preserve the same intrinsic outfit across the three slots with locally different shade and bounce. No log, rock, basket, fruit, canoe, leaf accessory or other prop generated.",
+          "lighting": {
+            "key": "Filtered broad canopy daylight near the fruit porch; Muted warm-green canopy shade, neutral skin midtones",
+            "fill": "Weak olive ambient and restrained warm basket reflection",
+            "shadows": "Broad painted local shadow planes on face, hands, hair and clothes together. Preserve intrinsic complexion. Restrained highlights, no detached scenery or cast shadow.",
+            "exposure": "Shade matching the nearby blue-shirt child; no illuminated hair cap; match neighboring original people; no luminous face, saturated portrait clothes or bright orange hair rim"
+          },
+          "foreground": {
+            "path": "content/board-conditioned-qa/world-fixed-20260909-v5/amazon/foreground-2.png",
+            "sha256": "5e7b5257c3900c7b1aa83b66cc19f2786118b21580c0833e535ec7cd5344b889"
+          },
+          "hintText": {
+            "he": "ליד סלי הפירות שבגדת הנהר",
+            "en": "Near the fruit baskets on the riverbank"
+          }
+        },
+        {
+          "slot": {
+            "id": "amazon-open-shaded-porch-v2",
+            "pose": "standing",
+            "eye": {
+              "x": 2771,
+              "y": 750
+            },
+            "faceHeightPx": 24,
+            "window": {
+              "left": 2681,
+              "top": 672,
+              "width": 200,
+              "height": 228
+            },
+            "mode": "open",
+            "pixelRefinement": "connected-crown-fringe-bounded-feet/v3",
+            "compositingTone": {
+              "version": "local-exposure-chroma/v1",
+              "exposureStops": -0.65,
+              "saturation": 0.7
+            },
+            "supportPointPx": {
+              "x": 2771,
+              "y": 880
+            },
+            "standingHeightPx": 160,
+            "forbiddenRects": [
+              {
+                "left": 2808,
+                "top": 669,
+                "width": 94,
+                "height": 211,
+                "id": "original-person-protected-0"
+              }
+            ]
+          },
+          "context": {
+            "left": 2681,
+            "top": 672,
+            "width": 200,
+            "height": 228
+          },
+          "originalPeople": {
+            "left": 2808,
+            "top": 669,
+            "width": 94,
+            "height": 211
+          },
+          "poseDescription": "Stand on the existing shaded wooden porch, both shoes fully visible on the boards. Turn three-quarter LEFT toward the fruit sellers, arms relaxed with one small hand close to the waist. Natural small child waiting in the group, no fruit, basket, porch or scenery generated.",
+          "wardrobe": "Lightweight muted green/olive short-sleeved cotton top and blue/teal lower garment if visible, appropriate to humid forest. Preserve the same intrinsic outfit across the three slots with locally different shade and bounce. No log, rock, basket, fruit, canoe, leaf accessory or other prop generated.",
+          "lighting": {
+            "key": "Broad daylight filtered by the thatched eave; Warm subdued wood bounce over olive canopy shade",
+            "fill": "Restrained olive ambient and warm timber reflection",
+            "shadows": "Broad painted local shadow planes on face, hands, hair and clothes together. Preserve intrinsic complexion. Restrained highlights, no detached scenery or cast shadow.",
+            "exposure": "Porch shade matching the neighboring original standing child, no sunlit face; match neighboring original people; no luminous face, saturated portrait clothes or bright orange hair rim"
+          },
+          "foreground": {
+            "path": "content/board-conditioned-qa/world-fixed-20260909-v5/amazon/foreground-3.png",
+            "sha256": "dcf6f20ab7cfd0746a37b2bc0b35398fcfbb65344e8f89c8506c1969eefa6c76"
+          },
+          "hintText": {
+            "he": "בבקתת העץ שלצד הנהר",
+            "en": "By the wooden riverside hut"
+          }
+        }
+      ]
+    },
+    {
+      "boardId": "paris",
+      "sceneVersion": 5,
+      "board": {
+        "path": "content/board-conditioned-qa/world-fixed-20260909-v5/paris/board.png",
+        "sha256": "f1d903f6000cd881999964b834720010a6be4eec1e6c7935a0b5f6dfc261e2f1"
+      },
+      "slots": [
+        {
+          "slot": {
+            "id": "paris-bakery-complete-standing-layer-v1",
+            "pose": "standing",
+            "eye": {
+              "x": 2745,
+              "y": 1615
+            },
+            "faceHeightPx": 30,
+            "window": {
+              "left": 2450,
+              "top": 1410,
+              "width": 622,
+              "height": 638
+            },
+            "mode": "open",
+            "pixelRefinement": "connected-crown-fringe-bounded-feet/v3",
+            "compositingTone": {
+              "version": "local-exposure-chroma/v1",
+              "exposureStops": -0.55,
+              "saturation": 0.75
+            },
+            "supportPointPx": {
+              "x": 2745,
+              "y": 1875
+            },
+            "standingHeightPx": 290,
+            "forbiddenRects": [
+              {
+                "left": 2530,
+                "top": 1440,
+                "width": 154,
+                "height": 147,
+                "id": "straw-hat-girl-head"
+              },
+              {
+                "left": 2455,
+                "top": 1560,
+                "width": 119,
+                "height": 135,
+                "id": "blue-shirt-boy-head"
+              },
+              {
+                "left": 2517,
+                "top": 1716,
+                "width": 76,
+                "height": 83,
+                "id": "blue-shirt-boy-hand-at-bread"
+              },
+              {
+                "left": 2600,
+                "top": 1595,
+                "width": 61,
+                "height": 137,
+                "id": "straw-hat-girl-forearm"
+              }
+            ]
+          },
+          "context": {
+            "left": 2450,
+            "top": 1410,
+            "width": 622,
+            "height": 638
+          },
+          "originalPeople": {
+            "left": 2518,
+            "top": 1428,
+            "width": 178,
+            "height": 195
+          },
+          "poseDescription": "Draw a COMPLETE standing child for the bakery position, both shoes visible in this source. Torso three-quarter LEFT toward the shop visitors, one hand relaxed near the cardigan and the other making a small conversational gesture. All lower-body pixels will go behind the existing bread baskets. No basket, counter, baguette, floor or shadow generated; retain a readable three-quarter face.",
+          "wardrobe": "Muted coral/pink light cardigan over cream cotton shirt and blue lower garment if visible. Small child-size sleeves and simple painted folds. No baguette, basket, flowers, railing, chair or shopping props generated.",
+          "lighting": {
+            "key": "open-front/upper-left daylight with local bakery reflection; warm daylight/amber bounce",
+            "fill": "warm bread/wood reflection, weak cool outside fill",
+            "shadows": "Shaded grouped curls and cheek planes; bread/shop highlights remain brighter than skin.",
+            "exposure": "medium bakery-edge shade"
+          },
+          "foreground": {
+            "path": "content/board-conditioned-qa/world-fixed-20260909-v5/paris/foreground-1.png",
+            "sha256": "e7aeaae8c7688e7ed84412abcedf9be60d13e3b9f04d66b36866f18f45b107be"
+          },
+          "hintText": {
+            "he": "ליד המאפייה",
+            "en": "Near the bakery"
+          }
+        },
+        {
+          "slot": {
+            "id": "paris-balcony-flower-peek",
+            "pose": "wave-peek",
+            "eye": {
+              "x": 70,
+              "y": 200
+            },
+            "faceHeightPx": 17,
+            "window": {
+              "left": 0,
+              "top": 100,
+              "width": 440,
+              "height": 450
+            },
+            "cutSelection": "two-hidden-rows-one-face-side-margin/v1",
+            "compositingTone": {
+              "version": "local-exposure-chroma/v1",
+              "exposureStops": -0.2,
+              "saturation": 0.78
+            }
+          },
+          "context": {
+            "left": 0,
+            "top": 100,
+            "width": 440,
+            "height": 450
+          },
+          "originalPeople": {
+            "left": 1260,
+            "top": 880,
+            "width": 210,
+            "height": 220
+          },
+          "poseDescription": "SMALL WAVE PEEK: compact three-quarter upper torso, head toward viewer, one small hand raised near shoulder below eye level. Existing balcony flower rail hides lower body; no railing or flower generated.",
+          "wardrobe": "Muted coral/pink light cardigan over cream cotton shirt and blue lower garment if visible. Small child-size sleeves and simple painted folds. No baguette, basket, flowers, railing, chair or shopping props generated.",
+          "lighting": {
+            "key": "upper-left open daylight; warm daylight with cool sky fill",
+            "fill": "cream wall and restrained flower bounce",
+            "shadows": "Small clean painted facial shadows, no oversharpened portrait detail at distant scale.",
+            "exposure": "bright upper-floor balcony; modest wall shade"
+          },
+          "foreground": {
+            "path": "content/board-conditioned-qa/world-fixed-20260909-v5/paris/foreground-2.png",
+            "sha256": "ca6ca5efc9d417d43a77df2c338f2819fda6e32dacdf3ec03ab058891bc81fc7"
+          },
+          "hintText": {
+            "he": "בין המרפסות והפרחים",
+            "en": "Among the balconies and flowers"
+          }
+        },
+        {
+          "slot": {
+            "id": "paris-open-shaded-foreground-paving-v1",
+            "pose": "standing",
+            "eye": {
+              "x": 2000,
+              "y": 1782
+            },
+            "faceHeightPx": 30.400000000000002,
+            "window": {
+              "left": 1910,
+              "top": 1720,
+              "width": 180,
+              "height": 264
+            },
+            "mode": "open",
+            "pixelRefinement": "connected-crown-fringe-bounded-feet/v3",
+            "compositingTone": {
+              "version": "local-exposure-chroma/v1",
+              "exposureStops": -0.65,
+              "saturation": 0.7
+            },
+            "supportPointPx": {
+              "x": 2000,
+              "y": 1968
+            },
+            "standingHeightPx": 216,
+            "forbiddenRects": [
+              {
+                "left": 1138,
+                "top": 1653,
+                "width": 107,
+                "height": 272,
+                "id": "original-comparator-person"
+              }
+            ]
+          },
+          "context": {
+            "left": 1910,
+            "top": 1720,
+            "width": 180,
+            "height": 264
+          },
+          "originalPeople": {
+            "left": 1138,
+            "top": 1653,
+            "width": 107,
+            "height": 272
+          },
+          "poseDescription": "Stand on the shaded foreground paving left of the flower bicycle, both shoes planted close together. Turn three-quarter LEFT toward the child on the tricycle, shoulders relaxed and one hand loosely holding a cardigan edge. Keep a readable part of the face; no bicycle, toy, floor, pedestal or scenery.",
+          "wardrobe": "Muted coral/pink light cardigan over cream cotton shirt and blue lower garment if visible. Small child-size sleeves and simple painted folds. No baguette, basket, flowers, railing, chair or shopping props generated.",
+          "lighting": {
+            "key": "Diffuse cool skylight in existing foreground building shade, no direct golden sun on the child; Cool neutral shade with gentle local warm bounce",
+            "fill": "Weak warm stone bounce under cool blue-grey ambient, broad matte shadow planes",
+            "shadows": "Broad matte shadow planes on face, hair, hands and clothes together. Preserve intrinsic complexion. No detached background or cast shadow.",
+            "exposure": "Match the adjacent original people's shaded exposure and restrained colour saturation; no hero spotlight, glossy face, bright orange hair rim or luminous clothes"
+          },
+          "foreground": {
+            "path": "content/board-conditioned-qa/world-fixed-20260909-v5/paris/foreground-3.png",
+            "sha256": "dcf6f20ab7cfd0746a37b2bc0b35398fcfbb65344e8f89c8506c1969eefa6c76"
+          },
+          "hintText": {
+            "he": "באזור אופני הפרחים",
+            "en": "Around the flower bicycle"
+          }
+        }
+      ]
+    },
+    {
+      "boardId": "marrakech",
+      "sceneVersion": 4,
+      "board": {
+        "path": "content/board-conditioned-qa/world-fixed-20260909-v5/marrakech/board.png",
+        "sha256": "5bf8994b4b2ddac16641295b72fe42527ba11c0f9ea1ebb5e5cce5b03094846c"
+      },
+      "slots": [
+        {
+          "slot": {
+            "id": "marrakech-lantern-stack-compact-v2",
+            "pose": "standing",
+            "eye": {
+              "x": 652,
+              "y": 565
+            },
+            "faceHeightPx": 23,
+            "window": {
+              "left": 450,
+              "top": 390,
+              "width": 530,
+              "height": 610
+            },
+            "mode": "open",
+            "pixelRefinement": "connected-crown-fringe-bounded-feet/v3",
+            "compositingTone": {
+              "version": "local-exposure-chroma/v1",
+              "exposureStops": -0.7,
+              "saturation": 0.68
+            },
+            "supportPointPx": {
+              "x": 652,
+              "y": 754
+            },
+            "standingHeightPx": 210,
+            "forbiddenRects": [
+              {
+                "left": 809,
+                "top": 514,
+                "width": 80,
+                "height": 80,
+                "id": "pink-clad-child-behind-lanterns-face"
+              },
+              {
+                "left": 822,
+                "top": 614,
+                "width": 81,
+                "height": 76,
+                "id": "headscarf-child-at-table-face"
+              },
+              {
+                "left": 752,
+                "top": 836,
+                "width": 95,
+                "height": 80,
+                "id": "foreground-blue-child-face"
+              },
+              {
+                "left": 860,
+                "top": 784,
+                "width": 109,
+                "height": 87,
+                "id": "foreground-pink-child-face"
+              },
+              {
+                "left": 474,
+                "top": 759,
+                "width": 71,
+                "height": 51,
+                "id": "carpet-vendor-left-hand"
+              },
+              {
+                "left": 784,
+                "top": 496,
+                "width": 128,
+                "height": 170,
+                "id": "original-person-protected-0"
+              }
+            ],
+            "forbiddenPolygons": [
+              {
+                "id": "red-hatted-child-behind-stack-face",
+                "polygon": [
+                  {
+                    "x": 690,
+                    "y": 500
+                  },
+                  {
+                    "x": 706,
+                    "y": 480
+                  },
+                  {
+                    "x": 737,
+                    "y": 474
+                  },
+                  {
+                    "x": 755,
+                    "y": 481
+                  },
+                  {
+                    "x": 761,
+                    "y": 490
+                  },
+                  {
+                    "x": 775,
+                    "y": 499
+                  },
+                  {
+                    "x": 776,
+                    "y": 508
+                  },
+                  {
+                    "x": 758,
+                    "y": 521
+                  },
+                  {
+                    "x": 749,
+                    "y": 542
+                  },
+                  {
+                    "x": 733,
+                    "y": 554
+                  },
+                  {
+                    "x": 716,
+                    "y": 550
+                  },
+                  {
+                    "x": 704,
+                    "y": 536
+                  },
+                  {
+                    "x": 694,
+                    "y": 529
+                  }
+                ]
+              }
+            ]
+          },
+          "context": {
+            "left": 450,
+            "top": 390,
+            "width": 530,
+            "height": 610
+          },
+          "originalPeople": {
+            "left": 784,
+            "top": 496,
+            "width": 128,
+            "height": 170
+          },
+          "poseDescription": "Draw a COMPLETE small standing child from crown to both shoes, arms low and compact, three-quarter face looking RIGHT at the lamps. Stand on the shop platform behind the carpet stack in dark lantern light. Existing carpet pixels will hide the lower body later. No waving, lamps, carpet or platform generated.",
+          "wardrobe": "Lightweight muted coral/rust cotton short-sleeved tunic or simple top with a muted teal/blue lower garment, appropriate to the warm market. Same intrinsic outfit across three cells, no warm cardigan, hat, head scarf, jewelry, cup, props or bags. The distinct local shade and lamp bounce change illumination, not clothing identity.",
+          "lighting": {
+            "key": "Visible hanging lamps above and upper-left; Warm amber lamp key in dark shop ambient",
+            "fill": "Faint blue-glass reflection on the unlit side only",
+            "shadows": "Broad painted local shadow planes on face, hands, hair and clothes together. Preserve intrinsic complexion. Restrained highlights, no detached scenery or cast shadow.",
+            "exposure": "Low canopy ambient, skin remains far dimmer than lamp cores; match neighboring original people; no luminous face, saturated portrait clothes or bright orange hair rim"
+          },
+          "foreground": {
+            "path": "content/board-conditioned-qa/world-fixed-20260909-v5/marrakech/foreground-1.png",
+            "sha256": "44a4e291be6aabda8270cf05479ed910c3c894c1d34cf9177ce71c789a43ba0e"
+          },
+          "hintText": {
+            "he": "בין דוכני הפנסים",
+            "en": "Among the lantern stalls"
+          }
+        },
+        {
+          "slot": {
+            "id": "marrakech-spice-compact-v2",
+            "pose": "standing",
+            "eye": {
+              "x": 1395,
+              "y": 853
+            },
+            "faceHeightPx": 24,
+            "window": {
+              "left": 1190,
+              "top": 690,
+              "width": 580,
+              "height": 600
+            },
+            "mode": "open",
+            "pixelRefinement": "connected-crown-fringe-bounded-feet/v3",
+            "supportPointPx": {
+              "x": 1395,
+              "y": 1087
+            },
+            "standingHeightPx": 260,
+            "forbiddenRects": [
+              {
+                "left": 1265,
+                "top": 933,
+                "width": 93,
+                "height": 70,
+                "id": "left-pale-robed-merchant-hands"
+              },
+              {
+                "left": 1570,
+                "top": 914,
+                "width": 111,
+                "height": 101,
+                "id": "right-green-robed-merchant-face"
+              },
+              {
+                "left": 1498,
+                "top": 1018,
+                "width": 104,
+                "height": 103,
+                "id": "right-green-robed-merchant-hands"
+              },
+              {
+                "left": 1232,
+                "top": 1163,
+                "width": 121,
+                "height": 91,
+                "id": "foreground-straw-hat-child-face"
+              },
+              {
+                "left": 1680,
+                "top": 1114,
+                "width": 90,
+                "height": 112,
+                "id": "foreground-headscarf-child-face"
+              },
+              {
+                "left": 1546,
+                "top": 896,
+                "width": 160,
+                "height": 190,
+                "id": "original-person-protected-0"
+              }
+            ],
+            "forbiddenPolygons": [
+              {
+                "id": "left-pale-robed-merchant-face",
+                "polygon": [
+                  {
+                    "x": 1240,
+                    "y": 805
+                  },
+                  {
+                    "x": 1270,
+                    "y": 799
+                  },
+                  {
+                    "x": 1294,
+                    "y": 806
+                  },
+                  {
+                    "x": 1312,
+                    "y": 827
+                  },
+                  {
+                    "x": 1320,
+                    "y": 844
+                  },
+                  {
+                    "x": 1314,
+                    "y": 853
+                  },
+                  {
+                    "x": 1314,
+                    "y": 866
+                  },
+                  {
+                    "x": 1320,
+                    "y": 874
+                  },
+                  {
+                    "x": 1318,
+                    "y": 884
+                  },
+                  {
+                    "x": 1307,
+                    "y": 886
+                  },
+                  {
+                    "x": 1302,
+                    "y": 898
+                  },
+                  {
+                    "x": 1286,
+                    "y": 907
+                  },
+                  {
+                    "x": 1270,
+                    "y": 901
+                  },
+                  {
+                    "x": 1255,
+                    "y": 890
+                  },
+                  {
+                    "x": 1244,
+                    "y": 882
+                  },
+                  {
+                    "x": 1238,
+                    "y": 858
+                  },
+                  {
+                    "x": 1236,
+                    "y": 833
+                  }
+                ]
+              }
+            ]
+          },
+          "context": {
+            "left": 1190,
+            "top": 690,
+            "width": 580,
+            "height": 600
+          },
+          "originalPeople": {
+            "left": 1546,
+            "top": 896,
+            "width": 160,
+            "height": 190
+          },
+          "poseDescription": "Draw a COMPLETE standing child, both shoes visible, compact arms with hands loosely together at waist. Face turned gently LEFT toward the merchant. Stand on the shaded stall floor behind the spice basket. Existing spice and merchant foreground pixels will be composited later. No basket, cup, spice, tools or contact shadow in source.",
+          "wardrobe": "Lightweight muted coral/rust cotton short-sleeved tunic or simple top with a muted teal/blue lower garment, appropriate to the warm market. Same intrinsic outfit across three cells, no warm cardigan, hat, head scarf, jewelry, cup, props or bags. The distinct local shade and lamp bounce change illumination, not clothing identity.",
+          "lighting": {
+            "key": "Diffuse upper-left shop daylight; Warm subdued amber and orange reflected light",
+            "fill": "Restrained spice/brass bounce, no orange halo or luminous clothes",
+            "shadows": "Broad painted local shadow planes on face, hands, hair and clothes together. Preserve intrinsic complexion. Restrained highlights, no detached scenery or cast shadow.",
+            "exposure": "Medium shaded-stall midtones matching local faces; match neighboring original people; no luminous face, saturated portrait clothes or bright orange hair rim"
+          },
+          "foreground": {
+            "path": "content/board-conditioned-qa/world-fixed-20260909-v5/marrakech/foreground-2.png",
+            "sha256": "7bfd7898554fe04e40b4ac99322ff6447e28802615cc94b715dc8da4aba269cf"
+          },
+          "hintText": {
+            "he": "בשוק התבלינים",
+            "en": "In the spice market"
+          }
+        },
+        {
+          "slot": {
+            "id": "marrakech-pottery-centre-parapet-v1",
+            "pose": "seated",
+            "eye": {
+              "x": 2325,
+              "y": 1380
+            },
+            "faceHeightPx": 35,
+            "window": {
+              "left": 2080,
+              "top": 1190,
+              "width": 690,
+              "height": 650
+            },
+            "cutSelection": "two-hidden-rows-one-face-side-margin/v1",
+            "forbiddenRects": [
+              {
+                "left": 2330,
+                "top": 1040,
+                "width": 365,
+                "height": 205,
+                "id": "seated-tea-customer-faces-above-parapet"
+              },
+              {
+                "left": 2120,
+                "top": 881,
+                "width": 154,
+                "height": 141,
+                "id": "tea-vendor-face-left"
+              },
+              {
+                "left": 2651,
+                "top": 1730,
+                "width": 119,
+                "height": 110,
+                "id": "original-cat-face-at-front-right"
+              },
+              {
+                "left": 2469,
+                "top": 1192,
+                "width": 167,
+                "height": 129,
+                "id": "blue-clad-customer-hand-and-lantern"
+              },
+              {
+                "left": 2336,
+                "top": 1056,
+                "width": 123,
+                "height": 242,
+                "id": "original-person-protected-0"
+              }
+            ]
+          },
+          "context": {
+            "left": 2080,
+            "top": 1190,
+            "width": 690,
+            "height": 650
+          },
+          "originalPeople": {
+            "left": 2336,
+            "top": 1056,
+            "width": 123,
+            "height": 242
+          },
+          "poseDescription": "Relaxed seated upper body behind the existing pottery parapet. Torso turned gently LEFT, eyes glance toward the nearby tea gathering, at least three-quarter face visible. One forearm inward near the lap, shoulders low. Do not paint a seat, pots, tea glass, wall or scenery.",
+          "wardrobe": "Lightweight muted coral/rust cotton short-sleeved tunic or simple top with a muted teal/blue lower garment, appropriate to the warm market. Same intrinsic outfit across three cells, no warm cardigan, hat, head scarf, jewelry, cup, props or bags. The distinct local shade and lamp bounce change illumination, not clothing identity.",
+          "lighting": {
+            "key": "Soft overhead market daylight screened by the pottery-stall sidewall; Warm muted ochre fill over darker neutral shadow",
+            "fill": "Soft warm terracotta reflection, weaker than the highlights on pots",
+            "shadows": "Broad painted local shadow planes on face, hands, hair and clothes together. Preserve intrinsic complexion. Restrained highlights, no detached scenery or cast shadow.",
+            "exposure": "Medium-low shaded pottery pocket; match neighboring original people; no luminous face, saturated portrait clothes or bright orange hair rim"
+          },
+          "foreground": {
+            "path": "content/board-conditioned-qa/world-fixed-20260909-v5/marrakech/foreground-3.png",
+            "sha256": "25a424b1559c5bc4573514e25ce3a1057384ffc153e132a004aefe8f648c19dd"
+          },
+          "hintText": {
+            "he": "באזור כלי החרס",
+            "en": "Around the pottery stalls"
+          }
+        }
+      ]
+    },
+    {
+      "boardId": "giza",
+      "sceneVersion": 5,
+      "board": {
+        "path": "content/board-conditioned-qa/world-fixed-20260909-v5/giza/board.png",
+        "sha256": "58a34d8c38abe17975ef7d48b1225899bda7fa14d8a9ce02ca35d2402e07c070"
+      },
+      "slots": [
+        {
+          "slot": {
+            "id": "giza-front-engraved-slab-peek",
+            "pose": "side-lean",
+            "eye": {
+              "x": 1920,
+              "y": 1450
+            },
+            "faceHeightPx": 22,
+            "window": {
+              "left": 1640,
+              "top": 1280,
+              "width": 590,
+              "height": 600
+            },
+            "cutSelection": "two-hidden-rows-one-face-side-margin/v1",
+            "compositingTone": {
+              "version": "local-exposure-chroma/v1",
+              "exposureStops": -0.35,
+              "saturation": 0.78
+            },
+            "forbiddenRects": [
+              {
+                "left": 1679,
+                "top": 1472,
+                "width": 94,
+                "height": 82,
+                "id": "left-white-capped-worker-face"
+              },
+              {
+                "left": 2028,
+                "top": 1553,
+                "width": 137,
+                "height": 96,
+                "id": "right-straw-hatted-worker-face"
+              },
+              {
+                "left": 1692,
+                "top": 1536,
+                "width": 113,
+                "height": 81,
+                "id": "left-worker-hands"
+              },
+              {
+                "left": 1989,
+                "top": 1657,
+                "width": 231,
+                "height": 95,
+                "id": "right-worker-forearms"
+              },
+              {
+                "left": 1740,
+                "top": 1732,
+                "width": 161,
+                "height": 122,
+                "id": "foreground-camel-face"
+              }
+            ]
+          },
+          "context": {
+            "left": 1640,
+            "top": 1280,
+            "width": 590,
+            "height": 600
+          },
+          "originalPeople": {
+            "left": 1655,
+            "top": 1454,
+            "width": 142,
+            "height": 172
+          },
+          "poseDescription": "SIDE LEAN: compact three-quarter torso leaning toward viewer RIGHT, tilted head, both eyes visible and one bent arm inward at chest. The large engraved slab hides lower body; do not lean hands on the slab.",
+          "wardrobe": "Lightweight plain ochre/sand cotton short-sleeved shirt and muted teal/blue lower garment appropriate to the hot excavation/market. Same intrinsic outfit across the board, sunlit in A/B and warm shaded in C. Simple broad fabric folds; no hat, scarf, tools, jewelry, camel or bags.",
+          "lighting": {
+            "key": "upper-left, high and broad; warm daylight",
+            "fill": "warm golden sand/stone from below; restrained cooler sky on turned side",
+            "shadows": "Broad ochre shadow under grouped curls, chin and turned cheek; lower body occluded by shaded slab.",
+            "exposure": "bright open desert"
+          },
+          "foreground": {
+            "path": "content/board-conditioned-qa/world-fixed-20260909-v5/giza/foreground-1.png",
+            "sha256": "4e91bb08fe5e9a17c5a61aeb98fc6f2fee35a1b341c19e4db92c55f374c08b67"
+          },
+          "hintText": {
+            "he": "באזור לוחות האבן החרוטים",
+            "en": "Around the engraved stone slabs"
+          }
+        },
+        {
+          "slot": {
+            "id": "giza-upright-block-compact-v2",
+            "pose": "standing",
+            "eye": {
+              "x": 2545,
+              "y": 1006
+            },
+            "faceHeightPx": 24,
+            "window": {
+              "left": 2310,
+              "top": 840,
+              "width": 680,
+              "height": 660
+            },
+            "mode": "open",
+            "pixelRefinement": "connected-crown-fringe-bounded-feet/v3",
+            "supportPointPx": {
+              "x": 2545,
+              "y": 1213
+            },
+            "standingHeightPx": 230,
+            "forbiddenRects": [
+              {
+                "left": 2310,
+                "top": 897,
+                "width": 85,
+                "height": 91,
+                "id": "left-green-robed-child-face"
+              },
+              {
+                "left": 2402,
+                "top": 910,
+                "width": 100,
+                "height": 98,
+                "id": "left-white-robed-child-face"
+              },
+              {
+                "left": 2634,
+                "top": 944,
+                "width": 91,
+                "height": 85,
+                "id": "green-child-behind-stone-face"
+              },
+              {
+                "left": 2378,
+                "top": 1252,
+                "width": 132,
+                "height": 104,
+                "id": "blue-child-at-left-base-face"
+              },
+              {
+                "left": 2620,
+                "top": 1240,
+                "width": 116,
+                "height": 108,
+                "id": "white-cap-child-in-front-face"
+              },
+              {
+                "left": 2788,
+                "top": 1081,
+                "width": 94,
+                "height": 88,
+                "id": "right-yellow-cap-child-face"
+              },
+              {
+                "left": 2867,
+                "top": 1168,
+                "width": 106,
+                "height": 98,
+                "id": "right-straw-hat-child-face"
+              },
+              {
+                "left": 2770,
+                "top": 1360,
+                "width": 130,
+                "height": 129,
+                "id": "lower-right-worker-face"
+              },
+              {
+                "left": 2610,
+                "top": 926,
+                "width": 139,
+                "height": 174,
+                "id": "original-person-protected-0"
+              }
+            ]
+          },
+          "context": {
+            "left": 2310,
+            "top": 840,
+            "width": 680,
+            "height": 660
+          },
+          "originalPeople": {
+            "left": 2610,
+            "top": 926,
+            "width": 139,
+            "height": 174
+          },
+          "poseDescription": "Draw a COMPLETE standing child from crown to shoes, arms close and one hand resting naturally near waist. Three-quarter face looks RIGHT toward nearby children. The support is the raised stone terrace behind the large carved block; block pixels will be added later. No stone, tools, terrace or props.",
+          "wardrobe": "Lightweight plain ochre/sand cotton short-sleeved shirt and muted teal/blue lower garment appropriate to the hot excavation/market. Same intrinsic outfit across the board, sunlit in A/B and warm shaded in C. Simple broad fabric folds; no hat, scarf, tools, jewelry, camel or bags.",
+          "lighting": {
+            "key": "Broad upper-left desert daylight; Warm sandy daylight with soft neutral shadow planes",
+            "fill": "Weak sandy reflected fill",
+            "shadows": "Broad painted local shadow planes on face, hands, hair and clothes together. Preserve intrinsic complexion. Restrained highlights, no detached scenery or cast shadow.",
+            "exposure": "Subdued stone-pocket exposure; highlights weaker than sunlit limestone; match neighboring original people; no luminous face, saturated portrait clothes or bright orange hair rim"
+          },
+          "foreground": {
+            "path": "content/board-conditioned-qa/world-fixed-20260909-v5/giza/foreground-2.png",
+            "sha256": "d53c24d9c6d05b712bc3a714be0da6b1e8ccf9517bb3403a0c99c7063c5a0718"
+          },
+          "hintText": {
+            "he": "באזור גושי האבן הגבוהים",
+            "en": "Among the tall stone blocks"
+          }
+        },
+        {
+          "slot": {
+            "id": "giza-textile-counter-compact-v2",
+            "pose": "standing",
+            "eye": {
+              "x": 640,
+              "y": 1350
+            },
+            "faceHeightPx": 30,
+            "window": {
+              "left": 390,
+              "top": 1090,
+              "width": 640,
+              "height": 730
+            },
+            "mode": "open",
+            "pixelRefinement": "connected-crown-fringe-bounded-feet/v3",
+            "compositingTone": {
+              "version": "local-exposure-chroma/v1",
+              "exposureStops": -0.65,
+              "saturation": 0.7
+            },
+            "supportPointPx": {
+              "x": 640,
+              "y": 1593
+            },
+            "standingHeightPx": 270,
+            "forbiddenRects": [
+              {
+                "left": 508,
+                "top": 1142,
+                "width": 92,
+                "height": 110,
+                "id": "existing-stall-girl-face"
+              },
+              {
+                "left": 392,
+                "top": 1216,
+                "width": 106,
+                "height": 99,
+                "id": "left-stall-child-face"
+              },
+              {
+                "left": 724,
+                "top": 1437,
+                "width": 115,
+                "height": 94,
+                "id": "white-hatted-vendor-face"
+              },
+              {
+                "left": 704,
+                "top": 1510,
+                "width": 149,
+                "height": 99,
+                "id": "white-hatted-vendor-hands"
+              },
+              {
+                "left": 971,
+                "top": 1310,
+                "width": 109,
+                "height": 103,
+                "id": "red-shirt-child-face"
+              },
+              {
+                "left": 485,
+                "top": 1123,
+                "width": 141,
+                "height": 200,
+                "id": "original-person-protected-0"
+              }
+            ]
+          },
+          "context": {
+            "left": 390,
+            "top": 1090,
+            "width": 640,
+            "height": 730
+          },
+          "originalPeople": {
+            "left": 485,
+            "top": 1123,
+            "width": 141,
+            "height": 200
+          },
+          "poseDescription": "Draw a COMPLETE standing child, both shoes visible in the source, body turned slightly RIGHT toward the vendor with a small close-to-body conversational hand gesture. Keep childlike proportions. The child stands in the shaded stall behind the textile counter; the original textiles will occlude the lower body later. No textiles, seat or objects.",
+          "wardrobe": "Lightweight plain ochre/sand cotton short-sleeved shirt and muted teal/blue lower garment appropriate to the hot excavation/market. Same intrinsic outfit across the board, sunlit in A/B and warm shaded in C. Simple broad fabric folds; no hat, scarf, tools, jewelry, camel or bags.",
+          "lighting": {
+            "key": "Soft daylight screened by colorful fabric awning; Warm muted fabric shade with restrained neutral skin highlights",
+            "fill": "Subtle rust and violet cloth reflection, no bright orange curls",
+            "shadows": "Broad painted local shadow planes on face, hands, hair and clothes together. Preserve intrinsic complexion. Restrained highlights, no detached scenery or cast shadow.",
+            "exposure": "Low-to-medium tent shade matching the original stall child; match neighboring original people; no luminous face, saturated portrait clothes or bright orange hair rim"
+          },
+          "foreground": {
+            "path": "content/board-conditioned-qa/world-fixed-20260909-v5/giza/foreground-3.png",
+            "sha256": "ffb4267eb9c91f1be397c801f073b416ea70060f0a46e11bb602c0641c58265b"
+          },
+          "hintText": {
+            "he": "בין הבדים הצבעוניים של השוק",
+            "en": "Around the market's colorful fabrics"
+          }
+        }
+      ]
+    },
+    {
+      "boardId": "tokyo",
+      "sceneVersion": 4,
+      "board": {
+        "path": "content/board-conditioned-qa/world-fixed-20260909-v5/tokyo/board.png",
+        "sha256": "82a3d960eef4c977d8ed721fde45223ec572adc9be0d5eeeab5daa22c9c6e4cb"
+      },
+      "slots": [
+        {
+          "slot": {
+            "id": "tokyo-open-near-dark-crossing-v1",
+            "pose": "standing",
+            "eye": {
+              "x": 1346,
+              "y": 1598
+            },
+            "faceHeightPx": 33.6,
+            "window": {
+              "left": 1246,
+              "top": 1538,
+              "width": 200,
+              "height": 298
+            },
+            "mode": "open",
+            "pixelRefinement": "connected-crown-fringe-bounded-feet/v3",
+            "compositingTone": {
+              "version": "local-exposure-chroma/v1",
+              "exposureStops": -0.35,
+              "saturation": 0.72
+            },
+            "supportPointPx": {
+              "x": 1346,
+              "y": 1816
+            },
+            "standingHeightPx": 243.20000000000002,
+            "forbiddenRects": [
+              {
+                "left": 1520,
+                "top": 1488,
+                "width": 120,
+                "height": 296,
+                "id": "original-person-protected-0"
+              }
+            ]
+          },
+          "context": {
+            "left": 1246,
+            "top": 1538,
+            "width": 200,
+            "height": 298
+          },
+          "originalPeople": {
+            "left": 1520,
+            "top": 1488,
+            "width": 120,
+            "height": 296
+          },
+          "poseDescription": "Stand on the dark near end of the crossing, both feet planted close together. Look three-quarter RIGHT toward the child in the red cardigan, hands loosely together at waist. Natural small child, no rigid front-facing portrait, props or pavement.",
+          "wardrobe": "Muted warm-magenta/pink cardigan over a simple cream shirt, blue lower garment if visible. Same intrinsic clothing across all three poses; cool burgundy shadow planes and local lantern highlights vary by slot. No lantern, counter, plant, signs or props generated.",
+          "lighting": {
+            "key": "Diffuse night sky and distant shop/sign spill; Cool blue-violet ambient with very restrained amber side light",
+            "fill": "Weak violet asphalt reflections; no strong rim or front portrait fill",
+            "shadows": "Broad painted local shadow planes on face, hands, hair and clothes together. Preserve intrinsic complexion. Restrained highlights, no detached scenery or cast shadow.",
+            "exposure": "Dark crossing exposure like the nearby original red-cardigan child; match neighboring original people; no luminous face, saturated portrait clothes or bright orange hair rim"
+          },
+          "foreground": {
+            "path": "content/board-conditioned-qa/world-fixed-20260909-v5/tokyo/foreground-1.png",
+            "sha256": "dcf6f20ab7cfd0746a37b2bc0b35398fcfbb65344e8f89c8506c1969eefa6c76"
+          },
+          "hintText": {
+            "he": "במעבר החצייה הקרוב",
+            "en": "At the near end of the crossing"
+          }
+        },
+        {
+          "slot": {
+            "id": "tokyo-open-mid-crossing-v1",
+            "pose": "standing",
+            "eye": {
+              "x": 1331,
+              "y": 1040
+            },
+            "faceHeightPx": 27.200000000000003,
+            "window": {
+              "left": 1231,
+              "top": 989,
+              "width": 200,
+              "height": 247
+            },
+            "mode": "open",
+            "pixelRefinement": "connected-crown-fringe-bounded-feet/v3",
+            "compositingTone": {
+              "version": "local-exposure-chroma/v1",
+              "exposureStops": -0.35,
+              "saturation": 0.72
+            },
+            "supportPointPx": {
+              "x": 1331,
+              "y": 1216
+            },
+            "standingHeightPx": 192,
+            "forbiddenRects": [
+              {
+                "left": 1520,
+                "top": 906,
+                "width": 85,
+                "height": 181,
+                "id": "original-person-protected-0"
+              }
+            ]
+          },
+          "context": {
+            "left": 1231,
+            "top": 989,
+            "width": 200,
+            "height": 247
+          },
+          "originalPeople": {
+            "left": 1520,
+            "top": 906,
+            "width": 85,
+            "height": 181
+          },
+          "poseDescription": "Stand naturally in the dark crossing gap, both soles visible and flat. Turn three-quarter LEFT toward the shop, one arm relaxed and the other bent lightly across the waist. Keep the face partly visible with a curious expression, no waving or objects.",
+          "wardrobe": "Muted warm-magenta/pink cardigan over a simple cream shirt, blue lower garment if visible. Same intrinsic clothing across all three poses; cool burgundy shadow planes and local lantern highlights vary by slot. No lantern, counter, plant, signs or props generated.",
+          "lighting": {
+            "key": "Cool open-street night fill with distant upper-left amber shop light; Predominantly blue-violet, muted warm highlights on shop-facing cheek",
+            "fill": "Very weak magenta sign reflections, no neon skin or glowing hair",
+            "shadows": "Broad painted local shadow planes on face, hands, hair and clothes together. Preserve intrinsic complexion. Restrained highlights, no detached scenery or cast shadow.",
+            "exposure": "Medium-low night street exposure below lit shop faces; match neighboring original people; no luminous face, saturated portrait clothes or bright orange hair rim"
+          },
+          "foreground": {
+            "path": "content/board-conditioned-qa/world-fixed-20260909-v5/tokyo/foreground-2.png",
+            "sha256": "dcf6f20ab7cfd0746a37b2bc0b35398fcfbb65344e8f89c8506c1969eefa6c76"
+          },
+          "hintText": {
+            "he": "בין הולכי הרגל ברחוב",
+            "en": "Among the people crossing the street"
+          }
+        },
+        {
+          "slot": {
+            "id": "tokyo-lit-counter-compact-v2",
+            "pose": "standing",
+            "eye": {
+              "x": 2930,
+              "y": 1468
+            },
+            "faceHeightPx": 27,
+            "window": {
+              "left": 2730,
+              "top": 1310,
+              "width": 342,
+              "height": 480
+            },
+            "mode": "open",
+            "pixelRefinement": "connected-crown-fringe-bounded-feet/v3",
+            "supportPointPx": {
+              "x": 2930,
+              "y": 1710
+            },
+            "standingHeightPx": 270,
+            "forbiddenRects": [
+              {
+                "left": 2730,
+                "top": 1310,
+                "width": 105,
+                "height": 94,
+                "id": "original-head-0"
+              },
+              {
+                "left": 2886,
+                "top": 1577,
+                "width": 159,
+                "height": 125,
+                "id": "original-head-1"
+              },
+              {
+                "left": 2706,
+                "top": 1291,
+                "width": 154,
+                "height": 184,
+                "id": "original-person-protected-0"
+              }
+            ]
+          },
+          "context": {
+            "left": 2730,
+            "top": 1310,
+            "width": 342,
+            "height": 480
+          },
+          "originalPeople": {
+            "left": 2706,
+            "top": 1291,
+            "width": 154,
+            "height": 184
+          },
+          "poseDescription": "Draw a COMPLETE standing child from crown to both shoes, body and three-quarter face turned LEFT looking at illuminated toys, both arms relaxed inward at waist. Inside the lantern shop behind its display counter. Existing counter pixels will hide the lower body later. Face, hair and hands share amber lamp key with the nearby boy. No lamps, toys or counter generated.",
+          "wardrobe": "Muted warm-magenta/pink cardigan over a simple cream shirt, blue lower garment if visible. Same intrinsic clothing across all three poses; cool burgundy shadow planes and local lantern highlights vary by slot. No lantern, counter, plant, signs or props generated.",
+          "lighting": {
+            "key": "Visible paper lantern above-right; Warm amber lantern key over cool night ambient",
+            "fill": "Weaker warm tray bounce from below-left; faint cool unlit edge",
+            "shadows": "Broad painted local shadow planes on face, hands, hair and clothes together. Preserve intrinsic complexion. Restrained highlights, no detached scenery or cast shadow.",
+            "exposure": "Localized warm shop exposure but never brighter than paper lanterns; match neighboring original people; no luminous face, saturated portrait clothes or bright orange hair rim"
+          },
+          "foreground": {
+            "path": "content/board-conditioned-qa/world-fixed-20260909-v5/tokyo/foreground-3.png",
+            "sha256": "90ff4dcdcf3a91a4d380d8d2da80a87f859a0120bb4f391ba9b3dc68d6636424"
+          },
+          "hintText": {
+            "he": "בדוכן הצעצועים המואר",
+            "en": "At the illuminated toy stall"
+          }
+        }
+      ]
+    },
+    {
+      "boardId": "greatwall",
+      "sceneVersion": 4,
+      "board": {
+        "path": "content/board-conditioned-qa/world-fixed-20260909-v5/greatwall/board.png",
+        "sha256": "6519446d0eab2b10699d1035781296eebea27fa5b9473db8a523c269ed7b1c84"
+      },
+      "slots": [
+        {
+          "slot": {
+            "id": "greatwall-open-shaded-lower-step-v1",
+            "pose": "standing",
+            "eye": {
+              "x": 1507,
+              "y": 1758
+            },
+            "faceHeightPx": 28.8,
+            "window": {
+              "left": 1407,
+              "top": 1706,
+              "width": 200,
+              "height": 266
+            },
+            "mode": "open",
+            "pixelRefinement": "connected-crown-fringe-bounded-feet/v3",
+            "supportPointPx": {
+              "x": 1507,
+              "y": 1952
+            },
+            "standingHeightPx": 211.20000000000002,
+            "forbiddenRects": [
+              {
+                "left": 1594,
+                "top": 1669,
+                "width": 112,
+                "height": 312,
+                "id": "original-person-protected-0"
+              }
+            ]
+          },
+          "context": {
+            "left": 1407,
+            "top": 1706,
+            "width": 200,
+            "height": 266
+          },
+          "originalPeople": {
+            "left": 1594,
+            "top": 1669,
+            "width": 112,
+            "height": 312
+          },
+          "poseDescription": "Stand quietly on the broad shaded lower stone step, feet together and both soles planted, arms relaxed. Turn three-quarter LEFT to watch the children with food on the higher landing. Keep a visible three-quarter face; no lantern, food or pole generated.",
+          "wardrobe": "Muted ochre/coral lightweight travel shirt or thin jacket with blue/teal lower garment if visible; child-size sleeves, modest practical cotton folds. Same intrinsic outfit across three slots. No hat, mug, food, roof tiles, parapet, plants or architecture generated.",
+          "lighting": {
+            "key": "Diffuse open sky screened by the higher stone landing; Cool neutral stone shade with weak warm reflected daylight",
+            "fill": "Weak pale-stone bounce; low-contrast blue-grey ambient",
+            "shadows": "Broad painted local shadow planes on face, hands, hair and clothes together. Preserve intrinsic complexion. Restrained highlights, no detached scenery or cast shadow.",
+            "exposure": "Subdued shaded step exposure, not sunlit roof exposure; match neighboring original people; no luminous face, saturated portrait clothes or bright orange hair rim"
+          },
+          "foreground": {
+            "path": "content/board-conditioned-qa/world-fixed-20260909-v5/greatwall/foreground-1.png",
+            "sha256": "dcf6f20ab7cfd0746a37b2bc0b35398fcfbb65344e8f89c8506c1969eefa6c76"
+          },
+          "hintText": {
+            "he": "במדרגות שמתחת לחומה",
+            "en": "On the steps below the wall"
+          }
+        },
+        {
+          "slot": {
+            "id": "greatwall-left-stair-planter-side-peek",
+            "pose": "side-lean",
+            "eye": {
+              "x": 86,
+              "y": 967
+            },
+            "faceHeightPx": 23,
+            "window": {
+              "left": 0,
+              "top": 805,
+              "width": 512,
+              "height": 512
+            },
+            "cutSelection": "two-hidden-rows-one-face-side-margin/v1",
+            "forbiddenRects": [
+              {
+                "left": 220,
+                "top": 794,
+                "width": 86,
+                "height": 84,
+                "id": "original-head-0"
+              },
+              {
+                "left": 303,
+                "top": 842,
+                "width": 91,
+                "height": 78,
+                "id": "original-head-1"
+              }
+            ]
+          },
+          "context": {
+            "left": 0,
+            "top": 805,
+            "width": 512,
+            "height": 512
+          },
+          "originalPeople": {
+            "left": 208,
+            "top": 782,
+            "width": 110,
+            "height": 132
+          },
+          "poseDescription": "SIDE LEAN: compact torso leaning toward viewer RIGHT, slight head tilt and both eyes visible, arms inward. Existing stone plinth/planter hides lower torso. No stair contact needed.",
+          "wardrobe": "Muted ochre/coral lightweight travel shirt or thin jacket with blue/teal lower garment if visible; child-size sleeves, modest practical cotton folds. Same intrinsic outfit across three slots. No hat, mug, food, roof tiles, parapet, plants or architecture generated.",
+          "lighting": {
+            "key": "upper-left/open sky partially screened by stair-side planting; neutral-warm daylight in partial shade",
+            "fill": "restrained olive foliage and pale stone bounce",
+            "shadows": "Deeper near-side hair/neck shadow, no green complexion tint or separated luminous curls.",
+            "exposure": "medium shaded stair pocket"
+          },
+          "foreground": {
+            "path": "content/board-conditioned-qa/world-fixed-20260909-v5/greatwall/foreground-2.png",
+            "sha256": "03b13f8a582b734f254539099dbf544f696ba1d33dc34d0e0c3eca467c56dcf1"
+          },
+          "hintText": {
+            "he": "ליד הצמחייה שבצד המגדל",
+            "en": "Near the plants beside the tower"
+          }
+        },
+        {
+          "slot": {
+            "id": "greatwall-upper-tower-solid-parapet-v1",
+            "pose": "standing",
+            "eye": {
+              "x": 302,
+              "y": 295
+            },
+            "faceHeightPx": 20,
+            "window": {
+              "left": 130,
+              "top": 90,
+              "width": 830,
+              "height": 500
+            },
+            "mode": "open",
+            "pixelRefinement": "connected-crown-fringe-bounded-feet/v3",
+            "compositingTone": {
+              "version": "local-exposure-chroma/v1",
+              "exposureStops": -0.18,
+              "saturation": 0.78
+            },
+            "supportPointPx": {
+              "x": 292,
+              "y": 454
+            },
+            "standingHeightPx": 180,
+            "forbiddenRects": [
+              {
+                "left": 205,
+                "top": 215,
+                "width": 60,
+                "height": 85,
+                "id": "left-kite-flyer-face"
+              },
+              {
+                "left": 258,
+                "top": 230,
+                "width": 28,
+                "height": 42,
+                "id": "left-kite-flyer-raised-hand"
+              },
+              {
+                "left": 331,
+                "top": 249,
+                "width": 54,
+                "height": 73,
+                "id": "right-blue-shirt-child-face"
+              },
+              {
+                "left": 330,
+                "top": 302,
+                "width": 56,
+                "height": 33,
+                "id": "right-blue-shirt-child-hands"
+              }
+            ],
+            "forbiddenPolygons": []
+          },
+          "context": {
+            "left": 130,
+            "top": 90,
+            "width": 830,
+            "height": 500
+          },
+          "originalPeople": {
+            "left": 330,
+            "top": 246,
+            "width": 59,
+            "height": 88
+          },
+          "poseDescription": "Draw a COMPLETE standing child for the upper tower roof-walk, both shoes visible in the source. Relax shoulders, hands gently folded at the waist, body three-quarter LEFT among the nearby kite-flying children. A readable face may glance naturally UP-RIGHT toward a kite. Stand behind the original solid stone parapet; it hides the lower body after placement. No lantern, food, kite, wall, prop or detached shadow generated.",
+          "wardrobe": "Muted ochre/coral lightweight travel shirt or thin jacket with blue/teal lower garment if visible; child-size sleeves, modest practical cotton folds. Same intrinsic outfit across three slots. No hat, mug, food, roof tiles, parapet, plants or architecture generated.",
+          "lighting": {
+            "key": "Open upper-left daylight on the upper tower roof-walk; Warm soft daylight with pale grey/tan tower-stone fill",
+            "fill": "Soft tan-grey stone bounce from the tower parapet and roof, weak cool sky fill",
+            "shadows": "Coherent soft painted shade on the face, hair, hands and clothing. Feet and lower body will be hidden by real foreground stone, not a generated shadow.",
+            "exposure": "Match neighboring original tower children's matte faces and clothing at the same elevation; not the lower food area, a shop or lantern light. No bright portrait face or orange hair halo."
+          },
+          "foreground": {
+            "path": "content/board-conditioned-qa/world-fixed-20260909-v5/greatwall/foreground-3.png",
+            "sha256": "c3a10b4afe4be67544e30198eb9e66a5f410670122b75193e754585d167a0845"
+          },
+          "hintText": {
+            "he": "ליד הילדים שעל המגדל",
+            "en": "Near the children on the tower"
+          }
+        }
+      ]
+    },
+    {
+      "boardId": "sydney",
+      "sceneVersion": 5,
+      "board": {
+        "path": "content/board-conditioned-qa/world-fixed-20260909-v5/sydney/board.png",
+        "sha256": "12ec5b3ab9263f09732ebc24fbed51f515b170b85333b708adb85b2251093d20"
+      },
+      "slots": [
+        {
+          "slot": {
+            "id": "sydney-open-lifeguard-shade-v1",
+            "pose": "standing",
+            "eye": {
+              "x": 816,
+              "y": 843
+            },
+            "faceHeightPx": 22.400000000000002,
+            "window": {
+              "left": 726,
+              "top": 789,
+              "width": 180,
+              "height": 205
+            },
+            "mode": "open",
+            "pixelRefinement": "connected-crown-fringe-bounded-feet/v3",
+            "supportPointPx": {
+              "x": 816,
+              "y": 978
+            },
+            "standingHeightPx": 157,
+            "forbiddenRects": [
+              {
+                "left": 648,
+                "top": 811,
+                "width": 104,
+                "height": 165,
+                "id": "original-comparator-person"
+              }
+            ]
+          },
+          "context": {
+            "left": 726,
+            "top": 789,
+            "width": 180,
+            "height": 205
+          },
+          "originalPeople": {
+            "left": 648,
+            "top": 811,
+            "width": 104,
+            "height": 165
+          },
+          "poseDescription": "Stand in the shaded sand just in front of the left half of the lifeguard chair, both soles flat and clearly visible. Look three-quarter RIGHT toward the nearby children playing at the water, one hand lightly on the hip and the other relaxed. Draw only the complete small child, not chair, bucket, sand or a separate cast shadow.",
+          "wardrobe": "Simple short-sleeved muted golden-yellow cotton beach T-shirt with muted teal shorts/lower garment. Bare small forearms where the pose exposes them; no jacket, hat, sunglasses, backpack, beach toy or sun umbrella. Intrinsic clothing consistent; daylight/water/sand reflections vary locally.",
+          "lighting": {
+            "key": "Soft beach skylight screened by the lifeguard chair and umbrella, shaded face and body without a bright orange hair rim; Cool neutral shade with gentle local warm bounce",
+            "fill": "Muted warm sand reflection and faint cyan water bounce; restrained saturation relative to the sunny beach",
+            "shadows": "Broad matte shadow planes on face, hair, hands and clothes together. Preserve intrinsic complexion. No detached background or cast shadow.",
+            "exposure": "Match the adjacent original people's shaded exposure and restrained colour saturation; no hero spotlight, glossy face, bright orange hair rim or luminous clothes"
+          },
+          "foreground": {
+            "path": "content/board-conditioned-qa/world-fixed-20260909-v5/sydney/foreground-1.png",
+            "sha256": "dcf6f20ab7cfd0746a37b2bc0b35398fcfbb65344e8f89c8506c1969eefa6c76"
+          },
+          "hintText": {
+            "he": "באזור סוכת המציל",
+            "en": "Around the lifeguard chair"
+          }
+        },
+        {
+          "slot": {
+            "id": "sydney-open-surfboard-shade-v1",
+            "pose": "standing",
+            "eye": {
+              "x": 309,
+              "y": 1304
+            },
+            "faceHeightPx": 28.8,
+            "window": {
+              "left": 219,
+              "top": 1243,
+              "width": 180,
+              "height": 253
+            },
+            "mode": "open",
+            "pixelRefinement": "connected-crown-fringe-bounded-feet/v3",
+            "supportPointPx": {
+              "x": 309,
+              "y": 1480
+            },
+            "standingHeightPx": 205,
+            "forbiddenRects": [
+              {
+                "left": 374,
+                "top": 1238,
+                "width": 109,
+                "height": 256,
+                "id": "original-comparator-person"
+              }
+            ]
+          },
+          "context": {
+            "left": 219,
+            "top": 1243,
+            "width": 180,
+            "height": 253
+          },
+          "originalPeople": {
+            "left": 374,
+            "top": 1238,
+            "width": 109,
+            "height": 256
+          },
+          "poseDescription": "Stand naturally on the shaded sand at the base of the upright surfboards, LEFT of the original orange-shirt child. Both shoes remain visible. Turn three-quarter RIGHT as if listening to that child, one forearm bent gently inward and the other relaxed. No surfboard, bucket, food, platform or background generated.",
+          "wardrobe": "Simple short-sleeved muted golden-yellow cotton beach T-shirt with muted teal shorts/lower garment. Bare small forearms where the pose exposes them; no jacket, hat, sunglasses, backpack, beach toy or sun umbrella. Intrinsic clothing consistent; daylight/water/sand reflections vary locally.",
+          "lighting": {
+            "key": "Diffuse daylight in the upright surfboards' shade, no isolated bright portrait highlights; Cool neutral shade with gentle local warm bounce",
+            "fill": "Low-contrast warm sand bounce with a little reflected teal, modest saturation in all body planes",
+            "shadows": "Broad matte shadow planes on face, hair, hands and clothes together. Preserve intrinsic complexion. No detached background or cast shadow.",
+            "exposure": "Match the adjacent original people's shaded exposure and restrained colour saturation; no hero spotlight, glossy face, bright orange hair rim or luminous clothes"
+          },
+          "foreground": {
+            "path": "content/board-conditioned-qa/world-fixed-20260909-v5/sydney/foreground-2.png",
+            "sha256": "dcf6f20ab7cfd0746a37b2bc0b35398fcfbb65344e8f89c8506c1969eefa6c76"
+          },
+          "hintText": {
+            "he": "ליד הגלשנים הצבעוניים",
+            "en": "Near the colorful surfboards"
+          }
+        },
+        {
+          "slot": {
+            "id": "sydney-rock-complete-standing-layer-v1",
+            "pose": "standing",
+            "eye": {
+              "x": 2220,
+              "y": 1145
+            },
+            "faceHeightPx": 28,
+            "window": {
+              "left": 1840,
+              "top": 990,
+              "width": 700,
+              "height": 650
+            },
+            "mode": "open",
+            "pixelRefinement": "connected-crown-fringe-bounded-feet/v3",
+            "supportPointPx": {
+              "x": 2220,
+              "y": 1355
+            },
+            "standingHeightPx": 240,
+            "forbiddenRects": [
+              {
+                "left": 1970,
+                "top": 1070,
+                "width": 107,
+                "height": 117,
+                "id": "yellow-dress-seated-child-face"
+              },
+              {
+                "left": 2044,
+                "top": 986,
+                "width": 119,
+                "height": 136,
+                "id": "cream-shirt-seated-child-face"
+              },
+              {
+                "left": 2318,
+                "top": 1210,
+                "width": 126,
+                "height": 119,
+                "id": "pink-shirt-kneeling-child-face"
+              },
+              {
+                "left": 2060,
+                "top": 1310,
+                "width": 134,
+                "height": 160,
+                "id": "foreground-green-girl-face"
+              }
+            ]
+          },
+          "context": {
+            "left": 1840,
+            "top": 990,
+            "width": 700,
+            "height": 650
+          },
+          "originalPeople": {
+            "left": 2020,
+            "top": 968,
+            "width": 167,
+            "height": 226
+          },
+          "poseDescription": "Draw a COMPLETE standing child for the rock-pool position, both shoes visible in this source. Turn three-quarter LEFT toward the children exploring the rock pools, hands gently together at the waist and shoulders relaxed. Existing real rock pixels hide the lower body after placement. Do not draw a rock, water, floor, prop or cast shadow. Keep a readable part of the face.",
+          "wardrobe": "Simple short-sleeved muted golden-yellow cotton beach T-shirt with muted teal shorts/lower garment. Bare small forearms where the pose exposes them; no jacket, hat, sunglasses, backpack, beach toy or sun umbrella. Intrinsic clothing consistent; daylight/water/sand reflections vary locally.",
+          "lighting": {
+            "key": "upper-left/open sky; neutral-warm daylight with cool turquoise fill",
+            "fill": "restrained harbor turquoise and warm rock bounce",
+            "shadows": "Matte cheek/neck shadows; no overall blue skin filter or wet plastic highlight.",
+            "exposure": "bright diffuse rock-pool edge"
+          },
+          "foreground": {
+            "path": "content/board-conditioned-qa/world-fixed-20260909-v5/sydney/foreground-3.png",
+            "sha256": "85682dfc565b6efe1658a47dbf518840887b5f699fd02a9c4677f91eaa86b4a1"
+          },
+          "hintText": {
+            "he": "בין בריכות הסלעים",
+            "en": "Among the rock pools"
+          }
+        }
+      ]
+    },
+    {
+      "boardId": "antarctica",
+      "sceneVersion": 5,
+      "board": {
+        "path": "content/board-conditioned-qa/world-fixed-20260909-v5/antarctica/board.png",
+        "sha256": "a8a6493e5d8e5c3486baca1a7b1cc6b99c1f8897c80318ecbc02b01af11062d0"
+      },
+      "slots": [
+        {
+          "slot": {
+            "id": "antarctica-open-hut-shadow-v1",
+            "pose": "standing",
+            "eye": {
+              "x": 628,
+              "y": 683
+            },
+            "faceHeightPx": 19.200000000000003,
+            "window": {
+              "left": 520,
+              "top": 632,
+              "width": 180,
+              "height": 182
+            },
+            "mode": "open",
+            "pixelRefinement": "connected-crown-fringe-bounded-feet/v3",
+            "supportPointPx": {
+              "x": 628,
+              "y": 798
+            },
+            "standingHeightPx": 134,
+            "forbiddenRects": [
+              {
+                "left": 658,
+                "top": 699,
+                "width": 88,
+                "height": 134,
+                "id": "original-comparator-person"
+              },
+              {
+                "left": 520,
+                "top": 670,
+                "width": 72,
+                "height": 133,
+                "id": "original-penguin-whole-body"
+              }
+            ]
+          },
+          "context": {
+            "left": 520,
+            "top": 632,
+            "width": 180,
+            "height": 182
+          },
+          "originalPeople": {
+            "left": 658,
+            "top": 699,
+            "width": 88,
+            "height": 134
+          },
+          "poseDescription": "Stand on the blue-grey snow in front of the hut platform, both insulated boots planted and fully visible. Turn three-quarter RIGHT to watch the nearby child carrying supplies, hands relaxed close to the coat. Small child proportions. No crate, snow mound, floor, prop or separate cast shadow.",
+          "wardrobe": "Red/orange insulated child-size winter jacket, muted blue snow trousers, small gray mittens and winter boots if visible. Keep curls and facial features readable; no new hat, sled, snow block or cargo generated. Jacket folds are painted, not glossy product photography.",
+          "lighting": {
+            "key": "Cool diffuse light in the hut's existing shadow, with no direct sunlit face or bright studio rim; Cool blue-grey winter shade",
+            "fill": "Soft blue snow bounce and very weak warm red-hut reflection, broad muted coat and face planes",
+            "shadows": "Broad matte shadow planes on face, hair, hands and clothes together. Preserve intrinsic complexion. No detached background or cast shadow.",
+            "exposure": "Match the adjacent original people's shaded exposure and restrained colour saturation; no hero spotlight, glossy face, bright orange hair rim or luminous clothes"
+          },
+          "foreground": {
+            "path": "content/board-conditioned-qa/world-fixed-20260909-v5/antarctica/foreground-1.png",
+            "sha256": "dcf6f20ab7cfd0746a37b2bc0b35398fcfbb65344e8f89c8506c1969eefa6c76"
+          },
+          "hintText": {
+            "he": "ליד בקתת המחקר",
+            "en": "Near the research hut"
+          }
+        },
+        {
+          "slot": {
+            "id": "antarctica-open-snowmobile-shadow-v1",
+            "pose": "standing",
+            "eye": {
+              "x": 640,
+              "y": 1002
+            },
+            "faceHeightPx": 27.200000000000003,
+            "window": {
+              "left": 550,
+              "top": 919,
+              "width": 180,
+              "height": 275
+            },
+            "mode": "open",
+            "pixelRefinement": "connected-crown-fringe-bounded-feet/v3",
+            "supportPointPx": {
+              "x": 640,
+              "y": 1154
+            },
+            "standingHeightPx": 179,
+            "forbiddenRects": [
+              {
+                "left": 808,
+                "top": 944,
+                "width": 125,
+                "height": 224,
+                "id": "original-comparator-person"
+              }
+            ]
+          },
+          "context": {
+            "left": 550,
+            "top": 919,
+            "width": 180,
+            "height": 275
+          },
+          "originalPeople": {
+            "left": 808,
+            "top": 944,
+            "width": 125,
+            "height": 224
+          },
+          "poseDescription": "Stand with both insulated boots on the shaded snow immediately in front of the snowmobile, arms close and relaxed. Turn three-quarter RIGHT toward the child making a snowman, head gently tilted with interest. Preserve a visible face. Do not draw a snowmobile, snowman, snow block, ground or cast shadow.",
+          "wardrobe": "Red/orange insulated child-size winter jacket, muted blue snow trousers, small gray mittens and winter boots if visible. Keep curls and facial features readable; no new hat, sled, snow block or cargo generated. Jacket folds are painted, not glossy product photography.",
+          "lighting": {
+            "key": "Cool shaded snowmobile foreground, diffuse winter sky rather than direct sunshine; Cool blue-grey winter shade",
+            "fill": "Blue-grey snow bounce, very restrained warm vehicle reflection; no glossy face or luminous winter coat",
+            "shadows": "Broad matte shadow planes on face, hair, hands and clothes together. Preserve intrinsic complexion. No detached background or cast shadow.",
+            "exposure": "Match the adjacent original people's shaded exposure and restrained colour saturation; no hero spotlight, glossy face, bright orange hair rim or luminous clothes"
+          },
+          "foreground": {
+            "path": "content/board-conditioned-qa/world-fixed-20260909-v5/antarctica/foreground-2.png",
+            "sha256": "dcf6f20ab7cfd0746a37b2bc0b35398fcfbb65344e8f89c8506c1969eefa6c76"
+          },
+          "hintText": {
+            "he": "באזור אופנוע השלג",
+            "en": "Around the snowmobile"
+          }
+        },
+        {
+          "slot": {
+            "id": "antarctica-foreground-cargo-wall-peek",
+            "pose": "seated",
+            "eye": {
+              "x": 1960,
+              "y": 1720
+            },
+            "faceHeightPx": 25,
+            "window": {
+              "left": 1660,
+              "top": 1430,
+              "width": 670,
+              "height": 610
+            },
+            "cutSelection": "two-hidden-rows-one-face-side-margin/v1",
+            "forbiddenRects": [
+              {
+                "left": 2038,
+                "top": 1719,
+                "width": 111,
+                "height": 111,
+                "id": "green-child-on-sled-face"
+              },
+              {
+                "left": 1732,
+                "top": 1463,
+                "width": 127,
+                "height": 115,
+                "id": "orange-standing-child-left-face"
+              },
+              {
+                "left": 2030,
+                "top": 1390,
+                "width": 116,
+                "height": 112,
+                "id": "blue-pulling-child-above-face"
+              },
+              {
+                "left": 2410,
+                "top": 1567,
+                "width": 107,
+                "height": 112,
+                "id": "pink-cargo-child-right-face"
+              },
+              {
+                "left": 1618,
+                "top": 1932,
+                "width": 104,
+                "height": 104,
+                "id": "yellow-foreground-child-lower-left-face"
+              }
+            ]
+          },
+          "context": {
+            "left": 1660,
+            "top": 1430,
+            "width": 670,
+            "height": 610
+          },
+          "originalPeople": {
+            "left": 2026,
+            "top": 1707,
+            "width": 135,
+            "height": 159
+          },
+          "poseDescription": "LOW SEATED PEEK: relaxed three-quarter shoulders and face toward viewer, arms inward near lap. Existing cargo hides seat and legs. No sled, crate or snow block generated.",
+          "wardrobe": "Red/orange insulated child-size winter jacket, muted blue snow trousers, small gray mittens and winter boots if visible. Keep curls and facial features readable; no new hat, sled, snow block or cargo generated. Jacket folds are painted, not glossy product photography.",
+          "lighting": {
+            "key": "upper-left/open sky; cool-neutral daylight",
+            "fill": "cool snow fill from below with small warm crate bounce",
+            "shadows": "Broad cool reflected shadows on lower face; subdued jacket highlights, no luminous copper hair.",
+            "exposure": "bright foreground snow/cargo"
+          },
+          "foreground": {
+            "path": "content/board-conditioned-qa/world-fixed-20260909-v5/antarctica/foreground-3.png",
+            "sha256": "e38c3bf4cb28f153ec4fe8323dc6eff92c7e593359c56026568bd9764d1cbf4b"
+          },
+          "hintText": {
+            "he": "בין המזחלות והמטען",
+            "en": "Among the sledges and cargo"
+          }
+        }
+      ]
+    }
+  ]
+}

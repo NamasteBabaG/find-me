@@ -16,6 +16,9 @@ interface Status {
   failed: boolean;
   state: CreationState;
   playUrl: string | null;
+  qaPreviewUrl?: string | null;
+  qaBoards?: { boardId: string; name: string; state: string; attempts: number; slots: { slotId: string; state: string; reason: string | null }[] }[] | null;
+  qaCost?: { spentCents: number; reservedCents: number; capCents: number; held: boolean } | null;
   awaitingQa: boolean;
   /** A real recipient got the mail. "Ready" alone means the link works, nothing more. */
   delivered: boolean;
@@ -143,6 +146,14 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
     }
   };
 
+  if (s.qaPreviewUrl) {
+    return <div className="fm-card fm-card--pad-6 fm-stack fm-stack--3 fm-center">
+      <h2>{locale === "he" ? "העולם מוכן לבדיקה שלך" : "Your world is ready for private QA"}</h2>
+      <p>{locale === "he" ? "9 בורדים ו־27 הופעות. תוצאות השיפוט והופעות שעדיין דורשות בדיקה מוצגות במשחק; זה אינו משחק מאושר לפרסום." : "9 boards and 27 appearances. Review results and any unresolved appearances are shown in the game; this is not a published game."}</p>
+      <LinkButton href={s.qaPreviewUrl} size="lg">{locale === "he" ? "פתיחת משחק הבדיקה" : "Open private QA game"}</LinkButton>
+      <QaBoardProgress status={s} hebrew={locale === "he"} />
+    </div>;
+  }
   if (s.done && s.playUrl) {
     const mailLine = s.delivered && !s.mailSimulated ? cr.mailSent : cr.mailNotSent;
     return (
@@ -260,6 +271,19 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
       ) : (
         <p className="fm-small fm-center">{cr.usually}</p>
       )}
+      <QaBoardProgress status={s} hebrew={locale === "he"} />
     </div>
   );
+}
+
+function QaBoardProgress({ status, hebrew }: { status: Status; hebrew: boolean }) {
+  if (!status.qaBoards) return null;
+  const labels: Record<string, string> = hebrew ? { pending: "ממתין", "geometry-ok": "הורכב; טרם נשפט", "needs-repair": "דרוש תיקון", pass: "עבר שיפוט", "review-required": "דרושה בדיקה" } : { pending: "Pending", "geometry-ok": "Composed; not reviewed", "needs-repair": "Needs repair", pass: "Visual pass", "review-required": "Needs review" };
+  return <details className="fm-card fm-card--pad-4" open={!status.pending}>
+    <summary>{hebrew ? "מצב 27 ההופעות — גם תוצאות חלקיות" : "All 27 appearances — including partial results"}</summary>
+    {status.qaCost && <p className="fm-small">{hebrew ? "עלות מתועדת" : "Recorded cost"}: ${(status.qaCost.spentCents / 100).toFixed(3)}; {hebrew ? "רזרבות פתוחות" : "Open reserves"}: ${(status.qaCost.reservedCents / 100).toFixed(3)}; {hebrew ? "תקרה" : "Cap"}: ${(status.qaCost.capCents / 100).toFixed(2)}</p>}
+    {status.qaBoards.map(board => <div key={board.boardId}><h3>{board.name} · {board.attempts}/2</h3><ul>{board.slots.map(slot => <li key={slot.slotId}>
+      {slot.slotId}: {labels[slot.state] ?? slot.state}{slot.reason && <span className="fm-small"> — {slot.reason}</span>}
+    </li>)}</ul></div>)}
+  </details>;
 }

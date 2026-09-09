@@ -7,6 +7,8 @@ import { isPlayable } from "@/domain/order-state";
 import { routeMail } from "./email/fallback";
 import { deleteAsset } from "./asset.service";
 import { audit, type Actor } from "./audit.service";
+import { fixedStageAssert, isFixedWorldStyle } from "./generation/fixed-world-stage-record";
+import { approveFixedWorldForPublication } from "./generation/fixed-world-staging";
 
 /**
  * QA_PENDING → APPROVED → READY → (email) → DELIVERED.
@@ -15,6 +17,15 @@ import { audit, type Actor } from "./audit.service";
  */
 export async function publishGame(c: Container, gameId: string, actor: Actor): Promise<{ playUrl: string }> {
   const game = await c.db.game.findUniqueOrThrow({ where: { id: gameId }, include: { childProfile: true, owner: true, scenes: true } });
+  if (isFixedWorldStyle(game.styleVersion)) {
+    // This helper owns the manual ADMIN gate, current integrity/budget checks,
+    // and atomic privacy deletion + READY transition. Never enter legacy QA.
+    await approveFixedWorldForPublication(c, gameId, actor);
+    const link = await ensurePlayerLink(c, gameId);
+    const current = await c.db.game.findUniqueOrThrow({ where: { id: gameId }, select: { status: true } });
+    if (statusOf(current) === "READY") await deliverGameMail(c, gameId, actor);
+    return { playUrl: link.url };
+  }
   const status = statusOf(game);
   if (status === "QA_PENDING" || status === "MANUAL_REVIEW") {
     if (status === "MANUAL_REVIEW") await transitionGame(c, gameId, "QA_PENDING", actor);
@@ -53,6 +64,7 @@ export async function publishGame(c: Container, gameId: string, actor: Actor): P
  */
 export async function deliverGameMail(c: Container, gameId: string, actor: Actor): Promise<{ outcome: "sent" | "fallback" | "no-recipient" | "failed"; simulated: boolean }> {
   const game = await c.db.game.findUniqueOrThrow({ where: { id: gameId }, include: { owner: true, childProfile: true, scenes: true } });
+  fixedStageAssert(!isFixedWorldStyle(game.styleVersion) || isPlayable(statusOf(game)), "permission", "A fixed world cannot be delivered before manual publication");
   const link = await ensurePlayerLink(c, gameId);
   const simulated = c.email.id === "console";
   if (!game.childProfile) return { outcome: "no-recipient", simulated };

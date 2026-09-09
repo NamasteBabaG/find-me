@@ -7,10 +7,11 @@ export default async function AdminCostsPage() {
   const totals = rows.reduce(
     (acc, r) => {
       acc.revenue[r.currency] += r.priceMinor;
-      acc.cost += r.generationCents;
+      if (r.generationCents === null) acc.unknown += 1;
+      else { acc.cost += r.generationCents; acc.known += 1; }
       return acc;
     },
-    { revenue: { ILS: 0, USD: 0 }, cost: 0 },
+    { revenue: { ILS: 0, USD: 0 }, cost: 0, known: 0, unknown: 0 },
   );
   const usd = (cents: number) => formatMoney(cents, "USD", "he");
   return (
@@ -24,8 +25,9 @@ export default async function AdminCostsPage() {
         <span className="fm-badge fm-badge--sea">
           הכנסות: {formatMoney(totals.revenue.ILS, "ILS", "he")} · {usd(totals.revenue.USD)}
         </span>
-        <span className="fm-badge fm-badge--berry">עלות יצירה: {usd(totals.cost)}</span>
-        <span className="fm-badge fm-badge--leaf">ממוצע: {usd(rows.length ? Math.round(totals.cost / rows.length) : 0)} למשחק</span>
+        <span className="fm-badge fm-badge--berry">{totals.unknown ? "עלות ידועה בלבד" : "עלות יצירה"}: {totals.known || !totals.unknown ? usd(totals.cost) : "לא זמינה"}</span>
+        <span className="fm-badge fm-badge--leaf">ממוצע{totals.unknown ? " למשחקים עם עלות ידועה" : ""}: {totals.known ? usd(Math.round(totals.cost / totals.known)) : totals.unknown ? "לא זמין" : usd(0)}</span>
+        {totals.unknown > 0 ? <span className="fm-badge">עלות לא זמינה ל־{totals.unknown} משחקים; הם לא נכללים בסכום ובממוצע.</span> : null}
       </div>
       <div style={{ overflowX: "auto" }}>
         <table className="fm-table">
@@ -45,7 +47,7 @@ export default async function AdminCostsPage() {
                   {r.childName} <span className="fm-small">{r.gameId}</span>
                 </td>
                 <td>{formatMoney(r.priceMinor, r.currency, "he")}</td>
-                <td>{usd(r.generationCents)}</td>
+                <td>{r.generationCents === null ? "עלות לא זמינה" : usd(r.generationCents)}</td>
                 <td>{r.attempts}</td>
                 <td>{r.marginPct === null ? "—" : `${r.marginPct}%`}</td>
               </tr>

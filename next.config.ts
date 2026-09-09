@@ -1,6 +1,18 @@
 import type { NextConfig } from "next";
+import { readFileSync } from "node:fs";
 
 const isDev = process.env.NODE_ENV !== "production";
+const tracingExcludedDirectories = ["work", "storage", "assets", "output", "tmp", ".claude", "public/scenes", "public/worlds"];
+const tracingExcludes = [...tracingExcludedDirectories.map(directory => `./${directory}/**/*`),
+  "./.env", "./.env.*", "./prisma/*.db", "./prisma/*.db-journal"];
+const activeBoardCatalogPath = "content/board-conditioned-qa/catalog.json";
+const activeBoardCatalog = JSON.parse(readFileSync(activeBoardCatalogPath, "utf8")) as {
+  boards: { board: { path: string }; slots: { foreground: { path: string } }[] }[];
+};
+const activeBoardAssetPaths = activeBoardCatalog.boards.flatMap(board => [board.board.path, ...board.slots.map(slot => slot.foreground.path)]);
+if (activeBoardCatalog.boards.length !== 9 || activeBoardAssetPaths.length !== 36 || new Set(activeBoardAssetPaths).size !== 36
+  || activeBoardAssetPaths.some(file => !/^content\/board-conditioned-qa\/[A-Za-z0-9_-]+\/[a-z0-9-]+\/(board|foreground-[1-3])\.png$/.test(file)))
+  throw new Error("Exactly36 safe active board-catalog PNG paths required for tracing");
 
 /**
  * Content Security Policy.
@@ -41,6 +53,18 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Only child-free frozen world inputs. Private work/, uploads and pilot
+  // imagery are never part of a deployment. Dynamic fs reads need tracing.
+  outputFileTracingIncludes: {
+    "/*": [activeBoardCatalogPath, ...activeBoardAssetPaths].map(file => `./${file}`),
+  },
+  outputFileTracingExcludes: {
+    // Local-only preview routes and Prisma's dotenv fallback otherwise cause
+    // the tracer to collect private files that must NEVER ship in a function.
+    // CDN art stays public; loadSceneArt uses its scoped same-origin fallback.
+    // public/demo metadata stays local for the landing-page demo.
+    "/*": tracingExcludes,
+  },
   // Scene art and child sprites are served through our own asset route,
   // so we do not need remote image patterns yet.
   images: { unoptimized: true },

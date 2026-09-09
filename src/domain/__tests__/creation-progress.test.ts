@@ -78,4 +78,21 @@ describe("creation progress", () => {
     expect(creationProgress({ ...base, status: "TARGETS_GENERATING", characterReady: true, spotsDone: 3, spotsTotal: 0 }).percent).toBe(20);
     expect(creationProgress({ ...base, status: "TARGETS_GENERATING", characterReady: true, spotsDone: 40, spotsTotal: 27 }).percent).toBe(84);
   });
+
+  it.each(["QA_PENDING", "MANUAL_REVIEW", "READY", "DELIVERED", "GENERATION_FAILED"] as const)("does not mistake fixed %s enrollment for completed assembly or an automatic retry", status => {
+    const progress = creationProgress({ ...base, status, characterReady: true, fixedAssemblyReady: false });
+    expect(progress).toMatchObject({ percent: 20, state: "awaiting_review", done: false, current: "hiding" });
+    expect(progress.milestones).toMatchObject({ character: "done", hiding: "active", assemble: "todo", check: "todo" });
+  });
+  it("counts only completed fixed spots, not the held status", () => {
+    const at = (spotsDone: number) => creationProgress({ ...base, status: "QA_PENDING", characterReady: true, fixedAssemblyReady: false, spotsDone });
+    expect(at(9).percent).toBe(41);
+    expect(at(27)).toMatchObject({ percent: 84, current: "assemble", done: false });
+    expect(creationProgress({ ...base, status: "QA_PENDING", fixedAssemblyReady: false })).toMatchObject({ percent: 4, current: "character" });
+    expect(creationProgress({ ...base, status: "DELETED", fixedAssemblyReady: false })).toMatchObject({ failed: true, state: "failed", done: false });
+  });
+  it("allows a staged fixed world to advance through manual review to ready", () => {
+    expect(creationProgress({ ...base, status: "MANUAL_REVIEW", fixedAssemblyReady: true })).toMatchObject({ percent: 96, done: false });
+    expect(creationProgress({ ...base, status: "READY", fixedAssemblyReady: true })).toMatchObject({ percent: 100, done: true });
+  });
 });

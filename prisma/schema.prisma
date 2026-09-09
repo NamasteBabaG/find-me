@@ -260,6 +260,18 @@ model ShareLink {
 
 // ─── Generation workflow ─────────────────────────────────────
 
+/// Request-level world allowance. Deliberately not cascade-deleted:
+/// deleting/resetting a live ledger could grant a spent world a new allowance.
+/// snapshotJson is strict, versioned cost/usage metadata, never prompts or keys.
+model WorldBudgetLedger {
+  worldId       String   @id
+  schemaVersion Int      @default(1)
+  revision      Int      @default(0)
+  snapshotJson  String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
 model GenerationJob {
   id          String   @id
   gameId      String
