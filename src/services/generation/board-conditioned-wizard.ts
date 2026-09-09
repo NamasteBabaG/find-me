@@ -138,7 +138,11 @@ export async function enrollBoardConditionedWizard(c: Container, gameId: string,
     const job = await tx.generationJob.findUniqueOrThrow({ where: { id: claimedJobId } });
     const current = await tx.childProfile.findUniqueOrThrow({ where: { id: child.id } });
     demand(current.identityAssetId === identity.id && !current.deletedAt && current.ownerId === record.ownerId, "Child changed during enrollment");
-    const changed = await tx.game.updateMany({ where: { id: gameId, ownerId: record.ownerId, childProfileId: child.id, deletedAt: null, styleVersion: g.styleVersion, configJson: null }, data: { styleVersion: BOARD_WIZARD_STYLE, status: "TARGETS_GENERATING", lastError: null } });
+    // Refunds/owner stops can leave the identity job's lease RUNNING. Check the
+    // live game status atomically as well: a paid approval is not authority to
+    // restart a game stopped between the review and this enrollment commit.
+    const changed = await tx.game.updateMany({ where: { id: gameId, ownerId: record.ownerId, childProfileId: child.id, deletedAt: null,
+      status: { in: ["PAID", "AVATAR_GENERATING", "GENERATION_FAILED"] }, styleVersion: g.styleVersion, configJson: null }, data: { styleVersion: BOARD_WIZARD_STYLE, status: "TARGETS_GENERATING", lastError: null } });
     demand(changed.count === 1 && job.gameId === gameId && job.status === "RUNNING" && (claimedAttempt === undefined || job.attempts === claimedAttempt), "Lost wizard enrollment claim");
     const envelope = JSON.parse(job.stepsJson) as { avatar?: object };
     envelope.avatar = { ...envelope.avatar, status: "done", finishedAt: new Date().toISOString() };

@@ -17,12 +17,12 @@ import { PrismaBoardConditionedCheckpointStore, boardConditionedCheckpointKeys }
 const fakes = vi.hoisted(() => ({ catalog: null as unknown, input: null as unknown, png: null as unknown,
   succeed: false, calls: [] as string[], measurementCalls: [] as (1 | 2)[], remeasureBoard: "", remeasureSuccess: false, failFirstSource: false, illegalRepaint: false,
   reviews: [] as string[], events: [] as string[], testers: [] as string[], appEnv: "qa", dailyCeiling: 0,
-  onGenerate: null as null | (() => Promise<void>), requireDispatch: false }));
+  onGenerate: null as null | (() => Promise<void>), onIdentityApproval: null as null | (() => Promise<void>), requireDispatch: false }));
 vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: fakes.appEnv, GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: fakes.dailyCeiling, GENERATION_PROVIDER: "openai", GENERATION_MODEL: "gpt-image-2", GENERATION_QUALITY: "medium", OPENAI_API_KEY: "synthetic-never-live" }), spendGuard: () => ({ appEnv: fakes.appEnv, realGeneration: true, testers: fakes.testers }) }));
 // This suite tests orchestration; the real identity/style gate has its own
 // provider/receipt tests. Synthetic images are never visually approved here.
 vi.mock("../board-wizard-identity-gate", async original => ({
-  ...await original<typeof import("../board-wizard-identity-gate")>(), requireBoardWizardIdentityApproval: async () => undefined,
+  ...await original<typeof import("../board-wizard-identity-gate")>(), requireBoardWizardIdentityApproval: async () => { await fakes.onIdentityApproval?.(); },
 }));
 vi.mock("../board-conditioned-catalog", async original => {
   const actual = await original<typeof import("../board-conditioned-catalog")>();
@@ -80,7 +80,7 @@ beforeAll(async () => {
 });
 beforeEach(() => { process.env.QA_BOARD_CONDITIONED_WIZARD = "true"; fakes.succeed = false; fakes.calls = []; fakes.measurementCalls = [];
   fakes.remeasureBoard = ""; fakes.remeasureSuccess = false; fakes.failFirstSource = false; fakes.illegalRepaint = false; fakes.reviews = []; fakes.events = []; fakes.appEnv = "qa";
-  fakes.dailyCeiling = 0; fakes.onGenerate = null; fakes.requireDispatch = false; });
+  fakes.dailyCeiling = 0; fakes.onGenerate = null; fakes.onIdentityApproval = null; fakes.requireDispatch = false; });
 afterAll(async () => {
   delete process.env.QA_BOARD_CONDITIONED_WIZARD; await db.$disconnect();
   const target = path.resolve(scratch); if (path.dirname(target) === realpathSync(tmpdir()) && path.basename(target).startsWith("findme-wizard-")) rmSync(target, { recursive: true, force: true });
@@ -127,6 +127,16 @@ describe("actual wizard to durable QA world orchestration (synthetic engine, no 
     expect(readBoardWizard((await f.job()).stepsJson).boards.every(b => b.attempts === 2 && b.state === "needs-repair")).toBe(true);
     expect(await db.game.findUniqueOrThrow({ where: { id: f.gameId } })).toMatchObject({ status: "MANUAL_REVIEW", configJson: null, readyAt: null, deliveredAt: null });
     expect(await db.shareLink.count({ where: { gameId: f.gameId } })).toBe(0);
+  });
+  it.each(["REFUNDED", "MANUAL_REVIEW", "NEEDS_NEW_PHOTO"])("does not enroll if %s wins after identity approval while the job lease remains running", async status => {
+    const f = await fixture(), before = await f.job();
+    fakes.onIdentityApproval = async () => { await db.game.update({ where: { id: f.gameId }, data: { status, lastError: "External stop" } }); };
+    await expect(enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`)).rejects.toThrow("Lost wizard enrollment claim");
+    expect(await db.game.findUniqueOrThrow({ where: { id: f.gameId } })).toMatchObject({ status, styleVersion: "collage-v1", lastError: "External stop", configJson: null });
+    expect(await f.job()).toEqual(before); // refund does not have to invalidate the job lease
+    expect(fakes.calls).toHaveLength(0);
+    const ledger = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: `${f.gameId}:board-wizard` } });
+    expect(JSON.parse(ledger.snapshotJson).requests[0].evidence.amountMicroUsd).toBe(72_500); // retained historical identity bill
   });
   it("persists all27 exact private image refs and exposes only a review world, then purges their exact inventory", async () => {
     const f = await fixture(); fakes.succeed = true; await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
