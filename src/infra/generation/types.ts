@@ -23,6 +23,18 @@ export interface AvatarInput {
   styleRef?: Buffer;
 }
 
+/** Explicit opt-in for the QA board-conditioned wizard. The atlas contains
+ * original illustrated board people only, never another uploaded child's photo. */
+export interface QaCharacterStyleContract {
+  version: "board-matched-identity/v1";
+  catalogSha256: string;
+  atlasSha256: string;
+}
+export interface CharacterInput extends AvatarInput {
+  /** If present, styleRef is mandatory and must match this exact atlas hash. */
+  qaStyleContract?: QaCharacterStyleContract;
+}
+
 export interface AvatarOutput {
   png: Buffer;
   width: number;
@@ -160,7 +172,7 @@ export interface AvatarProvider {
   createAvatar(input: AvatarInput): Promise<AvatarOutput>;
   createTargetSprite(input: TargetSpriteInput): Promise<TargetSpriteOutput>;
   /** Present only on providers that can draw the child in the worlds' style. */
-  createCharacter?(input: AvatarInput): Promise<CharacterOutput>;
+  createCharacter?(input: CharacterInput): Promise<CharacterOutput>;
   /** Present only on providers that can inpaint her into a world. */
   editSlotCrop?(request: SlotPatchRequest): Promise<SlotPatchResponse>;
   /** Present only on providers that can cut the child out of their own render (pass two; see extractChild). */

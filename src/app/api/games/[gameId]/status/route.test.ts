@@ -10,7 +10,7 @@ vi.mock("@/services/generation/board-conditioned-wizard", () => ({ BOARD_WIZARD_
 vi.mock("@/lib/env", () => ({ env: () => ({ APP_ENV: "qa" }) }));
 vi.mock("@/services/share-link.service", () => ({ ensurePlayerLink: mocks.link }));
 vi.mock("@/services/asset.service", () => ({ signedAssetUrl: () => "/synthetic-avatar" }));
-vi.mock("@/services/generation/pipeline", () => ({ RESUMABLE_STATUSES: ["PAID", "QA_PENDING", "GENERATION_FAILED"] }));
+vi.mock("@/services/generation/pipeline", () => ({ RESUMABLE_STATUSES: ["PAID", "TARGETS_GENERATING", "QA_PENDING", "GENERATION_FAILED"] }));
 vi.mock("@/services/generation/fixed-world-stage-record", () => ({
   FIXED_WORLD_STYLE_VERSION: "fixed-sprite-v3", isFixedWorldStyle: (s: string) => s.startsWith("fixed-sprite-"),
   readFixedWorldStage: mocks.proof, fixedWorldConfigSha256: mocks.hash,
@@ -84,5 +84,56 @@ describe("fixed-world creation status boundary", () => {
     const body = await (await response()).json();
     expect(body).toMatchObject({ done: false, pending: false, playUrl: null, spotsDone: partial ? 24 : 27, qaPreviewUrl: partial ? null : "/qa-review/synthetic" });
     expect(body.qaBoards).toHaveLength(9); expect(body.qaBoards.flatMap((b: { slots: unknown[] }) => b.slots)).toHaveLength(27); expect(mocks.link).not.toHaveBeenCalled();
+    expect(body).toMatchObject({ percent: partial ? 77 : 96, state: "held" });
+    expect(body.milestones.check).toBe("todo");
+    expect(body.milestones.assemble).toBe(partial ? "todo" : "done");
+  });
+  it.each(["held", "review-required", "running"])("reports zero composed spots honestly when a manual-review wizard record is %s", state => {
+    mocks.game.mockResolvedValue({ ...game, status: "MANUAL_REVIEW", styleVersion: "fixed-sprite-board-wizard-v1" });
+    const boards = Array.from({ length: 9 }, (_, i) => ({ boardId: `board-${i}`, state: "pending", attempts: 0, reason: null, visual: [] }));
+    mocks.wizard.mockReturnValue({ state, capMicroUsd: 4000000, boards, catalog: { boards: boards.map(b => ({ boardId: b.boardId, slots: ["A", "B", "C"].map(id => ({ slot: { id } })) })) } });
+    return response().then(async res => {
+      const body = await res.json();
+      expect(body).toMatchObject({ spotsDone: 0, spotsTotal: 27, percent: 20, step: 2, state: "held", pending: false, done: false, place: null, qaPreviewUrl: null });
+      expect(body.milestones).toMatchObject({ hiding: "todo", assemble: "todo", check: "todo" });
+      expect(mocks.link).not.toHaveBeenCalled();
+    });
+  });
+  it("does not mistake a DONE slice for a stopped healthy wizard", async () => {
+    mocks.game.mockResolvedValue({ ...game, status: "TARGETS_GENERATING", styleVersion: "fixed-sprite-board-wizard-v1" });
+    const boards = Array.from({ length: 9 }, (_, i) => ({ boardId: `board-${i}`, state: i === 0 ? "geometry-ok" : "pending", attempts: i === 0 ? 1 : 0, reason: null, visual: [] }));
+    mocks.wizard.mockReturnValue({ state: "running", capMicroUsd: 4000000, boards, catalog: { boards: boards.map(b => ({ boardId: b.boardId, slots: ["A", "B", "C"].map(id => ({ slot: { id } })) })) } });
+    expect(await (await response()).json()).toMatchObject({ percent: 27, spotsDone: 3, pending: true, state: "working", milestones: { hiding: "active", assemble: "todo" } });
+  });
+  it.each(["missing", "malformed"])("keeps a %s wizard capsule from claiming 96% or scheduling work", async kind => {
+    mocks.game.mockResolvedValue({ ...game, status: "MANUAL_REVIEW", styleVersion: "fixed-sprite-board-wizard-v1" });
+    if (kind === "missing") mocks.job.mockResolvedValue(null);
+    else mocks.wizard.mockImplementation(() => { throw new Error("bad capsule"); });
+    expect(await (await response()).json()).toMatchObject({ percent: 20, spotsDone: 0, spotsTotal: 27, pending: false, state: "held", qaPreviewUrl: null });
+  });
+  it.each(["identity-style-review-required", "identity-enrollment-failed", "unresolved-identity"])("shows a pre-enrollment %s hold rather than legacy96%%", async reason => {
+    mocks.game.mockResolvedValue({ ...game, status: "MANUAL_REVIEW", styleVersion: "collage-v1" });
+    mocks.job.mockResolvedValue({ gameId: game.id, status: "DONE", stepsJson: JSON.stringify({ avatar: { status: "running" },
+      boardWizardIdentity: { version: "board-wizard-identity-lifecycle/v1", state: "held", reason } }) });
+    const body = await (await response()).json();
+    expect(body).toMatchObject({ state: "held", percent: 20, spotsDone: 0, spotsTotal: 27, pending: false, done: false,
+      qaPreviewUrl: null, qaBoards: null, playUrl: null, place: null, milestones: { character: "done", hiding: "todo", assemble: "todo", check: "todo" } });
+    expect(mocks.job).toHaveBeenCalledOnce(); expect(mocks.link).not.toHaveBeenCalled(); expect(mocks.wizard).not.toHaveBeenCalled();
+  });
+  it("does not mark an uncreated identity complete when the pre-enrollment request was held", async () => {
+    mocks.game.mockResolvedValue({ ...game, status: "MANUAL_REVIEW", styleVersion: "collage-v1" }); mocks.asset.mockResolvedValue(null);
+    mocks.job.mockResolvedValue({ gameId: game.id, status: "DONE", stepsJson: JSON.stringify({
+      boardWizardIdentity: { version: "board-wizard-identity-lifecycle/v1", state: "held", reason: "unresolved-identity" } }) });
+    expect(await (await response()).json()).toMatchObject({ state: "held", percent: 4, spotsDone: 0, spotsTotal: 27, avatarUrl: null,
+      milestones: { character: "todo", hiding: "todo", assemble: "todo", check: "todo" } });
+  });
+  it.each(["absent", "malformed", "wrong-game", "running-job", "wrong-version", "not-held", "unknown-reason"])("keeps normal legacy manual-review semantics for %s identity metadata", async kind => {
+    mocks.game.mockResolvedValue({ ...game, status: "MANUAL_REVIEW", styleVersion: "collage-v1" });
+    const marker = { version: kind === "wrong-version" ? "unknown/v1" : "board-wizard-identity-lifecycle/v1",
+      state: kind === "not-held" ? "running" : "held", reason: kind === "unknown-reason" ? "other" : "identity-style-review-required" };
+    mocks.job.mockResolvedValue({ gameId: kind === "wrong-game" ? "other" : game.id, status: kind === "running-job" ? "RUNNING" : "DONE",
+      stepsJson: kind === "malformed" ? "not json" : JSON.stringify(kind === "absent" ? {} : { boardWizardIdentity: marker }) });
+    expect(await (await response()).json()).toMatchObject({ state: "awaiting_review", percent: 96, pending: false, qaPreviewUrl: null });
+    expect(mocks.job).toHaveBeenCalledOnce();
   });
 });

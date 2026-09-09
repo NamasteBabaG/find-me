@@ -125,7 +125,7 @@ async function main() {
   const resuming = process.env.SMOKE_GAME_ID;
   if (resuming) return finish(c, resuming, log, assert);
 
-  const { gameId } = await createDraft(c, null, process.env.SMOKE_LOCALE === "he" ? "he" : "en");
+  const { gameId, draftToken } = await createDraft(c, null, process.env.SMOKE_LOCALE === "he" ? "he" : "en");
   log(`draft ${gameId}`);
   assert((await setChildName(c, gameId, "נועה")).ok, "set name");
 
@@ -141,7 +141,7 @@ async function main() {
   log("package + world selected");
 
   const email = process.env.SMOKE_EMAIL ?? "smoke@example.com";
-  const checkout = await startCheckout(c, { gameId, email, currency: "ILS" });
+  const checkout = await startCheckout(c, { gameId, email, currency: "ILS", access: { draftToken, userId: null } });
   assert(checkout.ok, `checkout: ${!checkout.ok ? checkout.reason : ""}`);
   log(`checkout url ${checkout.ok ? checkout.checkoutUrl : ""}`);
 

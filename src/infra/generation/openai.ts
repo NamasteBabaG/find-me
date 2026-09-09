@@ -1,8 +1,10 @@
 import sharp from "sharp";
+import { createHash } from "node:crypto";
 import type {
   AvatarInput,
   AvatarOutput,
   AvatarProvider,
+  CharacterInput,
   CharacterOutput,
   SlotMatteRequest,
   SlotMatteResponse,
@@ -256,12 +258,25 @@ export class OpenAiAvatarProvider implements AvatarProvider {
     throw new Error(`OpenAI images/edits failed for ${parts.label}: ${lastError}`);
   }
 
-  async createCharacter(input: AvatarInput): Promise<CharacterOutput> {
-    const photo = await squarePhoto(input.originalPhoto, input.crop, SHEET_SIZE);
+  async createCharacter(input: CharacterInput): Promise<CharacterOutput> {
+    const contract = input.qaStyleContract;
+    if (contract) {
+      if (contract.version !== "board-matched-identity/v1" || !/^[a-f0-9]{64}$/.test(contract.catalogSha256)
+        || !/^[a-f0-9]{64}$/.test(contract.atlasSha256) || !input.styleRef
+        || input.styleRef.length > 8 * 1024 * 1024
+        || createHash("sha256").update(input.styleRef).digest("hex") !== contract.atlasSha256) {
+        throw new Error("CHARACTER_STYLE: missing or changed mandatory board-people atlas");
+      }
+      const atlas = await sharp(input.styleRef, { limitInputPixels: 1_048_576 }).metadata();
+      if (atlas.format !== "png" || atlas.width !== SHEET_SIZE || atlas.height !== SHEET_SIZE || (atlas.pages ?? 1) !== 1 || (atlas.orientation ?? 1) !== 1) {
+        throw new Error("CHARACTER_STYLE: the verified atlas must be one unrotated1024-square PNG");
+      }
+    }
+    const photo = await prepareCharacterPhoto(input.originalPhoto, input.crop, SHEET_SIZE);
     const styled = Boolean(input.styleRef);
-    const prompt = characterPrompt({ styled, ageYears: input.ageYears });
+    const prompt = characterPrompt({ styled, ageYears: input.ageYears, ...(contract ? { qaStyleContractVersion: contract.version } : {}) });
     const images = [{ buffer: photo, name: "photo.png" }];
-    if (input.styleRef) images.push({ buffer: await sharp(input.styleRef).resize(SHEET_SIZE, SHEET_SIZE, { fit: "cover" }).png().toBuffer(), name: "style.png" });
+    if (input.styleRef) images.push({ buffer: contract ? Buffer.from(input.styleRef) : await sharp(input.styleRef).resize(SHEET_SIZE, SHEET_SIZE, { fit: "cover" }).png().toBuffer(), name: "style.png" });
     const out = await this.call({ images, prompt, size: `${SHEET_SIZE}x${SHEET_SIZE}`, label: `character:${input.childName}` });
     const sheet = await sharp(out.png).resize(SHEET_SIZE, SHEET_SIZE, { fit: "cover" }).png().toBuffer();
     return {
@@ -535,8 +550,10 @@ export function mattePrompt(hint: string, withMask = false, retryHint?: string, 
   ].filter(Boolean).join(" ");
 }
 
-/** The parent's crop applied, padded to a square the model can read. */
-async function squarePhoto(photo: Buffer, crop: AvatarInput["crop"], size: number): Promise<Buffer> {
+/** Exact character-input photo preprocessing, shared by generation and its
+ * identity review so the reviewer sees the user's selected child/crop,
+ * padded to a square the model can read. */
+export async function prepareCharacterPhoto(photo: Buffer, crop: AvatarInput["crop"], size = SHEET_SIZE): Promise<Buffer> {
   const img = sharp(photo, { failOn: "none" }).rotate();
   const meta = await img.metadata();
   const w = meta.width ?? 0;

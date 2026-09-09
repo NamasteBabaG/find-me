@@ -20,7 +20,7 @@ export type MilestoneState = "done" | "active" | "todo";
  * differently: working (nothing to do), retrying (a snag, handled), awaiting
  * review (a person checks), needs a new photo (the parent acts), ready, failed.
  */
-export type CreationState = "working" | "retrying" | "awaiting_review" | "needs_new_photo" | "ready" | "failed";
+export type CreationState = "working" | "retrying" | "awaiting_review" | "held" | "needs_new_photo" | "ready" | "failed";
 
 export interface CreationSignals {
   status: GameStatus;
@@ -31,6 +31,8 @@ export interface CreationSignals {
   spotsTotal: number;
   /** Fixed-engine enrollment is held at QA_PENDING before any assembly exists. */
   fixedAssemblyReady?: boolean;
+  /** The board wizard can stop for repair before any board is assembled. */
+  boardWizardState?: "running" | "held" | "review-required" | "unavailable";
 }
 
 export interface CreationProgress {
@@ -81,11 +83,16 @@ function stageOf(status: GameStatus): number {
 }
 
 export function creationProgress(s: CreationSignals): CreationProgress {
-  const fixedUnassembled = s.fixedAssemblyReady === false;
+  const fixedUnassembled = s.fixedAssemblyReady === false || s.boardWizardState !== undefined
+    && (s.fixedAssemblyReady !== true || s.spotsTotal <= 0 || s.spotsDone < s.spotsTotal);
   const stage = fixedUnassembled ? (s.characterReady ? 2 : 0) : stageOf(s.status);
   const done = stage === 5;
   const failed = FAILED.has(s.status);
-  const state: CreationState = done ? "ready" : failed ? "failed" : fixedUnassembled ? "awaiting_review" : s.status === "NEEDS_NEW_PHOTO" ? "needs_new_photo" : s.status === "GENERATION_FAILED" ? "retrying" : stage === 4 ? "awaiting_review" : "working";
+  const held = s.boardWizardState === "held" || s.boardWizardState === "unavailable"
+    || s.boardWizardState === "review-required" && fixedUnassembled;
+  const state: CreationState = done ? "ready" : failed ? "failed" : held ? "held"
+    : s.boardWizardState === "running" ? "working" : fixedUnassembled ? "awaiting_review"
+      : s.status === "NEEDS_NEW_PHOTO" ? "needs_new_photo" : s.status === "GENERATION_FAILED" ? "retrying" : stage === 4 ? "awaiting_review" : "working";
   // The counters can be ahead of the status (a spot lands before the status
   // row is touched) and the status can be ahead of the counters (a regenerated
   // game re-enters painting with its old spots still counted). Either one is
@@ -97,7 +104,7 @@ export function creationProgress(s: CreationSignals): CreationProgress {
 
   const flags: Record<CreationMilestone, boolean> = { photo: true, character: characterDone, hiding: hidingDone, assemble: assembleDone, check: checkDone };
   const current = done || failed ? null : (CREATION_MILESTONES.find((m) => !flags[m]) ?? null);
-  const milestones = Object.fromEntries(CREATION_MILESTONES.map((m) => [m, flags[m] ? "done" : m === current ? "active" : "todo"])) as Record<CreationMilestone, MilestoneState>;
+  const milestones = Object.fromEntries(CREATION_MILESTONES.map((m) => [m, flags[m] ? "done" : m === current && !held ? "active" : "todo"])) as Record<CreationMilestone, MilestoneState>;
 
   let percent: number;
   if (done) percent = AT.done;

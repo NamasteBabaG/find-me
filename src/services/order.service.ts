@@ -1,4 +1,5 @@
 import { newId } from "@/lib/ids";
+import { Prisma } from "@prisma/client";
 import { boardsFor, PACKAGES, isPackageTier, isCurrency, priceFor } from "@/domain/package";
 import { type Currency, pick, type Locale } from "@/i18n/config";
 import { flowError, type FlowError } from "@/i18n/errors";
@@ -7,7 +8,7 @@ import { spendAllowedFor } from "@/domain/spend-policy";
 import { spendGuard } from "@/lib/env";
 import type { PaymentWebhookEvent } from "@/infra/payment/types";
 import { ensureUser } from "./auth.service";
-import { loadDraft } from "./create-flow.service";
+import { draftBelongsTo, loadDraft } from "./create-flow.service";
 import { statusOf, transitionGame } from "./game-status";
 import { WEBHOOK, audit, type Actor } from "./audit.service";
 
@@ -15,14 +16,18 @@ import { WEBHOOK, audit, type Actor } from "./audit.service";
  * Checkout + payment webhook. The webhook is the single source of truth for
  * "paid"; the redirect back from the PSP only shows a waiting screen.
  */
-export async function startCheckout(c: Container, input: { gameId: string; email: string; currency: Currency }): Promise<{ ok: true; checkoutUrl: string; userId: string } | FlowError> {
+export type CheckoutDraftAccess = { draftToken: string | null; userId: string | null };
+class CheckoutDraftConflict extends Error {}
+function requireCheckoutDraft(ok: unknown): asserts ok { if (!ok) throw new CheckoutDraftConflict("Checkout draft ownership or photo changed"); }
+
+export async function startCheckout(c: Container, input: { gameId: string; email: string; currency: Currency; access: CheckoutDraftAccess }): Promise<{ ok: true; checkoutUrl: string; userId: string } | FlowError> {
   // Server callers must resolve geography explicitly. Never infer money from
   // the child's game language, and fail before side effects on invalid input.
   if (!isCurrency(input.currency)) throw new Error("Checkout requires a server-resolved currency");
   // On a QA box with a real painter, the money starts here.
   if (!spendAllowedFor(spendGuard(), input.email)) return flowError("QA_TESTERS_ONLY", "זו סביבת בדיקה. רק בודקים רשומים יכולים ליצור כאן משחקים.");
   const game = await loadDraft(c, input.gameId);
-  if (!game || !game.childProfile) return flowError("DRAFT_NOT_FOUND", "הטיוטה לא נמצאה.");
+  if (!game || !game.childProfile || game.deletedAt || !input.access || !draftBelongsTo(game, input.access.draftToken, input.access.userId)) return flowError("DRAFT_NOT_FOUND", "הטיוטה לא נמצאה.");
   const status = statusOf(game);
   if (status !== "PACKAGE_SELECTED" && status !== "CHECKOUT_PENDING" && status !== "PAYMENT_FAILED") return flowError("PREVIOUS_STEPS", "צריך לסיים את השלבים הקודמים.");
   if (!game.packageTier || !isPackageTier(game.packageTier)) return flowError("PICK_PACKAGE_FIRST", "קודם בוחרים חבילה.");
@@ -35,11 +40,43 @@ export async function startCheckout(c: Container, input: { gameId: string; email
     return flowError("INVALID_EMAIL", "כתובת המייל לא נראית תקינה.");
   }
 
-  // Attach the soft account to the draft + child profile; remember the parent's language.
+  // Adopt the exact uploaded photo together with its draft/child. An anonymous
+  // upload starts with ownerId=null; changing only the parents of that asset
+  // leaves later private reads and fenced deletion unable to prove ownership.
+  // All three mutations share a transaction, and the draft proof is rechecked
+  // under the Game -> Child -> Asset fence before any payment call.
   const locale: Locale = game.locale === "he" ? "he" : "en";
-  await c.db.user.update({ where: { id: user.id }, data: { locale } });
-  await c.db.game.update({ where: { id: game.id }, data: { ownerId: user.id } });
-  await c.db.childProfile.update({ where: { id: game.childProfile.id }, data: { ownerId: user.id } });
+  try {
+    await c.db.$transaction(async tx => {
+      const current = await tx.game.findUnique({ where: { id: game.id } });
+      requireCheckoutDraft(current && !current.deletedAt && current.ownerId === game.ownerId && current.childProfileId === game.childProfile!.id
+        && current.status === game.status && current.draftToken === game.draftToken && draftBelongsTo(current, input.access.draftToken, input.access.userId));
+      const locked = await tx.game.updateMany({ where: { id: game.id, ownerId: game.ownerId, childProfileId: game.childProfile!.id,
+        draftToken: game.draftToken, status: game.status, deletedAt: null, updatedAt: game.updatedAt }, data: { ownerId: user.id } });
+      requireCheckoutDraft(locked.count === 1);
+      const child = await tx.childProfile.findUnique({ where: { id: game.childProfile!.id } });
+      requireCheckoutDraft(child && !child.deletedAt && child.ownerId === game.ownerId && child.originalPhotoAssetId
+        && child.originalPhotoAssetId === game.childProfile!.originalPhotoAssetId);
+      // Never transfer another game's shared child or reviewed identity assets.
+      if (game.ownerId !== user.id) requireCheckoutDraft(!child.avatarAssetId && !child.identityAssetId);
+      requireCheckoutDraft(await tx.game.count({ where: { childProfileId: child.id, NOT: { id: game.id }, deletedAt: null } }) === 0);
+      const photo = await tx.asset.findUnique({ where: { id: child.originalPhotoAssetId } });
+      requireCheckoutDraft(photo && photo.ownerId === game.ownerId && photo.type === "ORIGINAL_PHOTO" && photo.visibility === "PRIVATE" && photo.status === "READY" && !photo.deletedAt);
+      requireCheckoutDraft(await tx.asset.count({ where: { storagePath: photo.storagePath } }) === 1);
+      requireCheckoutDraft(await tx.childProfile.count({ where: { NOT: { id: child.id }, OR: [
+        { originalPhotoAssetId: photo.id }, { avatarAssetId: photo.id }, { identityAssetId: photo.id },
+      ] } }) === 0);
+      const childChanged = await tx.childProfile.updateMany({ where: { id: child.id, ownerId: game.ownerId, originalPhotoAssetId: photo.id,
+        avatarAssetId: child.avatarAssetId, identityAssetId: child.identityAssetId, deletedAt: null }, data: { ownerId: user.id } });
+      const photoChanged = await tx.asset.updateMany({ where: { id: photo.id, ownerId: game.ownerId, storagePath: photo.storagePath,
+        type: "ORIGINAL_PHOTO", visibility: "PRIVATE", status: "READY", deletedAt: null }, data: { ownerId: user.id } });
+      requireCheckoutDraft(childChanged.count === 1 && photoChanged.count === 1);
+      await tx.user.update({ where: { id: user.id }, data: { locale } });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 15_000 });
+  } catch (error) {
+    if (error instanceof CheckoutDraftConflict) return flowError("DRAFT_LOCKED", "הטיוטה או התמונה השתנו. פתחו שוב את הטיוטה לפני התשלום.");
+    throw error;
+  }
 
   const pkg = PACKAGES[game.packageTier];
   const currency = input.currency;

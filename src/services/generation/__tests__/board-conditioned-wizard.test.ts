@@ -16,8 +16,14 @@ import { PrismaBoardConditionedCheckpointStore, boardConditionedCheckpointKeys }
 
 const fakes = vi.hoisted(() => ({ catalog: null as unknown, input: null as unknown, png: null as unknown,
   succeed: false, calls: [] as string[], measurementCalls: [] as (1 | 2)[], remeasureBoard: "", remeasureSuccess: false, failFirstSource: false, illegalRepaint: false,
-  reviews: [] as string[], testers: [] as string[], appEnv: "qa" }));
-vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: fakes.appEnv, GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: 0, GENERATION_PROVIDER: "openai", GENERATION_MODEL: "gpt-image-2", GENERATION_QUALITY: "medium", OPENAI_API_KEY: "synthetic-never-live" }), spendGuard: () => ({ appEnv: fakes.appEnv, realGeneration: true, testers: fakes.testers }) }));
+  reviews: [] as string[], events: [] as string[], testers: [] as string[], appEnv: "qa", dailyCeiling: 0,
+  onGenerate: null as null | (() => Promise<void>), requireDispatch: false }));
+vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: fakes.appEnv, GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: fakes.dailyCeiling, GENERATION_PROVIDER: "openai", GENERATION_MODEL: "gpt-image-2", GENERATION_QUALITY: "medium", OPENAI_API_KEY: "synthetic-never-live" }), spendGuard: () => ({ appEnv: fakes.appEnv, realGeneration: true, testers: fakes.testers }) }));
+// This suite tests orchestration; the real identity/style gate has its own
+// provider/receipt tests. Synthetic images are never visually approved here.
+vi.mock("../board-wizard-identity-gate", async original => ({
+  ...await original<typeof import("../board-wizard-identity-gate")>(), requireBoardWizardIdentityApproval: async () => undefined,
+}));
 vi.mock("../board-conditioned-catalog", async original => {
   const actual = await original<typeof import("../board-conditioned-catalog")>();
   return { ...actual, readBoardConditionedCatalog: async () => ({ catalog: fakes.catalog, sha256: boardConditioningHash(fakes.catalog) }),
@@ -30,7 +36,10 @@ vi.mock("../board-conditioned-source", async original => {
 vi.mock("../board-wizard-remeasurement", () => ({ needsBoardStandingRemeasurement: async (input: { boardId: string }, result: { state: string }) => result.state === "review-required" && input.boardId === fakes.remeasureBoard }));
 vi.mock("../board-conditioned-generation", () => ({ generateBoardConditionedAppearances: async (deps: { sources: { generate: (request: unknown) => Promise<unknown> }; checkpoints: { getMeasurement: (w: string, b: string, a?: 1 | 2) => Promise<unknown> } }, request: { worldId: string; input: { boardId: string }; measurementAttempt?: 1 | 2 }) => {
   fakes.calls.push(request.input.boardId);
+  fakes.events.push(`source:${request.input.boardId}`);
   fakes.measurementCalls.push(request.measurementAttempt ?? 1);
+  await fakes.onGenerate?.();
+  if (fakes.requireDispatch) await deps.sources.generate({});
   if (request.measurementAttempt === 2) {
     await deps.checkpoints.getMeasurement(request.worldId, request.input.boardId, 2);
     if (fakes.illegalRepaint) await deps.sources.generate({});
@@ -56,6 +65,7 @@ vi.mock("../board-wizard-visual-judge", async original => {
   const actual = await original<typeof import("../board-wizard-visual-judge")>();
   return { ...actual, judgeBoardWizardAppearance: async (_deps: unknown, request: { boardId: string; slotId: string }) => {
     fakes.reviews.push(`${request.boardId}/${request.slotId}`);
+    fakes.events.push(`review:${request.boardId}/${request.slotId}`);
     return { judgement: { verdict: fakes.reviews.length === 1 ? "unknown" : "ok", reason: "Synthetic review, no visual claim" }, receiptKey: "synthetic-receipt", fingerprint: "f".repeat(64), reused: false };
   } };
 });
@@ -69,7 +79,8 @@ beforeAll(async () => {
   png = await sharp({ create: { width: 10, height: 10, channels: 4, background: "#384970" } }).png().toBuffer(); fakes.png = png;
 });
 beforeEach(() => { process.env.QA_BOARD_CONDITIONED_WIZARD = "true"; fakes.succeed = false; fakes.calls = []; fakes.measurementCalls = [];
-  fakes.remeasureBoard = ""; fakes.remeasureSuccess = false; fakes.failFirstSource = false; fakes.illegalRepaint = false; fakes.reviews = []; fakes.appEnv = "qa"; });
+  fakes.remeasureBoard = ""; fakes.remeasureSuccess = false; fakes.failFirstSource = false; fakes.illegalRepaint = false; fakes.reviews = []; fakes.events = []; fakes.appEnv = "qa";
+  fakes.dailyCeiling = 0; fakes.onGenerate = null; fakes.requireDispatch = false; });
 afterAll(async () => {
   delete process.env.QA_BOARD_CONDITIONED_WIZARD; await db.$disconnect();
   const target = path.resolve(scratch); if (path.dirname(target) === realpathSync(tmpdir()) && path.basename(target).startsWith("findme-wizard-")) rmSync(target, { recursive: true, force: true });
@@ -94,6 +105,10 @@ async function fixture() {
   const c = { db, storage: new DbStorage(db) } as unknown as Container;
   return { c, gameId, ownerId, childId, identityId, boards, job: () => db.generationJob.findUniqueOrThrow({ where: { id: `job_${gameId}` } }) };
 }
+async function advanceUntil(f: Awaited<ReturnType<typeof fixture>>, ready: () => boolean) {
+  for (let i = 0; i < 80 && !ready(); i++) await runBoardConditionedWizardSlice(f.c, f.gameId);
+  expect(ready(), "bounded synthetic wizard ticks reached the expected event").toBe(true);
+}
 describe("actual wizard to durable QA world orchestration (synthetic engine, no paid calls)", () => {
   it("is opt-in and cannot enable itself in production", () => { expect(boardWizardEnabled()).toBe(true); fakes.appEnv = "production"; expect(boardWizardEnabled()).toBe(false); });
   it("adopts only its own newly generated identity while preserving checkout state and identity cost", async () => {
@@ -115,11 +130,12 @@ describe("actual wizard to durable QA world orchestration (synthetic engine, no 
   });
   it("persists all27 exact private image refs and exposes only a review world, then purges their exact inventory", async () => {
     const f = await fixture(); fakes.succeed = true; await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
-    for (let i = 0; i < 9; i++) await runBoardConditionedWizardSlice(f.c, f.gameId);
-    expect(fakes.reviews).toHaveLength(0);
+    await runBoardConditionedWizardSlice(f.c, f.gameId);
+    expect(fakes.calls).toEqual([f.boards[0]!.boardId]); expect(fakes.reviews).toHaveLength(0);
     expect((await db.game.findUniqueOrThrow({ where: { id: f.gameId } })).status).toBe("TARGETS_GENERATING");
-    for (let i = 0; i < 27; i++) await runBoardConditionedWizardSlice(f.c, f.gameId);
+    for (let i = 0; i < 35; i++) await runBoardConditionedWizardSlice(f.c, f.gameId);
     expect(fakes.reviews).toHaveLength(27); expect(fakes.calls).toHaveLength(9);
+    expect(fakes.events).toEqual(f.boards.flatMap(b => [`source:${b.boardId}`, ...[1, 2, 3].map(i => `review:${b.boardId}/slot-${i}`)]));
     expect(readBoardWizard((await f.job()).stepsJson).boards[0]!.visual[0]!.state).toBe("review-required");
     const g = await db.game.findUniqueOrThrow({ where: { id: f.gameId } }); expect(g.status).toBe("MANUAL_REVIEW"); expect(g.readyAt).toBeNull();
     const config = JSON.parse(g.configJson!); expect(config.scenes).toHaveLength(9); expect(config.scenes.flatMap((s: { targets: { sprite: { kind: string } }[] }) => s.targets).every((t: { sprite: { kind: string } }) => t.sprite.kind === "image")).toBe(true);
@@ -137,7 +153,7 @@ describe("actual wizard to durable QA world orchestration (synthetic engine, no 
     await runBoardConditionedWizardSlice(f.c, f.gameId);
     expect(fakes.calls).toHaveLength(1); expect(fakes.measurementCalls).toEqual([1]);
     expect(readBoardWizard((await f.job()).stepsJson).boards[0]).toMatchObject({ attempts: 1, state: "pending", remeasurements: [{ sourceAttempt: 1, state: "pending" }] });
-    for (let i = 0; i < 8; i++) await runBoardConditionedWizardSlice(f.c, f.gameId);
+    await advanceUntil(f, () => fakes.reviews.length === 24);
     const lookup = vi.spyOn(PrismaBoardConditionedCheckpointStore.prototype, "getMeasurement");
     await runBoardConditionedWizardSlice(f.c, f.gameId);
     expect(lookup).toHaveBeenCalledWith(`${f.gameId}:board-wizard`, fakes.remeasureBoard, 2); lookup.mockRestore();
@@ -150,7 +166,7 @@ describe("actual wizard to durable QA world orchestration (synthetic engine, no 
   it("holds recovery if a faulty core tries to purchase a replacement image", async () => {
     const f = await fixture(); fakes.succeed = true; fakes.illegalRepaint = true; fakes.remeasureBoard = f.boards[0]!.boardId;
     await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
-    for (let i = 0; i < 10; i++) await runBoardConditionedWizardSlice(f.c, f.gameId);
+    await advanceUntil(f, () => fakes.calls.length === 10);
     expect(readBoardWizard((await f.job()).stepsJson).state).toBe("held");
     expect((await f.job()).lastError).toContain("must never purchase");
     await expect(runBoardConditionedWizardSlice(f.c, f.gameId)).resolves.toEqual({ pending: false }); expect(fakes.calls).toHaveLength(10);
@@ -158,7 +174,7 @@ describe("actual wizard to durable QA world orchestration (synthetic engine, no 
   it("keeps recovery on source attempt2 in its original checkpoint namespace and never starts source3", async () => {
     const f = await fixture(); fakes.succeed = true; fakes.failFirstSource = true; fakes.remeasureBoard = f.boards[0]!.boardId;
     await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
-    for (let i = 0; i < 10; i++) await runBoardConditionedWizardSlice(f.c, f.gameId);
+    await advanceUntil(f, () => fakes.calls.length === 10);
     expect(readBoardWizard((await f.job()).stepsJson).boards[0]).toMatchObject({ attempts: 2, remeasurements: [{ sourceAttempt: 2, state: "pending" }] });
     const lookup = vi.spyOn(PrismaBoardConditionedCheckpointStore.prototype, "getMeasurement");
     await runBoardConditionedWizardSlice(f.c, f.gameId);
@@ -170,6 +186,76 @@ describe("actual wizard to durable QA world orchestration (synthetic engine, no 
   it("refuses a changed child before any board dispatch", async () => {
     const f = await fixture(); await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`); await db.childProfile.update({ where: { id: f.childId }, data: { ageYears: 8 } });
     await expect(runBoardConditionedWizardSlice(f.c, f.gameId)).rejects.toThrow("identity changed"); expect(fakes.calls).toHaveLength(0);
+  });
+  it("records a preflight daily-cap failure as a durable hold before any source or review dispatch", async () => {
+    const f = await fixture(); await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
+    const before = await f.job(); fakes.dailyCeiling = 1;
+    await expect(runBoardConditionedWizardSlice(f.c, f.gameId)).resolves.toEqual({ pending: false });
+    const after = await f.job();
+    expect(after).toMatchObject({ status: "DONE", currentStep: null, attempts: before.attempts + 1 });
+    expect(after.lastError).toContain("Daily ceiling reached"); expect(readBoardWizard(after.stepsJson).state).toBe("held");
+    expect(await db.game.findUniqueOrThrow({ where: { id: f.gameId } })).toMatchObject({ status: "MANUAL_REVIEW", configJson: null });
+    expect(fakes.events).toEqual([]);
+    await expect(runBoardConditionedWizardSlice(f.c, f.gameId)).resolves.toEqual({ pending: false });
+    expect((await f.job()).attempts).toBe(after.attempts);
+  });
+  it("holds a changed paid policy under the exact job claim without buying a source", async () => {
+    const f = await fixture(); await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
+    const job = await f.job(), envelope = JSON.parse(job.stepsJson); envelope.boardWizard.sourcePolicySha256 = "9".repeat(64);
+    await db.generationJob.update({ where: { id: job.id }, data: { stepsJson: JSON.stringify(envelope) } });
+    await expect(runBoardConditionedWizardSlice(f.c, f.gameId)).resolves.toEqual({ pending: false });
+    expect((await f.job()).lastError).toContain("policy changed"); expect(readBoardWizard((await f.job()).stepsJson).state).toBe("held");
+    expect(fakes.events).toEqual([]);
+  });
+  it.each(["REFUNDED", "MANUAL_REVIEW", "NEEDS_NEW_PHOTO"])("does not resume a %s game from a stale running capsule or direct tick", async status => {
+    const f = await fixture(); await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
+    await db.game.update({ where: { id: f.gameId }, data: { status } });
+    const before = await f.job();
+    await expect(runBoardConditionedWizardSlice(f.c, f.gameId)).resolves.toEqual({ pending: false });
+    expect(await f.job()).toEqual(before); expect(fakes.events).toEqual([]);
+    expect((await db.game.findUniqueOrThrow({ where: { id: f.gameId } })).status).toBe(status);
+  });
+  it("rechecks the active-status fence immediately before paid dispatch and cannot overwrite a refund", async () => {
+    const f = await fixture(); await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
+    fakes.requireDispatch = true;
+    fakes.onGenerate = async () => { await db.game.update({ where: { id: f.gameId }, data: { status: "REFUNDED" } }); };
+    const transport = vi.spyOn(globalThis, "fetch");
+    try {
+      await expect(runBoardConditionedWizardSlice(f.c, f.gameId)).rejects.toThrow("Stale/deleted QA job");
+      expect(transport).not.toHaveBeenCalled();
+      expect((await db.game.findUniqueOrThrow({ where: { id: f.gameId } })).status).toBe("REFUNDED");
+      expect(readBoardWizard((await f.job()).stepsJson).state).toBe("running");
+      expect(await db.asset.count({ where: { ownerId: f.ownerId, provider: "board-conditioned-wizard" } })).toBe(0);
+    } finally { transport.mockRestore(); }
+  });
+  it("does not replace a concurrent operator stop with its own catch/hold capsule", async () => {
+    const f = await fixture(); await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
+    fakes.succeed = true;
+    let stopped = "";
+    fakes.onGenerate = async () => {
+      const job = await f.job(), envelope = JSON.parse(job.stepsJson); envelope.boardWizard.state = "held";
+      envelope.boardWizard.boards[0].reason = "Explicit user stop"; stopped = JSON.stringify(envelope);
+      await db.$transaction([
+        db.game.update({ where: { id: f.gameId }, data: { status: "MANUAL_REVIEW", lastError: "User stopped" } }),
+        db.generationJob.update({ where: { id: job.id }, data: { status: "DONE", currentStep: null, stepsJson: stopped, lastError: "User stopped" } }),
+      ]);
+    };
+    await expect(runBoardConditionedWizardSlice(f.c, f.gameId)).rejects.toThrow("Stale/deleted QA job");
+    expect(await f.job()).toMatchObject({ status: "DONE", currentStep: null, stepsJson: stopped, lastError: "User stopped" });
+    expect((await db.game.findUniqueOrThrow({ where: { id: f.gameId } })).lastError).toBe("User stopped");
+    expect(await db.asset.count({ where: { ownerId: f.ownerId, provider: "board-conditioned-wizard" } })).toBe(0);
+  });
+  it("cannot hold or recreate imagery after deletion wins during a source operation", async () => {
+    const f = await fixture(); await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
+    fakes.succeed = true;
+    fakes.onGenerate = async () => {
+      await deleteBoardConditionedWizard(f.c, f.gameId, { type: "USER", id: f.ownerId }, f.ownerId);
+    };
+    await expect(runBoardConditionedWizardSlice(f.c, f.gameId)).rejects.toThrow("Stale/deleted QA job");
+    expect(await f.job()).toMatchObject({ status: "DONE", currentStep: null, stepsJson: "{}", lastError: null });
+    expect(await db.game.findUniqueOrThrow({ where: { id: f.gameId } })).toMatchObject({ status: "DELETED", configJson: null });
+    expect(await db.asset.count({ where: { ownerId: f.ownerId, status: "READY" } })).toBe(0);
+    expect(await db.worldBudgetLedger.count({ where: { worldId: `${f.gameId}:board-wizard` } })).toBe(1);
   });
   it("does not let a stale identity runner enroll using a replacement job lease", async () => {
     const f = await fixture();

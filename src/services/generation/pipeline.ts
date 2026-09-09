@@ -16,11 +16,16 @@ import { sendAdminAlert } from "../admin-alert.service";
 import { generateSlotPatch, slotOf, spotsOutstanding, spotsUnjudged, type PatchOutcome, type Variant } from "./slot-patches";
 import { styleReference } from "./patch";
 import { loadSceneArt } from "./scene-art";
-import { CHARACTER_PROMPT_VERSION } from "@/infra/generation/character-prompt";
+import { CHARACTER_PROMPT_VERSION, QA_CHARACTER_PROMPT_VERSION } from "@/infra/generation/character-prompt";
 import { isFixedWorldStyle } from "./fixed-world-stage-record";
 import { BOARD_WIZARD_STYLE, boardWizardEnabled, enrollBoardConditionedWizard, runBoardConditionedWizardSlice, preflightBoardConditionedWizard, reserveBoardWizardIdentity } from "./board-conditioned-wizard";
 import { sha256Bytes } from "./fixed-sprite";
-import { generateBoardWizardIdentity, holdBoardWizardIdentity, type BoardWizardIdentityClaim } from "./board-wizard-identity-lifecycle";
+import { generateBoardWizardIdentity, holdBoardWizardIdentity, withBoardWizardIdentityClaim, type BoardWizardIdentityClaim } from "./board-wizard-identity-lifecycle";
+import { buildBoardWizardIdentityStyle } from "./board-wizard-identity-style";
+import { identityProvenanceSchema, reviewBoardWizardIdentity } from "./board-wizard-identity-gate";
+import { boardWizardBudget } from "./board-wizard-budget";
+import { CasWorldBudgetRepository } from "../../infra/db/world-budget-repository";
+import { PrismaWorldBudgetStore } from "../../infra/db/prisma-world-budget-store";
 
 /**
  * Background generation. Every step is idempotent and resumable:
@@ -154,6 +159,10 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
       childId: child.id, photoAssetId: child.originalPhotoAssetId ?? "", avatarAssetId: child.avatarAssetId, identityAssetId: child.identityAssetId,
       childName: child.displayName, ageYears: child.ageYears,
     };
+    // Current deployment-owned original people are mandatory for QA identity.
+    // Missing/corrupt references hold this route; never substitute boardStyle's
+    // legacy optional HTTP crop or a generic portrait prompt.
+    const identityStyle = qaIdentityClaim ? await buildBoardWizardIdentityStyle() : null;
     const avatarValid = child.avatarAssetId ? (await c.db.asset.findUnique({ where: { id: child.avatarAssetId } }))?.status === "READY" : false;
     if (!avatarValid) {
       if (status !== "AVATAR_GENERATING") await transitionGame(c, gameId, "AVATAR_GENERATING", SYSTEM);
@@ -167,12 +176,18 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
       const original = await c.db.asset.findUniqueOrThrow({ where: { id: child.originalPhotoAssetId } });
       const photo = await readAssetBuffer(c, original.id);
       const crop = child.photoCropJson ? (JSON.parse(child.photoCropJson) as CropBox) : null;
-      const request = { originalPhoto: photo, mimeType: original.mimeType, crop, childName: child.displayName, ageYears: child.ageYears, styleRef: await boardStyle(c, game.scenes) };
+      const qaStyleContract = identityStyle ? { version: identityStyle.version, catalogSha256: identityStyle.catalogSha256, atlasSha256: identityStyle.atlasSha256 } : undefined;
+      const request = { originalPhoto: photo, mimeType: original.mimeType, crop, childName: child.displayName, ageYears: child.ageYears,
+        styleRef: identityStyle?.png ?? await boardStyle(c, game.scenes), qaStyleContract };
+      if (qaIdentityClaim && !c.avatars.createCharacter) throw new Error("QA identity requires the board-matched character provider; avatar fallback is forbidden");
       if (c.avatars.createCharacter) {
         if (qaIdentityClaim) {
+          const provenance = identityProvenanceSchema.parse({ promptVersion: QA_CHARACTER_PROMPT_VERSION, quality: "medium", photoAssetId: original.id,
+            photoSha256: sha256Bytes(photo), crop, ageYears: child.ageYears, style: qaStyleContract });
           const persisted = await generateBoardWizardIdentity(c, qaIdentityClaim, {
-            reserve: () => reserveBoardWizardIdentity(c, gameId, { childId: child.id, photoAssetId: original.id, photoSha256: sha256Bytes(photo), styleSha256: request.styleRef ? sha256Bytes(request.styleRef) : null, name: child.displayName, ageYears: child.ageYears, crop, promptVersion: CHARACTER_PROMPT_VERSION, model: "gpt-image-2", quality: "medium", attempts: 1 }),
+            reserve: () => reserveBoardWizardIdentity(c, gameId, { childId: child.id, name: child.displayName, provenance, model: "gpt-image-2", attempts: 1 }),
             generate: () => c.avatars.createCharacter!(request),
+            provenance,
           });
           if (!persisted) return; // Held/deleted/stale identity must never reach legacy retries.
         } else {
@@ -241,6 +256,18 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
     if (!qaIdentityClaim) await mark("avatar", { status: "done", finishedAt: new Date().toISOString() });
 
     if (qaIdentityClaim) {
+      const current = await c.db.childProfile.findUniqueOrThrow({ where: { id: child.id } });
+      if (!current.identityAssetId || !current.avatarAssetId || !identityStyle) throw new Error("QA identity is not ready for review");
+      const publicationClaim = { ...qaIdentityClaim, identityAssetId: current.identityAssetId, avatarAssetId: current.avatarAssetId };
+      const painted = await c.db.auditLog.findFirst({ where: { action: "sheet:painted", entityId: current.identityAssetId, entityType: "Asset" }, orderBy: { createdAt: "desc" } });
+      const provenance = identityProvenanceSchema.parse(JSON.parse(painted?.metaJson ?? "{}").identityProvenance);
+      const gate = await reviewBoardWizardIdentity({ db: c.db, apiKey: env().OPENAI_API_KEY!,
+        budget: boardWizardBudget(new CasWorldBudgetRepository(new PrismaWorldBudgetStore(c.db))),
+        beforeDispatch: async () => { await preflightBoardConditionedWizard(c, gameId); await withBoardWizardIdentityClaim(c, publicationClaim, async () => undefined); },
+        write: work => withBoardWizardIdentityClaim(c, publicationClaim, work),
+      }, { gameId, identityAssetId: current.identityAssetId, sheet: await readAssetBuffer(c, current.identityAssetId),
+        photo: await readAssetBuffer(c, current.originalPhotoAssetId!), atlas: identityStyle.png, provenance });
+      if (!gate.approved) { await holdBoardWizardIdentity(c, publicationClaim, "identity-style-review-required"); return; }
       await enrollBoardConditionedWizard(c, gameId, job.id, qaIdentityClaim.jobAttempt);
       return; // The resumable QA queue owns the frozen board path from here.
     }

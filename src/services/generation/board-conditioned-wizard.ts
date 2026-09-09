@@ -25,6 +25,7 @@ import { boardWizardVisualKeys, judgeBoardWizardAppearance } from "./board-wizar
 import { boardWizardContextKey, prepareBoardWizardReviews } from "./board-wizard-review-input";
 import { BOARD_WIZARD_IDENTITY_VERSION, normalizeBoardWizardIdentity } from "./board-wizard-identity";
 import { needsBoardStandingRemeasurement } from "./board-wizard-remeasurement";
+import { requireBoardWizardIdentityApproval } from "./board-wizard-identity-gate";
 
 /** Distinct from the admin probe and legacy fixed import: never published automatically. */
 export const BOARD_WIZARD_STYLE = "fixed-sprite-board-wizard-v1";
@@ -120,6 +121,8 @@ export async function enrollBoardConditionedWizard(c: Container, gameId: string,
   // Match the pilot's face-only identity role, but with automatic per-child
   // portrait selection. Canonical sheet and exact charge remain unchanged.
   const normalized = await normalizeBoardWizardIdentity(image);
+  await requireBoardWizardIdentityApproval(c, budgetOf(c), { gameId, identityAssetId: identity.id, sheetSha256: normalized.sourceSha256,
+    catalogSha256: sha256, photoAssetId: child.originalPhotoAssetId, ageYears: child.ageYears, crop: child.photoCropJson ? JSON.parse(child.photoCropJson) : null });
   const record = capsuleSchema.parse({ version: "board-conditioned-wizard/v1", gameId, childProfileId: child.id, ownerId: g.ownerId,
     identityAssetId: identity.id, identitySha256: normalized.sha256, identitySourceSha256: normalized.sourceSha256, identityNormalization: normalized.version, avatarAssetId: child.avatarAssetId, ageYears: child.ageYears, childName: child.displayName,
     catalog, catalogSha256: sha256, capMicroUsd: BOARD_WIZARD_CAP_MICRO_USD, sourcePolicySha256: boardConditioningHash(BOARD_WIZARD_SOURCE_POLICY), observerPolicySha256: boardConditioningHash(BOARD_WIZARD_OBSERVER_POLICY),
@@ -159,25 +162,37 @@ export async function runBoardConditionedWizardSlice(c: Container, gameId: strin
   const g = await c.db.game.findUnique({ where: { id: gameId }, include: { childProfile: true } });
   demand(g && !g.deletedAt && g.styleVersion === BOARD_WIZARD_STYLE && g.ownerId && g.childProfile, "Live QA wizard game required");
   const job = await c.db.generationJob.findUniqueOrThrow({ where: { id: `job_${gameId}` } }), record = readBoardWizard(job.stepsJson);
-  if (record.state !== "running") return { pending: false };
-  await spendCheck(c, g.ownerId);
+  // A refund or operator status stop is a dispatch barrier even if an older
+  // capsule still says running. Never resurrect it through a direct tick.
+  if (record.state !== "running" || g.status !== "TARGETS_GENERATING") return { pending: false };
   demand(g.ownerId === record.ownerId && g.childProfileId === record.childProfileId && g.childProfile.ageYears === record.ageYears && g.childProfile.displayName === record.childName && g.childProfile.identityAssetId === record.identityAssetId && !g.childProfile.deletedAt, "Uploaded child identity changed; do not use another child's cache");
-  demand(record.sourcePolicySha256 === boardConditioningHash(BOARD_WIZARD_SOURCE_POLICY) && record.observerPolicySha256 === boardConditioningHash(BOARD_WIZARD_OBSERVER_POLICY), "Paid generation policy changed during the run");
   const claimed = await c.db.generationJob.updateMany({ where: { id: job.id, stepsJson: job.stepsJson, OR: [{ status: { not: "RUNNING" } }, { updatedAt: { lt: new Date(Date.now() - 6 * 60_000) } }] }, data: { status: "RUNNING", attempts: { increment: 1 }, currentStep: "board-wizard", lastError: null } });
   if (!claimed.count) return { pending: true };
   const write = async <T>(action: (tx: Prisma.TransactionClient) => Promise<T>) => c.db.$transaction(async tx => {
-    const gameFence = await tx.game.updateMany({ where: { id: gameId, deletedAt: null, styleVersion: BOARD_WIZARD_STYLE, ownerId: record.ownerId, childProfileId: record.childProfileId }, data: { styleVersion: BOARD_WIZARD_STYLE } });
+    const gameFence = await tx.game.updateMany({ where: { id: gameId, status: "TARGETS_GENERATING", deletedAt: null, styleVersion: BOARD_WIZARD_STYLE, ownerId: record.ownerId, childProfileId: record.childProfileId }, data: { styleVersion: BOARD_WIZARD_STYLE } });
     const jobFence = await tx.generationJob.updateMany({ where: { id: job.id, attempts: job.attempts + 1, status: "RUNNING", currentStep: "board-wizard", stepsJson: job.stepsJson }, data: { currentStep: "board-wizard" } });
     demand(gameFence.count === 1 && jobFence.count === 1, "Stale/deleted QA job cannot write child imagery");
     return action(tx);
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30_000 });
-  // Visit all untouched boards before a retry; a difficult hide cannot starve the world.
-  const next = [...record.boards].filter(b => b.state === "pending").sort((a, b) => a.attempts - b.attempts)[0];
+  // Review a board's exact composed pixels before purchasing another board.
+  // A bad/uncertain visual result is recorded, not a global stop or a repaint.
+  const nextVisualBoard = record.boards.find(b => b.state === "geometry-ok" && b.visual.some(v => v.state === "pending"));
+  // Among sources, visit untouched boards before retries so one hard hide
+  // cannot starve the world. Visual work runs in separate bounded ticks.
+  const next = !nextVisualBoard ? [...record.boards].filter(b => b.state === "pending").sort((a, b) => a.attempts - b.attempts)[0] : undefined;
   let stagedAssets: BoardConditionedPrivateAsset[] = [];
   let stagedContexts: { key: string; png: Buffer }[] = [];
   let stagedScene: string | null = null;
   try {
-    const nextVisualBoard = !next ? record.boards.find(b => b.state === "geometry-ok" && b.visual.some(v => v.state === "pending")) : undefined;
+    // These failures must be durably held under this exact job claim, rather
+    // than returning a perpetual running/pending capsule before the try block.
+    await spendCheck(c, g.ownerId);
+    // Existing pre-gate capsules do not acquire approval merely by surviving a
+    // deployment. Preserve their paid assets and hold before any further spend.
+    await requireBoardWizardIdentityApproval(c, budgetOf(c), { gameId, identityAssetId: record.identityAssetId, sheetSha256: record.identitySourceSha256,
+      catalogSha256: record.catalogSha256, photoAssetId: g.childProfile.originalPhotoAssetId, ageYears: record.ageYears,
+      crop: g.childProfile.photoCropJson ? JSON.parse(g.childProfile.photoCropJson) : null });
+    demand(record.sourcePolicySha256 === boardConditioningHash(BOARD_WIZARD_SOURCE_POLICY) && record.observerPolicySha256 === boardConditioningHash(BOARD_WIZARD_OBSERVER_POLICY), "Paid generation policy changed during the run");
     if (next || nextVisualBoard) {
       const identity = await c.db.asset.findUniqueOrThrow({ where: { id: record.identityAssetId } });
       demand(identity.ownerId === record.ownerId && identity.status === "READY" && !identity.deletedAt && identity.visibility === "PRIVATE", "Identity was removed or changed");

@@ -95,4 +95,26 @@ describe("creation progress", () => {
     expect(creationProgress({ ...base, status: "MANUAL_REVIEW", fixedAssemblyReady: true })).toMatchObject({ percent: 96, done: false });
     expect(creationProgress({ ...base, status: "READY", fixedAssemblyReady: true })).toMatchObject({ percent: 100, done: true });
   });
+  it("keeps a stopped wizard at its actual zero or partial placements, not MANUAL_REVIEW's 96%", () => {
+    const at = (spotsDone: number) => creationProgress({ ...base, status: "MANUAL_REVIEW", characterReady: true,
+      spotsDone, fixedAssemblyReady: false, boardWizardState: "held" });
+    expect(at(0)).toMatchObject({ percent: 20, state: "held", done: false, failed: false, current: "hiding",
+      milestones: { photo: "done", character: "done", hiding: "todo", assemble: "todo", check: "todo" } });
+    expect(at(12)).toMatchObject({ percent: 48, state: "held", milestones: { hiding: "todo", assemble: "todo", check: "todo" } });
+    expect(at(27)).toMatchObject({ percent: 84, state: "held", current: "assemble", milestones: { hiding: "done", assemble: "todo", check: "todo" } });
+  });
+  it.each(["review-required", "unavailable"] as const)("does not pretend an unassembled %s wizard is still working", boardWizardState => {
+    expect(creationProgress({ ...base, status: "MANUAL_REVIEW", fixedAssemblyReady: false, boardWizardState }))
+      .toMatchObject({ percent: 4, state: "held", done: false, milestones: { character: "todo", assemble: "todo" } });
+  });
+  it.each([undefined, true])("never infers complete wizard assembly from status or inconsistent proof (%s)", fixedAssemblyReady => {
+    expect(creationProgress({ ...base, status: "MANUAL_REVIEW", characterReady: true, boardWizardState: "held", fixedAssemblyReady }))
+      .toMatchObject({ percent: 20, state: "held", milestones: { hiding: "todo", assemble: "todo", check: "todo" } });
+  });
+  it("keeps a healthy incomplete wizard active and distinguishes completed assembly awaiting review", () => {
+    expect(creationProgress({ ...base, status: "TARGETS_GENERATING", characterReady: true, spotsDone: 9,
+      fixedAssemblyReady: false, boardWizardState: "running" })).toMatchObject({ percent: 41, state: "working", milestones: { hiding: "active", assemble: "todo" } });
+    expect(creationProgress({ ...base, status: "MANUAL_REVIEW", characterReady: true, spotsDone: 27,
+      fixedAssemblyReady: true, boardWizardState: "review-required" })).toMatchObject({ percent: 96, state: "awaiting_review", done: false });
+  });
 });

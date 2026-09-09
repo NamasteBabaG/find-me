@@ -9,6 +9,7 @@ import { PrismaWorldBudgetStore } from "../../infra/db/prisma-world-budget-store
 import { boardWizardBudget } from "./board-wizard-budget";
 import { boardConditioningHash } from "./board-conditioned-source";
 import type { BudgetJson } from "./world-budget";
+import type { IdentityProvenance } from "./board-wizard-identity-gate";
 
 export interface BoardWizardIdentityClaim {
   gameId: string; jobId: string; jobAttempt: number; styleVersion: string;
@@ -35,8 +36,14 @@ async function fence(tx: Prisma.TransactionClient, claim: BoardWizardIdentityCla
   demand(game.count === 1 && job.count === 1 && child.count === 1);
 }
 
+export async function withBoardWizardIdentityClaim<T>(c: Container, claim: BoardWizardIdentityClaim, work: (tx: Prisma.TransactionClient) => Promise<T>) {
+  demand(enabled() && c.storage.id === "db");
+  return c.db.$transaction(async tx => { await fence(tx, claim); return work(tx); },
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30_000 });
+}
+
 /** A classified stop is consumed by the QA branch; never put it back into the legacy retry queue. */
-export async function holdBoardWizardIdentity(c: Container, claim: BoardWizardIdentityClaim, reason: "unresolved-identity" | "identity-enrollment-failed") {
+export async function holdBoardWizardIdentity(c: Container, claim: BoardWizardIdentityClaim, reason: "unresolved-identity" | "identity-enrollment-failed" | "identity-style-review-required") {
   try {
     await c.db.$transaction(async tx => {
       // References may have been atomically published already. Deletion, owner
@@ -60,7 +67,7 @@ export async function holdBoardWizardIdentity(c: Container, claim: BoardWizardId
 
 /** One paid call at most. Billing survives a lost/deleted image publication. */
 export async function generateBoardWizardIdentity(c: Container, claim: BoardWizardIdentityClaim, deps: {
-  reserve(): Promise<void>; generate(): Promise<CharacterOutput>;
+  reserve(): Promise<void>; generate(): Promise<CharacterOutput>; provenance?: IdentityProvenance;
 }): Promise<boolean> {
   const budget = budgetFor(c);
   try {
@@ -98,7 +105,8 @@ export async function generateBoardWizardIdentity(c: Container, claim: BoardWiza
       }
       await tx.auditLog.create({ data: { id: newId("aud"), actorType: "SYSTEM", action: "sheet:painted", entityType: "Asset", entityId: sheetId,
         metaJson: JSON.stringify({ gameId: claim.gameId, costCents: known ? character.costCents : 0, costUnknown: !known,
-          requestId: known ? character.providerRequestId : null, model: "gpt-image-2", usage: known ? character.usage : null }) } });
+          requestId: known ? character.providerRequestId : null, model: "gpt-image-2", usage: known ? character.usage : null,
+          identityProvenance: deps.provenance ?? null }) } });
       await tx.childProfile.update({ where: { id: claim.childId }, data: { identityAssetId: sheetId, avatarAssetId: avatarId } });
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30_000 });
     if (!known) { await holdBoardWizardIdentity(c, claim, "unresolved-identity"); return false; }

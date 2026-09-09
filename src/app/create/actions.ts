@@ -83,7 +83,8 @@ export async function checkoutAction(_prev: ActionResult | null, formData: FormD
   if (!draft) redirect("/create");
   const email = String(formData.get("email") ?? "");
   const currency = await getCurrency();
-  const res = await guardDb(() => startCheckout(c, { gameId: draft.id, email, currency }));
+  const [draftToken, user] = await Promise.all([draftTokenFromCookie(), currentUser()]);
+  const res = await guardDb(() => startCheckout(c, { gameId: draft.id, email, currency, access: { draftToken, userId: user?.id ?? null } }));
   if (!res.ok) return res;
   redirect(res.checkoutUrl);
 }

@@ -79,7 +79,7 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
         // While this page is open it is the clock: each nudge does another slice
         // of the work. A cron does the same for a parent who closed the tab, and
         // both are safe to run at once (every step is idempotent).
-        if (status.pending && !working) {
+        if (status.pending && status.state !== "held" && !working) {
           working = true;
           // A generation slice can take minutes. Keep status reads responsive,
           // while allowing only one nudge from this mounted component at a time.
@@ -230,10 +230,10 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
             </span>
           )}
         </div>
-        <h2 className="cp__title">{s.avatarUrl ? tf(cr.meet, { name: childName }) : tf(cr.drawing, { name: childName })}</h2>
-        <p className="cp__lead">{s.place ? tf(cr.nowIn, { name: childName, place: s.place.name }) : s.avatarUrl ? cr.meetLead : cr.drawingLead}</p>
+        <h2 className="cp__title">{s.state === "held" ? cr.heldTitle : s.avatarUrl ? tf(cr.meet, { name: childName }) : tf(cr.drawing, { name: childName })}</h2>
+        <p className="cp__lead">{s.state === "held" ? tf(cr.heldLead, { done: s.spotsDone, total: s.spotsTotal }) : s.place ? tf(cr.nowIn, { name: childName, place: s.place.name }) : s.avatarUrl ? cr.meetLead : cr.drawingLead}</p>
 
-        <div className="cp__bar" role="progressbar" aria-label={cr.progressAria} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
+        <div className="cp__bar" role="progressbar" aria-label={cr.progressAria} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} aria-valuetext={s.state === "held" ? tf(cr.heldPercent, { percent }) : undefined}>
           <div className="cp__fill" style={{ width: `${percent}%` }} />
           <span className="cp__rider" style={{ insetInlineStart: `${percent}%` }} aria-hidden>
             {s.avatarUrl ? (
@@ -244,7 +244,7 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
             )}
           </span>
         </div>
-        <p className="cp__percent">{tf(cr.percent, { percent })}</p>
+        <p className="cp__percent">{tf(s.state === "held" ? cr.heldPercent : cr.percent, { percent })}</p>
       </section>
 
       <ol className="cp__steps">
@@ -257,14 +257,16 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
               </span>
               <span className="cp__label">
                 {labels[m]}
-                {m === "hiding" && s.spotsTotal > 0 && state !== "todo" ? <span className="cp__count">{tf(cr.spotsCount, { done: s.spotsDone, total: s.spotsTotal })}</span> : null}
+                {m === "hiding" && s.spotsTotal > 0 && (state !== "todo" || s.state === "held") ? <span className="cp__count">{tf(cr.spotsCount, { done: s.spotsDone, total: s.spotsTotal })}</span> : null}
               </span>
             </li>
           );
         })}
       </ol>
 
-      {s.state === "awaiting_review" ? (
+      {s.state === "held" ? (
+        <Notice kind="warn">{cr.heldAction} {isAdmin ? <Link href={`/admin/orders/${gameId}`}>{cr.qaAdmin}</Link> : <Link href="/library">{cr.backToLibrary}</Link>}</Notice>
+      ) : s.state === "awaiting_review" ? (
         <Notice kind="info">
           {cr.qa} {isAdmin ? <Link href={`/admin/orders/${gameId}`}>{cr.qaAdmin}</Link> : cr.qaParent}
         </Notice>

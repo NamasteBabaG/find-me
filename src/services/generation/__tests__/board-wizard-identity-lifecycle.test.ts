@@ -3,14 +3,16 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { PrismaClient } from "@prisma/client";
 import sharp from "sharp";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyTestSchema } from "../../../lib/test-schema";
 import { DbStorage } from "../../../infra/storage/db";
+import { PrismaWorldBudgetStore } from "../../../infra/db/prisma-world-budget-store";
+import { CasWorldBudgetRepository } from "../../../infra/db/world-budget-repository";
 import type { Container } from "../../container";
 import type { CharacterOutput } from "../../../infra/generation/types";
 import { findScene } from "../../../../content/scenes";
 
-const fake = vi.hoisted(() => ({ appEnv: "qa", testers: [] as string[], png: null as Buffer | null }));
+const fake = vi.hoisted(() => ({ appEnv: "qa", testers: [] as string[], png: null as Buffer | null, catalogSha256: "", atlasSha256: "" }));
 vi.mock("../../../lib/env", () => ({
   env: () => ({ APP_ENV: fake.appEnv, GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: 0, GENERATION_PROVIDER: "openai", GENERATION_MODEL: "gpt-image-2", GENERATION_QUALITY: "medium", OPENAI_API_KEY: "synthetic-never-live" }),
   spendGuard: () => ({ appEnv: fake.appEnv, realGeneration: true, testers: fake.testers }), flag: () => false,
@@ -22,13 +24,18 @@ vi.mock("../board-conditioned-wizard", async original => ({
 }));
 vi.mock("../scene-art", () => ({ loadSceneArt: async () => fake.png }));
 vi.mock("../patch", async original => ({ ...await original<typeof import("../patch")>(), styleReference: async () => fake.png }));
+vi.mock("../board-wizard-identity-style", () => ({ buildBoardWizardIdentityStyle: async () => ({ png: fake.png!,
+  version: "board-matched-identity/v1", catalogSha256: fake.catalogSha256, atlasSha256: fake.atlasSha256, examples: [] }) }));
 
-import { generateBoardWizardIdentity, type BoardWizardIdentityClaim } from "../board-wizard-identity-lifecycle";
+import { generateBoardWizardIdentity, withBoardWizardIdentityClaim, type BoardWizardIdentityClaim } from "../board-wizard-identity-lifecycle";
 import { enrollBoardConditionedWizard, reserveBoardWizardIdentity } from "../board-conditioned-wizard";
 import { readBoardConditionedCatalog } from "../board-conditioned-catalog";
 import { runGenerationPipeline } from "../pipeline";
 import { nextPendingGame } from "../queue";
 import { deleteGame } from "../../game.service";
+import { reviewBoardWizardIdentity, IDENTITY_GATE_ACTION, IDENTITY_GATE_KEY, type IdentityProvenance } from "../board-wizard-identity-gate";
+import { boardWizardBudget } from "../board-wizard-budget";
+import { sha256Bytes } from "../fixed-sprite";
 
 let db: PrismaClient, scratch: string, png: Buffer, seq = 0;
 beforeAll(async () => {
@@ -37,8 +44,13 @@ beforeAll(async () => {
   await applyTestSchema(db);
   png = await sharp({ create: { width: 32, height: 32, channels: 4, background: "#4c697c" } }).png().toBuffer();
   fake.png = png;
+  fake.atlasSha256 = sha256Bytes(png); fake.catalogSha256 = (await readBoardConditionedCatalog()).sha256;
 });
-beforeEach(() => { process.env.QA_BOARD_CONDITIONED_WIZARD = "true"; fake.appEnv = "qa"; });
+beforeEach(() => {
+  process.env.QA_BOARD_CONDITIONED_WIZARD = "true"; fake.appEnv = "qa";
+  vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("Unexpected HTTP is forbidden in identity lifecycle tests"); }));
+});
+afterEach(() => { vi.unstubAllGlobals(); });
 afterAll(async () => {
   delete process.env.QA_BOARD_CONDITIONED_WIZARD; await db.$disconnect();
   const target = path.resolve(scratch);
@@ -58,12 +70,15 @@ async function fixture() {
   const claim: BoardWizardIdentityClaim = { gameId: id, jobId: `job_${id}`, jobAttempt: 1, styleVersion: "collage-v1", ownerId, childId,
     photoAssetId: photoId, avatarAssetId: null, identityAssetId: null, childName: "Synthetic", ageYears: 6 };
   const reserve = () => reserveBoardWizardIdentity(c, id, { childId, photoId, policy: "synthetic-medium-one-attempt" });
+  const provenance: IdentityProvenance = { promptVersion: "character-v3-board-matched-matte", quality: "medium",
+    photoAssetId: photoId, photoSha256: sha256Bytes(png), crop: null, ageYears: 6,
+    style: { version: "board-matched-identity/v1", catalogSha256: fake.catalogSha256, atlasSha256: fake.atlasSha256 } };
   const result = (): CharacterOutput => ({ sheetPng: png, sheetWidth: 32, sheetHeight: 32, avatarPng: png, avatarWidth: 32, avatarHeight: 32,
     costCents: 5.2, model: "gpt-image-2", usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 }, providerRequestId: `req_${id}`, attempts: 1, durationMs: 1 });
   const game = () => db.game.findUniqueOrThrow({ where: { id } });
   const job = () => db.generationJob.findUniqueOrThrow({ where: { id: claim.jobId } });
   const ledger = async () => JSON.parse((await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: `${id}:board-wizard` } })).snapshotJson);
-  return { c, id, ownerId, childId, photoId, claim, reserve, result, game, job, ledger };
+  return { c, id, ownerId, childId, photoId, claim, reserve, result, game, job, ledger, provenance };
 }
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
 async function fullWorld(f: Awaited<ReturnType<typeof fixture>>) {
@@ -72,6 +87,29 @@ async function fullWorld(f: Awaited<ReturnType<typeof fixture>>) {
   for (const [i, board] of catalog.boards.entries()) await db.gameScene.create({ data: { id: `${f.id}-board-${i}`, gameId: f.id,
     sceneSlug: board.boardId, sceneVersion: board.sceneVersion, orderIndex: i } });
   await db.game.update({ where: { id: f.id }, data: { sceneCount: 9 } });
+}
+type Fixture = Awaited<ReturnType<typeof fixture>>;
+function styleAnswer(paintedStyle: "pass" | "fail" | "uncertain" = "pass") {
+  return { model: "gpt-5.6-sol", service_tier: "default", usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
+    choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ checks: { identity: "pass", age: "pass", paintedStyle, sheetLayout: "pass" },
+      reason: paintedStyle === "pass" ? "Synthetic board-matched matte illustration." : "Synthetic painted-style mismatch or uncertainty." }) } }] };
+}
+function stubStyleFetch(f: Fixture, style: "pass" | "fail" | "uncertain" = "pass") {
+  const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+    expect(url).toBe("https://api.openai.com/v1/chat/completions");
+    const request = JSON.parse(String(init?.body));
+    expect(request).toMatchObject({ model: "gpt-5.6-sol", reasoning_effort: "high", store: false });
+    expect(request.messages[0].content.filter((x: { type: string }) => x.type === "image_url")).toHaveLength(3);
+    return new Response(JSON.stringify(styleAnswer(style)), { headers: { "x-request-id": `req_style_${f.id}` } });
+  });
+  vi.stubGlobal("fetch", fetch); return fetch;
+}
+async function reviewPublished(f: Fixture, reviewer = { review: async () => ({ httpOk: true, requestId: `req_style_${f.id}`, body: styleAnswer() }) }) {
+  const child = await db.childProfile.findUniqueOrThrow({ where: { id: f.childId } });
+  const claim = { ...f.claim, identityAssetId: child.identityAssetId, avatarAssetId: child.avatarAssetId };
+  return reviewBoardWizardIdentity({ db, apiKey: "synthetic-never-live", budget: boardWizardBudget(new CasWorldBudgetRepository(new PrismaWorldBudgetStore(db))), reviewer,
+    beforeDispatch: () => withBoardWizardIdentityClaim(f.c, claim, async () => undefined), write: work => withBoardWizardIdentityClaim(f.c, claim, work) },
+  { gameId: f.id, identityAssetId: child.identityAssetId!, sheet: png, photo: png, atlas: png, provenance: f.provenance });
 }
 
 describe("QA identity lifecycle: real DB and synthetic provider only", () => {
@@ -103,7 +141,8 @@ describe("QA identity lifecycle: real DB and synthetic provider only", () => {
 
   it("reroutes deletion when enrollment commits between the initial style read and transactional identity read", async () => {
     const f = await fixture(); await fullWorld(f);
-    await generateBoardWizardIdentity(f.c, f.claim, { reserve: f.reserve, generate: async () => f.result() });
+    await generateBoardWizardIdentity(f.c, f.claim, { reserve: f.reserve, generate: async () => f.result(), provenance: f.provenance });
+    expect((await reviewPublished(f)).approved).toBe(true);
     const read = db.game.findUnique.bind(db.game);
     let enrolledBetweenReads = false, firstRead = true;
     const controlledRead = (async args => {
@@ -127,7 +166,7 @@ describe("QA identity lifecycle: real DB and synthetic provider only", () => {
     expect(await f.game()).toMatchObject({ status: "DELETED", styleVersion: "fixed-sprite-board-wizard-v1", configJson: null });
     expect((await f.job()).stepsJson).toBe("{}");
     expect(await db.asset.count({ where: { ownerId: f.ownerId, status: "READY" } })).toBe(0);
-    expect((await f.ledger()).requests).toHaveLength(1);
+    expect((await f.ledger()).requests).toHaveLength(2);
   });
 
   it("the reservation keeps deletion fenced even if the feature flag is switched off mid-call", async () => {
@@ -188,13 +227,20 @@ describe("QA identity lifecycle: real DB and synthetic provider only", () => {
 
   it("the actual pipeline enrolls a known identity with its original charge exactly once", async () => {
     const f = await fixture(); await fullWorld(f); let calls = 0;
+    const fetch = stubStyleFetch(f);
     await db.generationJob.update({ where: { id: f.claim.jobId }, data: { status: "DONE", attempts: 0, currentStep: null } });
-    f.c.avatars.createCharacter = async () => { calls++; return f.result(); };
+    f.c.avatars.createCharacter = async request => {
+      calls++; expect(request.styleRef).toEqual(png); expect(request.qaStyleContract).toEqual(f.provenance.style); return f.result();
+    };
     await runGenerationPipeline(f.c, f.id);
     expect(await f.game()).toMatchObject({ status: "TARGETS_GENERATING", styleVersion: "fixed-sprite-board-wizard-v1" });
     const envelope = JSON.parse((await f.job()).stepsJson);
     expect(envelope.avatar.status).toBe("done"); expect(envelope.boardWizard.boards).toHaveLength(9);
-    expect((await f.ledger()).requests).toHaveLength(1); expect(calls).toBe(1);
+    const ledger = await f.ledger(); expect(ledger.requests).toHaveLength(2); expect(calls).toBe(1); expect(fetch).toHaveBeenCalledOnce();
+    expect(ledger.requests.map((r: { requestKey: string }) => r.requestKey)).toEqual(expect.arrayContaining(["wizard:identity:1", IDENTITY_GATE_KEY]));
+    expect(ledger.requests.every((r: { state: string }) => r.state === "settled")).toBe(true);
+    const approval = await db.auditLog.findFirstOrThrow({ where: { action: IDENTITY_GATE_ACTION, entityId: envelope.boardWizard.identityAssetId } });
+    expect(JSON.parse(approval.metaJson!)).toMatchObject({ approved: true, provenance: f.provenance });
     await deleteGame(f.c, f.id, { type: "USER", id: f.ownerId }, f.ownerId);
   });
 
@@ -210,5 +256,82 @@ describe("QA identity lifecycle: real DB and synthetic provider only", () => {
     expect(generate).not.toHaveBeenCalled(); expect((await f.game()).status).toBe("MANUAL_REVIEW");
     expect((await f.job()).lastError).toContain("identity-enrollment-failed");
     expect((await f.ledger()).requests).toHaveLength(1);
+  });
+
+  it.each(["fail", "uncertain"] as const)("the fresh actual pipeline holds paintedStyle=%s before any board call or enrollment", async style => {
+    const f = await fixture(); await fullWorld(f); const fetch = stubStyleFetch(f, style);
+    await db.generationJob.update({ where: { id: f.claim.jobId }, data: { status: "DONE", attempts: 0, currentStep: null } });
+    const generate = vi.fn(async () => f.result()); f.c.avatars.createCharacter = generate;
+    await runGenerationPipeline(f.c, f.id);
+    expect(await f.game()).toMatchObject({ status: "MANUAL_REVIEW", styleVersion: "collage-v1", configJson: null });
+    const envelope = JSON.parse((await f.job()).stepsJson);
+    expect(envelope).not.toHaveProperty("boardWizard");
+    expect(envelope.boardWizardIdentity).toMatchObject({ state: "held", reason: "identity-style-review-required" });
+    expect((await f.job()).status).toBe("DONE");
+    const child = await db.childProfile.findUniqueOrThrow({ where: { id: f.childId } });
+    const reviewed = await db.auditLog.findFirstOrThrow({ where: { action: IDENTITY_GATE_ACTION, entityId: child.identityAssetId! } });
+    expect(JSON.parse(reviewed.metaJson!)).toMatchObject({ approved: false, checks: { paintedStyle: style } });
+    const ledger = await f.ledger(); expect(ledger.requests).toHaveLength(2);
+    expect(ledger.requests.every((r: { state: string }) => r.state === "settled")).toBe(true);
+    expect(await db.asset.count({ where: { ownerId: f.ownerId, providerRequestId: f.id } })).toBe(0);
+    await runGenerationPipeline(f.c, f.id);
+    expect(generate).toHaveBeenCalledOnce(); expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it("direct enrollment cannot bypass the actual mandatory identity approval gate", async () => {
+    const f = await fixture(); await fullWorld(f);
+    expect(await generateBoardWizardIdentity(f.c, f.claim, { reserve: f.reserve, generate: async () => f.result(), provenance: f.provenance })).toBe(true);
+    await expect(enrollBoardConditionedWizard(f.c, f.id, f.claim.jobId, f.claim.jobAttempt)).rejects.toThrow("Identity style approval is required");
+    expect(await f.game()).toMatchObject({ status: "AVATAR_GENERATING", styleVersion: "collage-v1", configJson: null });
+    expect(JSON.parse((await f.job()).stepsJson)).not.toHaveProperty("boardWizard");
+    expect((await f.ledger()).requests).toHaveLength(1);
+    expect(fetch).not.toHaveBeenCalled();
+    await db.game.update({ where: { id: f.id }, data: { status: "MANUAL_REVIEW" } });
+  });
+
+  it("the actual pipeline retains an unknown review charge and does not retry or enroll", async () => {
+    const f = await fixture(); await fullWorld(f);
+    await db.generationJob.update({ where: { id: f.claim.jobId }, data: { status: "DONE", attempts: 0, currentStep: null } });
+    const generate = vi.fn(async () => f.result()); f.c.avatars.createCharacter = generate;
+    const response = styleAnswer(), { usage: _missingUsage, ...unverifiable } = response;
+    const fetch = vi.fn(async () => new Response(JSON.stringify(unverifiable), { headers: { "x-request-id": `req_style_${f.id}` } }));
+    vi.stubGlobal("fetch", fetch);
+    await runGenerationPipeline(f.c, f.id);
+    expect(await f.game()).toMatchObject({ status: "MANUAL_REVIEW", styleVersion: "collage-v1", configJson: null });
+    expect(JSON.parse((await f.job()).stepsJson)).not.toHaveProperty("boardWizard");
+    const child = await db.childProfile.findUniqueOrThrow({ where: { id: f.childId } });
+    const review = await db.auditLog.findFirstOrThrow({ where: { action: IDENTITY_GATE_ACTION, entityId: child.identityAssetId! } });
+    expect(JSON.parse(review.metaJson!)).toMatchObject({ approved: false, checks: null, usage: null });
+    const ledger = await f.ledger(); expect(ledger.requests).toHaveLength(2);
+    expect(ledger.requests.find((r: { requestKey: string }) => r.requestKey === IDENTITY_GATE_KEY)).toMatchObject({ state: "unknown", reserveMicroUsd: 400_000 });
+    await runGenerationPipeline(f.c, f.id);
+    expect(generate).toHaveBeenCalledOnce(); expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it.each(["deleted", "replaced-lease"] as const)("a %s review writer cannot publish approval after the model answers", async change => {
+    const f = await fixture(); await fullWorld(f);
+    await generateBoardWizardIdentity(f.c, f.claim, { reserve: f.reserve, generate: async () => f.result(), provenance: f.provenance });
+    const child = await db.childProfile.findUniqueOrThrow({ where: { id: f.childId } });
+    const started = deferred<void>(), answer = deferred<{ httpOk: boolean; requestId: string; body: ReturnType<typeof styleAnswer> }>();
+    const reviewer = { review: vi.fn(() => { started.resolve(); return answer.promise; }) };
+    const running = reviewPublished(f, reviewer);
+    const outcome = running.then(() => "unexpected publication", (e: Error) => e.message);
+    await started.promise;
+    if (change === "deleted") await deleteGame(f.c, f.id, { type: "USER", id: f.ownerId }, f.ownerId);
+    else await db.generationJob.update({ where: { id: f.claim.jobId }, data: { attempts: 2 } });
+    answer.resolve({ httpOk: true, requestId: `req_style_${f.id}`, body: styleAnswer() });
+    expect(await outcome).toContain("stale or deleted identity claim");
+    expect(await db.auditLog.count({ where: { action: IDENTITY_GATE_ACTION, entityId: child.identityAssetId! } })).toBe(0);
+    expect((await f.ledger()).requests).toHaveLength(2);
+    expect((await f.ledger()).requests.every((r: { state: string }) => r.state === "settled")).toBe(true);
+    expect(reviewer.review).toHaveBeenCalledOnce();
+    expect(JSON.parse((await f.job()).stepsJson)).not.toHaveProperty("boardWizard");
+    if (change === "deleted") {
+      expect((await f.game()).status).toBe("DELETED");
+      expect(await db.asset.count({ where: { ownerId: f.ownerId, status: "READY" } })).toBe(0);
+    } else {
+      expect(await f.job()).toMatchObject({ status: "RUNNING", attempts: 2 });
+      await db.game.update({ where: { id: f.id }, data: { status: "MANUAL_REVIEW" } });
+    }
   });
 });
