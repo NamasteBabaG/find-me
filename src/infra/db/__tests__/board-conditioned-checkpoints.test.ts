@@ -11,6 +11,7 @@ import { auditWorldBudget } from "../../../services/generation/world-budget";
 import type { BoardMeasurement } from "../../../services/generation/board-conditioned-generation";
 import { BOARD_CHECKPOINT_LIMITS, PrismaBoardConditionedCheckpointStore, boardConditionedCheckpointKeys } from "../board-conditioned-checkpoints";
 import { fixedSourceFailureReceipt } from "../../generation/fixed-source-diagnostics";
+import { boardObserverFailureSchema } from "../../generation/board-observer-diagnostics";
 
 type Source = Extract<FixedSourceResult, { kind: "generated" }>;
 let scratch: string, databaseUrl: string, db: PrismaClient, png: Buffer;
@@ -96,6 +97,38 @@ function raceInitialReads(...connections: PrismaClient[]) {
 }
 
 describe("private immutable board-conditioned checkpoints in real disposable SQLite", () => {
+  it("retains bounded observer failures by exact source/measurement attempt without rewriting the paid source", async () => {
+    const id = world(), s = source(id), store = new PrismaBoardConditionedCheckpointStore(db);
+    const diagnostic = boardObserverFailureSchema.parse({ version: "board-observer-failure/v1", worldId: id, requestKey: `board:${board}:measure:1`,
+      fingerprint: hash("original observation"), sourceImageSha256: s.pngSha256, sourceRgbaSha256: hash("rgba"), wireImageSha256: hash("wire"), promptSha256: hash("prompt"),
+      stage: "response-body", failure: "timeout", elapsedMs: 90001, billing: "unknown", httpStatus: 200, requestId: "req_original", requestIdStatus: "safe",
+      requestedModel: "gpt-5.6-sol", effort: "high", returnedModel: "absent", usage: { promptTokens: null, completionTokens: null, totalTokens: null } });
+    await expectCode(store.putObservationFailure(id, board, diagnostic), "corrupt-checkpoint"); // no source, no unrelated receipt
+    await store.putSource(id, board, s); const sourceBytes = Buffer.from((await row(id)).data);
+    await store.putObservationFailure(id, board, diagnostic); await store.putObservationFailure(id, board, diagnostic);
+    expect(await new PrismaBoardConditionedCheckpointStore(connection()).getObservationFailure(id, board)).toEqual(diagnostic);
+    expect(await store.getObservationFailure(id, board, 2)).toBeNull();
+    expect(await store.getMeasurement(id, board)).toBeNull(); expect(await store.getSource(id, board)).toEqual(s);
+    expect(Buffer.from((await row(id)).data)).toEqual(sourceBytes); expect(await db.worldBudgetLedger.count()).toBe(0);
+    await expectCode(store.putObservationFailure(id, board, { ...diagnostic, elapsedMs: 1 }), "checkpoint-conflict");
+    await expectCode(store.putObservationFailure(id, board, { ...diagnostic, sourceImageSha256: "f".repeat(64) }), "corrupt-checkpoint");
+    await expectCode(store.putObservationFailure(id, board, { ...diagnostic, requestKey: "board:other:measure:1" }), "corrupt-checkpoint");
+    await expectCode(store.putObservationFailure(id, board, { ...diagnostic, headers: { authorization: "secret" } } as typeof diagnostic), "corrupt-checkpoint");
+    await expectCode(store.putObservationFailure(id, board, { ...diagnostic, elapsedMs: 3_600_001 }), "corrupt-checkpoint");
+    const second = { ...diagnostic, requestKey: `board:${board}:measure:2` };
+    await store.putObservationFailure(id, board, second, 2);
+    expect(await store.getObservationFailure(id, board, 2)).toEqual(second);
+    // Both retained source attempts use distinct exact deletion inventory.
+    await store.putSource(id, `${board}--attempt-2`, s);
+    await store.putObservationFailure(id, `${board}--attempt-2`, second, 2);
+    const firstKey = boardConditionedCheckpointKeys(id, board).observationFailure;
+    const secondKey = boardConditionedCheckpointKeys(id, `${board}--attempt-2`, 2).observationFailure;
+    expect(firstKey).not.toBe(secondKey);
+    expect(await db.fileBlob.findUnique({ where: { key: secondKey } })).not.toBeNull();
+    await db.fileBlob.deleteMany({ where: { key: { in: [firstKey, secondKey] } } });
+    expect(await store.getObservationFailure(id, board)).toBeNull();
+    expect(await store.getSource(id, board)).toEqual(s);
+  });
   it("keeps a second observation independently immutable against the same original source", async () => {
     const id = world(), store = new PrismaBoardConditionedCheckpointStore(db), s = source(id), first = measurement(s);
     await store.putSource(id, board, s); await store.putMeasurement(id, board, first);
@@ -127,7 +160,7 @@ describe("private immutable board-conditioned checkpoints in real disposable SQL
   });
   it("exports only exact scoped lifecycle keys and rejects invalid scope", () => {
     const id = world();
-    expect(boardConditionedCheckpointKeys(id, board)).toEqual({ source: storageKey(id), measurement: storageKey(id, "measurement"), sourceFailure: storageKey(id, "source-failure") });
+    expect(boardConditionedCheckpointKeys(id, board)).toEqual({ source: storageKey(id), measurement: storageKey(id, "measurement"), sourceFailure: storageKey(id, "source-failure"), observationFailure: storageKey(id, "observation-failure") });
     expect(() => boardConditionedCheckpointKeys(id, "../outside")).toThrow();
   });
   it("durably retains sanitized failure before any source image exists, without settling a charge", async () => {

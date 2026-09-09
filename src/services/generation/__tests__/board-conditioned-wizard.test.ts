@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { PrismaClient } from "@prisma/client";
 import sharp from "sharp";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyTestSchema } from "../../../lib/test-schema";
 import { DbStorage } from "../../../infra/storage/db";
 import type { Container } from "../../container";
@@ -13,11 +13,15 @@ import { sha256Bytes } from "../fixed-sprite";
 import { boardConditioningHash } from "../board-conditioned-source";
 import type { BoardConditionedCatalog } from "../board-conditioned-catalog";
 import { PrismaBoardConditionedCheckpointStore, boardConditionedCheckpointKeys } from "../../../infra/db/board-conditioned-checkpoints";
+import { FIXED_SOURCE_SETTINGS, type FixedSourceResult } from "../../../infra/generation/openai-fixed-source";
+import { auditWorldBudget } from "../world-budget";
+import type { BoardPoseObservationRequest } from "../../../infra/generation/board-pose-observer";
 
 const fakes = vi.hoisted(() => ({ catalog: null as unknown, input: null as unknown, png: null as unknown,
   succeed: false, calls: [] as string[], measurementCalls: [] as (1 | 2)[], remeasureBoard: "", remeasureSuccess: false, failFirstSource: false, illegalRepaint: false,
   reviews: [] as string[], events: [] as string[], testers: [] as string[], appEnv: "qa", dailyCeiling: 0,
-  onGenerate: null as null | (() => Promise<void>), onIdentityApproval: null as null | (() => Promise<void>), requireDispatch: false }));
+  onGenerate: null as null | (() => Promise<void>), onIdentityApproval: null as null | (() => Promise<void>), requireDispatch: false,
+  measureInput: null as null | { sheetPng: Buffer; slots: { slotId: string; pose: string }[] } }));
 vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: fakes.appEnv, GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: fakes.dailyCeiling, GENERATION_PROVIDER: "openai", GENERATION_MODEL: "gpt-image-2", GENERATION_QUALITY: "medium", OPENAI_API_KEY: "synthetic-never-live" }), spendGuard: () => ({ appEnv: fakes.appEnv, realGeneration: true, testers: fakes.testers }) }));
 // This suite tests orchestration; the real identity/style gate has its own
 // provider/receipt tests. Synthetic images are never visually approved here.
@@ -34,11 +38,12 @@ vi.mock("../board-conditioned-source", async original => {
   return { ...actual, prepareBoardConditionedSource: async (input: unknown) => ({ input, contractSha256: "a".repeat(64) }) };
 });
 vi.mock("../board-wizard-remeasurement", () => ({ needsBoardStandingRemeasurement: async (input: { boardId: string }, result: { state: string }) => result.state === "review-required" && input.boardId === fakes.remeasureBoard }));
-vi.mock("../board-conditioned-generation", () => ({ generateBoardConditionedAppearances: async (deps: { sources: { generate: (request: unknown) => Promise<unknown> }; checkpoints: { getMeasurement: (w: string, b: string, a?: 1 | 2) => Promise<unknown> } }, request: { worldId: string; input: { boardId: string }; measurementAttempt?: 1 | 2 }) => {
+vi.mock("../board-conditioned-generation", () => ({ generateBoardConditionedAppearances: async (deps: { sources: { generate: (request: unknown) => Promise<unknown> }; measure: (request: Omit<BoardPoseObservationRequest, "expectedFingerprint">) => Promise<unknown>; checkpoints: { getMeasurement: (w: string, b: string, a?: 1 | 2) => Promise<unknown> } }, request: { worldId: string; input: { boardId: string }; measurementAttempt?: 1 | 2 }) => {
   fakes.calls.push(request.input.boardId);
   fakes.events.push(`source:${request.input.boardId}`);
   fakes.measurementCalls.push(request.measurementAttempt ?? 1);
   await fakes.onGenerate?.();
+  if (fakes.measureInput) await deps.measure({ ...fakes.measureInput, worldId: request.worldId, requestKey: `board:${request.input.boardId}:measure:${request.measurementAttempt ?? 1}` });
   if (fakes.requireDispatch) await deps.sources.generate({});
   if (request.measurementAttempt === 2) {
     await deps.checkpoints.getMeasurement(request.worldId, request.input.boardId, 2);
@@ -80,7 +85,8 @@ beforeAll(async () => {
 });
 beforeEach(() => { process.env.QA_BOARD_CONDITIONED_WIZARD = "true"; fakes.succeed = false; fakes.calls = []; fakes.measurementCalls = [];
   fakes.remeasureBoard = ""; fakes.remeasureSuccess = false; fakes.failFirstSource = false; fakes.illegalRepaint = false; fakes.reviews = []; fakes.events = []; fakes.appEnv = "qa";
-  fakes.dailyCeiling = 0; fakes.onGenerate = null; fakes.onIdentityApproval = null; fakes.requireDispatch = false; });
+  fakes.dailyCeiling = 0; fakes.onGenerate = null; fakes.onIdentityApproval = null; fakes.requireDispatch = false; fakes.measureInput = null; });
+afterEach(() => { vi.unstubAllGlobals(); });
 afterAll(async () => {
   delete process.env.QA_BOARD_CONDITIONED_WIZARD; await db.$disconnect();
   const target = path.resolve(scratch); if (path.dirname(target) === realpathSync(tmpdir()) && path.basename(target).startsWith("findme-wizard-")) rmSync(target, { recursive: true, force: true });
@@ -110,6 +116,39 @@ async function advanceUntil(f: Awaited<ReturnType<typeof fixture>>, ready: () =>
   expect(ready(), "bounded synthetic wizard ticks reached the expected event").toBe(true);
 }
 describe("actual wizard to durable QA world orchestration (synthetic engine, no paid calls)", () => {
+  it("persists a failed observer's private diagnostics, retains exact source, stops redispatch, and deletes its inventory", async () => {
+    const f = await fixture(); await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
+    const worldId = `${f.gameId}:board-wizard`, boardId = f.boards[0]!.boardId, store = new PrismaBoardConditionedCheckpointStore(db);
+    const sheet = await sharp({ create: { width: 1024, height: 1024, channels: 4, background: "transparent" } })
+      .composite([{ input: Buffer.from('<svg width="1024" height="1024"><rect x="20" y="20" width="60" height="80" fill="red"/></svg>') }]).png().toBuffer();
+    const h = (text: string) => sha256Bytes(Buffer.from(text));
+    const capture = { settings: { ...FIXED_SOURCE_SETTINGS }, sourceGroupKey: "synthetic-retained-source",
+      policy: { timeoutMs: 1000, reserveMicroUsd: 200_000, providerNamespace: "synthetic:test", rateCard: { id: "fixture", textInput: 5, imageInput: 8, imageOutput: 32 } },
+      promptSha256: h("prompt"), inputOrder: ["style", "identity"] as ["style", "identity"], styleSha256: h("style"), identitySha256: h("identity") };
+    const source: Extract<FixedSourceResult, { kind: "generated" }> = { kind: "generated", png: sheet, pngSha256: sha256Bytes(sheet), fingerprint: h(JSON.stringify(capture)), capture,
+      evidence: { providerNamespace: "synthetic:test", providerRequestId: "req_paid_source", usageId: "req_paid_source", model: "gpt-image-2", amountMicroUsd: 50_000,
+        rawUsage: { input_tokens: 10, output_tokens: 100 }, costBasis: "conservative-upper-estimate" },
+      modelProvenance: "response-confirmed", audit: auditWorldBudget({ worldId, requests: [] }), semanticApproval: "pending" };
+    await store.putSource(worldId, boardId, source);
+    const sourceKey = boardConditionedCheckpointKeys(worldId, boardId).source;
+    const before = Buffer.from((await db.fileBlob.findUniqueOrThrow({ where: { key: sourceKey } })).data);
+    fakes.measureInput = { sheetPng: sheet, slots: ["front-peek", "side-lean", "seated"].map((pose, i) => ({ slotId: `slot-${i + 1}`, pose })) };
+    const fetchOnce = vi.fn(async () => new Response("do not retain this private gateway HTML", { status: 503, headers: { "x-request-id": "req_wizard_failure" } }));
+    vi.stubGlobal("fetch", fetchOnce);
+    expect(await runBoardConditionedWizardSlice(f.c, f.gameId)).toEqual({ pending: false });
+    expect(await store.getObservationFailure(worldId, boardId)).toMatchObject({ stage: "response-json", failure: "invalid-json", httpStatus: 503, requestId: "req_wizard_failure", billing: "unknown" });
+    expect(await store.getMeasurement(worldId, boardId)).toBeNull();
+    expect(Buffer.from((await db.fileBlob.findUniqueOrThrow({ where: { key: sourceKey } })).data)).toEqual(before);
+    const failureKey = boardConditionedCheckpointKeys(worldId, boardId).observationFailure;
+    expect(Buffer.from((await db.fileBlob.findUniqueOrThrow({ where: { key: failureKey } })).data).toString()).not.toContain("private gateway");
+    const ledger = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } });
+    expect(JSON.parse(ledger.snapshotJson).requests).toEqual(expect.arrayContaining([expect.objectContaining({ requestKey: `board:${boardId}:measure:1`, state: "unknown", reserveMicroUsd: 400_000 })]));
+    expect(await runBoardConditionedWizardSlice(f.c, f.gameId)).toEqual({ pending: false }); expect(fetchOnce).toHaveBeenCalledTimes(1);
+    await deleteBoardConditionedWizard(f.c, f.gameId, { type: "USER", id: f.ownerId }, f.ownerId);
+    expect(await db.fileBlob.findUnique({ where: { key: failureKey } })).toBeNull();
+    expect(await db.fileBlob.findUnique({ where: { key: sourceKey } })).toBeNull();
+    expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } })).toEqual(ledger);
+  });
   it("is opt-in and cannot enable itself in production", () => { expect(boardWizardEnabled()).toBe(true); fakes.appEnv = "production"; expect(boardWizardEnabled()).toBe(false); });
   it("adopts only its own newly generated identity while preserving checkout state and identity cost", async () => {
     const f = await fixture(); await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);

@@ -12,7 +12,7 @@ import { PrismaWorldBudgetStore } from "../../infra/db/prisma-world-budget-store
 import { CasWorldBudgetRepository } from "../../infra/db/world-budget-repository";
 import { PrismaBoardConditionedCheckpointStore, boardConditionedCheckpointKeys } from "../../infra/db/board-conditioned-checkpoints";
 import { BudgetedOpenAiFixedSourceProvider, type FixedSourcePolicy } from "../../infra/generation/openai-fixed-source";
-import { BudgetedBoardPoseObserver, prepareBoardPoseObservation, type BoardPoseObserverPolicy } from "../../infra/generation/board-pose-observer";
+import { BudgetedBoardPoseObserver, BoardPoseObservationError, prepareBoardPoseObservation, type BoardPoseObserverPolicy } from "../../infra/generation/board-pose-observer";
 import { boardConditionedCatalogSchema, readBoardConditionedCatalog, loadBoardConditionedCatalogBoard } from "./board-conditioned-catalog";
 import { boardConditioningHash, prepareBoardConditionedSource } from "./board-conditioned-source";
 import { generateBoardConditionedAppearances, type BoardConditionedCheckpointStore } from "./board-conditioned-generation";
@@ -240,7 +240,18 @@ export async function runBoardConditionedWizardSlice(c: Container, gameId: strin
       const result = await generateBoardConditionedAppearances({ sourcePolicy: BOARD_WIZARD_SOURCE_POLICY, observerPolicy: BOARD_WIZARD_OBSERVER_POLICY, budget, checkpoints,
         sources: { generate: async request => { demand(!remeasurement, "Observer recovery must never purchase a replacement image"); await dispatch(); return provider.generate(request); } },
         measure: async request => { await dispatch(); const p = await prepareBoardPoseObservation(request, BOARD_WIZARD_OBSERVER_POLICY);
-          const result = await observer.observe({ ...request, expectedFingerprint: p.fingerprint });
+          let result;
+          try { result = await observer.observe({ ...request, expectedFingerprint: p.fingerprint }); }
+          catch (error) {
+            // Keep only the bounded diagnostic projection; full provider text is
+            // not checkpointed. The existing Game/Job fence also prevents a late
+            // failure from restoring private data after stop/deletion.
+            if (error instanceof BoardPoseObservationError && error.diagnostic) {
+              demand(error.diagnostic.fingerprint === p.fingerprint, "Observer diagnostic fingerprint changed");
+              await write(tx => new PrismaBoardConditionedCheckpointStore(tx).putObservationFailure(worldId, checkpointBoard(next.boardId), error.diagnostic!, remeasurement ? 2 : 1));
+            }
+            throw error; // same held billing state and retry prohibition
+          }
           return result.kind === "already-recorded" ? null : { sheetSha256: result.receipt.sourceImageSha256, fingerprint: result.receipt.fingerprint, status: result.status, sources: result.sources, evidence: result.evidence, receipt: result.receipt, completenessDeferred: result.completenessDeferred }; },
       }, { worldId, input, expectedContractSha256: prepared.contractSha256, ...(remeasurement ? { measurementAttempt: 2 as const } : {}) });
       next.contractSha256 = prepared.contractSha256;

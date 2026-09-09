@@ -2,11 +2,12 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import type { FixedSourceResult } from "../generation/openai-fixed-source";
 import { fixedSourceFailureReceiptSchema, type FixedSourceFailureReceipt } from "../generation/fixed-source-diagnostics";
+import { boardObserverFailureSchema, type BoardObserverFailure } from "../generation/board-observer-diagnostics";
 import type { BoardConditionedCheckpointStore, BoardMeasurement } from "../../services/generation/board-conditioned-generation";
 import { sha256Bytes } from "../../services/generation/fixed-sprite";
 
 type GeneratedSource = Extract<FixedSourceResult, { kind: "generated" }>;
-type Kind = "source" | "measurement" | "source-failure";
+type Kind = "source" | "measurement" | "source-failure" | "observation-failure";
 type Client = Pick<PrismaClient, "fileBlob">;
 const CONTENT_TYPE = "application/vnd.findme.board-conditioned-checkpoint+json";
 const PREFIX = "private:board-conditioned-checkpoint:v1:";
@@ -39,7 +40,8 @@ function measuredBoard(boardId: string, attempt: 1 | 2) {
   return attempt === 1 ? boardId : `${boardId}--measurement-2`;
 }
 export function boardConditionedCheckpointKeys(worldId: string, boardId: string, measurementAttempt: 1 | 2 = 1) {
-  return { source: key(worldId, boardId, "source"), measurement: key(worldId, measuredBoard(boardId, measurementAttempt), "measurement"), sourceFailure: key(worldId, boardId, "source-failure") };
+  return { source: key(worldId, boardId, "source"), measurement: key(worldId, measuredBoard(boardId, measurementAttempt), "measurement"), sourceFailure: key(worldId, boardId, "source-failure"),
+    observationFailure: key(worldId, measuredBoard(boardId, measurementAttempt), "observation-failure") };
 }
 const forbiddenKey = /^(authorization|proxy.?authorization|api.?key|access.?token|refresh.?token|client.?secret|password|cookie|headers|prompt|messages|image|images|base64|__proto__|prototype|constructor)$/i;
 const credential = /(?:\bsk-[a-z0-9_-]{8,}|\bbearer\s+\S+|\b(?:postgres(?:ql)?|mysql):\/\/|-----BEGIN [A-Z ]*PRIVATE KEY-----)/i;
@@ -195,7 +197,7 @@ function uniqueKeyConflict(error: unknown) {
     && error.meta?.modelName === "FileBlob" && Array.isArray(error.meta.target)
     && error.meta.target.length === 1 && error.meta.target[0] === "key";
 }
-const envelope = z.object({ version: z.literal(1), kind: z.enum(["source", "measurement", "source-failure"]), worldId: z.string(), boardId: z.string(), payloadSha256: sha, payload: z.string() }).strict();
+const envelope = z.object({ version: z.literal(1), kind: z.enum(["source", "measurement", "source-failure", "observation-failure"]), worldId: z.string(), boardId: z.string(), payloadSha256: sha, payload: z.string() }).strict();
 
 /** Private job checkpoint adapter, not an ownership or billing authority.
  * Inject the primary Prisma client, never a replica. An authorized fenced QA
@@ -277,6 +279,25 @@ export class PrismaBoardConditionedCheckpointStore implements BoardConditionedCh
     const source = await this.getSource(worldId, boardId);
     if (!source || source.pngSha256 !== result.sheetSha256) fail("corrupt-checkpoint", "stored observation has no matching scoped source");
     return result;
+  }
+  /** Diagnostic only, bound to the exact retained source and logical attempt.
+   * It never replaces a measurement or changes the separate charge ledger. */
+  private async checkObservationFailure(worldId: string, boardId: string, value: unknown, attempt: 1 | 2): Promise<BoardObserverFailure> {
+    scope(worldId, boardId); measuredBoard(boardId, attempt);
+    const json = metadataJson(value), parsed = boardObserverFailureSchema.safeParse(JSON.parse(json));
+    if (Buffer.byteLength(json) > 8192 || !parsed.success || parsed.data.worldId !== worldId
+      || parsed.data.requestKey !== `board:${boardId.replace(/--attempt-2$/, "")}:measure:${attempt}`) fail("corrupt-checkpoint", "observation failure scope or allowed fields are invalid");
+    const source = await this.getSource(worldId, boardId);
+    if (!source || source.pngSha256 !== parsed.data.sourceImageSha256) fail("corrupt-checkpoint", "observation failure has no matching retained source");
+    return parsed.data;
+  }
+  async putObservationFailure(worldId: string, boardId: string, failure: BoardObserverFailure, measurementAttempt: 1 | 2 = 1): Promise<void> {
+    const checked = await this.checkObservationFailure(worldId, boardId, failure, measurementAttempt), storedBoard = measuredBoard(boardId, measurementAttempt);
+    await this.put(worldId, storedBoard, "observation-failure", record(worldId, storedBoard, "observation-failure", metadataJson(checked)));
+  }
+  async getObservationFailure(worldId: string, boardId: string, measurementAttempt: 1 | 2 = 1): Promise<BoardObserverFailure | null> {
+    const storedBoard = measuredBoard(boardId, measurementAttempt), bytes = await this.read(worldId, storedBoard, "observation-failure");
+    return bytes ? this.checkObservationFailure(worldId, boardId, this.payload(worldId, storedBoard, "observation-failure", bytes), measurementAttempt) : null;
   }
   /** Sanitized receipt only. It is diagnostic evidence, never a charge settlement
    * or permission to release a reservation/retry. Exists even with no source PNG. */

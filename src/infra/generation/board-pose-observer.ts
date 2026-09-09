@@ -5,6 +5,7 @@ import { judgeCharge } from "./judge";
 import { sha256Rgba } from "../../services/generation/fixed-sprite";
 import { resolveStandingPixel } from "../../services/generation/standing-pixels";
 import { WorldBudget, WorldBudgetError, type WorldBudgetAudit, type WorldChargeEvidence } from "../../services/generation/world-budget";
+import { boardObserverFailure, type BoardObserverFailure } from "./board-observer-diagnostics";
 
 export const BOARD_POSE_OBSERVER_SETTINGS = Object.freeze({ version: "board-visible-poses/v1", model: "gpt-5.6-sol", effort: "high", maxOutputTokens: 8000, minConfidence: 0.85, width: 1024, height: 1024 } as const);
 const API = "https://api.openai.com/v1/chat/completions", ALPHA_MIN = 224;
@@ -47,7 +48,8 @@ export interface BoardPoseObservationReceipt {
   rawUsage: Record<string, unknown> | null; costUnknown: boolean; costCents: number; attempts: 1;
 }
 export class BoardPoseObservationError extends Error {
-  constructor(readonly code: "invalid_input" | "cost_unknown" | "ledger_unavailable" | "world_held", message: string, readonly receipt?: BoardPoseObservationReceipt) { super(message); this.name = "BoardPoseObservationError"; }
+  constructor(readonly code: "invalid_input" | "cost_unknown" | "ledger_unavailable" | "world_held", message: string, readonly receipt?: BoardPoseObservationReceipt,
+    readonly diagnostic?: BoardObserverFailure) { super(message); this.name = "BoardPoseObservationError"; }
 }
 const fail = (code: BoardPoseObservationError["code"], message: string): never => { throw new BoardPoseObservationError(code, message); };
 function policyCopy(p: BoardPoseObserverPolicy): BoardPoseObserverPolicy {
@@ -233,15 +235,19 @@ export class BudgetedBoardPoseObserver {
     try { reservation = await this.budget.reserve(worldId, { requestKey, operationFingerprint: prepared.fingerprint, scope: "judge", reserveMicroUsd: this.policy.reserveMicroUsd }); }
     catch (e) { if (e instanceof WorldBudgetError) throw new WorldBudgetError(e.code, "Board observation reservation refused"); return fail("ledger_unavailable", "No durable reservation confirmed; no request sent"); }
     if (!reservation.acquired) return { kind: "already-recorded", fingerprint: prepared.fingerprint, requestState: reservation.request.state, audit: reservation.audit };
-    const unknown = async (reason: string): Promise<never> => {
+    const startedAt = performance.now();
+    let stage: BoardObserverFailure["stage"] = "request", timedOut = false;
+    const diagnostic = (failure: BoardObserverFailure["failure"]) => boardObserverFailure({ worldId, requestKey, receipt, stage, failure, elapsedMs: performance.now() - startedAt });
+    const unknown = async (reason: string, failure: BoardObserverFailure["failure"]): Promise<never> => {
       receipt.costUnknown = true;
+      const details = diagnostic(failure);
       try { await this.budget.markUnknown(worldId, requestKey, reason); }
-      catch { throw new BoardPoseObservationError("ledger_unavailable", "Observation unresolved; retain reservation and reconcile ledger", receipt); }
-      throw new BoardPoseObservationError("cost_unknown", "Observation billing unknown; full reservation retained, no retry", receipt);
+      catch { throw new BoardPoseObservationError("ledger_unavailable", "Observation unresolved; retain reservation and reconcile ledger", receipt, details); }
+      throw new BoardPoseObservationError("cost_unknown", "Observation billing unknown; full reservation retained, no retry", receipt, details);
     };
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const timeout = new Promise<never>((_resolve, reject) => { timer = setTimeout(() => { controller.abort(); reject(new Error("timeout")); }, this.policy.timeoutMs); });
+    const timeout = new Promise<never>((_resolve, reject) => { timer = setTimeout(() => { timedOut = true; controller.abort(); reject(new Error("timeout")); }, this.policy.timeoutMs); });
     let response: Response, json: unknown;
     try {
       response = await Promise.race([this.fetchOnce(API, {
@@ -251,10 +257,14 @@ export class BudgetedBoardPoseObserver {
           messages: [{ role: "user", content: [{ type: "text", text: prepared.promptSent }, { type: "image_url", image_url: { url: `data:image/png;base64,${prepared.wirePng.toString("base64")}`, detail: "high" } }] }] }),
       }), timeout]);
       receipt.httpStatus = response.status; receipt.requestId = response.headers.get("x-request-id");
-      json = JSON.parse(await Promise.race([response.text(), timeout]));
-    } catch { return unknown("board-observation-transport-or-response-unresolved"); }
+      stage = "response-body";
+      const body = await Promise.race([response.text(), timeout]);
+      stage = "response-json";
+      json = JSON.parse(body);
+    } catch { return unknown("board-observation-transport-or-response-unresolved", timedOut ? "timeout" : stage === "response-json" ? "invalid-json" : stage === "response-body" ? "body-read" : "network-or-runtime"); }
     finally { if (timer !== undefined) clearTimeout(timer); }
-    if (!record(json)) return unknown("board-observation-invalid-response-envelope");
+    stage = "response-envelope";
+    if (!record(json)) return unknown("board-observation-invalid-response-envelope", "invalid-envelope");
     receipt.modelReturned = typeof json.model === "string" ? json.model : null;
     receipt.responseId = typeof json.id === "string" ? json.id : null;
     receipt.serviceTier = typeof json.service_tier === "string" ? json.service_tier : null;
@@ -263,19 +273,22 @@ export class BudgetedBoardPoseObserver {
     receipt.finishReason = typeof choice?.finish_reason === "string" ? choice.finish_reason : null;
     receipt.responseText = typeof message?.content === "string" ? message.content : null;
     const usage = receipt.rawUsage, count = (v: unknown): v is number => typeof v === "number" && Number.isSafeInteger(v) && v > 0;
+    stage = "charge-evidence";
     if (receipt.modelReturned !== BOARD_POSE_OBSERVER_SETTINGS.model || !receipt.requestId || !safeId(receipt.requestId)
       || receipt.serviceTier !== null && receipt.serviceTier !== "default" || !usage || !count(usage.prompt_tokens) || !count(usage.completion_tokens)
       || !Number.isSafeInteger(usage.prompt_tokens + usage.completion_tokens)
-      || usage.total_tokens !== undefined && usage.total_tokens !== usage.prompt_tokens + usage.completion_tokens) return unknown("board-observation-charge-evidence-invalid");
+      || usage.total_tokens !== undefined && usage.total_tokens !== usage.prompt_tokens + usage.completion_tokens) return unknown("board-observation-charge-evidence-invalid", "invalid-charge");
+    stage = "price";
     const charge = judgeCharge(receipt.modelReturned, usage), amountMicroUsd = Math.ceil(charge.costCents * 10_000);
-    if (charge.costUnknown || !Number.isSafeInteger(amountMicroUsd) || amountMicroUsd <= 0) return unknown("board-observation-price-unknown");
+    if (charge.costUnknown || !Number.isSafeInteger(amountMicroUsd) || amountMicroUsd <= 0) return unknown("board-observation-price-unknown", "unknown-price");
     receipt.costUnknown = false; receipt.costCents = charge.costCents;
     const evidence: WorldChargeEvidence = { providerNamespace: this.policy.providerNamespace, providerRequestId: receipt.requestId, usageId: receipt.requestId, model: receipt.modelReturned,
       rawUsage: { prompt_tokens: usage.prompt_tokens, completion_tokens: usage.completion_tokens }, amountMicroUsd, costBasis: "conservative-upper-estimate" };
     let settled;
+    stage = "charge-settlement";
     try { settled = await this.budget.settle(worldId, requestKey, evidence); }
-    catch { return unknown("board-observation-charge-settlement-unconfirmed"); }
-    if (settled.audit.held) throw new BoardPoseObservationError("world_held", "Full observation bill recorded; world remains held", receipt);
+    catch { return unknown("board-observation-charge-settlement-unconfirmed", "settlement-unconfirmed"); }
+    if (settled.audit.held) { stage = "budget-held"; throw new BoardPoseObservationError("world_held", "Full observation bill recorded; world remains held", receipt, diagnostic("budget-held")); }
     const result = (status: "ok" | "uncertain" | "invalid", reason: string, sources: ObservedBoardPoseSource[] | null = null,
       completenessDeferred: BoardPoseCompletenessDeferral[] = []): BoardPoseObserverResult =>
       ({ kind: "observed", status, approved: status === "ok", reason, sources, receipt, evidence, audit: settled.audit, completenessDeferred });

@@ -3,6 +3,7 @@ import sharp from "sharp";
 import { BudgetedBoardPoseObserver, prepareBoardPoseObservation, boardPoseObserverPrompt, decideBoardPoseObservation, type BoardPoseObserverPolicy, type BoardPoseSlot } from "../board-pose-observer";
 import { WorldBudget, type WorldBudgetSnapshot } from "../../../services/generation/world-budget";
 import { CasWorldBudgetRepository, type AtomicWorldBudgetStore, type VersionedWorldBudgetSnapshot } from "../../db/world-budget-repository";
+import { boardObserverFailure } from "../board-observer-diagnostics";
 
 /** Test-only durable-contract backing, never used by production. */
 class Store implements AtomicWorldBudgetStore {
@@ -176,6 +177,36 @@ describe("budgeted board three-pose source observer (no live API)", () => {
     await expect(f.provider.observe({ ...f.input, requestKey: "new-key" })).rejects.toMatchObject({ code: "world_held" }); expect(f.fetchOnce).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(f.store.rows.get(f.input.worldId))).not.toContain("must-not-leak");
   });
+  it.each([
+    ["network", "request", "network-or-runtime", null],
+    ["body", "response-body", "body-read", 502],
+    ["json", "response-json", "invalid-json", 503],
+    ["envelope", "response-envelope", "invalid-envelope", 200],
+  ] as const)("attaches bounded %s diagnostics without changing charges or permitting another dispatch", async (kind, stage, failure, httpStatus) => {
+    const f = await fixture(async () => {
+      if (kind === "network") throw new Error("Bearer secret-provider-detail");
+      if (kind === "body") return { status: 502, headers: new Headers({ "x-request-id": "req_diagnostic" }), text: async () => { throw new Error("sk-secret-body-content"); } } as unknown as Response;
+      return new Response(kind === "json" ? "private HTML gateway content" : "[]", { status: httpStatus!, headers: { "x-request-id": "req_diagnostic" } });
+    });
+    const error = await f.provider.observe(f.input).catch(error => error);
+    expect(error).toMatchObject({ code: "cost_unknown", diagnostic: { version: "board-observer-failure/v1", worldId: f.input.worldId,
+      requestKey: f.input.requestKey, fingerprint: f.prepared.fingerprint, sourceImageSha256: f.prepared.capture.sourceImageSha256,
+      stage, failure, billing: "unknown", httpStatus, requestId: kind === "network" ? null : "req_diagnostic" } });
+    expect(error.diagnostic.elapsedMs).toBeGreaterThanOrEqual(0);
+    expect(error.diagnostic.elapsedMs).toBeLessThan(10_000);
+    expect(JSON.stringify(error.diagnostic)).not.toMatch(/secret|private HTML|Authorization|responseText|headers|promptSent/);
+    expect(await f.budget.audit(f.input.worldId)).toMatchObject({ held: true, committedMicroUsd: 300_000, settledMicroUsd: 0 });
+    expect(await f.provider.observe(f.input)).toMatchObject({ kind: "already-recorded", requestState: "unknown" });
+    expect(f.fetchOnce).toHaveBeenCalledTimes(1);
+  });
+  it("does not copy injected provider strings into the persisted diagnostic projection", async () => {
+    const f = await fixture(async () => response(answer(), { model: "Bearer private-key", usage: { prompt_tokens: "sk-private-token", completion_tokens: 400 } }, 200, "sk-private-request"));
+    const error = await f.provider.observe(f.input).catch(error => error);
+    const safe = boardObserverFailure({ worldId: f.input.worldId, requestKey: f.input.requestKey, receipt: error.receipt,
+      stage: "charge-evidence", failure: "invalid-charge", elapsedMs: 1 });
+    expect(safe).toMatchObject({ requestId: null, requestIdStatus: "invalid", returnedModel: "unexpected", usage: { promptTokens: null, completionTokens: 400, totalTokens: null } });
+    expect(JSON.stringify(safe)).not.toMatch(/private-key|private-token|private-request|responseText/);
+  });
   it.each(["bad-json", "http-error", "length", "refusal"])("settles known charge before %s output validation", async kind => {
     const f = await fixture(async () => response(answer(), kind === "bad-json" ? { choices: [{ finish_reason: "stop", message: { content: "invalid" } }] }
       : kind === "length" ? { choices: [{ finish_reason: "length", message: { content: "{}" } }] }
@@ -200,7 +231,9 @@ describe("budgeted board three-pose source observer (no live API)", () => {
   it.each(["fetch", "body"])("bounds hung %s once, retains unknown reserve", async kind => {
     const pending = new Promise<never>(() => {});
     const f = await fixture(async () => kind === "fetch" ? pending : { status: 200, headers: new Headers({ "x-request-id": "req_hung" }), text: () => pending } as unknown as Response, png, { ...policy, timeoutMs: 10 });
-    await expect(f.provider.observe(f.input)).rejects.toMatchObject({ code: "cost_unknown" });
+    await expect(f.provider.observe(f.input)).rejects.toMatchObject({ code: "cost_unknown", diagnostic: {
+      stage: kind === "fetch" ? "request" : "response-body", failure: "timeout", billing: "unknown",
+      requestId: kind === "fetch" ? null : "req_hung", httpStatus: kind === "fetch" ? null : 200 } });
     expect(await f.budget.audit(f.input.worldId)).toMatchObject({ held: true, reservedMicroUsd: 300_000 }); expect(f.fetchOnce).toHaveBeenCalledTimes(1);
   });
   it("prompt forbids destinations/hidden anatomy and distinguishes intentional lower truncation", () => {
