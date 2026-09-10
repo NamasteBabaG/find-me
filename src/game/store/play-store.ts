@@ -71,6 +71,8 @@ function missionCopy(scene: SceneConfig, copy: ReducerCopy): MissionCopy {
 export interface PlayStoreOptions {
   demo?: boolean;
   skipGift?: boolean;
+  /** Isolate private review from the real game's persisted progress/telemetry. */
+  readOnlyPreview?: boolean;
   autoStartScene?: string;
   /** Landing demo: only the first (easiest) mission of a scene. */
   singleMission?: boolean;
@@ -79,10 +81,11 @@ export interface PlayStoreOptions {
 
 export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
   const demo = Boolean(opts.demo);
+  const persist = !demo && !opts.readOnlyPreview;
   // Never touch localStorage here: the store is created during render, on the
   // server too. Saved progress arrives via hydrate() after mount.
   const initialProgress: GameProgress = demo ? { v: 1, gameId: config.gameId, revealed: true, scenes: {} } : emptyProgress(config.gameId);
-  const telemetry = new Telemetry(config.gameId, !demo);
+  const telemetry = new Telemetry(config.gameId, persist);
 
   const store = create<PlayStore>((set, get) => ({
     config,
@@ -112,7 +115,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     },
 
     hydrate() {
-      if (demo) return;
+      if (!persist) return;
       const progress = loadProgress(config.gameId);
       const { screen } = get();
       // Back to the world the player was in, not the first one. A three-world
@@ -129,7 +132,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       sounds().unlock();
       sounds().play("fanfare");
       const progress = { ...get().progress, revealed: true, openedAt: get().progress.openedAt ?? new Date().toISOString() };
-      if (!demo) saveProgress(progress);
+      if (persist) saveProgress(progress);
       // More than one journey means the first choice is which one.
       set({ progress, screen: gameWorlds(get().config).length > 1 ? "worlds" : "map" });
     },
@@ -142,7 +145,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     goToMap(travelFrom = null, worldSlug) {
       sounds().stopAmbient();
       set({ screen: "map", sceneSlug: null, mission: null, travelFrom, ...(worldSlug ? { worldSlug } : {}) });
-      if (worldSlug && !demo) {
+      if (worldSlug && persist) {
         const progress = { ...get().progress, lastWorld: worldSlug };
         saveProgress(progress);
         set({ progress });
@@ -173,7 +176,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       // the passport lands the player on the right map when they come back.
       const world = worldOfScene(get().config, slug);
       set({ screen: "scene", sceneSlug: slug, mission, travelFrom: null, ...(world ? { worldSlug: world.slug } : {}) });
-      if (world && !demo) {
+      if (world && persist) {
         const progress = { ...get().progress, lastWorld: world.slug, lastScene: slug };
         saveProgress(progress);
         set({ progress });
@@ -201,7 +204,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       if (!mission || !scene) return;
       const summary = sceneSummary(mission);
       const next = recordSceneCompleted(progress, scene.slug, { variants: mission.plan.variants, order: mission.plan.order, noHints: summary.noHints, bonusFound: summary.bonusFound }, config.scenes.length);
-      if (!demo) saveProgress(next);
+      if (persist) saveProgress(next);
       telemetry.track({ eventType: "scene_completed", sceneSlug: scene.slug, hintsUsed: summary.hintsUsed });
       if (completedScenes(next) >= config.scenes.length && !progress.completedAt) telemetry.track({ eventType: "game_completed" });
       set({ progress: next });
