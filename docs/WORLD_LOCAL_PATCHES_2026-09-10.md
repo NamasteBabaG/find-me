@@ -15,11 +15,22 @@ mask   the pose's box, sitting on the ground line maskOf(hide)
 ```
 
 Two paid renders settled why it has to be a whole crop: **the painter redraws
-everything it is given.** Prose ("change nothing else") did not stop it, and an
-edit mask did not either — the masked attempt strayed slightly *more* than the
-unmasked one. So the board is not preserved by asking. It is preserved by taking
-back only the crop rectangle and leaving every pixel outside it alone, which
-makes the choice of rectangle the whole game.
+everything it is given.** Prose ("change nothing else") did not stop it. So the
+board is not preserved by asking. It is preserved by taking back only the crop
+rectangle and leaving every pixel outside it alone, which makes the choice of
+rectangle the whole game.
+
+> **The mask was a no-op for this entire world (found 11 September).** It was
+> built by compositing a *transparent* stamp with `dest-out`, and `dest-out`
+> removes the destination where the source is **opaque** — so the stamp removed
+> nothing and every mask shipped as 512×768 of solid alpha with **no paintable
+> region at all**. Every render here was the model following the prose, with the
+> mask contributing nothing; the earlier finding that "an edit mask did not stop
+> it straying either" was measuring the absence of a mask. `poseMask()` now
+> builds it with an opaque stamp and refuses to return a mask whose paintable
+> area is not exactly the pose's box. **What a real mask does to the results is
+> not yet known** — it wants one paid render per pose before anything is claimed
+> for it.
 
 The placements live in `src/domain/scene/local-patch-hides.ts` because they are
 the expensive half: a render is a few cents to redo, and a placement cost paid
