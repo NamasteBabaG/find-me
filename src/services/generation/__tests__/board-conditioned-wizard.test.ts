@@ -19,6 +19,7 @@ import type { BoardPoseObservationRequest } from "../../../infra/generation/boar
 
 const fakes = vi.hoisted(() => ({ catalog: null as unknown, input: null as unknown, png: null as unknown,
   succeed: false, calls: [] as string[], measurementCalls: [] as (1 | 2)[], remeasureBoard: "", remeasureSuccess: false, failFirstSource: false, illegalRepaint: false,
+  sourceReadyBoard: "", engineRequests: [] as { boardId: string; measurementAttempt?: 1 | 2; yieldAfterNewSource?: boolean; transportRecoveryApprovalId?: string }[],
   reviews: [] as string[], events: [] as string[], testers: [] as string[], appEnv: "qa", dailyCeiling: 0,
   onGenerate: null as null | (() => Promise<void>), onIdentityApproval: null as null | (() => Promise<void>), requireDispatch: false,
   measureInput: null as null | { sheetPng: Buffer; slots: { slotId: string; pose: string }[] } }));
@@ -38,11 +39,19 @@ vi.mock("../board-conditioned-source", async original => {
   return { ...actual, prepareBoardConditionedSource: async (input: unknown) => ({ input, contractSha256: "a".repeat(64) }) };
 });
 vi.mock("../board-wizard-remeasurement", () => ({ needsBoardStandingRemeasurement: async (input: { boardId: string }, result: { state: string }) => result.state === "review-required" && input.boardId === fakes.remeasureBoard }));
-vi.mock("../board-conditioned-generation", () => ({ generateBoardConditionedAppearances: async (deps: { sources: { generate: (request: unknown) => Promise<unknown> }; measure: (request: Omit<BoardPoseObservationRequest, "expectedFingerprint">) => Promise<unknown>; checkpoints: { getMeasurement: (w: string, b: string, a?: 1 | 2) => Promise<unknown> } }, request: { worldId: string; input: { boardId: string }; measurementAttempt?: 1 | 2 }) => {
+vi.mock("../board-conditioned-generation", () => ({ generateBoardConditionedAppearances: async (deps: { sources: { generate: (request: unknown) => Promise<unknown> }; measure: (request: Omit<BoardPoseObservationRequest, "expectedFingerprint">) => Promise<unknown>; checkpoints: { getSource: (w: string, b: string) => Promise<unknown>; getMeasurement: (w: string, b: string, a?: 1 | 2) => Promise<unknown> } }, request: { worldId: string; input: { boardId: string }; measurementAttempt?: 1 | 2; yieldAfterNewSource?: boolean; transportRecoveryApprovalId?: string }) => {
   fakes.calls.push(request.input.boardId);
+  fakes.engineRequests.push({ boardId: request.input.boardId, measurementAttempt: request.measurementAttempt, yieldAfterNewSource: request.yieldAfterNewSource, transportRecoveryApprovalId: request.transportRecoveryApprovalId });
   fakes.events.push(`source:${request.input.boardId}`);
-  fakes.measurementCalls.push(request.measurementAttempt ?? 1);
   await fakes.onGenerate?.();
+  if (request.input.boardId === fakes.sourceReadyBoard) {
+    await deps.checkpoints.getSource(request.worldId, request.input.boardId);
+    if (fakes.calls.filter(b => b === fakes.sourceReadyBoard).length === 1) {
+      expect(request.yieldAfterNewSource).toBe(true);
+      return { state: "source-ready" };
+    }
+  }
+  fakes.measurementCalls.push(request.measurementAttempt ?? 1);
   if (fakes.measureInput) await deps.measure({ ...fakes.measureInput, worldId: request.worldId, requestKey: `board:${request.input.boardId}:measure:${request.measurementAttempt ?? 1}` });
   if (fakes.requireDispatch) await deps.sources.generate({});
   if (request.measurementAttempt === 2) {
@@ -84,6 +93,7 @@ beforeAll(async () => {
   png = await sharp({ create: { width: 10, height: 10, channels: 4, background: "#384970" } }).png().toBuffer(); fakes.png = png;
 });
 beforeEach(() => { process.env.QA_BOARD_CONDITIONED_WIZARD = "true"; fakes.succeed = false; fakes.calls = []; fakes.measurementCalls = [];
+  fakes.sourceReadyBoard = ""; fakes.engineRequests = [];
   fakes.remeasureBoard = ""; fakes.remeasureSuccess = false; fakes.failFirstSource = false; fakes.illegalRepaint = false; fakes.reviews = []; fakes.events = []; fakes.appEnv = "qa";
   fakes.dailyCeiling = 0; fakes.onGenerate = null; fakes.onIdentityApproval = null; fakes.requireDispatch = false; fakes.measureInput = null; });
 afterEach(() => { vi.unstubAllGlobals(); });
@@ -116,6 +126,56 @@ async function advanceUntil(f: Awaited<ReturnType<typeof fixture>>, ready: () =>
   expect(ready(), "bounded synthetic wizard ticks reached the expected event").toBe(true);
 }
 describe("actual wizard to durable QA world orchestration (synthetic engine, no paid calls)", () => {
+  it("persists source-ready then measures the same attempt on the next tick before any new board", async () => {
+    const f = await fixture(); await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
+    fakes.succeed = true; fakes.sourceReadyBoard = f.boards[0]!.boardId;
+    const lookup = vi.spyOn(PrismaBoardConditionedCheckpointStore.prototype, "getSource");
+    try {
+      expect(await runBoardConditionedWizardSlice(f.c, f.gameId)).toEqual({ pending: true });
+      expect(readBoardWizard((await f.job()).stepsJson).boards[0]).toMatchObject({ attempts: 1, state: "pending", awaitingMeasurement: true, assetIds: [] });
+      expect(fakes.measurementCalls).toEqual([]); expect(fakes.reviews).toEqual([]);
+      expect(await db.asset.count({ where: { ownerId: f.ownerId, provider: "board-conditioned-wizard" } })).toBe(0);
+      expect(await runBoardConditionedWizardSlice(f.c, f.gameId)).toEqual({ pending: true });
+      expect(fakes.calls).toEqual([fakes.sourceReadyBoard, fakes.sourceReadyBoard]);
+      expect(fakes.measurementCalls).toEqual([1]);
+      expect(readBoardWizard((await f.job()).stepsJson).boards[0]).toMatchObject({ attempts: 1, state: "geometry-ok", awaitingMeasurement: false });
+      expect(lookup.mock.calls).toEqual([[`${f.gameId}:board-wizard`, fakes.sourceReadyBoard], [`${f.gameId}:board-wizard`, fakes.sourceReadyBoard]]);
+      expect(fakes.engineRequests.every(r => r.yieldAfterNewSource === true && r.measurementAttempt === undefined)).toBe(true);
+    } finally { lookup.mockRestore(); }
+  });
+  it("passes approved transport recovery to the same-source second observer and retains the approval", async () => {
+    const f = await fixture(); await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
+    fakes.succeed = true; fakes.remeasureSuccess = true; fakes.remeasureBoard = f.boards[0]!.boardId;
+    const job = await f.job(), envelope = JSON.parse(job.stepsJson);
+    envelope.boardWizard.boards[0].attempts = 1;
+    envelope.boardWizard.boards[0].remeasurements = [{ sourceAttempt: 1, state: "pending", kind: "transport-recovery", approvalId: "operator-approved-once" }];
+    await db.generationJob.update({ where: { id: job.id }, data: { stepsJson: JSON.stringify(envelope) } });
+    expect(await runBoardConditionedWizardSlice(f.c, f.gameId)).toEqual({ pending: true });
+    expect(fakes.engineRequests).toEqual([{ boardId: fakes.remeasureBoard, measurementAttempt: 2, yieldAfterNewSource: true, transportRecoveryApprovalId: "operator-approved-once" }]);
+    expect(readBoardWizard((await f.job()).stepsJson).boards[0]).toMatchObject({ attempts: 1, awaitingMeasurement: false, state: "geometry-ok",
+      remeasurements: [{ sourceAttempt: 1, state: "done", kind: "transport-recovery", approvalId: "operator-approved-once" }] });
+    expect(fakes.calls).toHaveLength(1);
+  });
+  it.each([{ kind: "transport-recovery" }, { approvalId: "unpaired" }])("rejects unpaired transport recovery metadata %j", async fields => {
+    const f = await fixture(); await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
+    const envelope = JSON.parse((await f.job()).stepsJson);
+    envelope.boardWizard.boards[0].attempts = 1;
+    envelope.boardWizard.boards[0].remeasurements = [{ sourceAttempt: 1, state: "pending", ...fields }];
+    expect(() => readBoardWizard(JSON.stringify(envelope))).toThrow("approval identifier");
+    expect(fakes.calls).toEqual([]);
+  });
+  it.each([0, 239_999])("defers a short %sms deadline before claims, billing or engine work", async remaining => {
+    const f = await fixture(); await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
+    const before = await f.job(), ledger = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: `${f.gameId}:board-wizard` } });
+    const clock = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    try { expect(await runBoardConditionedWizardSlice(f.c, f.gameId, { hardDeadlineAt: 1_000_000 + remaining })).toEqual({ pending: true }); }
+    finally { clock.mockRestore(); }
+    expect(await f.job()).toEqual(before); expect(fakes.calls).toEqual([]); expect(fakes.reviews).toEqual([]);
+    expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: `${f.gameId}:board-wizard` } })).toEqual(ledger);
+    expect((await db.game.findUniqueOrThrow({ where: { id: f.gameId } })).status).toBe("TARGETS_GENERATING");
+    expect(await runBoardConditionedWizardSlice(f.c, f.gameId, { hardDeadlineAt: Date.now() + 270_000 })).toEqual({ pending: true });
+    expect(fakes.calls).toHaveLength(1);
+  });
   it("persists a failed observer's private diagnostics, retains exact source, stops redispatch, and deletes its inventory", async () => {
     const f = await fixture(); await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
     const worldId = `${f.gameId}:board-wizard`, boardId = f.boards[0]!.boardId, store = new PrismaBoardConditionedCheckpointStore(db);
@@ -136,7 +196,7 @@ describe("actual wizard to durable QA world orchestration (synthetic engine, no 
     const fetchOnce = vi.fn(async () => new Response("do not retain this private gateway HTML", { status: 503, headers: { "x-request-id": "req_wizard_failure" } }));
     vi.stubGlobal("fetch", fetchOnce);
     expect(await runBoardConditionedWizardSlice(f.c, f.gameId)).toEqual({ pending: false });
-    expect(await store.getObservationFailure(worldId, boardId)).toMatchObject({ stage: "response-json", failure: "invalid-json", httpStatus: 503, requestId: "req_wizard_failure", billing: "unknown" });
+    expect(await store.getObservationFailure(worldId, boardId)).toMatchObject({ stage: "response-json", failure: "invalid-json", httpStatus: 503, requestId: "req_wizard_failure", billing: "unknown", transportTimeoutMs: 180_000 });
     expect(await store.getMeasurement(worldId, boardId)).toBeNull();
     expect(Buffer.from((await db.fileBlob.findUniqueOrThrow({ where: { key: sourceKey } })).data)).toEqual(before);
     const failureKey = boardConditionedCheckpointKeys(worldId, boardId).observationFailure;
@@ -202,23 +262,22 @@ describe("actual wizard to durable QA world orchestration (synthetic engine, no 
     await runBoardConditionedWizardSlice(f.c, f.gameId);
     expect(fakes.calls).toHaveLength(1); expect(fakes.measurementCalls).toEqual([1]);
     expect(readBoardWizard((await f.job()).stepsJson).boards[0]).toMatchObject({ attempts: 1, state: "pending", remeasurements: [{ sourceAttempt: 1, state: "pending" }] });
-    await advanceUntil(f, () => fakes.reviews.length === 24);
     const lookup = vi.spyOn(PrismaBoardConditionedCheckpointStore.prototype, "getMeasurement");
     await runBoardConditionedWizardSlice(f.c, f.gameId);
     expect(lookup).toHaveBeenCalledWith(`${f.gameId}:board-wizard`, fakes.remeasureBoard, 2); lookup.mockRestore();
-    expect(fakes.measurementCalls).toEqual([...Array(9).fill(1), 2]);
+    expect(fakes.measurementCalls).toEqual([1, 2]); // retained work gets the immediate next fresh tick
     expect(readBoardWizard((await f.job()).stepsJson).boards[0]).toMatchObject({ attempts: 1, state: success ? "geometry-ok" : "needs-repair", remeasurements: [{ sourceAttempt: 1, state: "done" }] });
-    for (let i = 0; i < 28; i++) await runBoardConditionedWizardSlice(f.c, f.gameId);
+    await advanceUntil(f, () => fakes.reviews.length === (success ? 27 : 24));
     expect(fakes.calls).toHaveLength(10); // no third measurement and no source attempt2
     expect((await db.game.findUniqueOrThrow({ where: { id: f.gameId } })).status).toBe("MANUAL_REVIEW");
   });
   it("holds recovery if a faulty core tries to purchase a replacement image", async () => {
     const f = await fixture(); fakes.succeed = true; fakes.illegalRepaint = true; fakes.remeasureBoard = f.boards[0]!.boardId;
     await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
-    await advanceUntil(f, () => fakes.calls.length === 10);
+    await advanceUntil(f, () => fakes.calls.length === 2);
     expect(readBoardWizard((await f.job()).stepsJson).state).toBe("held");
     expect((await f.job()).lastError).toContain("must never purchase");
-    await expect(runBoardConditionedWizardSlice(f.c, f.gameId)).resolves.toEqual({ pending: false }); expect(fakes.calls).toHaveLength(10);
+    await expect(runBoardConditionedWizardSlice(f.c, f.gameId)).resolves.toEqual({ pending: false }); expect(fakes.calls).toHaveLength(2);
   });
   it("keeps recovery on source attempt2 in its original checkpoint namespace and never starts source3", async () => {
     const f = await fixture(); fakes.succeed = true; fakes.failFirstSource = true; fakes.remeasureBoard = f.boards[0]!.boardId;

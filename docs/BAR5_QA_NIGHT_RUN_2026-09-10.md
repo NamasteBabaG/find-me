@@ -1,6 +1,16 @@
 # Bar5 QA night run — 10 September 2026
 
-## Outcome: blocked, not a playable world
+## Current update: explicitly authorized bounded recovery
+
+The user authorized continuing on the retained sheet while preserving the unknown charge, and asked for autonomous delivery without routine approval questions. The previous blocked outcome below is historical, not a pending authorization request.
+
+The recovery implementation keeps the first observation `unknown` and its full reservation in the same inclusive $4 ledger. An authenticated same-origin QA admin action appends an immutable exact-request approval and resumes the fenced job atomically. The second observation receives a distinct bill and receipt; it cannot masquerade as the missing response. One transport recovery is allowed and no third observation or replacement image is implicitly authorized.
+
+New source generation now checkpoints and yields before measurement. A subsequent fresh tick measures that same source using a180-second transport deadline; frozen source/observer policy hashes and image/measurement fingerprints stay unchanged. Short queue invocations defer before claiming or buying anything. Private QA remains separate from visual approval/publication.
+
+Recovery verification: full `npm run check` passed130 test files /1949 tests, TypeScript clean. Independent integration review found and fixed the awaitingMeasurement/pending-recovery state conflict; disposable-database tests cover both old held capsules and newly split ones, atomic rollback, replay/stale grants, refund/stop barriers, retained reserve, and unchanged paid source. No paid calls were made by these tests.
+
+## Historical initial outcome: held before composition
 
 The style/pipeline fix was deployed to **QA only**, commit `c3d6601`, deployment `dpl_AoYsPbMD2Fpk5wMiNpkTQzvRJM1L`. A new Bar age5 game was created through the actual upload, crop, checkout, signed SandboxPay webhook and creation queue. No real payment was charged. Original stopped game and its ledger were not modified.
 

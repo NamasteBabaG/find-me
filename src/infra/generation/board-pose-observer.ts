@@ -36,6 +36,9 @@ export const boardPoseObservationSchema = z.object({
   }).strict()).length(3), reason: z.string().trim().min(1).max(1200),
 }).strict();
 export interface BoardPoseObserverPolicy { reserveMicroUsd: number; providerNamespace: string; timeoutMs: number }
+/** Execution-only deadline. It changes neither frozen model inputs nor billing
+ * fingerprints, so a retained source can survive a queue timing correction. */
+export interface BoardPoseObserverExecution { transportTimeoutMs?: number }
 export interface BoardPoseObservationInput { sheetPng: Buffer; slots: readonly BoardPoseSlot[] }
 export interface BoardPoseObservationRequest extends BoardPoseObservationInput { worldId: string; requestKey: string; expectedFingerprint: string }
 export interface ObservedBoardPoseSource { slotId: string; pose: string; eye: Point; chin: Point; protectedFacePolygon: Point[];
@@ -46,6 +49,8 @@ export interface BoardPoseObservationReceipt {
   modelRequested: "gpt-5.6-sol"; modelReturned: string | null; effort: "high"; requestId: string | null; responseId: string | null;
   httpStatus: number | null; serviceTier: string | null; finishReason: string | null; responseText: string | null;
   rawUsage: Record<string, unknown> | null; costUnknown: boolean; costCents: number; attempts: 1;
+  /** Actual HTTP/body deadline; absent only on historical receipts. */
+  transportTimeoutMs?: number;
 }
 export class BoardPoseObservationError extends Error {
   constructor(readonly code: "invalid_input" | "cost_unknown" | "ledger_unavailable" | "world_held", message: string, readonly receipt?: BoardPoseObservationReceipt,
@@ -216,8 +221,13 @@ export function decideBoardPoseObservation(answer: unknown, slots: readonly { sl
 /** One source-only Sol HIGH request. No retry, manual seed or old standing schema. */
 export class BudgetedBoardPoseObserver {
   private readonly policy: BoardPoseObserverPolicy;
-  constructor(private readonly apiKey: string, private readonly budget: WorldBudget, policy: BoardPoseObserverPolicy, private readonly fetchOnce: typeof fetch = fetch) {
+  private readonly transportTimeoutMs: number;
+  constructor(private readonly apiKey: string, private readonly budget: WorldBudget, policy: BoardPoseObserverPolicy, private readonly fetchOnce: typeof fetch = fetch,
+    execution: BoardPoseObserverExecution = {}) {
     if (!apiKey?.trim()) fail("invalid_input", "Existing API key required"); this.policy = policyCopy(policy);
+    const timeout = execution.transportTimeoutMs === undefined ? this.policy.timeoutMs : execution.transportTimeoutMs;
+    if (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > 240_000) fail("invalid_input", "Invalid board-observer transport timeout");
+    this.transportTimeoutMs = timeout;
   }
   async observe(input: BoardPoseObservationRequest): Promise<BoardPoseObserverResult> {
     const { worldId, requestKey, expectedFingerprint } = input;
@@ -230,6 +240,7 @@ export class BudgetedBoardPoseObserver {
       wireImageSha256: capture.wireImageSha256, promptSha256: capture.promptSha256, slots: capture.slots, coordinates: "native-1024-sheet-pixel-edges",
       modelRequested: BOARD_POSE_OBSERVER_SETTINGS.model, modelReturned: null, effort: "high", requestId: null, responseId: null, httpStatus: null,
       serviceTier: null, finishReason: null, responseText: null, rawUsage: null, costUnknown: true, costCents: 0, attempts: 1,
+      transportTimeoutMs: this.transportTimeoutMs,
     };
     let reservation;
     try { reservation = await this.budget.reserve(worldId, { requestKey, operationFingerprint: prepared.fingerprint, scope: "judge", reserveMicroUsd: this.policy.reserveMicroUsd }); }
@@ -247,7 +258,7 @@ export class BudgetedBoardPoseObserver {
     };
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const timeout = new Promise<never>((_resolve, reject) => { timer = setTimeout(() => { timedOut = true; controller.abort(); reject(new Error("timeout")); }, this.policy.timeoutMs); });
+    const timeout = new Promise<never>((_resolve, reject) => { timer = setTimeout(() => { timedOut = true; controller.abort(); reject(new Error("timeout")); }, this.transportTimeoutMs); });
     let response: Response, json: unknown;
     try {
       response = await Promise.race([this.fetchOnce(API, {

@@ -47,7 +47,7 @@ async function fixture(drawExtra?: (rgba: Buffer) => void) {
   const imageReply = () => new Response(JSON.stringify({ model: "gpt-image-2", usage: { input_tokens: 30, output_tokens: 196, input_tokens_details: { text_tokens: 10, image_tokens: 20 } }, data: [{ b64_json: sheet.toString("base64") }] }), { headers: { "x-request-id": "req-image" } });
   const measureReply = (requestId = "req-observer") => new Response(JSON.stringify({ id: "chatcmpl-fixture", model: "gpt-5.6-sol", usage: { prompt_tokens: 2000, completion_tokens: 400, total_tokens: 2400 }, choices: [{ finish_reason: "stop", message: { content: JSON.stringify(observation) } }] }), { headers: { "x-request-id": requestId } });
   const fetchImage = vi.fn(async () => imageReply()), fetchMeasure = vi.fn(async () => measureReply());
-  const budget = new WorldBudget(new CasWorldBudgetRepository(new TestBudgetStore())), checkpoints = new TestCheckpoints();
+  const budget = new WorldBudget(new CasWorldBudgetRepository(new TestBudgetStore()), { authorizeUnknownContinuation: async () => true }), checkpoints = new TestCheckpoints();
   const observer = new BudgetedBoardPoseObserver("test-only", budget, observerPolicy, fetchMeasure as typeof fetch);
   const deps: BoardGenerationDependencies = { sourcePolicy, observerPolicy, budget, checkpoints, sources: new BudgetedOpenAiFixedSourceProvider("test-only", budget, sourcePolicy, fetchImage as typeof fetch),
     measure: async args => {
@@ -62,6 +62,35 @@ async function fixture(drawExtra?: (rgba: Buffer) => void) {
 }
 
 describe("board-conditioned game engine, real adapters with synthetic no-cost HTTP", () => {
+  it("yields a paid source before observation and resumes it without buying another image", async () => {
+    const f = await fixture();
+    const request = { ...f.request, yieldAfterNewSource: true };
+    expect(await generateBoardConditionedAppearances(f.deps, request)).toMatchObject({ state: "source-ready" });
+    expect(f.fetchImage).toHaveBeenCalledTimes(1); expect(f.fetchMeasure).not.toHaveBeenCalled();
+    expect(await generateBoardConditionedAppearances(f.deps, request)).toMatchObject({ state: "review-required" });
+    expect(f.fetchImage).toHaveBeenCalledTimes(1); expect(f.fetchMeasure).toHaveBeenCalledTimes(1);
+  });
+  it("recovers one missing response only with exact approval, retaining the unknown reserve and source", async () => {
+    const f = await fixture(), firstKey = `board:${f.input.boardId}:measure:1`;
+    f.fetchMeasure.mockRejectedValueOnce(new Error("transport failed"));
+    await expect(generateBoardConditionedAppearances(f.deps, f.request)).rejects.toThrow();
+    const unknown = await f.budget.readRequest(f.request.worldId, firstKey);
+    if (unknown?.state !== "unknown") throw new Error("expected unknown charge");
+    const retained = JSON.stringify(unknown);
+    await expect(generateBoardConditionedAppearances(f.deps, { ...f.request, measurementAttempt: 2, transportRecoveryApprovalId: "approval-test" })).rejects.toThrow("world budget is held");
+    await f.budget.authorizeUnknownContinuation(f.request.worldId, { requestKey: firstKey, scope: unknown.scope,
+      operationFingerprint: unknown.operationFingerprint, reserveMicroUsd: unknown.reserveMicroUsd, unknownReasons: unknown.unknownReasons,
+      approvalId: "approval-test", operatorId: "admin-test", authorizationSha256: "a".repeat(64), authorizedAt: "2026-09-10T00:00:00.000Z" });
+    await expect(generateBoardConditionedAppearances(f.deps, { ...f.request, measurementAttempt: 2 })).rejects.toThrow("original immutable same-sheet receipt");
+    await expect(generateBoardConditionedAppearances(f.deps, { ...f.request, measurementAttempt: 2, transportRecoveryApprovalId: "different" })).rejects.toThrow("exact durable operator approval");
+    const recovered = await generateBoardConditionedAppearances(f.deps, { ...f.request, measurementAttempt: 2, transportRecoveryApprovalId: "approval-test" });
+    expect(recovered).toMatchObject({ state: "review-required", measurementAttempt: 2 });
+    expect(await generateBoardConditionedAppearances(f.deps, { ...f.request, measurementAttempt: 2, transportRecoveryApprovalId: "approval-test" })).toEqual(recovered);
+    expect(JSON.stringify(await f.budget.readRequest(f.request.worldId, firstKey))).toBe(retained);
+    expect(await f.budget.audit(f.request.worldId)).toMatchObject({ unknownRequestKeys: [firstKey], reservedMicroUsd: 300_000, held: false });
+    expect(f.fetchImage).toHaveBeenCalledTimes(1); expect(f.fetchMeasure).toHaveBeenCalledTimes(2);
+    expect(await f.checkpoints.getMeasurement(f.request.worldId, f.input.boardId, 1)).toBeNull();
+  });
   it("re-observes the exact paid sheet once without overwriting the first receipt or buying another image", async () => {
     const f = await fixture();
     const first = await generateBoardConditionedAppearances(f.deps, f.request);

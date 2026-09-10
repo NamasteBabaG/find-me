@@ -60,16 +60,22 @@ export async function generateBoardConditionedAppearances(deps: BoardGenerationD
   worldId: string; expectedContractSha256: string; input: BoardConditioningInput;
   /** One additional observation of the SAME paid sheet, never a source retry. */
   measurementAttempt?: 1 | 2;
+  /** A durable source checkpoint ends this invocation before an observer is bought. */
+  yieldAfterNewSource?: boolean;
+  /** Exact operator approval for the missing first response; never a usage receipt. */
+  transportRecoveryApprovalId?: string;
 }) {
   demand(/^[A-Za-z0-9_:-]{1,240}$/.test(request.worldId), "invalid world scope");
   const measurementAttempt = request.measurementAttempt ?? 1;
   demand(measurementAttempt === 1 || measurementAttempt === 2, "at most two observations of one paid source are allowed");
+  demand(!request.transportRecoveryApprovalId || measurementAttempt === 2, "transport recovery must use the second observation key");
   const selection = measurementAttempt === 2 ? { measurementAttempt: 2 as const } : {};
   const prepared = await prepareBoardConditionedSource(request.input, deps.sourcePolicy);
   demand(prepared.contractSha256 === request.expectedContractSha256, "frozen child/board/pose/light intent changed");
   const { input, contract, contractSha256 } = prepared;
   const sourceKey = `board:${input.boardId}:source:1`, measureKey = `board:${input.boardId}:measure:${measurementAttempt}`;
   let source = await deps.checkpoints.getSource(request.worldId, input.boardId);
+  let generatedNow = false;
   demand(measurementAttempt === 1 || source, "re-observation requires the retained original paid source; image generation is forbidden");
   if (!source) {
     const answer = await deps.sources.generate({ worldId: request.worldId, requestKey: sourceKey, sourceGroupKey: prepared.prepared.capture.sourceGroupKey,
@@ -78,17 +84,28 @@ export async function generateBoardConditionedAppearances(deps: BoardGenerationD
     source = answer;
     // A crash after billing but before this checkpoint cannot redispatch sourceKey.
     await deps.checkpoints.putSource(request.worldId, input.boardId, source);
+    generatedNow = true;
   }
   demand(source.fingerprint === prepared.prepared.fingerprint && source.pngSha256 === sha256Bytes(source.png), "cached source bytes/child/board/light mapping changed");
   await assertRecordedCharge(deps, request.worldId, sourceKey, prepared.prepared.fingerprint, source.evidence);
+  if (generatedNow && request.yieldAfterNewSource) return { state: "source-ready" as const, boardId: input.boardId, contractSha256, automaticRelease: false as const };
   const slots = input.slots.map(item => ({ slotId: item.slot.id, pose: item.slot.pose }));
   const expectedObservation = await prepareBoardPoseObservation({ sheetPng: source.png, slots }, deps.observerPolicy);
   if (measurementAttempt === 2) {
     const original = await deps.checkpoints.getMeasurement(request.worldId, input.boardId, 1);
+    if (request.transportRecoveryApprovalId) {
+      const firstKey = `board:${input.boardId}:measure:1`;
+      const [charge, approval] = await Promise.all([deps.budget.readRequest(request.worldId, firstKey), deps.budget.readContinuationApproval(request.worldId, firstKey)]);
+      demand(!original && charge?.state === "unknown" && charge.operationFingerprint === expectedObservation.fingerprint
+        && approval?.approvalId === request.transportRecoveryApprovalId && approval.operationFingerprint === expectedObservation.fingerprint
+        && approval.reserveMicroUsd === charge.reserveMicroUsd && approval.scope === "judge",
+      "transport recovery requires exact durable operator approval, retained reserve and missing same-sheet first response");
+    } else {
     demand(original && original.sheetSha256 === source.pngSha256 && original.fingerprint === expectedObservation.fingerprint
       && original.receipt?.responseText && original.receipt.fingerprint === expectedObservation.fingerprint
       && original.receipt.sourceImageSha256 === source.pngSha256, "re-observation requires the original immutable same-sheet receipt");
     await assertRecordedCharge(deps, request.worldId, `board:${input.boardId}:measure:1`, original.fingerprint, original.evidence);
+    }
   }
   let measurement = await deps.checkpoints.getMeasurement(request.worldId, input.boardId, measurementAttempt);
   if (!measurement) {

@@ -4,7 +4,7 @@ import path from "node:path";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { applyTestSchema } from "../../../lib/test-schema";
-import { WorldBudget, type WorldBudgetRequest, type WorldBudgetSnapshot, type WorldChargeEvidence } from "../../../services/generation/world-budget";
+import { WorldBudget, type WorldBudgetRequest, type WorldBudgetSnapshot, type WorldChargeEvidence, type WorldUnknownContinuationInput } from "../../../services/generation/world-budget";
 import { CasWorldBudgetRepository } from "../world-budget-repository";
 import { PrismaWorldBudgetStore, WORLD_BUDGET_LEDGER_MAX_REVISION } from "../prisma-world-budget-store";
 
@@ -56,6 +56,38 @@ function raceReads(...stores: PrismaWorldBudgetStore[]) {
 }
 
 describe("Prisma world budget with actual disposable SQLite", () => {
+  it("atomically commits or rolls back operator approval with other admin writes, without request mutations", async () => {
+    const id = world(), w = worker(); await w.budget.reserve(id, input()); await w.budget.markUnknown(id, "request", "transport-unresolved");
+    const original = (await w.store.read(id))!;
+    const approval: WorldUnknownContinuationInput = { ...input(), approvalId: "operator-recovery", unknownReasons: ["transport-unresolved"], operatorId: "synthetic-admin",
+      authorizationSha256: "a".repeat(64), authorizedAt: "2026-09-10T02:00:00.000Z" };
+    const action = async (rollback: boolean) => db.$transaction(async tx => {
+      const adapter = PrismaWorldBudgetStore.forContinuationApprovalTransaction(tx);
+      const b = new WorldBudget(new CasWorldBudgetRepository(adapter), { authorizeUnknownContinuation: async () => true });
+      const result = await b.authorizeUnknownContinuation(id, approval);
+      expect(result.audit).toMatchObject({ held: false, unknownRequestKeys: ["request"], reservedMicroUsd: 100_000 });
+      // Even a mistaken caller cannot obtain permission to dispatch in this tx.
+      await expect(b.reserve(id, input("new-dispatch"))).rejects.toMatchObject({ code: "invalid_ledger" });
+      await expect(b.settle(id, "request", charge())).rejects.toMatchObject({ code: "invalid_ledger" });
+      await expect(adapter.insertIfAbsent("other", snapshot("other"))).rejects.toMatchObject({ code: "invalid_ledger" });
+      await tx.auditLog.create({ data: { id: `${id}-recovery`, actorType: "ADMIN", actorId: "synthetic-admin", action: "test:continuation", entityType: "World", entityId: id } });
+      if (rollback) throw new Error("rollback recovery");
+      return result;
+    });
+    await expect(action(true)).rejects.toThrow("rollback recovery");
+    expect(await w.store.read(id)).toEqual(original); expect(await db.auditLog.findUnique({ where: { id: `${id}-recovery` } })).toBeNull();
+    expect(await action(false)).toMatchObject({ acquired: true });
+    const retained = (await new PrismaWorldBudgetStore(client()).read(id))!;
+    expect(retained.snapshot.requests).toEqual(original.snapshot.requests);
+    expect(retained.snapshot.unknownContinuationApprovals).toHaveLength(1);
+    expect(await w.budget.readContinuationApproval(id, "request")).toMatchObject({ approvalId: approval.approvalId });
+    expect(await db.auditLog.findUnique({ where: { id: `${id}-recovery` } })).not.toBeNull();
+    // A later normal CAS write retains approval history and the unknown reserve.
+    await w.budget.reserve(id, input("subsequent"));
+    expect((await w.store.read(id))!.snapshot.unknownContinuationApprovals).toEqual(retained.snapshot.unknownContinuationApprovals);
+    const malformed = structuredClone(retained.snapshot); malformed.unknownContinuationApprovals![0]!.reserveMicroUsd = 1;
+    await expect(w.store.compareAndSwap(id, retained.revision, malformed)).rejects.toMatchObject({ code: "invalid_ledger" });
+  });
   it("persists a whole versioned snapshot and performs one exact revision CAS", async () => {
     const id = world(), { store } = worker();
     expect(await store.read(id)).toBeNull();

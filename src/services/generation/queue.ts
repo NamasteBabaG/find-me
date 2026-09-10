@@ -40,19 +40,19 @@ export async function nextPendingGame(c: Container): Promise<string | null> {
  * concurrently: every step is idempotent and a finished hiding spot is skipped.
  */
 export async function tickGeneration(c: Container, gameId: string | null, budgetMs: number, hardMs = 270_000): Promise<TickResult> {
+  const now = Date.now();
   const id = gameId ?? (await nextPendingGame(c));
   if (!id) return { gameId: null, status: null, pending: false };
   const before = await c.db.game.findUnique({ where: { id }, select: { status: true, styleVersion: true } });
   if (!before) return { gameId: id, status: null, pending: false };
   if (before.styleVersion === BOARD_WIZARD_STYLE) {
     if (!boardWizardEnabled()) return { gameId: id, status: statusOf(before), pending: false };
-    const result = await runBoardConditionedWizardSlice(c, id);
+    const result = await runBoardConditionedWizardSlice(c, id, { hardDeadlineAt: now + hardMs });
     const after = await c.db.game.findUnique({ where: { id }, select: { status: true } });
     return { gameId: id, status: after ? statusOf(after) : null, pending: result.pending };
   }
   // No READY claim: keep the real held status while declining legacy polling.
   if (isFixedWorldStyle(before.styleVersion)) return { gameId: id, status: statusOf(before), pending: false };
-  const now = Date.now();
   await runGenerationPipeline(c, id, { deadlineAt: now + budgetMs, hardDeadlineAt: now + hardMs });
   const after = await c.db.game.findUnique({ where: { id }, select: { status: true, styleVersion: true } });
   const status = after ? statusOf(after) : null;

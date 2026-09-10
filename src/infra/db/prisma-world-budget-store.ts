@@ -1,8 +1,8 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import {
-  auditWorldBudget, WorldBudgetError, WORLD_BUDGET_SCOPES,
-  type BudgetJson, type WorldBudgetSnapshot,
+  auditWorldBudget, WorldBudgetError, WORLD_BUDGET_SCOPES, validateUnknownContinuationApproval, validateWorldUnknownContinuationApprovals,
+  type BudgetJson, type WorldBudgetSnapshot, type WorldUnknownContinuationApproval,
 } from "../../services/generation/world-budget";
 import type { AtomicWorldBudgetStore, VersionedWorldBudgetSnapshot } from "./world-budget-repository";
 
@@ -40,7 +40,10 @@ const requestSchema = z.discriminatedUnion("state", [
   z.object({ ...base, state: z.literal("settled"), evidence: evidenceSchema }).strict(),
   z.object({ ...base, state: z.literal("linked"), evidence: evidenceSchema, canonicalRequestKey: nonempty }).strict(),
 ]);
-const snapshotSchema = z.object({ worldId: nonempty, requests: z.array(requestSchema) }).strict();
+const continuationSchema = z.custom<WorldUnknownContinuationApproval>(value => {
+  try { validateUnknownContinuationApproval(value as WorldUnknownContinuationApproval); return true; } catch { return false; }
+});
+const snapshotSchema = z.object({ worldId: nonempty, requests: z.array(requestSchema), unknownContinuationApprovals: z.array(continuationSchema).max(128).optional() }).strict();
 const revisionSchema = z.number().int().min(0).max(WORLD_BUDGET_LEDGER_MAX_REVISION);
 
 // This is a metadata-only ledger, not a request/response or exception dump.
@@ -75,6 +78,7 @@ function checkedSnapshot(worldId: string, input: unknown): WorldBudgetSnapshot {
   const snapshot: WorldBudgetSnapshot = parsed.data;
   const keys = new Set<string>(), charges = new Set<string>();
   try {
+    validateWorldUnknownContinuationApprovals(snapshot);
     for (const request of snapshot.requests) {
       if (keys.has(request.requestKey)) fail("invalid_ledger", "Duplicate ledger request key");
       keys.add(request.requestKey);
@@ -132,10 +136,8 @@ function worldIdCollision(error: unknown) {
  * apply a from-empty test-schema script to an existing DB. Applying a migration
  * or guarded db push to QA/production is a separate, explicitly targeted step.
  */
-export class PrismaWorldBudgetStore implements AtomicWorldBudgetStore {
-  // Full client type excludes Prisma.TransactionClient: permission must not
-  // escape before an enclosing caller-owned transaction actually commits.
-  constructor(private readonly db: PrismaClient) {}
+class WorldBudgetStorageAccess implements AtomicWorldBudgetStore {
+  constructor(private readonly db: Pick<PrismaClient, "worldBudgetLedger">) {}
 
   async read(worldId: string): Promise<VersionedWorldBudgetSnapshot | null> {
     checkedWorldId(worldId);
@@ -175,5 +177,34 @@ export class PrismaWorldBudgetStore implements AtomicWorldBudgetStore {
     if (result.count === 1) return true;
     if (result.count === 0) return false;
     return fail("invalid_ledger", "Atomic ledger update returned an impossible row count");
+  }
+}
+
+export class PrismaWorldBudgetStore extends WorldBudgetStorageAccess {
+  // Normal reservation/dispatch permission requires a primary autocommit client.
+  constructor(db: PrismaClient) { super(db); }
+
+  /** Narrow admin recovery capability: ONLY append continuation approvals to an
+   * existing ledger, atomically with Game/Job resume. Cannot create, reserve,
+   * settle or change any request. Caller must await the OUTER commit before
+   * returning success; no provider dispatch may run in that transaction. */
+  static forContinuationApprovalTransaction(tx: Prisma.TransactionClient): AtomicWorldBudgetStore {
+    const access = new WorldBudgetStorageAccess(tx);
+    return {
+      read: id => access.read(id),
+      insertIfAbsent: async () => fail("invalid_ledger", "Continuation transaction cannot create or reserve a ledger"),
+      compareAndSwap: async (id, revision, incoming) => {
+        const old = await access.read(id);
+        if (!old || old.revision !== revision) return false;
+        const next = checkedSnapshot(id, incoming), previous = old.snapshot.unknownContinuationApprovals ?? [], approvals = next.unknownContinuationApprovals ?? [];
+        if (JSON.stringify(next.requests) !== JSON.stringify(old.snapshot.requests) || approvals.length <= previous.length
+          || JSON.stringify(approvals.slice(0, previous.length)) !== JSON.stringify(previous)) fail("invalid_ledger", "Continuation transaction may only append immutable approvals, not change requests");
+        for (const approval of approvals.slice(previous.length)) {
+          const request = old.snapshot.requests.find(r => r.requestKey === approval.requestKey);
+          if (!request || request.state !== "unknown" || request.conflicts.length || JSON.stringify(request.unknownReasons) !== JSON.stringify(approval.unknownReasons)) fail("invalid_ledger", "Continuation transaction requires exact currently unknown evidence");
+        }
+        return access.compareAndSwap(id, revision, next);
+      },
+    };
   }
 }

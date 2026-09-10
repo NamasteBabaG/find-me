@@ -52,6 +52,49 @@ async function fixture(reply: () => Promise<Response> = async () => response(), 
   return { store, budget, fetchOnce, provider, input, prepared };
 }
 describe("budgeted board three-pose source observer (no live API)", () => {
+  it("keeps the frozen 90s policy and fingerprint when no execution override is supplied", async () => {
+    const frozen = { ...policy, timeoutMs: 90_000 }, f = await fixture(async () => response(), png, frozen);
+    const timer = vi.spyOn(globalThis, "setTimeout");
+    try {
+      const result = await f.provider.observe(f.input);
+      expect(result).toMatchObject({ kind: "observed", receipt: { transportTimeoutMs: 90_000, fingerprint: f.prepared.fingerprint } });
+      expect(timer).toHaveBeenCalledWith(expect.any(Function), 90_000);
+      expect(f.prepared.capture.policy).toEqual(frozen);
+      expect((await f.budget.readRequest(f.input.worldId, f.input.requestKey))?.operationFingerprint).toBe(f.prepared.fingerprint);
+    } finally { timer.mockRestore(); }
+  });
+  it("extends only transport to 180s while retaining the exact old model request and charge fingerprint", async () => {
+    const frozen = { ...policy, timeoutMs: 90_000 }, f = await fixture(async () => response(), png, frozen);
+    const original = JSON.stringify(f.prepared.capture), timer = vi.spyOn(globalThis, "setTimeout");
+    const provider = new BudgetedBoardPoseObserver("fake-only", f.budget, frozen, f.fetchOnce as typeof fetch, { transportTimeoutMs: 180_000 });
+    try {
+      expect(await provider.observe(f.input)).toMatchObject({ kind: "observed", receipt: { transportTimeoutMs: 180_000, fingerprint: f.prepared.fingerprint } });
+      expect(timer).toHaveBeenCalledWith(expect.any(Function), 180_000);
+      expect(JSON.stringify((await prepareBoardPoseObservation(f.input, frozen)).capture)).toBe(original);
+      expect((await f.budget.readRequest(f.input.worldId, f.input.requestKey))?.operationFingerprint).toBe(f.prepared.fingerprint);
+      const init = (f.fetchOnce.mock.calls as unknown as [string, RequestInit][])[0]![1];
+      expect(JSON.parse(String(init.body))).not.toHaveProperty("transportTimeoutMs");
+      expect(await provider.observe(f.input)).toMatchObject({ kind: "already-recorded", requestState: "settled" });
+      expect(f.fetchOnce).toHaveBeenCalledTimes(1);
+    } finally { timer.mockRestore(); }
+  });
+  it("uses and records the actual transport deadline in a failure without changing the frozen policy", async () => {
+    const f = await fixture(async () => new Promise<never>(() => {}), png, { ...policy, timeoutMs: 90_000 });
+    const provider = new BudgetedBoardPoseObserver("fake-only", f.budget, { ...policy, timeoutMs: 90_000 }, f.fetchOnce as typeof fetch, { transportTimeoutMs: 10 });
+    const error = await provider.observe(f.input).catch(error => error);
+    expect(error).toMatchObject({ code: "cost_unknown", receipt: { transportTimeoutMs: 10, fingerprint: f.prepared.fingerprint },
+      diagnostic: { transportTimeoutMs: 10, failure: "timeout", stage: "request", billing: "unknown" } });
+    expect(await f.budget.audit(f.input.worldId)).toMatchObject({ held: true, reservedMicroUsd: 300_000 });
+    expect(f.fetchOnce).toHaveBeenCalledTimes(1);
+    const legacy = { ...error.receipt }; delete legacy.transportTimeoutMs;
+    expect(boardObserverFailure({ worldId: f.input.worldId, requestKey: f.input.requestKey, receipt: legacy,
+      stage: "request", failure: "timeout", elapsedMs: 10 })).not.toHaveProperty("transportTimeoutMs");
+  });
+  it.each([0, -1, 240_001, 1.5, NaN, Infinity])("rejects invalid transport timeout %s before any reservation", async transportTimeoutMs => {
+    const f = await fixture();
+    expect(() => new BudgetedBoardPoseObserver("fake-only", f.budget, policy, f.fetchOnce as typeof fetch, { transportTimeoutMs })).toThrow("Invalid board-observer transport timeout");
+    expect(f.fetchOnce).not.toHaveBeenCalled(); expect(f.store.rows.size).toBe(0);
+  });
   it("never treats an upper-body measurement as complete standing anatomy", async () => {
     const expected = slots.map(s => ({ ...s, pose: "standing" }));
     const reply = answer(); reply.cells.forEach(c => { c.pose = "standing"; });

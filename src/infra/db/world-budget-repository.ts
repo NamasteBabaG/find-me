@@ -1,5 +1,5 @@
 import {
-  auditWorldBudget, WorldBudgetError,
+  auditWorldBudget, WorldBudgetError, validateWorldUnknownContinuationApprovals, validateUnknownContinuationApproval,
   type WorldBudgetRepository, type WorldBudgetRequest, type WorldBudgetSnapshot, type WorldBudgetTransaction,
 } from "../../services/generation/world-budget";
 
@@ -60,6 +60,7 @@ function freeze<T>(value: T): T {
  */
 function validateCommitSnapshot(snapshot: WorldBudgetSnapshot, worldId: string) {
   snapshotShape(snapshot, worldId);
+  validateWorldUnknownContinuationApprovals(snapshot);
   const keys = new Set<string>(), canonicalCharges = new Set<string>();
   for (const request of snapshot.requests) {
     if (!request || typeof request !== "object") fail("invalid_transaction", "Invalid request row");
@@ -109,6 +110,7 @@ export class CasWorldBudgetRepository implements WorldBudgetRepository {
       snapshotShape(original, worldId);
       auditWorldBudget(original);
       const rows: WorldBudgetRequest[] = [...structuredClone(original.requests)];
+      const approvals = [...structuredClone(original.unknownContinuationApprovals ?? [])];
       let active = true, changed = false;
       const assertActive = () => { if (!active) fail("transaction_closed", "Transaction callback has finished; escaped writes are forbidden"); };
       const tx: WorldBudgetTransaction = {
@@ -127,12 +129,22 @@ export class CasWorldBudgetRepository implements WorldBudgetRepository {
           if (previous.scope !== request.scope || previous.operationFingerprint !== request.operationFingerprint || previous.reserveMicroUsd !== request.reserveMicroUsd || previous.origin !== request.origin) fail("invalid_transaction", "Immutable reservation metadata cannot change");
           rows[index] = request; changed = true;
         },
+        appendUnknownContinuationApproval: async incoming => {
+          assertActive();
+          const approval = structuredClone(incoming); validateUnknownContinuationApproval(approval);
+          if (approvals.some(a => a.approvalId === approval.approvalId)) fail("invalid_transaction", "Continuation approval IDs are append-only and unique");
+          const request = rows.find(r => r.requestKey === approval.requestKey);
+          if (!request || request.state !== "unknown" || request.conflicts.length || JSON.stringify(request.unknownReasons) !== JSON.stringify(approval.unknownReasons)) fail("invalid_transaction", "Continuation must authorize an existing exact unknown request");
+          validateWorldUnknownContinuationApprovals({ worldId, requests: rows, unknownContinuationApprovals: [...approvals, approval] });
+          approvals.push(approval); changed = true;
+        },
       };
       let result: T;
       try { result = await work(tx); }
       finally { active = false; }
       if (!changed) return result;
-      const next: WorldBudgetSnapshot = { worldId, requests: rows };
+      const next: WorldBudgetSnapshot = { worldId, requests: rows,
+        ...(original.unknownContinuationApprovals !== undefined || approvals.length ? { unknownContinuationApprovals: approvals } : {}) };
       validateCommitSnapshot(next, worldId);
       if (revision === Number.MAX_SAFE_INTEGER) fail("invalid_store", "Revision cannot be incremented safely; no commit attempted");
       // Separate commit clone prevents a store retaining/mutating caller-owned

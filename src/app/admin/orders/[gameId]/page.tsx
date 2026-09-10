@@ -12,6 +12,7 @@ import { StaticScenePreview } from "@/game/components/StaticScenePreview";
 import { ComposedSprite } from "@/game/components/ComposedSprite";
 import { Notice } from "@/ui/Shell";
 import { AttemptStrip } from "./AttemptStrip";
+import { BoardWizardRecoveryForm } from "./BoardWizardRecoveryForm";
 import { adjustTargetAction, adminDeleteAction, adminRotateLinkAction, approveAction, recutAvatarAction, refundAction, regenTargetAction, requestPhotoAction, retryAction } from "../../actions";
 
 /** What the row's last review means to a person: reviewed and passed, reviewed and failed, could not decide, or never reviewed. */
@@ -65,6 +66,7 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
         </div>
       </div>
       {game.lastError ? <Notice kind="danger">{game.lastError}</Notice> : null}
+      <BoardWizardRecoveryForm gameId={gameId} />
 
       <div className="admin__grid">
         <div className="fm-stack fm-stack--3">

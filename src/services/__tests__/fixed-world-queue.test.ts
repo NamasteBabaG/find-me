@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Container } from "../container";
 
 const run = vi.hoisted(() => vi.fn());
+const wizard = vi.hoisted(() => ({ enabled: false, run: vi.fn() }));
 vi.mock("../generation/pipeline", () => ({ runGenerationPipeline: run, RESUMABLE_STATUSES: ["PAID", "TARGETS_GENERATING", "SCENES_COMPOSING", "GENERATION_FAILED"] }));
+vi.mock("../generation/board-conditioned-wizard", () => ({ BOARD_WIZARD_STYLE: "fixed-sprite-board-wizard-v1", boardWizardEnabled: () => wizard.enabled, runBoardConditionedWizardSlice: wizard.run }));
 import { nextPendingGame, tickGeneration } from "../generation/queue";
 import { FIXED_WORLD_STYLE_PREFIX, FIXED_WORLD_STYLE_VERSION } from "../generation/fixed-world-stage-record";
 
@@ -10,9 +12,31 @@ function setup(styleVersion = FIXED_WORLD_STYLE_VERSION, status = "PAID") {
   const db = { game: { findFirst: vi.fn().mockResolvedValue(null), findUnique: vi.fn().mockResolvedValue({ styleVersion, status }) } };
   return { db, c: { db } as unknown as Container };
 }
-beforeEach(() => { run.mockReset().mockResolvedValue(undefined); });
+beforeEach(() => { run.mockReset().mockResolvedValue(undefined); wizard.enabled = false; wizard.run.mockReset().mockResolvedValue({ pending: true }); });
 
 describe("fixed worlds never occupy the legacy painter queue", () => {
+  it("forwards the hard deadline from tick entry to the enabled QA wizard without invoking the painter", async () => {
+    const s = setup("fixed-sprite-board-wizard-v1", "TARGETS_GENERATING"); wizard.enabled = true;
+    let now = 1_000_000;
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    s.db.game.findUnique.mockImplementation(async () => { now += 5_000; return { styleVersion: "fixed-sprite-board-wizard-v1", status: "TARGETS_GENERATING" }; });
+    try {
+      expect(await tickGeneration(s.c, "wizard", 30_000, 270_000)).toEqual({ gameId: "wizard", status: "TARGETS_GENERATING", pending: true });
+      expect(wizard.run).toHaveBeenCalledExactlyOnceWith(s.c, "wizard", { hardDeadlineAt: 1_270_000 });
+      expect(run).not.toHaveBeenCalled();
+    } finally { clock.mockRestore(); }
+  });
+  it("preserves a wizard deadline deferral as pending without falling back to the painter", async () => {
+    const s = setup("fixed-sprite-board-wizard-v1", "TARGETS_GENERATING"); wizard.enabled = true;
+    wizard.run.mockResolvedValue({ pending: true });
+    expect(await tickGeneration(s.c, "wizard", 1_000, 2_000)).toEqual({ gameId: "wizard", status: "TARGETS_GENERATING", pending: true });
+    expect(wizard.run).toHaveBeenCalledOnce(); expect(run).not.toHaveBeenCalled();
+  });
+  it("does not advance the QA wizard when its feature flag is disabled", async () => {
+    const s = setup("fixed-sprite-board-wizard-v1", "TARGETS_GENERATING");
+    expect(await tickGeneration(s.c, "wizard", 30_000)).toEqual({ gameId: "wizard", status: "TARGETS_GENERATING", pending: false });
+    expect(wizard.run).not.toHaveBeenCalled(); expect(run).not.toHaveBeenCalled();
+  });
   it("excludes every reserved fixed marker from oldest pending selection", async () => {
     const s = setup();
     s.db.game.findFirst.mockResolvedValue({ id: "legacy" });

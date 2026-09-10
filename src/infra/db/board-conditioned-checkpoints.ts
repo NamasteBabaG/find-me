@@ -128,6 +128,7 @@ const observationReceipt = z.object({
   // Keep the full bounded model JSON verbatim, not the short identifier limit.
   responseText: z.string().max(65_536).nullable(), rawUsage: z.record(json).nullable(),
   costUnknown: z.boolean(), costCents: z.number().finite().nonnegative(), attempts: z.literal(1),
+  transportTimeoutMs: z.number().int().min(1).max(240_000).optional(),
 }).strict();
 const measurementSchema = z.object({
   sheetSha256: sha, fingerprint: sha, status: z.enum(["ok", "uncertain", "invalid"]),

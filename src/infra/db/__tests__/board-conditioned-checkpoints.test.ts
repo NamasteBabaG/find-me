@@ -115,7 +115,7 @@ describe("private immutable board-conditioned checkpoints in real disposable SQL
     await expectCode(store.putObservationFailure(id, board, { ...diagnostic, requestKey: "board:other:measure:1" }), "corrupt-checkpoint");
     await expectCode(store.putObservationFailure(id, board, { ...diagnostic, headers: { authorization: "secret" } } as typeof diagnostic), "corrupt-checkpoint");
     await expectCode(store.putObservationFailure(id, board, { ...diagnostic, elapsedMs: 3_600_001 }), "corrupt-checkpoint");
-    const second = { ...diagnostic, requestKey: `board:${board}:measure:2` };
+    const second = { ...diagnostic, requestKey: `board:${board}:measure:2`, transportTimeoutMs: 180_000 };
     await store.putObservationFailure(id, board, second, 2);
     expect(await store.getObservationFailure(id, board, 2)).toEqual(second);
     // Both retained source attempts use distinct exact deletion inventory.
@@ -361,7 +361,7 @@ describe("private immutable board-conditioned checkpoints in real disposable SQL
     await pending; expect(await store.getMeasurement(id, board)).toEqual(expected);
   });
 
-  it("persists the entire optional observer receipt and long response text without truncation", async () => {
+  it.each([undefined, 180_000])("persists legacy/new observer receipt (transport %s) and long response text without truncation", async transportTimeoutMs => {
     const id = world(), s = source(id), m = measurement(s), store = new PrismaBoardConditionedCheckpointStore(db);
     m.evidence.amountMicroUsd = 1000;
     m.receipt = {
@@ -372,10 +372,15 @@ describe("private immutable board-conditioned checkpoints in real disposable SQL
       responseId: "fixture-observer-response", httpStatus: 200, serviceTier: "default", finishReason: "stop",
       responseText: "  " + JSON.stringify({ cells: m.sources, reason: "Observed source only. ".repeat(1500) }) + "\n",
       rawUsage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 }, costUnknown: false, costCents: 0.1, attempts: 1,
+      ...(transportTimeoutMs === undefined ? {} : { transportTimeoutMs }),
     };
     expect(m.receipt.responseText!.length).toBeGreaterThan(30_000);
     await store.putSource(id, board, s); await store.putMeasurement(id, board, m);
     expect(await store.getMeasurement(id, board)).toEqual(m);
+    for (const invalidTimeout of [0, 240_001, 1.5]) {
+      const invalid = structuredClone(m); invalid.receipt!.transportTimeoutMs = invalidTimeout;
+      await expectCode(store.putMeasurement(id, board, invalid), "invalid-measurement");
+    }
     const changed = structuredClone(m); changed.receipt!.responseText += "changed";
     await expectCode(store.putMeasurement(id, board, changed), "checkpoint-conflict");
     for (const field of ["sourceImageSha256", "fingerprint", "requestId"] as const) {

@@ -45,9 +45,28 @@ export type WorldBudgetRequest = RequestBase & (
   | { state: "linked"; evidence: WorldChargeEvidence; canonicalRequestKey: string }
 );
 
+/** An operator's explicit permission to continue while retaining one unknown
+ * reservation in full. This is NOT provider usage, settlement or retry proof. */
+export interface WorldUnknownContinuationApproval extends WorldReservationInput {
+  version: "world-unknown-continuation/v1";
+  worldId: string;
+  approvalId: string;
+  unknownReasons: readonly string[];
+  operatorId: string;
+  authorizationSha256: string;
+  authorizedAt: string;
+}
+export type WorldUnknownContinuationInput = Omit<WorldUnknownContinuationApproval, "version" | "worldId">;
+export interface WorldBudgetOptions {
+  /** Trusted operator entrypoint supplies this verifier after authenticating the
+   * actor/grant. A JSON caller's self-asserted role is not authorization. */
+  authorizeUnknownContinuation?: (approval: Readonly<WorldUnknownContinuationApproval>) => Promise<boolean>;
+}
+
 export interface WorldBudgetSnapshot {
   worldId: string;
   requests: readonly WorldBudgetRequest[];
+  unknownContinuationApprovals?: readonly WorldUnknownContinuationApproval[];
 }
 
 export interface WorldBudgetTransaction {
@@ -55,6 +74,8 @@ export interface WorldBudgetTransaction {
   readonly snapshot: WorldBudgetSnapshot;
   createRequest(request: WorldBudgetRequest): Promise<void>;
   updateRequest(requestKey: string, request: WorldBudgetRequest): Promise<void>;
+  /** Optional for historical/read-only adapters; missing support fails closed. */
+  appendUnknownContinuationApproval?(approval: WorldUnknownContinuationApproval): Promise<void>;
 }
 
 export interface WorldBudgetRepository {
@@ -136,12 +157,54 @@ function evidence(value: WorldChargeEvidence) {
 function chargeIdentity(value: WorldChargeEvidence) { return JSON.stringify([value.providerNamespace, value.providerRequestId]); }
 function sameEvidence(a: WorldChargeEvidence, b: WorldChargeEvidence) { return json(a as unknown as BudgetJson) === json(b as unknown as BudgetJson); }
 function snapshotWith(snapshot: WorldBudgetSnapshot, request: WorldBudgetRequest): WorldBudgetSnapshot {
-  return { worldId: snapshot.worldId, requests: [...snapshot.requests.filter(item => item.requestKey !== request.requestKey), request] };
+  return { ...snapshot, requests: [...snapshot.requests.filter(item => item.requestKey !== request.requestKey), request] };
+}
+
+export function validateUnknownContinuationApproval(value: WorldUnknownContinuationApproval): void {
+  if (!value || typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) fail("invalid_input", "A plain continuation approval is required");
+  const expected = ["version", "worldId", "approvalId", "requestKey", "scope", "operationFingerprint", "reserveMicroUsd", "unknownReasons", "operatorId", "authorizationSha256", "authorizedAt"].sort();
+  if (JSON.stringify(Object.keys(value).sort()) !== JSON.stringify(expected) || Object.values(Object.getOwnPropertyDescriptors(value)).some(p => !Object.hasOwn(p, "value"))) fail("invalid_input", "Continuation approval has unexpected fields");
+  if (value.version !== "world-unknown-continuation/v1") fail("invalid_input", "Unknown continuation approval version");
+  for (const key of ["worldId", "approvalId", "requestKey", "operationFingerprint", "operatorId"] as const) {
+    const text = value[key];
+    if (typeof text !== "string" || !/^[A-Za-z0-9_:.@/-]{1,500}$/.test(text) || text.includes("://") || /^sk-/i.test(text)) fail("invalid_input", "Continuation approval requires bounded nonsecret identifiers");
+  }
+  scope(value.scope); money(value.reserveMicroUsd, "reserveMicroUsd", false);
+  if (!Array.isArray(value.unknownReasons) || !value.unknownReasons.length || value.unknownReasons.length > 32
+    || new Set(value.unknownReasons).size !== value.unknownReasons.length
+    || value.unknownReasons.some(reason => typeof reason !== "string" || !reason.trim() || reason.length > 500)) fail("invalid_input", "Exact bounded unknown-reason history is required");
+  if (typeof value.authorizationSha256 !== "string" || !/^[a-f0-9]{64}$/.test(value.authorizationSha256)) fail("invalid_input", "Explicit operator authorization evidence hash is required");
+  if (typeof value.authorizedAt !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value.authorizedAt)
+    || !Number.isFinite(Date.parse(value.authorizedAt)) || new Date(value.authorizedAt).toISOString() !== value.authorizedAt) fail("invalid_input", "Canonical approval timestamp required");
+  json(value as unknown as BudgetJson);
+}
+/** Validate append-only historical approvals even after their request settles. */
+export function validateWorldUnknownContinuationApprovals(snapshot: WorldBudgetSnapshot): void {
+  if (snapshot.unknownContinuationApprovals === undefined) return;
+  if (!Array.isArray(snapshot.unknownContinuationApprovals) || snapshot.unknownContinuationApprovals.length > 128) fail("invalid_snapshot", "Invalid continuation approval history");
+  const ids = new Set<string>();
+  for (const approval of snapshot.unknownContinuationApprovals) {
+    validateUnknownContinuationApproval(approval);
+    const request = snapshot.requests.find(r => r.requestKey === approval.requestKey);
+    if (ids.has(approval.approvalId) || approval.worldId !== snapshot.worldId || !request || request.origin !== "reserved"
+      || request.scope !== approval.scope || request.operationFingerprint !== approval.operationFingerprint || request.reserveMicroUsd !== approval.reserveMicroUsd
+      || !Array.isArray(request.unknownReasons) || approval.unknownReasons.some((reason: string) => !request.unknownReasons.includes(reason))) fail("invalid_snapshot", "Continuation approval no longer binds its original world/request/history");
+    ids.add(approval.approvalId);
+  }
+}
+/** Pure exact matching; never converts the request into a known charge. */
+export function getMatchingUnknownContinuationApproval(snapshot: WorldBudgetSnapshot, requestKey: string): WorldUnknownContinuationApproval | null {
+  validateWorldUnknownContinuationApprovals(snapshot);
+  const request = snapshot.requests.find(r => r.requestKey === requestKey);
+  if (!request || request.state !== "unknown" || request.conflicts.length) return null;
+  const approval = snapshot.unknownContinuationApprovals?.find(a => a.requestKey === requestKey && json(a.unknownReasons) === json(request.unknownReasons));
+  return approval ? structuredClone(approval) : null;
 }
 
 /** Pure audit; corrupt/duplicate canonical rows fail closed instead of undercounting. */
 export function auditWorldBudget(snapshot: WorldBudgetSnapshot): WorldBudgetAudit {
   nonempty(snapshot.worldId, "worldId");
+  validateWorldUnknownContinuationApprovals(snapshot);
   const byScope = Object.fromEntries(WORLD_BUDGET_SCOPES.map(item => [item, { settledMicroUsd: 0, reservedMicroUsd: 0 }])) as WorldBudgetAudit["byScope"];
   const pendingRequestKeys: string[] = [], unknownRequestKeys: string[] = [], overrunRequestKeys: string[] = [], conflictRequestKeys: string[] = [], linkedRequestKeys: string[] = [];
   let settledMicroUsd = 0, reservedMicroUsd = 0;
@@ -181,7 +244,7 @@ export function auditWorldBudget(snapshot: WorldBudgetSnapshot): WorldBudgetAudi
   const committedMicroUsd = add(settledMicroUsd, reservedMicroUsd);
   const overCapMicroUsd = Math.max(0, committedMicroUsd - WORLD_BUDGET_CAP_MICRO_USD);
   const remainingMicroUsd = Math.max(0, WORLD_BUDGET_CAP_MICRO_USD - committedMicroUsd);
-  const held = Boolean(unknownRequestKeys.length || overrunRequestKeys.length || conflictRequestKeys.length || overCapMicroUsd);
+  const held = Boolean(unknownRequestKeys.some(key => !getMatchingUnknownContinuationApproval(snapshot, key)) || overrunRequestKeys.length || conflictRequestKeys.length || overCapMicroUsd);
   return { worldId: snapshot.worldId, capMicroUsd: WORLD_BUDGET_CAP_MICRO_USD, settledMicroUsd, reservedMicroUsd, committedMicroUsd, remainingMicroUsd, overCapMicroUsd, held, canReserve: !held && remainingMicroUsd > 0, state: held ? "held" : remainingMicroUsd === 0 ? "exhausted" : "open", pendingRequestKeys, unknownRequestKeys, overrunRequestKeys, conflictRequestKeys, linkedRequestKeys, byScope };
 }
 
@@ -192,7 +255,7 @@ export interface WorldReserveResult extends WorldBudgetResult {
 }
 
 export class WorldBudget {
-  constructor(private readonly repository: WorldBudgetRepository) {}
+  constructor(private readonly repository: WorldBudgetRepository, private readonly options: WorldBudgetOptions = {}) {}
 
   private transact<T>(worldId: string, work: (tx: WorldBudgetTransaction) => Promise<T>) {
     nonempty(worldId, "worldId");
@@ -209,6 +272,34 @@ export class WorldBudget {
   async readRequest(worldId: string, requestKey: string): Promise<WorldBudgetRequest | null> {
     nonempty(requestKey, "requestKey");
     return this.transact(worldId, async tx => structuredClone(tx.snapshot.requests.find(request => request.requestKey === requestKey) ?? null));
+  }
+
+  async readContinuationApproval(worldId: string, requestKey: string): Promise<WorldUnknownContinuationApproval | null> {
+    nonempty(requestKey, "requestKey");
+    return this.transact(worldId, async tx => getMatchingUnknownContinuationApproval(tx.snapshot, requestKey));
+  }
+
+  async authorizeUnknownContinuation(worldId: string, input: WorldUnknownContinuationInput): Promise<{ acquired: boolean; approval: WorldUnknownContinuationApproval; audit: WorldBudgetAudit }> {
+    const approval: WorldUnknownContinuationApproval = { ...input, version: "world-unknown-continuation/v1", worldId };
+    validateUnknownContinuationApproval(approval);
+    const captured = structuredClone(approval);
+    if (!this.options.authorizeUnknownContinuation || await this.options.authorizeUnknownContinuation(structuredClone(captured)) !== true) fail("invalid_input", "Explicit authenticated operator continuation authority is required");
+    return this.transact(worldId, async tx => {
+      const previous = tx.snapshot.unknownContinuationApprovals?.find(a => a.approvalId === captured.approvalId);
+      if (previous) {
+        if (json(previous as unknown as BudgetJson) !== json(captured as unknown as BudgetJson)) fail("key_conflict", "Immutable continuation approval ID already pins different evidence");
+        return { acquired: false, approval: structuredClone(previous), audit: auditWorldBudget(tx.snapshot) };
+      }
+      const request = tx.snapshot.requests.find(r => r.requestKey === captured.requestKey);
+      if (!request || request.state !== "unknown" || request.origin !== "reserved" || request.conflicts.length
+        || request.scope !== captured.scope || request.operationFingerprint !== captured.operationFingerprint || request.reserveMicroUsd !== captured.reserveMicroUsd
+        || json(request.unknownReasons) !== json(captured.unknownReasons)) fail("key_conflict", "Approval must bind the exact currently unknown request and reason history");
+      if (!tx.appendUnknownContinuationApproval) fail("invalid_input", "Repository cannot durably retain a continuation approval");
+      const next: WorldBudgetSnapshot = { ...tx.snapshot, unknownContinuationApprovals: [...(tx.snapshot.unknownContinuationApprovals ?? []), captured] };
+      const audit = auditWorldBudget(next);
+      await tx.appendUnknownContinuationApproval!(structuredClone(captured));
+      return { acquired: true, approval: captured, audit };
+    });
   }
 
   async reserve(worldId: string, input: WorldReservationInput): Promise<WorldReserveResult> {
