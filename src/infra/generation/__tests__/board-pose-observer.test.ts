@@ -40,6 +40,13 @@ function answer() {
       protectedFacePolygon: { status: "observed", polygon: [{ x: x - 30, y: 175 }, { x: x + 30, y: 175 }, { x: x + 30, y: 249 }, { x: x - 30, y: 249 }], confidence: .95, reason: "Visible face including eyes nose and mouth" } };
   }), reason: "Three complete visible upper-body poses with intentional lower truncation" };
 }
+async function cheekBoundaryFixture(errorPx = 2) {
+  const a = answer(), rgba = await sharp(png).ensureAlpha().raw().toBuffer();
+  a.cells[0]!.protectedFacePolygon.polygon = [{ x: 140, y: 175 }, { x: 200, y: 175 }, { x: 200, y: 249 }, { x: 140, y: 249 }, { x: 140 - errorPx, y: 212 }];
+  // A true exterior cheek contour, not a hole: solid pixels start at x=140.
+  for (let y = 160; y < 260; y++) for (let x = 80; x < 140; x++) rgba[(y * 1024 + x) * 4 + 3] = 0;
+  return { a, rgba };
+}
 function response(content: unknown = answer(), extra: Record<string, unknown> = {}, status = 200, requestId = "req_observe") {
   return new Response(JSON.stringify({ id: "chatcmpl-observe", model: "gpt-5.6-sol", service_tier: "default", usage: { prompt_tokens: 2000, completion_tokens: 400, total_tokens: 2400 },
     choices: [{ finish_reason: "stop", message: { content: JSON.stringify(content) } }], ...extra }), { status, headers: requestId ? { "x-request-id": requestId } : {} });
@@ -52,6 +59,84 @@ async function fixture(reply: () => Promise<Response> = async () => response(), 
   return { store, budget, fetchOnce, provider, input, prepared };
 }
 describe("budgeted board three-pose source observer (no live API)", () => {
+  it("derives a bounded exterior-cheek correction without changing raw answer, eyes, chin or source pixels", async () => {
+    const { a, rgba } = await cheekBoundaryFixture(), rawAnswer = JSON.stringify(a), originalPixels = Buffer.from(rgba);
+    const decision = decideBoardPoseObservation(a, slots, rgba);
+    expect(decision.status).toBe("ok");
+    expect(decision.faceBoundaryRefinements).toHaveLength(1);
+    const correction = decision.faceBoundaryRefinements![0]!;
+    expect(correction.version).toBe("opaque-face-boundary-inset/v1");
+    expect(correction.areaLossFraction).toBeGreaterThan(0); expect(correction.areaLossFraction).toBeLessThanOrEqual(.02);
+    expect(correction.movedVertices).toHaveLength(1); expect(correction.movedVertices[0]!.distancePx).toBeLessThanOrEqual(4);
+    expect(decision.sources![0]!.eye).toEqual(a.cells[0]!.eye.point); expect(decision.sources![0]!.chin).toEqual(a.cells[0]!.chin.point);
+    expect(JSON.stringify(a)).toBe(rawAnswer); expect(rgba.equals(originalPixels)).toBe(true);
+    expect(decideBoardPoseObservation(a, slots, rgba)).toEqual(decision);
+    expect(decision.sources!.slice(1).map(c => c.protectedFacePolygon)).toEqual(a.cells.slice(1).map(c => c.protectedFacePolygon.polygon));
+  });
+  it.each(["interior-hole", "near-edge-enclosed-hole", "large-error", "transparent-eye", "transparent-chin", "excess-area-loss", "two-figures", "eye-outside"])("does not excuse %s while correcting a cheek boundary", async kind => {
+    const { a, rgba } = await cheekBoundaryFixture(kind === "large-error" ? 8 : 2);
+    if (kind === "interior-hole") rgba[(220 * 1024 + 170) * 4 + 3] = 0;
+    if (kind === "near-edge-enclosed-hole") rgba[(210 * 1024 + 142) * 4 + 3] = 0;
+    if (kind === "transparent-eye") rgba[(200 * 1024 + 170) * 4 + 3] = 0;
+    if (kind === "transparent-chin") rgba[(250 * 1024 + 170) * 4 + 3] = 0;
+    if (kind === "excess-area-loss") a.cells[0]!.protectedFacePolygon.polygon.forEach(p => { if (p.x === 200) p.x = 174; });
+    if (kind === "two-figures") a.figureCount = 2;
+    if (kind === "eye-outside") a.cells[0]!.eye.point.x = 210;
+    const decision = decideBoardPoseObservation(a, slots, rgba, { standingPixelSupportAtComposition: true });
+    expect(decision.status).toBe("invalid"); expect(decision.sources).toBeNull(); expect(decision.faceBoundaryRefinements).toBeUndefined();
+  });
+  it("keeps already-valid old decisions byte-identical in shape with no refinement evidence", async () => {
+    const a = answer(), rgba = await sharp(png).ensureAlpha().raw().toBuffer();
+    const decision = decideBoardPoseObservation(a, slots, rgba);
+    expect(decision.status).toBe("ok"); expect(decision).not.toHaveProperty("faceBoundaryRefinements");
+    expect(decision.sources![0]!.protectedFacePolygon).toEqual(a.cells[0]!.protectedFacePolygon.polygon);
+  });
+  it("moves only endpoints of a proven antialiased spilling edge, leaving all other facial geometry untouched", async () => {
+    const a = answer(), rgba = await sharp(png).ensureAlpha().raw().toBuffer();
+    // The two edge vertices are opaque, but the line between them crosses a
+    // one-pixel exterior-connected antialias fringe.
+    a.cells[0]!.protectedFacePolygon.polygon = [{ x: 123, y: 190 }, { x: 190, y: 175 }, { x: 200, y: 249 }, { x: 116, y: 249 }, { x: 116, y: 214 }];
+    for (const [x, y] of [[119, 202], [118, 205]]) for (let xx = x! - 2; xx <= x!; xx++) rgba[(y! * 1024 + xx) * 4 + 3] = 193;
+    const original = JSON.stringify(a), pixels = Buffer.from(rgba), decision = decideBoardPoseObservation(a, slots, rgba);
+    expect(decision.status).toBe("ok");
+    const evidence = decision.faceBoundaryRefinements![0]!;
+    expect(evidence.version).toBe("antialiased-face-edge-inset-one-pixel/v1");
+    expect(evidence.movedVertices.map(v => v.index).sort()).toEqual([0, 4]);
+    expect(evidence.movedVertices.every(v => v.distancePx <= 1)).toBe(true); expect(evidence.areaLossFraction).toBeLessThanOrEqual(.02);
+    expect(decision.sources![0]!.eye).toEqual(a.cells[0]!.eye.point); expect(decision.sources![0]!.chin).toEqual(a.cells[0]!.chin.point);
+    expect(JSON.stringify(a)).toBe(original); expect(rgba.equals(pixels)).toBe(true);
+    expect(decideBoardPoseObservation(a, slots, rgba, { standingPixelSupportAtComposition: true })).toEqual(decision);
+  });
+  it.each(["enclosed", "clear", "deep-spill"])("does not let the edge derivation hide %s face damage", async kind => {
+    const a = answer(), rgba = await sharp(png).ensureAlpha().raw().toBuffer();
+    const x = kind === "deep-spill" ? 143 : 140;
+    rgba[(210 * 1024 + x) * 4 + 3] = kind === "clear" ? 0 : 193;
+    if (kind !== "enclosed") for (let xx = 138; xx < x; xx++) rgba[(210 * 1024 + xx) * 4 + 3] = 193;
+    const result = decideBoardPoseObservation(a, slots, rgba);
+    expect(result.status).toBe("invalid"); expect(result.sources).toBeNull();
+  });
+  it("refines only an antialiased chin contour by at most one pixel while preserving eye and paid evidence", async () => {
+    const a = answer(), rgba = await sharp(png).ensureAlpha().raw().toBuffer();
+    rgba[(250 * 1024 + 170) * 4 + 3] = 198; rgba[(251 * 1024 + 170) * 4 + 3] = 0;
+    const before = JSON.stringify(a), bytes = Buffer.from(rgba), result = decideBoardPoseObservation(a, slots, rgba);
+    expect(result.status).toBe("ok"); expect(result.chinBoundaryRefinements).toHaveLength(1);
+    expect(result.chinBoundaryRefinements![0]).toMatchObject({ version: "antialiased-chin-inset-one-pixel/v1", originalAlpha: 198, derivedAlpha: 253 });
+    expect(result.chinBoundaryRefinements![0]!.distancePx).toBeLessThanOrEqual(1);
+    expect(result.sources![0]!.eye).toEqual(a.cells[0]!.eye.point);
+    expect(result.sources![0]!.protectedFacePolygon).toEqual(a.cells[0]!.protectedFacePolygon.polygon);
+    expect(JSON.stringify(a)).toBe(before); expect(rgba.equals(bytes)).toBe(true);
+    expect(decideBoardPoseObservation(a, slots, rgba, { standingPixelSupportAtComposition: true })).toEqual(result);
+  });
+  it.each(["clear-chin", "faint-chin", "deep-error", "enclosed-chin", "unsupported-eye", "interior-hole"])("keeps chin refinement fail-closed for %s", async kind => {
+    const a = answer(), rgba = await sharp(png).ensureAlpha().raw().toBuffer();
+    rgba[(250 * 1024 + 170) * 4 + 3] = kind === "clear-chin" ? 0 : kind === "faint-chin" ? 31 : 198;
+    if (kind !== "enclosed-chin") rgba[(251 * 1024 + 170) * 4 + 3] = 0;
+    if (kind === "deep-error") { rgba[(249 * 1024 + 170) * 4 + 3] = 198; rgba[(248 * 1024 + 170) * 4 + 3] = 198; }
+    if (kind === "unsupported-eye") rgba[(200 * 1024 + 170) * 4 + 3] = 198;
+    if (kind === "interior-hole") rgba[(210 * 1024 + 170) * 4 + 3] = 0;
+    const result = decideBoardPoseObservation(a, slots, rgba);
+    expect(result.status).toBe("invalid"); expect(result.sources).toBeNull(); expect(result.chinBoundaryRefinements).toBeUndefined();
+  });
   it("keeps the frozen 90s policy and fingerprint when no execution override is supplied", async () => {
     const frozen = { ...policy, timeoutMs: 90_000 }, f = await fixture(async () => response(), png, frozen);
     const timer = vi.spyOn(globalThis, "setTimeout");

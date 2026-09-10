@@ -150,12 +150,54 @@ describe("board-conditioned game engine, real adapters with synthetic no-cost HT
     expect(replay.state).toBe("review-required"); expect(f.fetchImage).toHaveBeenCalledTimes(1); expect(f.fetchMeasure).toHaveBeenCalledTimes(1);
     if (first.state === "review-required" && replay.state === "review-required") expect(replay.appearances.map(a => "composite" in a ? a.composite?.transform : null)).toEqual(first.appearances.map(a => "composite" in a ? a.composite?.transform : null));
   });
+  it("replays an old clipped-pose boundary failure from its paid raw answer without rewriting or repurchasing", async () => {
+    const f = await fixture(rgba => { for (let y = 160; y < 260; y++) for (let x = 110; x < 140; x++) rgba[(y * 1024 + x) * 4 + 3] = 0; });
+    f.observation.cells[0]!.protectedFacePolygon.polygon = [{ x: 140, y: 175 }, { x: 200, y: 175 }, { x: 200, y: 249 }, { x: 140, y: 249 }, { x: 138, y: 212 }];
+    await generateBoardConditionedAppearances(f.deps, f.request);
+    const saved = await f.checkpoints.getMeasurement(f.request.worldId, f.input.boardId);
+    if (!saved) throw new Error("Missing paid synthetic receipt");
+    // Simulate the immutable result of the earlier strict implementation.
+    saved.status = "invalid"; saved.sources = null;
+    const original = JSON.stringify(saved), ledger = await f.budget.audit(f.request.worldId);
+    const writeSource = vi.spyOn(f.checkpoints, "putSource"), writeMeasurement = vi.spyOn(f.checkpoints, "putMeasurement");
+    const replay = await generateBoardConditionedAppearances(f.deps, f.request);
+    expect(replay.state).toBe("review-required");
+    if (replay.state !== "review-required") throw new Error("Clipped raw answer was not replayed");
+    expect(replay.measurement.sources![0]!.protectedFacePolygon[4]!.x).toBeGreaterThanOrEqual(140);
+    expect(replay.measurement.sources![0]!.eye).toEqual(f.observation.cells[0]!.eye.point);
+    expect(JSON.stringify(await f.checkpoints.getMeasurement(f.request.worldId, f.input.boardId))).toBe(original);
+    expect(await f.budget.audit(f.request.worldId)).toEqual(ledger);
+    expect(writeSource).not.toHaveBeenCalled(); expect(writeMeasurement).not.toHaveBeenCalled();
+    expect(f.fetchImage).toHaveBeenCalledTimes(1); expect(f.fetchMeasure).toHaveBeenCalledTimes(1);
+  });
   it("holds a settled-but-unsaved source instead of redispatching after a crash", async () => {
     const f = await fixture(); f.checkpoints.failSourceSave = true;
     await expect(generateBoardConditionedAppearances(f.deps, f.request)).rejects.toThrow("save failed");
     f.checkpoints.failSourceSave = false;
     expect(await generateBoardConditionedAppearances(f.deps, f.request)).toMatchObject({ state: "reconciliation-required", stage: "source" });
     expect(f.fetchImage).toHaveBeenCalledTimes(1); expect(f.fetchMeasure).not.toHaveBeenCalled();
+  });
+  it.each(["http", "length", "capture", "json"])("never promotes a retained invalid %s receipt through free geometry replay", async kind => {
+    const f = await fixture(); await generateBoardConditionedAppearances(f.deps, f.request);
+    const saved = (await f.checkpoints.getMeasurement(f.request.worldId, f.input.boardId))!;
+    saved.status = "invalid"; saved.sources = null;
+    if (kind === "http") saved.receipt!.httpStatus = 500;
+    if (kind === "length") saved.receipt!.finishReason = "length";
+    if (kind === "capture") saved.receipt!.sourceRgbaSha256 = "a".repeat(64);
+    if (kind === "json") saved.receipt!.responseText = "not-json";
+    const original = JSON.stringify(saved), ledger = await f.budget.audit(f.request.worldId);
+    expect(await generateBoardConditionedAppearances(f.deps, f.request)).toMatchObject({ state: "source-review-required", measurement: { status: "invalid", sources: null } });
+    expect(JSON.stringify(saved)).toBe(original); expect(await f.budget.audit(f.request.worldId)).toEqual(ledger);
+    expect(f.fetchImage).toHaveBeenCalledTimes(1); expect(f.fetchMeasure).toHaveBeenCalledTimes(1);
+  });
+  it("accepts exact receipt slot order after canonical checkpoint key sorting, but not changed slot order", async () => {
+    const f = await fixture(); await generateBoardConditionedAppearances(f.deps, f.request);
+    const saved = (await f.checkpoints.getMeasurement(f.request.worldId, f.input.boardId))!;
+    saved.receipt!.slots = saved.receipt!.slots.map(s => ({ pose: s.pose, slotId: s.slotId }));
+    expect(await generateBoardConditionedAppearances(f.deps, f.request)).toMatchObject({ state: "review-required" });
+    saved.receipt!.slots.reverse();
+    expect(await generateBoardConditionedAppearances(f.deps, f.request)).toMatchObject({ state: "source-review-required", measurement: { status: "invalid", sources: null } });
+    expect(f.fetchImage).toHaveBeenCalledTimes(1); expect(f.fetchMeasure).toHaveBeenCalledTimes(1);
   });
   it("refuses changed lighting under old intent and preflights every board before any spend", async () => {
     const f = await fixture(); f.input.slots[0]!.lighting.key = "New unknown studio lighting";

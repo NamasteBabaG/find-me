@@ -6,7 +6,7 @@ import { composeBoardPlacement } from "./board-placement";
 import type { ObservedBoardPoseSource } from "../../infra/generation/board-pose-observer";
 import { sha256Bytes } from "./fixed-sprite";
 import type { WorldBudget, WorldChargeEvidence } from "./world-budget";
-import { prepareBoardPoseObservation, decideBoardPoseObservation, type BoardPoseObserverPolicy, type BoardPoseObservationReceipt, type BoardPoseCompletenessDeferral } from "../../infra/generation/board-pose-observer";
+import { BOARD_POSE_OBSERVER_SETTINGS, prepareBoardPoseObservation, decideBoardPoseObservation, type BoardPoseObserverPolicy, type BoardPoseObservationReceipt, type BoardPoseCompletenessDeferral } from "../../infra/generation/board-pose-observer";
 
 type GeneratedSource = Extract<FixedSourceResult, { kind: "generated" }>;
 type Seed = ObservedBoardPoseSource;
@@ -119,13 +119,27 @@ export async function generateBoardConditionedAppearances(deps: BoardGenerationD
     measurementCharge: (await deps.budget.readRequest(request.worldId, measureKey))! } : {};
   // Re-evaluate a retained raw answer after a deterministic implementation fix.
   // Never change the immutable paid checkpoint or buy the measurement again.
-  // Keep legacy decisions untouched; standing measurements use the same pure
+  // All retained raw answers (including clipped poses) use the same pure
   // decision function that the player independently replays before binding.
-  if (slots.some(s => s.pose === "standing") && measurement.receipt?.responseText) {
-    demand(measurement.receipt.fingerprint === expectedObservation.fingerprint
-      && measurement.receipt.sourceImageSha256 === source.pngSha256, "retained observation does not bind this source");
-    const decision = decideBoardPoseObservation(JSON.parse(measurement.receipt.responseText), slots, expectedObservation.rgba, { standingPixelSupportAtComposition: true });
-    measurement = { ...measurement, status: decision.status, sources: decision.sources, completenessDeferred: decision.completenessDeferred };
+  // Legacy measurements without a raw receipt remain untouched.
+  if (measurement.receipt?.responseText) {
+    const r = measurement.receipt;
+    demand(r.fingerprint === expectedObservation.fingerprint && r.sourceImageSha256 === source.pngSha256, "retained observation does not bind this source");
+    // Replaying geometry must not promote a billed HTTP error, truncated answer
+    // or a receipt that the player itself would reject.
+    const completeReceipt = r.version === "board-pose-observation-receipt/v1" && r.sourceRgbaSha256 === expectedObservation.capture.sourceRgbaSha256
+      && r.wireImageSha256 === expectedObservation.capture.wireImageSha256 && r.promptSha256 === expectedObservation.capture.promptSha256
+      && r.requestId === measurement.evidence.providerRequestId && r.costUnknown === false && Math.ceil(r.costCents * 10_000) === measurement.evidence.amountMicroUsd
+      && r.modelRequested === BOARD_POSE_OBSERVER_SETTINGS.model && r.modelReturned === measurement.evidence.model && measurement.evidence.model === BOARD_POSE_OBSERVER_SETTINGS.model
+      && measurement.evidence.providerNamespace === deps.observerPolicy.providerNamespace && r.effort === "high" && r.attempts === 1
+      && r.coordinates === "native-1024-sheet-pixel-edges" && r.finishReason === "stop" && !!r.responseId
+      && r.httpStatus !== null && r.httpStatus >= 200 && r.httpStatus < 300
+      && r.slots.length === expectedObservation.capture.slots.length
+      && r.slots.every((slot, i) => slot.slotId === expectedObservation.capture.slots[i]!.slotId && slot.pose === expectedObservation.capture.slots[i]!.pose);
+    let answer: unknown;
+    try { answer = JSON.parse(r.responseText!); } catch { answer = undefined; }
+    const decision = completeReceipt ? decideBoardPoseObservation(answer, slots, expectedObservation.rgba, { standingPixelSupportAtComposition: true }) : null;
+    measurement = { ...measurement, status: decision?.status ?? "invalid", sources: decision?.sources ?? null, completenessDeferred: decision?.completenessDeferred ?? [] };
   }
   if (measurement.status !== "ok" || !measurement.sources) return { state: "source-review-required" as const, boardId: input.boardId, contractSha256, source, measurement, ...measuredSelection, automaticRelease: false as const };
   demand(measurement.sources.length === 3 && new Set(measurement.sources.map(s => s.slotId)).size === 3

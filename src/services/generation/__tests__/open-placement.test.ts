@@ -197,3 +197,83 @@ describe("v3 crown-fringe composition with unchanged semantic crown", () => {
     expect((await composeOpenPlacement(input)).ok).toBe(false);
   });
 });
+
+/** Paid Giza-C landmark geometry, synthetic rectangles only: raw shoe depth
+ * 14.7945 <=15, but the accepted contour points measure15.4462. */
+async function gizaContactGeometry(): Promise<OpenPlacementInput> {
+  const width = 300, height = 920, rgba = Buffer.alloc(width * height * 4);
+  const rect = (left: number, top: number, right: number, bottom: number) => {
+    for (let y = top; y <= bottom; y++) for (let x = left; x <= right; x++) {
+      const i = (y * width + x) * 4; rgba[i] = 100; rgba[i + 1] = 120; rgba[i + 2] = 140; rgba[i + 3] = 255;
+    }
+  };
+  rect(100, 13, 200, 200); rect(80, 180, 200, 600);
+  rect(40, 500, 100, 800); rect(25, 790, 58, 837);
+  rect(160, 500, 186, 887);
+  const bound = (png: Buffer) => ({ png, sha256: sha256Bytes(png) });
+  return { source: { ...bound(await sharp(rgba, { raw: { width, height, channels: 4 } }).png().toBuffer()),
+    eye: { x: 154.5, y: 126.5 }, chin: { x: 163, y: 189 },
+    protectedFacePolygon: [{ x: 130, y: 110 }, { x: 180, y: 110 }, { x: 180, y: 190 }, { x: 130, y: 190 }],
+    measurement: { kind: "observed", note: "Synthetic retained Giza coordinate geometry, no child image" },
+    standing: { complete: true, originalFrameClear: true, crown: { x: 123, y: 13 }, leftSole: { x: 186, y: 889 }, rightSole: { x: 59, y: 841 } } },
+    board: bound(await sharp({ create: { width: 400, height: 450, channels: 4, background: "white" } }).png().toBuffer()),
+    foreground: bound(await sharp({ create: { width: 400, height: 450, channels: 4, background: "#00000000" } }).png().toBuffer()),
+    slot: { id: "giza-contact-synthetic", pose: "standing", mode: "open", eye: { x: 200, y: 112 }, faceHeightPx: 30,
+      standingHeightPx: 270, supportPointPx: { x: 200, y: 350 }, window: { left: 0, top: 0, width: 400, height: 450 }, pixelRefinement: CROWN_FRINGE_REFINEMENT_V3 } };
+}
+
+describe("raw-valid contact at a contour-quantization boundary", () => {
+  it("accepts Giza's exact subpixel boundary crossing without changing the band, raw observations or raster", async () => {
+    const input = await gizaContactGeometry(), result = await composeOpenPlacement(input);
+    expect(result.ok).toBe(true);
+    expect(result.measurements.soleHeightDifferencePx).toBeCloseTo(15.4462242563);
+    expect(result.measurements.supportDepthTolerancePx).toBe(15);
+    const evidence = "footContactQuantization" in result.measurements ? result.measurements.footContactQuantization : null;
+    expect(evidence).toMatchObject({ applied: true, rawDepthWithinAuthoredBand: true, maxAllowedDisplacementPx: 1 });
+    expect(evidence?.rawSoleHeightDifferencePx).toBeCloseTo(14.7945205479);
+    expect(evidence?.maxSoleLandmarkDisplacementPx).toBeLessThan(1);
+    expect(result.source.standing).toEqual(input.source.standing);
+    expect(result.source.rasterStanding.rightSole).toEqual({ x: 58, y: 837 });
+    // Sole policy changes validation only. The normal body-to-ground transform
+    // and source pixels are exactly those used before this boundary check.
+    const reference = await composeOpenPlacement({ ...input, slot: { ...input.slot, faceHeightPx: 31 } });
+    expect(result.transform).toEqual(reference.transform);
+    expect(result.patchPng.equals(reference.patchPng)).toBe(true);
+    expect(result.compositePng.equals(reference.compositePng)).toBe(true);
+    expect(result.automaticRelease).toBe(false);
+  });
+  it("does not excuse raw skeletal depth already outside the authored band", async () => {
+    const input = await gizaContactGeometry(); input.source.standing.rightSole.y = 840;
+    const result = await composeOpenPlacement(input);
+    expect(result.checks.feetOnSupport).toBe(false); expect(result.ok).toBe(false);
+    expect("footContactQuantization" in result.measurements && result.measurements.footContactQuantization).toMatchObject({ applied: false, rawDepthWithinAuthoredBand: false });
+  });
+  it("rejects a sole moving over1board pixel even when its full-image transform barely changes", async () => {
+    const input = await gizaContactGeometry(); input.source.standing.rightSole.y = 845;
+    const result = await composeOpenPlacement(input), raster = result.source.rasterStanding;
+    expect("refinement" in raster && raster.refinement.applied).toBe(true);
+    expect(result.checks.feetOnSupport).toBe(false);
+    const evidence = "footContactQuantization" in result.measurements ? result.measurements.footContactQuantization : null;
+    expect(evidence?.rawDepthWithinAuthoredBand).toBe(true);
+    expect(evidence?.maxSoleLandmarkDisplacementPx).toBeGreaterThan(1);
+    expect(evidence?.applied).toBe(false);
+  });
+  it.each(["incomplete", "frame-contact", "face-hole", "forbidden"])("retains the independent %s guard", async defect => {
+    const input = await gizaContactGeometry();
+    if (defect === "incomplete") input.source.standing.complete = false;
+    if (defect === "frame-contact") input.source.standing.originalFrameClear = false;
+    if (defect === "forbidden") input.slot.forbiddenRects = [{ id: "person", left: 180, top: 180, width: 25, height: 25 }];
+    if (defect === "face-hole") {
+      const raw = await sharp(input.source.png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+      raw.data[(140 * raw.info.width + 150) * 4 + 3] = 0;
+      input.source.png = await sharp(raw.data, { raw: { width: raw.info.width, height: raw.info.height, channels: 4 } }).png().toBuffer(); input.source.sha256 = sha256Bytes(input.source.png);
+    }
+    expect((await composeOpenPlacement(input)).ok).toBe(false);
+  });
+  it("preserves legacy behavior and omits new metadata without an accepted opt-in contour correction", async () => {
+    const input = await gizaContactGeometry(); delete input.slot.pixelRefinement;
+    const result = await composeOpenPlacement(input);
+    expect(result.ok).toBe(false); expect(result.measurements).not.toHaveProperty("footContactQuantization");
+    expect((await composeOpenPlacement(await fixture())).measurements).not.toHaveProperty("footContactQuantization");
+  });
+});

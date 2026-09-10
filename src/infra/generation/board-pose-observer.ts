@@ -147,6 +147,139 @@ function geometryProblem(source: ObservedBoardPoseSource, cell: number, rgba: Bu
   return count < 4 ? "Face polygon lacks usable interior" : null;
 }
 
+export type FaceBoundaryRefinement = {
+  version: "opaque-face-boundary-inset/v1" | "antialiased-face-edge-inset-one-pixel/v1"; slotId: string;
+  originalPolygon: Point[]; derivedPolygon: Point[];
+  movedVertices: { index: number; from: Point; to: Point; distancePx: number }[];
+  originalUnsupportedPixels: number; areaLossFraction: number;
+};
+export type ChinBoundaryRefinement = {
+  version: "antialiased-chin-inset-one-pixel/v1"; slotId: string;
+  originalPoint: Point; derivedPoint: Point; originalAlpha: number; derivedAlpha: number; distancePx: number;
+};
+function refineAntialiasedChin(source: ObservedBoardPoseSource, rgba: Buffer): { source: ObservedBoardPoseSource; evidence: ChinBoundaryRefinement } | null {
+  const alpha = (p: Point) => p.x >= 0 && p.x < 1024 && p.y >= 0 && p.y < 1024 ? rgba[(Math.floor(p.y) * 1024 + Math.floor(p.x)) * 4 + 3]! : 0;
+  const originalAlpha = alpha(source.chin), dx = source.eye.x - source.chin.x, dy = source.eye.y - source.chin.y, length = Math.hypot(dx, dy);
+  if (originalAlpha < 32 || originalAlpha >= ALPHA_MIN || alpha(source.eye) < ALPHA_MIN || dy >= 0 || length < 2) return null;
+  // A partially transparent interior defect cannot be moved away: require a
+  // connected low-alpha fringe ending in clear exterior within three pixels.
+  const start = { x: Math.floor(source.chin.x), y: Math.floor(source.chin.y) }, queue = [start], seen = new Set([start.y * 1024 + start.x]);
+  let exterior = false;
+  for (let i = 0; i < queue.length && !exterior; i++) {
+    const p = queue[i]!; if (alpha(p) < 32) { exterior = true; break; }
+    for (let y = -1; y <= 1; y++) for (let x = -1; x <= 1; x++) {
+      const q = { x: p.x + x, y: p.y + y }, id = q.y * 1024 + q.x;
+      if (q.x < 0 || q.y < 0 || q.x >= 1024 || q.y >= 1024 || seen.has(id) || Math.hypot(q.x - start.x, q.y - start.y) > 3 || alpha(q) >= ALPHA_MIN) continue;
+      seen.add(id); queue.push(q);
+    }
+  }
+  if (!exterior) return null;
+  for (let distancePx = .25; distancePx <= 1; distancePx += .25) {
+    const chin = { x: source.chin.x + dx / length * distancePx, y: source.chin.y + dy / length * distancePx }, derivedAlpha = alpha(chin);
+    if (derivedAlpha < ALPHA_MIN) continue;
+    return { source: { ...source, chin }, evidence: { version: "antialiased-chin-inset-one-pixel/v1", slotId: source.slotId,
+      originalPoint: { ...source.chin }, derivedPoint: chin, originalAlpha, derivedAlpha, distancePx } };
+  }
+  return null;
+}
+/** A source observer can put a cheek-contour vertex a few pixels outside skin.
+ * This is NOT alpha repair or tolerance for holes: every original unsupported
+ * pixel must be connected to the polygon exterior through low-alpha pixels in
+ * a four-pixel neighbourhood. The derived polygon still passes the unchanged
+ * 224-alpha test at EVERY pixel. Eyes/chin, source pixels and raw receipt stay
+ * immutable; this versioned derivation is replayed by generation and player. */
+function refineFaceBoundary(source: ObservedBoardPoseSource, rgba: Buffer): { source: ObservedBoardPoseSource; evidence: FaceBoundaryRefinement } | null {
+  const maxMove = 4, original = source.protectedFacePolygon;
+  const alpha = (p: Point) => p.x >= 0 && p.x < 1024 && p.y >= 0 && p.y < 1024 ? rgba[(Math.floor(p.y) * 1024 + Math.floor(p.x)) * 4 + 3]! : 0;
+  if (alpha(source.eye) < ALPHA_MIN || alpha(source.chin) < ALPHA_MIN) return null;
+  const area = (poly: Point[]) => Math.abs(poly.reduce((sum, p, i) => { const q = poly[(i + 1) % poly.length]!; return sum + p.x * q.y - q.x * p.y; }, 0)) / 2;
+  const derived = original.map(p => ({ ...p })), moved: FaceBoundaryRefinement["movedVertices"] = [];
+  for (let i = 0; i < original.length; i++) {
+    const p = original[i]!; if (alpha(p) >= ALPHA_MIN) continue;
+    const dx = source.eye.x - p.x, dy = source.eye.y - p.y, length = Math.hypot(dx, dy);
+    if (length <= maxMove) return null;
+    let found = false;
+    for (let distancePx = .25; distancePx <= maxMove; distancePx += .25) {
+      const q = { x: p.x + dx / length * distancePx, y: p.y + dy / length * distancePx };
+      if (!inside(q, original)) continue;
+      if (alpha(q) < ALPHA_MIN) continue;
+      derived[i] = q; moved.push({ index: i, from: { ...p }, to: q, distancePx }); found = true; break;
+    }
+    if (!found) return null;
+  }
+  let originalUnsupportedPixels = 0;
+  const unsupported: Point[] = [];
+  const exteriorConnected = (x: number, y: number) => {
+    const queue = [{ x, y }], seen = new Set([y * 1024 + x]);
+    for (let i = 0; i < queue.length; i++) {
+      const p = queue[i]!;
+      if (!inside({ x: p.x + .5, y: p.y + .5 }, original)) return true;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const q = { x: p.x + dx, y: p.y + dy }, id = q.y * 1024 + q.x;
+        if (q.x < 0 || q.x >= 1024 || q.y < 0 || q.y >= 1024 || seen.has(id) || Math.hypot(q.x - x, q.y - y) > maxMove || alpha(q) >= ALPHA_MIN) continue;
+        seen.add(id); queue.push(q);
+      }
+    }
+    return false;
+  };
+  for (let y = Math.max(0, Math.floor(Math.min(...original.map(p => p.y)))); y < Math.min(1024, Math.ceil(Math.max(...original.map(p => p.y)))); y++) {
+    for (let x = Math.max(0, Math.floor(Math.min(...original.map(p => p.x)))); x < Math.min(1024, Math.ceil(Math.max(...original.map(p => p.x)))); x++) {
+      const centre = { x: x + .5, y: y + .5 }, inOriginal = inside(centre, original);
+      if (inside(centre, derived) && !inOriginal) return null;
+      if (!inOriginal || alpha({ x, y }) >= ALPHA_MIN) continue;
+      originalUnsupportedPixels++;
+      if (!exteriorConnected(x, y)) return null;
+      unsupported.push(centre);
+    }
+  }
+  let version: FaceBoundaryRefinement["version"] = "opaque-face-boundary-inset/v1";
+  // Even opaque endpoints can interpolate across one antialiased contour
+  // pixel. Only that proven spilling edge's endpoints may move, never every
+  // vertex. Enclosed holes, clear pixels and spill farther than one pixel from
+  // the edge cannot use this narrower derivation.
+  if (!moved.length) {
+    if (!unsupported.length) return null;
+    const endpointIndices = new Set<number>();
+    for (const p of unsupported) {
+      if (alpha(p) < 32) return null;
+      let best = Infinity, edge = -1;
+      for (let i = 0; i < original.length; i++) {
+        const a = original[i]!, b = original[(i + 1) % original.length]!, dx = b.x - a.x, dy = b.y - a.y;
+        const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy)));
+        const distance = Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
+        if (distance < best) { best = distance; edge = i; }
+      }
+      if (best > 1 || edge < 0) return null;
+      endpointIndices.add(edge); endpointIndices.add((edge + 1) % original.length);
+    }
+    let found = false;
+    for (let distancePx = .25; distancePx <= 1; distancePx += .25) {
+      const trial = original.map(p => ({ ...p }));
+      for (const i of endpointIndices) {
+        const p = original[i]!, dx = source.eye.x - p.x, dy = source.eye.y - p.y, length = Math.hypot(dx, dy);
+        if (length <= 1) return null;
+        trial[i] = { x: p.x + dx / length * distancePx, y: p.y + dy / length * distancePx };
+      }
+      if ([...endpointIndices].some(i => !inside(trial[i]!, original) || alpha(trial[i]!) < ALPHA_MIN)
+        || unsupported.some(p => inside(p, trial))) continue;
+      for (const i of endpointIndices) { derived[i] = trial[i]!; moved.push({ index: i, from: { ...original[i]! }, to: trial[i]!, distancePx }); }
+      found = true; break;
+    }
+    if (!found) return null;
+    version = "antialiased-face-edge-inset-one-pixel/v1";
+  }
+  const areaLossFraction = 1 - area(derived) / area(original);
+  if (!(areaLossFraction > 0 && areaLossFraction <= .02)) return null;
+  for (let y = Math.max(0, Math.floor(Math.min(...original.map(p => p.y)))); y < Math.min(1024, Math.ceil(Math.max(...original.map(p => p.y)))); y++) {
+    for (let x = Math.max(0, Math.floor(Math.min(...original.map(p => p.x)))); x < Math.min(1024, Math.ceil(Math.max(...original.map(p => p.x)))); x++) {
+      const p = { x: x + .5, y: y + .5 };
+      if (inside(p, derived) && !inside(p, original)) return null;
+    }
+  }
+  return { source: { ...source, protectedFacePolygon: derived }, evidence: { version, slotId: source.slotId,
+    originalPolygon: original.map(p => ({ ...p })), derivedPolygon: derived.map(p => ({ ...p })), movedVertices: moved, originalUnsupportedPixels, areaLossFraction } };
+}
+
 export type BoardPoseObserverResult = {
   kind: "already-recorded"; fingerprint: string; requestState: "pending" | "unknown" | "settled" | "linked"; audit: WorldBudgetAudit;
 } | {
@@ -163,12 +296,15 @@ export type BoardPoseObserverResult = {
    * the whole sheet was voided for a lowered hand the planter fully hides).
    */
   completenessDeferred: BoardPoseCompletenessDeferral[];
+  faceBoundaryRefinements?: FaceBoundaryRefinement[];
+  chinBoundaryRefinements?: ChinBoundaryRefinement[];
 };
 export type BoardPoseCompletenessDeferral = { slotId: string; visibleHeadArmsComplete: boolean | null; reason: string };
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
 export type BoardPoseDecision = { status: "ok" | "uncertain" | "invalid"; reason: string;
-  sources: ObservedBoardPoseSource[] | null; completenessDeferred: BoardPoseCompletenessDeferral[] };
+  sources: ObservedBoardPoseSource[] | null; completenessDeferred: BoardPoseCompletenessDeferral[];
+  faceBoundaryRefinements?: FaceBoundaryRefinement[]; chinBoundaryRefinements?: ChinBoundaryRefinement[] };
 
 /**
  * The entire source verdict, given a parsed answer, the frozen slot map and the
@@ -196,15 +332,28 @@ export function decideBoardPoseObservation(answer: unknown, slots: readonly { sl
   }
   const sources: ObservedBoardPoseSource[] = observed.cells.map(c => ({ slotId: c.slotId, pose: c.pose, eye: c.eye.point!, chin: c.chin.point!, protectedFacePolygon: c.protectedFacePolygon.polygon!,
     ...(c.pose === "standing" && c.standing ? { standing: { complete: true, crown: c.standing.crown.point!, leftSole: c.standing.leftSole.point!, rightSole: c.standing.rightSole.point! } } : {}) }));
+  const faceBoundaryRefinements: FaceBoundaryRefinement[] = [];
+  const chinBoundaryRefinements: ChinBoundaryRefinement[] = [];
   for (let i = 0; i < sources.length; i++) {
     // Face seeds are needed to split a sheet; standing pixel support is not.
     // In the production composition route only, check it again per figure in
     // composeOpenPlacement.completeFigure. A failed sole remains rejected there
     // and cannot invalidate two unrelated cells. Confidence/completeness and
     // every facial-integrity test above remain mandatory for extraction.
-    const { standing: _standing, ...faceSource } = sources[i]!;
-    const problem = geometryProblem(options.standingPixelSupportAtComposition ? faceSource : sources[i]!, i, rgba);
+    const problemFor = (s: ObservedBoardPoseSource) => { const { standing: _standing, ...faceSource } = s; return geometryProblem(options.standingPixelSupportAtComposition ? faceSource : s, i, rgba); };
+    let candidate = sources[i]!, problem = problemFor(candidate);
+    const refinedChin = problem === "Observed eye/chin is not supported by opaque source pixels" ? refineAntialiasedChin(candidate, rgba) : null;
+    if (refinedChin) { candidate = refinedChin.source; problem = problemFor(candidate); }
+    if (problem === "Protected face has missing or transparent source pixels") {
+      const refined = refineFaceBoundary(candidate, rgba);
+      if (refined) {
+        const checked = problemFor(refined.source);
+        if (!checked) { candidate = refined.source; faceBoundaryRefinements.push(refined.evidence); problem = null; }
+      }
+    }
     if (problem) return held("invalid", problem);
+    sources[i] = candidate;
+    if (refinedChin) chinBoundaryRefinements.push(refinedChin.evidence);
   }
   // Visible completeness is the one question a source-only reviewer cannot
   // settle. It is carried verbatim per cell and decided at the destination,
@@ -213,6 +362,8 @@ export function decideBoardPoseObservation(answer: unknown, slots: readonly { sl
   const completenessDeferred = observed.cells.filter(c => c.visibleHeadArmsComplete !== true)
     .map(c => ({ slotId: c.slotId, visibleHeadArmsComplete: c.visibleHeadArmsComplete, reason: observed.reason }));
   return { status: "ok", sources, completenessDeferred,
+    ...(faceBoundaryRefinements.length ? { faceBoundaryRefinements } : {}),
+    ...(chinBoundaryRefinements.length ? { chinBoundaryRefinements } : {}),
     reason: completenessDeferred.length
       ? `Observed source measurements passed; visible completeness deferred to composition for ${completenessDeferred.map(d => d.slotId).join(", ")}. Not identity/style/placement or release approval`
       : "Observed source measurements passed; this is not identity/style/placement or release approval" };
@@ -308,6 +459,8 @@ export class BudgetedBoardPoseObserver {
     let answer: unknown;
     try { answer = JSON.parse(receipt.responseText ?? ""); } catch { return result("invalid", "Billed observer answer was not JSON"); }
     const decision = decideBoardPoseObservation(answer, capture.slots, prepared.rgba);
-    return result(decision.status, decision.reason, decision.sources, decision.completenessDeferred);
+    return { ...result(decision.status, decision.reason, decision.sources, decision.completenessDeferred),
+      ...(decision.faceBoundaryRefinements ? { faceBoundaryRefinements: decision.faceBoundaryRefinements } : {}),
+      ...(decision.chinBoundaryRefinements ? { chinBoundaryRefinements: decision.chinBoundaryRefinements } : {}) };
   }
 }

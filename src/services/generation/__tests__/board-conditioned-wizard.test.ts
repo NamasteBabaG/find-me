@@ -83,7 +83,7 @@ vi.mock("../board-wizard-visual-judge", async original => {
     return { judgement: { verdict: fakes.reviews.length === 1 ? "unknown" : "ok", reason: "Synthetic review, no visual claim" }, receiptKey: "synthetic-receipt", fingerprint: "f".repeat(64), reused: false };
   } };
 });
-import { BOARD_WIZARD_STYLE, boardWizardEnabled, enrollBoardConditionedWizard, runBoardConditionedWizardSlice, readBoardWizard, deleteBoardConditionedWizard } from "../board-conditioned-wizard";
+import { BOARD_WIZARD_STYLE, BOARD_WIZARD_GEOMETRY_REVISION, boardWizardEnabled, enrollBoardConditionedWizard, runBoardConditionedWizardSlice, readBoardWizard, deleteBoardConditionedWizard } from "../board-conditioned-wizard";
 
 let db: PrismaClient, scratch: string, png: Buffer, counter = 0;
 beforeAll(async () => {
@@ -126,6 +126,62 @@ async function advanceUntil(f: Awaited<ReturnType<typeof fixture>>, ready: () =>
   expect(ready(), "bounded synthetic wizard ticks reached the expected event").toBe(true);
 }
 describe("actual wizard to durable QA world orchestration (synthetic engine, no paid calls)", () => {
+  it("replays an older failed paid attempt once without consuming a source attempt", async () => {
+    const f = await fixture(); await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
+    const envelope = JSON.parse((await f.job()).stepsJson);
+    for (const b of envelope.boardWizard.boards) b.attempts = 1;
+    await db.generationJob.update({ where: { id: `job_${f.gameId}` }, data: { stepsJson: JSON.stringify(envelope) } });
+    const before = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: `${f.gameId}:board-wizard` } });
+    await runBoardConditionedWizardSlice(f.c, f.gameId);
+    expect(readBoardWizard((await f.job()).stepsJson).boards[0]).toMatchObject({ attempts: 1, state: "pending", geometryRevision: BOARD_WIZARD_GEOMETRY_REVISION });
+    expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: `${f.gameId}:board-wizard` } })).toEqual(before);
+    for (let i = 1; i < 9; i++) await runBoardConditionedWizardSlice(f.c, f.gameId);
+    expect(fakes.calls).toEqual(f.boards.map(b => b.boardId));
+    expect(readBoardWizard((await f.job()).stepsJson).boards.every(b => b.attempts === 1 && b.geometryRevision === BOARD_WIZARD_GEOMETRY_REVISION)).toBe(true);
+    expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: `${f.gameId}:board-wizard` } })).toEqual(before);
+    await runBoardConditionedWizardSlice(f.c, f.gameId);
+    expect(readBoardWizard((await f.job()).stepsJson).boards[0]).toMatchObject({ attempts: 2, state: "needs-repair" });
+  });
+  it.each(["image", "observation"])("a cached geometry replay cannot accidentally buy a missing %s", async kind => {
+    const f = await fixture(); await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
+    const envelope = JSON.parse((await f.job()).stepsJson);
+    for (const b of envelope.boardWizard.boards) b.attempts = 1;
+    await db.generationJob.update({ where: { id: `job_${f.gameId}` }, data: { stepsJson: JSON.stringify(envelope) } });
+    const before = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: `${f.gameId}:board-wizard` } });
+    const fetchOnce = vi.fn(); vi.stubGlobal("fetch", fetchOnce);
+    if (kind === "image") fakes.requireDispatch = true;
+    else fakes.measureInput = { sheetPng: png, slots: [{ slotId: "synthetic", pose: "standing" }] };
+    expect(await runBoardConditionedWizardSlice(f.c, f.gameId)).toEqual({ pending: false });
+    expect(readBoardWizard((await f.job()).stepsJson).state).toBe("held");
+    expect(fetchOnce).not.toHaveBeenCalled();
+    expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: `${f.gameId}:board-wizard` } })).toEqual(before);
+  });
+  it("schedules one later same-source observation when free replay newly exposes a bad standing landmark", async () => {
+    const f = await fixture(); await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
+    const envelope = JSON.parse((await f.job()).stepsJson);
+    for (const b of envelope.boardWizard.boards) b.attempts = 1;
+    await db.generationJob.update({ where: { id: `job_${f.gameId}` }, data: { stepsJson: JSON.stringify(envelope) } });
+    fakes.remeasureBoard = f.boards[0]!.boardId; fakes.remeasureSuccess = true;
+    await runBoardConditionedWizardSlice(f.c, f.gameId);
+    expect(readBoardWizard((await f.job()).stepsJson).boards[0]).toMatchObject({ attempts: 1, remeasurements: [{ sourceAttempt: 1, state: "pending" }] });
+    expect(fakes.measurementCalls).toEqual([1]);
+    await runBoardConditionedWizardSlice(f.c, f.gameId);
+    expect(readBoardWizard((await f.job()).stepsJson).boards[0]).toMatchObject({ attempts: 1, state: "geometry-ok", remeasurements: [{ sourceAttempt: 1, state: "done" }] });
+    expect(fakes.measurementCalls).toEqual([1, 2]);
+  });
+  it("can replay an earlier exhausted geometry failure during an active world without creating source3", async () => {
+    const f = await fixture(); await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
+    const envelope = JSON.parse((await f.job()).stepsJson);
+    envelope.boardWizard.boards[0].attempts = 2;
+    envelope.boardWizard.boards[0].state = "needs-repair";
+    await db.generationJob.update({ where: { id: `job_${f.gameId}` }, data: { stepsJson: JSON.stringify(envelope) } });
+    fakes.succeed = true;
+    const before = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: `${f.gameId}:board-wizard` } });
+    await runBoardConditionedWizardSlice(f.c, f.gameId);
+    expect(readBoardWizard((await f.job()).stepsJson).boards[0]).toMatchObject({ attempts: 2, state: "geometry-ok", geometryRevision: BOARD_WIZARD_GEOMETRY_REVISION });
+    expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: `${f.gameId}:board-wizard` } })).toEqual(before);
+    expect(fakes.calls).toEqual([f.boards[0]!.boardId]);
+  });
   it("persists source-ready then measures the same attempt on the next tick before any new board", async () => {
     const f = await fixture(); await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
     fakes.succeed = true; fakes.sourceReadyBoard = f.boards[0]!.boardId;

@@ -75,6 +75,28 @@ export async function composeOpenPlacement(input: OpenPlacementInput) {
     renderedFaceHeightPx: face * scale,
     supportDepthTolerancePx: Math.min(slot.faceHeightPx / 2, slot.standingHeightPx * .1),
     eyeAnchorErrorPx: Math.hypot(translateX + source.eye.x * scale - slot.eye.x, translateY + source.eye.y * scale - slot.eye.y) };
+  // Contour quantization may move two valid observed shoe edges to opposite
+  // sides of a tight depth-band boundary. Do not widen that authored band:
+  // only a previously accepted refinement, a RAW depth already inside it,
+  // and <=1 native-board-pixel movement of EACH actual sole can qualify.
+  // Bounding the full-image transform alone is insufficient: the higher foot
+  // can move several pixels while the lower foot still anchors the image.
+  const footContactQuantization = measurements.soleHeightDifferencePx > measurements.supportDepthTolerancePx && refinement?.provenance.applied && refinement.provenance.rawTransform
+    ? (() => {
+      const rawTransform = refinement.provenance.rawTransform!;
+      const mapped = (p: Point, t: { scale: number; translateX: number; translateY: number }) => ({ x: p.x * t.scale + t.translateX, y: p.y * t.scale + t.translateY });
+      const rawSoles = { left: mapped(rawAnatomy.leftSole, rawTransform), right: mapped(rawAnatomy.rightSole, rawTransform) };
+      const rasterSoles = { left: mapped(anatomy.leftSole, { scale, translateX, translateY }), right: mapped(anatomy.rightSole, { scale, translateX, translateY }) };
+      const rawSoleHeightDifferencePx = Math.abs(rawSoles.left.y - rawSoles.right.y);
+      const maxSoleLandmarkDisplacementPx = Math.max(...(["left", "right"] as const).map(side => Math.hypot(rawSoles[side].x - rasterSoles[side].x, rawSoles[side].y - rasterSoles[side].y)));
+      const rawDepthWithinAuthoredBand = rawSoleHeightDifferencePx <= measurements.supportDepthTolerancePx;
+      const applied = rawDepthWithinAuthoredBand && maxSoleLandmarkDisplacementPx <= 1
+        && refinement.provenance.maxRawCornerDisplacementPx !== null && refinement.provenance.maxRawCornerDisplacementPx <= 1;
+      return { version: "raw-valid-depth-bounded-sole-quantization/v1" as const, applied, rawSoleHeightDifferencePx,
+        rasterSoleHeightDifferencePx: measurements.soleHeightDifferencePx, authoredTolerancePx: measurements.supportDepthTolerancePx,
+        rawDepthWithinAuthoredBand, rawSoles, rasterSoles, maxSoleLandmarkDisplacementPx, maxAllowedDisplacementPx: 1 as const,
+        maxRawImageDisplacementPx: refinement.provenance.maxRawCornerDisplacementPx };
+    })() : null;
   for (let i = 0; i < bw * bh; i++) {
     demand(board.data[i * 4 + 3] === 255, "board must be opaque");
     if (foreground.data[i * 4 + 3]) demand([0, 1, 2].every(c => foreground.data[i * 4 + c] === board.data[i * 4 + c]), "foreground is not original board RGB");
@@ -118,7 +140,7 @@ export async function composeOpenPlacement(input: OpenPlacementInput) {
     faceReadableAndNotOversized: measurements.renderedFaceHeightPx >= 8 && measurements.renderedFaceHeightPx <= slot.faceHeightPx * 1.15,
     // Feet can be staggered in depth on a painted ground plane: identical image
     // y is not required. Keep a bounded contact band; semantic contact is still pending.
-    feetOnSupport: measurements.soleHeightDifferencePx <= measurements.supportDepthTolerancePx && slot.supportPointPx.x >= 0 && slot.supportPointPx.x < bw
+    feetOnSupport: (measurements.soleHeightDifferencePx <= measurements.supportDepthTolerancePx || footContactQuantization?.applied === true) && slot.supportPointPx.x >= 0 && slot.supportPointPx.x < bw
       && slot.supportPointPx.y >= 0 && slot.supportPointPx.y < bh,
     sourceFaceOpaque: measurements.sourceFacePixels > 0 && measurements.sourceFaceMissingPixels === 0,
     protectedFaceVisible: measurements.protectedFaceMaskedPixels === 0,
@@ -129,7 +151,8 @@ export async function composeOpenPlacement(input: OpenPlacementInput) {
   };
   const image = (data: Buffer) => sharp(data, { raw: { width: bw, height: bh, channels: 4 } });
   const [patchPng, compositePng, contextPng] = await Promise.all([image(patch).png().toBuffer(), image(composite).png().toBuffer(), image(composite).extract(slot.window).png().toBuffer()]);
-  return { version: "open-placement/v1" as const, ok: Object.values(checks).every(Boolean), checks, measurements,
+  return { version: "open-placement/v1" as const, ok: Object.values(checks).every(Boolean), checks,
+    measurements: footContactQuantization ? { ...measurements, footContactQuantization } : measurements,
     transform: { scale, translateX, translateY }, slot, source: { sha256: source.sha256, eye: source.eye, chin: source.chin, standing: rawAnatomy,
       rasterStanding: refinement ? { version: slot.pixelRefinement!, ...anatomy, refinement: refinement.provenance,
         ...(slot.pixelRefinement === CROWN_FRINGE_REFINEMENT_V3 ? { crownFringe } : {}) }

@@ -28,7 +28,7 @@ function demand(value: unknown, code: BoardWizardRecoveryError["code"], message:
 
 /** Read-only qualification; arbitrary held games, identity failures and later
  * unknown requests are not generic retry candidates. Never returns child pixels. */
-async function candidate(c: Container, gameId: string) {
+export async function qualifyBoardWizardTransportRecovery(c: Container, gameId: string) {
   demand(boardWizardEnabled() && env().APP_ENV === "qa" && c.storage.id === "db", "forbidden", "Recovery is available only in the explicit QA wizard");
   const game = await c.db.game.findUnique({ where: { id: gameId }, include: { childProfile: true, orders: true } });
   const job = await c.db.generationJob.findUnique({ where: { id: `job_${gameId}` } });
@@ -76,7 +76,7 @@ async function candidate(c: Container, gameId: string) {
 
 export async function boardWizardRecoveryForm(c: Container, gameId: string) {
   try {
-    const state = await candidate(c, gameId);
+    const state = await qualifyBoardWizardTransportRecovery(c, gameId);
     return { gameId, expectedStepsSha256: boardConditioningHash(state.job.stepsJson), expectedLedgerSha256: boardConditioningHash(state.stored.snapshot),
       boardId: state.boardId, retainedUnknownMicroUsd: state.request.reserveMicroUsd, committedMicroUsd: state.audit.committedMicroUsd };
   } catch { return null; } // Display only; action repeats all checks and fails closed.
@@ -90,7 +90,7 @@ export async function authorizeBoardWizardTransportRecovery(c: Container, actor:
   demand(actor.type === "ADMIN" && actor.id.trim(), "forbidden", "An authenticated administrator is required");
   const admin = await c.db.user.findUnique({ where: { id: actor.id }, select: { email: true } });
   demand(admin && c.adminEmails?.some(email => email.trim().toLowerCase() === admin.email.toLowerCase()), "forbidden", "Administrator not authorized");
-  const state = await candidate(c, input.gameId);
+  const state = await qualifyBoardWizardTransportRecovery(c, input.gameId);
   demand(input.expectedStepsSha256 === boardConditioningHash(state.job.stepsJson)
     && input.expectedLedgerSha256 === boardConditioningHash(state.stored.snapshot), "conflict", "The stopped game changed; review the current authorization form");
   const authorizedAt = new Date().toISOString();

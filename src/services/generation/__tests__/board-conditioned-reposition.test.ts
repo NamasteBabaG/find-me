@@ -73,15 +73,24 @@ describe("free board-conditioned geometry revision", () => {
   });
   it("explicitly replays retained observation 2 and includes both paid observations without dispatch", async () => {
     const first = clone((await deps.checkpoints.getMeasurement(request.sourceWorldId, "fixture"))!);
+    const source = (await deps.checkpoints.getSource(request.sourceWorldId, "fixture"))!;
+    const capture = (await prepareBoardPoseObservation({ sheetPng: source.png, slots: request.sourceInput.slots.map(s => ({ slotId: s.slot.id, pose: s.slot.pose })) }, deps.observerPolicy)).capture;
+    const answerFor = (m: BoardMeasurement) => JSON.stringify({ figureCount: 3, extraProps: false, reason: "Three complete synthetic figures", cells: m.sources!.map(s => ({
+      slotId: s.slotId, pose: s.pose, poseMatches: true, visibleHeadArmsComplete: true,
+      eye: { status: "observed", point: s.eye, confidence: .96, reason: "Synthetic opaque eye" },
+      chin: { status: "observed", point: s.chin, confidence: .96, reason: "Synthetic opaque chin" },
+      protectedFacePolygon: { status: "observed", polygon: s.protectedFacePolygon, confidence: .96, reason: "Synthetic complete face" },
+    })) });
     first.receipt = { version: "board-pose-observation-receipt/v1", fingerprint: first.fingerprint,
-      sourceImageSha256: first.sheetSha256, sourceRgbaSha256: first.sheetSha256, wireImageSha256: first.sheetSha256,
-      promptSha256: first.fingerprint, slots: request.sourceInput.slots.map(s => ({ slotId: s.slot.id, pose: s.slot.pose })),
+      sourceImageSha256: first.sheetSha256, sourceRgbaSha256: capture.sourceRgbaSha256, wireImageSha256: capture.wireImageSha256,
+      promptSha256: capture.promptSha256, slots: capture.slots,
       coordinates: "native-1024-sheet-pixel-edges", modelRequested: "gpt-5.6-sol", modelReturned: "gpt-5.6-sol", effort: "high",
-      requestId: "fixture-measure", responseId: null, httpStatus: 200, serviceTier: null, finishReason: "stop",
-      responseText: "{}", rawUsage: { tokens: 1 }, costUnknown: false, costCents: .01, attempts: 1 };
+      requestId: "fixture-measure", responseId: "chatcmpl-fixture-1", httpStatus: 200, serviceTier: null, finishReason: "stop",
+      responseText: answerFor(first), rawUsage: { tokens: 1 }, costUnknown: false, costCents: .01, attempts: 1 };
     const second = clone(first);
     second.evidence = { ...first.evidence, providerRequestId: "fixture-measure-2", usageId: "fixture-measure-2" };
     second.sources![0]!.eye.x += 2;
+    second.receipt = { ...second.receipt!, requestId: "fixture-measure-2", responseId: "chatcmpl-fixture-2", responseText: answerFor(second) };
     const snapshot = { ...clone(paidSnapshot), requests: [...clone(paidSnapshot.requests),
       { ...clone(paidSnapshot.requests[1]!), requestKey: "board:fixture:measure:2", evidence: second.evidence }] };
     const getMeasurement = vi.fn(async (_w: string, _b: string, attempt?: 1 | 2) => attempt === 2 ? second : first);

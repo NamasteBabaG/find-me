@@ -29,6 +29,8 @@ import { requireBoardWizardIdentityApproval } from "./board-wizard-identity-gate
 
 /** Distinct from the admin probe and legacy fixed import: never published automatically. */
 export const BOARD_WIZARD_STYLE = "fixed-sprite-board-wizard-v1";
+/** Re-evaluate old failed measurements once after a deterministic geometry fix. */
+export const BOARD_WIZARD_GEOMETRY_REVISION = "face-boundary-native-pixel/v1";
 export const BOARD_WIZARD_SOURCE_POLICY: FixedSourcePolicy = { quality: "medium", reserveMicroUsd: 200_000, providerNamespace: "openai:find-me-existing", timeoutMs: 120_000,
   rateCard: { id: "existing-reviewed-image2-5-8-30-microusd-v1", textInput: 5, imageInput: 8, imageOutput: 30 } };
 export const BOARD_WIZARD_OBSERVER_POLICY: BoardPoseObserverPolicy = { reserveMicroUsd: 400_000, providerNamespace: "openai:find-me-existing", timeoutMs: 90_000 };
@@ -41,6 +43,7 @@ const visualSchema = z.object({ slotId: z.string(), patchAssetId: z.string(), pa
 const progressSchema = z.object({ boardId: z.string(), state: z.enum(["pending", "geometry-ok", "needs-repair"]), reason: z.string().nullable(),
   attempts: z.number().int().min(0).max(2),
   awaitingMeasurement: z.boolean().optional(),
+  geometryRevision: z.string().min(1).max(120).optional(),
   remeasurements: z.array(z.object({ sourceAttempt: z.union([z.literal(1), z.literal(2)]), state: z.enum(["pending", "done"]),
     kind: z.literal("transport-recovery").optional(), approvalId: z.string().min(1).max(240).optional(),
   }).strict().refine(r => Boolean(r.kind) === Boolean(r.approvalId), "Transport recovery requires its approval identifier")).max(2).optional(),
@@ -192,8 +195,9 @@ export async function runBoardConditionedWizardSlice(c: Container, gameId: strin
   // Among sources, visit untouched boards before retries so one hard hide
   // cannot starve the world. Visual work runs in separate bounded ticks.
   const awaiting = (b: Capsule["boards"][number]) => Boolean(b.awaitingMeasurement || b.remeasurements?.some(r => r.state === "pending"));
-  const next = !nextVisualBoard ? [...record.boards].filter(b => b.state === "pending")
-    .sort((a, b) => Number(awaiting(b)) - Number(awaiting(a)) || a.attempts - b.attempts)[0] : undefined;
+  const needsGeometryReplay = (b: Capsule["boards"][number]) => !awaiting(b) && b.attempts > 0 && b.geometryRevision !== BOARD_WIZARD_GEOMETRY_REVISION;
+  const next = !nextVisualBoard ? [...record.boards].filter(b => b.state === "pending" || b.state === "needs-repair" && needsGeometryReplay(b))
+    .sort((a, b) => Number(awaiting(b)) - Number(awaiting(a)) || Number(needsGeometryReplay(b)) - Number(needsGeometryReplay(a)) || a.attempts - b.attempts)[0] : undefined;
   let stagedAssets: BoardConditionedPrivateAsset[] = [];
   let stagedContexts: { key: string; png: Buffer }[] = [];
   let stagedScene: string | null = null;
@@ -234,22 +238,26 @@ export async function runBoardConditionedWizardSlice(c: Container, gameId: strin
       } else if (next) {
       const input = await loadBoardConditionedCatalogBoard(record.catalog, next.boardId, { profileId: record.childProfileId, ageYears: record.ageYears, referenceRole: "illustrated-identity", illustratedIdentity: { png: identityPng, sha256: record.identitySha256 } });
       const remeasurement = next.remeasurements?.find(r => r.state === "pending");
-      const attempt = remeasurement ? remeasurement.sourceAttempt : next.awaitingMeasurement ? next.attempts : next.attempts + 1;
+      // Paid failures from an earlier implementation get one READ-ONLY replay
+      // before any replacement image. A missing checkpoint cannot trigger an API.
+      const cachedReplay = needsGeometryReplay(next);
+      const attempt = remeasurement ? remeasurement.sourceAttempt : next.awaitingMeasurement || cachedReplay ? next.attempts : next.attempts + 1;
+      const selectedRemeasurement = remeasurement ?? (cachedReplay ? next.remeasurements?.find(r => r.sourceAttempt === attempt && r.state === "done") : undefined);
       demand(attempt <= 2, "At most two source generations per board");
       const prepared = await prepareBoardConditionedSource(input, BOARD_WIZARD_SOURCE_POLICY), budget = budgetOf(c, attempt), worldId = scope(gameId);
       const checkpointBoard = (boardId: string) => attempt === 1 ? boardId : `${boardId}--attempt-2`;
       const store = new PrismaBoardConditionedCheckpointStore(c.db);
       const checkpoints: BoardConditionedCheckpointStore = { getSource: (w, b) => store.getSource(w, checkpointBoard(b)), getMeasurement: (w, b, a) => store.getMeasurement(w, checkpointBoard(b), a),
-        putSource: (w, b, s) => write(tx => new PrismaBoardConditionedCheckpointStore(tx).putSource(w, checkpointBoard(b), s)),
-        putMeasurement: (w, b, m, a) => write(tx => new PrismaBoardConditionedCheckpointStore(tx).putMeasurement(w, checkpointBoard(b), m, a)) };
+        putSource: (w, b, s) => { demand(!cachedReplay, "Cached geometry replay cannot write paid checkpoints"); return write(tx => new PrismaBoardConditionedCheckpointStore(tx).putSource(w, checkpointBoard(b), s)); },
+        putMeasurement: (w, b, m, a) => { demand(!cachedReplay, "Cached geometry replay cannot write paid checkpoints"); return write(tx => new PrismaBoardConditionedCheckpointStore(tx).putMeasurement(w, checkpointBoard(b), m, a)); } };
       demand(env().OPENAI_API_KEY, "Existing OpenAI credential is missing");
       const provider = new BudgetedOpenAiFixedSourceProvider(env().OPENAI_API_KEY!, budget, BOARD_WIZARD_SOURCE_POLICY, fetch,
         receipt => write(tx => new PrismaBoardConditionedCheckpointStore(tx).putSourceFailure(worldId, checkpointBoard(next.boardId), receipt)));
       const observer = new BudgetedBoardPoseObserver(env().OPENAI_API_KEY!, budget, BOARD_WIZARD_OBSERVER_POLICY, fetch, { transportTimeoutMs: 180_000 });
       const dispatch = async () => { await spendCheck(c, record.ownerId); await write(async () => undefined); };
       const result = await generateBoardConditionedAppearances({ sourcePolicy: BOARD_WIZARD_SOURCE_POLICY, observerPolicy: BOARD_WIZARD_OBSERVER_POLICY, budget, checkpoints,
-        sources: { generate: async request => { demand(!remeasurement, "Observer recovery must never purchase a replacement image"); await dispatch(); return provider.generate(request); } },
-        measure: async request => { await dispatch(); const p = await prepareBoardPoseObservation(request, BOARD_WIZARD_OBSERVER_POLICY);
+        sources: { generate: async request => { demand(!selectedRemeasurement && !cachedReplay, "Observer recovery or cached replay must never purchase a replacement image"); await dispatch(); return provider.generate(request); } },
+        measure: async request => { demand(!cachedReplay, "Cached geometry replay cannot purchase an observation"); await dispatch(); const p = await prepareBoardPoseObservation(request, BOARD_WIZARD_OBSERVER_POLICY);
           let result;
           try { result = await observer.observe({ ...request, expectedFingerprint: p.fingerprint }); }
           catch (error) {
@@ -264,10 +272,11 @@ export async function runBoardConditionedWizardSlice(c: Container, gameId: strin
           }
           return result.kind === "already-recorded" ? null : { sheetSha256: result.receipt.sourceImageSha256, fingerprint: result.receipt.fingerprint, status: result.status, sources: result.sources, evidence: result.evidence, receipt: result.receipt, completenessDeferred: result.completenessDeferred }; },
       }, { worldId, input, expectedContractSha256: prepared.contractSha256, yieldAfterNewSource: true,
-        ...(remeasurement ? { measurementAttempt: 2 as const,
-          ...(remeasurement.kind === "transport-recovery" ? { transportRecoveryApprovalId: remeasurement.approvalId } : {}) } : {}) });
+        ...(selectedRemeasurement ? { measurementAttempt: 2 as const,
+          ...(selectedRemeasurement.kind === "transport-recovery" ? { transportRecoveryApprovalId: selectedRemeasurement.approvalId } : {}) } : {}) });
       next.contractSha256 = prepared.contractSha256;
       next.attempts = attempt;
+      next.geometryRevision = BOARD_WIZARD_GEOMETRY_REVISION;
       next.awaitingMeasurement = result.state === "source-ready";
       if (remeasurement) remeasurement.state = "done";
       if (result.state === "source-ready") {
@@ -295,7 +304,7 @@ export async function runBoardConditionedWizardSlice(c: Container, gameId: strin
         next.state = "geometry-ok"; next.playerBindingSha256 = player.playerBindingSha256; next.reason = "Visual review pending; no semantic approval has been claimed";
       } else {
         if (result.state === "reconciliation-required") throw new Error("Paid checkpoint requires reconciliation; never spend on a replacement");
-        const observeAgain = !remeasurement && await needsBoardStandingRemeasurement(input, result);
+        const observeAgain = !selectedRemeasurement && await needsBoardStandingRemeasurement(input, result);
         if (observeAgain) {
           // A separate queue tick avoids source120s + observer90s + recovery90s
           // exceeding the request deadline. Preserve this paid source attempt.
@@ -310,7 +319,7 @@ export async function runBoardConditionedWizardSlice(c: Container, gameId: strin
       }
       }
     }
-    const geometryFinished = !record.boards.some(b => b.state === "pending");
+    const geometryFinished = !record.boards.some(b => b.state === "pending" || b.state === "needs-repair" && needsGeometryReplay(b));
     const finished = record.state === "held" || geometryFinished && !record.boards.some(b => b.visual.some(v => v.state === "pending"));
     if (finished && record.state !== "held") record.state = "review-required";
     await write(async tx => {
