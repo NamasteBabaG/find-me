@@ -19,6 +19,8 @@ interface Props {
   demo?: boolean;
   /** Owner/library preview: skip the gift wrap. */
   skipGift?: boolean;
+  /** Private partial QA: normal navigation, but no persisted play/progress. */
+  readOnlyPreview?: boolean;
   /** Adult-only link shown under the map (never inside the scene). */
   parentZoneHref?: string;
   /** Open this scene immediately (landing demo). */
@@ -40,9 +42,9 @@ export function GameShell(props: Props) {
   );
 }
 
-function Shell({ config, demo = false, skipGift = false, parentZoneHref, autoStartScene, singleMission = false }: Props) {
+function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false, parentZoneHref, autoStartScene, singleMission = false }: Props) {
   const { g } = useGameText();
-  const [store] = useState(() => createPlayStore(config, { demo, skipGift, autoStartScene, singleMission, copy: getDict(config.locale).game.copy }));
+  const [store] = useState(() => createPlayStore(config, { demo, skipGift, readOnlyPreview, autoStartScene, singleMission, copy: getDict(config.locale).game.copy }));
   const state = useStore(store);
   const scene = state.scene();
   // One world needs no hub: the map is the whole journey.
