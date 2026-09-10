@@ -1,0 +1,28 @@
+{
+  // The authoring and engine scripts, type-checked.
+  //
+  // They run under tsx, which does not type-check, so a field the judge schema
+  // dropped stayed in five of them writing `undefined` into a manifest - and
+  // `undefined` disappears in JSON, so a run could lose a check nobody noticed
+  // was missing. They are not product code and must not enter the product build,
+  // but a command that is published as a working step has to compile.
+  //
+  //   npm run check:work
+  //
+  // `archive/` is deliberately excluded: those scripts ran against an older judge
+  // schema, their results are kept as JSON beside them, and re-running them is
+  // not a thing anyone should do.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [
+    "src/**/*.ts",
+    "scripts/**/*.ts",
+    "work/board-conditioned-engine-20260909/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "work/board-conditioned-engine-20260909/archive/**"
+  ]
+}

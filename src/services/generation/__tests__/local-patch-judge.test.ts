@@ -7,10 +7,13 @@ const good = {
   childPresent: "pass", childOnlyOnce: "pass", childComplete: "pass", pictureWhole: "pass",
   scaleRight: "pass", groundContact: "pass", styleMatch: "pass", verdict: "pass", reason: "She stands on the sand at the right height.", faults: [],
 };
-const reply = (content: unknown, status = 200) => new Response(JSON.stringify({
-  choices: [{ message: { content: typeof content === "string" ? content : JSON.stringify(content) } }],
-  usage: { prompt_tokens: 900, completion_tokens: 120 },
-}), { status, headers: { "x-request-id": "req-judge" } });
+const reply = (content: unknown, status = 200, overrides: Record<string, unknown> = {}, headers: Record<string, string> = { "x-request-id": "req-judge" }) =>
+  new Response(JSON.stringify({
+    model: LOCAL_PATCH_JUDGE.model,
+    choices: [{ message: { content: typeof content === "string" ? content : JSON.stringify(content) }, finish_reason: "stop" }],
+    usage: { prompt_tokens: 900, completion_tokens: 120 },
+    ...overrides,
+  }), { status, headers });
 
 async function request() {
   const image = await png();
@@ -181,10 +184,68 @@ describe("judging one finished local patch", () => {
     const blocked = await judgeLocalPatch("test-only", await request(), (async () => reply(orphaned)) as unknown as typeof fetch);
     expect(blocked.verdict?.verdict).toBe("fail");
 
-    const moved = { ...good, reason: "The white dog stands a little to the left of where it was, and reads correctly.",
-      faults: [{ check: "unspecified", where: "the white dog is further left than in BEFORE" }] };
+    // A neighbour who merely moved is not asked about at all any more, and the
+    // prompt says to keep such an observation out of faults, so it lands in the
+    // reason and the hide stands.
+    const moved = { ...good, reason: "The white dog stands a little to the left of where it was, and reads correctly." };
     const kept = await judgeLocalPatch("test-only", await request(), (async () => reply(moved)) as unknown as typeof fetch);
     expect(kept.verdict?.verdict).toBe("pass");
-    expect(kept.verdict?.faults[0]?.where).toMatch(/dog/);
+    expect(kept.verdict?.reason).toMatch(/dog/);
+  });
+
+  it("never approves a described fault it could not route to a check", async () => {
+    // The counter-example from the 10 September audit, run against the parser:
+    // every field green, the model's own summary saying fail, and one sentence
+    // describing a headless passer-by. The shapeless fault matched no check, so
+    // it contradicted none of them and the hide came out a clean pass - a broken
+    // picture on its way to a customer with nobody looking.
+    const headless = { ...good, verdict: "fail",
+      reason: "A passer-by behind her has lost his head; only his torso remains.",
+      faults: ["At the left edge a headless torso in a striped shirt remains where a man stood."] };
+    const result = await judgeLocalPatch("test-only", await request(), (async () => reply(headless)) as unknown as typeof fetch);
+    expect(result.verdict?.verdict).toBe("unsure");
+    expect(result.verdict?.unclassified[0]).toMatch(/headless torso/);
+
+    // A misspelt or renamed check is the same hole, so it closes the same way.
+    const renamed = { ...good, faults: [{ check: "surroundingsIntact", where: "an arm with no owner beside the crate" }] };
+    const stale = await judgeLocalPatch("test-only", await request(), (async () => reply(renamed)) as unknown as typeof fetch);
+    expect(stale.verdict?.verdict).toBe("unsure");
+
+    expect(localPatchJudgePrompt("x")).toMatch(/Every entry in faults MUST set "check" to one of these exact names/);
+  });
+
+  it("refuses a reply it cannot trust, whatever that reply says about the picture", async () => {
+    // "The picture is wrong" and "the reply was not trustworthy" are different
+    // facts. Collapsing them is how a wrong model, a truncated answer and a
+    // reply with no receipt all became approvals.
+    const cases: [string, () => Response][] = [
+      ["wrong-model", () => reply(good, 200, { model: "gpt-4o-mini" })],
+      ["truncated", () => reply(good, 200, { choices: [{ message: { content: JSON.stringify(good) }, finish_reason: "length" }] })],
+      ["no-receipt", () => reply(good, 200, {}, {})],
+      ["http", () => reply(good, 500)],
+      ["not-json", () => reply("not json at all")],
+    ];
+    for (const [expected, make] of cases) {
+      const result = await judgeLocalPatch("test-only", await request(), (async () => make()) as unknown as typeof fetch);
+      expect(result.verdict).toBeNull();
+      expect(result.wireFault).toBe(expected);
+    }
+
+    // A reply with no token counts is a charge we cannot state; unknown is the
+    // honest answer, and it is not zero.
+    const noUsage = await judgeLocalPatch("test-only", await request(), (async () => reply(good, 200, { usage: undefined })) as unknown as typeof fetch);
+    expect(noUsage.costUnknown).toBe(true);
+    const billed = await judgeLocalPatch("test-only", await request(), (async () => reply(good)) as unknown as typeof fetch);
+    expect(billed.costUnknown).toBe(false);
+    expect(billed.wireFault).toBeNull();
+  });
+
+  it("gives up on a judgement that never arrives, and says the charge is unknown", async () => {
+    const hung = (async () => { throw new DOMException("aborted", "AbortError"); }) as unknown as typeof fetch;
+    const result = await judgeLocalPatch("test-only", await request(), hung);
+    expect(result.wireFault).toBe("timeout");
+    expect(result.costUnknown).toBe(true);
+    expect(result.verdict).toBeNull();
+    expect(LOCAL_PATCH_JUDGE.timeoutMs).toBeGreaterThan(0);
   });
 });

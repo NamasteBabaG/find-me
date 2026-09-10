@@ -38,6 +38,8 @@ export const LOCAL_PATCH_JUDGE = Object.freeze({
    * truncated answer is discarded, so a good hide was thrown away for nothing. */
   maxOutputTokens: 3000,
   endpoint: "https://api.openai.com/v1/chat/completions",
+  /** A judgement that has not arrived in four minutes is not going to. */
+  timeoutMs: 240_000,
 });
 
 const check = z.enum(["pass", "fail", "unsure"]);
@@ -122,15 +124,27 @@ export const localPatchVerdictSchema = z.object({
     if (normalised[key] === "pass" && v.faults.some(f => f.check === key)) { normalised[key] = "unsure"; contradicted.push(key); }
   }
 
+  // A fault nobody could route is still a fault somebody saw.
+  //
+  // The parser accepts three shapes for a fault and gives the shapeless one
+  // `check: "unspecified"`, which matched no check and therefore contradicted
+  // none of them. An answer with every field green, its own summary saying fail,
+  // and a sentence describing a headless passer-by came out of here as a clean
+  // pass - the worst shape this gate can fail in, because the game is sent with
+  // nobody looking. The prompt now says every fault must name a check; one that
+  // does not is a reason to look, never a reason to buy.
+  const known = new Set<string>(JUDGE_CHECKS);
+  const unclassified = v.faults.filter(f => !known.has(f.check)).map(f => f.where);
+
   const anyFail = JUDGE_CHECKS.some(key => normalised[key] === "fail");
   const blocking = BLOCKING_CHECKS.some(key => normalised[key] !== "pass");
   // A downgraded failure is NOT an approval. The model said something was wrong
   // and could not say where; that is a reason to look, never a reason to pass.
   // Without this a located-fault rule quietly turned every unlocated failure
   // into a clean sheet.
-  const softened = downgraded.length > 0 || contradicted.length > 0;
+  const softened = downgraded.length > 0 || contradicted.length > 0 || unclassified.length > 0;
   const derived = anyFail ? "fail" as const : blocking || softened ? "unsure" as const : "pass" as const;
-  return { ...normalised, verdict: derived, downgraded, contradicted, claimedVerdict: v.verdict, verdictOverridden: derived !== v.verdict };
+  return { ...normalised, verdict: derived, downgraded, contradicted, unclassified, claimedVerdict: v.verdict, verdictOverridden: derived !== v.verdict };
 });
 export type LocalPatchVerdict = z.infer<typeof localPatchVerdictSchema>;
 
@@ -172,6 +186,7 @@ export function localPatchJudgePrompt(hideId: string, expectation: LocalPatchExp
     "Then give an overall verdict: pass only if childPresent, childOnlyOnce, childComplete and pictureWhole are all pass and nothing else is fail. Use unsure when you genuinely cannot tell.",
     "",
     "For EVERY check you mark fail, add an entry to faults saying exactly where it is in the AFTER image, in plain words a person could follow - \"a bare foot beside her left ankle\", \"a hard vertical edge down the sand to her right\". If you cannot point at it, the check is not a fail; mark it unsure instead.",
+    `Every entry in faults MUST set "check" to one of these exact names: ${JUDGE_CHECKS.join(", ")}. If what you noticed belongs to none of them - a bystander who moved, a colour you would have chosen differently - it is not a fault at all: leave it out of faults and mention it in reason instead.`,
     "Reply with JSON only, with exactly these keys: childPresent, childOnlyOnce, childComplete, pictureWhole, scaleRight, groundContact, styleMatch, verdict, reason, faults.",
     "Keep reason under 300 characters and say what you actually saw.",
   ].join("\n");
@@ -185,28 +200,88 @@ export type LocalPatchJudgeRequest = {
   expectation?: LocalPatchExpectation;
 };
 
-/** One judgement. The caller owns the ledger; this only asks and parses. */
+/**
+ * Why the answer was not usable, when it was not. `null` means it was.
+ *
+ * Kept apart from the verdict on purpose: "the picture is wrong" and "the reply
+ * was not trustworthy" are different facts, and only the first is about the
+ * picture. Collapsing them is how a wrong model, a truncated answer and a reply
+ * with no receipt all became approvals.
+ */
+export type JudgeWireFault = "http" | "no-content" | "not-json" | "schema" | "truncated" | "wrong-model" | "no-receipt" | "timeout";
+
+export type LocalPatchJudgeResult = {
+  verdict: LocalPatchVerdict | null;
+  raw: string | null;
+  usage: Record<string, unknown> | null;
+  requestId: string | null;
+  /** What the provider says it ran, and how it stopped. */
+  model: string | null;
+  finishReason: string | null;
+  /** Set when the reply could not be trusted, whatever it said about the picture. */
+  wireFault: JudgeWireFault | null;
+  /**
+   * True when this call may have been billed and we cannot say how much: no
+   * usage, or the request died after dispatch. An unknown charge is not zero.
+   */
+  costUnknown: boolean;
+};
+
+const numeric = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= 0;
+
+/** One judgement. The caller owns the ledger; this only asks, checks and parses. */
 export async function judgeLocalPatch(apiKey: string, request: LocalPatchJudgeRequest,
-  fetchOnce: typeof fetch = fetch): Promise<{ verdict: LocalPatchVerdict | null; raw: string | null; usage: Record<string, unknown> | null; requestId: string | null }> {
+  fetchOnce: typeof fetch = fetch): Promise<LocalPatchJudgeResult> {
   const prompt = localPatchJudgePrompt(request.hideId, request.expectation ?? {});
   const image = (png: Buffer) => ({ type: "image_url" as const, image_url: { url: `data:image/png;base64,${png.toString("base64")}`, detail: "high" as const } });
-  const response = await fetchOnce(LOCAL_PATCH_JUDGE.endpoint, {
-    method: "POST", redirect: "error",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: LOCAL_PATCH_JUDGE.model, reasoning_effort: LOCAL_PATCH_JUDGE.effort,
-      max_completion_tokens: LOCAL_PATCH_JUDGE.maxOutputTokens, service_tier: "default", store: false,
-      response_format: { type: "json_object" },
-      messages: [{ role: "user", content: [{ type: "text", text: prompt }, image(request.beforePng), image(request.afterPng), image(request.identityPng)] }],
-    }),
-  });
+  const abort = new AbortController();
+  // A request with no deadline is a run that can hang for as long as the network
+  // lets it, holding a reservation nobody will settle.
+  const timer = setTimeout(() => abort.abort(), LOCAL_PATCH_JUDGE.timeoutMs);
+  let response: Response;
+  try {
+    response = await fetchOnce(LOCAL_PATCH_JUDGE.endpoint, {
+      method: "POST", redirect: "error", signal: abort.signal,
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: LOCAL_PATCH_JUDGE.model, reasoning_effort: LOCAL_PATCH_JUDGE.effort,
+        max_completion_tokens: LOCAL_PATCH_JUDGE.maxOutputTokens, service_tier: "default", store: false,
+        response_format: { type: "json_object" },
+        messages: [{ role: "user", content: [{ type: "text", text: prompt }, image(request.beforePng), image(request.afterPng), image(request.identityPng)] }],
+      }),
+    });
+  } catch {
+    // Dispatched and then lost: the provider may still have billed it.
+    return { verdict: null, raw: null, usage: null, requestId: null, model: null, finishReason: null, wireFault: "timeout", costUnknown: true };
+  } finally { clearTimeout(timer); }
+
   const requestId = response.headers.get("x-request-id");
-  const body = await response.json().catch(() => null) as { choices?: { message?: { content?: string } }[]; usage?: Record<string, unknown> } | null;
+  const body = await response.json().catch(() => null) as {
+    model?: string; choices?: { message?: { content?: string }; finish_reason?: string }[]; usage?: Record<string, unknown>;
+  } | null;
   const raw = body?.choices?.[0]?.message?.content ?? null;
-  if (!response.ok || typeof raw !== "string") return { verdict: null, raw, usage: body?.usage ?? null, requestId };
+  const model = typeof body?.model === "string" ? body.model : null;
+  const finishReason = typeof body?.choices?.[0]?.finish_reason === "string" ? body.choices[0]!.finish_reason! : null;
+  const usage = body?.usage ?? null;
+  // Tokens are what the charge is computed from, so a reply without them is a
+  // charge we cannot state. `costUnknown` is the honest answer, not zero.
+  const billed = !!usage && numeric(usage.prompt_tokens) && numeric(usage.completion_tokens);
+  const refuse = (wireFault: JudgeWireFault): LocalPatchJudgeResult =>
+    ({ verdict: null, raw, usage, requestId, model, finishReason, wireFault, costUnknown: !billed });
+
+  if (!response.ok) return refuse("http");
+  if (typeof raw !== "string") return refuse("no-content");
+  // A reply from a model we did not ask for is not this judge's judgement, and
+  // its effort setting - which the whole cost decision rests on - is unknown.
+  if (model !== null && !model.startsWith(LOCAL_PATCH_JUDGE.model)) return refuse("wrong-model");
+  // `length` means the answer stopped mid-sentence. What survived may parse.
+  if (finishReason !== null && finishReason !== "stop") return refuse("truncated");
+  if (!requestId) return refuse("no-receipt");
+
   let parsed: unknown;
-  try { parsed = JSON.parse(raw); } catch { return { verdict: null, raw, usage: body?.usage ?? null, requestId }; }
+  try { parsed = JSON.parse(raw); } catch { return refuse("not-json"); }
   const result = localPatchVerdictSchema.safeParse(parsed);
   // A truncated or malformed answer is never an approval.
-  return { verdict: result.success ? result.data : null, raw, usage: body?.usage ?? null, requestId };
+  if (!result.success) return refuse("schema");
+  return { verdict: result.data, raw, usage, requestId, model, finishReason, wireFault: null, costUnknown: !billed };
 }

@@ -81,13 +81,31 @@ painter to stand her up.
 `src/services/generation/local-patch-judge.ts` — SOL at LOW, three images
 (before, after, the identity reference), one judgement per hide.
 
-Six checks. Three block: `childPresent`, `childComplete`, `pictureWhole`.
+Seven checks. Four block: `childPresent`, `childOnlyOnce`, `childComplete`,
+`pictureWhole`.
 
 **The verdict is always derived, never taken from the model's own summary line.**
 Answers came back declaring "pass" while saying the child was missing. A failure
 the model cannot point at is downgraded to `unsure` — and an `unsure` is not an
 approval, because a located-fault rule that only downgraded quietly turned every
 unlocated failure into a clean sheet.
+
+**A fault nobody could route is still a fault somebody saw.** The parser accepts
+three shapes for a fault and gave the shapeless one `check: "unspecified"`, which
+matched no check and therefore contradicted none of them. An answer with every
+field green, its own summary saying *fail*, and one sentence describing a
+headless passer-by came out as a clean **pass** — reproduced from the 10
+September audit, and the worst shape this gate can fail in. An unclassified or
+misspelt fault now forces `unsure`, and the prompt requires every fault to name
+one of the checks; anything else belongs in `reason`, where it changes nothing.
+
+**A reply is checked before its content is believed.** "The picture is wrong" and
+"the reply was not trustworthy" are different facts, and collapsing them made a
+wrong model, a truncated answer and a reply with no receipt into approvals. The
+call now carries a deadline and refuses on `http`, `no-content`, `not-json`,
+`schema`, `truncated`, `wrong-model`, `no-receipt` or `timeout` — separately from
+any verdict — and reports `costUnknown` when there are no token counts to price,
+because an unknown charge is not zero.
 
 ### What it deliberately does *not* ask
 
@@ -112,6 +130,22 @@ a fault. Two of the accepted hides pass with their feet out of sight.
 for — a kneeling child has no feet on the ground, and "the right height" means
 nothing until you know whether she is four or eight — so the caller passes the
 pose's support wording and the stated age.
+
+## Who accepted a hide
+
+The provider's answer, the code's derived verdict and a person saying "that one
+is fine" were all being written as `verdict: "pass"`. Once they were, none could
+be recovered: two boards kept by the product owner looked exactly like model
+approvals, so the judge's real hit rate was unmeasurable.
+
+A decision is now a record of its own (`src/domain/scene/hide-acceptance.ts`),
+bound to the **hash of the picture it is about**. A person may keep a picture the
+judge refused and refuse one it passed; the model's verdict stays beside their
+decision either way. Re-render the spot and the old approval simply stops
+applying — which is the whole point of carrying the hash.
+
+`work/world-final-20260910/decisions.json` holds the two live ones, and the build
+prints which hides are in the game because a person said so.
 
 ## What the rounds cost
 
