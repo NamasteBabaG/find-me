@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPlayStore } from "../play-store";
 import type { GameConfig } from "@/domain/game/config";
 
@@ -62,6 +62,33 @@ beforeEach(() => {
 });
 
 describe("coming back to a multi-world game", () => {
+  it("plays all five private-preview boards with normal navigation and three missions, without reading or writing real progress or telemetry", () => {
+    const partial = { ...config, worlds: undefined, world: undefined,
+      scenes: Array.from({ length: 5 }, (_, i) => scene(`partial-${i}`, "")) } as unknown as GameConfig;
+    const key = `findme:progress:v1:${config.gameId}`, saved = "untouched real-game progress";
+    window.localStorage.setItem(key, saved);
+    const read = vi.spyOn(window.localStorage, "getItem"), write = vi.spyOn(window.localStorage, "setItem");
+    const transport = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response());
+    try {
+      const store = createPlayStore(partial, { copy, skipGift: true, readOnlyPreview: true });
+      store.getState().hydrate();
+      expect(store.getState().config.gameId).toBe(config.gameId);
+      expect(store.getState().demo).toBe(false); expect(store.getState().screen).toBe("map");
+      expect(store.getState().progress.scenes).toEqual({});
+      for (const [i, board] of partial.scenes.entries()) {
+        store.getState().openScene(board.slug);
+        expect(store.getState().mission!.plan.order).toHaveLength(3);
+        store.getState().completeScene();
+        expect(store.getState().nextScene()).toBe(partial.scenes[i + 1]?.slug ?? null);
+        store.getState().goToMap(); expect(store.getState().screen).toBe("map");
+      }
+      expect(store.getState().gameDone()).toBe(true); // ephemeral review session only
+      store.getState().openPassport(); expect(store.getState().screen).toBe("passport");
+      store.getState().telemetry.flush();
+      expect(read).not.toHaveBeenCalled(); expect(write).not.toHaveBeenCalled(); expect(transport).not.toHaveBeenCalled();
+    } finally { read.mockRestore(); write.mockRestore(); transport.mockRestore(); }
+    expect(window.localStorage.getItem(key)).toBe(saved);
+  });
   it("returns to the world of the last board opened", () => {
     const first = createPlayStore(config, { copy });
     first.getState().reveal();
