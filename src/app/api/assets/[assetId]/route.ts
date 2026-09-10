@@ -18,11 +18,13 @@ export async function GET(req: Request, ctx: { params: Promise<{ assetId: string
   const user = await currentUser();
   const result = await readAsset(getContainer(), assetId, { userId: user?.id ?? null, isAdmin: isAdminEmail(user?.email), signature: url.searchParams.get("s"), expires: url.searchParams.get("e") });
   if ("error" in result) return new Response(result.error === 404 ? "not found" : "forbidden", { status: result.error });
-  const isSigned = url.searchParams.has("s");
+  // Cacheability is the asset's, not the query string's. Deciding it by the
+  // presence of `?s=` let an owner's own request for a PRIVATE photograph come
+  // back immutable-for-a-day, which outlives both the session and the deletion.
   return new Response(new Uint8Array(result.buffer), {
     headers: {
       "Content-Type": result.mimeType,
-      "Cache-Control": isSigned ? "private, max-age=86400, immutable" : "private, no-store",
+      "Cache-Control": result.cacheable ? "private, max-age=86400, immutable" : "private, no-store",
       "X-Content-Type-Options": "nosniff",
     },
   });

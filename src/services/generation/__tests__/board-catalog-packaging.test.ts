@@ -16,6 +16,17 @@ afterEach(async () => {
 });
 const present = async (file: string) => { try { await access(file); return true; } catch { return false; } };
 
+/**
+ * These two are integration tests, not unit tests: between them they create and
+ * move around two hundred real files and spawn two Node processes. The suite's
+ * 20s default is sized for tests that touch no disk, and under the full run -
+ * where a dozen workers compete for the same disk - this file reliably ran out
+ * of it while finishing in a third of a second on its own. Declaring what the
+ * tests actually are is the fix; shortening what they do would be a different
+ * change, and they are testing file movement.
+ */
+const IO_TIMEOUT_MS = 90_000;
+
 async function fixture() {
   const root = await mkdtemp(path.join(tmpdir(), "findme-packaging-test-")); temporary.push(root);
   await mkdir(path.join(root, "work"));
@@ -58,7 +69,7 @@ describe("recoverable child-free catalog packaging", () => {
     expect(await present(path.join(f.root, "content/board-conditioned-qa/old-v2"))).toBe(false);
     for (const asset of plan.current.assets) expect(sha256Bytes(await readFile(path.join(f.root, f.options.archivePath, asset.path.replace("content/board-conditioned-qa/", ""))))).toBe(asset.sha256);
     expect(await present(path.join(f.root, f.options.archivePath, "PROMOTION_RESULT.json"))).toBe(true);
-  });
+  }, IO_TIMEOUT_MS);
   it.each(["stale-approval", "modified-asset", "undeclared-file", "unsafe-archive", "already-used-archive", "shared-revision-directory"])("refuses%s without moving the active catalog", async defect => {
     const f = await fixture();
     if (defect === "stale-approval") f.options.expectedCurrentSha256 = "a".repeat(64);
@@ -97,5 +108,5 @@ describe("active-catalog-only server traces", () => {
     const result = JSON.parse(after.stdout); expect(result.jobs.catalogFiles).toBe(37); expect(result.jobs.staleCatalogFiles).toEqual([]); expect(result.jobs.privateFiles).toEqual([]);
     expect(await present(path.join(f.root, stale))).toBe(true); expect(await present(path.join(f.root, privateFile))).toBe(true);
     expect(run("finalize-build-traces.mjs").stdout).toContain('"changed":0');
-  });
+  }, IO_TIMEOUT_MS);
 });

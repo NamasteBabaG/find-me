@@ -111,16 +111,24 @@ export function withFreshAssetUrls<T>(c: Pick<Container, "secret">, config: T, t
 
 export type AssetViewer = { userId: string | null; isAdmin: boolean; signature: string | null; expires: string | null };
 
-export async function readAsset(c: Container, assetId: string, viewer: AssetViewer): Promise<{ buffer: Buffer; mimeType: string } | { error: 404 | 403 }> {
+/**
+ * `cacheable` says whether the bytes may be stored, and it is a property of the
+ * ASSET, not of the request.
+ *
+ * The route used to decide by whether a `?s=` was present, so an owner who
+ * happened to have that parameter on the URL got a private photograph of their
+ * child back with `max-age=86400, immutable` - kept in the browser cache after
+ * signing out, and after the photograph itself was deleted. Only a GAME asset
+ * fetched with a signature that actually verified may be cached.
+ */
+export async function readAsset(c: Container, assetId: string, viewer: AssetViewer): Promise<{ buffer: Buffer; mimeType: string; cacheable: boolean } | { error: 404 | 403 }> {
   const asset = await c.db.asset.findUnique({ where: { id: assetId } });
   if (!asset || asset.status === "DELETED") return { error: 404 };
-  const allowed =
-    (asset.visibility === "GAME" && verifyAssetSignature(c, assetId, viewer.signature, viewer.expires)) ||
-    viewer.isAdmin ||
-    (asset.ownerId !== null && asset.ownerId === viewer.userId);
+  const signed = asset.visibility === "GAME" && verifyAssetSignature(c, assetId, viewer.signature, viewer.expires);
+  const allowed = signed || viewer.isAdmin || (asset.ownerId !== null && asset.ownerId === viewer.userId);
   if (!allowed) return { error: 403 };
   const buffer = await c.storage.get(asset.storagePath);
-  return { buffer, mimeType: asset.mimeType };
+  return { buffer, mimeType: asset.mimeType, cacheable: signed };
 }
 
 export async function readAssetBuffer(c: Container, assetId: string): Promise<Buffer> {
