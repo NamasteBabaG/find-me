@@ -3,7 +3,7 @@ import { BOARDS_PER_WORLD } from "../package";
 import {
   HIDES_PER_BOARD, LOCAL_PATCH_BOARD, LOCAL_PATCH_CROP, LOCAL_PATCH_MASK_GROUND, LOCAL_PATCH_MASK_LEFT, POSE_MASK,
   LocalPatchBoardSchema, WORLD_LOCAL_PATCH_HIDES, WORLD_LOCAL_PATCH_HIDE_COUNT,
-  assertPlaceable, cropOf, hidesCollide, maskInCrop, maskOf,
+  LOW_POSES, assertPlaceable, cropOf, hidesCollide, maskInCrop, maskOf,
 } from "../scene/local-patch-hides";
 
 describe("where a child is painted into a board", () => {
@@ -39,27 +39,41 @@ describe("where a child is painted into a board", () => {
   });
 
   it("catches the collision it exists to catch", () => {
-    const a = { id: "a", left: 1000, top: 1200, pose: "standing" } as const;
+    const a = { id: "a", left: 1000, top: 1200, pose: "standing" as const };
     // 130 to the right: the second mask starts inside the first crop.
-    expect(hidesCollide(a, { id: "b", left: 1130, top: 1200, pose: "standing" })).toBe(true);
+    expect(hidesCollide(a, { id: "b", left: 1130, top: 1200, pose: "standing" as const })).toBe(true);
     // Far enough apart in x that neither crop reaches the other's mask.
-    expect(hidesCollide(a, { id: "b", left: 1000 + LOCAL_PATCH_CROP.width, top: 1200, pose: "standing" })).toBe(false);
-    expect(() => assertPlaceable({ board: "test", art: "x.png", ground: "sand", hides: [a, { id: "b", left: 1130, top: 1200, pose: "standing" }, { id: "c", left: 0, top: 0, pose: "kneeling" }] }))
+    expect(hidesCollide(a, { id: "b", left: 1000 + LOCAL_PATCH_CROP.width, top: 1200, pose: "standing" as const })).toBe(false);
+    expect(() => assertPlaceable({ board: "test", art: "x.png", ground: "sand", sittable: true, hides: [a, { id: "b", left: 1130, top: 1200, pose: "standing" as const }, { id: "c", left: 0, top: 0, pose: "kneeling" as const }] }))
       .toThrow(/too close/);
   });
 
   it("refuses a crop that runs off the edge of the board", () => {
-    const offEdge = { id: "off", left: LOCAL_PATCH_BOARD.width - 10, top: 1200, pose: "standing" } as const;
-    expect(() => assertPlaceable({ board: "test", art: "x.png", ground: "sand", hides: [offEdge, { id: "b", left: 0, top: 0, pose: "standing" }, { id: "c", left: 1600, top: 0, pose: "kneeling" }] }))
+    const offEdge = { id: "off", left: LOCAL_PATCH_BOARD.width - 10, top: 1200, pose: "standing" as const };
+    expect(() => assertPlaceable({ board: "test", art: "x.png", ground: "sand", sittable: true, hides: [offEdge, { id: "b", left: 0, top: 0, pose: "standing" as const }, { id: "c", left: 1600, top: 0, pose: "kneeling" as const }] }))
       .toThrow(/off the edge/);
+  });
+
+  it("refuses a child sitting on a road, however well she would be drawn", () => {
+    // A crouching child in the middle of a Tokyo crossing passes every check the
+    // judge has and still reads as a mistake, so the ground says whether people
+    // put their bodies on it.
+    const road = { board: "tokyo", art: "x.png", ground: "wet crossing", sittable: false,
+      hides: [{ id: "a", left: 0, top: 0, pose: "crouching" as const }, { id: "b", left: 1200, top: 0, pose: "standing" as const }, { id: "c", left: 2400, top: 0, pose: "walking" as const }] };
+    expect(() => assertPlaceable(road)).toThrow(/nobody sits on/);
+    expect(() => assertPlaceable({ ...road, sittable: true })).not.toThrow();
+    for (const board of WORLD_LOCAL_PATCH_HIDES) {
+      if (board.sittable) continue;
+      expect(board.hides.every(h => !LOW_POSES.includes(h.pose))).toBe(true);
+    }
   });
 
   it("puts the mask where the placement says, in board coordinates", () => {
     const standing = POSE_MASK.standing;
-    expect(maskOf({ id: "x", left: 1408, top: 1088, pose: "standing" }))
+    expect(maskOf({ id: "x", left: 1408, top: 1088, pose: "standing" as const }))
       .toEqual({ left: 1408 + LOCAL_PATCH_MASK_LEFT, top: 1088 + LOCAL_PATCH_MASK_GROUND - standing.height, width: standing.width, height: standing.height });
     // A lower pose keeps the same ground line and only rises less far above it.
-    const sitting = maskOf({ id: "x", left: 1408, top: 1088, pose: "sitting-cross-legged" });
+    const sitting = maskOf({ id: "x", left: 1408, top: 1088, pose: "sitting-cross-legged" as const });
     expect(sitting.top + sitting.height).toBe(1088 + LOCAL_PATCH_MASK_GROUND);
   });
 });

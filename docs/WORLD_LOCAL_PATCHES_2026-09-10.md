@@ -55,13 +55,20 @@ Five, and each needs nothing of its spot but ground and a neighbour — a pose t
 needs a wall or a bench is wrong wherever there is not one, and a board is
 authored before anyone looks again.
 
-| pose | mask box |
-| --- | --- |
-| standing | 252×500 |
-| peeking | 252×500 |
-| kneeling | 260×380 |
-| crouching | 268×330 |
-| sitting-cross-legged | 284×300 |
+| pose | mask box | needs |
+| --- | --- | --- |
+| standing | 252×500 | ground |
+| walking | 268×500 | ground |
+| peeking | 252×500 | ground, something in front |
+| kneeling | 260×380 | ground people sit on |
+| crouching | 268×330 | ground people sit on |
+| sitting-cross-legged | 284×300 | ground people sit on |
+
+A board says whether people put their bodies on its ground (`sittable`), and
+`assertPlaceable` refuses a low pose where they do not. A child crouching in the
+middle of a Tokyo crossing is drawn correctly and still reads as a mistake; those
+boards get **walking** instead, which is what everybody else on a crossing is
+doing.
 
 Lower poses are shorter and wider, and **every box ends on the same ground
 line** — the bottom edge a standing child's feet would have reached — because

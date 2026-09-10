@@ -32,6 +32,10 @@ export const LOCAL_PATCH_POSE_WORDING: Readonly<Record<LocalPatchPose, PoseWordi
     instruction: "She is STANDING, weight on both feet, arms relaxed at her sides or one hand holding the other.",
     support: "both feet on the ground",
   },
+  walking: {
+    instruction: "She is WALKING, caught mid-stride with one foot forward and the other behind, going the same way as the people around her - not posing for the reader.",
+    support: "her leading foot on the ground",
+  },
   peeking: {
     instruction: "She is STANDING BEHIND something in front of her and LEANING OUT to look past it, so a good part of her body stays hidden by it. Her head and one shoulder are what a reader finds first.",
     support: "her feet on the ground, wherever they show past what hides her",

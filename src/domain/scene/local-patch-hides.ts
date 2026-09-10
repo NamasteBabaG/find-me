@@ -43,18 +43,27 @@ export const HIDES_PER_BOARD = 3;
  * How she is posed. Every one of these needs only ground and something to be
  * near, because a pose that needs a wall or a bench is a pose that is wrong
  * wherever there is not one, and a board is authored before anyone looks again.
+ *
+ * Ground alone is not enough for the low ones, though. A child sitting
+ * cross-legged in the middle of a Tokyo crossing is drawn correctly and reads as
+ * a mistake, so a board says whether people sit on its ground and the low poses
+ * are refused where they do not.
  */
-export const LocalPatchPose = z.enum(["standing", "peeking", "kneeling", "crouching", "sitting-cross-legged"]);
+export const LocalPatchPose = z.enum(["standing", "walking", "peeking", "kneeling", "crouching", "sitting-cross-legged"]);
 export type LocalPatchPose = z.infer<typeof LocalPatchPose>;
 
 /** The box each pose needs, in crop pixels. Wider and shorter as she gets lower. */
 export const POSE_MASK: Readonly<Record<LocalPatchPose, { width: number; height: number }>> = Object.freeze({
   standing: { width: 252, height: 500 },
+  walking: { width: 268, height: 500 },
   peeking: { width: 252, height: 500 },
   kneeling: { width: 260, height: 380 },
   crouching: { width: 268, height: 330 },
   "sitting-cross-legged": { width: 284, height: 300 },
 });
+
+/** Kneeling, crouching or sitting: fine on sand, wrong on a road. */
+export const LOW_POSES: readonly LocalPatchPose[] = Object.freeze(["kneeling", "crouching", "sitting-cross-legged"]);
 
 export const LocalPatchHideSchema = z.object({
   id: z.string().min(1),
@@ -69,6 +78,12 @@ export const LocalPatchBoardSchema = z.object({
   art: z.string().min(1),
   /** What she is standing, kneeling or sitting on, in the words the painter gets. */
   ground: z.string().min(1),
+  /**
+   * Whether people put their bodies on this ground. Sand, snow, a forest floor
+   * and a market floor: yes. A road, a crossing, a pavement with traffic on it:
+   * no, and a child sitting there is a drawing mistake however well it is drawn.
+   */
+  sittable: z.boolean(),
   hides: z.array(LocalPatchHideSchema).length(HIDES_PER_BOARD),
 }).strict();
 export type LocalPatchBoard = z.infer<typeof LocalPatchBoardSchema>;
@@ -117,6 +132,9 @@ export function assertPlaceable(board: LocalPatchBoard): void {
     if (box.left + box.width > LOCAL_PATCH_CROP.width || box.top < 0) {
       throw new Error(`LOCAL_PATCH: the ${hide.pose} box does not fit the crop at ${hide.id}`);
     }
+    if (!board.sittable && LOW_POSES.includes(hide.pose)) {
+      throw new Error(`LOCAL_PATCH: ${hide.id} is ${hide.pose} on ${board.ground}, which nobody sits on`);
+    }
   }
   for (const [i, a] of board.hides.entries()) for (const b of board.hides.slice(i + 1)) {
     if (hidesCollide(a, b)) throw new Error(`LOCAL_PATCH: ${a.id} and ${b.id} are too close - one sprite would carry the other child`);
@@ -133,25 +151,30 @@ export function assertPlaceable(board: LocalPatchBoard): void {
  * child standing facing the reader is twenty-seven of the same picture, and this
  * engine can just as easily paint her kneeling in the sand or sitting on a market
  * floor. Each pose here needs nothing of its spot but ground and a neighbour.
+ *
+ * Where the ground is a road, the low poses are not authored and `assertPlaceable`
+ * would refuse them: a child crouching in the middle of a Tokyo crossing is drawn
+ * correctly and still reads as a mistake. Those boards get walking instead, which
+ * is what everybody else on a crossing is doing.
  */
 export const WORLD_LOCAL_PATCH_HIDES: readonly LocalPatchBoard[] = Object.freeze([
-  { board: "sydney", art: "public/scenes/sydney/refresh-20260907/base.webp", ground: "beach sand",
+  { board: "sydney", art: "public/scenes/sydney/refresh-20260907/base.webp", ground: "beach sand", sittable: true,
     hides: [{ id: "sydney-1", left: 960, top: 1256, pose: "standing" }, { id: "sydney-2", left: 1600, top: 1256, pose: "kneeling" }, { id: "sydney-3", left: 2176, top: 1128, pose: "sitting-cross-legged" }] },
-  { board: "antarctica", art: "public/scenes/antarctica/refresh-20260907/base.webp", ground: "packed snow",
+  { board: "antarctica", art: "public/scenes/antarctica/refresh-20260907/base.webp", ground: "packed snow", sittable: true,
     hides: [{ id: "antarctica-1", left: 128, top: 1000, pose: "standing" }, { id: "antarctica-2", left: 1408, top: 1192, pose: "crouching" }, { id: "antarctica-3", left: 2432, top: 1256, pose: "kneeling" }] },
-  { board: "giza", art: "public/scenes/giza/refresh-20260907/base.webp", ground: "desert sand",
+  { board: "giza", art: "public/scenes/giza/refresh-20260907/base.webp", ground: "desert sand", sittable: true,
     hides: [{ id: "giza-1", left: 2176, top: 1256, pose: "standing" }, { id: "giza-2", left: 0, top: 1128, pose: "sitting-cross-legged" }, { id: "giza-3", left: 1344, top: 1128, pose: "peeking" }] },
-  { board: "tokyo", art: "work/fixed-world-simple-20260908/dense/assembled-static-v1/tokyo/board.png", ground: "wet crossing",
-    hides: [{ id: "tokyo-1", left: 896, top: 1256, pose: "standing" }, { id: "tokyo-2", left: 2048, top: 1128, pose: "peeking" }, { id: "tokyo-3", left: 1408, top: 1256, pose: "crouching" }] },
-  { board: "amazon", art: "work/fixed-world-simple-20260908/dense/amazon-static-seam-v2/board.png", ground: "forest floor",
+  { board: "tokyo", art: "work/fixed-world-simple-20260908/dense/assembled-static-v1/tokyo/board.png", ground: "wet crossing", sittable: false,
+    hides: [{ id: "tokyo-1", left: 896, top: 1256, pose: "standing" }, { id: "tokyo-2", left: 2048, top: 1128, pose: "peeking" }, { id: "tokyo-3", left: 1408, top: 1256, pose: "walking" }] },
+  { board: "amazon", art: "work/fixed-world-simple-20260908/dense/amazon-static-seam-v2/board.png", ground: "forest floor", sittable: true,
     hides: [{ id: "amazon-1", left: 0, top: 1128, pose: "standing" }, { id: "amazon-2", left: 704, top: 1192, pose: "crouching" }, { id: "amazon-3", left: 2560, top: 1256, pose: "kneeling" }] },
-  { board: "greatwall", art: "work/fixed-world-simple-20260908/dense/assembled-static-v1/greatwall/board.png", ground: "stone walkway",
+  { board: "greatwall", art: "work/fixed-world-simple-20260908/dense/assembled-static-v1/greatwall/board.png", ground: "stone walkway", sittable: true,
     hides: [{ id: "greatwall-1", left: 960, top: 1256, pose: "standing" }, { id: "greatwall-2", left: 2560, top: 1256, pose: "peeking" }, { id: "greatwall-3", left: 384, top: 1064, pose: "sitting-cross-legged" }] },
-  { board: "marrakech", art: "public/scenes/marrakech/refresh-20260907/base.webp", ground: "market sand",
+  { board: "marrakech", art: "public/scenes/marrakech/refresh-20260907/base.webp", ground: "market sand", sittable: true,
     hides: [{ id: "marrakech-1", left: 2560, top: 1256, pose: "standing" }, { id: "marrakech-4", left: 1408, top: 1088, pose: "peeking" }, { id: "marrakech-5", left: 256, top: 1216, pose: "sitting-cross-legged" }] },
-  { board: "newyork", art: "work/fixed-world-simple-20260908/city-final-v1/newyork/board-static.png", ground: "city pavement",
-    hides: [{ id: "newyork-1", left: 0, top: 1064, pose: "standing" }, { id: "newyork-3", left: 1472, top: 1128, pose: "peeking" }, { id: "newyork-4", left: 960, top: 1024, pose: "crouching" }] },
-  { board: "paris", art: "work/fixed-world-simple-20260908/city-final-v1/paris/board-static.png", ground: "cobbled square",
+  { board: "newyork", art: "work/fixed-world-simple-20260908/city-final-v1/newyork/board-static.png", ground: "city pavement", sittable: false,
+    hides: [{ id: "newyork-1", left: 0, top: 1064, pose: "standing" }, { id: "newyork-3", left: 1472, top: 1128, pose: "peeking" }, { id: "newyork-4", left: 960, top: 1024, pose: "walking" }] },
+  { board: "paris", art: "work/fixed-world-simple-20260908/city-final-v1/paris/board-static.png", ground: "cobbled square", sittable: true,
     hides: [{ id: "paris-3", left: 1152, top: 1256, pose: "standing" }, { id: "paris-4", left: 640, top: 1280, pose: "peeking" }, { id: "paris-5", left: 1536, top: 1152, pose: "kneeling" }] },
 ] satisfies LocalPatchBoard[]);
 
