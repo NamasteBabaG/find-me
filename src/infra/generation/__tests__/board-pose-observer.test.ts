@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import sharp from "sharp";
-import { BudgetedBoardPoseObserver, prepareBoardPoseObservation, boardPoseObserverPrompt, decideBoardPoseObservation, type BoardPoseObserverPolicy, type BoardPoseSlot } from "../board-pose-observer";
+import { BOARD_POSE_OBSERVER_SETTINGS, BudgetedBoardPoseObserver, prepareBoardPoseObservation, boardPoseObserverPrompt, decideBoardPoseObservation, type BoardPoseObserverPolicy, type BoardPoseSlot } from "../board-pose-observer";
 import { WorldBudget, type WorldBudgetSnapshot } from "../../../services/generation/world-budget";
 import { CasWorldBudgetRepository, type AtomicWorldBudgetStore, type VersionedWorldBudgetSnapshot } from "../../db/world-budget-repository";
 import { boardObserverFailure } from "../board-observer-diagnostics";
@@ -212,7 +212,7 @@ describe("budgeted board three-pose source observer (no live API)", () => {
     }
     const [url, init] = (f.fetchOnce.mock.calls as unknown as [string, RequestInit][])[0]!, body = JSON.parse(String(init.body));
     expect(url).toBe("https://api.openai.com/v1/chat/completions"); expect(init.redirect).toBe("error");
-    expect(body).toMatchObject({ model: "gpt-5.6-sol", reasoning_effort: "high", max_completion_tokens: 8000, service_tier: "default", store: false });
+    expect(body).toMatchObject({ model: "gpt-5.6-sol", reasoning_effort: BOARD_POSE_OBSERVER_SETTINGS.effort, max_completion_tokens: 8000, service_tier: "default", store: false });
     expect(body.messages[0].content).toHaveLength(2); expect(body.messages[0].content[0].text).toBe(f.prepared.promptSent);
     expect(body.messages[0].content[1].image_url.url).toBe(`data:image/png;base64,${f.prepared.wirePng.toString("base64")}`);
     expect(f.fetchOnce).toHaveBeenCalledTimes(1); expect(JSON.stringify(f.store.rows.get(f.input.worldId))).not.toContain("fake-only");

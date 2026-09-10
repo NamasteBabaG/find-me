@@ -16,7 +16,7 @@ export const boardObserverFailureSchema = z.object({
   transportTimeoutMs: z.number().int().min(1).max(240_000).optional(),
   httpStatus: z.number().int().min(100).max(599).nullable(), requestId: requestId.nullable(),
   requestIdStatus: z.enum(["missing", "safe", "invalid"]),
-  requestedModel: z.literal("gpt-5.6-sol"), effort: z.literal("high"),
+  requestedModel: z.literal("gpt-5.6-sol"), effort: z.enum(["low", "medium", "high"]),
   returnedModel: z.enum(["absent", "expected", "unexpected"]),
   usage: z.object({ promptTokens: count.nullable(), completionTokens: count.nullable(), totalTokens: count.nullable() }).strict(),
 }).strict();
@@ -33,7 +33,7 @@ export function boardObserverFailure(input: { worldId: string; requestKey: strin
     ...(r.transportTimeoutMs === undefined ? {} : { transportTimeoutMs: r.transportTimeoutMs }),
     httpStatus: Number.isInteger(r.httpStatus) && r.httpStatus! >= 100 && r.httpStatus! <= 599 ? r.httpStatus : null,
     requestId: safeRequest.success ? safeRequest.data : null, requestIdStatus: r.requestId === null ? "missing" : safeRequest.success ? "safe" : "invalid",
-    requestedModel: "gpt-5.6-sol", effort: "high", returnedModel: r.modelReturned === null ? "absent" : r.modelReturned === "gpt-5.6-sol" ? "expected" : "unexpected",
+    requestedModel: "gpt-5.6-sol", effort: r.effort, returnedModel: r.modelReturned === null ? "absent" : r.modelReturned === "gpt-5.6-sol" ? "expected" : "unexpected",
     usage: { promptTokens: token(r.rawUsage?.prompt_tokens), completionTokens: token(r.rawUsage?.completion_tokens), totalTokens: token(r.rawUsage?.total_tokens) },
   });
 }

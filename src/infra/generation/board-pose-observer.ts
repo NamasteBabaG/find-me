@@ -7,7 +7,14 @@ import { resolveStandingPixel } from "../../services/generation/standing-pixels"
 import { WorldBudget, WorldBudgetError, type WorldBudgetAudit, type WorldChargeEvidence } from "../../services/generation/world-budget";
 import { boardObserverFailure, type BoardObserverFailure } from "./board-observer-diagnostics";
 
-export const BOARD_POSE_OBSERVER_SETTINGS = Object.freeze({ version: "board-visible-poses/v1", model: "gpt-5.6-sol", effort: "high", maxOutputTokens: 8000, minConfidence: 0.85, width: 1024, height: 1024 } as const);
+/**
+ * Effort is LOW by explicit product decision. Measurement was 47% of the stopped
+ * game's spend at HIGH, for eye, chin and a face outline on a sheet the code has
+ * already cropped and alpha-bounded. It is recorded on every receipt, so a change
+ * here is a different observation and never reuses an old one. Raising it back is
+ * a product decision, not a retry strategy.
+ */
+export const BOARD_POSE_OBSERVER_SETTINGS = Object.freeze({ version: "board-visible-poses/v1", model: "gpt-5.6-sol", effort: "low", maxOutputTokens: 8000, minConfidence: 0.85, width: 1024, height: 1024 } as const);
 const API = "https://api.openai.com/v1/chat/completions", ALPHA_MIN = 224;
 const hash = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
 const safeId = (s: string) => typeof s === "string" && /^[A-Za-z0-9_:.\/-]{1,200}$/.test(s) && !s.includes("://") && !/^sk-/i.test(s);
@@ -46,7 +53,7 @@ export interface ObservedBoardPoseSource { slotId: string; pose: string; eye: Po
 export interface BoardPoseObservationReceipt {
   version: "board-pose-observation-receipt/v1"; fingerprint: string; sourceImageSha256: string; sourceRgbaSha256: string;
   wireImageSha256: string; promptSha256: string; slots: BoardPoseSlot[]; coordinates: "native-1024-sheet-pixel-edges";
-  modelRequested: "gpt-5.6-sol"; modelReturned: string | null; effort: "high"; requestId: string | null; responseId: string | null;
+  modelRequested: "gpt-5.6-sol"; modelReturned: string | null; effort: "low" | "medium" | "high"; requestId: string | null; responseId: string | null;
   httpStatus: number | null; serviceTier: string | null; finishReason: string | null; responseText: string | null;
   rawUsage: Record<string, unknown> | null; costUnknown: boolean; costCents: number; attempts: 1;
   /** Actual HTTP/body deadline; absent only on historical receipts. */
@@ -389,7 +396,7 @@ export class BudgetedBoardPoseObserver {
     const receipt: BoardPoseObservationReceipt = {
       version: "board-pose-observation-receipt/v1", fingerprint: prepared.fingerprint, sourceImageSha256: capture.sourceImageSha256, sourceRgbaSha256: capture.sourceRgbaSha256,
       wireImageSha256: capture.wireImageSha256, promptSha256: capture.promptSha256, slots: capture.slots, coordinates: "native-1024-sheet-pixel-edges",
-      modelRequested: BOARD_POSE_OBSERVER_SETTINGS.model, modelReturned: null, effort: "high", requestId: null, responseId: null, httpStatus: null,
+      modelRequested: BOARD_POSE_OBSERVER_SETTINGS.model, modelReturned: null, effort: BOARD_POSE_OBSERVER_SETTINGS.effort, requestId: null, responseId: null, httpStatus: null,
       serviceTier: null, finishReason: null, responseText: null, rawUsage: null, costUnknown: true, costCents: 0, attempts: 1,
       transportTimeoutMs: this.transportTimeoutMs,
     };
@@ -415,7 +422,7 @@ export class BudgetedBoardPoseObserver {
       response = await Promise.race([this.fetchOnce(API, {
         method: "POST", redirect: "error", signal: controller.signal,
         headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: BOARD_POSE_OBSERVER_SETTINGS.model, reasoning_effort: "high", max_completion_tokens: BOARD_POSE_OBSERVER_SETTINGS.maxOutputTokens, service_tier: "default", store: false, response_format: { type: "json_object" },
+        body: JSON.stringify({ model: BOARD_POSE_OBSERVER_SETTINGS.model, reasoning_effort: BOARD_POSE_OBSERVER_SETTINGS.effort, max_completion_tokens: BOARD_POSE_OBSERVER_SETTINGS.maxOutputTokens, service_tier: "default", store: false, response_format: { type: "json_object" },
           messages: [{ role: "user", content: [{ type: "text", text: prepared.promptSent }, { type: "image_url", image_url: { url: `data:image/png;base64,${prepared.wirePng.toString("base64")}`, detail: "high" } }] }] }),
       }), timeout]);
       receipt.httpStatus = response.status; receipt.requestId = response.headers.get("x-request-id");

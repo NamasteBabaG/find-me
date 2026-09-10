@@ -1,6 +1,6 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { z } from "zod";
-import type { FixedSourceResult } from "../generation/openai-fixed-source";
+import { FIXED_SOURCE_MAX_REFERENCES, FIXED_SOURCE_SIZES, fixedSourceVersion, type FixedSourceResult } from "../generation/openai-fixed-source";
 import { fixedSourceFailureReceiptSchema, type FixedSourceFailureReceipt } from "../generation/fixed-source-diagnostics";
 import { boardObserverFailureSchema, type BoardObserverFailure } from "../generation/board-observer-diagnostics";
 import type { BoardConditionedCheckpointStore, BoardMeasurement } from "../../services/generation/board-conditioned-generation";
@@ -106,14 +106,40 @@ const audit = z.object({
 }).strict();
 const capture = z.object({
   settings: z.object({
-    version: z.enum(["fixed-source-low/v1", "fixed-source-medium/v1"]), model: z.literal("gpt-image-2"), quality: z.enum(["low", "medium"]), size: z.literal("1024x1024"),
-    background: z.literal("transparent"), output_format: z.literal("png"), n: z.literal(1),
+    // The size list and the version rule come from the adapter itself rather than
+    // being copied here. This schema is strict, and a settings field it does not
+    // know is not a validation warning: the sheet is paid for and then refused at
+    // save. That has happened twice on this route, both times because two lists
+    // drifted apart, so there is now only one list.
+    version: text, model: z.literal("gpt-image-2"), quality: z.enum(["low", "medium"]), size: z.enum(FIXED_SOURCE_SIZES),
+    background: z.enum(["transparent", "opaque"]), output_format: z.literal("png"), n: z.literal(1),
   }).strict(),
   sourceGroupKey: text,
   policy: z.object({ reserveMicroUsd: positive, providerNamespace: text,
-    rateCard: z.object({ id: text, textInput: positive, imageInput: positive, imageOutput: positive }).strict(), timeoutMs: z.number().int().min(1000).max(240000), quality: z.enum(["low", "medium"]).optional() }).strict(),
-  promptSha256: sha, inputOrder: z.tuple([z.literal("style"), z.literal("identity")]), styleSha256: sha, identitySha256: sha,
-}).strict().refine(c => c.settings.quality === (c.policy.quality ?? "low") && c.settings.version === `fixed-source-${c.settings.quality}/v1`, "Quality policy and settings must agree");
+    rateCard: z.object({ id: text, textInput: positive, imageInput: positive, imageOutput: positive }).strict(), timeoutMs: z.number().int().min(1000).max(240000),
+    // Same single list as the settings above; a second copy here is exactly how
+    // the two previous refusals happened.
+    quality: z.enum(["low", "medium"]).optional(), size: z.enum(FIXED_SOURCE_SIZES).optional(),
+    background: z.enum(["transparent", "opaque"]).optional() }).strict(),
+  promptSha256: sha,
+  // A shared sheet may carry further reference atlases; the first two stay the
+  // board atlas and the identity, in that order, exactly as before.
+  inputOrder: z.array(text).min(2).max(FIXED_SOURCE_MAX_REFERENCES),
+  styleSha256: sha, identitySha256: sha,
+  referenceSha256: z.array(sha).max(FIXED_SOURCE_MAX_REFERENCES - 2).optional(),
+  /** Present only when the edit was confined to a mask. */
+  maskSha256: sha.optional(),
+}).strict().refine(c => {
+  // Both omitted policy fields mean the original single-board sheet, so every
+  // frozen capture keeps validating byte for byte.
+  const quality = c.policy.quality ?? "low", size = c.policy.size ?? "1024x1024";
+  const background = c.policy.background ?? "transparent";
+  const extras = c.referenceSha256?.length ?? 0;
+  return c.settings.quality === quality && c.settings.size === size && c.settings.background === background
+    && c.settings.version === fixedSourceVersion(quality, size, background)
+    && c.inputOrder[0] === "style" && c.inputOrder[1] === "identity"
+    && c.inputOrder.length === 2 + extras;
+}, "Quality, size, background, reference order and settings must agree");
 const sourceMeta = z.object({
   kind: z.literal("generated"), pngSha256: sha, fingerprint: sha, capture,
   evidence, modelProvenance: z.enum(["response-confirmed", "requested-endpoint-model-not-returned"]), audit, semanticApproval: z.literal("pending"),
@@ -122,7 +148,12 @@ const point = z.object({ x: z.number().finite().nonnegative(), y: z.number().fin
 const observationReceipt = z.object({
   version: z.literal("board-pose-observation-receipt/v1"), fingerprint: sha, sourceImageSha256: sha, sourceRgbaSha256: sha,
   wireImageSha256: sha, promptSha256: sha, slots: z.array(z.object({ slotId: text, pose: text }).strict()).length(3),
-  coordinates: z.literal("native-1024-sheet-pixel-edges"), modelRequested: z.literal("gpt-5.6-sol"), modelReturned: text.nullable(), effort: z.literal("high"),
+  // Effort is a recorded property of the observation, not a constant of the
+  // route. Pinning it to "high" meant a LOW measurement would be bought and then
+  // refused at save - the same fault that has already cost money twice here. Old
+  // receipts stay valid; the value must simply be one this route may ask for.
+  coordinates: z.literal("native-1024-sheet-pixel-edges"), modelRequested: z.literal("gpt-5.6-sol"), modelReturned: text.nullable(),
+  effort: z.enum(["low", "medium", "high"]),
   requestId: text.nullable(), responseId: text.nullable(), httpStatus: z.number().int().min(100).max(599).nullable(),
   serviceTier: text.nullable(), finishReason: text.nullable(),
   // Keep the full bounded model JSON verbatim, not the short identifier limit.

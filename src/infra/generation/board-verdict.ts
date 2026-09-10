@@ -12,7 +12,15 @@ import { childAgeDirection } from "@/domain/child-appearance";
  */
 export const BOARD_JUDGE_VERSION = "board-quality-v6-recipe-scale";
 export const BOARD_JUDGE_MODEL = "gpt-5.6-sol";
-export const BOARD_JUDGE_EFFORT = "high" as const;
+/**
+ * LOW by explicit product decision: final visual judging was 21% of the stopped
+ * game's spend at HIGH, on a question a reader answers by looking - is this the
+ * same child, drawn like the people beside her, at the right size, lit like that
+ * spot. Effort is part of the judge fingerprint, so a change here is a different
+ * judgement and never silently reuses an old verdict. Raising it back is a
+ * product decision, not a retry strategy.
+ */
+export const BOARD_JUDGE_EFFORT = "low" as const;
 export const BOARD_FAST_JUDGE_MODEL = "gpt-4o-2024-11-20";
 // Includes reasoning tokens; a truncated answer is unknown, never an approval.
 export const BOARD_JUDGE_MAX_TOKENS = 8000;

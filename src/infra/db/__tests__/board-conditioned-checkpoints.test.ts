@@ -5,7 +5,8 @@ import { Prisma, PrismaClient } from "@prisma/client";
 import sharp from "sharp";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { applyTestSchema } from "../../../lib/test-schema";
-import { FIXED_SOURCE_SETTINGS, type FixedSourceResult } from "../../generation/openai-fixed-source";
+import { FIXED_SOURCE_PAYLOAD_BYTES, FIXED_SOURCE_SETTINGS, fixedSourceSettings, type FixedSourceResult } from "../../generation/openai-fixed-source";
+import { BOARD_POSE_OBSERVER_SETTINGS } from "../../generation/board-pose-observer";
 import { sha256Bytes } from "../../../services/generation/fixed-sprite";
 import { auditWorldBudget } from "../../../services/generation/world-budget";
 import type { BoardMeasurement } from "../../../services/generation/board-conditioned-generation";
@@ -102,7 +103,7 @@ describe("private immutable board-conditioned checkpoints in real disposable SQL
     const diagnostic = boardObserverFailureSchema.parse({ version: "board-observer-failure/v1", worldId: id, requestKey: `board:${board}:measure:1`,
       fingerprint: hash("original observation"), sourceImageSha256: s.pngSha256, sourceRgbaSha256: hash("rgba"), wireImageSha256: hash("wire"), promptSha256: hash("prompt"),
       stage: "response-body", failure: "timeout", elapsedMs: 90001, billing: "unknown", httpStatus: 200, requestId: "req_original", requestIdStatus: "safe",
-      requestedModel: "gpt-5.6-sol", effort: "high", returnedModel: "absent", usage: { promptTokens: null, completionTokens: null, totalTokens: null } });
+      requestedModel: "gpt-5.6-sol", effort: BOARD_POSE_OBSERVER_SETTINGS.effort, returnedModel: "absent", usage: { promptTokens: null, completionTokens: null, totalTokens: null } });
     await expectCode(store.putObservationFailure(id, board, diagnostic), "corrupt-checkpoint"); // no source, no unrelated receipt
     await store.putSource(id, board, s); const sourceBytes = Buffer.from((await row(id)).data);
     await store.putObservationFailure(id, board, diagnostic); await store.putObservationFailure(id, board, diagnostic);
@@ -157,6 +158,96 @@ describe("private immutable board-conditioned checkpoints in real disposable SQL
     m.sources![0]!.standing = { complete: true, crown: { x: 10, y: 10 }, leftSole: { x: 15, y: 200 }, rightSole: { x: 25, y: 200 } };
     await store.putMeasurement(id, board, m);
     expect((await store.getMeasurement(id, board))?.sources?.[0]?.standing).toEqual(m.sources![0]!.standing);
+  });
+  it("saves the shared 27-cell world sheet, and still refuses a size the settings do not match", async () => {
+    // The twenty-seven-cell sheet is one paid render. If this schema learns its
+    // size only after the render, the sheet is bought and then refused at save -
+    // which has already happened twice on this route. So the save path is proven
+    // here, before anything at that size is ever dispatched.
+    const id = world(), store = new PrismaBoardConditionedCheckpointStore(db), s = source(id);
+    // A REAL sheet at the world size, not a 1024 fixture relabelled: the point is
+    // that the actual bytes survive the round trip, not that the settings string
+    // persists. Twenty-seven blobs on a transparent 4K ground is the shape the
+    // shared sheet really has.
+    const cells = Array.from({ length: 27 }, (_, i) => ({
+      input: Buffer.from('<svg width="340" height="600"><rect width="340" height="600" rx="40" fill="rgb(200,120,90)"/></svg>'),
+      left: (i % 9) * 426 + 40, top: Math.floor(i / 9) * 720 + 60,
+    }));
+    const sheet = await sharp({ create: { width: 3840, height: 2160, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+      .composite(cells).png().toBuffer();
+    s.png = sheet; s.pngSha256 = sha256Bytes(sheet);
+    s.capture.settings = { ...fixedSourceSettings("low", "3840x2160") };
+    s.capture.policy.size = "3840x2160";
+    s.fingerprint = hash(JSON.stringify(s.capture));
+    await store.putSource(id, board, s);
+    const saved = await store.getSource(id, board);
+    expect(saved?.capture.settings.size).toBe("3840x2160");
+    expect(saved?.capture.settings.version).toBe("fixed-source-low-3840x2160/v1");
+    expect(saved?.png.equals(sheet)).toBe(true);
+    const meta = await sharp(saved!.png).metadata();
+    expect([meta.width, meta.height]).toEqual([3840, 2160]);
+
+    // Strictness is intact: a policy claiming the world size while the settings
+    // still say 1024 is a disagreement, not something to persist.
+    // Same world, so the only defect under test is the size disagreement itself.
+    const bad = source(id);
+    bad.capture.policy.size = "3840x2160";
+    bad.fingerprint = hash(JSON.stringify(bad.capture));
+    await expect(store.putSource(id, "paris", bad)).rejects.toThrow();
+  });
+  it("keeps the provider payload bound inside what this store will actually save", () => {
+    // A payload the adapter accepts but this store refuses is a sheet that was
+    // paid for and then thrown away. Asserting against the adapter's own exported
+    // ceiling, not a copy of the number, is what makes a change on either side
+    // alone fail here instead of in a paid render.
+    expect(FIXED_SOURCE_PAYLOAD_BYTES).toBe((BOARD_CHECKPOINT_LIMITS.sourcePngBytes * 4) / 3);
+  });
+  it("saves the three-sheet plan's own size and its extra reference atlases", async () => {
+    // 1280x2160 is the size actually being bought: same 426x720 cell as 4K, but
+    // below the resolution the provider calls experimental. Extra atlases exist
+    // because one 1024-square reference cannot carry nine boards of local light.
+    const id = world(), store = new PrismaBoardConditionedCheckpointStore(db), s = source(id);
+    const sheet = await sharp({ create: { width: 1280, height: 2160, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+      .composite([{ input: Buffer.from('<svg width="340" height="600"><rect width="340" height="600" fill="rgb(180,140,110)"/></svg>'), left: 40, top: 60 }])
+      .png().toBuffer();
+    s.png = sheet; s.pngSha256 = sha256Bytes(sheet);
+    s.capture.settings = { ...fixedSourceSettings("medium", "1280x2160") };
+    s.capture.policy.quality = "medium";
+    s.capture.policy.size = "1280x2160";
+    s.capture.inputOrder = ["style", "identity", "reference-1", "reference-2"];
+    s.capture.referenceSha256 = [hash("board light atlas a"), hash("board light atlas b")];
+    s.fingerprint = hash(JSON.stringify(s.capture));
+    await store.putSource(id, board, s);
+    const saved = await store.getSource(id, board);
+    expect(saved?.capture.settings.version).toBe("fixed-source-medium-1280x2160/v1");
+    expect(saved?.capture.referenceSha256).toHaveLength(2);
+    expect(saved?.capture.inputOrder).toEqual(["style", "identity", "reference-1", "reference-2"]);
+    expect((await sharp(saved!.png).metadata()).width).toBe(1280);
+
+    // An order that does not account for every atlas is a mismatch, not a detail.
+    const bad = source(id);
+    bad.capture.inputOrder = ["style", "identity"];
+    bad.capture.referenceSha256 = [hash("board light atlas a")];
+    bad.fingerprint = hash(JSON.stringify(bad.capture));
+    await expect(store.putSource(id, "paris", bad)).rejects.toThrow();
+  });
+  it("saves an OPAQUE local patch, which has no transparent pixel to cut", async () => {
+    // A local patch is the board's own crop with the child drawn into it. The
+    // schema pinned background to "transparent", so this would have been bought
+    // and then refused at save - the same fault as the size and the effort.
+    const id = world(), store = new PrismaBoardConditionedCheckpointStore(db), s = source(id);
+    const patch = await sharp({ create: { width: 768, height: 1152, channels: 4, background: { r: 120, g: 90, b: 60, alpha: 255 } } }).png().toBuffer();
+    s.png = patch; s.pngSha256 = sha256Bytes(patch);
+    s.capture.settings = { ...fixedSourceSettings("medium", "768x1152", "opaque") };
+    s.capture.policy.quality = "medium";
+    s.capture.policy.size = "768x1152";
+    s.capture.policy.background = "opaque";
+    s.fingerprint = hash(JSON.stringify(s.capture));
+    await store.putSource(id, board, s);
+    const saved = await store.getSource(id, board);
+    expect(saved?.capture.settings.background).toBe("opaque");
+    expect(saved?.capture.settings.version).toBe("fixed-source-medium-768x1152-opaque/v1");
+    expect(saved?.png.equals(patch)).toBe(true);
   });
   it("exports only exact scoped lifecycle keys and rejects invalid scope", () => {
     const id = world();
@@ -368,7 +459,7 @@ describe("private immutable board-conditioned checkpoints in real disposable SQL
       version: "board-pose-observation-receipt/v1", fingerprint: m.fingerprint, sourceImageSha256: m.sheetSha256,
       sourceRgbaSha256: hash("rgba"), wireImageSha256: hash("wire"), promptSha256: hash("observer prompt"),
       slots: m.sources!.map(({ slotId, pose }) => ({ slotId, pose })), coordinates: "native-1024-sheet-pixel-edges",
-      modelRequested: "gpt-5.6-sol", modelReturned: m.evidence.model, effort: "high", requestId: m.evidence.providerRequestId,
+      modelRequested: "gpt-5.6-sol", modelReturned: m.evidence.model, effort: BOARD_POSE_OBSERVER_SETTINGS.effort, requestId: m.evidence.providerRequestId,
       responseId: "fixture-observer-response", httpStatus: 200, serviceTier: "default", finishReason: "stop",
       responseText: "  " + JSON.stringify({ cells: m.sources, reason: "Observed source only. ".repeat(1500) }) + "\n",
       rawUsage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 }, costUnknown: false, costCents: 0.1, attempts: 1,

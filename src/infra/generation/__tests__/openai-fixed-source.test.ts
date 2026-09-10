@@ -215,3 +215,44 @@ describe("budgeted fixed LOW image transport (no live API)", () => {
     expect(f.fetchOnce).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("what this route may buy is refused before the request is built", () => {
+  // TypeScript does not see a quality or size that arrives from JSON, a script
+  // argument or a plain JavaScript caller. Both of these reached a dispatchable
+  // capture before this guard existed, and the file's own contract says HIGH and
+  // AUTO stay out - so the refusal has to be a runtime one, ahead of payment.
+  const withPolicy = (extra: Record<string, unknown>) =>
+    prepareFixedSource({ sourceGroupKey: "guard", prompt: "A complete illustrated child.", stylePng: reference, identityPng: reference },
+      { ...policy, ...extra } as FixedSourcePolicy);
+
+  it.each([
+    ["high", "Only LOW and MEDIUM may be bought on this route"],
+    ["auto", "Only LOW and MEDIUM may be bought on this route"],
+  ])("refuses quality %s", async (quality, message) => {
+    await expect(withPolicy({ quality })).rejects.toThrow(message);
+  });
+
+  it.each(["9999x9999", "512x512", "1024x1025"])("refuses size %s", async size => {
+    await expect(withPolicy({ size })).rejects.toThrow("Sheet size is not one this route may buy");
+  });
+
+  it("still allows exactly what the plan buys", async () => {
+    const medium = await withPolicy({ quality: "medium", size: "1280x2160" });
+    expect(medium.capture.settings.version).toBe("fixed-source-medium-1280x2160/v1");
+    const single = await withPolicy({});
+    expect(single.capture.settings.size).toBe("1024x1024");
+    // Omitted policy fields keep the original capture shape, so nothing frozen moves.
+    expect(single.capture.inputOrder).toEqual(["style", "identity"]);
+    expect("referenceSha256" in single.capture).toBe(false);
+  });
+
+  it("carries extra reference atlases into the capture and the dispatched form", async () => {
+    const prepared = await prepareFixedSource(
+      { sourceGroupKey: "guard", prompt: "A complete illustrated child.", stylePng: reference, identityPng: reference,
+        referencePngs: [reference, reference] },
+      { ...policy, quality: "medium", size: "1280x2160" });
+    expect(prepared.capture.inputOrder).toEqual(["style", "identity", "reference-1", "reference-2"]);
+    expect(prepared.capture.referenceSha256).toHaveLength(2);
+    expect(prepared.referencePngs).toHaveLength(2);
+  });
+});
