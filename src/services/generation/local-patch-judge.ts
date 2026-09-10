@@ -1,0 +1,212 @@
+/**
+ * Looking at a finished local patch the way a person does.
+ *
+ * The code can answer two questions about a patch: is the seam sound, and did
+ * anything change outside the rectangle we declared. Three paid renders showed
+ * that those two are not enough. One of them changed the crop convincingly and
+ * simply did not contain our child at all - a large, confident, entirely wrong
+ * result that every pixel check passes.
+ *
+ * So this asks the questions only a reader can answer, one hide at a time.
+ *
+ * WHAT IT DOES NOT ASK, by product decision: whether the picture still matches
+ * the one it started from. An earlier version compared AFTER against BEFORE and
+ * refused a hide whenever a bystander had moved, vanished or been repainted, and
+ * that refused good pictures: a dog a hand-span to the left, a cat that shifted,
+ * two children gone from a crowd of forty. Nobody plays the BEFORE. The game is
+ * generated and sent without a person in the loop, so a judge that holds out for
+ * an unchanged neighbourhood does not protect a player from anything - it just
+ * throws away pictures that look right.
+ *
+ * What still refuses a hide is the picture itself being wrong: a body with no
+ * head, a hand closed around nothing, a bucket floating where its owner stood, a
+ * hard rectangular edge across the paving. Those are visible without the BEFORE,
+ * and a child would see them.
+ *
+ * Two of the checks are only answerable against what was asked for, so the
+ * caller passes it: which pose she was posed in, and the age the parent stated.
+ *
+ * Each hide gets its own verdict. One bad hide must not condemn its neighbours.
+ */
+import { z } from "zod";
+
+export const LOCAL_PATCH_JUDGE = Object.freeze({
+  model: "gpt-5.6-sol",
+  /** LOW by product decision, like the final composite judge. */
+  effort: "low" as const,
+  /** Raised once faults carried a location each: 1200 truncated the answer, and a
+   * truncated answer is discarded, so a good hide was thrown away for nothing. */
+  maxOutputTokens: 3000,
+  endpoint: "https://api.openai.com/v1/chat/completions",
+});
+
+const check = z.enum(["pass", "fail", "unsure"]);
+
+/** The three that decide, and the three that describe how well she sits there. */
+export const BLOCKING_CHECKS = Object.freeze(["childPresent", "childOnlyOnce", "childComplete", "pictureWhole"] as const);
+export const JUDGE_CHECKS = Object.freeze([...BLOCKING_CHECKS, "scaleRight", "groundContact", "styleMatch"] as const);
+
+export const localPatchVerdictSchema = z.object({
+  childPresent: check.describe("the child from the reference portrait is in the marked area"),
+  /**
+   * She may appear once and only once. Re-rendering a hide in a shorter pose box
+   * left the earlier standing child's head above the new mask and painted a
+   * kneeling one below it: two of her, a step apart, both perfectly drawn. Every
+   * other check passed, because nothing was broken and nothing was missing - the
+   * picture was simply wrong in the one way the game cannot survive, since a
+   * player finds her twice and the second one never clears.
+   */
+  childOnlyOnce: check.describe("she appears exactly once - no second copy of the same child anywhere in the picture"),
+  /**
+   * Occlusion is the point, not a defect. The whole look the product is after is
+   * a child standing behind a market stall or a passer-by with part of her out of
+   * sight, so "whole" means nothing of her is missing or sliced off - not that
+   * all of her is visible.
+   */
+  childComplete: check.describe("she is drawn whole: nothing of her is sliced off or missing, though she may be partly hidden behind something in front of her"),
+  /**
+   * The one check that replaced three. `replacementClean`, `noOrphans` and the
+   * seam half of `sceneDrift` were all asking the same thing in different words -
+   * is anything in this picture broken - while the other half of `sceneDrift` was
+   * asking something the product does not care about.
+   */
+  pictureWhole: check.describe("nothing in the picture is broken or half-drawn: no body without a head, no limb with no owner, no hand closed on nothing, no floating prop, no smear, no hard rectangular edge"),
+  scaleRight: check.describe("her height matches children of HER OWN AGE at that depth, not the toddlers near her"),
+  groundContact: check.describe("she rests on whatever holds her - feet, knees or seat - with a contact shadow, not floating"),
+  styleMatch: check.describe("drawn in the same illustration style, light and saturation"),
+  verdict: z.enum(["pass", "fail", "unsure"]),
+  reason: z.string().trim().min(1).max(400),
+  /**
+   * Every failed check has to say WHERE. A fault nobody can find is a fault
+   * nobody can fix, and one round produced a leftover leg that neither the
+   * operator nor the product owner could locate. A located claim can be checked;
+   * an unlocated one cannot, so the schema stops accepting them.
+   */
+  faults: z.array(z.preprocess(raw => {
+    // The model answers this field in several shapes across runs: a sentence, an
+    // object keyed `where`, an object keyed `location`. All three are the same
+    // information, and rejecting two of them on shape discarded real findings -
+    // a cat moved between her feet, an extra child added at the edge. So the
+    // shapes are normalised here rather than argued with.
+    if (typeof raw === "string") return { check: "unspecified", where: raw };
+    if (raw && typeof raw === "object") {
+      const r = raw as Record<string, unknown>;
+      const where = [r.where, r.location, r.detail, r.description].find(v => typeof v === "string" && v.trim());
+      if (typeof where === "string") return { check: typeof r.check === "string" && r.check.trim() ? r.check : "unspecified", where };
+    }
+    return raw;
+  }, z.object({
+    check: z.string().trim().min(1).max(40),
+    where: z.string().trim().min(1).max(300).describe("where in the AFTER image, in plain words"),
+  }).strict())).max(8).default([]),
+}).strict().transform(v => {
+  const normalised = { ...v };
+
+  // The prompt already says: if you cannot point at it, mark it unsure. So an
+  // unlocated failure is CONVERTED, not rejected. Rejecting the whole answer
+  // threw away two complete, useful judgements over one unnamed field.
+  const downgraded: string[] = [];
+  if (!v.faults.length) {
+    for (const key of JUDGE_CHECKS) if (v[key] === "fail") { normalised[key] = "unsure"; downgraded.push(key); }
+  }
+
+  // The overall verdict is DERIVED, always, and never taken from the model's own
+  // summary line. Answers came back saying the child was missing or uncertain
+  // while still declaring "pass", and trusting that line counted them as
+  // successes. The rule is the one the prompt states: the three that matter must
+  // all pass, and nothing may be a fail.
+  // A fault that NAMES a check contradicts that check calling itself pass. The
+  // description is the evidence; the field is the summary, and the summary loses.
+  const contradicted: string[] = [];
+  for (const key of JUDGE_CHECKS) {
+    if (normalised[key] === "pass" && v.faults.some(f => f.check === key)) { normalised[key] = "unsure"; contradicted.push(key); }
+  }
+
+  const anyFail = JUDGE_CHECKS.some(key => normalised[key] === "fail");
+  const blocking = BLOCKING_CHECKS.some(key => normalised[key] !== "pass");
+  // A downgraded failure is NOT an approval. The model said something was wrong
+  // and could not say where; that is a reason to look, never a reason to pass.
+  // Without this a located-fault rule quietly turned every unlocated failure
+  // into a clean sheet.
+  const softened = downgraded.length > 0 || contradicted.length > 0;
+  const derived = anyFail ? "fail" as const : blocking || softened ? "unsure" as const : "pass" as const;
+  return { ...normalised, verdict: derived, downgraded, contradicted, claimedVerdict: v.verdict, verdictOverridden: derived !== v.verdict };
+});
+export type LocalPatchVerdict = z.infer<typeof localPatchVerdictSchema>;
+
+export type LocalPatchExpectation = {
+  /** How her body meets the world in the pose that was asked for. */
+  readonly support?: string;
+  /** The age the parent stated. Never guessed, and left out when unknown. */
+  readonly ageYears?: number | null;
+};
+
+export function localPatchJudgePrompt(hideId: string, expectation: LocalPatchExpectation = {}): string {
+  // Two checks cannot be answered without knowing what was asked for: a kneeling
+  // child has no feet on the ground, and "the right height" means nothing until
+  // you know whether she is four or eight. Both were being judged against a
+  // standing eight-year-old by default, which is how a good kneeling render and
+  // a genuinely small child came out the same.
+  const asked = [
+    expectation.support ? `She was asked to rest ${expectation.support}; judge groundContact against THAT and nothing else.` : "",
+    expectation.ageYears != null ? `The parent states she is ${expectation.ageYears} years old; judge scaleRight against children of about that age at her depth, never against the toddlers.` : "",
+  ].filter(Boolean);
+  return [
+    `You are checking ONE hiding place in a children's hidden-object picture, called "${hideId}".`,
+    "You are given three images, in this order: the scene BEFORE, the same scene AFTER a child was drawn into it, and a reference portrait of that child.",
+    "",
+    "Judge the AFTER image on its own, as a picture. BEFORE is there only to show you the drawing style, the light, and how tall people are at each depth.",
+    "DO NOT hunt for differences from BEFORE. If somebody who was in BEFORE has moved, gone, been repainted, or somebody new is there, that is NOT a fault and you must not report it. Nobody sees BEFORE.",
+    "A child who was standing where she now stands MAY have been replaced completely; that is allowed. What is not allowed is a picture left broken.",
+    "",
+    "Answer each of these with pass, fail or unsure:",
+    "childPresent - the child from the reference portrait is genuinely in the picture, not merely some child",
+    "childOnlyOnce - she is in the picture EXACTLY ONCE. Look for a second child with the same face, hair and clothes anywhere in the frame, in any pose; two of her is a fail even when both are beautifully drawn. Other children who simply resemble her are fine",
+    "childComplete - she is drawn whole. Being partly hidden BEHIND a person, a stall or anything else in front of her is correct and wanted, and is not a fault; a fault is a piece of her simply missing, or her body sliced off by a straight edge that is not an object",
+    "pictureWhole - looking only at AFTER: nothing in the picture is broken or half-drawn. No body without a head, no arm or leg belonging to nobody, no hand closed around nothing, no bag or bucket floating with no one holding it, no smeared patch, no hard rectangular edge cutting across the ground or a wall",
+    "scaleRight - her height matches other children of HER OWN AGE standing at that same depth; the smallest toddler beside her is not the ruler",
+    "groundContact - she rests on whatever holds her, with a painted contact shadow where she meets it, and is not floating",
+    "styleMatch - she is drawn in the same illustration style, light and saturation as the people around her",
+    ...(asked.length ? ["", "WHAT WAS ASKED FOR:", ...asked] : []),
+    "",
+    "Then give an overall verdict: pass only if childPresent, childOnlyOnce, childComplete and pictureWhole are all pass and nothing else is fail. Use unsure when you genuinely cannot tell.",
+    "",
+    "For EVERY check you mark fail, add an entry to faults saying exactly where it is in the AFTER image, in plain words a person could follow - \"a bare foot beside her left ankle\", \"a hard vertical edge down the sand to her right\". If you cannot point at it, the check is not a fail; mark it unsure instead.",
+    "Reply with JSON only, with exactly these keys: childPresent, childOnlyOnce, childComplete, pictureWhole, scaleRight, groundContact, styleMatch, verdict, reason, faults.",
+    "Keep reason under 300 characters and say what you actually saw.",
+  ].join("\n");
+}
+
+export type LocalPatchJudgeRequest = {
+  hideId: string;
+  /** The scene before, the scene after, and the identity reference. */
+  beforePng: Buffer; afterPng: Buffer; identityPng: Buffer;
+  /** What the painter was asked for, so two of the checks have a yardstick. */
+  expectation?: LocalPatchExpectation;
+};
+
+/** One judgement. The caller owns the ledger; this only asks and parses. */
+export async function judgeLocalPatch(apiKey: string, request: LocalPatchJudgeRequest,
+  fetchOnce: typeof fetch = fetch): Promise<{ verdict: LocalPatchVerdict | null; raw: string | null; usage: Record<string, unknown> | null; requestId: string | null }> {
+  const prompt = localPatchJudgePrompt(request.hideId, request.expectation ?? {});
+  const image = (png: Buffer) => ({ type: "image_url" as const, image_url: { url: `data:image/png;base64,${png.toString("base64")}`, detail: "high" as const } });
+  const response = await fetchOnce(LOCAL_PATCH_JUDGE.endpoint, {
+    method: "POST", redirect: "error",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: LOCAL_PATCH_JUDGE.model, reasoning_effort: LOCAL_PATCH_JUDGE.effort,
+      max_completion_tokens: LOCAL_PATCH_JUDGE.maxOutputTokens, service_tier: "default", store: false,
+      response_format: { type: "json_object" },
+      messages: [{ role: "user", content: [{ type: "text", text: prompt }, image(request.beforePng), image(request.afterPng), image(request.identityPng)] }],
+    }),
+  });
+  const requestId = response.headers.get("x-request-id");
+  const body = await response.json().catch(() => null) as { choices?: { message?: { content?: string } }[]; usage?: Record<string, unknown> } | null;
+  const raw = body?.choices?.[0]?.message?.content ?? null;
+  if (!response.ok || typeof raw !== "string") return { verdict: null, raw, usage: body?.usage ?? null, requestId };
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { return { verdict: null, raw, usage: body?.usage ?? null, requestId }; }
+  const result = localPatchVerdictSchema.safeParse(parsed);
+  // A truncated or malformed answer is never an approval.
+  return { verdict: result.success ? result.data : null, raw, usage: body?.usage ?? null, requestId };
+}
