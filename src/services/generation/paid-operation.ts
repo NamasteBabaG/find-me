@@ -47,7 +47,14 @@ export type RetainedPurchase = {
   readonly operationFingerprint: string;
   /** Of `bytes`, so a swapped payload is caught even when the receipt matches. */
   readonly payloadSha256: string;
-  readonly evidence: WorldChargeEvidence;
+  /**
+   * `null` when the provider answered but its charge cannot be stated - no
+   * usage, or a model with no rate. The bytes were still paid for, so they are
+   * kept; what must not happen is settling an amount nobody can support, which
+   * records a guess as an invoice and reads as free.
+   */
+  readonly evidence: WorldChargeEvidence | null;
+  readonly unknownReason: string | null;
   readonly bytes: Buffer;
 };
 
@@ -86,8 +93,13 @@ export type PurchaseOutcome =
    * Deciding a lease is dead belongs to whoever owns the lease.
    */
   | { kind: "in-progress"; reason: string }
-  /** A charge that may have happened, or a mismatch. Never auto-retried. */
-  | { kind: "unresolved"; reason: string };
+  /**
+   * A charge that may have happened, or a mismatch. Never auto-retried.
+   *
+   * `bytes` is present when the provider did answer and the result was kept -
+   * an unpriceable bill does not throw the picture away.
+   */
+  | { kind: "unresolved"; reason: string; bytes?: Buffer };
 
 export type PurchaseInput = {
   readonly worldId: string;
@@ -96,8 +108,14 @@ export type PurchaseInput = {
   /** Everything that decides what is being bought. A different one is a different purchase. */
   readonly operationFingerprint: string;
   readonly reserveMicroUsd: number;
-  /** Dispatches to the provider. Called at most once per request key, ever. */
-  readonly buy: () => Promise<{ bytes: Buffer; evidence: WorldChargeEvidence }>;
+  /**
+   * Dispatches to the provider. Called at most once per request key, ever.
+   *
+   * Returns the bill when it can state one, and `unknownReason` when it cannot:
+   * an answer whose usage is missing or whose model has no rate is a charge that
+   * happened and cannot be described, not a free one.
+   */
+  readonly buy: () => Promise<{ bytes: Buffer; evidence: WorldChargeEvidence } | { bytes: Buffer; unknownReason: string }>;
 };
 
 const settledStates = new Set(["settled", "linked"]);
@@ -155,14 +173,18 @@ export async function purchaseOnce(
       // calling it free would understate the world.
       return { kind: "unresolved", reason: `${requestKey} was paid for and its result was not kept; re-buying would charge twice` };
     }
+    const kept = retained.evidence;
+    if (!kept) {
+      return { kind: "unresolved", reason: `${requestKey}: the ledger is settled but the retained result carries no bill`, bytes: retained.bytes };
+    }
     // Compared with the ledger's OWN equality rule, every field of it. Matching
     // receipt ids are not proof of the same bill: a retained record can carry
     // the same three identifiers with a different amount and a different model,
     // which is a conflict `settle` would refuse.
-    if (!sameChargeEvidence(retained.evidence, bill)) {
-      return { kind: "unresolved", reason: `${requestKey}: the retained result carries a different bill than the settled charge (${retained.evidence.providerRequestId} / ${retained.evidence.amountMicroUsd}µ vs ${bill.providerRequestId} / ${bill.amountMicroUsd}µ)` };
+    if (!sameChargeEvidence(kept, bill)) {
+      return { kind: "unresolved", reason: `${requestKey}: the retained result carries a different bill than the settled charge (${kept.providerRequestId} / ${kept.amountMicroUsd}µ vs ${bill.providerRequestId} / ${bill.amountMicroUsd}µ)`, bytes: retained.bytes };
     }
-    return { kind: "bought", bytes: retained.bytes, evidence: retained.evidence, replayed: true, settledFromRetained: false };
+    return { kind: "bought", bytes: retained.bytes, evidence: kept, replayed: true, settledFromRetained: false };
   }
 
   if (existing) {
@@ -171,7 +193,10 @@ export async function purchaseOnce(
       // The call got through and only the last write was lost: settle from what
       // is on disk rather than paying again. This reconciles an `unknown` row
       // too - that is what the retained bill is for.
-      return settleFromRetained(deps, worldId, requestKey, retained);
+      if (retained.evidence) return settleFromRetained(deps, worldId, requestKey, { ...retained, evidence: retained.evidence });
+      // Answered, kept, and still unpriceable. Nothing to settle and nothing to
+      // buy: a person reconciles it, and the picture is right here.
+      return { kind: "unresolved", reason: `${requestKey}: the result is kept but its charge cannot be stated (${retained.unknownReason ?? "no reason recorded"})`, bytes: retained.bytes };
     }
     // Already declared abandoned by whoever owned the lease. Reporting that as
     // "still in flight" leaves a caller waiting forever for work somebody has
@@ -192,7 +217,7 @@ export async function purchaseOnce(
   });
   if (!reserved.acquired) return { kind: "in-progress", reason: `${requestKey} is held by another worker` };
 
-  let bought: { bytes: Buffer; evidence: WorldChargeEvidence };
+  let bought: Awaited<ReturnType<PurchaseInput["buy"]>>;
   try {
     bought = await input.buy();
   } catch (error) {
@@ -205,11 +230,22 @@ export async function purchaseOnce(
   // Bytes, bill and the identity of the operation, together, BEFORE the ledger
   // is settled. After this line an interruption costs a restart, not a second
   // purchase - and the record can prove whose purchase it was.
-  const record: RetainedPurchase = {
+  const base = {
     version: RETAINED_PURCHASE_VERSION, worldId, requestKey, scope: input.scope,
     operationFingerprint: input.operationFingerprint,
-    payloadSha256: retainedPayloadDigest(bought.bytes), evidence: bought.evidence, bytes: bought.bytes,
-  };
+    payloadSha256: retainedPayloadDigest(bought.bytes), bytes: bought.bytes,
+  } as const;
+
+  if (!("evidence" in bought)) {
+    // Paid for and unpriceable. Keep the picture, say so, and settle nothing:
+    // an amount nobody can support recorded as an invoice reads as free.
+    await deps.store.put(worldId, requestKey, { ...base, evidence: null, unknownReason: bought.unknownReason });
+    const reason = `${requestKey}: the provider answered and its charge cannot be stated (${bought.unknownReason}); the result is kept and the charge is unknown`;
+    await deps.ledger.markUnknown(worldId, requestKey, reason);
+    return { kind: "unresolved", reason, bytes: bought.bytes };
+  }
+
+  const record = { ...base, evidence: bought.evidence, unknownReason: null };
   await deps.store.put(worldId, requestKey, record);
   return settleFromRetained(deps, worldId, requestKey, record, false);
 }
@@ -226,7 +262,7 @@ export async function purchaseOnce(
  */
 async function settleFromRetained(
   deps: { ledger: PurchaseLedger }, worldId: string, requestKey: string,
-  retained: RetainedPurchase, replayed = true,
+  retained: RetainedPurchase & { evidence: WorldChargeEvidence }, replayed = true,
 ): Promise<PurchaseOutcome> {
   try {
     await deps.ledger.settle(worldId, requestKey, retained.evidence);
@@ -234,7 +270,7 @@ async function settleFromRetained(
     if (error instanceof WorldBudgetError && error.code === "invalid_input") {
       const reason = `${requestKey}: the provider's bill cannot be recorded (${error.message}); the result is retained and the charge is unknown`;
       await deps.ledger.markUnknown(worldId, requestKey, reason);
-      return { kind: "unresolved", reason };
+      return { kind: "unresolved", reason, bytes: retained.bytes };
     }
     throw error;
   }

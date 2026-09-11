@@ -5,13 +5,13 @@ import {
 } from "../../domain/scene/local-patch-hides";
 import { analysePatchSeam, applyLocalPatch, type SeamReport } from "./local-patch-seam";
 import {
-  LOCAL_PATCH_JUDGE, judgeLocalPatch, localPatchVerdictSchema,
+  LOCAL_PATCH_JUDGE, judgeLocalPatch, localPatchJudgePrompt, localPatchVerdictSchema,
   type JudgeWireFault, type LocalPatchJudgeRequest, type LocalPatchJudgeResult, type LocalPatchVerdict,
 } from "./local-patch-judge";
 import { judgeCharge } from "../../infra/generation/judge";
 import { LOCAL_PATCH_POSE_WORDING, LOCAL_PATCH_PROMPT_VERSION, localPatchPrompt } from "./local-patch-prompt";
 import { purchaseOnce, type PurchaseLedger, type RetainedPurchaseStore } from "./paid-operation";
-import type { WorldChargeEvidence } from "./world-budget";
+import type { BudgetJson, WorldChargeEvidence } from "./world-budget";
 
 /**
  * One paid attempt at one hide, out of the scripts and into the product.
@@ -37,7 +37,16 @@ import type { WorldChargeEvidence } from "./world-budget";
 export type LocalPatchRenderDeps = {
   readonly ledger: PurchaseLedger;
   readonly store: RetainedPurchaseStore;
-  /** Buys one render. Policy, sizes and fingerprint verification are the caller's. */
+  /**
+   * The image model and settings this adapter buys under, as a digest.
+   *
+   * Part of the render fingerprint, because they decide what comes back: a
+   * different model, quality or size is a different purchase and must never
+   * replay the previous one. The adapter owns the settings; it does not get to
+   * leave them out of the identity of what it bought.
+   */
+  readonly renderPolicySha256: string;
+  /** Buys one render. Sizes and fingerprint verification are the adapter's. */
   readonly render: (input: {
     readonly requestKey: string; readonly prompt: string;
     readonly stylePng: Buffer; readonly identityPng: Buffer; readonly maskPng: Buffer;
@@ -139,11 +148,16 @@ type RetainedJudgement = {
   model: string | null; finishReason: string | null; wireFault: JudgeWireFault | null;
 };
 
-const stopped = (reason: string, renderCents = 0): LocalPatchAttempt => ({
+/**
+ * A purchase that could not go ahead. `costUnknown` defaults to TRUE, because
+ * every route here is one where money may have moved and cannot be described:
+ * reporting certainty by default is how an unresolved charge became a zero.
+ */
+const stopped = (reason: string, renderCents = 0, costUnknown = true): LocalPatchAttempt => ({
   accepted: false, refusedBecause: "stopped", stoppedReason: reason,
   patchPng: null, composedPng: null, seam: null, verdict: null, wireFault: null,
   promptVersion: LOCAL_PATCH_PROMPT_VERSION, judgedSha256: null,
-  renderCents, judgeCents: 0, costUnknown: false, replayed: false,
+  renderCents, judgeCents: 0, costUnknown, replayed: false,
 });
 
 export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: LocalPatchAttemptInput): Promise<LocalPatchAttempt> {
@@ -161,6 +175,7 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
   const renderFingerprint = fingerprintOf({
     version: LOCAL_PATCH_PROMPT_VERSION, hide: hide.id, pose: hide.pose, crop,
     prompt: sha(Buffer.from(prompt)), style: sha(stylePng), identity: sha(input.identityPng), mask: sha(maskPng),
+    policy: deps.renderPolicySha256,
   });
 
   const bought = await purchaseOnce(deps, {
@@ -185,9 +200,15 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
   const expectation = { support: LOCAL_PATCH_POSE_WORDING[hide.pose].support, ageYears: input.ageYears };
 
   const judgeKey = `${hide.id}:${hide.pose}:judge:${attempt}`;
+  // The QUESTION is part of what was bought, not just the pictures. Fingerprinting
+  // the images and the model alone meant that changing the judge's instructions
+  // could replay an answer purchased under the old ones. Re-deriving a verdict
+  // from a retained reply after correcting the PARSER stays free, deliberately -
+  // that is a different thing from changing what the model was asked to look at.
   const judgeFingerprint = fingerprintOf({
-    model: LOCAL_PATCH_JUDGE.model, effort: LOCAL_PATCH_JUDGE.effort, hide: hide.id,
-    before: sha(beforePng), after: sha(afterPng), identity: sha(input.judgeIdentityPng), expectation,
+    model: LOCAL_PATCH_JUDGE.model, effort: LOCAL_PATCH_JUDGE.effort, maxOutputTokens: LOCAL_PATCH_JUDGE.maxOutputTokens,
+    hide: hide.id, prompt: sha(Buffer.from(localPatchJudgePrompt(hide.id, expectation))),
+    before: sha(beforePng), after: sha(afterPng), identity: sha(input.judgeIdentityPng),
   });
 
   const ask = deps.judge ?? ((request: LocalPatchJudgeRequest) => judgeLocalPatch(input.apiKey, request));
@@ -196,22 +217,33 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
     operationFingerprint: judgeFingerprint, reserveMicroUsd: LOCAL_PATCH_RESERVE.judgeMicroUsd,
     buy: async () => {
       const answer = await ask({ hideId: hide.id, beforePng, afterPng, identityPng: input.judgeIdentityPng, expectation });
-      const charge = judgeCharge(answer.model ?? "", answer.usage ?? undefined);
       const keep: RetainedJudgement = {
         raw: answer.raw, usage: answer.usage, requestId: answer.requestId,
         model: answer.model, finishReason: answer.finishReason, wireFault: answer.wireFault,
       };
+      const bytes = Buffer.from(JSON.stringify(keep));
+      const charge = judgeCharge(answer.model ?? "", answer.usage ?? undefined);
+      // A charge nobody can state is not a charge of zero. No usage, a model
+      // with no rate, or a reply we could not trust: the answer is kept and the
+      // amount stays unknown rather than being settled as free.
+      if (charge.costUnknown || answer.costUnknown || !answer.requestId) {
+        const why = !answer.requestId ? "the reply carried no receipt"
+          : charge.costUnknown ? `no rate for ${answer.model ?? "an unnamed model"} or no usage to price` : "the provider did not describe the charge";
+        return { bytes, unknownReason: why };
+      }
       return {
-        bytes: Buffer.from(JSON.stringify(keep)),
+        bytes,
         evidence: {
           providerNamespace: "openai:find-me-existing",
-          providerRequestId: answer.requestId ?? `unreceipted-${judgeKey}`,
+          providerRequestId: answer.requestId,
           usageId: sha(Buffer.from(JSON.stringify(answer.usage ?? {}))),
-          rawUsage: (answer.usage ?? {}) as never,
+          rawUsage: (answer.usage ?? {}) as BudgetJson,
           model: answer.model ?? LOCAL_PATCH_JUDGE.model,
           amountMicroUsd: Math.round(charge.costCents * 10_000),
-          quality: LOCAL_PATCH_JUDGE.effort,
-        } as unknown as WorldChargeEvidence,
+          // Computed from a rate card, not read off an invoice. Saying otherwise
+          // would present our own arithmetic as the provider's bill.
+          costBasis: "conservative-upper-estimate",
+        },
       };
     },
   });
@@ -245,9 +277,9 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
     judgedSha256: sha(shipping),
     renderCents,
     judgeCents: judged.evidence.amountMicroUsd / 10_000,
-    // Token counts are what a judge charge is computed from; without them the
-    // amount is a guess, and a guess must not be recorded as a known cost.
-    costUnknown: keep.wireFault === null && !keep.usage,
+    // Both purchases settled, so both amounts are stated. An unpriceable one
+    // never reaches here: it comes back `stopped` with the answer retained.
+    costUnknown: false,
     replayed: bought.replayed && judged.replayed,
   };
 }

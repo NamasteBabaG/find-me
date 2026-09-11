@@ -5,6 +5,7 @@ import { LOCAL_PATCH_CROP, POSE_MASK, maskInCrop, type LocalPatchBoard, type Loc
 import { LOCAL_PATCH_RESERVE, poseMask, renderLocalPatchHide, type LocalPatchRenderDeps } from "../local-patch-render";
 import type { LocalPatchJudgeResult } from "../local-patch-judge";
 import type { PurchaseLedger, RetainedPurchase, RetainedPurchaseStore } from "../paid-operation";
+import { WorldBudgetError } from "../world-budget";
 import type { WorldBudgetRequest, WorldChargeEvidence } from "../world-budget";
 
 const BOARD = { width: 3072, height: 2048 };
@@ -22,10 +23,11 @@ const boardPng = () => sharp({ create: { width: BOARD.width, height: BOARD.heigh
 const patchPng = () => sharp({ create: { width: 768, height: 1152, channels: 4, background: { r: 40, g: 90, b: 160, alpha: 255 } } }).png().toBuffer();
 const small = () => sharp({ create: { width: 64, height: 64, channels: 4, background: { r: 200, g: 160, b: 120, alpha: 255 } } }).png().toBuffer();
 
+/** A complete receipt. No cast: a fixture missing a required field tests nothing. */
 const evidence = (id: string, micro = 48_800): WorldChargeEvidence => ({
   providerNamespace: "openai:find-me-existing", providerRequestId: id, usageId: `usage-${id}`,
-  rawUsage: { total: 1 }, model: "gpt-image-2", amountMicroUsd: micro, quality: "medium",
-} as unknown as WorldChargeEvidence);
+  rawUsage: { total: 1 }, model: "gpt-image-2", amountMicroUsd: micro, costBasis: "provider-billed",
+});
 
 const answer = (over: Record<string, unknown> = {}) => ({
   childPresent: "pass", childOnlyOnce: "pass", childComplete: "pass", pictureWhole: "pass",
@@ -53,7 +55,15 @@ function world() {
         rows.set(at(w, i.requestKey), { ...i, origin: "reserved", state: "pending", unknownReasons: [], conflicts: [] } as unknown as WorldBudgetRequest);
         return { acquired: true };
       },
-      settle: async (w, k, ev) => { rows.set(at(w, k), { ...rows.get(at(w, k))!, state: "settled", evidence: ev } as WorldBudgetRequest); },
+      settle: async (w, k, ev) => {
+        // Refuses what the real ledger refuses. A permissive fake is why every
+        // judge receipt went out without a cost basis and the tests stayed green
+        // while the real ledger would have stopped the hide dead.
+        if (ev.costBasis !== "provider-billed" && ev.costBasis !== "conservative-upper-estimate") {
+          throw new WorldBudgetError("invalid_input", "An explicit cost basis is required");
+        }
+        rows.set(at(w, k), { ...rows.get(at(w, k))!, state: "settled", evidence: ev } as WorldBudgetRequest);
+      },
       markUnknown: async (w, k, reason) => {
         const existing = rows.get(at(w, k));
         if (existing) rows.set(at(w, k), { ...existing, state: "unknown", unknownReasons: [reason] } as WorldBudgetRequest);
@@ -64,7 +74,7 @@ function world() {
       get: async (w, k) => retained.get(at(w, k)) ?? null,
     };
     const deps: LocalPatchRenderDeps = {
-      ledger, store,
+      ledger, store, renderPolicySha256: "p".repeat(64),
       render: async ({ requestKey }) => { dispatched.push(requestKey); return { png: await patchPng(), evidence: evidence("req-render") }; },
       judge: async () => { dispatched.push("judge"); return judged; },
       ...over,
@@ -161,6 +171,68 @@ describe("one paid attempt at one hide", () => {
     const result = await attempt(p.deps);
     expect(p.dispatched).toEqual([]);
     expect(result).toMatchObject({ accepted: false, refusedBecause: "stopped" });
+    expect(result.stoppedReason).toMatch(/different operation/);
+  });
+
+  it("settles the judgement with a bill the real ledger will accept", async () => {
+    // Every judge receipt used to go out with no cost basis, hidden behind an
+    // `as unknown as` cast. The real ledger refuses that, so the hide stopped
+    // dead after both providers had already answered - and the tests missed it
+    // because their fake ledger accepted anything.
+    const w = world();
+    const result = await attempt(w.process().deps);
+    expect(result.accepted).toBe(true);
+    const judgeRow = w.rows.get(w.at("game-1:local-patch", "sydney-2:kneeling:judge:1")) as Extract<WorldBudgetRequest, { state: "settled" }>;
+    expect(judgeRow.state).toBe("settled");
+    // Computed from a rate card, so it is recorded as an estimate rather than
+    // presented as the provider's own invoice.
+    expect(judgeRow.evidence.costBasis).toBe("conservative-upper-estimate");
+    expect(judgeRow.evidence.providerRequestId).toBe("req-judge");
+  });
+
+  it("keeps a judgement whose charge cannot be stated, and does not call it free", async () => {
+    // No usage, an unpriced model, or no receipt: the answer was paid for and
+    // the amount is unknown. Settling a computed zero would read as free.
+    for (const [name, over] of [
+      ["no usage", { usage: null }],
+      ["a model with no rate", { model: "gpt-5.6-sol-experimental" }],
+      ["no receipt", { requestId: null }],
+    ] as const) {
+      const w = world();
+      const result = await attempt(w.process({}, { ...reply(), ...over }).deps);
+      expect(result.refusedBecause, name).toBe("stopped");
+      expect(result.costUnknown, name).toBe(true);
+      const row = w.rows.get(w.at("game-1:local-patch", "sydney-2:kneeling:judge:1"));
+      expect(row?.state, name).toBe("unknown");
+      // The reply is kept: it was paid for, and somebody has to be able to look.
+      expect(w.retained.has(w.at("game-1:local-patch", "sydney-2:kneeling:judge:1")), name).toBe(true);
+      // And a restart does not buy it again.
+      const again = w.process();
+      const second = await attempt(again.deps);
+      expect(again.dispatched, name).toEqual([]);
+      expect(second.refusedBecause, name).toBe("stopped");
+    }
+  }, 30_000);
+
+  it("will not replay an answer bought under different instructions", async () => {
+    // Changing what the judge is ASKED is not the same as correcting how its
+    // answer is read. The second stays free; the first is a new purchase.
+    const w = world();
+    await attempt(w.process().deps);
+    const before = w.rows.get(w.at("game-1:local-patch", "sydney-2:kneeling:judge:1"))!.operationFingerprint;
+
+    const other = await attempt(w.process().deps, { ageYears: 4 });
+    expect(other.refusedBecause).toBe("stopped");
+    expect(other.stoppedReason).toMatch(/different operation/);
+    expect(before).toBeTruthy();
+  });
+
+  it("makes different image settings a different purchase", async () => {
+    const w = world();
+    await attempt(w.process().deps);
+    const other = w.process({ renderPolicySha256: "q".repeat(64) });
+    const result = await attempt(other.deps);
+    expect(other.dispatched).toEqual([]);
     expect(result.stoppedReason).toMatch(/different operation/);
   });
 
