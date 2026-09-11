@@ -46,11 +46,18 @@ export type LocalPatchRenderDeps = {
    * leave them out of the identity of what it bought.
    */
   readonly renderPolicySha256: string;
-  /** Buys one render. Sizes and fingerprint verification are the adapter's. */
+  /**
+   * Buys one render. Sizes and fingerprint verification are the adapter's.
+   *
+   * It may hand back an image whose charge it cannot state - a reply that was
+   * billed and whose usage could not be read is exactly that - and saying so is
+   * not the same as failing. Throwing there would lose a picture that was paid
+   * for, which is the mistake this whole route exists to stop making.
+   */
   readonly render: (input: {
-    readonly requestKey: string; readonly prompt: string;
+    readonly worldId: string; readonly requestKey: string; readonly prompt: string;
     readonly stylePng: Buffer; readonly identityPng: Buffer; readonly maskPng: Buffer;
-  }) => Promise<{ png: Buffer; evidence: WorldChargeEvidence }>;
+  }) => Promise<{ png: Buffer; evidence: WorldChargeEvidence } | { png: Buffer; unknownReason: string }>;
   /** Overridable so a test can answer without a network. */
   readonly judge?: (request: LocalPatchJudgeRequest) => Promise<LocalPatchJudgeResult>;
 };
@@ -190,8 +197,10 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
     worldId, requestKey: renderKey, scope: "image",
     operationFingerprint: renderFingerprint, reserveMicroUsd: LOCAL_PATCH_RESERVE.renderMicroUsd,
     buy: async () => {
-      const result = await deps.render({ requestKey: renderKey, prompt, stylePng, identityPng: input.identityPng, maskPng });
-      return { bytes: result.png, evidence: result.evidence };
+      const result = await deps.render({ worldId, requestKey: renderKey, prompt, stylePng, identityPng: input.identityPng, maskPng });
+      return "evidence" in result
+        ? { bytes: result.png, evidence: result.evidence }
+        : { bytes: result.png, unknownReason: result.unknownReason };
     },
   });
   if (bought.kind !== "bought") return stopped(bought.reason);

@@ -15,6 +15,7 @@ import {
 import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wizard";
 import { sceneBySlug } from "../../scene-catalog.service";
 import { sha256Bytes } from "../fixed-sprite";
+import { localPatchRenderPolicySha256 } from "../../../infra/generation/openai-local-patch";
 import type { LocalPatchHideDeps } from "../local-patch-hide";
 import type { LocalPatchJudgeResult } from "../local-patch-judge";
 import { WORLD_LOCAL_PATCH_HIDES } from "../../../domain/scene/local-patch-hides";
@@ -30,10 +31,10 @@ import {
  * ledger and the real store; what is under test here is the lease.
  */
 
-const fakes = vi.hoisted(() => ({ appEnv: "qa", generationEnabled: "on" as "on" | "off", dailyCeiling: 0, testers: [] as string[] }));
+const fakes = vi.hoisted(() => ({ appEnv: "qa", generationEnabled: "on" as "on" | "off", dailyCeiling: 0, testers: [] as string[], openaiKey: "synthetic-never-live" }));
 vi.mock("../../../lib/env", () => ({
   env: () => ({ APP_ENV: fakes.appEnv, GENERATION_ENABLED: fakes.generationEnabled, GENERATION_DAILY_CENTS: fakes.dailyCeiling,
-    GENERATION_PROVIDER: "openai", GENERATION_MODEL: "gpt-image-2", GENERATION_QUALITY: "medium", OPENAI_API_KEY: "synthetic-never-live" }),
+    GENERATION_PROVIDER: "openai", GENERATION_MODEL: "gpt-image-2", GENERATION_QUALITY: "medium", OPENAI_API_KEY: fakes.openaiKey }),
   spendGuard: () => ({ appEnv: fakes.appEnv, realGeneration: true, testers: fakes.testers }),
   flag: () => false,
   adminEmails: () => [],
@@ -55,7 +56,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  fakes.appEnv = "qa"; fakes.generationEnabled = "on"; fakes.dailyCeiling = 0; fakes.testers = [];
+  fakes.appEnv = "qa"; fakes.generationEnabled = "on"; fakes.dailyCeiling = 0; fakes.testers = []; fakes.openaiKey = "synthetic-never-live";
   process.env.QA_BOARD_CONDITIONED_WIZARD = "true";
   await clearWorld(db);
 });
@@ -249,9 +250,10 @@ describe("a world of hides, one slice at a time", () => {
   }, 120_000);
 
   it("refuses the style rather than handing it to the old painter", async () => {
-    // There is no adapter that can buy a local patch yet. The route exists so
-    // that a game on this style stops here saying nothing happened, instead of
-    // falling through and being painted by a different engine.
+    // A box with nothing to buy patches with must stop here saying nothing
+    // happened, instead of falling through and having the game painted by a
+    // different engine.
+    fakes.openaiKey = "";
     expect(localPatchPainterDeps(c)).toBeNull();
     const { gameId } = await seed();
     const tick = await tickGeneration(c, gameId, 60_000);
@@ -259,6 +261,16 @@ describe("a world of hides, one slice at a time", () => {
     expect(tick.status).toBe("TARGETS_GENERATING");
     expect(await db.targetVariantAsset.count()).toBe(0);
   }, 120_000);
+
+  it("builds a painter when the box is configured to buy one", async () => {
+    // Deliberately not ticked: building the painter is what is under test, and
+    // running it would put a real request on a real account. What it does with
+    // an answer is tested against a fake wire in the adapter's own suite.
+    const painter = localPatchPainterDeps(c);
+    expect(painter).not.toBeNull();
+    expect(painter!.renderPolicySha256).toBe(localPatchRenderPolicySha256());
+    expect(painter!.apiKey).toBe("synthetic-never-live");
+  }, 60_000);
 
   it("stops asking for another tick once the ledger is holding the world", async () => {
     // A charge nobody can state holds the world, and a held world can authorise

@@ -237,9 +237,25 @@ export type FixedSourceResult = {
  * Upper-bound accuracy and a durable WorldBudget repository remain deployment
  * prerequisites. A provider overrun is recorded and stops work, not hidden.
  */
+/**
+ * The three things this transport does to a ledger, named so that a caller who
+ * owns its accounting elsewhere can still reuse the transport.
+ *
+ * `WorldBudget` satisfies this as it stands; nothing about the existing callers
+ * changes. The local-patch route reserves and settles through its own purchase
+ * boundary, and passing a recorder here is how it reuses every check below -
+ * the payload bounds, the raster validation, the model check, the rate card -
+ * instead of growing a second copy of them that would drift.
+ */
+export interface FixedSourceLedger {
+  reserve: WorldBudget["reserve"];
+  settle: WorldBudget["settle"];
+  markUnknown: WorldBudget["markUnknown"];
+}
+
 export class BudgetedOpenAiFixedSourceProvider {
   private readonly policy: FixedSourcePolicy;
-  constructor(private readonly apiKey: string, private readonly budget: WorldBudget,
+  constructor(private readonly apiKey: string, private readonly budget: FixedSourceLedger,
     policy: FixedSourcePolicy, private readonly fetchOnce: typeof fetch = fetch, private readonly onFailure?: FixedSourceFailureSink) {
     if (!text(apiKey)) fail("invalid_input", "Existing API key is required");
     this.policy = policyCopy(policy);

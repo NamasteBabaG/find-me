@@ -3,6 +3,8 @@ import type { Container } from "../container";
 import { WORLD_LOCAL_PATCH_HIDES, type LocalPatchBoard, type LocalPatchHide } from "../../domain/scene/local-patch-hides";
 import { GenerationPaused, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { retainedPurchaseKeysFor } from "../../infra/db/prisma-retained-purchase-store";
+import { buyLocalPatch, localPatchRenderPolicySha256 } from "../../infra/generation/openai-local-patch";
+import { env } from "../../lib/env";
 import {
   LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, nextLocalPatchAttempt, runLocalPatchHide,
   type LocalPatchHideDeps, type LocalPatchHideOutcome,
@@ -203,17 +205,26 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
 /**
  * The painter this box can buy a local patch with, or nothing.
  *
- * There is no production adapter yet: buying one of these is a `gpt-image-2`
- * edit with a mask whose transport, receipt checking and rate card belong
- * beside the one the board engine already uses, and that is its own piece of
- * work. Until it exists this returns null, and the queue REFUSES the style
- * rather than letting it fall through to the legacy painter - which is the
- * whole reason the route is wired before the adapter is.
+ * `null` is not a placeholder any more - it is the answer whenever this box is
+ * not configured to spend: no key, or a provider that is not the real one. The
+ * queue REFUSES the style in that case rather than letting it fall through to
+ * the legacy painter, which is the whole reason the route was wired before the
+ * adapter existed.
  *
- * Nothing routes here today: no game carries `LOCAL_PATCH_STYLE`.
+ * The kill switch, the tester list and the daily ceiling are NOT asked here.
+ * They are asked per hide, inside the claim, by the same function that answers
+ * them for the board engine - so a world that pauses mid-slice stops at the
+ * next hide rather than at the next deploy.
  */
 export function localPatchPainterDeps(_c: Container): LocalPatchHideDeps | null {
-  return null;
+  const e = env();
+  const apiKey = e.OPENAI_API_KEY?.trim();
+  if (e.GENERATION_PROVIDER !== "openai" || !apiKey) return null;
+  return {
+    apiKey,
+    renderPolicySha256: localPatchRenderPolicySha256(),
+    render: async input => buyLocalPatch(apiKey, input),
+  };
 }
 
 /**

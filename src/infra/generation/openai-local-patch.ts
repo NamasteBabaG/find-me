@@ -1,0 +1,156 @@
+import { createHash } from "node:crypto";
+import sharp from "sharp";
+import {
+  BudgetedOpenAiFixedSourceProvider, FixedSourceError, prepareFixedSource,
+  type FixedSourceLedger, type FixedSourcePolicy,
+} from "./openai-fixed-source";
+import { auditWorldBudget, type WorldBudgetAudit, type WorldChargeEvidence } from "../../services/generation/world-budget";
+
+/**
+ * Buying one local patch: the painter this engine has been missing.
+ *
+ * Everything above this - the purchase boundary, the real ledger, the retained
+ * store, the hide runner, the queue - has been built and proved against a
+ * synthetic painter. Nothing could actually buy a patch, and `localPatchPainter`
+ * is what closes that.
+ *
+ * IT DOES NOT REIMPLEMENT THE TRANSPORT. `BudgetedOpenAiFixedSourceProvider`
+ * already sends this exact request and already carries the checks that were
+ * learned the expensive way: the payload bound tied to what the store will
+ * accept, the raster validation that knows an opaque local patch legitimately
+ * has no alpha, the model check, the usage schema, the rate card. A second copy
+ * of that would drift from it, and the drift would be discovered by being
+ * billed for something nobody could save.
+ *
+ * What it DOES own is the accounting boundary. The provider was written to
+ * reserve and settle against the world budget itself; this route reserves and
+ * settles exactly once through `purchaseOnce`, which retains the bytes with the
+ * bill before the ledger is touched. So the provider is handed a RECORDER
+ * rather than a ledger - it is not a permissive fake standing in for one, it is
+ * how the provider's billing decision is carried back out to the boundary that
+ * owns it. The real world budget sees this purchase exactly once, from there.
+ *
+ * The settings are the ones a paid round actually produced good patches with
+ * (work/local-patch-experiment-20260910, 10 September): medium quality, an
+ * opaque 768x1152 - the smallest legal request at the crop's own 2:3 - reduced
+ * by exactly two thirds on the way back.
+ */
+
+export const LOCAL_PATCH_IMAGE_POLICY: FixedSourcePolicy = Object.freeze({
+  quality: "medium",
+  size: "768x1152",
+  background: "opaque",
+  // Only `purchaseOnce` reserves on this route; the provider's own reservation
+  // goes to the recorder. The figure is kept truthful anyway, because it is
+  // what an operator reading a diagnostic receipt would expect to see.
+  reserveMicroUsd: 150_000,
+  providerNamespace: "openai:find-me-existing",
+  timeoutMs: 240_000,
+  rateCard: { id: "existing-reviewed-image2-5-8-30-microusd-v1", textInput: 5, imageInput: 8, imageOutput: 30 },
+});
+
+/**
+ * What the render fingerprint pins, beside the prompt and the pictures: change
+ * the model, the quality, the size or the rate card and it is a different
+ * purchase that must never replay the previous one.
+ */
+export const localPatchRenderPolicySha256 = (policy: FixedSourcePolicy = LOCAL_PATCH_IMAGE_POLICY) =>
+  createHash("sha256").update(JSON.stringify({
+    version: "local-patch-painter/v1", quality: policy.quality, size: policy.size,
+    background: policy.background, rateCard: policy.rateCard, timeoutMs: policy.timeoutMs,
+  })).digest("hex");
+
+export type LocalPatchRenderInput = {
+  readonly worldId: string;
+  readonly requestKey: string;
+  readonly prompt: string;
+  readonly stylePng: Buffer;
+  readonly identityPng: Buffer;
+  readonly maskPng: Buffer;
+};
+
+/**
+ * A charge that happened, carried back to whoever owns the accounting.
+ *
+ * Deliberately NOT a budget. It authorises nothing, caps nothing and holds
+ * nothing; it writes down what the provider decided about the bill so the
+ * purchase boundary can do all of that, once.
+ */
+class CapturedCharge implements FixedSourceLedger {
+  evidence: WorldChargeEvidence | null = null;
+  unknownReason: string | null = null;
+
+  reserve = async () => ({
+    acquired: true as const,
+    request: { requestKey: "captured", scope: "image" as const, operationFingerprint: "captured", reserveMicroUsd: 0,
+      origin: "reserved" as const, state: "pending" as const, unknownReasons: [], conflicts: [] },
+    audit: this.audit(),
+  });
+
+  settle = async (_worldId: string, _requestKey: string, evidence: WorldChargeEvidence) => {
+    this.evidence = evidence;
+    // `held: false`, because holding is the real ledger's decision and it makes
+    // it a moment later with the full picture. Answering otherwise here would
+    // make the provider discard an image this route has already paid for.
+    return { request: { requestKey: "captured" } as never, audit: this.audit() };
+  };
+
+  markUnknown = async (_worldId: string, _requestKey: string, reason: string) => {
+    this.unknownReason = reason;
+    return { request: { requestKey: "captured" } as never, audit: this.audit() };
+  };
+
+  private audit(): WorldBudgetAudit {
+    return auditWorldBudget({ worldId: "captured", requests: [] });
+  }
+}
+
+export type LocalPatchRenderResult =
+  | { readonly png: Buffer; readonly evidence: WorldChargeEvidence }
+  /** Paid for, and no amount anybody can state. The picture is still the picture. */
+  | { readonly png: Buffer; readonly unknownReason: string };
+
+/**
+ * One patch, one HTTP request, ever.
+ *
+ * Throws when there is no image to hand back - a transport failure, a reply
+ * that could not be trusted, an image the checks refused. `purchaseOnce` turns
+ * a throw into an unknown charge with the reservation retained, which is the
+ * correct reading of "we dispatched and cannot say what came back".
+ */
+export async function buyLocalPatch(apiKey: string, input: LocalPatchRenderInput, options: {
+  readonly policy?: FixedSourcePolicy;
+  readonly fetchOnce?: typeof fetch;
+} = {}): Promise<LocalPatchRenderResult> {
+  const policy = options.policy ?? LOCAL_PATCH_IMAGE_POLICY;
+  // The crop goes as the reference at its own size - references are capped at
+  // 1024 square and 512x768 is inside that. Only the OUTPUT is asked for larger.
+  const identityPng = await sharp(input.identityPng).resize(1024, 1024, { fit: "inside" }).png().toBuffer();
+  const request = {
+    sourceGroupKey: `local-patch:${input.requestKey}`,
+    prompt: input.prompt, stylePng: input.stylePng, identityPng, maskPng: input.maskPng,
+  };
+  const prepared = await prepareFixedSource(request, policy);
+  const charge = new CapturedCharge();
+  const provider = new BudgetedOpenAiFixedSourceProvider(apiKey, charge, policy, options.fetchOnce);
+
+  let answer;
+  try {
+    answer = await provider.generate({ ...request, worldId: input.worldId, requestKey: input.requestKey, expectedFingerprint: prepared.fingerprint });
+  } catch (error) {
+    // A charge the provider could state and an image it then refused is money
+    // spent with nothing to show; a transport failure may not have been billed
+    // at all. Neither has bytes, so both become an unknown charge at the
+    // boundary - which holds the reservation and asks for a person.
+    const why = error instanceof FixedSourceError ? `${error.code}: ${error.message}` : error instanceof Error ? error.message : String(error);
+    throw new Error(`LOCAL_PATCH_PAINTER: ${input.requestKey} was dispatched and no usable image came back (${why})`);
+  }
+  if (answer.kind !== "generated") {
+    throw new Error(`LOCAL_PATCH_PAINTER: ${input.requestKey} was already recorded by the transport (${answer.requestState}); reconcile rather than re-buying`);
+  }
+  // Handed back at the size it came, not the size it will be used at: these are
+  // the bytes that were paid for, and they are what gets retained. Fitting them
+  // to the crop is the renderer's business and it already does it.
+  if (charge.evidence) return { png: answer.png, evidence: charge.evidence };
+  return { png: answer.png, unknownReason: charge.unknownReason ?? "the provider answered and its charge was never stated" };
+}
