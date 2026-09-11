@@ -452,7 +452,17 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
     // with it, so lifting the ceiling should carry on rather than need a person.
     if (err instanceof GenerationPaused) {
       console.warn(`[generate] ${gameId}: ${err.message} - leaving the job for the next tick`);
-      await c.db.generationJob.updateMany({ where: { id: job.id, status: "RUNNING" }, data: { status: "QUEUED", currentStep: null, lastError: err.message } });
+      // Fenced on the attempt THIS invocation claimed. Matching on the id alone
+      // let a worker whose lease had already been taken put the replacement
+      // worker's live job back in the queue on its way out, and the replacement
+      // then failed its own RUNNING fence on the next write. `stepsJson` is
+      // deliberately not part of the fence: the outer pipeline rewrites it
+      // legitimately while it works.
+      const released = await c.db.generationJob.updateMany({
+        where: { id: job.id, status: "RUNNING", attempts: job.attempts + 1 },
+        data: { status: "QUEUED", currentStep: null, lastError: err.message },
+      });
+      if (!released.count) console.warn(`[generate] ${gameId}: paused, but the job belongs to another worker now - left alone`);
       return;
     }
     if (qaIdentityClaim) {

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import { LOCAL_PATCH_CROP, POSE_MASK, maskInCrop, type LocalPatchBoard, type LocalPatchHide } from "../../../domain/scene/local-patch-hides";
@@ -91,6 +92,25 @@ describe("one paid attempt at one hide", () => {
     });
     expect(sent).not.toBeNull();
     expect(Buffer.compare(sent!, await poseMask(hide))).toBe(0);
+  });
+
+  it("binds the verdict to its picture at the moment it is judged", async () => {
+    // Without this the binding has to be minted later from whatever image is on
+    // disk, and a mint is not a record: swap the picture, mint again, and an
+    // unjudged render inherits an approval, with the downstream hash check
+    // satisfied because the same step wrote the hash it then checked.
+    const { attempt } = await harness();
+    expect(attempt.judgedSha256).toMatch(/^[0-9a-f]{64}$/);
+    // It is the crop that would ship, cut from the composite that was judged.
+    const shipped = await sharp(attempt.composedPng!, { limitInputPixels: 8_294_400 })
+      .extract({ left: hide.left, top: hide.top, ...LOCAL_PATCH_CROP }).png().toBuffer();
+    expect(createHash("sha256").update(shipped).digest("hex")).toBe(attempt.judgedSha256);
+
+    // A refusal is bound to its picture too, or nobody can tell later which
+    // render was the one that was refused.
+    const refused: LocalPatchJudgeResult = { ...passing, verdict: { ...passing.verdict!, pictureWhole: "fail", verdict: "fail" } };
+    const no = await harness({}, refused);
+    expect(no.attempt.judgedSha256).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it("puts the judgement through the same budget as the render", async () => {

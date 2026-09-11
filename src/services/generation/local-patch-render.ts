@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import sharp from "sharp";
 import {
   LOCAL_PATCH_CROP, type LocalPatchBoard, type LocalPatchHide, cropOf, maskInCrop,
@@ -80,6 +81,17 @@ export type LocalPatchAttempt = {
   readonly seam: SeamReport | null;
   readonly judgement: LocalPatchJudgeResult | null;
   readonly promptVersion: string;
+  /**
+   * The hash of the crop this attempt WOULD ship, taken from the composite the
+   * judge was shown a padded view of.
+   *
+   * Emitted so a verdict is bound to its picture at the moment it is judged.
+   * Without it the binding has to be minted later from whatever image is on
+   * disk, and a mint is not a record: swap the picture, mint again, and an
+   * unjudged render inherits an approval with the hash check satisfied because
+   * the same step wrote the hash it then checked.
+   */
+  readonly judgedSha256: string;
   readonly renderCents: number;
   readonly judgeCents: number;
   readonly costUnknown: boolean;
@@ -175,8 +187,12 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
   });
 
   const accepted = judgement.wireFault === null && judgement.verdict?.verdict === "pass";
+  // Taken from the candidate whether or not it is accepted: a refusal is bound
+  // to its picture too, or nobody can tell later which render was refused.
+  const shipping = await sharp(candidate, { limitInputPixels: 8_294_400 }).extract(crop).png().toBuffer();
   return {
     accepted,
+    judgedSha256: createHash("sha256").update(shipping).digest("hex"),
     refusedBecause: accepted ? null : judgement.wireFault !== null ? "wire" : "judge",
     patchPng,
     composedPng: accepted ? candidate : null,

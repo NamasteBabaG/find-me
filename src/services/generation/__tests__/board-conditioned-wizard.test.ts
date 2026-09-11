@@ -473,6 +473,12 @@ describe("actual wizard to durable QA world orchestration (synthetic engine, no 
     //
     // The pipeline tells the two apart by type, so the type is the contract.
     const f = await fixture();
+    // Seed the spend this ceiling actually counts. The fixture bills the identity
+    // sheet into an audit row, which the pre-enrolment check does not read, so
+    // without this the cap is never crossed and the test passes only when an
+    // earlier test in the file happens to have left spend in the shared database.
+    // It did, and the test was green in the suite and red on its own.
+    await db.asset.update({ where: { id: f.identityId }, data: { costCents: 2 } });
     fakes.dailyCeiling = 1;
     await expect(preflightBoardConditionedWizard(f.c, f.gameId)).rejects.toBeInstanceOf(GenerationPaused);
     fakes.dailyCeiling = 0;
@@ -498,7 +504,9 @@ describe("actual wizard to durable QA world orchestration (synthetic engine, no 
     // keeps its place and the next tick after the pause lifts carries on.
     for (const pause of ["daily-ceiling", "kill-switch"] as const) {
       const f = await fixture(); await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
-      if (pause === "daily-ceiling") fakes.dailyCeiling = 1; else fakes.generationEnabled = "off";
+      // Seeded here too, so neither pause test depends on what its neighbours left behind.
+      if (pause === "daily-ceiling") { await db.asset.update({ where: { id: f.identityId }, data: { costCents: 2 } }); fakes.dailyCeiling = 1; }
+      else fakes.generationEnabled = "off";
 
       await expect(runBoardConditionedWizardSlice(f.c, f.gameId)).resolves.toEqual({ pending: true });
       const paused = await f.job();
