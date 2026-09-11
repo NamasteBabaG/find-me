@@ -18,19 +18,26 @@ const evidence = (id = "req-1"): WorldChargeEvidence => ({
 
 const bytes = (text: string) => Buffer.from(text);
 
+/** A ledger row, complete enough to be the real type rather than a cast. */
+const row = (over: Partial<WorldBudgetRequest> = {}): WorldBudgetRequest => ({
+  requestKey: "hide-1:render:1", scope: "image", operationFingerprint: "f".repeat(64), reserveMicroUsd: 120_000,
+  origin: "reserved", state: "pending", unknownReasons: [], conflicts: [],
+  ...over,
+} as WorldBudgetRequest);
+
 function harness(seed: { request?: WorldBudgetRequest | null; retained?: RetainedPurchase | null } = {}) {
   const calls: string[] = [];
-  let request = seed.request ?? null;
+  let request: WorldBudgetRequest | null = seed.request ?? null;
   let retained = seed.retained ?? null;
   const ledger: PurchaseLedger = {
     readRequest: async () => request,
     reserve: async (_w, input) => {
       calls.push("reserve");
-      request = { ...input, origin: "reserved", state: "pending", unknownReasons: [], conflicts: [] } as unknown as WorldBudgetRequest;
+      request = row({ ...input, origin: "reserved", state: "pending" });
       return { acquired: true };
     },
-    settle: async (_w, _k, ev) => { calls.push("settle"); request = { ...(request as object), state: "settled", evidence: ev } as WorldBudgetRequest; },
-    markUnknown: async (_w, _k, reason) => { calls.push("markUnknown"); request = { ...(request as object), state: "unknown", unknownReasons: [reason] } as WorldBudgetRequest; },
+    settle: async (_w, _k, evidence) => { calls.push("settle"); request = row({ ...request, state: "settled", evidence }); },
+    markUnknown: async (_w, _k, reason) => { calls.push("markUnknown"); request = row({ ...request, state: "unknown", unknownReasons: [reason] }); },
   };
   const store: RetainedPurchaseStore = {
     put: async (_k, value) => { calls.push("retain"); retained = value; },
@@ -56,7 +63,7 @@ describe("one purchase that survives being interrupted", () => {
 
   it("replays a settled purchase instead of buying it again", async () => {
     const h = harness({
-      request: { state: "settled", evidence: evidence() } as unknown as WorldBudgetRequest,
+      request: row({ state: "settled", evidence: evidence() }),
       retained: { bytes: bytes("the picture we already paid for"), evidence: evidence() },
     });
     let dispatched = false;
@@ -71,7 +78,7 @@ describe("one purchase that survives being interrupted", () => {
     // Crash at B: the provider answered, the bytes and the bill are on disk, and
     // the ledger still says pending. A naive restart buys the same picture twice.
     const h = harness({
-      request: { state: "pending" } as unknown as WorldBudgetRequest,
+      request: row({ state: "pending" }),
       retained: { bytes: bytes("already bought"), evidence: evidence("req-b") },
     });
     let dispatched = false;
@@ -85,7 +92,7 @@ describe("one purchase that survives being interrupted", () => {
   it("refuses to retry a reservation with nothing behind it", async () => {
     // Crash at A: the provider may have been billed and nothing describes it.
     // Only a person can decide to spend again here.
-    const h = harness({ request: { state: "pending" } as unknown as WorldBudgetRequest, retained: null });
+    const h = harness({ request: row({ state: "pending" }), retained: null });
     let dispatched = false;
     const result = await purchaseOnce(h, input(async () => { dispatched = true; return { bytes: bytes("x"), evidence: evidence() }; }));
     expect(dispatched).toBe(false);
@@ -95,7 +102,7 @@ describe("one purchase that survives being interrupted", () => {
   });
 
   it("will not silently re-buy a settled purchase whose result was thrown away", async () => {
-    const h = harness({ request: { state: "settled", evidence: evidence() } as unknown as WorldBudgetRequest, retained: null });
+    const h = harness({ request: row({ state: "settled", evidence: evidence() }), retained: null });
     let dispatched = false;
     const result = await purchaseOnce(h, input(async () => { dispatched = true; return { bytes: bytes("x"), evidence: evidence() }; }));
     expect(dispatched).toBe(false);
