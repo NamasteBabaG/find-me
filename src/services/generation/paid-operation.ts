@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { WorldBudgetError, sameChargeEvidence } from "./world-budget";
 import type { WorldBudgetRequest, WorldChargeEvidence, WorldBudgetScope } from "./world-budget";
 
 /**
@@ -100,8 +101,6 @@ export type PurchaseInput = {
 };
 
 const settledStates = new Set(["settled", "linked"]);
-const sameBill = (a: WorldChargeEvidence, b: WorldChargeEvidence) =>
-  a.providerRequestId === b.providerRequestId && a.usageId === b.usageId && a.providerNamespace === b.providerNamespace;
 
 /** Why this retained record is not this request's, or null when it is. */
 function envelopeMismatch(retained: RetainedPurchase, input: PurchaseInput): string | null {
@@ -114,10 +113,17 @@ function envelopeMismatch(retained: RetainedPurchase, input: PurchaseInput): str
   return null;
 }
 
-/** Why the ledger row is not this request's, or null when it is. */
+/**
+ * Why the ledger row is not this request's, or null when it is.
+ *
+ * The same three immutable fields `WorldBudget.reserve` pins. The reservation
+ * amount is one of them: the ledger rejects a changed one, so accepting it here
+ * would make replay the looser of the two paths.
+ */
 function requestMismatch(existing: WorldBudgetRequest, input: PurchaseInput): string | null {
   if (existing.scope !== input.scope) return `the ledger holds scope ${existing.scope}, this request is ${input.scope}`;
   if (existing.operationFingerprint !== input.operationFingerprint) return "the ledger holds a different operation under this key: the inputs changed";
+  if (existing.reserveMicroUsd !== input.reserveMicroUsd) return `the ledger holds a reservation of ${existing.reserveMicroUsd}, this request asks for ${input.reserveMicroUsd}`;
   return null;
 }
 
@@ -149,10 +155,12 @@ export async function purchaseOnce(
       // calling it free would understate the world.
       return { kind: "unresolved", reason: `${requestKey} was paid for and its result was not kept; re-buying would charge twice` };
     }
-    // The retained receipt is compared with the bill the ledger actually holds,
-    // rather than trusted because it was sitting in the right slot.
-    if (!sameBill(retained.evidence, bill)) {
-      return { kind: "unresolved", reason: `${requestKey}: the retained result carries a different receipt (${retained.evidence.providerRequestId}) than the settled charge (${bill.providerRequestId})` };
+    // Compared with the ledger's OWN equality rule, every field of it. Matching
+    // receipt ids are not proof of the same bill: a retained record can carry
+    // the same three identifiers with a different amount and a different model,
+    // which is a conflict `settle` would refuse.
+    if (!sameChargeEvidence(retained.evidence, bill)) {
+      return { kind: "unresolved", reason: `${requestKey}: the retained result carries a different bill than the settled charge (${retained.evidence.providerRequestId} / ${retained.evidence.amountMicroUsd}µ vs ${bill.providerRequestId} / ${bill.amountMicroUsd}µ)` };
     }
     return { kind: "bought", bytes: retained.bytes, evidence: retained.evidence, replayed: true, settledFromRetained: false };
   }
@@ -161,12 +169,19 @@ export async function purchaseOnce(
     // A reservation with no settlement.
     if (retained) {
       // The call got through and only the last write was lost: settle from what
-      // is on disk rather than paying again.
-      await deps.ledger.settle(worldId, requestKey, retained.evidence);
-      return { kind: "bought", bytes: retained.bytes, evidence: retained.evidence, replayed: true, settledFromRetained: true };
+      // is on disk rather than paying again. This reconciles an `unknown` row
+      // too - that is what the retained bill is for.
+      return settleFromRetained(deps, worldId, requestKey, retained);
     }
-    // Nothing retained. This is EITHER a worker still waiting on its provider OR
-    // a dispatch that was lost - and from here the two look identical, so it
+    // Already declared abandoned by whoever owned the lease. Reporting that as
+    // "still in flight" leaves a caller waiting forever for work somebody has
+    // already given up on, and the world stays held either way.
+    if (existing.state === "unknown") {
+      const why = existing.unknownReasons.length ? existing.unknownReasons.join("; ") : "no reason recorded";
+      return { kind: "unresolved", reason: `${requestKey} was given up on and nothing was retained: ${why}` };
+    }
+    // Nothing retained, still pending. EITHER a worker waiting on its provider
+    // OR a dispatch that was lost - and from here the two look identical, so it
     // says so instead of guessing. Marking it unknown on a guess can hold an
     // entire world while a healthy call is still in flight.
     return { kind: "in-progress", reason: `${requestKey} is reserved with nothing retained yet: either still in flight, or a dispatch that was lost` };
@@ -190,13 +205,40 @@ export async function purchaseOnce(
   // Bytes, bill and the identity of the operation, together, BEFORE the ledger
   // is settled. After this line an interruption costs a restart, not a second
   // purchase - and the record can prove whose purchase it was.
-  await deps.store.put(worldId, requestKey, {
+  const record: RetainedPurchase = {
     version: RETAINED_PURCHASE_VERSION, worldId, requestKey, scope: input.scope,
     operationFingerprint: input.operationFingerprint,
     payloadSha256: retainedPayloadDigest(bought.bytes), evidence: bought.evidence, bytes: bought.bytes,
-  });
-  await deps.ledger.settle(worldId, requestKey, bought.evidence);
-  return { kind: "bought", bytes: bought.bytes, evidence: bought.evidence, replayed: false, settledFromRetained: false };
+  };
+  await deps.store.put(worldId, requestKey, record);
+  return settleFromRetained(deps, worldId, requestKey, record, false);
+}
+
+/**
+ * Settle from a retained record, and tell a bill the ledger will never accept
+ * apart from a write that merely did not land.
+ *
+ * Evidence the ledger calls invalid is permanent: retrying it changes nothing,
+ * and leaving the row `pending` holds the reservation open forever while the
+ * result sits on disk unusable. It becomes an unknown charge, which is what it
+ * is. A transient failure keeps the row as it was, so the retained bill can
+ * settle it on the next pass.
+ */
+async function settleFromRetained(
+  deps: { ledger: PurchaseLedger }, worldId: string, requestKey: string,
+  retained: RetainedPurchase, replayed = true,
+): Promise<PurchaseOutcome> {
+  try {
+    await deps.ledger.settle(worldId, requestKey, retained.evidence);
+  } catch (error) {
+    if (error instanceof WorldBudgetError && error.code === "invalid_input") {
+      const reason = `${requestKey}: the provider's bill cannot be recorded (${error.message}); the result is retained and the charge is unknown`;
+      await deps.ledger.markUnknown(worldId, requestKey, reason);
+      return { kind: "unresolved", reason };
+    }
+    throw error;
+  }
+  return { kind: "bought", bytes: retained.bytes, evidence: retained.evidence, replayed, settledFromRetained: replayed };
 }
 
 /**

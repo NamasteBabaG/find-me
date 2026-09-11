@@ -155,7 +155,17 @@ function evidence(value: WorldChargeEvidence) {
   json(value.rawUsage);
 }
 function chargeIdentity(value: WorldChargeEvidence) { return JSON.stringify([value.providerNamespace, value.providerRequestId]); }
-function sameEvidence(a: WorldChargeEvidence, b: WorldChargeEvidence) { return json(a as unknown as BudgetJson) === json(b as unknown as BudgetJson); }
+/**
+ * The ONE rule for "is this the same charge": every field, compared canonically
+ * so key order cannot change the answer.
+ *
+ * Exported because a second, looser definition elsewhere is the same bug twice.
+ * A replay that compared only the receipt ids would accept a retained bill
+ * carrying a different amount and a different model - a conflict this ledger
+ * already refuses at `settle`.
+ */
+export function sameChargeEvidence(a: WorldChargeEvidence, b: WorldChargeEvidence) { return json(a as unknown as BudgetJson) === json(b as unknown as BudgetJson); }
+const sameEvidence = sameChargeEvidence;
 function snapshotWith(snapshot: WorldBudgetSnapshot, request: WorldBudgetRequest): WorldBudgetSnapshot {
   return { ...snapshot, requests: [...snapshot.requests.filter(item => item.requestKey !== request.requestKey), request] };
 }
