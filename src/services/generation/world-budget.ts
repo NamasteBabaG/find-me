@@ -154,6 +154,17 @@ function evidence(value: WorldChargeEvidence) {
   if (value.rawUsage === null || typeof value.rawUsage !== "object" || Array.isArray(value.rawUsage) || Object.keys(value.rawUsage).length === 0) fail("invalid_input", "Nonempty raw usage evidence is required to settle; otherwise mark unknown");
   json(value.rawUsage);
 }
+/**
+ * The ledger's own rule for "could this bill ever be recorded", exported for the
+ * same reason `sameChargeEvidence` is: a second, looser copy elsewhere is the
+ * same bug twice.
+ *
+ * Anywhere that KEEPS a bill to settle later has to refuse now what settlement
+ * would refuse then - otherwise the refusal arrives after the money has moved,
+ * which is exactly what a missing cost basis did to every judgement on the
+ * local-patch route.
+ */
+export function validateChargeEvidence(value: WorldChargeEvidence): void { evidence(value); }
 function chargeIdentity(value: WorldChargeEvidence) { return JSON.stringify([value.providerNamespace, value.providerRequestId]); }
 /**
  * The ONE rule for "is this the same charge": every field, compared canonically
