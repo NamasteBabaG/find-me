@@ -121,7 +121,7 @@ function demand(ok: unknown, message: string): asserts ok { if (!ok) throw new E
  * holds one, which is the failure that would matter.
  */
 async function persistHidePicture(c: Container, input: {
-  readonly id: string; readonly ownerId: string | null; readonly buffer: Buffer;
+  readonly id: string; readonly gameId: string; readonly ownerId: string | null; readonly buffer: Buffer;
   readonly type: "TARGET_SPRITE" | "REJECTED_PATCH"; readonly visibility: "GAME" | "PRIVATE";
   readonly width: number; readonly height: number; readonly costCents: number;
 }) {
@@ -136,7 +136,7 @@ async function persistHidePicture(c: Container, input: {
   return c.db.asset.create({ data: {
     id: input.id, ownerId: input.ownerId, type: input.type, visibility: input.visibility,
     storagePath: key, mimeType: "image/png", width: input.width, height: input.height,
-    bytes: input.buffer.byteLength, provider: LOCAL_PATCH_PROVIDER, providerRequestId: null,
+    bytes: input.buffer.byteLength, provider: LOCAL_PATCH_PROVIDER, providerRequestId: input.gameId,
     costCents: Math.round(input.costCents),
   } });
 }
@@ -300,7 +300,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     // failing is unreadable without the pictures that failed.
     const crop = cropOf(hide);
     const rejected = attemptResult.shippingPng && attemptResult.judgedSha256
-      ? await persistHidePicture(c, { id: pictureId(gameId, hide.id, attemptResult.judgedSha256), ownerId: game.ownerId,
+      ? await persistHidePicture(c, { id: pictureId(gameId, hide.id, attemptResult.judgedSha256), gameId, ownerId: game.ownerId,
         buffer: attemptResult.shippingPng, type: "REJECTED_PATCH", visibility: "PRIVATE",
         width: crop.width, height: crop.height, costCents: 0 })
       : null;
@@ -345,7 +345,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
       await tx.asset.create({ data: {
         id: assetId, ownerId: game.ownerId, type: "TARGET_SPRITE", visibility: "GAME",
         storagePath: key, mimeType: "image/png", width: crop.width, height: crop.height,
-        bytes: shipping.byteLength, provider: LOCAL_PATCH_PROVIDER,
+        bytes: shipping.byteLength, provider: LOCAL_PATCH_PROVIDER, providerRequestId: gameId,
         costCents: Math.round(attemptResult.renderCents),
       } });
     }

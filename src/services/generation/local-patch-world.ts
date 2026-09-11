@@ -4,7 +4,7 @@ import { WORLD_LOCAL_PATCH_HIDES, type LocalPatchBoard, type LocalPatchHide } fr
 import { GenerationPaused, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { retainedPurchaseKeysFor } from "../../infra/db/prisma-retained-purchase-store";
 import {
-  LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_VARIANT, nextLocalPatchAttempt, runLocalPatchHide,
+  LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, nextLocalPatchAttempt, runLocalPatchHide,
   type LocalPatchHideDeps, type LocalPatchHideOutcome,
 } from "./local-patch-hide";
 
@@ -241,9 +241,19 @@ export async function localPatchPrivateInventory(c: Container, gameId: string): 
       if (Array.isArray(parsed)) for (const id of parsed) if (typeof id === "string") assetIds.add(id);
     } catch { /* an unreadable pointer is reported by the asset scan, not swallowed here */ }
   }
-  const assets = assetIds.size
+  // Also everything this engine wrote FOR this game, whatever any row says.
+  // A picture kept by a worker that then lost its claim is never named by a
+  // row - the write that would have named it is the one the fence refused -
+  // and a child nobody can find is exactly what deletion must not leave.
+  const written = await c.db.asset.findMany({
+    where: { provider: LOCAL_PATCH_PROVIDER, providerRequestId: gameId },
+    select: { id: true, storagePath: true },
+  });
+  for (const asset of written) assetIds.add(asset.id);
+  const named = assetIds.size
     ? await c.db.asset.findMany({ where: { id: { in: [...assetIds] } }, select: { id: true, storagePath: true } })
     : [];
+  const assets = [...new Map([...written, ...named].map(a => [a.id, a])).values()];
 
   const worldId = boardWizardWorldId(gameId);
   const requestKeys: string[] = [];

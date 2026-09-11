@@ -224,6 +224,15 @@ describe("a world of hides, one slice at a time", () => {
     expect(inventory.assetIds).toContain(sprite.id);
     expect(inventory.storagePaths).toContain(sprite.storagePath);
 
+    // A picture kept by a worker that then lost its claim is named by no row.
+    // The inventory has to find it anyway.
+    const orphan = await db.asset.create({ data: { id: "ast_lp_orphan", ownerId: `usr-${gameId}`, type: "REJECTED_PATCH",
+      visibility: "PRIVATE", storagePath: "private/ast_lp_orphan.png", mimeType: "image/png", bytes: 1,
+      provider: "local-patch", providerRequestId: gameId } });
+    const withOrphan = await localPatchPrivateInventory(c, gameId);
+    expect(withOrphan.assetIds).toContain(orphan.id);
+    expect(withOrphan.storagePaths).toContain(orphan.storagePath);
+
     // Every retained purchase actually on disk is one this list would delete.
     const retained = await db.fileBlob.findMany({ where: { key: { startsWith: "private:retained-purchase:" } }, select: { key: true } });
     expect(retained.length).toBeGreaterThan(0);
