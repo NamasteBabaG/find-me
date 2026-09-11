@@ -140,6 +140,14 @@ function json(value: BudgetJson, seen = new Set<object>()): string {
   if (typeof value === "number" && Number.isFinite(value)) return JSON.stringify(value);
   if (typeof value !== "object" || value === null || seen.has(value)) return fail("invalid_input", "Usage evidence must be finite, acyclic JSON");
   if (!Array.isArray(value) && Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) return fail("invalid_input", "Usage evidence must be plain JSON");
+  // An own `__proto__` key survives JSON.parse and then does NOT survive being
+  // rebuilt by anything that assigns keys - a schema parser, an object spread -
+  // so the same receipt canonicalises differently on either side of a write.
+  // It is also a prototype-pollution shape no provider returns. Refused, rather
+  // than quietly settling a bill that is not the one that arrived.
+  if (!Array.isArray(value) && ["__proto__", "constructor", "prototype"].some(key => Object.hasOwn(value, key))) {
+    return fail("invalid_input", "Usage evidence must not carry prototype keys; it would not survive being stored and read back");
+  }
   seen.add(value);
   const result = Array.isArray(value)
     ? `[${value.map(item => json(item, seen)).join(",")}]`
@@ -165,6 +173,34 @@ function evidence(value: WorldChargeEvidence) {
  * local-patch route.
  */
 export function validateChargeEvidence(value: WorldChargeEvidence): void { evidence(value); }
+
+/**
+ * The receipt as this ledger will hold it: exactly the declared fields, with
+ * usage put through the canonical form both sides read it back through.
+ *
+ * A receipt is whatever an adapter hands over, and that has twice been a wider
+ * object than the contract - an extra `quality`, a usage map with keys that do
+ * not survive serialisation. The ledger ignored the extras and the durable
+ * store refused them, so one paid answer was lost and another settled a bill
+ * that was not the one that arrived. Canonicalising ONCE, before anything is
+ * retained or settled, is what makes those two sides agree by construction.
+ *
+ * Nothing is invented and nothing outside the contract is kept: an adapter that
+ * wants to record its own settings records them in its own diagnostics, not in
+ * the bill.
+ */
+export function canonicalChargeEvidence(value: WorldChargeEvidence): WorldChargeEvidence {
+  evidence(value);
+  return {
+    providerNamespace: value.providerNamespace,
+    providerRequestId: value.providerRequestId,
+    usageId: value.usageId,
+    rawUsage: JSON.parse(json(value.rawUsage)) as BudgetJson,
+    model: value.model,
+    amountMicroUsd: value.amountMicroUsd,
+    costBasis: value.costBasis,
+  };
+}
 function chargeIdentity(value: WorldChargeEvidence) { return JSON.stringify([value.providerNamespace, value.providerRequestId]); }
 /**
  * The ONE rule for "is this the same charge": every field, compared canonically

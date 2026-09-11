@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { WorldBudgetError, sameChargeEvidence, validateChargeEvidence } from "./world-budget";
+import { WorldBudgetError, canonicalChargeEvidence, sameChargeEvidence } from "./world-budget";
 import type { WorldBudgetRequest, WorldChargeEvidence, WorldBudgetScope } from "./world-budget";
 
 /**
@@ -71,6 +71,24 @@ export const retainedPayloadDigest = (bytes: Buffer) => createHash("sha256").upd
 export interface RetainedPurchaseStore {
   put(worldId: string, requestKey: string, value: RetainedPurchase): Promise<void>;
   get(worldId: string, requestKey: string): Promise<RetainedPurchase | null>;
+}
+
+/**
+ * A store saying no, and whether saying it again would help.
+ *
+ * `permanent` means the RECORD is unusable and no retry changes that - a bill
+ * this store cannot hold, a payload too large. Everything else (a database that
+ * did not answer, a concurrent writer) is transient and must not be mistaken for
+ * it: treating a blip as permanent would hold a world over nothing.
+ *
+ * Declared here, beside the interface, so a caller can tell the two apart
+ * without knowing which store it is talking to.
+ */
+export class RetainedPurchaseRefused extends Error {
+  constructor(message: string, readonly permanent: boolean) {
+    super(message);
+    this.name = "RetainedPurchaseRefused";
+  }
 }
 
 /** The narrow slice of the world budget a purchase needs. */
@@ -266,17 +284,31 @@ export async function purchaseOnce(
   // returning a malformed receipt threw away a render that had already been
   // paid for and left the request pending with nothing to reconcile from.
   //
-  // Asked here, against the ledger's own rule, while there is still somewhere
-  // to put the answer: an unusable bill becomes an unpriceable purchase, which
-  // is exactly what it is.
-  try { validateChargeEvidence(bought.evidence); }
+  // Canonicalised here, against the ledger's own rule, while there is still
+  // somewhere to put the answer. ONE receipt goes to both the store and the
+  // ledger, so the two cannot disagree about what was bought: an adapter
+  // handing over a wider object than the contract had its answer kept by one
+  // side and refused by the other, and a usage map with a prototype key was
+  // silently altered on its way to disk and then settled in its altered form.
+  let receipt: WorldChargeEvidence;
+  try { receipt = canonicalChargeEvidence(bought.evidence); }
   catch (error) {
     if (!(error instanceof WorldBudgetError)) throw error;
     return unpriceable(`the provider's bill cannot be recorded (${error.message})`);
   }
 
-  const record = { ...base, evidence: bought.evidence, unknownReason: null };
-  await deps.store.put(worldId, requestKey, record);
+  const record = { ...base, evidence: receipt, unknownReason: null };
+  try {
+    await deps.store.put(worldId, requestKey, record);
+  } catch (error) {
+    // A store that will never hold this record must not be the reason a paid
+    // answer disappears. Permanent refusals become an unpriceable purchase -
+    // the bytes kept, the charge held for a person. A transient one is raised,
+    // because retrying it IS the right answer and holding a world over a
+    // database blip is not.
+    if (!(error instanceof RetainedPurchaseRefused) || !error.permanent) throw error;
+    return unpriceable(`the bill was refused by the store that has to keep it (${error.message})`);
+  }
   return settleFromRetained(deps, worldId, requestKey, record, false);
 }
 

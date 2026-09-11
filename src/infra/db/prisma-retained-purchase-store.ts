@@ -2,10 +2,10 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import {
-  RETAINED_PURCHASE_VERSION, retainedPayloadDigest,
+  RETAINED_PURCHASE_VERSION, RetainedPurchaseRefused, retainedPayloadDigest,
   type RetainedPurchase, type RetainedPurchaseStore,
 } from "../../services/generation/paid-operation";
-import { WORLD_BUDGET_SCOPES, WorldBudgetError, validateChargeEvidence } from "../../services/generation/world-budget";
+import { WORLD_BUDGET_SCOPES, WorldBudgetError, sameChargeEvidence, validateChargeEvidence } from "../../services/generation/world-budget";
 import type { WorldChargeEvidence } from "../../services/generation/world-budget";
 
 /**
@@ -52,9 +52,17 @@ export const RETAINED_PURCHASE_LIMITS = Object.freeze({
   unknownReasonChars: 2000,
 });
 
-export class RetainedPurchaseError extends Error {
+/**
+ * A refusal, and whether it is worth trying again.
+ *
+ * The three that describe the RECORD are permanent: no retry makes an unusable
+ * bill usable. A read that did not happen and a concurrent writer are not, and
+ * a caller that mistook one for the other would hold a world over a blip.
+ */
+const PERMANENT = new Set(["invalid-scope", "invalid-record", "oversized", "corrupt"]);
+export class RetainedPurchaseError extends RetainedPurchaseRefused {
   constructor(readonly code: "invalid-scope" | "invalid-record" | "oversized" | "corrupt" | "conflict" | "storage-unavailable", message: string) {
-    super(`RETAINED_PURCHASE: ${message}`);
+    super(`RETAINED_PURCHASE: ${message}`, PERMANENT.has(code));
     this.name = "RetainedPurchaseError";
   }
 }
@@ -187,8 +195,19 @@ export class PrismaRetainedPurchaseStore implements RetainedPurchaseStore {
     let roundTrip: RetainedPurchase;
     try { roundTrip = decode(worldId, requestKey, bytes); }
     catch (error) { fail("invalid-record", `this record would not survive being read back: ${error instanceof Error ? error.message : String(error)}`); }
+    const sameBill = roundTrip.evidence === null && checked.evidence === null
+      || !!roundTrip.evidence && !!checked.evidence && sameChargeEvidence(roundTrip.evidence, checked.evidence);
     if (!roundTrip.bytes.equals(checked.bytes) || roundTrip.unknownReason !== checked.unknownReason
-      || roundTrip.operationFingerprint !== checked.operationFingerprint) {
+      || roundTrip.operationFingerprint !== checked.operationFingerprint || !sameBill) {
+      // The BILL as well as the bytes. Comparing everything but the receipt let
+      // a usage map be altered on its way to disk and then settled in its
+      // altered form, which is a different charge than the one that arrived.
+      //
+      // Honestly: no input can reach this line today. Canonicalisation at the
+      // purchase boundary and the strict schema above close every route I can
+      // construct, so this is a belt and there is no test that tightens it. It
+      // stays because the next field added to a receipt should not be able to
+      // reopen the hole quietly.
       fail("invalid-record", "this record would not come back the way it went in");
     }
     const existing = await this.read(worldId, requestKey);

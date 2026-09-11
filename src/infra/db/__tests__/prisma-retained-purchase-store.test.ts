@@ -11,7 +11,7 @@ import {
   RETAINED_PURCHASE_VERSION, purchaseOnce, retainedPayloadDigest,
   type RetainedPurchase,
 } from "../../../services/generation/paid-operation";
-import { WorldBudget, type WorldChargeEvidence } from "../../../services/generation/world-budget";
+import { WorldBudget, sameChargeEvidence, type WorldChargeEvidence } from "../../../services/generation/world-budget";
 import { CasWorldBudgetRepository } from "../world-budget-repository";
 import { PrismaWorldBudgetStore } from "../prisma-world-budget-store";
 
@@ -226,6 +226,73 @@ describe("retained purchases on disk", () => {
       expect(again.kind, name).toBe("unresolved");
     }
   }, 120_000);
+
+  it("keeps a receipt the ledger accepts and this store would not have", async () => {
+    // An adapter handing over a WIDER object than the contract - an extra
+    // `quality` - passed the ledger and failed the store, so one side kept the
+    // answer and the other refused it and the paid render was lost. One
+    // canonical receipt goes to both now.
+    const w = world();
+    const deps = { ledger: new WorldBudget(new CasWorldBudgetRepository(new PrismaWorldBudgetStore(db))), store: new PrismaRetainedPurchaseStore(db) };
+    const request = { worldId: w, requestKey: "hide:render:1", scope: "image" as const,
+      operationFingerprint: "e".repeat(64), reserveMicroUsd: 120_000 };
+    let calls = 0;
+    const wider = { ...bill("req-wide"), quality: "medium" } as unknown as WorldChargeEvidence;
+    const outcome = await purchaseOnce(deps, { ...request, buy: async () => { calls++; return { bytes: Buffer.from("the render"), evidence: wider }; } });
+    expect(calls).toBe(1);
+    expect(outcome.kind).toBe("bought");
+
+    // Kept and settled as the contract, not as the wider object.
+    const retained = await deps.store.get(w, request.requestKey);
+    expect(Object.keys(retained!.evidence!).sort()).toEqual(
+      ["amountMicroUsd", "costBasis", "model", "providerNamespace", "providerRequestId", "rawUsage", "usageId"]);
+    const row = await deps.ledger.readRequest(w, request.requestKey);
+    expect(row?.state).toBe("settled");
+    expect(sameChargeEvidence((row as { evidence: WorldChargeEvidence }).evidence, retained!.evidence!)).toBe(true);
+
+    // And a restart replays it, which is the whole point of keeping it.
+    const again = await purchaseOnce(deps, { ...request, buy: async () => { calls++; return { bytes: Buffer.from("x"), evidence: bill("req-2") }; } });
+    expect(calls).toBe(1);
+    expect(again.kind).toBe("bought");
+  }, 120_000);
+
+  it("refuses usage that would not survive being stored, and keeps the answer anyway", async () => {
+    // An own `__proto__` key survives JSON.parse and does not survive being
+    // rebuilt by a schema parser, so the bill on disk was not the bill that
+    // arrived - and it was then settled in its altered form.
+    const w = world();
+    const deps = { ledger: new WorldBudget(new CasWorldBudgetRepository(new PrismaWorldBudgetStore(db))), store: new PrismaRetainedPurchaseStore(db) };
+    const request = { worldId: w, requestKey: "hide:render:1", scope: "image" as const,
+      operationFingerprint: "f".repeat(64), reserveMicroUsd: 120_000 };
+    const rawUsage = JSON.parse('{"total":1,"__proto__":{"tokens":4}}') as Record<string, unknown>;
+    expect(Object.hasOwn(rawUsage, "__proto__")).toBe(true);
+    let calls = 0;
+    const outcome = await purchaseOnce(deps, {
+      ...request,
+      buy: async () => { calls++; return { bytes: Buffer.from("the render"), evidence: { ...bill("req-proto"), rawUsage } as unknown as WorldChargeEvidence }; },
+    });
+    expect(calls).toBe(1);
+    // Refused as a BILL, never as a reason to lose what was paid for.
+    expect(outcome.kind).toBe("unresolved");
+    expect((outcome as { bytes?: Buffer }).bytes?.toString()).toBe("the render");
+    const retained = await deps.store.get(w, request.requestKey);
+    expect(retained?.evidence).toBeNull();
+    expect(retained?.unknownReason).toMatch(/prototype keys/);
+    expect((await deps.ledger.readRequest(w, request.requestKey))?.state).toBe("unknown");
+    expect((await deps.ledger.audit(w)).held).toBe(true);
+  }, 120_000);
+
+  it("refuses a receipt wider than the contract", async () => {
+    // Straight to the store, without the boundary that canonicalises first: an
+    // adapter object carrying more than the seven declared fields is not a bill
+    // this store can hold, and saying so here is what makes the boundary safe
+    // to rely on.
+    const w = world();
+    const store = new PrismaRetainedPurchaseStore(db);
+    const wider = { ...bill("req-wide"), quality: "medium" } as unknown as WorldChargeEvidence;
+    await expect(store.put(w, "hide:judge:1", record(w, "hide:judge:1", { scope: "judge", evidence: wider })))
+      .rejects.toThrow(/not a bill this ledger records|would not come back/);
+  }, 60_000);
 
   it("reads back every reason it accepted, however wordy", async () => {
     // The write required a nonblank reason and the read capped it at two
