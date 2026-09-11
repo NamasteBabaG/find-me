@@ -160,21 +160,21 @@ prints which hides are in the game because a person said so.
 
 ## Binding a verdict to its picture
 
-A verdict on its own is not provenance.  emits
- - the crop the attempt would ship, taken from the composite the
-judge saw - so a verdict is bound to its picture at the moment it is judged, a
+A verdict on its own is not provenance. `renderLocalPatchHide` emits
+`judgedSha256` — the crop the attempt would ship, taken from the composite the
+judge saw — so a verdict is bound to its picture at the moment it is judged, a
 refusal included.
 
 The rounds that judged the existing world recorded no such hash, so assembly
-validates a frozen  and never writes it as a side effect:
+validates a frozen `judgements.json` and never writes it as a side effect:
 
-- **missing** -> assembly stops before copying an image or writing a byte;
-- **hash mismatch** -> assembly stops and names the change;
--  establishes the binding once, deliberately, and  is the
-  only way past an existing one.
+- **missing** → assembly stops before copying an image or writing a byte;
+- **hash mismatch** → assembly stops and names the change;
+- `--mint` establishes the binding once, deliberately, and `--remint` is the only
+  way past an existing one.
 
 Both refusals are proved rather than asserted, by
- and by
+`work/board-conditioned-engine-20260909/prove-binding-required.ts` and by
 swapping a judged picture and re-running.
 
 Why it matters: pairing a historical verdict with a hash taken from whatever
