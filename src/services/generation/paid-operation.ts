@@ -194,9 +194,19 @@ export async function purchaseOnce(
       // is on disk rather than paying again. This reconciles an `unknown` row
       // too - that is what the retained bill is for.
       if (retained.evidence) return settleFromRetained(deps, worldId, requestKey, { ...retained, evidence: retained.evidence });
-      // Answered, kept, and still unpriceable. Nothing to settle and nothing to
-      // buy: a person reconciles it, and the picture is right here.
-      return { kind: "unresolved", reason: `${requestKey}: the result is kept but its charge cannot be stated (${retained.unknownReason ?? "no reason recorded"})`, bytes: retained.bytes };
+      // Answered, kept, and unpriceable. Nothing to settle and nothing to buy -
+      // but the hold has to be FINISHED, not merely reported.
+      //
+      // Retaining the answer and marking the charge unknown are two writes, and
+      // dying between them left the row `pending` with an envelope that already
+      // proves the charge cannot be stated. A restart saw the problem, said so,
+      // and returned - leaving the world free to authorise more purchases on the
+      // strength of a hold nobody had finished putting on. Completing it here is
+      // idempotent: the row is already unknown on any later pass.
+      const why = retained.unknownReason ?? "no reason recorded";
+      const reason = `${requestKey}: the result is kept but its charge cannot be stated (${why})`;
+      if (existing.state !== "unknown") await deps.ledger.markUnknown(worldId, requestKey, reason);
+      return { kind: "unresolved", reason, bytes: retained.bytes };
     }
     // Already declared abandoned by whoever owned the lease. Reporting that as
     // "still in flight" leaves a caller waiting forever for work somebody has
