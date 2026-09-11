@@ -95,7 +95,7 @@ export type LocalPatchHideOutcome = {
 export type LocalPatchHideDeps = Pick<LocalPatchRenderDeps, "render" | "judge" | "renderPolicySha256"> & {
   /**
    * The board's own art, by the path the placement declares. Injected because
-   * four of the nine boards are still authored out of an untracked `work/`
+   * FIVE of the nine boards are still authored out of an untracked `work/`
    * folder that a deployed build does not have - a fact this route has to be
    * able to state plainly rather than discover at runtime.
    */
@@ -113,14 +113,20 @@ export type LocalPatchHideDeps = Pick<LocalPatchRenderDeps, "render" | "judge" |
 function demand(ok: unknown, message: string): asserts ok { if (!ok) throw new Error(`LOCAL_PATCH_HIDE: ${message}`); }
 
 /**
- * One picture, one address.
+ * One picture, one address, and never bytes that nothing names.
  *
- * Keyed on the bytes the judge actually saw, so a re-run after a lost write
- * lands on the same row instead of leaving a second copy of the same child
- * behind - and a DIFFERENT render can never arrive at an address that already
- * holds one, which is the failure that would matter.
+ * The address is keyed on the bytes the judge actually saw, so a re-run after a
+ * lost write lands on the same row instead of leaving a second copy of the same
+ * child behind - and a DIFFERENT render can never arrive at an address that
+ * already holds one, which is the failure that would matter.
+ *
+ * The ROW is written first and the bytes second, which is the opposite of the
+ * obvious order, and the reason is deletion. A row with no bytes behind it is
+ * litter the next pass repairs and nothing renders; bytes with no row are a
+ * picture of a child nobody can find, and this product promises it can find
+ * every one of them.
  */
-async function persistHidePicture(c: Container, input: {
+async function keepHidePicture(c: Container, input: {
   readonly id: string; readonly gameId: string; readonly ownerId: string | null; readonly buffer: Buffer;
   readonly type: "TARGET_SPRITE" | "REJECTED_PATCH"; readonly visibility: "GAME" | "PRIVATE";
   readonly width: number; readonly height: number; readonly costCents: number;
@@ -130,15 +136,18 @@ async function persistHidePicture(c: Container, input: {
   if (existing) {
     demand(existing.storagePath === key && existing.status === "READY" && !existing.deletedAt && existing.type === input.type,
       `${input.id} already exists and is not the picture this hide kept`);
-    return existing;
+  } else {
+    await c.db.asset.create({ data: {
+      id: input.id, ownerId: input.ownerId, type: input.type, visibility: input.visibility,
+      storagePath: key, mimeType: "image/png", width: input.width, height: input.height,
+      bytes: input.buffer.byteLength, provider: LOCAL_PATCH_PROVIDER, providerRequestId: input.gameId,
+      costCents: Math.round(input.costCents),
+    } });
   }
-  await c.storage.put(key, input.buffer, "image/png");
-  return c.db.asset.create({ data: {
-    id: input.id, ownerId: input.ownerId, type: input.type, visibility: input.visibility,
-    storagePath: key, mimeType: "image/png", width: input.width, height: input.height,
-    bytes: input.buffer.byteLength, provider: LOCAL_PATCH_PROVIDER, providerRequestId: input.gameId,
-    costCents: Math.round(input.costCents),
-  } });
+  // Catches up a row whose bytes never landed - the cost of writing the row
+  // first, paid here rather than left for a player to discover.
+  if (!(await c.storage.exists(key))) await c.storage.put(key, input.buffer, "image/png");
+  return existing ?? await c.db.asset.findUniqueOrThrow({ where: { id: input.id } });
 }
 
 /**
@@ -300,7 +309,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     // failing is unreadable without the pictures that failed.
     const crop = cropOf(hide);
     const rejected = attemptResult.shippingPng && attemptResult.judgedSha256
-      ? await persistHidePicture(c, { id: pictureId(gameId, hide.id, attemptResult.judgedSha256), gameId, ownerId: game.ownerId,
+      ? await keepHidePicture(c, { id: pictureId(gameId, hide.id, attemptResult.judgedSha256), gameId, ownerId: game.ownerId,
         buffer: attemptResult.shippingPng, type: "REJECTED_PATCH", visibility: "PRIVATE",
         width: crop.width, height: crop.height, costCents: 0 })
       : null;
@@ -327,28 +336,24 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   const crop = cropOf(hide);
   const assetId = pictureId(gameId, hide.id, attemptResult.judgedSha256);
   const key = `game/${assetId}.png`;
-  const already = await c.db.asset.findUnique({ where: { id: assetId } });
-  if (already) {
-    demand(already.storagePath === key && already.status === "READY" && !already.deletedAt && already.type === "TARGET_SPRITE",
-      `${assetId} already exists and is not the picture this hide kept`);
-  } else {
-    // The bytes go down first and outside the transaction: a blob nobody
-    // references is litter, and a row pointing at bytes that are not there is a
-    // game with a hole in it.
-    await c.storage.put(key, shipping, "image/png");
-  }
+  // THE ROW BEFORE THE BYTES, and both before the fence.
+  //
+  // The fence exists to stop a worker that lost its claim from PUBLISHING a
+  // child - from making one part of a playable game. It cannot stop the bytes
+  // existing, because they were bought and written before it is ever asked.
+  // Writing the blob first and the row inside the fence therefore produced
+  // exactly the thing that must never exist: a picture of a child on disk that
+  // nothing names, so deletion cannot find it. The row is what makes bytes
+  // findable, so the row goes first and outside the fence, deliberately.
+  await keepHidePicture(c, {
+    id: assetId, gameId, ownerId: game.ownerId, buffer: shipping,
+    type: "TARGET_SPRITE", visibility: "GAME",
+    width: crop.width, height: crop.height, costCents: attemptResult.renderCents,
+  });
 
   await c.db.$transaction(async tx => {
     // Still ours? Everything below this line puts a child into a playable game.
     await deps.fence?.(tx);
-    if (!already) {
-      await tx.asset.create({ data: {
-        id: assetId, ownerId: game.ownerId, type: "TARGET_SPRITE", visibility: "GAME",
-        storagePath: key, mimeType: "image/png", width: crop.width, height: crop.height,
-        bytes: shipping.byteLength, provider: LOCAL_PATCH_PROVIDER, providerRequestId: gameId,
-        costCents: Math.round(attemptResult.renderCents),
-      } });
-    }
     await tx.targetVariantAsset.update({ where: { id: row.id }, data: {
       assetId,
       rectJson: JSON.stringify(measured.geometry.rect),

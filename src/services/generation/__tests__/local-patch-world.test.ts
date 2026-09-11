@@ -152,6 +152,14 @@ describe("a world of hides, one slice at a time", () => {
     expect(await done(gameId)).toBe(0);
     expect(await db.targetVariantAsset.count({ where: { assetId: { not: null } } })).toBe(0);
 
+    // The render was bought and written before the fence was ever asked, so the
+    // bytes exist. What must be true is that deletion can still find them: the
+    // fence stops a child being PUBLISHED, it cannot stop one being on disk.
+    const stranded = await db.fileBlob.findMany({ where: { key: { startsWith: "game/" } }, select: { key: true } });
+    expect(stranded.length).toBeGreaterThan(0);
+    const orphans = await localPatchPrivateInventory(c, gameId);
+    for (const blob of stranded) expect(orphans.storagePaths).toContain(blob.key);
+
     // And the render it paid for is not bought again by whoever comes next.
     await db.generationJob.update({ where: { id: `job_${gameId}` }, data: { status: "QUEUED" } });
     const next = worker();
@@ -160,6 +168,56 @@ describe("a world of hides, one slice at a time", () => {
     expect(result.outcomes[0]?.state).toBe("generated");
     expect(result.outcomes[0]?.replayed).toBe(true);
   }, 240_000);
+
+  it("does not believe it won a claim it lost between reading and taking", async () => {
+    // The claim increments whatever the database holds, but the fencing token
+    // was derived from the earlier read. A worker that claimed and released in
+    // between left this one holding a number that matched nothing: every fence
+    // failed and its own release matched no row, so the job sat occupied for a
+    // whole lease. Losing the race is fine; believing you won it is not.
+    const { gameId } = await seed();
+    type JobReader = { findUnique: (args: unknown) => Promise<{ id: string } | null> };
+    const jobs = db.generationJob as unknown as JobReader;
+    const readJob = jobs.findUnique.bind(jobs);
+    let raced = false;
+    jobs.findUnique = async (args: unknown) => {
+      const row = await readJob(args);
+      if (!raced && row) {
+        raced = true;
+        // Somebody else takes it and gives it straight back.
+        await db.generationJob.update({ where: { id: row.id }, data: { attempts: { increment: 1 }, status: "QUEUED" } });
+      }
+      return row;
+    };
+    try {
+      const w = worker();
+      const result = await runLocalPatchWorldSlice(c, w.deps, gameId);
+      expect(raced).toBe(true);
+      expect(result.claimed).toBe(false);
+      expect(result.pending).toBe(true);
+      expect(w.dispatched).toEqual([]);
+      // And it did not leave the job running under a number nobody holds.
+      expect((await jobOf(gameId)).status).toBe("QUEUED");
+    } finally {
+      jobs.findUnique = readJob;
+    }
+  }, 180_000);
+
+  it("repairs a picture whose row landed and whose bytes did not", async () => {
+    // The row is written before the bytes so that nothing can exist unnamed.
+    // The cost is a row that can outlive its bytes, and it is paid here.
+    const { gameId } = await seed();
+    await runLocalPatchWorldSlice(c, worker().deps, gameId);
+    const sprite = await db.asset.findFirstOrThrow({ where: { type: "TARGET_SPRITE" } });
+    await db.fileBlob.delete({ where: { key: sprite.storagePath } });
+    await db.targetVariantAsset.updateMany({ data: { status: "PENDING", assetId: null } });
+
+    const again = worker();
+    const result = await runLocalPatchWorldSlice(c, again.deps, gameId);
+    expect(again.dispatched).toEqual([]);
+    expect(result.outcomes[0]?.state).toBe("generated");
+    expect(await db.fileBlob.findUnique({ where: { key: sprite.storagePath } })).not.toBeNull();
+  }, 180_000);
 
   it("names the boards this build cannot paint instead of failing on them one by one", async () => {
     const { gameId } = await seed({ scenes: [{ slug: "tokyo", version: 5 }, { slug: "sydney", version: 5 }] });

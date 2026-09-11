@@ -43,6 +43,13 @@ export const RETAINED_PURCHASE_LIMITS = Object.freeze({
   /** One render at the sizes this route buys, with room to spare. */
   payloadBytes: 12 * 1024 * 1024,
   recordBytes: 17 * 1024 * 1024,
+  /**
+   * How long a reason for having no bill may be. ONE number, used by the write
+   * and by the read, because two different answers to that question is how a
+   * record got written and then could not be read back - which loses a paid
+   * answer to a diagnostic string being wordy.
+   */
+  unknownReasonChars: 2000,
 });
 
 export class RetainedPurchaseError extends Error {
@@ -93,7 +100,7 @@ const envelopeSchema = z.object({
   operationFingerprint: text,
   payloadSha256: digest,
   evidence: evidenceSchema.nullable(),
-  unknownReason: z.string().min(1).max(2000).nullable(),
+  unknownReason: z.string().min(1).max(RETAINED_PURCHASE_LIMITS.unknownReasonChars).nullable(),
   bytesBase64: z.string().max(Math.ceil(RETAINED_PURCHASE_LIMITS.payloadBytes * 4 / 3) + 4),
 }).strict();
 
@@ -112,8 +119,14 @@ function checkedRecord(worldId: string, requestKey: string, value: RetainedPurch
   if (!Buffer.isBuffer(value.bytes) || value.bytes.length === 0) fail("invalid-record", "the bytes that were paid for are required");
   if (value.bytes.length > RETAINED_PURCHASE_LIMITS.payloadBytes) fail("oversized", "retained payload byte limit exceeded");
   if (retainedPayloadDigest(value.bytes) !== value.payloadSha256) fail("invalid-record", "retained bytes do not match their own digest");
+  let unknownReason = value.unknownReason;
   if (value.evidence === null) {
-    if (typeof value.unknownReason !== "string" || !value.unknownReason.trim()) fail("invalid-record", "a purchase with no bill must say why it has none");
+    if (typeof unknownReason !== "string" || !unknownReason.trim()) fail("invalid-record", "a purchase with no bill must say why it has none");
+    // Shortened, never refused. The reason is a diagnostic; the bytes beside it
+    // were paid for, and refusing the record over the length of an explanation
+    // throws away the thing that cost money.
+    const limit = RETAINED_PURCHASE_LIMITS.unknownReasonChars;
+    if (unknownReason.length > limit) unknownReason = `${unknownReason.slice(0, limit - 3)}...`;
   } else {
     if (value.unknownReason !== null) fail("invalid-record", "a purchase cannot carry both a bill and a reason for having none");
     if (!evidenceSchema.safeParse(value.evidence).success) fail("invalid-record", "the retained bill is not a bill this ledger records");
@@ -125,7 +138,7 @@ function checkedRecord(worldId: string, requestKey: string, value: RetainedPurch
       throw error;
     }
   }
-  return value;
+  return unknownReason === value.unknownReason ? value : { ...value, unknownReason };
 }
 
 function payloadOf(value: RetainedPurchase): Buffer {
@@ -167,6 +180,17 @@ export class PrismaRetainedPurchaseStore implements RetainedPurchaseStore {
   async put(worldId: string, requestKey: string, value: RetainedPurchase): Promise<void> {
     const checked = checkedRecord(worldId, requestKey, value);
     const bytes = payloadOf(checked);
+    // What the write accepts, the read must return. Asserting it here rather
+    // than trusting two schemas to agree: they did not, and a record that could
+    // be written and not read back is a paid answer lost to a validation
+    // asymmetry nobody would have noticed until a restart needed it.
+    let roundTrip: RetainedPurchase;
+    try { roundTrip = decode(worldId, requestKey, bytes); }
+    catch (error) { fail("invalid-record", `this record would not survive being read back: ${error instanceof Error ? error.message : String(error)}`); }
+    if (!roundTrip.bytes.equals(checked.bytes) || roundTrip.unknownReason !== checked.unknownReason
+      || roundTrip.operationFingerprint !== checked.operationFingerprint) {
+      fail("invalid-record", "this record would not come back the way it went in");
+    }
     const existing = await this.read(worldId, requestKey);
     if (existing) {
       // Writing the same answer twice is a restart; writing a different one is
@@ -186,6 +210,12 @@ export class PrismaRetainedPurchaseStore implements RetainedPurchaseStore {
   async get(worldId: string, requestKey: string): Promise<RetainedPurchase | null> {
     const bytes = await this.read(worldId, requestKey);
     if (bytes === null) return null;
+    return decode(worldId, requestKey, bytes);
+  }
+}
+
+/** The only way a stored record becomes a `RetainedPurchase` again. */
+function decode(worldId: string, requestKey: string, bytes: Buffer): RetainedPurchase {
     let parsed: unknown;
     try { parsed = JSON.parse(bytes.toString("utf8")); }
     catch { return fail("corrupt", `${requestKey} holds a retained purchase that cannot be read`); }
@@ -208,5 +238,4 @@ export class PrismaRetainedPurchaseStore implements RetainedPurchaseStore {
     // record that reaches `purchaseOnce` unverified is one that can answer a
     // request with another request's picture.
     return checkedRecord(worldId, requestKey, record);
-  }
 }

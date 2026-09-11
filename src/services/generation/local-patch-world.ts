@@ -97,8 +97,17 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // The claim, and the takeover in the same statement: either this job is not
   // running, or whoever had it has not said anything for a lease. `attempts`
   // moves with it, so every write below can prove it belongs to THIS claim.
+  //
+  // `attempts` is IN THE CONDITION, not only in the increment. Without it the
+  // claim succeeded while the token was computed from the earlier read, so a
+  // worker that claimed and released in between left this one holding a number
+  // that matched nothing: every fence failed, its own release matched no row,
+  // and the job sat occupied until the lease ran out. Losing the race is fine -
+  // the next tick takes it - but believing you won it with the wrong number is
+  // not.
   const claimed = await c.db.generationJob.updateMany({
-    where: { id: job.id, OR: [{ status: { not: "RUNNING" } }, { updatedAt: { lt: new Date(Date.now() - LOCAL_PATCH_LEASE_MS) } }] },
+    where: { id: job.id, attempts: job.attempts,
+      OR: [{ status: { not: "RUNNING" } }, { updatedAt: { lt: new Date(Date.now() - LOCAL_PATCH_LEASE_MS) } }] },
     data: { status: "RUNNING", attempts: { increment: 1 }, currentStep: "local-patch", lastError: null },
   });
   if (!claimed.count) return { ...empty, pending: true, claimed: false, paused: false };

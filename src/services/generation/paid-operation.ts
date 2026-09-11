@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { WorldBudgetError, sameChargeEvidence } from "./world-budget";
+import { WorldBudgetError, sameChargeEvidence, validateChargeEvidence } from "./world-budget";
 import type { WorldBudgetRequest, WorldChargeEvidence, WorldBudgetScope } from "./world-budget";
 
 /**
@@ -246,13 +246,33 @@ export async function purchaseOnce(
     payloadSha256: retainedPayloadDigest(bought.bytes), bytes: bought.bytes,
   } as const;
 
-  if (!("evidence" in bought)) {
-    // Paid for and unpriceable. Keep the picture, say so, and settle nothing:
-    // an amount nobody can support recorded as an invoice reads as free.
-    await deps.store.put(worldId, requestKey, { ...base, evidence: null, unknownReason: bought.unknownReason });
-    const reason = `${requestKey}: the provider answered and its charge cannot be stated (${bought.unknownReason}); the result is kept and the charge is unknown`;
+  /** Paid for, and no amount anybody can record. Keep the picture; hold the charge. */
+  const unpriceable = async (why: string): Promise<PurchaseOutcome> => {
+    // An amount nobody can support recorded as an invoice reads as free, so
+    // nothing is settled - but the bytes were bought and are kept regardless.
+    await deps.store.put(worldId, requestKey, { ...base, evidence: null, unknownReason: why });
+    const reason = `${requestKey}: the provider answered and its charge cannot be stated (${why}); the result is kept and the charge is unknown`;
     await deps.ledger.markUnknown(worldId, requestKey, reason);
     return { kind: "unresolved", reason, bytes: bought.bytes };
+  };
+
+  if (!("evidence" in bought)) return unpriceable(bought.unknownReason);
+
+  // A BILL THE LEDGER WILL NEVER ACCEPT IS NOT A REASON TO LOSE THE PICTURE.
+  //
+  // The durable store refuses to keep a bill settlement would refuse, and it is
+  // right to - but it refuses the whole record, bytes and all, and it does so
+  // BEFORE the settlement path that knows how to handle this. So an adapter
+  // returning a malformed receipt threw away a render that had already been
+  // paid for and left the request pending with nothing to reconcile from.
+  //
+  // Asked here, against the ledger's own rule, while there is still somewhere
+  // to put the answer: an unusable bill becomes an unpriceable purchase, which
+  // is exactly what it is.
+  try { validateChargeEvidence(bought.evidence); }
+  catch (error) {
+    if (!(error instanceof WorldBudgetError)) throw error;
+    return unpriceable(`the provider's bill cannot be recorded (${error.message})`);
   }
 
   const record = { ...base, evidence: bought.evidence, unknownReason: null };

@@ -188,6 +188,63 @@ describe("retained purchases on disk", () => {
     expect((changed as { reason: string }).reason).toMatch(/different operation/);
   }, 60_000);
 
+  it("keeps the answer when the provider's bill is one the ledger could never record", async () => {
+    // The store refuses to keep an unusable bill, and it is right to - but it
+    // refuses the whole record, bytes and all, and it used to do so before the
+    // path that knows how to handle this. A malformed receipt therefore threw
+    // away a render that had already been paid for.
+    const w = world();
+    const request = {
+      worldId: w, requestKey: "sydney-2:kneeling:render:1", scope: "image" as const,
+      operationFingerprint: "c".repeat(64), reserveMicroUsd: 120_000,
+    };
+    const deps = { ledger: new WorldBudget(new CasWorldBudgetRepository(new PrismaWorldBudgetStore(db))), store: new PrismaRetainedPurchaseStore(db) };
+    for (const [name, amount] of [["a negative amount", -1], ["a fraction of a micro-dollar", 0.5]] as const) {
+      await db.worldBudgetLedger.deleteMany({});
+      await db.fileBlob.deleteMany({});
+      let calls = 0;
+      const outcome = await purchaseOnce(deps, {
+        ...request,
+        buy: async () => { calls++; return { bytes: Buffer.from("the render that was paid for"), evidence: { ...bill("req-1"), amountMicroUsd: amount } }; },
+      });
+      expect(calls, name).toBe(1);
+      expect(outcome.kind, name).toBe("unresolved");
+      expect((outcome as { bytes?: Buffer }).bytes?.toString(), name).toBe("the render that was paid for");
+
+      // Kept, as an unpriceable purchase, which is exactly what it is.
+      const retained = await deps.store.get(w, request.requestKey);
+      expect(retained?.bytes.toString(), name).toBe("the render that was paid for");
+      expect(retained?.evidence, name).toBeNull();
+      expect(retained?.unknownReason, name).toMatch(/bill cannot be recorded/);
+
+      // And the world is held rather than left waiting with nothing to reconcile.
+      expect((await deps.ledger.readRequest(w, request.requestKey))?.state, name).toBe("unknown");
+      expect((await deps.ledger.audit(w)).held, name).toBe(true);
+
+      const again = await purchaseOnce(deps, { ...request, buy: async () => { calls++; return { bytes: Buffer.from("x"), evidence: bill("req-2") }; } });
+      expect(calls, name).toBe(1);
+      expect(again.kind, name).toBe("unresolved");
+    }
+  }, 120_000);
+
+  it("reads back every reason it accepted, however wordy", async () => {
+    // The write required a nonblank reason and the read capped it at two
+    // thousand characters, so a long diagnostic wrote successfully and made the
+    // paid answer unreadable on the very next pass.
+    const w = world();
+    const store = new PrismaRetainedPurchaseStore(db);
+    const cases: Array<[string, number]> = [["at the limit", 2000], ["past it", 2001], ["far past it", 20_000]];
+    for (const [name, length] of cases) {
+      const key = `hide:judge:${length}`;
+      const bytes = Buffer.from(`the answer behind a ${length} character reason`);
+      await store.put(w, key, { ...record(w, key, { bytes }), evidence: null, unknownReason: "x".repeat(length) });
+      const back = await store.get(w, key);
+      expect(back?.bytes.equals(bytes), name).toBe(true);
+      expect(back?.unknownReason?.length, name).toBeLessThanOrEqual(2000);
+      expect(back?.unknownReason?.startsWith("xxxx"), name).toBe(true);
+    }
+  }, 120_000);
+
   it("finishes an unpriceable hold from a process that did not buy it", async () => {
     const w = world();
     const request = {
