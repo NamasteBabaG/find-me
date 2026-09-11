@@ -114,10 +114,41 @@ export type Env = z.infer<typeof EnvSchema>;
 
 let cached: Env | null = null;
 
+/**
+ * A setting as it was meant, not as it was pasted.
+ *
+ * On 11 September 2026 the QA site returned 500 on every page for twenty hours
+ * because `GENERATION_ENABLED` held a byte order mark in front of the word:
+ * `﻿off`. It is invisible in the dashboard, invisible in a copied string,
+ * and the enum refused it - so `env()` threw, and because every route reads the
+ * environment, every route died. The kill switch did not fail; one character
+ * that nobody could see took down the site.
+ *
+ * A leading BOM or stray whitespace is never what a setting means. Trimming it
+ * is not leniency about VALUES - an unrecognised value is still refused, loudly
+ * - it is refusing to let an invisible character decide whether the site runs.
+ */
+const asTyped = (value: string) => value.replace(/^﻿/, "").trim();
+
 export function env(): Env {
   if (cached) return cached;
-  const vercelUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL;
-  const raw = { ...process.env, APP_URL: process.env.APP_URL ?? (vercelUrl ? `https://${vercelUrl}` : undefined) };
+  // Only the settings this schema knows: a key it does not validate is none of
+  // its business, whitespace and all.
+  const raw: Record<string, unknown> = { ...process.env };
+  const repaired: string[] = [];
+  for (const key of Object.keys(EnvSchema.shape)) {
+    const value = raw[key];
+    if (typeof value !== "string") continue;
+    const typed = asTyped(value);
+    if (typed === value) continue;
+    raw[key] = typed;
+    repaired.push(key);
+  }
+  // Said out loud once: an invisible character is not something anyone should
+  // have to find by reading a stack trace.
+  if (repaired.length) console.warn(`[env] trimmed invisible characters from: ${repaired.join(", ")} — fix the value where it is set.`);
+  const vercelUrl = asTyped(process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL ?? "");
+  raw.APP_URL = raw.APP_URL ?? (vercelUrl ? `https://${vercelUrl}` : undefined);
   const parsed = EnvSchema.safeParse(raw);
   if (!parsed.success) {
     throw new Error(`Invalid environment: ${parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(", ")}`);
