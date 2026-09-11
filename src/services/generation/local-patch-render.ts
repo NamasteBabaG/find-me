@@ -82,6 +82,14 @@ export type LocalPatchAttempt = {
   readonly refusedBecause: "judge" | "wire" | "stopped" | null;
   readonly stoppedReason: string | null;
   readonly patchPng: Buffer | null;
+  /**
+   * The crop as it would ship: composited back, fade and all. These are the
+   * exact bytes `judgedSha256` is of and the exact bytes the judge was shown,
+   * so what gets stored is what was judged rather than something recomputed
+   * later that only ought to match. Present for a refusal too - a render nobody
+   * can look at afterwards is a render nobody can learn from.
+   */
+  readonly shippingPng: Buffer | null;
   /** The whole board with this hide painted in. Only present when accepted. */
   readonly composedPng: Buffer | null;
   readonly seam: SeamReport | null;
@@ -155,7 +163,7 @@ type RetainedJudgement = {
  */
 const stopped = (reason: string, renderCents = 0, costUnknown = true): LocalPatchAttempt => ({
   accepted: false, refusedBecause: "stopped", stoppedReason: reason,
-  patchPng: null, composedPng: null, seam: null, verdict: null, wireFault: null,
+  patchPng: null, shippingPng: null, composedPng: null, seam: null, verdict: null, wireFault: null,
   promptVersion: LOCAL_PATCH_PROMPT_VERSION, judgedSha256: null,
   renderCents, judgeCents: 0, costUnknown, replayed: false,
 });
@@ -269,6 +277,7 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
     refusedBecause: accepted ? null : keep.wireFault !== null ? "wire" : "judge",
     stoppedReason: null,
     patchPng,
+    shippingPng: shipping,
     composedPng: accepted ? candidate : null,
     seam,
     verdict,

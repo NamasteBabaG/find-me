@@ -39,18 +39,18 @@ describe("where a child is painted into a board", () => {
   });
 
   it("catches the collision it exists to catch", () => {
-    const a = { id: "a", left: 1000, top: 1200, pose: "standing" as const };
+    const a = { id: "a", left: 1000, top: 1200, pose: "standing" as const, targetId: "t1" };
     // 130 to the right: the second mask starts inside the first crop.
-    expect(hidesCollide(a, { id: "b", left: 1130, top: 1200, pose: "standing" as const })).toBe(true);
+    expect(hidesCollide(a, { id: "b", left: 1130, top: 1200, pose: "standing" as const, targetId: "t2" })).toBe(true);
     // Far enough apart in x that neither crop reaches the other's mask.
-    expect(hidesCollide(a, { id: "b", left: 1000 + LOCAL_PATCH_CROP.width, top: 1200, pose: "standing" as const })).toBe(false);
-    expect(() => assertPlaceable({ board: "test", art: "x.png", ground: "sand", sittable: true, hides: [a, { id: "b", left: 1130, top: 1200, pose: "standing" as const }, { id: "c", left: 0, top: 0, pose: "kneeling" as const }] }))
+    expect(hidesCollide(a, { id: "b", left: 1000 + LOCAL_PATCH_CROP.width, top: 1200, pose: "standing" as const, targetId: "t3" })).toBe(false);
+    expect(() => assertPlaceable({ board: "test", art: "x.png", ground: "sand", sittable: true, hides: [a, { id: "b", left: 1130, top: 1200, pose: "standing" as const, targetId: "t4" }, { id: "c", left: 0, top: 0, pose: "kneeling" as const, targetId: "t5" }] }))
       .toThrow(/too close/);
   });
 
   it("refuses a crop that runs off the edge of the board", () => {
-    const offEdge = { id: "off", left: LOCAL_PATCH_BOARD.width - 10, top: 1200, pose: "standing" as const };
-    expect(() => assertPlaceable({ board: "test", art: "x.png", ground: "sand", sittable: true, hides: [offEdge, { id: "b", left: 0, top: 0, pose: "standing" as const }, { id: "c", left: 1600, top: 0, pose: "kneeling" as const }] }))
+    const offEdge = { id: "off", left: LOCAL_PATCH_BOARD.width - 10, top: 1200, pose: "standing" as const, targetId: "t6" };
+    expect(() => assertPlaceable({ board: "test", art: "x.png", ground: "sand", sittable: true, hides: [offEdge, { id: "b", left: 0, top: 0, pose: "standing" as const, targetId: "t7" }, { id: "c", left: 1600, top: 0, pose: "kneeling" as const, targetId: "t8" }] }))
       .toThrow(/off the edge/);
   });
 
@@ -59,7 +59,7 @@ describe("where a child is painted into a board", () => {
     // judge has and still reads as a mistake, so the ground says whether people
     // put their bodies on it.
     const road = { board: "tokyo", art: "x.png", ground: "wet crossing", sittable: false,
-      hides: [{ id: "a", left: 0, top: 0, pose: "crouching" as const }, { id: "b", left: 1200, top: 0, pose: "standing" as const }, { id: "c", left: 2400, top: 0, pose: "walking" as const }] };
+      hides: [{ id: "a", left: 0, top: 0, pose: "crouching" as const, targetId: "t9" }, { id: "b", left: 1200, top: 0, pose: "standing" as const, targetId: "t10" }, { id: "c", left: 2400, top: 0, pose: "walking" as const, targetId: "t11" }] };
     expect(() => assertPlaceable(road)).toThrow(/nobody sits on/);
     expect(() => assertPlaceable({ ...road, sittable: true })).not.toThrow();
     for (const board of WORLD_LOCAL_PATCH_HIDES) {
@@ -70,10 +70,10 @@ describe("where a child is painted into a board", () => {
 
   it("puts the mask where the placement says, in board coordinates", () => {
     const standing = POSE_MASK.standing;
-    expect(maskOf({ id: "x", left: 1408, top: 1088, pose: "standing" as const }))
+    expect(maskOf({ id: "x", left: 1408, top: 1088, pose: "standing" as const, targetId: "t12" }))
       .toEqual({ left: 1408 + LOCAL_PATCH_MASK_LEFT, top: 1088 + LOCAL_PATCH_MASK_GROUND - standing.height, width: standing.width, height: standing.height });
     // A lower pose keeps the same ground line and only rises less far above it.
-    const sitting = maskOf({ id: "x", left: 1408, top: 1088, pose: "sitting-cross-legged" as const });
+    const sitting = maskOf({ id: "x", left: 1408, top: 1088, pose: "sitting-cross-legged" as const, targetId: "t13" });
     expect(sitting.top + sitting.height).toBe(1088 + LOCAL_PATCH_MASK_GROUND);
   });
 });

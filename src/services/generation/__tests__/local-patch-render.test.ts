@@ -12,9 +12,9 @@ const BOARD = { width: 3072, height: 2048 };
 const board: LocalPatchBoard = {
   board: "sydney", art: "public/scenes/sydney/x.webp", ground: "beach sand", sittable: true,
   hides: [
-    { id: "sydney-1", left: 960, top: 1256, pose: "standing" },
-    { id: "sydney-2", left: 1600, top: 1256, pose: "kneeling" },
-    { id: "sydney-3", left: 2176, top: 1128, pose: "sitting-cross-legged" },
+    { id: "sydney-1", left: 960, top: 1256, pose: "standing", targetId: "t1" },
+    { id: "sydney-2", left: 1600, top: 1256, pose: "kneeling", targetId: "t2" },
+    { id: "sydney-3", left: 2176, top: 1128, pose: "sitting-cross-legged", targetId: "t3" },
   ],
 };
 const hide: LocalPatchHide = board.hides[1]!;

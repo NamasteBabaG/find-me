@@ -125,6 +125,20 @@ async function spendCheck(c: Container, ownerId: string) {
   }
 }
 
+/**
+ * The three things about spending that belong to a GAME, not to an engine, made
+ * available to the local-patch route.
+ *
+ * A game has one budget world, one cap and one answer to "may this box spend
+ * money right now". The local-patch engine paints into the same game, out of the
+ * same wallet, after the same identity approval - so it asks these, rather than
+ * growing a second world id whose spending the cap cannot see and a second kill
+ * switch somebody has to remember to turn off too.
+ */
+export const boardWizardWorldId = (gameId: string) => scope(gameId);
+export const boardWizardBudgetOf = (c: Container, attempt = 1) => budgetOf(c, attempt);
+export const assertGenerationSpendAllowed = (c: Container, ownerId: string) => spendCheck(c, ownerId);
+
 /** Free route/asset preflight before identity spend. Unsupported worlds never fall through to the old painter. */
 export async function preflightBoardConditionedWizard(c: Container, gameId: string) {
   const { catalog } = await readBoardConditionedCatalog();

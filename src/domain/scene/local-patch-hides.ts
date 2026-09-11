@@ -70,6 +70,25 @@ export const LocalPatchHideSchema = z.object({
   left: z.number().int().min(0),
   top: z.number().int().min(0),
   pose: LocalPatchPose,
+  /**
+   * Which of the board's three authored missions this hide is the hiding place
+   * for, by the target's id in `content/scenes/<board>/scene.json`.
+   *
+   * Written down rather than taken from the order of two lists. The engine has
+   * to turn a hide into a row the player can tap, and that row hangs off a
+   * scene target; a binding that lives in whichever array happens to be sorted
+   * the same way is a binding nobody can check and everybody can break.
+   *
+   * NOTE, and it is not a small one: the authored slot under each of these
+   * targets carries the hint text, and that text describes where the OLD engine
+   * put the child ("Look by the surfboards"), not where this engine does. The
+   * hint zone follows the patch - `targetGeometry` recentres it - but the words
+   * do not, and they will be wrong until they are re-authored for these
+   * placements. Nearest-slot matching was tried and is not the answer: on five
+   * of the nine boards two hides come out nearest the same target, and on paris
+   * all three do.
+   */
+  targetId: z.string().min(1),
 }).strict();
 export type LocalPatchHide = z.infer<typeof LocalPatchHideSchema>;
 
@@ -138,6 +157,9 @@ export function assertPlaceable(board: LocalPatchBoard): void {
   }
   for (const [i, a] of board.hides.entries()) for (const b of board.hides.slice(i + 1)) {
     if (hidesCollide(a, b)) throw new Error(`LOCAL_PATCH: ${a.id} and ${b.id} are too close - one sprite would carry the other child`);
+    // Two hides under one mission is one mission with no hiding place and one
+    // child the player is never asked to find. The board owes three.
+    if (a.targetId === b.targetId) throw new Error(`LOCAL_PATCH: ${a.id} and ${b.id} both claim the ${a.targetId} mission on ${board.board}`);
   }
 }
 
@@ -159,23 +181,23 @@ export function assertPlaceable(board: LocalPatchBoard): void {
  */
 export const WORLD_LOCAL_PATCH_HIDES: readonly LocalPatchBoard[] = Object.freeze([
   { board: "sydney", art: "public/scenes/sydney/refresh-20260907/base.webp", ground: "beach sand", sittable: true,
-    hides: [{ id: "sydney-1", left: 960, top: 1256, pose: "standing" }, { id: "sydney-2", left: 1600, top: 1256, pose: "kneeling" }, { id: "sydney-3", left: 2176, top: 1128, pose: "sitting-cross-legged" }] },
+    hides: [{ id: "sydney-1", left: 960, top: 1256, pose: "standing", targetId: "lifeguard" }, { id: "sydney-2", left: 1600, top: 1256, pose: "kneeling", targetId: "surfboards" }, { id: "sydney-3", left: 2176, top: 1128, pose: "sitting-cross-legged", targetId: "rocks" }] },
   { board: "antarctica", art: "public/scenes/antarctica/refresh-20260907/base.webp", ground: "packed snow", sittable: true,
-    hides: [{ id: "antarctica-1", left: 128, top: 1000, pose: "standing" }, { id: "antarctica-2", left: 1408, top: 1192, pose: "crouching" }, { id: "antarctica-3", left: 2432, top: 1256, pose: "kneeling" }] },
+    hides: [{ id: "antarctica-1", left: 128, top: 1000, pose: "standing", targetId: "penguins" }, { id: "antarctica-2", left: 1408, top: 1192, pose: "crouching", targetId: "sledge" }, { id: "antarctica-3", left: 2432, top: 1256, pose: "kneeling", targetId: "ice" }] },
   { board: "giza", art: "public/scenes/giza/refresh-20260907/base.webp", ground: "desert sand", sittable: true,
-    hides: [{ id: "giza-1", left: 2176, top: 1256, pose: "standing" }, { id: "giza-2", left: 0, top: 1128, pose: "sitting-cross-legged" }, { id: "giza-3", left: 1344, top: 1128, pose: "peeking" }] },
+    hides: [{ id: "giza-1", left: 2176, top: 1256, pose: "standing", targetId: "camel" }, { id: "giza-2", left: 0, top: 1128, pose: "sitting-cross-legged", targetId: "stall" }, { id: "giza-3", left: 1344, top: 1128, pose: "peeking", targetId: "stones" }] },
   { board: "tokyo", art: "work/fixed-world-simple-20260908/dense/assembled-static-v1/tokyo/board.png", ground: "wet crossing", sittable: false,
-    hides: [{ id: "tokyo-1", left: 896, top: 1256, pose: "standing" }, { id: "tokyo-2", left: 2048, top: 1128, pose: "peeking" }, { id: "tokyo-3", left: 1408, top: 1256, pose: "walking" }] },
+    hides: [{ id: "tokyo-1", left: 896, top: 1256, pose: "standing", targetId: "crossing" }, { id: "tokyo-2", left: 2048, top: 1128, pose: "peeking", targetId: "stall" }, { id: "tokyo-3", left: 1408, top: 1256, pose: "walking", targetId: "blossom" }] },
   { board: "amazon", art: "work/fixed-world-simple-20260908/dense/amazon-static-seam-v2/board.png", ground: "forest floor", sittable: true,
-    hides: [{ id: "amazon-1", left: 0, top: 1128, pose: "standing" }, { id: "amazon-2", left: 704, top: 1192, pose: "crouching" }, { id: "amazon-3", left: 2560, top: 1256, pose: "kneeling" }] },
+    hides: [{ id: "amazon-1", left: 0, top: 1128, pose: "standing", targetId: "canoe" }, { id: "amazon-2", left: 704, top: 1192, pose: "crouching", targetId: "macaw" }, { id: "amazon-3", left: 2560, top: 1256, pose: "kneeling", targetId: "roots" }] },
   { board: "greatwall", art: "work/fixed-world-simple-20260908/dense/assembled-static-v1/greatwall/board.png", ground: "stone walkway", sittable: true,
-    hides: [{ id: "greatwall-1", left: 960, top: 1256, pose: "standing" }, { id: "greatwall-2", left: 2560, top: 1256, pose: "peeking" }, { id: "greatwall-3", left: 384, top: 1064, pose: "sitting-cross-legged" }] },
+    hides: [{ id: "greatwall-1", left: 960, top: 1256, pose: "standing", targetId: "dragon" }, { id: "greatwall-2", left: 2560, top: 1256, pose: "peeking", targetId: "lanterns" }, { id: "greatwall-3", left: 384, top: 1064, pose: "sitting-cross-legged", targetId: "tower" }] },
   { board: "marrakech", art: "public/scenes/marrakech/refresh-20260907/base.webp", ground: "market sand", sittable: true,
-    hides: [{ id: "marrakech-1", left: 2560, top: 1256, pose: "standing" }, { id: "marrakech-4", left: 1408, top: 1088, pose: "peeking" }, { id: "marrakech-5", left: 256, top: 1216, pose: "sitting-cross-legged" }] },
+    hides: [{ id: "marrakech-1", left: 2560, top: 1256, pose: "standing", targetId: "lanterns" }, { id: "marrakech-4", left: 1408, top: 1088, pose: "peeking", targetId: "carpets" }, { id: "marrakech-5", left: 256, top: 1216, pose: "sitting-cross-legged", targetId: "spices" }] },
   { board: "newyork", art: "work/fixed-world-simple-20260908/city-final-v1/newyork/board-static.png", ground: "city pavement", sittable: false,
-    hides: [{ id: "newyork-1", left: 0, top: 1064, pose: "standing" }, { id: "newyork-3", left: 1472, top: 1128, pose: "peeking" }, { id: "newyork-4", left: 960, top: 1024, pose: "walking" }] },
+    hides: [{ id: "newyork-1", left: 0, top: 1064, pose: "standing", targetId: "taxi" }, { id: "newyork-3", left: 1472, top: 1128, pose: "peeking", targetId: "pretzel" }, { id: "newyork-4", left: 960, top: 1024, pose: "walking", targetId: "bench" }] },
   { board: "paris", art: "work/fixed-world-simple-20260908/city-final-v1/paris/board-static.png", ground: "cobbled square", sittable: true,
-    hides: [{ id: "paris-3", left: 1152, top: 1256, pose: "standing" }, { id: "paris-4", left: 640, top: 1280, pose: "peeking" }, { id: "paris-5", left: 1536, top: 1152, pose: "kneeling" }] },
+    hides: [{ id: "paris-3", left: 1152, top: 1256, pose: "standing", targetId: "bakery" }, { id: "paris-4", left: 640, top: 1280, pose: "peeking", targetId: "carousel" }, { id: "paris-5", left: 1536, top: 1152, pose: "kneeling", targetId: "awning" }] },
 ] satisfies LocalPatchBoard[]);
 
 /** Nine boards, three hides each: what a world owes a player. */

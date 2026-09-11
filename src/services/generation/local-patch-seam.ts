@@ -176,6 +176,44 @@ export async function analysePatchSeam(boardPng: Buffer, region: PatchRegion, pa
 }
 
 /**
+ * Which pixels of a rendered patch are new, inside one rectangle of it, as an
+ * alpha channel: 255 where the render differs from the board it replaces, 0
+ * where it does not.
+ *
+ * This is how a hide gets a tap contract. There is no matte on this route - the
+ * patch is an opaque piece of the world - so the child's own footprint cannot
+ * come from alpha the way a cut-out sprite's does. What it can come from is the
+ * difference, and `SEAM_LIMITS.changedPixelDiff` is already this route's one
+ * answer to "is this pixel new"; asking it again here rather than inventing a
+ * second threshold is the whole reason this lives beside the seam.
+ *
+ * The rectangle is DECLARED by the caller - the pose's own mask box, the only
+ * part the painter was permitted to fill. Measuring across the whole crop would
+ * measure re-encoding and repainted scenery as if they were a child, which is
+ * the same circularity the stray-pixel check was written to avoid.
+ */
+export async function changedWithin(boardPng: Buffer, region: PatchRegion, patchPng: Buffer, within: PatchRegion, limits = SEAM_LIMITS): Promise<{
+  alpha: Buffer; width: number; height: number; changed: number;
+}> {
+  if (within.left < 0 || within.top < 0 || within.width <= 0 || within.height <= 0
+    || within.left + within.width > region.width || within.top + within.height > region.height) {
+    throw new Error("LOCAL_PATCH: the measured rectangle must sit inside the region, in patch coordinates");
+  }
+  const original = await raw(boardPng, region), patch = await raw(patchPng);
+  if (patch.width !== original.width || patch.height !== original.height) {
+    throw new Error(`LOCAL_PATCH: patch is ${patch.width}x${patch.height} but the region is ${original.width}x${original.height}`);
+  }
+  const alpha = Buffer.alloc(within.width * within.height);
+  let changed = 0;
+  for (let y = 0; y < within.height; y++) for (let x = 0; x < within.width; x++) {
+    const sx = within.left + x, sy = within.top + y;
+    if (rgbDiff(original, patch, sx, sy, sx, sy) <= limits.changedPixelDiff) continue;
+    alpha[y * within.width + x] = 255; changed++;
+  }
+  return { alpha, width: within.width, height: within.height, changed };
+}
+
+/**
  * Places the patch back into the board. A fade is applied only across the border
  * band, and only when the report says the geometry actually matches; the middle,
  * where the child is, stays fully opaque.

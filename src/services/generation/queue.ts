@@ -3,6 +3,7 @@ import type { Container } from "../container";
 import { RESUMABLE_STATUSES, runGenerationPipeline } from "./pipeline";
 import { FIXED_WORLD_STYLE_PREFIX, isFixedWorldStyle } from "./fixed-world-stage-record";
 import { BOARD_WIZARD_STYLE, boardWizardEnabled, runBoardConditionedWizardSlice } from "./board-conditioned-wizard";
+import { LOCAL_PATCH_STYLE, localPatchPainterDeps, runLocalPatchWorldSlice } from "./local-patch-world";
 
 /**
  * Moving generation forward a slice at a time.
@@ -45,6 +46,16 @@ export async function tickGeneration(c: Container, gameId: string | null, budget
   if (!id) return { gameId: null, status: null, pending: false };
   const before = await c.db.game.findUnique({ where: { id }, select: { status: true, styleVersion: true } });
   if (!before) return { gameId: id, status: null, pending: false };
+  if (before.styleVersion === LOCAL_PATCH_STYLE) {
+    // Routed before its painter exists, deliberately: a style with no adapter
+    // must stop here saying so, not fall through to the legacy painter and
+    // quietly produce a game made by a different engine.
+    const painter = localPatchPainterDeps(c);
+    if (!painter) return { gameId: id, status: statusOf(before), pending: false };
+    const result = await runLocalPatchWorldSlice(c, painter, id, { hardDeadlineAt: now + hardMs });
+    const after = await c.db.game.findUnique({ where: { id }, select: { status: true } });
+    return { gameId: id, status: after ? statusOf(after) : null, pending: result.pending };
+  }
   if (before.styleVersion === BOARD_WIZARD_STYLE) {
     if (!boardWizardEnabled()) return { gameId: id, status: statusOf(before), pending: false };
     const result = await runBoardConditionedWizardSlice(c, id, { hardDeadlineAt: now + hardMs });
