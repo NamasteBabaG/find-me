@@ -94,3 +94,42 @@ describe("development", () => {
     expect(read().APP_ENV).toBe("development");
   });
 });
+
+describe("a setting with an invisible character in it", () => {
+  /**
+   * QA returned 500 on every page for twenty hours because GENERATION_ENABLED
+   * held a byte order mark in front of the word: the enum refused it, env()
+   * threw, and every route reads the environment. One character nobody could
+   * see took down the whole site.
+   */
+  it("reads the setting that was meant, and says it had to", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const read = await envWith({ APP_ENV: "qa", GENERATION_PROVIDER: "mock", GENERATION_ENABLED: "\uFEFFoff" });
+    expect(read).not.toThrow();
+    expect(read().GENERATION_ENABLED).toBe("off");
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("GENERATION_ENABLED"));
+    warn.mockRestore();
+  });
+
+  it("does not let the trimming decide anything the value did not say", async () => {
+    // Leniency about invisible characters is not leniency about values: a
+    // setting nobody recognises is still refused, loudly.
+    const read = await envWith({ APP_ENV: "qa", GENERATION_PROVIDER: "mock", GENERATION_ENABLED: " paused " });
+    expect(read).toThrow(/GENERATION_ENABLED/);
+  });
+
+  it("trims a pasted newline out of a secret and a URL too", async () => {
+    const read = await envWith({ APP_ENV: "qa", GENERATION_PROVIDER: "mock",
+      APP_URL: "https://qa.findmeworlds.com\n", SESSION_SECRET: "  a-real-secret-that-is-not-the-dev-default-000000  " });
+    expect(read).not.toThrow();
+    expect(read().APP_URL).toBe("https://qa.findmeworlds.com");
+  });
+
+  it("leaves a clean environment completely alone", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const read = await envWith({ APP_ENV: "qa", GENERATION_PROVIDER: "mock", GENERATION_ENABLED: "off" });
+    expect(read().GENERATION_ENABLED).toBe("off");
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining("[env] trimmed"));
+    warn.mockRestore();
+  });
+});
