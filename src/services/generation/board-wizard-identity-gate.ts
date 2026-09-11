@@ -125,6 +125,46 @@ async function validateIdentityGateBill(budget: WorldBudget, gameId: string, rec
   } else demand(!receipt.approved && charge.state === "unknown", "Unsettled review cannot approve identity");
 }
 
+/**
+ * May this character be SHOWN to the parent yet?
+ *
+ * "The file is saved" and "the drawing was approved" are different facts, and
+ * the creation screen was reading the first: an avatar appeared the moment its
+ * asset went READY, before the style review had run, and stayed on the page
+ * after a review that refused it. The first character a parent sees is supposed
+ * to be the child already drawn in the language of the boards - showing an
+ * unreviewed one is showing a result nobody has stood behind.
+ *
+ * Deliberately cheap: one indexed audit read, no blob reads and no hashing,
+ * because the creation screen polls this. The expensive, hash-bound version is
+ * `requireBoardWizardIdentityApproval`, and it stays where the money is - at
+ * enrolment, before a single board is bought.
+ *
+ * It binds on the things that cannot drift without a new asset: a new photo
+ * makes a new identity sheet, and the wizard already refuses to continue when
+ * the identity on the profile changes underneath it.
+ */
+export async function identityApprovedForDisplay(c: Container, profile: {
+  identityAssetId: string | null; originalPhotoAssetId: string | null; ageYears: number | null;
+}): Promise<boolean> {
+  if (!profile.identityAssetId) return false;
+  const row = await c.db.auditLog.findFirst({
+    where: { action: IDENTITY_GATE_ACTION, entityType: "Asset", entityId: profile.identityAssetId },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!row?.metaJson) return false;
+  const receipt = receiptSchema.safeParse(JSON.parse(row.metaJson));
+  if (!receipt.success) return false;
+  const { approved, checks, identityAssetId, provenance } = receipt.data;
+  // An "uncertain" is not an approval, and neither is a stale one about another
+  // child, another photograph or another age.
+  return approved
+    && !!checks && Object.values(checks).every(v => v === "pass")
+    && identityAssetId === profile.identityAssetId
+    && provenance.photoAssetId === profile.originalPhotoAssetId
+    && provenance.ageYears === profile.ageYears;
+}
+
 /** Enrollment is a second boundary, not a caller's boolean. A legacy avatar,
  * stale catalog/child, changed sheet or unpaid/partial review cannot bypass it. */
 export async function requireBoardWizardIdentityApproval(c: Container, budget: WorldBudget, input: {

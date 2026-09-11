@@ -12,6 +12,7 @@ import { findScene } from "../../../../../../content/scenes";
 import { currentUser, draftTokenFromCookie, isAdminEmail } from "@/lib/server/session";
 import { pick } from "@/i18n";
 import { BOARD_WIZARD_STYLE, readBoardWizard } from "@/services/generation/board-conditioned-wizard";
+import { identityApprovedForDisplay } from "@/services/generation/board-wizard-identity-gate";
 import { env } from "@/lib/env";
 import { auditWorldBudget } from "@/services/generation/world-budget";
 
@@ -36,7 +37,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
   const [game, user, draftToken] = await Promise.all([
     c.db.game.findUnique({
       where: { id: gameId },
-      include: { childProfile: { select: { avatarAssetId: true } }, scenes: { orderBy: { orderIndex: "asc" }, include: { targets: { select: { status: true } } } } },
+      include: { childProfile: { select: { avatarAssetId: true, identityAssetId: true, originalPhotoAssetId: true, ageYears: true } }, scenes: { orderBy: { orderIndex: "asc" }, include: { targets: { select: { status: true } } } } },
     }),
     currentUser(),
     draftTokenFromCookie(),
@@ -50,9 +51,24 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
 
   // The character: the sticker cut from the identity sheet. A stale id (a
   // purged asset after a new photo) must not put a broken picture on the page.
+  //
+  // READY says the file is saved. It does not say the drawing was approved, and
+  // the two were being treated as one: the character appeared the moment its
+  // asset landed - before the style review had run - and stayed on the page
+  // after a review that refused it. The first character a parent sees is meant
+  // to be their child already drawn in the language of the boards, so an
+  // unreviewed one is a result nobody has stood behind yet.
+  //
+  // Only the board-wizard path has that review today. Games made before it keep
+  // the old rule, and the local-patch route must adopt this same gate when it is
+  // wired - the requirement is about what the parent is shown, not about which
+  // engine happened to draw it.
   const avatarId = game.childProfile?.avatarAssetId ?? null;
   const avatar = avatarId ? await c.db.asset.findUnique({ where: { id: avatarId }, select: { status: true } }) : null;
-  const characterReady = avatar?.status === "READY";
+  const reviewed = game.styleVersion === BOARD_WIZARD_STYLE
+    ? game.childProfile ? await identityApprovedForDisplay(c, game.childProfile) : false
+    : true;
+  const characterReady = avatar?.status === "READY" && reviewed;
   const avatarUrl = characterReady && avatarId ? signedAssetUrl(c, avatarId) : null;
 
   // Hiding spots: the catalog says how many there are, the rows say how many landed.

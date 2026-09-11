@@ -2,11 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   game: vi.fn(), asset: vi.fn(), job: vi.fn(), user: vi.fn(), denied: vi.fn(), link: vi.fn(), proof: vi.fn(), hash: vi.fn(), wizard: vi.fn(), ledger: vi.fn(),
+  approved: vi.fn(),
 }));
 vi.mock("@/lib/server/qa-access", () => ({ qaAccessDenied: mocks.denied }));
 vi.mock("@/lib/server/session", () => ({ currentUser: mocks.user, draftTokenFromCookie: async () => null, isAdminEmail: () => false }));
 vi.mock("@/services/container", () => ({ getContainer: () => ({ db: { game: { findUnique: mocks.game }, asset: { findUnique: mocks.asset }, generationJob: { findUnique: mocks.job }, worldBudgetLedger: { findUnique: mocks.ledger } }, email: { id: "console" } }) }));
 vi.mock("@/services/generation/board-conditioned-wizard", () => ({ BOARD_WIZARD_STYLE: "fixed-sprite-board-wizard-v1", readBoardWizard: mocks.wizard }));
+vi.mock("@/services/generation/board-wizard-identity-gate", () => ({ identityApprovedForDisplay: mocks.approved }));
 vi.mock("@/lib/env", () => ({ env: () => ({ APP_ENV: "qa" }) }));
 vi.mock("@/services/share-link.service", () => ({ ensurePlayerLink: mocks.link }));
 vi.mock("@/services/asset.service", () => ({ signedAssetUrl: () => "/synthetic-avatar" }));
@@ -19,14 +21,18 @@ import { GET } from "./route";
 
 // Boundary wiring tests; actual strict capsules/SQLite are tested by staging.
 const game = { id: "synthetic", ownerId: "owner", childProfileId: "child", styleVersion: "fixed-sprite-v3", status: "QA_PENDING", locale: "en", deletedAt: null,
-  configJson: null as string | null, childProfile: { avatarAssetId: "avatar" }, scenes: [] };
+  // A wizard game cannot be enrolled without an approved identity sheet, so the
+  // fixture carries one: the route asks whether the drawing was approved, not
+  // merely whether its file landed.
+  configJson: null as string | null, scenes: [],
+  childProfile: { avatarAssetId: "avatar", identityAssetId: "identity", originalPhotoAssetId: "photo", ageYears: 8 } };
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.denied.mockResolvedValue(null); mocks.user.mockResolvedValue({ id: "owner", email: "owner@example.invalid" });
   mocks.game.mockResolvedValue({ ...game }); mocks.asset.mockResolvedValue({ status: "READY" });
   mocks.job.mockResolvedValue({ gameId: game.id, status: "DONE", stepsJson: "{}" });
   mocks.proof.mockReturnValue(null); mocks.hash.mockReturnValue("synthetic-hash"); mocks.link.mockResolvedValue({ url: "/synthetic-play" });
-  mocks.ledger.mockResolvedValue(null);
+  mocks.ledger.mockResolvedValue(null); mocks.approved.mockResolvedValue(true);
 });
 async function response() { return GET(new Request("https://example.invalid/api/games/synthetic/status"), { params: Promise.resolve({ gameId: "synthetic" }) }); }
 function assembled(status = "MANUAL_REVIEW") {
@@ -35,6 +41,30 @@ function assembled(status = "MANUAL_REVIEW") {
 }
 
 describe("fixed-world creation status boundary", () => {
+  it("shows the character only once its drawing has been approved", async () => {
+    // READY says the file is saved, not that anybody approved the drawing. The
+    // character used to appear the moment its asset landed - before the style
+    // review ran - and stayed on the page after a review that refused it.
+    mocks.game.mockResolvedValue({ ...game, styleVersion: "fixed-sprite-board-wizard-v1" });
+    mocks.approved.mockResolvedValue(false);
+    expect((await (await response()).json()).avatarUrl).toBeNull();
+
+    mocks.approved.mockResolvedValue(true);
+    expect((await (await response()).json()).avatarUrl).toBe("/synthetic-avatar");
+
+    // An approved drawing whose file is not there yet is still not shown.
+    mocks.asset.mockResolvedValue({ status: "FAILED" });
+    expect((await (await response()).json()).avatarUrl).toBeNull();
+  });
+
+  it("leaves games made before the style review alone", async () => {
+    // Only the board-wizard path has that review. Games from before it keep the
+    // old rule rather than losing a character that was always fine.
+    mocks.approved.mockResolvedValue(false);
+    expect((await (await response()).json()).avatarUrl).toBe("/synthetic-avatar");
+    expect(mocks.approved).not.toHaveBeenCalled();
+  });
+
   it("reports unassembled enrollment honestly without legacy scheduling or a play link", async () => {
     const res = await response(), body = await res.json();
     expect(body).toMatchObject({ status: "QA_PENDING", percent: 20, step: 2, state: "awaiting_review", done: false, pending: false, playUrl: null });
