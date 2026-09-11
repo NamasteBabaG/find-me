@@ -8,7 +8,12 @@ vi.mock("@/lib/server/qa-access", () => ({ qaAccessDenied: mocks.denied }));
 vi.mock("@/lib/server/session", () => ({ currentUser: mocks.user, draftTokenFromCookie: async () => null, isAdminEmail: () => false }));
 vi.mock("@/services/container", () => ({ getContainer: () => ({ db: { game: { findUnique: mocks.game }, asset: { findUnique: mocks.asset }, generationJob: { findUnique: mocks.job }, worldBudgetLedger: { findUnique: mocks.ledger } }, email: { id: "console" } }) }));
 vi.mock("@/services/generation/board-conditioned-wizard", () => ({ BOARD_WIZARD_STYLE: "fixed-sprite-board-wizard-v1", readBoardWizard: mocks.wizard }));
-vi.mock("@/services/generation/board-wizard-identity-gate", () => ({ identityApprovedForDisplay: mocks.approved }));
+// Only the expensive lookup is stubbed. `characterNeedsApproval` is the real
+// decision rule under test, so it runs for real.
+vi.mock("@/services/generation/board-wizard-identity-gate", async importOriginal => ({
+  ...(await importOriginal<typeof import("@/services/generation/board-wizard-identity-gate")>()),
+  identityApprovedForDisplay: mocks.approved,
+}));
 vi.mock("@/lib/env", () => ({ env: () => ({ APP_ENV: "qa" }) }));
 vi.mock("@/services/share-link.service", () => ({ ensurePlayerLink: mocks.link }));
 vi.mock("@/services/asset.service", () => ({ signedAssetUrl: () => "/synthetic-avatar" }));
@@ -41,25 +46,39 @@ function assembled(status = "MANUAL_REVIEW") {
 }
 
 describe("fixed-world creation status boundary", () => {
-  it("shows the character only once its drawing has been approved", async () => {
-    // READY says the file is saved, not that anybody approved the drawing. The
-    // character used to appear the moment its asset landed - before the style
-    // review ran - and stayed on the page after a review that refused it.
-    mocks.game.mockResolvedValue({ ...game, styleVersion: "fixed-sprite-board-wizard-v1" });
-    mocks.approved.mockResolvedValue(false);
-    expect((await (await response()).json()).avatarUrl).toBeNull();
-
-    mocks.approved.mockResolvedValue(true);
-    expect((await (await response()).json()).avatarUrl).toBe("/synthetic-avatar");
-
-    // An approved drawing whose file is not there yet is still not shown.
-    mocks.asset.mockResolvedValue({ status: "FAILED" });
-    expect((await (await response()).json()).avatarUrl).toBeNull();
+  it("hides an unapproved character in the window before enrolment, where it is actually drawn", async () => {
+    // The window this gate exists for. The identity sheet is drawn and linked to
+    // the profile, the review has not run or has just refused it, and the game is
+    // STILL `collage-v1` - the board-wizard style is only set by a successful
+    // enrolment, which happens after approval. A first version of this gate asked
+    // about the engine and so skipped precisely this window.
+    for (const status of ["AVATAR_GENERATING", "MANUAL_REVIEW"]) {
+      mocks.game.mockResolvedValue({ ...game, status, styleVersion: "collage-v1" });
+      mocks.approved.mockResolvedValue(false);
+      const body = await (await response()).json();
+      expect(body.avatarUrl, `${status} before approval`).toBeNull();
+      expect(mocks.approved).toHaveBeenCalled();
+    }
   });
 
-  it("leaves games made before the style review alone", async () => {
-    // Only the board-wizard path has that review. Games from before it keep the
-    // old rule rather than losing a character that was always fine.
+  it("shows the character once its drawing has been approved, whatever engine the game is on", async () => {
+    for (const styleVersion of ["collage-v1", "fixed-sprite-board-wizard-v1"]) {
+      mocks.game.mockResolvedValue({ ...game, styleVersion });
+      mocks.approved.mockResolvedValue(true);
+      expect((await (await response()).json()).avatarUrl, styleVersion).toBe("/synthetic-avatar");
+
+      // An approved drawing whose file is not there yet is still not shown.
+      mocks.asset.mockResolvedValue({ status: "FAILED" });
+      expect((await (await response()).json()).avatarUrl, styleVersion).toBeNull();
+      mocks.asset.mockResolvedValue({ status: "READY" });
+    }
+  });
+
+  it("asks nothing of a game that has no drawing to approve", async () => {
+    // An older game whose avatar came from the collage path has no identity
+    // sheet, so there is nothing of this kind to approve and nothing to hide.
+    // The exemption is that explicit condition, not "any engine but the wizard".
+    mocks.game.mockResolvedValue({ ...game, styleVersion: "collage-v1", childProfile: { avatarAssetId: "avatar" } });
     mocks.approved.mockResolvedValue(false);
     expect((await (await response()).json()).avatarUrl).toBe("/synthetic-avatar");
     expect(mocks.approved).not.toHaveBeenCalled();

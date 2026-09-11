@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BOARD_JUDGE_MODEL } from "../../../infra/generation/board-verdict";
-import { IDENTITY_GATE_ACTION, identityApprovedForDisplay } from "../board-wizard-identity-gate";
+import { IDENTITY_GATE_ACTION, characterNeedsApproval, identityApprovedForDisplay } from "../board-wizard-identity-gate";
 import type { Container } from "../../container";
 
 /**
@@ -67,6 +67,27 @@ describe("whether the character may be shown to the parent yet", () => {
   });
 
   it("treats a receipt it cannot read as no approval at all", async () => {
+    // Structurally wrong, and syntactically wrong. The second one used to throw
+    // out of `JSON.parse` - on a path the creation screen polls, so a truncated
+    // audit row would have stopped the page answering rather than meaning
+    // "nobody has approved this".
     expect(await identityApprovedForDisplay(container('{"approved":true}'), profile)).toBe(false);
+    for (const broken of ["{", "", "not json at all", '{"approved":true,']) {
+      await expect(identityApprovedForDisplay(container(broken), profile)).resolves.toBe(false);
+    }
+  });
+
+  it("decides that a character needs approval from the drawing, never from the engine", () => {
+    // The first version of this gate asked whether the game was already on the
+    // board-wizard style. That style is only set by a successful enrolment,
+    // which happens AFTER the identity is approved - so the gate was skipped
+    // during exactly the window it exists for: identity drawn, review pending or
+    // refused, game still `collage-v1`, character on the page.
+    expect(characterNeedsApproval({ identityAssetId: "ast_identity" })).toBe(true);
+    // An older game whose avatar came from the collage path has no identity
+    // sheet, so there is nothing of this kind to approve.
+    expect(characterNeedsApproval({ identityAssetId: null })).toBe(false);
+    expect(characterNeedsApproval(null)).toBe(false);
+    expect(characterNeedsApproval(undefined)).toBe(false);
   });
 });

@@ -144,6 +144,29 @@ async function validateIdentityGateBill(budget: WorldBudget, gameId: string, rec
  * makes a new identity sheet, and the wizard already refuses to continue when
  * the identity on the profile changes underneath it.
  */
+/**
+ * Does this child's character have to be approved before it is shown?
+ *
+ * Yes exactly when there is an identity sheet: that sheet IS a generated drawing
+ * of the child, and a drawing nobody has looked at is not a result to show a
+ * parent. No when there is none - an older game whose avatar came from the
+ * collage path has nothing of this kind to approve.
+ *
+ * Deliberately NOT keyed on the engine. The first version asked whether the game
+ * was already on the board-wizard style, and that style is only set by a
+ * successful enrolment - which happens *after* the identity is approved. So the
+ * gate was skipped during exactly the window it exists for: identity drawn,
+ * review pending or refused, game still `collage-v1`, character on the page.
+ *
+ * Moving `styleVersion` earlier would not fix it either, and would break
+ * something else: that field routes `runGenerationPipeline`, and the wizard path
+ * expects a capsule that does not exist yet. Needing approval and having
+ * finished enrolment are two different facts.
+ */
+export function characterNeedsApproval(profile: { identityAssetId: string | null } | null | undefined): boolean {
+  return !!profile?.identityAssetId;
+}
+
 export async function identityApprovedForDisplay(c: Container, profile: {
   identityAssetId: string | null; originalPhotoAssetId: string | null; ageYears: number | null;
 }): Promise<boolean> {
@@ -153,7 +176,12 @@ export async function identityApprovedForDisplay(c: Container, profile: {
     orderBy: { createdAt: "desc" },
   });
   if (!row?.metaJson) return false;
-  const receipt = receiptSchema.safeParse(JSON.parse(row.metaJson));
+  // A receipt that will not even parse is not an approval, and it is certainly
+  // not a reason for the creation screen to stop answering: this is read on
+  // every poll, and `JSON.parse` throws on a truncated row.
+  let parsed: unknown;
+  try { parsed = JSON.parse(row.metaJson); } catch { return false; }
+  const receipt = receiptSchema.safeParse(parsed);
   if (!receipt.success) return false;
   const { approved, checks, identityAssetId, provenance } = receipt.data;
   // An "uncertain" is not an approval, and neither is a stale one about another

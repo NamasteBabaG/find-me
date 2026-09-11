@@ -12,7 +12,7 @@ import { findScene } from "../../../../../../content/scenes";
 import { currentUser, draftTokenFromCookie, isAdminEmail } from "@/lib/server/session";
 import { pick } from "@/i18n";
 import { BOARD_WIZARD_STYLE, readBoardWizard } from "@/services/generation/board-conditioned-wizard";
-import { identityApprovedForDisplay } from "@/services/generation/board-wizard-identity-gate";
+import { characterNeedsApproval, identityApprovedForDisplay } from "@/services/generation/board-wizard-identity-gate";
 import { env } from "@/lib/env";
 import { auditWorldBudget } from "@/services/generation/world-budget";
 
@@ -59,14 +59,16 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
   // to be their child already drawn in the language of the boards, so an
   // unreviewed one is a result nobody has stood behind yet.
   //
-  // Only the board-wizard path has that review today. Games made before it keep
-  // the old rule, and the local-patch route must adopt this same gate when it is
-  // wired - the requirement is about what the parent is shown, not about which
-  // engine happened to draw it.
+  // The question is whether there is a DRAWING to approve, not which engine the
+  // game will eventually route to. Keying this on the board-wizard style skipped
+  // the entire window it exists for: the style is only set by a successful
+  // enrolment, which happens after the identity is approved, so a character that
+  // was pending review - or had just been refused - was still `collage-v1` and
+  // sailed straight past the gate.
   const avatarId = game.childProfile?.avatarAssetId ?? null;
   const avatar = avatarId ? await c.db.asset.findUnique({ where: { id: avatarId }, select: { status: true } }) : null;
-  const reviewed = game.styleVersion === BOARD_WIZARD_STYLE
-    ? game.childProfile ? await identityApprovedForDisplay(c, game.childProfile) : false
+  const reviewed = characterNeedsApproval(game.childProfile)
+    ? await identityApprovedForDisplay(c, game.childProfile!)
     : true;
   const characterReady = avatar?.status === "READY" && reviewed;
   const avatarUrl = characterReady && avatarId ? signedAssetUrl(c, avatarId) : null;
