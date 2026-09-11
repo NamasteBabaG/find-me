@@ -1,4 +1,5 @@
 /** QA's outer gate. Web Crypto keeps the same checks usable at the edge and in routes. */
+import { envValue } from "./env-value";
 import { safeLocalPath } from "./safe-redirect";
 
 export interface QaAccessConfig {
@@ -15,10 +16,17 @@ let reportedProblem: string | null = null;
 
 export function qaAccessConfig(): QaAccessConfig {
   const config = {
-    enabled: process.env.APP_ENV === "qa",
+    // Read exactly as `env()` reads it. This gate runs at the edge and cannot
+    // go through the server env cache, and when the two disagreed about what
+    // `APP_ENV` says - a byte order mark in front of `qa` - the application
+    // booted as QA and its front door switched itself off.
+    enabled: envValue("APP_ENV", process.env.APP_ENV) === "qa",
+    // Secrets exactly as they are, on both sides. A credential is not a label:
+    // its bytes are the key, and trimming one invalidates every signature
+    // already made with it.
     password: process.env.QA_ACCESS_PASSWORD ?? "",
     sessionSecret: process.env.SESSION_SECRET ?? "",
-    secure: process.env.NODE_ENV === "production",
+    secure: envValue("NODE_ENV", process.env.NODE_ENV) === "production",
     cronSecret: process.env.CRON_SECRET ?? "",
   };
   const problem = config.enabled ? qaAccessProblem(config) : null;
