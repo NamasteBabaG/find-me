@@ -17,14 +17,17 @@ import { FIXED_SOURCE_SETTINGS, type FixedSourceResult } from "../../../infra/ge
 import { auditWorldBudget } from "../world-budget";
 import { boardWizardContextKey } from "../board-wizard-review-input";
 import type { BoardPoseObservationRequest } from "../../../infra/generation/board-pose-observer";
+import type { BoardUpperBodyRecoveryRequest } from "../board-upper-body-recovery";
 
 const fakes = vi.hoisted(() => ({ catalog: null as unknown, input: null as unknown, png: null as unknown,
   succeed: false, calls: [] as string[], measurementCalls: [] as (1 | 2)[], remeasureBoard: "", remeasureSuccess: false, failFirstSource: false, illegalRepaint: false,
   sourceReadyBoard: "", engineRequests: [] as { boardId: string; measurementAttempt?: 1 | 2; yieldAfterNewSource?: boolean; transportRecoveryApprovalId?: string }[],
-  reviews: [] as string[], events: [] as string[], testers: [] as string[], appEnv: "qa", dailyCeiling: 0,
+  reviews: [] as string[], events: [] as string[], testers: [] as string[], appEnv: "qa", dailyCeiling: 0, generationEnabled: "on" as "on" | "off",
   onGenerate: null as null | (() => Promise<void>), onIdentityApproval: null as null | (() => Promise<void>), requireDispatch: false,
+  upperBody: false, upperBodyOutcome: "ok" as "ok" | "diagnostic" | "throw", upperBodyRequests: [] as unknown[], upperBodyPrepared: 0, upperBodyBound: 0,
+  upperBodyOriginal: { state: "source-review-required", measurement: { status: "uncertain", sources: [] }, source: { fingerprint: "original-paid-source-2" } },
   measureInput: null as null | { sheetPng: Buffer; slots: { slotId: string; pose: string }[] } }));
-vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: fakes.appEnv, GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: fakes.dailyCeiling, GENERATION_PROVIDER: "openai", GENERATION_MODEL: "gpt-image-2", GENERATION_QUALITY: "medium", OPENAI_API_KEY: "synthetic-never-live" }), spendGuard: () => ({ appEnv: fakes.appEnv, realGeneration: true, testers: fakes.testers }) }));
+vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: fakes.appEnv, GENERATION_ENABLED: fakes.generationEnabled, GENERATION_DAILY_CENTS: fakes.dailyCeiling, GENERATION_PROVIDER: "openai", GENERATION_MODEL: "gpt-image-2", GENERATION_QUALITY: "medium", OPENAI_API_KEY: "synthetic-never-live" }), spendGuard: () => ({ appEnv: fakes.appEnv, realGeneration: true, testers: fakes.testers }) }));
 // This suite tests orchestration; the real identity/style gate has its own
 // provider/receipt tests. Synthetic images are never visually approved here.
 vi.mock("../board-wizard-identity-gate", async original => ({
@@ -33,7 +36,8 @@ vi.mock("../board-wizard-identity-gate", async original => ({
 vi.mock("../board-conditioned-catalog", async original => {
   const actual = await original<typeof import("../board-conditioned-catalog")>();
   return { ...actual, readBoardConditionedCatalog: async () => ({ catalog: fakes.catalog, sha256: boardConditioningHash(fakes.catalog) }),
-    loadBoardConditionedCatalogBoard: async (_catalog: unknown, boardId: string, child: unknown) => ({ ...(fakes.input as object), boardId, child }) };
+    loadBoardConditionedCatalogBoard: async (_catalog: unknown, boardId: string, child: unknown) => ({ ...(fakes.input as object), boardId, child,
+      ...(fakes.upperBody && boardId === "greatwall" ? { board: { png: fakes.png, sha256: "6519446d0eab2b10699d1035781296eebea27fa5b9473db8a523c269ed7b1c84" } } : {}) }) };
 });
 vi.mock("../board-conditioned-source", async original => {
   const actual = await original<typeof import("../board-conditioned-source")>();
@@ -60,6 +64,7 @@ vi.mock("../board-conditioned-generation", () => ({ generateBoardConditionedAppe
     await deps.checkpoints.getMeasurement(request.worldId, request.input.boardId, 2);
     if (fakes.illegalRepaint) await deps.sources.generate({});
   }
+  if (fakes.upperBody && request.input.boardId === "greatwall") return fakes.upperBodyOriginal;
   if (request.input.boardId === fakes.remeasureBoard && fakes.failFirstSource && fakes.calls.filter(b => b === fakes.remeasureBoard).length === 1) return { state: "source-review-required" };
   if (request.input.boardId === fakes.remeasureBoard) return request.measurementAttempt === 2 && fakes.remeasureSuccess
     ? { state: "review-required", previewIsDiagnostic: false }
@@ -68,10 +73,30 @@ vi.mock("../board-conditioned-generation", () => ({ generateBoardConditionedAppe
 } }));
 // These synthetic mocks verify orchestration only. Real extraction/player parity
 // and visual approval are covered elsewhere; no child or live provider is used.
-vi.mock("../board-conditioned-player", () => ({
+vi.mock("../board-conditioned-player", () => {
+  const normal = {
   prepareBoardConditionedPlayerBoard: async (r: { input: { boardId: string } }) => ({ playerBindingSha256: "c".repeat(64), assetWrites: [0, 1, 2, 3].map(i => ({ key: `${r.input.boardId}/${i}`, boardId: r.input.boardId, slotId: i ? `slot-${i}` : null, kind: i ? "premasked-sprite" : "static-board", png: fakes.png, sha256: "d".repeat(64), rgbaSha256: "e".repeat(64), width: 10, height: 10, contentType: "image/png", visibility: "PRIVATE" })) }),
   bindBoardConditionedPlayerGame: async (r: { template: { scenes: { art: object; targets: object[] }[] }; receipts: { url: string }[] }) => ({ privateReviewConfig: { ...r.template, scenes: r.template.scenes.map(s => ({ ...s, art: { ...s.art, base: r.receipts[0]!.url }, targets: s.targets.map((t, i) => ({ ...t, sprite: { kind: "image", url: r.receipts[i + 1]!.url, width: 10, height: 10 } })) })) } }),
-}));
+  };
+  return { ...normal,
+    prepareBoardUpperBodyRecoveryPlayerBoard: async (r: BoardUpperBodyRecoveryRequest) => {
+      fakes.upperBodyPrepared++;
+      return { ...await normal.prepareBoardConditionedPlayerBoard({ input: r.originalInput }),
+        manifest: { recovery: { version: "explicit-upper-body-private-player/v1", generatedForDestination: false, originalMeasurementStatus: "uncertain" } } };
+    },
+    bindBoardUpperBodyRecoveryPlayerGame: async (r: Parameters<typeof normal.bindBoardConditionedPlayerGame>[0] & { mode: string }) => {
+      fakes.upperBodyBound++; expect(r.mode).toBe("private-review");
+      return { ...await normal.bindBoardConditionedPlayerGame(r), playableGameConfig: null, automaticRelease: false };
+    },
+  };
+});
+vi.mock("../board-upper-body-recovery", () => ({ recoverBoardOccludedUpperBody: async (r: BoardUpperBodyRecoveryRequest) => {
+  fakes.upperBodyRequests.push(r);
+  if (fakes.upperBodyOutcome === "throw") throw new Error("Synthetic recovery foreground does not cover body");
+  return { state: "upper-body-recovery-review-required", originalResult: r.originalResult, derivedInput: r.originalInput,
+    previewIsDiagnostic: fakes.upperBodyOutcome === "diagnostic", automaticRelease: false,
+    provenance: { originalStandingDecision: "uncertain", generatedForDestination: false, originalSourceFingerprint: r.originalResult.source.fingerprint, plan: r.plan } };
+} }));
 vi.mock("../board-wizard-review-input", async original => {
   const actual = await original<typeof import("../board-wizard-review-input")>();
   return { ...actual, prepareBoardWizardReviews: async (worldId: string, attempt: number, input: { boardId: string }) => [1, 2, 3].map(i => ({ slotId: `slot-${i}`, assetKey: `${input.boardId}/${i}`, patchSha256: sha256Bytes(fakes.png as Buffer), contextKey: actual.boardWizardContextKey(worldId, input.boardId, `slot-${i}`, attempt), contextSha256: sha256Bytes(fakes.png as Buffer), context: fakes.png,
@@ -96,8 +121,9 @@ beforeAll(async () => {
 });
 beforeEach(() => { process.env.QA_BOARD_CONDITIONED_WIZARD = "true"; fakes.succeed = false; fakes.calls = []; fakes.measurementCalls = [];
   fakes.sourceReadyBoard = ""; fakes.engineRequests = [];
+  fakes.upperBody = false; fakes.upperBodyOutcome = "ok"; fakes.upperBodyRequests = []; fakes.upperBodyPrepared = 0; fakes.upperBodyBound = 0;
   fakes.remeasureBoard = ""; fakes.remeasureSuccess = false; fakes.failFirstSource = false; fakes.illegalRepaint = false; fakes.reviews = []; fakes.events = []; fakes.appEnv = "qa";
-  fakes.dailyCeiling = 0; fakes.onGenerate = null; fakes.onIdentityApproval = null; fakes.requireDispatch = false; fakes.measureInput = null; });
+  fakes.dailyCeiling = 0; fakes.generationEnabled = "on"; fakes.onGenerate = null; fakes.onIdentityApproval = null; fakes.requireDispatch = false; fakes.measureInput = null; });
 afterEach(() => { vi.unstubAllGlobals(); });
 afterAll(async () => {
   delete process.env.QA_BOARD_CONDITIONED_WIZARD; await db.$disconnect();
@@ -127,7 +153,66 @@ async function advanceUntil(f: Awaited<ReturnType<typeof fixture>>, ready: () =>
   for (let i = 0; i < 80 && !ready(); i++) await runBoardConditionedWizardSlice(f.c, f.gameId);
   expect(ready(), "bounded synthetic wizard ticks reached the expected event").toBe(true);
 }
+async function upperBodyFixture() {
+  const f = await fixture(); fakes.upperBody = true;
+  await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
+  const envelope = JSON.parse((await f.job()).stepsJson);
+  for (const b of envelope.boardWizard.boards) Object.assign(b, { attempts: 2, state: "needs-repair", geometryRevision: BOARD_WIZARD_GEOMETRY_REVISION, previousSourceReplayed: true });
+  // Replay exactly paid source2 under the new free geometry revision. All other
+  // boards are exhausted so this tests the branch without 8 unrelated renders.
+  envelope.boardWizard.boards.find((b: { boardId: string }) => b.boardId === "greatwall").geometryRevision = "previous-free-geometry";
+  await db.generationJob.update({ where: { id: `job_${f.gameId}` }, data: { stepsJson: JSON.stringify(envelope) } });
+  const keys = boardConditionedCheckpointKeys(`${f.gameId}:board-wizard`, "greatwall--attempt-2");
+  const originals = [keys.source, keys.measurement].map((key, i) => ({ key, bytes: Buffer.from(JSON.stringify({ synthetic: true, originalPaidAttempt: 2, kind: i ? "uncertain-measurement" : "source" })) }));
+  for (const a of originals) await db.fileBlob.create({ data: { key: a.key, contentType: "application/json", data: new Uint8Array(a.bytes) } });
+  return { ...f, originals };
+}
 describe("actual wizard to durable QA world orchestration (synthetic engine, no paid calls)", () => {
+  it("persists an explicit source2 upper-body derivation with 3 private sprites, preserves rejected originals, then purges its inventory", async () => {
+    const f = await upperBodyFixture(), originalResult = structuredClone(fakes.upperBodyOriginal);
+    const ledger = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: `${f.gameId}:board-wizard` } });
+    const transport = vi.fn(); vi.stubGlobal("fetch", transport);
+    await runBoardConditionedWizardSlice(f.c, f.gameId);
+    const capsule = readBoardWizard((await f.job()).stepsJson), board = capsule.boards.find(b => b.boardId === "greatwall")!;
+    expect(board).toMatchObject({ attempts: 2, selectedSourceAttempt: 2, state: "geometry-ok" });
+    expect(board.derivationKey).toMatch(/^private:board-wizard-derivation:/);
+    expect(board.visual).toHaveLength(3); expect(board.visual.every(v => v.state === "pending")).toBe(true);
+    expect(board.visual[0]!.contextKey).toBe(boardWizardContextKey(`${f.gameId}:board-wizard`, "greatwall", "slot-1", 2));
+    expect(fakes.upperBodyRequests).toHaveLength(1);
+    expect(fakes.upperBodyRequests[0]).toMatchObject({ originalResult, expectedOriginalContractSha256: "a".repeat(64), plan: { sourceSlotId: "greatwall-upper-tower-solid-parapet-v1", eye: { x: 306, y: 290 }, faceHeightPx: 17 } });
+    expect(fakes.upperBodyPrepared).toBe(1); expect(fakes.upperBodyBound).toBe(1); expect(fakes.upperBodyOriginal).toEqual(originalResult);
+    const derivation = await db.fileBlob.findUniqueOrThrow({ where: { key: board.derivationKey! } });
+    expect(derivation.contentType).toBe("application/json");
+    expect(JSON.parse(Buffer.from(derivation.data).toString())).toMatchObject({ version: "wizard-upper-body-derivation/v1", sourceAttempt: 2,
+      provenance: { originalStandingDecision: "uncertain", generatedForDestination: false, originalSourceFingerprint: "original-paid-source-2" },
+      player: { recovery: { version: "explicit-upper-body-private-player/v1", originalMeasurementStatus: "uncertain" } } });
+    const assets = await db.asset.findMany({ where: { id: { in: board.assetIds } } });
+    expect(assets).toHaveLength(4); expect(assets.filter(a => a.type === "TARGET_SPRITE")).toHaveLength(3);
+    expect(assets.every(a => a.visibility === "PRIVATE" && a.providerRequestId === f.gameId)).toBe(true);
+    for (const a of f.originals) expect(Buffer.from((await db.fileBlob.findUniqueOrThrow({ where: { key: a.key } })).data)).toEqual(a.bytes);
+    expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: `${f.gameId}:board-wizard` } })).toEqual(ledger);
+    expect(transport).not.toHaveBeenCalled(); expect(fakes.calls).toEqual(["greatwall"]);
+    expect(capsule.automaticRelease).toBe(false);
+    expect(await db.game.findUniqueOrThrow({ where: { id: f.gameId } })).toMatchObject({ configJson: null, readyAt: null, deliveredAt: null });
+    expect(await db.shareLink.count({ where: { gameId: f.gameId } })).toBe(0);
+    await deleteBoardConditionedWizard(f.c, f.gameId, { type: "USER", id: f.ownerId }, f.ownerId);
+    expect(await db.fileBlob.findUnique({ where: { key: board.derivationKey! } })).toBeNull();
+    for (const key of [...f.originals.map(a => a.key), ...assets.map(a => a.storagePath)]) expect(await db.fileBlob.findUnique({ where: { key } })).toBeNull();
+    expect(await db.asset.count({ where: { id: { in: board.assetIds }, status: "READY" } })).toBe(0);
+    expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: `${f.gameId}:board-wizard` } })).toEqual(ledger);
+  });
+  it.each(["throw", "diagnostic"] as const)("does not promote an upper-body recovery that is %s into geometry-ok or persist a derivation", async outcome => {
+    const f = await upperBodyFixture(); fakes.upperBodyOutcome = outcome;
+    await runBoardConditionedWizardSlice(f.c, f.gameId);
+    const board = readBoardWizard((await f.job()).stepsJson).boards.find(b => b.boardId === "greatwall")!;
+    expect(board).toMatchObject({ attempts: 2, state: "needs-repair", assetIds: [], visual: [] });
+    expect(board.derivationKey).toBeUndefined(); expect(board.selectedSourceAttempt).toBeUndefined();
+    expect(fakes.upperBodyRequests).toHaveLength(1); expect(fakes.upperBodyPrepared).toBe(0); expect(fakes.upperBodyBound).toBe(0);
+    expect(await db.asset.count({ where: { ownerId: f.ownerId, provider: "board-conditioned-wizard" } })).toBe(0);
+    if (outcome === "throw") expect(board.reason).toContain("foreground does not cover body");
+    for (const a of f.originals) expect(Buffer.from((await db.fileBlob.findUniqueOrThrow({ where: { key: a.key } })).data)).toEqual(a.bytes);
+    expect(await db.game.findUniqueOrThrow({ where: { id: f.gameId } })).toMatchObject({ configJson: null, readyAt: null, deliveredAt: null });
+  });
   it("can select the first paid source after the second fails without erasing purchases or buying again", async () => {
     const f = await fixture(); await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
     const envelope = JSON.parse((await f.job()).stepsJson);
@@ -379,17 +464,34 @@ describe("actual wizard to durable QA world orchestration (synthetic engine, no 
     const f = await fixture(); await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`); await db.childProfile.update({ where: { id: f.childId }, data: { ageYears: 8 } });
     await expect(runBoardConditionedWizardSlice(f.c, f.gameId)).rejects.toThrow("identity changed"); expect(fakes.calls).toHaveLength(0);
   });
-  it("records a preflight daily-cap failure as a durable hold before any source or review dispatch", async () => {
-    const f = await fixture(); await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
-    const before = await f.job(); fakes.dailyCeiling = 1;
-    await expect(runBoardConditionedWizardSlice(f.c, f.gameId)).resolves.toEqual({ pending: false });
-    const after = await f.job();
-    expect(after).toMatchObject({ status: "DONE", currentStep: null, attempts: before.attempts + 1 });
-    expect(after.lastError).toContain("Daily ceiling reached"); expect(readBoardWizard(after.stepsJson).state).toBe("held");
-    expect(await db.game.findUniqueOrThrow({ where: { id: f.gameId } })).toMatchObject({ status: "MANUAL_REVIEW", configJson: null });
-    expect(fakes.events).toEqual([]);
-    await expect(runBoardConditionedWizardSlice(f.c, f.gameId)).resolves.toEqual({ pending: false });
-    expect((await f.job()).attempts).toBe(after.attempts);
+  it("treats the daily ceiling and the kill switch as a pause, not a hold, and resumes without a person", async () => {
+    // These used to land in the same catch as a corrupt capsule: the game went
+    // to MANUAL_REVIEW, the capsule was marked held, and turning generation back
+    // on did nothing, because a held capsule is not resumed by a tick. Somebody
+    // had to reconcile a job that had never gone wrong.
+    //
+    // A pause must still be VISIBLE - the reason is on the job - but the work
+    // keeps its place and the next tick after the pause lifts carries on.
+    for (const pause of ["daily-ceiling", "kill-switch"] as const) {
+      const f = await fixture(); await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
+      if (pause === "daily-ceiling") fakes.dailyCeiling = 1; else fakes.generationEnabled = "off";
+
+      await expect(runBoardConditionedWizardSlice(f.c, f.gameId)).resolves.toEqual({ pending: true });
+      const paused = await f.job();
+      expect(paused.status).toBe("QUEUED");
+      expect(paused.lastError).toContain("paused");
+      expect(paused.lastError).toContain(pause);
+      // Nothing was bought, and nothing was given up.
+      expect(fakes.events).toEqual([]);
+      expect(readBoardWizard(paused.stepsJson).state).toBe("running");
+      expect(await db.game.findUniqueOrThrow({ where: { id: f.gameId } })).toMatchObject({ status: "TARGETS_GENERATING" });
+
+      // Lift the pause: the next tick carries on by itself.
+      if (pause === "daily-ceiling") fakes.dailyCeiling = 0; else fakes.generationEnabled = "on";
+      await runBoardConditionedWizardSlice(f.c, f.gameId);
+      expect(fakes.calls.length).toBeGreaterThan(0);
+      fakes.calls.length = 0; fakes.events.length = 0;
+    }
   });
   it("holds a changed paid policy under the exact job claim without buying a source", async () => {
     const f = await fixture(); await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);

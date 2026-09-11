@@ -28,11 +28,13 @@ import { needsBoardStandingRemeasurement } from "./board-wizard-remeasurement";
 import { needsBoardSourceRemeasurement } from "./board-wizard-source-remeasurement";
 import { requireBoardWizardIdentityApproval } from "./board-wizard-identity-gate";
 import { readBoardWizardBudgetExtension } from "./board-wizard-budget-extension";
+import { recoverBoardOccludedUpperBody, type BoardUpperBodyRecoveryRequest } from "./board-upper-body-recovery";
+import { prepareBoardUpperBodyRecoveryPlayerBoard, bindBoardUpperBodyRecoveryPlayerGame } from "./board-conditioned-player";
 
 /** Distinct from the admin probe and legacy fixed import: never published automatically. */
 export const BOARD_WIZARD_STYLE = "fixed-sprite-board-wizard-v1";
 /** Re-evaluate old failed measurements once after a deterministic geometry fix. */
-export const BOARD_WIZARD_GEOMETRY_REVISION = "face-boundary-native-pixel/v1";
+export const BOARD_WIZARD_GEOMETRY_REVISION = "authored-local-upper-body-pocket/v1";
 export const BOARD_WIZARD_SOURCE_POLICY: FixedSourcePolicy = { quality: "medium", reserveMicroUsd: 200_000, providerNamespace: "openai:find-me-existing", timeoutMs: 120_000,
   rateCard: { id: "existing-reviewed-image2-5-8-30-microusd-v1", textInput: 5, imageInput: 8, imageOutput: 30 } };
 export const BOARD_WIZARD_OBSERVER_POLICY: BoardPoseObserverPolicy = { reserveMicroUsd: 400_000, providerNamespace: "openai:find-me-existing", timeoutMs: 90_000 };
@@ -48,6 +50,7 @@ const progressSchema = z.object({ boardId: z.string(), state: z.enum(["pending",
   geometryRevision: z.string().min(1).max(120).optional(),
   selectedSourceAttempt: z.union([z.literal(1), z.literal(2)]).optional(),
   previousSourceReplayed: z.boolean().optional(),
+  derivationKey: z.string().min(1).max(240).optional(),
   remeasurements: z.array(z.object({ sourceAttempt: z.union([z.literal(1), z.literal(2)]), state: z.enum(["pending", "done"]),
     kind: z.literal("transport-recovery").optional(), approvalId: z.string().min(1).max(240).optional(),
   }).strict().refine(r => Boolean(r.kind) === Boolean(r.approvalId), "Transport recovery requires its approval identifier")).max(2).optional(),
@@ -74,6 +77,24 @@ const capsuleSchema = z.object({ version: z.literal("board-conditioned-wizard/v1
 });
 type Capsule = z.infer<typeof capsuleSchema>;
 function demand(value: unknown, message: string): asserts value { if (!value) throw new Error(`BOARD_WIZARD: ${message}`); }
+
+/**
+ * Spend is PAUSED, not broken.
+ *
+ * The kill switch and the daily ceiling are both temporary and both expected,
+ * and they used to arrive at the same catch as a corrupt capsule or a changed
+ * identity - which parks the game in MANUAL_REVIEW and marks the capsule `held`.
+ * Turning generation back on then did nothing, because a held capsule is not
+ * resumed by a tick; somebody had to reconcile a job that had never gone wrong.
+ *
+ * A pause returns the lease and leaves everything exactly where it was.
+ */
+export class GenerationPaused extends Error {
+  constructor(readonly why: "kill-switch" | "daily-ceiling") {
+    super(`BOARD_WIZARD: generation is paused (${why})`);
+    this.name = "GenerationPaused";
+  }
+}
 export function readBoardWizard(raw: string): Capsule {
   const envelope = JSON.parse(raw) as { boardWizard?: unknown };
   const record = capsuleSchema.parse(envelope.boardWizard);
@@ -86,7 +107,9 @@ const assetPath = (id: string) => `private/board-wizard/${id}.png`;
 function budgetOf(c: Container, attempt = 1) { return boardWizardBudget(new CasWorldBudgetRepository(new PrismaWorldBudgetStore(c.db)), attempt, {}, worldId => readBoardWizardBudgetExtension(c, worldId)); }
 
 async function spendCheck(c: Container, ownerId: string) {
-  demand(boardWizardEnabled() && c.storage.id === "db" && env().GENERATION_ENABLED === "on", "QA generation is not explicitly enabled with durable storage");
+  demand(boardWizardEnabled() && c.storage.id === "db", "QA generation is not explicitly enabled with durable storage");
+  // A pause, not a fault: see GenerationPaused.
+  if (env().GENERATION_ENABLED !== "on") throw new GenerationPaused("kill-switch");
   demand(env().GENERATION_PROVIDER === "openai" && env().GENERATION_MODEL === "gpt-image-2" && env().GENERATION_QUALITY === "medium", "The QA wizard requires GPT Image 2 MEDIUM, including identity generation");
   const user = await c.db.user.findUnique({ where: { id: ownerId }, select: { email: true } });
   demand(user && spendAllowedFor({ ...spendGuard(), realGeneration: true }, user.email), "Owner is not a permitted QA tester");
@@ -98,7 +121,7 @@ async function spendCheck(c: Container, ownerId: string) {
       c.db.worldBudgetLedger.findMany({ where: { updatedAt: { gte: date } } }),
     ]);
     const cents = (assets._sum.costCents ?? 0) + (spots._sum.costCents ?? 0) + ledgers.reduce((sum, l) => sum + auditWorldBudget(JSON.parse(l.snapshotJson)).committedMicroUsd / 10_000, 0);
-    demand(underDailyCeiling(cents, env().GENERATION_DAILY_CENTS), "Daily ceiling reached");
+    if (!underDailyCeiling(cents, env().GENERATION_DAILY_CENTS)) throw new GenerationPaused("daily-ceiling");
   }
 }
 
@@ -209,6 +232,7 @@ export async function runBoardConditionedWizardSlice(c: Container, gameId: strin
   let stagedAssets: BoardConditionedPrivateAsset[] = [];
   let stagedContexts: { key: string; png: Buffer }[] = [];
   let stagedScene: string | null = null;
+  let stagedDerivation: { key: string; json: string } | null = null;
   try {
     // These failures must be durably held under this exact job claim, rather
     // than returning a perpetual running/pending capsule before the try block.
@@ -284,6 +308,19 @@ export async function runBoardConditionedWizardSlice(c: Container, gameId: strin
       }, { worldId, input, expectedContractSha256: prepared.contractSha256, yieldAfterNewSource: true,
         ...(selectedRemeasurement ? { measurementAttempt: 2 as const,
           ...(selectedRemeasurement.kind === "transport-recovery" ? { transportRecoveryApprovalId: selectedRemeasurement.approvalId } : {}) } : {}) });
+      let recoveryRequest: BoardUpperBodyRecoveryRequest | null = null;
+      let recovered: Awaited<ReturnType<typeof recoverBoardOccludedUpperBody>> | null = null;
+      let recoveryFailure: string | null = null;
+      if (result.state === "source-review-required" && input.boardId === "greatwall"
+        && input.board.sha256 === "6519446d0eab2b10699d1035781296eebea27fa5b9473db8a523c269ed7b1c84") {
+        const candidate: BoardUpperBodyRecoveryRequest = { worldId, originalInput: input, expectedOriginalContractSha256: prepared.contractSha256,
+          sourcePolicy: BOARD_WIZARD_SOURCE_POLICY, observerPolicy: BOARD_WIZARD_OBSERVER_POLICY, originalResult: result,
+          plan: { version: "upper-body-occluded-destination/v1", destinationRevisionId: "greatwall-fixed-tower-pocket-v2",
+            sourceSlotId: "greatwall-upper-tower-solid-parapet-v1", eye: { x: 306, y: 290 }, faceHeightPx: 17,
+            additionalGeometry: [{ sourceSlotId: "greatwall-left-stair-planter-side-peek", eye: { x: 86, y: 971 }, faceHeightPx: 23 }] } };
+        try { recovered = await recoverBoardOccludedUpperBody(candidate); recoveryRequest = candidate; }
+        catch (error) { recoveryFailure = String(error).slice(0, 400); }
+      }
       next.contractSha256 = prepared.contractSha256;
       // Purchase count is historical truth, independent of which paid source won.
       next.attempts = Math.max(next.attempts, attempt);
@@ -295,20 +332,28 @@ export async function runBoardConditionedWizardSlice(c: Container, gameId: strin
       if (result.state === "source-ready") {
         next.state = "pending";
         next.reason = "Paid source retained; measurement runs on a fresh tick without image regeneration";
-      } else if (result.state === "review-required" && !result.previewIsDiagnostic) {
+      } else if (result.state === "review-required" && !result.previewIsDiagnostic || recovered && !recovered.previewIsDiagnostic) {
         const request = { worldId, input, expectedContractSha256: prepared.contractSha256, sourcePolicy: BOARD_WIZARD_SOURCE_POLICY, observerPolicy: BOARD_WIZARD_OBSERVER_POLICY, result };
-        const player = await prepareBoardConditionedPlayerBoard(request);
+        const recoveryPlayerRequest = recoveryRequest && recovered ? { ...recoveryRequest, result: recovered } : null;
+        const player = recoveryPlayerRequest ? await prepareBoardUpperBodyRecoveryPlayerBoard(recoveryPlayerRequest) : await prepareBoardConditionedPlayerBoard(request);
         const def = sceneBySlug(next.boardId, record.catalog.boards.find(b => b.boardId === next.boardId)!.sceneVersion), locale = g.locale === "he" ? "he" : "en";
         const child = { name: record.childName, avatarUrl: `/api/assets/${record.avatarAssetId}` };
         // Temporary scaffolding is replaced by exact replay-qualified PNGs before it is ever persisted.
         const scene = composeScene(def, child, def.targets.map(t => ({ targetId: t.id, sprite: { kind: "composed" as const, faceUrl: child.avatarUrl, bodyTemplate: t.bodyTemplate } })), locale);
         const template = composeGame({ gameId, child, packageTier: "ONE_WORLD", styleVersion: BOARD_WIZARD_STYLE, locale, scenes: [scene] });
         const slots = record.catalog.boards.find(b => b.boardId === next.boardId)!.slots;
-        const bound = await bindBoardConditionedPlayerGame({ boards: [request], template, mode: "private-review",
+        const binding = { template, mode: "private-review" as const,
           targetSlots: def.targets.map((t, i) => ({ boardId: next.boardId, targetId: t.id, slotId: slots[i]!.slot.id, hintText: slots[i]!.hintText[locale] })),
-          receipts: player.assetWrites.map(a => ({ key: a.key, sha256: a.sha256, rgbaSha256: a.rgbaSha256, width: a.width, height: a.height, url: `/api/assets/${assetId(gameId, a.key)}`, access: "authenticated-private" as const })) });
+          receipts: player.assetWrites.map(a => ({ key: a.key, sha256: a.sha256, rgbaSha256: a.rgbaSha256, width: a.width, height: a.height, url: `/api/assets/${assetId(gameId, a.key)}`, access: "authenticated-private" as const })) };
+        const bound = recoveryPlayerRequest ? await bindBoardUpperBodyRecoveryPlayerGame({ ...binding, board: recoveryPlayerRequest })
+          : await bindBoardConditionedPlayerGame({ ...binding, boards: [request] });
         stagedAssets = player.assetWrites;
-        const reviews = await prepareBoardWizardReviews(worldId, attempt, input, player);
+        const reviews = await prepareBoardWizardReviews(worldId, attempt, recovered?.derivedInput ?? input, player);
+        if (recovered) {
+          const proof = { version: "wizard-upper-body-derivation/v1", sourceAttempt: attempt, provenance: recovered.provenance, player: player.manifest };
+          const key = `private:board-wizard-derivation:${boardConditioningHash([worldId, next.boardId, proof])}`;
+          stagedDerivation = { key, json: JSON.stringify(proof) }; next.derivationKey = key;
+        }
         stagedContexts = reviews.map(r => ({ key: r.contextKey, png: r.context }));
         next.visual = reviews.map(r => ({ slotId: r.slotId, patchAssetId: assetId(gameId, r.assetKey), patchSha256: r.patchSha256, contextKey: r.contextKey,
           contextSha256: r.contextSha256, recipe: r.recipe, state: "pending" }));
@@ -331,6 +376,7 @@ export async function runBoardConditionedWizardSlice(c: Container, gameId: strin
           : "extractionFailure" in result && result.extractionFailure ? `Source extraction: ${result.extractionFailure.code}` : result.state;
         if (observeAgain) next.reason = `Same paid source awaits one landmark remeasurement; no image rerender. ${next.reason}`;
         if (remeasurement) next.reason = `Remeasurement exhausted; source retained without image rerender. ${next.reason}`;
+        if (recoveryFailure) next.reason = `${next.reason}; ${recoveryFailure}`.slice(0, 2000);
       }
       }
     }
@@ -346,6 +392,11 @@ export async function runBoardConditionedWizardSlice(c: Container, gameId: strin
         if (old) demand(old.contentType === "image/png" && Buffer.from(old.data).equals(context.png), "Private final-composite context changed");
         else await tx.fileBlob.create({ data: { key: context.key, contentType: "image/png", data: new Uint8Array(context.png) } });
       }
+      if (stagedDerivation) {
+        const bytes = Buffer.from(stagedDerivation.json), old = await tx.fileBlob.findUnique({ where: { key: stagedDerivation.key } });
+        if (old) demand(old.contentType === "application/json" && Buffer.from(old.data).equals(bytes), "Private derivation record changed");
+        else await tx.fileBlob.create({ data: { key: stagedDerivation.key, contentType: "application/json", data: new Uint8Array(bytes) } });
+      }
       if (next && stagedScene) await tx.gameScene.update({ where: { gameId_sceneSlug: { gameId, sceneSlug: next.boardId } }, data: { generationStatus: "GENERATED", configJson: stagedScene } });
       let configJson: string | null = null;
       if (geometryFinished && record.boards.every(b => b.state === "geometry-ok")) {
@@ -360,6 +411,13 @@ export async function runBoardConditionedWizardSlice(c: Container, gameId: strin
     });
     return { pending: !finished };
   } catch (error) {
+    if (error instanceof GenerationPaused) {
+      // Hand the lease back and change nothing else. The capsule stays running,
+      // the game stays TARGETS_GENERATING, and the next tick after the switch
+      // goes back on - or after midnight - carries on from here.
+      await c.db.generationJob.updateMany({ where: { id: job.id, status: "RUNNING" }, data: { status: "QUEUED", currentStep: null, lastError: error.message } });
+      return { pending: true };
+    }
     record.state = "held";
     await write(async tx => {
       await tx.generationJob.update({ where: { id: job.id }, data: { status: "DONE", currentStep: null, lastError: String(error).slice(0, 500), stepsJson: JSON.stringify({ ...JSON.parse(job.stepsJson), boardWizard: record }) } });
@@ -389,6 +447,7 @@ export async function deleteBoardConditionedWizard(c: Container, gameId: string,
     demand(fence.count === 1, "Deletion lost game fence");
     await tx.generationJob.update({ where: { id: job.id }, data: { status: "DONE", stepsJson: "{}", currentStep: null, lastError: null } });
     const keys: string[] = [], ids = record.boards.flatMap(b => b.assetIds);
+    keys.push(...record.boards.flatMap(b => b.derivationKey ? [b.derivationKey] : []));
     for (const board of record.boards) for (const id of [board.boardId, `${board.boardId}--attempt-2`]) for (const measurementAttempt of [1, 2] as const) {
       keys.push(...Object.values(boardConditionedCheckpointKeys(scope(gameId), id, measurementAttempt)));
     }

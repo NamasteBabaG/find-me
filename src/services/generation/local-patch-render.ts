@@ -3,7 +3,7 @@ import {
   LOCAL_PATCH_CROP, type LocalPatchBoard, type LocalPatchHide, cropOf, maskInCrop,
 } from "../../domain/scene/local-patch-hides";
 import { analysePatchSeam, applyLocalPatch, type SeamReport } from "./local-patch-seam";
-import { LOCAL_PATCH_JUDGE, judgeLocalPatch, type LocalPatchJudgeRequest, type LocalPatchJudgeResult } from "./local-patch-judge";
+import { judgeLocalPatch, type LocalPatchJudgeRequest, type LocalPatchJudgeResult } from "./local-patch-judge";
 import { judgeCharge } from "../../infra/generation/judge";
 import { LOCAL_PATCH_POSE_WORDING, LOCAL_PATCH_PROMPT_VERSION, localPatchPrompt } from "./local-patch-prompt";
 
@@ -164,7 +164,13 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
     // The judgement's own price rides in the same ledger entry as the judgement.
     // The scripts left this outside the budget, so a ledger read 29.60c for a
     // round that had actually cost 38.85c. A judgement is a purchase.
-    const charge = judgeCharge(LOCAL_PATCH_JUDGE.model, answer.usage ?? undefined);
+    //
+    // Priced by the model the provider says it RAN, never by the one we asked
+    // for. Token counts alone do not make a price known: they have to be
+    // multiplied by a rate, and a rate belongs to a model. Pricing a reply from
+    // an unexpected model at our own model's rate is a made-up number wearing
+    // the shape of a real one, so an unrecognised model prices as unknown.
+    const charge = judgeCharge(answer.model ?? "", answer.usage ?? undefined);
     return { ...answer, costCents: charge.costCents, costUnknown: answer.costUnknown || charge.costUnknown };
   });
 

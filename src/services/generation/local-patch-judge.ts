@@ -117,11 +117,18 @@ export const localPatchVerdictSchema = z.object({
   // while still declaring "pass", and trusting that line counted them as
   // successes. The rule is the one the prompt states: the three that matter must
   // all pass, and nothing may be a fail.
-  // A fault that NAMES a check contradicts that check calling itself pass. The
-  // description is the evidence; the field is the summary, and the summary loses.
+  // A fault that NAMES a check and does not find that check already failing is
+  // evidence the fields do not carry. `pass` beside a fault was caught; `unsure`
+  // beside a fault was not, and `scaleRight: unsure` with a fault describing a
+  // head three times the size of the child beside it still derived a clean pass,
+  // because scaleRight is not one of the blocking four and nothing else looked.
+  // The description is the evidence and the field is only the summary.
   const contradicted: string[] = [];
   for (const key of JUDGE_CHECKS) {
-    if (normalised[key] === "pass" && v.faults.some(f => f.check === key)) { normalised[key] = "unsure"; contradicted.push(key); }
+    if (normalised[key] !== "fail" && v.faults.some(f => f.check === key)) {
+      if (normalised[key] === "pass") normalised[key] = "unsure";
+      contradicted.push(key);
+    }
   }
 
   // A fault nobody could route is still a fault somebody saw.
@@ -198,6 +205,11 @@ export type LocalPatchJudgeRequest = {
   beforePng: Buffer; afterPng: Buffer; identityPng: Buffer;
   /** What the painter was asked for, so two of the checks have a yardstick. */
   expectation?: LocalPatchExpectation;
+  /**
+   * Overridable so a test can prove the clock enforces a maximum rather than
+   * only that an AbortError is classified as one. Production never sets it.
+   */
+  timeoutMs?: number;
 };
 
 /**
@@ -229,6 +241,21 @@ export type LocalPatchJudgeResult = {
 
 const numeric = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= 0;
 
+/**
+ * The model named in the reply must be the one we asked for, or a dated
+ * snapshot of it. `startsWith` alone accepts `gpt-5.6-solarbitrary`, which is a
+ * different model wearing a prefix.
+ */
+export function isTheModelWeAsked(model: string | null): boolean {
+  if (model === null) return false;
+  if (model === LOCAL_PATCH_JUDGE.model) return true;
+  // A dated snapshot and nothing else. Built by hand rather than by interpolating
+  // the model name into a pattern: the name contains a `.`, which a regex reads
+  // as "any character", so a pattern made that way is looser than it looks.
+  const suffix = model.slice(LOCAL_PATCH_JUDGE.model.length);
+  return model.startsWith(`${LOCAL_PATCH_JUDGE.model}-`) && /^-\d{4}-\d{2}-\d{2}$/.test(suffix);
+}
+
 /** One judgement. The caller owns the ledger; this only asks, checks and parses. */
 export async function judgeLocalPatch(apiKey: string, request: LocalPatchJudgeRequest,
   fetchOnce: typeof fetch = fetch): Promise<LocalPatchJudgeResult> {
@@ -237,7 +264,7 @@ export async function judgeLocalPatch(apiKey: string, request: LocalPatchJudgeRe
   const abort = new AbortController();
   // A request with no deadline is a run that can hang for as long as the network
   // lets it, holding a reservation nobody will settle.
-  const timer = setTimeout(() => abort.abort(), LOCAL_PATCH_JUDGE.timeoutMs);
+  const timer = setTimeout(() => abort.abort(), request.timeoutMs ?? LOCAL_PATCH_JUDGE.timeoutMs);
   let response: Response;
   try {
     response = await fetchOnce(LOCAL_PATCH_JUDGE.endpoint, {
@@ -252,13 +279,22 @@ export async function judgeLocalPatch(apiKey: string, request: LocalPatchJudgeRe
     });
   } catch {
     // Dispatched and then lost: the provider may still have billed it.
+    clearTimeout(timer);
     return { verdict: null, raw: null, usage: null, requestId: null, model: null, finishReason: null, wireFault: "timeout", costUnknown: true };
-  } finally { clearTimeout(timer); }
+  }
 
+  // The timer stays armed until the BODY is read. Clearing it on the headers
+  // left a slow or stalled body outside every deadline the call has, which is
+  // the shape a hung judgement actually takes: headers in milliseconds, then
+  // nothing.
   const requestId = response.headers.get("x-request-id");
-  const body = await response.json().catch(() => null) as {
-    model?: string; choices?: { message?: { content?: string }; finish_reason?: string }[]; usage?: Record<string, unknown>;
-  } | null;
+  let body: { model?: string; choices?: { message?: { content?: string }; finish_reason?: string }[]; usage?: Record<string, unknown> } | null;
+  try {
+    body = await response.json() as typeof body;
+  } catch {
+    clearTimeout(timer);
+    return { verdict: null, raw: null, usage: null, requestId, model: null, finishReason: null, wireFault: abort.signal.aborted ? "timeout" : "not-json", costUnknown: true };
+  } finally { clearTimeout(timer); }
   const raw = body?.choices?.[0]?.message?.content ?? null;
   const model = typeof body?.model === "string" ? body.model : null;
   const finishReason = typeof body?.choices?.[0]?.finish_reason === "string" ? body.choices[0]!.finish_reason! : null;
@@ -273,9 +309,15 @@ export async function judgeLocalPatch(apiKey: string, request: LocalPatchJudgeRe
   if (typeof raw !== "string") return refuse("no-content");
   // A reply from a model we did not ask for is not this judge's judgement, and
   // its effort setting - which the whole cost decision rests on - is unknown.
-  if (model !== null && !model.startsWith(LOCAL_PATCH_JUDGE.model)) return refuse("wrong-model");
+  //
+  // Both of these are REQUIRED, not checked-when-present. Skipping the check on
+  // a missing field let a reply with no `model` and no `finish_reason` through
+  // as a clean pass, which is the same hole with the field left out instead of
+  // filled in wrongly. And the match is exact or an explicit dated snapshot of
+  // the same model: `startsWith` accepted `gpt-5.6-solarbitrary`.
+  if (!isTheModelWeAsked(model)) return refuse("wrong-model");
   // `length` means the answer stopped mid-sentence. What survived may parse.
-  if (finishReason !== null && finishReason !== "stop") return refuse("truncated");
+  if (finishReason !== "stop") return refuse("truncated");
   if (!requestId) return refuse("no-receipt");
 
   let parsed: unknown;

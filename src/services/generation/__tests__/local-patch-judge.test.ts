@@ -214,6 +214,62 @@ describe("judging one finished local patch", () => {
     expect(localPatchJudgePrompt("x")).toMatch(/Every entry in faults MUST set "check" to one of these exact names/);
   });
 
+  it("will not let a fault vanish because its check said unsure rather than pass", async () => {
+    // The 11 September counter-example. `scaleRight: unsure` beside a fault
+    // describing a head three times the size of the child next to her derived a
+    // clean pass: the contradiction rule only looked at fields calling
+    // themselves pass, and scaleRight is not one of the blocking four, so
+    // nothing else looked either.
+    const oversized = { ...good, scaleRight: "unsure", verdict: "fail",
+      reason: "Her head is about three times the head of the child beside her at the same depth.",
+      faults: [{ check: "scaleRight", where: "her head is three times the head of the boy beside her" }] };
+    const result = await judgeLocalPatch("test-only", await request(), (async () => reply(oversized)) as unknown as typeof fetch);
+    expect(result.verdict?.verdict).toBe("unsure");
+    expect(result.verdict?.contradicted).toContain("scaleRight");
+
+    // A fault beside a check that already says fail is not a contradiction; it
+    // is the fault doing its job, and the verdict is a plain fail.
+    const agreeing = { ...good, scaleRight: "fail", faults: [{ check: "scaleRight", where: "her head is three times the boy's" }] };
+    const plain = await judgeLocalPatch("test-only", await request(), (async () => reply(agreeing)) as unknown as typeof fetch);
+    expect(plain.verdict?.verdict).toBe("fail");
+    expect(plain.verdict?.contradicted).not.toContain("scaleRight");
+  });
+
+  it("requires the reply to say which model ran and how it stopped", async () => {
+    // Checking these only when present is the same hole with the field left out
+    // instead of filled in wrongly: a reply with neither came back a clean pass.
+    for (const missing of [{ model: undefined }, { choices: [{ message: { content: JSON.stringify(good) } }] }]) {
+      const result = await judgeLocalPatch("test-only", await request(), (async () => reply(good, 200, missing)) as unknown as typeof fetch);
+      expect(result.verdict).toBeNull();
+    }
+    // `startsWith` accepted a different model wearing our prefix.
+    const lookalike = await judgeLocalPatch("test-only", await request(), (async () => reply(good, 200, { model: `${LOCAL_PATCH_JUDGE.model}arbitrary` })) as unknown as typeof fetch);
+    expect(lookalike.wireFault).toBe("wrong-model");
+    // A dated snapshot of the same model is the one we asked for.
+    const snapshot = await judgeLocalPatch("test-only", await request(), (async () => reply(good, 200, { model: `${LOCAL_PATCH_JUDGE.model}-2026-03-05` })) as unknown as typeof fetch);
+    expect(snapshot.wireFault).toBeNull();
+  });
+
+  it("holds the deadline open until the body has been read", async () => {
+    // Headers in milliseconds and then nothing is the shape a hung judgement
+    // actually takes, and clearing the timer on the headers left that body
+    // outside every deadline the call has. This proves the clock enforces a
+    // maximum, rather than only that an AbortError gets classified as one.
+    const stalled = (async (_url: string, init: RequestInit) => ({
+      ok: true,
+      headers: { get: () => "req-judge" },
+      json: () => new Promise((_resolve, reject) => {
+        (init.signal as AbortSignal).addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+      }),
+    }) as unknown as Response) as unknown as typeof fetch;
+
+    const started = Date.now();
+    const result = await judgeLocalPatch("test-only", { ...await request(), timeoutMs: 120 }, stalled);
+    expect(result.wireFault).toBe("timeout");
+    expect(result.costUnknown).toBe(true);
+    expect(Date.now() - started).toBeLessThan(3_000);
+  }, 10_000);
+
   it("refuses a reply it cannot trust, whatever that reply says about the picture", async () => {
     // "The picture is wrong" and "the reply was not trustworthy" are different
     // facts. Collapsing them is how a wrong model, a truncated answer and a

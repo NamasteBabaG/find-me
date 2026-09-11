@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "tsc --noEmit && vitest run",
+    "check": "tsc --noEmit && tsc -p tsconfig.work.json --noEmit && vitest run",
     "check:work": "tsc -p tsconfig.work.json --noEmit",
     "db:sql": "node scripts/prisma-sql.mjs",
     "db:push": "prisma db push",

@@ -57,17 +57,40 @@ async function harness(over: Partial<LocalPatchRenderDeps> = {}, answer: LocalPa
 
 describe("one paid attempt at one hide", () => {
   it("cuts the mask the pose asks for, not a standing-height box", async () => {
-    const mask = await poseMask(hide);
-    const meta = await sharp(mask).metadata();
-    expect(meta.width).toBe(LOCAL_PATCH_CROP.width);
-    expect(meta.height).toBe(LOCAL_PATCH_CROP.height);
-    // The hole is the transparent part: a kneeling child's box, on the ground line.
-    const { data, info } = await sharp(mask).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-    let clear = 0;
-    for (let i = 3; i < data.length; i += info.channels) if (data[i]! === 0) clear++;
-    expect(clear).toBe(POSE_MASK.kneeling.width * POSE_MASK.kneeling.height);
-    const box = maskInCrop("kneeling");
-    expect(box.top + box.height).toBe(maskInCrop("standing").top + maskInCrop("standing").height);
+    // Counting clear pixels is not enough: the right number in the wrong place
+    // is a mask that tells the painter to work somewhere else entirely. This
+    // checks every pixel against the box the pose declares.
+    for (const pose of Object.keys(POSE_MASK) as (keyof typeof POSE_MASK)[]) {
+      const mask = await poseMask({ ...hide, pose });
+      const meta = await sharp(mask).metadata();
+      expect(meta.width).toBe(LOCAL_PATCH_CROP.width);
+      expect(meta.height).toBe(LOCAL_PATCH_CROP.height);
+
+      const box = maskInCrop(pose);
+      const { data, info } = await sharp(mask).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+      let misplaced = 0, clear = 0;
+      for (let y = 0; y < info.height; y++) for (let x = 0; x < info.width; x++) {
+        const alpha = data[(y * info.width + x) * info.channels + 3]!;
+        const inside = x >= box.left && x < box.left + box.width && y >= box.top && y < box.top + box.height;
+        if (alpha === 0) clear++;
+        if (inside !== (alpha === 0)) misplaced++;
+      }
+      expect(misplaced).toBe(0);
+      expect(clear).toBe(box.width * box.height);
+      // Every pose's box ends on the same ground line, whatever its height.
+      expect(box.top + box.height).toBe(maskInCrop("standing").top + maskInCrop("standing").height);
+    }
+  }, 30_000);
+
+  it("hands the painter that exact mask, not one built somewhere else", async () => {
+    // The check above proves the builder is right; this proves the builder is
+    // what the request carries. A correct mask nobody sends is not a fix.
+    let sent: Buffer | null = null;
+    await harness({
+      render: async ({ maskPng }) => { sent = maskPng; return { png: await patchPng(), costCents: 4.88, costUnknown: false, providerRequestId: "r" }; },
+    });
+    expect(sent).not.toBeNull();
+    expect(Buffer.compare(sent!, await poseMask(hide))).toBe(0);
   });
 
   it("puts the judgement through the same budget as the render", async () => {
