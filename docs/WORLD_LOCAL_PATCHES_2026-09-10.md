@@ -158,6 +158,30 @@ applying — which is the whole point of carrying the hash.
 `work/world-final-20260910/decisions.json` holds the two live ones, and the build
 prints which hides are in the game because a person said so.
 
+## Binding a verdict to its picture
+
+A verdict on its own is not provenance.  emits
+ - the crop the attempt would ship, taken from the composite the
+judge saw - so a verdict is bound to its picture at the moment it is judged, a
+refusal included.
+
+The rounds that judged the existing world recorded no such hash, so assembly
+validates a frozen  and never writes it as a side effect:
+
+- **missing** -> assembly stops before copying an image or writing a byte;
+- **hash mismatch** -> assembly stops and names the change;
+-  establishes the binding once, deliberately, and  is the
+  only way past an existing one.
+
+Both refusals are proved rather than asserted, by
+ and by
+swapping a judged picture and re-running.
+
+Why it matters: pairing a historical verdict with a hash taken from whatever
+image is on disk MINTS a binding instead of recording one. The downstream check
+then passes precisely because the same step wrote the hash it was about to
+check, and an unjudged render inherits an approval.
+
 ## What the rounds cost
 
 | round | hides | outcome |
