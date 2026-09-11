@@ -4,59 +4,50 @@ import {
   LOCAL_PATCH_CROP, type LocalPatchBoard, type LocalPatchHide, cropOf, maskInCrop,
 } from "../../domain/scene/local-patch-hides";
 import { analysePatchSeam, applyLocalPatch, type SeamReport } from "./local-patch-seam";
-import { judgeLocalPatch, type LocalPatchJudgeRequest, type LocalPatchJudgeResult } from "./local-patch-judge";
+import {
+  LOCAL_PATCH_JUDGE, judgeLocalPatch, localPatchVerdictSchema,
+  type JudgeWireFault, type LocalPatchJudgeRequest, type LocalPatchJudgeResult, type LocalPatchVerdict,
+} from "./local-patch-judge";
 import { judgeCharge } from "../../infra/generation/judge";
 import { LOCAL_PATCH_POSE_WORDING, LOCAL_PATCH_PROMPT_VERSION, localPatchPrompt } from "./local-patch-prompt";
+import { purchaseOnce, type PurchaseLedger, type RetainedPurchaseStore } from "./paid-operation";
+import type { WorldChargeEvidence } from "./world-budget";
 
 /**
  * One paid attempt at one hide, out of the scripts and into the product.
  *
- * This is the step the scripts under `work/` were doing by hand: cut the crop,
- * build the mask the pose needs, buy one render, check the seam, composite only
- * the declared rectangle, and judge the result once. It lives here so the
- * pipeline and the authoring scripts run the same code rather than two copies
- * that drift - the copies had already drifted, and one of them was still reading
- * judge fields the schema had dropped.
+ * Cut the crop, build the mask the pose needs, buy one render, check the seam,
+ * composite only the declared rectangle, and judge the result once.
  *
- * Two rules are structural rather than advisory:
+ * BOTH purchases go through `purchaseOnce`, which is the point rather than
+ * tidiness. The scripts budgeted the render and left the judgement outside, so a
+ * ledger read 29.60c for a round that had cost 38.85c - and they kept the bytes
+ * after settling rather than before, so an interruption between paying and
+ * writing left money spent with nothing to show for it. One boundary means a
+ * judgement is a purchase like any other, the bytes and the bill are retained
+ * together before the ledger is settled, and a replay has to prove it is the
+ * same operation before it may answer.
  *
- *  - **Every charge goes through one `spend`.** The scripts put the render
- *    inside a budget and left the judgement outside it, so a ledger said 29.60c
- *    while the round had actually cost 38.85c. A judgement is a purchase.
- *  - **The bytes are retained before they are judged.** The ledger has always
- *    had somewhere to put them; the callers never handed them over, so four
- *    refused renders could not be looked at afterwards and the question "was the
- *    judge right?" had no evidence to answer it with.
+ * A replayed judgement is RE-DERIVED from the retained reply rather than read
+ * from a stored verdict. The rules have been corrected more than once - a fault
+ * nobody could route, a check saying `unsure` beside a described defect - and
+ * re-deriving is how those corrections reach answers already paid for, free.
  */
 
-export type LocalPatchRenderReceipt = {
-  readonly costCents: number;
-  /** True when the call may have been billed and the amount cannot be stated. */
-  readonly costUnknown: boolean;
-  readonly providerRequestId: string | null;
-};
-
-export type LocalPatchProviderResult = LocalPatchRenderReceipt & { readonly png: Buffer };
-
 export type LocalPatchRenderDeps = {
-  /** Buys one render. Anything about policy, retries and fingerprints is the caller's. */
+  readonly ledger: PurchaseLedger;
+  readonly store: RetainedPurchaseStore;
+  /** Buys one render. Policy, sizes and fingerprint verification are the caller's. */
   readonly render: (input: {
     readonly requestKey: string; readonly prompt: string;
     readonly stylePng: Buffer; readonly identityPng: Buffer; readonly maskPng: Buffer;
-  }) => Promise<LocalPatchProviderResult>;
-  /**
-   * Every purchase, render and judgement alike, passes through here with a
-   * reservation. Returning a `costUnknown` result must hold the reservation.
-   */
-  readonly spend: <T extends { costCents: number; costUnknown?: boolean }>(
-    kind: string, reserveCents: number, run: () => Promise<T>) => Promise<T>;
-  /** Keeps bytes that were paid for. Called before anything judges them. */
-  readonly retain: (name: string, bytes: Buffer) => Promise<void>;
+  }) => Promise<{ png: Buffer; evidence: WorldChargeEvidence }>;
   /** Overridable so a test can answer without a network. */
   readonly judge?: (request: LocalPatchJudgeRequest) => Promise<LocalPatchJudgeResult>;
 };
 
 export type LocalPatchAttemptInput = {
+  readonly worldId: string;
   readonly board: LocalPatchBoard;
   readonly hide: LocalPatchHide;
   /** The board as it now stands, with any earlier hides already painted in. */
@@ -73,32 +64,35 @@ export type LocalPatchAttemptInput = {
 
 export type LocalPatchAttempt = {
   readonly accepted: boolean;
-  /** Why not, when not: a broken picture and an untrustworthy reply are different. */
-  readonly refusedBecause: "judge" | "wire" | null;
+  /**
+   * Why not, when not. `wire` is a reply that could not be trusted; `stopped` is
+   * a purchase that could not go ahead - a reservation somebody else holds, a
+   * charge nobody can describe, a request whose inputs changed - and neither is
+   * a statement about the picture.
+   */
+  readonly refusedBecause: "judge" | "wire" | "stopped" | null;
+  readonly stoppedReason: string | null;
   readonly patchPng: Buffer | null;
   /** The whole board with this hide painted in. Only present when accepted. */
   readonly composedPng: Buffer | null;
   readonly seam: SeamReport | null;
-  readonly judgement: LocalPatchJudgeResult | null;
+  readonly verdict: LocalPatchVerdict | null;
+  readonly wireFault: JudgeWireFault | null;
   readonly promptVersion: string;
-  /**
-   * The hash of the crop this attempt WOULD ship, taken from the composite the
-   * judge was shown a padded view of.
-   *
-   * Emitted so a verdict is bound to its picture at the moment it is judged.
-   * Without it the binding has to be minted later from whatever image is on
-   * disk, and a mint is not a record: swap the picture, mint again, and an
-   * unjudged render inherits an approval with the hash check satisfied because
-   * the same step wrote the hash it then checked.
-   */
-  readonly judgedSha256: string;
+  /** The crop this attempt would ship, bound to the verdict that judged it. */
+  readonly judgedSha256: string | null;
   readonly renderCents: number;
   readonly judgeCents: number;
   readonly costUnknown: boolean;
+  /** True when nothing was bought: both purchases came back from the ledger. */
+  readonly replayed: boolean;
 };
 
-/** How much to hold while a render or a judgement is in flight, in cents. */
-export const LOCAL_PATCH_RESERVE = Object.freeze({ render: 12, judge: 4 });
+/** What to hold while a render or a judgement is in flight. */
+export const LOCAL_PATCH_RESERVE = Object.freeze({ renderMicroUsd: 120_000, judgeMicroUsd: 40_000 });
+
+const sha = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
+const fingerprintOf = (parts: unknown) => createHash("sha256").update(JSON.stringify(parts)).digest("hex");
 
 /**
  * The mask handed to the painter: opaque everywhere but the pose's own box,
@@ -109,10 +103,8 @@ export const LOCAL_PATCH_RESERVE = Object.freeze({ render: 12, judge: 4 });
  * destination where the source is transparent and removes it where the source
  * is opaque, so a transparent stamp removes nothing - and every mask sent for
  * this world was built with a transparent stamp, which made it 512x768 of solid
- * alpha with **no editable region at all**. The renders that came back were the
- * model following the prose, with the mask contributing nothing. That is also
- * why "an edit mask did not stop it straying" was recorded as a finding: there
- * was no mask.
+ * alpha with no editable region at all. The renders that came back were the
+ * model following the prose, with the mask contributing nothing.
  */
 export async function poseMask(hide: LocalPatchHide): Promise<Buffer> {
   const box = maskInCrop(hide.pose);
@@ -141,23 +133,48 @@ async function viewAround(png: Buffer, crop: { left: number; top: number; width:
   }).resize(768, 768, { fit: "inside" }).png().toBuffer();
 }
 
+/** The part of a judge's reply worth keeping: enough to re-derive the verdict. */
+type RetainedJudgement = {
+  raw: string | null; usage: Record<string, unknown> | null; requestId: string | null;
+  model: string | null; finishReason: string | null; wireFault: JudgeWireFault | null;
+};
+
+const stopped = (reason: string, renderCents = 0): LocalPatchAttempt => ({
+  accepted: false, refusedBecause: "stopped", stoppedReason: reason,
+  patchPng: null, composedPng: null, seam: null, verdict: null, wireFault: null,
+  promptVersion: LOCAL_PATCH_PROMPT_VERSION, judgedSha256: null,
+  renderCents, judgeCents: 0, costUnknown: false, replayed: false,
+});
+
 export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: LocalPatchAttemptInput): Promise<LocalPatchAttempt> {
-  const { board, hide, attempt } = input;
+  const { worldId, board, hide, attempt } = input;
   const crop = cropOf(hide);
-  const requestKey = `${hide.id}:${hide.pose}:${attempt}`;
   const prompt = localPatchPrompt({ ground: board.ground, pose: hide.pose, ageYears: input.ageYears });
 
   const meta = await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).metadata();
   const stylePng = await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).extract(crop).png().toBuffer();
   const maskPng = await poseMask(hide);
 
-  const bought = await deps.spend(`render:${requestKey}`, LOCAL_PATCH_RESERVE.render, async () =>
-    deps.render({ requestKey, prompt, stylePng, identityPng: input.identityPng, maskPng }));
-  // Before anything looks at it. A refusal nobody can see is a refusal nobody
-  // can argue with, and the argument is the only way the judge gets calibrated.
-  await deps.retain(`${requestKey}-render.png`, bought.png);
+  const renderKey = `${hide.id}:${hide.pose}:render:${attempt}`;
+  // Everything that decides what is being bought. A different photograph,
+  // prompt, mask or crop is a different purchase and must never replay this one.
+  const renderFingerprint = fingerprintOf({
+    version: LOCAL_PATCH_PROMPT_VERSION, hide: hide.id, pose: hide.pose, crop,
+    prompt: sha(Buffer.from(prompt)), style: sha(stylePng), identity: sha(input.identityPng), mask: sha(maskPng),
+  });
 
-  const patchPng = await sharp(bought.png).resize(LOCAL_PATCH_CROP.width, LOCAL_PATCH_CROP.height, { fit: "fill" }).png().toBuffer();
+  const bought = await purchaseOnce(deps, {
+    worldId, requestKey: renderKey, scope: "image",
+    operationFingerprint: renderFingerprint, reserveMicroUsd: LOCAL_PATCH_RESERVE.renderMicroUsd,
+    buy: async () => {
+      const result = await deps.render({ requestKey: renderKey, prompt, stylePng, identityPng: input.identityPng, maskPng });
+      return { bytes: result.png, evidence: result.evidence };
+    },
+  });
+  if (bought.kind !== "bought") return stopped(bought.reason);
+
+  const renderCents = bought.evidence.amountMicroUsd / 10_000;
+  const patchPng = await sharp(bought.bytes).resize(LOCAL_PATCH_CROP.width, LOCAL_PATCH_CROP.height, { fit: "fill" }).png().toBuffer();
   const seam = await analysePatchSeam(input.composedPng, crop, patchPng, { allowedRect: { left: 0, top: 0, ...LOCAL_PATCH_CROP } });
   const fade = seam.verdict === "clean" || seam.verdict === "fade-recommended";
   const candidate = await applyLocalPatch(input.composedPng, crop, patchPng, { fade, report: seam });
@@ -165,42 +182,72 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
   const size = { width: meta.width ?? 0, height: meta.height ?? 0 };
   const beforePng = await viewAround(input.composedPng, crop, size);
   const afterPng = await viewAround(candidate, crop, size);
-  await deps.retain(`${requestKey}-after.png`, afterPng);
+  const expectation = { support: LOCAL_PATCH_POSE_WORDING[hide.pose].support, ageYears: input.ageYears };
 
-  const ask = deps.judge ?? ((request: LocalPatchJudgeRequest) => judgeLocalPatch(input.apiKey, request));
-  const judgement = await deps.spend(`judge:${requestKey}`, LOCAL_PATCH_RESERVE.judge, async () => {
-    const answer = await ask({
-      hideId: hide.id, beforePng, afterPng, identityPng: input.judgeIdentityPng,
-      expectation: { support: LOCAL_PATCH_POSE_WORDING[hide.pose].support, ageYears: input.ageYears },
-    });
-    // The judgement's own price rides in the same ledger entry as the judgement.
-    // The scripts left this outside the budget, so a ledger read 29.60c for a
-    // round that had actually cost 38.85c. A judgement is a purchase.
-    //
-    // Priced by the model the provider says it RAN, never by the one we asked
-    // for. Token counts alone do not make a price known: they have to be
-    // multiplied by a rate, and a rate belongs to a model. Pricing a reply from
-    // an unexpected model at our own model's rate is a made-up number wearing
-    // the shape of a real one, so an unrecognised model prices as unknown.
-    const charge = judgeCharge(answer.model ?? "", answer.usage ?? undefined);
-    return { ...answer, costCents: charge.costCents, costUnknown: answer.costUnknown || charge.costUnknown };
+  const judgeKey = `${hide.id}:${hide.pose}:judge:${attempt}`;
+  const judgeFingerprint = fingerprintOf({
+    model: LOCAL_PATCH_JUDGE.model, effort: LOCAL_PATCH_JUDGE.effort, hide: hide.id,
+    before: sha(beforePng), after: sha(afterPng), identity: sha(input.judgeIdentityPng), expectation,
   });
 
-  const accepted = judgement.wireFault === null && judgement.verdict?.verdict === "pass";
+  const ask = deps.judge ?? ((request: LocalPatchJudgeRequest) => judgeLocalPatch(input.apiKey, request));
+  const judged = await purchaseOnce(deps, {
+    worldId, requestKey: judgeKey, scope: "judge",
+    operationFingerprint: judgeFingerprint, reserveMicroUsd: LOCAL_PATCH_RESERVE.judgeMicroUsd,
+    buy: async () => {
+      const answer = await ask({ hideId: hide.id, beforePng, afterPng, identityPng: input.judgeIdentityPng, expectation });
+      const charge = judgeCharge(answer.model ?? "", answer.usage ?? undefined);
+      const keep: RetainedJudgement = {
+        raw: answer.raw, usage: answer.usage, requestId: answer.requestId,
+        model: answer.model, finishReason: answer.finishReason, wireFault: answer.wireFault,
+      };
+      return {
+        bytes: Buffer.from(JSON.stringify(keep)),
+        evidence: {
+          providerNamespace: "openai:find-me-existing",
+          providerRequestId: answer.requestId ?? `unreceipted-${judgeKey}`,
+          usageId: sha(Buffer.from(JSON.stringify(answer.usage ?? {}))),
+          rawUsage: (answer.usage ?? {}) as never,
+          model: answer.model ?? LOCAL_PATCH_JUDGE.model,
+          amountMicroUsd: Math.round(charge.costCents * 10_000),
+          quality: LOCAL_PATCH_JUDGE.effort,
+        } as unknown as WorldChargeEvidence,
+      };
+    },
+  });
+  if (judged.kind !== "bought") return stopped(judged.reason, renderCents);
+
+  // Re-derived from the retained reply, never read back from a stored verdict.
+  const keep = JSON.parse(judged.bytes.toString()) as RetainedJudgement;
+  let verdict: LocalPatchVerdict | null = null;
+  if (keep.wireFault === null && typeof keep.raw === "string") {
+    try {
+      const parsed = localPatchVerdictSchema.safeParse(JSON.parse(keep.raw));
+      verdict = parsed.success ? parsed.data : null;
+    } catch { verdict = null; }
+  }
+
+  const accepted = keep.wireFault === null && verdict?.verdict === "pass";
   // Taken from the candidate whether or not it is accepted: a refusal is bound
   // to its picture too, or nobody can tell later which render was refused.
   const shipping = await sharp(candidate, { limitInputPixels: 8_294_400 }).extract(crop).png().toBuffer();
+
   return {
     accepted,
-    judgedSha256: createHash("sha256").update(shipping).digest("hex"),
-    refusedBecause: accepted ? null : judgement.wireFault !== null ? "wire" : "judge",
+    refusedBecause: accepted ? null : keep.wireFault !== null ? "wire" : "judge",
+    stoppedReason: null,
     patchPng,
     composedPng: accepted ? candidate : null,
     seam,
-    judgement,
+    verdict,
+    wireFault: keep.wireFault,
     promptVersion: LOCAL_PATCH_PROMPT_VERSION,
-    renderCents: bought.costCents,
-    judgeCents: judgement.costCents,
-    costUnknown: bought.costUnknown || judgement.costUnknown,
+    judgedSha256: sha(shipping),
+    renderCents,
+    judgeCents: judged.evidence.amountMicroUsd / 10_000,
+    // Token counts are what a judge charge is computed from; without them the
+    // amount is a guess, and a guess must not be recorded as a known cost.
+    costUnknown: keep.wireFault === null && !keep.usage,
+    replayed: bought.replayed && judged.replayed,
   };
 }

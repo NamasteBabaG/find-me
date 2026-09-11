@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import { LOCAL_PATCH_CROP, POSE_MASK, maskInCrop, type LocalPatchBoard, type LocalPatchHide } from "../../../domain/scene/local-patch-hides";
 import { LOCAL_PATCH_RESERVE, poseMask, renderLocalPatchHide, type LocalPatchRenderDeps } from "../local-patch-render";
 import type { LocalPatchJudgeResult } from "../local-patch-judge";
+import type { PurchaseLedger, RetainedPurchase, RetainedPurchaseStore } from "../paid-operation";
+import type { WorldBudgetRequest, WorldChargeEvidence } from "../world-budget";
 
 const BOARD = { width: 3072, height: 2048 };
 const board: LocalPatchBoard = {
@@ -16,187 +18,194 @@ const board: LocalPatchBoard = {
 };
 const hide: LocalPatchHide = board.hides[1]!;
 
-/** A board with visible structure, so a patch that lands is a change we can see. */
 const boardPng = () => sharp({ create: { width: BOARD.width, height: BOARD.height, channels: 4, background: { r: 210, g: 190, b: 150, alpha: 255 } } }).png().toBuffer();
 const patchPng = () => sharp({ create: { width: 768, height: 1152, channels: 4, background: { r: 40, g: 90, b: 160, alpha: 255 } } }).png().toBuffer();
 const small = () => sharp({ create: { width: 64, height: 64, channels: 4, background: { r: 200, g: 160, b: 120, alpha: 255 } } }).png().toBuffer();
 
-const passing: LocalPatchJudgeResult = {
-  verdict: {
-    childPresent: "pass", childOnlyOnce: "pass", childComplete: "pass", pictureWhole: "pass",
-    scaleRight: "pass", groundContact: "pass", styleMatch: "pass",
-    verdict: "pass", reason: "She kneels on the sand at the right height.", faults: [],
-    downgraded: [], contradicted: [], unclassified: [], claimedVerdict: "pass", verdictOverridden: false,
-  },
-  raw: "{}", usage: { prompt_tokens: 900, completion_tokens: 120 }, requestId: "req-judge",
-  model: "gpt-5.6-sol", finishReason: "stop", wireFault: null, costUnknown: false,
-};
+const evidence = (id: string, micro = 48_800): WorldChargeEvidence => ({
+  providerNamespace: "openai:find-me-existing", providerRequestId: id, usageId: `usage-${id}`,
+  rawUsage: { total: 1 }, model: "gpt-image-2", amountMicroUsd: micro, quality: "medium",
+} as unknown as WorldChargeEvidence);
 
-async function harness(over: Partial<LocalPatchRenderDeps> = {}, answer: LocalPatchJudgeResult = passing) {
-  const spent: { kind: string; reserve: number; cents: number }[] = [];
-  const retained: string[] = [];
-  const order: string[] = [];
-  const deps: LocalPatchRenderDeps = {
-    render: async () => ({ png: await patchPng(), costCents: 4.88, costUnknown: false, providerRequestId: "req-render" }),
-    spend: async (kind, reserve, run) => {
-      order.push(`spend:${kind}`);
-      const result = await run();
-      spent.push({ kind, reserve, cents: result.costCents });
-      return result;
-    },
-    retain: async name => { order.push(`retain:${name}`); retained.push(name); },
-    judge: async () => answer,
-    ...over,
+const answer = (over: Record<string, unknown> = {}) => ({
+  childPresent: "pass", childOnlyOnce: "pass", childComplete: "pass", pictureWhole: "pass",
+  scaleRight: "pass", groundContact: "pass", styleMatch: "pass",
+  verdict: "pass", reason: "She kneels on the sand at the right height.", faults: [], ...over,
+});
+
+const reply = (body: Record<string, unknown> = answer()): LocalPatchJudgeResult => ({
+  verdict: null, raw: JSON.stringify(body), usage: { prompt_tokens: 900, completion_tokens: 120 },
+  requestId: "req-judge", model: "gpt-5.6-sol", finishReason: "stop", wireFault: null, costUnknown: false,
+});
+
+/** Durable state across "processes": the maps are the disk. */
+function world() {
+  const rows = new Map<string, WorldBudgetRequest>();
+  const retained = new Map<string, RetainedPurchase>();
+  const at = (w: string, k: string) => `${w} ${k}`;
+
+  const process = (over: Partial<LocalPatchRenderDeps> = {}, judged: LocalPatchJudgeResult = reply()) => {
+    const dispatched: string[] = [];
+    const ledger: PurchaseLedger = {
+      readRequest: async (w, k) => rows.get(at(w, k)) ?? null,
+      reserve: async (w, i) => {
+        if (rows.has(at(w, i.requestKey))) return { acquired: false };
+        rows.set(at(w, i.requestKey), { ...i, origin: "reserved", state: "pending", unknownReasons: [], conflicts: [] } as unknown as WorldBudgetRequest);
+        return { acquired: true };
+      },
+      settle: async (w, k, ev) => { rows.set(at(w, k), { ...rows.get(at(w, k))!, state: "settled", evidence: ev } as WorldBudgetRequest); },
+      markUnknown: async (w, k, reason) => {
+        const existing = rows.get(at(w, k));
+        if (existing) rows.set(at(w, k), { ...existing, state: "unknown", unknownReasons: [reason] } as WorldBudgetRequest);
+      },
+    };
+    const store: RetainedPurchaseStore = {
+      put: async (w, k, v) => { retained.set(at(w, k), v); },
+      get: async (w, k) => retained.get(at(w, k)) ?? null,
+    };
+    const deps: LocalPatchRenderDeps = {
+      ledger, store,
+      render: async ({ requestKey }) => { dispatched.push(requestKey); return { png: await patchPng(), evidence: evidence("req-render") }; },
+      judge: async () => { dispatched.push("judge"); return judged; },
+      ...over,
+    };
+    return { deps, dispatched };
   };
-  const composedPng = await boardPng();
-  const attempt = await renderLocalPatchHide(deps, {
-    board, hide, composedPng, identityPng: await small(), judgeIdentityPng: await small(),
-    ageYears: 8, attempt: 1, apiKey: "test-only",
+  return { process, rows, retained, at };
+}
+
+async function attempt(deps: LocalPatchRenderDeps, over: Record<string, unknown> = {}) {
+  return renderLocalPatchHide(deps, {
+    worldId: "game-1:local-patch", board, hide, composedPng: await boardPng(),
+    identityPng: await small(), judgeIdentityPng: await small(),
+    ageYears: 8, attempt: 1, apiKey: "test-only", ...over,
   });
-  return { attempt, spent, retained, order };
 }
 
 describe("one paid attempt at one hide", () => {
-  it("cuts the mask the pose asks for, not a standing-height box", async () => {
-    // Counting clear pixels is not enough: the right number in the wrong place
-    // is a mask that tells the painter to work somewhere else entirely. This
-    // checks every pixel against the box the pose declares.
+  it("cuts the mask the pose asks for, in the place the pose asks for", async () => {
+    // The right number of clear pixels in the wrong place is a mask pointing the
+    // painter somewhere else entirely, so every pixel is checked against the box.
     for (const pose of Object.keys(POSE_MASK) as (keyof typeof POSE_MASK)[]) {
       const mask = await poseMask({ ...hide, pose });
-      const meta = await sharp(mask).metadata();
-      expect(meta.width).toBe(LOCAL_PATCH_CROP.width);
-      expect(meta.height).toBe(LOCAL_PATCH_CROP.height);
-
       const box = maskInCrop(pose);
       const { data, info } = await sharp(mask).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-      let misplaced = 0, clear = 0;
+      let misplaced = 0;
       for (let y = 0; y < info.height; y++) for (let x = 0; x < info.width; x++) {
-        const alpha = data[(y * info.width + x) * info.channels + 3]!;
+        const clear = data[(y * info.width + x) * info.channels + 3]! === 0;
         const inside = x >= box.left && x < box.left + box.width && y >= box.top && y < box.top + box.height;
-        if (alpha === 0) clear++;
-        if (inside !== (alpha === 0)) misplaced++;
+        if (inside !== clear) misplaced++;
       }
-      expect(misplaced).toBe(0);
-      expect(clear).toBe(box.width * box.height);
-      // Every pose's box ends on the same ground line, whatever its height.
+      expect(misplaced, pose).toBe(0);
       expect(box.top + box.height).toBe(maskInCrop("standing").top + maskInCrop("standing").height);
     }
   }, 30_000);
 
   it("hands the painter that exact mask, not one built somewhere else", async () => {
-    // The check above proves the builder is right; this proves the builder is
-    // what the request carries. A correct mask nobody sends is not a fix.
+    const w = world();
     let sent: Buffer | null = null;
-    await harness({
-      render: async ({ maskPng }) => { sent = maskPng; return { png: await patchPng(), costCents: 4.88, costUnknown: false, providerRequestId: "r" }; },
-    });
-    expect(sent).not.toBeNull();
+    const p = w.process({ render: async ({ maskPng }) => { sent = maskPng; return { png: await patchPng(), evidence: evidence("r") }; } });
+    await attempt(p.deps);
     expect(Buffer.compare(sent!, await poseMask(hide))).toBe(0);
   });
 
-  it("binds the verdict to its picture at the moment it is judged", async () => {
-    // Without this the binding has to be minted later from whatever image is on
-    // disk, and a mint is not a record: swap the picture, mint again, and an
-    // unjudged render inherits an approval, with the downstream hash check
-    // satisfied because the same step wrote the hash it then checked.
-    const { attempt } = await harness();
-    expect(attempt.judgedSha256).toMatch(/^[0-9a-f]{64}$/);
-    // It is the crop that would ship, cut from the composite that was judged.
-    const shipped = await sharp(attempt.composedPng!, { limitInputPixels: 8_294_400 })
-      .extract({ left: hide.left, top: hide.top, ...LOCAL_PATCH_CROP }).png().toBuffer();
-    expect(createHash("sha256").update(shipped).digest("hex")).toBe(attempt.judgedSha256);
-
-    // A refusal is bound to its picture too, or nobody can tell later which
-    // render was the one that was refused.
-    const refused: LocalPatchJudgeResult = { ...passing, verdict: { ...passing.verdict!, pictureWhole: "fail", verdict: "fail" } };
-    const no = await harness({}, refused);
-    expect(no.attempt.judgedSha256).toMatch(/^[0-9a-f]{64}$/);
+  it("buys the render and the judgement through the same ledger", async () => {
+    // The scripts budgeted the render and left the judgement outside, so a
+    // ledger read 29.60c for a round that had cost 38.85c. Both are purchases.
+    const w = world();
+    const result = await attempt(w.process().deps);
+    expect(result.accepted).toBe(true);
+    const keys = [...w.rows.keys()].map(k => k.split(" ")[1]);
+    expect(keys).toEqual(["sydney-2:kneeling:render:1", "sydney-2:kneeling:judge:1"]);
+    expect([...w.rows.values()].every(r => r.state === "settled")).toBe(true);
+    expect(w.rows.get(w.at("game-1:local-patch", "sydney-2:kneeling:judge:1")))
+      .toMatchObject({ scope: "judge", reserveMicroUsd: LOCAL_PATCH_RESERVE.judgeMicroUsd });
+    expect(result.renderCents).toBeCloseTo(4.88);
+    expect(result.judgeCents).toBeGreaterThan(0);
   });
 
-  it("puts the judgement through the same budget as the render", async () => {
-    // The scripts bought the render inside a budget and the judgement outside
-    // it, so a ledger read 29.60c for a round that had cost 38.85c. A judgement
-    // is a purchase, and an unbudgeted purchase is a ceiling that does not hold.
-    const { spent, attempt } = await harness();
-    expect(spent.map(s => s.kind.split(":")[0])).toEqual(["render", "judge"]);
-    expect(spent[0]!.reserve).toBe(LOCAL_PATCH_RESERVE.render);
-    expect(spent[1]!.reserve).toBe(LOCAL_PATCH_RESERVE.judge);
-    expect(spent[1]!.cents).toBeGreaterThan(0);
-    expect(attempt.renderCents).toBe(4.88);
-    expect(attempt.judgeCents).toBeGreaterThan(0);
+  it("keeps the bytes of both purchases, refusals included", async () => {
+    const w = world();
+    const refused = reply(answer({ pictureWhole: "fail", verdict: "fail", faults: [{ check: "pictureWhole", where: "a hard edge down the sand" }] }));
+    const result = await attempt(w.process({}, refused).deps);
+    expect(result).toMatchObject({ accepted: false, refusedBecause: "judge" });
+    expect(result.composedPng).toBeNull();
+    expect([...w.retained.keys()].map(k => k.split(" ")[1]))
+      .toEqual(["sydney-2:kneeling:render:1", "sydney-2:kneeling:judge:1"]);
   });
 
-  it("keeps the bytes it paid for before anything judges them", async () => {
-    // Four refused renders could not be looked at afterwards, so nobody could
-    // check whether the judge had been right - the only calibration there is.
-    const { retained, order } = await harness();
-    expect(retained.some(n => n.endsWith("-render.png"))).toBe(true);
-    expect(order.indexOf("retain:sydney-2:kneeling:1-render.png")).toBeLessThan(order.indexOf("spend:judge:sydney-2:kneeling:1"));
+  it("re-derives a replayed judgement instead of trusting a stored verdict", async () => {
+    // The rules have been corrected more than once. Re-deriving is how those
+    // corrections reach answers that were already paid for, without paying again.
+    const w = world();
+    const first = await attempt(w.process().deps);
+    expect(first.accepted).toBe(true);
+
+    const second = w.process();
+    const replayed = await attempt(second.deps);
+    expect(second.dispatched).toEqual([]);
+    expect(replayed.replayed).toBe(true);
+    expect(replayed.accepted).toBe(true);
+    expect(replayed.judgedSha256).toBe(first.judgedSha256);
   });
 
-  it("keeps the refused attempt's picture too, and says the judge refused it", async () => {
-    const refused: LocalPatchJudgeResult = { ...passing, verdict: { ...passing.verdict!, pictureWhole: "fail", verdict: "fail" } };
-    const { attempt, retained } = await harness({}, refused);
-    expect(attempt.accepted).toBe(false);
-    expect(attempt.refusedBecause).toBe("judge");
-    expect(attempt.composedPng).toBeNull();
-    // The patch survives even when the hide does not: it is what a person looks at.
-    expect(attempt.patchPng).not.toBeNull();
-    expect(retained).toHaveLength(2);
+  it("stops rather than guessing when a purchase cannot go ahead", async () => {
+    // A reservation under this key that belongs to different inputs is not a
+    // statement about the picture, and must not be answered with one.
+    const w = world();
+    w.rows.set(w.at("game-1:local-patch", "sydney-2:kneeling:render:1"), {
+      requestKey: "sydney-2:kneeling:render:1", scope: "image", operationFingerprint: "z".repeat(64),
+      reserveMicroUsd: 1, origin: "reserved", state: "pending", unknownReasons: [], conflicts: [],
+    } as unknown as WorldBudgetRequest);
+    const p = w.process();
+    const result = await attempt(p.deps);
+    expect(p.dispatched).toEqual([]);
+    expect(result).toMatchObject({ accepted: false, refusedBecause: "stopped" });
+    expect(result.stoppedReason).toMatch(/different operation/);
   });
 
   it("never accepts a picture on the strength of a reply it could not trust", async () => {
-    // A verdict of pass beside a wire fault is not an approval: the reply came
-    // from somewhere we did not ask, or arrived half-written.
-    const untrusted: LocalPatchJudgeResult = { ...passing, wireFault: "wrong-model", verdict: passing.verdict };
-    const { attempt } = await harness({}, untrusted);
-    expect(attempt.accepted).toBe(false);
-    expect(attempt.refusedBecause).toBe("wire");
+    const w = world();
+    const result = await attempt(w.process({}, { ...reply(), wireFault: "wrong-model" }).deps);
+    expect(result).toMatchObject({ accepted: false, refusedBecause: "wire", wireFault: "wrong-model" });
   });
 
-  it("carries an unknown charge outward instead of calling it zero", async () => {
-    const noReceipt: LocalPatchJudgeResult = { ...passing, usage: null, costUnknown: true };
-    const { attempt } = await harness({}, noReceipt);
-    expect(attempt.costUnknown).toBe(true);
+  it("says the judge charge is unknown when there are no tokens to price it with", async () => {
+    const w = world();
+    const result = await attempt(w.process({}, { ...reply(), usage: null }).deps);
+    expect(result.costUnknown).toBe(true);
+    expect(result.judgeCents).toBe(0);
+  });
 
-    const unknownRender = await harness({
-      render: async () => ({ png: await patchPng(), costCents: 0, costUnknown: true, providerRequestId: null }),
-    });
-    expect(unknownRender.attempt.costUnknown).toBe(true);
+  it("binds the verdict to the crop that would ship", async () => {
+    const w = world();
+    const result = await attempt(w.process().deps);
+    const shipped = await sharp(result.composedPng!, { limitInputPixels: 8_294_400 })
+      .extract({ left: hide.left, top: hide.top, ...LOCAL_PATCH_CROP }).png().toBuffer();
+    expect(createHash("sha256").update(shipped).digest("hex")).toBe(result.judgedSha256);
   });
 
   it("changes the board only inside the rectangle it declared", async () => {
-    // The painter redraws whatever it is given, so preservation is by
-    // construction: only the crop comes back, and everything outside it is the
-    // board's own untouched paint.
-    const { attempt } = await harness();
-    expect(attempt.accepted).toBe(true);
-    const before = await boardPng();
-    const after = attempt.composedPng!;
+    const w = world();
+    const result = await attempt(w.process().deps);
+    const before = await boardPng(), after = result.composedPng!;
     const a = await sharp(before).raw().toBuffer({ resolveWithObject: true });
     const b = await sharp(after).raw().toBuffer({ resolveWithObject: true });
-    const w = a.info.width, channels = a.info.channels;
     let outside = 0;
-    for (let y = 0; y < a.info.height; y += 8) for (let x = 0; x < w; x += 8) {
-      const inCrop = x >= hide.left && x < hide.left + LOCAL_PATCH_CROP.width
-        && y >= hide.top && y < hide.top + LOCAL_PATCH_CROP.height;
-      if (inCrop) continue;
-      const i = (y * w + x) * channels;
+    for (let y = 0; y < a.info.height; y += 8) for (let x = 0; x < a.info.width; x += 8) {
+      if (x >= hide.left && x < hide.left + LOCAL_PATCH_CROP.width && y >= hide.top && y < hide.top + LOCAL_PATCH_CROP.height) continue;
+      const i = (y * a.info.width + x) * a.info.channels;
       if (a.data[i] !== b.data[i] || a.data[i + 1] !== b.data[i + 1] || a.data[i + 2] !== b.data[i + 2]) outside++;
     }
     expect(outside).toBe(0);
   });
 
   it("makes a retry a different purchase, not the same one bought twice", async () => {
-    const keys: string[] = [];
-    const deps: Partial<LocalPatchRenderDeps> = {
-      render: async ({ requestKey }) => { keys.push(requestKey); return { png: await patchPng(), costCents: 4.88, costUnknown: false, providerRequestId: "r" }; },
-    };
-    await harness(deps);
-    const composedPng = await boardPng();
-    await renderLocalPatchHide({
-      render: deps.render!, spend: async (_k, _r, run) => run(), retain: async () => {}, judge: async () => passing,
-    }, { board, hide, composedPng, identityPng: await small(), judgeIdentityPng: await small(), ageYears: 8, attempt: 2, apiKey: "test-only" });
-    expect(keys).toEqual(["sydney-2:kneeling:1", "sydney-2:kneeling:2"]);
+    const w = world();
+    await attempt(w.process().deps);
+    const retry = w.process();
+    await attempt(retry.deps, { attempt: 2 });
+    expect(retry.dispatched).toEqual(["sydney-2:kneeling:render:2", "judge"]);
+    expect([...w.rows.keys()].map(k => k.split(" ")[1])).toContain("sydney-2:kneeling:render:2");
   });
 });
