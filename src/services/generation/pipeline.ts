@@ -18,7 +18,7 @@ import { styleReference } from "./patch";
 import { loadSceneArt } from "./scene-art";
 import { CHARACTER_PROMPT_VERSION, QA_CHARACTER_PROMPT_VERSION } from "@/infra/generation/character-prompt";
 import { isFixedWorldStyle } from "./fixed-world-stage-record";
-import { BOARD_WIZARD_STYLE, boardWizardEnabled, enrollBoardConditionedWizard, runBoardConditionedWizardSlice, preflightBoardConditionedWizard, reserveBoardWizardIdentity } from "./board-conditioned-wizard";
+import { BOARD_WIZARD_STYLE, GenerationPaused, boardWizardEnabled, enrollBoardConditionedWizard, runBoardConditionedWizardSlice, preflightBoardConditionedWizard, reserveBoardWizardIdentity } from "./board-conditioned-wizard";
 import { sha256Bytes } from "./fixed-sprite";
 import { generateBoardWizardIdentity, holdBoardWizardIdentity, withBoardWizardIdentityClaim, type BoardWizardIdentityClaim } from "./board-wizard-identity-lifecycle";
 import { buildBoardWizardIdentityStyle } from "./board-wizard-identity-style";
@@ -442,6 +442,19 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
     }
     await c.db.generationJob.update({ where: { id: job.id }, data: { status: "DONE", currentStep: null } });
   } catch (err) {
+    // A pause is not a failure, at any stage.
+    //
+    // The enrolled board slice already knew that, but the identity stage did
+    // not: a ceiling reached AFTER a paid identity sheet, on the way into review
+    // or enrolment, arrived here and was written down as
+    // `identity-enrollment-failed` - which holds the identity and parks the game
+    // in MANUAL_REVIEW. The sheet was already bought and nothing had gone wrong
+    // with it, so lifting the ceiling should carry on rather than need a person.
+    if (err instanceof GenerationPaused) {
+      console.warn(`[generate] ${gameId}: ${err.message} - leaving the job for the next tick`);
+      await c.db.generationJob.updateMany({ where: { id: job.id, status: "RUNNING" }, data: { status: "QUEUED", currentStep: null, lastError: err.message } });
+      return;
+    }
     if (qaIdentityClaim) {
       await holdBoardWizardIdentity(c, qaIdentityClaim, "identity-enrollment-failed");
       return;

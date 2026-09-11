@@ -30,6 +30,20 @@ export type HideDecision = z.infer<typeof HideDecisionSchema>;
 
 export type ModelVerdict = "pass" | "fail" | "unsure" | "none";
 
+/**
+ * What the judge said, and WHICH PICTURE it said it about.
+ *
+ * The hash is not decoration. A human decision was bound to a picture from the
+ * start, so changing the art retired it - but the machine verdict travelled as a
+ * bare word, and a hide whose pixels had changed kept the approval the judge had
+ * given the picture before it. The two have to be bound the same way or the
+ * looser one decides.
+ */
+export type MachineJudgement = {
+  readonly verdict: ModelVerdict;
+  readonly imageSha256: string;
+};
+
 export type Acceptance = {
   readonly accepted: boolean;
   /** `human` only when a person's decision is what settled it. */
@@ -47,7 +61,7 @@ export type Acceptance = {
  * the only way to find out later whether the judge is worth its cost.
  */
 export function effectiveAcceptance(
-  modelVerdict: ModelVerdict,
+  machine: MachineJudgement,
   imageSha256: string,
   decisions: readonly HideDecision[] = [],
 ): Acceptance {
@@ -65,6 +79,12 @@ export function effectiveAcceptance(
       reason: `${latest.decision === "accept" ? "kept" : "refused"} by a person: ${latest.reason}`,
     };
   }
-  if (modelVerdict === "pass") return { accepted: true, by: "model", reason: "the judge passed it and nobody has looked" };
-  return { accepted: false, by: "nobody", reason: `the judge answered ${modelVerdict} and nobody has decided` };
+  // The judge's answer is about the picture it was shown. If that is not the
+  // picture in hand, it says nothing about this one - not even a refusal, since
+  // a new render deserves its own look rather than inheriting an old rejection.
+  if (machine.imageSha256 !== imageSha256) {
+    return { accepted: false, by: "nobody", reason: "the judge's answer was about a different picture, and nobody has looked at this one" };
+  }
+  if (machine.verdict === "pass") return { accepted: true, by: "model", reason: "the judge passed it and nobody has looked" };
+  return { accepted: false, by: "nobody", reason: `the judge answered ${machine.verdict} and nobody has decided` };
 }

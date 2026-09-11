@@ -415,7 +415,14 @@ export async function runBoardConditionedWizardSlice(c: Container, gameId: strin
       // Hand the lease back and change nothing else. The capsule stays running,
       // the game stays TARGETS_GENERATING, and the next tick after the switch
       // goes back on - or after midnight - carries on from here.
-      await c.db.generationJob.updateMany({ where: { id: job.id, status: "RUNNING" }, data: { status: "QUEUED", currentStep: null, lastError: error.message } });
+      // Fenced on THIS worker's claim, exactly as an ordinary write is. Matching
+      // on the id alone let a stale worker - one whose lease had already expired
+      // and been taken - queue the replacement's live job on its way out.
+      const released = await c.db.generationJob.updateMany({
+        where: { id: job.id, status: "RUNNING", attempts: job.attempts + 1, currentStep: "board-wizard", stepsJson: job.stepsJson },
+        data: { status: "QUEUED", currentStep: null, lastError: error.message },
+      });
+      if (!released.count) return { pending: true }; // somebody else owns it now; leave them alone
       return { pending: true };
     }
     record.state = "held";

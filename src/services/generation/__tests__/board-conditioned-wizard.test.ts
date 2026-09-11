@@ -110,7 +110,7 @@ vi.mock("../board-wizard-visual-judge", async original => {
     return { judgement: { verdict: fakes.reviews.length === 1 ? "unknown" : "ok", reason: "Synthetic review, no visual claim" }, receiptKey: "synthetic-receipt", fingerprint: "f".repeat(64), reused: false };
   } };
 });
-import { BOARD_WIZARD_STYLE, BOARD_WIZARD_GEOMETRY_REVISION, boardWizardEnabled, enrollBoardConditionedWizard, runBoardConditionedWizardSlice, readBoardWizard, deleteBoardConditionedWizard } from "../board-conditioned-wizard";
+import { BOARD_WIZARD_STYLE, BOARD_WIZARD_GEOMETRY_REVISION, GenerationPaused, boardWizardEnabled, enrollBoardConditionedWizard, runBoardConditionedWizardSlice, preflightBoardConditionedWizard, readBoardWizard, deleteBoardConditionedWizard } from "../board-conditioned-wizard";
 
 let db: PrismaClient, scratch: string, png: Buffer, counter = 0;
 beforeAll(async () => {
@@ -464,6 +464,30 @@ describe("actual wizard to durable QA world orchestration (synthetic engine, no 
     const f = await fixture(); await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`); await db.childProfile.update({ where: { id: f.childId }, data: { ageYears: 8 } });
     await expect(runBoardConditionedWizardSlice(f.c, f.gameId)).rejects.toThrow("identity changed"); expect(fakes.calls).toHaveLength(0);
   });
+  it("raises a pause, not a plain failure, at the identity stage too", async () => {
+    // The enrolled board slice already knew a pause from a fault. The identity
+    // stage did not: a ceiling reached AFTER a paid identity sheet, on the way
+    // into review or enrolment, reached the pipeline catch and was written down
+    // as `identity-enrollment-failed`, which holds the identity and parks the
+    // game in MANUAL_REVIEW. The sheet was bought and nothing was wrong with it.
+    //
+    // The pipeline tells the two apart by type, so the type is the contract.
+    const f = await fixture();
+    fakes.dailyCeiling = 1;
+    await expect(preflightBoardConditionedWizard(f.c, f.gameId)).rejects.toBeInstanceOf(GenerationPaused);
+    fakes.dailyCeiling = 0;
+
+    fakes.generationEnabled = "off";
+    await expect(preflightBoardConditionedWizard(f.c, f.gameId)).rejects.toBeInstanceOf(GenerationPaused);
+    fakes.generationEnabled = "on";
+
+    // A real fault stays a real fault: it must still reach the hold path.
+    fakes.testers = [];
+    const fault = await preflightBoardConditionedWizard(f.c, f.gameId).catch((e: unknown) => e);
+    expect(fault).toBeInstanceOf(Error);
+    expect(fault).not.toBeInstanceOf(GenerationPaused);
+  });
+
   it("treats the daily ceiling and the kill switch as a pause, not a hold, and resumes without a person", async () => {
     // These used to land in the same catch as a corrupt capsule: the game went
     // to MANUAL_REVIEW, the capsule was marked held, and turning generation back
