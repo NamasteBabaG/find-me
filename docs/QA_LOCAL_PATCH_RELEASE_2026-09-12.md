@@ -34,4 +34,12 @@ Synthetic verification proves orchestration, not the visual quality of a new pai
 
 ## Live verification
 
-Pending deployment verification; generation is not reported ready solely from the tests above.
+Deployed to the **find-me-qa** Vercel project only on 2026-09-12. Main production was not changed.
+
+- Release branch: `codex/qa-complete-world-20260912`, code commit `2e00a5c`; preserves the existing QA read-only partial-game review.
+- Deployment: `dpl_7BLqG4gVTm4T79BNjbfEvV9AxYMr`, READY, promoted to `https://qa.findmeworlds.com/`.
+- Generation is explicitly `on` in the deployment's build/runtime configuration and in the QA project's stored configuration. Existing held games were not resumed.
+- Clean-checkout verification: 154 test files passed, 2,257 tests passed, 35 skipped. The subsequent neutral-child prompt change passed all 57 focused prompt/judge/render tests.
+- Remote Linux build and trace audit passed: all nine art pairs match; no missing/private/stale traced assets. Jobs trace 213,675,710 bytes; largest trace 215,200,411 bytes.
+- Live UI: new Bar, age-five draft accepted through the ordinary create form; the photo-upload step rendered. Unauthenticated diagnostics were refused by the QA gate. No error logs were returned for the new deployment when checked.
+- **Paid visual acceptance remains unverified.** Browser automation refused local file selection (`fileChooser.setFiles: Not allowed`), before any image generation. The user was asked to select the previously authorized photo in the open upload screen. No provider spend occurred in this release verification, and no full-game success is claimed from the synthetic tests.
