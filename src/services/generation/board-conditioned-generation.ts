@@ -131,7 +131,7 @@ export async function generateBoardConditionedAppearances(deps: BoardGenerationD
       && r.wireImageSha256 === expectedObservation.capture.wireImageSha256 && r.promptSha256 === expectedObservation.capture.promptSha256
       && r.requestId === measurement.evidence.providerRequestId && r.costUnknown === false && Math.ceil(r.costCents * 10_000) === measurement.evidence.amountMicroUsd
       && r.modelRequested === BOARD_POSE_OBSERVER_SETTINGS.model && r.modelReturned === measurement.evidence.model && measurement.evidence.model === BOARD_POSE_OBSERVER_SETTINGS.model
-      && measurement.evidence.providerNamespace === deps.observerPolicy.providerNamespace && r.effort === "high" && r.attempts === 1
+      && measurement.evidence.providerNamespace === deps.observerPolicy.providerNamespace && r.effort === BOARD_POSE_OBSERVER_SETTINGS.effort && r.attempts === 1
       && r.coordinates === "native-1024-sheet-pixel-edges" && r.finishReason === "stop" && !!r.responseId
       && r.httpStatus !== null && r.httpStatus >= 200 && r.httpStatus < 300
       && r.slots.length === expectedObservation.capture.slots.length

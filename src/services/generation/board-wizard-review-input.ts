@@ -11,7 +11,9 @@ export const boardWizardContextKey = (worldId: string, boardId: string, slotId: 
 /** Lossless assembly of the exact player rasters, including final RGB grading.
  * The judge never receives an ungraded source pose in place of the visible child. */
 export async function prepareBoardWizardReviews(worldId: string, attempt: number, input: BoardConditioningInput,
-  player: Awaited<ReturnType<typeof prepareBoardConditionedPlayerBoard>>) {
+  player: Pick<Awaited<ReturnType<typeof prepareBoardConditionedPlayerBoard>>, "assetWrites"> & {
+    manifest: Pick<Awaited<ReturnType<typeof prepareBoardConditionedPlayerBoard>>["manifest"], "width" | "height" | "placements">;
+  }) {
   const { width, height, placements } = player.manifest;
   const overlays = placements.map(p => ({ input: player.assetWrites.find(a => a.key === p.assetKey)!.png, left: p.boardPixelRect.left, top: p.boardPixelRect.top }));
   const board = await sharp(input.board.png).composite(overlays).png().toBuffer();
