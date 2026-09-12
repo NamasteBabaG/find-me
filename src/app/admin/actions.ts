@@ -13,6 +13,7 @@ import { currentAdmin } from "@/lib/server/session";
 import { headers } from "next/headers";
 import { env } from "@/lib/env";
 import { LOCAL_PATCH_REPAIR_RESUME_CONFIRMATION, resumeLocalPatchRepairs } from "@/services/generation/local-patch-repair-resume";
+import { LOCAL_PATCH_HUMAN_CONFIRMATION } from "@/services/generation/local-patch-human-approval";
 
 async function admin() {
   await requireQaAccess();
@@ -28,6 +29,14 @@ function str(fd: FormData, key: string): string {
 export async function approveAction(fd: FormData): Promise<void> {
   const actor = await admin();
   const gameId = str(fd, "gameId");
+  const game = await getContainer().db.game.findUnique({ where: { id: gameId }, select: { styleVersion: true } });
+  if (game?.styleVersion === "local-patch-world-v1") {
+    const h = await headers(), origin = h.get("origin"), host = h.get("x-forwarded-host") ?? h.get("host");
+    let sameOrigin = false;
+    try { sameOrigin = !!origin && !!host && new URL(origin).host === host && h.get("sec-fetch-site") !== "cross-site"; } catch { /* refuse invalid origin */ }
+    if (env().APP_ENV !== "qa" || !sameOrigin || fd.getAll("gameId").length !== 1 || fd.getAll("confirmAsIs").length !== 1
+      || str(fd, "confirmAsIs") !== LOCAL_PATCH_HUMAN_CONFIRMATION) throw new Error("Explicit same-origin administrator approval of all 27 current pictures is required");
+  }
   await approveAndPublish(getContainer(), gameId, actor);
   revalidatePath(`/admin/orders/${gameId}`);
 }

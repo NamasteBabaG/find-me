@@ -291,6 +291,11 @@ export async function generationCostForDisplay(c: Container, gameId: string): Pr
 }
 
 export async function approveAndPublish(c: Container, gameId: string, actor: Actor) {
+  const game = await c.db.game.findUniqueOrThrow({ where: { id: gameId }, select: { styleVersion: true, status: true } });
+  if (game.styleVersion === "local-patch-world-v1" && game.status === "MANUAL_REVIEW") {
+    const { approveLocalPatchAsIs } = await import("./generation/local-patch-human-approval");
+    await approveLocalPatchAsIs(c, gameId, actor);
+  }
   return publishGame(c, gameId, actor);
 }
 

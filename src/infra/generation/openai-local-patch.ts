@@ -69,6 +69,7 @@ export type LocalPatchRenderInput = {
   readonly prompt: string;
   readonly stylePng: Buffer;
   readonly identityPng: Buffer;
+  readonly boardPeoplePng?: Buffer;
   readonly maskPng: Buffer;
   /**
    * What is left of the caller's request, when it has a deadline.
@@ -157,10 +158,11 @@ export async function buyLocalPatch(apiKey: string, input: LocalPatchRenderInput
     : { ...chosen, timeoutMs: Math.max(1_000, Math.min(chosen.timeoutMs, input.timeoutMs)) };
   // The crop goes as the reference at its own size - references are capped at
   // 1024 square and 512x768 is inside that. Only the OUTPUT is asked for larger.
-  const identityPng = await sharp(input.identityPng).resize(1024, 1024, { fit: "inside" }).png().toBuffer();
+  const identityPng = await sharp(input.identityPng).resize(1024, 1024, { fit: "inside", withoutEnlargement: !!input.boardPeoplePng }).png().toBuffer();
   const request = {
     sourceGroupKey: `local-patch:${input.requestKey}`,
     prompt: input.prompt, stylePng: input.stylePng, identityPng, maskPng: input.maskPng,
+    ...(input.boardPeoplePng ? { referencePngs: [input.boardPeoplePng] } : {}),
   };
   const prepared = await prepareFixedSource(request, policy);
   const charge = new CapturedCharge();

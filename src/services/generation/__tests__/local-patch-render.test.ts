@@ -95,6 +95,22 @@ async function attempt(deps: LocalPatchRenderDeps, over: Record<string, unknown>
 }
 
 describe("one paid attempt at one hide", () => {
+  it("pins same-board style people in the actual purchase and refuses replay against changed people", async () => {
+    const w = world(), people = await small();
+    const render = vi.fn(async () => ({ png: await patchPng(), rejected: null, quarantined: null, evidence: evidence("req-render"), unknownReason: null }));
+    const p = w.process({ render });
+    const result = await attempt(p.deps, { boardPeoplePng: people });
+    expect(result.accepted).toBe(true);
+    expect(result.promptVersion).toBe("local-patch-prompt/v7-board-drawn");
+    expect(render).toHaveBeenCalledWith(expect.objectContaining({ boardPeoplePng: people, prompt: expect.stringContaining("Image 3 shows ORIGINAL drawn faces") }));
+    const replay = w.process();
+    expect((await attempt(replay.deps, { boardPeoplePng: people })).accepted).toBe(true);
+    expect(replay.dispatched).toEqual([]);
+    const changed = await sharp({ create: { width: 64, height: 64, channels: 4, background: "#204050" } }).png().toBuffer();
+    expect((await attempt(replay.deps, { boardPeoplePng: changed })).refusedBecause).toBe("stopped");
+    expect(replay.dispatched).toEqual([]);
+  });
+
   it.each([6_000, 20_000])("dispatches after %i ms preparation within a real 270-second route window", async preparationMs => {
     const start = Date.now();
     let now = start + preparationMs;

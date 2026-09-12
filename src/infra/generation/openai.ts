@@ -262,7 +262,7 @@ export class OpenAiAvatarProvider implements AvatarProvider {
     const contract = input.qaStyleContract;
     if (contract) {
       if (this.model !== "gpt-image-2" || this.quality !== "medium") throw new Error("CHARACTER_STYLE: the board-matched identity requires GPT Image 2 MEDIUM");
-      if (contract.version !== "board-matched-identity/v1" || !/^[a-f0-9]{64}$/.test(contract.catalogSha256)
+      if (!["board-matched-identity/v1", "board-matched-identity/v2"].includes(contract.version) || !/^[a-f0-9]{64}$/.test(contract.catalogSha256)
         || !/^[a-f0-9]{64}$/.test(contract.atlasSha256) || !input.styleRef
         || input.styleRef.length > 8 * 1024 * 1024
         || createHash("sha256").update(input.styleRef).digest("hex") !== contract.atlasSha256) {

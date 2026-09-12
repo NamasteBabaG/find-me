@@ -55,6 +55,7 @@ export const LOCAL_PATCH_POSE_WORDING: Readonly<Record<LocalPatchPose, PoseWordi
 });
 
 export const LOCAL_PATCH_PROMPT_VERSION = "local-patch-prompt/v6";
+export const LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION = "local-patch-prompt/v7-board-drawn";
 
 const REPAIR_DIRECTIONS = {
   styleMatch: "Use the reference ONLY for recognizable identity. Repaint the face, hair and clothes with the SAME simplified brushwork, line thickness, matte shading and local saturation as nearby board people. Do not preserve photographic skin detail or a bright photographic shirt. Scene illustration overrides reference rendering and outfit texture.",
@@ -84,13 +85,17 @@ export type LocalPatchPromptInput = {
   /** The age the parent stated for the photograph. Never guessed. */
   readonly ageYears?: number | null;
   readonly repairChecks?: readonly LocalPatchRepairCheck[];
+  /** A separate, verified face-and-person example from this same board. */
+  readonly boardPeopleReference?: boolean;
 };
 
-export function localPatchPrompt({ ground, pose, ageYears, repairChecks }: LocalPatchPromptInput): string {
+export function localPatchPrompt({ ground, pose, ageYears, repairChecks, boardPeopleReference }: LocalPatchPromptInput): string {
   if (ageYears != null && !validChildAge(ageYears)) throw new Error("LOCAL_PATCH: invalid child age");
   const wording = LOCAL_PATCH_POSE_WORDING[pose];
   return [
-    "You are given ONE crop from a hand-illustrated children's hidden-object picture, a reference portrait of one child, and a mask.",
+    boardPeopleReference
+      ? "Image 1 is the scene to edit. Image 2 identifies the child ONLY. Image 3 shows ORIGINAL drawn faces and people from this same board and is the authority for HOW to draw. The mask locates the edit. Never insert a person from Image 3."
+      : "You are given ONE crop from a hand-illustrated children's hidden-object picture, a reference portrait of one child, and a mask.",
     `Redraw this crop with that child added inside the masked area, on the ${ground}.`,
     "",
     "DRAW THE CHILD THE WAY THE OTHER CHILDREN IN THIS CROP ARE DRAWN. Copy the drawing, not just the palette:",
@@ -101,13 +106,17 @@ export function localPatchPrompt({ ground, pose, ageYears, repairChecks }: Local
     "- match the other children's level of finish exactly: if their faces are simple at this size, the reference child's face is simple too",
     "",
     `POSE. ${wording.instruction}`,
-    "Fill the masked area with the child in THAT pose - do not stand them up to fill a tall box, and do not shrink them to sit inside a short one.",
+    boardPeopleReference
+      ? "Draw the child in THAT pose inside the mask. The mask is a maximum boundary, NOT a box to fill. Match age and depth even when that leaves unused space."
+      : "Fill the masked area with the child in THAT pose - do not stand them up to fill a tall box, and do not shrink them to sit inside a short one.",
     "",
     "THE CHILD'S AGE.",
     childAgeDirection(ageYears),
     "Judge the child's height against children of THEIR OWN AGE standing at that same depth, never against the toddlers - the smallest child nearby is not the ruler.",
     "",
-    "Preserve the reference child's presentation, hairstyle and outfit cues. Dress the child in age-appropriate everyday child clothing suited to THIS place, not adult fashions, mature styling or makeup. Do not infer gender from a name.",
+    boardPeopleReference
+      ? "Preserve the child's facial structure, hairstyle, skin tone and age, NOT the reference portrait's surface rendering, shading, detail density or outfit. Redraw skin, eyes, hair and cloth with the contour weight, simplified paint shapes and grouped highlights in Image 3. A detailed watercolor portrait with an outline is not enough if the board people use simpler drawn faces. Dress the child in age-appropriate everyday clothing for THIS place, not adult fashions or makeup. Do not infer gender from a name."
+      : "Preserve the reference child's presentation, hairstyle and outfit cues. Dress the child in age-appropriate everyday child clothing suited to THIS place, not adult fashions, mature styling or makeup. Do not infer gender from a name.",
     `Where the child meets the ground - ${wording.support} - paint the same small dark contact shadow the other children have where they meet the ${ground}. The child must read as resting on it, not placed on top of it.`,
     "Light the child from the same direction with the same warmth as the people around them.",
     "",

@@ -48,8 +48,9 @@ describe("explicit board-matched QA identity contract (synthetic only)", () => {
     const provider = new OpenAiAvatarProvider("synthetic-never-live", { tries: 1 });
     await expect(provider.createCharacter(input)).rejects.toThrow("CHARACTER_STYLE"); expect(fetcher).not.toHaveBeenCalled();
   });
-  it("sends the verified atlas unchanged with the QA prompt, while retaining MEDIUM and the2×2 request", async () => {
+  it.each(["board-matched-identity/v1", "board-matched-identity/v2"] as const)("sends the verified atlas unchanged with %s, retaining MEDIUM and the2×2 request", async version => {
     const input = qaInput();
+    input.qaStyleContract!.version = version;
     const colors = Buffer.alloc(256 * 128 * 4);
     for (let y = 0; y < 128; y++) for (let x = 0; x < 256; x++) colors.set(x < 128 ? [200, 30, 20, 255] : [20, 60, 200, 255], (y * 256 + x) * 4);
     input.originalPhoto = await sharp(colors, { raw: { width: 256, height: 128, channels: 4 } }).png().toBuffer();
@@ -61,7 +62,12 @@ describe("explicit board-matched QA identity contract (synthetic only)", () => {
       const form = init.body as FormData, images = form.getAll("image[]") as Blob[];
       expect(images).toHaveLength(2); expect(Buffer.from(await images[1]!.arrayBuffer()).equals(atlas)).toBe(true);
       expect(Buffer.from(await images[0]!.arrayBuffer()).equals(selectedPhoto)).toBe(true);
-      expect(form.get("prompt")).toBe(characterPrompt({ styled: true, ageYears: 6, qaStyleContractVersion: "board-matched-identity/v1" }));
+      expect(form.get("prompt")).toBe(characterPrompt({ styled: true, ageYears: 6, qaStyleContractVersion: version }));
+      if (version === "board-matched-identity/v2") {
+        expect(form.get("prompt")).toContain("enlarged authored face");
+        expect(form.get("prompt")).toContain("watercolor portrait");
+        expect(form.get("prompt")).toContain("STYLE FAILURE");
+      }
       expect(form.get("quality")).toBe("medium"); expect(form.get("size")).toBe("1024x1024");
       return Response.json({ data: [{ b64_json: atlas.toString("base64") }], usage: { input_tokens: 1, output_tokens: 1 } }, { headers: { "x-request-id": "synthetic-identity-style" } });
     });

@@ -4,7 +4,7 @@
 
 New QA drafts use `local-patch-world-v1` from their first step. The only offered package on QA is one world: nine boards, three painted appearances per board. Existing drafts, held games, historical board versions and the main production deployment are not migrated or resumed.
 
-The first character is generated with the real, hash-verified atlas of painted board people and `character-v3-board-matched-matte`. The photograph determines identity and age; the board atlas determines illustration language. A style/identity review must pass before the parent sees the avatar and before board painting starts. There is no legacy portrait fallback. Scene-specific clothing, pose, illumination and saturation are conditioned on the actual local board crop.
+New identities use the real, hash-verified, face-focused board atlas (`board-matched-identity/v2`) and `character-v4-board-drawn-face-reference`. The photograph determines identity and age; the board atlas determines illustration language. Enlarged authored faces expose the actual skin shapes, contours and grouped hair; detailed watercolor portraits are explicitly not sufficient. A style/identity review must pass before the parent sees the avatar and before board painting starts. There is no legacy portrait fallback. Existing purchased v1 identities retain their exact atlas, prompt and review provenance across restarts. New identities additionally carry original same-board people into each local-patch render (`local-patch-prompt/v7-board-drawn`); scene-specific clothing, pose, illumination and saturation come from the local board crop.
 
 ## Connected route
 
@@ -13,7 +13,7 @@ The first character is generated with the real, hash-verified atlas of painted b
 3. Local-patch queue: 27 authored placements, at most two normal render attempts per placement across restarts, one judge after local composition. On QA, after every normal placement concludes, each failed hide gets exactly one final repair (attempt 3). Passing hides are never repurchased; failed third attempts require human review.
 4. Render and judge purchases share the existing $4 world ledger. Retention precedes settlement; unknown charges hold the world and never silently become free or trigger repurchase.
 5. Accepted crops become owned assets and targets with rect, hitRect and anchor. The same accepted patch is used for replay variants A/B.
-6. Only 27 currently hash-bound passing appearances can produce READY. The fenced transaction saves nine scene configurations and the game, honors original-photo deletion, then sends the ready notification. Email failure does not revoke a playable game.
+6. All 27 appearances require current hash-bound machine approval or an explicit, separately recorded administrator decision on the user's behalf. QA administrators may approve all currently retained pictures as-is, including rejected ones, without repainting or rewriting machine verdicts. The decision binds identity, image, attempt and tap geometry. The fenced transaction saves nine scene configurations and the game, honors original-photo deletion, then sends the ready notification. Email failure does not revoke a playable game.
 7. Owner/admin deletion covers generated, rejected, retained and orphan images, revokes worker publication, and preserves accounting plus unrelated/shared assets.
 
 ## Artwork and hints
@@ -33,6 +33,12 @@ Version 6 is selected explicitly for new local-patch games; legacy catalog defau
 Synthetic verification proves orchestration, not the visual quality of a new paid generation. Record the live deployment and paid visual check separately below.
 
 ## Live verification
+
+### Current-game approval versus future-game style correction
+
+Guy explicitly approved the current Omer world as-is and asked that style changes apply to the next game. This supersedes resuming its seven repairs: no current identity, render, judgement, attempt or bill is to be reset or repurchased. The admin approval path previously delegated to publication that required READY already, making it impossible to admit retained refused pictures. The explicit as-is path reuses those private crops as separately owned game sprites, preserves the original judge JSON, and records human decisions independently. Publication continues through the ordinary schema, accounting, privacy and notification finalizer.
+
+Style correctness of a newly paid v2/v4 character remains a visual acceptance test, not something passing synthetic tests establish. The current Omer identity is not replaced to obtain that test.
 
 ### One end-of-world repair pass (authorized 12 September)
 

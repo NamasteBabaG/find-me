@@ -3,10 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 import type { Prisma } from "@prisma/client";
 import { CasWorldBudgetRepository, type AtomicWorldBudgetStore } from "../../../infra/db/world-budget-repository";
 import { OpenAiIdentityStyleReviewer } from "../../../infra/generation/identity-style-reviewer";
-import { QA_CHARACTER_PROMPT_VERSION } from "../../../infra/generation/character-prompt";
+import { LEGACY_QA_CHARACTER_PROMPT_VERSION as QA_CHARACTER_PROMPT_VERSION } from "../../../infra/generation/character-prompt";
 import type { WorldBudgetSnapshot } from "../world-budget";
 import { boardWizardBudget } from "../board-wizard-budget";
-import { IDENTITY_GATE_KEY, identityGatePrompt, reviewBoardWizardIdentity, requireBoardWizardIdentityApproval, type IdentityProvenance } from "../board-wizard-identity-gate";
+import { IDENTITY_GATE_KEY, LEGACY_IDENTITY_GATE_VERSION, identityGatePrompt, reviewBoardWizardIdentity, requireBoardWizardIdentityApproval, type IdentityProvenance } from "../board-wizard-identity-gate";
 import { sha256Bytes } from "../fixed-sprite";
 import type { Container } from "../../container";
 
@@ -36,7 +36,7 @@ async function fixture(reply: () => Promise<Response> = async () => response()) 
 }
 describe("identity style gate (synthetic images and HTTP; zero paid calls)", () => {
   it("uses original photo for likeness, board people for style; never demands board placement before a board exists", () => {
-    const prompt = identityGatePrompt(6);
+    const prompt = identityGatePrompt(6, LEGACY_IDENTITY_GATE_VERSION);
     expect(prompt).toContain("ORIGINAL painted board people"); expect(prompt).toContain("photograph-like face");
     expect(prompt).toContain("NOT a demand for pixel-identical brushwork"); expect(prompt).toContain("Do not judge on-board placement");
   });

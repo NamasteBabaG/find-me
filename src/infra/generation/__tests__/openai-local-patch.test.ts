@@ -38,6 +38,17 @@ const request = () => ({
 });
 
 describe("buying one local patch", () => {
+  it("sends explicit board people as the third image without enlarging the identity portrait", async () => {
+    const people = await sharp({ create: { width: 320, height: 320, channels: 4, background: "#305030" } }).png().toBuffer();
+    const fetchOnce = vi.fn(async () => answer());
+    await buyLocalPatch("sk-test-only", { ...request(), boardPeoplePng: people }, { fetchOnce });
+    const form = (fetchOnce.mock.calls[0] as unknown as [string, RequestInit])[1].body as FormData;
+    const images = form.getAll("image[]") as Blob[];
+    expect(images).toHaveLength(3);
+    expect(Buffer.from(await images[2]!.arrayBuffer())).toEqual(people);
+    expect(await sharp(Buffer.from(await images[1]!.arrayBuffer())).metadata()).toMatchObject({ width: 512, height: 512 });
+  });
+
   it("sends the request the paid round proved, once", async () => {
     const fetchOnce = vi.fn(async () => answer());
     await buyLocalPatch("sk-test-only", request(), { fetchOnce: fetchOnce as unknown as typeof fetch });

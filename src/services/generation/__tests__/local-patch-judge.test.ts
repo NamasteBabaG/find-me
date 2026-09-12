@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
-import { JUDGE_CHECKS, LOCAL_PATCH_JUDGE, judgeLocalPatch, localPatchJudgePrompt, localPatchVerdictSchema } from "../local-patch-judge";
+import { BLOCKING_CHECKS, JUDGE_CHECKS, LOCAL_PATCH_JUDGE, judgeLocalPatch, localPatchJudgePrompt, localPatchVerdictSchema } from "../local-patch-judge";
 import { LOCAL_PATCH_POSE_WORDING } from "../local-patch-prompt";
 import { LocalPatchPose } from "../../../domain/scene/local-patch-hides";
 
@@ -116,6 +116,26 @@ describe("judging one finished local patch", () => {
       expect(result.verdict?.verdictOverridden).toBe(true);
       expect(result.verdict?.claimedVerdict).toBe("pass");
     }
+  });
+
+  it.each(["pass", "unsure"])("uncertain illustration style cannot inherit the model's %s verdict, even without faults", async claimedVerdict => {
+    const body = { ...good, styleMatch: "unsure", verdict: claimedVerdict,
+      reason: "Cannot establish whether the face matches the board's painted treatment.", faults: [] };
+    const result = await judgeLocalPatch("test-only", await request(), (async () => reply(body)) as unknown as typeof fetch);
+    expect(result.verdict).toMatchObject({ styleMatch: "unsure", verdict: "unsure", claimedVerdict,
+      verdictOverridden: claimedVerdict !== "unsure", downgraded: [], contradicted: [], unclassified: [] });
+    // The same pure parser can re-derive historical answers without a purchase.
+    expect(localPatchVerdictSchema.parse(body).verdict).toBe("unsure");
+  });
+
+  it("requires style explicitly in the question while preserving legitimate hidden ground contact", () => {
+    const prompt = localPatchJudgePrompt("behind-the-stall");
+    expect(BLOCKING_CHECKS).toContain("styleMatch");
+    expect(prompt).toContain(`${BLOCKING_CHECKS.join(", ")} are all pass`);
+    expect(prompt).toContain("unsure styleMatch never permits pass");
+    expect(prompt).toContain("against BEFORE, not against the identity portrait");
+    expect(localPatchVerdictSchema.parse({ ...good, groundContact: "unsure", reason: "Feet are hidden behind the stall." }).verdict).toBe("pass");
+    expect(new Set(JUDGE_CHECKS).size).toBe(JUDGE_CHECKS.length);
   });
 
   it("does not turn a real fail into a pass just because the model said fail", async () => {

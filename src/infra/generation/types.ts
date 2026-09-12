@@ -26,7 +26,7 @@ export interface AvatarInput {
 /** Explicit opt-in for the QA board-conditioned wizard. The atlas contains
  * original illustrated board people only, never another uploaded child's photo. */
 export interface QaCharacterStyleContract {
-  version: "board-matched-identity/v1";
+  version: "board-matched-identity/v1" | "board-matched-identity/v2";
   catalogSha256: string;
   atlasSha256: string;
 }

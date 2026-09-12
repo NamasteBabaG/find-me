@@ -12,7 +12,8 @@ import type { Container } from "../../container";
 import type { CharacterOutput } from "../../../infra/generation/types";
 import { findScene } from "../../../../content/scenes";
 
-const fake = vi.hoisted(() => ({ appEnv: "qa", testers: [] as string[], png: null as Buffer | null, catalogSha256: "", atlasSha256: "", styleMissing: false }));
+const fake = vi.hoisted(() => ({ appEnv: "qa", testers: [] as string[], png: null as Buffer | null, catalogSha256: "", atlasSha256: "", styleMissing: false,
+  styleVersion: "board-matched-identity/v1", requestedStyleVersions: [] as (string | undefined)[] }));
 vi.mock("../../../lib/env", () => ({
   env: () => ({ APP_ENV: fake.appEnv, GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: 0, GENERATION_PROVIDER: "openai", GENERATION_MODEL: "gpt-image-2", GENERATION_QUALITY: "medium", OPENAI_API_KEY: "synthetic-never-live" }),
   spendGuard: () => ({ appEnv: fake.appEnv, realGeneration: true, testers: fake.testers }), flag: () => false,
@@ -24,9 +25,10 @@ vi.mock("../board-conditioned-wizard", async original => ({
 }));
 vi.mock("../scene-art", () => ({ loadSceneArt: async () => fake.png }));
 vi.mock("../patch", async original => ({ ...await original<typeof import("../patch")>(), styleReference: async () => fake.png }));
-vi.mock("../board-wizard-identity-style", () => ({ buildBoardWizardIdentityStyle: async () => {
+vi.mock("../board-wizard-identity-style", () => ({ buildBoardWizardIdentityStyle: async (_root?: string, version?: string) => {
   if (fake.styleMissing) throw new Error("Synthetic mandatory original-people atlas missing");
-  return { png: fake.png!, version: "board-matched-identity/v1", catalogSha256: fake.catalogSha256, atlasSha256: fake.atlasSha256, examples: [] };
+  fake.requestedStyleVersions.push(version);
+  return { png: fake.png!, version: version ?? fake.styleVersion, catalogSha256: fake.catalogSha256, atlasSha256: fake.atlasSha256, examples: [] };
 } }));
 vi.mock("../local-patch-identity", async original => ({
   ...await original<typeof import("../local-patch-identity")>(), preflightLocalPatchIdentity: async () => undefined,
@@ -56,6 +58,7 @@ beforeAll(async () => {
 });
 beforeEach(() => {
   process.env.QA_BOARD_CONDITIONED_WIZARD = "true"; fake.appEnv = "qa"; fake.styleMissing = false;
+  fake.styleVersion = "board-matched-identity/v1"; fake.requestedStyleVersions = [];
   vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("Unexpected HTTP is forbidden in identity lifecycle tests"); }));
 });
 afterEach(() => { vi.unstubAllGlobals(); });
@@ -131,8 +134,9 @@ describe("QA identity lifecycle: real DB and synthetic provider only", () => {
     expect(await db.game.findUniqueOrThrow({ where: { id: production.gameId } })).toMatchObject({ status: "DRAFT", styleVersion: "collage-v1" });
   });
 
-  it("new local-patch identity uses the matte atlas and approval without the old wizard flag", async () => {
+  it("new local-patch identity uses v2 face atlas, v4 prompt provenance and v2 approval without the old wizard flag", async () => {
     const f = await fixture(); await fullWorld(f);
+    fake.styleVersion = "board-matched-identity/v2";
     delete process.env.QA_BOARD_CONDITIONED_WIZARD;
     await db.game.update({ where: { id: f.id }, data: { styleVersion: LOCAL_PATCH_STYLE, status: "PAID" } });
     await db.generationJob.update({ where: { id: f.claim.jobId }, data: { status: "QUEUED", attempts: 0, currentStep: null } });
@@ -140,7 +144,7 @@ describe("QA identity lifecycle: real DB and synthetic provider only", () => {
     const fallback = vi.fn(); f.c.avatars.createAvatar = fallback;
     const generate = vi.fn(async (request: Parameters<NonNullable<Container["avatars"]["createCharacter"]>>[0]) => {
       expect(request.styleRef).toEqual(png);
-      expect(request.qaStyleContract).toEqual(f.provenance.style);
+      expect(request.qaStyleContract).toEqual({ ...f.provenance.style, version: "board-matched-identity/v2" });
       expect(request.ageYears).toBe(6);
       return f.result();
     });
@@ -152,6 +156,9 @@ describe("QA identity lifecycle: real DB and synthetic provider only", () => {
     expect(steps.avatar.status).toBe("done"); expect(steps).not.toHaveProperty("boardWizard");
     expect(await db.targetInstance.count({ where: { gameScene: { gameId: f.id } } })).toBe(0);
     const child = await db.childProfile.findUniqueOrThrow({ where: { id: f.childId } });
+    const review = await db.auditLog.findFirstOrThrow({ where: { action: IDENTITY_GATE_ACTION, entityId: child.identityAssetId! } });
+    expect(JSON.parse(review.metaJson!)).toMatchObject({ version: "board-wizard-identity-style-sol-high/v2",
+      provenance: { promptVersion: "character-v4-board-drawn-face-reference", style: { version: "board-matched-identity/v2" } } });
     expect(await identityApprovedForDisplay(f.c, child)).toBe(true);
     expect((await f.ledger()).requests.every((r: { state: string }) => r.state === "settled")).toBe(true);
     expect(generate).toHaveBeenCalledOnce(); expect(fetch).toHaveBeenCalledOnce(); expect(fallback).not.toHaveBeenCalled();
@@ -173,7 +180,12 @@ describe("QA identity lifecycle: real DB and synthetic provider only", () => {
       expect(fetch).not.toHaveBeenCalled();
       const child = await db.childProfile.findUniqueOrThrow({ where: { id: f.childId } });
       expect(child.avatarAssetId).not.toBeNull(); expect(await identityApprovedForDisplay(f.c, child)).toBe(false);
+      // Simulate a deployment between the purchased identity and its review.
+      fake.styleVersion = "board-matched-identity/v2";
       await runGenerationPipeline(f.c, f.id, { hardDeadlineAt: now + 270_000 });
+      expect(fake.requestedStyleVersions).toEqual([undefined, "board-matched-identity/v1"]);
+      const review = await db.auditLog.findFirstOrThrow({ where: { action: IDENTITY_GATE_ACTION, entityId: child.identityAssetId! } });
+      expect(JSON.parse(review.metaJson!).version).toBe("board-wizard-identity-style-sol-high/v1");
       expect(await f.game()).toMatchObject({ status: "TARGETS_GENERATING", styleVersion: LOCAL_PATCH_STYLE });
       expect(generate).toHaveBeenCalledOnce(); expect(fetch).toHaveBeenCalledOnce();
       expect(await identityApprovedForDisplay(f.c, child)).toBe(true);

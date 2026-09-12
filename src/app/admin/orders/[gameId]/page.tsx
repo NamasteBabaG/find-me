@@ -16,6 +16,11 @@ import { BoardWizardRecoveryForm } from "./BoardWizardRecoveryForm";
 import { LocalPatchRepairResumeForm } from "./LocalPatchRepairResumeForm";
 import { adjustTargetAction, adminDeleteAction, adminRotateLinkAction, approveAction, recutAvatarAction, refundAction, regenTargetAction, requestPhotoAction, retryAction } from "../../actions";
 import { LOCAL_PATCH_NEEDS_RELEASE } from "@/services/generation/local-patch-world";
+import { LOCAL_PATCH_HUMAN_CONFIRMATION } from "@/services/generation/local-patch-human-approval";
+
+// The explicit as-is action hashes the 27 retained crops and publishes them
+// transactionally; it makes no provider calls, but is not a short page action.
+export const maxDuration = 300;
 
 /** What the row's last review means to a person: reviewed and passed, reviewed and failed, could not decide, or never reviewed. */
 function judgeLabel(judge: { verdict: string; reason: string } | null): string {
@@ -52,6 +57,10 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
           {awaitingQa ? (
             <form action={approveAction}>
               <input type="hidden" name="gameId" value={gameId} />
+              {game.styleVersion === "local-patch-world-v1" ? <label className="fm-small">
+                <input type="checkbox" name="confirmAsIs" value={LOCAL_PATCH_HUMAN_CONFIRMATION} required />
+                קיבלתי אישור מהמשתמש לפרסם את כל 27 התמונות הנוכחיות כפי שהן, כולל האחרונות שנפסלו. ללא רינדור נוסף; פסיקת השופט נשמרת.
+              </label> : null}
               <button className="fm-btn" type="submit">
                 ✓ אישור ופרסום
               </button>

@@ -16,7 +16,7 @@ import { sendAdminAlert } from "../admin-alert.service";
 import { generateSlotPatch, slotOf, spotsOutstanding, spotsUnjudged, type PatchOutcome, type Variant } from "./slot-patches";
 import { styleReference } from "./patch";
 import { loadSceneArt } from "./scene-art";
-import { CHARACTER_PROMPT_VERSION, QA_CHARACTER_PROMPT_VERSION } from "@/infra/generation/character-prompt";
+import { CHARACTER_PROMPT_VERSION, qaCharacterPromptVersion } from "@/infra/generation/character-prompt";
 import { isFixedWorldStyle } from "./fixed-world-stage-record";
 import { BOARD_WIZARD_STYLE, GenerationPaused, boardWizardEnabled, enrollBoardConditionedWizard, runBoardConditionedWizardSlice, preflightBoardConditionedWizard, reserveBoardWizardIdentity } from "./board-conditioned-wizard";
 import { sha256Bytes } from "./fixed-sprite";
@@ -175,7 +175,14 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
     // Current deployment-owned original people are mandatory for QA identity.
     // Missing/corrupt references hold this route; never substitute boardStyle's
     // legacy optional HTTP crop or a generic portrait prompt.
-    const identityStyle = qaIdentityClaim ? await buildBoardWizardIdentityStyle() : null;
+    // An interrupted identity/review keeps the exact original style recipe.
+    // Upgrading the default must not replace a purchased v1 atlas with v2 pixels.
+    let retainedIdentityStyleVersion;
+    if (qaIdentityClaim && child.identityAssetId) {
+      const retained = await c.db.auditLog.findFirst({ where: { action: "sheet:painted", entityId: child.identityAssetId, entityType: "Asset" }, orderBy: { createdAt: "desc" } });
+      retainedIdentityStyleVersion = identityProvenanceSchema.parse(JSON.parse(retained?.metaJson ?? "{}").identityProvenance).style.version;
+    }
+    const identityStyle = qaIdentityClaim ? await buildBoardWizardIdentityStyle(undefined, retainedIdentityStyleVersion) : null;
     const avatarValid = child.avatarAssetId ? (await c.db.asset.findUnique({ where: { id: child.avatarAssetId } }))?.status === "READY" : false;
     if (!avatarValid) {
       if (status !== "AVATAR_GENERATING") await transitionGame(c, gameId, "AVATAR_GENERATING", SYSTEM);
@@ -197,7 +204,7 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
       if (c.avatars.createCharacter) {
         if (qaIdentityClaim) {
           if (localPatch) requireLocalPatchIdentityTime(options.hardDeadlineAt, 175_000);
-          const provenance = identityProvenanceSchema.parse({ promptVersion: QA_CHARACTER_PROMPT_VERSION, quality: "medium", photoAssetId: original.id,
+          const provenance = identityProvenanceSchema.parse({ promptVersion: qaCharacterPromptVersion(qaStyleContract!.version), quality: "medium", photoAssetId: original.id,
             photoSha256: sha256Bytes(photo), crop, ageYears: child.ageYears, style: qaStyleContract });
           const persisted = await generateBoardWizardIdentity(c, qaIdentityClaim, {
             reserve: () => reserveBoardWizardIdentity(c, gameId, { childId: child.id, name: child.displayName, provenance, model: "gpt-image-2", attempts: 1 }),
