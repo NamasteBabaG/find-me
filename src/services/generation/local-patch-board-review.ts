@@ -26,10 +26,13 @@ export const LOCAL_PATCH_BOARD_REVIEW_VERSION = "local-patch-board-five-luna-low
 export const LOCAL_PATCH_STRICT_BOARD_REVIEW_VERSION = "local-patch-board-five-quality/v3-head-safe";
 export const LOCAL_PATCH_REVIEW_CONTEXT_PX = 64;
 export const LOCAL_PATCH_REVIEW_CLOSEUP_GUARD_PX = LOCAL_PATCH_RETURN_GUARD;
+// Historical paid replies remain addressable for deletion/reconciliation even
+// after a new deterministic compositor gives the same attempt a new question.
+export const LOCAL_PATCH_REVIEW_COMPOSITION_HISTORY = [null, "bounded-return/v2-head-safe"] as const;
 export const localPatchBoardReviewKey = (boardId: string, attempts?: readonly number[], compositionVersion: string | null = LOCAL_PATCH_COMPOSITION_VERSION) => {
   if (!attempts) return `board:${boardId}:five-review:1`;
   if (attempts.length !== 5 || attempts.some(n => !Number.isInteger(n) || n < 1 || n > LOCAL_PATCH_MAX_ATTEMPTS)) throw new Error("Invalid board-review attempt revision");
-  if (compositionVersion !== null && compositionVersion !== LOCAL_PATCH_COMPOSITION_VERSION) throw new Error("Unsupported board-review composition revision");
+  if (compositionVersion !== LOCAL_PATCH_COMPOSITION_VERSION && !LOCAL_PATCH_REVIEW_COMPOSITION_HISTORY.some(version => version === compositionVersion)) throw new Error("Unsupported board-review composition revision");
   return `board:${boardId}:five-review:v8:${attempts.join("-")}${compositionVersion === null ? "" : `:${compositionVersion.replaceAll("/", ".")}`}`;
 };
 /** All bounded candidates, including a paid reply retained before its row commit. */
@@ -39,7 +42,8 @@ export function localPatchBoardReviewKeys(boardId: string): string[] {
     const prior = vectors.splice(0);
     for (const vector of prior) for (let attempt = 1; attempt <= LOCAL_PATCH_MAX_ATTEMPTS; attempt++) vectors.push([...vector, attempt]);
   }
-  return [localPatchBoardReviewKey(boardId), ...vectors.flatMap(vector => [localPatchBoardReviewKey(boardId, vector, null), localPatchBoardReviewKey(boardId, vector)])];
+  const versions = [...new Set<string | null>([...LOCAL_PATCH_REVIEW_COMPOSITION_HISTORY, LOCAL_PATCH_COMPOSITION_VERSION])];
+  return [localPatchBoardReviewKey(boardId), ...vectors.flatMap(vector => versions.map(version => localPatchBoardReviewKey(boardId, vector, version)))];
 }
 const hash = (value: unknown) => sha256Bytes(Buffer.from(JSON.stringify(value)));
 function demand(value: unknown, message: string): asserts value { if (!value) throw new Error(`LOCAL_PATCH_BOARD_REVIEW: ${message}`); }

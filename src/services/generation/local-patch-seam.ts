@@ -261,21 +261,22 @@ async function blendLocalPatch(boardPng: Buffer, region: PatchRegion, patchPng: 
 // Leave120px of predeclared context, including room outside that drift for the
 // 12px feather. This is not proof of anatomy: final close-up review still owns
 // that decision. Version the derived pixels separately from the paid request.
-export const LOCAL_PATCH_COMPOSITION_VERSION = "bounded-return/v2-head-safe";
+export const LOCAL_PATCH_COMPOSITION_VERSION = "bounded-return/v3-head-safe-axis";
 export const LOCAL_PATCH_RETURN_GUARD = 120;
-export type LocalPatchCompositionPermission = "aligned" | "one-pixel-tolerance" | "refused";
+export type LocalPatchCompositionPermission = "aligned" | "one-pixel-per-axis-tolerance" | "refused";
 
-/** v8 boundary permission, NOT a visual verdict. A one-native-pixel mismatch
+/** v8 boundary permission, NOT a visual verdict. One native pixel on each axis
  * can be harmless resampling or a genuinely broken face: only the mandatory
  * final faceReadable/severeSeam review decides whether this image may publish.
- * Keep the measured report intact so tolerated misalignment remains visible.
+ * Diagonal neighbours are candidates too, not proof that their joins are safe.
+ * Keep the measured report intact; never translate pixels to cancel its shift.
  */
 export function boundedCompositionPermission(report: SeamReport): LocalPatchCompositionPermission {
   if (!Number.isFinite(report.borderMeanDiff) || report.borderMeanDiff < 0 || report.borderMeanDiff > 24) return "refused";
   if (report.verdict === "clean" || report.verdict === "fade-recommended") return "aligned";
   const { dx, dy } = report.shift;
   if (report.verdict === "misaligned" && Number.isInteger(dx) && Number.isInteger(dy)
-    && Math.hypot(dx, dy) > 0 && Math.hypot(dx, dy) <= 1) return "one-pixel-tolerance";
+    && Math.max(Math.abs(dx), Math.abs(dy)) === 1) return "one-pixel-per-axis-tolerance";
   return "refused";
 }
 

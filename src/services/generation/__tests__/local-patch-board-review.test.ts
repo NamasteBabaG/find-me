@@ -13,13 +13,13 @@ import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wi
 import { readBoardConditionedCatalog } from "../board-conditioned-catalog";
 import { reviewBoardWizardIdentity } from "../board-wizard-identity-gate";
 import { localPatchBoardReviewKey, localPatchBoardReviewKeys, reviewLocalPatchBoard } from "../local-patch-board-review";
-import { LOCAL_PATCH_COMPOSITION_VERSION, LOCAL_PATCH_RETURN_GUARD } from "../local-patch-seam";
-import { LOCAL_PATCH_PROVIDER } from "../local-patch-hide";
-import { LOCAL_PATCH_PUBLICATION_ACTION, localPatchPublicationGeometryHash } from "../local-patch-publication-policy";
+import { boundedCompositionPermission, LOCAL_PATCH_COMPOSITION_VERSION, LOCAL_PATCH_RETURN_GUARD, type SeamReport } from "../local-patch-seam";
+import { LOCAL_PATCH_PROVIDER, type LocalPatchHideDeps } from "../local-patch-hide";
+import { LOCAL_PATCH_PUBLICATION_ACTION, localPatchPublicationGeometryHash, recordLocalPatchPublicationPolicy } from "../local-patch-publication-policy";
 import { localPatchPrivateInventory, runLocalPatchWorldSlice } from "../local-patch-world";
 import { retainedPurchaseKey } from "../../../infra/db/prisma-retained-purchase-store";
 import { sha256Bytes } from "../fixed-sprite";
-import { boardPng, clearWorld, PASSING_ANSWER, seedApprovedGame } from "./local-patch-fixtures";
+import { bill, boardPng, clearWorld, paintedCrop, paintedOk, PASSING_ANSWER, seedApprovedGame } from "./local-patch-fixtures";
 import { localPatchBoardJudgeImages, type LocalPatchBoardJudgeRequest, type LocalPatchBoardJudgeResult } from "../local-patch-judge";
 
 vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: "qa", GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: 0,
@@ -218,26 +218,30 @@ describe("strict v8 candidate review", () => {
     expect(saved.boardReview).toMatchObject({ compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION, wireHashes });
   });
   it("never aliases historical review keys when head-safe pixels or the question change", async () => {
-    const vector = [1, 1, 1, 1, 1], oldKey = localPatchBoardReviewKey("sydney", vector, null), currentKey = localPatchBoardReviewKey("sydney", vector);
+    const vector = [1, 1, 1, 1, 1], oldKey = localPatchBoardReviewKey("sydney", vector, null),
+      headSafeKey = localPatchBoardReviewKey("sydney", vector, "bounded-return/v2-head-safe"), currentKey = localPatchBoardReviewKey("sydney", vector);
     expect(oldKey).toBe("board:sydney:five-review:v8:1-1-1-1-1");
-    expect(currentKey).toBe(`${oldKey}:bounded-return.v2-head-safe`);
+    expect(headSafeKey).toBe(`${oldKey}:bounded-return.v2-head-safe`);
+    expect(currentKey).toBe(`${oldKey}:bounded-return.v3-head-safe-axis`);
     expect(localPatchBoardReviewKey("sydney")).toBe("board:sydney:five-review:1");
     const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(GAME);
-    await budget.reserve(worldId, { requestKey: oldKey, scope: "judge", operationFingerprint: "b".repeat(64), reserveMicroUsd: 30000 });
-    await budget.settle(worldId, oldKey, { providerNamespace: "openai:find-me-existing", providerRequestId: "old-review-request", usageId: "old-review-usage",
-      rawUsage: { prompt_tokens: 100, completion_tokens: 20 }, model: "gpt-5.6-luna", amountMicroUsd: 100, costBasis: "conservative-upper-estimate" });
-    const old = await budget.readRequest(worldId, oldKey), deps = strictWorker(null);
+    for (const key of [oldKey, headSafeKey]) {
+      await budget.reserve(worldId, { requestKey: key, scope: "judge", operationFingerprint: "b".repeat(64), reserveMicroUsd: 30000 });
+      await budget.settle(worldId, key, { providerNamespace: "openai:find-me-existing", providerRequestId: `old-review-request-${key}`, usageId: `old-review-usage-${key}`,
+        rawUsage: { prompt_tokens: 100, completion_tokens: 20 }, model: "gpt-5.6-luna", amountMicroUsd: 100, costBasis: "conservative-upper-estimate" });
+    }
+    const old = await Promise.all([oldKey, headSafeKey].map(key => budget.readRequest(worldId, key))), deps = strictWorker(null);
     expect(await reviewLocalPatchBoard(c, input(), deps)).toMatchObject({ state: "done", replayed: false });
     expect(deps.judge).toHaveBeenCalledOnce();
-    expect(await budget.readRequest(worldId, oldKey)).toEqual(old);
+    expect(await Promise.all([oldKey, headSafeKey].map(key => budget.readRequest(worldId, key)))).toEqual(old);
     expect((await budget.readRequest(worldId, currentKey))?.state).toBe("settled");
     expect(await reviewLocalPatchBoard(c, input(), deps)).toMatchObject({ state: "done", replayed: true });
     expect(deps.judge).toHaveBeenCalledOnce();
     const keys = localPatchBoardReviewKeys("sydney");
-    expect(keys).toHaveLength(487); expect(new Set(keys).size).toBe(487);
-    expect(keys).toContain(oldKey); expect(keys).toContain(currentKey);
+    expect(keys).toHaveLength(730); expect(new Set(keys).size).toBe(730);
+    expect(keys).toContain(oldKey); expect(keys).toContain(headSafeKey); expect(keys).toContain(currentKey);
     const inventory = await localPatchPrivateInventory(c, GAME);
-    for (const key of [oldKey, currentKey]) expect(inventory.retainedPurchaseKeys).toContain(retainedPurchaseKey(worldId, key));
+    for (const key of [oldKey, headSafeKey, currentKey]) expect(inventory.retainedPurchaseKeys).toContain(retainedPurchaseKey(worldId, key));
   });
   it("defers an old composed crop until free refresh rather than judging its obsolete truncated pixels", async () => {
     const row = await db.targetVariantAsset.findUniqueOrThrow({ where: { id: "variant-0" } }), meta = JSON.parse(row.judgeJson!);
@@ -250,8 +254,12 @@ describe("strict v8 candidate review", () => {
   });
   it.each(["severeSeam", "faceLikeness", "faceReadable"])("concludes a located %s failure without repainting four good siblings", async check => {
     const candidate = await db.targetVariantAsset.findUniqueOrThrow({ where: { id: "variant-0" } });
+    const seam: SeamReport = { verdict: "misaligned", shift: { dx: -1, dy: 1 }, borderMeanDiff: 17.18, borderMaxDiff: 91,
+      changedFraction: .18, changedTouchesBorder: true, strayChangedFraction: 0, reason: "Measured diagonal shift, not a visual approval" };
+    const compositionPermission = boundedCompositionPermission(seam);
+    expect(compositionPermission).toBe("one-pixel-per-axis-tolerance");
     await db.targetVariantAsset.update({ where: { id: candidate.id }, data: { judgeJson: JSON.stringify({ ...JSON.parse(candidate.judgeJson!),
-      compositionPermission: "one-pixel-tolerance", seam: { verdict: "misaligned", shift: { dx: 0, dy: 1 }, borderMeanDiff: 16.95 },
+      compositionPermission, seam,
     }) } });
     const deps = strictWorker(0, check), result = await reviewLocalPatchBoard(c, input(), deps);
     expect(result.state).toBe("retry");
@@ -259,13 +267,51 @@ describe("strict v8 candidate review", () => {
     expect(rows[0]).toMatchObject({ status: "FAILED", attempts: 1, assetId: "ast-patch-0" });
     expect(await db.targetInstance.findUnique({ where: { id: "target-0" } })).toMatchObject({ status: "FAILED" });
     expect(JSON.parse(rows[0]!.rejectedAssetIdsJson!)).toContain("ast-patch-0");
-    expect(JSON.parse(rows[0]!.judgeJson!)).toMatchObject({ compositionPermission: "one-pixel-tolerance",
-      seam: { verdict: "misaligned", shift: { dx: 0, dy: 1 }, borderMeanDiff: 16.95 }, qualityDisposition: { state: "retry" } });
+    expect(JSON.parse(rows[0]!.judgeJson!)).toMatchObject({ compositionPermission,
+      seam, qualityDisposition: { state: "retry" } });
     expect(rows.slice(1).every(row => row.status === "GENERATED" && row.attempts === 1)).toBe(true);
     expect(await db.auditLog.count({ where: { action: LOCAL_PATCH_PUBLICATION_ACTION } })).toBe(4);
     await reviewLocalPatchBoard(c, input(), deps);
     expect(deps.judge).toHaveBeenCalledOnce();
   });
+  it.each(["severeSeam", "faceReadable"])("a tolerated diagonal never bypasses %s; only that hide retries through attempt3", async check => {
+    const first = await db.targetVariantAsset.findUniqueOrThrow({ where: { id: "variant-0" } });
+    const seam: SeamReport = { verdict: "misaligned", shift: { dx: -1, dy: -1 }, borderMeanDiff: 15.98, borderMaxDiff: 94,
+      changedFraction: .2, changedTouchesBorder: true, strayChangedFraction: 0, reason: "A composed candidate still requires its final visual checks" };
+    const permission = boundedCompositionPermission(seam);
+    expect(permission).toBe("one-pixel-per-axis-tolerance");
+    await db.targetVariantAsset.update({ where: { id: first.id }, data: { judgeJson: JSON.stringify({ ...JSON.parse(first.judgeJson!),
+      compositionPermission: permission, seam }) } });
+    const deps = strictWorker(0, check), answer = deps.judge.getMockImplementation()!;
+    let reviewCalls = 0;
+    deps.judge.mockImplementation(async request => ({ ...await answer(request), requestId: `required-${check}-${++reviewCalls}` }));
+    expect((await reviewLocalPatchBoard(c, input(), deps)).state).toBe("retry");
+    const rejected = await db.targetVariantAsset.findUniqueOrThrow({ where: { id: first.id } });
+    const identitySha256 = sha256Bytes(await c.storage.get(`private/sheet-${GAME}.png`));
+    const imageSha256 = sha256Bytes(await c.storage.get("game/ast-patch-0.png"));
+    await expect(db.$transaction(tx => recordLocalPatchPublicationPolicy(tx, {
+      gameId: GAME, sceneVersion: 8, hideId: BOARD.hides[0]!.id, variantId: rejected.id, attempts: rejected.attempts,
+      identityAssetId: `ast-sheet-${GAME}`, identitySha256,
+      assetId: rejected.assetId!, imageSha256,
+      geometrySha256: localPatchPublicationGeometryHash(rejected), judgeJson: rejected.judgeJson,
+    }))).rejects.toThrow(/quality policy/);
+    await db.generationJob.update({ where: { id: `job_${GAME}` }, data: { status: "QUEUED" } });
+    const render = vi.fn<LocalPatchHideDeps["render"]>(async request => {
+      expect(request.requestKey).toMatch(new RegExp(`^${BOARD.hides[0]!.id}:.*:render:[23]$`));
+      return paintedOk(await paintedCrop(request.stylePng, BOARD.hides[0]!), bill(`repair-${check}-${request.requestKey}`));
+    });
+    const hideDeps: LocalPatchHideDeps = { render, renderPolicySha256: "d".repeat(64), apiKey: "synthetic-no-network", readBoardArt: deps.readBoardArt };
+    for (let tick = 0; tick < 3; tick++) await runLocalPatchWorldSlice(c, hideDeps, GAME, { boardJudge: deps.judge });
+    const rows = await db.targetVariantAsset.findMany({ orderBy: { id: "asc" } });
+    expect(rows.map(row => row.attempts)).toEqual([3, 1, 1, 1, 1]);
+    expect(rows[0]!.status).toBe("FAILED");
+    expect(rows.slice(1).map(row => row.assetId)).toEqual(["ast-patch-1", "ast-patch-2", "ast-patch-3", "ast-patch-4"]);
+    expect(render).toHaveBeenCalledTimes(2); expect(deps.judge).toHaveBeenCalledTimes(3);
+    const publications = await db.auditLog.findMany({ where: { action: LOCAL_PATCH_PUBLICATION_ACTION } });
+    expect(publications.every(row => JSON.parse(row.metaJson!).variantId !== first.id)).toBe(true);
+    expect((await db.game.findUniqueOrThrow({ where: { id: GAME } })).configJson).toBeNull();
+    expect(await boardWizardBudgetOf(c).readRequest(boardWizardWorldId(GAME), `${BOARD.hides[0]!.id}:${BOARD.hides[0]!.pose}:render:4`)).toBeNull();
+  }, 120000);
   it("re-reviews changed candidate attempts, preserves siblings, and replays the new receipt without buying", async () => {
     await reviewLocalPatchBoard(c, input(), strictWorker(0));
     const row = await db.targetVariantAsset.findUniqueOrThrow({ where: { id: "variant-0" } });

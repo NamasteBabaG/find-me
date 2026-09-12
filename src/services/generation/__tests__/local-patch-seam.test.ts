@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
-import { analysePatchSeam, applyLocalPatch, boundedCompositionPermission, composeBoundedLocalPatch, type PatchRegion, type SeamReport } from "../local-patch-seam";
+import { analysePatchSeam, applyLocalPatch, boundedCompositionPermission, composeBoundedLocalPatch, LOCAL_PATCH_COMPOSITION_VERSION, type PatchRegion, type SeamReport } from "../local-patch-seam";
 
 const REGION: PatchRegion = { left: 300, top: 200, width: 220, height: 320 };
 
@@ -16,6 +16,7 @@ async function board() {
 const cut = (png: Buffer, region: PatchRegion = REGION) => sharp(png).extract(region).png().toBuffer();
 /** Declared BEFORE any render: where the child and her shadow may appear. */
 const ALLOWED: PatchRegion = { left: 60, top: 75, width: 100, height: 185 };
+const NEIGHBOUR_SHIFTS = [-1, 0, 1].flatMap(dx => [-1, 0, 1].filter(dy => dx !== 0 || dy !== 0).map(dy => ({ dx, dy })));
 const seam = (b: Buffer, patch: Buffer, region: PatchRegion = REGION) =>
   analysePatchSeam(b, region, patch, { allowedRect: ALLOWED });
 async function texturedBoard() {
@@ -44,12 +45,15 @@ describe("returning a locally rendered rectangle to the board", () => {
     expect(actual.equals(expected)).toBe(true);
     expect(crop.top + head.top - result.region.top).toBeGreaterThanOrEqual(12);
   });
-  it.each([-1, 1])("v8 fades a %i native-pixel boundary discrepancy without changing its raw alignment report", async dx => {
-    const b = await texturedBoard(), shifted = await cut(b, { ...REGION, left: REGION.left + dx });
-    const result = await composeBoundedLocalPatch(b, REGION, shifted, ALLOWED);
-    expect(result).toMatchObject({ usable: true, compositionPermission: "one-pixel-tolerance", report: { verdict: "misaligned", shift: { dx: -dx, dy: 0 } } });
+  it.each(NEIGHBOUR_SHIFTS)("v8 fades native shift $dx,$dy without moving pixels or changing its raw alignment report", async ({ dx, dy }) => {
+    const region = { left: 100, top: 80, width: 512, height: 768 };
+    const allowed = { left: 190, top: 335, width: 110, height: 240 };
+    const b = await texturedBoard(), shifted = await cut(b, { ...region, left: region.left + dx, top: region.top + dy });
+    const result = await composeBoundedLocalPatch(b, region, shifted, allowed);
+    expect(LOCAL_PATCH_COMPOSITION_VERSION).toBe("bounded-return/v3-head-safe-axis");
+    expect(result).toMatchObject({ usable: true, compositionPermission: "one-pixel-per-axis-tolerance", report: { verdict: "misaligned", shift: { dx: dx === 0 ? 0 : -dx, dy: dy === 0 ? 0 : -dy } } });
     expect(result.report.borderMeanDiff).toBeLessThanOrEqual(24);
-    const local = { ...result.region, left: result.region.left - REGION.left, top: result.region.top - REGION.top };
+    const local = { ...result.region, left: result.region.left - region.left, top: result.region.top - region.top };
     const returnedPatch = await sharp(shifted).extract(local).png().toBuffer();
     const rawReport = await analysePatchSeam(b, result.region, returnedPatch, { allowedRect: { left: 0, top: 0, width: local.width, height: local.height } });
     expect(result.report).toEqual(rawReport);
@@ -67,17 +71,30 @@ describe("returning a locally rendered rectangle to the board", () => {
       }
     }
     expect(differingEdgePixels).toBeGreaterThan(0); // Exact narrow blend, not a hard paste.
-    const protectedPixels = await sharp(result.candidate).extract({ ...ALLOWED, left: REGION.left + ALLOWED.left, top: REGION.top + ALLOWED.top }).raw().toBuffer();
-    expect(protectedPixels.equals(await sharp(shifted).extract(ALLOWED).raw().toBuffer())).toBe(true);
+    // The entire opaque interior is byte-exact at the provider's original coordinates.
+    // This catches a hidden one-pixel translation, not just damage to the face box.
+    const interior = { left: local.left + 12, top: local.top + 12, width: local.width - 24, height: local.height - 24 };
+    const protectedPixels = await sharp(result.candidate).extract({ ...interior, left: region.left + interior.left, top: region.top + interior.top }).raw().toBuffer();
+    expect(protectedPixels.equals(await sharp(shifted).extract(interior).raw().toBuffer())).toBe(true);
+    const wholeOriginal = await sharp(b).ensureAlpha().raw().toBuffer();
+    const wholeCandidate = await sharp(result.candidate).ensureAlpha().raw().toBuffer();
+    for (let y = 0; y < 900; y++) for (let x = 0; x < 800; x++) {
+      const r = result.region;
+      if (x >= r.left && x < r.left + r.width && y >= r.top && y < r.top + r.height) continue;
+      const i = (y * 800 + x) * 4;
+      if (!wholeCandidate.subarray(i, i + 4).equals(wholeOriginal.subarray(i, i + 4))) throw new Error(`context changed at ${x},${y}`);
+    }
   });
 
-  it("v8 tolerance has exact one-pixel and mean24 bounds; corrupt metrics cannot permit composition", () => {
+  it("v8 tolerance has exact per-axis one-pixel and mean24 bounds; corrupt metrics cannot permit composition", () => {
     const report: SeamReport = { verdict: "misaligned", reason: "Raw measured shift, not a visual pass", shift: { dx: -1, dy: 0 },
       borderMeanDiff: 24, borderMaxDiff: 90, changedFraction: .1, changedTouchesBorder: true, strayChangedFraction: 0 };
-    for (const shift of [{ dx: -1, dy: 0 }, { dx: 1, dy: 0 }, { dx: 0, dy: -1 }, { dx: 0, dy: 1 }]) {
-      expect(boundedCompositionPermission({ ...report, shift })).toBe("one-pixel-tolerance");
+    for (const shift of NEIGHBOUR_SHIFTS) {
+      expect(boundedCompositionPermission({ ...report, shift })).toBe("one-pixel-per-axis-tolerance");
     }
-    for (const shift of [{ dx: 2, dy: 0 }, { dx: -2, dy: 0 }, { dx: 0, dy: 2 }, { dx: 1, dy: 1 }, { dx: NaN, dy: 0 }]) {
+    for (const shift of [{ dx: 2, dy: 0 }, { dx: -2, dy: 0 }, { dx: 0, dy: 2 }, { dx: 0, dy: -2 },
+      { dx: 2, dy: 1 }, { dx: -1, dy: -2 }, { dx: .5, dy: 0 }, { dx: 0, dy: -.5 },
+      { dx: NaN, dy: 0 }, { dx: 0, dy: NaN }, { dx: Infinity, dy: 0 }, { dx: 0, dy: -Infinity }, { dx: 0, dy: 0 }]) {
       expect(boundedCompositionPermission({ ...report, shift })).toBe("refused");
     }
     for (const borderMeanDiff of [24.0001, Infinity, NaN, -1]) {

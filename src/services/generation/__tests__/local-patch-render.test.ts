@@ -129,14 +129,14 @@ describe("one paid attempt at one hide", () => {
     expect(w.rows.get(w.at(worldId, requestKey))?.state).toBe("pending"); // Crash before settlement, not a fresh operation.
     const next = w.process(), refs = { contentVersion: 8, board: strictBoard, hide: strictHide, composedPng: composed, identityPng, boardPeoplePng, canonicalIdentityPng };
     const result = await attempt(next.deps, refs);
-    expect(result).toMatchObject({ accepted: true, compositionPermission: "one-pixel-tolerance", seam: { verdict: "misaligned", shift: { dx: -1, dy: 0 } },
+    expect(result).toMatchObject({ accepted: true, compositionPermission: "one-pixel-per-axis-tolerance", seam: { verdict: "misaligned", shift: { dx: -1, dy: 0 } },
       verdict: null, judgeCents: 0, renderCents: 4.88, replayed: true, costUnknown: false });
     expect(next.dispatched).toEqual([]);
     expect(w.rows.size).toBe(1); expect(w.rows.get(w.at(worldId, requestKey))?.state).toBe("settled");
     const fresh = w.process(), replay = await attempt(fresh.deps, refs);
     expect(fresh.dispatched).toEqual([]);
     expect(replay.shippingPng!.equals(result.shippingPng!)).toBe(true);
-    expect(replay.compositionPermission).toBe("one-pixel-tolerance");
+    expect(replay.compositionPermission).toBe("one-pixel-per-axis-tolerance");
   });
 
   it("v8 rejects a broken seam after keeping its billed image, without a judge or a duplicate purchase", async () => {
