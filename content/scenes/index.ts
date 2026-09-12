@@ -43,7 +43,7 @@ import preForeground from "./releases/pre-foreground-20260907.json";
 // Version 4 of the boards that got placement contracts on 8 September 2026 (sydney, paris, giza, antarctica; same art). Game 2 pins these.
 import preContract from "./releases/pre-contract-20260908.json";
 import { localPatchSceneRelease } from "./local-patch-release";
-import { localPatchFiveSceneRelease } from "./local-patch-five-release";
+import { localPatchFiveSceneRelease, localPatchStrictSceneRelease } from "./local-patch-five-release";
 import { WORLD_LOCAL_PATCH_HIDES } from "../../src/domain/scene/local-patch-hides";
 
 /**
@@ -87,7 +87,8 @@ export function allScenes(): SceneDefinition[] {
 // other engines keep the default catalog's original placements and artwork.
 const localPatchVersions = RAW_SCENES.filter(raw => WORLD_LOCAL_PATCH_HIDES.some(board => board.board === (raw as { slug: string }).slug)).map(localPatchSceneRelease);
 const fiveHideVersions = RAW_SCENES.filter(raw => WORLD_LOCAL_PATCH_HIDES.some(board => board.board === (raw as { slug: string }).slug)).map(localPatchFiveSceneRelease);
-const HISTORICAL_SCENES: readonly SceneDefinition[] = [...preRefresh, ...prePlacement, ...preForeground, ...preContract, ...localPatchVersions, ...fiveHideVersions].map(raw => {
+const strictHideVersions = RAW_SCENES.filter(raw => WORLD_LOCAL_PATCH_HIDES.some(board => board.board === (raw as { slug: string }).slug)).map(localPatchStrictSceneRelease);
+const HISTORICAL_SCENES: readonly SceneDefinition[] = [...preRefresh, ...prePlacement, ...preForeground, ...preContract, ...localPatchVersions, ...fiveHideVersions, ...strictHideVersions].map(raw => {
   const parsed = validateSceneDefinition(raw);
   if (!parsed.ok || !parsed.scene) throw new Error(`Invalid archived scene ${(raw as { slug: string }).slug}: ${parsed.errors.join(", ")}`);
   return parsed.scene;

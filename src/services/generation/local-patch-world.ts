@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import type { Container } from "../container";
 import { type LocalPatchBoard, type LocalPatchHide } from "../../domain/scene/local-patch-hides";
-import { ALL_LOCAL_PATCH_BOARDS, localPatchBoardForVersion, isLocalPatchAdvisoryVersion } from "../../domain/scene/local-patch-catalog";
+import { ALL_LOCAL_PATCH_BOARDS, localPatchBoardForVersion, isLocalPatchAdvisoryVersion, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
 import { deliverLocalPatchNotifications } from "../local-patch-notifications";
 import { GenerationPaused, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { retainedPurchaseKeysFor } from "../../infra/db/prisma-retained-purchase-store";
@@ -10,7 +10,8 @@ import { env } from "../../lib/env";
 import { finishLocalPatchGame } from "./local-patch-player";
 import { deliverGameMail } from "../publish.service";
 import { SYSTEM } from "../audit.service";
-import { reviewLocalPatchBoard, localPatchBoardReviewKey, type LocalPatchBoardReviewDeps } from "./local-patch-board-review";
+import { reviewLocalPatchBoard, localPatchBoardReviewKeys, type LocalPatchBoardReviewDeps } from "./local-patch-board-review";
+import { transitionGame } from "../game-status";
 import { LOCAL_PATCH_MIN_PROVIDER_MS, LOCAL_PATCH_PHASE_MARGIN_MS } from "./local-patch-render";
 import { localPatchAttemptPlan, localPatchSettled, LOCAL_PATCH_NORMAL_ATTEMPTS } from "../../domain/scene/local-patch-attempts";
 import {
@@ -57,6 +58,8 @@ export const LOCAL_PATCH_HIDES_PER_SLICE = 1;
  * what tells whoever looks why.
  */
 export const LOCAL_PATCH_NEEDS_RELEASE = "local-patch:needs-release";
+/** Terminal visual/technical quality failure, not an accounting operator hold. */
+export const LOCAL_PATCH_QUALITY_FAILED = "local-patch:quality-failed";
 
 export type LocalPatchSliceResult = {
   readonly gameId: string;
@@ -101,7 +104,9 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // stopped game by ticking it directly.
   if (game.status !== "TARGETS_GENERATING") return { ...empty, pending: false, claimed: false, paused: false };
   const advisory = game.scenes.length > 0 && game.scenes.every(scene => isLocalPatchAdvisoryVersion(scene.sceneVersion));
-  if (game.scenes.some(scene => isLocalPatchAdvisoryVersion(scene.sceneVersion)) && !advisory) {
+  const strict = game.scenes.length > 0 && game.scenes.every(scene => isLocalPatchStrictVersion(scene.sceneVersion));
+  if (game.scenes.some(scene => isLocalPatchAdvisoryVersion(scene.sceneVersion))
+    && (!advisory || new Set(game.scenes.map(scene => scene.sceneVersion)).size !== 1)) {
     throw new Error("LOCAL_PATCH_WORLD: mixed legacy and five-hide scene versions are not a valid world");
   }
   // A v7 hide buys only its image. Reuse the dispatch boundary's conservative
@@ -161,6 +166,12 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     });
     if (held.count !== 1 || live.count !== 1) throw new Error("LOCAL_PATCH_WORLD: this claim is no longer ours; a stale worker may not write child imagery");
   };
+  const failStrictQuality = async (reason: string) => c.db.$transaction(async tx => {
+    await fence(tx);
+    await transitionGame({ ...c, db: tx as Container["db"] }, gameId, "GENERATION_FAILED", SYSTEM, { reason });
+    await tx.game.update({ where: { id: gameId }, data: { lastError: reason, configJson: null } });
+    await tx.generationJob.update({ where: { id: job.id }, data: { status: "DONE", currentStep: LOCAL_PATCH_QUALITY_FAILED, lastError: reason } });
+  });
 
   const blocked: { boardId: string; reason: string }[] = [];
   const work: { board: LocalPatchBoard; hide: LocalPatchHide; sceneId: string }[] = [];
@@ -178,12 +189,25 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   });
   const stateOf = (sceneId: string, targetId: string) =>
     rows.find(r => r.targetInstance.gameSceneId === sceneId && r.targetInstance.targetId === targetId);
+  // The worker can stop after committing an unreadable review but before the
+  // terminal game transition. That is still unresolved evidence on restart,
+  // never permission to buy another image merely to obtain a different judge.
+  const unresolvedQuality = strict && rows.find(row => row.status === "FAILED" && row.lastError?.startsWith("quality-unresolved:"));
+  if (unresolvedQuality) {
+    const attention = `local-patch: ${unresolvedQuality.lastError}`;
+    await failStrictQuality(attention);
+    return { ...empty, pending: false, claimed: true, paused: false, attention };
+  }
 
   const allowRepair = env().APP_ENV === "qa";
   const attemptLimit = allowRepair ? LOCAL_PATCH_MAX_ATTEMPTS : LOCAL_PATCH_NORMAL_ATTEMPTS;
   const settledHide = (row: { status: string; attempts: number } | undefined) => localPatchSettled(row, attemptLimit);
   const plan = localPatchAttemptPlan(work.map(item => stateOf(item.sceneId, item.hide.targetId)), allowRepair);
-  const todo = plan.indices.map(index => work[index]!);
+  const normalReviewsPending = strict && game.scenes.some(scene => scene.generationStatus !== "GENERATED"
+    && localPatchBoardFor(scene.sceneSlug, scene.sceneVersion)?.hides.every(hide => stateOf(scene.id, hide.targetId)?.status === "GENERATED"));
+  // A rendered but not reviewed normal candidate may still require attempt2.
+  // Finish those reviews before handing any earlier failure its last attempt.
+  const todo = plan.finalRepair && normalReviewsPending ? [] : plan.indices.map(index => work[index]!);
   const outcomes: LocalPatchHideOutcome[] = [];
   const limit = Math.max(1, options.maxHides ?? (advisory ? 5 : LOCAL_PATCH_HIDES_PER_SLICE));
   let paused = false;
@@ -220,7 +244,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // Per board, once its three hides have all come to rest. Written whether they
   // landed or not: a board with a hide nobody could paint is not GENERATED, and
   // saying it is has already let a board ship with the child missing from it.
-  const after = await c.db.targetVariantAsset.findMany({
+  let after = await c.db.targetVariantAsset.findMany({
     where: { variant: LOCAL_PATCH_VARIANT, targetInstance: { gameScene: { gameId } } },
     include: { targetInstance: { select: { targetId: true, gameSceneId: true } } },
   });
@@ -238,6 +262,15 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
           ...(options.hardDeadlineAt === undefined ? {} : { deadlineAt: options.hardDeadlineAt }) }, {
           fence, apiKey: deps.apiKey, judge: options.boardJudge, readBoardArt: deps.readBoardArt,
         });
+        if (reviewed.state === "blocked") {
+          attention = `local-patch: ${reviewed.reason ?? "required quality evidence unavailable"}`;
+          await failStrictQuality(attention);
+          return { gameId, pending: false, claimed: true, paused: false, attention, outcomes, blocked };
+        }
+        if (reviewed.state === "retry") {
+          await c.db.$transaction(async tx => { await fence(tx); await tx.gameScene.update({ where: { id: scene.id }, data: { generationStatus: "NEEDS_REGENERATION" } }); });
+          continue;
+        }
         if (reviewed.state !== "done") {
           pendingReviews++;
           if (reviewed.state === "held") {
@@ -263,6 +296,13 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       await tx.gameScene.update({ where: { id: scene.id }, data: { generationStatus: good ? "GENERATED" : "NEEDS_REGENERATION" } });
     });
   }
+
+  // A grouped quality review can conclude new FAILED rows. Use those committed
+  // decisions, not the pre-review snapshot, for retries and final readiness.
+  if (strict) after = await c.db.targetVariantAsset.findMany({
+    where: { variant: LOCAL_PATCH_VARIANT, targetInstance: { gameScene: { gameId } } },
+    include: { targetInstance: { select: { targetId: true, gameSceneId: true } } },
+  });
 
   // Include failed normal attempts that were deliberately absent from this
   // slice's todo. The final normal completion must queue the repair pass.
@@ -299,6 +339,10 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       return { gameId, pending: false, claimed: true, paused: false, attention: null, outcomes, blocked };
     }
     attention = `local-patch: ${failures.length} appearances ${advisory ? "have no usable asset after technical recovery" : "require review"}; ${blocked.length} boards unavailable`;
+    if (strict) {
+      await failStrictQuality(attention);
+      return { gameId, pending: false, claimed: true, paused: false, attention, outcomes, blocked };
+    }
     await c.db.$transaction(async tx => {
       await fence(tx);
       await tx.game.update({ where: { id: gameId }, data: { status: "MANUAL_REVIEW", lastError: attention, configJson: null } });
@@ -406,7 +450,7 @@ export async function localPatchPrivateInventory(c: { db: Pick<Prisma.Transactio
       }
     }
   }
-  requestKeys.push(...new Set(ALL_LOCAL_PATCH_BOARDS.map(board => localPatchBoardReviewKey(board.board))));
+  for (const boardId of new Set(ALL_LOCAL_PATCH_BOARDS.map(board => board.board))) requestKeys.push(...localPatchBoardReviewKeys(boardId));
   return {
     assetIds: [...assetIds],
     storagePaths: assets.map(a => a.storagePath),

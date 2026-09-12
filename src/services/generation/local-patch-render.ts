@@ -3,17 +3,17 @@ import sharp from "sharp";
 import {
   LOCAL_PATCH_CROP, type LocalPatchBoard, type LocalPatchHide, cropOf, maskForHide,
 } from "../../domain/scene/local-patch-hides";
-import { analysePatchSeam, applyLocalPatch, type SeamReport } from "./local-patch-seam";
+import { analysePatchSeam, applyLocalPatch, composeBoundedLocalPatch, type SeamReport } from "./local-patch-seam";
 import {
   LOCAL_PATCH_JUDGE, localPatchJudgeSettings, judgeLocalPatch, localPatchJudgePrompt, localPatchVerdictSchema,
   type JudgeWireFault, type LocalPatchJudgeRequest, type LocalPatchJudgeResult, type LocalPatchVerdict,
 } from "./local-patch-judge";
 import { judgeCharge } from "../../infra/generation/judge";
-import { LOCAL_PATCH_POSE_WORDING, LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, localPatchPrompt, type LocalPatchRepairCheck } from "./local-patch-prompt";
+import { LOCAL_PATCH_POSE_WORDING, LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_CANONICAL_PROMPT_VERSION, localPatchPrompt, type LocalPatchRepairCheck } from "./local-patch-prompt";
 import { purchaseOnce, type PurchaseLedger, type RetainedPurchaseStore } from "./paid-operation";
 import type { LocalPatchPurchase } from "../../infra/generation/openai-local-patch";
 import type { BudgetJson, WorldChargeEvidence } from "./world-budget";
-import { isLocalPatchAdvisoryVersion } from "../../domain/scene/local-patch-catalog";
+import { isLocalPatchAdvisoryVersion, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
 
 /**
  * One paid attempt at one hide, out of the scripts and into the product.
@@ -59,6 +59,7 @@ export type LocalPatchRenderDeps = {
   readonly render: (input: {
     readonly worldId: string; readonly requestKey: string; readonly prompt: string;
     readonly stylePng: Buffer; readonly identityPng: Buffer; readonly maskPng: Buffer;
+    readonly canonicalIdentityPng?: Buffer;
     readonly boardPeoplePng?: Buffer;
     /** What is left of the caller's request. An adapter that ignores it can outlive it. */
     readonly timeoutMs?: number;
@@ -75,6 +76,7 @@ export type LocalPatchAttemptInput = {
   /** The board as it now stands, with any earlier hides already painted in. */
   readonly composedPng: Buffer;
   readonly identityPng: Buffer;
+  readonly canonicalIdentityPng?: Buffer;
   readonly boardPeoplePng?: Buffer;
   /** For the judge, which needs a smaller copy than the painter does. */
   readonly judgeIdentityPng: Buffer;
@@ -279,16 +281,20 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
 }
 
 function promptVersionOf(input: LocalPatchAttemptInput): string {
-  return isLocalPatchAdvisoryVersion(input.contentVersion) ? LOCAL_PATCH_FIVE_PROMPT_VERSION
+  return isLocalPatchStrictVersion(input.contentVersion) ? LOCAL_PATCH_CANONICAL_PROMPT_VERSION
+    : isLocalPatchAdvisoryVersion(input.contentVersion) ? LOCAL_PATCH_FIVE_PROMPT_VERSION
     : input.boardPeoplePng ? LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION : LOCAL_PATCH_PROMPT_VERSION;
 }
 
 async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: LocalPatchAttemptInput): Promise<LocalPatchAttempt> {
   const { worldId, board, hide, attempt } = input;
+  if (isLocalPatchStrictVersion(input.contentVersion) && (!input.canonicalIdentityPng || !input.boardPeoplePng)) {
+    throw new Error("LOCAL_PATCH: canonical identity and board environment references are required before purchasing v8");
+  }
   const crop = cropOf(hide);
   const promptVersion = promptVersionOf(input);
   const prompt = localPatchPrompt({ ground: board.ground, pose: hide.pose, ageYears: input.ageYears, repairChecks: input.repairChecks, boardPeopleReference: !!input.boardPeoplePng,
-    wardrobe: board.wardrobe, placement: hide.placement, mask: maskForHide(hide) });
+    wardrobe: board.wardrobe, placement: hide.placement, mask: maskForHide(hide), contentVersion: input.contentVersion });
 
   const meta = await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).metadata();
   const stylePng = await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).extract(crop).png().toBuffer();
@@ -301,6 +307,8 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     version: promptVersion, hide: hide.id, pose: hide.pose, crop,
     prompt: sha(Buffer.from(prompt)), style: sha(stylePng), identity: sha(input.identityPng), mask: sha(maskPng),
     ...(input.boardPeoplePng ? { boardPeople: sha(input.boardPeoplePng) } : {}),
+    ...(input.canonicalIdentityPng ? { canonicalIdentity: sha(input.canonicalIdentityPng) } : {}),
+    ...(isLocalPatchStrictVersion(input.contentVersion) ? { composition: "bounded-return/v1" } : {}),
     policy: deps.renderPolicySha256,
     // The SHAPE of what is kept, not only what was bought. A record written
     // before this envelope existed would otherwise be read under this same
@@ -323,6 +331,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     buy: async ({ timeoutMs }) => {
       const result = await deps.render({ worldId, requestKey: renderKey, prompt, stylePng, identityPng: input.identityPng, maskPng,
         ...(input.boardPeoplePng ? { boardPeoplePng: input.boardPeoplePng } : {}),
+        ...(input.canonicalIdentityPng ? { canonicalIdentityPng: input.canonicalIdentityPng } : {}),
         ...(timeoutMs === null ? {} : { timeoutMs }) });
       const kept = result.png ?? result.quarantined;
       const keep: RetainedRender = {
@@ -352,9 +361,18 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     return refusedRender(painted.rejected ?? `${renderKey}: nothing usable was retained`, renderCents);
   }
   const patchPng = await sharp(Buffer.from(painted.bytesBase64, "base64")).resize(LOCAL_PATCH_CROP.width, LOCAL_PATCH_CROP.height, { fit: "fill" }).png().toBuffer();
-  const seam = await analysePatchSeam(input.composedPng, crop, patchPng, { allowedRect: { left: 0, top: 0, ...LOCAL_PATCH_CROP } });
+  const bounded = isLocalPatchStrictVersion(input.contentVersion)
+    ? await composeBoundedLocalPatch(input.composedPng, crop, patchPng, maskForHide(hide)) : null;
+  const seam = bounded?.report ?? await analysePatchSeam(input.composedPng, crop, patchPng, { allowedRect: { left: 0, top: 0, ...LOCAL_PATCH_CROP } });
   const fade = seam.verdict === "clean" || seam.verdict === "fade-recommended";
-  const candidate = await applyLocalPatch(input.composedPng, crop, patchPng, { fade, report: seam });
+  const candidate = bounded?.candidate ?? await applyLocalPatch(input.composedPng, crop, patchPng, { fade, report: seam });
+  if (bounded && !bounded.usable) {
+    // Retain a viewable refusal, but never turn a diagnosed broken join into a
+    // hard-pasted shipping image. This is a concluded, billed attempt, not a hold.
+    const shipping = await sharp(candidate).extract(crop).png().toBuffer();
+    return { ...refusedRender(`quality-seam: ${seam.reason}`, renderCents),
+      patchPng, shippingPng: shipping, judgedSha256: sha(shipping), seam, replayed: bought.replayed };
+  }
 
   if (isLocalPatchAdvisoryVersion(input.contentVersion)) {
     // All five current pictures are reviewed together by the board worker.

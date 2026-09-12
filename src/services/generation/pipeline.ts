@@ -28,7 +28,7 @@ import { isLocalPatchAdvisoryVersion } from "../../domain/scene/local-patch-cata
 import { boardWizardBudget } from "./board-wizard-budget";
 import { CasWorldBudgetRepository } from "../../infra/db/world-budget-repository";
 import { PrismaWorldBudgetStore } from "../../infra/db/prisma-world-budget-store";
-import { LOCAL_PATCH_STYLE, localPatchPainterDeps, runLocalPatchWorldSlice } from "./local-patch-world";
+import { LOCAL_PATCH_STYLE, LOCAL_PATCH_QUALITY_FAILED, localPatchPainterDeps, runLocalPatchWorldSlice } from "./local-patch-world";
 import { finishLocalPatchIdentity, preflightLocalPatchIdentity, requireLocalPatchIdentityTime, LocalPatchIdentityDeferred } from "./local-patch-identity";
 
 /**
@@ -92,6 +92,7 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
   if (!game || !game.childProfile) return;
   const localPatch = game.styleVersion === LOCAL_PATCH_STYLE;
   if (localPatch && env().APP_ENV !== "qa") return;
+  if (localPatch && (await c.db.generationJob.findUnique({ where: { id: `job_${gameId}` }, select: { currentStep: true } }))?.currentStep === LOCAL_PATCH_QUALITY_FAILED) return;
   if (localPatch && game.status === "TARGETS_GENERATING") {
     const painter = localPatchPainterDeps(c, game.scenes[0]?.sceneVersion);
     if (painter) await runLocalPatchWorldSlice(c, painter, gameId, { hardDeadlineAt: options.hardDeadlineAt });
@@ -170,6 +171,14 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
     // ── Step 1: avatar ──
     await mark("avatar", { status: "running", startedAt: new Date().toISOString() });
     const child = await c.db.childProfile.findUniqueOrThrow({ where: { id: game.childProfile.id } });
+    if (localPatch && contentVersion === 8) {
+      const { requireCanonicalIdentityReuse, finishCanonicalIdentityReuse } = await import("./local-patch-identity-reuse");
+      const reused = await requireCanonicalIdentityReuse(c, { gameId });
+      if (reused) {
+        await finishCanonicalIdentityReuse(c, { gameId, jobId: job.id, jobAttempt: job.attempts + 1 });
+        return; // Explicitly reused bytes: no provider or new identity-review bill.
+      }
+    }
     if ((localPatch || boardWizardEnabled()) && game.ownerId) qaIdentityClaim = {
       gameId, jobId: job.id, jobAttempt: job.attempts + 1, styleVersion: game.styleVersion, ownerId: game.ownerId,
       childId: child.id, photoAssetId: child.originalPhotoAssetId ?? "", avatarAssetId: child.avatarAssetId, identityAssetId: child.identityAssetId,

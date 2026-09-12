@@ -244,3 +244,35 @@ export async function applyLocalPatch(boardPng: Buffer, region: PatchRegion, pat
   }
   return sharp(out, { raw: { width: board.width, height: board.height, channels: 4 } }).png().toBuffer();
 }
+
+/** v8: the provider sees a large context crop, but only this predeclared smaller
+ * window may be returned. The entire child's box stays opaque; a guard around
+ * it carries the join. Never infer the window from whatever the model changed.
+ * A refused candidate exists only as evidence. Callers must respect `usable`.
+ */
+export const LOCAL_PATCH_RETURN_GUARD = 32;
+export async function composeBoundedLocalPatch(boardPng: Buffer, crop: PatchRegion, patchPng: Buffer, child: PatchRegion) {
+  if (![child.left, child.top, child.width, child.height].every(Number.isInteger)
+    || child.left < 0 || child.top < 0 || child.width <= 0 || child.height <= 0
+    || child.left + child.width > crop.width || child.top + child.height > crop.height) {
+    throw new Error("LOCAL_PATCH: invalid declared child box");
+  }
+  const left = Math.max(0, child.left - LOCAL_PATCH_RETURN_GUARD);
+  const top = Math.max(0, child.top - LOCAL_PATCH_RETURN_GUARD);
+  const right = Math.min(crop.width, child.left + child.width + LOCAL_PATCH_RETURN_GUARD);
+  const bottom = Math.min(crop.height, child.top + child.height + LOCAL_PATCH_RETURN_GUARD);
+  // Do not feather through the child's face when an authored box hugs an edge.
+  if (Math.min(child.left - left, child.top - top, right - child.left - child.width,
+    bottom - child.top - child.height) < SEAM_LIMITS.bandPx) {
+    throw new Error("LOCAL_PATCH: declared child box has no safe seam margin");
+  }
+  const local = { left, top, width: right - left, height: bottom - top };
+  const region = { ...local, left: crop.left + left, top: crop.top + top };
+  const patch = await sharp(patchPng, { limitInputPixels: 8_294_400 }).extract(local).png().toBuffer();
+  // Here this is deliberately a BOUNDARY diagnosis, not a claim that scenery
+  // inside the child's box is unchanged. The visual review checks that separately.
+  const report = await analysePatchSeam(boardPng, region, patch, { allowedRect: { left: 0, top: 0, width: local.width, height: local.height } });
+  const usable = report.verdict === "clean" || report.verdict === "fade-recommended";
+  const candidate = await applyLocalPatch(boardPng, region, patch, { fade: usable, report });
+  return { usable, candidate, report, region };
+}

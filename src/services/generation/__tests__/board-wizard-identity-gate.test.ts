@@ -82,7 +82,7 @@ describe("identity style gate (synthetic images and HTTP; zero paid calls)", () 
     expect(body.messages[0].content).toHaveLength(4);
     expect(identityReceiptReadyForPublication(r, 7)).toBe(true);
     expect(identityReceiptReadyForPublication(r, 6)).toBe(false);
-    expect(identityReceiptReadyForPublication(r, 8)).toBe(false);
+    expect(identityReceiptReadyForPublication(r, 9)).toBe(false);
     await requireBoardWizardIdentityApproval(f.c, f.budget, enrollment);
     const profile = { identityAssetId: r.identityAssetId, originalPhotoAssetId: r.provenance.photoAssetId, ageYears: r.provenance.ageYears };
     expect(await identityApprovedForDisplay(f.c, profile, 7)).toBe(true);

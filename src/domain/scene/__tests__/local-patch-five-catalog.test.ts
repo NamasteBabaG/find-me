@@ -5,12 +5,12 @@ import { assertPlaceable, cropOf, maskOf, LocalPatchBoardSchema } from "../local
 import { SceneDefinitionSchema } from "../schema";
 
 describe("frozen legacy catalog and authored five-hide release", () => {
-  it("keeps9×3 legacy and adds9×5 only at exact version7", () => {
+  it("keeps9×3 legacy and preserves the authored9×5 release at version7", () => {
     const old = localPatchBoardsForVersion(6), next = localPatchBoardsForVersion(7);
     expect(old).toHaveLength(9); expect(next).toHaveLength(9);
     expect(old.flatMap(b => b.hides)).toHaveLength(27);
     expect(next.flatMap(b => b.hides)).toHaveLength(45);
-    expect(localPatchBoardsForVersion(8)).toEqual([]);
+    expect(localPatchBoardsForVersion(9)).toEqual([]);
     expect(localPatchBoardForVersion("sydney", 5)).toBeNull();
     for (const board of next) {
       const legacy = findScene(board.board, 6)!, scene = findScene(board.board, 7)!;

@@ -3,7 +3,7 @@ import type { Container } from "../container";
 import { LEASE_MS as PIPELINE_LEASE_MS, RESUMABLE_STATUSES, runGenerationPipeline } from "./pipeline";
 import { FIXED_WORLD_STYLE_PREFIX, isFixedWorldStyle } from "./fixed-world-stage-record";
 import { BOARD_WIZARD_STYLE, boardWizardEnabled, runBoardConditionedWizardSlice } from "./board-conditioned-wizard";
-import { LOCAL_PATCH_LEASE_MS, LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_STYLE, localPatchPainterDeps, runLocalPatchWorldSlice } from "./local-patch-world";
+import { LOCAL_PATCH_LEASE_MS, LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_QUALITY_FAILED, LOCAL_PATCH_STYLE, localPatchPainterDeps, runLocalPatchWorldSlice } from "./local-patch-world";
 
 /**
  * Moving generation forward a slice at a time.
@@ -37,7 +37,7 @@ export async function nextPendingGame(c: Container): Promise<string | null> {
     // behind it waited on a decision nobody had made yet. It can still be ticked
     // directly, by an operator who knows what they are looking at.
     where: { status: { in: [...RESUMABLE_STATUSES] }, deletedAt: null,
-      jobs: { none: { currentStep: LOCAL_PATCH_NEEDS_RELEASE } },
+      jobs: { none: { currentStep: { in: [LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_QUALITY_FAILED] } } },
       // A minute cron must not spend its turn nudging a healthy paid render
       // already held by another worker. Match the world claimant's strict
       // takeover boundary; queued/released jobs remain immediately runnable.
@@ -67,6 +67,8 @@ export async function tickGeneration(c: Container, gameId: string | null, budget
   const before = await c.db.game.findUnique({ where: { id }, select: { status: true, styleVersion: true, scenes: { select: { sceneVersion: true } } } });
   if (!before) return { gameId: id, status: null, pending: false };
   if (before.styleVersion === LOCAL_PATCH_STYLE) {
+    const terminal = await c.db.generationJob.findUnique({ where: { id: `job_${id}` }, select: { currentStep: true, lastError: true } });
+    if (terminal?.currentStep === LOCAL_PATCH_QUALITY_FAILED) return { gameId: id, status: statusOf(before), pending: false, attention: terminal.lastError };
     if (["PAID", "AVATAR_GENERATING", "GENERATION_FAILED"].includes(before.status)) {
       // The pinned engine owns its identity contract from the first preview.
       // The pipeline returns after approval; it never paints legacy targets.

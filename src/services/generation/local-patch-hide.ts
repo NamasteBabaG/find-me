@@ -18,13 +18,14 @@ import { readBoardConditionedCatalog } from "./board-conditioned-catalog";
 import { assertGenerationSpendAllowed, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { localPatchGeometry, type LocalPatchGeometry } from "./local-patch-geometry";
 import { renderLocalPatchHide, type LocalPatchRenderDeps } from "./local-patch-render";
-import { LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, localPatchRepairChecks } from "./local-patch-prompt";
+import { LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_CANONICAL_PROMPT_VERSION, localPatchRepairChecks } from "./local-patch-prompt";
+import { prepareLocalPatchIdentityReferences } from "./local-patch-identity-reference";
 import { buildBoardPeopleStyle } from "./board-wizard-identity-style";
 import type { PatchGeometry } from "./patch";
 import { readPinnedLocalPatchArt } from "./local-patch-art";
 import { env } from "../../lib/env";
 import { LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_NORMAL_ATTEMPTS, nextLocalPatchAttempt } from "../../domain/scene/local-patch-attempts";
-import { isLocalPatchAdvisoryVersion } from "../../domain/scene/local-patch-catalog";
+import { isLocalPatchAdvisoryVersion, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
 import { localPatchPublicationGeometryHash } from "./local-patch-publication-policy";
 export { LOCAL_PATCH_MAX_ATTEMPTS, nextLocalPatchAttempt } from "../../domain/scene/local-patch-attempts";
 
@@ -238,7 +239,8 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     contentVersion: scene.sceneVersion,
   });
   const boardDrawn = identityApproval.provenance.style.version === "board-matched-identity/v2";
-  const promptVersion = isLocalPatchAdvisoryVersion(scene.sceneVersion) ? LOCAL_PATCH_FIVE_PROMPT_VERSION
+  const promptVersion = isLocalPatchStrictVersion(scene.sceneVersion) ? LOCAL_PATCH_CANONICAL_PROMPT_VERSION
+    : isLocalPatchAdvisoryVersion(scene.sceneVersion) ? LOCAL_PATCH_FIVE_PROMPT_VERSION
     : boardDrawn ? LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION : LOCAL_PATCH_PROMPT_VERSION;
 
   // ── The rows that make this restartable ──
@@ -258,8 +260,12 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   const attemptLimit = input.finalRepair ? LOCAL_PATCH_MAX_ATTEMPTS : LOCAL_PATCH_NORMAL_ATTEMPTS;
   const { attempt, exhausted } = nextLocalPatchAttempt(row, attemptLimit);
   // judgeJson is intentionally kept while PENDING: clearing lastError must not
-  // change the prompt/fingerprint when attempt 3 resumes after an interruption.
-  const repairChecks = input.finalRepair ? localPatchRepairChecks(row.judgeJson) : undefined;
+  // change the prompt/fingerprint when attempt 2/3 resumes after an interruption.
+  // v8 corrects its own located defect on the very next attempt. The old paid
+  // recipes still add repair instructions only on their final repair pass.
+  const repairChecks = isLocalPatchStrictVersion(scene.sceneVersion)
+    ? attempt > 1 ? localPatchRepairChecks(row.judgeJson, scene.sceneVersion) : undefined
+    : input.finalRepair ? localPatchRepairChecks(row.judgeJson) : undefined;
   const base = {
     boardId: board.board, hideId: hide.id, targetId: hide.targetId, attempt, attempts: row.attempts,
     assetId: row.assetId, geometry: null, geometryBasis: null,
@@ -275,7 +281,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
 
   // Old identities keep their exact paid inputs; new board-drawn identities also
   // carry explicit same-board faces, even if this particular crop has none.
-  const boardPeoplePng = boardDrawn ? (await buildBoardPeopleStyle(board.board)).png : undefined;
+  const boardPeoplePng = boardDrawn || isLocalPatchStrictVersion(scene.sceneVersion) ? (await buildBoardPeopleStyle(board.board)).png : undefined;
 
   demand(deps.judge || deps.apiKey?.trim(), "a credential is required to judge what was painted; an unjudged render is never accepted");
   // The placements and the scene are two authored files, and a patch is only a
@@ -304,13 +310,13 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   });
   const started = { ...base, attempts: attempt };
 
-  const judgeIdentityPng = await sharp(normalized.png).resize(256, 256, { fit: "inside" }).png().toBuffer();
+  const identityReferences = await prepareLocalPatchIdentityReferences(sheet, scene.sceneVersion);
   const attemptResult = await renderLocalPatchHide({
     ledger: budget, store: new LocalPatchRetainedPurchaseStore(c, gameId, budget),
     renderPolicySha256: deps.renderPolicySha256, render: deps.render, ...(deps.judge ? { judge: deps.judge } : {}),
   }, {
     worldId, board, hide, composedPng: artwork, contentVersion: scene.sceneVersion,
-    identityPng: normalized.png, judgeIdentityPng,
+    ...identityReferences,
     ...(boardPeoplePng ? { boardPeoplePng } : {}),
     ageYears: child.ageYears, attempt, apiKey: deps.apiKey ?? "",
     ...(repairChecks === undefined ? {} : { repairChecks }),
@@ -354,7 +360,8 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
       status: "FAILED", lastError: reason.slice(0, 500),
       costCents: Math.round(row.costCents + attemptResult.renderCents + attemptResult.judgeCents),
       rejectedAssetIdsJson: rejectedIds.length ? JSON.stringify(rejectedIds) : null,
-      judgeJson: JSON.stringify({ verdict: attemptResult.verdict, wireFault: attemptResult.wireFault, seam: attemptResult.seam, promptVersion: attemptResult.promptVersion }),
+      judgeJson: JSON.stringify({ verdict: attemptResult.verdict, wireFault: attemptResult.wireFault, seam: attemptResult.seam, promptVersion: attemptResult.promptVersion,
+        ...(isLocalPatchStrictVersion(scene.sceneVersion) ? { renderFault: attemptResult.renderFault, hide: hide.id, pose: hide.pose } : {}) }),
       } });
     });
     const exhaustedNow = attempt >= attemptLimit;

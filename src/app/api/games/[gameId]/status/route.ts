@@ -3,7 +3,8 @@ import { qaAccessDenied } from "@/lib/server/qa-access";
 import { getContainer } from "@/services/container";
 import { creationStep, isPlayable } from "@/domain/order-state";
 import { creationProgress, type CreationSignals } from "@/domain/creation-progress";
-import { LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_STYLE } from "@/services/generation/local-patch-world";
+import { LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_QUALITY_FAILED, LOCAL_PATCH_STYLE } from "@/services/generation/local-patch-world";
+import { isLocalPatchAdvisoryVersion } from "@/domain/scene/local-patch-catalog";
 import { statusOf } from "@/services/game-status";
 import { RESUMABLE_STATUSES } from "@/services/generation/pipeline";
 import { ensurePlayerLink } from "@/services/share-link.service";
@@ -174,13 +175,21 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
   // on saying the game is being made and goes on asking for another slice.
   const parked = game.styleVersion === LOCAL_PATCH_STYLE
     && (await readStatusJob())?.currentStep === LOCAL_PATCH_NEEDS_RELEASE;
+  const qualityFailed = game.styleVersion === LOCAL_PATCH_STYLE
+    && (await readStatusJob())?.currentStep === LOCAL_PATCH_QUALITY_FAILED;
   const progress = creationProgress({ status, characterReady, spotsDone, spotsTotal, fixedAssemblyReady, boardWizardState,
     ...(parked || localPatchBudgetHeld ? { operatorHold: true } : {}) });
+  // GENERATION_FAILED normally means an automatic retry; this exact durable
+  // marker is its terminal quality exception, never an awaiting-human state.
+  if (qualityFailed && !localPatchBudgetHeld) {
+    progress.state = "failed"; progress.failed = true; progress.current = null; progress.done = false;
+  }
   const playUrl = isPlayable(status) && progress.done ? (await ensurePlayerLink(c, gameId)).url : null;
   return NextResponse.json(
     {
       status,
-      automaticPublication: game.styleVersion === LOCAL_PATCH_STYLE && game.scenes.length === 9 && game.scenes.every(scene => scene.sceneVersion === 7),
+      automaticPublication: game.styleVersion === LOCAL_PATCH_STYLE && game.scenes.length === 9
+        && isLocalPatchAdvisoryVersion(game.scenes[0]?.sceneVersion) && game.scenes.every(scene => scene.sceneVersion === game.scenes[0]?.sceneVersion),
       ...step,
       ...(fixedAssemblyReady === false ? { step: characterReady ? 2 : 1 } : {}),
       ...progress,
@@ -189,7 +198,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
       qaBoards,
       qaCost,
       awaitingQa: progress.state === "awaiting_review" || progress.state === "held",
-      pending: progress.state === "held" ? false : boardWizard ? boardWizardPending : !fixed && RESUMABLE_STATUSES.includes(status),
+      pending: qualityFailed || progress.state === "held" ? false : boardWizard ? boardWizardPending : !fixed && RESUMABLE_STATUSES.includes(status),
       // "Ready" and "sent" are different facts: DELIVERED means a real recipient
       // got the mail. On a box whose mail provider is the console, nothing was.
       delivered: status === "DELIVERED" && progress.done,

@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
-import { analysePatchSeam, applyLocalPatch, type PatchRegion } from "../local-patch-seam";
+import { analysePatchSeam, applyLocalPatch, composeBoundedLocalPatch, type PatchRegion } from "../local-patch-seam";
 
 const REGION: PatchRegion = { left: 300, top: 200, width: 220, height: 320 };
 
@@ -20,6 +20,40 @@ const seam = (b: Buffer, patch: Buffer, region: PatchRegion = REGION) =>
   analysePatchSeam(b, region, patch, { allowedRect: ALLOWED });
 
 describe("returning a locally rendered rectangle to the board", () => {
+  it("v8 preserves all context outside its predeclared return window, even if the model repaints it", async () => {
+    const b = await board();
+    const c = await cut(b);
+    const patch = await sharp(c).composite([
+      { input: Buffer.from('<svg width="220" height="20"><rect width="220" height="20" fill="red"/></svg>'), left: 0, top: 0 },
+      { input: Buffer.from('<svg width="70" height="150"><rect width="70" height="150" fill="#204090"/></svg>'), left: 75, top: 90 },
+    ]).png().toBuffer();
+    const result = await composeBoundedLocalPatch(b, REGION, patch, ALLOWED);
+    expect(result.usable).toBe(true);
+    const original = await sharp(b).ensureAlpha().raw().toBuffer();
+    const candidate = await sharp(result.candidate).ensureAlpha().raw().toBuffer();
+    for (let y = 0; y < 900; y++) for (let x = 0; x < 800; x++) {
+      const r = result.region;
+      if (x >= r.left && x < r.left + r.width && y >= r.top && y < r.top + r.height) continue;
+      const i = (y * 800 + x) * 4;
+      if (!candidate.subarray(i, i + 4).equals(original.subarray(i, i + 4))) throw new Error(`context changed at ${x},${y}`);
+    }
+    // No feather crosses the protected face/body box.
+    const protectedPixels = await sharp(result.candidate).extract({ ...ALLOWED, left: REGION.left + ALLOWED.left, top: REGION.top + ALLOWED.top }).raw().toBuffer();
+    expect(protectedPixels.equals(await sharp(patch).extract(ALLOWED).raw().toBuffer())).toBe(true);
+  });
+
+  it("v8 does not call an invented or shifted return-boundary usable", async () => {
+    const b = await board();
+    const shifted = await cut(b, { ...REGION, left: REGION.left + 2 });
+    expect((await composeBoundedLocalPatch(b, REGION, shifted, ALLOWED)).usable).toBe(false);
+    const unrelated = await sharp({ create: { width: REGION.width, height: REGION.height, channels: 4, background: "#00ffff" } }).png().toBuffer();
+    expect((await composeBoundedLocalPatch(b, REGION, unrelated, ALLOWED)).usable).toBe(false);
+  });
+
+  it("v8 refuses unsafe authored windows instead of fading the child's head", async () => {
+    const b = await board();
+    await expect(composeBoundedLocalPatch(b, REGION, await cut(b), { ...ALLOWED, top: 0 })).rejects.toThrow(/safe seam margin/);
+  });
   it("accepts a patch that kept the board's own pixels", async () => {
     const b = await board();
     const report = await seam(b, await cut(b));

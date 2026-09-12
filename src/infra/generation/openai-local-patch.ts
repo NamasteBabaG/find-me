@@ -78,6 +78,8 @@ export type LocalPatchRenderInput = {
   readonly prompt: string;
   readonly stylePng: Buffer;
   readonly identityPng: Buffer;
+  /** v8 only: full approved sheet corroborates the high-resolution portrait. */
+  readonly canonicalIdentityPng?: Buffer;
   readonly boardPeoplePng?: Buffer;
   readonly maskPng: Buffer;
   /**
@@ -168,10 +170,13 @@ export async function buyLocalPatch(apiKey: string, input: LocalPatchRenderInput
   // The crop goes as the reference at its own size - references are capped at
   // 1024 square and 512x768 is inside that. Only the OUTPUT is asked for larger.
   const identityPng = await sharp(input.identityPng).resize(1024, 1024, { fit: "inside", withoutEnlargement: !!input.boardPeoplePng }).png().toBuffer();
+  if (input.canonicalIdentityPng && !input.boardPeoplePng) throw new Error("LOCAL_PATCH_PAINTER: canonical references require their explicit board reference");
+  const canonical = input.canonicalIdentityPng
+    ? await sharp(input.canonicalIdentityPng).resize(1024, 1024, { fit: "inside", withoutEnlargement: true }).png().toBuffer() : null;
   const request = {
     sourceGroupKey: `local-patch:${input.requestKey}`,
     prompt: input.prompt, stylePng: input.stylePng, identityPng, maskPng: input.maskPng,
-    ...(input.boardPeoplePng ? { referencePngs: [input.boardPeoplePng] } : {}),
+    ...(input.boardPeoplePng ? { referencePngs: [input.boardPeoplePng, ...(canonical ? [canonical] : [])] } : {}),
   };
   const prepared = await prepareFixedSource(request, policy);
   const charge = new CapturedCharge();

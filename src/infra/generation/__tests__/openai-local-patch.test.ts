@@ -38,7 +38,7 @@ const request = () => ({
 });
 
 describe("buying one local patch", () => {
-  it.each([[6, "medium"], [7, "low"]] as const)("sends the explicitly selected v%i quality without changing size or image model", async (version, quality) => {
+  it.each([[6, "medium"], [7, "low"], [8, "low"]] as const)("sends the explicitly selected v%i quality without changing size or image model", async (version, quality) => {
     const fetchOnce = vi.fn<typeof fetch>(async () => answer());
     const policy = localPatchImagePolicyForVersion(version);
     await buyLocalPatch("synthetic-never-live", request(), { policy, fetchOnce });
@@ -52,7 +52,7 @@ describe("buying one local patch", () => {
 
   it("keeps the pre-LOW legacy policy and fingerprint identical, with exact v7 opt-in", () => {
     const historicalHash = localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY);
-    for (const version of [undefined, 5, 6, 8]) {
+    for (const version of [undefined, 5, 6, 9]) {
       expect(localPatchImagePolicyForVersion(version)).toBe(LOCAL_PATCH_IMAGE_POLICY);
       expect(localPatchRenderPolicySha256(localPatchImagePolicyForVersion(version))).toBe(historicalHash);
     }
@@ -69,6 +69,29 @@ describe("buying one local patch", () => {
     expect(images).toHaveLength(3);
     expect(Buffer.from(await images[2]!.arrayBuffer())).toEqual(people);
     expect(await sharp(Buffer.from(await images[1]!.arrayBuffer())).metadata()).toMatchObject({ width: 512, height: 512 });
+  });
+
+  it("sends the canonical portrait and complete sheet in explicit distinct reference positions without paid preprocessing", async () => {
+    const people = await sharp({ create: { width: 320, height: 320, channels: 4, background: "#305030" } }).png().toBuffer();
+    const canonical = await sharp({ create: { width: 1024, height: 1024, channels: 4, background: "#f0c0c0" } }).png().toBuffer();
+    const canonicalBefore = Buffer.from(canonical);
+    const fetchOnce = vi.fn<typeof fetch>(async () => answer());
+    await buyLocalPatch("synthetic-no-network", { ...request(), boardPeoplePng: people, canonicalIdentityPng: canonical },
+      { policy: localPatchImagePolicyForVersion(8), fetchOnce });
+    expect(fetchOnce).toHaveBeenCalledTimes(1);
+    const form = fetchOnce.mock.calls[0]![1]!.body as FormData;
+    const images = form.getAll("image[]") as Blob[];
+    expect(images).toHaveLength(4);
+    expect(Buffer.from(await images[0]!.arrayBuffer())).toEqual(crop);
+    expect(await sharp(Buffer.from(await images[1]!.arrayBuffer())).metadata()).toMatchObject({ width: 512, height: 512 });
+    expect(Buffer.from(await images[2]!.arrayBuffer())).toEqual(people);
+    expect(await sharp(Buffer.from(await images[3]!.arrayBuffer())).ensureAlpha().raw().toBuffer())
+      .toEqual(await sharp(canonical).ensureAlpha().raw().toBuffer());
+    expect(form.get("quality")).toBe("low");
+    expect(canonical).toEqual(canonicalBefore);
+    await expect(buyLocalPatch("synthetic-no-network", { ...request(), canonicalIdentityPng: canonical }, { fetchOnce }))
+      .rejects.toThrow(/explicit board reference/);
+    expect(fetchOnce).toHaveBeenCalledTimes(1);
   });
 
   it("sends the request the paid round proved, once", async () => {

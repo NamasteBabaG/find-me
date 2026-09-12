@@ -97,6 +97,46 @@ async function attempt(deps: LocalPatchRenderDeps, over: Record<string, unknown>
 }
 
 describe("one paid attempt at one hide", () => {
+  it("v8 rejects a broken seam after keeping its billed image, without a judge or a duplicate purchase", async () => {
+    const w = world(), p = w.process();
+    const strictBoard = localPatchBoardsForVersion(8)[0]!;
+    const refs = { contentVersion: 8, board: strictBoard, hide: strictBoard.hides[0]!, canonicalIdentityPng: await small(), boardPeoplePng: await small() };
+    const first = await attempt(p.deps, refs);
+    expect(first).toMatchObject({ accepted: false, refusedBecause: "render", costUnknown: false, judgeCents: 0 });
+    expect(first.renderFault).toMatch(/^quality-seam:/);
+    expect(first.shippingPng).toBeInstanceOf(Buffer);
+    expect(first.judgedSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(p.dispatched).toHaveLength(1);
+    const resumed = w.process();
+    const replay = await attempt(resumed.deps, refs);
+    expect(replay.renderFault).toBe(first.renderFault);
+    expect(replay.shippingPng!.equals(first.shippingPng!)).toBe(true);
+    expect(resumed.dispatched).toEqual([]);
+  });
+
+  it("v8 refuses missing canonical references before reserving or buying", async () => {
+    const w = world(), p = w.process();
+    await expect(attempt(p.deps, { contentVersion: 8 })).rejects.toThrow(/canonical identity/);
+    expect(w.rows.size).toBe(0);
+    expect(p.dispatched).toEqual([]);
+  });
+
+  it("v8 sends all references, preserves the rest of the board, and fingerprints the full sheet", async () => {
+    const w = world();
+    const render = vi.fn(async (input: Parameters<LocalPatchRenderDeps["render"]>[0]) => ({
+      png: input.stylePng, rejected: null, quarantined: null, evidence: evidence("canonical"), unknownReason: null,
+    }));
+    const p = w.process({ render });
+    const strictBoard = localPatchBoardsForVersion(8)[0]!;
+    const refs = { contentVersion: 8, board: strictBoard, hide: strictBoard.hides[0]!, canonicalIdentityPng: await small(), boardPeoplePng: await small() };
+    expect((await attempt(p.deps, refs)).accepted).toBe(true);
+    expect(render).toHaveBeenCalledWith(expect.objectContaining({ canonicalIdentityPng: refs.canonicalIdentityPng }));
+    expect(render.mock.calls[0]![0].prompt).toContain("canonical");
+    const changed = await sharp({ create: { width: 64, height: 64, channels: 4, background: "#445566" } }).png().toBuffer();
+    const resumed = w.process({ render });
+    expect((await attempt(resumed.deps, { ...refs, canonicalIdentityPng: changed })).refusedBecause).toBe("stopped");
+    expect(render).toHaveBeenCalledTimes(1);
+  });
   it("cannot replay a MEDIUM purchase as LOW under the same v7 hide key", async () => {
     const w = world();
     const medium = w.process({ renderPolicySha256: localPatchRenderPolicySha256(localPatchImagePolicyForVersion(6)) });

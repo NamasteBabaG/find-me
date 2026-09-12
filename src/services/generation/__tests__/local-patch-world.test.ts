@@ -12,6 +12,7 @@ import { nextPendingGame, tickGeneration } from "../queue";
 import { LEASE_MS as PIPELINE_LEASE_MS } from "../pipeline";
 import {
   LOCAL_PATCH_LEASE_MS, LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_STYLE, localPatchBoardBlockedReason,
+  LOCAL_PATCH_QUALITY_FAILED,
   localPatchPainterDeps, localPatchPrivateInventory, runLocalPatchWorldSlice,
 } from "../local-patch-world";
 import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wizard";
@@ -111,6 +112,16 @@ const jobOf = (gameId: string) => db.generationJob.findUniqueOrThrow({ where: { 
 const done = (gameId: string) => db.targetVariantAsset.count({ where: { status: "GENERATED", targetInstance: { gameScene: { gameId } } } });
 
 describe("a world of hides, one slice at a time", () => {
+  it("never selects or re-enters identity for a terminal v8 quality failure", async () => {
+    const failed = await seed({ gameId: "game-terminal-quality", scenes: [{ slug: "sydney", version: 8 }] });
+    await db.game.update({ where: { id: failed.gameId }, data: { status: "GENERATION_FAILED", paidAt: new Date(0) } });
+    await db.generationJob.update({ where: { id: `job_${failed.gameId}` }, data: { status: "DONE", currentStep: LOCAL_PATCH_QUALITY_FAILED, lastError: "Three severe seams" } });
+    const runnable = await seed({ gameId: "game-after-quality" });
+    expect(await nextPendingGame(c)).toBe(runnable.gameId);
+    const before = await jobOf(failed.gameId);
+    for (let i = 0; i < 3; i++) expect(await tickGeneration(c, failed.gameId, 60_000)).toMatchObject({ status: "GENERATION_FAILED", pending: false, attention: "Three severe seams" });
+    expect(await jobOf(failed.gameId)).toEqual(before);
+  });
   it.each([[6, "medium"], [7, "low"]] as const)("the real queue selects v%i image quality from persisted scenes", async (version, quality) => {
     const seeded = await seedApprovedGame(c, db, { gameId: `game-pinned-quality-${version}`, scenes: [{ slug: "sydney", version }],
       approved: version !== 7, styleVersion: LOCAL_PATCH_STYLE, status: "TARGETS_GENERATING", withJob: true });

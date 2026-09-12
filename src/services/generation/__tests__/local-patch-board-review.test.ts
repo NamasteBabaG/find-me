@@ -15,6 +15,8 @@ import { reviewBoardWizardIdentity } from "../board-wizard-identity-gate";
 import { localPatchBoardReviewKey, reviewLocalPatchBoard } from "../local-patch-board-review";
 import { LOCAL_PATCH_PROVIDER } from "../local-patch-hide";
 import { LOCAL_PATCH_PUBLICATION_ACTION, localPatchPublicationGeometryHash } from "../local-patch-publication-policy";
+import { localPatchPrivateInventory, runLocalPatchWorldSlice } from "../local-patch-world";
+import { retainedPurchaseKey } from "../../../infra/db/prisma-retained-purchase-store";
 import { sha256Bytes } from "../fixed-sprite";
 import { boardPng, clearWorld, PASSING_ANSWER, seedApprovedGame } from "./local-patch-fixtures";
 import type { LocalPatchBoardJudgeRequest, LocalPatchBoardJudgeResult } from "../local-patch-judge";
@@ -162,5 +164,90 @@ describe("grouped board review: real ledger, durable bytes, five publication bin
     expect(deps.judge).not.toHaveBeenCalled();
     expect(await boardWizardBudgetOf(c).readRequest(boardWizardWorldId(GAME), localPatchBoardReviewKey("sydney"))).toBeNull();
     expect(await db.auditLog.count({ where: { action: LOCAL_PATCH_PUBLICATION_ACTION } })).toBe(0);
+  });
+});
+
+describe("strict v8 candidate review", () => {
+  beforeEach(async () => { await db.gameScene.update({ where: { id: SCENE }, data: { sceneVersion: 8 } }); });
+  const strictWorker = (failedIndex: number | null, check = "severeSeam") => {
+    const deps = worker();
+    deps.judge.mockImplementation(async request => ({ verdict: null, verdicts: {},
+      raw: JSON.stringify({ hides: request.hides.map((hide, index) => ({ hideId: hide.hideId, verdict: {
+        ...PASSING_ANSWER, faceLikeness: "pass", faceReadable: "pass", severeSeam: "pass",
+        ...(index === failedIndex ? { [check]: "fail", faults: [{ check, where: "A clear defect at the upper crop edge" }] } : {}),
+      } })) }), model: "gpt-5.6-luna", requestId: `req_strict_${failedIndex ?? "clean"}`,
+      usage: { prompt_tokens: 9000, completion_tokens: 1300 }, finishReason: "stop", wireFault: null, costUnknown: false,
+    }));
+    return deps;
+  };
+  it("shows each serial appearance with original pixels outside its replacement boundary", async () => {
+    const deps = strictWorker(null);
+    await reviewLocalPatchBoard(c, input(), deps);
+    const request = deps.judge.mock.calls[0]![0];
+    expect(request.contentVersion).toBe(8);
+    for (const [index, hide] of request.hides.entries()) {
+      const metadata = await sharp(hide.afterPng).metadata();
+      expect(metadata.width).toBeGreaterThan(512); expect(metadata.height).toBeGreaterThan(768);
+      const raw = await sharp(hide.afterPng).ensureAlpha().raw().toBuffer();
+      expect([...raw.subarray(0, 3)]).toEqual([210, 190, 150]);
+      const context = await sharp(hide.beforePng).metadata();
+      expect(context.width).toBe(metadata.width); expect(context.height).toBe(metadata.height);
+      const crop = cropOf(BOARD.hides[index]!);
+      const left = Math.min(64, crop.left), top = Math.min(64, crop.top);
+      const ownPatch = await sharp(hide.afterPng).extract({ left, top, width: crop.width, height: crop.height }).raw().toBuffer();
+      expect(ownPatch.equals(await sharp(await c.storage.get(`game/ast-patch-${index}.png`)).raw().toBuffer())).toBe(true);
+    }
+  });
+  it.each(["severeSeam", "faceLikeness", "faceReadable"])("concludes a located %s failure without repainting four good siblings", async check => {
+    const deps = strictWorker(0, check), result = await reviewLocalPatchBoard(c, input(), deps);
+    expect(result.state).toBe("retry");
+    const rows = await db.targetVariantAsset.findMany({ orderBy: { id: "asc" } });
+    expect(rows[0]).toMatchObject({ status: "FAILED", attempts: 1, assetId: "ast-patch-0" });
+    expect(await db.targetInstance.findUnique({ where: { id: "target-0" } })).toMatchObject({ status: "FAILED" });
+    expect(JSON.parse(rows[0]!.rejectedAssetIdsJson!)).toContain("ast-patch-0");
+    expect(rows.slice(1).every(row => row.status === "GENERATED" && row.attempts === 1)).toBe(true);
+    expect(await db.auditLog.count({ where: { action: LOCAL_PATCH_PUBLICATION_ACTION } })).toBe(4);
+    await reviewLocalPatchBoard(c, input(), deps);
+    expect(deps.judge).toHaveBeenCalledOnce();
+  });
+  it("re-reviews changed candidate attempts, preserves siblings, and replays the new receipt without buying", async () => {
+    await reviewLocalPatchBoard(c, input(), strictWorker(0));
+    const row = await db.targetVariantAsset.findUniqueOrThrow({ where: { id: "variant-0" } });
+    const source = await db.asset.findUniqueOrThrow({ where: { id: "ast-patch-0" } });
+    const png = await sharp(await c.storage.get(source.storagePath)).modulate({ brightness: .9 }).png().toBuffer();
+    await c.storage.put("game/ast-patch-retry.png", png, "image/png");
+    await db.asset.create({ data: { ...source, id: "ast-patch-retry", storagePath: "game/ast-patch-retry.png", bytes: png.length } });
+    await db.targetVariantAsset.update({ where: { id: row.id }, data: { status: "GENERATED", attempts: 2, assetId: "ast-patch-retry",
+      judgeJson: JSON.stringify({ ...JSON.parse(row.judgeJson!), judgedSha256: sha256Bytes(png), reviewState: "pending-board-review" }) } });
+    const deps = strictWorker(null);
+    expect((await reviewLocalPatchBoard(c, input(), deps)).state).toBe("done");
+    expect((await reviewLocalPatchBoard(c, input(), deps))).toMatchObject({ state: "done", replayed: true });
+    expect(deps.judge).toHaveBeenCalledOnce();
+    expect(await db.auditLog.count({ where: { action: LOCAL_PATCH_PUBLICATION_ACTION } })).toBe(9);
+    const rows = await db.targetVariantAsset.findMany({ orderBy: { id: "asc" } });
+    expect(rows.map(r => r.attempts)).toEqual([2, 1, 1, 1, 1]);
+    expect(rows.slice(1).map(r => r.assetId)).toEqual(["ast-patch-1", "ast-patch-2", "ast-patch-3", "ast-patch-4"]);
+    const key = JSON.parse(rows[0]!.judgeJson!).boardReview.requestKey;
+    expect(key).not.toBe(localPatchBoardReviewKey("sydney"));
+    const inventory = await localPatchPrivateInventory(c, GAME);
+    expect(inventory.retainedPurchaseKeys).toContain(retainedPurchaseKey(boardWizardWorldId(GAME), key));
+  });
+  it.each(["unsure", "malformed"])("keeps %s severe evidence blocked across a lost terminal acknowledgement without buying images", async kind => {
+    const deps = strictWorker(null), original = deps.judge.getMockImplementation()!;
+    deps.judge.mockImplementation(async request => {
+      const answer = await original(request), parsed = JSON.parse(answer.raw!);
+      if (kind === "unsure") parsed.hides[0].verdict.faceReadable = "unsure";
+      else delete parsed.hides[0].verdict.faceReadable;
+      return { ...answer, raw: JSON.stringify(parsed) };
+    });
+    expect((await reviewLocalPatchBoard(c, input(), deps)).state).toBe("blocked");
+    // Simulate death between committed review decisions and world termination.
+    await db.generationJob.update({ where: { id: `job_${GAME}` }, data: { status: "QUEUED" } });
+    const render = vi.fn(async () => { throw new Error("An unresolved review must not buy replacement imagery"); });
+    const result = await runLocalPatchWorldSlice(c, { renderPolicySha256: "a".repeat(64), render }, GAME, { boardJudge: deps.judge });
+    expect(result).toMatchObject({ pending: false, claimed: true });
+    expect(await db.game.findUnique({ where: { id: GAME } })).toMatchObject({ status: "GENERATION_FAILED", configJson: null });
+    expect(await db.generationJob.findUnique({ where: { id: `job_${GAME}` } })).toMatchObject({ status: "DONE", currentStep: "local-patch:quality-failed" });
+    expect(render).not.toHaveBeenCalled(); expect(deps.judge).toHaveBeenCalledOnce();
   });
 });

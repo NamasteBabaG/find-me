@@ -62,6 +62,12 @@ function localBudget(pendingState?: "pending" | "unknown"): WorldBudgetSnapshot 
 }
 
 describe("fixed-world creation status boundary", () => {
+  it("reports terminal strict quality failure without another tick or a human-approval hold", async () => {
+    mocks.game.mockResolvedValue({ ...game, status: "GENERATION_FAILED", styleVersion: "local-patch-world-v1" });
+    mocks.job.mockResolvedValue({ gameId: game.id, status: "DONE", currentStep: "local-patch:quality-failed", stepsJson: "{}" });
+    expect(await (await response()).json()).toMatchObject({ state: "failed", failed: true, pending: false, awaitingQa: false, done: false, playUrl: null });
+    expect(mocks.link).not.toHaveBeenCalled();
+  });
   it("reports a local-patch ledger hold without waiting for the worker's parking marker", async () => {
     mocks.game.mockResolvedValue({ ...game, status: "TARGETS_GENERATING", styleVersion: "local-patch-world-v1" });
     mocks.job.mockResolvedValue({ gameId: game.id, status: "QUEUED", currentStep: "local-patch", stepsJson: "{}" });

@@ -98,7 +98,7 @@ export async function reviewBoardWizardIdentity(deps: {
   const sheetSha256 = sha256Bytes(input.sheet);
   const fingerprint = boardConditioningHash({ version, identityAssetId: input.identityAssetId, sheetSha256, provenance,
     model: settings.model, effort: settings.effort, maxTokens: settings.maxOutputTokens, serviceTier: "default", prompt, imageHashes,
-    ...(advisory ? { contentVersion: 7, pricingVersion: CURRENT_JUDGE_PRICING_VERSION } : {}) });
+    ...(advisory ? { contentVersion: input.contentVersion, pricingVersion: CURRENT_JUDGE_PRICING_VERSION } : {}) });
   const saved = await deps.db.auditLog.findFirst({ where: { action: IDENTITY_GATE_ACTION, entityType: "Asset", entityId: input.identityAssetId }, orderBy: { createdAt: "desc" } });
   if (saved) {
     const receipt = receiptSchema.parse(JSON.parse(saved.metaJson!));
@@ -227,6 +227,11 @@ export async function identityApprovedForDisplay(c: Container, profile: {
   identityAssetId: string | null; originalPhotoAssetId: string | null; ageYears: number | null;
 }, contentVersion?: number): Promise<boolean> {
   if (!profile.identityAssetId) return false;
+  if (contentVersion === 8) {
+    const { canonicalIdentityApprovedForDisplay } = await import("./local-patch-identity-reuse");
+    const reused = await canonicalIdentityApprovedForDisplay(c, profile, contentVersion);
+    if (reused !== null) return reused;
+  }
   const row = await c.db.auditLog.findFirst({
     where: { action: IDENTITY_GATE_ACTION, entityType: "Asset", entityId: profile.identityAssetId },
     orderBy: { createdAt: "desc" },
@@ -267,6 +272,11 @@ export async function requireBoardWizardIdentityApproval(c: Container, budget: W
   gameId: string; identityAssetId: string; sheetSha256: string; catalogSha256: string; photoAssetId: string | null;
   ageYears: number; crop: unknown; contentVersion?: number;
 }) {
+  if (input.contentVersion === 8) {
+    const { requireCanonicalIdentityReuse } = await import("./local-patch-identity-reuse");
+    const reused = await requireCanonicalIdentityReuse(c, input);
+    if (reused) return reused.sourceReceipt;
+  }
   const row = await c.db.auditLog.findFirst({ where: { action: IDENTITY_GATE_ACTION, entityType: "Asset", entityId: input.identityAssetId }, orderBy: { createdAt: "desc" } });
   demand(row?.metaJson, "Identity style approval is required before board enrollment");
   const receipt = receiptSchema.parse(JSON.parse(row.metaJson));
