@@ -18,9 +18,12 @@ import { readBoardConditionedCatalog } from "./board-conditioned-catalog";
 import { assertGenerationSpendAllowed, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { localPatchGeometry, type LocalPatchGeometry } from "./local-patch-geometry";
 import { renderLocalPatchHide, type LocalPatchRenderDeps } from "./local-patch-render";
-import { LOCAL_PATCH_PROMPT_VERSION } from "./local-patch-prompt";
+import { LOCAL_PATCH_PROMPT_VERSION, localPatchRepairChecks } from "./local-patch-prompt";
 import type { PatchGeometry } from "./patch";
 import { readPinnedLocalPatchArt } from "./local-patch-art";
+import { env } from "../../lib/env";
+import { LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_NORMAL_ATTEMPTS, nextLocalPatchAttempt } from "../../domain/scene/local-patch-attempts";
+export { LOCAL_PATCH_MAX_ATTEMPTS, nextLocalPatchAttempt } from "../../domain/scene/local-patch-attempts";
 
 /**
  * One hide, through the product rather than through a script.
@@ -58,8 +61,6 @@ import { readPinnedLocalPatchArt } from "./local-patch-art";
  * bought, in the name of accuracy nobody can see.
  */
 
-/** Two paid attempts at one hide, then a person looks. */
-export const LOCAL_PATCH_MAX_ATTEMPTS = 2;
 /** The variant a local-patch hide occupies; B is a second world's problem. */
 export const LOCAL_PATCH_VARIANT = "A";
 export const LOCAL_PATCH_PROVIDER = "local-patch";
@@ -181,20 +182,6 @@ export async function readShippedBoardArt(art: string, expectedSha256: string, r
   return sharp(bytes, { limitInputPixels: 8_294_400 }).png().toBuffer();
 }
 
-/**
- * Which attempt to run, and whether there is one left.
- *
- * `attempts` counts attempts STARTED. A row still PENDING with attempts above
- * zero is an attempt that never reached an answer - a crash, a lost dispatch, a
- * held world - and resuming it under its own number is what lets the retained
- * render answer instead of a second one being bought.
- */
-export function nextLocalPatchAttempt(row: { attempts: number; status: string }): { attempt: number; exhausted: boolean } {
-  const unconcluded = row.status === "PENDING" && row.attempts > 0;
-  const attempt = unconcluded ? row.attempts : row.attempts + 1;
-  return { attempt, exhausted: attempt > LOCAL_PATCH_MAX_ATTEMPTS };
-}
-
 const stopped = (base: Omit<LocalPatchHideOutcome, "state" | "reason">, reason: string): LocalPatchHideOutcome =>
   ({ ...base, state: "stopped", reason });
 
@@ -204,6 +191,8 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   readonly hide: LocalPatchHide;
   /** When this worker's request ends. Each paid phase is refused rather than started late. */
   readonly deadlineAt?: number;
+  /** Only the world scheduler can open this after its normal pass is complete. */
+  readonly finalRepair?: boolean;
 }): Promise<LocalPatchHideOutcome> {
   const { gameId, board, hide } = input;
   demand(c.storage.id === "db", "local-patch imagery requires DB-backed private storage");
@@ -257,7 +246,13 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
       provider: LOCAL_PATCH_PROVIDER, promptVersion: LOCAL_PATCH_PROMPT_VERSION,
     } });
 
-  const { attempt, exhausted } = nextLocalPatchAttempt(row);
+  if (input.finalRepair) demand(env().APP_ENV === "qa" && game.styleVersion === "local-patch-world-v1",
+    "the final repair pass is enabled only for the QA local-patch engine");
+  const attemptLimit = input.finalRepair ? LOCAL_PATCH_MAX_ATTEMPTS : LOCAL_PATCH_NORMAL_ATTEMPTS;
+  const { attempt, exhausted } = nextLocalPatchAttempt(row, attemptLimit);
+  // judgeJson is intentionally kept while PENDING: clearing lastError must not
+  // change the prompt/fingerprint when attempt 3 resumes after an interruption.
+  const repairChecks = input.finalRepair ? localPatchRepairChecks(row.judgeJson) : undefined;
   const base = {
     boardId: board.board, hideId: hide.id, targetId: hide.targetId, attempt, attempts: row.attempts,
     assetId: row.assetId, geometry: null, geometryBasis: null,
@@ -306,6 +301,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     worldId, board, hide, composedPng: artwork,
     identityPng: normalized.png, judgeIdentityPng,
     ageYears: child.ageYears, attempt, apiKey: deps.apiKey ?? "",
+    ...(repairChecks === undefined ? {} : { repairChecks }),
     ...(input.deadlineAt === undefined ? {} : { deadlineAt: input.deadlineAt }),
   });
 
@@ -349,7 +345,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
       judgeJson: JSON.stringify({ verdict: attemptResult.verdict, wireFault: attemptResult.wireFault, seam: attemptResult.seam, promptVersion: attemptResult.promptVersion }),
       } });
     });
-    const exhaustedNow = attempt >= LOCAL_PATCH_MAX_ATTEMPTS;
+    const exhaustedNow = attempt >= attemptLimit;
     return { ...started, ...money, state: exhaustedNow ? "gave-up" : "refused", reason };
   }
 

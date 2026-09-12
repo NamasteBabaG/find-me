@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { PrismaClient } from "@prisma/client";
+import sharp from "sharp";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyTestSchema } from "../../../lib/test-schema";
 import { DbStorage } from "../../../infra/storage/db";
@@ -22,7 +23,8 @@ import * as localPatchArt from "../local-patch-art";
 import { runLocalPatchHide } from "../local-patch-hide";
 import type { LocalPatchHideDeps } from "../local-patch-hide";
 import type { LocalPatchJudgeResult } from "../local-patch-judge";
-import { WORLD_LOCAL_PATCH_HIDES } from "../../../domain/scene/local-patch-hides";
+import { WORLD_LOCAL_PATCH_HIDES, cropOf, maskOf } from "../../../domain/scene/local-patch-hides";
+import { retainedPurchaseKeysFor } from "../../../infra/db/prisma-retained-purchase-store";
 import { LOCAL_PATCH_SCENE_VERSION } from "../../../../content/scenes/local-patch-release";
 import {
   LOCAL_PATCH_TEST_BOARD, bill, boardPng, clearWorld, paintedCrop, paintedOk, PASSING_ANSWER, reply, seedApprovedGame,
@@ -84,7 +86,15 @@ function worker(options: { answer?: LocalPatchJudgeResult; beforeAnswering?: () 
       dispatched.push(requestKey);
       await options.beforeAnswering?.();
       const hide = WORLD_LOCAL_PATCH_HIDES.flatMap(board => board.hides).find(h => requestKey.startsWith(`${h.id}:`))!;
-      return paintedOk(await paintedCrop(stylePng, hide), bill(`req-render-${requestKey}`));
+      const attempt = Number(requestKey.split(":").at(-1));
+      const mask = maskOf(hide), crop = cropOf(hide);
+      // Each synthetic purchase is a genuinely different picture, like a new
+      // provider render, rather than relabelling rejected bytes as accepted.
+      const png = await sharp(await paintedCrop(stylePng, hide)).composite([{
+        input: { create: { width: 8, height: 8, channels: 4, background: { r: attempt * 40, g: 40, b: 180, alpha: 1 } } },
+        left: mask.left - crop.left + Math.floor(mask.width / 2), top: mask.top - crop.top + Math.floor(mask.height / 2),
+      }]).png().toBuffer();
+      return paintedOk(png, bill(`req-render-${requestKey}`));
     },
     // A distinct receipt per call, as a provider gives: the ledger refuses one
     // receipt paying for two different operations, and it is right to.
@@ -170,6 +180,64 @@ describe("a world of hides, one slice at a time", () => {
     expect((await jobOf(gameId)).status).toBe("DONE");
     const scene = await db.gameScene.findFirstOrThrow({ where: { gameId } });
     expect(scene.generationStatus).toBe("GENERATED");
+  }, 240_000);
+
+  it("finishes untouched hides before the final repair, then replays attempt three from disk without buying its image again", async () => {
+    const { gameId } = await seed();
+    const refused = worker({ answer: reply({ raw: JSON.stringify({ ...PASSING_ANSWER,
+      styleMatch: "fail", verdict: "fail", reason: "The child's face is too photographic.",
+      faults: [{ check: "styleMatch", where: "the child's face inside the patch" }],
+    }) }) });
+    for (const attempt of [1, 2]) {
+      expect((await runLocalPatchWorldSlice(c, refused.deps, gameId)).outcomes[0])
+        .toMatchObject({ hideId: "sydney-1", attempt, state: attempt === 1 ? "refused" : "gave-up" });
+    }
+    const normal = worker();
+    const remaining = await runLocalPatchWorldSlice(c, normal.deps, gameId, { maxHides: 3 });
+    expect(remaining.outcomes.map(outcome => [outcome.hideId, outcome.attempt]))
+      .toEqual([["sydney-2", 1], ["sydney-3", 1]]);
+    expect(remaining.pending, "normal completion queues the repair instead of ending the world").toBe(true);
+    expect(normal.dispatched.filter(key => key.endsWith(":render:3"))).toEqual([]);
+
+    const started = Date.now();
+    let now = started;
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    let freshDb: PrismaClient | undefined;
+    try {
+      const slowRepair = worker({ beforeAnswering: async () => { now += 250_000; } });
+      const stopped = await runLocalPatchWorldSlice(c, slowRepair.deps, gameId, { hardDeadlineAt: started + 290_000 });
+      expect(stopped.outcomes[0]).toMatchObject({ hideId: "sydney-1", attempt: 3, state: "stopped" });
+      expect(slowRepair.dispatched).toEqual(["sydney-1:standing:render:3"]);
+      expect(await db.targetVariantAsset.findFirstOrThrow({ where: {
+        targetInstance: { gameScene: { gameId }, targetId: "lifeguard" },
+      } })).toMatchObject({ status: "PENDING", attempts: 3 });
+
+      // A new client, ledger, retained store and worker read only durable SQLite
+      // state. The previous judge's fault must still produce the same prompt.
+      freshDb = new PrismaClient({ datasources: { db: { url: `file:${path.join(scratch, "world.sqlite").split(path.sep).join("/")}` } } });
+      const fresh = { ...c, db: freshDb, storage: new DbStorage(freshDb) };
+      now = started + 600_000;
+      const replay = worker();
+      const recovered = await runLocalPatchWorldSlice(fresh, replay.deps, gameId, { hardDeadlineAt: now + 290_000 });
+      expect(recovered.outcomes[0]).toMatchObject({ hideId: "sydney-1", attempt: 3, state: "generated" });
+      expect(replay.dispatched).toEqual(["judge"]);
+      expect(await done(gameId)).toBe(3);
+      const inventory = await localPatchPrivateInventory(fresh, gameId);
+      const thirdKeys = retainedPurchaseKeysFor(boardWizardWorldId(gameId), ["sydney-1:standing:render:3", "sydney-1:standing:judge:3"]);
+      for (const key of thirdKeys) {
+        expect(await freshDb.fileBlob.findUnique({ where: { key } })).not.toBeNull();
+        expect(inventory.retainedPurchaseKeys).toContain(key);
+      }
+      for (const retained of await freshDb.fileBlob.findMany({ where: { key: { startsWith: "private:retained-purchase:" } } })) {
+        expect(inventory.retainedPurchaseKeys).toContain(retained.key);
+      }
+      expect((await runLocalPatchWorldSlice(fresh, replay.deps, gameId)).outcomes).toEqual([]);
+      expect(replay.dispatched).toEqual(["judge"]);
+      expect(await boardWizardBudgetOf(fresh).readRequest(boardWizardWorldId(gameId), "sydney-1:standing:render:4")).toBeNull();
+    } finally {
+      await freshDb?.$disconnect();
+      clock.mockRestore();
+    }
   }, 240_000);
 
   it("will not let a second worker in while the first holds the work", async () => {

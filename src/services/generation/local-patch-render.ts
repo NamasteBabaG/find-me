@@ -9,7 +9,7 @@ import {
   type JudgeWireFault, type LocalPatchJudgeRequest, type LocalPatchJudgeResult, type LocalPatchVerdict,
 } from "./local-patch-judge";
 import { judgeCharge } from "../../infra/generation/judge";
-import { LOCAL_PATCH_POSE_WORDING, LOCAL_PATCH_PROMPT_VERSION, localPatchPrompt } from "./local-patch-prompt";
+import { LOCAL_PATCH_POSE_WORDING, LOCAL_PATCH_PROMPT_VERSION, localPatchPrompt, type LocalPatchRepairCheck } from "./local-patch-prompt";
 import { purchaseOnce, type PurchaseLedger, type RetainedPurchaseStore } from "./paid-operation";
 import type { LocalPatchPurchase } from "../../infra/generation/openai-local-patch";
 import type { BudgetJson, WorldChargeEvidence } from "./world-budget";
@@ -76,8 +76,9 @@ export type LocalPatchAttemptInput = {
   readonly judgeIdentityPng: Buffer;
   /** Stated by the parent. Never guessed; left out when unknown. */
   readonly ageYears?: number | null;
-  /** 1 or 2. Part of the request key, so a retry is a new purchase. */
+  /** Normal 1–2, final QA repair 3. A distinct key, never a reset of a paid attempt. */
   readonly attempt: number;
+  readonly repairChecks?: readonly LocalPatchRepairCheck[];
   readonly apiKey: string;
   /**
    * When this worker's request is going to be taken away from it, absolute.
@@ -271,7 +272,7 @@ const refusedRender = (fault: string, renderCents: number): LocalPatchAttempt =>
 export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: LocalPatchAttemptInput): Promise<LocalPatchAttempt> {
   const { worldId, board, hide, attempt } = input;
   const crop = cropOf(hide);
-  const prompt = localPatchPrompt({ ground: board.ground, pose: hide.pose, ageYears: input.ageYears });
+  const prompt = localPatchPrompt({ ground: board.ground, pose: hide.pose, ageYears: input.ageYears, repairChecks: input.repairChecks });
 
   const meta = await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).metadata();
   const stylePng = await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).extract(crop).png().toBuffer();

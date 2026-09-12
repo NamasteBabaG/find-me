@@ -8,7 +8,7 @@ import { applyTestSchema } from "../../../lib/test-schema";
 import { DbStorage } from "../../../infra/storage/db";
 import type { Container } from "../../container";
 import { sceneBySlug } from "../../scene-catalog.service";
-import { WORLD_LOCAL_PATCH_HIDES } from "../../../domain/scene/local-patch-hides";
+import { WORLD_LOCAL_PATCH_HIDES, cropOf, maskOf } from "../../../domain/scene/local-patch-hides";
 import { LOCAL_PATCH_SCENE_VERSION } from "../../../../content/scenes/local-patch-release";
 import { GameConfigSchema } from "../../../domain/game/config";
 import { LOCAL_PATCH_STYLE, runLocalPatchWorldSlice } from "../local-patch-world";
@@ -60,8 +60,9 @@ async function seed(gameId: string) {
   return { ...seeded, avatarId };
 }
 
-function worker(gameId: string, refusedHide?: string) {
+function worker(gameId: string, refusedHide?: string, refusalAttempts = Infinity) {
   const calls: string[] = [];
+  let refusedJudgements = 0;
   const hides = WORLD_LOCAL_PATCH_HIDES.flatMap(board => board.hides);
   const deps: LocalPatchHideDeps = {
     renderPolicySha256: "p".repeat(64), readBoardArt: () => boardPng(),
@@ -69,11 +70,16 @@ function worker(gameId: string, refusedHide?: string) {
       calls.push(requestKey);
       const hide = hides.find(candidate => requestKey.startsWith(`${candidate.id}:`));
       if (!hide) throw new Error(`Unknown synthetic hide ${requestKey}`);
-      return paintedOk(await paintedCrop(stylePng, hide), bill(`req-${gameId}-${requestKey}`));
+      const attempt = Number(requestKey.split(":").at(-1)), mask = maskOf(hide), crop = cropOf(hide);
+      const png = await sharp(await paintedCrop(stylePng, hide)).composite([{
+        input: { create: { width: 8, height: 8, channels: 4, background: { r: attempt * 40, g: 40, b: 180, alpha: 1 } } },
+        left: mask.left - crop.left + Math.floor(mask.width / 2), top: mask.top - crop.top + Math.floor(mask.height / 2),
+      }]).png().toBuffer();
+      return paintedOk(png, bill(`req-${gameId}-${requestKey}`));
     },
     judge: async ({ hideId }) => {
       calls.push(`judge:${hideId}`);
-      const answer = hideId === refusedHide
+      const answer = hideId === refusedHide && ++refusedJudgements <= refusalAttempts
         ? { ...PASSING_ANSWER, childPresent: "fail", verdict: "fail", reason: "Synthetic missing child", faults: [{ check: "childPresent", where: "inside the designated patch" }] }
         : PASSING_ANSWER;
       return reply({ raw: JSON.stringify(answer), requestId: `req-${gameId}-judge-${calls.length}` });
@@ -175,7 +181,7 @@ describe("the full local-patch world becomes a playable product", () => {
     expect(fetch).not.toHaveBeenCalled();
   }, 240_000);
 
-  it("a refused hide exhausts its two attempts and holds the nine-board game instead of publishing 26 appearances", async () => {
+  it("a refused hide gets one end-of-world repair and then holds the game instead of buying a fourth or publishing 26 appearances", async () => {
     const { gameId } = await seed("player-refused"), refused = WORLD_LOCAL_PATCH_HIDES[0]!.hides[0]!.id, w = worker(gameId, refused);
     const first = await runLocalPatchWorldSlice(c, w.deps, gameId, { maxHides: 27 });
     expect(first.pending).toBe(true);
@@ -184,14 +190,60 @@ describe("the full local-patch world becomes a playable product", () => {
     await expect(composeGameConfig(c, gameId)).rejects.toThrow("approved painted appearance");
     await expect(publishGame(c, gameId, { type: "ADMIN", id: "synthetic-admin" })).rejects.toThrow("not completely approved and ready");
     const second = await runLocalPatchWorldSlice(c, w.deps, gameId, { maxHides: 27 });
-    expect(second.pending).toBe(false);
-    expect(second.attention).toMatch(/1 appearances require review/);
+    expect(second.outcomes[0]).toMatchObject({ hideId: refused, attempt: 2, state: "gave-up" });
+    expect(second.pending).toBe(true);
+    expect(await db.game.findUniqueOrThrow({ where: { id: gameId } })).toMatchObject({ status: "TARGETS_GENERATING", configJson: null });
+    const repair = await runLocalPatchWorldSlice(c, w.deps, gameId, { maxHides: 27 });
+    expect(repair.outcomes[0]).toMatchObject({ hideId: refused, attempt: 3, state: "gave-up" });
+    expect(repair.pending).toBe(false);
+    expect(repair.attention).toMatch(/1 appearances require review/);
     expect(await db.game.findUniqueOrThrow({ where: { id: gameId } })).toMatchObject({ status: "MANUAL_REVIEW", configJson: null, readyAt: null });
     await expect(publishGame(c, gameId, { type: "ADMIN", id: "synthetic-admin" })).rejects.toThrow("not completely approved and ready");
     expect(await db.targetVariantAsset.count({ where: { targetInstance: { gameScene: { gameId } }, status: "GENERATED" } })).toBe(26);
     const calls = w.calls.length;
-    expect(await runLocalPatchWorldSlice(c, w.deps, gameId)).toMatchObject({ claimed: false, pending: false });
+    expect(calls).toBe(58);
+    for (let i = 0; i < 3; i++) expect(await runLocalPatchWorldSlice(c, w.deps, gameId)).toMatchObject({ claimed: false, pending: false });
     expect(w.calls).toHaveLength(calls);
+    expect(w.calls.some(call => call.endsWith(":render:4"))).toBe(false);
+    expect(fetch).not.toHaveBeenCalled();
+  }, 240_000);
+
+  it("publishes all 27 only when the single final repair passes and never repaints the other 26", async () => {
+    const { gameId } = await seed("player-repaired"), hide = WORLD_LOCAL_PATCH_HIDES[0]!.hides[0]!;
+    const w = worker(gameId, hide.id, 2);
+    const sentBefore = sendMail.mock.calls.length;
+    const first = await runLocalPatchWorldSlice(c, w.deps, gameId, { maxHides: 27 });
+    expect(first.pending).toBe(true);
+    expect(first.outcomes).toHaveLength(27);
+    const second = await runLocalPatchWorldSlice(c, w.deps, gameId, { maxHides: 27 });
+    expect(second.outcomes).toHaveLength(1);
+    expect(second.outcomes[0]).toMatchObject({ hideId: hide.id, attempt: 2, state: "gave-up" });
+    expect(second.pending).toBe(true);
+    expect(await db.game.findUniqueOrThrow({ where: { id: gameId } })).toMatchObject({ status: "TARGETS_GENERATING", configJson: null });
+
+    const repair = await runLocalPatchWorldSlice(c, w.deps, gameId, { maxHides: 27 });
+    expect(repair.outcomes).toHaveLength(1);
+    expect(repair.outcomes[0]).toMatchObject({ hideId: hide.id, attempt: 3, state: "generated" });
+    expect(repair.pending).toBe(false);
+    const game = await db.game.findUniqueOrThrow({ where: { id: gameId } });
+    expect(game.status).toBe("READY");
+    const config = GameConfigSchema.parse(JSON.parse(game.configJson!));
+    expect(config.scenes).toHaveLength(9);
+    expect(config.scenes.flatMap(scene => scene.targets)).toHaveLength(27);
+    const variants = await db.targetVariantAsset.findMany({ where: { targetInstance: { gameScene: { gameId } }, variant: "A" } });
+    expect(variants.filter(row => row.status === "GENERATED")).toHaveLength(27);
+    expect(variants.filter(row => row.attempts === 1)).toHaveLength(26);
+    expect(variants.filter(row => row.attempts === 3)).toHaveLength(1);
+    expect(w.calls.filter(call => call.includes(":render:")).filter(call => call.startsWith(`${hide.id}:`)))
+      .toEqual([1, 2, 3].map(attempt => `${hide.id}:${hide.pose}:render:${attempt}`));
+    expect(w.calls).toHaveLength(58);
+    expect(sendMail).toHaveBeenCalledTimes(sentBefore + 1);
+    const link = await ensurePlayerLink(c, gameId);
+    expect(await resolvePlayToken(c, link.token)).toMatchObject({ ok: true, game: { id: gameId, status: "READY" } });
+    const settled = (await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId))).settledMicroUsd;
+    for (let i = 0; i < 3; i++) expect(await runLocalPatchWorldSlice(c, w.deps, gameId)).toMatchObject({ claimed: false, pending: false });
+    expect(w.calls).toHaveLength(58);
+    expect((await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId))).settledMicroUsd).toBe(settled);
     expect(fetch).not.toHaveBeenCalled();
   }, 240_000);
 
