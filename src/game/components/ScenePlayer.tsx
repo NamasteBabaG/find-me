@@ -154,7 +154,10 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
       case "hit": {
         sounds().play("success");
         const target = scene.targets.find((t) => t.id === fb.targetId);
-        if (target && api) {
+        // In find-any the next hide is already on the board. Keep the player's
+        // search view: the legacy find zoom is undone by its cloud turn, but
+        // find-any has no turn and would stay focused on an already-found child.
+        if (!free && target && api) {
           const variant = mission.plan.variants[fb.targetId] ?? "A";
           const { center } = targetGeometry(scene, target, variant);
           api.focusOn(center.x, center.y, Math.max(1.6, api.transform.scale / api.fit), 450);
