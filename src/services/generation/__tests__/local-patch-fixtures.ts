@@ -59,6 +59,10 @@ export async function paintedCrop(stylePng: Buffer, hide: LocalPatchHide) {
   }]).png().toBuffer();
 }
 
+/** A fake painter's answer, in the shape a real one gives. */
+export const paintedOk = (png: Buffer, evidence: WorldChargeEvidence) =>
+  ({ png, rejected: null, quarantined: null, evidence, unknownReason: null });
+
 export const bill = (id: string, micro = 48_800): WorldChargeEvidence => ({
   providerNamespace: "openai:find-me-existing", providerRequestId: id, usageId: `usage-${id}`,
   rawUsage: { input_tokens: 10, output_tokens: 100 }, model: "gpt-image-2",

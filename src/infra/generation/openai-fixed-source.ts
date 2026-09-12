@@ -121,7 +121,22 @@ export interface FixedSourcePolicy {
 }
 export class FixedSourceError extends Error {
   constructor(readonly code: "invalid_input" | "cost_unknown" | "ledger_unavailable" | "world_held" | "invalid_output", message: string,
-    readonly diagnostic?: FixedSourceFailureReceipt, readonly diagnosticStored?: boolean) {
+    readonly diagnostic?: FixedSourceFailureReceipt, readonly diagnosticStored?: boolean,
+    /**
+     * What was already established before the failure, for a caller that owns
+     * its own accounting.
+     *
+     * `evidence` is the bill when the response priced cleanly and something
+     * LATER went wrong - an image of the wrong shape does not make a known
+     * charge unknown, and throwing it away made the ledger record an unknown
+     * amount it could have stated exactly.
+     *
+     * `png` is present only where the bytes have already passed the payload
+     * bound and the base64 shape, so nothing unbounded escapes through here.
+     * They are evidence, never a result: whatever rejected them still rejects
+     * them.
+     */
+    readonly established?: { evidence?: WorldChargeEvidence; png?: Buffer }) {
     super(message); this.name = "FixedSourceError";
   }
 }
@@ -293,14 +308,15 @@ export class BudgetedOpenAiFixedSourceProvider {
     let json: unknown;
     let jsonStatus: FixedSourceFailureReceipt["jsonStatus"] = "not-read", usageValid = false;
     let transport: FixedSourceFailureReceipt["transport"] = null;
-    const diagnosticFailure = async (code: FixedSourceError["code"], message: string, reason: FixedSourceFailureReceipt["reason"], billing: FixedSourceFailureReceipt["billing"]): Promise<never> => {
+    const diagnosticFailure = async (code: FixedSourceError["code"], message: string, reason: FixedSourceFailureReceipt["reason"], billing: FixedSourceFailureReceipt["billing"],
+      established?: { evidence?: WorldChargeEvidence; png?: Buffer }): Promise<never> => {
       const receipt = fixedSourceFailureReceipt({ worldId, requestKey, fingerprint: prepared.fingerprint,
         quality: prepared.capture.settings.quality, reason, billing, response, json, jsonStatus, usageValid, transport });
       let stored = false;
       // A diagnostic storage failure never authorizes redispatch, zero cost, or
       // returning a paid image. The safe receipt also remains on the typed error.
       try { if (this.onFailure) { await this.onFailure(receipt); stored = true; } } catch { /* no driver/raw error messages */ }
-      throw new FixedSourceError(code, message, receipt, stored);
+      throw new FixedSourceError(code, message, receipt, stored, established);
     };
     const unknown = async (reason: string, category: FixedSourceFailureReceipt["reason"]): Promise<never> => {
       try { await this.budget.markUnknown(worldId, requestKey, reason); }
@@ -340,11 +356,11 @@ export class BudgetedOpenAiFixedSourceProvider {
     let settled;
     try { settled = await this.budget.settle(worldId, requestKey, evidence); }
     catch { return unknown("image-charge-settlement-not-confirmed", "charge-settlement"); }
-    if (settled.audit.held) return diagnosticFailure("world_held", "Full charge recorded; budget is held and generated output is not released", "budget-held", "settled");
+    if (settled.audit.held) return diagnosticFailure("world_held", "Full charge recorded; budget is held and generated output is not released", "budget-held", "settled", { evidence });
     // Record the bill BEFORE validating image shape, transparency or semantics.
-    if (body.data.quality !== undefined && body.data.quality !== prepared.capture.settings.quality) return diagnosticFailure("invalid_output", "Billed response reported an unapproved image quality", "unexpected-quality", "settled");
+    if (body.data.quality !== undefined && body.data.quality !== prepared.capture.settings.quality) return diagnosticFailure("invalid_output", "Billed response reported an unapproved image quality", "unexpected-quality", "settled", { evidence });
     const data = z.array(z.object({ b64_json: z.string().min(1) })).length(1).safeParse(body.data.data);
-    if (!response.ok || !data.success) return diagnosticFailure("invalid_output", "Billed request did not return exactly one image; no automatic repair", "image-data", "settled");
+    if (!response.ok || !data.success) return diagnosticFailure("invalid_output", "Billed request did not return exactly one image; no automatic repair", "image-data", "settled", { evidence });
     const b64 = data.data[0]!.b64_json;
     // Decode bounds follow the size that was actually requested: a fixed
     // 1024-square bound would throw on a world sheet we had already been billed
@@ -355,7 +371,7 @@ export class BudgetedOpenAiFixedSourceProvider {
     // that has already cost money twice on this route, reintroduced from the
     // other side.
     const expected = fixedSourcePixels(prepared.capture.settings.size);
-    if (b64.length > FIXED_SOURCE_PAYLOAD_BYTES || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(b64)) return diagnosticFailure("invalid_output", "Billed image payload is invalid", "image-payload", "settled");
+    if (b64.length > FIXED_SOURCE_PAYLOAD_BYTES || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(b64)) return diagnosticFailure("invalid_output", "Billed image payload is invalid", "image-payload", "settled", { evidence });
     const png = Buffer.from(b64, "base64");
     try {
       const image = sharp(png, { limitInputPixels: expected.pixels }), meta = await image.metadata();
@@ -371,7 +387,7 @@ export class BudgetedOpenAiFixedSourceProvider {
       for (let i = 3; i < raw.length; i += 4) { clear ||= raw[i] === 0; visible ||= raw[i]! > 0; }
       // A cut-out sheet must have somewhere to cut; a local patch must not.
       if (!visible || (transparent ? !clear : clear)) throw new Error();
-    } catch { return diagnosticFailure("invalid_output", `Billed output lacks a nonempty transparent ${prepared.capture.settings.size} PNG; no automatic repair`, "image-raster", "settled"); }
+    } catch { return diagnosticFailure("invalid_output", `Billed output lacks a nonempty transparent ${prepared.capture.settings.size} PNG; no automatic repair`, "image-raster", "settled", { evidence, png }); }
     return { kind: "generated", png, pngSha256: hash(png), fingerprint: prepared.fingerprint,
       capture: prepared.capture, evidence, modelProvenance: body.data.model === undefined ? "requested-endpoint-model-not-returned" : "response-confirmed",
       audit: settled.audit, semanticApproval: "pending" };

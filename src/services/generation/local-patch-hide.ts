@@ -188,6 +188,8 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   readonly gameId: string;
   readonly board: LocalPatchBoard;
   readonly hide: LocalPatchHide;
+  /** When this worker's request ends. Each paid phase is refused rather than started late. */
+  readonly deadlineAt?: number;
 }): Promise<LocalPatchHideOutcome> {
   const { gameId, board, hide } = input;
   // Free, and before anything else: an authored placement that cannot be held
@@ -288,6 +290,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     worldId, board, hide, composedPng: artwork,
     identityPng: normalized.png, judgeIdentityPng,
     ageYears: child.ageYears, attempt, apiKey: deps.apiKey ?? "",
+    ...(input.deadlineAt === undefined ? {} : { deadlineAt: input.deadlineAt }),
   });
 
   const money = {
@@ -302,9 +305,11 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   }
 
   if (!attemptResult.accepted) {
-    const reason = attemptResult.wireFault
-      ? `the judge's reply could not be trusted (${attemptResult.wireFault})`
-      : attemptResult.verdict?.reason ?? "the judge refused the picture";
+    const reason = attemptResult.renderFault
+      ? `the painter returned nothing usable (${attemptResult.renderFault})`
+      : attemptResult.wireFault
+        ? `the judge's reply could not be trusted (${attemptResult.wireFault})`
+        : attemptResult.verdict?.reason ?? "the judge refused the picture";
     // Kept even though it was refused: it was paid for, and a spot that keeps
     // failing is unreadable without the pictures that failed.
     const crop = cropOf(hide);

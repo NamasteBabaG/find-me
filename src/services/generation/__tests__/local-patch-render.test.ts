@@ -75,7 +75,7 @@ function world() {
     };
     const deps: LocalPatchRenderDeps = {
       ledger, store, renderPolicySha256: "p".repeat(64),
-      render: async ({ requestKey }) => { dispatched.push(requestKey); return { png: await patchPng(), evidence: evidence("req-render") }; },
+      render: async ({ requestKey }) => { dispatched.push(requestKey); return { png: await patchPng(), rejected: null, quarantined: null, evidence: evidence("req-render"), unknownReason: null }; },
       judge: async () => { dispatched.push("judge"); return judged; },
       ...over,
     };
@@ -114,7 +114,7 @@ describe("one paid attempt at one hide", () => {
   it("hands the painter that exact mask, not one built somewhere else", async () => {
     const w = world();
     let sent: Buffer | null = null;
-    const p = w.process({ render: async ({ maskPng }) => { sent = maskPng; return { png: await patchPng(), evidence: evidence("r") }; } });
+    const p = w.process({ render: async ({ maskPng }) => { sent = maskPng; return { png: await patchPng(), rejected: null, quarantined: null, evidence: evidence("r"), unknownReason: null }; } });
     await attempt(p.deps);
     expect(Buffer.compare(sent!, await poseMask(hide))).toBe(0);
   });

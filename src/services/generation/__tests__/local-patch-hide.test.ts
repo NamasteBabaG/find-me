@@ -12,7 +12,7 @@ import { boardWizardBudgetOf, boardWizardWorldId, GenerationPaused } from "../bo
 import { readShippedBoardArt, runLocalPatchHide, type LocalPatchHideDeps } from "../local-patch-hide";
 import type { LocalPatchJudgeResult } from "../local-patch-judge";
 import {
-  LOCAL_PATCH_TEST_BOARD, bill, boardPng, clearWorld, paintedCrop, PASSING_ANSWER, reply, seedApprovedGame,
+  LOCAL_PATCH_TEST_BOARD, bill, boardPng, clearWorld, paintedCrop, paintedOk, PASSING_ANSWER, reply, seedApprovedGame,
 } from "./local-patch-fixtures";
 
 /**
@@ -68,12 +68,12 @@ async function seed(options: { gameId?: string; approved?: boolean } = {}) {
 /** A fresh set of adapters, as a restarted worker would build them. */
 function worker(options: { answer?: LocalPatchJudgeResult; hide?: typeof HIDE } = {}) {
   const dispatched: string[] = [];
-  const deps: LocalPatchHideDeps = {
+  let deps: LocalPatchHideDeps = {
     renderPolicySha256: "p".repeat(64),
     readBoardArt: async () => boardPng(),
     render: async ({ requestKey, stylePng }) => {
       dispatched.push(requestKey);
-      return { png: await paintedCrop(stylePng, options.hide ?? HIDE), evidence: bill(`req-render-${requestKey}`) };
+      return paintedOk(await paintedCrop(stylePng, options.hide ?? HIDE), bill(`req-render-${requestKey}`));
     },
     // A distinct receipt per call, as a provider gives: the ledger refuses one
     // receipt paying for two different operations, and it is right to.
@@ -141,7 +141,7 @@ describe("one hide through the real pipeline", () => {
       renderPolicySha256: "p".repeat(64),
       render: async ({ requestKey, stylePng }) => {
         dispatched.push(requestKey);
-        return { png: await paintedCrop(stylePng, HIDE), evidence: bill(`req-render-${requestKey}`) };
+        return paintedOk(await paintedCrop(stylePng, HIDE), bill(`req-render-${requestKey}`));
       },
       judge: async () => ({ ...reply(), requestId: `req-judge-${++judged}` }),
     }, { gameId, board: BOARD, hide: HIDE });
@@ -165,6 +165,44 @@ describe("one hide through the real pipeline", () => {
     await expect(readShippedBoardArt("work/somewhere/board.png", "0".repeat(64))).rejects.toThrow(/not shipped art/);
     await expect(readShippedBoardArt("public/../secrets.png", "0".repeat(64))).rejects.toThrow(/not shipped art/);
   }, 120_000);
+
+  it("settles a refused picture at the price it was actually billed", async () => {
+    // An image of the wrong shape does not make a known charge unknown. The
+    // charge is settled for what it cost, the attempt is finished rather than
+    // the world being held, and the next attempt may run.
+    const { gameId } = await seed();
+    const refused = worker();
+    const quarantined = Buffer.from("the picture that was refused");
+    refused.deps = { ...refused.deps, render: async ({ requestKey }) => {
+      refused.dispatched.push(requestKey);
+      return { png: null, rejected: "invalid_output: the image is not the size that was asked for",
+        quarantined, evidence: bill(`req-render-${requestKey}`), unknownReason: null };
+    } } as typeof refused.deps;
+
+    const result = await runLocalPatchHide(c, refused.deps, { gameId, board: BOARD, hide: HIDE });
+    expect(result.state).toBe("refused");
+    expect(result.reason).toMatch(/the painter returned nothing usable/);
+    // The judge was never asked: there was nothing to judge.
+    expect(refused.dispatched).toEqual(["sydney-2:kneeling:render:1"]);
+
+    const budget = boardWizardBudgetOf(c), world = boardWizardWorldId(gameId);
+    const row = await budget.readRequest(world, "sydney-2:kneeling:render:1");
+    expect(row?.state, "a known charge must not be recorded as unknown").toBe("settled");
+    expect((row as { evidence: { amountMicroUsd: number } }).evidence.amountMicroUsd).toBe(48_800);
+    expect((await budget.audit(world)).held, "a bad picture is not a reason to hold a world").toBe(false);
+
+    // No target, and nothing publishable.
+    const [variant] = await rows(gameId);
+    expect(variant?.status).toBe("FAILED");
+    expect(variant?.assetId).toBeNull();
+    expect(await db.asset.count({ where: { type: "TARGET_SPRITE" } })).toBe(0);
+
+    // And the next attempt is a NEW purchase, not a repeat of the refused one.
+    const second = worker();
+    const again = await runLocalPatchHide(c, second.deps, { gameId, board: BOARD, hide: HIDE });
+    expect(second.dispatched).toEqual(["sydney-2:kneeling:render:2", "judge"]);
+    expect(again.state).toBe("generated");
+  }, 180_000);
 
   it("does not buy it again when it is already done", async () => {
     const { gameId } = await seed();

@@ -100,7 +100,7 @@ async function runHide(p: ReturnType<typeof process>) {
   const budget = await ledgerFor();
   const deps: LocalPatchRenderDeps = {
     ledger: budget, store: p.store, renderPolicySha256: "p".repeat(64),
-    render: async ({ requestKey }) => { p.dispatched.push(requestKey); return { png: await patchPng(), evidence: renderEvidence("req-render") }; },
+    render: async ({ requestKey }) => { p.dispatched.push(requestKey); return { png: await patchPng(), rejected: null, quarantined: null, evidence: renderEvidence("req-render"), unknownReason: null }; },
     judge: async () => { p.dispatched.push("judge"); return p.answer; },
   };
   return renderLocalPatchHide(deps, {

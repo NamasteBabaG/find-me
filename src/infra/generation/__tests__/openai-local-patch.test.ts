@@ -81,17 +81,41 @@ describe("buying one local patch", () => {
   }, 60_000);
 
   it("says nothing usable came back, rather than inventing an answer", async () => {
+    // Nothing priced and nothing kept: there is no purchase to describe, only a
+    // dispatch that may have been billed. A throw is read as exactly that.
     for (const [name, custom] of [
       ["the wire failed", async () => { throw new Error("socket hung up"); }],
       ["there was no receipt", async () => answer({}, {})],
       ["the usage could not be read", async () => answer({ usage: { input_tokens: 1 } })],
       ["another model answered", async () => answer({ model: "gpt-image-1" })],
-      ["the image is the wrong size", async () => answer({ data: [{ b64_json: crop.toString("base64") }] })],
     ] as const) {
       await expect(buyLocalPatch("sk-test-only", request(), { fetchOnce: custom as unknown as typeof fetch }), name)
         .rejects.toThrow(/LOCAL_PATCH_PAINTER/);
     }
   }, 120_000);
+
+  it("keeps the bill when the image is refused, because those are different questions", async () => {
+    // An image of the wrong shape does not make a known charge unknown. The
+    // charge was priced cleanly before anything looked at the picture, and
+    // flattening the refusal used to throw that away - so a ledger recorded an
+    // unknown amount it could have stated exactly.
+    const wrongSize = await sharp({ create: { width: 512, height: 768, channels: 4, background: "#334455" } }).png().toBuffer();
+    const result = await buyLocalPatch("sk-test-only", request(), {
+      fetchOnce: (async () => answer({ data: [{ b64_json: wrongSize.toString("base64") }] })) as unknown as typeof fetch,
+    });
+    expect(result.png).toBeNull();
+    expect(result.rejected).toMatch(/invalid_output/);
+    expect(result.unknownReason).toBeNull();
+    // The bill the response priced, in full.
+    expect(result.evidence).toMatchObject({
+      amountMicroUsd: 10 * 5 + 20 * 8 + 196 * 30,
+      providerRequestId: "req-local-patch-1",
+      model: "gpt-image-2",
+      providerNamespace: "openai:find-me-existing",
+    });
+    // And the refused bytes are kept, so somebody can see WHY it was refused.
+    expect(result.quarantined?.equals(wrongSize)).toBe(true);
+  }, 60_000);
 
   it("is a different purchase when the settings change", () => {
     const base = localPatchRenderPolicySha256();

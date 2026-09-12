@@ -36,6 +36,9 @@ import { auditWorldBudget, type WorldBudgetAudit, type WorldChargeEvidence } fro
  * by exactly two thirds on the way back.
  */
 
+/** How long one paint may take. Published so a caller can budget a slice around it. */
+export const LOCAL_PATCH_IMAGE_TIMEOUT_MS = 240_000;
+
 export const LOCAL_PATCH_IMAGE_POLICY: FixedSourcePolicy = Object.freeze({
   quality: "medium",
   size: "768x1152",
@@ -45,7 +48,7 @@ export const LOCAL_PATCH_IMAGE_POLICY: FixedSourcePolicy = Object.freeze({
   // what an operator reading a diagnostic receipt would expect to see.
   reserveMicroUsd: 150_000,
   providerNamespace: "openai:find-me-existing",
-  timeoutMs: 240_000,
+  timeoutMs: LOCAL_PATCH_IMAGE_TIMEOUT_MS,
   rateCard: { id: "existing-reviewed-image2-5-8-30-microusd-v1", textInput: 5, imageInput: 8, imageOutput: 30 },
 });
 
@@ -105,10 +108,29 @@ class CapturedCharge implements FixedSourceLedger {
   }
 }
 
-export type LocalPatchRenderResult =
-  | { readonly png: Buffer; readonly evidence: WorldChargeEvidence }
-  /** Paid for, and no amount anybody can state. The picture is still the picture. */
-  | { readonly png: Buffer; readonly unknownReason: string };
+/**
+ * What one dispatch established, kept apart on purpose.
+ *
+ * Whether the picture may be used and whether the charge can be stated are two
+ * different questions, and collapsing them lost a known bill: an image of the
+ * wrong shape was refused, the error was flattened, and a charge the response
+ * had priced exactly went into the ledger as unknown. A rejected image is a
+ * rejected image; the money still moved and we still know how much.
+ */
+export type LocalPatchPurchase = {
+  /** The picture, when there is a usable one. */
+  readonly png: Buffer | null;
+  /** Why there is no usable picture. Null when `png` is the picture. */
+  readonly rejected: string | null;
+  /**
+   * Bounded bytes worth keeping even though nothing may draw them: what was
+   * refused, so a person can see WHY a spot keeps failing.
+   */
+  readonly quarantined: Buffer | null;
+  readonly evidence: WorldChargeEvidence | null;
+  /** Why the bill cannot be stated. Null when `evidence` is the bill. */
+  readonly unknownReason: string | null;
+};
 
 /**
  * One patch, one HTTP request, ever.
@@ -121,7 +143,7 @@ export type LocalPatchRenderResult =
 export async function buyLocalPatch(apiKey: string, input: LocalPatchRenderInput, options: {
   readonly policy?: FixedSourcePolicy;
   readonly fetchOnce?: typeof fetch;
-} = {}): Promise<LocalPatchRenderResult> {
+} = {}): Promise<LocalPatchPurchase> {
   const policy = options.policy ?? LOCAL_PATCH_IMAGE_POLICY;
   // The crop goes as the reference at its own size - references are capped at
   // 1024 square and 512x768 is inside that. Only the OUTPUT is asked for larger.
@@ -138,12 +160,24 @@ export async function buyLocalPatch(apiKey: string, input: LocalPatchRenderInput
   try {
     answer = await provider.generate({ ...request, worldId: input.worldId, requestKey: input.requestKey, expectedFingerprint: prepared.fingerprint });
   } catch (error) {
-    // A charge the provider could state and an image it then refused is money
-    // spent with nothing to show; a transport failure may not have been billed
-    // at all. Neither has bytes, so both become an unknown charge at the
-    // boundary - which holds the reservation and asks for a person.
     const why = error instanceof FixedSourceError ? `${error.code}: ${error.message}` : error instanceof Error ? error.message : String(error);
-    throw new Error(`LOCAL_PATCH_PAINTER: ${input.requestKey} was dispatched and no usable image came back (${why})`);
+    const rejected = `${input.requestKey} was dispatched and no usable image came back (${why})`;
+    // What the transport had already established survives the refusal. A bill
+    // it computed cleanly is still that bill, and bytes it had already bounded
+    // and decoded are still worth keeping - the image is refused either way.
+    const established = error instanceof FixedSourceError ? error.established : undefined;
+    const evidence = established?.evidence ?? charge.evidence;
+    if (!evidence && !established?.png) {
+      // Nothing priced and nothing kept: there is no purchase to describe, only
+      // a dispatch that may have been billed. The boundary reads a throw as
+      // exactly that and holds the reservation for a person.
+      throw new Error(`LOCAL_PATCH_PAINTER: ${rejected}`);
+    }
+    return {
+      png: null, rejected, quarantined: established?.png ?? null,
+      evidence: evidence ?? null,
+      unknownReason: evidence ? null : charge.unknownReason ?? "the provider answered and its charge was never stated",
+    };
   }
   if (answer.kind !== "generated") {
     throw new Error(`LOCAL_PATCH_PAINTER: ${input.requestKey} was already recorded by the transport (${answer.requestState}); reconcile rather than re-buying`);
@@ -151,6 +185,9 @@ export async function buyLocalPatch(apiKey: string, input: LocalPatchRenderInput
   // Handed back at the size it came, not the size it will be used at: these are
   // the bytes that were paid for, and they are what gets retained. Fitting them
   // to the crop is the renderer's business and it already does it.
-  if (charge.evidence) return { png: answer.png, evidence: charge.evidence };
-  return { png: answer.png, unknownReason: charge.unknownReason ?? "the provider answered and its charge was never stated" };
+  return {
+    png: answer.png, rejected: null, quarantined: null,
+    evidence: charge.evidence,
+    unknownReason: charge.evidence ? null : charge.unknownReason ?? "the provider answered and its charge was never stated",
+  };
 }

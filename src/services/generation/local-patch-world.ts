@@ -157,7 +157,8 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   try {
     for (const item of todo.slice(0, limit)) {
       if (options.hardDeadlineAt !== undefined && options.hardDeadlineAt - Date.now() < LOCAL_PATCH_MIN_SLICE_MS) break;
-      const outcome = await runLocalPatchHide(c, { ...deps, fence }, { gameId, board: item.board, hide: item.hide });
+      const outcome = await runLocalPatchHide(c, { ...deps, fence }, { gameId, board: item.board, hide: item.hide,
+        ...(options.hardDeadlineAt === undefined ? {} : { deadlineAt: options.hardDeadlineAt }) });
       outcomes.push(outcome);
       // A world that cannot buy anything is not a world to keep buying in.
       if (outcome.state === "stopped") break;

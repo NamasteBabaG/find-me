@@ -20,7 +20,7 @@ import type { LocalPatchHideDeps } from "../local-patch-hide";
 import type { LocalPatchJudgeResult } from "../local-patch-judge";
 import { WORLD_LOCAL_PATCH_HIDES } from "../../../domain/scene/local-patch-hides";
 import {
-  LOCAL_PATCH_TEST_BOARD, bill, boardPng, clearWorld, paintedCrop, PASSING_ANSWER, reply, seedApprovedGame,
+  LOCAL_PATCH_TEST_BOARD, bill, boardPng, clearWorld, paintedCrop, paintedOk, PASSING_ANSWER, reply, seedApprovedGame,
 } from "./local-patch-fixtures";
 
 /**
@@ -72,14 +72,14 @@ async function seed(options: { gameId?: string; scenes?: { slug: string; version
 
 function worker(options: { answer?: LocalPatchJudgeResult; beforeAnswering?: () => Promise<void> } = {}) {
   const dispatched: string[] = [];
-  const deps: LocalPatchHideDeps = {
+  let deps: LocalPatchHideDeps = {
     renderPolicySha256: "p".repeat(64),
     readBoardArt: async () => boardPng(),
     render: async ({ requestKey, stylePng }) => {
       dispatched.push(requestKey);
       await options.beforeAnswering?.();
       const hide = BOARD.hides.find(h => requestKey.startsWith(`${h.id}:`))!;
-      return { png: await paintedCrop(stylePng, hide), evidence: bill(`req-render-${requestKey}`) };
+      return paintedOk(await paintedCrop(stylePng, hide), bill(`req-render-${requestKey}`));
     },
     // A distinct receipt per call, as a provider gives: the ledger refuses one
     // receipt paying for two different operations, and it is right to.
@@ -218,6 +218,62 @@ describe("a world of hides, one slice at a time", () => {
     expect(again.dispatched).toEqual([]);
     expect(result.outcomes[0]?.state).toBe("generated");
     expect(await db.fileBlob.findUnique({ where: { key: sprite.storagePath } })).not.toBeNull();
+  }, 180_000);
+
+  it("keeps the patch and leaves the judging for the next tick when time runs out", async () => {
+    // Each paid phase is allowed four minutes and the request declares five, so
+    // a render that used most of its allowance and a judgement that then started
+    // at all could not both finish. The render is kept; the judge waits.
+    const { gameId } = await seed();
+    const started = Date.now();
+    const clock = { now: started };
+    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => clock.now);
+    try {
+      const slow = worker();
+      // Painting eats almost the whole request.
+      const paint = slow.deps.render;
+      slow.deps = { ...slow.deps, render: async input => { clock.now += 250_000; return paint(input); } } as typeof slow.deps;
+
+      const first = await runLocalPatchWorldSlice(c, slow.deps, gameId, { hardDeadlineAt: started + 290_000 });
+      expect(slow.dispatched, "the judge must not be dispatched with no time to finish").toEqual(["sydney-1:standing:render:1"]);
+      expect(first.outcomes[0]?.state).toBe("stopped");
+      expect(first.outcomes[0]?.reason).toMatch(/not enough of this request left to judge/);
+      // The attempt is NOT concluded and NOT charged an extra try.
+      const [row] = await db.targetVariantAsset.findMany({ where: { targetInstance: { gameScene: { gameId } } } });
+      expect(row?.status).toBe("PENDING");
+      expect(row?.attempts).toBe(1);
+      expect((await jobOf(gameId)).status).toBe("QUEUED");
+
+      // A fresh tick with a whole request in front of it: the patch is replayed
+      // and only the judgement is bought.
+      clock.now = started + 600_000;
+      const next = worker();
+      const second = await runLocalPatchWorldSlice(c, next.deps, gameId, { hardDeadlineAt: clock.now + 290_000 });
+      expect(next.dispatched, "the patch was already bought and kept").toEqual(["judge"]);
+      expect(second.outcomes[0]?.state).toBe("generated");
+      expect(second.outcomes[0]?.attempt).toBe(1);
+    } finally {
+      nowSpy.mockRestore();
+    }
+  }, 240_000);
+
+  it("does not start a paint it cannot keep", async () => {
+    const { gameId } = await seed();
+    const started = Date.now();
+    const clock = { now: started };
+    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => clock.now);
+    try {
+      const w = worker();
+      // Past the slice gate, short of what one paint plus keeping it needs.
+      const result = await runLocalPatchWorldSlice(c, w.deps, gameId, { hardDeadlineAt: started + 250_000 });
+      expect(w.dispatched).toEqual([]);
+      expect(result.outcomes[0]?.reason).toMatch(/not enough of this request is left to paint/);
+      const [row] = await db.targetVariantAsset.findMany({ where: { targetInstance: { gameScene: { gameId } } } });
+      expect(row?.status).toBe("PENDING");
+      expect(row?.attempts, "a deferral must never cost an attempt").toBe(1);
+    } finally {
+      nowSpy.mockRestore();
+    }
   }, 180_000);
 
   it("names the boards this build cannot paint instead of failing on them one by one", async () => {

@@ -11,6 +11,8 @@ import {
 import { judgeCharge } from "../../infra/generation/judge";
 import { LOCAL_PATCH_POSE_WORDING, LOCAL_PATCH_PROMPT_VERSION, localPatchPrompt } from "./local-patch-prompt";
 import { purchaseOnce, type PurchaseLedger, type RetainedPurchaseStore } from "./paid-operation";
+import { LOCAL_PATCH_IMAGE_TIMEOUT_MS } from "../../infra/generation/openai-local-patch";
+import type { LocalPatchPurchase } from "../../infra/generation/openai-local-patch";
 import type { BudgetJson, WorldChargeEvidence } from "./world-budget";
 
 /**
@@ -57,7 +59,7 @@ export type LocalPatchRenderDeps = {
   readonly render: (input: {
     readonly worldId: string; readonly requestKey: string; readonly prompt: string;
     readonly stylePng: Buffer; readonly identityPng: Buffer; readonly maskPng: Buffer;
-  }) => Promise<{ png: Buffer; evidence: WorldChargeEvidence } | { png: Buffer; unknownReason: string }>;
+  }) => Promise<LocalPatchPurchase>;
   /** Overridable so a test can answer without a network. */
   readonly judge?: (request: LocalPatchJudgeRequest) => Promise<LocalPatchJudgeResult>;
 };
@@ -76,6 +78,16 @@ export type LocalPatchAttemptInput = {
   /** 1 or 2. Part of the request key, so a retry is a new purchase. */
   readonly attempt: number;
   readonly apiKey: string;
+  /**
+   * When this worker's request is going to be taken away from it, absolute.
+   *
+   * Each paid phase here is allowed four minutes of its own, and the route that
+   * calls it declares five for the whole request - so a render that used most of
+   * its allowance and a judgement that then started at all could not both finish.
+   * Checked BEFORE each dispatch, never after: the point is not to notice the
+   * overrun, it is to not start something that cannot end.
+   */
+  readonly deadlineAt?: number;
 };
 
 export type LocalPatchAttempt = {
@@ -86,8 +98,16 @@ export type LocalPatchAttempt = {
    * charge nobody can describe, a request whose inputs changed - and neither is
    * a statement about the picture.
    */
-  readonly refusedBecause: "judge" | "wire" | "stopped" | null;
+  readonly refusedBecause: "judge" | "wire" | "render" | "stopped" | null;
   readonly stoppedReason: string | null;
+  /**
+   * Why the painted image itself could not be used, when it could not.
+   *
+   * Distinct from `stoppedReason`: this attempt DID buy something and the thing
+   * it bought is no good, so the attempt is concluded and the next one may run.
+   * A stop is the opposite - nothing was learned about the picture.
+   */
+  readonly renderFault: string | null;
   readonly patchPng: Buffer | null;
   /**
    * The crop as it would ship: composited back, fade and all. These are the
@@ -114,6 +134,27 @@ export type LocalPatchAttempt = {
 
 /** What to hold while a render or a judgement is in flight. */
 export const LOCAL_PATCH_RESERVE = Object.freeze({ renderMicroUsd: 120_000, judgeMicroUsd: 40_000 });
+
+/**
+ * Room after a phase's own timeout for keeping what it bought.
+ *
+ * The dangerous moment is not the dispatch, it is the write that follows it: a
+ * host that stops the request between paying and retaining leaves a charge
+ * nobody can reconcile. This is the margin that keeps that write inside the
+ * request, and it is deliberately generous.
+ */
+export const LOCAL_PATCH_PHASE_MARGIN_MS = 25_000;
+
+/**
+ * Nothing was bought and nothing was learned: there was not enough of this
+ * request left to finish a phase that had not started.
+ *
+ * A stop, not a refusal - the attempt stays unconcluded, so the next tick
+ * resumes THIS attempt, replays whatever was already retained and buys only
+ * what is still missing. A deferral must never cost an attempt.
+ */
+const deferred = (reason: string, renderCents = 0): LocalPatchAttempt =>
+  ({ ...stopped(reason, renderCents, false) });
 
 const sha = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 const fingerprintOf = (parts: unknown) => createHash("sha256").update(JSON.stringify(parts)).digest("hex");
@@ -157,6 +198,23 @@ async function viewAround(png: Buffer, crop: { left: number; top: number; width:
   }).resize(768, 768, { fit: "inside" }).png().toBuffer();
 }
 
+/**
+ * What a render purchase keeps.
+ *
+ * An envelope rather than the raw PNG, for the same reason the judgement keeps
+ * its reply rather than its verdict: whether the picture may be used is a
+ * CONCLUSION, and a conclusion that lives only in the process that drew it is
+ * one a restart reaches differently. A refused render keeps its bytes here as
+ * evidence, and every later pass reads the same refusal for free.
+ */
+type RetainedRender = {
+  readonly version: "local-patch-render/v1";
+  /** Base64 of what came back, whether it may be drawn or not. */
+  readonly bytesBase64: string | null;
+  /** Null when the bytes are a usable patch; why not, otherwise. */
+  readonly rejected: string | null;
+};
+
 /** The part of a judge's reply worth keeping: enough to re-derive the verdict. */
 type RetainedJudgement = {
   raw: string | null; usage: Record<string, unknown> | null; requestId: string | null;
@@ -169,10 +227,21 @@ type RetainedJudgement = {
  * reporting certainty by default is how an unresolved charge became a zero.
  */
 const stopped = (reason: string, renderCents = 0, costUnknown = true): LocalPatchAttempt => ({
-  accepted: false, refusedBecause: "stopped", stoppedReason: reason,
+  accepted: false, refusedBecause: "stopped", stoppedReason: reason, renderFault: null,
   patchPng: null, shippingPng: null, composedPng: null, seam: null, verdict: null, wireFault: null,
   promptVersion: LOCAL_PATCH_PROMPT_VERSION, judgedSha256: null,
   renderCents, judgeCents: 0, costUnknown, replayed: false,
+});
+
+/**
+ * Bought, and not a picture anybody can use. The charge is settled and known;
+ * this attempt is finished and the next one may run.
+ */
+const refusedRender = (fault: string, renderCents: number): LocalPatchAttempt => ({
+  accepted: false, refusedBecause: "render", stoppedReason: null, renderFault: fault,
+  patchPng: null, shippingPng: null, composedPng: null, seam: null, verdict: null, wireFault: null,
+  promptVersion: LOCAL_PATCH_PROMPT_VERSION, judgedSha256: null,
+  renderCents, judgeCents: 0, costUnknown: false, replayed: false,
 });
 
 export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: LocalPatchAttemptInput): Promise<LocalPatchAttempt> {
@@ -193,20 +262,49 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
     policy: deps.renderPolicySha256,
   });
 
+  // Nothing has been dispatched yet, so there is nothing to lose by stopping -
+  // and everything to lose by starting a render this request cannot outlive.
+  const wouldDispatch = async (key: string) => {
+    const row = await deps.ledger.readRequest(worldId, key);
+    return !row || row.state === "pending";
+  };
+  const timeFor = (ms: number) => input.deadlineAt === undefined || input.deadlineAt - Date.now() >= ms + LOCAL_PATCH_PHASE_MARGIN_MS;
+  if (!timeFor(LOCAL_PATCH_IMAGE_TIMEOUT_MS) && await wouldDispatch(renderKey)) {
+    return deferred(`${renderKey}: not enough of this request is left to paint and keep a patch`);
+  }
+
   const bought = await purchaseOnce(deps, {
     worldId, requestKey: renderKey, scope: "image",
     operationFingerprint: renderFingerprint, reserveMicroUsd: LOCAL_PATCH_RESERVE.renderMicroUsd,
     buy: async () => {
       const result = await deps.render({ worldId, requestKey: renderKey, prompt, stylePng, identityPng: input.identityPng, maskPng });
-      return "evidence" in result
-        ? { bytes: result.png, evidence: result.evidence }
-        : { bytes: result.png, unknownReason: result.unknownReason };
+      const kept = result.png ?? result.quarantined;
+      const keep: RetainedRender = {
+        version: "local-patch-render/v1",
+        bytesBase64: kept ? kept.toString("base64") : null,
+        rejected: result.rejected,
+      };
+      const bytes = Buffer.from(JSON.stringify(keep));
+      // A rejected picture is still a charge. Settling the bill the provider
+      // priced is not approval of the image; refusing to settle it because the
+      // image was refused is how a known amount became an unknown one.
+      return result.evidence
+        ? { bytes, evidence: result.evidence }
+        : { bytes, unknownReason: result.unknownReason ?? "the provider answered and its charge was never stated" };
     },
   });
   if (bought.kind !== "bought") return stopped(bought.reason);
 
   const renderCents = bought.evidence.amountMicroUsd / 10_000;
-  const patchPng = await sharp(bought.bytes).resize(LOCAL_PATCH_CROP.width, LOCAL_PATCH_CROP.height, { fit: "fill" }).png().toBuffer();
+  // Re-read from the retained envelope, never from what this process happens to
+  // remember: a replay has to reach the same conclusion about the same bytes.
+  let painted: RetainedRender;
+  try { painted = JSON.parse(bought.bytes.toString()) as RetainedRender; }
+  catch { return refusedRender(`${renderKey}: the retained render cannot be read`, renderCents); }
+  if (painted.rejected !== null || !painted.bytesBase64) {
+    return refusedRender(painted.rejected ?? `${renderKey}: nothing usable was retained`, renderCents);
+  }
+  const patchPng = await sharp(Buffer.from(painted.bytesBase64, "base64")).resize(LOCAL_PATCH_CROP.width, LOCAL_PATCH_CROP.height, { fit: "fill" }).png().toBuffer();
   const seam = await analysePatchSeam(input.composedPng, crop, patchPng, { allowedRect: { left: 0, top: 0, ...LOCAL_PATCH_CROP } });
   const fade = seam.verdict === "clean" || seam.verdict === "fade-recommended";
   const candidate = await applyLocalPatch(input.composedPng, crop, patchPng, { fade, report: seam });
@@ -227,6 +325,13 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
     hide: hide.id, prompt: sha(Buffer.from(localPatchJudgePrompt(hide.id, expectation))),
     before: sha(beforePng), after: sha(afterPng), identity: sha(input.judgeIdentityPng),
   });
+
+  // The render is bought and kept. If judging it cannot finish inside what is
+  // left, this slice ends here and the next one starts at the judgement - the
+  // picture is retained, so nothing is painted twice.
+  if (!timeFor(LOCAL_PATCH_JUDGE.timeoutMs) && await wouldDispatch(judgeKey)) {
+    return deferred(`${judgeKey}: the patch is kept, and there is not enough of this request left to judge it`, renderCents);
+  }
 
   const ask = deps.judge ?? ((request: LocalPatchJudgeRequest) => judgeLocalPatch(input.apiKey, request));
   const judged = await purchaseOnce(deps, {
@@ -285,6 +390,7 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
     accepted,
     refusedBecause: accepted ? null : keep.wireFault !== null ? "wire" : "judge",
     stoppedReason: null,
+    renderFault: null,
     patchPng,
     shippingPng: shipping,
     composedPng: accepted ? candidate : null,
