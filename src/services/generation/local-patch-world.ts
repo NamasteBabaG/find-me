@@ -8,8 +8,9 @@ import { env } from "../../lib/env";
 import { finishLocalPatchGame } from "./local-patch-player";
 import { deliverGameMail } from "../publish.service";
 import { SYSTEM } from "../audit.service";
+import { localPatchAttemptPlan, localPatchSettled, LOCAL_PATCH_NORMAL_ATTEMPTS } from "../../domain/scene/local-patch-attempts";
 import {
-  LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, nextLocalPatchAttempt, runLocalPatchHide,
+  LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, runLocalPatchHide,
   type LocalPatchHideDeps, type LocalPatchHideOutcome,
 } from "./local-patch-hide";
 
@@ -82,13 +83,6 @@ export function localPatchBoardBlockedReason(board: LocalPatchBoard): string | n
 
 export function localPatchBoardFor(sceneSlug: string): LocalPatchBoard | null {
   return boardsBySlug.get(sceneSlug) ?? null;
-}
-
-/** A hide nobody needs to touch again: painted, or out of attempts. */
-function settledHide(row: { status: string; attempts: number } | undefined): boolean {
-  if (!row) return false;
-  if (row.status === "GENERATED" || row.status === "APPROVED") return true;
-  return nextLocalPatchAttempt(row).exhausted;
 }
 
 export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHideDeps, gameId: string, options: {
@@ -175,7 +169,11 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const stateOf = (sceneId: string, targetId: string) =>
     rows.find(r => r.targetInstance.gameSceneId === sceneId && r.targetInstance.targetId === targetId);
 
-  const todo = work.filter(item => !settledHide(stateOf(item.sceneId, item.hide.targetId)));
+  const allowRepair = env().APP_ENV === "qa";
+  const attemptLimit = allowRepair ? LOCAL_PATCH_MAX_ATTEMPTS : LOCAL_PATCH_NORMAL_ATTEMPTS;
+  const settledHide = (row: { status: string; attempts: number } | undefined) => localPatchSettled(row, attemptLimit);
+  const plan = localPatchAttemptPlan(work.map(item => stateOf(item.sceneId, item.hide.targetId)), allowRepair);
+  const todo = plan.indices.map(index => work[index]!);
   const outcomes: LocalPatchHideOutcome[] = [];
   const limit = Math.max(1, options.maxHides ?? LOCAL_PATCH_HIDES_PER_SLICE);
   let paused = false;
@@ -185,6 +183,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     for (const item of todo.slice(0, limit)) {
       if (options.hardDeadlineAt !== undefined && options.hardDeadlineAt - Date.now() < LOCAL_PATCH_MIN_SLICE_MS) break;
       const outcome = await runLocalPatchHide(c, { ...deps, fence }, { gameId, board: item.board, hide: item.hide,
+        finalRepair: plan.finalRepair,
         ...(options.hardDeadlineAt === undefined ? {} : { deadlineAt: options.hardDeadlineAt }) });
       outcomes.push(outcome);
       if (outcome.state === "held") {
@@ -227,7 +226,9 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     });
   }
 
-  const left = todo.filter(item => {
+  // Include failed normal attempts that were deliberately absent from this
+  // slice's todo. The final normal completion must queue the repair pass.
+  const left = work.filter(item => {
     const row = after.find(r => r.targetInstance.gameSceneId === item.sceneId && r.targetInstance.targetId === item.hide.targetId);
     return !settledHide(row);
   });

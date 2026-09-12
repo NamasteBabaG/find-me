@@ -10,7 +10,7 @@ The first character is generated with the real, hash-verified atlas of painted b
 
 1. Regular draft, name/age, photo, one-world package, checkout.
 2. Queue identity stage: packaged-art preflight, one retained identity purchase, style review, approved illustrated avatar.
-3. Local-patch queue: 27 authored placements, at most two render attempts per placement across restarts, one judge after local composition.
+3. Local-patch queue: 27 authored placements, at most two normal render attempts per placement across restarts, one judge after local composition. On QA, after every normal placement concludes, each failed hide gets exactly one final repair (attempt 3). Passing hides are never repurchased; failed third attempts require human review.
 4. Render and judge purchases share the existing $4 world ledger. Retention precedes settlement; unknown charges hold the world and never silently become free or trigger repurchase.
 5. Accepted crops become owned assets and targets with rect, hitRect and anchor. The same accepted patch is used for replay variants A/B.
 6. Only 27 currently hash-bound passing appearances can produce READY. The fenced transaction saves nine scene configurations and the game, honors original-photo deletion, then sends the ready notification. Email failure does not revoke a playable game.
@@ -33,6 +33,12 @@ Version 6 is selected explicitly for new local-patch games; legacy catalog defau
 Synthetic verification proves orchestration, not the visual quality of a new paid generation. Record the live deployment and paid visual check separately below.
 
 ## Live verification
+
+### One end-of-world repair pass (authorized 12 September)
+
+The Omer world finished its normal pass with 20 passing and seven refused placements, at a usage-based estimated $2.776271, no unsettled reservations. Guy authorized one further attempt per refused placement and the same behavior for future QA worlds. The $4 cap is unchanged. This is not blanket permission to resume historical held games.
+
+Normal attempt 1/2 prompts and purchase fingerprints are unchanged. Repair 3 appends directions selected only from known failed judge checks (especially painterly style and scale). Those directions are derived from the previous persisted judge receipt, which remains unchanged while repair 3 is PENDING. A restart replays that same purchase rather than requesting attempt 4. The private deletion inventory includes all three attempts. The explicit QA-only resume tool requeues a named completed normal-pass game without resetting counts, charges, identity, or passing assets; it validates the ledger and records operator authorization.
 
 ### First live run: deadline starvation correction
 

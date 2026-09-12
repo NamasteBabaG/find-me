@@ -56,15 +56,37 @@ export const LOCAL_PATCH_POSE_WORDING: Readonly<Record<LocalPatchPose, PoseWordi
 
 export const LOCAL_PATCH_PROMPT_VERSION = "local-patch-prompt/v6";
 
+const REPAIR_DIRECTIONS = {
+  styleMatch: "Use the reference ONLY for recognizable identity. Repaint the face, hair and clothes with the SAME simplified brushwork, line thickness, matte shading and local saturation as nearby board people. Do not preserve photographic skin detail or a bright photographic shirt. Scene illustration overrides reference rendering and outfit texture.",
+  scaleRight: "Size the head and body for the stated age at this exact ground depth using surrounding people and objects. The mask is a maximum editable boundary, NOT a box to fill. Leave empty space when needed; do not enlarge the child to fill it.",
+  childPresent: "Make the recognizable reference child clearly visible inside the designated area; do not merely redraw the background.",
+  childOnlyOnce: "Show the reference child exactly once. Do not add duplicates elsewhere in the crop.",
+  childComplete: "Draw a complete plausible body under any natural occluder. Do not crop limbs or the head at the patch edge.",
+  pictureWhole: "Keep the scene coherent at every edge. If replacing someone, remove that person completely, with no orphaned limbs or clothing.",
+  groundContact: "Place the child on a real support at the correct depth and paint the local contact shadow wherever contact is visible.",
+} as const;
+export type LocalPatchRepairCheck = keyof typeof REPAIR_DIRECTIONS;
+
+/** Only known check codes enter the prompt, never arbitrary model prose. */
+export function localPatchRepairChecks(judgeJson: string | null): LocalPatchRepairCheck[] {
+  try {
+    const value = JSON.parse(judgeJson ?? "null");
+    const verdict = value?.verdict;
+    return (Object.keys(REPAIR_DIRECTIONS) as LocalPatchRepairCheck[]).filter(check =>
+      verdict?.[check] === "fail" || (Array.isArray(verdict?.faults) && verdict.faults.some((fault: { check?: string }) => fault?.check === check)));
+  } catch { return []; }
+}
+
 export type LocalPatchPromptInput = {
   /** What the child is on, in the board's own words: "beach sand", "wet crossing". */
   readonly ground: string;
   readonly pose: LocalPatchPose;
   /** The age the parent stated for the photograph. Never guessed. */
   readonly ageYears?: number | null;
+  readonly repairChecks?: readonly LocalPatchRepairCheck[];
 };
 
-export function localPatchPrompt({ ground, pose, ageYears }: LocalPatchPromptInput): string {
+export function localPatchPrompt({ ground, pose, ageYears, repairChecks }: LocalPatchPromptInput): string {
   if (ageYears != null && !validChildAge(ageYears)) throw new Error("LOCAL_PATCH: invalid child age");
   const wording = LOCAL_PATCH_POSE_WORDING[pose];
   return [
@@ -95,5 +117,7 @@ export function localPatchPrompt({ ground, pose, ageYears }: LocalPatchPromptInp
     "",
     "Do NOT add any other person or animal anywhere in the crop - only the reference child.",
     "No part of the child may be sliced off by a straight edge that is not an object; being hidden behind something in front of them is fine.",
+    ...(repairChecks === undefined ? [] : ["", "FINAL REPAIR PASS v1. The previous attempt was not approved. Correct the following without changing the child's identity, stated age, position or requested pose:",
+      ...(repairChecks.length ? repairChecks : ["styleMatch", "scaleRight"] as const).map(check => REPAIR_DIRECTIONS[check])]),
   ].join("\n");
 }

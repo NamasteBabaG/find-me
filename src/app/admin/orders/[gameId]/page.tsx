@@ -13,6 +13,7 @@ import { ComposedSprite } from "@/game/components/ComposedSprite";
 import { Notice } from "@/ui/Shell";
 import { AttemptStrip } from "./AttemptStrip";
 import { BoardWizardRecoveryForm } from "./BoardWizardRecoveryForm";
+import { LocalPatchRepairResumeForm } from "./LocalPatchRepairResumeForm";
 import { adjustTargetAction, adminDeleteAction, adminRotateLinkAction, approveAction, recutAvatarAction, refundAction, regenTargetAction, requestPhotoAction, retryAction } from "../../actions";
 import { LOCAL_PATCH_NEEDS_RELEASE } from "@/services/generation/local-patch-world";
 
@@ -24,8 +25,8 @@ function judgeLabel(judge: { verdict: string; reason: string } | null): string {
   return "? השופט לא הכריע";
 }
 
-export default async function AdminOrderPage({ params, searchParams }: { params: Promise<{ gameId: string }>; searchParams: Promise<{ v?: string }> }) {
-  const [{ gameId }, { v }] = await Promise.all([params, searchParams]);
+export default async function AdminOrderPage({ params, searchParams }: { params: Promise<{ gameId: string }>; searchParams: Promise<{ v?: string; repair?: string }> }) {
+  const [{ gameId }, { v, repair }] = await Promise.all([params, searchParams]);
   const variant: "A" | "B" = v === "B" ? "B" : "A";
   const c = getContainer();
   const detail = await orderDetailForAdmin(c, gameId);
@@ -67,7 +68,10 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
         </div>
       </div>
       {game.lastError ? <Notice kind="danger">{game.lastError}</Notice> : null}
+      {repair === "queued" ? <Notice>ניסיונות התיקון אושרו ונוספו לתור היצירה בשרת.</Notice> : null}
+      {repair === "blocked" ? <Notice kind="danger">התיקון לא אושר. רעננו ובדקו את מצב המשחק, ההרשאה והחיובים לפני ניסיון נוסף.</Notice> : null}
       <BoardWizardRecoveryForm gameId={gameId} />
+      <LocalPatchRepairResumeForm gameId={gameId} />
 
       <div className="admin__grid">
         <div className="fm-stack fm-stack--3">

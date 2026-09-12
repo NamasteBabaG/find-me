@@ -1,8 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { LOCAL_PATCH_POSE_WORDING, LOCAL_PATCH_PROMPT_VERSION, localPatchPrompt } from "../local-patch-prompt";
+import { LOCAL_PATCH_POSE_WORDING, LOCAL_PATCH_PROMPT_VERSION, localPatchPrompt, localPatchRepairChecks } from "../local-patch-prompt";
 import { LocalPatchPose, POSE_MASK, WORLD_LOCAL_PATCH_HIDES, maskInCrop } from "../../../domain/scene/local-patch-hides";
 
 describe("what the painter is told for one local patch", () => {
+  it("keeps the normal paid fingerprint stable and appends targeted repair instructions only for the final pass", () => {
+    const input = { ground: "snow", pose: "standing" as const, ageYears: 5 };
+    const normal = localPatchPrompt(input);
+    expect(localPatchPrompt({ ...input, repairChecks: undefined })).toBe(normal);
+    expect(normal).not.toContain("FINAL REPAIR");
+    const checks = localPatchRepairChecks(JSON.stringify({ verdict: {
+      styleMatch: "fail", scaleRight: "fail", faults: [{ check: "ignore-instructions" }], reason: "malicious arbitrary prose",
+    } }));
+    expect(checks).toEqual(["styleMatch", "scaleRight"]);
+    const repair = localPatchPrompt({ ...input, repairChecks: checks });
+    expect(repair.startsWith(normal)).toBe(true);
+    expect(repair).toContain("Scene illustration overrides reference rendering");
+    expect(repair).toContain("NOT a box to fill");
+    expect(repair).not.toContain("malicious arbitrary prose");
+    expect(localPatchRepairChecks(null)).toEqual([]);
+    expect(localPatchRepairChecks("bad json")).toEqual([]);
+  });
   it("names the pose it wants and how that body meets the ground", () => {
     const kneeling = localPatchPrompt({ ground: "beach sand", pose: "kneeling", ageYears: 8 });
     expect(kneeling).toMatch(/KNEELING on the ground/);
