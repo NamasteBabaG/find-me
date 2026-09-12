@@ -38,6 +38,17 @@ export const LOCAL_PATCH_LEASE_MS = 6 * 60_000;
 export const LOCAL_PATCH_MIN_SLICE_MS = 240_000;
 /** How many hides one tick paints unless told otherwise. */
 export const LOCAL_PATCH_HIDES_PER_SLICE = 1;
+/**
+ * The job is parked here when a reservation is held for something that was
+ * never dispatched.
+ *
+ * A durable marker rather than a returned string, because the distinction is
+ * invisible from the ledger: the next tick would see an ordinary pending
+ * reservation, read it as a worker still waiting, and queue itself again
+ * forever without buying or finishing anything. This is what stops that, and
+ * what tells whoever looks why.
+ */
+export const LOCAL_PATCH_NEEDS_RELEASE = "local-patch:needs-release";
 
 export type LocalPatchSliceResult = {
   readonly gameId: string;
@@ -46,6 +57,8 @@ export type LocalPatchSliceResult = {
   /** Nothing was claimed - somebody else holds it, or it is not this engine's. */
   readonly claimed: boolean;
   readonly paused: boolean;
+  /** Why this world is waiting for a person, when it is. Durable on the job too. */
+  readonly attention: string | null;
   readonly outcomes: readonly LocalPatchHideOutcome[];
   /** Boards this build cannot paint, and why. Named rather than left to fail one by one. */
   readonly blocked: readonly { readonly boardId: string; readonly reason: string }[];
@@ -81,7 +94,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   readonly hardDeadlineAt?: number;
   readonly maxHides?: number;
 } = {}): Promise<LocalPatchSliceResult> {
-  const empty = { gameId, outcomes: [], blocked: [] as { boardId: string; reason: string }[] };
+  const empty = { gameId, outcomes: [], blocked: [] as { boardId: string; reason: string }[], attention: null as string | null };
   // A fresh tick owns one paid operation; do not start on an almost-expired request.
   if (options.hardDeadlineAt !== undefined && options.hardDeadlineAt - Date.now() < LOCAL_PATCH_MIN_SLICE_MS) {
     return { ...empty, pending: true, claimed: false, paused: false };
@@ -107,9 +120,21 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // and the job sat occupied until the lease ran out. Losing the race is fine -
   // the next tick takes it - but believing you won it with the wrong number is
   // not.
+  // A job parked for a person is not a job to take. Every OTHER failure stays
+  // claimable, because those do get better by trying again.
+  if (job.currentStep === LOCAL_PATCH_NEEDS_RELEASE) {
+    return { ...empty, pending: false, claimed: false, paused: false, attention: job.lastError ?? LOCAL_PATCH_NEEDS_RELEASE };
+  }
   const claimed = await c.db.generationJob.updateMany({
     where: { id: job.id, attempts: job.attempts,
-      OR: [{ status: { not: "RUNNING" } }, { updatedAt: { lt: new Date(Date.now() - LOCAL_PATCH_LEASE_MS) } }] },
+      // Both halves written as explicit alternatives, because `not` on a
+      // nullable column does NOT match a null one - SQL compares a null to
+      // anything as unknown, so a fresh job whose step is null would have been
+      // unclaimable and nothing would ever have been painted again.
+      AND: [
+        { OR: [{ currentStep: null }, { currentStep: { not: LOCAL_PATCH_NEEDS_RELEASE } }] },
+        { OR: [{ status: { not: "RUNNING" } }, { updatedAt: { lt: new Date(Date.now() - LOCAL_PATCH_LEASE_MS) } }] },
+      ] },
     data: { status: "RUNNING", attempts: { increment: 1 }, currentStep: "local-patch", lastError: null },
   });
   if (!claimed.count) return { ...empty, pending: true, claimed: false, paused: false };
@@ -153,6 +178,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const outcomes: LocalPatchHideOutcome[] = [];
   const limit = Math.max(1, options.maxHides ?? LOCAL_PATCH_HIDES_PER_SLICE);
   let paused = false;
+  let attention: string | null = null;
 
   try {
     for (const item of todo.slice(0, limit)) {
@@ -160,6 +186,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       const outcome = await runLocalPatchHide(c, { ...deps, fence }, { gameId, board: item.board, hide: item.hide,
         ...(options.hardDeadlineAt === undefined ? {} : { deadlineAt: options.hardDeadlineAt }) });
       outcomes.push(outcome);
+      if (outcome.state === "held") { attention = outcome.reason; break; }
       // A world that cannot buy anything is not a world to keep buying in.
       if (outcome.state === "stopped") break;
     }
@@ -197,10 +224,17 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const held = (await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId))).held;
   // The claim goes back either way: the next tick re-takes it. Holding it open
   // for the lease would make a paused world wait six minutes for nothing.
+  //
+  // Unless a person has to look. Then it is parked WITH the reason, where the
+  // job status screen reads it, and no tick takes it again until somebody says
+  // so - because the thing that is stuck is a committed reservation, and no
+  // amount of retrying resolves one of those.
   await c.db.generationJob.updateMany({ where: { id: job.id, attempts: claim },
-    data: { status: left.length ? "QUEUED" : "DONE", currentStep: left.length ? "local-patch" : null } });
+    data: attention
+      ? { status: "FAILED", currentStep: LOCAL_PATCH_NEEDS_RELEASE, lastError: attention.slice(0, 500) }
+      : { status: left.length ? "QUEUED" : "DONE", currentStep: left.length ? "local-patch" : null } });
 
-  return { gameId, pending: left.length > 0 && !paused && !held, claimed: true, paused, outcomes, blocked };
+  return { gameId, pending: left.length > 0 && !paused && !held && !attention, claimed: true, paused, attention, outcomes, blocked };
 }
 
 /**

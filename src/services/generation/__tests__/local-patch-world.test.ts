@@ -9,8 +9,8 @@ import { DbStorage } from "../../../infra/storage/db";
 import type { Container } from "../../container";
 import { tickGeneration } from "../queue";
 import {
-  LOCAL_PATCH_LEASE_MS, LOCAL_PATCH_STYLE, localPatchBoardBlockedReason, localPatchPainterDeps,
-  localPatchPrivateInventory, runLocalPatchWorldSlice,
+  LOCAL_PATCH_LEASE_MS, LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_STYLE, localPatchBoardBlockedReason,
+  localPatchPainterDeps, localPatchPrivateInventory, runLocalPatchWorldSlice,
 } from "../local-patch-world";
 import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wizard";
 import { sceneBySlug } from "../../scene-catalog.service";
@@ -275,6 +275,65 @@ describe("a world of hides, one slice at a time", () => {
       nowSpy.mockRestore();
     }
   }, 180_000);
+
+  it("parks a world whose reservation is held, and stops asking for ticks", async () => {
+    // The pathological case: the ledger itself outlasted the window, so a
+    // reservation is committed for something that was never dispatched. Nothing
+    // was charged - and nothing gets better by trying again, because from the
+    // outside that reservation looks exactly like a worker still waiting.
+    const { gameId } = await seed();
+    const started = Date.now();
+    const clock = { now: started };
+    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => clock.now);
+    try {
+      const stalled = worker();
+      // Reserving is the only thing on this path that WRITES to the ledger, so
+      // stalling the write stalls the reservation and nothing before it: the
+      // caller checked the window and it was true, and it is false by the time
+      // there is anything to dispatch.
+      const ledger = db.worldBudgetLedger as unknown as { updateMany: (a: unknown) => Promise<unknown>; create: (a: unknown) => Promise<unknown> };
+      const realUpdate = ledger.updateMany.bind(ledger), realCreate = ledger.create.bind(ledger);
+      ledger.updateMany = async a => { clock.now += 300_000; return realUpdate(a); };
+      ledger.create = async a => { clock.now += 300_000; return realCreate(a); };
+
+      let first;
+      try {
+        first = await runLocalPatchWorldSlice(c, stalled.deps, gameId, { hardDeadlineAt: started + 290_000 });
+      } finally {
+        ledger.updateMany = realUpdate; ledger.create = realCreate;
+      }
+      expect(stalled.dispatched, "zero provider calls").toEqual([]);
+      expect(first.attention, "the reason has to leave the function").toMatch(/needs releasing by hand/);
+      expect(first.pending, "a world waiting for a person is not a world to keep ticking").toBe(false);
+
+      // Durable, and where the status screen reads it.
+      const job = await jobOf(gameId);
+      expect(job.status).toBe("FAILED");
+      expect(job.currentStep).toBe(LOCAL_PATCH_NEEDS_RELEASE);
+      expect(job.lastError).toMatch(/needs releasing by hand/);
+
+      // And three more ticks change nothing and buy nothing.
+      clock.now = started + 1_000_000;
+      for (let i = 0; i < 3; i++) {
+        const again = worker();
+        const later = await runLocalPatchWorldSlice(c, again.deps, gameId, { hardDeadlineAt: clock.now + 290_000 });
+        expect(again.dispatched, "still zero provider calls").toEqual([]);
+        expect(later.claimed).toBe(false);
+        expect(later.pending).toBe(false);
+        expect(later.attention).toMatch(/needs releasing by hand/);
+      }
+      // No charge was invented for any of it.
+      const audit = await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId));
+      expect(audit.settledMicroUsd).toBe(260_000);
+      expect(audit.held).toBe(false);
+      // The attempt is intact, so releasing the reservation resumes it.
+      const [row] = await db.targetVariantAsset.findMany({ where: { targetInstance: { gameScene: { gameId } } } });
+      expect(row?.status).toBe("PENDING");
+      expect(row?.attempts).toBe(1);
+    } finally {
+      nowSpy.mockRestore();
+    }
+  }, 240_000);
 
   it("names the boards this build cannot paint instead of failing on them one by one", async () => {
     const { gameId } = await seed({ scenes: [{ slug: "tokyo", version: 5 }, { slug: "sydney", version: 5 }] });

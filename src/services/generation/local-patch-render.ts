@@ -132,6 +132,16 @@ export type LocalPatchAttempt = {
   readonly costUnknown: boolean;
   /** True when nothing was bought: both purchases came back from the ledger. */
   readonly replayed: boolean;
+  /**
+   * A reservation is held for something that was never dispatched, and only a
+   * person can resolve it.
+   *
+   * Separate from every other refusal because it is the only one that does not
+   * get better by waiting: the money is committed, no charge happened, and a
+   * later tick cannot tell this reservation from a worker still waiting on a
+   * provider. Whoever reads this has to stop asking and say so.
+   */
+  readonly needsOperator: boolean;
 };
 
 /** What to hold while a render or a judgement is in flight. */
@@ -234,8 +244,12 @@ const stopped = (reason: string, renderCents = 0, costUnknown = true): LocalPatc
   accepted: false, refusedBecause: "stopped", stoppedReason: reason, renderFault: null,
   patchPng: null, shippingPng: null, composedPng: null, seam: null, verdict: null, wireFault: null,
   promptVersion: LOCAL_PATCH_PROMPT_VERSION, judgedSha256: null,
-  renderCents, judgeCents: 0, costUnknown, replayed: false,
+  renderCents, judgeCents: 0, costUnknown, replayed: false, needsOperator: false,
 });
+
+/** Reserved and never dispatched. Nothing was charged; a person has to unstick it. */
+const heldForOperator = (reason: string, renderCents = 0): LocalPatchAttempt =>
+  ({ ...stopped(reason, renderCents, false), needsOperator: true });
 
 /**
  * Bought, and not a picture anybody can use. The charge is settled and known;
@@ -245,7 +259,7 @@ const refusedRender = (fault: string, renderCents: number): LocalPatchAttempt =>
   accepted: false, refusedBecause: "render", stoppedReason: null, renderFault: fault,
   patchPng: null, shippingPng: null, composedPng: null, seam: null, verdict: null, wireFault: null,
   promptVersion: LOCAL_PATCH_PROMPT_VERSION, judgedSha256: null,
-  renderCents, judgeCents: 0, costUnknown: false, replayed: false,
+  renderCents, judgeCents: 0, costUnknown: false, replayed: false, needsOperator: false,
 });
 
 export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: LocalPatchAttemptInput): Promise<LocalPatchAttempt> {
@@ -300,7 +314,7 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
         : { bytes, unknownReason: result.unknownReason ?? "the provider answered and its charge was never stated" };
     },
   });
-  if (bought.kind === "deferred") return deferred(bought.reason);
+  if (bought.kind === "deferred") return bought.reserved ? heldForOperator(bought.reason) : deferred(bought.reason);
   if (bought.kind !== "bought") return stopped(bought.reason);
 
   const renderCents = bought.evidence.amountMicroUsd / 10_000;
@@ -372,7 +386,7 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
       };
     },
   });
-  if (judged.kind === "deferred") return deferred(judged.reason, renderCents);
+  if (judged.kind === "deferred") return judged.reserved ? heldForOperator(judged.reason, renderCents) : deferred(judged.reason, renderCents);
   if (judged.kind !== "bought") return stopped(judged.reason, renderCents);
 
   // Re-derived from the retained reply, never read back from a stored verdict.
@@ -395,6 +409,7 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
     refusedBecause: accepted ? null : keep.wireFault !== null ? "wire" : "judge",
     stoppedReason: null,
     renderFault: null,
+    needsOperator: false,
     patchPng,
     shippingPng: shipping,
     composedPng: accepted ? candidate : null,

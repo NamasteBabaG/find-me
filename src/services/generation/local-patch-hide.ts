@@ -73,7 +73,12 @@ export type LocalPatchHideState =
   /** Out of attempts. A person looks now. */
   | "gave-up"
   /** The purchase could not go ahead. Not a statement about the picture. */
-  | "stopped";
+  | "stopped"
+  /**
+   * A reservation is held for something that was never dispatched. Nothing was
+   * charged, nothing will get better by waiting, and a person has to release it.
+   */
+  | "held";
 
 export type LocalPatchHideOutcome = {
   readonly boardId: string;
@@ -299,9 +304,13 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   };
 
   if (attemptResult.refusedBecause === "stopped") {
-    // Deliberately NOT concluded: nothing was learned about the picture, and the
-    // next pass has to resume this attempt rather than buy a new one.
-    return stopped({ ...started, ...money }, attemptResult.stoppedReason ?? "the purchase could not go ahead");
+    // Deliberately NOT concluded either way: nothing was learned about the
+    // picture, and the next pass has to resume this attempt rather than buy a
+    // new one. A held reservation keeps its attempt number for exactly that
+    // reason - once a person has released it, the same attempt runs again.
+    const reason = attemptResult.stoppedReason ?? "the purchase could not go ahead";
+    if (attemptResult.needsOperator) return { ...started, ...money, state: "held", reason };
+    return stopped({ ...started, ...money }, reason);
   }
 
   if (!attemptResult.accepted) {

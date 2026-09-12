@@ -21,6 +21,8 @@ export interface TickResult {
   status: string | null;
   /** Whether the game still needs another tick. */
   pending: boolean;
+  /** Why it is waiting for a person, when it is. */
+  attention?: string | null;
 }
 
 /** The oldest game that still has work to do. */
@@ -54,7 +56,7 @@ export async function tickGeneration(c: Container, gameId: string | null, budget
     if (!painter) return { gameId: id, status: statusOf(before), pending: false };
     const result = await runLocalPatchWorldSlice(c, painter, id, { hardDeadlineAt: now + hardMs });
     const after = await c.db.game.findUnique({ where: { id }, select: { status: true } });
-    return { gameId: id, status: after ? statusOf(after) : null, pending: result.pending };
+    return { gameId: id, status: after ? statusOf(after) : null, pending: result.pending, attention: result.attention };
   }
   if (before.styleVersion === BOARD_WIZARD_STYLE) {
     if (!boardWizardEnabled()) return { gameId: id, status: statusOf(before), pending: false };
