@@ -40,6 +40,10 @@ Guy explicitly approved the current Omer world as-is and asked that style change
 
 Style correctness of a newly paid v2/v4 character remains a visual acceptance test, not something passing synthetic tests establish. The current Omer identity is not replaced to obtain that test.
 
+Release `f98a31a` was built in Linux and promoted to **find-me-qa only**, deployment `dpl_5R1VFWKjh2QBvYX4JYFKjYGP3NRX` (`find-me-2v2r43gfy-smallheroes-projects.vercel.app`). All nine art pairs and the packaged trace audit passed; no private or missing assets. The authenticated admin form was used with its explicit as-is checkbox. Omer reached READY at `2026-09-12T13:23:59.881Z`, then DELIVERED. Live verification found nine configured boards and 27 separate human approvals. The digest of original judge JSON, attempts and per-hide costs was identical before/after (`b2e901a0c67579ffd0fa78a7329677f3`). The ledger remains 82 settled requests, $2.776271, with no new reservation or charge. Original-photo deletion followed the existing parent privacy choice; the illustrated identity and current crops were retained. The completed, paused generation monitor was deleted.
+
+Verification: 70 initial-style focused tests and 11 new real-SQLite manual-publication tests passed, including interrupted publication, unchanged bills/verdicts and hash/geometry tampering. Both TypeScript checks passed. The first broad run passed 2,330 tests; the final broader run passed 2,340 with 35 skipped and one 20-second timeout in an unchanged fixed-world staging test. That entire file passed 29/29 immediately in isolation; the timed-out case took 1.477 seconds. This is recorded as a broad-run timeout, not falsely reported as an entirely green final suite.
+
 ### One end-of-world repair pass (authorized 12 September)
 
 The Omer world finished its normal pass with 20 passing and seven refused placements, at a usage-based estimated $2.776271, no unsettled reservations. Guy authorized one further attempt per refused placement and the same behavior for future QA worlds. The $4 cap is unchanged. This is not blanket permission to resume historical held games.
