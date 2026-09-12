@@ -6,20 +6,48 @@ import { parseGameConfig } from "@/domain/game/config";
 import { GameShell } from "@/game/components/GameShell";
 import { BOARD_WIZARD_STYLE, readBoardWizard } from "@/services/generation/board-conditioned-wizard";
 import { composePartialBoardWizardReview } from "@/services/generation/board-wizard-partial-review";
+import { LOCAL_PATCH_STYLE } from "@/services/generation/local-patch-world";
+import { localPatchBoardForVersion } from "@/domain/scene/local-patch-catalog";
+import { withFreshAssetUrls } from "@/services/asset.service";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "בדיקת משחק פרטית", robots: { index: false, follow: false } };
 
-/** Owner-session preview, not a share token or published READY game. */
+/** Private owner/admin review. The local-patch branch never persists play. */
 export default async function QaGameReview({ params }: { params: Promise<{ gameId: string }> }) {
   if (env().APP_ENV !== "qa") notFound();
   const user = await currentUser();
   if (!user) notFound();
   const { gameId } = await params, c = getContainer();
-  const game = await c.db.game.findUnique({ where: { id: gameId }, include: { jobs: true, scenes: { orderBy: { orderIndex: "asc" } } } });
-  if (!game || game.deletedAt || !game.ownerId || game.styleVersion !== BOARD_WIZARD_STYLE || game.status !== "MANUAL_REVIEW" || (game.ownerId !== user.id && !isAdminEmail(user.email))) notFound();
+  const game = await c.db.game.findUnique({ where: { id: gameId }, include: { jobs: true, scenes: { orderBy: { orderIndex: "asc" } },
+    childProfile: { select: { ownerId: true, deletedAt: true } } } });
+  if (!game || game.deletedAt || !game.ownerId || (game.ownerId !== user.id && !isAdminEmail(user.email))) notFound();
   const job = game.jobs.find(j => j.id === `job_${gameId}`);
   if (!job || job.status !== "DONE") notFound();
+  if (game.styleVersion === LOCAL_PATCH_STYLE) {
+    if (!["READY", "DELIVERED"].includes(game.status) || !game.configJson || !game.readyAt
+      || !game.childProfile || game.childProfile.deletedAt || game.childProfile.ownerId !== game.ownerId
+      || game.scenes.length !== 9 || new Set(game.scenes.map(scene => scene.sceneSlug)).size !== 9
+      || game.scenes.some(scene => scene.sceneVersion !== 8 || scene.generationStatus !== "GENERATED" || !scene.configJson)) notFound();
+    let published;
+    try { published = parseGameConfig(game.configJson); } catch { notFound(); }
+    const gameAsset = (url: string) => /^\/api\/assets\/[A-Za-z0-9_-]+(?:\?|$)/.test(url);
+    if (published.gameId !== gameId || published.styleVersion !== LOCAL_PATCH_STYLE || published.packageTier !== "ONE_WORLD"
+      || !gameAsset(published.child.avatarUrl)
+      || published.scenes.length !== 9 || new Set(published.scenes.map(scene => scene.slug)).size !== 9 || published.scenes.some(scene => {
+        const row = game.scenes.find(item => item.sceneSlug === scene.slug), board = localPatchBoardForVersion(scene.slug, 8);
+        return !row || !board || scene.version !== 8 || scene.playMode !== "find-any" || scene.appearancesPerBoard !== 5
+          || scene.findsRequiredToAdvance !== 3 || scene.targets.length !== 5
+          || board.hides.some(hide => !scene.targets.some(target => target.id === hide.targetId))
+          || scene.targets.some(target => target.sprite.kind !== "image" || !gameAsset(target.sprite.url)
+            || !target.sprite.rect || !target.sprite.hitRect || !target.sprite.anchor);
+      })) notFound();
+    const config = withFreshAssetUrls(c, published);
+    return <><p role="status" className="fm-small fm-container">
+      תצוגת QA פרטית של המשחק שפורסם — 9 לוחות ו־45 מחבואים. ההתקדמות ואירועי המשחק בתצוגה זו אינם נשמרים; המשחק של המשפחה אינו משתנה.
+    </p><GameShell config={config} readOnlyPreview parentZoneHref={`/library/${gameId}`} /></>;
+  }
+  if (game.styleVersion !== BOARD_WIZARD_STYLE || game.status !== "MANUAL_REVIEW") notFound();
   const record = readBoardWizard(job.stepsJson);
   if (!["review-required", "held"].includes(record.state) || record.gameId !== gameId || record.ownerId !== game.ownerId) notFound();
   const partial = !game.configJson;
