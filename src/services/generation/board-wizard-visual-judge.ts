@@ -1,7 +1,7 @@
 import sharp from "sharp";
 import type { Prisma } from "@prisma/client";
 import { OpenAiPatchJudge, judgementForJson, judgeCharge } from "../../infra/generation/judge";
-import { BOARD_JUDGE_MODEL, BOARD_JUDGE_VERSION, BOARD_CHECKS, boardJudgePrompt } from "../../infra/generation/board-verdict";
+import { BOARD_JUDGE_MODEL, BOARD_JUDGE_EFFORT, BOARD_JUDGE_VERSION, BOARD_CHECKS, boardJudgePrompt } from "../../infra/generation/board-verdict";
 import type { PatchJudge, PatchJudgeInput, PatchJudgement } from "../../infra/generation/types";
 import type { WorldBudget, BudgetJson } from "./world-budget";
 import { boardConditioningHash } from "./board-conditioned-source";
@@ -9,7 +9,9 @@ import { sha256Bytes } from "./fixed-sprite";
 
 type BlobDb = Pick<Prisma.TransactionClient, "fileBlob">;
 const CONTENT_TYPE = "application/vnd.findme.board-wizard-visual+json";
-export const BOARD_WIZARD_VISUAL_VERSION = "board-wizard-final-composite-sol-high/v1";
+/** Names the effort it actually runs at, so a retained receipt from the HIGH
+ * judge can never be mistaken for one of these. */
+export const BOARD_WIZARD_VISUAL_VERSION = "board-wizard-final-composite-sol-low/v1";
 export function boardWizardVisualKeys(worldId: string, boardId: string, slotId: string, attempt: number) {
   const base = `private:board-wizard-visual:${boardConditioningHash([worldId, boardId, slotId, attempt])}`;
   return { receipt: `${base}:receipt`, wire0: `${base}:wire0`, wire1: `${base}:wire1` };
@@ -35,7 +37,9 @@ export async function judgeBoardWizardAppearance(deps: {
     await sharp(input.reference).resize(512, 512, { fit: "inside" }).png().toBuffer(),
   ];
   const imageHashes = images.map(sha256Bytes), prompt = boardJudgePrompt(input.childName, input.ageYears, input.recipe);
-  const fingerprint = boardConditioningHash({ version: BOARD_WIZARD_VISUAL_VERSION, model: BOARD_JUDGE_MODEL, effort: "high", tries: 1, policy: "strong", playerBindingSha256: request.playerBindingSha256, prompt, imageHashes });
+  // The effort comes from the judge's own constant. Writing it again here is how
+  // the fingerprint could claim one effort while the request sent another.
+  const fingerprint = boardConditioningHash({ version: BOARD_WIZARD_VISUAL_VERSION, model: BOARD_JUDGE_MODEL, effort: BOARD_JUDGE_EFFORT, tries: 1, policy: "strong", playerBindingSha256: request.playerBindingSha256, prompt, imageHashes });
   const keys = boardWizardVisualKeys(request.worldId, request.boardId, request.slotId, request.attempt), requestKey = `board:${request.boardId}:visual:${request.slotId}:1`;
   const saved = await deps.db.fileBlob.findUnique({ where: { key: keys.receipt } });
   if (saved) {

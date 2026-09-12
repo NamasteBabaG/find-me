@@ -7,6 +7,7 @@ import type { FixedSourceResult } from "../../../infra/generation/openai-fixed-s
 import { WorldBudget, auditWorldBudget, type WorldBudgetSnapshot, type WorldChargeEvidence } from "../world-budget";
 import { sha256Bytes } from "../fixed-sprite";
 import { repositionBoardConditionedAppearances, type BoardRepositionRequest } from "../board-conditioned-reposition";
+import { BOARD_POSE_OBSERVER_SETTINGS } from "../../../infra/generation/board-pose-observer";
 
 const bound = (png: Buffer) => ({ png, sha256: sha256Bytes(png) });
 function clone<T>(v: T): T {
@@ -84,7 +85,7 @@ describe("free board-conditioned geometry revision", () => {
     first.receipt = { version: "board-pose-observation-receipt/v1", fingerprint: first.fingerprint,
       sourceImageSha256: first.sheetSha256, sourceRgbaSha256: capture.sourceRgbaSha256, wireImageSha256: capture.wireImageSha256,
       promptSha256: capture.promptSha256, slots: capture.slots,
-      coordinates: "native-1024-sheet-pixel-edges", modelRequested: "gpt-5.6-sol", modelReturned: "gpt-5.6-sol", effort: "high",
+      coordinates: "native-1024-sheet-pixel-edges", modelRequested: "gpt-5.6-sol", modelReturned: "gpt-5.6-sol", effort: BOARD_POSE_OBSERVER_SETTINGS.effort,
       requestId: "fixture-measure", responseId: "chatcmpl-fixture-1", httpStatus: 200, serviceTier: null, finishReason: "stop",
       responseText: answerFor(first), rawUsage: { tokens: 1 }, costUnknown: false, costCents: .01, attempts: 1 };
     const second = clone(first);

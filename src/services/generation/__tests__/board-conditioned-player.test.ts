@@ -9,6 +9,7 @@ import { extractBoardSprites } from "../board-sprite-extraction";
 import { composeSimplePeek, findSimplePeekCut } from "../simple-peek";
 import { sha256Bytes } from "../fixed-sprite";
 import { auditWorldBudget } from "../world-budget";
+import { BOARD_POSE_OBSERVER_SETTINGS } from "../../../infra/generation/board-pose-observer";
 import { BOARD_PLAYER_REVIEW_DIMENSIONS, bindBoardConditionedPlayerGame, prepareBoardConditionedPlayerBoard,
   type BoardConditionedPlayerRequest, type BoardConditionedPrivateUrlReceipt, type BoardConditionedSemanticReview } from "../board-conditioned-player";
 
@@ -44,7 +45,7 @@ beforeAll(async () => {
   const receipt: BoardPoseObservationReceipt = { version: "board-pose-observation-receipt/v1", fingerprint: observed.fingerprint,
     sourceImageSha256: observed.capture.sourceImageSha256, sourceRgbaSha256: observed.capture.sourceRgbaSha256,
     wireImageSha256: observed.capture.wireImageSha256, promptSha256: observed.capture.promptSha256, slots: observed.capture.slots,
-    coordinates: "native-1024-sheet-pixel-edges", modelRequested: "gpt-5.6-sol", modelReturned: "gpt-5.6-sol", effort: "high",
+    coordinates: "native-1024-sheet-pixel-edges", modelRequested: "gpt-5.6-sol", modelReturned: "gpt-5.6-sol", effort: BOARD_POSE_OBSERVER_SETTINGS.effort,
     requestId: evidence.providerRequestId, responseId: "synthetic-response", httpStatus: 200, serviceTier: "default", finishReason: "stop",
     responseText: JSON.stringify({ figureCount: 3, extraProps: false, cells: measurement.sources.map(s => ({ slotId: s.slotId, pose: s.pose,
       poseMatches: true, visibleHeadArmsComplete: true, eye: { status: "observed", point: s.eye, confidence: .96, reason: "Visible pupil midpoint" },

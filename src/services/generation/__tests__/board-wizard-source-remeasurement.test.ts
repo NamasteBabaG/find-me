@@ -5,6 +5,7 @@ import type { BoardConditioningInput } from "../board-conditioned-source";
 import type { generateBoardConditionedAppearances } from "../board-conditioned-generation";
 import { sha256Bytes } from "../fixed-sprite";
 import { needsBoardSourceRemeasurement } from "../board-wizard-source-remeasurement";
+import { BOARD_POSE_OBSERVER_SETTINGS } from "../../../infra/generation/board-pose-observer";
 
 const policy = { reserveMicroUsd: 300_000, providerNamespace: "synthetic:test", timeoutMs: 1000 };
 type Result = Awaited<ReturnType<typeof generateBoardConditionedAppearances>>;
@@ -24,7 +25,7 @@ async function fixture(draw?: (rgba: Buffer) => void) {
   }) };
   const receipt: BoardPoseObservationReceipt = { version: "board-pose-observation-receipt/v1", fingerprint: prepared.fingerprint, sourceImageSha256: sha256Bytes(png),
     sourceRgbaSha256: prepared.capture.sourceRgbaSha256, wireImageSha256: prepared.capture.wireImageSha256, promptSha256: prepared.capture.promptSha256,
-    slots, coordinates: "native-1024-sheet-pixel-edges", modelRequested: "gpt-5.6-sol", modelReturned: "gpt-5.6-sol", effort: "high", requestId: "req-test", responseId: "chatcmpl-test",
+    slots, coordinates: "native-1024-sheet-pixel-edges", modelRequested: "gpt-5.6-sol", modelReturned: "gpt-5.6-sol", effort: BOARD_POSE_OBSERVER_SETTINGS.effort, requestId: "req-test", responseId: "chatcmpl-test",
     httpStatus: 200, serviceTier: "default", finishReason: "stop", responseText: JSON.stringify(answer), rawUsage: { prompt_tokens: 2000, completion_tokens: 400 }, costUnknown: false, costCents: 1.8, attempts: 1 };
   const input = { slots: slots.map(s => ({ slot: { id: s.slotId, pose: s.pose, mode: "open" } })) } as BoardConditioningInput;
   const result = { state: "source-review-required", source: { kind: "generated", png, pngSha256: sha256Bytes(png) },

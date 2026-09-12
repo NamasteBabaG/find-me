@@ -30,7 +30,7 @@ export async function needsBoardSourceRemeasurement(input: BoardConditioningInpu
       || r.sourceRgbaSha256 !== expected.capture.sourceRgbaSha256 || r.wireImageSha256 !== expected.capture.wireImageSha256 || r.promptSha256 !== expected.capture.promptSha256
       || r.requestId !== m.evidence.providerRequestId || !r.responseId || r.costUnknown !== false || Math.ceil(r.costCents * 10_000) !== m.evidence.amountMicroUsd
       || m.evidence.providerNamespace !== policy.providerNamespace || m.evidence.model !== BOARD_POSE_OBSERVER_SETTINGS.model
-      || r.modelRequested !== BOARD_POSE_OBSERVER_SETTINGS.model || r.modelReturned !== BOARD_POSE_OBSERVER_SETTINGS.model || r.effort !== "high" || r.attempts !== 1
+      || r.modelRequested !== BOARD_POSE_OBSERVER_SETTINGS.model || r.modelReturned !== BOARD_POSE_OBSERVER_SETTINGS.model || r.effort !== BOARD_POSE_OBSERVER_SETTINGS.effort || r.attempts !== 1
       || r.coordinates !== "native-1024-sheet-pixel-edges" || r.finishReason !== "stop" || r.httpStatus === null || r.httpStatus < 200 || r.httpStatus >= 300
       || r.slots.length !== 3 || r.slots.some((s, i) => s.slotId !== expected.capture.slots[i]!.slotId || s.pose !== expected.capture.slots[i]!.pose)) return false;
     const parsed = boardPoseObservationSchema.safeParse(JSON.parse(r.responseText));
