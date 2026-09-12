@@ -40,7 +40,8 @@ export interface ViewportApi {
 
 const MAX_ZOOM_FACTOR = 4;
 
-export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>, stage: Size, onTap: (nx: number, ny: number) => void, options: { wheelZoom?: boolean } = {}): ViewportApi {
+export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>, stage: Size, onTap: (nx: number, ny: number) => void, options: { wheelZoom?: boolean; panPadding?: number } = {}): ViewportApi {
+  const panPadding = options.panPadding ?? 0;
   const [viewport, setViewport] = useState<Size>({ width: 0, height: 0 });
   const [transform, setTransform] = useState<ViewTransform>({ scale: 1, tx: 0, ty: 0 });
   const [isDragging, setDragging] = useState(false);
@@ -76,11 +77,11 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
     (t: ViewTransform) => {
       const vp = viewportRef.current;
       const f = fitRef.current;
-      const next = vp.width ? clampTransform(t, vp, stage, f, f * MAX_ZOOM_FACTOR) : t;
+      const next = vp.width ? clampTransform(t, vp, stage, f, f * MAX_ZOOM_FACTOR, panPadding) : t;
       transformRef.current = next;
       setTransform(next);
     },
-    [stage],
+    [stage, panPadding],
   );
 
   // Measure the container and fit on first layout / resize.
@@ -102,7 +103,7 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
         first = false;
         const t = centeredTransform(vp, stage, f);
         transformRef.current = t;
-        setTransform(clampTransform(t, vp, stage, f, f * MAX_ZOOM_FACTOR));
+        setTransform(clampTransform(t, vp, stage, f, f * MAX_ZOOM_FACTOR, panPadding));
       } else {
         // Keep the place being searched and the user's RELATIVE zoom. Keeping
         // absolute pixels made portrait → landscape stay unnecessarily zoomed.
@@ -113,14 +114,19 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
         const prev = transformRef.current;
         const cx = (previousViewport.width / 2 - prev.tx) / prev.scale / stage.width;
         const cy = (previousViewport.height / 2 - prev.ty) / prev.scale / stage.height;
-        const next = clampTransform(centerOnNormalized(cx, cy, f * (prev.scale / previousFit), vp, stage), vp, stage, f, f * MAX_ZOOM_FACTOR);
+        const next = clampTransform(centerOnNormalized(cx, cy, f * (prev.scale / previousFit), vp, stage), vp, stage, f, f * MAX_ZOOM_FACTOR, panPadding);
         transformRef.current = next;
         setTransform(next);
       }
     });
     ro.observe(el);
-    return () => ro.disconnect();
-  }, [containerRef, stage]);
+    return () => {
+      ro.disconnect();
+      if (raf.current) cancelAnimationFrame(raf.current);
+      raf.current = null;
+      pointers.current.clear();
+    };
+  }, [containerRef, stage, panPadding]);
 
   const cancelAnim = () => {
     if (raf.current) cancelAnimationFrame(raf.current);
@@ -133,7 +139,7 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
       const from = transformRef.current;
       const vp = viewportRef.current;
       const f = fitRef.current;
-      const to = vp.width ? clampTransform(target, vp, stage, f, f * MAX_ZOOM_FACTOR) : target;
+      const to = vp.width ? clampTransform(target, vp, stage, f, f * MAX_ZOOM_FACTOR, panPadding) : target;
       if (durationMs <= 0 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
         apply(to);
         return;
@@ -150,7 +156,7 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
       };
       raf.current = requestAnimationFrame(step);
     },
-    [apply, stage],
+    [apply, stage, panPadding],
   );
 
   const local = (clientX: number, clientY: number) => {

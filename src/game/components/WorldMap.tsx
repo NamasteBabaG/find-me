@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { gameWorlds, scenesOfWorld, type GameConfig, type PlayWorld } from "@/domain/game/config";
-import { sceneProgress, type GameProgress } from "@/domain/game/progress";
+import { gameStars, sceneCanAdvance, sceneFoundIds, sceneIsComplete, sceneIsPlayable, sceneProgress, type GameProgress } from "@/domain/game/progress";
 import { boardSlugs, isWorldComplete, nodeStates, type NodeState } from "@/domain/world";
 import { useGameText } from "../i18n";
 import { IslandGrid } from "./IslandGrid";
@@ -46,12 +46,16 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
   // how a two-world game reported 10/9 — and how world two's map lit up
   // because world one had been finished.
   const mine = useMemo(() => scenesOfWorld(config, world.slug), [config, world.slug]);
-  const completed = useMemo(() => mine.filter((s) => sceneProgress(progress, s.slug).completed).map((s) => s.slug), [mine, progress]);
-  const states = useMemo(() => nodeStates(world, { completedBoards: completed }), [world.nodes, completed]);
+  const completed = useMemo(() => mine.filter((s) => sceneIsComplete(progress, s)).map((s) => s.slug), [mine, progress]);
+  const passed = useMemo(() => mine.filter((s) => sceneCanAdvance(progress, s)).map((s) => s.slug), [mine, progress]);
+  const states = useMemo(() => nodeStates(world, { completedBoards: passed }), [world.nodes, passed]);
+  const free = mine.some(scene => scene.playMode === "find-any");
+  const stars = gameStars(progress, mine);
   const boards = useMemo(() => new Map(mine.map((s) => [s.slug, s])), [mine]);
   const done = completed.length;
   const total = world.nodes.length;
-  const complete = total > 0 && isWorldComplete(world, { completedBoards: completed });
+  const complete = total > 0 && isWorldComplete(world, { completedBoards: passed });
+  const fullyComplete = total > 0 && completed.length === total;
   const replayBoard = boardSlugs(world).find((slug) => boards.has(slug));
   const completionTitleId = useId();
 
@@ -110,7 +114,7 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
           <img src={config.child.avatarUrl} alt="" className="fm-sticker wmap__face" width={48} height={48} />
           <div>
             <h1 className="wmap__title">{world.name}</h1>
-            <p className="wmap__sub">{done === 0 ? world.tagline : tf(g.map.stamps, { done, total, piece: world.collectible.piece })}</p>
+            <p className="wmap__sub">{free ? tf(g.scene.worldStars, stars) : done === 0 ? world.tagline : tf(g.map.stamps, { done, total, piece: world.collectible.piece })}</p>
           </div>
         </div>
         <div className="wmap__actions">
@@ -119,9 +123,9 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
               🗺️ {g.hub.back}
             </button>
           ) : null}
-          {done > 0 ? (
+          {done > 0 || (free && stars.found > 0) ? (
             <button type="button" className="fm-btn fm-btn--secondary fm-btn--sm" onClick={onPassport}>
-              {world.collectible.icon} {done}/{total}
+              {free ? `★ ${stars.found}/${stars.total}` : `${world.collectible.icon} ${done}/${total}`}
             </button>
           ) : null}
         </div>
@@ -129,12 +133,12 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
 
       {complete ? (
         <section className="wmap__complete" aria-labelledby={completionTitleId}>
-          <div className="wmap__complete-count" aria-hidden>{done}/{total}</div>
+          <div className="wmap__complete-count" aria-hidden>{free ? `${stars.found}/${stars.total}` : `${done}/${total}`}</div>
           <div className="wmap__complete-body">
             <div role="status">
-              <h2 id={completionTitleId} className="wmap__complete-title">{world.completion.title}</h2>
+              <h2 id={completionTitleId} className="wmap__complete-title">{free && !fullyComplete ? g.scene.journeyFinished : world.completion.title}</h2>
               {/* Older saved configs can carry retired/gendered completion copy. */}
-              <p className="wmap__complete-text">{tf(g.map.completedText, { name: config.child.name })}</p>
+              <p className="wmap__complete-text">{free && !fullyComplete ? g.scene.keepSearching : tf(g.map.completedText, { name: config.child.name })}</p>
             </div>
             <p className="wmap__complete-replay">{g.map.completedReplay}</p>
             <div className="wmap__complete-actions">
@@ -163,9 +167,11 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
               const state: NodeState = states[node.boardSlug] ?? "future";
               const sp = sceneProgress(progress, node.boardSlug);
               const label = board?.name ?? node.boardSlug;
-              const playable = state !== "future";
+              const playable = board?.playMode === "find-any" ? sceneIsPlayable(progress, config, board) : state !== "future";
+              const boardComplete = board ? sceneIsComplete(progress, board) : sp.completed;
+              const count = board ? sceneFoundIds(progress, board).length : 0;
               return (
-                <li key={node.boardSlug} className={`wmap__node wmap__node--${state}`} style={{ left: `${node.x * 100}%`, top: `${node.y * 100}%` }}>
+                <li key={node.boardSlug} className={`wmap__node wmap__node--${state === "completed" && !boardComplete ? "visited" : state}`} style={{ left: `${node.x * 100}%`, top: `${node.y * 100}%` }}>
                   <button
                     type="button"
                     className="wmap__dot"
@@ -175,18 +181,19 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
                     // friendly way, that it is still ahead of them.
                     aria-disabled={playable ? undefined : true}
                     aria-current={state === "current" ? "step" : undefined}
-                    aria-label={`${node.routeIndex}. ${label} — ${stateLabel(g, state, sp.completed)}`}
+                    aria-label={`${node.routeIndex}. ${label} — ${board?.playMode === "find-any" ? tf(g.scene.boardStars, { found: count, total: board.targets.length }) : stateLabel(g, state, sp.completed)}`}
                     data-board={node.boardSlug}
                   >
                     <span className="wmap__icon" aria-hidden>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       {board ? <img src={board.art.thumbnail} alt="" loading="lazy" /> : null}
                     </span>
-                    {state === "completed" ? (
+                    {boardComplete ? (
                       <span className="wmap__stamp" aria-hidden>
                         {world.collectible.icon}
                       </span>
                     ) : null}
+                    {board?.playMode === "find-any" ? <span className="wmap__stars">★ {count}/{board.targets.length}</span> : null}
                   </button>
                   <span className={`wmap__label wmap__label--${node.labelAnchor}`} aria-hidden>
                     {label}

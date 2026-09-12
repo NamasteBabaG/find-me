@@ -3,11 +3,11 @@ import type { Container } from "../container";
 
 const run = vi.hoisted(() => vi.fn());
 const wizard = vi.hoisted(() => ({ enabled: false, run: vi.fn() }));
-vi.mock("../generation/pipeline", () => ({ runGenerationPipeline: run, RESUMABLE_STATUSES: ["PAID", "TARGETS_GENERATING", "SCENES_COMPOSING", "GENERATION_FAILED"] }));
+vi.mock("../generation/pipeline", () => ({ runGenerationPipeline: run, LEASE_MS: 6 * 60_000, RESUMABLE_STATUSES: ["PAID", "TARGETS_GENERATING", "SCENES_COMPOSING", "GENERATION_FAILED"] }));
 vi.mock("../generation/board-conditioned-wizard", () => ({ BOARD_WIZARD_STYLE: "fixed-sprite-board-wizard-v1", boardWizardEnabled: () => wizard.enabled, runBoardConditionedWizardSlice: wizard.run }));
 import { nextPendingGame, tickGeneration } from "../generation/queue";
 import { FIXED_WORLD_STYLE_PREFIX, FIXED_WORLD_STYLE_VERSION } from "../generation/fixed-world-stage-record";
-import { LOCAL_PATCH_NEEDS_RELEASE } from "@/services/generation/local-patch-world";
+import { LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_STYLE } from "@/services/generation/local-patch-world";
 
 function setup(styleVersion = FIXED_WORLD_STYLE_VERSION, status = "PAID") {
   const db = { game: { findFirst: vi.fn().mockResolvedValue(null), findUnique: vi.fn().mockResolvedValue({ styleVersion, status }) } };
@@ -57,6 +57,14 @@ describe("fixed worlds never occupy the legacy painter queue", () => {
         // the job while the game keeps its status, so without this the oldest
         // parked game is chosen forever and everything behind it waits.
         jobs: { none: { currentStep: LOCAL_PATCH_NEEDS_RELEASE } },
+        AND: [
+          { NOT: { styleVersion: LOCAL_PATCH_STYLE, status: "TARGETS_GENERATING", jobs: { some: {
+            status: "RUNNING", updatedAt: { gte: expect.any(Date) },
+          } } } },
+          { NOT: { styleVersion: LOCAL_PATCH_STYLE, status: { in: ["PAID", "AVATAR_GENERATING", "GENERATION_FAILED"] }, jobs: { some: {
+            status: "RUNNING", updatedAt: { gte: expect.any(Date) },
+          } } } },
+        ],
         NOT: { styleVersion: { startsWith: FIXED_WORLD_STYLE_PREFIX } } },
       orderBy: { paidAt: "asc" }, select: { id: true } });
   });

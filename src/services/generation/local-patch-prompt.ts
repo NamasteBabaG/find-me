@@ -1,5 +1,5 @@
 import { childAgeDirection, validChildAge } from "../../domain/child-appearance";
-import type { LocalPatchPose } from "../../domain/scene/local-patch-hides";
+import type { LocalPatchHide, LocalPatchPose } from "../../domain/scene/local-patch-hides";
 
 /**
  * What the painter is told when a child is painted into one crop of a board.
@@ -56,6 +56,7 @@ export const LOCAL_PATCH_POSE_WORDING: Readonly<Record<LocalPatchPose, PoseWordi
 
 export const LOCAL_PATCH_PROMPT_VERSION = "local-patch-prompt/v6";
 export const LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION = "local-patch-prompt/v7-board-drawn";
+export const LOCAL_PATCH_FIVE_PROMPT_VERSION = "local-patch-prompt/v8-five-contextual";
 
 const REPAIR_DIRECTIONS = {
   styleMatch: "Use the reference ONLY for recognizable identity. Repaint the face, hair and clothes with the SAME simplified brushwork, line thickness, matte shading and local saturation as nearby board people. Do not preserve photographic skin detail or a bright photographic shirt. Scene illustration overrides reference rendering and outfit texture.",
@@ -87,9 +88,12 @@ export type LocalPatchPromptInput = {
   readonly repairChecks?: readonly LocalPatchRepairCheck[];
   /** A separate, verified face-and-person example from this same board. */
   readonly boardPeopleReference?: boolean;
+  readonly wardrobe?: string;
+  readonly placement?: LocalPatchHide["placement"];
+  readonly mask?: LocalPatchHide["mask"];
 };
 
-export function localPatchPrompt({ ground, pose, ageYears, repairChecks, boardPeopleReference }: LocalPatchPromptInput): string {
+export function localPatchPrompt({ ground, pose, ageYears, repairChecks, boardPeopleReference, wardrobe, placement, mask }: LocalPatchPromptInput): string {
   if (ageYears != null && !validChildAge(ageYears)) throw new Error("LOCAL_PATCH: invalid child age");
   const wording = LOCAL_PATCH_POSE_WORDING[pose];
   return [
@@ -119,6 +123,17 @@ export function localPatchPrompt({ ground, pose, ageYears, repairChecks, boardPe
       : "Preserve the reference child's presentation, hairstyle and outfit cues. Dress the child in age-appropriate everyday child clothing suited to THIS place, not adult fashions, mature styling or makeup. Do not infer gender from a name.",
     `Where the child meets the ground - ${wording.support} - paint the same small dark contact shadow the other children have where they meet the ${ground}. The child must read as resting on it, not placed on top of it.`,
     "Light the child from the same direction with the same warmth as the people around them.",
+    ...(placement && mask && wardrobe ? ["", "EXACT AUTHORED PLACEMENT — these instructions override generic pose, ground and reference clothing:",
+      `Editable box in the ORIGINAL 512×768 crop: left=${mask.left}, top=${mask.top}, width=${mask.width}, height=${mask.height} pixels. Scale these coordinates uniformly to the requested output. Never fill unused context with a second child.`,
+      `Depth: ${placement.depth}. Implied standing height at board-native scale is ${placement.standingHeightPx} pixels; the visible pose fits the smaller editable window. Never enlarge a distant head to foreground scale.`,
+      `Local support: ${placement.support}`,
+      `Local lighting and saturation: ${placement.lighting}`,
+      `Natural occlusion: ${placement.occlusion}`,
+      `Scale reference: ${placement.comparators}`,
+      `BOARD WARDROBE (the same across this board, NOT across the world): ${wardrobe}`,
+      "The identity reference is a likeness reference only. Match the ORIGINAL BOARD PEOPLE'S degree of simplification, outlines, painted skin planes and hair masses. Do not make a high-detail portrait face on a cartoon body. Match local contrast and saturation, especially in shaded shops.",
+      "Other appearances of the same child elsewhere in this world are intentional. Add exactly one within THIS assigned window; preserve any existing child outside it.",
+    ] : []),
     "",
     "THE MASKED AREA IS NOT EMPTY, and it does not have to be. You have two ways to fit the child in, and the first is easier:",
     "1. Put the child BETWEEN or BEHIND the people and things already there, so that part of the child is hidden by whoever is in front of them. A child seen from the chest up behind a stall, or half behind a passer-by, is exactly right.",

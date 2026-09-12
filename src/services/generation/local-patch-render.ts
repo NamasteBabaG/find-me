@@ -1,18 +1,19 @@
 import { createHash } from "node:crypto";
 import sharp from "sharp";
 import {
-  LOCAL_PATCH_CROP, type LocalPatchBoard, type LocalPatchHide, cropOf, maskInCrop,
+  LOCAL_PATCH_CROP, type LocalPatchBoard, type LocalPatchHide, cropOf, maskForHide,
 } from "../../domain/scene/local-patch-hides";
 import { analysePatchSeam, applyLocalPatch, type SeamReport } from "./local-patch-seam";
 import {
-  LOCAL_PATCH_JUDGE, judgeLocalPatch, localPatchJudgePrompt, localPatchVerdictSchema,
+  LOCAL_PATCH_JUDGE, localPatchJudgeSettings, judgeLocalPatch, localPatchJudgePrompt, localPatchVerdictSchema,
   type JudgeWireFault, type LocalPatchJudgeRequest, type LocalPatchJudgeResult, type LocalPatchVerdict,
 } from "./local-patch-judge";
 import { judgeCharge } from "../../infra/generation/judge";
-import { LOCAL_PATCH_POSE_WORDING, LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, localPatchPrompt, type LocalPatchRepairCheck } from "./local-patch-prompt";
+import { LOCAL_PATCH_POSE_WORDING, LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, localPatchPrompt, type LocalPatchRepairCheck } from "./local-patch-prompt";
 import { purchaseOnce, type PurchaseLedger, type RetainedPurchaseStore } from "./paid-operation";
 import type { LocalPatchPurchase } from "../../infra/generation/openai-local-patch";
 import type { BudgetJson, WorldChargeEvidence } from "./world-budget";
+import { isLocalPatchAdvisoryVersion } from "../../domain/scene/local-patch-catalog";
 
 /**
  * One paid attempt at one hide, out of the scripts and into the product.
@@ -67,6 +68,7 @@ export type LocalPatchRenderDeps = {
 };
 
 export type LocalPatchAttemptInput = {
+  readonly contentVersion?: number;
   readonly worldId: string;
   readonly board: LocalPatchBoard;
   readonly hide: LocalPatchHide;
@@ -193,7 +195,7 @@ const fingerprintOf = (parts: unknown) => createHash("sha256").update(JSON.strin
  * model following the prose, with the mask contributing nothing.
  */
 export async function poseMask(hide: LocalPatchHide): Promise<Buffer> {
-  const box = maskInCrop(hide.pose);
+  const box = maskForHide(hide);
   const hole = await sharp({ create: { width: box.width, height: box.height, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 255 } } }).png().toBuffer();
   const mask = await sharp({ create: { ...LOCAL_PATCH_CROP, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 255 } } })
     .composite([{ input: hole, left: box.left, top: box.top, blend: "dest-out" }]).png().toBuffer();
@@ -273,14 +275,20 @@ const refusedRender = (fault: string, renderCents: number): LocalPatchAttempt =>
 
 export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: LocalPatchAttemptInput): Promise<LocalPatchAttempt> {
   const result = await renderLocalPatchHideInner(deps, input);
-  return { ...result, promptVersion: input.boardPeoplePng ? LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION : LOCAL_PATCH_PROMPT_VERSION };
+  return { ...result, promptVersion: promptVersionOf(input) };
+}
+
+function promptVersionOf(input: LocalPatchAttemptInput): string {
+  return isLocalPatchAdvisoryVersion(input.contentVersion) ? LOCAL_PATCH_FIVE_PROMPT_VERSION
+    : input.boardPeoplePng ? LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION : LOCAL_PATCH_PROMPT_VERSION;
 }
 
 async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: LocalPatchAttemptInput): Promise<LocalPatchAttempt> {
   const { worldId, board, hide, attempt } = input;
   const crop = cropOf(hide);
-  const promptVersion = input.boardPeoplePng ? LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION : LOCAL_PATCH_PROMPT_VERSION;
-  const prompt = localPatchPrompt({ ground: board.ground, pose: hide.pose, ageYears: input.ageYears, repairChecks: input.repairChecks, boardPeopleReference: !!input.boardPeoplePng });
+  const promptVersion = promptVersionOf(input);
+  const prompt = localPatchPrompt({ ground: board.ground, pose: hide.pose, ageYears: input.ageYears, repairChecks: input.repairChecks, boardPeopleReference: !!input.boardPeoplePng,
+    wardrobe: board.wardrobe, placement: hide.placement, mask: maskForHide(hide) });
 
   const meta = await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).metadata();
   const stylePng = await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).extract(crop).png().toBuffer();
@@ -348,6 +356,16 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   const fade = seam.verdict === "clean" || seam.verdict === "fade-recommended";
   const candidate = await applyLocalPatch(input.composedPng, crop, patchPng, { fade, report: seam });
 
+  if (isLocalPatchAdvisoryVersion(input.contentVersion)) {
+    // All five current pictures are reviewed together by the board worker.
+    // This is render completion, NOT a invented passing judgement or permission
+    // to publish: that worker later binds the final findings and policy record.
+    const shipping = await sharp(candidate, { limitInputPixels: 8_294_400 }).extract(crop).png().toBuffer();
+    return { accepted: true, refusedBecause: null, stoppedReason: null, renderFault: null, needsOperator: false,
+      patchPng, shippingPng: shipping, composedPng: candidate, seam, verdict: null, wireFault: null,
+      promptVersion, judgedSha256: sha(shipping), renderCents, judgeCents: 0, costUnknown: false, replayed: bought.replayed };
+  }
+
   const size = { width: meta.width ?? 0, height: meta.height ?? 0 };
   const beforePng = await viewAround(input.composedPng, crop, size);
   const afterPng = await viewAround(candidate, crop, size);
@@ -359,9 +377,10 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   // could replay an answer purchased under the old ones. Re-deriving a verdict
   // from a retained reply after correcting the PARSER stays free, deliberately -
   // that is a different thing from changing what the model was asked to look at.
+  const judgeSettings = localPatchJudgeSettings(input.contentVersion);
   const judgeFingerprint = fingerprintOf({
-    model: LOCAL_PATCH_JUDGE.model, effort: LOCAL_PATCH_JUDGE.effort, maxOutputTokens: LOCAL_PATCH_JUDGE.maxOutputTokens,
-    hide: hide.id, prompt: sha(Buffer.from(localPatchJudgePrompt(hide.id, expectation))),
+    model: judgeSettings.model, effort: judgeSettings.effort, maxOutputTokens: judgeSettings.maxOutputTokens,
+    hide: hide.id, prompt: sha(Buffer.from(localPatchJudgePrompt(hide.id, expectation, input.contentVersion))),
     before: sha(beforePng), after: sha(afterPng), identity: sha(input.judgeIdentityPng),
   });
 
@@ -372,6 +391,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     ...(windowFor(LOCAL_PATCH_MIN_PROVIDER_MS.judge) ? { dispatchWindow: windowFor(LOCAL_PATCH_MIN_PROVIDER_MS.judge)! } : {}),
     buy: async ({ timeoutMs }) => {
       const answer = await ask({ hideId: hide.id, beforePng, afterPng, identityPng: input.judgeIdentityPng, expectation,
+        ...(input.contentVersion === undefined ? {} : { contentVersion: input.contentVersion }),
         ...(timeoutMs === null ? {} : { timeoutMs }) });
       const keep: RetainedJudgement = {
         raw: answer.raw, usage: answer.usage, requestId: answer.requestId,
@@ -416,7 +436,10 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     } catch { verdict = null; }
   }
 
-  const accepted = keep.wireFault === null && verdict?.verdict === "pass";
+  // Settled, decodable imagery publishes under the new policy even if review
+  // disagrees or could not be parsed. The original findings remain untouched.
+  const accepted = isLocalPatchAdvisoryVersion(input.contentVersion ?? 0)
+    || (keep.wireFault === null && verdict?.verdict === "pass");
   // Taken from the candidate whether or not it is accepted: a refusal is bound
   // to its picture too, or nobody can tell later which render was refused.
   const shipping = await sharp(candidate, { limitInputPixels: 8_294_400 }).extract(crop).png().toBuffer();

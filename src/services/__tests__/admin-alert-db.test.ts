@@ -73,8 +73,10 @@ describe("admin alert retries with real SQLite audit queries", () => {
     expect(await retryFailedAdminAlerts(f.c)).toEqual({ retried: 1 });
     expect(f.sent).toHaveLength(1);
     expect(f.sent[0]!.text).toContain("/admin/orders/still-pending");
-    // Three pages + the pending send's race recheck, not 105 per-game reads.
-    expect(f.reads.mock.calls.length).toBeLessThanOrEqual(4);
+    // One independent v7-outbox scan, then three legacy pages + its race
+    // recheck. Neither path may grow a per-game query over this backlog.
+    expect(f.reads.mock.calls.filter(([query]) => query.where?.action === "local-patch:notification-pending")).toHaveLength(1);
+    expect(f.reads.mock.calls.filter(([query]) => query.where?.action !== "local-patch:notification-pending").length).toBeLessThanOrEqual(4);
   });
 
   it("keeps an old game visible behind repeated failures of another game", async () => {

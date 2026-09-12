@@ -1,9 +1,9 @@
 import { statusOf } from "../game-status";
 import type { Container } from "../container";
-import { RESUMABLE_STATUSES, runGenerationPipeline } from "./pipeline";
+import { LEASE_MS as PIPELINE_LEASE_MS, RESUMABLE_STATUSES, runGenerationPipeline } from "./pipeline";
 import { FIXED_WORLD_STYLE_PREFIX, isFixedWorldStyle } from "./fixed-world-stage-record";
 import { BOARD_WIZARD_STYLE, boardWizardEnabled, runBoardConditionedWizardSlice } from "./board-conditioned-wizard";
-import { LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_STYLE, localPatchPainterDeps, runLocalPatchWorldSlice } from "./local-patch-world";
+import { LOCAL_PATCH_LEASE_MS, LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_STYLE, localPatchPainterDeps, runLocalPatchWorldSlice } from "./local-patch-world";
 
 /**
  * Moving generation forward a slice at a time.
@@ -38,6 +38,17 @@ export async function nextPendingGame(c: Container): Promise<string | null> {
     // directly, by an operator who knows what they are looking at.
     where: { status: { in: [...RESUMABLE_STATUSES] }, deletedAt: null,
       jobs: { none: { currentStep: LOCAL_PATCH_NEEDS_RELEASE } },
+      // A minute cron must not spend its turn nudging a healthy paid render
+      // already held by another worker. Match the world claimant's strict
+      // takeover boundary; queued/released jobs remain immediately runnable.
+      AND: [
+        { NOT: { styleVersion: LOCAL_PATCH_STYLE, status: "TARGETS_GENERATING", jobs: { some: {
+          status: "RUNNING", updatedAt: { gte: new Date(Date.now() - LOCAL_PATCH_LEASE_MS) },
+        } } } },
+        { NOT: { styleVersion: LOCAL_PATCH_STYLE, status: { in: ["PAID", "AVATAR_GENERATING", "GENERATION_FAILED"] }, jobs: { some: {
+          status: "RUNNING", updatedAt: { gte: new Date(Date.now() - PIPELINE_LEASE_MS) },
+        } } } },
+      ],
       ...(boardWizardEnabled() ? { OR: [{ styleVersion: BOARD_WIZARD_STYLE }, { NOT: { styleVersion: { startsWith: FIXED_WORLD_STYLE_PREFIX } } }] } : { NOT: { styleVersion: { startsWith: FIXED_WORLD_STYLE_PREFIX } } }) },
     orderBy: { paidAt: "asc" },
     select: { id: true },

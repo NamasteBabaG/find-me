@@ -271,7 +271,30 @@ function parseVerdict(content: string | undefined): { verdict: "ok" | "bad"; rea
  * Standard-rate cents from recorded usage, without per-request rounding.
  * Cached-token discounts are not assumed; this is not an invoice total.
  */
-export function judgeCharge(model: string, usage: Record<string, unknown> | undefined): { costCents: number; costUnknown: boolean } {
+export const CURRENT_JUDGE_PRICING_VERSION = "openai-standard-2026-09-12" as const;
+export function judgeCharge(model: string, usage: Record<string, unknown> | undefined,
+  pricingVersion?: typeof CURRENT_JUDGE_PRICING_VERSION): { costCents: number; costUnknown: boolean } {
+  // Prospectively versioned rate card. Existing Sol callers keep their original
+  // conservative accounting; no historical receipts are recalculated. Luna has
+  // no historical purchases and always uses this card. Sources checked 2026-09-12:
+  // https://developers.openai.com/api/docs/pricing (Standard, <=272K context).
+  const family = model.replace(/-\d{4}-\d{2}-\d{2}$/, "");
+  if (pricingVersion === CURRENT_JUDGE_PRICING_VERSION || family === "gpt-5.6-luna") {
+    const rate = family === "gpt-5.6-luna" ? [20, 2, 25, 120]
+      : family === "gpt-5.6-sol" ? [400, 40, 500, 2000] : null;
+    const input = usage?.prompt_tokens, output = usage?.completion_tokens;
+    const details = usage?.prompt_tokens_details as Record<string, unknown> | undefined;
+    const cached = details?.cached_tokens ?? 0;
+    const writes = details?.cache_write_tokens ?? 0;
+    const whole = (v: unknown): v is number => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
+    if (!rate || !whole(input) || !whole(output) || !whole(cached) || !whole(writes)
+      || cached + writes > input || input > 272000) return { costCents: 0, costUnknown: true };
+    // Cache writes absent from usage are conservatively priced at their upper
+    // input rate, rather than assuming the remaining tokens were all uncached.
+    const ordinary = input - cached - writes;
+    const inputRate = details && "cache_write_tokens" in details ? rate[0]! : rate[2]!;
+    return { costCents: (ordinary * inputRate + cached * rate[1]! + writes * rate[2]! + output * rate[3]!) / 1_000_000, costUnknown: false };
+  }
   // Keep historical 5.4 accounting stable. For Sol, count cache writes at the
   // upper input rate, without assuming a discount; usage remains available.
   const rates = model === "gpt-5.6-sol" ? [500, 2000] : model === "gpt-5.4-2026-03-05" ? [250, 1500] : /^gpt-4o-mini(?:-\d{4}-\d{2}-\d{2})?$/.test(model) ? [15, 60] : /^gpt-4o(?:-\d{4}-\d{2}-\d{2})?$/.test(model) ? [250, 1000] : null;

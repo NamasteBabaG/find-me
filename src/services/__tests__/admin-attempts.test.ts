@@ -34,5 +34,7 @@ describe("attempts for the admin page", () => {
     expect(parseJudge(null)).toBeNull();
     expect(parseJudge(JSON.stringify({ verdict: "unknown", reason: "timed out", model: "gpt-5.6-sol" }))).toMatchObject({ verdict: "unknown", model: "gpt-5.6-sol" });
     expect(parseJudge(JSON.stringify({ verdict: "ok", reason: "", checks: { identity: "pass" } }))?.checks).toEqual({ identity: "pass" });
+    expect(parseJudge(JSON.stringify({ verdict: { verdict: "pass", claimedVerdict: "fail", reason: "Overall looks too photographic", faults: [{ check: "styleMatch", where: "face" }] } })))
+      .toMatchObject({ verdict: "pass", claimedVerdict: "fail", reason: "Overall looks too photographic", faults: [{ check: "styleMatch", where: "face" }] });
   });
 });

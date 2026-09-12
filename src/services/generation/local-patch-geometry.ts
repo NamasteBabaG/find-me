@@ -1,5 +1,5 @@
 import {
-  LOCAL_PATCH_BOARD, cropOf, maskInCrop,
+  LOCAL_PATCH_BOARD, cropOf, maskForHide,
   type LocalPatchHide,
 } from "../../domain/scene/local-patch-hides";
 import { hitBoxFromAlpha, type PatchGeometry } from "./patch";
@@ -63,7 +63,7 @@ export async function localPatchGeometry(input: {
   const { hide } = input;
   const art = input.board ?? LOCAL_PATCH_BOARD;
   const crop = cropOf(hide);
-  const box = maskInCrop(hide.pose);
+  const box = maskForHide(hide);
 
   const rect = { x: crop.left / art.width, y: crop.top / art.height, w: crop.width / art.width, h: crop.height / art.height };
   const declared = {

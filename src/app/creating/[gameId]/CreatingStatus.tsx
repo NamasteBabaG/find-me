@@ -10,6 +10,7 @@ import { startSerialPoll } from "@/lib/serial-poll";
 
 interface Status {
   status: string;
+  automaticPublication?: boolean;
   /** True while generation still has work to do — the page then nudges it along. */
   pending?: boolean;
   done: boolean;
@@ -203,7 +204,7 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
     character: tf(cr.milestones.character, { name: childName }),
     hiding: tf(cr.milestones.hiding, { name: childName }),
     assemble: cr.milestones.assemble,
-    check: cr.milestones.check,
+    check: s.automaticPublication ? cr.automaticCheck : cr.milestones.check,
   };
 
   return (

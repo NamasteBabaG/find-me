@@ -27,6 +27,8 @@ export const ANALYTICS_EVENTS = [
   "scene_completed",
   "game_completed",
   "game_replayed",
+  "scene_unlocked",
+  "journey_finished",
   "share_opened",
   "share_clicked",
   "game_deleted",

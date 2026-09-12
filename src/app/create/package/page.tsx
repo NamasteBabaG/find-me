@@ -8,6 +8,7 @@ import { formatMoney, pick, tf } from "@/i18n";
 import { CreateFrame } from "../CreateLayout";
 import { currentDraft } from "../actions";
 import { PackagePicker } from "./PackagePicker";
+import { LOCAL_PATCH_STYLE } from "@/services/generation/local-patch-world";
 
 export async function generateMetadata() {
   const { t } = await getI18n();
@@ -21,6 +22,7 @@ export default async function CreatePackagePage() {
   if (!draft.childProfile.originalPhotoAssetId) redirect("/create/photo");
   const currency = await getCurrency();
   const available = new Set((await availablePackages(c)).map((p) => p.tier));
+  const spotsPerBoard = draft.styleVersion === LOCAL_PATCH_STYLE ? 5 : 3;
   // Only tiers that can actually be bought right now (enough active worlds) are shown.
   const options = PACKAGE_ORDER.filter((tier) => available.has(tier)).map((tier) => {
     const p = PACKAGES[tier];
@@ -29,7 +31,7 @@ export default async function CreatePackagePage() {
       name: pick(p.name, locale),
       worldCount: p.worldCount,
       boardCount: boardsFor(tier),
-      meta: tf(t.create.package.spots, { n: searchesFor(tier), time: pick(p.playtime, locale) }),
+      meta: tf(t.create.package.spots, { n: spotsPerBoard === 5 ? boardsFor(tier) * 5 : searchesFor(tier), time: pick(p.playtime, locale) }),
       price: formatMoney(priceFor(tier, currency), currency, locale),
       popular: p.popular,
     };
@@ -37,7 +39,7 @@ export default async function CreatePackagePage() {
   const fallbackTier = available.has("TWO_WORLDS") ? "TWO_WORLDS" : (options[0]?.tier ?? "ONE_WORLD");
   const defaultTier = draft.packageTier && available.has(draft.packageTier as PackageTier) ? draft.packageTier : fallbackTier;
   return (
-    <CreateFrame width="mid" step={2} title={t.create.package.title} lead={tf(t.create.package.lead, { name: draft.childProfile.displayName })} user={user} isAdmin={isAdminEmail(user?.email)}>
+    <CreateFrame width="mid" step={2} title={t.create.package.title} lead={tf(t.create.package.lead, { name: draft.childProfile.displayName, spots: spotsPerBoard })} user={user} isAdmin={isAdminEmail(user?.email)}>
       <PackagePicker options={options} defaultTier={defaultTier} />
     </CreateFrame>
   );

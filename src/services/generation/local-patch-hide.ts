@@ -18,12 +18,14 @@ import { readBoardConditionedCatalog } from "./board-conditioned-catalog";
 import { assertGenerationSpendAllowed, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { localPatchGeometry, type LocalPatchGeometry } from "./local-patch-geometry";
 import { renderLocalPatchHide, type LocalPatchRenderDeps } from "./local-patch-render";
-import { LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, localPatchRepairChecks } from "./local-patch-prompt";
+import { LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, localPatchRepairChecks } from "./local-patch-prompt";
 import { buildBoardPeopleStyle } from "./board-wizard-identity-style";
 import type { PatchGeometry } from "./patch";
 import { readPinnedLocalPatchArt } from "./local-patch-art";
 import { env } from "../../lib/env";
 import { LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_NORMAL_ATTEMPTS, nextLocalPatchAttempt } from "../../domain/scene/local-patch-attempts";
+import { isLocalPatchAdvisoryVersion } from "../../domain/scene/local-patch-catalog";
+import { localPatchPublicationGeometryHash } from "./local-patch-publication-policy";
 export { LOCAL_PATCH_MAX_ATTEMPTS, nextLocalPatchAttempt } from "../../domain/scene/local-patch-attempts";
 
 /**
@@ -233,9 +235,11 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     gameId, identityAssetId: identity.id, sheetSha256: normalized.sourceSha256, catalogSha256,
     photoAssetId: child.originalPhotoAssetId, ageYears: child.ageYears!,
     crop: child.photoCropJson ? JSON.parse(child.photoCropJson) : null,
+    contentVersion: scene.sceneVersion,
   });
   const boardDrawn = identityApproval.provenance.style.version === "board-matched-identity/v2";
-  const promptVersion = boardDrawn ? LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION : LOCAL_PATCH_PROMPT_VERSION;
+  const promptVersion = isLocalPatchAdvisoryVersion(scene.sceneVersion) ? LOCAL_PATCH_FIVE_PROMPT_VERSION
+    : boardDrawn ? LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION : LOCAL_PATCH_PROMPT_VERSION;
 
   // ── The rows that make this restartable ──
   const instance = await c.db.targetInstance.findUnique({ where: { gameSceneId_targetId: { gameSceneId: scene.id, targetId: target.id } } })
@@ -305,7 +309,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     ledger: budget, store: new LocalPatchRetainedPurchaseStore(c, gameId, budget),
     renderPolicySha256: deps.renderPolicySha256, render: deps.render, ...(deps.judge ? { judge: deps.judge } : {}),
   }, {
-    worldId, board, hide, composedPng: artwork,
+    worldId, board, hide, composedPng: artwork, contentVersion: scene.sceneVersion,
     identityPng: normalized.png, judgeIdentityPng,
     ...(boardPeoplePng ? { boardPeoplePng } : {}),
     ageYears: child.ageYears, attempt, apiKey: deps.apiKey ?? "",
@@ -379,16 +383,21 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     // Still ours? Everything below this line puts a child into a playable game.
     await fenceLocalPatchImages(tx, gameId);
     await deps.fence?.(tx);
-    await tx.targetVariantAsset.update({ where: { id: row.id }, data: {
-      assetId,
+    const geometry = {
       rectJson: JSON.stringify(measured.geometry.rect),
       hitRectJson: JSON.stringify(measured.geometry.hitRect),
       headAnchorJson: JSON.stringify(measured.geometry.anchor),
+    };
+    const judgeJson = JSON.stringify({ verdict: attemptResult.verdict, seam: attemptResult.seam, judgedSha256: attemptResult.judgedSha256,
+      ...(isLocalPatchAdvisoryVersion(scene.sceneVersion) ? { wireFault: attemptResult.wireFault, reviewState: "pending-board-review", geometrySha256: localPatchPublicationGeometryHash(geometry) } : {}),
+      geometryBasis: measured.basis, measuredFraction: Number(measured.measuredFraction.toFixed(4)), hide: hide.id, pose: hide.pose });
+    await tx.targetVariantAsset.update({ where: { id: row.id }, data: {
+      assetId,
+      ...geometry,
       status: "GENERATED", lastError: null,
       costCents: Math.round(row.costCents + attemptResult.renderCents + attemptResult.judgeCents),
       promptVersion: attemptResult.promptVersion, provider: LOCAL_PATCH_PROVIDER,
-      judgeJson: JSON.stringify({ verdict: attemptResult.verdict, seam: attemptResult.seam, judgedSha256: attemptResult.judgedSha256,
-        geometryBasis: measured.basis, measuredFraction: Number(measured.measuredFraction.toFixed(4)), hide: hide.id, pose: hide.pose }),
+      judgeJson,
     } });
     await tx.targetInstance.update({ where: { id: instance.id }, data: {
       spriteKind: "image", spriteAssetId: assetId, status: "GENERATED",

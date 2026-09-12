@@ -2,6 +2,7 @@ import sharp from "sharp";
 import type { Container } from "../container";
 import { sceneBySlug } from "../scene-catalog.service";
 import { LOCAL_PATCH_BOARD, WORLD_LOCAL_PATCH_HIDES, cropOf } from "../../domain/scene/local-patch-hides";
+import { localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
 import { assertGenerationSpendAllowed, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { LOCAL_PATCH_STYLE } from "./local-patch-world";
 import { withBoardWizardIdentityClaim, type BoardWizardIdentityClaim } from "./board-wizard-identity-lifecycle";
@@ -31,8 +32,9 @@ export async function preflightLocalPatchIdentity(c: Container, gameId: string, 
   demand(c.avatars.id === "openai" && c.avatars.createCharacter, "The board-matched character provider is required; no avatar fallback");
   demand(game.packageTier === "ONE_WORLD" && game.scenes.length === WORLD_LOCAL_PATCH_HIDES.length
     && new Set(game.scenes.map(scene => scene.sceneSlug)).size === WORLD_LOCAL_PATCH_HIDES.length, "Exactly the supported nine-board world is required");
+  demand(new Set(game.scenes.map(scene => scene.sceneVersion)).size === 1, "Identity must use one pinned content version across every board");
   for (const scene of game.scenes) {
-    const board = WORLD_LOCAL_PATCH_HIDES.find(item => item.board === scene.sceneSlug);
+    const board = localPatchBoardForVersion(scene.sceneSlug, scene.sceneVersion);
     demand(board && /^public\/(?:scenes|worlds)\//.test(board.art), `Missing packaged art for ${scene.sceneSlug}`);
     const definition = sceneBySlug(scene.sceneSlug, scene.sceneVersion);
     demand(board.hides.every(hide => definition.targets.some(target => target.id === hide.targetId)), `Unbound local-patch targets for ${scene.sceneSlug}`);
@@ -53,10 +55,12 @@ export async function finishLocalPatchIdentity(c: Container, claim: BoardWizardI
   demand(identity.ownerId === claim.ownerId && identity.type === "IDENTITY_SHEET" && identity.visibility === "PRIVATE"
     && identity.status === "READY" && !identity.deletedAt, "Identity is not a live owned private sheet");
   const child = await c.db.childProfile.findUniqueOrThrow({ where: { id: claim.childId } });
+  const scenes = await c.db.gameScene.findMany({ where: { gameId: claim.gameId }, select: { sceneVersion: true } });
+  demand(scenes.length > 0 && new Set(scenes.map(scene => scene.sceneVersion)).size === 1, "Identity handoff requires one pinned content version");
   const budget = boardWizardBudgetOf(c);
   await requireBoardWizardIdentityApproval(c, budget, { gameId: claim.gameId, identityAssetId: identity.id,
     sheetSha256: sha256Bytes(await c.storage.get(identity.storagePath)), catalogSha256, photoAssetId: child.originalPhotoAssetId,
-    ageYears: claim.ageYears, crop: child.photoCropJson ? JSON.parse(child.photoCropJson) : null });
+    ageYears: claim.ageYears, crop: child.photoCropJson ? JSON.parse(child.photoCropJson) : null, contentVersion: scenes[0]!.sceneVersion });
   demand(!(await budget.audit(boardWizardWorldId(claim.gameId))).held, "Identity spending must be reconciled before hiding");
   await withBoardWizardIdentityClaim(c, claim, async tx => {
     const job = await tx.generationJob.findUniqueOrThrow({ where: { id: claim.jobId } });

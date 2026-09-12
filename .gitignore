@@ -9,6 +9,7 @@ node_modules
 /prisma/*.db-journal
 .DS_Store
 tsconfig.tsbuildinfo
+tsconfig.work.tsbuildinfo
 /work/
 /prisma/generated/
 .vercel

@@ -68,7 +68,7 @@ describe("fixed-world creation status boundary", () => {
     mocks.ledger.mockResolvedValue({ snapshotJson: JSON.stringify(localBudget("unknown")) });
     const body = await (await response()).json();
     expect(body).toMatchObject({ state: "held", pending: false, awaitingQa: true, done: false, playUrl: null, place: null,
-      qaCost: { spentCents: 15.08, reservedCents: 40, capCents: 500, held: true } });
+      qaCost: { spentCents: 15.08, reservedCents: 40, capCents: 400, held: true } });
     expect(mocks.ledger).toHaveBeenCalledExactlyOnceWith({ where: { worldId: "synthetic:board-wizard" } });
     expect(mocks.link).not.toHaveBeenCalled();
   });
@@ -76,11 +76,28 @@ describe("fixed-world creation status boundary", () => {
     mocks.game.mockResolvedValue({ ...game, status: "TARGETS_GENERATING", styleVersion: "local-patch-world-v1" });
     mocks.ledger.mockResolvedValue({ snapshotJson: JSON.stringify(localBudget(pendingState)) });
     expect(await (await response()).json()).toMatchObject({ state: "working", pending: true, awaitingQa: false,
-      qaCost: { spentCents: 15.08, reservedCents: pendingState ? 40 : 0, capCents: 500, held: false } });
+      qaCost: { spentCents: 15.08, reservedCents: pendingState ? 40 : 0, capCents: 400, held: false } });
   });
   it("reports an empty new local-patch budget without requiring a ledger row", async () => {
     mocks.game.mockResolvedValue({ ...game, status: "PAID", styleVersion: "local-patch-world-v1" });
-    expect(await (await response()).json()).toMatchObject({ pending: true, qaCost: { spentCents: 0, reservedCents: 0, capCents: 500, held: false } });
+    expect(await (await response()).json()).toMatchObject({ pending: true, qaCost: { spentCents: 0, reservedCents: 0, capCents: 400, held: false } });
+  });
+  it("shows the enforced4USD ceiling and holds a4.10USD local world even below the generic5USD maximum", async () => {
+    mocks.game.mockResolvedValue({ ...game, status: "TARGETS_GENERATING", styleVersion: "local-patch-world-v1" });
+    const snapshot = localBudget();
+    const paid = snapshot.requests[0];
+    if (paid?.state !== "settled") throw new Error("Fixture needs a paid identity");
+    paid.evidence.amountMicroUsd += 4_100_000 - 150_800;
+    mocks.ledger.mockResolvedValue({ snapshotJson: JSON.stringify(snapshot) });
+    expect(await (await response()).json()).toMatchObject({ pending: false, state: "held", qaCost: { spentCents: 410, capCents: 400, held: true } });
+  });
+  it.each(["uniform", "mixed", "incomplete"])("only selects catalog7 display policy for a complete uniformly pinned world: %s", async shape => {
+    const slugs = ["sydney", "antarctica", "giza", "tokyo", "paris", "marrakech", "amazon", "newyork", "greatwall"];
+    const scenes = slugs.slice(0, shape === "incomplete" ? 1 : 9).map((sceneSlug, index) => ({ sceneSlug, sceneVersion: shape === "mixed" && index === 8 ? 6 : 7, targets: [] }));
+    mocks.game.mockResolvedValue({ ...game, status: "AVATAR_GENERATING", styleVersion: "local-patch-world-v1", scenes });
+    mocks.approved.mockImplementation(async (_c, _profile, version) => version === 7);
+    expect(await (await response()).json()).toMatchObject({ characterReady: shape === "uniform", automaticPublication: shape === "uniform" });
+    expect(mocks.approved.mock.calls[0]?.[2]).toBe(shape === "uniform" ? 7 : undefined);
   });
   it.each(["invalid-json", "wrong-world", "invalid-snapshot", "unavailable"])("does not schedule local-patch work or invent costs for %s budget evidence", async kind => {
     mocks.game.mockResolvedValue({ ...game, status: "TARGETS_GENERATING", styleVersion: "local-patch-world-v1" });

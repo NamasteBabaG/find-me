@@ -6,7 +6,7 @@ import { OpenAiIdentityStyleReviewer } from "../../../infra/generation/identity-
 import { LEGACY_QA_CHARACTER_PROMPT_VERSION as QA_CHARACTER_PROMPT_VERSION } from "../../../infra/generation/character-prompt";
 import type { WorldBudgetSnapshot } from "../world-budget";
 import { boardWizardBudget } from "../board-wizard-budget";
-import { IDENTITY_GATE_KEY, LEGACY_IDENTITY_GATE_VERSION, identityGatePrompt, reviewBoardWizardIdentity, requireBoardWizardIdentityApproval, type IdentityProvenance } from "../board-wizard-identity-gate";
+import { ADVISORY_IDENTITY_GATE_VERSION, IDENTITY_GATE_KEY, LEGACY_IDENTITY_GATE_VERSION, identityApprovedForDisplay, identityGatePrompt, identityReceiptReadyForPublication, reviewBoardWizardIdentity, requireBoardWizardIdentityApproval, type IdentityProvenance } from "../board-wizard-identity-gate";
 import { sha256Bytes } from "../fixed-sprite";
 import type { Container } from "../../container";
 
@@ -35,6 +35,75 @@ async function fixture(reply: () => Promise<Response> = async () => response()) 
   return { deps, input, budget, fetchOnce, beforeDispatch, rows, enrollment, c };
 }
 describe("identity style gate (synthetic images and HTTP; zero paid calls)", () => {
+  it("recomputes its HTTP deadline after a slow reservation and holds without dispatch when the window is gone", async () => {
+    for (const spentMs of [40_000, 130_000]) {
+      const f = await fixture(); let now = 100_000;
+      const reserve = f.budget.reserve.bind(f.budget);
+      const reserveSpy = vi.spyOn(f.budget, "reserve").mockImplementation(async (...args) => { const result = await reserve(...args); now += spentMs; return result; });
+      const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+      const review = vi.fn(async (input: Parameters<OpenAiIdentityStyleReviewer["review"]>[0]) => {
+        expect(input.timeoutMs).toBe(55_000);
+        return { httpOk: true, requestId: "req_deadline_identity", body: await response().json() };
+      });
+      try {
+        const result = await reviewBoardWizardIdentity({ ...f.deps, reviewer: { review } }, { ...f.input, deadlineAt: 220_000 });
+        if (spentMs === 40_000) { expect(result.approved).toBe(true); expect(review).toHaveBeenCalledOnce(); }
+        else {
+          expect(result).toMatchObject({ approved: false, requestId: null, costMicroUsd: 0 });
+          expect(result.reason).toContain("never dispatched"); expect(review).not.toHaveBeenCalled();
+          expect(await f.budget.audit("synthetic-game:board-wizard")).toMatchObject({ held: true, settledMicroUsd: 0 });
+          await reviewBoardWizardIdentity({ ...f.deps, reviewer: { review } }, { ...f.input, deadlineAt: now + 270_000 });
+          expect(review).not.toHaveBeenCalled();
+        }
+      } finally { clock.mockRestore(); reserveSpy.mockRestore(); }
+    }
+  });
+  it("keeps the bounded identity timeout alive through a hanging response body", async () => {
+    let aborted = false;
+    const hangingFetch = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => ({ ok: true, headers: new Headers(),
+      json: () => new Promise((_resolve, reject) => { init!.signal!.addEventListener("abort", () => { aborted = true; reject(new Error("body aborted")); }, { once: true }); }),
+    }) as Response);
+    const reviewer = new OpenAiIdentityStyleReviewer("synthetic", hangingFetch as typeof fetch);
+    await expect(reviewer.review({ prompt: "test", images: [], timeoutMs: 30 })).rejects.toThrow("body aborted");
+    expect(aborted).toBe(true); expect(hangingFetch).toHaveBeenCalledOnce();
+    await expect(reviewer.review({ prompt: "test", images: [], timeoutMs: 0 })).rejects.toThrow("window expired");
+    expect(hangingFetch).toHaveBeenCalledOnce();
+  });
+  it.each(["fail", "uncertain"])("catalog 7 records %s as a Luna LOW warning without blocking or buying another identity", async value => {
+    const f = await fixture(async () => response({ checks: { identity: value, age: value, paintedStyle: value, sheetLayout: value }, reason: "Synthetic visible warning" }, { model: "gpt-5.6-luna" }));
+    f.input.provenance.promptVersion = "character-v4-board-drawn-face-reference";
+    f.input.provenance.style.version = "board-matched-identity/v2";
+    const input = { ...f.input, contentVersion: 7 }, enrollment = { ...f.enrollment, contentVersion: 7 };
+    const r = await reviewBoardWizardIdentity(f.deps, input);
+    expect(r).toMatchObject({ version: ADVISORY_IDENTITY_GATE_VERSION, approved: false, model: "gpt-5.6-luna", effort: "low" });
+    expect(r.costMicroUsd).toBe(980);
+    const body = JSON.parse(f.fetchOnce.mock.calls[0]![1]!.body as string);
+    expect(body).toMatchObject({ model: "gpt-5.6-luna", reasoning_effort: "low", max_completion_tokens: 3000, store: false });
+    expect(body.messages[0].content).toHaveLength(4);
+    expect(identityReceiptReadyForPublication(r, 7)).toBe(true);
+    expect(identityReceiptReadyForPublication(r, 6)).toBe(false);
+    expect(identityReceiptReadyForPublication(r, 8)).toBe(false);
+    await requireBoardWizardIdentityApproval(f.c, f.budget, enrollment);
+    const profile = { identityAssetId: r.identityAssetId, originalPhotoAssetId: r.provenance.photoAssetId, ageYears: r.provenance.ageYears };
+    expect(await identityApprovedForDisplay(f.c, profile, 7)).toBe(true);
+    expect(await identityApprovedForDisplay(f.c, { ...profile, ageYears: 4 }, 7)).toBe(false);
+    await expect(requireBoardWizardIdentityApproval(f.c, f.budget, { ...enrollment, sheetSha256: "e".repeat(64) })).rejects.toThrow("different child");
+    expect(await reviewBoardWizardIdentity(f.deps, input)).toEqual(r);
+    expect(f.fetchOnce).toHaveBeenCalledTimes(1);
+  });
+  it("catalog 7 permits unreadable visual findings only with a settled bill, never unknown usage", async () => {
+    for (const billed of [true, false]) {
+      const f = await fixture(async () => response({ malformed: true }, { model: "gpt-5.6-luna", ...(billed ? {} : { usage: null }) }));
+      f.input.provenance.promptVersion = "character-v4-board-drawn-face-reference";
+      f.input.provenance.style.version = "board-matched-identity/v2";
+      const r = await reviewBoardWizardIdentity(f.deps, { ...f.input, contentVersion: 7 });
+      expect(r.approved).toBe(false); expect(r.checks).toBeNull();
+      expect(identityReceiptReadyForPublication(r, 7)).toBe(billed);
+      if (billed) await requireBoardWizardIdentityApproval(f.c, f.budget, { ...f.enrollment, contentVersion: 7 });
+      else await expect(requireBoardWizardIdentityApproval(f.c, f.budget, { ...f.enrollment, contentVersion: 7 })).rejects.toThrow();
+      expect(f.fetchOnce).toHaveBeenCalledTimes(1);
+    }
+  });
   it("uses original photo for likeness, board people for style; never demands board placement before a board exists", () => {
     const prompt = identityGatePrompt(6, LEGACY_IDENTITY_GATE_VERSION);
     expect(prompt).toContain("ORIGINAL painted board people"); expect(prompt).toContain("photograph-like face");

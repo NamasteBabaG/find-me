@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { gameWorlds, scenesOfWorld, type GameConfig } from "@/domain/game/config";
-import { sceneProgress, type GameProgress } from "@/domain/game/progress";
+import { gameStars, sceneIsComplete, type GameProgress } from "@/domain/game/progress";
 import { useGameText } from "../i18n";
 
 interface Props {
@@ -30,8 +30,8 @@ export function WorldHub({ config, progress, currentWorld, onEnter, onPassport }
 
   const rows = worlds.map((world) => {
     const mine = scenesOfWorld(config, world.slug);
-    const done = mine.filter((s) => sceneProgress(progress, s.slug).completed).length;
-    return { world, done, total: mine.length || world.nodes.length };
+    const done = mine.filter((s) => sceneIsComplete(progress, s)).length;
+    return { world, done, total: mine.length || world.nodes.length, stars: mine.some(scene => scene.playMode === "find-any") ? gameStars(progress, mine) : null };
   });
   const finished = rows.filter((r) => r.done === r.total && r.total > 0).length;
 
@@ -45,7 +45,7 @@ export function WorldHub({ config, progress, currentWorld, onEnter, onPassport }
       </header>
 
       <ul className="hub__list">
-        {rows.map(({ world, done, total }) => (
+        {rows.map(({ world, done, total, stars }) => (
           <li key={world.slug}>
             <button
               type="button"
@@ -60,6 +60,7 @@ export function WorldHub({ config, progress, currentWorld, onEnter, onPassport }
                 <span className="hub__name">{world.name}</span>
                 <span className="hub__tagline">{world.tagline}</span>
                 <span className="hub__count">{tf(g.map.subProgress, { done, total })}</span>
+                {stars ? <span className="hub__count">{tf(g.scene.worldStars, stars)}</span> : null}
               </span>
               <span className="hub__go" aria-hidden>
                 {done === total ? "✓" : "➜"}

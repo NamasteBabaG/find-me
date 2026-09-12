@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { describe, expect, it, vi } from "vitest";
 import { LOCAL_PATCH_CROP, POSE_MASK, cropOf, maskInCrop, type LocalPatchBoard, type LocalPatchHide } from "../../../domain/scene/local-patch-hides";
-import { LOCAL_PATCH_PROMPT_VERSION, localPatchPrompt } from "../local-patch-prompt";
+import { LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, localPatchPrompt } from "../local-patch-prompt";
+import { localPatchBoardsForVersion } from "../../../domain/scene/local-patch-catalog";
 import { RETAINED_PURCHASE_VERSION, retainedPayloadDigest } from "../paid-operation";
 import { LOCAL_PATCH_RESERVE, poseMask, renderLocalPatchHide, type LocalPatchRenderDeps } from "../local-patch-render";
 import type { LocalPatchJudgeResult } from "../local-patch-judge";
@@ -95,6 +96,40 @@ async function attempt(deps: LocalPatchRenderDeps, over: Record<string, unknown>
 }
 
 describe("one paid attempt at one hide", () => {
+  it("keeps a v7 render for grouped review, without a per-hide judge purchase or invented approval", async () => {
+    const w = world(), judge = vi.fn(async () => { throw new Error("Per-hide judging must not run in v7"); }), p = w.process({ judge });
+    const result = await attempt(p.deps, { contentVersion: 7 });
+    expect(result.accepted).toBe(true);
+    expect(result.promptVersion).toBe(LOCAL_PATCH_FIVE_PROMPT_VERSION);
+    expect(result.verdict).toBeNull();
+    expect(result.judgeCents).toBe(0);
+    expect(judge).not.toHaveBeenCalled();
+    expect(result.shippingPng).not.toBeNull();
+    expect(result.composedPng).not.toBeNull();
+    const next = w.process();
+    const replay = await attempt(next.deps, { contentVersion: 7 });
+    expect(replay.verdict).toEqual(result.verdict);
+    expect(replay.accepted).toBe(true);
+    expect(next.dispatched).toEqual([]);
+  });
+
+  it("sends the pinned v7 outfit, depth and custom editable window in the v8 purchase", async () => {
+    const contextualBoard = localPatchBoardsForVersion(7)[0]!;
+    const contextualHide = contextualBoard.hides[4]!;
+    const render = vi.fn(async (_input: Parameters<LocalPatchRenderDeps["render"]>[0]) => ({ png: await patchPng(), rejected: null, quarantined: null, evidence: evidence("contextual"), unknownReason: null }));
+    const result = await attempt(world().process({ render }).deps, { contentVersion: 7, board: contextualBoard, hide: contextualHide, boardPeoplePng: await small() });
+    expect(result.accepted).toBe(true); expect(result.promptVersion).toBe(LOCAL_PATCH_FIVE_PROMPT_VERSION);
+    const input = render.mock.calls[0]![0];
+    expect(input.prompt).toContain(contextualBoard.wardrobe);
+    expect(input.prompt).toContain(contextualHide.placement!.lighting);
+    expect(input.prompt).toContain(`left=${contextualHide.mask!.left}`);
+    expect(input.maskPng.equals(await poseMask(contextualHide))).toBe(true);
+  });
+
+  it("does not treat an unpriced v7 render as advisory visual criticism", async () => {
+    const unknown = world().process({ render: async () => ({ png: await patchPng(), rejected: null, quarantined: null, evidence: null, unknownReason: "usage unavailable" }) });
+    expect(await attempt(unknown.deps, { contentVersion: 7 })).toMatchObject({ accepted: false, refusedBecause: "stopped", costUnknown: true });
+  });
   it("pins same-board style people in the actual purchase and refuses replay against changed people", async () => {
     const w = world(), people = await small();
     const render = vi.fn(async () => ({ png: await patchPng(), rejected: null, quarantined: null, evidence: evidence("req-render"), unknownReason: null }));

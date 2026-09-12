@@ -56,9 +56,12 @@ export interface GameShape {
   spots: number;
 }
 
-export function gameShape(boardSlugsInGame: readonly string[]): GameShape {
-  const spots = boardSlugsInGame.reduce((n, slug) => n + (findScene(slug)?.targets.length ?? 3), 0);
-  return { worlds: worldsOwned(boardSlugsInGame).length, places: boardSlugsInGame.length, spots };
+export function gameShape(boards: readonly (string | { sceneSlug: string; sceneVersion: number })[]): GameShape {
+  const slugs = boards.map(board => typeof board === "string" ? board : board.sceneSlug);
+  const spots = boards.reduce((n, board) => n + (typeof board === "string"
+    ? findScene(board)?.targets.length ?? 3
+    : findScene(board.sceneSlug, board.sceneVersion)?.targets.length ?? 3), 0);
+  return { worlds: worldsOwned(slugs).length, places: boards.length, spots };
 }
 
 /** The world a board belongs to, for progress and the map. */

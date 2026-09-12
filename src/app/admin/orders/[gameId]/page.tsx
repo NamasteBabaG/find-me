@@ -23,8 +23,11 @@ import { LOCAL_PATCH_HUMAN_CONFIRMATION } from "@/services/generation/local-patc
 export const maxDuration = 300;
 
 /** What the row's last review means to a person: reviewed and passed, reviewed and failed, could not decide, or never reviewed. */
-function judgeLabel(judge: { verdict: string; reason: string } | null): string {
+function judgeLabel(judge: { verdict: string; reason: string; claimedVerdict?: string } | null): string {
   if (!judge) return "⚠ לא נבדק";
+  if (judge.claimedVerdict && judge.claimedVerdict !== judge.verdict) return "? סתירה בין סיכום השופט לבדיקותיו";
+  if (judge.verdict === "pass") return "✓ ללא הסתייגות מסכמת";
+  if (judge.verdict === "fail") return "⚠ הסתייגויות השופט";
   if (judge.verdict === "ok") return "✓ נבדק";
   if (judge.verdict === "bad") return "✗ נדחה בבדיקה";
   return "? השופט לא הכריע";
@@ -36,7 +39,7 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
   const c = getContainer();
   const detail = await orderDetailForAdmin(c, gameId);
   if (!detail) notFound();
-  const { game, status, costCents, activity, failedSpots, paintedSpots, awaitingQa, playable } = detail;
+  const { game, status, costCents, localPatchCost, activity, failedSpots, paintedSpots, awaitingQa, playable } = detail;
   // Asset signatures expire; the stored config is re-signed on the way out.
   const config = game.configJson ? withFreshAssetUrls(getContainer(), parseGameConfig(game.configJson)) : null;
   const order = game.orders[0] ?? null;
@@ -172,7 +175,7 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
               </p>
               <div className="fm-stack fm-stack--2">
                 {paintedSpots.map((spot) => (
-                  <details key={spot.id} className="fm-stack fm-stack--1">
+                  <details key={spot.id} id={`hide-${spot.sceneSlug}-${spot.targetId}`} className="fm-stack fm-stack--1">
                     <summary className="fm-row" style={{ gap: "var(--space-2)", cursor: "pointer" }}>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
@@ -193,6 +196,11 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
                         </button>
                       </form>
                     </summary>
+                    {spot.judge ? <div className="fm-stack fm-stack--1">
+                      <p className="fm-small" dir="auto">{spot.judge.reason}</p>
+                      {spot.judge.faults?.length ? <ul className="fm-small" dir="auto">{spot.judge.faults.map((fault, index) => <li key={index}>{fault.check}: {fault.where}</li>)}</ul> : null}
+                      <a href={`/api/assets/${spot.assetId}`} className="fm-small" target="_blank" rel="noreferrer">לפתוח את תמונת המחבוא בגודל מלא</a>
+                    </div> : null}
                     <AttemptStrip attempts={spot.history} />
                   </details>
                 ))}
@@ -254,7 +262,7 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
               <dd dir="ltr">{game.owner?.email}</dd>
               <dt>חבילה</dt>
               <dd>
-                {game.packageTier} · {(() => { const s = gameShape(game.scenes.map((x) => x.sceneSlug)); return `${s.worlds} עולמות · ${s.places} מקומות · ${s.spots} מחבואים`; })()}
+                {game.packageTier} · {(() => { const s = gameShape(game.scenes); return `${s.worlds} עולמות · ${s.places} מקומות · ${s.spots} מחבואים`; })()}
               </dd>
               <dt>תשלום</dt>
               <dd>
@@ -262,6 +270,14 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
               </dd>
               <dt>עלות יצירה</dt>
               <dd>{costCents === null ? "עלות לא זמינה — נדרש בירור" : `${(costCents / 100).toFixed(2)} USD`}</dd>
+              {localPatchCost && <dd className="mt-1 text-xs text-muted-foreground">
+                בפנקס: {(localPatchCost.settledMicroUsd / 1_000_000).toFixed(6)} USD
+                {localPatchCost.estimated ? " — כולל אומדני תעריף, לא חשבונית ספק" : ""}.
+                {" "}זהות {(localPatchCost.byScope.identity.settledMicroUsd / 1_000_000).toFixed(4)},
+                {" "}תמונות {((localPatchCost.byScope.image.settledMicroUsd + localPatchCost.byScope.sheet.settledMicroUsd + localPatchCost.byScope.repair.settledMicroUsd) / 1_000_000).toFixed(4)},
+                {" "}שיפוט {(localPatchCost.byScope.judge.settledMicroUsd / 1_000_000).toFixed(4)} USD.
+                {localPatchCost.unresolved && <> הסכום אינו סופי: {localPatchCost.unknownCharges} חיובים לא ידועים; {(localPatchCost.reservedMicroUsd / 1_000_000).toFixed(4)} USD שמורים ואינם חיוב נוסף.</>}
+              </dd>}
               <dt>Game id</dt>
               <dd>{game.id}</dd>
               <dt>קישור</dt>
@@ -276,17 +292,17 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
               )}
               {avatarId ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={`/api/assets/${avatarId}`} alt="אווטאר" className="photo-thumb" style={{ borderRadius: "999px" }} />
+                <img src={`/api/assets/${avatarId}`} alt="אווטאר" className="photo-thumb" style={{ borderRadius: game.styleVersion === "local-patch-world-v1" ? "12px" : "999px", objectFit: "contain" }} />
               ) : null}
             </div>
             {game.childProfile?.identityAssetId ? (
-              // The sticker used to be the whole portrait quadrant, face small in
-              // a big circle. Games made before the cut moved to the head get it
-              // again from the same sheet, for nothing.
+              // A display-only derivative of the retained sheet, never a new render.
               <form action={recutAvatarAction}>
                 <input type="hidden" name="gameId" value={gameId} />
                 <button className="fm-btn fm-btn--secondary fm-btn--sm" type="submit">
-                  ◎ לחתוך את האווטאר מחדש סביב הפנים
+                  {game.styleVersion === "local-patch-world-v1"
+                    ? "◎ להציג את כל הפנים — תיקון תצוגה ללא עלות"
+                    : "◎ לחתוך את האווטאר מחדש סביב הפנים"}
                 </button>
               </form>
             ) : null}

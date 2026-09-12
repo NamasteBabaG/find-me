@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { OpenAiPatchJudge, judgeCharge, judgePrompt, judgeReserveCents } from "../judge";
+import { CURRENT_JUDGE_PRICING_VERSION, OpenAiPatchJudge, judgeCharge, judgePrompt, judgeReserveCents } from "../judge";
 
 let png: Buffer;
 beforeAll(async () => { png = await sharp({ create: { width: 32, height: 32, channels: 4, background: "#bb8866" } }).png().toBuffer(); });
@@ -12,6 +12,17 @@ function response(content = '{"verdict":"ok","reason":"same face"}', withUsage =
 }
 
 describe("judge billing and evidence", () => {
+  it("prices Luna on the new card and preserves legacy Sol accounting", () => {
+    const u = { prompt_tokens: 2000, completion_tokens: 400 };
+    expect(judgeCharge("gpt-5.6-sol", u).costCents).toBe(1.8);
+    expect(judgeCharge("gpt-5.6-luna", u).costCents).toBeCloseTo(.098);
+    const explicit = { ...u, prompt_tokens_details: { cached_tokens: 500, cache_write_tokens: 100 } };
+    expect(judgeCharge("gpt-5.6-luna-2026-09-12", explicit).costCents).toBeCloseTo(.0795);
+    expect(judgeCharge("gpt-5.6-sol", explicit, CURRENT_JUDGE_PRICING_VERSION).costCents).toBeCloseTo(1.43);
+    expect(judgeCharge("gpt-5.6-lunaarbitrary", u).costUnknown).toBe(true);
+    expect(judgeCharge("gpt-5.6-luna", { ...u, prompt_tokens_details: { cached_tokens: 2001 } }).costUnknown).toBe(true);
+    expect(judgeCharge("gpt-5.6-luna", { ...u, prompt_tokens: 272001 }).costUnknown).toBe(true);
+  });
   it("records exact rate-based cost, usage, request id, served model and unchanged prompt", async () => {
     const fetch = vi.fn().mockResolvedValue(response()); vi.stubGlobal("fetch", fetch);
     const result = await new OpenAiPatchJudge("test-key", { tries: 1 }).judge(input());

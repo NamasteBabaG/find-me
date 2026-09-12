@@ -92,11 +92,11 @@ async function fixture() {
   return { c, id, ownerId, childId, photoId, claim, reserve, result, game, job, ledger, provenance };
 }
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
-async function fullWorld(f: Awaited<ReturnType<typeof fixture>>) {
+async function fullWorld(f: Awaited<ReturnType<typeof fixture>>, pinnedVersion?: number) {
   const { catalog } = await readBoardConditionedCatalog();
   await db.gameScene.deleteMany({ where: { gameId: f.id } });
   for (const [i, board] of catalog.boards.entries()) await db.gameScene.create({ data: { id: `${f.id}-board-${i}`, gameId: f.id,
-    sceneSlug: board.boardId, sceneVersion: board.sceneVersion, orderIndex: i } });
+    sceneSlug: board.boardId, sceneVersion: pinnedVersion ?? board.sceneVersion, orderIndex: i } });
   await db.game.update({ where: { id: f.id }, data: { sceneCount: 9 } });
 }
 type Fixture = Awaited<ReturnType<typeof fixture>>;
@@ -135,7 +135,7 @@ describe("QA identity lifecycle: real DB and synthetic provider only", () => {
   });
 
   it("new local-patch identity uses v2 face atlas, v4 prompt provenance and v2 approval without the old wizard flag", async () => {
-    const f = await fixture(); await fullWorld(f);
+    const f = await fixture(); await fullWorld(f, 6);
     fake.styleVersion = "board-matched-identity/v2";
     delete process.env.QA_BOARD_CONDITIONED_WIZARD;
     await db.game.update({ where: { id: f.id }, data: { styleVersion: LOCAL_PATCH_STYLE, status: "PAID" } });
@@ -166,7 +166,7 @@ describe("QA identity lifecycle: real DB and synthetic provider only", () => {
   });
 
   it("local-patch identity defers its review to a fresh tick without repainting or showing an unapproved avatar", async () => {
-    const f = await fixture(); await fullWorld(f);
+    const f = await fixture(); await fullWorld(f, 6);
     delete process.env.QA_BOARD_CONDITIONED_WIZARD;
     await db.game.update({ where: { id: f.id }, data: { styleVersion: LOCAL_PATCH_STYLE, status: "PAID" } });
     await db.generationJob.update({ where: { id: f.claim.jobId }, data: { status: "QUEUED", attempts: 0, currentStep: null } });
@@ -193,8 +193,47 @@ describe("QA identity lifecycle: real DB and synthetic provider only", () => {
     } finally { clock.mockRestore(); }
   });
 
+  it("catalog7 selects real board-style identity before drawing, reviews at Luna LOW, and derives an unclipped display without changing the sheet", async () => {
+    const f = await fixture(); await fullWorld(f, 7);
+    fake.styleVersion = "board-matched-identity/v2";
+    delete process.env.QA_BOARD_CONDITIONED_WIZARD;
+    await db.game.update({ where: { id: f.id }, data: { styleVersion: LOCAL_PATCH_STYLE, status: "PAID" } });
+    await db.generationJob.update({ where: { id: f.claim.jobId }, data: { status: "QUEUED", attempts: 0, currentStep: null } });
+    const fallback = vi.fn(); f.c.avatars.createAvatar = fallback;
+    const generate = vi.fn(async (request: Parameters<NonNullable<Container["avatars"]["createCharacter"]>>[0]) => {
+      expect(request.styleRef).toEqual(png);
+      expect(request.qaStyleContract).toEqual({ ...f.provenance.style, version: "board-matched-identity/v2" });
+      expect(request.ageYears).toBe(6);
+      return f.result();
+    });
+    f.c.avatars.createCharacter = generate;
+    const wire = vi.fn(async (_url: string, init?: RequestInit) => {
+      const request = JSON.parse(String(init?.body));
+      expect(request).toMatchObject({ model: "gpt-5.6-luna", reasoning_effort: "low", max_completion_tokens: 3000, store: false });
+      expect(request.messages[0].content.filter((part: { type: string }) => part.type === "image_url")).toHaveLength(3);
+      return new Response(JSON.stringify({ ...styleAnswer("uncertain"), model: "gpt-5.6-luna" }), { headers: { "x-request-id": `req_luna_${f.id}` } });
+    });
+    vi.stubGlobal("fetch", wire);
+    await runGenerationPipeline(f.c, f.id);
+    expect(await f.game()).toMatchObject({ status: "TARGETS_GENERATING", styleVersion: LOCAL_PATCH_STYLE });
+    const child = await db.childProfile.findUniqueOrThrow({ where: { id: f.childId } });
+    const identity = await db.asset.findUniqueOrThrow({ where: { id: child.identityAssetId! } });
+    const avatar = await db.asset.findUniqueOrThrow({ where: { id: child.avatarAssetId! } });
+    expect(await f.c.storage.get(identity.storagePath)).toEqual(png);
+    expect(avatar).toMatchObject({ width: 512, height: 512 });
+    const receipt = await db.auditLog.findFirstOrThrow({ where: { action: IDENTITY_GATE_ACTION, entityId: identity.id } });
+    expect(JSON.parse(receipt.metaJson!)).toMatchObject({ version: "board-wizard-identity-style-luna-low-advisory/v3", approved: false,
+      model: "gpt-5.6-luna", effort: "low", checks: { paintedStyle: "uncertain" }, provenance: { promptVersion: "character-v4-board-drawn-face-reference" } });
+    expect(await identityApprovedForDisplay(f.c, child, 7)).toBe(true);
+    expect(await identityApprovedForDisplay(f.c, child, 6)).toBe(false);
+    expect(generate).toHaveBeenCalledOnce(); expect(wire).toHaveBeenCalledOnce(); expect(fallback).not.toHaveBeenCalled();
+    expect((await f.ledger()).requests.every((row: { state: string }) => row.state === "settled")).toBe(true);
+    // This file also tests the shared queue selector; do not leave this fixture runnable.
+    await db.game.update({ where: { id: f.id }, data: { status: "MANUAL_REVIEW" } });
+  });
+
   it("a refused local-patch identity stays private and never enters either board engine", async () => {
-    const f = await fixture(); await fullWorld(f);
+    const f = await fixture(); await fullWorld(f, 6);
     delete process.env.QA_BOARD_CONDITIONED_WIZARD;
     await db.game.update({ where: { id: f.id }, data: { styleVersion: LOCAL_PATCH_STYLE } });
     await db.generationJob.update({ where: { id: f.claim.jobId }, data: { status: "QUEUED", attempts: 0, currentStep: null } });
@@ -209,7 +248,7 @@ describe("QA identity lifecycle: real DB and synthetic provider only", () => {
   });
 
   it("a missing local-patch style atlas stops before any identity or review purchase", async () => {
-    const f = await fixture(); await fullWorld(f);
+    const f = await fixture(); await fullWorld(f, 6);
     delete process.env.QA_BOARD_CONDITIONED_WIZARD;
     await db.game.update({ where: { id: f.id }, data: { styleVersion: LOCAL_PATCH_STYLE } });
     await db.generationJob.update({ where: { id: f.claim.jobId }, data: { status: "QUEUED", attempts: 0, currentStep: null } });

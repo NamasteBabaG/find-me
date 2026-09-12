@@ -72,6 +72,7 @@
    that shows through, never the board. It fades as the banks part. */
 .scene__curtain::before {
   content: ""; position: absolute; inset: 0;
+  background-color: #BFE9FF;
   background:
     radial-gradient(ellipse 22% 9% at 18% 22%, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0) 70%),
     radial-gradient(ellipse 16% 7% at 78% 16%, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0) 70%),
@@ -251,8 +252,50 @@
 @media (max-width: 600px) { .passport__grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-2); } }
 .passport__done { text-align: center; display: flex; flex-direction: column; gap: var(--space-2); align-items: center; }
 .passport__done .complete__stamp { max-width: calc(100% - var(--space-4)); line-height: var(--lh-500); animation: none; }
-.mission__thumb--face { width: var(--space-6); height: var(--space-6); }
-.mission__face { width: 100%; height: 100%; border-radius: var(--radius-pill); object-fit: cover; background: var(--white); box-shadow: var(--sticker-outline); }
+.mission__thumb--face { width: 96px; height: 96px; }
+.mission__face { width: 100%; height: 100%; border-radius: var(--radius-2); object-fit: contain; background: var(--white); box-shadow: var(--sticker-outline); }
+
+/* The complete search HUD stays in the physical upper-right in both locales.
+   Tools occupy a separate left rail; neither mirrors over the face in RTL. */
+.mission { top: max(var(--space-1), env(safe-area-inset-top)); right: max(var(--space-1), env(safe-area-inset-right)); bottom: auto; left: auto; transform: none; border-radius: var(--radius-2); align-items: start; width: min(420px, calc(100% - 72px)); max-width: none; gap: var(--space-1); padding: var(--space-1); animation: none; }
+.mission__body { flex: 1; }
+.mission__meta { flex-wrap: wrap; gap: 4px; }
+.mission__text, .mission__hint { white-space: normal; overflow-wrap: anywhere; }
+.mission__hint { margin: 4px 0 0; }
+.mission__rules { font-size: var(--fs-50); line-height: 1.3; margin: 4px 0; }
+.mission__ticks { direction: ltr; }
+.mission__tick { border: 0; font-size: 20px; width: 20px; height: 24px; color: var(--ink-3); background: none; }
+.mission__tick--done { color: #9a5900; background: none; }
+.mission__hintbtn { min-height: 48px; padding-inline: 10px; font-size: var(--fs-100); }
+.mission__continue { pointer-events: auto; min-height: 44px; padding: 4px 10px; border-radius: var(--radius-2); color: var(--ink); background: var(--sun); font-weight: 700; }
+.scene__bar { left: max(var(--space-1), env(safe-area-inset-left)); right: auto; top: max(var(--space-1), env(safe-area-inset-top)); padding: 0; flex-direction: column; align-items: start; }
+.scene__tools { flex-direction: column; gap: 4px; }
+.scene__title { display: none; }
+.scene__advance { position: absolute; z-index: var(--z-ui); bottom: max(var(--space-2), env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100% - 16px); padding: 10px; border-radius: var(--radius-2); background: var(--white); box-shadow: var(--shadow-2); text-align: center; }
+.scene__advance p { margin: 0 0 8px; }
+.scene__advance button { margin: 2px; }
+.game__announcement { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.bubble { animation-name: fm-bubble-pop; max-width: min(260px, calc(100vw - 32px)); z-index: var(--z-overlay); }
+.bubble__star { color: #9a5900; }
+.wmap__stars { position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%); padding: 2px 5px; border-radius: 8px; background: var(--white); color: var(--ink); white-space: nowrap; font-size: 12px; font-weight: 700; }
+@keyframes fm-bubble-pop {
+  0% { transform: translate(-50%, calc(-100% - var(--space-4))) scale(0.6); opacity: 0; }
+  60% { transform: translate(-50%, calc(-100% - var(--space-4))) scale(1.08); opacity: 1; }
+  100% { transform: translate(-50%, calc(-100% - var(--space-4))) scale(1); }
+}
+@media (max-width: 720px), (max-height: 480px) {
+  .mission__thumb--face { width: 72px; height: 72px; }
+  .mission { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 6px; }
+  .mission__hintbtn { grid-column: 1; min-height: 44px; }
+  .mission__body { grid-column: 2; grid-row: 1 / span 2; }
+  .mission__tick { width: 18px; font-size: 18px; }
+  .mission__rules { font-size: 11px; }
+  .scene__btn { width: 44px; height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bubble, .mission__tick--done { animation: none; }
+  .scene__curtain.is-open::before { transition: none; }
+}
 
 /* The landing demo frame on a phone is only ~220px tall: tighten the finish card
    so both actions stay inside it instead of being cut off at the bottom. */

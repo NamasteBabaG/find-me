@@ -3,7 +3,7 @@
 import type { GameConfig } from "@/domain/game/config";
 import Image from "next/image";
 import { useState } from "react";
-import { sceneProgress, type GameProgress } from "@/domain/game/progress";
+import { gameStars, sceneFoundIds, sceneIsComplete, sceneIsPlayable, type GameProgress } from "@/domain/game/progress";
 import { useGameText } from "../i18n";
 
 function BoardThumbnail({ thumbnail, base }: { thumbnail: string; base: string }) {
@@ -15,7 +15,9 @@ function BoardThumbnail({ thumbnail, base }: { thumbnail: string; base: string }
 /** The adventure bag: actual places, with the saved completion of each board. */
 export function Passport({ config, progress, onMap, onOpen }: { config: GameConfig; progress: GameProgress; onMap: () => void; onOpen: (slug: string) => void }) {
   const { g, tf } = useGameText();
-  const done = config.scenes.filter(scene => sceneProgress(progress, scene.slug).completed).length;
+  const done = config.scenes.filter(scene => sceneIsComplete(progress, scene)).length;
+  const free = config.scenes.some(scene => scene.playMode === "find-any");
+  const stars = gameStars(progress, config.scenes);
   const total = config.scenes.length;
   const complete = total > 0 && done >= total;
   return (
@@ -26,19 +28,23 @@ export function Passport({ config, progress, onMap, onOpen }: { config: GameConf
         <div>
           <h1 className="passport__title">{tf(g.passport.title, { name: config.child.name })}</h1>
           <p className="map__sub">{complete ? g.passport.complete : tf(g.passport.progress, { done, total })}</p>
+          {free ? <p>{tf(g.scene.worldStars, stars)}</p> : null}
         </div>
       </header>
       <ul className="passport__grid" aria-label={g.passport.itemsAria}>
         {config.scenes.map((scene) => {
-          const sp = sceneProgress(progress, scene.slug);
+          const isComplete = sceneIsComplete(progress, scene);
+          const count = sceneFoundIds(progress, scene).length;
+          const playable = sceneIsPlayable(progress, config, scene);
           return (
-            <li key={scene.slug} className={`loot${sp.completed ? " loot--got" : ""}`}>
-              <button type="button" className="loot__btn" onClick={() => onOpen(scene.slug)} aria-label={`${scene.name} — ${sp.completed ? g.passport.collected : g.passport.notYet}`}>
+            <li key={scene.slug} className={`loot${isComplete ? " loot--got" : ""}`}>
+              <button type="button" className="loot__btn" disabled={!playable} onClick={() => onOpen(scene.slug)} aria-label={`${scene.name} — ${isComplete ? g.passport.collected : g.passport.notYet}${scene.playMode === "find-any" ? ` — ${count}/${scene.targets.length}` : ""}`}>
                 <span className="loot__image">
                   <BoardThumbnail key={scene.art.thumbnail} thumbnail={scene.art.thumbnail} base={scene.art.base} />
-                  {sp.completed ? <span className="loot__completed">{g.passport.collected}</span> : null}
+                  {isComplete ? <span className="loot__completed">{g.passport.collected}</span> : null}
                 </span>
                 <span className="loot__name">{scene.name}</span>
+                {scene.playMode === "find-any" ? <span className="loot__name">★ {count}/{scene.targets.length}</span> : null}
               </button>
             </li>
           );

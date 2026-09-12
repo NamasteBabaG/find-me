@@ -19,6 +19,17 @@ function mount() {
 }
 
 describe("the mounted creating screen", () => {
+  it("labels the new route as automatic publication rather than human approval", async () => {
+    const payload = { status: "TARGETS_GENERATING", automaticPublication: true,
+      ...creationProgress({ status: "TARGETS_GENERATING", characterReady: true, spotsDone: 10, spotsTotal: 45 }),
+      pending: false, playUrl: null, avatarUrl: "/synthetic-full-portrait", spotsDone: 10, spotsTotal: 45, place: null };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(payload))));
+    const view = mount();
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(view.getByText(en.create.creating.automaticCheck)).toBeTruthy();
+    expect(view.queryByText(en.create.creating.milestones.check)).toBeNull();
+    expect(view.getByText("10 of 45 hiding spots")).toBeTruthy();
+  });
   it.each(["READY", "DELIVERED"] as const)("invites opening a %s game on the real playable link only", async (value) => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(status(value)));
     const view = mount();

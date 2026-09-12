@@ -155,3 +155,16 @@ export async function avatarFromSheet(sheet: Buffer, sheetSize: number): Promise
   const square = await sharp(portrait).extract({ left: win.left, top: win.top, width: win.size, height: win.size }).png().toBuffer();
   return roundSticker(square);
 }
+
+/** Display-only derivative: retain the ENTIRE authored portrait cell. A circle
+ * or a guessed head bounding box cannot recover clipped hair/cheeks. Keeping
+ * this separate leaves the canonical identity and every paid hash untouched. */
+export async function avatarDisplayFromSheet(sheet: Buffer, sheetSize: number): Promise<Buffer> {
+  const meta = await sharp(sheet, { limitInputPixels: 25_000_000 }).metadata();
+  if (!Number.isInteger(sheetSize) || sheetSize < 2 || meta.width !== sheetSize || meta.height !== sheetSize
+    || (meta.pages ?? 1) !== 1 || (meta.orientation ?? 1) !== 1) throw new Error("Cannot derive display portrait from this identity raster");
+  const half = Math.floor(sheetSize / 2);
+  return sharp(sheet).extract({ left: 0, top: 0, width: half, height: half })
+    .resize(AVATAR_SIZE - 24, AVATAR_SIZE - 24, { fit: "contain", background: "#eee9df" })
+    .extend({ top: 12, bottom: 12, left: 12, right: 12, background: "#eee9df" }).png().toBuffer();
+}

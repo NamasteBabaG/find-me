@@ -390,7 +390,7 @@
 }
 .cp__stage--met::before { border-style: solid; animation: cp-bloom var(--dur-3) var(--ease-out) both; }
 .cp__stage--done::before { border-style: solid; animation: none; }
-.cp__avatar { width: var(--space-16); height: var(--space-16); border-radius: var(--radius-pill); object-fit: cover; box-shadow: var(--sticker-outline), var(--shadow-sticker); background: var(--white); animation: cp-pop var(--dur-3) var(--ease-out) both; }
+.cp__avatar { width: var(--space-16); height: var(--space-16); border-radius: 18px; object-fit: contain; box-shadow: var(--sticker-outline), var(--shadow-sticker); background: var(--white); animation: cp-pop var(--dur-3) var(--ease-out) both; }
 .cp__pencil { font-size: var(--fs-800); line-height: 1; animation: cp-scribble 1.6s ease-in-out infinite; transform-origin: 80% 80%; }
 .cp__party { font-size: var(--fs-800); line-height: 1; }
 .cp__title { font-family: var(--font-display); font-size: var(--fs-500); line-height: var(--lh-500); font-weight: 800; letter-spacing: -0.01em; }

@@ -3,6 +3,7 @@ import { audit, SYSTEM } from "./audit.service";
 import { statusOf } from "./game-status";
 import { failedSpotsForAdmin, generationCostForDisplay } from "./admin.service";
 import { adminAlertEmail, type AdminAlertKind } from "./email/templates";
+import { deliverLocalPatchNotifications } from "./local-patch-notifications";
 
 /**
  * Tell the admins about a game that needs a look, without holding it back.
@@ -62,7 +63,7 @@ export async function sendAdminAlert(c: Container, input: AdminAlertInput): Prom
 }
 
 /** A retry carries only the recipients who failed, and when each last failed. */
-async function sendAlert(c: Container, input: AdminAlertInput, retryFailures?: Map<string, Date>): Promise<AdminAlertOutcome> {
+async function sendAlert(c: Container, input: AdminAlertInput, retryFailures?: Map<string, Date>, deadlineAt?: number): Promise<AdminAlertOutcome> {
   const outcome: AdminAlertOutcome = { sent: [], failed: [], skipped: [] };
   const admins = [...new Set(c.adminEmails ?? [])].filter((to) => !retryFailures || retryFailures.has(to));
   const action = `admin-alert:${input.kind}`;
@@ -108,8 +109,9 @@ async function sendAlert(c: Container, input: AdminAlertInput, retryFailures?: M
       error: input.error,
     });
     for (const to of due) {
+      if (deadlineAt !== undefined && deadlineAt - Date.now() < 4_000) break;
       try {
-        await c.email.send({ ...mail, to });
+        await c.email.send({ ...mail, to }, deadlineAt === undefined ? undefined : { deadlineAt: deadlineAt - 3_000 });
         outcome.sent.push(to);
       } catch (err) {
         outcome.failed.push(to);
@@ -137,7 +139,9 @@ async function sendAlert(c: Container, input: AdminAlertInput, retryFailures?: M
  * an atomic outbox: overlapping workers / a failed post-send audit can still
  * duplicate mail. The existing schema is unchanged.
  */
-export async function retryFailedAdminAlerts(c: Container): Promise<{ retried: number }> {
+export async function retryFailedAdminAlerts(c: Container, options: { deadlineAt?: number } = {}): Promise<{ retried: number }> {
+  const deadlineAt = Math.min(options.deadlineAt ?? Infinity, Date.now() + 20_000);
+  await deliverLocalPatchNotifications(c, undefined, { deadlineAt }).catch(err => console.error("[local-patch notifications] retry failed:", err instanceof Error ? err.message : String(err)));
   let retried = 0;
   try {
     const admins = new Set(c.adminEmails ?? []);
@@ -146,6 +150,7 @@ export async function retryFailedAdminAlerts(c: Container): Promise<{ retried: n
     const pending = new Map<string, { input: AdminAlertInput; failures: Map<string, Date>; successes: Map<string, Date>; lastAttempt: number }>();
     let cursor: string | undefined;
     while (true) {
+      if (deadlineAt - Date.now() < 4_000) return { retried };
       const rows = await c.db.auditLog.findMany({
         where: { action: { in: RETRY_ACTIONS }, entityType: "Game", createdAt: { gt: new Date(passAt.getTime() - ALERT_RETRY_WINDOW_MS), lte: passAt } },
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
@@ -181,7 +186,8 @@ export async function retryFailedAdminAlerts(c: Container): Promise<{ retried: n
     }
     let attempted = 0;
     for (const group of [...pending.values()].sort((a, b) => a.lastAttempt - b.lastAttempt)) {
-      const outcome = await sendAlert(c, group.input, group.failures);
+      if (deadlineAt - Date.now() < 4_000) break;
+      const outcome = await sendAlert(c, group.input, group.failures, deadlineAt);
       if (outcome.sent.length > 0) retried++;
       if (outcome.sent.length + outcome.failed.length > 0 && ++attempted >= RETRY_LIMIT) break;
     }

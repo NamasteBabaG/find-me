@@ -7,11 +7,14 @@ import { persistGameConfig } from "./generation/scene-composer";
 import { publishGame } from "./publish.service";
 import { audit, type Actor } from "./audit.service";
 import { deleteAsset, readAssetBuffer, storeAsset } from "./asset.service";
-import { AVATAR_SIZE, avatarFromSheet } from "@/infra/generation/avatar-cut";
+import { AVATAR_SIZE, avatarDisplayFromSheet, avatarFromSheet } from "@/infra/generation/avatar-cut";
+import { sha256Bytes } from "./generation/fixed-sprite";
 import { FixedWorldStageError, fixedStageAssert, isFixedWorldStyle, readFixedWorldStage } from "./generation/fixed-world-stage-record";
 import { fixedWorldJsonSha256 } from "./generation/fixed-world-materializer";
 import { auditWorldBudget } from "./generation/world-budget";
 import { PrismaWorldBudgetStore } from "@/infra/db/prisma-world-budget-store";
+import { boardWizardWorldId } from "./generation/board-conditioned-wizard";
+import { rebindLocalPatchNotificationAvatar } from "./local-patch-notifications";
 
 async function assertLegacyMutation(c: Container, gameId: string) {
   const game = await c.db.game.findUniqueOrThrow({ where: { id: gameId }, select: { styleVersion: true, childProfileId: true } });
@@ -22,6 +25,7 @@ async function assertLegacyMutation(c: Container, gameId: string) {
 async function assertNoFixedChildGames(c: Container, childProfileId: string) {
   const games = await c.db.game.findMany({ where: { childProfileId, deletedAt: null }, select: { styleVersion: true } });
   fixedStageAssert(!games.some(game => isFixedWorldStyle(game.styleVersion)), "unsupported", "This child is bound to a fixed world; its reviewed identity assets cannot be changed");
+  return games;
 }
 
 export type AdminFilter = "new" | "pending_payment" | "generating" | "qa" | "needs_photo" | "ready" | "failed" | "refunded" | "all";
@@ -80,7 +84,9 @@ export async function orderDetailForAdmin(c: Container, gameId: string) {
   const assets = await c.db.asset.findMany({ where: { id: { in: [game.childProfile?.avatarAssetId, game.childProfile?.identityAssetId, game.childProfile?.originalPhotoAssetId, ...game.scenes.flatMap((s) => s.targets.map((t) => t.spriteAssetId))].filter((x): x is string => Boolean(x)) } } });
   const activity = await c.db.auditLog.findMany({ where: { entityType: "Game", entityId: gameId }, orderBy: { createdAt: "desc" }, take: 40 });
   const [failedSpots, paintedSpots] = await Promise.all([failedSpotsForAdmin(c, gameId), paintedSpotsForAdmin(c, gameId)]);
-  return { game, status: statusOf(game), costCents: await generationCostForDisplay(c, gameId), assets, activity, failedSpots, paintedSpots, awaitingQa: isAwaitingQa(statusOf(game)), playable: isPlayable(statusOf(game)) };
+  return { game, status: statusOf(game), costCents: await generationCostForDisplay(c, gameId),
+    localPatchCost: game.styleVersion === "local-patch-world-v1" ? await localPatchCostForDisplay(c, gameId) : null,
+    assets, activity, failedSpots, paintedSpots, awaitingQa: isAwaitingQa(statusOf(game)), playable: isPlayable(statusOf(game)) };
 }
 
 /**
@@ -114,10 +120,20 @@ export async function paintedSpotsForAdmin(c: Container, gameId: string) {
 }
 
 /** The row's last review: `ok`, `bad`, `unknown` (a reviewer could not decide), or null when nothing reviewed it. */
-export function parseJudge(json: string | null): { verdict: string; reason: string; model?: string; version?: string; checks?: Record<string, string> } | null {
+export function parseJudge(json: string | null): { verdict: string; reason: string; model?: string; version?: string; checks?: Record<string, string>; claimedVerdict?: string; faults?: { check: string; where: string }[] } | null {
   if (!json) return null;
   try {
     const raw = JSON.parse(json) as { verdict?: unknown; reason?: unknown; model?: unknown; version?: unknown; checks?: unknown };
+    if (raw.verdict && typeof raw.verdict === "object") {
+      const nested = raw.verdict as Record<string, unknown>;
+      if (typeof nested.verdict === "string") return {
+        verdict: nested.verdict, reason: typeof nested.reason === "string" ? nested.reason : "",
+        ...(typeof nested.claimedVerdict === "string" ? { claimedVerdict: nested.claimedVerdict } : {}),
+        faults: Array.isArray(nested.faults) ? nested.faults.filter((fault): fault is { check: string; where: string } =>
+          !!fault && typeof fault === "object" && typeof fault.check === "string" && typeof fault.where === "string") : [],
+        checks: Object.fromEntries(Object.entries(nested).filter((entry): entry is [string, string] => !["verdict", "reason"].includes(entry[0]) && typeof entry[1] === "string")),
+      };
+    }
     if (typeof raw.verdict !== "string") return null;
     return {
       verdict: raw.verdict,
@@ -257,6 +273,11 @@ function parseIds(json: string | null): string[] {
  */
 export async function generationCostCents(c: Container, gameId: string): Promise<number> {
   const game = await c.db.game.findUniqueOrThrow({ where: { id: gameId }, select: { styleVersion: true, ownerId: true, childProfileId: true } });
+  if (game.styleVersion === "local-patch-world-v1") {
+    const summary = await localPatchCostForDisplay(c, gameId);
+    fixedStageAssert(summary && !summary.unresolved, "budget", "Local-patch accounting is unavailable or unresolved; it must not appear free");
+    return summary.settledMicroUsd / 10_000;
+  }
   if (isFixedWorldStyle(game.styleVersion)) {
     const job = await c.db.generationJob.findUnique({ where: { id: `job_${gameId}` } });
     const record = job ? readFixedWorldStage(job.stepsJson) : null;
@@ -282,6 +303,20 @@ export async function generationCostCents(c: Container, gameId: string): Promise
     cents += assets.reduce((n, a) => n + a.costCents, 0);
   }
   return cents;
+}
+
+/** The world ledger includes renders, grouped/per-hide judges and identity reviews.
+ * Variant/Asset cents are projections of the same bills and must not be added. */
+export async function localPatchCostForDisplay(c: Container, gameId: string) {
+  try {
+    const ledger = await new PrismaWorldBudgetStore(c.db).read(boardWizardWorldId(gameId));
+    if (!ledger) return null;
+    const cost = auditWorldBudget(ledger.snapshot);
+    return { settledMicroUsd: cost.settledMicroUsd, reservedMicroUsd: cost.reservedMicroUsd,
+      unresolved: cost.held || cost.reservedMicroUsd > 0 || cost.pendingRequestKeys.length > 0,
+      unknownCharges: cost.unknownRequestKeys.length, byScope: cost.byScope,
+      estimated: ledger.snapshot.requests.some(request => request.state === "settled" && request.evidence.costBasis === "conservative-upper-estimate") };
+  } catch { return null; }
 }
 
 /** Display-only: unavailable or held accounting is unknown, never zero/free. */
@@ -328,40 +363,74 @@ export async function adjustTarget(c: Container, targetInstanceId: string, adjus
 }
 
 /**
- * Cut the round face sticker again from the child's identity sheet.
- *
- * For games made before the sticker was cut around the head: the old sticker
- * showed the whole portrait quadrant, the face small in a big white circle.
- * The new sticker replaces it everywhere the game shows it: the stored config
- * is pointed at the new asset (its URLs are re-signed on the way out anyway),
- * and the old one is dropped.
+ * Repair only the display avatar, for free, from the existing identity sheet.
+ * Local-patch games preserve the complete portrait quadrant (no face heuristic
+ * or circular bitmap cut). Legacy collage games keep their historical crop.
+ * The canonical private sheet, paid fingerprints and board pixels never change.
  */
 export async function recutAvatar(c: Container, gameId: string, actor: Actor): Promise<{ ok: true } | { ok: false; code: "NO_SHEET" }> {
   const game = await c.db.game.findUniqueOrThrow({ where: { id: gameId }, include: { childProfile: true } });
   fixedStageAssert(!isFixedWorldStyle(game.styleVersion), "unsupported", "A fixed world's reviewed avatar cannot be recut");
   const child = game.childProfile;
-  if (child) await assertNoFixedChildGames(c, child.id);
+  const siblings = child ? await assertNoFixedChildGames(c, child.id) : [];
+  const fullFace = game.styleVersion === "local-patch-world-v1" || siblings.some(sibling => sibling.styleVersion === "local-patch-world-v1");
   if (!child?.identityAssetId) return { ok: false, code: "NO_SHEET" };
   const sheetAsset = await c.db.asset.findUnique({ where: { id: child.identityAssetId } });
   if (!sheetAsset || sheetAsset.status !== "READY") return { ok: false, code: "NO_SHEET" };
+  if (fullFace) {
+    fixedStageAssert(!game.deletedAt && !child.deletedAt && child.ownerId && game.ownerId === child.ownerId
+      && game.childProfileId === child.id, "conflict", "A live game and its owned child are required for display repair");
+    fixedStageAssert(sheetAsset.id === child.identityAssetId && sheetAsset.ownerId === child.ownerId
+      && sheetAsset.type === "IDENTITY_SHEET" && sheetAsset.visibility === "PRIVATE" && !sheetAsset.deletedAt,
+    "conflict", "The display source must be this child's live, private identity sheet");
+    if (child.avatarAssetId) {
+      const previousAsset = await c.db.asset.findUnique({ where: { id: child.avatarAssetId } });
+      fixedStageAssert(previousAsset && previousAsset.ownerId === child.ownerId && previousAsset.type === "AVATAR"
+        && previousAsset.visibility === "GAME", "conflict", "The previous display asset is not this child's avatar");
+    }
+  }
   const sheet = await readAssetBuffer(c, child.identityAssetId);
-  const png = await avatarFromSheet(sheet, Math.min(sheetAsset.width ?? 1024, sheetAsset.height ?? 1024));
+  const sourceSha256 = fullFace ? sha256Bytes(sheet) : null;
+  const png = await (fullFace ? avatarDisplayFromSheet : avatarFromSheet)(sheet, Math.min(sheetAsset.width ?? 1024, sheetAsset.height ?? 1024));
   const asset = await storeAsset(c, { ownerId: child.ownerId, type: "AVATAR", visibility: "GAME", buffer: png, mimeType: "image/png", width: AVATAR_SIZE, height: AVATAR_SIZE, provider: sheetAsset.provider });
   const previous = child.avatarAssetId;
   try {
     await c.db.$transaction(async tx => {
       // The stager fences each Game row. Claim every sibling before changing
       // the shared child, so a concurrent stage either wins or sees this edit.
-      const games = await tx.game.findMany({ where: { childProfileId: child.id, deletedAt: null }, select: { id: true, styleVersion: true, updatedAt: true, configJson: true } });
+      const games = await tx.game.findMany({ where: { childProfileId: child.id, deletedAt: null }, select: { id: true, ownerId: true, styleVersion: true, updatedAt: true, configJson: true } });
       fixedStageAssert(!games.some(game => isFixedWorldStyle(game.styleVersion)), "unsupported", "This child became bound to a fixed world while the avatar was being cut");
+      fixedStageAssert(fullFace || !games.some(game => game.styleVersion === "local-patch-world-v1"), "conflict", "This child now needs a full-face display repair");
+      if (fullFace) {
+        fixedStageAssert(games.some(sibling => sibling.id === gameId), "conflict", "The display game is no longer attached to this child");
+        fixedStageAssert(games.every(sibling => sibling.ownerId === child.ownerId), "conflict", "A shared game is no longer owned by this child's owner");
+        const source = await tx.asset.findUnique({ where: { id: child.identityAssetId! } });
+        fixedStageAssert(source && source.ownerId === child.ownerId && source.status === "READY" && !source.deletedAt
+          && source.type === "IDENTITY_SHEET" && source.visibility === "PRIVATE" && source.storagePath === sheetAsset.storagePath
+          && source.width === sheetAsset.width && source.height === sheetAsset.height && source.bytes === sheetAsset.bytes,
+        "conflict", "The source identity changed while the display avatar was being repaired");
+        if (previous) {
+          const old = await tx.asset.findUnique({ where: { id: previous } });
+          fixedStageAssert(old && old.ownerId === child.ownerId && old.type === "AVATAR" && old.visibility === "GAME",
+            "conflict", "The old display asset changed ownership during the repair");
+        }
+      }
       for (const game of games) {
-        const claim = await tx.game.updateMany({ where: { id: game.id, childProfileId: child.id, deletedAt: null, styleVersion: game.styleVersion, updatedAt: game.updatedAt }, data: { updatedAt: new Date() } });
+        const claim = await tx.game.updateMany({ where: { id: game.id, childProfileId: child.id, deletedAt: null, styleVersion: game.styleVersion, updatedAt: game.updatedAt,
+          ...(fullFace ? { ownerId: child.ownerId } : {}) }, data: { updatedAt: new Date() } });
         fixedStageAssert(claim.count === 1, "conflict", "A shared game changed while the avatar was being cut");
       }
-      const changed = await tx.childProfile.updateMany({ where: { id: child.id, deletedAt: null, avatarAssetId: previous, identityAssetId: child.identityAssetId }, data: { avatarAssetId: asset.id } });
+      const changed = await tx.childProfile.updateMany({ where: { id: child.id, deletedAt: null, avatarAssetId: previous, identityAssetId: child.identityAssetId,
+        ...(fullFace ? { ownerId: child.ownerId, ageYears: child.ageYears, originalPhotoAssetId: child.originalPhotoAssetId, photoCropJson: child.photoCropJson } : {}) }, data: { avatarAssetId: asset.id } });
       fixedStageAssert(changed.count === 1, "conflict", "The child's reviewed identity changed while the avatar was being cut");
       if (previous) for (const game of games) {
-        if (game.configJson?.includes(`/api/assets/${previous}`)) await tx.game.update({ where: { id: game.id }, data: { configJson: game.configJson.replaceAll(`/api/assets/${previous}`, `/api/assets/${asset.id}`) } });
+        if (game.configJson?.includes(`/api/assets/${previous}`)) {
+          const nextConfig = game.configJson.replaceAll(`/api/assets/${previous}`, `/api/assets/${asset.id}`);
+          if (fullFace && game.styleVersion === "local-patch-world-v1") fixedStageAssert(await rebindLocalPatchNotificationAvatar(tx,
+            { gameId: game.id, previousConfig: game.configJson, nextConfig, previousAvatarId: previous, avatarId: asset.id }),
+          "conflict", "A game-ready email is currently being delivered; retry this display repair after it finishes");
+          await tx.game.update({ where: { id: game.id }, data: { configJson: nextConfig } });
+        }
       }
     });
   } catch (error) {
@@ -374,7 +443,8 @@ export async function recutAvatar(c: Container, gameId: string, actor: Actor): P
   if (previous) {
     await deleteAsset(c, previous);
   }
-  await audit(c, actor, "avatar:recut", "ChildProfile", child.id, { assetId: asset.id, previous });
+  await audit(c, actor, "avatar:recut", "ChildProfile", child.id, { assetId: asset.id, previous,
+    ...(fullFace ? { displayVersion: "full-portrait-quadrant/v1", identityAssetId: child.identityAssetId, sourceSha256 } : {}) });
   return { ok: true };
 }
 

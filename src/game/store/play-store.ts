@@ -4,7 +4,7 @@ import { create } from "zustand";
 import { gameWorlds, scenesOfWorld, worldOfScene, type GameConfig, type PlayWorld, type SceneConfig } from "@/domain/game/config";
 import { createMissionState, missionReducer, sceneSummary, type MissionAction, type MissionCopy, type MissionState } from "@/domain/game/mission";
 import { planScenePlay } from "@/domain/game/replay";
-import { collectibles, completedScenes, emptyProgress, recordSceneCompleted, sceneProgress, type GameProgress } from "@/domain/game/progress";
+import { collectibles, completedScenes, emptyProgress, recordSceneCompleted, recordFindAny, sceneCanAdvance, sceneFoundIds, sceneIsComplete, sceneIsPlayable, sceneProgress, type GameProgress } from "@/domain/game/progress";
 import { loadProgress, saveProgress } from "../engine/progress-storage";
 import { Telemetry } from "../engine/telemetry";
 import { sounds } from "../audio/sounds";
@@ -126,6 +126,8 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       const remembered = progress.lastWorld && worlds.some((w) => w.slug === progress.lastWorld) ? progress.lastWorld : null;
       const landing = remembered ? "map" : worlds.length > 1 ? "worlds" : "map";
       set({ progress, screen: screen === "gift" && progress.revealed ? landing : screen, ...(remembered ? { worldSlug: remembered } : {}) });
+      const resumed = config.scenes.find(scene => scene.slug === progress.lastScene && scene.playMode === "find-any");
+      if (resumed && progress.revealed && sceneIsPlayable(progress, config, resumed)) get().openScene(resumed.slug);
     },
 
     reveal() {
@@ -164,11 +166,18 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     openScene(slug) {
       const scene = get().config.scenes.find((s) => s.slug === slug);
       if (!scene) return;
+      if (!opts.readOnlyPreview && !demo && !sceneIsPlayable(get().progress, config, scene)) return;
       sounds().unlock();
       const history = sceneProgress(get().progress, slug);
       let plan = planScenePlay(scene, { plays: history.plays, lastVariants: history.lastVariants, lastOrder: history.lastOrder }, get().config.gameId);
+      const free = scene.playMode === "find-any" && !opts.singleMission;
+      const savedIds = free ? sceneFoundIds(get().progress, scene) : [];
+      // Returning to a five-hide board resumes its exact layout, not a shuffled replay.
+      if (free && history.sceneVersion === scene.version && history.lastOrder.length === scene.targets.length && new Set(history.lastOrder).size === scene.targets.length && history.lastOrder.every(id => scene.targets.some(target => target.id === id))) {
+        plan = { ...plan, playIndex: 0, order: history.lastOrder, variants: Object.fromEntries(scene.targets.map(target => [target.id, history.lastVariants[target.id] ?? "A"])) };
+      }
       if (opts.singleMission) plan = { ...plan, order: plan.order.slice(0, 1) };
-      const mission = createMissionState(slug, plan);
+      const mission = createMissionState(slug, plan, free ? { playMode: "find-any", findsRequiredToAdvance: scene.findsRequiredToAdvance, found: Object.fromEntries(savedIds.map(id => [id, history.foundRecords?.[id] ?? { hintsUsed: 0, misses: 0, elapsedMs: 0 }])) } : {});
       telemetry.track({ eventType: history.plays > 0 ? "game_replayed" : "scene_started", sceneSlug: slug });
       if (history.plays > 0) telemetry.track({ eventType: "scene_started", sceneSlug: slug });
       sounds().startAmbient(scene.sounds.ambient);
@@ -176,9 +185,9 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       // the passport lands the player on the right map when they come back.
       const world = worldOfScene(get().config, slug);
       set({ screen: "scene", sceneSlug: slug, mission, travelFrom: null, ...(world ? { worldSlug: world.slug } : {}) });
-      if (world && persist) {
-        const progress = { ...get().progress, lastWorld: world.slug, lastScene: slug };
-        saveProgress(progress);
+      if ((world && persist) || free) {
+        const progress = { ...get().progress, ...(world ? { lastWorld: world.slug } : {}), lastScene: slug };
+        if (persist) saveProgress(progress);
         set({ progress });
       }
     },
@@ -191,6 +200,16 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       if (next === mission) return;
       if (action.type === "TAP_TARGET" && next.lastFeedback?.kind === "hit") {
         telemetry.track({ eventType: "target_found", sceneSlug: scene.slug, targetId: action.targetId, hintsUsed: mission.hintLevel });
+        if (scene.playMode === "find-any") {
+          const before = get().progress;
+          const progress = recordFindAny(before, scene, next, config.scenes);
+          if (persist) saveProgress(progress);
+          if (!sceneCanAdvance(before, scene) && sceneCanAdvance(progress, scene)) telemetry.track({ eventType: "scene_unlocked", sceneSlug: scene.slug });
+          if (!sceneIsComplete(before, scene) && sceneIsComplete(progress, scene)) telemetry.track({ eventType: "scene_completed", sceneSlug: scene.slug, hintsUsed: sceneSummary(next).hintsUsed });
+          if (!before.journeyFinishedAt && progress.journeyFinishedAt) telemetry.track({ eventType: "journey_finished" });
+          if (!before.completedAt && progress.completedAt) telemetry.track({ eventType: "game_completed" });
+          set({ progress });
+        }
       }
       if (action.type === "REQUEST_HINT" && next.hintLevel !== mission.hintLevel) {
         telemetry.track({ eventType: "hint_used", sceneSlug: scene.slug, hintsUsed: next.hintLevel });
@@ -202,6 +221,8 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       const { mission, progress, config } = get();
       const scene = get().scene();
       if (!mission || !scene) return;
+      // Five-hide rewards are already durably recorded with the fifth hit.
+      if (scene.playMode === "find-any") return;
       const summary = sceneSummary(mission);
       const next = recordSceneCompleted(progress, scene.slug, { variants: mission.plan.variants, order: mission.plan.order, noHints: summary.noHints, bonusFound: summary.bonusFound }, config.scenes.length);
       if (persist) saveProgress(next);
@@ -212,6 +233,9 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
 
     replayScene() {
       const slug = get().sceneSlug;
+      // Find-any revisits retain their finds. Do not reset intro under the
+      // same mounted scene key, or silently turn 45 saved stars back into zero.
+      if (get().scene()?.playMode === "find-any") { get().goToMap(); return; }
       if (slug) get().openScene(slug);
     },
 
@@ -225,7 +249,8 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       // next not-yet-completed scene after the current one, wrapping around
       for (let i = 1; i <= order.length; i++) {
         const slug = order[(idx + i) % order.length];
-        if (slug && !sceneProgress(progress, slug).completed) return slug;
+        const scene = get().config.scenes.find(item => item.slug === slug);
+        if (scene && !sceneCanAdvance(progress, scene) && sceneIsPlayable(progress, get().config, scene)) return scene.slug;
       }
       return null;
     },
@@ -233,12 +258,12 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     worldDone() {
       const { progress } = get();
       const mine = get().worldScenes();
-      return mine.length > 0 && mine.every((s) => sceneProgress(progress, s.slug).completed);
+      return mine.length > 0 && mine.every((s) => sceneCanAdvance(progress, s));
     },
 
     gameDone() {
       const { config, progress } = get();
-      return config.scenes.every((s) => sceneProgress(progress, s.slug).completed);
+      return config.scenes.every((s) => sceneCanAdvance(progress, s));
     },
 
     openPassport() {

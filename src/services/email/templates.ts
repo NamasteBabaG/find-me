@@ -34,9 +34,10 @@ export function magicLinkEmail(input: { to: string; link: string; locale: Locale
 }
 
 /** `libraryLink` is absent when the game has no owner account to open a library for. */
-export function gameReadyEmail(input: { to: string; childName: string; playLink: string; libraryLink?: string; sceneCount: number; locale: Locale }): EmailMessage {
+export function gameReadyEmail(input: { to: string; childName: string; playLink: string; libraryLink?: string; sceneCount: number; locale: Locale; playMode?: "find-any" }): EmailMessage {
   const r = getDict(input.locale).email.ready;
   const vars = { name: input.childName, count: input.sceneCount, play: input.playLink, library: input.libraryLink ?? "" };
+  const body = tf(input.playMode === "find-any" ? r.bodyFive : r.body, vars);
   const manage = input.libraryLink
     ? `<p style="font-size:14px;line-height:24px;">${r.manageLead}</p>
        <p><a href="${input.libraryLink}" style="color:#1B6FA8;font-size:14px;">${r.manage}</a></p>`
@@ -48,11 +49,11 @@ export function gameReadyEmail(input: { to: string; childName: string; playLink:
     html: layout(
       input.locale,
       tf(r.title, vars),
-      `<p style="font-size:16px;line-height:24px;">${tf(r.body, vars)}</p>
+      `<p style="font-size:16px;line-height:24px;">${body}</p>
        ${button(input.playLink, r.button)}
        ${manage}`,
     ),
-    text: r.text
+    text: (input.playMode === "find-any" ? `${body}\n${r.text}` : r.text)
       .split("\n")
       .filter((line) => input.libraryLink || !line.includes("{library}"))
       .map((line) => tf(line, vars))

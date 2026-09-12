@@ -41,4 +41,9 @@ describe("free local-patch identity preflight", () => {
     await expect(preflightLocalPatchIdentity(f.c, "synthetic")).rejects.toThrow();
     expect(f.generate).not.toHaveBeenCalled();
   });
+  it("rejects mixed content versions before any identity purchase", async () => {
+    const f = fixture(); f.game.scenes[0]!.sceneVersion = 7;
+    await expect(preflightLocalPatchIdentity(f.c, "synthetic")).rejects.toThrow("one pinned content version");
+    expect(f.generate).not.toHaveBeenCalled();
+  });
 });

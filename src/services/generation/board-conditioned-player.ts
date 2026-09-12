@@ -341,7 +341,9 @@ export async function bindBoardConditionedPlayerGame(raw: {
   demand(input.boards.every(b => (b.worldId === first.worldId || probeScopes)
     && b.input.child.profileId === first.input.child.profileId && b.input.child.ageYears === first.input.child.ageYears),
     "invalid-input", "All boards must belong to one trusted world and child");
-  const template = GameConfigSchema.parse(input.template);
+  const parsedTemplate = GameConfigSchema.safeParse(input.template);
+  demand(parsedTemplate.success, "invalid-input", "Private template must satisfy the player contract, including distinct target ids");
+  const template = parsedTemplate.data;
   demand(template.packageTier === "ONE_WORLD" && template.scenes.length === input.boards.length
     && new Set(template.scenes.map(s => s.slug)).size === template.scenes.length
     && template.scenes.every(s => input.boards.some(b => b.input.boardId === s.slug)), "invalid-input", "Private template must contain exactly the selected world boards");

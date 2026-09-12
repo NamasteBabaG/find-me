@@ -8,7 +8,7 @@ import type { Container } from "./container";
  * no names).
  */
 export const ProgressEventInput = z.object({
-  eventType: z.enum(["scene_started", "target_found", "hint_used", "scene_completed", "game_completed", "game_replayed"]),
+  eventType: z.enum(["scene_started", "target_found", "hint_used", "scene_completed", "game_completed", "game_replayed", "scene_unlocked", "journey_finished"]),
   sceneSlug: z.string().optional(),
   targetId: z.string().optional(),
   hintsUsed: z.number().int().min(0).max(99).default(0),

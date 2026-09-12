@@ -22,7 +22,9 @@ import { BOARD_WIZARD_STYLE, GenerationPaused, boardWizardEnabled, enrollBoardCo
 import { sha256Bytes } from "./fixed-sprite";
 import { generateBoardWizardIdentity, holdBoardWizardIdentity, withBoardWizardIdentityClaim, type BoardWizardIdentityClaim } from "./board-wizard-identity-lifecycle";
 import { buildBoardWizardIdentityStyle } from "./board-wizard-identity-style";
-import { identityProvenanceSchema, reviewBoardWizardIdentity } from "./board-wizard-identity-gate";
+import { identityProvenanceSchema, reviewBoardWizardIdentity, identityReceiptReadyForPublication } from "./board-wizard-identity-gate";
+import { avatarDisplayFromSheet } from "../../infra/generation/avatar-cut";
+import { isLocalPatchAdvisoryVersion } from "../../domain/scene/local-patch-catalog";
 import { boardWizardBudget } from "./board-wizard-budget";
 import { CasWorldBudgetRepository } from "../../infra/db/world-budget-repository";
 import { PrismaWorldBudgetStore } from "../../infra/db/prisma-world-budget-store";
@@ -162,6 +164,7 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
     // Resolve every pinned version before any billable identity/patch work.
     // A missing historical definition must never silently use today's board.
     for (const gs of game.scenes) sceneBySlug(gs.sceneSlug, gs.sceneVersion);
+    const contentVersion = localPatch ? game.scenes[0]?.sceneVersion : undefined;
     const preflightIdentity = () => localPatch ? preflightLocalPatchIdentity(c, gameId) : preflightBoardConditionedWizard(c, gameId);
     if (localPatch || boardWizardEnabled()) await preflightIdentity();
     // ── Step 1: avatar ──
@@ -208,7 +211,11 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
             photoSha256: sha256Bytes(photo), crop, ageYears: child.ageYears, style: qaStyleContract });
           const persisted = await generateBoardWizardIdentity(c, qaIdentityClaim, {
             reserve: () => reserveBoardWizardIdentity(c, gameId, { childId: child.id, name: child.displayName, provenance, model: "gpt-image-2", attempts: 1 }),
-            generate: () => c.avatars.createCharacter!(request),
+            generate: async () => {
+              const character = await c.avatars.createCharacter!(request);
+              if (!isLocalPatchAdvisoryVersion(contentVersion)) return character;
+              return { ...character, avatarPng: await avatarDisplayFromSheet(character.sheetPng, character.sheetWidth), avatarWidth: 512, avatarHeight: 512 };
+            },
             provenance,
           });
           if (!persisted) return; // Held/deleted/stale identity must never reach legacy retries.
@@ -292,8 +299,9 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
         },
         write: work => withBoardWizardIdentityClaim(c, publicationClaim, work),
       }, { gameId, identityAssetId: current.identityAssetId, sheet: await readAssetBuffer(c, current.identityAssetId),
-        photo: await readAssetBuffer(c, current.originalPhotoAssetId!), atlas: identityStyle.png, provenance });
-      if (!gate.approved) { await holdBoardWizardIdentity(c, publicationClaim, "identity-style-review-required"); return; }
+        photo: await readAssetBuffer(c, current.originalPhotoAssetId!), atlas: identityStyle.png, provenance, contentVersion,
+        ...(localPatch && options.hardDeadlineAt !== undefined ? { deadlineAt: options.hardDeadlineAt } : {}) });
+      if (!identityReceiptReadyForPublication(gate, contentVersion)) { await holdBoardWizardIdentity(c, publicationClaim, "identity-style-review-required"); return; }
       if (localPatch) await finishLocalPatchIdentity(c, publicationClaim, identityStyle.catalogSha256);
       else await enrollBoardConditionedWizard(c, gameId, job.id, qaIdentityClaim.jobAttempt);
       return; // The resumable QA queue owns the frozen board path from here.

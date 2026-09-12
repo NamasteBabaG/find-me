@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
-import { AVATAR_SIZE, avatarFromSheet, faceWindow } from "../avatar-cut";
+import { AVATAR_SIZE, avatarFromSheet, avatarDisplayFromSheet, faceWindow } from "../avatar-cut";
 
 /**
  * A drawn child on a cream sheet: a round head with a wider mop of hair, a
@@ -50,6 +50,19 @@ describe("the face window", () => {
 });
 
 describe("the sticker cut from a sheet", () => {
+  it("the display derivative preserves all portrait-cell corners without a circle or identity mutation", async () => {
+    const sheet = await sharp(Buffer.from('<svg width="1024" height="1024"><rect width="1024" height="1024" fill="blue"/><rect width="512" height="512" fill="red"/></svg>')).png().toBuffer();
+    const original = Buffer.from(sheet);
+    const display = await avatarDisplayFromSheet(sheet, 1024);
+    const { data, info } = await sharp(display).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    expect(info.width).toBe(512); expect(info.height).toBe(512);
+    for (const [x, y] of [[14, 14], [497, 14], [14, 497], [497, 497]]) {
+      const i = (y! * info.width + x!) * 3;
+      expect([...data.subarray(i, i + 3)]).toEqual([255, 0, 0]);
+    }
+    expect(sheet.equals(original)).toBe(true);
+    await expect(avatarDisplayFromSheet(sheet, 512)).rejects.toThrow("identity raster");
+  });
   it("fills the circle with the face", async () => {
     // A 2×2 sheet whose top-left quadrant is the portrait.
     const quadrant = await portrait(512);

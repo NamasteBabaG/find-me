@@ -9,6 +9,7 @@ import { applyTestSchema } from "../../../lib/test-schema";
 import { DbStorage } from "../../../infra/storage/db";
 import type { Container } from "../../container";
 import { nextPendingGame, tickGeneration } from "../queue";
+import { LEASE_MS as PIPELINE_LEASE_MS } from "../pipeline";
 import {
   LOCAL_PATCH_LEASE_MS, LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_STYLE, localPatchBoardBlockedReason,
   localPatchPainterDeps, localPatchPrivateInventory, runLocalPatchWorldSlice,
@@ -71,7 +72,7 @@ afterEach(() => { delete process.env.QA_BOARD_CONDITIONED_WIZARD; });
 
 async function seed(options: { gameId?: string; scenes?: { slug: string; version: number }[] } = {}) {
   const seeded = await seedApprovedGame(c, db, {
-    ...options, styleVersion: LOCAL_PATCH_STYLE, status: "TARGETS_GENERATING", withJob: true,
+    scenes: [{ slug: "sydney", version: LOCAL_PATCH_SCENE_VERSION }], ...options, styleVersion: LOCAL_PATCH_STYLE, status: "TARGETS_GENERATING", withJob: true,
   });
   fakes.testers = [...fakes.testers, seeded.email];
   return seeded;
@@ -478,6 +479,51 @@ describe("a world of hides, one slice at a time", () => {
     expect(direct.attention).toMatch(/reserved and not dispatched/);
   }, 180_000);
 
+  it.each(["local-patch", null])("skips a live local-patch lease (%s) but selects it again once takeover is allowed", async currentStep => {
+    const active = await seed({ gameId: "game-older-active-lease" });
+    const queued = await seed({ gameId: "game-newer-queued-lease" });
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+    try {
+      await db.game.update({ where: { id: active.gameId }, data: { paidAt: new Date(now - 3_600_000) } });
+      await db.game.update({ where: { id: queued.gameId }, data: { paidAt: new Date(now) } });
+      await db.generationJob.update({ where: { id: `job_${active.gameId}` }, data: {
+        status: "RUNNING", currentStep, updatedAt: new Date(now),
+      } });
+      const activeJob = await jobOf(active.gameId);
+      const w = worker();
+      // An explicit nudge cannot take this healthy worker's lease either.
+      expect(await runLocalPatchWorldSlice(c, w.deps, active.gameId)).toMatchObject({ claimed: false, pending: true });
+      expect(w.dispatched).toEqual([]);
+      expect(await nextPendingGame(c)).toBe(queued.gameId);
+      expect(await jobOf(active.gameId)).toEqual(activeJob);
+
+      // The claimant uses strict `lt`: the exact expiry boundary is still live.
+      await db.generationJob.update({ where: { id: activeJob.id }, data: { updatedAt: new Date(now - LOCAL_PATCH_LEASE_MS) } });
+      expect(await nextPendingGame(c)).toBe(queued.gameId);
+      await db.generationJob.update({ where: { id: activeJob.id }, data: { updatedAt: new Date(now - LOCAL_PATCH_LEASE_MS - 1) } });
+      expect(await nextPendingGame(c)).toBe(active.gameId);
+
+      // A normal release is immediately runnable; no six-minute penalty.
+      await db.generationJob.update({ where: { id: activeJob.id }, data: { status: "QUEUED", updatedAt: new Date(now) } });
+      expect(await nextPendingGame(c)).toBe(active.gameId);
+    } finally { clock.mockRestore(); }
+  }, 180_000);
+
+  it.each(["PAID", "AVATAR_GENERATING", "GENERATION_FAILED"])("skips an active %s local-patch identity lease without losing stale recovery", async status => {
+    const active = await seed({ gameId: "game-active-identity-selector" });
+    const queued = await seed({ gameId: "game-queued-after-identity" });
+    const now = Date.now(), clock = vi.spyOn(Date, "now").mockReturnValue(now);
+    try {
+      await db.game.update({ where: { id: active.gameId }, data: { status, paidAt: new Date(now - 3_600_000) } });
+      await db.game.update({ where: { id: queued.gameId }, data: { paidAt: new Date(now) } });
+      await db.generationJob.update({ where: { id: `job_${active.gameId}` }, data: { status: "RUNNING", currentStep: "identity", updatedAt: new Date(now) } });
+      expect(await nextPendingGame(c)).toBe(queued.gameId);
+      await db.generationJob.update({ where: { id: `job_${active.gameId}` }, data: { updatedAt: new Date(now - PIPELINE_LEASE_MS - 1) } });
+      expect(await nextPendingGame(c)).toBe(active.gameId);
+    } finally { clock.mockRestore(); }
+  }, 180_000);
+
   it("keeps the parking even when the rest of the slice cannot finish", async () => {
     // The decision is the only record that a committed reservation was never
     // dispatched. A read failing on the way to the end of the slice must not
@@ -522,7 +568,7 @@ describe("a world of hides, one slice at a time", () => {
   }, 180_000);
 
   it("still reports an unauthored board without blocking the authored board behind it", async () => {
-    const { gameId } = await seed({ scenes: [{ slug: "beach", version: sceneBySlug("beach").version }, { slug: "sydney", version: sceneBySlug("sydney").version }] });
+    const { gameId } = await seed({ scenes: [{ slug: "beach", version: sceneBySlug("beach").version }, { slug: "sydney", version: LOCAL_PATCH_SCENE_VERSION }] });
     const result = await runLocalPatchWorldSlice(c, worker().deps, gameId);
     expect(result.blocked).toEqual([{ boardId: "beach", reason: expect.stringContaining("no authored local-patch placements") }]);
     expect(result.outcomes.map(o => o.boardId)).toEqual(["sydney"]);

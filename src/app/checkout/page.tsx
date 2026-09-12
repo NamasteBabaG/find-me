@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
 import { getContainer } from "@/services/container";
 import { draftSummary } from "@/services/create-flow.service";
-import { purchasableWorldSlugs } from "@/services/world-catalog.service";
+import { gameShape, purchasableWorldSlugs } from "@/services/world-catalog.service";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
-import { boardsFor, priceFor, searchesFor } from "@/domain/package";
+import { boardsFor, priceFor } from "@/domain/package";
 import { getCurrency, getI18n } from "@/i18n/server";
 import { formatMoney, pick, tf } from "@/i18n";
 import { CreateFrame } from "../create/CreateLayout";
@@ -27,6 +27,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
   const currency = await getCurrency();
   const price = formatMoney(priceFor(summary.pkg.tier, currency), currency, locale);
   const name = summary.child?.displayName ?? "";
+  const shape = gameShape(summary.game.scenes);
   // The address the parent typed last time, not the account they happen to be
   // signed in with: a grandparent buying a gift while logged in as themselves
   // came back from a declined card to find their own email in the box.
@@ -43,7 +44,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
             <img src="/api/drafts/photo" alt="" className="fm-sticker" width={80} height={80} style={{ width: 80, height: 80 }} />
             <div>
               <h3>{tf(ck.gameTitle, { name })}</h3>
-              <p className="fm-muted">{tf(ck.summaryLine, { pkg: pick(summary.pkg.name, locale), boards: boardsFor(summary.pkg.tier), spots: searchesFor(summary.pkg.tier) })}</p>
+              <p className="fm-muted">{tf(ck.summaryLine, { pkg: pick(summary.pkg.name, locale), boards: shape.places, spots: shape.spots })}</p>
             </div>
           </div>
           {/* The full list is there for whoever wants it; it is not the first thing on the page. */}
@@ -70,11 +71,12 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
           <p className="fm-small">{ck.vat}</p>
         </div>
         <CheckoutForm
+          automaticPublication={summary.game.scenes.every(scene => scene.sceneVersion === 7)}
           defaultEmail={defaultEmail}
           priceLabel={price}
           outcome={outcome}
           backHref={backHref}
-          brief={{ name: tf(ck.gameTitle, { name }), shape: tf(ck.summaryLine, { pkg: pick(summary.pkg.name, locale), boards: boardsFor(summary.pkg.tier), spots: searchesFor(summary.pkg.tier) }) }}
+          brief={{ name: tf(ck.gameTitle, { name }), shape: tf(ck.summaryLine, { pkg: pick(summary.pkg.name, locale), boards: shape.places, spots: shape.spots }) }}
         />
       </div>
     </CreateFrame>

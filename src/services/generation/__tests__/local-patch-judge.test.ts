@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
-import { BLOCKING_CHECKS, JUDGE_CHECKS, LOCAL_PATCH_JUDGE, judgeLocalPatch, localPatchJudgePrompt, localPatchVerdictSchema } from "../local-patch-judge";
+import { BLOCKING_CHECKS, JUDGE_CHECKS, LOCAL_PATCH_JUDGE, judgeLocalPatch, judgeLocalPatchBoard, localPatchJudgePrompt, localPatchJudgeSettings, localPatchVerdictSchema } from "../local-patch-judge";
 import { LOCAL_PATCH_POSE_WORDING } from "../local-patch-prompt";
 import { LocalPatchPose } from "../../../domain/scene/local-patch-hides";
 
@@ -23,6 +23,33 @@ async function request() {
 }
 
 describe("judging one finished local patch", () => {
+  it("the grouped wire sends one Luna LOW request with the composition and five identified before/after pairs", async () => {
+    const image = await png(), sent: RequestInit[] = [];
+    const hides = Array.from({ length: 5 }, (_, i) => ({ hideId: `hide-${i}`, beforePng: image, afterPng: image }));
+    const fetchOnce = (async (_url: string, init: RequestInit) => { sent.push(init); return reply({ hides: hides.map(h => ({ hideId: h.hideId, verdict: good })) }, 200, { model: "gpt-5.6-luna" }); }) as unknown as typeof fetch;
+    const result = await judgeLocalPatchBoard("test-only", { boardId: "sydney", boardPng: image, identityPng: image, hides }, fetchOnce);
+    expect(Object.keys(result.verdicts)).toEqual(hides.map(h => h.hideId));
+    expect(Object.values(result.verdicts).every(v => v?.verdict === "pass")).toBe(true);
+    const body = JSON.parse(String(sent[0]!.body));
+    expect(body).toMatchObject({ model: "gpt-5.6-luna", reasoning_effort: "low", max_completion_tokens: 3000 });
+    expect(body.messages[0].content).toHaveLength(13);
+    expect(sent).toHaveLength(1);
+  });
+  it("only catalog 7 buys the cheaper Luna LOW advisory question; it preserves the actual fail", async () => {
+    const sent: RequestInit[] = [];
+    const warned = { ...good, styleMatch: "fail", verdict: "fail", faults: [{ check: "styleMatch", where: "photographic face in the centre" }] };
+    const fetchOnce = (async (_url: string, init: RequestInit) => { sent.push(init); return reply(warned, 200, { model: "gpt-5.6-luna-2026-09-12" }); }) as unknown as typeof fetch;
+    const result = await judgeLocalPatch("test-only", { ...await request(), contentVersion: 7 }, fetchOnce);
+    expect(result.verdict?.verdict).toBe("fail");
+    const body = JSON.parse(String(sent[0]!.body));
+    expect(body).toMatchObject({ model: "gpt-5.6-luna", reasoning_effort: "low", max_completion_tokens: 3000 });
+    expect(body.messages[0].content[0].text).toContain("advisory review");
+    expect(body.messages[0].content).toHaveLength(4);
+    expect(localPatchJudgeSettings(6)).toBe(LOCAL_PATCH_JUDGE);
+    expect(localPatchJudgeSettings(8)).toBe(LOCAL_PATCH_JUDGE);
+    expect(localPatchJudgePrompt("slot", {}, 6)).toBe(localPatchJudgePrompt("slot"));
+    expect(sent).toHaveLength(1);
+  });
   it("asks about the things pixels cannot answer, and allows a clean replacement", () => {
     const prompt = localPatchJudgePrompt("in-front-of-the-surfboards");
     expect(prompt).toContain("in-front-of-the-surfboards");

@@ -1,6 +1,15 @@
-import { auditWorldBudget, WorldBudget, WorldBudgetError, type WorldBudgetRepository, type WorldReservationInput, type WorldChargeEvidence, type WorldBudgetOptions, type WorldUnknownContinuationInput } from "./world-budget";
+import { auditWorldBudget, WorldBudget, WorldBudgetError, type WorldBudgetAudit, type WorldBudgetRepository, type WorldReservationInput, type WorldChargeEvidence, type WorldBudgetOptions, type WorldUnknownContinuationInput } from "./world-budget";
 
 export const BOARD_WIZARD_CAP_MICRO_USD = 4_000_000;
+/** Read-only consumers must show the SAME commercial ceiling as reservations,
+ * not the generic ledger's wider5USD maximum. This never grants an extension. */
+export function applyBoardWizardBudgetCap(audit: WorldBudgetAudit, capMicroUsd = BOARD_WIZARD_CAP_MICRO_USD): WorldBudgetAudit {
+  if (capMicroUsd !== BOARD_WIZARD_CAP_MICRO_USD && capMicroUsd !== 5_000_000) throw new Error("Unsupported verified QA budget cap");
+  const overCapMicroUsd = Math.max(0, audit.committedMicroUsd - capMicroUsd), remainingMicroUsd = Math.max(0, capMicroUsd - audit.committedMicroUsd);
+  const held = audit.held || overCapMicroUsd > 0;
+  return { ...audit, capMicroUsd, overCapMicroUsd, remainingMicroUsd, held, canReserve: !held && remainingMicroUsd > 0,
+    state: held ? "held" : remainingMicroUsd === 0 ? "exhausted" : "open" };
+}
 export interface BoardWizardBudgetExtension { worldId: string; capMicroUsd: 5_000_000; authorizationSha256: string }
 export type BoardWizardBudgetExtensionResolver = (worldId: string) => Promise<BoardWizardBudgetExtension | null>;
 /** Narrower commercial cap, enforced INSIDE the same serializable transaction.
@@ -29,10 +38,7 @@ export function boardWizardBudget(repository: WorldBudgetRepository, attempt = 1
   class AttemptBudget extends WorldBudget {
     override async audit(worldId: string) {
       const audit = await super.audit(worldId), capMicroUsd = await capFor(worldId);
-      const overCapMicroUsd = Math.max(0, audit.committedMicroUsd - capMicroUsd), remainingMicroUsd = Math.max(0, capMicroUsd - audit.committedMicroUsd);
-      const held = audit.held || overCapMicroUsd > 0;
-      return { ...audit, capMicroUsd, overCapMicroUsd, remainingMicroUsd, held, canReserve: !held && remainingMicroUsd > 0,
-        state: held ? "held" as const : remainingMicroUsd === 0 ? "exhausted" as const : "open" as const };
+      return applyBoardWizardBudgetCap(audit, capMicroUsd);
     }
     override reserve(worldId: string, input: WorldReservationInput) { return super.reserve(worldId, { ...input, requestKey: key(input.requestKey) }); }
     override readRequest(worldId: string, requestKey: string) { return super.readRequest(worldId, key(requestKey)); }

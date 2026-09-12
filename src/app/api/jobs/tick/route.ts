@@ -38,6 +38,7 @@ const HARD_MS = 270_000;
  * finished hiding spot is skipped.
  */
 export async function POST(req: Request) {
+  const hardDeadlineAt = Date.now() + HARD_MS;
   const denied = await qaAccessDenied(req, true);
   if (denied) return denied;
   const c = getContainer();
@@ -45,12 +46,14 @@ export async function POST(req: Request) {
   const gameId = url.searchParams.get("gameId");
 
   if (!(await isAllowed(req, gameId))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  const result = await tickGeneration(c, gameId, SLICE_MS, HARD_MS);
+  // Notification intent survives publication. Give its bounded retry a turn
+  // before new generation, so a busy queue cannot starve ready/warning mail.
+  if (!gameId) await retryFailedAdminAlerts(c, { deadlineAt: Math.min(hardDeadlineAt, Date.now() + 20_000) });
+  const result = await tickGeneration(c, gameId, SLICE_MS, Math.max(0, hardDeadlineAt - Date.now()));
   // The retention policy rides the cron: about once an hour, after the work.
   // A page's nudge (gameId given) never pays for it.
   // An admin alert the mail provider refused is tried again here; it never throws.
-  if (!gameId) await retryFailedAdminAlerts(c);
-  const retention = gameId ? null : await runRetentionIfDue(c).catch((err: unknown) => {
+  const retention = gameId || hardDeadlineAt - Date.now() < 10_000 ? null : await runRetentionIfDue(c).catch((err: unknown) => {
     console.error("[retention] failed:", err instanceof Error ? err.message : err);
     return null;
   });

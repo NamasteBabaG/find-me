@@ -36,6 +36,7 @@ export async function listGamesForUser(c: Container, userId: string) {
         playable,
         sceneCount: g.scenes.length,
         sceneSlugs: g.scenes.map((s) => s.sceneSlug),
+        sceneVersions: g.scenes.map(({ sceneSlug, sceneVersion }) => ({ sceneSlug, sceneVersion })),
         packageName: g.packageTier && isPackageTier(g.packageTier) ? PACKAGES[g.packageTier].name : { en: "", he: "" },
         locale: g.locale === "he" ? ("he" as const) : ("en" as const),
         createdAt: g.createdAt,

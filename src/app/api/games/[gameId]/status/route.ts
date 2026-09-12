@@ -16,6 +16,7 @@ import { BOARD_WIZARD_STYLE, readBoardWizard } from "@/services/generation/board
 import { characterNeedsApproval, identityApprovedForDisplay } from "@/services/generation/board-wizard-identity-gate";
 import { env } from "@/lib/env";
 import { auditWorldBudget } from "@/services/generation/world-budget";
+import { applyBoardWizardBudgetCap } from "@/services/generation/board-wizard-budget";
 
 export const runtime = "nodejs";
 
@@ -69,7 +70,9 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
   const avatarId = game.childProfile?.avatarAssetId ?? null;
   const avatar = avatarId ? await c.db.asset.findUnique({ where: { id: avatarId }, select: { status: true } }) : null;
   const reviewed = game.styleVersion === LOCAL_PATCH_STYLE || characterNeedsApproval(game.childProfile)
-    ? !!game.childProfile && await identityApprovedForDisplay(c, game.childProfile)
+    ? !!game.childProfile && await identityApprovedForDisplay(c, game.childProfile,
+      game.styleVersion === LOCAL_PATCH_STYLE && game.scenes.length === 9 && game.scenes.every(scene => scene.sceneVersion === game.scenes[0]?.sceneVersion)
+        ? game.scenes[0]?.sceneVersion : undefined)
     : true;
   const characterReady = avatar?.status === "READY" && reviewed;
   const avatarUrl = characterReady && avatarId ? signedAssetUrl(c, avatarId) : null;
@@ -79,7 +82,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
   let spotsDone = 0;
   let place: { slug: string; name: string } | null = null;
   for (const gs of game.scenes) {
-    const def = findScene(gs.sceneSlug);
+    const def = findScene(gs.sceneSlug, gs.sceneVersion);
     const total = def?.targets.length ?? 0;
     const done = gs.targets.filter((t) => PAINTED.has(t.status)).length;
     spotsTotal += total;
@@ -103,7 +106,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
       if (snapshot.worldId !== worldId) throw new Error("Wrong local-patch budget world");
       // This ledger already includes identity, painting and judging. Adding
       // asset costs here would count the same image purchase a second time.
-      const audit = auditWorldBudget(snapshot);
+      const audit = applyBoardWizardBudgetCap(auditWorldBudget(snapshot));
       qaCost = { spentCents: audit.settledMicroUsd / 10_000, reservedCents: audit.reservedMicroUsd / 10_000,
         capCents: audit.capMicroUsd / 10_000, held: audit.held };
       localPatchBudgetHeld = audit.held;
@@ -177,6 +180,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
   return NextResponse.json(
     {
       status,
+      automaticPublication: game.styleVersion === LOCAL_PATCH_STYLE && game.scenes.length === 9 && game.scenes.every(scene => scene.sceneVersion === 7),
       ...step,
       ...(fixedAssemblyReady === false ? { step: characterReady ? 2 : 1 } : {}),
       ...progress,

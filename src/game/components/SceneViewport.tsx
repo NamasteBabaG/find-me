@@ -75,16 +75,25 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
       // Only the child being looked for is on the board, so she is the only
       // target that can be tapped (see the note on `onBoard` below).
       const current = currentTargetId(m);
-      for (const p of placedTargets) {
-        if (p.target.id !== current || isFound(m, p.target.id)) continue;
+      const available = placedTargets.filter(p => (m.playMode === "find-any" || p.target.id === current));
+      // A real footprint wins over a neighbour's touch padding. Tapping a found
+      // figure is a no-op, never a bonus or another star underneath it.
+      const exact = hitTest(available.map(p => ({ id: p.target.id, rect: p.hitRect, zIndex: p.slot.zIndex })), nx, ny);
+      if (exact) { if (!isFound(m, exact)) onHit({ kind: "target", id: exact }); return; }
+      const padded: HitCandidate<Hit>[] = [];
+      for (const p of available) {
+        if (isFound(m, p.target.id)) continue;
         // p.hitRect is the child's own footprint — for a slot patch that is not
         // the slot anchor, so the head is inside it (see target-geometry).
         // 64px, not 48: this is tapped by a four-year-old, and the design
         // system's floor for a child's target is 64. A peeking head on a phone
         // can be twenty pixels across; the padding is what makes it findable.
         const pad = hitPadding(p.hitRect, stage, scale, 64);
-        candidates.push({ id: { kind: "target", id: p.target.id }, rect: expandRect(p.hitRect, pad.padX, pad.padY), zIndex: 50 + p.slot.zIndex });
+        padded.push({ id: { kind: "target", id: p.target.id }, rect: expandRect(p.hitRect, pad.padX, pad.padY), zIndex: 50 + p.slot.zIndex });
       }
+      // Overlapping invisible padding is not permission to choose a random hide.
+      const near = padded.filter(candidate => hitTest([candidate], nx, ny));
+      if (near.length === 1) candidates.push(near[0]!);
       if (bonus && !bonusFoundRef.current) {
         const rect = spriteRect(bonus.anchor, stage, 1);
         const pad = hitPadding(rect, stage, scale);
@@ -109,7 +118,8 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
     [placedTargets, bonus, scene.ambient, stage, onHit],
   );
 
-  const api = useViewport(containerRef, stage, onTap);
+  // Edge hides can be panned out from under the persistent upper-right HUD.
+  const api = useViewport(containerRef, stage, onTap, { panPadding: 220 });
   apiRef.current = api;
 
   // The board webp is static and fast; a child's patch is a signed database
@@ -143,12 +153,13 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
       [...plan.essential, ...plan.decorative].map(
         (url) =>
           new Promise<LoadResult>((resolve) => {
-            // onload, not decode(): a background tab defers decoding until it
-            // is looked at, and a parent who opens the link behind another
-            // tab would sit on clouds until then. onload means the bytes are
-            // here; the browser decodes on first paint, which is when it matters.
+            // All essential pixels must decode before the curtain opens.
+            // A delayed/failed decode takes the ordinary bounded retry path.
             const img = new Image();
-            img.onload = () => resolve({ url, ok: true });
+            img.onload = () => {
+              if (typeof img.decode !== "function") { resolve({ url, ok: true }); return; }
+              void img.decode().then(() => resolve({ url, ok: true }), () => resolve({ url, ok: false }));
+            };
             img.onerror = () => resolve({ url, ok: false });
             img.src = url;
           }),
@@ -181,7 +192,7 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
    * through the found celebration (the mission advances on FOUND_DONE) and is
    * replaced by the next one.
    */
-  const onBoard = placedTargets.filter((p) => p.target.id === current);
+  const onBoard = placedTargets.filter((p) => mission.playMode === "find-any" || p.target.id === current);
   const { transform } = api;
   const stageStyle: React.CSSProperties = {
     width: stage.width,

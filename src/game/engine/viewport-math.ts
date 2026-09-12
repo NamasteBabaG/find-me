@@ -49,16 +49,16 @@ export function centeredTransform(viewport: Size, stage: Size, scale: number): V
 }
 
 /** Keep the stage covering the viewport (or centered when smaller) and the scale in range. */
-export function clampTransform(t: ViewTransform, viewport: Size, stage: Size, minScale: number, maxScale: number): ViewTransform {
+export function clampTransform(t: ViewTransform, viewport: Size, stage: Size, minScale: number, maxScale: number, panPadding = 0): ViewTransform {
   const scale = Math.min(maxScale, Math.max(minScale, t.scale));
   const w = stage.width * scale;
   const h = stage.height * scale;
   let tx = t.tx;
   let ty = t.ty;
-  if (w <= viewport.width) tx = (viewport.width - w) / 2;
-  else tx = Math.min(0, Math.max(viewport.width - w, tx));
-  if (h <= viewport.height) ty = (viewport.height - h) / 2;
-  else ty = Math.min(0, Math.max(viewport.height - h, ty));
+  if (w <= viewport.width) tx = Math.min((viewport.width - w) / 2 + panPadding, Math.max((viewport.width - w) / 2 - panPadding, tx));
+  else tx = Math.min(panPadding, Math.max(viewport.width - w - panPadding, tx));
+  if (h <= viewport.height) ty = Math.min((viewport.height - h) / 2 + panPadding, Math.max((viewport.height - h) / 2 - panPadding, ty));
+  else ty = Math.min(panPadding, Math.max(viewport.height - h - panPadding, ty));
   return { scale, tx, ty };
 }
 

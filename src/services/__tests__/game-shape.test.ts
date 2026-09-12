@@ -25,4 +25,10 @@ describe("the shape of a game", () => {
     expect(shape.places).toBe(5);
     expect(shape.spots).toBe(15);
   });
+
+  it("counts pinned new worlds as45 while legacy6 stays27", () => {
+    const slugs = boardSlugs(journey!);
+    expect(gameShape(slugs.map(sceneSlug => ({ sceneSlug, sceneVersion: 7 })))).toEqual({ worlds: 1, places: 9, spots: 45 });
+    expect(gameShape(slugs.map(sceneSlug => ({ sceneSlug, sceneVersion: 6 })))).toEqual({ worlds: 1, places: 9, spots: 27 });
+  });
 });

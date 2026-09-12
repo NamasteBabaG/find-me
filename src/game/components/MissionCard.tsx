@@ -2,6 +2,7 @@
 
 import type { TargetConfig } from "@/domain/game/config";
 import type { HintLevel } from "@/domain/game/hints";
+import Image from "next/image";
 import { useGameText } from "../i18n";
 
 interface Props {
@@ -27,15 +28,17 @@ interface Props {
   avatarUrl?: string;
   /** Landing demo: the question and the face, nothing else. */
   minimal?: boolean;
+  findAny?: boolean;
+  worldStars?: { found: number; total: number };
+  onAdvance?: () => void;
 }
 
 /** Floating mission pill: who to look for, (progress when there is more than one), and the hint button. */
-export function MissionCard({ index, total, target, found, order, hintLevel, hintPulse, hintText, onHint, avatarUrl, childName, quiet = false, onExpand, minimal = false }: Props) {
+export function MissionCard({ index, total, target, found, order, hintLevel, hintPulse, hintText, onHint, avatarUrl, childName, quiet = false, onExpand, minimal = false, findAny = false, worldStars, onAdvance }: Props) {
   const { g, tf } = useGameText();
   return (
     <section
       className={`mission${quiet ? " mission--quiet" : ""}`}
-      aria-live="polite"
       onClick={quiet ? onExpand : undefined}
       // Folded, the card is a control: a real button to a keyboard and a screen reader, not a div that happens to listen.
       role={quiet ? "button" : undefined}
@@ -55,33 +58,35 @@ export function MissionCard({ index, total, target, found, order, hintLevel, hin
     >
       <div className="mission__thumb mission__thumb--face" aria-hidden>
         {avatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={avatarUrl} alt="" className="mission__sprite mission__face" draggable={false} />
+          <Image src={avatarUrl} alt="" width={96} height={96} unoptimized className="mission__sprite mission__face" draggable={false} />
         ) : null}
       </div>
       <div className="mission__body" hidden={quiet}>
         {total > 1 ? (
           <div className="mission__meta">
-            <span className="mission__count">{tf(g.scene.missionOf, { n: index, total })}</span>
+            <span className="mission__count">{findAny ? tf(g.scene.boardStars, { found: found.length, total }) : tf(g.scene.missionOf, { n: index, total })}</span>
             <span className="mission__ticks" aria-label={tf(g.scene.foundOf, { found: found.length, total })}>
               {order.map((id) => (
                 <span key={id} className={`mission__tick${found.includes(id) ? " mission__tick--done" : ""}`}>
-                  {found.includes(id) ? "✓" : ""}
+                  {findAny ? (found.includes(id) ? "★" : "☆") : found.includes(id) ? "✓" : ""}
                 </span>
               ))}
             </span>
           </div>
         ) : null}
+        {worldStars ? <p className="mission__count">{tf(g.scene.worldStars, worldStars)}</p> : null}
         {/* The authored mission names the place — "hiding behind the fallen
             log" — which is the answer, printed above the picture. It is the
             first hint now; until then the game only says who to look for. */}
         <h2 className="mission__text">{hintLevel >= 1 ? (target?.mission ?? "") : tf(g.scene.findChild, { name: childName })}</h2>
         {!minimal && hintLevel >= 1 && hintText ? <p className="mission__hint">💡 {hintText}</p> : null}
+        {findAny ? <p className="mission__rules">{g.scene.findAnyRules}</p> : null}
+        {onAdvance ? <button type="button" className="mission__continue" onClick={onAdvance}>{g.scene.canContinue} ➜</button> : null}
       </div>
       {minimal ? null : (
         // A word, not a lightbulb: an icon needs decoding, and the child asks a
         // grown-up anyway — the word is the design language (Guy).
-        <button type="button" className={`mission__hintbtn${hintPulse ? " mission__hintbtn--pulse" : ""}`} onClick={onHint} aria-label={hintLevel >= 3 ? g.scene.hintLast : g.scene.hint} title={g.scene.hint} disabled={hintLevel >= 3}>
+        <button type="button" className={`mission__hintbtn${hintPulse ? " mission__hintbtn--pulse" : ""}`} onClick={onHint} aria-label={hintLevel >= 3 ? g.scene.hintLast : g.scene.hint} title={g.scene.hint} disabled={hintLevel >= 3 || !target}>
           {g.scene.hint}
         </button>
       )}

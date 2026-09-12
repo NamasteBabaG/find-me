@@ -9,6 +9,8 @@ import { deleteAsset } from "./asset.service";
 import { audit, type Actor } from "./audit.service";
 import { fixedStageAssert, isFixedWorldStyle } from "./generation/fixed-world-stage-record";
 import { approveFixedWorldForPublication } from "./generation/fixed-world-staging";
+import { isLocalPatchAdvisoryVersion } from "../domain/scene/local-patch-catalog";
+import { deliverLocalPatchNotifications } from "./local-patch-notifications";
 
 /**
  * QA_PENDING → APPROVED → READY → (email) → DELIVERED.
@@ -32,7 +34,8 @@ export async function publishGame(c: Container, gameId: string, actor: Actor): P
     // generic admin action must not approve missing/refused appearances.
     if (!isPlayable(status) || !game.configJson) throw new Error("Local-patch world is not completely approved and ready");
     const link = await ensurePlayerLink(c, gameId);
-    if (status === "READY") await deliverGameMail(c, gameId, actor);
+    if (game.scenes.every(scene => isLocalPatchAdvisoryVersion(scene.sceneVersion))) await deliverLocalPatchNotifications(c, gameId);
+    else if (status === "READY") await deliverGameMail(c, gameId, actor);
     return { playUrl: link.url };
   }
   if (status === "QA_PENDING" || status === "MANUAL_REVIEW") {
@@ -80,7 +83,8 @@ export async function deliverGameMail(c: Container, gameId: string, actor: Actor
     const owner = game.owner;
     const libraryLink = owner ? await createMagicLink(c, owner.id, `/library/${gameId}`) : undefined;
     const locale = game.locale === "he" ? "he" : "en";
-    const mail = gameReadyEmail({ to: owner?.email ?? "", childName: game.childProfile.displayName, playLink: link.url, libraryLink, sceneCount: game.scenes.length, locale });
+    const mail = gameReadyEmail({ to: owner?.email ?? "", childName: game.childProfile.displayName, playLink: link.url, libraryLink, sceneCount: game.scenes.length, locale,
+      ...(game.scenes.length > 0 && game.scenes.every(scene => isLocalPatchAdvisoryVersion(scene.sceneVersion)) ? { playMode: "find-any" as const } : {}) });
     // A game with nobody to send it to is a game nobody will open. Until every
     // path into a paid game guarantees an address, an operator's inbox takes
     // it, stamped — and the game stays READY, because the parent does not have it.

@@ -33,7 +33,7 @@ function config(sprite: SpriteRef, spriteByVariant?: { A?: SpriteRef; B?: Sprite
         tagline: "t",
         artStatus: "final",
         art: { width: 3072, height: 2048, base: "/b.webp", thumbnail: "/t.webp", palette: { sky: "#fff", ground: "#fff", accent: "#fff" } },
-        targets: [target, target, target],
+        targets: [target, { ...target, id: "umbrella" }, { ...target, id: "float" }],
         ambient: [],
         celebration: { kind: "confetti", completeText: "done" },
         collectible: { id: "c", name: "c", icon: "c" },

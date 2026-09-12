@@ -114,6 +114,10 @@ export const SceneConfigSchema = z.object({
   version: z.number().int(),
   /** Which journey this board belongs to. Absent in configs written before worlds. */
   worldSlug: z.string().optional(),
+  /** Versioned five-hide rules. Absence preserves historical serial play. */
+  playMode: z.literal("find-any").optional(),
+  appearancesPerBoard: z.literal(5).optional(),
+  findsRequiredToAdvance: z.literal(3).optional(),
   name: z.string(),
   tagline: z.string(),
   artStatus: z.enum(["placeholder", "draft", "final"]),
@@ -132,12 +136,18 @@ export const SceneConfigSchema = z.object({
       durationMs: z.number().int(),
     })
     .optional(),
-  targets: z.array(TargetConfigSchema).length(3),
+  targets: z.array(TargetConfigSchema).min(3).max(5),
   ambient: z.array(PlayAmbientSchema),
   bonus: PlayBonusSchema.optional(),
   celebration: z.object({ kind: CelebrationKind, completeText: z.string() }),
   collectible: z.object({ id: z.string(), name: z.string(), icon: z.string() }),
   sounds: z.object({ ambient: SoundCue.optional() }).default({}),
+}).superRefine((scene, ctx) => {
+  const free = scene.playMode === "find-any";
+  if (scene.targets.length !== (free ? 5 : 3) || (free && (scene.appearancesPerBoard !== 5 || scene.findsRequiredToAdvance !== 3)) || (!free && (scene.appearancesPerBoard !== undefined || scene.findsRequiredToAdvance !== undefined))) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["targets"], message: "Scene targets must match its explicit play contract" });
+  }
+  if (new Set(scene.targets.map(target => target.id)).size !== scene.targets.length) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["targets"], message: "Target ids must be unique within a board" });
 });
 export type SceneConfig = z.infer<typeof SceneConfigSchema>;
 

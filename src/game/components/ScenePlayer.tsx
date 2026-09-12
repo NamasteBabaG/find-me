@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SceneConfig } from "@/domain/game/config";
-import { currentTargetId, type MissionState } from "@/domain/game/mission";
+import { currentTargetId, missionCanAdvance, type MissionState } from "@/domain/game/mission";
+import { gameStars } from "@/domain/game/progress";
 import { shouldPulseHint } from "@/domain/game/hints";
 import { slotFor } from "@/domain/game/replay";
 import { sounds } from "../audio/sounds";
@@ -19,8 +20,6 @@ import { useGameText } from "../i18n";
 
 /** How long the clouds take to part. Matches the CSS transition. */
 const CURTAIN_MS = 900;
-/** How long a mission stays fully open before folding to face + bulb. */
-const QUIET_AFTER_MS = 6000;
 
 interface Props {
   scene: SceneConfig;
@@ -53,6 +52,9 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
   const [burst, setBurst] = useState<{ key: number; small: boolean } | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [showComplete, setShowComplete] = useState(false);
+  const [staying, setStaying] = useState(false);
+  const [announcement, setAnnouncement] = useState("");
+  const free = mission.playMode === "find-any";
   const dispatch = store.dispatch;
 
   // idle clock for the hint pulse (one tick per second is plenty)
@@ -98,7 +100,9 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
   // stayed under a white wash for the rest of the world. So the timer lives in
   // a ref, and only unmounting clears it.
   const foundTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => clearTimeout(foundTimer.current), []);
+  const bubbleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const bubbleSequence = useRef(0);
+  useEffect(() => () => { clearTimeout(foundTimer.current); clearTimeout(bubbleTimer.current); }, []);
   useEffect(() => {
     if (!turn) return;
     const swap = setTimeout(() => {
@@ -135,13 +139,16 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
   const fb = mission.lastFeedback;
   useEffect(() => {
     if (!fb) return;
+    clearTimeout(bubbleTimer.current);
+    setBubble(null);
     const api = apiRef.current;
     const placeBubble = (targetId: string, text: string) => {
       const target = scene.targets.find((t) => t.id === targetId);
       if (!target) return;
       const variant = mission.plan.variants[targetId] ?? "A";
       const p = targetStagePoint(scene, target, variant);
-      setBubble({ text, x: p.x, y: p.y, key: Date.now() });
+      setBubble({ text, x: p.x, y: p.y, key: ++bubbleSequence.current });
+      setAnnouncement(text);
     };
     switch (fb.kind) {
       case "hit": {
@@ -151,8 +158,11 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           const variant = mission.plan.variants[fb.targetId] ?? "A";
           const { center } = targetGeometry(scene, target, variant);
           api.focusOn(center.x, center.y, Math.max(1.6, api.transform.scale / api.fit), 450);
-          setTimeout(() => placeBubble(fb.targetId, fb.bubble), 460);
         }
+        // Position immediately in stage space. Camera motion then moves this
+        // same bubble; there is no delayed second instance after a new event.
+        placeBubble(fb.targetId, fb.bubble);
+        if (free) setAnnouncement(`${fb.bubble} ${g.scene.starEarned}`);
         setBurst({ key: Date.now(), small: true });
         // The last child of the board has nobody to be swapped for: the
         // celebration follows straight on, with no clouds in between.
@@ -160,7 +170,8 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
         clearTimeout(foundTimer.current);
         foundTimer.current = setTimeout(() => {
           setBubble(null);
-          if (last) dispatch({ type: "FOUND_DONE", now: Date.now() });
+          setAnnouncement("");
+          if (last || free) dispatch({ type: "FOUND_DONE", now: Date.now() });
           else setTurn(true);
         }, FOUND_MS);
         return;
@@ -168,9 +179,9 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
       case "wrongTarget": {
         sounds().play("boing");
         placeBubble(fb.targetId, fb.bubble);
-        const t = setTimeout(() => setBubble(null), 2600);
+        bubbleTimer.current = setTimeout(() => { setBubble(null); setAnnouncement(""); }, 2600);
         dispatch({ type: "CLEAR_FEEDBACK" });
-        return () => clearTimeout(t);
+        return;
       }
       case "miss":
         sounds().play("pop");
@@ -181,10 +192,11 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
         if (scene.bonus) {
           const slot = mission.plan.bonusVariant === "A" ? scene.bonus.slots[0] : scene.bonus.slots[1];
           setBubble({ text: fb.bubble, x: slot.x * scene.art.width, y: slot.y * scene.art.height, key: Date.now() });
+          setAnnouncement(fb.bubble);
         }
-        const t = setTimeout(() => setBubble(null), 1800);
+        bubbleTimer.current = setTimeout(() => { setBubble(null); setAnnouncement(""); }, 1800);
         dispatch({ type: "CLEAR_FEEDBACK" });
-        return () => clearTimeout(t);
+        return;
       }
       case "ambient": {
         const a = scene.ambient.find((x) => x.id === fb.ambientId);
@@ -192,10 +204,11 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
         else sounds().play("tap");
         if (a?.reaction) {
           setBubble({ text: a.reaction, x: (a.x + a.w / 2) * scene.art.width, y: a.y * scene.art.height, key: Date.now() });
+          setAnnouncement(a.reaction);
         }
-        const t = setTimeout(() => setBubble(null), 1600);
+        bubbleTimer.current = setTimeout(() => { setBubble(null); setAnnouncement(""); }, 1600);
         dispatch({ type: "CLEAR_FEEDBACK" });
-        return () => clearTimeout(t);
+        return;
       }
       case "hint":
         sounds().play("twinkle");
@@ -251,19 +264,12 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
   const elapsed = mission.phase === "searching" ? now - mission.missionStartedAt : 0;
   const hintPulse = mission.phase === "searching" && shouldPulseHint({ misses: mission.misses, elapsedMs: elapsed, hintLevel: mission.hintLevel });
 
-  // The card folds to a face and a bulb a few seconds into the search, and
-  // unfolds whenever there is something new to read: a hint, a find, a new
-  // mission, or a tap on it. A phone screen is mostly board, and the bottom of
-  // the board is where a child tends to hide.
-  const [quiet, setQuiet] = useState(false);
-  useEffect(() => {
-    setQuiet(false);
-    if (mission.phase !== "searching") return;
-    const t = setTimeout(() => setQuiet(true), QUIET_AFTER_MS);
-    return () => clearTimeout(t);
-  }, [mission.phase, mission.currentIndex, mission.hintLevel, mission.lastFeedback]);
+  // The identity and saved counters stay visible; no timed collapsing HUD.
   const foundIds = Object.keys(mission.found);
   const total = mission.plan.order.length;
+  const canAdvance = free && missionCanAdvance(mission);
+  const advance = () => { const next = store.nextScene(); if (next) store.openScene(next); else store.openPassport(); };
+  const stars = free ? gameStars(store.progress, store.worldScenes()) : undefined;
 
   return (
     <div className="scene" style={{ ["--scene-sky" as string]: scene.art.palette.sky, ["--scene-accent" as string]: scene.art.palette.accent }}>
@@ -279,7 +285,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           <div className="scene__title">
             <span className="scene__name">{scene.name}</span>
             <span className="scene__count">
-              {Math.min(mission.currentIndex + 1, total)}/{total}
+              {free ? foundIds.length : Math.min(mission.currentIndex + 1, total)}/{total}
             </span>
           </div>
         ) : null}
@@ -308,12 +314,13 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           {(vp) => {
             if (!bubble) return null;
             const p = stageToScreen(vp.transform, bubble.x, bubble.y);
-            return <SpeechBubble key={bubble.key} text={bubble.text} x={p.x} y={p.y} />;
+            const half = Math.min(130, Math.max(48, (vp.viewport.width - 32) / 2));
+            return <SpeechBubble key={bubble.key} text={bubble.text} x={Math.max(half + 8, Math.min(vp.viewport.width - half - 8, p.x))} y={Math.max(100, Math.min(vp.viewport.height - 12, p.y))} star={free && fb?.kind === "hit"} />;
           }}
         </SceneViewport>
         {burst ? <CelebrationOverlay key={burst.key} kind={scene.celebration.kind} small={burst.small} seed={burst.key} /> : null}
         {mission.phase === "intro" ? <div className="scene__intro-veil" aria-hidden /> : null}
-        <div className={`scene__curtain${revealed && !turn ? " is-open" : ""}`} aria-hidden>
+        <div className={`scene__curtain${revealed && !turn && !loadFailed ? " is-open" : ""}`} aria-hidden>
           <CloudBank side="l" />
           <CloudBank side="r" />
         </div>
@@ -337,7 +344,8 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
         ) : null}
       </div>
 
-      {mission.phase !== "complete" ? (
+      <span className="game__announcement" role="status" aria-live="polite" aria-atomic="true">{announcement}</span>
+      {mission.phase !== "complete" || free ? (
         <MissionCard
           index={Math.min(mission.currentIndex + 1, total)}
           total={total}
@@ -350,11 +358,19 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           onHint={() => dispatch({ type: "REQUEST_HINT" })}
           avatarUrl={store.config.child.avatarUrl}
           childName={store.config.child.name}
-          quiet={quiet && !store.demo}
-          onExpand={() => setQuiet(false)}
+          quiet={false}
           minimal={store.demo}
+          findAny={free}
+          worldStars={stars}
+          onAdvance={canAdvance ? advance : undefined}
         />
       ) : null}
+
+      {canAdvance && foundIds.length === 3 && mission.phase === "searching" && !staying ? <section className="scene__advance" aria-label={g.scene.canContinue}>
+        <p>{store.nextScene() ? g.scene.unlocked : g.scene.journeyFinished}</p>
+        <button type="button" className="fm-btn fm-btn--sm" onClick={advance}>{g.scene.canContinue}</button>
+        <button type="button" className="fm-btn fm-btn--secondary fm-btn--sm" onClick={() => setStaying(true)}>{g.scene.keepSearching}</button>
+      </section> : null}
 
       {mission.phase === "complete" && showComplete ? (
         <SceneCompleteCard scene={scene} bonusFound={mission.bonusFound} hintsUsed={Object.values(mission.found).reduce((n, r) => n + r.hintsUsed, 0)} store={store} />
@@ -363,10 +379,10 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
   );
 }
 
-function SpeechBubble({ text, x, y }: { text: string; x: number; y: number }) {
+function SpeechBubble({ text, x, y, star }: { text: string; x: number; y: number; star?: boolean }) {
   return (
-    <div className="bubble" style={{ left: x, top: y }} role="status">
-      {text}
+    <div className="bubble" style={{ left: x, top: y }} aria-hidden>
+      {star ? <span className="bubble__star">★ </span> : null}{text}
     </div>
   );
 }
@@ -419,9 +435,9 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store }: { scene: Sce
             </button>
           )}
           {/* In the demo the frame is short, so replay is a quiet second option. */}
-          <button type="button" className={`fm-btn ${store.demo ? "fm-btn--ghost fm-btn--sm" : "fm-btn--secondary"}`} onClick={store.replayScene}>
+          {scene.playMode !== "find-any" ? <button type="button" className={`fm-btn ${store.demo ? "fm-btn--ghost fm-btn--sm" : "fm-btn--secondary"}`} onClick={store.replayScene}>
             {g.complete.again}
-          </button>
+          </button> : null}
           {!store.demo ? (
             <button type="button" className="fm-btn fm-btn--ghost" onClick={() => store.goToMap(scene.slug)}>
               {g.complete.map}

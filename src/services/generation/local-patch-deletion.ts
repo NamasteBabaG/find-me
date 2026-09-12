@@ -4,6 +4,7 @@ import type { Actor } from "../audit.service";
 import { newId } from "../../lib/ids";
 import { LOCAL_PATCH_STYLE, localPatchPrivateInventory } from "./local-patch-world";
 import { LOCAL_PATCH_PROVIDER } from "./local-patch-hide";
+import { localPatchNotificationPrefix } from "../local-patch-notifications";
 
 function demand(value: unknown, message: string): asserts value {
   if (!value) throw new Error(`LOCAL_PATCH_DELETE: ${message}`);
@@ -45,6 +46,11 @@ export async function deleteLocalPatchGame(c: Container, gameId: string, actor: 
     } });
     const inventory = await localPatchPrivateInventory({ db: tx }, gameId);
     const keys = new Set(inventory.retainedPurchaseKeys), ids = new Set<string>();
+    // Immutable email bodies can contain the child's name and bearer play link.
+    // They belong to this game's private graph, never to the accounting ledger.
+    for (const blob of await tx.fileBlob.findMany({ where: { key: { startsWith: localPatchNotificationPrefix(gameId) } }, select: { key: true } })) keys.add(blob.key);
+    await tx.auditLog.updateMany({ where: { entityType: "Game", entityId: gameId, action: "local-patch:notification-pending" },
+      data: { action: "local-patch:notification-cancelled" } });
     let sharedAssetsRetained = 0;
     for (const asset of await tx.asset.findMany({ where: { id: { in: inventory.assetIds } } })) {
       demand(asset.ownerId === game.ownerId && asset.provider === LOCAL_PATCH_PROVIDER && asset.providerRequestId === gameId

@@ -174,6 +174,9 @@ export const SceneDefinitionSchema = z.object({
    */
   wardrobe: z.string().min(1).optional(),
   version: z.number().int().min(1),
+  playMode: z.literal("find-any").optional(),
+  appearancesPerBoard: z.literal(5).optional(),
+  findsRequiredToAdvance: z.literal(3).optional(),
   active: z.boolean(),
   artStatus: z.enum(ART_STATUSES),
   art: z.object({
@@ -194,7 +197,7 @@ export const SceneDefinitionSchema = z.object({
       durationMs: z.number().int().min(300).max(4000).default(1600),
     })
     .optional(),
-  targets: z.array(TargetSchema).length(TARGETS_PER_SCENE),
+  targets: z.array(TargetSchema).min(TARGETS_PER_SCENE).max(5),
   ambient: z.array(AmbientSchema).min(2).max(6),
   bonus: BonusSchema.optional(),
   celebration: z.object({
@@ -204,6 +207,12 @@ export const SceneDefinitionSchema = z.object({
   }),
   collectible: z.object({ id: z.string().min(1), name: LocalizedTextSchema, icon: z.string().min(1) }),
   sounds: z.object({ ambient: SoundCue.optional() }).default({}),
+}).superRefine((scene, ctx) => {
+  const free = scene.playMode === "find-any";
+  if (scene.targets.length !== (free ? 5 : TARGETS_PER_SCENE) || (free && (scene.appearancesPerBoard !== 5 || scene.findsRequiredToAdvance !== 3))
+    || (!free && (scene.appearancesPerBoard !== undefined || scene.findsRequiredToAdvance !== undefined))) {
+    ctx.addIssue({ code: "custom", path: ["targets"], message: "Target count and advancement must match the pinned play mode" });
+  }
 });
 export type SceneDefinition = z.infer<typeof SceneDefinitionSchema>;
 

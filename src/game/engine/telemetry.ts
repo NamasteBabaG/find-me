@@ -2,7 +2,7 @@
  * Fire-and-forget play telemetry. Coarse events only (see ProgressService).
  * Uses sendBeacon when available so a closing tab still reports completion.
  */
-export type PlayEventType = "scene_started" | "target_found" | "hint_used" | "scene_completed" | "game_completed" | "game_replayed";
+export type PlayEventType = "scene_started" | "target_found" | "hint_used" | "scene_completed" | "game_completed" | "game_replayed" | "scene_unlocked" | "journey_finished";
 
 export interface PlayEvent {
   eventType: PlayEventType;

@@ -1,7 +1,7 @@
 "use client";
 
 import type { GameConfig } from "@/domain/game/config";
-import { sceneProgress, completedScenes, type GameProgress } from "@/domain/game/progress";
+import { sceneProgress, completedScenes, sceneFoundIds, sceneIsPlayable, type GameProgress } from "@/domain/game/progress";
 import { useGameText } from "../i18n";
 
 interface Props {
@@ -47,7 +47,7 @@ export function IslandGrid({ config, progress, onOpen, onPassport, demo }: Props
           const highlight = scene.slug === firstOpen && done === 0;
           return (
             <li key={scene.slug} className={`island${sp.completed ? " island--done" : ""}${highlight ? " island--hint" : ""}`} style={{ ["--i" as string]: i }}>
-              <button type="button" className="island__btn" onClick={() => onOpen(scene.slug)} aria-label={`${scene.name}${sp.completed ? ` — ${g.map.done}` : ""}`}>
+              <button type="button" className="island__btn" disabled={!sceneIsPlayable(progress, config, scene)} onClick={() => onOpen(scene.slug)} aria-label={`${scene.name}${sp.completed ? ` — ${g.map.done}` : ""}`}>
                 <span className="island__thumb" style={{ background: scene.art.palette.sky }}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={scene.art.thumbnail} alt="" loading="lazy" />
@@ -58,7 +58,7 @@ export function IslandGrid({ config, progress, onOpen, onPassport, demo }: Props
                   ) : null}
                 </span>
                 <span className="island__name">{scene.name}</span>
-                <span className="island__meta">{sp.completed ? `${scene.collectible.icon} ${sp.plays > 1 ? tf(g.map.played, { n: sp.plays }) : g.map.playAgain}` : g.map.spots}</span>
+                <span className="island__meta">{scene.playMode === "find-any" ? `${g.scene.findAnyRules} · ★ ${sceneFoundIds(progress, scene).length}/${scene.targets.length}` : sp.completed ? `${scene.collectible.icon} ${sp.plays > 1 ? tf(g.map.played, { n: sp.plays }) : g.map.playAgain}` : g.map.spots}</span>
               </button>
             </li>
           );

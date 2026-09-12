@@ -21,6 +21,8 @@ export interface FoundRecord {
 }
 
 export interface MissionState {
+  playMode?: "find-any";
+  findsRequiredToAdvance?: number;
   sceneSlug: string;
   plan: ScenePlayPlan;
   phase: MissionPhase;
@@ -67,16 +69,19 @@ export interface MissionCopy {
   fallbackSuccess: string;
 }
 
-export function createMissionState(sceneSlug: string, plan: ScenePlayPlan): MissionState {
+export function createMissionState(sceneSlug: string, plan: ScenePlayPlan, options: { playMode?: "find-any"; findsRequiredToAdvance?: number; found?: Record<string, FoundRecord> } = {}): MissionState {
+  const found = Object.fromEntries(Object.entries(options.found ?? {}).filter(([id]) => plan.order.includes(id)));
   return {
+    playMode: options.playMode,
+    findsRequiredToAdvance: options.findsRequiredToAdvance,
     sceneSlug,
     plan,
     phase: "intro",
-    currentIndex: 0,
+    currentIndex: Math.max(0, plan.order.findIndex(id => !found[id])),
     misses: 0,
     hintLevel: 0,
     hintsUsedTotal: 0,
-    found: {},
+    found,
     bonusFound: false,
     missionStartedAt: 0,
     lastFeedback: null,
@@ -84,7 +89,12 @@ export function createMissionState(sceneSlug: string, plan: ScenePlayPlan): Miss
 }
 
 export function currentTargetId(state: MissionState): string | null {
+  if (state.playMode === "find-any" && Object.keys(state.found).length >= state.plan.order.length) return null;
   return state.plan.order[state.currentIndex] ?? null;
+}
+
+export function missionCanAdvance(state: MissionState): boolean {
+  return Object.keys(state.found).length >= (state.findsRequiredToAdvance ?? state.plan.order.length);
 }
 
 export function isFound(state: MissionState, targetId: string): boolean {
@@ -99,15 +109,16 @@ export function missionReducer(state: MissionState, action: MissionAction, copy:
   switch (action.type) {
     case "START": {
       if (state.phase !== "intro") return state;
-      return { ...state, phase: "searching", missionStartedAt: action.now, lastFeedback: null };
+      return { ...state, phase: Object.keys(state.found).length >= state.plan.order.length ? "complete" : "searching", missionStartedAt: action.now, lastFeedback: null };
     }
 
     case "TAP_TARGET": {
       if (state.phase !== "searching") return state;
       const current = currentTargetId(state);
       if (!current) return state;
+      if (!state.plan.order.includes(action.targetId) || isFound(state, action.targetId)) return state;
 
-      if (action.targetId !== current) {
+      if (state.playMode !== "find-any" && action.targetId !== current) {
         // Tapping one of the other versions of the child is a friendly nudge, not a failure.
         if (isFound(state, action.targetId)) return state; // already found — ignore
         const item = copy.itemByTarget[current] ?? "";
@@ -115,8 +126,9 @@ export function missionReducer(state: MissionState, action: MissionAction, copy:
         return { ...state, misses: state.misses + 1, lastFeedback: { kind: "wrongTarget", targetId: action.targetId, bubble } };
       }
 
-      const lines = copy.successByTarget[current] ?? [copy.fallbackSuccess];
-      const idx = state.plan.successIndex[current] ?? 0;
+      const foundId = action.targetId;
+      const lines = copy.successByTarget[foundId] ?? [copy.fallbackSuccess];
+      const idx = state.plan.successIndex[foundId] ?? 0;
       const bubble = lines[idx % lines.length] ?? copy.fallbackSuccess;
       const elapsedMs = Math.max(0, action.now - state.missionStartedAt);
       return {
@@ -124,9 +136,9 @@ export function missionReducer(state: MissionState, action: MissionAction, copy:
         phase: "found",
         found: {
           ...state.found,
-          [current]: { hintsUsed: state.hintLevel, misses: state.misses, elapsedMs },
+          [foundId]: { hintsUsed: foundId === current ? state.hintLevel : 0, misses: state.misses, elapsedMs },
         },
-        lastFeedback: { kind: "hit", targetId: current, bubble },
+        lastFeedback: { kind: "hit", targetId: foundId, bubble },
       };
     }
 
@@ -157,8 +169,10 @@ export function missionReducer(state: MissionState, action: MissionAction, copy:
 
     case "FOUND_DONE": {
       if (state.phase !== "found") return state;
-      const nextIndex = state.currentIndex + 1;
-      if (nextIndex >= state.plan.order.length) {
+      const nextIndex = state.playMode === "find-any"
+        ? (isFound(state, state.plan.order[state.currentIndex] ?? "") ? state.plan.order.findIndex(id => !isFound(state, id)) : state.currentIndex)
+        : state.currentIndex + 1;
+      if (nextIndex < 0 || nextIndex >= state.plan.order.length || Object.keys(state.found).length >= state.plan.order.length) {
         return { ...state, phase: "complete", currentIndex: nextIndex, lastFeedback: null };
       }
       return {
@@ -166,7 +180,7 @@ export function missionReducer(state: MissionState, action: MissionAction, copy:
         phase: "searching",
         currentIndex: nextIndex,
         misses: 0,
-        hintLevel: 0,
+        hintLevel: state.playMode === "find-any" && nextIndex === state.currentIndex ? state.hintLevel : 0,
         missionStartedAt: action.now,
         lastFeedback: null,
       };

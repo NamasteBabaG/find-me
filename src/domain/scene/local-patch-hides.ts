@@ -85,6 +85,15 @@ export const LocalPatchHideSchema = z.object({
    * transforms do not carry forward to the new placement.
    */
   targetId: z.string().min(1),
+  /** v7 authoring only. Omission preserves every legacy pixel and fingerprint. */
+  mask: z.object({ left: z.number().int().nonnegative(), top: z.number().int().nonnegative(), width: z.number().int().positive(), height: z.number().int().positive() }).strict().optional(),
+  hint: z.object({ en: z.string().min(12), he: z.string().min(8) }).strict().optional(),
+  placement: z.object({
+    depth: z.enum(["near", "middle", "deep"]),
+    standingHeightPx: z.number().int().positive(),
+    support: z.string().min(8), lighting: z.string().min(8),
+    occlusion: z.string().min(8), comparators: z.string().min(8),
+  }).strict().optional(),
 }).strict();
 export type LocalPatchHide = z.infer<typeof LocalPatchHideSchema>;
 
@@ -99,8 +108,13 @@ export const LocalPatchBoardSchema = z.object({
    * no, and a child sitting there is a drawing mistake however well it is drawn.
    */
   sittable: z.boolean(),
-  hides: z.array(LocalPatchHideSchema).length(HIDES_PER_BOARD),
-}).strict();
+  version: z.literal(7).optional(),
+  wardrobe: z.string().min(12).optional(),
+  hides: z.array(LocalPatchHideSchema).min(3).max(5),
+}).strict().superRefine((board, ctx) => {
+  if (board.hides.length !== (board.version === 7 ? 5 : HIDES_PER_BOARD)) ctx.addIssue({ code: "custom", path: ["hides"], message: "The pinned board version determines its hide count" });
+  if (board.version === 7 && (!board.wardrobe || board.hides.some(h => !h.mask || !h.placement || !h.hint))) ctx.addIssue({ code: "custom", message: "Every v7 hide needs explicit scale, light, support and hint" });
+});
 export type LocalPatchBoard = z.infer<typeof LocalPatchBoardSchema>;
 
 export const cropOf = (hide: LocalPatchHide) => ({ left: hide.left, top: hide.top, ...LOCAL_PATCH_CROP });
@@ -111,9 +125,11 @@ export const maskInCrop = (pose: LocalPatchPose) => {
   return { left: LOCAL_PATCH_MASK_LEFT, top: LOCAL_PATCH_MASK_GROUND - box.height, width: box.width, height: box.height };
 };
 
+export const maskForHide = (hide: LocalPatchHide) => hide.mask ?? maskInCrop(hide.pose);
+
 /** The same box in board coordinates. */
 export const maskOf = (hide: LocalPatchHide) => {
-  const box = maskInCrop(hide.pose);
+  const box = maskForHide(hide);
   return { left: hide.left + box.left, top: hide.top + box.top, width: box.width, height: box.height };
 };
 
@@ -143,8 +159,8 @@ export function assertPlaceable(board: LocalPatchBoard): void {
     if (crop.left + crop.width > LOCAL_PATCH_BOARD.width || crop.top + crop.height > LOCAL_PATCH_BOARD.height) {
       throw new Error(`LOCAL_PATCH: ${hide.id} runs off the edge of ${board.board}`);
     }
-    const box = maskInCrop(hide.pose);
-    if (box.left + box.width > LOCAL_PATCH_CROP.width || box.top < 0) {
+    const box = maskForHide(hide);
+    if (box.left < 0 || box.left + box.width > LOCAL_PATCH_CROP.width || box.top < 0 || box.top + box.height > LOCAL_PATCH_CROP.height) {
       throw new Error(`LOCAL_PATCH: the ${hide.pose} box does not fit the crop at ${hide.id}`);
     }
     if (!board.sittable && LOW_POSES.includes(hide.pose)) {

@@ -1,6 +1,8 @@
 import { Prisma } from "@prisma/client";
 import type { Container } from "../container";
-import { WORLD_LOCAL_PATCH_HIDES, type LocalPatchBoard, type LocalPatchHide } from "../../domain/scene/local-patch-hides";
+import { type LocalPatchBoard, type LocalPatchHide } from "../../domain/scene/local-patch-hides";
+import { ALL_LOCAL_PATCH_BOARDS, localPatchBoardForVersion, isLocalPatchAdvisoryVersion } from "../../domain/scene/local-patch-catalog";
+import { deliverLocalPatchNotifications } from "../local-patch-notifications";
 import { GenerationPaused, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { retainedPurchaseKeysFor } from "../../infra/db/prisma-retained-purchase-store";
 import { buyLocalPatch, localPatchRenderPolicySha256 } from "../../infra/generation/openai-local-patch";
@@ -8,6 +10,8 @@ import { env } from "../../lib/env";
 import { finishLocalPatchGame } from "./local-patch-player";
 import { deliverGameMail } from "../publish.service";
 import { SYSTEM } from "../audit.service";
+import { reviewLocalPatchBoard, localPatchBoardReviewKey, type LocalPatchBoardReviewDeps } from "./local-patch-board-review";
+import { LOCAL_PATCH_MIN_PROVIDER_MS, LOCAL_PATCH_PHASE_MARGIN_MS } from "./local-patch-render";
 import { localPatchAttemptPlan, localPatchSettled, LOCAL_PATCH_NORMAL_ATTEMPTS } from "../../domain/scene/local-patch-attempts";
 import {
   LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, runLocalPatchHide,
@@ -68,7 +72,6 @@ export type LocalPatchSliceResult = {
   readonly blocked: readonly { readonly boardId: string; readonly reason: string }[];
 };
 
-const boardsBySlug = new Map(WORLD_LOCAL_PATCH_HIDES.map(board => [board.board, board]));
 
 /**
  * Can this build paint this board at all?
@@ -81,25 +84,32 @@ export function localPatchBoardBlockedReason(board: LocalPatchBoard): string | n
     : `${board.board} is authored from ${board.art}, which is not shipped art`;
 }
 
-export function localPatchBoardFor(sceneSlug: string): LocalPatchBoard | null {
-  return boardsBySlug.get(sceneSlug) ?? null;
+export function localPatchBoardFor(sceneSlug: string, version = 6): LocalPatchBoard | null {
+  return localPatchBoardForVersion(sceneSlug, version);
 }
 
 export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHideDeps, gameId: string, options: {
   readonly hardDeadlineAt?: number;
   readonly maxHides?: number;
+  /** Synthetic provider injection; production uses the same existing credential. */
+  readonly boardJudge?: LocalPatchBoardReviewDeps["judge"];
 } = {}): Promise<LocalPatchSliceResult> {
   const empty = { gameId, outcomes: [], blocked: [] as { boardId: string; reason: string }[], attention: null as string | null };
-  // A fresh tick owns one paid operation; do not start on an almost-expired request.
-  if (options.hardDeadlineAt !== undefined && options.hardDeadlineAt - Date.now() < LOCAL_PATCH_MIN_SLICE_MS) {
-    return { ...empty, pending: true, claimed: false, paused: false };
-  }
-
   const game = await c.db.game.findUnique({ where: { id: gameId }, include: { scenes: { orderBy: { orderIndex: "asc" } } } });
   if (!game || game.deletedAt || game.styleVersion !== LOCAL_PATCH_STYLE) return { ...empty, pending: false, claimed: false, paused: false };
   // A refund or an operator stop is a dispatch barrier. Never resurrect a
   // stopped game by ticking it directly.
   if (game.status !== "TARGETS_GENERATING") return { ...empty, pending: false, claimed: false, paused: false };
+  const advisory = game.scenes.length > 0 && game.scenes.every(scene => isLocalPatchAdvisoryVersion(scene.sceneVersion));
+  if (game.scenes.some(scene => isLocalPatchAdvisoryVersion(scene.sceneVersion)) && !advisory) {
+    throw new Error("LOCAL_PATCH_WORLD: mixed legacy and five-hide scene versions are not a valid world");
+  }
+  // A v7 hide buys only its image. Reuse the dispatch boundary's conservative
+  // minimum, then let it recheck after reservation and bound the actual call.
+  const minHideMs = advisory ? LOCAL_PATCH_MIN_PROVIDER_MS.render + LOCAL_PATCH_PHASE_MARGIN_MS : LOCAL_PATCH_MIN_SLICE_MS;
+  if (options.hardDeadlineAt !== undefined && options.hardDeadlineAt - Date.now() < minHideMs) {
+    return { ...empty, pending: true, claimed: false, paused: false };
+  }
 
   const job = await c.db.generationJob.findUnique({ where: { id: `job_${gameId}` } });
   if (!job) return { ...empty, pending: false, claimed: false, paused: false };
@@ -155,7 +165,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const blocked: { boardId: string; reason: string }[] = [];
   const work: { board: LocalPatchBoard; hide: LocalPatchHide; sceneId: string }[] = [];
   for (const scene of game.scenes) {
-    const board = localPatchBoardFor(scene.sceneSlug);
+    const board = localPatchBoardFor(scene.sceneSlug, scene.sceneVersion);
     if (!board) { blocked.push({ boardId: scene.sceneSlug, reason: `${scene.sceneSlug} has no authored local-patch placements` }); continue; }
     const reason = localPatchBoardBlockedReason(board);
     if (reason) { blocked.push({ boardId: scene.sceneSlug, reason }); continue; }
@@ -175,13 +185,13 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const plan = localPatchAttemptPlan(work.map(item => stateOf(item.sceneId, item.hide.targetId)), allowRepair);
   const todo = plan.indices.map(index => work[index]!);
   const outcomes: LocalPatchHideOutcome[] = [];
-  const limit = Math.max(1, options.maxHides ?? LOCAL_PATCH_HIDES_PER_SLICE);
+  const limit = Math.max(1, options.maxHides ?? (advisory ? 5 : LOCAL_PATCH_HIDES_PER_SLICE));
   let paused = false;
   let attention: string | null = null;
 
   try {
     for (const item of todo.slice(0, limit)) {
-      if (options.hardDeadlineAt !== undefined && options.hardDeadlineAt - Date.now() < LOCAL_PATCH_MIN_SLICE_MS) break;
+      if (options.hardDeadlineAt !== undefined && options.hardDeadlineAt - Date.now() < minHideMs) break;
       const outcome = await runLocalPatchHide(c, { ...deps, fence }, { gameId, board: item.board, hide: item.hide,
         finalRepair: plan.finalRepair,
         ...(options.hardDeadlineAt === undefined ? {} : { deadlineAt: options.hardDeadlineAt }) });
@@ -214,12 +224,40 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     where: { variant: LOCAL_PATCH_VARIANT, targetInstance: { gameScene: { gameId } } },
     include: { targetInstance: { select: { targetId: true, gameSceneId: true } } },
   });
+  let pendingReviews = 0;
   for (const scene of game.scenes) {
-    const board = localPatchBoardFor(scene.sceneSlug);
+    const board = localPatchBoardFor(scene.sceneSlug, scene.sceneVersion);
     if (!board || localPatchBoardBlockedReason(board)) continue;
     const mine = board.hides.map(hide => after.find(r => r.targetInstance.gameSceneId === scene.id && r.targetInstance.targetId === hide.targetId));
     if (!mine.every(settledHide)) continue;
     const good = mine.every(row => row && (row.status === "GENERATED" || row.status === "APPROVED"));
+    if (advisory && good && scene.generationStatus !== "GENERATED") {
+      if (attention || paused) { pendingReviews++; continue; }
+      try {
+        const reviewed = await reviewLocalPatchBoard(c, { gameId, sceneId: scene.id,
+          ...(options.hardDeadlineAt === undefined ? {} : { deadlineAt: options.hardDeadlineAt }) }, {
+          fence, apiKey: deps.apiKey, judge: options.boardJudge, readBoardArt: deps.readBoardArt,
+        });
+        if (reviewed.state !== "done") {
+          pendingReviews++;
+          if (reviewed.state === "held") {
+            attention = reviewed.reason ?? "local-patch: grouped review requires charge reconciliation";
+            await c.db.$transaction(async tx => {
+              await fence(tx);
+              await tx.generationJob.update({ where: { id: job.id }, data: {
+                status: "FAILED", currentStep: LOCAL_PATCH_NEEDS_RELEASE, lastError: attention,
+              } });
+            });
+          }
+          continue;
+        }
+      } catch (error) {
+        if (error instanceof GenerationPaused) { paused = true; pendingReviews++; continue; }
+        await c.db.generationJob.updateMany({ where: { id: job.id, attempts: claim, status: "RUNNING" },
+          data: { status: "FAILED", lastError: (error instanceof Error ? error.message : String(error)).slice(0, 500) } });
+        throw error;
+      }
+    }
     if (!attention) await c.db.$transaction(async tx => {
       await fence(tx);
       await tx.gameScene.update({ where: { id: scene.id }, data: { generationStatus: good ? "GENERATED" : "NEEDS_REGENERATION" } });
@@ -247,19 +285,20 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   }
   // Only a complete nine-board world can become a playable product. A refused
   // hide never falls back to an avatar/body sprite and never becomes READY.
-  if (!left.length && !paused && !held && !attention && game.scenes.length === 9) {
+  if (!left.length && !pendingReviews && !paused && !held && !attention && game.scenes.length === 9) {
     const failures = work.filter(item => {
       const row = after.find(r => r.targetInstance.gameSceneId === item.sceneId && r.targetInstance.targetId === item.hide.targetId);
       return !row || !["GENERATED", "APPROVED"].includes(row.status);
     });
-    if (!blocked.length && !failures.length && work.length === 27) {
+    const expected = advisory ? 45 : 27;
+    if (!blocked.length && !failures.length && work.length === expected) {
       await finishLocalPatchGame(c, gameId, fence);
       // Readiness is already committed. Notification failure must never turn
       // a playable world back into a failed generation job.
-      await deliverGameMail(c, gameId, SYSTEM).catch(error => console.error(`[local-patch] ${gameId}: ready, notification unavailable`, error));
+      await (advisory ? deliverLocalPatchNotifications(c, gameId, { deadlineAt: options.hardDeadlineAt }) : deliverGameMail(c, gameId, SYSTEM)).catch(error => console.error(`[local-patch] ${gameId}: ready, notification unavailable`, error));
       return { gameId, pending: false, claimed: true, paused: false, attention: null, outcomes, blocked };
     }
-    attention = `local-patch: ${failures.length} appearances require review; ${blocked.length} boards unavailable`;
+    attention = `local-patch: ${failures.length} appearances ${advisory ? "have no usable asset after technical recovery" : "require review"}; ${blocked.length} boards unavailable`;
     await c.db.$transaction(async tx => {
       await fence(tx);
       await tx.game.update({ where: { id: gameId }, data: { status: "MANUAL_REVIEW", lastError: attention, configJson: null } });
@@ -277,10 +316,10 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // here is the point, not an omission.
   if (!attention) {
     await c.db.generationJob.updateMany({ where: { id: job.id, attempts: claim, status: "RUNNING", currentStep: "local-patch" },
-      data: { status: left.length ? "QUEUED" : "DONE", currentStep: left.length ? "local-patch" : null } });
+      data: { status: left.length || pendingReviews ? "QUEUED" : "DONE", currentStep: left.length || pendingReviews ? "local-patch" : null } });
   }
 
-  return { gameId, pending: left.length > 0 && !paused && !held && !attention, claimed: true, paused, attention, outcomes, blocked };
+  return { gameId, pending: (left.length > 0 || pendingReviews > 0) && !paused && !held && !attention, claimed: true, paused, attention, outcomes, blocked };
 }
 
 /**
@@ -359,13 +398,14 @@ export async function localPatchPrivateInventory(c: { db: Pick<Prisma.Transactio
 
   const worldId = boardWizardWorldId(gameId);
   const requestKeys: string[] = [];
-  for (const board of WORLD_LOCAL_PATCH_HIDES) {
+  for (const board of ALL_LOCAL_PATCH_BOARDS) {
     for (const hide of board.hides) {
       for (let attempt = 1; attempt <= LOCAL_PATCH_MAX_ATTEMPTS; attempt++) {
         requestKeys.push(`${hide.id}:${hide.pose}:render:${attempt}`, `${hide.id}:${hide.pose}:judge:${attempt}`);
       }
     }
   }
+  requestKeys.push(...new Set(ALL_LOCAL_PATCH_BOARDS.map(board => localPatchBoardReviewKey(board.board))));
   return {
     assetIds: [...assetIds],
     storagePaths: assets.map(a => a.storagePath),
