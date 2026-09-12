@@ -13,6 +13,8 @@ import { BOARD_CONDITIONED_QA_STYLE } from "./generation/board-conditioned-qa-jo
 import { deleteBoardConditionedQaGame } from "./generation/board-conditioned-deletion";
 import { BOARD_WIZARD_STYLE, deleteBoardConditionedWizard } from "./generation/board-conditioned-wizard";
 import { deleteBoardWizardIdentityGame } from "./generation/board-wizard-identity-lifecycle";
+import { LOCAL_PATCH_STYLE } from "./generation/local-patch-world";
+import { deleteLocalPatchGame } from "./generation/local-patch-deletion";
 
 /** Library + owner actions. Everything here requires the owner's user id. */
 export async function listGamesForUser(c: Container, userId: string) {
@@ -57,7 +59,7 @@ export async function updateGift(c: Container, gameId: string, userId: string, g
   const g = await c.db.game.findFirst({ where: { id: gameId, ownerId: userId, deletedAt: null } });
   if (!g) return false;
   const clean = { fromName: gift.fromName?.trim().slice(0, 40) || undefined, message: gift.message?.trim().slice(0, 140) || undefined };
-  if (isFixedWorldStyle(g.styleVersion)) {
+  if (isFixedWorldStyle(g.styleVersion) || g.styleVersion === LOCAL_PATCH_STYLE) {
     // One conditional write: a concurrent fixed deletion must never be undone
     // by restoring the config read before its atomic purge.
     const configJson = g.configJson ? JSON.stringify({ ...parseGameConfig(g.configJson), gift: clean }) : null;
@@ -99,11 +101,13 @@ function rejectedIds(json: string | null): string[] {
 
 export async function deleteGame(c: Container, gameId: string, actor: Actor, userId?: string): Promise<boolean> {
   const engine = await c.db.game.findUnique({ where: { id: gameId }, select: { styleVersion: true } });
+  if (engine?.styleVersion === LOCAL_PATCH_STYLE) return deleteLocalPatchGame(c, gameId, actor, userId);
   if (engine?.styleVersion === BOARD_WIZARD_STYLE) return deleteBoardConditionedWizard(c, gameId, actor, userId);
   if (engine?.styleVersion === BOARD_CONDITIONED_QA_STYLE) return deleteBoardConditionedQaGame(c, gameId, actor, userId);
   if (engine && isFixedWorldStyle(engine.styleVersion)) return deleteFixedWorldGame(c, gameId, actor, userId);
   const identityDeletion = await deleteBoardWizardIdentityGame(c, gameId, actor, userId);
   if (identityDeletion && typeof identityDeletion === "object") {
+    if (identityDeletion.rerouteFixedStyle === LOCAL_PATCH_STYLE) return deleteLocalPatchGame(c, gameId, actor, userId);
     // Enrollment can commit after the first style read. Its transactional
     // identity cleanup signal is terminal routing, never a legacy fallback or
     // an unbounded read/retry loop. Each fixed deleter rechecks its own engine.

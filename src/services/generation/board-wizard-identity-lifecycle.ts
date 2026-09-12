@@ -10,6 +10,7 @@ import { boardWizardBudget } from "./board-wizard-budget";
 import { boardConditioningHash } from "./board-conditioned-source";
 import type { BudgetJson } from "./world-budget";
 import type { IdentityProvenance } from "./board-wizard-identity-gate";
+import { LOCAL_PATCH_STYLE } from "./local-patch-world";
 
 export interface BoardWizardIdentityClaim {
   gameId: string; jobId: string; jobAttempt: number; styleVersion: string;
@@ -21,7 +22,8 @@ const scope = (id: string) => `${id}:board-wizard`;
 const requestKey = "wizard:identity:1";
 function demand(ok: unknown): asserts ok { if (!ok) throw new Error("BOARD_IDENTITY: stale or deleted identity claim"); }
 const budgetFor = (c: Container) => boardWizardBudget(new CasWorldBudgetRepository(new PrismaWorldBudgetStore(c.db)));
-const enabled = () => env().APP_ENV === "qa" && process.env.QA_BOARD_CONDITIONED_WIZARD === "true";
+const enabled = (styleVersion?: string) => env().APP_ENV === "qa"
+  && (styleVersion === LOCAL_PATCH_STYLE || process.env.QA_BOARD_CONDITIONED_WIZARD === "true");
 const usageKeys = new Set(["totalTokens", "inputTokens", "outputTokens", "textInputTokens", "imageInputTokens",
   "total_tokens", "input_tokens", "output_tokens", "text_input_tokens", "image_input_tokens"]);
 
@@ -37,7 +39,7 @@ async function fence(tx: Prisma.TransactionClient, claim: BoardWizardIdentityCla
 }
 
 export async function withBoardWizardIdentityClaim<T>(c: Container, claim: BoardWizardIdentityClaim, work: (tx: Prisma.TransactionClient) => Promise<T>) {
-  demand(enabled() && c.storage.id === "db");
+  demand(enabled(claim.styleVersion) && c.storage.id === "db");
   return c.db.$transaction(async tx => { await fence(tx, claim); return work(tx); },
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30_000 });
 }
@@ -71,7 +73,7 @@ export async function generateBoardWizardIdentity(c: Container, claim: BoardWiza
 }): Promise<boolean> {
   const budget = budgetFor(c);
   try {
-    demand(enabled() && c.storage.id === "db");
+    demand(enabled(claim.styleVersion) && c.storage.id === "db");
     await c.db.$transaction(tx => fence(tx, claim), { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     await deps.reserve();
     const character = await deps.generate();
@@ -135,7 +137,7 @@ export async function deleteBoardWizardIdentityGame(c: Container, gameId: string
   if (!enabled() && !await c.db.worldBudgetLedger.findUnique({ where: { worldId: scope(gameId) }, select: { worldId: true } })) return null;
   return c.db.$transaction(async tx => {
     const game = await tx.game.findUnique({ where: { id: gameId } });
-    if (game?.styleVersion.startsWith("fixed-sprite-")) return { rerouteFixedStyle: game.styleVersion };
+    if (game?.styleVersion === LOCAL_PATCH_STYLE || game?.styleVersion.startsWith("fixed-sprite-")) return { rerouteFixedStyle: game.styleVersion };
     if (!game || game.packageTier !== "ONE_WORLD" ||
       !["PAID", "AVATAR_GENERATING", "GENERATION_FAILED", "MANUAL_REVIEW"].includes(game.status)) return null;
     // Already painted legacy games keep the existing full-target cleanup path.

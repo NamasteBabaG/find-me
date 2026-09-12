@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, readFile, writeFile, access, rm, realpath } from "node:
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import sharp from "sharp";
 import { prepareCatalogPromotion, promoteCatalogRecoverably } from "../../../../scripts/promote-board-conditioned-catalog";
 import { sha256Bytes } from "../fixed-sprite";
 
@@ -36,7 +37,9 @@ async function fixture() {
       const boardId = `board-${i}`, base = `content/board-conditioned-qa/${revision}/${boardId}`;
       await mkdir(path.join(root, base), { recursive: true });
       const image = async (name: string) => {
-        const bytes = Buffer.from(`synthetic packaging byte fixture:${revision}/${boardId}/${name}`);
+        const colour = sha256Bytes(Buffer.from(`${revision}/${boardId}/${name}`));
+        const bytes = await sharp({ create: { width: 1, height: 1, channels: 3,
+          background: { r: parseInt(colour.slice(0, 2), 16), g: parseInt(colour.slice(2, 4), 16), b: parseInt(colour.slice(4, 6), 16) } } }).png().toBuffer();
         const imagePath = `${base}/${name}.png`; await writeFile(path.join(root, imagePath), bytes);
         return { path: imagePath, sha256: sha256Bytes(bytes) };
       };
@@ -98,7 +101,25 @@ describe("active-catalog-only server traces", () => {
     const stale = "content/board-conditioned-qa/stale-v1/board-0/board.png";
     await mkdir(path.dirname(path.join(f.root, stale)), { recursive: true }); await writeFile(path.join(f.root, stale), "unused old bytes");
     const privateFile = `${f.options.archivePath}/catalog.json`;
-    const tracePaths = ["content/board-conditioned-qa/catalog.json", ...assets, stale, privateFile];
+    const localPatchBoards: { board: string; base: string; sha256: string }[] = [];
+    const renderSources: { board: string; path: string; sha256: string; pixelsSha256: string }[] = [];
+    for (const board of ["sydney", "antarctica", "giza", "tokyo", "amazon", "greatwall", "marrakech", "newyork", "paris"]) {
+      const base = `/scenes/${board}/local-patch-20260912/base.webp`;
+      const source = f.staged.catalog.boards[localPatchBoards.length]!.board;
+      const sourceBytes = await readFile(path.join(f.root, source.path));
+      const bytes = await sharp(sourceBytes).webp({ lossless: true }).toBuffer();
+      await mkdir(path.dirname(path.join(f.root, "public", base)), { recursive: true });
+      await writeFile(path.join(f.root, "public", base), bytes);
+      localPatchBoards.push({ board, base, sha256: sha256Bytes(bytes) });
+      renderSources.push({ board, ...source, pixelsSha256: sha256Bytes(await sharp(sourceBytes).ensureAlpha().raw().toBuffer()) });
+    }
+    const localPatchManifest = "content/local-patch-world/art.json";
+    await mkdir(path.dirname(path.join(f.root, localPatchManifest)), { recursive: true });
+    await writeFile(path.join(f.root, localPatchManifest), JSON.stringify({ boards: localPatchBoards, renderSources }));
+    const undeclaredPublic = "public/scenes/sydney/old-thumbnail.webp";
+    await writeFile(path.join(f.root, undeclaredPublic), "not a declared painter input");
+    const tracePaths = ["content/board-conditioned-qa/catalog.json", ...assets, stale, privateFile,
+      localPatchManifest, ...localPatchBoards.map(board => `public${board.base}`), undeclaredPublic];
     await writeFile(`${entry}.nft.json`, JSON.stringify({ version: 1, files: tracePaths.map(file => path.relative(path.dirname(entry), path.join(f.root, file))) }));
     const run = (script: string) => spawnSync(process.execPath, [path.join(project, "scripts", script)], { cwd: f.root, encoding: "utf8", windowsHide: true });
     const before = run("audit-board-catalog-tracing.mjs"); expect(before.status).toBe(1);
@@ -106,6 +127,8 @@ describe("active-catalog-only server traces", () => {
     expect(run("finalize-build-traces.mjs").status).toBe(0);
     const after = run("audit-board-catalog-tracing.mjs"); expect(after.status).toBe(0);
     const result = JSON.parse(after.stdout); expect(result.jobs.catalogFiles).toBe(37); expect(result.jobs.staleCatalogFiles).toEqual([]); expect(result.jobs.privateFiles).toEqual([]);
+    expect(result.jobs.localPatchFiles).toBe(10);
+    expect(result.jobs.publicCdnFiles).toBe(0);
     expect(await present(path.join(f.root, stale))).toBe(true); expect(await present(path.join(f.root, privateFile))).toBe(true);
     expect(run("finalize-build-traces.mjs").stdout).toContain('"changed":0');
   }, IO_TIMEOUT_MS);

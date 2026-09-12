@@ -23,6 +23,7 @@ vi.mock("@/services/generation/fixed-world-stage-record", () => ({
   readFixedWorldStage: mocks.proof, fixedWorldConfigSha256: mocks.hash,
 }));
 import { GET } from "./route";
+import type { WorldBudgetRequest, WorldBudgetSnapshot } from "@/services/generation/world-budget";
 
 // Boundary wiring tests; actual strict capsules/SQLite are tested by staging.
 const game = { id: "synthetic", ownerId: "owner", childProfileId: "child", styleVersion: "fixed-sprite-v3", status: "QA_PENDING", locale: "en", deletedAt: null,
@@ -45,7 +46,56 @@ function assembled(status = "MANUAL_REVIEW") {
   mocks.proof.mockReturnValue({ state: "staged", gameId: game.id, ownerId: game.ownerId, childProfileId: game.childProfileId, configSha256: "synthetic-hash" });
 }
 
+function localBudget(pendingState?: "pending" | "unknown"): WorldBudgetSnapshot {
+  const paid = (requestKey: string, scope: "identity" | "image" | "judge", amountMicroUsd: number): WorldBudgetRequest => ({
+    requestKey, scope, operationFingerprint: `fingerprint-${requestKey}`, reserveMicroUsd: 400_000,
+    state: "settled", origin: "reserved", unknownReasons: [], conflicts: [],
+    evidence: { providerNamespace: "synthetic", providerRequestId: `receipt-${requestKey}`, usageId: `usage-${requestKey}`,
+      rawUsage: { tokens: 1 }, model: "synthetic-model", amountMicroUsd, costBasis: "provider-billed" },
+  });
+  const identity = paid("identity", "identity", 100_000), image = paid("image", "image", 48_800), judge = paid("judge", "judge", 2_000);
+  const requests: WorldBudgetRequest[] = [identity, image, judge];
+  if (image.state === "settled") requests.push({ ...image, requestKey: "same-image-receipt", state: "linked", canonicalRequestKey: image.requestKey });
+  if (pendingState) requests.push({ requestKey: "next-image", scope: "image", operationFingerprint: "next-fingerprint", reserveMicroUsd: 400_000,
+    origin: "reserved", state: pendingState, unknownReasons: pendingState === "unknown" ? ["usage missing"] : [], conflicts: [] });
+  return { worldId: "synthetic:board-wizard", requests };
+}
+
 describe("fixed-world creation status boundary", () => {
+  it("reports a local-patch ledger hold without waiting for the worker's parking marker", async () => {
+    mocks.game.mockResolvedValue({ ...game, status: "TARGETS_GENERATING", styleVersion: "local-patch-world-v1" });
+    mocks.job.mockResolvedValue({ gameId: game.id, status: "QUEUED", currentStep: "local-patch", stepsJson: "{}" });
+    mocks.ledger.mockResolvedValue({ snapshotJson: JSON.stringify(localBudget("unknown")) });
+    const body = await (await response()).json();
+    expect(body).toMatchObject({ state: "held", pending: false, awaitingQa: true, done: false, playUrl: null, place: null,
+      qaCost: { spentCents: 15.08, reservedCents: 40, capCents: 500, held: true } });
+    expect(mocks.ledger).toHaveBeenCalledExactlyOnceWith({ where: { worldId: "synthetic:board-wizard" } });
+    expect(mocks.link).not.toHaveBeenCalled();
+  });
+  it.each([undefined, "pending"] as const)("counts all local-patch purchases once without parking an ordinary %s ledger", async pendingState => {
+    mocks.game.mockResolvedValue({ ...game, status: "TARGETS_GENERATING", styleVersion: "local-patch-world-v1" });
+    mocks.ledger.mockResolvedValue({ snapshotJson: JSON.stringify(localBudget(pendingState)) });
+    expect(await (await response()).json()).toMatchObject({ state: "working", pending: true, awaitingQa: false,
+      qaCost: { spentCents: 15.08, reservedCents: pendingState ? 40 : 0, capCents: 500, held: false } });
+  });
+  it("reports an empty new local-patch budget without requiring a ledger row", async () => {
+    mocks.game.mockResolvedValue({ ...game, status: "PAID", styleVersion: "local-patch-world-v1" });
+    expect(await (await response()).json()).toMatchObject({ pending: true, qaCost: { spentCents: 0, reservedCents: 0, capCents: 500, held: false } });
+  });
+  it.each(["invalid-json", "wrong-world", "invalid-snapshot", "unavailable"])("does not schedule local-patch work or invent costs for %s budget evidence", async kind => {
+    mocks.game.mockResolvedValue({ ...game, status: "TARGETS_GENERATING", styleVersion: "local-patch-world-v1" });
+    if (kind === "unavailable") mocks.ledger.mockRejectedValue(new Error("Synthetic database unavailable"));
+    else mocks.ledger.mockResolvedValue({ snapshotJson: kind === "invalid-json" ? "{" : JSON.stringify(kind === "wrong-world"
+      ? { ...localBudget(), worldId: "another-game:board-wizard" } : { ...localBudget(), requests: [{}] }) });
+    expect(await (await response()).json()).toMatchObject({ state: "held", pending: false, qaCost: null, awaitingQa: true });
+  });
+  it("never exempts a new local-patch avatar from review even when the identity link is missing", async () => {
+    mocks.game.mockResolvedValue({ ...game, status: "AVATAR_GENERATING", styleVersion: "local-patch-world-v1",
+      childProfile: { ...game.childProfile, identityAssetId: null } });
+    mocks.approved.mockResolvedValue(false);
+    expect(await (await response()).json()).toMatchObject({ characterReady: false, avatarUrl: null });
+    expect(mocks.approved).toHaveBeenCalled();
+  });
   it("hides an unapproved character in the window before enrolment, where it is actually drawn", async () => {
     // The window this gate exists for. The identity sheet is drawn and linked to
     // the profile, the review has not run or has just refused it, and the game is

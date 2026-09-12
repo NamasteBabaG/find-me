@@ -398,8 +398,12 @@ export class BudgetedOpenAiFixedSourceProvider {
     // raster is wrong - and those bytes are evidence only, however well formed
     // they are. Handing a refused image back as usable would be the same mistake
     // as losing a usable one, in the other direction.
-    const keptForBilling = usable ? { png: usable } : bounded ? { rejectedPng: bounded } : {};
+    const wrongModel = body.success && body.data.model !== undefined && body.data.model !== FIXED_SOURCE_SETTINGS.model;
+    const wrongQuality = body.success && body.data.quality !== undefined && body.data.quality !== prepared.capture.settings.quality;
     const keptForRefusal = bounded ? { rejectedPng: bounded } : {};
+    // Image approval is independent of whether the receipt can be priced. In
+    // particular, a missing bill must not hide an explicit quality refusal.
+    const keptForBilling = usable && !wrongModel && !wrongQuality ? { png: usable } : keptForRefusal;
 
     const usage = usageSchema.safeParse(body.success ? body.data.usage : undefined);
     usageValid = usage.success;
@@ -408,9 +412,8 @@ export class BudgetedOpenAiFixedSourceProvider {
     // picture than the one that was requested, and it must not come back as
     // usable however well formed it is. Missing usage or an unreadable receipt
     // say nothing about the picture, so those keep it.
-    const wrongModel = body.success && body.data.model !== undefined && body.data.model !== FIXED_SOURCE_SETTINGS.model;
     if (!body.success || !usage.success || !isSafeFixedSourceRequestId(requestId) || wrongModel) {
-      return unknown("image-charge-evidence-incomplete-or-model-unexpected", "charge-evidence", wrongModel ? keptForRefusal : keptForBilling);
+      return unknown("image-charge-evidence-incomplete-or-model-unexpected", "charge-evidence", keptForBilling);
     }
     const u = usage.data, rates = this.policy.rateCard;
     // No cache discount assumed. Extra usage fields are intentionally not
@@ -430,7 +433,7 @@ export class BudgetedOpenAiFixedSourceProvider {
     if (settled.audit.held) return diagnosticFailure("world_held", "Full charge recorded; budget is held and generated output is not released", "budget-held", "settled", { evidence });
     // The bill is recorded BEFORE any verdict on the picture, which is why the
     // examination above deliberately said nothing until now.
-    if (body.data.quality !== undefined && body.data.quality !== prepared.capture.settings.quality) return diagnosticFailure("invalid_output", "Billed response reported an unapproved image quality", "unexpected-quality", "settled", { evidence, ...keptForRefusal });
+    if (wrongQuality) return diagnosticFailure("invalid_output", "Billed response reported an unapproved image quality", "unexpected-quality", "settled", { evidence, ...keptForRefusal });
     if (pictureProblem || !usable) {
       return diagnosticFailure("invalid_output", pictureProblem?.message ?? "Billed request did not return a usable image",
         pictureProblem?.reason ?? "image-data", "settled", { evidence, ...keptForRefusal });

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
@@ -11,7 +11,7 @@ import {
   LOCAL_PATCH_BOARD, assertPlaceable, cropOf,
   type LocalPatchBoard, type LocalPatchHide,
 } from "../../domain/scene/local-patch-hides";
-import { PrismaRetainedPurchaseStore } from "../../infra/db/prisma-retained-purchase-store";
+import { fenceLocalPatchImages, LocalPatchRetainedPurchaseStore } from "./local-patch-lifecycle";
 import { normalizeBoardWizardIdentity } from "./board-wizard-identity";
 import { requireBoardWizardIdentityApproval } from "./board-wizard-identity-gate";
 import { readBoardConditionedCatalog } from "./board-conditioned-catalog";
@@ -20,6 +20,7 @@ import { localPatchGeometry, type LocalPatchGeometry } from "./local-patch-geome
 import { renderLocalPatchHide, type LocalPatchRenderDeps } from "./local-patch-render";
 import { LOCAL_PATCH_PROMPT_VERSION } from "./local-patch-prompt";
 import type { PatchGeometry } from "./patch";
+import { readPinnedLocalPatchArt } from "./local-patch-art";
 
 /**
  * One hide, through the product rather than through a script.
@@ -125,11 +126,9 @@ function demand(ok: unknown, message: string): asserts ok { if (!ok) throw new E
  * child behind - and a DIFFERENT render can never arrive at an address that
  * already holds one, which is the failure that would matter.
  *
- * The ROW is written first and the bytes second, which is the opposite of the
- * obvious order, and the reason is deletion. A row with no bytes behind it is
- * litter the next pass repairs and nothing renders; bytes with no row are a
- * picture of a child nobody can find, and this product promises it can find
- * every one of them.
+ * The row and bytes commit together behind the deletion fence. A row left by
+ * an older interrupted write is repaired here, but a deleted game can never
+ * gain a row or have its bytes restored.
  */
 async function keepHidePicture(c: Container, input: {
   readonly id: string; readonly gameId: string; readonly ownerId: string | null; readonly buffer: Buffer;
@@ -137,22 +136,30 @@ async function keepHidePicture(c: Container, input: {
   readonly width: number; readonly height: number; readonly costCents: number;
 }) {
   const key = `${input.visibility.toLowerCase()}/${input.id}.png`;
-  const existing = await c.db.asset.findUnique({ where: { id: input.id } });
-  if (existing) {
-    demand(existing.storagePath === key && existing.status === "READY" && !existing.deletedAt && existing.type === input.type,
+  demand(c.storage.id === "db", "local-patch imagery requires DB-backed private storage");
+  return c.db.$transaction(async tx => {
+    await fenceLocalPatchImages(tx, input.gameId);
+    const existing = await tx.asset.findUnique({ where: { id: input.id } });
+    if (existing) {
+      demand(existing.storagePath === key && existing.status === "READY" && !existing.deletedAt && existing.type === input.type
+        && existing.ownerId === input.ownerId && existing.visibility === input.visibility
+        && existing.provider === LOCAL_PATCH_PROVIDER && existing.providerRequestId === input.gameId,
       `${input.id} already exists and is not the picture this hide kept`);
-  } else {
-    await c.db.asset.create({ data: {
-      id: input.id, ownerId: input.ownerId, type: input.type, visibility: input.visibility,
-      storagePath: key, mimeType: "image/png", width: input.width, height: input.height,
-      bytes: input.buffer.byteLength, provider: LOCAL_PATCH_PROVIDER, providerRequestId: input.gameId,
-      costCents: Math.round(input.costCents),
+    } else {
+      await tx.asset.create({ data: {
+        id: input.id, ownerId: input.ownerId, type: input.type, visibility: input.visibility,
+        storagePath: key, mimeType: "image/png", width: input.width, height: input.height,
+        bytes: input.buffer.byteLength, provider: LOCAL_PATCH_PROVIDER, providerRequestId: input.gameId,
+        costCents: Math.round(input.costCents),
+      } });
+    }
+    // Same transaction as the row and lifecycle fence: deletion cannot purge
+    // between the row and the blob, then have a late put recreate the picture.
+    await tx.fileBlob.upsert({ where: { key }, update: {}, create: {
+      key, data: new Uint8Array(input.buffer), contentType: "image/png",
     } });
-  }
-  // Catches up a row whose bytes never landed - the cost of writing the row
-  // first, paid here rather than left for a player to discover.
-  if (!(await c.storage.exists(key))) await c.storage.put(key, input.buffer, "image/png");
-  return existing ?? await c.db.asset.findUniqueOrThrow({ where: { id: input.id } });
+    return existing ?? await tx.asset.findUniqueOrThrow({ where: { id: input.id } });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30_000 });
 }
 
 /**
@@ -165,9 +172,11 @@ async function keepHidePicture(c: Container, input: {
  * was given rather than to the board the player loads. The scene already
  * publishes the digest of its own art; this is what it is for.
  */
-export async function readShippedBoardArt(art: string, expectedSha256: string): Promise<Buffer> {
+export async function readShippedBoardArt(art: string, expectedSha256: string, root = process.cwd()): Promise<Buffer> {
   demand(art.startsWith("public/") && !art.includes(".."), `${art} is not shipped art; this board cannot be painted from a deployed build`);
-  const bytes = await readFile(path.resolve(process.cwd(), art));
+  const pinned = await readPinnedLocalPatchArt(art, expectedSha256, root);
+  if (pinned) return pinned;
+  const bytes = await readFile(path.resolve(root, art));
   demand(sha256Bytes(bytes) === expectedSha256, `${art} is not the art this scene ships; a patch cut from it would be a piece of a different picture`);
   return sharp(bytes, { limitInputPixels: 8_294_400 }).png().toBuffer();
 }
@@ -197,6 +206,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   readonly deadlineAt?: number;
 }): Promise<LocalPatchHideOutcome> {
   const { gameId, board, hide } = input;
+  demand(c.storage.id === "db", "local-patch imagery requires DB-backed private storage");
   // Free, and before anything else: an authored placement that cannot be held
   // is a fault to find now, not after a render has been paid for.
   assertPlaceable(board);
@@ -279,6 +289,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   // a fresh allowance - and resuming the number is what lets the retained render
   // answer instead of a second one being bought.
   await c.db.$transaction(async tx => {
+    await fenceLocalPatchImages(tx, gameId);
     await deps.fence?.(tx);
     await tx.targetVariantAsset.update({ where: { id: row.id }, data: {
       attempts: attempt, status: "PENDING", lastError: null,
@@ -289,7 +300,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
 
   const judgeIdentityPng = await sharp(normalized.png).resize(256, 256, { fit: "inside" }).png().toBuffer();
   const attemptResult = await renderLocalPatchHide({
-    ledger: budget, store: new PrismaRetainedPurchaseStore(c.db),
+    ledger: budget, store: new LocalPatchRetainedPurchaseStore(c, gameId, budget),
     renderPolicySha256: deps.renderPolicySha256, render: deps.render, ...(deps.judge ? { judge: deps.judge } : {}),
   }, {
     worldId, board, hide, composedPng: artwork,
@@ -329,6 +340,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
       : null;
     const rejectedIds = [...readIds(row.rejectedAssetIdsJson), ...(rejected ? [rejected.id] : [])];
     await c.db.$transaction(async tx => {
+      await fenceLocalPatchImages(tx, gameId);
       await deps.fence?.(tx);
       await tx.targetVariantAsset.update({ where: { id: row.id }, data: {
       status: "FAILED", lastError: reason.slice(0, 500),
@@ -350,15 +362,9 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   const crop = cropOf(hide);
   const assetId = pictureId(gameId, hide.id, attemptResult.judgedSha256);
   const key = `game/${assetId}.png`;
-  // THE ROW BEFORE THE BYTES, and both before the fence.
-  //
-  // The fence exists to stop a worker that lost its claim from PUBLISHING a
-  // child - from making one part of a playable game. It cannot stop the bytes
-  // existing, because they were bought and written before it is ever asked.
-  // Writing the blob first and the row inside the fence therefore produced
-  // exactly the thing that must never exist: a picture of a child on disk that
-  // nothing names, so deletion cannot find it. The row is what makes bytes
-  // findable, so the row goes first and outside the fence, deliberately.
+  // Retain before the job's publication fence so a lost claim doesn't lose a
+  // paid image. The separate lifecycle fence still forbids all writes after
+  // deletion, and the atomic row+blob makes every retained image enumerable.
   await keepHidePicture(c, {
     id: assetId, gameId, ownerId: game.ownerId, buffer: shipping,
     type: "TARGET_SPRITE", visibility: "GAME",
@@ -367,6 +373,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
 
   await c.db.$transaction(async tx => {
     // Still ours? Everything below this line puts a child into a playable game.
+    await fenceLocalPatchImages(tx, gameId);
     await deps.fence?.(tx);
     await tx.targetVariantAsset.update({ where: { id: row.id }, data: {
       assetId,

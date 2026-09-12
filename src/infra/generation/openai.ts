@@ -187,14 +187,14 @@ export class OpenAiAvatarProvider implements AvatarProvider {
   }
 
   /** One multipart edit call, with bounded retries on the explicitly selected model. */
-  private async call(parts: { images: Array<{ buffer: Buffer; name: string }>; mask?: Buffer; prompt: string; size: string; label: string; quality?: string; background?: "transparent"; outputFormat?: "png"; inputFidelity?: "high" | "low"; deadlineAt?: number }): Promise<CallResult> {
+  private async call(parts: { images: Array<{ buffer: Buffer; name: string }>; mask?: Buffer; prompt: string; size: string; label: string; quality?: string; background?: "transparent"; outputFormat?: "png"; inputFidelity?: "high" | "low"; deadlineAt?: number; maxAttempts?: number }): Promise<CallResult> {
     const started = Date.now();
     let lastError = "";
     const model = this.model;
     // The caller's deadline binds too: a request the slice cannot wait for is
     // not started, and one already running is cut at the slice's end.
     const deadline = Math.min(started + this.budgetMs, parts.deadlineAt ?? Number.POSITIVE_INFINITY);
-    for (let attempt = 1; attempt <= this.tries; attempt++) {
+    for (let attempt = 1; attempt <= Math.min(this.tries, parts.maxAttempts ?? this.tries); attempt++) {
       // Never start a request there is no time to finish. Returning the reason
       // beats being killed halfway: the spot stays unfinished and retryable
       // instead of taking the whole slice down with it.
@@ -261,6 +261,7 @@ export class OpenAiAvatarProvider implements AvatarProvider {
   async createCharacter(input: CharacterInput): Promise<CharacterOutput> {
     const contract = input.qaStyleContract;
     if (contract) {
+      if (this.model !== "gpt-image-2" || this.quality !== "medium") throw new Error("CHARACTER_STYLE: the board-matched identity requires GPT Image 2 MEDIUM");
       if (contract.version !== "board-matched-identity/v1" || !/^[a-f0-9]{64}$/.test(contract.catalogSha256)
         || !/^[a-f0-9]{64}$/.test(contract.atlasSha256) || !input.styleRef
         || input.styleRef.length > 8 * 1024 * 1024
@@ -277,7 +278,8 @@ export class OpenAiAvatarProvider implements AvatarProvider {
     const prompt = characterPrompt({ styled, ageYears: input.ageYears, ...(contract ? { qaStyleContractVersion: contract.version } : {}) });
     const images = [{ buffer: photo, name: "photo.png" }];
     if (input.styleRef) images.push({ buffer: contract ? Buffer.from(input.styleRef) : await sharp(input.styleRef).resize(SHEET_SIZE, SHEET_SIZE, { fit: "cover" }).png().toBuffer(), name: "style.png" });
-    const out = await this.call({ images, prompt, size: `${SHEET_SIZE}x${SHEET_SIZE}`, label: `character:${input.childName}` });
+    const out = await this.call({ images, prompt, size: `${SHEET_SIZE}x${SHEET_SIZE}`, label: `character:${input.childName}`,
+      deadlineAt: input.deadlineAt, ...(contract ? { maxAttempts: 1 } : {}) });
     const sheet = await sharp(out.png).resize(SHEET_SIZE, SHEET_SIZE, { fit: "cover" }).png().toBuffer();
     return {
       sheetPng: sheet,

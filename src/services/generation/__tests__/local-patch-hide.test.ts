@@ -219,13 +219,15 @@ describe("one hide through the real pipeline", () => {
     // went missing. The next process must complete it from what is on disk.
     const { gameId } = await seed();
     const crashing = worker();
-    const put = c.storage.put.bind(c.storage);
-    c.storage.put = async (key, data, type) => {
-      if (key.startsWith("game/")) throw new Error("the process died before the picture was written");
-      return put(key, data, type);
-    };
-    await expect(runLocalPatchHide(c, crashing.deps, { gameId, board: BOARD, hide: HIDE })).rejects.toThrow(/before the picture/);
-    c.storage.put = put;
+    // Private row + bytes now commit atomically with the deletion fence. Inject
+    // the same lost write at the durable boundary, not the old storage wrapper.
+    await db.$executeRawUnsafe(`CREATE TRIGGER fail_local_picture BEFORE INSERT ON FileBlob WHEN NEW.key LIKE 'game/%'
+      BEGIN SELECT RAISE(ABORT, 'before the picture was written'); END`);
+    try {
+      // Prisma maps SQLite trigger aborts to a generic constraint error.
+      await expect(runLocalPatchHide(c, crashing.deps, { gameId, board: BOARD, hide: HIDE })).rejects.toThrow();
+    } finally { await db.$executeRawUnsafe("DROP TRIGGER fail_local_picture"); }
+    expect(await db.asset.count({ where: { provider: "local-patch" } })).toBe(0);
 
     const [interrupted] = await rows(gameId);
     expect(interrupted?.status).toBe("PENDING");

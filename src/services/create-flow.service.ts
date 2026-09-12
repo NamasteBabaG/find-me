@@ -13,6 +13,9 @@ import { transitionGame, statusOf } from "./game-status";
 import { activeScenes, sceneBySlug } from "./scene-catalog.service";
 import { boardsOfWorlds, purchasableWorlds, purchasableWorldSlugs, worldBySlug } from "./world-catalog.service";
 import { SYSTEM } from "./audit.service";
+import { env } from "@/lib/env";
+import { LOCAL_PATCH_STYLE } from "./generation/local-patch-world";
+import { LOCAL_PATCH_SCENE_VERSION } from "../../content/scenes/local-patch-release";
 
 /**
  * The parent's creation flow, step by step. A "draft" is just a Game in
@@ -38,7 +41,10 @@ export function gameLocale(game: { locale: string }): Locale {
 
 export async function createDraft(c: Container, ownerId: string | null, locale: Locale): Promise<{ gameId: string; draftToken: string }> {
   const draftToken = newDraftToken();
-  const game = await c.db.game.create({ data: { id: newId("game"), draftToken, ownerId, status: "DRAFT", locale } });
+  // Pin the QA engine before the first generated preview. Existing games and
+  // production drafts retain their own engine; no later flag can change this one.
+  const game = await c.db.game.create({ data: { id: newId("game"), draftToken, ownerId, status: "DRAFT", locale,
+    ...(env().APP_ENV === "qa" ? { styleVersion: LOCAL_PATCH_STYLE } : {}) } });
   c.analytics.track("create_started", {});
   return { gameId: game.id, draftToken };
 }
@@ -105,7 +111,8 @@ export async function attachPhoto(c: Container, gameId: string, input: { buffer:
 }
 
 export async function availablePackages(c: Container) {
-  return purchasableTiers((await purchasableWorldSlugs(c)).length);
+  const tiers = purchasableTiers((await purchasableWorldSlugs(c)).length);
+  return env().APP_ENV === "qa" ? tiers.filter(p => p.tier === "ONE_WORLD") : tiers;
 }
 
 export async function selectPackage(c: Container, gameId: string, tierRaw: string): Promise<FlowResult> {
@@ -114,6 +121,7 @@ export async function selectPackage(c: Container, gameId: string, tierRaw: strin
   const game = await loadDraft(c, gameId);
   if (!game || !isEditableDraft(statusOf(game))) return flowError("DRAFT_LOCKED", "הטיוטה כבר לא ניתנת לעריכה.");
   const status = statusOf(game);
+  if (game.styleVersion === LOCAL_PATCH_STYLE && tier !== "ONE_WORLD") return flowError("PACKAGE_UNAVAILABLE", "בגרסת QA זו זמין עולם אחד עם תשעה בורדים.");
   if (status === "DRAFT" || status === "PHOTO_UPLOADED" || status === "PHOTO_REJECTED") return flowError("PHOTO_FIRST", "קודם צריך להעלות תמונה.");
 
   const worlds = await purchasableWorldSlugs(c);
@@ -195,9 +203,11 @@ export async function selectWorlds(c: Container, gameId: string, slugs: string[]
 }
 
 async function replaceScenes(c: Container, gameId: string, slugs: string[]): Promise<void> {
+  const game = await c.db.game.findUniqueOrThrow({ where: { id: gameId }, select: { styleVersion: true } });
+  const version = game.styleVersion === LOCAL_PATCH_STYLE ? LOCAL_PATCH_SCENE_VERSION : undefined;
   await c.db.gameScene.deleteMany({ where: { gameId } });
   await c.db.gameScene.createMany({
-    data: slugs.map((slug, i) => ({ id: newId("gsc"), gameId, sceneSlug: slug, sceneVersion: sceneBySlug(slug).version, orderIndex: i })),
+    data: slugs.map((slug, i) => ({ id: newId("gsc"), gameId, sceneSlug: slug, sceneVersion: sceneBySlug(slug, version).version, orderIndex: i })),
   });
 }
 

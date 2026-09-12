@@ -56,6 +56,14 @@ export async function tickGeneration(c: Container, gameId: string | null, budget
   const before = await c.db.game.findUnique({ where: { id }, select: { status: true, styleVersion: true } });
   if (!before) return { gameId: id, status: null, pending: false };
   if (before.styleVersion === LOCAL_PATCH_STYLE) {
+    if (["PAID", "AVATAR_GENERATING", "GENERATION_FAILED"].includes(before.status)) {
+      // The pinned engine owns its identity contract from the first preview.
+      // The pipeline returns after approval; it never paints legacy targets.
+      await runGenerationPipeline(c, id, { deadlineAt: now + budgetMs, hardDeadlineAt: now + hardMs });
+      const after = await c.db.game.findUnique({ where: { id }, select: { status: true } });
+      const status = after ? statusOf(after) : null;
+      return { gameId: id, status, pending: status !== null && ["PAID", "AVATAR_GENERATING", "GENERATION_FAILED", "TARGETS_GENERATING"].includes(status) };
+    }
     // Routed before its painter exists, deliberately: a style with no adapter
     // must stop here saying so, not fall through to the legacy painter and
     // quietly produce a game made by a different engine.

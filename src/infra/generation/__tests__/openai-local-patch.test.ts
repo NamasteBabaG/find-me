@@ -156,6 +156,23 @@ describe("buying one local patch", () => {
     expect(result.quarantined?.equals(wrongSize)).toBe(true);
   }, 60_000);
 
+  it.each<{ name: string; extra: Record<string, unknown>; headers: Record<string, string> }>([
+    { name: "missing usage", extra: { usage: undefined }, headers: { "x-request-id": "req-quality-missing-usage" } },
+    { name: "invalid usage", extra: { usage: { input_tokens: 1 } }, headers: { "x-request-id": "req-quality-invalid-usage" } },
+    { name: "missing receipt", extra: {}, headers: {} },
+    { name: "unpriceable arithmetic", extra: { usage: { input_tokens: 0, output_tokens: Number.MAX_SAFE_INTEGER, total_tokens: Number.MAX_SAFE_INTEGER,
+      input_tokens_details: { text_tokens: 0, image_tokens: 0 } } }, headers: { "x-request-id": "req-quality-arithmetic" } },
+  ])("quarantines unapproved quality even with $name", async ({ extra, headers }) => {
+    const fetchOnce = vi.fn(async () => answer({ quality: "high", ...extra }, headers));
+    const result = await buyLocalPatch("sk-test-only", request(), { fetchOnce: fetchOnce as unknown as typeof fetch });
+    expect(result.png).toBeNull();
+    expect(result.rejected).toBeTruthy();
+    expect(result.quarantined?.equals(painted)).toBe(true);
+    expect(result.evidence).toBeNull();
+    expect(result.unknownReason).toBeTruthy();
+    expect(fetchOnce).toHaveBeenCalledTimes(1);
+  }, 60_000);
+
   it("gives up when the caller's request does, not four minutes later", async () => {
     // A paint may take four minutes of its own and the request paying for it may
     // have less than that left. Taking the smaller of the two is what keeps the

@@ -10,6 +10,12 @@ const activeBoardCatalog = JSON.parse(readFileSync(activeBoardCatalogPath, "utf8
   boards: { board: { path: string }; slots: { foreground: { path: string } }[] }[];
 };
 const activeBoardAssetPaths = activeBoardCatalog.boards.flatMap(board => [board.board.path, ...board.slots.map(slot => slot.foreground.path)]);
+const localPatchArtPath = "content/local-patch-world/art.json";
+const localPatchArt = JSON.parse(readFileSync(localPatchArtPath, "utf8")) as { renderSources: { path: string }[] };
+const localPatchArtPaths = localPatchArt.renderSources.map(source => source.path);
+if (localPatchArtPaths.length !== 9 || new Set(localPatchArtPaths).size !== 9
+  || localPatchArtPaths.some(file => !activeBoardAssetPaths.includes(file)))
+  throw new Error("Exactly nine safe non-personalized local-patch board paths required for tracing");
 if (activeBoardCatalog.boards.length !== 9 || activeBoardAssetPaths.length !== 36 || new Set(activeBoardAssetPaths).size !== 36
   || activeBoardAssetPaths.some(file => !/^content\/board-conditioned-qa\/[A-Za-z0-9_-]+\/[a-z0-9-]+\/(board|foreground-[1-3])\.png$/.test(file)))
   throw new Error("Exactly36 safe active board-catalog PNG paths required for tracing");
@@ -56,12 +62,13 @@ const nextConfig: NextConfig = {
   // Only child-free frozen world inputs. Private work/, uploads and pilot
   // imagery are never part of a deployment. Dynamic fs reads need tracing.
   outputFileTracingIncludes: {
-    "/*": [activeBoardCatalogPath, ...activeBoardAssetPaths].map(file => `./${file}`),
+    "/*": [activeBoardCatalogPath, ...activeBoardAssetPaths, localPatchArtPath, ...localPatchArtPaths].map(file => `./${file}`),
   },
   outputFileTracingExcludes: {
     // Local-only preview routes and Prisma's dotenv fallback otherwise cause
     // the tracer to collect private files that must NEVER ship in a function.
-    // CDN art stays public; loadSceneArt uses its scoped same-origin fallback.
+    // Local patches reuse the already-traced PNG sources with exactly identical
+    // decoded pixels. Public WebP copies stay on the CDN, never duplicated here.
     // public/demo metadata stays local for the landing-page demo.
     "/*": tracingExcludes,
   },

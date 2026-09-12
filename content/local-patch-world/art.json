@@ -1,0 +1,26 @@
+{
+  "version": "local-patch-world-art/v1",
+  "sceneVersion": 6,
+  "renderSources": [
+    { "board": "newyork", "path": "content/board-conditioned-qa/world-fixed-20260909-v5/newyork/board.png", "sha256": "a6bf5754b1f8c88d46b883a5478d6697ea742676010cf83b8513c714d255510a", "pixelsSha256": "1e0228cc5a13cd1fda33d5101a5f2a9b3b1410cdf8c8a6c5174cf8744fd9e82b" },
+    { "board": "amazon", "path": "content/board-conditioned-qa/world-fixed-20260909-v5/amazon/board.png", "sha256": "83df96f30e1d85dd7c5e8ea9707abac0e171ce28cbb623235968896ea70ac11b", "pixelsSha256": "9f980c7dd40d91e0776315d1ff2e580df1f21f73a465f84acc27a8b2e0d4fed7" },
+    { "board": "paris", "path": "content/board-conditioned-qa/world-fixed-20260909-v5/paris/board.png", "sha256": "f1d903f6000cd881999964b834720010a6be4eec1e6c7935a0b5f6dfc261e2f1", "pixelsSha256": "0f66ff38449622be0316b7256bdd41839ffdd51bb5233fcb6085fe117da035b9" },
+    { "board": "marrakech", "path": "content/board-conditioned-qa/world-fixed-20260909-v5/marrakech/board.png", "sha256": "5bf8994b4b2ddac16641295b72fe42527ba11c0f9ea1ebb5e5cce5b03094846c", "pixelsSha256": "1ee41e59b1d273962c3ccb9c07087da37b1a250613838610823a100c8ebd0c0f" },
+    { "board": "giza", "path": "content/board-conditioned-qa/world-fixed-20260909-v5/giza/board.png", "sha256": "58a34d8c38abe17975ef7d48b1225899bda7fa14d8a9ce02ca35d2402e07c070", "pixelsSha256": "d85d9da1f6c499940b998af5f91f4ca5561b66ed28425525fbcb18153aead9b1" },
+    { "board": "tokyo", "path": "content/board-conditioned-qa/world-fixed-20260909-v5/tokyo/board.png", "sha256": "82a3d960eef4c977d8ed721fde45223ec572adc9be0d5eeeab5daa22c9c6e4cb", "pixelsSha256": "cc42888391138b65b5190196634ffc65c907b086e0fb430976de2d354aa154a7" },
+    { "board": "greatwall", "path": "content/board-conditioned-qa/world-fixed-20260909-v5/greatwall/board.png", "sha256": "6519446d0eab2b10699d1035781296eebea27fa5b9473db8a523c269ed7b1c84", "pixelsSha256": "45c64a5625058c9385883f59f69f90555c9b461e2f8a9cdd1ebeaa3e0a8dab70" },
+    { "board": "sydney", "path": "content/board-conditioned-qa/world-fixed-20260909-v5/sydney/board.png", "sha256": "12ec5b3ab9263f09732ebc24fbed51f515b170b85333b708adb85b2251093d20", "pixelsSha256": "d7edadd58b44dfdb667252790dae777ba4a7f0c583f01f106e6b29c45ae01edb" },
+    { "board": "antarctica", "path": "content/board-conditioned-qa/world-fixed-20260909-v5/antarctica/board.png", "sha256": "a8a6493e5d8e5c3486baca1a7b1cc6b99c1f8897c80318ecbc02b01af11062d0", "pixelsSha256": "e5304e5257d9ba53128be90d75f06a2a20a10c03200618074862094282800ef9" }
+  ],
+  "boards": [
+    { "board": "sydney", "base": "/scenes/sydney/refresh-20260907/base.webp", "thumbnail": "/scenes/sydney/refresh-20260907/thumb.webp", "sha256": "c33b4c484df0c020acaddc927694d11c1672bc02d918c2e9efe2618a02bb7f2b", "width": 3072, "height": 2048 },
+    { "board": "antarctica", "base": "/scenes/antarctica/refresh-20260907/base.webp", "thumbnail": "/scenes/antarctica/refresh-20260907/thumb.webp", "sha256": "551bbb397f07047a940397e2c51522e7ab76d5b6585caa7188d3dd5e57c3de5e", "width": 3072, "height": 2048 },
+    { "board": "giza", "base": "/scenes/giza/refresh-20260907/base.webp", "thumbnail": "/scenes/giza/refresh-20260907/thumb.webp", "sha256": "da3fe5115a04bc0e79d7c7daee17e14ce5167b9e74868289af91a85b5266bb09", "width": 3072, "height": 2048 },
+    { "board": "tokyo", "base": "/scenes/tokyo/local-patch-20260912/base.webp", "thumbnail": "/scenes/tokyo/local-patch-20260912/thumb.webp", "sha256": "9dca5b79be976a4fb6c72a3d3c3d79c46e78947c6154ab6662dc378364b75250", "sourceSha256": "b0ae2a0e331dd58132aa904cef40536f0733ad126d7e1621f35f8b6ec959ae3b", "width": 3072, "height": 2048 },
+    { "board": "amazon", "base": "/scenes/amazon/local-patch-20260912/base.webp", "thumbnail": "/scenes/amazon/local-patch-20260912/thumb.webp", "sha256": "bd8d8211eeef2ab43f8e5e29bbda1fc750fedb673e48d3f12a713af8b93530d8", "sourceSha256": "8118b7035cd808e6f7fa9e602e5dfbefe4f9a068dc836f16b05b7cc350ff04dc", "width": 3072, "height": 2048 },
+    { "board": "greatwall", "base": "/scenes/greatwall/local-patch-20260912/base.webp", "thumbnail": "/scenes/greatwall/local-patch-20260912/thumb.webp", "sha256": "3d399a4265e7d7fe74153cf66beba08fc2dbec9c44f5e1a497e7c8eda0a0c8cd", "sourceSha256": "56d11763659349d2e44bfddf6ea3b0e184dc40c7bc7eac40c20082349f284183", "width": 3072, "height": 2048 },
+    { "board": "marrakech", "base": "/scenes/marrakech/refresh-20260907/base.webp", "thumbnail": "/scenes/marrakech/refresh-20260907/thumb.webp", "sha256": "061281629ab74225f78a4612497f9b6e1278de6149526315412693e03dc6fd85", "width": 3072, "height": 2048 },
+    { "board": "newyork", "base": "/scenes/newyork/local-patch-20260912/base.webp", "thumbnail": "/scenes/newyork/local-patch-20260912/thumb.webp", "sha256": "7abc8b509ac51dbb480ca1296dd3912962eccbf92b11d1455e7a2837bbdf11b3", "sourceSha256": "56f2b5cd2e874c395714879c173bbf5d312a551707f275b57d4b17a8ac722f7f", "width": 3072, "height": 2048 },
+    { "board": "paris", "base": "/scenes/paris/local-patch-20260912/base.webp", "thumbnail": "/scenes/paris/local-patch-20260912/thumb.webp", "sha256": "5ad5adc62250f023710c4adbaa4955ab216b326e235e90445162fde253eefdf6", "sourceSha256": "7fee1ae82a665e528a81b9dcd37fd2f0637e6df808fab060896e52ae48082839", "width": 3072, "height": 2048 }
+  ]
+}

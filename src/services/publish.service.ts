@@ -27,6 +27,14 @@ export async function publishGame(c: Container, gameId: string, actor: Actor): P
     return { playUrl: link.url };
   }
   const status = statusOf(game);
+  if (game.styleVersion === "local-patch-world-v1") {
+    // Only the fenced 27-hide finalizer can make this engine playable. The
+    // generic admin action must not approve missing/refused appearances.
+    if (!isPlayable(status) || !game.configJson) throw new Error("Local-patch world is not completely approved and ready");
+    const link = await ensurePlayerLink(c, gameId);
+    if (status === "READY") await deliverGameMail(c, gameId, actor);
+    return { playUrl: link.url };
+  }
   if (status === "QA_PENDING" || status === "MANUAL_REVIEW") {
     if (status === "MANUAL_REVIEW") await transitionGame(c, gameId, "QA_PENDING", actor);
     await transitionGame(c, gameId, "APPROVED", actor);

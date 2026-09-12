@@ -184,12 +184,25 @@ export async function identityApprovedForDisplay(c: Container, profile: {
   const receipt = receiptSchema.safeParse(parsed);
   if (!receipt.success) return false;
   const { approved, checks, identityAssetId, provenance } = receipt.data;
+  let photoMatches = provenance.photoAssetId === profile.originalPhotoAssetId;
+  if (!photoMatches && profile.originalPhotoAssetId === null) {
+    // Successful publication may erase the original photograph. That privacy
+    // action must not erase an already approved illustrated preview. Only the
+    // atomic publication receipt authorizes this exception, not a missing file.
+    const purge = await c.db.auditLog.findFirst({ where: { action: "local-patch:photo-purged-after-approval", entityType: "Asset", entityId: profile.identityAssetId }, orderBy: { createdAt: "desc" } });
+    try {
+      const evidence = JSON.parse(purge?.metaJson ?? "null");
+      photoMatches = evidence?.approvalFingerprint === receipt.data.fingerprint
+        && evidence?.photoAssetId === provenance.photoAssetId
+        && evidence?.ageYears === profile.ageYears;
+    } catch { photoMatches = false; }
+  }
   // An "uncertain" is not an approval, and neither is a stale one about another
   // child, another photograph or another age.
   return approved
     && !!checks && Object.values(checks).every(v => v === "pass")
     && identityAssetId === profile.identityAssetId
-    && provenance.photoAssetId === profile.originalPhotoAssetId
+    && photoMatches
     && provenance.ageYears === profile.ageYears;
 }
 

@@ -33,6 +33,8 @@ export interface QaCharacterStyleContract {
 export interface CharacterInput extends AvatarInput {
   /** If present, styleRef is mandatory and must match this exact atlas hash. */
   qaStyleContract?: QaCharacterStyleContract;
+  /** A queue deadline, excluding the time needed to retain the identity. */
+  deadlineAt?: number;
 }
 
 export interface AvatarOutput {

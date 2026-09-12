@@ -19,6 +19,7 @@ import { localPatchRenderPolicySha256 } from "../../../infra/generation/openai-l
 import type { LocalPatchHideDeps } from "../local-patch-hide";
 import type { LocalPatchJudgeResult } from "../local-patch-judge";
 import { WORLD_LOCAL_PATCH_HIDES } from "../../../domain/scene/local-patch-hides";
+import { LOCAL_PATCH_SCENE_VERSION } from "../../../../content/scenes/local-patch-release";
 import {
   LOCAL_PATCH_TEST_BOARD, bill, boardPng, clearWorld, paintedCrop, paintedOk, PASSING_ANSWER, reply, seedApprovedGame,
 } from "./local-patch-fixtures";
@@ -78,7 +79,7 @@ function worker(options: { answer?: LocalPatchJudgeResult; beforeAnswering?: () 
     render: async ({ requestKey, stylePng }) => {
       dispatched.push(requestKey);
       await options.beforeAnswering?.();
-      const hide = BOARD.hides.find(h => requestKey.startsWith(`${h.id}:`))!;
+      const hide = WORLD_LOCAL_PATCH_HIDES.flatMap(board => board.hides).find(h => requestKey.startsWith(`${h.id}:`))!;
       return paintedOk(await paintedCrop(stylePng, hide), bill(`req-render-${requestKey}`));
     },
     // A distinct receipt per call, as a provider gives: the ledger refuses one
@@ -388,12 +389,19 @@ describe("a world of hides, one slice at a time", () => {
     expect(job.lastError).toMatch(/needs releasing by hand/);
   }, 180_000);
 
-  it("names the boards this build cannot paint instead of failing on them one by one", async () => {
-    const { gameId } = await seed({ scenes: [{ slug: "tokyo", version: 5 }, { slug: "sydney", version: 5 }] });
+  it("paints Tokyo now that its authored artwork ships with the nine-board release", async () => {
+    const { gameId } = await seed({ scenes: [{ slug: "tokyo", version: LOCAL_PATCH_SCENE_VERSION }, { slug: "sydney", version: LOCAL_PATCH_SCENE_VERSION }] });
     const w = worker();
     const result = await runLocalPatchWorldSlice(c, w.deps, gameId);
-    expect(result.blocked).toEqual([{ boardId: "tokyo", reason: expect.stringContaining("not shipped art") }]);
-    // The runnable board still runs; a board nobody can paint does not stop it.
+    expect(result.blocked).toEqual([]);
+    expect(result.outcomes.map(o => o.boardId)).toEqual(["tokyo"]);
+    expect(result.outcomes[0]?.state).toBe("generated");
+  }, 180_000);
+
+  it("still reports an unauthored board without blocking the authored board behind it", async () => {
+    const { gameId } = await seed({ scenes: [{ slug: "beach", version: sceneBySlug("beach").version }, { slug: "sydney", version: sceneBySlug("sydney").version }] });
+    const result = await runLocalPatchWorldSlice(c, worker().deps, gameId);
+    expect(result.blocked).toEqual([{ boardId: "beach", reason: expect.stringContaining("no authored local-patch placements") }]);
     expect(result.outcomes.map(o => o.boardId)).toEqual(["sydney"]);
   }, 180_000);
 
@@ -449,6 +457,15 @@ describe("a world of hides, one slice at a time", () => {
     expect(result.outcomes[0]?.state).toBe("stopped");
     expect(result.pending).toBe(false);
     expect((await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId))).held).toBe(true);
+    expect(result.attention).toMatch(/ledger is held/);
+    expect(await db.generationJob.findUniqueOrThrow({ where: { id: `job_${gameId}` } })).toMatchObject({ status: "FAILED", currentStep: LOCAL_PATCH_NEEDS_RELEASE });
+    const later = await seed({ gameId: "game-later-after-held" });
+    await db.game.update({ where: { id: gameId }, data: { paidAt: new Date("2026-01-01T00:00:00Z") } });
+    await db.game.update({ where: { id: later.gameId }, data: { paidAt: new Date("2026-01-02T00:00:00Z") } });
+    expect(await nextPendingGame(c)).toBe(later.gameId);
+    const calls = w.dispatched.length;
+    expect(await runLocalPatchWorldSlice(c, w.deps, gameId)).toMatchObject({ claimed: false, pending: false });
+    expect(w.dispatched).toHaveLength(calls);
   }, 180_000);
 
   it("can name every private thing it wrote for a game", async () => {
@@ -483,7 +500,7 @@ describe("a world of hides, one slice at a time", () => {
     // and nothing downstream compares them.
     for (const board of WORLD_LOCAL_PATCH_HIDES) {
       if (localPatchBoardBlockedReason(board)) continue;
-      const scene = sceneBySlug(board.board);
+      const scene = sceneBySlug(board.board, 6);
       expect(`public${scene.art.base}`, board.board).toBe(board.art);
       const bytes = await readFile(path.resolve(process.cwd(), board.art));
       expect(sha256Bytes(bytes), board.board).toBe(scene.art.sha256);
@@ -494,9 +511,9 @@ describe("a world of hides, one slice at a time", () => {
 
   it("knows which of the nine boards a deployed build could actually paint", () => {
     const shippable = WORLD_LOCAL_PATCH_HIDES.filter(b => localPatchBoardBlockedReason(b) === null).map(b => b.board);
-    // Four boards are still authored out of an untracked work/ folder. This is
-    // a fact about the world, written down so it changes on purpose.
-    expect(shippable).toEqual(["sydney", "antarctica", "giza", "marrakech"]);
+    // Every declared base is now public, immutable and included explicitly in
+    // the generation function's trace; no work/ file is a runtime input.
+    expect(shippable).toEqual(["sydney", "antarctica", "giza", "tokyo", "amazon", "greatwall", "marrakech", "newyork", "paris"]);
   });
 
   it("only ever paints a passing hide", () => {

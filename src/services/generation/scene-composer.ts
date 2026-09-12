@@ -7,6 +7,7 @@ import { signedAssetUrl } from "../asset.service";
 import { sceneBySlug } from "../scene-catalog.service";
 import { worldForBoard } from "../world-catalog.service";
 import { fixedStageAssert, isFixedWorldStyle } from "./fixed-world-stage-record";
+import { composeLocalPatchGame } from "./local-patch-player";
 
 /**
  * Resolves DB rows into the player-facing GameConfig. This is the ONLY place
@@ -18,6 +19,7 @@ export async function composeGameConfig(c: Container, gameId: string): Promise<G
     where: { id: gameId },
     include: { childProfile: true, scenes: { orderBy: { orderIndex: "asc" }, include: { targets: { include: { variants: true } } } } },
   });
+  if (game.styleVersion === "local-patch-world-v1") return composeLocalPatchGame(c, gameId);
   fixedStageAssert(!isFixedWorldStyle(game.styleVersion), "unsupported", "Fixed worlds must retain their qualified config; legacy composition is forbidden");
   if (!game.childProfile) throw new Error("composeGameConfig: game has no child profile");
   if (!game.childProfile.avatarAssetId) throw new Error("composeGameConfig: avatar not generated yet");
@@ -92,6 +94,7 @@ export async function composeGameConfig(c: Container, gameId: string): Promise<G
 
 export async function persistGameConfig(c: Container, gameId: string): Promise<GameConfig> {
   const config = await composeGameConfig(c, gameId);
+  if (config.styleVersion === "local-patch-world-v1") throw new Error("Local-patch publication requires its fenced world finalizer");
   await c.db.game.update({ where: { id: gameId }, data: { configJson: JSON.stringify(config) } });
   for (const scene of config.scenes) {
     await c.db.gameScene.update({ where: { gameId_sceneSlug: { gameId, sceneSlug: scene.slug } }, data: { configJson: JSON.stringify(scene) } });

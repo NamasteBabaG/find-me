@@ -5,6 +5,9 @@ import { GenerationPaused, boardWizardBudgetOf, boardWizardWorldId } from "./boa
 import { retainedPurchaseKeysFor } from "../../infra/db/prisma-retained-purchase-store";
 import { buyLocalPatch, localPatchRenderPolicySha256 } from "../../infra/generation/openai-local-patch";
 import { env } from "../../lib/env";
+import { finishLocalPatchGame } from "./local-patch-player";
+import { deliverGameMail } from "../publish.service";
+import { SYSTEM } from "../audit.service";
 import {
   LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, nextLocalPatchAttempt, runLocalPatchHide,
   type LocalPatchHideDeps, type LocalPatchHideOutcome,
@@ -69,10 +72,8 @@ const boardsBySlug = new Map(WORLD_LOCAL_PATCH_HIDES.map(board => [board.board, 
 /**
  * Can this build paint this board at all?
  *
- * Five of the nine boards are still authored against an untracked `work/`
- * folder that exists on one laptop. A deployed box does not have them, and
- * finding that out one board at a time - after an identity has been approved
- * and a tick has been claimed - is worse than saying so up front.
+ * Authoring may introduce an unsupported board later. Refuse that explicitly
+ * instead of discovering a laptop-only input after a paid identity stage.
  */
 export function localPatchBoardBlockedReason(board: LocalPatchBoard): string | null {
   return board.art.startsWith("public/") ? null
@@ -220,7 +221,10 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     const mine = board.hides.map(hide => after.find(r => r.targetInstance.gameSceneId === scene.id && r.targetInstance.targetId === hide.targetId));
     if (!mine.every(settledHide)) continue;
     const good = mine.every(row => row && (row.status === "GENERATED" || row.status === "APPROVED"));
-    await c.db.gameScene.update({ where: { id: scene.id }, data: { generationStatus: good ? "GENERATED" : "NEEDS_REGENERATION" } });
+    if (!attention) await c.db.$transaction(async tx => {
+      await fence(tx);
+      await tx.gameScene.update({ where: { id: scene.id }, data: { generationStatus: good ? "GENERATED" : "NEEDS_REGENERATION" } });
+    });
   }
 
   const left = todo.filter(item => {
@@ -231,6 +235,36 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // would read the same rows, buy nothing and ask again forever. Held is a
   // state for a person, not a state to poll.
   const held = (await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId))).held;
+  if (held && !attention) {
+    attention = "local-patch: the world ledger is held; reconcile its unresolved charge before continuing";
+    await c.db.$transaction(async tx => {
+      await fence(tx);
+      await tx.generationJob.update({ where: { id: job.id }, data: {
+        status: "FAILED", currentStep: LOCAL_PATCH_NEEDS_RELEASE, lastError: attention,
+      } });
+    });
+  }
+  // Only a complete nine-board world can become a playable product. A refused
+  // hide never falls back to an avatar/body sprite and never becomes READY.
+  if (!left.length && !paused && !held && !attention && game.scenes.length === 9) {
+    const failures = work.filter(item => {
+      const row = after.find(r => r.targetInstance.gameSceneId === item.sceneId && r.targetInstance.targetId === item.hide.targetId);
+      return !row || !["GENERATED", "APPROVED"].includes(row.status);
+    });
+    if (!blocked.length && !failures.length && work.length === 27) {
+      await finishLocalPatchGame(c, gameId, fence);
+      // Readiness is already committed. Notification failure must never turn
+      // a playable world back into a failed generation job.
+      await deliverGameMail(c, gameId, SYSTEM).catch(error => console.error(`[local-patch] ${gameId}: ready, notification unavailable`, error));
+      return { gameId, pending: false, claimed: true, paused: false, attention: null, outcomes, blocked };
+    }
+    attention = `local-patch: ${failures.length} appearances require review; ${blocked.length} boards unavailable`;
+    await c.db.$transaction(async tx => {
+      await fence(tx);
+      await tx.game.update({ where: { id: gameId }, data: { status: "MANUAL_REVIEW", lastError: attention, configJson: null } });
+      await tx.generationJob.update({ where: { id: job.id }, data: { status: "DONE", currentStep: null, lastError: attention } });
+    });
+  }
   // The claim goes back either way: the next tick re-takes it. Holding it open
   // for the lease would make a paused world wait six minutes for nothing.
   //
@@ -241,7 +275,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // A parked job was already written the moment it was parked; leaving it alone
   // here is the point, not an omission.
   if (!attention) {
-    await c.db.generationJob.updateMany({ where: { id: job.id, attempts: claim },
+    await c.db.generationJob.updateMany({ where: { id: job.id, attempts: claim, status: "RUNNING", currentStep: "local-patch" },
       data: { status: left.length ? "QUEUED" : "DONE", currentStep: left.length ? "local-patch" : null } });
   }
 
@@ -282,23 +316,24 @@ export function localPatchPainterDeps(_c: Container): LocalPatchHideDeps | null 
  * routine remembered this engine exists" - that is how a resumed attempt once
  * left a child's image behind after a deletion that reported success.
  *
- * Derived from the authored placements rather than from what happens to be in
- * the database, so a row that was written and then lost is still enumerated.
+ * Derived from every authored placement rather than only the current scene
+ * rows, so removing a scene or losing its pointer does not hide a paid reply.
  *
- * NOT yet called by the deletion route: no game carries `LOCAL_PATCH_STYLE`, and
- * wiring it there is the step before one ever does.
+ * Called inside the deletion transaction, after its Game -> Job fence.
  */
-export async function localPatchPrivateInventory(c: Container, gameId: string): Promise<{
+export async function localPatchPrivateInventory(c: { db: Pick<Prisma.TransactionClient, "gameScene" | "targetInstance" | "targetVariantAsset" | "asset"> }, gameId: string): Promise<{
   readonly assetIds: string[];
   readonly storagePaths: string[];
   readonly retainedPurchaseKeys: string[];
 }> {
-  const scenes = await c.db.gameScene.findMany({ where: { gameId }, select: { id: true, sceneSlug: true } });
   const rows = await c.db.targetVariantAsset.findMany({
     where: { targetInstance: { gameScene: { gameId } } },
     select: { assetId: true, rejectedAssetIdsJson: true },
   });
   const assetIds = new Set<string>();
+  for (const target of await c.db.targetInstance.findMany({ where: { gameScene: { gameId } }, select: { spriteAssetId: true } })) {
+    if (target.spriteAssetId) assetIds.add(target.spriteAssetId);
+  }
   for (const row of rows) {
     if (row.assetId) assetIds.add(row.assetId);
     if (!row.rejectedAssetIdsJson) continue;
@@ -323,9 +358,7 @@ export async function localPatchPrivateInventory(c: Container, gameId: string): 
 
   const worldId = boardWizardWorldId(gameId);
   const requestKeys: string[] = [];
-  for (const scene of scenes) {
-    const board = localPatchBoardFor(scene.sceneSlug);
-    if (!board) continue;
+  for (const board of WORLD_LOCAL_PATCH_HIDES) {
     for (const hide of board.hides) {
       for (let attempt = 1; attempt <= LOCAL_PATCH_MAX_ATTEMPTS; attempt++) {
         requestKeys.push(`${hide.id}:${hide.pose}:render:${attempt}`, `${hide.id}:${hide.pose}:judge:${attempt}`);

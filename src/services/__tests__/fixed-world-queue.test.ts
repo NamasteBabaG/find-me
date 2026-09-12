@@ -16,6 +16,15 @@ function setup(styleVersion = FIXED_WORLD_STYLE_VERSION, status = "PAID") {
 beforeEach(() => { run.mockReset().mockResolvedValue(undefined); wizard.enabled = false; wizard.run.mockReset().mockResolvedValue({ pending: true }); });
 
 describe("fixed worlds never occupy the legacy painter queue", () => {
+  it("routes a new local-patch game's identity through the bounded pipeline before hiding", async () => {
+    const s = setup("local-patch-world-v1", "PAID");
+    const clock = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    try {
+      expect(await tickGeneration(s.c, "local", 30_000, 270_000)).toMatchObject({ gameId: "local", status: "PAID", pending: true });
+      expect(run).toHaveBeenCalledExactlyOnceWith(s.c, "local", { deadlineAt: 1_030_000, hardDeadlineAt: 1_270_000 });
+      expect(wizard.run).not.toHaveBeenCalled();
+    } finally { clock.mockRestore(); }
+  });
   it("forwards the hard deadline from tick entry to the enabled QA wizard without invoking the painter", async () => {
     const s = setup("fixed-sprite-board-wizard-v1", "TARGETS_GENERATING"); wizard.enabled = true;
     let now = 1_000_000;

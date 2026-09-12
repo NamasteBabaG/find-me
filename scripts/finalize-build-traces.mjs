@@ -13,6 +13,13 @@ if (catalog.boards.length !== 9 || assets.length !== 36 || new Set(assets).size 
   || assets.some(file => !/^content\/board-conditioned-qa\/[A-Za-z0-9_-]+\/[a-z0-9-]+\/(board|foreground-[1-3])\.png$/.test(file)))
   throw new Error("Active catalog requires36 safe declared PNG paths");
 const activeCatalogFiles = new Set([catalogPath, ...assets]);
+const localPatchArtPath = "content/local-patch-world/art.json";
+const localPatchArt = JSON.parse(readFileSync(path.join(root, localPatchArtPath), "utf8"));
+const localPatchPaths = localPatchArt.renderSources.map(source => source.path);
+if (localPatchPaths.length !== 9 || new Set(localPatchPaths).size !== 9
+  || localPatchPaths.some(file => !activeCatalogFiles.has(file)))
+  throw new Error("Expected nine safe local-patch base images");
+const localPatchFiles = new Set(localPatchPaths);
 const walk = directory => readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
   const target = path.join(directory, entry.name);
   return entry.isDirectory() ? walk(target) : entry.isFile() ? [target] : [];
@@ -37,4 +44,5 @@ for (const file of manifests) {
 }
 console.log(JSON.stringify({ version: "private-build-trace-filter/v1", manifests: manifests.length, changed, removed,
   activeCatalogRevision: catalog.revision, activeCatalogFileCount: activeCatalogFiles.size,
+  localPatchBaseCount: localPatchFiles.size,
   privateAssetBytesRead: 0, sourceFilesChanged: 0 }));

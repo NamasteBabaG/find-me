@@ -13,6 +13,17 @@ const qaInput = (): CharacterInput => ({ originalPhoto: atlas, crop: null, mimeT
   styleRef: atlas, qaStyleContract: { version: "board-matched-identity/v1", catalogSha256: "a".repeat(64), atlasSha256: sha(atlas) } });
 
 describe("explicit board-matched QA identity contract (synthetic only)", () => {
+  it("does not retry a lost identity dispatch even when the legacy provider allows three attempts", async () => {
+    const fetcher = vi.fn(async () => { throw new Error("synthetic disconnected wire"); });
+    vi.stubGlobal("fetch", fetcher);
+    await expect(new OpenAiAvatarProvider("synthetic-never-live", { tries: 3 }).createCharacter(qaInput())).rejects.toThrow("disconnected wire");
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+  it.each([{ model: "gpt-image-1", quality: "medium" }, { model: "gpt-image-2", quality: "low" }])("refuses a different identity model/quality before dispatch: %j", async options => {
+    const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
+    await expect(new OpenAiAvatarProvider("synthetic-never-live", options).createCharacter(qaInput())).rejects.toThrow("GPT Image 2 MEDIUM");
+    expect(fetcher).not.toHaveBeenCalled();
+  });
   it("retains legacy version and prompt choices without opting in", () => {
     expect(CHARACTER_PROMPT_VERSION).toBe("character-v2-child-age-detailed");
     expect(QA_CHARACTER_PROMPT_VERSION).not.toBe(CHARACTER_PROMPT_VERSION);

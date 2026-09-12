@@ -8,6 +8,7 @@ import type { generateBoardConditionedAppearances } from "./board-conditioned-ge
 import { extractBoardSprites } from "./board-sprite-extraction";
 import { composeBoardPlacement } from "./board-placement";
 import { sha256Bytes, sha256Rgba, type PixelRect } from "./fixed-sprite";
+import { recoverBoardOccludedUpperBody, type BoardUpperBodyRecoveryRequest, type BoardUpperBodyRecoveryResult } from "./board-upper-body-recovery";
 
 type BoardResult = Awaited<ReturnType<typeof generateBoardConditionedAppearances>>;
 type ImageSprite = Extract<SpriteRef, { kind: "image" }>;
@@ -206,6 +207,108 @@ function privateUrl(value: string) {
   if (typeof value !== "string" || !value.trim() || value !== value.trim()) return false;
   if (/^\/(?!\/)/.test(value)) return !/[\s\\]/.test(value);
   try { const u = new URL(value); return u.protocol === "https:" && !u.username && !u.password; } catch { return false; }
+}
+
+export interface BoardUpperBodyRecoveryPlayerRequest extends BoardUpperBodyRecoveryRequest {
+  result: BoardUpperBodyRecoveryResult;
+}
+
+/** Separate, private-only recovery boundary. Never manufacture a successful
+ * normal generation result from the original rejected standing measurement. */
+export async function prepareBoardUpperBodyRecoveryPlayerBoard(raw: BoardUpperBodyRecoveryPlayerRequest) {
+  const request = copy(raw);
+  demand(request.result?.state === "upper-body-recovery-review-required" && !request.result.previewIsDiagnostic,
+    "source-rejected", "A complete explicit upper-body recovery result is required");
+  const replayed = await recoverBoardOccludedUpperBody(request);
+  same(request.result, replayed, "Upper-body recovery provenance, derivation, pixels or geometry differs from independent replay");
+  demand(!replayed.previewIsDiagnostic && replayed.appearances.length === 3,
+    "geometry-rejected", "All three recovered board appearances must qualify");
+  const input = replayed.derivedInput, { worldId } = request;
+  const boardAsset = await asset(worldId, input.boardId, null, input.board.png), width = boardAsset.width, height = boardAsset.height;
+  const assets: BoardConditionedPrivateAsset[] = [boardAsset], placements = [];
+  for (const direction of input.slots) {
+    const appearance = replayed.appearances.find(a => a.slotId === direction.slot.id), source = replayed.extracted.sprites.find(s => s.slotId === direction.slot.id)!;
+    demand(appearance?.state === "visual-review-required" && appearance.composite?.ok && Object.values(appearance.composite.checks).every(Boolean),
+      "geometry-rejected", "Rejected recovered appearance cannot become a player target");
+    const composite = appearance.composite, pixels = await image(composite.patchPng);
+    demand(pixels.info.width === width && pixels.info.height === height, "geometry-rejected", "Expected exact recovered full-board raster");
+    const storage = bounds(pixels.data, width, height, 1), hit = bounds(pixels.data, width, height, 32);
+    const png = await sharp(composite.patchPng).extract(storage).png().toBuffer(), output = await asset(worldId, input.boardId, direction.slot.id, png);
+    assets.push(output);
+    const placedEye = { x: composite.transform.translateX + source.eye.x * composite.transform.scale,
+      y: composite.transform.translateY + source.eye.y * composite.transform.scale };
+    demand(placedEye.x >= hit.left && placedEye.x <= hit.left + hit.width && placedEye.y >= hit.top && placedEye.y <= hit.top + hit.height,
+      "geometry-rejected", "Observed recovered eye must remain inside the visible hit support");
+    const spriteGeometry = { width: storage.width, height: storage.height,
+      rect: { x: storage.left / width, y: storage.top / height, w: storage.width / width, h: storage.height / height },
+      hitRect: { x: hit.left / width, y: hit.top / height, w: hit.width / width, h: hit.height / height },
+      anchor: { x: (direction.slot.mode === "open" ? placedEye.x : direction.slot.eye.x) / width,
+        y: (direction.slot.mode === "open" ? placedEye.y : direction.slot.eye.y) / height } };
+    placements.push({ slotId: direction.slot.id, pose: direction.slot.pose, assetKey: output.key, boardPixelRect: storage, spriteGeometry,
+      fullPatchSha256: sha256Bytes(composite.patchPng), contextSha256: sha256Bytes(composite.contextPng), sourceSha256: source.sha256,
+      foregroundSha256: direction.foreground.sha256, lowerCutY: appearance.cut });
+  }
+  const manifest = { version: "board-conditioned-player/v1" as const, worldId, boardId: input.boardId, childProfileId: input.child.profileId, childAgeYears: input.child.ageYears,
+    contractSha256: replayed.provenance.destination.contractSha256, sourceSha256: request.originalResult.source.pngSha256,
+    observationSha256: digest(request.originalResult.measurement), boardAssetKey: boardAsset.key, width, height, placements,
+    assets: assets.map(({ png: _png, ...meta }) => meta),
+    recovery: { version: "explicit-upper-body-private-player/v1" as const, provenanceSha256: replayed.provenanceSha256,
+      originalContractSha256: request.expectedOriginalContractSha256, originalMeasurementStatus: request.originalResult.measurement.status,
+      originalStandingDecision: replayed.provenance.original.decision, generatedForDestination: false as const,
+      plan: copy(request.plan), provenance: copy(replayed.provenance) },
+    geometryParity: "exact-integer-board-raster-before-viewport-resampling" as const, foregroundReapplication: false as const, anchorSemantics: "observed-eye-midpoint" as const };
+  return { manifest, playerBindingSha256: digest(manifest), assetWrites: assets, semanticStatus: "pending" as const,
+    automaticRelease: false as const, persistenceStatus: "not-written" as const, browserPixelParity: "unverified" as const };
+}
+
+/** One explicit recovered board, authenticated human-review export ONLY. The
+ * normal reviewed-playable adapter intentionally cannot consume this request. */
+export async function bindBoardUpperBodyRecoveryPlayerGame(raw: {
+  board: BoardUpperBodyRecoveryPlayerRequest;
+  template: GameConfig;
+  targetSlots: { boardId: string; targetId: string; slotId: string; hintText: string }[];
+  receipts: BoardConditionedPrivateUrlReceipt[];
+  mode?: "private-review";
+}) {
+  const request = copy(raw);
+  demand((request.mode ?? "private-review") === "private-review", "review-required", "Upper-body recovery permits private human review only");
+  const player = await prepareBoardUpperBodyRecoveryPlayerBoard(request.board), template = GameConfigSchema.parse(request.template), p = player.manifest;
+  demand(template.packageTier === "ONE_WORLD" && template.scenes.length === 1 && template.scenes[0]!.slug === p.boardId,
+    "invalid-input", "Recovery template must contain exactly its one verified board");
+  const scene = template.scenes[0]!;
+  demand(scene.art.width === p.width && scene.art.height === p.height, "asset-mismatch", "Recovery template art dimensions changed");
+  demand(scene.targets.length === 3 && new Set(scene.targets.map(t => t.id)).size === 3 && request.targetSlots.length === 3
+    && new Set(request.targetSlots.map(m => m.targetId)).size === 3 && new Set(request.targetSlots.map(m => m.slotId)).size === 3
+    && request.targetSlots.every(m => m.boardId === p.boardId && scene.targets.some(t => t.id === m.targetId) && p.placements.some(s => s.slotId === m.slotId) && m.hintText.trim()),
+    "invalid-input", "Recovery needs exact bidirectional three-target mapping");
+  demand(request.receipts.length === player.assetWrites.length && new Set(request.receipts.map(r => r.key)).size === request.receipts.length
+    && new Set(request.receipts.map(r => r.url)).size === request.receipts.length
+    && request.receipts.every(r => r.access === "authenticated-private" && privateUrl(r.url)), "asset-mismatch", "Exact distinct authenticated private asset receipts required");
+  const url = (a: BoardConditionedPrivateAsset) => {
+    const r = request.receipts.find(r => r.key === a.key);
+    demand(r && r.sha256 === a.sha256 && r.rgbaSha256 === a.rgbaSha256 && r.width === a.width && r.height === a.height,
+      "asset-mismatch", "Recovery URL receipt identifies different pixels");
+    return r.url;
+  };
+  const boardUrl = url(player.assetWrites.find(a => a.kind === "static-board")!);
+  const targets = scene.targets.map(t => {
+    const mapping = request.targetSlots.find(m => m.targetId === t.id)!, placement = p.placements.find(s => s.slotId === mapping.slotId)!;
+    const sprite = SpriteRefSchema.parse({ kind: "image", url: url(player.assetWrites.find(a => a.key === placement.assetKey)!), ...placement.spriteGeometry }) as ImageSprite;
+    const eye = placement.spriteGeometry.anchor;
+    const slot: PlaySlot = { id: `${placement.slotId}/frozen`, x: eye.x, y: eye.y, scale: placement.spriteGeometry.hitRect.h, rotation: 0, flip: false,
+      layer: "front", zIndex: 30, hintZone: { ...eye, r: Math.max(.03, placement.spriteGeometry.hitRect.w) }, hintText: mapping.hintText };
+    return { ...t, targetType: "board-conditioned-simple-peek", animation: "peek" as const, sprite,
+      spriteByVariant: { A: sprite }, slots: [slot, { ...copy(slot), id: `${slot.id}:inactive-B` }] as [PlaySlot, PlaySlot], adjust: { dx: 0, dy: 0, scale: 1 } };
+  });
+  const { foreground: _foreground, ...art } = scene.art, { bonus: _bonus, worldSlug: _worldSlug, ...base } = scene;
+  const { world: _world, worlds: _worlds, ...partialTemplate } = template;
+  const privateReviewConfig = GameConfigSchema.parse({ ...partialTemplate, styleVersion: "fixed-sprite-board-conditioned-player-v1",
+    scenes: [{ ...base, art: { ...art, base: boardUrl, thumbnail: boardUrl }, targets, ambient: [] }] });
+  return { version: "board-conditioned-upper-body-private-game/v1" as const, privateReviewConfig, playableGameConfig: null,
+    scope: "authenticated-private" as const, semanticStatus: "pending" as const, fullWorld: false,
+    assetWrites: player.assetWrites, provenance: [{ manifest: player.manifest, playerBindingSha256: player.playerBindingSha256 }],
+    urlContentVerification: "trusted-caller-receipts-not-fetched" as const, reviewerAuthorityVerification: "trusted-caller-required" as const,
+    browserPixelParity: "unverified" as const, automaticRelease: false as const, persistenceStatus: "not-written" as const };
 }
 
 /** Two-phase private integration. The caller authenticates the supplied URL and

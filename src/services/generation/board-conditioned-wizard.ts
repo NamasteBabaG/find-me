@@ -106,8 +106,8 @@ const assetId = (gameId: string, key: string) => `ast_bcw_${boardConditioningHas
 const assetPath = (id: string) => `private/board-wizard/${id}.png`;
 function budgetOf(c: Container, attempt = 1) { return boardWizardBudget(new CasWorldBudgetRepository(new PrismaWorldBudgetStore(c.db)), attempt, {}, worldId => readBoardWizardBudgetExtension(c, worldId)); }
 
-async function spendCheck(c: Container, ownerId: string) {
-  demand(boardWizardEnabled() && c.storage.id === "db", "QA generation is not explicitly enabled with durable storage");
+async function spendCheck(c: Container, ownerId: string, engine: "board-wizard" | "local-patch" = "board-wizard") {
+  demand((engine === "local-patch" ? env().APP_ENV === "qa" : boardWizardEnabled()) && c.storage.id === "db", "QA generation is not explicitly enabled with durable storage");
   // A pause, not a fault: see GenerationPaused.
   if (env().GENERATION_ENABLED !== "on") throw new GenerationPaused("kill-switch");
   demand(env().GENERATION_PROVIDER === "openai" && env().GENERATION_MODEL === "gpt-image-2" && env().GENERATION_QUALITY === "medium", "The QA wizard requires GPT Image 2 MEDIUM, including identity generation");
@@ -137,7 +137,7 @@ async function spendCheck(c: Container, ownerId: string) {
  */
 export const boardWizardWorldId = (gameId: string) => scope(gameId);
 export const boardWizardBudgetOf = (c: Container, attempt = 1) => budgetOf(c, attempt);
-export const assertGenerationSpendAllowed = (c: Container, ownerId: string) => spendCheck(c, ownerId);
+export const assertGenerationSpendAllowed = (c: Container, ownerId: string) => spendCheck(c, ownerId, "local-patch");
 
 /** Free route/asset preflight before identity spend. Unsupported worlds never fall through to the old painter. */
 export async function preflightBoardConditionedWizard(c: Container, gameId: string) {

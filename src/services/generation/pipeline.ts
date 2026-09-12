@@ -26,6 +26,8 @@ import { identityProvenanceSchema, reviewBoardWizardIdentity } from "./board-wiz
 import { boardWizardBudget } from "./board-wizard-budget";
 import { CasWorldBudgetRepository } from "../../infra/db/world-budget-repository";
 import { PrismaWorldBudgetStore } from "../../infra/db/prisma-world-budget-store";
+import { LOCAL_PATCH_STYLE, localPatchPainterDeps, runLocalPatchWorldSlice } from "./local-patch-world";
+import { finishLocalPatchIdentity, preflightLocalPatchIdentity, requireLocalPatchIdentityTime, LocalPatchIdentityDeferred } from "./local-patch-identity";
 
 /**
  * Background generation. Every step is idempotent and resumable:
@@ -86,6 +88,16 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
   }
   const game = await c.db.game.findUnique({ where: { id: gameId }, include: { childProfile: true, scenes: { include: { targets: true }, orderBy: { orderIndex: "asc" } } } });
   if (!game || !game.childProfile) return;
+  const localPatch = game.styleVersion === LOCAL_PATCH_STYLE;
+  if (localPatch && env().APP_ENV !== "qa") return;
+  if (localPatch && game.status === "TARGETS_GENERATING") {
+    const painter = localPatchPainterDeps(c);
+    if (painter) await runLocalPatchWorldSlice(c, painter, gameId, { hardDeadlineAt: options.hardDeadlineAt });
+    return;
+  }
+  // This engine only borrows the identity stage. No local-patch game may ever
+  // reach legacy sprite generation, composition, or automatic publication.
+  if (localPatch && !["PAID", "AVATAR_GENERATING", "GENERATION_FAILED"].includes(game.status)) return;
   if (game.styleVersion === BOARD_WIZARD_STYLE) { await runBoardConditionedWizardSlice(c, gameId); return; }
   // Fixed worlds only accept a complete qualified import. Legacy ticks must
   // never paint, replace the frozen config, or apply automatic approval.
@@ -122,7 +134,7 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
   // without this each one saw "no avatar yet" and drew its own, which cost real
   // money three times over on the first live game.
   const claimed = await c.db.generationJob.updateMany({
-    where: { id: jobId, OR: [{ status: { not: "RUNNING" } }, { updatedAt: { lt: new Date(Date.now() - LEASE_MS) } }] },
+    where: { id: jobId, attempts: job.attempts, OR: [{ status: { not: "RUNNING" } }, { updatedAt: { lt: new Date(Date.now() - LEASE_MS) } }] },
     data: { status: "RUNNING", attempts: { increment: 1 }, lastError: null },
   });
   if (claimed.count === 0) return; // someone else is already working on this game
@@ -150,11 +162,12 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
     // Resolve every pinned version before any billable identity/patch work.
     // A missing historical definition must never silently use today's board.
     for (const gs of game.scenes) sceneBySlug(gs.sceneSlug, gs.sceneVersion);
-    if (boardWizardEnabled()) await preflightBoardConditionedWizard(c, gameId);
+    const preflightIdentity = () => localPatch ? preflightLocalPatchIdentity(c, gameId) : preflightBoardConditionedWizard(c, gameId);
+    if (localPatch || boardWizardEnabled()) await preflightIdentity();
     // ── Step 1: avatar ──
     await mark("avatar", { status: "running", startedAt: new Date().toISOString() });
     const child = await c.db.childProfile.findUniqueOrThrow({ where: { id: game.childProfile.id } });
-    if (boardWizardEnabled() && game.ownerId) qaIdentityClaim = {
+    if ((localPatch || boardWizardEnabled()) && game.ownerId) qaIdentityClaim = {
       gameId, jobId: job.id, jobAttempt: job.attempts + 1, styleVersion: game.styleVersion, ownerId: game.ownerId,
       childId: child.id, photoAssetId: child.originalPhotoAssetId ?? "", avatarAssetId: child.avatarAssetId, identityAssetId: child.identityAssetId,
       childName: child.displayName, ageYears: child.ageYears,
@@ -178,10 +191,12 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
       const crop = child.photoCropJson ? (JSON.parse(child.photoCropJson) as CropBox) : null;
       const qaStyleContract = identityStyle ? { version: identityStyle.version, catalogSha256: identityStyle.catalogSha256, atlasSha256: identityStyle.atlasSha256 } : undefined;
       const request = { originalPhoto: photo, mimeType: original.mimeType, crop, childName: child.displayName, ageYears: child.ageYears,
-        styleRef: identityStyle?.png ?? await boardStyle(c, game.scenes), qaStyleContract };
+        styleRef: identityStyle?.png ?? await boardStyle(c, game.scenes), qaStyleContract,
+        ...(localPatch && options.hardDeadlineAt !== undefined ? { deadlineAt: options.hardDeadlineAt - 25_000 } : {}) };
       if (qaIdentityClaim && !c.avatars.createCharacter) throw new Error("QA identity requires the board-matched character provider; avatar fallback is forbidden");
       if (c.avatars.createCharacter) {
         if (qaIdentityClaim) {
+          if (localPatch) requireLocalPatchIdentityTime(options.hardDeadlineAt, 175_000);
           const provenance = identityProvenanceSchema.parse({ promptVersion: QA_CHARACTER_PROMPT_VERSION, quality: "medium", photoAssetId: original.id,
             photoSha256: sha256Bytes(photo), crop, ageYears: child.ageYears, style: qaStyleContract });
           const persisted = await generateBoardWizardIdentity(c, qaIdentityClaim, {
@@ -263,12 +278,17 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
       const provenance = identityProvenanceSchema.parse(JSON.parse(painted?.metaJson ?? "{}").identityProvenance);
       const gate = await reviewBoardWizardIdentity({ db: c.db, apiKey: env().OPENAI_API_KEY!,
         budget: boardWizardBudget(new CasWorldBudgetRepository(new PrismaWorldBudgetStore(c.db))),
-        beforeDispatch: async () => { await preflightBoardConditionedWizard(c, gameId); await withBoardWizardIdentityClaim(c, publicationClaim, async () => undefined); },
+        beforeDispatch: async () => {
+          await preflightIdentity();
+          await withBoardWizardIdentityClaim(c, publicationClaim, async () => undefined);
+          if (localPatch) requireLocalPatchIdentityTime(options.hardDeadlineAt, 115_000);
+        },
         write: work => withBoardWizardIdentityClaim(c, publicationClaim, work),
       }, { gameId, identityAssetId: current.identityAssetId, sheet: await readAssetBuffer(c, current.identityAssetId),
         photo: await readAssetBuffer(c, current.originalPhotoAssetId!), atlas: identityStyle.png, provenance });
       if (!gate.approved) { await holdBoardWizardIdentity(c, publicationClaim, "identity-style-review-required"); return; }
-      await enrollBoardConditionedWizard(c, gameId, job.id, qaIdentityClaim.jobAttempt);
+      if (localPatch) await finishLocalPatchIdentity(c, publicationClaim, identityStyle.catalogSha256);
+      else await enrollBoardConditionedWizard(c, gameId, job.id, qaIdentityClaim.jobAttempt);
       return; // The resumable QA queue owns the frozen board path from here.
     }
 
@@ -450,7 +470,7 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
     // `identity-enrollment-failed` - which holds the identity and parks the game
     // in MANUAL_REVIEW. The sheet was already bought and nothing had gone wrong
     // with it, so lifting the ceiling should carry on rather than need a person.
-    if (err instanceof GenerationPaused) {
+    if (err instanceof GenerationPaused || err instanceof LocalPatchIdentityDeferred) {
       console.warn(`[generate] ${gameId}: ${err.message} - leaving the job for the next tick`);
       // Fenced on the attempt THIS invocation claimed. Matching on the id alone
       // let a worker whose lease had already been taken put the replacement

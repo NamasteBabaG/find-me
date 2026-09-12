@@ -11,7 +11,7 @@ import type { Container } from "../container";
 import { createDraft, setChildName, attachPhoto, selectPackage } from "../create-flow.service";
 import { startCheckout, handlePaymentWebhook } from "../order.service";
 import * as auth from "../auth.service";
-import { deleteBoardWizardIdentityGame } from "../generation/board-wizard-identity-lifecycle";
+import { deleteGame } from "../game.service";
 
 vi.mock("../../lib/env", () => ({ env: () => ({ APP_ENV: "qa" }), spendGuard: () => ({ appEnv: "qa", realGeneration: false, testers: [] }) }));
 vi.mock("../../domain/spend-policy", () => ({ spendAllowedFor: () => true }));
@@ -65,7 +65,7 @@ describe("checkout adopts only its proven draft's private child photo", () => {
     const body = JSON.stringify({ eventId: `event-${order.id}`, orderId: order.id, kind: "PAID", amountAgorot: order.amountAgorot, currency: order.currency });
     expect((await handlePaymentWebhook(f.c, body, { "x-mock-signature": f.payment.sign(body) })).status).toBe(200);
     await db.generationJob.create({ data: { id: `job_${f.game.id}`, gameId: f.game.id, status: "QUEUED" } });
-    expect(await deleteBoardWizardIdentityGame(f.c, f.game.id, { type: "USER", id: result.userId }, result.userId)).toBe(true);
+    expect(await deleteGame(f.c, f.game.id, { type: "USER", id: result.userId }, result.userId)).toBe(true);
     expect((await db.game.findUniqueOrThrow({ where: { id: f.game.id } })).status).toBe("DELETED");
     expect((await db.asset.findUniqueOrThrow({ where: { id: f.asset.id } })).status).toBe("DELETED");
     expect(await db.fileBlob.count({ where: { key: f.asset.storagePath } })).toBe(0);

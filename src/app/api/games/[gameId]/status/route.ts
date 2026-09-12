@@ -68,8 +68,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
   // sailed straight past the gate.
   const avatarId = game.childProfile?.avatarAssetId ?? null;
   const avatar = avatarId ? await c.db.asset.findUnique({ where: { id: avatarId }, select: { status: true } }) : null;
-  const reviewed = characterNeedsApproval(game.childProfile)
-    ? await identityApprovedForDisplay(c, game.childProfile!)
+  const reviewed = game.styleVersion === LOCAL_PATCH_STYLE || characterNeedsApproval(game.childProfile)
+    ? !!game.childProfile && await identityApprovedForDisplay(c, game.childProfile)
     : true;
   const characterReady = avatar?.status === "READY" && reviewed;
   const avatarUrl = characterReady && avatarId ? signedAssetUrl(c, avatarId) : null;
@@ -94,6 +94,25 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
   let qaPreviewUrl: string | null = null;
   let qaBoards: { boardId: string; name: string; state: string; attempts: number; slots: { slotId: string; state: string; reason: string | null }[] }[] | null = null;
   let qaCost: { spentCents: number; reservedCents: number; capCents: number; held: boolean } | null = null;
+  let localPatchBudgetHeld = false;
+  if (game.styleVersion === LOCAL_PATCH_STYLE && env().APP_ENV === "qa") {
+    try {
+      const worldId = `${gameId}:board-wizard`;
+      const ledger = await c.db.worldBudgetLedger.findUnique({ where: { worldId } });
+      const snapshot = ledger ? JSON.parse(ledger.snapshotJson) : { worldId, requests: [] };
+      if (snapshot.worldId !== worldId) throw new Error("Wrong local-patch budget world");
+      // This ledger already includes identity, painting and judging. Adding
+      // asset costs here would count the same image purchase a second time.
+      const audit = auditWorldBudget(snapshot);
+      qaCost = { spentCents: audit.settledMicroUsd / 10_000, reservedCents: audit.reservedMicroUsd / 10_000,
+        capCents: audit.capMicroUsd / 10_000, held: audit.held };
+      localPatchBudgetHeld = audit.held;
+    } catch {
+      // An unreadable account is not permission to keep asking for purchases.
+      // Do not fabricate a zero cost for malformed or unavailable evidence.
+      localPatchBudgetHeld = true;
+    }
+  }
   let boardWizardPending = false;
   let boardWizardState: CreationSignals["boardWizardState"] = boardWizard ? "unavailable" : undefined;
   let fixedAssemblyReady: boolean | undefined = boardWizard ? false : undefined;
@@ -153,7 +172,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
   const parked = game.styleVersion === LOCAL_PATCH_STYLE
     && (await readStatusJob())?.currentStep === LOCAL_PATCH_NEEDS_RELEASE;
   const progress = creationProgress({ status, characterReady, spotsDone, spotsTotal, fixedAssemblyReady, boardWizardState,
-    ...(parked ? { operatorHold: true } : {}) });
+    ...(parked || localPatchBudgetHeld ? { operatorHold: true } : {}) });
   const playUrl = isPlayable(status) && progress.done ? (await ensurePlayerLink(c, gameId)).url : null;
   return NextResponse.json(
     {

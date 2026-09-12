@@ -12,7 +12,7 @@ import type { Container } from "../../container";
 import type { CharacterOutput } from "../../../infra/generation/types";
 import { findScene } from "../../../../content/scenes";
 
-const fake = vi.hoisted(() => ({ appEnv: "qa", testers: [] as string[], png: null as Buffer | null, catalogSha256: "", atlasSha256: "" }));
+const fake = vi.hoisted(() => ({ appEnv: "qa", testers: [] as string[], png: null as Buffer | null, catalogSha256: "", atlasSha256: "", styleMissing: false }));
 vi.mock("../../../lib/env", () => ({
   env: () => ({ APP_ENV: fake.appEnv, GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: 0, GENERATION_PROVIDER: "openai", GENERATION_MODEL: "gpt-image-2", GENERATION_QUALITY: "medium", OPENAI_API_KEY: "synthetic-never-live" }),
   spendGuard: () => ({ appEnv: fake.appEnv, realGeneration: true, testers: fake.testers }), flag: () => false,
@@ -24,8 +24,13 @@ vi.mock("../board-conditioned-wizard", async original => ({
 }));
 vi.mock("../scene-art", () => ({ loadSceneArt: async () => fake.png }));
 vi.mock("../patch", async original => ({ ...await original<typeof import("../patch")>(), styleReference: async () => fake.png }));
-vi.mock("../board-wizard-identity-style", () => ({ buildBoardWizardIdentityStyle: async () => ({ png: fake.png!,
-  version: "board-matched-identity/v1", catalogSha256: fake.catalogSha256, atlasSha256: fake.atlasSha256, examples: [] }) }));
+vi.mock("../board-wizard-identity-style", () => ({ buildBoardWizardIdentityStyle: async () => {
+  if (fake.styleMissing) throw new Error("Synthetic mandatory original-people atlas missing");
+  return { png: fake.png!, version: "board-matched-identity/v1", catalogSha256: fake.catalogSha256, atlasSha256: fake.atlasSha256, examples: [] };
+} }));
+vi.mock("../local-patch-identity", async original => ({
+  ...await original<typeof import("../local-patch-identity")>(), preflightLocalPatchIdentity: async () => undefined,
+}));
 
 import { generateBoardWizardIdentity, withBoardWizardIdentityClaim, type BoardWizardIdentityClaim } from "../board-wizard-identity-lifecycle";
 import { enrollBoardConditionedWizard, reserveBoardWizardIdentity } from "../board-conditioned-wizard";
@@ -36,6 +41,9 @@ import { deleteGame } from "../../game.service";
 import { reviewBoardWizardIdentity, IDENTITY_GATE_ACTION, IDENTITY_GATE_KEY, type IdentityProvenance } from "../board-wizard-identity-gate";
 import { boardWizardBudget } from "../board-wizard-budget";
 import { sha256Bytes } from "../fixed-sprite";
+import { LOCAL_PATCH_STYLE } from "../local-patch-world";
+import { createDraft } from "../../create-flow.service";
+import { identityApprovedForDisplay } from "../board-wizard-identity-gate";
 
 let db: PrismaClient, scratch: string, png: Buffer, seq = 0;
 beforeAll(async () => {
@@ -47,7 +55,7 @@ beforeAll(async () => {
   fake.atlasSha256 = sha256Bytes(png); fake.catalogSha256 = (await readBoardConditionedCatalog()).sha256;
 });
 beforeEach(() => {
-  process.env.QA_BOARD_CONDITIONED_WIZARD = "true"; fake.appEnv = "qa";
+  process.env.QA_BOARD_CONDITIONED_WIZARD = "true"; fake.appEnv = "qa"; fake.styleMissing = false;
   vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("Unexpected HTTP is forbidden in identity lifecycle tests"); }));
 });
 afterEach(() => { vi.unstubAllGlobals(); });
@@ -113,6 +121,95 @@ async function reviewPublished(f: Fixture, reviewer = { review: async () => ({ h
 }
 
 describe("QA identity lifecycle: real DB and synthetic provider only", () => {
+  it("pins new QA drafts to local patches without changing production drafts", async () => {
+    const c = { db, analytics: { track() {} } } as unknown as Container;
+    delete process.env.QA_BOARD_CONDITIONED_WIZARD;
+    const qa = await createDraft(c, null, "he");
+    expect(await db.game.findUniqueOrThrow({ where: { id: qa.gameId } })).toMatchObject({ status: "DRAFT", styleVersion: LOCAL_PATCH_STYLE });
+    fake.appEnv = "production";
+    const production = await createDraft(c, null, "en");
+    expect(await db.game.findUniqueOrThrow({ where: { id: production.gameId } })).toMatchObject({ status: "DRAFT", styleVersion: "collage-v1" });
+  });
+
+  it("new local-patch identity uses the matte atlas and approval without the old wizard flag", async () => {
+    const f = await fixture(); await fullWorld(f);
+    delete process.env.QA_BOARD_CONDITIONED_WIZARD;
+    await db.game.update({ where: { id: f.id }, data: { styleVersion: LOCAL_PATCH_STYLE, status: "PAID" } });
+    await db.generationJob.update({ where: { id: f.claim.jobId }, data: { status: "QUEUED", attempts: 0, currentStep: null } });
+    const fetch = stubStyleFetch(f);
+    const fallback = vi.fn(); f.c.avatars.createAvatar = fallback;
+    const generate = vi.fn(async (request: Parameters<NonNullable<Container["avatars"]["createCharacter"]>>[0]) => {
+      expect(request.styleRef).toEqual(png);
+      expect(request.qaStyleContract).toEqual(f.provenance.style);
+      expect(request.ageYears).toBe(6);
+      return f.result();
+    });
+    f.c.avatars.createCharacter = generate;
+    await runGenerationPipeline(f.c, f.id);
+    expect(await f.game()).toMatchObject({ status: "TARGETS_GENERATING", styleVersion: LOCAL_PATCH_STYLE, configJson: null });
+    expect(await f.job()).toMatchObject({ status: "QUEUED", currentStep: "local-patch" });
+    const steps = JSON.parse((await f.job()).stepsJson);
+    expect(steps.avatar.status).toBe("done"); expect(steps).not.toHaveProperty("boardWizard");
+    expect(await db.targetInstance.count({ where: { gameScene: { gameId: f.id } } })).toBe(0);
+    const child = await db.childProfile.findUniqueOrThrow({ where: { id: f.childId } });
+    expect(await identityApprovedForDisplay(f.c, child)).toBe(true);
+    expect((await f.ledger()).requests.every((r: { state: string }) => r.state === "settled")).toBe(true);
+    expect(generate).toHaveBeenCalledOnce(); expect(fetch).toHaveBeenCalledOnce(); expect(fallback).not.toHaveBeenCalled();
+    await db.game.update({ where: { id: f.id }, data: { status: "MANUAL_REVIEW" } });
+  });
+
+  it("local-patch identity defers its review to a fresh tick without repainting or showing an unapproved avatar", async () => {
+    const f = await fixture(); await fullWorld(f);
+    delete process.env.QA_BOARD_CONDITIONED_WIZARD;
+    await db.game.update({ where: { id: f.id }, data: { styleVersion: LOCAL_PATCH_STYLE, status: "PAID" } });
+    await db.generationJob.update({ where: { id: f.claim.jobId }, data: { status: "QUEUED", attempts: 0, currentStep: null } });
+    const fetch = stubStyleFetch(f), start = Date.now(); let now = start;
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    const generate = vi.fn(async () => { now += 170_000; return f.result(); }); f.c.avatars.createCharacter = generate;
+    try {
+      await runGenerationPipeline(f.c, f.id, { hardDeadlineAt: start + 270_000 });
+      expect(await f.game()).toMatchObject({ status: "AVATAR_GENERATING", styleVersion: LOCAL_PATCH_STYLE });
+      expect(await f.job()).toMatchObject({ status: "QUEUED", currentStep: null });
+      expect(fetch).not.toHaveBeenCalled();
+      const child = await db.childProfile.findUniqueOrThrow({ where: { id: f.childId } });
+      expect(child.avatarAssetId).not.toBeNull(); expect(await identityApprovedForDisplay(f.c, child)).toBe(false);
+      await runGenerationPipeline(f.c, f.id, { hardDeadlineAt: now + 270_000 });
+      expect(await f.game()).toMatchObject({ status: "TARGETS_GENERATING", styleVersion: LOCAL_PATCH_STYLE });
+      expect(generate).toHaveBeenCalledOnce(); expect(fetch).toHaveBeenCalledOnce();
+      expect(await identityApprovedForDisplay(f.c, child)).toBe(true);
+      await db.game.update({ where: { id: f.id }, data: { status: "MANUAL_REVIEW" } });
+    } finally { clock.mockRestore(); }
+  });
+
+  it("a refused local-patch identity stays private and never enters either board engine", async () => {
+    const f = await fixture(); await fullWorld(f);
+    delete process.env.QA_BOARD_CONDITIONED_WIZARD;
+    await db.game.update({ where: { id: f.id }, data: { styleVersion: LOCAL_PATCH_STYLE } });
+    await db.generationJob.update({ where: { id: f.claim.jobId }, data: { status: "QUEUED", attempts: 0, currentStep: null } });
+    const fetch = stubStyleFetch(f, "fail"), generate = vi.fn(async () => f.result()); f.c.avatars.createCharacter = generate;
+    await runGenerationPipeline(f.c, f.id);
+    await runGenerationPipeline(f.c, f.id);
+    const child = await db.childProfile.findUniqueOrThrow({ where: { id: f.childId } });
+    expect(await f.game()).toMatchObject({ status: "MANUAL_REVIEW", styleVersion: LOCAL_PATCH_STYLE, configJson: null });
+    expect(await identityApprovedForDisplay(f.c, child)).toBe(false);
+    expect(JSON.parse((await f.job()).stepsJson)).not.toHaveProperty("boardWizard");
+    expect(generate).toHaveBeenCalledOnce(); expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it("a missing local-patch style atlas stops before any identity or review purchase", async () => {
+    const f = await fixture(); await fullWorld(f);
+    delete process.env.QA_BOARD_CONDITIONED_WIZARD;
+    await db.game.update({ where: { id: f.id }, data: { styleVersion: LOCAL_PATCH_STYLE } });
+    await db.generationJob.update({ where: { id: f.claim.jobId }, data: { status: "QUEUED", attempts: 0, currentStep: null } });
+    fake.styleMissing = true;
+    const generate = vi.fn(async () => f.result()), fallback = vi.fn();
+    f.c.avatars.createCharacter = generate; f.c.avatars.createAvatar = fallback;
+    await runGenerationPipeline(f.c, f.id);
+    expect(await f.game()).toMatchObject({ status: "MANUAL_REVIEW", styleVersion: LOCAL_PATCH_STYLE });
+    expect(await db.worldBudgetLedger.findUnique({ where: { worldId: `${f.id}:board-wizard` } })).toBeNull();
+    expect(generate).not.toHaveBeenCalled(); expect(fallback).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("deletion during the paid call wins, but exact known billing is retained", async () => {
     const f = await fixture(), started = deferred<void>(), answer = deferred<CharacterOutput>();
     const running = generateBoardWizardIdentity(f.c, f.claim, { reserve: f.reserve, generate: () => { started.resolve(); return answer.promise; } });
