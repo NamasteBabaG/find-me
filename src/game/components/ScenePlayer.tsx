@@ -141,6 +141,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
     if (!fb) return;
     clearTimeout(bubbleTimer.current);
     setBubble(null);
+    setAnnouncement("");
     const api = apiRef.current;
     const placeBubble = (targetId: string, text: string) => {
       const target = scene.targets.find((t) => t.id === targetId);
@@ -244,6 +245,21 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
     (hit: Hit) => {
       sounds().unlock();
       switch (hit.kind) {
+        case "found-target": {
+          // This is acknowledgement, not another find: no reducer action,
+          // persistence, telemetry, particles or extra star. Leave an active
+          // success bubble/timer alone, but never silently swallow a later tap.
+          if (!free || mission.phase !== "searching" || !mission.found[hit.id]) break;
+          const target = scene.targets.find((item) => item.id === hit.id);
+          if (!target) break;
+          const p = targetStagePoint(scene, target, mission.plan.variants[hit.id] ?? "A");
+          clearTimeout(bubbleTimer.current);
+          setBubble({ text: g.copy.alreadyFound, x: p.x, y: p.y, key: ++bubbleSequence.current });
+          setAnnouncement(g.copy.alreadyFound);
+          sounds().play("tap");
+          bubbleTimer.current = setTimeout(() => { setBubble(null); setAnnouncement(""); }, 2600);
+          break;
+        }
         case "target":
           dispatch({ type: "TAP_TARGET", targetId: hit.id, now: Date.now() });
           break;
@@ -258,7 +274,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           break;
       }
     },
-    [dispatch],
+    [dispatch, free, mission, scene, g.copy.alreadyFound],
   );
 
   const currentId = currentTargetId(mission);
@@ -270,12 +286,13 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
   // The identity and saved counters stay visible; no timed collapsing HUD.
   const foundIds = Object.keys(mission.found);
   const total = mission.plan.order.length;
+  const advanceAt = mission.findsRequiredToAdvance ?? total;
   const canAdvance = free && missionCanAdvance(mission);
   const advance = () => { const next = store.nextScene(); if (next) store.openScene(next); else store.openPassport(); };
   const stars = free ? gameStars(store.progress, store.worldScenes()) : undefined;
 
   return (
-    <div className="scene" style={{ ["--scene-sky" as string]: scene.art.palette.sky, ["--scene-accent" as string]: scene.art.palette.accent }}>
+    <div className="scene" data-mission-phase={mission.phase} data-found-count={foundIds.length} style={{ ["--scene-sky" as string]: scene.art.palette.sky, ["--scene-accent" as string]: scene.art.palette.accent }}>
       <header className="scene__bar">
         {store.demo ? (
           <span />
@@ -364,12 +381,13 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           quiet={false}
           minimal={store.demo}
           findAny={free}
+          findsRequiredToAdvance={advanceAt}
           worldStars={stars}
           onAdvance={canAdvance ? advance : undefined}
         />
       ) : null}
 
-      {canAdvance && foundIds.length === 3 && mission.phase === "searching" && !staying ? <section className="scene__advance" aria-label={g.scene.canContinue}>
+      {canAdvance && foundIds.length === advanceAt && mission.phase === "searching" && !staying ? <section className="scene__advance" aria-label={g.scene.canContinue}>
         <p>{store.nextScene() ? g.scene.unlocked : g.scene.journeyFinished}</p>
         <button type="button" className="fm-btn fm-btn--sm" onClick={advance}>{g.scene.canContinue}</button>
         <button type="button" className="fm-btn fm-btn--secondary fm-btn--sm" onClick={() => setStaying(true)}>{g.scene.keepSearching}</button>

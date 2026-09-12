@@ -95,6 +95,22 @@ describe("first find through the actual animated viewport", () => {
     expect(view.container.querySelector(".scene__intro-veil")).toBeNull();
     expect(view.container.querySelector(".scene__curtain")?.classList.contains("is-open")).toBe(true);
     expect(stage.style.transform).toBe(before);
+    // The old child stays in the art. A repeat tap must answer, not look frozen,
+    // while preserving both the saved stars and the still-searching mission.
+    const savedProgress = store.getState().progress;
+    expect(view.container.querySelectorAll("[data-found-marker]")).toHaveLength(1);
+    hit("hide-2", 8);
+    expect(view.container.querySelectorAll(".bubble")).toHaveLength(1);
+    expect(view.container.querySelector(".bubble")?.textContent).toContain("already found");
+    expect(view.container.querySelector(".bubble__star")).toBeNull();
+    expect(view.container.querySelector(".found-particles")).toBeNull();
+    expect(store.getState().mission!.phase).toBe("searching");
+    expect(store.getState().progress).toBe(savedProgress);
+    act(() => vi.advanceTimersByTime(500)); // a deliberate second tap, not a zoom gesture
+    hit("hide-2", 9);
+    expect(view.container.querySelectorAll(".bubble")).toHaveLength(1);
+    expect(store.getState().progress).toBe(savedProgress);
+    act(() => vi.advanceTimersByTime(500));
     // The next visible hide remains reachable without zooming out or resetting.
     hit("hide-3", 2);
     expect(store.getState().mission!.phase).toBe("found");
@@ -102,6 +118,7 @@ describe("first find through the actual animated viewport", () => {
     act(() => vi.advanceTimersByTime(2300));
     expect(store.getState().mission!.phase).toBe("searching");
     expect(view.container.querySelectorAll("[data-target]")).toHaveLength(5);
+    expect(view.container.querySelectorAll("[data-found-marker]")).toHaveLength(2);
   });
 
   it("does not undo manual zoom and pan when find-any feedback finishes", async () => {

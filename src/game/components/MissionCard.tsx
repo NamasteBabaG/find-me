@@ -29,13 +29,25 @@ interface Props {
   /** Landing demo: the question and the face, nothing else. */
   minimal?: boolean;
   findAny?: boolean;
+  /** Display copy follows the scene's unlock threshold; the domain owns unlocking. */
+  findsRequiredToAdvance?: number;
   worldStars?: { found: number; total: number };
   onAdvance?: () => void;
 }
 
 /** Floating mission pill: who to look for, (progress when there is more than one), and the hint button. */
-export function MissionCard({ index, total, target, found, order, hintLevel, hintPulse, hintText, onHint, avatarUrl, childName, quiet = false, onExpand, minimal = false, findAny = false, worldStars, onAdvance }: Props) {
+export function MissionCard({ index, total, target, found, order, hintLevel, hintPulse, hintText, onHint, avatarUrl, childName, quiet = false, onExpand, minimal = false, findAny = false, findsRequiredToAdvance = 3, worldStars, onAdvance }: Props) {
   const { g, tf } = useGameText();
+  const foundCount = Math.min(found.length, total);
+  const remainingToUnlock = Math.max(0, Math.min(total, Math.max(1, findsRequiredToAdvance)) - foundCount);
+  const remainingToFinish = Math.max(0, total - foundCount);
+  const findingAnother = findAny && foundCount > 0 && remainingToFinish > 0;
+  const title = findAny && remainingToFinish === 0 ? g.scene.allHidesFound
+    : findingAnother ? tf(g.scene.findChildAgain, { name: childName })
+      : hintLevel >= 1 ? (target?.mission ?? "") : tf(g.scene.findChild, { name: childName });
+  const rules = remainingToFinish === 0 ? tf(g.scene.boardCompleted, { total })
+    : remainingToUnlock > 0 ? tf(remainingToUnlock === 1 ? g.scene.unlockRemainingOne : g.scene.unlockRemaining, { remaining: remainingToUnlock })
+      : tf(remainingToFinish === 1 ? g.scene.finishRemainingOne : g.scene.finishRemaining, { remaining: remainingToFinish });
   return (
     <section
       className={`mission${quiet ? " mission--quiet" : ""}`}
@@ -78,9 +90,10 @@ export function MissionCard({ index, total, target, found, order, hintLevel, hin
         {/* The authored mission names the place — "hiding behind the fallen
             log" — which is the answer, printed above the picture. It is the
             first hint now; until then the game only says who to look for. */}
-        <h2 className="mission__text">{hintLevel >= 1 ? (target?.mission ?? "") : tf(g.scene.findChild, { name: childName })}</h2>
+        <h2 className="mission__text">{title}</h2>
+        {!minimal && findingAnother && hintLevel >= 1 && target?.mission ? <p className="mission__hint">{target.mission}</p> : null}
         {!minimal && hintLevel >= 1 && hintText ? <p className="mission__hint">💡 {hintText}</p> : null}
-        {findAny ? <p className="mission__rules">{g.scene.findAnyRules}</p> : null}
+        {findAny ? <p className="mission__rules">{rules}</p> : null}
         {onAdvance ? <button type="button" className="mission__continue" onClick={onAdvance}>{g.scene.canContinue} ➜</button> : null}
       </div>
       {minimal ? null : (

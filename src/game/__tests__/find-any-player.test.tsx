@@ -10,6 +10,7 @@ import { createMissionState, missionReducer, type MissionCopy } from "@/domain/g
 import { planScenePlay } from "@/domain/game/replay";
 import { SceneViewport } from "../components/SceneViewport";
 import { ScenePlayer } from "../components/ScenePlayer";
+import { MissionCard } from "../components/MissionCard";
 import { WorldMap } from "../components/WorldMap";
 import { Passport } from "../components/Passport";
 import { GiftReveal } from "../components/GiftReveal";
@@ -48,6 +49,71 @@ beforeEach(() => { vi.stubGlobal("React", React); vi.stubGlobal("Image", LoadedI
 afterEach(() => { cleanup(); vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
 describe("find-any rendering and mobile feedback", () => {
+  it.each(["en", "he"] as const)("makes the next search and the three/five-star thresholds explicit in %s", locale => {
+    const scene = fiveScene();
+    const props = { index: 1, total: 5, target: scene.targets[0]!, order: scene.targets.map(t => t.id), hintLevel: 0 as const,
+      hintPulse: false, hintText: "Authored hint", onHint: vi.fn(), childName: "Alex", findAny: true };
+    const card = (count: number, threshold = 3) => <GameI18nProvider locale={locale}><MissionCard {...props} found={props.order.slice(0, count)} findsRequiredToAdvance={threshold} /></GameI18nProvider>;
+    const view = render(card(0));
+    const expectedRules = locale === "en" ? ["3 more", "2 more", "1 more", "2 more", "1 more", "5 stars"]
+      : ["עוד 3", "עוד 2", "עוד מחבוא אחד", "עוד 2", "עוד מחבוא אחד", "5 כוכבים"];
+    for (let count = 0; count <= 5; count++) {
+      view.rerender(card(count));
+      expect(view.container.querySelector(".mission__rules")?.textContent).toContain(expectedRules[count]);
+      const heading = view.getByRole("heading").textContent!;
+      if (count > 0 && count < 5) expect(heading).toContain(locale === "en" ? "another hiding spot" : "מחבוא נוסף");
+      if (count === 5) expect(heading).toBe(locale === "en" ? "All hiding spots found!" : "כל המחבואים נמצאו!");
+    }
+    view.rerender(card(1, 4));
+    expect(view.container.querySelector(".mission__rules")?.textContent).toContain(locale === "en" ? "3 more" : "עוד 3");
+    view.rerender(<GameI18nProvider locale={locale}><MissionCard {...props} found={[props.order[0]!]} hintLevel={1} /></GameI18nProvider>);
+    expect(view.getByRole("heading").textContent).toContain(locale === "en" ? "another hiding spot" : "מחבוא נוסף");
+    expect(view.container.textContent).toContain(props.target.mission);
+    view.rerender(<GameI18nProvider locale={locale}><MissionCard {...props} findAny={false} found={[]} hintLevel={1} /></GameI18nProvider>);
+    expect(view.getByRole("heading").textContent).toBe(props.target.mission);
+    expect(view.container.querySelector(".mission__rules")).toBeNull();
+  });
+
+  it("acknowledges repeated finds once without buying another star, then unlocks on the third distinct hide", async () => {
+    const scene = fiveScene(); const config = { ...buildDemoConfig("en"), scenes: [scene, { ...scene, slug: "next-board" }], worlds: undefined, world: undefined };
+    const store = createPlayStore(config, { copy: { wrongTarget: "Other", wrongTargetNoItem: "Other", bonus: "Bonus", fallbackSuccess: "Found" }, readOnlyPreview: true, skipGift: true });
+    store.getState().openScene(scene.slug); store.getState().dispatch({ type: "START", now: 1 });
+    const track = vi.spyOn(store.getState().telemetry, "track");
+    const dispatch = vi.spyOn(store.getState(), "dispatch");
+    function Player() { const state = useStore(store); return <GameI18nProvider locale="en"><ScenePlayer scene={scene} mission={state.mission!} store={state} onBack={state.goToMap} onSceneComplete={state.completeScene} /></GameI18nProvider>; }
+    const view = render(<Player />); await decodeAll();
+    act(() => rig.tap(0.07, 0.45));
+    const firstBubble = view.container.querySelector(".bubble");
+    act(() => rig.tap(0.07, 0.45)); // cannot replace the active success or its timer
+    expect(view.container.querySelector(".bubble")).toBe(firstBubble);
+    act(() => vi.advanceTimersByTime(2300));
+    const progress = store.getState().progress;
+    track.mockClear(); dispatch.mockClear();
+    act(() => rig.tap(0.07, 0.45));
+    act(() => vi.advanceTimersByTime(500));
+    act(() => rig.tap(0.07, 0.45));
+    expect(view.container.querySelectorAll(".bubble")).toHaveLength(1);
+    expect(view.getByRole("status").textContent).toContain("already found");
+    expect(view.container.querySelector(".bubble__star")).toBeNull();
+    expect(dispatch).not.toHaveBeenCalled(); expect(track).not.toHaveBeenCalled();
+    expect(store.getState().progress).toBe(progress);
+    act(() => vi.advanceTimersByTime(500));
+    act(() => rig.tap(0.26, 0.45));
+    act(() => vi.advanceTimersByTime(2150)); // old repeat dismissal would erase this success early
+    expect(view.container.querySelector(".bubble")?.textContent).toContain("Found 1!");
+    act(() => vi.advanceTimersByTime(151));
+    expect(view.container.querySelector(".mission__continue")).toBeNull();
+    act(() => rig.tap(0.45, 0.45));
+    act(() => vi.advanceTimersByTime(2300));
+    expect(store.getState().progress.scenes[scene.slug]!.foundTargetIds).toHaveLength(3);
+    expect(view.container.querySelectorAll("[data-found-marker]")).toHaveLength(3);
+    expect(view.container.querySelector(".mission__continue")).not.toBeNull();
+    expect(view.container.querySelector(".scene__advance")).not.toBeNull();
+    expect(view.container.querySelector(".complete")).toBeNull();
+    fireEvent.click(view.container.querySelector(".mission__continue")!);
+    expect(store.getState().sceneSlug).toBe("next-board");
+  });
+
   it("draws all five together, accepts each footprint, and never removes/repositions a found patch", async () => {
     const scene = fiveScene(); const plan = planScenePlay(scene, { plays: 0 }, "fixture");
     let mission = missionReducer(createMissionState(scene.slug, plan, scene), { type: "START", now: 1 }, copy);
@@ -64,12 +130,16 @@ describe("find-any rendering and mobile feedback", () => {
       act(() => rig.tap(i * 0.19 + 0.07, 0.45)); expect(hit).toHaveBeenLastCalledWith({ kind: "target", id: `hide-${i}` });
       mission = missionReducer(mission, { type: "TAP_TARGET", targetId: `hide-${i}`, now: 2 }, copy);
       view.rerender(<SceneViewport scene={scene} mission={mission} hintLevel={0} bonusFound={false} onHit={hit} />);
-      const before = hit.mock.calls.length; act(() => rig.tap(i * 0.19 + 0.07, 0.45)); expect(hit).toHaveBeenCalledTimes(before);
+      const before = hit.mock.calls.length;
+      act(() => rig.tap(i * 0.19 + 0.07, 0.45));
+      expect(hit).toHaveBeenCalledTimes(before + 1);
+      expect(hit).toHaveBeenLastCalledWith({ kind: "found-target", id: `hide-${i}` });
       expect([...view.container.querySelectorAll("[data-target]")].map(node => node.getAttribute("style"))).toEqual(styles);
       mission = missionReducer(mission, { type: "FOUND_DONE", now: 3 }, copy);
       view.rerender(<SceneViewport scene={scene} mission={mission} hintLevel={0} bonusFound={false} onHit={hit} />);
     }
     expect(view.container.querySelectorAll('[data-found="true"]')).toHaveLength(5);
+    expect(view.container.querySelectorAll("[data-found-marker]")).toHaveLength(5);
   });
 
   it("has one anchored bubble/announcement, no delayed duplicate or cloud turn, and cancels old dismissal timers", async () => {
