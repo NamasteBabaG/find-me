@@ -16,6 +16,10 @@ import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wi
 import { sceneBySlug } from "../../scene-catalog.service";
 import { sha256Bytes } from "../fixed-sprite";
 import { localPatchRenderPolicySha256 } from "../../../infra/generation/openai-local-patch";
+import * as localPatchPainter from "../../../infra/generation/openai-local-patch";
+import * as localPatchJudge from "../local-patch-judge";
+import * as localPatchArt from "../local-patch-art";
+import { runLocalPatchHide } from "../local-patch-hide";
 import type { LocalPatchHideDeps } from "../local-patch-hide";
 import type { LocalPatchJudgeResult } from "../local-patch-judge";
 import { WORLD_LOCAL_PATCH_HIDES } from "../../../domain/scene/local-patch-hides";
@@ -94,6 +98,55 @@ const jobOf = (gameId: string) => db.generationJob.findUniqueOrThrow({ where: { 
 const done = (gameId: string) => db.targetVariantAsset.count({ where: { status: "GENERATED", targetInstance: { gameScene: { gameId } } } });
 
 describe("a world of hides, one slice at a time", () => {
+  it.each([6_000, 20_000])("the real queue paints its first hide after %sms of preparation inside a 270s route", async preparationMs => {
+    const board = WORLD_LOCAL_PATCH_HIDES.find(item => item.board === "newyork")!, hide = board.hides[0]!;
+    const { gameId } = await seed({ gameId: `game-preparation-${preparationMs}`, scenes: [{ slug: board.board, version: LOCAL_PATCH_SCENE_VERSION }] });
+    const entry = Date.now();
+    let now = entry;
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    const network = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Network forbidden in queue deadline regression"));
+    const readArt = localPatchArt.readPinnedLocalPatchArt;
+    const preparation = vi.spyOn(localPatchArt, "readPinnedLocalPatchArt").mockImplementation(async (...args) => {
+      const bytes = await readArt(...args);
+      now += preparationMs;
+      return bytes;
+    });
+    const render = vi.spyOn(localPatchPainter, "buyLocalPatch").mockImplementation(async (_key, input) => {
+      expect(input.timeoutMs).toBe(270_000 - preparationMs - 25_000);
+      expect(input.timeoutMs).toBeLessThanOrEqual(240_000);
+      now += 100_000;
+      return paintedOk(await paintedCrop(input.stylePng, hide), bill(`req-preparation-${preparationMs}`));
+    });
+    const judge = vi.spyOn(localPatchJudge, "judgeLocalPatch").mockImplementation(async (_key, input) => {
+      expect(input.timeoutMs).toBe(270_000 - preparationMs - 100_000 - 25_000);
+      now += 20_000;
+      return reply({ requestId: `req-preparation-judge-${preparationMs}` });
+    });
+    try {
+      // The queue, renderer, shipped board, identity approval, retained store,
+      // and SQLite budget are real. Only time and provider responses are fake.
+      expect(await tickGeneration(c, gameId, 30_000, 270_000)).toMatchObject({ gameId, status: "TARGETS_GENERATING", pending: true });
+      expect(await done(gameId)).toBe(1);
+      expect(render).toHaveBeenCalledTimes(1); expect(judge).toHaveBeenCalledTimes(1);
+      expect(preparation).toHaveBeenCalledTimes(1);
+      const row = await db.targetVariantAsset.findFirstOrThrow({ where: { targetInstance: { gameScene: { gameId }, targetId: hide.targetId } } });
+      expect(row).toMatchObject({ status: "GENERATED", attempts: 1 });
+      const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(gameId);
+      expect(await budget.readRequest(worldId, `${hide.id}:${hide.pose}:render:1`)).toMatchObject({ state: "settled" });
+      expect(await budget.readRequest(worldId, `${hide.id}:${hide.pose}:judge:1`)).toMatchObject({ state: "settled" });
+      const beforeReplay = await budget.audit(worldId);
+      expect(beforeReplay).toMatchObject({ held: false, reservedMicroUsd: 0 });
+      expect(now + 25_000).toBeLessThan(entry + 270_000);
+      expect(await runLocalPatchHide(c, localPatchPainterDeps(c)!, { gameId, board, hide, deadlineAt: now + 270_000 }))
+        .toMatchObject({ state: "already-generated", attempts: 1 });
+      expect(render).toHaveBeenCalledTimes(1); expect(judge).toHaveBeenCalledTimes(1);
+      expect((await budget.audit(worldId)).settledMicroUsd).toBe(beforeReplay.settledMicroUsd);
+      expect(network).not.toHaveBeenCalled();
+    } finally {
+      judge.mockRestore(); render.mockRestore(); preparation.mockRestore(); network.mockRestore(); clock.mockRestore();
+    }
+  }, 120_000);
+
   it("paints one hide a tick and says there is more to do", async () => {
     const { gameId } = await seed();
     const first = worker();
@@ -265,8 +318,10 @@ describe("a world of hides, one slice at a time", () => {
     const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => clock.now);
     try {
       const w = worker();
-      // Past the slice gate, short of what one paint plus keeping it needs.
-      const result = await runLocalPatchWorldSlice(c, w.deps, gameId, { hardDeadlineAt: started + 250_000 });
+      // Enter with a normal route budget, then let preparation consume enough
+      // that even the minimum viable paint plus retention no longer fits.
+      w.deps = { ...w.deps, readBoardArt: async () => { clock.now += 100_000; return boardPng(); } };
+      const result = await runLocalPatchWorldSlice(c, w.deps, gameId, { hardDeadlineAt: started + 270_000 });
       expect(w.dispatched).toEqual([]);
       expect(result.outcomes[0]?.reason).toMatch(/^sydney-1:standing:render:1 was not dispatched/);
       const [row] = await db.targetVariantAsset.findMany({ where: { targetInstance: { gameScene: { gameId } } } });

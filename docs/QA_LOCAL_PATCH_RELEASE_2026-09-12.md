@@ -34,6 +34,12 @@ Synthetic verification proves orchestration, not the visual quality of a new pai
 
 ## Live verification
 
+### First live run: deadline starvation correction
+
+The first new game (`game_mruqsdt9sccz4n2im09r`, עומר) exposed a scheduling defect that synthetic instant preparation did not catch: a 270-second route required the full 240-second provider maximum plus 25 seconds for retention after all preparation. More than five seconds of identity, artwork and ledger reads therefore deferred an unreserved purchase on every tick. The initial character completed while the first hide stayed PENDING on attempt 1.
+
+The correction separates minimum useful dispatch time (150 seconds for the image, 60 seconds for its judge) from the unchanged 240-second provider maximum. Both phases keep the 25-second retention margin and receive the actual remaining deadline. Keys, fingerprints, budgets and retained evidence do not change. Real queue/SQLite tests with six and twenty seconds of preparation now generate the first hide; replay adds no dispatch or cost. A genuinely too-short window still defers safely. Focused verification: 54 render/purchase/painter tests, 24 world tests, four player tests, both TypeScript checks.
+
 Deployed to the **find-me-qa** Vercel project only on 2026-09-12. Main production was not changed.
 
 - Release branch: `codex/qa-complete-world-20260912`, code commit `2e00a5c`; preserves the existing QA read-only partial-game review.

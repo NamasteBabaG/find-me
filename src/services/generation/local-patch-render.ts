@@ -11,7 +11,6 @@ import {
 import { judgeCharge } from "../../infra/generation/judge";
 import { LOCAL_PATCH_POSE_WORDING, LOCAL_PATCH_PROMPT_VERSION, localPatchPrompt } from "./local-patch-prompt";
 import { purchaseOnce, type PurchaseLedger, type RetainedPurchaseStore } from "./paid-operation";
-import { LOCAL_PATCH_IMAGE_TIMEOUT_MS } from "../../infra/generation/openai-local-patch";
 import type { LocalPatchPurchase } from "../../infra/generation/openai-local-patch";
 import type { BudgetJson, WorldChargeEvidence } from "./world-budget";
 
@@ -157,6 +156,13 @@ export const LOCAL_PATCH_RESERVE = Object.freeze({ renderMicroUsd: 120_000, judg
  */
 export const LOCAL_PATCH_PHASE_MARGIN_MS = 25_000;
 
+/** Minimum useful provider window, not the provider's maximum timeout.
+ * Requiring 240s + retention inside a 270s request left only five seconds for
+ * identity/art/ledger preparation and deferred every real DB-backed attempt.
+ * Dispatch still receives the actual remaining time; the painter caps it at
+ * its unchanged maximum. Retention keeps its full margin on both phases. */
+export const LOCAL_PATCH_MIN_PROVIDER_MS = Object.freeze({ render: 150_000, judge: 60_000 });
+
 /**
  * Nothing was bought and nothing was learned: there was not enough of this
  * request left to finish a phase that had not started.
@@ -288,12 +294,12 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
 
   // The window goes INTO the purchase, not around it: a replay costs no time and
   // needs no check, and a dispatch is refused by the thing that reserves for it.
-  const windowFor = (timeoutMs: number) => input.deadlineAt === undefined ? undefined : {
-    deadlineAt: input.deadlineAt, needMs: timeoutMs + LOCAL_PATCH_PHASE_MARGIN_MS, retainMs: LOCAL_PATCH_PHASE_MARGIN_MS,
+  const windowFor = (minimumMs: number) => input.deadlineAt === undefined ? undefined : {
+    deadlineAt: input.deadlineAt, needMs: minimumMs + LOCAL_PATCH_PHASE_MARGIN_MS, retainMs: LOCAL_PATCH_PHASE_MARGIN_MS,
   };
 
   const bought = await purchaseOnce(deps, {
-    ...(windowFor(LOCAL_PATCH_IMAGE_TIMEOUT_MS) ? { dispatchWindow: windowFor(LOCAL_PATCH_IMAGE_TIMEOUT_MS)! } : {}),
+    ...(windowFor(LOCAL_PATCH_MIN_PROVIDER_MS.render) ? { dispatchWindow: windowFor(LOCAL_PATCH_MIN_PROVIDER_MS.render)! } : {}),
     worldId, requestKey: renderKey, scope: "image",
     operationFingerprint: renderFingerprint, reserveMicroUsd: LOCAL_PATCH_RESERVE.renderMicroUsd,
     buy: async ({ timeoutMs }) => {
@@ -352,7 +358,7 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
   const judged = await purchaseOnce(deps, {
     worldId, requestKey: judgeKey, scope: "judge",
     operationFingerprint: judgeFingerprint, reserveMicroUsd: LOCAL_PATCH_RESERVE.judgeMicroUsd,
-    ...(windowFor(LOCAL_PATCH_JUDGE.timeoutMs) ? { dispatchWindow: windowFor(LOCAL_PATCH_JUDGE.timeoutMs)! } : {}),
+    ...(windowFor(LOCAL_PATCH_MIN_PROVIDER_MS.judge) ? { dispatchWindow: windowFor(LOCAL_PATCH_MIN_PROVIDER_MS.judge)! } : {}),
     buy: async ({ timeoutMs }) => {
       const answer = await ask({ hideId: hide.id, beforePng, afterPng, identityPng: input.judgeIdentityPng, expectation,
         ...(timeoutMs === null ? {} : { timeoutMs }) });
