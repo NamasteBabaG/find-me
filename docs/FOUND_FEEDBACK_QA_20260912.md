@@ -44,3 +44,37 @@ not proof that every reported physical interaction was caused by it.
 No generation request, new game, paid render, database mutation or artwork
 change is needed for this fix. QA rollout and live verification are recorded
 after deployment below.
+
+## Deploy result
+
+- URL: https://qa.findmeworlds.com
+- Target: QA project's production environment, not the public production site
+- Status: READY
+- Commit: `f9bf81d`
+- Framework: Next.js 15.5.25
+- Build duration: approximately 1 minute; complete deployment approximately 2 minutes
+- Deployment: `dpl_9a9zJktAb5nW2RqsUXvC11VbVhUq`
+- Artifact: https://find-me-2eijao4jq-smallheroes-projects.vercel.app
+
+Built remotely with the linked QA project and its PostgreSQL client, then
+promoted after READY. The unauthenticated health request was refused by the
+QA access gate as expected; it was not counted as an authenticated health test.
+Alias inspection confirms the public `findmeworlds.com` deployment is unchanged.
+
+### Live acceptance
+
+Reloaded the existing authorized Chrome game, without changing its link or
+clearing storage. Amazon resumed at 2/5, world 5/45, with two saved markers.
+The exact tree-hollow click now displayed one Hebrew already-found popup,
+kept the mission searching and awarded nothing. Clicking a distinct child on
+the bridge displayed one success popup and changed the counts to 3/5 and 6/45.
+After feedback finished, Continue opened Paris at 0/5 with the world still 6/45.
+The game was left open there for the user. No browser errors or warnings.
+
+### Post-deploy observability
+
+- QA error scan: no errors returned in the last 10 minutes.
+- Drains: not inspected or changed in this focused player fix.
+- Monitoring: browser and server spot checks completed; no recurring monitor
+  created, and this does not claim every physical-device gesture was tested.
+- Local synthetic browser and development server closed after verification.
