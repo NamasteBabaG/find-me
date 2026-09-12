@@ -41,3 +41,25 @@ local synthetic verification is not described as verification of that cookie
 or the live personalized game.
 
 No artwork purchase, identity regeneration, new game or progress reset.
+
+## Deployment and final boundary
+
+- Code commit: `feeb6ff`; pushed to `codex/qa-five-hides-20260912`.
+- QA build `dpl_3KT3VDVqw6n7KEVHPhbVSATr6zmq` is READY and promoted to
+  `qa.findmeworlds.com`. Remote build/typecheck and catalog tracing passed.
+- Alias inventory confirms public production still points to its previous
+  `find-oam69qdka` deployment; no production change.
+- Post-deploy error-log query for this QA deployment returned no error logs.
+  This is not evidence of authenticated gameplay.
+- Portrait mobile browser (390x650): Marrakech first find removes hide-3,
+  exposes hide-1, and the normal third hint focuses that new hide. Its click
+  awards the second star with one bubble, without a reload.
+- Mutation proof: restoring simultaneous all-five rendering fails four actual
+  viewport tests; restoring the exact file hash returns all five to green.
+- Both available user browsers and the independent test browser currently
+  stop at the QA password gate. Configured credentials were unavailable via
+  the ordinary deployment tools. The gate was not changed or bypassed. Live
+  personalized first-to-second-click verification awaits renewed QA login.
+- Temporary credential-export files were removed; no values were printed or
+  committed. Local synthetic browser fixture changed only its own saved play
+  progress.
