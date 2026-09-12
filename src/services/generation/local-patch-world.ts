@@ -186,7 +186,16 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       const outcome = await runLocalPatchHide(c, { ...deps, fence }, { gameId, board: item.board, hide: item.hide,
         ...(options.hardDeadlineAt === undefined ? {} : { deadlineAt: options.hardDeadlineAt }) });
       outcomes.push(outcome);
-      if (outcome.state === "held") { attention = outcome.reason; break; }
+      if (outcome.state === "held") {
+        attention = outcome.reason;
+        // Written HERE, not with the rest of the bookkeeping at the end. A
+        // reservation is committed for something nobody dispatched, and the only
+        // record of that is this decision; a failed read on the way to the end of
+        // the slice would lose it and leave the job looking like ordinary work.
+        await c.db.generationJob.updateMany({ where: { id: job.id, attempts: claim },
+          data: { status: "FAILED", currentStep: LOCAL_PATCH_NEEDS_RELEASE, lastError: (outcome.reason ?? LOCAL_PATCH_NEEDS_RELEASE).slice(0, 500) } });
+        break;
+      }
       // A world that cannot buy anything is not a world to keep buying in.
       if (outcome.state === "stopped") break;
     }
@@ -229,10 +238,12 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // job status screen reads it, and no tick takes it again until somebody says
   // so - because the thing that is stuck is a committed reservation, and no
   // amount of retrying resolves one of those.
-  await c.db.generationJob.updateMany({ where: { id: job.id, attempts: claim },
-    data: attention
-      ? { status: "FAILED", currentStep: LOCAL_PATCH_NEEDS_RELEASE, lastError: attention.slice(0, 500) }
-      : { status: left.length ? "QUEUED" : "DONE", currentStep: left.length ? "local-patch" : null } });
+  // A parked job was already written the moment it was parked; leaving it alone
+  // here is the point, not an omission.
+  if (!attention) {
+    await c.db.generationJob.updateMany({ where: { id: job.id, attempts: claim },
+      data: { status: left.length ? "QUEUED" : "DONE", currentStep: left.length ? "local-patch" : null } });
+  }
 
   return { gameId, pending: left.length > 0 && !paused && !held && !attention, claimed: true, paused, attention, outcomes, blocked };
 }

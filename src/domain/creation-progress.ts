@@ -33,6 +33,15 @@ export interface CreationSignals {
   fixedAssemblyReady?: boolean;
   /** The board wizard can stop for repair before any board is assembled. */
   boardWizardState?: "running" | "held" | "review-required" | "unavailable";
+  /**
+   * This world is waiting for a person and nothing will move until one looks.
+   *
+   * Separate from `boardWizardState` because it is not about that engine and
+   * must not move the stage: the work that was done is still done, it simply
+   * cannot continue. A screen that keeps nudging a parked world tells a parent
+   * their game is being made when nobody is making it.
+   */
+  operatorHold?: boolean;
 }
 
 export interface CreationProgress {
@@ -88,7 +97,7 @@ export function creationProgress(s: CreationSignals): CreationProgress {
   const stage = fixedUnassembled ? (s.characterReady ? 2 : 0) : stageOf(s.status);
   const done = stage === 5;
   const failed = FAILED.has(s.status);
-  const held = s.boardWizardState === "held" || s.boardWizardState === "unavailable"
+  const held = s.operatorHold === true || s.boardWizardState === "held" || s.boardWizardState === "unavailable"
     || s.boardWizardState === "review-required" && fixedUnassembled;
   const state: CreationState = done ? "ready" : failed ? "failed" : held ? "held"
     : s.boardWizardState === "running" ? "working" : fixedUnassembled ? "awaiting_review"

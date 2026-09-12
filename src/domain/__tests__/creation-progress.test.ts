@@ -118,3 +118,27 @@ describe("creation progress", () => {
       fixedAssemblyReady: true, boardWizardState: "review-required" })).toMatchObject({ percent: 96, state: "awaiting_review", done: false });
   });
 });
+
+describe("a world waiting for a person", () => {
+  /**
+   * Parking is not a stage and it is not a failure: the work that was done is
+   * still done, it simply cannot continue until somebody looks. A screen that
+   * kept calling this "working" would tell a parent their game is being made
+   * while nobody is making it - and would keep asking for another slice.
+   */
+  it("is held, not working, whatever the status says", () => {
+    const working = creationProgress({ ...base, status: "TARGETS_GENERATING", characterReady: true, spotsDone: 9, spotsTotal: 27 });
+    expect(working.state).toBe("working");
+    const parked = creationProgress({ ...base, status: "TARGETS_GENERATING", characterReady: true, spotsDone: 9, spotsTotal: 27, operatorHold: true });
+    expect(parked.state).toBe("held");
+    // And the work already done is not taken away from it.
+    expect(parked.percent).toBe(working.percent);
+    expect(parked.done).toBe(false);
+  });
+
+  it("leaves a world nobody is waiting on exactly as it was", () => {
+    for (const hold of [undefined, false] as const) {
+      expect(creationProgress({ ...base, status: "TARGETS_GENERATING", characterReady: true, spotsDone: 9, spotsTotal: 27, operatorHold: hold }).state).toBe("working");
+    }
+  });
+});

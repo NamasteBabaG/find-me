@@ -7,7 +7,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { applyTestSchema } from "../../../lib/test-schema";
 import { DbStorage } from "../../../infra/storage/db";
 import type { Container } from "../../container";
-import { tickGeneration } from "../queue";
+import { nextPendingGame, tickGeneration } from "../queue";
 import {
   LOCAL_PATCH_LEASE_MS, LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_STYLE, localPatchBoardBlockedReason,
   localPatchPainterDeps, localPatchPrivateInventory, runLocalPatchWorldSlice,
@@ -334,6 +334,59 @@ describe("a world of hides, one slice at a time", () => {
       nowSpy.mockRestore();
     }
   }, 240_000);
+
+  it("lets the scheduler get on with another world while one waits for a person", async () => {
+    // Parking is on the JOB and the game stays TARGETS_GENERATING, so the oldest
+    // parked game kept being chosen, its slice kept declining, and every runnable
+    // game behind it waited on a decision nobody had made.
+    const parked = await seed({ gameId: "game-older-parked" });
+    const runnable = await seed({ gameId: "game-newer-runnable" });
+    await db.game.update({ where: { id: parked.gameId }, data: { paidAt: new Date(Date.now() - 3_600_000) } });
+    await db.game.update({ where: { id: runnable.gameId }, data: { paidAt: new Date() } });
+    await db.generationJob.update({ where: { id: `job_${parked.gameId}` },
+      data: { status: "FAILED", currentStep: LOCAL_PATCH_NEEDS_RELEASE, lastError: "reserved and not dispatched" } });
+
+    for (let i = 0; i < 3; i++) expect(await nextPendingGame(c), `pick ${i + 1}`).toBe(runnable.gameId);
+
+    // And it is still reachable deliberately, by somebody who knows what they are looking at.
+    const direct = await runLocalPatchWorldSlice(c, worker().deps, parked.gameId);
+    expect(direct.claimed).toBe(false);
+    expect(direct.attention).toMatch(/reserved and not dispatched/);
+  }, 180_000);
+
+  it("keeps the parking even when the rest of the slice cannot finish", async () => {
+    // The decision is the only record that a committed reservation was never
+    // dispatched. A read failing on the way to the end of the slice must not
+    // lose it and leave the job looking like ordinary work.
+    const { gameId } = await seed();
+    const started = Date.now();
+    const clock = { now: started };
+    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => clock.now);
+    const ledger = db.worldBudgetLedger as unknown as { updateMany: (a: unknown) => Promise<unknown>; create: (a: unknown) => Promise<unknown> };
+    const realUpdate = ledger.updateMany.bind(ledger), realCreate = ledger.create.bind(ledger);
+    const rows = db.targetVariantAsset as unknown as { findMany: (a: unknown) => Promise<unknown> };
+    const realFind = rows.findMany.bind(rows);
+    let reads = 0;
+    try {
+      ledger.updateMany = async a => { clock.now += 300_000; return realUpdate(a); };
+      ledger.create = async a => { clock.now += 300_000; return realCreate(a); };
+      // The slice reads the rows once to decide what to do and once afterwards
+      // to write the board statuses. The second read is the one that happens
+      // AFTER the held outcome, and here it falls over.
+      rows.findMany = async a => { if (++reads > 1) throw new Error("the database went away"); return realFind(a); };
+      const w = worker();
+      await expect(runLocalPatchWorldSlice(c, w.deps, gameId, { hardDeadlineAt: started + 290_000 }))
+        .rejects.toThrow(/the database went away/);
+      expect(w.dispatched, "zero provider calls").toEqual([]);
+    } finally {
+      ledger.updateMany = realUpdate; ledger.create = realCreate; rows.findMany = realFind; nowSpy.mockRestore();
+    }
+    // Parked anyway, with the reason.
+    const job = await jobOf(gameId);
+    expect(job.currentStep).toBe(LOCAL_PATCH_NEEDS_RELEASE);
+    expect(job.status).toBe("FAILED");
+    expect(job.lastError).toMatch(/needs releasing by hand/);
+  }, 180_000);
 
   it("names the boards this build cannot paint instead of failing on them one by one", async () => {
     const { gameId } = await seed({ scenes: [{ slug: "tokyo", version: 5 }, { slug: "sydney", version: 5 }] });

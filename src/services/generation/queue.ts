@@ -3,7 +3,7 @@ import type { Container } from "../container";
 import { RESUMABLE_STATUSES, runGenerationPipeline } from "./pipeline";
 import { FIXED_WORLD_STYLE_PREFIX, isFixedWorldStyle } from "./fixed-world-stage-record";
 import { BOARD_WIZARD_STYLE, boardWizardEnabled, runBoardConditionedWizardSlice } from "./board-conditioned-wizard";
-import { LOCAL_PATCH_STYLE, localPatchPainterDeps, runLocalPatchWorldSlice } from "./local-patch-world";
+import { LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_STYLE, localPatchPainterDeps, runLocalPatchWorldSlice } from "./local-patch-world";
 
 /**
  * Moving generation forward a slice at a time.
@@ -30,7 +30,14 @@ export async function nextPendingGame(c: Container): Promise<string | null> {
   const game = await c.db.game.findFirst({
     // Fixed-from-birth games await their qualified import/manual QA, not this
     // painter. Selecting the oldest fixed PAID game would starve legacy work.
+    //
+    // And a world parked for a person is not a candidate at all. Parking is on
+    // the JOB while the game stays TARGETS_GENERATING, so the oldest parked game
+    // kept being chosen, its slice kept declining, and every runnable game
+    // behind it waited on a decision nobody had made yet. It can still be ticked
+    // directly, by an operator who knows what they are looking at.
     where: { status: { in: [...RESUMABLE_STATUSES] }, deletedAt: null,
+      jobs: { none: { currentStep: LOCAL_PATCH_NEEDS_RELEASE } },
       ...(boardWizardEnabled() ? { OR: [{ styleVersion: BOARD_WIZARD_STYLE }, { NOT: { styleVersion: { startsWith: FIXED_WORLD_STYLE_PREFIX } } }] } : { NOT: { styleVersion: { startsWith: FIXED_WORLD_STYLE_PREFIX } } }) },
     orderBy: { paidAt: "asc" },
     select: { id: true },

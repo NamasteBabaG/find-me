@@ -3,6 +3,7 @@ import { qaAccessDenied } from "@/lib/server/qa-access";
 import { getContainer } from "@/services/container";
 import { creationStep, isPlayable } from "@/domain/order-state";
 import { creationProgress, type CreationSignals } from "@/domain/creation-progress";
+import { LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_STYLE } from "@/services/generation/local-patch-world";
 import { statusOf } from "@/services/game-status";
 import { RESUMABLE_STATUSES } from "@/services/generation/pipeline";
 import { ensurePlayerLink } from "@/services/share-link.service";
@@ -87,7 +88,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
   }
 
   const boardWizard = game.styleVersion === BOARD_WIZARD_STYLE;
-  const loadStatusJob = () => c.db.generationJob.findUnique({ where: { id: `job_${gameId}` }, select: { gameId: true, status: true, stepsJson: true } });
+  const loadStatusJob = () => c.db.generationJob.findUnique({ where: { id: `job_${gameId}` }, select: { gameId: true, status: true, stepsJson: true, currentStep: true } });
   let statusJobRead: ReturnType<typeof loadStatusJob> | undefined;
   const readStatusJob = () => statusJobRead ??= loadStatusJob();
   let qaPreviewUrl: string | null = null;
@@ -146,7 +147,13 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
       }
     } catch { /* Malformed/unrelated legacy metadata is not an identity hold marker. */ }
   }
-  const progress = creationProgress({ status, characterReady, spotsDone, spotsTotal, fixedAssemblyReady, boardWizardState });
+  // A world parked for a person is not a world in progress. The tick already
+  // refuses it; this is the half the PARENT sees, and without it the screen goes
+  // on saying the game is being made and goes on asking for another slice.
+  const parked = game.styleVersion === LOCAL_PATCH_STYLE
+    && (await readStatusJob())?.currentStep === LOCAL_PATCH_NEEDS_RELEASE;
+  const progress = creationProgress({ status, characterReady, spotsDone, spotsTotal, fixedAssemblyReady, boardWizardState,
+    ...(parked ? { operatorHold: true } : {}) });
   const playUrl = isPlayable(status) && progress.done ? (await ensurePlayerLink(c, gameId)).url : null;
   return NextResponse.json(
     {

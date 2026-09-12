@@ -14,6 +14,7 @@ import { Notice } from "@/ui/Shell";
 import { AttemptStrip } from "./AttemptStrip";
 import { BoardWizardRecoveryForm } from "./BoardWizardRecoveryForm";
 import { adjustTargetAction, adminDeleteAction, adminRotateLinkAction, approveAction, recutAvatarAction, refundAction, regenTargetAction, requestPhotoAction, retryAction } from "../../actions";
+import { LOCAL_PATCH_NEEDS_RELEASE } from "@/services/generation/local-patch-world";
 
 /** What the row's last review means to a person: reviewed and passed, reviewed and failed, could not decide, or never reviewed. */
 function judgeLabel(judge: { verdict: string; reason: string } | null): string {
@@ -327,6 +328,13 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
             {game.jobs[0] ? (
               <p className="fm-small">
                 job: {game.jobs[0].status} · {game.jobs[0].currentStep ?? "—"} · attempts {game.jobs[0].attempts}
+              </p>
+            ) : null}
+            {/* A world parked for a person says WHY here, because the only other
+                place it exists is a job column nobody opens a database to read. */}
+            {game.jobs[0]?.currentStep === LOCAL_PATCH_NEEDS_RELEASE ? (
+              <p className="fm-small" style={{ color: "var(--fm-danger, #b00)" }}>
+                ממתין לשחרור ידני: {game.jobs[0].lastError ?? LOCAL_PATCH_NEEDS_RELEASE}
               </p>
             ) : null}
           </section>
