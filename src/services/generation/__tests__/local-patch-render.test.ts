@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import sharp from "sharp";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { LOCAL_PATCH_CROP, POSE_MASK, cropOf, maskInCrop, type LocalPatchBoard, type LocalPatchHide } from "../../../domain/scene/local-patch-hides";
 import { LOCAL_PATCH_PROMPT_VERSION, localPatchPrompt } from "../local-patch-prompt";
 import { RETAINED_PURCHASE_VERSION, retainedPayloadDigest } from "../paid-operation";
@@ -95,6 +95,52 @@ async function attempt(deps: LocalPatchRenderDeps, over: Record<string, unknown>
 }
 
 describe("one paid attempt at one hide", () => {
+  it.each([6_000, 20_000])("dispatches after %i ms preparation within a real 270-second route window", async preparationMs => {
+    const start = Date.now();
+    let now = start + preparationMs;
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      const w = world();
+      const timeouts: number[] = [];
+      const p = w.process({
+        render: async input => {
+          timeouts.push(input.timeoutMs!);
+          now += 50_000;
+          return { png: await patchPng(), rejected: null, quarantined: null, evidence: evidence("render"), unknownReason: null };
+        },
+        judge: async input => { timeouts.push(input.timeoutMs!); return reply(); },
+      });
+      const result = await attempt(p.deps, { deadlineAt: start + 270_000 });
+      expect(result.accepted).toBe(true);
+      expect(timeouts).toEqual([245_000 - preparationMs, 195_000 - preparationMs]);
+      expect([...w.rows.values()].map(row => row.state)).toEqual(["settled", "settled"]);
+      const replay = w.process();
+      expect((await attempt(replay.deps, { deadlineAt: start + 270_000 })).accepted).toBe(true);
+      expect(replay.dispatched).toEqual([]);
+    } finally { clock.mockRestore(); }
+  });
+
+  it("retains the render and defers only the judge when less than its useful window remains", async () => {
+    const start = Date.now();
+    let now = start + 20_000;
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      const w = world();
+      const first = w.process({ render: async () => {
+        now = start + 200_000;
+        return { png: await patchPng(), rejected: null, quarantined: null, evidence: evidence("render"), unknownReason: null };
+      } });
+      const result = await attempt(first.deps, { deadlineAt: start + 270_000 });
+      expect(result.refusedBecause).toBe("stopped");
+      expect(result.needsOperator).toBe(false);
+      expect(w.rows.size).toBe(1);
+      expect(first.dispatched).toEqual([]);
+      const replay = w.process();
+      expect((await attempt(replay.deps, { deadlineAt: now + 270_000 })).accepted).toBe(true);
+      expect(replay.dispatched).toEqual(["judge"]);
+    } finally { clock.mockRestore(); }
+  });
+
   it("cuts the mask the pose asks for, in the place the pose asks for", async () => {
     // The right number of clear pixels in the wrong place is a mask pointing the
     // painter somewhere else entirely, so every pixel is checked against the box.
