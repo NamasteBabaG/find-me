@@ -14,6 +14,7 @@ import { reviewLocalPatchBoard, localPatchBoardReviewKeys, type LocalPatchBoardR
 import { transitionGame } from "../game-status";
 import { LOCAL_PATCH_MIN_PROVIDER_MS, LOCAL_PATCH_PHASE_MARGIN_MS } from "./local-patch-render";
 import { localPatchAttemptPlan, localPatchSettled, LOCAL_PATCH_NORMAL_ATTEMPTS } from "../../domain/scene/local-patch-attempts";
+import { localPatchNeedsRecomposition, recomposeLocalPatchHide } from "./local-patch-recompose";
 import {
   LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, runLocalPatchHide,
   type LocalPatchHideDeps, type LocalPatchHideOutcome,
@@ -183,12 +184,43 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     for (const hide of board.hides) work.push({ board, hide, sceneId: scene.id });
   }
 
-  const rows = await c.db.targetVariantAsset.findMany({
+  let rows = await c.db.targetVariantAsset.findMany({
     where: { variant: LOCAL_PATCH_VARIANT, targetInstance: { gameScene: { gameId } } },
     include: { targetInstance: { select: { targetId: true, gameSceneId: true } } },
   });
   const stateOf = (sceneId: string, targetId: string) =>
     rows.find(r => r.targetInstance.gameSceneId === sceneId && r.targetInstance.targetId === targetId);
+  // Correct deterministic clipping from the retained current purchase BEFORE
+  // planning another image attempt. Old decisions are archived, not transferred
+  // onto changed pixels; a fresh board review will bind the new composition.
+  if (strict) {
+    const stale = work.filter(item => {
+      const row = stateOf(item.sceneId, item.hide.targetId);
+      return row && localPatchNeedsRecomposition(row, 8);
+    });
+    const refreshLimit = Math.max(1, options.maxHides ?? 5);
+    try {
+      for (const item of stale.slice(0, refreshLimit)) {
+        await recomposeLocalPatchHide(c, { gameId, ...item }, { fence, readBoardArt: deps.readBoardArt });
+        const scene = game.scenes.find(value => value.id === item.sceneId)!;
+        scene.generationStatus = "NEEDS_REGENERATION";
+      }
+    } catch (error) {
+      const attention = (error instanceof Error ? error.message : String(error)).slice(0, 500);
+      await c.db.$transaction(async tx => { await fence(tx); await tx.generationJob.update({ where: { id: job.id },
+        data: { status: "FAILED", currentStep: LOCAL_PATCH_NEEDS_RELEASE, lastError: attention } }); });
+      return { ...empty, pending: false, claimed: true, paused: false, attention };
+    }
+    if (stale.length > refreshLimit) {
+      await c.db.$transaction(async tx => { await fence(tx); await tx.generationJob.update({ where: { id: job.id },
+        data: { status: "QUEUED", currentStep: "local-patch", lastError: null } }); });
+      return { ...empty, pending: true, claimed: true, paused: false };
+    }
+    if (stale.length) rows = await c.db.targetVariantAsset.findMany({
+      where: { variant: LOCAL_PATCH_VARIANT, targetInstance: { gameScene: { gameId } } },
+      include: { targetInstance: { select: { targetId: true, gameSceneId: true } } },
+    });
+  }
   // The worker can stop after committing an unreadable review but before the
   // terminal game transition. That is still unresolved evidence on restart,
   // never permission to buy another image merely to obtain a different judge.

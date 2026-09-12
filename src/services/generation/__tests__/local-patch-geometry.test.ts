@@ -43,6 +43,26 @@ const pixelAt = async (png: Buffer, x: number, y: number) => {
 describe("the tap contract of a finished hide", () => {
   const hide = WORLD_LOCAL_PATCH_HIDES[0]!.hides[1]!;
 
+  it("v8 keeps a preserved face above the hinted mask tappable without making the entire context clickable", async () => {
+    const shifted = { ...hide, mask: { left: 190, top: 335, width: 110, height: 240 } };
+    const original = await board(), crop = cropOf(shifted);
+    const patchPng = await sharp(original).extract(crop).composite([{
+      input: Buffer.from('<svg width="110" height="330"><ellipse cx="55" cy="46" rx="45" ry="45" fill="#493422"/><rect x="15" y="70" width="80" height="260" fill="#dd804a"/></svg>'),
+      left: 190, top: 237,
+    }]).png().toBuffer();
+    const measured = await localPatchGeometry({ hide: shifted, boardPng: original, patchPng, contentVersion: 8 });
+    const hit = measured.geometry.hitRect;
+    const face = { x: (crop.left + 245) / LOCAL_PATCH_BOARD.width, y: (crop.top + 285) / LOCAL_PATCH_BOARD.height };
+    expect(face.x).toBeGreaterThanOrEqual(hit.x);
+    expect(face.x).toBeLessThanOrEqual(hit.x + hit.w);
+    expect(face.y).toBeGreaterThanOrEqual(hit.y);
+    expect(face.y).toBeLessThanOrEqual(hit.y + hit.h);
+    expect(hit.w * LOCAL_PATCH_BOARD.width).toBeLessThanOrEqual(158);
+    expect(hit.h * LOCAL_PATCH_BOARD.height).toBeLessThan(768);
+    const legacy = await localPatchGeometry({ hide: shifted, boardPng: original, patchPng, contentVersion: 7 });
+    expect(legacy.geometry.hitRect.y).toBeGreaterThan(face.y);
+  });
+
   it("finds the child inside the box, not the whole box", async () => {
     const box = maskOf(hide);
     const measured = await localPatchGeometry({ hide, boardPng: await board(), patchPng: await painted(hide, { r: 20, g: 40, b: 180 }) });

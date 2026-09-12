@@ -3,7 +3,7 @@ import sharp from "sharp";
 import {
   LOCAL_PATCH_CROP, type LocalPatchBoard, type LocalPatchHide, cropOf, maskForHide,
 } from "../../domain/scene/local-patch-hides";
-import { analysePatchSeam, applyLocalPatch, composeBoundedLocalPatch, type SeamReport } from "./local-patch-seam";
+import { analysePatchSeam, applyLocalPatch, composeBoundedLocalPatch, LOCAL_PATCH_COMPOSITION_VERSION, type LocalPatchCompositionPermission, type SeamReport } from "./local-patch-seam";
 import {
   LOCAL_PATCH_JUDGE, localPatchJudgeSettings, judgeLocalPatch, localPatchJudgePrompt, localPatchVerdictSchema,
   type JudgeWireFault, type LocalPatchJudgeRequest, type LocalPatchJudgeResult, type LocalPatchVerdict,
@@ -128,6 +128,9 @@ export type LocalPatchAttempt = {
   /** The whole board with this hide painted in. Only present when accepted. */
   readonly composedPng: Buffer | null;
   readonly seam: SeamReport | null;
+  /** v8 local blend permission only; never substitutes for final visual review. */
+  readonly compositionPermission?: LocalPatchCompositionPermission;
+  readonly compositionVersion?: typeof LOCAL_PATCH_COMPOSITION_VERSION;
   readonly verdict: LocalPatchVerdict | null;
   readonly wireFault: JudgeWireFault | null;
   readonly promptVersion: string;
@@ -277,7 +280,8 @@ const refusedRender = (fault: string, renderCents: number): LocalPatchAttempt =>
 
 export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: LocalPatchAttemptInput): Promise<LocalPatchAttempt> {
   const result = await renderLocalPatchHideInner(deps, input);
-  return { ...result, promptVersion: promptVersionOf(input) };
+  return { ...result, promptVersion: promptVersionOf(input),
+    ...(isLocalPatchStrictVersion(input.contentVersion) ? { compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION } : {}) };
 }
 
 function promptVersionOf(input: LocalPatchAttemptInput): string {
@@ -371,7 +375,8 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     // hard-pasted shipping image. This is a concluded, billed attempt, not a hold.
     const shipping = await sharp(candidate).extract(crop).png().toBuffer();
     return { ...refusedRender(`quality-seam: ${seam.reason}`, renderCents),
-      patchPng, shippingPng: shipping, judgedSha256: sha(shipping), seam, replayed: bought.replayed };
+      patchPng, shippingPng: shipping, judgedSha256: sha(shipping), seam, compositionPermission: bounded.compositionPermission,
+      compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION, replayed: bought.replayed };
   }
 
   if (isLocalPatchAdvisoryVersion(input.contentVersion)) {
@@ -381,6 +386,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     const shipping = await sharp(candidate, { limitInputPixels: 8_294_400 }).extract(crop).png().toBuffer();
     return { accepted: true, refusedBecause: null, stoppedReason: null, renderFault: null, needsOperator: false,
       patchPng, shippingPng: shipping, composedPng: candidate, seam, verdict: null, wireFault: null,
+      ...(bounded ? { compositionPermission: bounded.compositionPermission, compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION } : {}),
       promptVersion, judgedSha256: sha(shipping), renderCents, judgeCents: 0, costUnknown: false, replayed: bought.replayed };
   }
 

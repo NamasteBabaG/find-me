@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
-import { BLOCKING_CHECKS, JUDGE_CHECKS, LOCAL_PATCH_JUDGE, judgeLocalPatch, judgeLocalPatchBoard, localPatchJudgePrompt, localPatchJudgeSettings, localPatchVerdictSchema } from "../local-patch-judge";
+import { BLOCKING_CHECKS, JUDGE_CHECKS, LOCAL_PATCH_JUDGE, judgeLocalPatch, judgeLocalPatchBoard, localPatchBoardJudgeImages, localPatchJudgePrompt, localPatchJudgeSettings, localPatchVerdictSchema } from "../local-patch-judge";
 import { LOCAL_PATCH_POSE_WORDING } from "../local-patch-prompt";
 import { LocalPatchPose } from "../../../domain/scene/local-patch-hides";
 
@@ -23,6 +23,31 @@ async function request() {
 }
 
 describe("judging one finished local patch", () => {
+  it("v8 sends exactly twelve ordered images including five native head panels and explicitly checks clipped scalp", async () => {
+    const image = await png(), sent: RequestInit[] = [];
+    const hides = Array.from({ length: 5 }, (_, i) => ({ hideId: `strict-${i}`, beforePng: Buffer.from(`before-${i}`),
+      afterPng: Buffer.from(`serial-context-${i}`), closeupPng: Buffer.from(`native-head-${i}`), afterEvidencePng: Buffer.from(`native-two-panel-${i}`) }));
+    const req = { boardId: "sydney", contentVersion: 8, boardPng: image, identityPng: image, hides };
+    const fetchOnce: typeof fetch = async (_url, init) => { sent.push(init!); return reply({ hides: hides.map(hide => ({ hideId: hide.hideId,
+      verdict: { ...good, faceLikeness: "pass", faceReadable: "pass", severeSeam: "pass" } })) }, 200, { model: "gpt-5.6-luna" }); };
+    await judgeLocalPatchBoard("test-only", req, fetchOnce);
+    const body = JSON.parse(String(sent[0]!.body));
+    const content = body.messages[0].content;
+    expect(body).toMatchObject({ model: "gpt-5.6-luna", reasoning_effort: "low" });
+    expect(content).toHaveLength(13);
+    expect(content.slice(1).map((item: { image_url: { url: string } }) => item.image_url.url))
+      .toEqual(localPatchBoardJudgeImages(req).map(bytes => `data:image/png;base64,${bytes.toString("base64")}`));
+    for (let i = 0; i < 5; i++) {
+      expect(content[0].text).toContain(`strict-${i}: BEFORE/AFTER images ${3 + i * 2}/${4 + i * 2}`);
+      expect(Buffer.from(content[4 + i * 2].image_url.url.split(",")[1], "base64").equals(hides[i]!.afterEvidencePng)).toBe(true);
+    }
+    expect(content[0].text).toContain("flat, straight-cut scalp");
+    expect(content[0].text).toContain("neighbouring person's pixels painted over");
+    expect(content[0].text).toContain("not a second child");
+    expect(sent).toHaveLength(1);
+    await expect(judgeLocalPatchBoard("test-only", { ...req, hides: hides.map(hide => ({ ...hide, afterEvidencePng: undefined })) }, fetchOnce)).rejects.toThrow("closeup panels");
+    expect(sent).toHaveLength(1);
+  });
   it("the grouped wire sends one Luna LOW request with the composition and five identified before/after pairs", async () => {
     const image = await png(), sent: RequestInit[] = [];
     const hides = Array.from({ length: 5 }, (_, i) => ({ hideId: `hide-${i}`, beforePng: image, afterPng: image }));

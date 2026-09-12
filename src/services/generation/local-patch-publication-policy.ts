@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import type { Container } from "../container";
 import { isLocalPatchAdvisoryVersion, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
 import { localPatchQualityDisposition } from "./local-patch-judge";
+import { LOCAL_PATCH_COMPOSITION_VERSION } from "./local-patch-seam";
 
 export const LOCAL_PATCH_PUBLICATION_POLICY = "publish-with-visual-warnings/v1";
 export const LOCAL_PATCH_STRICT_PUBLICATION_POLICY = "publish-with-severe-quality-guard/v2";
@@ -32,7 +33,9 @@ function allowed(input: LocalPatchPublicationBinding): boolean {
   try {
     const receipt = JSON.parse(input.judgeJson ?? "null");
     return receipt?.reviewState === "board-review-complete" && receipt.wireFault === null
-      && receipt?.boardReview?.version === "local-patch-board-five-quality/v2"
+      && receipt?.compositionVersion === LOCAL_PATCH_COMPOSITION_VERSION
+      && receipt?.boardReview?.compositionVersion === LOCAL_PATCH_COMPOSITION_VERSION
+      && receipt?.boardReview?.version === "local-patch-board-five-quality/v3-head-safe"
       && localPatchQualityDisposition(receipt.verdict).state === "acceptable";
   } catch { return false; }
 }

@@ -3,7 +3,8 @@ import {
   type LocalPatchHide,
 } from "../../domain/scene/local-patch-hides";
 import { hitBoxFromAlpha, type PatchGeometry } from "./patch";
-import { changedWithin } from "./local-patch-seam";
+import { changedWithin, LOCAL_PATCH_RETURN_GUARD, SEAM_LIMITS } from "./local-patch-seam";
+import { isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
 
 /**
  * Where a finished hide is drawn, where the child in it can be tapped, and where
@@ -55,6 +56,7 @@ export type LocalPatchGeometry = {
  * @param patchPng the rendered crop, at the crop's own size
  */
 export async function localPatchGeometry(input: {
+  readonly contentVersion?: number;
   readonly hide: LocalPatchHide;
   readonly boardPng: Buffer;
   readonly patchPng: Buffer;
@@ -63,7 +65,17 @@ export async function localPatchGeometry(input: {
   const { hide } = input;
   const art = input.board ?? LOCAL_PATCH_BOARD;
   const crop = cropOf(hide);
-  const box = maskForHide(hide);
+  const requested = maskForHide(hide);
+  // v8's preserved head can be above the hinted mask. Measuring only that
+  // mask made the repaired face visible but untappable. Search a bounded
+  // vertical head allowance, not the entire repainted context. This remains
+  // a difference-based, deliberately generous tap region, not face detection.
+  const left = Math.max(SEAM_LIMITS.bandPx, requested.left - 24);
+  const top = Math.max(SEAM_LIMITS.bandPx, requested.top - LOCAL_PATCH_RETURN_GUARD + SEAM_LIMITS.bandPx);
+  const right = Math.min(crop.width - SEAM_LIMITS.bandPx, requested.left + requested.width + 24);
+  const bottom = Math.min(crop.height - SEAM_LIMITS.bandPx, requested.top + requested.height + 24);
+  const box = isLocalPatchStrictVersion(input.contentVersion)
+    ? { left, top, width: right - left, height: bottom - top } : requested;
 
   const rect = { x: crop.left / art.width, y: crop.top / art.height, w: crop.width / art.width, h: crop.height / art.height };
   const declared = {

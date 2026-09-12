@@ -225,6 +225,11 @@ export async function applyLocalPatch(boardPng: Buffer, region: PatchRegion, pat
   if (options.fade && options.report.verdict !== "fade-recommended" && options.report.verdict !== "clean") {
     throw new Error(`LOCAL_PATCH: a fade is refused for a ${options.report.verdict} patch. ${options.report.reason}`);
   }
+  return blendLocalPatch(boardPng, region, patchPng, options.fade, limits);
+}
+
+/** Pixel operation only. Policy is enforced by the two public callers. */
+async function blendLocalPatch(boardPng: Buffer, region: PatchRegion, patchPng: Buffer, fade: boolean, limits = SEAM_LIMITS): Promise<Buffer> {
   const board = await raw(boardPng), patch = await raw(patchPng);
   if (region.left < 0 || region.top < 0 || region.left + region.width > board.width || region.top + region.height > board.height) {
     throw new Error("LOCAL_PATCH: region falls outside the board");
@@ -232,7 +237,7 @@ export async function applyLocalPatch(boardPng: Buffer, region: PatchRegion, pat
   if (patch.width !== region.width || patch.height !== region.height) {
     throw new Error(`LOCAL_PATCH: patch is ${patch.width}x${patch.height} but the region is ${region.width}x${region.height}`);
   }
-  const band = options.fade ? Math.min(limits.bandPx, Math.floor(Math.min(region.width, region.height) / 3)) : 0;
+  const band = fade ? Math.min(limits.bandPx, Math.floor(Math.min(region.width, region.height) / 3)) : 0;
   const out = Buffer.from(board.data);
   for (let y = 0; y < patch.height; y++) for (let x = 0; x < patch.width; x++) {
     // Ramp from 0 at the outer edge to 1 once past the band; 1 everywhere when
@@ -250,7 +255,30 @@ export async function applyLocalPatch(boardPng: Buffer, region: PatchRegion, pat
  * it carries the join. Never infer the window from whatever the model changed.
  * A refused candidate exists only as evidence. Callers must respect `usable`.
  */
-export const LOCAL_PATCH_RETURN_GUARD = 32;
+// A mask is a placement hint, not the measured child silhouette. Real v8
+// renders put complete heads up to 100px above the hinted box. The old32px
+// window amputated those heads even though the provider returned good pixels.
+// Leave120px of predeclared context, including room outside that drift for the
+// 12px feather. This is not proof of anatomy: final close-up review still owns
+// that decision. Version the derived pixels separately from the paid request.
+export const LOCAL_PATCH_COMPOSITION_VERSION = "bounded-return/v2-head-safe";
+export const LOCAL_PATCH_RETURN_GUARD = 120;
+export type LocalPatchCompositionPermission = "aligned" | "one-pixel-tolerance" | "refused";
+
+/** v8 boundary permission, NOT a visual verdict. A one-native-pixel mismatch
+ * can be harmless resampling or a genuinely broken face: only the mandatory
+ * final faceReadable/severeSeam review decides whether this image may publish.
+ * Keep the measured report intact so tolerated misalignment remains visible.
+ */
+export function boundedCompositionPermission(report: SeamReport): LocalPatchCompositionPermission {
+  if (!Number.isFinite(report.borderMeanDiff) || report.borderMeanDiff < 0 || report.borderMeanDiff > 24) return "refused";
+  if (report.verdict === "clean" || report.verdict === "fade-recommended") return "aligned";
+  const { dx, dy } = report.shift;
+  if (report.verdict === "misaligned" && Number.isInteger(dx) && Number.isInteger(dy)
+    && Math.hypot(dx, dy) > 0 && Math.hypot(dx, dy) <= 1) return "one-pixel-tolerance";
+  return "refused";
+}
+
 export async function composeBoundedLocalPatch(boardPng: Buffer, crop: PatchRegion, patchPng: Buffer, child: PatchRegion) {
   if (![child.left, child.top, child.width, child.height].every(Number.isInteger)
     || child.left < 0 || child.top < 0 || child.width <= 0 || child.height <= 0
@@ -272,7 +300,10 @@ export async function composeBoundedLocalPatch(boardPng: Buffer, crop: PatchRegi
   // Here this is deliberately a BOUNDARY diagnosis, not a claim that scenery
   // inside the child's box is unchanged. The visual review checks that separately.
   const report = await analysePatchSeam(boardPng, region, patch, { allowedRect: { left: 0, top: 0, width: local.width, height: local.height } });
-  const usable = report.verdict === "clean" || report.verdict === "fade-recommended";
-  const candidate = await applyLocalPatch(boardPng, region, patch, { fade: usable, report });
-  return { usable, candidate, report, region };
+  const compositionPermission = boundedCompositionPermission(report);
+  const usable = compositionPermission !== "refused";
+  // All permitted candidates use the same bounded fade, without moving pixels
+  // or modifying the raw report. A refused hard-placement remains evidence only.
+  const candidate = await blendLocalPatch(boardPng, region, patch, usable);
+  return { usable, candidate, report, region, compositionPermission };
 }

@@ -124,7 +124,11 @@ describe("catalog 8 preserves the approved illustrated face and hair", () => {
 
   it("sends one cheap LOW review with serial scene context and canonical portrait, not a five-child view", async () => {
     const { sheet, portrait } = await fixtureSheet();
-    const hides = ["a", "b", "c", "d", "e"].map(hideId => ({ hideId, beforePng: portrait, afterPng: portrait }));
+    const closeupPng = await sharp(portrait).extract({ left: 64, top: 48, width: 384, height: 384 }).png().toBuffer();
+    const afterEvidencePng = await sharp({ create: { width: 512 + 24 + 384, height: 512, channels: 4, background: "white" } })
+      .composite([{ input: portrait, left: 0, top: 0 }, { input: closeupPng, left: 536, top: 0 }]).png().toBuffer();
+    const hides = ["a", "b", "c", "d", "e"].map(hideId => ({ hideId, beforePng: portrait, afterPng: portrait,
+      closeupPng, afterEvidencePng }));
     const request = { contentVersion: 8, boardId: "tokyo", boardPng: sheet, identityPng: portrait, hides };
     const prompt = localPatchBoardJudgePrompt(request);
     expect(prompt).toContain("ORIGINAL whole-board context");
@@ -140,6 +144,16 @@ describe("catalog 8 preserves the approved illustrated face and hair", () => {
     expect(body).toMatchObject({ model: "gpt-5.6-luna", reasoning_effort: "low", max_completion_tokens: 3000 });
     expect(body.messages[0].content).toHaveLength(13);
     expect(body.messages[0].content[2].image_url.url).toBe(`data:image/png;base64,${portrait.toString("base64")}`);
+    const wireImages = body.messages[0].content.filter((item: { type: string }) => item.type === "image_url");
+    expect(wireImages).toHaveLength(12);
+    for (let i = 0; i < hides.length; i++) {
+      expect(wireImages[2 + i * 2].image_url.url).toBe(`data:image/png;base64,${portrait.toString("base64")}`);
+      expect(wireImages[3 + i * 2].image_url.url).toBe(`data:image/png;base64,${afterEvidencePng.toString("base64")}`);
+    }
+    expect((await rgba(await sharp(afterEvidencePng).extract({ left: 0, top: 0, width: 512, height: 512 }).png().toBuffer()))
+      .equals(await rgba(portrait))).toBe(true);
+    expect((await rgba(await sharp(afterEvidencePng).extract({ left: 536, top: 0, width: 384, height: 384 }).png().toBuffer()))
+      .equals(await rgba(closeupPng))).toBe(true);
     expect(Object.values(result.verdicts).every(v => localPatchQualityDisposition(v).state === "acceptable")).toBe(true);
   });
 });

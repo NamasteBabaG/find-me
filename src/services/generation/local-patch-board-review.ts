@@ -2,7 +2,7 @@ import sharp from "sharp";
 import type { Prisma, Asset, TargetVariantAsset } from "@prisma/client";
 import type { Container } from "../container";
 import { SpriteRefSchema } from "../../domain/game/config";
-import { cropOf, type LocalPatchHide } from "../../domain/scene/local-patch-hides";
+import { cropOf, maskForHide, type LocalPatchHide } from "../../domain/scene/local-patch-hides";
 import { isLocalPatchAdvisoryVersion, isLocalPatchStrictVersion, localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
 import { LOCAL_PATCH_MAX_ATTEMPTS } from "../../domain/scene/local-patch-attempts";
 import { CURRENT_JUDGE_PRICING_VERSION, judgeCharge } from "../../infra/generation/judge";
@@ -12,7 +12,7 @@ import { requireBoardWizardIdentityApproval } from "./board-wizard-identity-gate
 import { prepareLocalPatchIdentityReferences } from "./local-patch-identity-reference";
 import { fenceLocalPatchImages, LocalPatchRetainedPurchaseStore } from "./local-patch-lifecycle";
 import { LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, readShippedBoardArt } from "./local-patch-hide";
-import { localPatchBoardJudgeSettings, localPatchQualityDisposition, isTheModelWeAsked, judgeLocalPatchBoard, localPatchBoardJudgePrompt, parseLocalPatchBoardVerdicts,
+import { localPatchBoardJudgeSettings, localPatchQualityDisposition, isTheModelWeAsked, judgeLocalPatchBoard, localPatchBoardJudgePrompt, localPatchBoardJudgeImages, parseLocalPatchBoardVerdicts,
   type LocalPatchBoardJudgeRequest, type LocalPatchBoardJudgeResult } from "./local-patch-judge";
 import { localPatchPublicationGeometryHash, recordLocalPatchPublicationPolicy } from "./local-patch-publication-policy";
 import { LOCAL_PATCH_PHASE_MARGIN_MS, LOCAL_PATCH_MIN_PROVIDER_MS } from "./local-patch-render";
@@ -20,14 +20,17 @@ import { purchaseOnce } from "./paid-operation";
 import { sha256Bytes } from "./fixed-sprite";
 import { sceneBySlug } from "../scene-catalog.service";
 import type { BudgetJson } from "./world-budget";
+import { LOCAL_PATCH_COMPOSITION_VERSION, LOCAL_PATCH_RETURN_GUARD } from "./local-patch-seam";
 
 export const LOCAL_PATCH_BOARD_REVIEW_VERSION = "local-patch-board-five-luna-low/v1";
-export const LOCAL_PATCH_STRICT_BOARD_REVIEW_VERSION = "local-patch-board-five-quality/v2";
+export const LOCAL_PATCH_STRICT_BOARD_REVIEW_VERSION = "local-patch-board-five-quality/v3-head-safe";
 export const LOCAL_PATCH_REVIEW_CONTEXT_PX = 64;
-export const localPatchBoardReviewKey = (boardId: string, attempts?: readonly number[]) => {
+export const LOCAL_PATCH_REVIEW_CLOSEUP_GUARD_PX = LOCAL_PATCH_RETURN_GUARD;
+export const localPatchBoardReviewKey = (boardId: string, attempts?: readonly number[], compositionVersion: string | null = LOCAL_PATCH_COMPOSITION_VERSION) => {
   if (!attempts) return `board:${boardId}:five-review:1`;
   if (attempts.length !== 5 || attempts.some(n => !Number.isInteger(n) || n < 1 || n > LOCAL_PATCH_MAX_ATTEMPTS)) throw new Error("Invalid board-review attempt revision");
-  return `board:${boardId}:five-review:v8:${attempts.join("-")}`;
+  if (compositionVersion !== null && compositionVersion !== LOCAL_PATCH_COMPOSITION_VERSION) throw new Error("Unsupported board-review composition revision");
+  return `board:${boardId}:five-review:v8:${attempts.join("-")}${compositionVersion === null ? "" : `:${compositionVersion.replaceAll("/", ".")}`}`;
 };
 /** All bounded candidates, including a paid reply retained before its row commit. */
 export function localPatchBoardReviewKeys(boardId: string): string[] {
@@ -36,7 +39,7 @@ export function localPatchBoardReviewKeys(boardId: string): string[] {
     const prior = vectors.splice(0);
     for (const vector of prior) for (let attempt = 1; attempt <= LOCAL_PATCH_MAX_ATTEMPTS; attempt++) vectors.push([...vector, attempt]);
   }
-  return [localPatchBoardReviewKey(boardId), ...vectors.map(vector => localPatchBoardReviewKey(boardId, vector))];
+  return [localPatchBoardReviewKey(boardId), ...vectors.flatMap(vector => [localPatchBoardReviewKey(boardId, vector, null), localPatchBoardReviewKey(boardId, vector)])];
 }
 const hash = (value: unknown) => sha256Bytes(Buffer.from(JSON.stringify(value)));
 function demand(value: unknown, message: string): asserts value { if (!value) throw new Error(`LOCAL_PATCH_BOARD_REVIEW: ${message}`); }
@@ -102,6 +105,9 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
       && completed.judgedSha256 === imageSha256 && completed.geometrySha256 === geometrySha256
       && ["pending-board-review", "board-review-complete"].includes(String(completed.reviewState)),
     "Shipping image or geometry no longer matches its render-completion binding");
+    if (strict && completed.compositionVersion !== LOCAL_PATCH_COMPOSITION_VERSION) return {
+      state: "pending", reason: "Retained image awaits the current head-safe compositor", costCents: 0, replayed: false,
+    };
     const dimensions = await sharp(bytes, { limitInputPixels: 8_294_400 }).metadata();
     demand(dimensions.width === crop.width && dimensions.height === crop.height && (dimensions.pages ?? 1) === 1, "Patch raster differs from its shipping rectangle");
     const sprite = SpriteRefSchema.parse({ kind: "image", url: "https://example.invalid/retained.png", width: asset.width, height: asset.height,
@@ -129,13 +135,33 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
       const afterPng = strict ? await sharp(beforePng).composite([{ input: e.bytes,
         left: e.crop.left - context.left, top: e.crop.top - context.top }]).png().toBuffer()
         : await sharp(composed).extract(e.crop).png().toBuffer();
-      return { hideId: e.hide.id, beforePng, afterPng, expectation: { ageYears: child.ageYears, support: `${e.hide.pose} on ${board.ground}` } };
+      let closeupPng: Buffer | undefined, afterEvidencePng: Buffer | undefined;
+      if (strict) {
+        const mask = maskForHide(e.hide), guard = LOCAL_PATCH_REVIEW_CLOSEUP_GUARD_PX;
+        const detailLeft = e.crop.left + Math.max(0, mask.left - guard), detailTop = e.crop.top + Math.max(0, mask.top - guard);
+        const detail = { left: detailLeft, top: detailTop,
+          width: e.crop.left + Math.min(e.crop.width, mask.left + mask.width + guard) - detailLeft,
+          height: e.crop.top + Math.min(e.crop.height, mask.top + mask.height + guard) - detailTop };
+        // Native pixels: no resizing and no generated sibling can mask a flat
+        // scalp cut. Extract the actual serial player image, not the raw render.
+        closeupPng = await sharp(e.bytes).extract({ left: detail.left - e.crop.left, top: detail.top - e.crop.top,
+          width: detail.width, height: detail.height }).png().toBuffer();
+        // Keep the same bounded twelve-image wire. The right panel repeats the
+        // native head region for deliberate inspection; neither panel is scaled.
+        afterEvidencePng = await sharp({ create: { width: context.width + 24 + detail.width,
+          height: Math.max(context.height, detail.height), channels: 4, background: "white" } }).composite([
+          { input: afterPng, left: 0, top: 0 }, { input: closeupPng, left: context.width + 24, top: 0 },
+        ]).png().toBuffer();
+      }
+      return { hideId: e.hide.id, beforePng, afterPng, ...(closeupPng && afterEvidencePng ? { closeupPng, afterEvidencePng } : {}),
+        expectation: { ageYears: child.ageYears, support: `${e.hide.pose} on ${board.ground}` } };
     })),
   };
   const fingerprint = hash({ version: reviewVersion, sceneId: scene.id, contentVersion: scene.sceneVersion,
     settings, prompt: localPatchBoardJudgePrompt(request),
     identitySha256: sha256Bytes(sheet), originalSha256: sha256Bytes(before), composedSha256: sha256Bytes(composed),
-    wireHashes: [request.boardPng, request.identityPng, ...request.hides.flatMap(h => [h.beforePng, h.afterPng])].map(sha256Bytes),
+    wireHashes: localPatchBoardJudgeImages(request).map(sha256Bytes),
+    ...(strict ? { compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION } : {}),
     hides: entries.map(e => ({ hide: e.hide.id, target: e.row.targetInstanceId, attempts: e.row.attempts, asset: e.asset.id,
       imageSha256: e.imageSha256, geometrySha256: e.geometrySha256 })),
   });
@@ -177,8 +203,9 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
       const disposition = dispositions[index]!;
       const judgeJson = JSON.stringify({ ...prior, reviewState: "board-review-complete", verdict: verdicts[e.hide.id] ?? null,
         wireFault: keep.wireFault ?? (verdicts[e.hide.id] ? null : "schema"), judgedSha256: e.imageSha256,
-        ...(strict ? { qualityDisposition: disposition } : {}),
+        ...(strict ? { qualityDisposition: disposition, compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION } : {}),
         boardReview: { version: reviewVersion, fingerprint, requestKey, composedSha256: sha256Bytes(composed),
+          ...(strict ? { compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION, wireHashes: localPatchBoardJudgeImages(request).map(sha256Bytes) } : {}),
           model: keep.model, effort: settings.effort, raw: keep.raw, costMicroUsd: bought.evidence.amountMicroUsd },
       });
       const rejected = disposition.state !== "acceptable";

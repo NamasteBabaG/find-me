@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { describe, expect, it, vi } from "vitest";
-import { LOCAL_PATCH_CROP, POSE_MASK, cropOf, maskInCrop, type LocalPatchBoard, type LocalPatchHide } from "../../../domain/scene/local-patch-hides";
+import { LOCAL_PATCH_CROP, POSE_MASK, cropOf, maskForHide, maskInCrop, type LocalPatchBoard, type LocalPatchHide } from "../../../domain/scene/local-patch-hides";
 import { LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, localPatchPrompt } from "../local-patch-prompt";
 import { localPatchBoardsForVersion } from "../../../domain/scene/local-patch-catalog";
 import { RETAINED_PURCHASE_VERSION, retainedPayloadDigest } from "../paid-operation";
@@ -97,6 +97,48 @@ async function attempt(deps: LocalPatchRenderDeps, over: Record<string, unknown>
 }
 
 describe("one paid attempt at one hide", () => {
+  it("freely re-evaluates a retained v8 one-pixel boundary under its exact existing paid fingerprint, without claiming visual approval", async () => {
+    const w = world(), strictBoard = localPatchBoardsForVersion(8)[0]!, strictHide = strictBoard.hides[0]!, crop = cropOf(strictHide);
+    const width = crop.width + 1, height = crop.height, bytes = Buffer.alloc(width * height * 4);
+    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4, tone = Math.round(128 + 45 * Math.sin(x / 3) + 35 * Math.sin(y / 4));
+      bytes[i] = tone; bytes[i + 1] = tone; bytes[i + 2] = tone; bytes[i + 3] = 255;
+    }
+    const texture = await sharp(bytes, { raw: { width, height, channels: 4 } }).png().toBuffer();
+    const composed = await sharp(await boardPng()).composite([{ input: texture, left: crop.left, top: crop.top }]).png().toBuffer();
+    const stylePng = await sharp(composed).extract(crop).png().toBuffer();
+    const shifted = await sharp(composed).extract({ ...crop, left: crop.left + 1 }).png().toBuffer();
+    const identityPng = await small(), boardPeoplePng = await small(), canonicalIdentityPng = await small(), maskPng = await poseMask(strictHide);
+    const prompt = localPatchPrompt({ ground: strictBoard.ground, pose: strictHide.pose, ageYears: 8, boardPeopleReference: true,
+      wardrobe: strictBoard.wardrobe, placement: strictHide.placement, mask: maskForHide(strictHide), contentVersion: 8 });
+    const digest = (value: Buffer) => createHash("sha256").update(value).digest("hex");
+    // The deployed pre-tolerance operation, computed independently. Post-render
+    // qualification must not change this paid request or ask for a second image.
+    const historicalFingerprint = digest(Buffer.from(JSON.stringify({
+      version: "local-patch-prompt/v9-canonical-face", hide: strictHide.id, pose: strictHide.pose, crop,
+      prompt: digest(Buffer.from(prompt)), style: digest(stylePng), identity: digest(identityPng), mask: digest(maskPng),
+      boardPeople: digest(boardPeoplePng), canonicalIdentity: digest(canonicalIdentityPng), composition: "bounded-return/v1",
+      policy: "p".repeat(64), retained: "local-patch-render/v1",
+    })));
+    const worldId = "game-1:local-patch", requestKey = `${strictHide.id}:${strictHide.pose}:render:1`;
+    const payload = Buffer.from(JSON.stringify({ version: "local-patch-render/v1", bytesBase64: shifted.toString("base64"), rejected: null }));
+    const seed = w.process().deps;
+    await seed.ledger.reserve(worldId, { requestKey, scope: "image", operationFingerprint: historicalFingerprint, reserveMicroUsd: LOCAL_PATCH_RESERVE.renderMicroUsd });
+    await seed.store.put(worldId, requestKey, { version: RETAINED_PURCHASE_VERSION, worldId, requestKey, scope: "image", operationFingerprint: historicalFingerprint,
+      payloadSha256: retainedPayloadDigest(payload), evidence: evidence("retained-before-tolerance"), unknownReason: null, bytes: payload });
+    expect(w.rows.get(w.at(worldId, requestKey))?.state).toBe("pending"); // Crash before settlement, not a fresh operation.
+    const next = w.process(), refs = { contentVersion: 8, board: strictBoard, hide: strictHide, composedPng: composed, identityPng, boardPeoplePng, canonicalIdentityPng };
+    const result = await attempt(next.deps, refs);
+    expect(result).toMatchObject({ accepted: true, compositionPermission: "one-pixel-tolerance", seam: { verdict: "misaligned", shift: { dx: -1, dy: 0 } },
+      verdict: null, judgeCents: 0, renderCents: 4.88, replayed: true, costUnknown: false });
+    expect(next.dispatched).toEqual([]);
+    expect(w.rows.size).toBe(1); expect(w.rows.get(w.at(worldId, requestKey))?.state).toBe("settled");
+    const fresh = w.process(), replay = await attempt(fresh.deps, refs);
+    expect(fresh.dispatched).toEqual([]);
+    expect(replay.shippingPng!.equals(result.shippingPng!)).toBe(true);
+    expect(replay.compositionPermission).toBe("one-pixel-tolerance");
+  });
+
   it("v8 rejects a broken seam after keeping its billed image, without a judge or a duplicate purchase", async () => {
     const w = world(), p = w.process();
     const strictBoard = localPatchBoardsForVersion(8)[0]!;

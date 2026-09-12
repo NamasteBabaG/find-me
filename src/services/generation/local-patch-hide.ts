@@ -361,7 +361,8 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
       costCents: Math.round(row.costCents + attemptResult.renderCents + attemptResult.judgeCents),
       rejectedAssetIdsJson: rejectedIds.length ? JSON.stringify(rejectedIds) : null,
       judgeJson: JSON.stringify({ verdict: attemptResult.verdict, wireFault: attemptResult.wireFault, seam: attemptResult.seam, promptVersion: attemptResult.promptVersion,
-        ...(isLocalPatchStrictVersion(scene.sceneVersion) ? { renderFault: attemptResult.renderFault, hide: hide.id, pose: hide.pose } : {}) }),
+        ...(isLocalPatchStrictVersion(scene.sceneVersion) ? { renderFault: attemptResult.renderFault, compositionPermission: attemptResult.compositionPermission,
+          compositionVersion: attemptResult.compositionVersion, hide: hide.id, pose: hide.pose } : {}) }),
       } });
     });
     const exhaustedNow = attempt >= attemptLimit;
@@ -372,7 +373,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   const shipping = attemptResult.shippingPng;
   // Measured against the board this crop was cut from, so "what changed" means
   // what the painter added rather than what a neighbour did.
-  const measured = await localPatchGeometry({ hide, boardPng: artwork, patchPng: shipping, board: art });
+  const measured = await localPatchGeometry({ hide, boardPng: artwork, patchPng: shipping, board: art, contentVersion: scene.sceneVersion });
 
   const crop = cropOf(hide);
   const assetId = pictureId(gameId, hide.id, attemptResult.judgedSha256);
@@ -396,6 +397,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
       headAnchorJson: JSON.stringify(measured.geometry.anchor),
     };
     const judgeJson = JSON.stringify({ verdict: attemptResult.verdict, seam: attemptResult.seam, judgedSha256: attemptResult.judgedSha256,
+      ...(isLocalPatchStrictVersion(scene.sceneVersion) ? { compositionPermission: attemptResult.compositionPermission, compositionVersion: attemptResult.compositionVersion } : {}),
       ...(isLocalPatchAdvisoryVersion(scene.sceneVersion) ? { wireFault: attemptResult.wireFault, reviewState: "pending-board-review", geometrySha256: localPatchPublicationGeometryHash(geometry) } : {}),
       geometryBasis: measured.basis, measuredFraction: Number(measured.measuredFraction.toFixed(4)), hide: hide.id, pose: hide.pose });
     await tx.targetVariantAsset.update({ where: { id: row.id }, data: {
