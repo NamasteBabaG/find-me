@@ -58,14 +58,14 @@ export const localPatchVerdictSchema = z.object({
    * picture was simply wrong in the one way the game cannot survive, since a
    * player finds her twice and the second one never clears.
    */
-  childOnlyOnce: check.describe("she appears exactly once - no second copy of the same child anywhere in the picture"),
+  childOnlyOnce: check.describe("the child appears exactly once - no second copy of the same child anywhere in the picture"),
   /**
    * Occlusion is the point, not a defect. The whole look the product is after is
    * a child standing behind a market stall or a passer-by with part of her out of
    * sight, so "whole" means nothing of her is missing or sliced off - not that
    * all of her is visible.
    */
-  childComplete: check.describe("she is drawn whole: nothing of her is sliced off or missing, though she may be partly hidden behind something in front of her"),
+  childComplete: check.describe("the child is drawn whole: no part is sliced off or missing, though the child may be partly hidden behind something in front of them"),
   /**
    * The one check that replaced three. `replacementClean`, `noOrphans` and the
    * seam half of `sceneDrift` were all asking the same thing in different words -
@@ -73,8 +73,8 @@ export const localPatchVerdictSchema = z.object({
    * asking something the product does not care about.
    */
   pictureWhole: check.describe("nothing in the picture is broken or half-drawn: no body without a head, no limb with no owner, no hand closed on nothing, no floating prop, no smear, no hard rectangular edge"),
-  scaleRight: check.describe("her height matches children of HER OWN AGE at that depth, not the toddlers near her"),
-  groundContact: check.describe("she rests on whatever holds her - feet, knees or seat - with a contact shadow, not floating"),
+  scaleRight: check.describe("the child's height matches children of THEIR OWN AGE at that depth, not the toddlers nearby"),
+  groundContact: check.describe("the child rests on whatever holds them - feet, knees or seat - with a contact shadow, not floating"),
   styleMatch: check.describe("drawn in the same illustration style, light and saturation"),
   verdict: z.enum(["pass", "fail", "unsure"]),
   reason: z.string().trim().min(1).max(400),
@@ -169,8 +169,8 @@ export function localPatchJudgePrompt(hideId: string, expectation: LocalPatchExp
   // standing eight-year-old by default, which is how a good kneeling render and
   // a genuinely small child came out the same.
   const asked = [
-    expectation.support ? `She was asked to rest ${expectation.support}; judge groundContact against THAT and nothing else.` : "",
-    expectation.ageYears != null ? `The parent states she is ${expectation.ageYears} years old; judge scaleRight against children of about that age at her depth, never against the toddlers.` : "",
+    expectation.support ? `The child was asked to rest ${expectation.support}; judge groundContact against THAT and nothing else.` : "",
+    expectation.ageYears != null ? `The parent states the child is ${expectation.ageYears} years old; judge scaleRight against children of about that age at the child's depth, never against the toddlers.` : "",
   ].filter(Boolean);
   return [
     `You are checking ONE hiding place in a children's hidden-object picture, called "${hideId}".`,
@@ -178,21 +178,21 @@ export function localPatchJudgePrompt(hideId: string, expectation: LocalPatchExp
     "",
     "Judge the AFTER image on its own, as a picture. BEFORE is there only to show you the drawing style, the light, and how tall people are at each depth.",
     "DO NOT hunt for differences from BEFORE. If somebody who was in BEFORE has moved, gone, been repainted, or somebody new is there, that is NOT a fault and you must not report it. Nobody sees BEFORE.",
-    "A child who was standing where she now stands MAY have been replaced completely; that is allowed. What is not allowed is a picture left broken.",
+    "A child who was standing where the reference child now stands MAY have been replaced completely; that is allowed. What is not allowed is a picture left broken.",
     "",
     "Answer each of these with pass, fail or unsure:",
     "childPresent - the child from the reference portrait is genuinely in the picture, not merely some child",
-    "childOnlyOnce - she is in the picture EXACTLY ONCE. Look for a second child with the same face, hair and clothes anywhere in the frame, in any pose; two of her is a fail even when both are beautifully drawn. Other children who simply resemble her are fine",
-    "childComplete - she is drawn whole. Being partly hidden BEHIND a person, a stall or anything else in front of her is correct and wanted, and is not a fault; a fault is a piece of her simply missing, or her body sliced off by a straight edge that is not an object",
+    "childOnlyOnce - the reference child is in the picture EXACTLY ONCE. Look for a second child with the same face, hair and clothes anywhere in the frame, in any pose; two copies of the reference child is a fail even when both are beautifully drawn. Other children who simply resemble the reference child are fine",
+    "childComplete - the child is drawn whole. Being partly hidden BEHIND a person, a stall or anything else in front of them is correct and wanted, and is not a fault; a fault is a piece of the child simply missing, or their body sliced off by a straight edge that is not an object",
     "pictureWhole - looking only at AFTER: nothing in the picture is broken or half-drawn. No body without a head, no arm or leg belonging to nobody, no hand closed around nothing, no bag or bucket floating with no one holding it, no smeared patch, no hard rectangular edge cutting across the ground or a wall",
-    "scaleRight - her height matches other children of HER OWN AGE standing at that same depth; the smallest toddler beside her is not the ruler",
-    "groundContact - she rests on whatever holds her, with a painted contact shadow where she meets it, and is not floating",
-    "styleMatch - she is drawn in the same illustration style, light and saturation as the people around her",
+    "scaleRight - the child's height matches other children of THEIR OWN AGE standing at that same depth; the smallest toddler nearby is not the ruler",
+    "groundContact - the child rests on whatever holds them, with a painted contact shadow where their body meets it, and is not floating",
+    "styleMatch - the child is drawn in the same illustration style, light and saturation as the people around them",
     ...(asked.length ? ["", "WHAT WAS ASKED FOR:", ...asked] : []),
     "",
     "Then give an overall verdict: pass only if childPresent, childOnlyOnce, childComplete and pictureWhole are all pass and nothing else is fail. Use unsure when you genuinely cannot tell.",
     "",
-    "For EVERY check you mark fail, add an entry to faults saying exactly where it is in the AFTER image, in plain words a person could follow - \"a bare foot beside her left ankle\", \"a hard vertical edge down the sand to her right\". If you cannot point at it, the check is not a fail; mark it unsure instead.",
+    "For EVERY check you mark fail, add an entry to faults saying exactly where it is in the AFTER image, in plain words a person could follow - \"a bare foot beside the child's left ankle\", \"a hard vertical edge down the sand to the child's right\". If you cannot point at it, the check is not a fail; mark it unsure instead.",
     `Every entry in faults MUST set "check" to one of these exact names: ${JUDGE_CHECKS.join(", ")}. If what you noticed belongs to none of them - a bystander who moved, a colour you would have chosen differently - it is not a fault at all: leave it out of faults and mention it in reason instead.`,
     "Reply with JSON only, with exactly these keys: childPresent, childOnlyOnce, childComplete, pictureWhole, scaleRight, groundContact, styleMatch, verdict, reason, faults.",
     "Keep reason under 300 characters and say what you actually saw.",

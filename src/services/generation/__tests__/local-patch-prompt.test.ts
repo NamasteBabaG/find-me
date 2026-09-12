@@ -6,21 +6,21 @@ describe("what the painter is told for one local patch", () => {
   it("names the pose it wants and how that body meets the ground", () => {
     const kneeling = localPatchPrompt({ ground: "beach sand", pose: "kneeling", ageYears: 8 });
     expect(kneeling).toMatch(/KNEELING on the ground/);
-    expect(kneeling).toMatch(/her knees and shins on the ground/);
+    expect(kneeling).toMatch(/their knees and shins on the ground/);
     // The shadow clause has to follow the pose, or a kneeling child gets a
     // shadow drawn under feet that are folded away underneath her.
     expect(kneeling).not.toMatch(/both feet on the ground/);
 
     const sitting = localPatchPrompt({ ground: "market sand", pose: "sitting-cross-legged" });
-    expect(sitting).toMatch(/SITTING ON THE GROUND with her legs crossed/);
-    expect(sitting).toMatch(/her crossed legs and seat on the ground/);
+    expect(sitting).toMatch(/SITTING ON THE GROUND with their legs crossed/);
+    expect(sitting).toMatch(/their crossed legs and seat on the ground/);
   });
 
   it("tells it not to resize her to fill whatever box it was given", () => {
     // The mask is shaped for the pose, so the two must not fight: a standing box
     // around a kneeling child is how she came back standing.
     expect(localPatchPrompt({ ground: "snow", pose: "crouching" }))
-      .toMatch(/do not stand her up to fill a tall box, and do not shrink her to sit inside a short one/);
+      .toMatch(/do not stand them up to fill a tall box, and do not shrink them to sit inside a short one/);
   });
 
   it("states the age the parent gave, and says who not to measure her against", () => {
@@ -55,6 +55,20 @@ describe("what the painter is told for one local patch", () => {
       expect(POSE_MASK[pose].height).toBeGreaterThan(0);
     }
     expect(LOCAL_PATCH_PROMPT_VERSION).toMatch(/^local-patch-prompt\/v\d+$/);
+    expect(LOCAL_PATCH_PROMPT_VERSION).toBe("local-patch-prompt/v6");
+  });
+
+  it.each(LocalPatchPose.options)("preserves the reference child's presentation without assuming gender in %s", pose => {
+    const wording = LOCAL_PATCH_POSE_WORDING[pose];
+    const prompt = localPatchPrompt({ ground: "beach sand", pose, ageYears: 8 });
+    for (const text of [wording.instruction, wording.support, prompt]) {
+      expect(text).not.toMatch(/\b(?:she|her|hers|girl|girls|he|him|his|boy|boys)\b/i);
+    }
+    expect(prompt).toContain("Preserve the reference child's presentation, hairstyle and outfit cues");
+    expect(prompt).toContain("age-appropriate everyday child clothing");
+    expect(prompt).toContain("not adult fashions, mature styling or makeup");
+    expect(prompt).toContain("Do not infer gender from a name");
+    expect(prompt).toContain("8 years old");
   });
 
   it("gives a lower pose a shorter box that still sits on the same ground line", () => {
