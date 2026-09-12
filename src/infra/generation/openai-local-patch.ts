@@ -70,6 +70,14 @@ export type LocalPatchRenderInput = {
   readonly stylePng: Buffer;
   readonly identityPng: Buffer;
   readonly maskPng: Buffer;
+  /**
+   * What is left of the caller's request, when it has a deadline.
+   *
+   * The paint gets the SMALLER of this and its own allowance, so a call can
+   * never outlive the request paying for it - which is what keeps the answer
+   * and the writing down of the answer on the same side of the host's timeout.
+   */
+  readonly timeoutMs?: number;
 };
 
 /**
@@ -144,7 +152,9 @@ export async function buyLocalPatch(apiKey: string, input: LocalPatchRenderInput
   readonly policy?: FixedSourcePolicy;
   readonly fetchOnce?: typeof fetch;
 } = {}): Promise<LocalPatchPurchase> {
-  const policy = options.policy ?? LOCAL_PATCH_IMAGE_POLICY;
+  const chosen = options.policy ?? LOCAL_PATCH_IMAGE_POLICY;
+  const policy: FixedSourcePolicy = input.timeoutMs === undefined ? chosen
+    : { ...chosen, timeoutMs: Math.max(1_000, Math.min(chosen.timeoutMs, input.timeoutMs)) };
   // The crop goes as the reference at its own size - references are capped at
   // 1024 square and 512x768 is inside that. Only the OUTPUT is asked for larger.
   const identityPng = await sharp(input.identityPng).resize(1024, 1024, { fit: "inside" }).png().toBuffer();

@@ -59,6 +59,8 @@ export type LocalPatchRenderDeps = {
   readonly render: (input: {
     readonly worldId: string; readonly requestKey: string; readonly prompt: string;
     readonly stylePng: Buffer; readonly identityPng: Buffer; readonly maskPng: Buffer;
+    /** What is left of the caller's request. An adapter that ignores it can outlive it. */
+    readonly timeoutMs?: number;
   }) => Promise<LocalPatchPurchase>;
   /** Overridable so a test can answer without a network. */
   readonly judge?: (request: LocalPatchJudgeRequest) => Promise<LocalPatchJudgeResult>;
@@ -207,8 +209,10 @@ async function viewAround(png: Buffer, crop: { left: number; top: number; width:
  * one a restart reaches differently. A refused render keeps its bytes here as
  * evidence, and every later pass reads the same refusal for free.
  */
+export const RETAINED_RENDER_VERSION = "local-patch-render/v1";
+
 type RetainedRender = {
-  readonly version: "local-patch-render/v1";
+  readonly version: typeof RETAINED_RENDER_VERSION;
   /** Base64 of what came back, whether it may be drawn or not. */
   readonly bytesBase64: string | null;
   /** Null when the bytes are a usable patch; why not, otherwise. */
@@ -260,27 +264,30 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
     version: LOCAL_PATCH_PROMPT_VERSION, hide: hide.id, pose: hide.pose, crop,
     prompt: sha(Buffer.from(prompt)), style: sha(stylePng), identity: sha(input.identityPng), mask: sha(maskPng),
     policy: deps.renderPolicySha256,
+    // The SHAPE of what is kept, not only what was bought. A record written
+    // before this envelope existed would otherwise be read under this same
+    // fingerprint and come out "cannot be read" - a good paid picture called a
+    // bad one. A different shape is a different operation, which is a thing for
+    // a person rather than a verdict.
+    retained: RETAINED_RENDER_VERSION,
   });
 
-  // Nothing has been dispatched yet, so there is nothing to lose by stopping -
-  // and everything to lose by starting a render this request cannot outlive.
-  const wouldDispatch = async (key: string) => {
-    const row = await deps.ledger.readRequest(worldId, key);
-    return !row || row.state === "pending";
+  // The window goes INTO the purchase, not around it: a replay costs no time and
+  // needs no check, and a dispatch is refused by the thing that reserves for it.
+  const windowFor = (timeoutMs: number) => input.deadlineAt === undefined ? undefined : {
+    deadlineAt: input.deadlineAt, needMs: timeoutMs + LOCAL_PATCH_PHASE_MARGIN_MS, retainMs: LOCAL_PATCH_PHASE_MARGIN_MS,
   };
-  const timeFor = (ms: number) => input.deadlineAt === undefined || input.deadlineAt - Date.now() >= ms + LOCAL_PATCH_PHASE_MARGIN_MS;
-  if (!timeFor(LOCAL_PATCH_IMAGE_TIMEOUT_MS) && await wouldDispatch(renderKey)) {
-    return deferred(`${renderKey}: not enough of this request is left to paint and keep a patch`);
-  }
 
   const bought = await purchaseOnce(deps, {
+    ...(windowFor(LOCAL_PATCH_IMAGE_TIMEOUT_MS) ? { dispatchWindow: windowFor(LOCAL_PATCH_IMAGE_TIMEOUT_MS)! } : {}),
     worldId, requestKey: renderKey, scope: "image",
     operationFingerprint: renderFingerprint, reserveMicroUsd: LOCAL_PATCH_RESERVE.renderMicroUsd,
-    buy: async () => {
-      const result = await deps.render({ worldId, requestKey: renderKey, prompt, stylePng, identityPng: input.identityPng, maskPng });
+    buy: async ({ timeoutMs }) => {
+      const result = await deps.render({ worldId, requestKey: renderKey, prompt, stylePng, identityPng: input.identityPng, maskPng,
+        ...(timeoutMs === null ? {} : { timeoutMs }) });
       const kept = result.png ?? result.quarantined;
       const keep: RetainedRender = {
-        version: "local-patch-render/v1",
+        version: RETAINED_RENDER_VERSION,
         bytesBase64: kept ? kept.toString("base64") : null,
         rejected: result.rejected,
       };
@@ -293,6 +300,7 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
         : { bytes, unknownReason: result.unknownReason ?? "the provider answered and its charge was never stated" };
     },
   });
+  if (bought.kind === "deferred") return deferred(bought.reason);
   if (bought.kind !== "bought") return stopped(bought.reason);
 
   const renderCents = bought.evidence.amountMicroUsd / 10_000;
@@ -326,19 +334,14 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
     before: sha(beforePng), after: sha(afterPng), identity: sha(input.judgeIdentityPng),
   });
 
-  // The render is bought and kept. If judging it cannot finish inside what is
-  // left, this slice ends here and the next one starts at the judgement - the
-  // picture is retained, so nothing is painted twice.
-  if (!timeFor(LOCAL_PATCH_JUDGE.timeoutMs) && await wouldDispatch(judgeKey)) {
-    return deferred(`${judgeKey}: the patch is kept, and there is not enough of this request left to judge it`, renderCents);
-  }
-
   const ask = deps.judge ?? ((request: LocalPatchJudgeRequest) => judgeLocalPatch(input.apiKey, request));
   const judged = await purchaseOnce(deps, {
     worldId, requestKey: judgeKey, scope: "judge",
     operationFingerprint: judgeFingerprint, reserveMicroUsd: LOCAL_PATCH_RESERVE.judgeMicroUsd,
-    buy: async () => {
-      const answer = await ask({ hideId: hide.id, beforePng, afterPng, identityPng: input.judgeIdentityPng, expectation });
+    ...(windowFor(LOCAL_PATCH_JUDGE.timeoutMs) ? { dispatchWindow: windowFor(LOCAL_PATCH_JUDGE.timeoutMs)! } : {}),
+    buy: async ({ timeoutMs }) => {
+      const answer = await ask({ hideId: hide.id, beforePng, afterPng, identityPng: input.judgeIdentityPng, expectation,
+        ...(timeoutMs === null ? {} : { timeoutMs }) });
       const keep: RetainedJudgement = {
         raw: answer.raw, usage: answer.usage, requestId: answer.requestId,
         model: answer.model, finishReason: answer.finishReason, wireFault: answer.wireFault,
@@ -369,6 +372,7 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
       };
     },
   });
+  if (judged.kind === "deferred") return deferred(judged.reason, renderCents);
   if (judged.kind !== "bought") return stopped(judged.reason, renderCents);
 
   // Re-derived from the retained reply, never read back from a stored verdict.

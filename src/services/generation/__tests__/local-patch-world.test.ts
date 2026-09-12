@@ -237,7 +237,7 @@ describe("a world of hides, one slice at a time", () => {
       const first = await runLocalPatchWorldSlice(c, slow.deps, gameId, { hardDeadlineAt: started + 290_000 });
       expect(slow.dispatched, "the judge must not be dispatched with no time to finish").toEqual(["sydney-1:standing:render:1"]);
       expect(first.outcomes[0]?.state).toBe("stopped");
-      expect(first.outcomes[0]?.reason).toMatch(/not enough of this request left to judge/);
+      expect(first.outcomes[0]?.reason).toMatch(/^sydney-1:standing:judge:1 was not dispatched/);
       // The attempt is NOT concluded and NOT charged an extra try.
       const [row] = await db.targetVariantAsset.findMany({ where: { targetInstance: { gameScene: { gameId } } } });
       expect(row?.status).toBe("PENDING");
@@ -267,7 +267,7 @@ describe("a world of hides, one slice at a time", () => {
       // Past the slice gate, short of what one paint plus keeping it needs.
       const result = await runLocalPatchWorldSlice(c, w.deps, gameId, { hardDeadlineAt: started + 250_000 });
       expect(w.dispatched).toEqual([]);
-      expect(result.outcomes[0]?.reason).toMatch(/not enough of this request is left to paint/);
+      expect(result.outcomes[0]?.reason).toMatch(/^sydney-1:standing:render:1 was not dispatched/);
       const [row] = await db.targetVariantAsset.findMany({ where: { targetInstance: { gameScene: { gameId } } } });
       expect(row?.status).toBe("PENDING");
       expect(row?.attempts, "a deferral must never cost an attempt").toBe(1);

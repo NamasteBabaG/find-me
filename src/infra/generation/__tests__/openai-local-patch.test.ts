@@ -117,6 +117,20 @@ describe("buying one local patch", () => {
     expect(result.quarantined?.equals(wrongSize)).toBe(true);
   }, 60_000);
 
+  it("gives up when the caller's request does, not four minutes later", async () => {
+    // A paint may take four minutes of its own and the request paying for it may
+    // have less than that left. Taking the smaller of the two is what keeps the
+    // answer and the writing down of the answer inside the same request.
+    const hang: typeof fetch = (async (_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+      init.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+    })) as unknown as typeof fetch;
+    const started = Date.now();
+    await expect(buyLocalPatch("sk-test-only", { ...request(), timeoutMs: 1_000 }, { fetchOnce: hang }))
+      .rejects.toThrow(/LOCAL_PATCH_PAINTER/);
+    // Its own allowance is four minutes; this must not have waited for it.
+    expect(Date.now() - started).toBeLessThan(30_000);
+  }, 20_000);
+
   it("is a different purchase when the settings change", () => {
     const base = localPatchRenderPolicySha256();
     expect(base).toMatch(/^[a-f0-9]{64}$/);

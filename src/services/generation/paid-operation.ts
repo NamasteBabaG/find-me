@@ -117,7 +117,20 @@ export type PurchaseOutcome =
    * `bytes` is present when the provider did answer and the result was kept -
    * an unpriceable bill does not throw the picture away.
    */
-  | { kind: "unresolved"; reason: string; bytes?: Buffer };
+  | { kind: "unresolved"; reason: string; bytes?: Buffer }
+  /**
+   * Nothing was dispatched and nothing was charged: this worker's request ends
+   * too soon to buy this and keep what it buys.
+   *
+   * `reserved` says whether a reservation was taken before that became clear.
+   * `false` is the ordinary case and is completely clean - the next tick starts
+   * from exactly where this one did. `true` is the pathological one, where the
+   * ledger itself took longer than the window: no charge happened, but the
+   * reservation is held and a person has to release it, because a ledger whose
+   * whole design is "never give back what might have been bought" is not one to
+   * teach a release path for a deadline.
+   */
+  | { kind: "deferred"; reason: string; reserved: boolean };
 
 export type PurchaseInput = {
   readonly worldId: string;
@@ -127,13 +140,33 @@ export type PurchaseInput = {
   readonly operationFingerprint: string;
   readonly reserveMicroUsd: number;
   /**
+   * How long this worker has, and what a dispatch needs of it.
+   *
+   * Checked HERE rather than by the caller, because between a caller deciding
+   * there is time and a provider actually being called there are ledger reads
+   * and a reservation - and a check that happens before all of that is a check
+   * that can be true when it is asked and false when it matters. Omitted when
+   * the caller has no deadline.
+   */
+  readonly dispatchWindow?: {
+    readonly deadlineAt: number;
+    /** The least a dispatch plus keeping its answer needs, before reserving. */
+    readonly needMs: number;
+    /** Room left after the call returns, for retaining it and settling. */
+    readonly retainMs: number;
+  };
+  /**
    * Dispatches to the provider. Called at most once per request key, ever.
+   *
+   * `timeoutMs` is what is left of the window at the moment of the call, minus
+   * the room to keep what comes back - null when there is no deadline. An
+   * adapter that ignores it can outlive the request that is paying for it.
    *
    * Returns the bill when it can state one, and `unknownReason` when it cannot:
    * an answer whose usage is missing or whose model has no rate is a charge that
    * happened and cannot be described, not a free one.
    */
-  readonly buy: () => Promise<{ bytes: Buffer; evidence: WorldChargeEvidence } | { bytes: Buffer; unknownReason: string }>;
+  readonly buy: (context: { readonly timeoutMs: number | null }) => Promise<{ bytes: Buffer; evidence: WorldChargeEvidence } | { bytes: Buffer; unknownReason: string }>;
 };
 
 const settledStates = new Set(["settled", "linked"]);
@@ -240,14 +273,35 @@ export async function purchaseOnce(
     return { kind: "in-progress", reason: `${requestKey} is reserved with nothing retained yet: either still in flight, or a dispatch that was lost` };
   }
 
+  // Before the money is reserved, not before the caller decided to ask: every
+  // read above this line takes time, and a window checked before them is a
+  // window that can close while they run. Nothing is reserved and nothing is
+  // marked - the next tick starts exactly where this one did.
+  const window = input.dispatchWindow;
+  if (window && window.deadlineAt - Date.now() < window.needMs) {
+    return { kind: "deferred", reserved: false, reason: `${requestKey} was not dispatched: this request ends too soon to buy it and keep what it buys` };
+  }
+
   const reserved = await deps.ledger.reserve(worldId, {
     requestKey, scope: input.scope, operationFingerprint: input.operationFingerprint, reserveMicroUsd: input.reserveMicroUsd,
   });
   if (!reserved.acquired) return { kind: "in-progress", reason: `${requestKey} is held by another worker` };
 
+  // And again at the dispatch itself. The reservation is a durable write and it
+  // can be slow; what the provider gets is what is ACTUALLY left, so the answer
+  // and the writing down of it both happen inside the request that paid for it.
+  let timeoutMs: number | null = null;
+  if (window) {
+    timeoutMs = window.deadlineAt - Date.now() - window.retainMs;
+    if (timeoutMs <= 0) {
+      return { kind: "deferred", reserved: true,
+        reason: `${requestKey} was reserved and NOT dispatched: the ledger itself outlasted the window, so no charge happened and the reservation needs releasing by hand` };
+    }
+  }
+
   let bought: Awaited<ReturnType<PurchaseInput["buy"]>>;
   try {
-    bought = await input.buy();
+    bought = await input.buy({ timeoutMs });
   } catch (error) {
     // Dispatched and lost by this worker, which DOES know its own call failed.
     const reason = `${requestKey} failed after dispatch: ${error instanceof Error ? error.message : String(error)}`;

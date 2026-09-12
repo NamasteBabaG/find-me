@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import { LOCAL_PATCH_CROP, POSE_MASK, maskInCrop, type LocalPatchBoard, type LocalPatchHide } from "../../../domain/scene/local-patch-hides";
+import { RETAINED_PURCHASE_VERSION, retainedPayloadDigest } from "../paid-operation";
 import { LOCAL_PATCH_RESERVE, poseMask, renderLocalPatchHide, type LocalPatchRenderDeps } from "../local-patch-render";
 import type { LocalPatchJudgeResult } from "../local-patch-judge";
 import type { PurchaseLedger, RetainedPurchase, RetainedPurchaseStore } from "../paid-operation";
@@ -212,6 +213,38 @@ describe("one paid attempt at one hide", () => {
       expect(again.dispatched, name).toEqual([]);
       expect(second.refusedBecause, name).toBe("stopped");
     }
+  }, 30_000);
+
+  it("will not read a record it cannot account for as a bad picture", async () => {
+    // The renderer retains an envelope now, where it used to retain the raw PNG.
+    // A record written in any other shape reaches this key with a DIFFERENT
+    // fingerprint - the shape is part of it - so it is refused as somebody
+    // else's operation before the parser ever sees it, rather than being read
+    // and called a bad picture.
+    //
+    // To be plain about the baseline: nothing has ever bought a local patch
+    // through this route, so there is no old record to migrate and no test can
+    // exercise a migration with no subject. What is under test is the general
+    // property, and the fingerprint change is the belt for the NEXT shape.
+    const w = world();
+    const key = "sydney-2:kneeling:render:1";
+    const png = await sharp({ create: { width: 512, height: 768, channels: 4, background: "#405080" } }).png().toBuffer();
+    // Exactly what the old code would have left behind: raw bytes, and a
+    // fingerprint computed without the retained shape in it.
+    const old = { ...w.process().deps };
+    await old.ledger.reserve("game-1:local-patch", { requestKey: key, scope: "image", operationFingerprint: "old".repeat(21) + "f", reserveMicroUsd: LOCAL_PATCH_RESERVE.renderMicroUsd });
+    await old.store.put("game-1:local-patch", key, {
+      version: RETAINED_PURCHASE_VERSION, worldId: "game-1:local-patch", requestKey: key, scope: "image",
+      operationFingerprint: "old".repeat(21) + "f", payloadSha256: retainedPayloadDigest(png),
+      evidence: evidence("req-old"), unknownReason: null, bytes: png,
+    });
+
+    const w2 = w.process();
+    const result = await attempt(w2.deps);
+    expect(w2.dispatched, "a record nobody can interpret must not be bought over").toEqual([]);
+    expect(result.refusedBecause).toBe("stopped");
+    expect(result.stoppedReason).toMatch(/different operation/);
+    expect(result.renderFault).toBeNull();
   }, 30_000);
 
   it("will not replay an answer bought under different instructions", async () => {
