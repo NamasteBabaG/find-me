@@ -44,9 +44,9 @@ export const LOCAL_PATCH_JUDGE = Object.freeze({
 
 const check = z.enum(["pass", "fail", "unsure"]);
 
-/** The three that decide, and the three that describe how well she sits there. */
-export const BLOCKING_CHECKS = Object.freeze(["childPresent", "childOnlyOnce", "childComplete", "pictureWhole"] as const);
-export const JUDGE_CHECKS = Object.freeze([...BLOCKING_CHECKS, "scaleRight", "groundContact", "styleMatch"] as const);
+/** These must explicitly pass. Uncertain illustration style is not approval. */
+export const BLOCKING_CHECKS = Object.freeze(["childPresent", "childOnlyOnce", "childComplete", "pictureWhole", "styleMatch"] as const);
+export const JUDGE_CHECKS = Object.freeze([...BLOCKING_CHECKS, "scaleRight", "groundContact"] as const);
 
 export const localPatchVerdictSchema = z.object({
   childPresent: check.describe("the child from the reference portrait is in the marked area"),
@@ -115,13 +115,15 @@ export const localPatchVerdictSchema = z.object({
   // The overall verdict is DERIVED, always, and never taken from the model's own
   // summary line. Answers came back saying the child was missing or uncertain
   // while still declaring "pass", and trusting that line counted them as
-  // successes. The rule is the one the prompt states: the three that matter must
-  // all pass, and nothing may be a fail.
+  // successes. The rule is the one the prompt states: every required check must
+  // pass, including styleMatch, and nothing may be a fail. A plain style unsure
+  // with no located fault used to become pass; uncertainty cannot approve a
+  // photographic-looking child for an illustrated board.
   // A fault that NAMES a check and does not find that check already failing is
   // evidence the fields do not carry. `pass` beside a fault was caught; `unsure`
   // beside a fault was not, and `scaleRight: unsure` with a fault describing a
   // head three times the size of the child beside it still derived a clean pass,
-  // because scaleRight is not one of the blocking four and nothing else looked.
+  // because scaleRight is not a required-pass check and nothing else looked.
   // The description is the evidence and the field is only the summary.
   const contradicted: string[] = [];
   for (const key of JUDGE_CHECKS) {
@@ -187,10 +189,10 @@ export function localPatchJudgePrompt(hideId: string, expectation: LocalPatchExp
     "pictureWhole - looking only at AFTER: nothing in the picture is broken or half-drawn. No body without a head, no arm or leg belonging to nobody, no hand closed around nothing, no bag or bucket floating with no one holding it, no smeared patch, no hard rectangular edge cutting across the ground or a wall",
     "scaleRight - the child's height matches other children of THEIR OWN AGE standing at that same depth; the smallest toddler nearby is not the ruler",
     "groundContact - the child rests on whatever holds them, with a painted contact shadow where their body meets it, and is not floating",
-    "styleMatch - the child is drawn in the same illustration style, light and saturation as the people around them",
+    "styleMatch - the child is drawn in the same illustration style, light and saturation as the people around them. Compare painted face planes, grouped hair, eye treatment and outline edges against BEFORE, not against the identity portrait. A photographic-looking face on a painted body is a mismatch. If the match is uncertain, mark unsure; styleMatch must explicitly pass for approval",
     ...(asked.length ? ["", "WHAT WAS ASKED FOR:", ...asked] : []),
     "",
-    "Then give an overall verdict: pass only if childPresent, childOnlyOnce, childComplete and pictureWhole are all pass and nothing else is fail. Use unsure when you genuinely cannot tell.",
+    `Then give an overall verdict: pass only if ${BLOCKING_CHECKS.join(", ")} are all pass and nothing else is fail. Use unsure when you genuinely cannot tell; unsure styleMatch never permits pass.`,
     "",
     "For EVERY check you mark fail, add an entry to faults saying exactly where it is in the AFTER image, in plain words a person could follow - \"a bare foot beside the child's left ankle\", \"a hard vertical edge down the sand to the child's right\". If you cannot point at it, the check is not a fail; mark it unsure instead.",
     `Every entry in faults MUST set "check" to one of these exact names: ${JUDGE_CHECKS.join(", ")}. If what you noticed belongs to none of them - a bystander who moved, a colour you would have chosen differently - it is not a fault at all: leave it out of faults and mention it in reason instead.`,

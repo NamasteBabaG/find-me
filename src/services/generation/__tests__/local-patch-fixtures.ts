@@ -5,7 +5,7 @@ import { LOCAL_PATCH_BOARD, cropOf, maskOf, type LocalPatchBoard, type LocalPatc
 import { sha256Bytes } from "../fixed-sprite";
 import { boardConditioningHash } from "../board-conditioned-source";
 import { readBoardConditionedCatalog } from "../board-conditioned-catalog";
-import { IDENTITY_GATE_ACTION, IDENTITY_GATE_KEY, IDENTITY_GATE_VERSION, identityGatePrompt } from "../board-wizard-identity-gate";
+import { IDENTITY_GATE_ACTION, IDENTITY_GATE_KEY, LEGACY_IDENTITY_GATE_VERSION as IDENTITY_GATE_VERSION, identityGatePrompt } from "../board-wizard-identity-gate";
 import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wizard";
 import type { LocalPatchJudgeResult } from "../local-patch-judge";
 import type { WorldChargeEvidence } from "../world-budget";
@@ -133,7 +133,7 @@ export async function seedApprovedGame(c: Container, db: PrismaClient, options: 
       sheetSha256: sha256Bytes(sheet), provenance, imageHashes: ["c", "d", "e"].map(x => x.repeat(64)),
       approved: true, checks: { identity: "pass", age: "pass", paintedStyle: "pass", sheetLayout: "pass" },
       reason: "Recognisable, painted, correctly laid out.", requestId: "req-identity-gate", costMicroUsd: 260_000,
-      usage, model: "gpt-5.6-sol", effort: "high", prompt: identityGatePrompt(8) }) } });
+      usage, model: "gpt-5.6-sol", effort: "high", prompt: identityGatePrompt(8, IDENTITY_GATE_VERSION) }) } });
   return { gameId, userId, email, sheet };
 }
 

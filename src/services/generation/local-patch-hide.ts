@@ -18,7 +18,8 @@ import { readBoardConditionedCatalog } from "./board-conditioned-catalog";
 import { assertGenerationSpendAllowed, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { localPatchGeometry, type LocalPatchGeometry } from "./local-patch-geometry";
 import { renderLocalPatchHide, type LocalPatchRenderDeps } from "./local-patch-render";
-import { LOCAL_PATCH_PROMPT_VERSION, localPatchRepairChecks } from "./local-patch-prompt";
+import { LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, localPatchRepairChecks } from "./local-patch-prompt";
+import { buildBoardPeopleStyle } from "./board-wizard-identity-style";
 import type { PatchGeometry } from "./patch";
 import { readPinnedLocalPatchArt } from "./local-patch-art";
 import { env } from "../../lib/env";
@@ -228,11 +229,13 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   // The same gate, at full strength: hash-bound to this sheet, this photograph,
   // this age and this crop, with the review's own charge validated. Not a
   // boolean a caller passes in.
-  await requireBoardWizardIdentityApproval(c, budget, {
+  const identityApproval = await requireBoardWizardIdentityApproval(c, budget, {
     gameId, identityAssetId: identity.id, sheetSha256: normalized.sourceSha256, catalogSha256,
     photoAssetId: child.originalPhotoAssetId, ageYears: child.ageYears!,
     crop: child.photoCropJson ? JSON.parse(child.photoCropJson) : null,
   });
+  const boardDrawn = identityApproval.provenance.style.version === "board-matched-identity/v2";
+  const promptVersion = boardDrawn ? LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION : LOCAL_PATCH_PROMPT_VERSION;
 
   // ── The rows that make this restartable ──
   const instance = await c.db.targetInstance.findUnique({ where: { gameSceneId_targetId: { gameSceneId: scene.id, targetId: target.id } } })
@@ -243,7 +246,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   const row = await c.db.targetVariantAsset.findUnique({ where: { targetInstanceId_variant: { targetInstanceId: instance.id, variant: LOCAL_PATCH_VARIANT } } })
     ?? await c.db.targetVariantAsset.create({ data: {
       id: newId("tva"), targetInstanceId: instance.id, variant: LOCAL_PATCH_VARIANT, slotId: target.slots[0].id,
-      provider: LOCAL_PATCH_PROVIDER, promptVersion: LOCAL_PATCH_PROMPT_VERSION,
+      provider: LOCAL_PATCH_PROVIDER, promptVersion,
     } });
 
   if (input.finalRepair) demand(env().APP_ENV === "qa" && game.styleVersion === "local-patch-world-v1",
@@ -265,6 +268,10 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   if (exhausted) {
     return { ...base, attempt: row.attempts, state: "gave-up", reason: row.lastError ?? `gave up after ${row.attempts} attempts` };
   }
+
+  // Old identities keep their exact paid inputs; new board-drawn identities also
+  // carry explicit same-board faces, even if this particular crop has none.
+  const boardPeoplePng = boardDrawn ? (await buildBoardPeopleStyle(board.board)).png : undefined;
 
   demand(deps.judge || deps.apiKey?.trim(), "a credential is required to judge what was painted; an unjudged render is never accepted");
   // The placements and the scene are two authored files, and a patch is only a
@@ -288,7 +295,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     await deps.fence?.(tx);
     await tx.targetVariantAsset.update({ where: { id: row.id }, data: {
       attempts: attempt, status: "PENDING", lastError: null,
-      provider: LOCAL_PATCH_PROVIDER, promptVersion: LOCAL_PATCH_PROMPT_VERSION, slotId: target.slots[0].id,
+      provider: LOCAL_PATCH_PROVIDER, promptVersion, slotId: target.slots[0].id,
     } });
   });
   const started = { ...base, attempts: attempt };
@@ -300,6 +307,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   }, {
     worldId, board, hide, composedPng: artwork,
     identityPng: normalized.png, judgeIdentityPng,
+    ...(boardPeoplePng ? { boardPeoplePng } : {}),
     ageYears: child.ageYears, attempt, apiKey: deps.apiKey ?? "",
     ...(repairChecks === undefined ? {} : { repairChecks }),
     ...(input.deadlineAt === undefined ? {} : { deadlineAt: input.deadlineAt }),

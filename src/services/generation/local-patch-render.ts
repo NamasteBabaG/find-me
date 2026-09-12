@@ -9,7 +9,7 @@ import {
   type JudgeWireFault, type LocalPatchJudgeRequest, type LocalPatchJudgeResult, type LocalPatchVerdict,
 } from "./local-patch-judge";
 import { judgeCharge } from "../../infra/generation/judge";
-import { LOCAL_PATCH_POSE_WORDING, LOCAL_PATCH_PROMPT_VERSION, localPatchPrompt, type LocalPatchRepairCheck } from "./local-patch-prompt";
+import { LOCAL_PATCH_POSE_WORDING, LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, localPatchPrompt, type LocalPatchRepairCheck } from "./local-patch-prompt";
 import { purchaseOnce, type PurchaseLedger, type RetainedPurchaseStore } from "./paid-operation";
 import type { LocalPatchPurchase } from "../../infra/generation/openai-local-patch";
 import type { BudgetJson, WorldChargeEvidence } from "./world-budget";
@@ -58,6 +58,7 @@ export type LocalPatchRenderDeps = {
   readonly render: (input: {
     readonly worldId: string; readonly requestKey: string; readonly prompt: string;
     readonly stylePng: Buffer; readonly identityPng: Buffer; readonly maskPng: Buffer;
+    readonly boardPeoplePng?: Buffer;
     /** What is left of the caller's request. An adapter that ignores it can outlive it. */
     readonly timeoutMs?: number;
   }) => Promise<LocalPatchPurchase>;
@@ -72,6 +73,7 @@ export type LocalPatchAttemptInput = {
   /** The board as it now stands, with any earlier hides already painted in. */
   readonly composedPng: Buffer;
   readonly identityPng: Buffer;
+  readonly boardPeoplePng?: Buffer;
   /** For the judge, which needs a smaller copy than the painter does. */
   readonly judgeIdentityPng: Buffer;
   /** Stated by the parent. Never guessed; left out when unknown. */
@@ -270,9 +272,15 @@ const refusedRender = (fault: string, renderCents: number): LocalPatchAttempt =>
 });
 
 export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: LocalPatchAttemptInput): Promise<LocalPatchAttempt> {
+  const result = await renderLocalPatchHideInner(deps, input);
+  return { ...result, promptVersion: input.boardPeoplePng ? LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION : LOCAL_PATCH_PROMPT_VERSION };
+}
+
+async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: LocalPatchAttemptInput): Promise<LocalPatchAttempt> {
   const { worldId, board, hide, attempt } = input;
   const crop = cropOf(hide);
-  const prompt = localPatchPrompt({ ground: board.ground, pose: hide.pose, ageYears: input.ageYears, repairChecks: input.repairChecks });
+  const promptVersion = input.boardPeoplePng ? LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION : LOCAL_PATCH_PROMPT_VERSION;
+  const prompt = localPatchPrompt({ ground: board.ground, pose: hide.pose, ageYears: input.ageYears, repairChecks: input.repairChecks, boardPeopleReference: !!input.boardPeoplePng });
 
   const meta = await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).metadata();
   const stylePng = await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).extract(crop).png().toBuffer();
@@ -282,8 +290,9 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
   // Everything that decides what is being bought. A different photograph,
   // prompt, mask or crop is a different purchase and must never replay this one.
   const renderFingerprint = fingerprintOf({
-    version: LOCAL_PATCH_PROMPT_VERSION, hide: hide.id, pose: hide.pose, crop,
+    version: promptVersion, hide: hide.id, pose: hide.pose, crop,
     prompt: sha(Buffer.from(prompt)), style: sha(stylePng), identity: sha(input.identityPng), mask: sha(maskPng),
+    ...(input.boardPeoplePng ? { boardPeople: sha(input.boardPeoplePng) } : {}),
     policy: deps.renderPolicySha256,
     // The SHAPE of what is kept, not only what was bought. A record written
     // before this envelope existed would otherwise be read under this same
@@ -305,6 +314,7 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
     operationFingerprint: renderFingerprint, reserveMicroUsd: LOCAL_PATCH_RESERVE.renderMicroUsd,
     buy: async ({ timeoutMs }) => {
       const result = await deps.render({ worldId, requestKey: renderKey, prompt, stylePng, identityPng: input.identityPng, maskPng,
+        ...(input.boardPeoplePng ? { boardPeoplePng: input.boardPeoplePng } : {}),
         ...(timeoutMs === null ? {} : { timeoutMs }) });
       const kept = result.png ?? result.quarantined;
       const keep: RetainedRender = {

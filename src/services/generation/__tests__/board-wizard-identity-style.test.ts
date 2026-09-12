@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { buildBoardWizardIdentityStyle } from "../board-wizard-identity-style";
+import { buildBoardWizardIdentityStyle, buildBoardPeopleStyle } from "../board-wizard-identity-style";
 import { boardConditioningHash } from "../board-conditioned-source";
 import { sha256Bytes } from "../fixed-sprite";
 
@@ -29,7 +29,7 @@ async function fixture() {
 }
 describe("mandatory child-free static original-people atlas", () => {
   it("builds deterministic1024 atlas from all nine hash-verified originals, with no input identity", async () => {
-    const f = await fixture(), first = await buildBoardWizardIdentityStyle(f.root), second = await buildBoardWizardIdentityStyle(f.root);
+    const f = await fixture(), first = await buildBoardWizardIdentityStyle(f.root, "board-matched-identity/v1"), second = await buildBoardWizardIdentityStyle(f.root, "board-matched-identity/v1");
     expect(first.version).toBe("board-matched-identity/v1"); expect(first.catalogSha256).toBe(boardConditioningHash(f.catalog));
     expect(first.atlasSha256).toBe(sha256Bytes(first.png)); expect(first.png.equals(second.png)).toBe(true);
     expect(first.examples.map(e => e.boardId)).toEqual(f.catalog.boards.map(b => b.boardId));
@@ -45,6 +45,39 @@ describe("mandatory child-free static original-people atlas", () => {
     if (reason === "private-root") f.catalog.boards[0]!.board = { ...f.ref, path: "work/child.png" };
     if (reason === "missing-board") f.catalog.boards.pop();
     if (reason === "missing-foreground") f.catalog.boards[0]!.slots[0]!.foreground = { ...f.ref, path: "public/static/missing-mask.png" };
-    await f.save(); await expect(buildBoardWizardIdentityStyle(f.root)).rejects.toThrow();
+    await f.save(); await expect(buildBoardWizardIdentityStyle(f.root, "board-matched-identity/v1")).rejects.toThrow();
+  });
+  it("preserves the deployed v1 atlas exactly and builds v2 from eight authored faces plus explicit NY fallback", async () => {
+    const legacy = await buildBoardWizardIdentityStyle(process.cwd(), "board-matched-identity/v1");
+    expect(legacy.atlasSha256).toBe("7c731035da3dcecb61065481054f8040c581d69718eb5e411146be563cb26e99");
+    const atlas = await buildBoardWizardIdentityStyle();
+    expect(atlas.version).toBe("board-matched-identity/v2");
+    expect(atlas.catalogSha256).toBe(legacy.catalogSha256);
+    expect(atlas.atlasSha256).not.toBe(legacy.atlasSha256);
+    expect(await sharp(atlas.png).metadata()).toMatchObject({ width: 1024, height: 1024 });
+    const tile = await buildBoardPeopleStyle("paris");
+    expect(tile.source.face).toEqual({ left: 2530, top: 1440, width: 154, height: 147 });
+    expect(tile.source.faceId).toBe("straw-hat-girl-head");
+    expect(tile.source.fallback).toBeNull();
+    expect(tile.sha256).toBe(sha256Bytes(tile.png));
+    const region = await sharp(atlas.png).extract({ left: 688, top: 16, width: 320, height: 320 }).raw().toBuffer();
+    expect(region).toEqual(await sharp(tile.png).raw().toBuffer());
+    const ny = await buildBoardPeopleStyle("newyork");
+    expect(ny.source.face).toBeNull();
+    expect(ny.source.fallback).toBe("no-authored-face/full-person");
+    expect(atlas.examples.filter(e => "source" in e && e.source.face !== null)).toHaveLength(8);
+  }, 60_000);
+  it("refuses to invent a face for an unrecognized board", async () => {
+    const f = await fixture();
+    await expect(buildBoardPeopleStyle("board-0", f.root)).rejects.toThrow("no authored style source");
+  });
+  it("requires the named original face and refuses a face outside its person context, never using the inserted child's eye geometry", async () => {
+    const f = await fixture(); f.catalog.boards[0]!.boardId = "amazon"; await f.save();
+    await expect(buildBoardPeopleStyle("amazon", f.root)).rejects.toThrow("authored face rectangle is missing");
+    const slot = f.catalog.boards[0]!.slots[0]!.slot;
+    Object.assign(slot, { forbiddenRects: [{ id: "original-head-0", left: 4, top: 2, width: 8, height: 8 }] }); await f.save();
+    expect((await buildBoardPeopleStyle("amazon", f.root)).source.face).toEqual({ left: 4, top: 2, width: 8, height: 8 });
+    Object.assign(slot, { forbiddenRects: [{ id: "original-head-0", left: 25, top: 2, width: 7, height: 8 }] }); await f.save();
+    await expect(buildBoardPeopleStyle("amazon", f.root)).rejects.toThrow("outside its original-person context");
   });
 });

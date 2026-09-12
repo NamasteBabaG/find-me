@@ -3,6 +3,15 @@ import { LOCAL_PATCH_POSE_WORDING, LOCAL_PATCH_PROMPT_VERSION, localPatchPrompt,
 import { LocalPatchPose, POSE_MASK, WORLD_LOCAL_PATCH_HIDES, maskInCrop } from "../../../domain/scene/local-patch-hides";
 
 describe("what the painter is told for one local patch", () => {
+  it("uses same-board faces as the rendering authority without copying the reference outfit", () => {
+    const prompt = localPatchPrompt({ ground: "snow", pose: "kneeling", ageYears: 5, boardPeopleReference: true });
+    expect(prompt).toContain("Image 3 shows ORIGINAL drawn faces");
+    expect(prompt).toContain("NOT the reference portrait's surface rendering");
+    expect(prompt).not.toContain("Preserve the reference child's presentation, hairstyle and outfit cues");
+    expect(prompt).not.toContain("Fill the masked area");
+    expect(prompt).toContain("NOT a box to fill");
+  });
+
   it("keeps the normal paid fingerprint stable and appends targeted repair instructions only for the final pass", () => {
     const input = { ground: "snow", pose: "standing" as const, ageYears: 5 };
     const normal = localPatchPrompt(input);

@@ -12,6 +12,7 @@ import { boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wiz
 import { LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT } from "./local-patch-hide";
 import { JUDGE_CHECKS, localPatchVerdictSchema } from "./local-patch-judge";
 import { IDENTITY_GATE_ACTION } from "./board-wizard-identity-gate";
+import { hasLocalPatchHumanApproval, localPatchGeometryDigest } from "./local-patch-human-approval";
 
 const STYLE = "local-patch-world-v1";
 const sha = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
@@ -36,6 +37,7 @@ export async function composeLocalPatchGame(c: Container, gameId: string): Promi
   const locale = game.locale === "he" ? "he" : "en";
   const scenes = [];
   const worlds = new Map<string, PlayWorld>();
+  let humanIdentitySha256: string | undefined;
   for (const scene of game.scenes) {
     const board = WORLD_LOCAL_PATCH_HIDES.find(b => b.board === scene.sceneSlug);
     const def = sceneBySlug(scene.sceneSlug, scene.sceneVersion);
@@ -51,14 +53,27 @@ export async function composeLocalPatchGame(c: Container, gameId: string): Promi
       demand(asset && asset.visibility === "GAME" && asset.type === "TARGET_SPRITE" && asset.status === "READY" && !asset.deletedAt
         && asset.ownerId === game.ownerId && asset.provider === LOCAL_PATCH_PROVIDER && asset.providerRequestId === gameId,
         `${hide.id} has an unavailable or unrelated asset`);
-      const receipt = JSON.parse(row.judgeJson ?? "null");
-      demand(receipt && receipt.hide === hide.id && receipt.pose === hide.pose && receipt.judgedSha256 === sha(await c.storage.get(asset.storagePath)),
-        `${hide.id} is not the picture that was judged`);
-      const verdict = receipt.verdict;
-      demand(verdict && localPatchVerdictSchema.parse({
-        ...Object.fromEntries(JUDGE_CHECKS.map(key => [key, verdict[key]])),
-        verdict: verdict.verdict, reason: verdict.reason, faults: verdict.faults,
-      }).verdict === "pass", `${hide.id} has no passing visual verdict`);
+      const imageSha256 = sha(await c.storage.get(asset.storagePath));
+      if (row.status === "APPROVED") {
+        demand(child.identityAssetId, "human approval requires its original identity");
+        if (!humanIdentitySha256) {
+          const identity = await c.db.asset.findUniqueOrThrow({ where: { id: child.identityAssetId } });
+          demand(identity.ownerId === game.ownerId && identity.status === "READY" && !identity.deletedAt && identity.type === "IDENTITY_SHEET", "human approval identity is unavailable");
+          humanIdentitySha256 = sha(await c.storage.get(identity.storagePath));
+        }
+        demand(await hasLocalPatchHumanApproval(c, { gameId, hideId: hide.id, identityAssetId: child.identityAssetId,
+          identitySha256: humanIdentitySha256, assetId: asset.id, imageSha256, variantId: row.id, attempts: row.attempts,
+          geometrySha256: localPatchGeometryDigest(row), judgeJson: row.judgeJson }), `${hide.id} has no human approval for these pixels and tap geometry`);
+      } else {
+        const receipt = JSON.parse(row.judgeJson ?? "null");
+        demand(receipt && receipt.hide === hide.id && receipt.pose === hide.pose && receipt.judgedSha256 === imageSha256,
+          `${hide.id} is not the picture that was judged`);
+        const verdict = receipt.verdict;
+        demand(verdict && localPatchVerdictSchema.parse({
+          ...Object.fromEntries(JUDGE_CHECKS.map(key => [key, verdict[key]])),
+          verdict: verdict.verdict, reason: verdict.reason, faults: verdict.faults,
+        }).verdict === "pass", `${hide.id} has no passing visual verdict`);
+      }
       demand(row.rectJson && row.hitRectJson && row.headAnchorJson, `${hide.id} has no tap geometry`);
       const sprite = SpriteRefSchema.parse({ kind: "image", url: signedAssetUrl(c, asset.id), width: asset.width, height: asset.height,
         rect: JSON.parse(row.rectJson), hitRect: JSON.parse(row.hitRectJson), anchor: JSON.parse(row.headAnchorJson) });
