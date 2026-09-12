@@ -10,6 +10,7 @@ import type { LocalPatchJudgeResult } from "../local-patch-judge";
 import type { PurchaseLedger, RetainedPurchase, RetainedPurchaseStore } from "../paid-operation";
 import { WorldBudgetError } from "../world-budget";
 import type { WorldBudgetRequest, WorldChargeEvidence } from "../world-budget";
+import { localPatchImagePolicyForVersion, localPatchRenderPolicySha256 } from "../../../infra/generation/openai-local-patch";
 
 const BOARD = { width: 3072, height: 2048 };
 const board: LocalPatchBoard = {
@@ -96,6 +97,20 @@ async function attempt(deps: LocalPatchRenderDeps, over: Record<string, unknown>
 }
 
 describe("one paid attempt at one hide", () => {
+  it("cannot replay a MEDIUM purchase as LOW under the same v7 hide key", async () => {
+    const w = world();
+    const medium = w.process({ renderPolicySha256: localPatchRenderPolicySha256(localPatchImagePolicyForVersion(6)) });
+    expect((await attempt(medium.deps, { contentVersion: 7 })).accepted).toBe(true);
+    const low = w.process({ renderPolicySha256: localPatchRenderPolicySha256(localPatchImagePolicyForVersion(7)) });
+    const changed = await attempt(low.deps, { contentVersion: 7 });
+    expect(changed.accepted).toBe(false);
+    expect(changed.refusedBecause).toBe("stopped");
+    expect(low.dispatched).toEqual([]);
+    const unchanged = w.process({ renderPolicySha256: localPatchRenderPolicySha256(localPatchImagePolicyForVersion(6)) });
+    expect((await attempt(unchanged.deps, { contentVersion: 7 })).accepted).toBe(true);
+    expect(unchanged.dispatched).toEqual([]);
+  });
+
   it("keeps a v7 render for grouped review, without a per-hide judge purchase or invented approval", async () => {
     const w = world(), judge = vi.fn(async () => { throw new Error("Per-hide judging must not run in v7"); }), p = w.process({ judge });
     const result = await attempt(p.deps, { contentVersion: 7 });

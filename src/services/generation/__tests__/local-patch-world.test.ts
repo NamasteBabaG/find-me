@@ -15,9 +15,11 @@ import {
   localPatchPainterDeps, localPatchPrivateInventory, runLocalPatchWorldSlice,
 } from "../local-patch-world";
 import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wizard";
+import { readBoardConditionedCatalog } from "../board-conditioned-catalog";
+import { reviewBoardWizardIdentity } from "../board-wizard-identity-gate";
 import { sceneBySlug } from "../../scene-catalog.service";
 import { sha256Bytes } from "../fixed-sprite";
-import { localPatchRenderPolicySha256 } from "../../../infra/generation/openai-local-patch";
+import { localPatchImagePolicyForVersion, localPatchRenderPolicySha256 } from "../../../infra/generation/openai-local-patch";
 import * as localPatchPainter from "../../../infra/generation/openai-local-patch";
 import * as localPatchJudge from "../local-patch-judge";
 import * as localPatchArt from "../local-patch-art";
@@ -109,6 +111,42 @@ const jobOf = (gameId: string) => db.generationJob.findUniqueOrThrow({ where: { 
 const done = (gameId: string) => db.targetVariantAsset.count({ where: { status: "GENERATED", targetInstance: { gameScene: { gameId } } } });
 
 describe("a world of hides, one slice at a time", () => {
+  it.each([[6, "medium"], [7, "low"]] as const)("the real queue selects v%i image quality from persisted scenes", async (version, quality) => {
+    const seeded = await seedApprovedGame(c, db, { gameId: `game-pinned-quality-${version}`, scenes: [{ slug: "sydney", version }],
+      approved: version !== 7, styleVersion: LOCAL_PATCH_STYLE, status: "TARGETS_GENERATING", withJob: true });
+    const { gameId } = seeded; fakes.testers.push(seeded.email);
+    if (version === 7) {
+      // The old fixture carries a v1 identity review. New games must use the
+      // real v3 review/ledger contract, not a mocked gate that accepts it.
+      await c.storage.put(`private/photo-${gameId}.jpg`, seeded.sheet, "image/png");
+      const { sha256: catalogSha256 } = await readBoardConditionedCatalog();
+      await reviewBoardWizardIdentity({ db, apiKey: "synthetic-never-live", budget: boardWizardBudgetOf(c), beforeDispatch: async () => {},
+        write: work => db.$transaction(work), reviewer: { review: async () => ({ httpOk: true, requestId: `req_identity_policy_${version}`,
+          body: { model: "gpt-5.6-luna", usage: { prompt_tokens: 2000, completion_tokens: 100 }, choices: [{ finish_reason: "stop", message: { content: JSON.stringify({
+            checks: { identity: "pass", age: "pass", paintedStyle: "pass", sheetLayout: "pass" }, reason: "Synthetic policy fixture" }) } }] } }) } }, {
+        gameId, identityAssetId: `ast-sheet-${gameId}`, sheet: seeded.sheet, photo: seeded.sheet, atlas: seeded.sheet, contentVersion: 7,
+        provenance: { promptVersion: "character-v4-board-drawn-face-reference", quality: "medium", photoAssetId: `ast-photo-${gameId}`, photoSha256: sha256Bytes(seeded.sheet),
+          ageYears: 8, crop: null, style: { version: "board-matched-identity/v2", catalogSha256, atlasSha256: sha256Bytes(seeded.sheet) } },
+      });
+    }
+    const png = await sharp({ create: { width: 768, height: 1152, channels: 4, background: "#d2be96" } }).png().toBuffer();
+    let now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    const wire = vi.spyOn(globalThis, "fetch").mockImplementation(async () => { now += 240_000; return new Response(JSON.stringify({
+      model: "gpt-image-2", usage: { input_tokens: 30, output_tokens: 196, total_tokens: 226, input_tokens_details: { text_tokens: 10, image_tokens: 20 } },
+      data: [{ b64_json: png.toString("base64") }],
+    }), { status: 200, headers: { "x-request-id": `req-pinned-quality-${version}` } }); });
+    const judge = vi.spyOn(localPatchJudge, "judgeLocalPatch").mockResolvedValue(reply({ requestId: `req-policy-judge-${version}` }));
+    try {
+      await tickGeneration(c, gameId, 60_000, 270_000);
+      expect(wire).toHaveBeenCalledTimes(1);
+      const form = wire.mock.calls[0]![1]!.body as FormData;
+      expect(form.get("quality")).toBe(quality);
+      expect(form.get("model")).toBe("gpt-image-2");
+      expect(localPatchPainterDeps(c, version)!.renderPolicySha256).toBe(localPatchRenderPolicySha256(localPatchImagePolicyForVersion(version)));
+    } finally { wire.mockRestore(); judge.mockRestore(); clock.mockRestore(); }
+  }, 120_000);
+
   it.each([6_000, 20_000])("the real queue paints its first hide after %sms of preparation inside a 270s route", async preparationMs => {
     const board = WORLD_LOCAL_PATCH_HIDES.find(item => item.board === "newyork")!, hide = board.hides[0]!;
     const { gameId } = await seed({ gameId: `game-preparation-${preparationMs}`, scenes: [{ slug: board.board, version: LOCAL_PATCH_SCENE_VERSION }] });

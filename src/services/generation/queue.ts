@@ -64,7 +64,7 @@ export async function tickGeneration(c: Container, gameId: string | null, budget
   const now = Date.now();
   const id = gameId ?? (await nextPendingGame(c));
   if (!id) return { gameId: null, status: null, pending: false };
-  const before = await c.db.game.findUnique({ where: { id }, select: { status: true, styleVersion: true } });
+  const before = await c.db.game.findUnique({ where: { id }, select: { status: true, styleVersion: true, scenes: { select: { sceneVersion: true } } } });
   if (!before) return { gameId: id, status: null, pending: false };
   if (before.styleVersion === LOCAL_PATCH_STYLE) {
     if (["PAID", "AVATAR_GENERATING", "GENERATION_FAILED"].includes(before.status)) {
@@ -78,7 +78,7 @@ export async function tickGeneration(c: Container, gameId: string | null, budget
     // Routed before its painter exists, deliberately: a style with no adapter
     // must stop here saying so, not fall through to the legacy painter and
     // quietly produce a game made by a different engine.
-    const painter = localPatchPainterDeps(c);
+    const painter = localPatchPainterDeps(c, before.scenes[0]?.sceneVersion);
     if (!painter) return { gameId: id, status: statusOf(before), pending: false };
     const result = await runLocalPatchWorldSlice(c, painter, id, { hardDeadlineAt: now + hardMs });
     const after = await c.db.game.findUnique({ where: { id }, select: { status: true } });

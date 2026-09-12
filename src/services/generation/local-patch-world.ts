@@ -5,7 +5,7 @@ import { ALL_LOCAL_PATCH_BOARDS, localPatchBoardForVersion, isLocalPatchAdvisory
 import { deliverLocalPatchNotifications } from "../local-patch-notifications";
 import { GenerationPaused, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { retainedPurchaseKeysFor } from "../../infra/db/prisma-retained-purchase-store";
-import { buyLocalPatch, localPatchRenderPolicySha256 } from "../../infra/generation/openai-local-patch";
+import { buyLocalPatch, localPatchImagePolicyForVersion, localPatchRenderPolicySha256 } from "../../infra/generation/openai-local-patch";
 import { env } from "../../lib/env";
 import { finishLocalPatchGame } from "./local-patch-player";
 import { deliverGameMail } from "../publish.service";
@@ -336,14 +336,15 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
  * them for the board engine - so a world that pauses mid-slice stops at the
  * next hide rather than at the next deploy.
  */
-export function localPatchPainterDeps(_c: Container): LocalPatchHideDeps | null {
+export function localPatchPainterDeps(_c: Container, contentVersion = 6): LocalPatchHideDeps | null {
   const e = env();
   const apiKey = e.OPENAI_API_KEY?.trim();
   if (e.GENERATION_PROVIDER !== "openai" || !apiKey) return null;
+  const policy = localPatchImagePolicyForVersion(contentVersion);
   return {
     apiKey,
-    renderPolicySha256: localPatchRenderPolicySha256(),
-    render: async input => buyLocalPatch(apiKey, input),
+    renderPolicySha256: localPatchRenderPolicySha256(policy),
+    render: async input => buyLocalPatch(apiKey, input, { policy }),
   };
 }
 

@@ -93,7 +93,7 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
   const localPatch = game.styleVersion === LOCAL_PATCH_STYLE;
   if (localPatch && env().APP_ENV !== "qa") return;
   if (localPatch && game.status === "TARGETS_GENERATING") {
-    const painter = localPatchPainterDeps(c);
+    const painter = localPatchPainterDeps(c, game.scenes[0]?.sceneVersion);
     if (painter) await runLocalPatchWorldSlice(c, painter, gameId, { hardDeadlineAt: options.hardDeadlineAt });
     return;
   }

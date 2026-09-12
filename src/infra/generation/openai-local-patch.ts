@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import sharp from "sharp";
+import { isLocalPatchAdvisoryVersion } from "../../domain/scene/local-patch-catalog";
 import {
   BudgetedOpenAiFixedSourceProvider, FixedSourceError, prepareFixedSource,
   type FixedSourceLedger, type FixedSourcePolicy,
@@ -51,6 +52,14 @@ export const LOCAL_PATCH_IMAGE_POLICY: FixedSourcePolicy = Object.freeze({
   timeoutMs: LOCAL_PATCH_IMAGE_TIMEOUT_MS,
   rateCard: { id: "existing-reviewed-image2-5-8-30-microusd-v1", textInput: 5, imageInput: 8, imageOutput: 30 },
 });
+
+/** The public v7 pilot's LOW comparison was explicitly accepted by the owner.
+ * Keep the original object and hash for v6 and historical callers: quality is
+ * part of a paid request's identity, not a global setting to rewrite on replay.
+ * Initial character creation uses its separate MEDIUM contract, unchanged. */
+const FIVE_HIDE_IMAGE_POLICY: FixedSourcePolicy = Object.freeze({ ...LOCAL_PATCH_IMAGE_POLICY, quality: "low" });
+export const localPatchImagePolicyForVersion = (contentVersion?: number): FixedSourcePolicy =>
+  isLocalPatchAdvisoryVersion(contentVersion) ? FIVE_HIDE_IMAGE_POLICY : LOCAL_PATCH_IMAGE_POLICY;
 
 /**
  * What the render fingerprint pins, beside the prompt and the pictures: change

@@ -1,7 +1,7 @@
 import sharp from "sharp";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import {
-  LOCAL_PATCH_IMAGE_POLICY, buyLocalPatch, localPatchRenderPolicySha256,
+  LOCAL_PATCH_IMAGE_POLICY, buyLocalPatch, localPatchImagePolicyForVersion, localPatchRenderPolicySha256,
 } from "../openai-local-patch";
 
 /**
@@ -38,6 +38,28 @@ const request = () => ({
 });
 
 describe("buying one local patch", () => {
+  it.each([[6, "medium"], [7, "low"]] as const)("sends the explicitly selected v%i quality without changing size or image model", async (version, quality) => {
+    const fetchOnce = vi.fn<typeof fetch>(async () => answer());
+    const policy = localPatchImagePolicyForVersion(version);
+    await buyLocalPatch("synthetic-never-live", request(), { policy, fetchOnce });
+    expect(fetchOnce).toHaveBeenCalledTimes(1);
+    const form = fetchOnce.mock.calls[0]![1]!.body as FormData;
+    expect(form.get("quality")).toBe(quality);
+    expect(form.get("model")).toBe("gpt-image-2");
+    expect(form.get("size")).toBe("768x1152");
+    expect(form.get("n")).toBe("1");
+  });
+
+  it("keeps the pre-LOW legacy policy and fingerprint identical, with exact v7 opt-in", () => {
+    const historicalHash = localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY);
+    for (const version of [undefined, 5, 6, 8]) {
+      expect(localPatchImagePolicyForVersion(version)).toBe(LOCAL_PATCH_IMAGE_POLICY);
+      expect(localPatchRenderPolicySha256(localPatchImagePolicyForVersion(version))).toBe(historicalHash);
+    }
+    expect(localPatchImagePolicyForVersion(7)).toEqual({ ...LOCAL_PATCH_IMAGE_POLICY, quality: "low" });
+    expect(localPatchRenderPolicySha256(localPatchImagePolicyForVersion(7))).not.toBe(historicalHash);
+  });
+
   it("sends explicit board people as the third image without enlarging the identity portrait", async () => {
     const people = await sharp({ create: { width: 320, height: 320, channels: 4, background: "#305030" } }).png().toBuffer();
     const fetchOnce = vi.fn(async () => answer());
