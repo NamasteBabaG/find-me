@@ -1,6 +1,8 @@
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import { JUDGE_CHECKS, LOCAL_PATCH_JUDGE, judgeLocalPatch, localPatchJudgePrompt, localPatchVerdictSchema } from "../local-patch-judge";
+import { LOCAL_PATCH_POSE_WORDING } from "../local-patch-prompt";
+import { LocalPatchPose } from "../../../domain/scene/local-patch-hides";
 
 const png = () => sharp({ create: { width: 24, height: 24, channels: 4, background: { r: 200, g: 160, b: 120, alpha: 255 } } }).png().toBuffer();
 const good = {
@@ -157,14 +159,14 @@ describe("judging one finished local patch", () => {
 
     const prompt = localPatchJudgePrompt("sand-strip");
     expect(prompt).toMatch(/EXACTLY ONCE/);
-    expect(prompt).toMatch(/two of her is a fail even when both are beautifully drawn/);
+    expect(prompt).toMatch(/two copies of the reference child is a fail even when both are beautifully drawn/);
   });
 
   it("tells the judge what pose and what age were asked for, and only when they are known", () => {
     // A kneeling child has no feet on the ground and "the right height" means
     // nothing until you know whether she is four or eight, so both checks are
     // unanswerable without the ask.
-    const told = localPatchJudgePrompt("sand-strip", { support: "her knees and shins on the ground", ageYears: 8 });
+    const told = localPatchJudgePrompt("sand-strip", { support: "their knees and shins on the ground", ageYears: 8 });
     expect(told).toMatch(/WHAT WAS ASKED FOR:/);
     expect(told).toMatch(/judge groundContact against THAT/);
     expect(told).toMatch(/8 years old/);
@@ -172,6 +174,14 @@ describe("judging one finished local patch", () => {
     const silent = localPatchJudgePrompt("sand-strip");
     expect(silent).not.toMatch(/WHAT WAS ASKED FOR:/);
     expect(silent).not.toMatch(/\d+ years old/);
+  });
+
+  it.each(LocalPatchPose.options)("does not assume a child's gender when judging %s", pose => {
+    const prompt = localPatchJudgePrompt("sand-strip", { support: LOCAL_PATCH_POSE_WORDING[pose].support, ageYears: 8 });
+    expect(prompt).not.toMatch(/\b(?:she|her|hers|girl|girls|he|him|his|boy|boys)\b/i);
+    expect(prompt).toContain(LOCAL_PATCH_POSE_WORDING[pose].support);
+    expect(prompt).toContain("8 years old");
+    for (const name of JUDGE_CHECKS) expect(prompt).toContain(name);
   });
 
   it("blocks a picture left broken, and only that", async () => {
