@@ -136,7 +136,13 @@ export class FixedSourceError extends Error {
      * They are evidence, never a result: whatever rejected them still rejects
      * them.
      */
-    readonly established?: { evidence?: WorldChargeEvidence; png?: Buffer }) {
+    readonly established?: {
+      evidence?: WorldChargeEvidence;
+      /** Bytes that passed every check. A caller may use these. */
+      png?: Buffer;
+      /** Bytes that are bounded and decodable and were REFUSED. Evidence only. */
+      rejectedPng?: Buffer;
+    }) {
     super(message); this.name = "FixedSourceError";
   }
 }
@@ -309,7 +315,7 @@ export class BudgetedOpenAiFixedSourceProvider {
     let jsonStatus: FixedSourceFailureReceipt["jsonStatus"] = "not-read", usageValid = false;
     let transport: FixedSourceFailureReceipt["transport"] = null;
     const diagnosticFailure = async (code: FixedSourceError["code"], message: string, reason: FixedSourceFailureReceipt["reason"], billing: FixedSourceFailureReceipt["billing"],
-      established?: { evidence?: WorldChargeEvidence; png?: Buffer }): Promise<never> => {
+      established?: { evidence?: WorldChargeEvidence; png?: Buffer; rejectedPng?: Buffer }): Promise<never> => {
       const receipt = fixedSourceFailureReceipt({ worldId, requestKey, fingerprint: prepared.fingerprint,
         quality: prepared.capture.settings.quality, reason, billing, response, json, jsonStatus, usageValid, transport });
       let stored = false;
@@ -318,10 +324,11 @@ export class BudgetedOpenAiFixedSourceProvider {
       try { if (this.onFailure) { await this.onFailure(receipt); stored = true; } } catch { /* no driver/raw error messages */ }
       throw new FixedSourceError(code, message, receipt, stored, established);
     };
-    const unknown = async (reason: string, category: FixedSourceFailureReceipt["reason"]): Promise<never> => {
+    const unknown = async (reason: string, category: FixedSourceFailureReceipt["reason"],
+        established?: { png?: Buffer; rejectedPng?: Buffer }): Promise<never> => {
       try { await this.budget.markUnknown(worldId, requestKey, reason); }
-      catch { return diagnosticFailure("ledger_unavailable", "Request outcome unresolved; keep its reservation and reconcile the ledger before continuing", category, "unknown"); }
-      return diagnosticFailure("cost_unknown", "Request billing is unknown; reservation retained and no retry dispatched", category, "unknown");
+      catch { return diagnosticFailure("ledger_unavailable", "Request outcome unresolved; keep its reservation and reconcile the ledger before continuing", category, "unknown", established); }
+      return diagnosticFailure("cost_unknown", "Request billing is unknown; reservation retained and no retry dispatched", category, "unknown", established);
     };
     try {
       response = await this.fetchOnce(ENDPOINT, {
@@ -336,17 +343,81 @@ export class BudgetedOpenAiFixedSourceProvider {
     try { json = await response.json(); jsonStatus = "parsed"; }
     catch { jsonStatus = "invalid"; return unknown("image-response-not-json", "response-not-json"); }
     const body = z.object({ model: z.string().optional(), usage: z.unknown().optional(), data: z.unknown().optional() }).passthrough().safeParse(json);
+
+    // THE PICTURE IS EXAMINED BEFORE THE BILL IS JUDGED, and reported after.
+    //
+    // Whether an image is usable and whether its charge can be stated are
+    // independent questions about the same response, and answering the billing
+    // one first meant a perfectly good picture was thrown away whenever the
+    // usage could not be read: by the time anyone knew there was an image, the
+    // failure had already been raised. Nothing about the ORDER OF REPORTING
+    // changes - the bill is still recorded before any verdict on the picture,
+    // and a bad bill is still reported before a bad picture. What changes is
+    // that the bytes exist by then, so a failure can carry them.
+    //
+    // Every bound that governed this still governs it, and none of them depend
+    // on the bill: the payload size, the base64 shape, the decode limit, the
+    // raster checks. Examining first is not trusting first.
+    const expected = fixedSourcePixels(prepared.capture.settings.size);
+    const shape = z.array(z.object({ b64_json: z.string().min(1) })).length(1).safeParse(body.success ? body.data.data : undefined);
+    let bounded: Buffer | null = null, usable: Buffer | null = null;
+    let pictureProblem: { reason: FixedSourceFailureReceipt["reason"]; message: string } | null = null;
+    if (!response.ok || !shape.success) {
+      pictureProblem = { reason: "image-data", message: "Billed request did not return exactly one image; no automatic repair" };
+    } else {
+      const b64 = shape.data[0]!.b64_json;
+      if (b64.length > FIXED_SOURCE_PAYLOAD_BYTES || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(b64)) {
+        pictureProblem = { reason: "image-payload", message: "Billed image payload is invalid" };
+      } else {
+        bounded = Buffer.from(b64, "base64");
+        try {
+          const image = sharp(bounded, { limitInputPixels: expected.pixels }), meta = await image.metadata();
+          // An alpha channel is required of a sheet that will be CUT OUT, and must
+          // not be required of a local patch: an opaque crop legitimately comes back
+          // without one, and demanding it rejected a patch we had already been
+          // billed for. Every gate on this path has to ask which kind of image it is.
+          const transparent = prepared.capture.settings.background === "transparent";
+          if (meta.format !== "png" || meta.width !== expected.width || meta.height !== expected.height
+            || (transparent && !meta.hasAlpha) || (meta.pages ?? 1) !== 1) throw new Error();
+          const raw = await image.ensureAlpha().raw().toBuffer();
+          let clear = false, visible = false;
+          for (let i = 3; i < raw.length; i += 4) { clear ||= raw[i] === 0; visible ||= raw[i]! > 0; }
+          // A cut-out sheet must have somewhere to cut; a local patch must not.
+          if (!visible || (transparent ? !clear : clear)) throw new Error();
+          usable = bounded;
+        } catch {
+          pictureProblem = { reason: "image-raster", message: `Billed output lacks a nonempty transparent ${prepared.capture.settings.size} PNG; no automatic repair` };
+        }
+      }
+    }
+    // Two different things to hand a caller, and they must not be confused.
+    //
+    // A BILLING failure says nothing about the picture, so a picture that passed
+    // every check is still a picture and goes back as one. A REFUSAL says the
+    // opposite - the quality was not the one approved, the world is held, the
+    // raster is wrong - and those bytes are evidence only, however well formed
+    // they are. Handing a refused image back as usable would be the same mistake
+    // as losing a usable one, in the other direction.
+    const keptForBilling = usable ? { png: usable } : bounded ? { rejectedPng: bounded } : {};
+    const keptForRefusal = bounded ? { rejectedPng: bounded } : {};
+
     const usage = usageSchema.safeParse(body.success ? body.data.usage : undefined);
     usageValid = usage.success;
     const requestId = response.headers.get("x-request-id");
-    if (!body.success || !usage.success || !isSafeFixedSourceRequestId(requestId)
-      || body.data.model !== undefined && body.data.model !== FIXED_SOURCE_SETTINGS.model) return unknown("image-charge-evidence-incomplete-or-model-unexpected", "charge-evidence");
+    // A model we did not ask for is not a billing problem: it is a different
+    // picture than the one that was requested, and it must not come back as
+    // usable however well formed it is. Missing usage or an unreadable receipt
+    // say nothing about the picture, so those keep it.
+    const wrongModel = body.success && body.data.model !== undefined && body.data.model !== FIXED_SOURCE_SETTINGS.model;
+    if (!body.success || !usage.success || !isSafeFixedSourceRequestId(requestId) || wrongModel) {
+      return unknown("image-charge-evidence-incomplete-or-model-unexpected", "charge-evidence", wrongModel ? keptForRefusal : keptForBilling);
+    }
     const u = usage.data, rates = this.policy.rateCard;
     // No cache discount assumed. Extra usage fields are intentionally not
     // persisted (the ledger is metadata-only, never a response/prompt dump).
     const amountMicroUsd = u.input_tokens_details.text_tokens * rates.textInput
       + u.input_tokens_details.image_tokens * rates.imageInput + u.output_tokens * rates.imageOutput;
-    if (!Number.isSafeInteger(amountMicroUsd) || amountMicroUsd <= 0) return unknown("image-charge-arithmetic-invalid", "charge-arithmetic");
+    if (!Number.isSafeInteger(amountMicroUsd) || amountMicroUsd <= 0) return unknown("image-charge-arithmetic-invalid", "charge-arithmetic", keptForBilling);
     const evidence: WorldChargeEvidence = {
       providerNamespace: this.policy.providerNamespace, providerRequestId: requestId, usageId: requestId,
       model: FIXED_SOURCE_SETTINGS.model, amountMicroUsd, costBasis: "conservative-upper-estimate",
@@ -355,39 +426,16 @@ export class BudgetedOpenAiFixedSourceProvider {
     };
     let settled;
     try { settled = await this.budget.settle(worldId, requestKey, evidence); }
-    catch { return unknown("image-charge-settlement-not-confirmed", "charge-settlement"); }
+    catch { return unknown("image-charge-settlement-not-confirmed", "charge-settlement", keptForBilling); }
     if (settled.audit.held) return diagnosticFailure("world_held", "Full charge recorded; budget is held and generated output is not released", "budget-held", "settled", { evidence });
-    // Record the bill BEFORE validating image shape, transparency or semantics.
-    if (body.data.quality !== undefined && body.data.quality !== prepared.capture.settings.quality) return diagnosticFailure("invalid_output", "Billed response reported an unapproved image quality", "unexpected-quality", "settled", { evidence });
-    const data = z.array(z.object({ b64_json: z.string().min(1) })).length(1).safeParse(body.data.data);
-    if (!response.ok || !data.success) return diagnosticFailure("invalid_output", "Billed request did not return exactly one image; no automatic repair", "image-data", "settled", { evidence });
-    const b64 = data.data[0]!.b64_json;
-    // Decode bounds follow the size that was actually requested: a fixed
-    // 1024-square bound would throw on a world sheet we had already been billed
-    // for. The PAYLOAD bound must not move with it. It is the base64 of the 18 MB
-    // the checkpoint store will accept, so anything this check lets through can
-    // still be saved. Scaling it with pixel count instead opened an 18 MB-to-253 MB
-    // window where a sheet is billed and then refused at save - the same fault
-    // that has already cost money twice on this route, reintroduced from the
-    // other side.
-    const expected = fixedSourcePixels(prepared.capture.settings.size);
-    if (b64.length > FIXED_SOURCE_PAYLOAD_BYTES || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(b64)) return diagnosticFailure("invalid_output", "Billed image payload is invalid", "image-payload", "settled", { evidence });
-    const png = Buffer.from(b64, "base64");
-    try {
-      const image = sharp(png, { limitInputPixels: expected.pixels }), meta = await image.metadata();
-      // An alpha channel is required of a sheet that will be CUT OUT, and must
-      // not be required of a local patch: an opaque crop legitimately comes back
-      // without one, and demanding it rejected a patch we had already been
-      // billed for. Every gate on this path has to ask which kind of image it is.
-      const transparent = prepared.capture.settings.background === "transparent";
-      if (meta.format !== "png" || meta.width !== expected.width || meta.height !== expected.height
-        || (transparent && !meta.hasAlpha) || (meta.pages ?? 1) !== 1) throw new Error();
-      const raw = await image.ensureAlpha().raw().toBuffer();
-      let clear = false, visible = false;
-      for (let i = 3; i < raw.length; i += 4) { clear ||= raw[i] === 0; visible ||= raw[i]! > 0; }
-      // A cut-out sheet must have somewhere to cut; a local patch must not.
-      if (!visible || (transparent ? !clear : clear)) throw new Error();
-    } catch { return diagnosticFailure("invalid_output", `Billed output lacks a nonempty transparent ${prepared.capture.settings.size} PNG; no automatic repair`, "image-raster", "settled", { evidence, png }); }
+    // The bill is recorded BEFORE any verdict on the picture, which is why the
+    // examination above deliberately said nothing until now.
+    if (body.data.quality !== undefined && body.data.quality !== prepared.capture.settings.quality) return diagnosticFailure("invalid_output", "Billed response reported an unapproved image quality", "unexpected-quality", "settled", { evidence, ...keptForRefusal });
+    if (pictureProblem || !usable) {
+      return diagnosticFailure("invalid_output", pictureProblem?.message ?? "Billed request did not return a usable image",
+        pictureProblem?.reason ?? "image-data", "settled", { evidence, ...keptForRefusal });
+    }
+    const png = usable;
     return { kind: "generated", png, pngSha256: hash(png), fingerprint: prepared.fingerprint,
       capture: prepared.capture, evidence, modelProvenance: body.data.model === undefined ? "requested-endpoint-model-not-returned" : "response-confirmed",
       audit: settled.audit, semanticApproval: "pending" };

@@ -80,19 +80,58 @@ describe("buying one local patch", () => {
     expect("evidence" in result).toBe(true);
   }, 60_000);
 
-  it("says nothing usable came back, rather than inventing an answer", async () => {
+  it("says nothing came back at all, rather than inventing an answer", async () => {
     // Nothing priced and nothing kept: there is no purchase to describe, only a
     // dispatch that may have been billed. A throw is read as exactly that.
-    for (const [name, custom] of [
-      ["the wire failed", async () => { throw new Error("socket hung up"); }],
-      ["there was no receipt", async () => answer({}, {})],
-      ["the usage could not be read", async () => answer({ usage: { input_tokens: 1 } })],
-      ["another model answered", async () => answer({ model: "gpt-image-1" })],
-    ] as const) {
-      await expect(buyLocalPatch("sk-test-only", request(), { fetchOnce: custom as unknown as typeof fetch }), name)
-        .rejects.toThrow(/LOCAL_PATCH_PAINTER/);
-    }
-  }, 120_000);
+    await expect(buyLocalPatch("sk-test-only", request(), {
+      fetchOnce: (async () => { throw new Error("socket hung up"); }) as unknown as typeof fetch,
+    })).rejects.toThrow(/LOCAL_PATCH_PAINTER/);
+  }, 60_000);
+
+  it("keeps a picture whose receipt is unreadable, and refuses one from another model", async () => {
+    // Both are "charge evidence" to the transport and they are not the same
+    // thing at all: an unreadable receipt says nothing about the picture, and a
+    // model nobody asked for means this is not the picture that was requested.
+    const noReceipt = await buyLocalPatch("sk-test-only", request(), { fetchOnce: (async () => answer({}, {})) as unknown as typeof fetch });
+    expect(noReceipt.png).not.toBeNull();
+    expect(noReceipt.evidence).toBeNull();
+    expect(noReceipt.unknownReason).toBeTruthy();
+
+    const wrongModel = await buyLocalPatch("sk-test-only", request(), { fetchOnce: (async () => answer({ model: "gpt-image-1" })) as unknown as typeof fetch });
+    expect(wrongModel.png, "not the picture that was asked for").toBeNull();
+    expect(wrongModel.quarantined).not.toBeNull();
+    expect(wrongModel.unknownReason).toBeTruthy();
+  }, 60_000);
+
+  it("keeps the picture when its bill cannot be stated, because those are different questions too", async () => {
+    // The other half of the same idea, and the one that stayed open for three
+    // rounds: the transport priced the response before it looked at the image,
+    // so a perfectly good picture was thrown away whenever the usage could not
+    // be read. The picture is examined first now and reported after, so a
+    // billing failure carries it.
+    const result = await buyLocalPatch("sk-test-only", request(), {
+      fetchOnce: (async () => answer({ usage: { input_tokens: 1 } })) as unknown as typeof fetch,
+    });
+    expect(result.png, "the picture was paid for; it does not stop existing").not.toBeNull();
+    expect(await sharp(result.png!).metadata()).toMatchObject({ width: 768, height: 1152 });
+    expect(result.rejected).toBeNull();
+    // And the charge is held rather than invented.
+    expect(result.evidence).toBeNull();
+    expect(result.unknownReason).toMatch(/cost_unknown|charge/);
+  }, 60_000);
+
+  it("does not hand back a picture the response itself refused", async () => {
+    // The same bytes can be well formed and still not allowed: a quality nobody
+    // approved is a refusal, not a billing problem, and promoting it would be
+    // the same mistake in the other direction.
+    const result = await buyLocalPatch("sk-test-only", request(), {
+      fetchOnce: (async () => answer({ quality: "low" })) as unknown as typeof fetch,
+    });
+    expect(result.png).toBeNull();
+    expect(result.rejected).toMatch(/unapproved image quality|invalid_output/);
+    expect(result.quarantined, "kept as evidence, never as a result").not.toBeNull();
+    expect(result.evidence, "the bill was priced before the refusal").not.toBeNull();
+  }, 60_000);
 
   it("keeps the bill when the image is refused, because those are different questions", async () => {
     // An image of the wrong shape does not make a known charge unknown. The

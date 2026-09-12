@@ -177,14 +177,25 @@ export async function buyLocalPatch(apiKey: string, input: LocalPatchRenderInput
     // and decoded are still worth keeping - the image is refused either way.
     const established = error instanceof FixedSourceError ? error.established : undefined;
     const evidence = established?.evidence ?? charge.evidence;
-    if (!evidence && !established?.png) {
+    // A PICTURE THAT PASSED EVERY CHECK IS A PICTURE, whatever happened to its
+    // bill. The transport only offers one here when the failure was about the
+    // money - a refusal of the image itself offers the bytes as evidence and
+    // nothing more - so this cannot quietly promote something that was refused.
+    if (established?.png !== undefined) {
+      return {
+        png: established.png, rejected: null, quarantined: null,
+        evidence: evidence ?? null,
+        unknownReason: evidence ? null : charge.unknownReason ?? `the picture arrived and its charge cannot be stated (${why})`,
+      };
+    }
+    if (!evidence && !established?.rejectedPng) {
       // Nothing priced and nothing kept: there is no purchase to describe, only
       // a dispatch that may have been billed. The boundary reads a throw as
       // exactly that and holds the reservation for a person.
       throw new Error(`LOCAL_PATCH_PAINTER: ${rejected}`);
     }
     return {
-      png: null, rejected, quarantined: established?.png ?? null,
+      png: null, rejected, quarantined: established?.rejectedPng ?? null,
       evidence: evidence ?? null,
       unknownReason: evidence ? null : charge.unknownReason ?? "the provider answered and its charge was never stated",
     };
