@@ -40,6 +40,8 @@ The first new game (`game_mruqsdt9sccz4n2im09r`, עומר) exposed a scheduling 
 
 The correction separates minimum useful dispatch time (150 seconds for the image, 60 seconds for its judge) from the unchanged 240-second provider maximum. Both phases keep the 25-second retention margin and receive the actual remaining deadline. Keys, fingerprints, budgets and retained evidence do not change. Real queue/SQLite tests with six and twenty seconds of preparation now generate the first hide; replay adds no dispatch or cost. A genuinely too-short window still defers safely. Focused verification: 54 render/purchase/painter tests, 24 world tests, four player tests, both TypeScript checks.
 
+Correction `4f828ee` was built and promoted to QA at approximately 10:40 UTC on 2026-09-12: deployment `dpl_HXG37KhmzaCvL2hUjRKgvifNTj5i`, `find-me-ko9a3z4cw-smallheroes-projects.vercel.app`. Both generation and APP_COMMIT are explicit build/runtime values. The existing creation page was refreshed; no order, identity, attempt or ledger record was reset.
+
 Deployed to the **find-me-qa** Vercel project only on 2026-09-12. Main production was not changed.
 
 - Release branch: `codex/qa-complete-world-20260912`, code commit `2e00a5c`; preserves the existing QA read-only partial-game review.
