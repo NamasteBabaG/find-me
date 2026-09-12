@@ -6,7 +6,7 @@ import { useStore } from "zustand";
 import { readFileSync } from "node:fs";
 import { buildDemoConfig } from "@/services/demo";
 import { type SceneConfig } from "@/domain/game/config";
-import { createMissionState, missionReducer, type MissionCopy } from "@/domain/game/mission";
+import { createMissionState, currentTargetId, missionReducer, type MissionCopy } from "@/domain/game/mission";
 import { planScenePlay } from "@/domain/game/replay";
 import { SceneViewport } from "../components/SceneViewport";
 import { ScenePlayer } from "../components/ScenePlayer";
@@ -74,7 +74,7 @@ describe("find-any rendering and mobile feedback", () => {
     expect(view.container.querySelector(".mission__rules")).toBeNull();
   });
 
-  it("acknowledges repeated finds once without buying another star, then unlocks on the third distinct hide", async () => {
+  it("replaces each found child, blocks hidden targets during the turn, and unlocks after the third", async () => {
     const scene = fiveScene(); const config = { ...buildDemoConfig("en"), scenes: [scene, { ...scene, slug: "next-board" }], worlds: undefined, world: undefined };
     const store = createPlayStore(config, { copy: { wrongTarget: "Other", wrongTargetNoItem: "Other", bonus: "Bonus", fallbackSuccess: "Found" }, readOnlyPreview: true, skipGift: true });
     store.getState().openScene(scene.slug); store.getState().dispatch({ type: "START", now: 1 });
@@ -82,31 +82,40 @@ describe("find-any rendering and mobile feedback", () => {
     const dispatch = vi.spyOn(store.getState(), "dispatch");
     function Player() { const state = useStore(store); return <GameI18nProvider locale="en"><ScenePlayer scene={scene} mission={state.mission!} store={state} onBack={state.goToMap} onSceneComplete={state.completeScene} /></GameI18nProvider>; }
     const view = render(<Player />); await decodeAll();
-    act(() => rig.tap(0.07, 0.45));
-    const firstBubble = view.container.querySelector(".bubble");
-    act(() => rig.tap(0.07, 0.45)); // cannot replace the active success or its timer
-    expect(view.container.querySelector(".bubble")).toBe(firstBubble);
-    act(() => vi.advanceTimersByTime(2300));
-    const progress = store.getState().progress;
-    track.mockClear(); dispatch.mockClear();
-    act(() => rig.tap(0.07, 0.45));
-    act(() => vi.advanceTimersByTime(500));
-    act(() => rig.tap(0.07, 0.45));
-    expect(view.container.querySelectorAll(".bubble")).toHaveLength(1);
-    expect(view.getByRole("status").textContent).toContain("already found");
-    expect(view.container.querySelector(".bubble__star")).toBeNull();
-    expect(dispatch).not.toHaveBeenCalled(); expect(track).not.toHaveBeenCalled();
-    expect(store.getState().progress).toBe(progress);
-    act(() => vi.advanceTimersByTime(500));
-    act(() => rig.tap(0.26, 0.45));
-    act(() => vi.advanceTimersByTime(2150)); // old repeat dismissal would erase this success early
-    expect(view.container.querySelector(".bubble")?.textContent).toContain("Found 1!");
-    act(() => vi.advanceTimersByTime(151));
-    expect(view.container.querySelector(".mission__continue")).toBeNull();
-    act(() => rig.tap(0.45, 0.45));
-    act(() => vi.advanceTimersByTime(2300));
+    const tap = (id: string) => act(() => rig.tap(Number(id.slice(-1)) * 0.19 + 0.07, 0.45));
+    for (let count = 1; count <= 3; count++) {
+      const id = currentTargetId(store.getState().mission!)!;
+      expect(view.container.querySelectorAll("[data-target]")).toHaveLength(1);
+      tap(id);
+      const firstBubble = view.container.querySelector(".bubble");
+      expect(firstBubble?.textContent).toContain("Found");
+      expect(view.getByRole("status").textContent).toContain("One star earned!");
+      const progress = store.getState().progress;
+      track.mockClear(); dispatch.mockClear();
+      tap(id);
+      expect(view.container.querySelector(".bubble")).toBe(firstBubble);
+      expect(dispatch).not.toHaveBeenCalled(); expect(track).not.toHaveBeenCalled();
+      expect(store.getState().progress).toBe(progress);
+      act(() => vi.advanceTimersByTime(2200));
+      expect(view.container.querySelector(".scene__curtain")?.classList.contains("is-open")).toBe(false);
+      expect(view.container.querySelector(".mission__continue")).toBeNull();
+      act(() => vi.advanceTimersByTime(560));
+      expect(view.container.querySelector(`[data-target="${id}"]`)).toBeNull();
+      const next = currentTargetId(store.getState().mission!)!;
+      expect(next).not.toBe(id);
+      expect(view.container.querySelector(`[data-target="${next}"]`)).not.toBeNull();
+      dispatch.mockClear();
+      tap(next); // already swapped, but still behind a closed curtain
+      expect(dispatch).not.toHaveBeenCalled();
+      expect(store.getState().progress).toBe(progress);
+      act(() => vi.advanceTimersByTime(160));
+      expect(view.container.querySelector(".scene__curtain")?.classList.contains("is-open")).toBe(true);
+      expect(store.getState().progress.scenes[scene.slug]!.foundTargetIds).toHaveLength(count);
+      expect(view.container.querySelector(".bubble")).toBeNull();
+      if (count < 3) expect(view.container.querySelector(".mission__continue")).toBeNull();
+    }
     expect(store.getState().progress.scenes[scene.slug]!.foundTargetIds).toHaveLength(3);
-    expect(view.container.querySelectorAll("[data-found-marker]")).toHaveLength(3);
+    expect(view.container.querySelectorAll("[data-target]")).toHaveLength(1);
     expect(view.container.querySelector(".mission__continue")).not.toBeNull();
     expect(view.container.querySelector(".scene__advance")).not.toBeNull();
     expect(view.container.querySelector(".complete")).toBeNull();
@@ -114,35 +123,43 @@ describe("find-any rendering and mobile feedback", () => {
     expect(store.getState().sceneSlug).toBe("next-board");
   });
 
-  it("draws all five together, accepts each footprint, and never removes/repositions a found patch", async () => {
+  it("preloads all five but draws and accepts only one, including the fifth celebration", async () => {
     const scene = fiveScene(); const plan = planScenePlay(scene, { plays: 0 }, "fixture");
     let mission = missionReducer(createMissionState(scene.slug, plan, scene), { type: "START", now: 1 }, copy);
     const hit = vi.fn(); const ready = vi.fn();
     const view = render(<SceneViewport scene={scene} mission={mission} hintLevel={0} bonusFound={false} onHit={hit} onAssetsReady={ready} />);
-    expect(view.container.querySelectorAll("[data-target]")).toHaveLength(5);
-    const styles = [...view.container.querySelectorAll("[data-target]")].map(node => node.getAttribute("style"));
+    expect(view.container.querySelectorAll("[data-target]")).toHaveLength(1);
+    expect(LoadedImage.instances.map(image => image.src)).toEqual(expect.arrayContaining(scene.targets.map((_, i) => `/test-patch-${i}.png`)));
     expect(ready).not.toHaveBeenCalled();
     await act(async () => { for (const image of LoadedImage.instances) image.onload?.(); });
     expect(ready).not.toHaveBeenCalled(); // load is not enough: every decode must complete.
     await act(async () => { for (const image of LoadedImage.instances) image.resolveDecode(); });
     expect(ready).toHaveBeenCalledOnce();
     for (let i = 0; i < 5; i++) {
-      act(() => rig.tap(i * 0.19 + 0.07, 0.45)); expect(hit).toHaveBeenLastCalledWith({ kind: "target", id: `hide-${i}` });
-      mission = missionReducer(mission, { type: "TAP_TARGET", targetId: `hide-${i}`, now: 2 }, copy);
+      const id = currentTargetId(mission)!;
+      const index = Number(id.slice(-1));
+      for (let hidden = 0; hidden < 5; hidden++) if (hidden !== index) {
+        act(() => vi.advanceTimersByTime(10));
+        act(() => rig.tap(hidden * 0.19 + 0.07, 0.45));
+        expect(hit.mock.lastCall?.[0].kind).not.toBe("target");
+      }
+      act(() => rig.tap(index * 0.19 + 0.07, 0.45)); expect(hit).toHaveBeenLastCalledWith({ kind: "target", id });
+      const style = view.container.querySelector(`[data-target="${id}"]`)!.getAttribute("style");
+      mission = missionReducer(mission, { type: "TAP_TARGET", targetId: id, now: 2 }, copy);
       view.rerender(<SceneViewport scene={scene} mission={mission} hintLevel={0} bonusFound={false} onHit={hit} />);
       const before = hit.mock.calls.length;
-      act(() => rig.tap(i * 0.19 + 0.07, 0.45));
-      expect(hit).toHaveBeenCalledTimes(before + 1);
-      expect(hit).toHaveBeenLastCalledWith({ kind: "found-target", id: `hide-${i}` });
-      expect([...view.container.querySelectorAll("[data-target]")].map(node => node.getAttribute("style"))).toEqual(styles);
+      act(() => rig.tap(index * 0.19 + 0.07, 0.45));
+      expect(hit).toHaveBeenCalledTimes(before);
+      expect(view.container.querySelectorAll("[data-target]")).toHaveLength(1);
+      expect(view.container.querySelector(`[data-target="${id}"]`)!.getAttribute("style")).toBe(style);
       mission = missionReducer(mission, { type: "FOUND_DONE", now: 3 }, copy);
       view.rerender(<SceneViewport scene={scene} mission={mission} hintLevel={0} bonusFound={false} onHit={hit} />);
+      expect(view.container.querySelector(`[data-target="${id}"]`)).toBeNull();
     }
-    expect(view.container.querySelectorAll('[data-found="true"]')).toHaveLength(5);
-    expect(view.container.querySelectorAll("[data-found-marker]")).toHaveLength(5);
+    expect(view.container.querySelectorAll("[data-target]")).toHaveLength(0);
   });
 
-  it("has one anchored bubble/announcement, no delayed duplicate or cloud turn, and cancels old dismissal timers", async () => {
+  it("has one anchored bubble/announcement, cancels old timers and completes the cloud turn", async () => {
     const scene = fiveScene(); const config = { ...buildDemoConfig("en"), scenes: [scene], worlds: undefined, world: undefined };
     const store = createPlayStore(config, { copy: { wrongTarget: "Other", wrongTargetNoItem: "Other", bonus: "Bonus", fallbackSuccess: "Found" }, readOnlyPreview: true, skipGift: true });
     store.getState().openScene(scene.slug); store.getState().dispatch({ type: "START", now: 1 });
@@ -160,9 +177,13 @@ describe("find-any rendering and mobile feedback", () => {
     expect(view.container.querySelector(".bubble")).toBe(bubble); // the old ambient timer did not erase the new find.
     expect(view.container.querySelectorAll(".bubble")).toHaveLength(1);
     act(() => vi.advanceTimersByTime(1001));
-    expect(view.container.querySelector(".bubble")).toBeNull(); expect(store.getState().mission!.phase).toBe("searching");
+    expect(view.container.querySelector(".bubble")).toBeNull();
+    expect(view.container.querySelector(".scene__curtain")?.classList.contains("is-open")).toBe(false);
+    act(() => vi.advanceTimersByTime(560));
+    act(() => vi.advanceTimersByTime(160));
+    expect(store.getState().mission!.phase).toBe("searching");
     expect(view.container.querySelector(".scene__curtain")?.classList.contains("is-open")).toBe(true);
-    expect(view.container.querySelectorAll("[data-target]")).toHaveLength(5);
+    expect(view.container.querySelectorAll("[data-target]")).toHaveLength(1);
     act(() => store.getState().dispatch({ type: "TAP_AMBIENT", ambientId: "ambient" }));
     act(() => vi.advanceTimersByTime(1601)); expect(view.container.querySelector(".bubble")).toBeNull();
     view.unmount(); act(() => vi.advanceTimersByTime(10_000)); expect(view.container.querySelector(".bubble")).toBeNull();

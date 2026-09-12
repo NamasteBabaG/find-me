@@ -107,8 +107,8 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
     if (!turn) return;
     const swap = setTimeout(() => {
       dispatch({ type: "FOUND_DONE", now: Date.now() });
-      // show the whole world again for the next search
-      apiRef.current?.reset();
+      // Finish the reset while fully covered, not halfway through reopening.
+      apiRef.current?.reset(0);
     }, TURN_CLOSE_MS);
     const open = setTimeout(() => setTurn(false), TURN_CLOSE_MS + TURN_HOLD_MS);
     return () => {
@@ -155,9 +155,8 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
       case "hit": {
         sounds().play("success");
         const target = scene.targets.find((t) => t.id === fb.targetId);
-        // In find-any the next hide is already on the board. Keep the player's
-        // search view: the legacy find zoom is undone by its cloud turn, but
-        // find-any has no turn and would stay focused on an already-found child.
+        // Five-hide play keeps the search view during the celebration. Both
+        // modes replace the child and reset the view behind the cloud turn.
         if (!free && target && api) {
           const variant = mission.plan.variants[fb.targetId] ?? "A";
           const { center } = targetGeometry(scene, target, variant);
@@ -175,7 +174,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
         foundTimer.current = setTimeout(() => {
           setBubble(null);
           setAnnouncement("");
-          if (last || free) dispatch({ type: "FOUND_DONE", now: Date.now() });
+          if (last) dispatch({ type: "FOUND_DONE", now: Date.now() });
           else setTurn(true);
         }, FOUND_MS);
         return;
@@ -243,23 +242,11 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
 
   const onHit = useCallback(
     (hit: Hit) => {
+      // The next patch is already swapped while the curtain is still closed.
+      // It cannot be found until the player can actually see the new board.
+      if (turn) return;
       sounds().unlock();
       switch (hit.kind) {
-        case "found-target": {
-          // This is acknowledgement, not another find: no reducer action,
-          // persistence, telemetry, particles or extra star. Leave an active
-          // success bubble/timer alone, but never silently swallow a later tap.
-          if (!free || mission.phase !== "searching" || !mission.found[hit.id]) break;
-          const target = scene.targets.find((item) => item.id === hit.id);
-          if (!target) break;
-          const p = targetStagePoint(scene, target, mission.plan.variants[hit.id] ?? "A");
-          clearTimeout(bubbleTimer.current);
-          setBubble({ text: g.copy.alreadyFound, x: p.x, y: p.y, key: ++bubbleSequence.current });
-          setAnnouncement(g.copy.alreadyFound);
-          sounds().play("tap");
-          bubbleTimer.current = setTimeout(() => { setBubble(null); setAnnouncement(""); }, 2600);
-          break;
-        }
         case "target":
           dispatch({ type: "TAP_TARGET", targetId: hit.id, now: Date.now() });
           break;
@@ -274,7 +261,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           break;
       }
     },
-    [dispatch, free, mission, scene, g.copy.alreadyFound],
+    [dispatch, turn],
   );
 
   const currentId = currentTargetId(mission);
@@ -292,7 +279,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
   const stars = free ? gameStars(store.progress, store.worldScenes()) : undefined;
 
   return (
-    <div className="scene" data-mission-phase={mission.phase} data-found-count={foundIds.length} style={{ ["--scene-sky" as string]: scene.art.palette.sky, ["--scene-accent" as string]: scene.art.palette.accent }}>
+    <div className="scene" data-mission-phase={mission.phase} data-found-count={foundIds.length} data-turning={turn} style={{ ["--scene-sky" as string]: scene.art.palette.sky, ["--scene-accent" as string]: scene.art.palette.accent }}>
       <header className="scene__bar">
         {store.demo ? (
           <span />
@@ -375,7 +362,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           hintLevel={mission.hintLevel}
           hintPulse={hintPulse}
           hintText={currentSlot?.hintText ?? null}
-          onHint={() => dispatch({ type: "REQUEST_HINT" })}
+          onHint={() => { if (!turn) dispatch({ type: "REQUEST_HINT" }); }}
           avatarUrl={store.config.child.avatarUrl}
           childName={store.config.child.name}
           quiet={false}
@@ -383,11 +370,11 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           findAny={free}
           findsRequiredToAdvance={advanceAt}
           worldStars={stars}
-          onAdvance={canAdvance ? advance : undefined}
+          onAdvance={canAdvance && mission.phase !== "found" && !turn ? advance : undefined}
         />
       ) : null}
 
-      {canAdvance && foundIds.length === advanceAt && mission.phase === "searching" && !staying ? <section className="scene__advance" aria-label={g.scene.canContinue}>
+      {canAdvance && foundIds.length === advanceAt && mission.phase === "searching" && !turn && !staying ? <section className="scene__advance" aria-label={g.scene.canContinue}>
         <p>{store.nextScene() ? g.scene.unlocked : g.scene.journeyFinished}</p>
         <button type="button" className="fm-btn fm-btn--sm" onClick={advance}>{g.scene.canContinue}</button>
         <button type="button" className="fm-btn fm-btn--secondary fm-btn--sm" onClick={() => setStaying(true)}>{g.scene.keepSearching}</button>

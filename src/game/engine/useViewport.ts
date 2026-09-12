@@ -33,7 +33,7 @@ export interface ViewportApi {
   };
   toNormalized: (clientX: number, clientY: number) => { x: number; y: number } | null;
   zoomBy: (factor: number) => void;
-  reset: () => void;
+  reset: (durationMs?: number) => void;
   focusOn: (nx: number, ny: number, zoomFactor: number, durationMs?: number) => void;
   animateTo: (t: ViewTransform, durationMs: number) => void;
 }
@@ -277,8 +277,8 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
     [animateTo],
   );
 
-  const reset = useCallback(() => {
-    animateTo(centeredTransform(viewportRef.current, stage, fitRef.current), 320);
+  const reset = useCallback((durationMs = 320) => {
+    animateTo(centeredTransform(viewportRef.current, stage, fitRef.current), durationMs);
   }, [animateTo, stage]);
 
   const focusOn = useCallback(

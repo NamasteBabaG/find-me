@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SceneConfig, TargetConfig } from "@/domain/game/config";
 import type { MissionState } from "@/domain/game/mission";
-import { currentTargetId, isFound } from "@/domain/game/mission";
+import { currentTargetId, isFound, visibleTargetId } from "@/domain/game/mission";
 import type { HintLevel } from "@/domain/game/hints";
 import { assetPlan, preloadVerdict, type LoadResult } from "../engine/asset-plan";
 import { expandRect, hitPadding, hitTest, spriteRect, stageToScreen, type HitCandidate, type NormRect } from "../engine/viewport-math";
@@ -12,7 +12,7 @@ import { useViewport, type ViewportApi } from "../engine/useViewport";
 import { Sprite } from "./Sprite";
 import { FoundParticles } from "./FoundParticles";
 
-export type Hit = { kind: "target"; id: string } | { kind: "found-target"; id: string } | { kind: "bonus" } | { kind: "ambient"; id: string } | { kind: "miss"; x: number; y: number };
+export type Hit = { kind: "target"; id: string } | { kind: "bonus" } | { kind: "ambient"; id: string } | { kind: "miss"; x: number; y: number };
 
 interface Props {
   scene: SceneConfig;
@@ -74,15 +74,13 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
       const candidates: HitCandidate<Hit>[] = [];
       // Only the child being looked for is on the board, so she is the only
       // target that can be tapped (see the note on `onBoard` below).
-      const current = currentTargetId(m);
-      const available = placedTargets.filter(p => (m.playMode === "find-any" || p.target.id === current));
-      // A real footprint wins over a neighbour's touch padding. A found figure
-      // may explain itself in find-any, but never becomes another reward or a
-      // bonus underneath it. Legacy serial finds keep their existing no-op.
+      const visible = visibleTargetId(m);
+      const available = placedTargets.filter(p => p.target.id === visible);
+      // Only the painted child is hittable. A duplicate during its celebration
+      // cannot become a second reward or a bonus underneath it.
       const exact = hitTest(available.map(p => ({ id: p.target.id, rect: p.hitRect, zIndex: p.slot.zIndex })), nx, ny);
       if (exact) {
         if (!isFound(m, exact)) onHit({ kind: "target", id: exact });
-        else if (m.playMode === "find-any") onHit({ kind: "found-target", id: exact });
         return;
       }
       const padded: HitCandidate<Hit>[] = [];
@@ -197,7 +195,8 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
    * through the found celebration (the mission advances on FOUND_DONE) and is
    * replaced by the next one.
    */
-  const onBoard = placedTargets.filter((p) => mission.playMode === "find-any" || p.target.id === current);
+  const visible = visibleTargetId(mission);
+  const onBoard = placedTargets.filter((p) => p.target.id === visible);
   const { transform } = api;
   const stageStyle: React.CSSProperties = {
     width: stage.width,
@@ -272,24 +271,6 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
           />
         ) : null}
       </div>
-
-      {/* A saved find remains legible after its transient celebration. This
-          screen-space badge never changes the painted patch or its hit area. */}
-      {mission.playMode === "find-any" ? <div className="viewport__found-markers" aria-hidden>
-        {onBoard.filter(p => isFound(mission, p.target.id)).map(p => {
-          const head = stageToScreen(transform, p.head.x * stage.width, p.head.y * stage.height);
-          const right = stageToScreen(transform, Math.max(p.head.x, p.hitRect.x1) * stage.width, p.head.y * stage.height);
-          // 24px badge + the design system's small spacing allowance. Put it
-          // outside the child's footprint, changing sides near the screen edge.
-          const leftSide = right.x + 32 > api.viewport.width;
-          const point = leftSide
-            ? stageToScreen(transform, Math.min(p.head.x, p.hitRect.x0) * stage.width, p.head.y * stage.height)
-            : right;
-          return <span key={p.target.id} data-found-marker={p.target.id}
-            className={`found-marker${leftSide ? " found-marker--left" : ""}${head.y < 32 ? " found-marker--below" : ""}`}
-            style={{ left: point.x, top: head.y }}>★</span>;
-        })}
-      </div> : null}
 
       {/* screen-space overlays */}
       <div className="overlay" aria-hidden>

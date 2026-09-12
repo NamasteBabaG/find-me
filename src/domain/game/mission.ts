@@ -93,6 +93,15 @@ export function currentTargetId(state: MissionState): string | null {
   return state.plan.order[state.currentIndex] ?? null;
 }
 
+/** The one appearance to draw and hit-test, including its found celebration.
+ * A fifth find is already saved before the animation ends, so the logical
+ * current target is null while its just-found appearance must still be shown. */
+export function visibleTargetId(state: MissionState): string | null {
+  if (state.phase === "complete") return null;
+  if (state.phase === "found" && state.lastFeedback?.kind === "hit") return state.lastFeedback.targetId;
+  return currentTargetId(state);
+}
+
 export function missionCanAdvance(state: MissionState): boolean {
   return Object.keys(state.found).length >= (state.findsRequiredToAdvance ?? state.plan.order.length);
 }

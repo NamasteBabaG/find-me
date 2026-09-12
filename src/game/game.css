@@ -139,19 +139,6 @@
 /* Particle-only finds, in screen space above the complete painting and its
    foreground. Never give the patch a halo, shadow or a higher art-layer z-index. */
 .viewport__particles { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: var(--z-overlay); }
-.viewport__found-markers { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: calc(var(--z-ui) - 1); }
-.found-marker {
-  --found-marker-x: var(--space-0-5);
-  --found-marker-y: calc(-100% - var(--space-0-5));
-  position: absolute; pointer-events: none;
-  width: var(--space-3); height: var(--space-3);
-  display: grid; place-items: center;
-  transform: translate(var(--found-marker-x), var(--found-marker-y));
-  border-radius: var(--radius-pill); background: var(--sun); color: var(--ink);
-  font-size: var(--fs-200); line-height: var(--lh-200); box-shadow: var(--shadow-1);
-}
-.found-marker--left { --found-marker-x: calc(-100% - var(--space-0-5)); }
-.found-marker--below { --found-marker-y: var(--space-0-5); }
 .found-particles { position: absolute; pointer-events: none; }
 .found-particles__spark {
   position: absolute; left: 0; top: 0;

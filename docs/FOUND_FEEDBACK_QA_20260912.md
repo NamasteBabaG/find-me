@@ -1,5 +1,11 @@
 # Found feedback / apparent freeze — 2026-09-12
 
+> Superseded by [serial hide transition](SERIAL_HIDE_TRANSITION_QA_20260912.md).
+> This round verified simultaneous find-any interactions, but misunderstood the
+> requested presentation: the found child must disappear and a new hide must
+> replace it. Persistent five-child rendering and found markers below are
+> historical, not the current behavior.
+
 ## Observed, not inferred
 
 On the user's QA game, Amazon was at 2/5 and world progress at 5/45.
