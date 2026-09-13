@@ -150,7 +150,7 @@ describe("MissionCard", () => {
     expect(rule(".mission__stars.stars--sm", narrow)).toContain("--star-size: var(--space-2)");
     expect(rule(".stars--sm")).toContain("--star-size: var(--space-3)");
     expect(rule(".mission__hintbtn")).toContain("min-width: var(--touch-min)");
-    expect(rule(".mission__rules")).toContain("white-space: normal");
+    expect(rule(".mission__text")).toContain("white-space: normal");
     expect(rule(".mission__face")).toContain("object-fit: contain");
     expect(css).toContain("width: calc(var(--space-6) + var(--space-1)); height: calc(var(--space-6) + var(--space-1))");
     const px = (name: string) => Number(tokens.match(new RegExp(`--${name}:\\s*(\\d+)px`))?.[1]);
@@ -165,13 +165,19 @@ describe("MissionCard", () => {
     const slots = [...view.container.querySelectorAll(".mission__stars .stars__slot")];
     expect(slots).toHaveLength(5);
     expect(slots.map(slot => slot.classList.contains("is-lit"))).toEqual([true, true, false, false, false]);
+    const top = view.container.querySelector(".mission__top")!;
+    expect(top.querySelector(".mission__text")?.parentElement).toBe(top.querySelector(".mission__stars")?.parentElement);
+    expect(top.querySelector(".mission__hintbtn")?.parentElement).toBe(top);
+    expect(top.querySelector(".mission__thumb--face")?.parentElement).toBe(top);
+    expect(view.container.querySelector(".mission__body")).toBeNull();
   });
 
   it.each(["Enter", " "])("keeps nested hint/continue keyboard activation native when the HUD is quiet (%s)", key => {
     const onHint = vi.fn(), onAdvance = vi.fn(), onExpand = vi.fn();
     const view = he(<MissionCard index={4} total={5} target={target("d")} found={["a", "b", "c"]}
-      order={["a", "b", "c", "d", "e"]} hintLevel={0} hintPulse={false} hintText={null} onHint={onHint}
+      order={["a", "b", "c", "d", "e"]} hintLevel={1} hintPulse={false} hintText="Behind the tree" onHint={onHint}
       onAdvance={onAdvance} childName="יובל" quiet onExpand={onExpand} />);
+    expect(view.getByRole("heading").textContent).toContain("יובל");
     for (const selector of [".mission__hintbtn", ".mission__continue"]) {
       const button = view.container.querySelector(selector)!;
       const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
@@ -185,6 +191,21 @@ describe("MissionCard", () => {
     expect(onHint).toHaveBeenCalledTimes(1); expect(onAdvance).toHaveBeenCalledTimes(1);
     fireEvent.keyDown(view.container.querySelector(".mission")!, { key });
     expect(onExpand).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not offer an inert expand control before any hint details exist", () => {
+    const onExpand = vi.fn(), onHint = vi.fn();
+    const view = he(<MissionCard index={1} total={5} target={target("a")} found={[]}
+      order={["a", "b", "c", "d", "e"]} hintLevel={0} hintPulse={false} hintText={null}
+      onHint={onHint} childName="עומר" quiet onExpand={onExpand} findAny />);
+    const card = view.container.querySelector(".mission")!;
+    expect(card.getAttribute("role")).toBeNull(); expect(card.getAttribute("tabindex")).toBeNull();
+    expect(card.getAttribute("aria-expanded")).toBeNull();
+    expect(view.getAllByRole("button")).toHaveLength(1);
+    expect(view.container.querySelector(".mission__body")).toBeNull();
+    expect(view.getByRole("heading").textContent).toContain("עומר");
+    fireEvent.keyDown(card, { key: "Enter" }); expect(onExpand).not.toHaveBeenCalled();
+    fireEvent.click(view.getByRole("button")); expect(onHint).toHaveBeenCalledOnce();
   });
 
   it("carries the tray: the stars that landed, out of the board's three", () => {

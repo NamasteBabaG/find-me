@@ -75,7 +75,7 @@ describe("find-any rendering and mobile feedback", () => {
       if (count === 3) {
         expect(view.container.querySelector(".mission__continue")).not.toBeNull();
         expect(view.container.querySelector(".complete")).toBeNull();
-        expect(view.container.querySelector(".mission__rules")?.textContent).toContain(locale === "en" ? "1 more" : "עוד מחבוא אחד");
+        expect(view.container.querySelector(".mission__rules")).toBeNull();
         fireEvent.click(view.container.querySelector(".scene__advance-actions button:last-child")!);
       }
     }
@@ -83,7 +83,7 @@ describe("find-any rendering and mobile feedback", () => {
     expect(view.container.querySelectorAll("[data-target]")).toHaveLength(0);
     expect(view.container.querySelectorAll(".complete__stars .stars__slot")).toHaveLength(4);
     expect(view.container.querySelector(".complete__stars-text")?.textContent).toBe(locale === "en" ? "Four gold stars!" : "ארבעה כוכבי זהב!");
-    expect(view.container.querySelector(".mission__rules")?.textContent).toContain(locale === "en" ? "4 stars" : "4 כוכבים");
+    expect(view.container.querySelector(".mission__rules")).toBeNull();
   });
 
   it.each(["en", "he"] as const)("shows43 total stars and truthful four/five rules throughout the mixed-board gift and bag in %s", locale => {
@@ -106,29 +106,50 @@ describe("find-any rendering and mobile feedback", () => {
     expect(Array.from(bag.container.querySelectorAll(".loot")).map(node => node.querySelectorAll(".stars__slot").length)).toEqual([4, 4, 5, 5, 5, 5, 5, 5, 5]);
   });
 
-  it.each(["en", "he"] as const)("makes the next search and the three/five-star thresholds explicit in %s", locale => {
+  it.each(["en", "he"] as const)("keeps the search name and stars beside hint without unlock helper sentences in %s", locale => {
     const scene = fiveScene();
     const props = { index: 1, total: 5, target: scene.targets[0]!, order: scene.targets.map(t => t.id), hintLevel: 0 as const,
       hintPulse: false, hintText: "Authored hint", onHint: vi.fn(), childName: "Alex", findAny: true };
     const card = (count: number, threshold = 3) => <GameI18nProvider locale={locale}><MissionCard {...props} found={props.order.slice(0, count)} findsRequiredToAdvance={threshold} /></GameI18nProvider>;
     const view = render(card(0));
-    const expectedRules = locale === "en" ? ["3 more", "2 more", "1 more", "2 more", "1 more", "5 stars"]
-      : ["עוד 3", "עוד 2", "עוד מחבוא אחד", "עוד 2", "עוד מחבוא אחד", "5 כוכבים"];
     for (let count = 0; count <= 5; count++) {
       view.rerender(card(count));
-      expect(view.container.querySelector(".mission__rules")?.textContent).toContain(expectedRules[count]);
+      expect(view.container.querySelector(".mission__rules")).toBeNull();
+      expect(view.container.textContent).not.toMatch(locale === "en" ? /more hiding|stars to|find 3/ : /עוד מחבוא|עוד [123]|מוצאים 3/);
+      const top = view.container.querySelector(".mission__top")!;
+      expect(top.querySelector(".mission__text")?.parentElement).toBe(top.querySelector(".mission__stars")?.parentElement);
+      expect(top.querySelector(".mission__hintbtn")?.parentElement).toBe(top);
+      expect(view.container.querySelector(".mission__body")).toBeNull();
       const heading = view.getByRole("heading").textContent!;
       if (count > 0 && count < 5) expect(heading).toContain(locale === "en" ? "another hiding spot" : "מחבוא נוסף");
       if (count === 5) expect(heading).toBe(locale === "en" ? "All hiding spots found!" : "כל המחבואים נמצאו!");
     }
     view.rerender(card(1, 4));
-    expect(view.container.querySelector(".mission__rules")?.textContent).toContain(locale === "en" ? "3 more" : "עוד 3");
+    expect(view.container.querySelector(".mission__rules")).toBeNull();
     view.rerender(<GameI18nProvider locale={locale}><MissionCard {...props} found={[props.order[0]!]} hintLevel={1} /></GameI18nProvider>);
     expect(view.getByRole("heading").textContent).toContain(locale === "en" ? "another hiding spot" : "מחבוא נוסף");
     expect(view.container.textContent).toContain(props.target.mission);
     view.rerender(<GameI18nProvider locale={locale}><MissionCard {...props} findAny={false} found={[]} hintLevel={1} /></GameI18nProvider>);
-    expect(view.getByRole("heading").textContent).toBe(props.target.mission);
+    expect(view.getByRole("heading").textContent).toContain("Alex");
+    expect(view.container.querySelector(".mission__body")?.textContent).toContain(props.target.mission);
     expect(view.container.querySelector(".mission__rules")).toBeNull();
+  });
+
+  it.each(["en", "he"] as const)("keeps the identity heading while the first search's requested hint folds in %s", locale => {
+    const scene = fiveScene(), onExpand = vi.fn();
+    const props = { index: 1, total: 5, target: scene.targets[0]!, order: scene.targets.map(t => t.id), found: [],
+      hintLevel: 1 as const, hintPulse: false, hintText: "Beside the tree", onHint: vi.fn(), childName: "Alex", findAny: true, onExpand };
+    const view = render(<GameI18nProvider locale={locale}><MissionCard {...props} /></GameI18nProvider>);
+    expect(view.getByRole("heading").textContent).toBe(locale === "en" ? "Find Alex!" : "מצאו את Alex!");
+    const details = view.container.querySelector(".mission__body")!;
+    expect(details.textContent).toContain(props.target.mission); expect(details.textContent).toContain("Beside the tree");
+    expect(details.hasAttribute("hidden")).toBe(false);
+    view.rerender(<GameI18nProvider locale={locale}><MissionCard {...props} quiet /></GameI18nProvider>);
+    expect(view.getByRole("heading").textContent).toContain("Alex");
+    expect(view.container.querySelector(".mission__body")!.hasAttribute("hidden")).toBe(true);
+    const card = view.container.querySelector(".mission")!;
+    expect(card.getAttribute("role")).toBe("button"); expect(card.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.keyDown(card, { key: "Enter" }); expect(onExpand).toHaveBeenCalledOnce();
   });
 
   it("replaces each found child, blocks hidden targets during the turn, and unlocks after the third", async () => {

@@ -50,7 +50,8 @@ describe("hero: the find on three devices", () => {
       expect(screen.querySelectorAll(".hero4__slot")).toHaveLength(5);
       expect(screen.querySelectorAll(".hero4__landed")).toHaveLength(1);
       expect(screen.querySelector(".hero4__mission")?.textContent).toBe("Find Noa!");
-      expect(screen.querySelector(".hero4__rules")?.textContent).toBe("5 spots, find 3");
+      expect(screen.querySelector(".hero4__rules")).toBeNull();
+      expect(screen.textContent).not.toContain("5 spots, find 3");
       expect(screen.querySelector(".hero4__bubble")?.textContent).toBe("Found me!");
       expect(screen.querySelector(".hero4__face")?.getAttribute("src")).toBe(child.avatarUrl);
       // The find hangs off the child's head, somewhere inside the picture.
@@ -65,21 +66,21 @@ describe("hero: the find on three devices", () => {
     expect(source.getAttribute("media")).toBe("(min-width: 721px)");
     for (const kind of ["tablet", "laptop", "card"]) expect(view.container.querySelector(`.hero4__screen--${kind} img`)?.getAttribute("src")).toBe(found.crops.wide.src);
   });
-  it("separates identity and progress from the rules and hint in every preview", () => {
+  it("keeps the face, name/stars stack and hint on one row without helper copy in every preview", () => {
     const view = render(<Hero child={child} />);
     const ratio = view.container.querySelector<HTMLElement>(".hero4__card")!.style.aspectRatio;
     const [numerator, denominator = 1] = ratio.split("/").map(Number);
     expect(numerator! / denominator).toBeCloseTo(2 / 3);
     for (const screen of Array.from(view.container.querySelectorAll("[data-screen]"))) {
       const top = screen.querySelector(".hero4__hud-top")!;
-      const footer = screen.querySelector(".hero4__hud-footer")!;
       expect(top.querySelector(".hero4__face")?.getAttribute("width")).toBe("56");
       expect(top.querySelector(".hero4__mission")?.textContent).toBe("Find Noa!");
       expect(top.querySelectorAll(".hero4__slot")).toHaveLength(5);
       expect(top.querySelector(".hero4__rules")).toBeNull();
-      expect(top.querySelector(".hero4__hintbtn")).toBeNull();
-      expect(footer.querySelector(".hero4__rules")).not.toBeNull();
-      expect(footer.querySelector(".hero4__hintbtn")).not.toBeNull();
+      expect(top.querySelector(".hero4__hintbtn")?.parentElement).toBe(top);
+      expect(top.querySelector(".hero4__face")?.parentElement).toBe(top);
+      expect(top.querySelector(".hero4__mission")?.parentElement).toBe(top.querySelector(".hero4__tray")?.parentElement);
+      expect(screen.querySelector(".hero4__hud-footer")).toBeNull();
       expect(screen.querySelector(".hero4__hud")?.parentElement).toBe(screen.querySelector(".hero4__rail")?.parentElement);
       expect(screen.querySelector(".hero4__hud")?.getAttribute("dir")).toBe("ltr");
     }

@@ -242,7 +242,7 @@
 /* ─── The search HUD ────────────────────────────────────────────────────────
    Top-right in both languages: the tools sit in a rail on the left, so
    neither mirrors over the other in RTL. One row is always there — the
-   child's face, the board's gold stars, the hint. The words under it fold
+   child's face, name, the board's gold stars, the hint. Requested hints under it fold
    away a few seconds after they change and unfold on a tap or a hint: a
    phone screen is mostly board, and the child under the card is the one
    being looked for. Taps pass through the card to the board; only its
@@ -253,9 +253,8 @@
 /* The identity cue is the whole illustrated portrait, contained — never a circular crop of it. */
 .mission__thumb--face { width: var(--space-8); height: var(--space-8); flex-shrink: 0; display: grid; place-items: center; }
 .mission__face { width: 100%; height: 100%; border-radius: var(--radius-2); object-fit: contain; background: var(--white); box-shadow: var(--sticker-outline); }
-.mission__progress { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-0-5); min-width: 0; }
+.mission__progress { display: flex; flex: 1; flex-direction: column; align-items: flex-start; gap: var(--space-0-5); min-width: 0; }
 .mission__count { font-size: var(--fs-50); line-height: var(--lh-50); font-weight: 700; color: var(--ink-3); letter-spacing: 0.02em; white-space: nowrap; }
-.mission__rules { max-width: 100%; font-size: var(--fs-50); line-height: var(--lh-50); font-weight: 700; color: var(--ink-3); white-space: normal; overflow-wrap: anywhere; }
 .mission__hintbtn { pointer-events: auto; min-width: var(--touch-min); min-height: var(--touch-min); padding-inline: var(--space-2); flex-shrink: 0; border-radius: var(--radius-pill); background: var(--sun); box-shadow: var(--shadow-1); display: grid; place-items: center; font-family: var(--font-display); font-weight: 800; font-size: var(--fs-200); color: var(--ink); line-height: 1; transition: transform var(--dur-1) var(--ease-out); }
 .mission__hintbtn:hover { transform: translateY(-1px); }
 .mission__hintbtn:disabled { opacity: 0.4; }

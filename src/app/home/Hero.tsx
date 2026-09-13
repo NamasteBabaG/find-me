@@ -99,8 +99,7 @@ function Screen({ kind, child }: { kind: Kind; child: Child }) {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><circle cx="10.5" cy="10.5" r="6.5" /><path d="M15.4 15.4 21 21M7.5 10.5h6" /></svg>
           </span>
         </div>
-        {/* An editorial preview of the game HUD: identity first, progress second,
-            rules and hint on their own row so they never crowd the face. */}
+        {/* One compact search row: the whole face, name and stars, then hint. */}
         <div className="hero4__hud" dir={locale === "he" ? "rtl" : "ltr"}>
           <div className="hero4__hud-top">
             <Image src={child.avatarUrl} alt="" width={56} height={56} unoptimized className="hero4__face" draggable={false} />
@@ -119,9 +118,6 @@ function Screen({ kind, child }: { kind: Kind; child: Child }) {
                 ))}
               </span>
             </div>
-          </div>
-          <div className="hero4__hud-footer">
-            <span className="hero4__rules">{t.game.scene.findAnyRules}</span>
             <span className="hero4__hintbtn">{t.game.scene.hint}</span>
           </div>
         </div>
