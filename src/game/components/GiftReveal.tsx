@@ -14,6 +14,9 @@ export function GiftReveal({ config, onOpen }: { config: GameConfig; onOpen: () 
   const from = config.gift?.fromName;
   const message = config.gift?.message;
   const name = config.child.name;
+  const findAny = config.scenes.every(scene => scene.playMode === "find-any");
+  const giftLead = !findAny ? g.gift.lead
+    : config.scenes.every(scene => scene.targets.length === 5) ? g.gift.findAnyLead : g.gift.findAnyVariableLead;
 
   const tear = () => {
     setPhase("tearing");
@@ -41,7 +44,7 @@ export function GiftReveal({ config, onOpen }: { config: GameConfig; onOpen: () 
           <img src={config.child.avatarUrl} alt="" className="fm-sticker gift__avatar" width={160} height={160} />
           <p className="fm-eyebrow">{tf(g.gift.made, { name })}</p>
           <h1 className="gift__title gift__title--big">{tf(g.gift.title, { name })}</h1>
-          <p className="gift__lead">{tf(config.scenes.every(scene => scene.playMode === "find-any") ? g.gift.findAnyLead : g.gift.lead, { name, count: config.scenes.length })}</p>
+          <p className="gift__lead">{tf(giftLead, { name, count: config.scenes.length, stars: config.scenes.reduce((sum, scene) => sum + scene.targets.length, 0) })}</p>
           {message ? <p className="gift__message">“{message}”</p> : null}
           <button type="button" className="fm-btn fm-btn--lg gift__btn" onClick={onOpen} autoFocus>
             {g.gift.start}

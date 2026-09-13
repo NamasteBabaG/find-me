@@ -77,7 +77,7 @@ const escape = (value: string) => value.replace(/&/g, "&amp;").replace(/</g, "&l
 function concernsMail(appUrl: string, gameId: string, to: string, concerns: LocalPatchConcern[], identityConcern: string | null): EmailMessage {
   const adminUrl = `${appUrl}/admin/orders/${encodeURIComponent(gameId)}`;
   const subject = `השופט סימן ${concerns.length} מחבואים לבדיקה — המשחק כבר פורסם`;
-  const lead = "המשחק פורסם וכל המחבואים זמינים. אלו הסתייגויות של השופט בלבד; אין צורך לאשר כדי לשחק.";
+  const lead = "המשחק פורסם והמחבואים שנכללו בו זמינים למשחק. אלו הסתייגויות של השופט בלבד; אין צורך לאשר כדי לשחק.";
   const lines = concerns.map(item => `${item.board} / ${item.hide} — ${item.uncertainty ? "אי־הכרעה" : "הסתייגות"}: ${item.reason}`);
   const identity = identityConcern ? [`זהות ראשונית (אינה נספרת כמחבוא): ${identityConcern}`] : [];
   return { to, tag: "admin-alert", subject,
@@ -95,8 +95,11 @@ export async function enqueueLocalPatchNotifications(c: Container, tx: Prisma.Tr
   const configSha256 = sha(JSON.stringify(config));
   const link = await ensurePlayerLink({ ...c, db: tx as Container["db"] }, gameId);
   const ready = routeMail(gameReadyEmail({ to: game.owner?.email ?? "", childName: game.childProfile.displayName,
-    playLink: link.url, libraryLink: `${c.appUrl}/library/${gameId}`, sceneCount: game.scenes.length, locale: game.locale === "he" ? "he" : "en", playMode: "find-any" }), c.emailFallbackTo);
-  const rows = game.scenes.flatMap(scene => scene.targets.flatMap(target => target.variants.filter(row => row.variant === "A" && row.status === "GENERATED")
+    playLink: link.url, libraryLink: `${c.appUrl}/library/${gameId}`, sceneCount: config.scenes.length,
+    targetCount: config.scenes.reduce((total, scene) => total + scene.targets.length, 0),
+    locale: game.locale === "he" ? "he" : "en", playMode: "find-any" }), c.emailFallbackTo);
+  const shippedTargets = new Map(config.scenes.map(scene => [scene.slug, new Set(scene.targets.map(target => target.id))]));
+  const rows = game.scenes.flatMap(scene => scene.targets.filter(target => shippedTargets.get(scene.sceneSlug)?.has(target.targetId)).flatMap(target => target.variants.filter(row => row.variant === "A" && row.status === "GENERATED")
     .map(row => ({ assetId: row.assetId, judgeJson: row.judgeJson, board: scene.sceneSlug, targetId: target.targetId }))));
   const concerns = localPatchConcerns(rows);
   const identity = await tx.auditLog.findFirst({ where: { action: IDENTITY_GATE_ACTION, entityType: "Asset", entityId: game.childProfile.identityAssetId ?? "" }, orderBy: { createdAt: "desc" } });

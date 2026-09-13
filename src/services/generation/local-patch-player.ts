@@ -15,6 +15,8 @@ import { IDENTITY_GATE_ACTION, identityReceiptReadyForPublication } from "./boar
 import { hasLocalPatchHumanApproval, localPatchGeometryDigest } from "./local-patch-human-approval";
 import { hasLocalPatchPublicationPolicy, localPatchPublicationGeometryHash } from "./local-patch-publication-policy";
 import { enqueueLocalPatchNotifications } from "../local-patch-notifications";
+import { readLocalPatchPartialRelease } from "./local-patch-partial-release";
+import { getDict, tf } from "../../i18n";
 
 const STYLE = "local-patch-world-v1";
 const sha = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
@@ -24,6 +26,7 @@ function demand(value: unknown, reason: string): asserts value {
 
 /** Strict assembly: no avatar/body fallback and no unpainted B variant. */
 export async function composeLocalPatchGame(c: Container, gameId: string): Promise<GameConfig> {
+  const partialRelease = await readLocalPatchPartialRelease(c, gameId);
   const game = await c.db.game.findUniqueOrThrow({ where: { id: gameId },
     include: { childProfile: true, scenes: { orderBy: { orderIndex: "asc" }, include: { targets: { include: { variants: true } } } } } });
   const child = game.childProfile;
@@ -47,7 +50,8 @@ export async function composeLocalPatchGame(c: Container, gameId: string): Promi
     demand(board && `public${def.art.base}` === board.art, `the ${scene.sceneSlug} board is not the authored artwork`);
     demand(scene.targets.length === board.hides.length, `${scene.sceneSlug} needs exactly ${board.hides.length} painted targets`);
     const sprites = [];
-    for (const hide of board.hides) {
+    const includedHides = board.hides.filter(hide => !partialRelease?.omittedHideIds.includes(hide.id));
+    for (const hide of includedHides) {
       const target = scene.targets.find(t => t.targetId === hide.targetId);
       const row = target?.variants.find(v => v.variant === LOCAL_PATCH_VARIANT);
       demand(target && row && ["GENERATED", "APPROVED"].includes(row.status) && row.provider === LOCAL_PATCH_PROVIDER && row.assetId,
@@ -68,8 +72,11 @@ export async function composeLocalPatchGame(c: Container, gameId: string): Promi
           identitySha256: humanIdentitySha256, assetId: asset.id, imageSha256, variantId: row.id, attempts: row.attempts,
           geometrySha256: localPatchGeometryDigest(row), judgeJson: row.judgeJson };
         if (isLocalPatchAdvisoryVersion(scene.sceneVersion)) {
-          demand(row.status === "GENERATED" && await hasLocalPatchPublicationPolicy(c, { ...binding,
-            sceneVersion: scene.sceneVersion, geometrySha256: localPatchPublicationGeometryHash(row) }),
+          const humanSubset = partialRelease?.selected.some(item => item.hideId === hide.id && item.variantId === row.id
+            && item.assetId === asset.id && item.imageSha256 === imageSha256 && item.attempts === row.attempts
+            && item.geometrySha256 === localPatchPublicationGeometryHash(row));
+          demand(row.status === "GENERATED" && (humanSubset || await hasLocalPatchPublicationPolicy(c, { ...binding,
+            sceneVersion: scene.sceneVersion, geometrySha256: localPatchPublicationGeometryHash(row) })),
           `${hide.id} has no publication policy for these pixels, identity and tap geometry`);
         } else demand(await hasLocalPatchHumanApproval(c, binding), `${hide.id} has no human approval for these pixels and tap geometry`);
       } else {
@@ -90,10 +97,12 @@ export async function composeLocalPatchGame(c: Container, gameId: string): Promi
     const world = worldForBoard(scene.sceneSlug);
     demand(world, `${scene.sceneSlug} has no world map`);
     worlds.set(world.slug, composeWorld(world, who, locale));
-    const composed = composeScene(def, who, sprites, locale);
+    const composed = composeScene(partialRelease ? { ...def, targets: def.targets.filter(target => includedHides.some(hide => hide.targetId === target.id)) } : def, who, sprites, locale);
     if (isLocalPatchAdvisoryVersion(scene.sceneVersion)) Object.assign(composed, {
-      playMode: "find-any", appearancesPerBoard: 5, findsRequiredToAdvance: 3,
+      playMode: "find-any", appearancesPerBoard: includedHides.length, findsRequiredToAdvance: 3,
     });
+    if (partialRelease && includedHides.length !== 5) composed.celebration = { ...composed.celebration,
+      completeText: tf(getDict(locale).game.scene.boardCompleted, { total: includedHides.length }) };
     // The patch includes the surroundings/occlusion already. Old foreground
     // overlays and sprite flips must not repaint or move the judged picture.
     composed.art = { ...composed.art, foreground: undefined };
@@ -108,7 +117,8 @@ export async function composeLocalPatchGame(c: Container, gameId: string): Promi
 }
 
 /** Publish only an entirely verified world, atomically with the worker fence. */
-export async function finishLocalPatchGame(c: Container, gameId: string, fence: (tx: Prisma.TransactionClient) => Promise<void>): Promise<void> {
+export async function finishLocalPatchGame(c: Container, gameId: string, fence: (tx: Prisma.TransactionClient) => Promise<void>,
+  options: { transactionTimeoutMs?: 30_000 | 120_000 } = {}): Promise<void> {
   const config = await composeLocalPatchGame(c, gameId);
   const assetIds = [config.child.avatarUrl, ...config.scenes.flatMap(s => s.targets.map(t => t.sprite.kind === "image" ? t.sprite.url : ""))]
     .map(url => /\/api\/assets\/([^?]+)/.exec(url)?.[1]).filter((id): id is string => !!id);
@@ -148,5 +158,5 @@ export async function finishLocalPatchGame(c: Container, gameId: string, fence: 
     await tx.auditLog.create({ data: { id: newId("aud"), actorType: "SYSTEM", action: "local-patch:ready", entityType: "Game", entityId: gameId,
       metaJson: JSON.stringify({ boards: 9, targets: expectedAssets - 1, configSha256: sha(Buffer.from(JSON.stringify(config))), settledMicroUsd: audit.settledMicroUsd }) } });
     if (isLocalPatchAdvisoryVersion(contentVersion ?? 0)) await enqueueLocalPatchNotifications(c, tx, gameId, config);
-  }, { maxWait: 10_000, timeout: 30_000 });
+  }, { maxWait: 10_000, timeout: options.transactionTimeoutMs ?? 30_000 });
 }

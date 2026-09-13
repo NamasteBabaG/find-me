@@ -4,16 +4,18 @@ import { createMissionState, currentTargetId, missionCanAdvance, missionReducer,
 import { planScenePlay } from "@/domain/game/replay";
 import { emptyProgress, gameStars, parseProgress, sceneCanAdvance, sceneFoundIds, sceneIsComplete } from "@/domain/game/progress";
 import { createPlayStore } from "../play-store";
+import { findScene } from "../../../../content/scenes";
+import { SceneDefinitionSchema } from "@/domain/scene/schema";
 
 const copy: MissionCopy = { successByTarget: {}, itemByTarget: {}, wrongTarget: "Other {item}", wrongTargetNoItem: "Other", bonus: "Bonus", fallbackSuccess: "Found" };
 const slot = { id: "a", x: 0.3, y: 0.4, scale: 0.1, rotation: 0, zIndex: 10, layer: "front", flip: false, hintZone: { x: 0.3, y: 0.4, r: 0.1 }, hintText: "Look left" };
-function fixture(): GameConfig {
+function fixture(counts: readonly (4 | 5)[] = []): GameConfig {
   return GameConfigSchema.parse({
     version: 1, gameId: "five-game", locale: "en", child: { name: "Noa", avatarUrl: "/identity.png" }, styleVersion: "local-patch-world-v1", packageTier: "ONE_WORLD", composedAt: "2026-09-12T00:00:00Z",
     scenes: Array.from({ length: 9 }, (_, board) => ({
-      slug: `board-${board}`, version: 7, playMode: "find-any", appearancesPerBoard: 5, findsRequiredToAdvance: 3, name: `Board ${board}`, tagline: "Explore", artStatus: "final",
+      slug: `board-${board}`, version: 7, playMode: "find-any", appearancesPerBoard: counts[board] ?? 5, findsRequiredToAdvance: 3, name: `Board ${board}`, tagline: "Explore", artStatus: "final",
       art: { width: 3072, height: 2048, base: "/board.webp", thumbnail: "/thumb.webp", palette: { sky: "#fff", ground: "#fff", accent: "#000" } },
-      targets: Array.from({ length: 5 }, (_, index) => ({ id: `b${board}-t${index}`, targetType: "hide", difficulty: 1, mission: "Find Noa", item: "", success: ["Found"], animation: "wave", slots: [slot, { ...slot, id: "b" }], sprite: { kind: "image", url: `/patch-${board}-${index}.png`, width: 512, height: 768, rect: { x: index * 0.15, y: 0.2, w: 0.12, h: 0.3 } } })),
+      targets: Array.from({ length: counts[board] ?? 5 }, (_, index) => ({ id: `b${board}-t${index}`, targetType: "hide", difficulty: 1, mission: "Find Noa", item: "", success: ["Found"], animation: "wave", slots: [slot, { ...slot, id: "b" }], sprite: { kind: "image", url: `/patch-${board}-${index}.png`, width: 512, height: 768, rect: { x: index * 0.15, y: 0.2, w: 0.12, h: 0.3 } } })),
       ambient: [], celebration: { kind: "confetti", completeText: "All five found" }, collectible: { id: `c${board}`, name: "Stamp", icon: "★" }, sounds: {},
     })),
   });
@@ -32,6 +34,62 @@ function find(store: ReturnType<typeof createPlayStore>, targetId: string) {
 }
 
 describe("versioned five-hide player", () => {
+  it("accepts an explicit four-hide shipping contract, never an incomplete five-hide or weakened authoring contract", () => {
+    const config = fixture([4, 4]);
+    expect(config.scenes.map(scene => scene.targets.length)).toEqual([4, 4, 5, 5, 5, 5, 5, 5, 5]);
+    const scene = config.scenes[0]!;
+    const replace = (changed: unknown) => ({ ...config, scenes: [changed, ...config.scenes.slice(1)] });
+    for (const changed of [
+      { ...scene, appearancesPerBoard: 5 },
+      { ...scene, appearancesPerBoard: undefined },
+      { ...scene, playMode: undefined },
+      { ...scene, findsRequiredToAdvance: 4 },
+      { ...scene, targets: scene.targets.slice(0, 3), appearancesPerBoard: 3 },
+    ]) expect(GameConfigSchema.safeParse(replace(changed)).success).toBe(false);
+    const authored = findScene("sydney", 9)!;
+    expect(SceneDefinitionSchema.safeParse(authored).success).toBe(true);
+    expect(SceneDefinitionSchema.safeParse({ ...authored, targets: authored.targets.slice(0, 4), appearancesPerBoard: 4 }).success).toBe(false);
+  });
+
+  it("unlocks mixed four/five-hide boards at three, completes at their actual count and retains exactly43 stars on restart", () => {
+    const config = fixture([4, 4]);
+    const store = createPlayStore(config, { copy });
+    const events = vi.spyOn(store.getState().telemetry, "track");
+    store.getState().reveal();
+    expect(gameStars(store.getState().progress, config.scenes)).toEqual({ found: 0, total: 43 });
+    for (const scene of config.scenes) {
+      store.getState().openScene(scene.slug); store.getState().dispatch({ type: "START", now: 1 });
+      scene.targets.slice(0, 2).forEach(target => find(store, target.id));
+      expect(sceneCanAdvance(store.getState().progress, scene)).toBe(false);
+      find(store, scene.targets[2]!.id);
+      expect(sceneCanAdvance(store.getState().progress, scene)).toBe(true);
+      expect(sceneIsComplete(store.getState().progress, scene)).toBe(false);
+      expect(store.getState().mission!.phase).toBe("searching");
+    }
+    expect(gameStars(store.getState().progress, config.scenes)).toEqual({ found: 27, total: 43 });
+    expect(store.getState().gameDone()).toBe(true);
+    expect(store.getState().progress.completedAt).toBeUndefined();
+    for (const scene of config.scenes) {
+      store.getState().openScene(scene.slug); store.getState().dispatch({ type: "START", now: 1 });
+      scene.targets.slice(3).forEach(target => find(store, target.id));
+      expect(store.getState().mission!.phase).toBe("complete");
+      expect(sceneIsComplete(store.getState().progress, scene)).toBe(true);
+      expect(sceneFoundIds(store.getState().progress, scene)).toHaveLength(scene.targets.length);
+      store.getState().completeScene(); store.getState().completeScene();
+    }
+    expect(gameStars(store.getState().progress, config.scenes)).toEqual({ found: 43, total: 43 });
+    const again = createPlayStore(config, { copy }); again.getState().hydrate();
+    expect(gameStars(again.getState().progress, config.scenes)).toEqual({ found: 43, total: 43 });
+    expect(again.getState().progress.completedAt).toBeTruthy();
+    again.getState().openScene(config.scenes[0]!.slug); again.getState().dispatch({ type: "START", now: 1 });
+    expect(again.getState().mission!.phase).toBe("complete");
+    expect(currentTargetId(again.getState().mission!)).toBeNull();
+    const types = events.mock.calls.map(([event]) => event.eventType);
+    expect(types.filter(type => type === "target_found")).toHaveLength(43);
+    expect(types.filter(type => type === "scene_completed")).toHaveLength(9);
+    expect(types.filter(type => type === "game_completed")).toHaveLength(1);
+  });
+
   it("requires the complete explicit 5/3 contract and unique target ids; legacy still requires three", () => {
     const config = fixture();
     for (const field of ["playMode", "appearancesPerBoard", "findsRequiredToAdvance"] as const) {

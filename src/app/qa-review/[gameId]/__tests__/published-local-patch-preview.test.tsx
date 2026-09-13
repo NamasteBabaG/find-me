@@ -101,6 +101,40 @@ describe("published local-patch QA preview route", () => {
     expect(props.config.scenes.flatMap(scene => scene.targets)).toHaveLength(45);
     expect(JSON.stringify(f.game)).toBe(before);
   });
+  it.each(["READY", "DELIVERED"])("shows an explicitly published 43-hide v9 %s subset without restoring omitted hides or saving play", async status => {
+    const config = publishedFixture(9);
+    for (const scene of config.scenes.slice(0, 2)) {
+      scene.targets = scene.targets.slice(0, 4);
+      scene.appearancesPerBoard = 4;
+    }
+    f.game!.status = status;
+    f.game!.configJson = JSON.stringify(config);
+    f.game!.scenes = config.scenes.map(scene => ({ sceneSlug: scene.slug, sceneVersion: scene.version,
+      generationStatus: "GENERATED", configJson: JSON.stringify(scene) }));
+    const before = JSON.stringify(f.game), html = renderToStaticMarkup(await page());
+    expect(html).toContain("43 מחבואים"); expect(html).not.toContain("45 מחבואים");
+    const props = f.shell.mock.calls[0]![0] as { config: GameConfig; readOnlyPreview: boolean; skipGift?: boolean };
+    expect(props.readOnlyPreview).toBe(true); expect(props.skipGift).toBeUndefined();
+    expect(props.config.scenes.map(scene => scene.targets.length)).toEqual([4, 4, 5, 5, 5, 5, 5, 5, 5]);
+    expect(props.config.scenes.flatMap(scene => scene.targets.map(target => target.id)))
+      .toEqual(config.scenes.flatMap(scene => scene.targets.map(target => target.id)));
+    expect(props.config.child.avatarUrl).not.toContain("expired");
+    expect(JSON.stringify(f.game)).toBe(before);
+  });
+  it.each(["v8-four", "v9-mismatched-count", "v9-three", "v9-unrecognized-target", "v9-duplicate-target"])("refuses unsupported published subset %s", async defect => {
+    const config = publishedFixture(defect === "v8-four" ? 8 : 9);
+    const scene = config.scenes[0]!;
+    scene.targets = scene.targets.slice(0, 4);
+    scene.appearancesPerBoard = 4;
+    if (defect === "v9-mismatched-count") scene.appearancesPerBoard = 5;
+    if (defect === "v9-three") scene.targets.pop();
+    if (defect === "v9-unrecognized-target") scene.targets[0]!.id = "unauthored-target";
+    if (defect === "v9-duplicate-target") scene.targets[0]!.id = scene.targets[1]!.id;
+    f.game!.configJson = JSON.stringify(config);
+    f.game!.scenes = config.scenes.map(item => ({ sceneSlug: item.slug, sceneVersion: item.version,
+      generationStatus: "GENERATED", configJson: JSON.stringify(item) }));
+    await expect(page()).rejects.toThrow("NEXT_NOT_FOUND"); expect(f.shell).not.toHaveBeenCalled();
+  });
   it.each(["published-v9-stored-v8", "published-v8-stored-v9", "mixed-pinned-versions"])("refuses %s before exposing a player", async defect => {
     const config = publishedFixture(defect === "published-v9-stored-v8" ? 9 : 8);
     if (defect === "published-v8-stored-v9") for (const row of f.game!.scenes) row.sceneVersion = 9;

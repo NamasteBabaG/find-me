@@ -58,7 +58,7 @@ export function IslandGrid({ config, progress, onOpen, onPassport, demo }: Props
                   ) : null}
                 </span>
                 <span className="island__name">{scene.name}</span>
-                <span className="island__meta">{scene.playMode === "find-any" ? `${g.scene.findAnyRules} · ★ ${sceneFoundIds(progress, scene).length}/${scene.targets.length}` : sp.completed ? `${scene.collectible.icon} ${sp.plays > 1 ? tf(g.map.played, { n: sp.plays }) : g.map.playAgain}` : g.map.spots}</span>
+                <span className="island__meta">{scene.playMode === "find-any" ? `${tf(g.scene.findAnyRulesCount, { total: scene.targets.length, required: scene.findsRequiredToAdvance ?? 3 })} · ★ ${sceneFoundIds(progress, scene).length}/${scene.targets.length}` : sp.completed ? `${scene.collectible.icon} ${sp.plays > 1 ? tf(g.map.played, { n: sp.plays }) : g.map.playAgain}` : g.map.spots}</span>
               </button>
             </li>
           );

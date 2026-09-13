@@ -11,6 +11,7 @@ import { fixedStageAssert, isFixedWorldStyle } from "./generation/fixed-world-st
 import { approveFixedWorldForPublication } from "./generation/fixed-world-staging";
 import { isLocalPatchAdvisoryVersion } from "../domain/scene/local-patch-catalog";
 import { deliverLocalPatchNotifications } from "./local-patch-notifications";
+import { GameConfigSchema } from "../domain/game/config";
 
 /**
  * QA_PENDING → APPROVED → READY → (email) → DELIVERED.
@@ -83,7 +84,14 @@ export async function deliverGameMail(c: Container, gameId: string, actor: Actor
     const owner = game.owner;
     const libraryLink = owner ? await createMagicLink(c, owner.id, `/library/${gameId}`) : undefined;
     const locale = game.locale === "he" ? "he" : "en";
+    // A re-send uses the published inventory, not the five-slot authoring catalog.
+    let targetCount: number | undefined;
+    try {
+      const published = GameConfigSchema.safeParse(JSON.parse(game.configJson ?? "null"));
+      if (published.success) targetCount = published.data.scenes.reduce((total, scene) => total + scene.targets.length, 0);
+    } catch { /* Legacy games without a parsed config retain their original copy. */ }
     const mail = gameReadyEmail({ to: owner?.email ?? "", childName: game.childProfile.displayName, playLink: link.url, libraryLink, sceneCount: game.scenes.length, locale,
+      targetCount,
       ...(game.scenes.length > 0 && game.scenes.every(scene => isLocalPatchAdvisoryVersion(scene.sceneVersion)) ? { playMode: "find-any" as const } : {}) });
     // A game with nobody to send it to is a game nobody will open. Until every
     // path into a paid game guarantees an address, an operator's inbox takes

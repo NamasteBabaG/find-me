@@ -50,16 +50,17 @@ afterAll(async () => {
   if (path.dirname(target) === realpathSync(tmpdir()) && path.basename(target).startsWith("findme-advisory-mail-")) rmSync(target, { recursive: true, force: true });
 });
 
-async function seed(gameId: string, avatarId = "synthetic-avatar") {
+async function seed(gameId: string, avatarId = "synthetic-avatar", partial = false) {
   const boards = localPatchBoardsForVersion(7);
   const original = await seedApprovedGame(c, db, { gameId, status: "READY", styleVersion: "local-patch-world-v1",
     scenes: boards.map(board => ({ slug: board.board, version: 7 })) });
   const child = { name: "Yuval", avatarUrl: `/api/assets/${avatarId}` };
-  const scenes = boards.map(board => {
-    const def = sceneBySlug(board.board, 7);
+  const scenes = boards.map((board, boardIndex) => {
+    const originalDef = sceneBySlug(board.board, 7);
+    const def = partial && boardIndex < 2 ? { ...originalDef, targets: originalDef.targets.slice(0, 4) } : originalDef;
     const composed = composeScene(def, child, def.targets.map(target => ({ targetId: target.id,
       sprite: { kind: "image" as const, url: `/api/assets/${gameId}-${target.id}`, width: 512, height: 768 } })), "he");
-    return { ...composed, playMode: "find-any" as const, appearancesPerBoard: 5 as const, findsRequiredToAdvance: 3 as const };
+    return { ...composed, playMode: "find-any" as const, appearancesPerBoard: def.targets.length as 4 | 5, findsRequiredToAdvance: 3 as const };
   });
   const config = GameConfigSchema.parse(composeGame({ gameId, child, scenes, locale: "he", styleVersion: "local-patch-world-v1", packageTier: "ONE_WORLD" }));
   await db.game.update({ where: { id: gameId }, data: { configJson: JSON.stringify(config), readyAt: new Date() } });
@@ -203,6 +204,24 @@ describe("advisory notification outbox", () => {
     const three = locale === "he" ? "שלושה מחבואים" : "three hiding spots";
     expect(next.html).toContain(five); expect(next.text).toContain(five);
     expect(legacy.html).toContain(three); expect(legacy.html).not.toContain(five);
+  });
+  it.each(["en", "he"] as const)("describes the actual 43-hide partial world in ready mail (%s)", locale => {
+    const message = gameReadyEmail({ to: "parent@example.invalid", childName: "Yuval", playLink: "https://qa.example.invalid/play/token",
+      sceneCount: 9, locale, playMode: "find-any", targetCount: 43 });
+    for (const body of [message.html, message.text]) {
+      expect(body).toContain("43");
+      expect(body).toContain(locale === "he" ? "שלושה" : "three");
+      expect(body).not.toContain(locale === "he" ? "חמישה מחבואים בכל" : "five hiding spots in each");
+    }
+  });
+  it("queues a truthful ready email for the selected published inventory", async () => {
+    const item = await seed("partial-mail", "synthetic-avatar", true);
+    const notice = await db.auditLog.findFirstOrThrow({ where: { entityId: item.gameId, action: "local-patch:notification-pending",
+      metaJson: { contains: '"kind":"ready"' } } });
+    const blob = await db.fileBlob.findUniqueOrThrow({ where: { key: JSON.parse(notice.metaJson!).key } });
+    const message: EmailMessage = JSON.parse(Buffer.from(blob.data).toString());
+    expect(message.text).toContain("43"); expect(message.html).not.toContain("חמישה מחבואים בכל");
+    expect(item.config.scenes.map(scene => scene.targets.length)).toEqual([4, 4, 5, 5, 5, 5, 5, 5, 5]);
   });
   it("counts each current hide once, not its fault count or history", () => {
     const row = { assetId: "asset", board: "paris", targetId: "t", judgeJson: JSON.stringify({ hide: "paris-1", verdict: { verdict: "fail", reason: "cropped", faults: [1, 2, 3] } }) };

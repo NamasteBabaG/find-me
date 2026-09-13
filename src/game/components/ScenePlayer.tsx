@@ -547,7 +547,7 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store }: { scene: Sce
         {store.demo ? null : (
           <div className="complete__stars">
             <StarTray lit={stars} total={stars} size={stars > 3 ? "md" : "lg"} celebrate label={tf(g.stars.tray, { earned: stars, total: stars })} />
-            <p className="complete__stars-text">{stars === 5 ? g.complete.fiveStars : g.complete.threeStars}</p>
+            <p className="complete__stars-text">{stars === 5 ? g.complete.fiveStars : stars === 4 ? g.complete.fourStars : g.complete.threeStars}</p>
           </div>
         )}
         {store.demo ? null : (

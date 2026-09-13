@@ -14,6 +14,7 @@ import { MissionCard } from "../components/MissionCard";
 import { WorldMap } from "../components/WorldMap";
 import { Passport } from "../components/Passport";
 import { GiftReveal } from "../components/GiftReveal";
+import { IslandGrid } from "../components/IslandGrid";
 import { emptyProgress, parseProgress } from "@/domain/game/progress";
 import { GameI18nProvider } from "../i18n";
 import { createPlayStore, type PlayStoreApi } from "../store/play-store";
@@ -45,10 +46,66 @@ function fiveScene(): SceneConfig {
     ambient: [{ id: "ambient", label: "Tree", x: 0, y: 0, w: 0.1, h: 0.1, animation: "shake", cooldownMs: 1500, reaction: "Tree says hello" }],
   };
 }
+function fourScene(): SceneConfig {
+  const scene = fiveScene();
+  return { ...scene, appearancesPerBoard: 4, targets: scene.targets.slice(0, 4) };
+}
 beforeEach(() => { vi.stubGlobal("React", React); vi.stubGlobal("Image", LoadedImage); LoadedImage.instances = []; vi.useFakeTimers(); window.matchMedia = (() => ({ matches: true, addEventListener() {}, removeEventListener() {} })) as never; });
 afterEach(() => { cleanup(); vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
 describe("find-any rendering and mobile feedback", () => {
+  it.each(["en", "he"] as const)("plays all four appearances, unlocks at three and celebrates four actual stars in %s", async locale => {
+    const scene = fourScene();
+    const config = { ...buildDemoConfig(locale), scenes: [scene, { ...fiveScene(), slug: "next-board" }], worlds: undefined, world: undefined };
+    const store = createPlayStore(config, { copy, readOnlyPreview: true, skipGift: true });
+    store.getState().openScene(scene.slug); store.getState().dispatch({ type: "START", now: 1 });
+    function Player() { const state = useStore(store); return <GameI18nProvider locale={locale}><ScenePlayer scene={scene} mission={state.mission!} store={state} onBack={state.goToMap} onSceneComplete={state.completeScene} /></GameI18nProvider>; }
+    const view = render(<Player />); await decodeAll();
+    expect(view.container.querySelectorAll(".mission__stars .stars__slot")).toHaveLength(4);
+    for (let count = 1; count <= 4; count++) {
+      const id = currentTargetId(store.getState().mission!)!;
+      act(() => rig.tap(Number(id.slice(-1)) * 0.19 + 0.07, 0.45));
+      expect(view.container.querySelectorAll(".bubble")).toHaveLength(1);
+      act(() => vi.advanceTimersByTime(2200));
+      act(() => vi.advanceTimersByTime(560));
+      act(() => vi.advanceTimersByTime(160));
+      act(() => vi.advanceTimersByTime(901));
+      expect(store.getState().progress.scenes[scene.slug]!.foundTargetIds).toHaveLength(count);
+      if (count < 3) expect(view.container.querySelector(".mission__continue")).toBeNull();
+      if (count === 3) {
+        expect(view.container.querySelector(".mission__continue")).not.toBeNull();
+        expect(view.container.querySelector(".complete")).toBeNull();
+        expect(view.container.querySelector(".mission__rules")?.textContent).toContain(locale === "en" ? "1 more" : "עוד מחבוא אחד");
+        fireEvent.click(view.container.querySelector(".scene__advance-actions button:last-child")!);
+      }
+    }
+    expect(store.getState().mission!.phase).toBe("complete");
+    expect(view.container.querySelectorAll("[data-target]")).toHaveLength(0);
+    expect(view.container.querySelectorAll(".complete__stars .stars__slot")).toHaveLength(4);
+    expect(view.container.querySelector(".complete__stars-text")?.textContent).toBe(locale === "en" ? "Four gold stars!" : "ארבעה כוכבי זהב!");
+    expect(view.container.querySelector(".mission__rules")?.textContent).toContain(locale === "en" ? "4 stars" : "4 כוכבים");
+  });
+
+  it.each(["en", "he"] as const)("shows43 total stars and truthful four/five rules throughout the mixed-board gift and bag in %s", locale => {
+    const original = buildDemoConfig(locale);
+    const config = { ...original, worlds: undefined, world: undefined, scenes: Array.from({ length: 9 }, (_, index) => ({ ...(index < 2 ? fourScene() : fiveScene()), slug: `mixed-${index}` })) };
+    const progress = emptyProgress(config.gameId);
+    const gift = render(<GameI18nProvider locale={locale}><GiftReveal config={config} onOpen={vi.fn()} /></GameI18nProvider>);
+    fireEvent.click(gift.getByRole("button")); act(() => vi.advanceTimersByTime(701));
+    expect(gift.container.querySelector(".gift__lead")?.textContent).toContain("43");
+    expect(gift.container.querySelector(".gift__lead")?.textContent).not.toContain(locale === "en" ? "Five hiding spots in each" : "בכל אחד חמישה");
+    gift.unmount();
+    const map = render(<GameI18nProvider locale={locale}><IslandGrid config={config} progress={progress} onOpen={vi.fn()} onPassport={vi.fn()} /></GameI18nProvider>);
+    const labels = Array.from(map.container.querySelectorAll(".island__meta")).map(node => node.textContent);
+    expect(labels[0]).toContain(locale === "en" ? "4 hiding spots" : "4 מחבואים");
+    expect(labels[2]).toContain(locale === "en" ? "5 hiding spots" : "5 מחבואים");
+    expect(labels[0]).toContain("0/4"); expect(labels[2]).toContain("0/5");
+    map.unmount();
+    const bag = render(<GameI18nProvider locale={locale}><Passport config={config} progress={progress} onOpen={vi.fn()} onMap={vi.fn()} /></GameI18nProvider>);
+    expect(bag.getByRole("img", { name: locale === "en" ? "0 of 43 gold stars collected" : "0 מתוך 43 כוכבי זהב נאספו" })).toBeTruthy();
+    expect(Array.from(bag.container.querySelectorAll(".loot")).map(node => node.querySelectorAll(".stars__slot").length)).toEqual([4, 4, 5, 5, 5, 5, 5, 5, 5]);
+  });
+
   it.each(["en", "he"] as const)("makes the next search and the three/five-star thresholds explicit in %s", locale => {
     const scene = fiveScene();
     const props = { index: 1, total: 5, target: scene.targets[0]!, order: scene.targets.map(t => t.id), hintLevel: 0 as const,

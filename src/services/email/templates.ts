@@ -34,10 +34,11 @@ export function magicLinkEmail(input: { to: string; link: string; locale: Locale
 }
 
 /** `libraryLink` is absent when the game has no owner account to open a library for. */
-export function gameReadyEmail(input: { to: string; childName: string; playLink: string; libraryLink?: string; sceneCount: number; locale: Locale; playMode?: "find-any" }): EmailMessage {
+export function gameReadyEmail(input: { to: string; childName: string; playLink: string; libraryLink?: string; sceneCount: number; locale: Locale; playMode?: "find-any"; targetCount?: number }): EmailMessage {
   const r = getDict(input.locale).email.ready;
-  const vars = { name: input.childName, count: input.sceneCount, play: input.playLink, library: input.libraryLink ?? "" };
-  const body = tf(input.playMode === "find-any" ? r.bodyFive : r.body, vars);
+  const vars = { name: input.childName, count: input.sceneCount, stars: input.targetCount ?? input.sceneCount * 5, play: input.playLink, library: input.libraryLink ?? "" };
+  const variableWorld = input.targetCount !== undefined && input.targetCount !== input.sceneCount * 5;
+  const body = tf(input.playMode === "find-any" ? (variableWorld ? r.bodyVariable : r.bodyFive) : r.body, vars);
   const manage = input.libraryLink
     ? `<p style="font-size:14px;line-height:24px;">${r.manageLead}</p>
        <p><a href="${input.libraryLink}" style="color:#1B6FA8;font-size:14px;">${r.manage}</a></p>`

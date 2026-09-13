@@ -38,15 +38,19 @@ export default async function QaGameReview({ params }: { params: Promise<{ gameI
       || published.scenes.length !== 9 || new Set(published.scenes.map(scene => scene.slug)).size !== 9 || published.scenes.some(scene => {
         const row = game.scenes.find(item => item.sceneSlug === scene.slug);
         const board = row ? localPatchBoardForVersion(scene.slug, row.sceneVersion) : null;
-        return !row || !board || scene.version !== row.sceneVersion || scene.playMode !== "find-any" || scene.appearancesPerBoard !== 5
-          || scene.findsRequiredToAdvance !== 3 || scene.targets.length !== 5
-          || board.hides.some(hide => !scene.targets.some(target => target.id === hide.targetId))
+        // Published v9 may explicitly release four authored hides; older worlds remain five-only.
+        const targetCount = scene.targets.length;
+        const supportedCount = targetCount === 5 || scene.version === 9 && targetCount === 4;
+        return !row || !board || scene.version !== row.sceneVersion || scene.playMode !== "find-any"
+          || !supportedCount || scene.appearancesPerBoard !== targetCount || scene.findsRequiredToAdvance !== 3
+          || scene.targets.some(target => !board.hides.some(hide => hide.targetId === target.id))
           || scene.targets.some(target => target.sprite.kind !== "image" || !gameAsset(target.sprite.url)
             || !target.sprite.rect || !target.sprite.hitRect || !target.sprite.anchor);
       })) notFound();
     const config = withFreshAssetUrls(c, published);
+    const targetCount = config.scenes.reduce((total, scene) => total + scene.targets.length, 0);
     return <><p role="status" className="fm-small fm-container">
-      תצוגת QA פרטית של המשחק שפורסם — 9 לוחות ו־45 מחבואים. ההתקדמות ואירועי המשחק בתצוגה זו אינם נשמרים; המשחק של המשפחה אינו משתנה.
+      תצוגת QA פרטית של המשחק שפורסם — 9 לוחות ו־{targetCount} מחבואים. ההתקדמות ואירועי המשחק בתצוגה זו אינם נשמרים; המשחק של המשפחה אינו משתנה.
     </p><GameShell config={config} readOnlyPreview parentZoneHref={`/library/${gameId}`} /></>;
   }
   if (game.styleVersion !== BOARD_WIZARD_STYLE || game.status !== "MANUAL_REVIEW") notFound();
