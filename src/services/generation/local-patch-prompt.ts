@@ -1,6 +1,7 @@
 import { childAgeDirection, validChildAge } from "../../domain/child-appearance";
 import type { LocalPatchHide, LocalPatchPose } from "../../domain/scene/local-patch-hides";
 import { isLocalPatchAgeVersion, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
+import { localPatchExplicitUncertaintyChecks } from "./local-patch-judge";
 
 /**
  * What the painter is told when a child is painted into one crop of a board.
@@ -91,8 +92,10 @@ export function localPatchRepairChecks(judgeJson: string | null, contentVersion?
     const verdict = value?.verdict;
     if (isLocalPatchStrictVersion(contentVersion)) {
       const directions = isLocalPatchAgeVersion(contentVersion) ? AGE_REPAIR_DIRECTIONS : CANONICAL_REPAIR_DIRECTIONS;
+      const uncertainty = localPatchExplicitUncertaintyChecks(verdict, contentVersion);
       const result = (Object.keys(directions) as LocalPatchRepairCheck[]).filter(check =>
-        verdict?.[check] === "fail" || (Array.isArray(verdict?.faults) && verdict.faults.some((fault: { check?: string }) => fault?.check === check)));
+        verdict?.[check] === "fail" || uncertainty.includes(check)
+        || (Array.isArray(verdict?.faults) && verdict.faults.some((fault: { check?: string }) => fault?.check === check)));
       // The renderer can conclude this defect before any paid judge. Read its
       // structured classification, not the free-form reason as instructions.
       if (typeof value?.renderFault === "string" && /^quality-seam(?::|$)/.test(value.renderFault)

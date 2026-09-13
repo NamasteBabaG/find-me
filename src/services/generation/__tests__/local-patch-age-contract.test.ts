@@ -75,10 +75,9 @@ describe("catalog 9 requires the confirmed child's age, likeness and physical sc
     }
   });
   it.each([
-    { ageAppropriate: "unsure", faults: [] },
     { ageAppropriate: "fail", faults: [] },
     { ageAppropriate: "pass", faults: [{ check: "ageAppropriate", where: "The central child's shoulders and legs have mature proportions." }] },
-  ])("unlocated failure, uncertainty and a contradictory age pass are never approval: %j", input => {
+  ])("unlocated failure and a contradictory age pass stay unresolved, never approval: %j", input => {
     const parsed = localPatchAgeVerdictSchema.parse({ ...ageGood, ...input });
     expect(parsed.ageAppropriate).toBe("unsure"); expect(parsed.verdict).toBe("unsure");
     expect(localPatchQualityDisposition(parsed, 9)).toEqual({ state: "unresolved", faults: ["ageAppropriate"] });

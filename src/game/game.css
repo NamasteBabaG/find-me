@@ -255,8 +255,8 @@
 .mission__face { width: 100%; height: 100%; border-radius: var(--radius-2); object-fit: contain; background: var(--white); box-shadow: var(--sticker-outline); }
 .mission__progress { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-0-5); min-width: 0; }
 .mission__count { font-size: var(--fs-50); line-height: var(--lh-50); font-weight: 700; color: var(--ink-3); letter-spacing: 0.02em; white-space: nowrap; }
-.mission__rules { font-size: var(--fs-50); line-height: var(--lh-50); font-weight: 700; color: var(--ink-3); white-space: nowrap; }
-.mission__hintbtn { pointer-events: auto; min-height: var(--touch-min); padding-inline: var(--space-2); flex-shrink: 0; border-radius: var(--radius-pill); background: var(--sun); box-shadow: var(--shadow-1); display: grid; place-items: center; font-family: var(--font-display); font-weight: 800; font-size: var(--fs-200); color: var(--ink); line-height: 1; transition: transform var(--dur-1) var(--ease-out); }
+.mission__rules { max-width: 100%; font-size: var(--fs-50); line-height: var(--lh-50); font-weight: 700; color: var(--ink-3); white-space: normal; overflow-wrap: anywhere; }
+.mission__hintbtn { pointer-events: auto; min-width: var(--touch-min); min-height: var(--touch-min); padding-inline: var(--space-2); flex-shrink: 0; border-radius: var(--radius-pill); background: var(--sun); box-shadow: var(--shadow-1); display: grid; place-items: center; font-family: var(--font-display); font-weight: 800; font-size: var(--fs-200); color: var(--ink); line-height: 1; transition: transform var(--dur-1) var(--ease-out); }
 .mission__hintbtn:hover { transform: translateY(-1px); }
 .mission__hintbtn:disabled { opacity: 0.4; }
 .mission__hintbtn--pulse { animation: fm-pulse 1.2s var(--ease-in-out) infinite; box-shadow: 0 0 0 6px var(--sun-soft), var(--shadow-1); }
@@ -294,6 +294,11 @@
   .mission__hintbtn { padding-inline: var(--space-1); font-size: var(--fs-100); }
   .mission__text { font-size: var(--fs-100); line-height: var(--lh-100); }
   .scene__btn { width: 44px; height: 44px; }
+}
+/* All five stars fit beside the whole 56px portrait and 48px hint target
+   on narrow phones; map and completion trays keep their normal sizes. */
+@media (max-width: 360px) {
+  .mission__stars.stars--sm { --star-size: var(--space-2); }
 }
 @media (prefers-reduced-motion: reduce) {
   .bubble, .mission__body, .mission__continue, .scene__advance { animation: none; }

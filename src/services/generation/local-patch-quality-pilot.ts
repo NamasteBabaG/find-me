@@ -69,6 +69,8 @@ async function settled(c: Container, gameId: string) {
     && !cost.unknownRequestKeys.length, "The unchanged inclusive4-dollar ledger must be settled");
   return cost;
 }
+// Shared, read-only operational guards. Neither grants approval or dispatches.
+export { identity as requireLocalPatchRecoveryIdentity, settled as requireLocalPatchRecoveryBudget };
 async function image(c: Container, gameId: string, ownerId: string, row: TargetVariantAsset, hideId: string) {
   demand(row.provider === LOCAL_PATCH_PROVIDER && row.assetId && row.rectJson && row.hitRectJson && row.headAnchorJson, "Usable render-completion metadata required");
   const receipt = JSON.parse(row.judgeJson ?? "null");

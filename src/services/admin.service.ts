@@ -456,7 +456,14 @@ export async function requestNewPhoto(c: Container, gameId: string, actor: Actor
 }
 
 export async function retryGeneration(c: Container, gameId: string, actor: Actor): Promise<void> {
-  await assertLegacyMutation(c, gameId);
+  const game = await assertLegacyMutation(c, gameId);
+  if (game.styleVersion === "local-patch-world-v1") {
+    const { resumeLocalPatchUncertainty, LOCAL_PATCH_UNCERTAINTY_RESUME_ACTION } = await import("./generation/local-patch-uncertainty-resume");
+    const terminal = await c.db.game.findFirst({ where: { id: gameId, status: "GENERATION_FAILED",
+      scenes: { some: { sceneVersion: 9 }, every: { sceneVersion: 9 } }, jobs: { some: { currentStep: "local-patch:quality-failed" } } } });
+    const resumed = await c.db.auditLog.findFirst({ where: { entityType: "Game", entityId: gameId, action: LOCAL_PATCH_UNCERTAINTY_RESUME_ACTION } });
+    if (terminal || resumed) { await resumeLocalPatchUncertainty(c, gameId, actor); return; }
+  }
   await audit(c, actor, "generation:retry", "Game", gameId);
   await c.jobs.enqueue("generate-game", { gameId });
 }

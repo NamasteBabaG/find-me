@@ -29,3 +29,13 @@ Branch: `claude/gold-stars-hud-20260913`, cut from `codex/qa-five-hides-20260912
 - The original tools rail on the left (Codex) and the 220px pan padding are unchanged.
 - `IslandGrid` (the pre-worlds fallback) still shows "★ n/5" as text.
 - Not deployed anywhere. The QA site still runs `codex/qa-five-hides-20260912`; this branch is a superset of it and can be merged into it, or deployed from a worktree with `.vercel/project.json` copied in — Guy's call.
+
+## Codex integration and live verification
+
+Claude's completed `73c6440` was cherry-picked as `ba12cba` without changing its source worktree. Follow-up `42d189a` fixes a landed-star flicker, prevents nested HUD controls from triggering the outer keyboard action, and names the last-board destination correctly. Full check passed: 191 files, 2,843 tests, 35 skipped, both TypeScript projects. QA deployment `dpl_3MsZSVoUa6Vr124F4kUVKwjrijBV` was promoted to `qa.findmeworlds.com`; public production was not changed.
+
+The existing delivered 45-hide Omer game's private QA preview was tested in Hebrew: five consecutive finds in New York, three-star unlock, five-star completion, and onward transition to Amazon. Previous targets disappear, the next target becomes available, and one celebration appears per find. This preview does not persist family progress. Browser error logs were empty. The mobile and landscape checks included 320×812 and 812×390; a narrow Hebrew caption/star overflow was found at 320px and is covered by the follow-up CSS fix (wrapping caption, 48px hint target, narrower mission-only stars under 360px). Its post-deployment visual check must be recorded separately.
+
+Player/UI improvements apply on reload to existing game links. New portrait-only/age-five rendering policies do not retroactively redraw their retained images. The separate age-five game remains in generation/recovery until all mandatory appearance checks have completed; a green player suite is not evidence that its likeness is acceptable.
+
+Follow-up verification: full `npm run check -- --maxWorkers=2` exited 0 with 193 files, 2,874 tests passed and 35 skipped, including both TypeScript projects. The accompanying v9-only recovery change allows a trustworthy, explicitly uncertain mandatory visual check to use a remaining image attempt, never become approval. Admin Retry reconstructs the exact retained labeled review, rechecks its paid bill, identity, images, geometry and lifecycle, and leaves attempt counts and already-paid answers intact. A prepared but unpaid Antarctica appearance is preserved unchanged. Separate-agent review found no blocking defect. The three-attempt and inclusive USD4 limits remain unchanged.

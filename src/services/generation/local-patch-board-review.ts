@@ -60,11 +60,10 @@ export type LocalPatchBoardReviewDeps = {
   readBoardArt?(relativePath: string, expectedSha256: string): Promise<Buffer>;
 };
 
-/** One paid review of the actual five-patch board; no per-hide review purchases.
- * The response is retained before settlement, and all five findings + publication
- * bindings commit together behind the existing lifecycle and queue fences. */
-export async function reviewLocalPatchBoard(c: Container, input: { gameId: string; sceneId: string; deadlineAt?: number },
-  deps: LocalPatchBoardReviewDeps): Promise<LocalPatchBoardReviewOutcome> {
+/** Read-only reconstruction of the exact question. Recovery may inspect FAILED
+ * v9 rows, but gets no authority to dispatch, settle or publish from this API. */
+export async function prepareLocalPatchBoardReview(c: Container, input: { gameId: string; sceneId: string },
+  deps: Pick<LocalPatchBoardReviewDeps, "readBoardArt">, options: { recovery?: boolean } = {}) {
   const scene = await c.db.gameScene.findUniqueOrThrow({ where: { id: input.sceneId },
     include: { game: { include: { childProfile: true } }, targets: { include: { variants: true } } } });
   const game = scene.game, child = game.childProfile;
@@ -72,7 +71,8 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
   const reviewVersion = isLocalPatchAgeVersion(scene.sceneVersion) ? LOCAL_PATCH_AGE_BOARD_REVIEW_VERSION
     : strict ? LOCAL_PATCH_STRICT_BOARD_REVIEW_VERSION : LOCAL_PATCH_BOARD_REVIEW_VERSION;
   const settings = localPatchBoardJudgeSettings(scene.sceneVersion);
-  demand(game.id === input.gameId && game.styleVersion === "local-patch-world-v1" && game.status === "TARGETS_GENERATING"
+  demand(game.id === input.gameId && game.styleVersion === "local-patch-world-v1"
+    && (game.status === "TARGETS_GENERATING" || options.recovery && isLocalPatchAgeVersion(scene.sceneVersion) && game.status === "GENERATION_FAILED")
     && !game.deletedAt && game.ownerId && child && !child.deletedAt && child.ownerId === game.ownerId
     && isLocalPatchAdvisoryVersion(scene.sceneVersion), "A live catalog-7 owned game is required");
   const board = localPatchBoardForVersion(scene.sceneSlug, scene.sceneVersion);
@@ -100,7 +100,8 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
   for (const hide of board.hides) {
     const target = scene.targets.find(t => t.targetId === hide.targetId);
     const row = target?.variants.find(v => v.variant === LOCAL_PATCH_VARIANT);
-    if (!row || row.status !== "GENERATED" || !row.assetId) return { state: "pending", reason: "Five usable patches are not ready", costCents: 0, replayed: false };
+    if (!row || !(row.status === "GENERATED" || options.recovery && isLocalPatchAgeVersion(scene.sceneVersion) && row.status === "FAILED") || !row.assetId)
+      return { ready: false as const, reason: "Five usable patches are not ready" };
     demand(row.provider === LOCAL_PATCH_PROVIDER && row.rectJson && row.hitRectJson && row.headAnchorJson, "Patch metadata is incomplete");
     const asset = await c.db.asset.findUniqueOrThrow({ where: { id: row.assetId } });
     demand(asset.ownerId === game.ownerId && asset.type === "TARGET_SPRITE" && asset.visibility === "GAME" && asset.status === "READY"
@@ -115,9 +116,8 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
       && completed.judgedSha256 === imageSha256 && completed.geometrySha256 === geometrySha256
       && ["pending-board-review", "board-review-complete"].includes(String(completed.reviewState)),
     "Shipping image or geometry no longer matches its render-completion binding");
-    if (strict && completed.compositionVersion !== LOCAL_PATCH_COMPOSITION_VERSION) return {
-      state: "pending", reason: "Retained image awaits the current head-safe compositor", costCents: 0, replayed: false,
-    };
+    if (strict && completed.compositionVersion !== LOCAL_PATCH_COMPOSITION_VERSION)
+      return { ready: false as const, reason: "Retained image awaits the current head-safe compositor" };
     const dimensions = await sharp(bytes, { limitInputPixels: 8_294_400 }).metadata();
     demand(dimensions.width === crop.width && dimensions.height === crop.height && (dimensions.pages ?? 1) === 1, "Patch raster differs from its shipping rectangle");
     const sprite = SpriteRefSchema.parse({ kind: "image", url: "https://example.invalid/retained.png", width: asset.width, height: asset.height,
@@ -177,6 +177,20 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
       imageSha256: e.imageSha256, geometrySha256: e.geometrySha256 })),
   });
   const requestKey = localPatchBoardReviewKey(board.board, strict ? entries.map(e => e.row.attempts) : undefined, LOCAL_PATCH_COMPOSITION_VERSION, scene.sceneVersion);
+  return { ready: true as const, scene, game, child, board, budget, worldId, identity, sheet, entries, request, fingerprint,
+    requestKey, settings, strict, reviewVersion, composed };
+}
+
+/** One paid review of the actual five-patch board; no per-hide review purchases.
+ * The response is retained before settlement, and all five findings + publication
+ * bindings commit together behind the existing lifecycle and queue fences. */
+export async function reviewLocalPatchBoard(c: Container, input: { gameId: string; sceneId: string; deadlineAt?: number },
+  deps: LocalPatchBoardReviewDeps): Promise<LocalPatchBoardReviewOutcome> {
+  const prepared = await prepareLocalPatchBoardReview(c, input, deps);
+  if (!prepared.ready) return { state: "pending", reason: prepared.reason, costCents: 0, replayed: false };
+  const { scene, game, board, budget, worldId, identity, sheet, entries, request, fingerprint,
+    requestKey, settings, strict, reviewVersion, composed } = prepared;
+  demand(game.ownerId, "A review requires its verified owner");
   demand(deps.judge || deps.apiKey?.trim(), "Configured existing judge credential is required");
   // Unlike a replay, a new dispatch must consult the current kill switch/owner.
   await assertGenerationSpendAllowed(c, game.ownerId);

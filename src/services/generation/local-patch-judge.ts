@@ -236,8 +236,30 @@ export type LocalPatchAgeVerdict = z.infer<typeof localPatchAgeVerdictSchema>;
 const verdictSchemaFor = (contentVersion?: number) => isLocalPatchAgeVersion(contentVersion) ? localPatchAgeVerdictSchema
   : isLocalPatchStrictVersion(contentVersion) ? localPatchQualityVerdictSchema : localPatchVerdictSchema;
 
-/** Retry only an attributable severe defect. A missing or contradictory answer
- * is unresolved evidence, never invented success or an invented image failure. */
+const explicitAgeUncertaintySchema = localPatchVerdictWireSchema.extend({
+  faceLikeness: check, faceReadable: check, severeSeam: check, ageAppropriate: check,
+  // Require the complete normalized result, not a partial raw answer that happens
+  // to say unsure. A fail softened by parsing is not the model's explicit doubt.
+  downgraded: z.array(z.string()).length(0), contradicted: z.array(z.string()).length(0),
+  unclassified: z.array(z.string()).length(0), claimedVerdict: check, verdictOverridden: z.boolean(),
+  faults: z.array(z.object({ check: z.string().trim().min(1).max(40), where: z.string().trim().min(1).max(300) }).strict()).max(8),
+}).strict();
+
+/** V9 can spend a remaining, already bounded attempt to make genuine visual
+ * uncertainty answerable. This is NOT approval or a substitute for the caller's
+ * wire/model/evidence-ID and paid-image bindings. Bad evidence parses as null. */
+export function localPatchExplicitUncertaintyChecks(verdict: unknown, contentVersion?: number): string[] {
+  if (!isLocalPatchAgeVersion(contentVersion)) return [];
+  const parsed = explicitAgeUncertaintySchema.safeParse(verdict);
+  if (!parsed.success) return [];
+  const v = parsed.data;
+  if (v.verdict === "pass" || v.verdictOverridden !== (v.verdict !== v.claimedVerdict)) return [];
+  return LOCAL_PATCH_AGE_SEVERE_CHECKS.filter(key => v[key] === "unsure" && !v.faults.some(f => f.check === key));
+}
+
+/** Retry an attributable severe defect, or V9's explicit visual uncertainty.
+ * Missing, downgraded or contradictory evidence remains unresolved, never
+ * invented success. The world, not this classifier, owns the three-attempt cap. */
 export function localPatchQualityDisposition(verdict: LocalPatchVerdict | null, contentVersion?: number): {
   state: "acceptable" | "retry" | "unresolved"; faults: string[];
 } {
@@ -248,7 +270,8 @@ export function localPatchQualityDisposition(verdict: LocalPatchVerdict | null, 
   const v = parsed.data, checks = localPatchSevereChecks(contentVersion);
   const value = (key: typeof checks[number]) => (v as Record<string, unknown>)[key];
   const failures = checks.filter(k => value(k) === "fail" && v.faults.some(f => f.check === k));
-  if (failures.length) return { state: "retry", faults: failures };
+  const uncertainty = localPatchExplicitUncertaintyChecks(verdict, contentVersion);
+  if (failures.length || uncertainty.length) return { state: "retry", faults: checks.filter(k => failures.includes(k) || uncertainty.includes(k)) };
   const unresolved = checks.filter(k => value(k) !== "pass" || v.faults.some(f => f.check === k));
   return unresolved.length ? { state: "unresolved", faults: unresolved } : { state: "acceptable", faults: [] };
 }

@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { emptyProgress, parseProgress, recordSceneCompleted } from "@/domain/game/progress";
@@ -132,6 +134,39 @@ const target = (id: string) =>
   }) as never;
 
 describe("MissionCard", () => {
+  it("reserves the 320px HUD's face and hint space without hiding any of its five stars", () => {
+    const css = readFileSync(resolve(process.cwd(), "src/game/game.css"), "utf8");
+    const tokens = readFileSync(resolve(process.cwd(), "src/styles/tokens.css"), "utf8");
+    const rule = (selector: string, source = css) => {
+      const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const body = source.match(new RegExp(`(?:^|\\n)\\s*${escaped}\\s*\\{([^}]+)\\}`))?.[1];
+      expect(body, selector).toBeDefined();
+      return body!;
+    };
+    const narrow = css.match(/@media\s*\(max-width:\s*360px\)\s*\{([\s\S]*?)\n\}/)?.[1];
+    expect(narrow).toBeDefined();
+    // Pin the CSS contract, not a simulated browser layout: JSDOM does not
+    // implement media-query layout. The reported real row was 225px wide.
+    expect(rule(".mission__stars.stars--sm", narrow)).toContain("--star-size: var(--space-2)");
+    expect(rule(".stars--sm")).toContain("--star-size: var(--space-3)");
+    expect(rule(".mission__hintbtn")).toContain("min-width: var(--touch-min)");
+    expect(rule(".mission__rules")).toContain("white-space: normal");
+    expect(rule(".mission__face")).toContain("object-fit: contain");
+    expect(css).toContain("width: calc(var(--space-6) + var(--space-1)); height: calc(var(--space-6) + var(--space-1))");
+    const px = (name: string) => Number(tokens.match(new RegExp(`--${name}:\\s*(\\d+)px`))?.[1]);
+    const face = px("space-6") + px("space-1");
+    const available = 225 - face - px("touch-min") - 2 * px("space-1");
+    const tray = 5 * px("space-2") + 4 * px("space-0-5");
+    expect(face).toBe(56); expect(available).toBe(105); expect(tray).toBe(96);
+    expect(tray).toBeLessThanOrEqual(available);
+    const view = he(<MissionCard index={3} total={5} target={target("c")} found={["a", "b"]}
+      order={["a", "b", "c", "d", "e"]} hintLevel={0} hintPulse={false} hintText={null}
+      onHint={() => undefined} childName="עומר" />);
+    const slots = [...view.container.querySelectorAll(".mission__stars .stars__slot")];
+    expect(slots).toHaveLength(5);
+    expect(slots.map(slot => slot.classList.contains("is-lit"))).toEqual([true, true, false, false, false]);
+  });
+
   it.each(["Enter", " "])("keeps nested hint/continue keyboard activation native when the HUD is quiet (%s)", key => {
     const onHint = vi.fn(), onAdvance = vi.fn(), onExpand = vi.fn();
     const view = he(<MissionCard index={4} total={5} target={target("d")} found={["a", "b", "c"]}

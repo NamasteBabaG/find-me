@@ -79,9 +79,10 @@ async function seed(gameId: string, contentVersion = 8) {
 }
 
 describe("versioned full real queue and durable accounting: narrow severe retries", () => {
-  it.each([{ contentVersion: 8, recover: false }, { contentVersion: 8, recover: true },
-    { contentVersion: 9, recover: false }, { contentVersion: 9, recover: true }])("$contentVersion recovery=$recover: completes the normal world before the last repair, never buys a fourth image", async ({ contentVersion, recover }) => {
-    const gameId = `strict-world-v${contentVersion}-${recover ? "recovers" : "exhausts"}`, seeded = await seed(gameId, contentVersion);
+  it.each([{ contentVersion: 8, recover: false, uncertain: false }, { contentVersion: 8, recover: true, uncertain: false },
+    { contentVersion: 9, recover: false, uncertain: false }, { contentVersion: 9, recover: true, uncertain: false },
+    { contentVersion: 9, recover: false, uncertain: true }, { contentVersion: 9, recover: true, uncertain: true }])("$contentVersion recovery=$recover uncertainty=$uncertain: completes the normal world before the last repair, never buys a fourth image", async ({ contentVersion, recover, uncertain }) => {
+    const gameId = `strict-world-v${contentVersion}-${recover ? "recovers" : "exhausts"}${uncertain ? "-uncertain" : ""}`, seeded = await seed(gameId, contentVersion);
     const ageContract = contentVersion === 9;
     const expectedGood = ageContract ? { ...GOOD, ageAppropriate: "pass" } : GOOD;
     const severeCheck = ageContract ? "ageAppropriate" : "severeSeam";
@@ -104,6 +105,10 @@ describe("versioned full real queue and durable accounting: narrow severe retrie
         const attempt = Number(requestKey.split(":").at(-1));
         if (attempt > 1) {
           expect(prompt).toContain(ageContract ? "AGE AND BODY REPAIR" : "SEAM REPAIR");
+          if (uncertain) {
+            expect(prompt).toContain("FACE LIKENESS REPAIR");
+            expect(prompt).toContain("FACE READABILITY REPAIR");
+          }
           expect(prompt).not.toContain("Repaint the face, hair and clothes");
           expect(prompt).not.toContain("a strong straight colour block at the target's right edge");
         }
@@ -127,7 +132,9 @@ describe("versioned full real queue and durable accounting: narrow severe retrie
       return { verdict: null, verdicts: {}, raw: JSON.stringify({ hides: request.hides.map(h => ({ hideId: h.hideId,
         ...(ageContract ? { evidenceIds: [`${h.hideId}:before`, `${h.hideId}:after`] } : {}),
         verdict: h.hideId === BAD.id && (!recover || lastAttempt.get(BAD.id)! < 2)
-          ? { ...expectedGood, [severeCheck]: "fail", verdict: "fail", faults: [{ check: severeCheck,
+          ? uncertain ? { ...expectedGood, faceLikeness: "unsure", faceReadable: "unsure", ageAppropriate: "unsure",
+            verdict: "unsure", reason: "The chair occludes too much face and body to verify likeness, readability and age.", faults: [] }
+            : { ...expectedGood, [severeCheck]: "fail", verdict: "fail", faults: [{ check: severeCheck,
             where: ageContract ? "The central target has an older child's long torso and broad shoulders." : "a strong straight colour block at the target's right edge" }] }
           : expectedGood })) }), model: "gpt-5.6-luna", requestId: `req-${gameId}-review-${calls}`,
         usage: { prompt_tokens: 9000, completion_tokens: 1400 }, finishReason: "stop", wireFault: null, costUnknown: false };
@@ -159,6 +166,11 @@ describe("versioned full real queue and durable accounting: narrow severe retrie
     } else {
       expect(game).toMatchObject({ status: "GENERATION_FAILED", configJson: null, readyAt: null });
       expect(bad).toMatchObject({ status: "FAILED", attempts: 3 });
+      if (uncertain) {
+        expect(bad.lastError).toBe("quality-retry: faceLikeness; faceReadable; ageAppropriate");
+        expect(JSON.parse(bad.judgeJson!).verdict).toMatchObject({ verdict: "unsure", faceLikeness: "unsure",
+          faceReadable: "unsure", ageAppropriate: "unsure", downgraded: [], contradicted: [], unclassified: [] });
+      }
       expect(await db.generationJob.findUniqueOrThrow({ where: { id: `job_${gameId}` } })).toMatchObject({ status: "DONE", currentStep: LOCAL_PATCH_QUALITY_FAILED });
       expect(await db.shareLink.count({ where: { gameId } })).toBe(0);
       expect(mails.slice(beforeMails).filter(m => m.tag === "game-ready")).toHaveLength(0);
