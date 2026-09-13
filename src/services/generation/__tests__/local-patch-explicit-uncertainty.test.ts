@@ -111,11 +111,11 @@ describe("explicit trustworthy v9 uncertainty uses bounded repairs, never approv
     expect(localPatchRepairChecks(JSON.stringify({ verdict: doubt }), 9)).toEqual([]);
   });
 
-  it("retains two normal attempts then one final repair, with no fourth call or attempt burned on replay", () => {
+  it("finishes untouched hides before normal retries and one final repair, without burning an attempt on replay", () => {
     const verdict = localPatchAgeVerdictSchema.parse(doubt);
     const retry = () => expect(localPatchQualityDisposition(verdict, 9).state).toBe("retry");
     const rows: LocalPatchAttemptState[] = [{ status: "FAILED", attempts: 1 }, { status: "PENDING", attempts: 0 }];
-    retry(); expect(localPatchAttemptPlan(rows, true)).toEqual({ finalRepair: false, indices: [0, 1] });
+    retry(); expect(localPatchAttemptPlan(rows, true)).toEqual({ finalRepair: false, indices: [1] });
     expect(nextLocalPatchAttempt(rows[0]!)).toEqual({ attempt: 2, exhausted: false });
     expect(nextLocalPatchAttempt({ status: "PENDING", attempts: 2 })).toEqual({ attempt: 2, exhausted: false });
     rows[0] = { status: "FAILED", attempts: 2 }; retry();

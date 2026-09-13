@@ -13,7 +13,7 @@ import { SYSTEM } from "../audit.service";
 import { reviewLocalPatchBoard, localPatchBoardReviewKeys, type LocalPatchBoardReviewDeps } from "./local-patch-board-review";
 import { transitionGame } from "../game-status";
 import { LOCAL_PATCH_MIN_PROVIDER_MS, LOCAL_PATCH_PHASE_MARGIN_MS } from "./local-patch-render";
-import { localPatchAttemptPlan, localPatchSettled, LOCAL_PATCH_NORMAL_ATTEMPTS } from "../../domain/scene/local-patch-attempts";
+import { localPatchAttemptPlan, localPatchSettled, localPatchFinalRepairAllowed, LOCAL_PATCH_NORMAL_ATTEMPTS } from "../../domain/scene/local-patch-attempts";
 import { localPatchNeedsRecomposition, recomposeLocalPatchHide } from "./local-patch-recompose";
 import { runLocalPatchPaidRepair, LOCAL_PATCH_PAID_REPAIR_ACTION, LocalPatchPaidRepairError } from "./local-patch-paid-repair";
 import {
@@ -268,7 +268,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     return { ...empty, pending: false, claimed: true, paused: false, attention };
   }
 
-  const allowRepair = env().APP_ENV === "qa";
+  const allowRepair = localPatchFinalRepairAllowed(env().APP_ENV, strict);
   const attemptLimit = allowRepair ? LOCAL_PATCH_MAX_ATTEMPTS : LOCAL_PATCH_NORMAL_ATTEMPTS;
   const settledHide = (row: { status: string; attempts: number } | undefined) => localPatchSettled(row, attemptLimit);
   const plan = localPatchAttemptPlan(work.map(item => stateOf(item.sceneId, item.hide.targetId)), allowRepair);
@@ -276,7 +276,12 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     && localPatchBoardFor(scene.sceneSlug, scene.sceneVersion)?.hides.every(hide => stateOf(scene.id, hide.targetId)?.status === "GENERATED"));
   // A rendered but not reviewed normal candidate may still require attempt2.
   // Finish those reviews before handing any earlier failure its last attempt.
-  const todo = plan.finalRepair && normalReviewsPending ? [] : plan.indices.map(index => work[index]!);
+  const todo = plan.indices.map(index => work[index]!).filter(item => {
+    if (!plan.finalRepair || !normalReviewsPending) return true;
+    const row = stateOf(item.sceneId, item.hide.targetId);
+    // Reviews gate a NEW final purchase, never recovery of one already started.
+    return row?.status === "PENDING" && row.attempts === LOCAL_PATCH_MAX_ATTEMPTS;
+  });
   const outcomes: LocalPatchHideOutcome[] = [];
   const limit = Math.max(1, options.maxHides ?? (advisory ? 5 : LOCAL_PATCH_HIDES_PER_SLICE));
   let paused = false;

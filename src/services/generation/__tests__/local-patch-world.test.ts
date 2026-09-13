@@ -232,22 +232,22 @@ describe("a world of hides, one slice at a time", () => {
     expect(scene.generationStatus).toBe("GENERATED");
   }, 240_000);
 
-  it("finishes untouched hides before the final repair, then replays attempt three from disk without buying its image again", async () => {
+  it("finishes untouched hides before either repair, then replays attempt three from disk without buying its image again", async () => {
     const { gameId } = await seed();
     const refused = worker({ answer: reply({ raw: JSON.stringify({ ...PASSING_ANSWER,
       styleMatch: "fail", verdict: "fail", reason: "The child's face is too photographic.",
       faults: [{ check: "styleMatch", where: "the child's face inside the patch" }],
     }) }) });
-    for (const attempt of [1, 2]) {
-      expect((await runLocalPatchWorldSlice(c, refused.deps, gameId)).outcomes[0])
-        .toMatchObject({ hideId: "sydney-1", attempt, state: attempt === 1 ? "refused" : "gave-up" });
-    }
+    expect((await runLocalPatchWorldSlice(c, refused.deps, gameId)).outcomes[0])
+      .toMatchObject({ hideId: "sydney-1", attempt: 1, state: "refused" });
     const normal = worker();
     const remaining = await runLocalPatchWorldSlice(c, normal.deps, gameId, { maxHides: 3 });
     expect(remaining.outcomes.map(outcome => [outcome.hideId, outcome.attempt]))
       .toEqual([["sydney-2", 1], ["sydney-3", 1]]);
     expect(remaining.pending, "normal completion queues the repair instead of ending the world").toBe(true);
     expect(normal.dispatched.filter(key => key.endsWith(":render:3"))).toEqual([]);
+    expect((await runLocalPatchWorldSlice(c, refused.deps, gameId)).outcomes[0])
+      .toMatchObject({ hideId: "sydney-1", attempt: 2, state: "gave-up" });
 
     const started = Date.now();
     let now = started;

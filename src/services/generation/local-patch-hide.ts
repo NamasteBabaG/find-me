@@ -24,7 +24,7 @@ import { buildBoardPeopleStyle } from "./board-wizard-identity-style";
 import type { PatchGeometry } from "./patch";
 import { readPinnedLocalPatchArt } from "./local-patch-art";
 import { env } from "../../lib/env";
-import { LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_NORMAL_ATTEMPTS, nextLocalPatchAttempt } from "../../domain/scene/local-patch-attempts";
+import { LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_NORMAL_ATTEMPTS, localPatchFinalRepairAllowed, nextLocalPatchAttempt } from "../../domain/scene/local-patch-attempts";
 import { isLocalPatchAdvisoryVersion, isLocalPatchAgeVersion, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
 import { localPatchPublicationGeometryHash } from "./local-patch-publication-policy";
 export { LOCAL_PATCH_MAX_ATTEMPTS, nextLocalPatchAttempt } from "../../domain/scene/local-patch-attempts";
@@ -258,8 +258,9 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
       provider: LOCAL_PATCH_PROVIDER, promptVersion,
     } });
 
-  if (input.finalRepair) demand(env().APP_ENV === "qa" && game.styleVersion === "local-patch-world-v1",
-    "the final repair pass is enabled only for the QA local-patch engine");
+  if (input.finalRepair) demand(localPatchFinalRepairAllowed(env().APP_ENV, isLocalPatchStrictVersion(scene.sceneVersion))
+    && game.styleVersion === "local-patch-world-v1",
+    "the final repair pass requires a strict local-patch world or the legacy QA engine");
   const attemptLimit = input.finalRepair ? LOCAL_PATCH_MAX_ATTEMPTS : LOCAL_PATCH_NORMAL_ATTEMPTS;
   const { attempt, exhausted } = nextLocalPatchAttempt(row, attemptLimit);
   // judgeJson is intentionally kept while PENDING: clearing lastError must not
