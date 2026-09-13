@@ -152,3 +152,10 @@ Final full regression run after the detector correction: `npm run check --
 349.04 seconds, 13 September 2026. Both TypeScript projects are included in
 that command. A separate agent reviewed the sampling geometry and found no
 blocking defect. No provider was used by this regression run.
+
+Final runtime release: commit `58413d9`, deployment
+`dpl_C6Sgec6oNT4Hfsx3HjgExtTo8YLu`, promoted to both QA aliases. Public
+`findmeworlds.com` remains on its previous deployment. The refreshed authenticated
+administrator page confirms 43 generated appearances and two failures; no
+playable link was minted. Browser navigation to `/api/health` was blocked by
+the client, so it is not recorded as a successful health check.
