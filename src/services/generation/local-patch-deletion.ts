@@ -51,6 +51,11 @@ export async function deleteLocalPatchGame(c: Container, gameId: string, actor: 
     for (const blob of await tx.fileBlob.findMany({ where: { key: { startsWith: localPatchNotificationPrefix(gameId) } }, select: { key: true } })) keys.add(blob.key);
     await tx.auditLog.updateMany({ where: { entityType: "Game", entityId: gameId, action: "local-patch:notification-pending" },
       data: { action: "local-patch:notification-cancelled" } });
+    // The bounded pilot duplicates prior child assessments for its review trail.
+    // Keep the audit event, not that private text, after the game's deletion.
+    // Accounting lives in the separate ledger and is deliberately untouched.
+    await tx.auditLog.updateMany({ where: { entityType: "Game", entityId: gameId,
+      action: { startsWith: "local-patch:quality-pilot" } }, data: { metaJson: null } });
     let sharedAssetsRetained = 0;
     for (const asset of await tx.asset.findMany({ where: { id: { in: inventory.assetIds } } })) {
       demand(asset.ownerId === game.ownerId && asset.provider === LOCAL_PATCH_PROVIDER && asset.providerRequestId === gameId

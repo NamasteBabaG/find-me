@@ -39,6 +39,8 @@ import { auditWorldBudget, type WorldBudgetAudit, type WorldChargeEvidence } fro
 
 /** How long one paint may take. Published so a caller can budget a slice around it. */
 export const LOCAL_PATCH_IMAGE_TIMEOUT_MS = 240_000;
+export const LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE = "canonical-portrait-only/v1" as const;
+export type LocalPatchReferenceMode = typeof LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE;
 
 export const LOCAL_PATCH_IMAGE_POLICY: FixedSourcePolicy = Object.freeze({
   quality: "medium",
@@ -78,6 +80,8 @@ export type LocalPatchRenderInput = {
   readonly prompt: string;
   readonly stylePng: Buffer;
   readonly identityPng: Buffer;
+  /** Explicit v9 recipe: the scene and approved portrait are the only two images. */
+  readonly referenceMode?: LocalPatchReferenceMode;
   /** v8 only: full approved sheet corroborates the high-resolution portrait. */
   readonly canonicalIdentityPng?: Buffer;
   readonly boardPeoplePng?: Buffer;
@@ -169,7 +173,18 @@ export async function buyLocalPatch(apiKey: string, input: LocalPatchRenderInput
     : { ...chosen, timeoutMs: Math.max(1_000, Math.min(chosen.timeoutMs, input.timeoutMs)) };
   // The crop goes as the reference at its own size - references are capped at
   // 1024 square and 512x768 is inside that. Only the OUTPUT is asked for larger.
-  const identityPng = await sharp(input.identityPng).resize(1024, 1024, { fit: "inside", withoutEnlargement: !!input.boardPeoplePng }).png().toBuffer();
+  if (input.referenceMode !== undefined && input.referenceMode !== LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE) {
+    throw new Error("LOCAL_PATCH_PAINTER: unsupported reference mode");
+  }
+  const portraitOnly = input.referenceMode === LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE;
+  if (portraitOnly && (input.boardPeoplePng || input.canonicalIdentityPng)) {
+    throw new Error("LOCAL_PATCH_PAINTER: portrait-only mode forbids additional face or body references");
+  }
+  // The new portrait is already prepared and bounded. Preserve its exact bytes
+  // (including native resolution) rather than enlarging it or adding strangers.
+  // prepareFixedSource still validates it before any provider dispatch.
+  const identityPng = portraitOnly ? Buffer.from(input.identityPng)
+    : await sharp(input.identityPng).resize(1024, 1024, { fit: "inside", withoutEnlargement: !!input.boardPeoplePng }).png().toBuffer();
   if (input.canonicalIdentityPng && !input.boardPeoplePng) throw new Error("LOCAL_PATCH_PAINTER: canonical references require their explicit board reference");
   const canonical = input.canonicalIdentityPng
     ? await sharp(input.canonicalIdentityPng).resize(1024, 1024, { fit: "inside", withoutEnlargement: true }).png().toBuffer() : null;

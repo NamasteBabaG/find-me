@@ -11,7 +11,7 @@ import {
 import { judgeCharge } from "../../infra/generation/judge";
 import { LOCAL_PATCH_POSE_WORDING, LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_CANONICAL_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, localPatchPrompt, type LocalPatchRepairCheck } from "./local-patch-prompt";
 import { purchaseOnce, type PurchaseLedger, type RetainedPurchaseStore } from "./paid-operation";
-import type { LocalPatchPurchase } from "../../infra/generation/openai-local-patch";
+import { LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, type LocalPatchPurchase, type LocalPatchReferenceMode } from "../../infra/generation/openai-local-patch";
 import type { BudgetJson, WorldChargeEvidence } from "./world-budget";
 import { isLocalPatchAdvisoryVersion, isLocalPatchAgeVersion, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
 
@@ -59,6 +59,7 @@ export type LocalPatchRenderDeps = {
   readonly render: (input: {
     readonly worldId: string; readonly requestKey: string; readonly prompt: string;
     readonly stylePng: Buffer; readonly identityPng: Buffer; readonly maskPng: Buffer;
+    readonly referenceMode?: LocalPatchReferenceMode;
     readonly canonicalIdentityPng?: Buffer;
     readonly boardPeoplePng?: Buffer;
     /** What is left of the caller's request. An adapter that ignores it can outlive it. */
@@ -76,6 +77,7 @@ export type LocalPatchAttemptInput = {
   /** The board as it now stands, with any earlier hides already painted in. */
   readonly composedPng: Buffer;
   readonly identityPng: Buffer;
+  readonly referenceMode?: LocalPatchReferenceMode;
   readonly canonicalIdentityPng?: Buffer;
   readonly boardPeoplePng?: Buffer;
   /** For the judge, which needs a smaller copy than the painter does. */
@@ -293,7 +295,13 @@ function promptVersionOf(input: LocalPatchAttemptInput): string {
 
 async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: LocalPatchAttemptInput): Promise<LocalPatchAttempt> {
   const { worldId, board, hide, attempt } = input;
-  if (isLocalPatchStrictVersion(input.contentVersion) && (!input.canonicalIdentityPng || !input.boardPeoplePng)) {
+  if (isLocalPatchAgeVersion(input.contentVersion)) {
+    if (input.referenceMode !== LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE || input.canonicalIdentityPng || input.boardPeoplePng) {
+      throw new Error("LOCAL_PATCH: v9 requires portrait-only references, with no unrelated face atlas or old body sheet");
+    }
+  } else if (input.referenceMode !== undefined) {
+    throw new Error("LOCAL_PATCH: portrait-only references belong to v9, not a legacy paid recipe");
+  } else if (isLocalPatchStrictVersion(input.contentVersion) && (!input.canonicalIdentityPng || !input.boardPeoplePng)) {
     throw new Error("LOCAL_PATCH: canonical identity and board environment references are required before purchasing v8");
   }
   const crop = cropOf(hide);
@@ -313,6 +321,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     prompt: sha(Buffer.from(prompt)), style: sha(stylePng), identity: sha(input.identityPng), mask: sha(maskPng),
     ...(input.boardPeoplePng ? { boardPeople: sha(input.boardPeoplePng) } : {}),
     ...(input.canonicalIdentityPng ? { canonicalIdentity: sha(input.canonicalIdentityPng) } : {}),
+    ...(input.referenceMode ? { referenceMode: input.referenceMode } : {}),
     ...(isLocalPatchStrictVersion(input.contentVersion) ? { composition: "bounded-return/v1" } : {}),
     policy: deps.renderPolicySha256,
     // The SHAPE of what is kept, not only what was bought. A record written
@@ -337,6 +346,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
       const result = await deps.render({ worldId, requestKey: renderKey, prompt, stylePng, identityPng: input.identityPng, maskPng,
         ...(input.boardPeoplePng ? { boardPeoplePng: input.boardPeoplePng } : {}),
         ...(input.canonicalIdentityPng ? { canonicalIdentityPng: input.canonicalIdentityPng } : {}),
+        ...(input.referenceMode ? { referenceMode: input.referenceMode } : {}),
         ...(timeoutMs === null ? {} : { timeoutMs }) });
       const kept = result.png ?? result.quarantined;
       const keep: RetainedRender = {

@@ -154,7 +154,7 @@ function allowed(input: LocalPatchPublicationBinding): boolean {
     return receipt?.reviewState === "board-review-complete" && receipt.wireFault === null
       && receipt?.compositionVersion === LOCAL_PATCH_COMPOSITION_VERSION
       && receipt?.boardReview?.compositionVersion === LOCAL_PATCH_COMPOSITION_VERSION
-      && receipt?.boardReview?.version === (isLocalPatchAgeVersion(input.sceneVersion) ? "local-patch-board-five-quality/v4-canonical-age" : "local-patch-board-five-quality/v3-head-safe")
+      && receipt?.boardReview?.version === (isLocalPatchAgeVersion(input.sceneVersion) ? "local-patch-board-five-quality/v5-evidence-labeled" : "local-patch-board-five-quality/v3-head-safe")
       && localPatchQualityDisposition(receipt.verdict, input.sceneVersion).state === "acceptable";
   } catch { return false; }
 }

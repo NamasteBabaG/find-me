@@ -18,7 +18,7 @@ import { readBoardConditionedCatalog } from "./board-conditioned-catalog";
 import { assertGenerationSpendAllowed, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { localPatchGeometry, type LocalPatchGeometry } from "./local-patch-geometry";
 import { renderLocalPatchHide, type LocalPatchRenderDeps } from "./local-patch-render";
-import { LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_CANONICAL_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, localPatchRepairChecks } from "./local-patch-prompt";
+import { LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_CANONICAL_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, localPatchRepairChecks, type LocalPatchRepairCheck } from "./local-patch-prompt";
 import { prepareLocalPatchIdentityReferences } from "./local-patch-identity-reference";
 import { buildBoardPeopleStyle } from "./board-wizard-identity-style";
 import type { PatchGeometry } from "./patch";
@@ -197,6 +197,8 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   readonly deadlineAt?: number;
   /** Only the world scheduler can open this after its normal pass is complete. */
   readonly finalRepair?: boolean;
+  /** Trusted, durably audited recovery plan only; never raw operator/model prose. */
+  readonly repairChecks?: readonly LocalPatchRepairCheck[];
 }): Promise<LocalPatchHideOutcome> {
   const { gameId, board, hide } = input;
   demand(c.storage.id === "db", "local-patch imagery requires DB-backed private storage");
@@ -264,9 +266,9 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   // change the prompt/fingerprint when attempt 2/3 resumes after an interruption.
   // v8 corrects its own located defect on the very next attempt. The old paid
   // recipes still add repair instructions only on their final repair pass.
-  const repairChecks = isLocalPatchStrictVersion(scene.sceneVersion)
+  const repairChecks = input.repairChecks ?? (isLocalPatchStrictVersion(scene.sceneVersion)
     ? attempt > 1 ? localPatchRepairChecks(row.judgeJson, scene.sceneVersion) : undefined
-    : input.finalRepair ? localPatchRepairChecks(row.judgeJson) : undefined;
+    : input.finalRepair ? localPatchRepairChecks(row.judgeJson) : undefined);
   const base = {
     boardId: board.board, hideId: hide.id, targetId: hide.targetId, attempt, attempts: row.attempts,
     assetId: row.assetId, geometry: null, geometryBasis: null,
@@ -280,9 +282,10 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     return { ...base, attempt: row.attempts, state: "gave-up", reason: row.lastError ?? `gave up after ${row.attempts} attempts` };
   }
 
-  // Old identities keep their exact paid inputs; new board-drawn identities also
-  // carry explicit same-board faces, even if this particular crop has none.
-  const boardPeoplePng = boardDrawn || isLocalPatchStrictVersion(scene.sceneVersion) ? (await buildBoardPeopleStyle(board.board)).png : undefined;
+  // Preserve the old paid recipes. V9 takes environment from the scene itself;
+  // a stranger's enlarged face must not compete with the approved portrait.
+  const boardPeoplePng = !isLocalPatchAgeVersion(scene.sceneVersion) && (boardDrawn || isLocalPatchStrictVersion(scene.sceneVersion))
+    ? (await buildBoardPeopleStyle(board.board)).png : undefined;
 
   demand(deps.judge || deps.apiKey?.trim(), "a credential is required to judge what was painted; an unjudged render is never accepted");
   // The placements and the scene are two authored files, and a patch is only a

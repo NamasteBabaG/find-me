@@ -43,7 +43,10 @@ describe("catalog 9 requires the confirmed child's age, likeness and physical sc
     expect(prompt).toContain("PARENT-CONFIRMED TARGET AGE: 5 years old");
     expect(prompt).toContain("PRESCHOOL body: narrow small shoulders");
     expect(prompt).toContain("short child arms and legs");
-    expect(prompt).toContain("Image 4 corroborates the same FACE AND HAIR identity, NOT target age, body proportions or wardrobe");
+    expect(prompt).toContain("FACE AND HAIR AUTHORITY: Image 2 only");
+    expect(prompt).toContain("There are only two images");
+    expect(prompt).not.toMatch(/Image [34]/);
+    expect(prompt).toContain("Do not add curls where the reference has straight or side-swept hair");
     expect(prompt).not.toContain("corroborating identity and age");
     expect(prompt).toContain("at most 180 pixels, NOT a required height or a box to fill");
     expect(prompt).toContain("Do not enlarge the head, blindly shrink or zoom the whole figure");
@@ -101,7 +104,7 @@ describe("catalog 9 requires the confirmed child's age, likeness and physical sc
     expect(() => localPatchBoardJudgePrompt({ ...request9, hides: request9.hides.map((h, i) => i ? h : { ...h, expectation: { ageYears: 8 } }) })).toThrow(/consistent/);
   });
   it("buys one LOW grouped judgement with the same twelve evidence images, retaining an actual age failure", async () => {
-    const raw = JSON.stringify({ hides: ids.map((hideId, i) => ({ hideId, verdict: i ? ageGood : { ...ageGood, ageAppropriate: "fail",
+    const raw = JSON.stringify({ hides: ids.map((hideId, i) => ({ hideId, evidenceIds: [`${hideId}:before`, `${hideId}:after`], verdict: i ? ageGood : { ...ageGood, ageAppropriate: "fail",
       faults: [{ check: "ageAppropriate", where: "The standing target has the long torso and broad shoulders of an older child." }] } })) });
     const fakeFetch = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ model: "gpt-5.6-luna",
       usage: { prompt_tokens: 1000, completion_tokens: 200 }, choices: [{ finish_reason: "stop", message: { content: raw } }] }),

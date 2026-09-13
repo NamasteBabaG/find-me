@@ -60,6 +60,36 @@ const run = (gameId: string, deps = worker()) => runLocalPatchHide(c, deps, { ga
 const remove = (gameId: string, userId: string) => deleteGame(c, gameId, { type: "USER", id: userId }, userId);
 
 describe("local-patch deletion through the owner/admin game action", () => {
+  it("redacts only the deleted game's pilot assessment copies while preserving both ledgers and another game's evidence", async () => {
+    const { gameId, userId } = await seed();
+    await run(gameId);
+    const other = await seedApprovedGame(c, db, { gameId: "other-pilot-game", styleVersion: LOCAL_PATCH_STYLE,
+      status: "TARGETS_GENERATING", withJob: true });
+    const actions = ["local-patch:quality-pilot", "local-patch:quality-pilot:review-requeued"];
+    for (const [prefix, entityId] of [["deleted", gameId], ["retained", other.gameId]] as const) {
+      for (const [index, action] of actions.entries()) await db.auditLog.create({ data: {
+        id: `pilot-${prefix}-${index}`, actorType: "SYSTEM", action, entityType: "Game", entityId,
+        metaJson: JSON.stringify({ previousJudgeJson: JSON.stringify({ raw: "Private child face assessment", hide: `${prefix}-hide` }) }),
+      } });
+    }
+    await db.auditLog.create({ data: { id: "unrelated-pilot-audit", actorType: "SYSTEM", action: "other:metadata",
+      entityType: "Game", entityId: gameId, metaJson: '{"accounting":"retained"}' } });
+    await db.auditLog.create({ data: { id: "other-entity-pilot-audit", actorType: "SYSTEM", action: actions[0]!,
+      entityType: "Asset", entityId: gameId, metaJson: '{"unrelatedEntity":true}' } });
+    const ledgerBefore = await db.worldBudgetLedger.findMany({ orderBy: { worldId: "asc" } });
+    const othersBefore = await db.auditLog.findMany({ where: { id: { in: ["pilot-retained-0", "pilot-retained-1",
+      "unrelated-pilot-audit", "other-entity-pilot-audit"] } }, orderBy: { id: "asc" } });
+    const otherGameBefore = await db.game.findUniqueOrThrow({ where: { id: other.gameId } });
+
+    expect(await remove(gameId, userId)).toBe(true);
+    for (const [index, action] of actions.entries()) expect(await db.auditLog.findUnique({ where: { id: `pilot-deleted-${index}` } }))
+      .toMatchObject({ action, entityType: "Game", entityId: gameId, metaJson: null });
+    expect(await db.auditLog.findMany({ where: { id: { in: othersBefore.map(row => row.id) } }, orderBy: { id: "asc" } })).toEqual(othersBefore);
+    expect(await db.worldBudgetLedger.findMany({ orderBy: { worldId: "asc" } })).toEqual(ledgerBefore);
+    expect(await db.game.findUniqueOrThrow({ where: { id: other.gameId } })).toEqual(otherGameBefore);
+    expect(await c.storage.exists(`private/sheet-${other.gameId}.png`)).toBe(true);
+  }, 180_000);
+
   it("purges published, retained, rejected and orphan imagery, revokes the claim and links, and retains accounting", async () => {
     const { gameId, userId } = await seed();
     await run(gameId);

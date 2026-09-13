@@ -26,6 +26,8 @@ import { composeGame, composeScene } from "../../../domain/game/compose";
 import { GameConfigSchema } from "../../../domain/game/config";
 import { enqueueLocalPatchNotifications } from "../../local-patch-notifications";
 import { sha256Bytes } from "../fixed-sprite";
+import { prepareLocalPatchIdentityReferences } from "../local-patch-identity-reference";
+import type { LocalPatchRenderDeps } from "../local-patch-render";
 import { createCanonicalIdentityReuse, requireCanonicalIdentityReuse, finishCanonicalIdentityReuse,
   CANONICAL_IDENTITY_REUSE_ACTION, CANONICAL_IDENTITY_REUSE_CONFIRMATION, CANONICAL_IDENTITY_AGE_CONFIRMATION } from "../local-patch-identity-reuse";
 
@@ -157,8 +159,13 @@ describe("explicit QA adoption of a paid canonical identity whose photo was priv
     expect(proof?.ageReview).toMatchObject({ state: "pass", sourceKind: "parent-accepted-canonical-drawing-no-source-photo", binding: { targetAgeYears: 5, sourceAgeYears: 8 } });
     expect(proof?.sourceReceipt.provenance.ageYears).toBe(8);
     const board = localPatchBoardsForVersion(9)[0]!, hide = board.hides[0]!;
-    const render = vi.fn(async ({ stylePng, prompt }: { stylePng: Buffer; prompt: string }) => {
+    const expectedPortrait = (await prepareLocalPatchIdentityReferences(f.source.sheet, 9)).identityPng;
+    const render = vi.fn(async ({ stylePng, prompt, identityPng, referenceMode, canonicalIdentityPng, boardPeoplePng }: Parameters<LocalPatchRenderDeps["render"]>[0]) => {
       expect(prompt).toContain("5"); expect(prompt).toContain("FACE");
+      expect(referenceMode).toBe("canonical-portrait-only/v1");
+      expect(identityPng.equals(expectedPortrait)).toBe(true);
+      expect(canonicalIdentityPng).toBeUndefined(); expect(boardPeoplePng).toBeUndefined();
+      expect(prompt).not.toMatch(/Image [34]/);
       return paintedOk(await paintedCrop(stylePng, hide), bill(`req-age5-hide-${result.gameId}`));
     });
     const first = await runLocalPatchWorldSlice(f.c, { renderPolicySha256: "a".repeat(64), render, judge: async () => { throw new Error("No per-hide review"); }, readBoardArt: boardPng }, result.gameId,

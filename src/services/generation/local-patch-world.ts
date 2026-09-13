@@ -180,6 +180,13 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // A staged correction is a separate REVIEW-ONLY state. Never let an older
   // failure, a rejected sibling, or an interrupted tick fall into image retries.
   try {
+    const { runLocalPatchQualityPilot } = await import("./local-patch-quality-pilot");
+    const pilot = await runLocalPatchQualityPilot(c, gameId, { ...deps, fence }, options.hardDeadlineAt);
+    if (pilot) {
+      if (pilot.pending) await c.db.$transaction(async tx => { await fence(tx); await tx.generationJob.update({ where: { id: job.id },
+        data: { status: "QUEUED", currentStep: "local-patch", lastError: null } }); });
+      return { ...empty, claimed: true, paused: false, ...pilot };
+    }
     const repair = await runLocalPatchPaidRepair(c, gameId, { fence, apiKey: deps.apiKey,
       deadlineAt: options.hardDeadlineAt, judge: options.repairJudge });
     if (repair.state !== "none") {
@@ -195,7 +202,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     }
   } catch (error) {
     const reason = (error instanceof Error ? error.message : String(error)).slice(0, 500);
-    const refused = error instanceof LocalPatchPaidRepairError || /^LOCAL_PATCH_(PLAYER|REPAIR_REVIEW):/.test(reason);
+    const refused = error instanceof LocalPatchPaidRepairError || /^LOCAL_PATCH_(PLAYER|REPAIR_REVIEW|QUALITY_PILOT):/.test(reason);
     await c.db.generationJob.updateMany({ where: { id: job.id, attempts: claim, status: "RUNNING", currentStep: "local-patch" },
       data: { status: "FAILED", currentStep: refused ? LOCAL_PATCH_NEEDS_RELEASE : "local-patch", lastError: reason } });
     if (error instanceof GenerationPaused) return { ...empty, claimed: true, pending: false, paused: true, attention: null };

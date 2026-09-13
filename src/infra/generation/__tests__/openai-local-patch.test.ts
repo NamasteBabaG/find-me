@@ -1,7 +1,7 @@
 import sharp from "sharp";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import {
-  LOCAL_PATCH_IMAGE_POLICY, buyLocalPatch, localPatchImagePolicyForVersion, localPatchRenderPolicySha256,
+  LOCAL_PATCH_IMAGE_POLICY, LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, buyLocalPatch, localPatchImagePolicyForVersion, localPatchRenderPolicySha256,
 } from "../openai-local-patch";
 
 /**
@@ -38,6 +38,31 @@ const request = () => ({
 });
 
 describe("buying one local patch", () => {
+  it("sends exactly scene then native canonical portrait in v9, with the mask on the scene and no competing reference", async () => {
+    const fetchOnce = vi.fn<typeof fetch>(async () => answer());
+    const result = await buyLocalPatch("synthetic-never-live", { ...request(), referenceMode: LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE },
+      { policy: localPatchImagePolicyForVersion(9), fetchOnce });
+    expect(fetchOnce).toHaveBeenCalledTimes(1);
+    const form = fetchOnce.mock.calls[0]![1]!.body as FormData;
+    const images = form.getAll("image[]") as Blob[];
+    expect(images).toHaveLength(2);
+    expect(Buffer.from(await images[0]!.arrayBuffer()).equals(crop)).toBe(true);
+    expect(Buffer.from(await images[1]!.arrayBuffer()).equals(identity)).toBe(true);
+    expect(await sharp(Buffer.from(await images[1]!.arrayBuffer())).metadata()).toMatchObject({ width: 512, height: 512 });
+    expect(Buffer.from(await (form.get("mask") as Blob).arrayBuffer()).equals(mask)).toBe(true);
+    expect(form.get("quality")).toBe("low");
+    expect(form.get("size")).toBe("768x1152");
+    expect(form.has("input_fidelity")).toBe(false);
+    expect(result.evidence).toMatchObject({ providerRequestId: "req-local-patch-1", amountMicroUsd: 6090 });
+  });
+
+  it.each(["boardPeoplePng", "canonicalIdentityPng"] as const)("refuses a competing %s in portrait-only mode before any request", async name => {
+    const fetchOnce = vi.fn<typeof fetch>(async () => answer());
+    await expect(buyLocalPatch("synthetic-never-live", { ...request(), referenceMode: LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, [name]: identity },
+      { policy: localPatchImagePolicyForVersion(9), fetchOnce })).rejects.toThrow(/forbids additional/);
+    expect(fetchOnce).not.toHaveBeenCalled();
+  });
+
   it.each([[6, "medium"], [7, "low"], [8, "low"], [9, "low"]] as const)("sends the explicitly selected v%i quality without changing size or image model", async (version, quality) => {
     const fetchOnce = vi.fn<typeof fetch>(async () => answer());
     const policy = localPatchImagePolicyForVersion(version);

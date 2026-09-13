@@ -89,15 +89,17 @@ describe("versioned full real queue and durable accounting: narrow severe retrie
     const beforeMails = mails.length;
     const perHideJudge = vi.fn(async () => { throw new Error("v8 uses only grouped reviews"); });
     const deps: LocalPatchHideDeps = { renderPolicySha256: "f".repeat(64), readBoardArt: async () => original, judge: perHideJudge,
-      render: async ({ requestKey, stylePng, identityPng, canonicalIdentityPng, prompt }) => {
+      render: async ({ requestKey, stylePng, identityPng, canonicalIdentityPng, boardPeoplePng, referenceMode, prompt }) => {
         const hide = HIDES.find(h => requestKey.startsWith(`${h.id}:`));
         if (!hide) throw new Error(`Unexpected hide ${requestKey}`);
-        expect(canonicalIdentityPng).toEqual(seeded.sheet);
         if (ageContract) {
+          expect(referenceMode).toBe("canonical-portrait-only/v1");
+          expect(canonicalIdentityPng).toBeUndefined();
+          expect(boardPeoplePng).toBeUndefined();
           expect(prompt).toContain("PARENT-CONFIRMED TARGET AGE: 5 years old");
           expect(prompt).toContain("PRESCHOOL body");
           expect(prompt).not.toContain("corroborating identity and age");
-        }
+        } else expect(canonicalIdentityPng?.equals(seeded.sheet)).toBe(true);
         expect(await sharp(identityPng).metadata()).toMatchObject({ width: 512, height: 512 });
         const attempt = Number(requestKey.split(":").at(-1));
         if (attempt > 1) {
@@ -123,6 +125,7 @@ describe("versioned full real queue and durable accounting: narrow severe retrie
       expect(request.contentVersion).toBe(contentVersion);
       expect(request.hides.every(h => h.expectation?.ageYears === (ageContract ? 5 : 8))).toBe(true);
       return { verdict: null, verdicts: {}, raw: JSON.stringify({ hides: request.hides.map(h => ({ hideId: h.hideId,
+        ...(ageContract ? { evidenceIds: [`${h.hideId}:before`, `${h.hideId}:after`] } : {}),
         verdict: h.hideId === BAD.id && (!recover || lastAttempt.get(BAD.id)! < 2)
           ? { ...expectedGood, [severeCheck]: "fail", verdict: "fail", faults: [{ check: severeCheck,
             where: ageContract ? "The central target has an older child's long torso and broad shoulders." : "a strong straight colour block at the target's right edge" }] }
@@ -151,7 +154,7 @@ describe("versioned full real queue and durable accounting: narrow severe retrie
       expect(config.scenes.flatMap(s => s.targets)).toHaveLength(45);
       expect(config.scenes.every(s => s.version === contentVersion)).toBe(true);
       if (ageContract) expect(rows.every(r => JSON.parse(r.judgeJson!).verdict.ageAppropriate === "pass"
-        && JSON.parse(r.judgeJson!).boardReview.version === "local-patch-board-five-quality/v4-canonical-age")).toBe(true);
+        && JSON.parse(r.judgeJson!).boardReview.version === "local-patch-board-five-quality/v5-evidence-labeled")).toBe(true);
       expect(mails.slice(beforeMails).filter(m => m.tag === "game-ready")).toHaveLength(1);
     } else {
       expect(game).toMatchObject({ status: "GENERATION_FAILED", configJson: null, readyAt: null });

@@ -3,6 +3,17 @@
  * playful; never salesy. `{placeholders}` are filled with tf().
  */
 export const en = {
+  identityPilot: {
+    title: "Bounded identity correction — private QA",
+    note: "One selected appearance may use its next existing attempt, then the server stops. The existing inclusive budget and three-attempt limit stay unchanged. Resuming requests automatic review; it does not approve or publish any image.",
+    back: "Back to this order", candidate: "Current retained candidates", stage: "Queue one corrected appearance", resume: "Resume for automatic review",
+    hideId: "Hide ID", assetId: "Current asset ID", sha: "Current image SHA-256", reason: "Visual inspection and authorization reason",
+    pilotId: "Pilot ID", candidateSha: "Inspected candidate SHA-256",
+    stageConfirm: "Authorize one bounded image attempt and an automatic stop afterwards.",
+    resumeConfirm: "The exact candidate was visually inspected. Resume automatic checks, without overriding their verdicts.",
+    staged: "The single-image pilot is queued on the server.", resumed: "Candidates are queued for automatic review.", blocked: "No action was authorized. Check the current state, image digest and accounting before retrying.",
+    status: "Current state", open: "Open retained image",
+  },
   qaAccess: {
     title: "Private testing area",
     description: "Enter the QA password to explore FindMe Worlds and test game creation.",

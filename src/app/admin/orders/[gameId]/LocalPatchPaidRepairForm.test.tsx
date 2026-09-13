@@ -17,7 +17,7 @@ describe("paid-patch review-only admin form", () => {
     expect(html).toContain("ללא רינדור נוסף");
     expect(html).toContain("אינה מאשרת תמונה או מפרסמת משחק");
   });
-  it.each(["production", "no-admin", "running", "ready", "config", "readyAt", "deliveredAt", "legacy", "mixed", "incomplete", "old-style"])("does not offer repair for %s", async mode => {
+  it.each(["production", "no-admin", "running", "ready", "config", "readyAt", "deliveredAt", "legacy", "age-v9", "mixed", "incomplete", "old-style"])("does not offer repair for %s", async mode => {
     const game = candidate();
     if (mode === "production") mocks.appEnv = "production";
     if (mode === "no-admin") mocks.admin = null;
@@ -27,6 +27,7 @@ describe("paid-patch review-only admin form", () => {
     if (mode === "readyAt") game.readyAt = new Date();
     if (mode === "deliveredAt") game.deliveredAt = new Date();
     if (mode === "legacy") game.scenes.forEach(s => { s.sceneVersion = 7; });
+    if (mode === "age-v9") game.scenes.forEach(s => { s.sceneVersion = 9; });
     if (mode === "mixed") game.scenes[0]!.sceneVersion = 7;
     if (mode === "incomplete") game.scenes.pop();
     if (mode === "old-style") game.styleVersion = "board-wizard-v1";

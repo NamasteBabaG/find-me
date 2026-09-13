@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { describe, expect, it, vi } from "vitest";
 import { LOCAL_PATCH_CROP, POSE_MASK, cropOf, maskForHide, maskInCrop, type LocalPatchBoard, type LocalPatchHide } from "../../../domain/scene/local-patch-hides";
-import { LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, localPatchPrompt } from "../local-patch-prompt";
+import { LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, localPatchPrompt } from "../local-patch-prompt";
 import { localPatchBoardsForVersion } from "../../../domain/scene/local-patch-catalog";
 import { RETAINED_PURCHASE_VERSION, retainedPayloadDigest } from "../paid-operation";
 import { LOCAL_PATCH_RESERVE, poseMask, renderLocalPatchHide, type LocalPatchRenderDeps } from "../local-patch-render";
@@ -10,7 +10,7 @@ import type { LocalPatchJudgeResult } from "../local-patch-judge";
 import type { PurchaseLedger, RetainedPurchase, RetainedPurchaseStore } from "../paid-operation";
 import { WorldBudgetError } from "../world-budget";
 import type { WorldBudgetRequest, WorldChargeEvidence } from "../world-budget";
-import { localPatchImagePolicyForVersion, localPatchRenderPolicySha256 } from "../../../infra/generation/openai-local-patch";
+import { LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, localPatchImagePolicyForVersion, localPatchRenderPolicySha256 } from "../../../infra/generation/openai-local-patch";
 
 const BOARD = { width: 3072, height: 2048 };
 const board: LocalPatchBoard = {
@@ -97,6 +97,65 @@ async function attempt(deps: LocalPatchRenderDeps, over: Record<string, unknown>
 }
 
 describe("one paid attempt at one hide", () => {
+  it("v9 cannot reserve with legacy competing references, or borrow its new reference mode into v8", async () => {
+    const w = world(), p = w.process(), image = await small();
+    await expect(attempt(p.deps, { contentVersion: 9, canonicalIdentityPng: image, boardPeoplePng: image })).rejects.toThrow(/portrait-only/);
+    await expect(attempt(p.deps, { contentVersion: 9, referenceMode: LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, boardPeoplePng: image })).rejects.toThrow(/portrait-only/);
+    await expect(attempt(p.deps, { contentVersion: 8, referenceMode: LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE })).rejects.toThrow(/legacy/);
+    expect(w.rows.size).toBe(0); expect(p.dispatched).toEqual([]);
+  });
+
+  it("does not reinterpret an old v9 four-reference purchase; only the explicit next attempt buys the two-reference recipe", async () => {
+    const w = world(), selectedBoard = localPatchBoardsForVersion(9)[0]!, selectedHide = selectedBoard.hides[0]!, crop = cropOf(selectedHide);
+    const composedPng = await boardPng(), stylePng = await sharp(composedPng).extract(crop).png().toBuffer();
+    const identityPng = await small(), maskPng = await poseMask(selectedHide), worldId = "game-1:local-patch";
+    const digest = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
+    // Captured from the actual v10 prompt before this recipe changed, for this
+    // exact authored Sydney placement, age five and the four-reference inputs.
+    const priorPromptSha = "f1d5545823e16ba98f8456380a659a47f12b0e711e96d5a32372a7f8eb8b2fa2";
+    const previousFingerprint = digest(Buffer.from(JSON.stringify({
+      version: "local-patch-prompt/v10-canonical-age", hide: selectedHide.id, pose: selectedHide.pose, crop,
+      prompt: priorPromptSha, style: digest(stylePng), identity: digest(identityPng), mask: digest(maskPng),
+      boardPeople: digest(identityPng), canonicalIdentity: digest(identityPng), composition: "bounded-return/v1",
+      policy: "p".repeat(64), retained: "local-patch-render/v1",
+    })));
+    const key = `${selectedHide.id}:${selectedHide.pose}:render:1`, seed = w.process().deps;
+    const bytes = Buffer.from(JSON.stringify({ version: "local-patch-render/v1", bytesBase64: stylePng.toString("base64"), rejected: null }));
+    await seed.ledger.reserve(worldId, { requestKey: key, scope: "image", operationFingerprint: previousFingerprint, reserveMicroUsd: LOCAL_PATCH_RESERVE.renderMicroUsd });
+    await seed.store.put(worldId, key, { version: RETAINED_PURCHASE_VERSION, worldId, requestKey: key, scope: "image",
+      operationFingerprint: previousFingerprint, payloadSha256: retainedPayloadDigest(bytes), bytes, evidence: evidence("old-paid-v9"), unknownReason: null });
+    await seed.ledger.settle(worldId, key, evidence("old-paid-v9"));
+    const oldRow = structuredClone(w.rows.get(w.at(worldId, key))), oldRetained = w.retained.get(w.at(worldId, key));
+    const render = vi.fn(async (input: Parameters<LocalPatchRenderDeps["render"]>[0]) => ({ png: input.stylePng, rejected: null, quarantined: null,
+      evidence: evidence("new-two-reference"), unknownReason: null }));
+    const refs = { contentVersion: 9, board: selectedBoard, hide: selectedHide, composedPng, identityPng, ageYears: 5,
+      referenceMode: LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE };
+    const p = w.process({ render });
+    expect((await attempt(p.deps, refs)).refusedBecause).toBe("stopped");
+    expect(render).not.toHaveBeenCalled();
+    expect(w.rows.get(w.at(worldId, key))).toEqual(oldRow);
+    expect(w.retained.get(w.at(worldId, key))).toBe(oldRetained);
+    const result = await attempt(p.deps, { ...refs, attempt: 2 });
+    expect(result).toMatchObject({ accepted: true, verdict: null, judgeCents: 0, promptVersion: LOCAL_PATCH_AGE_PROMPT_VERSION });
+    expect(render).toHaveBeenCalledTimes(1);
+    const sent = render.mock.calls[0]![0];
+    expect(sent.referenceMode).toBe(LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE);
+    expect(sent.canonicalIdentityPng).toBeUndefined(); expect(sent.boardPeoplePng).toBeUndefined();
+    expect(sent.identityPng.equals(identityPng)).toBe(true);
+    expect(sent.prompt).not.toMatch(/Image [34]/);
+    const nextKey = `${selectedHide.id}:${selectedHide.pose}:render:2`;
+    expect(w.rows.get(w.at(worldId, nextKey))?.operationFingerprint).toBe(digest(Buffer.from(JSON.stringify({
+      version: LOCAL_PATCH_AGE_PROMPT_VERSION, hide: selectedHide.id, pose: selectedHide.pose, crop,
+      prompt: digest(Buffer.from(sent.prompt)), style: digest(stylePng), identity: digest(identityPng), mask: digest(maskPng),
+      referenceMode: LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, composition: "bounded-return/v1",
+      policy: "p".repeat(64), retained: "local-patch-render/v1",
+    }))));
+    const replay = await attempt(w.process({ render }).deps, { ...refs, attempt: 2 });
+    expect(replay.replayed).toBe(true); expect(render).toHaveBeenCalledTimes(1);
+    expect(replay.shippingPng!.equals(result.shippingPng!)).toBe(true);
+    expect(w.rows.size).toBe(2);
+  });
+
   it("freely re-evaluates a retained v8 one-pixel boundary under its exact existing paid fingerprint, without claiming visual approval", async () => {
     const w = world(), strictBoard = localPatchBoardsForVersion(8)[0]!, strictHide = strictBoard.hides[0]!, crop = cropOf(strictHide);
     const width = crop.width + 1, height = crop.height, bytes = Buffer.alloc(width * height * 4);

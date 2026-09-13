@@ -27,6 +27,23 @@ const good = {
 };
 
 describe("catalog 8 preserves the approved illustrated face and hair", () => {
+  it("v9 carries only the unchanged native approved portrait, never a stranger atlas or the older full body sheet", async () => {
+    const { sheet, portrait } = await fixtureSheet();
+    const before = Buffer.from(sheet), expectedPixels = await rgba(portrait);
+    const result = await prepareLocalPatchIdentityReferences(sheet, 9);
+    expect(result.referenceMode).toBe("canonical-portrait-only/v1");
+    expect(result.canonicalIdentityPng).toBeUndefined();
+    expect(Object.keys(result).sort()).toEqual(["identityPng", "judgeIdentityPng", "referenceMode"]);
+    expect((await rgba(result.identityPng)).equals(expectedPixels)).toBe(true);
+    expect((await rgba(result.judgeIdentityPng)).equals(expectedPixels)).toBe(true);
+    expect(await sharp(result.identityPng).metadata()).toMatchObject({ width: 512, height: 512 });
+    expect(sheet.equals(before)).toBe(true);
+    const legacy = await prepareLocalPatchIdentityReferences(sheet, 8);
+    expect(legacy.referenceMode).toBeUndefined();
+    expect(legacy.canonicalIdentityPng!.equals(sheet)).toBe(true);
+    expect(result.identityPng.equals(legacy.identityPng)).toBe(true);
+  });
+
   it("keeps all native portrait pixels for both painter and judge and retains the untouched sheet", async () => {
     const { sheet, portrait } = await fixtureSheet();
     const snapshot = Buffer.from(sheet);

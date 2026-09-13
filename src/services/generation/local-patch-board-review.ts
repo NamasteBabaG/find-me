@@ -12,7 +12,7 @@ import { requireBoardWizardIdentityApproval } from "./board-wizard-identity-gate
 import { prepareLocalPatchIdentityReferences } from "./local-patch-identity-reference";
 import { fenceLocalPatchImages, LocalPatchRetainedPurchaseStore } from "./local-patch-lifecycle";
 import { LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, readShippedBoardArt } from "./local-patch-hide";
-import { localPatchBoardJudgeSettings, localPatchQualityDisposition, isTheModelWeAsked, judgeLocalPatchBoard, localPatchBoardJudgePrompt, localPatchBoardJudgeImages, parseLocalPatchBoardVerdicts,
+import { localPatchBoardJudgeSettings, localPatchQualityDisposition, isTheModelWeAsked, judgeLocalPatchBoard, localPatchBoardJudgePrompt, localPatchBoardJudgeImages, localPatchBoardJudgeImageLabels, localPatchBoardEvidenceIds, parseLocalPatchBoardVerdicts,
   type LocalPatchBoardJudgeRequest, type LocalPatchBoardJudgeResult } from "./local-patch-judge";
 import { localPatchPublicationGeometryHash, recordLocalPatchPublicationPolicy } from "./local-patch-publication-policy";
 import { LOCAL_PATCH_PHASE_MARGIN_MS, LOCAL_PATCH_MIN_PROVIDER_MS } from "./local-patch-render";
@@ -24,7 +24,7 @@ import { LOCAL_PATCH_COMPOSITION_VERSION, LOCAL_PATCH_RETURN_GUARD } from "./loc
 
 export const LOCAL_PATCH_BOARD_REVIEW_VERSION = "local-patch-board-five-luna-low/v1";
 export const LOCAL_PATCH_STRICT_BOARD_REVIEW_VERSION = "local-patch-board-five-quality/v3-head-safe";
-export const LOCAL_PATCH_AGE_BOARD_REVIEW_VERSION = "local-patch-board-five-quality/v4-canonical-age";
+export const LOCAL_PATCH_AGE_BOARD_REVIEW_VERSION = "local-patch-board-five-quality/v5-evidence-labeled";
 export const LOCAL_PATCH_REVIEW_CONTEXT_PX = 64;
 export const LOCAL_PATCH_REVIEW_CLOSEUP_GUARD_PX = LOCAL_PATCH_RETURN_GUARD;
 // Historical paid replies remain addressable for deletion/reconciliation even
@@ -34,7 +34,7 @@ export const localPatchBoardReviewKey = (boardId: string, attempts?: readonly nu
   if (!attempts) return `board:${boardId}:five-review:1`;
   if (attempts.length !== 5 || attempts.some(n => !Number.isInteger(n) || n < 1 || n > LOCAL_PATCH_MAX_ATTEMPTS)) throw new Error("Invalid board-review attempt revision");
   if (compositionVersion !== LOCAL_PATCH_COMPOSITION_VERSION && !LOCAL_PATCH_REVIEW_COMPOSITION_HISTORY.some(version => version === compositionVersion)) throw new Error("Unsupported board-review composition revision");
-  return `board:${boardId}:five-review:v${isLocalPatchAgeVersion(contentVersion) ? 9 : 8}:${attempts.join("-")}${compositionVersion === null ? "" : `:${compositionVersion.replaceAll("/", ".")}`}`;
+  return `board:${boardId}:five-review:v${isLocalPatchAgeVersion(contentVersion) ? 9 : 8}:${attempts.join("-")}${compositionVersion === null ? "" : `:${compositionVersion.replaceAll("/", ".")}`}${isLocalPatchAgeVersion(contentVersion) ? ":evidence-v5" : ""}`;
 };
 /** All bounded candidates, including a paid reply retained before its row commit. */
 export function localPatchBoardReviewKeys(boardId: string, contentVersion = 8): string[] {
@@ -44,7 +44,11 @@ export function localPatchBoardReviewKeys(boardId: string, contentVersion = 8): 
     for (const vector of prior) for (let attempt = 1; attempt <= LOCAL_PATCH_MAX_ATTEMPTS; attempt++) vectors.push([...vector, attempt]);
   }
   const versions = [...new Set<string | null>([...LOCAL_PATCH_REVIEW_COMPOSITION_HISTORY, LOCAL_PATCH_COMPOSITION_VERSION])];
-  return [localPatchBoardReviewKey(boardId), ...vectors.flatMap(vector => versions.map(version => localPatchBoardReviewKey(boardId, vector, version, contentVersion)))];
+  const current = vectors.flatMap(vector => versions.map(version => localPatchBoardReviewKey(boardId, vector, version, contentVersion)));
+  // V4's unlabelled paid evidence remains discoverable. It is never reparsed as
+  // the new labelled question, nor forgotten by privacy deletion/reconciliation.
+  return [localPatchBoardReviewKey(boardId), ...current,
+    ...(isLocalPatchAgeVersion(contentVersion) ? current.map(key => key.replace(/:evidence-v5$/, "")) : [])];
 }
 const hash = (value: unknown) => sha256Bytes(Buffer.from(JSON.stringify(value)));
 function demand(value: unknown, message: string): asserts value { if (!value) throw new Error(`LOCAL_PATCH_BOARD_REVIEW: ${message}`); }
@@ -167,6 +171,7 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
     settings, prompt: localPatchBoardJudgePrompt(request),
     identitySha256: sha256Bytes(sheet), originalSha256: sha256Bytes(before), composedSha256: sha256Bytes(composed),
     wireHashes: localPatchBoardJudgeImages(request).map(sha256Bytes),
+    ...(isLocalPatchAgeVersion(scene.sceneVersion) ? { evidenceIds: localPatchBoardEvidenceIds(request), imageLabels: localPatchBoardJudgeImageLabels(request) } : {}),
     ...(strict ? { compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION } : {}),
     hides: entries.map(e => ({ hide: e.hide.id, target: e.row.targetInstanceId, attempts: e.row.attempts, asset: e.asset.id,
       imageSha256: e.imageSha256, geometrySha256: e.geometrySha256 })),
@@ -212,6 +217,7 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
         ...(strict ? { qualityDisposition: disposition, compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION } : {}),
         boardReview: { version: reviewVersion, fingerprint, requestKey, composedSha256: sha256Bytes(composed),
           ...(strict ? { compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION, wireHashes: localPatchBoardJudgeImages(request).map(sha256Bytes) } : {}),
+          ...(isLocalPatchAgeVersion(scene.sceneVersion) ? { evidenceIds: localPatchBoardEvidenceIds(request), imageLabels: localPatchBoardJudgeImageLabels(request) } : {}),
           model: keep.model, effort: settings.effort, raw: keep.raw, costMicroUsd: bought.evidence.amountMicroUsd },
       });
       const rejected = disposition.state !== "acceptable";

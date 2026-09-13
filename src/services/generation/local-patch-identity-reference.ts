@@ -1,15 +1,22 @@
 import sharp from "sharp";
-import { isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
+import { isLocalPatchAgeVersion, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
+import { LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, type LocalPatchReferenceMode } from "../../infra/generation/openai-local-patch";
 import { normalizeBoardWizardIdentity } from "./board-wizard-identity";
 
 export const LOCAL_PATCH_CANONICAL_FACE_VERSION = "canonical-portrait-quadrant/v1";
+export type LocalPatchIdentityReferences = {
+  readonly identityPng: Buffer;
+  readonly judgeIdentityPng: Buffer;
+  readonly canonicalIdentityPng?: Buffer;
+  readonly referenceMode?: LocalPatchReferenceMode;
+};
 
 /** The approved illustrated sheet is the identity authority, never the photo or
  * another board person's face. Keep the entire authored portrait cell: the old
  * silhouette heuristic can remove hair, and padding a 220px crop inside 512px
  * reduces the judge's actual identity reference to 110px after its resize.
  * No pixels of the stored canonical sheet or its paid binding are changed. */
-export async function prepareLocalPatchIdentityReferences(sheet: Buffer, contentVersion?: number) {
+export async function prepareLocalPatchIdentityReferences(sheet: Buffer, contentVersion?: number): Promise<LocalPatchIdentityReferences> {
   if (!isLocalPatchStrictVersion(contentVersion)) {
     const normalized = await normalizeBoardWizardIdentity(sheet);
     return {
@@ -26,6 +33,8 @@ export async function prepareLocalPatchIdentityReferences(sheet: Buffer, content
   return {
     identityPng: await sharp(portrait).resize(1024, 1024, { fit: "inside", withoutEnlargement: true }).png().toBuffer(),
     judgeIdentityPng: await sharp(portrait).resize(512, 512, { fit: "inside", withoutEnlargement: true }).png().toBuffer(),
-    canonicalIdentityPng: sheet,
+    ...(isLocalPatchAgeVersion(contentVersion)
+      ? { referenceMode: LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE }
+      : { canonicalIdentityPng: sheet }),
   };
 }

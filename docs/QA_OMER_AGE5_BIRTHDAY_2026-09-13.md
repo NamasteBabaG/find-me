@@ -32,4 +32,20 @@ The synthetic SQLite world covers45 deliverable targets, targeted age repair, th
 
 Frozen pre-deployment check: `npm run check -- --maxWorkers=2` exited0, 186 files, **2,771 tests passed and35 skipped**, both production and authoring TypeScript checks passed (391seconds). Scene validation passed; its warnings concern previously authored catalog layouts, not a new failure. The final catch regression demonstrated the defect before the fix: a lost worker overwrote the replacement job. The corrected path leaves the replacement intact, which replays the same settled review without buying it again. Completed private preview accepts exactly pinned8 or9, rejects mixed/substituted versions and preserves family progress.
 
-This document does not yet claim a paid render, deployment, delivered game, real-image acceptance or cost. Those results must be appended only after the corresponding live evidence exists.
+## Live release and evidence, before the identity-reference correction
+
+Commit `4dcfcea` was pushed and deployed to the isolated QA project as `dpl_55JAPCCo6hR7PwDn5fydEYPCZjRR`, then promoted to `qa.findmeworlds.com`. Public production was unchanged. Private browser verification at actual390x844 and844x390 viewport sizes confirmed two successive finds advanced the target and stars, the old target disappeared, and orientation settled; no browser errors were recorded. These are browser viewport tests, not physical-phone speaker tests.
+
+The separate age5 game `game_reuse_97a33e8ea6146e96763a071b1944` was created through the authenticated admin canonical-reuse form and the signed QA sandbox payment. Its source portrait bytes stayed unchanged. The new LOW canonical-face/age-compatibility review passed, costing747microUSD estimated. The server cron, not a laptop worker, performed subsequent purchases.
+
+At06:44:40UTC the game automatically stopped as `GENERATION_FAILED`, jobDONE at `local-patch:quality-failed`, for unresolved visual evidence. A subsequent ledger read found8 settled image operations and2 settled judge operations, **$0.276053 estimated in total**, zero pending and zero unknown charges. No manual pause mutation was necessary or performed. This game is not delivered.
+
+The parent's Morocco example concerns the existing game; the new game had reached only Sydney/Antarctica. Independent visual inspection of its first Sydney crop also found concern: hair and face had drifted toward a generic illustrated child rather than the preserved canonical portrait. The painter did receive the canonical portrait, but also received an atlas explicitly enlarged around unrelated board children's faces. That is a conflicting visual reference, not proof that any single input alone caused the drift.
+
+Separately, the retained Sydney grouped judge response associated all five entries one place late: first entry described the second hide, fourth described the fifth, fifth claimed its evidence missing. Inspection found12 images present in order, but with no adjacent per-image labels. This is a model/evidence-association failure, not proof of a missing final image. The new review wire labels each reference and each hide's BEFORE/AFTER separately and requires exact evidence-ID echoes. A new paid key/version preserves the historical response; it never turns the old response into approval.
+
+The new painter recipe uses only the scene plus the exact canonical portrait; no enlarged stranger-face atlas or historical full-body sheet. LOW is retained. Free tests establish this actual multipart payload and old-version compatibility, not successful likeness. A durable one-hide pilot will use only the selected next attempt, within the same inclusive$4 and existing three-attempt limits, then park. Continuing after inspection is permission for renewed automatic review, not human approval or publication.
+
+Post-correction frozen verification: `npm run check -- --maxWorkers=2` exited0, **190 files and2,821 passing tests,35 skipped**, with both TypeScript checks passing (292seconds). The pilot is covered through the real SQLite queue/ledger, including deadline replay, a single authorized attempt, durable parking and explicit resumed review. Administrator actions and deletion of private pilot metadata are covered separately.
+
+No post-correction real-image acceptance, final game or final cost is claimed yet.
