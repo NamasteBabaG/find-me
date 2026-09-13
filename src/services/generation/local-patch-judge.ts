@@ -350,7 +350,7 @@ export async function judgeLocalPatch(apiKey: string, request: LocalPatchJudgeRe
 }
 
 /** Shared wire validation for single-hide legacy review and grouped advisory review. */
-async function requestJudgeWire(apiKey: string, request: { prompt: string; images: readonly Buffer[];
+export async function requestJudgeWire(apiKey: string, request: { prompt: string; images: readonly Buffer[];
   settings: { model: string; effort: "low"; maxOutputTokens: number; endpoint: string; timeoutMs: number }; timeoutMs?: number },
 fetchOnce: typeof fetch): Promise<LocalPatchJudgeResult> {
   const { settings, prompt } = request;

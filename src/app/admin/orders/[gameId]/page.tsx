@@ -14,6 +14,7 @@ import { Notice } from "@/ui/Shell";
 import { AttemptStrip } from "./AttemptStrip";
 import { BoardWizardRecoveryForm } from "./BoardWizardRecoveryForm";
 import { LocalPatchRepairResumeForm } from "./LocalPatchRepairResumeForm";
+import { LocalPatchPaidRepairForm } from "./LocalPatchPaidRepairForm";
 import { adjustTargetAction, adminDeleteAction, adminRotateLinkAction, approveAction, recutAvatarAction, refundAction, regenTargetAction, requestPhotoAction, retryAction } from "../../actions";
 import { LOCAL_PATCH_NEEDS_RELEASE } from "@/services/generation/local-patch-world";
 import { LOCAL_PATCH_HUMAN_CONFIRMATION } from "@/services/generation/local-patch-human-approval";
@@ -33,8 +34,8 @@ function judgeLabel(judge: { verdict: string; reason: string; claimedVerdict?: s
   return "? השופט לא הכריע";
 }
 
-export default async function AdminOrderPage({ params, searchParams }: { params: Promise<{ gameId: string }>; searchParams: Promise<{ v?: string; repair?: string }> }) {
-  const [{ gameId }, { v, repair }] = await Promise.all([params, searchParams]);
+export default async function AdminOrderPage({ params, searchParams }: { params: Promise<{ gameId: string }>; searchParams: Promise<{ v?: string; repair?: string; paidRepair?: string }> }) {
+  const [{ gameId }, { v, repair, paidRepair }] = await Promise.all([params, searchParams]);
   const variant: "A" | "B" = v === "B" ? "B" : "A";
   const c = getContainer();
   const detail = await orderDetailForAdmin(c, gameId);
@@ -82,8 +83,10 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
       {game.lastError ? <Notice kind="danger">{game.lastError}</Notice> : null}
       {repair === "queued" ? <Notice>ניסיונות התיקון אושרו ונוספו לתור היצירה בשרת.</Notice> : null}
       {repair === "blocked" ? <Notice kind="danger">התיקון לא אושר. רעננו ובדקו את מצב המשחק, ההרשאה והחיובים לפני ניסיון נוסף.</Notice> : null}
+      {paidRepair === "queued" ? <Notice>התיקונים מתמונות שכבר שולמו נוספו לתור לבדיקה. אין רינדור חדש ואין אישור פרסום בשלב זה.</Notice> : null}
       <BoardWizardRecoveryForm gameId={gameId} />
       <LocalPatchRepairResumeForm gameId={gameId} />
+      <LocalPatchPaidRepairForm game={game} />
 
       <div className="admin__grid">
         <div className="fm-stack fm-stack--3">

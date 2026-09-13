@@ -15,6 +15,7 @@ import { transitionGame } from "../game-status";
 import { LOCAL_PATCH_MIN_PROVIDER_MS, LOCAL_PATCH_PHASE_MARGIN_MS } from "./local-patch-render";
 import { localPatchAttemptPlan, localPatchSettled, LOCAL_PATCH_NORMAL_ATTEMPTS } from "../../domain/scene/local-patch-attempts";
 import { localPatchNeedsRecomposition, recomposeLocalPatchHide } from "./local-patch-recompose";
+import { runLocalPatchPaidRepair, LOCAL_PATCH_PAID_REPAIR_ACTION, LocalPatchPaidRepairError } from "./local-patch-paid-repair";
 import {
   LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, runLocalPatchHide,
   type LocalPatchHideDeps, type LocalPatchHideOutcome,
@@ -97,6 +98,8 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   readonly maxHides?: number;
   /** Synthetic provider injection; production uses the same existing credential. */
   readonly boardJudge?: LocalPatchBoardReviewDeps["judge"];
+  /** Synthetic correction review; production still uses the existing key. */
+  readonly repairJudge?: Parameters<typeof runLocalPatchPaidRepair>[2]["judge"];
 } = {}): Promise<LocalPatchSliceResult> {
   const empty = { gameId, outcomes: [], blocked: [] as { boardId: string; reason: string }[], attention: null as string | null };
   const game = await c.db.game.findUnique({ where: { id: gameId }, include: { scenes: { orderBy: { orderIndex: "asc" } } } });
@@ -173,6 +176,33 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     await tx.game.update({ where: { id: gameId }, data: { lastError: reason, configJson: null } });
     await tx.generationJob.update({ where: { id: job.id }, data: { status: "DONE", currentStep: LOCAL_PATCH_QUALITY_FAILED, lastError: reason } });
   });
+
+  // A staged correction is a separate REVIEW-ONLY state. Never let an older
+  // failure, a rejected sibling, or an interrupted tick fall into image retries.
+  try {
+    const repair = await runLocalPatchPaidRepair(c, gameId, { fence, apiKey: deps.apiKey,
+      deadlineAt: options.hardDeadlineAt, judge: options.repairJudge });
+    if (repair.state !== "none") {
+      if (repair.state === "committed") {
+        await finishLocalPatchGame(c, gameId, fence);
+        await deliverLocalPatchNotifications(c, gameId, { deadlineAt: options.hardDeadlineAt }).catch(error => console.error("[local-patch] ready; repair notification unavailable", error));
+      } else if (repair.state === "blocked") await failStrictQuality(repair.reason ?? "The paid-image correction did not pass visual review");
+      else await c.db.$transaction(async tx => { await fence(tx); await tx.generationJob.update({ where: { id: job.id }, data: {
+        status: repair.state === "held" ? "FAILED" : "QUEUED", currentStep: repair.state === "held" ? LOCAL_PATCH_NEEDS_RELEASE : "local-patch",
+        lastError: repair.reason } }); });
+      return { ...empty, claimed: true, pending: repair.state === "pending", paused: false,
+        attention: repair.state === "blocked" || repair.state === "held" ? repair.reason : null };
+    }
+  } catch (error) {
+    const reason = (error instanceof Error ? error.message : String(error)).slice(0, 500);
+    const refused = error instanceof LocalPatchPaidRepairError || /^LOCAL_PATCH_(PLAYER|REPAIR_REVIEW):/.test(reason);
+    await c.db.generationJob.updateMany({ where: { id: job.id, attempts: claim, status: "RUNNING", currentStep: "local-patch" },
+      data: { status: "FAILED", currentStep: refused ? LOCAL_PATCH_NEEDS_RELEASE : "local-patch", lastError: reason } });
+    if (error instanceof GenerationPaused) return { ...empty, claimed: true, pending: false, paused: true, attention: null };
+    // A transient DB write/lost acknowledgement does not authorize a fresh
+    // image or require an operator: the same durable repair branch replays.
+    return { ...empty, claimed: true, pending: !refused, paused: false, attention: refused ? reason : null };
+  }
 
   const blocked: { boardId: string; reason: string }[] = [];
   const work: { board: LocalPatchBoard; hide: LocalPatchHide; sceneId: string }[] = [];
@@ -438,7 +468,7 @@ export function localPatchPainterDeps(_c: Container, contentVersion = 6): LocalP
  *
  * Called inside the deletion transaction, after its Game -> Job fence.
  */
-export async function localPatchPrivateInventory(c: { db: Pick<Prisma.TransactionClient, "gameScene" | "targetInstance" | "targetVariantAsset" | "asset"> }, gameId: string): Promise<{
+export async function localPatchPrivateInventory(c: { db: Pick<Prisma.TransactionClient, "gameScene" | "targetInstance" | "targetVariantAsset" | "asset" | "auditLog"> }, gameId: string): Promise<{
   readonly assetIds: string[];
   readonly storagePaths: string[];
   readonly retainedPurchaseKeys: string[];
@@ -483,6 +513,16 @@ export async function localPatchPrivateInventory(c: { db: Pick<Prisma.Transactio
     }
   }
   for (const boardId of new Set(ALL_LOCAL_PATCH_BOARDS.map(board => board.board))) requestKeys.push(...localPatchBoardReviewKeys(boardId));
+  // These keys are frozen BEFORE a repair dispatch, so a crash before the
+  // result-row write cannot orphan the private retained judge evidence.
+  for (const audit of await c.db.auditLog.findMany({ where: { action: LOCAL_PATCH_PAID_REPAIR_ACTION, entityType: "Game", entityId: gameId }, select: { metaJson: true } })) {
+    const b = JSON.parse(audit.metaJson ?? "null");
+    if (!b || b.gameId !== gameId || !Array.isArray(b.reviews)) throw new Error("LOCAL_PATCH_WORLD: repair deletion inventory is corrupt");
+    for (const review of b.reviews) {
+      if (typeof review.requestKey !== "string" || !review.requestKey.startsWith("repair:") || review.requestKey.length > 250) throw new Error("LOCAL_PATCH_WORLD: repair request inventory is invalid");
+      requestKeys.push(review.requestKey);
+    }
+  }
   return {
     assetIds: [...assetIds],
     storagePaths: assets.map(a => a.storagePath),
