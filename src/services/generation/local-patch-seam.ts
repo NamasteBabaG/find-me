@@ -102,16 +102,26 @@ export async function analysePatchSeam(boardPng: Buffer, region: PatchRegion, pa
   // so picking the numerically smallest score would report a shift for a patch
   // that is pixel-for-pixel identical - rejecting good renders for a fault that
   // is not there.
+  // Every offset must examine the same source pixels, and BOTH ends of every
+  // comparison must stay in the actual fade band. Sampling at x/y=band instead
+  // samples the opaque interior: a repaint there can invent a border shift,
+  // or unchanged interior can conceal a genuinely shifted boundary. The fixed
+  // support below is the border band inset by the full search radius on both
+  // its outer and inner boundaries, so no candidate can cross either one.
+  const alignmentPoints: { x: number; y: number }[] = [];
+  const radius = limits.searchPx;
+  for (let y = radius; y < original.height - radius; y += 2) {
+    for (let x = radius; x < original.width - radius; x += 2) {
+      if (x + radius < band || y + radius < band
+        || x - radius >= original.width - band || y - radius >= original.height - band) {
+        alignmentPoints.push({ x, y });
+      }
+    }
+  }
   const alignmentScore = (dx: number, dy: number) => {
-    let total = 0, count = 0;
-    const sample = (x: number, y: number) => {
-      const sx = x + dx, sy = y + dy;
-      if (sx < 0 || sy < 0 || sx >= patch.width || sy >= patch.height) return;
-      total += rgbDiff(original, patch, x, y, sx, sy); count++;
-    };
-    for (let y = band; y < original.height - band; y += 2) for (const x of [band, original.width - band - 1]) sample(x, y);
-    for (let x = band; x < original.width - band; x += 2) for (const y of [band, original.height - band - 1]) sample(x, y);
-    return count ? total / count : Number.POSITIVE_INFINITY;
+    let total = 0;
+    for (const { x, y } of alignmentPoints) total += rgbDiff(original, patch, x, y, x + dx, y + dy);
+    return alignmentPoints.length ? total / alignmentPoints.length : Number.POSITIVE_INFINITY;
   };
   const baseline = alignmentScore(0, 0);
   let best = { dx: 0, dy: 0, score: baseline };

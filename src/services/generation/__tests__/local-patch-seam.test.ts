@@ -28,7 +28,82 @@ async function texturedBoard() {
   return sharp(bytes, { raw: { width, height, channels: 4 } }).png().toBuffer();
 }
 
+/** A low-contrast, non-periodic field with independently controlled return
+ * boundary and interior. Neither the changed pixels nor their best offset
+ * declare which region the compositor is allowed to return. */
+async function boundaryFixture(input: {
+  borderShift?: { dx: number; dy: number };
+  interiorShift?: { dx: number; dy: number };
+}) {
+  const crop = { left: 0, top: 0, width: 512, height: 768 };
+  const child = { left: 206, top: 380, width: 100, height: 180 };
+  const returned = { left: 86, top: 260, width: 340, height: 420 };
+  const bytes = Buffer.alloc(crop.width * crop.height * 4);
+  for (let y = 0; y < crop.height; y++) for (let x = 0; x < crop.width; x++) {
+    const i = (y * crop.width + x) * 4, tone = 100 + (x * 37 + y * 71 + (x * y % 53) * 11) % 48;
+    bytes[i] = tone; bytes[i + 1] = tone; bytes[i + 2] = tone; bytes[i + 3] = 255;
+  }
+  const painted = Buffer.from(bytes);
+  for (let y = 0; y < returned.height; y++) for (let x = 0; x < returned.width; x++) {
+    const boundary = x < 12 || y < 12 || x >= returned.width - 12 || y >= returned.height - 12;
+    const shift = boundary ? input.borderShift : input.interiorShift;
+    if (!shift) continue;
+    const target = ((returned.top + y) * crop.width + returned.left + x) * 4;
+    const source = ((returned.top + y + shift.dy) * crop.width + returned.left + x + shift.dx) * 4;
+    bytes.copy(painted, target, source, source + 4);
+  }
+  const png = (data: Buffer) => sharp(data, { raw: { width: crop.width, height: crop.height, channels: 4 } }).png().toBuffer();
+  return { crop, child, returned, original: bytes, painted, board: await png(bytes), patch: await png(painted) };
+}
+
 describe("returning a locally rendered rectangle to the board", () => {
+  it("does not infer a border shift from changed interior when the entire returned border band is unchanged", async () => {
+    const fixture = await boundaryFixture({ interiorShift: { dx: -2, dy: 0 } });
+    const result = await composeBoundedLocalPatch(fixture.board, fixture.crop, fixture.patch, fixture.child);
+    expect(result.region).toEqual(fixture.returned);
+    expect(result.report).toMatchObject({ borderMeanDiff: 0, borderMaxDiff: 0,
+      shift: { dx: 0, dy: 0 }, changedTouchesBorder: false, verdict: "clean" });
+    expect(result.report.changedFraction).toBeGreaterThan(.1);
+    expect(result).toMatchObject({ usable: true, compositionPermission: "aligned" });
+    const composed = await sharp(result.candidate).ensureAlpha().raw().toBuffer();
+    // A candidate is not a visual approval. This proves only that the exact
+    // outer join was untouched; a later visual review still owns the interior.
+    for (let y = 0; y < fixture.crop.height; y++) for (let x = 0; x < fixture.crop.width; x++) {
+      const r = fixture.returned;
+      const interior = x >= r.left + 12 && y >= r.top + 12
+        && x < r.left + r.width - 12 && y < r.top + r.height - 12;
+      const i = (y * fixture.crop.width + x) * 4;
+      const expected = interior ? fixture.painted : fixture.original;
+      if (!composed.subarray(i, i + 4).equals(expected.subarray(i, i + 4))) throw new Error(`wrong pixels at ${x},${y}`);
+    }
+  });
+
+  it.each([
+    { label: "unchanged interior", interiorShift: undefined },
+    { label: "oppositely shifted interior", interiorShift: { dx: -2, dy: 0 } },
+    { label: "matching shifted interior", interiorShift: { dx: 2, dy: 1 } },
+  ])("still refuses a genuinely shifted returned border with $label", async ({ interiorShift }) => {
+    const fixture = await boundaryFixture({ borderShift: { dx: 2, dy: 1 }, interiorShift });
+    const result = await composeBoundedLocalPatch(fixture.board, fixture.crop, fixture.patch, fixture.child);
+    expect(result.report).toMatchObject({ shift: { dx: -2, dy: -1 }, verdict: "misaligned" });
+    expect(result.report.borderMeanDiff).toBeGreaterThan(2);
+    expect(result.report.borderMeanDiff).toBeLessThanOrEqual(24);
+    expect(result).toMatchObject({ usable: false, compositionPermission: "refused" });
+  });
+
+  it("still rejects unauthorized interior repainting even with an exactly unchanged border", async () => {
+    const fixture = await boundaryFixture({ interiorShift: { dx: -2, dy: 0 } });
+    const returnedPatch = await sharp(fixture.patch).extract(fixture.returned).png().toBuffer();
+    const allowedRect = { ...fixture.child, left: fixture.child.left - fixture.returned.left,
+      top: fixture.child.top - fixture.returned.top };
+    const report = await analysePatchSeam(fixture.board, fixture.returned, returnedPatch, { allowedRect });
+    expect(report).toMatchObject({ borderMeanDiff: 0, borderMaxDiff: 0,
+      shift: { dx: 0, dy: 0 }, verdict: "background-rewritten" });
+    expect(report.strayChangedFraction).toBeGreaterThan(.03);
+    await expect(applyLocalPatch(fixture.board, fixture.returned, returnedPatch, { fade: true, report }))
+      .rejects.toThrow(/fade is refused/);
+  });
+
   it("preserves a complete head rendered above the mask instead of amputating it at the old32px guard", async () => {
     const crop = { left: 100, top: 80, width: 512, height: 768 };
     const child = { left: 190, top: 335, width: 110, height: 240 };
