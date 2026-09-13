@@ -94,3 +94,36 @@ Frozen repair release: `npm run check -- --maxWorkers=2` exited0, **182 files,2,
 The pre-commit credential scanner falsely matched the substring `sk-` inside the descriptive repair-policy label. No credential was staged. The label was renamed to `publish-paid-join-after-canonical-sol-review/v1`; the32 publication/integration tests and TypeScript passed again after that label-only change.
 
 Live staging correctly refused the study's authored-WEBP hash where its contract expects the normalized pinned-PNG hash. Independent comparison proved both decoded boards pixel-identical and both candidate PNGs byte-identical; only the private input metadata was corrected. The next preflight hit the route's60-second host limit before any repair audit or purchase. The review-only preparation route now allows300seconds, matching its native evidence/storage workload; the actual paid phases retain their own absolute deadlines. The22 route tests and TypeScript passed after this duration-only change. No source picture or attempt cap changed.
+
+## Delivered and exercised end to end
+
+Final runtime commit `74f20c3367e3123e090f74679a314da4d22723bc` deployed to QA as `dpl_FBeYzpH9TQaw9PiHc2KgUCZyAznU`. Only the QA aliases were promoted. At 2026-09-13 01:59:39 UTC the new game became ready and then DELIVERED; the generation job is DONE, with no last error. The repair audit is committed. The server cron performed both reviews and final publication without a creating-page nudge.
+
+Both corrective SOL LOW reviews passed all five appearances on their respective boards with empty faults. Tokyo3 uses its authentic paid first image; Greatwall5 uses its paid third image. Their existing child pixels were preserved, not repainted. Exactly two images changed, four previously unreviewed Greatwall siblings acquired their first actual approval, and the other39 approved target rows stayed unchanged. No fourth image attempt or human approval was created.
+
+An independent live database read verified all45 current shipping PNG digests, geometry digests and verdict digests against their current SYSTEM publication policies and the canonical identity digest. All are owned READY game assets, version8, with face likeness, readability and severe-seam checks passing. This is verification of the actual shipping bytes, not just target status counts.
+
+### Live gameplay acceptance
+
+The root agent exercised **all45 finds** through actual pointer clicks in the authenticated private QA preview of the published game, in route order: New York, Amazon, Paris, Marrakech, Giza, Tokyo, Greatwall, Sydney, Antarctica. The browser's actual measured viewport was1905x1009. Every board reached5/5, and the adventure passport showed9 completed boards and45/45 world stars. The three-star continuation choice was exercised by staying to find the remaining two. The serial transitions removed the old child, presented the next target, reopened the clouds, and returned to searching. Immediate found-state checks confirmed one success bubble and one particle celebration. The final browser error log was empty.
+
+Six finds were exercised individually and39 through a bounded UI helper. The helper uses the game's visible hint and glow, not hidden game state or a direct progress mutation. One hint-center click on Amazon's peeking appearance missed; clicking the visible child's face succeeded immediately and advanced normally. Initial helper clicks during a board-opening animation were ignored; retrying after the actual open state worked. These were test-target/timing issues, not evidence of a frozen game. The magnifier can point above a face because the inherited anchor may include changed background; exact anatomical hint placement remains a non-blocking polish item and was not silently called perfect.
+
+The three player/viewport suites were rerun on the final sources: **20 tests passed**, including the real viewport-hook pointer sequences at1280x800 and390x650, serial cloud transitions and three/five-star rules. These are jsdom integration tests, not a physical-phone test. The connected Chrome viewport override did not change its measured dimensions, so this session does **not** claim a live390px browser or physical-device visual check. Temporary overrides were reset.
+
+The independent post-play read at02:26:25UTC, before opening the ordinary public gift link, confirmed zero new-game play sessions, progress events or found events. The published config digest remained `dd8f803a770e4c0956ae328d174fdc9c1150e649134c6dd6d6b18643170cfecb`. The old Omer game still had its prior2 sessions,106 events and42 found events, and its config digest remained `702beb123f668852274105136295bbaae7e5427b278d7f66020a3086c7dacd2a`. Its canonical pixels and paid ledger also match the frozen source evidence. The ordinary share URL was subsequently opened only to its unopened gift landing and left as the user-facing deliverable; no family finds were consumed there.
+
+### Final generation cost and notification
+
+| Operation | Settled calls | Recorded USD |
+|---|---:|---:|
+| Hide images, including failed attempts |64|2.152989|
+| Grouped and corrective reviews |14|0.196446|
+| New portrait render |0|0|
+| **Total** |**78**|**2.349435**|
+
+The two corrective SOL LOW reviews account for$0.154930 of that total. There are zero pending, unknown, conflicting or reserved charges. The existing inclusive$4 cap was not increased. This is the complete new-game generation ledger, including retries; it is not a provider invoice and excludes hosting/storage and previously authored base boards. The previous delivered Omer game cost$1.295679 under the same recorded-rate basis. The corrected run therefore cost$1.053756 more, about81.3%, rather than being claimed as a cost saving. Canonical identity reuse avoided another portrait purchase.
+
+The ready notification was handed to the configured mail provider once, without fallback, under provider id `eb5fd87e-06dc-4049-ac34-b1fda2300cf2`. This proves provider acceptance, not inbox receipt. No separate concerns notice was generated because the final45 verdicts contain no outstanding faults. The actual active share URL was read from that persisted notification, not reconstructed or invented.
+
+The already-authored boards were not regenerated. Their tiny distant background people can still contain the defects previously reported by the user; this release addresses Omer's canonical identity, bounded patch publication and playable flow, not a claim that all base artwork is flawless.
