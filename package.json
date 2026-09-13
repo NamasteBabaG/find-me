@@ -20,6 +20,7 @@
     "postinstall": "node scripts/prisma-generate.mjs",
     "setup": "prisma generate && prisma db push",
     "scenes:validate": "tsx scripts/validate-scenes.ts",
+    "adventures:validate": "tsx scripts/validate-adventures.ts",
     "smoke": "tsx scripts/e2e-smoke.ts",
     "db:check": "tsx scripts/check-db-url.ts",
     "game:status": "tsx scripts/game-status.ts",

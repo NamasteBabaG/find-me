@@ -105,6 +105,18 @@ model Game {
   shareLinks   ShareLink[]
   jobs         GenerationJob[]
   playSessions PlaySession[]
+  adventureAlbum AdventureAlbumProgress?
+}
+
+/// Optional owner-only album. Guest player links never read or update this row.
+/// No images, signed URLs, names or emails: a frozen book and distinct find IDs.
+/// It is NOT telemetry. No live game enables the portrait pilot yet.
+model AdventureAlbumProgress {
+  gameId       String @id
+  revision     Int    @default(0)
+  snapshotJson String
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
 }
 
 model GameScene {

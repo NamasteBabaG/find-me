@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { CelebrationKind, SoundCue, TargetAnimation, Unit, AmbientAnimation } from "../scene/schema";
 import { isPackageTier, type PackageTier } from "../package";
+import { AdventureBookSchema } from "../adventure/book-schema";
+import { bindBookImage, gameAssetId, sameBookImage } from "../adventure/image-binding";
+import { overlaps } from "../adventure/content";
 
 /**
  * GameConfig — everything the player runtime needs, and nothing more.
@@ -221,6 +224,21 @@ export const GameConfigSchema = z.object({
     })
     .optional(),
   composedAt: z.string(),
+  /** Opt-in frozen collection content. Absent on every existing/live game. */
+  adventure: AdventureBookSchema.optional(),
+}).superRefine((config, ctx) => {
+  if (config.adventure && config.adventure.avatarAssetId !== gameAssetId(config.child.avatarUrl)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["adventure"], message: "The album belongs to a different illustrated identity" });
+  for (const board of config.adventure?.boards ?? []) {
+    const scene = config.scenes.find(s => s.slug === board.boardSlug);
+    if (!scene || scene.version !== board.sceneVersion || scene.worldSlug !== board.worldSlug || scene.playMode !== "find-any" || scene.targets.length !== board.targetIds.length || scene.targets.some(t => !board.targetIds.includes(t.id))) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["adventure"], message: "Collection content must match the shipped scenes and targets" });
+    }
+    if (scene && board.targetImages.some(binding => {
+      const target = scene.targets.find(t => t.id === binding.targetId);
+      return !target || target.slots.some(s => s.flip || s.rotation !== 0) || (target.adjust && (target.adjust.dx !== 0 || target.adjust.dy !== 0 || target.adjust.scale !== 1)) || !sameBookImage(bindBookImage(target.spriteByVariant?.A ?? target.sprite), binding.A) || !sameBookImage(bindBookImage(target.spriteByVariant?.B ?? target.sprite), binding.B);
+    })) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["adventure"], message: "An album cannot inherit a replaced picture or changed crop" });
+    if (scene && (scene.artStatus !== "final" || scene.art.base !== board.art.base || scene.art.width !== board.art.width || scene.art.height !== board.art.height || scene.art.foreground || scene.bonus || board.discoveries.some(d => scene.ambient.some(a => overlaps(d.cardCrop, { x: a.x, y: a.y, w: a.w, h: a.h }))))) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["adventure"], message: "The discovery layout has changed since enrollment" });
+  }
 });
 export type GameConfig = z.infer<typeof GameConfigSchema>;
 

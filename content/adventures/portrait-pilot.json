@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "releaseId": "portrait-pilot-v1",
+  "boards": [
+    {
+      "status": "planned",
+      "boardSlug": "portrait-market-study",
+      "worldSlug": "portrait-pilot",
+      "name": { "en": "Market study — not playable", "he": "מחקר שוק מאויר — לא זמין למשחק" },
+      "plannedHides": 5,
+      "direction": {
+        "orientation": "portrait",
+        "perspective": "shallow",
+        "scaleTreatment": "similar-size-people",
+        "locationCues": [
+          { "en": "Courtyards and patterned tilework", "he": "חצרות ואריחים מצוירים" },
+          { "en": "Carpets, lanterns and produce stalls", "he": "שטיחים, פנסים ודוכני תוצרת" }
+        ],
+        "microStories": [
+          { "en": "A cat watches a basket being unpacked", "he": "חתול צופה בפריקת סל" },
+          { "en": "Children arrange a tiny flower stall", "he": "ילדים מסדרים דוכן פרחים קטן" }
+        ]
+      },
+      "discoveryIdeas": [
+        { "id": "basket-cat", "name": { "en": "The basket cat", "he": "החתול של הסל" }, "category": "animal" }
+      ]
+    },
+    {
+      "status": "planned",
+      "boardSlug": "portrait-harbor-study",
+      "worldSlug": "portrait-pilot",
+      "name": { "en": "Harbor study — not playable", "he": "מחקר נמל מאויר — לא זמין למשחק" },
+      "plannedHides": 5,
+      "direction": {
+        "orientation": "portrait",
+        "perspective": "shallow",
+        "scaleTreatment": "similar-size-people",
+        "locationCues": [
+          { "en": "Jetties and sheltered boats", "he": "מזחים וסירות במעגן" },
+          { "en": "Recognizable local architecture, chosen during art direction", "he": "אדריכלות מקומית מזוהה, לבחירה בשלב הכיוון האמנותי" }
+        ],
+        "microStories": [
+          { "en": "A picnic beside a small boat", "he": "פיקניק לצד סירה קטנה" },
+          { "en": "A curious crab beside a bucket", "he": "סרטן סקרן לצד דלי" }
+        ]
+      },
+      "discoveryIdeas": [
+        { "id": "bucket-crab", "name": { "en": "The curious crab", "he": "הסרטן הסקרן" }, "category": "animal" }
+      ]
+    },
+    {
+      "status": "planned",
+      "boardSlug": "portrait-garden-study",
+      "worldSlug": "portrait-pilot",
+      "name": { "en": "Garden study — not playable", "he": "מחקר גן מאויר — לא זמין למשחק" },
+      "plannedHides": 5,
+      "direction": {
+        "orientation": "portrait",
+        "perspective": "shallow",
+        "scaleTreatment": "similar-size-people",
+        "locationCues": [
+          { "en": "Terraced garden paths, not a receding horizon", "he": "שבילי גן במפלסים, לא אופק מתרחק" },
+          { "en": "Local plants and an identifiable pavilion", "he": "צמחייה מקומית וביתן מזוהה" }
+        ],
+        "microStories": [
+          { "en": "Children plant flowers beside a watering can", "he": "ילדים שותלים פרחים לצד משפך" },
+          { "en": "A butterfly near a shaded bench", "he": "פרפר ליד ספסל מוצל" }
+        ]
+      },
+      "discoveryIdeas": [
+        { "id": "garden-butterfly", "name": { "en": "The garden butterfly", "he": "הפרפר של הגן" }, "category": "animal" }
+      ]
+    }
+  ]
+}
