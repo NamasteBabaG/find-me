@@ -10,7 +10,7 @@ vi.mock("@/i18n/client", () => ({
   useI18n: () => ({
     locale: language.locale,
     t: {
-      home: { hero: { title: "Find me?", pill: "One photo", lead: "Lead", cta: "Create", demo: "Demo", found: "Found me!", devices: { phone: "Phone", tablet: "Tablet", laptop: "Computer" } } },
+      home: { hero: { title: "Find me?", pill: "One photo", lead: "Lead", cta: "Create", demo: "Demo", found: "Found me!", devices: { phone: "Phone", tablet: "Tablet" } } },
       game: { scene: { findChild: "Find {name}!", findAnyRules: "5 spots, find 3", hint: "Hint" } },
     },
     tf: (s: string, vars: Record<string, string | number>) => s.replace(/\{(\w+)\}/g, (_, k) => String(vars[k])),
@@ -24,7 +24,7 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
-describe("hero: the find on three devices", () => {
+describe("hero: the find on two devices", () => {
   it("re-aims the star when a language refresh moves the HUD without resizing the stage", () => {
     vi.spyOn(HTMLElement.prototype, "offsetLeft", "get").mockImplementation(function(this: HTMLElement) {
       if (this.hasAttribute("data-slot")) return language.locale === "en" ? 100 : 220;
@@ -41,10 +41,10 @@ describe("hero: the find on three devices", () => {
     expect(view.container.querySelector("[data-fly]")).toBe(fly);
     expect(fly.style.getPropertyValue("--fx")).toBe("228.0px");
   });
-  it("shows the same game screen on a phone, a tablet, a laptop and the phone-sized card", () => {
+  it("shows the same game screen on a phone, a tablet and the phone-sized card", () => {
     const view = render(<Hero child={child} />);
     const screens = Array.from(view.container.querySelectorAll("[data-screen]")).map(s => s.getAttribute("data-screen"));
-    expect(screens).toEqual(["phone", "tablet", "laptop", "card"]);
+    expect(screens).toEqual(["phone", "tablet", "card"]);
     for (const screen of Array.from(view.container.querySelectorAll("[data-screen]"))) {
       // The tray shows what the game shows: five hiding spots, the first star landing.
       expect(screen.querySelectorAll(".hero4__slot")).toHaveLength(5);
@@ -64,7 +64,7 @@ describe("hero: the find on three devices", () => {
     const source = view.container.querySelector(".hero4__screen--phone source")!;
     expect(source.getAttribute("srcset")).toBe(found.crops.phone.src);
     expect(source.getAttribute("media")).toBe("(min-width: 721px)");
-    for (const kind of ["tablet", "laptop", "card"]) expect(view.container.querySelector(`.hero4__screen--${kind} img`)?.getAttribute("src")).toBe(found.crops.wide.src);
+    for (const kind of ["tablet", "card"]) expect(view.container.querySelector(`.hero4__screen--${kind} img`)?.getAttribute("src")).toBe(found.crops.wide.src);
   });
   it("keeps the face, name/stars stack and hint on one row without helper copy in every preview", () => {
     const view = render(<Hero child={child} />);
@@ -96,9 +96,9 @@ describe("hero: the find on three devices", () => {
     expect(label.getAttribute("role")).not.toBe("button");
     expect(view.container.querySelector("h1")?.textContent).toBe("Find me?");
   });
-  it("names the three devices in the visitor's language", () => {
+  it("names the two devices in the visitor's language", () => {
     const view = render(<Hero child={child} />);
-    expect(Array.from(view.container.querySelectorAll(".hero4__label")).map(l => l.textContent)).toEqual(["Phone", "Tablet", "Computer"]);
+    expect(Array.from(view.container.querySelectorAll(".hero4__label")).map(l => l.textContent)).toEqual(["Phone", "Tablet"]);
   });
 });
 

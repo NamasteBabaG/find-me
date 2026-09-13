@@ -10,12 +10,13 @@
    sells is finding your child in the painting. So: a real game screen (the
    search HUD, five gold star slots, the hint), a hand that taps the child, a
    ring, her bubble, and a star that flies into its slot. Every eight seconds
-   the screen is a different device — phone, tablet, laptop — "no app, works
+   the screen is a different device — phone, then tablet — "no app, works
    everywhere" without a word. The copy is the site's own: the visitor lands on
    the same words as before, only the picture changed. On a phone the board
    card itself plays the moment; nobody needs a phone drawn inside a phone. */
 .hero4 { position: relative; overflow: hidden; background: var(--paper); color: var(--ink); }
-.hero4__grid { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: var(--space-6); padding-block: var(--space-12) calc(var(--space-8) + 96px); min-height: min(88vh, 860px); }
+/* The stage takes the wider column: the tablet is the picture, the copy is short. */
+.hero4__grid { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); align-items: center; gap: var(--space-6); padding-block: var(--space-12) calc(var(--space-8) + 96px); min-height: min(88vh, 860px); }
 .hero4__copy { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3); }
 .hero4__pill { display: inline-block; padding: 6px 12px; border: 1px solid #dfddd7; border-radius: 8px; background: #f0eee8; color: #555266; font-size: var(--fs-100); font-weight: 500; line-height: 1.5; box-shadow: none; cursor: default; }
 .hero4__title { font-family: var(--font-display); font-size: clamp(56px, 8.5vw, 128px); line-height: 1; font-weight: 900; letter-spacing: -0.035em; color: var(--ink); }
@@ -28,7 +29,7 @@
 .hero4::before { content: ""; position: absolute; inset-inline-start: -120px; top: -100px; width: 900px; height: 900px; border-radius: var(--radius-pill); background: radial-gradient(circle, var(--sea-soft) 0%, transparent 62%); pointer-events: none; }
 .hero4::after { content: ""; position: absolute; inset-inline-end: -200px; bottom: -260px; width: 740px; height: 740px; border-radius: var(--radius-pill); background: radial-gradient(circle, rgba(255, 216, 107, 0.55) 0%, transparent 62%); pointer-events: none; }
 
-/* The stage: three devices drawn at design size (704 x 752) and scaled as ONE
+/* The stage: two devices drawn at design size (704 x 752) and scaled as ONE
    to the column, so their proportions never drift. --k comes from the
    component; this ladder holds until it runs. */
 .hero4__stage { --k: 1; position: relative; height: calc(752px * var(--k)); }
@@ -36,35 +37,30 @@
 @media (max-width: 1279px) { .hero4__stage { --k: 0.74; } }
 @media (max-width: 1023px) { .hero4__stage { --k: 0.58; } }
 .hero4__frames { position: absolute; left: 50%; top: 0; width: 704px; height: 752px; transform: translateX(-50%) scale(var(--k)); transform-origin: top center; }
-/* Three devices take turns: eight seconds each, one find per turn. The phone
-   leans a little (a straight phone read as a spec sheet, Guy). */
-.hero4__dev { position: absolute; opacity: 0; animation: hero4-cyc 24s var(--ease-in-out) infinite; }
+/* Two devices take turns: eight seconds each, one find per turn. The phone
+   leans a little (a straight phone read as a spec sheet, Guy); the tablet
+   fills the stage's width - as large as it gets without leaving the column. */
+.hero4__dev { position: absolute; opacity: 0; animation: hero4-cyc 16s var(--ease-in-out) infinite; }
 .hero4__dev--phone { left: 200px; top: 16px; width: 304px; height: 632px; rotate: -6deg; }
-.hero4__dev--tablet { left: 16px; top: 88px; width: 672px; height: 496px; animation-delay: 8s; }
-.hero4__dev--laptop { left: 8px; top: 96px; width: 688px; height: 464px; animation-delay: 16s; }
-@keyframes hero4-cyc { 0% { opacity: 0; transform: translateY(24px) scale(0.96); } 3%, 30% { opacity: 1; transform: translateY(0) scale(1); } 33.3%, 100% { opacity: 0; transform: translateY(-24px) scale(0.96); } }
+.hero4__dev--tablet { left: 0; top: 88px; width: 704px; height: 528px; animation-delay: 8s; }
+@keyframes hero4-cyc { 0% { opacity: 0; transform: translateY(24px) scale(0.96); } 3%, 47% { opacity: 1; transform: translateY(0) scale(1); } 50%, 100% { opacity: 0; transform: translateY(-24px) scale(0.96); } }
 .hero4__frame { position: absolute; background: var(--ink); padding: var(--space-1); box-shadow: var(--shadow-3); }
 .hero4__frame--phone { inset: 0; border-radius: var(--radius-5); }
 .hero4__frame--tablet { inset: 0; border-radius: var(--radius-4); }
-.hero4__frame--laptop { left: 8px; top: 0; width: 672px; height: 432px; border-radius: var(--radius-3) var(--radius-3) var(--radius-1) var(--radius-1); }
-.hero4__base { position: absolute; left: -16px; top: 432px; width: 720px; height: 16px; border-radius: 4px 4px var(--radius-2) var(--radius-2); background: linear-gradient(180deg, var(--night-2) 0%, var(--ink) 100%); box-shadow: var(--shadow-2); }
-.hero4__base::after { content: ""; position: absolute; left: 270px; top: 0; width: 180px; height: 8px; border-radius: 0 0 var(--radius-1) var(--radius-1); background: var(--night-3); }
-/* --ui: how big the game's chrome is on this screen. A laptop's HUD is a small
+/* --ui: how big the game's chrome is on this screen. A tablet's HUD is a small
    corner of its screen and a phone's fills its top; a full-size HUD inside a
    small screen read as a poster, not a device (Guy). Every size inside a
    screen is a token times this factor, so the flight measurement stays exact. */
 .hero4__screen { --ui: 1; position: absolute; inset: var(--space-1); overflow: hidden; background: var(--sea-soft); }
 .hero4__screen--phone { --ui: 0.8; border-radius: calc(var(--radius-5) - var(--space-1)); }
 .hero4__screen--tablet { --ui: 0.62; border-radius: calc(var(--radius-4) - var(--space-1)); }
-.hero4__screen--laptop { --ui: 0.55; border-radius: var(--radius-2) var(--radius-2) 4px 4px; }
 .hero4__screen picture { display: contents; }
 .hero4__art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; user-select: none; }
-/* Which device is on: a quiet row of three under the stage. */
+/* Which device is on: a quiet row of two under the stage. */
 .hero4__labels { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); display: flex; gap: var(--space-1); padding: var(--space-1); border-radius: var(--radius-pill); background: rgba(255, 255, 255, 0.8); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.9), var(--shadow-1); }
-.hero4__label { display: inline-flex; align-items: center; gap: var(--space-1); min-height: var(--space-5); padding-inline: var(--space-2); border-radius: var(--radius-pill); font-family: var(--font-display); font-weight: 700; font-size: var(--fs-100); color: var(--ink-3); white-space: nowrap; animation: hero4-lbl 24s var(--ease-in-out) infinite; }
+.hero4__label { display: inline-flex; align-items: center; gap: var(--space-1); min-height: var(--space-5); padding-inline: var(--space-2); border-radius: var(--radius-pill); font-family: var(--font-display); font-weight: 700; font-size: var(--fs-100); color: var(--ink-3); white-space: nowrap; animation: hero4-lbl 16s var(--ease-in-out) infinite; }
 .hero4__label--tablet { animation-delay: 8s; }
-.hero4__label--laptop { animation-delay: 16s; }
-@keyframes hero4-lbl { 0%, 30% { background: var(--white); color: var(--ink); box-shadow: inset 0 0 0 2px var(--gold); } 33.3%, 100% { background: transparent; color: var(--ink-3); box-shadow: none; } }
+@keyframes hero4-lbl { 0%, 47% { background: var(--white); color: var(--ink); box-shadow: inset 0 0 0 2px var(--gold); } 50%, 100% { background: transparent; color: var(--ink-3); box-shadow: none; } }
 
 /* Readable game preview, not a squeezed screenshot. The chrome flows as a
    layout: on narrow screens the rail starts AFTER the HUD's actual height.
@@ -123,13 +119,13 @@
 .hero4__card { display: none; position: relative; width: 100%; border-radius: var(--radius-3); overflow: hidden; background: var(--sea-soft); box-shadow: var(--shadow-3); }
 .hero4__screen--card { --ui: 0.85; inset: 0; border-radius: 0; }
 
-/* Held still for anyone who reads motion as noise: the phone, the child found. */
+/* Held still for anyone who reads motion as noise: the tablet, the child found. */
 @media (prefers-reduced-motion: reduce) {
   .hero4__dev, .hero4__label, .hero4__hand, .hero4__ring, .hero4__bubble, .hero4__spark, .hero4__fly, .hero4__fly-star, .hero4__landed, .hero4__q { animation: none; }
-  .hero4__dev--phone, .hero4__ring, .hero4__bubble, .hero4__landed { opacity: 1; transform: none; }
+  .hero4__dev--tablet, .hero4__ring, .hero4__bubble, .hero4__landed { opacity: 1; transform: none; }
   .hero4__bubble { transform: translate(-50%, -100%); }
   .hero4__hand, .hero4__spark, .hero4__fly-star { opacity: 0; }
-  .hero4__label--phone { background: var(--white); color: var(--ink); box-shadow: inset 0 0 0 2px var(--gold); }
+  .hero4__label--tablet { background: var(--white); color: var(--ink); box-shadow: inset 0 0 0 2px var(--gold); }
 }
 
 /* Desktop: the nav is glass at the very top — the hero runs underneath it —

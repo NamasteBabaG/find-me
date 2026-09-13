@@ -17,9 +17,10 @@ import found from "../../../content/home/hero-found.json";
  * So the hero is a screen with the real search HUD (the face, five gold star
  * slots, the hint), a hand that arrives, taps the child, a ring, a bubble in
  * her voice, and a gold star that flies into its empty slot. Every eight
- * seconds the screen is a different device — phone, tablet, laptop — which
- * says "no app, works everywhere" without a word of copy. The words themselves
- * are the ones the site already had; Guy preferred them.
+ * seconds the screen is a different device — a phone, then a tablet drawn as
+ * large as the column allows (a laptop was the tablet again, so it went; Guy)
+ * — which says "no app, works everywhere" without a word of copy. The words
+ * themselves are the ones the site already had; Guy preferred them.
  *
  * On a phone there is no device frame (the visitor is holding one): the board
  * card itself plays the moment under the copy.
@@ -29,24 +30,25 @@ import found from "../../../content/home/hero-found.json";
  * with `--apply` whenever the beach art or the demo patch changes), and the
  * star's flight is aimed at the first empty slot at runtime, in the screen's
  * own coordinates, so it lands in the slot in every language and at every
- * size. Motion is CSS; with reduced motion the phone simply shows the found
+ * size. Motion is CSS; with reduced motion the tablet simply shows the found
  * child.
  */
 
 /** Five hiding spots per board, three of them open the next place: the tray shows what the game shows. */
 const SLOTS = 5;
-/** The three devices are drawn at this size and scaled as one to the column (--k). */
+/** The two devices are drawn at this size and scaled as one to the column (--k). */
 const STAGE_W = 704;
+/** How far past design size a wide column may grow the stage. */
+const STAGE_GROW = 1.06;
 /** A portrait board leaves room for the identity header above the found child,
  * even on a 320px phone. Shared by CSS sizing and the cover-point geometry. */
 const CARD_ASPECT = 2 / 3;
 
-type Kind = "phone" | "tablet" | "laptop" | "card";
+type Kind = "phone" | "tablet" | "card";
 type Crop = keyof typeof found.crops;
 const SCREENS: Record<Exclude<Kind, "card">, { w: number; h: number; crop: Crop }> = {
   phone: { w: 288, h: 616, crop: "phone" },
-  tablet: { w: 656, h: 480, crop: "wide" },
-  laptop: { w: 656, h: 416, crop: "wide" },
+  tablet: { w: 688, h: 512, crop: "wide" },
 };
 /** Where a point of an image lands inside a box the image covers (object-fit: cover, centred). */
 export function coverPoint(p: { x: number; y: number }, image: number, box: number) {
@@ -155,7 +157,10 @@ export function Hero({ child, children }: { child: Child; children?: ReactNode }
     let active = true;
     // The stage is drawn at design size and scaled as one, so three devices
     // keep their proportions on any column. A CSS ladder holds until this runs.
-    const fit = () => stage.style.setProperty("--k", Math.min(1, stage.clientWidth / STAGE_W).toFixed(4));
+    // A wide column may grow the stage a little past design size (the tablet is
+    // the picture; Guy asked for it as large as the column allows), never past
+    // the column itself.
+    const fit = () => stage.style.setProperty("--k", Math.min(STAGE_GROW, stage.clientWidth / STAGE_W).toFixed(4));
     // The star flies to the FIRST EMPTY SLOT, wherever the HUD put it: layout
     // offsets, not client rects, because the phone is tilted and the stage is
     // scaled, and the flight is measured in the screen's own frame.
@@ -231,7 +236,7 @@ export function Hero({ child, children }: { child: Child; children?: ReactNode }
             </a>
           </div>
         </div>
-        {/* The moment, on three devices in turn; decoration to a screen reader, the copy says it all. */}
+        {/* The moment, on two devices in turn; decoration to a screen reader, the copy says it all. */}
         <div ref={stageRef} className="hero4__stage" aria-hidden>
           <div className="hero4__frames">
             <div className="hero4__dev hero4__dev--phone">
@@ -244,12 +249,6 @@ export function Hero({ child, children }: { child: Child; children?: ReactNode }
                 <Screen kind="tablet" child={child} />
               </div>
             </div>
-            <div className="hero4__dev hero4__dev--laptop">
-              <div className="hero4__frame hero4__frame--laptop">
-                <Screen kind="laptop" child={child} />
-              </div>
-              <div className="hero4__base" />
-            </div>
             <div className="hero4__labels">
               <span className="hero4__label hero4__label--phone">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.5" /><path d="M11 18h2" /></svg>
@@ -258,10 +257,6 @@ export function Hero({ child, children }: { child: Child; children?: ReactNode }
               <span className="hero4__label hero4__label--tablet">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M11 17.5h2" /></svg>
                 {h.devices.tablet}
-              </span>
-              <span className="hero4__label hero4__label--laptop">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="12" rx="2" /><path d="M2 19h20" /></svg>
-                {h.devices.laptop}
               </span>
             </div>
           </div>
