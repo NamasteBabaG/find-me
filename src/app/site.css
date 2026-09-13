@@ -28,14 +28,14 @@
 .hero4::before { content: ""; position: absolute; inset-inline-start: -120px; top: -100px; width: 900px; height: 900px; border-radius: var(--radius-pill); background: radial-gradient(circle, var(--sea-soft) 0%, transparent 62%); pointer-events: none; }
 .hero4::after { content: ""; position: absolute; inset-inline-end: -200px; bottom: -260px; width: 740px; height: 740px; border-radius: var(--radius-pill); background: radial-gradient(circle, rgba(255, 216, 107, 0.55) 0%, transparent 62%); pointer-events: none; }
 
-/* The stage: three devices drawn at design size (704 x 688) and scaled as ONE
+/* The stage: three devices drawn at design size (704 x 752) and scaled as ONE
    to the column, so their proportions never drift. --k comes from the
    component; this ladder holds until it runs. */
-.hero4__stage { --k: 1; position: relative; height: calc(688px * var(--k)); }
+.hero4__stage { --k: 1; position: relative; height: calc(752px * var(--k)); }
 @media (max-width: 1439px) { .hero4__stage { --k: 0.86; } }
 @media (max-width: 1279px) { .hero4__stage { --k: 0.74; } }
 @media (max-width: 1023px) { .hero4__stage { --k: 0.58; } }
-.hero4__frames { position: absolute; left: 50%; top: 0; width: 704px; height: 688px; transform: translateX(-50%) scale(var(--k)); transform-origin: top center; }
+.hero4__frames { position: absolute; left: 50%; top: 0; width: 704px; height: 752px; transform: translateX(-50%) scale(var(--k)); transform-origin: top center; }
 /* Three devices take turns: eight seconds each, one find per turn. The phone
    leans a little (a straight phone read as a spec sheet, Guy). */
 .hero4__dev { position: absolute; opacity: 0; animation: hero4-cyc 24s var(--ease-in-out) infinite; }
@@ -56,27 +56,39 @@
 .hero4__screen picture { display: contents; }
 .hero4__art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; user-select: none; }
 /* Which device is on: a quiet row of three under the stage. */
-.hero4__labels { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); display: flex; gap: var(--space-0-5); padding: var(--space-0-5); border-radius: var(--radius-pill); background: rgba(255, 255, 255, 0.5); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.9); }
+.hero4__labels { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); display: flex; gap: var(--space-1); padding: var(--space-1); border-radius: var(--radius-pill); background: rgba(255, 255, 255, 0.8); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.9), var(--shadow-1); }
 .hero4__label { display: inline-flex; align-items: center; gap: var(--space-1); min-height: var(--space-5); padding-inline: var(--space-2); border-radius: var(--radius-pill); font-family: var(--font-display); font-weight: 700; font-size: var(--fs-100); color: var(--ink-3); white-space: nowrap; animation: hero4-lbl 24s var(--ease-in-out) infinite; }
 .hero4__label--tablet { animation-delay: 8s; }
 .hero4__label--laptop { animation-delay: 16s; }
 @keyframes hero4-lbl { 0%, 30% { background: var(--white); color: var(--ink); box-shadow: inset 0 0 0 2px var(--gold); } 33.3%, 100% { background: transparent; color: var(--ink-3); box-shadow: none; } }
 
-/* Inside a screen: the game's own chrome, small. Left rail of tools; the
-   search HUD top-right as glass — half white, the painting blurred behind it —
-   so it sits on the board instead of covering it (Guy), the words still ink. */
-.hero4__rail { position: absolute; left: var(--space-1); top: var(--space-1); display: flex; flex-direction: column; gap: var(--space-0-5); z-index: 2; }
+/* Readable game preview, not a squeezed screenshot. The chrome flows as a
+   layout: on narrow screens the rail starts AFTER the HUD's actual height.
+   The physical top-right HUD stays put in both languages; its text follows
+   its own dir. No changes to the real player's styles. */
+.hero4__chrome { position: absolute; inset: var(--space-2) var(--space-2) auto; z-index: 3; display: flex; align-items: flex-start; gap: var(--space-2); direction: ltr; }
+.hero4__rail { display: flex; flex-direction: column; gap: var(--space-1); flex-shrink: 0; }
 .hero4__tool { width: var(--space-4); height: var(--space-4); border-radius: var(--radius-pill); background: rgba(23, 22, 43, 0.42); backdrop-filter: blur(8px); box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.4); display: grid; place-items: center; color: var(--white); }
-.hero4__hud { position: absolute; top: var(--space-1); right: var(--space-1); z-index: 3; display: flex; flex-direction: column; gap: var(--space-0-5); padding: var(--space-1); border-radius: var(--radius-2); background: rgba(255, 255, 255, 0.5); backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7), var(--shadow-2); }
-.hero4__hud-top { display: flex; align-items: center; gap: var(--space-0-5); }
-.hero4__face { width: var(--space-5); height: var(--space-5); border-radius: var(--radius-1); object-fit: contain; background: var(--white); box-shadow: 0 0 0 3px var(--white); flex-shrink: 0; }
-.hero4__hud-col { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
-.hero4__tray { display: inline-flex; gap: 2px; }
+.hero4__hud { width: calc(var(--space-20) * 2); max-width: 100%; margin-left: auto; min-width: 0; display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2); border-radius: var(--radius-3); background: rgba(255, 255, 255, 0.82); backdrop-filter: blur(18px) saturate(1.2); -webkit-backdrop-filter: blur(18px) saturate(1.2); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.9), var(--shadow-2); }
+.hero4__hud-top { display: flex; align-items: center; gap: var(--space-2); }
+.hero4__face { width: var(--control-h); height: var(--control-h); padding: var(--space-0-5); border-radius: var(--radius-2); object-fit: contain; background: var(--white); box-shadow: var(--shadow-1); flex-shrink: 0; }
+.hero4__hud-col { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); min-width: 0; }
+.hero4__tray { display: inline-flex; gap: var(--space-0-5); }
 .hero4__slot { position: relative; display: block; width: var(--space-2); height: var(--space-2); flex-shrink: 0; }
+.hero4__tray .star--empty .star__body { fill: var(--white); stroke: var(--ink-3); stroke-dasharray: none; }
 .hero4__landed { position: absolute; inset: 0; opacity: 0; transform: scale(0.6); animation: hero4-land 8s var(--ease-out) infinite; }
-.hero4__rules { max-width: 22ch; font-size: var(--fs-50); line-height: var(--lh-50); font-weight: 700; color: var(--ink-2); }
-.hero4__hintbtn { display: inline-flex; align-items: center; justify-content: center; min-height: var(--space-4); padding-inline: var(--space-1); border-radius: var(--radius-pill); background: var(--sun); font-family: var(--font-display); font-weight: 800; font-size: var(--fs-50); color: var(--ink); box-shadow: var(--shadow-1); flex-shrink: 0; }
-.hero4__mission { font-family: var(--font-display); font-size: var(--fs-100); line-height: var(--lh-50); font-weight: 700; color: var(--ink); padding: 0 var(--space-0-5) 2px; }
+.hero4__hud-footer { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding-top: var(--space-1); border-top: 1px solid var(--line); }
+.hero4__rules { min-width: 0; max-width: 22ch; font-size: var(--fs-50); line-height: var(--lh-50); font-weight: 500; color: var(--ink-2); }
+.hero4__hintbtn { display: inline-flex; align-items: center; justify-content: center; min-height: var(--space-4); padding-inline: var(--space-2); border-radius: var(--radius-pill); background: var(--sun); font-family: var(--font-display); font-weight: 800; font-size: var(--fs-50); color: var(--ink); box-shadow: var(--shadow-1); flex-shrink: 0; }
+.hero4__mission { font-family: var(--font-display); font-size: var(--fs-200); line-height: var(--lh-200); font-weight: 700; color: var(--ink); overflow-wrap: anywhere; }
+.hero4__screen--phone .hero4__chrome { flex-direction: column-reverse; }
+.hero4__screen--card .hero4__chrome { bottom: var(--space-2); display: grid; grid-template-rows: auto 1fr; pointer-events: none; }
+.hero4__screen--card .hero4__hud { grid-row: 1; }
+.hero4__screen--card .hero4__rail { grid-row: 2; align-self: end; justify-self: start; flex-direction: row; }
+.hero4__screen--phone .hero4__hud, .hero4__screen--card .hero4__hud { width: 100%; }
+/* The small card's find is close to the header; put its speech below the
+   child instead of letting a balloon collide with the identity panel. */
+.hero4__screen--card .hero4__bubble { top: var(--space-16); }
 
 /* The find. Everything hangs off one point — the top of the child's head —
    and every effect is one 8-second loop: the hand arrives at 0.8 s and taps
@@ -89,6 +101,7 @@
 .hero4__ring { position: absolute; left: -64px; top: -24px; width: var(--space-16); height: var(--space-16); border-radius: var(--radius-pill); border: 3px solid var(--gold); box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.7), var(--shadow-glow-gold); opacity: 0; animation: hero4-ring 8s var(--ease-out) infinite; }
 .hero4__bubble { position: absolute; left: 0; top: -40px; transform: translate(-50%, -100%); background: var(--white); color: var(--ink); font-family: var(--font-kid); font-weight: 600; font-size: var(--fs-200); line-height: var(--lh-200); padding: var(--space-0-5) var(--space-2); border-radius: var(--radius-2); box-shadow: 0 0 0 3px var(--ink), var(--shadow-2); white-space: nowrap; opacity: 0; animation: hero4-bubble 8s var(--ease-out) infinite; }
 .hero4__bubble::after { content: ""; position: absolute; left: 50%; bottom: -10px; width: 12px; height: 12px; background: var(--white); border-right: 3px solid var(--ink); border-bottom: 3px solid var(--ink); transform: translateX(-50%) rotate(45deg); }
+.hero4__screen--card .hero4__bubble::after { top: -8px; bottom: auto; transform: translateX(-50%) rotate(225deg); }
 .hero4__spark { position: absolute; left: -8px; top: -8px; width: var(--space-2); height: var(--space-2); opacity: 0; animation: hero4-spark 8s var(--ease-out) infinite; filter: drop-shadow(0 0 5px rgba(255, 207, 51, 0.8)); }
 .hero4__fly { position: absolute; left: 0; top: 0; width: 0; height: 0; z-index: 5; animation: hero4-fly 8s cubic-bezier(0.55, 0, 0.3, 1) infinite; }
 .hero4__fly-star { position: absolute; left: -16px; top: -16px; width: 32px; height: 32px; opacity: 0; animation: hero4-arc 8s ease infinite; filter: drop-shadow(0 0 8px rgba(255, 207, 51, 0.9)); }
@@ -104,7 +117,7 @@
 @keyframes hero4-arc { 0%, 29% { opacity: 0; transform: translateY(0) scale(0.4) rotate(0deg); } 31% { opacity: 1; transform: translateY(-10px) scale(1.5) rotate(15deg); animation-timing-function: ease-out; } 40.5% { transform: translateY(-120px) scale(1.25) rotate(190deg); animation-timing-function: ease-in; } 50% { opacity: 1; transform: translateY(0) scale(var(--fs, 0.5)) rotate(360deg); } 50.01%, 100% { opacity: 0; transform: translateY(0) scale(var(--fs, 0.5)) rotate(360deg); } }
 
 /* The phone-sized card: only under 721px, where the three devices are gone. */
-.hero4__card { display: none; position: relative; width: 100%; aspect-ratio: 7 / 8; border-radius: var(--radius-3); overflow: hidden; background: var(--sea-soft); box-shadow: var(--shadow-3); }
+.hero4__card { display: none; position: relative; width: 100%; border-radius: var(--radius-3); overflow: hidden; background: var(--sea-soft); box-shadow: var(--shadow-3); }
 .hero4__screen--card { inset: 0; border-radius: 0; }
 
 /* Held still for anyone who reads motion as noise: the phone, the child found. */
@@ -131,6 +144,12 @@
   .hero4__grid { padding-top: calc(var(--space-10) + var(--space-8)); }
 }
 @keyframes fm-header-solidify { to { background: color-mix(in srgb, var(--paper) 80%, transparent); backdrop-filter: blur(16px); } }
+/* A half-width tablet column makes the preview HUD and labels microscopic.
+   Give the devices a full row before switching to the frameless mobile card. */
+@media (min-width: 721px) and (max-width: 1023px) {
+  .hero4__grid { grid-template-columns: minmax(0, 1fr); }
+  .hero4__stage { width: 100%; max-width: 704px; justify-self: center; }
+}
 @media (max-width: 720px) {
   .hero4__grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-4); min-height: 0; padding-block: var(--space-6) calc(var(--space-5) + 88px); }
   .hero4__copy { align-items: stretch; gap: var(--space-2); }

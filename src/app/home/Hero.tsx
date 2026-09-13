@@ -39,8 +39,9 @@ const SLOTS = 5;
 const FLY_BASE = 32;
 /** The three devices are drawn at this size and scaled as one to the column (--k). */
 const STAGE_W = 704;
-/** The board card on a phone: a little taller than square, so the child has room and the copy stays above. */
-const CARD_ASPECT = 7 / 8;
+/** A portrait board leaves room for the identity header above the found child,
+ * even on a 320px phone. Shared by CSS sizing and the cover-point geometry. */
+const CARD_ASPECT = 2 / 3;
 
 type Kind = "phone" | "tablet" | "laptop" | "card";
 type Crop = keyof typeof found.crops;
@@ -70,7 +71,7 @@ interface Child {
 
 /** One game screen: the board with the child in it, the search HUD, and the find. */
 function Screen({ kind, child }: { kind: Kind; child: Child }) {
-  const { t, tf } = useI18n();
+  const { t, tf, locale } = useI18n();
   const crop = found.crops[kind === "card" ? "wide" : SCREENS[kind].crop];
   const box = kind === "card" ? CARD_ASPECT : SCREENS[kind].w / SCREENS[kind].h;
   const head = coverPoint(crop.head, crop.width / crop.height, box);
@@ -86,39 +87,44 @@ function Screen({ kind, child }: { kind: Kind; child: Child }) {
         // eslint-disable-next-line @next/next/no-img-element
         <img className="hero4__art" src={crop.src} alt="" draggable={false} loading={kind === "card" ? "eager" : "lazy"} fetchPriority={kind === "card" ? "high" : "low"} />
       )}
-      <div className="hero4__rail">
-        <span className="hero4__tool">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z" /><path d="M9 4v14M15 6v14" /></svg>
-        </span>
-        <span className="hero4__tool">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><circle cx="10.5" cy="10.5" r="6.5" /><path d="M15.4 15.4 21 21M7.5 10.5h6M10.5 7.5v6" /></svg>
-        </span>
-        <span className="hero4__tool">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><circle cx="10.5" cy="10.5" r="6.5" /><path d="M15.4 15.4 21 21M7.5 10.5h6" /></svg>
-        </span>
-      </div>
-      {/* The search HUD as the game draws it: face, one slot per hiding spot, the hint, the mission. */}
-      <div className="hero4__hud">
-        <div className="hero4__hud-top">
-          <Image src={child.avatarUrl} alt="" width={40} height={40} unoptimized className="hero4__face" draggable={false} />
-          <div className="hero4__hud-col">
-            <span className="hero4__tray">
-              {Array.from({ length: SLOTS }, (_, i) => (
-                <span key={i} className="hero4__slot" data-slot={i === 0 ? "first" : undefined}>
-                  <GoldStar empty />
-                  {i === 0 ? (
-                    <span className="hero4__landed">
-                      <GoldStar />
-                    </span>
-                  ) : null}
-                </span>
-              ))}
-            </span>
-            <span className="hero4__rules">{t.game.scene.findAnyRules}</span>
-          </div>
-          <span className="hero4__hintbtn">{t.game.scene.hint}</span>
+      <div className="hero4__chrome">
+        <div className="hero4__rail">
+          <span className="hero4__tool">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z" /><path d="M9 4v14M15 6v14" /></svg>
+          </span>
+          <span className="hero4__tool">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><circle cx="10.5" cy="10.5" r="6.5" /><path d="M15.4 15.4 21 21M7.5 10.5h6M10.5 7.5v6" /></svg>
+          </span>
+          <span className="hero4__tool">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><circle cx="10.5" cy="10.5" r="6.5" /><path d="M15.4 15.4 21 21M7.5 10.5h6" /></svg>
+          </span>
         </div>
-        <span className="hero4__mission">{tf(t.game.scene.findChild, { name: child.name })}</span>
+        {/* An editorial preview of the game HUD: identity first, progress second,
+            rules and hint on their own row so they never crowd the face. */}
+        <div className="hero4__hud" dir={locale === "he" ? "rtl" : "ltr"}>
+          <div className="hero4__hud-top">
+            <Image src={child.avatarUrl} alt="" width={56} height={56} unoptimized className="hero4__face" draggable={false} />
+            <div className="hero4__hud-col">
+              <span className="hero4__mission">{tf(t.game.scene.findChild, { name: child.name })}</span>
+              <span className="hero4__tray">
+                {Array.from({ length: SLOTS }, (_, i) => (
+                  <span key={i} className="hero4__slot" data-slot={i === 0 ? "first" : undefined}>
+                    <GoldStar empty />
+                    {i === 0 ? (
+                      <span className="hero4__landed">
+                        <GoldStar />
+                      </span>
+                    ) : null}
+                  </span>
+                ))}
+              </span>
+            </div>
+          </div>
+          <div className="hero4__hud-footer">
+            <span className="hero4__rules">{t.game.scene.findAnyRules}</span>
+            <span className="hero4__hintbtn">{t.game.scene.hint}</span>
+          </div>
+        </div>
       </div>
       {/* The find, anchored on the child's head: ring, sparks, her bubble, the star that flies to the tray, the hand that taps. */}
       <div className="hero4__fx" style={{ left: `${(head.x * 100).toFixed(2)}%`, top: `${(head.y * 100).toFixed(2)}%` }} data-fx>
@@ -263,7 +269,7 @@ export function Hero({ child, children }: { child: Child; children?: ReactNode }
               </span>
             </div>
           </div>
-          <div className="hero4__card">
+          <div className="hero4__card" style={{ aspectRatio: CARD_ASPECT }}>
             <Screen kind="card" child={child} />
           </div>
         </div>

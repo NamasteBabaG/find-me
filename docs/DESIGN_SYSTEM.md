@@ -40,6 +40,8 @@ Hero (the live demo child being found on rotating phone/tablet/laptop frames; a 
 
 Hero assets are public marketing copies built by `scripts/refresh-hero-found.ts --apply` from `buildDemoConfig` and the shared `targetGeometry` contract. `content/home/hero-found.json` binds the current demo identity, board, effective foreground, geometry and shipped crop hashes. No customer images or paid generation are involved. The star destination is remeasured on resize and language changes; reduced motion shows a static find and a non-wrapping world strip.
 
+The hero HUD is a readable preview, not a miniaturised copy of every game control: a 56px contained portrait beside the name and five stars, with rules and hint in a separate footer. Use 16px edge insets, padding and column gaps; on the narrow phone the tool rail flows below the HUD instead of overlapping it. The mobile card is 2:3 (one shared ratio for sizing and target geometry), with tools along its bottom, so neither the HUD nor the tools cross the child's celebration on a 320px screen. The 752px design stage reserves clearance beneath the tilted phone for the device labels. These styles are scoped to the homepage and do not change the player.
+
 ## The game
 
 - Target height ≈ 4% / 3% / 2.5% of scene height in final art; hitbox ≥ 48 screen px.
