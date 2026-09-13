@@ -30,12 +30,12 @@ vi.mock("@/game/components/GameShell", () => ({ GameShell: (props: unknown) => {
 import QaGameReview from "../page";
 
 const GAME = "game-preview-qa";
-function publishedFixture(): GameConfig {
+function publishedFixture(version = 8): GameConfig {
   const child = { name: "Synthetic", avatarUrl: "/api/assets/ast-avatar?e=1&s=expired" };
-  const boards = localPatchBoardsForVersion(8);
+  const boards = localPatchBoardsForVersion(version);
   const world = worldForBoard(boards[0]!.board)!;
   const scenes = boards.map(board => {
-    const definition = sceneBySlug(board.board, 8);
+    const definition = sceneBySlug(board.board, version);
     const sprites = board.hides.map(hide => {
       const crop = cropOf(hide), mask = maskForHide(hide), { width, height } = definition.art;
       return { targetId: hide.targetId, sprite: { kind: "image" as const, url: `/api/assets/ast-${hide.id}?e=1&s=expired`, width: crop.width, height: crop.height,
@@ -85,6 +85,32 @@ describe("published local-patch QA preview route", () => {
     await expect(page()).rejects.toThrow("NEXT_NOT_FOUND"); expect(f.shell).not.toHaveBeenCalled();
     f.user = { id: "admin", email: "admin@example.com" };
     renderToStaticMarkup(await page()); expect(f.shell.mock.calls[0]![0].readOnlyPreview).toBe(true);
+  });
+  it.each(["READY", "DELIVERED"])("shows an exactly pinned age-aware v9 %s game without changing it or enabling saved play", async status => {
+    const config = publishedFixture(9);
+    f.game!.status = status;
+    f.game!.configJson = JSON.stringify(config);
+    f.game!.scenes = config.scenes.map(scene => ({ sceneSlug: scene.slug, sceneVersion: scene.version,
+      generationStatus: "GENERATED", configJson: JSON.stringify(scene) }));
+    const before = JSON.stringify(f.game);
+    renderToStaticMarkup(await page());
+    const props = f.shell.mock.calls[0]![0] as { config: GameConfig; readOnlyPreview: boolean; skipGift?: boolean };
+    expect(props.readOnlyPreview).toBe(true); expect(props.skipGift).toBeUndefined();
+    expect(props.config.scenes).toHaveLength(9);
+    expect(props.config.scenes.every(scene => scene.version === 9)).toBe(true);
+    expect(props.config.scenes.flatMap(scene => scene.targets)).toHaveLength(45);
+    expect(JSON.stringify(f.game)).toBe(before);
+  });
+  it.each(["published-v9-stored-v8", "published-v8-stored-v9", "mixed-pinned-versions"])("refuses %s before exposing a player", async defect => {
+    const config = publishedFixture(defect === "published-v9-stored-v8" ? 9 : 8);
+    if (defect === "published-v8-stored-v9") for (const row of f.game!.scenes) row.sceneVersion = 9;
+    if (defect === "mixed-pinned-versions") {
+      config.scenes[0]!.version = 9;
+      f.game!.scenes[0]!.sceneVersion = 9;
+      f.game!.scenes[0]!.configJson = JSON.stringify(config.scenes[0]);
+    }
+    f.game!.configJson = JSON.stringify(config);
+    await expect(page()).rejects.toThrow("NEXT_NOT_FOUND"); expect(f.shell).not.toHaveBeenCalled();
   });
   it.each(["non-qa", "logged-out", "deleted-game", "deleted-child", "wrong-child-owner", "missing-owner", "unfinished", "running-job", "wrong-job", "no-ready-date",
     "missing-config", "malformed-config", "other-game-config", "eight-boards", "duplicate-board", "legacy-version", "unfinished-board", "missing-scene-config", "four-targets",

@@ -32,8 +32,11 @@ describe("catalog 8 preserves the approved illustrated face and hair", () => {
     const snapshot = Buffer.from(sheet);
     const result = await prepareLocalPatchIdentityReferences(sheet, 8);
     expect(await sharp(result.identityPng).metadata()).toMatchObject({ width: 512, height: 512 });
-    expect(await rgba(result.identityPng)).toEqual(await rgba(portrait));
-    expect(await rgba(result.judgeIdentityPng)).toEqual(await rgba(portrait));
+    const expectedPixels = await rgba(portrait);
+    // Native comparison still checks every RGBA byte, without recursively
+    // enumerating a million Buffer properties in the test matcher.
+    expect((await rgba(result.identityPng)).equals(expectedPixels)).toBe(true);
+    expect((await rgba(result.judgeIdentityPng)).equals(expectedPixels)).toBe(true);
     expect(result.canonicalIdentityPng).toEqual(snapshot);
     expect(sheet).toEqual(snapshot);
   });
@@ -43,11 +46,11 @@ describe("catalog 8 preserves the approved illustrated face and hair", () => {
     const refs = await prepareLocalPatchIdentityReferences(sheet, 8);
     for (const image of [refs.identityPng, refs.judgeIdentityPng]) {
       expect(await sharp(image).metadata()).toMatchObject({ width: 128, height: 128 });
-      expect(await rgba(image)).toEqual(await rgba(portrait));
+      expect((await rgba(image)).equals(await rgba(portrait))).toBe(true);
     }
   });
 
-  it.each([undefined, 6, 7, 9])("leaves every non-v8 paid reference unchanged (version %s)", async version => {
+  it.each([undefined, 6, 7, 10])("leaves legacy and unsupported paid references unchanged (version %s)", async version => {
     const { sheet } = await fixtureSheet();
     const old = await normalizeBoardWizardIdentity(sheet);
     const expectedJudge = await sharp(old.png).resize(256, 256, { fit: "inside" }).png().toBuffer();

@@ -86,7 +86,11 @@ const TWINKLE: readonly (readonly Note[])[] = [
 export class SoundManager {
   private ctx: Ctx | null = null;
   private master: GainNode | null = null;
-  private ambient: { source: AudioBufferSourceNode; gain: GainNode } | null = null;
+  private ambient: { source: AudioBufferSourceNode; gain: GainNode; lfo: OscillatorNode; filter: BiquadFilterNode; lfoGain: GainNode } | null = null;
+  private ambientCue: SoundCue | undefined;
+  private paused = false;
+  private pendingCue: { cue: SoundCue; requestedAt: number } | null = null;
+  private oneShots = new Map<AudioScheduledSourceNode, () => void>();
   private _muted = false;
   /** Which voicing each cue played last, so the next one is different. */
   private last: Partial<Record<SoundCue, number>> = {};
@@ -96,33 +100,74 @@ export class SoundManager {
   }
 
   unlock(): void {
-    if (typeof window === "undefined") return;
-    if (!this.ctx) {
+    if (typeof window === "undefined" || this.paused || this._muted) return;
+    if (!this.ctx || this.ctx.state === "closed") {
+      this.stopOneShots();
+      this.pendingCue = null;
+      this.releaseAmbient(false);
+      this.master?.disconnect();
+      this.ctx = null;
+      this.master = null;
       const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (!AC) return;
-      this.ctx = new AC();
-      this.master = this.ctx.createGain();
-      this.master.gain.value = this._muted ? 0 : 0.5;
-      this.master.connect(this.ctx.destination);
+      try {
+        const ctx = new AC();
+        this.ctx = ctx;
+        this.master = ctx.createGain();
+        this.master.gain.value = 0.5;
+        this.master.connect(ctx.destination);
+      } catch { return; } // Audio availability must not stop the game.
     }
-    if (this.ctx.state === "suspended") void this.ctx.resume();
+    // Safari can report "interrupted", not just "suspended". Retry here on
+    // EACH genuine gesture, even if an earlier non-gesture resume is pending.
+    this.resumeContext();
   }
 
   setMuted(muted: boolean): void {
     this._muted = muted;
-    if (this.master && this.ctx) this.master.gain.setTargetAtTime(muted ? 0 : 0.5, this.ctx.currentTime, 0.02);
+    if (muted) { this.pendingCue = null; this.stopOneShots(); }
+    if (this.master && this.ctx && this.ctx.state !== "closed") this.master.gain.setTargetAtTime(muted ? 0 : 0.5, this.ctx.currentTime, 0.02);
   }
 
   suspend(): void {
-    void this.ctx?.suspend();
+    this.paused = true;
+    this.pendingCue = null;
+    this.stopOneShots();
+    const ctx = this.ctx;
+    if (!ctx || ctx.state === "closed") return;
+    try { void ctx.suspend().catch(() => {}); } catch { /* Device already gone. */ }
   }
 
   resume(): void {
-    void this.ctx?.resume();
+    this.paused = false;
+    // Lifecycle events may resume an existing authorized context, never create
+    // one. If the browser still requires a tap, the next gesture retries.
+    this.resumeContext();
+  }
+
+  private resumeContext(): void {
+    const ctx = this.ctx;
+    if (!ctx || this.paused || this._muted || ctx.state === "closed") return;
+    if (ctx.state === "running") { this.audioReady(ctx); return; }
+    try { void ctx.resume().then(() => this.audioReady(ctx)).catch(() => {}); }
+    catch { /* A rejected resume remains retryable from the next gesture. */ }
+  }
+
+  private audioReady(ctx: Ctx): void {
+    if (ctx !== this.ctx || ctx.state !== "running" || this.paused || this._muted) return;
+    if (!this.ambient && this.ambientCue) this.createAmbient(this.ambientCue);
+    const pending = this.pendingCue;
+    this.pendingCue = null;
+    // Never replay a backlog of finds after an interruption or permission prompt.
+    if (pending && Date.now() - pending.requestedAt <= 1000) this.play(pending.cue);
   }
 
   play(cue: SoundCue): void {
-    if (!this.ctx || !this.master || this._muted) return;
+    if (!this.ctx || !this.master || this._muted || this.paused) return;
+    if (this.ctx.state !== "running") {
+      if (this.ctx.state !== "closed") this.pendingCue = { cue, requestedAt: Date.now() };
+      return;
+    }
     const t = this.ctx.currentTime;
     switch (cue) {
       case "pop":
@@ -172,7 +217,12 @@ export class SoundManager {
 
   startAmbient(cue: SoundCue | undefined): void {
     this.stopAmbient();
-    if (!cue || !this.ctx || !this.master) return;
+    this.ambientCue = cue;
+    if (cue && !this._muted && !this.paused && this.ctx?.state === "running") this.createAmbient(cue);
+  }
+
+  private createAmbient(cue: SoundCue): void {
+    if (!this.ctx || !this.master) return;
     const settings: Record<string, { freq: number; q: number; gain: number }> = {
       waves: { freq: 220, q: 0.6, gain: 0.08 },
       jungle: { freq: 900, q: 1.2, gain: 0.05 },
@@ -201,21 +251,27 @@ export class SoundManager {
     source.connect(filter).connect(gain).connect(this.master);
     source.start();
     lfo.start();
-    this.ambient = { source, gain };
+    this.ambient = { source, gain, lfo, filter, lfoGain };
   }
 
   stopAmbient(): void {
-    if (!this.ambient || !this.ctx) return;
-    const { source, gain } = this.ambient;
-    gain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.3);
-    setTimeout(() => {
-      try {
-        source.stop();
-      } catch {
-        /* already stopped */
-      }
-    }, 800);
+    this.ambientCue = undefined;
+    this.releaseAmbient(true);
+  }
+
+  private releaseAmbient(fade: boolean): void {
+    if (!this.ambient) return;
+    const { source, gain, lfo, filter, lfoGain } = this.ambient;
     this.ambient = null;
+    const stop = () => {
+      try { source.stop(); } catch { /* Already stopped or closed. */ }
+      try { lfo.stop(); } catch { /* Stop the modulation oscillator too. */ }
+      source.disconnect(); lfo.disconnect(); gain.disconnect(); filter.disconnect(); lfoGain.disconnect();
+    };
+    if (fade && this.ctx?.state === "running") {
+      gain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.3);
+      setTimeout(stop, 800);
+    } else stop();
   }
 
   /** A voicing for this cue that is not the one it played last time. */
@@ -232,6 +288,24 @@ export class SoundManager {
     for (const [freq, dur, offset, type, vol] of notes) this.blip(freq * pitch, dur, at + offset, type, vol);
   }
 
+  private trackOneShot(source: AudioScheduledSourceNode, nodes: AudioNode[]): void {
+    const cleanup = () => {
+      this.oneShots.delete(source);
+      source.onended = null;
+      source.disconnect();
+      for (const node of nodes) node.disconnect();
+    };
+    source.onended = cleanup;
+    this.oneShots.set(source, cleanup);
+  }
+
+  private stopOneShots(): void {
+    for (const [source, cleanup] of this.oneShots) {
+      try { source.stop(); } catch { /* Already ended. */ }
+      cleanup();
+    }
+  }
+
   private blip(freq: number, dur: number, at: number, type: OscillatorType, vol: number): void {
     if (!this.ctx || !this.master) return;
     const osc = this.ctx.createOscillator();
@@ -242,6 +316,7 @@ export class SoundManager {
     gain.gain.exponentialRampToValueAtTime(vol, at + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.0001, at + dur);
     osc.connect(gain).connect(this.master);
+    this.trackOneShot(osc, [gain]);
     osc.start(at);
     osc.stop(at + dur + 0.02);
   }
@@ -256,6 +331,7 @@ export class SoundManager {
     gain.gain.setValueAtTime(vol, at);
     gain.gain.exponentialRampToValueAtTime(0.0001, at + dur);
     osc.connect(gain).connect(this.master);
+    this.trackOneShot(osc, [gain]);
     osc.start(at);
     osc.stop(at + dur + 0.02);
   }
@@ -273,6 +349,7 @@ export class SoundManager {
     const gain = this.ctx.createGain();
     gain.gain.value = vol;
     src.connect(filter).connect(gain).connect(this.master);
+    this.trackOneShot(src, [filter, gain]);
     src.start(at);
   }
 }
@@ -291,4 +368,30 @@ let shared: SoundManager | null = null;
 export function sounds(): SoundManager {
   if (!shared) shared = new SoundManager();
   return shared;
+}
+
+/** Scope gesture unlock and page lifecycle to the mounted game, including
+ * gift/map screens and returning mobile tabs. No sound is played by the hook. */
+export function bindGameAudio(element: HTMLElement, manager = sounds()): () => void {
+  const gesture = () => manager.unlock();
+  const keyboard = (event: KeyboardEvent) => {
+    if (event.key === "Enter" || event.key === " ") manager.unlock();
+  };
+  const visibility = () => document.hidden ? manager.suspend() : manager.resume();
+  const hidden = () => manager.suspend();
+  for (const type of ["pointerup", "touchend", "click"]) element.addEventListener(type, gesture, { capture: true, passive: true });
+  element.addEventListener("keydown", keyboard, true);
+  document.addEventListener("visibilitychange", visibility);
+  window.addEventListener("pagehide", hidden);
+  window.addEventListener("pageshow", visibility);
+  visibility();
+  return () => {
+    for (const type of ["pointerup", "touchend", "click"]) element.removeEventListener(type, gesture, true);
+    element.removeEventListener("keydown", keyboard, true);
+    document.removeEventListener("visibilitychange", visibility);
+    window.removeEventListener("pagehide", hidden);
+    window.removeEventListener("pageshow", visibility);
+    manager.stopAmbient();
+    manager.suspend();
+  };
 }

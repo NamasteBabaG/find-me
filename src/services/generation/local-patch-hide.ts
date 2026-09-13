@@ -18,14 +18,14 @@ import { readBoardConditionedCatalog } from "./board-conditioned-catalog";
 import { assertGenerationSpendAllowed, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { localPatchGeometry, type LocalPatchGeometry } from "./local-patch-geometry";
 import { renderLocalPatchHide, type LocalPatchRenderDeps } from "./local-patch-render";
-import { LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_CANONICAL_PROMPT_VERSION, localPatchRepairChecks } from "./local-patch-prompt";
+import { LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_CANONICAL_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, localPatchRepairChecks } from "./local-patch-prompt";
 import { prepareLocalPatchIdentityReferences } from "./local-patch-identity-reference";
 import { buildBoardPeopleStyle } from "./board-wizard-identity-style";
 import type { PatchGeometry } from "./patch";
 import { readPinnedLocalPatchArt } from "./local-patch-art";
 import { env } from "../../lib/env";
 import { LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_NORMAL_ATTEMPTS, nextLocalPatchAttempt } from "../../domain/scene/local-patch-attempts";
-import { isLocalPatchAdvisoryVersion, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
+import { isLocalPatchAdvisoryVersion, isLocalPatchAgeVersion, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
 import { localPatchPublicationGeometryHash } from "./local-patch-publication-policy";
 export { LOCAL_PATCH_MAX_ATTEMPTS, nextLocalPatchAttempt } from "../../domain/scene/local-patch-attempts";
 
@@ -239,7 +239,8 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     contentVersion: scene.sceneVersion,
   });
   const boardDrawn = identityApproval.provenance.style.version === "board-matched-identity/v2";
-  const promptVersion = isLocalPatchStrictVersion(scene.sceneVersion) ? LOCAL_PATCH_CANONICAL_PROMPT_VERSION
+  const promptVersion = isLocalPatchAgeVersion(scene.sceneVersion) ? LOCAL_PATCH_AGE_PROMPT_VERSION
+    : isLocalPatchStrictVersion(scene.sceneVersion) ? LOCAL_PATCH_CANONICAL_PROMPT_VERSION
     : isLocalPatchAdvisoryVersion(scene.sceneVersion) ? LOCAL_PATCH_FIVE_PROMPT_VERSION
     : boardDrawn ? LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION : LOCAL_PATCH_PROMPT_VERSION;
 

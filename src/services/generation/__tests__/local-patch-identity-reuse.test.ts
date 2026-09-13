@@ -27,7 +27,7 @@ import { GameConfigSchema } from "../../../domain/game/config";
 import { enqueueLocalPatchNotifications } from "../../local-patch-notifications";
 import { sha256Bytes } from "../fixed-sprite";
 import { createCanonicalIdentityReuse, requireCanonicalIdentityReuse, finishCanonicalIdentityReuse,
-  CANONICAL_IDENTITY_REUSE_ACTION, CANONICAL_IDENTITY_REUSE_CONFIRMATION } from "../local-patch-identity-reuse";
+  CANONICAL_IDENTITY_REUSE_ACTION, CANONICAL_IDENTITY_REUSE_CONFIRMATION, CANONICAL_IDENTITY_AGE_CONFIRMATION } from "../local-patch-identity-reuse";
 
 const state = vi.hoisted(() => ({ appEnv: "qa", testers: [] as string[] }));
 vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: state.appEnv, GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: 0,
@@ -76,7 +76,7 @@ async function fixture() {
   await db.asset.update({ where: { id: `ast-photo-${gameId}` }, data: { status: "DELETED", deletedAt: new Date() } });
   await db.fileBlob.delete({ where: { key: `private/photo-${gameId}.jpg` } });
   const actor = { type: "ADMIN" as const, id: source.userId };
-  const input = { sourceGameId: gameId, sourceIdentityAssetId: `ast-sheet-${gameId}`, requestId: `request-${gameId}`, displayName: "עומר", confirmation: CANONICAL_IDENTITY_REUSE_CONFIRMATION };
+  const input = { sourceGameId: gameId, sourceIdentityAssetId: `ast-sheet-${gameId}`, requestId: `request-${gameId}`, displayName: "עומר", confirmedAgeYears: 8, confirmation: CANONICAL_IDENTITY_REUSE_CONFIRMATION };
   return { c, source, input, actor, payment, receipt };
 }
 
@@ -87,6 +87,121 @@ async function pay(f: Awaited<ReturnType<typeof fixture>>, game: { orderId: stri
 }
 
 describe("explicit QA adoption of a paid canonical identity whose photo was privacy-purged", () => {
+  it("a stale age-review worker cannot fail or change the replacement's live game after retaining its paid answer", async () => {
+    const f = await fixture(), result = await createCanonicalIdentityReuse(f.c,
+      { ...f.input, confirmedAgeYears: 5, confirmation: CANONICAL_IDENTITY_AGE_CONFIRMATION }, f.actor);
+    await pay(f, result);
+    let replacementJob: Awaited<ReturnType<typeof db.generationJob.findUniqueOrThrow>> | undefined;
+    let replacementGame: Awaited<ReturnType<typeof db.game.findUniqueOrThrow>> | undefined;
+    const wire = vi.mocked(fetch);
+    wire.mockImplementationOnce(async () => {
+      // The provider is already waiting. A fresh worker takes this exact lease.
+      replacementJob = await db.generationJob.update({ where: { id: `job_${result.gameId}` },
+        data: { attempts: { increment: 1 }, status: "RUNNING", currentStep: "avatar", lastError: "replacement-owned" } });
+      replacementGame = await db.game.update({ where: { id: result.gameId }, data: { status: "AVATAR_GENERATING", lastError: "replacement-owned" } });
+      return new Response(JSON.stringify({ model: "gpt-5.6-luna", usage: { prompt_tokens: 1500, completion_tokens: 250 },
+        choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ checks: { identity: "pass", faceAge: "pass", usableFace: "pass" }, reason: "Synthetic complete canonical face" }) } }] }),
+        { headers: { "x-request-id": `req-stale-age-${result.gameId}` } });
+    });
+    try {
+      await runGenerationPipeline(f.c, result.gameId);
+      expect(replacementJob).toBeDefined(); expect(replacementGame).toBeDefined();
+      expect(await db.generationJob.findUniqueOrThrow({ where: { id: `job_${result.gameId}` } })).toEqual(replacementJob);
+      // Retaining a paid answer takes the existing deletion lock on Game and
+      // may touch updatedAt; no domain field or replacement job may change.
+      expect({ ...await db.game.findUniqueOrThrow({ where: { id: result.gameId } }), updatedAt: replacementGame!.updatedAt }).toEqual(replacementGame);
+      const bill = await boardWizardBudgetOf(f.c).readRequest(boardWizardWorldId(result.gameId), "canonical-age:identity:1");
+      expect(bill?.state).toBe("settled"); expect(wire).toHaveBeenCalledTimes(1);
+      await finishCanonicalIdentityReuse(f.c, { gameId: result.gameId, jobId: replacementJob!.id, jobAttempt: replacementJob!.attempts });
+      expect(await db.game.findUniqueOrThrow({ where: { id: result.gameId } })).toMatchObject({ status: "TARGETS_GENERATING", lastError: null });
+      expect(await db.generationJob.findUniqueOrThrow({ where: { id: replacementJob!.id } })).toMatchObject({ status: "QUEUED", currentStep: "local-patch", attempts: replacementJob!.attempts });
+      expect(await boardWizardBudgetOf(f.c).readRequest(boardWizardWorldId(result.gameId), "canonical-age:identity:1")).toEqual(bill);
+      expect(wire).toHaveBeenCalledTimes(1);
+      expect(createCharacter).not.toHaveBeenCalled();
+    } finally { wire.mockClear(); }
+  });
+  it("an owned canonical-age refusal remains visible without sending any image request", async () => {
+    const f = await fixture(), result = await createCanonicalIdentityReuse(f.c,
+      { ...f.input, confirmedAgeYears: 5, confirmation: CANONICAL_IDENTITY_AGE_CONFIRMATION }, f.actor);
+    await pay(f, result); const wire = vi.mocked(fetch);
+    wire.mockImplementationOnce(async () => new Response(JSON.stringify({ model: "gpt-5.6-luna", usage: { prompt_tokens: 1500, completion_tokens: 250 },
+      choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ checks: { identity: "pass", faceAge: "fail", usableFace: "pass" }, reason: "Synthetic face does not read as target age5" }) } }] }),
+      { headers: { "x-request-id": `req-refused-age-${result.gameId}` } }));
+    try {
+      await runGenerationPipeline(f.c, result.gameId);
+      expect(await db.generationJob.findUniqueOrThrow({ where: { id: `job_${result.gameId}` } }))
+        .toMatchObject({ status: "FAILED", currentStep: "avatar", lastError: expect.stringContaining("target age5") });
+      expect(await db.game.findUniqueOrThrow({ where: { id: result.gameId } }))
+        .toMatchObject({ status: "MANUAL_REVIEW", lastError: expect.stringContaining("target age5") });
+      expect(wire).toHaveBeenCalledTimes(1); expect(createCharacter).not.toHaveBeenCalled();
+    } finally { wire.mockClear(); }
+  });
+  it("runs paid v9 age correction through the real pipeline, durable review and first age5 hide without another portrait", async () => {
+    const f = await fixture(), result = await createCanonicalIdentityReuse(f.c,
+      { ...f.input, confirmedAgeYears: 5, confirmation: CANONICAL_IDENTITY_AGE_CONFIRMATION }, f.actor);
+    await pay(f, result);
+    const wire = vi.mocked(fetch);
+    wire.mockImplementationOnce(async (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      expect(body.model).toBe("gpt-5.6-luna"); expect(body.reasoning_effort).toBe("low");
+      expect(JSON.stringify(body)).toContain("historical record 8 to 5 years");
+      expect(JSON.stringify(body)).toContain("NOT original-photograph verification");
+      return new Response(JSON.stringify({ model: "gpt-5.6-luna", usage: { prompt_tokens: 1500, completion_tokens: 250, total_tokens: 1750 },
+        choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ checks: { identity: "pass", faceAge: "pass", usableFace: "pass" }, reason: "Synthetic age5 canonical-only review" }) } }] }),
+        { headers: { "x-request-id": `req-age-${result.gameId}` } });
+    });
+    await runGenerationPipeline(f.c, result.gameId);
+    const game = await db.game.findUniqueOrThrow({ where: { id: result.gameId }, include: { childProfile: true } });
+    expect(game.status).toBe("TARGETS_GENERATING"); expect(wire).toHaveBeenCalledTimes(1);
+    const proof = await requireCanonicalIdentityReuse(f.c, { gameId: result.gameId });
+    expect(proof?.ageReview).toMatchObject({ state: "pass", sourceKind: "parent-accepted-canonical-drawing-no-source-photo", binding: { targetAgeYears: 5, sourceAgeYears: 8 } });
+    expect(proof?.sourceReceipt.provenance.ageYears).toBe(8);
+    const board = localPatchBoardsForVersion(9)[0]!, hide = board.hides[0]!;
+    const render = vi.fn(async ({ stylePng, prompt }: { stylePng: Buffer; prompt: string }) => {
+      expect(prompt).toContain("5"); expect(prompt).toContain("FACE");
+      return paintedOk(await paintedCrop(stylePng, hide), bill(`req-age5-hide-${result.gameId}`));
+    });
+    const first = await runLocalPatchWorldSlice(f.c, { renderPolicySha256: "a".repeat(64), render, judge: async () => { throw new Error("No per-hide review"); }, readBoardArt: boardPng }, result.gameId,
+      { maxHides: 1, boardJudge: async () => { throw new Error("No grouped review until five hides exist"); } });
+    expect(first.outcomes[0]?.state).toBe("generated"); expect(render).toHaveBeenCalledTimes(1);
+    expect(createCharacter).not.toHaveBeenCalled(); expect(wire).toHaveBeenCalledTimes(1);
+    const fresh = new PrismaClient({ datasources: { db: { url: `file:${path.join(scratch, "reuse.sqlite").split(path.sep).join("/")}` } } });
+    try {
+      const after = await requireCanonicalIdentityReuse({ ...f.c, db: fresh, storage: new DbStorage(fresh) }, { gameId: result.gameId });
+      expect(after?.ageReview?.state).toBe("pass");
+      const ledger = await new PrismaWorldBudgetStore(fresh).read(boardWizardWorldId(result.gameId));
+      expect(ledger?.snapshot.requests.map(row => row.scope).sort()).toEqual(["image", "judge"]);
+      expect(ledger?.snapshot.requests.every(row => row.state === "settled")).toBe(true);
+    } finally { await fresh.$disconnect(); }
+    wire.mockClear();
+  });
+  it("records corrected age5 separately from the frozen age8 source, without purchasing or inventing an approval", async () => {
+    const f = await fixture(), sourceBefore = await db.childProfile.findUniqueOrThrow({ where: { id: `chl-${f.source.gameId}` } });
+    const ledgerBefore = await new PrismaWorldBudgetStore(db).read(boardWizardWorldId(f.source.gameId));
+    const input = { ...f.input, confirmedAgeYears: 5, confirmation: CANONICAL_IDENTITY_AGE_CONFIRMATION };
+    const result = await createCanonicalIdentityReuse(f.c, input, f.actor);
+    const proof = await requireCanonicalIdentityReuse(f.c, { gameId: result.gameId, allowPendingAgeReview: true });
+    expect(proof?.record).toMatchObject({ version: "canonical-identity-reuse/v2", ageYears: 5, sourceAgeYears: 8, contentVersion: 9,
+      ageEvidence: "parent-corrected-age-canonical-face-only" });
+    expect(proof?.sourceReceipt.provenance.ageYears).toBe(8);
+    const game = await db.game.findUniqueOrThrow({ where: { id: result.gameId }, include: { childProfile: true, scenes: true } });
+    expect(game.childProfile?.ageYears).toBe(5); expect(game.scenes.every(scene => scene.sceneVersion === 9)).toBe(true);
+    expect(game.status).toBe("CHECKOUT_PENDING");
+    await expect(requireCanonicalIdentityReuse(f.c, { gameId: result.gameId })).rejects.toThrow();
+    expect(await identityApprovedForDisplay(f.c, game.childProfile!, 9)).toBe(false);
+    expect(await db.childProfile.findUniqueOrThrow({ where: { id: sourceBefore.id } })).toEqual(sourceBefore);
+    expect(await new PrismaWorldBudgetStore(db).read(boardWizardWorldId(f.source.gameId))).toEqual(ledgerBefore);
+    expect(await createCanonicalIdentityReuse(f.c, input, f.actor)).toEqual({ ...result, replayed: true });
+    await expect(createCanonicalIdentityReuse(f.c, { ...input, confirmedAgeYears: 8 }, f.actor)).rejects.toThrow("already used");
+    expect(createCharacter).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+  });
+  it("refuses a corrected age5 against age8 approval before checkout, copying or any purchase", async () => {
+    const f = await fixture(), checkout = vi.spyOn(f.payment, "createCheckout");
+    const before = { games: await db.game.count(), assets: await db.asset.count(), blobs: await db.fileBlob.count(), orders: await db.order.count() };
+    await expect(createCanonicalIdentityReuse(f.c, { ...f.input, confirmedAgeYears: 5 }, f.actor)).rejects.toThrow("fresh age-specific review");
+    expect({ games: await db.game.count(), assets: await db.asset.count(), blobs: await db.fileBlob.count(), orders: await db.order.count() }).toEqual(before);
+    expect(checkout).not.toHaveBeenCalled(); expect(createCharacter).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+  });
   it("copies exact sheet bytes into a separate unpaid v8 checkout and leaves the source and its entire ledger unchanged", async () => {
     const f = await fixture(), sourceBefore = await db.game.findUniqueOrThrow({ where: { id: f.source.gameId } });
     const ledgerBefore = await new PrismaWorldBudgetStore(db).read(boardWizardWorldId(f.source.gameId));

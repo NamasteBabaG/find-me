@@ -38,7 +38,7 @@ const request = () => ({
 });
 
 describe("buying one local patch", () => {
-  it.each([[6, "medium"], [7, "low"], [8, "low"]] as const)("sends the explicitly selected v%i quality without changing size or image model", async (version, quality) => {
+  it.each([[6, "medium"], [7, "low"], [8, "low"], [9, "low"]] as const)("sends the explicitly selected v%i quality without changing size or image model", async (version, quality) => {
     const fetchOnce = vi.fn<typeof fetch>(async () => answer());
     const policy = localPatchImagePolicyForVersion(version);
     await buyLocalPatch("synthetic-never-live", request(), { policy, fetchOnce });
@@ -50,14 +50,16 @@ describe("buying one local patch", () => {
     expect(form.get("n")).toBe("1");
   });
 
-  it("keeps the pre-LOW legacy policy and fingerprint identical, with exact v7 opt-in", () => {
+  it("keeps the pre-LOW legacy policy and fingerprint identical, with exact v7/v8/v9 opt-in", () => {
     const historicalHash = localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY);
-    for (const version of [undefined, 5, 6, 9]) {
+    for (const version of [undefined, 5, 6, 10]) {
       expect(localPatchImagePolicyForVersion(version)).toBe(LOCAL_PATCH_IMAGE_POLICY);
       expect(localPatchRenderPolicySha256(localPatchImagePolicyForVersion(version))).toBe(historicalHash);
     }
-    expect(localPatchImagePolicyForVersion(7)).toEqual({ ...LOCAL_PATCH_IMAGE_POLICY, quality: "low" });
-    expect(localPatchRenderPolicySha256(localPatchImagePolicyForVersion(7))).not.toBe(historicalHash);
+    for (const version of [7, 8, 9]) {
+      expect(localPatchImagePolicyForVersion(version)).toEqual({ ...LOCAL_PATCH_IMAGE_POLICY, quality: "low" });
+      expect(localPatchRenderPolicySha256(localPatchImagePolicyForVersion(version))).not.toBe(historicalHash);
+    }
   });
 
   it("sends explicit board people as the third image without enlarging the identity portrait", async () => {
@@ -76,7 +78,7 @@ describe("buying one local patch", () => {
     const canonical = await sharp({ create: { width: 1024, height: 1024, channels: 4, background: "#f0c0c0" } }).png().toBuffer();
     const canonicalBefore = Buffer.from(canonical);
     const fetchOnce = vi.fn<typeof fetch>(async () => answer());
-    await buyLocalPatch("synthetic-no-network", { ...request(), boardPeoplePng: people, canonicalIdentityPng: canonical },
+    const result = await buyLocalPatch("synthetic-no-network", { ...request(), boardPeoplePng: people, canonicalIdentityPng: canonical },
       { policy: localPatchImagePolicyForVersion(8), fetchOnce });
     expect(fetchOnce).toHaveBeenCalledTimes(1);
     const form = fetchOnce.mock.calls[0]![1]!.body as FormData;
@@ -85,13 +87,21 @@ describe("buying one local patch", () => {
     expect(Buffer.from(await images[0]!.arrayBuffer())).toEqual(crop);
     expect(await sharp(Buffer.from(await images[1]!.arrayBuffer())).metadata()).toMatchObject({ width: 512, height: 512 });
     expect(Buffer.from(await images[2]!.arrayBuffer())).toEqual(people);
-    expect(await sharp(Buffer.from(await images[3]!.arrayBuffer())).ensureAlpha().raw().toBuffer())
-      .toEqual(await sharp(canonical).ensureAlpha().raw().toBuffer());
+    const returnedSheet = Buffer.from(await images[3]!.arrayBuffer());
+    expect(await sharp(returnedSheet).metadata()).toMatchObject({ width: 1024, height: 1024 });
+    const [actualPixels, expectedPixels] = await Promise.all([
+      sharp(returnedSheet).ensureAlpha().raw().toBuffer(), sharp(canonical).ensureAlpha().raw().toBuffer(),
+    ]);
+    // Compare all 4 MiB byte-for-byte natively; Vitest's recursive object
+    // comparison needlessly walks millions of Buffer properties under load.
+    expect(actualPixels.equals(expectedPixels)).toBe(true);
     expect(form.get("quality")).toBe("low");
     expect(canonical).toEqual(canonicalBefore);
     await expect(buyLocalPatch("synthetic-no-network", { ...request(), canonicalIdentityPng: canonical }, { fetchOnce }))
       .rejects.toThrow(/explicit board reference/);
     expect(fetchOnce).toHaveBeenCalledTimes(1);
+    expect(result.evidence).toMatchObject({ amountMicroUsd: 10 * 5 + 20 * 8 + 196 * 30,
+      providerRequestId: "req-local-patch-1", costBasis: "conservative-upper-estimate" });
   });
 
   it("sends the request the paid round proved, once", async () => {

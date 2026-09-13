@@ -274,6 +274,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     toggleMute() {
       const muted = !get().muted;
       sounds().setMuted(muted);
+      if (!muted) sounds().unlock();
       set({ muted });
     },
   }));

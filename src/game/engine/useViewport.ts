@@ -84,23 +84,17 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
     [stage, panPadding],
   );
 
-  // Measure the container and fit on first layout / resize.
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    let first = true;
-    const ro = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect;
-      if (!rect || !rect.width || !rect.height) return;
+  const measure = useCallback((rect: Size) => {
+      if (!rect.width || !rect.height) return;
       const previousViewport = viewportRef.current;
+      if (previousViewport.width === rect.width && previousViewport.height === rect.height) return;
       const previousFit = fitRef.current;
       const vp = { width: rect.width, height: rect.height };
       viewportRef.current = vp;
       setViewport(vp);
       const f = fitScale(vp, stage, chooseFitMode(vp, stage));
       fitRef.current = f;
-      if (first) {
-        first = false;
+      if (!previousViewport.width || !previousViewport.height) {
         const t = centeredTransform(vp, stage, f);
         transformRef.current = t;
         setTransform(clampTransform(t, vp, stage, f, f * MAX_ZOOM_FACTOR, panPadding));
@@ -118,6 +112,18 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
         transformRef.current = next;
         setTransform(next);
       }
+  }, [stage, panPadding]);
+
+  // Measure the container and fit on first layout / resize. Reset also uses
+  // this path: a browser's resize notification can arrive after the curtain's
+  // timer, even though its layout box has already changed.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    measure(el.getBoundingClientRect());
+    const ro = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (rect) measure(rect);
     });
     ro.observe(el);
     return () => {
@@ -126,7 +132,7 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
       raf.current = null;
       pointers.current.clear();
     };
-  }, [containerRef, stage, panPadding]);
+  }, [containerRef, measure]);
 
   const cancelAnim = () => {
     if (raf.current) cancelAnimationFrame(raf.current);
@@ -278,8 +284,10 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
   );
 
   const reset = useCallback((durationMs = 320) => {
+    const bounds = containerRef.current?.getBoundingClientRect();
+    if (bounds) measure(bounds);
     animateTo(centeredTransform(viewportRef.current, stage, fitRef.current), durationMs);
-  }, [animateTo, stage]);
+  }, [animateTo, stage, containerRef, measure]);
 
   const focusOn = useCallback(
     (nx: number, ny: number, zoomFactor: number, durationMs = 500) => {

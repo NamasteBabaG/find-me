@@ -242,6 +242,11 @@ describe("strict v8 candidate review", () => {
     expect(keys).toContain(oldKey); expect(keys).toContain(headSafeKey); expect(keys).toContain(currentKey);
     const inventory = await localPatchPrivateInventory(c, GAME);
     for (const key of [oldKey, headSafeKey, currentKey]) expect(inventory.retainedPurchaseKeys).toContain(retainedPurchaseKey(worldId, key));
+    const ageKey = localPatchBoardReviewKey("sydney", [1, 1, 1, 1, 1], LOCAL_PATCH_COMPOSITION_VERSION, 9);
+    expect(ageKey).not.toBe(currentKey);
+    expect(localPatchBoardReviewKeys("sydney", 9)).toContain(ageKey);
+    expect(inventory.retainedPurchaseKeys).toContain(retainedPurchaseKey(worldId, ageKey));
+    expect(inventory.retainedPurchaseKeys).toContain(retainedPurchaseKey(worldId, "canonical-age:identity:1"));
   });
   it("defers an old composed crop until free refresh rather than judging its obsolete truncated pixels", async () => {
     const row = await db.targetVariantAsset.findUniqueOrThrow({ where: { id: "variant-0" } }), meta = JSON.parse(row.judgeJson!);

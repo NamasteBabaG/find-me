@@ -504,7 +504,7 @@ export async function localPatchPrivateInventory(c: { db: Pick<Prisma.Transactio
   const assets = [...new Map([...written, ...named].map(a => [a.id, a])).values()];
 
   const worldId = boardWizardWorldId(gameId);
-  const requestKeys: string[] = [];
+  const requestKeys: string[] = ["canonical-age:identity:1"];
   for (const board of ALL_LOCAL_PATCH_BOARDS) {
     for (const hide of board.hides) {
       for (let attempt = 1; attempt <= LOCAL_PATCH_MAX_ATTEMPTS; attempt++) {
@@ -512,7 +512,9 @@ export async function localPatchPrivateInventory(c: { db: Pick<Prisma.Transactio
       }
     }
   }
-  for (const boardId of new Set(ALL_LOCAL_PATCH_BOARDS.map(board => board.board))) requestKeys.push(...localPatchBoardReviewKeys(boardId));
+  for (const boardId of new Set(ALL_LOCAL_PATCH_BOARDS.map(board => board.board))) {
+    requestKeys.push(...localPatchBoardReviewKeys(boardId), ...localPatchBoardReviewKeys(boardId, 9));
+  }
   // These keys are frozen BEFORE a repair dispatch, so a crash before the
   // result-row write cannot orphan the private retained judge evidence.
   for (const audit of await c.db.auditLog.findMany({ where: { action: LOCAL_PATCH_PAID_REPAIR_ACTION, entityType: "Game", entityId: gameId }, select: { metaJson: true } })) {

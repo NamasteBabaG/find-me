@@ -15,7 +15,7 @@ import { boardsOfWorlds, purchasableWorlds, purchasableWorldSlugs, worldBySlug }
 import { SYSTEM } from "./audit.service";
 import { env } from "@/lib/env";
 import { LOCAL_PATCH_STYLE } from "./generation/local-patch-world";
-import { LOCAL_PATCH_STRICT_SCENE_VERSION } from "../domain/scene/local-patch-catalog";
+import { LOCAL_PATCH_AGE_SCENE_VERSION } from "../domain/scene/local-patch-catalog";
 
 /**
  * The parent's creation flow, step by step. A "draft" is just a Game in
@@ -204,7 +204,7 @@ export async function selectWorlds(c: Container, gameId: string, slugs: string[]
 
 async function replaceScenes(c: Container, gameId: string, slugs: string[]): Promise<void> {
   const game = await c.db.game.findUniqueOrThrow({ where: { id: gameId }, select: { styleVersion: true } });
-  const version = game.styleVersion === LOCAL_PATCH_STYLE ? LOCAL_PATCH_STRICT_SCENE_VERSION : undefined;
+  const version = game.styleVersion === LOCAL_PATCH_STYLE ? LOCAL_PATCH_AGE_SCENE_VERSION : undefined;
   await c.db.gameScene.deleteMany({ where: { gameId } });
   await c.db.gameScene.createMany({
     data: slugs.map((slug, i) => ({ id: newId("gsc"), gameId, sceneSlug: slug, sceneVersion: sceneBySlug(slug, version).version, orderIndex: i })),

@@ -14,7 +14,7 @@ import { GameShell } from "../components/GameShell";
 import { GameI18nProvider } from "../i18n";
 import { createPlayStore } from "../store/play-store";
 
-vi.mock("../audio/sounds", () => ({ sounds: () => ({ unlock() {}, play() {}, startAmbient() {}, stopAmbient() {} }) }));
+vi.mock("../audio/sounds", () => ({ sounds: () => ({ unlock() {}, play() {}, startAmbient() {}, stopAmbient() {} }), bindGameAudio: () => () => {} }));
 beforeEach(() => {
   vi.stubGlobal("React", React);
   vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, addEventListener() {}, removeEventListener() {} })));

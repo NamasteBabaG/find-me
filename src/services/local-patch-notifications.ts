@@ -102,9 +102,10 @@ export async function enqueueLocalPatchNotifications(c: Container, tx: Prisma.Tr
   const identity = await tx.auditLog.findFirst({ where: { action: IDENTITY_GATE_ACTION, entityType: "Asset", entityId: game.childProfile.identityAssetId ?? "" }, orderBy: { createdAt: "desc" } });
   let identityConcern: string | null = null;
   try {
-    const reused = !identity && game.scenes.every(scene => scene.sceneVersion === 8)
+    const reused = !identity && game.scenes.every(scene => scene.sceneVersion === 8 || scene.sceneVersion === 9)
       ? await requireCanonicalIdentityReuse({ ...c, db: tx as Container["db"], storage: new DbStorage(tx as Container["db"]) }, { gameId }) : null;
-    const receipt = reused?.sourceReceipt ?? JSON.parse(identity?.metaJson ?? "null");
+    const receipt = reused?.ageReview ? { approved: reused.ageReview.state === "pass", reason: reused.ageReview.reason }
+      : reused?.sourceReceipt ?? JSON.parse(identity?.metaJson ?? "null");
     if (!receipt?.approved) identityConcern = typeof receipt?.reason === "string" ? receipt.reason.slice(0, 800) : "ביקורת הזהות לא אישרה את האיור; התוצר פורסם לפי מדיניות ההתראות";
   } catch { identityConcern = "ביקורת הזהות אינה זמינה לפענוח"; }
   const messages: { kind: Notice["kind"]; message: EmailMessage; viaFallback: boolean }[] = [];

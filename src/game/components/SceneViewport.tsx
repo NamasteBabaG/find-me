@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { SceneConfig, TargetConfig } from "@/domain/game/config";
 import type { MissionState } from "@/domain/game/mission";
 import { currentTargetId, isFound, visibleTargetId } from "@/domain/game/mission";
@@ -23,6 +23,8 @@ interface Props {
   onReady?: (api: ViewportApi) => void;
   /** Every image this board can show has decoded — base, foreground, all three children, the bonus. */
   onAssetsReady?: () => void;
+  /** The currently mounted board/child images, not just off-DOM preloads, decoded. */
+  onVisibleAssetsReady?: (ready: boolean) => void;
   /** Something the board cannot open without did not load. The player shows a calm retry. */
   onAssetsFailed?: () => void;
   /** Bumped by the player to load again after a failure. */
@@ -43,7 +45,7 @@ interface Ripple {
  * All hit-testing is math on normalized coordinates (no DOM hit targets), so a
  * tap resolves the same way on every device and at every zoom.
  */
-export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, onReady, onAssetsReady, onAssetsFailed, retryToken = 0, ariaLabel, children }: Props) {
+export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, onReady, onAssetsReady, onVisibleAssetsReady, onAssetsFailed, retryToken = 0, ariaLabel, children }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stage = useMemo(() => ({ width: scene.art.width, height: scene.art.height }), [scene.art.width, scene.art.height]);
   const [ripples, setRipples] = useState<Ripple[]>([]);
@@ -137,6 +139,9 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
   assetsReadyRef.current = onAssetsReady;
   const assetsFailedRef = useRef(onAssetsFailed);
   assetsFailedRef.current = onAssetsFailed;
+  // Keep the decoded images alive for this board, including the next four
+  // children. A completed promise alone does not retain its Image object.
+  const preloadedImages = useRef<HTMLImageElement[]>([]);
   useEffect(() => {
     let settled = false;
     const settle = (verdict: "ready" | "failed") => {
@@ -159,6 +164,7 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
             // All essential pixels must decode before the curtain opens.
             // A delayed/failed decode takes the ordinary bounded retry path.
             const img = new Image();
+            preloadedImages.current.push(img);
             img.onload = () => {
               if (typeof img.decode !== "function") { resolve({ url, ok: true }); return; }
               void img.decode().then(() => resolve({ url, ok: true }), () => resolve({ url, ok: false }));
@@ -171,6 +177,8 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
     return () => {
       settled = true;
       clearTimeout(slow);
+      for (const img of preloadedImages.current) { img.onload = null; img.onerror = null; }
+      preloadedImages.current = [];
     };
     // Once per board, and again on an explicit retry.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -197,6 +205,29 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
    */
   const visible = visibleTargetId(mission);
   const onBoard = placedTargets.filter((p) => p.target.id === visible);
+  const visibleReadyRef = useRef(onVisibleAssetsReady);
+  visibleReadyRef.current = onVisibleAssetsReady;
+  const decodedMounted = useRef(new WeakMap<HTMLImageElement, string>());
+  useLayoutEffect(() => {
+    // A newly mounted <img> may decode again on a memory-constrained phone.
+    // Mark it unavailable before paint; an old target's late promise cannot
+    // reopen the curtain over the next target or over the retry screen.
+    const images = [...(containerRef.current?.querySelectorAll<HTMLImageElement>("img.stage__base, [data-target] img") ?? [])];
+    const decodable = images.filter(img => typeof img.decode === "function" && decodedMounted.current.get(img) !== img.src);
+    if (!decodable.length) { visibleReadyRef.current?.(true); return; } // Older browsers retain the preload/load gate.
+    let active = true;
+    visibleReadyRef.current?.(false);
+    const failed = () => { if (active) { active = false; clearTimeout(timeout); assetsFailedRef.current?.(); } };
+    const timeout = setTimeout(failed, 20_000);
+    void Promise.all(decodable.map(img => Promise.resolve().then(() => img.decode()))).then(() => {
+      if (active) {
+        clearTimeout(timeout);
+        for (const img of decodable) decodedMounted.current.set(img, img.src);
+        visibleReadyRef.current?.(true);
+      }
+    }, failed);
+    return () => { active = false; clearTimeout(timeout); };
+  }, [visible, scene.art.base, retryToken]);
   const { transform } = api;
   const stageStyle: React.CSSProperties = {
     width: stage.width,
@@ -226,7 +257,7 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
     <div ref={containerRef} className={`viewport${api.isDragging ? " viewport--dragging" : ""}`} {...api.bind} role="application" aria-label={ariaLabel ?? scene.name}>
       <div className="stage" style={stageStyle}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={scene.art.base} alt="" width={stage.width} height={stage.height} className="stage__layer" draggable={false} />
+        <img src={scene.art.base} alt="" width={stage.width} height={stage.height} className="stage__layer stage__base" decoding="async" draggable={false} />
         <div className="stage__layer">{onBoard.filter((p) => p.slot.layer === "behindForeground").map(renderTarget)}</div>
         {scene.art.foreground ? (
           // eslint-disable-next-line @next/next/no-img-element

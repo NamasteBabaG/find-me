@@ -12,6 +12,11 @@ import { createPlayStore } from "../store/play-store";
 import { targetGeometry } from "../engine/target-geometry";
 import { stageToScreen } from "../engine/viewport-math";
 
+const originalDecode = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, "decode");
+function mountedDecode(decode: (image: HTMLImageElement) => Promise<void>) {
+  Object.defineProperty(HTMLImageElement.prototype, "decode", { configurable: true, value: function(this: HTMLImageElement) { return decode(this); } });
+}
+
 // Actual viewport hook, pointer handlers, RAF, bubble, particles and store.
 // Only browser layout/image loading are supplied; no network or persistence.
 class LayoutObserver {
@@ -40,7 +45,11 @@ beforeEach(() => {
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => setTimeout(() => callback(performance.now()), 16));
   vi.stubGlobal("cancelAnimationFrame", (handle: ReturnType<typeof setTimeout>) => clearTimeout(handle));
 });
-afterEach(() => { cleanup(); vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); });
+afterEach(() => {
+  cleanup(); vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks();
+  if (originalDecode) Object.defineProperty(HTMLImageElement.prototype, "decode", originalDecode);
+  else Reflect.deleteProperty(HTMLImageElement.prototype, "decode");
+});
 
 function sceneFixture(): SceneConfig {
   const scene = structuredClone(buildDemoConfig("en").scenes[0]!);
@@ -54,7 +63,7 @@ function sceneFixture(): SceneConfig {
   };
 }
 
-async function mountPlayer(size: { width: number; height: number }, scene = sceneFixture(), saved: string[] = []) {
+async function mountPlayer(size: { width: number; height: number }, scene = sceneFixture(), saved: string[] = [], expectStarted = true) {
   const config = { ...buildDemoConfig("en"), scenes: [scene], worlds: undefined, world: undefined };
   config.child.avatarUrl = "";
   const store = createPlayStore(config, { readOnlyPreview: true, skipGift: true,
@@ -69,7 +78,7 @@ async function mountPlayer(size: { width: number; height: number }, scene = scen
   act(() => LayoutObserver.latest.resize(size.width, size.height));
   await act(async () => { for (const image of LoadedImage.instances) image.onload?.(); });
   act(() => vi.advanceTimersByTime(1000));
-  expect(store.getState().mission!.phase).toBe("searching");
+  if (expectStarted) expect(store.getState().mission!.phase).toBe("searching");
   const stage = view.container.querySelector<HTMLElement>(".stage")!;
   const viewport = view.container.querySelector<HTMLElement>(".viewport")!;
   let pointerId = 0;
@@ -93,6 +102,124 @@ async function mountPlayer(size: { width: number; height: number }, scene = scen
 }
 
 describe("one child at a time through the actual animated viewport", () => {
+  it("does not expose a cold mounted image before decode, even after off-DOM preloads finish and the phone resizes", async () => {
+    const ready: Array<() => void> = [];
+    mountedDecode(() => new Promise<void>(resolve => ready.push(resolve)));
+    const player = await mountPlayer({ width: 390, height: 650 }, sceneFixture(), [], false);
+    expect(LoadedImage.instances.length).toBeGreaterThanOrEqual(6);
+    expect(player.curtainOpen()).toBe(false);
+    expect(player.store.getState().mission!.phase).toBe("intro");
+    act(() => LayoutObserver.latest.resize(390, 720));
+    const camera = player.stage.style.transform;
+    act(() => vi.advanceTimersByTime(1500));
+    expect(player.curtainOpen()).toBe(false);
+    await act(async () => ready.forEach(resolve => resolve()));
+    expect(player.curtainOpen()).toBe(true);
+    act(() => vi.advanceTimersByTime(1000));
+    expect(player.stage.style.transform).toBe(camera);
+    expect(player.store.getState().mission!.phase).toBe("searching");
+    expect(player.visible()).toHaveLength(1);
+  });
+
+  it("samples an initial layout change before opening even when its resize notification has not arrived", async () => {
+    const ready: Array<() => void> = [];
+    mountedDecode(() => new Promise<void>(resolve => ready.push(resolve)));
+    const player = await mountPlayer({ width: 390, height: 650 }, sceneFixture(), [], false);
+    const oldCamera = player.stage.style.transform;
+    // Mobile browser chrome changed the actual box; ResizeObserver is pending.
+    vi.spyOn(player.viewport, "getBoundingClientRect").mockReturnValue({
+      width: 390, height: 720, x: 0, y: 0, top: 0, left: 0, right: 390, bottom: 720, toJSON() {},
+    });
+    expect(player.curtainOpen()).toBe(false);
+    await act(async () => ready.forEach(resolve => resolve()));
+    const fitted = player.stage.style.transform;
+    expect(fitted).not.toBe(oldCamera);
+    expect(player.curtainOpen()).toBe(true);
+    act(() => LayoutObserver.latest.resize(390, 720));
+    act(() => vi.advanceTimersByTime(1000));
+    expect(player.stage.style.transform).toBe(fitted);
+    expect(player.store.getState().mission!.phase).toBe("searching");
+  });
+
+  it("holds the covered swap for the actual next sprite decode and a quiet resized viewport, without awarding another star", async () => {
+    let slowUrl = ""; let decodeReady: (() => void) | undefined;
+    mountedDecode(image => image.getAttribute("src") === slowUrl ? new Promise<void>(resolve => { decodeReady = resolve; }) : Promise.resolve());
+    const player = await mountPlayer({ width: 390, height: 650 });
+    const first = player.visible()[0]!;
+    const next = player.store.getState().mission!.plan.order.find(id => id !== first)!;
+    slowUrl = `/synthetic-${next.slice(-1)}.png`;
+    player.hit(first);
+    act(() => vi.advanceTimersByTime(2200));
+    await act(async () => vi.advanceTimersByTime(560));
+    expect(player.visible()).toEqual([next]);
+    expect(decodeReady).toBeTypeOf("function");
+    const progress = player.store.getState().progress;
+    act(() => vi.advanceTimersByTime(1200));
+    expect(player.curtainOpen()).toBe(false); // Old fixed160ms timer opened here.
+    player.hit(next);
+    expect(player.store.getState().progress).toBe(progress);
+    await act(async () => decodeReady!());
+    act(() => vi.advanceTimersByTime(100));
+    act(() => LayoutObserver.latest.resize(390, 720));
+    const fitted = player.stage.style.transform;
+    act(() => vi.advanceTimersByTime(159));
+    expect(player.curtainOpen()).toBe(false);
+    act(() => vi.advanceTimersByTime(1));
+    expect(player.curtainOpen()).toBe(true);
+    act(() => LayoutObserver.latest.resize(390, 720));
+    act(() => vi.advanceTimersByTime(1000));
+    expect(player.stage.style.transform).toBe(fitted);
+    expect(player.store.getState().progress).toBe(progress);
+    expect(player.visible()).toEqual([next]);
+  });
+
+  it("keeps a failed mounted decode behind the retry screen until an explicit successful retry", async () => {
+    let rejectDecode: ((reason: Error) => void) | undefined;
+    mountedDecode(() => new Promise<void>((_resolve, reject) => { rejectDecode = reject; }));
+    const player = await mountPlayer({ width: 390, height: 650 }, sceneFixture(), [], false);
+    await act(async () => rejectDecode!(new Error("cold decode failed")));
+    expect(player.container.querySelector(".scene__retry")).not.toBeNull();
+    expect(player.curtainOpen()).toBe(false);
+    mountedDecode(() => Promise.resolve());
+    await act(async () => fireEvent.click(player.container.querySelector(".scene__retry-card button")!));
+    await act(async () => { for (const image of LoadedImage.instances) image.onload?.(); });
+    act(() => vi.advanceTimersByTime(1000));
+    expect(player.container.querySelector(".scene__retry")).toBeNull();
+    expect(player.curtainOpen()).toBe(true);
+    expect(player.store.getState().mission!.phase).toBe("searching");
+  });
+
+  it("ignores a timed-out image's late resolution while a new decode is still pending", async () => {
+    const oldReady: Array<() => void> = [], newReady: Array<() => void> = [];
+    mountedDecode(() => new Promise<void>(resolve => oldReady.push(resolve)));
+    const player = await mountPlayer({ width: 390, height: 650 }, sceneFixture(), [], false);
+    act(() => vi.advanceTimersByTime(20_000));
+    expect(player.container.querySelector(".scene__retry")).not.toBeNull();
+    mountedDecode(() => new Promise<void>(resolve => newReady.push(resolve)));
+    await act(async () => fireEvent.click(player.container.querySelector(".scene__retry-card button")!));
+    await act(async () => { for (const image of LoadedImage.instances) image.onload?.(); oldReady.forEach(resolve => resolve()); });
+    expect(player.curtainOpen()).toBe(false);
+    expect(player.store.getState().mission!.phase).toBe("intro");
+    await act(async () => newReady.forEach(resolve => resolve()));
+    expect(player.curtainOpen()).toBe(true);
+  });
+
+  it("does not flash the clouds or decode the unchanged board again when the fifth child disappears", async () => {
+    const decode = vi.fn(() => Promise.resolve());
+    mountedDecode(decode);
+    const scene = sceneFixture();
+    const saved = scene.targets.slice(0, 4).map(target => target.id);
+    const player = await mountPlayer({ width: 390, height: 650 }, scene, saved);
+    expect(decode).toHaveBeenCalledTimes(2); // Actual mounted board and last child.
+    player.hit(player.visible()[0]!);
+    await act(async () => vi.advanceTimersByTime(2200));
+    expect(player.visible()).toEqual([]);
+    expect(player.curtainOpen()).toBe(true);
+    expect(decode).toHaveBeenCalledTimes(2);
+    expect(player.store.getState().mission!.phase).toBe("complete");
+    expect(player.store.getState().progress.scenes[scene.slug]!.foundTargetIds).toHaveLength(5);
+  });
+
   it.each([{ width: 1280, height: 800 }, { width: 390, height: 650 }])("finds all five via pointers, swaps under clouds and completes without a stuck curtain at $width×$height", async size => {
     const player = await mountPlayer(size);
     const { store, stage, hit, visible, curtainOpen, container, scene } = player;

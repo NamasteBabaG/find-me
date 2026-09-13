@@ -10,7 +10,7 @@ describe("frozen legacy catalog and authored five-hide release", () => {
     expect(old).toHaveLength(9); expect(next).toHaveLength(9);
     expect(old.flatMap(b => b.hides)).toHaveLength(27);
     expect(next.flatMap(b => b.hides)).toHaveLength(45);
-    expect(localPatchBoardsForVersion(9)).toEqual([]);
+    expect(localPatchBoardsForVersion(10)).toEqual([]);
     expect(localPatchBoardForVersion("sydney", 5)).toBeNull();
     for (const board of next) {
       const legacy = findScene(board.board, 6)!, scene = findScene(board.board, 7)!;
@@ -19,6 +19,24 @@ describe("frozen legacy catalog and authored five-hide release", () => {
       expect(scene).toMatchObject({ playMode: "find-any", appearancesPerBoard: 5, findsRequiredToAdvance: 3 });
       expect(scene.art).toEqual(legacy.art);
       expect(findScene(board.board)!.targets).toHaveLength(3);
+    }
+  });
+
+  it.each([8, 9])("reuses the frozen five-hide geometry in content version%i without changing older releases", version => {
+    const authored = localPatchBoardsForVersion(7), selected = localPatchBoardsForVersion(version);
+    expect(selected).toHaveLength(9);
+    expect(selected.flatMap(board => board.hides)).toHaveLength(45);
+    expect(selected).toEqual(authored);
+    for (const board of selected) {
+      expect(localPatchBoardForVersion(board.board, version)).toEqual(board);
+      const scene = findScene(board.board, version)!, original = findScene(board.board, 7)!;
+      expect(scene.version).toBe(version);
+      expect(scene.art).toEqual(original.art);
+      expect(scene.targets).toEqual(original.targets);
+      expect(scene).toMatchObject({ playMode: "find-any", appearancesPerBoard: 5, findsRequiredToAdvance: 3 });
+      expect(findScene(board.board, 6)!.targets).toHaveLength(3);
+      expect(findScene(board.board, 7)!.version).toBe(7);
+      expect(findScene(board.board, 8)!.version).toBe(8);
     }
   });
 

@@ -71,7 +71,7 @@ describe("judging one finished local patch", () => {
     expect(body.messages[0].content[0].text).toContain("advisory review");
     expect(body.messages[0].content).toHaveLength(4);
     expect(localPatchJudgeSettings(6)).toBe(LOCAL_PATCH_JUDGE);
-    expect(localPatchJudgeSettings(9)).toBe(LOCAL_PATCH_JUDGE);
+    expect(localPatchJudgeSettings(10)).toBe(LOCAL_PATCH_JUDGE);
     expect(localPatchJudgeSettings(8)).toMatchObject({ model: "gpt-5.6-luna", effort: "low", policyVersion: "local-patch-luna-low-canonical-face/v2" });
     expect(localPatchJudgePrompt("slot", {}, 6)).toBe(localPatchJudgePrompt("slot"));
     expect(sent).toHaveLength(1);

@@ -6,7 +6,7 @@ import { OpenAiIdentityStyleReviewer } from "../../../infra/generation/identity-
 import { LEGACY_QA_CHARACTER_PROMPT_VERSION as QA_CHARACTER_PROMPT_VERSION } from "../../../infra/generation/character-prompt";
 import type { WorldBudgetSnapshot } from "../world-budget";
 import { boardWizardBudget } from "../board-wizard-budget";
-import { ADVISORY_IDENTITY_GATE_VERSION, IDENTITY_GATE_KEY, LEGACY_IDENTITY_GATE_VERSION, identityApprovedForDisplay, identityGatePrompt, identityReceiptReadyForPublication, reviewBoardWizardIdentity, requireBoardWizardIdentityApproval, type IdentityProvenance } from "../board-wizard-identity-gate";
+import { ADVISORY_IDENTITY_GATE_VERSION, AGE_IDENTITY_GATE_VERSION, IDENTITY_GATE_KEY, LEGACY_IDENTITY_GATE_VERSION, identityApprovedForDisplay, identityGatePrompt, identityReceiptReadyForPublication, reviewBoardWizardIdentity, requireBoardWizardIdentityApproval, type IdentityProvenance } from "../board-wizard-identity-gate";
 import { sha256Bytes } from "../fixed-sprite";
 import type { Container } from "../../container";
 
@@ -22,8 +22,8 @@ async function fixture(reply: () => Promise<Response> = async () => response()) 
   };
   const budget = boardWizardBudget(new CasWorldBudgetRepository(store)), rows: { metaJson: string }[] = [];
   const png = await sharp({ create: { width: 32, height: 32, channels: 4, background: "#597381" } }).png().toBuffer();
-  const db = { auditLog: { findFirst: async () => rows.at(-1) ?? null, create: async ({ data }: { data: { metaJson: string } }) => { rows.push(data); return data; } },
-    asset: { findUniqueOrThrow: async () => ({ status: "READY", deletedAt: null, storagePath: "private-photo" }) } } as unknown as Prisma.TransactionClient;
+  const db = { auditLog: { findUnique: async () => null, findFirst: async () => rows.at(-1) ?? null, create: async ({ data }: { data: { metaJson: string } }) => { rows.push(data); return data; } },
+    asset: { findUnique: async () => ({ provider: "openai" }), findUniqueOrThrow: async () => ({ status: "READY", deletedAt: null, storagePath: "private-photo" }) } } as unknown as Prisma.TransactionClient;
   const fetchOnce = vi.fn((_url: string | URL | Request, _init?: RequestInit) => reply()), beforeDispatch = vi.fn(async () => undefined);
   const deps = { db, budget, apiKey: "never-live", beforeDispatch, reviewer: new OpenAiIdentityStyleReviewer("synthetic-never-live", fetchOnce as typeof fetch),
     write: async <T>(work: (tx: Prisma.TransactionClient) => Promise<T>) => work(db) };
@@ -35,6 +35,54 @@ async function fixture(reply: () => Promise<Response> = async () => response()) 
   return { deps, input, budget, fetchOnce, beforeDispatch, rows, enrollment, c };
 }
 describe("identity style gate (synthetic images and HTTP; zero paid calls)", () => {
+  it.each(["identity", "age", "sheetLayout"] as const)("catalog9 requires explicit %s pass before display or board enrollment", async check => {
+    for (const value of ["fail", "uncertain"] as const) {
+      const checks = { ...answer().checks, [check]: value };
+      const f = await fixture(async () => response({ checks, reason: "Synthetic age5 identity/layout refusal" }, { model: "gpt-5.6-luna" }));
+      f.input.provenance.promptVersion = "character-v4-board-drawn-face-reference";
+      f.input.provenance.style.version = "board-matched-identity/v2";
+      f.input.provenance.ageYears = 5;
+      const input = { ...f.input, contentVersion: 9 }, enrollment = { ...f.enrollment, ageYears: 5, contentVersion: 9 };
+      const r = await reviewBoardWizardIdentity(f.deps, input);
+      expect(r.version).toBe(AGE_IDENTITY_GATE_VERSION); expect(r.costMicroUsd).toBe(980);
+      expect(r.prompt).toContain("Parent-stated target age: 5");
+      expect(r.prompt).toContain("BOTH the face and every visible full body");
+      expect(identityReceiptReadyForPublication(r, 9)).toBe(false);
+      expect(await identityApprovedForDisplay(f.c, { identityAssetId: r.identityAssetId, originalPhotoAssetId: r.provenance.photoAssetId, ageYears: 5 }, 9)).toBe(false);
+      await expect(requireBoardWizardIdentityApproval(f.c, f.budget, enrollment)).rejects.toThrow("awaiting");
+      expect(await reviewBoardWizardIdentity(f.deps, input)).toEqual(r); expect(f.fetchOnce).toHaveBeenCalledTimes(1);
+    }
+  });
+  it("catalog9 keeps style advisory without pretending all visual checks passed, and freezes older policies", async () => {
+    const f = await fixture(async () => response(answer("fail"), { model: "gpt-5.6-luna" }));
+    f.input.provenance.promptVersion = "character-v4-board-drawn-face-reference";
+    f.input.provenance.style.version = "board-matched-identity/v2";
+    const r = await reviewBoardWizardIdentity(f.deps, { ...f.input, contentVersion: 9 });
+    expect(r.approved).toBe(false); expect(r.checks!.paintedStyle).toBe("fail");
+    expect(identityReceiptReadyForPublication(r, 9)).toBe(true);
+    await requireBoardWizardIdentityApproval(f.c, f.budget, { ...f.enrollment, contentVersion: 9 });
+    for (const legacyVersion of [6, 7, 8]) expect(identityReceiptReadyForPublication(r, legacyVersion)).toBe(false);
+    await expect(requireBoardWizardIdentityApproval(f.c, f.budget, { ...f.enrollment, ageYears: 5, contentVersion: 9 })).rejects.toThrow("different child");
+    const body = JSON.parse(f.fetchOnce.mock.calls[0]![1]!.body as string);
+    expect(body).toMatchObject({ model: "gpt-5.6-luna", reasoning_effort: "low", max_completion_tokens: 3000, store: false });
+  });
+  it("catalog9 refuses the old advisory receipt and changed question before another paid review", async () => {
+    const f = await fixture(async () => response(answer(), { model: "gpt-5.6-luna" }));
+    f.input.provenance.promptVersion = "character-v4-board-drawn-face-reference";
+    f.input.provenance.style.version = "board-matched-identity/v2";
+    const old = await reviewBoardWizardIdentity(f.deps, { ...f.input, contentVersion: 8 });
+    expect(identityReceiptReadyForPublication(old, 8)).toBe(true); expect(identityReceiptReadyForPublication(old, 9)).toBe(false);
+    await expect(reviewBoardWizardIdentity(f.deps, { ...f.input, contentVersion: 9 })).rejects.toThrow("different pixels or policy");
+    expect(f.fetchOnce).toHaveBeenCalledTimes(1);
+  });
+  it("catalog9 will not turn malformed checks into age approval just because the bill settled", async () => {
+    const f = await fixture(async () => response({ malformed: true }, { model: "gpt-5.6-luna" }));
+    f.input.provenance.promptVersion = "character-v4-board-drawn-face-reference";
+    f.input.provenance.style.version = "board-matched-identity/v2";
+    const r = await reviewBoardWizardIdentity(f.deps, { ...f.input, contentVersion: 9 });
+    expect(r.checks).toBeNull(); expect(r.costMicroUsd).toBeGreaterThan(0);
+    expect(identityReceiptReadyForPublication(r, 9)).toBe(false);
+  });
   it("recomputes its HTTP deadline after a slow reservation and holds without dispatch when the window is gone", async () => {
     for (const spentMs of [40_000, 130_000]) {
       const f = await fixture(); let now = 100_000;

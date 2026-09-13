@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import Link from "next/link";
 import type { GameConfig } from "@/domain/game/config";
@@ -13,6 +13,7 @@ import { WorldMap } from "./WorldMap";
 import { WorldHub } from "./WorldHub";
 import { ScenePlayer } from "./ScenePlayer";
 import { Passport } from "./Passport";
+import { bindGameAudio } from "../audio/sounds";
 
 interface Props {
   config: GameConfig;
@@ -50,6 +51,9 @@ function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false
   // One world needs no hub: the map is the whole journey.
   const multiWorld = gameWorlds(config).length > 1;
   const landscapeTip = useLandscapeTip();
+  const gameRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => gameRef.current ? bindGameAudio(gameRef.current) : undefined, []);
 
   // Saved progress lives in localStorage: read it only after mount so the first
   // client render matches the server (returning players then jump to the map).
@@ -101,7 +105,7 @@ function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false
   }, [state, scene, config, demo, parentZoneHref, g.parents]);
 
   return (
-    <div className={`game${demo ? " game--demo" : ""}`} dir={dirOf(config.locale)} lang={config.locale}>
+    <div ref={gameRef} className={`game${demo ? " game--demo" : ""}`} dir={dirOf(config.locale)} lang={config.locale}>
       {landscapeTip && state.screen === "scene" ? <div className="game__tip">{g.landscapeTip}</div> : null}
       {body}
     </div>

@@ -9,11 +9,11 @@ import {
   type JudgeWireFault, type LocalPatchJudgeRequest, type LocalPatchJudgeResult, type LocalPatchVerdict,
 } from "./local-patch-judge";
 import { judgeCharge } from "../../infra/generation/judge";
-import { LOCAL_PATCH_POSE_WORDING, LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_CANONICAL_PROMPT_VERSION, localPatchPrompt, type LocalPatchRepairCheck } from "./local-patch-prompt";
+import { LOCAL_PATCH_POSE_WORDING, LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_CANONICAL_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, localPatchPrompt, type LocalPatchRepairCheck } from "./local-patch-prompt";
 import { purchaseOnce, type PurchaseLedger, type RetainedPurchaseStore } from "./paid-operation";
 import type { LocalPatchPurchase } from "../../infra/generation/openai-local-patch";
 import type { BudgetJson, WorldChargeEvidence } from "./world-budget";
-import { isLocalPatchAdvisoryVersion, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
+import { isLocalPatchAdvisoryVersion, isLocalPatchAgeVersion, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
 
 /**
  * One paid attempt at one hide, out of the scripts and into the product.
@@ -285,6 +285,7 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
 }
 
 function promptVersionOf(input: LocalPatchAttemptInput): string {
+  if (isLocalPatchAgeVersion(input.contentVersion)) return LOCAL_PATCH_AGE_PROMPT_VERSION;
   return isLocalPatchStrictVersion(input.contentVersion) ? LOCAL_PATCH_CANONICAL_PROMPT_VERSION
     : isLocalPatchAdvisoryVersion(input.contentVersion) ? LOCAL_PATCH_FIVE_PROMPT_VERSION
     : input.boardPeoplePng ? LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION : LOCAL_PATCH_PROMPT_VERSION;

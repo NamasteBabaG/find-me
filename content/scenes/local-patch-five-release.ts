@@ -1,5 +1,5 @@
 import { localPatchSceneRelease } from "./local-patch-release";
-import { localPatchBoardForVersion, LOCAL_PATCH_FIVE_SCENE_VERSION, LOCAL_PATCH_STRICT_SCENE_VERSION } from "../../src/domain/scene/local-patch-catalog";
+import { localPatchBoardForVersion, LOCAL_PATCH_FIVE_SCENE_VERSION, LOCAL_PATCH_STRICT_SCENE_VERSION, LOCAL_PATCH_AGE_SCENE_VERSION } from "../../src/domain/scene/local-patch-catalog";
 import { maskOf } from "../../src/domain/scene/local-patch-hides";
 import { SceneDefinitionSchema } from "../../src/domain/scene/schema";
 
@@ -28,4 +28,9 @@ export function localPatchFiveSceneRelease(raw: unknown): unknown {
 /** Version8 changes generation quality policy, never a historical game's art. */
 export function localPatchStrictSceneRelease(raw: unknown): unknown {
   return { ...SceneDefinitionSchema.parse(localPatchFiveSceneRelease(raw)), version: LOCAL_PATCH_STRICT_SCENE_VERSION };
+}
+
+/** Age/body review is a new contract; never reinterpret an already-paid v8. */
+export function localPatchAgeSceneRelease(raw: unknown): unknown {
+  return { ...SceneDefinitionSchema.parse(localPatchFiveSceneRelease(raw)), version: LOCAL_PATCH_AGE_SCENE_VERSION };
 }

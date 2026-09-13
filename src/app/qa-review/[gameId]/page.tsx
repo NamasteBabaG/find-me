@@ -7,7 +7,7 @@ import { GameShell } from "@/game/components/GameShell";
 import { BOARD_WIZARD_STYLE, readBoardWizard } from "@/services/generation/board-conditioned-wizard";
 import { composePartialBoardWizardReview } from "@/services/generation/board-wizard-partial-review";
 import { LOCAL_PATCH_STYLE } from "@/services/generation/local-patch-world";
-import { localPatchBoardForVersion } from "@/domain/scene/local-patch-catalog";
+import { isLocalPatchStrictVersion, localPatchBoardForVersion } from "@/domain/scene/local-patch-catalog";
 import { withFreshAssetUrls } from "@/services/asset.service";
 
 export const dynamic = "force-dynamic";
@@ -28,15 +28,17 @@ export default async function QaGameReview({ params }: { params: Promise<{ gameI
     if (!["READY", "DELIVERED"].includes(game.status) || !game.configJson || !game.readyAt
       || !game.childProfile || game.childProfile.deletedAt || game.childProfile.ownerId !== game.ownerId
       || game.scenes.length !== 9 || new Set(game.scenes.map(scene => scene.sceneSlug)).size !== 9
-      || game.scenes.some(scene => scene.sceneVersion !== 8 || scene.generationStatus !== "GENERATED" || !scene.configJson)) notFound();
+      || new Set(game.scenes.map(scene => scene.sceneVersion)).size !== 1
+      || game.scenes.some(scene => !isLocalPatchStrictVersion(scene.sceneVersion) || scene.generationStatus !== "GENERATED" || !scene.configJson)) notFound();
     let published;
     try { published = parseGameConfig(game.configJson); } catch { notFound(); }
     const gameAsset = (url: string) => /^\/api\/assets\/[A-Za-z0-9_-]+(?:\?|$)/.test(url);
     if (published.gameId !== gameId || published.styleVersion !== LOCAL_PATCH_STYLE || published.packageTier !== "ONE_WORLD"
       || !gameAsset(published.child.avatarUrl)
       || published.scenes.length !== 9 || new Set(published.scenes.map(scene => scene.slug)).size !== 9 || published.scenes.some(scene => {
-        const row = game.scenes.find(item => item.sceneSlug === scene.slug), board = localPatchBoardForVersion(scene.slug, 8);
-        return !row || !board || scene.version !== 8 || scene.playMode !== "find-any" || scene.appearancesPerBoard !== 5
+        const row = game.scenes.find(item => item.sceneSlug === scene.slug);
+        const board = row ? localPatchBoardForVersion(scene.slug, row.sceneVersion) : null;
+        return !row || !board || scene.version !== row.sceneVersion || scene.playMode !== "find-any" || scene.appearancesPerBoard !== 5
           || scene.findsRequiredToAdvance !== 3 || scene.targets.length !== 5
           || board.hides.some(hide => !scene.targets.some(target => target.id === hide.targetId))
           || scene.targets.some(target => target.sprite.kind !== "image" || !gameAsset(target.sprite.url)

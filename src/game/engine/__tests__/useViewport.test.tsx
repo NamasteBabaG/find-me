@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, renderHook } from "@testing-library/react";
 import { useRef } from "react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useViewport } from "../useViewport";
 import { stageToScreen } from "../viewport-math";
 
@@ -40,8 +40,23 @@ beforeEach(() => {
   (globalThis as { ResizeObserver?: unknown }).ResizeObserver = FakeResizeObserver as never;
   window.matchMedia = (() => ({ matches: true, addEventListener() {}, removeEventListener() {} })) as never;
 });
+afterEach(() => vi.restoreAllMocks());
 
 describe("the viewport after a resize", () => {
+  it("fits the actual layout during a covered reset before a delayed ResizeObserver notification", () => {
+    const { result } = mount();
+    act(() => FakeResizeObserver.latest!.resize(390, 650));
+    act(() => result.current.zoomBy(2));
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ width: 844, height: 330 } as DOMRect);
+    act(() => result.current.reset(0));
+    expect(result.current.viewport).toEqual({ width: 844, height: 330 });
+    expect(result.current.transform.scale).toBeCloseTo(844 / STAGE.width);
+    const fitted = result.current.transform;
+    // The notification arriving after cloud-open must not move the board again.
+    act(() => FakeResizeObserver.latest!.resize(844, 330));
+    expect(result.current.transform).toBe(fitted);
+  });
+
   it("fills a tall portrait search window and refits to landscape without retaining excessive zoom", () => {
     const { result } = mount();
     act(() => FakeResizeObserver.latest!.resize(390, 650));

@@ -63,23 +63,25 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
     return () => clearInterval(id);
   }, []);
 
-  // pause ambient sound when the tab is hidden
-  useEffect(() => {
-    const onVis = () => (document.hidden ? sounds().suspend() : sounds().resume());
-    document.addEventListener("visibilitychange", onVis);
-    return () => document.removeEventListener("visibilitychange", onVis);
-  }, []);
-
   // The curtain is drawn shut from the very first render and opens only when
   // the viewport has a size AND every picture has decoded. There is no frame,
   // not even the first, in which the world is visible without the child in it.
   const [viewportReady, setViewportReady] = useState(false);
+  const [viewportSize, setViewportSize] = useState("");
   const [assetsReady, setAssetsReady] = useState(false);
+  const [visibleAssetsReady, setVisibleAssetsReady] = useState(false);
   const onReady = useCallback((api: ViewportApi) => {
     apiRef.current = api;
     setViewportReady(true);
+    setViewportSize(`${api.viewport.width}:${api.viewport.height}`);
   }, []);
   const onAssetsReady = useCallback(() => setAssetsReady(true), []);
+  const onVisibleAssetsReady = useCallback((ready: boolean) => {
+    // A cold image can finish before a queued ResizeObserver notification.
+    // Fit the real box while the initial curtain is still closed too.
+    if (ready && mission.phase === "intro") apiRef.current?.reset(0);
+    setVisibleAssetsReady(ready);
+  }, [mission.phase]);
   // Something the board cannot open without did not load: the picture, or the
   // child. A calm screen with one big button, no red, and the way back.
   const [loadFailed, setLoadFailed] = useState(false);
@@ -92,7 +94,8 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
   // The clouds close over the board while the found child is swapped for the
   // next one, so nobody sees the next hiding spot pop into the picture.
   const [turn, setTurn] = useState(false);
-  const revealed = useScrollReveal(stageRef, store.demo, viewportReady && assetsReady);
+  const [turnSwapped, setTurnSwapped] = useState(false);
+  const revealed = useScrollReveal(stageRef, store.demo, viewportReady && assetsReady && visibleAssetsReady);
   // The found choreography ends with the swap, and the swap must not depend on
   // the feedback that started it: it used to be scheduled inside the feedback
   // effect, and the moment FOUND_DONE cleared the feedback that effect's
@@ -109,13 +112,25 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
       dispatch({ type: "FOUND_DONE", now: Date.now() });
       // Finish the reset while fully covered, not halfway through reopening.
       apiRef.current?.reset(0);
+      setTurnSwapped(true);
     }, TURN_CLOSE_MS);
-    const open = setTimeout(() => setTurn(false), TURN_CLOSE_MS + TURN_HOLD_MS);
     return () => {
       clearTimeout(swap);
-      clearTimeout(open);
     };
   }, [turn, dispatch]);
+  useEffect(() => {
+    if (!turn || !turnSwapped || !visibleAssetsReady || loadFailed) return;
+    // Start the short covered hold AFTER the actual new image is decoded.
+    // A resize restarts it, with the final camera already fitted underneath.
+    apiRef.current?.reset(0);
+    const open = setTimeout(() => {
+      // Sample the real box once more: mobile browser chrome can change it
+      // before ResizeObserver delivers its notification.
+      apiRef.current?.reset(0);
+      setTurnSwapped(false); setTurn(false);
+    }, TURN_HOLD_MS);
+    return () => clearTimeout(open);
+  }, [turn, turnSwapped, visibleAssetsReady, viewportSize, loadFailed]);
 
   useEffect(() => {
     if (!revealed || mission.phase !== "intro") return;
@@ -297,15 +312,15 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           </div>
         ) : null}
         <div className="scene__tools">
-          <button type="button" className="scene__btn" onClick={() => apiRef.current?.zoomBy(1.5)} aria-label={g.scene.zoomIn}>
+          <button type="button" className="scene__btn" disabled={turn || !revealed || loadFailed} onClick={() => apiRef.current?.zoomBy(1.5)} aria-label={g.scene.zoomIn}>
             <ToolIcon name="zoom-in" />
           </button>
-          <button type="button" className="scene__btn" onClick={() => apiRef.current?.zoomBy(1 / 1.5)} aria-label={g.scene.zoomOut}>
+          <button type="button" className="scene__btn" disabled={turn || !revealed || loadFailed} onClick={() => apiRef.current?.zoomBy(1 / 1.5)} aria-label={g.scene.zoomOut}>
             <ToolIcon name="zoom-out" />
           </button>
           {store.demo ? null : (
             <>
-              <button type="button" className="scene__btn" onClick={() => apiRef.current?.reset()} aria-label={g.scene.reset}>
+              <button type="button" className="scene__btn" disabled={turn || !revealed || loadFailed} onClick={() => apiRef.current?.reset()} aria-label={g.scene.reset}>
                 <ToolIcon name="fit" />
               </button>
               <button type="button" className="scene__btn" onClick={store.toggleMute} aria-label={store.muted ? g.scene.unmute : g.scene.mute}>
@@ -317,7 +332,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
       </header>
 
       <div className="scene__stage" ref={stageRef}>
-        <SceneViewport scene={scene} mission={mission} hintLevel={mission.hintLevel} bonusFound={mission.bonusFound} onHit={onHit} onReady={onReady} onAssetsReady={onAssetsReady} onAssetsFailed={onAssetsFailed} retryToken={retryToken} ariaLabel={tf(g.scene.sceneAria, { name: scene.name })}>
+        <SceneViewport scene={scene} mission={mission} hintLevel={mission.hintLevel} bonusFound={mission.bonusFound} onHit={onHit} onReady={onReady} onAssetsReady={onAssetsReady} onVisibleAssetsReady={onVisibleAssetsReady} onAssetsFailed={onAssetsFailed} retryToken={retryToken} ariaLabel={tf(g.scene.sceneAria, { name: scene.name })}>
           {(vp) => {
             if (!bubble) return null;
             const p = stageToScreen(vp.transform, bubble.x, bubble.y);

@@ -12,8 +12,16 @@ describe("explicit strict-quality release", () => {
       expect(localPatchBoardForVersion(slug, 8)).toEqual(localPatchBoardForVersion(slug, 7));
       expect(findScene(slug, 8)?.targets).toEqual(findScene(slug, 7)?.targets);
     }
-    expect([6, 7, undefined, 9].some(isLocalPatchStrictVersion)).toBe(false);
+    expect([6, 7, undefined, 10].some(isLocalPatchStrictVersion)).toBe(false);
     expect(isLocalPatchStrictVersion(8)).toBe(true);
+  });
+  it("adds age-aware9 without replacing historical8 geometry or five-star rules", () => {
+    for (const slug of ["newyork", "amazon", "paris", "marrakech", "giza", "tokyo", "greatwall", "sydney", "antarctica"]) {
+      const old = findScene(slug, 8), current = findScene(slug, 9);
+      expect(current).toEqual({ ...old, version: 9 });
+      expect(localPatchBoardForVersion(slug, 9)).toEqual(localPatchBoardForVersion(slug, 8));
+    }
+    expect(isLocalPatchStrictVersion(9)).toBe(true);
   });
   it("runs concluded normal failures before final repair and never buys a fourth image", () => {
     const rows = [{ status: "FAILED", attempts: 2 }, { status: "PENDING", attempts: 1 }, { status: "GENERATED", attempts: 1 }];

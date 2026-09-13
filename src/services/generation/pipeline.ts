@@ -161,6 +161,7 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
   };
 
   let qaIdentityClaim: BoardWizardIdentityClaim | null = null;
+  let canonicalReuseClaim = false;
   try {
     // Resolve every pinned version before any billable identity/patch work.
     // A missing historical definition must never silently use today's board.
@@ -171,13 +172,15 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
     // ── Step 1: avatar ──
     await mark("avatar", { status: "running", startedAt: new Date().toISOString() });
     const child = await c.db.childProfile.findUniqueOrThrow({ where: { id: game.childProfile.id } });
-    if (localPatch && contentVersion === 8) {
+    if (localPatch && (contentVersion === 8 || contentVersion === 9)) {
       const { requireCanonicalIdentityReuse, finishCanonicalIdentityReuse } = await import("./local-patch-identity-reuse");
-      const reused = await requireCanonicalIdentityReuse(c, { gameId });
+      canonicalReuseClaim = true;
+      const reused = await requireCanonicalIdentityReuse(c, { gameId, allowPendingAgeReview: true });
       if (reused) {
-        await finishCanonicalIdentityReuse(c, { gameId, jobId: job.id, jobAttempt: job.attempts + 1 });
-        return; // Explicitly reused bytes: no provider or new identity-review bill.
+        await finishCanonicalIdentityReuse(c, { gameId, jobId: job.id, jobAttempt: job.attempts + 1 }, { deadlineAt: options.hardDeadlineAt });
+        return; // Reused portrait; v9 buys its own corrected-age review, never another portrait.
       }
+      canonicalReuseClaim = false;
     }
     if ((localPatch || boardWizardEnabled()) && game.ownerId) qaIdentityClaim = {
       gameId, jobId: job.id, jobAttempt: job.attempts + 1, styleVersion: game.styleVersion, ownerId: game.ownerId,
@@ -507,6 +510,30 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
         data: { status: "QUEUED", currentStep: null, lastError: err.message },
       });
       if (!released.count) console.warn(`[generate] ${gameId}: paused, but the job belongs to another worker now - left alone`);
+      return;
+    }
+    if (canonicalReuseClaim) {
+      // Reuse returns before qaIdentityClaim exists. Its provider may finish
+      // after takeover, so neither the failure row nor the game transition may
+      // fall through to the legacy, unfenced catch below.
+      const message = err instanceof Error ? err.message : String(err);
+      const recorded = await c.db.$transaction(async tx => {
+        const failed = await tx.generationJob.updateMany({ where: {
+          id: job.id, gameId, status: "RUNNING", attempts: job.attempts + 1, currentStep: "avatar",
+          game: { deletedAt: null, ownerId: game.ownerId, childProfileId: game.childProfile!.id,
+            styleVersion: LOCAL_PATCH_STYLE, status: { in: ["PAID", "AVATAR_GENERATING", "GENERATION_FAILED"] } },
+        }, data: { status: "FAILED", lastError: message } });
+        if (!failed.count) return false;
+        await tx.game.update({ where: { id: gameId }, data: { lastError: message } });
+        const tc = { ...c, db: tx as Container["db"] };
+        const current = statusOf(await tx.game.findUniqueOrThrow({ where: { id: gameId }, select: { status: true } }));
+        if (canTransition(current, "GENERATION_FAILED")) await transitionGame(tc, gameId, "GENERATION_FAILED", SYSTEM, { error: message });
+        else if (current === "PAID") await transitionGame(tc, gameId, "MANUAL_REVIEW", SYSTEM, { error: message });
+        return true;
+      });
+      if (!recorded) { console.warn(`[generate] ${gameId}: canonical identity worker lost its claim; replacement left untouched`); return; }
+      c.analytics.track("generation_failed", { gameId, reason: message.slice(0, 80) });
+      await sendAdminAlert(c, { gameId, kind: "generation-failed", error: message }).catch((e: unknown) => console.error(`[admin-alert] ${gameId}:`, e));
       return;
     }
     if (qaIdentityClaim) {

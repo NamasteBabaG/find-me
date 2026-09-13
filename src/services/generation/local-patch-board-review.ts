@@ -3,7 +3,7 @@ import type { Prisma, Asset, TargetVariantAsset } from "@prisma/client";
 import type { Container } from "../container";
 import { SpriteRefSchema } from "../../domain/game/config";
 import { cropOf, maskForHide, type LocalPatchHide } from "../../domain/scene/local-patch-hides";
-import { isLocalPatchAdvisoryVersion, isLocalPatchStrictVersion, localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
+import { isLocalPatchAdvisoryVersion, isLocalPatchAgeVersion, isLocalPatchStrictVersion, localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
 import { LOCAL_PATCH_MAX_ATTEMPTS } from "../../domain/scene/local-patch-attempts";
 import { CURRENT_JUDGE_PRICING_VERSION, judgeCharge } from "../../infra/generation/judge";
 import { assertGenerationSpendAllowed, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
@@ -24,26 +24,27 @@ import { LOCAL_PATCH_COMPOSITION_VERSION, LOCAL_PATCH_RETURN_GUARD } from "./loc
 
 export const LOCAL_PATCH_BOARD_REVIEW_VERSION = "local-patch-board-five-luna-low/v1";
 export const LOCAL_PATCH_STRICT_BOARD_REVIEW_VERSION = "local-patch-board-five-quality/v3-head-safe";
+export const LOCAL_PATCH_AGE_BOARD_REVIEW_VERSION = "local-patch-board-five-quality/v4-canonical-age";
 export const LOCAL_PATCH_REVIEW_CONTEXT_PX = 64;
 export const LOCAL_PATCH_REVIEW_CLOSEUP_GUARD_PX = LOCAL_PATCH_RETURN_GUARD;
 // Historical paid replies remain addressable for deletion/reconciliation even
 // after a new deterministic compositor gives the same attempt a new question.
 export const LOCAL_PATCH_REVIEW_COMPOSITION_HISTORY = [null, "bounded-return/v2-head-safe"] as const;
-export const localPatchBoardReviewKey = (boardId: string, attempts?: readonly number[], compositionVersion: string | null = LOCAL_PATCH_COMPOSITION_VERSION) => {
+export const localPatchBoardReviewKey = (boardId: string, attempts?: readonly number[], compositionVersion: string | null = LOCAL_PATCH_COMPOSITION_VERSION, contentVersion = 8) => {
   if (!attempts) return `board:${boardId}:five-review:1`;
   if (attempts.length !== 5 || attempts.some(n => !Number.isInteger(n) || n < 1 || n > LOCAL_PATCH_MAX_ATTEMPTS)) throw new Error("Invalid board-review attempt revision");
   if (compositionVersion !== LOCAL_PATCH_COMPOSITION_VERSION && !LOCAL_PATCH_REVIEW_COMPOSITION_HISTORY.some(version => version === compositionVersion)) throw new Error("Unsupported board-review composition revision");
-  return `board:${boardId}:five-review:v8:${attempts.join("-")}${compositionVersion === null ? "" : `:${compositionVersion.replaceAll("/", ".")}`}`;
+  return `board:${boardId}:five-review:v${isLocalPatchAgeVersion(contentVersion) ? 9 : 8}:${attempts.join("-")}${compositionVersion === null ? "" : `:${compositionVersion.replaceAll("/", ".")}`}`;
 };
 /** All bounded candidates, including a paid reply retained before its row commit. */
-export function localPatchBoardReviewKeys(boardId: string): string[] {
+export function localPatchBoardReviewKeys(boardId: string, contentVersion = 8): string[] {
   const vectors: number[][] = [[]];
   for (let position = 0; position < 5; position++) {
     const prior = vectors.splice(0);
     for (const vector of prior) for (let attempt = 1; attempt <= LOCAL_PATCH_MAX_ATTEMPTS; attempt++) vectors.push([...vector, attempt]);
   }
   const versions = [...new Set<string | null>([...LOCAL_PATCH_REVIEW_COMPOSITION_HISTORY, LOCAL_PATCH_COMPOSITION_VERSION])];
-  return [localPatchBoardReviewKey(boardId), ...vectors.flatMap(vector => versions.map(version => localPatchBoardReviewKey(boardId, vector, version)))];
+  return [localPatchBoardReviewKey(boardId), ...vectors.flatMap(vector => versions.map(version => localPatchBoardReviewKey(boardId, vector, version, contentVersion)))];
 }
 const hash = (value: unknown) => sha256Bytes(Buffer.from(JSON.stringify(value)));
 function demand(value: unknown, message: string): asserts value { if (!value) throw new Error(`LOCAL_PATCH_BOARD_REVIEW: ${message}`); }
@@ -64,7 +65,8 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
     include: { game: { include: { childProfile: true } }, targets: { include: { variants: true } } } });
   const game = scene.game, child = game.childProfile;
   const strict = isLocalPatchStrictVersion(scene.sceneVersion);
-  const reviewVersion = strict ? LOCAL_PATCH_STRICT_BOARD_REVIEW_VERSION : LOCAL_PATCH_BOARD_REVIEW_VERSION;
+  const reviewVersion = isLocalPatchAgeVersion(scene.sceneVersion) ? LOCAL_PATCH_AGE_BOARD_REVIEW_VERSION
+    : strict ? LOCAL_PATCH_STRICT_BOARD_REVIEW_VERSION : LOCAL_PATCH_BOARD_REVIEW_VERSION;
   const settings = localPatchBoardJudgeSettings(scene.sceneVersion);
   demand(game.id === input.gameId && game.styleVersion === "local-patch-world-v1" && game.status === "TARGETS_GENERATING"
     && !game.deletedAt && game.ownerId && child && !child.deletedAt && child.ownerId === game.ownerId
@@ -169,7 +171,7 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
     hides: entries.map(e => ({ hide: e.hide.id, target: e.row.targetInstanceId, attempts: e.row.attempts, asset: e.asset.id,
       imageSha256: e.imageSha256, geometrySha256: e.geometrySha256 })),
   });
-  const requestKey = localPatchBoardReviewKey(board.board, strict ? entries.map(e => e.row.attempts) : undefined);
+  const requestKey = localPatchBoardReviewKey(board.board, strict ? entries.map(e => e.row.attempts) : undefined, LOCAL_PATCH_COMPOSITION_VERSION, scene.sceneVersion);
   demand(deps.judge || deps.apiKey?.trim(), "Configured existing judge credential is required");
   // Unlike a replay, a new dispatch must consult the current kill switch/owner.
   await assertGenerationSpendAllowed(c, game.ownerId);
@@ -196,7 +198,7 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
   const keep = JSON.parse(bought.bytes.toString()) as { raw: string | null; wireFault: string | null; model: string | null; finishReason: string | null };
   const readable = !keep.wireFault && isTheModelWeAsked(keep.model, settings.model) && keep.finishReason === "stop";
   const verdicts = parseLocalPatchBoardVerdicts(readable ? keep.raw : null, entries.map(e => e.hide.id), scene.sceneVersion);
-  const dispositions = entries.map(e => strict ? localPatchQualityDisposition(verdicts[e.hide.id] ?? null) : { state: "acceptable" as const, faults: [] });
+  const dispositions = entries.map(e => strict ? localPatchQualityDisposition(verdicts[e.hide.id] ?? null, scene.sceneVersion) : { state: "acceptable" as const, faults: [] });
   await c.db.$transaction(async tx => {
     await fenceLocalPatchImages(tx, game.id); await deps.fence(tx);
     for (const [index, e] of entries.entries()) {
@@ -228,6 +230,7 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
   const blocked = dispositions.some(d => d.state === "unresolved");
   const retry = dispositions.some(d => d.state === "retry");
   return { state: blocked ? "blocked" : retry ? "retry" : "done",
-    reason: blocked ? "Required quality evidence is unresolved" : retry ? "Severe seam or face defect requires a bounded replacement" : null,
+    reason: blocked ? "Required quality evidence is unresolved" : retry ? (isLocalPatchAgeVersion(scene.sceneVersion)
+      ? "Required visual quality defect requires a bounded replacement" : "Severe seam or face defect requires a bounded replacement") : null,
     replayed: bought.replayed, costCents: bought.evidence.amountMicroUsd / 10_000 };
 }

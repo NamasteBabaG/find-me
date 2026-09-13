@@ -55,31 +55,36 @@ afterAll(async () => {
   if (path.dirname(dir) === temp && path.basename(dir).startsWith("findme-strict-world-")) rmSync(dir, { recursive: true, force: true });
 });
 
-async function seed(gameId: string) {
+async function seed(gameId: string, contentVersion = 8) {
+  const ageYears = contentVersion === 9 ? 5 : 8;
   const seeded = await seedApprovedGame(c, db, { gameId, approved: false, styleVersion: LOCAL_PATCH_STYLE,
-    status: "TARGETS_GENERATING", withJob: true, scenes: BOARDS.map(b => ({ slug: b.board, version: 8 })) });
+    status: "TARGETS_GENERATING", withJob: true, scenes: BOARDS.map(b => ({ slug: b.board, version: contentVersion })) });
   fakes.testers.push(seeded.email);
   await c.storage.put(`private/photo-${gameId}.jpg`, seeded.sheet, "image/png");
   const avatarId = `ast-avatar-${gameId}`, avatar = await avatarDisplayFromSheet(seeded.sheet, 1024);
   await c.storage.put(`game/${avatarId}.png`, avatar, "image/png");
   await db.asset.create({ data: { id: avatarId, ownerId: seeded.userId, type: "AVATAR", visibility: "GAME", status: "READY",
     storagePath: `game/${avatarId}.png`, mimeType: "image/png", width: 512, height: 512, bytes: avatar.length } });
-  await db.childProfile.update({ where: { id: `chl-${gameId}` }, data: { avatarAssetId: avatarId } });
+  await db.childProfile.update({ where: { id: `chl-${gameId}` }, data: { avatarAssetId: avatarId, ageYears } });
   const { sha256: catalogSha256 } = await readBoardConditionedCatalog();
   await reviewBoardWizardIdentity({ db, apiKey: "synthetic", budget: boardWizardBudgetOf(c), beforeDispatch: async () => {},
     write: work => db.$transaction(work), reviewer: { review: async () => ({ httpOk: true, requestId: `req-${gameId}-identity`,
       body: { model: "gpt-5.6-luna", usage: { prompt_tokens: 1500, completion_tokens: 150 }, choices: [{ finish_reason: "stop", message: {
         content: JSON.stringify({ checks: { identity: "pass", age: "pass", paintedStyle: "pass", sheetLayout: "pass" }, reason: "Synthetic canonical identity" }) } }] } }) } },
-  { gameId, identityAssetId: `ast-sheet-${gameId}`, sheet: seeded.sheet, photo: seeded.sheet, atlas: seeded.sheet, contentVersion: 8,
+  { gameId, identityAssetId: `ast-sheet-${gameId}`, sheet: seeded.sheet, photo: seeded.sheet, atlas: seeded.sheet, contentVersion,
     provenance: { promptVersion: "character-v4-board-drawn-face-reference", quality: "medium", photoAssetId: `ast-photo-${gameId}`,
-      photoSha256: sha256Bytes(seeded.sheet), ageYears: 8, crop: null,
+      photoSha256: sha256Bytes(seeded.sheet), ageYears, crop: null,
       style: { version: "board-matched-identity/v2", catalogSha256, atlasSha256: sha256Bytes(seeded.sheet) } } });
   return seeded;
 }
 
-describe("v8 full real queue and durable accounting: narrow severe retries", () => {
-  it.each([false, true])("recovery=%s: finishes every normal hide before the last repair, never buys a fourth image", async recover => {
-    const gameId = `strict-world-${recover ? "recovers" : "exhausts"}`, seeded = await seed(gameId);
+describe("versioned full real queue and durable accounting: narrow severe retries", () => {
+  it.each([{ contentVersion: 8, recover: false }, { contentVersion: 8, recover: true },
+    { contentVersion: 9, recover: false }, { contentVersion: 9, recover: true }])("$contentVersion recovery=$recover: completes the normal world before the last repair, never buys a fourth image", async ({ contentVersion, recover }) => {
+    const gameId = `strict-world-v${contentVersion}-${recover ? "recovers" : "exhausts"}`, seeded = await seed(gameId, contentVersion);
+    const ageContract = contentVersion === 9;
+    const expectedGood = ageContract ? { ...GOOD, ageAppropriate: "pass" } : GOOD;
+    const severeCheck = ageContract ? "ageAppropriate" : "severeSeam";
     const paintKeys: string[] = [], sequence: string[] = [], reviews = new Set<string>(), lastAttempt = new Map<string, number>();
     const beforeMails = mails.length;
     const perHideJudge = vi.fn(async () => { throw new Error("v8 uses only grouped reviews"); });
@@ -88,10 +93,15 @@ describe("v8 full real queue and durable accounting: narrow severe retries", () 
         const hide = HIDES.find(h => requestKey.startsWith(`${h.id}:`));
         if (!hide) throw new Error(`Unexpected hide ${requestKey}`);
         expect(canonicalIdentityPng).toEqual(seeded.sheet);
+        if (ageContract) {
+          expect(prompt).toContain("PARENT-CONFIRMED TARGET AGE: 5 years old");
+          expect(prompt).toContain("PRESCHOOL body");
+          expect(prompt).not.toContain("corroborating identity and age");
+        }
         expect(await sharp(identityPng).metadata()).toMatchObject({ width: 512, height: 512 });
         const attempt = Number(requestKey.split(":").at(-1));
         if (attempt > 1) {
-          expect(prompt).toContain("SEAM REPAIR");
+          expect(prompt).toContain(ageContract ? "AGE AND BODY REPAIR" : "SEAM REPAIR");
           expect(prompt).not.toContain("Repaint the face, hair and clothes");
           expect(prompt).not.toContain("a strong straight colour block at the target's right edge");
         }
@@ -110,11 +120,13 @@ describe("v8 full real queue and durable accounting: narrow severe retries", () 
     let calls = 0;
     const boardJudge = vi.fn(async (request: LocalPatchBoardJudgeRequest): Promise<LocalPatchBoardJudgeResult> => {
       calls++; reviews.add(request.boardId); sequence.push(`review:${request.boardId}:${lastAttempt.get(BAD.id)}`);
-      expect(request.contentVersion).toBe(8);
+      expect(request.contentVersion).toBe(contentVersion);
+      expect(request.hides.every(h => h.expectation?.ageYears === (ageContract ? 5 : 8))).toBe(true);
       return { verdict: null, verdicts: {}, raw: JSON.stringify({ hides: request.hides.map(h => ({ hideId: h.hideId,
         verdict: h.hideId === BAD.id && (!recover || lastAttempt.get(BAD.id)! < 2)
-          ? { ...GOOD, severeSeam: "fail", verdict: "fail", faults: [{ check: "severeSeam", where: "a strong straight colour block at the target's right edge" }] }
-          : GOOD })) }), model: "gpt-5.6-luna", requestId: `req-${gameId}-review-${calls}`,
+          ? { ...expectedGood, [severeCheck]: "fail", verdict: "fail", faults: [{ check: severeCheck,
+            where: ageContract ? "The central target has an older child's long torso and broad shoulders." : "a strong straight colour block at the target's right edge" }] }
+          : expectedGood })) }), model: "gpt-5.6-luna", requestId: `req-${gameId}-review-${calls}`,
         usage: { prompt_tokens: 9000, completion_tokens: 1400 }, finishReason: "stop", wireFault: null, costUnknown: false };
     });
     for (let tick = 0; tick < 25; tick++) {
@@ -137,7 +149,9 @@ describe("v8 full real queue and durable accounting: narrow severe retries", () 
       expect(bad).toMatchObject({ status: "GENERATED", attempts: 2 });
       const config = GameConfigSchema.parse(JSON.parse(game.configJson!));
       expect(config.scenes.flatMap(s => s.targets)).toHaveLength(45);
-      expect(config.scenes.every(s => s.version === 8)).toBe(true);
+      expect(config.scenes.every(s => s.version === contentVersion)).toBe(true);
+      if (ageContract) expect(rows.every(r => JSON.parse(r.judgeJson!).verdict.ageAppropriate === "pass"
+        && JSON.parse(r.judgeJson!).boardReview.version === "local-patch-board-five-quality/v4-canonical-age")).toBe(true);
       expect(mails.slice(beforeMails).filter(m => m.tag === "game-ready")).toHaveLength(1);
     } else {
       expect(game).toMatchObject({ status: "GENERATION_FAILED", configJson: null, readyAt: null });

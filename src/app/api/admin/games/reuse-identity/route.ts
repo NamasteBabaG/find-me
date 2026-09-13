@@ -22,9 +22,10 @@ export async function POST(request: Request) {
     if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("Invalid request");
     const value = body as Record<string, unknown>;
     for (const name of ["sourceGameId", "sourceIdentityAssetId", "requestId", "displayName", "confirmation"]) if (typeof value[name] !== "string") throw new Error("Invalid request");
+    if (typeof value.confirmedAgeYears !== "number") throw new Error("Explicit child age required");
     const result = await createCanonicalIdentityReuse(getContainer(), {
       sourceGameId: String(value.sourceGameId), sourceIdentityAssetId: String(value.sourceIdentityAssetId), requestId: String(value.requestId),
-      displayName: String(value.displayName), confirmation: String(value.confirmation),
+      displayName: String(value.displayName), confirmedAgeYears: value.confirmedAgeYears, confirmation: String(value.confirmation),
     }, { type: "ADMIN", id: actor.id });
     return NextResponse.json({ ok: true, ...result }, { headers: { "Cache-Control": "no-store" } });
   } catch {

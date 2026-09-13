@@ -6,7 +6,7 @@ import type { Actor } from "../audit.service";
 import { env } from "../../lib/env";
 import { normalizeChildName } from "../../lib/copy";
 import { priceFor } from "../../domain/package";
-import { localPatchBoardsForVersion, LOCAL_PATCH_STRICT_SCENE_VERSION } from "../../domain/scene/local-patch-catalog";
+import { localPatchBoardsForVersion, LOCAL_PATCH_STRICT_SCENE_VERSION, LOCAL_PATCH_AGE_SCENE_VERSION, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
 import { sceneBySlug } from "../scene-catalog.service";
 import { DbStorage } from "../../infra/storage/db";
 import { PrismaWorldBudgetStore } from "../../infra/db/prisma-world-budget-store";
@@ -18,23 +18,46 @@ import { identityGateReceiptSchema, identityReceiptReadyForPublication, IDENTITY
 import { avatarDisplayFromSheet } from "../../infra/generation/avatar-cut";
 import { sha256Bytes } from "./fixed-sprite";
 import { transitionGame } from "../game-status";
+import { prepareLocalPatchIdentityReferences } from "./local-patch-identity-reference";
+import { assertGenerationSpendAllowed } from "./board-conditioned-wizard";
+import { LocalPatchIdentityDeferred } from "./local-patch-identity";
 
 export const CANONICAL_IDENTITY_REUSE_ACTION = "local-patch:canonical-identity-reused";
 export const CANONICAL_IDENTITY_REUSE_CONFIRMATION = "create-new-qa-game-with-this-exact-illustrated-identity";
+export const CANONICAL_IDENTITY_AGE_CONFIRMATION = "create-new-qa-game-with-this-canonical-face-and-corrected-age";
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
-const recordSchema = z.object({
-  version: z.literal("canonical-identity-reuse/v1"), requestId: z.string(), operatorId: z.string(),
+const baseRecordSchema = z.object({
+  requestId: z.string(), operatorId: z.string(),
   sourceGameId: z.string(), sourceChildId: z.string(), sourceIdentityAssetId: z.string(), sourceContentVersion: z.number().int(),
   sourcePaidOrderId: z.string(), sourcePaintedJson: z.string(), sourceGateJson: z.string(), sourceLedgerSha256: digest,
   gameId: z.string(), childId: z.string(), ownerId: z.string(), displayName: z.string(), ageYears: z.number().int().min(2).max(10),
   identityAssetId: z.string(), identitySha256: digest, avatarAssetId: z.string(), avatarSha256: digest,
-  catalogSha256: digest, cropJson: z.string().nullable(), contentVersion: z.literal(8),
-  newIdentityChargeMicroUsd: z.literal(0), authorization: z.literal(CANONICAL_IDENTITY_REUSE_CONFIRMATION),
+  catalogSha256: digest, cropJson: z.string().nullable(), newIdentityChargeMicroUsd: z.literal(0),
 }).strict();
+const recordSchema = z.discriminatedUnion("version", [
+  baseRecordSchema.extend({ version: z.literal("canonical-identity-reuse/v1"), contentVersion: z.literal(8), authorization: z.literal(CANONICAL_IDENTITY_REUSE_CONFIRMATION) }),
+  baseRecordSchema.extend({ version: z.literal("canonical-identity-reuse/v2"), contentVersion: z.literal(9), sourceAgeYears: z.number().int().min(2).max(10),
+    authorization: z.literal(CANONICAL_IDENTITY_AGE_CONFIRMATION), ageEvidence: z.literal("parent-corrected-age-canonical-face-only") }),
+]);
 type ReuseRecord = z.infer<typeof recordSchema>;
 function demand(value: unknown, reason: string): asserts value { if (!value) throw new Error(`IDENTITY_REUSE: ${reason}`); }
 const recordId = (gameId: string) => `aud_lpir_${sha256Bytes(Buffer.from(gameId)).slice(0, 32)}`;
 const idPart = (value: unknown) => sha256Bytes(Buffer.from(JSON.stringify(value))).slice(0, 28);
+
+/** The parent corrects the age, not history. This binding names the actual
+ * illustrated evidence and both ages; no missing photograph is manufactured. */
+export async function canonicalReuseAgeBinding(c: Container, record: ReuseRecord) {
+  demand(record.version === "canonical-identity-reuse/v2", "Age-specific reuse record required");
+  const asset = await c.db.asset.findUniqueOrThrow({ where: { id: record.identityAssetId } });
+  const sheet = await c.storage.get(asset.storagePath);
+  demand(sha256Bytes(sheet) === record.identitySha256, "Canonical age review image changed");
+  const { identityPng: portrait } = await prepareLocalPatchIdentityReferences(sheet, record.contentVersion);
+  const binding = { gameId: record.gameId, identityAssetId: record.identityAssetId, sheetSha256: record.identitySha256,
+    portraitSha256: sha256Bytes(portrait), sourceAgeYears: record.sourceAgeYears, targetAgeYears: record.ageYears,
+    parentAuthorizationSha256: sha256Bytes(Buffer.from(JSON.stringify([record.gameId, record.operatorId, record.authorization, record.ageYears, record.identitySha256]))),
+    sourceIdentityProofSha256: sha256Bytes(Buffer.from(JSON.stringify([record.sourceGameId, record.sourceIdentityAssetId, record.sourceGateJson, record.sourcePaintedJson, record.sourceLedgerSha256]))) };
+  return { binding, canonicalSheet: sheet, portrait };
+}
 
 async function requireAdmin(c: Container, actor: Actor) {
   demand(env().APP_ENV === "qa" && c.storage.id === "db" && c.payment.id === "mock", "Only database-backed QA with sandbox checkout may clone an identity");
@@ -96,35 +119,43 @@ async function inspectSource(c: Container, sourceGameId: string, expectedIdentit
     ledgerSha256: sha256Bytes(Buffer.from(JSON.stringify(ledger.snapshot))) };
 }
 
-export type CreateCanonicalIdentityReuseInput = { sourceGameId: string; sourceIdentityAssetId: string; requestId: string; displayName: string; confirmation: string };
+export type CreateCanonicalIdentityReuseInput = { sourceGameId: string; sourceIdentityAssetId: string; requestId: string; displayName: string; confirmedAgeYears: number; confirmation: string };
 /** Creates a new, UNPAID sandbox checkout, never resets or queues the source. */
 export async function createCanonicalIdentityReuse(c: Container, input: CreateCanonicalIdentityReuseInput, actor: Actor) {
   const operatorId = await requireAdmin(c, actor), name = normalizeChildName(input.displayName);
-  demand(input.confirmation === CANONICAL_IDENTITY_REUSE_CONFIRMATION && /^[A-Za-z0-9_-]{8,120}$/.test(input.requestId)
+  const correctedAge = input.confirmation === CANONICAL_IDENTITY_AGE_CONFIRMATION;
+  demand((input.confirmation === CANONICAL_IDENTITY_REUSE_CONFIRMATION || correctedAge) && /^[A-Za-z0-9_-]{8,120}$/.test(input.requestId)
     && /^[A-Za-z0-9_-]{1,160}$/.test(input.sourceGameId) && /^[A-Za-z0-9_-]{1,160}$/.test(input.sourceIdentityAssetId)
-    && name.length >= 2 && name.length <= 60, "Explicit source, name and one idempotent authorization are required");
+    && name.length >= 2 && name.length <= 60 && Number.isInteger(input.confirmedAgeYears) && input.confirmedAgeYears >= 2 && input.confirmedAgeYears <= 10,
+  "Explicit source, name, confirmed child age and one idempotent authorization are required");
   const suffix = idPart([operatorId, input.sourceGameId, input.requestId]);
   const gameId = `game_reuse_${suffix}`, childId = `chl_reuse_${suffix}`, orderId = `ord_reuse_${suffix}`;
   const previous = await c.db.auditLog.findUnique({ where: { id: recordId(gameId) } });
   if (previous) {
     const record = recordSchema.parse(JSON.parse(previous.metaJson ?? "null"));
     demand(record.sourceIdentityAssetId === input.sourceIdentityAssetId && record.sourceGameId === input.sourceGameId
-      && record.displayName === name && record.operatorId === operatorId && record.requestId === input.requestId, "Authorization key was already used for different inputs");
-    await requireCanonicalIdentityReuse(c, { gameId });
+      && record.displayName === name && record.ageYears === input.confirmedAgeYears && record.authorization === input.confirmation
+      && record.operatorId === operatorId && record.requestId === input.requestId, "Authorization key was already used for different inputs");
+    await requireCanonicalIdentityReuse(c, { gameId, allowPendingAgeReview: true });
     const order = await c.db.order.findUniqueOrThrow({ where: { id: orderId } });
     return { gameId, orderId, checkoutUrl: order.checkoutUrl!, replayed: true };
   }
   const current = await inspectSource(c, input.sourceGameId, input.sourceIdentityAssetId);
+  // An old age approval cannot be relabelled. A correction requires its own
+  // fresh, age-specific review, not silent reuse of the source body's age.
+  demand(correctedAge || current.child.ageYears === input.confirmedAgeYears, "Confirmed age differs from the source approval; a fresh age-specific review is required before any checkout or purchase");
   const avatar = await avatarDisplayFromSheet(current.bytes, current.width), catalogSha256 = (await readBoardConditionedCatalog()).sha256;
   const identityAssetId = `ast_reuse_sheet_${suffix}`, avatarAssetId = `ast_reuse_face_${suffix}`;
-  const record: ReuseRecord = { version: "canonical-identity-reuse/v1", requestId: input.requestId, operatorId,
+  const record: ReuseRecord = { ...(correctedAge ? { version: "canonical-identity-reuse/v2" as const, contentVersion: LOCAL_PATCH_AGE_SCENE_VERSION,
+    sourceAgeYears: current.child.ageYears!, ageEvidence: "parent-corrected-age-canonical-face-only" as const, authorization: CANONICAL_IDENTITY_AGE_CONFIRMATION }
+    : { version: "canonical-identity-reuse/v1" as const, contentVersion: LOCAL_PATCH_STRICT_SCENE_VERSION, authorization: CANONICAL_IDENTITY_REUSE_CONFIRMATION }),
+    requestId: input.requestId, operatorId,
     sourceGameId: current.source.id, sourceChildId: current.child.id, sourceIdentityAssetId: current.asset.id,
     sourceContentVersion: current.source.scenes[0]!.sceneVersion, sourcePaidOrderId: current.paid.id,
     sourcePaintedJson: current.paintedJson, sourceGateJson: current.gateJson, sourceLedgerSha256: current.ledgerSha256,
-    gameId, childId, ownerId: current.source.ownerId!, displayName: name, ageYears: current.child.ageYears!,
+    gameId, childId, ownerId: current.source.ownerId!, displayName: name, ageYears: input.confirmedAgeYears,
     identityAssetId, identitySha256: sha256Bytes(current.bytes), avatarAssetId, avatarSha256: sha256Bytes(avatar),
-    catalogSha256, cropJson: current.child.photoCropJson, contentVersion: LOCAL_PATCH_STRICT_SCENE_VERSION,
-    newIdentityChargeMicroUsd: 0, authorization: CANONICAL_IDENTITY_REUSE_CONFIRMATION };
+    catalogSha256, cropJson: current.child.photoCropJson, newIdentityChargeMicroUsd: 0 };
   const amount = priceFor("ONE_WORLD", "ILS");
   const checkout = await c.payment.createCheckout({ orderId, customerEmail: current.source.owner!.email, amountAgorot: amount, currency: "ILS", description: `איפה ${name}? — QA`,
     successUrl: `${c.appUrl}/creating/${gameId}`, cancelUrl: `${c.appUrl}/admin/orders/${input.sourceGameId}` });
@@ -162,6 +193,7 @@ export async function createCanonicalIdentityReuse(c: Container, input: CreateCa
 export async function requireCanonicalIdentityReuse(c: Container, input: {
   gameId: string; identityAssetId?: string; sheetSha256?: string; catalogSha256?: string; photoAssetId?: string | null;
   ageYears?: number; crop?: unknown; contentVersion?: number;
+  allowPendingAgeReview?: boolean;
 }) {
   const row = await c.db.auditLog.findUnique({ where: { id: recordId(input.gameId) } });
   if (!row) return null;
@@ -183,7 +215,8 @@ export async function requireCanonicalIdentityReuse(c: Container, input: {
   }
   const receipt = identityGateReceiptSchema.parse(JSON.parse(record.sourceGateJson));
   demand(receipt.identityAssetId === record.sourceIdentityAssetId && receipt.sheetSha256 === record.identitySha256
-    && receipt.provenance.ageYears === record.ageYears && identityReceiptReadyForPublication(receipt, record.sourceContentVersion), "Frozen source approval changed");
+    && receipt.provenance.ageYears === (record.version === "canonical-identity-reuse/v2" ? record.sourceAgeYears : record.ageYears)
+    && identityReceiptReadyForPublication(receipt, record.sourceContentVersion), "Frozen source approval changed");
   demand((input.identityAssetId === undefined || input.identityAssetId === record.identityAssetId)
     && (input.sheetSha256 === undefined || input.sheetSha256 === record.identitySha256)
     && (input.catalogSha256 === undefined || input.catalogSha256 === record.catalogSha256)
@@ -191,14 +224,38 @@ export async function requireCanonicalIdentityReuse(c: Container, input: {
     && (input.ageYears === undefined || input.ageYears === record.ageYears)
     && (input.contentVersion === undefined || input.contentVersion === record.contentVersion)
     && (!Object.hasOwn(input, "crop") || boardConditioningHash(input.crop) === boardConditioningHash(record.cropJson ? JSON.parse(record.cropJson) : null)), "Reuse input binding changed");
-  return { record, sourceReceipt: receipt };
+  const ageReview = record.version === "canonical-identity-reuse/v2"
+    ? await (await import("./canonical-identity-age-review")).readCanonicalIdentityAgeReview(c, (await canonicalReuseAgeBinding(c, record)).binding) : null;
+  demand(record.version !== "canonical-identity-reuse/v2" || input.allowPendingAgeReview || ageReview?.state === "pass",
+    "Fresh canonical age review required before display or generation");
+  return { record, sourceReceipt: receipt, ageReview };
 }
 
 /** Paid queue handoff, not a fabricated identity purchase or review. */
-export async function finishCanonicalIdentityReuse(c: Container, claim: { gameId: string; jobId: string; jobAttempt: number }) {
-  const proof = await requireCanonicalIdentityReuse(c, { gameId: claim.gameId });
+export async function finishCanonicalIdentityReuse(c: Container, claim: { gameId: string; jobId: string; jobAttempt: number }, options: { deadlineAt?: number } = {}) {
+  const proof = await requireCanonicalIdentityReuse(c, { gameId: claim.gameId, allowPendingAgeReview: true });
   demand(proof, "Explicit canonical reuse record required");
   const { record } = proof;
+  if (record.version === "canonical-identity-reuse/v2") {
+    const reviewInput = await canonicalReuseAgeBinding(c, record);
+    await assertGenerationSpendAllowed(c, record.ownerId);
+    const { reviewCanonicalIdentityAge } = await import("./canonical-identity-age-review");
+    const reviewed = await reviewCanonicalIdentityAge(c, { ...reviewInput.binding, canonicalSheet: reviewInput.canonicalSheet, portrait: reviewInput.portrait }, {
+      deadlineAt: options.deadlineAt, apiKey: env().OPENAI_API_KEY,
+      fence: async tx => {
+        const game = await tx.game.updateMany({ where: { id: claim.gameId, ownerId: record.ownerId, childProfileId: record.childId,
+          deletedAt: null, styleVersion: "local-patch-world-v1", status: { in: ["PAID", "AVATAR_GENERATING", "GENERATION_FAILED"] } }, data: { styleVersion: "local-patch-world-v1" } });
+        const job = await tx.generationJob.updateMany({ where: { id: claim.jobId, gameId: claim.gameId, status: "RUNNING",
+          attempts: claim.jobAttempt, currentStep: "avatar" }, data: { currentStep: "avatar" } });
+        demand(game.count === 1 && job.count === 1, "Age review worker lost its claim");
+        const paid = await tx.order.findFirst({ where: { gameId: record.gameId, userId: record.ownerId, paymentStatus: "PAID", paidAt: { not: null }, refundedAt: null } });
+        demand(paid && !await tx.order.count({ where: { gameId: record.gameId, OR: [{ paymentStatus: "REFUNDED" }, { refundedAt: { not: null } }] } }), "New game must pass its own sandbox payment webhook");
+        await requireCanonicalIdentityReuse({ ...c, db: tx as Container["db"], storage: new DbStorage(tx as Container["db"]) }, { gameId: claim.gameId, allowPendingAgeReview: true });
+      },
+    });
+    if (reviewed.state === "pending") throw new LocalPatchIdentityDeferred();
+    demand(reviewed.state === "pass", `Canonical age review is not approved: ${reviewed.reason}`);
+  }
   await c.db.$transaction(async tx => {
     const game = await tx.game.updateMany({ where: { id: record.gameId, ownerId: record.ownerId, childProfileId: record.childId, deletedAt: null,
       styleVersion: "local-patch-world-v1", status: { in: ["PAID", "AVATAR_GENERATING", "GENERATION_FAILED"] } }, data: { styleVersion: "local-patch-world-v1" } });
@@ -223,7 +280,7 @@ export async function finishCanonicalIdentityReuse(c: Container, claim: { gameId
 export async function canonicalIdentityApprovedForDisplay(c: Container, profile: {
   identityAssetId: string | null; originalPhotoAssetId: string | null; ageYears: number | null;
 }, contentVersion?: number): Promise<boolean | null> {
-  if (contentVersion !== LOCAL_PATCH_STRICT_SCENE_VERSION || !profile.identityAssetId) return null;
+  if (!isLocalPatchStrictVersion(contentVersion) || !profile.identityAssetId) return null;
   const asset = await c.db.asset.findUnique({ where: { id: profile.identityAssetId } });
   if (asset?.provider !== "canonical-identity-reuse") return null;
   if (!asset.providerRequestId || profile.originalPhotoAssetId !== null || !profile.ageYears) return false;
