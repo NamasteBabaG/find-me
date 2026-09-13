@@ -11,6 +11,7 @@ import { ScenePlayer } from "../components/ScenePlayer";
 import { createPlayStore } from "../store/play-store";
 import { targetGeometry } from "../engine/target-geometry";
 import { stageToScreen } from "../engine/viewport-math";
+import { sounds } from "../audio/sounds";
 
 const originalDecode = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, "decode");
 function mountedDecode(decode: (image: HTMLImageElement) => Promise<void>) {
@@ -73,7 +74,7 @@ async function mountPlayer(size: { width: number; height: number }, scene = scen
     scenes: { [scene.slug]: { sceneVersion: scene.version, foundTargetIds: saved } },
   }), config.gameId) });
   store.getState().openScene(scene.slug);
-  function Player() { const state = useStore(store); return <GameI18nProvider locale="en"><ScenePlayer scene={scene} mission={state.mission!} store={state} onBack={state.goToMap} onSceneComplete={state.completeScene} /></GameI18nProvider>; }
+  function Player() { const state = useStore(store); return <GameI18nProvider locale="en">{state.mission ? <ScenePlayer scene={scene} mission={state.mission} store={state} onBack={state.goToMap} onSceneComplete={state.completeScene} /> : null}</GameI18nProvider>; }
   const view = render(<Player />);
   act(() => LayoutObserver.latest.resize(size.width, size.height));
   await act(async () => { for (const image of LoadedImage.instances) image.onload?.(); });
@@ -102,6 +103,76 @@ async function mountPlayer(size: { width: number; height: number }, scene = scen
 }
 
 describe("one child at a time through the actual animated viewport", () => {
+  it.each([{ width: 1280, height: 800 }, { width: 320, height: 650 }])("awards once, then lights one gold star only when its real flight lands at $width×$height", async size => {
+    const player = await mountPlayer(size);
+    const star = player.container.querySelector(".mission__stars .stars__slot")!;
+    vi.spyOn(star, "getBoundingClientRect").mockReturnValue({ x: 180, y: 30, left: 180, top: 30, right: 204, bottom: 54, width: 24, height: 24, toJSON() {} });
+    const lit = () => player.container.querySelectorAll(".mission__stars .is-lit").length;
+    const play = vi.spyOn(sounds(), "play");
+    expect(lit()).toBe(0);
+    player.hit(player.visible()[0]!);
+    const saved = player.store.getState().progress;
+    expect(saved.scenes[player.scene.slug]!.foundTargetIds).toHaveLength(1);
+    expect(lit()).toBe(0); // Neither an early award nor the old 1→0 blink.
+    act(() => vi.advanceTimersByTime(349));
+    expect(lit()).toBe(0); expect(player.container.querySelector(".starfly")).toBeNull();
+    act(() => vi.advanceTimersByTime(1));
+    expect(player.container.querySelector(".starfly")).not.toBeNull(); expect(lit()).toBe(0);
+    act(() => vi.advanceTimersByTime(849));
+    expect(lit()).toBe(0);
+    act(() => vi.advanceTimersByTime(1));
+    expect(player.container.querySelector(".starfly")).toBeNull(); expect(lit()).toBe(1);
+    expect(play.mock.calls.filter(([cue]) => cue === "star")).toHaveLength(1);
+    expect(player.store.getState().progress).toBe(saved);
+    act(() => vi.advanceTimersByTime(1000 + 560 + 160));
+    expect(lit()).toBe(1); expect(player.visible()).toHaveLength(1);
+    expect(player.store.getState().progress).toBe(saved);
+  });
+
+  it("restores a saved star without replaying its flight and cancels an in-flight landing when leaving", async () => {
+    const player = await mountPlayer({ width: 390, height: 650 }, sceneFixture(), ["hide-1", "hide-3"]);
+    const slots = player.container.querySelectorAll(".mission__stars .stars__slot");
+    vi.spyOn(slots[2]!, "getBoundingClientRect").mockReturnValue({ x: 180, y: 30, left: 180, top: 30, right: 204, bottom: 54, width: 24, height: 24, toJSON() {} });
+    const play = vi.spyOn(sounds(), "play");
+    expect(player.container.querySelectorAll(".mission__stars .is-lit")).toHaveLength(2);
+    expect(player.container.querySelector(".starfly")).toBeNull();
+    player.hit(player.visible()[0]!);
+    act(() => vi.advanceTimersByTime(350));
+    expect(player.container.querySelector(".starfly")).not.toBeNull();
+    const savedIds = player.store.getState().progress.scenes[player.scene.slug]!.foundTargetIds!;
+    player.unmount();
+    act(() => vi.advanceTimersByTime(3000));
+    expect(play.mock.calls.filter(([cue]) => cue === "star")).toHaveLength(0);
+    const resumed = await mountPlayer({ width: 390, height: 650 }, sceneFixture(), savedIds);
+    expect(resumed.container.querySelectorAll(".mission__stars .is-lit")).toHaveLength(3);
+    expect(resumed.container.querySelector(".starfly")).toBeNull();
+  });
+
+  it.each([false, true])("a skipped flight still lands its star without changing saved progress (reduced motion=%s)", async reduced => {
+    const player = await mountPlayer({ width: 320, height: 650 });
+    window.matchMedia = (() => ({ matches: reduced, addEventListener() {}, removeEventListener() {} })) as never;
+    if (reduced) vi.spyOn(player.container.querySelector(".mission__stars .stars__slot")!, "getBoundingClientRect")
+      .mockReturnValue({ x: 180, y: 30, left: 180, top: 30, right: 204, bottom: 54, width: 24, height: 24, toJSON() {} });
+    // No mocked tray geometry in the other case: a missing layout is not a lost star.
+    player.hit(player.visible()[0]!);
+    const saved = player.store.getState().progress;
+    act(() => vi.advanceTimersByTime(350));
+    expect(player.container.querySelector(".starfly")).toBeNull();
+    expect(player.container.querySelectorAll(".mission__stars .is-lit")).toHaveLength(1);
+    expect(player.store.getState().progress).toBe(saved);
+  });
+
+  it("the final board names its actual adventure-bag destination after three, without claiming another place exists", async () => {
+    const player = await mountPlayer({ width: 390, height: 650 }, sceneFixture(), ["hide-0", "hide-1", "hide-2"]);
+    const button = player.container.querySelector<HTMLButtonElement>(".mission__continue")!;
+    expect(button.textContent).toContain("To the adventure bag");
+    expect(button.textContent).not.toContain("next place");
+    const saved = player.store.getState().progress;
+    fireEvent.click(button);
+    expect(player.store.getState().screen).toBe("passport");
+    expect(player.store.getState().progress).toBe(saved);
+  });
+
   it("does not expose a cold mounted image before decode, even after off-DOM preloads finish and the phone resizes", async () => {
     const ready: Array<() => void> = [];
     mountedDecode(() => new Promise<void>(resolve => ready.push(resolve)));

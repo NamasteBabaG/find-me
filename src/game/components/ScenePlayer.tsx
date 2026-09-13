@@ -65,9 +65,10 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
   const stageRef = useRef<HTMLDivElement | null>(null);
   const sceneRef = useRef<HTMLDivElement | null>(null);
   const trayRef = useRef<HTMLSpanElement | null>(null);
-  // The gold star on its way from the found child to the tray. While it is in
-  // the air the tray shows one star fewer than has been found; the slot
-  // lights when it lands.
+  // Saved progress is authoritative and synchronous; this counter owns only
+  // the presentation. Keep the next slot dark from the hit through landing,
+  // not merely while flight exists (which blinked 0→1→0→1 during launch).
+  const [landedStars, setLandedStars] = useState(() => Object.keys(mission.found).length);
   const [flight, setFlight] = useState<{ key: number; path: FlightPath } | null>(null);
   const starTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   useEffect(() => () => starTimers.current.forEach(clearTimeout), []);
@@ -241,17 +242,22 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
         // by this timer and not by the animation - a browser that draws no
         // motion still hands out the star.
         if (!store.demo) {
-          const slot = Object.keys(mission.found).length - 1;
+          const foundCount = Object.keys(mission.found).length;
+          const slot = foundCount - 1;
+          const land = () => {
+            setFlight(null);
+            setLandedStars(foundCount);
+            sounds().play("star");
+          };
+          starTimers.current.forEach(clearTimeout);
+          starTimers.current = [];
           const launch = setTimeout(() => {
             const path = flightPath(fb.targetId, slot);
-            if (!path) return;
+            // A missing layout or reduced-motion preference may skip the
+            // flight, never the already-earned star or its visible arrival.
+            if (!path || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) { land(); return; }
             setFlight({ key: Date.now(), path });
-            starTimers.current.push(
-              setTimeout(() => {
-                setFlight(null);
-                sounds().play("star");
-              }, FLIGHT_MS),
-            );
+            starTimers.current.push(setTimeout(land, FLIGHT_MS));
           }, free ? STAR_LAUNCH_FREE_MS : STAR_LAUNCH_MS);
           starTimers.current.push(launch);
         }
@@ -372,9 +378,9 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
   const total = mission.plan.order.length;
   const advanceAt = mission.findsRequiredToAdvance ?? total;
   const canAdvance = free && missionCanAdvance(mission);
+  const advanceLabel = store.nextScene() ? g.scene.canContinue : g.complete.bag;
   const advance = () => { const next = store.nextScene(); if (next) store.openScene(next); else store.openPassport(); };
-  // A star in the air has not landed: its slot stays dark until it does.
-  const starsLanded = Math.max(0, foundIds.length - (flight ? 1 : 0));
+  const starsLanded = Math.min(foundIds.length, landedStars);
   // "The next place is open" is one moment, not a wall: the toast leaves the
   // board on its own, and the HUD keeps the way forward.
   const unlockToast = canAdvance && foundIds.length === advanceAt && mission.phase === "searching" && !turn && !staying;
@@ -482,15 +488,16 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           findAny={free}
           findsRequiredToAdvance={advanceAt}
           onAdvance={canAdvance && mission.phase !== "found" && !turn ? advance : undefined}
+          advanceLabel={advanceLabel}
         />
       ) : null}
 
       {unlockToast ? (
-        <section className="scene__advance" aria-label={g.scene.canContinue}>
+        <section className="scene__advance" aria-label={advanceLabel}>
           <StarTray lit={advanceAt} total={advanceAt} size="md" celebrate />
           <p>{store.nextScene() ? g.scene.unlocked : g.scene.journeyFinished}</p>
           <div className="scene__advance-actions">
-            <button type="button" className="fm-btn fm-btn--sm" onClick={advance}>{g.scene.canContinue}</button>
+            <button type="button" className="fm-btn fm-btn--sm" onClick={advance}>{advanceLabel}</button>
             <button type="button" className="fm-btn fm-btn--ghost fm-btn--sm" onClick={() => setStaying(true)}>{g.scene.keepSearching}</button>
           </div>
         </section>

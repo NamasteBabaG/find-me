@@ -48,4 +48,10 @@ The new painter recipe uses only the scene plus the exact canonical portrait; no
 
 Post-correction frozen verification: `npm run check -- --maxWorkers=2` exited0, **190 files and2,821 passing tests,35 skipped**, with both TypeScript checks passing (292seconds). The pilot is covered through the real SQLite queue/ledger, including deadline replay, a single authorized attempt, durable parking and explicit resumed review. Administrator actions and deletion of private pilot metadata are covered separately.
 
-No post-correction real-image acceptance, final game or final cost is claimed yet.
+The correction was committed as `71bb71a`, deployed READY as `dpl_9R5DvLedg8vTQ9phZUEhQMaHgYY8`, and promoted only to QA. The authenticated admin pilot queued Sydney1's second attempt, then the server retained exactly one new candidate and parked. Estimated inclusive cost became **$0.297512**, nine images and two reviews, with no pending or unknown charges. No other hide was repainted by the pilot.
+
+Native-size inspection found the candidate closer to the canonical portrait in its straight side-swept hair and gentle facial expression, with plausible scene contact. Its exact SHA was submitted through the explicit resume form for independent labeled automatic review. This is not parent approval, a likeness guarantee, or publication. The $4 inclusive limit and three-image-attempt cap remain unchanged.
+
+Claude's finished HUD commit `73c6440` was integrated exactly as `ba12cba`, not by merging the unrelated old root branch. Independent review reproduced and corrected a star-light flicker before launch, swallowed nested keyboard activation in the folded HUD, and the wrong final-board destination label. Five hides, three-star advancement and45 world stars remain. The frozen integrated `npm run check -- --maxWorkers=2` exited0: **191 files,2,843 passing tests,35 skipped**, both TypeScript checks passed. Narrow-phone visual verification remains.
+
+No final game or final cost is claimed yet.

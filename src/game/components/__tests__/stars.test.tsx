@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import React from "react";
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { emptyProgress, recordSceneCompleted } from "@/domain/game/progress";
-import type { GameConfig } from "@/domain/game/config";
+import { emptyProgress, parseProgress, recordSceneCompleted } from "@/domain/game/progress";
+import { GameConfigSchema, type GameConfig } from "@/domain/game/config";
+import { buildDemoConfig } from "@/services/demo";
 import { GameI18nProvider } from "../../i18n";
 import { StarTray } from "../StarTray";
 import { StarCounter } from "../StarCounter";
@@ -131,6 +132,26 @@ const target = (id: string) =>
   }) as never;
 
 describe("MissionCard", () => {
+  it.each(["Enter", " "])("keeps nested hint/continue keyboard activation native when the HUD is quiet (%s)", key => {
+    const onHint = vi.fn(), onAdvance = vi.fn(), onExpand = vi.fn();
+    const view = he(<MissionCard index={4} total={5} target={target("d")} found={["a", "b", "c"]}
+      order={["a", "b", "c", "d", "e"]} hintLevel={0} hintPulse={false} hintText={null} onHint={onHint}
+      onAdvance={onAdvance} childName="יובל" quiet onExpand={onExpand} />);
+    for (const selector of [".mission__hintbtn", ".mission__continue"]) {
+      const button = view.container.querySelector(selector)!;
+      const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+      act(() => button.dispatchEvent(event));
+      expect(event.defaultPrevented).toBe(false);
+      expect(onExpand).not.toHaveBeenCalled();
+      // Browser activation is a native click after the uncancelled key event.
+      fireEvent.click(button);
+      onExpand.mockClear();
+    }
+    expect(onHint).toHaveBeenCalledTimes(1); expect(onAdvance).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(view.container.querySelector(".mission")!, { key });
+    expect(onExpand).toHaveBeenCalledTimes(1);
+  });
+
   it("carries the tray: the stars that landed, out of the board's three", () => {
     const { container } = he(<MissionCard index={2} total={3} target={target("b")} found={["a", "b"]} order={["a", "b", "c"]} stars={1} hintLevel={0} hintPulse={false} hintText={null} onHint={() => undefined} childName="יובל" />);
     const slots = [...container.querySelectorAll(".mission__stars .stars__slot")];
@@ -170,6 +191,22 @@ function gameConfig(): GameConfig {
 }
 
 describe("Passport", () => {
+  it.each([3, 5])("uses all nine five-hide boards: %i per board, no early completion or twenty-seven-star ceiling", found => {
+    const base = buildDemoConfig("he"), original = base.scenes[0]!;
+    const config = GameConfigSchema.parse({ ...base, world: undefined, worlds: undefined,
+      scenes: Array.from({ length: 9 }, (_, boardIndex) => ({ ...original, slug: `five-board-${boardIndex}`, version: 9,
+        playMode: "find-any", appearancesPerBoard: 5, findsRequiredToAdvance: 3,
+        targets: Array.from({ length: 5 }, (_, hideIndex) => ({ ...original.targets[hideIndex % 3]!, id: `hide-${hideIndex}` })) })) });
+    const progress = parseProgress(JSON.stringify({ v: 1, gameId: config.gameId, revealed: true,
+      scenes: Object.fromEntries(config.scenes.map(scene => [scene.slug, { sceneVersion: 9,
+        foundTargetIds: scene.targets.slice(0, found).map(target => target.id) }])) }), config.gameId);
+    const view = he(<Passport config={config} progress={progress} onMap={() => undefined} onOpen={() => undefined} />);
+    expect(view.getByRole("img", { name: `${9 * found} מתוך 45 כוכבי זהב נאספו` })).toBeTruthy();
+    expect([...view.container.querySelectorAll(".loot")].map(card => card.querySelectorAll(".stars__slot.is-lit").length)).toEqual(Array(9).fill(found));
+    expect(view.container.querySelectorAll(".loot__completed")).toHaveLength(found === 5 ? 9 : 0);
+    expect(view.queryByText("כל כוכבי הזהב שלכם!") !== null).toBe(found === 5);
+  });
+
   it("counts every gold star in the game and shows each board's three", () => {
     const config = gameConfig();
     const progress = recordSceneCompleted(emptyProgress("g"), "amazon", { variants: {}, order: ["a", "b", "c"], noHints: false, bonusFound: false }, 3);

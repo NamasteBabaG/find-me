@@ -43,6 +43,8 @@ interface Props {
   findsRequiredToAdvance?: number;
   /** The next place is open: the button that goes there. Never folded away. */
   onAdvance?: () => void;
+  /** The real destination: next place, or the adventure bag on the last board. */
+  advanceLabel?: string;
 }
 
 /**
@@ -56,7 +58,7 @@ interface Props {
  * score a child keeps glancing at. What the WORLD has collected is not shown
  * here at all - inside a board, only that board's stars matter (Guy).
  */
-export function MissionCard({ index, total, target, found, order, stars, trayRef, hintLevel, hintPulse, hintText, onHint, avatarUrl, childName, quiet = false, onExpand, minimal = false, findAny = false, findsRequiredToAdvance = 3, onAdvance }: Props) {
+export function MissionCard({ index, total, target, found, order, stars, trayRef, hintLevel, hintPulse, hintText, onHint, avatarUrl, childName, quiet = false, onExpand, minimal = false, findAny = false, findsRequiredToAdvance = 3, onAdvance, advanceLabel }: Props) {
   const { g, tf } = useGameText();
   const foundCount = Math.min(found.length, total);
   const lit = Math.min(stars ?? found.length, total);
@@ -82,6 +84,7 @@ export function MissionCard({ index, total, target, found, order, stars, trayRef
       onKeyDown={
         quiet
           ? (e) => {
+              if (e.target !== e.currentTarget) return;
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
                 onExpand?.();
@@ -121,7 +124,7 @@ export function MissionCard({ index, total, target, found, order, stars, trayRef
       </div>
       {onAdvance ? (
         <button type="button" className="mission__continue" onClick={onAdvance}>
-          {g.scene.canContinue}
+          {advanceLabel ?? g.scene.canContinue}
           <span className="fm-btn__arrow" aria-hidden>
             ➜
           </span>

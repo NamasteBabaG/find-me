@@ -44,7 +44,7 @@ Hero ("Where Am I?" over the real beach art with a searchlight that follows the 
 - Feedback 300–800ms; world-specific particles; speech bubbles in screen space, Fredoka 20/32.
 - Top bar: map · world name · 1/3 · zoom · reset · sound. Nothing else.
 - Portrait phones: scene covers height, drag to explore, gentle "landscape is more fun" tip, never blocking.
-- **Gold stars** (`--gold*` tokens, `--grad-gold`, `--shadow-glow-gold`): one star per hiding spot, three a board, twenty-seven a world. Stars are only ever gained — a replay keeps them, a hint never costs one (rule 7). The star is one vector (`GoldStar`), never an emoji. A find sends it flying from the child into the mission tray (`StarFlight` → `StarTray`); the finish card pops the board's three in one after another and rolls the world's count up (`StarCounter`); the map, the hub and the adventure bag show what is collected and what is still out there (empty slots are the same star, dashed). Rules: `src/domain/game/stars.ts`.
+- **Gold stars** (`--gold*` tokens, `--grad-gold`, `--shadow-glow-gold`): one per distinct hiding spot. New serial find-any games have five per board and forty-five across nine boards; finding any three unlocks the next board and the remaining two stay optional. Legacy games keep their authored three per board. Progress is saved immediately and never charged for hints; the visual star lands after its flight (`StarFlight` → `StarTray`) without briefly disappearing. The finish card celebrates that board's actual target count; world totals belong on the map, hub and adventure bag, not inside the board. Rules: `src/domain/game/progress.ts` and `src/domain/game/mission.ts`.
 
 ## Photo → character section (`src/app/home/Transformation.tsx`)
 
