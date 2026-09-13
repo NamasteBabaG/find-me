@@ -5,7 +5,10 @@ import { getContainer } from "@/services/container";
 import { stageLocalPatchPaidRepair } from "@/services/generation/local-patch-paid-repair";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+// This preflight decodes two boards and constructs twelve native evidence
+// panels per board before its atomic staging write. It makes NO paid calls;
+// deployed cold-start/remote-storage work can legitimately exceed one minute.
+export const maxDuration = 300;
 const MAX_BODY_BYTES = 250_000;
 const CONFIRMATION = "review-existing-paid-images-only";
 const reply = (status: number, code: string) => Response.json({ ok: false, code }, { status, headers: { "Cache-Control": "no-store" } });
