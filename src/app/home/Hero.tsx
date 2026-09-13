@@ -25,6 +25,11 @@ import found from "../../../content/home/hero-found.json";
  * On a phone there is no device frame (the visitor is holding one): the board
  * card itself plays the moment under the copy.
  *
+ * Every screen shows the board at its full height — the whole board on the
+ * tablet, a full-height column cut to the screen's own aspect on the phone and
+ * the card — as much of the map as possible, nothing cropped or letterboxed
+ * (Guy). No device labels under the stage: tabs there read as noise (Guy).
+ *
  * Nothing here is measured by eye. The child's head comes from the demo
  * patch's anchor through `scripts/refresh-hero-found.ts` (rebuild the crops
  * with `--apply` whenever the beach art or the demo patch changes), and the
@@ -48,7 +53,7 @@ type Kind = "phone" | "tablet" | "card";
 type Crop = keyof typeof found.crops;
 const SCREENS: Record<Exclude<Kind, "card">, { w: number; h: number; crop: Crop }> = {
   phone: { w: 288, h: 616, crop: "phone" },
-  tablet: { w: 688, h: 512, crop: "wide" },
+  tablet: { w: 688, h: 456, crop: "wide" },
 };
 /** Where a point of an image lands inside a box the image covers (object-fit: cover, centred). */
 export function coverPoint(p: { x: number; y: number }, image: number, box: number) {
@@ -72,7 +77,7 @@ interface Child {
 /** One game screen: the board with the child in it, the search HUD, and the find. */
 function Screen({ kind, child }: { kind: Kind; child: Child }) {
   const { t, tf, locale } = useI18n();
-  const crop = found.crops[kind === "card" ? "wide" : SCREENS[kind].crop];
+  const crop = found.crops[kind === "card" ? "card" : SCREENS[kind].crop];
   const box = kind === "card" ? CARD_ASPECT : SCREENS[kind].w / SCREENS[kind].h;
   const head = coverPoint(crop.head, crop.width / crop.height, box);
   return (
@@ -248,16 +253,6 @@ export function Hero({ child, children }: { child: Child; children?: ReactNode }
               <div className="hero4__frame hero4__frame--tablet">
                 <Screen kind="tablet" child={child} />
               </div>
-            </div>
-            <div className="hero4__labels">
-              <span className="hero4__label hero4__label--phone">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.5" /><path d="M11 18h2" /></svg>
-                {h.devices.phone}
-              </span>
-              <span className="hero4__label hero4__label--tablet">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M11 17.5h2" /></svg>
-                {h.devices.tablet}
-              </span>
             </div>
           </div>
           <div className="hero4__card" style={{ aspectRatio: CARD_ASPECT }}>

@@ -64,6 +64,10 @@ describe("hero board crops", () => {
       // The head sits above the middle of the child.
       expect(crop.head.y).toBeLessThan(crop.child.y);
     }
-    expect(found.crops.phone.width / found.crops.phone.height).toBeCloseTo(9 / 16, 1);
+    // Every crop keeps the board's full height; the tablet's is the whole board.
+    for (const crop of Object.values(found.crops)) expect(crop.sourceRect.height).toBe(scene.art.height);
+    expect(found.crops.wide.sourceRect.width).toBe(scene.art.width);
+    expect(found.crops.phone.width / found.crops.phone.height).toBeCloseTo(288 / 616, 1);
+    expect(found.crops.card.width / found.crops.card.height).toBeCloseTo(2 / 3, 1);
   });
 });

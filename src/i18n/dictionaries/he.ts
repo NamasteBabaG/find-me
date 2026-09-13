@@ -72,7 +72,6 @@ export const he: Dictionary = {
       cta: "יוצרים משחק",
       demo: "לנסות את ההדגמה",
       found: "מצאתם אותי!",
-      devices: { phone: "טלפון", tablet: "טאבלט" },
     },
     demo: {
       pill: "🎮 הדגמה חיה · אפשר לשחק כאן ועכשיו",

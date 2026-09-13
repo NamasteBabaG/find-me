@@ -73,7 +73,6 @@ export const en = {
       cta: "Create a game",
       demo: "Try the demo",
       found: "Found me!",
-      devices: { phone: "Phone", tablet: "Tablet" },
     },
     demo: {
       pill: "🎮 Live demo · play right here",

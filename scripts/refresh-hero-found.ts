@@ -1,7 +1,8 @@
 /** The hero's board: the demo child the live demo shows (the beach sandcastle
- * patch) painted into the beach at the exact rect the game draws it, cut two
- * ways — a wide crop for the tablet, the laptop and the phone-sized card, and
- * a tall 9:16 crop for the phone — with the child's head recorded per crop, so
+ * patch) painted into the beach at the exact rect the game draws it, cut once
+ * per screen at the board's FULL height and the screen's exact aspect — the
+ * whole board for the tablet, a tall column around the child for the phone, a
+ * 2:3 one for the mobile card — with the child's head recorded per crop, so
  * the hero can put its ring and its bubble on her without a coordinate living
  * in a component. Marketing copies only; no paid calls, no uploads.
  * npx tsx scripts/refresh-hero-found.ts --apply
@@ -18,10 +19,14 @@ const round = (n: number) => Math.round(n * 10000) / 10000;
 const SLUG = "beach";
 const TARGET = "sandcastle";
 const VARIANT = "A";
-// Wide: the child sits left of centre, the headline takes the other side (RTL
-// puts the copy on the right). Tall: 9:16 around her, her body at 62% down.
-const WIDE = { x: 0.1, y: 0.33, w: 0.64, h: 0.58, width: 1400 };
-const TALL = { h: 0.7, childY: 0.62, width: 720 };
+// Every crop keeps the board's full height - as much of the map as the screen can
+// hold, nothing cut top or bottom (Guy) - and is cut to its screen's exact aspect,
+// so nothing is cut at the sides either. `aspect: null` is the whole board.
+const SCREENS = [
+  { name: "wide", aspect: null, width: 1600 },
+  { name: "phone", aspect: 288 / 616, width: 720 },
+  { name: "card", aspect: 2 / 3, width: 720 },
+] as const;
 
 async function main() {
   const apply = process.argv.includes("--apply");
@@ -49,13 +54,15 @@ async function main() {
 
   const anchor = { x: geometry.head.x * W, y: geometry.head.y * H };
   const centre = { x: geometry.center.x * W, y: geometry.center.y * H };
-  const wide = { left: Math.round(WIDE.x * W), top: Math.round(WIDE.y * H), width: Math.round(WIDE.w * W), height: Math.round(WIDE.h * H) };
-  const tallH = Math.round(TALL.h * H);
-  const tallW = Math.round((tallH * 9) / 16);
-  const tall = { left: Math.round(centre.x - tallW / 2), top: Math.round(centre.y - TALL.childY * tallH), width: tallW, height: tallH };
+  // Each column is centred on the child and kept inside the board.
+  const cuts = SCREENS.map((screen) => {
+    const width = screen.aspect === null ? W : Math.min(W, Math.round(H * screen.aspect));
+    const left = Math.max(0, Math.min(W - width, Math.round(centre.x - width / 2)));
+    return [screen.name, { left, top: 0, width, height: H }, screen.width] as const;
+  });
 
   const crops: Record<string, unknown> = {};
-  for (const [name, box, width] of [["wide", wide, WIDE.width], ["phone", tall, TALL.width]] as const) {
+  for (const [name, box, width] of cuts) {
     if (box.left < 0 || box.top < 0 || box.left + box.width > W || box.top + box.height > H) throw new Error(`The ${name} crop leaves the board`);
     const bytes = await sharp(board).extract(box).resize({ width }).webp({ quality: 66, effort: 6 }).toBuffer();
     const meta = await sharp(bytes).metadata();

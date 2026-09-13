@@ -10,7 +10,7 @@ vi.mock("@/i18n/client", () => ({
   useI18n: () => ({
     locale: language.locale,
     t: {
-      home: { hero: { title: "Find me?", pill: "One photo", lead: "Lead", cta: "Create", demo: "Demo", found: "Found me!", devices: { phone: "Phone", tablet: "Tablet" } } },
+      home: { hero: { title: "Find me?", pill: "One photo", lead: "Lead", cta: "Create", demo: "Demo", found: "Found me!" } },
       game: { scene: { findChild: "Find {name}!", findAnyRules: "5 spots, find 3", hint: "Hint" } },
     },
     tf: (s: string, vars: Record<string, string | number>) => s.replace(/\{(\w+)\}/g, (_, k) => String(vars[k])),
@@ -59,12 +59,13 @@ describe("hero: the find on two devices", () => {
       for (const v of [fx.style.left, fx.style.top]) expect(parseFloat(v)).toBeGreaterThan(15), expect(parseFloat(v)).toBeLessThan(85);
     }
   });
-  it("loads the tall crop only where the phone is drawn, the wide crop everywhere else", () => {
+  it("gives each screen its own full-height crop, the tall one only where the phone is drawn", () => {
     const view = render(<Hero child={child} />);
     const source = view.container.querySelector(".hero4__screen--phone source")!;
     expect(source.getAttribute("srcset")).toBe(found.crops.phone.src);
     expect(source.getAttribute("media")).toBe("(min-width: 721px)");
-    for (const kind of ["tablet", "card"]) expect(view.container.querySelector(`.hero4__screen--${kind} img`)?.getAttribute("src")).toBe(found.crops.wide.src);
+    expect(view.container.querySelector(".hero4__screen--tablet img")?.getAttribute("src")).toBe(found.crops.wide.src);
+    expect(view.container.querySelector(".hero4__screen--card img")?.getAttribute("src")).toBe(found.crops.card.src);
   });
   it("keeps the face, name/stars stack and hint on one row without helper copy in every preview", () => {
     const view = render(<Hero child={child} />);
@@ -95,10 +96,6 @@ describe("hero: the find on two devices", () => {
     expect(label.classList.contains("fm-pill--sun")).toBe(false);
     expect(label.getAttribute("role")).not.toBe("button");
     expect(view.container.querySelector("h1")?.textContent).toBe("Find me?");
-  });
-  it("names the two devices in the visitor's language", () => {
-    const view = render(<Hero child={child} />);
-    expect(Array.from(view.container.querySelectorAll(".hero4__label")).map(l => l.textContent)).toEqual(["Phone", "Tablet"]);
   });
 });
 

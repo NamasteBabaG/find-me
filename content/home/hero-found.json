@@ -28,47 +28,69 @@
   "faceSha256": "df91e71f4aacd1679962ebfd124de5290a81811d47507088ed8e1e65697ecea6",
   "crops": {
     "wide": {
-      "src": "/home/hero-found-wide.webp?v=89ba8d26ba43204b",
+      "src": "/home/hero-found-wide.webp?v=c5dbccb65251e32e",
       "assetPath": "/home/hero-found-wide.webp",
-      "assetSha256": "89ba8d26ba43204b2a42eb8925ac74b99688378b0c47f042177c1d80c135b97b",
-      "bytes": 330548,
-      "width": 1400,
-      "height": 846,
+      "assetSha256": "c5dbccb65251e32e8536214460c3b3ffb0aa0c6f13828181d8d30412c4ee3be8",
+      "bytes": 498516,
+      "width": 1600,
+      "height": 1067,
       "sourceRect": {
-        "left": 307,
-        "top": 676,
-        "width": 1966,
-        "height": 1188
+        "left": 0,
+        "top": 0,
+        "width": 3072,
+        "height": 2048
       },
       "head": {
-        "x": 0.447,
-        "y": 0.5143
+        "x": 0.386,
+        "y": 0.6284
       },
       "child": {
-        "x": 0.4413,
-        "y": 0.6128
+        "x": 0.3823,
+        "y": 0.6855
       }
     },
     "phone": {
-      "src": "/home/hero-found-phone.webp?v=216d9e3f024bcbbb",
+      "src": "/home/hero-found-phone.webp?v=98772649ca304c7c",
       "assetPath": "/home/hero-found-phone.webp",
-      "assetSha256": "216d9e3f024bcbbbf4460c2006fcb35928ca5c053a7457eb08647adf6cc00983",
-      "bytes": 223550,
+      "assetSha256": "98772649ca304c7c45596d0979b6176d89ab56f9e11b62a06e2a2a3567871202",
+      "bytes": 270446,
       "width": 720,
-      "height": 1279,
+      "height": 1539,
       "sourceRect": {
-        "left": 771,
-        "top": 515,
-        "width": 807,
-        "height": 1434
+        "left": 696,
+        "top": 0,
+        "width": 958,
+        "height": 2048
       },
       "head": {
-        "x": 0.514,
-        "y": 0.5384
+        "x": 0.5113,
+        "y": 0.6284
+      },
+      "child": {
+        "x": 0.4995,
+        "y": 0.6855
+      }
+    },
+    "card": {
+      "src": "/home/hero-found-card.webp?v=d5bcd1e63a0444bf",
+      "assetPath": "/home/hero-found-card.webp",
+      "assetSha256": "d5bcd1e63a0444bf6cb1cbdf7df2a85b0e0c6f2194058d073be9746c631e225a",
+      "bytes": 238974,
+      "width": 720,
+      "height": 1080,
+      "sourceRect": {
+        "left": 492,
+        "top": 0,
+        "width": 1365,
+        "height": 2048
+      },
+      "head": {
+        "x": 0.5083,
+        "y": 0.6284
       },
       "child": {
         "x": 0.5,
-        "y": 0.6199
+        "y": 0.6855
       }
     }
   }
