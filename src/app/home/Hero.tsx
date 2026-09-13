@@ -35,8 +35,6 @@ import found from "../../../content/home/hero-found.json";
 
 /** Five hiding spots per board, three of them open the next place: the tray shows what the game shows. */
 const SLOTS = 5;
-/** The flying star's box in design px; it shrinks to the slot's size as it lands (see --fs). */
-const FLY_BASE = 32;
 /** The three devices are drawn at this size and scaled as one to the column (--k). */
 const STAGE_W = 704;
 /** A portrait board leaves room for the identity header above the found child,
@@ -126,7 +124,7 @@ function Screen({ kind, child }: { kind: Kind; child: Child }) {
       <div className="hero4__fx" style={{ left: `${(head.x * 100).toFixed(2)}%`, top: `${(head.y * 100).toFixed(2)}%` }} data-fx>
         <span className="hero4__ring" />
         {SPARKS.map(([sx, sy, delay], i) => (
-          <span key={i} className="hero4__spark" style={{ "--sx": `${sx}px`, "--sy": `${sy}px`, animationDelay: delay } as CSSProperties}>
+          <span key={i} className="hero4__spark" style={{ "--sx": `calc(${sx}px * var(--ui))`, "--sy": `calc(${sy}px * var(--ui))`, animationDelay: delay } as CSSProperties}>
             <GoldStar />
           </span>
         ))}
@@ -167,7 +165,8 @@ export function Hero({ child, children }: { child: Child; children?: ReactNode }
         const slot = screen.querySelector<HTMLElement>("[data-slot]");
         const fx = screen.querySelector<HTMLElement>("[data-fx]");
         const fly = screen.querySelector<HTMLElement>("[data-fly]");
-        if (!slot || !fx || !fly) continue;
+        const star = fly?.firstElementChild as HTMLElement | null;
+        if (!slot || !fx || !fly || !star) continue;
         const at = (el: HTMLElement) => {
           let x = 0;
           let y = 0;
@@ -183,7 +182,8 @@ export function Hero({ child, children }: { child: Child; children?: ReactNode }
         const f = at(fx);
         fly.style.setProperty("--fx", `${(s.x + slot.offsetWidth / 2 - f.x).toFixed(1)}px`);
         fly.style.setProperty("--fy", `${(s.y + slot.offsetHeight / 2 - f.y).toFixed(1)}px`);
-        fly.style.setProperty("--fs", (slot.offsetWidth / FLY_BASE).toFixed(3));
+        // The star shrinks to the slot's size as it lands: the two swap without a pop.
+        fly.style.setProperty("--fs", (slot.offsetWidth / Math.max(1, star.offsetWidth)).toFixed(3));
       }
     };
     const measure = () => {

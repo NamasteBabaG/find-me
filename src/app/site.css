@@ -49,10 +49,14 @@
 .hero4__frame--laptop { left: 8px; top: 0; width: 672px; height: 432px; border-radius: var(--radius-3) var(--radius-3) var(--radius-1) var(--radius-1); }
 .hero4__base { position: absolute; left: -16px; top: 432px; width: 720px; height: 16px; border-radius: 4px 4px var(--radius-2) var(--radius-2); background: linear-gradient(180deg, var(--night-2) 0%, var(--ink) 100%); box-shadow: var(--shadow-2); }
 .hero4__base::after { content: ""; position: absolute; left: 270px; top: 0; width: 180px; height: 8px; border-radius: 0 0 var(--radius-1) var(--radius-1); background: var(--night-3); }
-.hero4__screen { position: absolute; inset: var(--space-1); overflow: hidden; background: var(--sea-soft); }
-.hero4__screen--phone { border-radius: calc(var(--radius-5) - var(--space-1)); }
-.hero4__screen--tablet { border-radius: calc(var(--radius-4) - var(--space-1)); }
-.hero4__screen--laptop { border-radius: var(--radius-2) var(--radius-2) 4px 4px; }
+/* --ui: how big the game's chrome is on this screen. A laptop's HUD is a small
+   corner of its screen and a phone's fills its top; a full-size HUD inside a
+   small screen read as a poster, not a device (Guy). Every size inside a
+   screen is a token times this factor, so the flight measurement stays exact. */
+.hero4__screen { --ui: 1; position: absolute; inset: var(--space-1); overflow: hidden; background: var(--sea-soft); }
+.hero4__screen--phone { --ui: 0.8; border-radius: calc(var(--radius-5) - var(--space-1)); }
+.hero4__screen--tablet { --ui: 0.62; border-radius: calc(var(--radius-4) - var(--space-1)); }
+.hero4__screen--laptop { --ui: 0.55; border-radius: var(--radius-2) var(--radius-2) 4px 4px; }
 .hero4__screen picture { display: contents; }
 .hero4__art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; user-select: none; }
 /* Which device is on: a quiet row of three under the stage. */
@@ -66,27 +70,28 @@
    layout: on narrow screens the rail starts AFTER the HUD's actual height.
    The physical top-right HUD stays put in both languages; its text follows
    its own dir. No changes to the real player's styles. */
-.hero4__chrome { position: absolute; inset: var(--space-2) var(--space-2) auto; z-index: 3; display: flex; align-items: flex-start; gap: var(--space-2); direction: ltr; }
-.hero4__rail { display: flex; flex-direction: column; gap: var(--space-1); flex-shrink: 0; }
-.hero4__tool { width: var(--space-4); height: var(--space-4); border-radius: var(--radius-pill); background: rgba(23, 22, 43, 0.42); backdrop-filter: blur(8px); box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.4); display: grid; place-items: center; color: var(--white); }
-.hero4__hud { width: calc(var(--space-20) * 2); max-width: 100%; margin-left: auto; min-width: 0; display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2); border-radius: var(--radius-3); background: rgba(255, 255, 255, 0.82); backdrop-filter: blur(18px) saturate(1.2); -webkit-backdrop-filter: blur(18px) saturate(1.2); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.9), var(--shadow-2); }
-.hero4__hud-top { display: flex; align-items: center; gap: var(--space-1); }
-.hero4__face { width: var(--control-h); height: var(--control-h); padding: var(--space-0-5); border-radius: var(--radius-2); object-fit: contain; background: var(--white); box-shadow: var(--shadow-1); flex-shrink: 0; }
-.hero4__hud-col { display: flex; flex: 1; flex-direction: column; align-items: flex-start; gap: var(--space-1); min-width: 0; }
-.hero4__tray { display: inline-flex; gap: var(--space-0-5); }
-.hero4__slot { position: relative; display: block; width: var(--space-2); height: var(--space-2); flex-shrink: 0; }
+.hero4__chrome { position: absolute; inset: calc(var(--space-2) * var(--ui)) calc(var(--space-2) * var(--ui)) auto; z-index: 3; display: flex; align-items: flex-start; gap: calc(var(--space-2) * var(--ui)); direction: ltr; }
+.hero4__rail { display: flex; flex-direction: column; gap: calc(var(--space-1) * var(--ui)); flex-shrink: 0; }
+.hero4__tool { width: calc(var(--space-4) * var(--ui)); height: calc(var(--space-4) * var(--ui)); border-radius: var(--radius-pill); background: rgba(23, 22, 43, 0.42); backdrop-filter: blur(8px); box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.4); display: grid; place-items: center; color: var(--white); }
+.hero4__tool svg { width: calc(var(--space-2) * var(--ui)); height: calc(var(--space-2) * var(--ui)); }
+.hero4__hud { width: calc(var(--space-20) * 2 * var(--ui)); max-width: 100%; margin-left: auto; min-width: 0; display: flex; flex-direction: column; gap: calc(var(--space-1) * var(--ui)); padding: calc(var(--space-2) * var(--ui)); border-radius: calc(var(--radius-3) * var(--ui)); background: rgba(255, 255, 255, 0.82); backdrop-filter: blur(18px) saturate(1.2); -webkit-backdrop-filter: blur(18px) saturate(1.2); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.9), var(--shadow-2); }
+.hero4__hud-top { display: flex; align-items: center; gap: calc(var(--space-1) * var(--ui)); }
+.hero4__face { width: calc(var(--control-h) * var(--ui)); height: calc(var(--control-h) * var(--ui)); padding: calc(var(--space-0-5) * var(--ui)); border-radius: calc(var(--radius-2) * var(--ui)); object-fit: contain; background: var(--white); box-shadow: var(--shadow-1); flex-shrink: 0; }
+.hero4__hud-col { display: flex; flex: 1; flex-direction: column; align-items: flex-start; gap: calc(var(--space-1) * var(--ui)); min-width: 0; }
+.hero4__tray { display: inline-flex; gap: calc(var(--space-0-5) * var(--ui)); }
+.hero4__slot { position: relative; display: block; width: calc(var(--space-2) * var(--ui)); height: calc(var(--space-2) * var(--ui)); flex-shrink: 0; }
 .hero4__tray .star--empty .star__body { fill: var(--white); stroke: var(--ink-3); stroke-dasharray: none; }
 .hero4__landed { position: absolute; inset: 0; opacity: 0; transform: scale(0.6); animation: hero4-land 8s var(--ease-out) infinite; }
-.hero4__hintbtn { display: inline-flex; align-items: center; justify-content: center; min-height: var(--space-4); padding-inline: var(--space-1); border-radius: var(--radius-pill); background: var(--sun); font-family: var(--font-display); font-weight: 800; font-size: var(--fs-50); color: var(--ink); box-shadow: var(--shadow-1); flex-shrink: 0; }
-.hero4__mission { font-family: var(--font-display); font-size: var(--fs-200); line-height: var(--lh-200); font-weight: 700; color: var(--ink); overflow-wrap: anywhere; }
+.hero4__hintbtn { display: inline-flex; align-items: center; justify-content: center; min-height: calc(var(--space-4) * var(--ui)); padding-inline: calc(var(--space-1) * var(--ui)); border-radius: var(--radius-pill); background: var(--sun); font-family: var(--font-display); font-weight: 800; font-size: calc(var(--fs-50) * var(--ui)); color: var(--ink); box-shadow: var(--shadow-1); flex-shrink: 0; }
+.hero4__mission { font-family: var(--font-display); font-size: calc(var(--fs-200) * var(--ui)); line-height: calc(var(--lh-200) * var(--ui)); font-weight: 700; color: var(--ink); overflow-wrap: anywhere; }
 .hero4__screen--phone .hero4__chrome { flex-direction: column-reverse; }
-.hero4__screen--card .hero4__chrome { bottom: var(--space-2); display: grid; grid-template-rows: auto 1fr; pointer-events: none; }
+.hero4__screen--card .hero4__chrome { bottom: calc(var(--space-2) * var(--ui)); display: grid; grid-template-rows: auto 1fr; pointer-events: none; }
 .hero4__screen--card .hero4__hud { grid-row: 1; }
 .hero4__screen--card .hero4__rail { grid-row: 2; align-self: end; justify-self: start; flex-direction: row; }
 .hero4__screen--phone .hero4__hud, .hero4__screen--card .hero4__hud { width: 100%; }
 /* The small card's find is close to the header; put its speech below the
    child instead of letting a balloon collide with the identity panel. */
-.hero4__screen--card .hero4__bubble { top: var(--space-16); }
+.hero4__screen--card .hero4__bubble { top: calc(var(--space-16) * var(--ui)); }
 
 /* The find. Everything hangs off one point — the top of the child's head —
    and every effect is one 8-second loop: the hand arrives at 0.8 s and taps
@@ -95,15 +100,15 @@
    star swap at the same size and place, so nothing pops. All gone by 90 %,
    under the device's fade. */
 .hero4__fx { position: absolute; width: 0; height: 0; z-index: 4; }
-.hero4__hand { position: absolute; left: -10px; top: -6px; width: var(--space-6); height: var(--space-6); opacity: 0; animation: hero4-hand 8s var(--ease-in-out) infinite; z-index: 6; filter: drop-shadow(0 6px 10px rgba(23, 22, 43, 0.4)); }
-.hero4__ring { position: absolute; left: -64px; top: -24px; width: var(--space-16); height: var(--space-16); border-radius: var(--radius-pill); border: 3px solid var(--gold); box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.7), var(--shadow-glow-gold); opacity: 0; animation: hero4-ring 8s var(--ease-out) infinite; }
-.hero4__bubble { position: absolute; left: 0; top: -40px; transform: translate(-50%, -100%); background: var(--white); color: var(--ink); font-family: var(--font-kid); font-weight: 600; font-size: var(--fs-200); line-height: var(--lh-200); padding: var(--space-0-5) var(--space-2); border-radius: var(--radius-2); box-shadow: 0 0 0 3px var(--ink), var(--shadow-2); white-space: nowrap; opacity: 0; animation: hero4-bubble 8s var(--ease-out) infinite; }
+.hero4__hand { position: absolute; left: calc(-10px * var(--ui)); top: calc(-6px * var(--ui)); width: max(var(--space-4), calc(var(--space-6) * var(--ui))); height: max(var(--space-4), calc(var(--space-6) * var(--ui))); opacity: 0; animation: hero4-hand 8s var(--ease-in-out) infinite; z-index: 6; filter: drop-shadow(0 6px 10px rgba(23, 22, 43, 0.4)); }
+.hero4__ring { position: absolute; left: calc(var(--space-8) * -1 * var(--ui)); top: calc(var(--space-3) * -1 * var(--ui)); width: calc(var(--space-16) * var(--ui)); height: calc(var(--space-16) * var(--ui)); border-radius: var(--radius-pill); border: 3px solid var(--gold); box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.7), var(--shadow-glow-gold); opacity: 0; animation: hero4-ring 8s var(--ease-out) infinite; }
+.hero4__bubble { position: absolute; left: 0; top: calc(var(--space-5) * -1 * var(--ui)); transform: translate(-50%, -100%); background: var(--white); color: var(--ink); font-family: var(--font-kid); font-weight: 600; font-size: max(var(--fs-50), calc(var(--fs-200) * var(--ui))); line-height: 1.5; padding: calc(var(--space-0-5) * var(--ui)) calc(var(--space-2) * var(--ui)); border-radius: calc(var(--radius-2) * var(--ui)); box-shadow: 0 0 0 3px var(--ink), var(--shadow-2); white-space: nowrap; opacity: 0; animation: hero4-bubble 8s var(--ease-out) infinite; }
 .hero4__bubble::after { content: ""; position: absolute; left: 50%; bottom: -10px; width: 12px; height: 12px; background: var(--white); border-right: 3px solid var(--ink); border-bottom: 3px solid var(--ink); transform: translateX(-50%) rotate(45deg); }
 .hero4__screen--card .hero4__bubble::after { top: -8px; bottom: auto; transform: translateX(-50%) rotate(225deg); }
-.hero4__spark { position: absolute; left: -8px; top: -8px; width: var(--space-2); height: var(--space-2); opacity: 0; animation: hero4-spark 8s var(--ease-out) infinite; filter: drop-shadow(0 0 5px rgba(255, 207, 51, 0.8)); }
+.hero4__spark { position: absolute; left: calc(var(--space-1) * -1 * var(--ui)); top: calc(var(--space-1) * -1 * var(--ui)); width: calc(var(--space-2) * var(--ui)); height: calc(var(--space-2) * var(--ui)); opacity: 0; animation: hero4-spark 8s var(--ease-out) infinite; filter: drop-shadow(0 0 5px rgba(255, 207, 51, 0.8)); }
 .hero4__fly { position: absolute; left: 0; top: 0; width: 0; height: 0; z-index: 5; animation: hero4-fly 8s cubic-bezier(0.55, 0, 0.3, 1) infinite; }
-.hero4__fly-star { position: absolute; left: -16px; top: -16px; width: 32px; height: 32px; opacity: 0; animation: hero4-arc 8s ease infinite; filter: drop-shadow(0 0 8px rgba(255, 207, 51, 0.9)); }
-@keyframes hero4-hand { 0%, 10% { opacity: 0; transform: translate(110px, 130px); } 18% { opacity: 1; transform: translate(0, 0) scale(1); } 20.5% { transform: translate(0, 0) scale(0.84); } 23% { transform: translate(0, 0) scale(1); opacity: 1; } 30% { opacity: 0; transform: translate(40px, 60px); } 100% { opacity: 0; transform: translate(40px, 60px); } }
+.hero4__fly-star { position: absolute; left: calc(var(--space-2) * -1 * var(--ui)); top: calc(var(--space-2) * -1 * var(--ui)); width: calc(var(--space-4) * var(--ui)); height: calc(var(--space-4) * var(--ui)); opacity: 0; animation: hero4-arc 8s ease infinite; filter: drop-shadow(0 0 8px rgba(255, 207, 51, 0.9)); }
+@keyframes hero4-hand { 0%, 10% { opacity: 0; transform: translate(calc(110px * var(--ui)), calc(130px * var(--ui))); } 18% { opacity: 1; transform: translate(0, 0) scale(1); } 20.5% { transform: translate(0, 0) scale(0.84); } 23% { transform: translate(0, 0) scale(1); opacity: 1; } 30% { opacity: 0; transform: translate(calc(40px * var(--ui)), calc(60px * var(--ui))); } 100% { opacity: 0; transform: translate(calc(40px * var(--ui)), calc(60px * var(--ui))); } }
 @keyframes hero4-ring { 0%, 20.5% { transform: scale(0.5); opacity: 0; } 24.5% { transform: scale(1.12); opacity: 1; } 27% { transform: scale(1); } 86% { opacity: 1; transform: scale(1); } 90%, 100% { opacity: 0; transform: scale(1.1); } }
 @keyframes hero4-bubble { 0%, 22% { transform: translate(-50%, -100%) scale(0.6); opacity: 0; } 26% { transform: translate(-50%, -100%) scale(1.08); opacity: 1; } 29% { transform: translate(-50%, -100%) scale(1); } 86% { opacity: 1; transform: translate(-50%, -100%) scale(1); } 90%, 100% { opacity: 0; transform: translate(-50%, -100%) scale(1); } }
 @keyframes hero4-spark { 0%, 21.5% { transform: translate(0, 0) scale(0.3) rotate(0); opacity: 0; } 23.5% { opacity: 1; } 40% { transform: translate(var(--sx), var(--sy)) scale(0) rotate(200deg); opacity: 0; } 100% { opacity: 0; } }
@@ -112,11 +117,11 @@
    spin and the shrink to slot size are the star inside it. --fx/--fy/--fs are
    measured by the component. */
 @keyframes hero4-fly { 0%, 31% { transform: translate(0, 0); } 50%, 100% { transform: translate(var(--fx, 0px), var(--fy, -200px)); } }
-@keyframes hero4-arc { 0%, 29% { opacity: 0; transform: translateY(0) scale(0.4) rotate(0deg); } 31% { opacity: 1; transform: translateY(-10px) scale(1.5) rotate(15deg); animation-timing-function: ease-out; } 40.5% { transform: translateY(-120px) scale(1.25) rotate(190deg); animation-timing-function: ease-in; } 50% { opacity: 1; transform: translateY(0) scale(var(--fs, 0.5)) rotate(360deg); } 50.01%, 100% { opacity: 0; transform: translateY(0) scale(var(--fs, 0.5)) rotate(360deg); } }
+@keyframes hero4-arc { 0%, 29% { opacity: 0; transform: translateY(0) scale(0.4) rotate(0deg); } 31% { opacity: 1; transform: translateY(-10px) scale(1.5) rotate(15deg); animation-timing-function: ease-out; } 40.5% { transform: translateY(calc(-120px * var(--ui))) scale(1.25) rotate(190deg); animation-timing-function: ease-in; } 50% { opacity: 1; transform: translateY(0) scale(var(--fs, 0.5)) rotate(360deg); } 50.01%, 100% { opacity: 0; transform: translateY(0) scale(var(--fs, 0.5)) rotate(360deg); } }
 
 /* The phone-sized card: only under 721px, where the three devices are gone. */
 .hero4__card { display: none; position: relative; width: 100%; border-radius: var(--radius-3); overflow: hidden; background: var(--sea-soft); box-shadow: var(--shadow-3); }
-.hero4__screen--card { inset: 0; border-radius: 0; }
+.hero4__screen--card { --ui: 0.85; inset: 0; border-radius: 0; }
 
 /* Held still for anyone who reads motion as noise: the phone, the child found. */
 @media (prefers-reduced-motion: reduce) {
