@@ -16,6 +16,7 @@ import { localPatchBoardsForVersion } from "../../../domain/scene/local-patch-ca
 import { cropOf } from "../../../domain/scene/local-patch-hides";
 import { stageLocalPatchExtraAttempts, readLocalPatchExtraAttemptPlan, requireLocalPatchExtraAttempt, fenceLocalPatchExtraAttempt,
   requireLocalPatchExtraReview, fenceLocalPatchExtraReview, LOCAL_PATCH_EXTRA_ATTEMPT_ACTION } from "../local-patch-extra-attempt";
+import { LOCAL_PATCH_EXTRA_ATTEMPT_STAGE_TIMEOUT_MS } from "../local-patch-extra-attempt";
 import { reviewBoardWizardIdentity } from "../board-wizard-identity-gate";
 import { readBoardConditionedCatalog } from "../board-conditioned-catalog";
 import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wizard";
@@ -144,9 +145,18 @@ describe("durable per-game extra-image authority", () => {
     await db.targetVariantAsset.update({ where: { id: rowId }, data: { assetId, ...geometry, judgeJson: JSON.stringify(receipt),
       lastError: "quality-retry: ageAppropriate; scaleRight", rejectedAssetIdsJson: JSON.stringify([assetId]) } });
     const before = await rowsOf(s.gameId), cost = await s.budget.audit(s.worldId);
+    // Prisma exposes methods through a proxy. Observe a forwarding container,
+    // not spyOn() its dynamic property (which would replace the real method).
+    const transaction = vi.fn(db.$transaction.bind(db));
+    const observedDb = new Proxy(db, { get(target, key, receiver) {
+      return key === "$transaction" ? transaction : Reflect.get(target, key, receiver);
+    } });
     const stageStarted = performance.now();
-    const plan = await stageLocalPatchExtraAttempts(c, { ...inputOf(s.gameId, ["sydney-v7-5", "greatwall-v7-5"]), reviewOnlyHideIds: [hide.id] });
+    const plan = await stageLocalPatchExtraAttempts({ ...c, db: observedDb }, { ...inputOf(s.gameId, ["sydney-v7-5", "greatwall-v7-5"]), reviewOnlyHideIds: [hide.id] });
     console.info(`Isolated extra-attempt authority staging: ${Math.round(performance.now() - stageStarted)}ms (local SQLite, not remote latency)`);
+    expect(LOCAL_PATCH_EXTRA_ATTEMPT_STAGE_TIMEOUT_MS).toBe(120000);
+    expect(transaction).toHaveBeenCalledTimes(1); // All private reads use this tx; no nested/global transaction.
+    expect(transaction.mock.calls[0]?.[1]).toEqual({ isolationLevel: "Serializable", timeout: 120000 });
     expect(plan.selected).toHaveLength(2); expect(plan.reviewOnly).toHaveLength(1); expect(plan.others).toHaveLength(42);
     expect(plan.reviewRequestKeys).toHaveLength(3); expect(plan.reviewRequestKeys.every(k => k.endsWith(":visible-body-v1"))).toBe(true);
     expect(await rowsOf(s.gameId)).toEqual(before); expect(await s.budget.audit(s.worldId)).toEqual(cost);

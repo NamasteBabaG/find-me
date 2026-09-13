@@ -24,6 +24,10 @@ import { hasLocalPatchPublicationPolicy, localPatchPublicationGeometryHash, loca
 import { parseLocalPatchBoardVerdicts, localPatchQualityDisposition, isTheModelWeAsked } from "./local-patch-judge";
 
 export const LOCAL_PATCH_EXTRA_ATTEMPT_ACTION = "local-patch:extra-attempt";
+/** Explicit admin-only staging verifies the complete private world on remote
+ * storage. It buys nothing; keep its one-game transaction inside the300s route
+ * while ordinary worker fences retain their short default transaction limit. */
+export const LOCAL_PATCH_EXTRA_ATTEMPT_STAGE_TIMEOUT_MS = 120_000;
 const STYLE = "local-patch-world-v1", TERMINAL = "local-patch:quality-failed";
 const hash = (value: unknown) => sha256Bytes(Buffer.from(JSON.stringify(value)));
 const auditId = (gameId: string) => `aud_lpea_${hash(gameId).slice(0, 32)}`;
@@ -331,7 +335,7 @@ export async function stageLocalPatchExtraAttempts(c: Container, input: Input): 
     await tx.game.update({ where: { id: input.gameId }, data: { lastError: null } });
     await tx.generationJob.update({ where: { id: `job_${input.gameId}` }, data: { status: "QUEUED", currentStep: "local-patch", lastError: null } });
     return plan;
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30000 });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: LOCAL_PATCH_EXTRA_ATTEMPT_STAGE_TIMEOUT_MS });
 }
 
 /** Read-only authority check, also callable with the worker's transaction
