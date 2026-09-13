@@ -26,6 +26,7 @@ import { readPinnedLocalPatchArt } from "./local-patch-art";
 import { env } from "../../lib/env";
 import { LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_NORMAL_ATTEMPTS, localPatchFinalRepairAllowed, nextLocalPatchAttempt } from "../../domain/scene/local-patch-attempts";
 import { isLocalPatchAdvisoryVersion, isLocalPatchAgeVersion, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
+import { requireLocalPatchExtraAttempt, fenceLocalPatchExtraAttempt } from "./local-patch-extra-attempt";
 import { localPatchPublicationGeometryHash } from "./local-patch-publication-policy";
 export { LOCAL_PATCH_MAX_ATTEMPTS, nextLocalPatchAttempt } from "../../domain/scene/local-patch-attempts";
 
@@ -199,6 +200,8 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   readonly finalRepair?: boolean;
   /** Trusted, durably audited recovery plan only; never raw operator/model prose. */
   readonly repairChecks?: readonly LocalPatchRepairCheck[];
+  /** An immutable server-verified grant; never an arbitrary attempt limit. */
+  readonly extraAttemptAuthorizationId?: string;
 }): Promise<LocalPatchHideOutcome> {
   const { gameId, board, hide } = input;
   demand(c.storage.id === "db", "local-patch imagery requires DB-backed private storage");
@@ -261,14 +264,17 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   if (input.finalRepair) demand(localPatchFinalRepairAllowed(env().APP_ENV, isLocalPatchStrictVersion(scene.sceneVersion))
     && game.styleVersion === "local-patch-world-v1",
     "the final repair pass requires a strict local-patch world or the legacy QA engine");
-  const attemptLimit = input.finalRepair ? LOCAL_PATCH_MAX_ATTEMPTS : LOCAL_PATCH_NORMAL_ATTEMPTS;
+  const extra = input.extraAttemptAuthorizationId ? await requireLocalPatchExtraAttempt(c, {
+    gameId, hideId: hide.id, rowId: row.id, authorizationId: input.extraAttemptAuthorizationId,
+  }) : null;
+  const attemptLimit = extra?.authorizedAttempt ?? (input.finalRepair ? LOCAL_PATCH_MAX_ATTEMPTS : LOCAL_PATCH_NORMAL_ATTEMPTS);
   const { attempt, exhausted } = nextLocalPatchAttempt(row, attemptLimit);
   // judgeJson is intentionally kept while PENDING: clearing lastError must not
   // change the prompt/fingerprint when attempt 2/3 resumes after an interruption.
   // v8 corrects its own located defect on the very next attempt. The old paid
   // recipes still add repair instructions only on their final repair pass.
   const repairChecks = input.repairChecks ?? (isLocalPatchStrictVersion(scene.sceneVersion)
-    ? attempt > 1 ? localPatchRepairChecks(row.judgeJson, scene.sceneVersion) : undefined
+    ? attempt > 1 ? localPatchRepairChecks(row.judgeJson, scene.sceneVersion, { hideId: hide.id }) : undefined
     : input.finalRepair ? localPatchRepairChecks(row.judgeJson) : undefined);
   const base = {
     boardId: board.board, hideId: hide.id, targetId: hide.targetId, attempt, attempts: row.attempts,
@@ -308,6 +314,9 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   await c.db.$transaction(async tx => {
     await fenceLocalPatchImages(tx, gameId);
     await deps.fence?.(tx);
+    if (extra) await fenceLocalPatchExtraAttempt(tx, {
+      gameId, hideId: hide.id, rowId: row.id, authorizationId: input.extraAttemptAuthorizationId!,
+    });
     await tx.targetVariantAsset.update({ where: { id: row.id }, data: {
       attempts: attempt, status: "PENDING", lastError: null,
       provider: LOCAL_PATCH_PROVIDER, promptVersion, slotId: target.slots[0].id,
@@ -325,6 +334,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     ...(boardPeoplePng ? { boardPeoplePng } : {}),
     ageYears: child.ageYears, attempt, apiKey: deps.apiKey ?? "",
     ...(repairChecks === undefined ? {} : { repairChecks }),
+    ...(extra ? { recoveryDirective: extra.directive } : {}),
     ...(input.deadlineAt === undefined ? {} : { deadlineAt: input.deadlineAt }),
   });
 
@@ -361,6 +371,9 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     await c.db.$transaction(async tx => {
       await fenceLocalPatchImages(tx, gameId);
       await deps.fence?.(tx);
+      if (extra) await fenceLocalPatchExtraAttempt(tx, {
+        gameId, hideId: hide.id, rowId: row.id, authorizationId: input.extraAttemptAuthorizationId!,
+      });
       await tx.targetVariantAsset.update({ where: { id: row.id }, data: {
       status: "FAILED", lastError: reason.slice(0, 500),
       costCents: Math.round(row.costCents + attemptResult.renderCents + attemptResult.judgeCents),
@@ -396,6 +409,9 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     // Still ours? Everything below this line puts a child into a playable game.
     await fenceLocalPatchImages(tx, gameId);
     await deps.fence?.(tx);
+    if (extra) await fenceLocalPatchExtraAttempt(tx, {
+      gameId, hideId: hide.id, rowId: row.id, authorizationId: input.extraAttemptAuthorizationId!,
+    });
     const geometry = {
       rectJson: JSON.stringify(measured.geometry.rect),
       hitRectJson: JSON.stringify(measured.geometry.hitRect),

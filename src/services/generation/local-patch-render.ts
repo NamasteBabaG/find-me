@@ -14,6 +14,7 @@ import { purchaseOnce, type PurchaseLedger, type RetainedPurchaseStore } from ".
 import { LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, type LocalPatchPurchase, type LocalPatchReferenceMode } from "../../infra/generation/openai-local-patch";
 import type { BudgetJson, WorldChargeEvidence } from "./world-budget";
 import { isLocalPatchAdvisoryVersion, isLocalPatchAgeVersion, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
+import type { LocalPatchRecoveryDirective } from "../../domain/scene/local-patch-recovery-directive";
 
 /**
  * One paid attempt at one hide, out of the scripts and into the product.
@@ -87,6 +88,8 @@ export type LocalPatchAttemptInput = {
   /** Normal 1–2, final QA repair 3. A distinct key, never a reset of a paid attempt. */
   readonly attempt: number;
   readonly repairChecks?: readonly LocalPatchRepairCheck[];
+  /** Trusted caller validates the immutable extra-attempt grant first. */
+  readonly recoveryDirective?: LocalPatchRecoveryDirective;
   readonly apiKey: string;
   /**
    * When this worker's request is going to be taken away from it, absolute.
@@ -307,7 +310,8 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   const crop = cropOf(hide);
   const promptVersion = promptVersionOf(input);
   const prompt = localPatchPrompt({ ground: board.ground, pose: hide.pose, ageYears: input.ageYears, repairChecks: input.repairChecks, boardPeopleReference: !!input.boardPeoplePng,
-    wardrobe: board.wardrobe, placement: hide.placement, mask: maskForHide(hide), contentVersion: input.contentVersion });
+    wardrobe: board.wardrobe, placement: hide.placement, mask: maskForHide(hide), contentVersion: input.contentVersion,
+    hideId: hide.id, recoveryDirective: input.recoveryDirective });
 
   const meta = await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).metadata();
   const stylePng = await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).extract(crop).png().toBuffer();

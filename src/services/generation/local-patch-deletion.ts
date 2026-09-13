@@ -56,6 +56,8 @@ export async function deleteLocalPatchGame(c: Container, gameId: string, actor: 
     // Accounting lives in the separate ledger and is deliberately untouched.
     await tx.auditLog.updateMany({ where: { entityType: "Game", entityId: gameId,
       action: { startsWith: "local-patch:quality-pilot" } }, data: { metaJson: null } });
+    await tx.auditLog.updateMany({ where: { entityType: "Game", entityId: gameId,
+      action: "local-patch:extra-attempt" }, data: { metaJson: null } });
     let sharedAssetsRetained = 0;
     for (const asset of await tx.asset.findMany({ where: { id: { in: inventory.assetIds } } })) {
       demand(asset.ownerId === game.ownerId && asset.provider === LOCAL_PATCH_PROVIDER && asset.providerRequestId === gameId

@@ -29,7 +29,7 @@
  * Each hide gets its own verdict. One bad hide must not condemn its neighbours.
  */
 import { z } from "zod";
-import { isLocalPatchAdvisoryVersion, isLocalPatchAgeVersion, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
+import { isLocalPatchAdvisoryVersion, isLocalPatchAgeVersion, isLocalPatchStrictVersion, localPatchBoardsForVersion } from "../../domain/scene/local-patch-catalog";
 import { validChildAge } from "../../domain/child-appearance";
 
 export const LOCAL_PATCH_JUDGE = Object.freeze({
@@ -245,23 +245,55 @@ const explicitAgeUncertaintySchema = localPatchVerdictWireSchema.extend({
   faults: z.array(z.object({ check: z.string().trim().min(1).max(40), where: z.string().trim().min(1).max(300) }).strict()).max(8),
 }).strict();
 
+export const LOCAL_PATCH_OCCLUDED_AGE_POLICY = "authored-peeking-occluded-body-age/v1";
+/** The caller identifies the immutable catalog entry, never a model-supplied
+ * pose or a free-text explanation that could change the acceptance rule. */
+export type LocalPatchQualityContext = { readonly hideId: string };
+export type LocalPatchOccludedAgeWarning = {
+  readonly policy: typeof LOCAL_PATCH_OCCLUDED_AGE_POLICY;
+  readonly hideId: string;
+  readonly check: "ageAppropriate";
+  readonly reason: "body-not-assessable-under-authored-natural-occlusion";
+};
+
+/** A policy exception, NOT an invented model pass. In an authored peek, the
+ * recognised canonical face may be sufficient while body age stays unknown.
+ * Visible scale still requires pass for publication. Its independent uncertainty
+ * must not turn a naturally hidden body into a request to expose the torso. */
+export function localPatchOccludedAgeWarning(verdict: unknown, contentVersion?: number,
+  context?: LocalPatchQualityContext): LocalPatchOccludedAgeWarning | null {
+  if (!isLocalPatchAgeVersion(contentVersion) || !context) return null;
+  const hide = localPatchBoardsForVersion(contentVersion!).flatMap(board => board.hides).find(h => h.id === context.hideId);
+  if (hide?.pose !== "peeking" || !hide.placement?.occlusion.trim()) return null;
+  const parsed = explicitAgeUncertaintySchema.safeParse(verdict);
+  if (!parsed.success) return null;
+  const v = parsed.data;
+  if (v.ageAppropriate !== "unsure" || v.scaleRight === "fail" || v.verdict !== "unsure" || v.claimedVerdict !== "unsure"
+    || v.verdictOverridden || v.faults.length || LOCAL_PATCH_SEVERE_CHECKS.some(key => v[key] !== "pass")
+    || JUDGE_CHECKS.some(key => v[key] === "fail")) return null;
+  return { policy: LOCAL_PATCH_OCCLUDED_AGE_POLICY, hideId: hide.id, check: "ageAppropriate",
+    reason: "body-not-assessable-under-authored-natural-occlusion" };
+}
+
 /** V9 can spend a remaining, already bounded attempt to make genuine visual
  * uncertainty answerable. This is NOT approval or a substitute for the caller's
  * wire/model/evidence-ID and paid-image bindings. Bad evidence parses as null. */
-export function localPatchExplicitUncertaintyChecks(verdict: unknown, contentVersion?: number): string[] {
+export function localPatchExplicitUncertaintyChecks(verdict: unknown, contentVersion?: number, context?: LocalPatchQualityContext): string[] {
   if (!isLocalPatchAgeVersion(contentVersion)) return [];
   const parsed = explicitAgeUncertaintySchema.safeParse(verdict);
   if (!parsed.success) return [];
   const v = parsed.data;
   if (v.verdict === "pass" || v.verdictOverridden !== (v.verdict !== v.claimedVerdict)) return [];
-  return LOCAL_PATCH_AGE_SEVERE_CHECKS.filter(key => v[key] === "unsure" && !v.faults.some(f => f.check === key));
+  const occludedAge = localPatchOccludedAgeWarning(verdict, contentVersion, context);
+  return LOCAL_PATCH_AGE_SEVERE_CHECKS.filter(key => v[key] === "unsure" && !v.faults.some(f => f.check === key)
+    && !(occludedAge && key === "ageAppropriate"));
 }
 
 /** Retry an attributable severe defect, or V9's explicit visual uncertainty.
  * Missing, downgraded or contradictory evidence remains unresolved, never
  * invented success. The world, not this classifier, owns the three-attempt cap. */
-export function localPatchQualityDisposition(verdict: LocalPatchVerdict | null, contentVersion?: number): {
-  state: "acceptable" | "retry" | "unresolved"; faults: string[];
+export function localPatchQualityDisposition(verdict: LocalPatchVerdict | null, contentVersion?: number, context?: LocalPatchQualityContext): {
+  state: "acceptable" | "retry" | "unresolved"; faults: string[]; contextualWarning?: LocalPatchOccludedAgeWarning;
 } {
   const schema = z.object({ faceLikeness: check, faceReadable: check, severeSeam: check,
     faults: z.array(z.object({ check: z.string(), where: z.string().trim().min(1) })) });
@@ -270,10 +302,14 @@ export function localPatchQualityDisposition(verdict: LocalPatchVerdict | null, 
   const v = parsed.data, checks = localPatchSevereChecks(contentVersion);
   const value = (key: typeof checks[number]) => (v as Record<string, unknown>)[key];
   const failures = checks.filter(k => value(k) === "fail" && v.faults.some(f => f.check === k));
-  const uncertainty = localPatchExplicitUncertaintyChecks(verdict, contentVersion);
-  if (failures.length || uncertainty.length) return { state: "retry", faults: checks.filter(k => failures.includes(k) || uncertainty.includes(k)) };
-  const unresolved = checks.filter(k => value(k) !== "pass" || v.faults.some(f => f.check === k));
-  return unresolved.length ? { state: "unresolved", faults: unresolved } : { state: "acceptable", faults: [] };
+  const contextualWarning = localPatchOccludedAgeWarning(verdict, contentVersion, context);
+  const uncertainty = localPatchExplicitUncertaintyChecks(verdict, contentVersion, context);
+  if (failures.length || uncertainty.length) return { state: "retry", faults: checks.filter(k => failures.includes(k) || uncertainty.includes(k)),
+    ...(contextualWarning ? { contextualWarning } : {}) };
+  const unresolved = checks.filter(k => (value(k) !== "pass" || v.faults.some(f => f.check === k))
+    && !(contextualWarning && k === "ageAppropriate"));
+  return unresolved.length ? { state: "unresolved", faults: unresolved }
+    : { state: "acceptable", faults: [], ...(contextualWarning ? { contextualWarning } : {}) };
 }
 
 export type LocalPatchExpectation = {
@@ -488,8 +524,11 @@ fetchOnce: typeof fetch): Promise<LocalPatchJudgeResult> {
   return { verdict: null, raw, usage, requestId, model, finishReason, wireFault: null, costUnknown: !billed };
 }
 
+export type LocalPatchAssessmentMode = "visible-body-v1";
 export type LocalPatchBoardJudgeRequest = {
   contentVersion?: number;
+  /** A new question on a new paid key; absent preserves historical wire bytes. */
+  assessmentMode?: LocalPatchAssessmentMode;
   boardId: string; boardPng: Buffer; identityPng: Buffer; timeoutMs?: number;
   hides: readonly { hideId: string; beforePng: Buffer; afterPng: Buffer; closeupPng?: Buffer; afterEvidencePng?: Buffer; expectation?: LocalPatchExpectation }[];
 };
@@ -524,7 +563,14 @@ export function localPatchBoardJudgeImageLabels(request: Pick<LocalPatchBoardJud
 }
 export type LocalPatchBoardJudgeResult = LocalPatchJudgeResult & { verdicts: Record<string, LocalPatchVerdict | null> };
 const AGE_REVIEW_DIRECTION = "For this new contract five checks require explicit pass: faceLikeness, faceReadable, severeSeam, ageAppropriate and scaleRight. Image2 authorizes FACE AND HAIR identity, not an old target age or the body from its source sheet. A coherent generic child is NOT sufficient: the same characteristic facial shapes and hair must be recognizable; use unsure if the pixels cannot establish likeness. ageAppropriate checks the stated age in face AND whole body: for age 4 or 5 expect a preschool torso, narrow small shoulders, short child limbs, small hands and feet, not an older school-age or adult build or mature stance. Judge visible anatomy, not clothing or assumed age from a name. scaleRight compares the whole child against children of the SAME age at the SAME ground depth, never nearby adults. A small adult-shaped figure is not a preschool body. Do not solve age or readability with a giant head, imagined zoom detail, photographic texture, blind whole-figure shrinking or a foreground move. Do not demand hidden limbs through natural occlusion; use unsure when the visible evidence cannot establish the required check. Each fail needs its own located fault; advisory complaints never invent severe failure.";
-export function localPatchBoardJudgePrompt(request: Pick<LocalPatchBoardJudgeRequest, "boardId" | "hides" | "contentVersion">): string {
+export function localPatchBoardJudgePrompt(request: Pick<LocalPatchBoardJudgeRequest, "boardId" | "hides" | "contentVersion" | "assessmentMode">): string {
+  if (request.assessmentMode !== undefined) {
+    if (request.assessmentMode !== "visible-body-v1" || !isLocalPatchAgeVersion(request.contentVersion)) {
+      throw new Error("Visible-body assessment requires the explicit v9 mode");
+    }
+    const { assessmentMode: _mode, ...baseline } = request;
+    return `${localPatchBoardJudgePrompt(baseline)} ${VISIBLE_BODY_ASSESSMENT_DIRECTION}`;
+  }
   if (request.hides.length !== 5 || new Set(request.hides.map(h => h.hideId)).size !== 5) throw new Error("Grouped review requires five unique hides");
   const ageContract = isLocalPatchAgeVersion(request.contentVersion);
   if (ageContract && (request.hides.some(h => !validChildAge(h.expectation?.ageYears))
@@ -555,6 +601,7 @@ export function localPatchBoardJudgePrompt(request: Pick<LocalPatchBoardJudgeReq
     'Return JSON only: {"hides":[{"hideId":"exact supplied id","verdict":{"childPresent":"pass|fail|unsure","childOnlyOnce":"pass|fail|unsure","childComplete":"pass|fail|unsure","pictureWhole":"pass|fail|unsure","scaleRight":"pass|fail|unsure","groundContact":"pass|fail|unsure","styleMatch":"pass|fail|unsure","verdict":"pass|fail|unsure","reason":"brief","faults":[{"check":"named check","where":"brief visible location"}]}}]}. Exactly five entries, each id once. Empty faults for no clear defect. Uncertainty is not a defect to invent. All outcomes are published; this report never requests a redraw or human approval.',
   ].join(" ");
 }
+const VISIBLE_BODY_ASSESSMENT_DIRECTION = "ASSESSMENT MODE visible-body-v1. This narrows the WHOLE-BODY age/scale instructions above to anatomy actually visible; it does not relax face identity, readable head/hair, severe seams or visible head scale. For a naturally occluded peek, do NOT infer an older body from hidden shoulders, torso or legs, require that body to appear, or penalize missing feet/contact shadows. Judge ageAppropriate from the canonical face and whatever anatomy is visible. If the only missing age evidence is a naturally hidden body, honestly report ageAppropriate:unsure with that reason, without inventing an age fault or model pass. Scale remains mandatory: assess the VISIBLE HEAD and any visible body against original nearby people and objects at this same ground depth. A proportionate, coherently drawn head at that depth may pass scaleRight even when legs are hidden; an obviously oversized head, wrong depth or adult-looking visible anatomy must receive its own located fault. If visible head scale cannot be established, keep scaleRight:unsure; do not waive it merely because the body is hidden. Never imagine anatomy, enlarge the head, borrow another hide's evidence or alter a verdict to make publication happen.";
 export function parseLocalPatchBoardVerdicts(raw: string | null, hideIds: readonly string[], contentVersion?: number) {
   const missing = Object.fromEntries(hideIds.map(id => [id, null])) as Record<string, LocalPatchVerdict | null>;
   try {

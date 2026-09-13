@@ -21,6 +21,7 @@ import { sha256Bytes } from "./fixed-sprite";
 import { sceneBySlug } from "../scene-catalog.service";
 import type { BudgetJson } from "./world-budget";
 import { LOCAL_PATCH_COMPOSITION_VERSION, LOCAL_PATCH_RETURN_GUARD } from "./local-patch-seam";
+import { readLocalPatchExtraAttemptPlan, requireLocalPatchExtraReview, fenceLocalPatchExtraReview } from "./local-patch-extra-attempt";
 
 export const LOCAL_PATCH_BOARD_REVIEW_VERSION = "local-patch-board-five-luna-low/v1";
 export const LOCAL_PATCH_STRICT_BOARD_REVIEW_VERSION = "local-patch-board-five-quality/v3-head-safe";
@@ -30,9 +31,9 @@ export const LOCAL_PATCH_REVIEW_CLOSEUP_GUARD_PX = LOCAL_PATCH_RETURN_GUARD;
 // Historical paid replies remain addressable for deletion/reconciliation even
 // after a new deterministic compositor gives the same attempt a new question.
 export const LOCAL_PATCH_REVIEW_COMPOSITION_HISTORY = [null, "bounded-return/v2-head-safe"] as const;
-export const localPatchBoardReviewKey = (boardId: string, attempts?: readonly number[], compositionVersion: string | null = LOCAL_PATCH_COMPOSITION_VERSION, contentVersion = 8) => {
+export const localPatchBoardReviewKey = (boardId: string, attempts?: readonly number[], compositionVersion: string | null = LOCAL_PATCH_COMPOSITION_VERSION, contentVersion = 8, maximumAttempt: 3 | 4 = LOCAL_PATCH_MAX_ATTEMPTS) => {
   if (!attempts) return `board:${boardId}:five-review:1`;
-  if (attempts.length !== 5 || attempts.some(n => !Number.isInteger(n) || n < 1 || n > LOCAL_PATCH_MAX_ATTEMPTS)) throw new Error("Invalid board-review attempt revision");
+  if (attempts.length !== 5 || attempts.some(n => !Number.isInteger(n) || n < 1 || n > maximumAttempt)) throw new Error("Invalid board-review attempt revision");
   if (compositionVersion !== LOCAL_PATCH_COMPOSITION_VERSION && !LOCAL_PATCH_REVIEW_COMPOSITION_HISTORY.some(version => version === compositionVersion)) throw new Error("Unsupported board-review composition revision");
   return `board:${boardId}:five-review:v${isLocalPatchAgeVersion(contentVersion) ? 9 : 8}:${attempts.join("-")}${compositionVersion === null ? "" : `:${compositionVersion.replaceAll("/", ".")}`}${isLocalPatchAgeVersion(contentVersion) ? ":evidence-v5" : ""}`;
 };
@@ -76,6 +77,8 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
     && !game.deletedAt && game.ownerId && child && !child.deletedAt && child.ownerId === game.ownerId
     && isLocalPatchAdvisoryVersion(scene.sceneVersion), "A live catalog-7 owned game is required");
   const board = localPatchBoardForVersion(scene.sceneSlug, scene.sceneVersion);
+  const stagedExtra = isLocalPatchAgeVersion(scene.sceneVersion) ? await readLocalPatchExtraAttemptPlan(c, game.id) : null;
+  const extraPlan = stagedExtra && [...stagedExtra.selected, ...stagedExtra.reviewOnly].some(entry => entry.sceneId === scene.id) ? stagedExtra : null;
   const versions = await c.db.gameScene.findMany({ where: { gameId: game.id }, select: { sceneVersion: true } });
   demand(versions.length > 0 && versions.every(row => row.sceneVersion === scene.sceneVersion), "Mixed content versions cannot acquire an advisory review");
   demand(board?.hides.length === 5 && scene.targets.length === 5, "Five authored targets are required");
@@ -100,7 +103,8 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
   for (const hide of board.hides) {
     const target = scene.targets.find(t => t.targetId === hide.targetId);
     const row = target?.variants.find(v => v.variant === LOCAL_PATCH_VARIANT);
-    if (!row || !(row.status === "GENERATED" || options.recovery && isLocalPatchAgeVersion(scene.sceneVersion) && row.status === "FAILED") || !row.assetId)
+    if (!row || !(row.status === "GENERATED" || (options.recovery && isLocalPatchAgeVersion(scene.sceneVersion)
+      || extraPlan?.reviewOnly.some(entry => entry.rowId === row.id)) && row.status === "FAILED") || !row.assetId)
       return { ready: false as const, reason: "Five usable patches are not ready" };
     demand(row.provider === LOCAL_PATCH_PROVIDER && row.rectJson && row.hitRectJson && row.headAnchorJson, "Patch metadata is incomplete");
     const asset = await c.db.asset.findUniqueOrThrow({ where: { id: row.assetId } });
@@ -126,10 +130,18 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
       && sprite.rect.w === crop.width / meta.width! && sprite.rect.h === crop.height / meta.height!, "Shipping placement differs from the authored crop");
     entries.push({ hide, row, asset, bytes, crop, imageSha256, geometrySha256 });
   }
+  if (entries.some(entry => entry.row.attempts > LOCAL_PATCH_MAX_ATTEMPTS)) {
+    demand(extraPlan, "A fourth-attempt review requires its original scoped authority");
+  }
+  if (extraPlan) await requireLocalPatchExtraReview(c, { gameId: game.id, sceneId: scene.id, authorizationId: extraPlan.authorizationId });
+  // A new candidate does not retire the original approvals of unchanged
+  // siblings. Previously unreviewed siblings DO receive their first real review.
+  const protectedRows = new Set(extraPlan?.others.filter(entry => entry.reviewState === "board-review-complete").map(entry => entry.rowId));
   // Historical v7 reviews its five-patch composition. V8 plays serially: the
   // original board provides context, and each AFTER is its own base+one patch.
   const composed = strict ? before : await sharp(before).composite(entries.map(e => ({ input: e.bytes, left: e.crop.left, top: e.crop.top }))).png().toBuffer();
   const request: LocalPatchBoardJudgeRequest = { boardId: board.board, ...(strict ? { contentVersion: scene.sceneVersion } : {}),
+    ...(extraPlan ? { assessmentMode: "visible-body-v1" as const } : {}),
     boardPng: await sharp(composed).resize(1536, 1024, { fit: "inside" }).png().toBuffer(),
     identityPng: references.judgeIdentityPng,
     hides: await Promise.all(entries.map(async e => {
@@ -173,12 +185,15 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
     wireHashes: localPatchBoardJudgeImages(request).map(sha256Bytes),
     ...(isLocalPatchAgeVersion(scene.sceneVersion) ? { evidenceIds: localPatchBoardEvidenceIds(request), imageLabels: localPatchBoardJudgeImageLabels(request) } : {}),
     ...(strict ? { compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION } : {}),
+    ...(extraPlan ? { extraAttemptAuthorizationId: extraPlan.authorizationId, protectedRows: [...protectedRows].sort() } : {}),
     hides: entries.map(e => ({ hide: e.hide.id, target: e.row.targetInstanceId, attempts: e.row.attempts, asset: e.asset.id,
       imageSha256: e.imageSha256, geometrySha256: e.geometrySha256 })),
   });
-  const requestKey = localPatchBoardReviewKey(board.board, strict ? entries.map(e => e.row.attempts) : undefined, LOCAL_PATCH_COMPOSITION_VERSION, scene.sceneVersion);
+  const requestKey = localPatchBoardReviewKey(board.board, strict ? entries.map(e => e.row.attempts) : undefined, LOCAL_PATCH_COMPOSITION_VERSION, scene.sceneVersion, extraPlan ? 4 : 3)
+    + (extraPlan ? ":visible-body-v1" : "");
+  if (extraPlan) demand(extraPlan.reviewRequestKeys.includes(requestKey), "The review is outside its scoped authority");
   return { ready: true as const, scene, game, child, board, budget, worldId, identity, sheet, entries, request, fingerprint,
-    requestKey, settings, strict, reviewVersion, composed };
+    requestKey, settings, strict, reviewVersion, composed, extraPlan, protectedRows };
 }
 
 /** One paid review of the actual five-patch board; no per-hide review purchases.
@@ -189,7 +204,7 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
   const prepared = await prepareLocalPatchBoardReview(c, input, deps);
   if (!prepared.ready) return { state: "pending", reason: prepared.reason, costCents: 0, replayed: false };
   const { scene, game, board, budget, worldId, identity, sheet, entries, request, fingerprint,
-    requestKey, settings, strict, reviewVersion, composed } = prepared;
+    requestKey, settings, strict, reviewVersion, composed, extraPlan, protectedRows } = prepared;
   demand(game.ownerId, "A review requires its verified owner");
   demand(deps.judge || deps.apiKey?.trim(), "Configured existing judge credential is required");
   // Unlike a replay, a new dispatch must consult the current kill switch/owner.
@@ -217,19 +232,28 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
   const keep = JSON.parse(bought.bytes.toString()) as { raw: string | null; wireFault: string | null; model: string | null; finishReason: string | null };
   const readable = !keep.wireFault && isTheModelWeAsked(keep.model, settings.model) && keep.finishReason === "stop";
   const verdicts = parseLocalPatchBoardVerdicts(readable ? keep.raw : null, entries.map(e => e.hide.id), scene.sceneVersion);
-  const dispositions = entries.map(e => strict ? localPatchQualityDisposition(verdicts[e.hide.id] ?? null, scene.sceneVersion) : { state: "acceptable" as const, faults: [] });
+  const dispositions = entries.map(e => strict ? localPatchQualityDisposition(protectedRows.has(e.row.id)
+    ? JSON.parse(e.row.judgeJson!).verdict : verdicts[e.hide.id] ?? null, scene.sceneVersion, { hideId: e.hide.id }) : { state: "acceptable" as const, faults: [] });
   await c.db.$transaction(async tx => {
     await fenceLocalPatchImages(tx, game.id); await deps.fence(tx);
+    if (extraPlan) await fenceLocalPatchExtraReview(tx, { gameId: game.id, sceneId: scene.id, authorizationId: extraPlan.authorizationId });
     for (const [index, e] of entries.entries()) {
       const current = await tx.targetVariantAsset.findUniqueOrThrow({ where: { id: e.row.id } });
-      demand(current.status === "GENERATED" && current.assetId === e.asset.id && current.attempts === e.row.attempts
+      const reviewOnly = extraPlan?.reviewOnly.some(entry => entry.rowId === current.id);
+      demand((current.status === "GENERATED" || reviewOnly && current.status === "FAILED") && current.assetId === e.asset.id && current.attempts === e.row.attempts
         && localPatchPublicationGeometryHash(current) === e.geometrySha256, "Target changed while its board was reviewed");
+      if (protectedRows.has(e.row.id)) {
+        demand(current.judgeJson === extraPlan!.others.find(entry => entry.rowId === e.row.id)!.judgeJson
+          && dispositions[index]!.state === "acceptable", "An existing approval changed during the scoped review");
+        continue;
+      }
       const prior = JSON.parse(current.judgeJson ?? "{}");
       const disposition = dispositions[index]!;
       const judgeJson = JSON.stringify({ ...prior, reviewState: "board-review-complete", verdict: verdicts[e.hide.id] ?? null,
         wireFault: keep.wireFault ?? (verdicts[e.hide.id] ? null : "schema"), judgedSha256: e.imageSha256,
         ...(strict ? { qualityDisposition: disposition, compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION } : {}),
         boardReview: { version: reviewVersion, fingerprint, requestKey, composedSha256: sha256Bytes(composed),
+          ...(extraPlan ? { assessmentMode: "visible-body-v1", extraAttemptAuthorizationId: extraPlan.authorizationId } : {}),
           ...(strict ? { compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION, wireHashes: localPatchBoardJudgeImages(request).map(sha256Bytes) } : {}),
           ...(isLocalPatchAgeVersion(scene.sceneVersion) ? { evidenceIds: localPatchBoardEvidenceIds(request), imageLabels: localPatchBoardJudgeImageLabels(request) } : {}),
           model: keep.model, effort: settings.effort, raw: keep.raw, costMicroUsd: bought.evidence.amountMicroUsd },
@@ -240,8 +264,9 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
       await tx.targetVariantAsset.update({ where: { id: e.row.id }, data: { judgeJson, ...(rejected ? {
         status: "FAILED", lastError: `quality-${disposition.state}: ${disposition.faults.join("; ") || "Required quality evidence is unresolved"}`.slice(0, 500),
         rejectedAssetIdsJson: JSON.stringify([...new Set([...retainedIds, e.asset.id])]),
-      } : {}) } });
+      } : reviewOnly ? { status: "GENERATED", lastError: null } : {}) } });
       if (rejected) await tx.targetInstance.update({ where: { id: e.row.targetInstanceId }, data: { status: "FAILED" } });
+      else if (reviewOnly) await tx.targetInstance.update({ where: { id: e.row.targetInstanceId }, data: { status: "GENERATED" } });
       if (!rejected) await recordLocalPatchPublicationPolicy(tx, { gameId: game.id, sceneVersion: scene.sceneVersion, hideId: e.hide.id,
         variantId: e.row.id, attempts: e.row.attempts, identityAssetId: identity.id, identitySha256: sha256Bytes(sheet),
         assetId: e.asset.id, imageSha256: e.imageSha256, geometrySha256: e.geometrySha256, judgeJson });

@@ -95,8 +95,8 @@ export async function resumeLocalPatchUncertainty(c: Container, gameId: string, 
         && same(review.evidenceIds, localPatchBoardEvidenceIds(request)) && same(review.imageLabels, localPatchBoardJudgeImageLabels(request))
         && same(receipt.verdict, verdicts[e.hide.id]), "Existing row no longer matches its exact paid labeled review");
       if (!failed.some(row => row.id === e.row.id)) continue;
-      const checks = localPatchExplicitUncertaintyChecks(verdicts[e.hide.id], 9);
-      demand(checks.length > 0 && localPatchQualityDisposition(verdicts[e.hide.id] ?? null, 9).state === "retry"
+      const checks = localPatchExplicitUncertaintyChecks(verdicts[e.hide.id], 9, { hideId: e.hide.id });
+      demand(checks.length > 0 && localPatchQualityDisposition(verdicts[e.hide.id] ?? null, 9, { hideId: e.hide.id }).state === "retry"
         && e.row.attempts >= 1 && e.row.attempts < LOCAL_PATCH_MAX_ATTEMPTS, "Malformed, contradictory or exhausted uncertainty cannot authorize a retry");
       const nextKey = `${e.hide.id}:${e.hide.pose}:render:${e.row.attempts + 1}`;
       demand(!await proof.budget.readRequest(worldId, nextKey), "Next image question already exists; never replace a paid fingerprint");

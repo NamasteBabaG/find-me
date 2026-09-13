@@ -65,7 +65,7 @@ describe("local-patch deletion through the owner/admin game action", () => {
     await run(gameId);
     const other = await seedApprovedGame(c, db, { gameId: "other-pilot-game", styleVersion: LOCAL_PATCH_STYLE,
       status: "TARGETS_GENERATING", withJob: true });
-    const actions = ["local-patch:quality-pilot", "local-patch:quality-pilot:review-requeued"];
+    const actions = ["local-patch:quality-pilot", "local-patch:quality-pilot:review-requeued", "local-patch:extra-attempt"];
     for (const [prefix, entityId] of [["deleted", gameId], ["retained", other.gameId]] as const) {
       for (const [index, action] of actions.entries()) await db.auditLog.create({ data: {
         id: `pilot-${prefix}-${index}`, actorType: "SYSTEM", action, entityType: "Game", entityId,
@@ -77,7 +77,7 @@ describe("local-patch deletion through the owner/admin game action", () => {
     await db.auditLog.create({ data: { id: "other-entity-pilot-audit", actorType: "SYSTEM", action: actions[0]!,
       entityType: "Asset", entityId: gameId, metaJson: '{"unrelatedEntity":true}' } });
     const ledgerBefore = await db.worldBudgetLedger.findMany({ orderBy: { worldId: "asc" } });
-    const othersBefore = await db.auditLog.findMany({ where: { id: { in: ["pilot-retained-0", "pilot-retained-1",
+    const othersBefore = await db.auditLog.findMany({ where: { id: { in: ["pilot-retained-0", "pilot-retained-1", "pilot-retained-2",
       "unrelated-pilot-audit", "other-entity-pilot-audit"] } }, orderBy: { id: "asc" } });
     const otherGameBefore = await db.game.findUniqueOrThrow({ where: { id: other.gameId } });
 

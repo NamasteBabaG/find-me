@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { Prisma, TargetVariantAsset } from "@prisma/client";
 import type { Container } from "../container";
 import { isLocalPatchAdvisoryVersion, isLocalPatchAgeVersion, isLocalPatchStrictVersion, localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
-import { isTheModelWeAsked, localPatchQualityDisposition, parseLocalPatchBoardVerdicts } from "./local-patch-judge";
+import { isTheModelWeAsked, localPatchOccludedAgeWarning, localPatchQualityDisposition, parseLocalPatchBoardVerdicts } from "./local-patch-judge";
 import { LOCAL_PATCH_COMPOSITION_VERSION } from "./local-patch-seam";
 import { PrismaWorldBudgetStore } from "../../infra/db/prisma-world-budget-store";
 import { PrismaRetainedPurchaseStore } from "../../infra/db/prisma-retained-purchase-store";
@@ -12,6 +12,7 @@ import type { PaidRepairBatch } from "./local-patch-paid-repair";
 export const LOCAL_PATCH_PUBLICATION_POLICY = "publish-with-visual-warnings/v1";
 export const LOCAL_PATCH_STRICT_PUBLICATION_POLICY = "publish-with-severe-quality-guard/v2";
 export const LOCAL_PATCH_AGE_PUBLICATION_POLICY = "publish-with-canonical-age-guard/v3";
+export const LOCAL_PATCH_OCCLUDED_AGE_PUBLICATION_POLICY = "publish-canonical-peek-with-occluded-age-warning/v1";
 export const LOCAL_PATCH_PUBLICATION_ACTION = "local-patch:published-by-policy";
 export const LOCAL_PATCH_PAID_REPAIR_PUBLICATION_POLICY = "publish-paid-join-after-canonical-sol-review/v1";
 const REPAIR_COMPOSITION = "paid-mask-join/v1", REPAIR_REVIEW = "paid-repair-canonical-face-sol-low/v1";
@@ -32,8 +33,13 @@ export type LocalPatchPublicationBinding = {
 };
 const idOf = (input: LocalPatchPublicationBinding) => `aud_lpp_${digest(JSON.stringify([input.gameId, input.variantId, input.attempts, input.imageSha256,
   ...(isLocalPatchStrictVersion(input.sceneVersion) ? [digest(input.judgeJson ?? "")] : [])])).slice(0, 32)}`;
+export function localPatchPublicationOccludedAgeWarning(input: LocalPatchPublicationBinding) {
+  try { return localPatchOccludedAgeWarning(JSON.parse(input.judgeJson ?? "null")?.verdict, input.sceneVersion, { hideId: input.hideId }); }
+  catch { return null; }
+}
 const recordOf = (input: LocalPatchPublicationBinding) => ({
   policy: isRepair(input) ? LOCAL_PATCH_PAID_REPAIR_PUBLICATION_POLICY
+    : localPatchPublicationOccludedAgeWarning(input) ? LOCAL_PATCH_OCCLUDED_AGE_PUBLICATION_POLICY
     : isLocalPatchAgeVersion(input.sceneVersion) ? LOCAL_PATCH_AGE_PUBLICATION_POLICY
     : isLocalPatchStrictVersion(input.sceneVersion) ? LOCAL_PATCH_STRICT_PUBLICATION_POLICY : LOCAL_PATCH_PUBLICATION_POLICY,
   decision: "allowed-by-policy", gameId: input.gameId,
@@ -41,6 +47,7 @@ const recordOf = (input: LocalPatchPublicationBinding) => ({
   identityAssetId: input.identityAssetId, identitySha256: input.identitySha256,
   assetId: input.assetId, imageSha256: input.imageSha256, geometrySha256: input.geometrySha256,
   judgeSha256: digest(input.judgeJson ?? ""),
+  ...(localPatchPublicationOccludedAgeWarning(input) ? { contextualWarning: localPatchPublicationOccludedAgeWarning(input) } : {}),
 });
 
 function isRepair(input: LocalPatchPublicationBinding): boolean {
@@ -155,7 +162,7 @@ function allowed(input: LocalPatchPublicationBinding): boolean {
       && receipt?.compositionVersion === LOCAL_PATCH_COMPOSITION_VERSION
       && receipt?.boardReview?.compositionVersion === LOCAL_PATCH_COMPOSITION_VERSION
       && receipt?.boardReview?.version === (isLocalPatchAgeVersion(input.sceneVersion) ? "local-patch-board-five-quality/v5-evidence-labeled" : "local-patch-board-five-quality/v3-head-safe")
-      && localPatchQualityDisposition(receipt.verdict, input.sceneVersion).state === "acceptable";
+      && localPatchQualityDisposition(receipt.verdict, input.sceneVersion, { hideId: input.hideId }).state === "acceptable";
   } catch { return false; }
 }
 

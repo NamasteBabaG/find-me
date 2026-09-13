@@ -16,6 +16,7 @@ import { LOCAL_PATCH_MIN_PROVIDER_MS, LOCAL_PATCH_PHASE_MARGIN_MS } from "./loca
 import { localPatchAttemptPlan, localPatchSettled, localPatchFinalRepairAllowed, LOCAL_PATCH_NORMAL_ATTEMPTS } from "../../domain/scene/local-patch-attempts";
 import { localPatchNeedsRecomposition, recomposeLocalPatchHide } from "./local-patch-recompose";
 import { runLocalPatchPaidRepair, LOCAL_PATCH_PAID_REPAIR_ACTION, LocalPatchPaidRepairError } from "./local-patch-paid-repair";
+import { readLocalPatchExtraAttemptPlan } from "./local-patch-extra-attempt";
 import {
   LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, runLocalPatchHide,
   type LocalPatchHideDeps, type LocalPatchHideOutcome,
@@ -270,13 +271,28 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
 
   const allowRepair = localPatchFinalRepairAllowed(env().APP_ENV, strict);
   const attemptLimit = allowRepair ? LOCAL_PATCH_MAX_ATTEMPTS : LOCAL_PATCH_NORMAL_ATTEMPTS;
-  const settledHide = (row: { status: string; attempts: number } | undefined) => localPatchSettled(row, attemptLimit);
+  const extraPlan = await readLocalPatchExtraAttemptPlan(c, gameId);
+  const extraRows = new Set(extraPlan?.selected.map(entry => entry.rowId));
+  if (extraPlan && extraPlan.others.some(entry => rows.find(row => row.id === entry.rowId)?.status === "FAILED")) {
+    const attention = "local-patch: an unchanged sibling did not pass its first review; no additional image is authorized for that appearance";
+    await failStrictQuality(attention);
+    return { ...empty, pending: false, claimed: true, paused: false, attention };
+  }
+  // The extra allowance belongs to named rows, never to this engine or to a
+  // restarted invocation. All other delivered pixels are protected by the grant.
+  const settledHide = (row: { id: string; status: string; attempts: number } | undefined) => extraPlan
+    ? !row || !extraRows.has(row.id) || localPatchSettled(row, 4)
+    : localPatchSettled(row, attemptLimit);
   const plan = localPatchAttemptPlan(work.map(item => stateOf(item.sceneId, item.hide.targetId)), allowRepair);
   const normalReviewsPending = strict && game.scenes.some(scene => scene.generationStatus !== "GENERATED"
     && localPatchBoardFor(scene.sceneSlug, scene.sceneVersion)?.hides.every(hide => stateOf(scene.id, hide.targetId)?.status === "GENERATED"));
   // A rendered but not reviewed normal candidate may still require attempt2.
   // Finish those reviews before handing any earlier failure its last attempt.
-  const todo = plan.indices.map(index => work[index]!).filter(item => {
+  const todo = extraPlan ? work.filter(item => {
+    const row = stateOf(item.sceneId, item.hide.targetId);
+    return row && extraRows.has(row.id) && ((row.status === "FAILED" && row.attempts === 3)
+      || (row.status === "PENDING" && row.attempts === 4));
+  }) : plan.indices.map(index => work[index]!).filter(item => {
     if (!plan.finalRepair || !normalReviewsPending) return true;
     const row = stateOf(item.sceneId, item.hide.targetId);
     // Reviews gate a NEW final purchase, never recovery of one already started.
@@ -291,7 +307,8 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     for (const item of todo.slice(0, limit)) {
       if (options.hardDeadlineAt !== undefined && options.hardDeadlineAt - Date.now() < minHideMs) break;
       const outcome = await runLocalPatchHide(c, { ...deps, fence }, { gameId, board: item.board, hide: item.hide,
-        finalRepair: plan.finalRepair,
+        finalRepair: !!extraPlan || plan.finalRepair,
+        ...(extraPlan ? { extraAttemptAuthorizationId: extraPlan.authorizationId } : {}),
         ...(options.hardDeadlineAt === undefined ? {} : { deadlineAt: options.hardDeadlineAt }) });
       outcomes.push(outcome);
       if (outcome.state === "held") {
@@ -328,8 +345,10 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     if (!board || localPatchBoardBlockedReason(board)) continue;
     const mine = board.hides.map(hide => after.find(r => r.targetInstance.gameSceneId === scene.id && r.targetInstance.targetId === hide.targetId));
     if (!mine.every(settledHide)) continue;
-    const good = mine.every(row => row && (row.status === "GENERATED" || row.status === "APPROVED"));
-    if (advisory && good && scene.generationStatus !== "GENERATED") {
+    let good = mine.every(row => row && (row.status === "GENERATED" || row.status === "APPROVED"));
+    const reviewOnlyReady = !!extraPlan && mine.every(row => row && (row.status === "GENERATED"
+      || row.status === "FAILED" && extraPlan.reviewOnly.some(entry => entry.rowId === row.id)));
+    if (advisory && (good || reviewOnlyReady) && scene.generationStatus !== "GENERATED") {
       if (attention || paused) { pendingReviews++; continue; }
       try {
         const reviewed = await reviewLocalPatchBoard(c, { gameId, sceneId: scene.id,
@@ -345,6 +364,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
           await c.db.$transaction(async tx => { await fence(tx); await tx.gameScene.update({ where: { id: scene.id }, data: { generationStatus: "NEEDS_REGENERATION" } }); });
           continue;
         }
+        if (reviewed.state === "done") good = true;
         if (reviewed.state !== "done") {
           pendingReviews++;
           if (reviewed.state === "held") {
@@ -527,6 +547,8 @@ export async function localPatchPrivateInventory(c: { db: Pick<Prisma.Transactio
   for (const boardId of new Set(ALL_LOCAL_PATCH_BOARDS.map(board => board.board))) {
     requestKeys.push(...localPatchBoardReviewKeys(boardId), ...localPatchBoardReviewKeys(boardId, 9));
   }
+  const extraPlan = await readLocalPatchExtraAttemptPlan(c as Pick<Container, "db">, gameId);
+  if (extraPlan) requestKeys.push(...extraPlan.selected.map(entry => entry.requestKey), ...extraPlan.reviewRequestKeys);
   // These keys are frozen BEFORE a repair dispatch, so a crash before the
   // result-row write cannot orphan the private retained judge evidence.
   for (const audit of await c.db.auditLog.findMany({ where: { action: LOCAL_PATCH_PAID_REPAIR_ACTION, entityType: "Game", entityId: gameId }, select: { metaJson: true } })) {

@@ -1,7 +1,8 @@
 /** One first pass, then a second pass and one final repair. Never a fourth purchase. */
 export const LOCAL_PATCH_NORMAL_ATTEMPTS = 2;
 export const LOCAL_PATCH_MAX_ATTEMPTS = 3;
-export type LocalPatchAttemptLimit = 2 | 3;
+/** Four is available only to an independently verified, scoped operator grant. */
+export type LocalPatchAttemptLimit = 2 | 3 | 4;
 export type LocalPatchAttemptState = { readonly status: string; readonly attempts: number };
 
 /** New strict worlds share the same retry contract everywhere. Legacy worlds

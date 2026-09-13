@@ -15,6 +15,7 @@ import { AttemptStrip } from "./AttemptStrip";
 import { BoardWizardRecoveryForm } from "./BoardWizardRecoveryForm";
 import { LocalPatchRepairResumeForm } from "./LocalPatchRepairResumeForm";
 import { LocalPatchPaidRepairForm } from "./LocalPatchPaidRepairForm";
+import { LocalPatchExtraAttemptForm } from "./LocalPatchExtraAttemptForm";
 import { adjustTargetAction, adminDeleteAction, adminRotateLinkAction, approveAction, recutAvatarAction, refundAction, regenTargetAction, requestPhotoAction, retryAction } from "../../actions";
 import { LOCAL_PATCH_NEEDS_RELEASE } from "@/services/generation/local-patch-world";
 import { LOCAL_PATCH_HUMAN_CONFIRMATION } from "@/services/generation/local-patch-human-approval";
@@ -87,6 +88,7 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
       <BoardWizardRecoveryForm gameId={gameId} />
       <LocalPatchRepairResumeForm gameId={gameId} />
       <LocalPatchPaidRepairForm game={game} />
+      <LocalPatchExtraAttemptForm gameId={gameId} />
 
       <div className="admin__grid">
         <div className="fm-stack fm-stack--3">
