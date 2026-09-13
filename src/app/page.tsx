@@ -30,11 +30,12 @@ export default async function HomePage() {
     <>
       <SiteHeader user={user} isAdmin={isAdminEmail(user?.email)} clear />
       <main>
-        <Hero>
+        <Hero child={demo.child}>
           <Marquee scenes={scenes} locale={locale} />
         </Hero>
-        <DemoSection config={demo} />
+        {/* The three visual steps (photo → character → world) directly precede the live demo. */}
         <Transformation />
+        <DemoSection config={demo} />
         <HowItWorks t={t} locale={locale} />
         <Inside t={t} locale={locale} />
         <Worlds t={t} locale={locale} scenes={scenes} activeSlugs={[...sellable]} carousel={carouselWorlds(locale, owned)} />

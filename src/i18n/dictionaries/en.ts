@@ -73,7 +73,7 @@ export const en = {
       cta: "Create a game",
       demo: "Try the demo",
       found: "Found me!",
-      searchHint: "🔦 Move the light to search",
+      devices: { phone: "Phone", tablet: "Tablet", laptop: "Computer" },
     },
     demo: {
       pill: "🎮 Live demo · play right here",
@@ -94,7 +94,7 @@ export const en = {
       photoAlt: "A clear photo of a child, shoulders and up",
       characterAlt: "The illustrated character made from the photo",
       worldAlt: "An example of the illustrated child found at the beach, with a speech bubble",
-      previewUnavailable: "The example is temporarily unavailable. You can still try the demo above.",
+      previewUnavailable: "The example is temporarily unavailable. You can still try the live demo.",
       previewLoading: "Loading the example…",
       points: ["A personal character made from your photo", "Placed inside the game’s illustrations", "The photo is deleted once the game is approved"],
     },

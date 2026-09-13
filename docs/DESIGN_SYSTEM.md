@@ -36,7 +36,9 @@ React: `Button`, `LinkButton` (`src/ui/Button.tsx`), `SiteHeader`, `SiteFooter` 
 
 ## Landing anatomy
 
-Hero ("Where Am I?" over the real beach art with a searchlight that follows the pointer and reveals Noa) → world chips → full-bleed live demo (`#demo`, one mission, world at true 16:9, translucent compact UI) → how it works (4 steps) → bento "what's inside" (6 tiles) → gifting sheet (lavender) → worlds grid → pricing (middle plan elevated, dark) → trust sheet (aqua) → FAQ → final CTA sheet (sun gradient).
+Hero (the live demo child being found on rotating phone/tablet/laptop frames; a frameless board card on mobile, with world chips along its bottom) → photo-to-character proof (`#transform`, **three visual steps**) → full-bleed live demo (`#demo`, one mission) → how it works (`#how`, four purchase steps) → what's inside → worlds → gifting → pricing → trust → FAQ → final CTA. The three visual steps and the four purchase steps are separate sections: only the visual sequence precedes the demo.
+
+Hero assets are public marketing copies built by `scripts/refresh-hero-found.ts --apply` from `buildDemoConfig` and the shared `targetGeometry` contract. `content/home/hero-found.json` binds the current demo identity, board, effective foreground, geometry and shipped crop hashes. No customer images or paid generation are involved. The star destination is remeasured on resize and language changes; reduced motion shows a static find and a non-wrapping world strip.
 
 ## The game
 
@@ -48,4 +50,4 @@ Hero ("Where Am I?" over the real beach art with a searchlight that follows the 
 
 ## Photo → character section (`src/app/home/Transformation.tsx`)
 
-Sits right after the live demo. Three cards: the parent's photo, the illustrated character, the character hidden in a world crop. The photo card reads `public/demo/example-photo.jpg`; until that file exists it renders a dashed placeholder, so drop a real photo (shoulders and up) there and pair it with the matching sticker in `EXAMPLE_STICKER_URL`.
+Sits immediately after the hero, before the live demo. Three cards: the prepared public example photo, its illustrated character, and the character hidden in a world crop. The shared source is `content/demo/transformation.ts`; its current patch agrees with the live demo. Do not replace public marketing examples with a customer's private photo.

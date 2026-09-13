@@ -1,231 +1,274 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import Image from "next/image";
+import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import { useI18n } from "@/i18n/client";
-import heroArt from "../../../content/home/hero-art.json";
+import { GoldStar } from "@/game/components/GoldStar";
+import found from "../../../content/home/hero-found.json";
 
 /**
- * Hero: a torch sweeping a real world.
+ * Hero: the moment of the game, on the device a family actually holds.
  *
- * This used to be a dark stage scattered with emoji — shells, kites, rockets —
- * that the beam uncovered, and a comment saying "no world image here: the real
- * world lives in the demo below". That was a fair trade when there were nine
- * boards. There are twenty-seven now, they are the best thing the product has,
- * and a visitor met a screen of emoji before seeing any of them.
+ * Four heroes came before this one — emoji under a torch, a night stage, a
+ * porthole roaming a white page. They all showed the WORLD and hoped a visitor
+ * would infer the game. Guy drew the line: what is interesting is finding
+ * your child in the painting, and nothing says that like watching it happen.
+ * So the hero is a screen with the real search HUD (the face, five gold star
+ * slots, the hint), a hand that arrives, taps the child, a ring, a bubble in
+ * her voice, and a gold star that flies into its empty slot. Every eight
+ * seconds the screen is a different device — phone, tablet, laptop — which
+ * says "no app, works everywhere" without a word of copy. The words themselves
+ * are the ones the site already had; Guy preferred them.
  *
- * So the torch lights the paintings themselves — through a hard-edged porthole
- * on a pure white page. It was a night stage first (the board dimmed under a
- * blue wash, a feathered beam), and Guy read the dark hero plus the blue demo
- * as a colour island in a paper-white site. He was right: now the world is
- * simply invisible until the light lands on it, which is exactly what the game
- * is. The circle moves through one board per world, so the first ten seconds
- * of the page say "there are worlds in here" without a word of copy.
+ * On a phone there is no device frame (the visitor is holding one): the board
+ * card itself plays the moment under the copy.
  *
- * Rebuild marketing copies with scripts/refresh-hero-art.ts --apply whenever
- * board art changes. One manifest feeds BOTH ghost and flashlight layers.
+ * Nothing here is measured by eye. The child's head comes from the demo
+ * patch's anchor through `scripts/refresh-hero-found.ts` (rebuild the crops
+ * with `--apply` whenever the beach art or the demo patch changes), and the
+ * star's flight is aimed at the first empty slot at runtime, in the screen's
+ * own coordinates, so it lands in the slot in every language and at every
+ * size. Motion is CSS; with reduced motion the phone simply shows the found
+ * child.
  */
-const WORLDS = heroArt;
-const HOLD_MS = 12000;
-const NOA_DESKTOP = { x: 0.87, y: 0.66 };
-const NOA_MOBILE = { x: 0.8, y: 0.74 };
-// The idle torch orbits AROUND the copy instead of wandering through it: ink
-// text over a lit painting is unreadable, and the white hero has no scrim to
-// save it the way the dark one did. One angle for x and y = a closed ellipse;
-// its right edge passes Noa, so she still gets found once a lap.
-const ORBIT_DESKTOP = { cx: 0.5, cy: 0.55, rx: 0.37, ry: 0.29 };
-const ORBIT_MOBILE = { cx: 0.5, cy: 0.66, rx: 0.42, ry: 0.17 };
 
-export function Hero({ children }: { children?: ReactNode }) {
-  const { t } = useI18n();
+/** Five hiding spots per board, three of them open the next place: the tray shows what the game shows. */
+const SLOTS = 5;
+/** The flying star's box in design px; it shrinks to the slot's size as it lands (see --fs). */
+const FLY_BASE = 32;
+/** The three devices are drawn at this size and scaled as one to the column (--k). */
+const STAGE_W = 704;
+/** The board card on a phone: a little taller than square, so the child has room and the copy stays above. */
+const CARD_ASPECT = 7 / 8;
+
+type Kind = "phone" | "tablet" | "laptop" | "card";
+type Crop = keyof typeof found.crops;
+const SCREENS: Record<Exclude<Kind, "card">, { w: number; h: number; crop: Crop }> = {
+  phone: { w: 288, h: 616, crop: "phone" },
+  tablet: { w: 656, h: 480, crop: "wide" },
+  laptop: { w: 656, h: 416, crop: "wide" },
+};
+/** Where a point of an image lands inside a box the image covers (object-fit: cover, centred). */
+export function coverPoint(p: { x: number; y: number }, image: number, box: number) {
+  if (image > box) {
+    const w = image / box;
+    return { x: p.x * w - (w - 1) / 2, y: p.y };
+  }
+  const h = box / image;
+  return { x: p.x, y: p.y * h - (h - 1) / 2 };
+}
+/** A 1x1 transparent gif: the phone crop is only fetched where the phone is shown (>720px). */
+const BLANK = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+const SPARKS: Array<[number, number, string]> = [[-72, -56, "0s"], [80, -72, "0.1s"], [-88, 32, "0.05s"], [96, 24, "0.15s"], [0, -104, "0.08s"]];
+const HAND = "M19 27V9.5a3.5 3.5 0 0 1 7 0V22l6.5-1.2a3.5 3.5 0 0 1 4.2 3.4V30c0 6.2-4.6 11-11 11h-3.3c-3.4 0-6.4-1.6-8.3-4.4L7.6 27.5a3 3 0 0 1 4.6-3.7L19 30";
+
+interface Child {
+  name: string;
+  avatarUrl: string;
+}
+
+/** One game screen: the board with the child in it, the search HUD, and the find. */
+function Screen({ kind, child }: { kind: Kind; child: Child }) {
+  const { t, tf } = useI18n();
+  const crop = found.crops[kind === "card" ? "wide" : SCREENS[kind].crop];
+  const box = kind === "card" ? CARD_ASPECT : SCREENS[kind].w / SCREENS[kind].h;
+  const head = coverPoint(crop.head, crop.width / crop.height, box);
+  return (
+    <div className={`hero4__screen hero4__screen--${kind}`} data-screen={kind}>
+      {kind === "phone" ? (
+        <picture>
+          <source media="(min-width: 721px)" srcSet={crop.src} />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="hero4__art" src={BLANK} alt="" draggable={false} fetchPriority="high" />
+        </picture>
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img className="hero4__art" src={crop.src} alt="" draggable={false} loading={kind === "card" ? "eager" : "lazy"} fetchPriority={kind === "card" ? "high" : "low"} />
+      )}
+      <div className="hero4__rail">
+        <span className="hero4__tool">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z" /><path d="M9 4v14M15 6v14" /></svg>
+        </span>
+        <span className="hero4__tool">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><circle cx="10.5" cy="10.5" r="6.5" /><path d="M15.4 15.4 21 21M7.5 10.5h6M10.5 7.5v6" /></svg>
+        </span>
+        <span className="hero4__tool">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><circle cx="10.5" cy="10.5" r="6.5" /><path d="M15.4 15.4 21 21M7.5 10.5h6" /></svg>
+        </span>
+      </div>
+      {/* The search HUD as the game draws it: face, one slot per hiding spot, the hint, the mission. */}
+      <div className="hero4__hud">
+        <div className="hero4__hud-top">
+          <Image src={child.avatarUrl} alt="" width={40} height={40} unoptimized className="hero4__face" draggable={false} />
+          <div className="hero4__hud-col">
+            <span className="hero4__tray">
+              {Array.from({ length: SLOTS }, (_, i) => (
+                <span key={i} className="hero4__slot" data-slot={i === 0 ? "first" : undefined}>
+                  <GoldStar empty />
+                  {i === 0 ? (
+                    <span className="hero4__landed">
+                      <GoldStar />
+                    </span>
+                  ) : null}
+                </span>
+              ))}
+            </span>
+            <span className="hero4__rules">{t.game.scene.findAnyRules}</span>
+          </div>
+          <span className="hero4__hintbtn">{t.game.scene.hint}</span>
+        </div>
+        <span className="hero4__mission">{tf(t.game.scene.findChild, { name: child.name })}</span>
+      </div>
+      {/* The find, anchored on the child's head: ring, sparks, her bubble, the star that flies to the tray, the hand that taps. */}
+      <div className="hero4__fx" style={{ left: `${(head.x * 100).toFixed(2)}%`, top: `${(head.y * 100).toFixed(2)}%` }} data-fx>
+        <span className="hero4__ring" />
+        {SPARKS.map(([sx, sy, delay], i) => (
+          <span key={i} className="hero4__spark" style={{ "--sx": `${sx}px`, "--sy": `${sy}px`, animationDelay: delay } as CSSProperties}>
+            <GoldStar />
+          </span>
+        ))}
+        <span className="hero4__bubble">{t.home.hero.found}</span>
+        <span className="hero4__fly" data-fly>
+          <span className="hero4__fly-star">
+            <GoldStar />
+          </span>
+        </span>
+        <svg className="hero4__hand" viewBox="0 0 48 48" aria-hidden focusable="false">
+          <path d={HAND} fill="var(--white)" stroke="var(--ink)" strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round" />
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+export function Hero({ child, children }: { child: Child; children?: ReactNode }) {
+  const { t, locale } = useI18n();
   const h = t.home.hero;
-  const sectionRef = useRef<HTMLElement | null>(null);
+  const rootRef = useRef<HTMLElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
-  const pointer = useRef({ x: 0.5, y: 0.5, active: false, last: 0 });
-  const [lit, setLit] = useState(false);
-  const [narrow, setNarrow] = useState(false);
-  const [at, setAt] = useState(0);
-  const noaRef = useRef(NOA_DESKTOP);
-  const orbitRef = useRef(ORBIT_DESKTOP);
-  const navLinks = useRef<HTMLElement[] | null>(null);
-
-  // Noa and the orbit move out of the way of the copy on small screens.
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 720px)");
-    const apply = () => {
-      setNarrow(mq.matches);
-      noaRef.current = mq.matches ? NOA_MOBILE : NOA_DESKTOP;
-      orbitRef.current = mq.matches ? ORBIT_MOBILE : ORBIT_DESKTOP;
-    };
-    apply();
-    mq.addEventListener("change", apply);
-    return () => mq.removeEventListener("change", apply);
-  }, []);
-
-  // One world at a time. Held still for anyone who reads motion as noise.
-  useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const id = setInterval(() => setAt((n) => (n + 1) % WORLDS.length), HOLD_MS);
-    return () => clearInterval(id);
-  }, []);
-
-  // The torch steps aside for anything clickable: while the pointer is on a
-  // nav link or a hero button the whole light fades out (fast, never a cut)
-  // and comes back the moment it leaves. A circle parked under a button felt
-  // stuck (Guy). Delegated listeners, so the header — a sibling — counts too.
-  useEffect(() => {
-    const el = sectionRef.current;
-    if (!el) return;
-    const clicky = (t: EventTarget | null) =>
-      t instanceof Element && t.closest(".hero3__content a, .hero3__content button, .fm-header a, .fm-header button") !== null;
-    const over = (e: PointerEvent) => {
-      if (clicky(e.target)) el.classList.add("hero3--hush");
-    };
-    const out = (e: PointerEvent) => {
-      if (clicky(e.target) && !clicky(e.relatedTarget)) el.classList.remove("hero3--hush");
-    };
-    document.addEventListener("pointerover", over);
-    document.addEventListener("pointerout", out);
-    return () => {
-      document.removeEventListener("pointerover", over);
-      document.removeEventListener("pointerout", out);
-      el.classList.remove("hero3--hush");
-    };
-  }, []);
 
   useEffect(() => {
-    // The circle's vars live on the SECTION, so the stage layers, the ring and
-    // the lit copy of the words all read the same torch.
-    const el = sectionRef.current;
-    if (!el) return;
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    let raf = 0;
-    const start = performance.now();
-    const tick = (now: number) => {
-      const p = pointer.current;
-      // The torch roams on its own until a pointer takes it, and goes back to
-      // roaming when one is put down. On a phone there is no pointer at all,
-      // so roaming is the whole show — which is why none of this is hidden on
-      // small screens any more.
-      const idle = !p.active || now - p.last > 2500;
-      if (idle) {
-        const o = orbitRef.current;
-        const a = ((now - start) / 1000) * 0.22;
-        // Reduced motion: the torch does not roam — it rests just off Noa, so
-        // the still page is a found child in a lit circle, not a circle parked
-        // behind the headline.
-        const tx = reduced ? noaRef.current.x - 0.02 : o.cx + o.rx * Math.cos(a);
-        const ty = reduced ? noaRef.current.y - 0.04 : o.cy + o.ry * Math.sin(a);
-        p.x += (tx - p.x) * (reduced ? 0.2 : 0.02);
-        p.y += (ty - p.y) * (reduced ? 0.2 : 0.02);
+    const root = rootRef.current;
+    const stage = stageRef.current;
+    if (!root || !stage) return;
+    let active = true;
+    // The stage is drawn at design size and scaled as one, so three devices
+    // keep their proportions on any column. A CSS ladder holds until this runs.
+    const fit = () => stage.style.setProperty("--k", Math.min(1, stage.clientWidth / STAGE_W).toFixed(4));
+    // The star flies to the FIRST EMPTY SLOT, wherever the HUD put it: layout
+    // offsets, not client rects, because the phone is tilted and the stage is
+    // scaled, and the flight is measured in the screen's own frame.
+    const aim = () => {
+      if (!active) return;
+      for (const screen of Array.from(root.querySelectorAll<HTMLElement>("[data-screen]"))) {
+        const slot = screen.querySelector<HTMLElement>("[data-slot]");
+        const fx = screen.querySelector<HTMLElement>("[data-fx]");
+        const fly = screen.querySelector<HTMLElement>("[data-fly]");
+        if (!slot || !fx || !fly) continue;
+        const at = (el: HTMLElement) => {
+          let x = 0;
+          let y = 0;
+          let n: HTMLElement | null = el;
+          while (n && n !== screen) {
+            x += n.offsetLeft;
+            y += n.offsetTop;
+            n = n.offsetParent as HTMLElement | null;
+          }
+          return { x, y };
+        };
+        const s = at(slot);
+        const f = at(fx);
+        fly.style.setProperty("--fx", `${(s.x + slot.offsetWidth / 2 - f.x).toFixed(1)}px`);
+        fly.style.setProperty("--fy", `${(s.y + slot.offsetHeight / 2 - f.y).toFixed(1)}px`);
+        fly.style.setProperty("--fs", (slot.offsetWidth / FLY_BASE).toFixed(3));
       }
-      el.style.setProperty("--lx", `${(p.x * 100).toFixed(2)}%`);
-      el.style.setProperty("--ly", `${(p.y * 100).toFixed(2)}%`);
-      const rect = el.getBoundingClientRect();
-      const noa = noaRef.current;
-      const d = Math.hypot((p.x - noa.x) * rect.width, (p.y - noa.y) * rect.height);
-      setLit(d < 96);
-      // The torch lighting the nav: a link whose middle is inside the circle
-      // flips white (CSS scoped to the glass header); a hovered link goes
-      // yellow and wins. Viewport rects each frame, so scrolling stays exact.
-      if (!navLinks.current) navLinks.current = Array.from(document.querySelectorAll<HTMLElement>(".fm-header--clear .fm-nav a"));
-      if (navLinks.current.length > 0) {
-        const cx = rect.left + p.x * rect.width;
-        const cy = rect.top + p.y * rect.height;
-        const torch = parseFloat(getComputedStyle(el).getPropertyValue("--torch")) || 160;
-        for (const a of navLinks.current) {
-          const r = a.getBoundingClientRect();
-          a.classList.toggle("is-lit", Math.hypot(cx - (r.left + r.width / 2), cy - (r.top + r.height / 2)) < torch + 8);
-        }
-      }
-      raf = requestAnimationFrame(tick);
     };
-    raf = requestAnimationFrame(tick);
+    const measure = () => {
+      fit();
+      aim();
+    };
+    measure();
+    const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    ro?.observe(stage);
+    // The HUD's width depends on the display font; aim again once it is in.
+    document.fonts?.ready.then(aim).catch(() => {});
     return () => {
-      cancelAnimationFrame(raf);
-      navLinks.current?.forEach((a) => a.classList.remove("is-lit"));
+      active = false;
+      ro?.disconnect();
     };
-  }, []);
-
-  const track = (e: React.PointerEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    pointer.current = { x: (e.clientX - rect.left) / rect.width, y: (e.clientY - rect.top) / rect.height, active: true, last: performance.now() };
-  };
+  }, [locale, child.name]);
 
   const title = h.title.endsWith("?") ? (
     <>
       {h.title.slice(0, -1)}
-      <span className="hero3__q">?</span>
+      <span className="hero4__q">?</span>
     </>
   ) : (
     h.title
   );
 
-  // One plate per world, crossfading inside the porthole.
-  const plates = (className: string) =>
-    WORLDS.map((w, i) => (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        key={w.slug}
-        src={w.src}
-        alt=""
-        className={`${className}${i === at ? " is-on" : ""}`}
-        loading={i === 0 ? "eager" : "lazy"}
-        fetchPriority={i === 0 ? "high" : "low"}
-        draggable={false}
-      />
-    ));
-
   return (
-    <section ref={sectionRef} className="hero3" aria-labelledby="hero-title">
-      <div ref={stageRef} className="hero3__stage" onPointerMove={track} onPointerDown={track} aria-hidden>
-        <div className="hero3__ghost">{plates("hero3__plate")}</div>
-        <div className="hero3__hidden">{plates("hero3__plate")}</div>
-        <div className="hero3__ring" />
-        <div className={`hero3__noa${lit ? " is-lit" : ""}`} style={{ left: `${(narrow ? NOA_MOBILE : NOA_DESKTOP).x * 100}%`, top: `${(narrow ? NOA_MOBILE : NOA_DESKTOP).y * 100}%` }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/demo/noa-face.png" alt="" className="fm-sticker hero3__noa-img" width={104} height={104} draggable={false} />
-          <span className="hero3__bubble">{h.found}</span>
-        </div>
-        <span className="hero3__hint fm-pill">{h.searchHint}</span>
-      </div>
-
-      <div className="fm-container hero3__content">
-        <span className="hero3__pill">{h.pill}</span>
-        <h1 id="hero-title" className="hero3__title">
-          {title}
-        </h1>
-        <p className="hero3__lead">{h.lead}</p>
-        <div className="hero3__cta">
-          <Link href="/create" className="fm-btn fm-btn--lg">
-            {h.cta}
-            <span className="fm-btn__arrow" aria-hidden>
-              ➜
-            </span>
-          </Link>
-          <a href="#demo" className="fm-btn fm-btn--night fm-btn--lg">
-            {h.demo}
-          </a>
-        </div>
-      </div>
-      {/* The same words, white, visible only inside the torch: the light paints
-          what it crosses. The pill and the buttons are opaque chips the light
-          never shows through — they hold the layout here, invisibly. */}
-      <div className="hero3__lit" aria-hidden>
-        <div className="fm-container hero3__content hero3__content--lit">
-          <span className="hero3__pill">{h.pill}</span>
-          <div className="hero3__title">{title}</div>
-          <p className="hero3__lead">{h.lead}</p>
-          <div className="hero3__cta">
-            <span className="fm-btn fm-btn--lg">
+    <section ref={rootRef} className="hero4" aria-labelledby="hero-title">
+      <div className="fm-container hero4__grid">
+        <div className="hero4__copy">
+          <span className="hero4__pill">{h.pill}</span>
+          <h1 id="hero-title" className="hero4__title">
+            {title}
+          </h1>
+          <p className="hero4__lead">{h.lead}</p>
+          <div className="hero4__cta">
+            <Link href="/create" className="fm-btn fm-btn--lg">
               {h.cta}
-              <span className="fm-btn__arrow">➜</span>
-            </span>
-            <span className="fm-btn fm-btn--night fm-btn--lg">{h.demo}</span>
+              <span className="fm-btn__arrow" aria-hidden>
+                ➜
+              </span>
+            </Link>
+            <a href="#demo" className="fm-btn fm-btn--night fm-btn--lg">
+              {h.demo}
+            </a>
+          </div>
+        </div>
+        {/* The moment, on three devices in turn; decoration to a screen reader, the copy says it all. */}
+        <div ref={stageRef} className="hero4__stage" aria-hidden>
+          <div className="hero4__frames">
+            <div className="hero4__dev hero4__dev--phone">
+              <div className="hero4__frame hero4__frame--phone">
+                <Screen kind="phone" child={child} />
+              </div>
+            </div>
+            <div className="hero4__dev hero4__dev--tablet">
+              <div className="hero4__frame hero4__frame--tablet">
+                <Screen kind="tablet" child={child} />
+              </div>
+            </div>
+            <div className="hero4__dev hero4__dev--laptop">
+              <div className="hero4__frame hero4__frame--laptop">
+                <Screen kind="laptop" child={child} />
+              </div>
+              <div className="hero4__base" />
+            </div>
+            <div className="hero4__labels">
+              <span className="hero4__label hero4__label--phone">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.5" /><path d="M11 18h2" /></svg>
+                {h.devices.phone}
+              </span>
+              <span className="hero4__label hero4__label--tablet">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M11 17.5h2" /></svg>
+                {h.devices.tablet}
+              </span>
+              <span className="hero4__label hero4__label--laptop">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="12" rx="2" /><path d="M2 19h20" /></svg>
+                {h.devices.laptop}
+              </span>
+            </div>
+          </div>
+          <div className="hero4__card">
+            <Screen kind="card" child={child} />
           </div>
         </div>
       </div>
-      {children ? <div className="hero3__marquee">{children}</div> : null}
+      {children ? <div className="hero4__marquee">{children}</div> : null}
     </section>
   );
 }

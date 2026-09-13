@@ -1,0 +1,75 @@
+{
+  "scene": "beach",
+  "sceneVersion": 3,
+  "target": "sandcastle",
+  "variant": "A",
+  "board": "/scenes/beach/base.webp",
+  "boardSha256": "fae6976204de83ca2794878848424576f2c14ed5ec2ccea1c9eaab91cdd6d22e",
+  "foreground": null,
+  "foregroundSha256": null,
+  "patch": "/demo/noa-v2/beach-sandcastle-A.webp",
+  "patchSha256": "50211623632b36493c67e115f20620aa4f8aef7fd00f022eb94ab9cb62ae0479",
+  "rect": {
+    "x": 1093,
+    "y": 1277,
+    "w": 163,
+    "h": 254
+  },
+  "layer": "front",
+  "anchorNorm": {
+    "x": 0.3860135091145833,
+    "y": 0.62841796875
+  },
+  "centerNorm": {
+    "x": 0.38232421875,
+    "y": 0.685546875
+  },
+  "face": "/demo/noa-portrait.png",
+  "faceSha256": "df91e71f4aacd1679962ebfd124de5290a81811d47507088ed8e1e65697ecea6",
+  "crops": {
+    "wide": {
+      "src": "/home/hero-found-wide.webp?v=89ba8d26ba43204b",
+      "assetPath": "/home/hero-found-wide.webp",
+      "assetSha256": "89ba8d26ba43204b2a42eb8925ac74b99688378b0c47f042177c1d80c135b97b",
+      "bytes": 330548,
+      "width": 1400,
+      "height": 846,
+      "sourceRect": {
+        "left": 307,
+        "top": 676,
+        "width": 1966,
+        "height": 1188
+      },
+      "head": {
+        "x": 0.447,
+        "y": 0.5143
+      },
+      "child": {
+        "x": 0.4413,
+        "y": 0.6128
+      }
+    },
+    "phone": {
+      "src": "/home/hero-found-phone.webp?v=216d9e3f024bcbbb",
+      "assetPath": "/home/hero-found-phone.webp",
+      "assetSha256": "216d9e3f024bcbbbf4460c2006fcb35928ca5c053a7457eb08647adf6cc00983",
+      "bytes": 223550,
+      "width": 720,
+      "height": 1279,
+      "sourceRect": {
+        "left": 771,
+        "top": 515,
+        "width": 807,
+        "height": 1434
+      },
+      "head": {
+        "x": 0.514,
+        "y": 0.5384
+      },
+      "child": {
+        "x": 0.5,
+        "y": 0.6199
+      }
+    }
+  }
+}
