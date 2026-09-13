@@ -8,8 +8,9 @@ of the five-placement authoring catalog.
 
 - The original nine boards and 45 target/variant rows remain intact.
 - The administrator explicitly names failed appearances to omit. Only failed
-  rows without a shippable asset can be omitted; each board must retain four or
-  five existing appearances.
+  rows can be omitted; a pointer to an older retained candidate is preserved as
+  evidence, not treated as a usable current appearance. Each board must retain
+  four or five existing appearances.
 - No renderer, judge, attempt reset, deletion, or new image charge is invoked.
 - Retained images without a completed board review are admitted by a separate
   human decision. Their machine reports are not changed to `pass`.

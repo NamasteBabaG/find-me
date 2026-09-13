@@ -28,7 +28,9 @@ export async function LocalPatchPartialReleaseForm({ gameId }: { gameId: string 
       if (!target || target.variants.length !== 1) return null;
       const row = target.variants[0]!;
       if (row.variant !== "A" || row.provider !== "local-patch") return null;
-      if (row.status === "FAILED" && !row.assetId && row.attempts > 0) { omitted.push(hide.id); continue; }
+      // A failed later attempt may retain an older image pointer as evidence.
+      // Omitting the failed hide excludes that image too; it is never counted.
+      if (row.status === "FAILED" && row.attempts > 0) { omitted.push(hide.id); continue; }
       if (row.status !== "GENERATED" || !row.assetId || !row.rectJson || !row.hitRectJson || !row.headAnchorJson) return null;
       kept++;
       try {

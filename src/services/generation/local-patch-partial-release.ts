@@ -71,7 +71,16 @@ async function snapshot(c: Container, gameId: string, omittedHideIds: readonly s
       const target = scene.targets.find(t => t.targetId === hide.targetId), row = target?.variants[0];
       demand(target && row && row.provider === "local-patch", "An authored target is missing or from another engine");
       if (omitted.has(hide.id)) {
-        demand(row.status === "FAILED" && !row.assetId && row.attempts > 0, "Only failed unshippable appearances may be omitted");
+        demand(row.status === "FAILED" && row.attempts > 0, "Only failed unshippable appearances may be omitted");
+        // A failed retry can retain an earlier attempt's pointer. It is still
+        // inventory, not approval of the current attempt and never a sprite in
+        // this released subset. The shared snapshot binds its bytes too.
+        if (row.assetId) {
+          const prior = assets.find(asset => asset.id === row.assetId)!;
+          demand(prior.provider === "local-patch" && prior.providerRequestId === gameId
+            && (prior.type === "TARGET_SPRITE" && prior.visibility === "GAME"
+              || prior.type === "REJECTED_PATCH" && prior.visibility === "PRIVATE"), "Omitted historical image belongs to another game or purpose");
+        }
         matched.add(hide.id); continue;
       }
       demand(row.status === "GENERATED" && row.assetId && row.rectJson && row.hitRectJson && row.headAnchorJson, "Every included appearance needs its existing image and geometry");

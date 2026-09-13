@@ -43,8 +43,26 @@ describe("partial-release admin form", () => {
     if (mode === "production") mocks.appEnv = "production"; else mocks.admin = null;
     expect(await LocalPatchPartialReleaseForm({ gameId: "game-synthetic" })).toBeNull(); expect(mocks.find).not.toHaveBeenCalled();
   });
+  it("omits Sydney's failed fourth attempt even when an older asset and geometry remain as evidence", async () => {
+    const game = candidate();
+    const sydney = game.scenes.find(scene => scene.sceneSlug === "sydney")!.targets[4]!.variants[0]!;
+    Object.assign(sydney, { attempts: 4, assetId: "asset-synthetic-older-sydney-attempt",
+      rectJson: '{"x":0.2,"y":0.3,"w":0.1,"h":0.1}', hitRectJson: '{"x":0.22,"y":0.32,"w":0.04,"h":0.04}',
+      headAnchorJson: '{"x":0.24,"y":0.34}' });
+    const before = structuredClone(game);
+    mocks.find.mockResolvedValue(game);
+    const html = renderToStaticMarkup(await LocalPatchPartialReleaseForm({ gameId: "game-synthetic" }));
+    const omissions = (html.match(/<input\b[^>]*>/g) ?? []).filter(input => input.includes('name="omittedHideId"'));
+    expect(omissions).toHaveLength(2);
+    expect(omissions.some(input => input.includes('value="sydney-v7-5"') && input.includes('required=""'))).toBe(true);
+    expect(omissions.some(input => input.includes('value="greatwall-v7-5"') && input.includes('required=""'))).toBe(true);
+    expect(html).toContain("43 מתוך 45"); expect(html).toContain("sydney: 4"); expect(html).toContain("greatwall: 4");
+    expect(html.match(/: 5 מחבואים וכוכבים/g)).toHaveLength(7);
+    expect(html).not.toContain(sydney.assetId!);
+    expect(game).toEqual(before);
+  });
   it.each(["missing", "deleted", "running", "ready", "config", "readyAt", "deliveredAt", "legacy", "mixed", "incomplete", "duplicate-board",
-    "old-style", "worker-active", "other-worker-active", "worker-nonterminal", "missing-worker", "three-hides", "pending-hide", "failed-with-image",
+    "old-style", "worker-active", "other-worker-active", "worker-nonterminal", "missing-worker", "three-hides", "pending-hide", "generated-without-image",
     "unattempted-failure", "missing-geometry", "wrong-provider", "extra-variant", "missing-target", "no-failures"])("hides the action for %s", async mode => {
     const game = candidate(), scene = game.scenes.find(board => board.sceneSlug === "sydney")!, row = scene.targets[0]!.variants[0]!;
     if (mode === "deleted") game.deletedAt = new Date();
@@ -64,7 +82,7 @@ describe("partial-release admin form", () => {
     if (mode === "missing-worker") game.jobs = [];
     if (mode === "three-hides") { row.status = "FAILED"; row.assetId = null; }
     if (mode === "pending-hide") row.status = "PENDING";
-    if (mode === "failed-with-image") scene.targets[4]!.variants[0]!.assetId = "failed-image";
+    if (mode === "generated-without-image") row.assetId = null;
     if (mode === "unattempted-failure") scene.targets[4]!.variants[0]!.attempts = 0;
     if (mode === "missing-geometry") row.rectJson = "";
     if (mode === "wrong-provider") row.provider = "different-engine";

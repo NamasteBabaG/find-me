@@ -84,13 +84,27 @@ async function seed(gameId: string) {
 
 describe("explicit QA partial release preserves inventory, evidence and accounting", () => {
   it("ships43 real patches, leaves45 rows and every bill/verdict unchanged, and replays through a fresh client", async () => {
-    const gameId = "partial-success", s = await seed(gameId), before = await rows(gameId);
+    const gameId = "partial-success", s = await seed(gameId);
+    // Production shape: Sydney's fourth rejected attempt still names an older
+    // second-attempt image. A pointer's existence is not current approval.
+    const historicalId = `ast-omitted-history-${gameId}`, historicalPath = `game/${historicalId}.png`;
+    await c.storage.put(historicalPath, png, "image/png");
+    await db.asset.create({ data: { id: historicalId, ownerId: s.userId, type: "TARGET_SPRITE", visibility: "GAME", status: "READY",
+      storagePath: historicalPath, mimeType: "image/png", width: 512, height: 768, bytes: png.length, provider: "local-patch", providerRequestId: gameId } });
+    await db.targetVariantAsset.update({ where: { id: `var-${gameId}-sydney-v7-5` }, data: { assetId: historicalId,
+      rectJson: JSON.stringify({ x: .2, y: .2, w: .1, h: .2 }), hitRectJson: JSON.stringify({ x: .2, y: .2, w: .1, h: .2 }),
+      headAnchorJson: JSON.stringify({ x: .25, y: .2 }), rejectedAssetIdsJson: JSON.stringify([historicalId]),
+      judgeJson: JSON.stringify({ compositionPermission: "refused", renderFault: "quality-seam: shifted border", verdict: null }) } });
+    const before = await rows(gameId), historicalAsset = await db.asset.findUniqueOrThrow({ where: { id: historicalId } });
     const ledger = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: s.worldId } });
     await expect(composeLocalPatchGame(c, gameId)).rejects.toThrow();
     expect(await publishLocalPatchPartialGame(c, input(gameId))).toMatchObject({ targets: 43 });
     const game = await db.game.findUniqueOrThrow({ where: { id: gameId } }), config = GameConfigSchema.parse(JSON.parse(game.configJson!));
     expect(game.status).toBe("READY"); expect(config.scenes.map(sc => sc.targets.length).sort()).toEqual([4, 4, 5, 5, 5, 5, 5, 5, 5]);
     expect(config.scenes.reduce((n, sc) => n + sc.targets.length, 0)).toBe(43);
+    expect(game.configJson).not.toContain(historicalId);
+    expect(await db.asset.findUniqueOrThrow({ where: { id: historicalId } })).toEqual(historicalAsset);
+    expect((await c.storage.get(historicalPath)).equals(png)).toBe(true);
     expect(config.scenes.every(sc => sc.findsRequiredToAdvance === 3 && sc.appearancesPerBoard === sc.targets.length)).toBe(true);
     expect(config.scenes.filter(sc => sc.targets.length === 4).every(sc => sc.celebration.completeText.includes("4"))).toBe(true);
     expect(await rows(gameId)).toEqual(before);
@@ -106,6 +120,9 @@ describe("explicit QA partial release preserves inventory, evidence and accounti
     await db.game.update({ where: { id: gameId }, data: { configJson: game.configJson!.replace('"appearancesPerBoard":4', '"appearancesPerBoard":5') } });
     await expect(publishLocalPatchPartialGame(c, input(gameId))).rejects.toThrow("published config");
     await db.game.update({ where: { id: gameId }, data: { configJson: game.configJson } });
+    await db.fileBlob.update({ where: { key: historicalPath }, data: { data: new Uint8Array(Buffer.from("changed omitted historical pixels")) } });
+    await expect(readLocalPatchPartialRelease(c, gameId)).rejects.toThrow("inventory");
+    await db.fileBlob.update({ where: { key: historicalPath }, data: { data: new Uint8Array(png) } });
   }, 120000);
 
   it.each(["operator", "owner", "refund", "worker", "unknown-budget", "include-failure", "omit-good"])("refuses %s without creating authority or publication", async failure => {
