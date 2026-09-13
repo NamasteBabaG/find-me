@@ -302,10 +302,10 @@ describe("find-any rendering and mobile feedback", () => {
   it("provides opaque fallback, fixed bubble anchors, full-face HUD and room to pan edge hides out from under it", () => {
     const css = readFileSync("src/game/game.css", "utf8");
     expect(css).toContain("background-color: #BFE9FF"); expect(css).toContain(".scene__curtain.is-open { pointer-events: none; }");
-    // The portrait is contained (never a circular crop), 64px on a desktop and 56px on a phone: present, not dominant (Guy).
+    // The portrait is contained (never a circular crop), 48px on a desktop and 40px on a phone.
     expect(css).toContain("object-fit: contain");
-    expect(css).toContain(".mission__thumb--face { width: var(--space-8); height: var(--space-8)");
-    expect(css).toContain(".mission__thumb--face { width: calc(var(--space-6) + var(--space-1)); height: calc(var(--space-6) + var(--space-1)); }");
+    expect(css).toContain(".mission__thumb--face { width: var(--space-6); height: var(--space-6)");
+    expect(css).toContain(".mission__thumb--face { width: var(--space-5); height: var(--space-5); }");
     const keyframes = css.slice(css.indexOf("@keyframes fm-bubble-pop"), css.indexOf("@media (max-width: 720px), (max-height: 480px)"));
     expect(keyframes.match(/translate\(-50%, calc\(-100% - var\(--space-4\)\)\)/g)).toHaveLength(3);
     for (const width of [320, 360, 390, 430]) for (const viewport of [{ width, height: 650 }, { width: 844, height: width }]) {

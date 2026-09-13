@@ -143,21 +143,21 @@ describe("MissionCard", () => {
       expect(body, selector).toBeDefined();
       return body!;
     };
-    const narrow = css.match(/@media\s*\(max-width:\s*360px\)\s*\{([\s\S]*?)\n\}/)?.[1];
-    expect(narrow).toBeDefined();
     // Pin the CSS contract, not a simulated browser layout: JSDOM does not
-    // implement media-query layout. The reported real row was 225px wide.
-    expect(rule(".mission__stars.stars--sm", narrow)).toContain("--star-size: var(--space-2)");
+    // implement media-query layout. All screens use the compact mission tray.
+    expect(rule(".mission__stars.stars--sm")).toContain("--star-size: var(--space-2)");
+    expect(rule(".mission__stars .star--empty .star__body")).toContain("stroke: var(--ink-3); stroke-dasharray: none");
     expect(rule(".stars--sm")).toContain("--star-size: var(--space-3)");
     expect(rule(".mission__hintbtn")).toContain("min-width: var(--touch-min)");
     expect(rule(".mission__text")).toContain("white-space: normal");
     expect(rule(".mission__face")).toContain("object-fit: contain");
-    expect(css).toContain("width: calc(var(--space-6) + var(--space-1)); height: calc(var(--space-6) + var(--space-1))");
+    expect(css).toContain(".mission__thumb--face { width: var(--space-5); height: var(--space-5); }");
     const px = (name: string) => Number(tokens.match(new RegExp(`--${name}:\\s*(\\d+)px`))?.[1]);
-    const face = px("space-6") + px("space-1");
-    const available = 225 - face - px("touch-min") - 2 * px("space-1");
+    const face = px("space-5");
+    const row = 320 - px("space-8") - 2 * px("space-1");
+    const available = row - face - px("touch-min") - 2 * px("space-1");
     const tray = 5 * px("space-2") + 4 * px("space-0-5");
-    expect(face).toBe(56); expect(available).toBe(105); expect(tray).toBe(96);
+    expect(face).toBe(40); expect(available).toBe(136); expect(tray).toBe(96);
     expect(tray).toBeLessThanOrEqual(available);
     const view = he(<MissionCard index={3} total={5} target={target("c")} found={["a", "b"]}
       order={["a", "b", "c", "d", "e"]} hintLevel={0} hintPulse={false} hintText={null}

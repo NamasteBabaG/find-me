@@ -248,14 +248,14 @@
    being looked for. Taps pass through the card to the board; only its
    buttons catch them. The world's stars are not here at all — inside a
    board, only that board's stars matter. */
-.mission { position: absolute; z-index: var(--z-ui); pointer-events: none; top: max(var(--space-1), env(safe-area-inset-top)); right: max(var(--space-1), env(safe-area-inset-right)); display: flex; flex-direction: column; gap: var(--space-1); width: max-content; max-width: min(360px, calc(100% - var(--space-10))); padding: var(--space-1); border-radius: var(--radius-3); background: rgba(255, 255, 255, 0.86); backdrop-filter: blur(12px); box-shadow: var(--shadow-2); }
+.mission { position: absolute; z-index: var(--z-ui); pointer-events: none; top: max(var(--space-1), env(safe-area-inset-top)); right: max(var(--space-1), env(safe-area-inset-right)); display: flex; flex-direction: column; gap: var(--space-1); width: max-content; max-width: min(calc(var(--space-16) * 2), calc(100% - var(--space-10))); padding: var(--space-0-5) var(--space-1); border-radius: var(--radius-2); background: rgba(255, 255, 255, 0.86); backdrop-filter: blur(12px); box-shadow: var(--shadow-2); }
 .mission__top { display: flex; align-items: center; gap: var(--space-1); }
 /* The identity cue is the whole illustrated portrait, contained — never a circular crop of it. */
-.mission__thumb--face { width: var(--space-8); height: var(--space-8); flex-shrink: 0; display: grid; place-items: center; }
+.mission__thumb--face { width: var(--space-6); height: var(--space-6); flex-shrink: 0; display: grid; place-items: center; }
 .mission__face { width: 100%; height: 100%; border-radius: var(--radius-2); object-fit: contain; background: var(--white); box-shadow: var(--sticker-outline); }
 .mission__progress { display: flex; flex: 1; flex-direction: column; align-items: flex-start; gap: var(--space-0-5); min-width: 0; }
 .mission__count { font-size: var(--fs-50); line-height: var(--lh-50); font-weight: 700; color: var(--ink-3); letter-spacing: 0.02em; white-space: nowrap; }
-.mission__hintbtn { pointer-events: auto; min-width: var(--touch-min); min-height: var(--touch-min); padding-inline: var(--space-2); flex-shrink: 0; border-radius: var(--radius-pill); background: var(--sun); box-shadow: var(--shadow-1); display: grid; place-items: center; font-family: var(--font-display); font-weight: 800; font-size: var(--fs-200); color: var(--ink); line-height: 1; transition: transform var(--dur-1) var(--ease-out); }
+.mission__hintbtn { pointer-events: auto; min-width: var(--touch-min); min-height: var(--touch-min); padding-inline: var(--space-1); flex-shrink: 0; border-radius: var(--radius-pill); background: var(--sun); box-shadow: var(--shadow-1); display: grid; place-items: center; font-family: var(--font-display); font-weight: 800; font-size: var(--fs-100); color: var(--ink); line-height: 1; transition: transform var(--dur-1) var(--ease-out); }
 .mission__hintbtn:hover { transform: translateY(-1px); }
 .mission__hintbtn:disabled { opacity: 0.4; }
 .mission__hintbtn--pulse { animation: fm-pulse 1.2s var(--ease-in-out) infinite; box-shadow: 0 0 0 6px var(--sun-soft), var(--shadow-1); }
@@ -264,7 +264,7 @@
    outranks the browser's own [hidden] rule, so without this the card never
    actually folded — the class changed and the text stayed on the board. */
 .mission__body[hidden] { display: none; }
-.mission__text { font-family: var(--font-display); font-size: var(--fs-200); line-height: var(--lh-200); font-weight: 700; margin: 0; white-space: normal; overflow-wrap: anywhere; }
+.mission__text { font-family: var(--font-display); font-size: var(--fs-100); line-height: var(--lh-100); font-weight: 700; margin: 0; white-space: normal; overflow-wrap: anywhere; }
 .mission__hint { font-size: var(--fs-100); line-height: var(--lh-100); color: var(--sea-deep); font-weight: 500; margin: 0; white-space: normal; overflow-wrap: anywhere; }
 /* The way forward, once the next place is open. Gold, because it was earned; never folded away. */
 .mission__continue { pointer-events: auto; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-1); min-height: var(--touch-min); padding-inline: var(--space-2); border-radius: var(--radius-pill); background: var(--grad-gold); color: var(--ink); font-family: var(--font-display); font-weight: 800; font-size: var(--fs-200); box-shadow: var(--shadow-1); animation: fm-pop-in var(--dur-3) var(--ease-pop); transition: transform var(--dur-1) var(--ease-out); }
@@ -288,17 +288,14 @@
   100% { transform: translate(-50%, calc(-100% - var(--space-4))) scale(1); }
 }
 @media (max-width: 720px), (max-height: 480px) {
-  .mission { max-width: calc(100% - var(--space-8)); gap: var(--space-0-5); }
-  .mission__thumb--face { width: calc(var(--space-6) + var(--space-1)); height: calc(var(--space-6) + var(--space-1)); }
-  .mission__hintbtn { padding-inline: var(--space-1); font-size: var(--fs-100); }
-  .mission__text { font-size: var(--fs-100); line-height: var(--lh-100); }
+  .mission { max-width: min(calc(var(--space-16) * 2), calc(100% - var(--space-8))); gap: var(--space-0-5); }
+  .mission__thumb--face { width: var(--space-5); height: var(--space-5); }
   .scene__btn { width: 44px; height: 44px; }
 }
-/* All five stars fit beside the whole 56px portrait and 48px hint target
-   on narrow phones; map and completion trays keep their normal sizes. */
-@media (max-width: 360px) {
-  .mission__stars.stars--sm { --star-size: var(--space-2); }
-}
+/* Compact on every screen, not only narrow phones. Keep the hint's 48px
+   touch target and all five stars; map/completion trays retain their sizes. */
+.mission__stars.stars--sm { --star-size: var(--space-2); }
+.mission__stars .star--empty .star__body { stroke: var(--ink-3); stroke-dasharray: none; }
 @media (prefers-reduced-motion: reduce) {
   .bubble, .mission__body, .mission__continue, .scene__advance { animation: none; }
   .scene__curtain.is-open::before { transition: none; }
