@@ -179,37 +179,8 @@
   .celebration__p, .celebration__y, .celebration__s { animation-duration: 1ms; animation-delay: 0ms; }
 }
 
-/* Mission pill — floats at the bottom, translucent, never a wall */
-.mission { position: absolute; z-index: var(--z-ui); pointer-events: none; bottom: var(--space-2); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: var(--space-2); max-width: calc(100% - var(--space-4)); background: rgba(255, 255, 255, 0.82); backdrop-filter: blur(12px); padding: var(--space-1); padding-inline-start: var(--space-2); border-radius: var(--radius-pill); box-shadow: var(--shadow-2); animation: fm-fade-up var(--dur-3) var(--ease-out); }
-.mission__hintbtn { pointer-events: auto; }
-.mission__thumb { width: var(--space-5); height: calc(var(--space-6) + var(--space-1)); flex-shrink: 0; display: grid; place-items: center; }
-.mission__sprite { width: 100%; height: 100%; }
-.mission__body { display: flex; flex-direction: column; min-width: 0; }
-/* The quiet fold sets the `hidden` attribute; a class with `display: flex`
-   outranks the browser's own [hidden] rule, so without this the card never
-   actually folded — the class changed and the text stayed on the board. */
-.mission__body[hidden] { display: none; }
-.mission__meta { display: flex; align-items: center; gap: var(--space-1); }
-.mission__ticks { display: inline-flex; gap: var(--space-0-5); }
-.mission__tick { width: var(--space-2); height: var(--space-2); border-radius: var(--radius-pill); border: 2px solid var(--ink-4); display: grid; place-items: center; font-size: 10px; line-height: 1; color: var(--white); }
-.mission__tick--done { background: var(--leaf); border-color: var(--leaf); animation: fm-pop-in var(--dur-2) var(--ease-pop); }
-.mission__count { font-size: var(--fs-50); line-height: var(--lh-50); font-weight: 700; color: var(--ink-3); letter-spacing: 0.02em; white-space: nowrap; }
-.mission__text { font-family: var(--font-display); font-size: var(--fs-300); line-height: var(--lh-300); font-weight: 600; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mission__hint { font-size: var(--fs-100); line-height: var(--lh-100); color: var(--sea-deep); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; animation: fm-fade-up var(--dur-2) var(--ease-out); }
-.mission__hintbtn { min-height: var(--touch-kid); padding-inline: var(--space-3); flex-shrink: 0; border-radius: var(--radius-pill); background: var(--sun); box-shadow: var(--shadow-1); display: grid; place-items: center; font-family: var(--font-display); font-weight: 800; font-size: var(--fs-300); color: var(--ink); line-height: 1; transition: transform var(--dur-1) var(--ease-out); }
-.mission__hintbtn:hover { transform: translateY(-1px); }
-.mission__hintbtn:disabled { opacity: 0.4; }
-.mission__hintbtn--pulse { animation: fm-pulse 1.2s var(--ease-in-out) infinite; box-shadow: 0 0 0 6px var(--sun-soft), var(--shadow-1); }
-/* Folded: the face and the bulb, nothing else. It is a button now — a tap on
-   it unfolds the mission — so it keeps a real hit size and its pointer events. */
-.mission--quiet { pointer-events: auto; cursor: pointer; padding-inline-start: var(--space-1); gap: var(--space-0-5); }
-.mission--quiet .mission__hint { display: none; }
-.mission { transition: transform var(--dur-2) var(--ease-out), gap var(--dur-2) var(--ease-out); }
 
 @media (max-width: 720px) {
-  .mission { bottom: var(--space-1); gap: var(--space-1); }
-  .mission__text { font-size: var(--fs-200); line-height: var(--lh-200); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .mission__hintbtn { min-height: var(--touch-min); padding-inline: var(--space-2); font-size: var(--fs-200); }
   /* The chrome sits over the picture, so it stays as small as a finger allows. */
   .scene__bar { padding: var(--space-1); }
   .scene__btn { width: 48px; height: 48px; }
@@ -220,7 +191,6 @@
 @media (max-height: 480px) and (orientation: landscape) {
   .scene__bar { padding: var(--space-0-5) var(--space-1); }
   .scene__title { display: none; }
-  .mission { bottom: var(--space-0-5); }
 }
 
 /* Scene complete */
@@ -231,6 +201,12 @@
 .complete__stamp { position: absolute; top: calc(var(--space-3) * -1); inset-inline-end: var(--space-3); background: var(--berry); color: var(--white); font-family: var(--font-display); font-weight: 600; font-size: var(--fs-300); padding: var(--space-1) var(--space-3); border-radius: var(--radius-2); transform: rotate(-8deg); box-shadow: var(--shadow-2); animation: fm-stamp var(--dur-3) var(--ease-pop); }
 .complete__stamp--big { position: static; display: inline-block; font-size: var(--fs-500); padding: var(--space-2) var(--space-4); }
 .complete__title { font-size: var(--fs-500); line-height: var(--lh-500); }
+/* The board's stars, one after another, and the words once the last has landed
+   (see STAR_POP_* in ScenePlayer). The middle of three sits higher — the classic arc. */
+.complete__stars { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); }
+.complete__stars .stars--lg .stars__slot:nth-child(2) { margin-top: calc(var(--space-2) * -1); }
+.complete__stars .stars__slot { --stagger-start: 200ms; }
+.complete__stars-text { margin: 0; font-family: var(--font-display); font-weight: 800; font-size: var(--fs-400); line-height: var(--lh-400); background: linear-gradient(90deg, var(--gold-deep), var(--gold-light) 50%, var(--gold-deep)); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: fm-fade-up var(--dur-3) var(--ease-out) 1000ms both, fm-shimmer 2.4s linear 1600ms infinite; }
 .complete__loot { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); font-size: var(--fs-300); line-height: var(--lh-300); }
 .complete__icon { font-size: var(--fs-700); line-height: 1; animation: fm-float 2s var(--ease-in-out) infinite; }
 .complete__actions { display: flex; flex-direction: column; gap: var(--space-1); width: 100%; }
@@ -239,7 +215,14 @@
 /* Passport */
 .passport { flex: 1; display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-4) var(--space-3); max-width: var(--container); width: 100%; margin-inline: auto; }
 .passport__head { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.passport__who { flex: 1; min-width: 0; }
 .passport__title { font-size: var(--fs-500); line-height: var(--lh-500); }
+/* The jar: every star in the game, and how far it has filled with gold. */
+.passport__stars { display: flex; flex-direction: column; gap: var(--space-1); min-width: 200px; }
+.starmeter { height: var(--space-2); border-radius: var(--radius-pill); background: var(--paper-3); box-shadow: inset 0 1px 2px rgba(23, 22, 43, 0.12); overflow: hidden; }
+.starmeter__fill { display: block; height: 100%; border-radius: var(--radius-pill); background: var(--grad-gold); background-size: 200% 100%; box-shadow: 0 0 8px rgba(255, 207, 51, 0.6); transition: width var(--dur-4) var(--ease-out); animation: fm-meter-shine 2.4s linear infinite; }
+.starmeter__fill.is-full { animation-duration: 1.2s; }
+.passport__allstars { display: flex; align-items: center; justify-content: center; gap: var(--space-2); margin: 0; font-family: var(--font-display); font-weight: 800; font-size: var(--fs-400); line-height: var(--lh-400); color: var(--gold-deep); }
 .passport__grid { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .loot { min-width: 0; }
 .loot__btn { width: 100%; height: 100%; background: var(--white); border-radius: var(--radius-3); padding: var(--space-1); display: flex; flex-direction: column; align-items: stretch; gap: var(--space-1); min-height: var(--touch-kid); box-shadow: var(--shadow-1); text-align: start; }
@@ -247,53 +230,73 @@
 .loot__image { position: relative; display: block; aspect-ratio: 16 / 9; overflow: hidden; border-radius: var(--radius-2); background: var(--paper-2); }
 .loot__image img { object-fit: cover; }
 .loot__completed { position: absolute; top: var(--space-1); inset-inline-end: var(--space-1); padding: var(--space-0-5) var(--space-2); border-radius: var(--radius-pill); background: var(--lime); color: var(--ink); font-weight: 700; box-shadow: var(--shadow-1); font-size: var(--fs-100); line-height: var(--lh-100); }
-.loot__name { padding: var(--space-1); font-family: var(--font-display); font-weight: 600; }
+.loot__foot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-1); padding: var(--space-1); }
+.loot__name { min-width: 0; font-family: var(--font-display); font-weight: 600; }
+.loot__stars { flex-shrink: 0; }
+/* A finished place is framed in gold. */
+.loot--got .loot__btn { box-shadow: inset 0 0 0 3px var(--gold), var(--shadow-1); }
 @media (max-width: 960px) { .passport__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .passport__grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-2); } }
 .passport__done { text-align: center; display: flex; flex-direction: column; gap: var(--space-2); align-items: center; }
 .passport__done .complete__stamp { max-width: calc(100% - var(--space-4)); line-height: var(--lh-500); animation: none; }
-.mission__thumb--face { width: 96px; height: 96px; }
+/* ─── The search HUD ────────────────────────────────────────────────────────
+   Top-right in both languages: the tools sit in a rail on the left, so
+   neither mirrors over the other in RTL. One row is always there — the
+   child's face, the board's gold stars, the hint. The words under it fold
+   away a few seconds after they change and unfold on a tap or a hint: a
+   phone screen is mostly board, and the child under the card is the one
+   being looked for. Taps pass through the card to the board; only its
+   buttons catch them. The world's stars are not here at all — inside a
+   board, only that board's stars matter. */
+.mission { position: absolute; z-index: var(--z-ui); pointer-events: none; top: max(var(--space-1), env(safe-area-inset-top)); right: max(var(--space-1), env(safe-area-inset-right)); display: flex; flex-direction: column; gap: var(--space-1); width: max-content; max-width: min(360px, calc(100% - var(--space-10))); padding: var(--space-1); border-radius: var(--radius-3); background: rgba(255, 255, 255, 0.86); backdrop-filter: blur(12px); box-shadow: var(--shadow-2); }
+.mission__top { display: flex; align-items: center; gap: var(--space-1); }
+/* The identity cue is the whole illustrated portrait, contained — never a circular crop of it. */
+.mission__thumb--face { width: var(--space-8); height: var(--space-8); flex-shrink: 0; display: grid; place-items: center; }
 .mission__face { width: 100%; height: 100%; border-radius: var(--radius-2); object-fit: contain; background: var(--white); box-shadow: var(--sticker-outline); }
-
-/* The complete search HUD stays in the physical upper-right in both locales.
-   Tools occupy a separate left rail; neither mirrors over the face in RTL. */
-.mission { top: max(var(--space-1), env(safe-area-inset-top)); right: max(var(--space-1), env(safe-area-inset-right)); bottom: auto; left: auto; transform: none; border-radius: var(--radius-2); align-items: start; width: min(420px, calc(100% - 72px)); max-width: none; gap: var(--space-1); padding: var(--space-1); animation: none; }
-.mission__body { flex: 1; }
-.mission__meta { flex-wrap: wrap; gap: 4px; }
-.mission__text, .mission__hint { white-space: normal; overflow-wrap: anywhere; }
-.mission__hint { margin: 4px 0 0; }
-.mission__rules { font-size: var(--fs-50); line-height: 1.3; margin: 4px 0; }
-.mission__ticks { direction: ltr; }
-.mission__tick { border: 0; font-size: 20px; width: 20px; height: 24px; color: var(--ink-3); background: none; }
-.mission__tick--done { color: #9a5900; background: none; }
-.mission__hintbtn { min-height: 48px; padding-inline: 10px; font-size: var(--fs-100); }
-.mission__continue { pointer-events: auto; min-height: 44px; padding: 4px 10px; border-radius: var(--radius-2); color: var(--ink); background: var(--sun); font-weight: 700; }
+.mission__progress { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-0-5); min-width: 0; }
+.mission__count { font-size: var(--fs-50); line-height: var(--lh-50); font-weight: 700; color: var(--ink-3); letter-spacing: 0.02em; white-space: nowrap; }
+.mission__rules { font-size: var(--fs-50); line-height: var(--lh-50); font-weight: 700; color: var(--ink-3); white-space: nowrap; }
+.mission__hintbtn { pointer-events: auto; min-height: var(--touch-min); padding-inline: var(--space-2); flex-shrink: 0; border-radius: var(--radius-pill); background: var(--sun); box-shadow: var(--shadow-1); display: grid; place-items: center; font-family: var(--font-display); font-weight: 800; font-size: var(--fs-200); color: var(--ink); line-height: 1; transition: transform var(--dur-1) var(--ease-out); }
+.mission__hintbtn:hover { transform: translateY(-1px); }
+.mission__hintbtn:disabled { opacity: 0.4; }
+.mission__hintbtn--pulse { animation: fm-pulse 1.2s var(--ease-in-out) infinite; box-shadow: 0 0 0 6px var(--sun-soft), var(--shadow-1); }
+.mission__body { display: flex; flex-direction: column; gap: var(--space-0-5); padding: 0 var(--space-1) var(--space-0-5); min-width: 0; animation: fm-fade-up var(--dur-2) var(--ease-out); }
+/* The quiet fold sets the `hidden` attribute; a class with `display: flex`
+   outranks the browser's own [hidden] rule, so without this the card never
+   actually folded — the class changed and the text stayed on the board. */
+.mission__body[hidden] { display: none; }
+.mission__text { font-family: var(--font-display); font-size: var(--fs-200); line-height: var(--lh-200); font-weight: 700; margin: 0; white-space: normal; overflow-wrap: anywhere; }
+.mission__hint { font-size: var(--fs-100); line-height: var(--lh-100); color: var(--sea-deep); font-weight: 500; margin: 0; white-space: normal; overflow-wrap: anywhere; }
+/* The way forward, once the next place is open. Gold, because it was earned; never folded away. */
+.mission__continue { pointer-events: auto; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-1); min-height: var(--touch-min); padding-inline: var(--space-2); border-radius: var(--radius-pill); background: var(--grad-gold); color: var(--ink); font-family: var(--font-display); font-weight: 800; font-size: var(--fs-200); box-shadow: var(--shadow-1); animation: fm-pop-in var(--dur-3) var(--ease-pop); transition: transform var(--dur-1) var(--ease-out); }
+.mission__continue:hover { transform: translateY(-1px); }
+/* Folded, the card is a button — a tap on it unfolds the words — so it keeps its pointer events. */
+.mission--quiet { pointer-events: auto; cursor: pointer; }
 .scene__bar { left: max(var(--space-1), env(safe-area-inset-left)); right: auto; top: max(var(--space-1), env(safe-area-inset-top)); padding: 0; flex-direction: column; align-items: start; }
 .scene__tools { flex-direction: column; gap: 4px; }
 .scene__title { display: none; }
-.scene__advance { position: absolute; z-index: var(--z-ui); bottom: max(var(--space-2), env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100% - 16px); padding: 10px; border-radius: var(--radius-2); background: var(--white); box-shadow: var(--shadow-2); text-align: center; }
-.scene__advance p { margin: 0 0 8px; }
-.scene__advance button { margin: 2px; }
+/* "The next place is open": one moment — a slim toast at the bottom that leaves on its own. */
+/* Centred with auto margins, not a translateX: the entrance animates `transform`, and a
+   transform-centred toast slid in off-centre and jumped into place when it ended. */
+.scene__advance { position: absolute; z-index: var(--z-ui); bottom: max(var(--space-2), env(safe-area-inset-bottom)); left: 0; right: 0; margin-inline: auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--space-1) var(--space-2); width: max-content; max-width: calc(100% - var(--space-2)); padding: var(--space-1) var(--space-2); border-radius: var(--radius-3); background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(12px); box-shadow: 0 0 0 2px var(--gold-light), var(--shadow-2); animation: fm-fade-up var(--dur-3) var(--ease-pop); }
+.scene__advance p { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: var(--fs-200); line-height: var(--lh-200); }
+.scene__advance-actions { display: flex; gap: var(--space-1); }
 .game__announcement { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .bubble { animation-name: fm-bubble-pop; max-width: min(260px, calc(100vw - 32px)); z-index: var(--z-overlay); }
-.bubble__star { color: #9a5900; }
-.wmap__stars { position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%); padding: 2px 5px; border-radius: 8px; background: var(--white); color: var(--ink); white-space: nowrap; font-size: 12px; font-weight: 700; }
 @keyframes fm-bubble-pop {
   0% { transform: translate(-50%, calc(-100% - var(--space-4))) scale(0.6); opacity: 0; }
   60% { transform: translate(-50%, calc(-100% - var(--space-4))) scale(1.08); opacity: 1; }
   100% { transform: translate(-50%, calc(-100% - var(--space-4))) scale(1); }
 }
 @media (max-width: 720px), (max-height: 480px) {
-  .mission__thumb--face { width: 72px; height: 72px; }
-  .mission { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 6px; }
-  .mission__hintbtn { grid-column: 1; min-height: 44px; }
-  .mission__body { grid-column: 2; grid-row: 1 / span 2; }
-  .mission__tick { width: 18px; font-size: 18px; }
-  .mission__rules { font-size: 11px; }
+  .mission { max-width: calc(100% - var(--space-8)); gap: var(--space-0-5); }
+  .mission__thumb--face { width: calc(var(--space-6) + var(--space-1)); height: calc(var(--space-6) + var(--space-1)); }
+  .mission__hintbtn { padding-inline: var(--space-1); font-size: var(--fs-100); }
+  .mission__text { font-size: var(--fs-100); line-height: var(--lh-100); }
   .scene__btn { width: 44px; height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .bubble, .mission__tick--done { animation: none; }
+  .bubble, .mission__body, .mission__continue, .scene__advance { animation: none; }
   .scene__curtain.is-open::before { transition: none; }
 }
 
@@ -334,9 +337,22 @@
 .wmap__dot:hover { transform: scale(1.06); }
 .wmap__icon { width: 78%; height: 78%; border-radius: 50%; overflow: hidden; display: block; }
 .wmap__icon img { width: 100%; height: 100%; object-fit: cover; }
-.wmap__stamp { position: absolute; inset-inline-end: -2px; top: -2px; font-size: var(--fs-200); line-height: 1; background: var(--white); border-radius: 50%; padding: 2px; box-shadow: var(--shadow-1); }
 .wmap__label { position: absolute; left: 50%; transform: translateX(-50%); top: calc(100% + 4px); white-space: nowrap; font-family: var(--font-display); font-weight: 600; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--white); background: rgba(23, 22, 43, 0.72); padding: 2px var(--space-1); border-radius: var(--radius-1); pointer-events: none; }
 .wmap__label--top { top: auto; bottom: calc(100% + 4px); }
+/* A place wears the gold stars it has earned on the rim of its dot: three
+   slots for a three-hide board, a star and a count for a five-hide one (five
+   slots do not fit under a dot). The label below moves down to make room. A
+   place the child has passed (three of five) is ringed in gold; a finished
+   one glows. The one just finished pops its stars in as the child arrives. */
+.wmap__stars { position: absolute; left: 50%; top: calc(100% - var(--space-1)); transform: translateX(-50%); z-index: 2; pointer-events: none; filter: drop-shadow(0 1px 2px rgba(23, 22, 43, 0.4)); }
+.wmap__stars--count { display: inline-flex; padding: 2px var(--space-1); border-radius: var(--radius-pill); background: var(--white); box-shadow: inset 0 0 0 2px var(--gold-light), var(--shadow-1); white-space: nowrap; filter: none; }
+.wmap__stars--count.is-full { box-shadow: inset 0 0 0 2px var(--gold), var(--shadow-glow-gold); }
+.wmap__node:has(.wmap__stars) .wmap__label { top: calc(100% + var(--space-2)); }
+.wmap__stars .stars__slot.is-lit { animation: fm-star-twinkle 3.2s var(--ease-in-out) infinite; animation-delay: calc(var(--i) * 700ms); }
+.wmap__node--visited .wmap__dot { box-shadow: 0 0 0 3px var(--gold), 0 2px 6px rgba(23, 22, 43, 0.3); }
+.wmap__node--completed .wmap__dot { box-shadow: 0 0 0 3px var(--gold-deep), var(--shadow-glow-gold), 0 2px 6px rgba(23, 22, 43, 0.3); }
+.wmap__starsbtn { display: inline-flex; align-items: center; min-height: var(--touch-min); padding-inline: var(--space-2); border-radius: var(--radius-pill); background: var(--white); box-shadow: inset 0 0 0 2px var(--gold-light), var(--shadow-1); transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-1); }
+.wmap__starsbtn:hover { transform: translateY(-1px); box-shadow: inset 0 0 0 2px var(--gold), var(--shadow-glow-gold), var(--shadow-1); }
 
 /* Completed: full colour and a stamp. Current: the child is standing on it.
    Next: gently breathing. Future: quieter, never a padlock. */
@@ -361,6 +377,11 @@
   .wmap__title { font-size: var(--fs-400); line-height: var(--lh-400); }
   .wmap__label { display: none; }
   .wmap__dot { width: var(--touch-min); height: var(--touch-min); }
+  /* The star count and the hub button get their own row: beside the title
+     they squeezed it into three lines on a phone. */
+  .wmap__bar { flex-wrap: wrap; }
+  .wmap__who { flex: 1 1 100%; }
+  .wmap__actions { flex: 1 1 100%; justify-content: flex-start; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -376,6 +397,7 @@
 .wmap__go-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .wmap__go-kicker { font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); }
 .wmap__go-name { font-family: var(--font-display); font-weight: 600; font-size: var(--fs-300); line-height: var(--lh-300); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wmap__go-stars { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--fs-50); line-height: var(--lh-50); font-weight: 700; color: var(--ink-2); }
 .wmap__go-arrow { font-size: var(--fs-400); }
 
 /* A finished journey stays finished on return: no modal, reset, or sales pitch.
@@ -423,7 +445,64 @@
 .hub__body { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-inline-size: 0; }
 .hub__name { font-family: var(--font-display); font-size: var(--fs-400); line-height: var(--lh-400); }
 .hub__tagline { font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); }
-.hub__count { font-size: var(--fs-100); line-height: var(--lh-100); font-weight: 700; }
+.hub__count { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; font-size: var(--fs-100); line-height: var(--lh-100); font-weight: 700; }
 .hub__go { font-size: var(--fs-500); flex: 0 0 auto; }
 .hub__bag { display: flex; justify-content: center; margin-block-start: var(--space-5); }
 .wmap__actions { display: flex; gap: var(--space-1); align-items: center; }
+
+/* ── Gold stars ──────────────────────────────────────────────────
+   One vector star (GoldStar.tsx) at every size: the mission tray, the star
+   in flight, the finish card, the map, the adventure bag. Sizes follow the
+   8px grid; an empty slot is the same star, pale and dashed, so a child can
+   count what is still out there. */
+.star { display: block; width: 100%; height: 100%; overflow: visible; }
+.star__body { stroke: var(--gold-edge); stroke-width: 3; stroke-linejoin: round; }
+.star--empty .star__body { fill: rgba(255, 255, 255, 0.4); stroke: var(--ink-4); stroke-dasharray: 5 4; }
+.star__shine { fill: none; stroke: var(--white); stroke-width: 3.5; stroke-linecap: round; opacity: 0.85; }
+
+.stars { display: inline-flex; align-items: center; gap: var(--space-0-5); vertical-align: middle; }
+.stars--xs { --star-size: var(--space-2); }
+.stars--sm { --star-size: var(--space-3); }
+.stars--md { --star-size: var(--space-5); gap: var(--space-1); }
+.stars--lg { --star-size: var(--space-8); gap: var(--space-2); }
+.stars__slot { position: relative; display: block; width: var(--star-size); height: var(--star-size); flex-shrink: 0; }
+.stars__slot.is-lit .star { filter: drop-shadow(0 1px 1px rgba(23, 22, 43, 0.25)); }
+/* A star that has just landed: too big and bright, one bounce, and a ring of
+   light thrown outward. The slot keeps the class, so re-renders never restart it. */
+.stars__slot.is-new .star { animation: fm-star-land var(--dur-3) var(--ease-pop) both; }
+.stars__slot.is-new::after { content: ""; position: absolute; inset: -20%; border-radius: var(--radius-pill); border: 2px solid var(--gold-light); box-shadow: var(--shadow-glow-gold); opacity: 0; animation: fm-star-ring var(--dur-3) var(--ease-out) both; pointer-events: none; }
+/* Celebrating, the stars arrive one after another. */
+.stars--celebrate .stars__slot.is-new .star, .stars--celebrate .stars__slot.is-new::after { animation-delay: calc(var(--stagger-start, 0ms) + var(--i) * var(--stagger, 260ms)); }
+/* Big stars breathe once they are in, so a full row still looks alive. */
+.stars--lg .stars__slot.is-lit, .stars--md .stars__slot.is-lit { animation: fm-star-twinkle 2.4s var(--ease-in-out) infinite; animation-delay: calc(var(--dur-4) + var(--i) * 300ms); }
+
+/* The flight (StarFlight.tsx): the straight line from the child to the tray,
+   the toss that bows it upward, and the star turning once as it goes. Three
+   grains of gold dust follow on the same path, each a few frames later. */
+.starfly { position: absolute; left: 0; top: 0; z-index: var(--z-overlay); pointer-events: none; }
+.starfly__path { position: absolute; left: 0; top: 0; animation: fm-fly var(--fly-ms) linear var(--d, 0ms) both; }
+.starfly__arc { animation: fm-fly-arc var(--fly-ms) linear var(--d, 0ms) both; }
+.starfly__spin { width: var(--space-6); height: var(--space-6); margin: calc(var(--space-6) / -2) 0 0 calc(var(--space-6) / -2); animation: fm-fly-spin var(--fly-ms) var(--ease-in-out) both; filter: drop-shadow(0 0 6px var(--gold-light)) drop-shadow(0 2px 4px rgba(23, 22, 43, 0.3)); }
+.starfly__dust { display: block; width: var(--space-1); height: var(--space-1); margin: calc(var(--space-1) / -2) 0 0 calc(var(--space-1) / -2); border-radius: var(--radius-pill); background: var(--gold-light); box-shadow: 0 0 6px var(--gold); animation: fm-fly-dust var(--fly-ms) var(--ease-out) var(--d, 0ms) both; }
+
+/* The running count (StarCounter.tsx): "12/27" beside a star. Digits read
+   left to right in both languages. */
+.starcount { display: inline-flex; align-items: center; gap: var(--space-0-5); font-family: var(--font-display); font-weight: 800; color: var(--ink); line-height: 1; }
+.starcount__star { display: block; width: var(--space-3); height: var(--space-3); flex-shrink: 0; filter: drop-shadow(0 1px 1px rgba(23, 22, 43, 0.25)); }
+.starcount__text { display: inline-flex; align-items: baseline; direction: ltr; }
+.starcount__n { display: inline-block; font-size: var(--fs-300); }
+.starcount__of { font-size: var(--fs-100); font-weight: 700; color: var(--ink-3); margin-inline-start: 2px; }
+.starcount__n.is-bumped { animation: fm-count-bump var(--dur-3) var(--ease-pop); }
+.starcount--sm .starcount__star { width: var(--space-2); height: var(--space-2); }
+.starcount--sm .starcount__n { font-size: var(--fs-200); }
+.starcount--sm .starcount__of { font-size: var(--fs-50); }
+.starcount--lg .starcount__star { width: var(--space-5); height: var(--space-5); }
+.starcount--lg .starcount__n { font-size: var(--fs-600); }
+.starcount--lg .starcount__of { font-size: var(--fs-300); }
+
+@media (prefers-reduced-motion: reduce) {
+  .starfly { display: none; }
+  .stars__slot.is-new .star, .stars__slot.is-new::after, .stars__slot.is-lit, .starcount__n.is-bumped, .starmeter__fill, .wmap__stars .stars__slot.is-lit { animation: none; }
+  .stars__slot.is-new::after { opacity: 0; }
+  .complete__stars-text, .complete__tally { animation: none; opacity: 1; }
+}

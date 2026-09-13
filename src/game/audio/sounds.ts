@@ -15,6 +15,13 @@ import type { SoundCue } from "@/domain/scene/schema";
  */
 type Ctx = AudioContext;
 
+/**
+ * What the kit can play: every cue a scene may ask for, plus the ones only
+ * the renderer's own chrome plays. "star" belongs to the star tray, not to a
+ * board, so it stays out of the scene schema.
+ */
+export type PlayCue = SoundCue | "star";
+
 /** A note in a phrase: frequency, length, offset from the phrase start, voice and loudness. */
 type Note = readonly [freq: number, dur: number, at: number, type: OscillatorType, vol: number];
 
@@ -76,6 +83,31 @@ const FANFARE: readonly (readonly Note[])[] = [
   ],
 ];
 
+/**
+ * A gold star landing in the tray — a bright two-note ding with a shimmer on
+ * top. Three voicings; the finish card plays it once per star, each a few
+ * semitones higher than the last (see `play`'s pitch option).
+ */
+const STAR: readonly (readonly Note[])[] = [
+  [
+    [N.E6, 0.09, 0, "sine", 0.3],
+    [N.B5, 0.16, 0.07, "sine", 0.34],
+    [N.E6, 0.22, 0.07, "triangle", 0.08],
+    [N.G6, 0.3, 0.14, "sine", 0.18],
+  ],
+  [
+    [N.G6, 0.08, 0, "sine", 0.28],
+    [N.C7, 0.24, 0.06, "sine", 0.3],
+    [N.E6, 0.24, 0.06, "triangle", 0.07],
+  ],
+  [
+    [N.D6, 0.07, 0, "sine", 0.26],
+    [N.A6, 0.1, 0.06, "sine", 0.3],
+    [N.D6, 0.26, 0.12, "sine", 0.28],
+    [N.A6, 0.26, 0.12, "triangle", 0.07],
+  ],
+];
+
 /** A hint or a bonus — three sparkles. */
 const TWINKLE: readonly (readonly Note[])[] = [
   [N.E6, N.G6, N.C7].map((f, i): Note => [f, 0.1, i * 0.07, "sine", 0.25]),
@@ -89,11 +121,11 @@ export class SoundManager {
   private ambient: { source: AudioBufferSourceNode; gain: GainNode; lfo: OscillatorNode; filter: BiquadFilterNode; lfoGain: GainNode } | null = null;
   private ambientCue: SoundCue | undefined;
   private paused = false;
-  private pendingCue: { cue: SoundCue; requestedAt: number } | null = null;
+  private pendingCue: { cue: PlayCue; requestedAt: number } | null = null;
   private oneShots = new Map<AudioScheduledSourceNode, () => void>();
   private _muted = false;
   /** Which voicing each cue played last, so the next one is different. */
-  private last: Partial<Record<SoundCue, number>> = {};
+  private last: Partial<Record<PlayCue, number>> = {};
 
   get muted(): boolean {
     return this._muted;
@@ -162,14 +194,19 @@ export class SoundManager {
     if (pending && Date.now() - pending.requestedAt <= 1000) this.play(pending.cue);
   }
 
-  play(cue: SoundCue): void {
+  /** `pitch` shifts a phrase by that many semitones — a row of stars climbs. */
+  play(cue: PlayCue, options: { pitch?: number } = {}): void {
     if (!this.ctx || !this.master || this._muted || this.paused) return;
     if (this.ctx.state !== "running") {
       if (this.ctx.state !== "closed") this.pendingCue = { cue, requestedAt: Date.now() };
       return;
     }
     const t = this.ctx.currentTime;
+    const shift = options.pitch ?? 0;
     switch (cue) {
+      case "star":
+        this.phrase(STAR[this.pick(cue, STAR.length)]!, t, semitones(shift + between(-0.5, 0.5)));
+        break;
       case "pop":
         this.blip(between(440, 640), 0.08, t, "sine", 0.4);
         break;
@@ -275,7 +312,7 @@ export class SoundManager {
   }
 
   /** A voicing for this cue that is not the one it played last time. */
-  private pick(cue: SoundCue, count: number): number {
+  private pick(cue: PlayCue, count: number): number {
     if (count < 2) return 0;
     const previous = this.last[cue];
     let next = Math.floor(Math.random() * count);

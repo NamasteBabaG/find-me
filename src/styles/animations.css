@@ -24,6 +24,28 @@
 @keyframes fm-flip { from { transform: perspective(480px) rotate3d(var(--rx, 1), var(--ry, 0.2), 0.15, 0turn); } to { transform: perspective(480px) rotate3d(var(--rx, 1), var(--ry, 0.2), 0.15, 1turn); } }
 @keyframes fm-magnifier { 0% { transform: translate(-40%, -40%) scale(1.3); opacity: 0; } 20% { opacity: 1; } 100% { transform: translate(0, 0) scale(1); opacity: 1; } }
 
+/* Gold stars (see StarTray, StarFlight, StarCounter).
+   fm-star-land is a star dropping into its slot: too big and bright, then
+   settling with one bounce. fm-star-ring is the ring of light it throws on
+   landing; fm-star-twinkle is a lit star breathing so a full tray still
+   looks alive. The flight is three moves at once: fm-fly is the straight line
+   from the child to the tray, fm-fly-arc lifts and drops on the way, and
+   fm-fly-spin grows on take-off, turns once, and shrinks to slot size. */
+@keyframes fm-star-land {
+  0% { transform: scale(0) rotate(-40deg); opacity: 0; filter: brightness(1.6); }
+  55% { transform: scale(1.45) rotate(8deg); opacity: 1; filter: brightness(1.35); }
+  75% { transform: scale(0.92) rotate(-2deg); filter: brightness(1); }
+  100% { transform: scale(1) rotate(0); opacity: 1; filter: brightness(1); }
+}
+@keyframes fm-star-ring { 0% { transform: scale(0.3); opacity: 0.9; } 100% { transform: scale(2.6); opacity: 0; } }
+@keyframes fm-star-twinkle { 0%, 100% { transform: scale(1); filter: brightness(1); } 50% { transform: scale(1.06); filter: brightness(1.18); } }
+@keyframes fm-fly { from { transform: translate(var(--x0), var(--y0)); } to { transform: translate(var(--x1), var(--y1)); } }
+@keyframes fm-fly-arc { 0% { transform: translateY(0); } 42% { transform: translateY(var(--lift)); } 100% { transform: translateY(0); } }
+@keyframes fm-fly-spin { 0% { transform: scale(0.5) rotate(0); opacity: 0; } 18% { transform: scale(1.35) rotate(70deg); opacity: 1; } 100% { transform: scale(0.65) rotate(360deg); opacity: 1; } }
+@keyframes fm-fly-dust { 0% { opacity: 0; transform: scale(0.4); } 25% { opacity: 0.9; transform: scale(1); } 100% { opacity: 0; transform: scale(0.2); } }
+@keyframes fm-count-bump { 0% { transform: scale(1); } 40% { transform: scale(1.35); color: var(--gold-deep); } 100% { transform: scale(1); } }
+@keyframes fm-meter-shine { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
 /* Target found animations — applied to .tgt-anim wrapper */
 .anim-bounce { animation: tgt-bounce var(--dur-3) var(--ease-pop) 2; }
 .anim-wave { animation: tgt-wave var(--dur-3) var(--ease-in-out) 2; transform-origin: 50% 100%; }

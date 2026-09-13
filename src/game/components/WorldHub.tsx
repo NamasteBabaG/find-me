@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { gameWorlds, scenesOfWorld, type GameConfig } from "@/domain/game/config";
 import { gameStars, sceneIsComplete, type GameProgress } from "@/domain/game/progress";
 import { useGameText } from "../i18n";
+import { StarCounter } from "./StarCounter";
 
 interface Props {
   config: GameConfig;
@@ -31,7 +32,7 @@ export function WorldHub({ config, progress, currentWorld, onEnter, onPassport }
   const rows = worlds.map((world) => {
     const mine = scenesOfWorld(config, world.slug);
     const done = mine.filter((s) => sceneIsComplete(progress, s)).length;
-    return { world, done, total: mine.length || world.nodes.length, stars: mine.some(scene => scene.playMode === "find-any") ? gameStars(progress, mine) : null };
+    return { world, done, total: mine.length || world.nodes.length, stars: gameStars(progress, mine) };
   });
   const finished = rows.filter((r) => r.done === r.total && r.total > 0).length;
 
@@ -59,8 +60,10 @@ export function WorldHub({ config, progress, currentWorld, onEnter, onPassport }
               <span className="hub__body">
                 <span className="hub__name">{world.name}</span>
                 <span className="hub__tagline">{world.tagline}</span>
-                <span className="hub__count">{tf(g.map.subProgress, { done, total })}</span>
-                {stars ? <span className="hub__count">{tf(g.scene.worldStars, stars)}</span> : null}
+                <span className="hub__count">
+                  {tf(g.map.subProgress, { done, total })}
+                  {stars.total > 0 ? <StarCounter earned={stars.found} total={stars.total} size="sm" label={tf(g.stars.world, { earned: stars.found, total: stars.total })} className="hub__stars" /> : null}
+                </span>
               </span>
               <span className="hub__go" aria-hidden>
                 {done === total ? "✓" : "➜"}

@@ -6,6 +6,8 @@ import { gameStars, sceneCanAdvance, sceneFoundIds, sceneIsComplete, sceneIsPlay
 import { boardSlugs, isWorldComplete, nodeStates, type NodeState } from "@/domain/world";
 import { useGameText } from "../i18n";
 import { IslandGrid } from "./IslandGrid";
+import { StarCounter } from "./StarCounter";
+import { StarTray } from "./StarTray";
 
 interface Props {
   config: GameConfig;
@@ -114,7 +116,7 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
           <img src={config.child.avatarUrl} alt="" className="fm-sticker wmap__face" width={48} height={48} />
           <div>
             <h1 className="wmap__title">{world.name}</h1>
-            <p className="wmap__sub">{free ? tf(g.scene.worldStars, stars) : done === 0 ? world.tagline : tf(g.map.stamps, { done, total, piece: world.collectible.piece })}</p>
+            <p className="wmap__sub">{done === 0 ? world.tagline : tf(g.map.stamps, { done, total, piece: world.collectible.piece })}</p>
           </div>
         </div>
         <div className="wmap__actions">
@@ -123,11 +125,10 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
               🗺️ {g.hub.back}
             </button>
           ) : null}
-          {done > 0 || (free && stars.found > 0) ? (
-            <button type="button" className="fm-btn fm-btn--secondary fm-btn--sm" onClick={onPassport}>
-              {free ? `★ ${stars.found}/${stars.total}` : `${world.collectible.icon} ${done}/${total}`}
-            </button>
-          ) : null}
+          {/* The world's gold stars, always shown, even at zero: it is what there is to collect. Opens the bag. */}
+          <button type="button" className="wmap__starsbtn" onClick={onPassport} aria-label={`${tf(g.stars.counter, { earned: stars.found, total: stars.total })} — ${g.map.bag}`}>
+            <StarCounter earned={stars.found} total={stars.total} size="sm" />
+          </button>
         </div>
       </header>
 
@@ -188,13 +189,15 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       {board ? <img src={board.art.thumbnail} alt="" loading="lazy" /> : null}
                     </span>
-                    {boardComplete ? (
-                      <span className="wmap__stamp" aria-hidden>
-                        {world.collectible.icon}
-                      </span>
-                    ) : null}
-                    {board?.playMode === "find-any" ? <span className="wmap__stars">★ {count}/{board.targets.length}</span> : null}
                   </button>
+                  {/* A place wears the gold stars it has earned on the rim of its dot: three slots
+                      for a three-hide board, a star and a count for a five-hide one (five slots do
+                      not fit under a dot). The one just finished pops them in as the child arrives. */}
+                  {board && count > 0 ? (
+                    board.targets.length <= 3
+                      ? <StarTray lit={count} total={board.targets.length} size="xs" className="wmap__stars" celebrate={node.boardSlug === travelFrom} />
+                      : <span className={`wmap__stars wmap__stars--count${boardComplete ? " is-full" : ""}`} aria-hidden><StarCounter earned={count} total={board.targets.length} size="sm" /></span>
+                  ) : null}
                   <span className={`wmap__label wmap__label--${node.labelAnchor}`} aria-hidden>
                     {label}
                   </span>
@@ -237,6 +240,11 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
           <span className="wmap__go-text">
             <span className="wmap__go-kicker">{done === 0 ? g.map.here : g.map.soon}</span>
             <span className="wmap__go-name">{currentBoard.name}</span>
+            {/* What this place is worth, before a single tap: its empty slots, or the stars it already holds. */}
+            <span className="wmap__go-stars">
+              <StarTray lit={sceneFoundIds(progress, currentBoard).length} total={currentBoard.targets.length} size="xs" />
+              <span>{tf(g.stars.here, { total: currentBoard.targets.length })}</span>
+            </span>
           </span>
           <span className="wmap__go-arrow" aria-hidden>
             ➜

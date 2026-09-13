@@ -224,7 +224,10 @@ describe("find-any rendering and mobile feedback", () => {
   it("provides opaque fallback, fixed bubble anchors, full-face HUD and room to pan edge hides out from under it", () => {
     const css = readFileSync("src/game/game.css", "utf8");
     expect(css).toContain("background-color: #BFE9FF"); expect(css).toContain(".scene__curtain.is-open { pointer-events: none; }");
-    expect(css).toContain("object-fit: contain"); expect(css).toContain("width: 72px; height: 72px"); expect(css).toContain("width: 96px; height: 96px");
+    // The portrait is contained (never a circular crop), 64px on a desktop and 56px on a phone: present, not dominant (Guy).
+    expect(css).toContain("object-fit: contain");
+    expect(css).toContain(".mission__thumb--face { width: var(--space-8); height: var(--space-8)");
+    expect(css).toContain(".mission__thumb--face { width: calc(var(--space-6) + var(--space-1)); height: calc(var(--space-6) + var(--space-1)); }");
     const keyframes = css.slice(css.indexOf("@keyframes fm-bubble-pop"), css.indexOf("@media (max-width: 720px), (max-height: 480px)"));
     expect(keyframes.match(/translate\(-50%, calc\(-100% - var\(--space-4\)\)\)/g)).toHaveLength(3);
     for (const width of [320, 360, 390, 430]) for (const viewport of [{ width, height: 650 }, { width: 844, height: width }]) {
@@ -248,6 +251,8 @@ describe("find-any rendering and mobile feedback", () => {
     view.unmount();
     const passport = render(<GameI18nProvider locale="en"><Passport config={config} progress={progress} onOpen={vi.fn()} onMap={vi.fn()} /></GameI18nProvider>);
     expect(passport.container.querySelectorAll(".loot__completed")).toHaveLength(0);
-    expect(passport.container.textContent).toContain("World: 3/15");
+    // The world's stars are said in words to a screen reader; the digits and the gold star are decoration.
+    expect(passport.getByRole("img", { name: "3 of 15 gold stars collected" })).toBeTruthy();
+    expect([...passport.container.querySelectorAll(".loot")].map(card => card.querySelectorAll(".stars__slot.is-lit").length)).toEqual([3, 0, 0]);
   });
 });

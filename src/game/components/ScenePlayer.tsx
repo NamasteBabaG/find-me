@@ -3,11 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SceneConfig } from "@/domain/game/config";
 import { currentTargetId, missionCanAdvance, type MissionState } from "@/domain/game/mission";
-import { gameStars } from "@/domain/game/progress";
 import { shouldPulseHint } from "@/domain/game/hints";
 import { slotFor } from "@/domain/game/replay";
 import { sounds } from "../audio/sounds";
-import { stageToScreen } from "../engine/viewport-math";
+import { stageToScreen, type ViewTransform } from "../engine/viewport-math";
 import { targetGeometry } from "../engine/target-geometry";
 import type { ViewportApi } from "../engine/useViewport";
 import { useScrollReveal } from "../engine/useScrollReveal";
@@ -15,11 +14,25 @@ import { SceneViewport, targetStagePoint, type Hit } from "./SceneViewport";
 import { MissionCard } from "./MissionCard";
 import { CelebrationOverlay } from "./CelebrationOverlay";
 import { CloudBank } from "./Clouds";
+import { FLIGHT_MS, StarFlight, type FlightPath } from "./StarFlight";
+import { StarTray } from "./StarTray";
 import type { PlayStore } from "../store/play-store";
 import { useGameText } from "../i18n";
 
 /** How long the clouds take to part. Matches the CSS transition. */
 const CURTAIN_MS = 900;
+/** How long the words on the HUD stay open before folding to face + stars + hint. */
+const QUIET_AFTER_MS = 6000;
+/**
+ * When the gold star sets off after a find. On a three-hide board the camera
+ * first settles on the child (450ms) and the bubble pops, so the star visibly
+ * comes out of the child rather than out of a moving picture; a five-hide
+ * board keeps the search view, so the star leaves as soon as the bubble is up.
+ */
+const STAR_LAUNCH_MS = 650;
+const STAR_LAUNCH_FREE_MS = 350;
+/** How long the "next place is open" toast stays before leaving the board to the child. */
+const UNLOCK_TOAST_MS = 7000;
 
 interface Props {
   scene: SceneConfig;
@@ -44,7 +57,20 @@ const TURN_HOLD_MS = 160;
 export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: Props) {
   const { g, tf } = useGameText();
   const apiRef = useRef<ViewportApi | null>(null);
+  // The transform as of the latest paint. The api object above is handed over
+  // at layout and on resize, so its transform is stale after a zoom; the
+  // render prop below sees every frame, and a star must set off from where
+  // the child is on screen NOW.
+  const liveTransform = useRef<ViewTransform | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
+  const sceneRef = useRef<HTMLDivElement | null>(null);
+  const trayRef = useRef<HTMLSpanElement | null>(null);
+  // The gold star on its way from the found child to the tray. While it is in
+  // the air the tray shows one star fewer than has been found; the slot
+  // lights when it lands.
+  const [flight, setFlight] = useState<{ key: number; path: FlightPath } | null>(null);
+  const starTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  useEffect(() => () => starTimers.current.forEach(clearTimeout), []);
   // Bubbles live in stage pixels and are projected to the screen on every render
   // (see the SceneViewport render prop), so they stay glued to the sprite while
   // the "found" zoom plays.
@@ -150,6 +176,34 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealed, scene.slug]);
 
+  /**
+   * The path of the star: from the found child's head, in screen space as of
+   * this frame, to the centre of the slot it will light. Everything is
+   * measured against the scene box, which is where the flight is drawn.
+   * Null when there is nowhere to fly to (the landing demo has no tray).
+   */
+  const flightPath = useCallback(
+    (targetId: string, slot: number): FlightPath | null => {
+      const root = sceneRef.current;
+      const transform = liveTransform.current;
+      const target = scene.targets.find((t) => t.id === targetId);
+      if (!root || !transform || !target) return null;
+      const p = targetStagePoint(scene, target, mission.plan.variants[targetId] ?? "A");
+      const from = stageToScreen(transform, p.x, p.y);
+      const tray = trayRef.current;
+      const visible = (el: Element | null | undefined) => {
+        const r = el?.getBoundingClientRect();
+        return r && r.width > 0 ? r : null;
+      };
+      // The slot itself; the tray, if the slots have no size; the card, if the tray is folded away.
+      const to = visible(tray?.children[slot]) ?? visible(tray) ?? visible(root.querySelector(".mission"));
+      if (!to) return null;
+      const box = root.getBoundingClientRect();
+      return { from, to: { x: to.left + to.width / 2 - box.left, y: to.top + to.height / 2 - box.top } };
+    },
+    [scene, mission.plan.variants],
+  );
+
   // React to reducer feedback: sounds, bubbles, particles, timers.
   const fb = mission.lastFeedback;
   useEffect(() => {
@@ -182,6 +236,25 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
         placeBubble(fb.targetId, fb.bubble);
         if (free) setAnnouncement(`${fb.bubble} ${g.scene.starEarned}`);
         setBurst({ key: Date.now(), small: true });
+        // The gold star: out of the child, into the tray. The slot it lands
+        // in is the next dark one; the tray lights it when the flight ends,
+        // by this timer and not by the animation - a browser that draws no
+        // motion still hands out the star.
+        if (!store.demo) {
+          const slot = Object.keys(mission.found).length - 1;
+          const launch = setTimeout(() => {
+            const path = flightPath(fb.targetId, slot);
+            if (!path) return;
+            setFlight({ key: Date.now(), path });
+            starTimers.current.push(
+              setTimeout(() => {
+                setFlight(null);
+                sounds().play("star");
+              }, FLIGHT_MS),
+            );
+          }, free ? STAR_LAUNCH_FREE_MS : STAR_LAUNCH_MS);
+          starTimers.current.push(launch);
+        }
         // The last child of the board has nobody to be swapped for: the
         // celebration follows straight on, with no clouds in between.
         const last = Object.keys(mission.found).length >= mission.plan.order.length;
@@ -285,16 +358,34 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
   const elapsed = mission.phase === "searching" ? now - mission.missionStartedAt : 0;
   const hintPulse = mission.phase === "searching" && shouldPulseHint({ misses: mission.misses, elapsedMs: elapsed, hintLevel: mission.hintLevel });
 
-  // The identity and saved counters stay visible; no timed collapsing HUD.
+  // The face, the stars and the hint button never fold; only the words do,
+  // a few seconds after they change, and they unfold whenever there is
+  // something new to read: a hint, a find, a new mission, or a tap on the card.
+  const [quiet, setQuiet] = useState(false);
+  useEffect(() => {
+    setQuiet(false);
+    if (mission.phase !== "searching") return;
+    const t = setTimeout(() => setQuiet(true), QUIET_AFTER_MS);
+    return () => clearTimeout(t);
+  }, [mission.phase, mission.currentIndex, mission.hintLevel, mission.lastFeedback]);
   const foundIds = Object.keys(mission.found);
   const total = mission.plan.order.length;
   const advanceAt = mission.findsRequiredToAdvance ?? total;
   const canAdvance = free && missionCanAdvance(mission);
   const advance = () => { const next = store.nextScene(); if (next) store.openScene(next); else store.openPassport(); };
-  const stars = free ? gameStars(store.progress, store.worldScenes()) : undefined;
+  // A star in the air has not landed: its slot stays dark until it does.
+  const starsLanded = Math.max(0, foundIds.length - (flight ? 1 : 0));
+  // "The next place is open" is one moment, not a wall: the toast leaves the
+  // board on its own, and the HUD keeps the way forward.
+  const unlockToast = canAdvance && foundIds.length === advanceAt && mission.phase === "searching" && !turn && !staying;
+  useEffect(() => {
+    if (!unlockToast) return;
+    const t = setTimeout(() => setStaying(true), UNLOCK_TOAST_MS);
+    return () => clearTimeout(t);
+  }, [unlockToast]);
 
   return (
-    <div className="scene" data-mission-phase={mission.phase} data-found-count={foundIds.length} data-turning={turn} style={{ ["--scene-sky" as string]: scene.art.palette.sky, ["--scene-accent" as string]: scene.art.palette.accent }}>
+    <div ref={sceneRef} className="scene" data-mission-phase={mission.phase} data-found-count={foundIds.length} data-turning={turn} style={{ ["--scene-sky" as string]: scene.art.palette.sky, ["--scene-accent" as string]: scene.art.palette.accent }}>
       <header className="scene__bar">
         {store.demo ? (
           <span />
@@ -334,10 +425,11 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
       <div className="scene__stage" ref={stageRef}>
         <SceneViewport scene={scene} mission={mission} hintLevel={mission.hintLevel} bonusFound={mission.bonusFound} onHit={onHit} onReady={onReady} onAssetsReady={onAssetsReady} onVisibleAssetsReady={onVisibleAssetsReady} onAssetsFailed={onAssetsFailed} retryToken={retryToken} ariaLabel={tf(g.scene.sceneAria, { name: scene.name })}>
           {(vp) => {
+            liveTransform.current = vp.transform;
             if (!bubble) return null;
             const p = stageToScreen(vp.transform, bubble.x, bubble.y);
             const half = Math.min(130, Math.max(48, (vp.viewport.width - 32) / 2));
-            return <SpeechBubble key={bubble.key} text={bubble.text} x={Math.max(half + 8, Math.min(vp.viewport.width - half - 8, p.x))} y={Math.max(100, Math.min(vp.viewport.height - 12, p.y))} star={free && fb?.kind === "hit"} />;
+            return <SpeechBubble key={bubble.key} text={bubble.text} x={Math.max(half + 8, Math.min(vp.viewport.width - half - 8, p.x))} y={Math.max(100, Math.min(vp.viewport.height - 12, p.y))} />;
           }}
         </SceneViewport>
         {burst ? <CelebrationOverlay key={burst.key} kind={scene.celebration.kind} small={burst.small} seed={burst.key} /> : null}
@@ -366,6 +458,8 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
         ) : null}
       </div>
 
+      {flight ? <StarFlight key={flight.key} path={flight.path} /> : null}
+
       <span className="game__announcement" role="status" aria-live="polite" aria-atomic="true">{announcement}</span>
       {mission.phase !== "complete" || free ? (
         <MissionCard
@@ -374,26 +468,33 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           target={currentTarget}
           found={foundIds}
           order={mission.plan.order}
+          stars={starsLanded}
+          trayRef={trayRef}
           hintLevel={mission.hintLevel}
           hintPulse={hintPulse}
           hintText={currentSlot?.hintText ?? null}
           onHint={() => { if (!turn) dispatch({ type: "REQUEST_HINT" }); }}
           avatarUrl={store.config.child.avatarUrl}
           childName={store.config.child.name}
-          quiet={false}
+          quiet={quiet && !store.demo}
+          onExpand={() => setQuiet(false)}
           minimal={store.demo}
           findAny={free}
           findsRequiredToAdvance={advanceAt}
-          worldStars={stars}
           onAdvance={canAdvance && mission.phase !== "found" && !turn ? advance : undefined}
         />
       ) : null}
 
-      {canAdvance && foundIds.length === advanceAt && mission.phase === "searching" && !turn && !staying ? <section className="scene__advance" aria-label={g.scene.canContinue}>
-        <p>{store.nextScene() ? g.scene.unlocked : g.scene.journeyFinished}</p>
-        <button type="button" className="fm-btn fm-btn--sm" onClick={advance}>{g.scene.canContinue}</button>
-        <button type="button" className="fm-btn fm-btn--secondary fm-btn--sm" onClick={() => setStaying(true)}>{g.scene.keepSearching}</button>
-      </section> : null}
+      {unlockToast ? (
+        <section className="scene__advance" aria-label={g.scene.canContinue}>
+          <StarTray lit={advanceAt} total={advanceAt} size="md" celebrate />
+          <p>{store.nextScene() ? g.scene.unlocked : g.scene.journeyFinished}</p>
+          <div className="scene__advance-actions">
+            <button type="button" className="fm-btn fm-btn--sm" onClick={advance}>{g.scene.canContinue}</button>
+            <button type="button" className="fm-btn fm-btn--ghost fm-btn--sm" onClick={() => setStaying(true)}>{g.scene.keepSearching}</button>
+          </div>
+        </section>
+      ) : null}
 
       {mission.phase === "complete" && showComplete ? (
         <SceneCompleteCard scene={scene} bonusFound={mission.bonusFound} hintsUsed={Object.values(mission.found).reduce((n, r) => n + r.hintsUsed, 0)} store={store} />
@@ -402,18 +503,33 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
   );
 }
 
-function SpeechBubble({ text, x, y, star }: { text: string; x: number; y: number; star?: boolean }) {
+function SpeechBubble({ text, x, y }: { text: string; x: number; y: number }) {
   return (
     <div className="bubble" style={{ left: x, top: y }} aria-hidden>
-      {star ? <span className="bubble__star">★ </span> : null}{text}
+      {text}
     </div>
   );
 }
+
+/** The board's stars pop in one after another, this far apart. Matches the CSS stagger. */
+const STAR_POP_START_MS = 200;
+const STAR_POP_GAP_MS = 260;
+/** Each star a little higher than the one before: a climb, not five identical dings. */
+const STAR_CLIMB_SEMITONES = [0, 2, 4, 5, 7];
 
 function SceneCompleteCard({ scene, bonusFound, hintsUsed, store }: { scene: SceneConfig; bonusFound: boolean; hintsUsed: number; store: PlayStore }) {
   const { g, tf } = useGameText();
   const next = store.nextScene();
   const allDone = next === null;
+  // The board's own stars, all of them, one after another. What the world
+  // has collected is for the map and the bag, not for this moment (Guy).
+  const stars = scene.targets.length;
+  useEffect(() => {
+    if (store.demo) return;
+    const timers = Array.from({ length: stars }, (_, i) => setTimeout(() => sounds().play("star", { pitch: STAR_CLIMB_SEMITONES[Math.min(i, STAR_CLIMB_SEMITONES.length - 1)] }), STAR_POP_START_MS + i * STAR_POP_GAP_MS + 160));
+    return () => timers.forEach(clearTimeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   return (
     <div className="complete" role="dialog" aria-modal="true" aria-label={g.complete.dialogAria} aria-labelledby="complete-title">
       <div className="complete__card">
@@ -421,6 +537,12 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store }: { scene: Sce
           {g.complete.stamp}
         </div>
         <h2 id="complete-title" className="complete__title">{store.demo ? tf(g.complete.demoFound, { name: store.config.child.name }) : scene.celebration.completeText}</h2>
+        {store.demo ? null : (
+          <div className="complete__stars">
+            <StarTray lit={stars} total={stars} size={stars > 3 ? "md" : "lg"} celebrate label={tf(g.stars.tray, { earned: stars, total: stars })} />
+            <p className="complete__stars-text">{stars === 5 ? g.complete.fiveStars : g.complete.threeStars}</p>
+          </div>
+        )}
         {store.demo ? null : (
         <div className="complete__loot">
           <span className="complete__icon" aria-hidden>
