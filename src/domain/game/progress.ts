@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { SlotVariant } from "./replay";
+import { planScenePlay, type SlotVariant } from "./replay";
 import { scenesOfWorld, worldOfScene, type GameConfig, type SceneConfig } from "./config";
 import type { MissionState } from "./mission";
 
@@ -127,6 +127,45 @@ export function recordSceneCompleted(
     scenes,
     completedAt: progress.completedAt ?? (completedCount >= totalScenes ? now.toISOString() : undefined),
   };
+}
+
+/**
+ * Finds the family account knows and this browser does not: the child played
+ * on another device. They are adopted into the game's own progress so the
+ * board, its stars and the next place agree with the album. Nothing is ever
+ * taken away here; starting over is an explicit act, never a side effect of
+ * switching devices.
+ */
+export function adoptFinds(progress: GameProgress, config: GameConfig, finds: readonly { boardSlug: string; targetId: string; variant: SlotVariant }[], now = new Date()): { progress: GameProgress; changed: boolean } {
+  let scenes = progress.scenes;
+  let changed = false;
+  for (const scene of config.scenes) {
+    if (scene.playMode !== "find-any") continue;
+    const have = new Set(sceneFoundIds(progress, scene));
+    const owed = finds.filter(f => f.boardSlug === scene.slug && !have.has(f.targetId) && scene.targets.some(t => t.id === f.targetId));
+    if (!owed.length) continue;
+    const prev = sceneProgress(progress, scene.slug);
+    const sameVersion = prev.sceneVersion === scene.version;
+    // The board keeps its exact layout when it has one; otherwise it gets the
+    // layout it would have been dealt, with the album's own variant on each find.
+    const resumable = sameVersion && prev.lastOrder.length === scene.targets.length && new Set(prev.lastOrder).size === scene.targets.length && prev.lastOrder.every(id => scene.targets.some(t => t.id === id));
+    const plan = resumable ? { order: prev.lastOrder, variants: prev.lastVariants } : planScenePlay(scene, { plays: 0, lastVariants: {}, lastOrder: [] }, progress.gameId);
+    const ids = scene.targets.filter(t => have.has(t.id) || owed.some(o => o.targetId === t.id)).map(t => t.id);
+    const completed = ids.length === scene.targets.length;
+    scenes = { ...scenes, [scene.slug]: {
+      ...prev, sceneVersion: scene.version, foundTargetIds: ids,
+      foundRecords: { ...(sameVersion ? prev.foundRecords ?? {} : {}), ...Object.fromEntries(owed.map(o => [o.targetId, { hintsUsed: 0, misses: 0, elapsedMs: 0 }])) },
+      lastOrder: plan.order, lastVariants: { ...plan.variants, ...Object.fromEntries(owed.map(o => [o.targetId, o.variant])) },
+      completed, collectible: completed, plays: completed ? Math.max(1, prev.plays) : prev.plays,
+    } };
+    changed = true;
+  }
+  if (!changed) return { progress, changed: false };
+  const updated = { ...progress, scenes };
+  return { changed: true, progress: { ...updated,
+    journeyFinishedAt: progress.journeyFinishedAt ?? (config.scenes.every(item => sceneCanAdvance(updated, item)) ? now.toISOString() : undefined),
+    completedAt: progress.completedAt ?? (config.scenes.every(item => sceneIsComplete(updated, item)) ? now.toISOString() : undefined),
+  } };
 }
 
 export function completedScenes(progress: GameProgress): number {

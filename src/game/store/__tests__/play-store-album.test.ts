@@ -3,6 +3,7 @@ import { createPlayStore } from "../play-store";
 import { adventureFixture } from "../../../domain/adventure/__tests__/fixture";
 import { attachAdventureBook } from "../../../domain/adventure/compose";
 import { emptyAdventureProgress, recordAdventureEvent, type AdventureEvent, type AdventureProgress } from "../../../domain/adventure/progress";
+import { sceneFoundIds, sceneIsComplete, type GameProgress } from "../../../domain/game/progress";
 
 /**
  * The album inside the play store: a find and a discovery are each recorded
@@ -21,9 +22,17 @@ const withBook = attachAdventureBook(fixture.config, fixture.catalog, ["pilot-te
 const flush = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
 
 let storage: MemoryStorage;
+let listeners: Record<string, Array<() => void>>;
+/** The browser says it is back online. */
+const backOnline = () => { for (const fn of listeners.online ?? []) fn(); };
 beforeEach(() => {
   storage = new MemoryStorage();
-  (globalThis as { window?: unknown }).window = { localStorage: storage, matchMedia: () => ({ matches: true }), addEventListener() {}, removeEventListener() {} } as never;
+  listeners = {};
+  (globalThis as { window?: unknown }).window = {
+    localStorage: storage, matchMedia: () => ({ matches: true }),
+    addEventListener(type: string, fn: () => void) { (listeners[type] ??= []).push(fn); },
+    removeEventListener(type: string, fn: () => void) { listeners[type] = (listeners[type] ?? []).filter((f) => f !== fn); },
+  } as never;
   vi.stubGlobal("fetch", vi.fn(() => { throw new Error("a guest never talks to the account"); }));
 });
 afterEach(() => { vi.unstubAllGlobals(); });
@@ -137,6 +146,111 @@ describe("album in the play store", () => {
     expect(store.getState().album?.discoveries).toHaveLength(1);
     expect(server.discoveries).toHaveLength(1);
     expect(store.getState().albumState).toBe("saved");
+  });
+
+  it("owner: a refresh while offline keeps what this browser found, and the account gets it once the connection is back", async () => {
+    // Found offline, then the page was refreshed while still offline: nothing is queued in memory any more.
+    const local = recordAdventureEvent(emptyAdventureProgress(withBook.gameId, withBook.adventure!), withBook.gameId, withBook.adventure!, { kind: "discovery-found", boardSlug: "pilot-test", discoveryId: "cat" }).progress;
+    storage.setItem(`findme:album:v1:${withBook.gameId}`, JSON.stringify(local));
+    let server = emptyAdventureProgress(withBook.gameId, withBook.adventure!);
+    let online = false;
+    const posted: AdventureEvent[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
+      if (!online) throw new TypeError("network");
+      if (init?.method === "POST") {
+        const { event } = JSON.parse(String(init.body)) as { event: AdventureEvent };
+        posted.push(event);
+        server = recordAdventureEvent(server, withBook.gameId, withBook.adventure!, event).progress;
+      }
+      return new Response(JSON.stringify({ ok: true, progress: server, revision: 1, changed: true }), { status: 200 });
+    }));
+    const store = createPlayStore(withBook, { copy, albumOwner: true });
+    store.getState().hydrate();
+    await flush();
+    expect(store.getState().albumState).toBe("offline");
+    expect(store.getState().album?.discoveries).toHaveLength(1);
+    expect(posted).toEqual([]);
+    online = true;
+    backOnline();
+    await flush();
+    await flush();
+    expect(posted).toEqual([{ kind: "discovery-found", boardSlug: "pilot-test", discoveryId: "cat" }]);
+    expect(server.discoveries).toHaveLength(1);
+    expect(store.getState().albumState).toBe("saved");
+    store.getState().stopAlbumSync();
+  });
+
+  it("owner: a fresh browser takes the account's finds into the game itself, and gives nothing of its own up", async () => {
+    const book = withBook.adventure!;
+    const scene = withBook.scenes[0]!;
+    const ids = scene.targets.map((t) => t.id);
+    // The account knows four finds from another device; this browser found the fifth on its own.
+    let server = emptyAdventureProgress(withBook.gameId, book);
+    for (const id of ids.slice(1)) server = recordAdventureEvent(server, withBook.gameId, book, { kind: "target-found", boardSlug: "pilot-test", targetId: id, variant: "B" }).progress;
+    const local = recordAdventureEvent(emptyAdventureProgress(withBook.gameId, book), withBook.gameId, book, { kind: "target-found", boardSlug: "pilot-test", targetId: ids[0]!, variant: "A" }).progress;
+    storage.setItem(`findme:album:v1:${withBook.gameId}`, JSON.stringify(local));
+    const progress: GameProgress = { v: 1, gameId: withBook.gameId, revealed: true, scenes: { "pilot-test": { plays: 0, completed: false, lastVariants: {}, lastOrder: [], noHintClear: false, collectible: false, bonusFound: false, sceneVersion: scene.version, foundTargetIds: [ids[0]!] } } };
+    storage.setItem(`findme:progress:v1:${withBook.gameId}`, JSON.stringify(progress));
+    const posted: AdventureEvent[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        const { event } = JSON.parse(String(init.body)) as { event: AdventureEvent };
+        posted.push(event);
+        server = recordAdventureEvent(server, withBook.gameId, book, event).progress;
+      }
+      return new Response(JSON.stringify({ ok: true, progress: server, revision: 1, changed: true }), { status: 200 });
+    }));
+    const store = createPlayStore(withBook, { copy, albumOwner: true });
+    store.getState().hydrate();
+    expect(sceneFoundIds(store.getState().progress, scene)).toEqual([ids[0]]);
+    await flush();
+    await flush();
+    // The game agrees with the album: five found, the board complete, the account's variants kept.
+    const after = store.getState().progress;
+    expect(sceneFoundIds(after, scene)).toEqual(ids);
+    expect(sceneIsComplete(after, scene)).toBe(true);
+    expect(after.scenes["pilot-test"]?.lastVariants[ids[1]!]).toBe("B");
+    expect(after.scenes["pilot-test"]?.lastVariants[ids[0]!]).toBe("A");
+    expect(posted).toEqual([{ kind: "target-found", boardSlug: "pilot-test", targetId: ids[0], variant: "A" }]);
+    expect(server.finds).toHaveLength(5);
+    // The board opens on those finds, not on an empty one; and a refresh keeps them.
+    store.getState().openScene("pilot-test");
+    expect(Object.keys(store.getState().mission!.found).sort()).toEqual([...ids].sort());
+    expect(JSON.parse(storage.getItem(`findme:progress:v1:${withBook.gameId}`)!).scenes["pilot-test"].foundTargetIds).toHaveLength(5);
+    store.getState().stopAlbumSync();
+  });
+
+  it("says when this browser could not keep the album, instead of claiming it was saved", async () => {
+    storage.setItem = () => { throw new Error("QuotaExceededError"); };
+    const guest = createPlayStore(withBook, { copy });
+    guest.getState().hydrate();
+    expect(guest.getState().albumState).toBe("idle");
+    guest.getState().openScene("pilot-test");
+    expect(guest.getState().collectDiscovery("cat")).toBe("collected");
+    expect(guest.getState().album?.discoveries).toHaveLength(1);
+    expect(guest.getState().albumState).toBe("unsaved");
+    // The owner's browser too, while the account has not confirmed; once it has, the account is the keeper.
+    let server = emptyAdventureProgress(withBook.gameId, withBook.adventure!);
+    let online = false;
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
+      if (!online) throw new TypeError("network");
+      if (init?.method === "POST") server = recordAdventureEvent(server, withBook.gameId, withBook.adventure!, (JSON.parse(String(init.body)) as { event: AdventureEvent }).event).progress;
+      return new Response(JSON.stringify({ ok: true, progress: server, revision: 1, changed: true }), { status: 200 });
+    }));
+    const owner = createPlayStore(withBook, { copy, albumOwner: true });
+    owner.getState().hydrate();
+    await flush();
+    owner.getState().openScene("pilot-test");
+    expect(owner.getState().collectDiscovery("cat")).toBe("collected");
+    await flush();
+    expect(owner.getState().albumState).toBe("unsaved");
+    online = true;
+    backOnline();
+    await flush();
+    await flush();
+    expect(server.discoveries).toHaveLength(1);
+    expect(owner.getState().albumState).toBe("saved");
+    owner.getState().stopAlbumSync();
   });
 
   it("owner: a lost connection is not a save", async () => {

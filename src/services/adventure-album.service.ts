@@ -43,7 +43,9 @@ export async function ownerAdventureAlbum(db: Database, ownerId: string, gameId:
       if (updated !== 1) throw new AdventureError("content-mismatch", "concurrent-update-retry-same-event");
     }
     return { progress: result.progress, album: adventureAlbum(result.progress), changed: result.changed, revision: (row?.revision ?? 0) + (result.changed ? 1 : 0) };
-  });
+  // Serializable on both sides of a deletion: a save that reads the game while
+  // deleteGame takes its config away is aborted instead of re-creating the album.
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
 /** Call inside the deletion transaction BEFORE removing/revoking a pilot game.

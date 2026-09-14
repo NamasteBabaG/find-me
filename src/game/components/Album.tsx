@@ -6,7 +6,7 @@ import type { AdventureRect } from "@/domain/adventure/content";
 import { gameAssetId } from "@/domain/adventure/image-binding";
 import { adventureAlbum, type AdventureProgress } from "@/domain/adventure/progress";
 import type { GameConfig, SceneConfig } from "@/domain/game/config";
-import type { AlbumSyncState } from "../engine/album-sync";
+import type { AlbumStatus } from "../engine/album-storage";
 import { useGameText } from "../i18n";
 import { StarTray } from "./StarTray";
 
@@ -63,8 +63,9 @@ export function Postcard({ scene, postcard, className }: { scene: SceneConfig; p
   );
 }
 
-function syncCopy(g: ReturnType<typeof useGameText>["g"], mode: "none" | "guest" | "owner", state: AlbumSyncState | "unreadable"): string | null {
+function syncCopy(g: ReturnType<typeof useGameText>["g"], mode: "none" | "guest" | "owner", state: AlbumStatus): string | null {
   if (state === "unreadable") return g.album.unreadable;
+  if (state === "unsaved") return g.album.unsaved;
   if (mode === "guest") return g.album.guest;
   if (mode !== "owner") return null;
   if (state === "saved") return g.album.savedAccount;
@@ -79,7 +80,7 @@ function syncCopy(g: ReturnType<typeof useGameText>["g"], mode: "none" | "guest"
  * next place; the postcard needs every hiding spot - said here and at the
  * moment of choice, never as a fixed line in the search HUD (Guy).
  */
-export function AlbumSection({ config, album, mode, state }: { config: GameConfig; album: AdventureProgress | null; mode: "none" | "guest" | "owner"; state: AlbumSyncState | "unreadable" }) {
+export function AlbumSection({ config, album, mode, state }: { config: GameConfig; album: AdventureProgress | null; mode: "none" | "guest" | "owner"; state: AlbumStatus }) {
   const { g, tf } = useGameText();
   const book = config.adventure;
   if (!book) return null;

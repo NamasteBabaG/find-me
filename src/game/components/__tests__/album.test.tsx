@@ -72,6 +72,10 @@ describe("the album in the bag", () => {
     const view = render(<GameI18nProvider locale="en"><AlbumSection config={config} album={null} mode="guest" state="unreadable" /></GameI18nProvider>);
     expect(view.container.querySelector(".album__sync")?.textContent).toContain("could not be read");
     expect(view.container.querySelectorAll("[data-discovery]")).toHaveLength(1);
+    cleanup();
+    // A browser that would not write says so, for a guest and for an owner alike.
+    const unsaved = render(<GameI18nProvider locale="he"><AlbumSection config={config} album={emptyAdventureProgress(config.gameId, book)} mode="guest" state="unsaved" /></GameI18nProvider>);
+    expect(unsaved.container.querySelector(".album__sync")?.textContent).toBe("ההתקדמות זמינה כרגע בלבד ולא נשמרה במכשיר");
   });
 });
 

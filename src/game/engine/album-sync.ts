@@ -36,6 +36,8 @@ export class AlbumSync {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private failures = 0;
   private stopped = false;
+  /** The account's copy has not been read yet (the first read failed): it is read again before anything else. */
+  private loadOwed = false;
   private readonly fetcher: typeof fetch;
   private readonly backoff: number[];
 
@@ -62,20 +64,48 @@ export class AlbumSync {
       const res = await this.fetcher(`${ENDPOINT}?gameId=${encodeURIComponent(this.opts.gameId)}`, { credentials: "same-origin", cache: "no-store" });
       if (res.ok) {
         const body = (await res.json()) as AlbumServerReply;
+        this.loadOwed = false;
+        this.failures = 0;
         this.opts.onProgress(body.progress);
         this.opts.onState(this.queue.length ? "saving" : "saved");
         return "loaded";
       }
       if (res.status === 401 || res.status === 403 || res.status === 404) {
+        this.loadOwed = false;
         this.opts.onState("refused");
         return "refused";
       }
-      this.opts.onState("offline");
-      return "offline";
+      return this.loadFailed();
     } catch {
-      this.opts.onState("offline");
-      return "offline";
+      return this.loadFailed();
     }
+  }
+
+  /**
+   * The account could not be read. The read stays owed and is tried again on
+   * its own (backoff, or the moment the browser is back online): a refresh
+   * while offline empties the in-memory queue, so what this browser found is
+   * only reconciled once the account's copy has actually been read.
+   */
+  private loadFailed(): "offline" {
+    this.loadOwed = true;
+    this.opts.onState("offline");
+    this.scheduleRetry();
+    return "offline";
+  }
+
+  private scheduleRetry(): void {
+    if (this.timer || this.stopped) return;
+    const delay = this.backoff[Math.min(this.failures, this.backoff.length - 1)]!;
+    this.failures++;
+    this.timer = setTimeout(() => { this.timer = null; void this.resume(); }, delay);
+  }
+
+  /** Read the account first when that is still owed, then send what is queued. */
+  private async resume(): Promise<void> {
+    if (this.stopped) return;
+    if (this.loadOwed && (await this.load()) !== "loaded") return;
+    void this.drain();
   }
 
   /** Queue a find for the account. Returns at once; the state reports what happened. */
@@ -95,7 +125,7 @@ export class AlbumSync {
   private onOnline = () => {
     if (this.timer) { clearTimeout(this.timer); this.timer = null; }
     this.failures = 0;
-    void this.drain();
+    void this.resume();
   };
 
   private async drain(): Promise<void> {
@@ -125,9 +155,7 @@ export class AlbumSync {
         }
         // offline: keep the event, come back later
         this.opts.onState("offline");
-        const delay = this.backoff[Math.min(this.failures, this.backoff.length - 1)]!;
-        this.failures++;
-        this.timer = setTimeout(() => { this.timer = null; void this.drain(); }, delay);
+        this.scheduleRetry();
         return;
       }
       if (!this.queue.length) this.opts.onState("saved");

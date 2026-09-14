@@ -4,12 +4,12 @@ import { create } from "zustand";
 import { gameWorlds, scenesOfWorld, worldOfScene, type GameConfig, type PlayWorld, type SceneConfig } from "@/domain/game/config";
 import { createMissionState, missionReducer, sceneSummary, type MissionAction, type MissionCopy, type MissionState } from "@/domain/game/mission";
 import { planScenePlay } from "@/domain/game/replay";
-import { collectibles, completedScenes, emptyProgress, recordSceneCompleted, recordFindAny, sceneCanAdvance, sceneFoundIds, sceneIsComplete, sceneIsPlayable, sceneProgress, type GameProgress } from "@/domain/game/progress";
+import { adoptFinds, collectibles, completedScenes, emptyProgress, recordSceneCompleted, recordFindAny, sceneCanAdvance, sceneFoundIds, sceneIsComplete, sceneIsPlayable, sceneProgress, type GameProgress } from "@/domain/game/progress";
 import { loadProgress, saveProgress } from "../engine/progress-storage";
 import type { AdventureBook } from "@/domain/adventure/book-schema";
 import { AdventureError } from "@/domain/adventure/compose";
 import { recordAdventureEvent, type AdventureEvent, type AdventureProgress } from "@/domain/adventure/progress";
-import { loadAlbum, saveAlbum } from "../engine/album-storage";
+import { loadAlbum, saveAlbum, type AlbumStatus } from "../engine/album-storage";
 import { AlbumSync, type AlbumSyncState } from "../engine/album-sync";
 import { Telemetry } from "../engine/telemetry";
 import { sounds } from "../audio/sounds";
@@ -45,8 +45,13 @@ export interface PlayStore {
    */
   album: AdventureProgress | null;
   albumMode: "none" | "guest" | "owner";
-  /** Where the album stands with the account: honest, never "saved" ahead of the server. `unreadable` = this browser's copy would not read. */
-  albumState: AlbumSyncState | "unreadable";
+  /**
+   * Where the album stands: honest, never "saved" ahead of the server.
+   * `unreadable` = this browser's copy would not read; `unsaved` = this browser
+   * would not write, so the album lives for this sitting only (for the owner,
+   * only until the account has it).
+   */
+  albumState: AlbumStatus;
 
   scene(): SceneConfig | null;
   /** The current world's map, or null for a config composed before worlds. */
@@ -115,6 +120,17 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
   const telemetry = new Telemetry(config.gameId, persist);
   const book = persist ? config.adventure ?? null : null;
   let albumSync: AlbumSync | null = null;
+  // The three things the player is told about the album, kept apart: what the
+  // account says, whether this browser could read its copy, whether it could write.
+  let syncState: AlbumSyncState = "idle";
+  let unreadable = false;
+  let kept = true;
+  const albumStatus = (): AlbumStatus => {
+    if (unreadable) return "unreadable";
+    // A browser that cannot keep the album has nothing to fall back on, unless the account already has it.
+    if (!kept && (!opts.albumOwner || syncState !== "saved")) return "unsaved";
+    return syncState;
+  };
 
   /** Record one album event: once in the domain, once in this browser, once to the account. */
   const recordAlbum = (set: (partial: Partial<PlayStore>) => void, get: () => PlayStore, event: AdventureEvent): boolean => {
@@ -129,8 +145,8 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       throw error;
     }
     if (!result.changed) return false;
-    saveAlbum(result.progress);
-    set({ album: result.progress });
+    kept = saveAlbum(result.progress);
+    set({ album: result.progress, albumState: albumStatus() });
     albumSync?.push(event);
     return true;
   };
@@ -195,13 +211,14 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       // This browser's album first (the whole truth for a guest, a cache for the
       // owner), then, for the owner only, the account's copy replaces it.
       const loaded = loadAlbum(config.gameId, book);
-      if (loaded.ok) set({ album: loaded.progress });
-      else set({ album: null, albumState: "unreadable" });
+      unreadable = !loaded.ok;
+      if (loaded.ok) set({ album: loaded.progress, albumState: albumStatus() });
+      else set({ album: null, albumState: albumStatus() });
       if (opts.albumOwner) {
         albumSync?.stop();
         const sync = new AlbumSync({
           gameId: config.gameId,
-          onState: (albumState) => set({ albumState }),
+          onState: (state) => { syncState = state; set({ albumState: albumStatus() }); },
           onProgress: (server) => {
             // The account's copy is the truth, but nothing this browser found is
             // dropped: a guest's play before signing in, or finds made offline,
@@ -219,8 +236,20 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
                 // The account will refuse it too; nothing to show.
               }
             }
-            saveAlbum(merged);
-            set({ album: merged });
+            kept = saveAlbum(merged);
+            unreadable = false;
+            set({ album: merged, albumState: albumStatus() });
+            // The game itself agrees with the album: finds the account knows from
+            // another device become this browser's found children, stars and open
+            // places. A board that is open meanwhile is rebuilt on them.
+            const before = get().progress;
+            const adopted = adoptFinds(before, config, merged.finds);
+            if (adopted.changed) {
+              saveProgress(adopted.progress);
+              set({ progress: adopted.progress });
+              const open = get().screen === "scene" ? get().scene() : null;
+              if (open && sceneFoundIds(adopted.progress, open).length !== sceneFoundIds(before, open).length) get().openScene(open.slug);
+            }
           },
         });
         albumSync = sync;

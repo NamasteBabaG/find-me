@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { isPlayable } from "@/domain/order-state";
 import { deleteAdventureAlbum } from "./adventure-album.service";
 import { parseGameConfig, type GameConfig } from "@/domain/game/config";
@@ -151,9 +152,14 @@ export async function deleteGame(c: Container, gameId: string, actor: Actor, use
       });
     }
   }
-  // The family album goes with the game; a soft delete does not cascade.
-  await deleteAdventureAlbum(c.db, gameId);
-  await c.db.game.update({ where: { id: gameId }, data: { configJson: null } });
+  // The family album goes with the game; a soft delete does not cascade. Taking
+  // the config away and removing the album are ONE serializable step: the
+  // account's save is guarded by the config it read, so a save landing between
+  // two separate statements could re-create the album after the game was gone.
+  await c.db.$transaction(async (tx) => {
+    await tx.game.update({ where: { id: gameId }, data: { configJson: null } });
+    await deleteAdventureAlbum(tx, gameId);
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   await transitionGame(c, gameId, "DELETED", actor);
   c.analytics.track("game_deleted", { gameId });
   return true;

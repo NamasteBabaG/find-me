@@ -96,6 +96,35 @@ describe("album sync", () => {
     expect(server.finds.map((f) => f.targetId)).toEqual(["hide-1", "hide-3"]);
   });
 
+  it("reads the account again on its own after a failed first read, and only then sends what is queued", async () => {
+    let server = recordAdventureEvent(emptyAdventureProgress(gameId, book), gameId, book, find("hide-1")).progress;
+    let online = false;
+    const log: string[] = [];
+    const seen: AdventureProgress[] = [];
+    const states: AlbumSyncState[] = [];
+    const sync = new AlbumSync({ gameId, backoffMs: [1000], onState: (s) => states.push(s), onProgress: (p) => seen.push(p), fetcher: fetcher((method, event) => {
+      log.push(method);
+      if (!online) throw new TypeError("network");
+      if (method === "POST") server = recordAdventureEvent(server, gameId, book, event!).progress;
+      return reply(server);
+    }) });
+    expect(await sync.load()).toBe("offline");
+    sync.push(find("hide-2"));
+    await flush();
+    expect(log).toEqual(["GET", "POST"]);
+    expect(seen).toEqual([]);
+    online = true;
+    await vi.advanceTimersByTimeAsync(1000);
+    await flush();
+    await flush();
+    // The read that was owed comes first, so the account's finds are seen before the browser's are added.
+    expect(log).toEqual(["GET", "POST", "GET", "POST"]);
+    expect(seen[0]!.finds.map((f) => f.targetId)).toEqual(["hide-1"]);
+    expect(server.finds.map((f) => f.targetId)).toEqual(["hide-1", "hide-2"]);
+    expect(states.at(-1)).toBe("saved");
+    sync.stop();
+  });
+
   it("stops on a refusal instead of pretending, keeping nothing queued", async () => {
     const states: AlbumSyncState[] = [];
     const sync = new AlbumSync({ gameId, onState: (s) => states.push(s), onProgress: () => {}, fetcher: fetcher(() => new Response(JSON.stringify({ ok: false, code: "not-owned" }), { status: 403 })) });

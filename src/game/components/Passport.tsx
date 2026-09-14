@@ -9,7 +9,7 @@ import { StarCounter } from "./StarCounter";
 import { StarTray } from "./StarTray";
 import { AlbumSection } from "./Album";
 import type { AdventureProgress } from "@/domain/adventure/progress";
-import type { AlbumSyncState } from "../engine/album-sync";
+import type { AlbumStatus } from "../engine/album-storage";
 
 function BoardThumbnail({ thumbnail, base }: { thumbnail: string; base: string }) {
   const [failed, setFailed] = useState<string[]>([]);
@@ -18,7 +18,7 @@ function BoardThumbnail({ thumbnail, base }: { thumbnail: string; base: string }
 }
 
 /** The adventure bag: actual places, with the saved completion of each board and the gold stars it holds. */
-export function Passport({ config, progress, onMap, onOpen, album = null, albumMode = "none", albumState = "idle" }: { config: GameConfig; progress: GameProgress; onMap: () => void; onOpen: (slug: string) => void; album?: AdventureProgress | null; albumMode?: "none" | "guest" | "owner"; albumState?: AlbumSyncState | "unreadable" }) {
+export function Passport({ config, progress, onMap, onOpen, album = null, albumMode = "none", albumState = "idle" }: { config: GameConfig; progress: GameProgress; onMap: () => void; onOpen: (slug: string) => void; album?: AdventureProgress | null; albumMode?: "none" | "guest" | "owner"; albumState?: AlbumStatus }) {
   const { g, tf } = useGameText();
   const done = config.scenes.filter(scene => sceneIsComplete(progress, scene)).length;
   // Every gold star in the game, and how far the jar has filled.

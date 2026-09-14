@@ -536,6 +536,8 @@ export const en = {
       offline: "Not saved to the account yet — it will be, once the connection is back",
       guest: "Kept in this browser only",
       unreadable: "The album kept in this browser could not be read; the game still works",
+      /** This browser refused to write (private mode, full storage): said plainly, never shown as kept. */
+      unsaved: "This progress is here for now only; it could not be saved on this device",
     },
     copy: {
       wrongTarget: "It's me! But right now you're looking for me with {item}…",
