@@ -5,6 +5,7 @@ import { gameWorlds, scenesOfWorld, type GameConfig, type PlayWorld } from "@/do
 import { gameStars, sceneCanAdvance, sceneFoundIds, sceneIsComplete, sceneIsPlayable, sceneProgress, type GameProgress } from "@/domain/game/progress";
 import { boardSlugs, isWorldComplete, nodeStates, type NodeState } from "@/domain/world";
 import { useGameText } from "../i18n";
+import { sounds } from "../audio/sounds";
 import { IslandGrid } from "./IslandGrid";
 import { StarCounter } from "./StarCounter";
 import { StarTray } from "./StarTray";
@@ -176,7 +177,7 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
                   <button
                     type="button"
                     className="wmap__dot"
-                    onClick={() => (playable ? onOpen(node.boardSlug) : setTeaser(node.boardSlug))}
+                    onClick={() => { sounds().play("tap"); if (playable) onOpen(node.boardSlug); else setTeaser(node.boardSlug); }}
                     // Kept focusable and announced rather than `disabled`: a child
                     // should be able to reach a later destination and be told, in a
                     // friendly way, that it is still ahead of them.

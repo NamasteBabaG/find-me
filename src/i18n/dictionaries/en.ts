@@ -34,6 +34,7 @@ export const en = {
     myGames: "My games",
     admin: "Admin",
     back: "Back",
+    cancel: "Cancel",
     continue: "Continue",
     save: "Save",
     saved: "Saved.",

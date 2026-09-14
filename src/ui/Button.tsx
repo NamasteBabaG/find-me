@@ -27,7 +27,7 @@ export function Button({ variant = "primary", size = "md", block = false, loadin
   return (
     <button className={classes(variant, size, block, className)} disabled={disabled || loading} aria-busy={loading || undefined} {...rest}>
       {loading ? <span className="fm-spinner" aria-hidden /> : null}
-      {children}
+      <span className="fm-btn__label">{children}</span>
     </button>
   );
 }

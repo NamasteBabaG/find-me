@@ -1,7 +1,8 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/ui/Button";
+import { ConfirmDialog } from "@/ui/ConfirmDialog";
 import { Notice } from "@/ui/primitives";
 import { useI18n } from "@/i18n/client";
 import { errorText, type FlowResult } from "@/i18n/errors";
@@ -19,6 +20,24 @@ export function ManageGame({ gameId, playUrl, gift, childName }: Props) {
   const l = t.library;
   const [copied, setCopied] = useState(false);
   const [giftState, giftAction, giftPending] = useActionState<FlowResult | null, FormData>(updateGiftAction, null);
+  // The two things that cannot be undone ask first, in the product's own dialog.
+  // A submit goes through only once the dialog has armed it.
+  const [ask, setAsk] = useState<"rotate" | "delete" | null>(null);
+  const armed = useRef<"rotate" | "delete" | null>(null);
+  const rotateForm = useRef<HTMLFormElement>(null);
+  const deleteForm = useRef<HTMLFormElement>(null);
+  const guard = (kind: "rotate" | "delete") => (event: FormEvent<HTMLFormElement>) => {
+    if (armed.current === kind) { armed.current = null; return; }
+    event.preventDefault();
+    setAsk(kind);
+  };
+  const confirmAsk = () => {
+    const kind = ask;
+    setAsk(null);
+    if (!kind) return;
+    armed.current = kind;
+    (kind === "rotate" ? rotateForm : deleteForm).current?.requestSubmit();
+  };
 
   const copy = async () => {
     if (!playUrl) return;
@@ -61,12 +80,7 @@ export function ManageGame({ gameId, playUrl, gift, childName }: Props) {
               <Button variant="sea" onClick={share}>
                 {l.share.send}
               </Button>
-              <form
-                action={rotateLinkAction}
-                onSubmit={(e) => {
-                  if (!confirm(l.share.rotateConfirm)) e.preventDefault();
-                }}
-              >
+              <form ref={rotateForm} action={rotateLinkAction} onSubmit={guard("rotate")}>
                 <input type="hidden" name="gameId" value={gameId} />
                 <Button type="submit" variant="ghost">
                   {l.share.rotate}
@@ -108,18 +122,24 @@ export function ManageGame({ gameId, playUrl, gift, childName }: Props) {
       <section className="fm-card fm-card--flat fm-card--pad-4 fm-stack fm-stack--2">
         <h2>{l.remove.title}</h2>
         <p className="fm-muted">{l.remove.lead}</p>
-        <form
-          action={deleteGameAction}
-          onSubmit={(e) => {
-            if (!confirm(tf(l.remove.confirm, { name: childName }))) e.preventDefault();
-          }}
-        >
+        <form ref={deleteForm} action={deleteGameAction} onSubmit={guard("delete")}>
           <input type="hidden" name="gameId" value={gameId} />
           <Button type="submit" variant="danger">
             {l.remove.button}
           </Button>
         </form>
       </section>
+      <ConfirmDialog
+        open={ask !== null}
+        title={ask === "delete" ? l.remove.title : l.share.rotate}
+        confirmLabel={ask === "delete" ? l.remove.button : l.share.rotate}
+        cancelLabel={t.common.cancel}
+        danger={ask === "delete"}
+        onConfirm={confirmAsk}
+        onCancel={() => setAsk(null)}
+      >
+        {ask === "delete" ? tf(l.remove.confirm, { name: childName }) : l.share.rotateConfirm}
+      </ConfirmDialog>
     </div>
   );
 }

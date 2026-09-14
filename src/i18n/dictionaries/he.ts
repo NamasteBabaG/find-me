@@ -33,6 +33,7 @@ export const he: Dictionary = {
     myGames: "המשחקים שלי",
     admin: "אדמין",
     back: "חזרה",
+    cancel: "ביטול",
     continue: "ממשיכים",
     save: "שמירה",
     saved: "נשמר.",

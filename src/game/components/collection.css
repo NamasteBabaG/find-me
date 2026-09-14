@@ -101,7 +101,7 @@
 
 /* Guidance drawn on the board (ScenePlayer) */
 .discovery-hint-region { position: absolute; pointer-events: none; border: 4px dashed var(--gold); background: rgba(255, 207, 51, 0.12); border-radius: 35%; box-shadow: 0 0 0 2px rgba(23, 22, 43, 0.4); }
-.discovery-hint-region--exact { border-style: solid; background: transparent; border-radius: 50%; }
+.discovery-hint-region--exact { border-style: solid; background: transparent; border-radius: 50%; animation: fm-pulse 1.2s var(--ease-in-out) infinite; }
 
 @media (max-height: 500px) {
   .collect { bottom: var(--space-1); }

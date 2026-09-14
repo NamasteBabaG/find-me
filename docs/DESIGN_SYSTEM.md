@@ -61,3 +61,14 @@ The bag shows one sticker page per place: name, stars and a tally chip (gold whe
 ## Photo → character section (`src/app/home/Transformation.tsx`)
 
 Sits immediately after the hero, before the live demo. Three cards: the prepared public example photo, its illustrated character, and the character hidden in a world crop. The shared source is `content/demo/transformation.ts`; its current patch agrees with the live demo. Do not replace public marketing examples with a customer's private photo.
+
+## Motion and feedback rules (polish pass, 2026-09-15)
+
+- **Every tap answers.** A control a child presses scales down on `:active` (board buttons `.9`, map dots `.92`, stickers hover `1.06`). A place still ahead answers in a small dark pill (`.wmap__teaser`), never in silence.
+- **Lift is one of two sizes.** Cards lift `-4px` on hover with `--shadow-2` (library, features, selectable cards); buttons lift `-2px` with their glow. Steps, worlds and plans keep `-6px` as the marketing exception.
+- **Arrivals fade up, choices pop.** Notices, retry cards, create steps, FAQ answers and passport cards arrive with `fm-fade-up` (staggered `60ms` per card, capped at the sixth); a selection mark, a dialog and the cropper pop in with `fm-pop-in` on `--ease-pop`.
+- **Loading never reflows.** A busy button keeps its width: the label goes invisible under a centred spinner (`.fm-btn__label`, `aria-busy`). A disabled button explains itself with `cursor: not-allowed` and no lift; only a disabled link loses pointer events.
+- **Notes float, they do not push.** The landscape tip is one dark pill over the board, above the collection button, gone on its own after seven seconds. Nothing in the game reflows the board to say something.
+- **Irreversible asks in our own dialog.** `ConfirmDialog` (`src/ui/ConfirmDialog.tsx`) is a native `<dialog>` dressed as `.fm-dialog`: title, one sentence, cancel and the destructive action; the form submits only after it, once.
+- **Phones keep the floors.** Board buttons stay at `--touch-min` (48px) at every width; map dots draw at 56px with a transparent ring to the 64px kid target; the map, the bag, the finish card and the tip respect `env(safe-area-inset-*)`.
+- **Reduced motion is honoured everywhere.** Every loop added here (gift float and glow, breathing map dot, marching road, marketing Ken Burns and nudges) and every entrance is switched off under `prefers-reduced-motion`.
