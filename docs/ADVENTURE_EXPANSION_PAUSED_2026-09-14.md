@@ -1,5 +1,7 @@
 # Expanded adventure — saved and paused for board feedback
 
+**Historical checkpoint, superseded for density-v3 only.** The parent subsequently approved all six density-v3 boards and resumed hide work. See `ADVENTURE_DENSITY_GAME_2026-09-14.md`. Keep the v1 pause-file gate: old coordinates and old patches are not approved for the new pixels.
+
 Parent explicitly requested a pause of child placement and a clean-board review before continuing. No further paid generation, expanded-game creation, deployment or replacement is authorized until that review is resolved.
 
 ## Review surface

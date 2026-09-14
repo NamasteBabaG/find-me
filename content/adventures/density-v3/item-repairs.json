@@ -1,0 +1,32 @@
+{
+  "marrakech": {
+    "sourceSha256": "def4b028e261d468195b6dd01cfcdfca967705415f6f524f3502ee08eca169f5",
+    "generatedSha256": "218cf1c5e2c467134ce06d279cc9621457ab8423dca00f94b846978501bba539",
+    "outputSha256": "2c92cf16479cf066dc4b4d290dc0e5e9b6a80cc643e7c538a762f3446e25899d",
+    "region": {
+      "left": 3165,
+      "top": 1136,
+      "width": 92,
+      "height": 92
+    },
+    "unchangedOutsideRegion": true,
+    "visualReviewAccepted": true,
+    "route": "native-imagegen-localized-composite",
+    "prompt": "Replace the ambiguous violet rug mark with one small matte violet gecko with four splayed legs, visible head and curved tail; preserve framing, rug, basket, hands and hand-painted brown contours."
+  },
+  "tokyo": {
+    "sourceSha256": "8f21e631bee7ddf624f586ee6d4fe4d9297159b6f4a1aa509cacd3b1f60672c6",
+    "generatedSha256": "45695f1e1f1e8942b7994a62ca666f81c765f520823fd432786db214145ffff2",
+    "outputSha256": "2bbc5288b5a108711bbffbd772cb4eef0e71a576b9bc9e9ecca301485390d2a3",
+    "region": {
+      "left": 2451,
+      "top": 1373,
+      "width": 79,
+      "height": 66
+    },
+    "unchangedOutsideRegion": true,
+    "visualReviewAccepted": true,
+    "route": "native-imagegen-localized-composite",
+    "prompt": "Replace only ambiguous green folded paper under the child hands with one small olive origami frog, angular folded legs, two tiny paper eyes and hand-drawn brown contours; preserve hands, framing and craft table."
+  }
+}

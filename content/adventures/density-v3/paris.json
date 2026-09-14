@@ -1,0 +1,403 @@
+{
+  "patchBoard": {
+    "board": "adventure-paris",
+    "art": "public/scenes/adventure-paris-density-v3/base.webp",
+    "ground": "Safe pedestrian ground within the illustrated activity, never unsupported air or traffic",
+    "sittable": true,
+    "wardrobe": "Muted teal shirt, tan shorts, brown comfortable shoes; no hat over the curls.",
+    "hides": [
+      {
+        "id": "adventure-paris-density-v3-1",
+        "left": 1922,
+        "top": 413,
+        "pose": "standing",
+        "targetId": "hide-1",
+        "mask": {
+          "left": 189,
+          "top": 333,
+          "width": 146,
+          "height": 281
+        },
+        "hint": {
+          "en": "Replace only the striped-shirt boy dancing beside the girl in the red dress. Preserve her hands and body. Bar stands on the same cobblestones with natural short preschool legs, looking three-quarter toward the music, both eyes readable.",
+          "he": "חפשו בין הילדים שרוקדים ליד המוזיקאים"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 300,
+          "support": "Replace only the striped-shirt boy dancing beside the girl in the red dress. Preserve her hands and body. Bar stands on the same cobblestones with natural short preschool legs, looking three-quarter toward the music, both eyes readable.",
+          "lighting": "Match the immediate neighboring painted faces, brown hand-drawn contours, matte color and shaped light/shadow planes. Adapt illumination, never replace the recognizable canonical Bar face or curls.",
+          "occlusion": "Keep all eyes, cheeks and characteristic curls readable. Natural object overlap only below the face. Remove the replaced bystander completely inside the edit window without orphan limbs. Preserve all neighbors.",
+          "comparators": "Age five, natural preschool proportions. Match the original child at this exact spot rather than an adult or tiny distant toddler. Equivalent standing height around 300 native pixels; visible head including curls approximately 60-85 native pixels, never a miniature, giant head or portrait cutout."
+        }
+      },
+      {
+        "id": "adventure-paris-density-v3-2",
+        "left": 0,
+        "top": 1369,
+        "pose": "peeking",
+        "targetId": "hide-2",
+        "mask": {
+          "left": 34,
+          "top": 146,
+          "width": 229,
+          "height": 186
+        },
+        "hint": {
+          "en": "Replace only the visible upper half of the blue-vest child at the outer left, reaching toward flowers. The foreground man naturally hides the lower body: preserve that man, his hat and all his pixels. Preserve the adjacent girl and her basket. Clear Bar curls and three-quarter face.",
+          "he": "חפשו ליד הילדים וסלי הירקות בצד שמאל"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 350,
+          "support": "Replace only the visible upper half of the blue-vest child at the outer left, reaching toward flowers. The foreground man naturally hides the lower body: preserve that man, his hat and all his pixels. Preserve the adjacent girl and her basket. Clear Bar curls and three-quarter face.",
+          "lighting": "Match the immediate neighboring painted faces, brown hand-drawn contours, matte color and shaped light/shadow planes. Adapt illumination, never replace the recognizable canonical Bar face or curls.",
+          "occlusion": "Keep all eyes, cheeks and characteristic curls readable. Natural object overlap only below the face. Remove the replaced bystander completely inside the edit window without orphan limbs. Preserve all neighbors.",
+          "comparators": "Age five, natural preschool proportions. Match the original child at this exact spot rather than an adult or tiny distant toddler. Equivalent standing height around 350 native pixels; visible head including curls approximately 60-85 native pixels, never a miniature, giant head or portrait cutout."
+        }
+      },
+      {
+        "id": "adventure-paris-density-v3-3",
+        "left": 3328,
+        "top": 1391,
+        "pose": "standing",
+        "targetId": "hide-3",
+        "mask": {
+          "left": 21,
+          "top": 364,
+          "width": 234,
+          "height": 401
+        },
+        "hint": {
+          "en": "Replace only the red-beret child in a mustard top and blue overalls reading a map beside two adults at the lower-right. Remove his hat to reveal Bar curls; preserve the map and both adults, same stance and scale.",
+          "he": "חפשו ליד הילד שקורא מפה בפינה הימנית למטה"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 365,
+          "support": "Replace only the red-beret child in a mustard top and blue overalls reading a map beside two adults at the lower-right. Remove his hat to reveal Bar curls; preserve the map and both adults, same stance and scale.",
+          "lighting": "Match the immediate neighboring painted faces, brown hand-drawn contours, matte color and shaped light/shadow planes. Adapt illumination, never replace the recognizable canonical Bar face or curls.",
+          "occlusion": "Keep all eyes, cheeks and characteristic curls readable. Natural object overlap only below the face. Remove the replaced bystander completely inside the edit window without orphan limbs. Preserve all neighbors.",
+          "comparators": "Age five, natural preschool proportions. Match the original child at this exact spot rather than an adult or tiny distant toddler. Equivalent standing height around 365 native pixels; visible head including curls approximately 60-85 native pixels, never a miniature, giant head or portrait cutout."
+        }
+      }
+    ]
+  },
+  "plan": {
+    "boardSlug": "adventure-paris",
+    "worldSlug": "adventure-trail",
+    "name": {
+      "en": "Paris",
+      "he": "פריז"
+    },
+    "direction": {
+      "orientation": "landscape",
+      "aspect": "16:9",
+      "spread": "activity-across-width-and-height",
+      "perspective": "shallow",
+      "scaleTreatment": "similar-size-people",
+      "illustration": "storybook-hand-drawn",
+      "identityPrecedence": "reference-face-hair-age",
+      "locationCues": [
+        {
+          "en": "Paris",
+          "he": "פריז"
+        },
+        {
+          "en": "People and local activities",
+          "he": "אנשים ופעילויות מקומיות"
+        }
+      ],
+      "microStories": [
+        {
+          "en": "People working and playing",
+          "he": "אנשים עובדים ומשחקים"
+        },
+        {
+          "en": "Animals and objects among the activities",
+          "he": "חיות וחפצים בין הפעילויות"
+        }
+      ]
+    },
+    "plannedHides": 3,
+    "collectionUi": "guided-v1",
+    "status": "ready",
+    "sceneVersion": 11,
+    "art": {
+      "base": "/scenes/adventure-paris-density-v3/base.webp",
+      "sha256": "3c29344f376353e5b5b1875f4835746743799bdd0c028c5c561dea7e61faa886",
+      "width": 3840,
+      "height": 2160
+    },
+    "personalZones": [
+      {
+        "x": 0.5005208333333333,
+        "y": 0.1912037037037037,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      },
+      {
+        "x": 0,
+        "y": 0.6337962962962963,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      },
+      {
+        "x": 0.8666666666666667,
+        "y": 0.6439814814814815,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      }
+    ],
+    "discoveries": [
+      {
+        "id": "heart-beret",
+        "name": {
+          "en": "Heart beret",
+          "he": "ברט עם לב"
+        },
+        "hint": {
+          "en": "Look on a cafe table",
+          "he": "חפשו על שולחן בית הקפה"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The heart beret waited among the little stories of Paris.",
+            "he": "ברט עם לב חיכה לנו בין הסיפורים של פריז."
+          }
+        },
+        "visibleRect": {
+          "x": 0.2353515625,
+          "y": 0.3532986111111111,
+          "w": 0.02197265625,
+          "h": 0.0234375
+        },
+        "hitRect": {
+          "x": 0.2353515625,
+          "y": 0.3532986111111111,
+          "w": 0.02197265625,
+          "h": 0.0234375
+        },
+        "cardCrop": {
+          "x": 0.2333984375,
+          "y": 0.3498263888888889,
+          "w": 0.02587890625,
+          "h": 0.030381944444444444
+        }
+      },
+      {
+        "id": "star-cup",
+        "name": {
+          "en": "Star cup",
+          "he": "ספל עם כוכב"
+        },
+        "hint": {
+          "en": "Look among cups beside the bakery",
+          "he": "חפשו בין הכוסות ליד המאפייה"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The star cup waited among the little stories of Paris.",
+            "he": "ספל עם כוכב חיכה לנו בין הסיפורים של פריז."
+          }
+        },
+        "visibleRect": {
+          "x": 0.78564453125,
+          "y": 0.3168402777777778,
+          "w": 0.017578125,
+          "h": 0.027777777777777776
+        },
+        "hitRect": {
+          "x": 0.78564453125,
+          "y": 0.3168402777777778,
+          "w": 0.017578125,
+          "h": 0.027777777777777776
+        },
+        "cardCrop": {
+          "x": 0.78369140625,
+          "y": 0.3133680555555556,
+          "w": 0.021484375,
+          "h": 0.034722222222222224
+        }
+      },
+      {
+        "id": "yellow-bus",
+        "name": {
+          "en": "Toy bus",
+          "he": "אוטובוס צעצוע"
+        },
+        "hint": {
+          "en": "Look between the vegetable baskets",
+          "he": "חפשו בין סלי הירקות"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The toy bus waited among the little stories of Paris.",
+            "he": "אוטובוס צעצוע חיכה לנו בין הסיפורים של פריז."
+          }
+        },
+        "visibleRect": {
+          "x": 0.23486328125,
+          "y": 0.6762152777777778,
+          "w": 0.0302734375,
+          "h": 0.03732638888888889
+        },
+        "hitRect": {
+          "x": 0.23486328125,
+          "y": 0.6762152777777778,
+          "w": 0.0302734375,
+          "h": 0.03732638888888889
+        },
+        "cardCrop": {
+          "x": 0.23291015625,
+          "y": 0.6727430555555556,
+          "w": 0.0341796875,
+          "h": 0.044270833333333336
+        }
+      },
+      {
+        "id": "ribbon-key",
+        "name": {
+          "en": "Ribbon key",
+          "he": "מפתח עם סרט"
+        },
+        "hint": {
+          "en": "Look among postcards and blue cloth",
+          "he": "חפשו בין גלויות ובד כחול"
+        },
+        "category": "object",
+        "rarity": "rare",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The ribbon key waited among the little stories of Paris.",
+            "he": "מפתח עם סרט חיכה לנו בין הסיפורים של פריז."
+          }
+        },
+        "visibleRect": {
+          "x": 0.63720703125,
+          "y": 0.4574652777777778,
+          "w": 0.025390625,
+          "h": 0.04079861111111111
+        },
+        "hitRect": {
+          "x": 0.63720703125,
+          "y": 0.4574652777777778,
+          "w": 0.025390625,
+          "h": 0.04079861111111111
+        },
+        "cardCrop": {
+          "x": 0.63525390625,
+          "y": 0.4539930555555556,
+          "w": 0.029296875,
+          "h": 0.04774305555555555
+        }
+      },
+      {
+        "id": "paper-boat",
+        "name": {
+          "en": "Paper boat",
+          "he": "סירת נייר"
+        },
+        "hint": {
+          "en": "Look along the fountain edge",
+          "he": "חפשו על שפת המזרקה"
+        },
+        "category": "object",
+        "rarity": "rare",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The paper boat waited among the little stories of Paris.",
+            "he": "סירת נייר חיכה לנו בין הסיפורים של פריז."
+          }
+        },
+        "visibleRect": {
+          "x": 0.49365234375,
+          "y": 0.6163194444444444,
+          "w": 0.02001953125,
+          "h": 0.026041666666666668
+        },
+        "hitRect": {
+          "x": 0.49365234375,
+          "y": 0.6163194444444444,
+          "w": 0.02001953125,
+          "h": 0.026041666666666668
+        },
+        "cardCrop": {
+          "x": 0.49169921875,
+          "y": 0.6128472222222222,
+          "w": 0.02392578125,
+          "h": 0.03298611111111111
+        }
+      },
+      {
+        "id": "eiffel-souvenir",
+        "name": {
+          "en": "Little Eiffel Tower",
+          "he": "מגדל אייפל קטן"
+        },
+        "hint": {
+          "en": "Look for a souvenir resting among postcards",
+          "he": "חפשו מזכרת שנחה בין הגלויות"
+        },
+        "category": "object",
+        "rarity": "epic",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The little eiffel tower waited among the little stories of Paris.",
+            "he": "מגדל אייפל קטן חיכה לנו בין הסיפורים של פריז."
+          }
+        },
+        "visibleRect": {
+          "x": 0.70166015625,
+          "y": 0.6857638888888888,
+          "w": 0.056640625,
+          "h": 0.07899305555555555
+        },
+        "hitRect": {
+          "x": 0.70166015625,
+          "y": 0.6857638888888888,
+          "w": 0.056640625,
+          "h": 0.07899305555555555
+        },
+        "cardCrop": {
+          "x": 0.69970703125,
+          "y": 0.6822916666666666,
+          "w": 0.060546875,
+          "h": 0.0859375
+        }
+      }
+    ],
+    "postcard": {
+      "id": "paris-postcard",
+      "title": {
+        "en": "My adventure — Paris",
+        "he": "ההרפתקה שלי — פריז"
+      },
+      "targetId": "hide-1",
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "w": 1,
+        "h": 1
+      }
+    }
+  }
+}

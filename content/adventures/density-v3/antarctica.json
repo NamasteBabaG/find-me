@@ -1,0 +1,403 @@
+{
+  "patchBoard": {
+    "board": "adventure-antarctica",
+    "art": "public/scenes/adventure-antarctica-density-v3/base.webp",
+    "ground": "Safe pedestrian ground within the illustrated activity, never unsupported air or traffic",
+    "sittable": true,
+    "wardrobe": "Warm ochre insulated jacket, muted teal snow trousers, dark snow boots and gloves; hood down behind neck so the face and curly hair remain clear.",
+    "hides": [
+      {
+        "id": "adventure-antarctica-density-v3-1",
+        "left": 863,
+        "top": 114,
+        "pose": "standing",
+        "targetId": "hide-1",
+        "mask": {
+          "left": 395,
+          "top": 368,
+          "width": 111,
+          "height": 289
+        },
+        "hint": {
+          "en": "Replace only the yellow-jacket child holding a warm cup on the wooden boardwalk left of the ice-sample drill. Same stable boardwalk and smaller child scale; hat off and hood down so curls and full face stay readable. Preserve the cup and neighboring adult.",
+          "he": "חפשו ליד הילדים עם הספלים על מרפסת התחנה"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 290,
+          "support": "Replace only the yellow-jacket child holding a warm cup on the wooden boardwalk left of the ice-sample drill. Same stable boardwalk and smaller child scale; hat off and hood down so curls and full face stay readable. Preserve the cup and neighboring adult.",
+          "lighting": "Match the immediate neighboring painted faces, brown hand-drawn contours, matte color and shaped light/shadow planes. Adapt illumination, never replace the recognizable canonical Bar face or curls.",
+          "occlusion": "Keep all eyes, cheeks and characteristic curls readable. Natural object overlap only below the face. Remove the replaced bystander completely inside the edit window without orphan limbs. Preserve all neighbors.",
+          "comparators": "Age five, natural preschool proportions. Match the original child at this exact spot rather than an adult or tiny distant toddler. Equivalent standing height around 290 native pixels; visible head including curls approximately 60-85 native pixels, never a miniature, giant head or portrait cutout."
+        }
+      },
+      {
+        "id": "adventure-antarctica-density-v3-2",
+        "left": 1556,
+        "top": 319,
+        "pose": "kneeling",
+        "targetId": "hide-2",
+        "mask": {
+          "left": 193,
+          "top": 484,
+          "width": 193,
+          "height": 257
+        },
+        "hint": {
+          "en": "Replace only the small teal-coated child kneeling to the left of the upright ice sample cylinders. Knees firmly on packed snow, gloved hands beside the sample. Same size as the neighboring seated child; do not make Bar miniature. Hat off and hood down, clear full face in three-quarter view.",
+          "he": "חפשו ליד הילדים שבודקים גלילי קרח"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 320,
+          "support": "Replace only the small teal-coated child kneeling to the left of the upright ice sample cylinders. Knees firmly on packed snow, gloved hands beside the sample. Same size as the neighboring seated child; do not make Bar miniature. Hat off and hood down, clear full face in three-quarter view.",
+          "lighting": "Match the immediate neighboring painted faces, brown hand-drawn contours, matte color and shaped light/shadow planes. Adapt illumination, never replace the recognizable canonical Bar face or curls.",
+          "occlusion": "Keep all eyes, cheeks and characteristic curls readable. Natural object overlap only below the face. Remove the replaced bystander completely inside the edit window without orphan limbs. Preserve all neighbors.",
+          "comparators": "Age five, natural preschool proportions. Match the original child at this exact spot rather than an adult or tiny distant toddler. Equivalent standing height around 320 native pixels; visible head including curls approximately 60-85 native pixels, never a miniature, giant head or portrait cutout."
+        }
+      },
+      {
+        "id": "adventure-antarctica-density-v3-3",
+        "left": 2531,
+        "top": 806,
+        "pose": "standing",
+        "targetId": "hide-3",
+        "mask": {
+          "left": 163,
+          "top": 368,
+          "width": 171,
+          "height": 377
+        },
+        "hint": {
+          "en": "Replace only the standing purple-coated child holding a small sample tray beside the kneeling blue-coated child on the right. Same snow ground and preschool size. Hood and hat off to reveal Bar curls, clear three-quarter face. Preserve the tray, neighbor hands and the photographer above.",
+          "he": "חפשו ליד הילדים עם מגש הדגימות בצד ימין"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 340,
+          "support": "Replace only the standing purple-coated child holding a small sample tray beside the kneeling blue-coated child on the right. Same snow ground and preschool size. Hood and hat off to reveal Bar curls, clear three-quarter face. Preserve the tray, neighbor hands and the photographer above.",
+          "lighting": "Match the immediate neighboring painted faces, brown hand-drawn contours, matte color and shaped light/shadow planes. Adapt illumination, never replace the recognizable canonical Bar face or curls.",
+          "occlusion": "Keep all eyes, cheeks and characteristic curls readable. Natural object overlap only below the face. Remove the replaced bystander completely inside the edit window without orphan limbs. Preserve all neighbors.",
+          "comparators": "Age five, natural preschool proportions. Match the original child at this exact spot rather than an adult or tiny distant toddler. Equivalent standing height around 340 native pixels; visible head including curls approximately 60-85 native pixels, never a miniature, giant head or portrait cutout."
+        }
+      }
+    ]
+  },
+  "plan": {
+    "boardSlug": "adventure-antarctica",
+    "worldSlug": "adventure-trail",
+    "name": {
+      "en": "Antarctica",
+      "he": "אנטארקטיקה"
+    },
+    "direction": {
+      "orientation": "landscape",
+      "aspect": "16:9",
+      "spread": "activity-across-width-and-height",
+      "perspective": "shallow",
+      "scaleTreatment": "similar-size-people",
+      "illustration": "storybook-hand-drawn",
+      "identityPrecedence": "reference-face-hair-age",
+      "locationCues": [
+        {
+          "en": "Antarctica",
+          "he": "אנטארקטיקה"
+        },
+        {
+          "en": "People and local activities",
+          "he": "אנשים ופעילויות מקומיות"
+        }
+      ],
+      "microStories": [
+        {
+          "en": "People working and playing",
+          "he": "אנשים עובדים ומשחקים"
+        },
+        {
+          "en": "Animals and objects among the activities",
+          "he": "חיות וחפצים בין הפעילויות"
+        }
+      ]
+    },
+    "plannedHides": 3,
+    "collectionUi": "guided-v1",
+    "status": "ready",
+    "sceneVersion": 11,
+    "art": {
+      "base": "/scenes/adventure-antarctica-density-v3/base.webp",
+      "sha256": "7a323fd6b340924b20915666e3548bdb151399b0bb19230a199d757b9aae2513",
+      "width": 3840,
+      "height": 2160
+    },
+    "personalZones": [
+      {
+        "x": 0.22473958333333333,
+        "y": 0.05277777777777778,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      },
+      {
+        "x": 0.40520833333333334,
+        "y": 0.1476851851851852,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      },
+      {
+        "x": 0.6591145833333333,
+        "y": 0.3731481481481482,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      }
+    ],
+    "discoveries": [
+      {
+        "id": "star-mug",
+        "name": {
+          "en": "Star mug",
+          "he": "ספל עם כוכב"
+        },
+        "hint": {
+          "en": "Look among thermoses and mugs",
+          "he": "חפשו בין התרמוסים והספלים"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The star mug waited among the little stories of Antarctica.",
+            "he": "ספל עם כוכב חיכה לנו בין הסיפורים של אנטארקטיקה."
+          }
+        },
+        "visibleRect": {
+          "x": 0.1884765625,
+          "y": 0.2725694444444444,
+          "w": 0.01513671875,
+          "h": 0.034722222222222224
+        },
+        "hitRect": {
+          "x": 0.1884765625,
+          "y": 0.2725694444444444,
+          "w": 0.01513671875,
+          "h": 0.034722222222222224
+        },
+        "cardCrop": {
+          "x": 0.1865234375,
+          "y": 0.2690972222222222,
+          "w": 0.01904296875,
+          "h": 0.041666666666666664
+        }
+      },
+      {
+        "id": "red-mittens",
+        "name": {
+          "en": "Red mittens",
+          "he": "כפפות אדומות"
+        },
+        "hint": {
+          "en": "Look among fabrics on the equipment table",
+          "he": "חפשו בין הבדים על שולחן הציוד"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The red mittens waited among the little stories of Antarctica.",
+            "he": "כפפות אדומות חיכה לנו בין הסיפורים של אנטארקטיקה."
+          }
+        },
+        "visibleRect": {
+          "x": 0.60107421875,
+          "y": 0.4366319444444444,
+          "w": 0.04248046875,
+          "h": 0.03732638888888889
+        },
+        "hitRect": {
+          "x": 0.60107421875,
+          "y": 0.4366319444444444,
+          "w": 0.04248046875,
+          "h": 0.03732638888888889
+        },
+        "cardCrop": {
+          "x": 0.59912109375,
+          "y": 0.4331597222222222,
+          "w": 0.04638671875,
+          "h": 0.044270833333333336
+        }
+      },
+      {
+        "id": "yellow-goggles",
+        "name": {
+          "en": "Yellow snow goggles",
+          "he": "משקפי שלג צהובים"
+        },
+        "hint": {
+          "en": "Look beside the measuring tools",
+          "he": "חפשו ליד כלי המדידה"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The yellow snow goggles waited among the little stories of Antarctica.",
+            "he": "משקפי שלג צהובים חיכה לנו בין הסיפורים של אנטארקטיקה."
+          }
+        },
+        "visibleRect": {
+          "x": 0.2333984375,
+          "y": 0.6831597222222222,
+          "w": 0.03564453125,
+          "h": 0.04079861111111111
+        },
+        "hitRect": {
+          "x": 0.2333984375,
+          "y": 0.6831597222222222,
+          "w": 0.03564453125,
+          "h": 0.04079861111111111
+        },
+        "cardCrop": {
+          "x": 0.2314453125,
+          "y": 0.6796875,
+          "w": 0.03955078125,
+          "h": 0.04774305555555555
+        }
+      },
+      {
+        "id": "purple-compass",
+        "name": {
+          "en": "Purple compass",
+          "he": "מצפן סגול"
+        },
+        "hint": {
+          "en": "Look among the unfolded maps",
+          "he": "חפשו בין המפות הפרושות"
+        },
+        "category": "object",
+        "rarity": "rare",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The purple compass waited among the little stories of Antarctica.",
+            "he": "מצפן סגול חיכה לנו בין הסיפורים של אנטארקטיקה."
+          }
+        },
+        "visibleRect": {
+          "x": 0.2509765625,
+          "y": 0.4652777777777778,
+          "w": 0.02099609375,
+          "h": 0.03211805555555555
+        },
+        "hitRect": {
+          "x": 0.2509765625,
+          "y": 0.4652777777777778,
+          "w": 0.02099609375,
+          "h": 0.03211805555555555
+        },
+        "cardCrop": {
+          "x": 0.2490234375,
+          "y": 0.4618055555555556,
+          "w": 0.02490234375,
+          "h": 0.0390625
+        }
+      },
+      {
+        "id": "orange-penguin",
+        "name": {
+          "en": "Toy penguin",
+          "he": "פינגווין צעצוע"
+        },
+        "hint": {
+          "en": "Look among the station crates",
+          "he": "חפשו בין הארגזים בתחנה"
+        },
+        "category": "object",
+        "rarity": "rare",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The toy penguin waited among the little stories of Antarctica.",
+            "he": "פינגווין צעצוע חיכה לנו בין הסיפורים של אנטארקטיקה."
+          }
+        },
+        "visibleRect": {
+          "x": 0.77783203125,
+          "y": 0.1996527777777778,
+          "w": 0.0146484375,
+          "h": 0.030381944444444444
+        },
+        "hitRect": {
+          "x": 0.77783203125,
+          "y": 0.1996527777777778,
+          "w": 0.0146484375,
+          "h": 0.030381944444444444
+        },
+        "cardCrop": {
+          "x": 0.77587890625,
+          "y": 0.19618055555555555,
+          "w": 0.0185546875,
+          "h": 0.03732638888888889
+        }
+      },
+      {
+        "id": "snowflake-pendant",
+        "name": {
+          "en": "Snowflake pendant",
+          "he": "תליון פתית שלג"
+        },
+        "hint": {
+          "en": "Look among knits in the equipment case",
+          "he": "חפשו בין הסריגים במזוודת הציוד"
+        },
+        "category": "object",
+        "rarity": "epic",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The snowflake pendant waited among the little stories of Antarctica.",
+            "he": "תליון פתית שלג חיכה לנו בין הסיפורים של אנטארקטיקה."
+          }
+        },
+        "visibleRect": {
+          "x": 0.58251953125,
+          "y": 0.6927083333333334,
+          "w": 0.03466796875,
+          "h": 0.043402777777777776
+        },
+        "hitRect": {
+          "x": 0.58251953125,
+          "y": 0.6927083333333334,
+          "w": 0.03466796875,
+          "h": 0.043402777777777776
+        },
+        "cardCrop": {
+          "x": 0.58056640625,
+          "y": 0.6892361111111112,
+          "w": 0.03857421875,
+          "h": 0.050347222222222224
+        }
+      }
+    ],
+    "postcard": {
+      "id": "antarctica-postcard",
+      "title": {
+        "en": "My adventure — Antarctica",
+        "he": "ההרפתקה שלי — אנטארקטיקה"
+      },
+      "targetId": "hide-1",
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "w": 1,
+        "h": 1
+      }
+    }
+  }
+}

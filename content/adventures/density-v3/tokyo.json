@@ -1,0 +1,403 @@
+{
+  "patchBoard": {
+    "board": "adventure-tokyo",
+    "art": "public/scenes/adventure-tokyo-density-v3-items-v1/base.webp",
+    "ground": "Safe pedestrian ground within the illustrated activity, never unsupported air or traffic",
+    "sittable": true,
+    "wardrobe": "Muted ochre shirt with a simple blue overshirt, navy shorts, brown trainers; uncovered curly hair.",
+    "hides": [
+      {
+        "id": "adventure-tokyo-density-v3-1",
+        "left": 1294,
+        "top": 141,
+        "pose": "standing",
+        "targetId": "hide-1",
+        "mask": {
+          "left": 249,
+          "top": 296,
+          "width": 118,
+          "height": 176
+        },
+        "hint": {
+          "en": "Replace only the small waving child just to the left of the shrine gate steps. Feet on the courtyard paving. Bar waves with one hand, face three-quarter toward the viewer and musicians; preserve adults and gate.",
+          "he": "חפשו ליד הילד שמנופף סמוך לשער"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 245,
+          "support": "Replace only the small waving child just to the left of the shrine gate steps. Feet on the courtyard paving. Bar waves with one hand, face three-quarter toward the viewer and musicians; preserve adults and gate.",
+          "lighting": "Match the immediate neighboring painted faces, brown hand-drawn contours, matte color and shaped light/shadow planes. Adapt illumination, never replace the recognizable canonical Bar face or curls.",
+          "occlusion": "Keep all eyes, cheeks and characteristic curls readable. Natural object overlap only below the face. Remove the replaced bystander completely inside the edit window without orphan limbs. Preserve all neighbors.",
+          "comparators": "Age five, natural preschool proportions. Match the original child at this exact spot rather than an adult or tiny distant toddler. Equivalent standing height around 245 native pixels; visible head including curls approximately 60-85 native pixels, never a miniature, giant head or portrait cutout."
+        }
+      },
+      {
+        "id": "adventure-tokyo-density-v3-2",
+        "left": 141,
+        "top": 984,
+        "pose": "crouching",
+        "targetId": "hide-2",
+        "mask": {
+          "left": 200,
+          "top": 413,
+          "width": 143,
+          "height": 334
+        },
+        "hint": {
+          "en": "Replace only the child in the dusty-pink shirt tending the low round plant pot on the left, beside a kneeling boy in brown. Keep the pot and plants. Crouch with anatomically bent knees, same child scale and both eyes readable.",
+          "he": "חפשו ליד הילדים והעציצים בצד שמאל"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 295,
+          "support": "Replace only the child in the dusty-pink shirt tending the low round plant pot on the left, beside a kneeling boy in brown. Keep the pot and plants. Crouch with anatomically bent knees, same child scale and both eyes readable.",
+          "lighting": "Match the immediate neighboring painted faces, brown hand-drawn contours, matte color and shaped light/shadow planes. Adapt illumination, never replace the recognizable canonical Bar face or curls.",
+          "occlusion": "Keep all eyes, cheeks and characteristic curls readable. Natural object overlap only below the face. Remove the replaced bystander completely inside the edit window without orphan limbs. Preserve all neighbors.",
+          "comparators": "Age five, natural preschool proportions. Match the original child at this exact spot rather than an adult or tiny distant toddler. Equivalent standing height around 295 native pixels; visible head including curls approximately 60-85 native pixels, never a miniature, giant head or portrait cutout."
+        }
+      },
+      {
+        "id": "adventure-tokyo-density-v3-3",
+        "left": 3188,
+        "top": 1388,
+        "pose": "crouching",
+        "targetId": "hide-3",
+        "mask": {
+          "left": 196,
+          "top": 191,
+          "width": 236,
+          "height": 298
+        },
+        "hint": {
+          "en": "Replace only the gray-brown-shirt boy seated low to the right of the bicycle wheel, above the older blue-shirted mechanic. Keep the original bent-knee low seated pose and wheel in his hands; preserve both mechanics and bicycle. Clear three-quarter face.",
+          "he": "חפשו ליד מתקן האופניים בצד ימין למטה"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 330,
+          "support": "Replace only the gray-brown-shirt boy seated low to the right of the bicycle wheel, above the older blue-shirted mechanic. Keep the original bent-knee low seated pose and wheel in his hands; preserve both mechanics and bicycle. Clear three-quarter face.",
+          "lighting": "Match the immediate neighboring painted faces, brown hand-drawn contours, matte color and shaped light/shadow planes. Adapt illumination, never replace the recognizable canonical Bar face or curls.",
+          "occlusion": "Keep all eyes, cheeks and characteristic curls readable. Natural object overlap only below the face. Remove the replaced bystander completely inside the edit window without orphan limbs. Preserve all neighbors.",
+          "comparators": "Age five, natural preschool proportions. Match the original child at this exact spot rather than an adult or tiny distant toddler. Equivalent standing height around 330 native pixels; visible head including curls approximately 60-85 native pixels, never a miniature, giant head or portrait cutout."
+        }
+      }
+    ]
+  },
+  "plan": {
+    "boardSlug": "adventure-tokyo",
+    "worldSlug": "adventure-trail",
+    "name": {
+      "en": "Tokyo",
+      "he": "טוקיו"
+    },
+    "direction": {
+      "orientation": "landscape",
+      "aspect": "16:9",
+      "spread": "activity-across-width-and-height",
+      "perspective": "shallow",
+      "scaleTreatment": "similar-size-people",
+      "illustration": "storybook-hand-drawn",
+      "identityPrecedence": "reference-face-hair-age",
+      "locationCues": [
+        {
+          "en": "Tokyo",
+          "he": "טוקיו"
+        },
+        {
+          "en": "People and local activities",
+          "he": "אנשים ופעילויות מקומיות"
+        }
+      ],
+      "microStories": [
+        {
+          "en": "People working and playing",
+          "he": "אנשים עובדים ומשחקים"
+        },
+        {
+          "en": "Animals and objects among the activities",
+          "he": "חיות וחפצים בין הפעילויות"
+        }
+      ]
+    },
+    "plannedHides": 3,
+    "collectionUi": "guided-v1",
+    "status": "ready",
+    "sceneVersion": 11,
+    "art": {
+      "base": "/scenes/adventure-tokyo-density-v3-items-v1/base.webp",
+      "sha256": "2bbc5288b5a108711bbffbd772cb4eef0e71a576b9bc9e9ecca301485390d2a3",
+      "width": 3840,
+      "height": 2160
+    },
+    "personalZones": [
+      {
+        "x": 0.33697916666666666,
+        "y": 0.06527777777777778,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      },
+      {
+        "x": 0.03671875,
+        "y": 0.45555555555555555,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      },
+      {
+        "x": 0.8302083333333333,
+        "y": 0.6425925925925926,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      }
+    ],
+    "discoveries": [
+      {
+        "id": "yellow-robot",
+        "name": {
+          "en": "Yellow robot",
+          "he": "רובוט צהוב"
+        },
+        "hint": {
+          "en": "Look inside the toy shop",
+          "he": "חפשו בחנות הצעצועים"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The yellow robot waited among the little stories of Tokyo.",
+            "he": "רובוט צהוב חיכה לנו בין הסיפורים של טוקיו."
+          }
+        },
+        "visibleRect": {
+          "x": 0.23876953125,
+          "y": 0.1796875,
+          "w": 0.0166015625,
+          "h": 0.04600694444444445
+        },
+        "hitRect": {
+          "x": 0.23876953125,
+          "y": 0.1796875,
+          "w": 0.0166015625,
+          "h": 0.04600694444444445
+        },
+        "cardCrop": {
+          "x": 0.23681640625,
+          "y": 0.1762152777777778,
+          "w": 0.0205078125,
+          "h": 0.05295138888888889
+        }
+      },
+      {
+        "id": "flower-fan",
+        "name": {
+          "en": "Flower fan",
+          "he": "מניפה עם פרח"
+        },
+        "hint": {
+          "en": "Look beside the noodle stall",
+          "he": "חפשו ליד דוכן האוכל"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The flower fan waited among the little stories of Tokyo.",
+            "he": "מניפה עם פרח חיכה לנו בין הסיפורים של טוקיו."
+          }
+        },
+        "visibleRect": {
+          "x": 0.75439453125,
+          "y": 0.21180555555555555,
+          "w": 0.02734375,
+          "h": 0.041666666666666664
+        },
+        "hitRect": {
+          "x": 0.75439453125,
+          "y": 0.21180555555555555,
+          "w": 0.02734375,
+          "h": 0.041666666666666664
+        },
+        "cardCrop": {
+          "x": 0.75244140625,
+          "y": 0.20833333333333334,
+          "w": 0.03125,
+          "h": 0.04861111111111111
+        }
+      },
+      {
+        "id": "fish-windsock",
+        "name": {
+          "en": "Blue fabric fish",
+          "he": "דג בד כחול"
+        },
+        "hint": {
+          "en": "Look inside a low basket",
+          "he": "חפשו בתוך סל נמוך"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The blue fabric fish waited among the little stories of Tokyo.",
+            "he": "דג בד כחול חיכה לנו בין הסיפורים של טוקיו."
+          }
+        },
+        "visibleRect": {
+          "x": 0.1845703125,
+          "y": 0.6493055555555556,
+          "w": 0.0498046875,
+          "h": 0.04513888888888889
+        },
+        "hitRect": {
+          "x": 0.1845703125,
+          "y": 0.6493055555555556,
+          "w": 0.0498046875,
+          "h": 0.04513888888888889
+        },
+        "cardCrop": {
+          "x": 0.1826171875,
+          "y": 0.6458333333333334,
+          "w": 0.0537109375,
+          "h": 0.052083333333333336
+        }
+      },
+      {
+        "id": "origami-frog",
+        "name": {
+          "en": "Paper frog",
+          "he": "צפרדע נייר"
+        },
+        "hint": {
+          "en": "Look among folded paper and busy hands",
+          "he": "חפשו בין קיפולי הנייר והידיים"
+        },
+        "category": "object",
+        "rarity": "rare",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The paper frog waited among the little stories of Tokyo.",
+            "he": "צפרדע נייר חיכה לנו בין הסיפורים של טוקיו."
+          }
+        },
+        "visibleRect": {
+          "x": 0.6396484375,
+          "y": 0.6380208333333334,
+          "w": 0.01904296875,
+          "h": 0.025173611111111112
+        },
+        "hitRect": {
+          "x": 0.6396484375,
+          "y": 0.6380208333333334,
+          "w": 0.01904296875,
+          "h": 0.025173611111111112
+        },
+        "cardCrop": {
+          "x": 0.6376953125,
+          "y": 0.6345486111111112,
+          "w": 0.02294921875,
+          "h": 0.03211805555555555
+        }
+      },
+      {
+        "id": "lucky-cat",
+        "name": {
+          "en": "Little lucky cat",
+          "he": "חתול מזל קטן"
+        },
+        "hint": {
+          "en": "Look among dishes on the counter",
+          "he": "חפשו בין הכלים שעל הדלפק"
+        },
+        "category": "object",
+        "rarity": "rare",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The little lucky cat waited among the little stories of Tokyo.",
+            "he": "חתול מזל קטן חיכה לנו בין הסיפורים של טוקיו."
+          }
+        },
+        "visibleRect": {
+          "x": 0.75146484375,
+          "y": 0.265625,
+          "w": 0.01416015625,
+          "h": 0.033854166666666664
+        },
+        "hitRect": {
+          "x": 0.75146484375,
+          "y": 0.265625,
+          "w": 0.01416015625,
+          "h": 0.033854166666666664
+        },
+        "cardCrop": {
+          "x": 0.74951171875,
+          "y": 0.2621527777777778,
+          "w": 0.01806640625,
+          "h": 0.04079861111111111
+        }
+      },
+      {
+        "id": "crane-charm",
+        "name": {
+          "en": "Crane charm",
+          "he": "תליון עגור"
+        },
+        "hint": {
+          "en": "Look among paper and a red cord",
+          "he": "חפשו בין הניירות והחוט האדום"
+        },
+        "category": "object",
+        "rarity": "epic",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The crane charm waited among the little stories of Tokyo.",
+            "he": "תליון עגור חיכה לנו בין הסיפורים של טוקיו."
+          }
+        },
+        "visibleRect": {
+          "x": 0.69873046875,
+          "y": 0.7092013888888888,
+          "w": 0.048828125,
+          "h": 0.04600694444444445
+        },
+        "hitRect": {
+          "x": 0.69873046875,
+          "y": 0.7092013888888888,
+          "w": 0.048828125,
+          "h": 0.04600694444444445
+        },
+        "cardCrop": {
+          "x": 0.69677734375,
+          "y": 0.7057291666666666,
+          "w": 0.052734375,
+          "h": 0.05295138888888889
+        }
+      }
+    ],
+    "postcard": {
+      "id": "tokyo-postcard",
+      "title": {
+        "en": "My adventure — Tokyo",
+        "he": "ההרפתקה שלי — טוקיו"
+      },
+      "targetId": "hide-1",
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "w": 1,
+        "h": 1
+      }
+    }
+  }
+}

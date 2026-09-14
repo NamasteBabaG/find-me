@@ -471,7 +471,8 @@
 /* A star that has just landed: too big and bright, one bounce, and a ring of
    light thrown outward. The slot keeps the class, so re-renders never restart it. */
 .stars__slot.is-new .star { animation: fm-star-land var(--dur-3) var(--ease-pop) both; }
-.stars__slot.is-new::after { content: ""; position: absolute; inset: -20%; border-radius: var(--radius-pill); border: 2px solid var(--gold-light); box-shadow: var(--shadow-glow-gold); opacity: 0; animation: fm-star-ring var(--dur-3) var(--ease-out) both; pointer-events: none; }
+/* Do not retain the invisible 2.6x end frame: it widens the phone's scroll area. */
+.stars__slot.is-new::after { content: ""; position: absolute; inset: -20%; border-radius: var(--radius-pill); border: 2px solid var(--gold-light); box-shadow: var(--shadow-glow-gold); opacity: 0; animation: fm-star-ring var(--dur-3) var(--ease-out) backwards; pointer-events: none; }
 /* Celebrating, the stars arrive one after another. */
 .stars--celebrate .stars__slot.is-new .star, .stars--celebrate .stars__slot.is-new::after { animation-delay: calc(var(--stagger-start, 0ms) + var(--i) * var(--stagger, 260ms)); }
 /* Big stars breathe once they are in, so a full row still looks alive. */

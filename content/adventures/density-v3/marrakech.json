@@ -1,0 +1,403 @@
+{
+  "patchBoard": {
+    "board": "adventure-marrakech",
+    "art": "public/scenes/adventure-marrakech-density-v3-items-v1/base.webp",
+    "ground": "Safe pedestrian ground within the illustrated activity, never unsupported air or traffic",
+    "sittable": true,
+    "wardrobe": "Muted mustard tunic, blue shorts and worn brown sandals; hair and curls visible.",
+    "hides": [
+      {
+        "id": "adventure-marrakech-density-v3-1",
+        "left": 2719,
+        "top": 236,
+        "pose": "crouching",
+        "targetId": "hide-1",
+        "mask": {
+          "left": 206,
+          "top": 137,
+          "width": 141,
+          "height": 184
+        },
+        "hint": {
+          "en": "Replace only the teal-shirt child at the left side of the upper-right wooden board game. Crouch or sit low with both knees naturally bent, facing the game in a readable three-quarter view. Preserve the board and other children.",
+          "he": "חפשו ליד הילדים המשחקים בחלק העליון"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 280,
+          "support": "Replace only the teal-shirt child at the left side of the upper-right wooden board game. Crouch or sit low with both knees naturally bent, facing the game in a readable three-quarter view. Preserve the board and other children.",
+          "lighting": "Match the immediate neighboring painted faces, brown hand-drawn contours, matte color and shaped light/shadow planes. Adapt illumination, never replace the recognizable canonical Bar face or curls.",
+          "occlusion": "Keep all eyes, cheeks and characteristic curls readable. Natural object overlap only below the face. Remove the replaced bystander completely inside the edit window without orphan limbs. Preserve all neighbors.",
+          "comparators": "Age five, natural preschool proportions. Match the original child at this exact spot rather than an adult or tiny distant toddler. Equivalent standing height around 280 native pixels; visible head including curls approximately 60-85 native pixels, never a miniature, giant head or portrait cutout."
+        }
+      },
+      {
+        "id": "adventure-marrakech-density-v3-2",
+        "left": 1290,
+        "top": 413,
+        "pose": "sitting-cross-legged",
+        "targetId": "hide-2",
+        "mask": {
+          "left": 204,
+          "top": 255,
+          "width": 152,
+          "height": 208
+        },
+        "hint": {
+          "en": "Replace only the small green-shirt boy on the left of the story circle, facing right toward the storyteller. Sit naturally on the same cushion with short folded legs and a clear three-quarter face, not an extreme profile. Preserve the red-shirt child in front.",
+          "he": "חפשו במעגל המקשיבים למספר הסיפורים"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 295,
+          "support": "Replace only the small green-shirt boy on the left of the story circle, facing right toward the storyteller. Sit naturally on the same cushion with short folded legs and a clear three-quarter face, not an extreme profile. Preserve the red-shirt child in front.",
+          "lighting": "Match the immediate neighboring painted faces, brown hand-drawn contours, matte color and shaped light/shadow planes. Adapt illumination, never replace the recognizable canonical Bar face or curls.",
+          "occlusion": "Keep all eyes, cheeks and characteristic curls readable. Natural object overlap only below the face. Remove the replaced bystander completely inside the edit window without orphan limbs. Preserve all neighbors.",
+          "comparators": "Age five, natural preschool proportions. Match the original child at this exact spot rather than an adult or tiny distant toddler. Equivalent standing height around 295 native pixels; visible head including curls approximately 60-85 native pixels, never a miniature, giant head or portrait cutout."
+        }
+      },
+      {
+        "id": "adventure-marrakech-density-v3-3",
+        "left": 2447,
+        "top": 1391,
+        "pose": "kneeling",
+        "targetId": "hide-3",
+        "mask": {
+          "left": 201,
+          "top": 366,
+          "width": 218,
+          "height": 270
+        },
+        "hint": {
+          "en": "Replace only the yellow-shirt child at the middle-right of the foreground wooden shapes activity. Kneel on the courtyard floor, hands naturally reaching toward a wooden piece. Preserve the child in blue on his left and the green-shirt child on his right.",
+          "he": "חפשו בין הילדים עם משחק הצורות למטה"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 320,
+          "support": "Replace only the yellow-shirt child at the middle-right of the foreground wooden shapes activity. Kneel on the courtyard floor, hands naturally reaching toward a wooden piece. Preserve the child in blue on his left and the green-shirt child on his right.",
+          "lighting": "Match the immediate neighboring painted faces, brown hand-drawn contours, matte color and shaped light/shadow planes. Adapt illumination, never replace the recognizable canonical Bar face or curls.",
+          "occlusion": "Keep all eyes, cheeks and characteristic curls readable. Natural object overlap only below the face. Remove the replaced bystander completely inside the edit window without orphan limbs. Preserve all neighbors.",
+          "comparators": "Age five, natural preschool proportions. Match the original child at this exact spot rather than an adult or tiny distant toddler. Equivalent standing height around 320 native pixels; visible head including curls approximately 60-85 native pixels, never a miniature, giant head or portrait cutout."
+        }
+      }
+    ]
+  },
+  "plan": {
+    "boardSlug": "adventure-marrakech",
+    "worldSlug": "adventure-trail",
+    "name": {
+      "en": "Marrakech",
+      "he": "מרקש"
+    },
+    "direction": {
+      "orientation": "landscape",
+      "aspect": "16:9",
+      "spread": "activity-across-width-and-height",
+      "perspective": "shallow",
+      "scaleTreatment": "similar-size-people",
+      "illustration": "storybook-hand-drawn",
+      "identityPrecedence": "reference-face-hair-age",
+      "locationCues": [
+        {
+          "en": "Marrakech",
+          "he": "מרקש"
+        },
+        {
+          "en": "People and local activities",
+          "he": "אנשים ופעילויות מקומיות"
+        }
+      ],
+      "microStories": [
+        {
+          "en": "People working and playing",
+          "he": "אנשים עובדים ומשחקים"
+        },
+        {
+          "en": "Animals and objects among the activities",
+          "he": "חיות וחפצים בין הפעילויות"
+        }
+      ]
+    },
+    "plannedHides": 3,
+    "collectionUi": "guided-v1",
+    "status": "ready",
+    "sceneVersion": 11,
+    "art": {
+      "base": "/scenes/adventure-marrakech-density-v3-items-v1/base.webp",
+      "sha256": "2c92cf16479cf066dc4b4d290dc0e5e9b6a80cc643e7c538a762f3446e25899d",
+      "width": 3840,
+      "height": 2160
+    },
+    "personalZones": [
+      {
+        "x": 0.7080729166666667,
+        "y": 0.10925925925925926,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      },
+      {
+        "x": 0.3359375,
+        "y": 0.1912037037037037,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      },
+      {
+        "x": 0.6372395833333333,
+        "y": 0.6439814814814815,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      }
+    ],
+    "discoveries": [
+      {
+        "id": "eye-amulet",
+        "name": {
+          "en": "Blue amulet",
+          "he": "קמע כחול"
+        },
+        "hint": {
+          "en": "Look among the hanging cords",
+          "he": "חפשו בין השרשראות התלויות"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The blue amulet waited among the little stories of Marrakech.",
+            "he": "קמע כחול חיכה לנו בין הסיפורים של מרקש."
+          }
+        },
+        "visibleRect": {
+          "x": 0.2177734375,
+          "y": 0.1484375,
+          "w": 0.01513671875,
+          "h": 0.03732638888888889
+        },
+        "hitRect": {
+          "x": 0.2177734375,
+          "y": 0.1484375,
+          "w": 0.01513671875,
+          "h": 0.03732638888888889
+        },
+        "cardCrop": {
+          "x": 0.2158203125,
+          "y": 0.1449652777777778,
+          "w": 0.01904296875,
+          "h": 0.044270833333333336
+        }
+      },
+      {
+        "id": "striped-slipper",
+        "name": {
+          "en": "Striped slipper",
+          "he": "נעל בית מפוספסת"
+        },
+        "hint": {
+          "en": "Look beside the children and fabrics",
+          "he": "חפשו ליד הילדים והבדים"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The striped slipper waited among the little stories of Marrakech.",
+            "he": "נעל בית מפוספסת חיכה לנו בין הסיפורים של מרקש."
+          }
+        },
+        "visibleRect": {
+          "x": 0.27099609375,
+          "y": 0.3776041666666667,
+          "w": 0.0234375,
+          "h": 0.05555555555555555
+        },
+        "hitRect": {
+          "x": 0.27099609375,
+          "y": 0.3776041666666667,
+          "w": 0.0234375,
+          "h": 0.05555555555555555
+        },
+        "cardCrop": {
+          "x": 0.26904296875,
+          "y": 0.3741319444444444,
+          "w": 0.02734375,
+          "h": 0.0625
+        }
+      },
+      {
+        "id": "crescent-cup",
+        "name": {
+          "en": "Crescent cup",
+          "he": "ספל עם ירח"
+        },
+        "hint": {
+          "en": "Look on the round tea tray",
+          "he": "חפשו על מגש התה העגול"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The crescent cup waited among the little stories of Marrakech.",
+            "he": "ספל עם ירח חיכה לנו בין הסיפורים של מרקש."
+          }
+        },
+        "visibleRect": {
+          "x": 0.5908203125,
+          "y": 0.6128472222222222,
+          "w": 0.0205078125,
+          "h": 0.035590277777777776
+        },
+        "hitRect": {
+          "x": 0.5908203125,
+          "y": 0.6128472222222222,
+          "w": 0.0205078125,
+          "h": 0.035590277777777776
+        },
+        "cardCrop": {
+          "x": 0.5888671875,
+          "y": 0.609375,
+          "w": 0.0244140625,
+          "h": 0.042534722222222224
+        }
+      },
+      {
+        "id": "tassel-key",
+        "name": {
+          "en": "Tassel key",
+          "he": "מפתח עם גדיל"
+        },
+        "hint": {
+          "en": "Look among the folds of the rug",
+          "he": "חפשו בין קפלי השטיח"
+        },
+        "category": "object",
+        "rarity": "rare",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The tassel key waited among the little stories of Marrakech.",
+            "he": "מפתח עם גדיל חיכה לנו בין הסיפורים של מרקש."
+          }
+        },
+        "visibleRect": {
+          "x": 0.48486328125,
+          "y": 0.2126736111111111,
+          "w": 0.0400390625,
+          "h": 0.059895833333333336
+        },
+        "hitRect": {
+          "x": 0.48486328125,
+          "y": 0.2126736111111111,
+          "w": 0.0400390625,
+          "h": 0.059895833333333336
+        },
+        "cardCrop": {
+          "x": 0.48291015625,
+          "y": 0.2092013888888889,
+          "w": 0.0439453125,
+          "h": 0.06684027777777778
+        }
+      },
+      {
+        "id": "violet-gecko",
+        "name": {
+          "en": "Violet gecko",
+          "he": "שממית סגולה"
+        },
+        "hint": {
+          "en": "Look behind the pottery",
+          "he": "חפשו מאחורי הכדים"
+        },
+        "category": "animal",
+        "rarity": "rare",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The violet gecko waited among the little stories of Marrakech.",
+            "he": "שממית סגולה חיכה לנו בין הסיפורים של מרקש."
+          }
+        },
+        "visibleRect": {
+          "x": 0.82568359375,
+          "y": 0.5277777777777778,
+          "w": 0.02197265625,
+          "h": 0.036458333333333336
+        },
+        "hitRect": {
+          "x": 0.82568359375,
+          "y": 0.5277777777777778,
+          "w": 0.02197265625,
+          "h": 0.036458333333333336
+        },
+        "cardCrop": {
+          "x": 0.82373046875,
+          "y": 0.5243055555555556,
+          "w": 0.02587890625,
+          "h": 0.043402777777777776
+        }
+      },
+      {
+        "id": "silver-camel",
+        "name": {
+          "en": "Little silver camel",
+          "he": "גמל כסף קטן"
+        },
+        "hint": {
+          "en": "Look beneath the fabric in the pottery basket",
+          "he": "חפשו מתחת לבד שבסל הכלים"
+        },
+        "category": "object",
+        "rarity": "epic",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The little silver camel waited among the little stories of Marrakech.",
+            "he": "גמל כסף קטן חיכה לנו בין הסיפורים של מרקש."
+          }
+        },
+        "visibleRect": {
+          "x": 0.791015625,
+          "y": 0.5668402777777778,
+          "w": 0.04638671875,
+          "h": 0.06770833333333333
+        },
+        "hitRect": {
+          "x": 0.791015625,
+          "y": 0.5668402777777778,
+          "w": 0.04638671875,
+          "h": 0.06770833333333333
+        },
+        "cardCrop": {
+          "x": 0.7890625,
+          "y": 0.5633680555555556,
+          "w": 0.05029296875,
+          "h": 0.07465277777777778
+        }
+      }
+    ],
+    "postcard": {
+      "id": "marrakech-postcard",
+      "title": {
+        "en": "My adventure — Marrakech",
+        "he": "ההרפתקה שלי — מרקש"
+      },
+      "targetId": "hide-1",
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "w": 1,
+        "h": 1
+      }
+    }
+  }
+}

@@ -1,0 +1,403 @@
+{
+  "patchBoard": {
+    "board": "adventure-sydney",
+    "art": "public/scenes/adventure-sydney-density-v3/base.webp",
+    "ground": "Safe pedestrian ground within the illustrated activity, never unsupported air or traffic",
+    "sittable": true,
+    "wardrobe": "Muted sea-blue shirt, ochre shorts, comfortable brown shoes; no hat hiding curls.",
+    "hides": [
+      {
+        "id": "adventure-sydney-density-v3-1",
+        "left": 1663,
+        "top": 150,
+        "pose": "standing",
+        "targetId": "hide-1",
+        "mask": {
+          "left": 362,
+          "top": 369,
+          "width": 128,
+          "height": 283
+        },
+        "hint": {
+          "en": "Replace only the boy in a blue cap to the left of the girl in yellow in the bubble-watching group. Same dry promenade ground and same near-equal child scale, readable three-quarter face, reaching for a bubble without hiding his face.",
+          "he": "חפשו בין הילדים שמסתכלים על הבועות"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 280,
+          "support": "Replace only the boy in a blue cap to the left of the girl in yellow in the bubble-watching group. Same dry promenade ground and same near-equal child scale, readable three-quarter face, reaching for a bubble without hiding his face.",
+          "lighting": "Match the immediate neighboring painted faces, brown hand-drawn contours, matte color and shaped light/shadow planes. Adapt illumination, never replace the recognizable canonical Bar face or curls.",
+          "occlusion": "Keep all eyes, cheeks and characteristic curls readable. Natural object overlap only below the face. Remove the replaced bystander completely inside the edit window without orphan limbs. Preserve all neighbors.",
+          "comparators": "Age five, natural preschool proportions. Match the original child at this exact spot rather than an adult or tiny distant toddler. Equivalent standing height around 280 native pixels; visible head including curls approximately 60-85 native pixels, never a miniature, giant head or portrait cutout."
+        }
+      },
+      {
+        "id": "adventure-sydney-density-v3-2",
+        "left": 394,
+        "top": 1391,
+        "pose": "crouching",
+        "targetId": "hide-2",
+        "mask": {
+          "left": 275,
+          "top": 203,
+          "width": 171,
+          "height": 356
+        },
+        "hint": {
+          "en": "Replace only the brown-shirt child sitting beside the white-haired grandfather with the large open book, at the left foreground. Preserve grandfather, book, stool and neighboring table. Keep original low seated pose, short legs and three-quarter face toward the book.",
+          "he": "חפשו ליד הסבא שקורא בספר בצד שמאל"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 315,
+          "support": "Replace only the brown-shirt child sitting beside the white-haired grandfather with the large open book, at the left foreground. Preserve grandfather, book, stool and neighboring table. Keep original low seated pose, short legs and three-quarter face toward the book.",
+          "lighting": "Match the immediate neighboring painted faces, brown hand-drawn contours, matte color and shaped light/shadow planes. Adapt illumination, never replace the recognizable canonical Bar face or curls.",
+          "occlusion": "Keep all eyes, cheeks and characteristic curls readable. Natural object overlap only below the face. Remove the replaced bystander completely inside the edit window without orphan limbs. Preserve all neighbors.",
+          "comparators": "Age five, natural preschool proportions. Match the original child at this exact spot rather than an adult or tiny distant toddler. Equivalent standing height around 315 native pixels; visible head including curls approximately 60-85 native pixels, never a miniature, giant head or portrait cutout."
+        }
+      },
+      {
+        "id": "adventure-sydney-density-v3-3",
+        "left": 1716,
+        "top": 1391,
+        "pose": "kneeling",
+        "targetId": "hide-3",
+        "mask": {
+          "left": 58,
+          "top": 385,
+          "width": 272,
+          "height": 302
+        },
+        "hint": {
+          "en": "Replace only the mustard-shirt boy on the right of the foreground chalk harbor-map group. Kneel naturally and hold one chalk piece, same floor and scale as his friends. Clear three-quarter face; preserve the map and other children.",
+          "he": "חפשו בין הילדים שמציירים בגיר על הרצפה"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 320,
+          "support": "Replace only the mustard-shirt boy on the right of the foreground chalk harbor-map group. Kneel naturally and hold one chalk piece, same floor and scale as his friends. Clear three-quarter face; preserve the map and other children.",
+          "lighting": "Match the immediate neighboring painted faces, brown hand-drawn contours, matte color and shaped light/shadow planes. Adapt illumination, never replace the recognizable canonical Bar face or curls.",
+          "occlusion": "Keep all eyes, cheeks and characteristic curls readable. Natural object overlap only below the face. Remove the replaced bystander completely inside the edit window without orphan limbs. Preserve all neighbors.",
+          "comparators": "Age five, natural preschool proportions. Match the original child at this exact spot rather than an adult or tiny distant toddler. Equivalent standing height around 320 native pixels; visible head including curls approximately 60-85 native pixels, never a miniature, giant head or portrait cutout."
+        }
+      }
+    ]
+  },
+  "plan": {
+    "boardSlug": "adventure-sydney",
+    "worldSlug": "adventure-trail",
+    "name": {
+      "en": "Sydney",
+      "he": "סידני"
+    },
+    "direction": {
+      "orientation": "landscape",
+      "aspect": "16:9",
+      "spread": "activity-across-width-and-height",
+      "perspective": "shallow",
+      "scaleTreatment": "similar-size-people",
+      "illustration": "storybook-hand-drawn",
+      "identityPrecedence": "reference-face-hair-age",
+      "locationCues": [
+        {
+          "en": "Sydney",
+          "he": "סידני"
+        },
+        {
+          "en": "People and local activities",
+          "he": "אנשים ופעילויות מקומיות"
+        }
+      ],
+      "microStories": [
+        {
+          "en": "People working and playing",
+          "he": "אנשים עובדים ומשחקים"
+        },
+        {
+          "en": "Animals and objects among the activities",
+          "he": "חיות וחפצים בין הפעילויות"
+        }
+      ]
+    },
+    "plannedHides": 3,
+    "collectionUi": "guided-v1",
+    "status": "ready",
+    "sceneVersion": 11,
+    "art": {
+      "base": "/scenes/adventure-sydney-density-v3/base.webp",
+      "sha256": "5ca5c5b033762c08d7c8b8e3ccf04be8d8b35ea978a2d4171536456053a7d4ec",
+      "width": 3840,
+      "height": 2160
+    },
+    "personalZones": [
+      {
+        "x": 0.43307291666666664,
+        "y": 0.06944444444444445,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      },
+      {
+        "x": 0.10260416666666666,
+        "y": 0.6439814814814815,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      },
+      {
+        "x": 0.446875,
+        "y": 0.6439814814814815,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      }
+    ],
+    "discoveries": [
+      {
+        "id": "blue-goggles",
+        "name": {
+          "en": "Swim goggles",
+          "he": "משקפת שחייה"
+        },
+        "hint": {
+          "en": "Look beside the picnic baskets",
+          "he": "חפשו ליד סלסילות הפיקניק"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The swim goggles waited among the little stories of Sydney.",
+            "he": "משקפת שחייה חיכה לנו בין הסיפורים של סידני."
+          }
+        },
+        "visibleRect": {
+          "x": 0.267578125,
+          "y": 0.4626736111111111,
+          "w": 0.029296875,
+          "h": 0.029513888888888888
+        },
+        "hitRect": {
+          "x": 0.267578125,
+          "y": 0.4626736111111111,
+          "w": 0.029296875,
+          "h": 0.029513888888888888
+        },
+        "cardCrop": {
+          "x": 0.265625,
+          "y": 0.4592013888888889,
+          "w": 0.033203125,
+          "h": 0.036458333333333336
+        }
+      },
+      {
+        "id": "yellow-bucket",
+        "name": {
+          "en": "Yellow bucket",
+          "he": "דלי צהוב"
+        },
+        "hint": {
+          "en": "Look among the gardening tools",
+          "he": "חפשו בין כלי הגינון"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The yellow bucket waited among the little stories of Sydney.",
+            "he": "דלי צהוב חיכה לנו בין הסיפורים של סידני."
+          }
+        },
+        "visibleRect": {
+          "x": 0.6396484375,
+          "y": 0.5277777777777778,
+          "w": 0.025390625,
+          "h": 0.052083333333333336
+        },
+        "hitRect": {
+          "x": 0.6396484375,
+          "y": 0.5277777777777778,
+          "w": 0.025390625,
+          "h": 0.052083333333333336
+        },
+        "cardCrop": {
+          "x": 0.6376953125,
+          "y": 0.5243055555555556,
+          "w": 0.029296875,
+          "h": 0.059027777777777776
+        }
+      },
+      {
+        "id": "toy-lifering",
+        "name": {
+          "en": "Little life ring",
+          "he": "גלגל הצלה קטן"
+        },
+        "hint": {
+          "en": "Look among the toy boats",
+          "he": "חפשו בין סירות הצעצוע"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The little life ring waited among the little stories of Sydney.",
+            "he": "גלגל הצלה קטן חיכה לנו בין הסיפורים של סידני."
+          }
+        },
+        "visibleRect": {
+          "x": 0.240234375,
+          "y": 0.7387152777777778,
+          "w": 0.0244140625,
+          "h": 0.03125
+        },
+        "hitRect": {
+          "x": 0.240234375,
+          "y": 0.7387152777777778,
+          "w": 0.0244140625,
+          "h": 0.03125
+        },
+        "cardCrop": {
+          "x": 0.23828125,
+          "y": 0.7352430555555556,
+          "w": 0.0283203125,
+          "h": 0.03819444444444445
+        }
+      },
+      {
+        "id": "green-boomerang",
+        "name": {
+          "en": "Green boomerang",
+          "he": "בומרנג ירוק"
+        },
+        "hint": {
+          "en": "Look inside the souvenir bag",
+          "he": "חפשו בתוך שקית המזכרות"
+        },
+        "category": "object",
+        "rarity": "rare",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The green boomerang waited among the little stories of Sydney.",
+            "he": "בומרנג ירוק חיכה לנו בין הסיפורים של סידני."
+          }
+        },
+        "visibleRect": {
+          "x": 0.36865234375,
+          "y": 0.3359375,
+          "w": 0.021484375,
+          "h": 0.057291666666666664
+        },
+        "hitRect": {
+          "x": 0.36865234375,
+          "y": 0.3359375,
+          "w": 0.021484375,
+          "h": 0.057291666666666664
+        },
+        "cardCrop": {
+          "x": 0.36669921875,
+          "y": 0.3324652777777778,
+          "w": 0.025390625,
+          "h": 0.0642361111111111
+        }
+      },
+      {
+        "id": "purple-plane",
+        "name": {
+          "en": "Purple paper plane",
+          "he": "מטוס נייר סגול"
+        },
+        "hint": {
+          "en": "Look among the planter leaves",
+          "he": "חפשו בין עלי הערוגה"
+        },
+        "category": "object",
+        "rarity": "rare",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The purple paper plane waited among the little stories of Sydney.",
+            "he": "מטוס נייר סגול חיכה לנו בין הסיפורים של סידני."
+          }
+        },
+        "visibleRect": {
+          "x": 0.6904296875,
+          "y": 0.390625,
+          "w": 0.0302734375,
+          "h": 0.03732638888888889
+        },
+        "hitRect": {
+          "x": 0.6904296875,
+          "y": 0.390625,
+          "w": 0.0302734375,
+          "h": 0.03732638888888889
+        },
+        "cardCrop": {
+          "x": 0.6884765625,
+          "y": 0.3871527777777778,
+          "w": 0.0341796875,
+          "h": 0.044270833333333336
+        }
+      },
+      {
+        "id": "pearl-shell",
+        "name": {
+          "en": "Pearl shell",
+          "he": "צדפה עם פנינה"
+        },
+        "hint": {
+          "en": "Look among shells and netting",
+          "he": "חפשו בין הצדפים והרשת"
+        },
+        "category": "object",
+        "rarity": "epic",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The pearl shell waited among the little stories of Sydney.",
+            "he": "צדפה עם פנינה חיכה לנו בין הסיפורים של סידני."
+          }
+        },
+        "visibleRect": {
+          "x": 0.6962890625,
+          "y": 0.7473958333333334,
+          "w": 0.033203125,
+          "h": 0.043402777777777776
+        },
+        "hitRect": {
+          "x": 0.6962890625,
+          "y": 0.7473958333333334,
+          "w": 0.033203125,
+          "h": 0.043402777777777776
+        },
+        "cardCrop": {
+          "x": 0.6943359375,
+          "y": 0.7439236111111112,
+          "w": 0.037109375,
+          "h": 0.050347222222222224
+        }
+      }
+    ],
+    "postcard": {
+      "id": "sydney-postcard",
+      "title": {
+        "en": "My adventure — Sydney",
+        "he": "ההרפתקה שלי — סידני"
+      },
+      "targetId": "hide-1",
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "w": 1,
+        "h": 1
+      }
+    }
+  }
+}

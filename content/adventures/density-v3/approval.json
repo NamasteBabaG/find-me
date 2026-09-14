@@ -1,0 +1,20 @@
+{
+  "version": "density-v3-parent-approved-20260914",
+  "date": "2026-09-14",
+  "request": "יאאלה אחלה אפשר להתחיל מחבואים ואת שאר העבודה",
+  "status": "parent-approved-for-three-new-hides-per-board",
+  "personalRenderingAllowed": true,
+  "child": "Bar",
+  "ageYears": 5,
+  "contentVersion": 9,
+  "sourceHashes": {
+    "paris": "3c29344f376353e5b5b1875f4835746743799bdd0c028c5c561dea7e61faa886",
+    "marrakech": "def4b028e261d468195b6dd01cfcdfca967705415f6f524f3502ee08eca169f5",
+    "tokyo": "8f21e631bee7ddf624f586ee6d4fe4d9297159b6f4a1aa509cacd3b1f60672c6",
+    "greatwall": "34be3f1508e19b934ac65177d450a3bf631024d2d0430857e7bd6b002393a6bb",
+    "sydney": "5ca5c5b033762c08d7c8b8e3ccf04be8d8b35ea978a2d4171536456053a7d4ec",
+    "antarctica": "7a323fd6b340924b20915666e3548bdb151399b0bb19230a199d757b9aae2513"
+  },
+  "existingThreeBoardGameChanged": false,
+  "staleExpansionV1InputsAllowed": false
+}

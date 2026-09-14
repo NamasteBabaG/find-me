@@ -1,0 +1,403 @@
+{
+  "patchBoard": {
+    "board": "adventure-greatwall",
+    "art": "public/scenes/adventure-greatwall-density-v3/base.webp",
+    "ground": "Safe pedestrian ground within the illustrated activity, never unsupported air or traffic",
+    "sittable": true,
+    "wardrobe": "Muted teal jacket over ochre shirt, dark trousers and sturdy brown shoes; no hat obscuring curls.",
+    "hides": [
+      {
+        "id": "adventure-greatwall-density-v3-1",
+        "left": 188,
+        "top": 150,
+        "pose": "peeking",
+        "targetId": "hide-1",
+        "mask": {
+          "left": 99,
+          "top": 431,
+          "width": 159,
+          "height": 223
+        },
+        "hint": {
+          "en": "Replace only the small blue-jacket child standing behind the upper-left tea table, beside the wooden box. Preserve the foreground adult arm and table; Bar lower legs are naturally hidden behind the table. Clear three-quarter face and curls.",
+          "he": "חפשו מאחורי שולחן התה בצד שמאל למעלה"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 255,
+          "support": "Replace only the small blue-jacket child standing behind the upper-left tea table, beside the wooden box. Preserve the foreground adult arm and table; Bar lower legs are naturally hidden behind the table. Clear three-quarter face and curls.",
+          "lighting": "Match the immediate neighboring painted faces, brown hand-drawn contours, matte color and shaped light/shadow planes. Adapt illumination, never replace the recognizable canonical Bar face or curls.",
+          "occlusion": "Keep all eyes, cheeks and characteristic curls readable. Natural object overlap only below the face. Remove the replaced bystander completely inside the edit window without orphan limbs. Preserve all neighbors.",
+          "comparators": "Age five, natural preschool proportions. Match the original child at this exact spot rather than an adult or tiny distant toddler. Equivalent standing height around 255 native pixels; visible head including curls approximately 60-85 native pixels, never a miniature, giant head or portrait cutout."
+        }
+      },
+      {
+        "id": "adventure-greatwall-density-v3-2",
+        "left": 84,
+        "top": 1391,
+        "pose": "kneeling",
+        "targetId": "hide-2",
+        "mask": {
+          "left": 218,
+          "top": 428,
+          "width": 188,
+          "height": 274
+        },
+        "hint": {
+          "en": "Replace only the teal-jacket child at the left side of the foreground group examining loose paper drawings. Kneel on stone beside the paper, visible face turned three-quarter inward. Preserve the neighboring children and their hands.",
+          "he": "חפשו בין הילדים והציורים בפינה השמאלית למטה"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 315,
+          "support": "Replace only the teal-jacket child at the left side of the foreground group examining loose paper drawings. Kneel on stone beside the paper, visible face turned three-quarter inward. Preserve the neighboring children and their hands.",
+          "lighting": "Match the immediate neighboring painted faces, brown hand-drawn contours, matte color and shaped light/shadow planes. Adapt illumination, never replace the recognizable canonical Bar face or curls.",
+          "occlusion": "Keep all eyes, cheeks and characteristic curls readable. Natural object overlap only below the face. Remove the replaced bystander completely inside the edit window without orphan limbs. Preserve all neighbors.",
+          "comparators": "Age five, natural preschool proportions. Match the original child at this exact spot rather than an adult or tiny distant toddler. Equivalent standing height around 315 native pixels; visible head including curls approximately 60-85 native pixels, never a miniature, giant head or portrait cutout."
+        }
+      },
+      {
+        "id": "adventure-greatwall-density-v3-3",
+        "left": 2100,
+        "top": 1391,
+        "pose": "sitting-cross-legged",
+        "targetId": "hide-3",
+        "mask": {
+          "left": 263,
+          "top": 387,
+          "width": 163,
+          "height": 240
+        },
+        "hint": {
+          "en": "Replace only the purple-shirt child on the right of the small foreground tangram group. Sit with naturally folded short legs, reaching for one wooden shape. Face three-quarter left, no extreme profile; preserve the green-shirt child and game.",
+          "he": "חפשו ליד הילדים ומשחק הצורות למטה"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 300,
+          "support": "Replace only the purple-shirt child on the right of the small foreground tangram group. Sit with naturally folded short legs, reaching for one wooden shape. Face three-quarter left, no extreme profile; preserve the green-shirt child and game.",
+          "lighting": "Match the immediate neighboring painted faces, brown hand-drawn contours, matte color and shaped light/shadow planes. Adapt illumination, never replace the recognizable canonical Bar face or curls.",
+          "occlusion": "Keep all eyes, cheeks and characteristic curls readable. Natural object overlap only below the face. Remove the replaced bystander completely inside the edit window without orphan limbs. Preserve all neighbors.",
+          "comparators": "Age five, natural preschool proportions. Match the original child at this exact spot rather than an adult or tiny distant toddler. Equivalent standing height around 300 native pixels; visible head including curls approximately 60-85 native pixels, never a miniature, giant head or portrait cutout."
+        }
+      }
+    ]
+  },
+  "plan": {
+    "boardSlug": "adventure-greatwall",
+    "worldSlug": "adventure-trail",
+    "name": {
+      "en": "Great Wall",
+      "he": "החומה הגדולה"
+    },
+    "direction": {
+      "orientation": "landscape",
+      "aspect": "16:9",
+      "spread": "activity-across-width-and-height",
+      "perspective": "shallow",
+      "scaleTreatment": "similar-size-people",
+      "illustration": "storybook-hand-drawn",
+      "identityPrecedence": "reference-face-hair-age",
+      "locationCues": [
+        {
+          "en": "Great Wall",
+          "he": "החומה הגדולה"
+        },
+        {
+          "en": "People and local activities",
+          "he": "אנשים ופעילויות מקומיות"
+        }
+      ],
+      "microStories": [
+        {
+          "en": "People working and playing",
+          "he": "אנשים עובדים ומשחקים"
+        },
+        {
+          "en": "Animals and objects among the activities",
+          "he": "חיות וחפצים בין הפעילויות"
+        }
+      ]
+    },
+    "plannedHides": 3,
+    "collectionUi": "guided-v1",
+    "status": "ready",
+    "sceneVersion": 11,
+    "art": {
+      "base": "/scenes/adventure-greatwall-density-v3/base.webp",
+      "sha256": "34be3f1508e19b934ac65177d450a3bf631024d2d0430857e7bd6b002393a6bb",
+      "width": 3840,
+      "height": 2160
+    },
+    "personalZones": [
+      {
+        "x": 0.04895833333333333,
+        "y": 0.06944444444444445,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      },
+      {
+        "x": 0.021875,
+        "y": 0.6439814814814815,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      },
+      {
+        "x": 0.546875,
+        "y": 0.6439814814814815,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      }
+    ],
+    "discoveries": [
+      {
+        "id": "cloud-drum",
+        "name": {
+          "en": "Cloud drum",
+          "he": "תוף עם ענן"
+        },
+        "hint": {
+          "en": "Look among the musical instruments",
+          "he": "חפשו בין כלי הנגינה"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The cloud drum waited among the little stories of Great Wall.",
+            "he": "תוף עם ענן חיכה לנו בין הסיפורים של החומה הגדולה."
+          }
+        },
+        "visibleRect": {
+          "x": 0.31982421875,
+          "y": 0.2786458333333333,
+          "w": 0.0283203125,
+          "h": 0.06770833333333333
+        },
+        "hitRect": {
+          "x": 0.31982421875,
+          "y": 0.2786458333333333,
+          "w": 0.0283203125,
+          "h": 0.06770833333333333
+        },
+        "cardCrop": {
+          "x": 0.31787109375,
+          "y": 0.2751736111111111,
+          "w": 0.0322265625,
+          "h": 0.07465277777777778
+        }
+      },
+      {
+        "id": "blue-bottle",
+        "name": {
+          "en": "Blue bottle",
+          "he": "בקבוק כחול"
+        },
+        "hint": {
+          "en": "Look beside the food basket",
+          "he": "חפשו ליד סל האוכל"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The blue bottle waited among the little stories of Great Wall.",
+            "he": "בקבוק כחול חיכה לנו בין הסיפורים של החומה הגדולה."
+          }
+        },
+        "visibleRect": {
+          "x": 0.68603515625,
+          "y": 0.4305555555555556,
+          "w": 0.01708984375,
+          "h": 0.059895833333333336
+        },
+        "hitRect": {
+          "x": 0.68603515625,
+          "y": 0.4305555555555556,
+          "w": 0.01708984375,
+          "h": 0.059895833333333336
+        },
+        "cardCrop": {
+          "x": 0.68408203125,
+          "y": 0.4270833333333333,
+          "w": 0.02099609375,
+          "h": 0.06684027777777778
+        }
+      },
+      {
+        "id": "brass-compass",
+        "name": {
+          "en": "Brass compass",
+          "he": "מצפן זהוב"
+        },
+        "hint": {
+          "en": "Look among hands and maps",
+          "he": "חפשו בין הידיים והמפות"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The brass compass waited among the little stories of Great Wall.",
+            "he": "מצפן זהוב חיכה לנו בין הסיפורים של החומה הגדולה."
+          }
+        },
+        "visibleRect": {
+          "x": 0.21533203125,
+          "y": 0.6744791666666666,
+          "w": 0.01953125,
+          "h": 0.03819444444444445
+        },
+        "hitRect": {
+          "x": 0.21533203125,
+          "y": 0.6744791666666666,
+          "w": 0.01953125,
+          "h": 0.03819444444444445
+        },
+        "cardCrop": {
+          "x": 0.21337890625,
+          "y": 0.6710069444444444,
+          "w": 0.0234375,
+          "h": 0.04513888888888889
+        }
+      },
+      {
+        "id": "purple-fan",
+        "name": {
+          "en": "Purple fan",
+          "he": "מניפה סגולה"
+        },
+        "hint": {
+          "en": "Look beside the tea tray",
+          "he": "חפשו ליד מגש התה"
+        },
+        "category": "object",
+        "rarity": "rare",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The purple fan waited among the little stories of Great Wall.",
+            "he": "מניפה סגולה חיכה לנו בין הסיפורים של החומה הגדולה."
+          }
+        },
+        "visibleRect": {
+          "x": 0.19189453125,
+          "y": 0.4887152777777778,
+          "w": 0.04638671875,
+          "h": 0.0546875
+        },
+        "hitRect": {
+          "x": 0.19189453125,
+          "y": 0.4887152777777778,
+          "w": 0.04638671875,
+          "h": 0.0546875
+        },
+        "cardCrop": {
+          "x": 0.18994140625,
+          "y": 0.4852430555555556,
+          "w": 0.05029296875,
+          "h": 0.06163194444444445
+        }
+      },
+      {
+        "id": "jade-turtle",
+        "name": {
+          "en": "Green turtle",
+          "he": "צב ירוק"
+        },
+        "hint": {
+          "en": "Look beside the planter on the wall",
+          "he": "חפשו ליד העציץ שעל החומה"
+        },
+        "category": "object",
+        "rarity": "rare",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The green turtle waited among the little stories of Great Wall.",
+            "he": "צב ירוק חיכה לנו בין הסיפורים של החומה הגדולה."
+          }
+        },
+        "visibleRect": {
+          "x": 0.80615234375,
+          "y": 0.3116319444444444,
+          "w": 0.05078125,
+          "h": 0.051215277777777776
+        },
+        "hitRect": {
+          "x": 0.80615234375,
+          "y": 0.3116319444444444,
+          "w": 0.05078125,
+          "h": 0.051215277777777776
+        },
+        "cardCrop": {
+          "x": 0.80419921875,
+          "y": 0.3081597222222222,
+          "w": 0.0546875,
+          "h": 0.058159722222222224
+        }
+      },
+      {
+        "id": "dragon-charm",
+        "name": {
+          "en": "Little red dragon",
+          "he": "דרקון אדום קטן"
+        },
+        "hint": {
+          "en": "Look among maps in the travel chest",
+          "he": "חפשו בין המפות שבתיבת המסע"
+        },
+        "category": "object",
+        "rarity": "epic",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The little red dragon waited among the little stories of Great Wall.",
+            "he": "דרקון אדום קטן חיכה לנו בין הסיפורים של החומה הגדולה."
+          }
+        },
+        "visibleRect": {
+          "x": 0.7392578125,
+          "y": 0.7144097222222222,
+          "w": 0.05419921875,
+          "h": 0.07465277777777778
+        },
+        "hitRect": {
+          "x": 0.7392578125,
+          "y": 0.7144097222222222,
+          "w": 0.05419921875,
+          "h": 0.07465277777777778
+        },
+        "cardCrop": {
+          "x": 0.7373046875,
+          "y": 0.7109375,
+          "w": 0.05810546875,
+          "h": 0.08159722222222222
+        }
+      }
+    ],
+    "postcard": {
+      "id": "greatwall-postcard",
+      "title": {
+        "en": "My adventure — Great Wall",
+        "he": "ההרפתקה שלי — החומה הגדולה"
+      },
+      "targetId": "hide-1",
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "w": 1,
+        "h": 1
+      }
+    }
+  }
+}
