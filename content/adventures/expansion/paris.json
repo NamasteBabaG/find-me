@@ -1,0 +1,403 @@
+{
+  "patchBoard": {
+    "board": "adventure-paris",
+    "art": "public/scenes/adventure-paris-v1/base.webp",
+    "ground": "Safe pedestrian ground within the illustrated activity, never unsupported air or traffic",
+    "sittable": true,
+    "wardrobe": "Muted teal shirt, tan shorts, brown comfortable shoes; no hat over the curls.",
+    "hides": [
+      {
+        "id": "adventure-paris-1",
+        "left": 1700,
+        "top": 150,
+        "pose": "standing",
+        "targetId": "hide-1",
+        "mask": {
+          "left": 155,
+          "top": 250,
+          "width": 210,
+          "height": 360
+        },
+        "hint": {
+          "en": "Level stone plaza next to the upper group of children and musicians. Match nearby blue-shirted child scale; same three-quarter stance.",
+          "he": "חפשו ליד הילדים והמוזיקאים"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 340,
+          "support": "Level stone plaza next to the upper group of children and musicians. Match nearby blue-shirted child scale; same three-quarter stance.",
+          "lighting": "Match the immediate neighboring illustrated faces: the same side-lit warm highlights, cooler shadow planes, drawn brown contour weight and painted fabric. Preserve the canonical Bar face, never photo collage.",
+          "occlusion": "Allow partial natural overlap from a nearby object only below the face. The whole face, eyes and curls must remain recognizable. No merged hands or limbs.",
+          "comparators": "Age five with natural child proportions. Match the head scale of the adjacent child, normally about 85-100 crop pixels including curls. A standing equivalent is about 340px, never a miniature figure. Integrate three-quarter view and expression into this little story without losing identity."
+        }
+      },
+      {
+        "id": "adventure-paris-2",
+        "left": 200,
+        "top": 1030,
+        "pose": "standing",
+        "targetId": "hide-2",
+        "mask": {
+          "left": 115,
+          "top": 50,
+          "width": 230,
+          "height": 410
+        },
+        "hint": {
+          "en": "Cobbled paving beside the vegetable baskets. Replace the small child within the mask only, retaining all baskets and surrounding adults.",
+          "he": "חפשו בין סלי הירקות ליד השוק"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 350,
+          "support": "Cobbled paving beside the vegetable baskets. Replace the small child within the mask only, retaining all baskets and surrounding adults.",
+          "lighting": "Match the immediate neighboring illustrated faces: the same side-lit warm highlights, cooler shadow planes, drawn brown contour weight and painted fabric. Preserve the canonical Bar face, never photo collage.",
+          "occlusion": "Allow partial natural overlap from a nearby object only below the face. The whole face, eyes and curls must remain recognizable. No merged hands or limbs.",
+          "comparators": "Age five with natural child proportions. Match the head scale of the adjacent child, normally about 85-100 crop pixels including curls. A standing equivalent is about 350px, never a miniature figure. Integrate three-quarter view and expression into this little story without losing identity."
+        }
+      },
+      {
+        "id": "adventure-paris-3",
+        "left": 2800,
+        "top": 280,
+        "pose": "standing",
+        "targetId": "hide-3",
+        "mask": {
+          "left": 105,
+          "top": 95,
+          "width": 235,
+          "height": 465
+        },
+        "hint": {
+          "en": "Stone floor in front of the bakery counter. A five-year-old beside the counter with visible face in three-quarter view, not an adult baker.",
+          "he": "חפשו ליד הדלפק של המאפייה"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 370,
+          "support": "Stone floor in front of the bakery counter. A five-year-old beside the counter with visible face in three-quarter view, not an adult baker.",
+          "lighting": "Match the immediate neighboring illustrated faces: the same side-lit warm highlights, cooler shadow planes, drawn brown contour weight and painted fabric. Preserve the canonical Bar face, never photo collage.",
+          "occlusion": "Allow partial natural overlap from a nearby object only below the face. The whole face, eyes and curls must remain recognizable. No merged hands or limbs.",
+          "comparators": "Age five with natural child proportions. Match the head scale of the adjacent child, normally about 85-100 crop pixels including curls. A standing equivalent is about 370px, never a miniature figure. Integrate three-quarter view and expression into this little story without losing identity."
+        }
+      }
+    ]
+  },
+  "plan": {
+    "boardSlug": "adventure-paris",
+    "worldSlug": "adventure-trail",
+    "name": {
+      "en": "Paris",
+      "he": "פריז"
+    },
+    "direction": {
+      "orientation": "landscape",
+      "aspect": "16:9",
+      "spread": "activity-across-width-and-height",
+      "perspective": "shallow",
+      "scaleTreatment": "similar-size-people",
+      "illustration": "storybook-hand-drawn",
+      "identityPrecedence": "reference-face-hair-age",
+      "locationCues": [
+        {
+          "en": "Paris",
+          "he": "פריז"
+        },
+        {
+          "en": "People and local activities",
+          "he": "אנשים ופעילויות מקומיות"
+        }
+      ],
+      "microStories": [
+        {
+          "en": "People working and playing",
+          "he": "אנשים עובדים ומשחקים"
+        },
+        {
+          "en": "Animals and objects among the activities",
+          "he": "חיות וחפצים בין הפעילויות"
+        }
+      ]
+    },
+    "plannedHides": 3,
+    "collectionUi": "guided-v1",
+    "status": "ready",
+    "sceneVersion": 10,
+    "art": {
+      "base": "/scenes/adventure-paris-v1/base.webp",
+      "sha256": "05b88f85c51576f225f5c2b057b85c97e85c0dc5c30d628999452cd9bc335690",
+      "width": 3840,
+      "height": 2160
+    },
+    "personalZones": [
+      {
+        "x": 0.4427083333333333,
+        "y": 0.06944444444444445,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      },
+      {
+        "x": 0.052083333333333336,
+        "y": 0.47685185185185186,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      },
+      {
+        "x": 0.7291666666666666,
+        "y": 0.12962962962962962,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      }
+    ],
+    "discoveries": [
+      {
+        "id": "heart-beret",
+        "name": {
+          "en": "Heart beret",
+          "he": "ברט עם לב"
+        },
+        "hint": {
+          "en": "Look on a cafe table",
+          "he": "חפשו על שולחן בית הקפה"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The heart beret waited among the little stories of Paris.",
+            "he": "ברט עם לב חיכה לנו בין הסיפורים של פריז."
+          }
+        },
+        "visibleRect": {
+          "x": 0.142578125,
+          "y": 0.3194444444444444,
+          "w": 0.0400390625,
+          "h": 0.03125
+        },
+        "hitRect": {
+          "x": 0.142578125,
+          "y": 0.3194444444444444,
+          "w": 0.0400390625,
+          "h": 0.03125
+        },
+        "cardCrop": {
+          "x": 0.1396484375,
+          "y": 0.3142361111111111,
+          "w": 0.0458984375,
+          "h": 0.041666666666666664
+        }
+      },
+      {
+        "id": "star-cup",
+        "name": {
+          "en": "Star cup",
+          "he": "ספל עם כוכב"
+        },
+        "hint": {
+          "en": "Look among cups beside the bakery",
+          "he": "חפשו בין הכוסות ליד המאפייה"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The star cup waited among the little stories of Paris.",
+            "he": "ספל עם כוכב חיכה לנו בין הסיפורים של פריז."
+          }
+        },
+        "visibleRect": {
+          "x": 0.9365234375,
+          "y": 0.2951388888888889,
+          "w": 0.0283203125,
+          "h": 0.03993055555555555
+        },
+        "hitRect": {
+          "x": 0.9365234375,
+          "y": 0.2951388888888889,
+          "w": 0.0283203125,
+          "h": 0.03993055555555555
+        },
+        "cardCrop": {
+          "x": 0.93359375,
+          "y": 0.2899305555555556,
+          "w": 0.0341796875,
+          "h": 0.050347222222222224
+        }
+      },
+      {
+        "id": "yellow-bus",
+        "name": {
+          "en": "Toy bus",
+          "he": "אוטובוס צעצוע"
+        },
+        "hint": {
+          "en": "Look between the vegetable baskets",
+          "he": "חפשו בין סלי הירקות"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The toy bus waited among the little stories of Paris.",
+            "he": "אוטובוס צעצוע חיכה לנו בין הסיפורים של פריז."
+          }
+        },
+        "visibleRect": {
+          "x": 0.1259765625,
+          "y": 0.8524305555555556,
+          "w": 0.05029296875,
+          "h": 0.06597222222222222
+        },
+        "hitRect": {
+          "x": 0.1259765625,
+          "y": 0.8524305555555556,
+          "w": 0.05029296875,
+          "h": 0.06597222222222222
+        },
+        "cardCrop": {
+          "x": 0.123046875,
+          "y": 0.8472222222222222,
+          "w": 0.05615234375,
+          "h": 0.0763888888888889
+        }
+      },
+      {
+        "id": "ribbon-key",
+        "name": {
+          "en": "Ribbon key",
+          "he": "מפתח עם סרט"
+        },
+        "hint": {
+          "en": "Look among postcards and blue cloth",
+          "he": "חפשו בין גלויות ובד כחול"
+        },
+        "category": "object",
+        "rarity": "rare",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The ribbon key waited among the little stories of Paris.",
+            "he": "מפתח עם סרט חיכה לנו בין הסיפורים של פריז."
+          }
+        },
+        "visibleRect": {
+          "x": 0.6884765625,
+          "y": 0.4913194444444444,
+          "w": 0.03076171875,
+          "h": 0.052083333333333336
+        },
+        "hitRect": {
+          "x": 0.6884765625,
+          "y": 0.4913194444444444,
+          "w": 0.03076171875,
+          "h": 0.052083333333333336
+        },
+        "cardCrop": {
+          "x": 0.685546875,
+          "y": 0.4861111111111111,
+          "w": 0.03662109375,
+          "h": 0.0625
+        }
+      },
+      {
+        "id": "paper-boat",
+        "name": {
+          "en": "Paper boat",
+          "he": "סירת נייר"
+        },
+        "hint": {
+          "en": "Look along the fountain edge",
+          "he": "חפשו על שפת המזרקה"
+        },
+        "category": "object",
+        "rarity": "rare",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The paper boat waited among the little stories of Paris.",
+            "he": "סירת נייר חיכה לנו בין הסיפורים של פריז."
+          }
+        },
+        "visibleRect": {
+          "x": 0.4921875,
+          "y": 0.7456597222222222,
+          "w": 0.03564453125,
+          "h": 0.035590277777777776
+        },
+        "hitRect": {
+          "x": 0.4921875,
+          "y": 0.7456597222222222,
+          "w": 0.03564453125,
+          "h": 0.035590277777777776
+        },
+        "cardCrop": {
+          "x": 0.4892578125,
+          "y": 0.7404513888888888,
+          "w": 0.04150390625,
+          "h": 0.04600694444444445
+        }
+      },
+      {
+        "id": "eiffel-souvenir",
+        "name": {
+          "en": "Little Eiffel Tower",
+          "he": "מגדל אייפל קטן"
+        },
+        "hint": {
+          "en": "Look for a souvenir resting among postcards",
+          "he": "חפשו מזכרת שנחה בין הגלויות"
+        },
+        "category": "object",
+        "rarity": "epic",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The little eiffel tower waited among the little stories of Paris.",
+            "he": "מגדל אייפל קטן חיכה לנו בין הסיפורים של פריז."
+          }
+        },
+        "visibleRect": {
+          "x": 0.78125,
+          "y": 0.8767361111111112,
+          "w": 0.07861328125,
+          "h": 0.109375
+        },
+        "hitRect": {
+          "x": 0.78125,
+          "y": 0.8767361111111112,
+          "w": 0.07861328125,
+          "h": 0.109375
+        },
+        "cardCrop": {
+          "x": 0.7783203125,
+          "y": 0.8715277777777778,
+          "w": 0.08447265625,
+          "h": 0.11979166666666667
+        }
+      }
+    ],
+    "postcard": {
+      "id": "paris-postcard",
+      "title": {
+        "en": "My adventure — Paris",
+        "he": "ההרפתקה שלי — פריז"
+      },
+      "targetId": "hide-1",
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "w": 1,
+        "h": 1
+      }
+    }
+  }
+}

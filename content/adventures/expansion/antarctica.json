@@ -1,0 +1,403 @@
+{
+  "patchBoard": {
+    "board": "adventure-antarctica",
+    "art": "public/scenes/adventure-antarctica-v1/base.webp",
+    "ground": "Safe pedestrian ground within the illustrated activity, never unsupported air or traffic",
+    "sittable": true,
+    "wardrobe": "Warm ochre insulated jacket, muted teal snow trousers, dark snow boots and gloves; hood down behind neck so the face and curly hair remain clear.",
+    "hides": [
+      {
+        "id": "adventure-antarctica-1",
+        "left": 830,
+        "top": 40,
+        "pose": "standing",
+        "targetId": "hide-1",
+        "mask": {
+          "left": 110,
+          "top": 240,
+          "width": 240,
+          "height": 390
+        },
+        "hint": {
+          "en": "Wooden station boardwalk beside the child holding a warm mug. Stable boots on the boardwalk, hood down, preserve nearby figures and door.",
+          "he": "חפשו ליד הילדים עם השתייה החמה"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 370,
+          "support": "Wooden station boardwalk beside the child holding a warm mug. Stable boots on the boardwalk, hood down, preserve nearby figures and door.",
+          "lighting": "Match the immediate neighboring illustrated faces: the same side-lit warm highlights, cooler shadow planes, drawn brown contour weight and painted fabric. Preserve the canonical Bar face, never photo collage.",
+          "occlusion": "Allow partial natural overlap from a nearby object only below the face. The whole face, eyes and curls must remain recognizable. No merged hands or limbs.",
+          "comparators": "Age five with natural child proportions. Match the head scale of the adjacent child, normally about 85-100 crop pixels including curls. A standing equivalent is about 370px, never a miniature figure. Integrate three-quarter view and expression into this little story without losing identity."
+        }
+      },
+      {
+        "id": "adventure-antarctica-2",
+        "left": 1630,
+        "top": 700,
+        "pose": "kneeling",
+        "targetId": "hide-2",
+        "mask": {
+          "left": 80,
+          "top": 120,
+          "width": 255,
+          "height": 395
+        },
+        "hint": {
+          "en": "Packed snow beside ice sample cylinders. Kneel with correctly folded legs and gloved hands beside an ice sample. Match nearby child size, no miniature figure.",
+          "he": "חפשו ליד הילדים שבודקים גלילי קרח"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 420,
+          "support": "Packed snow beside ice sample cylinders. Kneel with correctly folded legs and gloved hands beside an ice sample. Match nearby child size, no miniature figure.",
+          "lighting": "Match the immediate neighboring illustrated faces: the same side-lit warm highlights, cooler shadow planes, drawn brown contour weight and painted fabric. Preserve the canonical Bar face, never photo collage.",
+          "occlusion": "Allow partial natural overlap from a nearby object only below the face. The whole face, eyes and curls must remain recognizable. No merged hands or limbs.",
+          "comparators": "Age five with natural child proportions. Match the head scale of the adjacent child, normally about 85-100 crop pixels including curls. A standing equivalent is about 420px, never a miniature figure. Integrate three-quarter view and expression into this little story without losing identity."
+        }
+      },
+      {
+        "id": "adventure-antarctica-3",
+        "left": 550,
+        "top": 1270,
+        "pose": "peeking",
+        "targetId": "hide-3",
+        "mask": {
+          "left": 80,
+          "top": 130,
+          "width": 255,
+          "height": 365
+        },
+        "hint": {
+          "en": "Packed snow behind the equipment workbench, lower body partly behind the table, face and curls fully visible beside the nearby adult.",
+          "he": "חפשו ליד שולחן כלי המחקר למטה"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 400,
+          "support": "Packed snow behind the equipment workbench, lower body partly behind the table, face and curls fully visible beside the nearby adult.",
+          "lighting": "Match the immediate neighboring illustrated faces: the same side-lit warm highlights, cooler shadow planes, drawn brown contour weight and painted fabric. Preserve the canonical Bar face, never photo collage.",
+          "occlusion": "Allow partial natural overlap from a nearby object only below the face. The whole face, eyes and curls must remain recognizable. No merged hands or limbs.",
+          "comparators": "Age five with natural child proportions. Match the head scale of the adjacent child, normally about 85-100 crop pixels including curls. A standing equivalent is about 400px, never a miniature figure. Integrate three-quarter view and expression into this little story without losing identity."
+        }
+      }
+    ]
+  },
+  "plan": {
+    "boardSlug": "adventure-antarctica",
+    "worldSlug": "adventure-trail",
+    "name": {
+      "en": "Antarctica",
+      "he": "אנטארקטיקה"
+    },
+    "direction": {
+      "orientation": "landscape",
+      "aspect": "16:9",
+      "spread": "activity-across-width-and-height",
+      "perspective": "shallow",
+      "scaleTreatment": "similar-size-people",
+      "illustration": "storybook-hand-drawn",
+      "identityPrecedence": "reference-face-hair-age",
+      "locationCues": [
+        {
+          "en": "Antarctica",
+          "he": "אנטארקטיקה"
+        },
+        {
+          "en": "People and local activities",
+          "he": "אנשים ופעילויות מקומיות"
+        }
+      ],
+      "microStories": [
+        {
+          "en": "People working and playing",
+          "he": "אנשים עובדים ומשחקים"
+        },
+        {
+          "en": "Animals and objects among the activities",
+          "he": "חיות וחפצים בין הפעילויות"
+        }
+      ]
+    },
+    "plannedHides": 3,
+    "collectionUi": "guided-v1",
+    "status": "ready",
+    "sceneVersion": 10,
+    "art": {
+      "base": "/scenes/adventure-antarctica-v1/base.webp",
+      "sha256": "d28d20fd2c2747db88068647481fa3fcc22d20db8a143a4c02b9f9dd3d7816ef",
+      "width": 3840,
+      "height": 2160
+    },
+    "personalZones": [
+      {
+        "x": 0.21614583333333334,
+        "y": 0.018518518518518517,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      },
+      {
+        "x": 0.4244791666666667,
+        "y": 0.32407407407407407,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      },
+      {
+        "x": 0.14322916666666666,
+        "y": 0.5879629629629629,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      }
+    ],
+    "discoveries": [
+      {
+        "id": "star-mug",
+        "name": {
+          "en": "Star mug",
+          "he": "ספל עם כוכב"
+        },
+        "hint": {
+          "en": "Look among thermoses and mugs",
+          "he": "חפשו בין התרמוסים והספלים"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The star mug waited among the little stories of Antarctica.",
+            "he": "ספל עם כוכב חיכה לנו בין הסיפורים של אנטארקטיקה."
+          }
+        },
+        "visibleRect": {
+          "x": 0.0244140625,
+          "y": 0.2065972222222222,
+          "w": 0.0263671875,
+          "h": 0.052083333333333336
+        },
+        "hitRect": {
+          "x": 0.0244140625,
+          "y": 0.2065972222222222,
+          "w": 0.0263671875,
+          "h": 0.052083333333333336
+        },
+        "cardCrop": {
+          "x": 0.021484375,
+          "y": 0.2013888888888889,
+          "w": 0.0322265625,
+          "h": 0.0625
+        }
+      },
+      {
+        "id": "red-mittens",
+        "name": {
+          "en": "Red mittens",
+          "he": "כפפות אדומות"
+        },
+        "hint": {
+          "en": "Look among fabrics on the equipment table",
+          "he": "חפשו בין הבדים על שולחן הציוד"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The red mittens waited among the little stories of Antarctica.",
+            "he": "כפפות אדומות חיכה לנו בין הסיפורים של אנטארקטיקה."
+          }
+        },
+        "visibleRect": {
+          "x": 0.6826171875,
+          "y": 0.4661458333333333,
+          "w": 0.06201171875,
+          "h": 0.059895833333333336
+        },
+        "hitRect": {
+          "x": 0.6826171875,
+          "y": 0.4661458333333333,
+          "w": 0.06201171875,
+          "h": 0.059895833333333336
+        },
+        "cardCrop": {
+          "x": 0.6796875,
+          "y": 0.4609375,
+          "w": 0.06787109375,
+          "h": 0.0703125
+        }
+      },
+      {
+        "id": "yellow-goggles",
+        "name": {
+          "en": "Yellow snow goggles",
+          "he": "משקפי שלג צהובים"
+        },
+        "hint": {
+          "en": "Look beside the measuring tools",
+          "he": "חפשו ליד כלי המדידה"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The yellow snow goggles waited among the little stories of Antarctica.",
+            "he": "משקפי שלג צהובים חיכה לנו בין הסיפורים של אנטארקטיקה."
+          }
+        },
+        "visibleRect": {
+          "x": 0.07470703125,
+          "y": 0.859375,
+          "w": 0.0556640625,
+          "h": 0.06510416666666667
+        },
+        "hitRect": {
+          "x": 0.07470703125,
+          "y": 0.859375,
+          "w": 0.0556640625,
+          "h": 0.06510416666666667
+        },
+        "cardCrop": {
+          "x": 0.07177734375,
+          "y": 0.8541666666666666,
+          "w": 0.0615234375,
+          "h": 0.07552083333333333
+        }
+      },
+      {
+        "id": "purple-compass",
+        "name": {
+          "en": "Purple compass",
+          "he": "מצפן סגול"
+        },
+        "hint": {
+          "en": "Look among the unfolded maps",
+          "he": "חפשו בין המפות הפרושות"
+        },
+        "category": "object",
+        "rarity": "rare",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The purple compass waited among the little stories of Antarctica.",
+            "he": "מצפן סגול חיכה לנו בין הסיפורים של אנטארקטיקה."
+          }
+        },
+        "visibleRect": {
+          "x": 0.12890625,
+          "y": 0.5130208333333334,
+          "w": 0.02734375,
+          "h": 0.04079861111111111
+        },
+        "hitRect": {
+          "x": 0.12890625,
+          "y": 0.5130208333333334,
+          "w": 0.02734375,
+          "h": 0.04079861111111111
+        },
+        "cardCrop": {
+          "x": 0.1259765625,
+          "y": 0.5078125,
+          "w": 0.033203125,
+          "h": 0.051215277777777776
+        }
+      },
+      {
+        "id": "orange-penguin",
+        "name": {
+          "en": "Toy penguin",
+          "he": "פינגווין צעצוע"
+        },
+        "hint": {
+          "en": "Look among the station crates",
+          "he": "חפשו בין הארגזים בתחנה"
+        },
+        "category": "object",
+        "rarity": "rare",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The toy penguin waited among the little stories of Antarctica.",
+            "he": "פינגווין צעצוע חיכה לנו בין הסיפורים של אנטארקטיקה."
+          }
+        },
+        "visibleRect": {
+          "x": 0.94091796875,
+          "y": 0.08854166666666667,
+          "w": 0.01904296875,
+          "h": 0.036458333333333336
+        },
+        "hitRect": {
+          "x": 0.94091796875,
+          "y": 0.08854166666666667,
+          "w": 0.01904296875,
+          "h": 0.036458333333333336
+        },
+        "cardCrop": {
+          "x": 0.93798828125,
+          "y": 0.08333333333333333,
+          "w": 0.02490234375,
+          "h": 0.046875
+        }
+      },
+      {
+        "id": "snowflake-pendant",
+        "name": {
+          "en": "Snowflake pendant",
+          "he": "תליון פתית שלג"
+        },
+        "hint": {
+          "en": "Look among knits in the equipment case",
+          "he": "חפשו בין הסריגים במזוודת הציוד"
+        },
+        "category": "object",
+        "rarity": "epic",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The snowflake pendant waited among the little stories of Antarctica.",
+            "he": "תליון פתית שלג חיכה לנו בין הסיפורים של אנטארקטיקה."
+          }
+        },
+        "visibleRect": {
+          "x": 0.64208984375,
+          "y": 0.8671875,
+          "w": 0.04052734375,
+          "h": 0.08940972222222222
+        },
+        "hitRect": {
+          "x": 0.64208984375,
+          "y": 0.8671875,
+          "w": 0.04052734375,
+          "h": 0.08940972222222222
+        },
+        "cardCrop": {
+          "x": 0.63916015625,
+          "y": 0.8619791666666666,
+          "w": 0.04638671875,
+          "h": 0.0998263888888889
+        }
+      }
+    ],
+    "postcard": {
+      "id": "antarctica-postcard",
+      "title": {
+        "en": "My adventure — Antarctica",
+        "he": "ההרפתקה שלי — אנטארקטיקה"
+      },
+      "targetId": "hide-1",
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "w": 1,
+        "h": 1
+      }
+    }
+  }
+}

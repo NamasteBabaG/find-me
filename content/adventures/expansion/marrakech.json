@@ -1,0 +1,403 @@
+{
+  "patchBoard": {
+    "board": "adventure-marrakech",
+    "art": "public/scenes/adventure-marrakech-v1/base.webp",
+    "ground": "Safe pedestrian ground within the illustrated activity, never unsupported air or traffic",
+    "sittable": true,
+    "wardrobe": "Muted mustard tunic, blue shorts and worn brown sandals; hair and curls visible.",
+    "hides": [
+      {
+        "id": "adventure-marrakech-1",
+        "left": 2880,
+        "top": 65,
+        "pose": "crouching",
+        "targetId": "hide-1",
+        "mask": {
+          "left": 170,
+          "top": 245,
+          "width": 265,
+          "height": 300
+        },
+        "hint": {
+          "en": "Dry courtyard ground next to the children playing marbles. Crouch naturally with knees bent and both feet firmly on paving.",
+          "he": "חפשו ליד הילדים שמשחקים בגולות"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 370,
+          "support": "Dry courtyard ground next to the children playing marbles. Crouch naturally with knees bent and both feet firmly on paving.",
+          "lighting": "Match the immediate neighboring illustrated faces: the same side-lit warm highlights, cooler shadow planes, drawn brown contour weight and painted fabric. Preserve the canonical Bar face, never photo collage.",
+          "occlusion": "Allow partial natural overlap from a nearby object only below the face. The whole face, eyes and curls must remain recognizable. No merged hands or limbs.",
+          "comparators": "Age five with natural child proportions. Match the head scale of the adjacent child, normally about 85-100 crop pixels including curls. A standing equivalent is about 370px, never a miniature figure. Integrate three-quarter view and expression into this little story without losing identity."
+        }
+      },
+      {
+        "id": "adventure-marrakech-2",
+        "left": 980,
+        "top": 720,
+        "pose": "sitting-cross-legged",
+        "targetId": "hide-2",
+        "mask": {
+          "left": 140,
+          "top": 60,
+          "width": 265,
+          "height": 410
+        },
+        "hint": {
+          "en": "The patterned cushion occupied by the green-shirted child on the left of the storytelling circle. Replace only that child with Bar sitting naturally; preserve all neighboring women and children.",
+          "he": "חפשו בצד מעגל הילדים על הכריות"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 370,
+          "support": "The patterned cushion occupied by the green-shirted child on the left of the storytelling circle. Replace only that child with Bar sitting naturally; preserve all neighboring women and children.",
+          "lighting": "Match the immediate neighboring illustrated faces: the same side-lit warm highlights, cooler shadow planes, drawn brown contour weight and painted fabric. Preserve the canonical Bar face, never photo collage.",
+          "occlusion": "Allow partial natural overlap from a nearby object only below the face. The whole face, eyes and curls must remain recognizable. No merged hands or limbs.",
+          "comparators": "Age five with natural child proportions. Match the head scale of the adjacent child, normally about 85-100 crop pixels including curls. A standing equivalent is about 370px, never a miniature figure. Integrate three-quarter view and expression into this little story without losing identity."
+        }
+      },
+      {
+        "id": "adventure-marrakech-3",
+        "left": 1770,
+        "top": 650,
+        "pose": "sitting-cross-legged",
+        "targetId": "hide-3",
+        "mask": {
+          "left": 70,
+          "top": 40,
+          "width": 260,
+          "height": 365
+        },
+        "hint": {
+          "en": "A patterned floor cushion in the story circle, sitting cross-legged with anatomically correct folded legs. Match the adjacent seated children and ground plane.",
+          "he": "חפשו בין המקשיבים למספר הסיפורים"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 390,
+          "support": "A patterned floor cushion in the story circle, sitting cross-legged with anatomically correct folded legs. Match the adjacent seated children and ground plane.",
+          "lighting": "Match the immediate neighboring illustrated faces: the same side-lit warm highlights, cooler shadow planes, drawn brown contour weight and painted fabric. Preserve the canonical Bar face, never photo collage.",
+          "occlusion": "Allow partial natural overlap from a nearby object only below the face. The whole face, eyes and curls must remain recognizable. No merged hands or limbs.",
+          "comparators": "Age five with natural child proportions. Match the head scale of the adjacent child, normally about 85-100 crop pixels including curls. A standing equivalent is about 390px, never a miniature figure. Integrate three-quarter view and expression into this little story without losing identity."
+        }
+      }
+    ]
+  },
+  "plan": {
+    "boardSlug": "adventure-marrakech",
+    "worldSlug": "adventure-trail",
+    "name": {
+      "en": "Marrakech",
+      "he": "מרקש"
+    },
+    "direction": {
+      "orientation": "landscape",
+      "aspect": "16:9",
+      "spread": "activity-across-width-and-height",
+      "perspective": "shallow",
+      "scaleTreatment": "similar-size-people",
+      "illustration": "storybook-hand-drawn",
+      "identityPrecedence": "reference-face-hair-age",
+      "locationCues": [
+        {
+          "en": "Marrakech",
+          "he": "מרקש"
+        },
+        {
+          "en": "People and local activities",
+          "he": "אנשים ופעילויות מקומיות"
+        }
+      ],
+      "microStories": [
+        {
+          "en": "People working and playing",
+          "he": "אנשים עובדים ומשחקים"
+        },
+        {
+          "en": "Animals and objects among the activities",
+          "he": "חיות וחפצים בין הפעילויות"
+        }
+      ]
+    },
+    "plannedHides": 3,
+    "collectionUi": "guided-v1",
+    "status": "ready",
+    "sceneVersion": 10,
+    "art": {
+      "base": "/scenes/adventure-marrakech-v1/base.webp",
+      "sha256": "315a0dd149193b3ed8c5d252521097119565656d8067cdd17d87bf48129a1afb",
+      "width": 3840,
+      "height": 2160
+    },
+    "personalZones": [
+      {
+        "x": 0.75,
+        "y": 0.03009259259259259,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      },
+      {
+        "x": 0.2552083333333333,
+        "y": 0.3333333333333333,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      },
+      {
+        "x": 0.4609375,
+        "y": 0.30092592592592593,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      }
+    ],
+    "discoveries": [
+      {
+        "id": "eye-amulet",
+        "name": {
+          "en": "Blue amulet",
+          "he": "קמע כחול"
+        },
+        "hint": {
+          "en": "Look among the hanging cords",
+          "he": "חפשו בין השרשראות התלויות"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The blue amulet waited among the little stories of Marrakech.",
+            "he": "קמע כחול חיכה לנו בין הסיפורים של מרקש."
+          }
+        },
+        "visibleRect": {
+          "x": 0.05419921875,
+          "y": 0.11197916666666667,
+          "w": 0.02099609375,
+          "h": 0.05295138888888889
+        },
+        "hitRect": {
+          "x": 0.05419921875,
+          "y": 0.11197916666666667,
+          "w": 0.02099609375,
+          "h": 0.05295138888888889
+        },
+        "cardCrop": {
+          "x": 0.05126953125,
+          "y": 0.10677083333333333,
+          "w": 0.02685546875,
+          "h": 0.06336805555555555
+        }
+      },
+      {
+        "id": "striped-slipper",
+        "name": {
+          "en": "Striped slipper",
+          "he": "נעל בית מפוספסת"
+        },
+        "hint": {
+          "en": "Look beside the children and fabrics",
+          "he": "חפשו ליד הילדים והבדים"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The striped slipper waited among the little stories of Marrakech.",
+            "he": "נעל בית מפוספסת חיכה לנו בין הסיפורים של מרקש."
+          }
+        },
+        "visibleRect": {
+          "x": 0.1337890625,
+          "y": 0.4782986111111111,
+          "w": 0.03369140625,
+          "h": 0.078125
+        },
+        "hitRect": {
+          "x": 0.1337890625,
+          "y": 0.4782986111111111,
+          "w": 0.03369140625,
+          "h": 0.078125
+        },
+        "cardCrop": {
+          "x": 0.130859375,
+          "y": 0.4730902777777778,
+          "w": 0.03955078125,
+          "h": 0.08854166666666667
+        }
+      },
+      {
+        "id": "crescent-cup",
+        "name": {
+          "en": "Crescent cup",
+          "he": "ספל עם ירח"
+        },
+        "hint": {
+          "en": "Look on the round tea tray",
+          "he": "חפשו על מגש התה העגול"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The crescent cup waited among the little stories of Marrakech.",
+            "he": "ספל עם ירח חיכה לנו בין הסיפורים של מרקש."
+          }
+        },
+        "visibleRect": {
+          "x": 0.57763671875,
+          "y": 0.8177083333333334,
+          "w": 0.03076171875,
+          "h": 0.049479166666666664
+        },
+        "hitRect": {
+          "x": 0.57763671875,
+          "y": 0.8177083333333334,
+          "w": 0.03076171875,
+          "h": 0.049479166666666664
+        },
+        "cardCrop": {
+          "x": 0.57470703125,
+          "y": 0.8125,
+          "w": 0.03662109375,
+          "h": 0.059895833333333336
+        }
+      },
+      {
+        "id": "tassel-key",
+        "name": {
+          "en": "Tassel key",
+          "he": "מפתח עם גדיל"
+        },
+        "hint": {
+          "en": "Look among the folds of the rug",
+          "he": "חפשו בין קפלי השטיח"
+        },
+        "category": "object",
+        "rarity": "rare",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The tassel key waited among the little stories of Marrakech.",
+            "he": "מפתח עם גדיל חיכה לנו בין הסיפורים של מרקש."
+          }
+        },
+        "visibleRect": {
+          "x": 0.43310546875,
+          "y": 0.2126736111111111,
+          "w": 0.04736328125,
+          "h": 0.07725694444444445
+        },
+        "hitRect": {
+          "x": 0.43310546875,
+          "y": 0.2126736111111111,
+          "w": 0.04736328125,
+          "h": 0.07725694444444445
+        },
+        "cardCrop": {
+          "x": 0.43017578125,
+          "y": 0.2074652777777778,
+          "w": 0.05322265625,
+          "h": 0.0876736111111111
+        }
+      },
+      {
+        "id": "violet-gecko",
+        "name": {
+          "en": "Violet gecko",
+          "he": "שממית סגולה"
+        },
+        "hint": {
+          "en": "Look behind the pottery",
+          "he": "חפשו מאחורי הכדים"
+        },
+        "category": "animal",
+        "rarity": "rare",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The violet gecko waited among the little stories of Marrakech.",
+            "he": "שממית סגולה חיכה לנו בין הסיפורים של מרקש."
+          }
+        },
+        "visibleRect": {
+          "x": 0.67578125,
+          "y": 0.4618055555555556,
+          "w": 0.03662109375,
+          "h": 0.04600694444444445
+        },
+        "hitRect": {
+          "x": 0.67578125,
+          "y": 0.4618055555555556,
+          "w": 0.03662109375,
+          "h": 0.04600694444444445
+        },
+        "cardCrop": {
+          "x": 0.6728515625,
+          "y": 0.4565972222222222,
+          "w": 0.04248046875,
+          "h": 0.05642361111111111
+        }
+      },
+      {
+        "id": "silver-camel",
+        "name": {
+          "en": "Little silver camel",
+          "he": "גמל כסף קטן"
+        },
+        "hint": {
+          "en": "Look beneath the fabric in the pottery basket",
+          "he": "חפשו מתחת לבד שבסל הכלים"
+        },
+        "category": "object",
+        "rarity": "epic",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The little silver camel waited among the little stories of Marrakech.",
+            "he": "גמל כסף קטן חיכה לנו בין הסיפורים של מרקש."
+          }
+        },
+        "visibleRect": {
+          "x": 0.8369140625,
+          "y": 0.7170138888888888,
+          "w": 0.078125,
+          "h": 0.09114583333333333
+        },
+        "hitRect": {
+          "x": 0.8369140625,
+          "y": 0.7170138888888888,
+          "w": 0.078125,
+          "h": 0.09114583333333333
+        },
+        "cardCrop": {
+          "x": 0.833984375,
+          "y": 0.7118055555555556,
+          "w": 0.083984375,
+          "h": 0.1015625
+        }
+      }
+    ],
+    "postcard": {
+      "id": "marrakech-postcard",
+      "title": {
+        "en": "My adventure — Marrakech",
+        "he": "ההרפתקה שלי — מרקש"
+      },
+      "targetId": "hide-1",
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "w": 1,
+        "h": 1
+      }
+    }
+  }
+}

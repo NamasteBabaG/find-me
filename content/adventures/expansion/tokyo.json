@@ -1,0 +1,403 @@
+{
+  "patchBoard": {
+    "board": "adventure-tokyo",
+    "art": "public/scenes/adventure-tokyo-v1/base.webp",
+    "ground": "Safe pedestrian ground within the illustrated activity, never unsupported air or traffic",
+    "sittable": true,
+    "wardrobe": "Muted ochre shirt with a simple blue overshirt, navy shorts, brown trainers; uncovered curly hair.",
+    "hides": [
+      {
+        "id": "adventure-tokyo-1",
+        "left": 1300,
+        "top": 240,
+        "pose": "standing",
+        "targetId": "hide-1",
+        "mask": {
+          "left": 135,
+          "top": 195,
+          "width": 215,
+          "height": 335
+        },
+        "hint": {
+          "en": "Stone courtyard beside the child waving near the shrine gate. Replace only this small child, preserving neighbors and gate.",
+          "he": "חפשו ליד השער והילדים מאחורי התופים"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 330,
+          "support": "Stone courtyard beside the child waving near the shrine gate. Replace only this small child, preserving neighbors and gate.",
+          "lighting": "Match the immediate neighboring illustrated faces: the same side-lit warm highlights, cooler shadow planes, drawn brown contour weight and painted fabric. Preserve the canonical Bar face, never photo collage.",
+          "occlusion": "Allow partial natural overlap from a nearby object only below the face. The whole face, eyes and curls must remain recognizable. No merged hands or limbs.",
+          "comparators": "Age five with natural child proportions. Match the head scale of the adjacent child, normally about 85-100 crop pixels including curls. A standing equivalent is about 330px, never a miniature figure. Integrate three-quarter view and expression into this little story without losing identity."
+        }
+      },
+      {
+        "id": "adventure-tokyo-2",
+        "left": 1710,
+        "top": 850,
+        "pose": "standing",
+        "targetId": "hide-2",
+        "mask": {
+          "left": 120,
+          "top": 150,
+          "width": 235,
+          "height": 420
+        },
+        "hint": {
+          "en": "Level paving beside the flower planter and drummers. Match the small standing child in this group.",
+          "he": "חפשו ליד ערוגת הפרחים במרכז"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 360,
+          "support": "Level paving beside the flower planter and drummers. Match the small standing child in this group.",
+          "lighting": "Match the immediate neighboring illustrated faces: the same side-lit warm highlights, cooler shadow planes, drawn brown contour weight and painted fabric. Preserve the canonical Bar face, never photo collage.",
+          "occlusion": "Allow partial natural overlap from a nearby object only below the face. The whole face, eyes and curls must remain recognizable. No merged hands or limbs.",
+          "comparators": "Age five with natural child proportions. Match the head scale of the adjacent child, normally about 85-100 crop pixels including curls. A standing equivalent is about 360px, never a miniature figure. Integrate three-quarter view and expression into this little story without losing identity."
+        }
+      },
+      {
+        "id": "adventure-tokyo-3",
+        "left": 590,
+        "top": 1240,
+        "pose": "sitting-cross-legged",
+        "targetId": "hide-3",
+        "mask": {
+          "left": 100,
+          "top": 300,
+          "width": 250,
+          "height": 410
+        },
+        "hint": {
+          "en": "A floor cushion beside the children listening to the grandfather with an open book. Sit naturally with folded legs; keep the book and neighbors unchanged.",
+          "he": "חפשו בין המקשיבים לסיפור ליד הספר"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 400,
+          "support": "A floor cushion beside the children listening to the grandfather with an open book. Sit naturally with folded legs; keep the book and neighbors unchanged.",
+          "lighting": "Match the immediate neighboring illustrated faces: the same side-lit warm highlights, cooler shadow planes, drawn brown contour weight and painted fabric. Preserve the canonical Bar face, never photo collage.",
+          "occlusion": "Allow partial natural overlap from a nearby object only below the face. The whole face, eyes and curls must remain recognizable. No merged hands or limbs.",
+          "comparators": "Age five with natural child proportions. Match the head scale of the adjacent child, normally about 85-100 crop pixels including curls. A standing equivalent is about 400px, never a miniature figure. Integrate three-quarter view and expression into this little story without losing identity."
+        }
+      }
+    ]
+  },
+  "plan": {
+    "boardSlug": "adventure-tokyo",
+    "worldSlug": "adventure-trail",
+    "name": {
+      "en": "Tokyo",
+      "he": "טוקיו"
+    },
+    "direction": {
+      "orientation": "landscape",
+      "aspect": "16:9",
+      "spread": "activity-across-width-and-height",
+      "perspective": "shallow",
+      "scaleTreatment": "similar-size-people",
+      "illustration": "storybook-hand-drawn",
+      "identityPrecedence": "reference-face-hair-age",
+      "locationCues": [
+        {
+          "en": "Tokyo",
+          "he": "טוקיו"
+        },
+        {
+          "en": "People and local activities",
+          "he": "אנשים ופעילויות מקומיות"
+        }
+      ],
+      "microStories": [
+        {
+          "en": "People working and playing",
+          "he": "אנשים עובדים ומשחקים"
+        },
+        {
+          "en": "Animals and objects among the activities",
+          "he": "חיות וחפצים בין הפעילויות"
+        }
+      ]
+    },
+    "plannedHides": 3,
+    "collectionUi": "guided-v1",
+    "status": "ready",
+    "sceneVersion": 10,
+    "art": {
+      "base": "/scenes/adventure-tokyo-v1/base.webp",
+      "sha256": "a740321b8eb9e311c5a26e83cec4f317ce1ea027e048a3d152b05bd397eda208",
+      "width": 3840,
+      "height": 2160
+    },
+    "personalZones": [
+      {
+        "x": 0.3385416666666667,
+        "y": 0.1111111111111111,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      },
+      {
+        "x": 0.4453125,
+        "y": 0.39351851851851855,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      },
+      {
+        "x": 0.15364583333333334,
+        "y": 0.5740740740740741,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      }
+    ],
+    "discoveries": [
+      {
+        "id": "yellow-robot",
+        "name": {
+          "en": "Yellow robot",
+          "he": "רובוט צהוב"
+        },
+        "hint": {
+          "en": "Look inside the toy shop",
+          "he": "חפשו בחנות הצעצועים"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The yellow robot waited among the little stories of Tokyo.",
+            "he": "רובוט צהוב חיכה לנו בין הסיפורים של טוקיו."
+          }
+        },
+        "visibleRect": {
+          "x": 0.1533203125,
+          "y": 0.17447916666666666,
+          "w": 0.02978515625,
+          "h": 0.06944444444444445
+        },
+        "hitRect": {
+          "x": 0.1533203125,
+          "y": 0.17447916666666666,
+          "w": 0.02978515625,
+          "h": 0.06944444444444445
+        },
+        "cardCrop": {
+          "x": 0.150390625,
+          "y": 0.16927083333333334,
+          "w": 0.03564453125,
+          "h": 0.0798611111111111
+        }
+      },
+      {
+        "id": "flower-fan",
+        "name": {
+          "en": "Flower fan",
+          "he": "מניפה עם פרח"
+        },
+        "hint": {
+          "en": "Look beside the noodle stall",
+          "he": "חפשו ליד דוכן האוכל"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The flower fan waited among the little stories of Tokyo.",
+            "he": "מניפה עם פרח חיכה לנו בין הסיפורים של טוקיו."
+          }
+        },
+        "visibleRect": {
+          "x": 0.8193359375,
+          "y": 0.22395833333333334,
+          "w": 0.0390625,
+          "h": 0.058159722222222224
+        },
+        "hitRect": {
+          "x": 0.8193359375,
+          "y": 0.22395833333333334,
+          "w": 0.0390625,
+          "h": 0.058159722222222224
+        },
+        "cardCrop": {
+          "x": 0.81640625,
+          "y": 0.21875,
+          "w": 0.044921875,
+          "h": 0.0685763888888889
+        }
+      },
+      {
+        "id": "fish-windsock",
+        "name": {
+          "en": "Blue fabric fish",
+          "he": "דג בד כחול"
+        },
+        "hint": {
+          "en": "Look inside a low basket",
+          "he": "חפשו בתוך סל נמוך"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The blue fabric fish waited among the little stories of Tokyo.",
+            "he": "דג בד כחול חיכה לנו בין הסיפורים של טוקיו."
+          }
+        },
+        "visibleRect": {
+          "x": 0.03515625,
+          "y": 0.8055555555555556,
+          "w": 0.09619140625,
+          "h": 0.06684027777777778
+        },
+        "hitRect": {
+          "x": 0.03515625,
+          "y": 0.8055555555555556,
+          "w": 0.09619140625,
+          "h": 0.06684027777777778
+        },
+        "cardCrop": {
+          "x": 0.0322265625,
+          "y": 0.8003472222222222,
+          "w": 0.10205078125,
+          "h": 0.07725694444444445
+        }
+      },
+      {
+        "id": "origami-frog",
+        "name": {
+          "en": "Paper frog",
+          "he": "צפרדע נייר"
+        },
+        "hint": {
+          "en": "Look among folded paper and busy hands",
+          "he": "חפשו בין קיפולי הנייר והידיים"
+        },
+        "category": "object",
+        "rarity": "rare",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The paper frog waited among the little stories of Tokyo.",
+            "he": "צפרדע נייר חיכה לנו בין הסיפורים של טוקיו."
+          }
+        },
+        "visibleRect": {
+          "x": 0.6796875,
+          "y": 0.7838541666666666,
+          "w": 0.0283203125,
+          "h": 0.035590277777777776
+        },
+        "hitRect": {
+          "x": 0.6796875,
+          "y": 0.7838541666666666,
+          "w": 0.0283203125,
+          "h": 0.035590277777777776
+        },
+        "cardCrop": {
+          "x": 0.6767578125,
+          "y": 0.7786458333333334,
+          "w": 0.0341796875,
+          "h": 0.04600694444444445
+        }
+      },
+      {
+        "id": "lucky-cat",
+        "name": {
+          "en": "Little lucky cat",
+          "he": "חתול מזל קטן"
+        },
+        "hint": {
+          "en": "Look among dishes on the counter",
+          "he": "חפשו בין הכלים שעל הדלפק"
+        },
+        "category": "object",
+        "rarity": "rare",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The little lucky cat waited among the little stories of Tokyo.",
+            "he": "חתול מזל קטן חיכה לנו בין הסיפורים של טוקיו."
+          }
+        },
+        "visibleRect": {
+          "x": 0.8291015625,
+          "y": 0.2925347222222222,
+          "w": 0.0185546875,
+          "h": 0.03819444444444445
+        },
+        "hitRect": {
+          "x": 0.8291015625,
+          "y": 0.2925347222222222,
+          "w": 0.0185546875,
+          "h": 0.03819444444444445
+        },
+        "cardCrop": {
+          "x": 0.826171875,
+          "y": 0.2873263888888889,
+          "w": 0.0244140625,
+          "h": 0.04861111111111111
+        }
+      },
+      {
+        "id": "crane-charm",
+        "name": {
+          "en": "Crane charm",
+          "he": "תליון עגור"
+        },
+        "hint": {
+          "en": "Look among paper and a red cord",
+          "he": "חפשו בין הניירות והחוט האדום"
+        },
+        "category": "object",
+        "rarity": "epic",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The crane charm waited among the little stories of Tokyo.",
+            "he": "תליון עגור חיכה לנו בין הסיפורים של טוקיו."
+          }
+        },
+        "visibleRect": {
+          "x": 0.76025390625,
+          "y": 0.8567708333333334,
+          "w": 0.064453125,
+          "h": 0.08246527777777778
+        },
+        "hitRect": {
+          "x": 0.76025390625,
+          "y": 0.8567708333333334,
+          "w": 0.064453125,
+          "h": 0.08246527777777778
+        },
+        "cardCrop": {
+          "x": 0.75732421875,
+          "y": 0.8515625,
+          "w": 0.0703125,
+          "h": 0.09288194444444445
+        }
+      }
+    ],
+    "postcard": {
+      "id": "tokyo-postcard",
+      "title": {
+        "en": "My adventure — Tokyo",
+        "he": "ההרפתקה שלי — טוקיו"
+      },
+      "targetId": "hide-1",
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "w": 1,
+        "h": 1
+      }
+    }
+  }
+}

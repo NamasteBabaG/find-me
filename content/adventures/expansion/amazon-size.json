@@ -1,0 +1,403 @@
+{
+  "patchBoard": {
+    "board": "adventure-amazon",
+    "art": "public/scenes/adventure-amazon/base.webp",
+    "ground": "wooden research docks and firm root-covered riverbank, never unsupported open water",
+    "sittable": true,
+    "wardrobe": "Muted mustard explorer shirt, olive shorts, sturdy walking shoes; no hat hiding the curls.",
+    "hides": [
+      {
+        "id": "adventure-amazon-1",
+        "left": 880,
+        "top": 0,
+        "pose": "peeking",
+        "targetId": "hide-1",
+        "mask": {
+          "left": 180,
+          "top": 255,
+          "width": 165,
+          "height": 290
+        },
+        "hint": {
+          "en": "Look among the people and objects in this area",
+          "he": "חפשו בין האנשים והחפצים באזור הזה"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 300,
+          "support": "wooden research docks and firm root-covered riverbank, never unsupported open water",
+          "lighting": "Match the adjacent illustrated people and the board's existing directional light.",
+          "occlusion": "The body may be partly behind nearby objects, but the whole face and recognizable curls stay clearly visible.",
+          "comparators": "Match the scale of nearby children, with the proportions of a five-year-old. Do not enlarge toward the foreground."
+        }
+      },
+      {
+        "id": "adventure-amazon-2",
+        "left": 1470,
+        "top": 1090,
+        "pose": "crouching",
+        "targetId": "hide-2",
+        "mask": {
+          "left": 205,
+          "top": 15,
+          "width": 265,
+          "height": 335
+        },
+        "hint": {
+          "en": "Look among the people and objects in this area",
+          "he": "חפשו בין האנשים והחפצים באזור הזה"
+        },
+        "placement": {
+          "depth": "near",
+          "standingHeightPx": 440,
+          "support": "Both shoes and the crouching body are supported on the dry gravel/root bank at the upper RIGHT, immediately below the wooden dock. Feet end around crop y=315. No floating body, no foot in the river; retain the bank and its waterline.",
+          "lighting": "Use the nearby warm ochre explorer and forest foliage for directional light: warm upper-left soft highlights, cool green bounce in the shadow, irregular painted contours and clearly drawn face. Preserve Bar identity, no photographic cutout.",
+          "occlusion": "Keep the full face and curls readable. Only small plant leaves may overlap a lower leg, not the face.",
+          "comparators": "This is a NEAR riverbank child, not a miniature distant figure. His whole crouched figure is approximately 280-300 crop pixels tall, with a clearly readable face and curls roughly 95-105 pixels tall. Match the head scale of the nearby foreground explorer, adjusted only for age five. A previous 215px crouching child was too small. Increase the entire figure proportionally, NOT just his head. Keep his whole head below the dock and his feet on the same bank."
+        }
+      },
+      {
+        "id": "adventure-amazon-3",
+        "left": 2800,
+        "top": 390,
+        "pose": "peeking",
+        "targetId": "hide-3",
+        "mask": {
+          "left": 180,
+          "top": 360,
+          "width": 180,
+          "height": 280
+        },
+        "hint": {
+          "en": "Look among the people and objects in this area",
+          "he": "חפשו בין האנשים והחפצים באזור הזה"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 300,
+          "support": "wooden research docks and firm root-covered riverbank, never unsupported open water",
+          "lighting": "Match the adjacent illustrated people and the board's existing directional light.",
+          "occlusion": "The body may be partly behind nearby objects, but the whole face and recognizable curls stay clearly visible.",
+          "comparators": "Match the scale of nearby children, with the proportions of a five-year-old. Do not enlarge toward the foreground."
+        }
+      }
+    ]
+  },
+  "plan": {
+    "boardSlug": "adventure-amazon",
+    "worldSlug": "adventure-trail",
+    "name": {
+      "en": "Amazon",
+      "he": "אמזונס"
+    },
+    "direction": {
+      "orientation": "landscape",
+      "aspect": "16:9",
+      "spread": "activity-across-width-and-height",
+      "perspective": "shallow",
+      "scaleTreatment": "similar-size-people",
+      "illustration": "storybook-hand-drawn",
+      "identityPrecedence": "reference-face-hair-age",
+      "locationCues": [
+        {
+          "en": "Amazon",
+          "he": "אמזונס"
+        },
+        {
+          "en": "Illustrated location landmarks",
+          "he": "סממני המקום באיור"
+        }
+      ],
+      "microStories": [
+        {
+          "en": "People working and playing",
+          "he": "אנשים עובדים ומשחקים"
+        },
+        {
+          "en": "Animals and objects among the activities",
+          "he": "חיות וחפצים בין הפעילויות"
+        }
+      ]
+    },
+    "plannedHides": 3,
+    "collectionUi": "guided-v1",
+    "status": "ready",
+    "sceneVersion": 10,
+    "art": {
+      "base": "/scenes/adventure-amazon/base.webp",
+      "sha256": "372ee33bb02158ba2b4eaa1740254cdb6fae182ed73c846498bf641a7e8d99ba",
+      "width": 3840,
+      "height": 2160
+    },
+    "personalZones": [
+      {
+        "x": 0.22916666666666666,
+        "y": 0,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      },
+      {
+        "x": 0.3828125,
+        "y": 0.5046296296296297,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      },
+      {
+        "x": 0.7291666666666666,
+        "y": 0.18055555555555555,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      }
+    ],
+    "discoveries": [
+      {
+        "id": "red-binoculars",
+        "name": {
+          "en": "Red binoculars",
+          "he": "משקפת אדומה"
+        },
+        "hint": {
+          "en": "Look on the researchers' table",
+          "he": "חפשו על שולחן החוקרים"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "Someone set down the binoculars to write in a notebook.",
+            "he": "מישהו הניח את המשקפת לפני שכתב במחברת."
+          }
+        },
+        "visibleRect": {
+          "x": 0.15380859375,
+          "y": 0.2482638888888889,
+          "w": 0.03173828125,
+          "h": 0.034722222222222224
+        },
+        "hitRect": {
+          "x": 0.15380859375,
+          "y": 0.2482638888888889,
+          "w": 0.03173828125,
+          "h": 0.034722222222222224
+        },
+        "cardCrop": {
+          "x": 0.14990234375,
+          "y": 0.24131944444444445,
+          "w": 0.03955078125,
+          "h": 0.04861111111111111
+        }
+      },
+      {
+        "id": "yellow-bottle",
+        "name": {
+          "en": "Yellow bottle",
+          "he": "בקבוק צהוב"
+        },
+        "hint": {
+          "en": "Look among the baskets on the dock",
+          "he": "חפשו בין הסלים שעל המזח"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The water bottle is ready for the next journey.",
+            "he": "בקבוק המים מוכן למסע הבא."
+          }
+        },
+        "visibleRect": {
+          "x": 0.1025390625,
+          "y": 0.7439236111111112,
+          "w": 0.017578125,
+          "h": 0.06597222222222222
+        },
+        "hitRect": {
+          "x": 0.1025390625,
+          "y": 0.7439236111111112,
+          "w": 0.017578125,
+          "h": 0.06597222222222222
+        },
+        "cardCrop": {
+          "x": 0.0986328125,
+          "y": 0.7369791666666666,
+          "w": 0.025390625,
+          "h": 0.0798611111111111
+        }
+      },
+      {
+        "id": "orange-frog",
+        "name": {
+          "en": "Orange frog",
+          "he": "צפרדע כתומה"
+        },
+        "hint": {
+          "en": "Look for a broad leaf among the plants",
+          "he": "חפשו עלה רחב בין הצמחים"
+        },
+        "category": "animal",
+        "rarity": "common",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The frog chose a leaf for a balcony.",
+            "he": "הצפרדע בחרה עלה שישמש לה מרפסת."
+          }
+        },
+        "visibleRect": {
+          "x": 0.892578125,
+          "y": 0.4644097222222222,
+          "w": 0.03125,
+          "h": 0.04079861111111111
+        },
+        "hitRect": {
+          "x": 0.892578125,
+          "y": 0.4644097222222222,
+          "w": 0.03125,
+          "h": 0.04079861111111111
+        },
+        "cardCrop": {
+          "x": 0.888671875,
+          "y": 0.4574652777777778,
+          "w": 0.0390625,
+          "h": 0.0546875
+        }
+      },
+      {
+        "id": "blue-butterfly",
+        "name": {
+          "en": "Blue butterfly",
+          "he": "פרפר כחול"
+        },
+        "hint": {
+          "en": "Look among the high leaves",
+          "he": "הביטו בין העלים הגבוהים"
+        },
+        "category": "animal",
+        "rarity": "rare",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The butterfly rests among the leaves before its next flight.",
+            "he": "הפרפר נח בין העלים לפני הטיסה הבאה."
+          }
+        },
+        "visibleRect": {
+          "x": 0.9404296875,
+          "y": 0.1310763888888889,
+          "w": 0.0205078125,
+          "h": 0.03819444444444445
+        },
+        "hitRect": {
+          "x": 0.9404296875,
+          "y": 0.1310763888888889,
+          "w": 0.0205078125,
+          "h": 0.03819444444444445
+        },
+        "cardCrop": {
+          "x": 0.9365234375,
+          "y": 0.12413194444444445,
+          "w": 0.0283203125,
+          "h": 0.052083333333333336
+        }
+      },
+      {
+        "id": "spiral-shell",
+        "name": {
+          "en": "Spiral shell",
+          "he": "קונכייה ספירלית"
+        },
+        "hint": {
+          "en": "Look among the thick roots",
+          "he": "חפשו בין השורשים העבים"
+        },
+        "category": "object",
+        "rarity": "rare",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "The roots shelter a spiralling shell.",
+            "he": "השורשים שומרים על קונכייה מסולסלת."
+          }
+        },
+        "visibleRect": {
+          "x": 0.5615234375,
+          "y": 0.8524305555555556,
+          "w": 0.03466796875,
+          "h": 0.08072916666666667
+        },
+        "hitRect": {
+          "x": 0.5615234375,
+          "y": 0.8524305555555556,
+          "w": 0.03466796875,
+          "h": 0.08072916666666667
+        },
+        "cardCrop": {
+          "x": 0.5576171875,
+          "y": 0.8454861111111112,
+          "w": 0.04248046875,
+          "h": 0.09461805555555555
+        }
+      },
+      {
+        "id": "carved-bird",
+        "name": {
+          "en": "Carved bird",
+          "he": "ציפור מגולפת"
+        },
+        "hint": {
+          "en": "Look inside the keepsake box",
+          "he": "חפשו בתוך תיבת המזכרות"
+        },
+        "category": "object",
+        "rarity": "epic",
+        "difficulty": 3,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "A little carved bird waits patiently in the box.",
+            "he": "ציפור קטנה מגולפת מחכה בסבלנות בתיבה."
+          }
+        },
+        "visibleRect": {
+          "x": 0.8388671875,
+          "y": 0.7873263888888888,
+          "w": 0.04052734375,
+          "h": 0.04774305555555555
+        },
+        "hitRect": {
+          "x": 0.8388671875,
+          "y": 0.7873263888888888,
+          "w": 0.04052734375,
+          "h": 0.04774305555555555
+        },
+        "cardCrop": {
+          "x": 0.8349609375,
+          "y": 0.7803819444444444,
+          "w": 0.04833984375,
+          "h": 0.06163194444444445
+        }
+      }
+    ],
+    "postcard": {
+      "id": "amazon-postcard",
+      "title": {
+        "en": "My adventure — Amazon",
+        "he": "ההרפתקה שלי — אמזונס"
+      },
+      "targetId": "hide-1",
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "w": 1,
+        "h": 1
+      }
+    }
+  }
+}
