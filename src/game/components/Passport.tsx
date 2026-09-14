@@ -64,7 +64,7 @@ export function Passport({ config, progress, onMap, onOpen, album = null, albumM
           );
         })}
       </ul>
-      {config.adventure ? <AlbumSection config={config} album={album} mode={albumMode} state={albumState} /> : null}
+      {config.adventure ? <AlbumSection config={config} album={album} mode={albumMode} state={albumState} onOpen={onOpen} /> : null}
       {complete ? (
         <div className="passport__done">
           <div className="complete__stamp complete__stamp--big" aria-hidden>

@@ -17,8 +17,7 @@ import { CloudBank } from "./Clouds";
 import { FLIGHT_MS, StarFlight, type FlightPath } from "./StarFlight";
 import { StarTray } from "./StarTray";
 import { Postcard } from "./Album";
-import { DiscoveryTray } from "./DiscoveryTray";
-import { discoveryCopy } from "./discovery-copy";
+import { Collection, type Arrival } from "./Collection";
 import { discoveryHintRect, nextDiscoveryHint, type DiscoveryHintLevel } from "@/domain/adventure/discovery-guidance";
 import { adventureAlbum } from "@/domain/adventure/progress";
 import type { PlayStore } from "../store/play-store";
@@ -110,6 +109,9 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
     if (region) apiRef.current?.focusOn(region.x + region.w / 2, region.y + region.h / 2, level === 2 ? 1.5 : 2.5, 450);
   };
   const [albumToast, setAlbumToast] = useState<{ key: number; text: string } | null>(null);
+  // The sticker of a discovery just collected flies from the tap into the collection; a repeat tap only wiggles it.
+  const [arrival, setArrival] = useState<Arrival | null>(null);
+  const [repeatTap, setRepeatTap] = useState<{ id: string; key: number } | null>(null);
   useEffect(() => {
     if (!albumToast) return;
     const t = setTimeout(() => setAlbumToast(null), ALBUM_TOAST_MS);
@@ -387,13 +389,21 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           if (result === "none") break;
           sounds().play(result === "collected" ? "twinkle" : "tap");
           clearTimeout(bubbleTimer.current);
-          const text = tf(result === "collected" ? g.album.collected : g.album.again, { name: found.name });
-          setBubble({ text: result === "again" ? text : found.name, x: (found.hitRect.x + found.hitRect.w / 2) * scene.art.width, y: found.hitRect.y * scene.art.height, key: ++bubbleSequence.current });
+          const words = guided ? g.collection : g.album;
+          const text = tf(result === "collected" ? words.collected : words.again, { name: found.name });
+          const cx = (found.hitRect.x + found.hitRect.w / 2) * scene.art.width;
+          const cy = (found.hitRect.y + found.hitRect.h / 2) * scene.art.height;
+          setBubble({ text: result === "again" ? text : found.name, x: cx, y: found.hitRect.y * scene.art.height, key: ++bubbleSequence.current });
           setAnnouncement(text);
           if (result === "collected") {
             if (selectedDiscovery === hit.id) { setSelectedDiscovery(null); setDiscoveryHint(0); }
             setBurst({ key: Date.now(), small: true });
-            setAlbumToast({ key: Date.now(), text });
+            // Guided boards watch the sticker fly into the collection; older books get the short toast.
+            const transform = liveTransform.current;
+            if (guided && transform) setArrival({ id: hit.id, from: stageToScreen(transform, cx, cy), key: Date.now() });
+            else setAlbumToast({ key: Date.now(), text });
+          } else if (guided) {
+            setRepeatTap({ id: hit.id, key: Date.now() });
           }
           bubbleTimer.current = setTimeout(() => { setBubble(null); setAnnouncement(""); }, 1800);
           break;
@@ -528,7 +538,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
       </div>
 
       {flight ? <StarFlight key={flight.key} path={flight.path} /> : null}
-      {guided && board ? <DiscoveryTray board={board} scene={scene} collectedIds={collectedIds} selectedId={selectedDiscovery} hintLevel={discoveryHint} disabled={turn || !revealed || loadFailed || showComplete || (mission.phase !== "searching" && mission.phase !== "complete")} muted={store.muted} onSelect={selectDiscovery} onHint={requestDiscoveryHint} /> : null}
+      {guided && board ? <Collection board={board} scene={scene} collectedIds={collectedIds} selectedId={selectedDiscovery} hintLevel={discoveryHint} disabled={turn || !revealed || loadFailed || showComplete || (mission.phase !== "searching" && mission.phase !== "complete")} muted={store.muted} arrival={arrival} repeat={repeatTap} onSelect={selectDiscovery} onHint={requestDiscoveryHint} /> : null}
       {albumToast ? (
         <div key={albumToast.key} className="scene__album-toast" role="status">
           <span aria-hidden>🃏</span> {albumToast.text}
@@ -604,7 +614,7 @@ const STAR_POP_GAP_MS = 260;
 const STAR_CLIMB_SEMITONES = [0, 2, 4, 5, 7];
 
 function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, onStay }: { scene: SceneConfig; bonusFound: boolean; hintsUsed: number; store: PlayStore; onStay?: () => void }) {
-  const { g, tf, locale } = useGameText();
+  const { g, tf } = useGameText();
   const next = store.nextScene();
   const allDone = next === null;
   // Every hiding spot found: the postcard, from the pixels of the find itself.
@@ -655,7 +665,7 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, onStay }: { sc
         </div>
         )}
         <div className="complete__actions">
-          {onStay ? <button type="button" className="fm-btn fm-btn--secondary" onClick={onStay}>{discoveryCopy[locale].keep}</button> : null}
+          {onStay ? <button type="button" className="fm-btn fm-btn--secondary" onClick={onStay}>{g.collection.keep}</button> : null}
           {store.demo ? (
             <a href="/create" className="fm-btn fm-btn--lg">
               {g.complete.demoCta}

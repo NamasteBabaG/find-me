@@ -9,7 +9,7 @@ import type { GameConfig, SceneConfig } from "@/domain/game/config";
 import type { AlbumStatus } from "../engine/album-storage";
 import { useGameText } from "../i18n";
 import { StarTray } from "./StarTray";
-import { discoveryCopy } from "./discovery-copy";
+import "./collection.css";
 
 type BookBoard = AdventureBook["boards"][number];
 type AlbumView = ReturnType<typeof adventureAlbum>;
@@ -76,14 +76,16 @@ function syncCopy(g: ReturnType<typeof useGameText>["g"], mode: "none" | "guest"
 }
 
 /**
- * The album inside the adventure bag: per place, the postcard (or how many
- * hiding spots it still needs) and the discovery cards. Three finds open the
- * next place; the postcard needs every hiding spot - said here and at the
- * moment of choice, never as a fixed line in the search HUD (Guy).
+ * The album inside the adventure bag: one sticker page per place. The
+ * postcard (or how many hiding spots it still needs) sits beside the six
+ * stickers of the place: found ones in full colour with a gold rim, the
+ * missing ones ghosted with the hint that leads back to them. Three finds
+ * open the next place; the postcard needs every hiding spot - said here and
+ * at the moment of choice, never as a fixed line in the search HUD (Guy).
  */
-export function AlbumSection({ config, album, mode, state }: { config: GameConfig; album: AdventureProgress | null; mode: "none" | "guest" | "owner"; state: AlbumStatus }) {
-  const { g, tf, locale } = useGameText();
-  const copy = discoveryCopy[locale];
+export function AlbumSection({ config, album, mode, state, onOpen }: { config: GameConfig; album: AdventureProgress | null; mode: "none" | "guest" | "owner"; state: AlbumStatus; onOpen?: (slug: string) => void }) {
+  const { g, tf } = useGameText();
+  const c = g.collection;
   const book = config.adventure;
   if (!book) return null;
   let view: AlbumView | null = null;
@@ -95,10 +97,18 @@ export function AlbumSection({ config, album, mode, state }: { config: GameConfi
   const note = syncCopy(g, mode, view ? state : "unreadable");
   return (
     <section className="album" aria-labelledby="album-title">
-      <div className="album__head">
-        <h2 id="album-title" className="album__title">{g.album.title}</h2>
+      <header className="album__head">
+        <div className="album__heading">
+          <h2 id="album-title" className="album__title">{g.album.title}</h2>
+          {view ? (
+            <p className="album__tally">
+              <span><span aria-hidden>✦</span> {tf(c.tally, { found: view.discoveries.collected, total: view.discoveries.total })} {c.title}</span>
+              <span><span aria-hidden>✉️</span> {tf(c.tally, { found: view.postcards.collected, total: view.postcards.total })} {g.album.postcards}</span>
+            </p>
+          ) : null}
+        </div>
         {note ? <p className="album__sync" data-album-state={state}>{note}</p> : null}
-      </div>
+      </header>
       <p className="album__note">{g.album.continueNote}</p>
       {book.boards.map((board: BookBoard) => {
         const scene = config.scenes.find((s) => s.slug === board.boardSlug);
@@ -106,11 +116,18 @@ export function AlbumSection({ config, album, mode, state }: { config: GameConfi
         if (!scene) return null;
         const found = boardView?.stars.found ?? 0;
         const remaining = board.targetIds.length - found;
+        const guided = board.collectionUi === "guided-v1";
+        const got = (id: string) => boardView?.discoveries.find((x) => x.id === id)?.collected ?? false;
+        const collectedCount = board.discoveries.filter((d) => got(d.id)).length;
+        const allGot = board.discoveries.length > 0 && collectedCount === board.discoveries.length;
         return (
-          <article key={board.boardSlug} className="album__board" data-board={board.boardSlug}>
-            <header className="album__board-head">
+          <article key={board.boardSlug} className={`album__page${allGot ? " album__page--complete" : ""}`} data-board={board.boardSlug}>
+            <header className="album__page-head">
               <h3 className="album__board-name">{scene.name}</h3>
               <StarTray lit={found} total={board.targetIds.length} size="sm" label={tf(g.stars.tray, { earned: found, total: board.targetIds.length })} />
+              <span className={`album__page-tally${allGot ? " album__page-tally--done" : ""}`}>
+                {allGot ? <><span aria-hidden>✨</span> {c.complete}</> : `${tf(c.tally, { found: collectedCount, total: board.discoveries.length })} ${c.title}`}
+              </span>
             </header>
             <div className="album__row">
               <div className="album__postcards">
@@ -118,32 +135,34 @@ export function AlbumSection({ config, album, mode, state }: { config: GameConfi
                 {boardView?.postcard ? (
                   <Postcard scene={scene} postcard={boardView.postcard} className="album__postcard" />
                 ) : (
-                  <p className="album__card album__card--missing" data-postcard-remaining={remaining}>
-                    <span className="album__missing-icon" aria-hidden>✉️</span>
-                    {tf(remaining === 1 ? g.album.postcardRemainingOne : g.album.postcardRemaining, { remaining })}
-                  </p>
+                  <div className="album__postcard-wait" data-postcard-remaining={remaining}>
+                    <span className="album__postcard-stamp" aria-hidden>✉️</span>
+                    <span>{tf(remaining === 1 ? g.album.postcardRemainingOne : g.album.postcardRemaining, { remaining })}</span>
+                  </div>
                 )}
               </div>
               <div className="album__discoveries">
-                <h4 className="album__kind">{g.album.discoveries}</h4>
-                {board.collectionUi === "guided-v1" ? <p>{boardView?.discoveries.filter(d => d.collected).length ?? 0}/{board.discoveries.length} {copy.title}{boardView?.discoveries.every(d => d.collected) ? ` — ${copy.complete}` : ""}</p> : null}
-                <ul className="album__cards">
+                <h4 className="album__kind">{c.title}</h4>
+                <ul className="album__stickers">
                   {board.discoveries.map((d) => {
-                    const collected = boardView?.discoveries.find((x) => x.id === d.id)?.collected ?? false;
+                    const collected = got(d.id);
+                    // A guided board shows what is still hiding; an older book keeps its surprises.
+                    const reveal = collected || guided;
                     return (
-                      <li key={d.id} className={`album__card${collected ? " album__card--got" : " album__card--missing"}`} data-discovery={d.id} data-collected={collected}>
-                        {collected || board.collectionUi === "guided-v1" ? (
-                          <AlbumCrop art={scene.art} crop={d.cardCrop} className="album__card-picture" label={tf(g.album.cardAria, { name: d.name })} />
-                        ) : (
-                          <span className="album__card-picture album__card-picture--blank" aria-hidden>?</span>
-                        )}
-                        <span className="album__card-name">{collected || board.collectionUi === "guided-v1" ? d.name : g.album.notYet}</span>
-                        {d.rarity ? <span className={`discovery-rarity discovery-rarity--${d.rarity}`}>{copy[d.rarity]}</span> : null}
-                        <span className="album__card-text">{collected ? d.description : board.collectionUi === "guided-v1" ? copy.missing : tf(g.album.hintFor, { hint: d.hint })}</span>
+                      <li key={d.id} className={`album__sticker${collected ? " album__sticker--got" : ""}`} data-discovery={d.id} data-collected={collected}>
+                        <div className={`sticker sticker--lg${collected ? " sticker--got" : ""}`} role="img" aria-label={collected ? tf(c.collectedAria, { name: d.name }) : reveal ? tf(c.pending, { name: d.name }) : g.album.notYet}>
+                          <span className="sticker__face">{reveal ? <AlbumCrop art={scene.art} crop={d.cardCrop} className="sticker__picture" /> : <span className="sticker__blank" aria-hidden>?</span>}</span>
+                          {d.rarity ? <span className={`sticker__rarity sticker__rarity--${d.rarity}`}>{c.rarity[d.rarity]}</span> : null}
+                          <span className="sticker__name">{reveal ? d.name : g.album.notYet}</span>
+                        </div>
+                        <p className="album__sticker-text">{collected ? d.description : tf(g.album.hintFor, { hint: d.hint })}</p>
                       </li>
                     );
                   })}
                 </ul>
+                {!allGot && onOpen ? (
+                  <button type="button" className="fm-btn fm-btn--secondary fm-btn--sm album__seek" onClick={() => onOpen(board.boardSlug)}>{c.seekInBoard}</button>
+                ) : null}
               </div>
             </div>
           </article>

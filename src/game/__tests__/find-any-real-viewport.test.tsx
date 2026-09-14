@@ -118,9 +118,9 @@ describe("guided discoveries through the real viewport", () => {
     act(()=>vi.advanceTimersByTime(800));
     const childCamera=player.stage.style.transform;
     expect(player.store.getState().mission!.hintLevel).toBe(3);
-    fireEvent.click(screen.getByRole('button',{name:/Discoveries 0\/6/}));
+    fireEvent.click(screen.getByRole('button',{name:'Discoveries: 0 of 6 collected'}));
     fireEvent.click(screen.getByRole('button',{name:'Item 4'}));
-    for(let i=0;i<3;i++)fireEvent.click(player.container.querySelector('.discovery-tray__focus button')!);
+    for(let i=0;i<3;i++)fireEvent.click(player.container.querySelector('.collect__hint')!);
     act(()=>vi.advanceTimersByTime(800));
     expect(player.stage.style.transform).not.toBe(childCamera);
     expect(childHint.disabled).toBe(false);
@@ -138,7 +138,7 @@ describe("guided discoveries through the real viewport", () => {
     const discoveries=config.adventure!.boards[0]!.discoveries;
     const collect=(index:number)=>{const r=discoveries[index]!.hitRect;player.tap({x:r.x+r.w/2,y:r.y+r.h/2});};
     expect(player.visible()).toHaveLength(1);
-    fireEvent.click(screen.getByRole("button",{name:/Discoveries 0\/6/}));
+    fireEvent.click(screen.getByRole("button",{name:"Discoveries: 0 of 6 collected"}));
     fireEvent.click(screen.getByRole("button",{name:"Item 4"}));
     collect(2); collect(2);
     expect(player.store.getState().album!.discoveries).toHaveLength(1);
