@@ -17,9 +17,10 @@ function imagePatch(sprite: SpriteRef, subject: string) {
 
 function checkBoard(scene: SceneConfig, plan: ReadyAdventureBoard) {
   if (scene.artStatus !== "final" || scene.version !== plan.sceneVersion || scene.art.width !== plan.art.width || scene.art.height !== plan.art.height || scene.art.base !== plan.art.base || scene.worldSlug !== plan.worldSlug) throw new AdventureError("content-mismatch", scene.slug);
-  // This slice supports the current fixed, resumable four/five-hide player.
+  // Explicit fixed, resumable three/four/five-hide contract. All remain serial on screen.
   // Legacy three-hide replay/composed sprites need their own content review.
   if (scene.playMode !== "find-any" || scene.findsRequiredToAdvance !== 3) throw new AdventureError("not-ready", scene.slug);
+  if (plan.collectionUi === "guided-v1" && scene.targets.length !== plan.plannedHides) throw new AdventureError("content-mismatch", `${scene.slug}:hide-count`);
   if (scene.art.foreground) throw new AdventureError("unsafe-layout", `${scene.slug}:foreground-needs-discovery-review`);
   for (const target of scene.targets) {
     if (target.adjust && (target.adjust.dx !== 0 || target.adjust.dy !== 0 || target.adjust.scale !== 1)) throw new AdventureError("unsafe-layout", target.id);
@@ -62,6 +63,7 @@ export function attachAdventureBook(input: GameConfig, raw: AdventureCatalog, bo
       boardSlug: slug, worldSlug: plan.worldSlug, sceneVersion: scene.version, artSha256: plan.art.sha256,
       art: { base: scene.art.base, width: scene.art.width, height: scene.art.height },
       targetIds: scene.targets.map(t => t.id), findsRequiredToAdvance: 3,
+      ...(plan.collectionUi ? { collectionUi: plan.collectionUi } : {}),
       targetImages: scene.targets.map(t => {
         const A = bindBookImage(t.spriteByVariant?.A ?? t.sprite), B = bindBookImage(t.spriteByVariant?.B ?? t.sprite);
         if (!A || !B) throw new AdventureError("not-ready", `${t.id}:published-patch-required`);
@@ -69,6 +71,8 @@ export function attachAdventureBook(input: GameConfig, raw: AdventureCatalog, bo
       }),
       discoveries: plan.discoveries.map(d => ({
         id: d.id, name: d.name[config.locale], hint: d.hint[config.locale], category: d.category,
+        ...(d.rarity ? { rarity: d.rarity } : {}),
+        ...(d.difficulty ? { difficulty: d.difficulty } : {}),
         description: d.description.text[config.locale], descriptionKind: d.description.kind,
         ...(d.description.kind === "fact" ? { sourceUrl: d.description.sourceUrl } : {}),
         hitRect: d.hitRect, cardCrop: d.cardCrop,

@@ -6,6 +6,8 @@ const Copy = z.string().trim().min(1).max(600);
 export const BookDiscoverySchema = z.object({
   id: AdventureId, name: Copy, hint: Copy,
   category: z.enum(["animal", "plant", "object", "character"]),
+  rarity: z.enum(["common", "rare", "epic"]).optional(),
+  difficulty: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
   description: Copy, descriptionKind: z.enum(["story", "fact"]),
   sourceUrl: z.string().url().startsWith("https://").optional(),
   hitRect: AdventureRect, cardCrop: AdventureRect,
@@ -27,7 +29,8 @@ export const AdventureBookSchema = z.object({
     targetIds: z.array(AdventureId).min(3).max(5),
     targetImages: z.array(z.object({ targetId: AdventureId, A: BookImageSchema, B: BookImageSchema }).strict()).min(3).max(5),
     findsRequiredToAdvance: z.literal(3),
-    discoveries: z.array(BookDiscoverySchema).min(1).max(3),
+    collectionUi: z.literal("guided-v1").optional(),
+    discoveries: z.array(BookDiscoverySchema).min(1).max(6),
     postcard: z.object({ id: AdventureId, title: Copy, targetId: AdventureId, crop: AdventureRect }).strict(),
   }).strict()).min(1).max(81),
 }).strict().superRefine((book, ctx) => {

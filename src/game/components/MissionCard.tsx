@@ -34,6 +34,8 @@ interface Props {
   quiet?: boolean;
   onExpand?: () => void;
   onHint: () => void;
+  /** Guided collection can move the camera away from the final child hint. */
+  repeatLastHint?: boolean;
   /** The illustrated identity cue, never the upload or a costumed hiding spot. */
   avatarUrl?: string;
   /** Landing demo: the question and the face, nothing else. */
@@ -56,7 +58,7 @@ interface Props {
  * score a child keeps glancing at. What the WORLD has collected is not shown
  * here at all - inside a board, only that board's stars matter (Guy).
  */
-export function MissionCard({ index, total, target, found, order, stars, trayRef, hintLevel, hintPulse, hintText, onHint, avatarUrl, childName, quiet = false, onExpand, minimal = false, findAny = false, onAdvance, advanceLabel }: Props) {
+export function MissionCard({ index, total, target, found, order, stars, trayRef, hintLevel, hintPulse, hintText, onHint, repeatLastHint = false, avatarUrl, childName, quiet = false, onExpand, minimal = false, findAny = false, onAdvance, advanceLabel }: Props) {
   const { g, tf } = useGameText();
   const foundCount = Math.min(found.length, total);
   const lit = Math.min(stars ?? found.length, total);
@@ -107,7 +109,7 @@ export function MissionCard({ index, total, target, found, order, stars, trayRef
         {minimal ? null : (
           // A word, not a lightbulb: an icon needs decoding, and the child asks a
           // grown-up anyway — the word is the design language (Guy).
-          <button type="button" className={`mission__hintbtn${hintPulse ? " mission__hintbtn--pulse" : ""}`} onClick={onHint} aria-label={hintLevel >= 3 ? g.scene.hintLast : g.scene.hint} title={g.scene.hint} disabled={hintLevel >= 3 || !target}>
+          <button type="button" className={`mission__hintbtn${hintPulse ? " mission__hintbtn--pulse" : ""}`} onClick={onHint} aria-label={hintLevel >= 3 && !repeatLastHint ? g.scene.hintLast : g.scene.hint} title={g.scene.hint} disabled={(hintLevel >= 3 && !repeatLastHint) || !target}>
             {g.scene.hint}
           </button>
         )}

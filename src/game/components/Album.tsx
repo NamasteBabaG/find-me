@@ -9,6 +9,7 @@ import type { GameConfig, SceneConfig } from "@/domain/game/config";
 import type { AlbumStatus } from "../engine/album-storage";
 import { useGameText } from "../i18n";
 import { StarTray } from "./StarTray";
+import { discoveryCopy } from "./discovery-copy";
 
 type BookBoard = AdventureBook["boards"][number];
 type AlbumView = ReturnType<typeof adventureAlbum>;
@@ -81,7 +82,8 @@ function syncCopy(g: ReturnType<typeof useGameText>["g"], mode: "none" | "guest"
  * moment of choice, never as a fixed line in the search HUD (Guy).
  */
 export function AlbumSection({ config, album, mode, state }: { config: GameConfig; album: AdventureProgress | null; mode: "none" | "guest" | "owner"; state: AlbumStatus }) {
-  const { g, tf } = useGameText();
+  const { g, tf, locale } = useGameText();
+  const copy = discoveryCopy[locale];
   const book = config.adventure;
   if (!book) return null;
   let view: AlbumView | null = null;
@@ -124,18 +126,20 @@ export function AlbumSection({ config, album, mode, state }: { config: GameConfi
               </div>
               <div className="album__discoveries">
                 <h4 className="album__kind">{g.album.discoveries}</h4>
+                {board.collectionUi === "guided-v1" ? <p>{boardView?.discoveries.filter(d => d.collected).length ?? 0}/{board.discoveries.length} {copy.title}{boardView?.discoveries.every(d => d.collected) ? ` — ${copy.complete}` : ""}</p> : null}
                 <ul className="album__cards">
                   {board.discoveries.map((d) => {
                     const collected = boardView?.discoveries.find((x) => x.id === d.id)?.collected ?? false;
                     return (
                       <li key={d.id} className={`album__card${collected ? " album__card--got" : " album__card--missing"}`} data-discovery={d.id} data-collected={collected}>
-                        {collected ? (
+                        {collected || board.collectionUi === "guided-v1" ? (
                           <AlbumCrop art={scene.art} crop={d.cardCrop} className="album__card-picture" label={tf(g.album.cardAria, { name: d.name })} />
                         ) : (
                           <span className="album__card-picture album__card-picture--blank" aria-hidden>?</span>
                         )}
-                        <span className="album__card-name">{collected ? d.name : g.album.notYet}</span>
-                        <span className="album__card-text">{collected ? d.description : tf(g.album.hintFor, { hint: d.hint })}</span>
+                        <span className="album__card-name">{collected || board.collectionUi === "guided-v1" ? d.name : g.album.notYet}</span>
+                        {d.rarity ? <span className={`discovery-rarity discovery-rarity--${d.rarity}`}>{copy[d.rarity]}</span> : null}
+                        <span className="album__card-text">{collected ? d.description : board.collectionUi === "guided-v1" ? copy.missing : tf(g.album.hintFor, { hint: d.hint })}</span>
                       </li>
                     );
                   })}

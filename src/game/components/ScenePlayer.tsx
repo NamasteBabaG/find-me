@@ -17,6 +17,9 @@ import { CloudBank } from "./Clouds";
 import { FLIGHT_MS, StarFlight, type FlightPath } from "./StarFlight";
 import { StarTray } from "./StarTray";
 import { Postcard } from "./Album";
+import { DiscoveryTray } from "./DiscoveryTray";
+import { discoveryCopy } from "./discovery-copy";
+import { discoveryHintRect, nextDiscoveryHint, type DiscoveryHintLevel } from "@/domain/adventure/discovery-guidance";
 import { adventureAlbum } from "@/domain/adventure/progress";
 import type { PlayStore } from "../store/play-store";
 import { useGameText } from "../i18n";
@@ -92,6 +95,20 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
   // The book's board for this scene: its discoveries are tappable, and the
   // finish card shows its postcard. Null on every game without an album.
   const board = store.albumBoard();
+  const guided = board?.collectionUi === "guided-v1";
+  const [selectedDiscovery, setSelectedDiscovery] = useState<string | null>(null);
+  const [discoveryHint, setDiscoveryHint] = useState<DiscoveryHintLevel>(0);
+  const collectedIds = (store.album?.discoveries ?? []).filter(d => d.boardSlug === scene.slug).map(d => d.discoveryId);
+  const focusedDiscovery = board?.discoveries.find(d => d.id === selectedDiscovery && !collectedIds.includes(d.id));
+  const discoveryRegion = focusedDiscovery ? discoveryHintRect(focusedDiscovery.hitRect, discoveryHint) : null;
+  const selectDiscovery = (id: string | null) => { setSelectedDiscovery(id); setDiscoveryHint(0); };
+  const requestDiscoveryHint = () => {
+    if (!focusedDiscovery || turn || loadFailed || !revealed) return;
+    const level = nextDiscoveryHint(discoveryHint);
+    setDiscoveryHint(level);
+    const region = discoveryHintRect(focusedDiscovery.hitRect, level);
+    if (region) apiRef.current?.focusOn(region.x + region.w / 2, region.y + region.h / 2, level === 2 ? 1.5 : 2.5, 450);
+  };
   const [albumToast, setAlbumToast] = useState<{ key: number; text: string } | null>(null);
   useEffect(() => {
     if (!albumToast) return;
@@ -355,7 +372,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
     (hit: Hit) => {
       // The next patch is already swapped while the curtain is still closed.
       // It cannot be found until the player can actually see the new board.
-      if (turn) return;
+      if (turn || (guided && (!revealed || loadFailed || (mission.phase !== "searching" && mission.phase !== "complete") || showComplete))) return;
       sounds().unlock();
       switch (hit.kind) {
         case "target":
@@ -367,12 +384,14 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           const found = board?.discoveries.find((d) => d.id === hit.id);
           if (!found) break;
           const result = store.collectDiscovery(hit.id);
+          if (result === "none") break;
           sounds().play(result === "collected" ? "twinkle" : "tap");
           clearTimeout(bubbleTimer.current);
-          setBubble({ text: found.name, x: (found.hitRect.x + found.hitRect.w / 2) * scene.art.width, y: found.hitRect.y * scene.art.height, key: ++bubbleSequence.current });
           const text = tf(result === "collected" ? g.album.collected : g.album.again, { name: found.name });
+          setBubble({ text: result === "again" ? text : found.name, x: (found.hitRect.x + found.hitRect.w / 2) * scene.art.width, y: found.hitRect.y * scene.art.height, key: ++bubbleSequence.current });
           setAnnouncement(text);
           if (result === "collected") {
+            if (selectedDiscovery === hit.id) { setSelectedDiscovery(null); setDiscoveryHint(0); }
             setBurst({ key: Date.now(), small: true });
             setAlbumToast({ key: Date.now(), text });
           }
@@ -390,7 +409,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           break;
       }
     },
-    [dispatch, turn, board, store, scene, g, tf],
+    [dispatch, turn, board, store, scene, g, tf, guided, revealed, loadFailed, mission.phase, showComplete, selectedDiscovery],
   );
 
   const currentId = currentTargetId(mission);
@@ -472,10 +491,14 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
         <SceneViewport scene={scene} mission={mission} hintLevel={mission.hintLevel} bonusFound={mission.bonusFound} discoveries={board?.discoveries} onHit={onHit} onReady={onReady} onAssetsReady={onAssetsReady} onVisibleAssetsReady={onVisibleAssetsReady} onAssetsFailed={onAssetsFailed} retryToken={retryToken} ariaLabel={tf(g.scene.sceneAria, { name: scene.name })}>
           {(vp) => {
             liveTransform.current = vp.transform;
-            if (!bubble) return null;
-            const p = stageToScreen(vp.transform, bubble.x, bubble.y);
+            const p = bubble ? stageToScreen(vp.transform, bubble.x, bubble.y) : null;
             const half = Math.min(130, Math.max(48, (vp.viewport.width - 32) / 2));
-            return <SpeechBubble key={bubble.key} text={bubble.text} x={Math.max(half + 8, Math.min(vp.viewport.width - half - 8, p.x))} y={Math.max(100, Math.min(vp.viewport.height - 12, p.y))} />;
+            const region = discoveryRegion && !turn && revealed ? discoveryRegion : null;
+            const rp = region ? stageToScreen(vp.transform, region.x * scene.art.width, region.y * scene.art.height) : null;
+            return <>
+              {region && rp ? <div className={`discovery-hint-region${discoveryHint === 3 ? " discovery-hint-region--exact" : ""}`} aria-hidden style={{ left: rp.x, top: rp.y, width: region.w * scene.art.width * vp.transform.scale, height: region.h * scene.art.height * vp.transform.scale }} /> : null}
+              {bubble && p ? <SpeechBubble key={bubble.key} text={bubble.text} x={Math.max(half + 8, Math.min(vp.viewport.width - half - 8, p.x))} y={Math.max(100, Math.min(vp.viewport.height - 12, p.y))} /> : null}
+            </>;
           }}
         </SceneViewport>
         {burst ? <CelebrationOverlay key={burst.key} kind={scene.celebration.kind} small={burst.small} seed={burst.key} /> : null}
@@ -505,6 +528,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
       </div>
 
       {flight ? <StarFlight key={flight.key} path={flight.path} /> : null}
+      {guided && board ? <DiscoveryTray board={board} scene={scene} collectedIds={collectedIds} selectedId={selectedDiscovery} hintLevel={discoveryHint} disabled={turn || !revealed || loadFailed || showComplete || (mission.phase !== "searching" && mission.phase !== "complete")} muted={store.muted} onSelect={selectDiscovery} onHint={requestDiscoveryHint} /> : null}
       {albumToast ? (
         <div key={albumToast.key} className="scene__album-toast" role="status">
           <span aria-hidden>🃏</span> {albumToast.text}
@@ -524,7 +548,15 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           hintLevel={mission.hintLevel}
           hintPulse={hintPulse}
           hintText={currentSlot?.hintText ?? null}
-          onHint={() => { if (!turn) dispatch({ type: "REQUEST_HINT" }); }}
+          repeatLastHint={guided}
+          onHint={() => {
+            if (turn || loadFailed || !revealed || mission.phase !== "searching") return;
+            if (guided) { setSelectedDiscovery(null); setDiscoveryHint(0); }
+            if (guided && mission.hintLevel >= 3 && currentTarget) {
+              const { hintZone } = targetGeometry(scene, currentTarget, mission.plan.variants[currentTarget.id] ?? "A");
+              apiRef.current?.focusOn(hintZone.x, hintZone.y, 1.8, 600);
+            } else dispatch({ type: "REQUEST_HINT" });
+          }}
           avatarUrl={store.config.child.avatarUrl}
           childName={store.config.child.name}
           quiet={quiet && !store.demo}
@@ -551,7 +583,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
       ) : null}
 
       {mission.phase === "complete" && showComplete ? (
-        <SceneCompleteCard scene={scene} bonusFound={mission.bonusFound} hintsUsed={Object.values(mission.found).reduce((n, r) => n + r.hintsUsed, 0)} store={store} />
+        <SceneCompleteCard scene={scene} bonusFound={mission.bonusFound} hintsUsed={Object.values(mission.found).reduce((n, r) => n + r.hintsUsed, 0)} store={store} onStay={guided ? () => setShowComplete(false) : undefined} />
       ) : null}
     </div>
   );
@@ -571,8 +603,8 @@ const STAR_POP_GAP_MS = 260;
 /** Each star a little higher than the one before: a climb, not five identical dings. */
 const STAR_CLIMB_SEMITONES = [0, 2, 4, 5, 7];
 
-function SceneCompleteCard({ scene, bonusFound, hintsUsed, store }: { scene: SceneConfig; bonusFound: boolean; hintsUsed: number; store: PlayStore }) {
-  const { g, tf } = useGameText();
+function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, onStay }: { scene: SceneConfig; bonusFound: boolean; hintsUsed: number; store: PlayStore; onStay?: () => void }) {
+  const { g, tf, locale } = useGameText();
   const next = store.nextScene();
   const allDone = next === null;
   // Every hiding spot found: the postcard, from the pixels of the find itself.
@@ -623,6 +655,7 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store }: { scene: Sce
         </div>
         )}
         <div className="complete__actions">
+          {onStay ? <button type="button" className="fm-btn fm-btn--secondary" onClick={onStay}>{discoveryCopy[locale].keep}</button> : null}
           {store.demo ? (
             <a href="/create" className="fm-btn fm-btn--lg">
               {g.complete.demoCta}

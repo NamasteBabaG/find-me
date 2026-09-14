@@ -101,7 +101,7 @@ export async function captureIdentity(invoke: () => Promise<unknown>, wire: type
   return capture;
 }
 
-async function replayIdentity<T>(captured: CapturedImage, invoke: () => Promise<T>): Promise<T> {
+export async function replayIdentity<T>(captured: CapturedImage, invoke: () => Promise<T>): Promise<T> {
   const original = globalThis.fetch;
   globalThis.fetch = async () => new Response(Buffer.from(captured.jsonBase64, "base64"), { status: captured.status,
     headers: captured.requestId ? { "x-request-id": captured.requestId, "Content-Type": "application/json" } : {} });

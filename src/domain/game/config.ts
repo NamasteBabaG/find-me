@@ -117,10 +117,10 @@ export const SceneConfigSchema = z.object({
   version: z.number().int(),
   /** Which journey this board belongs to. Absent in configs written before worlds. */
   worldSlug: z.string().optional(),
-  /** Explicit shipped-board rules. Four hides require an intentional per-game
+  /** Explicit shipped-board rules. Three/four hides require an intentional per-game
    * exception; authored/generated boards still default to five. Absence keeps legacy serial play. */
   playMode: z.literal("find-any").optional(),
-  appearancesPerBoard: z.union([z.literal(4), z.literal(5)]).optional(),
+  appearancesPerBoard: z.union([z.literal(3), z.literal(4), z.literal(5)]).optional(),
   findsRequiredToAdvance: z.literal(3).optional(),
   name: z.string(),
   tagline: z.string(),

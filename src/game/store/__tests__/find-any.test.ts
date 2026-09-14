@@ -34,7 +34,7 @@ function find(store: ReturnType<typeof createPlayStore>, targetId: string) {
 }
 
 describe("versioned five-hide player", () => {
-  it("accepts an explicit four-hide shipping contract, never an incomplete five-hide or weakened authoring contract", () => {
+  it("accepts explicit three/four-hide shipping contracts, never an incomplete five-hide or weakened authoring contract", () => {
     const config = fixture([4, 4]);
     expect(config.scenes.map(scene => scene.targets.length)).toEqual([4, 4, 5, 5, 5, 5, 5, 5, 5]);
     const scene = config.scenes[0]!;
@@ -44,8 +44,8 @@ describe("versioned five-hide player", () => {
       { ...scene, appearancesPerBoard: undefined },
       { ...scene, playMode: undefined },
       { ...scene, findsRequiredToAdvance: 4 },
-      { ...scene, targets: scene.targets.slice(0, 3), appearancesPerBoard: 3 },
     ]) expect(GameConfigSchema.safeParse(replace(changed)).success).toBe(false);
+    expect(GameConfigSchema.safeParse(replace({ ...scene, targets:scene.targets.slice(0,3), appearancesPerBoard:3 })).success).toBe(true);
     const authored = findScene("sydney", 9)!;
     expect(SceneDefinitionSchema.safeParse(authored).success).toBe(true);
     expect(SceneDefinitionSchema.safeParse({ ...authored, targets: authored.targets.slice(0, 4), appearancesPerBoard: 4 }).success).toBe(false);

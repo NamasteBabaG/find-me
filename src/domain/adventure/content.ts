@@ -23,6 +23,8 @@ export const DiscoverySchema = z.object({
   hint: AdventureText,
   /** No rarity economy in v1. The category describes content, not value. */
   category: z.enum(["animal", "plant", "object", "character"]),
+  rarity: z.enum(["common", "rare", "epic"]).optional(),
+  difficulty: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
   description: z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("story"), text: AdventureText }).strict(),
     z.object({ kind: z.literal("fact"), text: AdventureText, sourceUrl: z.string().url().startsWith("https://") }).strict(),
@@ -60,12 +62,14 @@ const PlanBase = {
   name: AdventureText,
   direction: DirectionSchema,
   /** Planning target; actual shipped counts are read from GameConfig. */
-  plannedHides: z.literal(5),
+  plannedHides: z.union([z.literal(3), z.literal(5)]),
+  /** Explicit opt-in; existing frozen books keep their original presentation. */
+  collectionUi: z.literal("guided-v1").optional(),
 };
 
 export const DraftAdventureBoardSchema = z.object({
   ...PlanBase, status: z.literal("planned"),
-  discoveryIdeas: z.array(z.object({ id: AdventureId, name: AdventureText, category: z.enum(["animal", "plant", "object", "character"]) }).strict()).min(1).max(3),
+  discoveryIdeas: z.array(z.object({ id: AdventureId, name: AdventureText, category: z.enum(["animal", "plant", "object", "character"]) }).strict()).min(1).max(6),
 }).strict();
 
 export const ReadyAdventureBoardSchema = z.object({
@@ -79,7 +83,7 @@ export const ReadyAdventureBoardSchema = z.object({
   }).strict().refine(a => Math.abs(a.width * 9 - a.height * 16) <= 16, "The search-board pilot requires 16:9 landscape art"),
   /** Reviewed return rectangles, not just the small face/hit rectangles. */
   personalZones: z.array(AdventureRect).min(1).max(10),
-  discoveries: z.array(DiscoverySchema).min(1).max(3),
+  discoveries: z.array(DiscoverySchema).min(1).max(6),
   postcard: z.object({ id: AdventureId, title: AdventureText, targetId: AdventureId, crop: AdventureRect }).strict(),
 }).strict().superRefine((board, ctx) => {
   const ids = board.discoveries.map(d => d.id);

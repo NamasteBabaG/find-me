@@ -2,7 +2,7 @@ import { GameConfigSchema, type GameConfig } from "../../game/config";
 import { AdventureCatalogSchema, type AdventureCatalog } from "../content";
 
 /** Synthetic geometry and copy, NOT approved board art or a customer game. */
-export function adventureFixture(count: 4 | 5 = 5): { config: GameConfig; catalog: AdventureCatalog } {
+export function adventureFixture(count: 3 | 4 | 5 = 5): { config: GameConfig; catalog: AdventureCatalog } {
   const slot = { id: "slot", x: .2, y: .65, scale: .2, hintZone: { x: .2, y: .65, r: .15 }, hintText: "Synthetic hint" };
   const config = GameConfigSchema.parse({
     version: 1, gameId: "synthetic-album-game", locale: "en", child: { name: "Example", avatarUrl: "/api/assets/synthetic-avatar" },

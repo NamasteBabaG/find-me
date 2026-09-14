@@ -1,0 +1,26 @@
+{
+  "giza": {
+    "base": "/scenes/adventure-giza-repaired-v1/base.webp",
+    "width": 3840,
+    "height": 2160,
+    "sha256": "ed3fa132942cef43daba21723f34641470153e954a13767dd178df7d27088e21",
+    "sourceSha256": "93e8510eecfef41bfb3b0d224db1bb58347f10227baf48643566982c0635db5e",
+    "bytes": 11710436
+  },
+  "amazon": {
+    "base": "/scenes/adventure-amazon/base.webp",
+    "width": 3840,
+    "height": 2160,
+    "sha256": "372ee33bb02158ba2b4eaa1740254cdb6fae182ed73c846498bf641a7e8d99ba",
+    "sourceSha256": "3f4d021d5f1cb29d3c1b013280b74ceba265c22773dd36d40050ef590f1230c5",
+    "bytes": 13247490
+  },
+  "newyork": {
+    "base": "/scenes/adventure-newyork/base.webp",
+    "width": 3840,
+    "height": 2160,
+    "sha256": "fc810bf9aa266357b5ce9f5852922e54838879dc759fba2fce30ea137c77ce89",
+    "sourceSha256": "d05b039854667dd4033fb4dcb79bcaeea0d18c9b14e5606f178673e22ba14408",
+    "bytes": 12235432
+  }
+}

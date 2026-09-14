@@ -15,7 +15,7 @@ export const AdventureProgressSchema = z.object({
   /** Frozen content keeps earned collections independent of future shop releases. */
   book: AdventureBookSchema,
   finds: z.array(z.object({ boardSlug: AdventureId, targetId: AdventureId, variant: z.enum(["A", "B"]) }).strict()).max(405),
-  discoveries: z.array(z.object({ boardSlug: AdventureId, discoveryId: AdventureId }).strict()).max(243),
+  discoveries: z.array(z.object({ boardSlug: AdventureId, discoveryId: AdventureId }).strict()).max(486),
 }).strict();
 export type AdventureProgress = z.infer<typeof AdventureProgressSchema>;
 

@@ -153,10 +153,11 @@ export function hidesCollide(a: LocalPatchHide, b: LocalPatchHide): boolean {
 }
 
 /** Throws on the first placement a board cannot actually hold. */
-export function assertPlaceable(board: LocalPatchBoard): void {
+export function assertPlaceable(board: LocalPatchBoard, dimensions: { width: number; height: number } = LOCAL_PATCH_BOARD): void {
+  if (!Number.isInteger(dimensions.width) || !Number.isInteger(dimensions.height) || dimensions.width <= 0 || dimensions.height <= 0) throw new Error("LOCAL_PATCH: invalid explicit board dimensions");
   for (const hide of board.hides) {
     const crop = cropOf(hide);
-    if (crop.left + crop.width > LOCAL_PATCH_BOARD.width || crop.top + crop.height > LOCAL_PATCH_BOARD.height) {
+    if (crop.left + crop.width > dimensions.width || crop.top + crop.height > dimensions.height) {
       throw new Error(`LOCAL_PATCH: ${hide.id} runs off the edge of ${board.board}`);
     }
     const box = maskForHide(hide);

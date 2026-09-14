@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 import React from "react";
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useStore } from "zustand";
 import { buildDemoConfig } from "@/services/demo";
-import type { SceneConfig } from "@/domain/game/config";
+import type { GameConfig, SceneConfig } from "@/domain/game/config";
+import { guidedFixture } from "@/domain/adventure/__tests__/guided-fixture";
+import { adventureAlbum } from "@/domain/adventure/progress";
 import { parseProgress } from "@/domain/game/progress";
 import { GameI18nProvider } from "../i18n";
 import { ScenePlayer } from "../components/ScenePlayer";
@@ -64,11 +66,12 @@ function sceneFixture(): SceneConfig {
   };
 }
 
-async function mountPlayer(size: { width: number; height: number }, scene = sceneFixture(), saved: string[] = [], expectStarted = true) {
-  const config = { ...buildDemoConfig("en"), scenes: [scene], worlds: undefined, world: undefined };
-  config.child.avatarUrl = "";
-  const store = createPlayStore(config, { readOnlyPreview: true, skipGift: true,
+async function mountPlayer(size: { width: number; height: number }, scene = sceneFixture(), saved: string[] = [], expectStarted = true, suppliedConfig?: GameConfig) {
+  const config = suppliedConfig ?? { ...buildDemoConfig("en"), scenes: [scene], worlds: undefined, world: undefined };
+  if (!suppliedConfig) config.child.avatarUrl = "";
+  const store = createPlayStore(config, { readOnlyPreview: !suppliedConfig, skipGift: true,
     copy: { wrongTarget: "Other", wrongTargetNoItem: "Other", bonus: "Bonus", fallbackSuccess: "Found" } });
+  if (suppliedConfig) store.getState().hydrate();
   if (saved.length) store.setState({ progress: parseProgress(JSON.stringify({
     v: 1, gameId: config.gameId, revealed: true,
     scenes: { [scene.slug]: { sceneVersion: scene.version, foundTargetIds: saved } },
@@ -83,9 +86,7 @@ async function mountPlayer(size: { width: number; height: number }, scene = scen
   const stage = view.container.querySelector<HTMLElement>(".stage")!;
   const viewport = view.container.querySelector<HTMLElement>(".viewport")!;
   let pointerId = 0;
-  const hit = (targetId: string) => {
-    const target = scene.targets.find(item => item.id === targetId)!;
-    const { center } = targetGeometry(scene, target, store.getState().mission!.plan.variants[targetId] ?? "A");
+  const tap = (center: {x:number;y:number}) => {
     const [, tx, ty, scale] = stage.style.transform.match(/translate\(([-\d.]+)px, ([-\d.]+)px\) scale\(([-\d.]+)\)/)!;
     const point = stageToScreen({ tx: Number(tx), ty: Number(ty), scale: Number(scale) }, center.x * scene.art.width, center.y * scene.art.height);
     expect(point.x).toBeGreaterThan(0); expect(point.x).toBeLessThan(size.width);
@@ -97,10 +98,72 @@ async function mountPlayer(size: { width: number; height: number }, scene = scen
       fireEvent(viewport, event);
     }
   };
+  const hit = (targetId: string) => {
+    const target = scene.targets.find(item => item.id === targetId)!;
+    const { center } = targetGeometry(scene, target, store.getState().mission!.plan.variants[targetId] ?? "A");
+    tap(center);
+  };
   const visible = () => Array.from(view.container.querySelectorAll("[data-target]"), element => element.getAttribute("data-target")!);
   const curtainOpen = () => view.container.querySelector(".scene__curtain")?.classList.contains("is-open");
-  return { ...view, store, stage, viewport, hit, visible, curtainOpen, scene };
+  return { ...view, store, stage, viewport, hit, tap, visible, curtainOpen, scene };
 }
+
+describe("guided discoveries through the real viewport", () => {
+  it("replays the last child hint after an item hint moved the camera, without adding hint usage", async () => {
+    const {config}=guidedFixture();
+    window.localStorage.clear();
+    const player=await mountPlayer({width:1600,height:900},config.scenes[0]!,[],true,config);
+    const childHint=player.container.querySelector<HTMLButtonElement>('.mission__hintbtn')!;
+    for(let i=0;i<3;i++)fireEvent.click(childHint);
+    act(()=>vi.advanceTimersByTime(800));
+    const childCamera=player.stage.style.transform;
+    expect(player.store.getState().mission!.hintLevel).toBe(3);
+    fireEvent.click(screen.getByRole('button',{name:/Discoveries 0\/6/}));
+    fireEvent.click(screen.getByRole('button',{name:'Item 4'}));
+    for(let i=0;i<3;i++)fireEvent.click(player.container.querySelector('.discovery-tray__focus button')!);
+    act(()=>vi.advanceTimersByTime(800));
+    expect(player.stage.style.transform).not.toBe(childCamera);
+    expect(childHint.disabled).toBe(false);
+    fireEvent.click(childHint);
+    act(()=>vi.advanceTimersByTime(800));
+    expect(player.stage.style.transform).toBe(childCamera);
+    expect(player.store.getState().mission!.hintLevel).toBe(3);
+    expect(player.container.querySelector('.discovery-hint-region')).toBeNull();
+    expect(Object.keys(player.store.getState().mission!.found)).toHaveLength(0);
+  });
+  it("collects out of order, only once, and continues after the third child without a fourth child", async () => {
+    const {config}=guidedFixture(), scene=config.scenes[0]!;
+    window.localStorage.clear();
+    const player=await mountPlayer({width:1600,height:900},scene,[],true,config);
+    const discoveries=config.adventure!.boards[0]!.discoveries;
+    const collect=(index:number)=>{const r=discoveries[index]!.hitRect;player.tap({x:r.x+r.w/2,y:r.y+r.h/2});};
+    expect(player.visible()).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button",{name:/Discoveries 0\/6/}));
+    fireEvent.click(screen.getByRole("button",{name:"Item 4"}));
+    collect(2); collect(2);
+    expect(player.store.getState().album!.discoveries).toHaveLength(1);
+    expect(Object.keys(player.store.getState().mission!.found)).toHaveLength(0);
+    expect(screen.getByText("Looking for")).toBeTruthy();
+    expect(player.visible()).toHaveLength(1);
+    for(let i=0;i<3;i++) {
+      player.hit(player.visible()[0]!);
+      // Let React commit each stage before the next timer: celebrate, close,
+      // swap/decode, then reopen. Collection is blocked during this sequence.
+      const count=player.store.getState().album!.discoveries.length;
+      collect(3);expect(player.store.getState().album!.discoveries).toHaveLength(count);
+      for(let step=0;step<5;step++) await act(async()=>{vi.advanceTimersByTime(1000);for(const image of LoadedImage.instances)image.onload?.();});
+    }
+    expect(player.store.getState().mission!.phase).toBe("complete");
+    expect(player.visible()).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button",{name:"Stay and collect discoveries"}));
+    collect(4);
+    expect(player.store.getState().album!.discoveries).toHaveLength(2);
+    expect(screen.queryByText("Looking for")).toBeNull();
+    expect(adventureAlbum(player.store.getState().album!).postcards.collected).toBe(1);
+    expect(Object.keys(player.store.getState().mission!.found)).toHaveLength(3);
+    expect(player.visible()).toHaveLength(0);
+  });
+});
 
 describe("one child at a time through the actual animated viewport", () => {
   it.each([{ width: 1280, height: 800 }, { width: 320, height: 650 }])("awards once, then lights one gold star only when its real flight lands at $width×$height", async size => {
