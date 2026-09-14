@@ -8,9 +8,9 @@ export function adventureFixture(count: 4 | 5 = 5): { config: GameConfig; catalo
     version: 1, gameId: "synthetic-album-game", locale: "en", child: { name: "Example", avatarUrl: "/api/assets/synthetic-avatar" },
     styleVersion: "synthetic", packageTier: "ONE_WORLD", composedAt: "2026-09-14T00:00:00.000Z",
     scenes: [{
-      slug: "portrait-test", worldSlug: "pilot", version: 1, playMode: "find-any", appearancesPerBoard: count, findsRequiredToAdvance: 3,
+      slug: "pilot-test", worldSlug: "pilot", version: 1, playMode: "find-any", appearancesPerBoard: count, findsRequiredToAdvance: 3,
       name: "Synthetic market", tagline: "Synthetic", artStatus: "final",
-      art: { width: 600, height: 900, base: "/scenes/portrait-test/base.png", thumbnail: "/synthetic-thumb.webp", palette: { sky: "#fff", ground: "#fff", accent: "#fff" } },
+      art: { width: 1600, height: 900, base: "/scenes/pilot-test/base.png", thumbnail: "/synthetic-thumb.webp", palette: { sky: "#fff", ground: "#fff", accent: "#fff" } },
       targets: Array.from({ length: count }, (_, i) => ({
         id: `hide-${i + 1}`, targetType: "synthetic", difficulty: 1, mission: "Find Example", item: "Example", success: ["Found"], animation: "peek", slots: [slot, slot],
         sprite: { kind: "image", url: `/api/assets/synthetic-${i}`, width: 60, height: 252,
@@ -22,9 +22,9 @@ export function adventureFixture(count: 4 | 5 = 5): { config: GameConfig; catalo
   const t = (en: string, he = en) => ({ en, he });
   const catalog = AdventureCatalogSchema.parse({
     version: 1, releaseId: "synthetic-pilot-v1", boards: [{
-      status: "ready", boardSlug: "portrait-test", worldSlug: "pilot", name: t("Market", "שוק"), plannedHides: 5,
-      direction: { orientation: "portrait", perspective: "shallow", scaleTreatment: "similar-size-people", locationCues: [t("Tiles"), t("Lanterns")], microStories: [t("A cat"), t("A picnic")] },
-      sceneVersion: 1, art: { base: "/scenes/portrait-test/base.png", width: 600, height: 900, sha256: "a".repeat(64) },
+      status: "ready", boardSlug: "pilot-test", worldSlug: "pilot", name: t("Market", "שוק"), plannedHides: 5,
+      direction: { orientation: "landscape", aspect: "16:9", spread: "activity-across-width-and-height", perspective: "shallow", scaleTreatment: "similar-size-people", illustration: "storybook-hand-drawn", identityPrecedence: "reference-face-hair-age", locationCues: [t("Tiles"), t("Lanterns")], microStories: [t("A cat"), t("A picnic")] },
+      sceneVersion: 1, art: { base: "/scenes/pilot-test/base.png", width: 1600, height: 900, sha256: "a".repeat(64) },
       personalZones: [{ x: .04, y: .45, w: .6, h: .4 }],
       discoveries: [{ id: "cat", name: t("Basket cat", "החתול של הסל"), hint: t("Look beside the basket", "חפשו לצד הסל"), category: "animal",
         description: { kind: "story", text: t("The cat is guarding a basket.", "החתול שומר על סל.") },

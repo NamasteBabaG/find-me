@@ -11,11 +11,11 @@ import { prepareAdventureConfig, validateAdventureAssets } from "../adventure-co
 let scratch: string, digest: string;
 beforeAll(async () => {
   scratch = await mkdtemp(path.join(tmpdir(), "findme-adventure-art-"));
-  await mkdir(path.join(scratch, "scenes", "portrait-test"), { recursive: true });
+  await mkdir(path.join(scratch, "scenes", "pilot-test"), { recursive: true });
   // Synthetic uniform raster verifies transport/geometry, NOT visual quality.
-  const pixels = await sharp({ create: { width: 600, height: 900, channels: 3, background: "#dddddd" } }).png().toBuffer();
+  const pixels = await sharp({ create: { width: 1600, height: 900, channels: 3, background: "#dddddd" } }).png().toBuffer();
   digest = createHash("sha256").update(pixels).digest("hex");
-  await writeFile(path.join(scratch, "scenes", "portrait-test", "base.png"), pixels);
+  await writeFile(path.join(scratch, "scenes", "pilot-test", "base.png"), pixels);
 });
 afterAll(async () => {
   if (scratch && path.dirname(scratch) === tmpdir() && path.basename(scratch).startsWith("findme-adventure-art-")) await rm(scratch, { recursive: true, force: true });
@@ -30,7 +30,7 @@ describe("read-only adventure authoring gate", () => {
     const board = catalog.boards[0]!;
     if (board.status !== "ready") throw new Error("fixture");
     board.art.sha256 = digest;
-    const result = await prepareAdventureConfig(config, catalog, ["portrait-test"], scratch);
+    const result = await prepareAdventureConfig(config, catalog, ["pilot-test"], scratch);
     expect(result.adventure!.boards[0]!.artSha256).toBe(digest);
     expect(result.scenes).toEqual(config.scenes);
   });
@@ -43,7 +43,7 @@ describe("read-only adventure authoring gate", () => {
     board.art.height++;
     await expect(validateAdventureAssets(catalog, scratch)).rejects.toThrow("art-dimensions");
     board.art.height--;
-    board.art.base = "/scenes/portrait-test/missing.png";
+    board.art.base = "/scenes/pilot-test/missing.png";
     await expect(validateAdventureAssets(catalog, scratch)).rejects.toThrow();
   });
 });

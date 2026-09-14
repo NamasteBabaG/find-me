@@ -1,17 +1,21 @@
 {
   "version": 1,
-  "releaseId": "portrait-pilot-v1",
+  "releaseId": "search-pilot-v1",
   "boards": [
     {
       "status": "planned",
-      "boardSlug": "portrait-market-study",
-      "worldSlug": "portrait-pilot",
+      "boardSlug": "pilot-market-study",
+      "worldSlug": "search-pilot",
       "name": { "en": "Market study — not playable", "he": "מחקר שוק מאויר — לא זמין למשחק" },
       "plannedHides": 5,
       "direction": {
-        "orientation": "portrait",
+        "orientation": "landscape",
+        "aspect": "16:9",
+        "spread": "activity-across-width-and-height",
         "perspective": "shallow",
         "scaleTreatment": "similar-size-people",
+        "illustration": "storybook-hand-drawn",
+        "identityPrecedence": "reference-face-hair-age",
         "locationCues": [
           { "en": "Courtyards and patterned tilework", "he": "חצרות ואריחים מצוירים" },
           { "en": "Carpets, lanterns and produce stalls", "he": "שטיחים, פנסים ודוכני תוצרת" }
@@ -27,14 +31,18 @@
     },
     {
       "status": "planned",
-      "boardSlug": "portrait-harbor-study",
-      "worldSlug": "portrait-pilot",
+      "boardSlug": "pilot-harbor-study",
+      "worldSlug": "search-pilot",
       "name": { "en": "Harbor study — not playable", "he": "מחקר נמל מאויר — לא זמין למשחק" },
       "plannedHides": 5,
       "direction": {
-        "orientation": "portrait",
+        "orientation": "landscape",
+        "aspect": "16:9",
+        "spread": "activity-across-width-and-height",
         "perspective": "shallow",
         "scaleTreatment": "similar-size-people",
+        "illustration": "storybook-hand-drawn",
+        "identityPrecedence": "reference-face-hair-age",
         "locationCues": [
           { "en": "Jetties and sheltered boats", "he": "מזחים וסירות במעגן" },
           { "en": "Recognizable local architecture, chosen during art direction", "he": "אדריכלות מקומית מזוהה, לבחירה בשלב הכיוון האמנותי" }
@@ -50,14 +58,18 @@
     },
     {
       "status": "planned",
-      "boardSlug": "portrait-garden-study",
-      "worldSlug": "portrait-pilot",
+      "boardSlug": "pilot-garden-study",
+      "worldSlug": "search-pilot",
       "name": { "en": "Garden study — not playable", "he": "מחקר גן מאויר — לא זמין למשחק" },
       "plannedHides": 5,
       "direction": {
-        "orientation": "portrait",
+        "orientation": "landscape",
+        "aspect": "16:9",
+        "spread": "activity-across-width-and-height",
         "perspective": "shallow",
         "scaleTreatment": "similar-size-people",
+        "illustration": "storybook-hand-drawn",
+        "identityPrecedence": "reference-face-hair-age",
         "locationCues": [
           { "en": "Terraced garden paths, not a receding horizon", "he": "שבילי גן במפלסים, לא אופק מתרחק" },
           { "en": "Local plants and an identifiable pavilion", "he": "צמחייה מקומית וביתן מזוהה" }

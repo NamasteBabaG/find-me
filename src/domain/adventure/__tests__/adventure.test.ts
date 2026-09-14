@@ -10,12 +10,12 @@ import { adventureFixture } from "./fixture";
 
 function setup(count: 4 | 5 = 5) {
   const { config, catalog } = adventureFixture(count);
-  const attached = attachAdventureBook(config, catalog, ["portrait-test"]);
+  const attached = attachAdventureBook(config, catalog, ["pilot-test"]);
   const book = attached.adventure!;
   return { config: attached, book, progress: emptyAdventureProgress(config.gameId, book) };
 }
 
-describe("portrait adventure authoring and explicit opt-in", () => {
+describe("search-board adventure authoring and explicit opt-in", () => {
   it("keeps all three future art studies planned, without fabricated coordinates/assets", () => {
     expect(ADVENTURE_PILOT.boards).toHaveLength(3);
     expect(ADVENTURE_PILOT.boards.every(b => b.status === "planned" && !("art" in b) && !("discoveries" in b))).toBe(true);
@@ -27,17 +27,17 @@ describe("portrait adventure authoring and explicit opt-in", () => {
     const { config, catalog } = adventureFixture();
     config.locale = "he";
     const before = JSON.stringify(config);
-    const next = attachAdventureBook(config, catalog, ["portrait-test"]);
+    const next = attachAdventureBook(config, catalog, ["pilot-test"]);
     expect(next.adventure!.boards[0]!.discoveries[0]!.name).toBe("החתול של הסל");
     expect(JSON.stringify(config)).toBe(before);
     expect(GameConfigSchema.parse(config).adventure).toBeUndefined();
     expect(next.scenes).toEqual(config.scenes);
-    expect(() => attachAdventureBook(next, catalog, ["portrait-test"])).toThrow("existing-book-is-immutable");
+    expect(() => attachAdventureBook(next, catalog, ["pilot-test"])).toThrow("existing-book-is-immutable");
   });
   it("never adds an unowned board or duplicates a selected board", () => {
     const { config, catalog } = adventureFixture();
     expect(() => attachAdventureBook(config, catalog, ["not-purchased"])).toThrow("not-owned");
-    expect(() => attachAdventureBook(config, catalog, ["portrait-test", "portrait-test"])).toThrow("board-selection");
+    expect(() => attachAdventureBook(config, catalog, ["pilot-test", "pilot-test"])).toThrow("board-selection");
     expect(() => attachAdventureBook(config, catalog, [])).toThrow("board-selection");
   });
   it("rejects stale art versions, wrong dimensions and a different world", () => {
@@ -81,7 +81,7 @@ describe("portrait adventure authoring and explicit opt-in", () => {
     for (const drift of ["art", "size", "flip", "adjust"] as const) {
       const { config } = setup();
       const scene = config.scenes[0]!;
-      if (drift === "art") scene.art.base = "/scenes/portrait-test/new.png";
+      if (drift === "art") scene.art.base = "/scenes/pilot-test/new.png";
       if (drift === "size") scene.art.height++;
       if (drift === "flip") scene.targets[0]!.slots[0].flip = true;
       if (drift === "adjust") scene.targets[0]!.adjust = { dx: .01, dy: 0, scale: 1 };
@@ -134,7 +134,7 @@ describe("portrait adventure authoring and explicit opt-in", () => {
     const target = config.scenes[0]!.targets[0]!;
     if (target.sprite.kind !== "image") throw new Error("fixture");
     target.spriteByVariant = { B: { ...target.sprite, rect: { x: .7, y: .1, w: .15, h: .2 } } };
-    expect(() => attachAdventureBook(config, catalog, ["portrait-test"])).toThrow("unsafe-layout");
+    expect(() => attachAdventureBook(config, catalog, ["pilot-test"])).toThrow("unsafe-layout");
   });
   it("rejects unsafe adjustments, foreground, ambient overlaps and a cut-off postcard", () => {
     for (const change of ["adjust", "flip", "foreground", "ambient", "postcard"] as const) {
@@ -143,10 +143,10 @@ describe("portrait adventure authoring and explicit opt-in", () => {
       if (board.status !== "ready") throw new Error("fixture");
       if (change === "adjust") scene.targets[0]!.adjust = { dx: .1, dy: 0, scale: 1 };
       if (change === "flip") scene.targets[0]!.slots[0].flip = true;
-      if (change === "foreground") scene.art.foreground = "/scenes/portrait-test/foreground.png";
+      if (change === "foreground") scene.art.foreground = "/scenes/pilot-test/foreground.png";
       if (change === "ambient") scene.ambient = [{ id: "cover", x: .7, y: .1, w: .1, h: .1, label: "cover", animation: "hop", cooldownMs: 1500 }];
       if (change === "postcard") board.postcard.crop = { x: .12, y: .6, w: .1, h: .1 };
-      expect(() => attachAdventureBook(config, catalog, ["portrait-test"])).toThrow("unsafe-layout");
+      expect(() => attachAdventureBook(config, catalog, ["pilot-test"])).toThrow("unsafe-layout");
     }
   });
 });
@@ -156,7 +156,7 @@ describe("collection rules", () => {
     const s = setup(count);
     let state = s.progress;
     for (let n = 1; n <= count; n++) {
-      state = recordAdventureEvent(state, s.config.gameId, s.book, { kind: "target-found", boardSlug: "portrait-test", targetId: `hide-${n}`, variant: "B" }).progress;
+      state = recordAdventureEvent(state, s.config.gameId, s.book, { kind: "target-found", boardSlug: "pilot-test", targetId: `hide-${n}`, variant: "B" }).progress;
       const board = adventureAlbum(state).boards[0]!;
       expect(board.canAdvance).toBe(n >= 3);
       expect(board.complete).toBe(n === count);
@@ -169,7 +169,7 @@ describe("collection rules", () => {
   });
   it("permits a discovery before any child find, once, without awarding a star", () => {
     const s = setup();
-    const event: AdventureEvent = { kind: "discovery-found", boardSlug: "portrait-test", discoveryId: "cat" };
+    const event: AdventureEvent = { kind: "discovery-found", boardSlug: "pilot-test", discoveryId: "cat" };
     const first = recordAdventureEvent(s.progress, s.config.gameId, s.book, event);
     const replay = recordAdventureEvent(first.progress, s.config.gameId, s.book, event);
     expect(first.changed).toBe(true);
@@ -178,15 +178,15 @@ describe("collection rules", () => {
   });
   it("a repeated find/replay cannot change the variant of the earned memory", () => {
     const s = setup();
-    const first = recordAdventureEvent(s.progress, s.config.gameId, s.book, { kind: "target-found", boardSlug: "portrait-test", targetId: "hide-1", variant: "A" });
-    const next = recordAdventureEvent(first.progress, s.config.gameId, s.book, { kind: "target-found", boardSlug: "portrait-test", targetId: "hide-1", variant: "B" });
+    const first = recordAdventureEvent(s.progress, s.config.gameId, s.book, { kind: "target-found", boardSlug: "pilot-test", targetId: "hide-1", variant: "A" });
+    const next = recordAdventureEvent(first.progress, s.config.gameId, s.book, { kind: "target-found", boardSlug: "pilot-test", targetId: "hide-1", variant: "B" });
     expect(next.changed).toBe(false);
     expect(next.progress.finds).toEqual(first.progress.finds);
   });
   it("rejects nonexistent rewards and unowned boards", () => {
     const s = setup();
-    expect(() => recordAdventureEvent(s.progress, s.config.gameId, s.book, { kind: "target-found", boardSlug: "portrait-test", targetId: "invented", variant: "A" })).toThrow("invalid-event");
-    expect(() => recordAdventureEvent(s.progress, s.config.gameId, s.book, { kind: "discovery-found", boardSlug: "portrait-test", discoveryId: "invented" })).toThrow("invalid-event");
+    expect(() => recordAdventureEvent(s.progress, s.config.gameId, s.book, { kind: "target-found", boardSlug: "pilot-test", targetId: "invented", variant: "A" })).toThrow("invalid-event");
+    expect(() => recordAdventureEvent(s.progress, s.config.gameId, s.book, { kind: "discovery-found", boardSlug: "pilot-test", discoveryId: "invented" })).toThrow("invalid-event");
     expect(() => recordAdventureEvent(s.progress, s.config.gameId, s.book, { kind: "discovery-found", boardSlug: "unowned", discoveryId: "cat" })).toThrow("not-owned");
   });
   it("never interprets corruption, another game, or a changed release as empty progress", () => {
@@ -200,13 +200,13 @@ describe("collection rules", () => {
   });
   it("rejects fabricated or duplicated saved find IDs", () => {
     const s = setup();
-    expect(() => readAdventureProgress({ ...s.progress, finds: [{ boardSlug: "portrait-test", targetId: "fake", variant: "A" }] }, s.config.gameId, s.book)).toThrow("corrupt-progress");
-    const find = { boardSlug: "portrait-test", targetId: "hide-1", variant: "A" };
+    expect(() => readAdventureProgress({ ...s.progress, finds: [{ boardSlug: "pilot-test", targetId: "fake", variant: "A" }] }, s.config.gameId, s.book)).toThrow("corrupt-progress");
+    const find = { boardSlug: "pilot-test", targetId: "hide-1", variant: "A" };
     expect(() => readAdventureProgress({ ...s.progress, finds: [find, find] }, s.config.gameId, s.book)).toThrow("corrupt-progress");
   });
   it("retains progress over a JSON round trip and independent of object key order", () => {
     const s = setup();
-    const saved = recordAdventureEvent(s.progress, s.config.gameId, s.book, { kind: "discovery-found", boardSlug: "portrait-test", discoveryId: "cat" }).progress;
+    const saved = recordAdventureEvent(s.progress, s.config.gameId, s.book, { kind: "discovery-found", boardSlug: "pilot-test", discoveryId: "cat" }).progress;
     const reversed = Object.fromEntries(Object.entries(s.book).reverse());
     expect(readAdventureProgress({ ...JSON.parse(JSON.stringify(saved)), book: reversed }, s.config.gameId, s.book)).toEqual(saved);
   });
@@ -214,11 +214,11 @@ describe("collection rules", () => {
     const s = setup();
     s.book.boards.push({ ...structuredClone(s.book.boards[0]!), boardSlug: "second-board" });
     const start = emptyAdventureProgress(s.config.gameId, s.book);
-    const saved = recordAdventureEvent(start, s.config.gameId, s.book, { kind: "discovery-found", boardSlug: "portrait-test", discoveryId: "cat" }).progress;
+    const saved = recordAdventureEvent(start, s.config.gameId, s.book, { kind: "discovery-found", boardSlug: "pilot-test", discoveryId: "cat" }).progress;
     expect(adventureAlbum(saved).discoveries).toEqual({ collected: 1, total: 2 });
     expect(adventureAlbum(saved).boards[1]!.discoveries[0]!.collected).toBe(false);
   });
-  it("hits the same normalised object on portrait art; ambiguity never selects the first", () => {
+  it("hits the same normalised object on 16:9 art; ambiguity never selects the first", () => {
     const s = setup(), board = s.book.boards[0]!;
     expect(discoveryAt(board, .76, .17)).toBe("cat");
     expect(discoveryAt(board, .5, .5)).toBeNull();

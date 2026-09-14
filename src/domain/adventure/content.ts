@@ -37,10 +37,20 @@ export const DiscoverySchema = z.object({
   if (!contains(d.cardCrop, d.visibleRect)) ctx.addIssue({ code: "custom", path: ["cardCrop"], message: "Card crop must contain the visible object" });
 });
 
+/** The pilot's art direction, as literals so a plan cannot drift from the brief
+ * (docs/SEARCH_BOARDS_BRIEF_2026-09-14.md). 16:9 landscape belongs to THIS pilot;
+ * the book, geometry and album never assume an aspect ratio. */
 const DirectionSchema = z.object({
-  orientation: z.literal("portrait"),
+  orientation: z.literal("landscape"),
+  aspect: z.literal("16:9"),
+  /** "Vertical" is about the drawing, not the file: activity spread over the whole height and width. */
+  spread: z.literal("activity-across-width-and-height"),
   perspective: z.literal("shallow"),
   scaleTreatment: z.literal("similar-size-people"),
+  /** Rich storybook illustration: hand-drawn line, painted shading, distinct faces. Never photo, glossy 3D or one generic face. */
+  illustration: z.literal("storybook-hand-drawn"),
+  /** The approved reference decides face, hair and age; the place decides clothing, light, colour and shadow. */
+  identityPrecedence: z.literal("reference-face-hair-age"),
   locationCues: z.array(AdventureText).min(2).max(12),
   microStories: z.array(AdventureText).min(2).max(16),
 }).strict();
@@ -66,7 +76,7 @@ export const ReadyAdventureBoardSchema = z.object({
     base: z.string().regex(/^\/scenes\/[a-z0-9_-]+\/[a-z0-9_-]+\.(webp|png|jpg)$/),
     sha256: Sha256,
     width: z.number().int().positive(), height: z.number().int().positive(),
-  }).strict().refine(a => a.height > a.width, "The portrait pilot requires portrait art"),
+  }).strict().refine(a => Math.abs(a.width * 9 - a.height * 16) <= 16, "The search-board pilot requires 16:9 landscape art"),
   /** Reviewed return rectangles, not just the small face/hit rectangles. */
   personalZones: z.array(AdventureRect).min(1).max(10),
   discoveries: z.array(DiscoverySchema).min(1).max(3),

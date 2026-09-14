@@ -27,12 +27,12 @@ afterAll(async () => {
 async function seed(count: 4 | 5 = 5, enabled = true) {
   const fixture = adventureFixture(count);
   fixture.config.gameId = `adventure-test-${++sequence}`;
-  const config = enabled ? attachAdventureBook(fixture.config, fixture.catalog, ["portrait-test"]) : fixture.config;
+  const config = enabled ? attachAdventureBook(fixture.config, fixture.catalog, ["pilot-test"]) : fixture.config;
   await db.game.create({ data: { id: config.gameId, ownerId: owner, status: "READY", configJson: JSON.stringify(config) } });
   return config;
 }
-const found = (targetId: string): AdventureEvent => ({ kind: "target-found", boardSlug: "portrait-test", targetId, variant: "A" });
-const discovery: AdventureEvent = { kind: "discovery-found", boardSlug: "portrait-test", discoveryId: "cat" };
+const found = (targetId: string): AdventureEvent => ({ kind: "target-found", boardSlug: "pilot-test", targetId, variant: "A" });
+const discovery: AdventureEvent = { kind: "discovery-found", boardSlug: "pilot-test", discoveryId: "cat" };
 async function rowCount(gameId: string) {
   const rows = await db.$queryRaw<Array<{ gameId: string }>>(Prisma.sql`SELECT "gameId" FROM "AdventureAlbumProgress" WHERE "gameId" = ${gameId}`);
   return rows.length;
