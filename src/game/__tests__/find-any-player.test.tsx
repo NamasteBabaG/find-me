@@ -275,17 +275,40 @@ describe("find-any rendering and mobile feedback", () => {
     expect(failed).toHaveBeenCalledOnce(); expect(ready).not.toHaveBeenCalled();
   });
 
-  it("a completed new board offers map/passport, not a broken intro-reset replay; revisits retain five stars", async () => {
+  it("reentry does not celebrate; explicit replay remounts, starts at zero and can finish again without overwriting five earned stars", async () => {
     const scene = fiveScene(); const config = { ...buildDemoConfig("en"), scenes: [scene], worlds: undefined, world: undefined };
     const store = createPlayStore(config, { copy, readOnlyPreview: true, skipGift: true });
     store.getState().openScene(scene.slug); store.getState().dispatch({ type: "START", now: 1 });
     for (const target of scene.targets) { store.getState().dispatch({ type: "TAP_TARGET", targetId: target.id, now: 2 }); store.getState().dispatch({ type: "FOUND_DONE", now: 3 }); }
-    const state = store.getState();
-    const view = render(<GameI18nProvider locale="en"><ScenePlayer scene={scene} mission={state.mission!} store={state} onBack={state.goToMap} onSceneComplete={state.completeScene} /></GameI18nProvider>);
+    const progress = store.getState().progress;
+    function Player() { const state = useStore(store); return <GameI18nProvider locale="en"><ScenePlayer key={state.visitId} scene={scene} mission={state.mission!} store={state} onBack={state.goToMap} onSceneComplete={state.completeScene} /></GameI18nProvider>; }
+    const view = render(<Player />);
     await decodeAll(); act(() => vi.advanceTimersByTime(901));
-    expect(view.queryByRole("button", { name: "Play again" })).toBeNull();
-    fireEvent.click(view.getByRole("button", { name: "To the map" }));
-    expect(store.getState().screen).toBe("map"); expect(store.getState().progress.scenes[scene.slug]!.foundTargetIds).toHaveLength(5);
+    expect(view.queryByRole("dialog")).toBeNull();
+    expect(view.container.querySelectorAll(".mission__stars .stars__slot.is-lit")).toHaveLength(5);
+    fireEvent.click(view.getByRole("button", { name: "Play again" }));
+    await decodeAll(); act(() => vi.advanceTimersByTime(901));
+    expect(store.getState().mission!.phase).toBe("searching");
+    expect(view.container.querySelector(".scene__curtain")?.classList.contains("is-open")).toBe(true);
+    expect(view.container.querySelectorAll("[data-target]")).toHaveLength(1);
+    expect(view.container.querySelectorAll(".mission__stars .stars__slot.is-lit")).toHaveLength(0);
+    expect(view.container.querySelector(".mission__replay-label")?.textContent).toBe("Playing again");
+    for (let i = 0; i < 5; i++) {
+      const id = currentTargetId(store.getState().mission!)!;
+      act(() => rig.tap(Number(id.slice(-1)) * 0.19 + 0.07, 0.45));
+      act(() => vi.advanceTimersByTime(2200)); act(() => vi.advanceTimersByTime(560)); act(() => vi.advanceTimersByTime(160)); act(() => vi.advanceTimersByTime(901));
+      expect(view.container.querySelector(".scene__advance")).toBeNull();
+    }
+    expect(view.getByRole("dialog").textContent).toContain("You found every hiding spot again!");
+    expect(view.container.querySelector(".complete__loot")).toBeNull();
+    expect(store.getState().progress).toBe(progress);
+    // A second replay must also discard completion and choreography state.
+    fireEvent.click(view.getByRole("button", { name: "Play again" }));
+    await decodeAll(); act(() => vi.advanceTimersByTime(901));
+    expect(view.queryByRole("dialog")).toBeNull();
+    expect(store.getState().mission!.phase).toBe("searching");
+    expect(Object.keys(store.getState().mission!.found)).toHaveLength(0);
+    expect(store.getState().progress.scenes[scene.slug]!.foundTargetIds).toHaveLength(5);
   });
 
   it.each(["en", "he"] as const)("the gift describes five-hide rules only for new games in %s", locale => {

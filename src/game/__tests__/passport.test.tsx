@@ -15,6 +15,21 @@ beforeEach(() => vi.stubGlobal("React", React));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("the illustrated adventure bag", () => {
+  it.each(["he", "en"] as const)("offers a separate replay button only for completed boards in %s", locale => {
+    const config = buildDemoConfig(locale);
+    config.scenes = boardSlugs(allWorlds()[0]!).slice(0, 2).map(slug => buildDemoConfig(locale, slug).scenes[0]!);
+    const scene = config.scenes[0]!;
+    const progress = recordSceneCompleted(emptyProgress(config.gameId), scene.slug, { variants: {}, order: [], noHints: true, bonusFound: false }, 2);
+    const before = JSON.stringify(progress), onReplay = vi.fn(), onOpen = vi.fn();
+    const view = render(<GameI18nProvider locale={locale}><Passport config={config} progress={progress} onMap={() => {}} onOpen={onOpen} onReplay={onReplay} /></GameI18nProvider>);
+    const button = view.getByRole("button", { name: getDict(locale).game.replay.boardAria.replace("{place}", scene.name) });
+    expect(view.container.querySelectorAll(".loot__replay")).toHaveLength(1);
+    expect(button.parentElement?.closest("button")).toBeNull();
+    fireEvent.click(button);
+    expect(onReplay).toHaveBeenCalledExactlyOnceWith(scene.slug);
+    expect(onOpen).not.toHaveBeenCalled(); expect(JSON.stringify(progress)).toBe(before);
+  });
+
   it.each(["he", "en"] as const)("shows the nine real boards and only actual completion in %s", locale => {
     const config = buildDemoConfig(locale);
     config.scenes = boardSlugs(allWorlds()[0]!).map(slug => buildDemoConfig(locale, slug).scenes[0]!);

@@ -18,7 +18,7 @@ function BoardThumbnail({ thumbnail, base }: { thumbnail: string; base: string }
 }
 
 /** The adventure bag: actual places, with the saved completion of each board and the gold stars it holds. */
-export function Passport({ config, progress, onMap, onOpen, album = null, albumMode = "none", albumState = "idle" }: { config: GameConfig; progress: GameProgress; onMap: () => void; onOpen: (slug: string) => void; album?: AdventureProgress | null; albumMode?: "none" | "guest" | "owner"; albumState?: AlbumStatus }) {
+export function Passport({ config, progress, onMap, onOpen, onReplay, album = null, albumMode = "none", albumState = "idle" }: { config: GameConfig; progress: GameProgress; onMap: () => void; onOpen: (slug: string) => void; onReplay?: (slug: string) => void; album?: AdventureProgress | null; albumMode?: "none" | "guest" | "owner"; albumState?: AlbumStatus }) {
   const { g, tf } = useGameText();
   const done = config.scenes.filter(scene => sceneIsComplete(progress, scene)).length;
   // Every gold star in the game, and how far the jar has filled.
@@ -42,6 +42,7 @@ export function Passport({ config, progress, onMap, onOpen, album = null, albumM
           </div>
         </div>
       </header>
+      {done > 0 && onReplay ? <p id="bag-replay-note" className="passport__replay-note">{g.replay.note}</p> : null}
       <ul className="passport__grid" aria-label={g.passport.itemsAria}>
         {config.scenes.map((scene) => {
           const isComplete = sceneIsComplete(progress, scene);
@@ -60,6 +61,7 @@ export function Passport({ config, progress, onMap, onOpen, album = null, albumM
                   <StarTray lit={count} total={scene.targets.length} size="sm" className="loot__stars" />
                 </span>
               </button>
+              {isComplete && onReplay ? <button type="button" className="fm-btn fm-btn--secondary loot__replay" onClick={() => onReplay(scene.slug)} aria-label={tf(g.replay.boardAria, { place: scene.name })} aria-describedby="bag-replay-note">{g.complete.again}</button> : null}
             </li>
           );
         })}

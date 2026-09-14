@@ -225,6 +225,8 @@
 .passport__allstars { display: flex; align-items: center; justify-content: center; gap: var(--space-2); margin: 0; font-family: var(--font-display); font-weight: 800; font-size: var(--fs-400); line-height: var(--lh-400); color: var(--gold-deep); }
 .passport__grid { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .loot { min-width: 0; }
+.loot:has(.loot__replay) { display: flex; flex-direction: column; gap: var(--space-1); }
+.loot__replay { width: 100%; min-height: var(--touch-min); }
 .loot__btn { width: 100%; height: 100%; background: var(--white); border-radius: var(--radius-3); padding: var(--space-1); display: flex; flex-direction: column; align-items: stretch; gap: var(--space-1); min-height: var(--touch-kid); box-shadow: var(--shadow-1); text-align: start; }
 .loot__btn:focus-visible { outline: var(--space-0-5) solid var(--ink); outline-offset: var(--space-0-5); }
 .loot__image { position: relative; display: block; aspect-ratio: 16 / 9; overflow: hidden; border-radius: var(--radius-2); background: var(--paper-2); }
@@ -269,6 +271,10 @@
 /* The way forward, once the next place is open. Gold, because it was earned; never folded away. */
 .mission__continue { pointer-events: auto; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-1); min-height: var(--touch-min); padding-inline: var(--space-2); border-radius: var(--radius-pill); background: var(--grad-gold); color: var(--ink); font-family: var(--font-display); font-weight: 800; font-size: var(--fs-200); box-shadow: var(--shadow-1); animation: fm-pop-in var(--dur-3) var(--ease-pop); transition: transform var(--dur-1) var(--ease-out); }
 .mission__continue:hover { transform: translateY(-1px); }
+.mission__replay { display: flex; flex-direction: column; gap: var(--space-0-5); }
+.mission__replay button { pointer-events: auto; min-height: var(--touch-min); }
+.mission__replay-note, .complete__replay-note, .passport__replay-note { margin: 0; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); }
+.mission__replay-label { font-size: var(--fs-50); line-height: var(--lh-50); color: var(--sea-deep); font-weight: 700; }
 /* Folded, the card is a button — a tap on it unfolds the words — so it keeps its pointer events. */
 .mission--quiet { pointer-events: auto; cursor: pointer; }
 .scene__bar { left: max(var(--space-1), env(safe-area-inset-left)); right: auto; top: max(var(--space-1), env(safe-area-inset-top)); padding: 0; flex-direction: column; align-items: start; }

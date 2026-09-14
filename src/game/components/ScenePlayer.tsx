@@ -97,7 +97,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
   const guided = board?.collectionUi === "guided-v1";
   const [selectedDiscovery, setSelectedDiscovery] = useState<string | null>(null);
   const [discoveryHint, setDiscoveryHint] = useState<DiscoveryHintLevel>(0);
-  const collectedIds = (store.album?.discoveries ?? []).filter(d => d.boardSlug === scene.slug).map(d => d.discoveryId);
+  const collectedIds = store.replay?.discoveryIds ?? (store.album?.discoveries ?? []).filter(d => d.boardSlug === scene.slug).map(d => d.discoveryId);
   const focusedDiscovery = board?.discoveries.find(d => d.id === selectedDiscovery && !collectedIds.includes(d.id));
   const discoveryRegion = focusedDiscovery ? discoveryHintRect(focusedDiscovery.hitRect, discoveryHint) : null;
   const selectDiscovery = (id: string | null) => { setSelectedDiscovery(id); setDiscoveryHint(0); };
@@ -269,7 +269,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
         // Position immediately in stage space. Camera motion then moves this
         // same bubble; there is no delayed second instance after a new event.
         placeBubble(fb.targetId, fb.bubble);
-        if (free) setAnnouncement(`${fb.bubble} ${g.scene.starEarned}`);
+        if (free) setAnnouncement(`${fb.bubble} ${store.replay ? g.replay.stars : g.scene.starEarned}`);
         setBurst({ key: Date.now(), small: true });
         // The gold star: out of the child, into the tray. The slot it lands
         // in is the next dark one; the tray lights it when the flight ends,
@@ -359,9 +359,13 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fb]);
 
-  // Scene complete → big celebration, then the card.
+  // Celebrate a finish earned in this visit, not saved/account finds adopted
+  // on entry. A completed revisit should leave the board and replay available.
+  const previousPhase = useRef(mission.phase);
   useEffect(() => {
-    if (mission.phase !== "complete") return;
+    const justFound = previousPhase.current === "found";
+    previousPhase.current = mission.phase;
+    if (mission.phase !== "complete" || !justFound) return;
     sounds().play("fanfare");
     setBurst({ key: Date.now(), small: false });
     const t = setTimeout(() => setShowComplete(true), 900);
@@ -390,7 +394,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           sounds().play(result === "collected" ? "twinkle" : "tap");
           clearTimeout(bubbleTimer.current);
           const words = guided ? g.collection : g.album;
-          const text = tf(result === "collected" ? words.collected : words.again, { name: found.name });
+          const text = tf(store.replay ? (result === "collected" ? g.replay.found : g.replay.already) : (result === "collected" ? words.collected : words.again), { name: found.name });
           const cx = (found.hitRect.x + found.hitRect.w / 2) * scene.art.width;
           const cy = (found.hitRect.y + found.hitRect.h / 2) * scene.art.height;
           setBubble({ text: result === "again" ? text : found.name, x: cx, y: found.hitRect.y * scene.art.height, key: ++bubbleSequence.current });
@@ -452,7 +456,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
   const starsLanded = Math.min(foundIds.length, landedStars);
   // "The next place is open" is one moment, not a wall: the toast leaves the
   // board on its own, and the HUD keeps the way forward.
-  const unlockToast = canAdvance && foundIds.length === advanceAt && mission.phase === "searching" && !turn && !staying;
+  const unlockToast = !store.replay && canAdvance && foundIds.length === advanceAt && mission.phase === "searching" && !turn && !staying;
   useEffect(() => {
     if (!unlockToast) return;
     const t = setTimeout(() => setStaying(true), UNLOCK_TOAST_MS);
@@ -460,7 +464,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
   }, [unlockToast]);
 
   return (
-    <div ref={sceneRef} className="scene" data-mission-phase={mission.phase} data-found-count={foundIds.length} data-turning={turn} style={{ ["--scene-sky" as string]: scene.art.palette.sky, ["--scene-accent" as string]: scene.art.palette.accent }}>
+    <div ref={sceneRef} className="scene" data-replay={!!store.replay} data-mission-phase={mission.phase} data-found-count={foundIds.length} data-turning={turn} style={{ ["--scene-sky" as string]: scene.art.palette.sky, ["--scene-accent" as string]: scene.art.palette.accent }}>
       <header className="scene__bar">
         {store.demo ? (
           <span />
@@ -576,6 +580,8 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           findsRequiredToAdvance={advanceAt}
           onAdvance={canAdvance && mission.phase !== "found" && !turn ? advance : undefined}
           advanceLabel={advanceLabel}
+          replay={!!store.replay}
+          onReplay={mission.phase === "complete" && !showComplete ? () => store.replayScene() : undefined}
         />
       ) : null}
 
@@ -641,7 +647,8 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, onStay }: { sc
         <div className="complete__stamp" aria-hidden>
           {g.complete.stamp}
         </div>
-        <h2 id="complete-title" className="complete__title">{store.demo ? tf(g.complete.demoFound, { name: store.config.child.name }) : scene.celebration.completeText}</h2>
+        <h2 id="complete-title" className="complete__title">{store.demo ? tf(g.complete.demoFound, { name: store.config.child.name }) : store.replay ? g.replay.complete : scene.celebration.completeText}</h2>
+        {store.replay ? <p className="complete__replay-note">{g.replay.note}</p> : null}
         {store.demo ? null : (
           <div className="complete__stars">
             <StarTray lit={stars} total={stars} size={stars > 3 ? "md" : "lg"} celebrate label={tf(g.stars.tray, { earned: stars, total: stars })} />
@@ -651,10 +658,10 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, onStay }: { sc
         {postcard ? (
           <div className="complete__postcard">
             <Postcard scene={scene} postcard={postcard} />
-            <p className="complete__postcard-text">{g.album.postcardEarned} {tf(g.album.postcardLead, { place: scene.name })}</p>
+            {!store.replay ? <p className="complete__postcard-text">{g.album.postcardEarned} {tf(g.album.postcardLead, { place: scene.name })}</p> : null}
           </div>
         ) : null}
-        {store.demo ? null : (
+        {store.demo || store.replay ? null : (
         <div className="complete__loot">
           <span className="complete__icon" aria-hidden>
             {scene.collectible.icon}
@@ -692,9 +699,9 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, onStay }: { sc
             </button>
           )}
           {/* In the demo the frame is short, so replay is a quiet second option. */}
-          {scene.playMode !== "find-any" ? <button type="button" className={`fm-btn ${store.demo ? "fm-btn--ghost fm-btn--sm" : "fm-btn--secondary"}`} onClick={store.replayScene}>
+          <button type="button" className={`fm-btn ${store.demo ? "fm-btn--ghost fm-btn--sm" : "fm-btn--secondary"}`} onClick={() => store.replayScene()}>
             {g.complete.again}
-          </button> : null}
+          </button>
           {!store.demo ? (
             <button type="button" className="fm-btn fm-btn--ghost" onClick={() => store.goToMap(scene.slug)}>
               {g.complete.map}

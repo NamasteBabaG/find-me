@@ -501,6 +501,15 @@ export const en = {
       demoCta: "Create your own game",
       demoFound: "You found {name}! 🎉",
     },
+    replay: {
+      label: "Playing again",
+      note: "Just this visit — your stars and album stay unchanged.",
+      boardAria: "Play {place} again",
+      complete: "You found every hiding spot again!",
+      found: "Found again: {name}",
+      already: "You already found {name} this round",
+      stars: "One star found this round!",
+    },
     passport: {
       title: "{name}'s adventure bag",
       complete: "Every place completed! Amazing.",

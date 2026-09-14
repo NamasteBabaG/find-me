@@ -164,8 +164,9 @@ describe("versioned five-hide player", () => {
       store.getState().openScene(scene.slug); store.getState().dispatch({ type: "START", now: 1 });
       scene.targets.slice(3).forEach(target => find(store, target.id));
       store.getState().completeScene(); store.getState().completeScene();
-      store.getState().replayScene(); expect(store.getState().screen).toBe("map");
-      store.getState().openScene(scene.slug); store.getState().dispatch({ type: "START", now: 1 });
+      store.getState().replayScene(); expect(store.getState().screen).toBe("scene");
+      expect(store.getState().replay).not.toBeNull(); expect(store.getState().mission!.found).toEqual({});
+      store.getState().dispatch({ type: "START", now: 1 });
       scene.targets.forEach(target => find(store, target.id));
     }
     expect(gameStars(store.getState().progress, config.scenes)).toEqual({ found: 45, total: 45 });

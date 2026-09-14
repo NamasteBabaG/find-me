@@ -31,6 +31,10 @@ export interface PlayStore {
   screen: Screen;
   sceneSlug: string | null;
   mission: MissionState | null;
+  /** In-memory practice only. Never serialised or merged into the earned album. */
+  replay: { discoveryIds: string[] } | null;
+  /** Remount all choreography on every entry, including same-layout replays. */
+  visitId: number;
   muted: boolean;
   demo: boolean;
   telemetry: Telemetry;
@@ -67,10 +71,10 @@ export interface PlayStore {
   /** The hub. Only meaningful when the game spans more than one world. */
   goToWorlds(): void;
   endTravel(): void;
-  openScene(slug: string): void;
+  openScene(slug: string, options?: { replay?: boolean }): void;
   dispatch(action: MissionAction): void;
   completeScene(): void;
-  replayScene(): void;
+  replayScene(slug?: string): void;
   nextScene(): string | null;
   /** Every board of the current journey is done. */
   worldDone(): boolean;
@@ -135,7 +139,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
   /** Record one album event: once in the domain, once in this browser, once to the account. */
   const recordAlbum = (set: (partial: Partial<PlayStore>) => void, get: () => PlayStore, event: AdventureEvent): boolean => {
     const album = get().album;
-    if (!album || !book) return false;
+    if (!album || !book || get().replay) return false;
     let result: ReturnType<typeof recordAdventureEvent>;
     try {
       result = recordAdventureEvent(album, config.gameId, book, event);
@@ -170,6 +174,8 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     worldSlug: gameWorlds(config)[0]?.slug ?? "",
     sceneSlug: null,
     mission: null,
+    replay: null,
+    visitId: 0,
     travelFrom: null,
     muted: false,
     demo,
@@ -249,7 +255,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
               saveProgress(adopted.progress);
               set({ progress: adopted.progress });
               const { mission, sceneSlug } = get();
-              if (mission && sceneSlug) {
+              if (mission && sceneSlug && !get().replay) {
                 const records = sceneProgress(adopted.progress, sceneSlug).foundRecords ?? {};
                 const found = Object.fromEntries(Object.entries(records).filter(([id]) => !mission.found[id]));
                 if (Object.keys(found).length) get().dispatch({ type: "ADOPT_FOUND", found, now: Date.now() });
@@ -278,7 +284,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
      */
     goToMap(travelFrom = null, worldSlug) {
       sounds().stopAmbient();
-      set({ screen: "map", sceneSlug: null, mission: null, travelFrom, ...(worldSlug ? { worldSlug } : {}) });
+      set({ screen: "map", sceneSlug: null, mission: null, replay: null, travelFrom, ...(worldSlug ? { worldSlug } : {}) });
       if (worldSlug && persist) {
         const progress = { ...get().progress, lastWorld: worldSlug };
         saveProgress(progress);
@@ -288,22 +294,27 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
 
     goToWorlds() {
       sounds().stopAmbient();
-      set({ screen: "worlds", sceneSlug: null, mission: null, travelFrom: null });
+      set({ screen: "worlds", sceneSlug: null, mission: null, replay: null, travelFrom: null });
     },
 
     endTravel() {
       if (get().travelFrom) set({ travelFrom: null });
     },
 
-    openScene(slug) {
+    openScene(slug, options) {
       const scene = get().config.scenes.find((s) => s.slug === slug);
       if (!scene) return;
       if (!opts.readOnlyPreview && !demo && !sceneIsPlayable(get().progress, config, scene)) return;
+      // A replay is an explicit visit, not a reset or a way to unlock a board.
+      if (options?.replay && !demo && !sceneIsComplete(get().progress, scene)) return;
       sounds().unlock();
       const history = sceneProgress(get().progress, slug);
       let plan = planScenePlay(scene, { plays: history.plays, lastVariants: history.lastVariants, lastOrder: history.lastOrder }, get().config.gameId);
       const free = scene.playMode === "find-any" && !opts.singleMission;
-      const savedIds = free ? sceneFoundIds(get().progress, scene) : [];
+      // Legacy sequential boards already reopen as a new play. Keep that UX,
+      // but make their repeat rewards ephemeral too.
+      const replaying = !!options?.replay || (!free && sceneIsComplete(get().progress, scene));
+      const savedIds = free && !replaying ? sceneFoundIds(get().progress, scene) : [];
       // Returning to a five-hide board resumes its exact layout, not a shuffled replay.
       if (free && history.sceneVersion === scene.version && history.lastOrder.length === scene.targets.length && new Set(history.lastOrder).size === scene.targets.length && history.lastOrder.every(id => scene.targets.some(target => target.id === id))) {
         plan = { ...plan, playIndex: 0, order: history.lastOrder, variants: Object.fromEntries(scene.targets.map(target => [target.id, history.lastVariants[target.id] ?? "A"])) };
@@ -316,8 +327,8 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       // A board carries its own world, so entering one from the hub, a link or
       // the passport lands the player on the right map when they come back.
       const world = worldOfScene(get().config, slug);
-      set({ screen: "scene", sceneSlug: slug, mission, travelFrom: null, ...(world ? { worldSlug: world.slug } : {}) });
-      if ((world && persist) || free) {
+      set({ screen: "scene", sceneSlug: slug, mission, replay: replaying ? { discoveryIds: [] } : null, visitId: get().visitId + 1, travelFrom: null, ...(world ? { worldSlug: world.slug } : {}) });
+      if (!replaying && ((world && persist) || free)) {
         const progress = { ...get().progress, ...(world ? { lastWorld: world.slug } : {}), lastScene: slug };
         if (persist) saveProgress(progress);
         set({ progress });
@@ -328,11 +339,13 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       const { mission } = get();
       const scene = get().scene();
       if (!mission || !scene) return;
+      // Account synchronisation may update earned progress, never this round.
+      if (get().replay && action.type === "ADOPT_FOUND") return;
       const next = missionReducer(mission, action, missionCopy(scene, opts.copy));
       if (next === mission) return;
       if (action.type === "TAP_TARGET" && next.lastFeedback?.kind === "hit") {
-        telemetry.track({ eventType: "target_found", sceneSlug: scene.slug, targetId: action.targetId, hintsUsed: mission.hintLevel });
-        if (scene.playMode === "find-any") {
+        if (!get().replay) telemetry.track({ eventType: "target_found", sceneSlug: scene.slug, targetId: action.targetId, hintsUsed: mission.hintLevel });
+        if (scene.playMode === "find-any" && !get().replay) {
           const before = get().progress;
           const progress = recordFindAny(before, scene, next, config.scenes);
           if (persist) saveProgress(progress);
@@ -354,7 +367,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     completeScene() {
       const { mission, progress, config } = get();
       const scene = get().scene();
-      if (!mission || !scene) return;
+      if (!mission || !scene || get().replay) return;
       // Five-hide rewards are already durably recorded with the fifth hit.
       if (scene.playMode === "find-any") return;
       const summary = sceneSummary(mission);
@@ -365,12 +378,8 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       set({ progress: next });
     },
 
-    replayScene() {
-      const slug = get().sceneSlug;
-      // Find-any revisits retain their finds. Do not reset intro under the
-      // same mounted scene key, or silently turn 45 saved stars back into zero.
-      if (get().scene()?.playMode === "find-any") { get().goToMap(); return; }
-      if (slug) get().openScene(slug);
+    replayScene(slug = get().sceneSlug ?? undefined) {
+      if (slug) get().openScene(slug, { replay: true });
     },
 
     nextScene() {
@@ -402,7 +411,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
 
     openPassport() {
       sounds().stopAmbient();
-      set({ screen: "passport", sceneSlug: null, mission: null });
+      set({ screen: "passport", sceneSlug: null, mission: null, replay: null });
     },
 
     toggleMute() {
@@ -420,6 +429,12 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     collectDiscovery(discoveryId) {
       const board = get().albumBoard();
       if (!board || !board.discoveries.some((d) => d.id === discoveryId) || !get().album) return "none";
+      const replay = get().replay;
+      if (replay) {
+        if (replay.discoveryIds.includes(discoveryId)) return "again";
+        set({ replay: { discoveryIds: [...replay.discoveryIds, discoveryId] } });
+        return "collected";
+      }
       return recordAlbum(set, get, { kind: "discovery-found", boardSlug: board.boardSlug, discoveryId }) ? "collected" : "again";
     },
 
