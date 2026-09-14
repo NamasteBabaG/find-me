@@ -53,7 +53,10 @@ Only copy bindings were changed inside his components. Rechecked his worktree
 - Collection test now exercises the full hint-label sequence and terminal disabled state.
 - Local browser: Hebrew and English homepage; 390px wizard/button width; name/age
   submission reaches photo step. Synthetic “Copy QA” draft only, no photo or paid render.
-- QA deployment/build verification is recorded separately after completion.
+- Clean isolated checkout: `npm ci --no-audit --no-fund` completed and 58 targeted
+  tests across 7 files passed on the lockfile's Vitest 4.1.11.
+- Vercel remote build passed compilation, type checking, static-page generation,
+  trace filtering and the board-catalog tracing audit (no missing/private leaks).
 
 ## QA schema prerequisite
 
@@ -67,6 +70,30 @@ foreign key to qa.Game(id) with delete/update cascade. Enabled RLS and revoked
 anon/authenticated access. Server-only model; no direct client policy.
 Verified columns after creation. No production/public table was changed.
 Vercel sensitive envs are not downloadable; no secret was reset or made readable.
+
+## QA delivery — completed 2026-09-15
+
+- Application commit: `94699a3d4045bbcd38b1ad9643fb37295eea75b8`.
+- Project: **find-me-qa** (`prj_LbqCRqwU8WfZpeaWU7HTXM4SsfG4`), not the production shop.
+- Deployment: `dpl_CuB3ToFtXuSnamdTqMeRuBiShCeD`, READY.
+- Build URL: https://find-me-e63p2koas-smallheroes-projects.vercel.app
+- Promoted and resolved at https://qa.findmeworlds.com after checking the existing
+  deployment had not changed and Claude's worktree was still clean at `4ef4ae9`.
+- Isolated deployment checkout used committed application files. Vercel reports
+  `gitDirty=1` only because linking added `.vercel` to that checkout's `.gitignore`;
+  no application diff existed. APP_COMMIT was pinned to `94699a3`.
+- Public HTTP checks: homepage redirects to the QA gate; unauthenticated health
+  returns 401; no-store and noindex/nofollow/noarchive headers remain present.
+- Browser confirmed the private QA gate. Authenticated post-deploy smoke testing
+  remains pending the user's QA login; no password was guessed, reset or bypassed.
+- New album table columns, constraints and RLS were verified. Security advisor's
+  INFO-only `rls_enabled_no_policy` is intentional for this server-only model.
+- No production deployment, real payment, paid image generation or family-game
+  progress mutation was performed for this copy delivery.
+
+Claude handoff: continue from the combined application commit above (or a descendant),
+not from the earlier polish-only branch. Preserve the revised dictionaries and tests.
+This documentation update does not require rebuilding the deployed application.
 
 ## Review-unit mapping
 
@@ -302,4 +329,3 @@ and added labels are reconciled in the dictionaries and tests above.
 | HE-583 | `email.ready.button` |
 | HE-586 | `email.ready.manage` |
 | HE-578 | `email.footer` |
-
