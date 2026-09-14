@@ -73,6 +73,9 @@
 
 /* Seeking: the one being looked for, a hint, and a way out */
 .collect__seek { display: flex; align-items: center; gap: var(--space-1); width: min(360px, calc(100vw - var(--space-4))); padding: var(--space-1); border-radius: var(--radius-2); background: var(--white); box-shadow: 0 0 0 3px var(--sea-soft), var(--shadow-2); animation: fm-fade-up var(--dur-2) var(--ease-out); }
+/* Keep the bounded camera and the bottom collection button, but do not put
+   the hint card over a discovery near the board's lower edge. */
+.collect--seek-above .collect__seek { position: fixed; top: calc(max(var(--space-2), env(safe-area-inset-top)) + var(--space-10) + var(--space-8)); inset-inline-start: max(var(--space-2), env(safe-area-inset-left)); }
 .collect__seek-thumb { width: var(--touch-min); height: var(--touch-min); flex-shrink: 0; border-radius: 50%; box-shadow: var(--sticker-outline), 0 0 0 6px var(--sea); }
 .collect__seek-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .collect__seek-label { font-size: var(--fs-50); line-height: var(--lh-50); font-weight: 700; color: var(--sea-deep); letter-spacing: 0.04em; }
@@ -104,6 +107,9 @@
   .collect { bottom: var(--space-1); }
   .collect__intro { display: none; }
   .collect__sheet { max-height: calc(100dvh - var(--space-10)); }
+  /* A landscape phone has room beside the upper-right mission, not below it.
+     Leave the left toolbar clear as well. */
+  .collect--seek-above .collect__seek { top: max(var(--space-2), env(safe-area-inset-top)); left: calc(max(var(--space-2), env(safe-area-inset-left)) + var(--space-8)); right: auto; width: min(360px, calc(100vw - var(--space-20))); }
 }
 @media (prefers-reduced-motion: reduce) {
   .collect__strip, .collect__sheet, .collect__seek, .collect__seek-hint, .collect__intro, .collect__done, .collect__fly, .collect__fly-arc, .collect__fly-sticker, .collect__tally--bump, .collect__count--bump, .sticker--fresh .sticker__face, .sticker--fresh .sticker__face::after, .sticker--arriving .sticker__face, .sticker--seeking .sticker__face, .sticker--wiggle .sticker__face { animation: none; }

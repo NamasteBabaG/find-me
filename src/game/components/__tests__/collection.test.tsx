@@ -23,6 +23,18 @@ beforeEach(() => { vi.stubGlobal("React", React); wide(false); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe("the collection on a phone", () => {
+  it("moves focused low-edge discovery guidance away from the bottom item", () => {
+    const edgeBoard = { ...board, discoveries: board.discoveries.map((d, i) => i === 0 ? { ...d, hitRect: { ...d.hitRect, y: 0.87, h: 0.08 } } : d) };
+    const props = { ...base, board: edgeBoard, collectedIds: [], selectedId: edgeBoard.discoveries[0]!.id, onSelect: vi.fn(), onHint: vi.fn() };
+    const view = render(<GameI18nProvider locale="en"><Collection {...props} hintLevel={1} /></GameI18nProvider>);
+    expect(view.container.querySelector('.collect--seek-above')).toBeNull();
+    view.rerender(<GameI18nProvider locale="en"><Collection {...props} hintLevel={3} /></GameI18nProvider>);
+    expect(view.container.querySelector('.collect--seek-above')).not.toBeNull();
+    const highBoard = { ...edgeBoard, discoveries: edgeBoard.discoveries.map(d => ({ ...d, hitRect: { ...d.hitRect, y: 0.05 } })) };
+    view.rerender(<GameI18nProvider locale="en"><Collection {...props} board={highBoard} hintLevel={3} /></GameI18nProvider>);
+    expect(view.container.querySelector('.collect--seek-above')).toBeNull();
+  });
+
   it("is one round button that opens a sheet of six; picking a sticker starts looking for it and closes the sheet", () => {
     const onSelect = vi.fn(), onHint = vi.fn();
     const view = render(<GameI18nProvider locale="en"><Collection {...base} collectedIds={["item-1"]} onSelect={onSelect} onHint={onHint} /></GameI18nProvider>);

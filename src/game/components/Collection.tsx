@@ -57,6 +57,9 @@ export function Collection({ board, scene, collectedIds, selectedId, hintLevel, 
   const count = board.discoveries.filter((d) => collectedIds.includes(d.id)).length;
   const complete = total > 0 && count === total;
   const selected = board.discoveries.find((d) => d.id === selectedId && !collectedIds.includes(d.id)) ?? null;
+  // On a bounded phone camera, a low-edge item cannot be panned above the
+  // bottom hint card. Once the camera focuses it, use the opposite edge.
+  const seekAbove = !wide && hintLevel >= 2 && !!selected && selected.hitRect.y + selected.hitRect.h / 2 > 0.5;
   const [open, setOpen] = useState(false);
   const [intro, setIntro] = useState(true);
   const [canSpeak, setCanSpeak] = useState(false);
@@ -152,7 +155,7 @@ export function Collection({ board, scene, collectedIds, selectedId, hintLevel, 
   const countAria = tf(c.countAria, { found: count, total });
   const ring = 2 * Math.PI * 21;
   return (
-    <aside ref={root} className={`collect${wide ? " collect--wide" : " collect--compact"}${complete ? " collect--complete" : ""}`} aria-label={c.title}>
+    <aside ref={root} className={`collect${wide ? " collect--wide" : " collect--compact"}${complete ? " collect--complete" : ""}${seekAbove ? " collect--seek-above" : ""}`} aria-label={c.title}>
       {wide ? (
         <div className="collect__strip" role="group" aria-label={countAria}>
           <span key={bump} className={`collect__tally${bump ? " collect__tally--bump" : ""}`} aria-hidden>{tally}</span>
