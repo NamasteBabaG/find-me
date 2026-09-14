@@ -9,6 +9,7 @@ import { CreateFrame } from "../CreateLayout";
 import { currentDraft } from "../actions";
 import { PackagePicker } from "./PackagePicker";
 import { LOCAL_PATCH_STYLE } from "@/services/generation/local-patch-world";
+import { purchasableWorldSlugs } from "@/services/world-catalog.service";
 
 export async function generateMetadata() {
   const { t } = await getI18n();
@@ -21,7 +22,9 @@ export default async function CreatePackagePage() {
   if (!draft?.childProfile) redirect("/create");
   if (!draft.childProfile.originalPhotoAssetId) redirect("/create/photo");
   const currency = await getCurrency();
-  const available = new Set((await availablePackages(c)).map((p) => p.tier));
+  const [packages, worldSlugs] = await Promise.all([availablePackages(c), purchasableWorldSlugs(c)]);
+  const available = new Set(packages.map((p) => p.tier));
+  const availableWorldCount = worldSlugs.length;
   const spotsPerBoard = draft.styleVersion === LOCAL_PATCH_STYLE ? 5 : 3;
   // Only tiers that can actually be bought right now (enough active worlds) are shown.
   const options = PACKAGE_ORDER.filter((tier) => available.has(tier)).map((tier) => {
@@ -31,7 +34,7 @@ export default async function CreatePackagePage() {
       name: pick(p.name, locale),
       worldCount: p.worldCount,
       boardCount: boardsFor(tier),
-      meta: tf(t.create.package.spots, { n: spotsPerBoard === 5 ? boardsFor(tier) * 5 : searchesFor(tier), time: pick(p.playtime, locale) }),
+      meta: tf(t.create.package.spots, { n: spotsPerBoard === 5 ? boardsFor(tier) * 5 : searchesFor(tier) }),
       price: formatMoney(priceFor(tier, currency), currency, locale),
       popular: p.popular,
     };
@@ -40,7 +43,7 @@ export default async function CreatePackagePage() {
   const defaultTier = draft.packageTier && available.has(draft.packageTier as PackageTier) ? draft.packageTier : fallbackTier;
   return (
     <CreateFrame width="mid" step={2} title={t.create.package.title} lead={tf(t.create.package.lead, { name: draft.childProfile.displayName, spots: spotsPerBoard })} user={user} isAdmin={isAdminEmail(user?.email)}>
-      <PackagePicker options={options} defaultTier={defaultTier} />
+      <PackagePicker options={options} defaultTier={defaultTier} availableWorldCount={availableWorldCount} />
     </CreateFrame>
   );
 }

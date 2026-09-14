@@ -206,7 +206,7 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/
             <div className="create__actions" style={{ width: "100%" }}>
               <Notice kind="success">{p.hasPhoto}</Notice>
               <LinkButton href="/create/package">
-                {t.common.continue}
+                {nextHref === "/create/package" ? p.next : t.common.continue}
                 <span className="fm-btn__arrow" aria-hidden>
                   ➜
                 </span>

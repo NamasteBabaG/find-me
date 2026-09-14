@@ -37,7 +37,7 @@ describe("manage game: the questions before the irreversible", () => {
     fireEvent.submit(deleteForm);
     expect(dialog.hasAttribute("open")).toBe(true);
     expect(dialog.textContent).toContain("Delete Noa's game?");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Keep the game" }));
     expect(dialog.hasAttribute("open")).toBe(false);
     expect(actions.deleteGameAction).not.toHaveBeenCalled();
   });
@@ -46,7 +46,7 @@ describe("manage game: the questions before the irreversible", () => {
     const { dialog, deleteForm } = mount();
     fireEvent.submit(deleteForm);
     expect(actions.deleteGameAction).not.toHaveBeenCalled();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Delete the game" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Yes, delete the game" }));
     await waitFor(() => expect(actions.deleteGameAction).toHaveBeenCalledTimes(1));
     expect(dialog.hasAttribute("open")).toBe(false);
     fireEvent.submit(deleteForm);
@@ -59,7 +59,24 @@ describe("manage game: the questions before the irreversible", () => {
     const rotate = [...view.container.querySelectorAll("form")].find((f) => f.textContent?.includes("Replace link"))!;
     fireEvent.submit(rotate);
     expect(view.dialog.hasAttribute("open")).toBe(true);
-    expect(view.dialog.textContent).toContain("The old one stops working immediately");
+    expect(view.dialog.textContent).toContain("The previous link will stop working.");
     expect(actions.rotateLinkAction).not.toHaveBeenCalled();
+    fireEvent.click(within(view.dialog).getByRole("button", { name: "Keep the link" }));
+    expect(view.dialog.hasAttribute("open")).toBe(false);
+    expect(actions.rotateLinkAction).not.toHaveBeenCalled();
+  });
+
+  it("offers manual copying when clipboard access fails, and reports success only after it succeeds", async () => {
+    const writeText = vi.fn().mockRejectedValueOnce(new Error("blocked")).mockResolvedValueOnce(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    const view = mount();
+    fireEvent.click(view.getByRole("button", { name: en.library.share.copy }));
+    await waitFor(() => expect(view.getByRole("status").textContent).toBe(en.library.share.copyFailed));
+    expect(view.getByDisplayValue("https://example.test/play/shr_1.sig")).toBeTruthy();
+    expect(view.queryByText(en.library.share.copied)).toBeNull();
+    fireEvent.click(view.getByRole("button", { name: en.library.share.copy }));
+    await waitFor(() => expect(view.getByRole("button", { name: en.library.share.copied })).toBeTruthy());
+    expect(view.queryByRole("status")).toBeNull();
+    expect(writeText).toHaveBeenCalledTimes(2);
   });
 });

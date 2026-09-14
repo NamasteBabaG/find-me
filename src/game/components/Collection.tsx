@@ -188,7 +188,7 @@ export function Collection({ board, scene, collectedIds, selectedId, hintLevel, 
             {hintLevel > 0 ? <p className="collect__seek-hint">{hintLevel === 1 ? selected.hint : hintLevel === 2 ? c.hintBroad : c.hintPrecise}</p> : null}
           </div>
           <div className="collect__seek-actions">
-            <button type="button" className="collect__hint" disabled={disabled || hintLevel >= 3} onClick={onHint}>{c.hint}</button>
+            <button type="button" className="collect__hint" disabled={disabled || hintLevel >= 3} onClick={onHint}>{hintLevel === 0 ? c.hint : hintLevel === 1 ? c.hintArea : c.hintShow}</button>
             {canSpeak ? <button type="button" className="collect__speak" disabled={disabled || muted} aria-label={c.listen} onClick={() => speak(hintLevel === 1 ? selected.hint : selected.name)}><span aria-hidden>🔊</span></button> : null}
             <button type="button" className="collect__close" aria-label={c.stopSeeking} onClick={() => onSelect(null)}><span aria-hidden>×</span></button>
           </div>

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { SceneDefinition } from "@/domain/scene/schema";
-import { PACKAGES, PACKAGE_ORDER, boardsFor, priceFor, searchesFor } from "@/domain/package";
+import { PACKAGES, PACKAGE_ORDER, boardsFor, priceFor } from "@/domain/package";
 import { formatMoney, pick, tf, type Currency, type Dictionary, type Locale } from "@/i18n";
 import { Reveal } from "./Reveal";
 import { WorldsCarousel, type CarouselWorld } from "./WorldsCarousel";
@@ -9,7 +9,7 @@ const STEP_ICONS = ["📷", "🗺️", "💌", "🎉"] as const;
 const STEP_TONES = ["sun", "aqua", "lavender", "coral"] as const;
 /** The holiday icon follows the locale: Hebrew site → menorah, everywhere else → a generic tree. */
 const occasionIcons = (locale: Locale) => ["🎂", "✈️", "👵", locale === "he" ? "🕎" : "🎄"] as const;
-const TRUST_ICONS = ["🗑️", "🔒", "🚫", "🧠"] as const;
+const TRUST_ICONS = ["📷", "🔗", "🔍", "📚"] as const;
 
 interface SectionProps {
   t: Dictionary;
@@ -147,24 +147,14 @@ export function GiftSection({ t, locale }: SectionProps) {
 /* ─── Worlds ─── */
 export function Worlds({ t, carousel }: { t: Dictionary; carousel: CarouselWorld[] }) {
   const w = t.home.worlds;
-  // Counted off the carousel, which is what the visitor is looking at: three
-  // worlds, and every board inside them. It used to count only the boards on
-  // sale today and read "9 places", which undersold the catalog by two thirds
-  // and framed the whole section as a list of places when the thing being
-  // offered is worlds. The locks in the carousel say what is available; the
-  // headline is allowed to say what exists.
-  const worldCount = carousel.length;
-  const places = carousel.reduce((n, world) => n + world.tiles.length, 0);
-  const perPlace = 3;
+  // The catalog can preview unavailable worlds. Do not multiply that preview
+  // by a fixed hide count and present it as the purchased game's contents.
   return (
     <section id="worlds" className="worlds-sec">
       <div className="fm-container">
         <Reveal className="sec-head">
           <span className="fm-pill">{w.pill}</span>
-          <h2>
-            <span className="worlds-count">{worldCount}</span> {w.titleWorlds} <span className="worlds-count">{places}</span> {w.titlePlaces}{" "}
-            <span className="worlds-count">{places * perPlace}</span> {w.titleSpots}
-          </h2>
+          <h2>{w.title}</h2>
           <p className="fm-lead">{w.lead}</p>
         </Reveal>
         <WorldsCarousel
@@ -210,8 +200,8 @@ export function Pricing({ t, locale, activeCount, currency }: SectionProps & { a
                   <small>{pkg.worldCount === 1 ? p.world : p.worlds}</small>
                 </div>
                 <ul className="plan__feats">
-                  <li className="plan__feat">{tf(p.feats.boards, { boards: boardsFor(tier), n: searchesFor(tier) })}</li>
-                  <li className="plan__feat">{tf(p.feats.time, { time: pick(pkg.playtime, locale) })}</li>
+                  <li className="plan__feat">{tf(p.feats.boards, { boards: boardsFor(tier) })}</li>
+                  <li className="plan__feat">{p.feats.time}</li>
                   <li className="plan__feat">{p.feats.link}</li>
                   <li className="plan__feat">{p.feats.wrap}</li>
                 </ul>

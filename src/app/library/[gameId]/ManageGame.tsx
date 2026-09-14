@@ -19,6 +19,7 @@ export function ManageGame({ gameId, playUrl, gift, childName }: Props) {
   const { t, tf } = useI18n();
   const l = t.library;
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
   const [giftState, giftAction, giftPending] = useActionState<FlowResult | null, FormData>(updateGiftAction, null);
   // The two things that cannot be undone ask first, in the product's own dialog.
   // A submit goes through only once the dialog has armed it.
@@ -41,12 +42,14 @@ export function ManageGame({ gameId, playUrl, gift, childName }: Props) {
 
   const copy = async () => {
     if (!playUrl) return;
+    setCopyFailed(false);
     try {
       await navigator.clipboard.writeText(playUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      /* clipboard blocked — the input stays selectable */
+      setCopied(false);
+      setCopyFailed(true);
     }
   };
 
@@ -73,9 +76,10 @@ export function ManageGame({ gameId, playUrl, gift, childName }: Props) {
             <div className="fm-copy">
               <input className="fm-input" value={playUrl} readOnly onFocus={(e) => e.currentTarget.select()} aria-label={l.share.linkAria} />
               <Button variant="secondary" onClick={copy}>
-                {copied ? t.common.copied : t.common.copy}
+                {copied ? l.share.copied : l.share.copy}
               </Button>
             </div>
+            {copyFailed ? <p role="status" className="fm-small">{l.share.copyFailed}</p> : null}
             <div className="fm-row">
               <Button variant="sea" onClick={share}>
                 {l.share.send}
@@ -102,18 +106,20 @@ export function ManageGame({ gameId, playUrl, gift, childName }: Props) {
             <label htmlFor="fromName" className="fm-label">
               {l.gift.from}
             </label>
-            <input id="fromName" name="fromName" className="fm-input" defaultValue={gift.fromName ?? ""} maxLength={40} placeholder={l.gift.fromPlaceholder} />
+            <input id="fromName" name="fromName" className="fm-input" defaultValue={gift.fromName ?? ""} maxLength={40} placeholder={l.gift.fromPlaceholder} aria-describedby="gift-from-hint" />
+            <p id="gift-from-hint" className="fm-small">{l.gift.fromHint}</p>
           </div>
           <div className="fm-field">
             <label htmlFor="message" className="fm-label">
               {l.gift.message}
             </label>
-            <textarea id="message" name="message" className="fm-input fm-textarea" defaultValue={gift.message ?? ""} maxLength={140} placeholder={l.gift.messagePlaceholder} />
+            <textarea id="message" name="message" className="fm-input fm-textarea" defaultValue={gift.message ?? ""} maxLength={140} placeholder={l.gift.messagePlaceholder} aria-describedby="gift-message-hint" />
+            <p id="gift-message-hint" className="fm-small">{l.gift.messageHint}</p>
           </div>
-          {giftState?.ok ? <Notice kind="success">{t.common.saved}</Notice> : giftState && !giftState.ok ? <p className="fm-error">{errorText(t, giftState)}</p> : null}
+          {giftState?.ok ? <Notice kind="success">{l.gift.saved}</Notice> : giftState && !giftState.ok ? <p className="fm-error">{errorText(t, giftState)}</p> : null}
           <div>
             <Button type="submit" variant="secondary" loading={giftPending}>
-              {t.common.save}
+              {l.gift.save}
             </Button>
           </div>
         </form>
@@ -131,14 +137,14 @@ export function ManageGame({ gameId, playUrl, gift, childName }: Props) {
       </section>
       <ConfirmDialog
         open={ask !== null}
-        title={ask === "delete" ? l.remove.title : l.share.rotate}
+        title={ask === "delete" ? tf(l.remove.confirm, { name: childName }) : l.share.rotateTitle}
         confirmLabel={ask === "delete" ? l.remove.button : l.share.rotate}
-        cancelLabel={t.common.cancel}
+        cancelLabel={ask === "delete" ? l.remove.keep : l.share.keep}
         danger={ask === "delete"}
         onConfirm={confirmAsk}
         onCancel={() => setAsk(null)}
       >
-        {ask === "delete" ? tf(l.remove.confirm, { name: childName }) : l.share.rotateConfirm}
+        {ask === "delete" ? l.remove.lead : l.share.rotateConfirm}
       </ConfirmDialog>
     </div>
   );

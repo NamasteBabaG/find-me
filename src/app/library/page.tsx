@@ -59,6 +59,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
         {games.length === 0 ? (
           <div className="fm-card fm-card--pad-6 fm-center fm-stack fm-stack--3">
             <p className="fm-lead">{l.empty}</p>
+            <p className="fm-muted">{l.emptyLead}</p>
             <LinkButton href="/create" size="lg">
               {l.createFirst}
             </LinkButton>

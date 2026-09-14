@@ -39,7 +39,7 @@ describe("the album in the bag", () => {
     expect(missing.textContent).toContain("Hint: Look beside the basket");
     expect(missing.querySelector(".album__crop")).toBeNull();
     expect(empty.container.querySelector("[data-postcard-remaining]")?.getAttribute("data-postcard-remaining")).toBe("5");
-    expect(empty.container.querySelector(".album__sync")?.textContent).toBe("Kept in this browser only");
+    expect(empty.container.querySelector(".album__sync")?.textContent).toBe("Progress saved in this browser");
     expect(empty.container.querySelector(".album__note")?.textContent).toContain("Three finds open the next place");
     cleanup();
     progress = recordAdventureEvent(progress, config.gameId, book, event({ kind: "discovery-found", boardSlug: "pilot-test", discoveryId: "cat" })).progress;
@@ -52,8 +52,8 @@ describe("the album in the bag", () => {
     expect(crop.style.backgroundImage).toContain(scene.art.base);
     expect(crop.style.backgroundSize).toContain(`${100 / 0.14}%`);
     // Three finds: the next place is open, the postcard is not earned.
-    expect(some.container.querySelector("[data-postcard-remaining]")?.textContent).toContain("עוד 2 מחבואים לגלויה");
-    expect(some.container.querySelector(".album__sync")?.textContent).toBe("נשמר בחשבון המשפחה");
+    expect(some.container.querySelector("[data-postcard-remaining]")?.textContent).toContain("עוד 2 מחבואים והגלויה שלכם!");
+    expect(some.container.querySelector(".album__sync")?.textContent).toBe("ההתקדמות נשמרה בחשבון");
   });
 
   it("shows the postcard, from the first find's own patch, once every hiding spot is found", () => {
@@ -65,7 +65,7 @@ describe("the album in the bag", () => {
     expect(postcard.querySelector(".postcard__title")?.textContent).toBe("My market adventure");
     const patch = postcard.querySelector<HTMLImageElement>(".postcard__patch")!;
     expect(patch.getAttribute("src")).toBe(scene.targets[0]!.sprite.kind === "image" ? scene.targets[0]!.sprite.url : "");
-    expect(view.container.querySelector(".album__sync")?.textContent).toContain("Not saved to the account yet");
+    expect(view.container.querySelector(".album__sync")?.textContent).toContain("Account saving hasn't been confirmed.");
   });
 
   it("says when this browser's album could not be read, instead of showing an empty one", () => {
@@ -75,7 +75,7 @@ describe("the album in the bag", () => {
     cleanup();
     // A browser that would not write says so, for a guest and for an owner alike.
     const unsaved = render(<GameI18nProvider locale="he"><AlbumSection config={config} album={emptyAdventureProgress(config.gameId, book)} mode="guest" state="unsaved" /></GameI18nProvider>);
-    expect(unsaved.container.querySelector(".album__sync")?.textContent).toBe("ההתקדמות זמינה כרגע בלבד ולא נשמרה במכשיר");
+    expect(unsaved.container.querySelector(".album__sync")?.textContent).toBe("ההתקדמות זמינה רק כל עוד המשחק פתוח. יציאה או רענון עלולים לאבד אותה.");
   });
 });
 

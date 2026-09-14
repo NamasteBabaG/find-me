@@ -3,6 +3,7 @@ import { UPCOMING_WORLDS } from "../../../content/worlds/upcoming";
 import { findScene } from "../../../content/scenes";
 import { boardSlugs } from "@/domain/world";
 import { pick, type Locale } from "@/i18n/config";
+import { getDict } from "@/i18n";
 import type { CarouselWorld } from "./WorldsCarousel";
 
 /**
@@ -18,13 +19,14 @@ import type { CarouselWorld } from "./WorldsCarousel";
  * database and passed in, so it survives closing the tab.
  */
 export function carouselWorlds(locale: Locale, owned: readonly string[] = []): CarouselWorld[] {
+  const taglines = getDict(locale).home.worlds.taglines;
   const real = allWorlds();
   const out: CarouselWorld[] = real.map((world, i) => {
     const isOwned = owned.includes(world.slug);
     return {
       slug: world.slug,
       name: pick(world.name, locale),
-      tagline: pick(world.tagline, locale),
+      tagline: taglines[world.slug as keyof typeof taglines] ?? pick(world.tagline, locale),
       glyph: world.collectible.icon,
       upcoming: false,
       owned: isOwned,
@@ -54,7 +56,7 @@ export function carouselWorlds(locale: Locale, owned: readonly string[] = []): C
     out.push({
       slug: world.slug,
       name: pick(world.name, locale),
-      tagline: pick(world.tagline, locale),
+      tagline: taglines[world.slug as keyof typeof taglines] ?? pick(world.tagline, locale),
       glyph: world.glyph,
       upcoming: true,
       owned: false,

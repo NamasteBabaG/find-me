@@ -121,13 +121,13 @@ describe("find-any rendering and mobile feedback", () => {
       expect(top.querySelector(".mission__hintbtn")?.parentElement).toBe(top);
       expect(view.container.querySelector(".mission__body")).toBeNull();
       const heading = view.getByRole("heading").textContent!;
-      if (count > 0 && count < 5) expect(heading).toContain(locale === "en" ? "another hiding spot" : "מחבוא נוסף");
-      if (count === 5) expect(heading).toBe(locale === "en" ? "All hiding spots found!" : "כל המחבואים נמצאו!");
+      if (count > 0 && count < 5) expect(heading).toContain(locale === "en" ? "another hiding spot" : "איפה Alex עכשיו?");
+      if (count === 5) expect(heading).toBe(locale === "en" ? "All hiding spots found!" : "מצאתם את כל המחבואים!");
     }
     view.rerender(card(1, 4));
     expect(view.container.querySelector(".mission__rules")).toBeNull();
     view.rerender(<GameI18nProvider locale={locale}><MissionCard {...props} found={[props.order[0]!]} hintLevel={1} /></GameI18nProvider>);
-    expect(view.getByRole("heading").textContent).toContain(locale === "en" ? "another hiding spot" : "מחבוא נוסף");
+    expect(view.getByRole("heading").textContent).toContain(locale === "en" ? "another hiding spot" : "איפה Alex עכשיו?");
     expect(view.container.textContent).toContain(props.target.mission);
     view.rerender(<GameI18nProvider locale={locale}><MissionCard {...props} findAny={false} found={[]} hintLevel={1} /></GameI18nProvider>);
     expect(view.getByRole("heading").textContent).toContain("Alex");
@@ -140,7 +140,7 @@ describe("find-any rendering and mobile feedback", () => {
     const props = { index: 1, total: 5, target: scene.targets[0]!, order: scene.targets.map(t => t.id), found: [],
       hintLevel: 1 as const, hintPulse: false, hintText: "Beside the tree", onHint: vi.fn(), childName: "Alex", findAny: true, onExpand };
     const view = render(<GameI18nProvider locale={locale}><MissionCard {...props} /></GameI18nProvider>);
-    expect(view.getByRole("heading").textContent).toBe(locale === "en" ? "Find Alex!" : "מצאו את Alex!");
+    expect(view.getByRole("heading").textContent).toBe(locale === "en" ? "Find Alex!" : "מצאו את Alex");
     const details = view.container.querySelector(".mission__body")!;
     expect(details.textContent).toContain(props.target.mission); expect(details.textContent).toContain("Beside the tree");
     expect(details.hasAttribute("hidden")).toBe(false);
@@ -299,7 +299,7 @@ describe("find-any rendering and mobile feedback", () => {
       act(() => vi.advanceTimersByTime(2200)); act(() => vi.advanceTimersByTime(560)); act(() => vi.advanceTimersByTime(160)); act(() => vi.advanceTimersByTime(901));
       expect(view.container.querySelector(".scene__advance")).toBeNull();
     }
-    expect(view.getByRole("dialog").textContent).toContain("You found every hiding spot again!");
+    expect(view.getByRole("dialog").textContent).toContain("You found every hiding spot in this round!");
     expect(view.container.querySelector(".complete__loot")).toBeNull();
     expect(store.getState().progress).toBe(progress);
     // A second replay must also discard completion and choreography state.

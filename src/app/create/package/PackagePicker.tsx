@@ -16,7 +16,7 @@ interface Option {
   popular: boolean;
 }
 
-export function PackagePicker({ options, defaultTier }: { options: Option[]; defaultTier: string }) {
+export function PackagePicker({ options, defaultTier, availableWorldCount }: { options: Option[]; defaultTier: string; availableWorldCount: number }) {
   const { t, tf } = useI18n();
   const p = t.create.package;
   const [tier, setTier] = useState(defaultTier);
@@ -45,7 +45,7 @@ export function PackagePicker({ options, defaultTier }: { options: Option[]; def
           {t.common.back}
         </LinkButton>
         <Button type="submit" size="lg" loading={pending}>
-          {p.next}
+          {options.find(o => o.tier === tier)?.worldCount === availableWorldCount ? p.nextSummary : p.next}
           <span className="fm-btn__arrow" aria-hidden>
             ➜
           </span>

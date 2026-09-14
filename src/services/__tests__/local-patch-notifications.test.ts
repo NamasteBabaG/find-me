@@ -210,7 +210,7 @@ describe("advisory notification outbox", () => {
       sceneCount: 9, locale, playMode: "find-any", targetCount: 43 });
     for (const body of [message.html, message.text]) {
       expect(body).toContain("43");
-      expect(body).toContain(locale === "he" ? "שלושה" : "three");
+      expect(body).toContain(locale === "he" ? "שלוש מציאות" : "three");
       expect(body).not.toContain(locale === "he" ? "חמישה מחבואים בכל" : "five hiding spots in each");
     }
   });
