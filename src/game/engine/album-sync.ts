@@ -36,8 +36,9 @@ export class AlbumSync {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private failures = 0;
   private stopped = false;
-  /** The account's copy has not been read yet (the first read failed): it is read again before anything else. */
+  /** The account's copy has not been read yet (the first read failed): it is read again before anything is sent. */
   private loadOwed = false;
+  private loading: Promise<"loaded" | "offline" | "refused"> | null = null;
   private readonly fetcher: typeof fetch;
   private readonly backoff: number[];
 
@@ -57,8 +58,13 @@ export class AlbumSync {
     return [...this.queue];
   }
 
-  /** The account's copy, or a network failure (the caller keeps its cache). */
-  async load(): Promise<"loaded" | "offline" | "refused"> {
+  /** The account's copy, or a network failure (the caller keeps its cache). One read at a time: a second call joins the first. */
+  load(): Promise<"loaded" | "offline" | "refused"> {
+    if (!this.loading) this.loading = this.read().finally(() => { this.loading = null; });
+    return this.loading;
+  }
+
+  private async read(): Promise<"loaded" | "offline" | "refused"> {
     this.opts.onState("loading");
     try {
       const res = await this.fetcher(`${ENDPOINT}?gameId=${encodeURIComponent(this.opts.gameId)}`, { credentials: "same-origin", cache: "no-store" });
@@ -132,6 +138,13 @@ export class AlbumSync {
     if (this.busy || this.stopped || !this.queue.length) return;
     this.busy = true;
     try {
+      // The account is read before anything is sent, a new find included:
+      // what it holds decides what this browser still owes.
+      if (this.loadOwed) {
+        const loaded = await this.load();
+        if (loaded === "refused") { this.queue = []; return; }
+        if (loaded !== "loaded") { this.opts.onState("offline"); this.scheduleRetry(); return; }
+      }
       while (this.queue.length && !this.stopped) {
         const event = this.queue[0]!;
         const outcome = await this.send(event);

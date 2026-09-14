@@ -220,6 +220,67 @@ describe("album in the play store", () => {
     store.getState().stopAlbumSync();
   });
 
+  it("owner: a late answer from the account joins the board as it stands; the next child can still be found", async () => {
+    const book = withBook.adventure!;
+    const scene = withBook.scenes[0]!;
+    // The account answers only when released, with a find from another device.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    let server = emptyAdventureProgress(withBook.gameId, book);
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        server = recordAdventureEvent(server, withBook.gameId, book, (JSON.parse(String(init.body)) as { event: AdventureEvent }).event).progress;
+        return new Response(JSON.stringify({ ok: true, progress: server, revision: 1, changed: true }), { status: 200 });
+      }
+      await gate;
+      return new Response(JSON.stringify({ ok: true, progress: server, revision: 1, changed: true }), { status: 200 });
+    }));
+    const store = createPlayStore(withBook, { copy, albumOwner: true });
+    store.getState().hydrate();
+    store.getState().openScene("pilot-test");
+    store.getState().dispatch({ type: "START", now: 1 });
+    const order = store.getState().mission!.plan.order;
+    const elsewhere = order[0]!;
+    server = recordAdventureEvent(server, withBook.gameId, book, { kind: "target-found", boardSlug: "pilot-test", targetId: elsewhere, variant: "B" }).progress;
+    release();
+    await flush();
+    await flush();
+    const mission = store.getState().mission!;
+    // Still searching (no intro, no restart), the child found elsewhere counted and stepped past.
+    expect(mission.phase).toBe("searching");
+    expect(Object.keys(mission.found)).toEqual([elsewhere]);
+    expect(mission.plan.order[mission.currentIndex]).toBe(order[1]);
+    expect(sceneFoundIds(store.getState().progress, scene)).toEqual([elsewhere]);
+    // The next child is found by a tap, as ever.
+    store.getState().dispatch({ type: "TAP_TARGET", targetId: order[1]!, now: 2 });
+    expect(store.getState().mission!.phase).toBe("found");
+    expect(Object.keys(store.getState().mission!.found).sort()).toEqual([elsewhere, order[1]!].sort());
+    expect(store.getState().album?.finds.map((f) => f.targetId).sort()).toEqual([elsewhere, order[1]!].sort());
+    store.getState().stopAlbumSync();
+  });
+
+  it("owner: a late answer that completes the board finishes it in one controlled step", async () => {
+    const book = withBook.adventure!;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    let server = emptyAdventureProgress(withBook.gameId, book);
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method !== "POST") await gate;
+      return new Response(JSON.stringify({ ok: true, progress: server, revision: 1, changed: true }), { status: 200 });
+    }));
+    const store = createPlayStore(withBook, { copy, albumOwner: true });
+    store.getState().hydrate();
+    store.getState().openScene("pilot-test");
+    store.getState().dispatch({ type: "START", now: 1 });
+    for (const id of store.getState().mission!.plan.order) server = recordAdventureEvent(server, withBook.gameId, book, { kind: "target-found", boardSlug: "pilot-test", targetId: id, variant: "A" }).progress;
+    release();
+    await flush();
+    await flush();
+    expect(store.getState().mission!.phase).toBe("complete");
+    expect(Object.keys(store.getState().mission!.found)).toHaveLength(5);
+    store.getState().stopAlbumSync();
+  });
+
   it("says when this browser could not keep the album, instead of claiming it was saved", async () => {
     storage.setItem = () => { throw new Error("QuotaExceededError"); };
     const guest = createPlayStore(withBook, { copy });
@@ -246,8 +307,7 @@ describe("album in the play store", () => {
     expect(owner.getState().albumState).toBe("unsaved");
     online = true;
     backOnline();
-    await flush();
-    await flush();
+    for (let i = 0; i < 4; i++) await flush();
     expect(server.discoveries).toHaveLength(1);
     expect(owner.getState().albumState).toBe("saved");
     owner.getState().stopAlbumSync();

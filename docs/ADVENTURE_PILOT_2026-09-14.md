@@ -81,6 +81,13 @@
 | שמירה מקבילה במסלול המחיקה הכללי משאירה אלבום אחרי `DELETED` | `game.service.ts`: איפוס `configJson` ומחיקת האלבום בעסקה אחת Serializable; `ownerAdventureAlbum` גם Serializable (שמירה שקוראת משחק באמצע מחיקה נכשלת במקום ליצור אלבום מחדש) | `adventure-album-delete.test.ts` "a save that lands while the game is being deleted" (שחזור דטרמיניסטי על SQLite אמיתי) |
 | `localStorage.setItem` נכשל: התגלית "נאספה", הטקסט אומר "נשמר בדפדפן", רענון מוחק | `saveAlbum` מחזיר תוצאה; מצב `unsaved`: „ההתקדמות זמינה כרגע בלבד ולא נשמרה במכשיר”. לבעלים המצב הזה גובר על `offline`/`saving` עד שהחשבון אישר | `play-store-album.test.ts` "could not keep the album", `album.test.tsx` |
 
+סבב שני (אחרי ביקורת `a129eb6`):
+
+| מה שוחזר | התיקון | הבדיקה |
+| --- | --- | --- |
+| תשובת חשבון מאוחרת בזמן חיפוש קראה שוב ל־`openScene`: `searching → intro`, מפתח הרכיב זהה, אפקט הפתיחה לא רץ שוב, לחיצה על הילד לא מתקבלת | פעולת משימה חדשה `ADOPT_FOUND` (`domain/game/mission.ts`): המציאות ממוזגות למשימה הפעילה בלי לפתוח אותה מחדש. בחיפוש: ילד שנמצא במקום אחר מדולג; לוח שהושלם עובר ל־`complete` בצעד מבוקר אחד; באינטרו/בחגיגה — `START`/`FOUND_DONE` ממשיכים כרגיל. הכוכב של מציאה מאומצת נדלק בלי טיסה, בלי להפריע לטיסה של מציאה שנלחצה | `find-any-real-viewport.test.tsx` "takes a find that arrives late… the next child is still found by a tap" (ScenePlayer מחובר, לחיצה אמיתית דרך ה־viewport אחרי התשובה המאוחרת), `play-store-album.test.ts` "a late answer… joins the board as it stands" ו־"…completes the board in one controlled step" |
+| אחרי GET שנכשל, מציאה חדשה עברה `push → drain` ונשלחה ב־POST בלי הקריאה החסרה | `drain` קורא קודם את החשבון כשהקריאה עדיין חוב (כשל → backoff, לא שליחה); `load` יחיד בכל רגע (קריאה שנייה מצטרפת לראשונה) | `album-sync.test.ts` "reads the account again on its own… only then sends" (מציאה בניתוק = GET, לא POST), "runs one read at a time" |
+
 מה הודגם חי אחרי התיקונים (dev מקומי על 3001):
 
 - **שני דפדפנים (תיקון 2):** הבעלים מצא חמישה בדפדפן המובנה (החשבון: `revision 6`). דפדפן "נקי"

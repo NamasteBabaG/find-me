@@ -129,6 +129,28 @@ describe("one child at a time through the actual animated viewport", () => {
     expect(player.store.getState().progress).toBe(saved);
   });
 
+  it("takes a find that arrives late from the account into the live board, and the next child is still found by a tap", async () => {
+    const player = await mountPlayer({ width: 1280, height: 800 });
+    const lit = () => player.container.querySelectorAll(".mission__stars .is-lit").length;
+    const [first, second] = player.store.getState().mission!.plan.order;
+    expect(player.visible()).toEqual([first]);
+    // The account's answer, late, with the first child found on another device.
+    act(() => { player.store.getState().dispatch({ type: "ADOPT_FOUND", found: { [first!]: { hintsUsed: 0, misses: 0, elapsedMs: 0 } }, now: Date.now() }); });
+    expect(player.store.getState().mission!.phase).toBe("searching");
+    expect(player.container.querySelector(".scene")?.getAttribute("data-mission-phase")).toBe("searching");
+    expect(player.visible()).toEqual([second]);
+    expect(lit()).toBe(1);
+    // No restart happened: a real tap on the next child is accepted at once.
+    player.hit(second!);
+    expect(player.store.getState().mission!.phase).toBe("found");
+    expect(Object.keys(player.store.getState().mission!.found).sort()).toEqual([first!, second!].sort());
+    expect(player.store.getState().progress.scenes[player.scene.slug]!.foundTargetIds).toHaveLength(2);
+    // The tapped child's star still flies and lands on its own; the adopted one stays lit meanwhile.
+    expect(lit()).toBe(1);
+    act(() => vi.advanceTimersByTime(350 + 850));
+    expect(lit()).toBe(2);
+  });
+
   it("restores a saved star without replaying its flight and cancels an in-flight landing when leaving", async () => {
     const player = await mountPlayer({ width: 390, height: 650 }, sceneFixture(), ["hide-1", "hide-3"]);
     const slots = player.container.querySelectorAll(".mission__stars .stars__slot");

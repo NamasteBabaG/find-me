@@ -55,6 +55,8 @@ export type MissionAction =
   | { type: "TAP_AMBIENT"; ambientId: string }
   | { type: "REQUEST_HINT" }
   | { type: "FOUND_DONE"; now: number }
+  /** Finds the family account brought from another device, merged into the live mission without reopening it. */
+  | { type: "ADOPT_FOUND"; found: Record<string, FoundRecord>; now: number }
   | { type: "CLEAR_FEEDBACK" };
 
 export interface MissionCopy {
@@ -193,6 +195,22 @@ export function missionReducer(state: MissionState, action: MissionAction, copy:
         missionStartedAt: action.now,
         lastFeedback: null,
       };
+    }
+
+    case "ADOPT_FOUND": {
+      // A late answer from the account never restarts the board: the finds are
+      // merged into the mission as it stands. Intro and the found celebration
+      // decide what comes next on their own (START, FOUND_DONE); while
+      // searching, only a child who was found elsewhere is stepped past.
+      const owed = Object.entries(action.found).filter(([id]) => state.plan.order.includes(id) && !isFound(state, id));
+      if (!owed.length) return state;
+      const found = { ...state.found, ...Object.fromEntries(owed) };
+      if (state.phase !== "searching") return { ...state, found };
+      if (Object.keys(found).length >= state.plan.order.length) return { ...state, found, phase: "complete", lastFeedback: null };
+      const current = state.plan.order[state.currentIndex] ?? "";
+      if (!found[current]) return { ...state, found };
+      const nextIndex = state.plan.order.findIndex(id => !found[id]);
+      return { ...state, found, currentIndex: nextIndex, misses: 0, hintLevel: 0, missionStartedAt: action.now, lastFeedback: null };
     }
 
     case "CLEAR_FEEDBACK":

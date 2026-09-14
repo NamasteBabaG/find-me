@@ -111,18 +111,29 @@ describe("album sync", () => {
     expect(await sync.load()).toBe("offline");
     sync.push(find("hide-2"));
     await flush();
-    expect(log).toEqual(["GET", "POST"]);
+    // A new find does not slip past the owed read: it is tried as a read, not a send.
+    expect(log).toEqual(["GET", "GET"]);
     expect(seen).toEqual([]);
+    expect(sync.pending).toBe(1);
     online = true;
     await vi.advanceTimersByTimeAsync(1000);
     await flush();
     await flush();
     // The read that was owed comes first, so the account's finds are seen before the browser's are added.
-    expect(log).toEqual(["GET", "POST", "GET", "POST"]);
+    expect(log).toEqual(["GET", "GET", "GET", "POST"]);
     expect(seen[0]!.finds.map((f) => f.targetId)).toEqual(["hide-1"]);
     expect(server.finds.map((f) => f.targetId)).toEqual(["hide-1", "hide-2"]);
     expect(states.at(-1)).toBe("saved");
     sync.stop();
+  });
+
+  it("runs one read at a time: a load asked for twice is one request", async () => {
+    const server = emptyAdventureProgress(gameId, book);
+    const log: string[] = [];
+    const sync = new AlbumSync({ gameId, onState: () => {}, onProgress: () => {}, fetcher: fetcher(async (method) => { log.push(method); await Promise.resolve(); return reply(server); }) });
+    const [a, b] = await Promise.all([sync.load(), sync.load()]);
+    expect([a, b]).toEqual(["loaded", "loaded"]);
+    expect(log).toEqual(["GET"]);
   });
 
   it("stops on a refusal instead of pretending, keeping nothing queued", async () => {

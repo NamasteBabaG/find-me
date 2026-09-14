@@ -241,14 +241,19 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
             set({ album: merged, albumState: albumStatus() });
             // The game itself agrees with the album: finds the account knows from
             // another device become this browser's found children, stars and open
-            // places. A board that is open meanwhile is rebuilt on them.
-            const before = get().progress;
-            const adopted = adoptFinds(before, config, merged.finds);
+            // places. A board that is open meanwhile takes them into its live
+            // mission (never reopened: that put the board back into its intro
+            // with nothing to start it again).
+            const adopted = adoptFinds(get().progress, config, merged.finds);
             if (adopted.changed) {
               saveProgress(adopted.progress);
               set({ progress: adopted.progress });
-              const open = get().screen === "scene" ? get().scene() : null;
-              if (open && sceneFoundIds(adopted.progress, open).length !== sceneFoundIds(before, open).length) get().openScene(open.slug);
+              const { mission, sceneSlug } = get();
+              if (mission && sceneSlug) {
+                const records = sceneProgress(adopted.progress, sceneSlug).foundRecords ?? {};
+                const found = Object.fromEntries(Object.entries(records).filter(([id]) => !mission.found[id]));
+                if (Object.keys(found).length) get().dispatch({ type: "ADOPT_FOUND", found, now: Date.now() });
+              }
             }
           },
         });

@@ -74,6 +74,8 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
   // not merely while flight exists (which blinked 0→1→0→1 during launch).
   const [landedStars, setLandedStars] = useState(() => Object.keys(mission.found).length);
   const [flight, setFlight] = useState<{ key: number; path: FlightPath } | null>(null);
+  /** A star is on its way (launch pending or in the air): the tray waits for it. */
+  const flying = useRef(false);
   const starTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   useEffect(() => () => starTimers.current.forEach(clearTimeout), []);
   // Bubbles live in stage pixels and are projected to the screen on every render
@@ -258,12 +260,14 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           const foundCount = Object.keys(mission.found).length;
           const slot = foundCount - 1;
           const land = () => {
+            flying.current = false;
             setFlight(null);
             setLandedStars(foundCount);
             sounds().play("star");
           };
           starTimers.current.forEach(clearTimeout);
           starTimers.current = [];
+          flying.current = true;
           const launch = setTimeout(() => {
             const path = flightPath(fb.targetId, slot);
             // A missing layout or reduced-motion preference may skip the
@@ -411,6 +415,11 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
   const canAdvance = free && missionCanAdvance(mission);
   const advanceLabel = store.nextScene() ? g.scene.canContinue : g.complete.bag;
   const advance = () => { const next = store.nextScene(); if (next) store.openScene(next); else store.openPassport(); };
+  // A find the account brought from another device has no flight: its star
+  // lights as soon as no star of this board's own is in the air.
+  useEffect(() => {
+    if (!flying.current) setLandedStars((n) => Math.max(n, foundIds.length));
+  }, [foundIds.length, flight]);
   const starsLanded = Math.min(foundIds.length, landedStars);
   // "The next place is open" is one moment, not a wall: the toast leaves the
   // board on its own, and the HUD keeps the way forward.
