@@ -1,91 +1,59 @@
-# Deploying "איפה אני?"
+# פריסה בטוחה — מפת תהליך, לא אישור שחרור
 
-Production is a Vercel project (`find-me`, team `smallheroes-projects`) backed by a Supabase
-Postgres. Everything below is the current state, not a plan.
+מסמך זה מחליף את הוראות ההקמה הראשונות. מספרי טבלאות, זמני רינדור, עלויות ודגלים
+בדוחות ישנים אינם תיאור אמין של פריסה חדשה.
 
-## What is already set up
+## הפרדה בין קוד, סכימה ופריסה
 
-| | |
-| --- | --- |
-| App | https://find-me-smallheroes-projects.vercel.app |
-| Database | Supabase project `find-me` (`vvqjmaubdjndmjvcfxve`), region `eu-central-1` |
-| Schema | applied — 18 tables, identical to `prisma/schema.prisma` |
-| PostgREST | locked out: RLS on every table with no policies, and `anon`/`authenticated` have no grants. The app talks to Postgres through Prisma as the owner, and nothing should reach these tables through the public API. |
+- commit או push אינם הוכחה ש־QA עודכן.
+- build אינו מחיל סכימת DB. שינוי ב־schema.prisma אינו מיגרציה שבוצעה.
+- `target: production` של פריסת Vercel אינו מזהה את החנות: גם פרויקט QA יכול לפרוס ליעד production שלו.
+- אין לפרוס מעץ עבודה עם שינויים לא קשורים או מהשורש רק כי הוא ברירת המחדל של הטרמינל.
+- אין להעתיק .env מקומי אל Git או אל build artifacts. סודות נשארים במנהל הסביבה.
 
-## The one manual step: DATABASE_URL
+## לפני פריסה מורשית ל־QA
 
-Supabase generates the database password at project creation and never shows it again through the
-management API, so it has to be copied by a human — it should not travel through a chat log.
+1. לזהות את הפרויקט המקושר, הקומיט, הענף וה־alias. לבדוק שאין עבודה של סוכן אחר שהולכת להידרס.
+2. לבחור checkout נקי ומוגדר. במקרה של עדכון נקודתי, לשלב רק את השינויים שאושרו.
+3. להריץ `npm run check -- --maxWorkers=4`.
+4. לתוכן: `scenes:validate`, `adventures:validate`; לנכסי שרת: build וה־tracing audits.
+5. לבדוק אם יש שינוי DB. אם כן, זו פעולה נפרדת על יעד שאומת ובגיבוי/תוכנית שחזור.
+6. לוודא APP_ENV=qa, gate תקין, תשלום mock, storage מתאים לשרת, והרשאות/תקציב לפני רינדור.
+7. רק אז לבנות ולפרוס בפרויקט QA המיועד. לא לפרוס לחנות במסגרת בדיקת QA.
 
-1. Open the [database settings](https://supabase.com/dashboard/project/vvqjmaubdjndmjvcfxve/settings/database)
-   and copy the password (or **Reset database password** and copy the new one).
-2. Give it to Vercel — the CLI prompts for the value, so the password is never in your shell history:
+לאחר הפריסה: לבדוק READY ו־alias, גישה בלתי־מזוהה לשער, התחברות מורשית,
+גרסת היישום, לוגים והזרימה ששונתה. משחק קיים הוא בדיקת תאימות נוספת, לא הוכחה ליצירה חדשה.
 
-   ```bash
-   npx vercel env add DATABASE_URL production
-   ```
+## מסד נתונים
 
-   Paste the **transaction pooler** URL, which is what a serverless function should use:
+`db:push`, `setup`, `db:push:postgres` ו־`db:reset` מתחילים ב־`db:guard`.
+השומר מקבל file: מקומי או Postgres עם שם סכימה אחד מפורש.
+סכימה public דורשת גם `--allow-public` **בקריאה ישירה לשומר**.
+אין להניח שדגל שהועבר ל־npm יעבור לכל שלבי השרשרת.
 
-   ```
-   postgresql://postgres.vvqjmaubdjndmjvcfxve:PASSWORD@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1
-   ```
+זהו שומר מפני יעד שגוי, לא הרשאה לאיפוס ולא הבטחת גיבוי.
+`db:reset` מוחק נתונים ביעד שנבחר גם כשהשומר עבר.
+לא מריצים פקודות schema בזמן בדיקת UI או לצורך תיקון typecheck.
 
-   (The direct connection is `db.vvqjmaubdjndmjvcfxve.supabase.co:5432` — use it for migrations from a
-   laptop, not from a lambda.)
-3. Redeploy: `npx vercel --prod`.
+`db:push:postgres` מייצר עותק סכימה/לקוח Postgres ואחרי הצלחה מחזיר לקוח מקומי.
+אם הוא נעצר באמצע, הלקוח המקומי עלול להישאר לא מתאים: `db:client:local` מיועד לשחזורו.
+אל תריצו generate כאשר worktrees חולקים node_modules פעיל; השתמשו בסביבה מבודדת.
+גם בסביבה מבודדת אין להריץ generate במקביל לבדיקות שמשתמשות באותו לקוח;
+ב־Windows מנוע Prisma הפעיל נועל את קובץ ה־DLL.
 
-A `postgres://` URL switches Prisma to the Postgres schema automatically (`scripts/prisma-generate.mjs`),
-so nothing else changes. To re-apply the schema after a model change:
+## עבודת שרת
 
-```bash
-DATABASE_URL="postgresql://…" npm run db:push:postgres
-```
+`vercel.json` מגדיר `/api/jobs/tick` בכל דקה.
+הנתיב מאמת CRON_SECRET, מפעיל queue עם deadline ומטפל גם בתחזוקה/התראות במסגרת הזמן.
+חייבים לוודא בלוגים שה־cron אכן פועל כשהדפדפן סגור.
+אין הבטחת זמן משחק קבועה: מספר ההופעות, ספקים, retry, review והשהיות משפיעים עליו.
 
-## Environment
+`GENERATION_ENABLED=off` חל על מסלולים מוגנים שטענו את הערך.
+שינוי הגדרה אינו מבטל בקשה שכבר נשלחה; אין להבטיח שהוא משפיע על מופע ישן או סקריפט ישיר.
 
-Set in production today:
+## לפני מכירות אמיתיות
 
-| variable | value | why |
-| --- | --- | --- |
-| `SESSION_SECRET` | random 48 chars | signs sessions, share links and asset URLs. Production refuses to boot with the dev default. |
-| `STORAGE_PROVIDER` | `db` | a serverless host has no disk that survives; blobs live in `FileBlob`. |
-| `JOBS_MODE` | `inline` | generation runs inside the webhook request — there is no worker yet. |
-| `PAYMENT_PROVIDER` | `mock` | **no real money moves yet.** PayMe is a skeleton. |
-| `EMAIL_PROVIDER` | `console` | **no mail is sent yet.** Resend is written but unproven. |
-| `GENERATION_PROVIDER` | `openai` | real identity sheet + slot patches. |
-| `OPENAI_API_KEY` | set | |
-| `GENERATION_QUALITY` | `medium` | what the worlds were rendered at. |
-| `ANALYTICS_PROVIDER`, `ADMIN_EMAILS`, `QA_AUTO_APPROVE` | | |
-
-The container says out loud, at boot, which of these are still mocks. A provider that is named but not
-built (`STORAGE_PROVIDER=supabase`, `GENERATION_PROVIDER=replicate`, `ANALYTICS_PROVIDER=posthog`)
-fails at startup rather than quietly serving a mock.
-
-## Cost per game
-
-`GENERATION_BOTH_VARIANTS=false` (the default) generates one hiding spot per target: a complete
-playable game at half the price. Measured at quality `medium`: $0.07 and ~55s per model call.
-
-A world is nine boards of three missions, so one world is **27 hiding spots** plus one identity
-sheet: about **$2.00 and 25 minutes**. At ILS 39 that is roughly a fifth of the revenue. Turning on
-both variants doubles it, which is why it stays off.
-
-Ten minutes is longer than any serverless request, so generation runs in slices. `POST /api/jobs/tick`
-does as much of one game as fits in four minutes and returns; the job stays RUNNING and the next tick
-resumes exactly where it stopped. Two things call it:
-
-* the `/creating` page the parent is watching, once per poll — fast while they are there;
-* a Vercel cron every five minutes (`vercel.json`), authenticated with `CRON_SECRET` — so a game
-  finishes even if they close the tab.
-
-Both are safe to run at once: every step is idempotent and a finished hiding spot is skipped. If the
-plan does not allow a five-minute cron, lower the frequency — the page still drives the common case.
-A dedicated worker (Trigger.dev / Inngest) can replace the cron later; `JobRunner` is the seam.
-
-## Before charging anyone
-
-1. Confirm the cron actually fires on this plan (Vercel → Project → Cron Jobs), or move to a worker.
-2. A real payment provider: `src/infra/payment/payme.ts` currently throws.
-3. Real email: `EMAIL_PROVIDER=resend`, proven end to end.
-4. Object storage for the blobs if volume grows; `FileBlob` in Postgres is fine for a pilot.
+- PayMe אינו ממומש במלואו בקוד הנוכחי; אין להפעיל תשלום אמיתי על סמך בדיקת mock.
+- לבדוק מייל אמיתי, הרשאות נכסים, מחיקה, תקציב ו־restart בסביבה המיועדת.
+- לבדוק מדיניות מנוע/תוכן ואלבום בנפרד. אין להדליק תשתית adventure לפני חיבור ומיגרציה.
+- אין להסיק מצב אבטחה/חשיפה של DB או סביבה חיה ממסמך ישן. יש לאמת לפני השחרור.

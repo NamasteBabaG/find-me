@@ -5,7 +5,7 @@ import type { Container } from "./container";
 import { statusOf, transitionGame } from "./game-status";
 import { ensurePlayerLink, revokePlayerLinks } from "./share-link.service";
 import { deleteAsset } from "./asset.service";
-import { audit, type Actor } from "./audit.service";
+import type { Actor } from "./audit.service";
 import { renderEvidenceIds, removeRenderEvidence } from "./generation/render-evidence";
 import { isFixedWorldStyle } from "./generation/fixed-world-stage-record";
 import { deleteFixedWorldGame } from "./generation/fixed-world-staging";

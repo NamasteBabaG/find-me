@@ -4,6 +4,8 @@ node_modules
 *.log
 .env
 .env.local
+.env.*
+!.env.example
 /storage/
 /prisma/*.db
 /prisma/*.db-journal

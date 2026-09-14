@@ -127,7 +127,6 @@ async function main() {
   }
   const key = envKey("OPENAI_API_KEY");
   if (!key) throw new Error("OPENAI_API_KEY is not set (put it in .env).");
-  const [w, h] = size.split("x").map(Number) as [number, number];
   const refs = flag("refs", "beach,jungle,space")
     .split(",")
     .map((r) => path.join(ROOT, "public", "scenes", r.trim(), "base.webp"))

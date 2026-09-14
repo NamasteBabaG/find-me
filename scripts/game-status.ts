@@ -76,7 +76,7 @@ async function main() {
     }
   }
 
-  if (process.argv.includes("--scales")) await reportScales(c, gameId, rows);
+  if (process.argv.includes("--scales")) await reportScales(c, rows);
 
   // The identity sheet is drawn once and every spot is painted from it.
   const sheetId = game.childProfile?.identityAssetId;
@@ -97,7 +97,6 @@ async function main() {
  */
 async function reportScales(
   c: Awaited<ReturnType<typeof import("../src/services/container").getContainer>>,
-  gameId: string,
   rows: Array<{ rejectedAssetIdsJson: string | null; usageJson: string | null; variant: string; targetInstance: { targetId: string; gameScene: { sceneSlug: string } } }>,
 ) {
   const { readAssetBuffer } = await import("../src/services/asset.service");

@@ -11,14 +11,14 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "tsc --noEmit && tsc -p tsconfig.work.json --noEmit && vitest run",
-    "check:work": "tsc -p tsconfig.work.json --noEmit",
+    "check": "tsc --noEmit && vitest run",
+    "check:work": "npm run typecheck",
     "db:sql": "node scripts/prisma-sql.mjs",
-    "db:push": "prisma db push",
+    "db:push": "npm run db:guard && prisma db push",
     "db:studio": "prisma studio",
     "db:reset": "npm run db:guard && prisma db push --force-reset",
     "postinstall": "node scripts/prisma-generate.mjs",
-    "setup": "prisma generate && prisma db push",
+    "setup": "npm run db:guard && prisma generate && prisma db push",
     "scenes:validate": "tsx scripts/validate-scenes.ts",
     "adventures:validate": "tsx scripts/validate-adventures.ts",
     "smoke": "tsx scripts/e2e-smoke.ts",
@@ -47,7 +47,8 @@
     "prisma": "^6.19.3",
     "tsx": "^4.20.3",
     "typescript": "^5.9.2",
-    "vitest": "^3.2.4"
+    "vite": "7.3.6",
+    "vitest": "4.1.11"
   },
   "overrides": {
     "postcss": "^8.5.28",

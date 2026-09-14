@@ -203,7 +203,7 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
   deps: LocalPatchBoardReviewDeps): Promise<LocalPatchBoardReviewOutcome> {
   const prepared = await prepareLocalPatchBoardReview(c, input, deps);
   if (!prepared.ready) return { state: "pending", reason: prepared.reason, costCents: 0, replayed: false };
-  const { scene, game, board, budget, worldId, identity, sheet, entries, request, fingerprint,
+  const { scene, game, budget, worldId, identity, sheet, entries, request, fingerprint,
     requestKey, settings, strict, reviewVersion, composed, extraPlan, protectedRows } = prepared;
   demand(game.ownerId, "A review requires its verified owner");
   demand(deps.judge || deps.apiKey?.trim(), "Configured existing judge credential is required");

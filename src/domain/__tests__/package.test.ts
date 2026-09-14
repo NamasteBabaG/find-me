@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  PACKAGES,
   PACKAGE_ORDER,
   boardsFor,
   formatMoney,

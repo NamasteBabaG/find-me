@@ -4,7 +4,6 @@ import Link from "next/link";
 import { getContainer } from "@/services/container";
 import { listGamesForUser } from "@/services/game.service";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
-import { isDev } from "@/lib/env";
 import { getI18n } from "@/i18n/server";
 import { formatDate, pick, tf } from "@/i18n";
 import { SiteFooter, SiteHeader, Notice } from "@/ui/Shell";

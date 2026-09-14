@@ -1,236 +1,45 @@
-# The QA environment
+# סביבת QA — גבולות ואימות
 
-A second deployment that is a production build in every way except one: it pays
-with the mock provider. Work goes here first and only reaches the shop after it
-has been looked at.
+כתובת הבדיקה: https://qa.findmeworlds.com.
+הפרויקט המיועד הוא `find-me-qa`; החנות היא פרויקט נפרד.
+זהו יעד לבדיקה, **לא אישור שהקומיט המקומי האחרון פרוס בו**.
 
-## Why it exists
+## חוזה הסביבה
 
-A QA audit found the live site running `generation=openai` with `payment=mock`
-and `email=console` at the same time — real renders, a pretend till, and no
-delivery. That is a hole when it happens by accident on the shop, and it is
-exactly what a staging box is *for* when it is declared.
-
-`NODE_ENV` cannot tell the two apart: both run a production build. `APP_ENV`
-does. In `qa` the mock till alongside real generation is allowed and the app
-wears a striped banner saying payments are simulated — a QA box that looks like
-the shop is how someone comes to believe they bought something. In `production`
-that combination refuses to boot (`src/lib/env.ts`).
-
-## What is where
-
-| | Shop | QA |
-| --- | --- | --- |
-| Vercel project | `find-me` | `find-me-qa` |
-| `APP_ENV` | `production` | `qa` |
-| Payment | PayMe (when live) | `mock` |
-| Generation | `openai` | `openai` — same model, same cost |
-| Email | `resend` (when live) | `console` (writes to the outbox) |
-| Database | Supabase `find-me`, `public` schema | Supabase `find-me`, **`qa` schema** |
-
-One Supabase project, two schemas. QA games, orders and uploaded photos never
-appear in the shop's library because they are not in the same tables.
-
-A separate Supabase project would isolate the credentials, the instance and the
-backups as well, and costs $10/month. It is the right shape for a live product
-and is deliberately **not** what this is yet: before launch the shop's database
-holds no customers, no real orders and no photographs of anyone's child, so
-every argument for splitting it is an argument about a risk that does not exist
-yet. Open `find-me-qa` in Supabase at the same moment as the other launch
-chores — rotating the password, wiring PayMe, the first paying customer. There
-is nothing to migrate, because everything in `qa` until then is test data.
-
-What is *not* deferred is the one trap that is real either way: `db push` alters
-a live schema without asking, `--force-reset` empties it, and both take their
-target from the end of a URL. `npm run db:guard` (wired into both) refuses a
-Postgres URL that does not name its schema.
-
-## The shop is paused
-
-`find-me` is paused in Vercel and answers 503 on every domain. It was serving
-`payment=mock` beside `generation=openai` — the audit's first blocker, live and
-public, on a build old enough to predate the ownership check on
-`/api/dev/mock-pay`. Anyone who found the URL could have marked an order paid
-and spent OpenAI budget.
-
-Vercel Authentication is not available for production deployments on this plan,
-so pausing is what actually closes it. All work happens in QA until PayMe is
-wired; then unpause and deploy.
-
-Unpausing without deciding what the shop is will not start: the invariants in
-`src/lib/env.ts` refuse `payment=mock` with real generation under
-`APP_ENV=production`. Either wire PayMe, or set `GENERATION_PROVIDER=mock` so
-the public site can show the art without being able to spend anything.
-
-## The URL
-
-**https://find-me-qa-smallheroes-projects.vercel.app**
-
-`find-me-qa.vercel.app` is listed on the project and does not serve: a bare
-`.vercel.app` subdomain is unique across all of Vercel and that one is taken.
-
-Deployment protection is off, so the site answers anyone who has the link — which
-is the point, since half of what needs testing is what a visitor who has not
-signed in and not bought anything sees. Nothing links to it and nothing indexes
-it, but generation here is real: `GENERATION_ENABLED=off` stops all spending
-without a deploy if that ever matters.
-
-## Deploying to it
-
-The projects are not linked to GitHub, so deployment is a command rather than a
-push. From the repo root, without disturbing the shop's own link:
-
-```powershell
-$env:VERCEL_ORG_ID="team_2bLUDGyHayGB1UHIvcCBgyWh"; $env:VERCEL_PROJECT_ID="prj_LbqCRqwU8WfZpeaWU7HTXM4SsfG4"
-npx vercel deploy --prod
-```
-
-If Prisma fails with `EPERM … query_engine-windows.dll.node`, a dev server is
-holding the file: stop `npm run dev` and run it again.
-
-The shop is the same command with its own project id, and should only run after
-QA has been looked at.
-
-## Secrets
-
-From a directory linked to the QA project (`npx vercel link --project find-me-qa`):
-
-PowerShell — it has no inline `VAR=value command` prefix, so set, run, clear:
-
-```powershell
-$env:DATABASE_URL="postgresql://…?schema=qa"; $env:OPENAI_API_KEY="sk-…"
-node scripts/qa-secrets.mjs
-npm run db:push:postgres
-$env:VERCEL_ORG_ID="team_2bLUDGyHayGB1UHIvcCBgyWh"; $env:VERCEL_PROJECT_ID="prj_LbqCRqwU8WfZpeaWU7HTXM4SsfG4"
-npx vercel deploy --prod
-Remove-Item Env:DATABASE_URL, Env:OPENAI_API_KEY
-```
-
-bash — the leading space keeps it out of history:
-
-```bash
- DATABASE_URL="postgresql://…?schema=qa" OPENAI_API_KEY="sk-…" node scripts/qa-secrets.mjs
-```
-
-The leading space keeps it out of shell history. SESSION_SECRET is generated by
-that script and never printed; the other two go from your shell to the Vercel
-CLI on stdin. It refuses a DATABASE_URL that does not name the `qa` schema,
-because one that does not is pointing at the shop's own tables.
-
-What each one is, and why:
-
-- **`SESSION_SECRET`** — a *new* one. It signs sessions and asset URLs, so
-  sharing the shop's would make a QA session valid against real data:
-
-  ```bash
-  node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))" | npx vercel env add SESSION_SECRET production
-  ```
-
-- **`DATABASE_URL`** — the same Supabase transaction pooler URL the shop uses,
-  with `schema=qa` added. The direct host is IPv6-only and Vercel egresses IPv4,
-  so it must be the pooler.
-
-- **`OPENAI_API_KEY`** — the same key. Generation is real here; that is the
-  point, and `GENERATION_ENABLED=off` stops it without a deploy.
-
-### Who may spend
-
-A QA box is a production build with a pretend till and a real painter: it
-takes no money and spends real money, at a public URL. So it refuses to boot
-with a real `GENERATION_PROVIDER` unless `QA_TESTER_EMAILS` lists who may
-cause spend, and the rule is checked where the money would start — checkout,
-the sandbox till, and the pipeline itself — not on a button. Both are plain
-settings, not secrets:
-
-```powershell
-npx vercel env add QA_TESTER_EMAILS production      # you@example.com,other@example.com
-npx vercel env add GENERATION_DAILY_CENTS production # e.g. 2000 = $20 a day, then the painter waits for tomorrow
-```
-
-`GENERATION_ENABLED=off` still stops everything without a deploy.
-
-### Email
-
-The console provider writes the mail to a file on the server, and on Vercel
-that file cannot be written — so on QA every "your game is ready" went nowhere
-and the outbox page stayed empty. QA sends real mail through Resend. Set only
-`RESEND_API_KEY` and the script does just the email part (it must not touch
-`SESSION_SECRET`, which would log every QA session out):
-
-```powershell
-$env:RESEND_API_KEY="re_…"; $env:EMAIL_FALLBACK_TO="you@example.com"
-node scripts/qa-secrets.mjs
-npx vercel deploy --prod
-Remove-Item Env:RESEND_API_KEY, Env:EMAIL_FALLBACK_TO
-```
-
-- **`EMAIL_FROM`** — without a verified domain Resend sends only from
-  `onboarding@resend.dev`, and only to the address that owns the Resend
-  account. That is enough for QA, where we are the buyers; the shop needs a
-  verified domain.
-- **`EMAIL_FALLBACK_TO`** — an operator's inbox for a finished game that has
-  nobody to send it to. Every such mail is stamped `[FALLBACK — no recipient]`
-  in the subject and at the top of the body, and the game stays READY rather
-  than DELIVERED, because the parent does not have it. Temporary: the stamp is
-  the reminder to remove it once every path into a paid game carries an address.
-- A mail that fails to send leaves the game READY and writes an `email:failed`
-  audit entry with the provider's error; the link still works from the library.
-
-## No human gate
-
-`QA_AUTO_APPROVE=true` takes the person out of the loop: a finished game is
-delivered the moment it is done, and the problems go to the admins instead.
-A game with problems goes out on its own **only on a QA box**: the container's
-`deliverWithProblems` is the flag AND `APP_ENV=qa`, so the same flag anywhere
-else delivers a clean game and holds one with problems in `MANUAL_REVIEW`,
-telling the admins. Right after the parent's "your game is ready" mail, every
-address in `ADMIN_EMAILS` gets one of these, each with the way in
-(`/admin/orders/<gameId>`):
-
-| when | subject |
+| נושא | דרישה |
 | --- | --- |
-| the game shipped with problems (a spot fell back to a drawn sprite, a spot the judge could not check, an automated-QA finding) | ⚠️ the game shipped with problems |
-| the game finished with problems outside QA and is waiting for a person (`MANUAL_REVIEW`, nothing was sent) | 🔎 the game is waiting for review |
-| the pipeline crashed (the game is `GENERATION_FAILED`, nothing was sent) | ❌ generation failed |
-| there is no original photo to draw from | 📷 a new photo is needed |
+| סביבה | APP_ENV=qa; NODE_ENV לבדו אינו מבדיל QA מחנות |
+| שער | QA access gate פעיל; לבדוק גם כמשתמש לא מזוהה |
+| תשלום | mock; אינו מעניק הרשאת הוצאה לכל גולש |
+| יצירה | ספק אמיתי רק עם מפתח, QA_TESTER_EMAILS ותקציב מורשים |
+| אחסון | DB-backed במסלול local-patch; לא תיקייה זמנית במחשב |
+| מייל | לוודא את הספק בפועל; console אינו מייל להורה |
+| תור | cron שרתי + queue; דפדפן אינו תנאי לסיום יצירה |
+| נתונים | יעד QA מפורש ומבודד מנתוני החנות; לא מסתמכים על URL שהועתק ממסמך |
 
-The mail lists the problems, the hiding spots that did not come out with their
-attempts and reasons, and what the game has cost. It is sent at most once per
-game, per kind, per six hours, so a crash that every tick repeats does not
-repeat the mail — and only a mail that actually went out counts, per
-recipient. A mail the provider refused is audited as `admin-alert:<kind>:failed`
-and tried again on the next call and from the cron tick (`retryFailedAdminAlerts`,
-up to a day back); nothing here ever throws: the parent already has the game.
+הפרויקט משתמש ב־Prisma ולא בלקוח Supabase בדפדפן.
+הפרדת schemas אינה שקולה להפרדת הרשאות, תשתית וגיבויים; יש לבדוק זאת לפני מכירות אמיתיות.
+אין כאן הצהרה על תוכן DB חי, גישה ציבורית, מחירים או תוכנית החשבון.
 
-Cron retries are not six-hour reminders: a success at or after a recipient's
-last failure resolves that failure, even after the six-hour throttle expires.
-Only failed recipients still in `ADMIN_EMAILS` are retried. The pass pages the
-day's outcomes, resolves recipients in bulk, and attempts up to 20 distinct
-pending game/kind pairs, oldest last attempt first. It does not take the last
-20 raw failure rows, which could all belong to one game. A fresh explicit alert
-still uses the six-hour throttle. This audit-backed mechanism is not an atomic
-outbox: overlapping workers or a failed post-send audit can still duplicate a
-mail. See `CODEX_HANDOFF_2026-09-06_ALERTS.md` for scope and regression coverage.
+## מתגים והרשאות
 
-With the flag off, a clean game waits in `QA_PENDING` and a game with problems
-in `MANUAL_REVIEW` until an admin approves it — the launch setting, once a
-person is actually there to look.
+- `QA_AUTO_APPROVE` אינו היתר כולל לכל תמונה או לכל מנוע.
+- `QA_DELIVER_WITH_PROBLEMS` הוא opt-in נפרד במסלול הרלוונטי ורק ב־QA.
+- local-patch שומר מדיניות publication לפי גרסת הסצנה: warning אינו pass מומצא;
+  תפר חמור/זהות/גיל מקבלים את הכלל שנקבע לגרסה.
+- החלטת אדם נשמרת בנפרד ונקשרת לתמונה. אין להעתיק אישור לרינדור אחר.
+- `GENERATION_ENABLED=off` מונע התחלת עבודה במסלולים המוגנים שקראו אותו.
+  אינו מבטל קריאות שכבר יצאו, אינו משפיע מובטח על מופע ישן ואינו מגן על כל CLI ניסיוני.
+- תקלה/חוסר נתוני חיוב עוצרים באופן מתועד; אין לעקוף פנקס עם פנקס חדש כדי להמשיך.
 
-## First run
+## בדיקה אחרי פריסה
 
-The build generates the Prisma client but never migrates, so the `qa` schema
-starts empty. `npm run db:push:postgres` fills it — but it reads DATABASE_URL
-from the shell (falling back to `.env`, which is SQLite), so run it in the same
-shell where you just set the QA URL, or it will quietly push to `dev.db`.
+1. לוודא project, commit, READY וה־alias הנכון; push ל־Git לבדו אינו הפריסה.
+2. לבדוק את שער הסיסמה ואת ההתחברות. אין לרכך את השער כדי לקבל screenshot.
+3. לבדוק מפתחות/דגלים בלי להדפיס סודות; תוויות env וערכי credential אינם אותו סוג נתון.
+4. לבדוק את המשחק/האתר ששונו, כולל מובייל. ברינדור מורשה: לבדוק log של cron כשהדפדפן סגור.
+5. לבדוק קבלות, retained bytes, state, target rows ומייל. מעבר unit tests אינו בדיקת הספק.
 
-It puts the local Prisma client back to SQLite afterwards. Generating the client
-for Postgres is a side effect of pushing, and a client built for Postgres
-rejects the `file:./dev.db` every local test uses — the whole suite fails with
-"the URL must start with the protocol postgresql://" and nothing about it
-mentions the push. `npm run db:client:local` does it on its own if needed.
-
-Then check the deployment agrees with all of the above:
-
-```
-GET /api/health   →   appEnv: "qa", db.ok: true, providers.payment: "mock"
-```
+ראו [DEPLOY.md](DEPLOY.md) לסדר הפריסה.
+סקריפטים `qa-secrets.mjs` ופקודות env משנים הגדרות אמיתיות; אינם חלק מ־check או ניקיון.
+דוחות QA ישנים הם היסטוריה, לא סקריפט שיש להריץ מחדש.

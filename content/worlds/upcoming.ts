@@ -35,6 +35,4 @@ export interface UpcomingWorld {
   glyph: string;
 }
 
-const t = (en: string, he: string): LocalizedText => ({ en, he });
-
 export const UPCOMING_WORLDS: readonly UpcomingWorld[] = [];

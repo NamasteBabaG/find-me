@@ -1,131 +1,121 @@
-# ארכיטקטורה — "איפה אני?"
+# ארכיטקטורה — מפת הקוד, 14.9.2026
 
-## 1. תמונה גדולה
+זהו תיאור של הקוד המנוהל ב־Git, לא הצהרה מה פרוס כרגע או אילו דגלים טעונים בשרת.
+דוחות סבבים מתוארכים נשמרים כראיות היסטוריות; מסמך זה הוא נקודת הכניסה.
 
-```
-Parent Web App (Next.js App Router)
-  /            landing + live demo (real renderer, demo config)
-  /create/*    stepper: name → photo → package → scenes → checkout
-  /creating    progress (polls status API)
-  /play/<tok>  the game (no login)
-  /library     magic-link account, manage/share/delete
-  /admin/*     QA, scenes, costs
-        │  thin routes / server actions
-        ▼
-Services (src/services) ── use-cases, receive the Container explicitly
-  create-flow · order · publish · game · share-link · auth · asset
-  scene-catalog · progress · admin · generation/pipeline · generation/scene-composer
-  generation/patch (slot-patch maths) · generation/slot-patches · generation/scene-art
-        │
-        ├── Domain (src/domain) — pure TS, tested
-        │     package · order-state (state machine) · scene/schema (zod)
-        │     game/config (GameConfig) · game/compose · game/replay · game/mission · game/hints · game/progress
-        │
-        └── Infra (src/infra) — one interface per provider, mock by default
-              db (Prisma) · storage (local | supabase*) · payment (mock | payme*)
-              generation (mock sticker | openai identity sheet + inpaint | replicate*) · email (console | resend)
-              analytics (console | posthog*) · jobs (in-process | trigger*/inngest*)
-                                                  * = adapter stub / to be written
-```
-
-`src/services/container.ts` בונה את כל הספקים לפי env פעם אחת. Services מקבלים `Container` כפרמטר — קל להחליף ב־fakes בבדיקות.
-
-## 2. הנכס הקבוע לעומת הנכס האישי
-
-| קבוע (משותף לכל הילדים)                         | אישי (למשחק)                                                 |
-| ------------------------------------------------ | ------------------------------------------------------------ |
-| `content/scenes/<slug>/scene.json` — level design | `Game` + `GameScene` + `TargetInstance` בטבלאות              |
-| `public/scenes/<slug>/{base,foreground,thumb}`    | `Asset` (AVATAR / TARGET_SPRITE) ב־storage                   |
-| `content/body-templates`                          | `Game.configJson` — ה־`GameConfig` שהשחקן מקבל               |
-
-`GameConfig` (`src/domain/game/config.ts`) הוא החוזה בין השרת ל־renderer. הוא נבנה פעם אחת ב־`composeGameConfig` ונשמר. **אינו מכיל את תמונת המקור** — הפונקציה חותמת רק נכסים עם `visibility = GAME`.
-
-### הדמות המורכבת (אסטרטגיית ה־MVP)
-`MockAvatarProvider` הופך את התמונה שההורה חתך לסטיקר עגול (sharp). ה־renderer (`ComposedSprite`) מצייר גוף פרוצדורלי לפי `bodyTemplate` ושם את הסטיקר בראש. אפס קרדיטים, אפס בעיות עקביות. ספק אמיתי בעתיד מחזיר `{kind:"image"}` — ה־renderer כבר תומך בשני הסוגים (`SpriteRef`).
-
-## 3. מכונת המצבים (src/domain/order-state.ts)
+## שכבות ואחריות
 
 ```
-DRAFT → PHOTO_UPLOADED → PHOTO_VALIDATING → PHOTO_APPROVED | PHOTO_REJECTED
-      → PACKAGE_SELECTED → CHECKOUT_PENDING → PAID | PAYMENT_FAILED
-PAID → AVATAR_GENERATING → TARGETS_GENERATING → SCENES_COMPOSING → QA_PENDING
-QA_PENDING → APPROVED → READY → DELIVERED
-QA_PENDING → NEEDS_REGENERATION | NEEDS_NEW_PHOTO | MANUAL_REVIEW
-edge: GENERATION_FAILED · CANCELLED · REFUNDED · DELETED
+Next.js routes / server actions
+  → services: בעלות, תשלום, יצירה, פרסום, מחיקה
+    → domain: חוזים וחוקים טהורים
+    → infra: DB, אחסון, תשלום, תמונות, מייל ותורים
+
+GameConfig השמור → GameShell → ScenePlayer → SceneViewport
 ```
 
-`transitionGame()` הוא הדרך היחידה לשנות סטטוס: בודק מול טבלת המעברים, כותב `AuditLog`, מחתים `paidAt/readyAt/deliveredAt`.
+- `src/domain`: TypeScript ללא React, Next, Prisma או services/infra.
+- `src/services/container.ts`: בחירת ספקים. ברירת המחדל המקומית mock.
+- `src/infra`: אדפטרים; קוד יישום לא מייבא scripts/ או work/.
+- `content/scenes`: סצנות וגרסאות היסטוריות; `content/worlds`: מסעות בני תשעה בורדים.
+- `Game.configJson`: החוזה שהשחקן מקבל, ללא תמונת המקור הפרטית.
+- `scripts`: תחזוקה ועריכה ידנית, לא שכבת runtime.
+- `work/`: ניסויים פרטיים שאינם חלק מבנייה נקייה.
 
-## 4. זרימת רכישה → משחק
+`source-boundaries.test.ts` אוכף את גבולות הייבוא. `tsconfig.json` הוא בדיקת הטיפוסים האחת גם לסקריפטים.
 
-1. **Draft** — `Game` עם `draftToken` ב־cookie (`findme_draft`). אין חשבון עדיין.
-2. **Photo** — `POST /api/drafts/photo` (multipart + crop). `checkPhoto` (sharp): סוג, גודל, מינימום 400px. נכס `ORIGINAL_PHOTO/PRIVATE`.
-3. **Package/Scenes** — `purchasableTiers(activeScenes)` מסתיר חבילות ללא מספיק עולמות. בחירה מומלצת מראש.
-4. **Checkout** — המייל יוצר `User` רך, `Order(PENDING)`, `PaymentProvider.createCheckout()` → redirect.
-5. **Webhook** — `POST /api/webhooks/payment` → `handlePaymentWebhook`: אימות חתימה, `PaymentEvent` ייחודי (idempotency), אימות סכום, `PAID`, `jobs.enqueue("generate-game")`.
-6. **Pipeline** (`services/generation/pipeline.ts`) — צעדים אידמפוטנטיים עם `GenerationJob.stepsJson`:
-   `avatar` → `targets` → `compose` → `qa`.
-   עם ספק אמיתי (`GENERATION_PROVIDER=openai`) הצעד הראשון מייצר **גיליון זהות** אחד לילד
-   (`IDENTITY_SHEET`, PRIVATE) והאווטאר נחתך ממנו; הצעד השני מצייר את הילד **לתוך** העולם, מחבוא
-   אחד בכל פעם, ושומר שורת `TargetVariantAsset` לכל (מטרה, וריאנט) עם גאומטריה, מודל, usage, נסיונות
-   ועלות. כך אפשר לאשר, לדחות ולייצר מחדש מחבוא בודד. ראה `docs/SPRITE_PATCHES.md`.
-7. **Publish** (`publish.service.ts`) — `APPROVED → READY`, יצירת `ShareLink`, **מחיקת תמונת המקור** (אלא אם `retainOriginalPhoto`), מייל, `DELIVERED`.
-8. **Play** — `/play/<token>` → `resolvePlayToken` → `GameShell(config)`.
+## מסלולי המנוע — לא גרסה אחת שמחליפה את כולן
 
-`QA_AUTO_APPROVE=true` (dev) מדלג על האדם. בפרודקשן: `/admin/orders` → "אישור ופרסום".
+| מסלול | תפקיד והמשך תמיכה |
+| --- | --- |
+| mock / slot-patches | פיתוח, דמו ומשחקים שנוצרו בחוזה הישן |
+| fixed-world / board-conditioned | שחזור, אדמין, ביקורת ומחיקה של משחקים וראיות קיימים |
+| local-patch-world-v1 | מנוע יצירה מחובר; בחירה מפורשת ב־QA, גרסת סצנה קובעת מדיניות |
+| adventure foundation | חוזים ושמירה עתידיים בלבד; ללא נתיב HTTP, מסך אלבום או הפעלה מסחרית |
 
-## 5. קישורי משחק
+הנתיבים נבחרים ב־`create-flow.service.ts`, `generation/pipeline.ts` ו־`generation/queue.ts`.
+`styleVersion` מזהה משפחת מנוע; `sceneVersion` מצמיד ארט, מיקומים וכללי איכות.
+אין להחליף גרסה תחת משחק ששולם, להסיר גרסאות ישנות מהקטלוג או ליפול למנוע אחר כשספק חסר.
 
-טוקן = `<shareLinkId>.<HMAC(id, createdAt, SESSION_SECRET)>`. ה־DB שומר רק SHA-256 של הטוקן. הטוקן ניתן לשחזור לתצוגה בספרייה ללא שמירה בגלוי; החלפה = ביטול השורה ויצירת חדשה. אורח שומר התקדמות ב־localStorage שלו בלבד.
+ב־local-patch:
+1. בדיקה מוקדמת של הארט המצורף, הבעלות, הגיל וההרשאה להוצאה.
+2. יצירת זהות מאוירת ורפרנס קנוני; האווטאר נגזר מהזהות, לא מפורטרט שני.
+3. אישור זהות לפני הצגתה/המשך הוצאה; חוזי display/enrollment שונים בעוצמתם.
+4. תור גרסאי של מחבואים → רינדור → שמירת התשובה והחשבון → הרכבה.
+5. בגרסאות החדשות: ביקורת מרוכזת לבורד, עם קישורים לתמונות ולגאומטריה שנבדקו.
+6. ניסיונות חוזרים לפי התור והתקציב המתועדים; לא מונה שמתחיל מחדש בכל tick.
+7. TargetInstance/TargetVariantAsset/Asset → קונפיג משחק עם כתובות נכסים חתומות → פרסום ומיילים.
 
-## 6. ה־Renderer (src/game)
+הזהות נשמרת לפי הפנים והשיער ברפרנס הקנוני. לבוש, תאורה, תנוחה ורוויה מותאמים לבורד.
+אין ללמוד מהשכנים זהות אחרת או להעתיק עיוותים של דמויות רחוקות.
+כללי גיל, תפר חמור, דמיון וחריגי פנים־בלבד נקבעים ב־`local-patch-judge.ts` ובמדיניות הגרסה,
+לא במתג גלובלי שמכשיר את כל התוצאות.
 
-```
-GameShell (screens: gift → map → scene → passport)
-  └─ ScenePlayer (top bar, choreography, MissionCard, SceneCompleteCard)
-       └─ SceneViewport
-            ├─ stage (CSS transform): base → sprites(behind) → foreground → sprites(front) → bonus → ambient → glow
-            └─ overlay (screen space): ripples, magnifier, speech bubbles
-```
+## תשלום, תור והתאוששות
 
-- **Gestures** — `useViewport`: Pointer Events בלבד; pan, pinch, wheel, double-tap, clamp, אנימציית מיקוד. מתמטיקה טהורה ב־`viewport-math.ts` (נבדקת).
-- **Hit-testing** — מתמטי, לא DOM: מלבן הספרייט + padding ≥ 48px מסך. עדיפות: מטרות > בונוס > אמביינט.
-- **Mission reducer** (`domain/game/mission.ts`) — כל החוקים: פאזות, טעויות ידידותיות, רמזים 1–3, בונוס. ה־UI רק מגיב ל־`lastFeedback`.
-- **Replay** (`domain/game/replay.ts`) — סיד דטרמיניסטי (gameId+slug+playIndex): החלפת A/B לכל מטרה, ערבוב סדר, רוטציית משפטי הצלחה.
-- **Sound** — WebAudio מסונתז (`audio/sounds.ts`), נפתח בלחיצת "פתיחת ההרפתקה". אין קובצי אודיו.
-- **Progress** — localStorage (`findme:progress:v1:<gameId>`) + אירועים אגרגטיביים ל־`/api/play/progress` (sendBeacon).
+- webhook מאומת הוא האמת לתשלום; redirect אינו מאשר PAID.
+- `GenerationJob` מחזיק עבודה/ניסיון/lease; כתיבות משחק כפופות לבעלות על העבודה ולמחיקה.
+- `purchaseOnce` ו־`WorldBudget` מנהלים מפתחות בקשה, fingerprint, שמירה לפני settlement והוצאה לא־ידועה.
+- `PrismaRetainedPurchaseStore` + `FileBlob` שומרים תשובות וקבלות גם אם ניסיון נפסל.
+- תוצאה שלילית מבחינה חזותית אינה חיוב לא־ידוע; חיוב לא־ידוע אינו אפס.
+- replay דורש אותה בקשה, עולם, מדיניות וראיות. בקשה שנשלחה אך לא נשמרה אינה נרכשת שוב אוטומטית.
+- `/api/jobs/tick` מניע פרוסות עבודה. `vercel.json` מגדיר GET של cron בכל דקה;
+  עמוד creating יכול לתת דחיפה נוספת, אבל המחשב של ההורה אינו השרת.
+- הפרוסות כפופות ל־deadline ול־lease. מצב parked/held מוצג בסטטוס/אדמין ומוחרג מהבחירה האוטומטית.
+- אימות שה־cron אכן רץ שייך לבדיקת הפריסה, לא למעבר בדיקות יחידה.
+- `GENERATION_ENABLED=off` מונע התחלת עבודה במסלולים המוגנים שקראו אותו.
+  אינו מבטל בקשות שכבר יצאו ואינו שולט בכל סקריפט ידני.
 
-## 7. נתונים (prisma/schema.prisma)
+## ציור, לחיצה והתקדמות
 
-User · MagicLinkToken · Session · ChildProfile · Game · GameScene · TargetInstance · **TargetVariantAsset** · Asset · Order · PaymentEvent · ShareLink · GenerationJob · PlaySession · ProgressEvent · SceneOverride · AuditLog.
+`patch.ts` הוא מקור החשבון המשותף לספרייט־טלאי.
+`target-geometry.ts` הוא מקור גאומטריית ציור/לחיצה/בועה.
+`local-patch-seam.ts` מרכיב את גבולות ההחזרה; מחוץ לאזור אין להחליף פיקסלים.
 
-בכוונה **ללא enums ו־Json**: מחרוזות המאומתות בדומיין/zod, כדי ש־SQLite (dev) ו־Postgres (prod) יהיו זהים. מעבר ל־Postgres: `provider = "postgresql"` + `prisma migrate`.
+`GameShell → ScenePlayer → SceneViewport` מציגים משחק עם viewport/מחוות, קול וחגיגה.
+במסלול find-any הנוכחי המחבואים מוצגים **סדרתית**, לא חמש דמויות יחד.
+שם השדה אינו הוראה לשנות זאת.
 
-## 7b. שפות
+- משחקים ישנים: שלוש מטרות לפי החוזה השמור.
+- גרסאות חדשות: חמישה בתכנון; ארבעה רק בקונפיג פרסום חלקי מפורש.
+- כוכב לכל מטרה ייחודית שנמצאה; שלוש מאפשרות מעבר; כל היעדים שנמסרו משלימים בורד.
+- המכנה נגזר מהמשחק בפועל, לא 45 קשיח בכל מקום.
+- `domain/game/progress.ts` ו־`mission.ts`: חוקים.
+- `game/store/play-store.ts`: localStorage וחיבור UI.
+- `/api/play/progress`: טלמטריה, לא שמירת אלבום או סנכרון בין דפדפנים.
 
-ראה `docs/I18N.md`. בקצרה: `Game.locale` נקבע ביצירת הטיוטה משפת האתר, `composeGameConfig` בוחר את השפה מהסצנה הדו־לשונית, וה־renderer קורא `config.locale`.
+## נכסים, פרטיות ופרסום
 
-## 8. פרטיות ובטיחות
+תמונת מקור ו־IDENTITY_SHEET הם PRIVATE. רק נכסי GAME מורשים נכנסים לקונפיג.
+כתובת נכס חתומה אינה הופכת תמונת מקור לציבורית.
+פרסום חייב לקשור הכרעה לבייטים ולגאומטריה שנמסרים; פענוח מחודש של שופט אינו קניית תשובה חדשה.
+מדיניות האזהרות שונה בין גרסאות. `QA_AUTO_APPROVE` לבדו אינו היתר להכשיר כל פגם.
 
-- אין חשבון/פרופיל לילד, אין גלריה, אין פרסומות, אין CTA בתוך המשחק.
-- `ORIGINAL_PHOTO` = PRIVATE (בעלים/אדמין בלבד, `no-store`), נמחקת אחרי אישור.
-- `AVATAR`/`TARGET_SPRITE` = GAME, נגישים רק דרך URL חתום.
-- מחיקת משחק מוחקת נכסים אישיים ומבטלת קישורים; ארט הסצנות משותף ולא נוגעים בו.
-- Analytics: whitelist של מאפיינים (`ALLOWED_PROPS`).
+מחיקה מנותבת לפי המנוע: `game.service.ts` ו־`*-deletion.ts`.
+יש לשמור יכולת מחיקה של זהות, טלאים שנפסלו, retained replies ונכסים יתומים;
+ארט משותף ופנקס עלויות ללא תמונות אינם תמונות הילד.
+מימושים טרנזקציוניים קיימים מעדכנים סטטוס/פנס/אודיט יחד; אין להעתיק מהם update בלתי־מוגן
+או לעקוף את `transitionGame` במסלול רגיל.
 
-## 9. Jobs בפרודקשן
+## DB וספקים
 
-`InProcessJobRunner` רץ באותו תהליך (setTimeout). ב־Vercel הפונקציה עלולה להיקטע → להחליף ל־Trigger.dev/Inngest: לממש `JobRunner` (register/enqueue) ולקרוא ל־`runGenerationPipeline(container, gameId)` מה־worker. הצעדים כבר resumable, כך ש־retry של הספק בטוח.
+`prisma/schema.prisma` הוא מקור סכימה (SQLite); ה־build מייצר עותק Postgres לפי יעדו.
+`prisma/test-schema.sql` מכיל hash של המקור ונבדק כדי לא להריץ אינטגרציה על סכימה ישנה.
+בדיקות SQLite אינן הוכחה למיגרציה או לתחרות ב־Postgres חי.
 
-## 10. מה מחליפים כשעוברים לפרודקשן
+| ספק | מצב בקוד |
+| --- | --- |
+| תמונות | mock ו־OpenAI קיימים; לכל גרסה מדיניות מפורשת |
+| אחסון | local ו־DB קיימים; supabase אינו אדפטר ממומש |
+| תשלום | mock קיים; PayMe עדיין שלד |
+| מייל | console ו־Resend קיימים; הצלחת שליחה חיה נבדקת בנפרד |
+| jobs | inline/in-process להתחלה; תור DB + endpoint + cron להמשך |
+| analytics | console/none; posthog אינו ממומש |
 
-| רכיב     | dev                 | prod                                     |
-| -------- | ------------------- | ---------------------------------------- |
-| DB       | SQLite              | Postgres (Supabase)                      |
-| Storage  | `storage/` בדיסק     | Supabase Storage — `StorageProvider`     |
-| Payment  | MockPaymentProvider | `PayMeProvider` (skeleton קיים)          |
-| Avatar   | sticker (sharp)     | ספק תמונות אמיתי — `AvatarProvider`      |
-| Email    | console + outbox    | `ResendEmailProvider` (קיים)             |
-| Jobs     | in-process          | Trigger.dev / Inngest                    |
-| QA       | auto-approve        | אדם ב־/admin                             |
-| Faces    | NoopFaceDetector    | זיהוי פנים אמיתי — `FaceDetector`        |
+## ספר ההרפתקאות: גבול מכוון
+
+`content/adventures`, `domain/adventure` ו־שירותי adventure הם תשתית opt-in.
+`planned` אינו מכיל ארט או מיקומים מומצאים. `ready` דורש קבצים, hash, מידות וגאומטריה.
+שמירת אלבום נבדקה ב־SQLite מבודד, אך אינה מחוברת ל־HTTP/שחקן/מחיקה רכה של משחקים חיים.
+אין להסיר מודולים אלה כקוד מת, ואין להפעילם לפני חיבור API מאומת, מחיקה ומיגרציה.
+ראו `ADVENTURE_FOUNDATION_2026-09-14.md`.

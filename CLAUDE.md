@@ -5,7 +5,7 @@
 ## עקרונות שאסור לשבור
 
 1. **Domain לפני UI.** `src/domain` הוא TypeScript טהור: בלי React, בלי Prisma, בלי Next. כל חוק משחק/מסחר חי שם ונבדק ב־vitest.
-2. **מכונת המצבים מפורשת.** שינוי סטטוס של Game רק דרך `transitionGame()` (`src/services/game-status.ts`). אין `db.game.update({status})` ישיר.
+2. **מכונת המצבים מפורשת.** במסלול רגיל שינוי סטטוס דרך `transitionGame()` (`src/services/game-status.ts`). מסלולי lifecycle קיימים מעדכנים סטטוס יחד עם lease, אודיט ומחיקה בטרנזקציה מגודרת; אין להעתיק מהם `db.game.update({status})` בלתי־מוגן או להוסיף מעקף חדש.
 3. **Webhook הוא האמת לתשלום.** אף redirect לא מסמן PAID. אין generation לפני PAID.
 4. **Jobs אידמפוטנטיים.** `runGenerationPipeline` חייב להיות בטוח להרצה כפולה.
 5. **כל ספק מאחורי interface** (`src/infra/*/types.ts`). ברירת המחדל היא mock. אין קריאות ישירות ל־API חיצוני מתוך services.
@@ -22,7 +22,12 @@
 git config core.hooksPath .githooks   # פעם אחת לכל clone — חוסם commit עם סוד
 npm run check                          # tsc + vitest
 npm run scenes:validate                # אם נגעת בסצנות
+npm run adventures:validate            # אם נגעת בתוכן הספר
 ```
+
+`npm run check` מאמת גם את הסקריפטים המנוהלים ב־Git ואוסר קוד מקומי לא־בשימוש.
+`check:work` נשאר alias לתאימות בלבד; ניסויים פרטיים תחת `work/` אינם ראיית תקינות של checkout נקי.
+אין למחוק מסלול מנוע/גרסת סצנה ישנה בלי להוכיח שמשחקים קיימים, התאוששות ומחיקה אינם תלויים בהם.
 
 **לעולם לא `git add -A`.** פעמיים סיסמת דאטהבייס חיה נכנסה לריפו הציבורי בדיוק ככה — קובץ שאף אחד לא קרא נסחף פנימה. מוסיפים קבצים בשם, וקוראים את ה־diff לפני commit.
 
@@ -37,7 +42,8 @@ prisma/schema.prisma   DB (SQLite dev / Postgres prod; ללא enums/Json בכו�
 src/domain             חוקים טהורים: package, order-state, scene/schema, game/*
 src/infra              אדפטרים: db, storage, payment, generation (mock | openai), email, analytics, jobs
 src/services           use-cases; container.ts הוא ה־composition root
-src/services/generation patch.ts (חשבון ה־slot patch, משותף לסקריפט ולצינור), slot-patches, pipeline
+src/services/generation pipeline/queue, local-patch-*, paid-operation/world-budget; slot-patches ומנועים היסטוריים נשמרים לתאימות
+content/adventures + src/domain/adventure תשתית הספר העתידי; planned אינו בורד פעיל
 src/game               renderer: engine (viewport, gestures), store, components, audio
 src/ui + src/styles    מערכת העיצוב
 src/app                routes (דקים — קוראים ל־services)
@@ -51,7 +57,7 @@ docs/                  תיעוד
 
 - לכל פאץ' יש חוזה לחיצה: `rect` (איפה מציירים), `hitRect` (הגבולות האמיתיים של הילד), `anchor` (הראש).
   `src/game/engine/target-geometry.ts` הוא המקום היחיד שמחשב אותם — ציור, לחיצה ובועה חייבים לקרוא לו.
-- `npx tsx scripts/prepare-boards.ts audit` בודק את כל 54 המחבואים בלי לשלם, ומצייר את החלון של כל אחד.
+- `scripts/prepare-boards.ts audit` הוא כלי חוזה הסלוטים הישן; אינו אישור ל־45 הופעות של local-patch או לארט אנכי. ראו `scripts/README.md`.
 - הבדיקות הגיאומטריות בודקות **צורה**; `PatchJudge` בודק **זהות** (״זו היא, והפנים נראות?״). קטנוע וראש של סוס עוברים צורה.
 - `npm run game:status -- <gameId>` מראה מה קרה לכל מחבוא, כמה עלה ולמה נדחה.
 - **חוזה מיקום** (`placement.contract`, מ־8.9.2026): גובה עמידה של ילד בעומק הזה, כמה ממנו נראה, ונקודת התמיכה — נמדדים על אנשי הלוח עצמם (`npx tsx scripts/contract-matrix.ts`). `scale` חייב להסכים עם `standingHeight` (±15%). שלושה מצבי הסתרה (`occlusionMode`: open / clipped / layer) קובעים את הניסוח לצייר, למעבר השני ולשופט; אין לערבב ביניהם.
@@ -59,4 +65,4 @@ docs/                  תיעוד
 
 ## איך מוסיפים עולם
 
-ראה `docs/SCENE_AUTHORING.md`. בקצרה: תיקייה חדשה ב־`content/scenes/`, ארט ב־`public/scenes/`, שורת import ב־`content/scenes/index.ts`, `npm run scenes:validate`, תצוגה ב־`/admin/scenes/<slug>`.
+ראה `docs/SCENE_AUTHORING.md`. הגדרה בקטלוג אינה מספיקה: עולם צריך גם חוזה מיקומים, ארט ארוז, גרסת מנוע נתמכת ובדיקת תוצאה אמיתית. ספר אנכי עתידי נשאר opt-in עד שחובר ונבדק; אין לשנות גרסאות משחקים קיימים.

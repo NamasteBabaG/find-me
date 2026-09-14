@@ -27,7 +27,7 @@ async function alphaMask(threshold: number): Promise<{ mask: Buffer; w: number; 
 
 describe("alpha dust and the tap contract", () => {
   it("the fixture really carries the defect: measured naively, the box spans the whole canvas", async () => {
-    const { mask, w, h } = await alphaMask(16);
+    const { mask, w } = await alphaMask(16);
     let x0 = w, x1 = -1;
     for (let i = 0; i < mask.length; i++) if (mask[i]) { const x = i % w; if (x < x0) x0 = x; if (x > x1) x1 = x; }
     expect(x0).toBe(0);

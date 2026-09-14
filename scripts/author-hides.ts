@@ -15,7 +15,7 @@
  *   npx tsx scripts/author-hides.ts                 # overlays into work/occluders/author/
  *   npx tsx scripts/author-hides.ts --write         # scenes + foreground layers
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
 

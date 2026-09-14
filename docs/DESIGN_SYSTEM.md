@@ -46,11 +46,11 @@ The live search card is separately compact: 48px contained portrait on desktop, 
 
 ## The game
 
-- Target height ≈ 4% / 3% / 2.5% of scene height in final art; hitbox ≥ 48 screen px.
+- Target size comes from the pinned placement/age contract. Do not copy the old 4% / 3% / 2.5% heuristic to new boards; recognition and coherent scale must be checked at playable zoom. Child interaction targets use the shared geometry and touch policy.
 - Feedback 300–800ms; world-specific particles; speech bubbles in screen space, Fredoka 20/32.
-- Top bar: map · world name · 1/3 · zoom · reset · sound. Nothing else.
+- Search HUD: contained face, name/stars stack and hint in one compact row. Map, zoom, reset and sound remain on the separate tool rail. No find-three helper sentence or world-wide counter inside the board.
 - Portrait phones: scene covers height, drag to explore, gentle "landscape is more fun" tip, never blocking.
-- **Gold stars** (`--gold*` tokens, `--grad-gold`, `--shadow-glow-gold`): one per distinct hiding spot. New serial find-any games have five per board and forty-five across nine boards; finding any three unlocks the next board and the remaining two stay optional. Legacy games keep their authored three per board. Progress is saved immediately and never charged for hints; the visual star lands after its flight (`StarFlight` → `StarTray`) without briefly disappearing. The finish card celebrates that board's actual target count; world totals belong on the map, hub and adventure bag, not inside the board. Rules: `src/domain/game/progress.ts` and `src/domain/game/mission.ts`.
+- **Gold stars** (`--gold*` tokens, `--grad-gold`, `--shadow-glow-gold`): one per distinct hiding spot. New serial find-any games plan five per board; an explicitly approved partial release may carry four. Finding three unlocks the next board; finding all delivered targets completes it. Legacy games keep their authored three. Never hardcode forty-five: sum the actual published targets. Progress is saved immediately and never charged for hints; the visual star lands after its flight (`StarFlight` → `StarTray`) without briefly disappearing. World totals belong on the map, hub and adventure bag, not inside the board. Rules: `src/domain/game/progress.ts` and `src/domain/game/mission.ts`.
 
 ## Photo → character section (`src/app/home/Transformation.tsx`)
 

@@ -59,6 +59,9 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // A nested worktree is a complete app, not a monorepo package. Do not infer
+  // its parent checkout as the trace root because another lockfile lives there.
+  outputFileTracingRoot: __dirname,
   // Only child-free frozen world inputs. Private work/, uploads and pilot
   // imagery are never part of a deployment. Dynamic fs reads need tracing.
   outputFileTracingIncludes: {

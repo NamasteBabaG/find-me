@@ -77,9 +77,8 @@ export async function tickGeneration(c: Container, gameId: string | null, budget
       const status = after ? statusOf(after) : null;
       return { gameId: id, status, pending: status !== null && ["PAID", "AVATAR_GENERATING", "GENERATION_FAILED", "TARGETS_GENERATING"].includes(status) };
     }
-    // Routed before its painter exists, deliberately: a style with no adapter
-    // must stop here saying so, not fall through to the legacy painter and
-    // quietly produce a game made by a different engine.
+    // Missing spend configuration must stop this pinned engine, never fall
+    // through to the legacy painter and quietly generate a different game.
     const painter = localPatchPainterDeps(c, before.scenes[0]?.sceneVersion);
     if (!painter) return { gameId: id, status: statusOf(before), pending: false };
     const result = await runLocalPatchWorldSlice(c, painter, id, { hardDeadlineAt: now + hardMs });

@@ -8,8 +8,8 @@ import type { CheckoutRequest, CheckoutSession, PaymentProvider, WebhookParseRes
 export class PayMeProvider implements PaymentProvider {
   readonly id = "payme" as const;
   constructor(
-    private readonly sellerId: string,
-    private readonly webhookSecret: string,
+    sellerId: string,
+    webhookSecret: string,
   ) {
     if (!sellerId || !webhookSecret) throw new Error("PayMe provider requires PAYME_SELLER_ID and PAYME_WEBHOOK_SECRET");
   }

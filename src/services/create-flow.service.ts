@@ -11,7 +11,7 @@ import type { Container } from "./container";
 import { checkPhoto, deleteAsset, storeAsset } from "./asset.service";
 import { transitionGame, statusOf } from "./game-status";
 import { activeScenes, sceneBySlug } from "./scene-catalog.service";
-import { boardsOfWorlds, purchasableWorlds, purchasableWorldSlugs, worldBySlug } from "./world-catalog.service";
+import { boardsOfWorlds, purchasableWorlds, purchasableWorldSlugs } from "./world-catalog.service";
 import { SYSTEM } from "./audit.service";
 import { env } from "@/lib/env";
 import { LOCAL_PATCH_STYLE } from "./generation/local-patch-world";

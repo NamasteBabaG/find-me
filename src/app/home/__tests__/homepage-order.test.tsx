@@ -9,11 +9,12 @@ const fixture = vi.hoisted(() => ({
   heroChild: vi.fn(),
   demoConfig: vi.fn(),
   buildDemoConfig: vi.fn(),
+  unusedActiveSceneRead: vi.fn(),
 }));
 
 vi.mock("../../../../content/scenes", () => ({ SCENE_CATALOG: [{ scene: { slug: "beach" } }] }));
 vi.mock("@/services/container", () => ({ getContainer: () => ({}) }));
-vi.mock("@/services/scene-catalog.service", () => ({ activeSceneSlugs: async () => ["beach"] }));
+vi.mock("@/services/scene-catalog.service", () => ({ activeSceneSlugs: fixture.unusedActiveSceneRead }));
 vi.mock("@/services/world-catalog.service", () => ({
   purchasableWorldSlugs: async () => ["public-world"],
   ownedWorldSlugs: async () => [],
@@ -79,6 +80,8 @@ describe("homepage composition", () => {
     expect(main.querySelectorAll('[data-section="Transformation"]')).toHaveLength(1);
     expect(main.querySelectorAll('[data-section="DemoSection"]')).toHaveLength(1);
     expect(fixture.buildDemoConfig).toHaveBeenCalledExactlyOnceWith("en", "beach");
+    // purchasableWorldSlugs already owns availability; a second read was discarded.
+    expect(fixture.unusedActiveSceneRead).not.toHaveBeenCalled();
     expect(fixture.demoConfig).toHaveBeenCalledTimes(1);
     expect(fixture.heroChild).toHaveBeenCalledTimes(1);
     const demo = fixture.demoConfig.mock.calls[0]![0] as GameConfig;

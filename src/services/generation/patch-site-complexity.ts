@@ -1,20 +1,18 @@
 /**
  * Choosing a place a local patch may safely be taken from.
  *
- * Two paid renders settled this: the model redraws the whole crop it is given.
- * Prose ("change nothing else") did not stop it, and an edit mask did not either
- * - the masked attempt strayed slightly MORE than the unmasked one. So the board
- * is not preserved by asking; it is preserved by taking only a declared
- * rectangle and leaving every pixel outside it alone.
+ * Historical authoring diagnostic, not a production acceptance gate. The early
+ * "masked" comparison used an opaque, non-editable mask, so it did NOT measure
+ * whether a valid edit mask preserves the background. Outside-rectangle
+ * preservation is enforced by composition, not inferred from this score.
  *
- * That makes the choice of rectangle the whole game. Whatever sits inside it
- * will come back redrawn, so it must be paint nobody can miss: open sand, a
- * wall, a stretch of path. A rectangle over a sandcastle comes back with a
- * different sandcastle, and that reads as a change even though the seam is
- * clean.
+ * Content inside the replacement rectangle can be redrawn. A changed
+ * sandcastle can be conspicuous even with a clean seam; open sand or an empty
+ * path can tolerate more change. Neither outcome is guaranteed by a score.
  *
- * This scores a candidate the way the eye does - how much structure is in it -
- * so a site can be rejected before anything is bought.
+ * These uncalibrated gradients cannot detect people crossing a boundary, face
+ * quality, grounded placement or actual difficulty. Use for relative ranking
+ * only; do not reject a payable/publishable hide based on this diagnostic.
  */
 import sharp from "sharp";
 

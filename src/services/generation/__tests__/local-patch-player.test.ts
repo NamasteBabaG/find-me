@@ -7,7 +7,6 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { applyTestSchema } from "../../../lib/test-schema";
 import { DbStorage } from "../../../infra/storage/db";
 import type { Container } from "../../container";
-import { sceneBySlug } from "../../scene-catalog.service";
 import { WORLD_LOCAL_PATCH_HIDES, cropOf, maskOf } from "../../../domain/scene/local-patch-hides";
 import { LOCAL_PATCH_SCENE_VERSION } from "../../../../content/scenes/local-patch-release";
 import { GameConfigSchema } from "../../../domain/game/config";

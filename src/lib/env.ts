@@ -25,7 +25,8 @@ const EnvSchema = z.object({
 
   PAYMENT_PROVIDER: z.enum(["mock", "payme"]).default("mock"),
   GENERATION_PROVIDER: z.enum(["mock", "replicate", "openai"]).default("mock"),
-  /** Kill switch. Set to "off" to stop every paid render without a deploy. */
+  /** Blocks new protected work in instances that loaded "off". Does not cancel
+   * in-flight calls or govern every manual script; verify the deployed value. */
   GENERATION_ENABLED: z.enum(["on", "off"]).default("on"),
   EMAIL_PROVIDER: z.enum(["console", "resend"]).default("console"),
   STORAGE_PROVIDER: z.enum(["local", "supabase", "db"]).default("local"),

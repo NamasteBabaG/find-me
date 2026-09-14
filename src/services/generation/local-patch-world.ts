@@ -23,7 +23,7 @@ import {
 } from "./local-patch-hide";
 
 /**
- * A world's twenty-seven hides, one slice at a time, under a lease.
+ * A world's version-pinned hides, one slice at a time, under a lease.
  *
  * The hide itself is the unit of work and it already survives being interrupted.
  * What this adds is the part a queue needs: deciding WHICH hide is next, holding

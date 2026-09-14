@@ -11,7 +11,7 @@ import { NoPatchJudge } from "../../../infra/generation/judge";
 import { NoopAnalytics } from "../../../infra/analytics/console";
 import type { Container } from "../../container";
 import { localPatchBoardsForVersion } from "../../../domain/scene/local-patch-catalog";
-import { runLocalPatchWorldSlice, LOCAL_PATCH_STYLE, LOCAL_PATCH_QUALITY_FAILED } from "../local-patch-world";
+import { LOCAL_PATCH_STYLE, LOCAL_PATCH_QUALITY_FAILED } from "../local-patch-world";
 import { reviewBoardWizardIdentity } from "../board-wizard-identity-gate";
 import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wizard";
 import { readBoardConditionedCatalog } from "../board-conditioned-catalog";

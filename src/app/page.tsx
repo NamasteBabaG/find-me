@@ -1,7 +1,6 @@
 import { SCENE_CATALOG } from "../../content/scenes";
 import { buildDemoConfig } from "@/services/demo";
 import { getContainer } from "@/services/container";
-import { activeSceneSlugs } from "@/services/scene-catalog.service";
 import { boardsOfWorlds, ownedWorldSlugs, purchasableWorldSlugs } from "@/services/world-catalog.service";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
 import { getCurrency, getI18n } from "@/i18n/server";
@@ -15,7 +14,7 @@ import { carouselWorlds } from "./home/worlds-data";
 
 export default async function HomePage() {
   const c = getContainer();
-  const [user, active, worlds, { locale, t }, currency] = await Promise.all([currentUser(), activeSceneSlugs(c), purchasableWorldSlugs(c), getI18n(), getCurrency()]);
+  const [user, worlds, { locale, t }, currency] = await Promise.all([currentUser(), purchasableWorldSlugs(c), getI18n(), getCurrency()]);
   // What this visitor already paid for, so a world they own is never shown locked.
   const owned = await ownedWorldSlugs(c, user?.id);
   // Only what a parent can actually buy today — the boards of the worlds that
@@ -38,7 +37,7 @@ export default async function HomePage() {
         <DemoSection config={demo} />
         <HowItWorks t={t} locale={locale} />
         <Inside t={t} locale={locale} />
-        <Worlds t={t} locale={locale} scenes={scenes} activeSlugs={[...sellable]} carousel={carouselWorlds(locale, owned)} />
+        <Worlds t={t} carousel={carouselWorlds(locale, owned)} />
         <GiftSection t={t} locale={locale} />
         <Pricing t={t} locale={locale} activeCount={worlds.length} currency={currency} />
         <Trust t={t} locale={locale} />

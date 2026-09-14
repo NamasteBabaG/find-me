@@ -31,7 +31,7 @@ import { WORLD_LOCAL_PATCH_HIDES, cropOf, maskOf } from "../../../domain/scene/l
 import { retainedPurchaseKeysFor } from "../../../infra/db/prisma-retained-purchase-store";
 import { LOCAL_PATCH_SCENE_VERSION } from "../../../../content/scenes/local-patch-release";
 import {
-  LOCAL_PATCH_TEST_BOARD, bill, boardPng, clearWorld, paintedCrop, paintedOk, PASSING_ANSWER, reply, seedApprovedGame,
+  bill, boardPng, clearWorld, paintedCrop, paintedOk, PASSING_ANSWER, reply, seedApprovedGame,
 } from "./local-patch-fixtures";
 
 /**
@@ -51,7 +51,6 @@ vi.mock("../../../lib/env", () => ({
   adminEmails: () => [],
 }));
 
-const BOARD = LOCAL_PATCH_TEST_BOARD;
 let scratch: string, db: PrismaClient, c: Container;
 
 beforeAll(async () => {

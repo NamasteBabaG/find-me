@@ -106,10 +106,9 @@ export type LocalPatchHideOutcome = {
 
 export type LocalPatchHideDeps = Pick<LocalPatchRenderDeps, "render" | "judge" | "renderPolicySha256"> & {
   /**
-   * The board's own art, by the path the placement declares. Injected because
-   * FIVE of the nine boards are still authored out of an untracked `work/`
-   * folder that a deployed build does not have - a fact this route has to be
-   * able to state plainly rather than discover at runtime.
+   * The board's own pinned art, by the path the placement declares. The default
+   * reader resolves the tracked release and verifies its hashes. Injection is
+   * for isolated tests/authoring, not a dependency on a private work/ folder.
    */
   readonly readBoardArt?: (art: string, expectedSha256: string) => Promise<Buffer>;
   /** Required unless a judge is supplied; the service never reaches for a credential itself. */
@@ -395,7 +394,6 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
 
   const crop = cropOf(hide);
   const assetId = pictureId(gameId, hide.id, attemptResult.judgedSha256);
-  const key = `game/${assetId}.png`;
   // Retain before the job's publication fence so a lost claim doesn't lose a
   // paid image. The separate lifecycle fence still forbids all writes after
   // deletion, and the atomic row+blob makes every retained image enumerable.

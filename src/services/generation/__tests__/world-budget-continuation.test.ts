@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { WorldBudget, auditWorldBudget, getMatchingUnknownContinuationApproval, type WorldBudgetSnapshot, type WorldUnknownContinuationInput } from "../world-budget";
+import { WorldBudget, auditWorldBudget, getMatchingUnknownContinuationApproval, type WorldUnknownContinuationInput } from "../world-budget";
 import { CasWorldBudgetRepository, type AtomicWorldBudgetStore, type VersionedWorldBudgetSnapshot } from "../../../infra/db/world-budget-repository";
 import { boardWizardBudget } from "../board-wizard-budget";
 

@@ -145,7 +145,7 @@ export function GiftSection({ t, locale }: SectionProps) {
 }
 
 /* ─── Worlds ─── */
-export function Worlds({ t, locale, scenes, activeSlugs, carousel }: SectionProps & { scenes: SceneDefinition[]; activeSlugs: string[]; carousel: CarouselWorld[] }) {
+export function Worlds({ t, carousel }: { t: Dictionary; carousel: CarouselWorld[] }) {
   const w = t.home.worlds;
   // Counted off the carousel, which is what the visitor is looking at: three
   // worlds, and every board inside them. It used to count only the boards on
