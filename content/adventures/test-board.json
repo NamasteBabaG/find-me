@@ -1,0 +1,137 @@
+{
+  "version": 1,
+  "releaseId": "pilot-test-board-v1",
+  "boards": [
+    {
+      "status": "ready",
+      "boardSlug": "pilot-test-board",
+      "worldSlug": "pilot-test",
+      "name": {
+        "en": "Test board — dummy content",
+        "he": "בורד בדיקה — תוכן דמה"
+      },
+      "plannedHides": 5,
+      "direction": {
+        "orientation": "landscape",
+        "aspect": "16:9",
+        "spread": "activity-across-width-and-height",
+        "perspective": "shallow",
+        "scaleTreatment": "similar-size-people",
+        "illustration": "storybook-hand-drawn",
+        "identityPrecedence": "reference-face-hair-age",
+        "locationCues": [
+          {
+            "en": "Labelled activity blocks stand in for places",
+            "he": "בלוקים מסומנים במקום מקומות"
+          },
+          {
+            "en": "Dashed zones mark where a child can be painted",
+            "he": "אזורים מקווקווים מסמנים איפה אפשר לצייר ילד"
+          }
+        ],
+        "microStories": [
+          {
+            "en": "A crab guards a bucket of shells",
+            "he": "סרטן שומר על דלי צדפים"
+          },
+          {
+            "en": "Nothing here is art; every shape is a placeholder",
+            "he": "שום דבר כאן אינו ארט; כל צורה היא ממלא מקום"
+          }
+        ]
+      },
+      "sceneVersion": 1,
+      "art": {
+        "base": "/scenes/pilot-test/base.webp",
+        "sha256": "c3547ea271af527b67f3fa6d6174c2258ae4742822c2783aaff3658808724467",
+        "width": 1920,
+        "height": 1080
+      },
+      "personalZones": [
+        {
+          "x": 0.07,
+          "y": 0.54,
+          "w": 0.11,
+          "h": 0.23
+        },
+        {
+          "x": 0.29,
+          "y": 0.17,
+          "w": 0.11,
+          "h": 0.23
+        },
+        {
+          "x": 0.55,
+          "y": 0.6,
+          "w": 0.11,
+          "h": 0.23
+        },
+        {
+          "x": 0.71,
+          "y": 0.11,
+          "w": 0.11,
+          "h": 0.23
+        },
+        {
+          "x": 0.85,
+          "y": 0.56,
+          "w": 0.11,
+          "h": 0.23
+        }
+      ],
+      "discoveries": [
+        {
+          "id": "bucket-crab",
+          "name": {
+            "en": "The curious crab",
+            "he": "הסרטן הסקרן"
+          },
+          "hint": {
+            "en": "Beside the bucket, near the bottom of the picture",
+            "he": "ליד הדלי, קרוב לתחתית התמונה"
+          },
+          "category": "animal",
+          "description": {
+            "kind": "story",
+            "text": {
+              "en": "The crab guards a bucket of shells and lets nobody peek.",
+              "he": "הסרטן שומר על דלי צדפים ולא נותן לאף אחד להציץ."
+            }
+          },
+          "visibleRect": {
+            "x": 0.4,
+            "y": 0.78,
+            "w": 0.08,
+            "h": 0.14
+          },
+          "hitRect": {
+            "x": 0.405,
+            "y": 0.79,
+            "w": 0.07,
+            "h": 0.12
+          },
+          "cardCrop": {
+            "x": 0.36,
+            "y": 0.7,
+            "w": 0.16,
+            "h": 0.28
+          }
+        }
+      ],
+      "postcard": {
+        "id": "pilot-test-postcard",
+        "title": {
+          "en": "My test-board adventure",
+          "he": "ההרפתקה שלי בבורד הבדיקה"
+        },
+        "targetId": "hide-1",
+        "crop": {
+          "x": 0.02,
+          "y": 0.42,
+          "w": 0.3,
+          "h": 0.45
+        }
+      }
+    }
+  ]
+}

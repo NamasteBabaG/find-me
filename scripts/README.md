@@ -9,6 +9,7 @@ private input pictures exist. scripts/ is never imported by production src/.
 | Kind | Entry points | Side effects |
 | --- | --- | --- |
 | Local verification | validate-scenes.ts, validate-adventures.ts, build trace audits | Read-only validation; no paid providers |
+| Local album pilot | pilot-test-board.ts, pilot-game.ts | Draws the marked 16:9 dummy board and creates the pilot game in a LOCAL file: database only (refuses anything else); public demo art, no photo, no provider, no money. See docs/ADVENTURE_PILOT_2026-09-14.md |
 | Build/setup | prisma-generate.mjs, prisma-sql.mjs, finalize-build-traces.mjs | Generated local files; schema commands are separately guarded |
 | Product diagnostics | game-status.ts, inspect-five-hide-layout.ts | DB reads / local previews; require the correct owned QA inputs |
 | Marketing | refresh-hero-found.ts, build-demo-assets.ts | Public demo assets, explicit apply where supported; never customer images |

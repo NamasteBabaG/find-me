@@ -73,4 +73,6 @@ export const LIMITS = {
   webhook: { limit: 120, windowMs: 60_000 },
   /** Play progress is chatty by nature; this only stops a runaway loop. */
   progress: { limit: 240, windowMs: 60_000 },
+  /** One album event per find; a child cannot find faster than this. */
+  album: { limit: 120, windowMs: 60_000 },
 } as const;

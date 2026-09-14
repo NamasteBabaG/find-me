@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { deleteAdventureAlbum } from "../adventure-album.service";
 import type { Container } from "../container";
 import type { Actor } from "../audit.service";
 import { newId } from "../../lib/ids";
@@ -90,6 +91,7 @@ export async function deleteLocalPatchGame(c: Container, gameId: string, actor: 
     } });
     await tx.targetInstance.updateMany({ where: { gameScene: { gameId } }, data: { spriteAssetId: null } });
     await tx.gameScene.updateMany({ where: { gameId }, data: { configJson: null } });
+    await deleteAdventureAlbum(tx, gameId);
     await tx.shareLink.updateMany({ where: { gameId }, data: { active: false, revokedAt: now } });
     await tx.auditLog.create({ data: { id: newId("aud"), actorType: actor.type, actorId: "id" in actor ? actor.id : null,
       action: "local_patch.deleted", entityType: "Game", entityId: gameId,

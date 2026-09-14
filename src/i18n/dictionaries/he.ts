@@ -512,6 +512,30 @@ export const he: Dictionary = {
       replayLead: "מצאתם הכול! רוצים לחזור למקום אהוב ולחפש שוב?",
       map: "חזרה למפה",
     },
+    album: {
+      title: "האלבום",
+      discoveries: "תגליות",
+      postcards: "גלויות",
+      /** A find that is not the child: a short, non-blocking reaction. */
+      collected: "יש כרטיס חדש באלבום: {name}!",
+      again: "{name} כבר באלבום",
+      notYet: "עדיין לא נמצא",
+      hintFor: "רמז: {hint}",
+      cardAria: "{name} — כרטיס תגלית",
+      /** Three finds open the next place; the postcard needs every hiding spot. Said at the choice and in the album, never fixed in the HUD. */
+      continueNote: "שלוש מציאות פותחות את המקום הבא. הגלויה מחכה למי שמוצא את כל המחבואים.",
+      postcardRemaining: "עוד {remaining} מחבואים לגלויה",
+      postcardRemainingOne: "עוד מחבוא אחד לגלויה",
+      postcardEarned: "הגלויה שלכם!",
+      postcardLead: "כל המחבואים ב{place} נמצאו — הגלויה באלבום.",
+      postcardAria: "{title} — גלויה",
+      /** Where the album is kept: said honestly, never "saved" before the server answers. */
+      savedAccount: "נשמר בחשבון המשפחה",
+      saving: "שומרים בחשבון המשפחה…",
+      offline: "עדיין לא נשמר בחשבון — נשמור ברגע שהחיבור יחזור",
+      guest: "נשמר בדפדפן הזה בלבד",
+      unreadable: "לא הצלחנו לקרוא את האלבום ששמור בדפדפן הזה; המשחק עובד כרגיל",
+    },
     copy: {
       wrongTarget: "זה אני! אבל עכשיו מחפשים אותי עם {item}…",
       wrongTargetNoItem: "זה אני! אבל עכשיו מחפשים גרסה אחרת שלי…",

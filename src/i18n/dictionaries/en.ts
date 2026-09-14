@@ -513,6 +513,30 @@ export const en = {
       replayLead: "You found everything! Want to go back to a favourite place and search again?",
       map: "Back to the map",
     },
+    album: {
+      title: "The album",
+      discoveries: "Discoveries",
+      postcards: "Postcards",
+      /** A find that is not the child: a short, non-blocking reaction. */
+      collected: "A new card in the album: {name}!",
+      again: "{name} is already in the album",
+      notYet: "Not found yet",
+      hintFor: "Hint: {hint}",
+      cardAria: "{name} — discovery card",
+      /** Three finds open the next place; the postcard needs every hiding spot. Said at the choice and in the album, never fixed in the HUD. */
+      continueNote: "Three finds open the next place. The postcard waits for whoever finds every hiding spot.",
+      postcardRemaining: "{remaining} more hiding spots for the postcard",
+      postcardRemainingOne: "1 more hiding spot for the postcard",
+      postcardEarned: "The postcard is yours!",
+      postcardLead: "Every hiding spot in {place} found — the postcard is in the album.",
+      postcardAria: "{title} — postcard",
+      /** Where the album is kept: said honestly, never "saved" before the server answers. */
+      savedAccount: "Saved to the family account",
+      saving: "Saving to the family account…",
+      offline: "Not saved to the account yet — it will be, once the connection is back",
+      guest: "Kept in this browser only",
+      unreadable: "The album kept in this browser could not be read; the game still works",
+    },
     copy: {
       wrongTarget: "It's me! But right now you're looking for me with {item}…",
       wrongTargetNoItem: "It's me! But right now you're looking for another version of me…",

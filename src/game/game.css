@@ -507,3 +507,48 @@
   .stars__slot.is-new::after { opacity: 0; }
   .complete__stars-text, .complete__tally { animation: none; opacity: 1; }
 }
+
+/* ─── The album: discovery cards and postcards ──────────────────────────────
+   Cards and postcards are CSS windows onto the board's own pixels (Album.tsx).
+   Inside the search there is only a short toast; the album lives in the bag. */
+.scene__album-toast { position: absolute; z-index: var(--z-ui); top: max(var(--space-8), env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); display: inline-flex; align-items: center; gap: var(--space-1); max-width: calc(100% - var(--space-4)); min-height: var(--touch-min); padding: var(--space-1) var(--space-3); border-radius: var(--radius-pill); background: var(--white); color: var(--ink); font-family: var(--font-kid); font-weight: 600; font-size: var(--fs-200); line-height: var(--lh-200); box-shadow: 0 0 0 3px var(--ink), var(--shadow-2); animation: fm-fade-up var(--dur-2) var(--ease-out); pointer-events: none; }
+.scene__advance-note { margin: 0; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); }
+.album__crop { position: relative; overflow: hidden; border-radius: var(--radius-2); background-repeat: no-repeat; background-color: var(--sea-soft); }
+.postcard { margin: 0; display: flex; flex-direction: column; gap: var(--space-1); width: 100%; }
+.postcard__picture { width: 100%; border-radius: var(--radius-2); box-shadow: 0 0 0 4px var(--white), var(--shadow-2); }
+.postcard__patch { position: absolute; display: block; pointer-events: none; }
+.postcard__title { font-family: var(--font-kid); font-weight: 600; font-size: var(--fs-200); line-height: var(--lh-200); color: var(--ink); text-align: center; }
+.complete__postcard { display: flex; flex-direction: column; gap: var(--space-1); width: 100%; align-items: center; animation: fm-fade-up var(--dur-3) var(--ease-out); }
+.complete__postcard .postcard { max-width: 320px; }
+.complete__postcard-text { margin: 0; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); text-align: center; }
+.album { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3); border-radius: var(--radius-3); background: var(--white); box-shadow: var(--shadow-1); }
+.album__head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-1); }
+.album__title { margin: 0; font-family: var(--font-kid); font-size: var(--fs-500); line-height: var(--lh-500); }
+.album__sync { margin: 0; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); }
+.album__sync[data-album-state="offline"], .album__sync[data-album-state="unreadable"] { color: var(--sea-deep); }
+.album__note { margin: 0; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-3); }
+.album__board { display: flex; flex-direction: column; gap: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--line); }
+.album__board-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.album__board-name { margin: 0; font-family: var(--font-kid); font-size: var(--fs-300); line-height: var(--lh-300); }
+.album__kind { margin: 0 0 var(--space-1); font-size: var(--fs-100); line-height: var(--lh-100); font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; }
+.album__row { display: grid; gap: var(--space-3); grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.album__cards { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fill, minmax(136px, 1fr)); }
+.album__card { display: flex; flex-direction: column; gap: var(--space-0-5); margin: 0; padding: var(--space-1); border-radius: var(--radius-2); background: var(--paper); box-shadow: inset 0 0 0 2px var(--line); min-width: 0; }
+.album__card--got { box-shadow: inset 0 0 0 3px var(--gold), var(--shadow-1); }
+.album__card--missing { color: var(--ink-3); }
+.album__card-picture { display: block; width: 100%; aspect-ratio: 4 / 5; }
+.album__card-picture--blank { display: grid; place-items: center; border-radius: var(--radius-2); background: var(--paper-2); border: 2px dashed var(--ink-4); font-family: var(--font-kid); font-size: var(--fs-600); color: var(--ink-4); }
+.album__card-name { font-family: var(--font-kid); font-weight: 600; font-size: var(--fs-200); line-height: var(--lh-200); color: var(--ink); }
+.album__card--missing .album__card-name { color: var(--ink-3); }
+.album__card-text { font-size: var(--fs-50); line-height: var(--lh-50); color: var(--ink-2); overflow-wrap: anywhere; }
+.album__missing-icon { font-size: var(--fs-500); line-height: 1; }
+.album__postcard .postcard__picture { box-shadow: var(--shadow-1); }
+@media (max-width: 720px) {
+  .album__row { grid-template-columns: minmax(0, 1fr); }
+  .album { padding: var(--space-2); }
+  /* The bag's header on a phone: the star meter under the name, not beside it - a 200px meter left the name one word per line. */
+  .passport__stars { min-width: 0; flex-basis: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scene__album-toast, .complete__postcard { animation: none; }
+}

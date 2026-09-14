@@ -1,4 +1,5 @@
 import { isPlayable } from "@/domain/order-state";
+import { deleteAdventureAlbum } from "./adventure-album.service";
 import { parseGameConfig, type GameConfig } from "@/domain/game/config";
 import { PACKAGES, isPackageTier } from "@/domain/package";
 import type { Container } from "./container";
@@ -150,6 +151,8 @@ export async function deleteGame(c: Container, gameId: string, actor: Actor, use
       });
     }
   }
+  // The family album goes with the game; a soft delete does not cascade.
+  await deleteAdventureAlbum(c.db, gameId);
   await c.db.game.update({ where: { id: gameId }, data: { configJson: null } });
   await transitionGame(c, gameId, "DELETED", actor);
   c.analytics.track("game_deleted", { gameId });

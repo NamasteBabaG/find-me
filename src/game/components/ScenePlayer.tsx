@@ -16,6 +16,8 @@ import { CelebrationOverlay } from "./CelebrationOverlay";
 import { CloudBank } from "./Clouds";
 import { FLIGHT_MS, StarFlight, type FlightPath } from "./StarFlight";
 import { StarTray } from "./StarTray";
+import { Postcard } from "./Album";
+import { adventureAlbum } from "@/domain/adventure/progress";
 import type { PlayStore } from "../store/play-store";
 import { useGameText } from "../i18n";
 
@@ -33,6 +35,8 @@ const STAR_LAUNCH_MS = 650;
 const STAR_LAUNCH_FREE_MS = 350;
 /** How long the "next place is open" toast stays before leaving the board to the child. */
 const UNLOCK_TOAST_MS = 7000;
+/** A discovery's card slides into the album: a short note, never a wall. */
+const ALBUM_TOAST_MS = 2600;
 
 interface Props {
   scene: SceneConfig;
@@ -83,6 +87,15 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
   const [announcement, setAnnouncement] = useState("");
   const free = mission.playMode === "find-any";
   const dispatch = store.dispatch;
+  // The book's board for this scene: its discoveries are tappable, and the
+  // finish card shows its postcard. Null on every game without an album.
+  const board = store.albumBoard();
+  const [albumToast, setAlbumToast] = useState<{ key: number; text: string } | null>(null);
+  useEffect(() => {
+    if (!albumToast) return;
+    const t = setTimeout(() => setAlbumToast(null), ALBUM_TOAST_MS);
+    return () => clearTimeout(t);
+  }, [albumToast]);
 
   // idle clock for the hint pulse (one tick per second is plenty)
   useEffect(() => {
@@ -344,6 +357,24 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
         case "target":
           dispatch({ type: "TAP_TARGET", targetId: hit.id, now: Date.now() });
           break;
+        case "discovery": {
+          // Not a mission and not a star: a card for the album, once. The
+          // reaction is short and the search goes on around it.
+          const found = board?.discoveries.find((d) => d.id === hit.id);
+          if (!found) break;
+          const result = store.collectDiscovery(hit.id);
+          sounds().play(result === "collected" ? "twinkle" : "tap");
+          clearTimeout(bubbleTimer.current);
+          setBubble({ text: found.name, x: (found.hitRect.x + found.hitRect.w / 2) * scene.art.width, y: found.hitRect.y * scene.art.height, key: ++bubbleSequence.current });
+          const text = tf(result === "collected" ? g.album.collected : g.album.again, { name: found.name });
+          setAnnouncement(text);
+          if (result === "collected") {
+            setBurst({ key: Date.now(), small: true });
+            setAlbumToast({ key: Date.now(), text });
+          }
+          bubbleTimer.current = setTimeout(() => { setBubble(null); setAnnouncement(""); }, 1800);
+          break;
+        }
         case "bonus":
           dispatch({ type: "TAP_BONUS" });
           break;
@@ -355,7 +386,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           break;
       }
     },
-    [dispatch, turn],
+    [dispatch, turn, board, store, scene, g, tf],
   );
 
   const currentId = currentTargetId(mission);
@@ -429,7 +460,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
       </header>
 
       <div className="scene__stage" ref={stageRef}>
-        <SceneViewport scene={scene} mission={mission} hintLevel={mission.hintLevel} bonusFound={mission.bonusFound} onHit={onHit} onReady={onReady} onAssetsReady={onAssetsReady} onVisibleAssetsReady={onVisibleAssetsReady} onAssetsFailed={onAssetsFailed} retryToken={retryToken} ariaLabel={tf(g.scene.sceneAria, { name: scene.name })}>
+        <SceneViewport scene={scene} mission={mission} hintLevel={mission.hintLevel} bonusFound={mission.bonusFound} discoveries={board?.discoveries} onHit={onHit} onReady={onReady} onAssetsReady={onAssetsReady} onVisibleAssetsReady={onVisibleAssetsReady} onAssetsFailed={onAssetsFailed} retryToken={retryToken} ariaLabel={tf(g.scene.sceneAria, { name: scene.name })}>
           {(vp) => {
             liveTransform.current = vp.transform;
             if (!bubble) return null;
@@ -465,6 +496,11 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
       </div>
 
       {flight ? <StarFlight key={flight.key} path={flight.path} /> : null}
+      {albumToast ? (
+        <div key={albumToast.key} className="scene__album-toast" role="status">
+          <span aria-hidden>🃏</span> {albumToast.text}
+        </div>
+      ) : null}
 
       <span className="game__announcement" role="status" aria-live="polite" aria-atomic="true">{announcement}</span>
       {mission.phase !== "complete" || free ? (
@@ -496,6 +532,8 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
         <section className="scene__advance" aria-label={advanceLabel}>
           <StarTray lit={advanceAt} total={advanceAt} size="md" celebrate />
           <p>{store.nextScene() ? g.scene.unlocked : g.scene.journeyFinished}</p>
+          {/* The choice, said plainly: going on is allowed, the postcard is not yet earned. */}
+          {board ? <p className="scene__advance-note">{tf(total - foundIds.length === 1 ? g.album.postcardRemainingOne : g.album.postcardRemaining, { remaining: total - foundIds.length })}</p> : null}
           <div className="scene__advance-actions">
             <button type="button" className="fm-btn fm-btn--sm" onClick={advance}>{advanceLabel}</button>
             <button type="button" className="fm-btn fm-btn--ghost fm-btn--sm" onClick={() => setStaying(true)}>{g.scene.keepSearching}</button>
@@ -528,6 +566,15 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store }: { scene: Sce
   const { g, tf } = useGameText();
   const next = store.nextScene();
   const allDone = next === null;
+  // Every hiding spot found: the postcard, from the pixels of the find itself.
+  const postcard = (() => {
+    if (!store.album || !store.config.adventure) return null;
+    try {
+      return adventureAlbum(store.album).boards.find((b) => b.boardSlug === scene.slug)?.postcard ?? null;
+    } catch {
+      return null;
+    }
+  })();
   // The board's own stars, all of them, one after another. What the world
   // has collected is for the map and the bag, not for this moment (Guy).
   const stars = scene.targets.length;
@@ -550,6 +597,12 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store }: { scene: Sce
             <p className="complete__stars-text">{stars === 5 ? g.complete.fiveStars : stars === 4 ? g.complete.fourStars : g.complete.threeStars}</p>
           </div>
         )}
+        {postcard ? (
+          <div className="complete__postcard">
+            <Postcard scene={scene} postcard={postcard} />
+            <p className="complete__postcard-text">{g.album.postcardEarned} {tf(g.album.postcardLead, { place: scene.name })}</p>
+          </div>
+        ) : null}
         {store.demo ? null : (
         <div className="complete__loot">
           <span className="complete__icon" aria-hidden>

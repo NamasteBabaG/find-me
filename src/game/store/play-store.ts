@@ -6,6 +6,11 @@ import { createMissionState, missionReducer, sceneSummary, type MissionAction, t
 import { planScenePlay } from "@/domain/game/replay";
 import { collectibles, completedScenes, emptyProgress, recordSceneCompleted, recordFindAny, sceneCanAdvance, sceneFoundIds, sceneIsComplete, sceneIsPlayable, sceneProgress, type GameProgress } from "@/domain/game/progress";
 import { loadProgress, saveProgress } from "../engine/progress-storage";
+import type { AdventureBook } from "@/domain/adventure/book-schema";
+import { AdventureError } from "@/domain/adventure/compose";
+import { recordAdventureEvent, type AdventureEvent, type AdventureProgress } from "@/domain/adventure/progress";
+import { loadAlbum, saveAlbum } from "../engine/album-storage";
+import { AlbumSync, type AlbumSyncState } from "../engine/album-sync";
 import { Telemetry } from "../engine/telemetry";
 import { sounds } from "../audio/sounds";
 
@@ -33,6 +38,16 @@ export interface PlayStore {
   /** The journey the player is standing in. Never null: a game has at least one. */
   worldSlug: string;
 
+  /**
+   * The album (discoveries, postcards): only for a game that carries a book,
+   * and only after hydrate(). A guest keeps it in this browser; the owner's
+   * session also sends every find to the family account (see album-sync).
+   */
+  album: AdventureProgress | null;
+  albumMode: "none" | "guest" | "owner";
+  /** Where the album stands with the account: honest, never "saved" ahead of the server. `unreadable` = this browser's copy would not read. */
+  albumState: AlbumSyncState | "unreadable";
+
   scene(): SceneConfig | null;
   /** The current world's map, or null for a config composed before worlds. */
   world(): PlayWorld | null;
@@ -58,6 +73,12 @@ export interface PlayStore {
   gameDone(): boolean;
   openPassport(): void;
   toggleMute(): void;
+  /** The book's board for the open scene, if this game has one. */
+  albumBoard(): AdventureBook["boards"][number] | null;
+  /** A tap on a discovery. "collected" the first time, "again" after that, "none" when there is nothing to collect. */
+  collectDiscovery(discoveryId: string): "collected" | "again" | "none";
+  /** Stop talking to the account (unmount). */
+  stopAlbumSync(): void;
 }
 
 function missionCopy(scene: SceneConfig, copy: ReducerCopy): MissionCopy {
@@ -76,6 +97,12 @@ export interface PlayStoreOptions {
   autoStartScene?: string;
   /** Landing demo: only the first (easiest) mission of a scene. */
   singleMission?: boolean;
+  /**
+   * The viewer is the game's owner (decided by the page from the session, never
+   * by the browser): the album is also kept in the family account. A shared
+   * player link never sets this.
+   */
+  albumOwner?: boolean;
   copy: ReducerCopy;
 }
 
@@ -86,6 +113,39 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
   // server too. Saved progress arrives via hydrate() after mount.
   const initialProgress: GameProgress = demo ? { v: 1, gameId: config.gameId, revealed: true, scenes: {} } : emptyProgress(config.gameId);
   const telemetry = new Telemetry(config.gameId, persist);
+  const book = persist ? config.adventure ?? null : null;
+  let albumSync: AlbumSync | null = null;
+
+  /** Record one album event: once in the domain, once in this browser, once to the account. */
+  const recordAlbum = (set: (partial: Partial<PlayStore>) => void, get: () => PlayStore, event: AdventureEvent): boolean => {
+    const album = get().album;
+    if (!album || !book) return false;
+    let result: ReturnType<typeof recordAdventureEvent>;
+    try {
+      result = recordAdventureEvent(album, config.gameId, book, event);
+    } catch (error) {
+      // A board or item the book does not know is not a find; the game goes on.
+      if (error instanceof AdventureError) return false;
+      throw error;
+    }
+    if (!result.changed) return false;
+    saveAlbum(result.progress);
+    set({ album: result.progress });
+    albumSync?.push(event);
+    return true;
+  };
+
+  const sameEvent = (a: AdventureEvent, b: AdventureEvent): boolean =>
+    a.kind === b.kind && a.boardSlug === b.boardSlug && (a.kind === "target-found" ? a.targetId === (b as Extract<AdventureEvent, { kind: "target-found" }>).targetId : a.discoveryId === (b as Extract<AdventureEvent, { kind: "discovery-found" }>).discoveryId);
+  /** What one album has that another lacks, as the events that would add it. */
+  const missingEvents = (from: AdventureProgress, to: AdventureProgress): AdventureEvent[] => [
+    ...from.finds
+      .filter((f) => !to.finds.some((t) => t.boardSlug === f.boardSlug && t.targetId === f.targetId))
+      .map((f): AdventureEvent => ({ kind: "target-found", boardSlug: f.boardSlug, targetId: f.targetId, variant: f.variant })),
+    ...from.discoveries
+      .filter((d) => !to.discoveries.some((t) => t.boardSlug === d.boardSlug && t.discoveryId === d.discoveryId))
+      .map((d): AdventureEvent => ({ kind: "discovery-found", boardSlug: d.boardSlug, discoveryId: d.discoveryId })),
+  ];
 
   const store = create<PlayStore>((set, get) => ({
     config,
@@ -98,6 +158,9 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     muted: false,
     demo,
     telemetry,
+    album: null,
+    albumMode: book ? (opts.albumOwner ? "owner" : "guest") : "none",
+    albumState: "idle",
 
     world() {
       const worlds = gameWorlds(get().config);
@@ -128,6 +191,41 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       set({ progress, screen: screen === "gift" && progress.revealed ? landing : screen, ...(remembered ? { worldSlug: remembered } : {}) });
       const resumed = config.scenes.find(scene => scene.slug === progress.lastScene && scene.playMode === "find-any");
       if (resumed && progress.revealed && sceneIsPlayable(progress, config, resumed)) get().openScene(resumed.slug);
+      if (!book) return;
+      // This browser's album first (the whole truth for a guest, a cache for the
+      // owner), then, for the owner only, the account's copy replaces it.
+      const loaded = loadAlbum(config.gameId, book);
+      if (loaded.ok) set({ album: loaded.progress });
+      else set({ album: null, albumState: "unreadable" });
+      if (opts.albumOwner) {
+        albumSync?.stop();
+        const sync = new AlbumSync({
+          gameId: config.gameId,
+          onState: (albumState) => set({ albumState }),
+          onProgress: (server) => {
+            // The account's copy is the truth, but nothing this browser found is
+            // dropped: a guest's play before signing in, or finds made offline,
+            // are sent to the account (each recorded once there) and shown
+            // meanwhile on top of the account's copy.
+            const local = get().album;
+            const waiting = sync.pendingEvents();
+            const owed = local ? missingEvents(local, server).filter((e) => !waiting.some((w) => sameEvent(w, e))) : [];
+            for (const event of owed) sync.push(event);
+            let merged = server;
+            for (const event of sync.pendingEvents()) {
+              try {
+                merged = recordAdventureEvent(merged, config.gameId, book, event).progress;
+              } catch {
+                // The account will refuse it too; nothing to show.
+              }
+            }
+            saveAlbum(merged);
+            set({ album: merged });
+          },
+        });
+        albumSync = sync;
+        void sync.load();
+      }
     },
 
     reveal() {
@@ -209,6 +307,8 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
           if (!before.journeyFinishedAt && progress.journeyFinishedAt) telemetry.track({ eventType: "journey_finished" });
           if (!before.completedAt && progress.completedAt) telemetry.track({ eventType: "game_completed" });
           set({ progress });
+          // The album remembers the find with the variant that was on the board.
+          recordAlbum(set, get, { kind: "target-found", boardSlug: scene.slug, targetId: action.targetId, variant: next.plan.variants[action.targetId] ?? "A" });
         }
       }
       if (action.type === "REQUEST_HINT" && next.hintLevel !== mission.hintLevel) {
@@ -276,6 +376,22 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       sounds().setMuted(muted);
       if (!muted) sounds().unlock();
       set({ muted });
+    },
+
+    albumBoard() {
+      const slug = get().sceneSlug;
+      return (slug && book?.boards.find((b) => b.boardSlug === slug)) || null;
+    },
+
+    collectDiscovery(discoveryId) {
+      const board = get().albumBoard();
+      if (!board || !board.discoveries.some((d) => d.id === discoveryId) || !get().album) return "none";
+      return recordAlbum(set, get, { kind: "discovery-found", boardSlug: board.boardSlug, discoveryId }) ? "collected" : "again";
+    },
+
+    stopAlbumSync() {
+      albumSync?.stop();
+      albumSync = null;
     },
   }));
 

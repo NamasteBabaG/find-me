@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { SceneConfig, TargetConfig } from "@/domain/game/config";
+import type { AdventureRect } from "@/domain/adventure/content";
 import type { MissionState } from "@/domain/game/mission";
 import { currentTargetId, isFound, visibleTargetId } from "@/domain/game/mission";
 import type { HintLevel } from "@/domain/game/hints";
@@ -12,13 +13,15 @@ import { useViewport, type ViewportApi } from "../engine/useViewport";
 import { Sprite } from "./Sprite";
 import { FoundParticles } from "./FoundParticles";
 
-export type Hit = { kind: "target"; id: string } | { kind: "bonus" } | { kind: "ambient"; id: string } | { kind: "miss"; x: number; y: number };
+export type Hit = { kind: "target"; id: string } | { kind: "discovery"; id: string } | { kind: "bonus" } | { kind: "ambient"; id: string } | { kind: "miss"; x: number; y: number };
 
 interface Props {
   scene: SceneConfig;
   mission: MissionState;
   hintLevel: HintLevel;
   bonusFound: boolean;
+  /** The board's discoveries (album). Tapped like a child: exact, then a padded reach, never a guess between two. */
+  discoveries?: readonly { id: string; hitRect: AdventureRect }[];
   onHit: (hit: Hit) => void;
   onReady?: (api: ViewportApi) => void;
   /** Every image this board can show has decoded — base, foreground, all three children, the bonus. */
@@ -45,7 +48,7 @@ interface Ripple {
  * All hit-testing is math on normalized coordinates (no DOM hit targets), so a
  * tap resolves the same way on every device and at every zoom.
  */
-export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, onReady, onAssetsReady, onVisibleAssetsReady, onAssetsFailed, retryToken = 0, ariaLabel, children }: Props) {
+export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveries = [], onHit, onReady, onAssetsReady, onVisibleAssetsReady, onAssetsFailed, retryToken = 0, ariaLabel, children }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stage = useMemo(() => ({ width: scene.art.width, height: scene.art.height }), [scene.art.width, scene.art.height]);
   const [ripples, setRipples] = useState<Ripple[]>([]);
@@ -99,6 +102,14 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
       // Overlapping invisible padding is not permission to choose a random hide.
       const near = padded.filter(candidate => hitTest([candidate], nx, ny));
       if (near.length === 1) candidates.push(near[0]!);
+      // A discovery sits under the child (she wins a tap they share) and above
+      // the decorations. Same reach as a child; two within reach is no find.
+      const reachable = discoveries.map((d) => {
+        const rect: NormRect = { x0: d.hitRect.x, y0: d.hitRect.y, x1: d.hitRect.x + d.hitRect.w, y1: d.hitRect.y + d.hitRect.h };
+        const pad = hitPadding(rect, stage, scale, 64);
+        return { id: { kind: "discovery", id: d.id } as Hit, rect: expandRect(rect, pad.padX, pad.padY), zIndex: 45 };
+      }).filter(candidate => hitTest([candidate], nx, ny));
+      if (reachable.length === 1) candidates.push(reachable[0]!);
       if (bonus && !bonusFoundRef.current) {
         const rect = spriteRect(bonus.anchor, stage, 1);
         const pad = hitPadding(rect, stage, scale);
@@ -120,7 +131,7 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, onHit, on
         setTimeout(() => setRipples((r) => r.filter((x) => x.id !== id)), 700);
       }
     },
-    [placedTargets, bonus, scene.ambient, stage, onHit],
+    [placedTargets, bonus, scene.ambient, discoveries, stage, onHit],
   );
 
   // Edge hides can be panned out from under the persistent upper-right HUD.

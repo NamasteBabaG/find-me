@@ -6,6 +6,7 @@ import { parseGameConfig } from "@/domain/game/config";
 import { withFreshAssetUrls } from "@/services/asset.service";
 import { getI18n } from "@/i18n/server";
 import { GameShell } from "@/game/components/GameShell";
+import { currentUser } from "@/lib/server/session";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { robots: { index: false, follow: false } };
@@ -34,5 +35,12 @@ export default async function PlayPage({ params }: { params: Promise<{ token: st
 
   // Signatures expire, so the config is re-signed on the way to the player.
   const config = withFreshAssetUrls(getContainer(), parseGameConfig(resolved.game.configJson));
-  return <GameShell key={config.locale} config={config} parentZoneHref="/library" />;
+  // The play link identifies a game, never a person. Only a signed-in owner
+  // gets the family album kept in the account; everyone else keeps it in the browser.
+  let albumOwner = false;
+  if (config.adventure) {
+    const [user, game] = await Promise.all([currentUser(), c.db.game.findUnique({ where: { id: resolved.game.id }, select: { ownerId: true } })]);
+    albumOwner = Boolean(user && game?.ownerId && game.ownerId === user.id);
+  }
+  return <GameShell key={config.locale} config={config} parentZoneHref="/library" albumOwner={albumOwner} />;
 }
