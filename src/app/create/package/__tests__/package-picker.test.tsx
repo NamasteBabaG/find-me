@@ -7,6 +7,9 @@ import { en } from "@/i18n/dictionaries/en";
 import { PackagePicker } from "../PackagePicker";
 
 vi.mock("../../actions", () => ({ choosePackageAction: vi.fn() }));
+// The step warms the page it leads to; outside the app router there is nothing to warm.
+const prefetch = vi.hoisted(() => vi.fn());
+vi.mock("next/navigation", () => ({ useRouter: () => ({ prefetch }) }));
 beforeEach(() => vi.stubGlobal("React", React));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const options = [1, 2, 3].map(n => ({

@@ -92,6 +92,18 @@ Sits immediately after the hero, before the live demo. Three cards: the prepared
 - **Cards are as tall as their words.** The checkout grid aligns to the start; the summary no longer stretches to the pay card's height.
 - **The dropzone's camera** sits in the same tilted `--sun-soft` chip the steps use and straightens on hover or drag-over.
 
+### The wizard, second pass (2026-09-15)
+
+- **A field is an answer, not a headline.** The name and age are `--fs-300` at weight 600, start-aligned, in a `--control-h` box. At `fm-input--lg` (32px, centred, weight 800) the example name read as the page's title and "Choose age" was cut in half.
+- **The way on is in the middle.** `.create__actions` is a centred column: the primary action, with the way back quiet underneath it. It used to sit in a corner of the card, and the step count was printed there as well as on the stepper.
+- **Every control on the photo step is ours.** The crop circle wears the white sticker rim on `--sun-soft` with a dashed guide inside; the zoom is a paper track with a sun thumb between a small and a large face; the consent tick is a sun-filled rounded box (`.uploader__tick`) — the browser's blue square was the one thing on the screen that belonged to somebody else.
+- **The crop opens on the face.** `FaceDetector` where a browser has one; otherwise the crop opens a little above centre (42%), which is where a portrait puts a head. It is a starting point, never a lock: drag, arrows and zoom still decide.
+- **A step warms the next one.** Each client step calls `router.prefetch` for where its button leads, so pressing it is a paint rather than a wait.
+- **The worlds step is a confirmation.** The worlds are a ladder (`outOfOrderWorlds`), so the only selection the server accepts is the first `want` of them: the step shows what the package includes and marks the rest "opens with a bigger package", with the package step one tap away. It used to offer a choice it could not deliver.
+- **A shelf is read at a glance.** A library card is a cover with the child lit in the tone of its state (`--sun-soft` ready, `--sea-soft` being made, `--paper-3` unfinished), a state pill with a dot on the corner, and one clear action. Every lifecycle status has parent-facing copy; a raw `PACKAGE_SELECTED` used to be printed as-is.
+- **The child's tools are buttons on a painting.** `.scene__btn` is a white glass circle with a white rim and an ink glyph, lit gold under a finger and squashed to `.88` on press; the icons are one chunky stroke family (map, magnifiers, frame, speaker), not a video player's hairlines.
+- **A screen fits its screen.** The map budgets its chrome (`--wmap-chrome`, larger when the parents' link is there) so the picture shrinks and the one obvious action is never under the fold.
+
 ## Reachable without a finger (audit A06/A07, 2026-09-15)
 
 - **The account is always in the header.** The library link is never hidden: the words on a wide header, the mark alone (`.fm-header__account-icon`, a stroke glyph in the toolbar's language) below 860px, with its name on the link so it is never lost. Every header control is `--touch-min` (48px) on a phone — the adult floor, which the 40px `--sm` row was under.

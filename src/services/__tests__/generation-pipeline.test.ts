@@ -217,17 +217,23 @@ describe("a pipeline that loses a status compare-and-set", () => {
     const id = await seedGame(c);
     // Real DB and real CAS. Stage the competing write immediately before the
     // first status CAS, not by throwing a pretend provider failure.
-    const update = db.game.updateMany.bind(db.game);
+    //
+    // Swapped by hand rather than with vi.spyOn: restoring a spy on a Prisma
+    // delegate leaves `updateMany` undefined on Vitest 3.2.7 (this worktree's
+    // shared install), so the second case of this pair died before it began.
+    // Putting the captured function back always leaves a callable delegate.
+    const delegate = db.game as unknown as { updateMany: typeof db.game.updateMany };
+    const update = delegate.updateMany.bind(db.game);
     let raced = false;
-    const spy = vi.spyOn(db.game, "updateMany").mockImplementation((async (args: Parameters<typeof db.game.updateMany>[0]) => {
+    delegate.updateMany = (async (args: Parameters<typeof db.game.updateMany>[0]) => {
       if (!raced && args.where?.id === id && args.data.status === "AVATAR_GENERATING") {
         raced = true;
         await db.game.update({ where: { id }, data: { status: "TARGETS_GENERATING" } });
         if (takeover) await db.generationJob.update({ where: { id: `job_${id}` }, data: { attempts: { increment: 1 }, currentStep: "targets", lastError: null } });
       }
       return update(args);
-    }) as unknown as typeof db.game.updateMany);
-    try { await mod.runGenerationPipeline(c, id); } finally { spy.mockRestore(); }
+    }) as unknown as typeof db.game.updateMany;
+    try { await mod.runGenerationPipeline(c, id); } finally { delegate.updateMany = update; }
     expect(raced).toBe(true);
     expect((await gameOf(id)).status).toBe("TARGETS_GENERATING");
     expect((await gameOf(id)).lastError).toBeNull();

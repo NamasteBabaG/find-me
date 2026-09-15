@@ -57,10 +57,31 @@ async function forUpload(file: File): Promise<Blob> {
   return blob ?? file;
 }
 
+/**
+ * Where the face probably is, as a box in the photo's own pixels.
+ *
+ * A real detector when the browser has one (Chrome behind a flag, mostly), and
+ * otherwise nothing — the caller then uses the place a phone portrait almost
+ * always puts a face, which is not the dead centre the crop used to open at.
+ */
+async function faceBox(image: HTMLImageElement): Promise<{ x: number; y: number; width: number; height: number } | null> {
+  const Detector = (window as unknown as { FaceDetector?: new (options?: unknown) => { detect(source: HTMLImageElement): Promise<Array<{ boundingBox: DOMRectReadOnly }>> } }).FaceDetector;
+  if (!Detector) return null;
+  try {
+    const found = await new Detector({ maxDetectedFaces: 1, fastMode: true }).detect(image);
+    const box = found[0]?.boundingBox;
+    return box && box.width > 0 ? { x: box.x, y: box.y, width: box.width, height: box.height } : null;
+  } catch {
+    return null;
+  }
+}
+
 export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/api/drafts/photo", nextHref = "/create/package" }: Props) {
   const { t, tf } = useI18n();
   const p = t.create.photo;
   const router = useRouter();
+  // The step after this one is fetched while the parent is still cropping.
+  useEffect(() => { router.prefetch(nextHref); }, [router, nextHref]);
   const [file, setFile] = useState<File | null>(null);
   const [url, setUrl] = useState<string | null>(null);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
@@ -72,7 +93,10 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/
   const [over, setOver] = useState(false);
   const drag = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
   const cropperRef = useRef<HTMLDivElement | null>(null);
+  const imageRef = useRef<HTMLImageElement | null>(null);
   const errorRef = useRef<HTMLDivElement | null>(null);
+  /** The opening crop is chosen once per picture, then the parent owns it. */
+  const [aimed, setAimed] = useState(false);
   // The visible crop box: 320px on desktop, narrower on phones. The crop math must use the real size.
   const [BOX, setBox] = useState(BOX_MAX);
 
@@ -104,6 +128,7 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/
     setUrl(URL.createObjectURL(f));
     setZoom(1);
     setOffset({ x: 0, y: 0 });
+    setAimed(false);
   };
 
   // Base scale so the image covers the circle.
@@ -120,6 +145,43 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/
     if (natural) setOffset((o) => clampOffset({ x: o.x === 0 && o.y === 0 ? (BOX - drawW) / 2 : o.x, y: o.x === 0 && o.y === 0 ? (BOX - drawH) / 2 : o.y }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [natural, zoom]);
+
+  /**
+   * Open the crop on the face, not on the middle of the photograph.
+   *
+   * A picture of a child standing in a field opened on the field: the parent
+   * had to drag and zoom before they could even see who it was. The detector
+   * is used where a browser has one; where it does not, the crop opens a
+   * little above centre, which is where a portrait puts a head. Either way it
+   * is a starting point — the drag, the arrows and the zoom still decide.
+   */
+  useEffect(() => {
+    const image = imageRef.current;
+    if (!natural || aimed || !image) return;
+    let alive = true;
+    void (async () => {
+      const box = await faceBox(image);
+      if (!alive) return;
+      const cover = Math.max(BOX / natural.w, BOX / natural.h);
+      let nextZoom = 1;
+      // Fractions of the photo: where the middle of the circle should land.
+      let aim = { x: 0.5, y: 0.42 };
+      if (box) {
+        // Room for hair above and chin below, so it is a portrait and not a mask.
+        const wanted = Math.max(box.width, box.height) * 2;
+        nextZoom = Math.min(3, Math.max(1, BOX / (wanted * cover)));
+        aim = { x: (box.x + box.width / 2) / natural.w, y: (box.y + box.height * 0.45) / natural.h };
+      }
+      const drawn = { w: natural.w * cover * nextZoom, h: natural.h * cover * nextZoom };
+      setZoom(nextZoom);
+      setOffset({
+        x: Math.min(0, Math.max(BOX - drawn.w, BOX / 2 - aim.x * drawn.w)),
+        y: Math.min(0, Math.max(BOX - drawn.h, BOX / 2 - aim.y * drawn.h)),
+      });
+      setAimed(true);
+    })();
+    return () => { alive = false; };
+  }, [natural, aimed, BOX]);
 
   const onPointerDown = (e: React.PointerEvent) => {
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -156,8 +218,14 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/
   };
 
   const consentBox = (
+    // The tick is the product's own: a sun-filled rounded box, not the
+    // operating system's blue square, which was the one foreign thing on the
+    // screen. The whole label is the target.
     <label className="uploader__consent">
       <input type="checkbox" name="consent" checked={consent} onChange={(e) => setConsent(e.target.checked)} required />
+      <span className="uploader__tick" aria-hidden>
+        ✓
+      </span>
       <span>{p.consent}</span>
     </label>
   );
@@ -216,7 +284,7 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/
         </>
       ) : (
         <>
-          <p className="fm-lead fm-center">{p.cropLead}</p>
+          <p className="fm-lead fm-center cropper__lead">{p.cropLead}</p>
           <div
             ref={cropperRef}
             className="cropper"
@@ -247,6 +315,7 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
+              ref={imageRef}
               src={url}
               alt=""
               onLoad={(e) => setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}

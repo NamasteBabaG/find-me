@@ -44,7 +44,8 @@
 /* "It is best sideways": one small pill over the board that leaves on its own, never a strip that pushes the board down. */
 .game__tip { position: absolute; z-index: var(--z-toast); left: 50%; bottom: calc(max(var(--space-2), env(safe-area-inset-bottom)) + var(--space-20)); transform: translateX(-50%); max-width: calc(100% - var(--space-4)); padding: var(--space-1) var(--space-2); border-radius: var(--radius-pill); text-align: center; font-family: var(--font-display); font-weight: 600; font-size: var(--fs-100); line-height: var(--lh-100); background: var(--ink); color: var(--white); box-shadow: var(--shadow-2); pointer-events: none; animation: game-tip 7s var(--ease-out) both; }
 @keyframes game-tip { 0% { opacity: 0; transform: translate(-50%, var(--space-1)); } 8%, 82% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, var(--space-1)); } }
-.game__parents { text-align: center; padding: var(--space-3); font-size: var(--fs-100); }
+/* The adults' way out sits under the map; it is a footnote, not a row of its own. */
+.game__parents { text-align: center; padding: var(--space-1) var(--space-3) max(var(--space-1), env(safe-area-inset-bottom)); font-size: var(--fs-100); }
 .game__parents a { color: var(--ink-3); }
 
 /* ── Gift ── */
@@ -178,10 +179,15 @@
 .scene__bar { position: absolute; left: 0; right: 0; top: 0; z-index: var(--z-ui); display: flex; align-items: center; justify-content: space-between; gap: var(--space-1); padding: var(--space-2); pointer-events: none; }
 .scene__bar > * { pointer-events: auto; }
 .scene__tools { display: flex; gap: var(--space-1); }
-.scene__btn { width: var(--touch-min); height: var(--touch-min); border-radius: var(--radius-pill); background: rgba(23, 22, 43, 0.42); backdrop-filter: blur(10px); box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.4); color: var(--white); display: grid; place-items: center; line-height: 1; transition: transform var(--dur-1) var(--ease-out), background var(--dur-1); }
-.scene__btn:hover { background: rgba(23, 22, 43, 0.62); transform: translateY(-1px); }
-.scene__btn:active { transform: scale(0.9); background: rgba(23, 22, 43, 0.72); }
-.scene__icon { width: var(--space-3); height: var(--space-3); display: block; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45)); }
+/* A child's buttons on a painting: white and round, with a white rim so they
+   read on any art, the ink glyph inside, and a gold light under the finger.
+   They were dark grey discs with hairline icons — a video player's furniture. */
+.scene__btn { width: var(--touch-min); height: var(--touch-min); border-radius: var(--radius-pill); background: rgba(255, 255, 255, 0.92); backdrop-filter: blur(10px); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.95), 0 4px 12px rgba(23, 22, 43, 0.3); color: var(--ink); display: grid; place-items: center; line-height: 1; transition: transform var(--dur-2) var(--ease-pop), background var(--dur-1), box-shadow var(--dur-2); }
+.scene__btn:hover { background: var(--sun); box-shadow: inset 0 0 0 2px var(--white), var(--shadow-glow-sun); transform: translateY(-2px); }
+.scene__btn:active { transform: scale(0.88); background: var(--sun-deep); box-shadow: inset 0 0 0 2px var(--white), var(--shadow-1); }
+.scene__btn:disabled { opacity: 0.45; transform: none; background: rgba(255, 255, 255, 0.92); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.95), var(--shadow-1); }
+.scene__icon { width: var(--space-3); height: var(--space-3); display: block; }
+@media (prefers-reduced-motion: reduce) { .scene__btn { transition: background var(--dur-1); } }
 .scene__title { display: inline-flex; align-items: center; gap: var(--space-1); background: rgba(255, 255, 255, 0.72); backdrop-filter: blur(10px); border-radius: var(--radius-pill); padding-inline: var(--space-2); min-height: var(--space-5); font-family: var(--font-display); font-weight: 600; font-size: var(--fs-100); line-height: var(--lh-100); box-shadow: var(--shadow-1); }
 .scene__count { color: var(--ink-3); }
 
@@ -401,7 +407,17 @@
    completed node carries a stamp, the current one carries the child. */
 /* The map keeps its own shape, so the column centres around it rather than
    stretching a landscape picture down a portrait screen. */
-.wmap { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: var(--space-3); padding: max(var(--space-3), env(safe-area-inset-top)) var(--space-3) max(var(--space-3), env(safe-area-inset-bottom)); background: linear-gradient(180deg, var(--wmap-sky, var(--sea-soft)) 0%, var(--paper) 100%); }
+/* The whole screen fits the screen. `--wmap-chrome` is what the header, the
+   one obvious action, the gaps and the padding take; the picture gets the
+   rest. It used to be budgeted at 160px, so on a laptop the map pushed the
+   "go here" button under the fold and the map screen scrolled for no reason. */
+.wmap { --wmap-chrome: 264px; flex: 1; min-height: 0;
+  /* see .game:has(.game__parents) below: the parents' link is chrome too */ display: flex; flex-direction: column; justify-content: center; gap: var(--space-3); padding: max(var(--space-3), env(safe-area-inset-top)) var(--space-3) max(var(--space-3), env(safe-area-inset-bottom)); background: linear-gradient(180deg, var(--wmap-sky, var(--sea-soft)) 0%, var(--paper) 100%); }
+/* A real game also shows the adults' link under the map; the demo does not.
+   Counting it only when it is there is the difference between a screen that
+   fits and one that scrolls by exactly its height. */
+.game:has(.game__parents) .wmap { --wmap-chrome: 304px; }
+@media (max-width: 720px) { .game:has(.game__parents) .wmap { --wmap-chrome: 272px; } }
 .wmap__bar { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); max-width: var(--container); width: 100%; margin-inline: auto; }
 .wmap__who { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
 .wmap__face { width: var(--space-8); height: var(--space-8); flex-shrink: 0; }
@@ -409,7 +425,7 @@
 .wmap__sub { color: var(--ink-2); font-size: var(--fs-200); line-height: var(--lh-200); }
 
 .wmap__frame { flex: 0 1 auto; min-height: 0; display: grid; place-items: center; }
-.wmap__art { position: relative; width: 100%; max-width: min(100%, calc((100dvh - var(--space-20)) * var(--wmap-ratio, 1.5))); max-height: 100%; border-radius: var(--radius-4); overflow: hidden; box-shadow: var(--shadow-3); }
+.wmap__art { position: relative; width: 100%; max-width: min(100%, calc((100dvh - var(--wmap-chrome)) * var(--wmap-ratio, 1.5))); max-height: calc(100dvh - var(--wmap-chrome)); border-radius: var(--radius-4); overflow: hidden; box-shadow: var(--shadow-3); }
 .wmap__img { display: block; width: 100%; height: 100%; object-fit: cover; }
 
 .wmap__route { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
@@ -467,7 +483,8 @@
 .wmap__skip { align-self: center; min-height: var(--control-h-sm); padding-inline: var(--space-3); border-radius: var(--radius-pill); background: rgba(23, 22, 43, 0.5); color: var(--white); font-size: var(--fs-100); }
 
 @media (max-width: 720px) {
-  .wmap { padding: var(--space-2); gap: var(--space-1); }
+  /* A phone's header wraps to two rows and the padding is smaller. */
+  .wmap { --wmap-chrome: 232px; padding: var(--space-2); gap: var(--space-1); }
   .wmap__title { font-size: var(--fs-400); line-height: var(--lh-400); }
   .wmap__label { display: none; }
   /* A phone dot: 56px to look at, the full 64px kid target to tap (the transparent ring around it). */

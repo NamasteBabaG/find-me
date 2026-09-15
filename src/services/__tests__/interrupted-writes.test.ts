@@ -235,6 +235,53 @@ describe("a one-time sign-in link (A04)", () => {
   });
 });
 
+/**
+ * A genuine animated WebP, assembled here.
+ *
+ * This build of sharp will not encode one: `pageHeight` on a tall raw input
+ * comes back out as a single page, so the multi-frame guard had no fixture and
+ * was reported as uncovered. The container is small and fully specified — a
+ * VP8X with the animation flag, an ANIM chunk, and two ANMF frames each
+ * carrying the VP8L payload of a still that sharp itself encoded — so nothing
+ * here is a guess about the format.
+ */
+async function animatedWebp(width: number, height: number): Promise<Buffer> {
+  const chunk = (fourcc: string, payload: Buffer) => {
+    const header = Buffer.alloc(8);
+    header.write(fourcc, 0, "ascii");
+    header.writeUInt32LE(payload.length, 4);
+    return payload.length % 2 ? Buffer.concat([header, payload, Buffer.alloc(1)]) : Buffer.concat([header, payload]);
+  };
+  const uint24 = (value: number) => { const b = Buffer.alloc(3); b.writeUIntLE(value, 0, 3); return b; };
+  const stillFrame = async (colour: string) => {
+    const still = await sharp({ create: { width, height, channels: 3, background: colour } }).webp({ lossless: true }).toBuffer();
+    for (let at = 12; at + 8 <= still.length; ) {
+      const fourcc = still.toString("ascii", at, at + 4);
+      const size = still.readUInt32LE(at + 4);
+      if (fourcc === "VP8L") return still.subarray(at, at + 8 + size + (size % 2));
+      at += 8 + size + (size % 2);
+    }
+    throw new Error("no VP8L chunk in the still");
+  };
+  const flags = Buffer.alloc(4);
+  flags.writeUInt8(0x02, 0); // ANIMATION
+  const frames: Buffer[] = [];
+  for (const colour of ["#ff0000", "#0000ff"]) {
+    const head = Buffer.concat([uint24(0), uint24(0), uint24(width - 1), uint24(height - 1), uint24(100), Buffer.from([0])]);
+    frames.push(chunk("ANMF", Buffer.concat([head, await stillFrame(colour)])));
+  }
+  const body = Buffer.concat([
+    Buffer.from("WEBP", "ascii"),
+    chunk("VP8X", Buffer.concat([flags, uint24(width - 1), uint24(height - 1)])),
+    chunk("ANIM", Buffer.from([0, 0, 0, 0, 0, 0])),
+    ...frames,
+  ]);
+  const riff = Buffer.alloc(8);
+  riff.write("RIFF", 0, "ascii");
+  riff.writeUInt32LE(body.length, 4);
+  return Buffer.concat([riff, body]);
+}
+
 describe("a file is what it is, not what it says it is (A05)", () => {
   const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512"><rect width="512" height="512" fill="blue"/></svg>');
 
@@ -256,4 +303,18 @@ describe("a file is what it is, not what it says it is (A05)", () => {
   it("still refuses a photo that is too small", async () => {
     expect(await checkPhoto(await png(200), "image/png")).toMatchObject({ ok: false, code: "TOO_SMALL" });
   });
+
+  it("refuses an animated WebP, whichever frame a sheet would be drawn from", async () => {
+    const frames = await animatedWebp(512, 512);
+    expect((await sharp(frames).metadata()).pages).toBe(2);
+    expect(await checkPhoto(frames, "image/webp")).toMatchObject({ ok: false, code: "BAD_TYPE" });
+  });
+
+  it("refuses a file whose pixels are far larger than its bytes", async () => {
+    // 54 megapixels of flat white compresses to about 1.5MB: well under the
+    // upload cap, and 162MB of decoded frame if anything downstream opens it.
+    const bomb = await sharp({ create: { width: 9000, height: 6000, channels: 3, background: "white" } }).png({ compressionLevel: 1 }).toBuffer();
+    expect(bomb.byteLength).toBeLessThan(12 * 1024 * 1024);
+    expect(await checkPhoto(bomb, "image/png")).toMatchObject({ ok: false, code: "TOO_LARGE" });
+  }, 30_000);
 });
