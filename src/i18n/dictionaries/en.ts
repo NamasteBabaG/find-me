@@ -249,8 +249,12 @@ export const en = {
     },
     scenes: {
       title: "The worlds in your package",
-      lead: "These are the worlds in your selected package, in the order shown. Nine places in every world.",
+      lead: "These are the worlds in your selected package, in the order they are played. Nine places in every world.",
       counter: "{picked} of {want} worlds in the package",
+      /** The worlds are a ladder: a package always includes them from the first one on. */
+      included: "In your package",
+      locked: "Opens with a bigger package",
+      change: "Change package",
       next: "Continue to summary",
     },
     checkout: {
@@ -354,6 +358,12 @@ export const en = {
     status: "Status",
     manage: "Manage game",
     statuses: {
+      DRAFT: "Unfinished draft",
+      PHOTO_UPLOADED: "Unfinished draft",
+      PHOTO_VALIDATING: "Unfinished draft",
+      PHOTO_REJECTED: "Needs another photo",
+      PHOTO_APPROVED: "Unfinished draft",
+      PACKAGE_SELECTED: "Unfinished draft",
       CHECKOUT_PENDING: "Awaiting payment",
       PAYMENT_FAILED: "Payment failed",
       PAID: "In progress",

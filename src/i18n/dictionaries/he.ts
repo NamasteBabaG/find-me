@@ -248,8 +248,11 @@ export const he: Dictionary = {
     },
     scenes: {
       title: "העולמות שבחבילה שלכם",
-      lead: "אלו העולמות הכלולים בחבילה שנבחרה, לפי הסדר המוצג. בכל עולם תשעה מקומות.",
+      lead: "אלו העולמות הכלולים בחבילה שנבחרה, לפי סדר המשחק. בכל עולם תשעה מקומות.",
       counter: "{picked} מתוך {want} עולמות בחבילה",
+      included: "בחבילה שלכם",
+      locked: "נפתח בחבילה גדולה יותר",
+      change: "להחלפת החבילה",
       next: "ממשיכים לסיכום",
     },
     checkout: {
@@ -353,6 +356,12 @@ export const he: Dictionary = {
     status: "סטטוס",
     manage: "ניהול המשחק",
     statuses: {
+      DRAFT: "טיוטה שלא הושלמה",
+      PHOTO_UPLOADED: "טיוטה שלא הושלמה",
+      PHOTO_VALIDATING: "טיוטה שלא הושלמה",
+      PHOTO_REJECTED: "צריך תמונה אחרת",
+      PHOTO_APPROVED: "טיוטה שלא הושלמה",
+      PACKAGE_SELECTED: "טיוטה שלא הושלמה",
       CHECKOUT_PENDING: "ממתין לתשלום",
       PAYMENT_FAILED: "התשלום נכשל",
       PAID: "בהכנה",

@@ -335,8 +335,10 @@
 .create { display: flex; flex-direction: column; gap: var(--space-4); }
 .create__head { animation: fm-fade-up var(--dur-3) var(--ease-out) both;  display: flex; flex-direction: column; gap: var(--space-2); align-items: center; text-align: center; max-width: 64ch; margin-inline: auto; }
 .create__title { font-size: var(--fs-700); line-height: var(--lh-700); letter-spacing: -0.02em; }
-.create__actions { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.create__actions--end { justify-content: flex-end; }
+/* The way on is in the middle of the step, where the eye already is, with the
+   way back quiet underneath it. It used to sit off in a corner of the card. */
+.create__actions { display: flex; flex-direction: column-reverse; align-items: center; justify-content: center; gap: var(--space-1); }
+.create__actions > .fm-btn, .create__actions > button { flex: none; }
 /* A panel that holds the consent and the buttons it unlocks, as one block. */
 .create__actions--panel { flex-direction: column; align-items: stretch; gap: var(--space-2); }
 .create__actions--row { width: 100%; }
@@ -345,8 +347,10 @@
 /* The long age note runs under both fields, so the row stays level. */
 .create__child-note { grid-column: 1 / -1; margin-top: calc(var(--space-1) * -1); }
 @media (min-width: 721px) { .create__child-fields { grid-template-columns: minmax(0, 1fr) minmax(200px, 240px); } }
-/* The age is a choice, not the name: one size down, so "Choose age" fits its column instead of being cut mid-word. */
-.create__child-fields select.fm-input--lg { font-size: var(--fs-400); line-height: var(--lh-400); text-align: center; }
+/* An answer, not a headline. At 32px centred and black, the example name read
+   as the page's title and the age's "Choose age" was cut in half. */
+.create__child-fields .fm-input { min-height: var(--control-h); font-family: var(--font-display); font-weight: 600; font-size: var(--fs-300); line-height: var(--lh-300); text-align: start; }
+.create__child-fields .fm-input::placeholder { font-weight: 500; color: var(--ink-3); }
 .create__actions--single { justify-content: stretch; }
 .create__actions--single > * { flex: 1; }
 /* A phone on its side: 375px tall, and the header, dots and title used to take
@@ -398,10 +402,16 @@
 /* Photo uploader */
 .uploader { display: flex; flex-direction: column; gap: var(--space-3); align-items: center; }
 .uploader__error { width: 100%; }
-/* Parental consent: the whole label is the tap target (≥ 48px). */
-.uploader__consent { display: flex; gap: var(--space-2); align-items: center; width: 100%; min-height: var(--touch-min); padding: var(--space-1) var(--space-2); border-radius: var(--radius-2); background: var(--white); box-shadow: inset 0 0 0 2px var(--line); font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); text-align: start; cursor: pointer; }
-.uploader__consent:has(:checked) { box-shadow: inset 0 0 0 2px var(--sea); color: var(--ink); }
-.uploader__consent input { width: var(--space-3); height: var(--space-3); flex-shrink: 0; margin: 0; accent-color: var(--sea); cursor: pointer; }
+/* Parental consent: the whole label is the tap target (≥ 48px), and the tick
+   is drawn by the product — the browser's blue square was the one control on
+   the screen that belonged to somebody else. */
+.uploader__consent { position: relative; display: flex; gap: var(--space-2); align-items: center; width: 100%; min-height: var(--touch-min); padding: var(--space-2); border-radius: var(--radius-2); background: var(--white); box-shadow: inset 0 0 0 2px var(--line); font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); text-align: start; cursor: pointer; transition: box-shadow var(--dur-2), color var(--dur-2); }
+.uploader__consent:hover { box-shadow: inset 0 0 0 2px var(--ink-4); }
+.uploader__consent:has(:checked) { box-shadow: inset 0 0 0 2px var(--sun); color: var(--ink); }
+.uploader__consent:has(:focus-visible) { outline: 3px solid var(--focus); outline-offset: 3px; }
+.uploader__consent input { position: absolute; opacity: 0; width: 0; height: 0; }
+.uploader__tick { flex-shrink: 0; display: grid; place-items: center; width: var(--space-3); height: var(--space-3); border-radius: var(--radius-1); background: var(--white); box-shadow: inset 0 0 0 2px var(--ink-4); color: transparent; font-family: var(--font-display); font-weight: 900; font-size: var(--fs-100); line-height: 1; transition: background var(--dur-1), box-shadow var(--dur-1), color var(--dur-1), transform var(--dur-2) var(--ease-pop); }
+.uploader__consent:has(:checked) .uploader__tick { background: var(--sun); box-shadow: inset 0 0 0 2px var(--sun-deep); color: var(--ink); transform: scale(1.08); }
 .dropzone { width: 100%; border: 3px dashed var(--ink-4); border-radius: var(--radius-4); padding: var(--space-6) var(--space-3); text-align: center; display: flex; flex-direction: column; gap: var(--space-2); align-items: center; background: var(--white); cursor: pointer; transition: border-color var(--dur-1), background var(--dur-1); min-height: var(--space-16); }
 .dropzone:hover, .dropzone--over { border-color: var(--sea); background: var(--sea-soft); }
 @media (max-width: 720px) { .dropzone { padding: var(--space-4) var(--space-2); min-height: 0; } .uploader { gap: var(--space-2); } }
@@ -413,19 +423,24 @@
 .tips__list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-0-5) var(--space-3); grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .tips__list li { display: flex; gap: var(--space-1); align-items: center; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); }
 @media (max-width: 480px) { .tips__list { grid-template-columns: 1fr; } }
-.cropper { animation: fm-pop-in var(--dur-3) var(--ease-pop); position: relative; width: min(80vw, 320px); height: min(80vw, 320px); border-radius: var(--radius-pill); overflow: hidden; background: var(--ink); touch-action: none; cursor: grab; box-shadow: var(--sticker-outline), var(--shadow-3); }
+/* The crop is a sticker being made: the circle wears the product's white rim
+   on a paper ground, with a dashed guide ring inside it. */
+.cropper__lead { max-width: 34ch; margin-inline: auto; }
+.cropper { animation: fm-pop-in var(--dur-3) var(--ease-pop); position: relative; width: min(80vw, 320px); height: min(80vw, 320px); border-radius: var(--radius-pill); overflow: hidden; background: var(--paper-2); touch-action: none; cursor: grab; box-shadow: 0 0 0 8px var(--white), 0 0 0 10px var(--sun-soft), var(--shadow-3); }
+.cropper:active { cursor: grabbing; }
+.cropper:focus-visible { outline: 3px solid var(--focus); outline-offset: 12px; }
 .cropper img { position: absolute; left: 0; top: 0; transform-origin: 0 0; user-select: none; -webkit-user-drag: none; max-width: none; }
-.cropper__ring { position: absolute; inset: 0; border-radius: var(--radius-pill); box-shadow: inset 0 0 0 4px rgba(255, 255, 255, 0.8); pointer-events: none; }
+.cropper__ring { position: absolute; inset: var(--space-2); border-radius: var(--radius-pill); border: 2px dashed rgba(255, 255, 255, 0.85); box-shadow: 0 0 0 1px rgba(23, 22, 43, 0.12); pointer-events: none; }
 /* The zoom slider in the product's own clothes: a paper track, a white thumb ringed in sea, a small face and a big one at the ends. */
 .cropper__zoom-field { align-items: center; }
 .cropper__zoom-row { display: flex; align-items: center; gap: var(--space-1); width: min(80vw, 320px); }
 .cropper__zoom-glyph { font-size: var(--fs-100); line-height: 1; flex-shrink: 0; }
 .cropper__zoom-glyph--big { font-size: var(--fs-400); }
-.cropper__zoom { flex: 1; min-width: 0; height: var(--space-1); margin: 0; border-radius: var(--radius-pill); background: var(--paper-3); appearance: none; -webkit-appearance: none; cursor: pointer; accent-color: var(--sea); }
+.cropper__zoom { flex: 1; min-width: 0; height: var(--space-1); margin: 0; border-radius: var(--radius-pill); background: var(--paper-3); appearance: none; -webkit-appearance: none; cursor: pointer; accent-color: var(--sun-deep); }
 .cropper__zoom::-webkit-slider-runnable-track { height: var(--space-1); border-radius: var(--radius-pill); background: var(--paper-3); }
 .cropper__zoom::-moz-range-track { height: var(--space-1); border-radius: var(--radius-pill); background: var(--paper-3); }
-.cropper__zoom::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: var(--space-3); height: var(--space-3); margin-top: calc((var(--space-3) - var(--space-1)) / -2); border-radius: var(--radius-pill); background: var(--white); box-shadow: 0 0 0 3px var(--sea), var(--shadow-1); cursor: grab; transition: transform var(--dur-1) var(--ease-out); }
-.cropper__zoom::-moz-range-thumb { width: var(--space-3); height: var(--space-3); border: 0; border-radius: var(--radius-pill); background: var(--white); box-shadow: 0 0 0 3px var(--sea), var(--shadow-1); cursor: grab; }
+.cropper__zoom::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: var(--space-3); height: var(--space-3); margin-top: calc((var(--space-3) - var(--space-1)) / -2); border-radius: var(--radius-pill); background: var(--sun); box-shadow: inset 0 0 0 2px var(--white), 0 0 0 2px var(--sun-deep), var(--shadow-1); cursor: grab; transition: transform var(--dur-1) var(--ease-out); }
+.cropper__zoom::-moz-range-thumb { width: var(--space-3); height: var(--space-3); border: 0; border-radius: var(--radius-pill); background: var(--sun); box-shadow: inset 0 0 0 2px var(--white), 0 0 0 2px var(--sun-deep), var(--shadow-1); cursor: grab; }
 .cropper__zoom:active::-webkit-slider-thumb { transform: scale(1.12); cursor: grabbing; }
 .cropper__zoom:focus-visible { outline: 3px solid var(--focus); outline-offset: 6px; }
 
@@ -450,15 +465,17 @@
 /* Scene picker */
 .picker { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
 .pick { position: relative; display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-1); text-align: start; }
-/* The package is full: a world that cannot be added any more steps back, instead of looking as ready as the chosen ones. */
-.pick:disabled { opacity: 0.55; cursor: default; }
-.pick:disabled:hover { transform: none; box-shadow: var(--shadow-1); }
 /* The world paintings are 3:2; cropping them to 16:10 took the sky off every one. */
 .pick img { border-radius: var(--radius-3); aspect-ratio: 3 / 2; object-fit: cover; width: 100%; }
 .pick__name { font-family: var(--font-display); font-weight: 800; font-size: var(--fs-300); line-height: var(--lh-300); padding-inline: var(--space-1); }
 .pick__tag { font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-3); padding-inline: var(--space-1); padding-bottom: var(--space-1); }
-.pick__check { position: absolute; top: var(--space-2); inset-inline-end: var(--space-2); width: var(--space-4); height: var(--space-4); border-radius: var(--radius-pill); background: var(--white); box-shadow: var(--shadow-1); display: grid; place-items: center; font-weight: 700; color: var(--white); }
-.fm-card--selected .pick__check { background: var(--sea); animation: fm-pop-in var(--dur-3) var(--ease-pop); }
+.pick__check { position: absolute; top: var(--space-2); inset-inline-end: var(--space-2); width: var(--space-4); height: var(--space-4); border-radius: var(--radius-pill); background: var(--white); box-shadow: var(--shadow-1); display: grid; place-items: center; font-family: var(--font-display); font-weight: 900; color: var(--ink-3); }
+.fm-card--selected .pick__check { background: var(--sea); color: var(--white); animation: fm-pop-in var(--dur-3) var(--ease-pop); }
+/* A world beyond this package is not a dead card: it says what would open it. */
+.pick--locked { opacity: 0.68; }
+.pick--locked img { filter: saturate(0.55); }
+.pick__state { align-self: flex-start; margin: var(--space-0-5) var(--space-1) var(--space-1); padding: 2px var(--space-2); border-radius: var(--radius-pill); font-family: var(--font-display); font-weight: 700; font-size: var(--fs-50); line-height: var(--lh-50); background: var(--paper-2); color: var(--ink-3); }
+.pick--in .pick__state { background: var(--leaf-soft); color: var(--leaf-deep); }
 .pick__counter { position: sticky; top: var(--space-12); z-index: var(--z-ui); }
 
 /* Summary */
@@ -563,17 +580,38 @@
 }
 
 /* ═══ Library ═══ */
-.library { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
-.lib { display: flex; flex-direction: column; gap: var(--space-2); transition: transform var(--dur-2) var(--ease-out), box-shadow var(--dur-2) var(--ease-out); animation: fm-fade-up var(--dur-3) var(--ease-out) both; }
+/* A shelf of games, each one a card with the child on its cover. The old card
+   was a flat lavender band, a title, a grey status chip and two grey buttons:
+   nothing said which of them was ready to play. */
+.library__head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; padding-bottom: var(--space-3); border-bottom: 1px solid var(--line); }
+.library__who { display: flex; flex-direction: column; gap: var(--space-0-5); min-width: 0; }
+.library__head-actions { display: flex; align-items: center; gap: var(--space-1); }
+@media (max-width: 720px) { .library__head-actions { width: 100%; } .library__head-actions .fm-btn { flex: 1; } }
+.library { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.lib { position: relative; display: flex; flex-direction: column; background: var(--white); border-radius: var(--radius-4); box-shadow: var(--shadow-1); overflow: hidden; transition: transform var(--dur-2) var(--ease-out), box-shadow var(--dur-2) var(--ease-out); animation: fm-fade-up var(--dur-3) var(--ease-out) both; }
 .lib:hover { transform: translateY(-4px); box-shadow: var(--shadow-2); }
 .library > .lib:nth-child(2) { animation-delay: 60ms; } .library > .lib:nth-child(3) { animation-delay: 120ms; } .library > .lib:nth-child(4) { animation-delay: 180ms; } .library > .lib:nth-child(5) { animation-delay: 240ms; } .library > .lib:nth-child(n+6) { animation-delay: 300ms; }
-.lib__cover img:not(.fm-sticker) { transition: transform var(--dur-3) var(--ease-out); }
-.lib:hover .lib__cover img:not(.fm-sticker) { transform: scale(1.04); }
-.lib__cover { position: relative; border-radius: var(--radius-3); overflow: hidden; aspect-ratio: 16 / 9; background: var(--grad-lavender); display: grid; place-items: center; }
-.lib__cover img.fm-sticker { width: 96px; height: 96px; }
+/* The cover carries the child, lit from behind in the tone of its state. */
+.lib__cover { position: relative; aspect-ratio: 16 / 10; display: grid; place-items: center; background: radial-gradient(circle at 50% 38%, var(--lib-glow, var(--lavender-soft)) 0%, var(--paper-2) 72%); }
+.lib--ready .lib__cover { --lib-glow: var(--sun-soft); }
+.lib--working .lib__cover { --lib-glow: var(--sea-soft); }
+.lib--draft .lib__cover { --lib-glow: var(--paper-3); }
+.lib__face { width: 112px; height: 112px; transition: transform var(--dur-3) var(--ease-pop); }
+.lib:hover .lib__face { transform: scale(1.06) rotate(-2deg); }
+.lib__wrap { font-size: var(--fs-800); line-height: 1; filter: drop-shadow(0 6px 10px rgba(23, 22, 43, 0.2)); }
+/* The state, on the cover's corner, where a shelf is read at a glance. */
+.lib__state { position: absolute; top: var(--space-2); inset-inline-start: var(--space-2); display: inline-flex; align-items: center; gap: var(--space-0-5); min-height: var(--space-4); padding-inline: var(--space-2); border-radius: var(--radius-pill); background: var(--white); box-shadow: var(--shadow-1); font-family: var(--font-display); font-weight: 700; font-size: var(--fs-50); line-height: var(--lh-50); color: var(--ink-2); }
+.lib__state::before { content: ""; width: var(--space-1); height: var(--space-1); border-radius: var(--radius-pill); background: var(--ink-4); }
+.lib__state--ready { color: var(--leaf-deep); }
+.lib__state--ready::before { background: var(--leaf); }
+.lib__state--working { color: var(--sea-deep); }
+.lib__state--working::before { background: var(--sea); animation: fm-pulse 1.6s var(--ease-in-out) infinite; }
+.lib__body { display: flex; flex-direction: column; gap: var(--space-0-5); padding: var(--space-3) var(--space-3) var(--space-1); flex: 1; }
 .lib__title { font-size: var(--fs-400); line-height: var(--lh-400); }
 .lib__meta { color: var(--ink-3); font-size: var(--fs-100); line-height: var(--lh-100); }
-.lib__actions { display: flex; gap: var(--space-1); flex-wrap: wrap; }
+.lib__actions { display: flex; align-items: center; gap: var(--space-1); padding: var(--space-1) var(--space-3) var(--space-3); }
+.lib__go { flex: 1; }
+@media (prefers-reduced-motion: reduce) { .lib__state--working::before { animation: none; } }
 
 /* ═══ Admin ═══ */
 .admin { display: flex; flex-direction: column; gap: var(--space-3); }

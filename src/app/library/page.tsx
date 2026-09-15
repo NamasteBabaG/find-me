@@ -1,4 +1,6 @@
 import { gameShape } from "@/services/world-catalog.service";
+import { isEditableDraft } from "@/domain/order-state";
+import { statusOf } from "@/services/game-status";
 import { gameShapeLabel } from "@/i18n/game-shape";
 import Link from "next/link";
 import { getContainer } from "@/services/container";
@@ -41,12 +43,12 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
     <>
       <SiteHeader user={user} isAdmin={isAdmin} />
       <main className="fm-container fm-section fm-stack fm-stack--4">
-        <div className="fm-row fm-row--between">
-          <div>
+        <header className="library__head">
+          <div className="library__who">
             <h1>{l.title}</h1>
             <p className="fm-muted">{user.email}</p>
           </div>
-          <div className="fm-row">
+          <div className="library__head-actions">
             <LinkButton href="/create">{l.createMore}</LinkButton>
             <form action={logoutAction}>
               <button type="submit" className="fm-btn fm-btn--ghost">
@@ -54,7 +56,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
               </button>
             </form>
           </div>
-        </div>
+        </header>
         {params.deleted === "1" ? <Notice kind="success">{l.deleted}</Notice> : null}
         {games.length === 0 ? (
           <div className="fm-card fm-card--pad-6 fm-center fm-stack fm-stack--3">
@@ -66,39 +68,45 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
           </div>
         ) : (
           <div className="library">
-            {games.map((g) => (
-              <article key={g.id} className="fm-card lib">
-                <div className="lib__cover">
-                  {g.avatarAssetId ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={`/api/assets/${g.avatarAssetId}`} alt="" className="fm-sticker" width={96} height={96} />
-                  ) : (
-                    <span style={{ fontSize: "var(--fs-700)" }} aria-hidden>
-                      🎁
-                    </span>
-                  )}
-                </div>
-                <div>
-                  <h2 className="lib__title">{g.title}</h2>
-                  <p className="lib__meta">{tf(l.meta, { pkg: pick(g.packageName, locale), shape: gameShapeLabel(t, gameShape(g.sceneVersions)), date: formatDate(g.createdAt, locale) })}</p>
-                </div>
-                <span className={`fm-badge ${g.playable ? "fm-badge--leaf" : "fm-badge--outline"}`}>{l.statuses[g.status] ?? g.status}</span>
-                <div className="lib__actions">
-                  {g.playUrl ? (
-                    <LinkButton href={g.playUrl} size="sm">
-                      {l.play}
-                    </LinkButton>
-                  ) : (
-                    <LinkButton href={`/creating/${g.id}`} size="sm" variant="secondary">
-                      {l.status}
-                    </LinkButton>
-                  )}
-                  <Link href={`/library/${g.id}`} className="fm-btn fm-btn--secondary fm-btn--sm">
-                    {l.manage}
-                  </Link>
-                </div>
-              </article>
-            ))}
+            {games.map((g) => {
+              // Three states a parent cares about, not twenty-two the machine
+              // has: it is ready to open, it is being made, or it was never
+              // finished. A raw PACKAGE_SELECTED used to be printed as-is.
+              const tone = g.playable ? "ready" : isEditableDraft(statusOf(g)) ? "draft" : "working";
+              return (
+                <article key={g.id} className={`lib lib--${tone}`}>
+                  <div className="lib__cover">
+                    {g.avatarAssetId ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={`/api/assets/${g.avatarAssetId}`} alt="" className="fm-sticker lib__face" width={112} height={112} />
+                    ) : (
+                      <span className="lib__wrap" aria-hidden>
+                        🎁
+                      </span>
+                    )}
+                    <span className={`lib__state lib__state--${tone}`}>{l.statuses[g.status] ?? g.status}</span>
+                  </div>
+                  <div className="lib__body">
+                    <h2 className="lib__title">{g.title}</h2>
+                    <p className="lib__meta">{tf(l.meta, { pkg: pick(g.packageName, locale), shape: gameShapeLabel(t, gameShape(g.sceneVersions)), date: formatDate(g.createdAt, locale) })}</p>
+                  </div>
+                  <div className="lib__actions">
+                    {g.playUrl ? (
+                      <LinkButton href={g.playUrl} size="sm" className="lib__go">
+                        {l.play}
+                      </LinkButton>
+                    ) : (
+                      <LinkButton href={`/creating/${g.id}`} size="sm" variant="secondary" className="lib__go">
+                        {l.status}
+                      </LinkButton>
+                    )}
+                    <Link href={`/library/${g.id}`} className="fm-btn fm-btn--ghost fm-btn--sm">
+                      {l.manage}
+                    </Link>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         )}
       </main>
