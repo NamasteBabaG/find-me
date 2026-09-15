@@ -586,6 +586,7 @@ export const he: Dictionary = {
       hintBroad: "חפשו בתוך האזור המסומן",
       hintPrecise: "הנה זה — לחצו כדי לאסוף",
       stopSeeking: "חוזרים לחיפוש",
+      collapse: "מקטינים את מגש התגליות",
       listen: "מקריאים את הרמז",
       collectedAria: "{name} — נאסף",
       pending: "{name} — עדיין מתחבא",

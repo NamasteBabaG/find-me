@@ -18,7 +18,7 @@ async function asset(file:string) {
 async function main(){
  const raw=JSON.parse(readFileSync('content/demo/beach-v1-plan.json','utf8'));
  const board=LocalPatchBoardSchema.parse(raw.patchBoard),plan=ReadyAdventureBoardSchema.parse(raw.plan);
- const review=JSON.parse(readFileSync('content/demo/beach-v1-review.json','utf8')) as {accepted:boolean;boardSha256:string;patches:Record<string,{sha256:string;geometry:ReviewedChildGeometry}>};
+ const review=JSON.parse(readFileSync('content/demo/beach-v1-review.json','utf8')) as {accepted:boolean;boardSha256:string;patches:Record<string,{sha256:string;geometry:ReviewedChildGeometry;repair?:{kind:'foot-occlusion';sourceSha256:string;accepted:boolean}}>};
  if(!review.accepted||review.boardSha256!==sha(readFileSync(board.art))||review.boardSha256!==plan.art.sha256)throw new Error('Source-bound visual release review required');
  const identityReview=JSON.parse(readFileSync(`${dir}/identity-review.json`,'utf8'));
  if(!identityReview.accepted||identityReview.identitySha256!==sha(readFileSync(`${dir}/identity.png`)))throw new Error('Identity not reviewed');
@@ -26,8 +26,15 @@ async function main(){
  const avatar=await asset(`${dir}/avatar.png`),identity=await asset(`${dir}/identity.png`);
  const patchUrls:Record<string,string>={},geometry:Record<string,ReviewedChildGeometry>={};
  for(const hide of board.hides){
-  const file=`${dir}/${hide.id}.png`,r=review.patches[hide.id];
+  let file=`${dir}/${hide.id}.png`;
+  const r=review.patches[hide.id];
   const technical=JSON.parse(readFileSync(`${dir}/${hide.id}.json`,'utf8'));
+  if(r?.repair){
+   if(hide.id!=='beach-library'||r.repair.kind!=='foot-occlusion'||!r.repair.accepted||r.repair.sourceSha256!==sha(readFileSync(file)))throw new Error('Repair source review missing');
+   const repair=JSON.parse(readFileSync(`${dir}/beach-library-occlusion.json`,'utf8'));
+   if(repair.sourceSha256!==r.repair.sourceSha256||repair.sha256!==r.sha256||repair.changedOutside!==0)throw new Error('Repair integrity failed');
+   file=`${dir}/beach-library-occlusion.png`;
+  }
   if(!r||r.sha256!==sha(readFileSync(file))||!technical.accepted||technical.costUnknown)throw new Error(`Patch review missing: ${hide.id}`);
   patchUrls[hide.id]=await asset(file);geometry[hide.id]=r.geometry;
  }

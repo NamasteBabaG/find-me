@@ -88,6 +88,30 @@ describe("the collection on a phone", () => {
 });
 
 describe("the collection on a wide screen", () => {
+  it("folds the strip during camera guidance, docks opposite the item and keeps all six available", () => {
+    wide(true);
+    const rightBoard = { ...board, discoveries: board.discoveries.map((d, i) => i === 0 ? { ...d, hitRect: { x: 0.75, y: 0.88, w: 0.04, h: 0.05 } } : d) };
+    const props = { ...base, board: rightBoard, collectedIds: [], selectedId: rightBoard.discoveries[0]!.id, onSelect: vi.fn(), onHint: vi.fn() };
+    const view = render(<GameI18nProvider locale="en"><Collection {...props} hintLevel={1} /></GameI18nProvider>);
+    expect(view.container.querySelector('.collect__strip')).not.toBeNull();
+    view.rerender(<GameI18nProvider locale="en"><Collection {...props} hintLevel={2} /></GameI18nProvider>);
+    expect(view.container.querySelector('.collect__strip')).toBeNull();
+    expect(view.container.querySelector('.collect--dock-left')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Discoveries: 0 of 6 collected' }));
+    expect(view.container.querySelectorAll('.collect__grid .sticker')).toHaveLength(6);
+  });
+
+  it("can fold the collection manually without changing selection or progress", () => {
+    wide(true);
+    const onSelect = vi.fn();
+    const view = render(<GameI18nProvider locale="en"><Collection {...base} collectedIds={[]} onSelect={onSelect} onHint={vi.fn()} /></GameI18nProvider>);
+    fireEvent.click(view.container.querySelector<HTMLButtonElement>('.collect__fold')!);
+    expect(view.container.querySelector('.collect__strip')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Discoveries: 0 of 6 collected' }));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
   it("keeps the six stickers in view, ghosted until found, and a tap on one starts looking for it", () => {
     wide(true);
     const onSelect = vi.fn();

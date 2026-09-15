@@ -589,6 +589,7 @@ export const en = {
       hintBroad: "Look inside the marked area",
       hintPrecise: "Here it is — tap to collect",
       stopSeeking: "Back to the search",
+      collapse: "Minimise discoveries",
       listen: "Read the hint aloud",
       collectedAria: "{name} — collected",
       pending: "{name} — still hiding",
