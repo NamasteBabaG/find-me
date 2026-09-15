@@ -191,7 +191,25 @@
 .scene__title { display: inline-flex; align-items: center; gap: var(--space-1); background: rgba(255, 255, 255, 0.72); backdrop-filter: blur(10px); border-radius: var(--radius-pill); padding-inline: var(--space-2); min-height: var(--space-5); font-family: var(--font-display); font-weight: 600; font-size: var(--fs-100); line-height: var(--lh-100); box-shadow: var(--shadow-1); }
 .scene__count { color: var(--ink-3); }
 
-.viewport { position: absolute; inset: 0; overflow: hidden; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; background: var(--scene-sky, var(--sea-soft)); }
+/* The lift lives HERE, on the window, and not on the picture inside it — two
+   reasons. It covers the sky, the board, the foreground and every child on the
+   board in one pass, so a child painted into the world is lifted by exactly
+   what the world is lifted by and never separates from it by being brighter.
+   And the window is a fixed size while the board is not, so the cost of the
+   filter is the size of the screen and not the size of the world, however far
+   a child zooms in. The cloud curtain is outside it and stays white. */
+.viewport { position: absolute; inset: 0; overflow: hidden; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; background: var(--scene-sky, var(--sea-soft)); filter: var(--lit-art); }
+/* And the same lift wherever a board is shown as a picture of itself: the
+   hub's islands, the map's stops, the bag's covers, the album's postcards.
+   A board that is one picture in play and a duller one on the map reads as two
+   different places. The postcard's child rides its parent's filter, exactly as
+   it does on the board. The collection's stickers are left out: they are grey
+   until they are found, and that grey is their state, not their colour. */
+.island__thumb img,
+.wmap__dot img,
+.wmap__go-thumb img,
+.loot__image img,
+.postcard__picture { filter: var(--lit-art); }
 .viewport--dragging { cursor: grabbing; }
 .stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
 .stage__layer { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }

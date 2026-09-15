@@ -48,18 +48,44 @@
 /* 3:2 like the board, so the whole map fits the screen with nothing cut or letterboxed (Guy). */
 .hero4__dev--tablet { left: 0; top: 116px; width: 704px; height: 472px; animation-delay: 8s; }
 @keyframes hero4-cyc { 0% { opacity: 0; transform: translateY(24px) scale(0.96); } 3%, 47% { opacity: 1; transform: translateY(0) scale(1); } 50%, 100% { opacity: 0; transform: translateY(-24px) scale(0.96); } }
-.hero4__frame { position: absolute; background: var(--ink); padding: var(--space-1); box-shadow: var(--shadow-3); }
+/* The case: dark, with a rim of light along its top edge where a real one
+   catches the room, and the screen's own light spilling onto the page around
+   it. The bloom is a shadow and not a blurred box, so it follows the device's
+   real silhouette — its corners and its tilt — instead of a rectangle. */
+.hero4__frame { position: absolute; background: var(--ink); padding: var(--space-1); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), inset 0 0 0 1px rgba(255, 255, 255, 0.1), var(--shadow-3), var(--lit-bloom); }
 .hero4__frame--phone { inset: 0; border-radius: var(--radius-5); }
 .hero4__frame--tablet { inset: 0; border-radius: var(--radius-4); }
 /* --ui: how big the game's chrome is on this screen. A tablet's HUD is a small
    corner of its screen and a phone's fills its top; a full-size HUD inside a
    small screen read as a poster, not a device (Guy). Every size inside a
    screen is a token times this factor, so the flight measurement stays exact. */
-.hero4__screen { --ui: 1; position: absolute; inset: var(--space-1); overflow: hidden; background: var(--sea-soft); }
+/* `isolation` keeps the glass sheen's blend inside the screen: without it the
+   screen layer blends down onto the case and the page behind it. */
+.hero4__screen { --ui: 1; position: absolute; inset: var(--space-1); overflow: hidden; isolation: isolate; background: var(--sea-soft); }
 .hero4__screen--phone { --ui: 0.8; border-radius: calc(var(--radius-5) - var(--space-1)); }
 .hero4__screen--tablet { --ui: 0.62; border-radius: calc(var(--radius-4) - var(--space-1)); }
 .hero4__screen picture { display: contents; }
-.hero4__art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; user-select: none; }
+.hero4__art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; user-select: none; filter: var(--lit-art); }
+/* The glass: a sheen off the top-left corner and the panel's own backlight,
+   under the game's chrome (z-index 3) so no HUD is washed out by it. */
+.hero4__screen::before { content: ""; position: absolute; inset: 0; z-index: 2; background: var(--lit-glass); mix-blend-mode: screen; pointer-events: none; }
+/* The lit edge, and the shade a panel keeps in its bottom corners. */
+.hero4__screen::after { content: ""; position: absolute; inset: 0; z-index: 2; border-radius: inherit; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.72), inset 0 -36px 44px -34px rgba(23, 22, 43, 0.2); pointer-events: none; }
+
+/* Board art shown OUTSIDE a device gets the same lift, or the same place is
+   two different pictures on one page: a punchy beach inside the hero's tablet
+   and a duller one on the world card under it. Covered here are the worlds on
+   the home page, the crop in the transformation strip, the illustrated child
+   beside it, and the worlds a parent picks from in the wizard.
+   NOT covered, on purpose: the photograph a parent uploads — that one is
+   theirs and we do not grade it — and the greyed "coming soon" and locked
+   states, whose own filters below outrank this one because grey there is a
+   state and not a colour. */
+.world__img img,
+.tf-world__base,
+.tf-world__patch,
+.tf-portrait img,
+.pick img { filter: var(--lit-art); }
 
 /* Readable game preview, not a squeezed screenshot. The chrome flows as a
    layout: on narrow screens the rail starts AFTER the HUD's actual height.
@@ -115,7 +141,7 @@
 @keyframes hero4-arc { 0%, 29% { opacity: 0; transform: translateY(0) scale(0.4) rotate(0deg); } 31% { opacity: 1; transform: translateY(-10px) scale(1.5) rotate(15deg); animation-timing-function: ease-out; } 40.5% { transform: translateY(calc(-120px * var(--ui))) scale(1.25) rotate(190deg); animation-timing-function: ease-in; } 50% { opacity: 1; transform: translateY(0) scale(var(--fs, 0.5)) rotate(360deg); } 50.01%, 100% { opacity: 0; transform: translateY(0) scale(var(--fs, 0.5)) rotate(360deg); } }
 
 /* The phone-sized card: only under 721px, where the three devices are gone. */
-.hero4__card { display: none; position: relative; width: 100%; border-radius: var(--radius-3); overflow: hidden; background: var(--sea-soft); box-shadow: var(--shadow-3); }
+.hero4__card { display: none; position: relative; width: 100%; border-radius: var(--radius-3); overflow: hidden; background: var(--sea-soft); box-shadow: var(--shadow-3), var(--lit-bloom); }
 .hero4__screen--card { --ui: 0.85; inset: 0; border-radius: 0; }
 
 /* Held still for anyone who reads motion as noise: the tablet, the child found. */
@@ -185,7 +211,14 @@
 .demo__head { display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--space-2); margin-bottom: var(--space-5); }
 .demo__title { font-size: var(--fs-800); line-height: var(--lh-800); font-weight: 900; letter-spacing: -0.02em; color: var(--ink); }
 .demo__lead { color: var(--ink-2); font-size: var(--fs-300); line-height: var(--lh-300); max-width: 52ch; }
-.demo__frame { position: relative; width: 100%; aspect-ratio: var(--demo-art-ratio, 3 / 2); border-radius: var(--radius-3); overflow: hidden; background: var(--night); box-shadow: 0 0 0 6px var(--white), var(--shadow-3); }
+/* The same lit panel as the hero's devices, minus the glass sheen: this one is
+   played on, and a glare over a corner of a search game hides whatever is
+   under it. The board's own lift (`--lit-art`, on the viewport) and the light
+   the panel throws onto the yellow band around it carry it instead. The bloom
+   is white here and not `--lit-bloom`: a warm glow on a yellow band is
+   invisible, and what has to read is that the panel is brighter than the wall
+   it is hung on. */
+.demo__frame { position: relative; width: 100%; aspect-ratio: var(--demo-art-ratio, 3 / 2); border-radius: var(--radius-3); overflow: hidden; background: var(--night); box-shadow: 0 0 0 6px var(--white), var(--shadow-3), 0 0 72px rgba(255, 255, 255, 0.72); }
 @media (max-width: 720px) { .demo__frame { border-radius: var(--radius-2); } }
 /* Give children a real search window, not a postcard scaled to phone width. */
 @media (max-width: 720px) and (orientation: portrait) {

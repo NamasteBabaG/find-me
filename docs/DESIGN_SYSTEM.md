@@ -27,6 +27,7 @@ v1 ("cream paper + Fredoka + hard 4px shadows") was rejected as dated. v2 aims a
 | Gradients  | `--grad-sun` · `--grad-coral` · `--grad-aqua` · `--grad-lavender` · `--grad-night` · `--grad-rainbow`     |
 | Type       | Rubik 400–900 for the site (`--font-display` = `--font-body`); Fredoka for kid UI (`--font-kid`). Scale 12/16 · 14/24 · 16/24 · 20/32 · 24/32 · 32/40 · 40/48 · 48/56 · 64/72 · 88/96 (`--fs-50 … --fs-900`), stepped down at 960px and 600px. |
 | Motion     | `--ease-pop` · `--ease-out` · `--ease-in-out` · `--dur-1..4` (150/300/600/1200ms)                          |
+| Lit screen | `--lit-art` (the lift a display gives matte art) · `--lit-glass` (the sheen on the glass) · `--lit-bloom` (the light a screen throws on the page) |
 
 ## Primitives
 
@@ -108,3 +109,11 @@ Sits immediately after the hero, before the live demo. Three cards: the prepared
 
 - **The account is always in the header.** The library link is never hidden: the words on a wide header, the mark alone (`.fm-header__account-icon`, a stroke glyph in the toolbar's language) below 860px, with its name on the link so it is never lost. Every header control is `--touch-min` (48px) on a phone — the adult floor, which the 40px `--sm` row was under.
 - **The board can be searched with a keyboard.** The picture is focusable (`tabIndex=0`, `role="application"`, instructions on `aria-describedby`), and the arrows walk a gold crosshair (`.scene__cursor`) over it: 24px on screen per press, 96px with Shift, so the pace is the same at any zoom. Enter looks where it stands, through the same hit-testing a tap uses; Escape and blur put it away; the camera follows the crosshair to the edge of the view. Hiding spots are never tab stops — a list of them would hand over the answer.
+
+## A screen that is on (2026-09-15)
+
+- **The boards are painted matte, and a matte picture on a screen reads flat.** Three tokens fix it and are always used together: `--lit-art` lifts the art, `--lit-glass` is the sheen on the glass, `--lit-bloom` is the light the panel throws on the page. Measured on the live page: the hero's tablet gains 9.0% luminance and 14.3% saturation, the demo board 5.4% and 21.4%, with **no new blown highlights** (0.56% → 0.57% and 0.13% → 0.13%).
+- **The lift goes on the window, never on the picture inside it.** `.viewport` carries `--lit-art`, so sky, board, foreground and every child on the board are lifted by the same amount in one pass — a child painted into a world can never separate from it by being brighter. It also bounds the cost to the size of the screen instead of the size of the board: measured free at 390×844, and one or two dropped frames across a whole drag at 1440×900.
+- **One board is one picture everywhere it is shown.** The same lift is on the hero's device screens, the worlds on the home page, the transformation crop, the wizard's world cards, the hub's islands, the map's stops, the bag's covers and the album's postcards. A punchy board inside a tablet above a dull one on the card below it reads as two different places.
+- **Three things are deliberately left alone.** A parent's uploaded photograph is theirs and is never graded. The collection's stickers stay grey until they are found — that grey is a state, not a colour. "Coming soon" and locked worlds keep their own filters, for the same reason.
+- **A glare never goes over a surface a child plays on.** The hero's devices get the glass sheen; the demo frame does not, because a sheen on a corner of a search game hides what is under it. There the panel is sold by the art's own lift and a white bloom around the frame.
