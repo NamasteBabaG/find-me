@@ -37,5 +37,5 @@
 
 - External-provider refund idempotency/claim, PayMe release, and PostgreSQL race/isolation verification.
 - Wizard currently says worlds are played in order; reconcile that wording when independent-world selection is activated. Catalog package order is not necessarily a gameplay unlock dependency.
-- Castle board first, visual approval before further boards. No paid call until the user approves an explicit spend ceiling, including base art and retries. Claude's historical hide costs omit base-board cost and are not themselves authorization.
+- Castle board first, visual approval before further boards. Subsequent user instruction on 2026-09-15 authorizes the first base render only with the existing key, after planning; see `MAGIC_FIRST_THREE_ART_PLAN_20260915.md`. No numeric ceiling, automatic art retries or personal patch package was approved. Claude's historical hide costs omit base-board cost and are not themselves authorization.
 - Existing documents: `INDEPENDENT_WORLDS_PILOT_V02.md`, `MAGIC_CASTLE_GATE_BRIEF_20260915.md`, `CLAUDE_FIRST_BOARD_COST_EVIDENCE_2026-09-15.md`.

@@ -27,6 +27,8 @@ tsconfig.work.tsbuildinfo
 # public/scenes/<slug>/base.webp. To re-derive the web assets from a raw file
 # you still have locally: generate-world.ts <slug> --from-asset
 assets/*.png
+# Raw generation candidates and reference conversions; provenance lives in docs.
+/output/imagegen/
 !assets/random-girl*.png
 !assets/noa-face.beach-original.png
 

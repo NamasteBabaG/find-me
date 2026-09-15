@@ -1,6 +1,11 @@
 # Castle gate — first magic-board production brief
 
-Status: **prepared; not rendered; awaiting paid scope/budget approval**.
+Status: **first 3840×2160 candidate rendered on 2026-09-15; NOT accepted for gameplay**.
+See `MAGIC_CASTLEGATE_V1_RENDER_REVIEW_20260915.md` for verified file details
+and discovery defects. Visual approval and discovery correction remain open.
+The current scoped plan and exact prompt are in `MAGIC_FIRST_THREE_ART_PLAN_20260915.md`
+and `art/magic-castlegate-v1.prompt.txt`. No personal patches or further base
+renders are included in this dispatch.
 World `kingdom`, destination `castlegate`. New release identity must be assigned
 at delivery; do not reuse an existing board's immutable identity. Subsequent
 trial destinations `giantlibrary` and `fairyforest` remain on hold.
@@ -80,11 +85,14 @@ or a promise of exact model compliance. Inspect output before accepting it.
 
 ## Paid gate and acceptance
 
-Request a spending ceiling for the **first board only**, covering one initial
-base, at most one base correction, three personal patches and bounded corrections.
-Before dispatch, verify the current provider/model, supported size and cost
-estimate from the actual runtime, then stop if it exceeds the authorized ceiling.
-No automatic paid retry loop. Record unsuccessful calls as well as final assets.
+The user's latest instruction explicitly authorizes using the existing key for
+the first base after planning. This dispatch is limited to one initial image,
+without an automatic art-correction loop. It does not authorize the previously
+proposed larger package of base corrections and personal patches. No numeric
+ceiling was provided and no environment budget is being changed. A validation
+error may be corrected before the first image is produced; record it separately.
+Before any further paid scope, agree its limit with the user. Record unsuccessful
+calls as well as final assets; do not infer a billed cost from missing usage data.
 Separate fixed board-production cost from per-child personalization cost.
 
 After base approval, map actual coordinates/crops on that exact file, author
