@@ -210,6 +210,36 @@ const spotsIn = (gameId: string) => db.targetInstance.findMany({ where: { gameSc
 const job = (gameId: string) => db.generationJob.findUniqueOrThrow({ where: { id: `job_${gameId}` } });
 const gameOf = (gameId: string) => db.game.findUniqueOrThrow({ where: { id: gameId } });
 
+describe("a pipeline that loses a status compare-and-set", () => {
+  it.each([false, true])("leaves the winning state alone (lease taken over: %s)", async (takeover) => {
+    const p = painter();
+    const c = container(p);
+    const id = await seedGame(c);
+    // Real DB and real CAS. Stage the competing write immediately before the
+    // first status CAS, not by throwing a pretend provider failure.
+    const update = db.game.updateMany.bind(db.game);
+    let raced = false;
+    const spy = vi.spyOn(db.game, "updateMany").mockImplementation((async (args: Parameters<typeof db.game.updateMany>[0]) => {
+      if (!raced && args.where?.id === id && args.data.status === "AVATAR_GENERATING") {
+        raced = true;
+        await db.game.update({ where: { id }, data: { status: "TARGETS_GENERATING" } });
+        if (takeover) await db.generationJob.update({ where: { id: `job_${id}` }, data: { attempts: { increment: 1 }, currentStep: "targets", lastError: null } });
+      }
+      return update(args);
+    }) as unknown as typeof db.game.updateMany);
+    try { await mod.runGenerationPipeline(c, id); } finally { spy.mockRestore(); }
+    expect(raced).toBe(true);
+    expect((await gameOf(id)).status).toBe("TARGETS_GENERATING");
+    expect((await gameOf(id)).lastError).toBeNull();
+    const row = await job(id);
+    expect(row.status).toBe(takeover ? "RUNNING" : "QUEUED");
+    expect(row.attempts).toBe(takeover ? 2 : 1);
+    if (takeover) expect(row.currentStep).toBe("targets");
+    expect(p.calls).toBe(0);
+    expect(await db.auditLog.count({ where: { entityId: id, action: { contains: "GENERATION_FAILED" } } })).toBe(0);
+  });
+});
+
 /** A matte-capable painter: real wire-shaped buffers, fake HTTP, no external cost. */
 function mattePainter() {
   const p = painter();

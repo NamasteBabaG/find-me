@@ -7,7 +7,7 @@ import { GameConfigSchema } from "@/domain/game/config";
 import type { CropBox } from "@/infra/generation/types";
 import type { Container } from "../container";
 import { readAssetBuffer, storeAsset } from "../asset.service";
-import { statusOf, transitionGame } from "../game-status";
+import { GameStatusConflict, statusOf, transitionGame } from "../game-status";
 import { sceneBySlug } from "../scene-catalog.service";
 import { SYSTEM, audit } from "../audit.service";
 import { persistGameConfig } from "./scene-composer";
@@ -489,6 +489,16 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
     }
     await c.db.generationJob.update({ where: { id: job.id }, data: { status: "DONE", currentStep: null } });
   } catch (err) {
+    // Losing the status CAS is not a failed image. In particular, never let
+    // this stale invocation mark the replacement worker's game/job FAILED.
+    // Release only our own lease; the next tick re-reads eligibility normally.
+    if (err instanceof GameStatusConflict) {
+      await c.db.generationJob.updateMany({
+        where: { id: job.id, status: "RUNNING", attempts: job.attempts + 1 },
+        data: { status: "QUEUED", currentStep: null },
+      });
+      return;
+    }
     // A pause is not a failure, at any stage.
     //
     // The enrolled board slice already knew that, but the identity stage did
