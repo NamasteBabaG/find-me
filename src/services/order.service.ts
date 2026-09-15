@@ -7,6 +7,7 @@ import type { Container } from "./container";
 import { spendAllowedFor } from "@/domain/spend-policy";
 import { spendGuard } from "@/lib/env";
 import type { PaymentWebhookEvent } from "@/infra/payment/types";
+import { canTransition, isAfterPayment, type GameStatus } from "@/domain/order-state";
 import { ensureUser } from "./auth.service";
 import { draftBelongsTo, loadDraft } from "./create-flow.service";
 import { statusOf, transitionGame } from "./game-status";
@@ -126,41 +127,84 @@ export async function handlePaymentWebhook(c: Container, rawBody: string, header
     return { status: 400, body: "amount mismatch" };
   }
 
-  // The business transition first, and idempotent; the event record second.
-  // The other way round — record, then transition — meant a crash between the
-  // two left an event on file and a game never marked paid, and the provider's
-  // retry was then answered "duplicate" without the work ever being finished.
-  // This way a crash anywhere is completed by the retry: the transition is a
-  // no-op the second time, and the record is written then.
-  const applied = await applyPaymentEvent(c, order, ev);
-
+  // The order's money, the game's status and the event record commit together
+  // or not at all.
+  //
+  // Before, each was its own write. An interruption between the order and the
+  // game left the order PAID and the game still in CHECKOUT_PENDING, and the
+  // provider's retry met `order.paymentStatus === "PAID"`, answered "already
+  // paid" and recorded the event — so nothing ever finished the game, and no
+  // later delivery could. A parent had paid for a game that would never be
+  // queued (game status IS the queue; see below).
+  //
+  // Now: one transaction, and the PAID branch reconciles instead of returning
+  // early, so a retry completes whatever the interrupted attempt left half
+  // done. If anything inside fails, nothing is written and the provider's
+  // next delivery starts again from the true state.
+  let applied: Applied;
   try {
-    await c.db.paymentEvent.create({
-      data: { id: newId("pev"), orderId: order.id, provider: c.payment.id, providerEventId: ev.providerEventId, kind: ev.kind, payloadJson: JSON.stringify(ev.raw) },
+    applied = await c.db.$transaction(async (tx) => {
+      // Re-read under the transaction: the order may have moved since the
+      // duplicate check above.
+      const current = await tx.order.findUniqueOrThrow({ where: { id: order.id } });
+      const result = await applyPaymentEvent(c, tx, current, ev);
+      await tx.paymentEvent.create({
+        data: { id: newId("pev"), orderId: order.id, provider: c.payment.id, providerEventId: ev.providerEventId, kind: ev.kind, payloadJson: JSON.stringify(ev.raw) },
+      });
+      return result;
     });
   } catch (err) {
-    // Only a unique-key collision is a duplicate — two deliveries racing. Any
-    // other error is the database having a bad moment, and the provider must
-    // retry that, not be told everything is fine.
+    // Only a unique-key collision is a duplicate — two deliveries racing, and
+    // the loser's writes have just been rolled back with it. Any other error
+    // is the database having a bad moment, and the provider must retry that,
+    // not be told everything is fine.
     if (isUniqueViolation(err)) return { status: 200, body: "duplicate event ignored" };
     throw err;
   }
-  return { status: 200, body: applied };
+  // Outside the transaction: analytics is a side effect, and a rolled-back
+  // payment must not be reported as a completed one.
+  for (const event of applied.track) c.analytics.track(event.name, event.props);
+  return { status: 200, body: applied.body };
 }
 
+type Applied = { body: string; track: Array<{ name: "payment_completed"; props: Record<string, string> }> };
+type OrderRow = { id: string; gameId: string; paymentStatus: string; packageTier: string };
+
 /**
- * Idempotent and monotonic. Paid stays paid whatever arrives later: a decline
- * delivered after the money is in is stale news, not a reversal, and a refund
- * of an order that was never paid is nothing at all.
+ * Idempotent, monotonic and reconciling, inside the caller's transaction.
+ *
+ * Paid stays paid whatever arrives later: a decline delivered after the money
+ * is in is stale news, not a reversal, and a refund of an order that was never
+ * paid is nothing at all. A re-delivery of an event whose first attempt was
+ * interrupted finishes the part that never happened.
  */
-async function applyPaymentEvent(c: Container, order: { id: string; gameId: string; paymentStatus: string; packageTier: string }, ev: PaymentWebhookEvent): Promise<string> {
-  const gameStatus = async () => statusOf(await c.db.game.findUniqueOrThrow({ where: { id: order.gameId }, select: { status: true } }));
+async function applyPaymentEvent(c: Container, tx: Prisma.TransactionClient, order: OrderRow, ev: PaymentWebhookEvent): Promise<Applied> {
+  const gameStatus = async () => statusOf(await tx.game.findUniqueOrThrow({ where: { id: order.gameId }, select: { status: true } }));
+  /**
+   * Move the game if it is not there already and the lifecycle allows it.
+   *
+   * A game the parent cancelled or deleted while the money was in flight
+   * cannot be moved at all. The order keeps the truth about the payment and a
+   * person has to settle it; throwing here would only make the provider
+   * redeliver the same event for ever.
+   */
+  const moveGame = async (to: GameStatus, done: (from: GameStatus) => boolean) => {
+    const from = await gameStatus();
+    if (done(from)) return;
+    if (!canTransition(from, to)) {
+      await audit(c, WEBHOOK, "payment:game-unreachable", "Game", order.gameId, { from, to, orderId: order.id, event: ev.kind }, tx);
+      return;
+    }
+    await transitionGame(c, order.gameId, to, WEBHOOK, { orderId: order.id }, tx);
+  };
+
   if (ev.kind === "PAID") {
-    if (order.paymentStatus === "PAID") return "already paid";
-    if (order.paymentStatus === "REFUNDED") return "ignored: order already refunded";
-    await c.db.order.update({ where: { id: order.id }, data: { paymentStatus: "PAID", paidAt: new Date(), providerPaymentId: ev.providerPaymentId } });
-    if ((await gameStatus()) !== "PAID") await transitionGame(c, order.gameId, "PAID", WEBHOOK, { orderId: order.id });
-    c.analytics.track("payment_completed", { gameId: order.gameId, packageTier: order.packageTier });
+    if (order.paymentStatus === "REFUNDED") return { body: "ignored: order already refunded", track: [] };
+    const first = order.paymentStatus !== "PAID";
+    if (first) await tx.order.update({ where: { id: order.id }, data: { paymentStatus: "PAID", paidAt: new Date(), providerPaymentId: ev.providerPaymentId } });
+    // `isAfterPayment`, not `=== "PAID"`: a game already being drawn has moved
+    // on, and must never be dragged back to the start of the queue.
+    await moveGame("PAID", isAfterPayment);
     // Deliberately no enqueue here. `c.jobs` runs the handler in the calling
     // request, so this line used to hold the PSP's webhook open for the whole
     // pipeline — dozens of renders, judgements and retries, none of which are
@@ -172,20 +216,22 @@ async function applyPaymentEvent(c: Container, order: { id: string; gameId: stri
     // queue entry. The cron at /api/jobs/tick picks it up within five
     // minutes, and the /creating page the parent lands on ticks it
     // immediately, in slices, with a deadline and a lease.
-    return "ok";
+    return {
+      body: first ? "ok" : "already paid",
+      track: first ? [{ name: "payment_completed", props: { gameId: order.gameId, packageTier: order.packageTier } }] : [],
+    };
   }
   if (ev.kind === "FAILED") {
-    if (order.paymentStatus !== "PENDING") return `ignored: late FAILED after ${order.paymentStatus}`;
-    await c.db.order.update({ where: { id: order.id }, data: { paymentStatus: "FAILED" } });
-    if ((await gameStatus()) !== "PAYMENT_FAILED") await transitionGame(c, order.gameId, "PAYMENT_FAILED", WEBHOOK, { orderId: order.id });
-    return "ok";
+    if (order.paymentStatus !== "PENDING" && order.paymentStatus !== "FAILED") return { body: `ignored: late FAILED after ${order.paymentStatus}`, track: [] };
+    if (order.paymentStatus === "PENDING") await tx.order.update({ where: { id: order.id }, data: { paymentStatus: "FAILED" } });
+    await moveGame("PAYMENT_FAILED", (from) => from === "PAYMENT_FAILED");
+    return { body: "ok", track: [] };
   }
   // REFUNDED
-  if (order.paymentStatus === "REFUNDED") return "already refunded";
-  if (order.paymentStatus !== "PAID") return `ignored: refund of an order that is ${order.paymentStatus}`;
-  await c.db.order.update({ where: { id: order.id }, data: { paymentStatus: "REFUNDED", refundedAt: new Date() } });
-  if ((await gameStatus()) !== "REFUNDED") await transitionGame(c, order.gameId, "REFUNDED", WEBHOOK, { orderId: order.id });
-  return "ok";
+  if (order.paymentStatus !== "PAID" && order.paymentStatus !== "REFUNDED") return { body: `ignored: refund of an order that is ${order.paymentStatus}`, track: [] };
+  if (order.paymentStatus === "PAID") await tx.order.update({ where: { id: order.id }, data: { paymentStatus: "REFUNDED", refundedAt: new Date() } });
+  await moveGame("REFUNDED", (from) => from === "REFUNDED");
+  return { body: "ok", track: [] };
 }
 
 function isUniqueViolation(err: unknown): boolean {
@@ -197,7 +243,22 @@ export async function refundOrder(c: Container, orderId: string, actor: Actor): 
   if (!order || order.paymentStatus !== "PAID") return { ok: false, reason: "ההזמנה לא במצב ששולם." };
   const res = await c.payment.refund(order.providerPaymentId ?? "", order.amountAgorot);
   if (!res.ok) return { ok: false, reason: "ספק התשלום סירב להחזר." };
-  await c.db.order.update({ where: { id: orderId }, data: { paymentStatus: "REFUNDED", refundedAt: new Date() } });
-  await transitionGame(c, order.gameId, "REFUNDED", actor, { orderId, providerRefundId: res.providerRefundId });
+  // The order row and the game move together, and only from PAID: a refund
+  // that lost a race to a webhook or to another admin writes nothing rather
+  // than marking an order refunded twice or re-refunding a refunded game.
+  // (The provider call above is still outside the fence; two admins clicking
+  // at the same instant can both reach the provider. Recorded in the handoff.)
+  const claimed = await c.db.$transaction(async (tx) => {
+    const marked = await tx.order.updateMany({ where: { id: orderId, paymentStatus: "PAID" }, data: { paymentStatus: "REFUNDED", refundedAt: new Date() } });
+    if (marked.count !== 1) return false;
+    const status = statusOf(await tx.game.findUniqueOrThrow({ where: { id: order.gameId }, select: { status: true } }));
+    if (status !== "REFUNDED" && canTransition(status, "REFUNDED")) {
+      await transitionGame(c, order.gameId, "REFUNDED", actor, { orderId, providerRefundId: res.providerRefundId }, tx);
+    } else if (status !== "REFUNDED") {
+      await audit(c, actor, "payment:game-unreachable", "Game", order.gameId, { from: status, to: "REFUNDED", orderId }, tx);
+    }
+    return true;
+  });
+  if (!claimed) return { ok: false, reason: "ההזמנה כבר לא במצב ששולם." };
   return { ok: true };
 }

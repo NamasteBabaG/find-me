@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { hashToken, newId, newSecretToken } from "@/lib/ids";
 import type { Container } from "./container";
 import { magicLinkEmail } from "./email/templates";
@@ -43,20 +44,38 @@ export async function requestMagicLink(c: Container, rawEmail: string, next = "/
   return { ok: true };
 }
 
+/**
+ * Spend a sign-in link, once.
+ *
+ * "Read it, check `usedAt`, then write `usedAt`" is not once: two deliveries of
+ * the same link — a mail client prefetching while the parent taps, a double
+ * tap — both read `usedAt: null`, both passed, and both got a session. The
+ * claim is now the write itself: only the request whose conditional update
+ * changes exactly one row may continue, and the session it creates commits
+ * with that claim, so a failure halfway cannot burn the link without signing
+ * anybody in.
+ */
 export async function consumeMagicLink(c: Container, token: string): Promise<{ sessionToken: string; userId: string; expiresAt: Date } | null> {
   const record = await c.db.magicLinkToken.findUnique({ where: { tokenHash: hashToken(token) } });
   if (!record || record.usedAt || record.expiresAt.getTime() < Date.now()) return null;
-  await c.db.magicLinkToken.update({ where: { id: record.id }, data: { usedAt: new Date() } });
-  const session = await createSession(c, record.userId);
-  await c.db.user.update({ where: { id: record.userId }, data: { lastLoginAt: new Date() } });
-  await audit(c, { type: "USER", id: record.userId }, "login:magic-link", "User", record.userId);
-  return { ...session, userId: record.userId };
+  return c.db.$transaction(async (tx) => {
+    const now = new Date();
+    const claimed = await tx.magicLinkToken.updateMany({ where: { id: record.id, usedAt: null, expiresAt: { gt: now } }, data: { usedAt: now } });
+    if (claimed.count !== 1) return null;
+    const session = await createSession(c, record.userId, tx);
+    await tx.user.update({ where: { id: record.userId }, data: { lastLoginAt: now } });
+    await audit(c, { type: "USER", id: record.userId }, "login:magic-link", "User", record.userId, undefined, tx);
+    return { ...session, userId: record.userId };
+  });
 }
 
-export async function createSession(c: Container, userId: string): Promise<{ sessionToken: string; expiresAt: Date }> {
+/** Enough of a client to open a session, so a sign-in can commit with the claim that allowed it. */
+type SessionDb = Pick<Prisma.TransactionClient, "session">;
+
+export async function createSession(c: Container, userId: string, db: SessionDb = c.db): Promise<{ sessionToken: string; expiresAt: Date }> {
   const sessionToken = newSecretToken();
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
-  await c.db.session.create({ data: { id: newId("ses"), userId, tokenHash: hashToken(sessionToken), expiresAt } });
+  await db.session.create({ data: { id: newId("ses"), userId, tokenHash: hashToken(sessionToken), expiresAt } });
   return { sessionToken, expiresAt };
 }
 

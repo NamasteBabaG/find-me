@@ -42,7 +42,9 @@ export function isGameStatus(value: unknown): value is GameStatus {
 const TRANSITIONS: Record<GameStatus, readonly GameStatus[]> = {
   DRAFT: ["PHOTO_UPLOADED", "CANCELLED", "DELETED"],
   PHOTO_UPLOADED: ["PHOTO_VALIDATING", "PHOTO_UPLOADED", "CANCELLED", "DELETED"],
-  PHOTO_VALIDATING: ["PHOTO_REJECTED", "PHOTO_APPROVED", "DELETED"],
+  // PHOTO_UPLOADED back out of VALIDATING: a check that was interrupted is
+  // retried from the start, not left holding the draft shut.
+  PHOTO_VALIDATING: ["PHOTO_REJECTED", "PHOTO_APPROVED", "PHOTO_UPLOADED", "DELETED"],
   PHOTO_REJECTED: ["PHOTO_UPLOADED", "CANCELLED", "DELETED"],
   PHOTO_APPROVED: ["PACKAGE_SELECTED", "PHOTO_UPLOADED", "CANCELLED", "DELETED"],
   PACKAGE_SELECTED: ["PACKAGE_SELECTED", "CHECKOUT_PENDING", "PHOTO_UPLOADED", "CANCELLED", "DELETED"],
@@ -93,12 +95,41 @@ export function isEditableDraft(status: GameStatus): boolean {
   return (
     status === "DRAFT" ||
     status === "PHOTO_UPLOADED" ||
+    // A check that never finished (the process died, the storage was out) is
+    // a working state, not a verdict: the parent must be able to try again.
+    status === "PHOTO_VALIDATING" ||
     status === "PHOTO_REJECTED" ||
     status === "PHOTO_APPROVED" ||
     status === "PACKAGE_SELECTED" ||
     status === "CHECKOUT_PENDING" ||
     status === "PAYMENT_FAILED"
   );
+}
+
+/**
+ * The game has been through payment: PAID, or a state only reachable after it.
+ *
+ * A webhook that is re-delivered must finish what an interrupted one started
+ * without dragging a game that is already being drawn back to PAID.
+ */
+const AFTER_PAYMENT: ReadonlySet<GameStatus> = new Set([
+  "PAID",
+  "AVATAR_GENERATING",
+  "TARGETS_GENERATING",
+  "SCENES_COMPOSING",
+  "QA_PENDING",
+  "NEEDS_REGENERATION",
+  "NEEDS_NEW_PHOTO",
+  "MANUAL_REVIEW",
+  "GENERATION_FAILED",
+  "APPROVED",
+  "READY",
+  "DELIVERED",
+  "REFUNDED",
+]);
+
+export function isAfterPayment(status: GameStatus): boolean {
+  return AFTER_PAYMENT.has(status);
 }
 
 /** States where background generation is (or should be) running. */

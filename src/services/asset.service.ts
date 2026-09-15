@@ -9,12 +9,28 @@ export type AssetVisibility = "PRIVATE" | "GAME";
 
 const MAX_UPLOAD_BYTES = 12 * 1024 * 1024;
 const MIN_PHOTO_SIDE = 400;
-const ALLOWED_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
+/**
+ * A decoded frame is held in memory before anything else looks at it, so the
+ * gate is on pixels and not only on the file's size on disk: 12MB of PNG can
+ * declare 30000 × 30000.
+ */
+const MAX_PHOTO_PIXELS = 50_000_000;
+/** The only formats we accept — and the only ones the file itself may BE. */
+const FORMAT_MIME: Readonly<Record<string, string>> = { jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
 
 export type PhotoCheck = { ok: true; width: number; height: number; mimeType: string } | { ok: false; reason: string; code: "TOO_LARGE" | "BAD_TYPE" | "TOO_SMALL" | "UNREADABLE" };
 
-/** Photo quality gate — the parent-facing reasons are mapped in the UI copy. */
+/**
+ * Photo quality gate — the parent-facing reasons are mapped in the UI copy.
+ *
+ * The declared MIME type is never trusted: it is the client's word for what it
+ * sent. The verdict comes from the format the decoder actually finds, so an
+ * SVG (or a GIF, or anything else) posted as `image/png` is refused instead of
+ * being stored and served as a PNG it is not. The uploader re-encodes in the
+ * browser, but a direct multipart POST does not go through it.
+ */
 export async function checkPhoto(buffer: Buffer, declaredMime: string): Promise<PhotoCheck> {
+  void declaredMime;
   if (buffer.byteLength > MAX_UPLOAD_BYTES) return { ok: false, code: "TOO_LARGE", reason: "התמונה גדולה מדי (עד 12MB)." };
   let meta: Metadata;
   try {
@@ -22,10 +38,17 @@ export async function checkPhoto(buffer: Buffer, declaredMime: string): Promise<
   } catch {
     return { ok: false, code: "UNREADABLE", reason: "לא הצלחנו לקרוא את הקובץ." };
   }
-  const mime = meta.format === "jpeg" ? "image/jpeg" : meta.format === "png" ? "image/png" : meta.format === "webp" ? "image/webp" : declaredMime;
-  if (!ALLOWED_MIME.has(mime)) return { ok: false, code: "BAD_TYPE", reason: "אפשר להעלות JPG, PNG או WebP." };
+  const mime = meta.format ? FORMAT_MIME[meta.format] : undefined;
+  if (!mime) return { ok: false, code: "BAD_TYPE", reason: "אפשר להעלות JPG, PNG או WebP." };
+  // Two guards with no fixture behind them: this build of sharp will not
+  // synthesise a multi-page WebP or a 50-megapixel file cheaply enough to
+  // assert on. They can only ever refuse, so they are here on their own terms
+  // — an animated WebP is a film, not a portrait (which frame would the sheet
+  // be drawn from?), and a file's size on disk is not its size in memory.
+  if ((meta.pages ?? 1) > 1) return { ok: false, code: "BAD_TYPE", reason: "אפשר להעלות JPG, PNG או WebP." };
   const width = meta.width ?? 0;
   const height = meta.height ?? 0;
+  if (width * height > MAX_PHOTO_PIXELS) return { ok: false, code: "TOO_LARGE", reason: "התמונה גדולה מדי (עד 12MB)." };
   if (Math.min(width, height) < MIN_PHOTO_SIDE) return { ok: false, code: "TOO_SMALL", reason: "התמונה קטנה מדי. כדאי צילום ברור מהכתפיים ומעלה." };
   return { ok: true, width, height, mimeType: mime };
 }

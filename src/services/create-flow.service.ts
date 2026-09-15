@@ -9,7 +9,7 @@ import { pick, type Locale } from "@/i18n/config";
 import { flowError, type FlowResult } from "@/i18n/errors";
 import type { Container } from "./container";
 import { checkPhoto, deleteAsset, storeAsset } from "./asset.service";
-import { transitionGame, statusOf } from "./game-status";
+import { GameStatusConflict, transitionGame, statusOf } from "./game-status";
 import { activeScenes, sceneBySlug } from "./scene-catalog.service";
 import { boardsOfWorlds, purchasableWorlds, purchasableWorldSlugs } from "./world-catalog.service";
 import { SYSTEM } from "./audit.service";
@@ -86,12 +86,44 @@ export async function attachPhoto(c: Container, gameId: string, input: { buffer:
     return flowError(check.code, check.reason);
   }
 
-  // Replace any previous photo (and drop a stale avatar — it must be regenerated).
-  await deleteAsset(c, game.childProfile.originalPhotoAssetId);
-  await deleteAsset(c, game.childProfile.avatarAssetId);
+  try {
+    await swapChildPhoto(c, game.ownerId, game.childProfile, input, check);
+  } catch (error) {
+    // The storage was out, or the row would not take the new pointer. The
+    // draft used to be left in PHOTO_VALIDATING — which is not an editable
+    // state — so the parent's next attempt was answered DRAFT_LOCKED and a
+    // passing outage became a dead draft. Hand the step back instead.
+    await releaseValidatingDraft(c, gameId, error);
+    return flowError("UPLOAD_FAILED", "לא הצלחנו לשמור את התמונה. אפשר לנסות שוב.");
+  }
+  await c.db.game.update({ where: { id: gameId }, data: { lastError: null } });
+  await transitionGame(c, gameId, "PHOTO_APPROVED", SYSTEM);
+  c.analytics.track("photo_uploaded", {});
+  c.analytics.track("photo_approved", {});
+  return { ok: true };
+}
 
+/**
+ * Put the new photo in place, then drop what it replaced.
+ *
+ * The old way deleted the previous photo and avatar FIRST. A storage outage in
+ * the middle then took the parent's existing photo with it and stored nothing
+ * in its place: the child profile pointed at an asset whose bytes were gone.
+ * Nothing is thrown away until the profile points at the replacement.
+ */
+type PhotoChild = { id: string; originalPhotoAssetId: string | null; avatarAssetId: string | null; identityAssetId: string | null };
+
+async function swapChildPhoto(
+  c: Container,
+  ownerId: string | null,
+  child: PhotoChild,
+  input: { buffer: Buffer; crop: CropBox | null },
+  check: { mimeType: string; width: number; height: number },
+  dropIdentity = false,
+): Promise<void> {
+  const previous = [child.originalPhotoAssetId, child.avatarAssetId, ...(dropIdentity ? [child.identityAssetId] : [])];
   const asset = await storeAsset(c, {
-    ownerId: game.ownerId,
+    ownerId,
     type: "ORIGINAL_PHOTO",
     visibility: "PRIVATE",
     buffer: input.buffer,
@@ -100,14 +132,31 @@ export async function attachPhoto(c: Container, gameId: string, input: { buffer:
     height: check.height,
   });
   await c.db.childProfile.update({
-    where: { id: game.childProfile.id },
-    data: { originalPhotoAssetId: asset.id, avatarAssetId: null, photoCropJson: input.crop ? JSON.stringify(input.crop) : null },
+    where: { id: child.id },
+    data: { originalPhotoAssetId: asset.id, avatarAssetId: null, ...(dropIdentity ? { identityAssetId: null } : {}), photoCropJson: input.crop ? JSON.stringify(input.crop) : null },
   });
-  await c.db.game.update({ where: { id: gameId }, data: { lastError: null } });
-  await transitionGame(c, gameId, "PHOTO_APPROVED", SYSTEM);
-  c.analytics.track("photo_uploaded", {});
-  c.analytics.track("photo_approved", {});
-  return { ok: true };
+  // Only now: nothing still points at these.
+  for (const old of previous) await deleteAsset(c, old);
+}
+
+/**
+ * A check that could not finish gives the step back to the parent.
+ *
+ * Fenced on purpose: if another request has already carried this draft out of
+ * PHOTO_VALIDATING — a retry that succeeded, a delete — its state stands, and
+ * this failure does not drag the draft backwards.
+ */
+async function releaseValidatingDraft(c: Container, gameId: string, error: unknown): Promise<void> {
+  const reason = error instanceof Error ? error.message : String(error);
+  try {
+    const game = await c.db.game.findUniqueOrThrow({ where: { id: gameId }, select: { status: true } });
+    if (statusOf(game) !== "PHOTO_VALIDATING") return;
+    await c.db.game.update({ where: { id: gameId }, data: { lastError: `UPLOAD_FAILED: ${reason}`.slice(0, 500) } });
+    await transitionGame(c, gameId, "PHOTO_REJECTED", SYSTEM, { code: "UPLOAD_FAILED" });
+  } catch (release) {
+    if (release instanceof GameStatusConflict) return;
+    throw release;
+  }
 }
 
 export async function availablePackages(c: Container) {
@@ -155,22 +204,9 @@ export async function replacePhotoForPaidGame(c: Container, gameId: string, inpu
     c.analytics.track("photo_rejected", { reason: check.code });
     return flowError(check.code, check.reason);
   }
-  await deleteAsset(c, game.childProfile.originalPhotoAssetId);
-  await deleteAsset(c, game.childProfile.avatarAssetId);
-  await deleteAsset(c, game.childProfile.identityAssetId);
-  const asset = await storeAsset(c, {
-    ownerId: game.ownerId,
-    type: "ORIGINAL_PHOTO",
-    visibility: "PRIVATE",
-    buffer: input.buffer,
-    mimeType: check.mimeType,
-    width: check.width,
-    height: check.height,
-  });
-  await c.db.childProfile.update({
-    where: { id: game.childProfile.id },
-    data: { originalPhotoAssetId: asset.id, avatarAssetId: null, identityAssetId: null, photoCropJson: input.crop ? JSON.stringify(input.crop) : null },
-  });
+  // Store, then point the profile at it, then drop the old sheet and avatar:
+  // a storage outage here must not leave the paid game with no photo at all.
+  await swapChildPhoto(c, game.ownerId, game.childProfile, input, check, true);
   await c.db.game.update({ where: { id: gameId }, data: { lastError: null } });
   // Back to drawing. AVATAR_GENERATING is resumable, so the next tick — the
   // creating page's or the cron's — picks the game up where it left off.
