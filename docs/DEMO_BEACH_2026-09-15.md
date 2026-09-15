@@ -1,6 +1,6 @@
 # Public beach demo and presentation artwork
 
-Status: implemented and locally verified; queued for QA-only deployment. Claude f2ec829 is preserved as the parent commit.
+Status: original release deployed to QA at commit 15fcd15; follow-up foot-occlusion and compact HUD fixes verified locally and queued for QA. Claude f2ec829 remains preserved in history.
 
 ## Generation provenance
 
@@ -45,3 +45,13 @@ UI dimensions respond to the embedded frame, including compact collection mode, 
 - Existing legacy demo fixture tests explicitly keep legacy sequential semantics rather than silently inheriting the new beach find-any configuration. Real-viewport test observers now identify the viewport node, not whichever ResizeObserver happened to be constructed last.
 
 QA delivery is recorded in the shared coordination note `docs/CODEX_DEMO_ART_2026-09-15.md` in the main checkout. No database migration or production activation is part of this change.
+
+## Follow-up: foot occlusion and English/RTL HUD
+
+- The library sandal originally appeared on top of the book crate. A single successful GPT Image 2 high-quality masked CLI edit now puts the books in front of the feet. Prompt: `DEMO_BEACH_FOOT_REPAIR_2026-09-15.prompt.txt`; preparation/composition: `scripts/repair-public-demo-foot.ts`. This separate CLI call is not included in the v2 provider ledger cost above.
+- Only local pixels x=152..259, y=600..714 in the 512×768 patch can change. Full patch and enlarged detail were visually reviewed; a regression test compares decoded old/new public assets and enforces zero changed pixels elsewhere (including face, hair and bystanders). The old immutable URL is retained. The new library asset is `a6aa81b4567045648b015442967a8c779459f069014a1feece157c49783203dc.webp`. Its hit area ends at the visible legs rather than including the foreground books.
+- Rarity captions now reserve their translated width in layout, use 11px mixed-case text, and no longer overlap. Collection circles in the embedded desktop demo are 48px; controls retain touch sizing.
+- The item card uses a two-row grid: preview/name/close above, hint/read-aloud below. The English name is no longer squeezed into a character-wide column. Mission width is 320px, bounded by the frame; demo mission/strip white opacity is 0.65 instead of 0.86.
+- The demo collection docks right. A named minimise button folds the wide strip; focused item guidance folds it automatically and docks opposite the item's horizontal half. All six remain accessible in the compact sheet. On low-edge phone hints the card is raised within the demo frame, with explicit physical left/right anchoring to avoid RTL overflow. Landscape cards use 320px width.
+- Browser checks: English desktop name/rarity spacing, successful acquisition of the previously obscured purple boat, English 390×844 portrait sheet and hint card, 844×390 landscape exact hints in English and Hebrew. In the final Hebrew landscape check the 320×122.5 card was fully inside the 781×330 frame and clear of the exact boat highlight. The repaired library asset was loaded and the child successfully found in the actual serial flow.
+- Follow-up regression suite: 7 files / 35 tests passed on Vitest 4.1.11 (collection, public beach assets, demo store, viewport, frame breakpoint and i18n); TypeScript passes. Browser QA remains behind its normal access gate; no bypass is used.

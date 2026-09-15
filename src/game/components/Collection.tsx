@@ -62,6 +62,12 @@ export function Collection({ board, scene, collectedIds, selectedId, hintLevel, 
   // bottom hint card. Once the camera focuses it, use the opposite edge.
   const seekAbove = !wide && hintLevel >= 2 && !!selected && selected.hitRect.y + selected.hitRect.h / 2 > 0.5;
   const [open, setOpen] = useState(false);
+  const [folded, setFolded] = useState(false);
+  // Once guidance focuses the camera, clear the six-sticker strip away from
+  // the picture. The collection stays available through its round button.
+  const focused = !!selected && hintLevel >= 2;
+  const showStrip = wide && !folded && !focused;
+  const dockLeft = focused && selected.hitRect.x + selected.hitRect.w / 2 > 0.5;
   const [intro, setIntro] = useState(true);
   const [canSpeak, setCanSpeak] = useState(false);
   // Stickers that have landed in their slot. One that is still in the air stays ghosted until it lands.
@@ -155,12 +161,13 @@ export function Collection({ board, scene, collectedIds, selectedId, hintLevel, 
   const countAria = tf(c.countAria, { found: count, total });
   const ring = 2 * Math.PI * 21;
   return (
-    <aside ref={root} className={`collect${wide ? " collect--wide" : " collect--compact"}${complete ? " collect--complete" : ""}${seekAbove ? " collect--seek-above" : ""}`} aria-label={c.title}>
-      {wide ? (
+    <aside ref={root} className={`collect${showStrip ? " collect--wide" : " collect--compact"}${complete ? " collect--complete" : ""}${seekAbove ? " collect--seek-above" : ""}${focused ? dockLeft ? " collect--dock-left" : " collect--dock-right" : ""}`} aria-label={c.title}>
+      {showStrip ? (
         <div className="collect__strip" role="group" aria-label={countAria}>
           <span key={bump} className={`collect__tally${bump ? " collect__tally--bump" : ""}`} aria-hidden>{tally}</span>
           <ul className="collect__slots">{board.discoveries.map((d) => sticker(d, "sm"))}</ul>
           {complete ? <span className="collect__done" aria-hidden>✨</span> : null}
+          <button type="button" className="collect__fold" aria-label={c.collapse} onClick={() => { setFolded(true); setIntro(false); }}><span aria-hidden>⌄</span></button>
         </div>
       ) : (
         <button ref={trigger} type="button" className="collect__fab" disabled={disabled} aria-expanded={open} aria-controls={sheetId} aria-label={countAria} onClick={() => { setOpen((v) => !v); setIntro(false); }}>
@@ -187,15 +194,15 @@ export function Collection({ board, scene, collectedIds, selectedId, hintLevel, 
             <strong className="collect__seek-name">{selected.name}</strong>
             {hintLevel > 0 ? <p className="collect__seek-hint">{hintLevel === 1 ? selected.hint : hintLevel === 2 ? c.hintBroad : c.hintPrecise}</p> : null}
           </div>
+          <button type="button" className="collect__close collect__seek-close" aria-label={c.stopSeeking} onClick={() => onSelect(null)}><span aria-hidden>×</span></button>
           <div className="collect__seek-actions">
             <button type="button" className="collect__hint" disabled={disabled || hintLevel >= 3} onClick={onHint}>{hintLevel === 0 ? c.hint : hintLevel === 1 ? c.hintArea : c.hintShow}</button>
             {canSpeak ? <button type="button" className="collect__speak" disabled={disabled || muted} aria-label={c.listen} onClick={() => speak(hintLevel === 1 ? selected.hint : selected.name)}><span aria-hidden>🔊</span></button> : null}
-            <button type="button" className="collect__close" aria-label={c.stopSeeking} onClick={() => onSelect(null)}><span aria-hidden>×</span></button>
           </div>
         </div>
       ) : null}
 
-      {open && !wide ? (
+      {open && !showStrip ? (
         <div ref={sheet} id={sheetId} className="collect__sheet" role="dialog" aria-label={tf(c.sheetTitle, { place: scene.name })} onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); close(); } }}>
           <header className="collect__sheet-head">
             <h2 className="collect__sheet-title">{tf(c.sheetTitle, { place: scene.name })}</h2>

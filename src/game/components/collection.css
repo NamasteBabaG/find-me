@@ -6,6 +6,8 @@
    Hit-testing stays in SceneViewport; this is presentation and guidance. */
 .collect { position: absolute; z-index: var(--z-ui); inset-inline-start: max(var(--space-2), env(safe-area-inset-left)); bottom: max(var(--space-2), env(safe-area-inset-bottom)); display: flex; flex-direction: column-reverse; align-items: flex-start; gap: var(--space-1); max-width: calc(100% - var(--space-4)); font-family: var(--font-display); color: var(--ink); pointer-events: none; }
 .collect > * { pointer-events: auto; }
+.collect.collect--dock-left { left: max(var(--space-2), env(safe-area-inset-left)); right: auto; align-items: flex-start; }
+.collect.collect--dock-right { right: max(var(--space-2), env(safe-area-inset-right)); left: auto; align-items: flex-end; }
 
 /* The strip (wide screens) */
 .collect__strip { display: flex; align-items: center; gap: var(--space-1); padding: var(--space-0-5) var(--space-1); border-radius: var(--radius-pill); background: rgba(255, 255, 255, 0.86); backdrop-filter: blur(12px); box-shadow: var(--shadow-2); animation: fm-fade-up var(--dur-3) var(--ease-out); }
@@ -15,7 +17,8 @@
 .collect__tally--bump { animation: fm-count-bump var(--dur-3) var(--ease-pop); }
 .collect__done { font-size: var(--fs-300); line-height: 1; animation: fm-pop-in var(--dur-3) var(--ease-pop); }
 .collect__slots, .collect__grid { list-style: none; margin: 0; padding: 0; display: flex; gap: var(--space-1); }
-.collect__strip .sticker { padding-bottom: var(--space-1); }
+.collect__strip .sticker { padding-bottom: 0; }
+.collect__fold { flex-shrink: 0; width: var(--touch-min); height: var(--touch-min); border: 0; border-radius: 50%; background: transparent; color: var(--ink-2); font-size: var(--fs-300); cursor: pointer; }
 .collect__item { display: block; min-width: 0; }
 
 /* The sticker itself, shared with the album */
@@ -38,6 +41,12 @@
 /* Rarity is a word on the sticker's lower edge (Guy), never a dot or a shop tag */
 .sticker__rarity { position: absolute; top: calc(var(--sticker-size) - var(--space-1)); inset-inline-start: 50%; transform: translateX(-50%); z-index: 1; padding: 0 var(--space-0-5); border-radius: var(--radius-pill); background: var(--paper-3); color: var(--ink-2); font-family: var(--font-display); font-weight: 800; font-size: var(--fs-50); line-height: var(--lh-50); letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; box-shadow: var(--sticker-outline); pointer-events: none; }
 [dir="rtl"] .sticker__rarity { transform: translateX(50%); }
+/* In-flow captions reserve their real translated width: the long English
+   rarity cannot collide with its neighbours or escape the strip. */
+.collect .sticker { gap: 0; min-width: var(--touch-min); }
+.collect .sticker__rarity { position: relative; top: auto; inset-inline-start: auto; transform: none; margin-top: -6px; padding: 2px 5px; font-size: 11px; line-height: 1.2; letter-spacing: 0; text-transform: none; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9); }
+.collect__slots { gap: max(var(--space-1), 10px); }
+.collect__grid { column-gap: 10px; row-gap: var(--space-2); }
 .sticker__rarity--rare { background: var(--sea-soft); color: var(--sea-deep); }
 .sticker__rarity--epic { background: var(--berry-soft); color: var(--berry-deep); }
 .sticker--got .sticker__rarity--rare { background: var(--sea); color: var(--white); }
@@ -72,16 +81,18 @@
 .collect__close:hover { background: var(--paper-3); }
 
 /* Seeking: the one being looked for, a hint, and a way out */
-.collect__seek { display: flex; align-items: center; gap: var(--space-1); width: min(360px, calc(100vw - var(--space-4))); padding: var(--space-1); border-radius: var(--radius-2); background: var(--white); box-shadow: 0 0 0 3px var(--sea-soft), var(--shadow-2); animation: fm-fade-up var(--dur-2) var(--ease-out); }
+.collect__seek { display: grid; grid-template-columns: var(--touch-min) minmax(0, 1fr) var(--touch-min); align-items: center; gap: var(--space-1); width: min(380px, calc(100vw - var(--space-4))); padding: var(--space-1); border-radius: var(--radius-2); background: rgba(255, 255, 255, 0.88); backdrop-filter: blur(6px); box-shadow: 0 0 0 2px var(--sea-soft), var(--shadow-2); animation: fm-fade-up var(--dur-2) var(--ease-out); }
 /* Keep the bounded camera and the bottom collection button, but do not put
    the hint card over a discovery near the board's lower edge. */
 .collect--seek-above .collect__seek { position: fixed; top: calc(max(var(--space-2), env(safe-area-inset-top)) + var(--space-10) + var(--space-8)); inset-inline-start: max(var(--space-2), env(safe-area-inset-left)); }
 .collect__seek-thumb { width: var(--touch-min); height: var(--touch-min); flex-shrink: 0; border-radius: 50%; box-shadow: var(--sticker-outline), 0 0 0 6px var(--sea); }
 .collect__seek-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .collect__seek-label { font-size: var(--fs-50); line-height: var(--lh-50); font-weight: 700; color: var(--sea-deep); letter-spacing: 0.04em; }
-.collect__seek-name { font-family: var(--font-kid); font-weight: 600; font-size: var(--fs-200); line-height: var(--lh-200); overflow-wrap: anywhere; }
+.collect__seek-name { font-family: var(--font-kid); font-weight: 600; font-size: var(--fs-200); line-height: 1.3; overflow-wrap: break-word; }
 .collect__seek-hint { margin: 0; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); animation: fm-fade-up var(--dur-2) var(--ease-out); }
-.collect__seek-actions { display: flex; align-items: center; gap: var(--space-0-5); flex-shrink: 0; }
+.collect__seek-actions { grid-column: 1 / -1; display: flex; align-items: center; gap: var(--space-1); }
+.collect__seek-actions .collect__hint { flex: 1; }
+.collect__seek-close { align-self: start; background: rgba(255, 255, 255, 0.55); }
 .collect__hint { min-width: var(--touch-min); min-height: var(--touch-min); padding-inline: var(--space-1); border: 0; border-radius: var(--radius-pill); background: var(--sun); color: var(--ink); font-family: var(--font-display); font-weight: 800; font-size: var(--fs-100); cursor: pointer; box-shadow: var(--shadow-1); transition: transform var(--dur-1) var(--ease-out); }
 .collect__hint:hover { transform: translateY(-1px); }
 .collect__hint:disabled { opacity: 0.4; cursor: default; transform: none; }

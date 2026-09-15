@@ -6,7 +6,7 @@
   "boardSha256": "e5c2f0e04ef36aed55e3f96c3a9f234bfb87ef2b4da6e5f02420e9cea0c561c3",
   "patches": {
     "beach-sandcastle": "/demo/beach-v1/15afabe78ed9465fc9d49f3f2463229b130f72a991a780f0b093d6369804721f.webp",
-    "beach-library": "/demo/beach-v1/1926d989e528c0f428ea5a04319df626d739b8b3b45566ec70fb6260f244701b.webp",
+    "beach-library": "/demo/beach-v1/a6aa81b4567045648b015442967a8c779459f069014a1feece157c49783203dc.webp",
     "beach-shells": "/demo/beach-v1/b8b6c50a23e0777ff4396922ff5b4491f90502bfeda244b09620e4325cd4b015.webp"
   },
   "geometry": {
@@ -22,7 +22,7 @@
       "x": 124,
       "y": 253,
       "w": 146,
-      "h": 430,
+      "h": 370,
       "headX": 195,
       "headY": 320
     },

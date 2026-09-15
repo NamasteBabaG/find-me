@@ -33,6 +33,21 @@ describe('the current one-board public beach demo',()=>{
   const a=buildDemoConfig('en','beach','Example');a.scenes[0]!.targets.splice(0);
   const b=buildDemoConfig('en');expect(b.child.name).toBe('Anna');expect(b.scenes[0]!.targets).toHaveLength(3);
  });
+ it('repairs only the library foot occlusion, keeping the face and bystanders pixel-identical',async()=>{
+  const original='/demo/beach-v1/1926d989e528c0f428ea5a04319df626d739b8b3b45566ec70fb6260f244701b.webp';
+  const repaired=assets.patches['beach-library'];
+  expect(repaired).not.toBe(original);
+  const before=await sharp(`public${original}`).removeAlpha().raw().toBuffer();
+  const after=await sharp(`public${repaired}`).removeAlpha().raw().toBuffer();
+  expect(after.length).toBe(before.length);
+  let insideChanges=0;
+  for(let y=0;y<768;y++)for(let x=0;x<512;x++)for(let c=0;c<3;c++){
+   const i=(y*512+x)*3+c;
+   if(x>=152&&x<260&&y>=600&&y<715){if(before[i]!==after[i])insideChanges++;}
+   else if(before[i]!==after[i])throw new Error(`Protected pixel changed: ${x},${y}`);
+  }
+  expect(insideChanges).toBeGreaterThan(100);
+ });
  it('accepts only content-addressed demo bindings, not arbitrary public or remote assets',()=>{
   const h='a'.repeat(64);
   expect(gameAssetId(`/demo/beach-v1/${h}.webp`)).toBe(`demo-beach-v1-${h}`);
