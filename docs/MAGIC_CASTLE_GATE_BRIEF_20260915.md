@@ -1,6 +1,25 @@
 # Castle gate — first magic-board production brief
 
 Status: **first 3840×2160 candidate rendered on 2026-09-15; NOT accepted for gameplay**.
+Latest candidate: v12 local item repairs, 3840x2160 with unchanged pixels outside
+seven local regions; see `MAGIC_CASTLEGATE_V12_ITEM_REVIEW_20260916.md`.
+The user accepted v10 art and authorized item correction. Six discoveries now
+have readable card crops and schema-validated draft mapping; runtime/mobile and
+personal hiding zones are still pending. No ready catalog promotion.
+The user liked v9 style-reset/density, then requested slightly weaker non-metal
+specular. Retain v9 intact as the liked source; v10 is not automatically preferred.
+Latest feedback: v8 is rejected for brush/style drift, not merely brightness.
+The user authorized a v9 style reset from v1 with the actual Giza reference and
+additional people/stories occupying bare pavement. This is one new base edit,
+not approval for personalization or catalog deployment.
+Previous candidate: v8 brighter-daylight preview after the user found v7 too dark;
+see `MAGIC_CASTLEGATE_V8_LIGHT_REVIEW_20260915.md`. Enrichment is recorded in
+`MAGIC_CASTLEGATE_DENSITY_REVIEW_20260915.md`. v5/v6 are not selected.
+The previous clean source was v4 material-only repaint after the user rejected
+the remaining gloss in v3; see `MAGIC_CASTLEGATE_V4_MATERIAL_REVIEW_20260915.md`.
+Earlier face/people edits are recorded in
+`MAGIC_CASTLEGATE_MATERIALS_DIVERSITY_REVIEW_20260915.md`. Search-object
+acceptance remains incomplete; none of these candidates is a ready catalog scene.
 See `MAGIC_CASTLEGATE_V1_RENDER_REVIEW_20260915.md` for verified file details
 and discovery defects. Visual approval and discovery correction remain open.
 The current scoped plan and exact prompt are in `MAGIC_FIRST_THREE_ART_PLAN_20260915.md`

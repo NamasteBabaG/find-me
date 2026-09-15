@@ -1,0 +1,10 @@
+Use case: lighting-weather.
+Image 1 is the EDIT TARGET. Apply ONLY a substantial bright daylight/exposure correction to this exact illustration. Keep every person, face, pose, object, outline, small detail, material, position, framing and shallow camera unchanged. No additions, removals or redesigns. No double outlines, ghosts, transparent overlays or softened drawing.
+
+The current image is too dark and heavy for a children's search game. Make it visibly brighter and more welcoming: roughly one stop brighter midtones with strong soft open-sky fill into shadows, while protecting the light stone highlights. In particular, lift faces, hair midtones, the blue/green clothes, workshop shelves, the foreground crowd and under-awning areas so their details are easy to see. Deep local contact creases may remain dark; broad surfaces must no longer sink into near-black brown. Keep natural tonal modeling, readable dark ink contours and separation between adjacent forms.
+
+Clear cheerful daytime, softly sunlit cream limestone, lively but tasteful blues, greens, terracotta and warm skin. Remove the muddy brown/grey veil without adding an orange/yellow wash. Shadows become lighter colored shadows, not washed-out white fog. Do not bleach the stone, fade the pigments, reduce detail, overexpose skin or make a flat pastel cartoon. No bloom, light beams, glow or HDR halos.
+
+CRITICAL: brighter does NOT mean shinier. Preserve dry matte limestone, diffuse cotton/wool, unvarnished wood, non-waxy skin and soft hair. No gold rim light on every curl or fold, no lacquer, glitter, metallic stone or glossy cloth. Only actual small metal objects keep localized reflective highlights. Increase diffuse illumination and exposure, NOT specular shine. Retain the hand-drawn opaque-gouache storybook style and high detail.
+
+Output the same single coherent full-bleed 3840x2160 landscape board, noticeably brighter than the input at normal viewing size. No UI, text, labels or border. Lighting/exposure correction only; preserve all content and geometry.

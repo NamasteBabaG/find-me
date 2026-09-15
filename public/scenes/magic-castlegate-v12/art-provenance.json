@@ -1,0 +1,12 @@
+{
+  "status": "authored-not-playtested",
+  "source": "output/imagegen/magic-castlegate-v12-items.png",
+  "sourceSha256": "ac096862c6b86d2f4b2fc8062084e98f3f7c01fbdee9d4341f1a950c9439955c",
+  "file": "/scenes/magic-castlegate-v12/base.webp",
+  "width": 3840,
+  "height": 2160,
+  "sha256": "62d95a90457c68b7255713c74829479bea6e14f66fd39fd9565dea486fe1d679",
+  "losslessPixelsVerified": true,
+  "catalogActivated": false,
+  "personalHides": 0
+}

@@ -1,0 +1,9 @@
+Use case: precise-object-edit
+Input image 1 is the approved castle illustration and the sole edit target.
+Make ONE SUBTLE FINISH CORRECTION: slightly reduce excessive specular highlights on NON-METALLIC surfaces only. Aim for a modest approximately 15-20% reduction in the intensity of their existing shiny glints, not a new rendering treatment. This is an artistic direction, not permission to change the overall picture.
+
+Cotton/wool clothing, hair, skin, unvarnished wood, wicker, leather and dry stone should have slightly softer, less conspicuous surface glints. Keep their fine painted texture and all drawn detail. Preserve the ordinary diffuse light that describes their volume: do not erase light-and-shadow modeling, flatten the folds, muddy the colors or darken the whole scene. The small copper bell, metal jug, key, metal hardware and actual metal jewelry retain their localized metallic highlights. Do not mistake pale stone or light-colored fabric for a specular highlight.
+
+STRICT INVARIANTS: preserve the exact hand-drawn style, irregular contours, small interior strokes, brush character, textured pigment, palette, overall exposure, lighting direction, face identities and expressions. Preserve every person, pose, activity, object, small search item, architecture, placement, scale, shallow perspective and crop. No additions, removals, replacement people or changed stories. No broad repaint, smoothing, airbrushing, new material textures, glossy 3D finish, added grain, sepia filter, global desaturation or global contrast reduction. Do not reinterpret or modernize the illustration. The output should look like the same approved illustration, simply a little less shiny on non-metal surfaces.
+
+Output one full-bleed 3840x2160 PNG, no UI, borders, text or annotations.

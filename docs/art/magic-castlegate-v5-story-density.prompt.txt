@@ -1,0 +1,27 @@
+Use case: precise-object-edit.
+Image 1: EDIT TARGET, the existing matte castle courtyard illustration. Enrich THIS board with more small meaningful details and a few extra people. Preserve all existing people, their identities/poses, camera, framing, architecture, closed gate, major stories, shallow perspective and character scale. Output one full-bleed 3840x2160 landscape illustration, no UI/text/borders.
+
+LOCK THE MATERIAL TREATMENT: keep the source's dry matte chalky stone, absorbent woven cloth, unvarnished wood, soft hair masses and tiny highlights on actual metals ONLY. Do NOT restore gold-white edge stripes, polished bevels, glossy amber flecks on clothing/hair/wood or wet paving. Retain textured opaque painted color, confident dark hand-drawn contours and clear faces. Richer detail must come from drawing purposeful objects, NOT extra shine, grain, embossing or oversharpening. Same daylight, same muted blue/rust/ochre color family. No photographic skin, plastic CGI or cartoon bobbleheads.
+
+ADD SIX NEW DISTINCT PEOPLE, not replacements or clones, integrated into existing activity:
+- Upper-left workshop windows: an older clean-shaven craftsperson and a young apprentice handle a small folded piece of plain fabric inside/at one window, using the empty dark recess naturally; retain the existing window people and do not pile overlapping heads.
+- By the middle-left puppet audience: one child seated on a small stool reacts to the puppets, head/eyes clearly drawn, no limb tangles.
+- Right bakery: one woman customer accepts a plain paper-wrapped bread parcel in the available space beside the stall. Keep the fruit basket and folded map visible.
+- Near the lower-right shield-painting activity: one child kneels beside a small pot of dull blue paint, helping the existing painter, leaving the chess table and kite player intact.
+- Along the upper parapet: one gardener kneels behind the low wall tending a small pot, plausible wall occlusion and face visible. No tiny distant person.
+Match new adults and children to nearby people of the same age. No giant bottom-edge foreground character. Vary face shape, nose, hair, age and clothing color, not the recurring identical bearded man. Feet, seats, hands and cloth overlaps must be physically coherent.
+
+ENRICH THE EXISTING STORIES WITH SMALL CRISP DRAWN PROPS, WITHOUT HIDING PEOPLE:
+- Tailoring: orderly scraps of plain cloth, a pincushion, a pair of scissors, thread ends, stitching holes, a partly sewn seam and a few buttons on the work surface. Do not add feathers.
+- Toy and wheel workshops: a partly assembled plain wooden cart, a clamp, a small plane, loose wheel pegs, a mallet and sparse curled wood shavings near the feet. Add no dragons or other winged toys; preserve existing toy shapes for later target correction.
+- Messenger: tied envelope bundles, a stick of sealing wax and a small stamp beside the existing bell. No additional bell, key or map, no readable writing.
+- Bakery: an open sack with a wooden scoop, folded linen, bread baskets, a few flour marks and parcel string. Dusty dry textures, not glints.
+- Puppet stage and musicians: stitched curtain repairs, spare plain costume cloth folded in a basket, a small instrument case and subtly visible puppet strings. Keep the audience faces readable.
+- Picnic and chalk game: a folded napkin, a few scattered crumbs, a wicker lid, small chalk fragments and a couple of plain wooden playing pieces near the existing game, not a new crowd or a new dominant focal point.
+- Walls and ledges: a few modest shallow niches with everyday pots, rope hooks, a short run of repaired mortar, a little plant growth and plain carved workshop ornament. Do not cover every empty stone with decoration; preserve some calm areas.
+
+Add detail primarily within and beside the established activities, with small clean walking gaps. No collage layout, deep vanishing avenue, architecture expansion, zoom change, confetti or sparkle filler. Keep scene hierarchy and all existing faces at useful zoom resolution.
+
+Preserve the six intended search-object areas: copper bell on the left messenger desk, striped feather by sewing spools, carved-toy shelf, silver-key area on guard desk, folded map in right fruit basket and crescent fastening on upper blue banner. Do not duplicate these motifs, move them, place new people over them or turn them into bright icons. Do not attempt unrelated search-object redesign in this pass. No personal child portrait is supplied or to be inserted.
+
+Final priorities: existing matte material separation and illustrated style remain unchanged; more concrete miniature storytelling details; six naturally integrated additional people; same shallow coherent board and no erased existing story.

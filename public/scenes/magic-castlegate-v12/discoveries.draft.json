@@ -1,0 +1,257 @@
+{
+  "status": "authored-not-playtested",
+  "boardSlug": "magic-castlegate",
+  "source": "/scenes/magic-castlegate-v12/base.webp",
+  "art": {
+    "width": 3840,
+    "height": 2160,
+    "sha256": "62d95a90457c68b7255713c74829479bea6e14f66fd39fd9565dea486fe1d679"
+  },
+  "discoveries": [
+    {
+      "id": "copper-bell",
+      "name": {
+        "en": "Copper bell",
+        "he": "פעמון נחושת"
+      },
+      "hint": {
+        "en": "Look on the letter-writing desk.",
+        "he": "חפשו על שולחן המכתבים."
+      },
+      "category": "object",
+      "rarity": "common",
+      "difficulty": 1,
+      "description": {
+        "kind": "story",
+        "text": {
+          "en": "The bell is waiting to announce the mail.",
+          "he": "הפעמון מחכה להודיע שהדואר הגיע."
+        }
+      },
+      "visibleRect": {
+        "x": 0.17317708333333334,
+        "y": 0.5583333333333333,
+        "w": 0.015625,
+        "h": 0.03518518518518519
+      },
+      "hitRect": {
+        "x": 0.17317708333333334,
+        "y": 0.5583333333333333,
+        "w": 0.015625,
+        "h": 0.03518518518518519
+      },
+      "cardCrop": {
+        "x": 0.16796875,
+        "y": 0.5527777777777778,
+        "w": 0.026041666666666668,
+        "h": 0.046296296296296294
+      }
+    },
+    {
+      "id": "wooden-dragon",
+      "name": {
+        "en": "Wooden dragon",
+        "he": "דרקון עץ"
+      },
+      "hint": {
+        "en": "Look on the toy shelf beside the horse.",
+        "he": "חפשו על מדף הצעצועים ליד הסוס."
+      },
+      "category": "object",
+      "rarity": "common",
+      "difficulty": 1,
+      "description": {
+        "kind": "story",
+        "text": {
+          "en": "The carved dragon is waiting for a friend to take it on an adventure.",
+          "he": "הדרקון המגולף מחכה לחבר שייקח אותו להרפתקה."
+        }
+      },
+      "visibleRect": {
+        "x": 0.3609375,
+        "y": 0.3194444444444444,
+        "w": 0.025,
+        "h": 0.04583333333333333
+      },
+      "hitRect": {
+        "x": 0.3609375,
+        "y": 0.3194444444444444,
+        "w": 0.025,
+        "h": 0.04583333333333333
+      },
+      "cardCrop": {
+        "x": 0.3572916666666667,
+        "y": 0.3138888888888889,
+        "w": 0.03203125,
+        "h": 0.05694444444444444
+      }
+    },
+    {
+      "id": "striped-feather",
+      "name": {
+        "en": "Striped feather",
+        "he": "נוצה מפוספסת"
+      },
+      "hint": {
+        "en": "Look beside the colorful thread spools.",
+        "he": "חפשו ליד סלילי החוטים הצבעוניים."
+      },
+      "category": "object",
+      "rarity": "common",
+      "difficulty": 1,
+      "description": {
+        "kind": "story",
+        "text": {
+          "en": "A little feather found a place among the threads.",
+          "he": "נוצה קטנה מצאה מקום בין החוטים."
+        }
+      },
+      "visibleRect": {
+        "x": 0.22447916666666667,
+        "y": 0.29074074074074074,
+        "w": 0.010416666666666666,
+        "h": 0.02962962962962963
+      },
+      "hitRect": {
+        "x": 0.22447916666666667,
+        "y": 0.29074074074074074,
+        "w": 0.010416666666666666,
+        "h": 0.02962962962962963
+      },
+      "cardCrop": {
+        "x": 0.21822916666666667,
+        "y": 0.2851851851851852,
+        "w": 0.022916666666666665,
+        "h": 0.040740740740740744
+      }
+    },
+    {
+      "id": "silver-key",
+      "name": {
+        "en": "Silver key",
+        "he": "מפתח כסף"
+      },
+      "hint": {
+        "en": "Perhaps the guard left something on the wooden desk.",
+        "he": "אולי השומר הניח משהו על שולחן העץ."
+      },
+      "category": "object",
+      "rarity": "rare",
+      "difficulty": 2,
+      "description": {
+        "kind": "story",
+        "text": {
+          "en": "Which door does the little key open?",
+          "he": "לאיזו דלת מתאים המפתח הקטן?"
+        }
+      },
+      "visibleRect": {
+        "x": 0.6872395833333333,
+        "y": 0.39814814814814814,
+        "w": 0.01640625,
+        "h": 0.01990740740740741
+      },
+      "hitRect": {
+        "x": 0.6872395833333333,
+        "y": 0.39814814814814814,
+        "w": 0.01640625,
+        "h": 0.01990740740740741
+      },
+      "cardCrop": {
+        "x": 0.6841145833333333,
+        "y": 0.38796296296296295,
+        "w": 0.02265625,
+        "h": 0.04027777777777778
+      }
+    },
+    {
+      "id": "folded-map",
+      "name": {
+        "en": "Folded map",
+        "he": "מפה מקופלת"
+      },
+      "hint": {
+        "en": "The route is hiding among the fruit in the basket.",
+        "he": "הדרך מסתתרת בין הפירות שבסל."
+      },
+      "category": "object",
+      "rarity": "rare",
+      "difficulty": 2,
+      "description": {
+        "kind": "story",
+        "text": {
+          "en": "A little map is waiting for a journey after the shopping.",
+          "he": "מפה קטנה מחכה למסע אחרי הקניות."
+        }
+      },
+      "visibleRect": {
+        "x": 0.8484375,
+        "y": 0.5837962962962963,
+        "w": 0.024739583333333332,
+        "h": 0.03518518518518519
+      },
+      "hitRect": {
+        "x": 0.8484375,
+        "y": 0.5837962962962963,
+        "w": 0.024739583333333332,
+        "h": 0.03518518518518519
+      },
+      "cardCrop": {
+        "x": 0.8453125,
+        "y": 0.5736111111111111,
+        "w": 0.030989583333333334,
+        "h": 0.055092592592592596
+      }
+    },
+    {
+      "id": "moon-brooch",
+      "name": {
+        "en": "Moon brooch",
+        "he": "סיכת ירח"
+      },
+      "hint": {
+        "en": "Even by day, a moon can hide among the blue cloth folds.",
+        "he": "גם ביום אפשר למצוא ירח בין קפלי הבד הכחול."
+      },
+      "category": "object",
+      "rarity": "epic",
+      "difficulty": 3,
+      "description": {
+        "kind": "story",
+        "text": {
+          "en": "The moon brooch helps keep the cloth in place.",
+          "he": "סיכת הירח שומרת שהבד יישאר במקומו."
+        }
+      },
+      "visibleRect": {
+        "x": 0.5846354166666666,
+        "y": 0.10324074074074074,
+        "w": 0.01015625,
+        "h": 0.019444444444444445
+      },
+      "hitRect": {
+        "x": 0.5846354166666666,
+        "y": 0.10324074074074074,
+        "w": 0.01015625,
+        "h": 0.019444444444444445
+      },
+      "cardCrop": {
+        "x": 0.5809895833333333,
+        "y": 0.09768518518518518,
+        "w": 0.0171875,
+        "h": 0.030555555555555555
+      }
+    }
+  ],
+  "checks": {
+    "schema": true,
+    "nonOverlappingHits": true,
+    "sourceHash": true
+  },
+  "remaining": [
+    "in-game mobile zoom/touch/HUD verification",
+    "personal hide zones and patch protection",
+    "release integration"
+  ],
+  "sourcePngSha256": "ac096862c6b86d2f4b2fc8062084e98f3f7c01fbdee9d4341f1a950c9439955c"
+}
