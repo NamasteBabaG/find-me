@@ -19,7 +19,8 @@
 .hero4__grid { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); align-items: center; gap: var(--space-6); padding-block: var(--space-12) calc(var(--space-8) + 96px); min-height: min(88vh, 860px); }
 .hero4__copy { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3); }
 .hero4__pill { display: inline-block; padding: 6px 12px; border: 1px solid #dfddd7; border-radius: 8px; background: #f0eee8; color: #555266; font-size: var(--fs-100); font-weight: 500; line-height: 1.5; box-shadow: none; cursor: default; }
-.hero4__title { font-family: var(--font-display); font-size: clamp(56px, 8.5vw, 128px); line-height: 1; font-weight: 900; letter-spacing: -0.035em; color: var(--ink); }
+/* Two lines at most, balanced: "Wait…" / "that's me!" and "רגע… זה" / "אני שם!" - never a word alone on a third line. */
+.hero4__title { font-family: var(--font-display); font-size: clamp(56px, 7vw, 100px); line-height: 1; font-weight: 900; letter-spacing: -0.035em; color: var(--ink); text-wrap: balance; }
 .hero4__q { color: var(--sun-deep); display: inline-block; animation: hero-q 3s var(--ease-in-out) infinite; transform-origin: 50% 80%; }
 @keyframes hero-q { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(10deg) translateY(-4px); } }
 .hero4__lead { font-size: var(--fs-400); line-height: var(--lh-400); color: var(--ink-2); max-width: 44ch; }
