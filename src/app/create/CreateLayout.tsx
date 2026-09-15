@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { getI18n } from "@/i18n/server";
+import { tf } from "@/i18n";
 import { SiteHeader, Stepper } from "@/ui/Shell";
 import { ScrollToTop } from "./ScrollToTop";
 
@@ -17,7 +18,7 @@ export async function CreateFrame({ step, title, lead, user, isAdmin, width = "n
       <ScrollToTop />
       <SiteHeader user={user} isAdmin={isAdmin} />
       <main className={`fm-container fm-container--${width} fm-section create create--${width}`}>
-        <Stepper steps={t.create.steps} current={step} />
+        <Stepper steps={t.create.steps} current={step} count={tf(t.common.stepOf, { n: step + 1, total: t.create.steps.length })} />
         <div className="create__head">
           <h1 className="create__title">{title}</h1>
           {lead ? <p className="fm-lead">{lead}</p> : null}

@@ -140,11 +140,37 @@ a.fm-btn[aria-disabled="true"] { pointer-events: none; }
 .fm-error { color: var(--danger); font-size: var(--fs-100); line-height: var(--lh-100); font-weight: 500; }
 .fm-textarea { min-height: var(--space-12); padding: var(--space-2) var(--space-3); resize: vertical; }
 
-/* Stepper */
-.fm-stepper { display: flex; align-items: center; gap: var(--space-1); justify-content: center; }
-.fm-stepper__dot { width: var(--space-1); height: var(--space-1); border-radius: var(--radius-pill); background: var(--line); transition: width var(--dur-2) var(--ease-out), background var(--dur-2); }
-.fm-stepper__dot--active { width: var(--space-4); background: var(--sun); }
-.fm-stepper__dot--done { background: var(--ink-3); }
+/* Steps (the wizard): a numbered dot and a name per step, joined by a line;
+   the ones behind are ticked, the current one is lit. On a phone the names
+   fold away and one line under the dots says which step this is. */
+.fm-steps { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); }
+.fm-steps__list { display: flex; justify-content: center; list-style: none; margin: 0; padding: 0; }
+.fm-steps__item { position: relative; display: flex; flex-direction: column; align-items: center; gap: var(--space-1); width: var(--space-16); }
+.fm-steps__item + .fm-steps__item::before { content: ""; position: absolute; top: var(--space-2); inset-inline-end: 50%; width: 100%; height: 2px; background: var(--line); }
+.fm-steps__item.is-done + .fm-steps__item::before, .fm-steps__item.is-done + .fm-steps__item.is-current::before { background: var(--sun); }
+.fm-steps__dot { position: relative; z-index: 1; display: grid; place-items: center; width: var(--space-4); height: var(--space-4); border-radius: var(--radius-pill); background: var(--white); box-shadow: inset 0 0 0 2px var(--line); font-family: var(--font-display); font-weight: 800; font-size: var(--fs-100); line-height: 1; color: var(--ink-3); transition: background var(--dur-2), box-shadow var(--dur-2), transform var(--dur-2) var(--ease-pop); }
+.fm-steps__item.is-done .fm-steps__dot { background: var(--sun-soft); box-shadow: inset 0 0 0 2px var(--sun); color: var(--ink); }
+.fm-steps__item.is-current .fm-steps__dot { background: var(--sun); box-shadow: 0 0 0 4px var(--sun-soft), var(--shadow-1); color: var(--ink); transform: scale(1.12); }
+.fm-steps__label { font-family: var(--font-display); font-weight: 700; font-size: var(--fs-50); line-height: var(--lh-50); color: var(--ink-3); text-align: center; text-wrap: balance; padding-inline: var(--space-0-5); }
+.fm-steps__item.is-current .fm-steps__label { color: var(--ink); }
+.fm-steps__item.is-done .fm-steps__label { color: var(--ink-2); }
+.fm-steps__count { display: none; margin: 0; font-family: var(--font-display); font-weight: 700; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); }
+@media (max-width: 720px) {
+  .fm-steps__list { gap: var(--space-1); }
+  .fm-steps__item { width: auto; gap: 0; }
+  .fm-steps__item + .fm-steps__item::before { display: none; }
+  .fm-steps__label { display: none; }
+  .fm-steps__dot { width: var(--space-1); height: var(--space-1); font-size: 0; box-shadow: none; background: var(--line); }
+  .fm-steps__item.is-done .fm-steps__dot { background: var(--sun); box-shadow: none; }
+  .fm-steps__item.is-current .fm-steps__dot { width: var(--space-4); transform: none; box-shadow: none; }
+  .fm-steps__count { display: block; }
+}
+
+/* Select: the browser's arrow is drawn away and the product's chevron sits at the end of the field. */
+.fm-select { position: relative; display: block; }
+.fm-select > select { appearance: none; -webkit-appearance: none; padding-inline-end: var(--space-6); cursor: pointer; }
+.fm-select::after { content: ""; position: absolute; top: 50%; inset-inline-end: var(--space-3); width: var(--space-2); height: var(--space-2); transform: translateY(-50%); background: var(--ink-2); mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat; pointer-events: none; }
+.fm-input[aria-invalid="true"] { border-color: var(--danger); box-shadow: 0 0 0 4px var(--coral-soft); }
 
 /* Header / footer */
 .fm-header { position: sticky; top: 0; z-index: var(--z-sticky); background: color-mix(in srgb, var(--paper) 80%, transparent); backdrop-filter: blur(16px); }

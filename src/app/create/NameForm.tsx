@@ -8,9 +8,10 @@ import { CHILD_AGES, validChildAge } from "@/domain/child-appearance";
 import { saveNameAction, type ActionResult } from "./actions";
 
 export function NameForm({ initialName, initialAge }: { initialName: string; initialAge?: number | null }) {
-  const { t, tf } = useI18n();
+  const { t } = useI18n();
   const n = t.create.name;
   const [state, action, pending] = useActionState<ActionResult | null, FormData>(saveNameAction, null);
+  const ageInvalid = Boolean(state && !state.ok && state.code === "INVALID_CHILD_AGE");
   return (
     <form action={action} className="fm-card fm-card--pad-6 fm-stack fm-stack--3">
       <div className="create__child-fields">
@@ -21,19 +22,22 @@ export function NameForm({ initialName, initialAge }: { initialName: string; ini
         </div>
         <div className="fm-field">
           <label htmlFor="ageYears" className="fm-label">{n.ageLabel}</label>
-          <select id="ageYears" name="ageYears" className="fm-input fm-input--lg" defaultValue={validChildAge(initialAge) ? initialAge : ""} required aria-invalid={state && !state.ok && state.code === "INVALID_CHILD_AGE" ? true : undefined} aria-describedby={state && !state.ok ? "child-age-hint child-form-error" : "child-age-hint"}>
-            <option value="" disabled>{n.agePlaceholder}</option>
-            {CHILD_AGES.map(age => <option key={age} value={age}>{age}</option>)}
-          </select>
-          <p id="child-age-hint" className="fm-hint">{n.ageHint}</p>
+          {/* The product's own chevron on the select; the browser's arrow is drawn away. */}
+          <span className="fm-select">
+            <select id="ageYears" name="ageYears" className="fm-input fm-input--lg" defaultValue={validChildAge(initialAge) ? initialAge : ""} required aria-invalid={ageInvalid ? true : undefined} aria-describedby={state && !state.ok ? "child-age-hint child-form-error" : "child-age-hint"}>
+              <option value="" disabled>{n.agePlaceholder}</option>
+              {CHILD_AGES.map(age => <option key={age} value={age}>{age}</option>)}
+            </select>
+          </span>
         </div>
+        {/* Four lines of hint under a narrow select made the row lopsided: the age hint runs under both fields. */}
+        <p id="child-age-hint" className="fm-hint create__child-note">{n.ageHint}</p>
       </div>
       {state && !state.ok ? <p id="child-form-error" className="fm-error" role="alert">{errorText(t, state)}</p> : null}
       {state && !state.ok && state.code === "SERVICE_UNAVAILABLE" ? (
         <p><a className="fm-btn fm-btn--secondary fm-btn--sm" href="/#demo">{t.home.hero.demo}</a></p>
       ) : null}
-      <div className="create__actions">
-        <span className="fm-small">{tf(t.common.stepOf, { n: 1, total: 5 })}</span>
+      <div className="create__actions create__actions--end">
         <Button type="submit" size="lg" loading={pending}>
           {n.next}
           <span className="fm-btn__arrow" aria-hidden>

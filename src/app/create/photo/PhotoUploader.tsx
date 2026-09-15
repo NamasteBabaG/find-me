@@ -261,32 +261,42 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/
             />
             <div className="cropper__ring" aria-hidden />
           </div>
-          <label className="fm-field" style={{ alignItems: "center" }}>
+          <label className="fm-field cropper__zoom-field">
             <span className="fm-hint">{p.zoom}</span>
             <span id="cropper-keys" className="visually-hidden">
               {p.cropKeys}
             </span>
-            <input type="range" className="cropper__zoom" min={1} max={3} step={0.01} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} />
+            {/* A small and a large glyph at the ends say which way is "more" without a word. */}
+            <span className="cropper__zoom-row">
+              <span className="cropper__zoom-glyph" aria-hidden>🙂</span>
+              <input type="range" className="cropper__zoom" min={1} max={3} step={0.01} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} />
+              <span className="cropper__zoom-glyph cropper__zoom-glyph--big" aria-hidden>🙂</span>
+            </span>
           </label>
-          {consentBox}
-          <div className="create__actions create__actions--sticky" style={{ width: "100%" }}>
-            <Button
-              variant="ghost"
-              type="button"
-              onClick={() => {
-                setFile(null);
-                setUrl(null);
-                setNatural(null);
-              }}
-            >
-              {p.another}
-            </Button>
-            <Button size="lg" onClick={upload} loading={busy} disabled={!natural || !consent}>
-              {p.confirm}
-              <span className="fm-btn__arrow" aria-hidden>
-                ➜
-              </span>
-            </Button>
+          {/* The consent sits with the button it unlocks, in one panel that is NOT
+              sticky: stuck to the bottom of a phone it covered the crop circle, and a
+              checkbox left above a stuck bar was hidden under it. The page is short. */}
+          <div className="create__actions create__actions--panel" style={{ width: "100%" }}>
+            {consentBox}
+            <div className="create__actions create__actions--row">
+              <Button
+                variant="ghost"
+                type="button"
+                onClick={() => {
+                  setFile(null);
+                  setUrl(null);
+                  setNatural(null);
+                }}
+              >
+                {p.another}
+              </Button>
+              <Button size="lg" onClick={upload} loading={busy} disabled={!natural || !consent}>
+                {p.confirm}
+                <span className="fm-btn__arrow" aria-hidden>
+                  ➜
+                </span>
+              </Button>
+            </div>
           </div>
         </>
       )}

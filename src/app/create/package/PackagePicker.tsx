@@ -31,10 +31,14 @@ export function PackagePicker({ options, defaultTier, availableWorldCount }: { o
               <input type="radio" name="tier" value={o.tier} className="visually-hidden" checked={selected} onChange={() => setTier(o.tier)} />
               {o.popular ? <span className="fm-sticker-badge package__ribbon">{t.common.popular}</span> : null}
               <h3>{o.name}</h3>
-              <span className="package__worlds">{o.worldCount === 1 ? t.common.worldCountOne : tf(t.common.worldsCount, { n: o.worldCount })}</span>
-              <span className="fm-muted">{o.meta}</span>
+              {/* The number is the choice, drawn the way the site's pricing draws it: big, with the word small beside it. */}
+              <span className="package__worlds" aria-label={o.worldCount === 1 ? t.common.worldCountOne : tf(t.common.worldsCount, { n: o.worldCount })}>
+                <b className="package__n">{o.worldCount}</b>
+                <small>{o.worldCount === 1 ? t.home.pricing.world : t.home.pricing.worlds}</small>
+              </span>
+              <span className="fm-muted package__meta">{o.meta}</span>
               <span className="package__price">{o.price}</span>
-              <span className="fm-badge fm-badge--sea">{selected ? p.selected : p.choose}</span>
+              <span className={`package__cta${selected ? " package__cta--on" : ""}`} aria-hidden>{selected ? p.selected : p.choose}</span>
             </label>
           );
         })}

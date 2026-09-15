@@ -41,7 +41,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
         <div className="fm-card fm-card--pad-4 fm-stack fm-stack--3">
           <div className="fm-row">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/api/drafts/photo" alt="" className="fm-sticker" width={80} height={80} style={{ width: 80, height: 80 }} />
+            <img src="/api/drafts/photo" alt="" className="fm-sticker summary__face" width={80} height={80} />
             <div>
               <h3>{tf(ck.gameTitle, { name })}</h3>
               <p className="fm-muted">{tf(ck.summaryLine, { pkg: pick(summary.pkg.name, locale), boards: shape.places, spots: shape.spots })}</p>

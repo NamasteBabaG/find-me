@@ -81,3 +81,13 @@ Sits immediately after the hero, before the live demo. Three cards: the prepared
 - **Tokens only, still.** The hero eyebrow was the last hard-coded colour on the site; it is now the same translucent chip as the world names under the stage.
 - **The title's last mark moves.** The hero lifts its closing `?` or `!` (`.hero4__q`), whichever the language ends with.
 - **A page that hid** (`not-found`) wears the site header and footer, a centred button and a peeking mark; it is a page of the product, not a bare error.
+
+## The wizard (create flow, polish 2026-09-15)
+
+- **Steps have names.** `Stepper` (`src/ui/primitives.tsx`, `.fm-steps`) is a numbered dot and a label per step joined by a line: the ones behind are ticked on `--sun-soft`, the current one is lit `--sun` with a soft ring, the ones ahead are white with a `--line` rim. On a phone the labels fold away and one line under the dots says "Step 2 of 5 · Photo" (`count` prop, `common.stepOf`). Five anonymous dots said only "there are steps".
+- **Form controls wear the product, not the browser.** A `<select>` sits inside `.fm-select`: the browser arrow is drawn away and the product's chevron (a mask, `--ink-2`) sits at the end of the field. A range input (`.cropper__zoom`) is a `--paper-3` track with a white thumb ringed in `--sea`, a small face and a big one at its ends. An invalid field (`aria-invalid`) shows a `--danger` rim with a `--coral-soft` ring.
+- **A long note runs under the row.** The age note spans both columns (`.create__child-note`) instead of stacking four lines under a narrow select; the select is one size down (`--fs-400`) so its placeholder fits.
+- **The consent travels with the button it unlocks.** On the crop step the checkbox and the two buttons are one panel (`.create__actions--panel`), never sticky: stuck to a phone's bottom it covered the crop circle.
+- **The package step draws the choice the way the pricing section does**: a big number with the word small beside it (`.package__n`), the meta small, and a pill that says what a tap does and turns `--sun` once chosen (`.package__cta`, lined up along the bottom of the row). A world that can no longer be added (`.pick:disabled`) steps back at 55%.
+- **Cards are as tall as their words.** The checkout grid aligns to the start; the summary no longer stretches to the pay card's height.
+- **The dropzone's camera** sits in the same tilted `--sun-soft` chip the steps use and straightens on hover or drag-over.
