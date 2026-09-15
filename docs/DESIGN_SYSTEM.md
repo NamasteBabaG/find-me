@@ -72,3 +72,12 @@ Sits immediately after the hero, before the live demo. Three cards: the prepared
 - **Irreversible asks in our own dialog.** `ConfirmDialog` (`src/ui/ConfirmDialog.tsx`) is a native `<dialog>` dressed as `.fm-dialog`: title, one sentence, cancel and the destructive action; the form submits only after it, once.
 - **Phones keep the floors.** Board buttons stay at `--touch-min` (48px) at every width; map dots draw at 56px with a transparent ring to the 64px kid target; the map, the bag, the finish card and the tip respect `env(safe-area-inset-*)`.
 - **Reduced motion is honoured everywhere.** Every loop added here (gift float and glow, breathing map dot, marching road, marketing Ken Burns and nudges) and every entrance is switched off under `prefers-reduced-motion`.
+
+## Consistency rules (design pass, 2026-09-15)
+
+- **One speech bubble.** Wherever the child speaks (the hero screen, the photo-to-character card, the board, the gift cover, the map marker) it is the same bubble: white, a 3px `--ink` rim, Fredoka (`--font-kid`), `--radius-2`, a centred tail drawn with **physical** `border-right` + `border-bottom` (a logical border turned the RTL tail sideways). It pops in on `--ease-pop` and leaves on its own. The child says hello from the cover sticker (`gift.hello`) and "we're here" from the marker when it lands (`map.arrived`).
+- **Colour lives in the chip, not the slab.** Inside a paper section, cards are white with `--shadow-1`; the tint goes on one rotated icon chip per card (`.step__icon`, `.feature__icon`, `--*-soft` fills) that turns the other way on hover. Full-colour slabs are reserved for the section sheets (`fm-sheet--*`, the demo, the final call). Six pastel cards in a row read as a sweet shop.
+- **No hard shadows, no ink borders on controls.** Every control, including the worlds' arrows, is the button system: soft `--shadow-1`, lift `-2px` with its glow on hover, `scale(.96)` on press. `0 4px 0 var(--ink)` belongs to v1 and is gone.
+- **Tokens only, still.** The hero eyebrow was the last hard-coded colour on the site; it is now the same translucent chip as the world names under the stage.
+- **The title's last mark moves.** The hero lifts its closing `?` or `!` (`.hero4__q`), whichever the language ends with.
+- **A page that hid** (`not-found`) wears the site header and footer, a centred button and a peeking mark; it is a page of the product, not a bare error.

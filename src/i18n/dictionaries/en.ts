@@ -440,6 +440,8 @@ export const en = {
       findAnyLead: "{name} is hiding in {count} places. Five hiding spots in each — find any three to continue!",
       findAnyVariableLead: "{name} is hiding in {count} places, with {stars} hiding spots to discover. Find any three in each place to continue!",
       start: "Start the adventure ✨",
+      /** The child's first words, from the sticker on the cover. */
+      hello: "Here I am!",
     },
     hub: {
       title: "Where shall we go, {name}?",
@@ -455,6 +457,8 @@ export const en = {
       worldsAria: "Places",
       stopsAria: "Places in this world",
       notYet: "We'll get here soon!",
+      /** Said from the marker when it reaches the next place. */
+      arrived: "We're here!",
       done: "done",
       spots: "3 hiding spots",
       playAgain: "Play again?",

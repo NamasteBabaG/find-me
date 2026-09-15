@@ -100,6 +100,17 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
     const id = setTimeout(() => setTeaser(null), 2600);
     return () => clearTimeout(id);
   }, [teaser]);
+  // Arriving at the next place (walked or skipped), the child says so from the marker, briefly.
+  const [arrived, setArrived] = useState(false);
+  const wasTravelling = useRef(travelling);
+  useEffect(() => {
+    const landed = wasTravelling.current && !travelling;
+    wasTravelling.current = travelling;
+    if (!landed) return;
+    setArrived(true);
+    const id = setTimeout(() => setArrived(false), 2400);
+    return () => clearTimeout(id);
+  }, [travelling]);
 
   const at = travelling && from ? from : marker;
   const currentBoard = boards.get(marker.boardSlug);
@@ -220,6 +231,7 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={config.child.avatarUrl} alt="" className="fm-sticker" width={56} height={56} />
+            {arrived ? <span className="bubble wmap__hello">{g.map.arrived}</span> : null}
           </div>
         </div>
       </div>

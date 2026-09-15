@@ -211,10 +211,12 @@ export function Hero({ child, children }: { child: Child; children?: ReactNode }
     };
   }, [locale, child.name]);
 
-  const title = h.title.endsWith("?") ? (
+  // The title's last mark is the one that moves: "?" in one language, "!" in the other.
+  const mark = h.title.slice(-1);
+  const title = mark === "?" || mark === "!" ? (
     <>
       {h.title.slice(0, -1)}
-      <span className="hero4__q">?</span>
+      <span className="hero4__q">{mark}</span>
     </>
   ) : (
     h.title

@@ -32,7 +32,7 @@
 }
 /* On a dark page the tip inherited light text on pale yellow and was unreadable. */
 /* "It is best sideways": one small pill over the board that leaves on its own, never a strip that pushes the board down. */
-.game__tip { position: absolute; z-index: var(--z-toast); left: 50%; bottom: calc(max(var(--space-2), env(safe-area-inset-bottom)) + var(--space-10)); transform: translateX(-50%); max-width: calc(100% - var(--space-4)); padding: var(--space-1) var(--space-2); border-radius: var(--radius-pill); text-align: center; font-family: var(--font-display); font-weight: 600; font-size: var(--fs-100); line-height: var(--lh-100); background: var(--ink); color: var(--white); box-shadow: var(--shadow-2); pointer-events: none; animation: game-tip 7s var(--ease-out) both; }
+.game__tip { position: absolute; z-index: var(--z-toast); left: 50%; bottom: calc(max(var(--space-2), env(safe-area-inset-bottom)) + var(--space-20)); transform: translateX(-50%); max-width: calc(100% - var(--space-4)); padding: var(--space-1) var(--space-2); border-radius: var(--radius-pill); text-align: center; font-family: var(--font-display); font-weight: 600; font-size: var(--fs-100); line-height: var(--lh-100); background: var(--ink); color: var(--white); box-shadow: var(--shadow-2); pointer-events: none; animation: game-tip 7s var(--ease-out) both; }
 @keyframes game-tip { 0% { opacity: 0; transform: translate(-50%, var(--space-1)); } 8%, 82% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, var(--space-1)); } }
 .game__parents { text-align: center; padding: var(--space-3); font-size: var(--fs-100); }
 .game__parents a { color: var(--ink-3); }
@@ -45,7 +45,8 @@
 .gift__ribbon--v { top: 0; bottom: 0; left: 50%; width: var(--space-4); transform: translateX(-50%); }
 .gift__ribbon--h { left: 0; right: 0; top: 50%; height: var(--space-4); transform: translateY(-50%); background: linear-gradient(180deg, var(--gold-light), var(--gold) 50%, var(--gold-light)); }
 .gift__bow { position: absolute; left: 50%; top: 0; z-index: 3; transform: translate(-50%, -55%); font-size: var(--fs-800); line-height: 1; filter: drop-shadow(0 6px 10px rgba(23, 22, 43, 0.25)); }
-.gift__spark { position: absolute; z-index: 3; color: var(--gold); font-size: var(--fs-500); line-height: 1; text-shadow: 0 0 12px var(--gold-light); animation: fm-glow 2.2s var(--ease-in-out) infinite; pointer-events: none; }
+/* White with a gold halo: gold on the coral and sun stripes was invisible. */
+.gift__spark { position: absolute; z-index: 3; color: var(--white); font-size: var(--fs-500); line-height: 1; text-shadow: 0 0 12px var(--gold), 0 0 2px var(--gold-deep); animation: fm-glow 2.2s var(--ease-in-out) infinite; pointer-events: none; }
 .gift__spark--1 { top: 10%; left: 8%; }
 .gift__spark--2 { top: 22%; right: 6%; animation-delay: 0.7s; }
 .gift__spark--3 { bottom: 12%; left: 16%; animation-delay: 1.3s; font-size: var(--fs-400); }
@@ -63,8 +64,12 @@
 .gift__title { font-size: var(--fs-600); line-height: var(--lh-600); }
 .gift__title--big { font-size: var(--fs-700); line-height: var(--lh-700); }
 .gift__from { color: var(--ink-2); }
-.gift__cover { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); animation: fm-pop-in var(--dur-3) var(--ease-pop); max-width: 560px; }
+.gift__cover { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); animation: fm-pop-in var(--dur-3) var(--ease-pop); max-width: 560px; padding-top: var(--space-10); }
 .gift__avatar { width: 160px; height: 160px; }
+/* "Here I am!": the child's first bubble, over the sticker, a beat after the cover lands. */
+.gift__sticker { position: relative; display: block; }
+/* Two classes on purpose: the shared .bubble rule below sets white-space and the animation shorthand, and this must outrank it. */
+.bubble.gift__hello { left: 50%; top: var(--space-1); white-space: nowrap; animation-delay: var(--dur-3); animation-fill-mode: backwards; }
 .gift__lead { font-size: var(--fs-300); line-height: var(--lh-300); color: var(--ink-2); }
 .gift__message { font-family: var(--font-display); font-size: var(--fs-300); line-height: var(--lh-300); color: var(--berry-deep); }
 .gift__btn { margin-top: var(--space-2); }
@@ -207,7 +212,10 @@
 .ripple { position: absolute; width: var(--space-6); height: var(--space-6); margin: calc(var(--space-6) / -2) 0 0 calc(var(--space-6) / -2); border-radius: var(--radius-pill); border: 4px solid var(--white); box-shadow: 0 0 0 2px rgba(43, 42, 51, 0.2); animation: fm-ripple var(--dur-3) var(--ease-out) forwards; }
 .magnifier { position: absolute; font-size: var(--fs-700); line-height: 1; margin: -0.5em 0 0 -0.5em; animation: fm-magnifier var(--dur-4) var(--ease-out) forwards, fm-float 2s var(--ease-in-out) infinite var(--dur-4); filter: drop-shadow(0 4px 6px rgba(43, 42, 51, 0.3)); }
 .bubble { position: absolute; transform: translate(-50%, calc(-100% - var(--space-4))); max-width: 260px; background: var(--white); color: var(--ink); font-family: var(--font-display); font-weight: 600; font-size: var(--fs-300); line-height: var(--lh-300); padding: var(--space-1) var(--space-2); border-radius: var(--radius-2); box-shadow: 0 0 0 3px var(--ink), var(--shadow-2); animation: fm-pop-in var(--dur-2) var(--ease-pop); text-align: center; white-space: normal; }
-.bubble::after { content: ""; position: absolute; left: 50%; bottom: -14px; width: 16px; height: 16px; background: var(--white); border-inline-end: 3px solid var(--ink); border-bottom: 3px solid var(--ink); transform: translateX(-50%) rotate(45deg); }
+/* The tail is a square rotated so its bottom-right corner points down: physical
+   right and bottom borders, on purpose. With logical borders the RTL tail was
+   the bottom-LEFT corner, which after the same turn pointed sideways. */
+.bubble::after { content: ""; position: absolute; left: 50%; bottom: -14px; width: 16px; height: 16px; background: var(--white); border-right: 3px solid var(--ink); border-bottom: 3px solid var(--ink); transform: translateX(-50%) rotate(45deg); }
 
 .celebration { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: var(--z-overlay); }
 /* Paper confetti (see CelebrationOverlay.tsx): three transform layers per
@@ -431,6 +439,8 @@
 .wmap__marker { position: absolute; transform: translate(-50%, -85%); z-index: 5; pointer-events: none; transition: left var(--dur-3) var(--ease-in-out), top var(--dur-3) var(--ease-in-out); }
 .wmap__marker .fm-sticker { width: var(--space-6); height: var(--space-6); display: block; filter: drop-shadow(0 3px 4px rgba(23, 22, 43, 0.45)); }
 .wmap__marker--travel .fm-sticker { animation: wmap-bob 0.45s var(--ease-in-out) infinite; }
+/* "We're here!" from the marker as it lands; a small bubble, gone on its own. */
+.wmap__hello { left: 50%; top: 0; white-space: nowrap; font-size: var(--fs-200); line-height: var(--lh-200); padding: var(--space-0-5) var(--space-2); }
 .wmap__marker--rocket.wmap__marker--travel .fm-sticker { animation: wmap-float 0.9s var(--ease-in-out) infinite; }
 .wmap__marker--sail.wmap__marker--travel .fm-sticker { animation: wmap-float 1.2s var(--ease-in-out) infinite; }
 @keyframes wmap-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }

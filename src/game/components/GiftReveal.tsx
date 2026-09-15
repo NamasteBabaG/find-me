@@ -57,8 +57,12 @@ export function GiftReveal({ config, onOpen }: { config: GameConfig; onOpen: () 
         <>
           <CelebrationOverlay kind="stars" small seed={7} />
           <div className="gift__cover">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={config.child.avatarUrl} alt="" className="fm-sticker gift__avatar" width={160} height={160} />
+            {/* The child says hello from the sticker: the first bubble of the game, before any search. */}
+            <span className="gift__sticker">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={config.child.avatarUrl} alt="" className="fm-sticker gift__avatar" width={160} height={160} />
+              <span className="bubble gift__hello" aria-hidden>{g.gift.hello}</span>
+            </span>
             <p className="fm-eyebrow">{tf(g.gift.made, { name })}</p>
             <h1 className="gift__title gift__title--big">{tf(g.gift.title, { name })}</h1>
             <p className="gift__lead">{tf(giftLead, { name, count: config.scenes.length, stars: config.scenes.reduce((sum, scene) => sum + scene.targets.length, 0) })}</p>

@@ -64,9 +64,11 @@ export function HowItWorks({ t }: SectionProps) {
   );
 }
 
-/* ─── What's inside: six equal cards with a check ─── */
+/* ─── What's inside: six equal white cards, one tinted icon chip each ─── */
 const INSIDE_ORDER = ["three", "hints", "noFail", "replay", "bag", "link"] as const;
 const INSIDE_TONES = ["sun", "aqua", "coral", "lavender", "lime", "sea"] as const;
+/** One picture per promise, in the same chip the steps wear (a check on every card said nothing). */
+const INSIDE_ICONS = ["🔍", "💡", "🐢", "🔁", "🎒", "👪"] as const;
 
 export function Inside({ t }: SectionProps) {
   const s = t.home.inside;
@@ -83,8 +85,8 @@ export function Inside({ t }: SectionProps) {
             const tile = s.tiles[key];
             return (
               <Reveal key={key} className={`feature feature--${INSIDE_TONES[i] ?? "sun"}`} delay={(i % 3) * 80}>
-                <span className="feature__check" aria-hidden>
-                  ✓
+                <span className="feature__icon" aria-hidden>
+                  {INSIDE_ICONS[i] ?? "✨"}
                 </span>
                 <h3>{tile.title}</h3>
                 <p>{tile.text}</p>

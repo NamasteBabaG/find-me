@@ -439,6 +439,7 @@ export const he: Dictionary = {
       findAnyLead: "{count} מקומות מחכים ל{name}. בכל אחד חמישה מחבואים — מוצאים שלושה וממשיכים!",
       findAnyVariableLead: "{count} מקומות מחכים ל{name}, עם {stars} מחבואים לגלות. מוצאים שלושה בכל מקום וממשיכים!",
       start: "לפתיחת ההרפתקה ✨",
+      hello: "הנה אני!",
     },
     hub: {
       title: "לאן יוצאים, {name}?",
@@ -454,6 +455,7 @@ export const he: Dictionary = {
       worldsAria: "מקומות",
       stopsAria: "המקומות בעולם הזה",
       notYet: "עוד מעט נגיע גם לכאן!",
+      arrived: "הגענו!",
       done: "הושלם",
       spots: "3 מחבואים",
       playAgain: "לשחק שוב?",
