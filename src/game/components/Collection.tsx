@@ -51,7 +51,8 @@ interface Props {
 export function Collection({ board, scene, collectedIds, selectedId, hintLevel, disabled, muted, arrival = null, repeat = null, onSelect, onHint }: Props) {
   const { g, tf, locale } = useGameText();
   const c = g.collection;
-  const wide = useWide();
+  const root = useRef<HTMLElement>(null);
+  const wide = useWide(root);
   const sheetId = useId();
   const total = board.discoveries.length;
   const count = board.discoveries.filter((d) => collectedIds.includes(d.id)).length;
@@ -69,7 +70,6 @@ export function Collection({ board, scene, collectedIds, selectedId, hintLevel, 
   const [flight, setFlight] = useState<{ id: string; from: Point; to: Point; key: number } | null>(null);
   const [wiggle, setWiggle] = useState<string | null>(null);
   const [bump, setBump] = useState(0);
-  const root = useRef<HTMLElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const sheet = useRef<HTMLDivElement>(null);
   const slots = useRef(new Map<string, HTMLElement>());

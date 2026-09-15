@@ -46,8 +46,8 @@ describe("hero: the find on two devices", () => {
     const screens = Array.from(view.container.querySelectorAll("[data-screen]")).map(s => s.getAttribute("data-screen"));
     expect(screens).toEqual(["phone", "tablet", "card"]);
     for (const screen of Array.from(view.container.querySelectorAll("[data-screen]"))) {
-      // The tray shows what the game shows: five hiding spots, the first star landing.
-      expect(screen.querySelectorAll(".hero4__slot")).toHaveLength(5);
+      // The tray is pinned to the actual public game's count.
+      expect(screen.querySelectorAll(".hero4__slot")).toHaveLength(found.targetCount);
       expect(screen.querySelectorAll(".hero4__landed")).toHaveLength(1);
       expect(screen.querySelector(".hero4__mission")?.textContent).toBe("Find Noa!");
       expect(screen.querySelector(".hero4__rules")).toBeNull();
@@ -76,7 +76,7 @@ describe("hero: the find on two devices", () => {
       const top = screen.querySelector(".hero4__hud-top")!;
       expect(top.querySelector(".hero4__face")?.getAttribute("width")).toBe("56");
       expect(top.querySelector(".hero4__mission")?.textContent).toBe("Find Noa!");
-      expect(top.querySelectorAll(".hero4__slot")).toHaveLength(5);
+      expect(top.querySelectorAll(".hero4__slot")).toHaveLength(found.targetCount);
       expect(top.querySelector(".hero4__rules")).toBeNull();
       expect(top.querySelector(".hero4__hintbtn")?.parentElement).toBe(top);
       expect(top.querySelector(".hero4__face")?.parentElement).toBe(top);

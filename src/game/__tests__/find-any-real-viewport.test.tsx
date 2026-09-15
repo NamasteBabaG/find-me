@@ -24,8 +24,8 @@ function mountedDecode(decode: (image: HTMLImageElement) => Promise<void>) {
 // Only browser layout/image loading are supplied; no network or persistence.
 class LayoutObserver {
   static latest: LayoutObserver;
-  constructor(private readonly callback: (entries: Array<{ contentRect: { width: number; height: number } }>) => void) { LayoutObserver.latest = this; }
-  observe() {}
+  constructor(private readonly callback: (entries: Array<{ contentRect: { width: number; height: number } }>) => void) {}
+  observe(target: Element) { if (target.classList.contains("viewport")) LayoutObserver.latest = this; }
   disconnect() {}
   resize(width: number, height: number) { this.callback([{ contentRect: { width, height } }]); }
 }
@@ -272,7 +272,9 @@ describe("one child at a time through the actual animated viewport", () => {
     await act(async () => ready.forEach(resolve => resolve()));
     expect(player.curtainOpen()).toBe(true);
     act(() => vi.advanceTimersByTime(1000));
-    expect(player.stage.style.transform).toBe(camera);
+    // Clamping every animation frame may round sub-pixel floating point noise.
+    const numericTransform = (value: string) => value.match(/-?\d+(?:\.\d+)?/g)!.map(Number);
+    numericTransform(player.stage.style.transform).forEach((value, index) => expect(value).toBeCloseTo(numericTransform(camera)[index]!, 8));
     expect(player.store.getState().mission!.phase).toBe("searching");
     expect(player.visible()).toHaveLength(1);
   });

@@ -10,7 +10,6 @@ import { assetPlan, preloadVerdict, type LoadResult } from "../engine/asset-plan
 import { expandRect, hitPadding, hitTest, spriteRect, stageToScreen, type HitCandidate, type NormRect } from "../engine/viewport-math";
 import { spriteAspect, targetGeometry } from "../engine/target-geometry";
 import { useViewport, type ViewportApi } from "../engine/useViewport";
-import { useWide } from "../engine/useWide";
 import { Sprite } from "./Sprite";
 import { FoundParticles } from "./FoundParticles";
 
@@ -51,7 +50,6 @@ interface Ripple {
  */
 export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveries = [], onHit, onReady, onAssetsReady, onVisibleAssetsReady, onAssetsFailed, retryToken = 0, ariaLabel, children }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const wide = useWide();
   const stage = useMemo(() => ({ width: scene.art.width, height: scene.art.height }), [scene.art.width, scene.art.height]);
   const [ripples, setRipples] = useState<Ripple[]>([]);
   const [ambientAnim, setAmbientAnim] = useState<Record<string, number>>({});
@@ -136,9 +134,8 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveri
     [placedTargets, bonus, scene.ambient, discoveries, stage, onHit],
   );
 
-  // Edge hides can be panned out from under the persistent upper-right HUD.
-  // Edge hides can be pulled out from under the HUD on a wide screen; a phone never scrolls past the board (Guy).
-  const api = useViewport(containerRef, stage, onTap, { panPadding: wide ? 220 : 0 });
+  // Demo and full game share strict boundaries on mouse, touch and pen.
+  const api = useViewport(containerRef, stage, onTap);
   apiRef.current = api;
 
   // The board webp is static and fast; a child's patch is a signed database

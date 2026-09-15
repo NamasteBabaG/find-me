@@ -155,8 +155,7 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
         const p = Math.min(1, (now - start) / durationMs);
         const e = 1 - Math.pow(1 - p, 3);
         const t = { scale: from.scale + (to.scale - from.scale) * e, tx: from.tx + (to.tx - from.tx) * e, ty: from.ty + (to.ty - from.ty) * e };
-        transformRef.current = t;
-        setTransform(t);
+        apply(t);
         if (p < 1) raf.current = requestAnimationFrame(step);
         else raf.current = null;
       };

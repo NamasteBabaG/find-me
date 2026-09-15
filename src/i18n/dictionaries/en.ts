@@ -78,7 +78,7 @@ export const en = {
     demo: {
       pill: "🎮 Live demo · play right here",
       title: "Can you find {name}?",
-      lead: "This is one search to try. In your personal game, you look for your own character. Drag, zoom and tap {name} when you spot them.",
+      lead: "One scene, three hiding spots and six discoveries to collect. Drag, zoom and tap {name} when you spot them. In your personal game, you look for your own character.",
       foot: "Want to find a character made from your child’s photo?",
       cta: "Create your own game",
     },

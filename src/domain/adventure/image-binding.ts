@@ -9,6 +9,10 @@ export type BookImage = z.infer<typeof BookImageSchema>;
  * Asset IDs must remain immutable at the asset service; this is not a byte hash.
  */
 export function gameAssetId(url: string): string | null {
+  // The public demo uses content-addressed, public example artwork. This
+  // narrow immutable namespace is not a customer upload or a private URL.
+  const demoHash = /^\/demo\/beach-v1\/([a-f0-9]{64})\.webp$/.exec(url)?.[1];
+  if (demoHash) return `demo-beach-v1-${demoHash}`;
   return /^\/api\/assets\/([A-Za-z0-9_-]{1,160})(?:\?[^#]*)?$/.exec(url)?.[1] ?? null;
 }
 

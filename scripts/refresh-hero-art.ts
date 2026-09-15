@@ -7,20 +7,23 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import sharp from "sharp";
+import { journeyPresentation } from "../content/home/journey-art";
 
 const hash = (b: Buffer) => createHash("sha256").update(b).digest("hex");
 async function main() {
   const rows = [];
   for (const slug of ["newyork", "dragoncave", "futurecity"]) {
     const scene = JSON.parse(readFileSync(`content/scenes/${slug}/scene.json`, "utf8"));
-    const source = readFileSync(path.join("public", scene.art.base));
-    if (hash(source) !== scene.art.sha256) throw new Error(`Source hash mismatch: ${slug}`);
+    const presentation = journeyPresentation(slug);
+    const art = presentation ?? { ...scene.art, version: scene.version };
+    const source = readFileSync(path.join("public", art.base));
+    if (hash(source) !== art.sha256) throw new Error(`Source hash mismatch: ${slug}`);
     // Match the board's aspect ratio: no attention crop can move a character.
     const bytes = await sharp(source).resize({ width: 1400 }).webp({ quality: 82, effort: 6 }).toBuffer();
     const assetPath = `/home/hero-${slug}.webp`;
     const assetSha256 = hash(bytes);
     rows.push({ slug, src: `${assetPath}?v=${assetSha256.slice(0, 16)}`, assetPath,
-      assetSha256, bytes: bytes.length, source: scene.art.base, sourceSha256: scene.art.sha256, sceneVersion: scene.version });
+      assetSha256, bytes: bytes.length, source: art.base, sourceSha256: art.sha256, sceneVersion: art.version });
     if (process.argv.includes("--apply")) writeFileSync(path.join("public", assetPath), bytes);
   }
   if (process.argv.includes("--apply")) {

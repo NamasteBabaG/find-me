@@ -1,4 +1,5 @@
-import { beachDemoPatches } from "./beach-patches";
+import { publicBeachDemo } from "./beach-v1";
+import assets from "./beach-v1-assets.json";
 
 /** Demo-only artwork. No customer photograph or game asset belongs here.
  * See docs/CODEX_UI_IMPLEMENTATION_2026-09-06.md for source hashes and review limits.
@@ -6,8 +7,8 @@ import { beachDemoPatches } from "./beach-patches";
  */
 export const transformationExample = {
   photo: "/demo/example-photo.jpg",
-  identitySheet: "/demo/example-identity-no-hat.png",
+  identitySheet: assets.identitySheet,
   scene: "beach",
   target: "sandcastle",
-  sprite: beachDemoPatches.sandcastle!,
+  sprite: publicBeachDemo("he").scenes[0]!.targets.find(t => t.id === "sandcastle")!.sprite,
 } as const;

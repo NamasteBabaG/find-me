@@ -1,0 +1,38 @@
+{
+  "photo": "/demo/example-photo.jpg",
+  "photoSha256": "50fd7717e8b324a8274bf21ef2218282f699fd20ea7fc0d9eb5e1a0f02fa14e6",
+  "identitySheet": "/demo/beach-v1/160123ffedfdaa4ab8b3acb3651898a2b1f85ad0afff9af5a9e7d472ea6be8bf.webp",
+  "avatar": "/demo/beach-v1/6d31eb05a6afc245428ffcb6f028d9fcbca856dbc16f3efddfc61ed5da503950.webp",
+  "boardSha256": "e5c2f0e04ef36aed55e3f96c3a9f234bfb87ef2b4da6e5f02420e9cea0c561c3",
+  "patches": {
+    "beach-sandcastle": "/demo/beach-v1/15afabe78ed9465fc9d49f3f2463229b130f72a991a780f0b093d6369804721f.webp",
+    "beach-library": "/demo/beach-v1/1926d989e528c0f428ea5a04319df626d739b8b3b45566ec70fb6260f244701b.webp",
+    "beach-shells": "/demo/beach-v1/b8b6c50a23e0777ff4396922ff5b4491f90502bfeda244b09620e4325cd4b015.webp"
+  },
+  "geometry": {
+    "beach-sandcastle": {
+      "x": 114,
+      "y": 305,
+      "w": 210,
+      "h": 282,
+      "headX": 207,
+      "headY": 370
+    },
+    "beach-library": {
+      "x": 124,
+      "y": 253,
+      "w": 146,
+      "h": 430,
+      "headX": 195,
+      "headY": 320
+    },
+    "beach-shells": {
+      "x": 110,
+      "y": 201,
+      "w": 240,
+      "h": 343,
+      "headX": 254,
+      "headY": 281
+    }
+  }
+}

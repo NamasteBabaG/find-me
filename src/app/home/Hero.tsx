@@ -14,7 +14,7 @@ import found from "../../../content/home/hero-found.json";
  * porthole roaming a white page. They all showed the WORLD and hoped a visitor
  * would infer the game. Guy drew the line: what is interesting is finding
  * your child in the painting, and nothing says that like watching it happen.
- * So the hero is a screen with the real search HUD (the face, five gold star
+ * So the hero is a screen with the real search HUD (the face, three gold star
  * slots, the hint), a hand that arrives, taps the child, a ring, a bubble in
  * her voice, and a gold star that flies into its empty slot. Every eight
  * seconds the screen is a different device — a phone, then a tablet drawn as
@@ -39,8 +39,8 @@ import found from "../../../content/home/hero-found.json";
  * child.
  */
 
-/** Five hiding spots per board, three of them open the next place: the tray shows what the game shows. */
-const SLOTS = 5;
+/** The tray follows the actual demo, not a separate marketing claim. */
+const SLOTS = found.targetCount;
 /** The two devices are drawn at this size and scaled as one to the column (--k). */
 const STAGE_W = 704;
 /** How far past design size a wide column may grow the stage. */
@@ -53,7 +53,7 @@ type Kind = "phone" | "tablet" | "card";
 type Crop = keyof typeof found.crops;
 const SCREENS: Record<Exclude<Kind, "card">, { w: number; h: number; crop: Crop }> = {
   phone: { w: 288, h: 616, crop: "phone" },
-  tablet: { w: 688, h: 456, crop: "wide" },
+  tablet: { w: 688, h: 387, crop: "wide" },
 };
 /** Where a point of an image lands inside a box the image covers (object-fit: cover, centred). */
 export function coverPoint(p: { x: number; y: number }, image: number, box: number) {

@@ -6,6 +6,7 @@ import type { GameConfig, SpriteRef } from "@/domain/game/config";
 import type { Locale } from "@/i18n/config";
 import { sceneBySlug } from "./scene-catalog.service";
 import { beachDemoPatches } from "../../content/demo/beach-patches";
+import { publicBeachDemo } from "../../content/demo/beach-v1";
 
 /**
  * Landing-page demo: a fixed illustrated child (Anna / נועה) hiding in a world.
@@ -57,6 +58,7 @@ export function demoPatchCoverage(slug: string, targets: readonly { id: string }
 const DEMO_NAME: Record<Locale, string> = { en: "Anna", he: "נועה" };
 
 export function buildDemoConfig(locale: Locale, slug = "beach", name?: string): GameConfig {
+  if (slug === "beach") return publicBeachDemo(locale, name);
   const scene = sceneBySlug(slug);
   const child = { name: name ?? DEMO_NAME[locale], avatarUrl: DEMO_FACE };
   const sceneConfig = composeScene(

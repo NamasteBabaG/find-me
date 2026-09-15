@@ -87,6 +87,7 @@ async function main() {
   }
   const manifest = {
     scene: SLUG,
+    targetCount: scene.targets.length,
     sceneVersion: scene.version,
     target: TARGET,
     variant: VARIANT,

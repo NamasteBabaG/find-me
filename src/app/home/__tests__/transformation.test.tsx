@@ -26,12 +26,12 @@ describe("the photo-to-game proof", () => {
     const { data, info } = await sharp(`public${example.sprite.url}`).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     // Manually reviewed face interior for THIS fixture, not a general face detector.
     let samples = 0;
-    for (let y = 46; y <= 82; y++) for (let x = 83; x <= 113; x++) {
-      if (((x - 98) / 15) ** 2 + ((y - 64) / 18) ** 2 > 1) continue;
+    for (let y = 348; y <= 392; y++) for (let x = 187; x <= 227; x++) {
+      if (((x - 207) / 20) ** 2 + ((y - 370) / 22) ** 2 > 1) continue;
       expect(data[(y * info.width + x) * 4 + 3]).toBe(255);
       samples++;
     }
-    expect(samples).toBe(839);
+    expect(samples).toBeGreaterThan(1000);
   });
   it("renders the real server composition, and waits for BOTH board and child before showing the bubble", async () => {
     const view = render(await Transformation());
@@ -72,7 +72,7 @@ describe("the photo-to-game proof", () => {
     const demo = buildDemoConfig("en");
     const target = { ...demo.scenes[0]!.targets[0]!, sprite: { kind: "composed" as const, faceUrl: "/not-the-identity.png", bodyTemplate: "beach_float" } };
     const view = render(<GameI18nProvider locale="en"><MissionCard index={1} total={1} target={target} found={[]} order={[target.id]} hintLevel={0} hintPulse={false} hintText={null} onHint={() => {}} childName={demo.child.name} avatarUrl={demo.child.avatarUrl} minimal /></GameI18nProvider>);
-    expect(view.container.querySelector(".mission__face")?.getAttribute("src")).toBe("/demo/noa-portrait.png");
+    expect(view.container.querySelector(".mission__face")?.getAttribute("src")).toBe(demo.child.avatarUrl);
     expect(view.container.querySelector("svg")).toBeNull();
     expect(view.container.querySelector('img[src="/demo/example-photo.jpg"]')).toBeNull();
   });
@@ -100,13 +100,10 @@ describe("the photo-to-game proof", () => {
 
   it("ships the newly rendered demo art with the same hat-free identity cue and marketing example", () => {
     if (example.sprite.kind !== "image") throw new Error("Expected a generated patch");
-    for (const src of [example.photo, example.identitySheet, example.sprite.url, "/demo/noa-portrait.png"]) expect(existsSync(`public${src}`)).toBe(true);
-    const hash = (file: string) => createHash("sha256").update(readFileSync(file)).digest("hex");
-    expect(hash(`public${example.identitySheet}`)).toBe("df0dd24d2aa1579b7ba5c7c761079632f59ba890ebed0b9be53b4390d40a7434");
-    expect(hash("public/demo/noa-portrait.png")).toBe("df91e71f4aacd1679962ebfd124de5290a81811d47507088ed8e1e65697ecea6");
-    expect(hash(`public${example.sprite.url}`)).toBe("50211623632b36493c67e115f20620aa4f8aef7fd00f022eb94ab9cb62ae0479");
     const demo = buildDemoConfig("he");
-    expect(demo.child.avatarUrl).toBe("/demo/noa-portrait.png");
+    for (const src of [example.photo, example.identitySheet, example.sprite.url, demo.child.avatarUrl]) expect(existsSync(`public${src}`)).toBe(true);
+    const hash = (file: string) => createHash("sha256").update(readFileSync(file)).digest("hex");
+    for (const src of [example.identitySheet, example.sprite.url, demo.child.avatarUrl]) expect(src).toBe(`/demo/beach-v1/${hash(`public${src}`)}.webp`);
     expect(demo.scenes[0]!.targets.find(t => t.id === "sandcastle")!.sprite).toEqual(example.sprite);
   });
 });

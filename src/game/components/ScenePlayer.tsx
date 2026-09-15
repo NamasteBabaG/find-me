@@ -215,7 +215,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
    * The path of the star: from the found child's head, in screen space as of
    * this frame, to the centre of the slot it will light. Everything is
    * measured against the scene box, which is where the flight is drawn.
-   * Null when there is nowhere to fly to (the landing demo has no tray).
+   * Null when the tray is not mounted yet.
    */
   const flightPath = useCallback(
     (targetId: string, slot: number): FlightPath | null => {
@@ -275,7 +275,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
         // in is the next dark one; the tray lights it when the flight ends,
         // by this timer and not by the animation - a browser that draws no
         // motion still hands out the star.
-        if (!store.demo) {
+        {
           const foundCount = Object.keys(mission.found).length;
           const slot = foundCount - 1;
           const land = () => {
@@ -394,7 +394,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           sounds().play(result === "collected" ? "twinkle" : "tap");
           clearTimeout(bubbleTimer.current);
           const words = guided ? g.collection : g.album;
-          const text = tf(store.replay ? (result === "collected" ? g.replay.found : g.replay.already) : (result === "collected" ? words.collected : words.again), { name: found.name });
+          const text = tf(store.replay || store.demo ? (result === "collected" ? g.replay.found : g.replay.already) : (result === "collected" ? words.collected : words.again), { name: found.name });
           const cx = (found.hitRect.x + found.hitRect.w / 2) * scene.art.width;
           const cy = (found.hitRect.y + found.hitRect.h / 2) * scene.art.height;
           setBubble({ text: result === "again" ? text : found.name, x: cx, y: found.hitRect.y * scene.art.height, key: ++bubbleSequence.current });
@@ -445,7 +445,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
   const foundIds = Object.keys(mission.found);
   const total = mission.plan.order.length;
   const advanceAt = mission.findsRequiredToAdvance ?? total;
-  const canAdvance = free && missionCanAdvance(mission);
+  const canAdvance = !store.demo && free && missionCanAdvance(mission);
   const advanceLabel = store.nextScene() ? g.scene.canContinue : g.complete.bag;
   const advance = () => { const next = store.nextScene(); if (next) store.openScene(next); else store.openPassport(); };
   // A find the account brought from another device has no flight: its star
@@ -488,7 +488,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           <button type="button" className="scene__btn" disabled={turn || !revealed || loadFailed} onClick={() => apiRef.current?.zoomBy(1 / 1.5)} aria-label={g.scene.zoomOut}>
             <ToolIcon name="zoom-out" />
           </button>
-          {store.demo ? null : (
+          {(
             <>
               <button type="button" className="scene__btn" disabled={turn || !revealed || loadFailed} onClick={() => apiRef.current?.reset()} aria-label={g.scene.reset}>
                 <ToolIcon name="fit" />
@@ -533,9 +533,9 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
               <button type="button" className="fm-btn fm-btn--lg" onClick={retryLoad} autoFocus>
                 {g.scene.loadRetry}
               </button>
-              <button type="button" className="fm-btn fm-btn--white" onClick={() => onBack()}>
+              {!store.demo ? <button type="button" className="fm-btn fm-btn--white" onClick={() => onBack()}>
                 {g.scene.loadBack}
-              </button>
+              </button> : null}
             </div>
           </div>
         ) : null}
@@ -573,14 +573,15 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           }}
           avatarUrl={store.config.child.avatarUrl}
           childName={store.config.child.name}
-          quiet={quiet && !store.demo}
+          quiet={quiet}
           onExpand={() => setQuiet(false)}
-          minimal={store.demo}
+          minimal={false}
           findAny={free}
           findsRequiredToAdvance={advanceAt}
           onAdvance={canAdvance && mission.phase !== "found" && !turn ? advance : undefined}
           advanceLabel={advanceLabel}
           replay={!!store.replay}
+          showReplayNote={!store.demo}
           onReplay={mission.phase === "complete" && !showComplete ? () => store.replayScene() : undefined}
         />
       ) : null}
@@ -636,7 +637,6 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, onStay }: { sc
   // has collected is for the map and the bag, not for this moment (Guy).
   const stars = scene.targets.length;
   useEffect(() => {
-    if (store.demo) return;
     const timers = Array.from({ length: stars }, (_, i) => setTimeout(() => sounds().play("star", { pitch: STAR_CLIMB_SEMITONES[Math.min(i, STAR_CLIMB_SEMITONES.length - 1)] }), STAR_POP_START_MS + i * STAR_POP_GAP_MS + 160));
     return () => timers.forEach(clearTimeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -648,8 +648,8 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, onStay }: { sc
           {g.complete.stamp}
         </div>
         <h2 id="complete-title" className="complete__title">{store.demo ? tf(g.complete.demoFound, { name: store.config.child.name }) : store.replay ? g.replay.complete : scene.celebration.completeText}</h2>
-        {store.replay ? <p className="complete__replay-note">{g.replay.note}</p> : null}
-        {store.demo ? null : (
+        {store.replay && !store.demo ? <p className="complete__replay-note">{g.replay.note}</p> : null}
+        {(
           <div className="complete__stars">
             <StarTray lit={stars} total={stars} size={stars > 3 ? "md" : "lg"} celebrate label={tf(g.stars.tray, { earned: stars, total: stars })} />
             <p className="complete__stars-text">{stars === 5 ? g.complete.fiveStars : stars === 4 ? g.complete.fourStars : g.complete.threeStars}</p>
@@ -658,7 +658,7 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, onStay }: { sc
         {postcard ? (
           <div className="complete__postcard">
             <Postcard scene={scene} postcard={postcard} />
-            {!store.replay ? <p className="complete__postcard-text">{g.album.postcardEarned} {tf(g.album.postcardLead, { place: scene.name })}</p> : null}
+            {!store.replay && !store.demo ? <p className="complete__postcard-text">{g.album.postcardEarned} {tf(g.album.postcardLead, { place: scene.name })}</p> : null}
           </div>
         ) : null}
         {store.demo || store.replay ? null : (
@@ -673,11 +673,7 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, onStay }: { sc
         )}
         <div className="complete__actions">
           {onStay ? <button type="button" className="fm-btn fm-btn--secondary" onClick={onStay}>{g.collection.keep}</button> : null}
-          {store.demo ? (
-            <a href="/create" className="fm-btn fm-btn--lg">
-              {g.complete.demoCta}
-            </a>
-          ) : allDone && !store.gameDone() ? (
+          {store.demo ? null : allDone && !store.gameDone() ? (
             // This journey is finished but the game is not: the next choice is
             // which world to go to, not which board.
             <button type="button" className="fm-btn fm-btn--lg" onClick={store.goToWorlds} autoFocus>
@@ -698,8 +694,7 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, onStay }: { sc
               </span>
             </button>
           )}
-          {/* In the demo the frame is short, so replay is a quiet second option. */}
-          <button type="button" className={`fm-btn ${store.demo ? "fm-btn--ghost fm-btn--sm" : "fm-btn--secondary"}`} onClick={() => store.replayScene()}>
+          <button type="button" className={`fm-btn ${store.demo ? "fm-btn--lg" : "fm-btn--secondary"}`} onClick={() => store.replayScene()}>
             {g.complete.again}
           </button>
           {!store.demo ? (

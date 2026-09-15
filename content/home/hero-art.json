@@ -1,13 +1,13 @@
 [
   {
     "slug": "newyork",
-    "src": "/home/hero-newyork.webp?v=178d3992ca0f0de7",
+    "src": "/home/hero-newyork.webp?v=aaacd6d289e497dc",
     "assetPath": "/home/hero-newyork.webp",
-    "assetSha256": "178d3992ca0f0de77bef381e06d7d68d8d9858431fcd611b3d6d3e840eac1912",
-    "bytes": 474130,
-    "source": "/scenes/newyork/refresh-20260907/base.webp",
-    "sourceSha256": "0997325d6c2771e5435a21a4dce134f619b14df866b376caef7e4a79155473b1",
-    "sceneVersion": 4
+    "assetSha256": "aaacd6d289e497dc8d46b1aabb242d58a3310c96f239829e716c678b1d024f7a",
+    "bytes": 415332,
+    "source": "/scenes/adventure-newyork/base.webp",
+    "sourceSha256": "fc810bf9aa266357b5ce9f5852922e54838879dc759fba2fce30ea137c77ce89",
+    "sceneVersion": 9
   },
   {
     "slug": "dragoncave",

@@ -1,0 +1,10 @@
+{
+  "accepted": true,
+  "boardSha256": "e5c2f0e04ef36aed55e3f96c3a9f234bfb87ef2b4da6e5f02420e9cea0c561c3",
+  "review": "Public example girl reviewed against the canonical sheet. Individual patches and full-board composition inspected. Library attempts 1 and 2 rejected for erasing a foreground guitarist's head; attempt 3 relocates beside the map with complete bystanders. No customer data.",
+  "patches": {
+    "beach-sandcastle": { "sha256": "24f52ea0a931956c0a8237195919bf638f69f090dae6a498ba0368d968a65d93", "geometry": { "x": 114, "y": 305, "w": 210, "h": 282, "headX": 207, "headY": 370 } },
+    "beach-library": { "sha256": "39037038dd2a641243cd920d1b997b162e755e3f3949c835cd65fe471a05e183", "geometry": { "x": 124, "y": 253, "w": 146, "h": 430, "headX": 195, "headY": 320 } },
+    "beach-shells": { "sha256": "9b5673e039adfb13c3bd44997e0340a55fe0c1413a55f625219f51eab3752e6a", "geometry": { "x": 110, "y": 201, "w": 240, "h": 343, "headX": 254, "headY": 281 } }
+  }
+}

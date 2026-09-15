@@ -15,7 +15,7 @@ describe("the worlds carousel", () => {
     for (const world of carouselWorlds("en").filter((w) => !w.upcoming)) {
       for (const tile of world.tiles) {
         expect(tile.thumb, `${world.slug}/${tile.key} has a painting`).toBeTruthy();
-        expect(tile.spots?.length, `${world.slug}/${tile.key} names its hiding spots`).toBe(3);
+        expect(tile.spots?.length, `${world.slug}/${tile.key} names its search objects`).toBe(world.slug === "journey" ? 6 : 3);
       }
     }
   });

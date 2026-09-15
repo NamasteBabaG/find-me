@@ -1,0 +1,1190 @@
+{
+  "en": {
+    "version": 1,
+    "gameId": "demo",
+    "locale": "en",
+    "child": {
+      "name": "Anna",
+      "avatarUrl": "/demo/beach-v1/6d31eb05a6afc245428ffcb6f028d9fcbca856dbc16f3efddfc61ed5da503950.webp"
+    },
+    "styleVersion": "public-beach-v1",
+    "packageTier": "ONE_WORLD",
+    "scenes": [
+      {
+        "slug": "beach",
+        "version": 9,
+        "worldSlug": "adventure-trail",
+        "playMode": "find-any",
+        "appearancesPerBoard": 3,
+        "findsRequiredToAdvance": 3,
+        "name": "A day at the beach",
+        "tagline": "Three hiding places and six discoveries",
+        "artStatus": "final",
+        "art": {
+          "width": 3840,
+          "height": 2160,
+          "base": "/scenes/demo-beach-v1/base.webp",
+          "thumbnail": "/scenes/demo-beach-v1/thumb.webp",
+          "palette": {
+            "sky": "#bedceb",
+            "ground": "#dcc091",
+            "accent": "#dbad37"
+          }
+        },
+        "targets": [
+          {
+            "id": "sandcastle",
+            "targetType": "personal-child",
+            "difficulty": 1,
+            "mission": "Find Anna",
+            "item": "Hiding place 1",
+            "success": [
+              "You found me!"
+            ],
+            "animation": "peek",
+            "slots": [
+              {
+                "id": "beach-sandcastle-A",
+                "x": 0.37473958333333335,
+                "y": 0.6,
+                "scale": 0.2,
+                "rotation": 0,
+                "zIndex": 10,
+                "layer": "front",
+                "flip": false,
+                "hintZone": {
+                  "x": 0.37473958333333335,
+                  "y": 0.6,
+                  "r": 0.12
+                },
+                "hintText": "Look beside the sandcastle."
+              },
+              {
+                "id": "beach-sandcastle-B",
+                "x": 0.37473958333333335,
+                "y": 0.6,
+                "scale": 0.2,
+                "rotation": 0,
+                "zIndex": 10,
+                "layer": "front",
+                "flip": false,
+                "hintZone": {
+                  "x": 0.37473958333333335,
+                  "y": 0.6,
+                  "r": 0.12
+                },
+                "hintText": "Look beside the sandcastle."
+              }
+            ],
+            "sprite": {
+              "kind": "image",
+              "url": "/demo/beach-v1/15afabe78ed9465fc9d49f3f2463229b130f72a991a780f0b093d6369804721f.webp",
+              "width": 512,
+              "height": 768,
+              "rect": {
+                "x": 0.3177083333333333,
+                "y": 0.39351851851851855,
+                "w": 0.13333333333333333,
+                "h": 0.35555555555555557
+              },
+              "hitRect": {
+                "x": 0.34739583333333335,
+                "y": 0.5347222222222222,
+                "w": 0.0546875,
+                "h": 0.13055555555555556
+              },
+              "anchor": {
+                "x": 0.37161458333333336,
+                "y": 0.5648148148148148
+              }
+            },
+            "spriteByVariant": {
+              "A": {
+                "kind": "image",
+                "url": "/demo/beach-v1/15afabe78ed9465fc9d49f3f2463229b130f72a991a780f0b093d6369804721f.webp",
+                "width": 512,
+                "height": 768,
+                "rect": {
+                  "x": 0.3177083333333333,
+                  "y": 0.39351851851851855,
+                  "w": 0.13333333333333333,
+                  "h": 0.35555555555555557
+                },
+                "hitRect": {
+                  "x": 0.34739583333333335,
+                  "y": 0.5347222222222222,
+                  "w": 0.0546875,
+                  "h": 0.13055555555555556
+                },
+                "anchor": {
+                  "x": 0.37161458333333336,
+                  "y": 0.5648148148148148
+                }
+              }
+            }
+          },
+          {
+            "id": "library",
+            "targetType": "personal-child",
+            "difficulty": 2,
+            "mission": "Find Anna",
+            "item": "Hiding place 2",
+            "success": [
+              "You found me!"
+            ],
+            "animation": "peek",
+            "slots": [
+              {
+                "id": "beach-library-A",
+                "x": 0.84296875,
+                "y": 0.35555555555555557,
+                "scale": 0.2,
+                "rotation": 0,
+                "zIndex": 11,
+                "layer": "front",
+                "flip": false,
+                "hintZone": {
+                  "x": 0.84296875,
+                  "y": 0.35555555555555557,
+                  "r": 0.12
+                },
+                "hintText": "Look by the children studying the beach map."
+              },
+              {
+                "id": "beach-library-B",
+                "x": 0.84296875,
+                "y": 0.35555555555555557,
+                "scale": 0.2,
+                "rotation": 0,
+                "zIndex": 11,
+                "layer": "front",
+                "flip": false,
+                "hintZone": {
+                  "x": 0.84296875,
+                  "y": 0.35555555555555557,
+                  "r": 0.12
+                },
+                "hintText": "Look by the children studying the beach map."
+              }
+            ],
+            "sprite": {
+              "kind": "image",
+              "url": "/demo/beach-v1/1926d989e528c0f428ea5a04319df626d739b8b3b45566ec70fb6260f244701b.webp",
+              "width": 512,
+              "height": 768,
+              "rect": {
+                "x": 0.7916666666666666,
+                "y": 0.1388888888888889,
+                "w": 0.13333333333333333,
+                "h": 0.35555555555555557
+              },
+              "hitRect": {
+                "x": 0.8239583333333333,
+                "y": 0.25601851851851853,
+                "w": 0.03802083333333333,
+                "h": 0.19907407407407407
+              },
+              "anchor": {
+                "x": 0.8424479166666666,
+                "y": 0.28703703703703703
+              }
+            },
+            "spriteByVariant": {
+              "A": {
+                "kind": "image",
+                "url": "/demo/beach-v1/1926d989e528c0f428ea5a04319df626d739b8b3b45566ec70fb6260f244701b.webp",
+                "width": 512,
+                "height": 768,
+                "rect": {
+                  "x": 0.7916666666666666,
+                  "y": 0.1388888888888889,
+                  "w": 0.13333333333333333,
+                  "h": 0.35555555555555557
+                },
+                "hitRect": {
+                  "x": 0.8239583333333333,
+                  "y": 0.25601851851851853,
+                  "w": 0.03802083333333333,
+                  "h": 0.19907407407407407
+                },
+                "anchor": {
+                  "x": 0.8424479166666666,
+                  "y": 0.28703703703703703
+                }
+              }
+            }
+          },
+          {
+            "id": "shells",
+            "targetType": "personal-child",
+            "difficulty": 3,
+            "mission": "Find Anna",
+            "item": "Hiding place 3",
+            "success": [
+              "You found me!"
+            ],
+            "animation": "peek",
+            "slots": [
+              {
+                "id": "beach-shells-A",
+                "x": 0.5963541666666666,
+                "y": 0.7002314814814815,
+                "scale": 0.2,
+                "rotation": 0,
+                "zIndex": 12,
+                "layer": "front",
+                "flip": false,
+                "hintZone": {
+                  "x": 0.5963541666666666,
+                  "y": 0.7002314814814815,
+                  "r": 0.12
+                },
+                "hintText": "Look among the necklace makers."
+              },
+              {
+                "id": "beach-shells-B",
+                "x": 0.5963541666666666,
+                "y": 0.7002314814814815,
+                "scale": 0.2,
+                "rotation": 0,
+                "zIndex": 12,
+                "layer": "front",
+                "flip": false,
+                "hintZone": {
+                  "x": 0.5963541666666666,
+                  "y": 0.7002314814814815,
+                  "r": 0.12
+                },
+                "hintText": "Look among the necklace makers."
+              }
+            ],
+            "sprite": {
+              "kind": "image",
+              "url": "/demo/beach-v1/b8b6c50a23e0777ff4396922ff5b4491f90502bfeda244b09620e4325cd4b015.webp",
+              "width": 512,
+              "height": 768,
+              "rect": {
+                "x": 0.5364583333333334,
+                "y": 0.5277777777777778,
+                "w": 0.13333333333333333,
+                "h": 0.35555555555555557
+              },
+              "hitRect": {
+                "x": 0.5651041666666666,
+                "y": 0.6208333333333333,
+                "w": 0.0625,
+                "h": 0.1587962962962963
+              },
+              "anchor": {
+                "x": 0.6026041666666667,
+                "y": 0.6578703703703703
+              }
+            },
+            "spriteByVariant": {
+              "A": {
+                "kind": "image",
+                "url": "/demo/beach-v1/b8b6c50a23e0777ff4396922ff5b4491f90502bfeda244b09620e4325cd4b015.webp",
+                "width": 512,
+                "height": 768,
+                "rect": {
+                  "x": 0.5364583333333334,
+                  "y": 0.5277777777777778,
+                  "w": 0.13333333333333333,
+                  "h": 0.35555555555555557
+                },
+                "hitRect": {
+                  "x": 0.5651041666666666,
+                  "y": 0.6208333333333333,
+                  "w": 0.0625,
+                  "h": 0.1587962962962963
+                },
+                "anchor": {
+                  "x": 0.6026041666666667,
+                  "y": 0.6578703703703703
+                }
+              }
+            }
+          }
+        ],
+        "ambient": [],
+        "celebration": {
+          "kind": "confetti",
+          "completeText": "You found all three hiding places!"
+        },
+        "collectible": {
+          "id": "beach-stamp",
+          "name": "יום בחוף הים",
+          "icon": "✦"
+        },
+        "sounds": {}
+      }
+    ],
+    "composedAt": "2026-09-15T00:00:00.000Z",
+    "adventure": {
+      "version": 1,
+      "releaseId": "public-beach-v1",
+      "avatarAssetId": "demo-beach-v1-6d31eb05a6afc245428ffcb6f028d9fcbca856dbc16f3efddfc61ed5da503950",
+      "mode": "serial-collection-v1",
+      "boards": [
+        {
+          "boardSlug": "beach",
+          "worldSlug": "adventure-trail",
+          "sceneVersion": 9,
+          "artSha256": "e5c2f0e04ef36aed55e3f96c3a9f234bfb87ef2b4da6e5f02420e9cea0c561c3",
+          "art": {
+            "base": "/scenes/demo-beach-v1/base.webp",
+            "width": 3840,
+            "height": 2160
+          },
+          "targetIds": [
+            "sandcastle",
+            "library",
+            "shells"
+          ],
+          "targetImages": [
+            {
+              "targetId": "sandcastle",
+              "A": {
+                "assetId": "demo-beach-v1-15afabe78ed9465fc9d49f3f2463229b130f72a991a780f0b093d6369804721f",
+                "rect": {
+                  "x": 0.3177083333333333,
+                  "y": 0.39351851851851855,
+                  "w": 0.13333333333333333,
+                  "h": 0.35555555555555557
+                },
+                "hitRect": {
+                  "x": 0.34739583333333335,
+                  "y": 0.5347222222222222,
+                  "w": 0.0546875,
+                  "h": 0.13055555555555556
+                }
+              },
+              "B": {
+                "assetId": "demo-beach-v1-15afabe78ed9465fc9d49f3f2463229b130f72a991a780f0b093d6369804721f",
+                "rect": {
+                  "x": 0.3177083333333333,
+                  "y": 0.39351851851851855,
+                  "w": 0.13333333333333333,
+                  "h": 0.35555555555555557
+                },
+                "hitRect": {
+                  "x": 0.34739583333333335,
+                  "y": 0.5347222222222222,
+                  "w": 0.0546875,
+                  "h": 0.13055555555555556
+                }
+              }
+            },
+            {
+              "targetId": "library",
+              "A": {
+                "assetId": "demo-beach-v1-1926d989e528c0f428ea5a04319df626d739b8b3b45566ec70fb6260f244701b",
+                "rect": {
+                  "x": 0.7916666666666666,
+                  "y": 0.1388888888888889,
+                  "w": 0.13333333333333333,
+                  "h": 0.35555555555555557
+                },
+                "hitRect": {
+                  "x": 0.8239583333333333,
+                  "y": 0.25601851851851853,
+                  "w": 0.03802083333333333,
+                  "h": 0.19907407407407407
+                }
+              },
+              "B": {
+                "assetId": "demo-beach-v1-1926d989e528c0f428ea5a04319df626d739b8b3b45566ec70fb6260f244701b",
+                "rect": {
+                  "x": 0.7916666666666666,
+                  "y": 0.1388888888888889,
+                  "w": 0.13333333333333333,
+                  "h": 0.35555555555555557
+                },
+                "hitRect": {
+                  "x": 0.8239583333333333,
+                  "y": 0.25601851851851853,
+                  "w": 0.03802083333333333,
+                  "h": 0.19907407407407407
+                }
+              }
+            },
+            {
+              "targetId": "shells",
+              "A": {
+                "assetId": "demo-beach-v1-b8b6c50a23e0777ff4396922ff5b4491f90502bfeda244b09620e4325cd4b015",
+                "rect": {
+                  "x": 0.5364583333333334,
+                  "y": 0.5277777777777778,
+                  "w": 0.13333333333333333,
+                  "h": 0.35555555555555557
+                },
+                "hitRect": {
+                  "x": 0.5651041666666666,
+                  "y": 0.6208333333333333,
+                  "w": 0.0625,
+                  "h": 0.1587962962962963
+                }
+              },
+              "B": {
+                "assetId": "demo-beach-v1-b8b6c50a23e0777ff4396922ff5b4491f90502bfeda244b09620e4325cd4b015",
+                "rect": {
+                  "x": 0.5364583333333334,
+                  "y": 0.5277777777777778,
+                  "w": 0.13333333333333333,
+                  "h": 0.35555555555555557
+                },
+                "hitRect": {
+                  "x": 0.5651041666666666,
+                  "y": 0.6208333333333333,
+                  "w": 0.0625,
+                  "h": 0.1587962962962963
+                }
+              }
+            }
+          ],
+          "findsRequiredToAdvance": 3,
+          "collectionUi": "guided-v1",
+          "discoveries": [
+            {
+              "id": "blue-fish",
+              "name": "Blue wooden fish",
+              "hint": "Look among the tiny boats.",
+              "category": "object",
+              "rarity": "common",
+              "difficulty": 1,
+              "description": "A little treasure from our day at the beach.",
+              "descriptionKind": "story",
+              "hitRect": {
+                "x": 0.04765625,
+                "y": 0.2412037037037037,
+                "w": 0.015625,
+                "h": 0.014814814814814815
+              },
+              "cardCrop": {
+                "x": 0.04453125,
+                "y": 0.23564814814814813,
+                "w": 0.021875,
+                "h": 0.025925925925925925
+              }
+            },
+            {
+              "id": "anchor-bucket",
+              "name": "Anchor bucket",
+              "hint": "Something waits beside the sandcastle.",
+              "category": "object",
+              "rarity": "common",
+              "difficulty": 1,
+              "description": "A little treasure from our day at the beach.",
+              "descriptionKind": "story",
+              "hitRect": {
+                "x": 0.29140625,
+                "y": 0.5152777777777777,
+                "w": 0.018489583333333334,
+                "h": 0.03148148148148148
+              },
+              "cardCrop": {
+                "x": 0.28828125,
+                "y": 0.5097222222222222,
+                "w": 0.024739583333333332,
+                "h": 0.04259259259259259
+              }
+            },
+            {
+              "id": "star-mould",
+              "name": "Star mould",
+              "hint": "Which shape is hiding among the sand toys?",
+              "category": "object",
+              "rarity": "common",
+              "difficulty": 1,
+              "description": "A little treasure from our day at the beach.",
+              "descriptionKind": "story",
+              "hitRect": {
+                "x": 0.5802083333333333,
+                "y": 0.46296296296296297,
+                "w": 0.019791666666666666,
+                "h": 0.02962962962962963
+              },
+              "cardCrop": {
+                "x": 0.5770833333333333,
+                "y": 0.45740740740740743,
+                "w": 0.026041666666666668,
+                "h": 0.040740740740740744
+              }
+            },
+            {
+              "id": "paper-boat",
+              "name": "Purple paper boat",
+              "hint": "Look beside the picnic basket.",
+              "category": "object",
+              "rarity": "rare",
+              "difficulty": 2,
+              "description": "A little treasure from our day at the beach.",
+              "descriptionKind": "story",
+              "hitRect": {
+                "x": 0.22135416666666666,
+                "y": 0.8634259259259259,
+                "w": 0.02734375,
+                "h": 0.028703703703703703
+              },
+              "cardCrop": {
+                "x": 0.21822916666666667,
+                "y": 0.8578703703703704,
+                "w": 0.03359375,
+                "h": 0.03981481481481482
+              }
+            },
+            {
+              "id": "compass",
+              "name": "Brass compass",
+              "hint": "Follow the coils of rope.",
+              "category": "object",
+              "rarity": "rare",
+              "difficulty": 2,
+              "description": "A little treasure from our day at the beach.",
+              "descriptionKind": "story",
+              "hitRect": {
+                "x": 0.7208333333333333,
+                "y": 0.31203703703703706,
+                "w": 0.017708333333333333,
+                "h": 0.02546296296296296
+              },
+              "cardCrop": {
+                "x": 0.7177083333333333,
+                "y": 0.30648148148148147,
+                "w": 0.023958333333333335,
+                "h": 0.03657407407407407
+              }
+            },
+            {
+              "id": "seahorse",
+              "name": "Turquoise seahorse",
+              "hint": "A little sea creature among the necklaces.",
+              "category": "object",
+              "rarity": "epic",
+              "difficulty": 3,
+              "description": "A little treasure from our day at the beach.",
+              "descriptionKind": "story",
+              "hitRect": {
+                "x": 0.49609375,
+                "y": 0.8430555555555556,
+                "w": 0.022395833333333334,
+                "h": 0.03935185185185185
+              },
+              "cardCrop": {
+                "x": 0.49296875,
+                "y": 0.8375,
+                "w": 0.028645833333333332,
+                "h": 0.050462962962962966
+              }
+            }
+          ],
+          "postcard": {
+            "id": "beach-memory",
+            "title": "My day by the sea",
+            "targetId": "sandcastle",
+            "crop": {
+              "x": 0.3098958333333333,
+              "y": 0.5,
+              "w": 0.16927083333333334,
+              "h": 0.2361111111111111
+            }
+          }
+        }
+      ]
+    }
+  },
+  "he": {
+    "version": 1,
+    "gameId": "demo",
+    "locale": "he",
+    "child": {
+      "name": "נועה",
+      "avatarUrl": "/demo/beach-v1/6d31eb05a6afc245428ffcb6f028d9fcbca856dbc16f3efddfc61ed5da503950.webp"
+    },
+    "styleVersion": "public-beach-v1",
+    "packageTier": "ONE_WORLD",
+    "scenes": [
+      {
+        "slug": "beach",
+        "version": 9,
+        "worldSlug": "adventure-trail",
+        "playMode": "find-any",
+        "appearancesPerBoard": 3,
+        "findsRequiredToAdvance": 3,
+        "name": "יום בחוף הים",
+        "tagline": "שלושה מחבואים ושש תגליות",
+        "artStatus": "final",
+        "art": {
+          "width": 3840,
+          "height": 2160,
+          "base": "/scenes/demo-beach-v1/base.webp",
+          "thumbnail": "/scenes/demo-beach-v1/thumb.webp",
+          "palette": {
+            "sky": "#bedceb",
+            "ground": "#dcc091",
+            "accent": "#dbad37"
+          }
+        },
+        "targets": [
+          {
+            "id": "sandcastle",
+            "targetType": "personal-child",
+            "difficulty": 1,
+            "mission": "מצאו את נועה",
+            "item": "מחבוא 1",
+            "success": [
+              "מצאתם אותי!"
+            ],
+            "animation": "peek",
+            "slots": [
+              {
+                "id": "beach-sandcastle-A",
+                "x": 0.37473958333333335,
+                "y": 0.6,
+                "scale": 0.2,
+                "rotation": 0,
+                "zIndex": 10,
+                "layer": "front",
+                "flip": false,
+                "hintZone": {
+                  "x": 0.37473958333333335,
+                  "y": 0.6,
+                  "r": 0.12
+                },
+                "hintText": "חפשו בין הילדים שאוספים צדפים ליד ארמון החול"
+              },
+              {
+                "id": "beach-sandcastle-B",
+                "x": 0.37473958333333335,
+                "y": 0.6,
+                "scale": 0.2,
+                "rotation": 0,
+                "zIndex": 10,
+                "layer": "front",
+                "flip": false,
+                "hintZone": {
+                  "x": 0.37473958333333335,
+                  "y": 0.6,
+                  "r": 0.12
+                },
+                "hintText": "חפשו בין הילדים שאוספים צדפים ליד ארמון החול"
+              }
+            ],
+            "sprite": {
+              "kind": "image",
+              "url": "/demo/beach-v1/15afabe78ed9465fc9d49f3f2463229b130f72a991a780f0b093d6369804721f.webp",
+              "width": 512,
+              "height": 768,
+              "rect": {
+                "x": 0.3177083333333333,
+                "y": 0.39351851851851855,
+                "w": 0.13333333333333333,
+                "h": 0.35555555555555557
+              },
+              "hitRect": {
+                "x": 0.34739583333333335,
+                "y": 0.5347222222222222,
+                "w": 0.0546875,
+                "h": 0.13055555555555556
+              },
+              "anchor": {
+                "x": 0.37161458333333336,
+                "y": 0.5648148148148148
+              }
+            },
+            "spriteByVariant": {
+              "A": {
+                "kind": "image",
+                "url": "/demo/beach-v1/15afabe78ed9465fc9d49f3f2463229b130f72a991a780f0b093d6369804721f.webp",
+                "width": 512,
+                "height": 768,
+                "rect": {
+                  "x": 0.3177083333333333,
+                  "y": 0.39351851851851855,
+                  "w": 0.13333333333333333,
+                  "h": 0.35555555555555557
+                },
+                "hitRect": {
+                  "x": 0.34739583333333335,
+                  "y": 0.5347222222222222,
+                  "w": 0.0546875,
+                  "h": 0.13055555555555556
+                },
+                "anchor": {
+                  "x": 0.37161458333333336,
+                  "y": 0.5648148148148148
+                }
+              }
+            }
+          },
+          {
+            "id": "library",
+            "targetType": "personal-child",
+            "difficulty": 2,
+            "mission": "מצאו את נועה",
+            "item": "מחבוא 2",
+            "success": [
+              "מצאתם אותי!"
+            ],
+            "animation": "peek",
+            "slots": [
+              {
+                "id": "beach-library-A",
+                "x": 0.84296875,
+                "y": 0.35555555555555557,
+                "scale": 0.2,
+                "rotation": 0,
+                "zIndex": 11,
+                "layer": "front",
+                "flip": false,
+                "hintZone": {
+                  "x": 0.84296875,
+                  "y": 0.35555555555555557,
+                  "r": 0.12
+                },
+                "hintText": "חפשו ליד הילדים שמסתכלים במפת החוף"
+              },
+              {
+                "id": "beach-library-B",
+                "x": 0.84296875,
+                "y": 0.35555555555555557,
+                "scale": 0.2,
+                "rotation": 0,
+                "zIndex": 11,
+                "layer": "front",
+                "flip": false,
+                "hintZone": {
+                  "x": 0.84296875,
+                  "y": 0.35555555555555557,
+                  "r": 0.12
+                },
+                "hintText": "חפשו ליד הילדים שמסתכלים במפת החוף"
+              }
+            ],
+            "sprite": {
+              "kind": "image",
+              "url": "/demo/beach-v1/1926d989e528c0f428ea5a04319df626d739b8b3b45566ec70fb6260f244701b.webp",
+              "width": 512,
+              "height": 768,
+              "rect": {
+                "x": 0.7916666666666666,
+                "y": 0.1388888888888889,
+                "w": 0.13333333333333333,
+                "h": 0.35555555555555557
+              },
+              "hitRect": {
+                "x": 0.8239583333333333,
+                "y": 0.25601851851851853,
+                "w": 0.03802083333333333,
+                "h": 0.19907407407407407
+              },
+              "anchor": {
+                "x": 0.8424479166666666,
+                "y": 0.28703703703703703
+              }
+            },
+            "spriteByVariant": {
+              "A": {
+                "kind": "image",
+                "url": "/demo/beach-v1/1926d989e528c0f428ea5a04319df626d739b8b3b45566ec70fb6260f244701b.webp",
+                "width": 512,
+                "height": 768,
+                "rect": {
+                  "x": 0.7916666666666666,
+                  "y": 0.1388888888888889,
+                  "w": 0.13333333333333333,
+                  "h": 0.35555555555555557
+                },
+                "hitRect": {
+                  "x": 0.8239583333333333,
+                  "y": 0.25601851851851853,
+                  "w": 0.03802083333333333,
+                  "h": 0.19907407407407407
+                },
+                "anchor": {
+                  "x": 0.8424479166666666,
+                  "y": 0.28703703703703703
+                }
+              }
+            }
+          },
+          {
+            "id": "shells",
+            "targetType": "personal-child",
+            "difficulty": 3,
+            "mission": "מצאו את נועה",
+            "item": "מחבוא 3",
+            "success": [
+              "מצאתם אותי!"
+            ],
+            "animation": "peek",
+            "slots": [
+              {
+                "id": "beach-shells-A",
+                "x": 0.5963541666666666,
+                "y": 0.7002314814814815,
+                "scale": 0.2,
+                "rotation": 0,
+                "zIndex": 12,
+                "layer": "front",
+                "flip": false,
+                "hintZone": {
+                  "x": 0.5963541666666666,
+                  "y": 0.7002314814814815,
+                  "r": 0.12
+                },
+                "hintText": "חפשו את מי שמכינה שרשרת ליד שולחן הצדפים"
+              },
+              {
+                "id": "beach-shells-B",
+                "x": 0.5963541666666666,
+                "y": 0.7002314814814815,
+                "scale": 0.2,
+                "rotation": 0,
+                "zIndex": 12,
+                "layer": "front",
+                "flip": false,
+                "hintZone": {
+                  "x": 0.5963541666666666,
+                  "y": 0.7002314814814815,
+                  "r": 0.12
+                },
+                "hintText": "חפשו את מי שמכינה שרשרת ליד שולחן הצדפים"
+              }
+            ],
+            "sprite": {
+              "kind": "image",
+              "url": "/demo/beach-v1/b8b6c50a23e0777ff4396922ff5b4491f90502bfeda244b09620e4325cd4b015.webp",
+              "width": 512,
+              "height": 768,
+              "rect": {
+                "x": 0.5364583333333334,
+                "y": 0.5277777777777778,
+                "w": 0.13333333333333333,
+                "h": 0.35555555555555557
+              },
+              "hitRect": {
+                "x": 0.5651041666666666,
+                "y": 0.6208333333333333,
+                "w": 0.0625,
+                "h": 0.1587962962962963
+              },
+              "anchor": {
+                "x": 0.6026041666666667,
+                "y": 0.6578703703703703
+              }
+            },
+            "spriteByVariant": {
+              "A": {
+                "kind": "image",
+                "url": "/demo/beach-v1/b8b6c50a23e0777ff4396922ff5b4491f90502bfeda244b09620e4325cd4b015.webp",
+                "width": 512,
+                "height": 768,
+                "rect": {
+                  "x": 0.5364583333333334,
+                  "y": 0.5277777777777778,
+                  "w": 0.13333333333333333,
+                  "h": 0.35555555555555557
+                },
+                "hitRect": {
+                  "x": 0.5651041666666666,
+                  "y": 0.6208333333333333,
+                  "w": 0.0625,
+                  "h": 0.1587962962962963
+                },
+                "anchor": {
+                  "x": 0.6026041666666667,
+                  "y": 0.6578703703703703
+                }
+              }
+            }
+          }
+        ],
+        "ambient": [],
+        "celebration": {
+          "kind": "confetti",
+          "completeText": "מצאתם את שלושת המחבואים!"
+        },
+        "collectible": {
+          "id": "beach-stamp",
+          "name": "יום בחוף הים",
+          "icon": "✦"
+        },
+        "sounds": {}
+      }
+    ],
+    "composedAt": "2026-09-15T00:00:00.000Z",
+    "adventure": {
+      "version": 1,
+      "releaseId": "public-beach-v1",
+      "avatarAssetId": "demo-beach-v1-6d31eb05a6afc245428ffcb6f028d9fcbca856dbc16f3efddfc61ed5da503950",
+      "mode": "serial-collection-v1",
+      "boards": [
+        {
+          "boardSlug": "beach",
+          "worldSlug": "adventure-trail",
+          "sceneVersion": 9,
+          "artSha256": "e5c2f0e04ef36aed55e3f96c3a9f234bfb87ef2b4da6e5f02420e9cea0c561c3",
+          "art": {
+            "base": "/scenes/demo-beach-v1/base.webp",
+            "width": 3840,
+            "height": 2160
+          },
+          "targetIds": [
+            "sandcastle",
+            "library",
+            "shells"
+          ],
+          "targetImages": [
+            {
+              "targetId": "sandcastle",
+              "A": {
+                "assetId": "demo-beach-v1-15afabe78ed9465fc9d49f3f2463229b130f72a991a780f0b093d6369804721f",
+                "rect": {
+                  "x": 0.3177083333333333,
+                  "y": 0.39351851851851855,
+                  "w": 0.13333333333333333,
+                  "h": 0.35555555555555557
+                },
+                "hitRect": {
+                  "x": 0.34739583333333335,
+                  "y": 0.5347222222222222,
+                  "w": 0.0546875,
+                  "h": 0.13055555555555556
+                }
+              },
+              "B": {
+                "assetId": "demo-beach-v1-15afabe78ed9465fc9d49f3f2463229b130f72a991a780f0b093d6369804721f",
+                "rect": {
+                  "x": 0.3177083333333333,
+                  "y": 0.39351851851851855,
+                  "w": 0.13333333333333333,
+                  "h": 0.35555555555555557
+                },
+                "hitRect": {
+                  "x": 0.34739583333333335,
+                  "y": 0.5347222222222222,
+                  "w": 0.0546875,
+                  "h": 0.13055555555555556
+                }
+              }
+            },
+            {
+              "targetId": "library",
+              "A": {
+                "assetId": "demo-beach-v1-1926d989e528c0f428ea5a04319df626d739b8b3b45566ec70fb6260f244701b",
+                "rect": {
+                  "x": 0.7916666666666666,
+                  "y": 0.1388888888888889,
+                  "w": 0.13333333333333333,
+                  "h": 0.35555555555555557
+                },
+                "hitRect": {
+                  "x": 0.8239583333333333,
+                  "y": 0.25601851851851853,
+                  "w": 0.03802083333333333,
+                  "h": 0.19907407407407407
+                }
+              },
+              "B": {
+                "assetId": "demo-beach-v1-1926d989e528c0f428ea5a04319df626d739b8b3b45566ec70fb6260f244701b",
+                "rect": {
+                  "x": 0.7916666666666666,
+                  "y": 0.1388888888888889,
+                  "w": 0.13333333333333333,
+                  "h": 0.35555555555555557
+                },
+                "hitRect": {
+                  "x": 0.8239583333333333,
+                  "y": 0.25601851851851853,
+                  "w": 0.03802083333333333,
+                  "h": 0.19907407407407407
+                }
+              }
+            },
+            {
+              "targetId": "shells",
+              "A": {
+                "assetId": "demo-beach-v1-b8b6c50a23e0777ff4396922ff5b4491f90502bfeda244b09620e4325cd4b015",
+                "rect": {
+                  "x": 0.5364583333333334,
+                  "y": 0.5277777777777778,
+                  "w": 0.13333333333333333,
+                  "h": 0.35555555555555557
+                },
+                "hitRect": {
+                  "x": 0.5651041666666666,
+                  "y": 0.6208333333333333,
+                  "w": 0.0625,
+                  "h": 0.1587962962962963
+                }
+              },
+              "B": {
+                "assetId": "demo-beach-v1-b8b6c50a23e0777ff4396922ff5b4491f90502bfeda244b09620e4325cd4b015",
+                "rect": {
+                  "x": 0.5364583333333334,
+                  "y": 0.5277777777777778,
+                  "w": 0.13333333333333333,
+                  "h": 0.35555555555555557
+                },
+                "hitRect": {
+                  "x": 0.5651041666666666,
+                  "y": 0.6208333333333333,
+                  "w": 0.0625,
+                  "h": 0.1587962962962963
+                }
+              }
+            }
+          ],
+          "findsRequiredToAdvance": 3,
+          "collectionUi": "guided-v1",
+          "discoveries": [
+            {
+              "id": "blue-fish",
+              "name": "דג עץ כחול",
+              "hint": "חפשו בין הסירות הקטנות",
+              "category": "object",
+              "rarity": "common",
+              "difficulty": 1,
+              "description": "אוצר קטן מהיום שלנו בחוף הים.",
+              "descriptionKind": "story",
+              "hitRect": {
+                "x": 0.04765625,
+                "y": 0.2412037037037037,
+                "w": 0.015625,
+                "h": 0.014814814814814815
+              },
+              "cardCrop": {
+                "x": 0.04453125,
+                "y": 0.23564814814814813,
+                "w": 0.021875,
+                "h": 0.025925925925925925
+              }
+            },
+            {
+              "id": "anchor-bucket",
+              "name": "דלי עם עוגן",
+              "hint": "משהו מחכה ליד ארמון החול",
+              "category": "object",
+              "rarity": "common",
+              "difficulty": 1,
+              "description": "אוצר קטן מהיום שלנו בחוף הים.",
+              "descriptionKind": "story",
+              "hitRect": {
+                "x": 0.29140625,
+                "y": 0.5152777777777777,
+                "w": 0.018489583333333334,
+                "h": 0.03148148148148148
+              },
+              "cardCrop": {
+                "x": 0.28828125,
+                "y": 0.5097222222222222,
+                "w": 0.024739583333333332,
+                "h": 0.04259259259259259
+              }
+            },
+            {
+              "id": "star-mould",
+              "name": "תבנית כוכב",
+              "hint": "איזו צורה מסתתרת בין צעצועי החול?",
+              "category": "object",
+              "rarity": "common",
+              "difficulty": 1,
+              "description": "אוצר קטן מהיום שלנו בחוף הים.",
+              "descriptionKind": "story",
+              "hitRect": {
+                "x": 0.5802083333333333,
+                "y": 0.46296296296296297,
+                "w": 0.019791666666666666,
+                "h": 0.02962962962962963
+              },
+              "cardCrop": {
+                "x": 0.5770833333333333,
+                "y": 0.45740740740740743,
+                "w": 0.026041666666666668,
+                "h": 0.040740740740740744
+              }
+            },
+            {
+              "id": "paper-boat",
+              "name": "סירת נייר סגולה",
+              "hint": "הציצו לצד סל הפיקניק",
+              "category": "object",
+              "rarity": "rare",
+              "difficulty": 2,
+              "description": "אוצר קטן מהיום שלנו בחוף הים.",
+              "descriptionKind": "story",
+              "hitRect": {
+                "x": 0.22135416666666666,
+                "y": 0.8634259259259259,
+                "w": 0.02734375,
+                "h": 0.028703703703703703
+              },
+              "cardCrop": {
+                "x": 0.21822916666666667,
+                "y": 0.8578703703703704,
+                "w": 0.03359375,
+                "h": 0.03981481481481482
+              }
+            },
+            {
+              "id": "compass",
+              "name": "מצפן פליז",
+              "hint": "חפשו בין פיתולי החבל",
+              "category": "object",
+              "rarity": "rare",
+              "difficulty": 2,
+              "description": "אוצר קטן מהיום שלנו בחוף הים.",
+              "descriptionKind": "story",
+              "hitRect": {
+                "x": 0.7208333333333333,
+                "y": 0.31203703703703706,
+                "w": 0.017708333333333333,
+                "h": 0.02546296296296296
+              },
+              "cardCrop": {
+                "x": 0.7177083333333333,
+                "y": 0.30648148148148147,
+                "w": 0.023958333333333335,
+                "h": 0.03657407407407407
+              }
+            },
+            {
+              "id": "seahorse",
+              "name": "סוסון ים בטורקיז",
+              "hint": "יצור ים קטן בין השרשראות",
+              "category": "object",
+              "rarity": "epic",
+              "difficulty": 3,
+              "description": "אוצר קטן מהיום שלנו בחוף הים.",
+              "descriptionKind": "story",
+              "hitRect": {
+                "x": 0.49609375,
+                "y": 0.8430555555555556,
+                "w": 0.022395833333333334,
+                "h": 0.03935185185185185
+              },
+              "cardCrop": {
+                "x": 0.49296875,
+                "y": 0.8375,
+                "w": 0.028645833333333332,
+                "h": 0.050462962962962966
+              }
+            }
+          ],
+          "postcard": {
+            "id": "beach-memory",
+            "title": "היום שלי ליד הים",
+            "targetId": "sandcastle",
+            "crop": {
+              "x": 0.3098958333333333,
+              "y": 0.5,
+              "w": 0.16927083333333334,
+              "h": 0.2361111111111111
+            }
+          }
+        }
+      ]
+    }
+  }
+}

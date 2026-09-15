@@ -1,0 +1,411 @@
+{
+  "patchBoard": {
+    "board": "beach",
+    "art": "public/scenes/demo-beach-v1/base.webp",
+    "ground": "dry sunlit beach sand",
+    "sittable": true,
+    "wardrobe": "Age-appropriate illustrated summer clothing; muted fabric, shorts and sandals. No hat. Preserve the reference face and long brown wavy hair, no generic bystander face.",
+    "hides": [
+      {
+        "id": "beach-sandcastle",
+        "left": 1220,
+        "top": 850,
+        "pose": "kneeling",
+        "targetId": "sandcastle",
+        "mask": {
+          "left": 80,
+          "top": 300,
+          "width": 275,
+          "height": 360
+        },
+        "hint": {
+          "en": "Replace ONLY the kneeling girl in a red-and-white striped top collecting shells next to the sandcastle with the reference girl. Keep her complete coherent kneeling body, hands touching a shell and her head turned three-quarter toward the viewer. Preserve every neighbouring person and castle. She wears a muted coral summer top and blue shorts; no hat. Match her existing size and grounded knees, not a giant foreground child.",
+          "he": "חפשו בין הילדים שאוספים צדפים ליד ארמון החול"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 350,
+          "support": "Feet or knees rest naturally on the existing sand; no floating.",
+          "lighting": "Warm sun from upper left, thin brown ink contour, matte broken brushwork and short cast shadow matching neighbouring figures.",
+          "occlusion": "Preserve all pre-existing foreground objects; body anatomy remains coherent behind any table.",
+          "comparators": "Match the size and hand-drawn line weight of the child being replaced and the neighbouring children."
+        }
+      },
+      {
+        "id": "beach-library",
+        "left": 3040,
+        "top": 300,
+        "pose": "standing",
+        "targetId": "library",
+        "mask": {
+          "left": 145,
+          "top": 235,
+          "width": 150,
+          "height": 400
+        },
+        "hint": {
+          "en": "Replace ONLY the small child in the yellow dress and straw hat, standing with the blue-shirt boy and their mother looking at a beach map, with the reference girl. Remove this child hat so her brown wavy hair is visible. Same small full-body scale and grounded sandals, muted yellow summer top and shorts. Turn her face three-quarter toward the viewer while one hand indicates the map. Preserve the blue-shirt boy, both mothers, and the child reading a book at the bottom of the crop exactly. Change no pixels near the outer frame.",
+          "he": "חפשו ליד הילדים שמסתכלים במפת החוף"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 360,
+          "support": "Feet or knees rest naturally on the existing sand; no floating.",
+          "lighting": "Warm sun from upper left, thin brown ink contour, matte broken brushwork and short cast shadow matching neighbouring figures.",
+          "occlusion": "Preserve all pre-existing foreground objects; body anatomy remains coherent behind any table.",
+          "comparators": "Match the size and hand-drawn line weight of the child being replaced and the neighbouring children."
+        }
+      },
+      {
+        "id": "beach-shells",
+        "left": 2060,
+        "top": 1140,
+        "pose": "kneeling",
+        "targetId": "shells",
+        "mask": {
+          "left": 130,
+          "top": 200,
+          "width": 250,
+          "height": 400
+        },
+        "hint": {
+          "en": "Replace ONLY the girl in a purple sleeveless top making a necklace behind the shell-covered craft table with the reference girl. Keep the seated/kneeling body correctly behind the table, both arms handling a necklace, face turned slightly toward the viewer. Muted lavender top, no hat, correct brown wavy hair. The table naturally hides the lower body; do not cut through a torso or repaint surrounding children or shells.",
+          "he": "חפשו את מי שמכינה שרשרת ליד שולחן הצדפים"
+        },
+        "placement": {
+          "depth": "middle",
+          "standingHeightPx": 380,
+          "support": "Feet or knees rest naturally on the existing sand; no floating.",
+          "lighting": "Warm sun from upper left, thin brown ink contour, matte broken brushwork and short cast shadow matching neighbouring figures.",
+          "occlusion": "Preserve all pre-existing foreground objects; body anatomy remains coherent behind any table.",
+          "comparators": "Match the size and hand-drawn line weight of the child being replaced and the neighbouring children."
+        }
+      }
+    ]
+  },
+  "plan": {
+    "boardSlug": "beach",
+    "worldSlug": "adventure-trail",
+    "name": {
+      "en": "A day at the beach",
+      "he": "יום בחוף הים"
+    },
+    "direction": {
+      "orientation": "landscape",
+      "aspect": "16:9",
+      "spread": "activity-across-width-and-height",
+      "perspective": "shallow",
+      "scaleTreatment": "similar-size-people",
+      "illustration": "storybook-hand-drawn",
+      "identityPrecedence": "reference-face-hair-age",
+      "locationCues": [
+        {
+          "en": "Busy beach",
+          "he": "חוף מלא פעילות"
+        },
+        {
+          "en": "Seaside huts",
+          "he": "בקתות חוף"
+        }
+      ],
+      "microStories": [
+        {
+          "en": "Building sandcastles",
+          "he": "בונים ארמונות חול"
+        },
+        {
+          "en": "Making shell necklaces",
+          "he": "מכינים שרשראות צדפים"
+        },
+        {
+          "en": "Borrowing beach books",
+          "he": "שואלים ספרים לחוף"
+        },
+        {
+          "en": "Making wooden boats",
+          "he": "בונים סירות עץ"
+        }
+      ]
+    },
+    "plannedHides": 3,
+    "collectionUi": "guided-v1",
+    "status": "ready",
+    "sceneVersion": 9,
+    "art": {
+      "base": "/scenes/demo-beach-v1/base.webp",
+      "sha256": "e5c2f0e04ef36aed55e3f96c3a9f234bfb87ef2b4da6e5f02420e9cea0c561c3",
+      "width": 3840,
+      "height": 2160
+    },
+    "personalZones": [
+      {
+        "x": 0.3177083333333333,
+        "y": 0.39351851851851855,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      },
+      {
+        "x": 0.7916666666666666,
+        "y": 0.1388888888888889,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      },
+      {
+        "x": 0.5364583333333334,
+        "y": 0.5277777777777778,
+        "w": 0.13333333333333333,
+        "h": 0.35555555555555557
+      }
+    ],
+    "discoveries": [
+      {
+        "id": "blue-fish",
+        "name": {
+          "en": "Blue wooden fish",
+          "he": "דג עץ כחול"
+        },
+        "hint": {
+          "en": "Look among the tiny boats.",
+          "he": "חפשו בין הסירות הקטנות"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "A little treasure from our day at the beach.",
+            "he": "אוצר קטן מהיום שלנו בחוף הים."
+          }
+        },
+        "visibleRect": {
+          "x": 0.046875,
+          "y": 0.23981481481481481,
+          "w": 0.0171875,
+          "h": 0.017592592592592594
+        },
+        "hitRect": {
+          "x": 0.04765625,
+          "y": 0.2412037037037037,
+          "w": 0.015625,
+          "h": 0.014814814814814815
+        },
+        "cardCrop": {
+          "x": 0.04453125,
+          "y": 0.23564814814814813,
+          "w": 0.021875,
+          "h": 0.025925925925925925
+        }
+      },
+      {
+        "id": "anchor-bucket",
+        "name": {
+          "en": "Anchor bucket",
+          "he": "דלי עם עוגן"
+        },
+        "hint": {
+          "en": "Something waits beside the sandcastle.",
+          "he": "משהו מחכה ליד ארמון החול"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "A little treasure from our day at the beach.",
+            "he": "אוצר קטן מהיום שלנו בחוף הים."
+          }
+        },
+        "visibleRect": {
+          "x": 0.290625,
+          "y": 0.5138888888888888,
+          "w": 0.020052083333333335,
+          "h": 0.03425925925925926
+        },
+        "hitRect": {
+          "x": 0.29140625,
+          "y": 0.5152777777777777,
+          "w": 0.018489583333333334,
+          "h": 0.03148148148148148
+        },
+        "cardCrop": {
+          "x": 0.28828125,
+          "y": 0.5097222222222222,
+          "w": 0.024739583333333332,
+          "h": 0.04259259259259259
+        }
+      },
+      {
+        "id": "star-mould",
+        "name": {
+          "en": "Star mould",
+          "he": "תבנית כוכב"
+        },
+        "hint": {
+          "en": "Which shape is hiding among the sand toys?",
+          "he": "איזו צורה מסתתרת בין צעצועי החול?"
+        },
+        "category": "object",
+        "rarity": "common",
+        "difficulty": 1,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "A little treasure from our day at the beach.",
+            "he": "אוצר קטן מהיום שלנו בחוף הים."
+          }
+        },
+        "visibleRect": {
+          "x": 0.5794270833333334,
+          "y": 0.4615740740740741,
+          "w": 0.021354166666666667,
+          "h": 0.032407407407407406
+        },
+        "hitRect": {
+          "x": 0.5802083333333333,
+          "y": 0.46296296296296297,
+          "w": 0.019791666666666666,
+          "h": 0.02962962962962963
+        },
+        "cardCrop": {
+          "x": 0.5770833333333333,
+          "y": 0.45740740740740743,
+          "w": 0.026041666666666668,
+          "h": 0.040740740740740744
+        }
+      },
+      {
+        "id": "paper-boat",
+        "name": {
+          "en": "Purple paper boat",
+          "he": "סירת נייר סגולה"
+        },
+        "hint": {
+          "en": "Look beside the picnic basket.",
+          "he": "הציצו לצד סל הפיקניק"
+        },
+        "category": "object",
+        "rarity": "rare",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "A little treasure from our day at the beach.",
+            "he": "אוצר קטן מהיום שלנו בחוף הים."
+          }
+        },
+        "visibleRect": {
+          "x": 0.22057291666666667,
+          "y": 0.862037037037037,
+          "w": 0.02890625,
+          "h": 0.03148148148148148
+        },
+        "hitRect": {
+          "x": 0.22135416666666666,
+          "y": 0.8634259259259259,
+          "w": 0.02734375,
+          "h": 0.028703703703703703
+        },
+        "cardCrop": {
+          "x": 0.21822916666666667,
+          "y": 0.8578703703703704,
+          "w": 0.03359375,
+          "h": 0.03981481481481482
+        }
+      },
+      {
+        "id": "compass",
+        "name": {
+          "en": "Brass compass",
+          "he": "מצפן פליז"
+        },
+        "hint": {
+          "en": "Follow the coils of rope.",
+          "he": "חפשו בין פיתולי החבל"
+        },
+        "category": "object",
+        "rarity": "rare",
+        "difficulty": 2,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "A little treasure from our day at the beach.",
+            "he": "אוצר קטן מהיום שלנו בחוף הים."
+          }
+        },
+        "visibleRect": {
+          "x": 0.7200520833333334,
+          "y": 0.3106481481481482,
+          "w": 0.019270833333333334,
+          "h": 0.02824074074074074
+        },
+        "hitRect": {
+          "x": 0.7208333333333333,
+          "y": 0.31203703703703706,
+          "w": 0.017708333333333333,
+          "h": 0.02546296296296296
+        },
+        "cardCrop": {
+          "x": 0.7177083333333333,
+          "y": 0.30648148148148147,
+          "w": 0.023958333333333335,
+          "h": 0.03657407407407407
+        }
+      },
+      {
+        "id": "seahorse",
+        "name": {
+          "en": "Turquoise seahorse",
+          "he": "סוסון ים בטורקיז"
+        },
+        "hint": {
+          "en": "A little sea creature among the necklaces.",
+          "he": "יצור ים קטן בין השרשראות"
+        },
+        "category": "object",
+        "rarity": "epic",
+        "difficulty": 3,
+        "description": {
+          "kind": "story",
+          "text": {
+            "en": "A little treasure from our day at the beach.",
+            "he": "אוצר קטן מהיום שלנו בחוף הים."
+          }
+        },
+        "visibleRect": {
+          "x": 0.4953125,
+          "y": 0.8416666666666667,
+          "w": 0.023958333333333335,
+          "h": 0.04212962962962963
+        },
+        "hitRect": {
+          "x": 0.49609375,
+          "y": 0.8430555555555556,
+          "w": 0.022395833333333334,
+          "h": 0.03935185185185185
+        },
+        "cardCrop": {
+          "x": 0.49296875,
+          "y": 0.8375,
+          "w": 0.028645833333333332,
+          "h": 0.050462962962962966
+        }
+      }
+    ],
+    "postcard": {
+      "id": "beach-memory",
+      "title": {
+        "en": "My day by the sea",
+        "he": "היום שלי ליד הים"
+      },
+      "targetId": "sandcastle",
+      "crop": {
+        "x": 0.3098958333333333,
+        "y": 0.5,
+        "w": 0.16927083333333334,
+        "h": 0.2361111111111111
+      }
+    }
+  }
+}

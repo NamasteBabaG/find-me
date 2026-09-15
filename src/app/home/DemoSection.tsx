@@ -12,7 +12,7 @@ const GameShell = dynamic(() => import("@/game/components/GameShell").then((m) =
 });
 
 /**
- * Full-bleed live demo: the real renderer, the demo child, one mission,
+ * Full-bleed live demo: one board, real serial hides and discovery collection.
  * Desktop keeps the art ratio; portrait phones get a tall panning window.
  */
 export function DemoSection({ config }: { config: GameConfig }) {
@@ -31,7 +31,7 @@ export function DemoSection({ config }: { config: GameConfig }) {
         </Reveal>
         <div className="demo__frame" style={art ? { "--demo-art-ratio": `${art.width} / ${art.height}` } as React.CSSProperties : undefined}>
           {/* The play store is created once per mount; remount on a language switch so the demo speaks the new locale. */}
-          <GameShell key={config.locale} config={config} demo autoStartScene="beach" singleMission />
+          <GameShell key={config.locale} config={config} demo />
         </div>
         <div className="demo__foot">
           <p>{d.foot}</p>

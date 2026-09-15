@@ -249,7 +249,7 @@ function gameConfig(): GameConfig {
 describe("Passport", () => {
   it.each([3, 5])("uses all nine five-hide boards: %i per board, no early completion or twenty-seven-star ceiling", found => {
     const base = buildDemoConfig("he"), original = base.scenes[0]!;
-    const config = GameConfigSchema.parse({ ...base, world: undefined, worlds: undefined,
+    const config = GameConfigSchema.parse({ ...base, world: undefined, worlds: undefined, adventure: undefined,
       scenes: Array.from({ length: 9 }, (_, boardIndex) => ({ ...original, slug: `five-board-${boardIndex}`, version: 9,
         playMode: "find-any", appearancesPerBoard: 5, findsRequiredToAdvance: 3,
         targets: Array.from({ length: 5 }, (_, hideIndex) => ({ ...original.targets[hideIndex % 3]!, id: `hide-${hideIndex}` })) })) });

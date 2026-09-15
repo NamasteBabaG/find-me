@@ -44,7 +44,8 @@ describe("versioned beach demo renders", () => {
     expect(scene.targets).toHaveLength(3);
     for (const target of scene.targets) {
       expect(usableVariants(target)).toEqual(["A"]);
-      expect(target.sprite).toEqual(beachDemoPatches[target.id]);
+      expect(target.sprite.kind).toBe("image");
+      if (target.sprite.kind === "image") expect(target.sprite.url).toMatch(/^\/demo\/beach-v1\/[a-f0-9]{64}\.webp$/);
       const { hitRect, head, hintZone, center } = targetGeometry(scene, target, "A");
       expect(head.x).toBeGreaterThanOrEqual(hitRect.x0);
       expect(head.x).toBeLessThanOrEqual(hitRect.x1);
@@ -54,9 +55,9 @@ describe("versioned beach demo renders", () => {
     for (let plays = 0; plays < 30; plays++) {
       const plan = planScenePlay(scene, { plays, lastVariants: { float: "B", sandcastle: "A", umbrella: "B" } }, "demo");
       expect(Object.values(plan.variants)).toEqual(["A", "A", "A"]);
-      expect([...plan.order].sort()).toEqual(["float", "sandcastle", "umbrella"]);
+      expect([...plan.order].sort()).toEqual(["library", "sandcastle", "shells"]);
     }
     // Three new A assets do not prove that the six authored slots were rendered.
-    expect(demoPatchCoverage("beach", scene.targets)).toMatchObject({ ready: 3, total: 6, missing: ["float/B", "sandcastle/B", "umbrella/B"] });
+    expect(demoPatchCoverage("beach", fixtures)).toMatchObject({ ready: 3, total: 6, missing: ["float/B", "sandcastle/B", "umbrella/B"] });
   });
 });

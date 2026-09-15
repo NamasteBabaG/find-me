@@ -317,7 +317,9 @@ describe("find-any rendering and mobile feedback", () => {
     fireEvent.click(view.getByRole("button")); act(() => vi.advanceTimersByTime(701));
     expect(view.container.querySelector(".gift__lead")?.textContent).toContain(locale === "en" ? "Five hiding spots" : "חמישה מחבואים");
     view.unmount();
-    const legacy = render(<GameI18nProvider locale={locale}><GiftReveal config={buildDemoConfig(locale)} onOpen={vi.fn()} /></GameI18nProvider>);
+    const legacyBase = buildDemoConfig(locale);
+    const legacyConfig = { ...legacyBase, adventure: undefined, scenes: legacyBase.scenes.map(scene => ({ ...scene, playMode: undefined, appearancesPerBoard: undefined, findsRequiredToAdvance: undefined })) };
+    const legacy = render(<GameI18nProvider locale={locale}><GiftReveal config={legacyConfig} onOpen={vi.fn()} /></GameI18nProvider>);
     fireEvent.click(legacy.getByRole("button")); act(() => vi.advanceTimersByTime(701));
     expect(legacy.container.querySelector(".gift__lead")?.textContent).toContain(locale === "en" ? "Three hiding spots" : "שלושה מחבואים");
   });

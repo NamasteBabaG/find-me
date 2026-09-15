@@ -43,6 +43,23 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("the viewport after a resize", () => {
+  it.each([[1440, 900], [1024, 768], [390, 844], [844, 330], [720, 405]])("never pans beyond board edges at %sx%s, including zoom and hints", (width, height) => {
+    const { result } = mount();
+    act(() => FakeResizeObserver.latest!.resize(width, height));
+    const bounded = () => {
+      const { scale, tx, ty } = result.current.transform;
+      const w = STAGE.width * scale, h = STAGE.height * scale;
+      if (w <= width) expect(tx).toBeCloseTo((width - w) / 2);
+      else { expect(tx).toBeLessThanOrEqual(0.001); expect(tx + w).toBeGreaterThanOrEqual(width - 0.001); }
+      if (h <= height) expect(ty).toBeCloseTo((height - h) / 2);
+      else { expect(ty).toBeLessThanOrEqual(0.001); expect(ty + h).toBeGreaterThanOrEqual(height - 0.001); }
+    };
+    for (const zoom of [1, 2, 4, 0.1]) for (const [x, y] of [[0, 0], [1, 1], [-5, 10]]) {
+      act(() => result.current.focusOn(x!, y!, zoom, 0)); bounded();
+      act(() => result.current.animateTo({ scale: result.current.transform.scale, tx: 100000, ty: -100000 }, 0)); bounded();
+    }
+    act(() => result.current.reset(0)); bounded();
+  });
   it("fits the actual layout during a covered reset before a delayed ResizeObserver notification", () => {
     const { result } = mount();
     act(() => FakeResizeObserver.latest!.resize(390, 650));

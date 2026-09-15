@@ -8,7 +8,7 @@ import { adoptFinds, collectibles, completedScenes, emptyProgress, recordSceneCo
 import { loadProgress, saveProgress } from "../engine/progress-storage";
 import type { AdventureBook } from "@/domain/adventure/book-schema";
 import { AdventureError } from "@/domain/adventure/compose";
-import { recordAdventureEvent, type AdventureEvent, type AdventureProgress } from "@/domain/adventure/progress";
+import { emptyAdventureProgress, recordAdventureEvent, type AdventureEvent, type AdventureProgress } from "@/domain/adventure/progress";
 import { loadAlbum, saveAlbum, type AlbumStatus } from "../engine/album-storage";
 import { AlbumSync, type AlbumSyncState } from "../engine/album-sync";
 import { Telemetry } from "../engine/telemetry";
@@ -122,7 +122,9 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
   // server too. Saved progress arrives via hydrate() after mount.
   const initialProgress: GameProgress = demo ? { v: 1, gameId: config.gameId, revealed: true, scenes: {} } : emptyProgress(config.gameId);
   const telemetry = new Telemetry(config.gameId, persist);
-  const book = persist ? config.adventure ?? null : null;
+  // Demo plays the same collection rules in memory, never in the account or storage.
+  const book = persist || demo ? config.adventure ?? null : null;
+  const demoScene = demo ? config.scenes[0]?.slug : undefined;
   let albumSync: AlbumSync | null = null;
   // The three things the player is told about the album, kept apart: what the
   // account says, whether this browser could read its copy, whether it could write.
@@ -149,7 +151,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       throw error;
     }
     if (!result.changed) return false;
-    kept = saveAlbum(result.progress);
+    if (persist) kept = saveAlbum(result.progress);
     set({ album: result.progress, albumState: albumStatus() });
     albumSync?.push(event);
     return true;
@@ -180,8 +182,8 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     muted: false,
     demo,
     telemetry,
-    album: null,
-    albumMode: book ? (opts.albumOwner ? "owner" : "guest") : "none",
+    album: demo && book ? emptyAdventureProgress(config.gameId, book) : null,
+    albumMode: book && persist ? (opts.albumOwner ? "owner" : "guest") : "none",
     albumState: "idle",
 
     world() {
@@ -269,6 +271,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     },
 
     reveal() {
+      if (demo) return;
       sounds().unlock();
       sounds().play("fanfare");
       const progress = { ...get().progress, revealed: true, openedAt: get().progress.openedAt ?? new Date().toISOString() };
@@ -283,6 +286,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
      * animates was already saved by completeScene().
      */
     goToMap(travelFrom = null, worldSlug) {
+      if (demo) return;
       sounds().stopAmbient();
       set({ screen: "map", sceneSlug: null, mission: null, replay: null, travelFrom, ...(worldSlug ? { worldSlug } : {}) });
       if (worldSlug && persist) {
@@ -293,6 +297,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     },
 
     goToWorlds() {
+      if (demo) return;
       sounds().stopAmbient();
       set({ screen: "worlds", sceneSlug: null, mission: null, replay: null, travelFrom: null });
     },
@@ -302,6 +307,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     },
 
     openScene(slug, options) {
+      if (demo && slug !== demoScene) return;
       const scene = get().config.scenes.find((s) => s.slug === slug);
       if (!scene) return;
       if (!opts.readOnlyPreview && !demo && !sceneIsPlayable(get().progress, config, scene)) return;
@@ -383,6 +389,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     },
 
     nextScene() {
+      if (demo) return null;
       const { progress, sceneSlug } = get();
       // Within this journey only. Wrapping across the whole game sent a child
       // straight from the last board of one world to the first of the next,
@@ -410,6 +417,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     },
 
     openPassport() {
+      if (demo) return;
       sounds().stopAmbient();
       set({ screen: "passport", sceneSlug: null, mission: null, replay: null });
     },
@@ -444,7 +452,8 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     },
   }));
 
-  if (opts.autoStartScene) store.getState().openScene(opts.autoStartScene);
+  if (demoScene) store.getState().openScene(demoScene);
+  else if (opts.autoStartScene) store.getState().openScene(opts.autoStartScene);
   return store;
 }
 
