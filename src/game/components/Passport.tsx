@@ -18,7 +18,7 @@ function BoardThumbnail({ thumbnail, base }: { thumbnail: string; base: string }
 }
 
 /** The adventure bag: actual places, with the saved completion of each board and the gold stars it holds. */
-export function Passport({ config, progress, onMap, onOpen, onReplay, album = null, albumMode = "none", albumState = "idle" }: { config: GameConfig; progress: GameProgress; onMap: () => void; onOpen: (slug: string) => void; onReplay?: (slug: string) => void; album?: AdventureProgress | null; albumMode?: "none" | "guest" | "owner"; albumState?: AlbumStatus }) {
+export function Passport({ config, progress, onMap, onOpen, onReplay, onResume, album = null, albumMode = "none", albumState = "idle" }: { config: GameConfig; progress: GameProgress; onMap: () => void; onOpen: (slug: string) => void; onReplay?: (slug: string) => void; onResume?: () => void; album?: AdventureProgress | null; albumMode?: "none" | "guest" | "owner"; albumState?: AlbumStatus }) {
   const { g, tf } = useGameText();
   const done = config.scenes.filter(scene => sceneIsComplete(progress, scene)).length;
   // Every gold star in the game, and how far the jar has filled.
@@ -42,7 +42,8 @@ export function Passport({ config, progress, onMap, onOpen, onReplay, album = nu
           </div>
         </div>
       </header>
-      {done > 0 && onReplay ? <p id="bag-replay-note" className="passport__replay-note">{g.replay.note}</p> : null}
+      {onResume ? <button type="button" className="fm-btn" onClick={onResume}>{g.replay.resume}</button> : null}
+      {done > 0 && onReplay ? <p id="bag-replay-note" className="passport__replay-note">{config.playPolicy ? g.replay.pilotNote : g.replay.note}</p> : null}
       <ul className="passport__grid" aria-label={g.passport.itemsAria}>
         {config.scenes.map((scene) => {
           const isComplete = sceneIsComplete(progress, scene);
@@ -76,7 +77,7 @@ export function Passport({ config, progress, onMap, onOpen, onReplay, album = nu
             <StarTray lit={3} total={3} size="md" celebrate />
             {g.passport.allStars}
           </p>
-          <p className="fm-lead">{g.passport.replayLead}</p>
+          <p className="fm-lead">{config.playPolicy ? g.replay.pilotBagLead : g.passport.replayLead}</p>
         </div>
       ) : null}
       <div className="fm-row fm-row--center">

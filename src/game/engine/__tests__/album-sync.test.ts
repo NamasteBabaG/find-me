@@ -32,6 +32,50 @@ beforeEach(() => { vi.useFakeTimers(); });
 afterEach(() => { vi.useRealTimers(); });
 
 describe("album sync", () => {
+  it("pilot: a find waits for the initial account read, even while that read is in flight", async () => {
+    const methods: string[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const sync = new AlbumSync({ gameId, readBeforeWrite: true, onState: () => {}, onProgress: () => {}, fetcher: fetcher(async method => {
+      methods.push(method);
+      if (method === "GET") await gate;
+      return reply(emptyAdventureProgress(gameId, book));
+    }) });
+    const read = sync.load(); sync.push(find("hide-1")); await flush();
+    expect(methods).toEqual(["GET"]);
+    release(); await read; await flush();
+    expect(methods).toEqual(["GET", "POST"]); sync.stop();
+  });
+
+  it("does not deliver a late response after the viewer unmounts", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const received = vi.fn(); const states: AlbumSyncState[] = [];
+    const sync = new AlbumSync({ gameId, onState: state => states.push(state), onProgress: received, fetcher: fetcher(async () => { await gate; return reply(emptyAdventureProgress(gameId, book)); }) });
+    const read = sync.load(); sync.stop(); release(); await read;
+    expect(received).not.toHaveBeenCalled(); expect(states).toEqual(["loading"]);
+  });
+
+  it("pilot: refuses a mismatched snapshot rather than sending local events into it", async () => {
+    const states: AlbumSyncState[] = [], methods: string[] = [];
+    const sync = new AlbumSync({ gameId, readBeforeWrite: true, onState: s => states.push(s), onProgress: () => { throw new Error("must not adopt"); },
+      validateProgress: () => { throw new Error("different release"); },
+      fetcher: fetcher(method => { methods.push(method); return reply(emptyAdventureProgress(gameId, book)); }),
+    });
+    sync.push(find("hide-1")); await flush();
+    expect(methods).toEqual(["GET"]); expect(states.at(-1)).toBe("refused"); expect(sync.pending).toBe(0);
+    await vi.advanceTimersByTimeAsync(60_000); expect(methods).toEqual(["GET"]);
+  });
+  it("does not publish a late write result after the viewer unmounts", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const received = vi.fn(); const states: AlbumSyncState[] = [];
+    const sync = new AlbumSync({ gameId, onState: state => states.push(state), onProgress: received,
+      fetcher: fetcher(async () => { await gate; return reply(emptyAdventureProgress(gameId, book)); }),
+    });
+    sync.push(find("hide-1")); sync.stop(); release(); await flush();
+    expect(received).not.toHaveBeenCalled(); expect(states).toEqual(["saving"]);
+  });
   it("does not claim a save before the server answers, then does", async () => {
     let server = emptyAdventureProgress(gameId, book);
     const states: AlbumSyncState[] = [];

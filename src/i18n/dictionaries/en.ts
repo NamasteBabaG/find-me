@@ -534,6 +534,10 @@ export const en = {
       demoFound: "You found {name}! 🎉",
     },
     replay: {
+      pilotNote: "Search again. New discoveries join your album; your earned stars stay safe.",
+      pilotBagLead: "Every hiding spot found! You can keep collecting discoveries or play a favourite place again.",
+      newDiscovery: "New discovery: {name}!",
+      resume: "Back to my round",
       label: "Playing again",
       note: "A temporary round in the same positions. Finds here aren't saved; your earlier achievements stay.",
       boardAria: "Play {place} again",

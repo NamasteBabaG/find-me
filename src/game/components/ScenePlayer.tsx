@@ -389,12 +389,13 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           // reaction is short and the search goes on around it.
           const found = board?.discoveries.find((d) => d.id === hit.id);
           if (!found) break;
+          const isNewPilotDiscovery = store.config.playPolicy === "independent-worlds-v1" && !store.album?.discoveries.some(d => d.boardSlug === scene.slug && d.discoveryId === hit.id);
           const result = store.collectDiscovery(hit.id);
           if (result === "none") break;
           sounds().play(result === "collected" ? "twinkle" : "tap");
           clearTimeout(bubbleTimer.current);
           const words = guided ? g.collection : g.album;
-          const text = tf(store.replay || store.demo ? (result === "collected" ? g.replay.found : g.replay.already) : (result === "collected" ? words.collected : words.again), { name: found.name });
+          const text = tf(isNewPilotDiscovery && result === "collected" ? g.replay.newDiscovery : store.replay || store.demo ? (result === "collected" ? g.replay.found : g.replay.already) : (result === "collected" ? words.collected : words.again), { name: found.name });
           const cx = (found.hitRect.x + found.hitRect.w / 2) * scene.art.width;
           const cy = (found.hitRect.y + found.hitRect.h / 2) * scene.art.height;
           setBubble({ text: result === "again" ? text : found.name, x: cx, y: found.hitRect.y * scene.art.height, key: ++bubbleSequence.current });
@@ -482,6 +483,11 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           </div>
         ) : null}
         <div className="scene__tools">
+          {store.config.playPolicy === "independent-worlds-v1" && !store.demo ? (
+            <button type="button" className="scene__btn" disabled={turn || !revealed || mission.phase === "found"} onClick={store.openPassport} aria-label={g.complete.bag}>
+              🎒
+            </button>
+          ) : null}
           <button type="button" className="scene__btn" disabled={turn || !revealed || loadFailed} onClick={() => apiRef.current?.zoomBy(1.5)} aria-label={g.scene.zoomIn}>
             <ToolIcon name="zoom-in" />
           </button>
@@ -582,6 +588,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           advanceLabel={advanceLabel}
           replay={!!store.replay}
           showReplayNote={!store.demo}
+          replayNote={store.config.playPolicy ? g.replay.pilotNote : undefined}
           onReplay={mission.phase === "complete" && !showComplete ? () => store.replayScene() : undefined}
         />
       ) : null}
@@ -648,7 +655,7 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, onStay }: { sc
           {g.complete.stamp}
         </div>
         <h2 id="complete-title" className="complete__title">{store.demo ? tf(g.complete.demoFound, { name: store.config.child.name }) : store.replay ? g.replay.complete : scene.celebration.completeText}</h2>
-        {store.replay && !store.demo ? <p className="complete__replay-note">{g.replay.note}</p> : null}
+        {store.replay && !store.demo ? <p className="complete__replay-note">{store.config.playPolicy ? g.replay.pilotNote : g.replay.note}</p> : null}
         {(
           <div className="complete__stars">
             <StarTray lit={stars} total={stars} size={stars > 3 ? "md" : "lg"} celebrate label={tf(g.stars.tray, { earned: stars, total: stars })} />

@@ -7,6 +7,7 @@ import { withFreshAssetUrls } from "@/services/asset.service";
 import { getI18n } from "@/i18n/server";
 import { GameShell } from "@/game/components/GameShell";
 import { currentUser } from "@/lib/server/session";
+import { hashToken } from "@/lib/ids";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { robots: { index: false, follow: false } };
@@ -38,9 +39,11 @@ export default async function PlayPage({ params }: { params: Promise<{ token: st
   // The play link identifies a game, never a person. Only a signed-in owner
   // gets the family album kept in the account; everyone else keeps it in the browser.
   let albumOwner = false;
+  let albumOwnerScope: string | undefined;
   if (config.adventure) {
     const [user, game] = await Promise.all([currentUser(), c.db.game.findUnique({ where: { id: resolved.game.id }, select: { ownerId: true } })]);
     albumOwner = Boolean(user && game?.ownerId && game.ownerId === user.id);
+    if (albumOwner && user) albumOwnerScope = hashToken(`album-viewer:${user.id}`);
   }
-  return <GameShell key={config.locale} config={config} parentZoneHref="/library" albumOwner={albumOwner} />;
+  return <GameShell key={config.locale} config={config} parentZoneHref="/library" albumOwner={albumOwner} albumOwnerScope={albumOwnerScope} />;
 }

@@ -13,6 +13,7 @@ import { ScenePlayer } from "../components/ScenePlayer";
 import { MissionCard } from "../components/MissionCard";
 import { WorldMap } from "../components/WorldMap";
 import { Passport } from "../components/Passport";
+import { publicBeachDemo } from "../../../content/demo/beach-v1";
 import { GiftReveal } from "../components/GiftReveal";
 import { IslandGrid } from "../components/IslandGrid";
 import { emptyProgress, parseProgress } from "@/domain/game/progress";
@@ -54,6 +55,40 @@ beforeEach(() => { vi.stubGlobal("React", React); vi.stubGlobal("Image", LoadedI
 afterEach(() => { cleanup(); vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
 describe("find-any rendering and mobile feedback", () => {
+  it("pilot bag round-trip preserves replay finds and exposes the permanent album", async () => {
+    const config = { ...publicBeachDemo("en"), gameId: "pilot-bag-ui", playPolicy: "independent-worlds-v1" as const };
+    const scene = config.scenes[0]!;
+    const store = createPlayStore(config, { copy, skipGift: true, telemetry: false });
+    store.getState().hydrate(); store.getState().openScene(scene.slug);
+    store.getState().dispatch({ type: "START", now: 1 });
+    for (const targetId of store.getState().mission!.plan.order) {
+      store.getState().dispatch({ type: "TAP_TARGET", targetId, now: 2 });
+      store.getState().dispatch({ type: "FOUND_DONE", now: 3 });
+    }
+    store.getState().replayScene(); store.getState().dispatch({ type: "START", now: 4 });
+    const discoveryId = config.adventure!.boards[0]!.discoveries[0]!.id;
+    store.getState().collectDiscovery(discoveryId);
+    function Review() {
+      const state = useStore(store);
+      return <GameI18nProvider locale="en">{state.screen === "passport"
+        ? <Passport config={config} progress={state.progress} album={state.album} albumMode={state.albumMode} albumState={state.albumState} onMap={state.goToMap} onOpen={state.openScene} onReplay={state.replayScene} onResume={state.resumeScene} />
+        : <ScenePlayer scene={scene} mission={state.mission!} store={state} onBack={state.goToMap} onSceneComplete={state.completeScene} />}</GameI18nProvider>;
+    }
+    const view = render(<Review />); await decodeAll(); act(() => vi.advanceTimersByTime(901));
+    const mission = store.getState().mission;
+    fireEvent.click(view.getByRole("button", { name: "To the adventure bag 🎒" }));
+    expect(store.getState().screen).toBe("passport");
+    expect(view.getByText(/New discoveries join your album/)).toBeTruthy();
+    fireEvent.click(view.getByRole("button", { name: "Back to my round" }));
+    await decodeAll(); act(() => vi.advanceTimersByTime(901));
+    expect(store.getState().mission).toBe(mission);
+    expect(store.getState().replay!.discoveryIds).toEqual([discoveryId]);
+    expect(store.getState().album!.discoveries).toHaveLength(1);
+    expect(view.container.querySelector('.scene')?.getAttribute('data-replay')).toBe('true');
+    expect(view.container.querySelector('.scene__curtain')?.classList.contains('is-open')).toBe(true);
+    expect(view.container.querySelectorAll('.mission__stars .stars__slot.is-lit')).toHaveLength(0);
+    store.getState().stopAlbumSync(); window.localStorage.clear();
+  });
   it.each(["en", "he"] as const)("plays all four appearances, unlocks at three and celebrates four actual stars in %s", async locale => {
     const scene = fourScene();
     const config = { ...buildDemoConfig(locale), scenes: [scene, { ...fiveScene(), slug: "next-board" }], worlds: undefined, world: undefined };

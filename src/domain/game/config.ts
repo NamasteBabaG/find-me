@@ -226,7 +226,10 @@ export const GameConfigSchema = z.object({
   composedAt: z.string(),
   /** Opt-in frozen collection content. Absent on every existing/live game. */
   adventure: AdventureBookSchema.optional(),
+  /** Explicit new-game pilot policy. Absence preserves every legacy rule/cache. */
+  playPolicy: z.literal("independent-worlds-v1").optional(),
 }).superRefine((config, ctx) => {
+  if (config.playPolicy && (!config.adventure || config.adventure.boards.length !== config.scenes.length)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["playPolicy"], message: "The pilot requires a frozen album for every shipped board" });
   if (config.adventure && config.adventure.avatarAssetId !== gameAssetId(config.child.avatarUrl)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["adventure"], message: "The album belongs to a different illustrated identity" });
   for (const board of config.adventure?.boards ?? []) {
     const scene = config.scenes.find(s => s.slug === board.boardSlug);

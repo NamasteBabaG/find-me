@@ -8,7 +8,7 @@ import { adoptFinds, collectibles, completedScenes, emptyProgress, recordSceneCo
 import { loadProgress, saveProgress } from "../engine/progress-storage";
 import type { AdventureBook } from "@/domain/adventure/book-schema";
 import { AdventureError } from "@/domain/adventure/compose";
-import { emptyAdventureProgress, recordAdventureEvent, type AdventureEvent, type AdventureProgress } from "@/domain/adventure/progress";
+import { emptyAdventureProgress, readAdventureProgress, recordAdventureEvent, type AdventureEvent, type AdventureProgress } from "@/domain/adventure/progress";
 import { loadAlbum, saveAlbum, type AlbumStatus } from "../engine/album-storage";
 import { AlbumSync, type AlbumSyncState } from "../engine/album-sync";
 import { Telemetry } from "../engine/telemetry";
@@ -31,7 +31,7 @@ export interface PlayStore {
   screen: Screen;
   sceneSlug: string | null;
   mission: MissionState | null;
-  /** In-memory practice only. Never serialised or merged into the earned album. */
+  /** In-memory round counters. Pilot-only new discoveries also enter the album. */
   replay: { discoveryIds: string[] } | null;
   /** Remount all choreography on every entry, including same-layout replays. */
   visitId: number;
@@ -81,6 +81,8 @@ export interface PlayStore {
   /** Every board of every journey is done. */
   gameDone(): boolean;
   openPassport(): void;
+  /** Return from the bag without restarting a pilot's current round. */
+  resumeScene(): void;
   toggleMute(): void;
   /** The book's board for the open scene, if this game has one. */
   albumBoard(): AdventureBook["boards"][number] | null;
@@ -112,6 +114,9 @@ export interface PlayStoreOptions {
    * player link never sets this.
    */
   albumOwner?: boolean;
+  /** Opaque, server-derived viewer scope; required for a pilot owner cache. Not authorization. */
+  albumOwnerScope?: string;
+  telemetry?: boolean;
   copy: ReducerCopy;
 }
 
@@ -121,9 +126,14 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
   // Never touch localStorage here: the store is created during render, on the
   // server too. Saved progress arrives via hydrate() after mount.
   const initialProgress: GameProgress = demo ? { v: 1, gameId: config.gameId, revealed: true, scenes: {} } : emptyProgress(config.gameId);
-  const telemetry = new Telemetry(config.gameId, persist);
+  const telemetry = new Telemetry(config.gameId, persist && opts.telemetry !== false);
   // Demo plays the same collection rules in memory, never in the account or storage.
   const book = persist || demo ? config.adventure ?? null : null;
+  const pilot = config.playPolicy === "independent-worlds-v1" && !!book && !demo;
+  if (pilot && opts.albumOwner && !opts.albumOwnerScope) throw new Error("Pilot owner storage requires a server viewer scope");
+  const storageScope = pilot ? `${config.playPolicy}:${book!.releaseId}:${opts.albumOwner ? `owner:${opts.albumOwnerScope}` : "guest"}` : undefined;
+  const keepProgress = (progress: GameProgress) => saveProgress(progress, storageScope);
+  const keepAlbum = (album: AdventureProgress) => saveAlbum(album, storageScope);
   const demoScene = demo ? config.scenes[0]?.slug : undefined;
   let albumSync: AlbumSync | null = null;
   // The three things the player is told about the album, kept apart: what the
@@ -141,7 +151,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
   /** Record one album event: once in the domain, once in this browser, once to the account. */
   const recordAlbum = (set: (partial: Partial<PlayStore>) => void, get: () => PlayStore, event: AdventureEvent): boolean => {
     const album = get().album;
-    if (!album || !book || get().replay) return false;
+    if (!album || !book || (get().replay && !(pilot && event.kind === "discovery-found"))) return false;
     let result: ReturnType<typeof recordAdventureEvent>;
     try {
       result = recordAdventureEvent(album, config.gameId, book, event);
@@ -151,7 +161,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       throw error;
     }
     if (!result.changed) return false;
-    if (persist) kept = saveAlbum(result.progress);
+    if (persist) kept = keepAlbum(result.progress);
     set({ album: result.progress, albumState: albumStatus() });
     albumSync?.push(event);
     return true;
@@ -203,7 +213,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
 
     hydrate() {
       if (!persist) return;
-      const progress = loadProgress(config.gameId);
+      const progress = loadProgress(config.gameId, storageScope);
       const { screen } = get();
       // Back to the world the player was in, not the first one. A three-world
       // game used to reopen on world one's map whatever had just been finished
@@ -214,11 +224,11 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       const landing = remembered ? "map" : worlds.length > 1 ? "worlds" : "map";
       set({ progress, screen: screen === "gift" && progress.revealed ? landing : screen, ...(remembered ? { worldSlug: remembered } : {}) });
       const resumed = config.scenes.find(scene => scene.slug === progress.lastScene && scene.playMode === "find-any");
-      if (resumed && progress.revealed && sceneIsPlayable(progress, config, resumed)) get().openScene(resumed.slug);
+      if (resumed && progress.revealed && sceneIsPlayable(progress, config, resumed) && !(pilot && sceneIsComplete(progress, resumed))) get().openScene(resumed.slug);
       if (!book) return;
       // This browser's album first (the whole truth for a guest, a cache for the
       // owner), then, for the owner only, the account's copy replaces it.
-      const loaded = loadAlbum(config.gameId, book);
+      const loaded = loadAlbum(config.gameId, book, storageScope);
       unreadable = !loaded.ok;
       if (loaded.ok) set({ album: loaded.progress, albumState: albumStatus() });
       else set({ album: null, albumState: albumStatus() });
@@ -226,12 +236,13 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
         albumSync?.stop();
         const sync = new AlbumSync({
           gameId: config.gameId,
+          readBeforeWrite: pilot,
+          validateProgress: pilot ? (progress) => readAdventureProgress(progress, config.gameId, book) : undefined,
           onState: (state) => { syncState = state; set({ albumState: albumStatus() }); },
           onProgress: (server) => {
             // The account's copy is the truth, but nothing this browser found is
-            // dropped: a guest's play before signing in, or finds made offline,
-            // are sent to the account (each recorded once there) and shown
-            // meanwhile on top of the account's copy.
+            // dropped. Pilot caches contain ONLY this owner's same-release
+            // finds; legacy caches retain their pre-existing merge behaviour.
             const local = get().album;
             const waiting = sync.pendingEvents();
             const owed = local ? missingEvents(local, server).filter((e) => !waiting.some((w) => sameEvent(w, e))) : [];
@@ -244,7 +255,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
                 // The account will refuse it too; nothing to show.
               }
             }
-            kept = saveAlbum(merged);
+            kept = keepAlbum(merged);
             unreadable = false;
             set({ album: merged, albumState: albumStatus() });
             // The game itself agrees with the album: finds the account knows from
@@ -254,7 +265,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
             // with nothing to start it again).
             const adopted = adoptFinds(get().progress, config, merged.finds);
             if (adopted.changed) {
-              saveProgress(adopted.progress);
+              keepProgress(adopted.progress);
               set({ progress: adopted.progress });
               const { mission, sceneSlug } = get();
               if (mission && sceneSlug && !get().replay) {
@@ -275,7 +286,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       sounds().unlock();
       sounds().play("fanfare");
       const progress = { ...get().progress, revealed: true, openedAt: get().progress.openedAt ?? new Date().toISOString() };
-      if (persist) saveProgress(progress);
+      if (persist) keepProgress(progress);
       // More than one journey means the first choice is which one.
       set({ progress, screen: gameWorlds(get().config).length > 1 ? "worlds" : "map" });
     },
@@ -291,7 +302,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       set({ screen: "map", sceneSlug: null, mission: null, replay: null, travelFrom, ...(worldSlug ? { worldSlug } : {}) });
       if (worldSlug && persist) {
         const progress = { ...get().progress, lastWorld: worldSlug };
-        saveProgress(progress);
+        keepProgress(progress);
         set({ progress });
       }
     },
@@ -307,6 +318,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     },
 
     openScene(slug, options) {
+      if (pilot && !options?.replay && get().screen === "passport" && get().sceneSlug === slug && get().mission) { get().resumeScene(); return; }
       if (demo && slug !== demoScene) return;
       const scene = get().config.scenes.find((s) => s.slug === slug);
       if (!scene) return;
@@ -336,7 +348,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       set({ screen: "scene", sceneSlug: slug, mission, replay: replaying ? { discoveryIds: [] } : null, visitId: get().visitId + 1, travelFrom: null, ...(world ? { worldSlug: world.slug } : {}) });
       if (!replaying && ((world && persist) || free)) {
         const progress = { ...get().progress, ...(world ? { lastWorld: world.slug } : {}), lastScene: slug };
-        if (persist) saveProgress(progress);
+        if (persist) keepProgress(progress);
         set({ progress });
       }
     },
@@ -354,7 +366,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
         if (scene.playMode === "find-any" && !get().replay) {
           const before = get().progress;
           const progress = recordFindAny(before, scene, next, config.scenes);
-          if (persist) saveProgress(progress);
+          if (persist) keepProgress(progress);
           if (!sceneCanAdvance(before, scene) && sceneCanAdvance(progress, scene)) telemetry.track({ eventType: "scene_unlocked", sceneSlug: scene.slug });
           if (!sceneIsComplete(before, scene) && sceneIsComplete(progress, scene)) telemetry.track({ eventType: "scene_completed", sceneSlug: scene.slug, hintsUsed: sceneSummary(next).hintsUsed });
           if (!before.journeyFinishedAt && progress.journeyFinishedAt) telemetry.track({ eventType: "journey_finished" });
@@ -378,7 +390,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       if (scene.playMode === "find-any") return;
       const summary = sceneSummary(mission);
       const next = recordSceneCompleted(progress, scene.slug, { variants: mission.plan.variants, order: mission.plan.order, noHints: summary.noHints, bonusFound: summary.bonusFound }, config.scenes.length);
-      if (persist) saveProgress(next);
+      if (persist) keepProgress(next);
       telemetry.track({ eventType: "scene_completed", sceneSlug: scene.slug, hintsUsed: summary.hintsUsed });
       if (completedScenes(next) >= config.scenes.length && !progress.completedAt) telemetry.track({ eventType: "game_completed" });
       set({ progress: next });
@@ -419,7 +431,15 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     openPassport() {
       if (demo) return;
       sounds().stopAmbient();
+      if (pilot && get().sceneSlug && get().mission) { set({ screen: "passport" }); return; }
       set({ screen: "passport", sceneSlug: null, mission: null, replay: null });
+    },
+
+    resumeScene() {
+      if (!pilot || get().screen !== "passport" || !get().sceneSlug || !get().mission) return;
+      const scene = get().scene();
+      if (scene) sounds().startAmbient(scene.sounds.ambient);
+      set({ screen: "scene" });
     },
 
     toggleMute() {
@@ -435,11 +455,13 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     },
 
     collectDiscovery(discoveryId) {
+      if (get().screen !== "scene") return "none";
       const board = get().albumBoard();
       if (!board || !board.discoveries.some((d) => d.id === discoveryId) || !get().album) return "none";
       const replay = get().replay;
       if (replay) {
         if (replay.discoveryIds.includes(discoveryId)) return "again";
+        if (pilot) recordAlbum(set, get, { kind: "discovery-found", boardSlug: board.boardSlug, discoveryId });
         set({ replay: { discoveryIds: [...replay.discoveryIds, discoveryId] } });
         return "collected";
       }

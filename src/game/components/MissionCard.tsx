@@ -50,6 +50,7 @@ interface Props {
   replay?: boolean;
   /** Public demo has no saved progress to protect or explain. */
   showReplayNote?: boolean;
+  replayNote?: string;
   onReplay?: () => void;
 }
 
@@ -62,7 +63,7 @@ interface Props {
  * score a child keeps glancing at. What the WORLD has collected is not shown
  * here at all - inside a board, only that board's stars matter (Guy).
  */
-export function MissionCard({ index, total, target, found, order, stars, trayRef, hintLevel, hintPulse, hintText, onHint, repeatLastHint = false, avatarUrl, childName, quiet = false, onExpand, minimal = false, findAny = false, onAdvance, advanceLabel, replay = false, showReplayNote = true, onReplay }: Props) {
+export function MissionCard({ index, total, target, found, order, stars, trayRef, hintLevel, hintPulse, hintText, onHint, repeatLastHint = false, avatarUrl, childName, quiet = false, onExpand, minimal = false, findAny = false, onAdvance, advanceLabel, replay = false, showReplayNote = true, replayNote, onReplay }: Props) {
   const { g, tf } = useGameText();
   const foundCount = Math.min(found.length, total);
   const lit = Math.min(stars ?? found.length, total);
@@ -104,7 +105,7 @@ export function MissionCard({ index, total, target, found, order, stars, trayRef
         <div className="mission__progress">
           {/* Keep the name alongside the face even when requested hint details fold. */}
           <h2 className="mission__text">{title}</h2>
-          {replay ? <span className="mission__replay-label" title={showReplayNote ? g.replay.note : undefined}>{g.replay.label}</span> : null}
+          {replay ? <span className="mission__replay-label" title={showReplayNote ? replayNote ?? g.replay.note : undefined}>{g.replay.label}</span> : null}
           {total > 1 ? <>
             {/* One gold star per hiding spot. A star flies in from the found child, and only then does its slot light. */}
             <StarTray ref={trayRef} lit={lit} total={total} size="sm" className="mission__stars" label={tf(g.stars.tray, { earned: foundCount, total })} />
@@ -136,7 +137,7 @@ export function MissionCard({ index, total, target, found, order, stars, trayRef
       ) : null}
       {onReplay ? <div className="mission__replay">
         <button type="button" className="fm-btn fm-btn--secondary fm-btn--sm" onClick={onReplay} aria-describedby={showReplayNote ? "replay-note" : undefined}>{g.complete.again}</button>
-        {showReplayNote ? <p id="replay-note" className="mission__replay-note">{g.replay.note}</p> : null}
+        {showReplayNote ? <p id="replay-note" className="mission__replay-note">{replayNote ?? g.replay.note}</p> : null}
       </div> : null}
     </section>
   );

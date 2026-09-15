@@ -30,6 +30,9 @@ interface Props {
   singleMission?: boolean;
   /** The page found the viewer to be the game's owner (from the session). The album is then also kept in the family account. */
   albumOwner?: boolean;
+  albumOwnerScope?: string;
+  /** Local interaction review can keep browser progress without sending telemetry. */
+  telemetry?: boolean;
 }
 
 /**
@@ -40,14 +43,14 @@ interface Props {
 export function GameShell(props: Props) {
   return (
     <GameI18nProvider locale={props.config.locale}>
-      <Shell {...props} />
+      <Shell key={`${props.config.gameId}:${props.config.playPolicy ?? "legacy"}:${props.config.adventure?.releaseId ?? "none"}:${props.albumOwner ? props.albumOwnerScope ?? "owner" : "guest"}`} {...props} />
     </GameI18nProvider>
   );
 }
 
-function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false, parentZoneHref, autoStartScene, singleMission = false, albumOwner = false }: Props) {
+function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false, parentZoneHref, autoStartScene, singleMission = false, albumOwner = false, albumOwnerScope, telemetry }: Props) {
   const { g } = useGameText();
-  const [store] = useState(() => createPlayStore(config, { demo, skipGift, readOnlyPreview, autoStartScene, singleMission, albumOwner, copy: getDict(config.locale).game.copy }));
+  const [store] = useState(() => createPlayStore(config, { demo, skipGift, readOnlyPreview, autoStartScene, singleMission, albumOwner, albumOwnerScope, telemetry, copy: getDict(config.locale).game.copy }));
   const state = useStore(store);
   const scene = state.scene();
   // One world needs no hub: the map is the whole journey.
@@ -79,7 +82,7 @@ function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false
           <ScenePlayer key={`${scene.slug}:${state.visitId}`} scene={scene} mission={state.mission} store={state} onBack={state.goToMap} onSceneComplete={state.completeScene} />
         ) : null;
       case "passport":
-        return <Passport config={config} progress={state.progress} onMap={state.goToMap} onOpen={state.openScene} onReplay={state.replayScene} album={state.album} albumMode={state.albumMode} albumState={state.albumState} />;
+        return <Passport config={config} progress={state.progress} onMap={state.goToMap} onOpen={state.openScene} onReplay={state.replayScene} onResume={scene && state.mission ? state.resumeScene : undefined} album={state.album} albumMode={state.albumMode} albumState={state.albumState} />;
       case "worlds":
         return <WorldHub config={config} progress={state.progress} currentWorld={state.worldSlug} onEnter={(slug) => state.goToMap(null, slug)} onPassport={state.openPassport} />;
       case "map":
