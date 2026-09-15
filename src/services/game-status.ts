@@ -31,8 +31,15 @@ export class GameStatusConflict extends Error {
 }
 
 /**
- * The declared way a game changes status: validates against the state machine,
- * writes the audit trail, and stamps the milestone timestamps.
+ * How a game changes status on the ordinary path: validated against the state
+ * machine, with the audit trail and the milestone timestamps.
+ *
+ * Not the only writer, and the comment that said so was wrong. The
+ * board-conditioned and wizard engines write `status` directly inside their
+ * own fenced transactions (`board-conditioned-qa-job`, `board-wizard-*`,
+ * `board-conditioned-deletion`), because their move has to commit with rows
+ * this function knows nothing about. Those paths own their own atomicity;
+ * everything else comes through here.
  *
  * The write is a compare-and-set on the status that was read. Without the
  * fence, a delete, a refund or a cancel landing between the read and the write
@@ -40,8 +47,8 @@ export class GameStatusConflict extends Error {
  * with its `deletedAt` still set, and the trail recorded a move that never
  * happened. A losing writer now raises `GameStatusConflict` instead.
  *
- * Lifecycle paths that must be atomic with other rows (deletion, staging,
- * payment) pass their own `db`, so the move and the audit commit with them.
+ * Callers that must be atomic with other rows (payment, deletion) pass their
+ * own `db`, so the move and its audit entry commit with them.
  */
 export async function transitionGame(c: Container, gameId: string, to: GameStatus, actor: Actor, meta?: Record<string, unknown>, db: GameStatusDb = c.db): Promise<void> {
   const game = await db.game.findUniqueOrThrow({ where: { id: gameId }, select: { status: true } });

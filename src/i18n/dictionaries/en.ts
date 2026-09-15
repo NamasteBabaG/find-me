@@ -502,6 +502,8 @@ export const en = {
       loadTitle: "The picture is still on its way…",
       loadRetry: "Once more ✨",
       loadBack: "Back to the map",
+      /** Read out when the picture takes focus: searching without a finger. */
+      keyboardHint: "Use the arrow keys to move the marker over the picture, hold Shift to move faster, and press Enter to look there. Escape puts the marker away.",
       expandMission: "Show the mission",
       missionOf: "Mission {n} of {total}",
       foundOf: "{found} of {total} hiding spots found",

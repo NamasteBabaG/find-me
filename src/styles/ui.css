@@ -241,6 +241,17 @@ a.fm-btn[aria-disabled="true"] { pointer-events: none; }
 .rv.is-in { opacity: 1; transform: none; }
 @media (prefers-reduced-motion: reduce) { .rv { opacity: 1; transform: none; } }
 
+/* The account link: the words on a wide header, the mark alone on a narrow one.
+   Its accessible name is on the link itself, so it never loses it. */
+.fm-header__account-icon { display: none; width: var(--space-3); height: var(--space-3); flex: none; }
+@media (max-width: 860px) {
+  .fm-header__account { width: var(--touch-min); min-width: var(--touch-min); padding-inline: 0; }
+  .fm-header__account-label { display: none; }
+  .fm-header__account-icon { display: block; }
+  /* A header control is still a control a parent taps: 48px, the adult floor. */
+  .fm-header__cta .fm-btn--sm, .fm-header__cta .fm-lang__btn { min-height: var(--touch-min); }
+}
+
 /* Utility */
 /* .fm-hide-mobile only hides below 860px; it must not override the element's own display (buttons are inline-flex). */
 @media (max-width: 860px) { .fm-hide-mobile { display: none !important; } }

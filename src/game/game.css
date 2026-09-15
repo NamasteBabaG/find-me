@@ -219,6 +219,14 @@
 .stage__glow { position: absolute; transform: translate(-50%, -50%); border-radius: var(--radius-pill); background: radial-gradient(circle, rgba(255, 182, 30, 0.55), rgba(255, 182, 30, 0) 70%); animation: fm-glow 1.6s var(--ease-in-out) infinite; pointer-events: none; z-index: 28; }
 
 .overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+/* The keyboard crosshair: where Enter would look. Gold on a white rim, so it
+   reads on a painted board without covering what is under it. */
+.scene__cursor { position: absolute; width: var(--space-6); height: var(--space-6); margin: calc(var(--space-6) / -2) 0 0 calc(var(--space-6) / -2); border-radius: var(--radius-pill); border: 3px solid var(--gold); box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.85), var(--shadow-glow-gold); animation: fm-pulse 1.6s var(--ease-in-out) infinite; }
+.scene__cursor::before, .scene__cursor::after { content: ""; position: absolute; background: var(--gold); box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.85); }
+.scene__cursor::before { left: 50%; top: -var(--space-1); width: 3px; height: var(--space-2); transform: translateX(-50%); }
+.scene__cursor::after { top: 50%; left: -var(--space-1); width: var(--space-2); height: 3px; transform: translateY(-50%); }
+.viewport:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+@media (prefers-reduced-motion: reduce) { .scene__cursor { animation: none; } }
 .ripple { position: absolute; width: var(--space-6); height: var(--space-6); margin: calc(var(--space-6) / -2) 0 0 calc(var(--space-6) / -2); border-radius: var(--radius-pill); border: 4px solid var(--white); box-shadow: 0 0 0 2px rgba(43, 42, 51, 0.2); animation: fm-ripple var(--dur-3) var(--ease-out) forwards; }
 .magnifier { position: absolute; font-size: var(--fs-700); line-height: 1; margin: -0.5em 0 0 -0.5em; animation: fm-magnifier var(--dur-4) var(--ease-out) forwards, fm-float 2s var(--ease-in-out) infinite var(--dur-4); filter: drop-shadow(0 4px 6px rgba(43, 42, 51, 0.3)); }
 .bubble { position: absolute; transform: translate(-50%, calc(-100% - var(--space-4))); max-width: 260px; background: var(--white); color: var(--ink); font-family: var(--font-display); font-weight: 600; font-size: var(--fs-300); line-height: var(--lh-300); padding: var(--space-1) var(--space-2); border-radius: var(--radius-2); box-shadow: 0 0 0 3px var(--ink), var(--shadow-2); animation: fm-pop-in var(--dur-2) var(--ease-pop); text-align: center; white-space: normal; }

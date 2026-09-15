@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { SceneConfig, TargetConfig } from "@/domain/game/config";
 import type { AdventureRect } from "@/domain/adventure/content";
 import type { MissionState } from "@/domain/game/mission";
@@ -33,6 +33,8 @@ interface Props {
   /** Bumped by the player to load again after a failure. */
   retryToken?: number;
   ariaLabel?: string;
+  /** How to search with a keyboard, for whoever is not using a finger. */
+  keyboardHint?: string;
   /** Screen-space overlays get the transform via render prop. */
   children?: (api: ViewportApi) => React.ReactNode;
 }
@@ -48,8 +50,9 @@ interface Ripple {
  * All hit-testing is math on normalized coordinates (no DOM hit targets), so a
  * tap resolves the same way on every device and at every zoom.
  */
-export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveries = [], onHit, onReady, onAssetsReady, onVisibleAssetsReady, onAssetsFailed, retryToken = 0, ariaLabel, children }: Props) {
+export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveries = [], onHit, onReady, onAssetsReady, onVisibleAssetsReady, onAssetsFailed, retryToken = 0, ariaLabel, keyboardHint, children }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const keyboardHintId = useId();
   const stage = useMemo(() => ({ width: scene.art.width, height: scene.art.height }), [scene.art.width, scene.art.height]);
   const [ripples, setRipples] = useState<Ripple[]>([]);
   const [ambientAnim, setAmbientAnim] = useState<Record<string, number>>({});
@@ -137,6 +140,71 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveri
   // Demo and full game share strict boundaries on mouse, touch and pen.
   const api = useViewport(containerRef, stage, onTap);
   apiRef.current = api;
+
+  /**
+   * Searching with a keyboard.
+   *
+   * The board answered a pointer and nothing else: the picture was marked
+   * `role="application"` but could not be focused and had no key handling, so
+   * the tools and the hint were reachable by keyboard and the game itself was
+   * not — a child could ask for a hint about a child they had no way to find.
+   *
+   * A cursor, not a list of buttons: turning every hiding spot into a tab stop
+   * would hand over the answer. The arrows walk a crosshair across the
+   * picture at a constant speed on screen (so it feels the same at any zoom),
+   * Enter or Space taps exactly where it stands — through the same hit-testing
+   * a finger goes through — and the camera follows it to the edge of the view.
+   */
+  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
+  const KEY_STEP_PX = 24;
+  const KEY_STEP_FAR_PX = 96;
+  const onKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      const vp = apiRef.current;
+      const box = containerRef.current?.getBoundingClientRect();
+      if (!vp || !box) return;
+      // The measured viewport, not the DOM rect's size: the transform is built
+      // from the measured box, and the rect only says where it is on the page.
+      const middle = () => vp.toNormalized(box.left + vp.viewport.width / 2, box.top + vp.viewport.height / 2) ?? { x: 0.5, y: 0.5 };
+      const move: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+      const direction = move[e.key];
+      if (direction) {
+        e.preventDefault();
+        // The first arrow places the crosshair in the middle of what is on
+        // screen, wherever the picture has been panned to.
+        const from = cursor ?? middle();
+        const px = e.shiftKey ? KEY_STEP_FAR_PX : KEY_STEP_PX;
+        const next = {
+          x: Math.min(1, Math.max(0, from.x + (direction[0] * px) / (stage.width * vp.transform.scale))),
+          y: Math.min(1, Math.max(0, from.y + (direction[1] * px) / (stage.height * vp.transform.scale))),
+        };
+        setCursor(next);
+        // Keep it in sight: at the edge of the window the picture comes along.
+        const screen = stageToScreen(vp.transform, next.x * stage.width, next.y * stage.height);
+        const margin = 64;
+        if (screen.x < margin || screen.y < margin || screen.x > vp.viewport.width - margin || screen.y > vp.viewport.height - margin) {
+          vp.focusOn(next.x, next.y, vp.transform.scale / vp.fit, 160);
+        }
+        return;
+      }
+      if (e.key === "Enter" || e.key === " ") {
+        // Nothing has been aimed at yet: the first press places the crosshair
+        // rather than tapping the middle of the screen by surprise.
+        e.preventDefault();
+        if (!cursor) {
+          setCursor(middle());
+          return;
+        }
+        onTap(cursor.x, cursor.y);
+        return;
+      }
+      if (e.key === "Escape" && cursor) {
+        e.preventDefault();
+        setCursor(null);
+      }
+    },
+    [cursor, onTap, stage],
+  );
 
   // The board webp is static and fast; a child's patch is a signed database
   // asset and is not. Drawn as they arrive, the world appeared first and the
@@ -265,7 +333,20 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveri
   };
 
   return (
-    <div ref={containerRef} className={`viewport${api.isDragging ? " viewport--dragging" : ""}`} {...api.bind} role="application" aria-label={ariaLabel ?? scene.name}>
+    <div
+      ref={containerRef}
+      className={`viewport${api.isDragging ? " viewport--dragging" : ""}`}
+      {...api.bind}
+      role="application"
+      aria-label={ariaLabel ?? scene.name}
+      aria-describedby={keyboardHintId}
+      tabIndex={0}
+      onKeyDown={onKeyDown}
+      onBlur={() => setCursor(null)}
+    >
+      <p id={keyboardHintId} className="visually-hidden">
+        {keyboardHint}
+      </p>
       <div className="stage" style={stageStyle}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={scene.art.base} alt="" width={stage.width} height={stage.height} className="stage__layer stage__base" decoding="async" draggable={false} />
@@ -316,6 +397,12 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveri
 
       {/* screen-space overlays */}
       <div className="overlay" aria-hidden>
+        {cursor
+          ? (() => {
+              const p = stageToScreen(transform, cursor.x * stage.width, cursor.y * stage.height);
+              return <span className="scene__cursor" style={{ left: p.x, top: p.y }} />;
+            })()
+          : null}
         {ripples.map((r) => {
           const p = stageToScreen(transform, r.x * stage.width, r.y * stage.height);
           return <span key={r.id} className="ripple" style={{ left: p.x, top: p.y }} />;

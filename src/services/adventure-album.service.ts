@@ -7,10 +7,12 @@ type Database = Pick<PrismaClient, "$transaction">;
 type AlbumRow = { revision: number; snapshotJson: string };
 
 /**
- * Trusted service boundary: the future owner route MUST derive ownerId from
- * the authenticated session, never from a POST body or a shared player link.
- * No public endpoint is installed by this foundation. Guest progress stays local.
- * SQL is parameterized and shared by SQLite/Postgres; no provider calls/money.
+ * Trusted service boundary: `ownerId` MUST come from the authenticated
+ * session, never from a POST body or a shared player link.
+ *
+ * `/api/play/album` is installed and calls this; the route reads the session
+ * itself and a guest's progress stays in their own browser. SQL is
+ * parameterized and shared by SQLite/Postgres; no provider calls, no money.
  */
 export async function ownerAdventureAlbum(db: Database, ownerId: string, gameId: string, event?: AdventureEvent) {
   const parsedEvent = event === undefined ? undefined : AdventureEventSchema.parse(event);
@@ -48,8 +50,9 @@ export async function ownerAdventureAlbum(db: Database, ownerId: string, gameId:
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
-/** Call inside the deletion transaction BEFORE removing/revoking a pilot game.
- * No production deletion flow is changed until the migration/feature is enabled.
+/** Call inside the deletion transaction BEFORE removing/revoking a game.
+ * `deleteGame` does exactly that: a soft delete takes the album with it, in
+ * the same Serializable transaction (see adventure-album-delete.test.ts).
  */
 export async function deleteAdventureAlbum(tx: Pick<Prisma.TransactionClient, "$executeRaw">, gameId: string): Promise<void> {
   await tx.$executeRaw(Prisma.sql`DELETE FROM "AdventureAlbumProgress" WHERE "gameId" = ${gameId}`);

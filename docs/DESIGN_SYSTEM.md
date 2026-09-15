@@ -91,3 +91,8 @@ Sits immediately after the hero, before the live demo. Three cards: the prepared
 - **The package step draws the choice the way the pricing section does**: a big number with the word small beside it (`.package__n`), the meta small, and a pill that says what a tap does and turns `--sun` once chosen (`.package__cta`, lined up along the bottom of the row). A world that can no longer be added (`.pick:disabled`) steps back at 55%.
 - **Cards are as tall as their words.** The checkout grid aligns to the start; the summary no longer stretches to the pay card's height.
 - **The dropzone's camera** sits in the same tilted `--sun-soft` chip the steps use and straightens on hover or drag-over.
+
+## Reachable without a finger (audit A06/A07, 2026-09-15)
+
+- **The account is always in the header.** The library link is never hidden: the words on a wide header, the mark alone (`.fm-header__account-icon`, a stroke glyph in the toolbar's language) below 860px, with its name on the link so it is never lost. Every header control is `--touch-min` (48px) on a phone — the adult floor, which the 40px `--sm` row was under.
+- **The board can be searched with a keyboard.** The picture is focusable (`tabIndex=0`, `role="application"`, instructions on `aria-describedby`), and the arrows walk a gold crosshair (`.scene__cursor`) over it: 24px on screen per press, 96px with Shift, so the pace is the same at any zoom. Enter looks where it stands, through the same hit-testing a tap uses; Escape and blur put it away; the camera follows the crosshair to the edge of the view. Hiding spots are never tab stops — a list of them would hand over the answer.

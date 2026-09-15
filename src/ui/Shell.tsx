@@ -4,9 +4,20 @@ import { isDev } from "@/lib/env";
 import { getI18n } from "@/i18n/server";
 import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
 
+/** The account mark: a head and shoulders, in the toolbar's stroke language. */
+function AccountMark() {
+  return (
+    <svg className="fm-header__account-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable="false">
+      <circle cx="12" cy="8.5" r="3.8" />
+      <path d="M4.8 20a7.2 7.2 0 0 1 14.4 0" />
+    </svg>
+  );
+}
+
 /** Adult-facing page chrome. The game itself never shows this header. */
 export async function SiteHeader({ user, isAdmin, clear = false }: { user: { email: string } | null; isAdmin: boolean; clear?: boolean }) {
   const { t } = await getI18n();
+  const accountLabel = user ? t.common.myGames : t.common.signIn;
   return (
     <header className={`fm-header${clear ? " fm-header--clear" : ""}`}>
       <div className="fm-container fm-header__inner">
@@ -24,8 +35,13 @@ export async function SiteHeader({ user, isAdmin, clear = false }: { user: { ema
         </nav>
         <div className="fm-header__cta">
           <LanguageSwitcher />
-          <Link href="/library" className="fm-btn fm-btn--secondary fm-btn--sm fm-hide-mobile">
-            {user ? t.common.myGames : t.common.signIn}
+          {/* The way back to a game already bought. It used to be hidden below
+              860px, which left a parent on a phone with no route to their
+              library except the foot of a very long page. It stays; on a
+              narrow header it is the mark alone, with its name still read. */}
+          <Link href="/library" className="fm-btn fm-btn--secondary fm-btn--sm fm-header__account" aria-label={accountLabel} title={accountLabel}>
+            <AccountMark />
+            <span className="fm-header__account-label">{accountLabel}</span>
           </Link>
           <Link href="/create" className="fm-btn fm-btn--sm">
             {t.common.createGame}

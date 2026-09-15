@@ -499,6 +499,7 @@ export const he: Dictionary = {
       loadTitle: "הציור עוד בדרך…",
       loadRetry: "טוענים שוב",
       loadBack: "למפה",
+      keyboardHint: "מזיזים את הסמן על הציור עם מקשי החצים, מחזיקים Shift כדי לזוז מהר יותר, ולוחצים Enter כדי לחפש שם. Escape מסתיר את הסמן.",
       expandMission: "להראות את המשימה",
       missionOf: "משימה {n} מתוך {total}",
       foundOf: "{found} מתוך {total} מחבואים נמצאו",
