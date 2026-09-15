@@ -40,11 +40,10 @@ export async function checkPhoto(buffer: Buffer, declaredMime: string): Promise<
   }
   const mime = meta.format ? FORMAT_MIME[meta.format] : undefined;
   if (!mime) return { ok: false, code: "BAD_TYPE", reason: "אפשר להעלות JPG, PNG או WebP." };
-  // Two guards with no fixture behind them: this build of sharp will not
-  // synthesise a multi-page WebP or a 50-megapixel file cheaply enough to
-  // assert on. They can only ever refuse, so they are here on their own terms
-  // — an animated WebP is a film, not a portrait (which frame would the sheet
-  // be drawn from?), and a file's size on disk is not its size in memory.
+  // An animated WebP is a film, not a portrait: which frame would the sheet be
+  // drawn from? And a file's size on disk is not its size in memory — flat
+  // white at 9000x6000 is a megabyte and a half on the wire and 162MB decoded.
+  // Both are covered by real fixtures in interrupted-writes.test.ts.
   if ((meta.pages ?? 1) > 1) return { ok: false, code: "BAD_TYPE", reason: "אפשר להעלות JPG, PNG או WebP." };
   const width = meta.width ?? 0;
   const height = meta.height ?? 0;
