@@ -19,7 +19,6 @@ export interface BoardWizardIdentityClaim {
   childName: string; ageYears: number | null;
 }
 const scope = (id: string) => `${id}:board-wizard`;
-const requestKey = "wizard:identity:1";
 function demand(ok: unknown): asserts ok { if (!ok) throw new Error("BOARD_IDENTITY: stale or deleted identity claim"); }
 const budgetFor = (c: Container) => boardWizardBudget(new CasWorldBudgetRepository(new PrismaWorldBudgetStore(c.db)));
 const enabled = (styleVersion?: string) => env().APP_ENV === "qa"
@@ -70,8 +69,12 @@ export async function holdBoardWizardIdentity(c: Container, claim: BoardWizardId
 /** One paid call at most. Billing survives a lost/deleted image publication. */
 export async function generateBoardWizardIdentity(c: Container, claim: BoardWizardIdentityClaim, deps: {
   reserve(): Promise<void>; generate(): Promise<CharacterOutput>; provenance?: IdentityProvenance;
+  attempt?: 1 | 2;
+  onPersisted?(tx: Prisma.TransactionClient, ids: { identityAssetId: string; avatarAssetId: string }): Promise<void>;
 }): Promise<boolean> {
   const budget = budgetFor(c);
+  if (deps.attempt !== undefined && deps.attempt !== 1 && deps.attempt !== 2) throw new Error("Only two identity candidates are allowed");
+  const requestKey = `wizard:identity:${deps.attempt ?? 1}`;
   try {
     demand(enabled(claim.styleVersion) && c.storage.id === "db");
     await c.db.$transaction(tx => fence(tx, claim), { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
@@ -110,6 +113,7 @@ export async function generateBoardWizardIdentity(c: Container, claim: BoardWiza
           requestId: known ? character.providerRequestId : null, model: "gpt-image-2", usage: known ? character.usage : null,
           identityProvenance: deps.provenance ?? null }) } });
       await tx.childProfile.update({ where: { id: claim.childId }, data: { identityAssetId: sheetId, avatarAssetId: avatarId } });
+      await deps.onPersisted?.(tx, { identityAssetId: sheetId, avatarAssetId: avatarId });
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30_000 });
     if (!known) { await holdBoardWizardIdentity(c, claim, "unresolved-identity"); return false; }
     return true;

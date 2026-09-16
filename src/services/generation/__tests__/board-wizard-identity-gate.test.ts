@@ -9,6 +9,7 @@ import { boardWizardBudget } from "../board-wizard-budget";
 import { ADVISORY_IDENTITY_GATE_VERSION, AGE_IDENTITY_GATE_VERSION, IDENTITY_GATE_KEY, LEGACY_IDENTITY_GATE_VERSION, identityApprovedForDisplay, identityGatePrompt, identityReceiptReadyForPublication, reviewBoardWizardIdentity, requireBoardWizardIdentityApproval, type IdentityProvenance } from "../board-wizard-identity-gate";
 import { sha256Bytes } from "../fixed-sprite";
 import type { Container } from "../../container";
+import { chooseIdentityCandidate } from "../identity-best-of-two";
 
 const answer = (style = "pass") => ({ checks: { identity: "pass", age: "pass", paintedStyle: style, sheetLayout: "pass" }, reason: "Synthetic test response, no visual quality claim" });
 const response = (content: unknown = answer(), patch = {}) => new Response(JSON.stringify({ model: "gpt-5.6-sol", service_tier: "default", usage: { prompt_tokens: 2000, completion_tokens: 400, total_tokens: 2400 },
@@ -35,6 +36,23 @@ async function fixture(reply: () => Promise<Response> = async () => response()) 
   return { deps, input, budget, fetchOnce, beforeDispatch, rows, enrollment, c };
 }
 describe("identity style gate (synthetic images and HTTP; zero paid calls)", () => {
+  it("bounded selection preserves warnings, binds its source, and cannot change older publication policies", async () => {
+    const f = await fixture(async () => response({ checks: { identity: "uncertain", age: "fail", paintedStyle: "pass", sheetLayout: "pass" }, reason: "Synthetic likeness doubt" }, { model: "gpt-5.6-luna" }));
+    f.input.provenance.promptVersion = "character-v4-board-drawn-face-reference";
+    f.input.provenance.style.version = "board-matched-identity/v2";
+    const r = await reviewBoardWizardIdentity(f.deps, { ...f.input, contentVersion: 9 });
+    const selected = { ...r, automaticSelection: { policy: "identity-best-of-two/v1", sourceFingerprint: r.fingerprint,
+      candidates: [r.identityAssetId], selectedIdentityAssetId: r.identityAssetId, reason: "budget-fallback" } };
+    expect(r.approved).toBe(false); expect(identityReceiptReadyForPublication(r, 9)).toBe(false);
+    expect(identityReceiptReadyForPublication(selected, 9)).toBe(true);
+    for (const v of [6, 7, 8, undefined]) expect(identityReceiptReadyForPublication(selected, v)).toBe(false);
+    expect(identityReceiptReadyForPublication({ ...selected, automaticSelection: { ...selected.automaticSelection, selectedIdentityAssetId: "different" } }, 9)).toBe(false);
+    expect(identityReceiptReadyForPublication({ ...selected, automaticSelection: { ...selected.automaticSelection, sourceFingerprint: "a".repeat(64) } }, 9)).toBe(false);
+    expect(identityReceiptReadyForPublication({ ...selected, checks: { ...r.checks, sheetLayout: "fail" } }, 9)).toBe(false);
+    expect(chooseIdentityCandidate(r, { ...r, comparison: { firstIdentityAssetId: r.identityAssetId, firstSheetSha256: r.sheetSha256, preferredCandidate: "second" } })).toBe(2);
+    expect(chooseIdentityCandidate(r, { ...r, checks: { ...r.checks!, sheetLayout: "fail" } })).toBe(1);
+    expect(chooseIdentityCandidate({ ...r, checks: { ...r.checks!, sheetLayout: "fail" } })).toBeNull();
+  });
   it.each(["identity", "age", "sheetLayout"] as const)("catalog9 requires explicit %s pass before display or board enrollment", async check => {
     for (const value of ["fail", "uncertain"] as const) {
       const checks = { ...answer().checks, [check]: value };

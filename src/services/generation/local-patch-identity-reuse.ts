@@ -106,8 +106,8 @@ async function inspectSource(c: Container, sourceGameId: string, expectedIdentit
   demand(ledger, "Original identity accounting is missing");
   const cost = auditWorldBudget(ledger.snapshot);
   demand(!cost.held && cost.reservedMicroUsd === 0, "Source accounting is unresolved");
-  const review = ledger.snapshot.requests.find(row => row.requestKey === IDENTITY_GATE_KEY);
-  const render = ledger.snapshot.requests.find(row => row.requestKey === "wizard:identity:1");
+  const review = ledger.snapshot.requests.find(row => row.requestKey === (receipt.comparison ? "wizard:identity-style:2" : IDENTITY_GATE_KEY));
+  const render = ledger.snapshot.requests.find(row => row.requestKey === (receipt.provenance.repair ? "wizard:identity:2" : "wizard:identity:1"));
   demand(review && (review.state === "settled" || review.state === "linked") && review.operationFingerprint === receipt.fingerprint
     && review.evidence.providerRequestId === receipt.requestId && review.evidence.amountMicroUsd === receipt.costMicroUsd
     && review.evidence.usageId === boardConditioningHash(receipt.usage), "Original review bill does not match");

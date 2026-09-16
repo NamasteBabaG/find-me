@@ -35,7 +35,7 @@ vi.mock("../local-patch-identity", async original => ({
 }));
 
 import { generateBoardWizardIdentity, withBoardWizardIdentityClaim, type BoardWizardIdentityClaim } from "../board-wizard-identity-lifecycle";
-import { enrollBoardConditionedWizard, reserveBoardWizardIdentity } from "../board-conditioned-wizard";
+import { boardWizardBudgetOf, boardWizardWorldId, enrollBoardConditionedWizard, reserveBoardWizardIdentity } from "../board-conditioned-wizard";
 import { readBoardConditionedCatalog } from "../board-conditioned-catalog";
 import { runGenerationPipeline } from "../pipeline";
 import { nextPendingGame } from "../queue";
@@ -124,6 +124,98 @@ async function reviewPublished(f: Fixture, reviewer = { review: async () => ({ h
 }
 
 describe("QA identity lifecycle: real DB and synthetic provider only", () => {
+  it.each(["first", "second"] as const)("catalog9 chooses %s from two candidates and continues despite subjective warnings", async preferredCandidate => {
+    const f = await fixture(); await fullWorld(f, 9); fake.styleVersion = "board-matched-identity/v2";
+    await db.game.update({ where: { id: f.id }, data: { styleVersion: LOCAL_PATCH_STYLE } });
+    await db.generationJob.update({ where: { id: f.claim.jobId }, data: { status: "DONE", attempts: 0, currentStep: null } });
+    let calls = 0, reviews = 0;
+    const generate = vi.fn(async request => {
+      calls++; if (calls === 2) expect(request.identityRepair.reason).toContain("uncertain");
+      return { ...f.result(), providerRequestId: `req_${f.id}_${calls}` };
+    });
+    f.c.avatars.createCharacter = generate;
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
+      reviews++; const body = JSON.parse(String(init?.body));
+      expect(body.messages[0].content.filter((x: { type: string }) => x.type === "image_url")).toHaveLength(reviews === 1 ? 3 : 5);
+      return new Response(JSON.stringify({ model: "gpt-5.6-luna", usage: { prompt_tokens: 2000, completion_tokens: 400 },
+        choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ checks: { identity: "uncertain", age: "fail", paintedStyle: "pass", sheetLayout: "pass" },
+          reason: "Synthetic uncertain likeness and age warning", ...(reviews === 2 ? { preferredCandidate } : {}) }) } }] }),
+      { headers: { "x-request-id": `req_review_${f.id}_${reviews}` } });
+    }));
+    await runGenerationPipeline(f.c, f.id);
+    expect(await f.game()).toMatchObject({ status: "TARGETS_GENERATING", styleVersion: LOCAL_PATCH_STYLE });
+    const checkpoint = JSON.parse((await f.job()).stepsJson).identityBestOfTwo;
+    const child = await db.childProfile.findUniqueOrThrow({ where: { id: f.childId } });
+    expect(child.identityAssetId).toBe(checkpoint[preferredCandidate].identityAssetId);
+    const selection = await db.auditLog.findFirstOrThrow({ where: { action: IDENTITY_GATE_ACTION, entityId: child.identityAssetId! }, orderBy: { createdAt: "desc" } });
+    expect(JSON.parse(selection.metaJson!)).toMatchObject({ approved: false, checks: { identity: "uncertain", age: "fail" }, automaticSelection: { policy: "identity-best-of-two/v1", reason: "best-of-two" } });
+    expect(calls).toBe(2); expect(reviews).toBe(2);
+    const ledger = await f.ledger(); expect(ledger.requests).toHaveLength(4);
+    expect(ledger.requests.every((r: { state: string }) => r.state === "settled")).toBe(true);
+    expect(await identityApprovedForDisplay(f.c, child, 9)).toBe(true);
+    // Deletion must include both candidates, not just the chosen profile pointer.
+    await deleteGame(f.c, f.id, { type: "USER", id: f.ownerId }, f.ownerId);
+    expect(await db.asset.count({ where: { ownerId: f.ownerId, status: "READY" } })).toBe(0);
+  });
+
+  it("catalog9 resumes the comparison across three request windows without buying any candidate twice", async () => {
+    const f = await fixture(); await fullWorld(f, 9); fake.styleVersion = "board-matched-identity/v2";
+    await db.game.update({ where: { id: f.id }, data: { styleVersion: LOCAL_PATCH_STYLE } });
+    await db.generationJob.update({ where: { id: f.claim.jobId }, data: { status: "DONE", attempts: 0, currentStep: null } });
+    let now = Date.now(), calls = 0, reviews = 0;
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    f.c.avatars.createCharacter = async () => { calls++; now += calls === 1 ? 130_000 : 160_000; return { ...f.result(), providerRequestId: `req_${f.id}_${calls}` }; };
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      reviews++; return new Response(JSON.stringify({ model: "gpt-5.6-luna", usage: { prompt_tokens: 2000, completion_tokens: 400 },
+        choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ checks: { identity: "uncertain", age: "pass", paintedStyle: "pass", sheetLayout: "pass" }, reason: "Synthetic comparison", ...(reviews === 2 ? { preferredCandidate: "second" } : {}) }) } }] }),
+      { headers: { "x-request-id": `req_review_${f.id}_${reviews}` } });
+    }));
+    try {
+      await runGenerationPipeline(f.c, f.id, { hardDeadlineAt: now + 270_000 });
+      expect(calls).toBe(1); expect(reviews).toBe(1); expect((await f.job()).status).toBe("QUEUED");
+      await runGenerationPipeline(f.c, f.id, { hardDeadlineAt: now + 270_000 });
+      expect(calls).toBe(2); expect(reviews).toBe(1); expect((await f.job()).status).toBe("QUEUED");
+      await runGenerationPipeline(f.c, f.id, { hardDeadlineAt: now + 270_000 });
+      expect(calls).toBe(2); expect(reviews).toBe(2); expect((await f.game()).status).toBe("TARGETS_GENERATING");
+    } finally { clock.mockRestore(); }
+    await deleteGame(f.c, f.id, { type: "USER", id: f.ownerId }, f.ownerId);
+  });
+
+  it("catalog9 falls back to the usable first image when there is no room for a second purchase", async () => {
+    const f = await fixture(); await fullWorld(f, 9); fake.styleVersion = "board-matched-identity/v2";
+    await db.game.update({ where: { id: f.id }, data: { styleVersion: LOCAL_PATCH_STYLE } });
+    await db.generationJob.update({ where: { id: f.claim.jobId }, data: { status: "DONE", attempts: 0, currentStep: null } });
+    const budget = boardWizardBudgetOf(f.c), world = boardWizardWorldId(f.id);
+    await budget.reserve(world, { requestKey: "synthetic:prior-cost", scope: "judge", operationFingerprint: sha256Bytes(png), reserveMicroUsd: 3_500_000 });
+    await budget.settle(world, "synthetic:prior-cost", { providerNamespace: "openai:find-me-existing", providerRequestId: `prior_${f.id}`,
+      model: "gpt-5.6-luna", usageId: sha256Bytes(png), rawUsage: { synthetic: true }, amountMicroUsd: 3_500_000, costBasis: "conservative-upper-estimate" });
+    const generate = vi.fn(async () => f.result()); f.c.avatars.createCharacter = generate;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ model: "gpt-5.6-luna", usage: { prompt_tokens: 2000, completion_tokens: 400 },
+      choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ checks: { identity: "uncertain", age: "pass", paintedStyle: "pass", sheetLayout: "pass" }, reason: "Synthetic likeness doubt" }) } }] }),
+      { headers: { "x-request-id": `req_review_${f.id}` } })));
+    await runGenerationPipeline(f.c, f.id);
+    expect((await f.game()).status).toBe("TARGETS_GENERATING");
+    expect(generate).toHaveBeenCalledOnce(); expect(fetch).toHaveBeenCalledOnce();
+    const child = await db.childProfile.findUniqueOrThrow({ where: { id: f.childId } });
+    const receipt = await db.auditLog.findFirstOrThrow({ where: { action: IDENTITY_GATE_ACTION, entityId: child.identityAssetId! }, orderBy: { createdAt: "desc" } });
+    expect(JSON.parse(receipt.metaJson!)).toMatchObject({ approved: false, automaticSelection: { reason: "budget-fallback" } });
+    expect((await budget.audit(world)).held).toBe(false);
+    await deleteGame(f.c, f.id, { type: "USER", id: f.ownerId }, f.ownerId);
+  });
+
+  it("catalog9 keeps a sufficient first identity without a second purchase", async () => {
+    const f = await fixture(); await fullWorld(f, 9); fake.styleVersion = "board-matched-identity/v2";
+    await db.game.update({ where: { id: f.id }, data: { styleVersion: LOCAL_PATCH_STYLE } });
+    await db.generationJob.update({ where: { id: f.claim.jobId }, data: { status: "DONE", attempts: 0, currentStep: null } });
+    const generate = vi.fn(async () => f.result()); f.c.avatars.createCharacter = generate;
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ ...styleAnswer("fail"), model: "gpt-5.6-luna" }), { headers: { "x-request-id": `req_style_${f.id}` } }));
+    vi.stubGlobal("fetch", fetch);
+    await runGenerationPipeline(f.c, f.id);
+    expect((await f.game()).status).toBe("TARGETS_GENERATING");
+    expect(generate).toHaveBeenCalledOnce(); expect(fetch).toHaveBeenCalledOnce();
+    expect((await f.ledger()).requests).toHaveLength(2);
+    await deleteGame(f.c, f.id, { type: "USER", id: f.ownerId }, f.ownerId);
+  });
   it("pins new QA drafts to local patches without changing production drafts", async () => {
     const c = { db, analytics: { track() {} } } as unknown as Container;
     delete process.env.QA_BOARD_CONDITIONED_WIZARD;

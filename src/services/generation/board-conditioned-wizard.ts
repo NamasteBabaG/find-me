@@ -154,8 +154,9 @@ export async function preflightBoardConditionedWizard(c: Container, gameId: stri
 
 /** Reserve before the existing identity provider is invoked. A lost response must
  * be reconciled against its saved asset/audit, never bought a second time. */
-export async function reserveBoardWizardIdentity(c: Container, gameId: string, fingerprintInput: unknown) {
-  const result = await budgetOf(c).reserve(scope(gameId), { requestKey: "wizard:identity:1", scope: "identity", operationFingerprint: boardConditioningHash(fingerprintInput), reserveMicroUsd: 500_000 });
+export async function reserveBoardWizardIdentity(c: Container, gameId: string, fingerprintInput: unknown, attempt: 1 | 2 = 1) {
+  if (attempt !== 1 && attempt !== 2) throw new Error("Only two identity candidates are allowed");
+  const result = await budgetOf(c).reserve(scope(gameId), { requestKey: `wizard:identity:${attempt}`, scope: "identity", operationFingerprint: boardConditioningHash(fingerprintInput), reserveMicroUsd: 500_000 });
   demand(result.acquired, "Identity dispatch is already reserved or paid; recover its retained output instead of buying again");
 }
 

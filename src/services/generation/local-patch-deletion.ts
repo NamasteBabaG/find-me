@@ -72,7 +72,19 @@ export async function deleteLocalPatchGame(c: Container, gameId: string, actor: 
     const sharedChild = !!child && await tx.game.count({ where: { childProfileId: child.id, deletedAt: null, NOT: { id: gameId } } }) > 0;
     if (child && !sharedChild) {
       demand(child.ownerId === game.ownerId, "Child ownership changed");
-      for (const [assetId, type] of [[child.identityAssetId, "IDENTITY_SHEET"], [child.avatarAssetId, "AVATAR"], [child.originalPhotoAssetId, "ORIGINAL_PHOTO"]] as const) {
+      const childAssets: Array<readonly [string | null, string]> = [[child.identityAssetId, "IDENTITY_SHEET"], [child.avatarAssetId, "AVATAR"], [child.originalPhotoAssetId, "ORIGINAL_PHOTO"]];
+      // A best-of-two comparison retains the unselected image too. It belongs
+      // to this child's deletion graph even though the profile no longer points at it.
+      const candidates = await tx.auditLog.findMany({ where: { action: "identity-best-of-two:candidate", entityType: "Game", entityId: gameId } });
+      for (const row of candidates) {
+        const record = JSON.parse(row.metaJson ?? "null");
+        demand(record?.childId === child.id, "Candidate record belongs to another child");
+        for (const candidate of [record.first, record.second]) {
+          demand(typeof candidate?.identityAssetId === "string" && typeof candidate?.avatarAssetId === "string", "Invalid candidate inventory");
+          childAssets.push([candidate.identityAssetId, "IDENTITY_SHEET"], [candidate.avatarAssetId, "AVATAR"]);
+        }
+      }
+      for (const [assetId, type] of childAssets) {
         if (!assetId) continue;
         const asset = await tx.asset.findUniqueOrThrow({ where: { id: assetId } });
         demand(asset.ownerId === game.ownerId && asset.type === type
