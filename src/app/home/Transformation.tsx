@@ -13,11 +13,9 @@ export async function Transformation() {
   const { t, locale } = await getI18n();
   const tr = t.home.transform;
   const demo = buildDemoConfig(locale, example.scene);
-  const child = demo.child;
   const scene = demo.scenes[0]!;
   const foundLine = scene.targets.find(target => target.id === example.target)?.success[0] ?? t.home.hero.found;
   const hasPhoto = existsSync(path.join(process.cwd(), "public", example.photo));
-  const tag = `${child.name} · ${tr.characterTag}`;
 
   return (
     <section id="transform" className="tf" aria-labelledby="tf-title">
@@ -44,7 +42,7 @@ export async function Transformation() {
           </Reveal>
 
           <Reveal as="li" className="tf-card" delay={160}>
-            <TransformationPortrait src={example.identitySheet} alt={tr.characterAlt} tag={tag} unavailable={tr.previewUnavailable} />
+            <TransformationPortrait src={example.identitySheet} alt={tr.characterAlt} unavailable={tr.previewUnavailable} />
             <span className="tf-card__label">{tr.character.label}</span>
             <p className="tf-card__text">{tr.character.text}</p>
           </Reveal>

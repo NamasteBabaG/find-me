@@ -5,8 +5,14 @@ import { useEffect, useState } from "react";
 import type { SceneConfig } from "@/domain/game/config";
 import { scenePreview } from "@/game/engine/scene-preview";
 
-/** Crop the portrait quadrant in the UI; the identity sheet is unchanged. */
-export function TransformationPortrait({ src, alt, tag, unavailable }: { src: string; alt: string; tag: string; unavailable: string }) {
+/**
+ * Crop the portrait quadrant in the UI; the identity sheet is unchanged.
+ *
+ * No caption plate: the card already says "an illustrated character" under it,
+ * and a picture of a drawn child labelled "the illustrated character" tells the
+ * reader what they can see (Guy).
+ */
+export function TransformationPortrait({ src, alt, unavailable }: { src: string; alt: string; unavailable: string }) {
   const [failed, setFailed] = useState(false);
   return (
     <div className="tf-card__media tf-card__media--portrait">
@@ -15,7 +21,6 @@ export function TransformationPortrait({ src, alt, tag, unavailable }: { src: st
           <Image src={src} alt={alt} width={1024} height={1024} sizes="(max-width: 720px) 200vw, 70vw" onError={() => setFailed(true)} />
         </div>
       )}
-      <span className="tf-tag">{tag}</span>
     </div>
   );
 }

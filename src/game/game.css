@@ -200,15 +200,17 @@
    a child zooms in. The cloud curtain is outside it and stays white. */
 .viewport { position: absolute; inset: 0; overflow: hidden; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; background: var(--scene-sky, var(--sea-soft)); filter: var(--lit-art); }
 /* And the same lift wherever a board is shown as a picture of itself: the
-   hub's islands, the map's stops, the bag's covers, the album's postcards.
-   A board that is one picture in play and a duller one on the map reads as two
-   different places. The postcard's child rides its parent's filter, exactly as
-   it does on the board. The collection's stickers are left out: they are grey
-   until they are found, and that grey is their state, not their colour. */
+   hub's islands, the map's stops, the bag's covers, the album's postcards, and
+   every discovery sticker — each one is a window onto the board's own pixels,
+   so it has to be the same picture as the board behind it. A board that is one
+   picture in play and a duller one on the map reads as two different places.
+   The postcard's child rides its parent's filter, exactly as on the board. */
 .island__thumb img,
 .wmap__dot img,
 .wmap__go-thumb img,
 .loot__image img,
+.sticker__picture,
+.collect__seek-thumb,
 .postcard__picture { filter: var(--lit-art); }
 .viewport--dragging { cursor: grabbing; }
 .stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }

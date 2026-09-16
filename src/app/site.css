@@ -702,7 +702,6 @@
 @keyframes tf-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(calc(var(--space-1) * -1)); } }
 .tf-portrait img { position: absolute; left: 0; top: 0; width: 200%; height: 200%; max-width: none; }
 .tf-media__status { margin: 0; padding: var(--space-3); text-align: center; color: var(--ink-2); font-size: var(--fs-100); line-height: var(--lh-100); }
-.tf-tag { position: absolute; bottom: var(--space-2); inset-inline: var(--space-2); display: inline-flex; justify-content: center; align-items: center; min-height: var(--space-4); padding-inline: var(--space-2); border-radius: var(--radius-pill); background: var(--white); box-shadow: var(--shadow-1); font-family: var(--font-display); font-weight: 700; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); }
 .tf-card__media--world { background: var(--sea-soft); aspect-ratio: 4 / 5; }
 .tf-world__composition { position: absolute; inset: 0; }
 .tf-world__base, .tf-world__patch { position: absolute; max-width: none; object-fit: fill; }
