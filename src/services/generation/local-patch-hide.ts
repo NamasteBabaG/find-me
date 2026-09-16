@@ -23,6 +23,7 @@ import { prepareLocalPatchIdentityReferences } from "./local-patch-identity-refe
 import { buildBoardPeopleStyle } from "./board-wizard-identity-style";
 import type { PatchGeometry } from "./patch";
 import { readPinnedLocalPatchArt } from "./local-patch-art";
+import { readCollectionArt } from "./collection-art";
 import { env } from "../../lib/env";
 import { LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_NORMAL_ATTEMPTS, localPatchFinalRepairAllowed, nextLocalPatchAttempt } from "../../domain/scene/local-patch-attempts";
 import { isLocalPatchAdvisoryVersion, isLocalPatchAgeVersion, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
@@ -181,7 +182,7 @@ export async function readShippedBoardArt(art: string, expectedSha256: string, r
   demand(art.startsWith("public/") && !art.includes(".."), `${art} is not shipped art; this board cannot be painted from a deployed build`);
   const pinned = await readPinnedLocalPatchArt(art, expectedSha256, root);
   if (pinned) return pinned;
-  const bytes = await readFile(path.resolve(root, art));
+  const bytes = await readCollectionArt(art, expectedSha256, root) ?? await readFile(path.resolve(root, art));
   demand(sha256Bytes(bytes) === expectedSha256, `${art} is not the art this scene ships; a patch cut from it would be a piece of a different picture`);
   return sharp(bytes, { limitInputPixels: 8_294_400 }).png().toBuffer();
 }

@@ -116,10 +116,21 @@ describe("active-catalog-only server traces", () => {
     const localPatchManifest = "content/local-patch-world/art.json";
     await mkdir(path.dirname(path.join(f.root, localPatchManifest)), { recursive: true });
     await writeFile(path.join(f.root, localPatchManifest), JSON.stringify({ boards: localPatchBoards, renderSources }));
+    const collectionManifest = "content/adventures/wizard-art.json";
+    const collectionArt = [];
+    for (const board of localPatchBoards) {
+      const file = `public/scenes/adventure-${board.board}/base.webp`;
+      await mkdir(path.dirname(path.join(f.root, file)), { recursive: true });
+      await writeFile(path.join(f.root, file), await readFile(path.join(f.root, `public${board.base}`)));
+      collectionArt.push({ path: file, sha256: board.sha256 });
+    }
+    await mkdir(path.dirname(path.join(f.root, collectionManifest)), { recursive: true });
+    await writeFile(path.join(f.root, collectionManifest), JSON.stringify(collectionArt));
     const undeclaredPublic = "public/scenes/sydney/old-thumbnail.webp";
     await writeFile(path.join(f.root, undeclaredPublic), "not a declared painter input");
     const tracePaths = ["content/board-conditioned-qa/catalog.json", ...assets, stale, privateFile,
-      localPatchManifest, ...localPatchBoards.map(board => `public${board.base}`), undeclaredPublic];
+      localPatchManifest, ...localPatchBoards.map(board => `public${board.base}`), undeclaredPublic,
+      collectionManifest, ...collectionArt.map(board => board.path)];
     await writeFile(`${entry}.nft.json`, JSON.stringify({ version: 1, files: tracePaths.map(file => path.relative(path.dirname(entry), path.join(f.root, file))) }));
     const run = (script: string) => spawnSync(process.execPath, [path.join(project, "scripts", script)], { cwd: f.root, encoding: "utf8", windowsHide: true });
     const before = run("audit-board-catalog-tracing.mjs"); expect(before.status).toBe(1);
@@ -128,6 +139,7 @@ describe("active-catalog-only server traces", () => {
     const after = run("audit-board-catalog-tracing.mjs"); expect(after.status).toBe(0);
     const result = JSON.parse(after.stdout); expect(result.jobs.catalogFiles).toBe(37); expect(result.jobs.staleCatalogFiles).toEqual([]); expect(result.jobs.privateFiles).toEqual([]);
     expect(result.jobs.localPatchFiles).toBe(10);
+    expect(result.jobs.collectionFiles).toBe(1);
     expect(result.jobs.publicCdnFiles).toBe(0);
     expect(await present(path.join(f.root, stale))).toBe(true); expect(await present(path.join(f.root, privateFile))).toBe(true);
     expect(run("finalize-build-traces.mjs").stdout).toContain('"changed":0');

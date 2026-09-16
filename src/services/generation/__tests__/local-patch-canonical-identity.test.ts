@@ -27,10 +27,10 @@ const good = {
 };
 
 describe("catalog 8 preserves the approved illustrated face and hair", () => {
-  it("v9 carries only the unchanged native approved portrait, never a stranger atlas or the older full body sheet", async () => {
+  it.each([9, 10])("v%s carries only the unchanged native approved portrait, never a stranger atlas or the older full body sheet", async version => {
     const { sheet, portrait } = await fixtureSheet();
     const before = Buffer.from(sheet), expectedPixels = await rgba(portrait);
-    const result = await prepareLocalPatchIdentityReferences(sheet, 9);
+    const result = await prepareLocalPatchIdentityReferences(sheet, version);
     expect(result.referenceMode).toBe("canonical-portrait-only/v1");
     expect(result.canonicalIdentityPng).toBeUndefined();
     expect(Object.keys(result).sort()).toEqual(["identityPng", "judgeIdentityPng", "referenceMode"]);
@@ -67,7 +67,7 @@ describe("catalog 8 preserves the approved illustrated face and hair", () => {
     }
   });
 
-  it.each([undefined, 6, 7, 10])("leaves legacy and unsupported paid references unchanged (version %s)", async version => {
+  it.each([undefined, 6, 7, 999])("leaves legacy and unsupported paid references unchanged (version %s)", async version => {
     const { sheet } = await fixtureSheet();
     const old = await normalizeBoardWizardIdentity(sheet);
     const expectedJudge = await sharp(old.png).resize(256, 256, { fit: "inside" }).png().toBuffer();

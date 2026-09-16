@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 import { readFileSync } from "node:fs";
 
 const isDev = process.env.NODE_ENV !== "production";
-const tracingExcludedDirectories = ["work", "storage", "assets", "output", "tmp", ".claude", "public/worlds"];
+const tracingExcludedDirectories = ["work", "storage", "assets", "output", "tmp", ".claude", "public/worlds", "public/scenes"];
 const collectionArtPath = "content/adventures/wizard-art.json";
 const collectionArt = JSON.parse(readFileSync(collectionArtPath, "utf8")) as { path: string }[];
 if (collectionArt.length !== 9 || new Set(collectionArt.map(a => a.path)).size !== 9 || collectionArt.some(a => !/^public\/scenes\/adventure-[a-z0-9-]+\/base\.webp$/.test(a.path))) throw new Error("Nine child-free collection boards required");
@@ -68,13 +68,13 @@ const nextConfig: NextConfig = {
   // Only child-free frozen world inputs. Private work/, uploads and pilot
   // imagery are never part of a deployment. Dynamic fs reads need tracing.
   outputFileTracingIncludes: {
-    "/*": [activeBoardCatalogPath, ...activeBoardAssetPaths, localPatchArtPath, ...localPatchArtPaths, collectionArtPath, ...collectionArt.map(a => a.path)].map(file => `./${file}`),
+    "/*": [activeBoardCatalogPath, ...activeBoardAssetPaths, localPatchArtPath, ...localPatchArtPaths, collectionArtPath].map(file => `./${file}`),
   },
   outputFileTracingExcludes: {
     // Local-only preview routes and Prisma's dotenv fallback otherwise cause
     // the tracer to collect private files that must NEVER ship in a function.
-    // Historical patches retain their PNG sources. V10 explicitly traces nine
-    // child-free WebPs; the finalizer removes every other public board image.
+    // Historical patches retain their PNG sources. V10 verifies its nine CDN
+    // WebPs by manifest hash; duplicating 110MB here exceeds the function limit.
     // public/demo metadata stays local for the landing-page demo.
     "/*": tracingExcludes,
   },

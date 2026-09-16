@@ -75,13 +75,13 @@ describe("buying one local patch", () => {
     expect(form.get("n")).toBe("1");
   });
 
-  it("keeps the pre-LOW legacy policy and fingerprint identical, with exact v7/v8/v9 opt-in", () => {
+  it("keeps the pre-LOW legacy policy and fingerprint identical, with exact v7-v10 opt-in", () => {
     const historicalHash = localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY);
-    for (const version of [undefined, 5, 6, 10]) {
+    for (const version of [undefined, 5, 6, 999]) {
       expect(localPatchImagePolicyForVersion(version)).toBe(LOCAL_PATCH_IMAGE_POLICY);
       expect(localPatchRenderPolicySha256(localPatchImagePolicyForVersion(version))).toBe(historicalHash);
     }
-    for (const version of [7, 8, 9]) {
+    for (const version of [7, 8, 9, 10]) {
       expect(localPatchImagePolicyForVersion(version)).toEqual({ ...LOCAL_PATCH_IMAGE_POLICY, quality: "low" });
       expect(localPatchRenderPolicySha256(localPatchImagePolicyForVersion(version))).not.toBe(historicalHash);
     }

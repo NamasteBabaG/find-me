@@ -12,8 +12,9 @@ describe("explicit strict-quality release", () => {
       expect(localPatchBoardForVersion(slug, 8)).toEqual(localPatchBoardForVersion(slug, 7));
       expect(findScene(slug, 8)?.targets).toEqual(findScene(slug, 7)?.targets);
     }
-    expect([6, 7, undefined, 10].some(isLocalPatchStrictVersion)).toBe(false);
+    expect([6, 7, undefined, 999].some(isLocalPatchStrictVersion)).toBe(false);
     expect(isLocalPatchStrictVersion(8)).toBe(true);
+    expect(isLocalPatchStrictVersion(10)).toBe(true);
   });
   it("adds age-aware9 without replacing historical8 geometry or five-star rules", () => {
     for (const slug of ["newyork", "amazon", "paris", "marrakech", "giza", "tokyo", "greatwall", "sydney", "antarctica"]) {
