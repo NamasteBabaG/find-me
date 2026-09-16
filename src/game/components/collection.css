@@ -1,89 +1,108 @@
 /* ─── Discoveries: a sticker collection (Collection.tsx, Album.tsx) ─────────
-   A sticker is a round window onto the board's own pixels: ghosted until it is
-   found, then full colour with a white sticker rim and a gold ring. On the
-   board a wide screen keeps the six in view along the bottom edge; a phone
-   keeps one round button with a progress ring that opens a short sheet.
-   Hit-testing stays in SceneViewport; this is presentation and guidance. */
-.collect { position: absolute; z-index: var(--z-ui); inset-inline-start: max(var(--space-2), env(safe-area-inset-left)); bottom: max(var(--space-2), env(safe-area-inset-bottom)); display: flex; flex-direction: column-reverse; align-items: flex-start; gap: var(--space-1); max-width: calc(100% - var(--space-4)); font-family: var(--font-display); color: var(--ink); pointer-events: none; }
+   ONE shape, on every screen: a round button in the bottom-right corner of the
+   board, and a tray of the board's discoveries that grows out of it. The six
+   used to also lie in a row along the bottom edge of a wide screen, behind a
+   fold chevron — the same collection as two different objects, and a row of
+   discs across a picture the child is searching (Guy).
+
+   Every sticker is a round window onto the board's own pixels, in full colour
+   whether it has been found or not, so a child can recognise what they are
+   hunting. Found adds a green ring and a green tick; it never takes the colour
+   away. Hit-testing stays in SceneViewport; this is presentation and guidance. */
+
+/* The corner is physical, not logical: the button is bottom-RIGHT in Hebrew and
+   in English alike, because it is a place on the board and not a place in a
+   sentence — and the mission card already owns the top right. `column-reverse`
+   keeps the button itself flush in the corner with everything else stacked
+   above it, so it never moves when the tray opens. */
+.collect { position: absolute; z-index: var(--z-ui); right: max(var(--space-2), env(safe-area-inset-right)); bottom: max(var(--space-2), env(safe-area-inset-bottom)); display: flex; flex-direction: column-reverse; align-items: flex-end; gap: var(--space-1); max-width: calc(100% - var(--space-4)); font-family: var(--font-display); color: var(--ink); pointer-events: none; }
+/* `align-items` follows the writing direction, so in Hebrew `flex-end` is the
+   LEFT edge: the button drifted 296px inward — the width of the open tray —
+   the moment the tray opened. The corner is physical, so the alignment must be
+   too, while the text inside the tray keeps its own direction. */
+[dir="rtl"] .collect { align-items: flex-start; }
 .collect > * { pointer-events: auto; }
-.collect.collect--dock-left { left: max(var(--space-2), env(safe-area-inset-left)); right: auto; align-items: flex-start; }
-.collect.collect--dock-right { right: max(var(--space-2), env(safe-area-inset-right)); left: auto; align-items: flex-end; }
 
-/* The strip (wide screens) */
-.collect__strip { display: flex; align-items: center; gap: var(--space-1); padding: var(--space-0-5) var(--space-1); border-radius: var(--radius-pill); background: rgba(255, 255, 255, 0.86); backdrop-filter: blur(12px); box-shadow: var(--shadow-2); animation: fm-fade-up var(--dur-3) var(--ease-out); }
-.collect--complete .collect__strip { background: var(--grad-gold); box-shadow: var(--shadow-glow-gold), var(--shadow-2); }
-.collect__tally { font-family: var(--font-kid); font-weight: 700; font-size: var(--fs-200); line-height: var(--lh-200); min-width: var(--space-5); text-align: center; color: var(--ink-2); }
-.collect--complete .collect__tally { color: var(--ink); }
-.collect__tally--bump { animation: fm-count-bump var(--dur-3) var(--ease-pop); }
-.collect__done { font-size: var(--fs-300); line-height: 1; animation: fm-pop-in var(--dur-3) var(--ease-pop); }
-.collect__slots, .collect__grid { list-style: none; margin: 0; padding: 0; display: flex; gap: var(--space-1); }
-.collect__strip .sticker { padding-bottom: 0; }
-.collect__fold { flex-shrink: 0; width: var(--touch-min); height: var(--touch-min); border: 0; border-radius: 50%; background: transparent; color: var(--ink-2); font-size: var(--fs-300); cursor: pointer; }
-.collect__item { display: block; min-width: 0; }
+/* ─── The sticker, shared with the album ──────────────────────────────────── */
+.sticker { --sticker-size: var(--touch-kid); position: relative; display: grid; justify-items: center; gap: 0; padding: 0; border: 0; background: none; color: var(--ink); font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+/* No clipping here: the tick seats on the rim and must not be cut. The picture
+   and the blank round themselves instead. */
+.sticker__face { position: relative; display: block; width: var(--sticker-size); height: var(--sticker-size); border-radius: 50%; background: var(--paper-2); box-shadow: var(--sticker-outline), 0 0 0 6px var(--paper-3), var(--shadow-1); transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-2) var(--ease-out); }
+.sticker__picture { width: 100%; height: 100%; border-radius: 50%; }
+.sticker__blank { display: grid; place-items: center; width: 100%; height: 100%; border-radius: 50%; font-family: var(--font-kid); font-size: var(--fs-500); color: var(--ink-4); }
+/* Found: the ring turns green and a tick sits on the rim. Green is the only
+   colour in the tray that means "done" — gold belongs to the stars. */
+.sticker--got .sticker__face { box-shadow: var(--sticker-outline), 0 0 0 6px var(--leaf), var(--shadow-1); }
+.sticker__check { position: absolute; z-index: 2; top: 0; inset-inline-end: 0; transform: translate(30%, -30%); display: grid; place-items: center; width: var(--space-3); height: var(--space-3); border-radius: 50%; background: var(--leaf-deep); color: var(--white); box-shadow: 0 0 0 3px var(--white), var(--shadow-1); animation: collect-tick var(--dur-2) var(--ease-pop) both; }
+[dir="rtl"] .sticker__check { transform: translate(-30%, -30%); }
+.sticker__check svg { width: var(--space-2); height: var(--space-2); display: block; }
+@keyframes collect-tick { 0% { transform: translate(30%, -30%) scale(0); } 60% { transform: translate(30%, -30%) scale(1.25); } 100% { transform: translate(30%, -30%) scale(1); } }
+[dir="rtl"] .sticker__check { animation-name: collect-tick-rtl; }
+@keyframes collect-tick-rtl { 0% { transform: translate(-30%, -30%) scale(0); } 60% { transform: translate(-30%, -30%) scale(1.25); } 100% { transform: translate(-30%, -30%) scale(1); } }
 
-/* The sticker itself, shared with the album */
-.sticker { --sticker-size: var(--touch-min); position: relative; display: grid; justify-items: center; gap: var(--space-1); padding: 0; border: 0; background: none; color: var(--ink); font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
-.sticker__face { position: relative; display: block; width: var(--sticker-size); height: var(--sticker-size); border-radius: 50%; overflow: hidden; background: var(--paper-2); box-shadow: inset 0 0 0 2px var(--ink-4); transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-2) var(--ease-out); }
-.sticker__picture { width: 100%; height: 100%; border-radius: 0; filter: grayscale(1) opacity(0.45); transition: filter var(--dur-2) var(--ease-out); }
-.sticker__blank { display: grid; place-items: center; width: 100%; height: 100%; font-family: var(--font-kid); font-size: var(--fs-500); color: var(--ink-4); }
-.sticker--got .sticker__face { box-shadow: var(--sticker-outline), 0 0 0 6px var(--gold), var(--shadow-1); }
-.sticker--got .sticker__picture { filter: none; }
 .sticker--fresh .sticker__face { animation: fm-pop-in var(--dur-3) var(--ease-pop); }
-.sticker--fresh .sticker__face::after { content: ""; position: absolute; inset: 0; border-radius: 50%; box-shadow: 0 0 0 3px var(--gold-light); animation: fm-star-ring var(--dur-3) var(--ease-out) both; pointer-events: none; }
-.sticker--arriving .sticker__face { box-shadow: inset 0 0 0 2px var(--gold); animation: fm-pulse 0.9s var(--ease-in-out) infinite; }
-.sticker--seeking .sticker__face { box-shadow: var(--sticker-outline), 0 0 0 6px var(--sea); animation: fm-pulse 1.2s var(--ease-in-out) infinite; }
-.sticker--seeking .sticker__picture { filter: grayscale(0.2) opacity(0.95); }
+.sticker--fresh .sticker__face::after { content: ""; position: absolute; inset: 0; border-radius: 50%; box-shadow: 0 0 0 3px var(--leaf-soft); animation: fm-star-ring var(--dur-3) var(--ease-out) both; pointer-events: none; }
+/* Still in the air: the ring waits, the picture does not change. */
+.sticker--arriving .sticker__face { box-shadow: var(--sticker-outline), 0 0 0 6px var(--gold-light), var(--shadow-1); animation: fm-pulse 0.9s var(--ease-in-out) infinite; }
+.sticker--seeking .sticker__face { box-shadow: var(--sticker-outline), 0 0 0 6px var(--sea), var(--shadow-1); animation: fm-pulse 1.2s var(--ease-in-out) infinite; }
 .sticker--wiggle .sticker__face { animation: fm-wiggle var(--dur-3) var(--ease-in-out); }
 .sticker:not(:disabled):hover .sticker__face { transform: translateY(-2px) scale(1.06); }
 .sticker:focus-visible { outline: none; }
-.sticker:focus-visible .sticker__face { box-shadow: var(--sticker-outline), 0 0 0 6px var(--sea-deep); }
+.sticker:focus-visible .sticker__face { box-shadow: var(--sticker-outline), 0 0 0 6px var(--sea-deep), var(--shadow-1); }
 .sticker:disabled { cursor: default; }
-/* Rarity is a word on the sticker's lower edge (Guy), never a dot or a shop tag */
-.sticker__rarity { position: absolute; top: calc(var(--sticker-size) - var(--space-1)); inset-inline-start: 50%; transform: translateX(-50%); z-index: 1; padding: 0 var(--space-0-5); border-radius: var(--radius-pill); background: var(--paper-3); color: var(--ink-2); font-family: var(--font-display); font-weight: 800; font-size: var(--fs-50); line-height: var(--lh-50); letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; box-shadow: var(--sticker-outline); pointer-events: none; }
-[dir="rtl"] .sticker__rarity { transform: translateX(50%); }
-/* In-flow captions reserve their real translated width: the long English
-   rarity cannot collide with its neighbours or escape the strip. */
-.collect .sticker { gap: 0; min-width: var(--touch-min); }
-.collect .sticker__rarity { position: relative; top: auto; inset-inline-start: auto; transform: none; margin-top: -6px; padding: 2px 5px; font-size: 11px; line-height: 1.2; letter-spacing: 0; text-transform: none; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9); }
-.collect__slots { gap: max(var(--space-1), 10px); }
-.collect__grid { column-gap: 10px; row-gap: var(--space-2); }
+
+/* Rarity is a word on the sticker's lower edge (Guy), never a dot or a shop tag.
+   In flow, so the long English word reserves its real width and cannot collide
+   with its neighbours. */
+.sticker__rarity { position: relative; z-index: 1; margin-top: calc(var(--space-1) * -1); padding: 0 var(--space-1); border-radius: var(--radius-pill); background: var(--paper-3); color: var(--ink-2); font-family: var(--font-display); font-weight: 800; font-size: var(--fs-50); line-height: var(--lh-50); white-space: nowrap; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.92); }
 .sticker__rarity--rare { background: var(--sea-soft); color: var(--sea-deep); }
 .sticker__rarity--epic { background: var(--berry-soft); color: var(--berry-deep); }
 .sticker--got .sticker__rarity--rare { background: var(--sea); color: var(--white); }
 .sticker--got .sticker__rarity--epic { background: var(--berry); color: var(--white); }
-.sticker--lg { --sticker-size: var(--touch-kid); }
-.sticker__name { margin-top: var(--space-0-5); font-family: var(--font-kid); font-weight: 600; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-3); text-align: center; max-width: calc(var(--touch-kid) + var(--space-4)); overflow-wrap: anywhere; }
+.sticker__name { margin-top: var(--space-1); font-family: var(--font-kid); font-weight: 600; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); text-align: center; max-width: calc(var(--touch-kid) + var(--space-3)); overflow-wrap: anywhere; }
 .sticker--got .sticker__name { color: var(--ink); }
 
-/* One round button with a progress ring (phones) */
-.collect__fab { position: relative; display: grid; place-items: center; width: var(--touch-kid); height: var(--touch-kid); padding: 0; border: 0; border-radius: 50%; background: rgba(255, 255, 255, 0.92); box-shadow: var(--shadow-2); cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform var(--dur-1) var(--ease-out); }
+/* ─── The button: the collection's one handle ─────────────────────────────── */
+.collect__fab { position: relative; display: grid; place-items: center; width: var(--touch-kid); height: var(--touch-kid); padding: 0; border: 0; border-radius: 50%; background: rgba(255, 255, 255, 0.92); backdrop-filter: blur(10px); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.95), var(--shadow-2); cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-2) var(--ease-out); }
+.collect__fab:not(:disabled):hover { transform: translateY(-2px); box-shadow: inset 0 0 0 2px var(--white), var(--shadow-glow-sun); }
+.collect__fab:active { transform: scale(0.92); }
 .collect__fab:disabled { opacity: 0.6; cursor: default; }
 .collect__fab:focus-visible { outline: 3px solid var(--sea); outline-offset: 3px; }
-.collect__fab[aria-expanded="true"] { transform: scale(0.94); }
+.collect__fab[aria-expanded="true"] { box-shadow: inset 0 0 0 2px var(--white), 0 0 0 4px var(--gold-light), var(--shadow-2); }
 .collect__ring { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
 .collect__ring-track { fill: none; stroke: var(--paper-3); stroke-width: 4; }
 .collect__ring-fill { fill: none; stroke: var(--gold); stroke-width: 4; stroke-linecap: round; transition: stroke-dashoffset var(--dur-3) var(--ease-out); }
-.collect--complete .collect__ring-fill { stroke: var(--gold-deep); }
+.collect--complete .collect__ring-fill { stroke: var(--leaf); }
 .collect__fab-face { position: relative; width: var(--space-5); height: var(--space-5); border-radius: 50%; overflow: hidden; display: grid; place-items: center; font-size: var(--fs-300); color: var(--gold-deep); background: var(--paper); }
-.collect__fab-face .sticker__picture { filter: none; }
 .collect__count { position: absolute; bottom: calc(var(--space-0-5) * -1); inset-inline-end: calc(var(--space-1) * -1); padding: 0 var(--space-0-5); border-radius: var(--radius-pill); background: var(--ink); color: var(--white); font-family: var(--font-kid); font-weight: 700; font-size: var(--fs-50); line-height: var(--lh-50); box-shadow: var(--sticker-outline); }
-.collect--complete .collect__count { background: var(--gold-deep); }
+.collect--complete .collect__count { background: var(--leaf-deep); }
 .collect__count--bump { animation: fm-count-bump var(--dur-3) var(--ease-pop); }
 
-/* The sheet: a grid of six, one line of words */
-.collect__sheet { width: min(360px, calc(100vw - var(--space-4))); max-height: min(60dvh, 440px); overflow: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2); border-radius: var(--radius-3); background: var(--white); box-shadow: var(--shadow-3); animation: fm-fade-up var(--dur-2) var(--ease-out); }
+/* ─── The tray ────────────────────────────────────────────────────────────── */
+/* It grows out of the button's own corner and folds back into it, so the button
+   reads as the thing that holds it. The corner is physical for the same reason
+   the button is. */
+.collect__sheet { transform-origin: bottom right; width: min(360px, calc(100vw - var(--space-4))); max-height: min(72dvh, 520px); overflow: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2); border-radius: var(--radius-3); background: var(--white); box-shadow: 0 0 0 1px rgba(23, 22, 43, 0.05), var(--shadow-3); animation: collect-sheet-in var(--dur-2) var(--ease-pop) both; scrollbar-width: thin; }
+@keyframes collect-sheet-in { from { opacity: 0; transform: translateY(var(--space-2)) scale(0.84); } to { opacity: 1; transform: none; } }
+.collect__sheet--closing { animation: collect-sheet-out 220ms var(--ease-out) both; pointer-events: none; }
+@keyframes collect-sheet-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(var(--space-1)) scale(0.88); } }
+/* The welcome peek is decoration: it is inert in the markup, and inert to a finger here too. */
+.collect__sheet--peek { pointer-events: none; }
 .collect__sheet-head { display: flex; align-items: center; gap: var(--space-1); }
-.collect__sheet-title { flex: 1; min-width: 0; margin: 0; font-family: var(--font-kid); font-size: var(--fs-300); line-height: var(--lh-300); }
-.collect__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-1); justify-items: center; }
+.collect__sheet-title { flex: 1; min-width: 0; margin: 0; font-family: var(--font-kid); font-size: var(--fs-300); line-height: var(--lh-300); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.collect__tally { flex-shrink: 0; padding: 0 var(--space-1); border-radius: var(--radius-pill); background: var(--paper-2); font-family: var(--font-kid); font-weight: 700; font-size: var(--fs-100); line-height: var(--space-3); color: var(--ink-2); }
+.collect--complete .collect__tally { background: var(--leaf-soft); color: var(--leaf-deep); }
+.collect__grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: var(--space-1); row-gap: var(--space-2); justify-items: center; }
+.collect__item { display: block; min-width: 0; }
 .collect__note { margin: 0; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-3); text-align: center; }
-.collect--complete .collect__note { color: var(--gold-edge); font-weight: 700; }
-.collect__close { display: grid; place-items: center; flex-shrink: 0; width: var(--touch-min); height: var(--touch-min); padding: 0; border: 0; border-radius: 50%; background: var(--paper-2); color: var(--ink-2); font-size: var(--fs-300); line-height: 1; cursor: pointer; }
-.collect__close:hover { background: var(--paper-3); }
+.collect--complete .collect__note { color: var(--leaf-deep); font-weight: 700; }
+.collect__close { display: grid; place-items: center; flex-shrink: 0; width: var(--touch-min); height: var(--touch-min); padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--ink-3); font-size: var(--fs-400); line-height: 1; cursor: pointer; transition: background var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out); }
+.collect__close:hover { background: var(--paper-2); color: var(--ink); }
 
-/* Seeking: the one being looked for, a hint, and a way out */
+/* ─── Seeking: the one being looked for, a hint, and a way out ────────────── */
 .collect__seek { display: grid; grid-template-columns: var(--touch-min) minmax(0, 1fr) var(--touch-min); align-items: center; gap: var(--space-1); width: min(380px, calc(100vw - var(--space-4))); padding: var(--space-1); border-radius: var(--radius-2); background: rgba(255, 255, 255, 0.88); backdrop-filter: blur(6px); box-shadow: 0 0 0 2px var(--sea-soft), var(--shadow-2); animation: fm-fade-up var(--dur-2) var(--ease-out); }
-/* Keep the bounded camera and the bottom collection button, but do not put
-   the hint card over a discovery near the board's lower edge. */
+/* Keep the bounded camera and the corner button, but do not put the hint card
+   over a discovery near the board's lower edge. */
 .collect--seek-above .collect__seek { position: fixed; top: calc(max(var(--space-2), env(safe-area-inset-top)) + var(--space-10) + var(--space-8)); inset-inline-start: max(var(--space-2), env(safe-area-inset-left)); }
 .collect__seek-thumb { width: var(--touch-min); height: var(--touch-min); flex-shrink: 0; border-radius: 50%; box-shadow: var(--sticker-outline), 0 0 0 6px var(--sea); }
 .collect__seek-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -92,22 +111,20 @@
 .collect__seek-hint { margin: 0; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); animation: fm-fade-up var(--dur-2) var(--ease-out); }
 .collect__seek-actions { grid-column: 1 / -1; display: flex; align-items: center; gap: var(--space-1); }
 .collect__seek-actions .collect__hint { flex: 1; }
-.collect__seek-close { align-self: start; background: rgba(255, 255, 255, 0.55); }
+.collect__seek-close { align-self: start; }
 .collect__hint { min-width: var(--touch-min); min-height: var(--touch-min); padding-inline: var(--space-1); border: 0; border-radius: var(--radius-pill); background: var(--sun); color: var(--ink); font-family: var(--font-display); font-weight: 800; font-size: var(--fs-100); cursor: pointer; box-shadow: var(--shadow-1); transition: transform var(--dur-1) var(--ease-out); }
 .collect__hint:hover { transform: translateY(-1px); }
 .collect__hint:disabled { opacity: 0.4; cursor: default; transform: none; }
-.collect__speak { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-0-5); min-width: var(--touch-min); min-height: var(--touch-min); padding: 0; border: 0; border-radius: var(--radius-pill); background: var(--paper-2); color: var(--ink-2); font: inherit; font-size: var(--fs-100); cursor: pointer; }
-.collect__speak--wide { align-self: center; padding-inline: var(--space-2); }
+.collect__speak { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; min-width: var(--touch-min); min-height: var(--touch-min); padding: 0; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--ink-3); font: inherit; font-size: var(--fs-200); cursor: pointer; transition: background var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out); }
+.collect__speak:hover:not(:disabled) { background: var(--paper-2); color: var(--ink); }
 .collect__speak:disabled { opacity: 0.4; cursor: default; }
-
-/* First sight: a small word next to the strip, gone on its own */
-.collect__intro { display: inline-flex; align-items: center; gap: var(--space-0-5); margin: 0; padding: var(--space-0-5) var(--space-2); border-radius: var(--radius-pill); background: var(--ink); color: var(--white); font-family: var(--font-kid); font-weight: 600; font-size: var(--fs-100); line-height: var(--lh-100); box-shadow: var(--shadow-2); animation: fm-fade-up var(--dur-3) var(--ease-out); }
+/* Beside the hint card it is a filled control, not a header action. */
+.collect__seek-actions .collect__speak { background: var(--paper-2); color: var(--ink-2); }
 
 /* The sticker flying from where it was tapped into its slot */
 .collect__fly { position: absolute; top: 0; left: 0; z-index: var(--z-toast); width: 0; height: 0; pointer-events: none; animation: fm-fly var(--fly-ms) var(--ease-in-out) both; }
 .collect__fly-arc { animation: fm-fly-arc var(--fly-ms) var(--ease-in-out) both; }
-.collect__fly-sticker { width: var(--touch-kid); height: var(--touch-kid); margin: calc(var(--touch-kid) / -2) 0 0 calc(var(--touch-kid) / -2); border-radius: 50%; overflow: hidden; background: var(--paper); box-shadow: var(--sticker-outline), 0 0 0 6px var(--gold), var(--shadow-2); animation: collect-shrink var(--fly-ms) var(--ease-in-out) both; }
-.collect__fly-sticker .sticker__picture { filter: none; }
+.collect__fly-sticker { width: var(--touch-kid); height: var(--touch-kid); margin: calc(var(--touch-kid) / -2) 0 0 calc(var(--touch-kid) / -2); border-radius: 50%; overflow: hidden; background: var(--paper); box-shadow: var(--sticker-outline), 0 0 0 6px var(--leaf), var(--shadow-2); animation: collect-shrink var(--fly-ms) var(--ease-in-out) both; }
 @keyframes collect-shrink { 0% { transform: scale(0.6) rotate(-12deg); opacity: 0; } 20% { transform: scale(1.15) rotate(6deg); opacity: 1; } 100% { transform: scale(0.7) rotate(0); opacity: 1; } }
 
 /* Guidance drawn on the board (ScenePlayer) */
@@ -116,12 +133,12 @@
 
 @media (max-height: 500px) {
   .collect { bottom: var(--space-1); }
-  .collect__intro { display: none; }
   .collect__sheet { max-height: calc(100dvh - var(--space-10)); }
   /* A landscape phone has room beside the upper-right mission, not below it.
      Leave the left toolbar clear as well. */
   .collect--seek-above .collect__seek { top: max(var(--space-2), env(safe-area-inset-top)); left: calc(max(var(--space-2), env(safe-area-inset-left)) + var(--space-8)); right: auto; width: min(360px, calc(100vw - var(--space-20))); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .collect__strip, .collect__sheet, .collect__seek, .collect__seek-hint, .collect__intro, .collect__done, .collect__fly, .collect__fly-arc, .collect__fly-sticker, .collect__tally--bump, .collect__count--bump, .sticker--fresh .sticker__face, .sticker--fresh .sticker__face::after, .sticker--arriving .sticker__face, .sticker--seeking .sticker__face, .sticker--wiggle .sticker__face { animation: none; }
+  .collect__sheet, .collect__sheet--closing, .collect__seek, .collect__seek-hint, .collect__fly, .collect__fly-arc, .collect__fly-sticker, .collect__count--bump, .sticker__check, .sticker--fresh .sticker__face, .sticker--fresh .sticker__face::after, .sticker--arriving .sticker__face, .sticker--seeking .sticker__face, .sticker--wiggle .sticker__face { animation: none; }
+  [dir="rtl"] .sticker__check { animation: none; }
 }

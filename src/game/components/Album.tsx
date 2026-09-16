@@ -150,8 +150,12 @@ export function AlbumSection({ config, album, mode, state, onOpen }: { config: G
                     const reveal = collected || guided;
                     return (
                       <li key={d.id} className={`album__sticker${collected ? " album__sticker--got" : ""}`} data-discovery={d.id} data-collected={collected}>
-                        <div className={`sticker sticker--lg${collected ? " sticker--got" : ""}`} role="img" aria-label={collected ? tf(c.collectedAria, { name: d.name }) : reveal ? tf(c.pending, { name: d.name }) : g.album.notYet}>
-                          <span className="sticker__face">{reveal ? <AlbumCrop art={scene.art} crop={d.cardCrop} className="sticker__picture" /> : <span className="sticker__blank" aria-hidden>?</span>}</span>
+                        <div className={`sticker${collected ? " sticker--got" : ""}`} role="img" aria-label={collected ? tf(c.collectedAria, { name: d.name }) : reveal ? tf(c.pending, { name: d.name }) : g.album.notYet}>
+                          <span className="sticker__face">
+                            {reveal ? <AlbumCrop art={scene.art} crop={d.cardCrop} className="sticker__picture" /> : <span className="sticker__blank" aria-hidden>?</span>}
+                            {/* The same green tick as on the board: one language for "found", in the bag too. */}
+                            {collected ? <span className="sticker__check" aria-hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round"><path d="M5 13l4.5 4.5L19 7" /></svg></span> : null}
+                          </span>
                           {d.rarity ? <span className={`sticker__rarity sticker__rarity--${d.rarity}`}>{c.rarity[d.rarity]}</span> : null}
                           <span className="sticker__name">{reveal ? d.name : g.album.notYet}</span>
                         </div>

@@ -118,6 +118,18 @@
   --shadow-sticker: 0 6px 16px rgba(23, 22, 43, 0.22);
   --sticker-outline: 0 0 0 4px var(--white);
 
+  /* A screen that is ON — three tokens, used together, never separately.
+     The boards are painted matte (paper, not display), so a picture handed
+     straight to a screen reads flat and a little grey. `--lit-art` is the lift
+     a display gives it. It is applied ONCE over the whole picture — board,
+     foreground and every child on it — so a child painted into the world never
+     separates from the world by being brighter than it. `--lit-glass` is the
+     sheen across the glass, `--lit-bloom` the light the screen throws onto the
+     page around it. Warm, because both the site and the boards are warm. */
+  --lit-art: saturate(1.22) contrast(1.07) brightness(1.06);
+  --lit-glass: linear-gradient(158deg, rgba(255, 255, 255, 0.32) 0%, rgba(255, 255, 255, 0.08) 20%, rgba(255, 255, 255, 0) 40%), radial-gradient(130% 78% at 50% -16%, rgba(255, 246, 219, 0.4), rgba(255, 246, 219, 0) 62%);
+  --lit-bloom: 0 0 64px rgba(255, 203, 102, 0.58);
+
   /* Typography — Rubik for the site (400–900), Fredoka for kid UI */
   --font-display: var(--font-rubik), "Heebo", system-ui, sans-serif;
   --font-body: var(--font-rubik), "Heebo", system-ui, sans-serif;
