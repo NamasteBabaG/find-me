@@ -46,7 +46,7 @@ async function saveCheckpoint(tx: Prisma.TransactionClient, jobId: string, value
  * all ticks. No new parent step, no unbounded retries, no weakened spend fence.
  * The first candidate stays retained until selection completes. */
 export async function selectBestIdentity(c: Container, initialClaim: BoardWizardIdentityClaim, input: {
-  atlas: Buffer; contentVersion: 9; deadlineAt?: number; preflight(): Promise<void>;
+  atlas: Buffer; contentVersion: 9 | 10; deadlineAt?: number; preflight(): Promise<void>;
 }): Promise<BoardWizardIdentityClaim | null> {
   const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(initialClaim.gameId);
   let claim = initialClaim;
@@ -82,7 +82,7 @@ export async function selectBestIdentity(c: Container, initialClaim: BoardWizard
   }
   let reason: "first-sufficient" | "best-of-two" | "budget-fallback" = "first-sufficient";
   let second: IdentityGateReceipt | undefined;
-  if (!identityReceiptReadyForPublication(first, 9) || checkpoint.second) {
+  if (!identityReceiptReadyForPublication(first, input.contentVersion) || checkpoint.second) {
     reason = "best-of-two";
     if (!checkpoint.second) {
       // The existing $4 world ceiling includes the second image ($0.50 reserve)
@@ -126,7 +126,7 @@ export async function selectBestIdentity(c: Container, initialClaim: BoardWizard
     candidates: [checkpoint.first.identityAssetId, ...(checkpoint.second ? [checkpoint.second.identityAssetId] : [])],
     selectedIdentityAssetId: selected.identityAssetId, reason,
   } });
-  demand(identityReceiptReadyForPublication(receipt, 9), "Selected image is technically unusable");
+  demand(identityReceiptReadyForPublication(receipt, input.contentVersion), "Selected image is technically unusable");
   await withBoardWizardIdentityClaim(c, claim, async tx => {
     await tx.auditLog.create({ data: { id: newId("aud"), actorType: "SYSTEM", action: IDENTITY_GATE_ACTION,
       entityType: "Asset", entityId: selected.identityAssetId, metaJson: JSON.stringify(receipt) } });

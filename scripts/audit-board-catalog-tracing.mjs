@@ -35,6 +35,10 @@ for (const board of localPatchArt.boards) {
     throw new Error(`Local-patch published and renderer pixels differ: ${board.board}`);
 }
 const expectedLocalPatch = [localPatchArtPath, ...localPatchArt.renderSources.map(source => source.path)].map(file => path.resolve(file));
+const collectionImages = JSON.parse(readFileSync("content/adventures/wizard-art.json", "utf8"));
+if (collectionImages.length !== 9 || new Set(collectionImages.map(a => a.path)).size !== 9) throw new Error("Nine unique collection images required");
+for (const image of collectionImages) if (sha(readFileSync(image.path)) !== image.sha256) throw new Error(`Collection art changed: ${image.path}`);
+const expectedCollection = collectionImages.map(a => path.resolve(a.path));
 const manifests = walk(path.join(root, ".next")).filter(file => file.endsWith(".nft.json"));
 const routes = manifests.map(manifest => {
   const paths = new Set(JSON.parse(readFileSync(manifest, "utf8")).files.map(file => path.resolve(path.dirname(manifest), file)));
@@ -48,13 +52,15 @@ const routes = manifests.map(manifest => {
   return { manifest: rel(manifest), tracedFiles: paths.size, uncompressedBytes: bytes,
     catalogFiles: expected.filter(file => paths.has(file)).length,
     localPatchFiles: expectedLocalPatch.filter(file => paths.has(file)).length,
+    collectionFiles: expectedCollection.filter(file => paths.has(file)).length,
     missingFiles, privateFiles, staleCatalogFiles,
-    publicCdnFiles: [...paths].map(rel).filter(file => /^public\/(scenes|worlds)\//.test(file)).length };
+    publicCdnFiles: [...paths].filter(file => /^public\/(scenes|worlds)\//.test(rel(file)) && !expectedCollection.includes(file)).length };
 });
 const jobs = routes.find(route => route.manifest === ".next/server/app/api/jobs/tick/route.js.nft.json");
 const problems = [];
 if (!jobs || jobs.catalogFiles !== 37) problems.push("generation route does not trace all36 static PNGs pluscatalog");
 if (!jobs || jobs.localPatchFiles !== 10) problems.push("generation route does not trace nine local-patch base images plus manifest");
+if (!jobs || jobs.collectionFiles !== 9) problems.push("generation route does not trace all nine collection boards");
 if (routes.some(route => route.privateFiles.length)) problems.push("private local files or dotenv were traced");
 if (routes.some(route => route.missingFiles.length)) problems.push("trace references missing files");
 if (routes.some(route => route.publicCdnFiles)) problems.push("undeclared public CDN scene art duplicated inside server function");

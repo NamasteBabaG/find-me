@@ -1,0 +1,11 @@
+[
+  {"path":"public/scenes/adventure-giza-repaired-v1/base.webp","sha256":"ed3fa132942cef43daba21723f34641470153e954a13767dd178df7d27088e21"},
+  {"path":"public/scenes/adventure-amazon/base.webp","sha256":"372ee33bb02158ba2b4eaa1740254cdb6fae182ed73c846498bf641a7e8d99ba"},
+  {"path":"public/scenes/adventure-newyork/base.webp","sha256":"fc810bf9aa266357b5ce9f5852922e54838879dc759fba2fce30ea137c77ce89"},
+  {"path":"public/scenes/adventure-paris-density-v3/base.webp","sha256":"3c29344f376353e5b5b1875f4835746743799bdd0c028c5c561dea7e61faa886"},
+  {"path":"public/scenes/adventure-marrakech-density-v3-items-v1/base.webp","sha256":"2c92cf16479cf066dc4b4d290dc0e5e9b6a80cc643e7c538a762f3446e25899d"},
+  {"path":"public/scenes/adventure-tokyo-density-v3-items-v1/base.webp","sha256":"2bbc5288b5a108711bbffbd772cb4eef0e71a576b9bc9e9ecca301485390d2a3"},
+  {"path":"public/scenes/adventure-greatwall-density-v3/base.webp","sha256":"34be3f1508e19b934ac65177d450a3bf631024d2d0430857e7bd6b002393a6bb"},
+  {"path":"public/scenes/adventure-sydney-density-v3/base.webp","sha256":"5ca5c5b033762c08d7c8b8e3ccf04be8d8b35ea978a2d4171536456053a7d4ec"},
+  {"path":"public/scenes/adventure-antarctica-density-v3/base.webp","sha256":"7a323fd6b340924b20915666e3548bdb151399b0bb19230a199d757b9aae2513"}
+]

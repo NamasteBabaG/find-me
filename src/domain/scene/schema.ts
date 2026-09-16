@@ -175,7 +175,7 @@ export const SceneDefinitionSchema = z.object({
   wardrobe: z.string().min(1).optional(),
   version: z.number().int().min(1),
   playMode: z.literal("find-any").optional(),
-  appearancesPerBoard: z.literal(5).optional(),
+  appearancesPerBoard: z.union([z.literal(3), z.literal(5)]).optional(),
   findsRequiredToAdvance: z.literal(3).optional(),
   active: z.boolean(),
   artStatus: z.enum(ART_STATUSES),
@@ -198,7 +198,7 @@ export const SceneDefinitionSchema = z.object({
     })
     .optional(),
   targets: z.array(TargetSchema).min(TARGETS_PER_SCENE).max(5),
-  ambient: z.array(AmbientSchema).min(2).max(6),
+  ambient: z.array(AmbientSchema).max(6),
   bonus: BonusSchema.optional(),
   celebration: z.object({
     kind: CelebrationKind,
@@ -209,7 +209,9 @@ export const SceneDefinitionSchema = z.object({
   sounds: z.object({ ambient: SoundCue.optional() }).default({}),
 }).superRefine((scene, ctx) => {
   const free = scene.playMode === "find-any";
-  if (scene.targets.length !== (free ? 5 : TARGETS_PER_SCENE) || (free && (scene.appearancesPerBoard !== 5 || scene.findsRequiredToAdvance !== 3))
+  const count = scene.version === 10 ? 3 : 5;
+  if (scene.version !== 10 && scene.ambient.length < 2) ctx.addIssue({ code: "custom", path: ["ambient"], message: "Legacy scenes need two ambient decorations" });
+  if (scene.targets.length !== (free ? count : TARGETS_PER_SCENE) || (free && (scene.appearancesPerBoard !== count || scene.findsRequiredToAdvance !== 3))
     || (!free && (scene.appearancesPerBoard !== undefined || scene.findsRequiredToAdvance !== undefined))) {
     ctx.addIssue({ code: "custom", path: ["targets"], message: "Target count and advancement must match the pinned play mode" });
   }

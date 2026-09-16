@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import type { Container } from "../container";
 import { type LocalPatchBoard, type LocalPatchHide } from "../../domain/scene/local-patch-hides";
-import { ALL_LOCAL_PATCH_BOARDS, localPatchBoardForVersion, isLocalPatchAdvisoryVersion, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
+import { ALL_LOCAL_PATCH_BOARDS, localPatchBoardsForVersion, localPatchBoardForVersion, isLocalPatchAdvisoryVersion, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
 import { deliverLocalPatchNotifications } from "../local-patch-notifications";
 import { GenerationPaused, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { retainedPurchaseKeysFor } from "../../infra/db/prisma-retained-purchase-store";
@@ -424,7 +424,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       const row = after.find(r => r.targetInstance.gameSceneId === item.sceneId && r.targetInstance.targetId === item.hide.targetId);
       return !row || !["GENERATED", "APPROVED"].includes(row.status);
     });
-    const expected = advisory ? 45 : 27;
+    const expected = localPatchBoardsForVersion(game.scenes[0]!.sceneVersion).reduce((sum, board) => sum + board.hides.length, 0);
     if (!blocked.length && !failures.length && work.length === expected) {
       await finishLocalPatchGame(c, gameId, fence);
       // Readiness is already committed. Notification failure must never turn

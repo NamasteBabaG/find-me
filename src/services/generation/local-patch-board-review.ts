@@ -3,7 +3,7 @@ import type { Prisma, Asset, TargetVariantAsset } from "@prisma/client";
 import type { Container } from "../container";
 import { SpriteRefSchema } from "../../domain/game/config";
 import { cropOf, maskForHide, type LocalPatchHide } from "../../domain/scene/local-patch-hides";
-import { isLocalPatchAdvisoryVersion, isLocalPatchAgeVersion, isLocalPatchStrictVersion, localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
+import { COLLECTION_SCENE_VERSION, localPatchHidesPerBoard, isLocalPatchAdvisoryVersion, isLocalPatchAgeVersion, isLocalPatchStrictVersion, localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
 import { LOCAL_PATCH_MAX_ATTEMPTS } from "../../domain/scene/local-patch-attempts";
 import { CURRENT_JUDGE_PRICING_VERSION, judgeCharge } from "../../infra/generation/judge";
 import { assertGenerationSpendAllowed, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
@@ -33,14 +33,14 @@ export const LOCAL_PATCH_REVIEW_CLOSEUP_GUARD_PX = LOCAL_PATCH_RETURN_GUARD;
 export const LOCAL_PATCH_REVIEW_COMPOSITION_HISTORY = [null, "bounded-return/v2-head-safe"] as const;
 export const localPatchBoardReviewKey = (boardId: string, attempts?: readonly number[], compositionVersion: string | null = LOCAL_PATCH_COMPOSITION_VERSION, contentVersion = 8, maximumAttempt: 3 | 4 = LOCAL_PATCH_MAX_ATTEMPTS) => {
   if (!attempts) return `board:${boardId}:five-review:1`;
-  if (attempts.length !== 5 || attempts.some(n => !Number.isInteger(n) || n < 1 || n > maximumAttempt)) throw new Error("Invalid board-review attempt revision");
+  if (attempts.length !== localPatchHidesPerBoard(contentVersion) || attempts.some(n => !Number.isInteger(n) || n < 1 || n > maximumAttempt)) throw new Error("Invalid board-review attempt revision");
   if (compositionVersion !== LOCAL_PATCH_COMPOSITION_VERSION && !LOCAL_PATCH_REVIEW_COMPOSITION_HISTORY.some(version => version === compositionVersion)) throw new Error("Unsupported board-review composition revision");
-  return `board:${boardId}:five-review:v${isLocalPatchAgeVersion(contentVersion) ? 9 : 8}:${attempts.join("-")}${compositionVersion === null ? "" : `:${compositionVersion.replaceAll("/", ".")}`}${isLocalPatchAgeVersion(contentVersion) ? ":evidence-v5" : ""}`;
+  return `board:${boardId}:${contentVersion === COLLECTION_SCENE_VERSION ? "three" : "five"}-review:v${contentVersion === COLLECTION_SCENE_VERSION ? contentVersion : isLocalPatchAgeVersion(contentVersion) ? 9 : 8}:${attempts.join("-")}${compositionVersion === null ? "" : `:${compositionVersion.replaceAll("/", ".")}`}${isLocalPatchAgeVersion(contentVersion) ? ":evidence-v5" : ""}`;
 };
 /** All bounded candidates, including a paid reply retained before its row commit. */
 export function localPatchBoardReviewKeys(boardId: string, contentVersion = 8): string[] {
   const vectors: number[][] = [[]];
-  for (let position = 0; position < 5; position++) {
+  for (let position = 0; position < localPatchHidesPerBoard(contentVersion); position++) {
     const prior = vectors.splice(0);
     for (const vector of prior) for (let attempt = 1; attempt <= LOCAL_PATCH_MAX_ATTEMPTS; attempt++) vectors.push([...vector, attempt]);
   }
@@ -81,7 +81,7 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
   const extraPlan = stagedExtra && [...stagedExtra.selected, ...stagedExtra.reviewOnly].some(entry => entry.sceneId === scene.id) ? stagedExtra : null;
   const versions = await c.db.gameScene.findMany({ where: { gameId: game.id }, select: { sceneVersion: true } });
   demand(versions.length > 0 && versions.every(row => row.sceneVersion === scene.sceneVersion), "Mixed content versions cannot acquire an advisory review");
-  demand(board?.hides.length === 5 && scene.targets.length === 5, "Five authored targets are required");
+  demand(board?.hides.length === localPatchHidesPerBoard(scene.sceneVersion) && scene.targets.length === board.hides.length, "Every authored target is required");
   const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(game.id);
   demand(child.identityAssetId && child.ageYears, "Identity source is missing");
   const identity = await c.db.asset.findUniqueOrThrow({ where: { id: child.identityAssetId } });

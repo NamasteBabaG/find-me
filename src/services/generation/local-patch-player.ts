@@ -17,6 +17,8 @@ import { hasLocalPatchPublicationPolicy, localPatchPublicationGeometryHash } fro
 import { enqueueLocalPatchNotifications } from "../local-patch-notifications";
 import { readLocalPatchPartialRelease } from "./local-patch-partial-release";
 import { getDict, tf } from "../../i18n";
+import { COLLECTION_SCENE_VERSION, WIZARD_ADVENTURE_CATALOG } from "../../../content/adventures/wizard-release";
+import { attachAdventureBook } from "../../domain/adventure/compose";
 
 const STYLE = "local-patch-world-v1";
 const sha = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
@@ -112,8 +114,10 @@ export async function composeLocalPatchGame(c: Container, gameId: string): Promi
     scenes.push({ ...composed, worldSlug: world.slug });
   }
   demand(worlds.size === 1, "the nine boards must belong to one world");
-  return GameConfigSchema.parse(composeGame({ gameId, child: who, locale, packageTier: "ONE_WORLD", styleVersion: STYLE,
+  const config = GameConfigSchema.parse(composeGame({ gameId, child: who, locale, packageTier: "ONE_WORLD", styleVersion: STYLE,
     scenes, worlds: [...worlds.values()], ...(game.giftJson ? { gift: JSON.parse(game.giftJson) } : {}) }));
+  return game.scenes.every(scene => scene.sceneVersion === COLLECTION_SCENE_VERSION)
+    ? attachAdventureBook(config, WIZARD_ADVENTURE_CATALOG, scenes.map(scene => scene.slug)) : config;
 }
 
 /** Publish only an entirely verified world, atomically with the worker fence. */

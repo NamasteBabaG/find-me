@@ -5,7 +5,7 @@ import { env } from "../../lib/env";
 import { DbStorage } from "../../infra/storage/db";
 import { SYSTEM } from "../audit.service";
 import { transitionGame } from "../game-status";
-import { isLocalPatchAgeVersion, localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
+import { LOCAL_PATCH_AGE_SCENE_VERSION, localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
 import { LOCAL_PATCH_MAX_ATTEMPTS } from "../../domain/scene/local-patch-attempts";
 import { boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { readBoardConditionedCatalog } from "./board-conditioned-catalog";
@@ -52,7 +52,7 @@ async function identity(c: Container, gameId: string) {
   demand(game.styleVersion === STYLE && !game.deletedAt && !game.configJson && !game.readyAt && !game.deliveredAt
     && game.ownerId && game.paidAt && game.packageTier === "ONE_WORLD" && child && !child.deletedAt && child.ownerId === game.ownerId
     && child.identityAssetId && child.ageYears && game.scenes.length === 9 && new Set(game.scenes.map(s => s.sceneSlug)).size === 9
-    && game.scenes.every(s => isLocalPatchAgeVersion(s.sceneVersion)), "Live paid unpublished v9 identity required");
+    && game.scenes.every(s => s.sceneVersion === LOCAL_PATCH_AGE_SCENE_VERSION), "Live paid unpublished v9 identity required");
   demand(game.orders.some(o => o.userId === game.ownerId && o.paymentStatus === "PAID" && o.paidAt && !o.refundedAt)
     && !game.orders.some(o => o.paymentStatus === "REFUNDED" || o.refundedAt), "Paid nonrefunded order required");
   const asset = await c.db.asset.findUniqueOrThrow({ where: { id: child.identityAssetId } });

@@ -1,7 +1,7 @@
 import sharp from "sharp";
 import type { Container } from "../container";
 import { sceneBySlug } from "../scene-catalog.service";
-import { LOCAL_PATCH_BOARD, WORLD_LOCAL_PATCH_HIDES, cropOf } from "../../domain/scene/local-patch-hides";
+import { WORLD_LOCAL_PATCH_HIDES, cropOf } from "../../domain/scene/local-patch-hides";
 import { localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
 import { assertGenerationSpendAllowed, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { LOCAL_PATCH_STYLE } from "./local-patch-world";
@@ -41,8 +41,8 @@ export async function preflightLocalPatchIdentity(c: Container, gameId: string, 
     demand(`public${definition.art.base}` === board.art, `Scene and local-patch artwork disagree for ${scene.sceneSlug}`);
     const bytes = await readShippedBoardArt(board.art, definition.art.sha256 ?? "", root);
     demand(bytes.length <= 32 * 1024 * 1024, "Board art exceeds the decode bound");
-    const meta = await sharp(bytes, { limitInputPixels: LOCAL_PATCH_BOARD.width * LOCAL_PATCH_BOARD.height }).metadata();
-    demand(meta.width === LOCAL_PATCH_BOARD.width && meta.height === LOCAL_PATCH_BOARD.height
+    const meta = await sharp(bytes, { limitInputPixels: 8_294_400 }).metadata();
+    demand(meta.width === definition.art.width && meta.height === definition.art.height
       && (meta.pages ?? 1) === 1 && (meta.orientation ?? 1) === 1, `Wrong board raster for ${scene.sceneSlug}`);
     demand(board.hides.every(hide => { const crop = cropOf(hide); return crop.left + crop.width <= meta.width! && crop.top + crop.height <= meta.height!; }), "Hide crop leaves its board");
   }

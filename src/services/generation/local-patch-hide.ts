@@ -8,7 +8,7 @@ import { newId } from "../../lib/ids";
 import { sha256Bytes } from "./fixed-sprite";
 import { sceneBySlug } from "../scene-catalog.service";
 import {
-  LOCAL_PATCH_BOARD, assertPlaceable, cropOf,
+  assertPlaceable, cropOf,
   type LocalPatchBoard, type LocalPatchHide,
 } from "../../domain/scene/local-patch-hides";
 import { fenceLocalPatchImages, LocalPatchRetainedPurchaseStore } from "./local-patch-lifecycle";
@@ -206,7 +206,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   demand(c.storage.id === "db", "local-patch imagery requires DB-backed private storage");
   // Free, and before anything else: an authored placement that cannot be held
   // is a fault to find now, not after a render has been paid for.
-  assertPlaceable(board);
+  // Each immutable release owns its coordinate space (legacy 3:2, collection 4K).
   demand(board.hides.some(h => h.id === hide.id), `${hide.id} is not a hide of ${board.board}`);
 
   const game = await c.db.game.findUniqueOrThrow({ where: { id: gameId }, include: { childProfile: true, scenes: true } });
@@ -221,6 +221,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   const scene = game.scenes.find(s => s.sceneSlug === board.board);
   demand(scene, `this game has no ${board.board} board`);
   const definition = sceneBySlug(scene.sceneSlug, scene.sceneVersion);
+  assertPlaceable(board, definition.art);
   const target = definition.targets.find(t => t.id === hide.targetId);
   demand(target, `${board.board} has no ${hide.targetId} mission for ${hide.id} to hide in`);
 
@@ -301,8 +302,6 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   const artwork = await (deps.readBoardArt ?? readShippedBoardArt)(board.art, definition.art.sha256 ?? "");
   const metadata = await sharp(artwork, { limitInputPixels: 8_294_400 }).metadata();
   const art = { width: metadata.width ?? 0, height: metadata.height ?? 0 };
-  demand(art.width === LOCAL_PATCH_BOARD.width && art.height === LOCAL_PATCH_BOARD.height,
-    `${board.board} is ${art.width}x${art.height}; the placements were authored against ${LOCAL_PATCH_BOARD.width}x${LOCAL_PATCH_BOARD.height}`);
   demand(art.width === definition.art.width && art.height === definition.art.height,
     `${board.board} art does not match the size the scene declares; the geometry would be written in the wrong space`);
 

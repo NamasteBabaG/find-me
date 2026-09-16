@@ -300,9 +300,9 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
       const current = await c.db.childProfile.findUniqueOrThrow({ where: { id: child.id } });
       if (!current.identityAssetId || !current.avatarAssetId || !identityStyle) throw new Error("QA identity is not ready for review");
       const publicationClaim = { ...qaIdentityClaim, identityAssetId: current.identityAssetId, avatarAssetId: current.avatarAssetId };
-      if (localPatch && contentVersion === 9) {
+      if (localPatch && (contentVersion === 9 || contentVersion === 10)) {
         const { selectBestIdentity } = await import("./identity-best-of-two");
-        const selected = await selectBestIdentity(c, publicationClaim, { atlas: identityStyle.png, contentVersion: 9,
+        const selected = await selectBestIdentity(c, publicationClaim, { atlas: identityStyle.png, contentVersion,
           deadlineAt: options.hardDeadlineAt, preflight: preflightIdentity });
         if (selected) await finishLocalPatchIdentity(c, selected, identityStyle.catalogSha256);
         return;

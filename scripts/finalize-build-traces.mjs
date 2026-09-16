@@ -6,6 +6,7 @@ import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const root = process.cwd(), nextRoot = path.join(root, ".next");
+const collectionFiles = new Set(JSON.parse(readFileSync("content/adventures/wizard-art.json", "utf8")).map(a => a.path));
 const catalogPath = "content/board-conditioned-qa/catalog.json";
 const catalog = JSON.parse(readFileSync(path.join(root, catalogPath), "utf8"));
 const assets = catalog.boards.flatMap(board => [board.board.path, ...board.slots.map(slot => slot.foreground.path)]);
@@ -34,7 +35,7 @@ for (const file of manifests) {
     const relative = path.relative(root, path.resolve(path.dirname(file), item)).split(path.sep).join("/");
     return !/^(work|storage|assets|output|tmp|\.claude|\.codex)\//.test(relative)
       && !/^\.env($|\.)/.test(relative) && !/^prisma\/[^/]+\.db(?:-journal)?$/.test(relative)
-      && !/^public\/(scenes|worlds)\//.test(relative)
+      && (!/^public\/(scenes|worlds)\//.test(relative) || collectionFiles.has(relative))
       && (!relative.startsWith("content/board-conditioned-qa/") || activeCatalogFiles.has(relative));
   });
   if (retained.length !== trace.files.length) {
