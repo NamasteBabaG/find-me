@@ -43,3 +43,9 @@ No paid provider request was made during implementation. An existing MANUAL_REVI
 - Authenticated browser homepage smoke passed. Diagnostic API access remained gated (`QA_ACCESS_REQUIRED` from CLI); no authenticated DB-health claim is made.
 - Deployment error-log query: no entries found in the first ten minutes. This is a limited smoke check, not a full live generation exercise.
 - No existing held game was reset or repurchased. In particular, Arbel's held job requires a separate evidence-checked continuation; the deployment alone does not resume it.
+
+## Explicitly authorized continuation, after release
+
+The user subsequently requested resumption. Executed the scoped script `scripts/qa-resume-arbel-identity-20260916.sql` first with ROLLBACK, then with COMMIT. It locks and checks the exact Game/Job/Child, original image hashes, paid order, nine v9 scenes with no targets, unchanged settled ledger revision 3, and the original subjective identity/age receipt. It retains prior state in `identity-best-of-two:resume` and changes only this job to QUEUED and game to AVATAR_GENERATING. No assets, charges, approval findings or attempts were erased.
+
+Verified afterward: the deployed worker claimed attempt 2, checkpoint policy is `identity-best-of-two/v1`, both original charges remain settled, and only `wizard:identity:2` is newly pending. The authenticated creating page shows “מציירים את ארבל…” at 8%, with no stopped error. This confirms actual resumption, not completed game delivery. The normal queue owns subsequent work.
