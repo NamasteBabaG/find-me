@@ -1,0 +1,27 @@
+import fs from 'node:fs/promises';
+import {execFileSync} from 'node:child_process';
+const bin=process.env.QA_REVIEW_BROWSER_BIN;
+if(!bin)throw Error('Set QA_REVIEW_BROWSER_BIN');
+const run=args=>execFileSync(bin,['--session','collection-e2e',...args],{encoding:'utf8',timeout:60000}).trim();
+const ev=s=>JSON.parse(execFileSync(bin,['--session','collection-e2e','eval','--stdin'],{input:s,encoding:'utf8',timeout:60000}));
+const checkAlbum=()=>ev(`(()=>{const got=document.querySelectorAll('.album__sticker[data-collected="true"]').length, postcards=document.querySelectorAll('.album__postcard').length,boards=document.querySelectorAll('.loot--got').length;if(got!==54||postcards!==9||boards!==9)throw Error('Incomplete album '+JSON.stringify({got,postcards,boards}));return {got,postcards,boards}})()`);
+const before=checkAlbum();run(['screenshot','output/collection-e2e/album.png']);
+run(['click','.loot:first-child .loot__replay']);
+run(['wait','.scene[data-replay="true"] .collect__fab:not(:disabled)']);
+const reset=ev(`(()=>{const children=Number(document.querySelector('.scene').dataset.foundCount),items=document.querySelector('.collect__count').textContent;if(children!==0||items!=='0/6')throw Error('Replay did not reset');return {children,items}})()`);
+run(['set','viewport','390','844']);run(['wait','1000']);
+run(['click','.collect__fab']);run(['wait','.collect__sheet[role=dialog]']);
+const phone=ev(`(()=>{const r=document.querySelector('.collect__sheet').getBoundingClientRect();if(r.x<0||r.right>innerWidth+1||r.top<0||r.bottom>innerHeight+1)throw Error('Tray outside phone');if(document.documentElement.scrollWidth>innerWidth)throw Error('Horizontal overflow');return {width:innerWidth,height:innerHeight,items:document.querySelectorAll('.collect__grid [data-discovery]').length}})()`);
+run(['screenshot','output/collection-e2e/mobile-replay-tray.png']);
+run(['click','.collect__fab']);
+run(['click','.scene__bar > button']);
+run(['wait','.wmap']);
+run(['click','.wmap__starsbtn']);
+run(['wait','.album']);
+const after=checkAlbum();run(['reload']);run(['wait','.scene']);
+// Reload resumes the last played board, not transient bag/replay navigation.
+run(['click','.scene__bar > button']);run(['wait','.wmap']);
+run(['click','.wmap__starsbtn']);run(['wait','.album']);const reloaded=checkAlbum();
+const errors=run(['errors']);if(errors)throw Error(errors);
+await fs.writeFile('output/collection-e2e/replay-results.json',JSON.stringify({before,reset,phone,after,reloaded,consoleErrors:0},null,2));
+console.log(JSON.stringify({before,reset,phone,after,reloaded,consoleErrors:0}));

@@ -1,4 +1,4 @@
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { PrismaClient } from "@prisma/client";
@@ -12,6 +12,7 @@ import { localPatchBoardsForVersion } from "../../../domain/scene/local-patch-ca
 import { selectWorlds } from "../../create-flow.service";
 import { gameShape } from "../../world-catalog.service";
 import { ownerAdventureAlbum } from "../../adventure-album.service";
+import { ensurePlayerLink } from "../../share-link.service";
 import { runLocalPatchWorldSlice, LOCAL_PATCH_STYLE } from "../local-patch-world";
 import { reviewBoardWizardIdentity } from "../board-wizard-identity-gate";
 import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wizard";
@@ -23,6 +24,7 @@ import { sha256Bytes } from "../fixed-sprite";
 import { bill, paintedCrop, paintedOk, PASSING_ANSWER, seedApprovedGame } from "./local-patch-fixtures";
 
 const GAME = "collection-world-synthetic", BOARDS = localPatchBoardsForVersion(10);
+const keepFixture = process.env.COLLECTION_E2E_FIXTURE === "1" && !process.env.VERCEL;
 vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: "qa", GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: 0,
   GENERATION_PROVIDER: "openai", GENERATION_MODEL: "gpt-image-2", GENERATION_QUALITY: "medium" }),
   spendGuard: () => ({ appEnv: "qa", realGeneration: true, testers: ["collection-world-synthetic@example.com"] }),
@@ -40,7 +42,7 @@ beforeAll(async () => {
 }, 180000);
 afterAll(async () => {
   vi.unstubAllGlobals(); await db.$disconnect();
-  if (path.dirname(dir) === realpathSync(tmpdir()) && path.basename(dir).startsWith("findme-collection-test-")) rmSync(dir, { recursive: true, force: true });
+  if (!keepFixture && path.dirname(dir) === realpathSync(tmpdir()) && path.basename(dir).startsWith("findme-collection-test-")) rmSync(dir, { recursive: true, force: true });
 });
 
 it("wizard selection → 27 actual purchases → 9 reviews → publication → 54 collected items, idempotent saved album", async () => {
@@ -110,4 +112,13 @@ it("wizard selection → 27 actual purchases → 9 reviews → publication → 5
   await runLocalPatchWorldSlice(c, deps, GAME, { boardJudge });
   expect(paintKeys).toHaveLength(27);
   expect(localPatchBoardReviewKeys("giza", 10).some(k => k.includes("three-review:v10:1-1-1:"))).toBe(true);
+  if (keepFixture) {
+    const link = await ensurePlayerLink(c, GAME);
+    mkdirSync("output/collection-e2e", { recursive: true });
+    writeFileSync("output/collection-e2e/fixture.json", JSON.stringify({
+      scope: "synthetic local integration fixture; no actual child or live provider", gameId: GAME,
+      databaseUrl: `file:${path.join(dir, "test.sqlite").split(path.sep).join("/")}`,
+      secret: c.secret, playPath: `/play/${link.token}`, config,
+    }, null, 2));
+  }
 }, 240000);

@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getContainer } from "@/services/container";
 import { availablePackages } from "@/services/create-flow.service";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
-import { PACKAGES, PACKAGE_ORDER, boardsFor, priceFor, searchesFor, type PackageTier } from "@/domain/package";
+import { PACKAGES, PACKAGE_ORDER, boardsFor, priceFor, type PackageTier } from "@/domain/package";
 import { getCurrency, getI18n } from "@/i18n/server";
 import { formatMoney, pick, tf } from "@/i18n";
 import { CreateFrame } from "../CreateLayout";
@@ -10,6 +10,7 @@ import { currentDraft } from "../actions";
 import { PackagePicker } from "./PackagePicker";
 import { LOCAL_PATCH_STYLE } from "@/services/generation/local-patch-world";
 import { purchasableWorldSlugs } from "@/services/world-catalog.service";
+import { COLLECTION_SCENE_VERSION, localPatchHidesPerBoard } from "@/domain/scene/local-patch-catalog";
 
 export async function generateMetadata() {
   const { t } = await getI18n();
@@ -25,7 +26,9 @@ export default async function CreatePackagePage() {
   const [packages, worldSlugs] = await Promise.all([availablePackages(c), purchasableWorldSlugs(c)]);
   const available = new Set(packages.map((p) => p.tier));
   const availableWorldCount = worldSlugs.length;
-  const spotsPerBoard = draft.styleVersion === LOCAL_PATCH_STYLE ? 5 : 3;
+  // Package selection re-enrolls editable QA drafts in this same release.
+  // Historical purchased games remain pinned and never use this page.
+  const spotsPerBoard = draft.styleVersion === LOCAL_PATCH_STYLE ? localPatchHidesPerBoard(COLLECTION_SCENE_VERSION) : 3;
   // Only tiers that can actually be bought right now (enough active worlds) are shown.
   const options = PACKAGE_ORDER.filter((tier) => available.has(tier)).map((tier) => {
     const p = PACKAGES[tier];
@@ -34,7 +37,7 @@ export default async function CreatePackagePage() {
       name: pick(p.name, locale),
       worldCount: p.worldCount,
       boardCount: boardsFor(tier),
-      meta: tf(t.create.package.spots, { n: spotsPerBoard === 5 ? boardsFor(tier) * 5 : searchesFor(tier) }),
+      meta: tf(t.create.package.spots, { n: boardsFor(tier) * spotsPerBoard }),
       price: formatMoney(priceFor(tier, currency), currency, locale),
       popular: p.popular,
     };
