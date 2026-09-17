@@ -55,4 +55,31 @@ This does not claim production migration or close unrelated production gates.
 - No real iOS/Safari/device-touch or real-payment test in this task.
 
 Screenshots and ephemeral fixture credentials remain in ignored `output/passport/`.
-QA deployment and live smoke receipt will follow after the clean-commit build.
+## QA deployment receipt
+
+- Application commit: `e49edacd815a7da133919c329f08b3a3e3a43214`, pushed to
+  `find-me/codex/passport-qa-20260917`. Worktree was clean before deployment.
+- QA-only project: `find-me-qa` / `prj_LbqCRqwU8WfZpeaWU7HTXM4SsfG4`,
+  scope `smallheroes-projects`. CLI `--prod` refers to this QA project's target;
+  customer production was not changed.
+- Deployment: `dpl_Dt7bVgpzgjsMqy9pPbdxiZHViZ7Z`, created 2026-09-18 02:07:05
+  Asia/Jerusalem, verified **Ready**, promoted and alias verified.
+- Immutable URL: <https://find-me-fr9m9esye-smallheroes-projects.vercel.app>.
+- QA URL: <https://qa.findmeworlds.com>.
+- Remote Next.js 15.5.25 build passed in approximately 2 minutes; compilation,
+  type checking, static generation and private-asset tracing audit passed.
+  Audit reported no private leaks or problems. Inspected function size 177.64MB,
+  within the 250MB release gate.
+- Authenticated live browser smoke after alias switch: homepage loaded, demo
+  passport opened with the new mark-only ring and mounted photograph; Hebrew
+  next/previous navigation settled correctly; discovery details opened with
+  their title and story. This live smoke did not change a real child's progress.
+  Full three-find ceremony and guest/owner flows were verified locally above.
+- Anonymous HTTP request still redirects 307 to `/qa-access`; the QA access
+  gate was preserved. No environment variables, schema or real child assets
+  were changed in this release.
+- Post-release error-log query on the exact deployment (`--level error`, last
+  15 minutes) returned no matching logs. This is a bounded smoke observation,
+  not a claim of long-term production monitoring.
+- Rollback target: `dpl_HytrsFyR8ZiMd8mTEgbRQTJ8Gumw`,
+  <https://find-me-csnnu2o0z-smallheroes-projects.vercel.app> (`d26fb24a`).
