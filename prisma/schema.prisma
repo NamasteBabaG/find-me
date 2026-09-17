@@ -80,7 +80,9 @@ model PassportShare {
   id String @id
   familyChildId String @unique
   alias String
+  tokenHash String
   createdAt DateTime @default(now())
+  expiresAt DateTime
   revokedAt DateTime?
   child FamilyChild @relation(fields: [familyChildId], references: [id], onDelete: Cascade)
 }

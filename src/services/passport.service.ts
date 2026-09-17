@@ -2,7 +2,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { parseGameConfig } from "@/domain/game/config";
 import { emptyAdventureProgress, readAdventureProgress } from "@/domain/adventure/progress";
-import { passportCeremony, projectPassport, type PassportPreference, type PassportView } from "@/domain/passport/passport";
+import { distinguishPassportWorlds, passportCeremony, projectPassport, type PassportPreference, type PassportView } from "@/domain/passport/passport";
 
 type Db = Pick<PrismaClient, "familyChild" | "game" | "passportPagePreference">;
 const Seen = z.array(z.string().min(1).max(160)).max(6);
@@ -16,13 +16,16 @@ export async function passportSources(db: Db, ownerId: string, childId: string) 
     orderBy: [{ createdAt: "asc" }, { id: "asc" }], include: { adventureAlbum: true, passportPages: true },
   });
   const ready = games.filter(g => ["READY", "DELIVERED"].includes(g.status) && g.configJson);
-  return { child, preparing: games.length - ready.length, sources: ready.map(game => {
+  return { child, preparing: games.length - ready.length, sources: ready.flatMap(game => {
     const config = parseGameConfig(game.configJson!);
-    if (config.gameId !== game.id || !config.adventure) throw new Error("passport-content-unavailable");
+    if (config.gameId !== game.id) throw new Error("passport-content-unavailable");
+    // Old test formats remain playable from the family card. They must not
+    // poison the current 3-find/6-discovery passport, nor invent extra stamps.
+    if (!config.adventure || !config.adventure.boards.every(b => b.targetIds.length === 3 && b.discoveries.length === 6)) return [];
     if (game.adventureAlbum && (!Number.isSafeInteger(game.adventureAlbum.revision) || game.adventureAlbum.revision < 1)) throw new Error("passport-progress-unavailable");
     const progress = readAdventureProgress(game.adventureAlbum ? JSON.parse(game.adventureAlbum.snapshotJson) : emptyAdventureProgress(game.id, config.adventure), game.id, config.adventure);
     const preferences: Record<string, PassportPreference> = Object.fromEntries(game.passportPages.map(p => [p.boardSlug, { photoTargetId: p.photoTargetId, stampSeen: p.stampSeen, seenDiscoveries: Seen.parse(JSON.parse(p.seenDiscoveries)) }]));
-    return { game, config, progress, preferences };
+    return [{ game, config, progress, preferences }];
   }) };
 }
 
@@ -31,10 +34,10 @@ export async function ownerPassport(db: Db, ownerId: string, childId: string): P
   return {
     name: child.displayName, preparing,
     ...(sources[0] ? { avatarUrl: `/api/assets/${sources[0].config.adventure!.avatarAssetId}` } : {}),
-    worlds: sources.flatMap(source => projectPassport(source.config, source.progress, source.preferences, (board, kind, id) => {
+    worlds: distinguishPassportWorlds(sources.flatMap(source => projectPassport(source.config, source.progress, source.preferences, (board, kind, id) => {
       const query = new URLSearchParams({ childId, gameId: source.game.id, board, kind, id });
       return `/api/passport/media?${query}`;
-    }, true).map(world => ({ ...world, id: `${source.game.id}:${world.id}`, pages: world.pages.map(page => ({ ...page, id: `${source.game.id}:${page.id}`, playHref: `/family/${childId}/play/${source.game.id}?board=${encodeURIComponent(page.id)}` })) }))),
+    }, true).map(world => ({ ...world, id: `${source.game.id}:${world.id}`, pages: world.pages.map(page => ({ ...page, id: `${source.game.id}:${page.id}`, playHref: `/family/${childId}/play/${source.game.id}?board=${encodeURIComponent(page.id)}` })) })))),
   };
 }
 

@@ -6,6 +6,7 @@ import { callerKey, rateLimit, tooManyRequests } from "@/lib/server/rate-limit";
 import { getContainer } from "@/services/container";
 import { ownerPassport, passportSources, PassportAccessError, PassportChoiceSchema, updatePassportPage } from "@/services/passport.service";
 import { passportCeremony, passportPhoto } from "@/domain/passport/passport";
+import { reconcilePaidFamilyChildren } from "@/services/family.service";
 
 const Id = z.string().regex(/^[A-Za-z0-9_-]{1,160}$/);
 const Body = z.object({ childId: Id, gameId: Id, board: Id, choice: PassportChoiceSchema }).strict();
@@ -21,6 +22,7 @@ export async function GET(req: Request) {
   const query = new URL(req.url).searchParams;
   let childId = query.get("childId");
   if (!childId && Id.safeParse(query.get("gameId")).success) {
+    await reconcilePaidFamilyChildren(getContainer().db, user.id, query.get("gameId")!);
     const game = await getContainer().db.game.findFirst({ where: { id: query.get("gameId")!, ownerId: user.id, deletedAt: null }, select: { familyChildId: true } });
     childId = game?.familyChildId ?? null;
   }

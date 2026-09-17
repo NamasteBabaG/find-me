@@ -12,7 +12,7 @@ import { ensureUser } from "./auth.service";
 import { draftBelongsTo, loadDraft } from "./create-flow.service";
 import { statusOf, transitionGame } from "./game-status";
 import { WEBHOOK, audit, type Actor } from "./audit.service";
-import { bindCheckoutFamilyChild } from "./family.service";
+import { bindCheckoutFamilyChild, reconcilePaidFamilyChildren } from "./family.service";
 
 /**
  * Checkout + payment webhook. The webhook is the single source of truth for
@@ -169,6 +169,16 @@ export async function handlePaymentWebhook(c: Container, rawBody: string, header
   // Outside the transaction: analytics is a side effect, and a rolled-back
   // payment must not be reported as a completed one.
   for (const event of applied.track) c.analytics.track(event.name, event.props);
+  // Presentation identity must not roll back the provider's committed money.
+  // A crash/failure here is repaired idempotently on the next family read.
+  if (ev.kind === "PAID") {
+    try {
+      const game = await c.db.game.findUnique({ where: { id: order.gameId }, select: { ownerId: true } });
+      if (game?.ownerId) await reconcilePaidFamilyChildren(c.db, game.ownerId, order.gameId);
+    } catch {
+      console.warn("[passport] post-payment family reconciliation deferred", { gameId: order.gameId });
+    }
+  }
   return { status: 200, body: applied.body };
 }
 
@@ -210,13 +220,6 @@ async function applyPaymentEvent(c: Container, tx: Prisma.TransactionClient, ord
     // `isAfterPayment`, not `=== "PAID"`: a game already being drawn has moved
     // on, and must never be dragged back to the start of the queue.
     await moveGame("PAID", isAfterPayment);
-    // Only a paid adventure creates a new family child. An abandoned anonymous
-    // checkout creates neither an empty family card nor a login requirement on
-    // retry. Webhook retries reuse the assigned identity in this transaction.
-    const paidGame = await tx.game.findUnique({ where: { id: order.gameId }, include: { childProfile: true } });
-    if (paidGame && !paidGame.deletedAt && paidGame.ownerId && paidGame.childProfile && !paidGame.familyChildId && isAfterPayment(statusOf(paidGame))) {
-      await bindCheckoutFamilyChild(tx, { gameId: paidGame.id, familyChildId: null, ownerId: paidGame.ownerId, displayName: paidGame.childProfile.displayName });
-    }
     // Deliberately no enqueue here. `c.jobs` runs the handler in the calling
     // request, so this line used to hold the PSP's webhook open for the whole
     // pipeline — dozens of renders, judgements and retries, none of which are

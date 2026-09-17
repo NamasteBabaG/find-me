@@ -282,6 +282,16 @@
 .travel-passport[data-open=false] .travel-passport__toolbar, .travel-passport[data-open=false] .travel-passport__reader-footer { visibility: hidden; }
 .travel-passport__memory-actions { display: flex; align-items: center; justify-content: center; gap: var(--space-0-5); margin-top: auto; }
 .travel-passport__memory > * { flex-shrink: 0; }
+/* Keep the actions on the paper: the print yields to real text/button heights,
+   rather than painting a fixed-height image through the bottom of the leaf. */
+@media (min-width: 761px) {
+  .travel-passport__memory > .travel-passport__photo { flex: 1 1 0; min-height: 0; max-height: calc(var(--book-height) * .32 + 44px); }
+  .travel-passport__memory .travel-passport__enlarge { height: 100%; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; }
+  .travel-passport__memory .travel-passport__photo img,
+  .travel-passport__memory .travel-passport__photo-wait { height: 100%; min-height: 0; }
+  .travel-passport__memory .passport-memory-fit { max-height: 100%; }
+  .travel-passport__memory-actions { margin-top: var(--space-1); }
+}
 .travel-passport__choose { min-height: var(--touch-min); font-size: var(--fs-50); padding-inline: var(--space-1); line-height: var(--lh-100); max-width: 48%; }
 .travel-passport[dir=rtl] .travel-passport__opening-cover { --cover-shift: 50%; }
 .travel-passport__book[data-opening] .travel-passport__page { animation: passport-reveal 600ms var(--ease-out) both; }
@@ -296,6 +306,19 @@
   .travel-passport__collection-head { margin-bottom: var(--space-1); }
   .travel-passport__collection-note { font-size: var(--fs-50); }
   .travel-passport__leaf { padding-block: var(--space-2) var(--space-3); }
+  .travel-passport__missing { height: 88px; }
+  .travel-passport__collection-note { display: none; }
+  .travel-passport__page-head h2, .travel-passport__collection-head h3 { font-size: var(--fs-300); }
+  .travel-passport__stamp { padding-block: var(--space-0-5); }
+  .travel-passport__toolbar { height: 50px; }
+  .travel-passport__toolbar label { font-size: 0; gap: 0; }
+  .travel-passport__reader-footer { padding-top: var(--space-1); }
+  .travel-passport__place { flex-basis: var(--touch-min); min-height: var(--touch-min) !important; padding: var(--space-0-5); }
+  .travel-passport__reader-status { line-height: var(--lh-50); }
+  .travel-passport__page-head .travel-passport__eyebrow,
+  .travel-passport__collection-head .travel-passport__eyebrow { display: none; }
+  .travel-passport__page-head h2, .travel-passport__collection-head h3 { line-height: var(--lh-100); }
+  .travel-passport__items img { width: 48px; }
 }
 @media (max-width: 760px) {
   .travel-passport { --book-height: clamp(488px, calc(100svh - 248px), 560px); --leaf-width: min(100%, 360px); max-width: 400px; }
@@ -359,7 +382,7 @@
 }
 @media (max-width: 760px) and (max-height: 780px) {
   .travel-passport__photo { width: 160px; }
-  .travel-passport__photo img, .travel-passport__photo-wait { height: 106px; }
+  .travel-passport__photo img, .travel-passport__photo-wait { height: 90px; }
   .travel-passport__items img { width: 48px; }
   .travel-passport__missing { height: 86px; }
   .travel-passport__collection-head h3 { font-size: var(--fs-200); }
@@ -469,8 +492,32 @@
   .travel-passport__item > .album__crop { width: 58px; }
   .travel-passport__photo .passport-memory-fit { width: min(100%, calc(125px * var(--memory-aspect))); }
 }
-@media (min-width: 761px) and (max-height: 740px) { .travel-passport__item > .album__crop { width: 60px; } }
+@media (min-width: 761px) and (max-height: 740px) {
+  .travel-passport__item > .album__crop { width: 48px; }
+  .travel-passport__item { line-height: var(--lh-50); }
+  .travel-passport__item > strong { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
 @media (max-width: 760px) and (max-height: 780px) {
   .travel-passport__item > .album__crop { width: 48px; }
-  .travel-passport__photo .passport-memory-fit { width: min(100%, calc(106px * var(--memory-aspect))); }
+  .travel-passport__photo .passport-memory-fit { width: min(100%, calc(90px * var(--memory-aspect))); }
+}
+/* Measure the contents as well as the outer book. A non-scrolling shell can
+   still clip its second row; keep all six keepsakes inside the short leaf. */
+@media (max-width: 760px) {
+  .travel-passport__page-head h2 { font-size: var(--fs-300); line-height: var(--lh-100); }
+  .travel-passport__collection-head h3 { line-height: var(--lh-100); }
+  .travel-passport__enlarge > span { line-height: var(--lh-50); }
+  .travel-passport__stamp { line-height: var(--lh-50); }
+  .travel-passport__item { line-height: var(--lh-50); }
+}
+@media (max-width: 760px) and (max-height: 700px) {
+  .travel-passport__page-head { margin-bottom: var(--space-0-5); }
+  .travel-passport__photo { width: 120px; padding-bottom: var(--space-0-5); }
+  .travel-passport__photo img, .travel-passport__photo-wait { height: 64px; }
+  .travel-passport__photo .passport-memory-fit { width: min(100%, calc(64px * var(--memory-aspect))); }
+  .travel-passport__item { gap: 2px; }
+  .travel-passport__item > strong { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .travel-passport__items img, .travel-passport__item > .album__crop { width: 36px; }
+  .travel-passport__rarity { line-height: 12px; }
+  .travel-passport__collection-head { padding-top: 0; margin-bottom: var(--space-0-5); }
 }

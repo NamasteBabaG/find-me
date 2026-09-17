@@ -26,6 +26,23 @@ async function child(ownerId = "parent", displayName = "Same name") {
 }
 const select = (game: { id: string; draftToken: string | null }, familyChildId: string | null, actorId: string | null = "parent") => chooseDraftChild(db, { gameId: game.id, draftToken: game.draftToken, actorId, familyChildId, name: "New child", ageYears: 5 });
 describe("family identity is separate from rendering identity", () => {
+  it("repairs old paid games once, without merging same-name children or claiming another parent's game", async () => {
+    const games = await Promise.all([draft(), draft(), draft("other"), draft()]);
+    for (const [i, game] of games.entries()) {
+      const profile = await db.childProfile.create({ data: { id: `profile-${game.id}`, ownerId: game.ownerId, displayName: "Same name" } });
+      await db.game.update({ where: { id: game.id }, data: { childProfileId: profile.id, status: "READY" } });
+      if (i < 3) await db.order.create({ data: { id: `order-${game.id}`, gameId: game.id, userId: game.ownerId!, paymentStatus: "PAID", amountAgorot: 1, provider: "mock", packageTier: "ONE_WORLD" } });
+    }
+    const first = await familyOverview(db, "parent");
+    for (const game of games.slice(0, 2)) expect(first.some(c => c.games.some(g => g.id === game.id))).toBe(true);
+    const linked = await Promise.all(games.map(g => db.game.findUniqueOrThrow({ where: { id: g.id } })));
+    expect(linked[0]!.familyChildId).toMatch(/^fam_[a-z0-9]{20}$/);
+    expect(linked[0]!.familyChildId).not.toBe(linked[1]!.familyChildId);
+    expect(linked[2]!.familyChildId).toBeNull(); expect(linked[3]!.familyChildId).toBeNull();
+    const count = await db.familyChild.count();
+    expect(await familyOverview(db, "parent")).toEqual(first);
+    expect(await db.familyChild.count()).toBe(count);
+  });
   it("resumes only live, unpaid drafts belonging to this parent", async () => {
     const own = await draft(), foreign = await draft("other"), removed = await draft(), paid = await draft();
     await db.game.update({ where: { id: removed.id }, data: { deletedAt: new Date() } });

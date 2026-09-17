@@ -13,6 +13,7 @@ import { consumeMagicLink } from "../auth.service";
 import { attachPhoto } from "../create-flow.service";
 import { checkPhoto } from "../asset.service";
 import type { Container } from "../container";
+import { familyOverview } from "../family.service";
 
 /**
  * What happens between two writes.
@@ -79,6 +80,26 @@ async function paidOrder(suffix: string, gameStatus: string, paymentStatus: stri
 const statusOfGame = async (gameId: string) => (await db.game.findUniqueOrThrow({ where: { id: gameId }, select: { status: true } })).status;
 
 describe("a payment recorded while its game was left behind (A01)", () => {
+  it("commits payment even if family binding fails, then repairs on the next account read", async () => {
+    const { orderId, gameId } = await paidOrder("family-deferred", "CHECKOUT_PENDING", "PENDING");
+    const game = await db.game.findUniqueOrThrow({ where: { id: gameId } });
+    await db.childProfile.create({ data: { id: `profile-${gameId}`, ownerId: game.ownerId, displayName: "Fixture child" } });
+    await db.game.update({ where: { id: gameId }, data: { childProfileId: `profile-${gameId}` } });
+    const original = db.$transaction;
+    // The actual SQLite money/status transaction still runs. Only the display
+    // identity delegate fails, including when old code calls it inside payment.
+    db.$transaction = (async (callback: (tx: unknown) => Promise<unknown>, options: unknown) => original.call(db, async tx => callback(new Proxy(tx, {
+      get(target, key) { if (key === "familyChild") return new Proxy(target.familyChild, { get() { return async () => { throw new Error("family-write-unavailable"); }; } }); return Reflect.get(target, key); },
+    })), options as never)) as typeof db.$transaction;
+    try {
+      expect(await handlePaymentWebhook(container({ payment: payment(orderId, "ev-family-deferred") as unknown as Container["payment"] }), "", {})).toMatchObject({ status: 200 });
+    } finally { db.$transaction = original; }
+    expect((await db.order.findUniqueOrThrow({ where: { id: orderId } })).paymentStatus).toBe("PAID");
+    expect(await statusOfGame(gameId)).toBe("PAID");
+    expect(await db.paymentEvent.count({ where: { orderId } })).toBe(1);
+    expect((await db.game.findUniqueOrThrow({ where: { id: gameId } })).familyChildId).toBeNull();
+    expect((await familyOverview(db, game.ownerId!)).some(c => c.games.some(g => g.id === gameId))).toBe(true);
+  });
   it("finishes the game on the next delivery instead of answering 'already paid' for ever", async () => {
     // Exactly the state an interruption between the two writes leaves behind:
     // the money is on the order, the game never moved, no event was recorded.

@@ -12,6 +12,9 @@ import { ownerPassport, updatePassportPage } from "../passport.service";
 import { managePassportShare, passportSharePreview, sharedPassport, sharedPassportMedia } from "../passport-share.service";
 import { ownerPassportMedia } from "../passport-media.service";
 import { LocalDiskStorage } from "@/infra/storage/local";
+import { hashToken } from "@/lib/ids";
+import { deleteGame } from "../game.service";
+import type { Container } from "../container";
 
 let scratch: string, db: PrismaClient, storage: LocalDiskStorage;
 const owner = "passport-owner", secret = "passport-test-purpose-secret-only";
@@ -54,6 +57,40 @@ async function seed(finds = 3, itemCount = 2) {
 }
 
 describe("passport authorization, preferences and live revocable sharing", () => {
+  it("isolates old-format games and gives duplicate purchases distinct chapter labels", async () => {
+    const a = await seed(), b = await seed(), old = await seed();
+    await db.game.update({ where: { id: b.config.gameId }, data: { familyChildId: a.child.id } });
+    // A legitimate legacy format has no adventure attachment at all.
+    delete old.config.adventure;
+    await db.game.update({ where: { id: old.config.gameId }, data: { familyChildId: a.child.id, configJson: JSON.stringify(old.config) } });
+    const book = await ownerPassport(db, owner, a.child.id);
+    expect(book.worlds).toHaveLength(2);
+    expect(new Set(book.worlds.map(w => w.title)).size).toBe(2);
+  });
+  it("stores only a random token hash, survives session-key rotation, and expires", async () => {
+    const f = await seed(), share = await managePassportShare(container(), owner, f.child.id, "enable", "Explorer");
+    const token = new URL(share.url!).hash.slice(1), raw = token.split(".")[1]!;
+    const saved = await db.passportShare.findUniqueOrThrow({ where: { familyChildId: f.child.id } });
+    expect(saved.tokenHash).toBe(hashToken(raw)); expect(JSON.stringify(saved)).not.toContain(raw);
+    expect(saved.expiresAt.getTime() - saved.createdAt.getTime()).toBeCloseTo(30 * 86400_000, -2);
+    expect(await managePassportShare(container(), owner, f.child.id, "status", "Explorer")).toEqual({ active: true, url: null });
+    expect(await sharedPassport({ ...container(), secret: "rotated-session-secret" }, token)).toEqual(await sharedPassport(container(), token));
+    await db.passportShare.update({ where: { id: saved.id }, data: { expiresAt: new Date(Date.now() - 1) } });
+    await expect(sharedPassport(container(), token)).rejects.toThrow();
+    expect(await managePassportShare(container(), owner, f.child.id, "status", "Explorer")).toEqual({ active: false, url: null });
+  });
+  it("deleting the last adventure permanently revokes the old link even after a new purchase", async () => {
+    const f = await seed(), share = await managePassportShare(container(), owner, f.child.id, "enable", "Explorer");
+    const token = new URL(share.url!).hash.slice(1);
+    const c = { ...container(), analytics: { track() {} } } as unknown as Container;
+    expect(await deleteGame(c, f.config.gameId, { type: "USER", id: owner }, owner)).toBe(true);
+    expect((await db.passportShare.findUniqueOrThrow({ where: { familyChildId: f.child.id } })).revokedAt).not.toBeNull();
+    const next = await seed();
+    await db.game.update({ where: { id: next.config.gameId }, data: { familyChildId: f.child.id } });
+    await expect(sharedPassport(container(), token)).rejects.toThrow();
+    const newShare = await managePassportShare(container(), owner, f.child.id, "enable", "Explorer");
+    expect(newShare.url).not.toBe(share.url);
+  });
   it("rejects an invalid persisted progress revision rather than inventing achievements", async () => {
     const f = await seed();
     await db.adventureAlbumProgress.update({ where: { gameId: f.config.gameId }, data: { revision: 0 } });

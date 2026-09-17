@@ -40,6 +40,7 @@ function game(styleVersion = FIXED_WORLD_STYLE_VERSION, status = "MANUAL_REVIEW"
 }
 function setup(row = game()) {
   const db = {
+    $executeRaw: vi.fn().mockResolvedValue(0),
     game: { findUnique: vi.fn().mockResolvedValue(row), findUniqueOrThrow: vi.fn().mockResolvedValue(row), findFirst: vi.fn().mockResolvedValue(row), findMany: vi.fn().mockResolvedValue([row]), update: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
     generationJob: { findUnique: vi.fn().mockResolvedValue({ id: "job_game", gameId: "game", status: "DONE", stepsJson: "{}" }), create: vi.fn(), update: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
     childProfile: { findUniqueOrThrow: vi.fn(), update: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },

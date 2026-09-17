@@ -1,15 +1,15 @@
 import sharp from "sharp";
 import { Prisma } from "@prisma/client";
-import { hmacSign, newId, safeEqual } from "@/lib/ids";
+import { hashToken, hmacSign, newId, newSecretToken, safeEqual } from "@/lib/ids";
 import type { Container } from "./container";
 import { passportSources, PassportAccessError } from "./passport.service";
-import { projectPassport, type PassportView } from "@/domain/passport/passport";
+import { distinguishPassportWorlds, projectPassport, type PassportView } from "@/domain/passport/passport";
 import { ownerPassportMedia } from "./passport-media.service";
 
 type C = Pick<Container, "db" | "secret" | "appUrl" | "storage">;
-type Share = { id: string; familyChildId: string; alias: string; createdAt: Date; revokedAt: Date | null };
-function tokenFor(c: Pick<C, "secret">, share: Share) { return `${share.id}.${hmacSign(`passport-v1:${share.id}:${share.familyChildId}:${share.createdAt.getTime()}`, c.secret)}`; }
-export function passportShareUrl(c: Pick<C, "secret" | "appUrl">, share: Share) { return `${new URL("/passport", c.appUrl)}#${tokenFor(c, share)}`; }
+export const PASSPORT_SHARE_LIFETIME_MS = 30 * 24 * 60 * 60_000;
+type Share = { expiresAt: Date; revokedAt: Date | null };
+const active = (row: Share | null) => Boolean(row && !row.revokedAt && row.expiresAt.getTime() > Date.now());
 
 export async function managePassportShare(c: C, ownerId: string, childId: string, operation: "status" | "enable" | "rotate" | "revoke", alias: string) {
   // The UI asks again, but the server is the ownership boundary.
@@ -17,32 +17,42 @@ export async function managePassportShare(c: C, ownerId: string, childId: string
   if (!child) throw new PassportAccessError();
   if (operation === "status") {
     const row = await c.db.passportShare.findUnique({ where: { familyChildId: childId } });
-    return { active: Boolean(row && !row.revokedAt), url: row && !row.revokedAt ? passportShareUrl(c, row) : null };
+    // A capability is displayed once, not recoverable from a hash or session key.
+    return { active: active(row), url: null };
   }
   return c.db.$transaction(async tx => {
     const fenced = await tx.familyChild.updateMany({ where: { id: childId, ownerId, deletedAt: null }, data: { displayName: child.displayName } });
     if (fenced.count !== 1) throw new PassportAccessError();
     const previous = await tx.passportShare.findUnique({ where: { familyChildId: childId } });
     if (operation === "revoke") { await tx.passportShare.updateMany({ where: { familyChildId: childId, revokedAt: null }, data: { revokedAt: new Date() } }); return { active: false, url: null }; }
-    if (operation === "enable" && previous && !previous.revokedAt) return { active: true, url: passportShareUrl(c, previous) };
+    if (operation === "enable" && active(previous)) return { active: true, url: null };
+    const hasAdventure = await tx.game.count({ where: { familyChildId: childId, ownerId, deletedAt: null,
+      status: { notIn: ["CANCELLED", "DELETED", "REFUNDED"] }, orders: { some: { userId: ownerId, paymentStatus: "PAID" } } } });
+    if (!hasAdventure) throw new PassportAccessError();
     // Rotating the row id invalidates every old media/data capability at once.
-    const data = { id: newId("ppr"), alias, createdAt: new Date(), revokedAt: null };
+    const secret = newSecretToken();
+    const data = { id: newId("ppr"), alias, tokenHash: hashToken(secret), createdAt: new Date(), expiresAt: new Date(Date.now() + PASSPORT_SHARE_LIFETIME_MS), revokedAt: null };
     const row = await tx.passportShare.upsert({ where: { familyChildId: childId }, create: { ...data, familyChildId: childId }, update: data });
-    return { active: true, url: passportShareUrl(c, row) };
+    return { active: true, url: `${new URL("/passport", c.appUrl)}#${row.id}.${secret}` };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
 async function resolve(c: C, token: string) {
   if (!/^ppr_[a-z0-9]{20}\.[A-Za-z0-9_-]{43}$/.test(token)) throw new PassportAccessError();
   const row = await c.db.passportShare.findUnique({ where: { id: token.split(".")[0]! }, include: { child: true } });
-  if (!row || row.revokedAt || row.child.deletedAt || !safeEqual(tokenFor(c, row), token)) throw new PassportAccessError();
+  if (!row || !active(row) || row.child.deletedAt || !safeEqual(row.tokenHash, hashToken(token.split(".")[1]!))) throw new PassportAccessError();
+  if (!await c.db.game.count({ where: { familyChildId: row.familyChildId, ownerId: row.child.ownerId, deletedAt: null,
+    status: { notIn: ["CANCELLED", "DELETED", "REFUNDED"] }, orders: { some: { userId: row.child.ownerId, paymentStatus: "PAID" } } } })) {
+    await c.db.passportShare.updateMany({ where: { id: row.id, revokedAt: null }, data: { revokedAt: new Date() } });
+    throw new PassportAccessError();
+  }
   return row;
 }
 type Media = { childId: string; gameId: string; board: string; kind: "photo" | "discovery"; id: string } | { kind: "avatar"; assetId: string; gameId: string };
 async function projection(c: C, ownerId: string, childId: string, alias: string, capability: string) {
   const { sources } = await passportSources(c.db, ownerId, childId);
   const media = new Map<string, Media>();
-  const add = (input: Media) => { const opaque = hmacSign(`passport-media:${capability}:${JSON.stringify(input)}`, c.secret); media.set(opaque, input); return `passport-media:${opaque}`; };
+  const add = (input: Media) => { const opaque = hmacSign(`passport-media:${JSON.stringify(input)}`, capability); media.set(opaque, input); return `passport-media:${opaque}`; };
   const worlds = sources.flatMap((source, n) => {
     const chapters = projectPassport(source.config, source.progress, source.preferences,
       (board, kind, id) => add({ childId, gameId: source.game.id, board, kind, id }), false);
@@ -54,7 +64,7 @@ async function projection(c: C, ownerId: string, childId: string, alias: string,
       })),
     }));
   });
-  const book: PassportView = { name: alias, preparing: 0, worlds };
+  const book: PassportView = { name: alias, preparing: 0, worlds: distinguishPassportWorlds(worlds) };
   if (sources[0]) book.avatarUrl = add({ kind: "avatar", gameId: sources[0].game.id, assetId: sources[0].config.adventure!.avatarAssetId });
   return { book, media };
 }

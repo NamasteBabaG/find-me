@@ -55,6 +55,10 @@ export async function ownerAdventureAlbum(db: Database, ownerId: string, gameId:
  * the same Serializable transaction (see adventure-album-delete.test.ts).
  */
 export async function deleteAdventureAlbum(tx: Pick<Prisma.TransactionClient, "$executeRaw">, gameId: string): Promise<void> {
+  // Deletion changes the scope the parent consented to share. Revoke even when
+  // other adventures remain; a later purchase cannot revive an old capability.
+  await tx.$executeRaw(Prisma.sql`UPDATE "PassportShare" SET "revokedAt" = ${new Date()}
+    WHERE "revokedAt" IS NULL AND "familyChildId" IN (SELECT "familyChildId" FROM "Game" WHERE "id" = ${gameId})`);
   await tx.$executeRaw(Prisma.sql`DELETE FROM "PassportPagePreference" WHERE "gameId" = ${gameId}`);
   await tx.$executeRaw(Prisma.sql`DELETE FROM "AdventureAlbumProgress" WHERE "gameId" = ${gameId}`);
 }

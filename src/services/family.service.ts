@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
+import { createHash } from "node:crypto";
 import { GAME_STATUSES, isEditableDraft, type GameStatus } from "@/domain/order-state";
 import { validChildAge } from "@/domain/child-appearance";
 import { normalizeChildName } from "@/lib/copy";
@@ -7,6 +8,7 @@ import { flowError, type FlowResult } from "@/i18n/errors";
 
 export async function listFamilyChildren(db: PrismaClient, ownerId: string) {
   if (!ownerId) return [];
+  await reconcilePaidFamilyChildren(db, ownerId);
   return db.familyChild.findMany({
     where: { ownerId, deletedAt: null }, orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     select: { id: true, displayName: true },
@@ -30,6 +32,7 @@ export async function familyDraftToResume(db: PrismaClient, ownerId: string, gam
 /** Only this child's purchases, not the parent's pooled world entitlements. */
 export async function familyOverview(db: PrismaClient, ownerId: string, childId?: string) {
   if (!ownerId) return [];
+  await reconcilePaidFamilyChildren(db, ownerId);
   return db.familyChild.findMany({
     where: { ownerId, deletedAt: null, ...(childId ? { id: childId } : {}) },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
@@ -42,6 +45,27 @@ export async function familyOverview(db: PrismaClient, ownerId: string, childId?
 }
 
 class ChildSelectionConflict extends Error {}
+
+/** A repeatable, owner-fenced repair for pre-passport purchases or an interrupted
+ * post-payment binding. Never merge siblings using a name/photo. The SQL rollout
+ * uses this same per-game identifier. MD5 here is an ID, not a secret or proof. */
+export async function reconcilePaidFamilyChildren(db: PrismaClient, ownerId: string, gameId?: string) {
+  if (!ownerId) return;
+  const games = await db.game.findMany({ where: { ownerId, familyChildId: null, deletedAt: null,
+    ...(gameId ? { id: gameId } : {}), status: { notIn: ["CANCELLED", "REFUNDED", "DELETED"] },
+    orders: { some: { userId: ownerId, paymentStatus: "PAID" } } }, select: { id: true } });
+  for (const game of games) {
+    await db.$transaction(async tx => {
+      const current = await tx.game.findFirst({ where: { id: game.id, ownerId, familyChildId: null, deletedAt: null,
+        status: { notIn: ["CANCELLED", "REFUNDED", "DELETED"] }, orders: { some: { userId: ownerId, paymentStatus: "PAID" } } }, include: { childProfile: true } });
+      if (!current?.childProfile || current.childProfile.ownerId !== ownerId || current.childProfile.deletedAt) return;
+      const id = `fam_${createHash("md5").update(`passport-family:${game.id}`).digest("hex").slice(0, 20)}`;
+      await tx.familyChild.upsert({ where: { id }, create: { id, ownerId, displayName: current.childProfile.displayName }, update: {} });
+      const linked = await tx.game.updateMany({ where: { id: game.id, ownerId, familyChildId: null, deletedAt: null, updatedAt: current.updatedAt }, data: { familyChildId: id } });
+      if (linked.count !== 1) throw new ChildSelectionConflict();
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }
+}
 
 /** Session identity, not the draft cookie, authorizes attaching a family child. */
 export async function chooseDraftChild(db: PrismaClient, input: {

@@ -15,6 +15,18 @@ export type PassportPageView = {
 export type PassportWorldView = { id: string; title: string; pages: PassportPageView[] };
 export type PassportView = { name: string; avatarUrl?: string; worlds: PassportWorldView[]; preparing: number };
 
+/** Repeated purchases stay separate, with distinct reader labels. No merging
+ * progress or silently dropping a paid adventure to hide a duplicate title. */
+export function distinguishPassportWorlds(worlds: PassportWorldView[]): PassportWorldView[] {
+  const totals = new Map<string, number>(), seen = new Map<string, number>();
+  for (const world of worlds) totals.set(world.title, (totals.get(world.title) ?? 0) + 1);
+  return worlds.map(world => {
+    const n = (seen.get(world.title) ?? 0) + 1;
+    seen.set(world.title, n);
+    return totals.get(world.title)! > 1 ? { ...world, title: `${world.title} · ${n}` } : world;
+  });
+}
+
 /** Last find at first completion is stable: progress is an ordered, unique union. */
 export function passportPhoto(progress: AdventureProgress, boardSlug: string, preferred?: string | null) {
   const board = progress.book.boards.find(b => b.boardSlug === boardSlug);
