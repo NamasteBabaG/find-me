@@ -122,7 +122,16 @@ export function PassportBook({ book, mode = "owner", onPhotoSelect, onPlay, rend
     <div className="travel-passport__reader">
       <header className="travel-passport__toolbar" inert={!open} aria-hidden={!open}>
         <button type="button" className="fm-btn fm-btn--ghost" onClick={() => { stopAnimation(); setOpen(false); requestAnimationFrame(() => coverButton.current?.focus({ preventScroll: true })); }}>{copy.close}</button>
-        <label className="fm-field">{copy.worlds}<select className="fm-input" value={world?.id} onChange={e => { stopAnimation(); setWorldId(e.target.value); setPageId(""); setMessage(""); setDetailId(null); }}>{book.worlds.map(w => <option key={w.id} value={w.id}>{w.title}</option>)}</select></label>
+        {/* Worlds are the passport's dividers, so they look like dividers: index
+            tabs standing on the head of the book, the current one joined to the
+            paper. A <select> floating above the corner read as a form control
+            from another page and gave no sense of where you were in the book.
+            Plain buttons with aria-current, not a tab/tablist pattern: nothing
+            here is a tab panel, and a real tablist would owe arrow-key roving
+            that would then argue with the arrow keys that turn pages. */}
+        <nav className="travel-passport__tabs" aria-label={copy.worlds}>
+          {book.worlds.map(w => <button key={w.id} type="button" className={`travel-passport__tab${w.id === world?.id ? " is-current" : ""}`} aria-current={w.id === world?.id ? "true" : undefined} onClick={() => { if (w.id === world?.id) return; stopAnimation(); setWorldId(w.id); setPageId(""); setMessage(""); setDetailId(null); }}>{w.title}</button>)}
+        </nav>
       </header>
       <div className="travel-passport__frame">
         {!open ? <div className="travel-passport__cover">{coverArt}{world ? <button ref={coverButton} className="fm-btn fm-btn--lg" type="button" onClick={openBook}>{copy.open}<Chevron right={dir === "ltr"} /></button> : <p>{book.preparing ? copy.preparing : copy.empty}</p>}</div> : <div className="travel-passport__book" data-opening={opening || undefined} data-turn={turn?.direction} onPointerDown={pointerStart} onPointerMove={pointerMove} onPointerUp={pointerEnd} onPointerCancel={() => { gesture.current = null; }} onClickCapture={e => { if (suppressClick.current) { e.preventDefault(); e.stopPropagation(); suppressClick.current = false; } }} onKeyDown={e => {

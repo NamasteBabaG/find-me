@@ -57,11 +57,16 @@ describe("passport book interaction", () => {
     expect(screen.getByRole("heading", { name: "Place 3" })).toBeTruthy();
     expect(JSON.parse(sessionStorage.getItem("passport-cursor:child")!).page).toBe("p3");
   });
-  it("honors physical Hebrew arrow direction and does not hijack select navigation", () => {
+  it("honors physical Hebrew arrow direction and leaves the world tabs alone", () => {
     mount({}, "he"); open("he"); finish();
     fireEvent.keyDown(screen.getByRole("heading", { name: "Place 1" }), { key: "ArrowLeft" }); finish();
     expect(screen.getByRole("heading", { name: "Place 2" })).toBeTruthy();
-    fireEvent.keyDown(screen.getByRole("combobox"), { key: "ArrowLeft" });
+    // Worlds are index tabs, not a form control: a plain button marked current,
+    // so no tab/tablist arrow-roving can argue with the arrows that turn pages.
+    const tab = screen.getByRole("button", { name: "My world" });
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(tab.getAttribute("aria-current")).toBe("true");
+    fireEvent.keyDown(tab, { key: "ArrowLeft" }); finish();
     expect(screen.getByRole("heading", { name: "Place 2" })).toBeTruthy();
     fireEvent.keyDown(screen.getByRole("heading", { name: "Place 2" }), { key: "ArrowRight" }); finish();
     expect(screen.getByRole("heading", { name: "Place 1" })).toBeTruthy();
@@ -72,6 +77,23 @@ describe("passport book interaction", () => {
     fireEvent.click(screen.getByRole("button", { name: "Next page" }));
     expect(screen.getByRole("heading", { name: "Place 2" })).toBeTruthy();
     expect(view.container.querySelector(".travel-passport__turning-leaf")).toBeNull();
+  });
+  it("switches divider worlds during a turn without keeping the old leaf or cursor", () => {
+    const second = { ...book.worlds[0]!, id: "second", title: "Another world", pages: book.worlds[0]!.pages.map(p => ({ ...p, id: `second-${p.id}`, title: `Second ${p.title}` })) };
+    const view = mount({ book: { ...book, worlds: [...book.worlds, second] }, cursorKey: "child" });
+    open(); finish();
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    const back = view.container.querySelector(".travel-passport__turn-back")!;
+    expect(back.textContent).not.toContain("Place");
+    expect(back.textContent).not.toContain("My world");
+    fireEvent.click(screen.getByRole("button", { name: "Another world" }));
+    expect(view.container.querySelector(".travel-passport__turning-leaf")).toBeNull();
+    expect(screen.getByRole("heading", { name: "Second Place 1" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Another world" }).getAttribute("aria-current")).toBe("true");
+    expect(screen.getByRole("button", { name: "My world" }).getAttribute("aria-current")).toBeNull();
+    expect(JSON.parse(sessionStorage.getItem("passport-cursor:child")!)).toEqual({ world: "second", page: "second-p1" });
+    finish();
+    expect(screen.getByRole("heading", { name: "Second Place 1" })).toBeTruthy();
   });
   it.each(["shared", "demo"] as const)("keeps %s pages read-only even when an editing callback was supplied", mode => {
     mount({ mode, onPhotoSelect: vi.fn() }); open(); finish();

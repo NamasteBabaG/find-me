@@ -102,14 +102,38 @@
 .travel-passport__motto { font-size: var(--fs-100); line-height: var(--lh-200); margin: 0; opacity: 0.86; }
 
 /* ─── Reader chrome ───────────────────────────────────────────────────────── */
-.travel-passport__toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-1); height: 62px; padding: 0 var(--space-5) var(--space-1); }
-.travel-passport__toolbar label { max-width: 56%; min-width: 0; display: flex; gap: var(--space-1); align-items: center; font-size: var(--fs-50); color: var(--ink-2); white-space: nowrap; }
-.travel-passport__toolbar select { max-width: 100%; min-width: 0; background: var(--white); height: var(--touch-min); font-size: var(--fs-100); }
+.travel-passport__toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-1); height: 62px; padding: 0 var(--space-5); }
+.travel-passport__toolbar > .fm-btn { margin-bottom: var(--space-1); }
+/* Index tabs, standing on the head of the book. The current one is the same
+   paper as the page and loses its bottom edge so it joins the leaf below it;
+   the others are board, sunk a few pixels, the way a divider you have not
+   turned to sits lower in the stack. */
+.travel-passport__tabs { display: flex; align-items: flex-end; gap: var(--space-0-5); min-width: 0; max-width: 72%; overflow-x: auto; scrollbar-width: none; padding-inline-end: var(--space-1); }
+.travel-passport__tab {
+  flex: 0 1 auto; min-width: 0; min-height: var(--touch-min) !important;
+  max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: var(--space-1) var(--space-2) var(--space-2);
+  border: 0; cursor: pointer; font: inherit; font-family: var(--font-display); font-weight: 700; font-size: var(--fs-100);
+  border-radius: var(--radius-2) var(--radius-2) 0 0;
+  background: color-mix(in srgb, var(--night) 86%, var(--white));
+  color: color-mix(in srgb, var(--gold-light) 82%, var(--white));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--white) 14%, transparent);
+  transform: translateY(0);
+  transition: transform var(--dur-2) var(--ease-out), background var(--dur-2) var(--ease-out), color var(--dur-2) var(--ease-out);
+}
+.travel-passport__tab:hover:not(.is-current) { transform: translateY(calc(var(--space-0-5) * -1)); }
+.travel-passport__tab.is-current {
+  background: var(--pp-paper); color: var(--ink); transform: translateY(var(--space-1)); padding-bottom: var(--space-3);
+  box-shadow: inset 0 1px 0 var(--white), 0 -2px 6px color-mix(in srgb, var(--ink) 14%, transparent);
+}
 .travel-passport__frame { position: relative; padding-inline: var(--space-5); }
 
 /* ─── The open book ───────────────────────────────────────────────────────── */
 .travel-passport__book {
   box-sizing: border-box; position: relative; height: var(--book-height); perspective: 2200px;
+  /* Keep the leaf and its faces in the same 3D context. Flattening here can
+     paint the front's children backwards even when both faces hide their backs. */
+  transform-style: preserve-3d;
   /* The case has to be SEEN. An 8px rim read as a border around a white card;
      the board now shows a real margin on every side, wider at the foot where a
      book's boards always overhang most. */
@@ -167,22 +191,20 @@
 .travel-passport__page-head > p:last-child, .travel-passport__collection-head p { color: var(--ink-3); font-size: var(--fs-100); }
 .travel-passport__page-head .travel-passport__eyebrow, .travel-passport__collection-head .travel-passport__eyebrow { color: var(--ink-4); }
 
-/* ─── The picture: a print taped into the book ─────────────────────────────
-   Kept white and square-shouldered so the illustration is the only colour in
-   it, and tilted a degree or two so it reads as placed by hand. */
+/* ─── The picture: a print mounted directly onto the paper ─────────────── */
+/* The picture of the child IS the page. It was a small snapshot inside a white
+   polaroid with a strip of tape on top — two layers of costume around the one
+   thing a child opens the book to see, and the frame and the tape each stole
+   width from it. The print is mounted straight into the paper now, held by a
+   thin ink rule and its own shadow, and it is half again as large. */
 .travel-passport__photo {
-  position: relative; width: min(100%, calc(var(--book-height) * 0.47 + var(--space-2)));
-  margin-inline: auto; padding: var(--space-1) var(--space-1) var(--space-1);
-  background: var(--white); box-shadow: var(--shadow-2); border: 1px solid var(--line);
-  transform: rotate(-1.6deg);
+  position: relative; width: min(100%, calc(var(--book-height) * 0.66));
+  margin-inline: auto; padding: 0;
+  background: var(--white); border: 0; border-radius: var(--radius-1, 8px);
+  box-shadow: 0 0 0 1px var(--line), var(--shadow-2);
+  transform: none; overflow: hidden;
 }
-.travel-passport__memory > .travel-passport__photo::before {
-  content: ""; position: absolute; width: 66px; height: var(--space-3); top: calc(var(--space-1) * -1); left: calc(50% - 33px);
-  background: color-mix(in srgb, var(--sun-soft) 82%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gold) 26%, transparent);
-  transform: rotate(4deg); z-index: 1; pointer-events: none;
-}
-.travel-passport__photo img { display: block; width: 100%; height: calc(var(--book-height) * 0.32); object-fit: contain; background: var(--paper-2); }
+.travel-passport__photo img { display: block; width: 100%; height: calc(var(--book-height) * 0.37); object-fit: cover; background: var(--paper-2); }
 .travel-passport__photo-wait { min-height: 0; height: calc(var(--book-height) * 0.36); display: grid; align-content: center; justify-items: center; text-align: center; padding: var(--space-1); background: var(--paper-2); color: var(--ink-3); font-size: var(--fs-100); }
 .travel-passport__photo-wait > span { font-size: var(--fs-600); color: var(--gold-light); }
 
@@ -191,18 +213,39 @@
    the ink instead of the stamp sitting on top like a badge, which is what the
    flat outlined pill read as. Green is `--leaf`, the same "found" green the
    game's discovery tray uses. */
+/* The stamp a place gives you. It was a flat outlined pill that read as a
+   button; a passport stamp is a struck seal — a round die on the left, a double
+   rule around everything, a hairline inside it, and the whole thing set down
+   off-square. It sits below the print on the paper. Green is `--leaf`, the same "found" green the
+   game's discovery tray uses, and `multiply` puts the ink INTO the paper. */
 .travel-passport__stamp {
   flex-shrink: 0; width: fit-content; max-width: 100%;
-  display: grid; grid-template-columns: auto 1fr; justify-items: center; align-items: center;
-  gap: 2px var(--space-1); padding: var(--space-1) var(--space-2);
+  display: grid; grid-template-columns: auto 1fr; align-items: center;
+  justify-items: start; gap: 0 var(--space-1);
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-1);
   border: 3px double var(--leaf-deep); color: var(--leaf-deep);
-  border-radius: 50% / 18%; margin: calc(var(--space-1) * -1) var(--space-0-5) var(--space-1) auto;
-  position: relative; transform: rotate(-6deg); background: transparent;
-  font-family: var(--font-display); font-weight: 800; font-size: var(--fs-100);
-  mix-blend-mode: multiply; opacity: 0.92;
+  /* On paper, never on the print. `multiply` is what makes the ink sink into
+     the page, and multiplying green over a photograph just makes it vanish —
+     the "I was here!" line disappeared into the sand. It sits below the
+     picture now, where the paper is, and where a stamp reads. */
+  border-radius: var(--radius-2); margin: var(--space-1) var(--space-2) var(--space-1) auto;
+  position: relative; transform: rotate(-7deg); background: transparent;
+  font-family: var(--font-display); font-weight: 900; font-size: var(--fs-200); line-height: var(--lh-100);
+  mix-blend-mode: multiply; opacity: 0.9; z-index: 2;
 }
-.travel-passport__stamp > span:first-child { font-size: var(--fs-300); grid-row: 1 / span 2; }
-.travel-passport__stamp > span:last-child { font-size: var(--fs-50); font-weight: 600; opacity: 0.8; }
+/* The hairline a struck stamp leaves just inside its frame. */
+.travel-passport__stamp::before {
+  content: ""; position: absolute; inset: 2px; border: 1px solid currentColor;
+  border-radius: var(--radius-1, 8px); opacity: 0.45; pointer-events: none;
+}
+/* The die: the place's own mark, in a ring. */
+.travel-passport__stamp > span:first-child {
+  grid-row: 1 / span 2; display: grid; place-items: center;
+  width: var(--space-4); height: var(--space-4); border-radius: 50%;
+  box-shadow: inset 0 0 0 2px currentColor; font-size: var(--fs-200);
+}
+.travel-passport__stamp > strong { font-size: var(--fs-200); letter-spacing: -0.01em; }
+.travel-passport__stamp > span:last-child { font-size: var(--fs-50); font-weight: 700; opacity: 0.75; letter-spacing: 0.04em; }
 .travel-passport__progress { font-size: var(--fs-100); color: var(--ink-3); margin-block: var(--space-1); text-align: center; }
 
 /* ─── The keepsakes ──────────────────────────────────────────────────────── */
@@ -267,26 +310,37 @@
 .travel-passport[dir=rtl] .travel-passport__turning-leaf { transform-origin: right center; --flip: 180deg; }
 .travel-passport__book[data-turn=previous] .travel-passport__turning-leaf { inset-inline-start: 10px; inset-inline-end: auto; transform-origin: right center; --flip: 180deg; }
 .travel-passport[dir=rtl] .travel-passport__book[data-turn=previous] .travel-passport__turning-leaf { transform-origin: left center; --flip: -180deg; }
-.travel-passport__turn-face, .travel-passport__turn-back { position: absolute; inset: 0; backface-visibility: hidden; border-radius: var(--radius-1, 8px); padding: var(--space-4); background: linear-gradient(90deg, var(--pp-gutter), transparent 12%), var(--pp-grain), var(--pp-paper); overflow: hidden; box-shadow: 6px 6px var(--space-3) var(--pp-shadow); }
+/* Keep the two faces separate in 3D, hide their backs, and avoid clipping the
+   face containers. The rotating parent's opacity must also stay at 1: a fade
+   there flattens preserve-3d, making Hebrew visible backwards late in a turn. */
+.travel-passport__turn-face, .travel-passport__turn-back {
+  position: absolute; inset: 0; border-radius: var(--radius-1, 8px); padding: var(--space-4);
+  background: linear-gradient(90deg, var(--pp-gutter), transparent 12%), var(--pp-grain), var(--pp-paper);
+  box-shadow: 6px 6px var(--space-3) var(--pp-shadow);
+  backface-visibility: hidden; -webkit-backface-visibility: hidden;
+}
+.travel-passport__turn-face { transform: translateZ(1px); }
 .travel-passport__turn-face h3 { font-family: var(--font-display); font-weight: 900; font-size: var(--fs-500); margin: var(--space-2) 0 var(--space-4); }
-.travel-passport__turn-back { transform: rotateY(180deg); display: grid; place-items: center; background: linear-gradient(270deg, var(--pp-gutter), transparent 18%), var(--pp-grain), var(--pp-paper-warm); }
+/* The reverse is blank paper; it must not repeat the old page's writing. */
+.travel-passport__turn-back { transform: rotateY(180deg) translateZ(1px); display: grid; place-items: center; background: linear-gradient(270deg, var(--pp-gutter), transparent 18%), var(--pp-grain), var(--pp-paper-warm); }
 .travel-passport__turn-back span, .travel-passport__ghost-crest { font-size: 100px; color: color-mix(in srgb, var(--gold-light) 55%, transparent); }
 .travel-passport__opening-cover { inset-inline-end: 10px; transform-origin: left center; backface-visibility: hidden; --flip: -178deg; animation: passport-cover-open 900ms cubic-bezier(.25,.05,.2,1) both; }
 .travel-passport[dir=rtl] .travel-passport__opening-cover { transform-origin: right center; --flip: 178deg; }
 .travel-passport__opening-cover > .travel-passport__cover { margin: 0; width: 100%; height: 100%; backface-visibility: hidden; }
-@keyframes passport-leaf-turn { 0% { transform: rotateY(0); opacity: 1; } 85% { opacity: 1; } 100% { transform: rotateY(var(--flip)); opacity: 0; } }
+/* Never fade the 3D parent. React removes the settled leaf after 640ms. */
+@keyframes passport-leaf-turn { from { transform: rotateY(0); } to { transform: rotateY(var(--flip)); } }
 @keyframes passport-cover-open { 0% { transform: translateX(var(--cover-shift, -50%)) rotateY(0); opacity: 1; } 75% { opacity: 1; } 100% { transform: translateX(0) rotateY(var(--flip)); opacity: 0; } }
 @keyframes passport-page { from { opacity: .6; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes passport-mobile-page { from { opacity: .35; transform: translateX(var(--slide, -18px)); } to { opacity: 1; transform: translateX(0); } }
 
 .travel-passport[data-open=false] .travel-passport__toolbar, .travel-passport[data-open=false] .travel-passport__reader-footer { visibility: hidden; }
-.travel-passport__memory-actions { display: flex; align-items: center; justify-content: center; gap: var(--space-0-5); margin-top: auto; }
+.travel-passport__memory-actions { display: flex; align-items: center; justify-content: center; gap: var(--space-0-5); margin-top: auto; padding-inline: var(--space-4); }
 .travel-passport__memory > * { flex-shrink: 0; }
 /* Keep the actions on the paper: the print yields to real text/button heights,
    rather than painting a fixed-height image through the bottom of the leaf. */
 @media (min-width: 761px) {
-  .travel-passport__memory > .travel-passport__photo { flex: 1 1 0; min-height: 0; max-height: calc(var(--book-height) * .32 + 44px); }
-  .travel-passport__memory .travel-passport__enlarge { height: 100%; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; }
+  .travel-passport__memory > .travel-passport__photo { flex: 1 1 0; min-height: 0; max-height: calc(var(--book-height) * .37); }
+  .travel-passport__memory .travel-passport__enlarge { height: 100%; min-height: 0; display: block; }
   .travel-passport__memory .travel-passport__photo img,
   .travel-passport__memory .travel-passport__photo-wait { height: 100%; min-height: 0; }
   .travel-passport__memory .passport-memory-fit { max-height: 100%; }
@@ -296,8 +350,14 @@
 .travel-passport[dir=rtl] .travel-passport__opening-cover { --cover-shift: 50%; }
 .travel-passport__book[data-opening] .travel-passport__page { animation: passport-reveal 600ms var(--ease-out) both; }
 @keyframes passport-reveal { from { opacity: 0; } to { opacity: 1; } }
+/* The spread underneath used to change on the same frame as the click, so the
+   half that is NOT under the turning leaf snapped to its new contents before
+   the leaf had moved — the jump. It settles in now instead. It starts at 0.62
+   and not at 0, so the dark board never flashes through. */
+.travel-passport__book[data-turn] .travel-passport__page { animation: passport-settle 260ms var(--ease-out) both; }
+@keyframes passport-settle { from { opacity: 0.62; } to { opacity: 1; } }
 
-@media (max-height: 740px) and (min-width: 761px) {
+@media (max-height: 820px) and (min-width: 761px) {
   .travel-passport__cover { gap: var(--space-1); padding: var(--space-2); }
   .travel-passport__cover .travel-passport__avatar { width: 76px; height: 76px; }
   .travel-passport__cover .travel-passport__crest { display: none; }
@@ -306,12 +366,15 @@
   .travel-passport__collection-head { margin-bottom: var(--space-1); }
   .travel-passport__collection-note { font-size: var(--fs-50); }
   .travel-passport__leaf { padding-block: var(--space-2) var(--space-3); }
+  .travel-passport__memory > .travel-passport__photo { max-height: calc(var(--book-height) * .32); }
+  .travel-passport__stamp { margin-block: var(--space-0-5); }
+}
+@media (max-height: 740px) and (min-width: 761px) {
   .travel-passport__missing { height: 88px; }
   .travel-passport__collection-note { display: none; }
   .travel-passport__page-head h2, .travel-passport__collection-head h3 { font-size: var(--fs-300); }
   .travel-passport__stamp { padding-block: var(--space-0-5); }
   .travel-passport__toolbar { height: 50px; }
-  .travel-passport__toolbar label { font-size: 0; gap: 0; }
   .travel-passport__reader-footer { padding-top: var(--space-1); }
   .travel-passport__place { flex-basis: var(--touch-min); min-height: var(--touch-min) !important; padding: var(--space-0-5); }
   .travel-passport__reader-status { line-height: var(--lh-50); }
@@ -324,9 +387,9 @@
   .travel-passport { --book-height: clamp(488px, calc(100svh - 248px), 560px); --leaf-width: min(100%, 360px); max-width: 400px; }
   .travel-passport__cover { width: min(100%, 340px); padding: var(--space-3); }
   .travel-passport__toolbar { height: 50px; padding: 0 0 var(--space-0-5); gap: var(--space-0-5); }
-  .travel-passport__toolbar > button { font-size: var(--fs-50); padding-inline: var(--space-1); }
-  .travel-passport__toolbar label { font-size: 0; gap: 0; max-width: 57%; }
-  .travel-passport__toolbar select { font-size: var(--fs-50); min-height: var(--touch-min); height: var(--touch-min); }
+  .travel-passport__toolbar > .fm-btn { font-size: var(--fs-50); padding-inline: var(--space-1); margin-bottom: var(--space-0-5); }
+  .travel-passport__tabs { max-width: 68%; gap: 2px; padding-inline-end: 0; }
+  .travel-passport__tab { font-size: var(--fs-50); padding: var(--space-0-5) var(--space-1) var(--space-1); max-width: 128px; border-radius: var(--radius-1, 8px) var(--radius-1, 8px) 0 0; }
   .travel-passport__frame { padding-inline: 0; max-width: 340px; margin-inline: auto; }
   .travel-passport__book { height: var(--book-height); min-height: 488px; padding: var(--space-0-5); border-radius: var(--radius-1, 8px); touch-action: pan-y pinch-zoom; perspective: 1400px; }
   .travel-passport__spread { display: flex; flex-direction: column; }
@@ -343,9 +406,9 @@
   .travel-passport__page-head > .travel-passport__eyebrow, .travel-passport__collection-head > .travel-passport__eyebrow { display: none; }
   .travel-passport__page-head h2 { font-size: var(--fs-400); margin: 0; }
   .travel-passport__page-head > p:last-child { font-size: var(--fs-50); white-space: nowrap; }
-  .travel-passport__photo { width: 192px; padding: var(--space-0-5) var(--space-0-5) var(--space-1); }
+  .travel-passport__photo { width: 192px; padding: 0; }
   .travel-passport__photo img, .travel-passport__photo-wait { height: 125px; }
-  .travel-passport__stamp { display: flex; align-items: center; padding: var(--space-0-5) var(--space-1); margin: calc(var(--space-1) * -1) 2px 0 auto; font-size: var(--fs-50); min-height: 32px; }
+  .travel-passport__stamp { display: flex; align-items: center; padding: var(--space-0-5) var(--space-1); margin: var(--space-0-5) 2px 0 auto; font-size: var(--fs-50); min-height: 32px; }
   .travel-passport__stamp > span:last-child { display: none; }
   .travel-passport__stamp > span:first-child { font-size: var(--fs-200); }
   .travel-passport__progress { margin: var(--space-1) 0 0; font-size: var(--fs-50); }
@@ -417,8 +480,19 @@
 .travel-passport__fact > .album__crop { width: 128px; margin: auto; }
 .travel-passport__fact { background: var(--paper-2); border-radius: var(--radius-3); padding: var(--space-2); margin-top: var(--space-3); line-height: var(--lh-300); }
 .travel-passport__fact h4, .travel-passport__fact p { margin: 0 0 var(--space-1); }
-.travel-passport__enlarge { border: 0; padding: 0; background: transparent; color: inherit; width: 100%; cursor: zoom-in; }
-.travel-passport__enlarge > span { display: block; font: inherit; font-family: var(--font-kid); font-size: var(--fs-50); color: var(--ink-3); line-height: var(--lh-100); padding-top: var(--space-0-5); }
+.travel-passport__enlarge { border: 0; padding: 0; background: transparent; color: inherit; width: 100%; cursor: zoom-in; display: block; }
+/* "A closer look" belongs ON the print, not on a line of its own beneath it:
+   below the photo it took a whole row of the leaf and the stamp came down on
+   top of the words. Over the picture's own bottom edge it costs no extra row;
+   the stamp remains on the paper below it. */
+.travel-passport__photo .travel-passport__enlarge > span {
+  position: absolute; inset-inline: 0; bottom: 0; z-index: 1;
+  font: inherit; font-family: var(--font-kid); font-size: var(--fs-50); line-height: var(--lh-100);
+  color: var(--white); padding: var(--space-2) var(--space-1) var(--space-0-5);
+  background: linear-gradient(to top, color-mix(in srgb, var(--ink) 66%, transparent), transparent);
+  text-align: center; pointer-events: none;
+}
+.travel-passport__enlarge > span { display: block; font-size: var(--fs-50); color: var(--ink-3); line-height: var(--lh-100); padding-top: var(--space-0-5); }
 .travel-passport__zoom { width: min(900px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); border: 0; border-radius: var(--radius-4); padding: var(--space-2); color: var(--ink); background: var(--paper); box-shadow: var(--shadow-3); }
 .travel-passport__zoom::backdrop { background: color-mix(in srgb, var(--night) 62%, transparent); }
 .travel-passport__zoom > img { display: block; max-width: 100%; max-height: 80dvh; object-fit: contain; margin: var(--space-2) auto 0; }
@@ -512,7 +586,7 @@
 }
 @media (max-width: 760px) and (max-height: 700px) {
   .travel-passport__page-head { margin-bottom: var(--space-0-5); }
-  .travel-passport__photo { width: 120px; padding-bottom: var(--space-0-5); }
+  .travel-passport__photo { width: 120px; }
   .travel-passport__photo img, .travel-passport__photo-wait { height: 64px; }
   .travel-passport__photo .passport-memory-fit { width: min(100%, calc(64px * var(--memory-aspect))); }
   .travel-passport__item { gap: 2px; }
