@@ -63,4 +63,35 @@ This is not a new cover redesign or a fresh completion-ceremony design review.
 Those were explicitly outside Claude's latest pass and remain separate polish
 work. Existing opening/closing behaviour is preserved. Refund concurrency,
 PayMe and general production-release gates are not changed by this UI release.
-QA deployment receipt will be appended after the build and live smoke check.
+
+## QA deployment receipt
+
+- Application commit: `a07bc191`, committed and pushed from a clean release tree.
+- Project: **find-me-qa**, `prj_LbqCRqwU8WfZpeaWU7HTXM4SsfG4`.
+- Deployment: `dpl_FvqsYosvWvE7PrJ6s4gJTbzucxLg`, **READY**.
+- Immutable URL: https://find-me-4k6jd6otw-smallheroes-projects.vercel.app
+- QA alias: https://qa.findmeworlds.com (promoted, explicitly aliased, inspected).
+- Remote Next.js 15.5.25 build: passed; about 3 minutes through deploy completion.
+  Privacy/trace audit passed with no private leaks or missing catalog assets.
+  Vercel's reported function size is 177.64 MB. The target is the production
+  target of the **QA project**, not the product's production shop.
+- Existing sensitive remote settings were used in place; no environment values
+  or database schema were changed. Anonymous requests still receive a 307 to
+  `/qa-access`, with private/no-store caching and noindex headers.
+- Authenticated live Chrome: refreshed homepage, opened demo passport, verified
+  divider buttons, larger print, separate stamp and next-page navigation.
+  Family area and Bar's ready adventure loaded successfully. His personal
+  passport opened, showing the New York photo/stamp and 6/6 discoveries; next
+  page loaded Amazon's photo/stamp and 6/6 discoveries. The final screenshot
+  shows the controls back in their enabled state after settling.
+- No live progress, selected souvenir, share, payment or rendering was changed.
+- Error-level Vercel log scan for this deployment over the final 15-minute
+  window returned no matching logs. This is a bounded smoke check, not a
+  claim about continuous monitoring. Drains were not audited in this UI pass.
+- Closed only our isolated Chromium verification session and local server on
+  3034. Existing user/Claude servers were not stopped.
+
+Rollback target: https://find-me-j6des4p1j-smallheroes-projects.vercel.app
+(`dpl_6a9m93ADczu7ZZjzb3jUSzK3LKLK`). No rollback migration is needed: this
+release has no schema changes. This receipt is a documentation-only follow-up
+to the deployed application commit above.
