@@ -541,15 +541,47 @@
 .passport-finale header h2 { font-family: var(--font-display); font-weight: 900; letter-spacing: -0.02em; font-size: clamp(24px, 4vw, 36px); margin: var(--space-1) 0 var(--space-3); }
 .passport-finale__page { padding: var(--space-3); background: radial-gradient(ellipse at 30% 8%, var(--white), transparent 70%), var(--pp-grain, none), var(--paper-2); border-radius: var(--radius-3); display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); box-shadow: inset 0 0 0 1px var(--line); }
 .passport-finale__memory { position: relative; padding-bottom: var(--space-3); }
-.passport-finale__photo { background: var(--white); padding: var(--space-1) var(--space-1) var(--space-3); transform: rotate(-3deg); box-shadow: var(--shadow-2); }
-.passport-finale__stamp { margin: calc(var(--space-3) * -1) calc(var(--space-1) * -1) 0 auto; }
+/* The ceremony is the same page the book will hold, so it is mounted the same
+   way: no white frame, no tilt, a thin ink rule and the picture. A child who
+   sees a tilted polaroid here and a flat print in the passport a minute later
+   has been shown two different things. */
+.passport-finale__photo { position: relative; background: var(--white); padding: 0; border-radius: var(--radius-1, 8px); overflow: hidden; transform: none; box-shadow: 0 0 0 1px var(--line), var(--shadow-2); }
+/* The stamp is the moment. It is bigger here than in the book, and it lands on
+   the corner of the print — same ring, same mark, no words. */
+.passport-finale__stamp {
+  --stamp-size: 88px;
+  position: absolute; z-index: 2; inset-inline-start: var(--space-2); bottom: var(--space-2);
+  border-width: 3px;
+  filter: drop-shadow(0 0 2px color-mix(in srgb, var(--white) 92%, transparent)) drop-shadow(0 0 8px color-mix(in srgb, var(--white) 72%, transparent));
+}
+.passport-finale__stamp::before { inset: 5px; }
+/* Keep the ceremonial stamp larger than the book's without covering the face
+   when the print shrinks to a phone column. Land across its lower corner. */
+@media (max-width: 600px) {
+  .passport-finale__stamp { --stamp-size: 64px; inset-inline-start: calc(var(--space-1) * -1); bottom: 0; }
+  .passport-finale__stamp::before { inset: 4px; }
+}
 .passport-finale__items { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2) var(--space-1); }
 .passport-finale__items li { min-width: 0; font-size: var(--fs-50); text-align: center; font-family: var(--font-kid); font-weight: 600; }
 .passport-finale__items li > .album__crop { aspect-ratio: 1 !important; border: 4px solid var(--white); border-radius: var(--radius-3); box-shadow: var(--shadow-1); margin-block-end: var(--space-1); }
 .passport-finale__items li[data-collected=false] { display: grid; place-items: center; aspect-ratio: 1; border: 0; border-radius: var(--radius-3); font-size: var(--fs-500); color: var(--ink-4); background: color-mix(in srgb, var(--paper-3) 60%, transparent); box-shadow: inset 0 1px 2px color-mix(in srgb, var(--ink) 10%, transparent), inset 0 0 0 1px var(--line); }
 .passport-finale__status { text-align: center; font-size: var(--fs-100); color: var(--ink-3); min-height: 20px; }
-.passport-finale__actions { display: flex; justify-content: center; flex-wrap: wrap; gap: var(--space-1); position: relative; }
-.passport-finale__actions button { min-height: var(--touch-kid); }
+/* Four actions used to sit in one ragged row — a filled button, an outlined
+   one and two bare pieces of text, all the same height and none of them the
+   same thing. They are two ranks now: the two real choices side by side, and
+   under them the two quiet ways out. The `::after` with a full basis is what
+   breaks the line, so no markup has to know about the split. */
+.passport-finale__actions { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: var(--space-1) var(--space-2); position: relative; }
+.passport-finale__actions::after { content: ""; order: 1; flex-basis: 100%; height: 0; }
+.passport-finale__actions > .fm-btn { order: 0; flex: 0 1 240px; min-width: 0; min-height: var(--touch-kid); }
+/* The two ways out: still real targets, but read as what they are. */
+.passport-finale__actions > .fm-btn--ghost {
+  order: 2; flex: 0 0 auto; min-height: var(--touch-min);
+  background: transparent; box-shadow: none; border: 0;
+  color: var(--ink-3); font-size: var(--fs-100); font-weight: 700;
+  text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px;
+}
+.passport-finale__actions > .fm-btn--ghost:hover { color: var(--ink); }
 .passport-finale__skip:disabled { visibility: hidden; }
 .passport-finale[data-phase=playing] .passport-finale__stamp[data-new=true] { animation: passport-stamp 620ms 160ms cubic-bezier(.2,.8,.2,1.2) both; }
 .passport-finale[data-phase=playing] .passport-finale__photo[data-new=true] { animation: passport-develop 700ms 650ms var(--ease-out) both; }
@@ -559,7 +591,7 @@
 /* The stamp lands: it arrives big and askew, presses past its resting angle,
    and settles — the way a hand brings a stamp down onto a page. */
 @keyframes passport-stamp { 0% { opacity: 0; transform: scale(1.8) rotate(-22deg); } 65% { opacity: 1; transform: scale(.94) rotate(-5deg); } 100% { opacity: 1; transform: scale(1) rotate(-8deg); } }
-@keyframes passport-develop { from { opacity: 0; filter: saturate(0); transform: translateY(16px) rotate(2deg); } to { opacity: 1; filter: saturate(1); transform: rotate(-3deg); } }
+@keyframes passport-develop { from { opacity: 0; filter: saturate(0); transform: translateY(16px) rotate(2deg); } to { opacity: 1; filter: saturate(1); transform: none; } }
 @keyframes passport-sticker { from { opacity: 0; transform: translateY(-20px) scale(1.1) rotate(-10deg); } to { opacity: 1; transform: none; } }
 @media (max-width: 600px) { .passport-finale__page { padding: var(--space-2); gap: var(--space-2); } .passport-finale__items { gap: var(--space-1) var(--space-1); } .passport-finale__items li { font-size: var(--fs-50); } .passport-finale__page h3 { font-size: var(--fs-200); margin-top: 0; } .passport-finale__actions button { flex: 1 1 40%; font-size: var(--fs-200); padding-inline: var(--space-1); } }
 @media (prefers-reduced-motion: reduce) { .passport-finale *, .passport-finale *::before, .passport-finale *::after { animation: none !important; transition: none !important; } .passport-finale .celebration { display: none; } }

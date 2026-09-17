@@ -1,5 +1,9 @@
 # Stamp integration hold — 2026-09-18
 
+**Resolved:** user handed off Claude's final `a312ae90` and authorized integration
+and QA deployment. See `CODEX_STAMP_FINALE_RELEASE_20260918.md`. The notes below
+describe the earlier checkpoint, not the final release status.
+
 The user reported that Claude is actively working on this same feature. Design
 edits and QA deployment are on hold to avoid competing changes.
 
