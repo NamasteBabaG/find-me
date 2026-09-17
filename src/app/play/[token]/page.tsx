@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { Metadata } from "next";
 import { getContainer } from "@/services/container";
 import { resolvePlayToken } from "@/services/share-link.service";
@@ -26,9 +25,6 @@ export default async function PlayPage({ params }: { params: Promise<{ token: st
         </span>
         <h1>{t.play.heading}</h1>
         <p className="fm-lead">{text}</p>
-        <Link href="/" className="fm-btn fm-btn--secondary">
-          {t.common.home}
-        </Link>
       </main>
     );
   }
@@ -42,5 +38,7 @@ export default async function PlayPage({ params }: { params: Promise<{ token: st
     const [user, game] = await Promise.all([currentUser(), c.db.game.findUnique({ where: { id: resolved.game.id }, select: { ownerId: true } })]);
     albumOwner = Boolean(user && game?.ownerId && game.ownerId === user.id);
   }
-  return <GameShell key={config.locale} config={config} parentZoneHref="/library" albumOwner={albumOwner} />;
+  // A bearer link grants play, not access to account navigation. Keep recipients
+  // in the game; retain the family shortcut only for its verified owner.
+  return <GameShell key={config.locale} config={config} parentZoneHref={albumOwner ? "/library" : undefined} albumOwner={albumOwner} />;
 }

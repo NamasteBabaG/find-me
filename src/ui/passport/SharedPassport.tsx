@@ -32,7 +32,7 @@ export function SharedPassport() {
     load(); window.addEventListener("focus", load); document.addEventListener("visibilitychange", load);
     return () => { controller.abort(); window.removeEventListener("focus", load); document.removeEventListener("visibilitychange", load); };
   }, [attempt]);
-  return <main className="shared-passport"><a href="/" className="shared-passport__brand">Find Me Worlds</a><p>{t.passportSharing.readOnly}</p>
+  return <main className="shared-passport"><span className="shared-passport__brand">Find Me Worlds</span><p>{t.passportSharing.readOnly}</p>
     {book && !unavailable ? <PassportBook book={book} mode="shared" renderImage={(source, label) => <SharedPicture source={source} token={token} label={label} onUnavailable={() => { setUnavailable(true); setBook(null); }} />} /> : <div role="status"><p>{unavailable ? t.passportSharing.unavailable : t.passportSharing.loading}</p>{unavailable ? <button className="fm-btn" onClick={() => setAttempt(n => n + 1)}>{t.travelPassport.retry}</button> : null}</div>}
   </main>;
 }

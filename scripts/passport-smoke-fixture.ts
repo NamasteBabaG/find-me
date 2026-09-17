@@ -9,6 +9,8 @@ import { publicBeachDemo } from "../content/demo/beach-v1";
 import { GameConfigSchema } from "../src/domain/game/config";
 import { emptyAdventureProgress, recordAdventureEvent } from "../src/domain/adventure/progress";
 import { LocalDiskStorage } from "../src/infra/storage/local";
+import { tokenForLink } from "../src/services/share-link.service";
+import { managePassportShare } from "../src/services/passport-share.service";
 
 async function main() {
   const directory = await mkdtemp(path.join(tmpdir(), "findme-passport-smoke-"));
@@ -45,9 +47,14 @@ async function main() {
     }
     await db.game.create({ data: { id: gameId, ownerId, familyChildId: childId, status: "READY", configJson: JSON.stringify(config), sceneCount: 9, adventureAlbum: { create: { revision: 1, snapshotJson: JSON.stringify(progress) } } } });
     await db.order.create({ data: { id: newId("ord"), gameId, userId: ownerId, paymentStatus: "PAID", amountAgorot: 0, provider: "mock", packageTier: "ONE_WORLD" } });
+    const secret = "passport-smoke-local-secret-only", appUrl = "http://localhost:3022";
+    const link = { id: newId("shr"), createdAt: new Date() };
+    const playToken = tokenForLink({ secret }, link);
+    await db.shareLink.create({ data: { ...link, gameId, kind: "PLAYER", tokenHash: hashToken(playToken) } });
+    const passportShare = await managePassportShare({ db, secret, appUrl, storage }, ownerId, childId, "enable", "Demo");
     const token = newSecretToken();
     await db.magicLinkToken.create({ data: { id: newId("mlt"), userId: ownerId, tokenHash: hashToken(token), expiresAt: new Date(Date.now() + 60 * 60_000) } });
-    const result = { directory, databaseUrl, storageRoot, childId, siblingId, gameId, login: `http://localhost:3022/auth/magic-link?token=${token}&next=/family/${childId}/passport` };
+    const result = { directory, databaseUrl, storageRoot, childId, siblingId, gameId, playUrl: `${appUrl}/play/${playToken}`, passportUrl: passportShare.url, login: `${appUrl}/auth/magic-link?token=${token}&next=/family/${childId}/passport` };
     await mkdir("output/passport", { recursive: true }); await writeFile("output/passport/smoke-fixture.json", JSON.stringify(result, null, 2));
     console.log(JSON.stringify({ directory, childId, gameId, info: "output/passport/smoke-fixture.json" }));
   } finally { await db.$disconnect(); }

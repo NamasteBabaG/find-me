@@ -451,6 +451,7 @@ export const en = {
   },
   play: {
     title: "The game",
+    loadError: "We couldn't load this right now. Try again in a moment.",
     notReady: "You can return to this link later. The game manager can check its status in the family area.",
     revoked: "This link is no longer active. Ask whoever sent it for a new one.",
     invalid: "This link is invalid. Ask the sender to share the full link again.",
