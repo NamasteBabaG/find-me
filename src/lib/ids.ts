@@ -7,6 +7,8 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypt
 export type IdPrefix =
   | "usr"
   | "chl"
+  | "fam"
+  | "ppr"
   | "game"
   | "gsc"
   | "tgt"

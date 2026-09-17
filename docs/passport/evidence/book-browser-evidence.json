@@ -1,0 +1,34 @@
+[
+  {
+    "viewport": "1366x768",
+    "coverHeight": 476,
+    "openHeight": 476,
+    "vertical": 0,
+    "horizontal": 0,
+    "openingAnimation": true
+  },
+  {
+    "viewport": "390x844",
+    "height": 560,
+    "vertical": 0,
+    "horizontal": 0,
+    "title": "מקום הדגמה 2",
+    "columns": "minmax(0px, 1fr) minmax(0px, 1fr)"
+  },
+  {
+    "viewport": "360x740",
+    "height": 510,
+    "vertical": 0,
+    "horizontal": 0,
+    "title": "מקום הדגמה 2",
+    "columns": "minmax(0px, 1fr) minmax(0px, 1fr)"
+  },
+  {
+    "viewport": "360x640",
+    "height": 510,
+    "vertical": 98,
+    "horizontal": 0,
+    "title": "מקום הדגמה 2",
+    "columns": "minmax(0px, 1fr) minmax(0px, 1fr)"
+  }
+]

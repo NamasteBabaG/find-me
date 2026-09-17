@@ -1,0 +1,5 @@
+.family-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 24px; }
+.family-child { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; }
+.family-child__portrait { width: 96px; height: 96px; object-fit: contain; }
+.family-child__initial { width: 80px; height: 80px; display: grid; place-items: center; border-radius: 50%; background: var(--color-primary, #ffcc45); font-size: 2rem; font-weight: 800; }
+.family-child .fm-btn { margin-block-start: auto; }

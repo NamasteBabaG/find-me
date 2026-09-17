@@ -81,17 +81,18 @@ describe("temporary board replay", () => {
     expect(storage.getItem(albumKey)).toBe(savedAlbum);
   });
 
-  it("a previously uncollected item found during practice is not silently added to the real album", () => {
+  it("a new discovery during replay joins the passport without resetting earned finds", () => {
     const store = completed(false), saved = storage.getItem(albumKey);
     store.getState().replayScene();
     expect(store.getState().collectDiscovery("cat")).toBe("collected");
     expect(store.getState().replay?.discoveryIds).toEqual(["cat"]);
-    expect(store.getState().album!.discoveries).toEqual([]);
-    expect(storage.getItem(albumKey)).toBe(saved);
+    expect(store.getState().album!.discoveries).toEqual([{ boardSlug: scene.slug, discoveryId: "cat" }]);
+    expect(storage.getItem(albumKey)).not.toBe(saved);
+    expect(store.getState().album!.finds).toHaveLength(3);
     store.getState().goToMap(); store.getState().openScene(scene.slug);
     // Ordinary revisits can still finish collecting the real album.
     expect(store.getState().replay).toBeNull();
-    expect(store.getState().collectDiscovery("cat")).toBe("collected");
+    expect(store.getState().collectDiscovery("cat")).toBe("again");
     expect(store.getState().album!.discoveries).toHaveLength(1);
   });
 
@@ -133,7 +134,7 @@ describe("temporary board replay", () => {
     expect(store.getState().mission).toBe(mission); expect(store.getState().replay).toBeNull();
   });
 
-  it("account reconnect does not fill the practice round or send any practice finds", async () => {
+  it("account reconnect saves new replay discoveries without filling the practice round", async () => {
     const guest = completed(false);
     const book = config.adventure!;
     let server = emptyAdventureProgress(config.gameId, book);
@@ -144,7 +145,11 @@ describe("temporary board replay", () => {
     const posted: AdventureEvent[] = [];
     vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
       if (!online) throw new TypeError("offline");
-      if (init?.method === "POST") posted.push(JSON.parse(String(init.body)).event);
+      if (init?.method === "POST") {
+        const event = JSON.parse(String(init.body)).event as AdventureEvent;
+        posted.push(event);
+        server = recordAdventureEvent(server, config.gameId, book, event).progress;
+      }
       return new Response(JSON.stringify({ ok: true, progress: server, revision: 3, changed: false }));
     }));
     const owner = createPlayStore(config, { copy, albumOwner: true });
@@ -152,6 +157,7 @@ describe("temporary board replay", () => {
     expect(owner.getState().albumState).toBe("offline");
     owner.getState().replayScene(); owner.getState().dispatch({ type: "START", now: 1 });
     owner.getState().collectDiscovery("cat");
+    await flush(); // settle the failed offline request before the reconnect event
     online = true; for (const fn of listeners.online ?? []) fn(); await flush();
     expect(owner.getState().albumState).toBe("saved");
     expect(owner.getState().mission!.found).toEqual({});
@@ -159,8 +165,8 @@ describe("temporary board replay", () => {
     owner.getState().dispatch({ type: "ADOPT_FOUND", now: 2, found: Object.fromEntries(scene.targets.map(t => [t.id, { hintsUsed: 0, misses: 0, elapsedMs: 0 }])) });
     expect(owner.getState().mission!.found).toEqual({});
     finish(owner); await flush();
-    expect(posted).toEqual([]);
-    expect(owner.getState().album!.discoveries).toEqual([]);
+    expect(posted).toEqual([{ kind: "discovery-found", boardSlug: scene.slug, discoveryId: "cat" }]);
+    expect(owner.getState().album!.discoveries).toEqual([{ boardSlug: scene.slug, discoveryId: "cat" }]);
     expect(sceneFoundIds(owner.getState().progress, scene)).toHaveLength(3);
     owner.getState().stopAlbumSync();
   });

@@ -7,6 +7,7 @@ import { getCurrency, getI18n } from "@/i18n/server";
 import { SiteFooter, SiteHeader } from "@/ui/Shell";
 import { Hero } from "./home/Hero";
 import { DemoSection } from "./home/DemoSection";
+import { PassportDemo } from "./home/PassportDemo";
 import { Transformation } from "./home/Transformation";
 import { FinalCta } from "./home/FinalCta";
 import { Faq, GiftSection, HowItWorks, Inside, Marquee, Pricing, Trust, Worlds } from "./home/sections";
@@ -35,6 +36,7 @@ export default async function HomePage() {
         {/* The three visual steps (photo → character → world) directly precede the live demo. */}
         <Transformation />
         <DemoSection config={demo} />
+        <PassportDemo locale={locale} />
         <HowItWorks t={t} locale={locale} />
         <Inside t={t} locale={locale} />
         <Worlds t={t} carousel={carouselWorlds(locale, owned)} />

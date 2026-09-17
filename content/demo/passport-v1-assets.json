@@ -1,0 +1,16 @@
+{
+  "source": "approved-public-beach-v1",
+  "photos": {
+    "sandcastle": "/demo/passport-v1/86859ca27fe6ec6a88b53fe5cdcdd34359bc3b247e53fb8f5ab8de9f9e076d71.webp",
+    "library": "/demo/passport-v1/77f0373a5c6281335233ccfdac964850d9bfc4660cbeb3697df3ea3672e969b2.webp",
+    "shells": "/demo/passport-v1/c5c453eccf7443e0983dff80456c44b5f709615c71a77561d7bab99e75e12e21.webp"
+  },
+  "discoveries": {
+    "blue-fish": "/demo/passport-v1/ac59f14717c72a5bcd56f07ca5f95e9d22b8d49f2930e174138dc66e8334f20c.webp",
+    "anchor-bucket": "/demo/passport-v1/79eb8a4951bada99eb19cb643444d1602c42a5fc55ffcb2d00a19acf605a5e26.webp",
+    "star-mould": "/demo/passport-v1/805d7c421b290f6efe634125c47bb03a4a0dbbe9dc515666106834cdec02688f.webp",
+    "paper-boat": "/demo/passport-v1/6181a8d32bb35ab796e1c3b3815b2ff2a598588bc44eb2bc218cf0720ef7dea6.webp",
+    "compass": "/demo/passport-v1/20468ea3a6a935d68dedda979b0ad774ae1bdb6a01a631da1e6d1bb8abca5177.webp",
+    "seahorse": "/demo/passport-v1/bb10ee23401259b8c4716d778a7261401a24d11f6a8e2e52bf40b6180f8b36f8.webp"
+  }
+}

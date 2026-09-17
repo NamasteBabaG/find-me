@@ -13,6 +13,7 @@ import { WorldMap } from "./WorldMap";
 import { WorldHub } from "./WorldHub";
 import { ScenePlayer } from "./ScenePlayer";
 import { Passport } from "./Passport";
+import { AdventurePassport } from "./AdventurePassport";
 import { bindGameAudio } from "../audio/sounds";
 
 interface Props {
@@ -79,7 +80,7 @@ function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false
           <ScenePlayer key={`${scene.slug}:${state.visitId}`} scene={scene} mission={state.mission} store={state} onBack={state.goToMap} onSceneComplete={state.completeScene} />
         ) : null;
       case "passport":
-        return <Passport config={config} progress={state.progress} onMap={state.goToMap} onOpen={state.openScene} onReplay={state.replayScene} album={state.album} albumMode={state.albumMode} albumState={state.albumState} />;
+        return config.adventure?.boards.every(b => b.targetIds.length === 3 && b.discoveries.length === 6) ? <AdventurePassport store={state} /> : <Passport config={config} progress={state.progress} onMap={state.goToMap} onOpen={state.openScene} onReplay={state.replayScene} album={state.album} albumMode={state.albumMode} albumState={state.albumState} />;
       case "worlds":
         return <WorldHub config={config} progress={state.progress} currentWorld={state.worldSlug} onEnter={(slug) => state.goToMap(null, slug)} onPassport={state.openPassport} />;
       case "map":

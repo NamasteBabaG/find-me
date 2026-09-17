@@ -32,6 +32,7 @@ vi.mock("../Hero", () => ({
   },
 }));
 vi.mock("../Transformation", () => ({ Transformation: () => <section data-section="Transformation" /> }));
+vi.mock("../PassportDemo", () => ({ PassportDemo: () => <section data-section="PassportDemo" /> }));
 vi.mock("../DemoSection", () => ({
   DemoSection: ({ config }: { config: GameConfig }) => {
     fixture.demoConfig(config);
@@ -68,6 +69,7 @@ describe("homepage composition", () => {
       "Hero",
       "Transformation",
       "DemoSection",
+      "PassportDemo",
       "HowItWorks",
       "Inside",
       "Worlds",

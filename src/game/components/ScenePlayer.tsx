@@ -17,6 +17,7 @@ import { CloudBank } from "./Clouds";
 import { FLIGHT_MS, StarFlight, type FlightPath } from "./StarFlight";
 import { StarTray } from "./StarTray";
 import { Postcard } from "./Album";
+import { PassportCompletion } from "./PassportCompletion";
 import { Collection, type Arrival } from "./Collection";
 import { discoveryHintRect, nextDiscoveryHint, type DiscoveryHintLevel } from "@/domain/adventure/discovery-guidance";
 import { adventureAlbum } from "@/domain/adventure/progress";
@@ -600,7 +601,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
       ) : null}
 
       {mission.phase === "complete" && showComplete ? (
-        <SceneCompleteCard scene={scene} bonusFound={mission.bonusFound} hintsUsed={Object.values(mission.found).reduce((n, r) => n + r.hintsUsed, 0)} store={store} onStay={guided ? () => setShowComplete(false) : undefined} />
+        board?.targetIds.length === 3 && board.discoveries.length === 6 && store.album ? <PassportCompletion scene={scene} store={store} onStay={() => setShowComplete(false)} /> : <SceneCompleteCard scene={scene} bonusFound={mission.bonusFound} hintsUsed={Object.values(mission.found).reduce((n, r) => n + r.hintsUsed, 0)} store={store} onStay={guided ? () => setShowComplete(false) : undefined} />
       ) : null}
     </div>
   );

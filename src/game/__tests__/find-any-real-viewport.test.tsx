@@ -250,7 +250,7 @@ describe("one child at a time through the actual animated viewport", () => {
   it("the final board names its actual adventure-bag destination after three, without claiming another place exists", async () => {
     const player = await mountPlayer({ width: 390, height: 650 }, sceneFixture(), ["hide-0", "hide-1", "hide-2"]);
     const button = player.container.querySelector<HTMLButtonElement>(".mission__continue")!;
-    expect(button.textContent).toContain("To the adventure bag");
+    expect(button.textContent).toContain("To my passport");
     expect(button.textContent).not.toContain("next place");
     const saved = player.store.getState().progress;
     fireEvent.click(button);

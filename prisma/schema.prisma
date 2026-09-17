@@ -28,6 +28,7 @@ model User {
   lastLoginAt DateTime?
 
   childProfiles ChildProfile[]
+  familyChildren FamilyChild[]
   games         Game[]
   orders        Order[]
   sessions      Session[]
@@ -58,6 +59,32 @@ model Session {
 
 // ─── Child ───────────────────────────────────────────────────
 
+/// Parent-selected identity across purchases. Never merged by name or face.
+/// A ChildProfile remains a per-adventure rendering input, not a family record.
+model FamilyChild {
+  id          String    @id
+  ownerId     String
+  displayName String
+  createdAt   DateTime  @default(now())
+  deletedAt   DateTime?
+
+  owner User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  games Game[]
+  passportShare PassportShare?
+
+  @@index([ownerId, createdAt])
+}
+
+/// A purpose-separated, revocable passport capability; never a play token.
+model PassportShare {
+  id String @id
+  familyChildId String @unique
+  alias String
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+  child FamilyChild @relation(fields: [familyChildId], references: [id], onDelete: Cascade)
+}
+
 model ChildProfile {
   id                   String    @id
   ownerId              String?
@@ -81,6 +108,7 @@ model Game {
   id             String    @id
   ownerId        String? // null while the draft has no email yet
   childProfileId String?
+  familyChildId  String?
   packageTier    String? // ONE_WORLD | TWO_WORLDS | ALL_WORLDS  (domain/package.ts)
   title          String?
   status         String    @default("DRAFT") // domain/order-state.ts
@@ -100,12 +128,16 @@ model Game {
 
   owner        User?           @relation(fields: [ownerId], references: [id])
   childProfile ChildProfile?   @relation(fields: [childProfileId], references: [id])
+  familyChild  FamilyChild?    @relation(fields: [familyChildId], references: [id])
   scenes       GameScene[]
   orders       Order[]
   shareLinks   ShareLink[]
   jobs         GenerationJob[]
   playSessions PlaySession[]
   adventureAlbum AdventureAlbumProgress?
+  passportPages PassportPagePreference[]
+
+  @@index([familyChildId, createdAt])
 }
 
 /// Optional owner-only album. Guest player links never read or update this row.
@@ -117,6 +149,20 @@ model AdventureAlbumProgress {
   snapshotJson String
 
   game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+}
+
+/// Presentation choices only. Stamps and collection totals are derived from
+/// AdventureAlbumProgress; clients cannot write a completion flag here.
+model PassportPagePreference {
+  gameId           String
+  boardSlug        String
+  photoTargetId    String?
+  stampSeen        Boolean @default(false)
+  seenDiscoveries  String  @default("[]")
+  revision         Int     @default(0)
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  @@id([gameId, boardSlug])
 }
 
 model GameScene {

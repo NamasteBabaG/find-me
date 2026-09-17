@@ -125,6 +125,9 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
   // Demo plays the same collection rules in memory, never in the account or storage.
   const book = persist || demo ? config.adventure ?? null : null;
   const demoScene = demo ? config.scenes[0]?.slug : undefined;
+  // A passport deep link may need account progress before its board unlocks.
+  // This is a one-shot intent, cancelled as soon as the player navigates.
+  let requestedScene = persist ? opts.autoStartScene : undefined;
   let albumSync: AlbumSync | null = null;
   // The three things the player is told about the album, kept apart: what the
   // account says, whether this browser could read its copy, whether it could write.
@@ -141,7 +144,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
   /** Record one album event: once in the domain, once in this browser, once to the account. */
   const recordAlbum = (set: (partial: Partial<PlayStore>) => void, get: () => PlayStore, event: AdventureEvent): boolean => {
     const album = get().album;
-    if (!album || !book || get().replay) return false;
+    if (!album || !book || get().replay && event.kind === "target-found") return false;
     let result: ReturnType<typeof recordAdventureEvent>;
     try {
       result = recordAdventureEvent(album, config.gameId, book, event);
@@ -214,8 +217,13 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       const landing = remembered ? "map" : worlds.length > 1 ? "worlds" : "map";
       set({ progress, screen: screen === "gift" && progress.revealed ? landing : screen, ...(remembered ? { worldSlug: remembered } : {}) });
       const resumed = config.scenes.find(scene => scene.slug === progress.lastScene && scene.playMode === "find-any");
-      if (resumed && progress.revealed && sceneIsPlayable(progress, config, resumed)) get().openScene(resumed.slug);
-      if (!book) return;
+      if (!requestedScene && resumed && progress.revealed && sceneIsPlayable(progress, config, resumed)) get().openScene(resumed.slug);
+      const openRequested = () => {
+        const requested = config.scenes.find(scene => scene.slug === requestedScene);
+        if (requested && sceneIsPlayable(get().progress, config, requested)) get().openScene(requested.slug);
+      };
+      openRequested();
+      if (!book) { requestedScene = undefined; return; }
       // This browser's album first (the whole truth for a guest, a cache for the
       // owner), then, for the owner only, the account's copy replaces it.
       const loaded = loadAlbum(config.gameId, book);
@@ -263,6 +271,10 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
                 if (Object.keys(found).length) get().dispatch({ type: "ADOPT_FOUND", found, now: Date.now() });
               }
             }
+            openRequested();
+            // A locked or invalid link stays on the map, never bypasses gates,
+            // and must not unexpectedly reopen after a later completion.
+            requestedScene = undefined;
           },
         });
         albumSync = sync;
@@ -287,6 +299,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
      */
     goToMap(travelFrom = null, worldSlug) {
       if (demo) return;
+      requestedScene = undefined;
       sounds().stopAmbient();
       set({ screen: "map", sceneSlug: null, mission: null, replay: null, travelFrom, ...(worldSlug ? { worldSlug } : {}) });
       if (worldSlug && persist) {
@@ -298,6 +311,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
 
     goToWorlds() {
       if (demo) return;
+      requestedScene = undefined;
       sounds().stopAmbient();
       set({ screen: "worlds", sceneSlug: null, mission: null, replay: null, travelFrom: null });
     },
@@ -307,6 +321,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     },
 
     openScene(slug, options) {
+      requestedScene = undefined;
       if (demo && slug !== demoScene) return;
       const scene = get().config.scenes.find((s) => s.slug === slug);
       if (!scene) return;
@@ -418,6 +433,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
 
     openPassport() {
       if (demo) return;
+      requestedScene = undefined;
       sounds().stopAmbient();
       set({ screen: "passport", sceneSlug: null, mission: null, replay: null });
     },
@@ -441,6 +457,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       if (replay) {
         if (replay.discoveryIds.includes(discoveryId)) return "again";
         set({ replay: { discoveryIds: [...replay.discoveryIds, discoveryId] } });
+        recordAlbum(set, get, { kind: "discovery-found", boardSlug: board.boardSlug, discoveryId });
         return "collected";
       }
       return recordAlbum(set, get, { kind: "discovery-found", boardSlug: board.boardSlug, discoveryId }) ? "collected" : "again";
@@ -453,7 +470,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
   }));
 
   if (demoScene) store.getState().openScene(demoScene);
-  else if (opts.autoStartScene) store.getState().openScene(opts.autoStartScene);
+  else if (opts.autoStartScene && !persist) store.getState().openScene(opts.autoStartScene);
   return store;
 }
 

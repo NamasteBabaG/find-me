@@ -39,7 +39,7 @@ export async function SiteHeader({ user, isAdmin, clear = false }: { user: { ema
               860px, which left a parent on a phone with no route to their
               library except the foot of a very long page. It stays; on a
               narrow header it is the mark alone, with its name still read. */}
-          <Link href="/library" className="fm-btn fm-btn--secondary fm-btn--sm fm-header__account" aria-label={accountLabel} title={accountLabel}>
+          <Link href="/family" className="fm-btn fm-btn--secondary fm-btn--sm fm-header__account" aria-label={accountLabel} title={accountLabel}>
             <AccountMark />
             <span className="fm-header__account-label">{accountLabel}</span>
           </Link>
@@ -76,7 +76,7 @@ export async function SiteFooter() {
           </div>
           <div className="fm-footer__col">
             <span className="fm-footer__title">{t.footer.account}</span>
-            <Link href="/library">{t.common.myGames}</Link>
+            <Link href="/family">{t.common.myGames}</Link>
             <Link href="/#trust">{t.footer.privacy}</Link>
             {/* Developer pages: /dev/outbox is 404 in production and the design system is not for visitors. */}
             {isDev() ? (

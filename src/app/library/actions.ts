@@ -28,7 +28,7 @@ export async function requestMagicLinkAction(_prev: LoginResult, formData: FormD
       return { ok: false, reason: "יותר מדי בקשות. נסו שוב בעוד כמה דקות.", code: "TOO_MANY_REQUESTS" };
     }
   }
-  const res = await requestMagicLink(getContainer(), email, "/library", locale);
+  const res = await requestMagicLink(getContainer(), email, "/family", locale);
   return res.ok ? { ok: true, email } : { ok: false, reason: res.reason, code: "INVALID_EMAIL" };
 }
 

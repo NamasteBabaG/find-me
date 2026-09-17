@@ -55,5 +55,6 @@ export async function ownerAdventureAlbum(db: Database, ownerId: string, gameId:
  * the same Serializable transaction (see adventure-album-delete.test.ts).
  */
 export async function deleteAdventureAlbum(tx: Pick<Prisma.TransactionClient, "$executeRaw">, gameId: string): Promise<void> {
+  await tx.$executeRaw(Prisma.sql`DELETE FROM "PassportPagePreference" WHERE "gameId" = ${gameId}`);
   await tx.$executeRaw(Prisma.sql`DELETE FROM "AdventureAlbumProgress" WHERE "gameId" = ${gameId}`);
 }

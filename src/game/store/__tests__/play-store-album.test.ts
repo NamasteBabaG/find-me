@@ -47,6 +47,27 @@ function openAndFind(store: ReturnType<typeof createPlayStore>) {
 }
 
 describe("album in the play store", () => {
+  it.each([false, true])("passport link waits for account unlock, without overriding navigation (cancel=%s)", async cancel => {
+    const config = structuredClone(withBook);
+    const second = { ...structuredClone(config.scenes[0]!), slug: "second-place" };
+    config.scenes.push(second);
+    // A config without a world map still has the same sequential board gate.
+    delete config.world; delete config.worlds;
+    config.adventure!.boards.push({ ...structuredClone(config.adventure!.boards[0]!), boardSlug: second.slug });
+    let server = emptyAdventureProgress(config.gameId, config.adventure!);
+    for (const target of config.scenes[0]!.targets) server = recordAdventureEvent(server, config.gameId, config.adventure!, { kind: "target-found", boardSlug: "pilot-test", targetId: target.id, variant: "A" }).progress;
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    vi.stubGlobal("fetch", vi.fn(async () => { await gate; return new Response(JSON.stringify({ ok: true, progress: server, revision: 1 }), { status: 200 }); }));
+    const store = createPlayStore(config, { copy, skipGift: true, albumOwner: true, autoStartScene: second.slug });
+    store.getState().hydrate();
+    expect(store.getState().screen).toBe("map");
+    if (cancel) store.getState().openScene("pilot-test");
+    release(); await flush(); await flush();
+    expect(store.getState().sceneSlug).toBe(cancel ? "pilot-test" : "second-place");
+    store.getState().stopAlbumSync();
+  });
+
   it("records a find once, with the variant on the board, and keeps it in this browser", () => {
     const store = createPlayStore(withBook, { copy });
     store.getState().hydrate();

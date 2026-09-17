@@ -12,12 +12,17 @@ import { SiteFooter, SiteHeader, Notice } from "@/ui/Shell";
 import { LinkButton } from "@/ui/Button";
 import { LoginForm } from "./LoginForm";
 import { logoutAction } from "./actions";
+import { redirect } from "next/navigation";
+import { env } from "@/lib/env";
 
 export const metadata = { robots: { index: false } };
 
-export default async function LibraryPage({ searchParams }: { searchParams: Promise<{ error?: string; deleted?: string }> }) {
+export default async function LibraryPage({ searchParams }: { searchParams: Promise<{ error?: string; deleted?: string; tests?: string }> }) {
   const [user, params, { t, locale }] = await Promise.all([currentUser(), searchParams, getI18n()]);
   const isAdmin = isAdminEmail(user?.email);
+  if (!(isAdmin && env().APP_ENV === "qa" && params.tests === "1")) {
+    redirect(params.error === "expired" ? "/family?error=expired" : params.deleted === "1" ? "/family?deleted=1" : "/family");
+  }
   const l = t.library;
 
   if (!user) {
