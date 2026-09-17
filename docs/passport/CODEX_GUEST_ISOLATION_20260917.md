@@ -52,3 +52,22 @@ Deploy only to `find-me-qa` (`prj_LbqCRqwU8WfZpeaWU7HTXM4SsfG4`). Do not exempt
 shared routes from the QA gate. The preceding QA application is `a07bc191`
 at https://find-me-4k6jd6otw-smallheroes-projects.vercel.app and can be restored
 without a migration. Deployment receipt follows after live verification.
+
+## QA receipt
+
+- Application commit `d26fb24a`, pushed and deployed from a clean release tree.
+- `find-me-qa`, READY: `dpl_HytrsFyR8ZiMd8mTEgbRQTJ8Gumw`.
+- Immutable: https://find-me-csnnu2o0z-smallheroes-projects.vercel.app
+- Promoted and explicitly aliased to https://qa.findmeworlds.com; CLI inspection
+  confirms the new deployment. This is the QA project's production target,
+  not the product's production shop.
+- Remote Next.js 15.5.25 build passed in about two minutes. Privacy/trace audit:
+  no private leaks or problems; reported function size 177.64 MB.
+- Live Chrome with existing QA access: invalid player link has only its
+  explanatory message, no home link. Shared passport without a capability has
+  the unavailable message and retry, with a non-link brand and no site exits.
+- Anonymous HEAD still returns 307 to `/qa-access`, private/no-store, noindex.
+- Error-level deployment logs, final 15-minute window: no matching logs.
+  This is a bounded smoke check; monitoring/drains were not changed or audited.
+- Full guest gameplay was verified on the isolated fictional fixture described
+  above, not by creating or mutating a live personal game.
