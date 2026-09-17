@@ -8,6 +8,7 @@ import { createPlayStore } from "../../store/play-store";
 import { GameI18nProvider } from "../../i18n";
 import { PassportCompletion } from "../PassportCompletion";
 import { readPassportPreferences } from "../../engine/passport-storage";
+import { getDict } from "@/i18n";
 
 const audio = vi.hoisted(() => ({ play: vi.fn(), unlock: vi.fn(), startAmbient: vi.fn() }));
 vi.mock("../../audio/sounds", () => ({ sounds: () => audio }));
@@ -37,6 +38,15 @@ function fixture(owner = false) {
 }
 
 describe("passport completion choreography", () => {
+  it("lands the same accessible mark-only die as the book, retaining the animation trigger", () => {
+    const f = fixture(); render(f.ui());
+    const stamp = screen.getByRole("img", { name: getDict("en").travelPassport.stamped });
+    expect(stamp.classList.contains("passport-stamp")).toBe(true);
+    expect(stamp.classList.contains("passport-finale__stamp")).toBe(true);
+    expect(stamp.getAttribute("data-new")).toBe("true");
+    expect(stamp.textContent).toBe("");
+    expect(stamp.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+  });
   it("skip settles without navigating, keeps six slots and never auto-closes", () => {
     const f = fixture(), view = render(f.ui());
     expect(view.container.querySelector("dialog")?.dataset.phase).toBe("playing");

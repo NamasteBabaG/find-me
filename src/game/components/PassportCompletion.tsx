@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
+import { PassportStamp } from "@/ui/passport/StampMark";
 import { getDict } from "@/i18n";
 import { passportCeremony, passportPhoto, type PassportPreference } from "@/domain/passport/passport";
 import type { PlayStore } from "../store/play-store";
@@ -100,7 +101,7 @@ export function PassportCompletion({ store, scene, onStay }: { store: PlayStore;
       <div className="passport-finale__page">
         <div className="passport-finale__memory">
           <div className="passport-finale__photo" data-new={Boolean(delta?.stamp)}>{photo && store.album ? <PassportMemory config={store.config} progress={store.album} boardSlug={scene.slug} targetId={photo.targetId} label={scene.name} /> : null}</div>
-          <div className="passport-finale__stamp" data-new={Boolean(delta?.stamp)}><span aria-hidden>{scene.collectible.icon}</span><strong>{copy.stamped}</strong></div>
+          <PassportStamp className="passport-finale__stamp" isNew={Boolean(delta?.stamp)} label={copy.stamped} />
         </div>
         <div><h3>{copy.collected}</h3><ul className="passport-finale__items">{board.discoveries.map((item, i) => <li key={item.id} data-new={delta?.discoveryIds.includes(item.id) ?? false} data-collected={found.has(item.id)} style={{ "--arrival": `${1000 + i * 150}ms` } as CSSProperties}>{found.has(item.id) ? <><AlbumCrop art={scene.art} crop={item.cardCrop} label={item.name} /><span>{item.name}</span></> : <span aria-label={copy.unknown}>?</span>}</li>)}</ul></div>
       </div>

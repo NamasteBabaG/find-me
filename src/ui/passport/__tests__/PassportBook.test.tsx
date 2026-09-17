@@ -28,6 +28,16 @@ function open(locale: "en" | "he" = "en") { fireEvent.click(screen.getByRole("bu
 function finish() { act(() => { vi.advanceTimersByTime(1000); }); }
 
 describe("passport book interaction", () => {
+  it.each(["en", "he"] as const)("uses the shared mark-only stamp with a %s accessible name", locale => {
+    const view = mount({}, locale); open(locale); finish();
+    const stamp = screen.getByRole("img", { name: getDict(locale).travelPassport.stamped });
+    expect(stamp.classList.contains("passport-stamp")).toBe(true);
+    expect(stamp.textContent).toBe("");
+    expect(stamp.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+    expect(view.container.querySelectorAll(".passport-stamp")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: getDict(locale).travelPassport.next })); finish();
+    expect(view.container.querySelector(".passport-stamp")).toBeNull();
+  });
   it("opens a hinged cover onto two semantic leaves and turns at the edges", () => {
     const view = mount(); open();
     expect(view.container.querySelector("[data-opening=true]")).not.toBeNull();

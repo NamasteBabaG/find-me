@@ -97,7 +97,7 @@
   width: var(--space-5); height: var(--space-5); flex-shrink: 0; display: grid; place-items: center;
   border-radius: 50%; font-size: var(--fs-400); color: var(--pp-foil);
 }
-.travel-passport__eyebrow { font-size: var(--fs-50); letter-spacing: 0.09em; font-weight: 700; line-height: var(--lh-100); text-transform: uppercase; }
+.travel-passport__eyebrow { font-size: var(--fs-100); letter-spacing: 0.08em; font-weight: 800; line-height: var(--lh-100); text-transform: uppercase; }
 .travel-passport__name { font-family: var(--font-kid); font-size: var(--fs-400); font-weight: 700; margin: 0; }
 .travel-passport__motto { font-size: var(--fs-100); line-height: var(--lh-200); margin: 0; opacity: 0.86; }
 
@@ -189,7 +189,7 @@
 .travel-passport__page-head h2:focus { outline: none; }
 .travel-passport__page-head p { margin: 0; line-height: var(--lh-200); }
 .travel-passport__page-head > p:last-child, .travel-passport__collection-head p { color: var(--ink-3); font-size: var(--fs-100); }
-.travel-passport__page-head .travel-passport__eyebrow, .travel-passport__collection-head .travel-passport__eyebrow { color: var(--ink-4); }
+.travel-passport__page-head .travel-passport__eyebrow, .travel-passport__collection-head .travel-passport__eyebrow { color: var(--ink-3); }
 
 /* ─── The picture: a print mounted directly onto the paper ─────────────── */
 /* The picture of the child IS the page. It was a small snapshot inside a white
@@ -198,54 +198,39 @@
    width from it. The print is mounted straight into the paper now, held by a
    thin ink rule and its own shadow, and it is half again as large. */
 .travel-passport__photo {
-  position: relative; width: min(100%, calc(var(--book-height) * 0.66));
+  position: relative; width: min(100%, calc(var(--book-height) * 0.54));
   margin-inline: auto; padding: 0;
   background: var(--white); border: 0; border-radius: var(--radius-1, 8px);
   box-shadow: 0 0 0 1px var(--line), var(--shadow-2);
   transform: none; overflow: hidden;
 }
-.travel-passport__photo img { display: block; width: 100%; height: calc(var(--book-height) * 0.37); object-fit: cover; background: var(--paper-2); }
+.travel-passport__photo img { display: block; width: 100%; height: calc(var(--book-height) * 0.46); object-fit: cover; background: var(--paper-2); }
 .travel-passport__photo-wait { min-height: 0; height: calc(var(--book-height) * 0.36); display: grid; align-content: center; justify-items: center; text-align: center; padding: var(--space-1); background: var(--paper-2); color: var(--ink-3); font-size: var(--fs-100); }
 .travel-passport__photo-wait > span { font-size: var(--fs-600); color: var(--gold-light); }
 
-/* ─── The stamp: ink pressed into the page ────────────────────────────────
-   `mix-blend-mode: multiply` is what sells it — the paper grain shows THROUGH
-   the ink instead of the stamp sitting on top like a badge, which is what the
-   flat outlined pill read as. Green is `--leaf`, the same "found" green the
-   game's discovery tray uses. */
-/* The stamp a place gives you. It was a flat outlined pill that read as a
-   button; a passport stamp is a struck seal — a round die on the left, a double
-   rule around everything, a hairline inside it, and the whole thing set down
-   off-square. It sits below the print on the paper. Green is `--leaf`, the same "found" green the
-   game's discovery tray uses, and `multiply` puts the ink INTO the paper. */
-.travel-passport__stamp {
-  flex-shrink: 0; width: fit-content; max-width: 100%;
-  display: grid; grid-template-columns: auto 1fr; align-items: center;
-  justify-items: start; gap: 0 var(--space-1);
-  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-1);
-  border: 3px double var(--leaf-deep); color: var(--leaf-deep);
-  /* On paper, never on the print. `multiply` is what makes the ink sink into
-     the page, and multiplying green over a photograph just makes it vanish —
-     the "I was here!" line disappeared into the sand. It sits below the
-     picture now, where the paper is, and where a stamp reads. */
-  border-radius: var(--radius-2); margin: var(--space-1) var(--space-2) var(--space-1) auto;
-  position: relative; transform: rotate(-7deg); background: transparent;
-  font-family: var(--font-display); font-weight: 900; font-size: var(--fs-200); line-height: var(--lh-100);
-  mix-blend-mode: multiply; opacity: 0.9; z-index: 2;
+/* One ring/mark in both surfaces. Solid ink with a light halo stays readable
+   where it overlaps a photograph; multiply made it disappear into the art.
+   The visited words live in PassportStamp's accessible label, not the ring. */
+.passport-stamp {
+  --stamp-size: 64px;
+  box-sizing: border-box; position: relative;
+  width: var(--stamp-size); height: var(--stamp-size); border-radius: 50%;
+  display: grid; place-items: center; padding: 0;
+  border: 2px solid var(--leaf-deep); color: var(--leaf-deep);
+  transform: rotate(-8deg); background: transparent;
+  pointer-events: none;
+  filter: drop-shadow(0 0 2px color-mix(in srgb, var(--white) 92%, transparent)) drop-shadow(0 0 6px color-mix(in srgb, var(--white) 70%, transparent));
 }
-/* The hairline a struck stamp leaves just inside its frame. */
-.travel-passport__stamp::before {
-  content: ""; position: absolute; inset: 2px; border: 1px solid currentColor;
-  border-radius: var(--radius-1, 8px); opacity: 0.45; pointer-events: none;
+/* The inner ring a struck stamp leaves just inside its rim. */
+.passport-stamp::before {
+  content: ""; position: absolute; inset: 4px; border: 1px solid currentColor;
+  border-radius: 50%; opacity: 0.5; pointer-events: none;
 }
-/* The die: the place's own mark, in a ring. */
-.travel-passport__stamp > span:first-child {
-  grid-row: 1 / span 2; display: grid; place-items: center;
-  width: var(--space-4); height: var(--space-4); border-radius: 50%;
-  box-shadow: inset 0 0 0 2px currentColor; font-size: var(--fs-200);
-}
-.travel-passport__stamp > strong { font-size: var(--fs-200); letter-spacing: -0.01em; }
-.travel-passport__stamp > span:last-child { font-size: var(--fs-50); font-weight: 700; opacity: 0.75; letter-spacing: 0.04em; }
+.passport-stamp__mark { display: grid; place-items: center; width: 56%; aspect-ratio: 40 / 24; }
+.passport-stamp__mark svg { width: 100%; height: 100%; display: block; }
+/* Placement stays surface-specific; the ring and responsive sizes do not. */
+.travel-passport__stamp { position: absolute; z-index: 3; inset-inline-start: calc(var(--space-1) * -1); bottom: calc(100% + var(--space-1)); }
+
 .travel-passport__progress { font-size: var(--fs-100); color: var(--ink-3); margin-block: var(--space-1); text-align: center; }
 
 /* ─── The keepsakes ──────────────────────────────────────────────────────── */
@@ -334,19 +319,43 @@
 @keyframes passport-mobile-page { from { opacity: .35; transform: translateX(var(--slide, -18px)); } to { opacity: 1; transform: translateX(0); } }
 
 .travel-passport[data-open=false] .travel-passport__toolbar, .travel-passport[data-open=false] .travel-passport__reader-footer { visibility: hidden; }
-.travel-passport__memory-actions { display: flex; align-items: center; justify-content: center; gap: var(--space-0-5); margin-top: auto; padding-inline: var(--space-4); }
+/* The two things you can do from a page, as a matched pair.
+   One was bare text and the other a tall white pill with a drop shadow, sitting
+   at different weights and different widths on a sheet of paper — the pill read
+   as a button borrowed from another screen and the text did not read as a
+   control at all. They are two equal paper tickets now: same size, ink hairline,
+   the one that takes you back into the adventure carrying the warm fill. They
+   keep the child's 64px target; it is the visual bulk that was wrong, not the
+   hit area. */
+.travel-passport__memory-actions {
+  position: relative;
+  display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
+  gap: var(--space-1); margin-top: auto; padding-inline: 0;
+}
 .travel-passport__memory > * { flex-shrink: 0; }
 /* Keep the actions on the paper: the print yields to real text/button heights,
    rather than painting a fixed-height image through the bottom of the leaf. */
 @media (min-width: 761px) {
-  .travel-passport__memory > .travel-passport__photo { flex: 1 1 0; min-height: 0; max-height: calc(var(--book-height) * .37); }
+  .travel-passport__memory > .travel-passport__photo { flex: 1 1 0; min-height: 0; max-height: calc(var(--book-height) * .46); }
   .travel-passport__memory .travel-passport__enlarge { height: 100%; min-height: 0; display: block; }
   .travel-passport__memory .travel-passport__photo img,
   .travel-passport__memory .travel-passport__photo-wait { height: 100%; min-height: 0; }
   .travel-passport__memory .passport-memory-fit { max-height: 100%; }
   .travel-passport__memory-actions { margin-top: var(--space-1); }
 }
-.travel-passport__choose { min-height: var(--touch-min); font-size: var(--fs-50); padding-inline: var(--space-1); line-height: var(--lh-100); max-width: 48%; }
+.travel-passport__memory-actions > .fm-btn, .travel-passport__memory-actions > a.fm-btn {
+  display: grid; place-items: center; text-align: center; min-width: 0;
+  min-height: var(--touch-kid) !important; margin: 0; padding: var(--space-1);
+  border: 0; border-radius: var(--radius-2);
+  background: transparent; color: var(--ink-2);
+  box-shadow: inset 0 0 0 1px var(--pp-rule);
+  font-family: var(--font-display); font-weight: 700; font-size: var(--fs-100); line-height: 1.2; white-space: normal;
+  transition: background var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out), box-shadow var(--dur-2) var(--ease-out);
+}
+.travel-passport__memory-actions > .fm-btn:hover { background: var(--paper-2); color: var(--ink); }
+.travel-passport__play { background: var(--sun-soft) !important; color: var(--ink) !important; box-shadow: inset 0 0 0 1px var(--gold) !important; }
+.travel-passport__play:hover { background: var(--sun) !important; }
+.travel-passport__choose { max-width: none; }
 .travel-passport[dir=rtl] .travel-passport__opening-cover { --cover-shift: 50%; }
 .travel-passport__book[data-opening] .travel-passport__page { animation: passport-reveal 600ms var(--ease-out) both; }
 @keyframes passport-reveal { from { opacity: 0; } to { opacity: 1; } }
@@ -366,14 +375,13 @@
   .travel-passport__collection-head { margin-bottom: var(--space-1); }
   .travel-passport__collection-note { font-size: var(--fs-50); }
   .travel-passport__leaf { padding-block: var(--space-2) var(--space-3); }
-  .travel-passport__memory > .travel-passport__photo { max-height: calc(var(--book-height) * .32); }
-  .travel-passport__stamp { margin-block: var(--space-0-5); }
+  .travel-passport__memory > .travel-passport__photo { max-height: calc(var(--book-height) * .40); }
+  .passport-stamp { --stamp-size: 56px; }
 }
 @media (max-height: 740px) and (min-width: 761px) {
   .travel-passport__missing { height: 88px; }
   .travel-passport__collection-note { display: none; }
   .travel-passport__page-head h2, .travel-passport__collection-head h3 { font-size: var(--fs-300); }
-  .travel-passport__stamp { padding-block: var(--space-0-5); }
   .travel-passport__toolbar { height: 50px; }
   .travel-passport__reader-footer { padding-top: var(--space-1); }
   .travel-passport__place { flex-basis: var(--touch-min); min-height: var(--touch-min) !important; padding: var(--space-0-5); }
@@ -408,13 +416,13 @@
   .travel-passport__page-head > p:last-child { font-size: var(--fs-50); white-space: nowrap; }
   .travel-passport__photo { width: 192px; padding: 0; }
   .travel-passport__photo img, .travel-passport__photo-wait { height: 125px; }
-  .travel-passport__stamp { display: flex; align-items: center; padding: var(--space-0-5) var(--space-1); margin: var(--space-0-5) 2px 0 auto; font-size: var(--fs-50); min-height: 32px; }
-  .travel-passport__stamp > span:last-child { display: none; }
-  .travel-passport__stamp > span:first-child { font-size: var(--fs-200); }
   .travel-passport__progress { margin: var(--space-1) 0 0; font-size: var(--fs-50); }
-  .travel-passport__memory-actions { margin-top: 0; justify-content: space-between; min-height: var(--touch-min); }
-  .travel-passport__memory-actions > .fm-btn { font-size: var(--fs-50); min-height: var(--touch-min) !important; box-shadow: none; background: transparent; border: none; padding: var(--space-1); }
-  .travel-passport__choose { max-width: none; }
+  /* The same round stamp, just smaller; it never becomes a strip. */
+  .passport-stamp { --stamp-size: 52px; }
+  .passport-stamp::before { inset: 3px; }
+
+  .travel-passport__memory-actions { margin-top: var(--space-1); padding-inline: 0; gap: var(--space-0-5); }
+  .travel-passport__memory-actions > .fm-btn, .travel-passport__memory-actions > a.fm-btn { font-size: var(--fs-50); min-height: var(--touch-min) !important; padding: var(--space-0-5); }
   .travel-passport__collection-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-0-5); margin-bottom: var(--space-1); padding-top: var(--space-1); border-top: 1px solid var(--pp-rule); }
   .travel-passport__collection-head h3 { font-size: var(--fs-300); margin: 0; }
   .travel-passport__collection-head p { font-size: var(--fs-50); white-space: nowrap; }
@@ -534,8 +542,7 @@
 .passport-finale__page { padding: var(--space-3); background: radial-gradient(ellipse at 30% 8%, var(--white), transparent 70%), var(--pp-grain, none), var(--paper-2); border-radius: var(--radius-3); display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); box-shadow: inset 0 0 0 1px var(--line); }
 .passport-finale__memory { position: relative; padding-bottom: var(--space-3); }
 .passport-finale__photo { background: var(--white); padding: var(--space-1) var(--space-1) var(--space-3); transform: rotate(-3deg); box-shadow: var(--shadow-2); }
-.passport-finale__stamp { position: relative; margin: calc(var(--space-3) * -1) calc(var(--space-1) * -1) 0 auto; display: grid; place-items: center; width: fit-content; padding: var(--space-1) var(--space-2); background: transparent; color: var(--leaf-deep); border: 4px double var(--leaf-deep); border-radius: var(--radius-2); transform: rotate(-7deg); mix-blend-mode: multiply; opacity: 0.92; }
-.passport-finale__stamp span { font-size: var(--fs-500); }
+.passport-finale__stamp { margin: calc(var(--space-3) * -1) calc(var(--space-1) * -1) 0 auto; }
 .passport-finale__items { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2) var(--space-1); }
 .passport-finale__items li { min-width: 0; font-size: var(--fs-50); text-align: center; font-family: var(--font-kid); font-weight: 600; }
 .passport-finale__items li > .album__crop { aspect-ratio: 1 !important; border: 4px solid var(--white); border-radius: var(--radius-3); box-shadow: var(--shadow-1); margin-block-end: var(--space-1); }
@@ -551,10 +558,10 @@
 .passport-finale[data-phase=waiting] .passport-finale__stamp { visibility: hidden; }
 /* The stamp lands: it arrives big and askew, presses past its resting angle,
    and settles — the way a hand brings a stamp down onto a page. */
-@keyframes passport-stamp { 0% { opacity: 0; transform: scale(1.8) rotate(-22deg); } 65% { opacity: .92; transform: scale(.94) rotate(-5deg); } 100% { opacity: .92; transform: scale(1) rotate(-7deg); } }
+@keyframes passport-stamp { 0% { opacity: 0; transform: scale(1.8) rotate(-22deg); } 65% { opacity: 1; transform: scale(.94) rotate(-5deg); } 100% { opacity: 1; transform: scale(1) rotate(-8deg); } }
 @keyframes passport-develop { from { opacity: 0; filter: saturate(0); transform: translateY(16px) rotate(2deg); } to { opacity: 1; filter: saturate(1); transform: rotate(-3deg); } }
 @keyframes passport-sticker { from { opacity: 0; transform: translateY(-20px) scale(1.1) rotate(-10deg); } to { opacity: 1; transform: none; } }
-@media (max-width: 600px) { .passport-finale__page { padding: var(--space-2); gap: var(--space-2); } .passport-finale__items { gap: var(--space-1) var(--space-1); } .passport-finale__items li { font-size: var(--fs-50); } .passport-finale__stamp { font-size: var(--fs-50); padding: var(--space-0-5) var(--space-1); } .passport-finale__page h3 { font-size: var(--fs-200); margin-top: 0; } .passport-finale__actions button { flex: 1 1 40%; font-size: var(--fs-200); padding-inline: var(--space-1); } }
+@media (max-width: 600px) { .passport-finale__page { padding: var(--space-2); gap: var(--space-2); } .passport-finale__items { gap: var(--space-1) var(--space-1); } .passport-finale__items li { font-size: var(--fs-50); } .passport-finale__page h3 { font-size: var(--fs-200); margin-top: 0; } .passport-finale__actions button { flex: 1 1 40%; font-size: var(--fs-200); padding-inline: var(--space-1); } }
 @media (prefers-reduced-motion: reduce) { .passport-finale *, .passport-finale *::before, .passport-finale *::after { animation: none !important; transition: none !important; } .passport-finale .celebration { display: none; } }
 @media (max-width: 760px) {
   .passport-view { padding: var(--space-0-5) var(--space-2); justify-content: flex-start; gap: 0; }

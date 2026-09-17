@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type CSSProperties, type PointerEvent, typ
 import { useI18n } from "@/i18n/client";
 import type { PassportPageView, PassportView } from "@/domain/passport/passport";
 import { arrowPage, swipePage } from "./book-navigation";
+import { PassportStamp } from "./StampMark";
 import "./passport.css";
 
 function Picture({ src, label }: { src: string; label: string }) {
@@ -143,8 +144,12 @@ export function PassportBook({ book, mode = "owner", onPhotoSelect, onPlay, rend
               <section className="travel-passport__leaf travel-passport__memory" aria-label={copy.memory}>
                 <header className="travel-passport__page-head"><p className="travel-passport__eyebrow">{world?.title}</p><h2 ref={heading} tabIndex={-1}>{page.title}</h2><p>{tf(copy.page, { n: index + 1, total: world!.pages.length })}</p></header>
                 <div className="travel-passport__photo">{page.photoUrl ? <button type="button" className="travel-passport__enlarge" aria-label={copy.enlarge} onClick={() => setPanel("photo")}>{image(page.photoUrl, page.title)}<span>{copy.enlarge}</span></button> : <div className="travel-passport__photo-wait"><span aria-hidden>✦</span><p>{page.state === "locked" ? copy.locked : copy.photoWait}</p></div>}</div>
-                {["stamped", "complete"].includes(page.state) ? <div className="travel-passport__stamp"><span aria-hidden>{page.stampIcon}</span><strong>{copy.stamped}</strong><span>{page.title}</span></div> : <p className="travel-passport__progress">{tf(copy.progress, { n: page.finds })}</p>}
+                {/* The mark alone. The words went inside the aria-label rather
+                    than off the page: a stamp is a picture, and a reader that
+                    cannot see it still has to be told the place was visited. */}
+                {!["stamped", "complete"].includes(page.state) ? <p className="travel-passport__progress">{tf(copy.progress, { n: page.finds })}</p> : null}
                 <div className="travel-passport__memory-actions">
+                {["stamped", "complete"].includes(page.state) ? <PassportStamp className="travel-passport__stamp" label={copy.stamped} /> : null}
                 {mode === "owner" && page.photoChoices && onPhotoSelect ? <button className="fm-btn fm-btn--ghost travel-passport__choose" type="button" onClick={() => setPanel("choose")}>{copy.choosePhoto}</button> : null}
                 {mode === "owner" && page.state !== "locked" ? onPlay ? <button type="button" className="fm-btn fm-btn--secondary travel-passport__play" onClick={() => onPlay(page.id)}>{copy.play}</button> : page.playHref ? <a href={page.playHref} className="fm-btn fm-btn--secondary travel-passport__play">{copy.play}</a> : null : null}
                 </div>
