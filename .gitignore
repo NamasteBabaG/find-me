@@ -31,3 +31,7 @@ assets/*.png
 !assets/noa-face.beach-original.png
 
 .env*.local
+# Local review scratch: fixtures, logs and short-lived login capabilities.
+# The passport handoff assumed this was ignored; it was not, and
+# output/passport/smoke-fixture.json holds a live magic-link token.
+/output
