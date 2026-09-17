@@ -81,3 +81,45 @@ not by claiming the CLI runner had credentials it did not have.
 Provider refund concurrency, PayMe readiness and the broader production-release
 PostgreSQL gate are unchanged. This QA passport migration is not a certification
 of those unrelated paths. No paid render, real payment or email was triggered.
+
+## Live QA deployment receipt — 2026-09-17
+
+- Application commit: `bea4b219ece22939d005967b316c155c60d191cc`, clean tree,
+  pushed to `find-me/codex/passport-qa-20260917` before release.
+- Vercel project: `find-me-qa` (`prj_LbqCRqwU8WfZpeaWU7HTXM4SsfG4`).
+- Deployment: `dpl_6a9m93ADczu7ZZjzb3jUSzK3LKLK`, **READY**.
+- Immutable URL: https://find-me-j6des4p1j-smallheroes-projects.vercel.app
+- QA alias: https://qa.findmeworlds.com — promotion and alias assignment succeeded;
+  `vercel inspect qa.findmeworlds.com` resolves the deployment above.
+- Remote Next.js production build passed, including privacy/trace audit. Largest
+  reported function size: 177.64 MB, below the 250 MB gate. This is a production
+  target of the QA project, **not** the production shop.
+- Anonymous access still redirects to `/qa-access`. No access gates or existing
+  provider settings were disabled or changed.
+
+Authenticated live Chrome check, using the existing QA login:
+
+- Homepage shows the current hero, passport demonstration and family-area link.
+- Family area lists the previously paid test adventures after the backfill.
+  Repeated names in old QA data remain separate: identity was not guessed or
+  merged from a name or a photograph.
+- Bar's completed adventure opens its personal passport. Cover, illustrated
+  portrait, first-board souvenir, completion stamp and all six collected items
+  rendered successfully. Next-page navigation loaded the Amazon souvenir and
+  its six collected items.
+- No real progress, souvenir preference, sharing link, payment or generation was
+  changed during this live inspection. Sharing/revocation was tested with the
+  isolated fictional local fixture described above.
+- Vercel error-level and HTTP 500 queries for this deployment in the final
+  15-minute window returned no matching logs. This is a bounded smoke check,
+  not a claim of exhaustive production telemetry coverage.
+- Direct browser navigation to `/api/health` was blocked by Chrome with
+  `ERR_BLOCKED_BY_CLIENT`; no browser protection was bypassed. Therefore that
+  endpoint is not claimed as verified. The live authenticated family/passport
+  routes did successfully read their QA database-backed data.
+
+Rollback application target, if needed:
+`find-me-h7zgauf0n-smallheroes-projects.vercel.app`
+(`dpl_31yoUQLzxio5wgVeNYSeRPppUkbE`). The schema is additive; do not undo it with
+destructive DDL. This receipt is a documentation-only follow-up to the deployed
+application commit above.
