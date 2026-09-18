@@ -79,4 +79,27 @@ Do not claim the automatic judge guarantees likeness or child presence. Treat
 this exact failed image as evidence when improving/evaluating that gate separately.
 New-board work stays secondary to validating this incident repair in QA.
 
-Deployment/publish/live confirmation receipt will be appended after execution.
+## Deployment and database receipt
+
+- App commit `288b3b3f7b3402890e55b6fa9fe27c1c0ac1c5b5`, clean checkout, pushed.
+- Dedicated QA deployment `dpl_51WZqoABnH9n2b7xfWBr7BPbE8Fd`, READY,
+  promoted to `https://qa.findmeworlds.com` and alias resolution inspected.
+- Remote build/type check passed; privacy audit: zero private asset leaks;
+  function bundle 177.64MB. Post-deploy error-log query returned no entries.
+- Three uploaded blob hashes match the pinned source hashes. New Asset rows are
+  GAME/READY, carry zero new generation cost and preserve the old judge evidence.
+- Atomic repair succeeded: album revision 79 -> 80, 27 finds and 52 discoveries.
+  PostgreSQL JSON comparisons prove the entire find/discovery arrays unchanged
+  and the repaired album book identical to the published game's adventure book.
+- Game remains DELIVERED; generation job was DONE. No payment/status/ownership
+  or passport preference changes. No paid calls were made for this repair.
+- Owner-route live play is **not yet verified after repair**: the browser remains
+  signed into the separate magic-pilot owner, so this other owner's family route
+  correctly returns not found. Asked for normal owner sign-in and supplied the
+  original link again. No authentication bypass or new sharing capability used.
+- The local browser choreography and exact source images were inspected; do not
+  substitute that evidence for the remaining real-owner live play check.
+
+Rollback, if necessary, must restore the prior config AND album book together
+from the private audit receipt, while preserving any newer earned events. Do not
+replace the entire progress snapshot with the older audit snapshot.
