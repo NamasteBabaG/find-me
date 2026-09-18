@@ -28,6 +28,18 @@ function open(locale: "en" | "he" = "en") { fireEvent.click(screen.getByRole("bu
 function finish() { act(() => { vi.advanceTimersByTime(1000); }); }
 
 describe("passport book interaction", () => {
+  it.each(["en", "he"] as const)("keeps the %s photo caption off the print but preserves accessible zoom", locale => {
+    mount({}, locale); open(locale); finish();
+    const label = getDict(locale).travelPassport.enlarge;
+    const enlarge = screen.getByRole("button", { name: label });
+    expect(enlarge.getAttribute("title")).toBe(label);
+    expect(enlarge.textContent).toBe("");
+    expect(within(enlarge).getByRole("img", { name: "Place 1" })).toBeTruthy();
+    fireEvent.click(enlarge);
+    expect(screen.getByRole("dialog", { name: label }).hasAttribute("open")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: getDict(locale).travelPassport.closePicture }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
   it.each(["en", "he"] as const)("uses the shared mark-only stamp with a %s accessible name", locale => {
     const view = mount({}, locale); open(locale); finish();
     const stamp = screen.getByRole("img", { name: getDict(locale).travelPassport.stamped });
