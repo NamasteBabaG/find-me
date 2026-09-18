@@ -39,4 +39,24 @@ package prices and is outside the design handoff; it has NOT been taken.
 - Screenshots under ignored `output/passport/integration-*`. No credentials or
   personal output committed. Real Safari/device-touch not tested in this pass.
 
-QA deployment receipt will follow once the remote build and smoke are complete.
+## QA deployment receipt
+
+- Application commit `fddc7bc354861c6c82d0917494788d4da2e4adb7`, branch
+  `codex/independent-worlds-20260918`, pushed with a clean worktree.
+- QA-only project `find-me-qa` / `prj_LbqCRqwU8WfZpeaWU7HTXM4SsfG4`.
+  CLI production target refers to that QA project's slot, not customer production.
+- Deployment `dpl_Hu3qmp4XcPwJVMGqF8YbKzabuQda`, created 2026-09-18 13:27:49
+  Asia/Jerusalem. Ready, promoted and verified by inspecting the QA alias.
+- Immutable URL: <https://find-me-7rq2nelj9-smallheroes-projects.vercel.app>.
+  User URL: <https://qa.findmeworlds.com>.
+- Remote Next 15.5.25 build passed, with type checking, 31 static pages and
+  privacy/tracing audit passing; no private leaks. Inspected function 177.64MB.
+- QA anonymous navigation still reaches the normal access gate. Both the fresh
+  automation browser and the existing in-app browser require sign-in. The QA
+  password is unavailable from local/pulled sensitive environment exports, so
+  post-login LIVE UI smoke is pending user sign-in; do not label it completed.
+  No password reset, credential change, bypass or gate removal was attempted.
+- Exact-deployment error-log scan, last 15 minutes, returned no matching logs.
+  This is a limited observation, not an authenticated end-to-end live test.
+- No environment settings, schema or real child assets were changed.
+- Rollback: `dpl_Dt7bVgpzgjsMqy9pPbdxiZHViZ7Z` / `e49edacd`.
