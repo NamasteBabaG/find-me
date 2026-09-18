@@ -1,0 +1,262 @@
+{
+  "status": "authored-not-playtested",
+  "boardSlug": "fairyforest",
+  "source": "/scenes/magic-fairyforest-v6/base.webp",
+  "art": {
+    "width": 3840,
+    "height": 2160,
+    "sha256": "435e80bba3bcf03e12773f80c9202d6e2b2a6f026333ef7eaf03d0def086e741"
+  },
+  "discoveries": [
+    {
+      "id": "blue-paintbrush",
+      "name": {
+        "en": "Blue paintbrush",
+        "he": "מכחול כחול"
+      },
+      "hint": {
+        "en": "Look on the table where the children paint flowers.",
+        "he": "חפשו על השולחן של הילדים שמציירים פרחים."
+      },
+      "category": "object",
+      "rarity": "common",
+      "difficulty": 1,
+      "description": {
+        "kind": "story",
+        "text": {
+          "en": "This brush could paint a whole garden.",
+          "he": "עם המכחול הזה אפשר לצייר גינה שלמה."
+        }
+      },
+      "visibleRect": {
+        "x": 0.3109375,
+        "y": 0.35833333333333334,
+        "w": 0.04114583333333333,
+        "h": 0.0587962962962963
+      },
+      "hitRect": {
+        "x": 0.32578125,
+        "y": 0.37546296296296294,
+        "w": 0.0140625,
+        "h": 0.016666666666666666
+      },
+      "cardCrop": {
+        "x": 0.3059895833333333,
+        "y": 0.34305555555555556,
+        "w": 0.053385416666666664,
+        "h": 0.09490740740740741
+      }
+    },
+    {
+      "id": "berry-bowl",
+      "name": {
+        "en": "Berry bowl",
+        "he": "קערת פירות יער"
+      },
+      "hint": {
+        "en": "The trolls are offering the girl something tasty.",
+        "he": "הטרולים מציעים משהו טעים לילדה."
+      },
+      "category": "object",
+      "rarity": "common",
+      "difficulty": 1,
+      "description": {
+        "kind": "story",
+        "text": {
+          "en": "The trolls prepared a treat for their visitors.",
+          "he": "הטרולים הכינו כיבוד לחברים שבאו לבקר."
+        }
+      },
+      "visibleRect": {
+        "x": 0.59375,
+        "y": 0.5171296296296296,
+        "w": 0.04296875,
+        "h": 0.059722222222222225
+      },
+      "hitRect": {
+        "x": 0.6015625,
+        "y": 0.5277777777777778,
+        "w": 0.024479166666666666,
+        "h": 0.02824074074074074
+      },
+      "cardCrop": {
+        "x": 0.5880208333333333,
+        "y": 0.5060185185185185,
+        "w": 0.05625,
+        "h": 0.1
+      }
+    },
+    {
+      "id": "purple-sail",
+      "name": {
+        "en": "Purple sail",
+        "he": "מפרש סגול"
+      },
+      "hint": {
+        "en": "Look at one of the frogs boats.",
+        "he": "חפשו בסירה של אחת הצפרדעים."
+      },
+      "category": "object",
+      "rarity": "common",
+      "difficulty": 1,
+      "description": {
+        "kind": "story",
+        "text": {
+          "en": "A little breeze starts a big pond adventure.",
+          "he": "רוח קטנה מספיקה להרפתקה גדולה בבריכה."
+        }
+      },
+      "visibleRect": {
+        "x": 0.5328125,
+        "y": 0.6314814814814815,
+        "w": 0.03177083333333333,
+        "h": 0.07453703703703704
+      },
+      "hitRect": {
+        "x": 0.5369791666666667,
+        "y": 0.6648148148148149,
+        "w": 0.014322916666666666,
+        "h": 0.02962962962962963
+      },
+      "cardCrop": {
+        "x": 0.5221354166666666,
+        "y": 0.6203703703703703,
+        "w": 0.057291666666666664,
+        "h": 0.10185185185185185
+      }
+    },
+    {
+      "id": "squirrel-panflute",
+      "name": {
+        "en": "Squirrel pan flute",
+        "he": "חליל הפאן של הסנאי"
+      },
+      "hint": {
+        "en": "Who is playing beside the child with the guitar?",
+        "he": "מי מנגן ליד הילד עם הגיטרה?"
+      },
+      "category": "object",
+      "rarity": "rare",
+      "difficulty": 2,
+      "description": {
+        "kind": "story",
+        "text": {
+          "en": "Each tube of the flute has its own note.",
+          "he": "לכל צינור בחליל יש צליל משלו."
+        }
+      },
+      "visibleRect": {
+        "x": 0.36666666666666664,
+        "y": 0.49166666666666664,
+        "w": 0.027083333333333334,
+        "h": 0.0625
+      },
+      "hitRect": {
+        "x": 0.3776041666666667,
+        "y": 0.5069444444444444,
+        "w": 0.009375,
+        "h": 0.02546296296296296
+      },
+      "cardCrop": {
+        "x": 0.35442708333333334,
+        "y": 0.4740740740740741,
+        "w": 0.053125,
+        "h": 0.09444444444444444
+      }
+    },
+    {
+      "id": "basket-dragonfly",
+      "name": {
+        "en": "Golden dragonfly",
+        "he": "שפירית זהובה"
+      },
+      "hint": {
+        "en": "The turtle carries a basket with a little decoration.",
+        "he": "הצב סוחב סל עם קישוט קטן."
+      },
+      "category": "object",
+      "rarity": "rare",
+      "difficulty": 2,
+      "description": {
+        "kind": "story",
+        "text": {
+          "en": "This dragonfly travels on a turtles back.",
+          "he": "השפירית הזאת נוסעת דווקא על גב של צב."
+        }
+      },
+      "visibleRect": {
+        "x": 0.42630208333333336,
+        "y": 0.600925925925926,
+        "w": 0.034375,
+        "h": 0.04814814814814815
+      },
+      "hitRect": {
+        "x": 0.4348958333333333,
+        "y": 0.612037037037037,
+        "w": 0.014583333333333334,
+        "h": 0.026851851851851852
+      },
+      "cardCrop": {
+        "x": 0.4192708333333333,
+        "y": 0.5879629629629629,
+        "w": 0.048177083333333336,
+        "h": 0.08564814814814815
+      }
+    },
+    {
+      "id": "fairy-silver-buckle",
+      "name": {
+        "en": "Silver buckle",
+        "he": "אבזם כסוף"
+      },
+      "hint": {
+        "en": "Look on the brown bag of the fairy in the purple dress.",
+        "he": "חפשו על התיק החום של הפייה בשמלה הסגולה."
+      },
+      "category": "object",
+      "rarity": "epic",
+      "difficulty": 3,
+      "description": {
+        "kind": "story",
+        "text": {
+          "en": "The buckle keeps surprises from escaping the bag.",
+          "he": "האבזם שומר שההפתעות לא יברחו מהתיק."
+        }
+      },
+      "visibleRect": {
+        "x": 0.56015625,
+        "y": 0.3398148148148148,
+        "w": 0.009895833333333333,
+        "h": 0.020833333333333332
+      },
+      "hitRect": {
+        "x": 0.5625,
+        "y": 0.3453703703703704,
+        "w": 0.005208333333333333,
+        "h": 0.010648148148148148
+      },
+      "cardCrop": {
+        "x": 0.5546875,
+        "y": 0.33287037037037037,
+        "w": 0.020833333333333332,
+        "h": 0.037037037037037035
+      }
+    }
+  ],
+  "checks": {
+    "schema": true,
+    "rarity321": true,
+    "sourceHash": true,
+    "nonOverlappingHits": true,
+    "measuredInteriorBounds": true,
+    "analyticalCameraChecks": 36,
+    "renderedHudVerified": false
+  },
+  "remaining": [
+    "rendered HUD and touch verification",
+    "child difficulty playtest",
+    "personal hide protection and integration",
+    "release"
+  ],
+  "sourcePngSha256": "2608aa3bef3d6b1da646fd79064f714f3488210d81573a314636442373ebba02"
+}

@@ -1,0 +1,259 @@
+{
+  "status": "authored-not-playtested",
+  "boardSlug": "magic-castlegate",
+  "source": "/scenes/magic-castlegate-v18/base.webp",
+  "art": {
+    "width": 3840,
+    "height": 2160,
+    "sha256": "822c8ae9a2d7fe325685feb97702349e29a74f56d73c6f45b8135aac8876b55a"
+  },
+  "discoveries": [
+    {
+      "id": "purple-teapot",
+      "name": {
+        "en": "Purple teapot",
+        "he": "קנקן סגול"
+      },
+      "hint": {
+        "en": "Look among the cakes and cups on the royal table.",
+        "he": "חפשו בין העוגות והספלים בשולחן המלכותי."
+      },
+      "category": "object",
+      "rarity": "common",
+      "difficulty": 1,
+      "description": {
+        "kind": "story",
+        "text": {
+          "en": "Even a royal celebration has time for tea.",
+          "he": "גם בחגיגה מלכותית יש זמן לכוס תה."
+        }
+      },
+      "visibleRect": {
+        "x": 0.43828125,
+        "y": 0.45092592592592595,
+        "w": 0.044270833333333336,
+        "h": 0.06388888888888888
+      },
+      "hitRect": {
+        "x": 0.4471354166666667,
+        "y": 0.4648148148148148,
+        "w": 0.02421875,
+        "h": 0.04583333333333333
+      },
+      "cardCrop": {
+        "x": 0.43020833333333336,
+        "y": 0.4398148148148148,
+        "w": 0.057291666666666664,
+        "h": 0.08472222222222223
+      }
+    },
+    {
+      "id": "sand-hourglass",
+      "name": {
+        "en": "Hourglass",
+        "he": "שעון חול"
+      },
+      "hint": {
+        "en": "The gatekeeper knows when the next story begins.",
+        "he": "השומר יודע מתי מתחיל הסיפור הבא."
+      },
+      "category": "object",
+      "rarity": "common",
+      "difficulty": 1,
+      "description": {
+        "kind": "story",
+        "text": {
+          "en": "The sand falls while visitors wait to enter the castle.",
+          "he": "החול יורד בזמן שמחכים לתור להיכנס לטירה."
+        }
+      },
+      "visibleRect": {
+        "x": 0.58203125,
+        "y": 0.25462962962962965,
+        "w": 0.016145833333333335,
+        "h": 0.046296296296296294
+      },
+      "hitRect": {
+        "x": 0.5841145833333333,
+        "y": 0.25787037037037036,
+        "w": 0.011979166666666667,
+        "h": 0.04027777777777778
+      },
+      "cardCrop": {
+        "x": 0.57421875,
+        "y": 0.24537037037037038,
+        "w": 0.03125,
+        "h": 0.06481481481481481
+      }
+    },
+    {
+      "id": "yellow-duck",
+      "name": {
+        "en": "Wooden duck",
+        "he": "ברווז עץ"
+      },
+      "hint": {
+        "en": "The duck has a part in the show too.",
+        "he": "גם לברווז יש תפקיד בהצגה."
+      },
+      "category": "object",
+      "rarity": "common",
+      "difficulty": 1,
+      "description": {
+        "kind": "story",
+        "text": {
+          "en": "The wooden duck is waiting for its turn on stage.",
+          "he": "ברווז העץ מחכה לתורו לעלות לבמה."
+        }
+      },
+      "visibleRect": {
+        "x": 0.78828125,
+        "y": 0.36666666666666664,
+        "w": 0.03177083333333333,
+        "h": 0.07083333333333333
+      },
+      "hitRect": {
+        "x": 0.7942708333333334,
+        "y": 0.3736111111111111,
+        "w": 0.018489583333333334,
+        "h": 0.05416666666666667
+      },
+      "cardCrop": {
+        "x": 0.78359375,
+        "y": 0.3587962962962963,
+        "w": 0.04114583333333333,
+        "h": 0.08796296296296297
+      }
+    },
+    {
+      "id": "ivy-frog",
+      "name": {
+        "en": "Frog in a pot",
+        "he": "צפרדע בעציץ"
+      },
+      "hint": {
+        "en": "Two eyes are peeking out among the leaves.",
+        "he": "בין העלים מציצות שתי עיניים."
+      },
+      "category": "animal",
+      "rarity": "rare",
+      "difficulty": 2,
+      "description": {
+        "kind": "story",
+        "text": {
+          "en": "A green guest found a shady seat for the celebration.",
+          "he": "אורחת ירוקה מצאה מושב מוצל לחגיגה."
+        }
+      },
+      "visibleRect": {
+        "x": 0.2591145833333333,
+        "y": 0.6648148148148149,
+        "w": 0.027083333333333334,
+        "h": 0.033796296296296297
+      },
+      "hitRect": {
+        "x": 0.2643229166666667,
+        "y": 0.6712962962962963,
+        "w": 0.016666666666666666,
+        "h": 0.022685185185185187
+      },
+      "cardCrop": {
+        "x": 0.2520833333333333,
+        "y": 0.6518518518518519,
+        "w": 0.041666666666666664,
+        "h": 0.05787037037037037
+      }
+    },
+    {
+      "id": "knight-puppet",
+      "name": {
+        "en": "Knight puppet",
+        "he": "בובת אביר"
+      },
+      "hint": {
+        "en": "Not every knight in the castle is a real person.",
+        "he": "לא כל אביר בטירה הוא אדם אמיתי."
+      },
+      "category": "object",
+      "rarity": "rare",
+      "difficulty": 2,
+      "description": {
+        "kind": "story",
+        "text": {
+          "en": "The little knight is rehearsing for the show.",
+          "he": "האביר הקטן מתאמן לקראת ההצגה."
+        }
+      },
+      "visibleRect": {
+        "x": 0.7622395833333333,
+        "y": 0.32731481481481484,
+        "w": 0.033854166666666664,
+        "h": 0.1111111111111111
+      },
+      "hitRect": {
+        "x": 0.76875,
+        "y": 0.3490740740740741,
+        "w": 0.017447916666666667,
+        "h": 0.08009259259259259
+      },
+      "cardCrop": {
+        "x": 0.75703125,
+        "y": 0.31851851851851853,
+        "w": 0.044270833333333336,
+        "h": 0.1287037037037037
+      }
+    },
+    {
+      "id": "dog-blue-ribbon",
+      "name": {
+        "en": "The dog's blue ribbon",
+        "he": "הסרט הכחול של הכלב"
+      },
+      "hint": {
+        "en": "Someone dressed up for the party — and has four legs.",
+        "he": "מישהו התלבש לחגיגה — ויש לו ארבע רגליים."
+      },
+      "category": "object",
+      "rarity": "epic",
+      "difficulty": 3,
+      "description": {
+        "kind": "story",
+        "text": {
+          "en": "The dog dressed up for the celebration too.",
+          "he": "גם הכלב הגיע לבוש חגיגי."
+        }
+      },
+      "visibleRect": {
+        "x": 0.44505208333333335,
+        "y": 0.24351851851851852,
+        "w": 0.0140625,
+        "h": 0.022685185185185187
+      },
+      "hitRect": {
+        "x": 0.446875,
+        "y": 0.24675925925925926,
+        "w": 0.009114583333333334,
+        "h": 0.01574074074074074
+      },
+      "cardCrop": {
+        "x": 0.43697916666666664,
+        "y": 0.22962962962962963,
+        "w": 0.03333333333333333,
+        "h": 0.049074074074074076
+      }
+    }
+  ],
+  "checks": {
+    "schema": true,
+    "nonOverlappingHits": true,
+    "sourceHash": true,
+    "rarity321": true,
+    "measuredInteriorBounds": true
+  },
+  "remaining": [
+    "real game mobile/desktop pan, zoom, HUD and touch verification",
+    "personal hide placement and discovery protection",
+    "release integration"
+  ],
+  "sourcePngSha256": "81d875c789ccc846bd61ae27b6964f5460545d8664460e004fbab574c092e9a9"
+}

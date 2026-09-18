@@ -1,0 +1,12 @@
+{
+  "status": "authored-not-playtested",
+  "source": "output/imagegen/magic-castlegate-v18-fresh-master.png",
+  "sourceSha256": "81d875c789ccc846bd61ae27b6964f5460545d8664460e004fbab574c092e9a9",
+  "file": "/scenes/magic-castlegate-v18/base.webp",
+  "width": 3840,
+  "height": 2160,
+  "sha256": "822c8ae9a2d7fe325685feb97702349e29a74f56d73c6f45b8135aac8876b55a",
+  "losslessPixelsVerified": true,
+  "catalogActivated": false,
+  "personalHides": 0
+}

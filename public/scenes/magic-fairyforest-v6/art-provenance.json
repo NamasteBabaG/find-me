@@ -1,0 +1,12 @@
+{
+  "status": "authored-not-playtested",
+  "source": "output/imagegen/magic-fairyforest-v6-fresh-environment.png",
+  "sourceSha256": "2608aa3bef3d6b1da646fd79064f714f3488210d81573a314636442373ebba02",
+  "file": "/scenes/magic-fairyforest-v6/base.webp",
+  "width": 3840,
+  "height": 2160,
+  "sha256": "435e80bba3bcf03e12773f80c9202d6e2b2a6f026333ef7eaf03d0def086e741",
+  "losslessPixelsVerified": true,
+  "catalogActivated": false,
+  "personalHides": 0
+}

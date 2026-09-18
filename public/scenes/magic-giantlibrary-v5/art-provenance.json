@@ -1,0 +1,12 @@
+{
+  "status": "authored-not-playtested",
+  "source": "output/imagegen/magic-giantlibrary-v5-face-volume.png",
+  "sourceSha256": "5e63c03c9272e611e6a0a09ea16fae1d4a30f6c0326bbd3e44cbdfdc9285ee61",
+  "file": "/scenes/magic-giantlibrary-v5/base.webp",
+  "width": 3840,
+  "height": 2160,
+  "sha256": "1d2b5586f7fcc59fd310904bd01c4f7ed06f10c9e47725fbfc8486a86068e415",
+  "losslessPixelsVerified": true,
+  "catalogActivated": false,
+  "personalHides": 0
+}
