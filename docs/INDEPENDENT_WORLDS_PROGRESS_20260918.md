@@ -35,23 +35,21 @@ The application copy is `cf6a402a`. No personal photo is part of those commits.
 
 `content/adventures/magic-pilot.ts` and `scripts/magic-pilot-preflight.ts` are
 AUTHORING ONLY. They do not add a world to the catalog or alter live games.
-Preflight validates the exact master hashes, native 3840x2160 sizes and full
-patch-crop exclusion from all 18 discovery card crops. Nine proposed crops pass
-those geometry gates. No personal render is approved or purchased.
-
-Visual inspection of the diagnostic sheet still found masks requiring refinement:
-castle dancing-child head, library story-circle head and foreground reader hair,
-forest gardener hat, plus overlapping neighbors/foreground props. Therefore do
-not render these proposals yet. Keep source children entirely within their edit
-masks, preserve neighboring faces and foreground occlusion, then inspect again.
-Geometry passing is not visual approval.
+Preflight validates exact master hashes, native 3840x2160 sizes and full patch
+exclusion from all 18 discovery card crops. The nine masks were refined and then
+rendered through the existing retained-purchase local-patch engine. Nine hides
+now have bound technical, grouped visual and manual approvals. One forest seam
+failure was rejected and repaired; it is not included in the playable config.
+See `MAGIC_BAR_PILOT_20260918.md` for the evidence and separate deployment receipt.
 
 ## Next work
 
-1. Finish visual mask authoring, then reuse the retained-purchase local-patch
-   engine and existing reference/identity gates for the three-board Bar pilot.
-2. Verify all nine personal hides, 18 discoveries, replay and passport end to end.
-3. Continue the remaining six magic boards after that pilot, not before it.
+1. Three-board Bar pilot assembled: three appearances per board, 18 discoveries.
+2. Local physical-pointer play completed all nine finds and all 18 discoveries;
+   passport photos, alternate-photo choice and replay persistence verified.
+3. QA data imported into an isolated mock purchase; authenticated live play and
+   the application release are tracked in the pilot report.
+4. Continue the remaining six magic boards after the pilot handoff, not before it.
 
 QA's local-patch engine still offers only Journey, because Kingdom does not yet
 have all nine ready v10 boards. This intentional gate must not be relaxed to

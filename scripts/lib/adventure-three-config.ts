@@ -10,11 +10,13 @@ export function validateReviewedChildGeometry(g:ReviewedChildGeometry):ReviewedC
 
 /** Pure assembly: only an explicit caller with existing GAME assets can publish.
  * No catalog registration, provider calls, fallback child or payment changes. */
-export function threeBoardConfig(input: {gameId:string;childName:string;avatarUrl:string;patchUrls:Record<string,string>;composedAt:string;fixture?:boolean;geometry?:Record<string,ReviewedChildGeometry>;boards?:LocalPatchBoard[];catalog?:AdventureCatalog}): GameConfig {
+export function threeBoardConfig(input: {gameId:string;childName:string;avatarUrl:string;patchUrls:Record<string,string>;composedAt:string;fixture?:boolean;geometry?:Record<string,ReviewedChildGeometry>;boards?:LocalPatchBoard[];catalog?:AdventureCatalog;world?:{slug:string;name:string;mapArt:string}}): GameConfig {
   const boards=input.boards??THREE_PATCH_BOARDS,catalog=input.catalog??ADVENTURE_THREE_BOARDS;
+  const world=input.world??{slug:"adventure-trail",name:"המסע שלי בעולם",mapArt:"/worlds/journey/map.webp"};
   const scenes:SceneConfig[]=boards.map(board=>{
     const plan=catalog.boards.find(p=>p.boardSlug===board.board);
     if(plan?.status!=="ready")throw new Error("Missing approved art");
+    if(plan.worldSlug!==world.slug)throw new Error("Pilot world must match every board's authored world");
     const targets=board.hides.map((hide,i)=>{
       const url=input.patchUrls[hide.id];if(!url)throw new Error(`Missing patch: ${hide.id}`);
       if(!hide.hint)throw new Error(`Missing hint: ${hide.id}`);
@@ -35,11 +37,11 @@ export function threeBoardConfig(input: {gameId:string;childName:string;avatarUr
     });
     return {slug:board.board,worldSlug:plan.worldSlug,version:plan.sceneVersion,name:plan.name.he,tagline:input.fixture?"בדיקת חיבור — סימוני TEST במקום ילד":"שלושה מחבואים ושש תגליות",artStatus:"final",playMode:"find-any",appearancesPerBoard:3,findsRequiredToAdvance:3,
       art:{base:plan.art.base,width:3840,height:2160,thumbnail:plan.art.base.replace("base.webp","thumb.webp"),palette:{sky:"#bedceb",ground:"#dcc091",accent:"#dbad37"}},
-      targets,ambient:[],celebration:{kind:"confetti",completeText:"מצאתם את שלושת המחבואים! הגלויה שלכם באלבום."},collectible:{id:`${board.board}-stamp`,name:plan.name.he,icon:"✦"},sounds:{}};
+      targets,ambient:[],celebration:{kind:"confetti",completeText:"מצאתם את שלושת המחבואים! החותמת שלכם בדרכון."},collectible:{id:`${board.board}-stamp`,name:plan.name.he,icon:"✦"},sounds:{}};
   });
   return GameConfigSchema.parse({version:1,gameId:input.gameId,locale:"he",child:{name:input.childName,avatarUrl:input.avatarUrl},styleVersion:"adventure-three-v1",packageTier:"ONE_WORLD",composedAt:input.composedAt,scenes,
-    worlds:[{slug:"adventure-trail",version:1,name:"המסע שלי בעולם",tagline:scenes.map(s=>s.name).join(' · '),intro:`${scenes.length} מקומות, ${scenes.length*3} מחבואים ואוסף של תגליות.`,
-      map:{width:1536,height:1024,art:"/worlds/journey/map.webp",palette:{sky:"#bedceb",ground:"#dcc091",accent:"#dbad37"}},
+    worlds:[{slug:world.slug,version:1,name:world.name,tagline:scenes.map(s=>s.name).join(' · '),intro:`${scenes.length} מקומות, ${scenes.length*3} מחבואים ואוסף של תגליות.`,
+      map:{width:1536,height:1024,art:world.mapArt,palette:{sky:"#bedceb",ground:"#dcc091",accent:"#dbad37"}},
       nodes:scenes.map((s,i)=>({boardSlug:s.slug,routeIndex:i+1,x:scenes.length<=3?[.2,.5,.8][i]:(Math.floor(i/3)%2===0?[.18,.5,.82]:[.82,.5,.18])[i%3],y:scenes.length<=3?[.62,.4,.6][i]:.18+Math.floor(i/3)*.6/(Math.ceil(scenes.length/3)-1),labelAnchor:"bottom",markerScale:1,travelStyle:"walk"})),
-      collectible:{id:"adventure-trail-stamps",name:"חותמות המסע",piece:"חותמת",icon:"✦"},completion:{title:"מצאתם את כל המחבואים!",text:"הגלויות באלבום. אפשר לחזור ולאסוף את התגליות שעוד מחכות לכם.",icon:"🌍"}}]});
+      collectible:{id:`${world.slug}-stamps`,name:"חותמות המסע",piece:"חותמת",icon:"✦"},completion:{title:"מצאתם את כל המחבואים!",text:"הזיכרונות בדרכון. אפשר לחזור ולאסוף את התגליות שעוד מחכות לכם.",icon:"🌍"}}]});
 }
