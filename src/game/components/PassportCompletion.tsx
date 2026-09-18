@@ -22,7 +22,7 @@ function sendSeen(childId: string, gameId: string, board: string, delta: Delta) 
   // The local seen journal also retries on the next completion if offline.
   void fetch("/api/passport", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ childId, gameId, board, choice: { kind: "seen", ...delta } }), keepalive: true }).catch(() => undefined);
 }
-/** Replaces the old completion card; saved achievements, never animation, drive awards. */
+/** Earned progress drives the celebration; account persistence is reported separately. */
 export function PassportCompletion({ store, scene, onStay }: { store: PlayStore; scene: SceneConfig; onStay: () => void }) {
   const { g } = useGameText(), copy = getDict(store.config.locale).travelPassport;
   const [delta, setDelta] = useState<Delta | null>(null), [childId, setChildId] = useState<string | null>(null);
@@ -33,6 +33,10 @@ export function PassportCompletion({ store, scene, onStay }: { store: PlayStore;
   const finishRef = useRef<() => void>(() => undefined);
   const board = store.config.adventure!.boards.find(b => b.boardSlug === scene.slug)!;
   const reduced = useRef(false);
+  const mutedRef = useRef(store.muted);
+  mutedRef.current = store.muted;
+  const deltaRef = useRef(delta);
+  deltaRef.current = delta;
   useEffect(() => {
     reduced.current = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
     const el = dialog.current; if (!el) return;
@@ -41,16 +45,18 @@ export function PassportCompletion({ store, scene, onStay }: { store: PlayStore;
   }, []);
   useEffect(() => {
     if (!store.album || delta) return;
-    // Don't declare account persistence before AlbumSync has confirmed it.
-    if (store.albumMode === "owner" && store.albumState !== "saved") return;
+    // Earned local progress can celebrate immediately. Persistence is reported
+    // separately below; neither AlbumSync nor the preference GET is an animation gate.
+    const preference = store.demo ? demoSeen.get(store.config)?.[scene.slug] : readPassportPreferences(store.config.gameId)[scene.slug];
+    const next = passportCeremony(store.album, scene.slug, preference);
+    setPhotoTargetId(preference?.photoTargetId ?? null);
+    setDelta(next); setPhase(reduced.current || !next.stamp && !next.discoveryIds.length ? "settled" : "playing");
+  }, [store.album, store.config, scene.slug, store.demo, delta]);
+  useEffect(() => {
+    // Seen acknowledgements must still wait for confirmed account persistence.
+    if (store.albumMode !== "owner" || store.albumState !== "saved") return;
     let active = true;
     setFailed(false);
-    if (store.albumMode !== "owner") {
-      const preference = store.demo ? demoSeen.get(store.config)?.[scene.slug] : readPassportPreferences(store.config.gameId)[scene.slug];
-      const next = passportCeremony(store.album, scene.slug, preference);
-      setPhotoTargetId(preference?.photoTargetId ?? null);
-      setDelta(next); setPhase(reduced.current || !next.stamp && !next.discoveryIds.length ? "settled" : "playing");
-    } else {
       fetch(`/api/passport?${new URLSearchParams({ gameId: store.config.gameId, board: scene.slug })}`, { cache: "no-store" })
         .then(async response => { if (!response.ok) throw new Error(); return response.json(); })
         .then(data => {
@@ -58,14 +64,17 @@ export function PassportCompletion({ store, scene, onStay }: { store: PlayStore;
           if (!data.pending || !data.childId) throw new Error();
           const local = readPassportPreferences(store.config.gameId)[scene.slug];
           if (local) sendSeen(data.childId, store.config.gameId, scene.slug, { stamp: local.stampSeen, discoveryIds: local.seenDiscoveries });
-          const next: Delta = { stamp: data.pending.stamp && !local?.stampSeen, discoveryIds: data.pending.discoveryIds.filter((id: string) => !local?.seenDiscoveries.includes(id)) };
-          setPhotoTargetId(data.photoTargetId ?? null); setChildId(data.childId); setDelta(next);
-          setPhase(reduced.current || !next.stamp && !next.discoveryIds.length ? "settled" : "playing");
+          setPhotoTargetId(data.photoTargetId ?? null); setChildId(data.childId);
+          // Reconcile an earlier visit on another device, but never restart a
+          // settled ceremony when a slow response finally arrives.
+          if (!acknowledged.current) {
+            setDelta(current => current ? { stamp: current.stamp && data.pending.stamp,
+              discoveryIds: current.discoveryIds.filter(id => data.pending.discoveryIds.includes(id)) } : current);
+          }
         })
         .catch(() => { if (active) setFailed(true); });
-    }
     return () => { active = false; };
-  }, [store.album, store.albumMode, store.albumState, store.config.gameId, scene.slug, store.demo, delta, attempt]);
+  }, [store.albumMode, store.albumState, store.config.gameId, scene.slug, attempt]);
 
   function acknowledge() {
     if (!delta || acknowledged.current) return;
@@ -85,15 +94,19 @@ export function PassportCompletion({ store, scene, onStay }: { store: PlayStore;
   useEffect(() => {
     if (phase === "settled") { finishRef.current(); return; }
     if (phase !== "playing") return;
-    const cues = [setTimeout(() => { if (!store.muted) sounds().play("star"); }, 280), setTimeout(() => { if (!store.muted) sounds().play("star", { pitch: 4 }); }, 960)];
-    const timer = setTimeout(() => finishRef.current(), 2400);
+    // Impact aligns with the 65% press of the 280ms CSS stamp at +40ms.
+    const cues = [setTimeout(() => { if (!mutedRef.current && deltaRef.current?.stamp) sounds().play("stamp"); }, 220)];
+    const timer = setTimeout(() => finishRef.current(), 850);
     return () => { clearTimeout(timer); cues.forEach(clearTimeout); };
-  }, [phase, store.muted]);
+  }, [phase]);
   function leave(action: () => void) { acknowledge(); action(); }
   const photo = store.album ? passportPhoto(store.album, scene.slug, photoTargetId) : null;
   const found = new Set(store.album?.discoveries.filter(d => d.boardSlug === scene.slug).map(d => d.discoveryId));
   const next = store.nextScene();
-  const saving = store.albumMode === "owner" && store.albumState !== "saved";
+  const saving = store.albumMode === "owner" && ["idle", "loading", "saving"].includes(store.albumState);
+  const saveIssue = store.albumState === "unsaved" ? g.album.unsaved
+    : store.albumState === "unreadable" ? g.album.unreadable
+    : store.albumMode === "owner" && ["offline", "refused"].includes(store.albumState) ? g.album.offline : null;
   return <dialog ref={dialog} className={`passport-finale${store.demo ? " passport-finale--demo" : ""}`} data-phase={phase} aria-labelledby={titleId} onCancel={e => { e.preventDefault(); leave(onStay); }}>
     <div className="passport-finale__inside">
       {phase === "playing" ? <CelebrationOverlay kind={scene.celebration.kind} small seed={store.visitId} /> : null}
@@ -103,9 +116,9 @@ export function PassportCompletion({ store, scene, onStay }: { store: PlayStore;
           <div className="passport-finale__photo" data-new={Boolean(delta?.stamp)}>{photo && store.album ? <PassportMemory config={store.config} progress={store.album} boardSlug={scene.slug} targetId={photo.targetId} label={scene.name} /> : null}</div>
           <PassportStamp className="passport-finale__stamp" isNew={Boolean(delta?.stamp)} label={copy.stamped} />
         </div>
-        <div><h3>{copy.collected}</h3><ul className="passport-finale__items">{board.discoveries.map((item, i) => <li key={item.id} data-new={delta?.discoveryIds.includes(item.id) ?? false} data-collected={found.has(item.id)} style={{ "--arrival": `${1000 + i * 150}ms` } as CSSProperties}>{found.has(item.id) ? <><AlbumCrop art={scene.art} crop={item.cardCrop} label={item.name} /><span>{item.name}</span></> : <span aria-label={copy.unknown}>?</span>}</li>)}</ul></div>
+        <div><h3>{copy.collected}</h3><ul className="passport-finale__items">{board.discoveries.map((item, i) => <li key={item.id} data-new={delta?.discoveryIds.includes(item.id) ?? false} data-collected={found.has(item.id)} style={{ "--arrival": `${80 + i * 45}ms` } as CSSProperties}>{found.has(item.id) ? <><AlbumCrop art={scene.art} crop={item.cardCrop} label={item.name} /><span>{item.name}</span></> : <span aria-label={copy.unknown}>?</span>}</li>)}</ul></div>
       </div>
-      <p className="passport-finale__status" role="status">{saving ? copy.saving : failed ? copy.unavailable : store.demo ? copy.demo : store.albumMode === "owner" ? copy.savedAccount : store.albumState === "unsaved" ? g.album.unsaved : copy.savedLocal}</p>
+      <p className="passport-finale__status" role="status">{store.demo ? copy.demo : saveIssue ?? (saving ? copy.saving : failed ? copy.unavailable : store.albumMode === "owner" ? copy.savedAccount : copy.savedLocal)}</p>
       {failed ? <button className="fm-btn fm-btn--ghost" onClick={() => setAttempt(n => n + 1)}>{copy.retry}</button> : null}
       <div className="passport-finale__actions">
         {!store.demo ? <button className="fm-btn fm-btn--lg" autoFocus onClick={() => leave(next ? () => store.openScene(next) : store.goToWorlds)}>{next ? g.complete.next : g.hub.back}</button> : <button className="fm-btn fm-btn--lg" autoFocus onClick={() => leave(() => store.replayScene())}>{g.complete.again}</button>}

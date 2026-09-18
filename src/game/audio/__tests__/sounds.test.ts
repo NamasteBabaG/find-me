@@ -39,6 +39,15 @@ beforeEach(() => {
 afterEach(() => { vi.runOnlyPendingTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); document.body.replaceChildren(); });
 
 describe("mobile audio unlock, interruption and lifecycle", () => {
+  it("plays one short paper-stamp impact only after unlock and respects mute", async () => {
+    manager.play("stamp"); expect(contexts).toHaveLength(0);
+    manager.unlock(); await settled(); const ctx = contexts[0]!;
+    manager.play("stamp");
+    expect(ctx.oscillators).toHaveLength(1); expect(ctx.sources).toHaveLength(1);
+    expect(ctx.oscillators[0]!.stop.mock.calls[0]![0]).toBeLessThan(10.3);
+    manager.setMuted(true); manager.play("stamp");
+    expect(ctx.oscillators).toHaveLength(1); expect(ctx.sources).toHaveLength(1);
+  });
   it("does not create a context or play autoplay audio merely by mounting or starting a scene", () => {
     const element = document.createElement("div"), cleanup = bindGameAudio(element, manager);
     manager.startAmbient("waves"); manager.play("success");

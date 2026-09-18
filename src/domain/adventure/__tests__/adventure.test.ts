@@ -204,6 +204,32 @@ describe("collection rules", () => {
     const find = { boardSlug: "pilot-test", targetId: "hide-1", variant: "A" };
     expect(() => readAdventureProgress({ ...s.progress, finds: [find, find] }, s.config.gameId, s.book)).toThrow("corrupt-progress");
   });
+  it("retains earned finds and discoveries when the trusted game repairs a personal image", () => {
+    const s = setup();
+    const found = recordAdventureEvent(s.progress, s.config.gameId, s.book, { kind: "target-found", boardSlug: "pilot-test", targetId: "hide-1", variant: "B" }).progress;
+    const saved = recordAdventureEvent(found, s.config.gameId, s.book, { kind: "discovery-found", boardSlug: "pilot-test", discoveryId: "cat" }).progress;
+    const before = JSON.stringify(saved), repaired = structuredClone(s.book);
+    for (const image of [repaired.boards[0]!.targetImages[0]!.A, repaired.boards[0]!.targetImages[0]!.B]) {
+      image.assetId = "ast_corrected"; image.hitRect.x += .001;
+    }
+    const resumed = readAdventureProgress(saved, s.config.gameId, repaired);
+    expect(resumed.book).toEqual(repaired);
+    expect(resumed.finds).toEqual(saved.finds); expect(resumed.discoveries).toEqual(saved.discoveries);
+    expect(JSON.stringify(saved)).toBe(before);
+    const repeated = recordAdventureEvent(saved, s.config.gameId, repaired, { kind: "target-found", boardSlug: "pilot-test", targetId: "hide-1", variant: "A" });
+    expect(repeated.changed).toBe(false); expect(repeated.progress.book).toEqual(repaired);
+  });
+  it.each(["avatar", "art", "route", "postcard", "target", "copy"])("never treats %s changes as a media-only repair", drift => {
+    const s = setup(), changed = structuredClone(s.book), board = changed.boards[0]!;
+    board.targetImages[0]!.A.assetId = "ast_corrected";
+    if (drift === "avatar") changed.avatarAssetId = "ast_other_child";
+    if (drift === "art") board.artSha256 = "f".repeat(64);
+    if (drift === "route") board.worldSlug = "other-world";
+    if (drift === "postcard") board.postcard.targetId = "hide-2";
+    if (drift === "target") { board.targetIds[0] = "new-target"; board.targetImages[0]!.targetId = "new-target"; board.postcard.targetId = "new-target"; }
+    if (drift === "copy") board.discoveries[0]!.name = "Different discovery";
+    expect(() => readAdventureProgress(s.progress, s.config.gameId, changed)).toThrow("wrong-book");
+  });
   it("retains progress over a JSON round trip and independent of object key order", () => {
     const s = setup();
     const saved = recordAdventureEvent(s.progress, s.config.gameId, s.book, { kind: "discovery-found", boardSlug: "pilot-test", discoveryId: "cat" }).progress;

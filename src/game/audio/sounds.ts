@@ -20,7 +20,7 @@ type Ctx = AudioContext;
  * the renderer's own chrome plays. "star" belongs to the star tray, not to a
  * board, so it stays out of the scene schema.
  */
-export type PlayCue = SoundCue | "star";
+export type PlayCue = SoundCue | "star" | "stamp";
 
 /** A note in a phrase: frequency, length, offset from the phrase start, voice and loudness. */
 type Note = readonly [freq: number, dur: number, at: number, type: OscillatorType, vol: number];
@@ -204,6 +204,11 @@ export class SoundManager {
     const t = this.ctx.currentTime;
     const shift = options.pitch ?? 0;
     switch (cue) {
+      case "stamp":
+        // A short rubber-on-paper thump, not another musical fanfare.
+        this.sweep(180, 70, 0.10, t, "triangle", 0.3);
+        this.noise(0.065, t, 1500, 0.20);
+        break;
       case "star":
         this.phrase(STAR[this.pick(cue, STAR.length)]!, t, semitones(shift + between(-0.5, 0.5)));
         break;

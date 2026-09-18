@@ -30,12 +30,28 @@ export function emptyAdventureProgress(gameId: string, book: AdventureBook): Adv
   return AdventureProgressSchema.parse({ version: 1, gameId, book, finds: [], discoveries: [] });
 }
 
+/** A corrected personal picture is not a new reward/content release. Strip only
+ * image bindings, never child identity, target IDs, route, art or discoveries.
+ * The replacement book must come from the game's trusted config, not a client.
+ */
+function rewardContent(book: AdventureBook) {
+  return { ...book, boards: book.boards.map(board => ({ ...board,
+    targetImages: board.targetImages.map(image => ({ targetId: image.targetId })),
+  })) };
+}
+
 /** Corrupt or incompatible progress is an explicit error, NEVER a fresh album. */
 export function readAdventureProgress(raw: unknown, gameId: string, book: AdventureBook): AdventureProgress {
   const parsed = AdventureProgressSchema.safeParse(raw);
   if (!parsed.success) throw new AdventureError("corrupt-progress");
   const state = parsed.data;
-  if (state.gameId !== gameId || canonical(state.book) !== canonical(book)) throw new AdventureError("wrong-book");
+  if (state.gameId !== gameId) throw new AdventureError("wrong-book");
+  if (canonical(state.book) !== canonical(book)) {
+    const current = AdventureBookSchema.parse(book);
+    if (canonical(rewardContent(state.book)) !== canonical(rewardContent(current))) throw new AdventureError("wrong-book");
+    // Keep earned events, but never retain stale/untrusted asset references.
+    state.book = current;
+  }
   const keys = new Set<string>();
   for (const find of state.finds) {
     const board = book.boards.find(b => b.boardSlug === find.boardSlug);

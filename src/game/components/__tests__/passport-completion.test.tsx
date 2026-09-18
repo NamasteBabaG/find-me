@@ -91,4 +91,44 @@ describe("passport completion choreography", () => {
     expect(request.mock.calls.filter(call => call[1]?.method === "POST")).toHaveLength(1);
     expect(view.container.querySelector("dialog")?.hasAttribute("open")).toBe(true);
   });
+  it("celebrates immediately while saving, with one prompt stamp impact and no false saved claim", async () => {
+    const f = fixture(true);
+    Object.assign(f.store, { albumState: "saving" });
+    const request = vi.fn(async () => new Response(JSON.stringify({ pending: { stamp: true, discoveryIds: [] }, childId: "family-test" })));
+    vi.stubGlobal("fetch", request);
+    const view = render(f.ui());
+    expect(view.container.querySelector("dialog")?.dataset.phase).toBe("playing");
+    expect(screen.getByRole("heading", { level: 2 }).textContent).toBe(getDict("en").travelPassport.ceremony);
+    expect(screen.getByRole("status").textContent).toBe(getDict("en").travelPassport.saving);
+    act(() => { vi.advanceTimersByTime(250); });
+    expect(audio.play).toHaveBeenCalledWith("stamp");
+    expect(request).not.toHaveBeenCalled();
+    f.store.muted = true; view.rerender(f.ui());
+    act(() => { vi.advanceTimersByTime(650); });
+    expect(view.container.querySelector("dialog")?.dataset.phase).toBe("settled");
+    Object.assign(f.store, { albumState: "saved" }); view.rerender(f.ui());
+    await act(async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); });
+    expect(request.mock.calls.filter(call => (call as unknown as [string, RequestInit])[1]?.method === "POST")).toHaveLength(1);
+    expect(audio.play.mock.calls.filter(call => call[0] === "stamp")).toHaveLength(1);
+  });
+  it("a slow or failed preference request cannot hold the ceremony behind a waiting screen", async () => {
+    let reject!: (error: Error) => void;
+    vi.stubGlobal("fetch", vi.fn(() => new Promise((_resolve, no) => { reject = no; })));
+    const f = fixture(true), view = render(f.ui());
+    expect(view.container.querySelector("dialog")?.dataset.phase).toBe("playing");
+    act(() => { vi.advanceTimersByTime(900); });
+    expect(view.container.querySelector("dialog")?.dataset.phase).toBe("settled");
+    await act(async () => { reject(new Error("offline")); });
+    expect(view.container.querySelector("dialog")?.dataset.phase).toBe("settled");
+    expect(screen.getByRole("status").textContent).toBe(getDict("en").travelPassport.unavailable);
+    expect(audio.play.mock.calls.filter(call => call[0] === "stamp")).toHaveLength(1);
+  });
+  it.each(["offline", "refused", "unsaved"])("celebrates without claiming account persistence when %s", albumState => {
+    const f = fixture(true); Object.assign(f.store, { albumState });
+    const view = render(f.ui());
+    act(() => { vi.advanceTimersByTime(900); });
+    expect(view.container.querySelector("dialog")?.dataset.phase).toBe("settled");
+    expect(screen.getByRole("status").textContent).toBe(albumState === "unsaved" ? getDict("en").game.album.unsaved : getDict("en").game.album.offline);
+    expect(fetch).not.toHaveBeenCalled();
+  });
 });
