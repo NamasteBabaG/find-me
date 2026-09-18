@@ -8,7 +8,7 @@ import timetravel from "./timetravel/world.json";
  * The world catalog is data, like the scene catalog. Adding a world = a folder
  * with world.json (+ map art) and one import line here.
  *
- * Order here is the order worlds are offered and played.
+ * Order here is presentation only. Worlds have no prerequisite world.
  */
 const RAW_WORLDS: unknown[] = [journey, kingdom, timetravel];
 

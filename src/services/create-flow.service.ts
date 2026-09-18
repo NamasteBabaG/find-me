@@ -1,9 +1,9 @@
 import { newDraftToken, newId } from "@/lib/ids";
 import { normalizeChildName } from "@/lib/copy";
 import { validChildAge } from "@/domain/child-appearance";
-import { PACKAGES, defaultWorldSelection, isPackageTier, purchasableTiers, type PackageTier } from "@/domain/package";
+import { PACKAGES, isPackageTier, purchasableTiers, type PackageTier } from "@/domain/package";
 import { isEditableDraft } from "@/domain/order-state";
-import { outOfOrderWorlds } from "@/domain/world";
+import { boardSlugs } from "@/domain/world";
 import type { CropBox } from "@/infra/generation/types";
 import { pick, type Locale } from "@/i18n/config";
 import { flowError, type FlowResult } from "@/i18n/errors";
@@ -11,7 +11,7 @@ import type { Container } from "./container";
 import { checkPhoto, deleteAsset, storeAsset } from "./asset.service";
 import { GameStatusConflict, transitionGame, statusOf } from "./game-status";
 import { activeScenes, sceneBySlug } from "./scene-catalog.service";
-import { boardsOfWorlds, purchasableWorlds, purchasableWorldSlugs } from "./world-catalog.service";
+import { boardsOfWorlds, purchasableWorlds } from "./world-catalog.service";
 import { SYSTEM } from "./audit.service";
 import { env } from "@/lib/env";
 import { LOCAL_PATCH_STYLE } from "./generation/local-patch-world";
@@ -159,28 +159,36 @@ async function releaseValidatingDraft(c: Container, gameId: string, error: unkno
   }
 }
 
-export async function availablePackages(c: Container) {
-  const tiers = purchasableTiers((await purchasableWorldSlugs(c)).length);
-  return env().APP_ENV === "qa" ? tiers.filter(p => p.tier === "ONE_WORLD") : tiers;
+/** Offer only complete worlds supported by the draft's pinned rendering engine. */
+export async function worldsForDraft(c: Container, styleVersion: string) {
+  return purchasableWorlds(c, styleVersion === LOCAL_PATCH_STYLE ? COLLECTION_SCENE_VERSION : undefined);
+}
+
+export async function availablePackages(c: Container, styleVersion = env().APP_ENV === "qa" ? LOCAL_PATCH_STYLE : "") {
+  const tiers = purchasableTiers((await worldsForDraft(c, styleVersion)).length);
+  return env().APP_ENV === "qa" || styleVersion === LOCAL_PATCH_STYLE ? tiers.filter(p => p.tier === "ONE_WORLD") : tiers;
 }
 
 export async function selectPackage(c: Container, gameId: string, tierRaw: string): Promise<FlowResult> {
   if (!isPackageTier(tierRaw)) return flowError("UNKNOWN_PACKAGE", "חבילה לא מוכרת.");
   const tier: PackageTier = tierRaw;
   const game = await loadDraft(c, gameId);
-  if (!game || !isEditableDraft(statusOf(game))) return flowError("DRAFT_LOCKED", "הטיוטה כבר לא ניתנת לעריכה.");
+  if (!game || game.deletedAt || !isEditableDraft(statusOf(game))) return flowError("DRAFT_LOCKED", "הטיוטה כבר לא ניתנת לעריכה.");
   const status = statusOf(game);
   if (game.styleVersion === LOCAL_PATCH_STYLE && tier !== "ONE_WORLD") return flowError("PACKAGE_UNAVAILABLE", "בגרסת QA זו זמין עולם אחד עם תשעה בורדים.");
-  if (status === "DRAFT" || status === "PHOTO_UPLOADED" || status === "PHOTO_REJECTED") return flowError("PHOTO_FIRST", "קודם צריך להעלות תמונה.");
+  if (status === "DRAFT" || status === "PHOTO_UPLOADED" || status === "PHOTO_VALIDATING" || status === "PHOTO_REJECTED") return flowError("PHOTO_FIRST", "קודם צריך להעלות תמונה.");
 
-  const worlds = await purchasableWorldSlugs(c);
-  if (!purchasableTiers(worlds.length).some((p) => p.tier === tier)) return flowError("PACKAGE_UNAVAILABLE", "החבילה הזאת עדיין לא זמינה.");
+  const worlds = await worldsForDraft(c, game.styleVersion);
+  if (!purchasableTiers(worlds.length).some((p) => p.tier === tier)
+    || (env().APP_ENV === "qa" && tier !== "ONE_WORLD")) return flowError("PACKAGE_UNAVAILABLE", "החבילה הזאת עדיין לא זמינה.");
 
-  // A package buys worlds; the boards follow from them, in journey order.
-  const boards = boardsOfWorlds(defaultWorldSelection(tier, worlds));
-  await c.db.game.update({ where: { id: gameId }, data: { packageTier: tier, sceneCount: boards.length } });
-  await replaceScenes(c, gameId, boards);
-  if (status !== "PACKAGE_SELECTED") await transitionGame(c, gameId, "PACKAGE_SELECTED", SYSTEM, { tier });
+  // Keep a deliberate choice when returning to this step. Fill only new slots;
+  // catalog order is presentation, never an ownership or difficulty prerequisite.
+  const held = new Set(game.scenes.map(s => s.sceneSlug));
+  const chosen = worlds.filter(w => boardSlugs(w).every(slug => held.has(slug))).map(w => w.slug);
+  const selection = [...chosen, ...worlds.map(w => w.slug).filter(slug => !chosen.includes(slug))].slice(0, PACKAGES[tier].worldCount);
+  const boards = boardsOfWorlds(worlds.filter(w => selection.includes(w.slug)).map(w => w.slug));
+  if (!await replaceDraftSelection(c, game, boards, tier)) return flowError("DRAFT_LOCKED", "הטיוטה השתנתה. רעננו ונסו שוב.");
   c.analytics.track("package_selected", { packageTier: tier, sceneCount: boards.length });
   return { ok: true };
 }
@@ -219,32 +227,47 @@ export async function replacePhotoForPaidGame(c: Container, gameId: string, inpu
 /** The parent picks WORLDS; each one brings its nine boards with it. */
 export async function selectWorlds(c: Container, gameId: string, slugs: string[]): Promise<FlowResult> {
   const game = await loadDraft(c, gameId);
-  if (!game || !isEditableDraft(statusOf(game))) return flowError("DRAFT_LOCKED", "הטיוטה כבר לא ניתנת לעריכה.");
+  if (!game || game.deletedAt || !isEditableDraft(statusOf(game))) return flowError("DRAFT_LOCKED", "הטיוטה כבר לא ניתנת לעריכה.");
   if (!game.packageTier || !isPackageTier(game.packageTier)) return flowError("PICK_PACKAGE_FIRST", "קודם בוחרים חבילה.");
   const want = PACKAGES[game.packageTier].worldCount;
   const unique = Array.from(new Set(slugs));
   if (unique.length !== want) return flowError("WRONG_SCENE_COUNT", `בחרו בדיוק ${want} עולמות.`, { want });
-  const offered = await purchasableWorlds(c);
+  const offered = await worldsForDraft(c, game.styleVersion);
   const available = new Set(offered.map((w) => w.slug));
   if (!unique.every((s) => available.has(s))) return flowError("SCENE_UNAVAILABLE", "אחד העולמות אינו זמין.");
-  // The worlds are a ladder, so buying the second without the first would start
-  // a journey in the middle — and hand a beginner the harder boards.
-  const missing = outOfOrderWorlds(unique, offered);
-  if (missing.length > 0) return flowError("WORLDS_OUT_OF_ORDER", "העולמות הם מסע — הבא נפתח אחרי זה שלפניו.", { missing: missing.join(", ") });
-  const boards = boardsOfWorlds(unique);
-  await c.db.game.update({ where: { id: gameId }, data: { sceneCount: boards.length } });
-  await replaceScenes(c, gameId, boards);
+  const boards = boardsOfWorlds(offered.filter(w => unique.includes(w.slug)).map(w => w.slug));
+  if (!await replaceDraftSelection(c, game, boards)) return flowError("DRAFT_LOCKED", "הטיוטה השתנתה. רעננו ונסו שוב.");
   c.analytics.track("scenes_selected", { sceneCount: boards.length });
   return { ok: true };
 }
 
-async function replaceScenes(c: Container, gameId: string, slugs: string[]): Promise<void> {
-  const game = await c.db.game.findUniqueOrThrow({ where: { id: gameId }, select: { styleVersion: true } });
+/** Metadata, scene versions and status are one fenced write, never delete-then-hope. */
+async function replaceDraftSelection(c: Container, game: DraftGame, slugs: string[], tier?: PackageTier): Promise<boolean> {
   const version = game.styleVersion === LOCAL_PATCH_STYLE ? COLLECTION_SCENE_VERSION : undefined;
-  await c.db.gameScene.deleteMany({ where: { gameId } });
-  await c.db.gameScene.createMany({
-    data: slugs.map((slug, i) => ({ id: newId("gsc"), gameId, sceneSlug: slug, sceneVersion: sceneBySlug(slug, version).version, orderIndex: i })),
-  });
+  // Resolve every version before touching the existing selection.
+  const data = slugs.map((slug, i) => ({ id: newId("gsc"), gameId: game.id, sceneSlug: slug, sceneVersion: sceneBySlug(slug, version).version, orderIndex: i }));
+  try {
+    return await c.db.$transaction(async tx => {
+      const claimed = await tx.game.updateMany({ where: {
+        id: game.id, status: game.status, updatedAt: game.updatedAt, deletedAt: null,
+        ownerId: game.ownerId, draftToken: game.draftToken, childProfileId: game.childProfileId,
+        familyChildId: game.familyChildId, styleVersion: game.styleVersion, packageTier: game.packageTier,
+        orders: { none: { paymentStatus: { in: ["PAID", "REFUNDED"] } } },
+      }, data: { sceneCount: data.length, ...(tier ? { packageTier: tier } : {}),
+        updatedAt: new Date(Math.max(Date.now(), game.updatedAt.getTime() + 1)) } });
+      if (claimed.count !== 1) return false;
+      await tx.gameScene.deleteMany({ where: { gameId: game.id } });
+      await tx.gameScene.createMany({ data });
+      if (tier) {
+        if (game.status === "PAYMENT_FAILED") await transitionGame(c, game.id, "CHECKOUT_PENDING", SYSTEM, { reason: "package change" }, tx);
+        await transitionGame(c, game.id, "PACKAGE_SELECTED", SYSTEM, { tier }, tx);
+      }
+      return true;
+    });
+  } catch (error) {
+    if (error instanceof GameStatusConflict) return false;
+    throw error;
+  }
 }
 
 export async function draftSummary(c: Container, gameId: string) {

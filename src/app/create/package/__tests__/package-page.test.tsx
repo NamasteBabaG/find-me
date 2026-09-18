@@ -5,8 +5,7 @@ import { PACKAGES, PACKAGE_ORDER } from "@/domain/package";
 import CreatePackagePage from "../page";
 
 vi.mock("@/services/container", () => ({ getContainer: () => ({}) }));
-vi.mock("@/services/create-flow.service", () => ({ availablePackages: async () => PACKAGE_ORDER.map(t => PACKAGES[t]) }));
-vi.mock("@/services/world-catalog.service", () => ({ purchasableWorldSlugs: async () => ["journey", "magic", "time"] }));
+vi.mock("@/services/create-flow.service", () => ({ availablePackages: async () => PACKAGE_ORDER.map(t => PACKAGES[t]), worldsForDraft: async () => ["journey", "magic", "time"].map(slug => ({ slug })) }));
 vi.mock("@/services/generation/local-patch-world", () => ({ LOCAL_PATCH_STYLE: "local-patch-world-v1" }));
 vi.mock("@/lib/server/session", () => ({ currentUser: async () => null, isAdminEmail: () => false }));
 vi.mock("@/i18n/server", () => ({ getCurrency: async () => "ILS", getI18n: async () => ({ t: he, locale: "he" }) }));

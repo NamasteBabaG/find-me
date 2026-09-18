@@ -10,9 +10,10 @@ import { activeSceneSlugs } from "./scene-catalog.service";
  * A world is only offered when every one of its nine boards is active: half a
  * journey is not a journey, and a parent must never buy a map with a hole in it.
  */
-export async function purchasableWorlds(c: Container): Promise<WorldDefinition[]> {
+export async function purchasableWorlds(c: Container, sceneVersion?: number): Promise<WorldDefinition[]> {
   const active = new Set(await activeSceneSlugs(c));
-  return activeWorlds().filter((w) => w.purchasable && boardSlugs(w).every((slug) => active.has(slug)));
+  return activeWorlds().filter((w) => w.purchasable && boardSlugs(w).every((slug) =>
+    active.has(slug) && (sceneVersion === undefined || findScene(slug, sceneVersion)?.active === true)));
 }
 
 export async function purchasableWorldSlugs(c: Container): Promise<string[]> {

@@ -7,7 +7,7 @@ import { useI18n } from "@/i18n/client";
 import { errorText } from "@/i18n/errors";
 import { checkoutAction, type ActionResult } from "../create/actions";
 
-export function CheckoutForm({ defaultEmail, priceLabel, outcome, backHref, brief, automaticPublication = false }: { defaultEmail: string; priceLabel: string; outcome: "declined" | "cancelled" | null; backHref: "/create/scenes" | "/create/package"; brief: { name: string; shape: string }; automaticPublication?: boolean }) {
+export function CheckoutForm({ defaultEmail, priceLabel, outcome, backHref, brief, automaticPublication = false }: { defaultEmail: string; priceLabel: string; outcome: "declined" | "cancelled" | null; backHref: "/create/scenes" | "/create/package"; brief: { name: string; shape: string; worlds?: string }; automaticPublication?: boolean }) {
   const { t, tf } = useI18n();
   const ck = t.create.checkout;
   const [state, action, pending] = useActionState<ActionResult | null, FormData>(checkoutAction, null);
@@ -18,6 +18,7 @@ export function CheckoutForm({ defaultEmail, priceLabel, outcome, backHref, brie
           On a phone this card comes first, so this is the first thing read. */}
       <div className="summary__brief">
         <strong>{brief.name}</strong>
+        {brief.worlds ? <span>{brief.worlds}</span> : null}
         <span>{brief.shape}</span>
         <span className="summary__brief-price">{priceLabel}</span>
       </div>

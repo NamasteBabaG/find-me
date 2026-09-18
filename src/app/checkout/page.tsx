@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getContainer } from "@/services/container";
-import { draftSummary } from "@/services/create-flow.service";
-import { gameShape, purchasableWorldSlugs } from "@/services/world-catalog.service";
+import { draftSummary, worldsForDraft } from "@/services/create-flow.service";
+import { gameShape, worldsOwned } from "@/services/world-catalog.service";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
 import { boardsFor, priceFor } from "@/domain/package";
 import { getCurrency, getI18n } from "@/i18n/server";
@@ -19,7 +19,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
   const c = getContainer();
   const [user, draft, params, { t, locale }] = await Promise.all([currentUser(), currentDraft(), searchParams, getI18n()]);
   if (!draft?.childProfile) redirect("/create");
-  const [summary, worldCount] = await Promise.all([draftSummary(c, draft.id), purchasableWorldSlugs(c).then((w) => w.length)]);
+  const [summary, worldCount] = await Promise.all([draftSummary(c, draft.id), worldsForDraft(c, draft.styleVersion).then(w => w.length)]);
   if (!summary?.pkg || summary.scenes.length !== boardsFor(summary.pkg.tier)) redirect("/create/scenes");
   // When the package takes every world there is, the worlds step was skipped, so "back" means the package step.
   const backHref = worldCount === summary.pkg.worldCount ? "/create/package" : "/create/scenes";
@@ -28,6 +28,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
   const price = formatMoney(priceFor(summary.pkg.tier, currency), currency, locale);
   const name = summary.child?.displayName ?? "";
   const shape = gameShape(summary.game.scenes);
+  const worldNames = worldsOwned(summary.game.scenes.map(s => s.sceneSlug)).map(w => pick(w.name, locale)).join(" · ");
   // The address the parent typed last time, not the account they happen to be
   // signed in with: a grandparent buying a gift while logged in as themselves
   // came back from a declined card to find their own email in the box.
@@ -44,6 +45,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
             <img src="/api/drafts/photo" alt="" className="fm-sticker summary__face" width={80} height={80} />
             <div>
               <h3>{tf(ck.gameTitle, { name })}</h3>
+              <p>{worldNames}</p>
               <p className="fm-muted">{tf(ck.summaryLine, { pkg: pick(summary.pkg.name, locale), boards: shape.places, spots: shape.spots })}</p>
             </div>
           </div>
@@ -76,7 +78,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
           priceLabel={price}
           outcome={outcome}
           backHref={backHref}
-          brief={{ name: tf(ck.gameTitle, { name }), shape: tf(ck.summaryLine, { pkg: pick(summary.pkg.name, locale), boards: shape.places, spots: shape.spots }) }}
+          brief={{ name: tf(ck.gameTitle, { name }), worlds: worldNames, shape: tf(ck.summaryLine, { pkg: pick(summary.pkg.name, locale), boards: shape.places, spots: shape.spots }) }}
         />
       </div>
     </CreateFrame>

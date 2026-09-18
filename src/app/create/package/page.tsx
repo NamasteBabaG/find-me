@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getContainer } from "@/services/container";
-import { availablePackages } from "@/services/create-flow.service";
+import { availablePackages, worldsForDraft } from "@/services/create-flow.service";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
 import { PACKAGES, PACKAGE_ORDER, boardsFor, priceFor, type PackageTier } from "@/domain/package";
 import { getCurrency, getI18n } from "@/i18n/server";
@@ -9,7 +9,6 @@ import { CreateFrame } from "../CreateLayout";
 import { currentDraft } from "../actions";
 import { PackagePicker } from "./PackagePicker";
 import { LOCAL_PATCH_STYLE } from "@/services/generation/local-patch-world";
-import { purchasableWorldSlugs } from "@/services/world-catalog.service";
 import { COLLECTION_SCENE_VERSION, localPatchHidesPerBoard } from "@/domain/scene/local-patch-catalog";
 
 export async function generateMetadata() {
@@ -23,9 +22,9 @@ export default async function CreatePackagePage() {
   if (!draft?.childProfile) redirect("/create");
   if (!draft.childProfile.originalPhotoAssetId) redirect("/create/photo");
   const currency = await getCurrency();
-  const [packages, worldSlugs] = await Promise.all([availablePackages(c), purchasableWorldSlugs(c)]);
+  const [packages, worlds] = await Promise.all([availablePackages(c, draft.styleVersion), worldsForDraft(c, draft.styleVersion)]);
   const available = new Set(packages.map((p) => p.tier));
-  const availableWorldCount = worldSlugs.length;
+  const availableWorldCount = worlds.length;
   // Package selection re-enrolls editable QA drafts in this same release.
   // Historical purchased games remain pinned and never use this page.
   const spotsPerBoard = draft.styleVersion === LOCAL_PATCH_STYLE ? localPatchHidesPerBoard(COLLECTION_SCENE_VERSION) : 3;

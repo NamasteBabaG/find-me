@@ -504,9 +504,9 @@
 .pick__tag { font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-3); padding-inline: var(--space-1); padding-bottom: var(--space-1); }
 .pick__check { position: absolute; top: var(--space-2); inset-inline-end: var(--space-2); width: var(--space-4); height: var(--space-4); border-radius: var(--radius-pill); background: var(--white); box-shadow: var(--shadow-1); display: grid; place-items: center; font-family: var(--font-display); font-weight: 900; color: var(--ink-3); }
 .fm-card--selected .pick__check { background: var(--sea); color: var(--white); animation: fm-pop-in var(--dur-3) var(--ease-pop); }
-/* A world beyond this package is not a dead card: it says what would open it. */
-.pick--locked { opacity: 0.68; }
-.pick--locked img { filter: saturate(0.55); }
+.pick { cursor: pointer; color: inherit; font: inherit; min-width: 0; }
+.pick:focus-visible { outline: 3px solid var(--sea); outline-offset: 4px; }
+.pick[aria-disabled="true"] { cursor: not-allowed; }
 .pick__state { align-self: flex-start; margin: var(--space-0-5) var(--space-1) var(--space-1); padding: 2px var(--space-2); border-radius: var(--radius-pill); font-family: var(--font-display); font-weight: 700; font-size: var(--fs-50); line-height: var(--lh-50); background: var(--paper-2); color: var(--ink-3); }
 .pick--in .pick__state { background: var(--leaf-soft); color: var(--leaf-deep); }
 .pick__counter { position: sticky; top: var(--space-12); z-index: var(--z-ui); }
