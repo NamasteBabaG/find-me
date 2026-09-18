@@ -1,0 +1,262 @@
+{
+  "status": "authored-not-playtested",
+  "boardSlug": "magic-giantlibrary",
+  "source": "/scenes/magic-giantlibrary-v5/base.webp",
+  "art": {
+    "width": 3840,
+    "height": 2160,
+    "sha256": "1d2b5586f7fcc59fd310904bd01c4f7ed06f10c9e47725fbfc8486a86068e415"
+  },
+  "discoveries": [
+    {
+      "id": "reading-globe",
+      "name": {
+        "en": "Globe",
+        "he": "גלובוס"
+      },
+      "hint": {
+        "en": "Look beside the purple reading nook.",
+        "he": "חפשו ליד פינת הקריאה הסגולה."
+      },
+      "category": "object",
+      "rarity": "common",
+      "difficulty": 1,
+      "description": {
+        "kind": "story",
+        "text": {
+          "en": "You can travel around the world without leaving the library.",
+          "he": "אפשר לצאת למסע מסביב לעולם בלי לצאת מהספרייה."
+        }
+      },
+      "visibleRect": {
+        "x": 0.3046875,
+        "y": 0.4,
+        "w": 0.03046875,
+        "h": 0.05138888888888889
+      },
+      "hitRect": {
+        "x": 0.3098958333333333,
+        "y": 0.40879629629629627,
+        "w": 0.019270833333333334,
+        "h": 0.033796296296296297
+      },
+      "cardCrop": {
+        "x": 0.296875,
+        "y": 0.38842592592592595,
+        "w": 0.04453125,
+        "h": 0.07916666666666666
+      }
+    },
+    {
+      "id": "winged-book",
+      "name": {
+        "en": "Winged book",
+        "he": "ספר מכונף"
+      },
+      "hint": {
+        "en": "The librarian asks the flying visitor to be quiet too.",
+        "he": "הספרנית מבקשת שקט גם ממי שמעופף."
+      },
+      "category": "object",
+      "rarity": "common",
+      "difficulty": 1,
+      "description": {
+        "kind": "story",
+        "text": {
+          "en": "This story has grown wings!",
+          "he": "לסיפור הזה צמחו כנפיים!"
+        }
+      },
+      "visibleRect": {
+        "x": 0.6619791666666667,
+        "y": 0.3472222222222222,
+        "w": 0.0359375,
+        "h": 0.06018518518518518
+      },
+      "hitRect": {
+        "x": 0.6692708333333334,
+        "y": 0.3638888888888889,
+        "w": 0.018229166666666668,
+        "h": 0.032407407407407406
+      },
+      "cardCrop": {
+        "x": 0.65625,
+        "y": 0.3384259259259259,
+        "w": 0.046875,
+        "h": 0.08333333333333333
+      }
+    },
+    {
+      "id": "owl-cover-book",
+      "name": {
+        "en": "Owl-covered book",
+        "he": "ספר עם ינשוף"
+      },
+      "hint": {
+        "en": "Two readers are peeking over the big cover.",
+        "he": "שני קוראים מציצים מעל הכריכה הגדולה."
+      },
+      "category": "object",
+      "rarity": "common",
+      "difficulty": 1,
+      "description": {
+        "kind": "story",
+        "text": {
+          "en": "The owl on the cover watches over the story inside.",
+          "he": "הינשוף שעל הכריכה שומר על הסיפור שבפנים."
+        }
+      },
+      "visibleRect": {
+        "x": 0.25885416666666666,
+        "y": 0.4935185185185185,
+        "w": 0.05234375,
+        "h": 0.11851851851851852
+      },
+      "hitRect": {
+        "x": 0.265625,
+        "y": 0.5092592592592593,
+        "w": 0.03802083333333333,
+        "h": 0.08055555555555556
+      },
+      "cardCrop": {
+        "x": 0.24921875,
+        "y": 0.4861111111111111,
+        "w": 0.07395833333333333,
+        "h": 0.13148148148148148
+      }
+    },
+    {
+      "id": "atlas-magnifier",
+      "name": {
+        "en": "Magnifying glass",
+        "he": "זכוכית מגדלת"
+      },
+      "hint": {
+        "en": "Someone wanted a closer look at the map.",
+        "he": "מישהו רצה לראות את המפה מקרוב."
+      },
+      "category": "object",
+      "rarity": "rare",
+      "difficulty": 2,
+      "description": {
+        "kind": "story",
+        "text": {
+          "en": "A tiny detail on a map can begin a big adventure.",
+          "he": "גם פרט קטן במפה יכול להתחיל הרפתקה גדולה."
+        }
+      },
+      "visibleRect": {
+        "x": 0.4080729166666667,
+        "y": 0.6819444444444445,
+        "w": 0.051041666666666666,
+        "h": 0.03657407407407407
+      },
+      "hitRect": {
+        "x": 0.41510416666666666,
+        "y": 0.6884259259259259,
+        "w": 0.0234375,
+        "h": 0.018518518518518517
+      },
+      "cardCrop": {
+        "x": 0.4036458333333333,
+        "y": 0.6472222222222223,
+        "w": 0.058854166666666666,
+        "h": 0.10462962962962963
+      }
+    },
+    {
+      "id": "golden-shelf-vase",
+      "name": {
+        "en": "Golden vase",
+        "he": "כד זהוב"
+      },
+      "hint": {
+        "en": "Books are not the only things tucked between the shelves.",
+        "he": "לא רק ספרים מסתתרים בין המדפים."
+      },
+      "category": "object",
+      "rarity": "rare",
+      "difficulty": 2,
+      "description": {
+        "kind": "story",
+        "text": {
+          "en": "The little vase has a special place in the library.",
+          "he": "לכד הקטן יש מקום של כבוד בספרייה."
+        }
+      },
+      "visibleRect": {
+        "x": 0.5416666666666666,
+        "y": 0.30787037037037035,
+        "w": 0.019010416666666665,
+        "h": 0.032407407407407406
+      },
+      "hitRect": {
+        "x": 0.5455729166666666,
+        "y": 0.31527777777777777,
+        "w": 0.010416666666666666,
+        "h": 0.018518518518518517
+      },
+      "cardCrop": {
+        "x": 0.5354166666666667,
+        "y": 0.2967592592592593,
+        "w": 0.03125,
+        "h": 0.05555555555555555
+      }
+    },
+    {
+      "id": "purple-hair-ribbon",
+      "name": {
+        "en": "Purple hair ribbon",
+        "he": "סרט סגול לשיער"
+      },
+      "hint": {
+        "en": "A reader in blue overalls tied back her hair to keep it off the pages.",
+        "he": "קוראת בסרבל כחול אספה את השיער כדי שלא יסתיר את הסיפור."
+      },
+      "category": "object",
+      "rarity": "epic",
+      "difficulty": 3,
+      "description": {
+        "kind": "story",
+        "text": {
+          "en": "Even a little ribbon can be a great discovery.",
+          "he": "גם סרט קטן יכול להיות מציאה גדולה."
+        }
+      },
+      "visibleRect": {
+        "x": 0.6234375,
+        "y": 0.6967592592592593,
+        "w": 0.013020833333333334,
+        "h": 0.05
+      },
+      "hitRect": {
+        "x": 0.6263020833333334,
+        "y": 0.7074074074074074,
+        "w": 0.005729166666666666,
+        "h": 0.027777777777777776
+      },
+      "cardCrop": {
+        "x": 0.6106770833333334,
+        "y": 0.6847222222222222,
+        "w": 0.041666666666666664,
+        "h": 0.07407407407407407
+      }
+    }
+  ],
+  "checks": {
+    "schema": true,
+    "nonOverlappingHits": true,
+    "sourceHash": true,
+    "rarity321": true,
+    "measuredInteriorBounds": true,
+    "analyticalCameraChecks": 36,
+    "renderedHudVerified": false
+  },
+  "remaining": [
+    "runtime mobile/desktop HUD, pan, zoom and touch verification",
+    "child difficulty playtest; rarity is provisional",
+    "personal hide placement and discovery protection",
+    "release integration"
+  ],
+  "sourcePngSha256": "5e63c03c9272e611e6a0a09ea16fae1d4a30f6c0326bbd3e44cbdfdc9285ee61"
+}
