@@ -408,14 +408,21 @@
      crease and the two gutter washes belong to the desktop spread only —
      drawn on a phone they run straight down the middle of the picture. */
   .travel-passport__memory::after, .travel-passport__collection::after, .travel-passport__folio, .travel-passport__page::after { display: none; }
-  .travel-passport__memory { flex: 0 0 auto; padding-bottom: 0; }
-  .travel-passport__collection { flex: 1; padding-top: var(--space-1); }
+  /* Half and half. The memory half used to be content-sized and the keepsakes
+     took every pixel that was left, so a phone showed a small picture above a
+     tall column with empty paper under it. */
+  .travel-passport__memory { flex: 1 1 0; min-height: 0; padding-bottom: 0; }
+  .travel-passport__collection { flex: 1 1 0; min-height: 0; padding-top: var(--space-1); }
   .travel-passport__page-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-0-5); margin-bottom: var(--space-1); }
   .travel-passport__page-head > .travel-passport__eyebrow, .travel-passport__collection-head > .travel-passport__eyebrow { display: none; }
   .travel-passport__page-head h2 { font-size: var(--fs-400); margin: 0; }
   .travel-passport__page-head > p:last-child { font-size: var(--fs-50); white-space: nowrap; }
-  .travel-passport__photo { width: 192px; padding: 0; }
-  .travel-passport__photo img, .travel-passport__photo-wait { height: 125px; }
+  /* Full width and free to grow into the half: the 192px box was what pinned
+     the picture small. The floors below keep it honest on short phones. */
+  .travel-passport__photo { width: 100%; padding: 0; }
+  .travel-passport__memory > .travel-passport__photo { flex: 1 1 auto; min-height: 120px; }
+  .travel-passport__photo img { height: 100%; min-height: 120px; }
+  .travel-passport__photo-wait { height: 100%; min-height: 120px; }
   .travel-passport__progress { margin: var(--space-1) 0 0; font-size: var(--fs-50); }
   /* The same round stamp, just smaller; it never becomes a strip. */
   .passport-stamp { --stamp-size: 52px; }
@@ -452,8 +459,7 @@
   .travel-passport[dir=rtl] .travel-passport__opening-cover { --cover-shift: 0%; }
 }
 @media (max-width: 760px) and (max-height: 780px) {
-  .travel-passport__photo { width: 160px; }
-  .travel-passport__photo img, .travel-passport__photo-wait { height: 90px; }
+  .travel-passport__memory > .travel-passport__photo, .travel-passport__photo img, .travel-passport__photo-wait { min-height: 96px; }
   .travel-passport__items img { width: 48px; }
   .travel-passport__missing { height: 86px; }
   .travel-passport__collection-head h3 { font-size: var(--fs-200); }
@@ -470,8 +476,7 @@
   .travel-passport__book { min-height: 380px; }
   .travel-passport__leaf { padding-block: var(--space-1) var(--space-0-5); }
   .travel-passport__collection { padding-top: var(--space-0-5); }
-  .travel-passport__photo { width: 136px; }
-  .travel-passport__photo img, .travel-passport__photo-wait { height: 88px; }
+  .travel-passport__memory > .travel-passport__photo, .travel-passport__photo img, .travel-passport__photo-wait { min-height: 88px; }
   .travel-passport__items img, .travel-passport__item > .album__crop { width: 44px; }
   .travel-passport__missing { height: 68px; }
   .travel-passport__items { gap: var(--space-0-5); }
@@ -488,19 +493,10 @@
 .travel-passport__fact > .album__crop { width: 128px; margin: auto; }
 .travel-passport__fact { background: var(--paper-2); border-radius: var(--radius-3); padding: var(--space-2); margin-top: var(--space-3); line-height: var(--lh-300); }
 .travel-passport__fact h4, .travel-passport__fact p { margin: 0 0 var(--space-1); }
-.travel-passport__enlarge { border: 0; padding: 0; background: transparent; color: inherit; width: 100%; cursor: zoom-in; display: block; }
-/* "A closer look" belongs ON the print, not on a line of its own beneath it:
-   below the photo it took a whole row of the leaf and the stamp came down on
-   top of the words. Over the picture's own bottom edge it costs no extra row;
-   the stamp remains on the paper below it. */
-.travel-passport__photo .travel-passport__enlarge > span {
-  position: absolute; inset-inline: 0; bottom: 0; z-index: 1;
-  font: inherit; font-family: var(--font-kid); font-size: var(--fs-50); line-height: var(--lh-100);
-  color: var(--white); padding: var(--space-2) var(--space-1) var(--space-0-5);
-  background: linear-gradient(to top, color-mix(in srgb, var(--ink) 66%, transparent), transparent);
-  text-align: center; pointer-events: none;
-}
-.travel-passport__enlarge > span { display: block; font-size: var(--fs-50); color: var(--ink-3); line-height: var(--lh-100); padding-top: var(--space-0-5); }
+/* The whole frame is the button, and the whole frame is the picture. The
+   caption strip that used to sit across the bottom of the print is gone: it
+   named what a photograph is, and the label it carried lives on the button. */
+.travel-passport__enlarge { border: 0; padding: 0; background: transparent; color: inherit; width: 100%; height: 100%; cursor: zoom-in; display: block; }
 .travel-passport__zoom { width: min(900px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); border: 0; border-radius: var(--radius-4); padding: var(--space-2); color: var(--ink); background: var(--paper); box-shadow: var(--shadow-3); }
 .travel-passport__zoom::backdrop { background: color-mix(in srgb, var(--night) 62%, transparent); }
 .travel-passport__zoom > img { display: block; max-width: 100%; max-height: 80dvh; object-fit: contain; margin: var(--space-2) auto 0; }
@@ -601,7 +597,6 @@
   .passport-view__nav .fm-btn { min-height: var(--touch-min); font-size: var(--fs-50); padding-inline: var(--space-0-5); }
   .passport-view__nav > span { font-size: 9px; }
   .travel-passport__item { font-size: var(--fs-50); gap: 3px; }
-  .travel-passport__enlarge > span { font-size: var(--fs-50); padding-top: 3px; }
   .travel-passport__item > .album__crop { width: 58px; }
   .travel-passport__photo .passport-memory-fit { width: min(100%, calc(125px * var(--memory-aspect))); }
 }
@@ -619,14 +614,12 @@
 @media (max-width: 760px) {
   .travel-passport__page-head h2 { font-size: var(--fs-300); line-height: var(--lh-100); }
   .travel-passport__collection-head h3 { line-height: var(--lh-100); }
-  .travel-passport__enlarge > span { line-height: var(--lh-50); }
   .travel-passport__stamp { line-height: var(--lh-50); }
   .travel-passport__item { line-height: var(--lh-50); }
 }
 @media (max-width: 760px) and (max-height: 700px) {
   .travel-passport__page-head { margin-bottom: var(--space-0-5); }
-  .travel-passport__photo { width: 120px; }
-  .travel-passport__photo img, .travel-passport__photo-wait { height: 64px; }
+  .travel-passport__memory > .travel-passport__photo, .travel-passport__photo img, .travel-passport__photo-wait { min-height: 80px; }
   .travel-passport__photo .passport-memory-fit { width: min(100%, calc(64px * var(--memory-aspect))); }
   .travel-passport__item { gap: 2px; }
   .travel-passport__item > strong { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

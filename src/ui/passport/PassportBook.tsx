@@ -143,7 +143,11 @@ export function PassportBook({ book, mode = "owner", onPhotoSelect, onPlay, rend
             <div className="travel-passport__spread">
               <section className="travel-passport__leaf travel-passport__memory" aria-label={copy.memory}>
                 <header className="travel-passport__page-head"><p className="travel-passport__eyebrow">{world?.title}</p><h2 ref={heading} tabIndex={-1}>{page.title}</h2><p>{tf(copy.page, { n: index + 1, total: world!.pages.length })}</p></header>
-                <div className="travel-passport__photo">{page.photoUrl ? <button type="button" className="travel-passport__enlarge" aria-label={copy.enlarge} onClick={() => setPanel("photo")}>{image(page.photoUrl, page.title)}<span>{copy.enlarge}</span></button> : <div className="travel-passport__photo-wait"><span aria-hidden>✦</span><p>{page.state === "locked" ? copy.locked : copy.photoWait}</p></div>}</div>
+                {/* No caption strip across the picture. "A closer look" was a
+                    label telling the reader what a picture is; the button still
+                    carries it for a screen reader, and a cursor still says
+                    zoom-in. The photograph gets the whole frame. */}
+                <div className="travel-passport__photo">{page.photoUrl ? <button type="button" className="travel-passport__enlarge" aria-label={copy.enlarge} title={copy.enlarge} onClick={() => setPanel("photo")}>{image(page.photoUrl, page.title)}</button> : <div className="travel-passport__photo-wait"><span aria-hidden>✦</span><p>{page.state === "locked" ? copy.locked : copy.photoWait}</p></div>}</div>
                 {/* The mark alone. The words went inside the aria-label rather
                     than off the page: a stamp is a picture, and a reader that
                     cannot see it still has to be told the place was visited. */}
