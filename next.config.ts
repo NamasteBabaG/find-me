@@ -61,6 +61,9 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // A private pilot may run beside the user's existing dev server without
+  // either process writing the other's Next build. Production cannot opt in.
+  distDir: isDev && process.env.LOCAL_TWO_WORLD_PREVIEW === "1" ? ".next-two-worlds" : ".next",
   reactStrictMode: true,
   // A nested worktree is a complete app, not a monorepo package. Do not infer
   // its parent checkout as the trace root because another lockfile lives there.

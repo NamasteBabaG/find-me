@@ -1,0 +1,19 @@
+{
+  "status": "art-inspected-draft-not-active",
+  "image": "output/imagegen/journey-marrakech-v8-inner-targets.png",
+  "sha256": "a17bef0ac10f636897fe76ee1a5c14d661c5149ab4995ba4f8e21e57fc437155",
+  "width": 3840,
+  "height": 2160,
+  "coordinateBasis": "Observed output pixels, not requested prompt positions. Bounding boxes approximate the visible target. These are NOT final touch hitboxes.",
+  "targets": [
+    {"id":"blue-amulet","nameHe":"קמע כחול","rarity":"common","box":{"x":1473,"y":511,"width":52,"height":78},"center":{"x":1499,"y":550},"hintHe":"בין הבדים התלויים, ליד הפעילות המוזיקלית","note":"Original preserved exactly; above planned inner band, live HUD accessibility still untested."},
+    {"id":"striped-slipper","nameHe":"נעל בית מפוספסת","rarity":"common","box":{"x":1258,"y":1198,"width":94,"height":60},"center":{"x":1305,"y":1228},"hintHe":"ליד הילדים שמקשיבים לסיפור"},
+    {"id":"crescent-cup","nameHe":"ספל עם ירח","rarity":"common","box":{"x":1960,"y":1340,"width":75,"height":96},"center":{"x":1998,"y":1388},"hintHe":"מי שותה ליד שולחן התה?","note":"Original preserved exactly; held by child, crescent visible."},
+    {"id":"tassel-key","nameHe":"מפתח עם גדיל","rarity":"rare","box":{"x":1800,"y":1454,"width":133,"height":58},"center":{"x":1866,"y":1483},"hintHe":"קרוב למגש המאפים"},
+    {"id":"violet-gecko","nameHe":"שממית סגולה","rarity":"rare","box":{"x":2194,"y":1228,"width":121,"height":58},"center":{"x":2254,"y":1257},"hintHe":"על הפסיפס של המזרקה"},
+    {"id":"silver-camel","nameHe":"גמל כסף קטן","rarity":"epic","box":{"x":1697,"y":760,"width":72,"height":86},"center":{"x":1733,"y":803},"hintHe":"בין האריחים הכחולים","note":"Tier is provisional collection rarity, not evidence of age-calibrated difficulty."}
+  ],
+  "remainingGates": ["User review of corrected artwork", "Touch geometry and cards in actual game", "Desktop and mobile HUD/pan/zoom checks", "Playtest difficulty ages 4-10", "Three fresh personal child patches on the new base", "Version-pinned catalog integration"],
+  "activeCatalogChanged": false,
+  "qaDeployed": false
+}

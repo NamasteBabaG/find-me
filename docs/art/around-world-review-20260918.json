@@ -1,0 +1,11 @@
+[
+  {"index":1,"id":"newyork","title":"ניו יורק","src":"/scenes/adventure-newyork/base.webp"},
+  {"index":2,"id":"amazon","title":"אמזונס","src":"/scenes/adventure-amazon/base.webp"},
+  {"index":3,"id":"paris","title":"פריז","src":"/scenes/adventure-paris-density-v3/base.webp"},
+  {"index":4,"id":"marrakech","title":"מרקש","src":"/scenes/adventure-marrakech-density-v3-items-v1/base.webp"},
+  {"index":5,"id":"giza","title":"גיזה","src":"/scenes/adventure-giza-repaired-v1/base.webp"},
+  {"index":6,"id":"tokyo","title":"טוקיו","src":"/scenes/adventure-tokyo-density-v3-items-v1/base.webp"},
+  {"index":7,"id":"greatwall","title":"החומה הסינית","src":"/scenes/adventure-greatwall-density-v3/base.webp"},
+  {"index":8,"id":"sydney","title":"סידני","src":"/scenes/adventure-sydney-density-v3/base.webp"},
+  {"index":9,"id":"antarctica","title":"אנטארקטיקה","src":"/scenes/adventure-antarctica-density-v3/base.webp"}
+]

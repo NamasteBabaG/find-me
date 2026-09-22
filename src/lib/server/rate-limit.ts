@@ -75,4 +75,8 @@ export const LIMITS = {
   progress: { limit: 240, windowMs: 60_000 },
   /** One album event per find; a child cannot find faster than this. */
   album: { limit: 120, windowMs: 60_000 },
+  /** One passport page loads six cards, a photo and a turning-leaf photo.
+   * A two-world book needs 144 requests; 120 cut off its final page. Leave
+   * room for revisiting/choosing a photo while keeping raster abuse bounded. */
+  passportMedia: { limit: 360, windowMs: 60_000 },
 } as const;

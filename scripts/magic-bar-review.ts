@@ -8,6 +8,8 @@ import path from "node:path";
 import sharp from "sharp";
 import { PrismaClient } from "@prisma/client";
 import { MAGIC_PILOT_PATCH_BOARDS } from "../content/adventures/magic-pilot";
+import { JOURNEY_REFRESH_PATCH_BOARDS } from "../content/adventures/journey-refresh-pilot";
+import { TWO_WORLD_PATCH_BOARDS, TWO_WORLD_RELEASE_ID, TWO_WORLD_STORAGE, TWO_WORLD_CAP_MICRO_USD } from '../content/adventures/two-worlds-production';
 import { cropOf, maskForHide } from "../src/domain/scene/local-patch-hides";
 import { PrismaWorldBudgetStore } from "../src/infra/db/prisma-world-budget-store";
 import { CasWorldBudgetRepository } from "../src/infra/db/world-budget-repository";
@@ -21,14 +23,18 @@ import { judgeLocalPatchBoard, localPatchBoardJudgeSettings, localPatchBoardJudg
 
 const hash = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
 async function main() {
-  const [slug, vector, ...extra] = process.argv.slice(2), attempts = vector?.split(",").map(Number);
-  const board = MAGIC_PILOT_PATCH_BOARDS.find(b => b.board === slug);
+  const args = process.argv.slice(2), journeyRefresh = args[0] === "--journey-refresh";
+  const twoWorlds = args[0] === '--two-worlds';
+  if(twoWorlds)args.shift();
+  if (journeyRefresh) args.shift();
+  const [slug, vector, ...extra] = args, attempts = vector?.split(",").map(Number);
+  const board = (twoWorlds ? TWO_WORLD_PATCH_BOARDS : journeyRefresh ? JOURNEY_REFRESH_PATCH_BOARDS : MAGIC_PILOT_PATCH_BOARDS).find(b => b.board === slug);
   if (!board || extra.length || attempts?.length !== 3 || attempts.some(a => ![1, 2, 3].includes(a))) throw Error("Use <board-slug> <attempt1,attempt2,attempt3>");
-  const dir = path.resolve("storage/magic-bar-20260918"), inputBytes = readFileSync(path.join(dir, "inputs.json"));
+  const dir = path.resolve(twoWorlds ? `${TWO_WORLD_STORAGE}/${slug}` : journeyRefresh ? "storage/journey-refresh-bar-20260919" : "storage/magic-bar-20260918"), inputBytes = readFileSync(path.join(dir, "inputs.json"));
   const inputs = JSON.parse(inputBytes.toString()), inputsSha256 = hash(inputBytes);
   const pinned = inputs.boards.find((b: { board: { board: string } }) => b.board.board === slug);
   const original = readFileSync(board.art), identity = readFileSync(path.join(dir, "identity-normalized.png"));
-  if (inputs.capMicroUsd !== 2_000_000 || inputs.version !== "magic-bar-three-20260918-v1" || !pinned
+  if (inputs.capMicroUsd !== (twoWorlds ? TWO_WORLD_CAP_MICRO_USD : 2_000_000) || inputs.version !== (twoWorlds ? TWO_WORLD_RELEASE_ID : journeyRefresh ? "journey-refresh-bar-amazon-20260919-v1" : "magic-bar-three-20260918-v1") || !pinned
     || JSON.stringify(pinned.board) !== JSON.stringify(board) || hash(original) !== pinned.sourceSha256
     || hash(identity) !== inputs.identitySha256) throw Error("Pinned pilot evidence changed");
   const key = process.env.OPENAI_API_KEY;
@@ -57,7 +63,7 @@ async function main() {
     identityPng: await sharp(identity).resize(256, 256, { fit: "inside" }).png().toBuffer() };
   const settings = localPatchBoardJudgeSettings(10), wireHashes = localPatchBoardJudgeImages(request).map(hash);
   const fingerprint = hash(JSON.stringify({ inputsSha256, patches, settings, prompt: localPatchBoardJudgePrompt(request), labels: localPatchBoardJudgeImageLabels(request), wireHashes }));
-  const db = new PrismaClient({ datasources: { db: { url: `file:${path.join(dir, "purchases.sqlite").replaceAll("\\", "/")}` } } });
+  const db = new PrismaClient({ datasources: { db: { url: `file:${path.resolve(twoWorlds ? `${TWO_WORLD_STORAGE}/purchases.sqlite` : path.join(dir, "purchases.sqlite")).replaceAll("\\", "/")}` } } });
   try {
     const repo = new CasWorldBudgetRepository(new PrismaWorldBudgetStore(db));
     const bounded: WorldBudgetRepository = { transactWorld: (id, work) => repo.transactWorld(id, tx => work({ ...tx, createRequest: async row => {

@@ -1,0 +1,25 @@
+Use case: style-transfer
+Asset: 3840 x 2160 children's hidden-object game board.
+
+INPUT ROLES / PRIORITY:
+IMAGE 1 is GIZA: use it as the exact COMPOSITION AND STORY blueprint, NOT as the rendering-style reference.
+IMAGE 2 is the user-selected SYDNEY illustration detail: it is the authoritative PAINTING STYLE reference. Use its treatment of faces, limbs, cloth, hair, wicker, ground, fine details and reflected light. Do NOT copy its beach, surfboards, food, people, props, modern clothing or Australian subject matter into Giza.
+
+PRIMARY REQUEST:
+Repaint the WHOLE Giza scene in the illustrative hand of IMAGE 2. The previous attempt was rejected because adding a few mottled material patches left Giza's smooth sculpted 3D base, slick shapes, doll-like eyes, airbrushed flesh and neatly outlined camel faces intact. That is NOT enough. This time replace the underlying rendering language: observational, lively, dimensional hand-painted storybook illustration like Sydney, not a texture overlay on a polished computer-rendered scene. Make the stylistic change evident both at whole-board size and in a close crop of the camel handler's face and clothes.
+
+HOW TO PAINT, FOLLOWING IMAGE 2:
+Construct form using small broken tonal and chromatic brushstrokes. Light falls across skin in irregular softly joined painted planes, with subtle cooler half-tones rather than long glassy gradients. Human faces have individual anatomy, natural-size eyes with readable eyelids, nuanced cheek and nose planes and expressive smiles; no glossy doll heads, huge black outlined eyes or waxy skin. Camel faces and fur are sympathetically illustrated from observed anatomy rather than shiny plastic mascots: natural eyes, matte muzzles, fine irregular fur strokes. Retain their friendly expressions and current silhouettes/poses. Use finely varied warm/cool strokes, delicate directional marks in hair, dry scumbled touches in cloth and stone, and lost-and-found color edges as in Sydney. Edges remain precisely readable where necessary for a search game, but should not form a uniform dark outline around every person and object. Do not flatten the characters or make the result photographic.
+
+Material response is physically differentiated: limestone, sand, dry wood, rope, woven cloth, skin and fur are predominantly diffuse and matte; the occasional brass vessel or glazed pot receives a small justified bright reflection. Fabrics are fibers and natural folds, not smooth balloon shapes. Preserve the visual richness of the carpets with actual fine patterns, not random scratches. NO uniform paper-grain/noise overlay, no blanket speckling, no heavy ink hatching, no muddy watercolor bloom, no smeared painterly filter, no repeating distressed flecks on every material. Fine detail must be authored in the paint, not blurred away.
+
+COMPOSITION AND STORY INVARIANTS:
+Keep IMAGE 1's exact wide frame, shallow perspective, scale relationships and positions of all principal figures, activities and objects. No zoom, no new layout, no crowd thinning, no additional groups, no miniature foreground group. Keep the pyramid skyline, Sphinx and scaffold, upper-left hoist/stoneworkers and repaired boy in blue shirt/gray shorts, white archaeology tent and map-table pair, surveying tripod, rug market, three camels with richly colored saddles and handlers, girl in green, pottery sellers, seated lower-left traveler, lower-center storyteller/tea family and sleeping dog, photographer, hieroglyph documentation, artist, sorting tables, palms and flowers. Preserve clothing cuts and colors, gestures and interactions. Rendering of their features may change to match Sydney, but do not exchange characters or change what they are doing. This is the SAME Giza drawing repainted by the Sydney illustrator, not a different scene.
+
+LIGHT / COLOR:
+Keep a bright, welcoming Egyptian desert day with warm directional sun and gentle cool sky fill. Luminous honey/cream stone, colorful cobalt/turquoise/coral textiles, green palms, pink flowers. Match Sydney's airy readable diffuse color relationships and brush construction while retaining Giza's own palette. No dark brown museum finish, no orange monochrome cast, no muted gray blanket, no loss of saturation in the colorful carpets.
+
+SIX SEARCH OBJECTS, PRESERVE IN PLACE AND RECOGNIZABLE:
+One blue feather near the upper-left cat; one red-handled magnifying glass on the research table; one purple hourglass on the lower-left pottery crate; one gold key hanging among tassels on the left standing camel; one small green chameleon on the right carved-stone ledge; one turquoise scarab on the lower-right artifact crate. Keep their sizes, locations, characteristic silhouettes and colors. No duplicates, relocations, glowing emphasis, missing targets or new icons.
+
+OUTPUT: one clean full-bleed 3840 x 2160 Giza illustration. No labels, framing, comparison collage, interface, signature or watermark. Rich, crisp native detail; anatomical hands and faces, no doubled edges, smearing or paint-filter artifacts. Crucially, IMAGE 2 governs the artistic hand, IMAGE 1 governs where everything belongs.

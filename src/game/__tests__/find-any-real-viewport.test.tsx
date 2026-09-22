@@ -109,6 +109,25 @@ async function mountPlayer(size: { width: number; height: number }, scene = scen
 }
 
 describe("guided discoveries through the real viewport", () => {
+  it("collects exact small objects on a phone even when their invisible touch padding overlaps", async () => {
+    const {config}=guidedFixture();
+    window.localStorage.clear();
+    const discoveries=config.adventure!.boards[0]!.discoveries;
+    discoveries[0]!.hitRect={x:.49,y:.24,w:.008,h:.012};
+    discoveries[1]!.hitRect={x:.513,y:.24,w:.008,h:.012};
+    for(const d of discoveries.slice(0,2))d.cardCrop={...d.hitRect};
+    const player=await mountPlayer({width:360,height:640},config.scenes[0]!,[],true,config);
+    // Empty space inside both expanded reaches must not guess either object.
+    player.tap({x:.505,y:.246});
+    expect(player.store.getState().album!.discoveries).toHaveLength(0);
+    act(()=>vi.advanceTimersByTime(400));
+    player.tap({x:.494,y:.246});
+    expect(player.store.getState().album!.discoveries.map(d=>d.discoveryId)).toEqual(['item-0']);
+    act(()=>vi.advanceTimersByTime(400));
+    player.tap({x:.517,y:.246});
+    expect(player.store.getState().album!.discoveries.map(d=>d.discoveryId).sort()).toEqual(['item-0','item-1']);
+    expect(Object.keys(player.store.getState().mission!.found)).toHaveLength(0);
+  });
   it("replays the last child hint after an item hint moved the camera, without adding hint usage", async () => {
     const {config}=guidedFixture();
     window.localStorage.clear();

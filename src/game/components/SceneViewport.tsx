@@ -91,6 +91,16 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveri
         if (!isFound(m, exact)) onHit({ kind: "target", id: exact });
         return;
       }
+      // A painted object wins over another object's invisible finger padding.
+      // Otherwise two nearby small items become impossible to collect at phone
+      // fit scale, even when the tap is exactly on one of their visible pixels.
+      // The child's actual footprint still wins above; ambiguous padding below
+      // must continue to refuse to guess between objects.
+      const exactDiscoveries = discoveries.filter(d => nx >= d.hitRect.x && nx <= d.hitRect.x + d.hitRect.w && ny >= d.hitRect.y && ny <= d.hitRect.y + d.hitRect.h);
+      if (exactDiscoveries.length === 1) {
+        onHit({ kind: "discovery", id: exactDiscoveries[0]!.id });
+        return;
+      }
       const padded: HitCandidate<Hit>[] = [];
       for (const p of available) {
         if (isFound(m, p.target.id)) continue;

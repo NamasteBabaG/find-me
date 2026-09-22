@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "status": "source-rejected-for-scale-not-active",
+  "rejection": "User rejected v5 foreground scale and requested removing the left street dancers. Retain these crops only as source evidence; do not transfer coordinates to a revised image.",
+  "scene": "journey-tokyo-v5-inner-props",
+  "reviewedAt": "2026-09-19",
+  "image": {
+    "path": "output/imagegen/journey-tokyo-v5-inner-props.png",
+    "width": 3840,
+    "height": 2160,
+    "sha256": "b39e30749a143c2bb8e833b3c4080d751b90a35e9f3fd3a67f8c606874486335"
+  },
+  "coordinateBasis": "Pixel crops actually extracted and visually inspected from final output; NOT coordinates copied from prompt. Crop rectangles include contextual padding and are NOT production hitboxes.",
+  "adaptation": "The v5 edit removed the yellow robot and blue carp without verified interior replacements. Substitute actually visible toy rocket and miniature navy backpack; rebalance 3 common / 2 rare / 1 epic by observed visibility.",
+  "targets": [
+    {
+      "id": "tokyo-toy-rocket",
+      "nameHe": "טיל צעצוע",
+      "nameEn": "Toy rocket",
+      "rarity": "common",
+      "cropPx": {
+        "left": 1700,
+        "top": 858,
+        "width": 165,
+        "height": 225
+      }
+    },
+    {
+      "id": "tokyo-flower-fan",
+      "nameHe": "מניפה פרחונית",
+      "nameEn": "Flower fan",
+      "rarity": "common",
+      "cropPx": {
+        "left": 2260,
+        "top": 1005,
+        "width": 145,
+        "height": 90
+      }
+    },
+    {
+      "id": "tokyo-lucky-cat",
+      "nameHe": "חתול מזל",
+      "nameEn": "Lucky cat",
+      "rarity": "common",
+      "cropPx": {
+        "left": 2280,
+        "top": 1520,
+        "width": 125,
+        "height": 175
+      }
+    },
+    {
+      "id": "tokyo-origami-frog",
+      "nameHe": "צפרדע אוריגמי",
+      "nameEn": "Origami frog",
+      "rarity": "rare",
+      "cropPx": {
+        "left": 1535,
+        "top": 1605,
+        "width": 115,
+        "height": 90
+      }
+    },
+    {
+      "id": "tokyo-crane-charm",
+      "nameHe": "תליון עגור אדום",
+      "nameEn": "Red crane charm",
+      "rarity": "rare",
+      "cropPx": {
+        "left": 2125,
+        "top": 1330,
+        "width": 100,
+        "height": 115
+      }
+    },
+    {
+      "id": "tokyo-mini-backpack",
+      "nameHe": "תיק גב כחול קטן",
+      "nameEn": "Mini blue backpack",
+      "rarity": "epic",
+      "cropPx": {
+        "left": 2430,
+        "top": 1050,
+        "width": 110,
+        "height": 160
+      }
+    }
+  ],
+  "remainingGates": [
+    "User art approval",
+    "Native-size recognizability/difficulty playtest for ages 4-10",
+    "Real HUD occlusion checks on desktop and mobile including pan/zoom",
+    "Production hitbox mapping and item cards",
+    "Three personalized child hiding spots in a separately versioned scene",
+    "Catalog activation and QA integration"
+  ]
+}

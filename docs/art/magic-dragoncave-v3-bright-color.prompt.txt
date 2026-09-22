@@ -1,0 +1,13 @@
+Use case: lighting-weather
+Asset type: 4K illustrated hidden-object game board for children aged 4–10.
+Input image 1: the existing dragon-cave v2 board, EDIT TARGET. Preserve its established illustration style and all scene content.
+
+Primary request: make this exact scene a little more colorful and visibly brighter overall. This is a restrained brightness-and-color revision only, not a redesign.
+
+Lighting: raise the overall midtone brightness by roughly half a stop in appearance, with more soft daylight bounced into the whole cave so faces, clothes, dragon scales and recessed activities read clearly. Keep the existing light direction from the large left opening and overhead opening. Preserve the attractive distinction between sunny areas and the gently shaded right niches, with soft contact shadows and dimensional faces. Protect detail in sunlit cream stone and the outdoor sky. The cave should feel welcoming, airy and cheerful, never dark, sepia or muddy. Do not make every area equally lit.
+
+Color: gently lift the existing teal, lavender, coral, blue, green and mustard colors in clothing, dragons, cushions and small accessories. Make them cleaner and fresher, about 15–25% more vibrant in appearance, without neon, harsh saturation, unnatural skin or a colored wash over the whole image. Let warm pale limestone and natural wood remain grounding neutral materials, with skin tones still natural. Remove the overall brownish veil while preserving warmth.
+
+Materials/style: retain the same detailed dimensional storybook illustration, distinct individual faces and precise small details. Stone and cloth are matte; wood has subtle grain; scales have restrained soft highlights; only metal and glass have localized sharper glints. Preserve crisp facial features, basket weave, cloth seams and object silhouettes. No added scratchy linework, smearing, glossy plastic surfaces, hazy bloom, washed-out whites or flattening into cartoon faces.
+
+Invariants: KEEP THE EXACT SAME 16:9 framing, shallow perspective, cave architecture, people, dragons, facial identities, poses, clothing designs, object counts, activities, overlap relationships and positions. Do not zoom, crop, move, add, remove, replace or reshape any person, dragon or object. In particular, retain all existing small search props in their current locations and forms. Change only brightness, light fill and color vibrance as requested. No text, labels, UI, borders or watermark.

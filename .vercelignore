@@ -8,6 +8,7 @@
 /prisma/*.db
 /prisma/*.db-journal
 /.next/
+/.next-two-worlds/
 node_modules/
 *.log
 .env*
