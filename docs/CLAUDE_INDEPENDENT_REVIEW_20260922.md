@@ -11,8 +11,10 @@ storage, browser sessions, tokens or credentials. Use synthetic fixtures only.
 Worktree: `C:/GNart/Work/find-me/work/qa-passport-release-20260917`.
 Branch: `codex/independent-worlds-20260918`.
 Baseline before this batch: `50d3a0d9`.
-Inspect `git diff 50d3a0d9 -- src prisma scripts/deploy-qa-clean.mjs .github`
-against the committed review tip, not the old root worktree and not your old
+Code review tip: `2efc5ca7` (later handoff-only documentation is not code).
+Guy will forward this brief to Claude; return the review for Codex to address.
+Inspect `git diff 50d3a0d9 2efc5ca7 -- src prisma scripts/deploy-qa-clean.mjs .github`
+against this committed review tip, not the old root worktree and not your old
 `06699403`/`771120ed` base. Read `CODEX_AUDIT_REMEDIATION_20260922.md` for the
 claimed evidence and explicit open gates. **Challenge those claims**; do not
 take green tests as proof that the changed contract is correct.

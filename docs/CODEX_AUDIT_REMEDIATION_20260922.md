@@ -101,7 +101,11 @@ Claude review, findings returned to Codex, and another verification pass.
 The local `claude` CLI is installed but `claude auth status` returned
 `loggedIn: false`, `authMethod: none`. No existing connected Claude surface was
 available in the browser inventory. Guy was asked to run `claude auth login`;
-no password/API key is requested in chat. The review brief is
+no password/API key is requested in chat. Guy subsequently chose to forward the
+brief himself; local CLI login is no longer a handoff prerequisite. Code review
+tip is `2efc5ca7`, not deployed or pushed. The deploy guard was exercised in
+`--check` mode and correctly rejected the current tree's untracked `tmp/`;
+no deployment was attempted. The review brief is
 `CLAUDE_INDEPENDENT_REVIEW_20260922.md`. Do not label this batch Claude-approved
 or promote it to QA until that review has actually returned and findings have
 been addressed.
