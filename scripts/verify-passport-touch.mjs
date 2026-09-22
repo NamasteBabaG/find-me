@@ -33,13 +33,24 @@ try {
   await swipe(point.x, point.y, 165, 5);
   assert.equal(await title(), "מקום הדגמה 3", "Native rightward RTL swipe turns forward");
   assert.equal(await read('Boolean(document.querySelector(".travel-passport__zoom[open]"))'), false, "Swipe must not accidentally enlarge the photo");
-  // A short viewport intentionally permits a little vertical scroll, rather than clipping.
+  // A short viewport must never CLIP: what it cannot fit it must let you reach.
+  // This used to demand that the document actually scroll, which was the old
+  // layout's compromise — the page ran past the fold and scrolling was how you
+  // got to the rest of it. Now that a place is half picture and half keepsakes
+  // the whole leaf fits at 390x640, so there is nothing to scroll to. Assert
+  // what the check is really for: the swipe does not turn the page, and no
+  // content is stranded — either the page scrolls, or it already fits.
   await cdp("Emulation.setDeviceMetricsOverride", { width: 390, height: 640, deviceScaleFactor: 1, mobile: false });
   await read("scrollTo(0,0)");
   const beforeScroll = await read("scrollY");
+  const scrollable = await read("document.documentElement.scrollHeight - innerHeight");
   await swipe(190, 580, 8, -180);
   assert.equal(await title(), "מקום הדגמה 3", "Vertical scrolling must not turn a page");
-  assert.ok((await read("scrollY")) > beforeScroll + 50, "Native vertical scrolling remains available");
+  if (scrollable > 0) assert.ok((await read("scrollY")) > beforeScroll + 50, "Native vertical scrolling remains available");
+  else assert.ok(await read(`(()=>{const b=document.querySelector('.travel-passport__book').getBoundingClientRect();
+    const reach=e=>{const r=e.getBoundingClientRect();return r.bottom<=b.bottom+0.5&&r.top>=b.top-0.5;};
+    return [...document.querySelectorAll('.travel-passport__items button,.travel-passport__memory-actions > .fm-btn')].every(reach);})()`),
+    "Nothing to scroll to, so every keepsake and action must already be on the paper");
   const overflow = await read("Math.max(0,document.documentElement.scrollWidth-innerWidth)");
   assert.equal(overflow, 0);
   await cdp("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: false });

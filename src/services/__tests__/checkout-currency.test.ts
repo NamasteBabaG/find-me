@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { startCheckout } from "../order.service";
+import { priceFor } from "@/domain/package";
 import type { Container } from "../container";
 
 const draft = vi.hoisted(() => ({ locale: "he" }));
@@ -13,9 +14,13 @@ describe("checkout currency contract", () => {
     // No container is needed: omitted/invalid currency must fail before use.
     await expect(startCheckout(null as unknown as Container, { gameId: "test", email: "test@example.com", currency: currency as never, access: { draftToken: null, userId: null } })).rejects.toThrow("server-resolved currency");
   });
+  // The amount is READ from the catalogue, never restated here. This table
+  // held 5900 and 2200 as literals and went stale the first time a price moved;
+  // what it is testing is that the server's currency survives into the order
+  // and the payment, not what a world costs this month.
   it.each([
-    ["he", "USD", 2200], ["en", "ILS", 5900],
-    ["he", "ILS", 5900], ["en", "USD", 2200],
+    ["he", "USD", priceFor("ONE_WORLD", "USD")], ["en", "ILS", priceFor("ONE_WORLD", "ILS")],
+    ["he", "ILS", priceFor("ONE_WORLD", "ILS")], ["en", "USD", priceFor("ONE_WORLD", "USD")],
   ] as const)("preserves server currency %s/%s in both order and payment", async (locale, currency, amount) => {
     draft.locale = locale;
     const orderCreate = vi.fn(async ({ data }) => data);
