@@ -99,6 +99,7 @@ function missionCopy(scene: SceneConfig, copy: ReducerCopy): MissionCopy {
 }
 
 export interface PlayStoreOptions {
+  playToken?: string;
   demo?: boolean;
   skipGift?: boolean;
   /** Isolate private review from the real game's persisted progress/telemetry. */
@@ -121,7 +122,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
   // Never touch localStorage here: the store is created during render, on the
   // server too. Saved progress arrives via hydrate() after mount.
   const initialProgress: GameProgress = demo ? { v: 1, gameId: config.gameId, revealed: true, scenes: {} } : emptyProgress(config.gameId);
-  const telemetry = new Telemetry(config.gameId, persist);
+  const telemetry = new Telemetry(config.gameId, persist, opts.playToken);
   // Demo plays the same collection rules in memory, never in the account or storage.
   const book = persist || demo ? config.adventure ?? null : null;
   const demoScene = demo ? config.scenes[0]?.slug : undefined;

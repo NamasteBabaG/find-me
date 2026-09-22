@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 const fixture = vi.hoisted(() => ({ rows: [] as Array<{ gameId: string; childName: string; priceMinor: number; currency: "USD"; generationCents: number | null; attempts: number; marginPct: number | null }> }));
 vi.mock("@/services/admin.service", () => ({ costDashboard: async () => fixture.rows }));
 vi.mock("@/services/container", () => ({ getContainer: () => ({}) }));
+vi.mock("@/lib/server/require-admin", () => ({ requireAdmin: async () => ({ id: "admin" }) }));
 import CostsPage from "../page";
 beforeAll(() => vi.stubGlobal("React", React));
 afterAll(() => vi.unstubAllGlobals());

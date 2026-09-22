@@ -17,6 +17,7 @@ import { AdventurePassport } from "./AdventurePassport";
 import { bindGameAudio } from "../audio/sounds";
 
 interface Props {
+  playToken?: string;
   config: GameConfig;
   demo?: boolean;
   /** Owner/library preview: skip the gift wrap. */
@@ -46,9 +47,9 @@ export function GameShell(props: Props) {
   );
 }
 
-function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false, parentZoneHref, autoStartScene, singleMission = false, albumOwner = false }: Props) {
+function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false, parentZoneHref, autoStartScene, singleMission = false, albumOwner = false, playToken }: Props) {
   const { g } = useGameText();
-  const [store] = useState(() => createPlayStore(config, { demo, skipGift, readOnlyPreview, autoStartScene, singleMission, albumOwner, copy: getDict(config.locale).game.copy }));
+  const [store] = useState(() => createPlayStore(config, { demo, skipGift, readOnlyPreview, autoStartScene, singleMission, albumOwner, playToken, copy: getDict(config.locale).game.copy }));
   const state = useStore(store);
   const scene = state.scene();
   // One world needs no hub: the map is the whole journey.

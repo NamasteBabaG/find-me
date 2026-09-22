@@ -1,10 +1,12 @@
 import Link from "next/link";
+import { requireAdmin } from "@/lib/server/require-admin";
 import { getContainer } from "@/services/container";
 import { catalogForAdmin } from "@/services/scene-catalog.service";
 import { demoPatchCoverage } from "@/services/demo";
 import { setSceneActiveAction } from "../actions";
 
 export default async function AdminScenesPage() {
+  await requireAdmin();
   const entries = await catalogForAdmin(getContainer());
   return (
     <div className="fm-stack fm-stack--3">

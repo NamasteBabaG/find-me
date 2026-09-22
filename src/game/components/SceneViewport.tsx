@@ -246,9 +246,8 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveri
     // decoration and may fail quietly. Twenty seconds is a slow phone on a
     // slow network; what happens then is the retry screen, not a blind open.
     const slow = setTimeout(() => settle("failed"), 20_000);
-    Promise.all(
-      [...plan.essential, ...plan.decorative].map(
-        (url) =>
+    const load =
+        (url: string) =>
           new Promise<LoadResult>((resolve) => {
             // All essential pixels must decode before the curtain opens.
             // A delayed/failed decode takes the ordinary bounded retry path.
@@ -260,9 +259,11 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveri
             };
             img.onerror = () => resolve({ url, ok: false });
             img.src = url;
-          }),
-      ),
-    ).then((results) => settle(preloadVerdict(plan, results)));
+          });
+    // Optional art must never hold the ready barrier hostage. Keep loading it
+    // (and retaining the Image) while only essential pixels decide readiness.
+    for (const url of plan.decorative) void load(url);
+    void Promise.all(plan.essential.map(load)).then((results) => settle(preloadVerdict(plan, results)));
     return () => {
       settled = true;
       clearTimeout(slow);

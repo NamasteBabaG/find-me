@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { requireAdmin } from "@/lib/server/require-admin";
 import { notFound } from "next/navigation";
 import { findScene } from "../../../../../content/scenes";
 import { buildDemoConfig } from "@/services/demo";
@@ -6,6 +7,7 @@ import { StaticScenePreview } from "@/game/components/StaticScenePreview";
 
 /** Level-design view: both hiding-spot variants with hint zones, plus the raw slot table. */
 export default async function AdminScenePreviewPage({ params }: { params: Promise<{ slug: string }> }) {
+  await requireAdmin();
   const { slug } = await params;
   const scene = findScene(slug);
   if (!scene) notFound();

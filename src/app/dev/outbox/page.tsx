@@ -3,28 +3,20 @@ import { isLiveShop } from "@/lib/env";
 import { getContainer } from "@/services/container";
 import { ConsoleEmailProvider } from "@/infra/email/console";
 import { SiteHeader } from "@/ui/Shell";
-import { currentUser, isAdminEmail } from "@/lib/server/session";
+import { requireAdmin } from "@/lib/server/require-admin";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "תיבת דואר (dev)", robots: { index: false } };
 
-/**
- * Every email the app "sent", with clickable links.
- *
- * Gated on whether this is the live shop, not on NODE_ENV. A QA deployment runs
- * a production build with EMAIL_PROVIDER=console, so `isDev()` was false there
- * and this page 404ed — which meant the magic link needed to sign in was
- * written to a mailbox nobody could open. The sign-in path was unusable on the
- * one deployment that exists to test the sign-in path.
- */
+/** Magic links are credentials. Even behind the QA gate only an admin may read them. */
 export default async function OutboxPage() {
   if (isLiveShop()) notFound();
+  const user = await requireAdmin();
   const c = getContainer();
-  const user = await currentUser();
   const mails = c.email instanceof ConsoleEmailProvider ? await c.email.list() : [];
   return (
     <>
-      <SiteHeader user={user} isAdmin={isAdminEmail(user?.email)} />
+      <SiteHeader user={user} isAdmin />
       <main className="fm-container fm-container--narrow fm-section fm-stack fm-stack--3">
         <h1>תיבת דואר (סביבת פיתוח)</h1>
         <p className="fm-muted">בסביבת פיתוח מיילים לא נשלחים באמת — הם מופיעים כאן ובקונסול של השרת.</p>

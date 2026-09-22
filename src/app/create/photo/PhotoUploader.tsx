@@ -198,11 +198,11 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/
     setBusy(true);
     setError(null);
     const crop = { x: -offset.x / scale / natural.w, y: -offset.y / scale / natural.h, w: BOX / scale / natural.w, h: BOX / scale / natural.h };
-    const fd = new FormData();
-    fd.append("file", await forUpload(file));
-    fd.append("crop", JSON.stringify(crop));
-    fd.append("consent", "1");
     try {
+      const fd = new FormData();
+      fd.append("file", await forUpload(file));
+      fd.append("crop", JSON.stringify(crop));
+      fd.append("consent", "1");
       const res = await fetch(endpoint, { method: "POST", body: fd });
       const data = (await res.json().catch(() => ({ ok: false, code: "UPLOAD_FAILED", reason: `HTTP ${res.status}` }))) as { ok: boolean; code?: string; reason?: string };
       if (!data.ok) {

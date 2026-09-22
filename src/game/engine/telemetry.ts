@@ -42,6 +42,7 @@ export class Telemetry {
   constructor(
     private readonly gameId: string,
     private readonly enabled: boolean,
+    private readonly playToken?: string,
   ) {}
 
   track(event: PlayEvent): void {
@@ -60,7 +61,7 @@ export class Telemetry {
       this.timer = null;
     }
     if (this.queue.length === 0 || typeof window === "undefined") return;
-    const body = JSON.stringify({ gameId: this.gameId, anonymousSessionId: anonymousId(), deviceType: deviceType(), events: this.queue.splice(0, 50) });
+    const body = JSON.stringify({ gameId: this.gameId, playToken: this.playToken, anonymousSessionId: anonymousId(), deviceType: deviceType(), events: this.queue.splice(0, 50) });
     const url = "/api/play/progress";
     if (navigator.sendBeacon) {
       navigator.sendBeacon(url, new Blob([body], { type: "application/json" }));

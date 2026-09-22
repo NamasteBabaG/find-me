@@ -30,6 +30,7 @@ class LayoutObserver {
   resize(width: number, height: number) { this.callback([{ contentRect: { width, height } }]); }
 }
 class LoadedImage {
+  static stalled = new Set<string>();
   static instances: LoadedImage[] = [];
   onload: (() => void) | null = null;
   onerror: (() => void) | null = null;
@@ -43,6 +44,7 @@ beforeEach(() => {
   vi.stubGlobal("ResizeObserver", LayoutObserver);
   vi.stubGlobal("Image", LoadedImage);
   LoadedImage.instances = [];
+  LoadedImage.stalled.clear();
   vi.useFakeTimers();
   window.matchMedia = (() => ({ matches: false, addEventListener() {}, removeEventListener() {} })) as never;
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => setTimeout(() => callback(performance.now()), 16));
@@ -80,7 +82,7 @@ async function mountPlayer(size: { width: number; height: number }, scene = scen
   function Player() { const state = useStore(store); return <GameI18nProvider locale="en">{state.mission ? <ScenePlayer scene={scene} mission={state.mission} store={state} onBack={state.goToMap} onSceneComplete={state.completeScene} /> : null}</GameI18nProvider>; }
   const view = render(<Player />);
   act(() => LayoutObserver.latest.resize(size.width, size.height));
-  await act(async () => { for (const image of LoadedImage.instances) image.onload?.(); });
+  await act(async () => { for (const image of LoadedImage.instances) if (!LoadedImage.stalled.has(image.src)) image.onload?.(); });
   act(() => vi.advanceTimersByTime(1000));
   if (expectStarted) expect(store.getState().mission!.phase).toBe("searching");
   const stage = view.container.querySelector<HTMLElement>(".stage")!;
@@ -185,6 +187,14 @@ describe("guided discoveries through the real viewport", () => {
 });
 
 describe("one child at a time through the actual animated viewport", () => {
+  it("opens a fully decoded board even if optional foreground never responds", async () => {
+    const scene = sceneFixture();
+    scene.art.foreground = "/never-settles.webp";
+    LoadedImage.stalled.add(scene.art.foreground);
+    const { store } = await mountPlayer({ width: 390, height: 844 }, scene);
+    act(() => vi.advanceTimersByTime(20_000));
+    expect(store.getState().mission!.phase).toBe("searching");
+  });
   it.each([{ width: 1280, height: 800 }, { width: 320, height: 650 }])("awards once, then lights one gold star only when its real flight lands at $width×$height", async size => {
     const player = await mountPlayer(size);
     const star = player.container.querySelector(".mission__stars .stars__slot")!;

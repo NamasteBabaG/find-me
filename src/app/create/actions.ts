@@ -9,7 +9,8 @@ import { startCheckout } from "@/services/order.service";
 import { isEditableDraft } from "@/domain/order-state";
 import { validChildAge } from "@/domain/child-appearance";
 import { statusOf } from "@/services/game-status";
-import { currentUser, draftTokenFromCookie, setDraftCookie } from "@/lib/server/session";
+import { currentUser, draftTokenFromCookie, setDraftCookie, requestHeaders } from "@/lib/server/session";
+import { LIMITS, rateLimit } from "@/lib/server/rate-limit";
 import { getLocale } from "@/i18n/server";
 import { flowError, type FlowResult } from "@/i18n/errors";
 import { guardDb } from "@/lib/server/db-guard";
@@ -84,9 +85,17 @@ export async function chooseScenesAction(_prev: ActionResult | null, formData: F
 
 export async function checkoutAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   await requireQaAccess();
+  const h = await requestHeaders();
+  const ip = h["x-forwarded-for"]?.split(",")[0]?.trim() || h["x-real-ip"] || "unknown";
+  if (!rateLimit(`checkout:${ip}`, LIMITS.checkout.limit, LIMITS.checkout.windowMs).ok) {
+    return flowError("TOO_MANY_REQUESTS", "יותר מדי ניסיונות. נסו שוב בעוד כמה דקות.");
+  }
   const c = getContainer();
   const draft = await currentDraft();
   if (!draft) redirect("/create");
+  if (!rateLimit(`checkout-draft:${draft.id}`, LIMITS.checkout.limit, LIMITS.checkout.windowMs).ok) {
+    return flowError("TOO_MANY_REQUESTS", "יותר מדי ניסיונות. נסו שוב בעוד כמה דקות.");
+  }
   const email = String(formData.get("email") ?? "");
   const currency = await getCurrency();
   const [draftToken, user] = await Promise.all([draftTokenFromCookie(), currentUser()]);

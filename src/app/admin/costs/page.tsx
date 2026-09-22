@@ -1,8 +1,10 @@
 import { getContainer } from "@/services/container";
 import { costDashboard } from "@/services/admin.service";
 import { formatMoney } from "@/domain/package";
+import { requireAdmin } from "@/lib/server/require-admin";
 
 export default async function AdminCostsPage() {
+  await requireAdmin();
   const rows = await costDashboard(getContainer());
   const totals = rows.reduce(
     (acc, r) => {

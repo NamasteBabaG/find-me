@@ -2,6 +2,7 @@ import { gameShape } from "@/services/world-catalog.service";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getContainer } from "@/services/container";
+import { requireAdmin } from "@/lib/server/require-admin";
 import { orderDetailForAdmin } from "@/services/admin.service";
 import { ensurePlayerLink } from "@/services/share-link.service";
 import { parseGameConfig } from "@/domain/game/config";
@@ -37,6 +38,7 @@ function judgeLabel(judge: { verdict: string; reason: string; claimedVerdict?: s
 }
 
 export default async function AdminOrderPage({ params, searchParams }: { params: Promise<{ gameId: string }>; searchParams: Promise<{ v?: string; repair?: string; paidRepair?: string; partialRelease?: string; delivery?: string }> }) {
+  await requireAdmin();
   const [{ gameId }, { v, repair, paidRepair, partialRelease, delivery }] = await Promise.all([params, searchParams]);
   const variant: "A" | "B" = v === "B" ? "B" : "A";
   const c = getContainer();

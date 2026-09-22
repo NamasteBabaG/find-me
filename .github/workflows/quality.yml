@@ -1,0 +1,41 @@
+name: Quality gate
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      APP_ENV: development
+      APP_URL: https://ci.invalid
+      APP_COMMIT: ${{ github.sha }}
+      SESSION_SECRET: ci-synthetic-secret-not-valid-on-any-deployment
+      DATABASE_URL: file:./ci.db
+      PAYMENT_PROVIDER: mock
+      GENERATION_PROVIDER: mock
+      EMAIL_PROVIDER: console
+      STORAGE_PROVIDER: local
+      ANALYTICS_PROVIDER: none
+      NEXT_TELEMETRY_DISABLED: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check -- --maxWorkers=4
+      - run: npm run scenes:validate
+      - run: npm run adventures:validate
+      - name: Production build and private-asset audit
+        run: npm run build
+      - name: No generated source drift
+        run: git diff --exit-code
+      # No deployment credentials, customer DB or paid image provider in CI.

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getContainer } from "@/services/container";
 import { countsForAdmin, listOrdersForAdmin, type AdminFilter } from "@/services/admin.service";
 import { formatPriceILS } from "@/domain/package";
+import { requireAdmin } from "@/lib/server/require-admin";
 
 const FILTERS: Array<[AdminFilter, string]> = [
   ["new", "חדשות"],
@@ -16,6 +17,7 @@ const FILTERS: Array<[AdminFilter, string]> = [
 ];
 
 export default async function AdminOrdersPage({ searchParams }: { searchParams: Promise<{ f?: string }> }) {
+  await requireAdmin();
   const { f } = await searchParams;
   const filter = (FILTERS.some(([k]) => k === f) ? f : "qa") as AdminFilter;
   const c = getContainer();

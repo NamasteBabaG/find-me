@@ -24,7 +24,9 @@ export const maxDuration = 300;
 // Stop launching spots after 30s. A spot is two image calls (painting, then
 // pass two) and two judges; each pass is started only if it can finish before
 // HARD_MS, and one that cannot is deferred with what came before it kept, so
-// the request never runs past the host's 300s (see slot-patches PASS_*_MIN_MS).
+// provider work stays within the available budget (see slot-patches PASS_*_MIN_MS).
+// This is cooperative, not cancellation of arbitrary I/O; the watchdog records
+// overruns and the runtime DB client separately bounds its queries.
 const SLICE_MS = 30_000;
 /** The request's hard limit for generation work: the host's 300s less room for I/O and the answer. */
 const HARD_MS = 270_000;
@@ -38,26 +40,48 @@ const HARD_MS = 270_000;
  * finished hiding spot is skipped.
  */
 export async function POST(req: Request) {
-  const hardDeadlineAt = Date.now() + HARD_MS;
-  const denied = await qaAccessDenied(req, true);
-  if (denied) return denied;
-  const c = getContainer();
-  const url = new URL(req.url);
-  const gameId = url.searchParams.get("gameId");
-
-  if (!(await isAllowed(req, gameId))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  // Notification intent survives publication. Give its bounded retry a turn
-  // before new generation, so a busy queue cannot starve ready/warning mail.
-  if (!gameId) await retryFailedAdminAlerts(c, { deadlineAt: Math.min(hardDeadlineAt, Date.now() + 20_000) });
-  const result = await tickGeneration(c, gameId, SLICE_MS, Math.max(0, hardDeadlineAt - Date.now()));
-  // The retention policy rides the cron: about once an hour, after the work.
-  // A page's nudge (gameId given) never pays for it.
-  // An admin alert the mail provider refused is tried again here; it never throws.
-  const retention = gameId || hardDeadlineAt - Date.now() < 10_000 ? null : await runRetentionIfDue(c).catch((err: unknown) => {
-    console.error("[retention] failed:", err instanceof Error ? err.message : err);
-    return null;
-  });
-  return NextResponse.json({ ...result, retention }, { headers: { "Cache-Control": "no-store" } });
+  const startedAt = Date.now();
+  const hardDeadlineAt = startedAt + HARD_MS;
+  const requestId = crypto.randomUUID();
+  let phase = "qa-access";
+  // Deliberately no game/child ids, URL, headers, credentials or raw DB error.
+  const log = (event: string) => console.info("[jobs/tick]", { requestId, event, phase, elapsedMs: Date.now() - startedAt });
+  const enter = (next: string) => { phase = next; log("phase"); };
+  log("start");
+  const watchdog = setTimeout(() => console.error("[jobs/tick]", { requestId, event: "deadline-exceeded", phase, elapsedMs: Date.now() - startedAt }), HARD_MS);
+  // Observation only: never return success while uncancelled DB/provider writes
+  // continue. Cancellation belongs to each operation, not Promise.race here.
+  watchdog.unref?.();
+  try {
+    const denied = await qaAccessDenied(req, true);
+    if (denied) return denied;
+    const c = getContainer();
+    const gameId = new URL(req.url).searchParams.get("gameId");
+    enter("authorization");
+    if (!(await isAllowed(req, gameId))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    // Give persisted notification intent a bounded turn before new painting.
+    enter("notification-retry");
+    if (!gameId) await retryFailedAdminAlerts(c, { deadlineAt: Math.min(hardDeadlineAt, Date.now() + 20_000) });
+    if (hardDeadlineAt - Date.now() < SLICE_MS) {
+      log("deferred");
+      return NextResponse.json({ pending: true, deferred: true }, { status: 202, headers: { "Cache-Control": "no-store", "Retry-After": "30" } });
+    }
+    enter("generation");
+    const result = await tickGeneration(c, gameId, SLICE_MS, Math.max(0, hardDeadlineAt - Date.now()));
+    // Retention rides only the cron, with room for its database operations.
+    enter("retention");
+    const retention = gameId || hardDeadlineAt - Date.now() < 30_000 ? null : await runRetentionIfDue(c).catch(() => {
+      console.error("[jobs/tick]", { requestId, event: "retention-failed" });
+      return null;
+    });
+    return NextResponse.json({ ...result, retention }, { headers: { "Cache-Control": "no-store" } });
+  } catch (error) {
+    console.error("[jobs/tick]", { requestId, event: "failed", phase, elapsedMs: Date.now() - startedAt });
+    throw error;
+  } finally {
+    clearTimeout(watchdog);
+    log("end");
+  }
 }
 
 /** Vercel Cron sends a GET with the CRON_SECRET bearer token. */

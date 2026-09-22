@@ -40,5 +40,5 @@ export default async function PlayPage({ params }: { params: Promise<{ token: st
   }
   // A bearer link grants play, not access to account navigation. Keep recipients
   // in the game; retain the family shortcut only for its verified owner.
-  return <GameShell key={config.locale} config={config} parentZoneHref={albumOwner ? "/library" : undefined} albumOwner={albumOwner} />;
+  return <GameShell key={config.locale} config={config} playToken={token} parentZoneHref={albumOwner ? "/library" : undefined} albumOwner={albumOwner} />;
 }
