@@ -43,7 +43,9 @@ export async function POST(req: Request) {
     }
   }
   if (!authorized || !game?.configJson) return NextResponse.json({ ok: false }, { status: 403 });
-  const config = parseGameConfig(game.configJson);
+  let config;
+  try { config = parseGameConfig(game.configJson); }
+  catch { return NextResponse.json({ ok: false }, { status: 400 }); }
   const validEvents = batch.events.every(event => {
     const scene = config.scenes.find(row => row.slug === event.sceneSlug);
     if (event.sceneSlug && !scene) return false;

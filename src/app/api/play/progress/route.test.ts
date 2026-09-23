@@ -26,6 +26,12 @@ describe("authenticated coarse play telemetry", () => {
     f.user.mockResolvedValue({ id: "owner" });
     expect((await send(batch())).status).toBe(204); expect(f.record).toHaveBeenCalledOnce();
   });
+  it("rejects a malformed published config without a 500 or persistence", async () => {
+    f.user.mockResolvedValue({ id: "owner" });
+    game.configJson = "{}";
+    expect((await send(batch())).status).toBe(400);
+    expect(f.record).not.toHaveBeenCalled();
+  });
   it("refuses a different signed-in parent", async () => {
     f.user.mockResolvedValue({ id: "someone-else" });
     expect((await send(batch())).status).toBe(403); expect(f.record).not.toHaveBeenCalled();

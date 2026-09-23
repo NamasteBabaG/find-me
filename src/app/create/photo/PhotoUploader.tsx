@@ -198,9 +198,16 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/
     setBusy(true);
     setError(null);
     const crop = { x: -offset.x / scale / natural.w, y: -offset.y / scale / natural.h, w: BOX / scale / natural.w, h: BOX / scale / natural.h };
+    let prepared: Blob;
+    try { prepared = await forUpload(file); }
+    catch {
+      setError(p.unreadable);
+      setBusy(false);
+      return;
+    }
     try {
       const fd = new FormData();
-      fd.append("file", await forUpload(file));
+      fd.append("file", prepared);
       fd.append("crop", JSON.stringify(crop));
       fd.append("consent", "1");
       const res = await fetch(endpoint, { method: "POST", body: fd });

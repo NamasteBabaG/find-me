@@ -38,12 +38,13 @@ export async function readCollectionArt(art: string, expectedHash: string, root 
     if (cache.has(entry.sha256)) return cache.get(entry.sha256)!;
     remote = { fetch: globalThis.fetch, cookie: config.enabled ? `${qaCookieName(config)}=${await createQaSession(config)}` : "" };
   }
-  const response = await remote.fetch(`${collectionArtOrigin()}/${art.slice(7)}`, {
+  const origin = collectionArtOrigin();
+  const response = await remote.fetch(`${origin}/${art.slice(7)}`, {
     method: "GET", redirect: "error", cache: "no-store", signal: AbortSignal.timeout(20_000),
     headers: { ...(remote.cookie ? { cookie: remote.cookie } : {}), accept: "image/webp" },
   });
   if (!response.ok || !/^image\/webp\b/i.test(response.headers.get("content-type") ?? "") || !response.body
-    || Number(response.headers.get("content-length") ?? 0) > MAX_BYTES) throw Error("COLLECTION_ART: static image unavailable");
+    || Number(response.headers.get("content-length") ?? 0) > MAX_BYTES) throw Error(`COLLECTION_ART: static image unavailable at ${origin}; verify promoted release`);
   const reader = response.body.getReader(), chunks: Uint8Array[] = [];
   let length = 0;
   try {
@@ -55,7 +56,7 @@ export async function readCollectionArt(art: string, expectedHash: string, root 
     }
   } finally { reader.releaseLock(); }
   const bytes = Buffer.concat(chunks);
-  if (sha256Bytes(bytes) !== entry.sha256) throw Error("COLLECTION_ART: published pixels changed");
+  if (sha256Bytes(bytes) !== entry.sha256) throw Error(`COLLECTION_ART: published pixels changed at ${origin}; verify promoted release`);
   cache.set(entry.sha256, bytes);
   while (cache.size > 2) cache.delete(cache.keys().next().value!);
   return bytes;
