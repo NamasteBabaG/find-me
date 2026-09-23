@@ -9,6 +9,7 @@ import { pick } from "@/i18n";
 import { CreateFrame } from "../CreateLayout";
 import { currentDraft } from "../actions";
 import { ScenePicker } from "./ScenePicker";
+import { worldPresentation } from "../../../../content/home/board-presentation";
 
 export async function generateMetadata() {
   const { t } = await getI18n();
@@ -35,7 +36,7 @@ export default async function CreateScenesPage() {
     slug: w.slug,
     name: pick(w.name, locale),
     tagline: pick(w.tagline, locale),
-    thumbnail: w.map.artPortrait ?? w.map.art,
+    thumbnail: worldPresentation(w.slug)?.thumbnail ?? w.map.artPortrait ?? w.map.art,
   }));
   return (
     <CreateFrame width="mid" step={3} title={t.create.scenes.title} lead={t.create.scenes.lead} user={user} isAdmin={isAdminEmail(user?.email)}>

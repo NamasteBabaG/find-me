@@ -1,0 +1,1046 @@
+[
+  {
+    "route": "newyork",
+    "world": "journey",
+    "board": "adventure-newyork",
+    "name": {
+      "en": "New York",
+      "he": "ניו יורק"
+    },
+    "base": "/scenes/adventure-newyork/base.webp",
+    "sha256": "fc810bf9aa266357b5ce9f5852922e54838879dc759fba2fce30ea137c77ce89",
+    "version": 9,
+    "thumbnail": "/home/boards/2703aa0ec1f9d184f0eb8607e5025741139dff8df4c2ffa0cf4e1a27c2283954.webp",
+    "thumbnailSha256": "2703aa0ec1f9d184f0eb8607e5025741139dff8df4c2ffa0cf4e1a27c2283954",
+    "discoveries": [
+      {
+        "id": "red-star-cap",
+        "name": {
+          "en": "Star cap",
+          "he": "כובע עם כוכב"
+        }
+      },
+      {
+        "id": "blue-skate",
+        "name": {
+          "en": "Blue roller skate",
+          "he": "גלגילית כחולה"
+        }
+      },
+      {
+        "id": "tennis-ball",
+        "name": {
+          "en": "Tennis ball",
+          "he": "כדור טניס"
+        }
+      },
+      {
+        "id": "pocket-watch",
+        "name": {
+          "en": "Pocket watch",
+          "he": "שעון כיס"
+        }
+      },
+      {
+        "id": "purple-crane",
+        "name": {
+          "en": "Purple paper crane",
+          "he": "עגור נייר סגול"
+        }
+      },
+      {
+        "id": "liberty-figurine",
+        "name": {
+          "en": "Little Statue of Liberty",
+          "he": "פסל החירות הקטן"
+        }
+      }
+    ]
+  },
+  {
+    "route": "amazon",
+    "world": "journey",
+    "board": "adventure-amazon-refresh-v6",
+    "name": {
+      "en": "Amazon",
+      "he": "אמזונס"
+    },
+    "base": "/scenes/adventure-amazon-refresh-v6/base.webp",
+    "sha256": "bd7c8c87d9b8e29fed9282606a4523d45db357b328117f7cb27b8428ad0682f3",
+    "version": 10,
+    "thumbnail": "/home/boards/93f8c85c81c1445c7727e5d714c464faf2178e612dc1ac5caf002bc307fe65dc.webp",
+    "thumbnailSha256": "93f8c85c81c1445c7727e5d714c464faf2178e612dc1ac5caf002bc307fe65dc",
+    "discoveries": [
+      {
+        "id": "red-binoculars",
+        "name": {
+          "en": "Red binoculars",
+          "he": "משקפת אדומה"
+        }
+      },
+      {
+        "id": "yellow-bottle",
+        "name": {
+          "en": "Yellow bottle",
+          "he": "בקבוק צהוב"
+        }
+      },
+      {
+        "id": "orange-frog",
+        "name": {
+          "en": "Orange frog",
+          "he": "צפרדע כתומה"
+        }
+      },
+      {
+        "id": "blue-butterfly",
+        "name": {
+          "en": "Blue butterfly",
+          "he": "פרפר כחול"
+        }
+      },
+      {
+        "id": "spiral-shell",
+        "name": {
+          "en": "Spiral shell",
+          "he": "קונכייה ספירלית"
+        }
+      },
+      {
+        "id": "wooden-bird",
+        "name": {
+          "en": "Carved wooden bird",
+          "he": "ציפור עץ מגולפת"
+        }
+      }
+    ]
+  },
+  {
+    "route": "paris",
+    "world": "journey",
+    "board": "journey-paris-refresh-v7",
+    "name": {
+      "en": "Paris",
+      "he": "פריז"
+    },
+    "base": "/scenes/journey-paris-refresh-v7/base.webp",
+    "sha256": "a0d00b53f678fb3791180f05b4282603f3acb80fee9130dd09fbb4934349c80a",
+    "version": 10,
+    "thumbnail": "/home/boards/5c834682236857018077f71ee97c2372d1075852e10c379f08ee8acfb1b45597.webp",
+    "thumbnailSha256": "5c834682236857018077f71ee97c2372d1075852e10c379f08ee8acfb1b45597",
+    "discoveries": [
+      {
+        "id": "purple-boat",
+        "name": {
+          "en": "Purple paper boat",
+          "he": "סירת נייר סגולה"
+        }
+      },
+      {
+        "id": "girl-portrait",
+        "name": {
+          "en": "Portrait drawing",
+          "he": "ציור דיוקן"
+        }
+      },
+      {
+        "id": "accordion",
+        "name": {
+          "en": "Accordion",
+          "he": "אקורדיון"
+        }
+      },
+      {
+        "id": "flower-pot",
+        "name": {
+          "en": "Painted flower pot",
+          "he": "עציץ פרחים מצויר"
+        }
+      },
+      {
+        "id": "yellow-flower",
+        "name": {
+          "en": "Yellow flower",
+          "he": "פרח צהוב"
+        }
+      },
+      {
+        "id": "red-puppet",
+        "name": {
+          "en": "Red theatre puppet",
+          "he": "בובת תיאטרון אדומה"
+        }
+      }
+    ]
+  },
+  {
+    "route": "marrakech",
+    "world": "journey",
+    "board": "journey-marrakech-refresh-v8",
+    "name": {
+      "en": "Marrakech",
+      "he": "מרקש"
+    },
+    "base": "/scenes/journey-marrakech-refresh-v8/base.webp",
+    "sha256": "d00cbfd4ce64d80bce8f03a7b2584bc24a7c39c7759c0fdaa33341da783878d9",
+    "version": 10,
+    "thumbnail": "/home/boards/46f407eb6e2d08d88547114b9203e96ba4eb829e748eeca68df795c912fa8de0.webp",
+    "thumbnailSha256": "46f407eb6e2d08d88547114b9203e96ba4eb829e748eeca68df795c912fa8de0",
+    "discoveries": [
+      {
+        "id": "blue-amulet",
+        "name": {
+          "en": "Blue amulet",
+          "he": "קמע כחול"
+        }
+      },
+      {
+        "id": "striped-slipper",
+        "name": {
+          "en": "Striped slipper",
+          "he": "נעל בית מפוספסת"
+        }
+      },
+      {
+        "id": "crescent-cup",
+        "name": {
+          "en": "Crescent cup",
+          "he": "ספל עם ירח"
+        }
+      },
+      {
+        "id": "tassel-key",
+        "name": {
+          "en": "Tasselled key",
+          "he": "מפתח עם גדיל"
+        }
+      },
+      {
+        "id": "giraffe-puppet",
+        "name": {
+          "en": "Giraffe puppet",
+          "he": "בובת ג׳ירפה"
+        }
+      },
+      {
+        "id": "tall-blue-vase",
+        "name": {
+          "en": "Tall blue vase",
+          "he": "כד כחול גבוה"
+        }
+      }
+    ]
+  },
+  {
+    "route": "giza",
+    "world": "journey",
+    "board": "journey-giza-refresh-v4",
+    "name": {
+      "en": "Giza",
+      "he": "גיזה"
+    },
+    "base": "/scenes/journey-giza-refresh-v4/base.webp",
+    "sha256": "5bee7ef6db37add6e946dc56b75301e0a8c799cefef4584b5b542c73cbc2c49b",
+    "version": 10,
+    "thumbnail": "/home/boards/22eef89da8be92bad6c18a5d4b30a739a39062671dea2501e657179011d3268d.webp",
+    "thumbnailSha256": "22eef89da8be92bad6c18a5d4b30a739a39062671dea2501e657179011d3268d",
+    "discoveries": [
+      {
+        "id": "purple-hourglass",
+        "name": {
+          "en": "Purple hourglass",
+          "he": "שעון חול סגול"
+        }
+      },
+      {
+        "id": "copper-jug",
+        "name": {
+          "en": "Small copper jug",
+          "he": "כד נחושת קטן"
+        }
+      },
+      {
+        "id": "silver-pot",
+        "name": {
+          "en": "Silver pot",
+          "he": "קנקן כסף"
+        }
+      },
+      {
+        "id": "little-puppy",
+        "name": {
+          "en": "Little puppy",
+          "he": "כלבלב"
+        }
+      },
+      {
+        "id": "blue-orange-vase",
+        "name": {
+          "en": "Blue-and-orange vase",
+          "he": "כד כחול וכתום"
+        }
+      },
+      {
+        "id": "carved-stone",
+        "name": {
+          "en": "Carved stone panel",
+          "he": "לוח אבן מצויר"
+        }
+      }
+    ]
+  },
+  {
+    "route": "tokyo",
+    "world": "journey",
+    "board": "journey-tokyo-refresh-v6",
+    "name": {
+      "en": "Tokyo",
+      "he": "טוקיו"
+    },
+    "base": "/scenes/journey-tokyo-refresh-v6/base.webp",
+    "sha256": "84eb745d3ffb69f08024d5f1052b7b49efd46601b3f3b58eb14f9c04baea7d0b",
+    "version": 10,
+    "thumbnail": "/home/boards/375a24715dc3978b76ae7bd0d99033b0723214ce7dd772732824c05294c51d77.webp",
+    "thumbnailSha256": "375a24715dc3978b76ae7bd0d99033b0723214ce7dd772732824c05294c51d77",
+    "discoveries": [
+      {
+        "id": "fan-badge",
+        "name": {
+          "en": "Red fan",
+          "he": "מניפה אדומה"
+        }
+      },
+      {
+        "id": "lucky-cat",
+        "name": {
+          "en": "Lucky cat",
+          "he": "חתול מזל"
+        }
+      },
+      {
+        "id": "red-racing-car",
+        "name": {
+          "en": "Red racing car",
+          "he": "מכונית מירוץ אדומה"
+        }
+      },
+      {
+        "id": "clear-umbrella",
+        "name": {
+          "en": "Transparent umbrella",
+          "he": "מטרייה שקופה"
+        }
+      },
+      {
+        "id": "blue-backpack",
+        "name": {
+          "en": "Blue backpack",
+          "he": "תיק גב כחול"
+        }
+      },
+      {
+        "id": "neon-microphone",
+        "name": {
+          "en": "Neon microphone",
+          "he": "מיקרופון ניאון"
+        }
+      }
+    ]
+  },
+  {
+    "route": "greatwall",
+    "world": "journey",
+    "board": "journey-china-refresh-v8",
+    "name": {
+      "en": "Great Wall of China",
+      "he": "החומה הסינית"
+    },
+    "base": "/scenes/journey-china-refresh-v8/base.webp",
+    "sha256": "67876316bb8a356f3a6121c68cb679dd82539b3f6ecfdf25fd578d08934fd0bc",
+    "version": 10,
+    "thumbnail": "/home/boards/40e878424d7f00c2dbd4c680111887d2854c0ea6ab97bbf8aaa5f8d22dfc97b9.webp",
+    "thumbnailSha256": "40e878424d7f00c2dbd4c680111887d2854c0ea6ab97bbf8aaa5f8d22dfc97b9",
+    "discoveries": [
+      {
+        "id": "wave-bottle",
+        "name": {
+          "en": "Blue wave bottle",
+          "he": "בקבוק כחול עם גל"
+        }
+      },
+      {
+        "id": "red-lantern",
+        "name": {
+          "en": "Round red lantern",
+          "he": "פנס אדום עגול"
+        }
+      },
+      {
+        "id": "bun-steamer",
+        "name": {
+          "en": "Bun steamer",
+          "he": "סלסילת לחמניות"
+        }
+      },
+      {
+        "id": "noodle-bowl",
+        "name": {
+          "en": "Noodle bowl",
+          "he": "קערת אטריות"
+        }
+      },
+      {
+        "id": "green-vegetables",
+        "name": {
+          "en": "Green vegetables",
+          "he": "ירקות ירוקים"
+        }
+      },
+      {
+        "id": "blue-white-teapot",
+        "name": {
+          "en": "Blue-and-white teapot",
+          "he": "קומקום כחול ולבן"
+        }
+      }
+    ]
+  },
+  {
+    "route": "sydney",
+    "world": "journey",
+    "board": "journey-sydney-refresh-v6",
+    "name": {
+      "en": "Sydney",
+      "he": "סידני"
+    },
+    "base": "/scenes/journey-sydney-refresh-v6/base.webp",
+    "sha256": "ab2926d256ba7026fe15e130be9082e01c5a4d932fea60785c8b2fa9ba14ce86",
+    "version": 10,
+    "thumbnail": "/home/boards/7f1040442df9f60ebccd298d70cc00e59d84d8120b29fc6e6a3dc573249d7c1d.webp",
+    "thumbnailSha256": "7f1040442df9f60ebccd298d70cc00e59d84d8120b29fc6e6a3dc573249d7c1d",
+    "discoveries": [
+      {
+        "id": "yellow-bucket",
+        "name": {
+          "en": "Yellow bucket",
+          "he": "דלי צהוב"
+        }
+      },
+      {
+        "id": "pearl-shell",
+        "name": {
+          "en": "Pearl shell",
+          "he": "צדפה עם פנינה"
+        }
+      },
+      {
+        "id": "toy-lifering",
+        "name": {
+          "en": "Toy life ring",
+          "he": "גלגל הצלה קטן"
+        }
+      },
+      {
+        "id": "purple-plane",
+        "name": {
+          "en": "Purple paper plane",
+          "he": "מטוס נייר סגול"
+        }
+      },
+      {
+        "id": "cricket-ball",
+        "name": {
+          "en": "Red cricket ball",
+          "he": "כדור קריקט אדום"
+        }
+      },
+      {
+        "id": "blue-cooler",
+        "name": {
+          "en": "Blue cooler",
+          "he": "צידנית כחולה"
+        }
+      }
+    ]
+  },
+  {
+    "route": "antarctica",
+    "world": "journey",
+    "board": "journey-antarctica-refresh-v7",
+    "name": {
+      "en": "Antarctica",
+      "he": "אנטארקטיקה"
+    },
+    "base": "/scenes/journey-antarctica-refresh-v7/base.webp",
+    "sha256": "f6f12e5f6464bc26b3302c6e56da54b0044fe3f4da3d363d2fd7498928e48f8d",
+    "version": 10,
+    "thumbnail": "/home/boards/9ad99588c0e036ca569dd04a5f9678c0499d205ebf2097cf9d36b6a096e2c5e5.webp",
+    "thumbnailSha256": "9ad99588c0e036ca569dd04a5f9678c0499d205ebf2097cf9d36b6a096e2c5e5",
+    "discoveries": [
+      {
+        "id": "yellow-goggles",
+        "name": {
+          "en": "Yellow snow goggles",
+          "he": "משקפי שלג צהובים"
+        }
+      },
+      {
+        "id": "orange-ring",
+        "name": {
+          "en": "Orange equipment ring",
+          "he": "טבעת כתומה"
+        }
+      },
+      {
+        "id": "red-mittens",
+        "name": {
+          "en": "Red mittens",
+          "he": "כפפות אדומות"
+        }
+      },
+      {
+        "id": "microscope",
+        "name": {
+          "en": "Microscope",
+          "he": "מיקרוסקופ"
+        }
+      },
+      {
+        "id": "orange-penguin",
+        "name": {
+          "en": "Orange penguin figurine",
+          "he": "פינגווין כתום"
+        }
+      },
+      {
+        "id": "snowflake-mitten",
+        "name": {
+          "en": "Snowflake mitten",
+          "he": "כפפה עם פתית שלג"
+        }
+      }
+    ]
+  },
+  {
+    "route": "castlegate",
+    "world": "kingdom",
+    "board": "magic-castlegate",
+    "name": {
+      "en": "Castle courtyard",
+      "he": "שער הטירה"
+    },
+    "base": "/scenes/magic-castlegate-v18/base.webp",
+    "sha256": "822c8ae9a2d7fe325685feb97702349e29a74f56d73c6f45b8135aac8876b55a",
+    "version": 10,
+    "thumbnail": "/home/boards/b7294fc8b43dcf83c7ed7818eafaa14f0651179d3ce034619813e3029ce7421d.webp",
+    "thumbnailSha256": "b7294fc8b43dcf83c7ed7818eafaa14f0651179d3ce034619813e3029ce7421d",
+    "discoveries": [
+      {
+        "id": "purple-teapot",
+        "name": {
+          "en": "Purple teapot",
+          "he": "קנקן סגול"
+        }
+      },
+      {
+        "id": "sand-hourglass",
+        "name": {
+          "en": "Hourglass",
+          "he": "שעון חול"
+        }
+      },
+      {
+        "id": "yellow-duck",
+        "name": {
+          "en": "Wooden duck",
+          "he": "ברווז עץ"
+        }
+      },
+      {
+        "id": "ivy-frog",
+        "name": {
+          "en": "Frog in a pot",
+          "he": "צפרדע בעציץ"
+        }
+      },
+      {
+        "id": "knight-puppet",
+        "name": {
+          "en": "Knight puppet",
+          "he": "בובת אביר"
+        }
+      },
+      {
+        "id": "dog-blue-ribbon",
+        "name": {
+          "en": "The dog's blue ribbon",
+          "he": "הסרט הכחול של הכלב"
+        }
+      }
+    ]
+  },
+  {
+    "route": "fairyforest",
+    "world": "kingdom",
+    "board": "fairyforest",
+    "name": {
+      "en": "Fairy forest",
+      "he": "יער הפיות"
+    },
+    "base": "/scenes/magic-fairyforest-v6/base.webp",
+    "sha256": "435e80bba3bcf03e12773f80c9202d6e2b2a6f026333ef7eaf03d0def086e741",
+    "version": 10,
+    "thumbnail": "/home/boards/700066f1f754e3a5d3faf44ab64112587031633a1e9074890a25d590c8789d32.webp",
+    "thumbnailSha256": "700066f1f754e3a5d3faf44ab64112587031633a1e9074890a25d590c8789d32",
+    "discoveries": [
+      {
+        "id": "blue-paintbrush",
+        "name": {
+          "en": "Blue paintbrush",
+          "he": "מכחול כחול"
+        }
+      },
+      {
+        "id": "berry-bowl",
+        "name": {
+          "en": "Berry bowl",
+          "he": "קערת פירות יער"
+        }
+      },
+      {
+        "id": "purple-sail",
+        "name": {
+          "en": "Purple sail",
+          "he": "מפרש סגול"
+        }
+      },
+      {
+        "id": "squirrel-panflute",
+        "name": {
+          "en": "Squirrel pan flute",
+          "he": "חליל הפאן של הסנאי"
+        }
+      },
+      {
+        "id": "basket-dragonfly",
+        "name": {
+          "en": "Golden dragonfly",
+          "he": "שפירית זהובה"
+        }
+      },
+      {
+        "id": "fairy-silver-buckle",
+        "name": {
+          "en": "Silver buckle",
+          "he": "אבזם כסוף"
+        }
+      }
+    ]
+  },
+  {
+    "route": "dragoncave",
+    "world": "kingdom",
+    "board": "magic-dragoncave-refresh-v3",
+    "name": {
+      "en": "Dragon cave",
+      "he": "מערת הדרקון"
+    },
+    "base": "/scenes/magic-dragoncave-refresh-v3/base.webp",
+    "sha256": "aedb4f928db9c89d85fa84b13c50f4b67388901c8abd78e626496d1c0bdbadcd",
+    "version": 10,
+    "thumbnail": "/home/boards/6c9ef9091558ec6cab227a2210c59c1e098196f017e9af0fc4eac7d40ebcd95c.webp",
+    "thumbnailSha256": "6c9ef9091558ec6cab227a2210c59c1e098196f017e9af0fc4eac7d40ebcd95c",
+    "discoveries": [
+      {
+        "id": "striped-egg",
+        "name": {
+          "en": "Blue striped egg",
+          "he": "ביצה כחולה מפוספסת"
+        }
+      },
+      {
+        "id": "red-brush",
+        "name": {
+          "en": "Red brush",
+          "he": "מברשת אדומה"
+        }
+      },
+      {
+        "id": "star-cookie",
+        "name": {
+          "en": "Star cookie",
+          "he": "עוגיית כוכב"
+        }
+      },
+      {
+        "id": "paw-charm",
+        "name": {
+          "en": "Paw-print charm",
+          "he": "תליון כף רגל"
+        }
+      },
+      {
+        "id": "purple-ladle",
+        "name": {
+          "en": "Purple ladle",
+          "he": "מצקת סגולה"
+        }
+      },
+      {
+        "id": "measuring-tape",
+        "name": {
+          "en": "Yellow measuring tape",
+          "he": "סרט מדידה צהוב"
+        }
+      }
+    ]
+  },
+  {
+    "route": "icepalace",
+    "world": "kingdom",
+    "board": "magic-icepalace-refresh-v2",
+    "name": {
+      "en": "Ice palace",
+      "he": "ארמון הקרח"
+    },
+    "base": "/scenes/magic-icepalace-refresh-v2/base.webp",
+    "sha256": "306022c253a4a48e378f16b1c5fa0b09c7814948656fd3c5eb34ed4e7a4ac755",
+    "version": 10,
+    "thumbnail": "/home/boards/9e2be6bab1b5fb6352e021a68aab9f7f984ce52923dbfa781e96ca630c6faa5c.webp",
+    "thumbnailSha256": "9e2be6bab1b5fb6352e021a68aab9f7f984ce52923dbfa781e96ca630c6faa5c",
+    "discoveries": [
+      {
+        "id": "snowflake-cookie",
+        "name": {
+          "en": "Snowflake cookie",
+          "he": "עוגיית פתית שלג"
+        }
+      },
+      {
+        "id": "carrot-nose",
+        "name": {
+          "en": "Carrot nose",
+          "he": "אף גזר"
+        }
+      },
+      {
+        "id": "crystal-penguin",
+        "name": {
+          "en": "Crystal penguin",
+          "he": "פינגווין קריסטל"
+        }
+      },
+      {
+        "id": "blue-mittens",
+        "name": {
+          "en": "Blue mittens",
+          "he": "כפפות כחולות"
+        }
+      },
+      {
+        "id": "silver-flute",
+        "name": {
+          "en": "Silver flute",
+          "he": "חליל כסוף"
+        }
+      },
+      {
+        "id": "silver-mug",
+        "name": {
+          "en": "Silver mug",
+          "he": "ספל כסוף"
+        }
+      }
+    ]
+  },
+  {
+    "route": "underwater",
+    "world": "kingdom",
+    "board": "magic-underwater-refresh-v2",
+    "name": {
+      "en": "Underwater kingdom",
+      "he": "הממלכה התת־ימית"
+    },
+    "base": "/scenes/magic-underwater-refresh-v2/base.webp",
+    "sha256": "cdd49614fb9b44831b629acc75cd5e31d6c4e6f0ebf2672a01144c598766b9e5",
+    "version": 10,
+    "thumbnail": "/home/boards/82e302cc704c6a13c97d8439b0977b2fa113c99356e886cbeb4c447e1a32d598.webp",
+    "thumbnailSha256": "82e302cc704c6a13c97d8439b0977b2fa113c99356e886cbeb4c447e1a32d598",
+    "discoveries": [
+      {
+        "id": "red-submarine",
+        "name": {
+          "en": "Little red submarine",
+          "he": "צוללת אדומה קטנה"
+        }
+      },
+      {
+        "id": "striped-lifering",
+        "name": {
+          "en": "Striped life ring",
+          "he": "גלגל הצלה מפוספס"
+        }
+      },
+      {
+        "id": "mirror-seahorse",
+        "name": {
+          "en": "Seahorse with a mirror",
+          "he": "סוסון ים עם מראה"
+        }
+      },
+      {
+        "id": "green-magnifier",
+        "name": {
+          "en": "Green magnifying glass",
+          "he": "זכוכית מגדלת ירוקה"
+        }
+      },
+      {
+        "id": "sea-letter",
+        "name": {
+          "en": "Underwater letter",
+          "he": "מכתב מתחת למים"
+        }
+      },
+      {
+        "id": "mermaid-book",
+        "name": {
+          "en": "Mermaid’s book",
+          "he": "ספר בת הים"
+        }
+      }
+    ]
+  },
+  {
+    "route": "cloudcity",
+    "world": "kingdom",
+    "board": "magic-cloudcity-refresh-v1",
+    "name": {
+      "en": "Cloud city",
+      "he": "עיר העננים"
+    },
+    "base": "/scenes/magic-cloudcity-refresh-v1/base.webp",
+    "sha256": "2ea78eb265a299e850479cc00c66b0f9f73ad620577ed3c2b3bf28321e15edef",
+    "version": 10,
+    "thumbnail": "/home/boards/b2d5fbb2f6faa4e229c79e20f215ee62f9eb6a3c9ace208a0287cde5c717ab8a.webp",
+    "thumbnailSha256": "b2d5fbb2f6faa4e229c79e20f215ee62f9eb6a3c9ace208a0287cde5c717ab8a",
+    "discoveries": [
+      {
+        "id": "toy-parachute",
+        "name": {
+          "en": "Little parachute",
+          "he": "מצנח קטן"
+        }
+      },
+      {
+        "id": "plant-pinwheel",
+        "name": {
+          "en": "Colourful pinwheel",
+          "he": "שבשבת צבעונית"
+        }
+      },
+      {
+        "id": "wind-machine",
+        "name": {
+          "en": "Blue wind machine",
+          "he": "מכונת רוח כחולה"
+        }
+      },
+      {
+        "id": "blue-kite",
+        "name": {
+          "en": "Blue kite",
+          "he": "עפיפון כחול"
+        }
+      },
+      {
+        "id": "golden-wing",
+        "name": {
+          "en": "Golden wing",
+          "he": "כנף זהובה"
+        }
+      },
+      {
+        "id": "pink-parcel",
+        "name": {
+          "en": "Pink parcel",
+          "he": "חבילה ורודה"
+        }
+      }
+    ]
+  },
+  {
+    "route": "sweetworkshop",
+    "world": "kingdom",
+    "board": "magic-sweetworkshop-refresh-v3",
+    "name": {
+      "en": "Sweet workshop",
+      "he": "סדנת הממתקים"
+    },
+    "base": "/scenes/magic-sweetworkshop-refresh-v3/base.webp",
+    "sha256": "af85c124ca9dfab2ee2ca86d86a86a9b18cbc746468aba4f30084a6606b1710d",
+    "version": 10,
+    "thumbnail": "/home/boards/bfff85cb6a763a8acf8a71a8cd643b2f9ba6977489f49284ee0654f8ded1989d.webp",
+    "thumbnailSha256": "bfff85cb6a763a8acf8a71a8cd643b2f9ba6977489f49284ee0654f8ded1989d",
+    "discoveries": [
+      {
+        "id": "flower-cutter",
+        "name": {
+          "en": "Flower cookie cutter",
+          "he": "חותכן פרח"
+        }
+      },
+      {
+        "id": "gold-wrapped-candy",
+        "name": {
+          "en": "Gold-wrapped sweet",
+          "he": "סוכרייה בעטיפה זהובה"
+        }
+      },
+      {
+        "id": "round-lollipop",
+        "name": {
+          "en": "Round pink lollipop",
+          "he": "סוכרייה ורודה עגולה"
+        }
+      },
+      {
+        "id": "teal-whisk",
+        "name": {
+          "en": "Teal-handled whisk",
+          "he": "מטרפה ירקרקה"
+        }
+      },
+      {
+        "id": "gingerbread-chef",
+        "name": {
+          "en": "Gingerbread chef",
+          "he": "איש עוגייה עם כובע שף"
+        }
+      },
+      {
+        "id": "mixing-robot",
+        "name": {
+          "en": "Mixing robot",
+          "he": "רובוט ערבוב"
+        }
+      }
+    ]
+  },
+  {
+    "route": "giantlibrary",
+    "world": "kingdom",
+    "board": "magic-giantlibrary",
+    "name": {
+      "en": "Giant library",
+      "he": "ספריית הענק"
+    },
+    "base": "/scenes/magic-giantlibrary-v5/base.webp",
+    "sha256": "1d2b5586f7fcc59fd310904bd01c4f7ed06f10c9e47725fbfc8486a86068e415",
+    "version": 10,
+    "thumbnail": "/home/boards/6f762b145637789419453a30ee26d8c2419127cad7b708fda25232dbf82b6c23.webp",
+    "thumbnailSha256": "6f762b145637789419453a30ee26d8c2419127cad7b708fda25232dbf82b6c23",
+    "discoveries": [
+      {
+        "id": "reading-globe",
+        "name": {
+          "en": "Globe",
+          "he": "גלובוס"
+        }
+      },
+      {
+        "id": "winged-book",
+        "name": {
+          "en": "Winged book",
+          "he": "ספר מכונף"
+        }
+      },
+      {
+        "id": "owl-cover-book",
+        "name": {
+          "en": "Owl-covered book",
+          "he": "ספר עם ינשוף"
+        }
+      },
+      {
+        "id": "atlas-magnifier",
+        "name": {
+          "en": "Magnifying glass",
+          "he": "זכוכית מגדלת"
+        }
+      },
+      {
+        "id": "golden-shelf-vase",
+        "name": {
+          "en": "Golden vase",
+          "he": "כד זהוב"
+        }
+      },
+      {
+        "id": "purple-hair-ribbon",
+        "name": {
+          "en": "Purple hair ribbon",
+          "he": "סרט סגול לשיער"
+        }
+      }
+    ]
+  },
+  {
+    "route": "nightcarnival",
+    "world": "kingdom",
+    "board": "magic-nightcarnival-refresh-v1",
+    "name": {
+      "en": "Night carnival",
+      "he": "קרנבל הלילה"
+    },
+    "base": "/scenes/magic-nightcarnival-refresh-v1/base.webp",
+    "sha256": "90566075003b54df9b3d8de0b23a1ad9b3bd95e9a8f387ef6314b5a37ab37988",
+    "version": 10,
+    "thumbnail": "/home/boards/01f84ed72186620287ae699e1db2c9b828d2174aad87dd8463ec05c8e272e3f1.webp",
+    "thumbnailSha256": "01f84ed72186620287ae699e1db2c9b828d2174aad87dd8463ec05c8e272e3f1",
+    "discoveries": [
+      {
+        "id": "striped-juggling-club",
+        "name": {
+          "en": "Striped juggling club",
+          "he": "אלה מפוספסת"
+        }
+      },
+      {
+        "id": "toy-rocket",
+        "name": {
+          "en": "Toy rocket",
+          "he": "טיל צעצוע"
+        }
+      },
+      {
+        "id": "star-coin",
+        "name": {
+          "en": "Star coin",
+          "he": "מטבע כוכב"
+        }
+      },
+      {
+        "id": "balloon-dog",
+        "name": {
+          "en": "Balloon dog",
+          "he": "כלב מבלון"
+        }
+      },
+      {
+        "id": "train-teddy",
+        "name": {
+          "en": "Train teddy bear",
+          "he": "דובון ברכבת"
+        }
+      },
+      {
+        "id": "gold-hoop",
+        "name": {
+          "en": "Golden hoop",
+          "he": "טבעת זהובה"
+        }
+      }
+    ]
+  }
+]

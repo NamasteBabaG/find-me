@@ -11,13 +11,13 @@
   },
   {
     "slug": "dragoncave",
-    "src": "/home/hero-dragoncave.webp?v=f9f3aa4fbddff653",
+    "src": "/home/hero-dragoncave.webp?v=d4466f03edf50c5c",
     "assetPath": "/home/hero-dragoncave.webp",
-    "assetSha256": "f9f3aa4fbddff6530d83c301e9b72d2ae42e3d0fe08a0053f5bc0ead03b16e71",
-    "bytes": 447188,
-    "source": "/scenes/dragoncave/refresh-20260907/base.webp",
-    "sourceSha256": "2e9c130a0205d1e2677e548a58d6f9d730a43d9f7b712e78d0e4ad764ad6d6c6",
-    "sceneVersion": 2
+    "assetSha256": "d4466f03edf50c5c4faac3959e9bedb04be2e48bf8f3b490fbdd994cfdfb5a2a",
+    "bytes": 360458,
+    "source": "/scenes/magic-dragoncave-refresh-v3/base.webp",
+    "sourceSha256": "aedb4f928db9c89d85fa84b13c50f4b67388901c8abd78e626496d1c0bdbadcd",
+    "sceneVersion": 10
   },
   {
     "slug": "futurecity",

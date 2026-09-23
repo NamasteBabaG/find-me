@@ -7,14 +7,14 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import sharp from "sharp";
-import { journeyPresentation } from "../content/home/journey-art";
+import { boardPresentation } from "../content/home/board-presentation";
 
 const hash = (b: Buffer) => createHash("sha256").update(b).digest("hex");
 async function main() {
   const rows = [];
   for (const slug of ["newyork", "dragoncave", "futurecity"]) {
     const scene = JSON.parse(readFileSync(`content/scenes/${slug}/scene.json`, "utf8"));
-    const presentation = journeyPresentation(slug);
+    const presentation = boardPresentation(slug);
     const art = presentation ?? { ...scene.art, version: scene.version };
     const source = readFileSync(path.join("public", art.base));
     if (hash(source) !== art.sha256) throw new Error(`Source hash mismatch: ${slug}`);

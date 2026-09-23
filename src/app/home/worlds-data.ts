@@ -1,7 +1,7 @@
 import { allWorlds } from "../../../content/worlds";
 import { UPCOMING_WORLDS } from "../../../content/worlds/upcoming";
 import { findScene } from "../../../content/scenes";
-import { journeyPresentation } from "../../../content/home/journey-art";
+import { boardPresentation } from "../../../content/home/board-presentation";
 import { boardSlugs } from "@/domain/world";
 import { pick, type Locale } from "@/i18n/config";
 import { getDict } from "@/i18n";
@@ -35,10 +35,10 @@ export function carouselWorlds(locale: Locale, owned: readonly string[] = []): C
       palette: world.map.palette,
       tiles: boardSlugs(world).map((slug) => {
         const scene = findScene(slug);
-        const presentation = world.slug === "journey" ? journeyPresentation(slug) : undefined;
+        const presentation = boardPresentation(slug);
         return {
           key: slug,
-          label: scene ? pick(scene.name, locale) : slug,
+          label: presentation ? pick(presentation.name, locale) : scene ? pick(scene.name, locale) : slug,
           thumb: presentation?.thumbnail ?? scene?.art.thumbnail,
           spots: presentation ? presentation.discoveries.map(d => pick(d.name, locale)) : scene?.targets.map((t) => pick(t.item, locale)),
           soon: !scene?.active,
