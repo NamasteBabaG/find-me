@@ -21,7 +21,7 @@
 
    The alpha-carrying surfaces (shadow, foil sheen, paper grain) are declared
    once here as `--pp-*` and mixed from tokens, so a token change moves them. */
-.travel-passport {
+.travel-passport, .passport-finale {
   /* Materials, all mixed from tokens so the book follows the brand. */
   --pp-paper: var(--paper);
   --pp-paper-warm: color-mix(in srgb, var(--paper) 88%, var(--sun-soft));
@@ -36,6 +36,8 @@
   --pp-grain:
     repeating-linear-gradient(112deg, color-mix(in srgb, var(--ink) 3%, transparent) 0 1px, transparent 1px 3px),
     repeating-linear-gradient(8deg, color-mix(in srgb, var(--white) 55%, transparent) 0 1px, transparent 1px 4px);
+}
+.travel-passport {
   --book-height: clamp(360px, calc(100svh - 292px), 520px);
   --leaf-width: calc(var(--book-height) * 0.74);
   width: 100%; min-width: 0; max-width: calc(var(--leaf-width) * 2 + var(--space-12));
@@ -522,18 +524,28 @@
 .passport-demo > .fm-container > header p { line-height: var(--lh-400); color: var(--ink-2); }
 
 /* ─── The completion ceremony ─────────────────────────────────────────────── */
-.passport-finale { border: 0; padding: 0; width: min(820px, calc(100% - 32px)); max-height: calc(100dvh - 32px); border-radius: var(--radius-4); background: var(--paper); color: var(--ink); box-shadow: var(--shadow-3); font-family: var(--font-display); }
+.passport-finale { border: 0; padding: 0; width: min(880px, calc(100% - 24px)); max-height: calc(100dvh - 24px); border-radius: 0; background: transparent; color: var(--ink); box-shadow: none; font-family: var(--font-display); }
 .passport-finale::backdrop { background: color-mix(in srgb, var(--night) 55%, transparent); backdrop-filter: blur(5px); }
-.passport-finale__inside { padding: clamp(16px, 4vw, 32px); position: relative; overflow: hidden; }
-.passport-finale header { text-align: center; }
-.passport-finale header h2 { font-family: var(--font-display); font-weight: 900; letter-spacing: -0.02em; font-size: clamp(24px, 4vw, 36px); margin: var(--space-1) 0 var(--space-3); }
-.passport-finale__page { padding: var(--space-3); background: radial-gradient(ellipse at 30% 8%, var(--white), transparent 70%), var(--pp-grain, none), var(--paper-2); border-radius: var(--radius-3); display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); box-shadow: inset 0 0 0 1px var(--line); }
-.passport-finale__memory { position: relative; padding-bottom: var(--space-3); }
+.passport-finale__inside { padding: var(--space-2); position: relative; overflow: hidden; }
+.passport-finale header { text-align: center; color: var(--white); text-shadow: 0 2px 8px var(--night); }
+.passport-finale header h2 { color: var(--white); font-family: var(--font-display); font-weight: 900; letter-spacing: -0.02em; font-size: clamp(24px, 4vw, 36px); margin: var(--space-1) 0 var(--space-3); }
+/* The finale shares the reader's actual materials, not a card pretending to
+   contain a passport: dark binding, a stacked paper edge and two folded leaves. */
+.passport-finale__binding { padding: var(--space-1); border-radius: var(--radius-2); background: var(--pp-board); box-shadow: 0 2px 0 var(--pp-board-edge), 0 5px 0 var(--paper-3), 0 7px 0 var(--paper-2), 0 10px 0 var(--pp-board-edge), var(--shadow-3); animation: passport-finale-open 320ms ease-out both; transform-origin: center bottom; }
+.passport-finale__page { position: relative; display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 0; border-radius: var(--radius-1); background: var(--pp-paper); overflow: hidden; }
+.passport-finale__page::after { content: ""; position: absolute; inset-block: 0; left: 50%; width: 24px; transform: translateX(-50%); pointer-events: none; background: linear-gradient(90deg, transparent, var(--pp-gutter) 44%, var(--pp-rule) 50%, color-mix(in srgb, var(--white) 80%, transparent) 57%, transparent); }
+.passport-finale__memory, .passport-finale__collection { position: relative; min-width: 0; padding: var(--space-3) var(--space-3) var(--space-4); background: radial-gradient(ellipse at 28% 8%, var(--white), transparent 68%), var(--pp-grain), var(--pp-paper); }
+.passport-finale__imprint { margin: 0 0 var(--space-2); font-size: var(--fs-50); color: var(--ink-3); font-weight: 700; }
+.passport-finale__collection h3 { margin: 0 0 var(--space-2); font-size: var(--fs-200); }
+.passport-finale__folio { position: absolute; bottom: var(--space-1); inset-inline-end: var(--space-3); color: var(--ink-4); font-size: var(--fs-50); }
+.passport-finale__memory .passport-finale__folio { inset-inline-end: auto; inset-inline-start: var(--space-3); }
+@keyframes passport-finale-open { from { opacity: .7; transform: perspective(1000px) rotateX(8deg) scale(.96); } to { opacity: 1; transform: none; } }
 /* The ceremony is the same page the book will hold, so it is mounted the same
    way: no white frame, no tilt, a thin ink rule and the picture. A child who
    sees a tilted polaroid here and a flat print in the passport a minute later
    has been shown two different things. */
-.passport-finale__photo { position: relative; background: var(--white); padding: 0; border-radius: var(--radius-1, 8px); overflow: hidden; transform: none; box-shadow: 0 0 0 1px var(--line), var(--shadow-2); }
+.passport-finale__photo { position: relative; width: fit-content; max-width: 100%; margin-inline: auto; background: var(--white); padding: 0; border-radius: var(--radius-1, 8px); overflow: hidden; transform: none; box-shadow: 0 0 0 1px var(--line), var(--shadow-2); }
+.passport-finale__photo .passport-memory-fit { width: min(330px, calc(min(300px, 40dvh) * var(--memory-aspect))); max-width: 100%; }
 /* The stamp is the moment. It is bigger here than in the book, and it lands on
    the corner of the print — same ring, same mark, no words. */
 .passport-finale__stamp {
@@ -553,7 +565,7 @@
 .passport-finale__items li { min-width: 0; font-size: var(--fs-50); text-align: center; font-family: var(--font-kid); font-weight: 600; }
 .passport-finale__items li > .album__crop { aspect-ratio: 1 !important; border: 4px solid var(--white); border-radius: var(--radius-3); box-shadow: var(--shadow-1); margin-block-end: var(--space-1); }
 .passport-finale__items li[data-collected=false] { display: grid; place-items: center; aspect-ratio: 1; border: 0; border-radius: var(--radius-3); font-size: var(--fs-500); color: var(--ink-4); background: color-mix(in srgb, var(--paper-3) 60%, transparent); box-shadow: inset 0 1px 2px color-mix(in srgb, var(--ink) 10%, transparent), inset 0 0 0 1px var(--line); }
-.passport-finale__status { text-align: center; font-size: var(--fs-100); color: var(--ink-3); min-height: 20px; }
+.passport-finale__status { text-align: center; font-size: var(--fs-100); color: var(--white); min-height: 20px; margin: var(--space-3) 0 var(--space-1); }
 /* Four actions used to sit in one ragged row — a filled button, an outlined
    one and two bare pieces of text, all the same height and none of them the
    same thing. They are two ranks now: the two real choices side by side, and
@@ -566,10 +578,10 @@
 .passport-finale__actions > .fm-btn--ghost {
   order: 2; flex: 0 0 auto; min-height: var(--touch-min);
   background: transparent; box-shadow: none; border: 0;
-  color: var(--ink-3); font-size: var(--fs-100); font-weight: 700;
+  color: var(--white); font-size: var(--fs-100); font-weight: 700;
   text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px;
 }
-.passport-finale__actions > .fm-btn--ghost:hover { color: var(--ink); }
+.passport-finale__actions > .fm-btn--ghost:hover { color: var(--gold-light); }
 .passport-finale__skip:disabled { visibility: hidden; }
 .passport-finale[data-phase=playing] .passport-finale__stamp[data-new=true] { animation: passport-stamp 280ms 40ms cubic-bezier(.2,.8,.2,1.2) both; }
 .passport-finale[data-phase=waiting] .passport-finale__stamp { visibility: hidden; }
@@ -579,7 +591,34 @@
    and settles — the way a hand brings a stamp down onto a page. */
 @keyframes passport-stamp { 0% { opacity: 0; transform: scale(1.8) rotate(-22deg); } 65% { opacity: 1; transform: scale(.94) rotate(-5deg); } 100% { opacity: 1; transform: scale(1) rotate(-8deg); } }
 @keyframes passport-sticker { from { opacity: 0; transform: translateY(-20px) scale(1.1) rotate(-10deg); } to { opacity: 1; transform: none; } }
-@media (max-width: 600px) { .passport-finale__page { padding: var(--space-2); gap: var(--space-2); } .passport-finale__items { gap: var(--space-1) var(--space-1); } .passport-finale__items li { font-size: var(--fs-50); } .passport-finale__page h3 { font-size: var(--fs-200); margin-top: 0; } .passport-finale__actions button { flex: 1 1 40%; font-size: var(--fs-200); padding-inline: var(--space-1); } }
+@media (min-width: 601px) and (max-height: 800px) {
+  .passport-finale header h2 { margin-bottom: var(--space-2); }
+  .passport-finale__status { margin-top: var(--space-2); }
+}
+@media (max-width: 600px) {
+  .passport-finale { width: calc(100% - 16px); max-width: calc(100% - 16px); }
+  .passport-finale__inside { padding: var(--space-1); }
+  .passport-finale header h2 { margin-block: 4px var(--space-1); font-size: 24px; }
+  .passport-finale header .travel-passport__eyebrow { margin-block: 0; }
+  .passport-finale__binding { padding: 5px; }
+  .passport-finale__page { grid-template-columns: minmax(0, 1fr); }
+  .passport-finale__page::after { display: none; }
+  .passport-finale__memory { padding: 10px 16px 12px; }
+  .passport-finale__imprint { margin-bottom: 6px; line-height: 16px; }
+  .passport-finale__photo .passport-memory-fit { width: min(260px, calc(clamp(120px, 100dvh - 520px, 180px) * var(--memory-aspect))); }
+  .passport-finale__stamp { inset-inline-start: 12px; bottom: 0; }
+  .passport-finale__collection { padding: 4px 16px 20px; }
+  .passport-finale__collection h3 { font-size: var(--fs-100); line-height: 20px; margin-bottom: 4px; }
+  .passport-finale__items { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px 10px; }
+  .passport-finale__items li { font-size: 11px; line-height: 1.2; }
+  .passport-finale__items li > .album__crop { width: 48px; margin: 0 auto 2px; border-width: 2px; border-radius: var(--radius-1); }
+  .passport-finale__items li[data-collected=false] { width: 48px; justify-self: center; border-radius: var(--radius-1); font-size: var(--fs-300); }
+  .passport-finale__memory .passport-finale__folio { display: none; }
+  .passport-finale__status { margin-top: 14px; margin-bottom: 4px; font-size: var(--fs-50); line-height: 20px; }
+  .passport-finale__actions { gap: 4px 8px; }
+  .passport-finale__actions > .fm-btn { flex: 1 1 40%; font-size: var(--fs-100); padding-inline: var(--space-1); }
+  .passport-finale__actions > .fm-btn--ghost { flex: 0 1 auto; font-size: var(--fs-50); }
+}
 @media (prefers-reduced-motion: reduce) { .passport-finale *, .passport-finale *::before, .passport-finale *::after { animation: none !important; transition: none !important; } .passport-finale .celebration { display: none; } }
 @media (max-width: 760px) {
   .passport-view { padding: var(--space-0-5) var(--space-2); justify-content: flex-start; gap: 0; }

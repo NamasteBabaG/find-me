@@ -103,6 +103,7 @@ export function PassportCompletion({ store, scene, onStay }: { store: PlayStore;
   const photo = store.album ? passportPhoto(store.album, scene.slug, photoTargetId) : null;
   const found = new Set(store.album?.discoveries.filter(d => d.boardSlug === scene.slug).map(d => d.discoveryId));
   const next = store.nextScene();
+  const folio = store.config.scenes.findIndex(s => s.slug === scene.slug) * 2 + 1;
   const saving = store.albumMode === "owner" && ["idle", "loading", "saving"].includes(store.albumState);
   const saveIssue = store.albumState === "unsaved" ? g.album.unsaved
     : store.albumState === "unreadable" ? g.album.unreadable
@@ -111,12 +112,16 @@ export function PassportCompletion({ store, scene, onStay }: { store: PlayStore;
     <div className="passport-finale__inside">
       {phase === "playing" ? <CelebrationOverlay kind={scene.celebration.kind} small seed={store.visitId} /> : null}
       <header><p className="travel-passport__eyebrow">{scene.name}</p><h2 id={titleId}>{!delta ? copy.saving : delta.stamp ? copy.ceremony : delta.discoveryIds.length ? copy.newItems : g.replay.complete}</h2></header>
+      <div className="passport-finale__binding">
       <div className="passport-finale__page">
         <div className="passport-finale__memory">
+          <p className="passport-finale__imprint" aria-hidden="true">FIND ME WORLDS · {scene.name}</p>
           <div className="passport-finale__photo" data-new={Boolean(delta?.stamp)}>{photo && store.album ? <PassportMemory config={store.config} progress={store.album} boardSlug={scene.slug} targetId={photo.targetId} label={scene.name} /> : null}</div>
           <PassportStamp className="passport-finale__stamp" isNew={Boolean(delta?.stamp)} label={copy.stamped} />
+          <span className="passport-finale__folio" aria-hidden="true">{folio}</span>
         </div>
-        <div><h3>{copy.collected}</h3><ul className="passport-finale__items">{board.discoveries.map((item, i) => <li key={item.id} data-new={delta?.discoveryIds.includes(item.id) ?? false} data-collected={found.has(item.id)} style={{ "--arrival": `${80 + i * 45}ms` } as CSSProperties}>{found.has(item.id) ? <><AlbumCrop art={scene.art} crop={item.cardCrop} label={item.name} /><span>{item.name}</span></> : <span aria-label={copy.unknown}>?</span>}</li>)}</ul></div>
+        <div className="passport-finale__collection"><h3>{copy.collected}</h3><ul className="passport-finale__items">{board.discoveries.map((item, i) => <li key={item.id} data-new={delta?.discoveryIds.includes(item.id) ?? false} data-collected={found.has(item.id)} style={{ "--arrival": `${80 + i * 45}ms` } as CSSProperties}>{found.has(item.id) ? <><AlbumCrop art={scene.art} crop={item.cardCrop} label={item.name} /><span>{item.name}</span></> : <span aria-label={copy.unknown}>?</span>}</li>)}</ul><span className="passport-finale__folio" aria-hidden="true">{folio + 1}</span></div>
+      </div>
       </div>
       <p className="passport-finale__status" role="status">{store.demo ? copy.demo : saveIssue ?? (saving ? copy.saving : failed ? copy.unavailable : store.albumMode === "owner" ? copy.savedAccount : copy.savedLocal)}</p>
       {failed ? <button className="fm-btn fm-btn--ghost" onClick={() => setAttempt(n => n + 1)}>{copy.retry}</button> : null}

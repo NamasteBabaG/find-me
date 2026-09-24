@@ -38,6 +38,16 @@ function fixture(owner = false) {
 }
 
 describe("passport completion choreography", () => {
+  it("mounts the memory and six discoveries on two bound, numbered passport leaves", () => {
+    const f = fixture(), view = render(f.ui());
+    const binding = view.container.querySelector(".passport-finale__binding");
+    expect(binding?.querySelector(".passport-finale__memory [data-testid=memory]")).not.toBeNull();
+    expect(binding?.querySelectorAll(".passport-finale__collection li")).toHaveLength(6);
+    const folios = Array.from(binding!.querySelectorAll(".passport-finale__folio"));
+    expect(folios.map(leaf => leaf.textContent)).toEqual(["1", "2"]);
+    expect(folios.every(leaf => leaf.getAttribute("aria-hidden") === "true")).toBe(true);
+    expect(view.container.querySelector("dialog")?.getAttribute("aria-labelledby")).toBe(screen.getByRole("heading", { level: 2 }).id);
+  });
   it("lands the same accessible mark-only die as the book, retaining the animation trigger", () => {
     const f = fixture(); render(f.ui());
     const stamp = screen.getByRole("img", { name: getDict("en").travelPassport.stamped });
