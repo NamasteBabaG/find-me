@@ -1,5 +1,18 @@
 # Board paint engine and passport finale — QA handoff
 
+## Released receipt — 24 September 2026
+
+- Released source: `6b3d9aec4b5a839df35fc61a1bfa5585108e49ad`, including passport UI commit `22ba8453`; pushed before deployment.
+- Clean detached checkout: `work/qa-board-paint-release-20260924`. Deploy guard accepted the correct QA project and refreshed remote evidence. No private fixture/art files or local environment files were included.
+- Final frozen-source local gate: **267 files passed, 3449 tests passed, 2 expected failures, 35 skipped**. TypeScript and both content validators passed. Existing scene-scale warnings remain in the older catalog.
+- GitHub quality run **success**, including clean install, complete gate, validators, production build/private audit and no generated-source drift: https://github.com/NamasteBabaG/find-me/actions/runs/36028856674.
+- Dedicated project: `find-me-qa` / `prj_LbqCRqwU8WfZpeaWU7HTXM4SsfG4`. Deployment `dpl_Hn5SnRX5bhNx8rx95qrEsEuTU2Mj`, **READY**: https://find-me-fu69yyd2f-smallheroes-projects.vercel.app.
+- Remote Next.js build and tracing audit passed: `privateLeaks: []`, `problems: []`; Vercel inspected function size 181.11 MB. Build logs confirm simulated payments.
+- Built with `--skip-domain`, inspected, then promoted. Alias API independently confirms https://qa.findmeworlds.com points to that deployment and QA project. Deployment API `meta.gitCommitSha` and `meta.releaseCommit` both match the released source above.
+- Live browser navigation reaches the expected password gate; access protection remains enabled. The session is not logged in, so **no fresh authenticated live-game or health walkthrough is claimed**. User was asked to sign in without sharing the password. Local completion walkthrough evidence is linked below.
+- Post-promotion deployment-filtered error query returned no logs; this is a small observation window, not production-load validation. No public-store deployment or database mutation was performed.
+- This receipt is a later documentation-only commit; it does not change the deployed application SHA.
+
 ## Requested scope
 
 Integrate the user's approved second Bar dragon-stool style direction into the actual generation engine, then publish the engine and bound-passport completion UI to the dedicated QA project. This is not permission to overwrite every delivered personalized image or activate a different paid catalog.
