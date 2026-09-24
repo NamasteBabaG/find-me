@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { describe, expect, it, vi } from "vitest";
 import { LOCAL_PATCH_CROP, POSE_MASK, cropOf, maskForHide, maskInCrop, type LocalPatchBoard, type LocalPatchHide } from "../../../domain/scene/local-patch-hides";
-import { LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, localPatchPrompt } from "../local-patch-prompt";
+import { LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION, localPatchPrompt } from "../local-patch-prompt";
 import { localPatchBoardsForVersion } from "../../../domain/scene/local-patch-catalog";
 import { RETAINED_PURCHASE_VERSION, retainedPayloadDigest } from "../paid-operation";
 import { LOCAL_PATCH_RESERVE, poseMask, renderLocalPatchHide, type LocalPatchRenderDeps } from "../local-patch-render";
@@ -97,6 +97,23 @@ async function attempt(deps: LocalPatchRenderDeps, over: Record<string, unknown>
 }
 
 describe("one paid attempt at one hide", () => {
+  it("binds board-paint wording to a distinct receipt and will not reinterpret a retained historical purchase", async () => {
+    const w = world(), p = w.process();
+    await attempt(p.deps);
+    const before = p.dispatched.length;
+    const refused = await attempt(p.deps, { paintRecipe: "board-paint-v1" });
+    expect(refused.refusedBecause).toBe("stopped");
+    expect(p.dispatched).toHaveLength(before);
+    const fresh = world(), calls: string[] = [];
+    const renderer = fresh.process({ render: async ({ prompt }) => {
+      calls.push(prompt); return { png: await patchPng(), rejected: null, quarantined: null, evidence: evidence("new-paint"), unknownReason: null };
+    } });
+    const rendered = await attempt(renderer.deps, { paintRecipe: "board-paint-v1" });
+    expect(rendered.promptVersion).toBe(LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION);
+    expect(calls[0]).toContain("PAINT AUTHORITY");
+    await attempt(renderer.deps, { paintRecipe: "board-paint-v1" });
+    expect(calls).toHaveLength(1);
+  });
   it("v9 cannot reserve with legacy competing references, or borrow its new reference mode into v8", async () => {
     const w = world(), p = w.process(), image = await small();
     await expect(attempt(p.deps, { contentVersion: 9, canonicalIdentityPng: image, boardPeoplePng: image })).rejects.toThrow(/portrait-only/);

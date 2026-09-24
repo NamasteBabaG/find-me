@@ -161,7 +161,8 @@ describe("explicit QA adoption of a paid canonical identity whose photo was priv
     const board = localPatchBoardsForVersion(9)[0]!, hide = board.hides[0]!;
     const expectedPortrait = (await prepareLocalPatchIdentityReferences(f.source.sheet, 9)).identityPng;
     const render = vi.fn(async ({ stylePng, prompt, identityPng, referenceMode, canonicalIdentityPng, boardPeoplePng }: Parameters<LocalPatchRenderDeps["render"]>[0]) => {
-      expect(prompt).toContain("5"); expect(prompt).toContain("FACE");
+      expect(prompt).toContain("5"); expect(prompt).toContain("IDENTITY AUTHORITY: Image 2");
+      expect(prompt).toContain("PAINT AUTHORITY: the original people in Image 1");
       expect(referenceMode).toBe("canonical-portrait-only/v1");
       expect(identityPng.equals(expectedPortrait)).toBe(true);
       expect(canonicalIdentityPng).toBeUndefined(); expect(boardPeoplePng).toBeUndefined();

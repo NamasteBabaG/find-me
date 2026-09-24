@@ -18,7 +18,7 @@ import { readBoardConditionedCatalog } from "./board-conditioned-catalog";
 import { assertGenerationSpendAllowed, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { localPatchGeometry, type LocalPatchGeometry } from "./local-patch-geometry";
 import { renderLocalPatchHide, type LocalPatchRenderDeps } from "./local-patch-render";
-import { LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_CANONICAL_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, localPatchRepairChecks, type LocalPatchRepairCheck } from "./local-patch-prompt";
+import { LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_CANONICAL_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION, pinnedLocalPatchPromptVersion, localPatchRepairChecks, type LocalPatchRepairCheck } from "./local-patch-prompt";
 import { prepareLocalPatchIdentityReferences } from "./local-patch-identity-reference";
 import { buildBoardPeopleStyle } from "./board-wizard-identity-style";
 import type { PatchGeometry } from "./patch";
@@ -245,7 +245,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     contentVersion: scene.sceneVersion,
   });
   const boardDrawn = identityApproval.provenance.style.version === "board-matched-identity/v2";
-  const promptVersion = isLocalPatchAgeVersion(scene.sceneVersion) ? LOCAL_PATCH_AGE_PROMPT_VERSION
+  const legacyPromptVersion = isLocalPatchAgeVersion(scene.sceneVersion) ? LOCAL_PATCH_AGE_PROMPT_VERSION
     : isLocalPatchStrictVersion(scene.sceneVersion) ? LOCAL_PATCH_CANONICAL_PROMPT_VERSION
     : isLocalPatchAdvisoryVersion(scene.sceneVersion) ? LOCAL_PATCH_FIVE_PROMPT_VERSION
     : boardDrawn ? LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION : LOCAL_PATCH_PROMPT_VERSION;
@@ -256,8 +256,9 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
       id: newId("tgt"), gameSceneId: scene.id, targetId: target.id, targetType: target.targetType,
       spriteKind: "image", slotAId: target.slots[0].id, slotBId: target.slots[1].id,
     } });
-  const row = await c.db.targetVariantAsset.findUnique({ where: { targetInstanceId_variant: { targetInstanceId: instance.id, variant: LOCAL_PATCH_VARIANT } } })
-    ?? await c.db.targetVariantAsset.create({ data: {
+  const existingRow = await c.db.targetVariantAsset.findUnique({ where: { targetInstanceId_variant: { targetInstanceId: instance.id, variant: LOCAL_PATCH_VARIANT } } });
+  const promptVersion = pinnedLocalPatchPromptVersion(existingRow, legacyPromptVersion);
+  const row = existingRow ?? await c.db.targetVariantAsset.create({ data: {
       id: newId("tva"), targetInstanceId: instance.id, variant: LOCAL_PATCH_VARIANT, slotId: target.slots[0].id,
       provider: LOCAL_PATCH_PROVIDER, promptVersion,
     } });
@@ -329,6 +330,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     renderPolicySha256: deps.renderPolicySha256, render: deps.render, ...(deps.judge ? { judge: deps.judge } : {}),
   }, {
     worldId, board, hide, composedPng: artwork, contentVersion: scene.sceneVersion,
+    ...(promptVersion === LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION ? { paintRecipe: "board-paint-v1" as const } : {}),
     ...identityReferences,
     ...(boardPeoplePng ? { boardPeoplePng } : {}),
     ageYears: child.ageYears, attempt, apiKey: deps.apiKey ?? "",

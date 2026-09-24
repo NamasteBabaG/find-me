@@ -11,6 +11,7 @@ import { LOCAL_PATCH_BOARD, LOCAL_PATCH_CROP, cropOf, maskOf } from "../../../do
 import { boardWizardBudgetOf, boardWizardWorldId, GenerationPaused } from "../board-conditioned-wizard";
 import { readShippedBoardArt, runLocalPatchHide, type LocalPatchHideDeps } from "../local-patch-hide";
 import type { LocalPatchJudgeResult } from "../local-patch-judge";
+import { LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION, LOCAL_PATCH_PROMPT_VERSION } from "../local-patch-prompt";
 import {
   LOCAL_PATCH_TEST_BOARD, bill, boardPng, clearWorld, paintedCrop, paintedOk, PASSING_ANSWER, reply, seedApprovedGame,
 } from "./local-patch-fixtures";
@@ -68,24 +69,41 @@ async function seed(options: { gameId?: string; approved?: boolean } = {}) {
 /** A fresh set of adapters, as a restarted worker would build them. */
 function worker(options: { answer?: LocalPatchJudgeResult; hide?: typeof HIDE } = {}) {
   const dispatched: string[] = [];
+  const prompts: string[] = [];
   let deps: LocalPatchHideDeps = {
     renderPolicySha256: "p".repeat(64),
     readBoardArt: async () => boardPng(),
-    render: async ({ requestKey, stylePng }) => {
+    render: async ({ requestKey, stylePng, prompt }) => {
       dispatched.push(requestKey);
+      prompts.push(prompt);
       return paintedOk(await paintedCrop(stylePng, options.hide ?? HIDE), bill(`req-render-${requestKey}`));
     },
     // A distinct receipt per call, as a provider gives: the ledger refuses one
     // receipt paying for two different operations, and it is right to.
     judge: async () => { dispatched.push("judge"); return { ...(options.answer ?? reply()), requestId: `req-judge-${++judged}` }; },
   };
-  return { dispatched, deps };
+  return { dispatched, prompts, deps };
 }
 
 let judged = 0;
 const rows = (gameId: string) => db.targetVariantAsset.findMany({ where: { targetInstance: { gameScene: { gameId } } }, include: { targetInstance: true } });
 
 describe("one hide through the real pipeline", () => {
+  it("resumes an existing historical row without changing its paid recipe", async () => {
+    const { gameId } = await seed();
+    const stopped = worker();
+    await expect(runLocalPatchHide(c, { ...stopped.deps, readBoardArt: async () => { throw new Error("fixture-before-purchase"); } },
+      { gameId, board: BOARD, hide: HIDE })).rejects.toThrow("fixture-before-purchase");
+    const [row] = await rows(gameId);
+    // Emulate a row authored by the previous release, before its first purchase.
+    await db.targetVariantAsset.update({ where: { id: row!.id }, data: { promptVersion: LOCAL_PATCH_PROMPT_VERSION } });
+    const resumed = worker();
+    expect((await runLocalPatchHide(c, resumed.deps, { gameId, board: BOARD, hide: HIDE })).state).toBe("generated");
+    expect(resumed.prompts[0]).not.toContain("PAINT AUTHORITY");
+    expect((await rows(gameId))[0]?.promptVersion).toBe(LOCAL_PATCH_PROMPT_VERSION);
+    expect(resumed.dispatched).toEqual(["sydney-2:kneeling:render:1", "judge"]);
+  }, 180_000);
+
   it("paints it, keeps it, and writes a target the player can tap", async () => {
     const { gameId, userId } = await seed();
     const first = worker();
@@ -96,6 +114,8 @@ describe("one hide through the real pipeline", () => {
 
     const [row] = await rows(gameId);
     expect(row?.status).toBe("GENERATED");
+    expect(row?.promptVersion).toBe(LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION);
+    expect(first.prompts[0]).toContain("PAINT AUTHORITY: the original people in Image 1");
     expect(row?.variant).toBe("A");
     expect(row?.slotId).toBe("sydney_surfboards_a");
     expect(row?.targetInstance.targetId).toBe("surfboards");
