@@ -97,6 +97,12 @@ async function attempt(deps: LocalPatchRenderDeps, over: Record<string, unknown>
 }
 
 describe("one paid attempt at one hide", () => {
+  it("rejects a recipe mismatch without reserving budget or calling providers", async () => {
+    const w = world(), worker = w.process();
+    await expect(attempt(worker.deps, { expectedPromptVersion: LOCAL_PATCH_AGE_PROMPT_VERSION })).rejects.toThrow("prompt provenance conflict");
+    expect(w.rows.size).toBe(0); expect(w.retained.size).toBe(0);
+    expect(worker.dispatched).toEqual([]);
+  });
   it("binds board-paint wording to a distinct receipt and will not reinterpret a retained historical purchase", async () => {
     const w = world(), p = w.process();
     await attempt(p.deps);

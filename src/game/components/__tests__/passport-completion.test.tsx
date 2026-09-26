@@ -38,6 +38,17 @@ function fixture(owner = false) {
 }
 
 describe("passport completion choreography", () => {
+  it.each([0, 1, 2])("labels and routes the final board correctly with %s worlds", count => {
+    const f = fixture();
+    Object.assign(f.store.config, { world: undefined, worlds: Array.from({ length: count }, (_, i) => ({ slug: `world-${i}` })) });
+    const goToMap = vi.fn(), goToWorlds = vi.fn();
+    Object.assign(f.store, { nextScene: () => null, goToMap, goToWorlds });
+    render(f.ui());
+    const g = getDict("en").game;
+    fireEvent.click(screen.getByRole("button", { name: count > 1 ? g.hub.back : g.scene.backToMap }));
+    expect(goToMap).toHaveBeenCalledTimes(count < 2 ? 1 : 0);
+    expect(goToWorlds).toHaveBeenCalledTimes(count > 1 ? 1 : 0);
+  });
   it("mounts the memory and six discoveries on two bound, numbered passport leaves", () => {
     const f = fixture(), view = render(f.ui());
     const binding = view.container.querySelector(".passport-finale__binding");

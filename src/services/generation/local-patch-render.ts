@@ -71,6 +71,8 @@ export type LocalPatchRenderDeps = {
 };
 
 export type LocalPatchAttemptInput = {
+  /** Persisted recipe, checked before any paid operation or scene decoding. */
+  readonly expectedPromptVersion?: string;
   readonly paintRecipe?: LocalPatchPaintRecipe;
   readonly contentVersion?: number;
   readonly worldId: string;
@@ -285,6 +287,9 @@ const refusedRender = (fault: string, renderCents: number): LocalPatchAttempt =>
 });
 
 export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: LocalPatchAttemptInput): Promise<LocalPatchAttempt> {
+  if (input.expectedPromptVersion !== undefined && input.expectedPromptVersion !== promptVersionOf(input)) {
+    throw new Error(`LOCAL_PATCH: prompt provenance conflict; stored ${input.expectedPromptVersion}, selected ${promptVersionOf(input)}`);
+  }
   const result = await renderLocalPatchHideInner(deps, input);
   return { ...result, promptVersion: promptVersionOf(input),
     ...(isLocalPatchStrictVersion(input.contentVersion) ? { compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION } : {}) };

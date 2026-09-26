@@ -291,6 +291,13 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     return { ...base, attempt: row.attempts, state: "gave-up", reason: row.lastError ?? `gave up after ${row.attempts} attempts` };
   }
 
+  // A stored recipe is a constraint, not a label to overwrite on success.
+  // Historical recipes require their original scene/reference contract; do
+  // not guess one when data disagrees, even if no receipt has yet been bought.
+  if (promptVersion !== LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION && promptVersion !== legacyPromptVersion) {
+    return { ...base, state: "stopped", reason: `Prompt provenance conflict: stored ${promptVersion}, scene requires ${legacyPromptVersion}; operator review required` };
+  }
+
   // Preserve the old paid recipes. V9 takes environment from the scene itself;
   // a stranger's enlarged face must not compete with the approved portrait.
   const boardPeoplePng = !isLocalPatchAgeVersion(scene.sceneVersion) && (boardDrawn || isLocalPatchStrictVersion(scene.sceneVersion))
@@ -330,6 +337,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     renderPolicySha256: deps.renderPolicySha256, render: deps.render, ...(deps.judge ? { judge: deps.judge } : {}),
   }, {
     worldId, board, hide, composedPng: artwork, contentVersion: scene.sceneVersion,
+    expectedPromptVersion: promptVersion,
     ...(promptVersion === LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION ? { paintRecipe: "board-paint-v1" as const } : {}),
     ...identityReferences,
     ...(boardPeoplePng ? { boardPeoplePng } : {}),

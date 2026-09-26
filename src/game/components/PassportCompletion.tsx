@@ -5,7 +5,7 @@ import { PassportStamp } from "@/ui/passport/StampMark";
 import { getDict } from "@/i18n";
 import { passportCeremony, passportPhoto, type PassportPreference } from "@/domain/passport/passport";
 import type { PlayStore } from "../store/play-store";
-import type { GameConfig, SceneConfig } from "@/domain/game/config";
+import { gameWorlds, type GameConfig, type SceneConfig } from "@/domain/game/config";
 import { readPassportPreferences, keepPassportPreference } from "../engine/passport-storage";
 import { PassportMemory } from "./PassportMemory";
 import { AlbumCrop } from "./Album";
@@ -103,6 +103,7 @@ export function PassportCompletion({ store, scene, onStay }: { store: PlayStore;
   const photo = store.album ? passportPhoto(store.album, scene.slug, photoTargetId) : null;
   const found = new Set(store.album?.discoveries.filter(d => d.boardSlug === scene.slug).map(d => d.discoveryId));
   const next = store.nextScene();
+  const multiWorld = gameWorlds(store.config).length > 1;
   const folio = store.config.scenes.findIndex(s => s.slug === scene.slug) * 2 + 1;
   const saving = store.albumMode === "owner" && ["idle", "loading", "saving"].includes(store.albumState);
   const saveIssue = store.albumState === "unsaved" ? g.album.unsaved
@@ -126,7 +127,7 @@ export function PassportCompletion({ store, scene, onStay }: { store: PlayStore;
       <p className="passport-finale__status" role="status">{store.demo ? copy.demo : saveIssue ?? (saving ? copy.saving : failed ? copy.unavailable : store.albumMode === "owner" ? copy.savedAccount : copy.savedLocal)}</p>
       {failed ? <button className="fm-btn fm-btn--ghost" onClick={() => setAttempt(n => n + 1)}>{copy.retry}</button> : null}
       <div className="passport-finale__actions">
-        {!store.demo ? <button className="fm-btn fm-btn--lg" autoFocus onClick={() => leave(next ? () => store.openScene(next) : store.goToWorlds)}>{next ? g.complete.next : g.hub.back}</button> : <button className="fm-btn fm-btn--lg" autoFocus onClick={() => leave(() => store.replayScene())}>{g.complete.again}</button>}
+        {!store.demo ? <button className="fm-btn fm-btn--lg" autoFocus onClick={() => leave(next ? () => store.openScene(next) : multiWorld ? store.goToWorlds : () => store.goToMap())}>{next ? g.complete.next : multiWorld ? g.hub.back : g.scene.backToMap}</button> : <button className="fm-btn fm-btn--lg" autoFocus onClick={() => leave(() => store.replayScene())}>{g.complete.again}</button>}
         <button className="fm-btn fm-btn--secondary" onClick={() => leave(onStay)}>{g.collection.keep}</button>
         {!store.demo ? <button className="fm-btn fm-btn--ghost" onClick={() => leave(store.openPassport)}>{copy.open}</button> : null}
         <button className="fm-btn fm-btn--ghost passport-finale__skip" onClick={settle} disabled={phase !== "playing"}>{copy.skip}</button>

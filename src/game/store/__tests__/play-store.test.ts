@@ -62,6 +62,11 @@ beforeEach(() => {
 });
 
 describe("coming back to a multi-world game", () => {
+  it.each([0, 1, 2])("routes the all-worlds action safely with %s worlds", count => {
+    const store = createPlayStore({ ...config, worlds: config.worlds!.slice(0, count), world: undefined }, { copy, skipGift: true });
+    store.getState().goToWorlds();
+    expect(store.getState().screen).toBe(count > 1 ? "worlds" : "map");
+  });
   it("plays all five private-preview boards with normal navigation and three missions, without reading or writing real progress or telemetry", () => {
     const partial = { ...config, worlds: undefined, world: undefined,
       scenes: Array.from({ length: 5 }, (_, i) => scene(`partial-${i}`, "")) } as unknown as GameConfig;

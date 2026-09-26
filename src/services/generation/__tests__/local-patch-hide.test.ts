@@ -11,7 +11,7 @@ import { LOCAL_PATCH_BOARD, LOCAL_PATCH_CROP, cropOf, maskOf } from "../../../do
 import { boardWizardBudgetOf, boardWizardWorldId, GenerationPaused } from "../board-conditioned-wizard";
 import { readShippedBoardArt, runLocalPatchHide, type LocalPatchHideDeps } from "../local-patch-hide";
 import type { LocalPatchJudgeResult } from "../local-patch-judge";
-import { LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION, LOCAL_PATCH_PROMPT_VERSION } from "../local-patch-prompt";
+import { LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_PROMPT_VERSION } from "../local-patch-prompt";
 import {
   LOCAL_PATCH_TEST_BOARD, bill, boardPng, clearWorld, paintedCrop, paintedOk, PASSING_ANSWER, reply, seedApprovedGame,
 } from "./local-patch-fixtures";
@@ -89,6 +89,23 @@ let judged = 0;
 const rows = (gameId: string) => db.targetVariantAsset.findMany({ where: { targetInstance: { gameScene: { gameId } } }, include: { targetInstance: true } });
 
 describe("one hide through the real pipeline", () => {
+  it.each([0, 1])("refuses a conflicting historical recipe before purchase on attempt %s", async attempts => {
+    const { gameId } = await seed();
+    const first = worker();
+    await expect(runLocalPatchHide(c, { ...first.deps, readBoardArt: async () => { throw new Error("before-purchase"); } },
+      { gameId, board: BOARD, hide: HIDE })).rejects.toThrow("before-purchase");
+    const [row] = await rows(gameId);
+    await db.targetVariantAsset.update({ where: { id: row!.id }, data: { promptVersion: LOCAL_PATCH_AGE_PROMPT_VERSION, attempts } });
+    const before = await rows(gameId);
+    const resumed = worker();
+    const readArt = vi.fn(resumed.deps.readBoardArt);
+    const result = await runLocalPatchHide(c, { ...resumed.deps, readBoardArt: readArt }, { gameId, board: BOARD, hide: HIDE });
+    expect(result).toMatchObject({ state: "stopped", reason: expect.stringContaining("Prompt provenance conflict") });
+    expect(resumed.dispatched).toEqual([]);
+    expect(readArt).not.toHaveBeenCalled();
+    expect(await rows(gameId)).toEqual(before);
+  }, 180_000);
+
   it("resumes an existing historical row without changing its paid recipe", async () => {
     const { gameId } = await seed();
     const stopped = worker();

@@ -312,6 +312,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
 
     goToWorlds() {
       if (demo) return;
+      if (gameWorlds(get().config).length < 2) { get().goToMap(); return; }
       requestedScene = undefined;
       sounds().stopAmbient();
       set({ screen: "worlds", sceneSlug: null, mission: null, replay: null, travelFrom: null });
