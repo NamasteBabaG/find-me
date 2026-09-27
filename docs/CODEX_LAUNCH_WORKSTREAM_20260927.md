@@ -106,6 +106,11 @@ false-success exit status in the public-image probe and a read-only cron
 observation (29 consecutive 200 GETs, about 1.9–2.8s). Neither resolves live
 image diagnosis or the historical timeout under actual generation load.
 
+`CODEX_DRAGON_GEOMETRY_AUDIT_20260928.md` adds offline prop/context preflight:
+the arch is clipped by the crop and lies inside actual return permission
+(provider mask plus 120 px guard). A wider context alone is not a preservation
+fix. No new placement or render was approved; runtime and QA are unchanged.
+
 | Order | Work | Acceptance / dependency |
 |---|---|---|
 | 1 | Live demo-image fault | Normal authenticated QA image responses, MIME/hash/timing and browser retry; do not call preload a root-cause fix. |
