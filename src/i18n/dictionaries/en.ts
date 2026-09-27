@@ -154,7 +154,7 @@ export const en = {
       next: "Next world",
       owned: "In your family area",
       inTheMaking: "Not available to play yet",
-      available: "Available to create — choose independently",
+      available: "Available now — every world stands on its own",
       previewArt: "Preview of new artwork and discoveries. Not yet included in newly created games.",
     },
     pricing: {
@@ -360,7 +360,7 @@ export const en = {
     enlarge: "A closer look", closePicture: "Back to my page",
     title: "My passport", subtitle: "Little discoveries. Big adventures.", open: "Open my passport", close: "Back to the cover", worlds: "Choose a world", places: "Places in this world",
     previous: "Previous page", next: "Next page", page: "Place {n} of {total}", stamped: "I was here!", progress: "{n} of 3 hiding spots found",
-    locked: "A place for a future adventure", available: "Your next discovery is waiting", photoWait: "Find all three hiding spots to keep a picture here.", photoUnavailable: "We couldn't load this picture. Your stamp is safe.", retryImages: "Try loading the pictures again",
+    locked: "A place for a future adventure", available: "Your next discovery is waiting", photoWait: "Find all three hiding spots to keep a picture here.", photoUnavailable: "We couldn't load this picture. Your stamp is safe.", pictureUnavailable: "Picture unavailable", retryImages: "Try loading the pictures again",
     collected: "My discoveries", unknown: "Not found yet", details: "About {name}", choosePhoto: "Choose my picture", photoChoice: "Picture {n}", selected: "Selected", saved: "Picture saved", saveFailed: "We couldn’t save that yet. Please try again.",
     play: "Back to this place", preparing: "An adventure is being prepared. Its pages will appear here when it is ready.", empty: "Your passport is ready for its first adventure.",
     ceremony: "A new page in my passport!", newItems: "New discoveries for my passport!", skip: "Show my page", savedLocal: "Kept in this browser", savedAccount: "Saved to your passport", saving: "Saving your discoveries…", retry: "Try again",

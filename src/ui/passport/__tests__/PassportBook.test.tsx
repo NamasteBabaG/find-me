@@ -159,9 +159,40 @@ describe("passport book interaction", () => {
       fireEvent.error(screen.getByRole("img", { name: "Place 1" }));
       act(() => vi.advanceTimersByTime(delay));
     }
-    fireEvent.click(screen.getByRole("button", { name: getDict("en").travelPassport.retryImages }));
+    fireEvent.click(screen.getAllByRole("button", { name: getDict("en").travelPassport.retryImages })[0]!);
     expect(screen.getByRole("img", { name: "Place 1" })).toBeTruthy();
     expect(screen.getByRole("img", { name: getDict("en").travelPassport.stamped })).toBeTruthy();
+  });
+  it("clears the recovery notice only after every failed image has loaded", () => {
+    const view = mount(); open(); finish();
+    const copy = getDict("en").travelPassport;
+    fireEvent.error(screen.getByRole("img", { name: "Place 1" }));
+    fireEvent.error(view.container.querySelector(".travel-passport__item img")!);
+    act(() => vi.advanceTimersByTime(1000));
+    fireEvent.load(screen.getByRole("img", { name: "Place 1" }));
+    expect(screen.getByText(copy.photoUnavailable)).toBeTruthy();
+    fireEvent.load(view.container.querySelector(".travel-passport__item img")!);
+    expect(screen.queryByText(copy.photoUnavailable)).toBeNull();
+    expect(screen.queryByRole("button", { name: copy.retryImages })).toBeNull();
+  });
+  it.each(["en", "he"] as const)("offers in-page recovery and one announcement for simultaneous %s image failures", locale => {
+    const view = mount({}, locale); open(locale); finish();
+    const copy = getDict(locale).travelPassport;
+    fireEvent.error(screen.getByRole("img", { name: "Place 1" }));
+    fireEvent.error(view.container.querySelector(".travel-passport__item img")!);
+    expect(screen.getAllByText(copy.pictureUnavailable)).toHaveLength(2);
+    expect(screen.getAllByText(copy.photoUnavailable)).toHaveLength(1);
+    expect(view.container.querySelectorAll('.travel-passport__photo-wait[role="status"]')).toHaveLength(0);
+    expect(view.container.querySelector('[aria-live="polite"]')?.textContent).toBe(copy.photoUnavailable);
+    const photo = view.container.querySelector(".travel-passport__memory > .travel-passport__photo")!;
+    const retry = within(photo as HTMLElement).getByRole("button", { name: copy.retryImages });
+    expect(retry.parentElement).toBe(photo); // Never nest recovery inside zoom.
+    fireEvent.click(retry);
+    expect(screen.getByRole("img", { name: "Place 1" })).toBeTruthy();
+    expect(view.container.querySelector(".travel-passport__item img")).not.toBeNull();
+    expect(screen.queryByText(copy.photoUnavailable)).toBeNull();
+    expect(view.container.querySelector('[data-state="stamped"]')).not.toBeNull();
+    expect(view.container.querySelectorAll(".travel-passport__items > li")).toHaveLength(6);
   });
   it("warms only the public demo's first spread when its closed cover approaches the viewport", () => {
     let notify: IntersectionObserverCallback = () => {};

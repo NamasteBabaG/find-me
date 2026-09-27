@@ -84,6 +84,16 @@ test timeouts passed unchanged in an isolated rerun (34/34 across two suites).
 
 ## Remaining order / acceptance gates
 
+### Overnight independent-review follow-up (2026-09-28)
+
+Claude completed the review of `8d13cc69` / `47f1bf05`; it is distinct from the
+older engine sample reports. The findings, reproduced corrections and test
+evidence are recorded in `CODEX_CLAUDE_CHECKPOINT_RESPONSE_20260928.md`.
+Recovery controls are reachable inside the book, image-failure announcements
+are consolidated, and the CI build initializes only its disposable SQLite
+schema. This closes neither the authenticated QA image investigation nor F-A.
+Check the response document for current gate/release status before deploying.
+
 | Order | Work | Acceptance / dependency |
 |---|---|---|
 | 1 | Live demo-image fault | Normal authenticated QA image responses, MIME/hash/timing and browser retry; do not call preload a root-cause fix. |

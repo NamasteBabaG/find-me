@@ -7,7 +7,7 @@ import { arrowPage, swipePage } from "./book-navigation";
 import { PassportStamp } from "./StampMark";
 import "./passport.css";
 
-function Picture({ src, label, onFailure }: { src: string; label: string; onFailure: () => void }) {
+function Picture({ src, label, onFailure, onRecovery }: { src: string; label: string; onFailure: () => void; onRecovery: () => void }) {
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const { t } = useI18n();
@@ -18,7 +18,8 @@ function Picture({ src, label, onFailure }: { src: string; label: string; onFail
     const timer = setTimeout(() => { setAttempt(n => n + 1); setFailed(false); }, 1000 * (attempt + 1));
     return () => clearTimeout(timer);
   }, [failed, attempt]);
-  return failed ? <span className="travel-passport__photo-wait" role="status">{t.travelPassport.photoUnavailable}</span> : <img src={src} alt={label} onError={() => { setFailed(true); onFailure(); }} loading="eager" decoding="async" />;
+  // Tiles are not live regions: announce recovery once for the whole reader.
+  return failed ? <span className="travel-passport__photo-wait">{t.travelPassport.pictureUnavailable}</span> : <img src={src} alt={label} onError={() => { setFailed(true); onFailure(); }} onLoad={onRecovery} loading="eager" decoding="async" />;
 }
 
 function Chevron({ right }: { right: boolean }) {
@@ -32,7 +33,8 @@ export function PassportBook({ book, mode = "owner", onPhotoSelect, onPlay, rend
   const [worldId, setWorldId] = useState(book.worlds[0]?.id ?? ""), [pageId, setPageId] = useState("");
   const [cursorReady, setCursorReady] = useState<string | undefined>();
   const [busy, setBusy] = useState(false), [message, setMessage] = useState("");
-  const [imageFailed, setImageFailed] = useState(false), [imageEpoch, setImageEpoch] = useState(0);
+  const [failedImages, setFailedImages] = useState<string[]>([]), [imageEpoch, setImageEpoch] = useState(0);
+  const imageFailed = failedImages.length > 0;
   const reader = useRef<HTMLElement>(null);
   const [detailId, setDetailId] = useState<string | null>(null), [panel, setPanel] = useState<"photo" | "choose" | "detail" | null>(null);
   const [turn, setTurn] = useState<{ direction: "next" | "previous"; page: PassportPageView } | null>(null);
@@ -40,7 +42,7 @@ export function PassportBook({ book, mode = "owner", onPhotoSelect, onPlay, rend
   const animationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const coverButton = useRef<HTMLButtonElement>(null), zoomDialog = useRef<HTMLDialogElement>(null), heading = useRef<HTMLHeadingElement>(null);
   const gesture = useRef<{ x: number; y: number; at: number; pointer: number; captured: boolean } | null>(null), suppressClick = useRef(false);
-  const image = (src: string, label: string) => renderImage ? renderImage(src, label) : <Picture key={`${imageEpoch}:${src}`} src={src} label={label} onFailure={() => setImageFailed(true)} />;
+  const image = (src: string, label: string) => renderImage ? renderImage(src, label) : <Picture key={`${imageEpoch}:${src}`} src={src} label={label} onFailure={() => setFailedImages(urls => urls.includes(src) ? urls : [...urls, src])} onRecovery={() => setFailedImages(urls => urls.includes(src) ? urls.filter(url => url !== src) : urls)} />;
   const world = book.worlds.find(w => w.id === worldId) ?? book.worlds[0];
   const page = world?.pages.find(p => p.id === pageId) ?? world?.pages[0];
   const index = page ? world!.pages.indexOf(page) : 0;
@@ -85,6 +87,7 @@ export function PassportBook({ book, mode = "owner", onPhotoSelect, onPlay, rend
   useEffect(() => { const el = zoomDialog.current; if (!el) return; if (panel) el.showModal?.(); else if (el.open) el.close?.(); }, [panel]);
 
   function focusPage() { requestAnimationFrame(() => heading.current?.focus({ preventScroll: true })); }
+  function retryImages() { setFailedImages([]); setImageEpoch(n => n + 1); focusPage(); }
   function stopAnimation() { if (animationTimer.current) clearTimeout(animationTimer.current); setTurn(null); setOpening(false); turning.current = false; }
   function openBook() {
     setOpen(true); setOpening(!reduced.current); focusPage();
@@ -140,7 +143,7 @@ export function PassportBook({ book, mode = "owner", onPhotoSelect, onPlay, rend
     <div className="travel-passport__reader">
       <header className="travel-passport__toolbar" inert={!open} aria-hidden={!open}>
         <button type="button" className="fm-btn fm-btn--ghost" onClick={() => { stopAnimation(); setOpen(false); requestAnimationFrame(() => coverButton.current?.focus({ preventScroll: true })); }}>{copy.close}</button>
-        {imageFailed ? <button type="button" className="fm-btn fm-btn--ghost" aria-label={copy.retryImages} title={copy.retryImages} onClick={() => { setImageFailed(false); setImageEpoch(n => n + 1); }}><span aria-hidden="true">↻</span></button> : null}
+        {imageFailed ? <button type="button" className="fm-btn fm-btn--ghost" aria-label={copy.retryImages} title={copy.retryImages} onClick={retryImages}><span aria-hidden="true">↻</span></button> : null}
         {/* Worlds are the passport's dividers, so they look like dividers: index
             tabs standing on the head of the book, the current one joined to the
             paper. A <select> floating above the corner read as a form control
@@ -161,7 +164,11 @@ export function PassportBook({ book, mode = "owner", onPhotoSelect, onPlay, rend
             <div className="travel-passport__spread">
               <section className="travel-passport__leaf travel-passport__memory" aria-label={copy.memory}>
                 <header className="travel-passport__page-head"><p className="travel-passport__eyebrow">{world?.title}</p><h2 ref={heading} tabIndex={-1}>{page.title}</h2><p>{tf(copy.page, { n: index + 1, total: world!.pages.length })}</p></header>
-                <div className="travel-passport__photo">{page.photoUrl ? <button type="button" className="travel-passport__enlarge" aria-label={copy.enlarge} title={copy.enlarge} onClick={() => setPanel("photo")}>{image(page.photoUrl, page.title)}</button> : <div className="travel-passport__photo-wait"><span aria-hidden>✦</span><p>{page.state === "locked" ? copy.locked : copy.photoWait}</p></div>}</div>
+                <div className="travel-passport__photo">{page.photoUrl ? <button type="button" className="travel-passport__enlarge" aria-label={copy.enlarge} title={copy.enlarge} onClick={() => setPanel("photo")}>{image(page.photoUrl, page.title)}</button> : <div className="travel-passport__photo-wait"><span aria-hidden>✦</span><p>{page.state === "locked" ? copy.locked : copy.photoWait}</p></div>}
+                  {/* Recovery stays beside the visible picture, even when the
+                      toolbar has scrolled behind the site's sticky header. */}
+                  {imageFailed ? <button type="button" className="fm-btn fm-btn--white travel-passport__picture-retry" aria-label={copy.retryImages} title={copy.retryImages} onClick={retryImages}><span aria-hidden="true">↻</span></button> : null}
+                </div>
                 {/* The mark alone. The words went inside the aria-label rather
                     than off the page: a stamp is a picture, and a reader that
                     cannot see it still has to be told the place was visited. */}
@@ -189,7 +196,7 @@ export function PassportBook({ book, mode = "owner", onPhotoSelect, onPlay, rend
         {open ? <><button type="button" className="travel-passport__edge travel-passport__edge--previous" aria-label={copy.previous} title={copy.previous} disabled={index === 0 || busy || Boolean(turn)} onClick={() => move(-1)}><span><Chevron right={dir === "rtl"} /></span></button>
         <button type="button" className="travel-passport__edge travel-passport__edge--next" aria-label={copy.next} title={copy.next} disabled={!world || index === world.pages.length - 1 || busy || Boolean(turn)} onClick={() => move(1)}><span><Chevron right={dir === "ltr"} /></span></button></> : null}
       </div>
-      <footer className="travel-passport__reader-footer" inert={!open} aria-hidden={!open}><p className="travel-passport__swipe-hint">{copy.swipe}</p><nav className="travel-passport__places" aria-label={copy.places}>{world?.pages.map((p, n) => <button type="button" key={p.id} disabled={busy || Boolean(turn)} aria-label={`${n + 1}. ${p.title}`} aria-current={p.id === page?.id ? "page" : undefined} onClick={() => navigate(p)} className={`travel-passport__place${["stamped", "complete"].includes(p.state) ? " is-stamped" : ""}`}><span>{n + 1}</span></button>)}</nav><p className="travel-passport__reader-status" aria-live="polite" aria-atomic="true">{page ? `${page.title} · ${tf(copy.page, { n: index + 1, total: world!.pages.length })}` : ""}</p></footer>
+      <footer className="travel-passport__reader-footer" inert={!open} aria-hidden={!open}><p className="travel-passport__swipe-hint">{copy.swipe}</p><nav className="travel-passport__places" aria-label={copy.places}>{world?.pages.map((p, n) => <button type="button" key={p.id} disabled={busy || Boolean(turn)} aria-label={`${n + 1}. ${p.title}`} aria-current={p.id === page?.id ? "page" : undefined} onClick={() => navigate(p)} className={`travel-passport__place${["stamped", "complete"].includes(p.state) ? " is-stamped" : ""}`}><span>{n + 1}</span></button>)}</nav><p className="travel-passport__reader-status" aria-live="polite" aria-atomic="true">{imageFailed ? copy.photoUnavailable : page ? `${page.title} · ${tf(copy.page, { n: index + 1, total: world!.pages.length })}` : ""}</p></footer>
     </div>
     {open && book.preparing ? <p role="status">{copy.preparing}</p> : null}
     <dialog ref={zoomDialog} className={`travel-passport__zoom travel-passport__zoom--${panel ?? "closed"}`} aria-label={panel === "detail" ? detail?.name : panel === "choose" ? copy.choosePhoto : copy.enlarge} onCancel={e => { e.preventDefault(); setPanel(null); }} onClick={e => { if (e.target === e.currentTarget) setPanel(null); }}>

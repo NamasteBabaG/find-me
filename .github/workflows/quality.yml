@@ -37,7 +37,10 @@ jobs:
           EMAIL_PROVIDER: console
           STORAGE_PROVIDER: local
           ANALYTICS_PROVIDER: none
-        run: npm run build
+        # Only this step's disposable SQLite DB; never a deployment database.
+        run: |
+          npx prisma db push --schema prisma/schema.prisma --skip-generate
+          npm run build
       - name: No generated source drift
         run: git diff --exit-code
       # No deployment credentials, customer DB or paid image provider in CI.

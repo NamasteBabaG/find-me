@@ -10,6 +10,9 @@ describe("reviewed release tooling", () => {
     const beforeBuild = workflow.split("      - name: Production build and private-asset audit")[0]!;
     for (const key of ["APP_ENV", "APP_URL", "DATABASE_URL", "PAYMENT_PROVIDER", "GENERATION_PROVIDER", "SESSION_SECRET"]) expect(beforeBuild).not.toContain(`${key}:`);
     expect(workflow).toContain("          APP_ENV: development");
+    const build = workflow.split("      - name: Production build and private-asset audit")[1]!.split("      - name: No generated source drift")[0]!;
+    expect(build).toContain("DATABASE_URL: file:./ci.db");
+    expect(build).toMatch(/npx prisma db push --schema prisma\/schema.prisma --skip-generate\r?\n          npm run build/);
   });
   it("requires a clean commit on a freshly verified remote, while allowing detached release snapshots", () => {
     const root = mkdtempSync(path.join(tmpdir(), "findme-release-guard-"));
