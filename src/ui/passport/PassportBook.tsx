@@ -7,7 +7,7 @@ import { arrowPage, swipePage } from "./book-navigation";
 import { PassportStamp } from "./StampMark";
 import "./passport.css";
 
-function Picture({ src, label }: { src: string; label: string }) {
+function Picture({ src, label, onFailure }: { src: string; label: string; onFailure: () => void }) {
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const { t } = useI18n();
@@ -18,7 +18,7 @@ function Picture({ src, label }: { src: string; label: string }) {
     const timer = setTimeout(() => { setAttempt(n => n + 1); setFailed(false); }, 1000 * (attempt + 1));
     return () => clearTimeout(timer);
   }, [failed, attempt]);
-  return failed ? <span className="travel-passport__photo-wait" role="status">{t.travelPassport.photoUnavailable}</span> : <img src={src} alt={label} onError={() => setFailed(true)} loading="lazy" decoding="async" />;
+  return failed ? <span className="travel-passport__photo-wait" role="status">{t.travelPassport.photoUnavailable}</span> : <img src={src} alt={label} onError={() => { setFailed(true); onFailure(); }} loading="eager" decoding="async" />;
 }
 
 function Chevron({ right }: { right: boolean }) {
@@ -32,18 +32,35 @@ export function PassportBook({ book, mode = "owner", onPhotoSelect, onPlay, rend
   const [worldId, setWorldId] = useState(book.worlds[0]?.id ?? ""), [pageId, setPageId] = useState("");
   const [cursorReady, setCursorReady] = useState<string | undefined>();
   const [busy, setBusy] = useState(false), [message, setMessage] = useState("");
+  const [imageFailed, setImageFailed] = useState(false), [imageEpoch, setImageEpoch] = useState(0);
+  const reader = useRef<HTMLElement>(null);
   const [detailId, setDetailId] = useState<string | null>(null), [panel, setPanel] = useState<"photo" | "choose" | "detail" | null>(null);
   const [turn, setTurn] = useState<{ direction: "next" | "previous"; page: PassportPageView } | null>(null);
   const reduced = useRef(false), turning = useRef(false);
   const animationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const coverButton = useRef<HTMLButtonElement>(null), zoomDialog = useRef<HTMLDialogElement>(null), heading = useRef<HTMLHeadingElement>(null);
   const gesture = useRef<{ x: number; y: number; at: number; pointer: number; captured: boolean } | null>(null), suppressClick = useRef(false);
-  const image = (src: string, label: string) => renderImage ? renderImage(src, label) : <Picture key={src} src={src} label={label} />;
+  const image = (src: string, label: string) => renderImage ? renderImage(src, label) : <Picture key={`${imageEpoch}:${src}`} src={src} label={label} onFailure={() => setImageFailed(true)} />;
   const world = book.worlds.find(w => w.id === worldId) ?? book.worlds[0];
   const page = world?.pages.find(p => p.id === pageId) ?? world?.pages[0];
   const index = page ? world!.pages.indexOf(page) : 0;
   const detail = page?.discoveries.find(item => item.id === detailId && item.collected);
   const foundCount = page?.discoveries.filter(item => item.collected).length ?? 0;
+
+  useEffect(() => {
+    // Warm only the fictional demo's visible spread as its cover approaches the
+    // viewport. Never fetch an owner's private album ahead of their interaction.
+    if (mode !== "demo" || renderImage || !reader.current || !page || typeof IntersectionObserver === "undefined") return;
+    const urls = [page.photoUrl, ...page.discoveries.filter(d => d.collected).map(d => d.imageUrl)]
+      .filter((url): url is string => Boolean(url) && /^\/demo\/passport-v1\/[a-f0-9]{64}\.webp$/.test(url!));
+    const observer = new IntersectionObserver(entries => {
+      if (!entries.some(entry => entry.isIntersecting)) return;
+      observer.disconnect();
+      for (const src of new Set(urls)) { const img = new window.Image(); img.decoding = "async"; img.src = src; void img.decode?.().catch(() => {}); }
+    }, { rootMargin: "240px" });
+    observer.observe(reader.current);
+    return () => observer.disconnect();
+  }, [mode, renderImage, page]);
 
   useEffect(() => {
     const query = window.matchMedia?.("(prefers-reduced-motion: reduce)");
@@ -118,11 +135,12 @@ export function PassportBook({ book, mode = "owner", onPhotoSelect, onPlay, rend
   }
   const coverArt = <><span className="travel-passport__eyebrow">FIND ME WORLDS</span><div className="travel-passport__crest" aria-hidden="true">✦</div><h2>{copy.title}</h2>{book.avatarUrl ? <div className="travel-passport__avatar">{image(book.avatarUrl, "")}</div> : null}<p className="travel-passport__name">{book.name}</p><p className="travel-passport__motto">{copy.subtitle}</p></>;
 
-  return <section className="travel-passport" aria-label={copy.title} data-mode={mode} data-open={open} dir={dir}>
+  return <section ref={reader} className="travel-passport" aria-label={copy.title} data-mode={mode} data-open={open} dir={dir}>
     {mode === "demo" ? <p className="travel-passport__demo">{copy.demo}</p> : null}
     <div className="travel-passport__reader">
       <header className="travel-passport__toolbar" inert={!open} aria-hidden={!open}>
         <button type="button" className="fm-btn fm-btn--ghost" onClick={() => { stopAnimation(); setOpen(false); requestAnimationFrame(() => coverButton.current?.focus({ preventScroll: true })); }}>{copy.close}</button>
+        {imageFailed ? <button type="button" className="fm-btn fm-btn--ghost" aria-label={copy.retryImages} title={copy.retryImages} onClick={() => { setImageFailed(false); setImageEpoch(n => n + 1); }}><span aria-hidden="true">↻</span></button> : null}
         {/* Worlds are the passport's dividers, so they look like dividers: index
             tabs standing on the head of the book, the current one joined to the
             paper. A <select> floating above the corner read as a form control

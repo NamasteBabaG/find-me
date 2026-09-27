@@ -11,3 +11,10 @@ export function boardPresentation(slug: string) {
 export function worldPresentation(world: string) {
   return boards.find(board => board.world === world);
 }
+
+/** A preview may represent a purchase only when it binds the exact scene art.
+ * Missing provenance fails closed: route-name equality alone is not enough. */
+export function presentationMatchesScene(slug: string, art: { base: string; sha256?: string } | undefined) {
+  const preview = boardPresentation(slug);
+  return Boolean(preview && art?.sha256 && preview.base === art.base && preview.sha256 === art.sha256);
+}

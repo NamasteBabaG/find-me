@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getContainer } from "@/services/container";
-import { worldsForDraft } from "@/services/create-flow.service";
+import { sceneVersionForDraft, worldsForDraft } from "@/services/create-flow.service";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
 import { PACKAGES, isPackageTier } from "@/domain/package";
 import { boardSlugs } from "@/domain/world";
@@ -9,7 +9,8 @@ import { pick } from "@/i18n";
 import { CreateFrame } from "../CreateLayout";
 import { currentDraft } from "../actions";
 import { ScenePicker } from "./ScenePicker";
-import { worldPresentation } from "../../../../content/home/board-presentation";
+import { boardPresentation, presentationMatchesScene } from "../../../../content/home/board-presentation";
+import { findScene } from "../../../../content/scenes";
 
 export async function generateMetadata() {
   const { t } = await getI18n();
@@ -32,12 +33,15 @@ export default async function CreateScenesPage() {
   // only skip ahead when the draft is already complete; otherwise the picker posts it.
   if (worlds.length === want && chosen.length === want) redirect("/checkout");
 
-  const options = worlds.map((w) => ({
+  const options = worlds.map((w) => {
+    const slug = boardSlugs(w)[0]!;
+    const scene = findScene(slug, sceneVersionForDraft(draft.styleVersion));
+    return {
     slug: w.slug,
     name: pick(w.name, locale),
     tagline: pick(w.tagline, locale),
-    thumbnail: worldPresentation(w.slug)?.thumbnail ?? w.map.artPortrait ?? w.map.art,
-  }));
+    thumbnail: presentationMatchesScene(slug, scene?.art) ? boardPresentation(slug)!.thumbnail : scene?.art.thumbnail ?? w.map.artPortrait ?? w.map.art,
+  }; });
   return (
     <CreateFrame width="mid" step={3} title={t.create.scenes.title} lead={t.create.scenes.lead} user={user} isAdmin={isAdminEmail(user?.email)}>
       <ScenePicker key={`${want}:${chosen.map(w => w.slug).join(",")}`} scenes={options} want={want} preselected={chosen.map((w) => w.slug)} />

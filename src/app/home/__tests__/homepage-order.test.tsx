@@ -16,9 +16,16 @@ vi.mock("../../../../content/scenes", () => ({ SCENE_CATALOG: [{ scene: { slug: 
 vi.mock("@/services/container", () => ({ getContainer: () => ({}) }));
 vi.mock("@/services/scene-catalog.service", () => ({ activeSceneSlugs: fixture.unusedActiveSceneRead }));
 vi.mock("@/services/world-catalog.service", () => ({
-  purchasableWorldSlugs: async () => ["public-world"],
   ownedWorldSlugs: async () => [],
   boardsOfWorlds: () => ["beach"],
+}));
+vi.mock("@/services/create-flow.service", () => ({
+  newDraftStyleVersion: () => "pinned-style",
+  sceneVersionForDraft: () => 10,
+  worldsForDraft: async (_c: unknown, style: string) => {
+    expect(style).toBe("pinned-style");
+    return [{ slug: "public-world" }];
+  },
 }));
 vi.mock("@/services/demo", () => ({ buildDemoConfig: fixture.buildDemoConfig }));
 vi.mock("@/lib/server/session", () => ({ currentUser: async () => null, isAdminEmail: () => false }));
@@ -82,7 +89,7 @@ describe("homepage composition", () => {
     expect(main.querySelectorAll('[data-section="Transformation"]')).toHaveLength(1);
     expect(main.querySelectorAll('[data-section="DemoSection"]')).toHaveLength(1);
     expect(fixture.buildDemoConfig).toHaveBeenCalledExactlyOnceWith("en", "beach");
-    // purchasableWorldSlugs already owns availability; a second read was discarded.
+    // Draft availability owns the catalogue; don't add an unversioned read.
     expect(fixture.unusedActiveSceneRead).not.toHaveBeenCalled();
     expect(fixture.demoConfig).toHaveBeenCalledTimes(1);
     expect(fixture.heroChild).toHaveBeenCalledTimes(1);

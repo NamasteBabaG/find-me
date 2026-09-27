@@ -166,9 +166,9 @@ export function Worlds({ t, carousel }: { t: Dictionary; carousel: CarouselWorld
             prev: w.prev,
             next: w.next,
             owned: w.owned,
-            opensAfter: w.opensAfter,
             inTheMaking: w.inTheMaking,
-            harder: w.harder,
+            available: w.available,
+            previewArt: w.previewArt,
             spotsAria: w.spotsAria,
           }}
         />

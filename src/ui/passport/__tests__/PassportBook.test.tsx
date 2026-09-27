@@ -6,6 +6,7 @@ import { I18nProvider } from "@/i18n/client";
 import { getDict } from "@/i18n";
 import type { PassportView } from "@/domain/passport/passport";
 import { PassportBook } from "../PassportBook";
+import { demoPassport } from "@/domain/passport/demo";
 
 const book: PassportView = { name: "Example", preparing: 0, worlds: [{ id: "world", title: "My world", pages: [1, 2, 3].map(n => ({
   id: `p${n}`, title: `Place ${n}`, state: n === 1 ? "stamped" : "locked", finds: n === 1 ? 3 : 0, stampIcon: "✦",
@@ -150,5 +151,38 @@ describe("passport book interaction", () => {
     expect(view.container.querySelectorAll(".travel-passport__items > li")).toHaveLength(6);
     fireEvent.click(screen.getByRole("button", { name: "Next page" })); finish();
     expect(screen.getByRole("heading", { name: "Place 2" })).toBeTruthy();
+  });
+  it("loads the visible spread eagerly and lets the reader retry after automatic retries expire", () => {
+    mount(); open(); finish();
+    expect(screen.getByRole("img", { name: "Place 1" }).getAttribute("loading")).toBe("eager");
+    for (const delay of [1000, 2000, 10000]) {
+      fireEvent.error(screen.getByRole("img", { name: "Place 1" }));
+      act(() => vi.advanceTimersByTime(delay));
+    }
+    fireEvent.click(screen.getByRole("button", { name: getDict("en").travelPassport.retryImages }));
+    expect(screen.getByRole("img", { name: "Place 1" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: getDict("en").travelPassport.stamped })).toBeTruthy();
+  });
+  it("warms only the public demo's first spread when its closed cover approaches the viewport", () => {
+    let notify: IntersectionObserverCallback = () => {};
+    const observe = vi.fn(), disconnect = vi.fn(), sources: string[] = [];
+    vi.stubGlobal("IntersectionObserver", class {
+      constructor(callback: IntersectionObserverCallback) { notify = callback; }
+      observe = observe; disconnect = disconnect;
+    });
+    vi.stubGlobal("Image", class { set src(value: string) { sources.push(value); } decode() { return Promise.resolve(); } });
+    mount({ mode: "demo", book: demoPassport("en") });
+    expect(sources).toEqual([]);
+    act(() => notify([{ isIntersecting: false }] as IntersectionObserverEntry[], {} as IntersectionObserver));
+    expect(sources).toEqual([]);
+    act(() => notify([{ isIntersecting: true }] as IntersectionObserverEntry[], {} as IntersectionObserver));
+    expect(sources).toHaveLength(3);
+    expect(sources.every(src => /^\/demo\/passport-v1\/[a-f0-9]{64}\.webp$/.test(src))).toBe(true);
+    expect(disconnect).toHaveBeenCalled();
+  });
+  it("does not prefetch private owner or capability media", () => {
+    const observer = vi.fn(); vi.stubGlobal("IntersectionObserver", observer);
+    mount({ mode: "owner" });
+    expect(observer).not.toHaveBeenCalled();
   });
 });

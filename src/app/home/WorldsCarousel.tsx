@@ -3,20 +3,7 @@
 import { useState } from "react";
 import { Reveal } from "./Reveal";
 
-/**
- * The worlds, one at a time, with arrows.
- *
- * A flat grid of every board said "here are twenty-seven places" and never said
- * "these are three worlds, and they are a ladder" — which is the thing a parent
- * is actually choosing between. One world on screen at a time, with its own
- * name and keepsake, makes the ladder visible; the worlds still being painted
- * sit in the same carousel so the shape of what is coming is part of the offer
- * instead of a bigger number in the price table.
- *
- * Nothing is behind glass. A world is shown whole — paintings, places, spots —
- * and one line under its name says what it is to this visitor: theirs already,
- * next on the journey, or still being painted.
- */
+/** Independent worlds, with explicit purchase availability and preview art. */
 
 export interface CarouselTile {
   key: string;
@@ -35,8 +22,9 @@ export interface CarouselWorld {
   upcoming: boolean;
   /** Already in this visitor's library. */
   owned: boolean;
-  /** Worlds are a ladder: the name of the world that comes before this one. */
-  opensAfter?: string;
+  available: boolean;
+  /** At least one displayed painting differs from the creation catalogue. */
+  previewArt: boolean;
   palette: { sky: string; ground: string; accent: string };
   tiles: CarouselTile[];
 }
@@ -46,9 +34,9 @@ export interface WorldsCopy {
   prev: string;
   next: string;
   owned: string;
-  opensAfter: string;
   inTheMaking: string;
-  harder: string;
+  available: string;
+  previewArt: string;
   spotsAria: string;
 }
 
@@ -78,17 +66,11 @@ export function WorldsCarousel({ worlds, copy }: { worlds: CarouselWorld[]; copy
         </button>
       </div>
 
-      {world.owned ? (
-        <p className="wc__lock">
-          <span className="fm-sticker-badge fm-sticker-badge--sun">✓ {copy.owned}</span>
-        </p>
-      ) : world.opensAfter ? (
-        <p className="wc__lock">
-          <span className="fm-badge fm-badge--sea">🧭 {fill(copy.opensAfter, { world: world.opensAfter })}</span>
-          {world.upcoming ? <span className="wc__soon">{copy.inTheMaking}</span> : null}
-          <span className="wc__soon">{copy.harder}</span>
-        </p>
-      ) : null}
+      <p className="wc__lock">
+        {world.owned ? <span className="fm-sticker-badge fm-sticker-badge--sun">✓ {copy.owned}</span> : null}
+        <span className="fm-badge fm-badge--sea">{world.available ? copy.available : copy.inTheMaking}</span>
+        {world.previewArt ? <span className="wc__soon">{copy.previewArt}</span> : null}
+      </p>
 
       <div className={`worlds${world.upcoming ? " worlds--upcoming" : ""}`}>
         {world.tiles.map((tile, i) => (
@@ -117,13 +99,12 @@ export function WorldsCarousel({ worlds, copy }: { worlds: CarouselWorld[]; copy
         ))}
       </div>
 
-      <div className="wc__dots" role="tablist">
+      <div className="wc__dots">
         {worlds.map((w, i) => (
           <button
             key={w.slug}
             type="button"
-            role="tab"
-            aria-selected={i === at}
+            aria-pressed={i === at}
             aria-label={w.name}
             className={`wc__dot${i === at ? " is-on" : ""}`}
             onClick={() => setAt(i)}

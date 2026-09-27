@@ -17,6 +17,7 @@ import { identityApprovedForDisplay } from "../board-wizard-identity-gate";
 import { publishGame } from "../../publish.service";
 import { ensurePlayerLink, resolvePlayToken } from "../../share-link.service";
 import { selectPackage } from "../../create-flow.service";
+import { verifyAssetSignature } from "../../asset.service";
 import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wizard";
 import type { LocalPatchHideDeps } from "../local-patch-hide";
 import { bill, boardPng, paintedCrop, paintedOk, PASSING_ANSWER, reply, seedApprovedGame } from "./local-patch-fixtures";
@@ -158,7 +159,16 @@ describe("the full local-patch world becomes a playable product", () => {
     } finally { await db.auditLog.update({ where: { id: purge.id }, data: { metaJson: purge.metaJson } }); }
     expect(await identityApprovedForDisplay(c, child)).toBe(true);
     const recomposed = await composeGameConfig(c, gameId);
-    expect(recomposed.scenes.flatMap(scene => scene.targets).map(target => target.sprite)).toEqual(config.scenes.flatMap(scene => scene.targets).map(target => target.sprite));
+    // Recomposition legitimately renews a URL across its ten-minute signing
+    // bucket. Verify both capabilities, then compare content and all geometry.
+    const [savedSprites, recomposedSprites] = [config, recomposed].map(value => value.scenes.flatMap(scene => scene.targets).map(target => {
+      const sprite = target.sprite;
+      if (sprite.kind !== "image") return sprite;
+      const url = new URL(sprite.url, c.appUrl), assetId = url.pathname.split("/").at(-1)!;
+      expect(verifyAssetSignature(c, assetId, url.searchParams.get("s"), url.searchParams.get("e"))).toBe(true);
+      return { ...sprite, url: url.pathname };
+    }));
+    expect(recomposedSprites).toEqual(savedSprites);
     await expect(persistGameConfig(c, gameId)).rejects.toThrow("fenced world finalizer");
     expect((await db.game.findUniqueOrThrow({ where: { id: gameId } })).configJson).toBe(game.configJson);
     for (let i = 0; i < 3; i++) {

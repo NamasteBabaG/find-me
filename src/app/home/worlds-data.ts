@@ -1,28 +1,18 @@
 import { allWorlds } from "../../../content/worlds";
 import { UPCOMING_WORLDS } from "../../../content/worlds/upcoming";
 import { findScene } from "../../../content/scenes";
-import { boardPresentation } from "../../../content/home/board-presentation";
+import { boardPresentation, presentationMatchesScene } from "../../../content/home/board-presentation";
 import { boardSlugs } from "@/domain/world";
 import { pick, type Locale } from "@/i18n/config";
 import { getDict } from "@/i18n";
 import type { CarouselWorld } from "./WorldsCarousel";
 
-/**
- * The worlds as the shop shows them: the finished ones first, then the ones
- * being painted, all in one carousel.
- *
- * Every world is on show — its paintings, its places, its hiding spots. The
- * blur and the padlock that used to sit on the second and third worlds were
- * hiding the thing being sold; what a visitor needs to know is said in words
- * instead. Three facts, kept apart: a world you own ("in your library"), a
- * world you can buy next (worlds are a ladder, so each one names the one
- * before it), and a world still being painted. Ownership is read from the
- * database and passed in, so it survives closing the tab.
- */
-export function carouselWorlds(locale: Locale, owned: readonly string[] = []): CarouselWorld[] {
+/** Painted previews stay visible, but availability comes from the same pinned
+ * catalogue as creation. Worlds are independent, never an unlock ladder. */
+export function carouselWorlds(locale: Locale, owned: readonly string[] = [], offer: { available: readonly string[]; sceneVersion?: number } = { available: [] }): CarouselWorld[] {
   const taglines = getDict(locale).home.worlds.taglines;
   const real = allWorlds();
-  const out: CarouselWorld[] = real.map((world, i) => {
+  const out: CarouselWorld[] = real.map((world) => {
     const isOwned = owned.includes(world.slug);
     return {
       slug: world.slug,
@@ -31,7 +21,8 @@ export function carouselWorlds(locale: Locale, owned: readonly string[] = []): C
       glyph: world.collectible.icon,
       upcoming: false,
       owned: isOwned,
-      opensAfter: i > 0 && !isOwned ? pick(real[i - 1]!.name, locale) : undefined,
+      available: offer.available.includes(world.slug),
+      previewArt: boardSlugs(world).some(slug => boardPresentation(slug) && !presentationMatchesScene(slug, findScene(slug, offer.sceneVersion)?.art)),
       palette: world.map.palette,
       tiles: boardSlugs(world).map((slug) => {
         const scene = findScene(slug);
@@ -47,13 +38,6 @@ export function carouselWorlds(locale: Locale, owned: readonly string[] = []): C
     };
   });
 
-  const previous = (order: number): string => {
-    const before = [...real.map((w) => ({ order: w.order, name: pick(w.name, locale) })), ...UPCOMING_WORLDS.map((w) => ({ order: w.order, name: pick(w.name, locale) }))]
-      .filter((w) => w.order < order)
-      .sort((a, b) => b.order - a.order);
-    return before[0]?.name ?? "";
-  };
-
   for (const world of [...UPCOMING_WORLDS].sort((a, b) => a.order - b.order)) {
     out.push({
       slug: world.slug,
@@ -62,7 +46,8 @@ export function carouselWorlds(locale: Locale, owned: readonly string[] = []): C
       glyph: world.glyph,
       upcoming: true,
       owned: false,
-      opensAfter: previous(world.order),
+      available: false,
+      previewArt: true,
       palette: world.palette,
       tiles: world.places.map((place, i) => {
         // Real art if it has been painted; the place name alone if it has not.

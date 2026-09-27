@@ -41,10 +41,11 @@ export function gameLocale(game: { locale: string }): Locale {
 
 export async function createDraft(c: Container, ownerId: string | null, locale: Locale): Promise<{ gameId: string; draftToken: string }> {
   const draftToken = newDraftToken();
+  const styleVersion = newDraftStyleVersion();
   // Pin the QA engine before the first generated preview. Existing games and
   // production drafts retain their own engine; no later flag can change this one.
   const game = await c.db.game.create({ data: { id: newId("game"), draftToken, ownerId, status: "DRAFT", locale,
-    ...(env().APP_ENV === "qa" ? { styleVersion: LOCAL_PATCH_STYLE } : {}) } });
+    ...(styleVersion ? { styleVersion } : {}) } });
   c.analytics.track("create_started", {});
   return { gameId: game.id, draftToken };
 }
@@ -160,11 +161,19 @@ async function releaseValidatingDraft(c: Container, gameId: string, error: unkno
 }
 
 /** Offer only complete worlds supported by the draft's pinned rendering engine. */
-export async function worldsForDraft(c: Container, styleVersion: string) {
-  return purchasableWorlds(c, styleVersion === LOCAL_PATCH_STYLE ? COLLECTION_SCENE_VERSION : undefined);
+export function newDraftStyleVersion() {
+  return env().APP_ENV === "qa" ? LOCAL_PATCH_STYLE : "";
 }
 
-export async function availablePackages(c: Container, styleVersion = env().APP_ENV === "qa" ? LOCAL_PATCH_STYLE : "") {
+export function sceneVersionForDraft(styleVersion: string) {
+  return styleVersion === LOCAL_PATCH_STYLE ? COLLECTION_SCENE_VERSION : undefined;
+}
+
+export async function worldsForDraft(c: Container, styleVersion = newDraftStyleVersion()) {
+  return purchasableWorlds(c, sceneVersionForDraft(styleVersion));
+}
+
+export async function availablePackages(c: Container, styleVersion = newDraftStyleVersion()) {
   const tiers = purchasableTiers((await worldsForDraft(c, styleVersion)).length);
   return env().APP_ENV === "qa" || styleVersion === LOCAL_PATCH_STYLE ? tiers.filter(p => p.tier === "ONE_WORLD") : tiers;
 }
@@ -243,7 +252,7 @@ export async function selectWorlds(c: Container, gameId: string, slugs: string[]
 
 /** Metadata, scene versions and status are one fenced write, never delete-then-hope. */
 async function replaceDraftSelection(c: Container, game: DraftGame, slugs: string[], tier?: PackageTier): Promise<boolean> {
-  const version = game.styleVersion === LOCAL_PATCH_STYLE ? COLLECTION_SCENE_VERSION : undefined;
+  const version = sceneVersionForDraft(game.styleVersion);
   // Resolve every version before touching the existing selection.
   const data = slugs.map((slug, i) => ({ id: newId("gsc"), gameId: game.id, sceneSlug: slug, sceneVersion: sceneBySlug(slug, version).version, orderIndex: i }));
   try {
