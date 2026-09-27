@@ -68,6 +68,11 @@ bulk-render readiness.
 
 ## Still open / next run
 
+**Release update:** `0202f897` subsequently passed GitHub run `36351599984`
+and was deployed/promoted to QA only. Exact alias, build and commit evidence
+is in `QA_CHECKPOINT_RELEASE_20260928.md`. The following paragraph describes
+the original correction pass, before that separate release step.
+
 Live QA image responses still require a normal authenticated session. No
 password bypass, no live database write, no paid render and no alias promotion
 occurred in this pass. Last known QA remains `6b38de99` until separately verified

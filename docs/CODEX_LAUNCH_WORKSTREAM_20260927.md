@@ -2,6 +2,13 @@
 
 ## Release truth
 
+**Update 2026-09-28:** QA now runs `0202f897`, deployment
+`dpl_96j8NnrCSwtWWvDJexshWY6EGtuT`, after passing CI and a clean guarded
+deployment. Alias and REST commit metadata verified. See
+`QA_CHECKPOINT_RELEASE_20260928.md` for exact evidence and limits. No public
+production promotion, authenticated live-game acceptance or F-A approval.
+The paragraph below records the earlier checkpoint's starting state.
+
 This is an implementation checkpoint, **not launch approval**. At the start of
 this turn the QA alias was verified through Vercel as deployment
 `dpl_UpC95RDp4bt8dBtbusYE9dwmNPEc`, code `6b38de99`. No alias, production,
