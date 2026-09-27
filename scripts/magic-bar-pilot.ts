@@ -20,8 +20,10 @@ import { WorldBudget, WorldBudgetError, auditWorldBudget, type WorldBudgetReposi
 import { renderLocalPatchHide } from "../src/services/generation/local-patch-render";
 import { SEAM_LIMITS } from "../src/services/generation/local-patch-seam";
 import { normalizeBoardWizardIdentity } from "../src/services/generation/board-wizard-identity";
+import { prepareLocalPatchIdentityReferences } from "../src/services/generation/local-patch-identity-reference";
 import { buyLocalPatch, localPatchImagePolicyForVersion, localPatchRenderPolicySha256, LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE } from "../src/infra/generation/openai-local-patch";
-import { LOCAL_PATCH_AGE_PROMPT_VERSION, type LocalPatchRepairCheck } from "../src/services/generation/local-patch-prompt";
+import { LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION, type LocalPatchRepairCheck } from "../src/services/generation/local-patch-prompt";
+import { BOARD_PAINT_SAMPLE, assertBoardPaintSample } from "./lib/board-paint-sample";
 
 const hash = (bytes: Buffer | string) => createHash("sha256").update(bytes).digest("hex");
 
@@ -29,12 +31,14 @@ async function main() {
   // Explicit staging selector. No new transport or alternate paid ledger path:
   // both pilots still use renderLocalPatchHide and retained purchaseOnce receipts.
   const args = process.argv.slice(2);
+  const boardPaintSample = args[0] === '--board-paint-sample';
+  if (boardPaintSample) args.shift();
   const twoWorlds = args[0] === '--two-worlds';
   const productionSlug = twoWorlds ? (args.shift(), args.shift()) : undefined;
   const journeyRefresh = args[0] === "--journey-refresh";
   if (journeyRefresh) args.shift();
-  const CAP = twoWorlds ? TWO_WORLD_CAP_MICRO_USD : 2_000_000;
-  const WORLD = twoWorlds ? TWO_WORLD_RELEASE_ID : journeyRefresh ? "journey-refresh-bar-amazon-20260919-v1" : "magic-bar-three-20260918-v1";
+  const CAP = boardPaintSample ? BOARD_PAINT_SAMPLE.capMicroUsd : twoWorlds ? TWO_WORLD_CAP_MICRO_USD : 2_000_000;
+  const WORLD = boardPaintSample ? BOARD_PAINT_SAMPLE.id : twoWorlds ? TWO_WORLD_RELEASE_ID : journeyRefresh ? "journey-refresh-bar-amazon-20260919-v1" : "magic-bar-three-20260918-v1";
   const catalog = journeyRefresh ? JOURNEY_REFRESH_CATALOG : MAGIC_PILOT_CATALOG;
   const patchBoards = twoWorlds ? TWO_WORLD_PATCH_BOARDS.filter(b=>b.board===productionSlug) : journeyRefresh ? JOURNEY_REFRESH_PATCH_BOARDS : MAGIC_PILOT_PATCH_BOARDS;
   if(twoWorlds && patchBoards.length!==1) throw Error('Select one authored production board after --two-worlds');
@@ -43,6 +47,7 @@ async function main() {
   const attempt = Number(attemptText);
   if (extra.length || !["--dry-run", "--render"].includes(phase) || ![1, 2, 3].includes(attempt)
     || phase === "--dry-run" && target || phase === "--render" && !target) throw Error("Use --dry-run OR --render <hide-id> [1|2|3]");
+  if (boardPaintSample) assertBoardPaintSample({ twoWorlds, slug: productionSlug, phase, target, attempt });
   const prior = path.resolve("../adventure-three-boards-20260914/storage/adventure-bar-20260914");
   const previousInputs = readFileSync(path.join(prior, "inputs.json"));
   const oldReview = JSON.parse(readFileSync(path.join(prior, "identity-review.json"), "utf8"));
@@ -51,7 +56,10 @@ async function main() {
   if (oldReview.accepted !== true || oldReview.identitySha256 !== hash(identitySheet)
     || oldReview.inputsSha256 !== hash(previousInputs)
     || JSON.parse(previousInputs.toString()).child.photoSha256 !== hash(originalPhoto)) throw Error("Bar's reviewed identity/source binding changed");
-  const identity = (await normalizeBoardWizardIdentity(identitySheet)).png;
+  // The sample must match production's reference preparation, not the older
+  // pilot's silhouette normalization. Neither branch modifies the saved sheet.
+  const productionReferences = boardPaintSample ? await prepareLocalPatchIdentityReferences(identitySheet, 10) : null;
+  const identity = productionReferences?.identityPng ?? (await normalizeBoardWizardIdentity(identitySheet)).png;
   const avatar = readFileSync(path.join(prior, "avatar.png"));
   const policy = localPatchImagePolicyForVersion(10), policyHash = localPatchRenderPolicySha256(policy);
   const boards = await Promise.all(patchBoards.map(async board => {
@@ -66,11 +74,14 @@ async function main() {
     }
     return { board, art, sourceSha256: hash(art) };
   }));
-  const dir = path.resolve(twoWorlds ? `${TWO_WORLD_STORAGE}/${productionSlug}` : journeyRefresh ? "storage/journey-refresh-bar-20260919" : "storage/magic-bar-20260918"); mkdirSync(dir, { recursive: true });
+  const dir = path.resolve(boardPaintSample ? BOARD_PAINT_SAMPLE.storage : twoWorlds ? `${TWO_WORLD_STORAGE}/${productionSlug}` : journeyRefresh ? "storage/journey-refresh-bar-20260919" : "storage/magic-bar-20260918"); mkdirSync(dir, { recursive: true });
   const serialized = JSON.stringify({ version: WORLD, contentVersion: 10, capMicroUsd: CAP,
     identitySha256: hash(identity), identitySheetSha256: hash(identitySheet), avatarSha256: hash(avatar),
     sourcePhotoSha256: hash(originalPhoto), ageYears: 5, reusedIdentity: true,
-    policyHash, promptVersion: LOCAL_PATCH_AGE_PROMPT_VERSION,
+    policyHash, promptVersion: boardPaintSample ? LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION : LOCAL_PATCH_AGE_PROMPT_VERSION,
+    ...(boardPaintSample ? { paintRecipe: "board-paint-v1", scope: "production-render-boundary-not-game-runner", maxImageCalls: 3,
+      judgeIdentitySha256: hash(productionReferences!.judgeIdentityPng), policy,
+      engineSources: Object.fromEntries(["src/services/generation/local-patch-prompt.ts", "src/services/generation/local-patch-render.ts", "src/services/generation/local-patch-identity-reference.ts", "src/infra/generation/openai-local-patch.ts"].map(file => [file, hash(readFileSync(file))])) } : {}),
     boards: boards.map(({ board, sourceSha256 }) => ({ board, sourceSha256 })), ...(twoWorlds ? {} : {catalog}),
   }, null, 2);
   const inputsFile = path.join(dir, "inputs.json");
@@ -101,7 +112,7 @@ async function main() {
     ...(repair?.placementOverride ? { placement: { ...originalHide.placement, ...repair.placementOverride } } : {}),
   });
   assertPlaceable({...entry.board,hides:entry.board.hides.map(h=>h.id===hide.id?hide:h)},{width:3840,height:2160});
-  const dbPath = path.resolve(twoWorlds ? `${TWO_WORLD_STORAGE}/purchases.sqlite` : path.join(dir, "purchases.sqlite")), fresh = !existsSync(dbPath);
+  const dbPath = path.resolve(twoWorlds && !boardPaintSample ? `${TWO_WORLD_STORAGE}/purchases.sqlite` : path.join(dir, "purchases.sqlite")), fresh = !existsSync(dbPath);
   const db = new PrismaClient({ datasources: { db: { url: `file:${dbPath.replaceAll("\\", "/")}` } } });
   try {
     if (fresh) await applyTestSchema(db, process.cwd());
@@ -112,10 +123,24 @@ async function main() {
     } })) };
     const ledger = new WorldBudget(bounded), store = new PrismaRetainedPurchaseStore(db);
     console.log(JSON.stringify({ phase: "render-start", hide: target, attempt }));
-    const result = await renderLocalPatchHide({ ledger, store, renderPolicySha256: policyHash, render: input => buyLocalPatch(key, input, { policy }) }, {
+    const result = await renderLocalPatchHide({ ledger, store, renderPolicySha256: policyHash, render: input => {
+      if (boardPaintSample) {
+        // Transparent evidence capture; no prompt/ref mutation or second transport.
+        const prefix = path.join(dir, `${target}-attempt-${attempt}`);
+        const evidence = JSON.stringify({ prompt: input.prompt, requestKey: input.requestKey, referenceMode: input.referenceMode,
+          styleSha256: hash(input.stylePng), identitySha256: hash(input.identityPng), maskSha256: hash(input.maskPng), policyHash }, null, 2);
+        const file = `${prefix}-request.json`;
+        if (existsSync(file) && readFileSync(file, 'utf8') !== evidence) throw Error('Sample request evidence changed');
+        if (!existsSync(file)) writeFileSync(file, evidence, { flag: 'wx' });
+        writeFileSync(`${prefix}-before.png`, input.stylePng);
+        writeFileSync(`${prefix}-mask.png`, input.maskPng);
+      }
+      return buyLocalPatch(key, input, { policy });
+    } }, {
       worldId: WORLD, contentVersion: 10, board: entry.board, hide,
+      ...(boardPaintSample ? { paintRecipe: "board-paint-v1" as const, expectedPromptVersion: LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION } : {}),
       composedPng: await sharp(entry.art).png().toBuffer(), identityPng: identity,
-      judgeIdentityPng: await sharp(identity).resize(256, 256, { fit: "inside" }).png().toBuffer(),
+      judgeIdentityPng: productionReferences?.judgeIdentityPng ?? await sharp(identity).resize(256, 256, { fit: "inside" }).png().toBuffer(),
       referenceMode: LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, ageYears: 5, attempt,
       repairChecks: repair?.checks as LocalPatchRepairCheck[] | undefined, apiKey: key,
     });

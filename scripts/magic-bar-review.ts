@@ -10,6 +10,8 @@ import { PrismaClient } from "@prisma/client";
 import { MAGIC_PILOT_PATCH_BOARDS } from "../content/adventures/magic-pilot";
 import { JOURNEY_REFRESH_PATCH_BOARDS } from "../content/adventures/journey-refresh-pilot";
 import { TWO_WORLD_PATCH_BOARDS, TWO_WORLD_RELEASE_ID, TWO_WORLD_STORAGE, TWO_WORLD_CAP_MICRO_USD } from '../content/adventures/two-worlds-production';
+import { BOARD_PAINT_SAMPLE, assertBoardPaintSample } from './lib/board-paint-sample';
+import { LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION } from '../src/services/generation/local-patch-prompt';
 import { cropOf, maskForHide } from "../src/domain/scene/local-patch-hides";
 import { PrismaWorldBudgetStore } from "../src/infra/db/prisma-world-budget-store";
 import { CasWorldBudgetRepository } from "../src/infra/db/world-budget-repository";
@@ -23,18 +25,25 @@ import { judgeLocalPatchBoard, localPatchBoardJudgeSettings, localPatchBoardJudg
 
 const hash = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
 async function main() {
-  const args = process.argv.slice(2), journeyRefresh = args[0] === "--journey-refresh";
+  const args = process.argv.slice(2);
+  const boardPaintSample = args[0] === '--board-paint-sample';
+  if (boardPaintSample) args.shift();
+  const journeyRefresh = args[0] === "--journey-refresh";
   const twoWorlds = args[0] === '--two-worlds';
   if(twoWorlds)args.shift();
   if (journeyRefresh) args.shift();
   const [slug, vector, ...extra] = args, attempts = vector?.split(",").map(Number);
   const board = (twoWorlds ? TWO_WORLD_PATCH_BOARDS : journeyRefresh ? JOURNEY_REFRESH_PATCH_BOARDS : MAGIC_PILOT_PATCH_BOARDS).find(b => b.board === slug);
   if (!board || extra.length || attempts?.length !== 3 || attempts.some(a => ![1, 2, 3].includes(a))) throw Error("Use <board-slug> <attempt1,attempt2,attempt3>");
-  const dir = path.resolve(twoWorlds ? `${TWO_WORLD_STORAGE}/${slug}` : journeyRefresh ? "storage/journey-refresh-bar-20260919" : "storage/magic-bar-20260918"), inputBytes = readFileSync(path.join(dir, "inputs.json"));
+  if (boardPaintSample) {
+    assertBoardPaintSample({ twoWorlds, slug, phase: '--dry-run', attempt: 1 });
+    if (vector !== '1,1,1') throw Error('Sample review only permits the approved first attempts');
+  }
+  const dir = path.resolve(boardPaintSample ? BOARD_PAINT_SAMPLE.storage : twoWorlds ? `${TWO_WORLD_STORAGE}/${slug}` : journeyRefresh ? "storage/journey-refresh-bar-20260919" : "storage/magic-bar-20260918"), inputBytes = readFileSync(path.join(dir, "inputs.json"));
   const inputs = JSON.parse(inputBytes.toString()), inputsSha256 = hash(inputBytes);
   const pinned = inputs.boards.find((b: { board: { board: string } }) => b.board.board === slug);
   const original = readFileSync(board.art), identity = readFileSync(path.join(dir, "identity-normalized.png"));
-  if (inputs.capMicroUsd !== (twoWorlds ? TWO_WORLD_CAP_MICRO_USD : 2_000_000) || inputs.version !== (twoWorlds ? TWO_WORLD_RELEASE_ID : journeyRefresh ? "journey-refresh-bar-amazon-20260919-v1" : "magic-bar-three-20260918-v1") || !pinned
+  if (inputs.capMicroUsd !== (boardPaintSample ? BOARD_PAINT_SAMPLE.capMicroUsd : twoWorlds ? TWO_WORLD_CAP_MICRO_USD : 2_000_000) || inputs.version !== (boardPaintSample ? BOARD_PAINT_SAMPLE.id : twoWorlds ? TWO_WORLD_RELEASE_ID : journeyRefresh ? "journey-refresh-bar-amazon-20260919-v1" : "magic-bar-three-20260918-v1") || !pinned
     || JSON.stringify(pinned.board) !== JSON.stringify(board) || hash(original) !== pinned.sourceSha256
     || hash(identity) !== inputs.identitySha256) throw Error("Pinned pilot evidence changed");
   const key = process.env.OPENAI_API_KEY;
@@ -44,6 +53,7 @@ async function main() {
     const prefix = path.join(dir, `${hide.id}-attempt-${attempts[i]}`);
     const technical = JSON.parse(readFileSync(`${prefix}.json`, "utf8")), bytes = readFileSync(`${prefix}.png`);
     if (!technical.accepted || technical.costUnknown || technical.inputsSha256 !== inputsSha256 || technical.sha256 !== hash(bytes)) throw Error(`Unusable candidate: ${hide.id}`);
+    if (boardPaintSample && (inputs.promptVersion !== LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION || technical.promptVersion !== inputs.promptVersion)) throw Error('Sample prompt provenance changed');
     patches[hide.id] = hash(bytes);
     const crop = cropOf(hide), left = Math.max(0, crop.left - 64), top = Math.max(0, crop.top - 64);
     const context = { left, top, width: Math.min(3840, crop.left + crop.width + 64) - left, height: Math.min(2160, crop.top + crop.height + 64) - top };
@@ -60,10 +70,11 @@ async function main() {
   }));
   const request: LocalPatchBoardJudgeRequest = { boardId: board.board, contentVersion: 10, hides,
     boardPng: await sharp(original).resize(1536, 1024, { fit: "inside" }).png().toBuffer(),
-    identityPng: await sharp(identity).resize(256, 256, { fit: "inside" }).png().toBuffer() };
+    identityPng: await sharp(identity).resize(boardPaintSample ? 512 : 256, boardPaintSample ? 512 : 256, { fit: "inside", ...(boardPaintSample ? { withoutEnlargement: true } : {}) }).png().toBuffer() };
+  if (boardPaintSample && hash(request.identityPng) !== inputs.judgeIdentitySha256) throw Error('Sample judge identity changed');
   const settings = localPatchBoardJudgeSettings(10), wireHashes = localPatchBoardJudgeImages(request).map(hash);
   const fingerprint = hash(JSON.stringify({ inputsSha256, patches, settings, prompt: localPatchBoardJudgePrompt(request), labels: localPatchBoardJudgeImageLabels(request), wireHashes }));
-  const db = new PrismaClient({ datasources: { db: { url: `file:${path.resolve(twoWorlds ? `${TWO_WORLD_STORAGE}/purchases.sqlite` : path.join(dir, "purchases.sqlite")).replaceAll("\\", "/")}` } } });
+  const db = new PrismaClient({ datasources: { db: { url: `file:${path.resolve(twoWorlds && !boardPaintSample ? `${TWO_WORLD_STORAGE}/purchases.sqlite` : path.join(dir, "purchases.sqlite")).replaceAll("\\", "/")}` } } });
   try {
     const repo = new CasWorldBudgetRepository(new PrismaWorldBudgetStore(db));
     const bounded: WorldBudgetRepository = { transactWorld: (id, work) => repo.transactWorld(id, tx => work({ ...tx, createRequest: async row => {
