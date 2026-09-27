@@ -101,6 +101,11 @@ are consolidated, and the CI build initializes only its disposable SQLite
 schema. This closes neither the authenticated QA image investigation nor F-A.
 Check the response document for current gate/release status before deploying.
 
+Further bounded follow-up: `CODEX_DIAGNOSTIC_GATES_20260928.md` records a fixed
+false-success exit status in the public-image probe and a read-only cron
+observation (29 consecutive 200 GETs, about 1.9–2.8s). Neither resolves live
+image diagnosis or the historical timeout under actual generation load.
+
 | Order | Work | Acceptance / dependency |
 |---|---|---|
 | 1 | Live demo-image fault | Normal authenticated QA image responses, MIME/hash/timing and browser retry; do not call preload a root-cause fix. |

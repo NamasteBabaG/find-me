@@ -25,5 +25,8 @@ for (const url of [...Object.values(assets.photos), ...Object.values(assets.disc
   result.push({ url, status: response.status, type: response.headers.get('content-type'), bytes: bytes.length,
     ms: Math.round(performance.now() - started), hashMatches: matches, cache: response.headers.get('cache-control') });
 }
-console.log(JSON.stringify({ origin, checked: result.length, passed: result.every(r => r.status === 200 && r.hashMatches && r.type?.startsWith('image/webp')), result }, null, 2));
-if (result.some(r => r.status !== 200 || !r.hashMatches)) process.exitCode = 1;
+// The JSON verdict and the shell gate must use the same complete contract.
+// Media types are case-insensitive; parameters do not change their essence.
+const passed = result.every(r => r.status === 200 && r.hashMatches && r.type?.split(';', 1)[0].trim().toLowerCase() === 'image/webp');
+console.log(JSON.stringify({ origin, checked: result.length, passed, result }, null, 2));
+if (!passed) process.exitCode = 1;
