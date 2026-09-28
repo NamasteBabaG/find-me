@@ -1,3 +1,4 @@
+import { childBodyDirection } from "../../domain/child-body";
 import sharp from "sharp";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
@@ -25,10 +26,10 @@ export const IDENTITY_GATE_ACTION = "board-wizard:identity-style-reviewed";
 export const IDENTITY_SELECTION_POLICY = "identity-best-of-two/v1";
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 export const identityProvenanceSchema = z.object({
-  promptVersion: z.enum([LEGACY_QA_CHARACTER_PROMPT_VERSION, QA_CHARACTER_PROMPT_VERSION]),
+  promptVersion: z.enum([LEGACY_QA_CHARACTER_PROMPT_VERSION, QA_CHARACTER_PROMPT_VERSION, "character-v5-refreshed-identity-body"]),
   quality: z.literal("medium"), photoAssetId: z.string(), photoSha256: digest,
   crop: z.unknown(), ageYears: z.number().int().min(2).max(10),
-  style: z.object({ version: z.enum(["board-matched-identity/v1", "board-matched-identity/v2"]), catalogSha256: digest, atlasSha256: digest }).strict(),
+  style: z.object({ version: z.enum(["board-matched-identity/v1", "board-matched-identity/v2", "board-matched-identity/v3"]), catalogSha256: digest, atlasSha256: digest }).strict(),
   repair: z.object({ policy: z.literal(IDENTITY_SELECTION_POLICY), feedbackSha256: digest }).strict().optional(),
 }).strict().refine(p => p.promptVersion === qaCharacterPromptVersion(p.style.version), "Identity prompt/style versions differ");
 export type IdentityProvenance = z.infer<typeof identityProvenanceSchema>;
@@ -46,7 +47,7 @@ export const identityGateReceiptSchema = z.object({ version: z.enum([LEGACY_IDEN
   requestId: z.string().nullable(), costMicroUsd: z.number().int().nonnegative(), usage: z.record(z.number()).nullable(),
   model: z.enum([BOARD_JUDGE_MODEL, "gpt-5.6-luna"]), effort: z.enum(["high", "low"]), prompt: z.string(),
 }).strict().refine(r => r.version === ADVISORY_IDENTITY_GATE_VERSION || r.version === AGE_IDENTITY_GATE_VERSION
-  ? r.provenance.style.version === "board-matched-identity/v2" && r.model === advisorySettings.model && r.effort === "low"
+  ? ["board-matched-identity/v2", "board-matched-identity/v3"].includes(r.provenance.style.version) && r.model === advisorySettings.model && r.effort === "low"
   : r.version === (r.provenance.style.version === "board-matched-identity/v1" ? LEGACY_IDENTITY_GATE_VERSION : IDENTITY_GATE_VERSION)
     && r.model === BOARD_JUDGE_MODEL && r.effort === "high", "Identity review/style/model versions differ")
   .refine(r => r.imageHashes.length === (r.comparison ? 5 : 3) && (!r.comparison || r.version === AGE_IDENTITY_GATE_VERSION), "Invalid comparison images/policy")
@@ -123,16 +124,16 @@ export async function reviewBoardWizardIdentity(deps: {
       await prepareCharacterPhoto(input.photo, null, 1024));
   }
   const advisory = isLocalPatchAdvisoryVersion(input.contentVersion);
-  demand(!advisory || provenance.style.version === "board-matched-identity/v2", "New games require the source-backed board-face style contract");
+  demand(!advisory || ["board-matched-identity/v2", "board-matched-identity/v3"].includes(provenance.style.version), "New games require the source-backed board-face style contract");
   const version = isLocalPatchAgeVersion(input.contentVersion) ? AGE_IDENTITY_GATE_VERSION
     : advisory ? ADVISORY_IDENTITY_GATE_VERSION : provenance.style.version === "board-matched-identity/v1" ? LEGACY_IDENTITY_GATE_VERSION : IDENTITY_GATE_VERSION;
   const settings = advisory ? advisorySettings : { model: BOARD_JUDGE_MODEL, effort: "high", maxOutputTokens: BOARD_JUDGE_MAX_TOKENS } as const;
   const comparison = input.compareWith ? { firstIdentityAssetId: input.compareWith.identityAssetId,
     firstSheetSha256: sha256Bytes(input.compareWith.sheet), preferredCandidate: null } : undefined;
-  const prompt = identityGatePrompt(provenance.ageYears, version) + (comparison
+  const prompt = identityGatePrompt(provenance.ageYears, version) + (input.contentVersion === 11 ? "\n" + childBodyDirection(provenance.ageYears) + "\nThe atlas shows original scene contexts, not enlarged face tiles. Photo alone establishes facial identity. Explicitly compare facial geometry and hair against the photo; do not accept an atlas bystander lookalike. Report identity and body age failures separately, with concrete visible evidence." : "") + (comparison
     ? "\nAlso compare TWO candidates directly: image2 is the SECOND (new) candidate, image4 is the FIRST candidate, image5 is the uncropped source photo for missing facial context. Image1 selects the child when the full photo contains other people. Your checks describe the SECOND candidate. Add preferredCandidate: first|second to the JSON. Choose the more recognizable likeness to the source child (face geometry, eye spacing/size, nose, mouth, hair shape/colour); do not reward photographic realism or a generic cute face. Both must remain illustrated. Use age-appropriate proportions as a tie-breaker. Prefer first if genuinely tied. Give concrete comparison evidence in reason. This choice is advisory and bounded to these two images, not a request for more attempts."
     : ""), imageHashes = images.map(sha256Bytes);
-  const requestKey = comparison ? "wizard:identity-style:2" : IDENTITY_GATE_KEY;
+  const requestKey = identityReviewRequestKey({ identityAssetId: input.identityAssetId, provenance, comparison });
   const sheetSha256 = sha256Bytes(input.sheet);
   const fingerprint = boardConditioningHash({ version, identityAssetId: input.identityAssetId, sheetSha256, provenance,
     model: settings.model, effort: settings.effort, maxTokens: settings.maxOutputTokens, serviceTier: "default", prompt, imageHashes,
@@ -201,7 +202,7 @@ export async function reviewBoardWizardIdentity(deps: {
 }
 
 async function validateIdentityGateBill(budget: WorldBudget, gameId: string, receipt: IdentityGateReceipt) {
-  const charge = await budget.readRequest(worldId(gameId), receipt.comparison ? "wizard:identity-style:2" : IDENTITY_GATE_KEY);
+  const charge = await budget.readRequest(worldId(gameId), identityReviewRequestKey(receipt));
   demand(charge?.operationFingerprint === receipt.fingerprint, "Review reservation does not match its receipt");
   if (charge.state === "settled" || charge.state === "linked") {
     demand(charge.evidence.providerRequestId === receipt.requestId && charge.evidence.amountMicroUsd === receipt.costMicroUsd
@@ -260,6 +261,7 @@ export function identityReceiptReadyForPublication(value: unknown, contentVersio
   const receipt = parsed.data;
   // A bounded automated choice is not a fabricated visual pass. Keep the raw
   // verdict, but do not ask a parent to resolve subjective likeness/age doubt.
+  if (contentVersion === 11 && (receipt.provenance.style.version !== "board-matched-identity/v3" || receipt.checks?.identity !== "pass" || receipt.checks?.age !== "pass")) return false;
   if (isLocalPatchAgeVersion(contentVersion) && receipt.automaticSelection) return receipt.version === AGE_IDENTITY_GATE_VERSION
     && !!receipt.requestId && !!receipt.usage && receipt.costMicroUsd > 0
     && receipt.checks?.sheetLayout === "pass";
@@ -347,8 +349,13 @@ export async function requireBoardWizardIdentityApproval(c: Container, budget: W
   demand(photo.status === "READY" && !photo.deletedAt && sha256Bytes(await c.storage.get(photo.storagePath)) === receipt.provenance.photoSha256, "Approved input photo changed");
   await validateIdentityGateBill(budget, input.gameId, receipt);
   if (isLocalPatchAdvisoryVersion(input.contentVersion)) {
-    const bill = await budget.readRequest(worldId(input.gameId), receipt.comparison ? "wizard:identity-style:2" : IDENTITY_GATE_KEY);
+    const bill = await budget.readRequest(worldId(input.gameId), identityReviewRequestKey(receipt));
     demand(bill?.state === "settled" || bill?.state === "linked", "Identity review accounting remains unresolved");
   }
   return receipt;
+}
+
+export function identityReviewRequestKey(receipt: Pick<IdentityGateReceipt, "identityAssetId" | "provenance" | "comparison">) {
+  const key = receipt.comparison ? "wizard:identity-style:2" : IDENTITY_GATE_KEY;
+  return receipt.provenance.style.version === "board-matched-identity/v3" ? key + ":" + receipt.identityAssetId : key;
 }

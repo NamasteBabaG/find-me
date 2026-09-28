@@ -10,12 +10,13 @@ import { boardWizardBudgetOf, boardWizardWorldId, reserveBoardWizardIdentity } f
 import { generateBoardWizardIdentity, holdBoardWizardIdentity, withBoardWizardIdentityClaim, type BoardWizardIdentityClaim } from "./board-wizard-identity-lifecycle";
 import { IDENTITY_GATE_ACTION, IDENTITY_SELECTION_POLICY, identityGateReceiptSchema, identityProvenanceSchema,
   identityReceiptReadyForPublication, reviewBoardWizardIdentity, type IdentityGateReceipt } from "./board-wizard-identity-gate";
-import { requireLocalPatchIdentityTime } from "./local-patch-identity";
+import { LocalPatchIdentityDeferred, requireLocalPatchIdentityTime } from "./local-patch-identity";
 import { boardConditioningHash } from "./board-conditioned-source";
 
 const idsSchema = z.object({ identityAssetId: z.string().min(1), avatarAssetId: z.string().min(1) }).strict();
 const checkpointSchema = z.object({ policy: z.literal(IDENTITY_SELECTION_POLICY), first: idsSchema,
-  second: idsSchema.optional(), selected: idsSchema.optional() }).strict();
+  second: idsSchema.optional(), selected: idsSchema.optional(),
+  recovery: z.object({ nextAttempt: z.number().int().min(3), current: idsSchema, diagnosis: z.string(), failedIdentityIds: z.array(z.string()) }).strict().optional() }).strict();
 type Checkpoint = z.infer<typeof checkpointSchema>;
 export const IDENTITY_CANDIDATE_ACTION = "identity-best-of-two:candidate";
 function demand(value: unknown, message: string): asserts value { if (!value) throw new Error(`IDENTITY_SELECTION: ${message}`); }
@@ -42,11 +43,11 @@ async function saveCheckpoint(tx: Prisma.TransactionClient, jobId: string, value
   } });
 }
 
-/** Current catalog only. At most two identity renders and two reviews across
- * all ticks. No new parent step, no unbounded retries, no weakened spend fence.
- * The first candidate stays retained until selection completes. */
+/** Historical v9/v10 retain their bounded two-candidate selection. V11 requires
+ * actual identity/age pass and diagnoses failed candidates before another
+ * budgeted attempt. The first candidate remains retained across worker slices. */
 export async function selectBestIdentity(c: Container, initialClaim: BoardWizardIdentityClaim, input: {
-  atlas: Buffer; contentVersion: 9 | 10; deadlineAt?: number; preflight(): Promise<void>;
+  atlas: Buffer; contentVersion: 9 | 10 | 11; deadlineAt?: number; preflight(): Promise<void>;
 }): Promise<BoardWizardIdentityClaim | null> {
   const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(initialClaim.gameId);
   let claim = initialClaim;
@@ -56,7 +57,7 @@ export async function selectBestIdentity(c: Container, initialClaim: BoardWizard
   let checkpoint: Checkpoint = saved ? checkpointSchema.parse(saved) : {
     policy: IDENTITY_SELECTION_POLICY, first: { identityAssetId: claim.identityAssetId, avatarAssetId: claim.avatarAssetId },
   };
-  const expectedCurrent = checkpoint.selected ?? checkpoint.second ?? checkpoint.first;
+  const expectedCurrent = checkpoint.selected ?? checkpoint.second ?? checkpoint.recovery?.current ?? checkpoint.first;
   demand(expectedCurrent.identityAssetId === claim.identityAssetId && expectedCurrent.avatarAssetId === claim.avatarAssetId, "Checkpoint/child differ");
   if (checkpoint.selected) return claim; // Enrollment rechecks selection, pixels and billing.
   if (!saved) await withBoardWizardIdentityClaim(c, claim, tx => saveCheckpoint(tx, claim.jobId, checkpoint));
@@ -87,15 +88,19 @@ export async function selectBestIdentity(c: Container, initialClaim: BoardWizard
     if (!checkpoint.second) {
       // The existing $4 world ceiling includes the second image ($0.50 reserve)
       // and its single comparison ($0.04 reserve); no ceiling increase.
-      if ((await budget.audit(worldId)).remainingMicroUsd < 540_000) reason = "budget-fallback";
+      if ((await budget.audit(worldId)).remainingMicroUsd < 540_000) {
+        if (input.contentVersion === 11) throw new LocalPatchIdentityDeferred();
+        reason = "budget-fallback";
+      }
       else {
         await input.preflight(); requireLocalPatchIdentityTime(input.deadlineAt, 175_000);
-        const feedback = JSON.stringify({ checks: first.checks, reason: first.reason });
+        const feedback = JSON.stringify({ checks: first.checks, reason: first.reason, ...(checkpoint.recovery ? { diagnosis: checkpoint.recovery.diagnosis, attempt: checkpoint.recovery.nextAttempt } : {}) });
+        const attempt = checkpoint.recovery?.nextAttempt ?? 2;
         const provenance = identityProvenanceSchema.parse({ ...first.provenance,
           repair: { policy: IDENTITY_SELECTION_POLICY, feedbackSha256: boardConditioningHash(feedback) } });
-        const ok = await generateBoardWizardIdentity(c, claim, { attempt: 2, provenance,
+        const ok = await generateBoardWizardIdentity(c, claim, { attempt, provenance,
           reserve: () => reserveBoardWizardIdentity(c, claim.gameId, { policy: IDENTITY_SELECTION_POLICY,
-            firstIdentityAssetId: checkpoint.first.identityAssetId, provenance, model: "gpt-image-2", attempts: 1 }, 2),
+            firstIdentityAssetId: checkpoint.first.identityAssetId, provenance, model: "gpt-image-2", attempts: 1 }, attempt),
           generate: async () => {
             const character = await c.avatars.createCharacter!({ originalPhoto: photo, mimeType: "image/png",
               crop: provenance.crop as CropBox | null, childName: claim.childName, ageYears: claim.ageYears,
@@ -118,7 +123,17 @@ export async function selectBestIdentity(c: Container, initialClaim: BoardWizard
     if (checkpoint.second) second = await review(checkpoint.second, true);
   }
   if ((await budget.audit(worldId)).held) { await holdBoardWizardIdentity(c, claim, "unresolved-identity"); return null; }
-  const winner = chooseIdentityCandidate(first, second);
+  const winner = input.contentVersion === 11
+    ? identityReceiptReadyForPublication(first, 11) ? 1 : second && identityReceiptReadyForPublication(second, 11) ? 2 : null
+    : chooseIdentityCandidate(first, second);
+  if (!winner && input.contentVersion === 11 && second && checkpoint.second) {
+    const diagnosis = diagnoseIdentityFailures(first, second, claim.ageYears!);
+    checkpoint = { policy: IDENTITY_SELECTION_POLICY, first: checkpoint.first,
+      recovery: { nextAttempt: (checkpoint.recovery?.nextAttempt ?? 2) + 1, current: checkpoint.second, diagnosis,
+        failedIdentityIds: [...(checkpoint.recovery?.failedIdentityIds ?? []), checkpoint.first.identityAssetId, checkpoint.second.identityAssetId] } };
+    await withBoardWizardIdentityClaim(c, claim, tx => saveCheckpoint(tx, claim.jobId, checkpoint));
+    throw new LocalPatchIdentityDeferred();
+  }
   if (!winner) { await holdBoardWizardIdentity(c, claim, "identity-style-review-required"); return null; }
   const selected = winner === 2 ? checkpoint.second! : checkpoint.first, selectedReview = winner === 2 ? second! : first;
   const receipt = identityGateReceiptSchema.parse({ ...selectedReview, automaticSelection: {
@@ -135,4 +150,17 @@ export async function selectBestIdentity(c: Container, initialClaim: BoardWizard
     await saveCheckpoint(tx, claim.jobId, checkpoint);
   });
   return { ...claim, ...selected };
+}
+
+/** Both visual reviews feed a durable changed strategy, never a false pass. */
+export function diagnoseIdentityFailures(first: IdentityGateReceipt, second: IdentityGateReceipt, age: number): string {
+  const faults = [first, second].map(r => ({ checks: r.checks, evidence: r.reason }));
+  const identity = [first, second].some(r => r.checks?.identity !== "pass");
+  const body = [first, second].some(r => r.checks?.age !== "pass");
+  return JSON.stringify({ phase: "diagnose-after-two", observations: faults,
+    strategy: [
+      ...(identity ? ["Construct the face silhouette, eye spacing, nose/mouth and hairline from the original photo FIRST. Resolve those landmark relationships before adding local paint. Never interpolate with an atlas face. Reduce style simplification whenever it removes the child's distinctive features."] : []),
+      ...(body ? ["Build a new skeleton and torso for the explicit age " + age + " independently of the photo body and atlas people. Correct standing height, limb length and head-to-body ratio before adding clothes. Retain facial identity."] : []),
+      "Reconstruct all four complete views from the same identity/anatomy plan, then add matte paint and neutral clothing. Use the located evidence above to change the construction, not simply repeat the last drawing.",
+    ] });
 }

@@ -3,7 +3,7 @@ import type { Prisma, Asset, TargetVariantAsset } from "@prisma/client";
 import type { Container } from "../container";
 import { SpriteRefSchema } from "../../domain/game/config";
 import { cropOf, maskForHide, type LocalPatchHide } from "../../domain/scene/local-patch-hides";
-import { COLLECTION_SCENE_VERSION, localPatchHidesPerBoard, isLocalPatchAdvisoryVersion, isLocalPatchAgeVersion, isLocalPatchStrictVersion, localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
+import { isCollectionVersion, localPatchHidesPerBoard, isLocalPatchAdvisoryVersion, isLocalPatchAgeVersion, isLocalPatchStrictVersion, localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
 import { LOCAL_PATCH_MAX_ATTEMPTS } from "../../domain/scene/local-patch-attempts";
 import { CURRENT_JUDGE_PRICING_VERSION, judgeCharge } from "../../infra/generation/judge";
 import { assertGenerationSpendAllowed, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
@@ -37,7 +37,7 @@ export const localPatchBoardReviewKey = (boardId: string, attempts?: readonly nu
   if (!attempts) return `board:${boardId}:five-review:1`;
   if (attempts.length !== localPatchHidesPerBoard(contentVersion) || attempts.some(n => !Number.isInteger(n) || n < 1 || n > maximumAttempt)) throw new Error("Invalid board-review attempt revision");
   if (compositionVersion !== LOCAL_PATCH_COMPOSITION_VERSION && !LOCAL_PATCH_REVIEW_COMPOSITION_HISTORY.some(version => version === compositionVersion)) throw new Error("Unsupported board-review composition revision");
-  return `board:${boardId}:${contentVersion === COLLECTION_SCENE_VERSION ? "three" : "five"}-review:v${contentVersion === COLLECTION_SCENE_VERSION ? contentVersion : isLocalPatchAgeVersion(contentVersion) ? 9 : 8}:${attempts.join("-")}${compositionVersion === null ? "" : `:${compositionVersion.replaceAll("/", ".")}`}${isLocalPatchAgeVersion(contentVersion) ? ":evidence-v5" : ""}`;
+  return `board:${boardId}:${isCollectionVersion(contentVersion) ? "three" : "five"}-review:v${isCollectionVersion(contentVersion) ? contentVersion : isLocalPatchAgeVersion(contentVersion) ? 9 : 8}:${attempts.join("-")}${compositionVersion === null ? "" : `:${compositionVersion.replaceAll("/", ".")}`}${isLocalPatchAgeVersion(contentVersion) ? ":evidence-v5" : ""}`;
 };
 /** All bounded candidates, including a paid reply retained before its row commit. */
 export function localPatchBoardReviewKeys(boardId: string, contentVersion = 8): string[] {
@@ -123,7 +123,7 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
       && ["pending-board-review", "board-review-complete"].includes(String(completed.reviewState)),
     "Shipping image or geometry no longer matches its render-completion binding");
     if (strict && completed.compositionVersion !== LOCAL_PATCH_COMPOSITION_VERSION
-      && !(scene.sceneVersion === 10 && completed.compositionVersion === SELF_REPAIR_COMPOSITION_VERSION
+      && !(isCollectionVersion(scene.sceneVersion) && completed.compositionVersion === SELF_REPAIR_COMPOSITION_VERSION
         && selfRepairDecisionSchema.safeParse((completed.selfRepair as { decision?: unknown } | undefined)?.decision).success))
       return { ready: false as const, reason: "Retained image awaits the current head-safe compositor" };
     const dimensions = await sharp(bytes, { limitInputPixels: 8_294_400 }).metadata();
@@ -141,7 +141,7 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
   // A new candidate does not retire the original approvals of unchanged
   // siblings. Previously unreviewed siblings DO receive their first real review.
   const protectedRows = new Set(extraPlan?.others.filter(entry => entry.reviewState === "board-review-complete").map(entry => entry.rowId));
-  const recovering = scene.sceneVersion === 10 && entries.some(e => JSON.parse(e.row.judgeJson!).compositionVersion === SELF_REPAIR_COMPOSITION_VERSION);
+  const recovering = isCollectionVersion(scene.sceneVersion) && entries.some(e => JSON.parse(e.row.judgeJson!).compositionVersion === SELF_REPAIR_COMPOSITION_VERSION);
   if (recovering) settings = LOCAL_PATCH_JUDGE;
   if (recovering) for (const e of entries) {
     if (await hasLocalPatchPublicationPolicy(c, { gameId: game.id, sceneVersion: scene.sceneVersion, hideId: e.hide.id,
@@ -229,7 +229,7 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
   await c.db.$transaction(async tx => { await fenceLocalPatchImages(tx, game.id); await deps.fence(tx); });
   if (recovering) await inventorySelfRepairRequest(c, game.id, requestKey, deps.fence);
   const bought = await purchaseOnce({ ledger: budget, store: new LocalPatchRetainedPurchaseStore(c, game.id, budget) }, {
-    worldId, requestKey, scope: "judge", operationFingerprint: fingerprint, reserveMicroUsd: recovering ? 500_000 : 30_000,
+    worldId, requestKey, scope: "judge", operationFingerprint: fingerprint, reserveMicroUsd: recovering || scene.sceneVersion === 11 ? 500_000 : 30_000,
     ...(input.deadlineAt === undefined ? {} : { dispatchWindow: { deadlineAt: input.deadlineAt,
       needMs: LOCAL_PATCH_MIN_PROVIDER_MS.judge + LOCAL_PATCH_PHASE_MARGIN_MS, retainMs: LOCAL_PATCH_PHASE_MARGIN_MS } }),
     buy: async ({ timeoutMs }) => {

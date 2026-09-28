@@ -1,0 +1,38 @@
+[
+  {
+    "path": "public/scenes/adventure-newyork/base.webp",
+    "sha256": "fc810bf9aa266357b5ce9f5852922e54838879dc759fba2fce30ea137c77ce89"
+  },
+  {
+    "path": "public/scenes/adventure-amazon-refresh-v6/base.webp",
+    "sha256": "bd7c8c87d9b8e29fed9282606a4523d45db357b328117f7cb27b8428ad0682f3"
+  },
+  {
+    "path": "public/scenes/journey-paris-refresh-v7/base.webp",
+    "sha256": "a0d00b53f678fb3791180f05b4282603f3acb80fee9130dd09fbb4934349c80a"
+  },
+  {
+    "path": "public/scenes/journey-marrakech-refresh-v8/base.webp",
+    "sha256": "d00cbfd4ce64d80bce8f03a7b2584bc24a7c39c7759c0fdaa33341da783878d9"
+  },
+  {
+    "path": "public/scenes/journey-giza-refresh-v4/base.webp",
+    "sha256": "5bee7ef6db37add6e946dc56b75301e0a8c799cefef4584b5b542c73cbc2c49b"
+  },
+  {
+    "path": "public/scenes/journey-tokyo-refresh-v6/base.webp",
+    "sha256": "84eb745d3ffb69f08024d5f1052b7b49efd46601b3f3b58eb14f9c04baea7d0b"
+  },
+  {
+    "path": "public/scenes/journey-china-refresh-v8/base.webp",
+    "sha256": "67876316bb8a356f3a6121c68cb679dd82539b3f6ecfdf25fd578d08934fd0bc"
+  },
+  {
+    "path": "public/scenes/journey-sydney-refresh-v6/base.webp",
+    "sha256": "ab2926d256ba7026fe15e130be9082e01c5a4d932fea60785c8b2fa9ba14ce86"
+  },
+  {
+    "path": "public/scenes/journey-antarctica-refresh-v7/base.webp",
+    "sha256": "f6f12e5f6464bc26b3302c6e56da54b0044fe3f4da3d363d2fd7498928e48f8d"
+  }
+]

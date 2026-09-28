@@ -1,3 +1,4 @@
+import { isCollectionVersion } from "./local-patch-versions";
 import { z } from "zod";
 import { TARGETS_PER_SCENE } from "../package";
 
@@ -209,8 +210,8 @@ export const SceneDefinitionSchema = z.object({
   sounds: z.object({ ambient: SoundCue.optional() }).default({}),
 }).superRefine((scene, ctx) => {
   const free = scene.playMode === "find-any";
-  const count = scene.version === 10 ? 3 : 5;
-  if (scene.version !== 10 && scene.ambient.length < 2) ctx.addIssue({ code: "custom", path: ["ambient"], message: "Legacy scenes need two ambient decorations" });
+  const count = isCollectionVersion(scene.version) ? 3 : 5;
+  if (!isCollectionVersion(scene.version) && scene.ambient.length < 2) ctx.addIssue({ code: "custom", path: ["ambient"], message: "Legacy scenes need two ambient decorations" });
   if (scene.targets.length !== (free ? count : TARGETS_PER_SCENE) || (free && (scene.appearancesPerBoard !== count || scene.findsRequiredToAdvance !== 3))
     || (!free && (scene.appearancesPerBoard !== undefined || scene.findsRequiredToAdvance !== undefined))) {
     ctx.addIssue({ code: "custom", path: ["targets"], message: "Target count and advancement must match the pinned play mode" });

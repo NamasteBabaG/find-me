@@ -45,6 +45,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
             <img src="/api/drafts/photo" alt="" className="fm-sticker summary__face" width={80} height={80} />
             <div>
               <h3>{tf(ck.gameTitle, { name })}</h3>
+              {summary.child?.ageYears != null ? <p>{tf(ck.childAge, { age: summary.child.ageYears })} · <a href="/create">{ck.editChild}</a></p> : null}
               <p>{worldNames}</p>
               <p className="fm-muted">{tf(ck.summaryLine, { pkg: pick(summary.pkg.name, locale), boards: shape.places, spots: shape.spots })}</p>
             </div>

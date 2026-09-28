@@ -580,7 +580,7 @@ export async function localPatchPrivateInventory(c: { db: Pick<Prisma.Transactio
     }
   }
   for (const boardId of new Set(ALL_LOCAL_PATCH_BOARDS.map(board => board.board))) {
-    requestKeys.push(...localPatchBoardReviewKeys(boardId), ...localPatchBoardReviewKeys(boardId, 9));
+    for (const version of [8, 9, 10, 11]) requestKeys.push(...localPatchBoardReviewKeys(boardId, version));
   }
   const extraPlan = await readLocalPatchExtraAttemptPlan(c as Pick<Container, "db">, gameId);
   if (extraPlan) requestKeys.push(...extraPlan.selected.map(entry => entry.requestKey), ...extraPlan.reviewRequestKeys);

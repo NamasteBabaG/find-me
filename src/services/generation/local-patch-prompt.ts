@@ -1,3 +1,5 @@
+import { childBodyDirection } from "../../domain/child-body";
+import { REFRESHED_COLLECTION_VERSION } from "../../domain/scene/local-patch-versions";
 import { childAgeDirection, validChildAge } from "../../domain/child-appearance";
 import type { LocalPatchHide, LocalPatchPose } from "../../domain/scene/local-patch-hides";
 import { isLocalPatchAgeVersion, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
@@ -64,10 +66,11 @@ export const LOCAL_PATCH_CANONICAL_PROMPT_VERSION = "local-patch-prompt/v9-canon
 export const LOCAL_PATCH_AGE_PROMPT_VERSION = "local-patch-prompt/v11-canonical-portrait-only";
 /** New purchases only; a retained row keeps its original recipe across retries. */
 export const LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION = "local-patch-prompt/v12-board-paint-identity";
-export type LocalPatchPaintRecipe = "board-paint-v1";
+export const LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION = "local-patch-prompt/v13-identity-body-lock";
+export type LocalPatchPaintRecipe = "board-paint-v1" | "identity-body-v2";
 
-export function pinnedLocalPatchPromptVersion(existing: { promptVersion: string | null; attempts: number } | null, legacyVersion: string): string {
-  if (!existing) return LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION;
+export function pinnedLocalPatchPromptVersion(existing: { promptVersion: string | null; attempts: number } | null, legacyVersion: string, contentVersion?: number): string {
+  if (!existing) return contentVersion === REFRESHED_COLLECTION_VERSION ? LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION : LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION;
   // Missing provenance on a historical row is not permission to change a paid question.
   return existing.promptVersion || legacyVersion;
 }
@@ -151,6 +154,7 @@ export function localPatchPrompt(input: LocalPatchPromptInput): string {
     if (!isLocalPatchAgeVersion(contentVersion)) throw new Error("LOCAL_PATCH: site recovery belongs only to the v9 age contract");
     recoveryText = resolveLocalPatchRecoveryDirective(input.hideId ?? "", input.recoveryDirective);
   }
+  if (input.paintRecipe === "identity-body-v2") return identityBodyPrompt(input, recoveryText);
   if (input.paintRecipe === "board-paint-v1") return boardPaintPrompt(input, recoveryText);
   if (isLocalPatchStrictVersion(contentVersion)) return canonicalFacePrompt(input, recoveryText);
   const wording = LOCAL_PATCH_POSE_WORDING[pose];
@@ -296,4 +300,18 @@ function canonicalAgeDirection(ageYears: number): string {
       ? "Use a PRESCHOOL body: narrow small shoulders, a short youthful torso, short child arms and legs, small hands and feet, and a relaxed preschool stance. Do not draw an older school-age or adult body, long model-like legs, broad shoulders, developed chest or mature posture."
       : "Use a school-age child's body appropriate to that stated age, with child shoulders, torso, limbs and hands; not adult build and not toddler proportions.";
   return `PARENT-CONFIRMED TARGET AGE: ${ageYears} years old. ${proportions} Compare with children of the SAME age at the SAME ground depth, not nearby adults or the smallest toddler. Preserve canonical face and hair identity without maturing the jaw or facial features. Do not enlarge the head, blindly shrink or zoom the whole figure, or bring a distant child into the foreground. The old sheet's body is not evidence of this target age.`;
+}
+
+/** V13 keeps facial geometry above local paint conventions; v12 stays frozen. */
+function identityBodyPrompt(input: LocalPatchPromptInput, recoveryText?: string): string {
+  if (input.contentVersion !== REFRESHED_COLLECTION_VERSION || !validChildAge(input.ageYears)) throw Error("Identity/body recipe requires the refreshed age-bound release");
+  // The frozen age-repair wording in v11/v12 describes a preschool body.
+  // This release always uses the actual supplied age, including during repair.
+  const base = portraitOnlyAgePrompt({ ...input, repairChecks: input.repairChecks?.filter(check => check !== "ageAppropriate") }, recoveryText);
+  return [base.replace(/Authored standing-height envelope at board-native scale: at most (\d+) pixels, NOT a required height or a box to fill/g,
+    "Source figure standing-height reference: $1 native pixels. This records the source person's scale, NOT a height cap for a different-aged child"),
+    childBodyDirection(input.ageYears),
+    "IDENTITY PRECEDENCE: match the canonical portrait's facial outline, eye shape and spacing, brows, nose, mouth, cheek/jaw proportions, hairline, natural hair colour, part and texture. Never average or morph these with the replaced child or nearby faces. The scene may supply palette, clothing, light and painted marks, NEVER facial geometry or hairstyle. If local style conflicts with likeness, preserve likeness. Adapt palette through illumination without changing natural skin/hair identity.",
+    "Keep the new age-appropriate anatomy inside the editable window with real support. Do not fill the window, crop the scalp or miniaturize an older child merely to match a younger source. A placement that cannot accommodate the stated body age requires a changed placement/mask diagnosis, not a false age pass.",
+  ].join("\n");
 }

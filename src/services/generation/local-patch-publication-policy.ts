@@ -1,3 +1,4 @@
+import { isCollectionVersion } from "../../domain/scene/local-patch-versions";
 import { createHash } from "node:crypto";
 import type { Prisma, TargetVariantAsset } from "@prisma/client";
 import type { Container } from "../container";
@@ -164,7 +165,7 @@ function allowed(input: LocalPatchPublicationBinding): boolean {
   try {
     const receipt = JSON.parse(input.judgeJson ?? "null");
     const compositionVersion = receipt?.compositionVersion === SELF_REPAIR_COMPOSITION_VERSION
-      && input.sceneVersion === 10 && receipt?.selfRepair?.version === SELF_REPAIR_VERSION
+      && isCollectionVersion(input.sceneVersion) && receipt?.selfRepair?.version === SELF_REPAIR_VERSION
       && receipt.selfRepair.phase === "awaiting-review" && selfRepairDecisionSchema.safeParse(receipt.selfRepair.decision).success
       && receipt.recoveryComposition?.outsideChangedPixels === 0 && receipt.recoveryComposition?.protectedChangedPixels === 0
       && isTheModelWeAsked(receipt.boardReview?.model ?? null, "gpt-5.6-sol")

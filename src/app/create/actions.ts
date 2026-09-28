@@ -37,7 +37,7 @@ export async function saveNameAction(_prev: ActionResult | null, formData: FormD
   const name = String(formData.get("name") ?? "");
   const ageYears = Number(formData.get("ageYears"));
   const familyChildId = String(formData.get("familyChildId") ?? "") || null;
-  if (!validChildAge(ageYears)) return flowError("INVALID_CHILD_AGE", "בחרו את הגיל בתמונה, בין 2 ל־10.");
+  if (!validChildAge(ageYears)) return flowError("INVALID_CHILD_AGE", "בחרו את גיל הדמות במשחק, בין 2 ל־10.");
   const guarded = await guardDb(async () => {
   let draft = await currentDraft();
   if (formData.get("freshAdventure") === "1") draft = null;

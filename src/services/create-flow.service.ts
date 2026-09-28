@@ -15,7 +15,7 @@ import { boardsOfWorlds, purchasableWorlds } from "./world-catalog.service";
 import { SYSTEM } from "./audit.service";
 import { env } from "@/lib/env";
 import { LOCAL_PATCH_STYLE } from "./generation/local-patch-world";
-import { COLLECTION_SCENE_VERSION } from "../domain/scene/local-patch-catalog";
+import { REFRESHED_COLLECTION_VERSION } from "../domain/scene/local-patch-catalog";
 
 /**
  * The parent's creation flow, step by step. A "draft" is just a Game in
@@ -53,7 +53,7 @@ export async function createDraft(c: Container, ownerId: string | null, locale: 
 export async function setChildName(c: Container, gameId: string, rawName: string, ageYears?: number): Promise<FlowResult> {
   const name = normalizeChildName(rawName);
   if (name.length < 2) return flowError("NAME_TOO_SHORT", "כתבו שם של לפחות שתי אותיות.");
-  if (ageYears !== undefined && !validChildAge(ageYears)) return flowError("INVALID_CHILD_AGE", "בחרו את הגיל בתמונה, בין 2 ל־10.");
+  if (ageYears !== undefined && !validChildAge(ageYears)) return flowError("INVALID_CHILD_AGE", "בחרו את גיל הדמות במשחק, בין 2 ל־10.");
   const game = await loadDraft(c, gameId);
   if (!game || !isEditableDraft(statusOf(game))) return flowError("DRAFT_LOCKED", "הטיוטה כבר לא ניתנת לעריכה.");
 
@@ -166,7 +166,7 @@ export function newDraftStyleVersion() {
 }
 
 export function sceneVersionForDraft(styleVersion: string) {
-  return styleVersion === LOCAL_PATCH_STYLE ? COLLECTION_SCENE_VERSION : undefined;
+  return styleVersion === LOCAL_PATCH_STYLE ? REFRESHED_COLLECTION_VERSION : undefined;
 }
 
 export async function worldsForDraft(c: Container, styleVersion = newDraftStyleVersion()) {

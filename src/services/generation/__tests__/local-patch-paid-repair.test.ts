@@ -47,12 +47,12 @@ vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: "qa", GENERATION_ENA
   adminEmails: () => ["synthetic-admin@example.invalid"] }));
 vi.mock("../local-patch-hide", async original => ({ ...await original<typeof import("../local-patch-hide")>(),
   readShippedBoardArt: async () => Buffer.from(state.original) }));
-let VERSION: 8 | 10 = 8;
+let VERSION: 8 | 10 | 11 = 8;
 let BOARDS = localPatchBoardsForVersion(VERSION);
 let SELECTED = [BOARDS[0]!.hides[0]!], UNREVIEWED: string[] = [];
 let dimensions = { width: 3072, height: 2048 };
 const GOOD = { ...PASSING_ANSWER, faceLikeness: "pass", faceReadable: "pass", severeSeam: "pass" };
-const goodVerdict = () => VERSION === 10 ? { ...GOOD, ageAppropriate: "pass" } : GOOD;
+const goodVerdict = () => VERSION >= 10 ? { ...GOOD, ageAppropriate: "pass" } : GOOD;
 let dir: string, url: string, db: PrismaClient, c: Container, sequence = 0;
 const mails: EmailMessage[] = [];
 const noNetwork = vi.fn(async () => { throw new Error("No real network in paid repair integration"); });
@@ -92,9 +92,9 @@ async function seed() {
       body: { model: "gpt-5.6-luna", usage: { prompt_tokens: 1500, completion_tokens: 150 }, choices: [{ finish_reason: "stop", message: {
         content: JSON.stringify({ checks: { identity: "pass", age: "pass", paintedStyle: "pass", sheetLayout: "pass" }, reason: "Synthetic approved illustrated identity" }) } }] } }) } },
   { gameId, identityAssetId: `ast-sheet-${gameId}`, sheet: seeded.sheet, photo: seeded.sheet, atlas: seeded.sheet, contentVersion: VERSION,
-    provenance: { promptVersion: "character-v4-board-drawn-face-reference", quality: "medium", photoAssetId: `ast-photo-${gameId}`,
+    provenance: { promptVersion: VERSION === 11 ? "character-v5-refreshed-identity-body" : "character-v4-board-drawn-face-reference", quality: "medium", photoAssetId: `ast-photo-${gameId}`,
       photoSha256: sha256Bytes(seeded.sheet), ageYears: 8, crop: null,
-      style: { version: "board-matched-identity/v2", catalogSha256, atlasSha256: sha256Bytes(seeded.sheet) } } });
+      style: { version: VERSION === 11 ? "board-matched-identity/v3" : "board-matched-identity/v2", catalogSha256, atlasSha256: sha256Bytes(seeded.sheet) } } });
   const png = await sharp(state.original).extract({ left: 0, top: 0, width: 512, height: 768 }).png().toBuffer();
   for (const board of BOARDS) {
     const def = sceneBySlug(board.board, VERSION), sceneId = `gsc-${gameId}-${board.board}`;
@@ -106,12 +106,12 @@ async function seed() {
       const geometry = { rectJson: JSON.stringify({ x: crop.left / dimensions.width, y: crop.top / dimensions.height, w: 512 / dimensions.width, h: 768 / dimensions.height }),
         hitRectJson: JSON.stringify({ x: (crop.left + mask.left) / dimensions.width, y: (crop.top + mask.top) / dimensions.height, w: mask.width / dimensions.width, h: mask.height / dimensions.height }),
         headAnchorJson: JSON.stringify({ x: (crop.left + mask.left + mask.width / 2) / dimensions.width, y: (crop.top + mask.top) / dimensions.height }) };
-      const selected = SELECTED.some(h => h.id === hide.id), failed = VERSION === 10 ? selected : hide.id === SELECTED[1]!.id;
+      const selected = SELECTED.some(h => h.id === hide.id), failed = VERSION >= 10 ? selected : hide.id === SELECTED[1]!.id;
       const attempts = selected ? 3 : 1, pendingReview = UNREVIEWED.includes(hide.id);
       const judgeJson = JSON.stringify({ hide: hide.id, pose: hide.pose, judgedSha256: sha256Bytes(png), geometrySha256: localPatchPublicationGeometryHash(geometry),
         reviewState: pendingReview ? "pending-board-review" : "board-review-complete", wireFault: null, renderFault: null, verdict: pendingReview ? null : goodVerdict(),
         compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION,
-        ...(pendingReview ? {} : { boardReview: { compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION, version: VERSION === 10 ? "local-patch-board-five-quality/v5-evidence-labeled" : "local-patch-board-five-quality/v3-head-safe" } }) });
+        ...(pendingReview ? {} : { boardReview: { compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION, version: VERSION >= 10 ? "local-patch-board-five-quality/v5-evidence-labeled" : "local-patch-board-five-quality/v3-head-safe" } }) });
       await c.storage.put(`game/${assetId}.png`, png, "image/png");
       await db.asset.create({ data: { id: assetId, ownerId: seeded.userId, type: "TARGET_SPRITE", visibility: "GAME", status: "READY",
         storagePath: `game/${assetId}.png`, mimeType: "image/png", width: 512, height: 768, bytes: png.length, provider: LOCAL_PATCH_PROVIDER, providerRequestId: gameId } });
@@ -128,7 +128,7 @@ async function seed() {
   for (const hide of SELECTED) {
     const mask = maskForHide(hide), crop = cropOf(hide);
     // The collection repair restores a head above the old return window.
-    const core = { left: mask.left + 12, top: VERSION === 10 ? 40 : mask.top + 12, width: 40, height: 60 };
+    const core = { left: mask.left + 12, top: VERSION >= 10 ? 40 : mask.top + 12, width: 40, height: 60 };
     const faceRect = { left: core.left + 4, top: core.top + 4, width: 30, height: 30 };
     const raw = await sharp(png).composite([{ input: { create: { width: core.width, height: core.height, channels: 4, background: "#244fc1" } }, left: core.left, top: core.top }]).png().toBuffer();
     const weights = Buffer.alloc(512 * 768);
@@ -138,11 +138,11 @@ async function seed() {
     }
     const alpha = await sharp(weights, { raw: { width: 512, height: 768, channels: 1 } }).toColourspace("b-w").png().toBuffer();
     const left = Math.max(0, mask.left - LOCAL_PATCH_RETURN_GUARD), top = Math.max(0, mask.top - LOCAL_PATCH_RETURN_GUARD);
-    const returnWindow = VERSION === 10 ? { left: 16, top: 16, width: 480, height: 736 }
+    const returnWindow = VERSION >= 10 ? { left: 16, top: 16, width: 480, height: 736 }
       : { left, top, width: Math.min(512, mask.left + mask.width + LOCAL_PATCH_RETURN_GUARD) - left,
         height: Math.min(768, mask.top + mask.height + LOCAL_PATCH_RETURN_GUARD) - top };
     const joined = await recomputePaidPatchJoin({ beforePng: state.original, rawPng: raw, alphaPng: alpha, crop, returnWindow, protectedCore: core, faceRect,
-      ...(VERSION === 10 ? { boardSize: { width: 3840 as const, height: 2160 as const } } : {}) });
+      ...(VERSION >= 10 ? { boardSize: { width: 3840 as const, height: 2160 as const } } : {}) });
     const requestKey = `${hide.id}:${hide.pose}:render:1`, budget = boardWizardBudgetOf(c);
     expect(await purchaseOnce({ ledger: budget, store: new LocalPatchRetainedPurchaseStore(c, gameId, budget) }, {
       worldId: boardWizardWorldId(gameId), requestKey, scope: "image", operationFingerprint: `synthetic-paid-${gameId}-${hide.id}`,
@@ -151,7 +151,7 @@ async function seed() {
     })).toMatchObject({ kind: "bought" });
     repairs.push({ hideId: hide.id, attempt: 1, rawSha256: sha256Bytes(raw), originalBoardSha256: sha256Bytes(state.original),
       candidateSha256: joined.candidateSha256, alphaSha256: sha256Bytes(alpha), alphaBase64: alpha.toString("base64"), protectedCore: core, faceRect,
-      ...(VERSION === 10 ? { returnWindow } : {}) });
+      ...(VERSION >= 10 ? { returnWindow } : {}) });
   }
   const beforeRows = await db.targetVariantAsset.findMany({ where: { targetInstance: { gameScene: { gameId } } }, orderBy: { id: "asc" } });
   const beforeCost = (await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId))).settledMicroUsd;
@@ -165,9 +165,9 @@ function judge(gameId: string, siblingFails = false, failedCheck?: "ageAppropria
     calls++;
     const board = BOARDS.find(b => request.prompt.includes(`The selected corrected hide is ${b.hides.find(h => SELECTED.some(s => s.id === h.id))?.id}.`))!;
     if (!board) throw new Error("The actual frozen repair prompt did not name a selected hide");
-    if (VERSION === 10) { expect(request.images).toHaveLength(8); expect(request.imageLabels).toHaveLength(8); }
+    if (VERSION >= 10) { expect(request.images).toHaveLength(8); expect(request.imageLabels).toHaveLength(8); }
     return { verdict: null, raw: JSON.stringify({ hides: board.hides.map((h, index) => ({ hideId: h.id,
-      ...(VERSION === 10 ? { evidenceIds: localPatchHideEvidenceIds(h.id) } : {}),
+      ...(VERSION >= 10 ? { evidenceIds: localPatchHideEvidenceIds(h.id) } : {}),
       verdict: failedCheck && index === 0 ? { ...goodVerdict(), [failedCheck]: "fail", verdict: "fail",
         faults: [{ check: failedCheck, where: "The visible body has adult proportions at this ground depth" }] }
         : siblingFails && index === 0 ? { ...goodVerdict(), faceLikeness: "unsure" } : goodVerdict() })) }),
@@ -179,17 +179,17 @@ async function tick(gameId: string, repairJudge: ReturnType<typeof judge>, conta
   return runLocalPatchWorldSlice(container, noPaint, gameId, { repairJudge, hardDeadlineAt: Date.now() + 270_000 });
 }
 
-describe.each([8, 10] as const)("v%s paid repairs through actual stage, real ledger, durable queue and publication", version => {
+describe.each([8, 10, 11] as const)("v%s paid repairs through actual stage, real ledger, durable queue and publication", version => {
   beforeAll(async () => {
     VERSION = version; BOARDS = localPatchBoardsForVersion(version);
-    SELECTED = version === 10
+    SELECTED = version >= 10
       ? [BOARDS.find(b => b.board === "antarctica")!.hides[2]!, BOARDS.find(b => b.board === "giza")!.hides[1]!]
       : [BOARDS.find(b => b.board === "tokyo")!.hides[2]!, BOARDS.find(b => b.board === "greatwall")!.hides[4]!];
     UNREVIEWED = BOARDS.find(b => b.hides.some(h => h.id === SELECTED[1]!.id))!.hides.filter(h => h.id !== SELECTED[1]!.id).map(h => h.id);
-    dimensions = version === 10 ? { width: 3840, height: 2160 } : { width: 3072, height: 2048 };
+    dimensions = version >= 10 ? { width: 3840, height: 2160 } : { width: 3072, height: 2048 };
     state.original = await sharp({ create: { ...dimensions, channels: 4, background: "#d2be96" } }).png().toBuffer();
   });
-  it.runIf(version === 10)("diagnoses two actual seam failures before the third purchase and resumes that plan after a lost image write", async () => {
+  it.runIf(version >= 10)("diagnoses two actual seam failures before the third purchase and resumes that plan after a lost image write", async () => {
     const s = await seed(), board = BOARDS.find(b => b.board === "sydney")!, hide = board.hides[0]!;
     const old = s.beforeRows.find(r => JSON.parse(r.judgeJson!).hide === hide.id)!;
     await db.targetVariantAsset.delete({ where: { id: old.id } });
@@ -211,8 +211,10 @@ describe.each([8, 10] as const)("v%s paid repairs through actual stage, real led
     try { await expect(runLocalPatchHide(c, deps, { ...request, finalRepair: true })).rejects.toThrow(); }
     finally { await db.$executeRawUnsafe("DROP TRIGGER fail_adaptive_write"); }
     expect(prompts).toHaveLength(3);
+    if (version === 11) expect(prompts.every(prompt => prompt.includes("BODY AGE CONTRACT: 8 years"))).toBe(true);
     expect(prompts[2]).toContain("Solve registration first");
     const pending = await db.targetVariantAsset.findFirstOrThrow({ where: { targetInstanceId: old.targetInstanceId } });
+    if (version === 11) expect(pending.promptVersion).toBe("local-patch-prompt/v13-identity-body-lock");
     expect(pending).toMatchObject({ status: "PENDING", attempts: 3 });
     const plan = JSON.parse(pending.judgeJson!).adaptiveRecovery.plan;
     expect(plan.evidence.map((e: { attempt: number }) => e.attempt)).toEqual([1, 2]);
@@ -226,7 +228,7 @@ describe.each([8, 10] as const)("v%s paid repairs through actual stage, real led
     expect(JSON.parse(resumed.judgeJson!).adaptiveRecovery.plan).toEqual(plan);
     expect((await boardWizardBudgetOf(c).audit(boardWizardWorldId(s.gameId))).settledMicroUsd).toBe(spent);
   }, 240_000);
-  it.runIf(version === 10)("automatically reopens a complete failed game, changes strategy after another rejection and delivers all27 without parent approval", async () => {
+  it.runIf(version >= 10)("automatically reopens a complete failed game, changes strategy after another rejection and delivers all27 without parent approval", async () => {
     const s = await seed();
     for (const h of SELECTED) await db.targetVariantAsset.update({ where: { id: `tva-${s.gameId}-${h.id}` }, data: { attempts: 2 } });
     const originalHide = SELECTED[0]!, budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(s.gameId);
@@ -246,6 +248,11 @@ describe.each([8, 10] as const)("v%s paid repairs through actual stage, real led
       expect(selected).toBeDefined();
       expect(wire.imageLabels[0]).toContain("ORIGINAL"); expect(wire.imageLabels[1]).toContain("CANONICAL");
       expect(wire.imageLabels.at(-1)).toContain("FAILED SHIPPING");
+      if (version === 11) {
+        expect(wire.prompt).toContain("BODY AGE CONTRACT: 8 years");
+        expect(wire.prompt).toContain("Expand it when the stated-age anatomy needs more space");
+        expect(wire.prompt).not.toContain("smaller/shifted editable envelope");
+      }
       const count = (recipes.get(selected.hideId) ?? 0) + 1; recipes.set(selected.hideId, count); diagnoses.push(selected.hideId);
       const h = SELECTED.find(h => h.id === selected.hideId)!;
       return { verdict: null, raw: JSON.stringify({ cause: "composition-clipping", explanation: "The retained RAW contains the complete head, but the original shipping window clipped it.",
@@ -293,7 +300,7 @@ describe.each([8, 10] as const)("v%s paid repairs through actual stage, real led
     expect(requests.length).toBe(6);
     for (const item of requests) expect(inventory.retainedPurchaseKeys).toContain(retainedPurchaseKey(boardWizardWorldId(s.gameId), JSON.parse(item.metaJson!).requestKey));
   }, 240_000);
-  it.runIf(version === 10)("keeps a lost diagnostic answer and resumes from a fresh client without another paid request", async () => {
+  it.runIf(version >= 10)("keeps a lost diagnostic answer and resumes from a fresh client without another paid request", async () => {
     const s = await seed(); await resumeAutomaticLocalPatchRecovery(c, s.gameId);
     const h = BOARDS.flatMap(b => b.hides).find(h => SELECTED.some(s => s.id === h.id))!;
     const repair = s.repairs.find(r => r.hideId === h.id)!;
@@ -316,7 +323,7 @@ describe.each([8, 10] as const)("v%s paid repairs through actual stage, real led
     expect(JSON.parse((await db.targetVariantAsset.findUniqueOrThrow({ where: { id: `tva-${s.gameId}-${h.id}` } })).judgeJson!).selfRepair.phase).toBe("applying");
     expect(await nextPendingGame(c)).not.toBeNull();
   }, 240_000);
-  it.runIf(version === 10)("redraws with the diagnosed editable envelope and replays an interrupted recovery image instead of charging twice", async () => {
+  it.runIf(version >= 10)("redraws with the diagnosed editable envelope and replays an interrupted recovery image instead of charging twice", async () => {
     const s = await seed(); await resumeAutomaticLocalPatchRecovery(c, s.gameId);
     const h = BOARDS.flatMap(b => b.hides).find(h => SELECTED.some(s => s.id === h.id))!;
     await db.targetVariantAsset.update({ where: { id: `tva-${s.gameId}-${h.id}` }, data: { promptVersion: LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION } });
@@ -364,7 +371,7 @@ describe.each([8, 10] as const)("v%s paid repairs through actual stage, real led
     const inventory = await localPatchPrivateInventory(c, s.gameId);
     expect(inventory.retainedPurchaseKeys).toContain(retainedPurchaseKey(boardWizardWorldId(s.gameId), `${h.id}:${h.pose}:self-repair:1`));
   }, 240_000);
-  it.runIf(version === 10)("feeds a deterministic compositor refusal into a new diagnosis instead of replaying the same failed composition", async () => {
+  it.runIf(version >= 10)("feeds a deterministic compositor refusal into a new diagnosis instead of replaying the same failed composition", async () => {
     const s = await seed(); await resumeAutomaticLocalPatchRecovery(c, s.gameId);
     const h = BOARDS.flatMap(b => b.hides).find(h => SELECTED.some(s => s.id === h.id))!;
     const repair = s.repairs.find(r => r.hideId === h.id)!;
@@ -384,7 +391,7 @@ describe.each([8, 10] as const)("v%s paid repairs through actual stage, real led
     expect(diagnose).toHaveBeenCalledTimes(1);
     expect((await db.game.findUniqueOrThrow({ where: { id: s.gameId } })).status).toBe("TARGETS_GENERATING");
   }, 240_000);
-  it.runIf(version === 10)("preserves the spending ceiling and backs off an operational budget outage without failing the game or starving the queue", async () => {
+  it.runIf(version >= 10)("preserves the spending ceiling and backs off an operational budget outage without failing the game or starving the queue", async () => {
     const s = await seed(); await resumeAutomaticLocalPatchRecovery(c, s.gameId);
     const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(s.gameId), spent = (await budget.audit(worldId)).settledMicroUsd;
     await budget.importSettled(worldId, { scope: "image", operationFingerprint: `synthetic-near-budget-${s.gameId}`,
@@ -398,6 +405,7 @@ describe.each([8, 10] as const)("v%s paid repairs through actual stage, real led
     expect(await nextPendingGame(c)).not.toBe(s.gameId);
     expect(diagnose).not.toHaveBeenCalled(); expect((await budget.audit(worldId)).settledMicroUsd).toBe(3_990_000);
   }, 240_000);
+  describe.skipIf(version === 11)("historical manually staged repair protocol", () => {
   it("stages without spend, delivers the complete world after two reviews and preserves all other images", async () => {
     const s = await seed(), mailStart = mails.length;
     const stage = await stageLocalPatchPaidRepair(c, s.input);
@@ -424,8 +432,8 @@ describe.each([8, 10] as const)("v%s paid repairs through actual stage, real led
     const game = await db.game.findUniqueOrThrow({ where: { id: s.gameId } });
     expect(game.status, game.lastError ?? "no error").toBe("DELIVERED");
     const config = GameConfigSchema.parse(JSON.parse(game.configJson!));
-    expect(config.scenes.flatMap(board => board.targets)).toHaveLength(VERSION === 10 ? 27 : 45);
-    if (VERSION === 10) expect(config.adventure?.boards).toHaveLength(9);
+    expect(config.scenes.flatMap(board => board.targets)).toHaveLength(VERSION >= 10 ? 27 : 45);
+    if (VERSION >= 10) expect(config.adventure?.boards).toHaveLength(9);
     const afterRows = await db.targetVariantAsset.findMany({ where: { targetInstance: { gameScene: { gameId: s.gameId } } }, orderBy: { id: "asc" } });
     const repairedIds = new Set(staged!.candidates.map(a => a.rowId));
     const siblingIds = new Set(staged!.reviewedSiblings!.map(a => a.rowId));
@@ -461,15 +469,15 @@ describe.each([8, 10] as const)("v%s paid repairs through actual stage, real led
   }, 240_000);
   it("a sibling unsure blocks BOTH candidates and never falls into another image attempt", async () => {
     const s = await seed(); await stageLocalPatchPaidRepair(c, s.input); const j = judge(s.gameId, true);
-    expect(await tick(s.gameId, j)).toMatchObject({ pending: version === 10 });
+    expect(await tick(s.gameId, j)).toMatchObject({ pending: version >= 10 });
     expect((await readLocalPatchPaidRepair(c, s.gameId))?.state).toBe("blocked");
     const unchanged = await db.targetVariantAsset.findMany({ where: { targetInstance: { gameScene: { gameId: s.gameId } } }, orderBy: { id: "asc" } });
     expect(unchanged.map(r => [r.assetId, r.attempts, r.rectJson, r.status])).toEqual(s.beforeRows.map(r => [r.assetId, r.attempts, r.rectJson, r.status]));
-    expect(await db.game.findUniqueOrThrow({ where: { id: s.gameId } })).toMatchObject({ status: version === 10 ? "TARGETS_GENERATING" : "GENERATION_FAILED", configJson: null, readyAt: null });
+    expect(await db.game.findUniqueOrThrow({ where: { id: s.gameId } })).toMatchObject({ status: version >= 10 ? "TARGETS_GENERATING" : "GENERATION_FAILED", configJson: null, readyAt: null });
     if (version === 8) for (let i = 0; i < 3; i++) expect(await tick(s.gameId, j)).toMatchObject({ claimed: false, pending: false });
     expect(j).toHaveBeenCalledTimes(1); expect(await db.shareLink.count({ where: { gameId: s.gameId } })).toBe(0);
   }, 240_000);
-  it.runIf(version === 10).each(["ageAppropriate", "scaleRight"] as const)("preserves the collection's mandatory %s gate", async check => {
+  it.runIf(version >= 10).each(["ageAppropriate", "scaleRight"] as const)("preserves the collection's mandatory %s gate", async check => {
     const s = await seed(); await stageLocalPatchPaidRepair(c, s.input);
     const j = judge(s.gameId, false, check);
     expect(await tick(s.gameId, j)).toMatchObject({ pending: true, attention: null });
@@ -566,4 +574,5 @@ describe.each([8, 10] as const)("v%s paid repairs through actual stage, real led
     expect(await db.asset.count({ where: { providerRequestId: s.gameId, id: { startsWith: "ast_lpmr" } } })).toBe(0);
     expect(await db.generationJob.findUniqueOrThrow({ where: { id: `job_${s.gameId}` } })).toMatchObject({ status: "DONE", attempts: 38 });
   }, 240_000);
+});
 });

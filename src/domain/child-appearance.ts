@@ -1,11 +1,12 @@
-/** Parent-supplied age in the reference photo; never inferred from a name. */
+/** Parent-supplied character age; never inferred from a name or face. */
 export const CHILD_AGES = [2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 
 export function validChildAge(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 2 && value <= 10;
 }
 
-/** Unknown legacy ages remain unknown, rather than silently making everyone eight. */
+/** Frozen historical prompt. New refreshed releases use childBodyDirection.
+ * Unknown legacy ages remain unknown, rather than silently making everyone eight. */
 export function childAgeDirection(ageYears?: number | null): string {
   if (ageYears != null && !validChildAge(ageYears)) throw new Error("Invalid child age");
   const age = ageYears == null

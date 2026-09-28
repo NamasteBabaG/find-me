@@ -69,11 +69,15 @@ export async function holdBoardWizardIdentity(c: Container, claim: BoardWizardId
 /** One paid call at most. Billing survives a lost/deleted image publication. */
 export async function generateBoardWizardIdentity(c: Container, claim: BoardWizardIdentityClaim, deps: {
   reserve(): Promise<void>; generate(): Promise<CharacterOutput>; provenance?: IdentityProvenance;
-  attempt?: 1 | 2;
+  attempt?: number;
   onPersisted?(tx: Prisma.TransactionClient, ids: { identityAssetId: string; avatarAssetId: string }): Promise<void>;
 }): Promise<boolean> {
   const budget = budgetFor(c);
-  if (deps.attempt !== undefined && deps.attempt !== 1 && deps.attempt !== 2) throw new Error("Only two identity candidates are allowed");
+  if (deps.attempt !== undefined && (!Number.isSafeInteger(deps.attempt) || deps.attempt < 1)) throw Error("Invalid identity attempt");
+  if ((deps.attempt ?? 1) > 2) {
+    const scenes = await c.db.gameScene.findMany({ where: { gameId: claim.gameId }, select: { sceneVersion: true } });
+    demand(scenes.length === 9 && scenes.every(s => s.sceneVersion === 11));
+  }
   const requestKey = `wizard:identity:${deps.attempt ?? 1}`;
   try {
     demand(enabled(claim.styleVersion) && c.storage.id === "db");

@@ -1,3 +1,4 @@
+import { isCollectionVersion } from "../../domain/scene/local-patch-versions";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
 import {
@@ -9,7 +10,7 @@ import {
   type JudgeWireFault, type LocalPatchJudgeRequest, type LocalPatchJudgeResult, type LocalPatchVerdict,
 } from "./local-patch-judge";
 import { judgeCharge } from "../../infra/generation/judge";
-import { LOCAL_PATCH_POSE_WORDING, LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_CANONICAL_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION, localPatchPrompt, type LocalPatchRepairCheck, type LocalPatchPaintRecipe } from "./local-patch-prompt";
+import { LOCAL_PATCH_POSE_WORDING, LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_CANONICAL_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION, LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION, localPatchPrompt, type LocalPatchRepairCheck, type LocalPatchPaintRecipe } from "./local-patch-prompt";
 import { purchaseOnce, type PurchaseLedger, type RetainedPurchaseStore } from "./paid-operation";
 import { LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, type LocalPatchPurchase, type LocalPatchReferenceMode } from "../../infra/generation/openai-local-patch";
 import type { BudgetJson } from "./world-budget";
@@ -301,6 +302,7 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
 }
 
 function promptVersionOf(input: LocalPatchAttemptInput): string {
+  if (input.paintRecipe === "identity-body-v2") return LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION;
   if (input.paintRecipe === "board-paint-v1") return LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION;
   if (isLocalPatchAgeVersion(input.contentVersion)) return LOCAL_PATCH_AGE_PROMPT_VERSION;
   return isLocalPatchStrictVersion(input.contentVersion) ? LOCAL_PATCH_CANONICAL_PROMPT_VERSION
@@ -321,7 +323,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   }
   const crop = cropOf(hide);
   const promptVersion = promptVersionOf(input);
-  if (input.selfRepair && (input.contentVersion !== 10 || !Number.isSafeInteger(input.selfRepair.cycle)
+  if (input.selfRepair && (!isCollectionVersion(input.contentVersion) || !Number.isSafeInteger(input.selfRepair.cycle)
     || input.selfRepair.cycle < 1 || input.adaptiveRecovery || input.recoveryDirective)) throw Error("Invalid autonomous render recipe");
   const recovery = input.selfRepair ? selfRepairDecisionSchema.parse(input.selfRepair.decision) : null;
   const mask = recovery?.protectedCore ?? maskForHide(hide);

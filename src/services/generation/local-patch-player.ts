@@ -1,3 +1,5 @@
+import { REFRESHED_WIZARD_CATALOG } from "../../../content/adventures/wizard-refresh-release";
+import { isCollectionVersion, REFRESHED_COLLECTION_VERSION } from "../../domain/scene/local-patch-versions";
 import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { GameConfigSchema, SpriteRefSchema, type GameConfig, type PlayWorld } from "../../domain/game/config";
@@ -17,7 +19,7 @@ import { hasLocalPatchPublicationPolicy, localPatchPublicationGeometryHash } fro
 import { enqueueLocalPatchNotifications } from "../local-patch-notifications";
 import { readLocalPatchPartialRelease } from "./local-patch-partial-release";
 import { getDict, tf } from "../../i18n";
-import { COLLECTION_SCENE_VERSION, WIZARD_ADVENTURE_CATALOG } from "../../../content/adventures/wizard-release";
+import { WIZARD_ADVENTURE_CATALOG } from "../../../content/adventures/wizard-release";
 import { attachAdventureBook } from "../../domain/adventure/compose";
 
 const STYLE = "local-patch-world-v1";
@@ -117,8 +119,8 @@ export async function composeLocalPatchGame(c: Container, gameId: string): Promi
   demand(worlds.size === 1, "the nine boards must belong to one world");
   const config = GameConfigSchema.parse(composeGame({ gameId, child: who, locale, packageTier: "ONE_WORLD", styleVersion: STYLE,
     scenes, worlds: [...worlds.values()], ...(game.giftJson ? { gift: JSON.parse(game.giftJson) } : {}) }));
-  return game.scenes.every(scene => scene.sceneVersion === COLLECTION_SCENE_VERSION)
-    ? attachAdventureBook(config, WIZARD_ADVENTURE_CATALOG, scenes.map(scene => scene.slug),
+  return game.scenes.every(scene => isCollectionVersion(scene.sceneVersion))
+    ? attachAdventureBook(config, game.scenes[0]!.sceneVersion === REFRESHED_COLLECTION_VERSION ? REFRESHED_WIZARD_CATALOG : WIZARD_ADVENTURE_CATALOG, scenes.map(scene => scene.slug),
       partialRelease?.version === 2 ? { verifiedSubset: Object.fromEntries(scenes.filter(scene => scene.targets.length === 2)
         .map(scene => [scene.slug, scene.targets.map(target => target.id)])) } : {}) : config;
 }

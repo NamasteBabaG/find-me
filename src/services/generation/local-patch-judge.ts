@@ -1,3 +1,5 @@
+import { childBodyDirection } from "../../domain/child-body";
+import { REFRESHED_COLLECTION_VERSION } from "../../domain/scene/local-patch-versions";
 /**
  * Looking at a finished local patch the way a person does.
  *
@@ -29,7 +31,7 @@
  * Each hide gets its own verdict. One bad hide must not condemn its neighbours.
  */
 import { z } from "zod";
-import { COLLECTION_SCENE_VERSION, localPatchHidesPerBoard, isLocalPatchAdvisoryVersion, isLocalPatchAgeVersion, isLocalPatchStrictVersion, localPatchBoardsForVersion } from "../../domain/scene/local-patch-catalog";
+import { isCollectionVersion, localPatchHidesPerBoard, isLocalPatchAdvisoryVersion, isLocalPatchAgeVersion, isLocalPatchStrictVersion, localPatchBoardsForVersion } from "../../domain/scene/local-patch-catalog";
 import { validChildAge } from "../../domain/child-appearance";
 
 export const LOCAL_PATCH_JUDGE = Object.freeze({
@@ -55,12 +57,15 @@ export const QUALITY_LOCAL_PATCH_JUDGE = Object.freeze({ ...ADVISORY_LOCAL_PATCH
 export const AGE_LOCAL_PATCH_JUDGE = Object.freeze({ ...QUALITY_LOCAL_PATCH_JUDGE,
   policyVersion: "local-patch-luna-low-canonical-age/v3",
 });
+export const REFRESHED_LOCAL_PATCH_JUDGE = Object.freeze({ ...AGE_LOCAL_PATCH_JUDGE, model: "gpt-5.6-sol", policyVersion: "local-patch-sol-low-identity-body/v4" });
 export function localPatchJudgeSettings(contentVersion?: number) {
+  if (contentVersion === REFRESHED_COLLECTION_VERSION) return REFRESHED_LOCAL_PATCH_JUDGE;
   if (isLocalPatchAgeVersion(contentVersion)) return AGE_LOCAL_PATCH_JUDGE;
   if (isLocalPatchStrictVersion(contentVersion)) return QUALITY_LOCAL_PATCH_JUDGE;
   return isLocalPatchAdvisoryVersion(contentVersion) ? ADVISORY_LOCAL_PATCH_JUDGE : LOCAL_PATCH_JUDGE;
 }
 export function localPatchBoardJudgeSettings(contentVersion?: number) {
+  if (contentVersion === REFRESHED_COLLECTION_VERSION) return REFRESHED_LOCAL_PATCH_JUDGE;
   if (isLocalPatchAgeVersion(contentVersion)) return AGE_LOCAL_PATCH_JUDGE;
   return isLocalPatchStrictVersion(contentVersion) ? QUALITY_LOCAL_PATCH_JUDGE : ADVISORY_LOCAL_PATCH_JUDGE;
 }
@@ -207,7 +212,8 @@ export const localPatchQualityVerdictSchema = localPatchVerdictWireSchema.extend
 });
 export type LocalPatchQualityVerdict = z.infer<typeof localPatchQualityVerdictSchema>;
 export const LOCAL_PATCH_AGE_SEVERE_CHECKS = Object.freeze([...LOCAL_PATCH_SEVERE_CHECKS, "ageAppropriate", "scaleRight"] as const);
-export const localPatchSevereChecks = (contentVersion?: number) => isLocalPatchAgeVersion(contentVersion)
+export const REFRESHED_REQUIRED_CHECKS = [...LOCAL_PATCH_AGE_SEVERE_CHECKS, "childPresent", "childOnlyOnce", "childComplete", "pictureWhole"] as const;
+export const localPatchSevereChecks = (contentVersion?: number) => contentVersion === REFRESHED_COLLECTION_VERSION ? REFRESHED_REQUIRED_CHECKS : isLocalPatchAgeVersion(contentVersion)
   ? LOCAL_PATCH_AGE_SEVERE_CHECKS : LOCAL_PATCH_SEVERE_CHECKS;
 
 /** V9 adds an explicit body-age judgement. Never reinterpret an old paid reply
@@ -311,7 +317,7 @@ export function localPatchQualityDisposition(verdict: LocalPatchVerdict | null, 
 } {
   const schema = z.object({ faceLikeness: check, faceReadable: check, severeSeam: check,
     faults: z.array(z.object({ check: z.string(), where: z.string().trim().min(1) })) });
-  const parsed = (isLocalPatchAgeVersion(contentVersion) ? schema.extend({ ageAppropriate: check, scaleRight: check }) : schema).safeParse(verdict);
+  const parsed = (contentVersion === REFRESHED_COLLECTION_VERSION ? schema.extend({ ageAppropriate: check, scaleRight: check, childPresent: check, childOnlyOnce: check, childComplete: check, pictureWhole: check }) : isLocalPatchAgeVersion(contentVersion) ? schema.extend({ ageAppropriate: check, scaleRight: check }) : schema).safeParse(verdict);
   if (!parsed.success) return { state: "unresolved", faults: ["quality-review-unreadable"] };
   const v = parsed.data, checks = localPatchSevereChecks(contentVersion);
   const value = (key: typeof checks[number]) => (v as Record<string, unknown>)[key];
@@ -579,9 +585,10 @@ export type LocalPatchBoardJudgeResult = LocalPatchJudgeResult & { verdicts: Rec
 const AGE_REVIEW_DIRECTION = "For this new contract five checks require explicit pass: faceLikeness, faceReadable, severeSeam, ageAppropriate and scaleRight. Image2 authorizes FACE AND HAIR identity, not an old target age or the body from its source sheet. A coherent generic child is NOT sufficient: the same characteristic facial shapes and hair must be recognizable; use unsure if the pixels cannot establish likeness. ageAppropriate checks the stated age in face AND whole body: for age 4 or 5 expect a preschool torso, narrow small shoulders, short child limbs, small hands and feet, not an older school-age or adult build or mature stance. Judge visible anatomy, not clothing or assumed age from a name. scaleRight compares the whole child against children of the SAME age at the SAME ground depth, never nearby adults. A small adult-shaped figure is not a preschool body. Do not solve age or readability with a giant head, imagined zoom detail, photographic texture, blind whole-figure shrinking or a foreground move. Do not demand hidden limbs through natural occlusion; use unsure when the visible evidence cannot establish the required check. Each fail needs its own located fault; advisory complaints never invent severe failure.";
 export function localPatchBoardJudgePrompt(request: Pick<LocalPatchBoardJudgeRequest, "boardId" | "hides" | "contentVersion" | "assessmentMode">): string {
   // Preserve every historical paid prompt byte. V10 has six pair images, not ten.
-  if (request.contentVersion === COLLECTION_SCENE_VERSION) {
+  if (isCollectionVersion(request.contentVersion)) {
     if (request.hides.length !== 3 || new Set(request.hides.map(h => h.hideId)).size !== 3) throw new Error("Grouped review requires three unique hides");
-    return localPatchBoardJudgePromptForCount(request, "three");
+    const prompt = localPatchBoardJudgePromptForCount(request, "three");
+    return request.contentVersion === REFRESHED_COLLECTION_VERSION ? prompt + "\n" + childBodyDirection(request.hides[0]!.expectation!.ageYears!) + "\nRefreshed release: childPresent, childOnlyOnce, childComplete and pictureWhole also require explicit pass. Compare each native target face against the canonical portrait, not against surrounding people. Matching clothing/style alone never establishes likeness. Fail faceLikeness when eye spacing, face shape, nose/mouth, hairline or actual hair pattern drift toward a bystander; use unsure if identity cannot be established. A five-year-old body for a stated eight-year-old fails ageAppropriate even when the face matches. Diagnose each located failure for automatic recovery; never waive it to complete a game." : prompt;
   }
   return localPatchBoardJudgePromptForCount(request, "five");
 }

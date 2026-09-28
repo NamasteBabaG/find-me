@@ -124,6 +124,46 @@ async function reviewPublished(f: Fixture, reviewer = { review: async () => ({ h
 }
 
 describe("QA identity lifecycle: real DB and synthetic provider only", () => {
+  it("catalog11 diagnoses two likeness/age failures, resumes a changed third attempt, and deletes every candidate", async () => {
+    const f = await fixture(); await fullWorld(f, 11);
+    await db.childProfile.update({ where: { id: f.childId }, data: { ageYears: 8 } });
+    await db.game.update({ where: { id: f.id }, data: { styleVersion: LOCAL_PATCH_STYLE } });
+    await db.generationJob.update({ where: { id: f.claim.jobId }, data: { status: "DONE", attempts: 0, currentStep: null } });
+    let calls = 0, reviews = 0;
+    f.c.avatars.createCharacter = vi.fn(async request => {
+      calls++;
+      expect(request.ageYears).toBe(8);
+      expect(request.qaStyleContract?.version).toBe("board-matched-identity/v3");
+      if (calls === 3) {
+        expect(request.identityRepair?.reason).toContain("diagnose-after-two");
+        expect(request.identityRepair?.reason).toContain("original photo FIRST");
+        expect(request.identityRepair?.reason).toContain("explicit age 8");
+      }
+      return { ...f.result(), providerRequestId: `req_${f.id}_${calls}` };
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      reviews++;
+      return new Response(JSON.stringify({ model: "gpt-5.6-luna", usage: { prompt_tokens: 2000, completion_tokens: 400 },
+        choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ checks: {
+          identity: reviews < 3 ? "fail" : "pass", age: reviews < 3 ? "fail" : "pass", paintedStyle: "pass", sheetLayout: "pass" },
+          reason: "Synthetic face borrowed neighbour eye shape and body looks age5", ...(reviews > 1 ? { preferredCandidate: "second" } : {}) }) } }] }),
+        { headers: { "x-request-id": `req_review_${f.id}_${reviews}` } });
+    }));
+    await runGenerationPipeline(f.c, f.id);
+    expect(await f.game()).toMatchObject({ status: "AVATAR_GENERATING", configJson: null });
+    expect(await f.job()).toMatchObject({ status: "QUEUED" });
+    expect(JSON.parse((await f.job()).stepsJson).identityBestOfTwo.recovery.nextAttempt).toBe(3);
+    expect(calls).toBe(2); expect(reviews).toBe(2);
+    await runGenerationPipeline(f.c, f.id);
+    expect(await f.game()).toMatchObject({ status: "TARGETS_GENERATING" });
+    expect(calls).toBe(3); expect(reviews).toBe(3);
+    const child = await db.childProfile.findUniqueOrThrow({ where: { id: f.childId } });
+    expect(await identityApprovedForDisplay(f.c, child, 11)).toBe(true);
+    const ledger = await f.ledger(); expect(ledger.requests).toHaveLength(6);
+    expect(ledger.requests.every((r: { state: string }) => r.state === "settled")).toBe(true);
+    await deleteGame(f.c, f.id, { type: "USER", id: f.ownerId }, f.ownerId);
+    expect(await db.asset.count({ where: { ownerId: f.ownerId, status: "READY" } })).toBe(0);
+  });
   it.each(["first", "second"] as const)("catalog9 chooses %s from two candidates and continues despite subjective warnings", async preferredCandidate => {
     const f = await fixture(); await fullWorld(f, 9); fake.styleVersion = "board-matched-identity/v2";
     await db.game.update({ where: { id: f.id }, data: { styleVersion: LOCAL_PATCH_STYLE } });

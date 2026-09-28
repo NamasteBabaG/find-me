@@ -72,7 +72,7 @@ export async function chooseDraftChild(db: PrismaClient, input: {
   gameId: string; actorId: string | null; draftToken: string | null;
   familyChildId: string | null; name: string; ageYears: number;
 }): Promise<FlowResult> {
-  if (!validChildAge(input.ageYears)) return flowError("INVALID_CHILD_AGE", "בחרו את הגיל בתמונה, בין 2 ל־10.");
+  if (!validChildAge(input.ageYears)) return flowError("INVALID_CHILD_AGE", "בחרו את גיל הדמות במשחק, בין 2 ל־10.");
   try {
     return await db.$transaction(async tx => {
       const game = await tx.game.findUnique({ where: { id: input.gameId } });

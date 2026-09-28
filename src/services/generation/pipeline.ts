@@ -197,7 +197,7 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
       const retained = await c.db.auditLog.findFirst({ where: { action: "sheet:painted", entityId: child.identityAssetId, entityType: "Asset" }, orderBy: { createdAt: "desc" } });
       retainedIdentityStyleVersion = identityProvenanceSchema.parse(JSON.parse(retained?.metaJson ?? "{}").identityProvenance).style.version;
     }
-    const identityStyle = qaIdentityClaim ? await buildBoardWizardIdentityStyle(undefined, retainedIdentityStyleVersion) : null;
+    const identityStyle = qaIdentityClaim ? await buildBoardWizardIdentityStyle(undefined, retainedIdentityStyleVersion ?? (contentVersion === 11 ? "board-matched-identity/v3" : undefined)) : null;
     const avatarValid = child.avatarAssetId ? (await c.db.asset.findUnique({ where: { id: child.avatarAssetId } }))?.status === "READY" : false;
     if (!avatarValid) {
       if (status !== "AVATAR_GENERATING") await transitionGame(c, gameId, "AVATAR_GENERATING", SYSTEM);
@@ -300,7 +300,7 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
       const current = await c.db.childProfile.findUniqueOrThrow({ where: { id: child.id } });
       if (!current.identityAssetId || !current.avatarAssetId || !identityStyle) throw new Error("QA identity is not ready for review");
       const publicationClaim = { ...qaIdentityClaim, identityAssetId: current.identityAssetId, avatarAssetId: current.avatarAssetId };
-      if (localPatch && (contentVersion === 9 || contentVersion === 10)) {
+      if (localPatch && (contentVersion === 9 || contentVersion === 10 || contentVersion === 11)) {
         const { selectBestIdentity } = await import("./identity-best-of-two");
         const selected = await selectBestIdentity(c, publicationClaim, { atlas: identityStyle.png, contentVersion,
           deadlineAt: options.hardDeadlineAt, preflight: preflightIdentity });

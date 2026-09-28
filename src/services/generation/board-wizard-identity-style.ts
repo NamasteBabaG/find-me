@@ -1,3 +1,6 @@
+import { REFRESHED_COLLECTION_BOARDS, REFRESHED_WIZARD_CATALOG } from "../../../content/adventures/wizard-refresh-release";
+import { cropOf } from "../../domain/scene/local-patch-hides";
+import { readCollectionArt } from "./collection-art";
 import sharp, { type OverlayOptions } from "sharp";
 import { readBoardConditionedCatalog, loadBoardConditionedCatalogBoard, type BoardConditionedCatalog } from "./board-conditioned-catalog";
 import { sha256Bytes } from "./fixed-sprite";
@@ -61,6 +64,7 @@ export async function buildBoardPeopleStyle(boardId: string, root = process.cwd(
   return { ...await boardPeopleTile(catalog, boardId, root), catalogSha256, version: BOARD_WIZARD_IDENTITY_STYLE_VERSION };
 }
 export async function buildBoardWizardIdentityStyle(root = process.cwd(), version: QaCharacterStyleContract["version"] = BOARD_WIZARD_IDENTITY_STYLE_VERSION) {
+  if (version === "board-matched-identity/v3") return buildRefreshedIdentityStyle(root);
   if (version === LEGACY_BOARD_WIZARD_IDENTITY_STYLE_VERSION) return buildLegacyBoardWizardIdentityStyle(root);
   if (version !== BOARD_WIZARD_IDENTITY_STYLE_VERSION) throw new Error("BOARD_IDENTITY_STYLE: unknown identity style version");
   const { catalog, sha256: catalogSha256 } = await readBoardConditionedCatalog(root);
@@ -101,4 +105,24 @@ async function buildLegacyBoardWizardIdentityStyle(root: string) {
   if (examples.length !== 9) throw new Error("BOARD_IDENTITY_STYLE: all nine original-board examples are required");
   const png = await sharp({ create: { width: 1024, height: 1024, channels: 4, background: "#e4dfd5" } }).composite(composites).png().toBuffer();
   return { png, version: LEGACY_BOARD_WIZARD_IDENTITY_STYLE_VERSION, catalogSha256, atlasSha256: sha256Bytes(png), examples };
+}
+
+/** Current scene contexts, never enlarged stranger faces. All pixels/hash-bound. */
+async function buildRefreshedIdentityStyle(root: string) {
+  const { sha256: catalogSha256 } = await readBoardConditionedCatalog(root);
+  const composites: OverlayOptions[] = [], examples = [];
+  for (const [i, board] of REFRESHED_COLLECTION_BOARDS.entries()) {
+    const plan = REFRESHED_WIZARD_CATALOG.boards.find(b => b.boardSlug === board.board)!;
+    if (plan.status !== "ready") throw Error("Refreshed identity art unavailable");
+    const bytes = await readCollectionArt(board.art, plan.art.sha256, root);
+    if (!bytes) throw Error("Refreshed identity art missing from manifest");
+    const crop = cropOf(board.hides[0]!);
+    const native = await sharp(bytes).extract(crop).png().toBuffer();
+    const tile = await sharp(native).resize(320, 320, { fit: "contain", background: "#e4dfd5" }).png().toBuffer();
+    composites.push({ input: tile, left: 16 + (i % 3) * 336, top: 16 + Math.floor(i / 3) * 336 });
+    examples.push({ boardId: board.board, boardSha256: plan.art.sha256, crop, cropSha256: sha256Bytes(native) });
+  }
+  if (examples.length !== 9) throw Error("Nine refreshed identity style sources required");
+  const png = await sharp({ create: { width: 1024, height: 1024, channels: 4, background: "#e4dfd5" } }).composite(composites).png().toBuffer();
+  return { png, version: "board-matched-identity/v3" as const, catalogSha256, atlasSha256: sha256Bytes(png), examples };
 }

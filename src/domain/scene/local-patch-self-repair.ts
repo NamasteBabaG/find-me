@@ -1,9 +1,10 @@
+import { isCollectionVersion } from "./local-patch-versions";
 import { z } from "zod";
 
 /** A visual refusal is work for the engine, never a parent's approval task. */
 export const SELF_REPAIR_VERSION = "local-patch-self-repair/v1";
 export const SELF_REPAIR_COMPOSITION_VERSION = "autonomous-paid-join/v1";
-export const selfRepairEnabled = (contentVersion: number) => contentVersion === 10;
+export const selfRepairEnabled = (contentVersion: number) => isCollectionVersion(contentVersion);
 const rect = z.object({ left: z.number().int().nonnegative(), top: z.number().int().nonnegative(),
   width: z.number().int().positive(), height: z.number().int().positive() }).strict();
 export type RecoveryRect = z.infer<typeof rect>;

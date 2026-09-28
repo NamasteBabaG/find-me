@@ -1,3 +1,4 @@
+import refreshedManifest from "../../../content/adventures/wizard-refresh-art.json";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import manifest from "../../../content/adventures/wizard-art.json";
@@ -22,9 +23,9 @@ export function collectionArtOrigin(): string {
  * before any paid rendering. No credentials or image bytes are logged. */
 export async function readCollectionArt(art: string, expectedHash: string, root = process.cwd(),
   remote?: { fetch: typeof fetch; cookie: string }): Promise<Buffer | null> {
-  const entry = manifest.find(row => row.path === art);
+  const entry = [...manifest, ...refreshedManifest].find(row => row.path === art);
   if (!entry) return null;
-  if (entry.sha256 !== expectedHash || !/^public\/scenes\/adventure-[a-z0-9-]+\/base\.webp$/.test(art)) throw Error("COLLECTION_ART: unexpected pinned artwork");
+  if (entry.sha256 !== expectedHash || !/^public\/scenes\/(?:adventure|journey)-[a-z0-9-]+\/base\.webp$/.test(art)) throw Error("COLLECTION_ART: unexpected pinned artwork");
   if (!remote) {
     try {
       const bytes = await readFile(path.join(root, art));
