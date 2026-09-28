@@ -118,6 +118,18 @@ the arch is clipped by the crop and lies inside actual return permission
 (provider mask plus 120 px guard). A wider context alone is not a preservation
 fix. No new placement or render was approved; runtime and QA are unchanged.
 
+Latest completed independent review, `CLAUDE_LAUNCH_AND_ART_RECHECK_20260928.md`,
+reviewed `690c2d29`. N-1/N-2/N-3/T-1 were reproduced and addressed in
+`12028c17`: page-scoped failures, compact tile wording, normal QA sign-in
+recovery without session extension, and per-crop guard recomputation.
+CI `36377617926` passed all 3,540 tests and release gates. QA now runs that
+exact commit, deployment `dpl_9v4FLqBL3gBXmFneuEAR8QfDLWNn`; alias and REST
+metadata verified, public production untouched. Evidence and next independent
+challenge: `QA_LAUNCH_ART_RECHECK_RELEASE_20260928.md` and
+`CODEX_LAUNCH_ART_RECHECK_RESPONSE_20260928.md`. The local expired-session
+mechanism is proven; the original live incident still needs authenticated
+diagnostics. F-A remains open; no paid reference experiment was performed.
+
 | Order | Work | Acceptance / dependency |
 |---|---|---|
 | 1 | Live demo-image fault | Normal authenticated QA image responses, MIME/hash/timing and browser retry; do not call preload a root-cause fix. |

@@ -6,7 +6,8 @@ Completed `CLAUDE_LAUNCH_AND_ART_RECHECK_20260928.md` reviews `690c2d29`,
 not the older checkpoint. Its final sections, reviewed SHA and stable file
 size/mtime were checked; the owner subsequently supplied the completed report.
 Claude's untracked report and unrelated `next-env.d.ts` are not part of this
-change. QA still runs `0202f897` until a separately verified release.
+change. QA ran `0202f897` during implementation; the separately verified
+follow-up release is recorded in `QA_LAUNCH_ART_RECHECK_RELEASE_20260928.md`.
 
 ## Findings reproduced and corrected
 
@@ -72,7 +73,10 @@ change. QA still runs `0202f897` until a separately verified release.
   build and trace/privacy audit passed, `privateLeaks: []`, `problems: []`.
   Log `tmp/launch-recheck-build-20260928.log`. Local QA server/browser closed.
   Pre-existing development `next-env.d.ts` reference restored, not staged.
-- Remote CI and QA release pending: local green is not deployment evidence.
+- Remote CI run `36377617926` passed on follow-up commit `12028c17`, including
+  3,540 tests, validators, disposable DB build/privacy and source-drift gates.
+  QA now runs that exact commit in `dpl_9v4FLqBL3gBXmFneuEAR8QfDLWNn`; see
+  `QA_LAUNCH_ART_RECHECK_RELEASE_20260928.md` for separate remote evidence.
 - Both scene and adventure validators passed; `git diff --check` passed.
 
 ## Still open / next Claude challenge
