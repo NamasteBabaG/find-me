@@ -214,7 +214,12 @@ describe("versioned full real queue and durable accounting: narrow severe retrie
     await expect(runLocalPatchHide(c, { ...deps, fence: async () => { if (++fences === 2) throw new Error("synthetic publication interruption"); } },
       { gameId, board, hide })).rejects.toThrow("synthetic publication interruption");
     const pending = await db.targetVariantAsset.findUniqueOrThrow({ where: { id: row.id } });
-    expect(pending).toMatchObject({ status: "PENDING", attempts: 2, judgeJson: row.judgeJson });
+    expect(pending).toMatchObject({ status: "PENDING", attempts: 2 });
+    const { adaptiveRecovery: oldState, ...oldEvidence } = JSON.parse(row.judgeJson!);
+    const { adaptiveRecovery: nextState, ...pendingEvidence } = JSON.parse(pending.judgeJson!);
+    expect(pendingEvidence).toEqual(oldEvidence);
+    expect(oldState.history).toHaveLength(0);
+    expect(nextState.history).toMatchObject([{ attempt: 1, seamFailure: true }]);
     expect(prompts).toHaveLength(2); expect(prompts[1]).toContain("SEAM REPAIR");
     const fresh = new PrismaClient({ datasources: { db: { url } } });
     try {

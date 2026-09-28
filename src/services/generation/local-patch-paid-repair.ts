@@ -35,6 +35,8 @@ const digestSchema = z.string().regex(/^[a-f0-9]{64}$/);
 export const paidPatchRepairInputSchema = z.array(z.object({ hideId: z.string().min(1).max(100), attempt: z.number().int().min(1).max(3),
   rawSha256: digestSchema, originalBoardSha256: digestSchema, candidateSha256: digestSchema, alphaSha256: digestSchema,
   alphaBase64: z.string().min(4).max(100_000), protectedCore: rectSchema, faceRect: rectSchema,
+  /** Only v10: an explicitly inspected crop-local return, frozen before review. */
+  returnWindow: rectSchema.optional(),
 }).strict()).length(2);
 type Geometry = { rectJson: string; hitRectJson: string; headAnchorJson: string };
 type Candidate = { hideId: string; boardId: string; sceneId: string; rowId: string; targetInstanceId: string; assetId: string;
@@ -44,12 +46,14 @@ type ReviewedSibling = { hideId: string; boardId: string; sceneId: string; rowId
   imageSha256: string; geometry: Geometry; geometrySha256: string; attempts: number; baselineSha256: string; preservedSha256: string; compositionVersion: string };
 type Prepared = Awaited<ReturnType<typeof prepareLocalPatchRepairReview>>;
 type ReviewResult = Awaited<ReturnType<typeof reviewLocalPatchRepair>>;
-export type PaidRepairBatch = { version: 1; gameId: string; ownerId: string; childId: string; identityAssetId: string; identitySha256: string;
+export type PaidRepairBatch = { version: 1 | 2; contentVersion?: 10; gameId: string; ownerId: string; childId: string; identityAssetId: string; identitySha256: string;
   identityPath: string; ageYears: number; photoAssetId: string | null; photoCropJson: string | null;
   inputSha256: string; state: "staged" | "blocked" | "committed"; reason: string | null; operatorId: string; authorizationReason: string;
   baseline: { id: string; sha256: string }[]; candidates: Candidate[]; reviewedSiblings?: ReviewedSibling[];
   reviews: { boardId: string; requestKey: string; fingerprint: string; result: ReviewResult | null }[] };
 const rowDigest = (row: unknown) => hash(row);
+const batchVersion = (batch: PaidRepairBatch) => batch.version === 2 && batch.contentVersion === 10 ? 10 : 8;
+const expectedRows = (version: number) => version === 10 ? 27 : 45;
 async function rowsOf(c: Container, gameId: string) {
   return c.db.targetVariantAsset.findMany({ where: { variant: LOCAL_PATCH_VARIANT, targetInstance: { gameScene: { gameId } } }, orderBy: { id: "asc" } });
 }
@@ -58,7 +62,8 @@ export async function readLocalPatchPaidRepair(c: Pick<Container, "db">, gameId:
   if (!a) return null;
   demand(a.action === LOCAL_PATCH_PAID_REPAIR_ACTION && a.entityType === "Game" && a.entityId === gameId && a.actorType === "ADMIN", "Repair inventory record is invalid");
   const b = JSON.parse(a.metaJson ?? "null") as PaidRepairBatch;
-  demand(b?.version === 1 && b.gameId === gameId && b.baseline.length === 45 && b.candidates.length === 2 && b.reviews.length === 2,
+  demand((b?.version === 1 && b.contentVersion === undefined || b?.version === 2 && b.contentVersion === 10)
+    && b.gameId === gameId && b.baseline.length === expectedRows(batchVersion(b)) && b.candidates.length === 2 && b.reviews.length === 2,
     "Repair inventory is incomplete");
   return b;
 }
@@ -71,18 +76,20 @@ async function identityOf(c: Container, gameId: string) {
     "Repair needs an owned, paid, unpublished game and its original identity");
   demand(game.orders.some(o => o.paymentStatus === "PAID" && o.userId === game.ownerId && o.paidAt && !o.refundedAt)
     && !game.orders.some(o => o.paymentStatus === "REFUNDED" || o.refundedAt), "A live paid order is required");
-  demand(game.scenes.length === 9 && game.scenes.every(s => s.sceneVersion === 8), "Only the complete pinned v8 world may be repaired");
+  const contentVersion = game.scenes[0]?.sceneVersion;
+  demand((contentVersion === 8 || contentVersion === 10) && game.scenes.length === 9
+    && game.scenes.every(s => s.sceneVersion === contentVersion), "Only a complete pinned v8/v10 world may be repaired");
   const identity = await c.db.asset.findUniqueOrThrow({ where: { id: child.identityAssetId } });
   demand(identity.ownerId === game.ownerId && identity.type === "IDENTITY_SHEET" && identity.status === "READY" && !identity.deletedAt && identity.visibility === "PRIVATE", "Canonical identity is unavailable");
   const sheet = await c.storage.get(identity.storagePath), identitySha256 = sha256Bytes(sheet);
   await requireBoardWizardIdentityApproval(c, boardWizardBudgetOf(c), { gameId, identityAssetId: identity.id, sheetSha256: identitySha256,
     catalogSha256: (await readBoardConditionedCatalog()).sha256, photoAssetId: child.originalPhotoAssetId, ageYears: child.ageYears,
-    crop: child.photoCropJson ? JSON.parse(child.photoCropJson) : null, contentVersion: 8 });
-  return { game, child, identity, sheet, identitySha256 };
+    crop: child.photoCropJson ? JSON.parse(child.photoCropJson) : null, contentVersion });
+  return { game, child, identity, sheet, identitySha256, contentVersion };
 }
 async function immutableRows(c: Container, batch: PaidRepairBatch) {
   const rows = await rowsOf(c, batch.gameId);
-  demand(rows.length === 45 && rows.every(row => batch.baseline.find(b => b.id === row.id)?.sha256 === rowDigest(row)), "An appearance changed after the repair was staged");
+  demand(rows.length === expectedRows(batchVersion(batch)) && rows.every(row => batch.baseline.find(b => b.id === row.id)?.sha256 === rowDigest(row)), "An appearance changed after the repair was staged");
   return rows;
 }
 async function fenceRepairIdentity(tx: Prisma.TransactionClient, b: PaidRepairBatch) {
@@ -103,18 +110,19 @@ async function fenceRepairIdentity(tx: Prisma.TransactionClient, b: PaidRepairBa
 
 /** Rebuild exactly the evidence that will be reviewed; staged PNGs are not a new approval. */
 async function prepareBoard(c: Container, batch: PaidRepairBatch, boardId: string, overrides?: Map<string, Buffer>): Promise<Prepared> {
-  const { game, child, sheet, identitySha256 } = await identityOf(c, batch.gameId);
+  const { game, child, sheet, identitySha256, contentVersion } = await identityOf(c, batch.gameId);
+  demand(contentVersion === batchVersion(batch), "Repair scene version changed");
   demand(game.ownerId === batch.ownerId && child.id === batch.childId && child.identityAssetId === batch.identityAssetId && identitySha256 === batch.identitySha256,
     "The repair's canonical identity changed");
   const scene = game.scenes.find(s => s.sceneSlug === boardId)!;
-  const board = localPatchBoardForVersion(boardId, 8);
-  demand(scene && board && board.hides.length === 5, "The reviewed board is not authored");
-  const def = sceneBySlug(boardId, 8), original = await readShippedBoardArt(board.art, def.art.sha256 ?? "");
+  const board = localPatchBoardForVersion(boardId, contentVersion);
+  demand(scene && board && board.hides.length === (contentVersion === 10 ? 3 : 5), "The reviewed board is not authored");
+  const def = sceneBySlug(boardId, contentVersion), original = await readShippedBoardArt(board.art, def.art.sha256 ?? "");
   const all = await rowsOf(c, game.id), targets = await c.db.targetInstance.findMany({ where: { gameSceneId: scene.id } });
   const hides: LocalPatchBoardJudgeRequest["hides"][number][] = [];
-  const request: LocalPatchBoardJudgeRequest = { boardId, contentVersion: 8,
+  const request: LocalPatchBoardJudgeRequest = { boardId, contentVersion,
     boardPng: await sharp(original).resize(1536, 1024, { fit: "inside" }).png().toBuffer(),
-    identityPng: (await prepareLocalPatchIdentityReferences(sheet, 8)).judgeIdentityPng, hides };
+    identityPng: (await prepareLocalPatchIdentityReferences(sheet, contentVersion)).judgeIdentityPng, hides };
   const faceRois: { hideId: string; rect: z.infer<typeof rectSchema> }[] = [];
   for (const hide of board.hides) {
     const target = targets.find(t => t.targetId === hide.targetId), row = all.find(r => r.targetInstanceId === target?.id);
@@ -130,7 +138,7 @@ async function prepareBoard(c: Container, batch: PaidRepairBatch, boardId: strin
       const sibling = batch.reviewedSiblings?.find(s => s.rowId === row.id);
       demand(row.status === "GENERATED" && (sibling ? sibling.imageSha256 === imageSha256 && sibling.assetId === assetId
         && sibling.baselineSha256 === rowDigest(row) && sibling.preservedSha256 === localPatchRepairSiblingInvariantHash(row)
-        : await hasLocalPatchPublicationPolicy(c, { gameId: game.id, sceneVersion: 8, hideId: hide.id,
+        : await hasLocalPatchPublicationPolicy(c, { gameId: game.id, sceneVersion: contentVersion, hideId: hide.id,
         variantId: row.id, attempts: row.attempts, identityAssetId: batch.identityAssetId, identitySha256, assetId, imageSha256,
         geometrySha256: localPatchPublicationGeometryHash(row), judgeJson: row.judgeJson })), "An unchanged sibling lacks its frozen review input or original valid approval");
     }
@@ -139,7 +147,7 @@ async function prepareBoard(c: Container, batch: PaidRepairBatch, boardId: strin
       height: Math.min(def.art.height, crop.top + crop.height + 64) - top };
     const beforePng = await sharp(original).extract(context).png().toBuffer();
     const afterPng = await sharp(beforePng).composite([{ input: bytes, left: crop.left - left, top: crop.top - top }]).png().toBuffer();
-    const mask = maskForHide(hide), g = LOCAL_PATCH_RETURN_GUARD;
+    const mask = contentVersion === 10 && replacement ? replacement.faceRect : maskForHide(hide), g = LOCAL_PATCH_RETURN_GUARD;
     const detailLeft = Math.max(0, mask.left - g), detailTop = Math.max(0, mask.top - g);
     const closeupPng = await sharp(bytes).extract({ left: detailLeft, top: detailTop,
       width: Math.min(crop.width, mask.left + mask.width + g) - detailLeft,
@@ -160,20 +168,20 @@ export async function stageLocalPatchPaidRepair(c: Container, input: { gameId: s
   const repairs = paidPatchRepairInputSchema.parse(input.repairs);
   demand(new Set(repairs.map(r => r.hideId)).size === 2 && input.authorizationReason.trim().length >= 10 && input.authorizationReason.length <= 1000,
     "Two distinct appearances and an explicit authorization reason are required");
-  const { game, child, identity, sheet, identitySha256 } = await identityOf(c, input.gameId);
+  const { game, child, identity, sheet, identitySha256, contentVersion } = await identityOf(c, input.gameId);
   demand(game.status === "GENERATION_FAILED", "Only a terminal, unpublished quality failure can enter this review-only path");
   demand(!await readLocalPatchPaidRepair(c, game.id), "This game's immutable repair batch already exists");
   const job = await c.db.generationJob.findUniqueOrThrow({ where: { id: `job_${game.id}` } });
   demand(job.status === "DONE" && job.currentStep === "local-patch:quality-failed", "The original worker has not stopped");
   const rows = await rowsOf(c, game.id), targets = await c.db.targetInstance.findMany({ where: { gameScene: { gameId: game.id } } });
-  demand(rows.length === 45 && rows.every(r => r.attempts >= 1 && r.attempts <= 3), "The complete bounded world is required");
+  demand(rows.length === expectedRows(contentVersion) && rows.every(r => r.attempts >= 1 && r.attempts <= 3), "The complete bounded world is required");
   const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(game.id), ledger = await budget.audit(worldId);
   demand(!ledger.held && ledger.reservedMicroUsd === 0 && !ledger.pendingRequestKeys.length && !ledger.unknownRequestKeys.length, "Unresolved spending cannot enter recovery");
   const candidates: Candidate[] = [], blobs = new Map<string, Buffer>();
   for (const selection of repairs) {
-    const scene = game.scenes.find(s => localPatchBoardForVersion(s.sceneSlug, 8)?.hides.some(h => h.id === selection.hideId));
+    const scene = game.scenes.find(s => localPatchBoardForVersion(s.sceneSlug, contentVersion)?.hides.some(h => h.id === selection.hideId));
     demand(scene, "Repair hide is not in this game");
-    const board = localPatchBoardForVersion(scene.sceneSlug, 8)!, hide = board.hides.find(h => h.id === selection.hideId)!;
+    const board = localPatchBoardForVersion(scene.sceneSlug, contentVersion)!, hide = board.hides.find(h => h.id === selection.hideId)!;
     const target = targets.find(t => t.gameSceneId === scene.id && t.targetId === hide.targetId), row = rows.find(r => r.targetInstanceId === target?.id);
     demand(row && target && row.provider === LOCAL_PATCH_PROVIDER && row.attempts === 3 && ["GENERATED", "FAILED"].includes(row.status), "Only an exhausted, concluded appearance may be locally repaired");
     const requestKey = `${hide.id}:${hide.pose}:render:${selection.attempt}`, bill = await budget.readRequest(worldId, requestKey);
@@ -187,13 +195,24 @@ export async function stageLocalPatchPaidRepair(c: Container, input: { gameId: s
     const raw = Buffer.from(e.bytesBase64, "base64"), alpha = Buffer.from(selection.alphaBase64, "base64");
     demand(raw.toString("base64") === e.bytesBase64 && sha256Bytes(raw) === selection.rawSha256
       && alpha.toString("base64") === selection.alphaBase64 && sha256Bytes(alpha) === selection.alphaSha256, "Paid image or alpha digest mismatch");
-    const def = sceneBySlug(scene.sceneSlug, 8), original = await readShippedBoardArt(board.art, def.art.sha256 ?? "");
+    const def = sceneBySlug(scene.sceneSlug, contentVersion), original = await readShippedBoardArt(board.art, def.art.sha256 ?? "");
     demand(sha256Bytes(original) === selection.originalBoardSha256, "The selected source board changed");
     const crop = cropOf(hide), mask = maskForHide(hide), g = LOCAL_PATCH_RETURN_GUARD;
     const left = Math.max(0, mask.left - g), top = Math.max(0, mask.top - g);
-    const returnWindow = { left, top, width: Math.min(crop.width, mask.left + mask.width + g) - left,
+    const originalReturn = { left, top, width: Math.min(crop.width, mask.left + mask.width + g) - left,
       height: Math.min(crop.height, mask.top + mask.height + g) - top };
+    demand(contentVersion === 10 ? !!selection.returnWindow : !selection.returnWindow,
+      "A v10 return must be explicitly inspected; historical v8 returns cannot change");
+    const returnWindow = selection.returnWindow ?? originalReturn;
+    // Each complete crop is disjoint in the authored catalogue. Explicitly
+    // verify expanded returns cannot cover another personalized appearance.
+    if (contentVersion === 10) for (const other of board.hides.filter(h => h.id !== hide.id)) {
+      const rect = cropOf(other), world = { ...returnWindow, left: crop.left + returnWindow.left, top: crop.top + returnWindow.top };
+      demand(world.left + world.width <= rect.left || rect.left + rect.width <= world.left
+        || world.top + world.height <= rect.top || rect.top + rect.height <= world.top, "Expanded return overlaps another appearance");
+    }
     const joined = await recomputePaidPatchJoin({ beforePng: original, rawPng: raw, alphaPng: alpha, crop, returnWindow,
+      ...(contentVersion === 10 ? { boardSize: { width: 3840 as const, height: 2160 as const } } : {}),
       protectedCore: selection.protectedCore, faceRect: selection.faceRect });
     demand(joined.candidateSha256 === selection.candidateSha256, "The repaired picture does not match the inspected candidate");
     const assetId = `ast_lpmr_${hash([game.id, hide.id, joined.candidateSha256]).slice(0, 24)}`;
@@ -207,7 +226,7 @@ export async function stageLocalPatchPaidRepair(c: Container, input: { gameId: s
   demand(new Set(candidates.map(x => x.boardId)).size === 2, "The two repaired appearances must belong to different boards");
   // No unselected failure can be disguised by this path.
   demand(rows.filter(r => !candidates.some(x => x.rowId === r.id)).every(r => r.status === "GENERATED"), "An unselected appearance still failed");
-  const batch: PaidRepairBatch = { version: 1, gameId: game.id, ownerId: game.ownerId!, childId: child.id, identityAssetId: identity.id,
+  const batch: PaidRepairBatch = { ...(contentVersion === 10 ? { version: 2 as const, contentVersion: 10 as const } : { version: 1 as const }), gameId: game.id, ownerId: game.ownerId!, childId: child.id, identityAssetId: identity.id,
     identityPath: identity.storagePath, ageYears: child.ageYears!, photoAssetId: child.originalPhotoAssetId, photoCropJson: child.photoCropJson,
     identitySha256, inputSha256: hash(repairs), state: "staged", reason: null, operatorId: input.operatorId, authorizationReason: input.authorizationReason.trim(),
     baseline: rows.map(r => ({ id: r.id, sha256: rowDigest(r) })), candidates, reviewedSiblings: [], reviews: [] };
@@ -215,7 +234,7 @@ export async function stageLocalPatchPaidRepair(c: Container, input: { gameId: s
   // Keep its sibling pictures intact, but establish their first REAL approval
   // from the same fresh board review, rather than pretending they already passed.
   for (const candidate of candidates) {
-    const board = localPatchBoardForVersion(candidate.boardId, 8)!;
+    const board = localPatchBoardForVersion(candidate.boardId, contentVersion)!;
     for (const hide of board.hides) {
       const target = targets.find(t => t.gameSceneId === candidate.sceneId && t.targetId === hide.targetId)!;
       const row = rows.find(r => r.targetInstanceId === target.id)!;
@@ -226,7 +245,7 @@ export async function stageLocalPatchPaidRepair(c: Container, input: { gameId: s
         && asset.type === "TARGET_SPRITE" && asset.visibility === "GAME" && asset.status === "READY" && !asset.deletedAt,
         "An unchanged appearance has no owned playable asset");
       const image = await c.storage.get(asset.storagePath), imageSha256 = sha256Bytes(image);
-      if (await hasLocalPatchPublicationPolicy(c, { gameId: game.id, sceneVersion: 8, hideId: hide.id, variantId: row.id,
+      if (await hasLocalPatchPublicationPolicy(c, { gameId: game.id, sceneVersion: contentVersion, hideId: hide.id, variantId: row.id,
         attempts: row.attempts, identityAssetId: identity.id, identitySha256, assetId: row.assetId, imageSha256,
         geometrySha256: localPatchPublicationGeometryHash(row), judgeJson: row.judgeJson })) continue;
       const receipt = JSON.parse(row.judgeJson ?? "null");
@@ -284,7 +303,7 @@ export async function runLocalPatchPaidRepair(c: Container, gameId: string, deps
   if (batch.state === "blocked") return { state: "blocked", reason: batch.reason };
   if (batch.state === "committed") {
     const current = await rowsOf(c, gameId);
-    demand(current.length === 45 && current.every(row => {
+    demand(current.length === expectedRows(batchVersion(batch)) && current.every(row => {
       const candidate = batch.candidates.find(x => x.rowId === row.id);
       const sibling = batch.reviewedSiblings?.find(x => x.rowId === row.id);
       return candidate ? row.status === "GENERATED" && row.attempts === 3 && row.assetId === candidate.assetId
@@ -358,7 +377,7 @@ async function commitLocalPatchPaidRepair(c: Container, batch: PaidRepairBatch, 
         judgeJson, lastError: null, rejectedAssetIdsJson: JSON.stringify([...new Set([...priorIds, ...(row.assetId ? [row.assetId] : [])])]) } });
       await tx.targetInstance.update({ where: { id: candidate.targetInstanceId }, data: { status: "GENERATED", spriteKind: "image", spriteAssetId: asset.id } });
       await tx.gameScene.update({ where: { id: candidate.sceneId }, data: { generationStatus: "GENERATED", configJson: null } });
-      await recordLocalPatchPublicationPolicy(tx, { gameId: batch.gameId, sceneVersion: 8, hideId: candidate.hideId, variantId: row.id,
+      await recordLocalPatchPublicationPolicy(tx, { gameId: batch.gameId, sceneVersion: batchVersion(batch), hideId: candidate.hideId, variantId: row.id,
         attempts: row.attempts, identityAssetId: batch.identityAssetId, identitySha256: batch.identitySha256, assetId: asset.id,
         imageSha256: candidate.imageSha256, geometrySha256: candidate.geometrySha256, judgeJson });
     }
@@ -376,7 +395,7 @@ async function commitLocalPatchPaidRepair(c: Container, batch: PaidRepairBatch, 
         boardReview: { version: result.version, wireHashes: result.wireHashes, raw: result.raw, model: result.evidence.model, effort: "low",
           costMicroUsd: result.evidence.amountMicroUsd, requestKey: reviewed.requestKey, fingerprint: reviewed.fingerprint, compositionVersion: sibling.compositionVersion } });
       await tx.targetVariantAsset.update({ where: { id: row.id }, data: { judgeJson } });
-      await recordLocalPatchPublicationPolicy(tx, { gameId: batch.gameId, sceneVersion: 8, hideId: sibling.hideId, variantId: row.id,
+      await recordLocalPatchPublicationPolicy(tx, { gameId: batch.gameId, sceneVersion: batchVersion(batch), hideId: sibling.hideId, variantId: row.id,
         attempts: row.attempts, identityAssetId: batch.identityAssetId, identitySha256: batch.identitySha256, assetId: sibling.assetId,
         imageSha256: sibling.imageSha256, geometrySha256: sibling.geometrySha256, judgeJson });
     }

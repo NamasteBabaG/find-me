@@ -25,13 +25,14 @@ import { recomputePaidPatchJoin } from "../local-patch-repair-compose";
 import { reviewBoardWizardIdentity } from "../board-wizard-identity-gate";
 import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wizard";
 import { readBoardConditionedCatalog } from "../board-conditioned-catalog";
-import { LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, type LocalPatchHideDeps } from "../local-patch-hide";
+import { LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, runLocalPatchHide, type LocalPatchHideDeps } from "../local-patch-hide";
 import { LOCAL_PATCH_COMPOSITION_VERSION, LOCAL_PATCH_RETURN_GUARD } from "../local-patch-seam";
 import { LOCAL_PATCH_RESERVE, RETAINED_RENDER_VERSION } from "../local-patch-render";
 import { recordLocalPatchPublicationPolicy, hasLocalPatchPublicationPolicy, localPatchPublicationGeometryHash } from "../local-patch-publication-policy";
 import { LocalPatchRetainedPurchaseStore } from "../local-patch-lifecycle";
 import { purchaseOnce } from "../paid-operation";
 import { sha256Bytes } from "../fixed-sprite";
+import { localPatchHideEvidenceIds } from "../local-patch-judge";
 import { bill, boardPng, PASSING_ANSWER, seedApprovedGame } from "./local-patch-fixtures";
 
 const state = vi.hoisted(() => ({ testers: [] as string[], original: Buffer.alloc(0) }));
@@ -41,10 +42,12 @@ vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: "qa", GENERATION_ENA
   adminEmails: () => ["synthetic-admin@example.invalid"] }));
 vi.mock("../local-patch-hide", async original => ({ ...await original<typeof import("../local-patch-hide")>(),
   readShippedBoardArt: async () => Buffer.from(state.original) }));
-const BOARDS = localPatchBoardsForVersion(8);
-const SELECTED = [BOARDS.find(b => b.board === "tokyo")!.hides[2]!, BOARDS.find(b => b.board === "greatwall")!.hides[4]!];
-const UNREVIEWED = BOARDS.find(b => b.board === "greatwall")!.hides.slice(0, 4).map(h => h.id);
+let VERSION: 8 | 10 = 8;
+let BOARDS = localPatchBoardsForVersion(VERSION);
+let SELECTED = [BOARDS[0]!.hides[0]!], UNREVIEWED: string[] = [];
+let dimensions = { width: 3072, height: 2048 };
 const GOOD = { ...PASSING_ANSWER, faceLikeness: "pass", faceReadable: "pass", severeSeam: "pass" };
+const goodVerdict = () => VERSION === 10 ? { ...GOOD, ageAppropriate: "pass" } : GOOD;
 let dir: string, url: string, db: PrismaClient, c: Container, sequence = 0;
 const mails: EmailMessage[] = [];
 const noNetwork = vi.fn(async () => { throw new Error("No real network in paid repair integration"); });
@@ -66,7 +69,7 @@ afterAll(async () => {
 async function seed() {
   const gameId = `paid-repair-${++sequence}`;
   const seeded = await seedApprovedGame(c, db, { gameId, approved: false, styleVersion: LOCAL_PATCH_STYLE,
-    status: "GENERATION_FAILED", withJob: true, scenes: BOARDS.map(b => ({ slug: b.board, version: 8 })) });
+    status: "GENERATION_FAILED", withJob: true, scenes: BOARDS.map(b => ({ slug: b.board, version: VERSION })) });
   state.testers.push(seeded.email);
   await c.storage.put(`private/photo-${gameId}.jpg`, seeded.sheet, "image/png");
   await db.game.update({ where: { id: gameId }, data: { paidAt: new Date() } });
@@ -83,27 +86,27 @@ async function seed() {
     write: work => db.$transaction(work), reviewer: { review: async () => ({ httpOk: true, requestId: `req-${gameId}-identity`,
       body: { model: "gpt-5.6-luna", usage: { prompt_tokens: 1500, completion_tokens: 150 }, choices: [{ finish_reason: "stop", message: {
         content: JSON.stringify({ checks: { identity: "pass", age: "pass", paintedStyle: "pass", sheetLayout: "pass" }, reason: "Synthetic approved illustrated identity" }) } }] } }) } },
-  { gameId, identityAssetId: `ast-sheet-${gameId}`, sheet: seeded.sheet, photo: seeded.sheet, atlas: seeded.sheet, contentVersion: 8,
+  { gameId, identityAssetId: `ast-sheet-${gameId}`, sheet: seeded.sheet, photo: seeded.sheet, atlas: seeded.sheet, contentVersion: VERSION,
     provenance: { promptVersion: "character-v4-board-drawn-face-reference", quality: "medium", photoAssetId: `ast-photo-${gameId}`,
       photoSha256: sha256Bytes(seeded.sheet), ageYears: 8, crop: null,
       style: { version: "board-matched-identity/v2", catalogSha256, atlasSha256: sha256Bytes(seeded.sheet) } } });
   const png = await sharp(state.original).extract({ left: 0, top: 0, width: 512, height: 768 }).png().toBuffer();
   for (const board of BOARDS) {
-    const def = sceneBySlug(board.board, 8), sceneId = `gsc-${gameId}-${board.board}`;
+    const def = sceneBySlug(board.board, VERSION), sceneId = `gsc-${gameId}-${board.board}`;
     await db.gameScene.update({ where: { id: sceneId }, data: { generationStatus: "GENERATED" } });
     for (const hide of board.hides) {
       const authored = def.targets.find(t => t.id === hide.targetId)!;
       const targetId = `tgt-${gameId}-${hide.id}`, rowId = `tva-${gameId}-${hide.id}`, assetId = `ast-${gameId}-${hide.id}`;
       const crop = cropOf(hide), mask = maskForHide(hide);
-      const geometry = { rectJson: JSON.stringify({ x: crop.left / 3072, y: crop.top / 2048, w: 512 / 3072, h: 768 / 2048 }),
-        hitRectJson: JSON.stringify({ x: (crop.left + mask.left) / 3072, y: (crop.top + mask.top) / 2048, w: mask.width / 3072, h: mask.height / 2048 }),
-        headAnchorJson: JSON.stringify({ x: (crop.left + mask.left + mask.width / 2) / 3072, y: (crop.top + mask.top) / 2048 }) };
-      const selected = SELECTED.some(h => h.id === hide.id), failed = hide.id === SELECTED[1]!.id;
+      const geometry = { rectJson: JSON.stringify({ x: crop.left / dimensions.width, y: crop.top / dimensions.height, w: 512 / dimensions.width, h: 768 / dimensions.height }),
+        hitRectJson: JSON.stringify({ x: (crop.left + mask.left) / dimensions.width, y: (crop.top + mask.top) / dimensions.height, w: mask.width / dimensions.width, h: mask.height / dimensions.height }),
+        headAnchorJson: JSON.stringify({ x: (crop.left + mask.left + mask.width / 2) / dimensions.width, y: (crop.top + mask.top) / dimensions.height }) };
+      const selected = SELECTED.some(h => h.id === hide.id), failed = VERSION === 10 ? selected : hide.id === SELECTED[1]!.id;
       const attempts = selected ? 3 : 1, pendingReview = UNREVIEWED.includes(hide.id);
       const judgeJson = JSON.stringify({ hide: hide.id, pose: hide.pose, judgedSha256: sha256Bytes(png), geometrySha256: localPatchPublicationGeometryHash(geometry),
-        reviewState: pendingReview ? "pending-board-review" : "board-review-complete", wireFault: null, renderFault: null, verdict: pendingReview ? null : GOOD,
+        reviewState: pendingReview ? "pending-board-review" : "board-review-complete", wireFault: null, renderFault: null, verdict: pendingReview ? null : goodVerdict(),
         compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION,
-        ...(pendingReview ? {} : { boardReview: { compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION, version: "local-patch-board-five-quality/v3-head-safe" } }) });
+        ...(pendingReview ? {} : { boardReview: { compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION, version: VERSION === 10 ? "local-patch-board-five-quality/v5-evidence-labeled" : "local-patch-board-five-quality/v3-head-safe" } }) });
       await c.storage.put(`game/${assetId}.png`, png, "image/png");
       await db.asset.create({ data: { id: assetId, ownerId: seeded.userId, type: "TARGET_SPRITE", visibility: "GAME", status: "READY",
         storagePath: `game/${assetId}.png`, mimeType: "image/png", width: 512, height: 768, bytes: png.length, provider: LOCAL_PATCH_PROVIDER, providerRequestId: gameId } });
@@ -111,7 +114,7 @@ async function seed() {
         slotAId: authored.slots[0].id, slotBId: authored.slots[1].id, spriteKind: "image", spriteAssetId: assetId, status: failed ? "FAILED" : "GENERATED", attempts } });
       await db.targetVariantAsset.create({ data: { id: rowId, targetInstanceId: targetId, variant: LOCAL_PATCH_VARIANT, slotId: authored.slots[0].id,
         provider: LOCAL_PATCH_PROVIDER, assetId, attempts, ...geometry, judgeJson, status: failed ? "FAILED" : "GENERATED", rejectedAssetIdsJson: "[]" } });
-      if (!failed && !pendingReview) await db.$transaction(tx => recordLocalPatchPublicationPolicy(tx, { gameId, sceneVersion: 8, hideId: hide.id,
+      if (!failed && !pendingReview) await db.$transaction(tx => recordLocalPatchPublicationPolicy(tx, { gameId, sceneVersion: VERSION, hideId: hide.id,
         variantId: rowId, attempts, identityAssetId: `ast-sheet-${gameId}`, identitySha256: sha256Bytes(seeded.sheet), assetId,
         imageSha256: sha256Bytes(png), geometrySha256: localPatchPublicationGeometryHash(geometry), judgeJson }));
     }
@@ -119,7 +122,8 @@ async function seed() {
   const repairs = [];
   for (const hide of SELECTED) {
     const mask = maskForHide(hide), crop = cropOf(hide);
-    const core = { left: mask.left + 12, top: mask.top + 12, width: 40, height: 60 };
+    // The collection repair restores a head above the old return window.
+    const core = { left: mask.left + 12, top: VERSION === 10 ? 40 : mask.top + 12, width: 40, height: 60 };
     const faceRect = { left: core.left + 4, top: core.top + 4, width: 30, height: 30 };
     const raw = await sharp(png).composite([{ input: { create: { width: core.width, height: core.height, channels: 4, background: "#244fc1" } }, left: core.left, top: core.top }]).png().toBuffer();
     const weights = Buffer.alloc(512 * 768);
@@ -129,9 +133,11 @@ async function seed() {
     }
     const alpha = await sharp(weights, { raw: { width: 512, height: 768, channels: 1 } }).toColourspace("b-w").png().toBuffer();
     const left = Math.max(0, mask.left - LOCAL_PATCH_RETURN_GUARD), top = Math.max(0, mask.top - LOCAL_PATCH_RETURN_GUARD);
-    const returnWindow = { left, top, width: Math.min(512, mask.left + mask.width + LOCAL_PATCH_RETURN_GUARD) - left,
-      height: Math.min(768, mask.top + mask.height + LOCAL_PATCH_RETURN_GUARD) - top };
-    const joined = await recomputePaidPatchJoin({ beforePng: state.original, rawPng: raw, alphaPng: alpha, crop, returnWindow, protectedCore: core, faceRect });
+    const returnWindow = VERSION === 10 ? { left: 16, top: 16, width: 480, height: 736 }
+      : { left, top, width: Math.min(512, mask.left + mask.width + LOCAL_PATCH_RETURN_GUARD) - left,
+        height: Math.min(768, mask.top + mask.height + LOCAL_PATCH_RETURN_GUARD) - top };
+    const joined = await recomputePaidPatchJoin({ beforePng: state.original, rawPng: raw, alphaPng: alpha, crop, returnWindow, protectedCore: core, faceRect,
+      ...(VERSION === 10 ? { boardSize: { width: 3840 as const, height: 2160 as const } } : {}) });
     const requestKey = `${hide.id}:${hide.pose}:render:1`, budget = boardWizardBudgetOf(c);
     expect(await purchaseOnce({ ledger: budget, store: new LocalPatchRetainedPurchaseStore(c, gameId, budget) }, {
       worldId: boardWizardWorldId(gameId), requestKey, scope: "image", operationFingerprint: `synthetic-paid-${gameId}-${hide.id}`,
@@ -139,7 +145,8 @@ async function seed() {
         bytes: Buffer.from(JSON.stringify({ version: RETAINED_RENDER_VERSION, bytesBase64: raw.toString("base64"), rejected: null })), evidence: bill(`req-${gameId}-${hide.id}`) }),
     })).toMatchObject({ kind: "bought" });
     repairs.push({ hideId: hide.id, attempt: 1, rawSha256: sha256Bytes(raw), originalBoardSha256: sha256Bytes(state.original),
-      candidateSha256: joined.candidateSha256, alphaSha256: sha256Bytes(alpha), alphaBase64: alpha.toString("base64"), protectedCore: core, faceRect });
+      candidateSha256: joined.candidateSha256, alphaSha256: sha256Bytes(alpha), alphaBase64: alpha.toString("base64"), protectedCore: core, faceRect,
+      ...(VERSION === 10 ? { returnWindow } : {}) });
   }
   const beforeRows = await db.targetVariantAsset.findMany({ where: { targetInstance: { gameScene: { gameId } } }, orderBy: { id: "asc" } });
   const beforeCost = (await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId))).settledMicroUsd;
@@ -147,14 +154,18 @@ async function seed() {
 }
 const noPaint: LocalPatchHideDeps = { renderPolicySha256: "f".repeat(64), readBoardArt: async () => state.original,
   render: async () => { throw new Error("Repair flow must not buy an image"); }, judge: async () => { throw new Error("Repair flow must not buy per-hide review"); } };
-function judge(gameId: string, siblingFails = false) {
+function judge(gameId: string, siblingFails = false, failedCheck?: "ageAppropriate" | "scaleRight") {
   let calls = 0;
-  return vi.fn(async (request: { prompt: string }) => {
+  return vi.fn(async (request: { prompt: string; images: readonly Buffer[]; imageLabels?: readonly string[] }) => {
     calls++;
     const board = BOARDS.find(b => request.prompt.includes(`The selected corrected hide is ${b.hides.find(h => SELECTED.some(s => s.id === h.id))?.id}.`))!;
     if (!board) throw new Error("The actual frozen repair prompt did not name a selected hide");
+    if (VERSION === 10) { expect(request.images).toHaveLength(8); expect(request.imageLabels).toHaveLength(8); }
     return { verdict: null, raw: JSON.stringify({ hides: board.hides.map((h, index) => ({ hideId: h.id,
-      verdict: siblingFails && index === 0 ? { ...GOOD, faceLikeness: "unsure" } : GOOD })) }),
+      ...(VERSION === 10 ? { evidenceIds: localPatchHideEvidenceIds(h.id) } : {}),
+      verdict: failedCheck && index === 0 ? { ...goodVerdict(), [failedCheck]: "fail", verdict: "fail",
+        faults: [{ check: failedCheck, where: "The visible body has adult proportions at this ground depth" }] }
+        : siblingFails && index === 0 ? { ...goodVerdict(), faceLikeness: "unsure" } : goodVerdict() })) }),
       usage: { prompt_tokens: 12000, completion_tokens: 1200 }, requestId: `req-${gameId}-repair-${calls}`,
       model: "gpt-5.6-sol", finishReason: "stop", wireFault: null, costUnknown: false };
   });
@@ -163,18 +174,64 @@ async function tick(gameId: string, repairJudge: ReturnType<typeof judge>, conta
   return runLocalPatchWorldSlice(container, noPaint, gameId, { repairJudge, hardDeadlineAt: Date.now() + 270_000 });
 }
 
-describe("two paid repairs through actual stage, real ledger, durable queue and publication", () => {
-  it("stages without spend, delivers45 after two reviews, preserves43 images and binds four pending siblings without repainting", async () => {
+describe.each([8, 10] as const)("v%s paid repairs through actual stage, real ledger, durable queue and publication", version => {
+  beforeAll(async () => {
+    VERSION = version; BOARDS = localPatchBoardsForVersion(version);
+    SELECTED = version === 10
+      ? [BOARDS.find(b => b.board === "antarctica")!.hides[2]!, BOARDS.find(b => b.board === "giza")!.hides[1]!]
+      : [BOARDS.find(b => b.board === "tokyo")!.hides[2]!, BOARDS.find(b => b.board === "greatwall")!.hides[4]!];
+    UNREVIEWED = BOARDS.find(b => b.hides.some(h => h.id === SELECTED[1]!.id))!.hides.filter(h => h.id !== SELECTED[1]!.id).map(h => h.id);
+    dimensions = version === 10 ? { width: 3840, height: 2160 } : { width: 3072, height: 2048 };
+    state.original = await sharp({ create: { ...dimensions, channels: 4, background: "#d2be96" } }).png().toBuffer();
+  });
+  it.runIf(version === 10)("diagnoses two actual seam failures before the third purchase and resumes that plan after a lost image write", async () => {
+    const s = await seed(), board = BOARDS.find(b => b.board === "sydney")!, hide = board.hides[0]!;
+    const old = s.beforeRows.find(r => JSON.parse(r.judgeJson!).hide === hide.id)!;
+    await db.targetVariantAsset.delete({ where: { id: old.id } });
+    const prompts: string[] = [], request = { gameId: s.gameId, board, hide };
+    const deps: LocalPatchHideDeps = { ...noPaint, render: async ({ requestKey, stylePng, prompt }) => {
+      prompts.push(prompt);
+      const mask = maskForHide(hide);
+      const png = prompts.length < 3
+        ? await sharp({ create: { width: 512, height: 768, channels: 4, background: "red" } }).png().toBuffer()
+        : await sharp(stylePng).composite([{ input: { create: { width: 40, height: 60, channels: 4, background: "blue" } },
+          left: mask.left + 12, top: mask.top + 12 }]).png().toBuffer();
+      return { png, rejected: null, quarantined: null, evidence: bill(`req-${s.gameId}-${requestKey}`), unknownReason: null };
+    } };
+    expect((await runLocalPatchHide(c, deps, request)).state).toBe("refused");
+    expect((await runLocalPatchHide(c, deps, request)).state).toBe("gave-up");
+    expect(prompts.every(prompt => !prompt.includes("ADAPTIVE RECOVERY"))).toBe(true);
+    await db.$executeRawUnsafe(`CREATE TRIGGER fail_adaptive_write BEFORE INSERT ON FileBlob WHEN NEW.key LIKE 'game/%'
+      BEGIN SELECT RAISE(ABORT, 'lost third-attempt image write'); END`);
+    try { await expect(runLocalPatchHide(c, deps, { ...request, finalRepair: true })).rejects.toThrow(); }
+    finally { await db.$executeRawUnsafe("DROP TRIGGER fail_adaptive_write"); }
+    expect(prompts).toHaveLength(3);
+    expect(prompts[2]).toContain("Solve registration first");
+    const pending = await db.targetVariantAsset.findFirstOrThrow({ where: { targetInstanceId: old.targetInstanceId } });
+    expect(pending).toMatchObject({ status: "PENDING", attempts: 3 });
+    const plan = JSON.parse(pending.judgeJson!).adaptiveRecovery.plan;
+    expect(plan.evidence.map((e: { attempt: number }) => e.attempt)).toEqual([1, 2]);
+    const spent = (await boardWizardBudgetOf(c).audit(boardWizardWorldId(s.gameId))).settledMicroUsd;
+    const fresh = new PrismaClient({ datasources: { db: { url } } });
+    try { expect(await runLocalPatchHide({ ...c, db: fresh, storage: new DbStorage(fresh) }, { ...deps,
+      render: async () => { throw Error("A retained third attempt must never buy again"); } }, { ...request, finalRepair: true }))
+      .toMatchObject({ state: "generated", attempt: 3, replayed: true }); }
+    finally { await fresh.$disconnect(); }
+    const resumed = await db.targetVariantAsset.findUniqueOrThrow({ where: { id: pending.id } });
+    expect(JSON.parse(resumed.judgeJson!).adaptiveRecovery.plan).toEqual(plan);
+    expect((await boardWizardBudgetOf(c).audit(boardWizardWorldId(s.gameId))).settledMicroUsd).toBe(spent);
+  }, 240_000);
+  it("stages without spend, delivers the complete world after two reviews and preserves all other images", async () => {
     const s = await seed(), mailStart = mails.length;
     const stage = await stageLocalPatchPaidRepair(c, s.input);
     expect(stage.requestKeys).toHaveLength(2);
     expect((await boardWizardBudgetOf(c).audit(boardWizardWorldId(s.gameId))).settledMicroUsd).toBe(s.beforeCost);
     const staged = await readLocalPatchPaidRepair(c, s.gameId); expect(staged?.state).toBe("staged");
     expect(staged!.reviewedSiblings?.map(row => row.hideId).sort()).toEqual([...UNREVIEWED].sort());
-    expect(s.beforeRows.filter(row => JSON.parse(row.judgeJson!).reviewState === "pending-board-review")).toHaveLength(4);
+    expect(s.beforeRows.filter(row => JSON.parse(row.judgeJson!).reviewState === "pending-board-review")).toHaveLength(UNREVIEWED.length);
     for (const sibling of staged!.reviewedSiblings!) {
       const row = s.beforeRows.find(r => r.id === sibling.rowId)!;
-      expect(await hasLocalPatchPublicationPolicy(c, { gameId: s.gameId, sceneVersion: 8, hideId: sibling.hideId,
+      expect(await hasLocalPatchPublicationPolicy(c, { gameId: s.gameId, sceneVersion: VERSION, hideId: sibling.hideId,
         variantId: row.id, attempts: row.attempts, identityAssetId: staged!.identityAssetId, identitySha256: staged!.identitySha256,
         assetId: row.assetId!, imageSha256: sibling.imageSha256, geometrySha256: sibling.geometrySha256, judgeJson: row.judgeJson })).toBe(false);
     }
@@ -189,12 +246,14 @@ describe("two paid repairs through actual stage, real ledger, durable queue and 
     expect(await tick(s.gameId, j)).toMatchObject({ pending: false, attention: null });
     const game = await db.game.findUniqueOrThrow({ where: { id: s.gameId } });
     expect(game.status, game.lastError ?? "no error").toBe("DELIVERED");
-    expect(GameConfigSchema.parse(JSON.parse(game.configJson!)).scenes.flatMap(board => board.targets)).toHaveLength(45);
+    const config = GameConfigSchema.parse(JSON.parse(game.configJson!));
+    expect(config.scenes.flatMap(board => board.targets)).toHaveLength(VERSION === 10 ? 27 : 45);
+    if (VERSION === 10) expect(config.adventure?.boards).toHaveLength(9);
     const afterRows = await db.targetVariantAsset.findMany({ where: { targetInstance: { gameScene: { gameId: s.gameId } } }, orderBy: { id: "asc" } });
     const repairedIds = new Set(staged!.candidates.map(a => a.rowId));
     const siblingIds = new Set(staged!.reviewedSiblings!.map(a => a.rowId));
     const unchanged = afterRows.filter(r => !repairedIds.has(r.id) && !siblingIds.has(r.id));
-    expect(unchanged).toHaveLength(39);
+    expect(unchanged).toHaveLength(s.beforeRows.length - 2 - UNREVIEWED.length);
     expect(unchanged).toEqual(s.beforeRows.filter(r => !repairedIds.has(r.id) && !siblingIds.has(r.id)));
     const preserved = (row: typeof afterRows[number]) => { const { judgeJson: _judge, updatedAt: _updated, ...invariants } = row; return invariants; };
     expect(afterRows.filter(r => !repairedIds.has(r.id)).map(preserved)).toEqual(s.beforeRows.filter(r => !repairedIds.has(r.id)).map(preserved));
@@ -210,7 +269,7 @@ describe("two paid repairs through actual stage, real ledger, durable queue and 
         geometrySha256: localPatchPublicationGeometryHash(row), compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION,
         paidRepair: { kind: "reviewed-unchanged-sibling" } });
       expect(review.verdict).toMatchObject({ faceLikeness: "pass", faceReadable: "pass", severeSeam: "pass" });
-      expect(await hasLocalPatchPublicationPolicy(c, { gameId: s.gameId, sceneVersion: 8, hideId: review.hide,
+      expect(await hasLocalPatchPublicationPolicy(c, { gameId: s.gameId, sceneVersion: VERSION, hideId: review.hide,
         variantId: row.id, attempts: row.attempts, identityAssetId: staged!.identityAssetId, identitySha256: staged!.identitySha256,
         assetId: row.assetId!, imageSha256: review.judgedSha256, geometrySha256: review.geometrySha256, judgeJson: row.judgeJson })).toBe(true);
     }
@@ -231,6 +290,15 @@ describe("two paid repairs through actual stage, real ledger, durable queue and 
     expect(await db.game.findUniqueOrThrow({ where: { id: s.gameId } })).toMatchObject({ status: "GENERATION_FAILED", configJson: null, readyAt: null });
     for (let i = 0; i < 3; i++) expect(await tick(s.gameId, j)).toMatchObject({ claimed: false, pending: false });
     expect(j).toHaveBeenCalledTimes(1); expect(await db.shareLink.count({ where: { gameId: s.gameId } })).toBe(0);
+  }, 240_000);
+  it.runIf(version === 10).each(["ageAppropriate", "scaleRight"] as const)("preserves the collection's mandatory %s gate", async check => {
+    const s = await seed(); await stageLocalPatchPaidRepair(c, s.input);
+    const j = judge(s.gameId, false, check);
+    expect(await tick(s.gameId, j)).toMatchObject({ pending: false });
+    expect((await readLocalPatchPaidRepair(c, s.gameId))?.state).toBe("blocked");
+    expect(await db.targetVariantAsset.findMany({ where: { targetInstance: { gameScene: { gameId: s.gameId } } }, orderBy: { id: "asc" } })).toEqual(s.beforeRows);
+    expect(await db.game.findUniqueOrThrow({ where: { id: s.gameId } })).toMatchObject({ status: "GENERATION_FAILED", configJson: null });
+    expect(j).toHaveBeenCalledTimes(1);
   }, 240_000);
   it("refuses same-size substituted staged bytes before any judge purchase", async () => {
     const s = await seed(); await stageLocalPatchPaidRepair(c, s.input); const batch = (await readLocalPatchPaidRepair(c, s.gameId))!;

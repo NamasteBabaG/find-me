@@ -39,3 +39,4 @@ assets/*.png
 
 # Private, retained-purchase incident diagnostics; never commit customer art.
 /tmp/incident-*
+/tmp/retained-collection-*

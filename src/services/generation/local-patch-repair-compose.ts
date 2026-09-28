@@ -16,6 +16,8 @@ function validRect(r: PatchRegion, bounds: PatchRegion, name: string) {
 }
 
 export type PaidPatchJoinInput = {
+  /** Versioned collection boards use their own native geometry. */
+  readonly boardSize?: { readonly width: 3840; readonly height: 2160 };
   /** Full original authored board; caller binds its hash to the paid operation. */
   readonly beforePng: Buffer;
   readonly rawPng: Buffer;
@@ -60,8 +62,10 @@ function connected(mask: Uint8Array, label: number, start: number) {
  * segmentation or geometry inferred from changed background happen here. */
 export async function recomputePaidPatchJoin(input: PaidPatchJoinInput): Promise<PaidPatchJoinResult> {
   const { crop, returnWindow, protectedCore, faceRect } = input;
+  const boardSize = input.boardSize ?? LOCAL_PATCH_BOARD;
+  if (input.boardSize && (input.boardSize.width !== 3840 || input.boardSize.height !== 2160)) fail("unsupported collection dimensions");
   const bounds = { left: 0, top: 0, ...LOCAL_PATCH_CROP };
-  validRect(crop, { left: 0, top: 0, ...LOCAL_PATCH_BOARD }, "crop");
+  validRect(crop, { left: 0, top: 0, ...boardSize }, "crop");
   if (crop.width !== 512 || crop.height !== 768) fail("crop must be512x768");
   validRect(returnWindow, bounds, "returnWindow"); validRect(protectedCore, returnWindow, "protectedCore");
   const protectedWithGuard = grow(protectedCore, GUARD);
@@ -74,8 +78,8 @@ export async function recomputePaidPatchJoin(input: PaidPatchJoinInput): Promise
   const [boardMeta, rawMeta, alphaMeta] = await Promise.all([
     sharp(input.beforePng, options).metadata(), sharp(input.rawPng, options).metadata(), sharp(input.alphaPng, options).metadata(),
   ]);
-  if (!["png", "webp"].includes(boardMeta.format ?? "") || boardMeta.width !== LOCAL_PATCH_BOARD.width || boardMeta.height !== LOCAL_PATCH_BOARD.height
-    || (boardMeta.pages ?? 1) !== 1 || boardMeta.depth !== "uchar" || (boardMeta.orientation ?? 1) !== 1) fail("board must be a single unrotated8bit authored3072x2048 image");
+  if (!["png", "webp"].includes(boardMeta.format ?? "") || boardMeta.width !== boardSize.width || boardMeta.height !== boardSize.height
+    || (boardMeta.pages ?? 1) !== 1 || boardMeta.depth !== "uchar" || (boardMeta.orientation ?? 1) !== 1) fail(`board must be a single unrotated 8-bit authored ${boardSize.width}x${boardSize.height} image`);
   if (rawMeta.format !== "png" || (rawMeta.pages ?? 1) !== 1 || rawMeta.depth !== "uchar" || (rawMeta.orientation ?? 1) !== 1
     || !((rawMeta.width === 768 && rawMeta.height === 1152) || (rawMeta.width === 512 && rawMeta.height === 768))) fail("raw must be a single unrotated8bit768x1152 or512x768 PNG");
   if (alphaMeta.format !== "png" || alphaMeta.width !== 512 || alphaMeta.height !== 768 || (alphaMeta.pages ?? 1) !== 1
@@ -121,9 +125,9 @@ export async function recomputePaidPatchJoin(input: PaidPatchJoinInput): Promise
   const tile = await sharp(raw).extract(returnWindow).png().toBuffer();
   const originalRawSeamReport = await analysePatchSeam(input.beforePng, region, tile, { allowedRect: { left: 0, top: 0, width: region.width, height: region.height } });
   const geometry: PatchGeometry = {
-    rect: { x: crop.left / LOCAL_PATCH_BOARD.width, y: crop.top / LOCAL_PATCH_BOARD.height, w: crop.width / LOCAL_PATCH_BOARD.width, h: crop.height / LOCAL_PATCH_BOARD.height },
-    hitRect: { x: (crop.left + protectedCore.left) / LOCAL_PATCH_BOARD.width, y: (crop.top + protectedCore.top) / LOCAL_PATCH_BOARD.height, w: protectedCore.width / LOCAL_PATCH_BOARD.width, h: protectedCore.height / LOCAL_PATCH_BOARD.height },
-    anchor: { x: (crop.left + faceRect.left + faceRect.width / 2) / LOCAL_PATCH_BOARD.width, y: (crop.top + faceRect.top) / LOCAL_PATCH_BOARD.height },
+    rect: { x: crop.left / boardSize.width, y: crop.top / boardSize.height, w: crop.width / boardSize.width, h: crop.height / boardSize.height },
+    hitRect: { x: (crop.left + protectedCore.left) / boardSize.width, y: (crop.top + protectedCore.top) / boardSize.height, w: protectedCore.width / boardSize.width, h: protectedCore.height / boardSize.height },
+    anchor: { x: (crop.left + faceRect.left + faceRect.width / 2) / boardSize.width, y: (crop.top + faceRect.top) / boardSize.height },
   };
   return { version: LOCAL_PATCH_REPAIR_COMPOSITION_VERSION, candidatePng, candidateSha256: digest(candidatePng), geometry,
     audit: { state: "UNREVIEWED", sourceSha256: digest(input.beforePng), rawSha256: digest(input.rawPng), resizedRawSha256: digest(raw), alphaSha256: digest(input.alphaPng),

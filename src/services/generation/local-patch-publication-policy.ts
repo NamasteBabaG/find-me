@@ -62,29 +62,32 @@ function isRepair(input: LocalPatchPublicationBinding): boolean {
  * read; an old policy row alone cannot outlive its repair evidence. No writes. */
 async function allowedRepair(db: Prisma.TransactionClient, input: LocalPatchPublicationBinding): Promise<boolean> {
   try {
-    if (input.sceneVersion !== 8 || !Number.isInteger(input.attempts) || input.attempts < 1 || input.attempts > 3) return false;
+    if (![8, 10].includes(input.sceneVersion) || !Number.isInteger(input.attempts) || input.attempts < 1 || input.attempts > 3) return false;
+    const collection = input.sceneVersion === 10, expectedCount = collection ? 27 : 45;
+    const repairReview = collection ? "paid-repair-canonical-age-sol-low/v2" : REPAIR_REVIEW;
     const receipt = JSON.parse(input.judgeJson ?? "null"), repair = receipt?.paidRepair, review = receipt?.boardReview;
     const unchangedSibling = repair?.kind === "reviewed-unchanged-sibling";
     const compositionVersion = unchangedSibling ? LOCAL_PATCH_COMPOSITION_VERSION : REPAIR_COMPOSITION;
     const batchId = `aud_lpmr_${digest(JSON.stringify(input.gameId)).slice(0, 32)}`;
     if (repair?.batchId !== batchId || receipt?.hide !== input.hideId || receipt.reviewState !== "board-review-complete"
       || receipt.wireFault !== null || receipt.renderFault !== null || receipt.judgedSha256 !== input.imageSha256
-      || receipt.geometrySha256 !== input.geometrySha256 || review?.version !== REPAIR_REVIEW
+      || receipt.geometrySha256 !== input.geometrySha256 || review?.version !== repairReview
       || receipt.compositionVersion !== compositionVersion || review?.compositionVersion !== compositionVersion || review.effort !== "low"
       || !isTheModelWeAsked(review.model ?? null, "gpt-5.6-sol")) return false;
     const audit = await db.auditLog.findUnique({ where: { id: batchId } });
     if (!audit || audit.actorType !== "ADMIN" || !audit.actorId || audit.action !== "local-patch:paid-mask-repair"
       || audit.entityType !== "Game" || audit.entityId !== input.gameId) return false;
     const batch = JSON.parse(audit.metaJson ?? "null") as PaidRepairBatch | null;
-    if (!batch || batch.version !== 1 || batch.state !== "committed" || batch.gameId !== input.gameId
+    if (!batch || (collection ? batch.version !== 2 || batch.contentVersion !== 10 : batch.version !== 1 || batch.contentVersion !== undefined)
+      || batch.state !== "committed" || batch.gameId !== input.gameId
       || batch.operatorId !== audit.actorId || batch.inputSha256 !== repair.batchSha256
       || batch.identityAssetId !== input.identityAssetId || batch.identitySha256 !== input.identitySha256
-      || batch.baseline.length !== 45 || new Set(batch.baseline.map(row => row.id)).size !== 45
+      || batch.baseline.length !== expectedCount || new Set(batch.baseline.map(row => row.id)).size !== expectedCount
       || batch.candidates.length !== 2 || new Set(batch.candidates.map(c => c.rowId)).size !== 2
       || batch.reviews.length !== 2 || new Set(batch.reviews.map(r => r.boardId)).size !== 2) return false;
     const candidate = batch.candidates.find(c => c.rowId === input.variantId);
     const siblings = batch.reviewedSiblings ?? [], sibling = siblings.find(s => s.rowId === input.variantId);
-    if (siblings.length > 8 || new Set(siblings.map(s => s.rowId)).size !== siblings.length
+    if (siblings.length > (collection ? 4 : 8) || new Set(siblings.map(s => s.rowId)).size !== siblings.length
       || siblings.some(s => batch.candidates.some(c => c.rowId === s.rowId))) return false;
     const appearance = unchangedSibling ? sibling : candidate;
     const baseline = batch.baseline.find(row => row.id === input.variantId);
@@ -108,8 +111,8 @@ async function allowedRepair(db: Prisma.TransactionClient, input: LocalPatchPubl
     const { targetInstance, ...currentFields } = current;
     if (sibling && localPatchRepairSiblingInvariantHash(currentFields) !== sibling.preservedSha256) return false;
     const scene = await db.gameScene.findUnique({ where: { id: appearance.sceneId } });
-    const authored = localPatchBoardForVersion(appearance.boardId, 8)?.hides.find(h => h.id === input.hideId);
-    if (!scene || scene.gameId !== input.gameId || scene.sceneSlug !== appearance.boardId || scene.sceneVersion !== 8
+    const authored = localPatchBoardForVersion(appearance.boardId, input.sceneVersion)?.hides.find(h => h.id === input.hideId);
+    if (!scene || scene.gameId !== input.gameId || scene.sceneSlug !== appearance.boardId || scene.sceneVersion !== input.sceneVersion
       || !authored || authored.targetId !== targetInstance.targetId) return false;
     const ownedAssets = await db.asset.findMany({ where: { id: { in: [input.identityAssetId, input.assetId] } } });
     for (const [id, sha, type, visibility] of [[input.identityAssetId, input.identitySha256, "IDENTITY_SHEET", "PRIVATE"],
@@ -128,10 +131,10 @@ async function allowedRepair(db: Prisma.TransactionClient, input: LocalPatchPubl
     if (!ledger) return false;
     const retainedStore = new PrismaRetainedPurchaseStore(db);
     for (const boardReview of batch.reviews) {
-      const result = boardReview.result, board = localPatchBoardForVersion(boardReview.boardId, 8);
-      if (!result || !board || result.state !== "pass" || result.version !== REPAIR_REVIEW || result.wireFault !== null
+      const result = boardReview.result, board = localPatchBoardForVersion(boardReview.boardId, input.sceneVersion);
+      if (!result || !board || result.state !== "pass" || result.version !== repairReview || result.wireFault !== null
         || !result.evidence || result.requestKey !== boardReview.requestKey || result.operationFingerprint !== boardReview.fingerprint
-        || result.wireHashes.length !== 12 || result.wireHashes.some(sha => !/^[a-f0-9]{64}$/.test(sha))) return false;
+        || result.wireHashes.length !== (collection ? 8 : 12) || result.wireHashes.some(sha => !/^[a-f0-9]{64}$/.test(sha))) return false;
       const bill = ledger.snapshot.requests.find(row => row.requestKey === boardReview.requestKey);
       if (!bill || !["settled", "linked"].includes(bill.state) || !("evidence" in bill) || bill.scope !== "judge"
         || bill.operationFingerprint !== boardReview.fingerprint || bill.reserveMicroUsd !== 500_000 || bill.conflicts.length
@@ -143,8 +146,9 @@ async function allowedRepair(db: Prisma.TransactionClient, input: LocalPatchPubl
       if (wire.wireFault !== null || wire.costUnknown !== false || wire.finishReason !== "stop"
         || wire.raw !== result.raw || wire.model !== bill.evidence.model || wire.requestId !== bill.evidence.providerRequestId
         || !sameChargeEvidence({ ...bill.evidence, rawUsage: wire.usage }, bill.evidence)) return false;
-      const verdicts = parseLocalPatchBoardVerdicts(wire.raw, board.hides.map(hide => hide.id), 8);
-      if (!equalJson(verdicts, result.verdicts) || board.hides.some(hide => localPatchQualityDisposition(verdicts[hide.id] ?? null).state !== "acceptable")) return false;
+      const verdicts = parseLocalPatchBoardVerdicts(wire.raw, board.hides.map(hide => hide.id), input.sceneVersion);
+      if (!equalJson(verdicts, result.verdicts) || board.hides.some(hide => localPatchQualityDisposition(verdicts[hide.id] ?? null,
+        input.sceneVersion, { hideId: hide.id }).state !== "acceptable")) return false;
       if (boardReview.boardId === appearance.boardId && (!equalJson(receipt.verdict, verdicts[input.hideId]) || review.raw !== wire.raw
         || review.requestKey !== boardReview.requestKey || review.fingerprint !== boardReview.fingerprint
         || !equalJson(review.wireHashes, result.wireHashes) || review.model !== wire.model || review.costMicroUsd !== bill.evidence.amountMicroUsd)) return false;

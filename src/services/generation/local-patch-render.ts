@@ -5,7 +5,7 @@ import {
 } from "../../domain/scene/local-patch-hides";
 import { analysePatchSeam, applyLocalPatch, composeBoundedLocalPatch, LOCAL_PATCH_COMPOSITION_VERSION, type LocalPatchCompositionPermission, type SeamReport } from "./local-patch-seam";
 import {
-  LOCAL_PATCH_JUDGE, localPatchJudgeSettings, judgeLocalPatch, localPatchJudgePrompt, localPatchVerdictSchema,
+  LOCAL_PATCH_JUDGE, localPatchJudgeSettings, judgeLocalPatch, localPatchJudgePrompt, parseLocalPatchVerdict,
   type JudgeWireFault, type LocalPatchJudgeRequest, type LocalPatchJudgeResult, type LocalPatchVerdict,
 } from "./local-patch-judge";
 import { judgeCharge } from "../../infra/generation/judge";
@@ -15,6 +15,7 @@ import { LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, type LocalPatchPurchase, type
 import type { BudgetJson } from "./world-budget";
 import { isLocalPatchAdvisoryVersion, isLocalPatchAgeVersion, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
 import type { LocalPatchRecoveryDirective } from "../../domain/scene/local-patch-recovery-directive";
+import { adaptiveRecoveryPrompt, type AdaptiveRecoveryPlan } from "./local-patch-adaptive-recovery";
 
 /**
  * One paid attempt at one hide, out of the scripts and into the product.
@@ -93,6 +94,7 @@ export type LocalPatchAttemptInput = {
   readonly repairChecks?: readonly LocalPatchRepairCheck[];
   /** Trusted caller validates the immutable extra-attempt grant first. */
   readonly recoveryDirective?: LocalPatchRecoveryDirective;
+  readonly adaptiveRecovery?: AdaptiveRecoveryPlan;
   readonly apiKey: string;
   /**
    * When this worker's request is going to be taken away from it, absolute.
@@ -316,9 +318,13 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   }
   const crop = cropOf(hide);
   const promptVersion = promptVersionOf(input);
+  if (input.adaptiveRecovery && (attempt !== 3 || !isLocalPatchStrictVersion(input.contentVersion) || input.recoveryDirective)) {
+    throw Error("ADAPTIVE_RECOVERY: a diagnosis belongs only to its final normal attempt");
+  }
   const prompt = localPatchPrompt({ ground: board.ground, pose: hide.pose, ageYears: input.ageYears, repairChecks: input.repairChecks, boardPeopleReference: !!input.boardPeoplePng,
     wardrobe: board.wardrobe, placement: hide.placement, mask: maskForHide(hide), contentVersion: input.contentVersion,
-    hideId: hide.id, recoveryDirective: input.recoveryDirective, paintRecipe: input.paintRecipe });
+    hideId: hide.id, recoveryDirective: input.recoveryDirective, paintRecipe: input.paintRecipe })
+    + (input.adaptiveRecovery ? `\n\n${adaptiveRecoveryPrompt(input.adaptiveRecovery, hide)}` : "");
 
   const meta = await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).metadata();
   const stylePng = await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).extract(crop).png().toBuffer();
@@ -341,6 +347,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     // bad one. A different shape is a different operation, which is a thing for
     // a person rather than a verdict.
     retained: RETAINED_RENDER_VERSION,
+    ...(input.adaptiveRecovery ? { adaptiveRecovery: input.adaptiveRecovery.sha256 } : {}),
   });
 
   // The window goes INTO the purchase, not around it: a replay costs no time and
@@ -477,8 +484,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   let verdict: LocalPatchVerdict | null = null;
   if (keep.wireFault === null && typeof keep.raw === "string") {
     try {
-      const parsed = localPatchVerdictSchema.safeParse(JSON.parse(keep.raw));
-      verdict = parsed.success ? parsed.data : null;
+      verdict = parseLocalPatchVerdict(JSON.parse(keep.raw), input.contentVersion);
     } catch { verdict = null; }
   }
 

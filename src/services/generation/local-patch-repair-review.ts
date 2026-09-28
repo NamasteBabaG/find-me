@@ -8,11 +8,13 @@ import { LocalPatchRetainedPurchaseStore, fenceLocalPatchImages } from "./local-
 import { purchaseOnce } from "./paid-operation";
 import { sha256Bytes } from "./fixed-sprite";
 import { LOCAL_PATCH_JUDGE, isTheModelWeAsked, localPatchBoardJudgeImages, localPatchBoardJudgePrompt,
-  localPatchQualityDisposition, parseLocalPatchBoardVerdicts, requestJudgeWire,
+  localPatchQualityDisposition, parseLocalPatchBoardVerdicts, requestJudgeWire, localPatchBoardJudgeImageLabels,
   type LocalPatchBoardJudgeRequest, type LocalPatchJudgeResult } from "./local-patch-judge";
 import type { BudgetJson, WorldChargeEvidence } from "./world-budget";
 
 export const LOCAL_PATCH_REPAIR_REVIEW_VERSION = "paid-repair-canonical-face-sol-low/v1";
+export const LOCAL_PATCH_COLLECTION_REPAIR_REVIEW_VERSION = "paid-repair-canonical-age-sol-low/v2";
+const reviewVersionFor = (version?: number) => version === 10 ? LOCAL_PATCH_COLLECTION_REPAIR_REVIEW_VERSION : LOCAL_PATCH_REPAIR_REVIEW_VERSION;
 /** Conservative reservation, NOT a provider invoice or a promised actual price.
  * Two bounded reviews reserve $1 in the SAME existing $4 world. An unexpected
  * provider overrun is recorded by the ledger and holds publication as usual. */
@@ -32,6 +34,9 @@ export type LocalPatchRepairReviewInput = {
   faceRois: readonly LocalPatchRepairFaceRoi[];
 };
 export type PreparedLocalPatchRepairReview = {
+  /** Missing on historical v8 preparations; retain their exact fingerprints. */
+  contentVersion?: 10;
+  imageLabels?: readonly string[];
   gameId: string; batchId: string; batchSha256: string; boardId: string;
   requestKey: string; operationFingerprint: string; prompt: string;
   images: readonly Buffer[]; wireHashes: readonly string[]; hideIds: readonly string[];
@@ -43,10 +48,11 @@ export type PreparedLocalPatchRepairReview = {
 export async function prepareLocalPatchRepairReview(input: LocalPatchRepairReviewInput): Promise<PreparedLocalPatchRepairReview> {
   demand(/^[a-zA-Z0-9_-]{1,100}$/.test(input.gameId) && /^[a-zA-Z0-9_-]{1,100}$/.test(input.batchId)
     && /^[a-f0-9]{64}$/.test(input.batchSha256), "Invalid immutable repair batch identity");
-  demand(input.request.contentVersion === 8 && /^[a-z0-9-]{1,50}$/.test(input.request.boardId), "Only strict v8 repair review is supported");
+  demand([8, 10].includes(input.request.contentVersion ?? 0) && /^[a-z0-9-]{1,50}$/.test(input.request.boardId), "Only pinned v8/v10 repair review is supported");
+  const collection = input.request.contentVersion === 10;
   demand(input.faceRois.length === 1, "Exactly one selected corrected face is required per board");
   const roi = input.faceRois[0]!, chosen = input.request.hides.find(hide => hide.hideId === roi.hideId);
-  demand(chosen, "Selected corrected face is not one of the five reviewed hides");
+  demand(chosen, "Selected corrected face is not one of the reviewed hides");
   const r = roi.rect;
   demand(Object.values(r).every(Number.isSafeInteger) && r.left >= 0 && r.top >= 0 && r.width >= 30 && r.height >= 30,
     "Selected face must have at least 30 by 30 native pixels");
@@ -63,7 +69,7 @@ export async function prepareLocalPatchRepairReview(input: LocalPatchRepairRevie
   ]).png().toBuffer();
   const request = { ...input.request, hides: input.request.hides.map(hide => hide.hideId === roi.hideId ? { ...hide, afterEvidencePng: expanded } : hide) };
   const images = localPatchBoardJudgeImages(request).map(image => Buffer.from(image));
-  demand(images.length === 12, "Exactly twelve images are required");
+  demand(images.length === (collection ? 8 : 12), "The pinned board needs one reference pair and one evidence pair per hide");
   let pixels = 0, bytes = 0;
   for (const image of images) {
     const m = await sharp(image, { limitInputPixels: 4_194_304 }).metadata();
@@ -72,25 +78,28 @@ export async function prepareLocalPatchRepairReview(input: LocalPatchRepairRevie
     pixels += m.width * m.height; bytes += image.length;
   }
   demand(pixels <= 24_000_000 && bytes <= 24_000_000, "Repair evidence exceeds its total input bound");
-  const prompt = `${localPatchBoardJudgePrompt(request)} REPAIR REVIEW ${LOCAL_PATCH_REPAIR_REVIEW_VERSION}. `
+  const prompt = `${localPatchBoardJudgePrompt(request)} REPAIR REVIEW ${reviewVersionFor(request.contentVersion)}. `
     + `The selected corrected hide is ${roi.hideId}. Its AFTER has an additional FAR-RIGHT native face-only panel, ${r.width} by ${r.height} source pixels, without upsampling; this repeats the same face, not another child. `
     + "A coherent generic child is NOT sufficient. Require recognizably the SAME canonical illustrated child: compare eye spacing/shape, nose and mouth proportions, cheek/jaw silhouette, hairline and curl silhouette. "
     + "A readable but clearly different generic face fails faceLikeness. If the pixels cannot establish that this is recognizably the canonical child, use faceLikeness unsure, never pass merely because a child is present. "
     + "Judge face readability at native scale and ordinary game zoom, not imagined detail. Preserve clothing/light/pose freedom. Inspect the entire join around the child's hair/body as well as the face panel. "
-    + "All three severe checks must explicitly pass for ALL FIVE hides. A sibling failure or uncertainty blocks this repair batch too; never request an image purchase or assume an operator approved these images.";
+    + (collection ? "All five severe checks, including age and scale, must explicitly pass for ALL THREE hides. Read natural occlusion honestly; do not require hidden feet. Inspect for clipped heads and leftover limbs at the corrected return boundary. A sibling failure or uncertainty blocks this batch; no image purchase or assumed operator approval."
+      : "All three severe checks must explicitly pass for ALL FIVE hides. A sibling failure or uncertainty blocks this repair batch too; never request an image purchase or assume an operator approved these images.");
   demand(prompt.length <= 16_000, "Repair prompt exceeds its input bound");
   const wireHashes = images.map(sha256Bytes), faceRois = input.faceRois.map(face => ({ hideId: face.hideId, rect: { ...face.rect } }));
-  const operationFingerprint = hash({ version: LOCAL_PATCH_REPAIR_REVIEW_VERSION, gameId: input.gameId, batchId: input.batchId,
+  const imageLabels = collection ? localPatchBoardJudgeImageLabels(request) : undefined;
+  const operationFingerprint = hash({ version: reviewVersionFor(request.contentVersion), gameId: input.gameId, batchId: input.batchId,
     batchSha256: input.batchSha256, boardId: request.boardId, settings: LOCAL_PATCH_REPAIR_REVIEW_SETTINGS,
-    pricingVersion: CURRENT_JUDGE_PRICING_VERSION, prompt, wireHashes, faceRois, hideIds: request.hides.map(hide => hide.hideId) });
-  return { gameId: input.gameId, batchId: input.batchId, batchSha256: input.batchSha256, boardId: request.boardId,
+    pricingVersion: CURRENT_JUDGE_PRICING_VERSION, prompt, wireHashes, faceRois, hideIds: request.hides.map(hide => hide.hideId),
+    ...(imageLabels ? { imageLabels } : {}) });
+  return { ...(collection ? { contentVersion: 10 as const, imageLabels } : {}), gameId: input.gameId, batchId: input.batchId, batchSha256: input.batchSha256, boardId: request.boardId,
     requestKey: `repair:${input.batchId}:${request.boardId}:${operationFingerprint}`, operationFingerprint,
     prompt, images, wireHashes, hideIds: request.hides.map(hide => hide.hideId), faceRois };
 }
 
 export type LocalPatchRepairReviewOutcome = {
   state: "pass" | "blocked" | "pending" | "held"; reason: string | null; replayed: boolean;
-  version: typeof LOCAL_PATCH_REPAIR_REVIEW_VERSION; requestKey: string; operationFingerprint: string;
+  version: typeof LOCAL_PATCH_REPAIR_REVIEW_VERSION | typeof LOCAL_PATCH_COLLECTION_REPAIR_REVIEW_VERSION; requestKey: string; operationFingerprint: string;
   wireHashes: readonly string[]; raw: string | null; wireFault: string | null;
   verdicts: ReturnType<typeof parseLocalPatchBoardVerdicts> | null; evidence: WorldChargeEvidence | null;
 };
@@ -98,20 +107,22 @@ export type LocalPatchRepairReviewDeps = {
   /** Must authenticate the immutable staged batch AND the current worker lease. */
   fence(tx: Prisma.TransactionClient): Promise<void>;
   apiKey?: string; deadlineAt?: number;
-  judge?(request: { prompt: string; images: readonly Buffer[]; settings: typeof LOCAL_PATCH_REPAIR_REVIEW_SETTINGS; timeoutMs: number }): Promise<LocalPatchJudgeResult>;
+  judge?(request: { prompt: string; images: readonly Buffer[]; imageLabels?: readonly string[]; settings: typeof LOCAL_PATCH_REPAIR_REVIEW_SETTINGS; timeoutMs: number }): Promise<LocalPatchJudgeResult>;
 };
 
 /** Review-only: no target/scene/publication writes and no image provider exists
- * in this function. All five answers return to the caller's atomic batch gate. */
+ * in this function. All answers return to the caller's atomic batch gate. */
 export async function reviewLocalPatchRepair(c: Container, prepared: PreparedLocalPatchRepairReview,
   deps: LocalPatchRepairReviewDeps): Promise<LocalPatchRepairReviewOutcome> {
   demand(env().APP_ENV === "qa" && c.storage.id === "db", "Durable QA repair storage is required");
   demand(deps.judge || deps.apiKey?.trim(), "Existing judge credential required");
-  demand(prepared.images.length === 12 && prepared.images.every((image, index) => sha256Bytes(image) === prepared.wireHashes[index]), "Prepared wire evidence changed");
-  const fingerprint = hash({ version: LOCAL_PATCH_REPAIR_REVIEW_VERSION, gameId: prepared.gameId, batchId: prepared.batchId,
+  const contentVersion = prepared.contentVersion ?? 8;
+  demand(prepared.images.length === (contentVersion === 10 ? 8 : 12) && prepared.images.every((image, index) => sha256Bytes(image) === prepared.wireHashes[index]), "Prepared wire evidence changed");
+  const fingerprint = hash({ version: reviewVersionFor(contentVersion), gameId: prepared.gameId, batchId: prepared.batchId,
     batchSha256: prepared.batchSha256, boardId: prepared.boardId, settings: LOCAL_PATCH_REPAIR_REVIEW_SETTINGS,
     pricingVersion: CURRENT_JUDGE_PRICING_VERSION, prompt: prepared.prompt, wireHashes: prepared.wireHashes,
-    faceRois: prepared.faceRois, hideIds: prepared.hideIds });
+    faceRois: prepared.faceRois, hideIds: prepared.hideIds,
+    ...(prepared.imageLabels ? { imageLabels: prepared.imageLabels } : {}) });
   demand(fingerprint === prepared.operationFingerprint && prepared.requestKey === `repair:${prepared.batchId}:${prepared.boardId}:${fingerprint}`, "Prepared repair question changed");
   const game = await c.db.game.findUniqueOrThrow({ where: { id: prepared.gameId } });
   demand(game.ownerId && !game.deletedAt && game.styleVersion === "local-patch-world-v1"
@@ -129,6 +140,7 @@ export async function reviewLocalPatchRepair(c: Container, prepared: PreparedLoc
       const remainingMs = deadlineAt - Date.now() - 10_000;
       demand(remainingMs > 0, "Repair dispatch deadline expired after its ownership fence; reservation needs reconciliation");
       const request = { prompt: prepared.prompt, images: prepared.images, settings: LOCAL_PATCH_REPAIR_REVIEW_SETTINGS,
+        ...(prepared.imageLabels ? { imageLabels: prepared.imageLabels } : {}),
         timeoutMs: Math.min(timeoutMs ?? LOCAL_PATCH_REPAIR_REVIEW_SETTINGS.timeoutMs, LOCAL_PATCH_REPAIR_REVIEW_SETTINGS.timeoutMs, remainingMs) };
       const reply = await (deps.judge ?? (wire => { demand(deps.apiKey?.trim(), "Existing judge credential required"); return requestJudgeWire(deps.apiKey!, wire, fetch); }))(request);
       const keep = { raw: reply.raw, usage: reply.usage, requestId: reply.requestId, model: reply.model,
@@ -140,15 +152,15 @@ export async function reviewLocalPatchRepair(c: Container, prepared: PreparedLoc
         costBasis: "conservative-upper-estimate" as const } };
     },
   });
-  const base = { version: LOCAL_PATCH_REPAIR_REVIEW_VERSION, requestKey: prepared.requestKey, operationFingerprint: fingerprint,
+  const base = { version: reviewVersionFor(contentVersion), requestKey: prepared.requestKey, operationFingerprint: fingerprint,
     wireHashes: prepared.wireHashes, raw: null, wireFault: null, verdicts: null, evidence: null } as const;
   if (bought.kind !== "bought") return { ...base, state: bought.kind === "unresolved" || bought.kind === "deferred" && bought.reserved ? "held" : "pending",
     reason: bought.reason, replayed: false };
   await fenced();
   const keep = JSON.parse(bought.bytes.toString()) as Pick<LocalPatchJudgeResult, "raw" | "wireFault" | "model" | "finishReason">;
   const wireFault = keep.wireFault ?? (!isTheModelWeAsked(keep.model, LOCAL_PATCH_REPAIR_REVIEW_SETTINGS.model) ? "wrong-model" : keep.finishReason !== "stop" ? "truncated" : null);
-  const verdicts = parseLocalPatchBoardVerdicts(wireFault ? null : keep.raw, prepared.hideIds, 8);
-  const passed = !wireFault && prepared.hideIds.every(id => localPatchQualityDisposition(verdicts[id] ?? null).state === "acceptable");
+  const verdicts = parseLocalPatchBoardVerdicts(wireFault ? null : keep.raw, prepared.hideIds, contentVersion);
+  const passed = !wireFault && prepared.hideIds.every(id => localPatchQualityDisposition(verdicts[id] ?? null, contentVersion, { hideId: id }).state === "acceptable");
   return { ...base, state: passed ? "pass" : "blocked", reason: passed ? null : "Canonical identity, readable face or seamless join was not established for every appearance",
     replayed: bought.replayed, raw: keep.raw, wireFault, verdicts, evidence: bought.evidence };
 }

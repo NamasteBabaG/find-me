@@ -29,6 +29,7 @@ import { LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_NORMAL_ATTEMPTS, localPatchFinalR
 import { isLocalPatchAdvisoryVersion, isLocalPatchAgeVersion, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
 import { requireLocalPatchExtraAttempt, fenceLocalPatchExtraAttempt } from "./local-patch-extra-attempt";
 import { localPatchPublicationGeometryHash } from "./local-patch-publication-policy";
+import { initialAdaptiveRecovery, prepareAdaptiveRecovery } from "./local-patch-adaptive-recovery";
 export { LOCAL_PATCH_MAX_ATTEMPTS, nextLocalPatchAttempt } from "../../domain/scene/local-patch-attempts";
 
 /**
@@ -261,6 +262,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   const row = existingRow ?? await c.db.targetVariantAsset.create({ data: {
       id: newId("tva"), targetInstanceId: instance.id, variant: LOCAL_PATCH_VARIANT, slotId: target.slots[0].id,
       provider: LOCAL_PATCH_PROVIDER, promptVersion,
+      ...(isLocalPatchStrictVersion(scene.sceneVersion) ? { judgeJson: JSON.stringify({ adaptiveRecovery: initialAdaptiveRecovery() }) } : {}),
     } });
 
   if (input.finalRepair) demand(localPatchFinalRepairAllowed(env().APP_ENV, isLocalPatchStrictVersion(scene.sceneVersion))
@@ -314,6 +316,22 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   demand(art.width === definition.art.width && art.height === definition.art.height,
     `${board.board} art does not match the size the scene declares; the geometry would be written in the wrong space`);
 
+  const adaptiveRecovery = prepareAdaptiveRecovery(row.judgeJson, row, attempt, {
+    gameId, rowId: row.id, contentVersion: scene.sceneVersion, promptVersion, hide,
+    boardSha256: sha256Bytes(artwork), identitySha256: sha256Bytes(sheet), ageYears: child.ageYears,
+    renderPolicySha256: deps.renderPolicySha256,
+  });
+  if (adaptiveRecovery?.plan?.strategies.includes("evidence-hold")) {
+    // Persist the diagnosis without spending or consuming a new attempt.
+    await c.db.$transaction(async tx => {
+      await fenceLocalPatchImages(tx, gameId); await deps.fence?.(tx);
+      await tx.targetVariantAsset.update({ where: { id: row.id }, data: {
+        judgeJson: JSON.stringify({ ...JSON.parse(row.judgeJson ?? "{}"), adaptiveRecovery }),
+      } });
+    });
+    return { ...base, state: "held", reason: "ADAPTIVE_RECOVERY: two attempts need evidence reconciliation before a third image" };
+  }
+
   // Started, and written down as started, BEFORE the dispatch. A process killed
   // between here and an answer resumes this same number rather than being handed
   // a fresh allowance - and resuming the number is what lets the retained render
@@ -327,6 +345,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     await tx.targetVariantAsset.update({ where: { id: row.id }, data: {
       attempts: attempt, status: "PENDING", lastError: null,
       provider: LOCAL_PATCH_PROVIDER, promptVersion, slotId: target.slots[0].id,
+      ...(adaptiveRecovery ? { judgeJson: JSON.stringify({ ...JSON.parse(row.judgeJson ?? "{}"), adaptiveRecovery }) } : {}),
     } });
   });
   const started = { ...base, attempts: attempt };
@@ -344,6 +363,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     ageYears: child.ageYears, attempt, apiKey: deps.apiKey ?? "",
     ...(repairChecks === undefined ? {} : { repairChecks }),
     ...(extra ? { recoveryDirective: extra.directive } : {}),
+    ...(attempt === 3 && adaptiveRecovery?.plan ? { adaptiveRecovery: adaptiveRecovery.plan } : {}),
     ...(input.deadlineAt === undefined ? {} : { deadlineAt: input.deadlineAt }),
   });
 
@@ -387,7 +407,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
       status: "FAILED", lastError: reason.slice(0, 500),
       costCents: Math.round(row.costCents + attemptResult.renderCents + attemptResult.judgeCents),
       rejectedAssetIdsJson: rejectedIds.length ? JSON.stringify(rejectedIds) : null,
-      judgeJson: JSON.stringify({ verdict: attemptResult.verdict, wireFault: attemptResult.wireFault, seam: attemptResult.seam, promptVersion: attemptResult.promptVersion,
+      judgeJson: JSON.stringify({ ...(adaptiveRecovery ? { adaptiveRecovery, judgedSha256: attemptResult.judgedSha256 } : {}), verdict: attemptResult.verdict, wireFault: attemptResult.wireFault, seam: attemptResult.seam, promptVersion: attemptResult.promptVersion,
         ...(isLocalPatchStrictVersion(scene.sceneVersion) ? { renderFault: attemptResult.renderFault, compositionPermission: attemptResult.compositionPermission,
           compositionVersion: attemptResult.compositionVersion, hide: hide.id, pose: hide.pose } : {}) }),
       } });
@@ -425,7 +445,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
       hitRectJson: JSON.stringify(measured.geometry.hitRect),
       headAnchorJson: JSON.stringify(measured.geometry.anchor),
     };
-    const judgeJson = JSON.stringify({ verdict: attemptResult.verdict, seam: attemptResult.seam, judgedSha256: attemptResult.judgedSha256,
+    const judgeJson = JSON.stringify({ ...(adaptiveRecovery ? { adaptiveRecovery } : {}), verdict: attemptResult.verdict, seam: attemptResult.seam, judgedSha256: attemptResult.judgedSha256,
       ...(isLocalPatchStrictVersion(scene.sceneVersion) ? { compositionPermission: attemptResult.compositionPermission, compositionVersion: attemptResult.compositionVersion } : {}),
       ...(isLocalPatchAdvisoryVersion(scene.sceneVersion) ? { wireFault: attemptResult.wireFault, reviewState: "pending-board-review", geometrySha256: localPatchPublicationGeometryHash(geometry) } : {}),
       geometryBasis: measured.basis, measuredFraction: Number(measured.measuredFraction.toFixed(4)), hide: hide.id, pose: hide.pose });

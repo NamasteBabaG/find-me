@@ -236,6 +236,20 @@ export type LocalPatchAgeVerdict = z.infer<typeof localPatchAgeVerdictSchema>;
 const verdictSchemaFor = (contentVersion?: number) => isLocalPatchAgeVersion(contentVersion) ? localPatchAgeVerdictSchema
   : isLocalPatchStrictVersion(contentVersion) ? localPatchQualityVerdictSchema : localPatchVerdictSchema;
 
+/** The historical single-hide prompt literally asks for "brief reason".
+ * Normalize that field name only, without changing its paid prompt/fingerprint
+ * or dropping an actual failed/uncertain check. Conflicting aliases stay invalid. */
+export function parseLocalPatchVerdict(value: unknown, contentVersion?: number): LocalPatchVerdict | null {
+  let normalized = value;
+  if (value && typeof value === "object" && !Array.isArray(value) && Object.hasOwn(value, "brief reason")) {
+    const { "brief reason": reason, ...rest } = value as Record<string, unknown>;
+    if (Object.hasOwn(rest, "reason") && rest.reason !== reason) return null;
+    normalized = { ...rest, reason };
+  }
+  const parsed = verdictSchemaFor(contentVersion).safeParse(normalized);
+  return parsed.success ? parsed.data : null;
+}
+
 const explicitAgeUncertaintySchema = localPatchVerdictWireSchema.extend({
   faceLikeness: check, faceReadable: check, severeSeam: check, ageAppropriate: check,
   // Require the complete normalized result, not a partial raw answer that happens
@@ -444,8 +458,8 @@ export async function judgeLocalPatch(apiKey: string, request: LocalPatchJudgeRe
   if (wire.wireFault || wire.raw === null) return wire;
   let parsed: unknown;
   try { parsed = JSON.parse(wire.raw); } catch { return { ...wire, wireFault: "not-json" }; }
-  const result = verdictSchemaFor(request.contentVersion).safeParse(parsed);
-  return result.success ? { ...wire, verdict: result.data } : { ...wire, wireFault: "schema" };
+  const verdict = parseLocalPatchVerdict(parsed, request.contentVersion);
+  return verdict ? { ...wire, verdict } : { ...wire, wireFault: "schema" };
 }
 
 /** Shared wire validation for single-hide legacy review and grouped advisory review. */
@@ -622,7 +636,7 @@ export function parseLocalPatchBoardVerdicts(raw: string | null, hideIds: readon
     return Object.fromEntries(rows.map(row => {
       if (isLocalPatchAgeVersion(contentVersion) && (!("evidenceIds" in row)
         || JSON.stringify(row.evidenceIds) !== JSON.stringify(localPatchHideEvidenceIds(row.hideId)))) return [row.hideId, null];
-      const parsed = verdictSchemaFor(contentVersion).safeParse(row.verdict); return [row.hideId, parsed.success ? parsed.data : null];
+      return [row.hideId, parseLocalPatchVerdict(row.verdict, contentVersion)];
     }));
   } catch { return missing; }
 }
