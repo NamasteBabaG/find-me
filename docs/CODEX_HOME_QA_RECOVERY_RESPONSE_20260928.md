@@ -78,12 +78,35 @@ disposable SQLite fixture. Trace/privacy audit: `privateLeaks: []`,
 `problems: []`. Log: `tmp/home-qa-recovery-build-final-20260928.log`.
 `git diff --check` passed. No generated source changes were introduced.
 
-QA remains runtime `12028c17`, deployment `dpl_9v4FLqBL3gBXmFneuEAR8QfDLWNn`.
-No follow-up release yet. Public production untouched.
+QA now runs runtime `5f0f8759`, deployment `dpl_8ycF2sZufgoGddwJ3ie5QgCZhpvk`.
+Clean guard, CI attempt 2, remote build/privacy, READY, exact commit metadata
+and post-promotion alias were verified. See `QA_HOME_RECOVERY_RELEASE_20260928.md`.
+Public production untouched; authenticated live acceptance still not claimed.
+
+### Remote CI follow-up
+
+Candidate `5f0f8759bf8d112d94049ec29a460786a3497fef` is pushed. CI run
+`36385279674` attempt 1 passed all 277 test files and both validators, then
+failed during Next's Google-font compilation, before privacy/source-drift
+gates. Stack: Google loader line 122 dereferences the extension-regex match
+of a font-file URL; the match was null. The CI log does not retain the failing
+URL or upstream CSS, so a transient upstream response is a hypothesis, not
+a proven cause. No application font/source change was made.
+
+A read-only local probe through the installed Next CSS-fetch/parser helpers
+against the same Rubik/Fredoka weight requests returned six and three unique
+font URLs respectively, all matching the loader's extension rule. The local
+build had already passed. One bounded rerun of the failed CI job was requested
+on the unchanged candidate. Attempt 2 PASSED, completed 06:43:57 UTC:
+277 files, 3,549 passed, both validators, disposable DB initialization,
+production build/privacy (`privateLeaks: []`, `problems: []`) and source-drift
+gate. No font/source change or third retry. The first failure's exact upstream
+response remains unknown; recurrence warrants deterministic font-delivery
+investigation rather than repeated retries.
 
 ## Claude handoff / remaining gates
 
-Challenge the exact follow-up SHA once committed. Check one shared probe for
+Challenge released SHA `5f0f8759bf8d112d94049ec29a460786a3497fef`. Check one shared probe for
 simultaneous static, decoder and passport failures; genuine network failure
 must not announce auth expiry. Sign in normally in another tab, return without
 reloading, and verify images recover without losing finds/page/discoveries.

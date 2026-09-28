@@ -2,10 +2,10 @@
 
 ## Release truth
 
-**Update 2026-09-28:** QA now runs `12028c17`, deployment
-`dpl_9v4FLqBL3gBXmFneuEAR8QfDLWNn`, after passing CI and a clean guarded
+**Update 2026-09-28:** QA now runs `5f0f8759`, deployment
+`dpl_8ycF2sZufgoGddwJ3ie5QgCZhpvk`, after passing CI and a clean guarded
 deployment. Alias and REST commit metadata verified. See
-`QA_LAUNCH_ART_RECHECK_RELEASE_20260928.md` for exact evidence and limits. No public
+`QA_HOME_RECOVERY_RELEASE_20260928.md` for exact evidence and limits. No public
 production promotion, authenticated live-game acceptance or F-A approval.
 The paragraph below records the earlier checkpoint's starting state.
 
@@ -93,7 +93,7 @@ test timeouts passed unchanged in an isolated rerun (34/34 across two suites).
 
 Latest completed independent review is now
 `CLAUDE_QA_RECHECK_RELEASE_REVIEW_20260928.md`, reviewing `12028c17`.
-Its nonblocking home-wide expiry finding I-4 is being addressed in
+Its nonblocking home-wide expiry finding I-4 is addressed in
 `CODEX_HOME_QA_RECOVERY_RESPONSE_20260928.md`; read its actual verification
 and release status rather than treating local corrections as deployed.
 F-A and authenticated live-incident acceptance remain open.
@@ -118,17 +118,23 @@ the arch is clipped by the crop and lies inside actual return permission
 (provider mask plus 120 px guard). A wider context alone is not a preservation
 fix. No new placement or render was approved; runtime and QA are unchanged.
 
-Latest completed independent review, `CLAUDE_LAUNCH_AND_ART_RECHECK_20260928.md`,
+The preceding independent review, `CLAUDE_LAUNCH_AND_ART_RECHECK_20260928.md`,
 reviewed `690c2d29`. N-1/N-2/N-3/T-1 were reproduced and addressed in
 `12028c17`: page-scoped failures, compact tile wording, normal QA sign-in
 recovery without session extension, and per-crop guard recomputation.
-CI `36377617926` passed all 3,540 tests and release gates. QA now runs that
+CI `36377617926` passed all 3,540 tests and release gates. QA then ran that
 exact commit, deployment `dpl_9v4FLqBL3gBXmFneuEAR8QfDLWNn`; alias and REST
 metadata verified, public production untouched. Evidence and next independent
 challenge: `QA_LAUNCH_ART_RECHECK_RELEASE_20260928.md` and
 `CODEX_LAUNCH_ART_RECHECK_RESPONSE_20260928.md`. The local expired-session
 mechanism is proven; the original live incident still needs authenticated
 diagnostics. F-A remains open; no paid reference experiment was performed.
+
+Home-wide recovery `5f0f8759` subsequently passed CI `36385279674` attempt 2
+(3,549 tests plus build/privacy/drift), then guarded QA-only deployment
+`dpl_8ycF2sZufgoGddwJ3ie5QgCZhpvk`. Alias and exact runtime metadata verified.
+Attempt 1's font-loader failure and one unchanged successful rerun are recorded,
+not hidden. Independent recheck of this new release remains pending.
 
 | Order | Work | Acceptance / dependency |
 |---|---|---|
