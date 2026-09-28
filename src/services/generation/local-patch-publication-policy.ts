@@ -8,6 +8,7 @@ import { PrismaWorldBudgetStore } from "../../infra/db/prisma-world-budget-store
 import { PrismaRetainedPurchaseStore } from "../../infra/db/prisma-retained-purchase-store";
 import { sameChargeEvidence } from "./world-budget";
 import type { PaidRepairBatch } from "./local-patch-paid-repair";
+import { SELF_REPAIR_COMPOSITION_VERSION, SELF_REPAIR_VERSION, selfRepairDecisionSchema } from "../../domain/scene/local-patch-self-repair";
 
 export const LOCAL_PATCH_PUBLICATION_POLICY = "publish-with-visual-warnings/v1";
 export const LOCAL_PATCH_STRICT_PUBLICATION_POLICY = "publish-with-severe-quality-guard/v2";
@@ -162,9 +163,16 @@ function allowed(input: LocalPatchPublicationBinding): boolean {
   if (!isLocalPatchStrictVersion(input.sceneVersion)) return true;
   try {
     const receipt = JSON.parse(input.judgeJson ?? "null");
+    const compositionVersion = receipt?.compositionVersion === SELF_REPAIR_COMPOSITION_VERSION
+      && input.sceneVersion === 10 && receipt?.selfRepair?.version === SELF_REPAIR_VERSION
+      && receipt.selfRepair.phase === "awaiting-review" && selfRepairDecisionSchema.safeParse(receipt.selfRepair.decision).success
+      && receipt.recoveryComposition?.outsideChangedPixels === 0 && receipt.recoveryComposition?.protectedChangedPixels === 0
+      && isTheModelWeAsked(receipt.boardReview?.model ?? null, "gpt-5.6-sol")
+      && receipt.boardReview?.wireHashes?.length === 8 && receipt.boardReview?.requestKey?.startsWith("self-repair:board:")
+      ? SELF_REPAIR_COMPOSITION_VERSION : LOCAL_PATCH_COMPOSITION_VERSION;
     return receipt?.reviewState === "board-review-complete" && receipt.wireFault === null
-      && receipt?.compositionVersion === LOCAL_PATCH_COMPOSITION_VERSION
-      && receipt?.boardReview?.compositionVersion === LOCAL_PATCH_COMPOSITION_VERSION
+      && receipt?.compositionVersion === compositionVersion
+      && receipt?.boardReview?.compositionVersion === compositionVersion
       && receipt?.boardReview?.version === (isLocalPatchAgeVersion(input.sceneVersion) ? "local-patch-board-five-quality/v5-evidence-labeled" : "local-patch-board-five-quality/v3-head-safe")
       && localPatchQualityDisposition(receipt.verdict, input.sceneVersion, { hideId: input.hideId }).state === "acceptable";
   } catch { return false; }

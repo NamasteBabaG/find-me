@@ -24,6 +24,7 @@ vi.mock("@/services/generation/fixed-world-stage-record", () => ({
 }));
 import { GET } from "./route";
 import type { WorldBudgetRequest, WorldBudgetSnapshot } from "@/services/generation/world-budget";
+import { localPatchBoardsForVersion } from "@/domain/scene/local-patch-catalog";
 
 // Boundary wiring tests; actual strict capsules/SQLite are tested by staging.
 const game = { id: "synthetic", ownerId: "owner", childProfileId: "child", styleVersion: "fixed-sprite-v3", status: "QA_PENDING", locale: "en", deletedAt: null,
@@ -66,6 +67,15 @@ describe("fixed-world creation status boundary", () => {
     mocks.game.mockResolvedValue({ ...game, status: "GENERATION_FAILED", styleVersion: "local-patch-world-v1" });
     mocks.job.mockResolvedValue({ gameId: game.id, status: "DONE", currentStep: "local-patch:quality-failed", stepsJson: "{}" });
     expect(await (await response()).json()).toMatchObject({ state: "failed", failed: true, pending: false, awaitingQa: false, done: false, playUrl: null });
+    expect(mocks.link).not.toHaveBeenCalled();
+  });
+  it("keeps the complete27-hide collection in automatic recovery even before the first resuming tick", async () => {
+    mocks.game.mockResolvedValue({ ...game, status: "GENERATION_FAILED", styleVersion: "local-patch-world-v1",
+      scenes: localPatchBoardsForVersion(10).map((board, index) => ({ sceneSlug: board.board, sceneVersion: 10,
+        targets: board.hides.map((_, hide) => ({ status: index < 2 && hide === 0 ? "FAILED" : "GENERATED" })) })) });
+    mocks.job.mockResolvedValue({ gameId: game.id, status: "DONE", currentStep: "local-patch:quality-failed", stepsJson: "{}" });
+    expect(await (await response()).json()).toMatchObject({ state: "retrying", failed: false, pending: true,
+      awaitingQa: false, done: false, playUrl: null, spotsDone: 25, spotsTotal: 27 });
     expect(mocks.link).not.toHaveBeenCalled();
   });
   it("reports a local-patch ledger hold without waiting for the worker's parking marker", async () => {

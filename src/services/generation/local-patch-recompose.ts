@@ -17,6 +17,7 @@ import { localPatchPublicationGeometryHash } from "./local-patch-publication-pol
 import { LOCAL_PATCH_RESERVE, RETAINED_RENDER_VERSION } from "./local-patch-render";
 import { sameChargeEvidence } from "./world-budget";
 import { sha256Bytes } from "./fixed-sprite";
+import { SELF_REPAIR_COMPOSITION_VERSION } from "../../domain/scene/local-patch-self-repair";
 
 export const LOCAL_PATCH_RECOMPOSE_ACTION = "local-patch:recomposed-from-paid-render";
 const hash = (value: unknown) => sha256Bytes(Buffer.from(JSON.stringify(value)));
@@ -28,6 +29,7 @@ export function localPatchNeedsRecomposition(row: { status: string; attempts: nu
   if (!isLocalPatchStrictVersion(contentVersion) || !["GENERATED", "FAILED"].includes(row.status) || row.attempts < 1) return false;
   try {
     const receipt = JSON.parse(row.judgeJson ?? "null");
+    if (receipt?.compositionVersion === SELF_REPAIR_COMPOSITION_VERSION) return false;
     // Provider/schema/transport refusals have no recoverable compositor pixels.
     // They keep the ordinary bounded retry path, not a permanent refresh hold.
     if (row.status === "FAILED" && typeof receipt?.renderFault === "string" && !/^quality-seam(?::|$)/.test(receipt.renderFault)) return false;

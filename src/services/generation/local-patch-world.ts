@@ -17,6 +17,9 @@ import { localPatchAttemptPlan, localPatchSettled, localPatchFinalRepairAllowed,
 import { localPatchNeedsRecomposition, recomposeLocalPatchHide } from "./local-patch-recompose";
 import { runLocalPatchPaidRepair, LOCAL_PATCH_PAID_REPAIR_ACTION, LocalPatchPaidRepairError } from "./local-patch-paid-repair";
 import { readLocalPatchExtraAttemptPlan } from "./local-patch-extra-attempt";
+import { needsSelfRepair, selfRepairEnabled } from "../../domain/scene/local-patch-self-repair";
+import { runLocalPatchSelfRepair, SELF_REPAIR_REQUEST_ACTION, type SelfRepairDeps } from "./local-patch-self-repair";
+import { WorldBudgetError } from "./world-budget";
 import {
   LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, runLocalPatchHide,
   type LocalPatchHideDeps, type LocalPatchHideOutcome,
@@ -63,6 +66,9 @@ export const LOCAL_PATCH_HIDES_PER_SLICE = 1;
 export const LOCAL_PATCH_NEEDS_RELEASE = "local-patch:needs-release";
 /** Terminal visual/technical quality failure, not an accounting operator hold. */
 export const LOCAL_PATCH_QUALITY_FAILED = "local-patch:quality-failed";
+/** Operational budget outage: stay in generation, retry with backoff, never ask the parent to approve pictures. */
+export const LOCAL_PATCH_RECOVERY_BUDGET_WAIT = "local-patch:recovery-budget-wait";
+export const LOCAL_PATCH_RECOVERY_BACKOFF_MS = 60 * 60_000;
 
 export type LocalPatchSliceResult = {
   readonly gameId: string;
@@ -101,6 +107,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   readonly boardJudge?: LocalPatchBoardReviewDeps["judge"];
   /** Synthetic correction review; production still uses the existing key. */
   readonly repairJudge?: Parameters<typeof runLocalPatchPaidRepair>[2]["judge"];
+  readonly diagnose?: SelfRepairDeps["diagnose"];
 } = {}): Promise<LocalPatchSliceResult> {
   const empty = { gameId, outcomes: [], blocked: [] as { boardId: string; reason: string }[], attention: null as string | null };
   const game = await c.db.game.findUnique({ where: { id: gameId }, include: { scenes: { orderBy: { orderIndex: "asc" } } } });
@@ -110,6 +117,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   if (game.status !== "TARGETS_GENERATING") return { ...empty, pending: false, claimed: false, paused: false };
   const advisory = game.scenes.length > 0 && game.scenes.every(scene => isLocalPatchAdvisoryVersion(scene.sceneVersion));
   const strict = game.scenes.length > 0 && game.scenes.every(scene => isLocalPatchStrictVersion(scene.sceneVersion));
+  const automatic = game.scenes.length === 9 && game.scenes.every(scene => selfRepairEnabled(scene.sceneVersion));
   if (game.scenes.some(scene => isLocalPatchAdvisoryVersion(scene.sceneVersion))
     && (!advisory || new Set(game.scenes.map(scene => scene.sceneVersion)).size !== 1)) {
     throw new Error("LOCAL_PATCH_WORLD: mixed legacy and five-hide scene versions are not a valid world");
@@ -123,6 +131,8 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
 
   const job = await c.db.generationJob.findUnique({ where: { id: `job_${gameId}` } });
   if (!job) return { ...empty, pending: false, claimed: false, paused: false };
+  if (job.currentStep === LOCAL_PATCH_RECOVERY_BUDGET_WAIT && job.updatedAt.getTime() > Date.now() - LOCAL_PATCH_RECOVERY_BACKOFF_MS)
+    return { ...empty, pending: true, claimed: false, paused: false };
 
   // The claim, and the takeover in the same statement: either this job is not
   // running, or whoever had it has not said anything for a lease. `attempts`
@@ -177,6 +187,15 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     await tx.game.update({ where: { id: gameId }, data: { lastError: reason, configJson: null } });
     await tx.generationJob.update({ where: { id: job.id }, data: { status: "DONE", currentStep: LOCAL_PATCH_QUALITY_FAILED, lastError: reason } });
   });
+  const deferBudget = async (error: unknown): Promise<boolean> => {
+    if (!automatic || !(error instanceof WorldBudgetError) || error.code !== "cap_exceeded") return false;
+    await c.db.$transaction(async tx => {
+      await fence(tx);
+      await tx.generationJob.update({ where: { id: job.id }, data: { status: "QUEUED", currentStep: LOCAL_PATCH_RECOVERY_BUDGET_WAIT,
+        lastError: "Automatic recovery needs service budget capacity; no parent quality approval is required. " + error.message } });
+    });
+    return true;
+  };
 
   // A staged correction is a separate REVIEW-ONLY state. Never let an older
   // failure, a rejected sibling, or an interrupted tick fall into image retries.
@@ -190,7 +209,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     }
     const repair = await runLocalPatchPaidRepair(c, gameId, { fence, apiKey: deps.apiKey,
       deadlineAt: options.hardDeadlineAt, judge: options.repairJudge });
-    if (repair.state !== "none") {
+    if (repair.state !== "none" && !(automatic && repair.state === "blocked")) {
       if (repair.state === "committed") {
         await finishLocalPatchGame(c, gameId, fence);
         await deliverLocalPatchNotifications(c, gameId, { deadlineAt: options.hardDeadlineAt }).catch(error => console.error("[local-patch] ready; repair notification unavailable", error));
@@ -263,7 +282,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // terminal game transition. That is still unresolved evidence on restart,
   // never permission to buy another image merely to obtain a different judge.
   const unresolvedQuality = strict && rows.find(row => row.status === "FAILED" && row.lastError?.startsWith("quality-unresolved:"));
-  if (unresolvedQuality) {
+  if (unresolvedQuality && !automatic) {
     const attention = `local-patch: ${unresolvedQuality.lastError}`;
     await failStrictQuality(attention);
     return { ...empty, pending: false, claimed: true, paused: false, attention };
@@ -288,11 +307,13 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     && localPatchBoardFor(scene.sceneSlug, scene.sceneVersion)?.hides.every(hide => stateOf(scene.id, hide.targetId)?.status === "GENERATED"));
   // A rendered but not reviewed normal candidate may still require attempt2.
   // Finish those reviews before handing any earlier failure its last attempt.
+  const automaticWork = automatic && !extraPlan ? work.filter(item => needsSelfRepair(stateOf(item.sceneId, item.hide.targetId))) : [];
   const todo = extraPlan ? work.filter(item => {
     const row = stateOf(item.sceneId, item.hide.targetId);
     return row && extraRows.has(row.id) && ((row.status === "FAILED" && row.attempts === 3)
       || (row.status === "PENDING" && row.attempts === 4));
   }) : plan.indices.map(index => work[index]!).filter(item => {
+    if (automaticWork.includes(item)) return false;
     if (!plan.finalRepair || !normalReviewsPending) return true;
     const row = stateOf(item.sceneId, item.hide.targetId);
     // Reviews gate a NEW final purchase, never recovery of one already started.
@@ -304,6 +325,14 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   let attention: string | null = null;
 
   try {
+    // A new failure after recovery returns here with its actual review evidence.
+    // The engine diagnoses again; no terminal quality status or parent gate.
+    for (const item of automaticWork.slice(0, limit)) {
+      if (options.hardDeadlineAt !== undefined && options.hardDeadlineAt - Date.now() < minHideMs) break;
+      await runLocalPatchSelfRepair(c, { gameId, ...item, deadlineAt: options.hardDeadlineAt },
+        { ...deps, fence, diagnose: options.diagnose });
+      game.scenes.find(scene => scene.id === item.sceneId)!.generationStatus = "NEEDS_REGENERATION";
+    }
     for (const item of todo.slice(0, limit)) {
       if (options.hardDeadlineAt !== undefined && options.hardDeadlineAt - Date.now() < minHideMs) break;
       const outcome = await runLocalPatchHide(c, { ...deps, fence }, { gameId, board: item.board, hide: item.hide,
@@ -326,6 +355,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     }
   } catch (error) {
     if (error instanceof GenerationPaused) paused = true;
+    else if (await deferBudget(error)) return { ...empty, pending: true, claimed: true, paused: false, outcomes, blocked };
     else {
       await c.db.generationJob.updateMany({ where: { id: job.id, attempts: claim }, data: { status: "FAILED", lastError: (error instanceof Error ? error.message : String(error)).slice(0, 500) } });
       throw error;
@@ -356,6 +386,10 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
           fence, apiKey: deps.apiKey, judge: options.boardJudge, readBoardArt: deps.readBoardArt,
         });
         if (reviewed.state === "blocked") {
+          if (automatic) {
+            await c.db.$transaction(async tx => { await fence(tx); await tx.gameScene.update({ where: { id: scene.id }, data: { generationStatus: "NEEDS_REGENERATION" } }); });
+            continue;
+          }
           attention = `local-patch: ${reviewed.reason ?? "required quality evidence unavailable"}`;
           await failStrictQuality(attention);
           return { gameId, pending: false, claimed: true, paused: false, attention, outcomes, blocked };
@@ -380,6 +414,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
         }
       } catch (error) {
         if (error instanceof GenerationPaused) { paused = true; pendingReviews++; continue; }
+        if (await deferBudget(error)) return { ...empty, pending: true, claimed: true, paused: false, outcomes, blocked };
         await c.db.generationJob.updateMany({ where: { id: job.id, attempts: claim, status: "RUNNING" },
           data: { status: "FAILED", lastError: (error instanceof Error ? error.message : String(error)).slice(0, 500) } });
         throw error;
@@ -402,7 +437,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // slice's todo. The final normal completion must queue the repair pass.
   const left = work.filter(item => {
     const row = after.find(r => r.targetInstance.gameSceneId === item.sceneId && r.targetInstance.targetId === item.hide.targetId);
-    return !settledHide(row);
+    return !settledHide(row) || automatic && !extraPlan && needsSelfRepair(row);
   });
   // A world the ledger is holding cannot authorise anything, so another tick
   // would read the same rows, buy nothing and ask again forever. Held is a
@@ -558,6 +593,12 @@ export async function localPatchPrivateInventory(c: { db: Pick<Prisma.Transactio
       if (typeof review.requestKey !== "string" || !review.requestKey.startsWith("repair:") || review.requestKey.length > 250) throw new Error("LOCAL_PATCH_WORLD: repair request inventory is invalid");
       requestKeys.push(review.requestKey);
     }
+  }
+  for (const audit of await c.db.auditLog.findMany({ where: { action: SELF_REPAIR_REQUEST_ACTION, entityType: "Game", entityId: gameId }, select: { metaJson: true } })) {
+    const value = JSON.parse(audit.metaJson ?? "null");
+    if (typeof value?.requestKey !== "string" || value.requestKey.length > 250
+      || !(value.requestKey.startsWith("self-repair:") || value.requestKey.includes(":self-repair:"))) throw Error("Invalid automatic recovery deletion inventory");
+    requestKeys.push(value.requestKey);
   }
   return {
     assetIds: [...assetIds],

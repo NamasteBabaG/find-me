@@ -5,6 +5,7 @@ import { creationStep, isPlayable } from "@/domain/order-state";
 import { creationProgress, type CreationSignals } from "@/domain/creation-progress";
 import { LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_QUALITY_FAILED, LOCAL_PATCH_STYLE } from "@/services/generation/local-patch-world";
 import { isLocalPatchAdvisoryVersion } from "@/domain/scene/local-patch-catalog";
+import { selfRepairEnabled } from "@/domain/scene/local-patch-self-repair";
 import { statusOf } from "@/services/game-status";
 import { RESUMABLE_STATUSES } from "@/services/generation/pipeline";
 import { ensurePlayerLink } from "@/services/share-link.service";
@@ -176,11 +177,13 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
   const parked = game.styleVersion === LOCAL_PATCH_STYLE
     && (await readStatusJob())?.currentStep === LOCAL_PATCH_NEEDS_RELEASE;
   const qualityFailed = game.styleVersion === LOCAL_PATCH_STYLE
+    && !(game.scenes.length === 9 && game.scenes.every(scene => selfRepairEnabled(scene.sceneVersion)))
     && (await readStatusJob())?.currentStep === LOCAL_PATCH_QUALITY_FAILED;
   const progress = creationProgress({ status, characterReady, spotsDone, spotsTotal, fixedAssemblyReady, boardWizardState,
     ...(parked || localPatchBudgetHeld ? { operatorHold: true } : {}) });
   // GENERATION_FAILED normally means an automatic retry; this exact durable
-  // marker is its terminal quality exception, never an awaiting-human state.
+  // marker is a terminal quality exception only for historical engines. The
+  // current collection resumes automatically, including before its first tick.
   if (qualityFailed && !localPatchBudgetHeld) {
     progress.state = "failed"; progress.failed = true; progress.current = null; progress.done = false;
   }

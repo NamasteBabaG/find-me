@@ -3,7 +3,10 @@ import type { Container } from "../container";
 import { LEASE_MS as PIPELINE_LEASE_MS, RESUMABLE_STATUSES, runGenerationPipeline } from "./pipeline";
 import { FIXED_WORLD_STYLE_PREFIX, isFixedWorldStyle } from "./fixed-world-stage-record";
 import { BOARD_WIZARD_STYLE, boardWizardEnabled, runBoardConditionedWizardSlice } from "./board-conditioned-wizard";
-import { LOCAL_PATCH_LEASE_MS, LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_QUALITY_FAILED, LOCAL_PATCH_STYLE, localPatchPainterDeps, runLocalPatchWorldSlice } from "./local-patch-world";
+import { LOCAL_PATCH_LEASE_MS, LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_QUALITY_FAILED, LOCAL_PATCH_RECOVERY_BUDGET_WAIT, LOCAL_PATCH_RECOVERY_BACKOFF_MS, LOCAL_PATCH_STYLE, localPatchPainterDeps, runLocalPatchWorldSlice } from "./local-patch-world";
+import { selfRepairEnabled } from "../../domain/scene/local-patch-self-repair";
+import { transitionGame } from "../game-status";
+import { SYSTEM } from "../audit.service";
 
 /**
  * Moving generation forward a slice at a time.
@@ -37,11 +40,19 @@ export async function nextPendingGame(c: Container): Promise<string | null> {
     // behind it waited on a decision nobody had made yet. It can still be ticked
     // directly, by an operator who knows what they are looking at.
     where: { status: { in: [...RESUMABLE_STATUSES] }, deletedAt: null,
-      jobs: { none: { currentStep: { in: [LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_QUALITY_FAILED] } } },
+      jobs: { none: { currentStep: LOCAL_PATCH_NEEDS_RELEASE } },
       // A minute cron must not spend its turn nudging a healthy paid render
       // already held by another worker. Match the world claimant's strict
       // takeover boundary; queued/released jobs remain immediately runnable.
       AND: [
+        { OR: [{ jobs: { none: { currentStep: LOCAL_PATCH_QUALITY_FAILED } } }, { orders: {
+          some: { paymentStatus: "PAID", paidAt: { not: null }, refundedAt: null },
+          none: { OR: [{ paymentStatus: "REFUNDED" }, { refundedAt: { not: null } }] },
+        } }] },
+        { NOT: { jobs: { some: { currentStep: LOCAL_PATCH_RECOVERY_BUDGET_WAIT, updatedAt: { gt: new Date(Date.now() - LOCAL_PATCH_RECOVERY_BACKOFF_MS) } } } } },
+        { NOT: { jobs: { some: { currentStep: LOCAL_PATCH_QUALITY_FAILED } }, OR: [
+          { scenes: { none: {} } }, { scenes: { some: { sceneVersion: { not: 10 } } } },
+        ] } },
         { NOT: { styleVersion: LOCAL_PATCH_STYLE, status: "TARGETS_GENERATING", jobs: { some: {
           status: "RUNNING", updatedAt: { gte: new Date(Date.now() - LOCAL_PATCH_LEASE_MS) },
         } } } },
@@ -68,7 +79,12 @@ export async function tickGeneration(c: Container, gameId: string | null, budget
   if (!before) return { gameId: id, status: null, pending: false };
   if (before.styleVersion === LOCAL_PATCH_STYLE) {
     const terminal = await c.db.generationJob.findUnique({ where: { id: `job_${id}` }, select: { currentStep: true, lastError: true } });
-    if (terminal?.currentStep === LOCAL_PATCH_QUALITY_FAILED) return { gameId: id, status: statusOf(before), pending: false, attention: terminal.lastError };
+    if (terminal?.currentStep === LOCAL_PATCH_QUALITY_FAILED) {
+      if (before.scenes.length !== 9 || !before.scenes.every(scene => selfRepairEnabled(scene.sceneVersion)))
+        return { gameId: id, status: statusOf(before), pending: false, attention: terminal.lastError };
+      await resumeAutomaticLocalPatchRecovery(c, id);
+      return { gameId: id, status: (await c.db.game.findUniqueOrThrow({ where: { id } })).status, pending: true, attention: null };
+    }
     if (["PAID", "AVATAR_GENERATING", "GENERATION_FAILED"].includes(before.status)) {
       // The pinned engine owns its identity contract from the first preview.
       // The pipeline returns after approval; it never paints legacy targets.
@@ -97,4 +113,24 @@ export async function tickGeneration(c: Container, gameId: string | null, budget
   const after = await c.db.game.findUnique({ where: { id }, select: { status: true, styleVersion: true } });
   const status = after ? statusOf(after) : null;
   return { gameId: id, status, pending: status !== null && after !== null && !isFixedWorldStyle(after.styleVersion) && RESUMABLE_STATUSES.includes(status) };
+}
+
+/** Upgrade a concluded quality refusal, never a refund, accounting hold or live
+ * request. The paid game resumes its original rows/identity/ledger, not generation
+ * from scratch. No admin action or fabricated quality approval is involved. */
+export async function resumeAutomaticLocalPatchRecovery(c: Container, gameId: string): Promise<void> {
+  await c.db.$transaction(async tx => {
+    const game = await tx.game.findUniqueOrThrow({ where: { id: gameId }, include: { scenes: true, orders: true } });
+    const job = await tx.generationJob.findUniqueOrThrow({ where: { id: `job_${gameId}` } });
+    if (game.status !== "GENERATION_FAILED" || game.deletedAt || game.configJson || game.readyAt || game.styleVersion !== LOCAL_PATCH_STYLE
+      || game.scenes.length !== 9 || !game.scenes.every(scene => selfRepairEnabled(scene.sceneVersion))
+      || job.status !== "DONE" || job.currentStep !== LOCAL_PATCH_QUALITY_FAILED
+      || !game.orders.some(o => o.userId === game.ownerId && o.paymentStatus === "PAID" && o.paidAt && !o.refundedAt)
+      || game.orders.some(o => o.paymentStatus === "REFUNDED" || o.refundedAt)) return;
+    const claimed = await tx.generationJob.updateMany({ where: { id: job.id, status: "DONE", attempts: job.attempts, currentStep: LOCAL_PATCH_QUALITY_FAILED },
+      data: { status: "QUEUED", currentStep: "local-patch", lastError: null, attempts: { increment: 1 } } });
+    if (claimed.count !== 1) return;
+    await transitionGame(c, gameId, "TARGETS_GENERATING", SYSTEM, { reason: "automatic-quality-recovery", preservedExistingTargets: true }, tx);
+    await tx.game.update({ where: { id: gameId }, data: { lastError: null } });
+  }, { timeout: 30_000 });
 }

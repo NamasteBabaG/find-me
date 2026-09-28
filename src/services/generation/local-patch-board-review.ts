@@ -12,9 +12,11 @@ import { requireBoardWizardIdentityApproval } from "./board-wizard-identity-gate
 import { prepareLocalPatchIdentityReferences } from "./local-patch-identity-reference";
 import { fenceLocalPatchImages, LocalPatchRetainedPurchaseStore } from "./local-patch-lifecycle";
 import { LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, readShippedBoardArt } from "./local-patch-hide";
-import { localPatchBoardJudgeSettings, localPatchQualityDisposition, isTheModelWeAsked, judgeLocalPatchBoard, localPatchBoardJudgePrompt, localPatchBoardJudgeImages, localPatchBoardJudgeImageLabels, localPatchBoardEvidenceIds, parseLocalPatchBoardVerdicts,
+import { LOCAL_PATCH_JUDGE, requestJudgeWire, localPatchBoardJudgeSettings, localPatchQualityDisposition, isTheModelWeAsked, judgeLocalPatchBoard, localPatchBoardJudgePrompt, localPatchBoardJudgeImages, localPatchBoardJudgeImageLabels, localPatchBoardEvidenceIds, parseLocalPatchBoardVerdicts,
   type LocalPatchBoardJudgeRequest, type LocalPatchBoardJudgeResult } from "./local-patch-judge";
-import { localPatchPublicationGeometryHash, recordLocalPatchPublicationPolicy } from "./local-patch-publication-policy";
+import { localPatchPublicationGeometryHash, recordLocalPatchPublicationPolicy, hasLocalPatchPublicationPolicy } from "./local-patch-publication-policy";
+import { SELF_REPAIR_COMPOSITION_VERSION, selfRepairDecisionSchema } from "../../domain/scene/local-patch-self-repair";
+import { inventorySelfRepairRequest } from "./local-patch-self-repair";
 import { LOCAL_PATCH_PHASE_MARGIN_MS, LOCAL_PATCH_MIN_PROVIDER_MS } from "./local-patch-render";
 import { purchaseOnce } from "./paid-operation";
 import { sha256Bytes } from "./fixed-sprite";
@@ -71,7 +73,7 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
   const strict = isLocalPatchStrictVersion(scene.sceneVersion);
   const reviewVersion = isLocalPatchAgeVersion(scene.sceneVersion) ? LOCAL_PATCH_AGE_BOARD_REVIEW_VERSION
     : strict ? LOCAL_PATCH_STRICT_BOARD_REVIEW_VERSION : LOCAL_PATCH_BOARD_REVIEW_VERSION;
-  const settings = localPatchBoardJudgeSettings(scene.sceneVersion);
+  let settings: { model: string; effort: "low"; maxOutputTokens: number; endpoint: string; timeoutMs: number } = localPatchBoardJudgeSettings(scene.sceneVersion);
   demand(game.id === input.gameId && game.styleVersion === "local-patch-world-v1"
     && (game.status === "TARGETS_GENERATING" || options.recovery && isLocalPatchAgeVersion(scene.sceneVersion) && game.status === "GENERATION_FAILED")
     && !game.deletedAt && game.ownerId && child && !child.deletedAt && child.ownerId === game.ownerId
@@ -120,7 +122,9 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
       && completed.judgedSha256 === imageSha256 && completed.geometrySha256 === geometrySha256
       && ["pending-board-review", "board-review-complete"].includes(String(completed.reviewState)),
     "Shipping image or geometry no longer matches its render-completion binding");
-    if (strict && completed.compositionVersion !== LOCAL_PATCH_COMPOSITION_VERSION)
+    if (strict && completed.compositionVersion !== LOCAL_PATCH_COMPOSITION_VERSION
+      && !(scene.sceneVersion === 10 && completed.compositionVersion === SELF_REPAIR_COMPOSITION_VERSION
+        && selfRepairDecisionSchema.safeParse((completed.selfRepair as { decision?: unknown } | undefined)?.decision).success))
       return { ready: false as const, reason: "Retained image awaits the current head-safe compositor" };
     const dimensions = await sharp(bytes, { limitInputPixels: 8_294_400 }).metadata();
     demand(dimensions.width === crop.width && dimensions.height === crop.height && (dimensions.pages ?? 1) === 1, "Patch raster differs from its shipping rectangle");
@@ -137,6 +141,13 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
   // A new candidate does not retire the original approvals of unchanged
   // siblings. Previously unreviewed siblings DO receive their first real review.
   const protectedRows = new Set(extraPlan?.others.filter(entry => entry.reviewState === "board-review-complete").map(entry => entry.rowId));
+  const recovering = scene.sceneVersion === 10 && entries.some(e => JSON.parse(e.row.judgeJson!).compositionVersion === SELF_REPAIR_COMPOSITION_VERSION);
+  if (recovering) settings = LOCAL_PATCH_JUDGE;
+  if (recovering) for (const e of entries) {
+    if (await hasLocalPatchPublicationPolicy(c, { gameId: game.id, sceneVersion: scene.sceneVersion, hideId: e.hide.id,
+      variantId: e.row.id, attempts: e.row.attempts, identityAssetId: identity.id, identitySha256: sha256Bytes(sheet),
+      assetId: e.asset.id, imageSha256: e.imageSha256, geometrySha256: e.geometrySha256, judgeJson: e.row.judgeJson })) protectedRows.add(e.row.id);
+  }
   // Historical v7 reviews its five-patch composition. V8 plays serially: the
   // original board provides context, and each AFTER is its own base+one patch.
   const composed = strict ? before : await sharp(before).composite(entries.map(e => ({ input: e.bytes, left: e.crop.left, top: e.crop.top }))).png().toBuffer();
@@ -159,7 +170,10 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
         : await sharp(composed).extract(e.crop).png().toBuffer();
       let closeupPng: Buffer | undefined, afterEvidencePng: Buffer | undefined;
       if (strict) {
-        const mask = maskForHide(e.hide), guard = LOCAL_PATCH_REVIEW_CLOSEUP_GUARD_PX;
+        const receipt = JSON.parse(e.row.judgeJson!);
+        const mask = receipt.compositionVersion === SELF_REPAIR_COMPOSITION_VERSION
+          ? selfRepairDecisionSchema.parse(receipt.selfRepair.decision).faceRect : maskForHide(e.hide);
+        const guard = LOCAL_PATCH_REVIEW_CLOSEUP_GUARD_PX;
         const detailLeft = e.crop.left + Math.max(0, mask.left - guard), detailTop = e.crop.top + Math.max(0, mask.top - guard);
         const detail = { left: detailLeft, top: detailTop,
           width: e.crop.left + Math.min(e.crop.width, mask.left + mask.width + guard) - detailLeft,
@@ -179,21 +193,23 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
         expectation: { ageYears: child.ageYears, support: `${e.hide.pose} on ${board.ground}` } };
     })),
   };
+  const prompt = localPatchBoardJudgePrompt(request) + (recovering ? " AUTONOMOUS REPAIR REVIEW: inspect the actual repaired output independently of its diagnosis. A generic child is insufficient: require the same canonical facial proportions, eyes, jaw and hair silhouette at native scale. Inspect the complete head, all visible limbs, replaced bystanders and the entire new join. Reject clipping, orphan limbs, severe seams, wrong identity, age or scale. The diagnosis is not an approval." : "");
   const fingerprint = hash({ version: reviewVersion, sceneId: scene.id, contentVersion: scene.sceneVersion,
-    settings, prompt: localPatchBoardJudgePrompt(request),
+    settings, prompt,
     identitySha256: sha256Bytes(sheet), originalSha256: sha256Bytes(before), composedSha256: sha256Bytes(composed),
     wireHashes: localPatchBoardJudgeImages(request).map(sha256Bytes),
     ...(isLocalPatchAgeVersion(scene.sceneVersion) ? { evidenceIds: localPatchBoardEvidenceIds(request), imageLabels: localPatchBoardJudgeImageLabels(request) } : {}),
     ...(strict ? { compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION } : {}),
     ...(extraPlan ? { extraAttemptAuthorizationId: extraPlan.authorizationId, protectedRows: [...protectedRows].sort() } : {}),
+    ...(recovering ? { selfRepair: entries.map(e => JSON.parse(e.row.judgeJson!).selfRepair ?? null), protectedRows: [...protectedRows].sort() } : {}),
     hides: entries.map(e => ({ hide: e.hide.id, target: e.row.targetInstanceId, attempts: e.row.attempts, asset: e.asset.id,
       imageSha256: e.imageSha256, geometrySha256: e.geometrySha256 })),
   });
-  const requestKey = localPatchBoardReviewKey(board.board, strict ? entries.map(e => e.row.attempts) : undefined, LOCAL_PATCH_COMPOSITION_VERSION, scene.sceneVersion, extraPlan ? 4 : 3)
+  const requestKey = recovering ? `self-repair:board:${board.board}:${fingerprint}` : localPatchBoardReviewKey(board.board, strict ? entries.map(e => e.row.attempts) : undefined, LOCAL_PATCH_COMPOSITION_VERSION, scene.sceneVersion, extraPlan ? 4 : 3)
     + (extraPlan ? ":visible-body-v1" : "");
   if (extraPlan) demand(extraPlan.reviewRequestKeys.includes(requestKey), "The review is outside its scoped authority");
   return { ready: true as const, scene, game, child, board, budget, worldId, identity, sheet, entries, request, fingerprint,
-    requestKey, settings, strict, reviewVersion, composed, extraPlan, protectedRows };
+    requestKey, settings, strict, reviewVersion, composed, extraPlan, protectedRows, recovering, prompt };
 }
 
 /** One paid review of the actual five-patch board; no per-hide review purchases.
@@ -204,18 +220,22 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
   const prepared = await prepareLocalPatchBoardReview(c, input, deps);
   if (!prepared.ready) return { state: "pending", reason: prepared.reason, costCents: 0, replayed: false };
   const { scene, game, budget, worldId, identity, sheet, entries, request, fingerprint,
-    requestKey, settings, strict, reviewVersion, composed, extraPlan, protectedRows } = prepared;
+    requestKey, settings, strict, reviewVersion, composed, extraPlan, protectedRows, recovering, prompt } = prepared;
+  if (recovering && protectedRows.size === entries.length) return { state: "done", reason: null, costCents: 0, replayed: true };
   demand(game.ownerId, "A review requires its verified owner");
   demand(deps.judge || deps.apiKey?.trim(), "Configured existing judge credential is required");
   // Unlike a replay, a new dispatch must consult the current kill switch/owner.
   await assertGenerationSpendAllowed(c, game.ownerId);
   await c.db.$transaction(async tx => { await fenceLocalPatchImages(tx, game.id); await deps.fence(tx); });
+  if (recovering) await inventorySelfRepairRequest(c, game.id, requestKey, deps.fence);
   const bought = await purchaseOnce({ ledger: budget, store: new LocalPatchRetainedPurchaseStore(c, game.id, budget) }, {
-    worldId, requestKey, scope: "judge", operationFingerprint: fingerprint, reserveMicroUsd: 30_000,
+    worldId, requestKey, scope: "judge", operationFingerprint: fingerprint, reserveMicroUsd: recovering ? 500_000 : 30_000,
     ...(input.deadlineAt === undefined ? {} : { dispatchWindow: { deadlineAt: input.deadlineAt,
       needMs: LOCAL_PATCH_MIN_PROVIDER_MS.judge + LOCAL_PATCH_PHASE_MARGIN_MS, retainMs: LOCAL_PATCH_PHASE_MARGIN_MS } }),
     buy: async ({ timeoutMs }) => {
-      const reply = await (deps.judge ?? (r => judgeLocalPatchBoard(deps.apiKey!, r)))({ ...request,
+      const reply = await (deps.judge ?? (async r => recovering ? { ...await requestJudgeWire(deps.apiKey!, {
+        prompt, images: localPatchBoardJudgeImages(r), imageLabels: localPatchBoardJudgeImageLabels(r), settings, timeoutMs: r.timeoutMs,
+      }, fetch), verdicts: {} } : judgeLocalPatchBoard(deps.apiKey!, r)))({ ...request,
         ...(timeoutMs === null ? {} : { timeoutMs: Math.min(timeoutMs, settings.timeoutMs) }) });
       // Reparse retained raw text on every replay; an adapter cannot mint passes.
       const keep = { raw: reply.raw, usage: reply.usage, requestId: reply.requestId, model: reply.model,
@@ -243,18 +263,19 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
       demand((current.status === "GENERATED" || reviewOnly && current.status === "FAILED") && current.assetId === e.asset.id && current.attempts === e.row.attempts
         && localPatchPublicationGeometryHash(current) === e.geometrySha256, "Target changed while its board was reviewed");
       if (protectedRows.has(e.row.id)) {
-        demand(current.judgeJson === extraPlan!.others.find(entry => entry.rowId === e.row.id)!.judgeJson
+        demand(current.judgeJson === e.row.judgeJson
           && dispositions[index]!.state === "acceptable", "An existing approval changed during the scoped review");
         continue;
       }
       const prior = JSON.parse(current.judgeJson ?? "{}");
+      const compositionVersion = prior.compositionVersion === SELF_REPAIR_COMPOSITION_VERSION ? SELF_REPAIR_COMPOSITION_VERSION : LOCAL_PATCH_COMPOSITION_VERSION;
       const disposition = dispositions[index]!;
       const judgeJson = JSON.stringify({ ...prior, reviewState: "board-review-complete", verdict: verdicts[e.hide.id] ?? null,
         wireFault: keep.wireFault ?? (verdicts[e.hide.id] ? null : "schema"), judgedSha256: e.imageSha256,
-        ...(strict ? { qualityDisposition: disposition, compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION } : {}),
+        ...(strict ? { qualityDisposition: disposition, compositionVersion } : {}),
         boardReview: { version: reviewVersion, fingerprint, requestKey, composedSha256: sha256Bytes(composed),
           ...(extraPlan ? { assessmentMode: "visible-body-v1", extraAttemptAuthorizationId: extraPlan.authorizationId } : {}),
-          ...(strict ? { compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION, wireHashes: localPatchBoardJudgeImages(request).map(sha256Bytes) } : {}),
+          ...(strict ? { compositionVersion, wireHashes: localPatchBoardJudgeImages(request).map(sha256Bytes) } : {}),
           ...(isLocalPatchAgeVersion(scene.sceneVersion) ? { evidenceIds: localPatchBoardEvidenceIds(request), imageLabels: localPatchBoardJudgeImageLabels(request) } : {}),
           model: keep.model, effort: settings.effort, raw: keep.raw, costMicroUsd: bought.evidence.amountMicroUsd },
       });
