@@ -129,3 +129,31 @@ full head/feet, neighbouring figures and props in BOTH raw and shipping images;
 the numeric seam score alone cannot certify this. A new bounded provider trial
 and explicit versioned terminal-game repair path need review before purchase.
 Do not reuse the old v8-only repair command on this v10 order.
+
+## Owner-requested normal-size review — 28 September
+
+Created a private local review at `tmp/incident-yuval-review/index.html`, using
+`tmp/incident-build-review.ts`. It presents all nine historical scene-v10
+boards at 3840x2160, with only the 25 retained GENERATED shipping crops placed
+at their persisted coordinates. The two failed positions retain the source
+painting and are labelled missing; six rejected attempts are separate, not
+inserted into the review boards. No original photo or identity asset was
+exported. This is review-only, NOT a playable game or human approval of 25 images.
+
+The builder verifies 27 rows, nine boards, historical scene version, source
+and crop dimensions, persisted geometry, retained asset metadata, and judged
+byte hashes when present. A private 40-entry manifest binds the 31 retained
+image files and nine composites to their hashes/source geometry. This is an
+offline reconstruction, not an assertion that a final game config exists.
+
+Native image inspection completed for New York, Antarctica and Giza. The
+gallery was offered through the Codex file panel, but automated file-URL browser
+opening was denied by browser security policy. No alternate browser/server
+workaround was attempted; interactive gallery behavior is not browser-verified.
+The static PNG files remain directly viewable and the local HTML can be opened
+manually by the owner. All private review files remain ignored and unshipped.
+
+QA UI release ad0892c5 is now live (see QA_WIZARD_INCIDENT_RELEASE_20260928.md).
+No paid image/review, generation retry, ledger mutation, asset replacement,
+forced approval or terminal-state change was made while preparing this review.
+The bounded, versioned two-hide repair and visual acceptance remain outstanding.

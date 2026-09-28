@@ -2,11 +2,14 @@
 
 ## Release truth
 
-**Update 2026-09-28:** QA now runs `5f0f8759`, deployment
-`dpl_8ycF2sZufgoGddwJ3ie5QgCZhpvk`, after passing CI and a clean guarded
+**Update 2026-09-28:** QA now runs `ad0892c5`, deployment
+`dpl_CDvbisdWZF6fPXguvCJeJrjKDqCj`, after passing CI and a clean guarded
 deployment. Alias and REST commit metadata verified. See
-`QA_HOME_RECOVERY_RELEASE_20260928.md` for exact evidence and limits. No public
+`QA_WIZARD_INCIDENT_RELEASE_20260928.md` for exact evidence and limits. No public
 production promotion, authenticated live-game acceptance or F-A approval.
+The failed personal game is NOT repaired by this UI release. A private local
+nine-board review now displays the 25 retained generated appearances, with the
+six rejected attempts separate. See the generation incident document.
 The paragraph below records the earlier checkpoint's starting state.
 
 This is an implementation checkpoint, **not launch approval**. At the start of
