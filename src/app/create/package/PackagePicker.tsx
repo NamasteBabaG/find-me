@@ -1,7 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useActionState, useState } from "react";
 import { Button, LinkButton } from "@/ui/Button";
 import { useI18n } from "@/i18n/client";
 import { errorText } from "@/i18n/errors";
@@ -20,11 +19,8 @@ interface Option {
 export function PackagePicker({ options, defaultTier, availableWorldCount }: { options: Option[]; defaultTier: string; availableWorldCount: number }) {
   const { t, tf } = useI18n();
   const p = t.create.package;
-  const router = useRouter();
   const [tier, setTier] = useState(defaultTier);
   const [state, action, pending] = useActionState<ActionResult | null, FormData>(choosePackageAction, null);
-  // Both ways out of this step, warmed while the parent compares the cards.
-  useEffect(() => { router.prefetch("/create/scenes"); router.prefetch("/checkout"); }, [router]);
   return (
     <form action={action} className="fm-stack fm-stack--4">
       <div className="packages" role="radiogroup">

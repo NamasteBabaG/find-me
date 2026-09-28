@@ -1,7 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useActionState, useState } from "react";
 import { Button } from "@/ui/Button";
 import { useI18n } from "@/i18n/client";
 import { errorText } from "@/i18n/errors";
@@ -10,16 +9,12 @@ import { saveNameAction, type ActionResult } from "./actions";
 
 export function NameForm({ initialName, initialAge, children = [], initialChildId = "", fresh = false }: { initialName: string; initialAge?: number | null; children?: Array<{ id: string; displayName: string }>; initialChildId?: string; fresh?: boolean }) {
   const { t } = useI18n();
-  const router = useRouter();
   const n = t.create.name;
   const [selectedId, setSelectedId] = useState(initialChildId);
   const [age, setAge] = useState<string>(validChildAge(initialAge) ? String(initialAge) : "");
   const [newName, setNewName] = useState(initialChildId ? "" : initialName);
   const selected = children.find(child => child.id === selectedId);
   const [state, action, pending] = useActionState<ActionResult | null, FormData>(saveNameAction, null);
-  // The next step is fetched while the parent is still typing, so pressing
-  // Continue is a paint and not a wait. Every step does this for the one after it.
-  useEffect(() => { router.prefetch("/create/photo"); }, [router]);
   const ageInvalid = Boolean(state && !state.ok && state.code === "INVALID_CHILD_AGE");
   return (
     <form action={action} className="fm-card fm-card--pad-6 fm-stack fm-stack--3">

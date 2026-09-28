@@ -36,3 +36,6 @@ assets/*.png
 # The passport handoff assumed this was ignored; it was not, and
 # output/passport/smoke-fixture.json holds a live magic-link token.
 /output
+
+# Private, retained-purchase incident diagnostics; never commit customer art.
+/tmp/incident-*

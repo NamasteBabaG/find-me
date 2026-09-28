@@ -1,7 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useActionState, useState } from "react";
 import { Button, LinkButton } from "@/ui/Button";
 import { useI18n } from "@/i18n/client";
 import { errorText } from "@/i18n/errors";
@@ -17,14 +16,12 @@ interface SceneOption {
 /** Independent adventures. The server offers only complete, renderable worlds. */
 export function ScenePicker({ scenes, want, preselected }: { scenes: SceneOption[]; want: number; preselected: string[] }) {
   const { t, tf } = useI18n();
-  const router = useRouter();
   const s = t.create.scenes;
   const [state, action, pending] = useActionState<ActionResult | null, FormData>(chooseScenesAction, null);
   const [included, setIncluded] = useState(() => {
     const valid = [...new Set(preselected)].filter(slug => scenes.some(sc => sc.slug === slug));
     return valid.length === want ? valid : scenes.slice(0, want).map(sc => sc.slug);
   });
-  useEffect(() => { router.prefetch("/checkout"); }, [router]);
   const full = included.length === want;
   function choose(slug: string) {
     if (want === 1) setIncluded([slug]);

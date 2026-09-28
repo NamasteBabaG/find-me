@@ -243,8 +243,11 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
                   ) : spot.rejectedAssetIds.length > 0 ? (
                     <div className="fm-row">
                       {spot.rejectedAssetIds.map((assetId) => (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img key={assetId} src={`/api/assets/${assetId}`} alt="ציור שנדחה" className="photo-thumb" />
+                        <a key={assetId} href={`/api/assets/${assetId}`} target="_blank" rel="noreferrer" title="פתיחת התמונה המלאה שנדחתה">
+                          {/* Never hide anatomy or seams behind a square cover crop. */}
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={`/api/assets/${assetId}`} alt="ציור שנדחה" className="photo-thumb" style={{ objectFit: "contain" }} />
+                        </a>
                       ))}
                     </div>
                   ) : (

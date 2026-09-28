@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Button, LinkButton } from "@/ui/Button";
+import { Button } from "@/ui/Button";
+import { navigateToSavedStep } from "../saved-step-navigation";
 import { Notice } from "@/ui/primitives";
 import { useI18n } from "@/i18n/client";
 import { errorText } from "@/i18n/errors";
@@ -79,9 +79,8 @@ async function faceBox(image: HTMLImageElement): Promise<{ x: number; y: number;
 export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/api/drafts/photo", nextHref = "/create/package" }: Props) {
   const { t, tf } = useI18n();
   const p = t.create.photo;
-  const router = useRouter();
-  // The step after this one is fetched while the parent is still cropping.
-  useEffect(() => { router.prefetch(nextHref); }, [router, nextHref]);
+  // A guarded future step must not be prefetched before this photo exists.
+  // Upload is a Route Handler mutation, not a cache-invalidating Server Action.
   const [file, setFile] = useState<File | null>(null);
   const [url, setUrl] = useState<string | null>(null);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
@@ -217,7 +216,7 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/
         setBusy(false);
         return;
       }
-      router.push(nextHref);
+      navigateToSavedStep(nextHref);
     } catch {
       setError(p.network);
       setBusy(false);
@@ -280,12 +279,12 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/
           {hasPhoto ? (
             <div className="create__actions" style={{ width: "100%" }}>
               <Notice kind="success">{p.hasPhoto}</Notice>
-              <LinkButton href="/create/package">
+              <a className="fm-btn" href={nextHref}>
                 {nextHref === "/create/package" ? p.next : t.common.continue}
                 <span className="fm-btn__arrow" aria-hidden>
                   ➜
                 </span>
-              </LinkButton>
+              </a>
             </div>
           ) : null}
         </>

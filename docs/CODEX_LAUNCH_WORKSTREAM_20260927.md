@@ -91,6 +91,29 @@ test timeouts passed unchanged in an isolated rerun (34/34 across two suites).
 
 ## Remaining order / acceptance gates
 
+**New live wizard blocker (28 September, morning):** photo-step return and
+blank checkout reported by the owner. Normal reload restored checkout with
+photo/world selection intact; root cause is not yet proven. See
+`CODEX_WIZARD_INCIDENT_20260928.md` for browser evidence, the timing caveat on
+the RSC error and a bounded reproduction plan. Prioritize this before real
+purchase/generation acceptance. No application fix has been deployed for it.
+
+**Separate generation blocker:** the owner's subsequent QA run stopped with
+25 output appearances and two failures (Antarctica hide-3 likeness; Giza hide-2
+seam alignment). Read-only authenticated admin evidence and repair constraints
+are in `CODEX_QA_GENERATION_INCIDENT_20260928.md`. No retries or changes were
+made; output count is not human visual acceptance. This is not the RSC issue.
+
+**Incident follow-up in progress:** photo POST now leaves via a fresh document
+GET; premature guarded-step prefetch is removed and paid-photo resume keeps
+its supplied destination. Tests/release remain pending; QA is still `5f0f8759`.
+Read retained-byte findings in the generation incident document: Antarctica's
+provider relocates the child above the target and deletes a neighbour, then
+the bounded compositor cuts the head off. A free widened-return preview was
+rejected because it preserves that scene damage. Giza's first retained reply
+reproduces the two-pixel seam refusal and a shoe cut at the return boundary.
+No paid request, DB mutation, asset replacement or game recovery was performed.
+
 Latest completed independent review is now
 `CLAUDE_QA_RECHECK_RELEASE_REVIEW_20260928.md`, reviewing `12028c17`.
 Its nonblocking home-wide expiry finding I-4 is addressed in
