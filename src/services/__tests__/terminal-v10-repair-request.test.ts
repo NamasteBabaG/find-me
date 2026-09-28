@@ -1,8 +1,19 @@
 import { describe, it, expect } from 'vitest';
-import { TERMINAL_REPAIR as S, assertRepairReservation, repairPrompt, repairTarget } from '../../../scripts/lib/terminal-v10-repair-request';
+import { TERMINAL_REPAIR as S, CENTERED_REPAIR, assertCenteredRepairReservation, assertRepairReservation, centeredRepairPrompt, repairPrompt, repairTarget } from '../../../scripts/lib/terminal-v10-repair-request';
 import { localPatchBoardForVersion } from '../../domain/scene/local-patch-catalog';
 
 describe('bounded terminal v10 candidate requests', () => {
+  it('pins the separate one-image Antarctica authorization and smaller cap', () => {
+    assertCenteredRepairReservation(CENTERED_REPAIR.worldId, 'image:antarctica:1', 0, 150_000);
+    assertCenteredRepairReservation(CENTERED_REPAIR.worldId, 'review:antarctica:1', 150_000, 40_000);
+    for (const key of ['image:antarctica:2', 'image:giza:1', 'review:giza:1'])
+      expect(() => assertCenteredRepairReservation(CENTERED_REPAIR.worldId, key, 0, 150_000)).toThrow();
+    expect(() => assertCenteredRepairReservation(S.worldId, 'image:antarctica:1', 0, 150_000)).toThrow();
+    expect(() => assertCenteredRepairReservation(CENTERED_REPAIR.worldId, 'review:antarctica:1', 210_001, 40_000)).toThrow();
+    expect(() => assertCenteredRepairReservation(CENTERED_REPAIR.worldId, 'review:antarctica:1', 0, 40_001)).toThrow();
+    const prompt = centeredRepairPrompt(localPatchBoardForVersion('antarctica', 10)!, { left: 163, top: 248, width: 171, height: 377 });
+    expect(prompt).toContain('y258..343'); expect(prompt).not.toContain('y=368..745');
+  });
   it('restricts targets and the one-shot keys', () => {
     for (const slug of S.targets) {
       assertRepairReservation(S.worldId, `image:${slug}:1`, 0, 150_000);

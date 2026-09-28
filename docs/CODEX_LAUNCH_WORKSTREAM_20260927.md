@@ -2,6 +2,17 @@
 
 ## Release truth
 
+**Latest Yuval checkpoint:** Owner approved one additional Antarctica image and
+review <=USD0.25; USD0.054306 settled, candidate rejected for age/body (Codex also
+observes upward head displacement). No live mutation. A versioned QA-only
+scene10 retained-subset path is being tested: 25 existing appearances, all9
+boards, two finds on Antarctica/Giza. Owner was asked whether to approve this
+exact reduced version; no answer yet. Full local gate passed280files/3575tests,
+both validators and mock build/privacy passed. Remote CI/release pending; QA remains
+ad0892c5. See `CODEX_YUVAL_PLAYABLE_RECOVERY_20260928.md`. Adaptive recovery after
+two failures remains work, not a completed claim; failed framing must not be
+activated globally.
+
 **Yuval bounded repair update 2026-09-28:** The explicitly scoped two-image round
 has now run using the owner's existing API credential: one image plus one review
 for each failed hide, USD 0.108727 total conservative estimate. Both pass the

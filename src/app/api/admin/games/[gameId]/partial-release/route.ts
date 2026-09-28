@@ -14,6 +14,7 @@ const safeReleaseErrors = new Set([
   "Explicit distinct omissions required", "Live owned paid game and illustrated identity required",
   "Paid nonrefunded order required", "Exactly nine pinned age-five boards required", "All workers must be inactive",
   "The original 45-row inventory must remain intact", "Retained assets missing", "Owned retained bytes missing",
+  "The original pinned inventory must remain intact", "Each released board may omit at most one appearance", "Partial release content version changed",
   "Wrong identity or portrait purpose", "Original authored placements changed", "An authored target is missing or from another engine",
   "Only failed unshippable appearances may be omitted", "Every included appearance needs its existing image and geometry",
   "Included image belongs to another game or purpose", "Included pixels or geometry no longer match the retained render",

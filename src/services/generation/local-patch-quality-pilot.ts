@@ -5,7 +5,7 @@ import { env } from "../../lib/env";
 import { DbStorage } from "../../infra/storage/db";
 import { SYSTEM } from "../audit.service";
 import { transitionGame } from "../game-status";
-import { LOCAL_PATCH_AGE_SCENE_VERSION, localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
+import { localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
 import { LOCAL_PATCH_MAX_ATTEMPTS } from "../../domain/scene/local-patch-attempts";
 import { boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { readBoardConditionedCatalog } from "./board-conditioned-catalog";
@@ -46,13 +46,13 @@ async function operator(c: Container, input: OperatorInput) {
   const user = await c.db.user.findUnique({ where: { id: input.operatorId } });
   demand(user && c.adminEmails?.some(email => email.trim().toLowerCase() === user.email.toLowerCase()), "Authenticated administrator required");
 }
-async function identity(c: Container, gameId: string) {
+async function identity(c: Container, gameId: string, contentVersion: 9 | 10 = 9) {
   const game = await c.db.game.findUniqueOrThrow({ where: { id: gameId }, include: { childProfile: true, scenes: true, orders: true, jobs: true } });
   const child = game.childProfile;
   demand(game.styleVersion === STYLE && !game.deletedAt && !game.configJson && !game.readyAt && !game.deliveredAt
     && game.ownerId && game.paidAt && game.packageTier === "ONE_WORLD" && child && !child.deletedAt && child.ownerId === game.ownerId
     && child.identityAssetId && child.ageYears && game.scenes.length === 9 && new Set(game.scenes.map(s => s.sceneSlug)).size === 9
-    && game.scenes.every(s => s.sceneVersion === LOCAL_PATCH_AGE_SCENE_VERSION), "Live paid unpublished v9 identity required");
+    && game.scenes.every(s => s.sceneVersion === contentVersion), "Live paid unpublished pinned identity required");
   demand(game.orders.some(o => o.userId === game.ownerId && o.paymentStatus === "PAID" && o.paidAt && !o.refundedAt)
     && !game.orders.some(o => o.paymentStatus === "REFUNDED" || o.refundedAt), "Paid nonrefunded order required");
   const asset = await c.db.asset.findUniqueOrThrow({ where: { id: child.identityAssetId } });
@@ -60,7 +60,7 @@ async function identity(c: Container, gameId: string) {
   const identitySha256 = sha256Bytes(await c.storage.get(asset.storagePath)), budget = boardWizardBudgetOf(c);
   await requireBoardWizardIdentityApproval(c, budget, { gameId, identityAssetId: asset.id, sheetSha256: identitySha256,
     catalogSha256: (await readBoardConditionedCatalog()).sha256, photoAssetId: child.originalPhotoAssetId, ageYears: child.ageYears,
-    crop: child.photoCropJson ? JSON.parse(child.photoCropJson) : null, contentVersion: 9 });
+    crop: child.photoCropJson ? JSON.parse(child.photoCropJson) : null, contentVersion });
   return { game, child, identityAssetId: asset.id, identitySha256, budget };
 }
 async function settled(c: Container, gameId: string) {

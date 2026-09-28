@@ -15,12 +15,15 @@ function imagePatch(sprite: SpriteRef, subject: string) {
   return sprite as Extract<SpriteRef, { kind: "image" }> & { rect: AdventureRect; hitRect: AdventureRect };
 }
 
-function checkBoard(scene: SceneConfig, plan: ReadyAdventureBoard) {
+function checkBoard(scene: SceneConfig, plan: ReadyAdventureBoard, subset?: readonly string[]) {
   if (scene.artStatus !== "final" || scene.version !== plan.sceneVersion || scene.art.width !== plan.art.width || scene.art.height !== plan.art.height || scene.art.base !== plan.art.base || scene.worldSlug !== plan.worldSlug) throw new AdventureError("content-mismatch", scene.slug);
   // Explicit fixed, resumable three/four/five-hide contract. All remain serial on screen.
   // Legacy three-hide replay/composed sprites need their own content review.
-  if (scene.playMode !== "find-any" || scene.findsRequiredToAdvance !== 3) throw new AdventureError("not-ready", scene.slug);
-  if (plan.collectionUi === "guided-v1" && scene.targets.length !== plan.plannedHides) throw new AdventureError("content-mismatch", `${scene.slug}:hide-count`);
+  const authorizedSubset = subset && scene.version === 10 && plan.plannedHides === 3 && subset.length === 2
+    && new Set(subset).size === 2 && scene.targets.length === 2 && scene.targets.every(t => subset.includes(t.id));
+  if (subset && !authorizedSubset) throw new AdventureError("content-mismatch", `${scene.slug}:subset`);
+  if (scene.playMode !== "find-any" || scene.findsRequiredToAdvance !== (authorizedSubset ? 2 : 3)) throw new AdventureError("not-ready", scene.slug);
+  if (plan.collectionUi === "guided-v1" && scene.targets.length !== plan.plannedHides && !authorizedSubset) throw new AdventureError("content-mismatch", `${scene.slug}:hide-count`);
   if (scene.art.foreground) throw new AdventureError("unsafe-layout", `${scene.slug}:foreground-needs-discovery-review`);
   for (const target of scene.targets) {
     if (target.adjust && (target.adjust.dx !== 0 || target.adjust.dy !== 0 || target.adjust.scale !== 1)) throw new AdventureError("unsafe-layout", target.id);
@@ -46,7 +49,8 @@ function checkBoard(scene: SceneConfig, plan: ReadyAdventureBoard) {
  * Art hashes come from the authored manifest; the authoring validator separately
  * verifies their bytes. This pure function does NOT claim to hash an image.
  */
-export function attachAdventureBook(input: GameConfig, raw: AdventureCatalog, boardSlugs: readonly string[]): GameConfig {
+export function attachAdventureBook(input: GameConfig, raw: AdventureCatalog, boardSlugs: readonly string[],
+  options: { verifiedSubset?: Readonly<Record<string, readonly string[]>> } = {}): GameConfig {
   const config = GameConfigSchema.parse(input);
   if (config.adventure) throw new AdventureError("content-mismatch", "existing-book-is-immutable");
   const catalog = AdventureCatalogSchema.parse(raw);
@@ -58,11 +62,12 @@ export function attachAdventureBook(input: GameConfig, raw: AdventureCatalog, bo
     if (!scene) throw new AdventureError("not-owned", slug);
     const plan = catalog.boards.find(b => b.boardSlug === slug);
     if (!plan || plan.status !== "ready") throw new AdventureError("not-ready", slug);
-    checkBoard(scene, plan);
+    checkBoard(scene, plan, options.verifiedSubset?.[slug]);
     return {
       boardSlug: slug, worldSlug: plan.worldSlug, sceneVersion: scene.version, artSha256: plan.art.sha256,
       art: { base: scene.art.base, width: scene.art.width, height: scene.art.height },
-      targetIds: scene.targets.map(t => t.id), findsRequiredToAdvance: 3,
+      targetIds: scene.targets.map(t => t.id), findsRequiredToAdvance: scene.findsRequiredToAdvance!,
+      ...(scene.retainedSubset ? { retainedSubset: scene.retainedSubset } : {}),
       ...(plan.collectionUi ? { collectionUi: plan.collectionUi } : {}),
       targetImages: scene.targets.map(t => {
         const A = bindBookImage(t.spriteByVariant?.A ?? t.sprite), B = bindBookImage(t.spriteByVariant?.B ?? t.sprite);

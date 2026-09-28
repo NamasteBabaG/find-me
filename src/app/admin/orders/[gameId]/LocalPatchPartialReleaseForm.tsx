@@ -13,15 +13,17 @@ export async function LocalPatchPartialReleaseForm({ gameId }: { gameId: string 
   } });
   if (!game || game.deletedAt || game.status !== "GENERATION_FAILED" || game.styleVersion !== "local-patch-world-v1"
     || game.configJson || game.readyAt || game.deliveredAt || game.scenes.length !== 9
-    || new Set(game.scenes.map(scene => scene.sceneSlug)).size !== 9 || game.scenes.some(scene => scene.sceneVersion !== 9)
+    || new Set(game.scenes.map(scene => scene.sceneSlug)).size !== 9 || ![9, 10].includes(game.scenes[0]!.sceneVersion)
+    || game.scenes.some(scene => scene.sceneVersion !== game.scenes[0]!.sceneVersion)
     || !game.jobs.some(job => job.id === `job_${gameId}` && job.status === "DONE" && job.currentStep === "local-patch:quality-failed")
     || game.jobs.some(job => job.status !== "DONE")) return null;
 
   const boards: { boardId: string; kept: number; omitted: string[] }[] = [];
+  const perBoard = game.scenes[0]!.sceneVersion === 10 ? 3 : 5;
   let unreviewed = 0;
   for (const scene of game.scenes) {
-    const board = localPatchBoardForVersion(scene.sceneSlug, 9);
-    if (!board || board.hides.length !== 5 || scene.targets.length !== 5) return null;
+    const board = localPatchBoardForVersion(scene.sceneSlug, scene.sceneVersion);
+    if (!board || board.hides.length !== perBoard || scene.targets.length !== perBoard) return null;
     const omitted: string[] = []; let kept = 0;
     for (const hide of board.hides) {
       const target = scene.targets.find(target => target.targetId === hide.targetId);
@@ -37,14 +39,14 @@ export async function LocalPatchPartialReleaseForm({ gameId }: { gameId: string 
         if (JSON.parse(row.judgeJson ?? "null")?.reviewState !== "board-review-complete") unreviewed++;
       } catch { unreviewed++; }
     }
-    if (kept < 4) return null;
+    if (kept < perBoard - 1) return null;
     boards.push({ boardId: board.board, kept, omitted });
   }
   const omittedHideIds = boards.flatMap(board => board.omitted), targets = boards.reduce((sum, board) => sum + board.kept, 0);
   if (!omittedHideIds.length) return null;
   return <form method="post" action={`/api/admin/games/${encodeURIComponent(gameId)}/partial-release`} className="fm-card fm-stack fm-stack--2">
     <h2>פרסום המשחק עם המחבואים הזמינים</h2>
-    <p>{targets} מתוך 45 מחבואים יופיעו במשחק. בכל לוח יהיו 4 או 5 מחבואים וכוכבים; מציאת 3 תפתח את הלוח הבא.</p>
+    <p>{targets} מתוך {perBoard * 9} מחבואים יופיעו במשחק. בכל לוח יהיו {perBoard - 1} או {perBoard} מחבואים וכוכבים; מציאת {perBoard === 3 ? "כל המחבואים בלוח" : "3"} תפתח את הלוח הבא.</p>
     <p className="fm-small">המחבואים שנכשלו ונבחרו להחרגה לא יופיעו במשחק ולא ייספרו בכוכבים. הפרסום ישתמש בתמונות הקיימות, ללא רינדור או חיוב נוסף.</p>
     <ul className="fm-small">{boards.map(board => <li key={board.boardId}>{board.boardId}: {board.kept} מחבואים וכוכבים</li>)}</ul>
     <fieldset className="fm-stack fm-stack--1">

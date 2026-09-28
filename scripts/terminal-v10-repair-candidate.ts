@@ -19,11 +19,15 @@ import { CasWorldBudgetRepository } from '../src/infra/db/world-budget-repositor
 import { PrismaRetainedPurchaseStore } from '../src/infra/db/prisma-retained-purchase-store';
 import { applyTestSchema } from '../src/lib/test-schema';
 import { inspectTerminalV10RepairSnapshot } from './lib/terminal-v10-repair-preflight';
-import { TERMINAL_REPAIR as S, repairTarget, repairPrompt, assertRepairReservation } from './lib/terminal-v10-repair-request';
+import { TERMINAL_REPAIR, CENTERED_REPAIR, centeredRepairPrompt, assertCenteredRepairReservation, repairTarget, repairPrompt, assertRepairReservation } from './lib/terminal-v10-repair-request';
+import { planTargetCenteredContext } from '../src/domain/scene/local-patch-context-plan';
+import { composeReframedLocalPatch } from '../src/services/generation/local-patch-context';
 
 const sha = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex');
 const readJson = (file: string) => JSON.parse(readFileSync(file, 'utf8'));
-const dir = path.resolve('tmp/incident-yuval-repair-20260928');
+const centered = process.argv[4] === '--centered';
+const S = centered ? CENTERED_REPAIR : TERMINAL_REPAIR;
+const dir = path.resolve(centered ? 'tmp/incident-yuval-centered-20260928' : 'tmp/incident-yuval-repair-20260928');
 function pin(name: string, bytes: Buffer | string) {
   const file = path.join(dir, name);
   if (existsSync(file)) { if (sha(readFileSync(file)) !== sha(bytes)) throw Error('Immutable repair input/output changed'); }
@@ -31,7 +35,7 @@ function pin(name: string, bytes: Buffer | string) {
 }
 async function main() {
   const [mode, slug, ...extra] = process.argv.slice(2);
-  if (extra.length || !['--prepare', '--execute', '--review', '--replay-check'].includes(mode ?? '') || !S.targets.some(v => v === slug)) throw Error('Use --prepare|--execute|--review|--replay-check antarctica|giza');
+  if (extra.length !== (centered ? 1 : 0) || !['--prepare', '--execute', '--review', '--replay-check'].includes(mode ?? '') || !S.targets.some(v => v === slug)) throw Error('Use --prepare|--execute|--review|--replay-check antarctica|giza [--centered]');
   const inventory = inspectTerminalV10RepairSnapshot(readFileSync('tmp/incident-review-rows.json', 'utf8'), S.snapshotSha256);
   const board = localPatchBoardForVersion(slug!, 10); if (!board) throw Error('Historical board unavailable');
   const hide = repairTarget(board), crop = cropOf(hide), source = readFileSync(board.art);
@@ -44,9 +48,14 @@ async function main() {
   if (identityEnvelope.id !== 'ast_yl7pmozkdan4a8v8cpu8' || identityEnvelope.mimeType !== 'image/png') throw Error('Identity binding mismatch');
   const identity = Buffer.from(identityEnvelope.bytes, 'base64');
   const refs = await prepareLocalPatchIdentityReferences(identity, 10);
-  const target = await sharp(composed).extract(crop).png().toBuffer(), mask = await poseMask(hide), prompt = repairPrompt(board);
-  const manifest = { version: S.version, authorization: 'owner-two-failed-hides-one-image-each-plus-reviews-total-max-USD1-existing-key-20260928',
+  const contextPlan = centered ? planTargetCenteredContext(crop, maskForHide(hide), { width: 3840, height: 2160 }) : undefined;
+  const target = await sharp(composed).extract(contextPlan?.provider ?? crop).png().toBuffer();
+  const originalTarget = await sharp(composed).extract(crop).png().toBuffer();
+  const mask = await poseMask(contextPlan ? { ...hide, mask: contextPlan.providerTarget } : hide);
+  const prompt = contextPlan ? centeredRepairPrompt(board, contextPlan.providerTarget) : repairPrompt(board);
+  const manifest = { version: S.version, authorization: centered ? 'owner-one-additional-Antarctica-image-plus-review-max-USD0.25-existing-key-20260928' : 'owner-two-failed-hides-one-image-each-plus-reviews-total-max-USD1-existing-key-20260928',
     scope: 'private-staged-candidate-NOT-live-retry-or-publication', slug, hide, crop, ageYears: 5,
+    ...(contextPlan ? { contextPlan } : {}),
     snapshotSha256: inventory.snapshotSha256, preservedSha256: inventory.preservedSha256,
     sourceSha256: sha(source), composedSha256: sha(composed), identitySheetSha256: sha(identity), identitySha256: sha(refs.identityPng),
     styleSha256: sha(target), maskSha256: sha(mask), prompt, policy: S.policy,
@@ -68,7 +77,7 @@ async function main() {
     if (fresh) await applyTestSchema(db, process.cwd());
     const repo = new CasWorldBudgetRepository(new PrismaWorldBudgetStore(db));
     const bounded: WorldBudgetRepository = { transactWorld: (id, work) => repo.transactWorld(id, tx => work({ ...tx,
-      createRequest: request => { assertRepairReservation(id, request.requestKey, auditWorldBudget(tx.snapshot).committedMicroUsd, request.reserveMicroUsd); return tx.createRequest(request); },
+      createRequest: request => { (centered ? assertCenteredRepairReservation : assertRepairReservation)(id, request.requestKey, auditWorldBudget(tx.snapshot).committedMicroUsd, request.reserveMicroUsd); return tx.createRequest(request); },
     })) };
     const ledger = new WorldBudget(bounded), store = new PrismaRetainedPurchaseStore(db), requestKey = `image:${slug}:1`;
     const saveBudget = async () => {
@@ -84,11 +93,11 @@ async function main() {
       const settings = localPatchJudgeSettings(10);
       const reviewPrompt = localPatchJudgePrompt(hide.id, { ageYears: 5, support: hide.placement?.support }, 10)
         + '\nAdditional incident acceptance: compare BEFORE and AFTER for orphan remains of the replaced target (especially boots, hands and head), damaged neighboring people, and straight-edge truncation. Report precise visible locations. Preserve-neighbor and intended-target position are requirements here, not optional. Do not excuse such faults because the face looks attractive. If any such fault exists, pictureWhole must fail. The target bounds are ' + JSON.stringify(maskForHide(hide)) + ' in the 512x768 crop.';
-      const reviewBytes = JSON.stringify({ version: S.version, prompt: reviewPrompt, settings, beforeSha256: sha(target), afterSha256: sha(candidate), identitySha256: sha(refs.judgeIdentityPng) }, null, 2);
+      const reviewBytes = JSON.stringify({ version: S.version, prompt: reviewPrompt, settings, beforeSha256: sha(originalTarget), afterSha256: sha(candidate), identitySha256: sha(refs.judgeIdentityPng) }, null, 2);
       pin(`${slug}-review-request.json`, reviewBytes);
       const reviewed = await purchaseOnce({ ledger, store }, { worldId: S.worldId, requestKey: `review:${slug}:1`, scope: 'judge', operationFingerprint: sha(reviewBytes), reserveMicroUsd: 40_000,
         buy: async () => {
-          const answer = await requestJudgeWire(apiKey!, { settings, prompt: reviewPrompt, images: [target, candidate, refs.judgeIdentityPng], imageLabels: ['BEFORE — original intended scene', 'AFTER — exact candidate that would ship', 'PORTRAIT — canonical identity'] }, fetch);
+          const answer = await requestJudgeWire(apiKey!, { settings, prompt: reviewPrompt, images: [originalTarget, candidate, refs.judgeIdentityPng], imageLabels: ['BEFORE — original intended scene', 'AFTER — exact candidate that would ship', 'PORTRAIT — canonical identity'] }, fetch);
           const bytes = Buffer.from(JSON.stringify(answer)), charge = judgeCharge(answer.model ?? '', answer.usage ?? undefined);
           if (charge.costUnknown || answer.costUnknown || !answer.requestId) return { bytes, unknownReason: 'Review billing evidence incomplete' };
           return { bytes, evidence: { providerNamespace: 'openai:find-me-existing', providerRequestId: answer.requestId,
@@ -116,7 +125,8 @@ async function main() {
     if (!retained.png || retained.rejected) throw Error('Provider reply refused; retained, not retrying');
     const raw = Buffer.from(retained.png, 'base64'); pin(`${slug}-provider.png`, raw);
     const normalized = await sharp(raw).resize(512, 768, { fit: 'fill' }).png().toBuffer(); pin(`${slug}-raw.png`, normalized);
-    const composedResult = await composeBoundedLocalPatch(composed, crop, normalized, maskForHide(hide));
+    const composedResult = contextPlan ? await composeReframedLocalPatch(composed, normalized, contextPlan)
+      : await composeBoundedLocalPatch(composed, crop, normalized, maskForHide(hide));
     const shipping = await sharp(composedResult.candidate).extract(crop).png().toBuffer();
     pin(`${slug}-candidate.png`, shipping); pin(`${slug}-board.png`, composedResult.candidate);
     pin(`${slug}-preview.webp`, await sharp(composedResult.candidate).resize(1920).webp({ quality: 90 }).toBuffer());

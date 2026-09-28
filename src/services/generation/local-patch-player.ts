@@ -101,10 +101,11 @@ export async function composeLocalPatchGame(c: Container, gameId: string): Promi
     worlds.set(world.slug, composeWorld(world, who, locale));
     const composed = composeScene(partialRelease ? { ...def, targets: def.targets.filter(target => includedHides.some(hide => hide.targetId === target.id)) } : def, who, sprites, locale);
     if (isLocalPatchAdvisoryVersion(scene.sceneVersion)) Object.assign(composed, {
-      playMode: "find-any", appearancesPerBoard: includedHides.length, findsRequiredToAdvance: 3,
+      playMode: "find-any", appearancesPerBoard: includedHides.length, findsRequiredToAdvance: Math.min(3, includedHides.length),
     });
-    if (partialRelease && includedHides.length !== 5) composed.celebration = { ...composed.celebration,
+    if (partialRelease && includedHides.length !== board.hides.length) composed.celebration = { ...composed.celebration,
       completeText: tf(getDict(locale).game.scene.boardCompleted, { total: includedHides.length }) };
+    if (partialRelease?.version === 2 && includedHides.length === 2) composed.retainedSubset = "qa-retained-subset/v1";
     // The patch includes the surroundings/occlusion already. Old foreground
     // overlays and sprite flips must not repaint or move the judged picture.
     composed.art = { ...composed.art, foreground: undefined };
@@ -117,7 +118,9 @@ export async function composeLocalPatchGame(c: Container, gameId: string): Promi
   const config = GameConfigSchema.parse(composeGame({ gameId, child: who, locale, packageTier: "ONE_WORLD", styleVersion: STYLE,
     scenes, worlds: [...worlds.values()], ...(game.giftJson ? { gift: JSON.parse(game.giftJson) } : {}) }));
   return game.scenes.every(scene => scene.sceneVersion === COLLECTION_SCENE_VERSION)
-    ? attachAdventureBook(config, WIZARD_ADVENTURE_CATALOG, scenes.map(scene => scene.slug)) : config;
+    ? attachAdventureBook(config, WIZARD_ADVENTURE_CATALOG, scenes.map(scene => scene.slug),
+      partialRelease?.version === 2 ? { verifiedSubset: Object.fromEntries(scenes.filter(scene => scene.targets.length === 2)
+        .map(scene => [scene.slug, scene.targets.map(target => target.id)])) } : {}) : config;
 }
 
 /** Publish only an entirely verified world, atomically with the worker fence. */

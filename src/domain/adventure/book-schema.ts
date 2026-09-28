@@ -26,9 +26,10 @@ export const AdventureBookSchema = z.object({
     boardSlug: AdventureId, worldSlug: AdventureId,
     sceneVersion: z.number().int().positive(), artSha256: Sha256,
     art: z.object({ base: z.string().regex(/^\/scenes\/[a-z0-9_-]+\/[a-z0-9_-]+\.(webp|png|jpg)$/), width: z.number().int().positive(), height: z.number().int().positive() }).strict(),
-    targetIds: z.array(AdventureId).min(3).max(5),
-    targetImages: z.array(z.object({ targetId: AdventureId, A: BookImageSchema, B: BookImageSchema }).strict()).min(3).max(5),
-    findsRequiredToAdvance: z.literal(3),
+    targetIds: z.array(AdventureId).min(2).max(5),
+    targetImages: z.array(z.object({ targetId: AdventureId, A: BookImageSchema, B: BookImageSchema }).strict()).min(2).max(5),
+    findsRequiredToAdvance: z.union([z.literal(2), z.literal(3)]),
+    retainedSubset: z.literal("qa-retained-subset/v1").optional(),
     collectionUi: z.literal("guided-v1").optional(),
     discoveries: z.array(BookDiscoverySchema).min(1).max(6),
     postcard: z.object({ id: AdventureId, title: Copy, targetId: AdventureId, crop: AdventureRect }).strict(),
@@ -36,6 +37,8 @@ export const AdventureBookSchema = z.object({
 }).strict().superRefine((book, ctx) => {
   if (new Set(book.boards.map(b => b.boardSlug)).size !== book.boards.length) ctx.addIssue({ code: "custom", path: ["boards"], message: "Duplicate book board" });
   book.boards.forEach((b, i) => {
+    if ((b.targetIds.length === 2) !== Boolean(b.retainedSubset) || (b.retainedSubset && b.sceneVersion !== 10)) ctx.addIssue({ code: "custom", path: ["boards", i, "retainedSubset"], message: "Two targets require an explicit v10 QA subset" });
+    if (b.findsRequiredToAdvance !== Math.min(3, b.targetIds.length)) ctx.addIssue({ code: "custom", path: ["boards", i, "findsRequiredToAdvance"], message: "Advance count must match the shipped subset" });
     if (new Set(b.targetIds).size !== b.targetIds.length) ctx.addIssue({ code: "custom", path: ["boards", i, "targetIds"], message: "Duplicate target" });
     if (b.targetImages.length !== b.targetIds.length || new Set(b.targetImages.map(t => t.targetId)).size !== b.targetIds.length || b.targetImages.some(t => !b.targetIds.includes(t.targetId))) ctx.addIssue({ code: "custom", path: ["boards", i, "targetImages"], message: "Every target needs exactly one published image binding" });
     if (new Set(b.discoveries.map(d => d.id)).size !== b.discoveries.length) ctx.addIssue({ code: "custom", path: ["boards", i, "discoveries"], message: "Duplicate discovery" });

@@ -120,8 +120,9 @@ export const SceneConfigSchema = z.object({
   /** Explicit shipped-board rules. Three/four hides require an intentional per-game
    * exception; authored/generated boards still default to five. Absence keeps legacy serial play. */
   playMode: z.literal("find-any").optional(),
-  appearancesPerBoard: z.union([z.literal(3), z.literal(4), z.literal(5)]).optional(),
-  findsRequiredToAdvance: z.literal(3).optional(),
+  appearancesPerBoard: z.union([z.literal(2), z.literal(3), z.literal(4), z.literal(5)]).optional(),
+  findsRequiredToAdvance: z.union([z.literal(2), z.literal(3)]).optional(),
+  retainedSubset: z.literal("qa-retained-subset/v1").optional(),
   name: z.string(),
   tagline: z.string(),
   artStatus: z.enum(["placeholder", "draft", "final"]),
@@ -140,7 +141,7 @@ export const SceneConfigSchema = z.object({
       durationMs: z.number().int(),
     })
     .optional(),
-  targets: z.array(TargetConfigSchema).min(3).max(5),
+  targets: z.array(TargetConfigSchema).min(2).max(5),
   ambient: z.array(PlayAmbientSchema),
   bonus: PlayBonusSchema.optional(),
   celebration: z.object({ kind: CelebrationKind, completeText: z.string() }),
@@ -148,7 +149,9 @@ export const SceneConfigSchema = z.object({
   sounds: z.object({ ambient: SoundCue.optional() }).default({}),
 }).superRefine((scene, ctx) => {
   const free = scene.playMode === "find-any";
-  if (scene.targets.length !== (free ? scene.appearancesPerBoard : 3) || (free && scene.findsRequiredToAdvance !== 3) || (!free && (scene.appearancesPerBoard !== undefined || scene.findsRequiredToAdvance !== undefined))) {
+  if ((scene.targets.length === 2) !== Boolean(scene.retainedSubset) || (scene.retainedSubset && (scene.version !== 10 || !free)))
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["retainedSubset"], message: "Two targets require an explicit v10 QA subset" });
+  if (scene.targets.length !== (free ? scene.appearancesPerBoard : 3) || (free && scene.findsRequiredToAdvance !== Math.min(3, scene.targets.length)) || (!free && (scene.appearancesPerBoard !== undefined || scene.findsRequiredToAdvance !== undefined))) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["targets"], message: "Scene targets must match its explicit play contract" });
   }
   if (new Set(scene.targets.map(target => target.id)).size !== scene.targets.length) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["targets"], message: "Target ids must be unique within a board" });

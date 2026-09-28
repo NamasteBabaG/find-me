@@ -8,7 +8,7 @@ import { applyTestSchema } from "../../../lib/test-schema";
 import { DbStorage } from "../../../infra/storage/db";
 import type { Container } from "../../container";
 import { localPatchBoardsForVersion } from "../../../domain/scene/local-patch-catalog";
-import { GameConfigSchema } from "../../../domain/game/config";
+import { GameConfigSchema, scenesOfWorld } from "../../../domain/game/config";
 import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wizard";
 import { reviewBoardWizardIdentity } from "../board-wizard-identity-gate";
 import { readBoardConditionedCatalog } from "../board-conditioned-catalog";
@@ -18,6 +18,10 @@ import { localPatchPublicationGeometryHash } from "../local-patch-publication-po
 import { publishLocalPatchPartialGame, readLocalPatchPartialRelease, LOCAL_PATCH_PARTIAL_RELEASE_ACTION } from "../local-patch-partial-release";
 import { composeLocalPatchGame } from "../local-patch-player";
 import { seedApprovedGame } from "./local-patch-fixtures";
+import { localPatchGeometry } from "../local-patch-geometry";
+import { readFile } from "node:fs/promises";
+import { sceneCanAdvance, emptyProgress, adoptFinds, sceneIsPlayable, gameStars } from "../../../domain/game/progress";
+import { adventureAlbum, emptyAdventureProgress, recordAdventureEvent } from "../../../domain/adventure/progress";
 
 vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: "qa", GENERATION_ENABLED: "off" }), flag: () => false,
   spendGuard: () => ({ appEnv: "qa", realGeneration: false, testers: [] }), adminEmails: () => ["partial-admin@example.invalid"] }));
@@ -40,9 +44,10 @@ afterAll(async () => {
 });
 const input = (gameId: string) => ({ gameId, operatorId: "partial-admin", reason: "Parent explicitly authorizes retained43 with two failed images omitted and4stars on those boards", omittedHideIds: OMITTED });
 const rows = (gameId: string) => db.targetVariantAsset.findMany({ where: { targetInstance: { gameScene: { gameId } } }, orderBy: { id: "asc" } });
-async function seed(gameId: string) {
+async function seed(gameId: string, version: 9 | 10 = 9, omitted = OMITTED) {
+  const boards = version === 9 ? BOARDS : localPatchBoardsForVersion(10);
   const s = await seedApprovedGame(c, db, { gameId, approved: false, styleVersion: "local-patch-world-v1", status: "GENERATION_FAILED",
-    withJob: true, scenes: BOARDS.map(b => ({ slug: b.board, version: 9 })) });
+    withJob: true, scenes: boards.map(b => ({ slug: b.board, version })) });
   await c.storage.put(`private/photo-${gameId}.jpg`, s.sheet, "image/png");
   const avatarId = `avatar-${gameId}`;
   await c.storage.put(`game/${avatarId}.png`, png, "image/png");
@@ -53,15 +58,15 @@ async function seed(gameId: string) {
     reviewer: { review: async () => ({ httpOk: true, requestId: `req-${gameId}-identity`, body: { model: "gpt-5.6-luna",
       usage: { prompt_tokens: 1500, completion_tokens: 150 }, choices: [{ finish_reason: "stop", message: { content: JSON.stringify({
         checks: { identity: "pass", age: "pass", paintedStyle: "pass", sheetLayout: "pass" }, reason: "Synthetic approved canonical face" }) } }] } }) } },
-  { gameId, identityAssetId: `ast-sheet-${gameId}`, sheet: s.sheet, photo: s.sheet, atlas: s.sheet, contentVersion: 9,
+  { gameId, identityAssetId: `ast-sheet-${gameId}`, sheet: s.sheet, photo: s.sheet, atlas: s.sheet, contentVersion: version,
     provenance: { promptVersion: "character-v4-board-drawn-face-reference", quality: "medium", photoAssetId: `ast-photo-${gameId}`,
       photoSha256: sha256Bytes(s.sheet), ageYears: 5, crop: null,
       style: { version: "board-matched-identity/v2", catalogSha256: catalog.sha256, atlasSha256: sha256Bytes(s.sheet) } } });
   await db.game.update({ where: { id: gameId }, data: { paidAt: new Date() } });
   await db.order.create({ data: { id: `ord-${gameId}`, gameId, userId: s.userId, packageTier: "ONE_WORLD", provider: "mock", amountAgorot: 100, paymentStatus: "PAID", paidAt: new Date() } });
   await db.generationJob.update({ where: { id: `job_${gameId}` }, data: { status: "DONE", currentStep: "local-patch:quality-failed", attempts: 90 } });
-  for (const board of BOARDS) for (const hide of board.hides) {
-    const targetId = `${gameId}-${hide.id}`, variantId = `var-${targetId}`, failed = OMITTED.includes(hide.id);
+  for (const board of boards) for (const hide of board.hides) {
+    const targetId = `${gameId}-${hide.id}`, variantId = `var-${targetId}`, failed = omitted.includes(hide.id);
     await db.targetInstance.create({ data: { id: targetId, gameSceneId: `gsc-${gameId}-${board.board}`, targetId: hide.targetId,
       targetType: "child", spriteKind: "image", slotAId: "a", slotBId: "b", status: failed ? "FAILED" : "GENERATED" } });
     if (failed) {
@@ -73,7 +78,11 @@ async function seed(gameId: string) {
     await c.storage.put(storagePath, png, "image/png");
     await db.asset.create({ data: { id: assetId, ownerId: s.userId, type: "TARGET_SPRITE", visibility: "GAME", status: "READY", storagePath,
       mimeType: "image/png", width: 512, height: 768, bytes: png.length, provider: "local-patch", providerRequestId: gameId } });
-    const geometry = { rectJson: JSON.stringify({ x: .2, y: .2, w: .2, h: .3 }), hitRectJson: JSON.stringify({ x: .25, y: .25, w: .1, h: .2 }), headAnchorJson: JSON.stringify({ x: .3, y: .25 }) };
+    const measured = version === 10 ? await localPatchGeometry({ hide, boardPng: await readFile(board.art), patchPng: png,
+      board: { width: 3840, height: 2160 }, contentVersion: 10 }) : null;
+    const geometry = { rectJson: JSON.stringify(measured?.geometry.rect ?? { x: .2, y: .2, w: .2, h: .3 }),
+      hitRectJson: JSON.stringify(measured?.geometry.hitRect ?? { x: .25, y: .25, w: .1, h: .2 }),
+      headAnchorJson: JSON.stringify(measured?.geometry.anchor ?? { x: .3, y: .25 }) };
     await db.targetVariantAsset.create({ data: { id: variantId, targetInstanceId: targetId, variant: "A", slotId: "a", provider: "local-patch",
       status: "GENERATED", attempts: 1, assetId, ...geometry, judgeJson: JSON.stringify({ hide: hide.id, pose: hide.pose,
         judgedSha256: sha256Bytes(png), geometrySha256: localPatchPublicationGeometryHash(geometry), compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION,
@@ -83,6 +92,43 @@ async function seed(gameId: string) {
 }
 
 describe("explicit QA partial release preserves inventory, evidence and accounting", () => {
+  it("releases v10 with25 unchanged appearances and nine playable passport boards", async () => {
+    const gameId = 'partial-v10', omitted = ['antarctica-v10-3', 'giza-v10-2'];
+    const s = await seed(gameId, 10, omitted), before = await rows(gameId);
+    const ledger = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: s.worldId } });
+    const request = { ...input(gameId), omittedHideIds: omitted, reason: 'Owner explicitly approved25 retained pictures and two omissions for QA play' };
+    await expect(composeLocalPatchGame(c, gameId)).rejects.toThrow();
+    await expect(publishLocalPatchPartialGame(c, { ...request, omittedHideIds: omitted.slice(0, 1) })).rejects.toThrow();
+    await expect(publishLocalPatchPartialGame(c, { ...request, omittedHideIds: [...omitted, 'giza-v10-1'] })).rejects.toThrow();
+    expect(await publishLocalPatchPartialGame(c, request)).toMatchObject({ targets: 25 });
+    const game = await db.game.findUniqueOrThrow({ where: { id: gameId } });
+    const config = GameConfigSchema.parse(JSON.parse(game.configJson!));
+    expect(config.scenes.map(sc => sc.targets.length).sort()).toEqual([2, 2, 3, 3, 3, 3, 3, 3, 3]);
+    expect(config.adventure?.boards).toHaveLength(9);
+    expect(config.adventure?.boards.filter(b => b.findsRequiredToAdvance === 2)).toHaveLength(2);
+    const two = config.scenes.find(s => s.targets.length === 2)!;
+    expect(GameConfigSchema.safeParse({ ...config, scenes: config.scenes.map(s => s === two ? { ...s, findsRequiredToAdvance: 3 } : s) }).success).toBe(false);
+    expect(GameConfigSchema.safeParse({ ...config, scenes: config.scenes.map(s => s === two ? { ...s, retainedSubset: undefined } : s) }).success).toBe(false);
+    expect(config.adventure?.boards.every(b => b.targetIds.includes(b.postcard.targetId))).toBe(true);
+    let progress = emptyProgress(gameId), album = emptyAdventureProgress(gameId, config.adventure!);
+    for (const scene of scenesOfWorld(config, 'journey')) {
+      expect(sceneIsPlayable(progress, config, scene)).toBe(true);
+      expect(sceneCanAdvance(progress, scene)).toBe(false);
+      for (const target of scene.targets) {
+        progress = adoptFinds(progress, config, [{ boardSlug: scene.slug, targetId: target.id, variant: 'A' }]).progress;
+        album = recordAdventureEvent(album, gameId, config.adventure!, { kind: 'target-found', boardSlug: scene.slug, targetId: target.id, variant: 'A' }).progress;
+      }
+      expect(sceneCanAdvance(progress, scene)).toBe(true);
+    }
+    expect(gameStars(progress, config.scenes)).toEqual({ found: 25, total: 25 });
+    expect(adventureAlbum(album)).toMatchObject({ complete: true, postcards: { collected: 9, total: 9 }, stars: { found: 25, total: 25 } });
+    expect(() => recordAdventureEvent(album, gameId, config.adventure!, { kind: 'target-found', boardSlug: 'antarctica', targetId: 'hide-3', variant: 'A' })).toThrow();
+    expect((await readLocalPatchPartialRelease(c, gameId))?.version).toBe(2);
+    expect(await rows(gameId)).toEqual(before);
+    expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: s.worldId } })).toEqual(ledger);
+    expect(await publishLocalPatchPartialGame(c, request)).toMatchObject({ targets: 25 });
+    expect(fetch).not.toHaveBeenCalled();
+  }, 120000);
   it("ships43 real patches, leaves45 rows and every bill/verdict unchanged, and replays through a fresh client", async () => {
     const gameId = "partial-success", s = await seed(gameId);
     // Production shape: Sydney's fourth rejected attempt still names an older

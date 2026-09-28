@@ -38,3 +38,22 @@ export function assertRepairReservation(worldId: string, requestKey: string, com
     || !Number.isSafeInteger(committed) || committed < 0 || !Number.isSafeInteger(reserve) || reserve <= 0
     || reserve > 150_000 || committed + reserve > TERMINAL_REPAIR.capMicroUsd) throw Error('Bounded repair purchase refused');
 }
+
+export const CENTERED_REPAIR = Object.freeze({ ...TERMINAL_REPAIR,
+  version: 'terminal-v10-centered-candidate/v2', worldId: 'yuval-terminal-v10-centered-20260928-v2',
+  capMicroUsd: 250_000, targets: ['antarctica'] as const,
+});
+export function assertCenteredRepairReservation(worldId: string, key: string, committed: number, reserve: number) {
+  if (worldId !== CENTERED_REPAIR.worldId || !['image:antarctica:1', 'review:antarctica:1'].includes(key)
+    || !Number.isSafeInteger(committed) || committed < 0 || !Number.isSafeInteger(reserve) || reserve <= 0
+    || reserve > (key.startsWith('image:') ? 150_000 : 40_000) || committed + reserve > CENTERED_REPAIR.capMicroUsd)
+    throw Error('Centered one-image authorization exceeded');
+}
+export function centeredRepairPrompt(board: LocalPatchBoard, target: { left: number; top: number; width: number; height: number }) {
+  const hide = repairTarget(board);
+  if (board.board !== 'antarctica') throw Error('Centered repair is Antarctica only');
+  return localPatchPrompt({ ground: board.ground, pose: hide.pose, ageYears: 5, wardrobe: board.wardrobe,
+    placement: hide.placement, mask: target, hideId: hide.id, contentVersion: 10, paintRecipe: 'board-paint-v1' })
+    + '\nTARGET LOCK: Replace ONLY the LOWER STANDING purple-coated child in rectangle ' + JSON.stringify(target)
+    + ' in this 512x768 scene. Keep the original standing position: head/hair around x205..290,y258..343; feet at y600..625. Do NOT move the child up toward the seated people. Keep the existing entire standing silhouette and original snow contact line. The kneeling purple-coated child near the TOP is a DIFFERENT person and must remain unchanged. Preserve blue-coated child, tray, hands, photographer, equipment and surroundings. No additional people, animals or objects; no remaining pieces of the old target. The replacement is five years old; preserve purple winter coat, show recognizable hair without hat. Portrait determines identity only, NOT its outfit or smooth rendering; match the board facial brushwork. Keep all borders and scene geometry exactly registered. Return the whole same scene crop, no zoom or relocation.';
+}

@@ -25,7 +25,10 @@ const bodySchema = z.object({ version: z.literal(1), gameId: z.string(), operato
   decision: z.literal("publish-retained-subset-by-human-decision"), machineApprovalInvented: z.literal(false),
   snapshotSha256: digest, selected: z.array(selectedSchema).min(36).max(44), omittedHideIds: z.array(z.string()).min(1).max(9),
   jobAttempt: z.number().int().nonnegative() }).strict();
-const recordSchema = bodySchema.extend({ authorizationSha256: digest }).strict();
+const collectionBodySchema = bodySchema.extend({ version: z.literal(2), contentVersion: z.literal(10),
+  selected: z.array(selectedSchema).min(18).max(26) }).strict();
+const recordSchema = z.discriminatedUnion('version', [bodySchema.extend({ authorizationSha256: digest }).strict(),
+  collectionBodySchema.extend({ authorizationSha256: digest }).strict()]);
 export type LocalPatchPartialRelease = z.infer<typeof recordSchema>;
 export const LocalPatchPartialReleaseInputSchema = z.object({ gameId: z.string().regex(/^[A-Za-z0-9_-]{1,160}$/),
   operatorId: z.string().min(1), reason: z.string().trim().min(10).max(1000), omittedHideIds: z.array(z.string().min(1)).min(1).max(9) }).strict();
@@ -45,12 +48,14 @@ async function snapshot(c: Container, gameId: string, omittedHideIds: readonly s
     && game.paidAt && !["REFUNDED", "CANCELLED", "DELETED"].includes(game.status), "Live owned paid game and illustrated identity required");
   demand(game.orders.some(o => o.userId === game.ownerId && o.paymentStatus === "PAID" && o.paidAt && !o.refundedAt)
     && !game.orders.some(o => o.paymentStatus === "REFUNDED" || o.refundedAt), "Paid nonrefunded order required");
-  demand(game.scenes.length === 9 && new Set(game.scenes.map(s => s.sceneSlug)).size === 9
-    && game.scenes.every(s => s.sceneVersion === 9), "Exactly nine pinned age-five boards required");
+  const contentVersion = game.scenes[0]?.sceneVersion;
+  demand((contentVersion === 9 || contentVersion === 10) && game.scenes.length === 9 && new Set(game.scenes.map(s => s.sceneSlug)).size === 9
+    && game.scenes.every(s => s.sceneVersion === contentVersion), "Exactly nine pinned age-five boards required");
+  const perBoard = contentVersion === 10 ? 3 : 5;
   const job = game.jobs.find(j => j.id === `job_${gameId}`);
   demand(job && game.jobs.every(j => j.status === "DONE") && [TERMINAL, null].includes(job.currentStep), "All workers must be inactive");
   const variants = game.scenes.flatMap(s => s.targets.flatMap(t => t.variants));
-  demand(variants.length === 45 && variants.every(v => v.variant === "A"), "The original 45-row inventory must remain intact");
+  demand(variants.length === perBoard * 9 && variants.every(v => v.variant === "A"), "The original pinned inventory must remain intact");
   const assetIds = [...new Set([child.identityAssetId, child.avatarAssetId, ...variants.map(v => v.assetId).filter((id): id is string => !!id)])];
   const assets = await c.db.asset.findMany({ where: { id: { in: assetIds } }, orderBy: { id: "asc" } });
   demand(assets.length === assetIds.length, "Retained assets missing");
@@ -64,7 +69,7 @@ async function snapshot(c: Container, gameId: string, omittedHideIds: readonly s
   const scenePins = [];
   for (const scene of game.scenes) {
     const board = localPatchBoardForVersion(scene.sceneSlug, scene.sceneVersion), def = sceneBySlug(scene.sceneSlug, scene.sceneVersion);
-    demand(board && board.hides.length === 5 && scene.targets.length === 5 && `public${def.art.base}` === board.art, "Original authored placements changed");
+    demand(board && board.hides.length === perBoard && scene.targets.length === perBoard && `public${def.art.base}` === board.art, "Original authored placements changed");
     scenePins.push({ id: scene.id, order: scene.orderIndex, slug: scene.sceneSlug, version: scene.sceneVersion, definitionSha256: hash(def) });
     let kept = 0;
     for (const hide of board.hides) {
@@ -95,7 +100,7 @@ async function snapshot(c: Container, gameId: string, omittedHideIds: readonly s
         imageSha256, geometrySha256, judgeSha256: hash(row.judgeJson), attempts: row.attempts });
       kept++;
     }
-    demand(kept === 4 || kept === 5, "Each released board must retain four or five appearances");
+    demand(kept === perBoard - 1 || kept === perBoard, "Each released board may omit at most one appearance");
   }
   demand(matched.size === omitted.size, "An omission does not belong to this game");
   const ledger = await c.db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: boardWizardWorldId(gameId) } });
@@ -105,7 +110,7 @@ async function snapshot(c: Container, gameId: string, omittedHideIds: readonly s
       identityAssetId: child.identityAssetId, avatarAssetId: child.avatarAssetId, photoCropJson: child.photoCropJson },
     orders: game.orders, scenes: scenePins, targets: game.scenes.flatMap(s => s.targets), jobAttempt: job.attempts,
     assets: assets.map(a => ({ asset: a, bytesSha256: sha(bytes.get(a.storagePath)!) })), ledgerSha256: hash(ledger.snapshotJson) });
-  return { game, job, selected, snapshotSha256 };
+  return { game, job, selected, snapshotSha256, contentVersion };
 }
 
 /** No record means normal strict assembly. A present but invalid record is a
@@ -118,6 +123,7 @@ export async function readLocalPatchPartialRelease(c: Container, gameId: string)
   const record = recordSchema.parse(JSON.parse(audit.metaJson ?? "null")), { authorizationSha256, ...body } = record;
   demand(body.gameId === gameId && body.operatorId === audit.actorId && hash(body) === authorizationSha256, "Partial release authority changed");
   const current = await snapshot(c, gameId, record.omittedHideIds);
+  demand(current.contentVersion === (record.version === 2 ? record.contentVersion : 9), "Partial release content version changed");
   demand(current.snapshotSha256 === record.snapshotSha256 && hash(current.selected) === hash(record.selected), "The authorized images, identity, inventory or charges changed");
   if (["READY", "DELIVERED"].includes(current.game.status)) {
     const ready = await c.db.auditLog.findFirst({ where: { action: "local-patch:ready", entityType: "Game", entityId: gameId }, orderBy: { createdAt: "desc" } });
@@ -137,15 +143,16 @@ export async function publishLocalPatchPartialGame(c: Container, raw: LocalPatch
   demand(operator && c.adminEmails?.some(email => email.trim().toLowerCase() === operator.email.toLowerCase()), "Authenticated administrator required");
   let record = await readLocalPatchPartialRelease(c, input.gameId);
   if (!record) {
-    await requireLocalPatchRecoveryIdentity(c, input.gameId);
-    await requireLocalPatchRecoveryBudget(c, input.gameId);
     const frozen = await snapshot(c, input.gameId, input.omittedHideIds);
+    await requireLocalPatchRecoveryIdentity(c, input.gameId, frozen.contentVersion === 10 ? 10 : 9);
+    await requireLocalPatchRecoveryBudget(c, input.gameId);
     demand(frozen.game.status === "GENERATION_FAILED" && !frozen.game.configJson && !frozen.game.readyAt && !frozen.game.deliveredAt
       && frozen.job.currentStep === TERMINAL, "Only an unpublished terminal quality failure is eligible");
-    const body: z.infer<typeof bodySchema> = { version: 1, gameId: input.gameId, operatorId: input.operatorId, reason: input.reason,
+    const body: z.infer<typeof bodySchema> | z.infer<typeof collectionBodySchema> = { ...(frozen.contentVersion === 10 ? { version: 2 as const, contentVersion: 10 as const } : { version: 1 as const }), gameId: input.gameId, operatorId: input.operatorId, reason: input.reason,
       decision: "publish-retained-subset-by-human-decision", machineApprovalInvented: false,
       snapshotSha256: frozen.snapshotSha256, selected: frozen.selected, omittedHideIds: [...input.omittedHideIds].sort(), jobAttempt: frozen.job.attempts };
-    record = recordSchema.parse({ ...body, authorizationSha256: hash(body) });
+    const normalizedBody = body.version === 2 ? collectionBodySchema.parse(body) : bodySchema.parse(body);
+    record = recordSchema.parse({ ...normalizedBody, authorizationSha256: hash(normalizedBody) });
     const staged = record;
     await c.db.$transaction(async tx => {
       const lock = await tx.game.updateMany({ where: { id: input.gameId, status: "GENERATION_FAILED", configJson: null, readyAt: null, deliveredAt: null, deletedAt: null }, data: { status: "GENERATION_FAILED" } });
