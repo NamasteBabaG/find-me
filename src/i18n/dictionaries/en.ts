@@ -362,6 +362,7 @@ export const en = {
     previous: "Previous page", next: "Next page", page: "Place {n} of {total}", stamped: "I was here!", progress: "{n} of 3 hiding spots found",
     qaSignIn: "Sign in to QA in a new tab",
     qaSessionExpired: "QA sign-in needed. Sign in ↗, then return here. Your stamp is safe.",
+    qaHomeExpired: "QA sign-in needed to load the pictures. Sign in, then return to this tab.",
     locked: "A place for a future adventure", available: "Your next discovery is waiting", photoWait: "Find all three hiding spots to keep a picture here.", photoUnavailable: "We couldn't load this picture. Your stamp is safe.", pictureUnavailable: "No picture", retryImages: "Try loading the pictures again",
     collected: "My discoveries", unknown: "Not found yet", details: "About {name}", choosePhoto: "Choose my picture", photoChoice: "Picture {n}", selected: "Selected", saved: "Picture saved", saveFailed: "We couldn’t save that yet. Please try again.",
     play: "Back to this place", preparing: "An adventure is being prepared. Its pages will appear here when it is ready.", empty: "Your passport is ready for its first adventure.",

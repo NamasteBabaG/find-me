@@ -23,6 +23,8 @@ import { discoveryHintRect, nextDiscoveryHint, type DiscoveryHintLevel } from "@
 import { adventureAlbum } from "@/domain/adventure/progress";
 import type { PlayStore } from "../store/play-store";
 import { useGameText } from "../i18n";
+import { QA_HOME_SIGN_IN, useHomeQaRecovery } from "@/ui/qa/HomeQaRecovery";
+import { getDict } from "@/i18n";
 
 /** How long the clouds take to part. Matches the CSS transition. */
 const CURTAIN_MS = 900;
@@ -62,7 +64,7 @@ const TURN_HOLD_MS = 160;
 
 /** One world: viewport + mission card + top bar + feedback choreography. */
 export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: Props) {
-  const { g, tf } = useGameText();
+  const { g, tf, locale } = useGameText();
   const apiRef = useRef<ViewportApi | null>(null);
   // The transform as of the latest paint. The api object above is handed over
   // at layout and on resize, so its transform is stale after a zoom; the
@@ -153,6 +155,8 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
     setLoadFailed(false);
     setRetryToken((n) => n + 1);
   };
+  const homeQa = useHomeQaRecovery(store.demo, loadFailed, () => { if (loadFailed) retryLoad(); });
+  const qaCopy = getDict(locale).travelPassport;
   // The clouds close over the board while the found child is swapped for the
   // next one, so nobody sees the next hiding spot pop into the picture.
   const [turn, setTurn] = useState(false);
@@ -529,11 +533,11 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
                 ☁️
               </span>
               <h2 id="scene-retry-title" className="scene__retry-title">
-                {g.scene.loadTitle}
+                {homeQa?.required ? qaCopy.qaHomeExpired : g.scene.loadTitle}
               </h2>
-              <button type="button" className="fm-btn fm-btn--lg" onClick={retryLoad} autoFocus>
+              {homeQa?.required ? <a className="fm-btn fm-btn--lg" href={QA_HOME_SIGN_IN} target="_blank" rel="noopener noreferrer">{qaCopy.qaSignIn} ↗</a> : <button type="button" className="fm-btn fm-btn--lg" onClick={retryLoad} autoFocus>
                 {g.scene.loadRetry}
-              </button>
+              </button>}
               {!store.demo ? <button type="button" className="fm-btn fm-btn--white" onClick={() => onBack()}>
                 {g.scene.loadBack}
               </button> : null}

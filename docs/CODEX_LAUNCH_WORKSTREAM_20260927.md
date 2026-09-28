@@ -2,10 +2,10 @@
 
 ## Release truth
 
-**Update 2026-09-28:** QA now runs `0202f897`, deployment
-`dpl_96j8NnrCSwtWWvDJexshWY6EGtuT`, after passing CI and a clean guarded
+**Update 2026-09-28:** QA now runs `12028c17`, deployment
+`dpl_9v4FLqBL3gBXmFneuEAR8QfDLWNn`, after passing CI and a clean guarded
 deployment. Alias and REST commit metadata verified. See
-`QA_CHECKPOINT_RELEASE_20260928.md` for exact evidence and limits. No public
+`QA_LAUNCH_ART_RECHECK_RELEASE_20260928.md` for exact evidence and limits. No public
 production promotion, authenticated live-game acceptance or F-A approval.
 The paragraph below records the earlier checkpoint's starting state.
 
@@ -92,9 +92,9 @@ test timeouts passed unchanged in an isolated rerun (34/34 across two suites).
 ## Remaining order / acceptance gates
 
 Latest completed independent review is now
-`CLAUDE_LAUNCH_AND_ART_RECHECK_20260928.md`, reviewing `690c2d29`.
-Its N-1/N-2/N-3 and T-1 follow-up is recorded in
-`CODEX_LAUNCH_ART_RECHECK_RESPONSE_20260928.md`; read its actual verification
+`CLAUDE_QA_RECHECK_RELEASE_REVIEW_20260928.md`, reviewing `12028c17`.
+Its nonblocking home-wide expiry finding I-4 is being addressed in
+`CODEX_HOME_QA_RECOVERY_RESPONSE_20260928.md`; read its actual verification
 and release status rather than treating local corrections as deployed.
 F-A and authenticated live-incident acceptance remain open.
 

@@ -13,6 +13,8 @@ import { Transformation } from "./home/Transformation";
 import { FinalCta } from "./home/FinalCta";
 import { Faq, GiftSection, HowItWorks, Inside, Marquee, Pricing, Trust, Worlds } from "./home/sections";
 import { carouselWorlds } from "./home/worlds-data";
+import { qaAccessConfig } from "@/lib/qa-access";
+import { HomeQaRecovery } from "@/ui/qa/HomeQaRecovery";
 
 export default async function HomePage() {
   const c = getContainer();
@@ -32,7 +34,7 @@ export default async function HomePage() {
   return (
     <>
       <SiteHeader user={user} isAdmin={isAdminEmail(user?.email)} clear />
-      <main>
+      <HomeQaRecovery enabled={qaAccessConfig().enabled}><main>
         <Hero child={demo.child}>
           <Marquee scenes={scenes} locale={locale} />
         </Hero>
@@ -48,7 +50,7 @@ export default async function HomePage() {
         <Trust t={t} locale={locale} />
         <Faq t={t} locale={locale} />
         <FinalCta />
-      </main>
+      </main></HomeQaRecovery>
       <SiteFooter />
     </>
   );

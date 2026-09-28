@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import type { SceneConfig } from "@/domain/game/config";
 import { scenePreview } from "@/game/engine/scene-preview";
+import { useHomeQaRecovery } from "@/ui/qa/HomeQaRecovery";
 
 /**
  * Crop the portrait quadrant in the UI; the identity sheet is unchanged.
@@ -14,6 +15,7 @@ import { scenePreview } from "@/game/engine/scene-preview";
  */
 export function TransformationPortrait({ src, alt, unavailable }: { src: string; alt: string; unavailable: string }) {
   const [failed, setFailed] = useState(false);
+  useHomeQaRecovery(true, failed, () => setFailed(false));
   return (
     <div className="tf-card__media tf-card__media--portrait">
       {failed ? <p className="tf-media__status">{unavailable}</p> : (
@@ -30,6 +32,11 @@ export function TransformationScene({ scene, targetId, alt, line, unavailable, l
   const preview = target ? scenePreview(scene, target) : null;
   const [loaded, setLoaded] = useState({ base: false, patch: false });
   const [failed, setFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
+  useHomeQaRecovery(true, failed, () => {
+    if (!failed) return;
+    setLoaded({ base: false, patch: false }); setFailed(false); setRetry(n => n + 1);
+  });
   const ready = loaded.base && loaded.patch && !failed && preview !== null;
   useEffect(() => {
     if (ready || failed || !preview) return;
@@ -39,7 +46,7 @@ export function TransformationScene({ scene, targetId, alt, line, unavailable, l
   return (
     <div className="tf-card__media tf-card__media--world" role={ready ? "img" : undefined} aria-label={ready ? alt : undefined}>
       {!ready ? <p className="tf-media__status" role="status">{failed || !preview ? unavailable : loading}</p> : null}
-      {preview ? <div className="tf-world__composition" style={{ visibility: ready ? "visible" : "hidden" }}>
+      {preview ? <div key={retry} className="tf-world__composition" style={{ visibility: ready ? "visible" : "hidden" }}>
         <Image src={scene.art.base} alt="" width={scene.art.width} height={scene.art.height} unoptimized loading="eager"
           className="tf-world__base" style={preview.baseStyle} onLoad={() => setLoaded(s => ({ ...s, base: true }))} onError={() => setFailed(true)} />
         <Image src={preview.sprite.url} alt="" width={preview.sprite.width} height={preview.sprite.height} unoptimized loading="eager"

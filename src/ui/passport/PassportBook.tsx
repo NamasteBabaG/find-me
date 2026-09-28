@@ -6,6 +6,7 @@ import type { PassportPageView, PassportView } from "@/domain/passport/passport"
 import { arrowPage, swipePage } from "./book-navigation";
 import { PassportStamp } from "./StampMark";
 import { useQaImageRecovery } from "./useQaImageRecovery";
+import { useHomeQaRecovery } from "@/ui/qa/HomeQaRecovery";
 import "./passport.css";
 
 function Picture({ src, label, onFailure, onRecovery }: { src: string; label: string; onFailure: () => void; onRecovery: () => void }) {
@@ -53,7 +54,13 @@ export function PassportBook({ book, mode = "owner", onPhotoSelect, onPlay, rend
   const visibleImages = open ? [page?.photoUrl, ...page?.discoveries.filter(d => d.collected).map(d => d.imageUrl) ?? [],
     ...(panel === "choose" ? page?.photoChoices?.map(c => c.imageUrl) ?? [] : [])] : [book.avatarUrl];
   const imageFailed = failedImages.some(url => visibleImages.includes(url));
-  const qaSignIn = useQaImageRecovery(mode === "demo" && open && imageFailed, retryImages);
+  const homeQa = useHomeQaRecovery(mode === "demo", open && imageFailed, () => {
+    if (!failedImages.length) return;
+    setFailedImages([]); setImageEpoch(n => n + 1);
+    if (open && imageFailed) focusPage();
+  });
+  const localQaSignIn = useQaImageRecovery(!homeQa && mode === "demo" && open && imageFailed, retryImages);
+  const qaSignIn = imageFailed && (homeQa?.required ?? localQaSignIn);
   const recovery = (className: string) => qaSignIn
     ? <a className={className} href="/qa-access?next=%2F%23passport-demo-title" target="_blank" rel="noopener noreferrer" aria-label={copy.qaSignIn} title={copy.qaSignIn}><span aria-hidden="true">↗</span></a>
     : <button type="button" className={className} aria-label={copy.retryImages} title={copy.retryImages} onClick={retryImages}><span aria-hidden="true">↻</span></button>;
