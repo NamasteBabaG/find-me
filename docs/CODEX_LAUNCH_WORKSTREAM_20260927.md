@@ -2,6 +2,17 @@
 
 ## Release truth
 
+**Yuval bounded repair update 2026-09-28:** The explicitly scoped two-image round
+has now run using the owner's existing API credential: one image plus one review
+for each failed hide, USD 0.108727 total conservative estimate. Both pass the
+unchanged compositor's technical permission, but Antarctica is visually rejected
+for upward displacement; Giza is promising with review unsure on hidden ground
+contact. No live asset/state/config/ledger changed. Fresh QA metadata comparison
+preserves the same 25 original row hashes. See
+`CODEX_YUVAL_BOUNDED_REPAIR_20260928.md`; a different unpaid spatial-design plan
+and separately authorized further purchase are needed for Antarctica. This is
+not completion of the game and not F-A approval.
+
 **Update 2026-09-28:** QA now runs `ad0892c5`, deployment
 `dpl_CDvbisdWZF6fPXguvCJeJrjKDqCj`, after passing CI and a clean guarded
 deployment. Alias and REST commit metadata verified. See
@@ -99,23 +110,28 @@ blank checkout reported by the owner. Normal reload restored checkout with
 photo/world selection intact; root cause is not yet proven. See
 `CODEX_WIZARD_INCIDENT_20260928.md` for browser evidence, the timing caveat on
 the RSC error and a bounded reproduction plan. Prioritize this before real
-purchase/generation acceptance. No application fix has been deployed for it.
+purchase/generation acceptance. The mitigation subsequently shipped in
+`ad0892c5`; it does not establish the original root cause or live acceptance.
 
 **Separate generation blocker:** the owner's subsequent QA run stopped with
 25 output appearances and two failures (Antarctica hide-3 likeness; Giza hide-2
 seam alignment). Read-only authenticated admin evidence and repair constraints
-are in `CODEX_QA_GENERATION_INCIDENT_20260928.md`. No retries or changes were
-made; output count is not human visual acceptance. This is not the RSC issue.
+are in `CODEX_QA_GENERATION_INCIDENT_20260928.md`. The later private bounded
+repair round is recorded above and in `CODEX_YUVAL_BOUNDED_REPAIR_20260928.md`;
+no live outputs changed. Output count is not human visual acceptance. This is
+not the RSC issue.
 
-**Incident follow-up in progress:** photo POST now leaves via a fresh document
+**Incident UI follow-up deployed:** photo POST now leaves via a fresh document
 GET; premature guarded-step prefetch is removed and paid-photo resume keeps
-its supplied destination. Tests/release remain pending; QA is still `5f0f8759`.
+its supplied destination. Tests/CI/release passed; QA runs `ad0892c5`, as detailed
+in `QA_WIZARD_INCIDENT_RELEASE_20260928.md`.
 Read retained-byte findings in the generation incident document: Antarctica's
 provider relocates the child above the target and deletes a neighbour, then
 the bounded compositor cuts the head off. A free widened-return preview was
 rejected because it preserves that scene damage. Giza's first retained reply
 reproduces the two-pixel seam refusal and a shoe cut at the return boundary.
-No paid request, DB mutation, asset replacement or game recovery was performed.
+Those original diagnostics made no purchases. The later two-image repair round
+did, but no DB mutation, asset replacement or game recovery has been performed.
 
 Latest completed independent review is now
 `CLAUDE_QA_RECHECK_RELEASE_REVIEW_20260928.md`, reviewing `12028c17`.
