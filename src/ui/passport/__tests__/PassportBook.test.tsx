@@ -29,6 +29,56 @@ function open(locale: "en" | "he" = "en") { fireEvent.click(screen.getByRole("bu
 function finish() { act(() => { vi.advanceTimersByTime(1000); }); }
 
 describe("passport book interaction", () => {
+  it.each(["en", "he"] as const)("recognizes QA expiry in %s and recovers the same page after normal sign-in in another tab", async locale => {
+    const fetcher = vi.fn().mockResolvedValue({ status: 401, json: async () => ({ code: "QA_ACCESS_REQUIRED" }) });
+    vi.stubGlobal("fetch", fetcher);
+    const view = mount({ mode: "demo" }, locale); open(locale); finish();
+    expect(fetcher).not.toHaveBeenCalled();
+    await act(async () => { fireEvent.error(screen.getByRole("img", { name: "Place 1" })); });
+    const copy = getDict(locale).travelPassport;
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledWith("/api/qa-access/status", expect.objectContaining({ credentials: "same-origin", cache: "no-store", redirect: "error" }));
+    expect(screen.getByText(copy.qaSessionExpired)).toBeTruthy();
+    expect(screen.queryAllByRole("button", { name: copy.retryImages })).toHaveLength(0);
+    const link = screen.getAllByRole("link", { name: copy.qaSignIn })[0]!;
+    expect(link.getAttribute("href")).toBe("/qa-access?next=%2F%23passport-demo-title");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toContain("noopener");
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(fetcher).toHaveBeenCalledTimes(1); // No auth polling.
+    fetcher.mockResolvedValue({ status: 204 });
+    await act(async () => { fireEvent(window, new Event("focus")); });
+    expect(screen.queryByText(copy.qaSessionExpired)).toBeNull();
+    expect(screen.getByRole("img", { name: "Place 1" })).toBeTruthy();
+    expect(view.container.querySelector('[data-state="stamped"]')).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Place 1" })).toBeTruthy();
+  });
+  it.each([404, 503, 200, 401])("does not mislabel generic status %s as expired QA access", async status => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ status, json: async () => ({ code: "SOMETHING_ELSE" }) }));
+    mount({ mode: "demo" }); open(); finish();
+    await act(async () => { fireEvent.error(screen.getByRole("img", { name: "Place 1" })); });
+    expect(screen.queryByText(getDict("en").travelPassport.qaSessionExpired)).toBeNull();
+    expect(screen.getAllByRole("button", { name: getDict("en").travelPassport.retryImages })).toHaveLength(2);
+  });
+  it.each(["owner", "shared"] as const)("never probes QA status for %s private images", async mode => {
+    const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
+    mount({ mode }); open(); finish();
+    await act(async () => { fireEvent.error(screen.getByRole("img", { name: "Place 1" })); });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+  it("scopes image failures to the visible page, retaining recovery when returning", () => {
+    const view = mount(); open(); finish();
+    const copy = getDict("en").travelPassport;
+    fireEvent.error(screen.getByRole("img", { name: "Place 1" }));
+    expect(screen.getAllByRole("button", { name: copy.retryImages })).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: copy.next })); finish();
+    expect(screen.queryByRole("button", { name: copy.retryImages })).toBeNull();
+    expect(view.container.querySelector('[aria-live]')?.textContent).toBe("Place 2 · Place 2 of 3");
+    fireEvent.click(screen.getByRole("button", { name: copy.previous })); finish();
+    expect(screen.getAllByRole("button", { name: copy.retryImages })).toHaveLength(2);
+    fireEvent.load(screen.getByRole("img", { name: "Place 1" }));
+    expect(screen.queryByRole("button", { name: copy.retryImages })).toBeNull();
+  });
   it.each(["en", "he"] as const)("keeps the %s photo caption off the print but preserves accessible zoom", locale => {
     mount({}, locale); open(locale); finish();
     const label = getDict(locale).travelPassport.enlarge;

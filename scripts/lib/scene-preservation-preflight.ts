@@ -14,6 +14,19 @@ function validRect(r: PixelRect) {
     && r.left >= 0 && r.top >= 0 && r.width > 0 && r.height > 0;
 }
 
+/** Recompute return permission for EACH candidate crop, never reuse a box
+ * clipped to an earlier crop. Mirrors the compositor's mask + guard boundary. */
+export function guardedEditBounds(crop: PixelRect, mask: PixelRect, guard: number): PixelRect {
+  if (!validRect(crop) || !validRect(mask) || !contains(crop, mask)
+    || !Number.isSafeInteger(guard) || guard < 0
+    || !Number.isSafeInteger(right(mask) + guard) || !Number.isSafeInteger(bottom(mask) + guard)) {
+    throw Error("Scene preflight requires a bounded mask and nonnegative integer guard");
+  }
+  const left = Math.max(crop.left, mask.left - guard), top = Math.max(crop.top, mask.top - guard);
+  return { left, top, width: Math.min(right(crop), right(mask) + guard) - left,
+    height: Math.min(bottom(crop), bottom(mask) + guard) - top };
+}
+
 /** All coordinates are BOARD pixels, half-open rectangles. The editable box is
  * the actual composition permission, not just prose sent to the provider. */
 export function inspectScenePreservation(input: {

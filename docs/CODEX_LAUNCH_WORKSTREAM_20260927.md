@@ -91,6 +91,13 @@ test timeouts passed unchanged in an isolated rerun (34/34 across two suites).
 
 ## Remaining order / acceptance gates
 
+Latest completed independent review is now
+`CLAUDE_LAUNCH_AND_ART_RECHECK_20260928.md`, reviewing `690c2d29`.
+Its N-1/N-2/N-3 and T-1 follow-up is recorded in
+`CODEX_LAUNCH_ART_RECHECK_RESPONSE_20260928.md`; read its actual verification
+and release status rather than treating local corrections as deployed.
+F-A and authenticated live-incident acceptance remain open.
+
 ### Overnight independent-review follow-up (2026-09-28)
 
 Claude completed the review of `8d13cc69` / `47f1bf05`; it is distinct from the

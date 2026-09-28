@@ -72,6 +72,13 @@ passes context containment, but still fails prop protection because the return
 region overlaps the arch. This is a geometry counterexample, **not a new
 provider-size contract or a render-ready candidate**.
 
+**Independent recheck correction (T-1, 28 September):** that hypothetical crop
+must recompute mask + 120 px guard before clipping. Reusing the old clipped
+box understated permission. `guardedEditBounds` now derives each candidate:
+the 820 px crop permits `1160,1368,630,630`, and its required context is
+`990,1368,800,630`. It still overlaps the protected arch and is NOT approved.
+The current crop and all retained pixels are unchanged.
+
 ## Tooling added (opt-in only)
 
 `scripts/lib/scene-preservation-preflight.ts` checks manually annotated regions

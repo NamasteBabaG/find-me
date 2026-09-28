@@ -6,7 +6,7 @@ import path from "node:path";
 import sharp from "sharp";
 import { LocalPatchBoardSchema, cropOf, maskOf } from "../src/domain/scene/local-patch-hides";
 import { BOARD_PAINT_SAMPLE } from "./lib/board-paint-sample";
-import { inspectScenePreservation } from "./lib/scene-preservation-preflight";
+import { guardedEditBounds, inspectScenePreservation } from "./lib/scene-preservation-preflight";
 import { LOCAL_PATCH_RETURN_GUARD, LOCAL_PATCH_COMPOSITION_VERSION } from "../src/services/generation/local-patch-seam";
 
 const hash = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
@@ -30,17 +30,15 @@ async function main() {
   if (technical.compositionVersion !== LOCAL_PATCH_COMPOSITION_VERSION) throw Error("Composition version changed; review this audit");
   // composeBoundedLocalPatch returns a guard around the provider mask, clipped
   // to the crop. The mask is NOT the hard pixel-preservation boundary.
-  const left = Math.max(crop.left, providerMask.left - LOCAL_PATCH_RETURN_GUARD);
-  const top = Math.max(crop.top, providerMask.top - LOCAL_PATCH_RETURN_GUARD);
-  const editable = { left, top,
-    width: Math.min(crop.left + crop.width, providerMask.left + providerMask.width + LOCAL_PATCH_RETURN_GUARD) - left,
-    height: Math.min(crop.top + crop.height, providerMask.top + providerMask.height + LOCAL_PATCH_RETURN_GUARD) - top };
+  const editable = guardedEditBounds(crop, providerMask, LOCAL_PATCH_RETURN_GUARD);
   // Conservative human-authored rectangle on the PUBLIC source board. Includes
   // surrounding pixels; not an exact prop mask and never fed to a painter.
   const region = { id: "arch-and-loose-block", rect: { left: 990, top: 1510, width: 420, height: 400 }, protectPixels: true };
   const inspection = { board: { width: size.width!, height: size.height! }, crop, editable, regions: [region] };
   const current = inspectScenePreservation(inspection);
-  const widerContextOnly = inspectScenePreservation({ ...inspection, crop: { left: 970, top: 1300, width: 820, height: 768 } });
+  const widerCrop = { left: 970, top: 1300, width: 820, height: 768 };
+  const widerEditable = guardedEditBounds(widerCrop, providerMask, LOCAL_PATCH_RETURN_GUARD);
+  const widerContextOnly = inspectScenePreservation({ ...inspection, crop: widerCrop, editable: widerEditable });
   const before = await sharp(art).extract(crop).removeAlpha().raw().toBuffer();
   const output = await sharp(delivered).removeAlpha().raw().toBuffer({ resolveWithObject: true });
   if (output.info.width !== crop.width || output.info.height !== crop.height || output.info.channels !== 3) throw Error("Unexpected delivered dimensions");
@@ -54,7 +52,7 @@ async function main() {
   }
   console.log(JSON.stringify({ version: "dragon-scene-preservation-audit/v1", paidCalls: 0, writes: 0,
     sourceSha256: hash(art), inputsSha256: hash(inputBytes), deliveredSha256: hash(delivered), crop, providerMask, editable,
-    manualAnnotation: region, current, widerContextOnly,
+    manualAnnotation: region, current, widerCrop, widerEditable, widerContextOnly,
     annotationIntersectionDiff: { measuredPixels, changedPixels, maxChannelDelta, meaning: "Rectangle includes scenery; not a semantic prop-preservation score" },
     conclusion: "Neither existing geometry nor wider context alone protects the prop. No candidate approved or installed. F-A remains open."
   }, null, 2));

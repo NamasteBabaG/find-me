@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createQaSession, qaAccessConfig } from "../qa-access";
 import { POST as login } from "@/app/qa-access/login/route";
+import { GET as gateStatus } from "@/app/api/qa-access/status/route";
 import { qaAccessDenied, requireQaAccess } from "../server/qa-access";
 
 const mocks = vi.hoisted(() => ({ cookie: undefined as string | undefined, container: vi.fn(() => { throw new Error("A locked request reached the container"); }) }));
@@ -26,6 +27,28 @@ function form(value: string, next = "/create", caller = String(++ip)) {
 }
 
 describe("the QA login route", () => {
+  it("reports stale access without redirecting, then recovers through normal login only", async () => {
+    const request = (cookie?: string) => new Request(`${origin}/api/qa-access/status`, { headers: cookie ? { cookie } : {} });
+    const denied = await gateStatus(request());
+    expect(denied.status).toBe(401);
+    expect(await denied.json()).toEqual({ ok: false, code: "QA_ACCESS_REQUIRED" });
+    expect(denied.headers.has("location")).toBe(false);
+    const signedIn = await login(form(password));
+    const cookie = signedIn.headers.get("set-cookie")!.split(";")[0]!;
+    const accepted = await gateStatus(request(cookie));
+    expect(accepted.status).toBe(204);
+    expect(await accepted.text()).toBe("");
+    expect(accepted.headers.get("cache-control")).toContain("no-store");
+    expect(accepted.headers.has("set-cookie")).toBe(false); // No silent extension.
+    expect((await gateStatus(request("__Host-findme_qa=forged"))).status).toBe(401);
+    const expired = await createQaSession(qaAccessConfig(), Date.now() - 86_400_000);
+    expect((await gateStatus(request(`__Host-findme_qa=${expired}`))).status).toBe(401);
+    vi.stubEnv("QA_ACCESS_PASSWORD", "");
+    expect((await gateStatus(request(cookie))).status).toBe(503);
+    vi.stubEnv("APP_ENV", "production");
+    expect((await gateStatus(request(cookie))).status).toBe(404);
+    expect(mocks.container).not.toHaveBeenCalled();
+  });
   it("sets a signed HttpOnly Secure host cookie, returns locally, and never echoes the password", async () => {
     const res = await login(form(password));
     expect(res.status).toBe(303);

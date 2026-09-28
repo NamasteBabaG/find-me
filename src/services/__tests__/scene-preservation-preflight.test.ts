@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inspectScenePreservation, type PixelRect } from "../../../scripts/lib/scene-preservation-preflight";
+import { guardedEditBounds, inspectScenePreservation, type PixelRect } from "../../../scripts/lib/scene-preservation-preflight";
 
 const rect = (left: number, top: number, width: number, height: number): PixelRect => ({ left, top, width, height });
 const base = {
@@ -8,6 +8,23 @@ const base = {
 } as const;
 
 describe("offline scene-preservation geometry (not visual approval)", () => {
+  it("recomputes guard clipping when context grows instead of preserving the old permission", () => {
+    const mask = rect(1280, 1488, 476, 390);
+    expect(guardedEditBounds(rect(1262, 1300, 512, 768), mask, 120)).toEqual(rect(1262, 1368, 512, 630));
+    const crop = rect(970, 1300, 820, 768), editable = guardedEditBounds(crop, mask, 120);
+    expect(editable).toEqual(rect(1160, 1368, 630, 630));
+    expect(inspectScenePreservation({ board: { width: 3840, height: 2160 }, crop, editable,
+      regions: [{ id: "arch", rect: rect(990, 1510, 420, 400), protectPixels: true }] }))
+      .toMatchObject({ geometryClear: false, requiredContext: rect(990, 1368, 800, 630), fitsExistingCropSize: true,
+        issues: [{ regionId: "arch", code: "edit-touches-protected-region" }] });
+    expect(guardedEditBounds(crop, mask, 0)).toEqual(mask);
+  });
+  it.each([-1, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER])("rejects an invalid guard %s", guard => {
+    expect(() => guardedEditBounds(base.crop, base.editable, guard)).toThrow(/Scene preflight/);
+  });
+  it("rejects masks outside the crop", () => {
+    expect(() => guardedEditBounds(base.crop, rect(0, 0, 100, 100), 120)).toThrow(/Scene preflight/);
+  });
   it("accepts visible protected context outside composition permission without mutation", () => {
     const before = JSON.stringify(base);
     expect(inspectScenePreservation(base)).toMatchObject({ geometryClear: true, fitsExistingCropSize: true, visualAcceptance: "not-assessed" });
