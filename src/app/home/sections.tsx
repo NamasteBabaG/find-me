@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { SceneDefinition } from "@/domain/scene/schema";
-import { PACKAGES, PACKAGE_ORDER, boardsFor, priceFor } from "@/domain/package";
+import { PACKAGES, PACKAGE_ORDER, WORLD_PRICES, boardsFor, priceFor } from "@/domain/package";
 import { formatMoney, pick, tf, type Currency, type Dictionary, type Locale } from "@/i18n";
 import { Reveal } from "./Reveal";
 import { WorldsCarousel, type CarouselWorld } from "./WorldsCarousel";
@@ -208,6 +208,7 @@ export function Pricing({ t, locale, activeCount, currency }: SectionProps & { a
                   <li className="plan__feat">{p.feats.wrap}</li>
                 </ul>
                 <div className="plan__price">{formatMoney(priceFor(tier, currency), currency, locale)}</div>
+                <p className="plan__feat">{p.passport}</p>
                 {available ? (
                   <Link href="/create" className={`fm-btn fm-btn--lg${pkg.popular ? "" : " fm-btn--secondary"}`}>
                     {tf(p.choose, { name })}
@@ -219,6 +220,8 @@ export function Pricing({ t, locale, activeCount, currency }: SectionProps & { a
             );
           })}
         </div>
+        <p className="fm-center" style={{ marginTop: "var(--space-3)" }}>{tf(p.continuation, { price: formatMoney(WORLD_PRICES[currency].additional, currency, locale) })}</p>
+        <p className="fm-small fm-center">{p.sameChild}</p>
         <p className="fm-small fm-center" style={{ marginTop: "var(--space-3)" }}>
           {p.note}
         </p>

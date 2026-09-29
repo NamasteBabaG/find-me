@@ -15,6 +15,19 @@ export const TARGETS_PER_SCENE = MISSIONS_PER_BOARD;
 export type PackageTier = "ONE_WORLD" | "TWO_WORLDS" | "ALL_WORLDS";
 export type Currency = "ILS" | "USD";
 
+/** Fixed per-child pricing, independent of purchase date or catalog size. */
+export const WORLD_PRICES: Record<Currency, { first: number; additional: number }> = {
+  ILS: { first: 3900, additional: 3000 },
+  USD: { first: 2200, additional: 1700 },
+};
+export function worldPurchasePrice(worldCount: number, currency: Currency, hasPaidWorld = false): number {
+  if (!Number.isSafeInteger(worldCount) || worldCount < 1) throw Error("Invalid world count");
+  const rate = WORLD_PRICES[currency];
+  const total = (hasPaidWorld ? rate.additional : rate.first) + (worldCount - 1) * rate.additional;
+  if (!Number.isSafeInteger(total)) throw Error("Invalid purchase amount");
+  return total;
+}
+
 export interface PackageDefinition {
   tier: PackageTier;
   name: LocalizedText;
@@ -29,25 +42,26 @@ export interface PackageDefinition {
 export const PACKAGES: Record<PackageTier, PackageDefinition> = {
   ONE_WORLD: {
     tier: "ONE_WORLD",
-    name: { en: "First Adventure", he: "ההרפתקה הראשונה" },
+    name: { en: "First adventure", he: "הרפתקה ראשונה" },
     worldCount: 1,
-    prices: { ILS: 4900, USD: 2200 },
+    prices: { ILS: worldPurchasePrice(1, "ILS"), USD: worldPurchasePrice(1, "USD") },
     playtime: { en: "around half an hour", he: "בערך חצי שעה" },
     popular: false,
   },
   TWO_WORLDS: {
     tier: "TWO_WORLDS",
-    name: { en: "Big Journey", he: "המסע הגדול" },
+    name: { en: "Two worlds", he: "שני עולמות" },
     worldCount: 2,
-    prices: { ILS: 8900, USD: 3900 },
+    prices: { ILS: worldPurchasePrice(2, "ILS"), USD: worldPurchasePrice(2, "USD") },
     playtime: { en: "around an hour", he: "בערך שעה" },
     popular: true,
   },
   ALL_WORLDS: {
     tier: "ALL_WORLDS",
-    name: { en: "All Worlds", he: "כל העולמות" },
+    // Historical database key; this always buys exactly three chosen worlds.
+    name: { en: "Three worlds", he: "שלושה עולמות" },
     worldCount: 3,
-    prices: { ILS: 13900, USD: 5600 },
+    prices: { ILS: worldPurchasePrice(3, "ILS"), USD: worldPurchasePrice(3, "USD") },
     playtime: { en: "an hour or two", he: "שעה–שעתיים" },
     popular: false,
   },
@@ -63,8 +77,8 @@ export function isCurrency(value: unknown): value is Currency {
   return value === "ILS" || value === "USD";
 }
 
-export function priceFor(tier: PackageTier, currency: Currency): number {
-  return PACKAGES[tier].prices[currency];
+export function priceFor(tier: PackageTier, currency: Currency, hasPaidWorld = false): number {
+  return worldPurchasePrice(PACKAGES[tier].worldCount, currency, hasPaidWorld);
 }
 
 export function boardsFor(tier: PackageTier): number {
@@ -89,39 +103,33 @@ export function purchasableTiers(activeWorldCount: number): PackageDefinition[] 
 export interface UpgradeOffer {
   /** How many worlds this offer adds. */
   addsWorlds: number;
-  /** What the parent will own afterwards. */
+  /** What this child will own afterwards. */
   totalWorlds: number;
+  /** Package of new worlds being bought, not a lifetime tier. */
   tier: PackageTier;
   price: number;
 }
 
 /**
- * The price of adding worlds is the difference between what you own and what
- * you would own. That is not a discount policy, it is the whole rule: buying
- * one world and upgrading twice costs exactly the same as buying all three, so
- * nobody is ever punished for starting small.
+ * Every additional world has the same price, including after a price change
+ * or a long gap. Previous amounts paid are never subtracted from a new order.
  */
 export function upgradePrice(ownedWorlds: number, targetWorlds: number, currency: Currency): number | null {
-  const from = tierForWorldCount(ownedWorlds);
-  const to = tierForWorldCount(targetWorlds);
-  if (!to || targetWorlds <= ownedWorlds) return null;
-  const base = from ? priceFor(from, currency) : 0;
-  return priceFor(to, currency) - base;
+  if (!Number.isSafeInteger(ownedWorlds) || ownedWorlds < 0 || !Number.isSafeInteger(targetWorlds) || targetWorlds <= ownedWorlds) return null;
+  return worldPurchasePrice(targetWorlds - ownedWorlds, currency, ownedWorlds > 0);
 }
 
 /**
- * What to offer a parent who already owns some worlds: one more, or all the
- * rest. Nothing at all once they own everything that exists.
+ * One, two or three more choices from the available catalog. No lifetime
+ * all-world bundle, including when the catalog grows beyond three worlds.
  */
 export function upgradeOffers(ownedWorlds: number, availableWorlds: number, currency: Currency): UpgradeOffer[] {
   const offers: UpgradeOffer[] = [];
-  const most = Math.min(availableWorlds, PACKAGES.ALL_WORLDS.worldCount);
-  for (const totalWorlds of [ownedWorlds + 1, most]) {
-    if (totalWorlds <= ownedWorlds || totalWorlds > most) continue;
-    if (offers.some((o) => o.totalWorlds === totalWorlds)) continue;
-    const tier = tierForWorldCount(totalWorlds);
+  for (const tier of PACKAGE_ORDER) {
+    const totalWorlds = ownedWorlds + PACKAGES[tier].worldCount;
+    if (totalWorlds > availableWorlds) continue;
     const price = upgradePrice(ownedWorlds, totalWorlds, currency);
-    if (!tier || price === null) continue;
+    if (price === null) continue;
     offers.push({ addsWorlds: totalWorlds - ownedWorlds, totalWorlds, tier, price });
   }
   return offers;

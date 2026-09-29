@@ -13,6 +13,7 @@ import { draftBelongsTo, loadDraft } from "./create-flow.service";
 import { statusOf, transitionGame } from "./game-status";
 import { WEBHOOK, audit, type Actor } from "./audit.service";
 import { bindCheckoutFamilyChild, reconcilePaidFamilyChildren } from "./family.service";
+import { childHasPaidWorld } from "./child-pricing.service";
 
 /**
  * Checkout + payment webhook. The webhook is the single source of truth for
@@ -48,6 +49,7 @@ export async function startCheckout(c: Container, input: { gameId: string; email
   // All three mutations share a transaction, and the draft proof is rechecked
   // under the Game -> Child -> Asset fence before any payment call.
   const locale: Locale = game.locale === "he" ? "he" : "en";
+  let continuation = false;
   try {
     await c.db.$transaction(async tx => {
       const current = await tx.game.findUnique({ where: { id: game.id } });
@@ -77,6 +79,7 @@ export async function startCheckout(c: Container, input: { gameId: string; email
         type: "ORIGINAL_PHOTO", visibility: "PRIVATE", status: "READY", deletedAt: null }, data: { ownerId: user.id } });
       requireCheckoutDraft(childChanged.count === 1 && photoChanged.count === 1);
       if (current.familyChildId) requireCheckoutDraft(await bindCheckoutFamilyChild(tx, { gameId: game.id, familyChildId: current.familyChildId, ownerId: user.id, displayName: child.displayName }));
+      continuation = await childHasPaidWorld(tx, { ownerId: user.id, familyChildId: current.familyChildId, excludeGameId: game.id });
       await tx.user.update({ where: { id: user.id }, data: { locale } });
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 15_000 });
   } catch (error) {
@@ -86,7 +89,7 @@ export async function startCheckout(c: Container, input: { gameId: string; email
 
   const pkg = PACKAGES[game.packageTier];
   const currency = input.currency;
-  const amount = priceFor(pkg.tier, currency); // minor units of `currency`
+  const amount = priceFor(pkg.tier, currency, continuation); // server-verified child's price
   const existing = await c.db.order.findFirst({ where: { gameId: game.id, paymentStatus: "PENDING" }, orderBy: { createdAt: "desc" } });
   let order = existing;
   if (!order || order.amountAgorot !== amount || order.currency !== currency || order.userId !== user.id) {

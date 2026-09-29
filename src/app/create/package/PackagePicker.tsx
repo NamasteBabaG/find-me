@@ -16,7 +16,7 @@ interface Option {
   popular: boolean;
 }
 
-export function PackagePicker({ options, defaultTier, availableWorldCount }: { options: Option[]; defaultTier: string; availableWorldCount: number }) {
+export function PackagePicker({ options, defaultTier, availableWorldCount, continuationNote }: { options: Option[]; defaultTier: string; availableWorldCount: number; continuationNote?: string }) {
   const { t, tf } = useI18n();
   const p = t.create.package;
   const [tier, setTier] = useState(defaultTier);
@@ -43,6 +43,8 @@ export function PackagePicker({ options, defaultTier, availableWorldCount }: { o
           );
         })}
       </div>
+      <p className="fm-center">{t.home.pricing.passport}</p>
+      {continuationNote ? <p className="fm-hint fm-center">{continuationNote}</p> : null}
       {state && !state.ok ? <p className="fm-error fm-center">{errorText(t, state)}</p> : null}
       <div className="create__actions create__actions--sticky">
         <LinkButton href="/create/photo" variant="ghost">
