@@ -8,13 +8,36 @@ import { localPatchPrompt, localPatchRepairChecks, pinnedLocalPatchPromptVersion
 import { PASSING_ANSWER } from "./local-patch-fixtures";
 import sharp from "sharp";
 import { prepareNeighborComparisons } from "../local-patch-integration-evidence";
-import { localPatchBoardJudgeImages, localPatchBoardJudgeImageLabels } from "../local-patch-judge";
+import { localPatchBoardJudgeImages, localPatchBoardJudgeImageLabels, parseLocalPatchBoardVerdicts } from "../local-patch-judge";
+import { integrationDiagnosisPrompt } from "../local-patch-integration-diagnosis";
 import { prepareLocalPatchIdentityReferences } from "../local-patch-identity-reference";
 import { localPatchImagePolicyForVersion } from "../../../infra/generation/openai-local-patch";
 
 const good = { ...PASSING_ANSWER, faceLikeness: "pass", faceReadable: "pass", severeSeam: "pass", ageAppropriate: "pass", lightingMatch: "pass", neighborsIntact: "pass",
   integrationEvidence: { style: "Same broad painted face planes as the child at the table.", lighting: "Shared dim stall lighting without a bright face or rim.", neighbors: "Foreground woman's single head joins her unchanged neck and shoulders." } };
 describe("mandatory scene integration", () => {
+  it("requires explicit scoped authority and exact per-hide evidence for a subset review", () => {
+    const hideId = "tokyo-v12-2", hide = { hideId, beforePng: Buffer.from("before"), afterPng: Buffer.from("after"), expectation: { ageYears: 8 } };
+    const request = { boardId: "tokyo", contentVersion: 12, hides: [hide] };
+    expect(() => localPatchBoardJudgePrompt(request)).toThrow("three distinct");
+    const prompt = localPatchBoardJudgePrompt({ ...request, reviewScope: "unapproved-only/v1" });
+    expect(prompt).toContain("Exactly 1 entries"); expect(prompt).toContain("FOUR overlapping native");
+    expect(prompt).toContain("ALL required checks");
+    const row = { hideId, evidenceIds: [`${hideId}:before`, `${hideId}:after`], verdict: good }, raw = JSON.stringify({ hides: [row] });
+    expect(parseLocalPatchBoardVerdicts(raw, [hideId], 12)[hideId]).toBeNull();
+    expect(parseLocalPatchBoardVerdicts(raw, [hideId], 11, "unapproved-only/v1")[hideId]).toBeNull();
+    expect(parseLocalPatchBoardVerdicts(raw, [hideId], 12, "unapproved-only/v1")[hideId]).not.toBeNull();
+    for (const bad of [{ hides: [row, row] }, { hides: [{ ...row, evidenceIds: ["other:before", "other:after"] }] }, { hides: [] }])
+      expect(parseLocalPatchBoardVerdicts(JSON.stringify(bad), [hideId], 12, "unapproved-only/v1")[hideId]).toBeNull();
+  });
+  it("explains sibling exclusion geometry only on new pinned diagnostic questions", () => {
+    const input = { ageYears: 8, pose: "standing", support: "ground", envelope: {}, sourceKeys: ["paid-raw"], feedback: {}, history: [] };
+    expect(integrationDiagnosisPrompt(input)).not.toContain("Forbidden sibling");
+    const rectangles = [{ left: 490, top: 0, width: 22, height: 748 }];
+    const prompt = integrationDiagnosisPrompt({ ...input, excludedRegions: rectangles });
+    expect(prompt).toContain(JSON.stringify(rectangles)); expect(prompt).toContain("ZERO area of overlap");
+    expect(prompt).toContain("18px guard");
+  });
   it("binds every native neighbour pair to the review and retains full identity detail for its judge", async () => {
     const before = await sharp({ create: { width: 512, height: 768, channels: 3, background: "#112233" } }).png().toBuffer();
     const after = await sharp({ create: { width: 512, height: 768, channels: 3, background: "#334455" } }).png().toBuffer();

@@ -1,4 +1,5 @@
 import { isRefreshedCollectionVersion } from "../../domain/scene/local-patch-versions";
+import { dailyGenerationSpend } from "./daily-generation-spend";
 import { newId } from "@/lib/ids";
 import { env, flag, spendGuard } from "@/lib/env";
 import { spendAllowedFor, underDailyCeiling } from "@/domain/spend-policy";
@@ -573,14 +574,7 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
 
 /** Every cent the painter and the judge put on the account since midnight UTC. */
 async function spentTodayCents(c: Container): Promise<number> {
-  const start = new Date();
-  start.setUTCHours(0, 0, 0, 0);
-  const [assets, spots] = await Promise.all([
-    c.db.asset.aggregate({ _sum: { costCents: true }, where: { createdAt: { gte: start } } }),
-    c.db.targetVariantAsset.aggregate({ _sum: { costCents: true }, where: { updatedAt: { gte: start } } }),
-  ]);
-  // Assets carry the render cost; the spot rows carry judging and rejected rolls. Counted both, the number errs high, which is the right way for a ceiling to err.
-  return (assets._sum.costCents ?? 0) + (spots._sum.costCents ?? 0);
+  return (await dailyGenerationSpend(c.db)).totalCents;
 }
 
 /**

@@ -19,6 +19,7 @@ import type { LocalPatchRecoveryDirective } from "../../domain/scene/local-patch
 import { adaptiveRecoveryPrompt, type AdaptiveRecoveryPlan } from "./local-patch-adaptive-recovery";
 import { selfRepairDecisionSchema, selfRepairRenderInstructions, type SelfRepairDecision } from "../../domain/scene/local-patch-self-repair";
 import { retainedRestylePrompt } from "./local-patch-restyle";
+import { fixedSourceFailureReceiptSchema, type FixedSourceFailureReceipt } from "../../infra/generation/fixed-source-diagnostics";
 
 /**
  * One paid attempt at one hide, out of the scripts and into the product.
@@ -255,6 +256,7 @@ async function viewAround(png: Buffer, crop: { left: number; top: number; width:
 export const RETAINED_RENDER_VERSION = "local-patch-render/v1";
 
 type RetainedRender = {
+  readonly failureReceipt?: FixedSourceFailureReceipt;
   readonly version: typeof RETAINED_RENDER_VERSION;
   /** Base64 of what came back, whether it may be drawn or not. */
   readonly bytesBase64: string | null;
@@ -395,6 +397,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
         version: RETAINED_RENDER_VERSION,
         bytesBase64: kept ? kept.toString("base64") : null,
         rejected: result.rejected,
+        ...(result.failureReceipt ? { failureReceipt: fixedSourceFailureReceiptSchema.parse(result.failureReceipt) } : {}),
       };
       const bytes = Buffer.from(JSON.stringify(keep));
       // A rejected picture is still a charge. Settling the bill the provider

@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { dailyGenerationSpend } from "./daily-generation-spend";
 import { z } from "zod";
 import sharp from "sharp";
 import type { Container } from "../container";
@@ -11,7 +12,7 @@ import { BudgetedBoardPoseObserver, prepareBoardPoseObservation, type BoardPoseO
 import { PrismaWorldBudgetStore } from "../../infra/db/prisma-world-budget-store";
 import { CasWorldBudgetRepository } from "../../infra/db/world-budget-repository";
 import { PrismaBoardConditionedCheckpointStore } from "../../infra/db/board-conditioned-checkpoints";
-import { WorldBudget, auditWorldBudget, WORLD_BUDGET_CAP_MICRO_USD } from "./world-budget";
+import { WorldBudget, WORLD_BUDGET_CAP_MICRO_USD } from "./world-budget";
 import { prepareBoardConditionedSource, boardConditioningHash, type BoardConditioningInput } from "./board-conditioned-source";
 import { generateBoardConditionedWorld, type BoardConditionedCheckpointStore } from "./board-conditioned-generation";
 import { sha256Bytes } from "./fixed-sprite";
@@ -322,16 +323,7 @@ async function spendCheck(c: Container, ownerId: string) {
   // This adapter is real even if the legacy avatar container is configured as mock.
   demand(owner && spendAllowedFor({ ...spendGuard(), realGeneration: true }, owner.email), "permission", "Owner is not an authorized QA spender");
   if (e.GENERATION_DAILY_CENTS > 0) {
-    const start = new Date(); start.setUTCHours(0, 0, 0, 0);
-    const [assets, spots, ledgers] = await Promise.all([
-      c.db.asset.aggregate({ _sum: { costCents: true }, where: { createdAt: { gte: start } } }),
-      c.db.targetVariantAsset.aggregate({ _sum: { costCents: true }, where: { updatedAt: { gte: start } } }),
-      c.db.worldBudgetLedger.findMany({ where: { updatedAt: { gte: start } } }),
-    ]);
-    // Whole updated ledgers are a deliberately conservative daily upper count.
-    // Exact request-level world accounting remains authoritative for its $5 cap.
-    const fixedCents = ledgers.reduce((sum, l) => sum + auditWorldBudget(JSON.parse(l.snapshotJson)).committedMicroUsd / 10_000, 0);
-    demand(underDailyCeiling((assets._sum.costCents ?? 0) + (spots._sum.costCents ?? 0) + fixedCents, e.GENERATION_DAILY_CENTS), "spend_disabled", "Daily spending ceiling reached");
+    demand(underDailyCeiling((await dailyGenerationSpend(c.db)).totalCents, e.GENERATION_DAILY_CENTS), "spend_disabled", "Daily spending ceiling reached");
   }
 }
 export interface BoardConditionedQaSliceOptions { sourcePolicy: FixedSourcePolicy; observerPolicy: BoardPoseObserverPolicy; maxBoards?: number; fetch?: typeof fetch }

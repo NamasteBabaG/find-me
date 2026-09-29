@@ -5,7 +5,7 @@ import sharp from "sharp";
 import { z } from "zod";
 import type { Container } from "../container";
 import { cropOf, maskForHide, type LocalPatchBoard, type LocalPatchHide } from "../../domain/scene/local-patch-hides";
-import { SELF_REPAIR_VERSION, SELF_REPAIR_COMPOSITION_VERSION, selfRepairDecisionSchema, selfRepairRecipe, type SelfRepairDecision } from "../../domain/scene/local-patch-self-repair";
+import { SELF_REPAIR_VERSION, SELF_REPAIR_COMPOSITION_VERSION, selfRepairDecisionSchema, selfRepairRecipe, selfRepairExcludedRegions, type SelfRepairDecision } from "../../domain/scene/local-patch-self-repair";
 import { CURRENT_JUDGE_PRICING_VERSION, judgeCharge } from "../../infra/generation/judge";
 import { sceneBySlug } from "../scene-catalog.service";
 import { assertGenerationSpendAllowed, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
@@ -35,6 +35,9 @@ const stateSchema = z.object({ version: z.literal(SELF_REPAIR_VERSION), cycle: z
   phase: z.enum(["diagnosing", "applying", "awaiting-review", "rejected"]), contextSha256: z.string(),
   decision: selfRepairDecisionSchema.nullable(), history: z.array(historySchema), feedback: z.string().max(1200),
   sourceKeys: z.array(z.string()), imageCostCents: z.number().nonnegative(), diagnosisCostCents: z.number().nonnegative(),
+  // Absent on historical paid questions; pinned before dispatch on new cycles.
+  excludedRegions: z.array(z.object({ left: z.number().int().nonnegative(), top: z.number().int().nonnegative(),
+    width: z.number().int().positive(), height: z.number().int().positive() }).strict()).optional(),
 }).strict();
 type State = z.infer<typeof stateSchema>;
 export type SelfRepairWire = { prompt: string; images: readonly Buffer[]; imageLabels: readonly string[];
@@ -94,6 +97,7 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
     state = { version: SELF_REPAIR_VERSION, cycle: (state?.cycle ?? 0) + 1, phase: "diagnosing", contextSha256,
       decision: null, history, feedback: (state?.phase === "rejected" ? state.feedback : row.lastError ?? "Two completed attempts did not produce a publishable appearance").slice(0, 1200),
       sourceKeys: state?.sourceKeys ?? Array.from({ length: row.attempts }, (_, i) => `${hide.id}:${hide.pose}:render:${i + 1}`),
+      ...(scene.sceneVersion === 12 ? { excludedRegions: selfRepairExcludedRegions(crop, board.hides.filter(h => h.id !== hide.id).map(cropOf)) } : {}),
       imageCostCents: 0, diagnosisCostCents: 0 };
   }
   const active = state;
@@ -132,6 +136,7 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
   const raws = new Map<string, Buffer>();
   for (const key of active.sourceKeys) {
     const bill = await budget.readRequest(worldId, key), retained = await store.get(worldId, key);
+    if (bill?.state === "unknown" && (await budget.readContinuationApproval(worldId, key))?.version === "world-automatic-image-recovery/v1") continue;
     if (!bill || !retained) continue;
     demand((bill.state === "settled" || bill.state === "linked") && bill.scope === "image" && !bill.conflicts.length && retained.evidence
       && retained.operationFingerprint === bill.operationFingerprint && sameChargeEvidence(retained.evidence, bill.evidence), "Paid raw receipt could not be authenticated");
@@ -156,6 +161,7 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
     }
     const prompt = scene.sceneVersion === 12 ? integrationDiagnosisPrompt({ ageYears: child.ageYears, pose: hide.pose,
       support: hide.placement?.support ?? board.ground, envelope: maskForHide(hide), sourceKeys: selected,
+      excludedRegions: active.excludedRegions,
       feedback: { feedback: active.feedback, verdict: previous.verdict ?? null, seam: previous.seam ?? null }, history: active.history })
       : `Diagnose a personalized hidden-child game after repeated failures. Return a repair PLAN, never an approval. All rectangles use ORIGINAL crop coordinates, 512x768. `
       + `Child age=${child.ageYears}; pose=${hide.pose}; support=${board.ground}. Original editable envelope=${JSON.stringify(maskForHide(hide))}. `

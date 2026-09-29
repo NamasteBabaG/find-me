@@ -57,16 +57,27 @@ export interface WorldUnknownContinuationApproval extends WorldReservationInput 
   authorizedAt: string;
 }
 export type WorldUnknownContinuationInput = Omit<WorldUnknownContinuationApproval, "version" | "worldId">;
+/** Software policy, not an operator approval or a provider receipt. The unknown
+ * reservation remains counted in full; only a different request may proceed. */
+export interface WorldAutomaticImageRecovery extends WorldReservationInput {
+  version: "world-automatic-image-recovery/v1";
+  worldId: string; approvalId: string; unknownReasons: readonly string[];
+  policyId: "local-patch-image-interruption/v1";
+  authorizationSha256: string; authorizedAt: string;
+}
+export type WorldContinuationRecord = WorldUnknownContinuationApproval | WorldAutomaticImageRecovery;
+export type WorldAutomaticImageRecoveryInput = Omit<WorldAutomaticImageRecovery, "version" | "worldId">;
 export interface WorldBudgetOptions {
   /** Trusted operator entrypoint supplies this verifier after authenticating the
    * actor/grant. A JSON caller's self-asserted role is not authorization. */
   authorizeUnknownContinuation?: (approval: Readonly<WorldUnknownContinuationApproval>) => Promise<boolean>;
+  authorizeAutomaticImageRecovery?: (recovery: Readonly<WorldAutomaticImageRecovery>) => Promise<boolean>;
 }
 
 export interface WorldBudgetSnapshot {
   worldId: string;
   requests: readonly WorldBudgetRequest[];
-  unknownContinuationApprovals?: readonly WorldUnknownContinuationApproval[];
+  unknownContinuationApprovals?: readonly WorldContinuationRecord[];
 }
 
 export interface WorldBudgetTransaction {
@@ -75,7 +86,7 @@ export interface WorldBudgetTransaction {
   createRequest(request: WorldBudgetRequest): Promise<void>;
   updateRequest(requestKey: string, request: WorldBudgetRequest): Promise<void>;
   /** Optional for historical/read-only adapters; missing support fails closed. */
-  appendUnknownContinuationApproval?(approval: WorldUnknownContinuationApproval): Promise<void>;
+  appendUnknownContinuationApproval?(approval: WorldContinuationRecord): Promise<void>;
 }
 
 export interface WorldBudgetRepository {
@@ -217,12 +228,19 @@ function snapshotWith(snapshot: WorldBudgetSnapshot, request: WorldBudgetRequest
   return { ...snapshot, requests: [...snapshot.requests.filter(item => item.requestKey !== request.requestKey), request] };
 }
 
-export function validateUnknownContinuationApproval(value: WorldUnknownContinuationApproval): void {
+export function validateUnknownContinuationApproval(value: WorldContinuationRecord): void {
   if (!value || typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) fail("invalid_input", "A plain continuation approval is required");
-  const expected = ["version", "worldId", "approvalId", "requestKey", "scope", "operationFingerprint", "reserveMicroUsd", "unknownReasons", "operatorId", "authorizationSha256", "authorizedAt"].sort();
+  const automatic = value.version === "world-automatic-image-recovery/v1";
+  const expected = ["version", "worldId", "approvalId", "requestKey", "scope", "operationFingerprint", "reserveMicroUsd", "unknownReasons", automatic ? "policyId" : "operatorId", "authorizationSha256", "authorizedAt"].sort();
   if (JSON.stringify(Object.keys(value).sort()) !== JSON.stringify(expected) || Object.values(Object.getOwnPropertyDescriptors(value)).some(p => !Object.hasOwn(p, "value"))) fail("invalid_input", "Continuation approval has unexpected fields");
-  if (value.version !== "world-unknown-continuation/v1") fail("invalid_input", "Unknown continuation approval version");
-  for (const key of ["worldId", "approvalId", "requestKey", "operationFingerprint", "operatorId"] as const) {
+  if (!automatic && value.version !== "world-unknown-continuation/v1") fail("invalid_input", "Unknown continuation approval version");
+  if (automatic && (value.policyId !== "local-patch-image-interruption/v1" || value.scope !== "image"
+    || value.reserveMicroUsd < 120_000 || value.reserveMicroUsd > 150_000
+    || !/^[a-z]+-v12-[123]:(standing|kneeling|seated|peeking):render:[12]$/.test(value.requestKey)))
+    fail("invalid_input", "Automatic recovery is limited to a bounded collection image interruption");
+  if (!automatic && (typeof value.operatorId !== "string" || !/^[A-Za-z0-9_:.@/-]{1,500}$/.test(value.operatorId) || value.operatorId.includes("://") || /^sk-/i.test(value.operatorId)))
+    fail("invalid_input", "Continuation approval requires a bounded operator identifier");
+  for (const key of ["worldId", "approvalId", "requestKey", "operationFingerprint"] as const) {
     const text = value[key];
     if (typeof text !== "string" || !/^[A-Za-z0-9_:.@/-]{1,500}$/.test(text) || text.includes("://") || /^sk-/i.test(text)) fail("invalid_input", "Continuation approval requires bounded nonsecret identifiers");
   }
@@ -240,8 +258,14 @@ export function validateWorldUnknownContinuationApprovals(snapshot: WorldBudgetS
   if (snapshot.unknownContinuationApprovals === undefined) return;
   if (!Array.isArray(snapshot.unknownContinuationApprovals) || snapshot.unknownContinuationApprovals.length > 128) fail("invalid_snapshot", "Invalid continuation approval history");
   const ids = new Set<string>();
+  const automaticHides = new Set<string>();
   for (const approval of snapshot.unknownContinuationApprovals) {
     validateUnknownContinuationApproval(approval);
+    if (approval.version === "world-automatic-image-recovery/v1") {
+      const hide = approval.requestKey.split(":")[0]!;
+      if (automaticHides.has(hide) || automaticHides.size >= 2) fail("invalid_snapshot", "At most two distinct interrupted hides may recover automatically per world");
+      automaticHides.add(hide);
+    }
     const request = snapshot.requests.find(r => r.requestKey === approval.requestKey);
     if (ids.has(approval.approvalId) || approval.worldId !== snapshot.worldId || !request || request.origin !== "reserved"
       || request.scope !== approval.scope || request.operationFingerprint !== approval.operationFingerprint || request.reserveMicroUsd !== approval.reserveMicroUsd
@@ -250,7 +274,7 @@ export function validateWorldUnknownContinuationApprovals(snapshot: WorldBudgetS
   }
 }
 /** Pure exact matching; never converts the request into a known charge. */
-export function getMatchingUnknownContinuationApproval(snapshot: WorldBudgetSnapshot, requestKey: string): WorldUnknownContinuationApproval | null {
+export function getMatchingUnknownContinuationApproval(snapshot: WorldBudgetSnapshot, requestKey: string): WorldContinuationRecord | null {
   validateWorldUnknownContinuationApprovals(snapshot);
   const request = snapshot.requests.find(r => r.requestKey === requestKey);
   if (!request || request.state !== "unknown" || request.conflicts.length) return null;
@@ -331,9 +355,34 @@ export class WorldBudget {
     return this.transact(worldId, async tx => structuredClone(tx.snapshot.requests.find(request => request.requestKey === requestKey) ?? null));
   }
 
-  async readContinuationApproval(worldId: string, requestKey: string): Promise<WorldUnknownContinuationApproval | null> {
+  async readContinuationApproval(worldId: string, requestKey: string): Promise<WorldContinuationRecord | null> {
     nonempty(requestKey, "requestKey");
     return this.transact(worldId, async tx => getMatchingUnknownContinuationApproval(tx.snapshot, requestKey));
+  }
+
+  async authorizeAutomaticImageRecovery(worldId: string, input: WorldAutomaticImageRecoveryInput) {
+    const captured: WorldAutomaticImageRecovery = structuredClone({ ...input, version: "world-automatic-image-recovery/v1", worldId });
+    validateUnknownContinuationApproval(captured);
+    if (!this.options.authorizeAutomaticImageRecovery || await this.options.authorizeAutomaticImageRecovery(structuredClone(captured)) !== true)
+      fail("invalid_input", "Verified engine recovery policy is required");
+    return this.transact(worldId, async tx => {
+      const prior = tx.snapshot.unknownContinuationApprovals?.find(a => a.approvalId === captured.approvalId);
+      if (prior) {
+        if (json(prior as unknown as BudgetJson) !== json(captured as unknown as BudgetJson)) fail("key_conflict", "Automatic recovery evidence changed");
+        return { acquired: false, audit: auditWorldBudget(tx.snapshot) };
+      }
+      const request = tx.snapshot.requests.find(r => r.requestKey === captured.requestKey);
+      if (!request || request.state !== "unknown" || request.origin !== "reserved" || request.conflicts.length
+        || request.scope !== captured.scope || request.operationFingerprint !== captured.operationFingerprint || request.reserveMicroUsd !== captured.reserveMicroUsd
+        || json(request.unknownReasons) !== json(captured.unknownReasons)) fail("key_conflict", "Recovery must bind the exact interrupted image reservation");
+      const before = auditWorldBudget(tx.snapshot);
+      if (before.overCapMicroUsd || before.overrunRequestKeys.length || before.conflictRequestKeys.length) fail("world_held", "A billing conflict cannot be recovered automatically");
+      if (!tx.appendUnknownContinuationApproval) fail("invalid_input", "Durable continuation storage is required");
+      const next = { ...tx.snapshot, unknownContinuationApprovals: [...(tx.snapshot.unknownContinuationApprovals ?? []), captured] };
+      const audit = auditWorldBudget(next);
+      await tx.appendUnknownContinuationApproval!(structuredClone(captured));
+      return { acquired: true, audit };
+    });
   }
 
   async authorizeUnknownContinuation(worldId: string, input: WorldUnknownContinuationInput): Promise<{ acquired: boolean; approval: WorldUnknownContinuationApproval; audit: WorldBudgetAudit }> {
@@ -344,6 +393,7 @@ export class WorldBudget {
     return this.transact(worldId, async tx => {
       const previous = tx.snapshot.unknownContinuationApprovals?.find(a => a.approvalId === captured.approvalId);
       if (previous) {
+        if (previous.version !== "world-unknown-continuation/v1") return fail("key_conflict", "Continuation authority type changed");
         if (json(previous as unknown as BudgetJson) !== json(captured as unknown as BudgetJson)) fail("key_conflict", "Immutable continuation approval ID already pins different evidence");
         return { acquired: false, approval: structuredClone(previous), audit: auditWorldBudget(tx.snapshot) };
       }

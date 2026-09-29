@@ -1,4 +1,5 @@
 import { isRefreshedCollectionVersion } from "../../domain/scene/local-patch-versions";
+import { dailyGenerationSpend } from "./daily-generation-spend";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import sharp from "sharp";
@@ -19,7 +20,7 @@ import { boardConditioningHash, prepareBoardConditionedSource } from "./board-co
 import { generateBoardConditionedAppearances, type BoardConditionedCheckpointStore } from "./board-conditioned-generation";
 import { prepareBoardConditionedPlayerBoard, bindBoardConditionedPlayerGame, type BoardConditionedPrivateAsset } from "./board-conditioned-player";
 import { boardWizardBudget, BOARD_WIZARD_CAP_MICRO_USD } from "./board-wizard-budget";
-import { auditWorldBudget, type BudgetJson } from "./world-budget";
+import { type BudgetJson } from "./world-budget";
 import { sha256Bytes } from "./fixed-sprite";
 import type { Actor } from "../audit.service";
 import { boardWizardVisualKeys, judgeBoardWizardAppearance } from "./board-wizard-visual-judge";
@@ -115,13 +116,7 @@ async function spendCheck(c: Container, ownerId: string, engine: "board-wizard" 
   const user = await c.db.user.findUnique({ where: { id: ownerId }, select: { email: true } });
   demand(user && spendAllowedFor({ ...spendGuard(), realGeneration: true }, user.email), "Owner is not a permitted QA tester");
   if (env().GENERATION_DAILY_CENTS > 0) {
-    const date = new Date(); date.setUTCHours(0, 0, 0, 0);
-    const [assets, spots, ledgers] = await Promise.all([
-      c.db.asset.aggregate({ where: { createdAt: { gte: date } }, _sum: { costCents: true } }),
-      c.db.targetVariantAsset.aggregate({ where: { updatedAt: { gte: date } }, _sum: { costCents: true } }),
-      c.db.worldBudgetLedger.findMany({ where: { updatedAt: { gte: date } } }),
-    ]);
-    const cents = (assets._sum.costCents ?? 0) + (spots._sum.costCents ?? 0) + ledgers.reduce((sum, l) => sum + auditWorldBudget(JSON.parse(l.snapshotJson)).committedMicroUsd / 10_000, 0);
+    const { totalCents: cents } = await dailyGenerationSpend(c.db);
     if (!underDailyCeiling(cents, env().GENERATION_DAILY_CENTS)) throw new GenerationPaused("daily-ceiling");
   }
 }

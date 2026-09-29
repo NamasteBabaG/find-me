@@ -12,6 +12,7 @@ import { signedAssetUrl } from "../asset.service";
 import { sceneBySlug } from "../scene-catalog.service";
 import { worldForBoard } from "../world-catalog.service";
 import { boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
+import { localPatchBudgetReadyForPublication } from "./local-patch-interruption-recovery";
 import { LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT } from "./local-patch-hide";
 import { JUDGE_CHECKS, localPatchVerdictSchema } from "./local-patch-judge";
 import { IDENTITY_GATE_ACTION, identityReceiptReadyForPublication } from "./board-wizard-identity-gate";
@@ -141,8 +142,10 @@ export async function finishLocalPatchGame(c: Container, gameId: string, fence: 
     const contentVersions = await tx.gameScene.findMany({ where: { gameId }, select: { sceneVersion: true } });
     const contentVersion = contentVersions[0]?.sceneVersion;
     demand(contentVersions.length === 9 && contentVersions.every(scene => scene.sceneVersion === contentVersion), "publication needs one pinned content version");
-    const audit = await boardWizardBudgetOf({ ...c, db: tx as unknown as Container["db"] }).audit(boardWizardWorldId(gameId));
-    demand(!audit.held && audit.reservedMicroUsd === 0, "unresolved spending must be reconciled before publication");
+    const budget = boardWizardBudgetOf({ ...c, db: tx as unknown as Container["db"] }), worldId = boardWizardWorldId(gameId);
+    demand(await localPatchBudgetReadyForPublication(budget, worldId, contentVersion),
+      "unresolved spending must be reconciled before publication");
+    const audit = await budget.audit(worldId);
     // QA uses durable FileBlob storage. Honor the parent's original-photo
     // privacy choice in the same commit that first exposes a playable config.
     const child = game.childProfile;

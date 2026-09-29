@@ -8,6 +8,15 @@ export const selfRepairEnabled = (contentVersion: number) => isCollectionVersion
 const rect = z.object({ left: z.number().int().nonnegative(), top: z.number().int().nonnegative(),
   width: z.number().int().positive(), height: z.number().int().positive() }).strict();
 export type RecoveryRect = z.infer<typeof rect>;
+/** Occupied sibling crop regions in the current crop's coordinate system. */
+export function selfRepairExcludedRegions(crop: RecoveryRect, siblings: readonly RecoveryRect[]): RecoveryRect[] {
+  return siblings.flatMap(other => {
+    const left = Math.max(crop.left, other.left), top = Math.max(crop.top, other.top);
+    const right = Math.min(crop.left + crop.width, other.left + other.width);
+    const bottom = Math.min(crop.top + crop.height, other.top + other.height);
+    return right > left && bottom > top ? [{ left: left - crop.left, top: top - crop.top, width: right - left, height: bottom - top }] : [];
+  });
+}
 const contains = (outer: RecoveryRect, inner: RecoveryRect, guard = 0) => inner.left - guard >= outer.left
   && inner.top - guard >= outer.top && inner.left + inner.width + guard <= outer.left + outer.width
   && inner.top + inner.height + guard <= outer.top + outer.height;

@@ -2,7 +2,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import {
   auditWorldBudget, WorldBudgetError, WORLD_BUDGET_SCOPES, validateUnknownContinuationApproval, validateWorldUnknownContinuationApprovals,
-  type BudgetJson, type WorldBudgetSnapshot, type WorldUnknownContinuationApproval,
+  type BudgetJson, type WorldBudgetSnapshot, type WorldContinuationRecord,
 } from "../../services/generation/world-budget";
 import type { AtomicWorldBudgetStore, VersionedWorldBudgetSnapshot } from "./world-budget-repository";
 
@@ -40,8 +40,8 @@ const requestSchema = z.discriminatedUnion("state", [
   z.object({ ...base, state: z.literal("settled"), evidence: evidenceSchema }).strict(),
   z.object({ ...base, state: z.literal("linked"), evidence: evidenceSchema, canonicalRequestKey: nonempty }).strict(),
 ]);
-const continuationSchema = z.custom<WorldUnknownContinuationApproval>(value => {
-  try { validateUnknownContinuationApproval(value as WorldUnknownContinuationApproval); return true; } catch { return false; }
+const continuationSchema = z.custom<WorldContinuationRecord>(value => {
+  try { validateUnknownContinuationApproval(value as WorldContinuationRecord); return true; } catch { return false; }
 });
 const snapshotSchema = z.object({ worldId: nonempty, requests: z.array(requestSchema), unknownContinuationApprovals: z.array(continuationSchema).max(128).optional() }).strict();
 const revisionSchema = z.number().int().min(0).max(WORLD_BUDGET_LEDGER_MAX_REVISION);

@@ -152,7 +152,7 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
   // Historical v7 reviews its five-patch composition. V8 plays serially: the
   // original board provides context, and each AFTER is its own base+one patch.
   const composed = strict ? before : await sharp(before).composite(entries.map(e => ({ input: e.bytes, left: e.crop.left, top: e.crop.top }))).png().toBuffer();
-  const request: LocalPatchBoardJudgeRequest = { boardId: board.board, ...(strict ? { contentVersion: scene.sceneVersion } : {}),
+  let request: LocalPatchBoardJudgeRequest = { boardId: board.board, ...(strict ? { contentVersion: scene.sceneVersion } : {}),
     ...(extraPlan ? { assessmentMode: "visible-body-v1" as const } : {}),
     boardPng: await sharp(composed).resize(1536, 1024, { fit: "inside" }).png().toBuffer(),
     identityPng: references.judgeIdentityPng,
@@ -195,8 +195,9 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
         expectation: { ageYears: child.ageYears, support: `${e.hide.pose} on ${board.ground}` } };
     })),
   };
-  const prompt = localPatchBoardJudgePrompt(request) + (recovering ? " AUTONOMOUS REPAIR REVIEW: inspect the actual repaired output independently of its diagnosis. A generic child is insufficient: require the same canonical facial proportions, eyes, jaw and hair silhouette at native scale. Inspect the complete head, all visible limbs, replaced bystanders and the entire new join. Reject clipping, orphan limbs, severe seams, wrong identity, age or scale. The diagnosis is not an approval." : "");
-  const fingerprint = hash({ version: reviewVersion, sceneId: scene.id, contentVersion: scene.sceneVersion,
+  const question = (request: LocalPatchBoardJudgeRequest) => {
+    const prompt = localPatchBoardJudgePrompt(request) + (recovering ? " AUTONOMOUS REPAIR REVIEW: inspect the actual repaired output independently of its diagnosis. A generic child is insufficient: require the same canonical facial proportions, eyes, jaw and hair silhouette at native scale. Inspect the complete head, all visible limbs, replaced bystanders and the entire new join. Reject clipping, orphan limbs, severe seams, wrong identity, age or scale. The diagnosis is not an approval." : "");
+    const fingerprint = hash({ version: reviewVersion, sceneId: scene.id, contentVersion: scene.sceneVersion,
     settings, prompt,
     identitySha256: sha256Bytes(sheet), originalSha256: sha256Bytes(before), composedSha256: sha256Bytes(composed),
     wireHashes: localPatchBoardJudgeImages(request).map(sha256Bytes),
@@ -207,8 +208,19 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
     hides: entries.map(e => ({ hide: e.hide.id, target: e.row.targetInstanceId, attempts: e.row.attempts, asset: e.asset.id,
       imageSha256: e.imageSha256, geometrySha256: e.geometrySha256 })),
   });
-  const requestKey = recovering ? `self-repair:board:${board.board}:${fingerprint}` : localPatchBoardReviewKey(board.board, strict ? entries.map(e => e.row.attempts) : undefined, LOCAL_PATCH_COMPOSITION_VERSION, scene.sceneVersion, extraPlan ? 4 : 3)
-    + (extraPlan ? ":visible-body-v1" : "");
+    const requestKey = recovering ? `self-repair:board:${board.board}:${fingerprint}` : localPatchBoardReviewKey(board.board, strict ? entries.map(e => e.row.attempts) : undefined, LOCAL_PATCH_COMPOSITION_VERSION, scene.sceneVersion, extraPlan ? 4 : 3)
+      + (extraPlan ? ":visible-body-v1" : "");
+    return { prompt, fingerprint, requestKey };
+  };
+  let { prompt, fingerprint, requestKey } = question(request);
+  // Preserve any already-paid full question on replay. A new repair question
+  // can omit ONLY siblings with matching image/geometry/identity approvals.
+  if (recovering && scene.sceneVersion === 12 && !extraPlan && protectedRows.size > 0 && protectedRows.size < entries.length
+    && !await budget.readRequest(worldId, requestKey)) {
+    const unapproved = new Set(entries.filter(e => !protectedRows.has(e.row.id)).map(e => e.hide.id));
+    request = { ...request, reviewScope: "unapproved-only/v1", hides: request.hides.filter(h => unapproved.has(h.hideId)) };
+    ({ prompt, fingerprint, requestKey } = question(request));
+  }
   if (extraPlan) demand(extraPlan.reviewRequestKeys.includes(requestKey), "The review is outside its scoped authority");
   return { ready: true as const, scene, game, child, board, budget, worldId, identity, sheet, entries, request, fingerprint,
     requestKey, settings, strict, reviewVersion, composed, extraPlan, protectedRows, recovering, prompt };
@@ -231,7 +243,8 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
   await c.db.$transaction(async tx => { await fenceLocalPatchImages(tx, game.id); await deps.fence(tx); });
   if (recovering) await inventorySelfRepairRequest(c, game.id, requestKey, deps.fence);
   const bought = await purchaseOnce({ ledger: budget, store: new LocalPatchRetainedPurchaseStore(c, game.id, budget) }, {
-    worldId, requestKey, scope: "judge", operationFingerprint: fingerprint, reserveMicroUsd: recovering || scene.sceneVersion === 11 || scene.sceneVersion === 12 ? 500_000 : 30_000,
+    worldId, requestKey, scope: "judge", operationFingerprint: fingerprint,
+    reserveMicroUsd: request.reviewScope ? 200_000 + 100_000 * request.hides.length : recovering || scene.sceneVersion === 11 || scene.sceneVersion === 12 ? 500_000 : 30_000,
     ...(input.deadlineAt === undefined ? {} : { dispatchWindow: { deadlineAt: input.deadlineAt,
       needMs: LOCAL_PATCH_MIN_PROVIDER_MS.judge + LOCAL_PATCH_PHASE_MARGIN_MS, retainMs: LOCAL_PATCH_PHASE_MARGIN_MS } }),
     buy: async ({ timeoutMs }) => {
@@ -253,7 +266,7 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
     reason: bought.reason, replayed: false, costCents: 0 };
   const keep = JSON.parse(bought.bytes.toString()) as { raw: string | null; wireFault: string | null; model: string | null; finishReason: string | null };
   const readable = !keep.wireFault && isTheModelWeAsked(keep.model, settings.model) && keep.finishReason === "stop";
-  const verdicts = parseLocalPatchBoardVerdicts(readable ? keep.raw : null, entries.map(e => e.hide.id), scene.sceneVersion);
+  const verdicts = parseLocalPatchBoardVerdicts(readable ? keep.raw : null, request.hides.map(h => h.hideId), scene.sceneVersion, request.reviewScope);
   const dispositions = entries.map(e => strict ? localPatchQualityDisposition(protectedRows.has(e.row.id)
     ? JSON.parse(e.row.judgeJson!).verdict : verdicts[e.hide.id] ?? null, scene.sceneVersion, { hideId: e.hide.id }) : { state: "acceptable" as const, faults: [] });
   await c.db.$transaction(async tx => {
@@ -276,6 +289,7 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
         wireFault: keep.wireFault ?? (verdicts[e.hide.id] ? null : "schema"), judgedSha256: e.imageSha256,
         ...(strict ? { qualityDisposition: disposition, compositionVersion } : {}),
         boardReview: { version: reviewVersion, fingerprint, requestKey, composedSha256: sha256Bytes(composed),
+          ...(request.reviewScope ? { reviewScope: request.reviewScope, reviewedHideIds: request.hides.map(h => h.hideId) } : {}),
           ...(extraPlan ? { assessmentMode: "visible-body-v1", extraAttemptAuthorizationId: extraPlan.authorizationId } : {}),
           ...(strict ? { compositionVersion, wireHashes: localPatchBoardJudgeImages(request).map(sha256Bytes) } : {}),
           ...(isLocalPatchAgeVersion(scene.sceneVersion) ? { evidenceIds: localPatchBoardEvidenceIds(request), imageLabels: localPatchBoardJudgeImageLabels(request) } : {}),

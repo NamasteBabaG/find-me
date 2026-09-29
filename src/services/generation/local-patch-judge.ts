@@ -610,6 +610,8 @@ fetchOnce: typeof fetch): Promise<LocalPatchJudgeResult> {
 export type LocalPatchAssessmentMode = "visible-body-v1";
 export type LocalPatchBoardJudgeRequest = {
   contentVersion?: number;
+  /** Only byte-bound approvals of unchanged siblings may be omitted. */
+  reviewScope?: "unapproved-only/v1";
   /** A new question on a new paid key; absent preserves historical wire bytes. */
   assessmentMode?: LocalPatchAssessmentMode;
   boardId: string; boardPng: Buffer; identityPng: Buffer; timeoutMs?: number;
@@ -649,15 +651,20 @@ export function localPatchBoardJudgeImageLabels(request: Pick<LocalPatchBoardJud
 }
 export type LocalPatchBoardJudgeResult = LocalPatchJudgeResult & { verdicts: Record<string, LocalPatchVerdict | null> };
 const AGE_REVIEW_DIRECTION = "For this new contract five checks require explicit pass: faceLikeness, faceReadable, severeSeam, ageAppropriate and scaleRight. Image2 authorizes FACE AND HAIR identity, not an old target age or the body from its source sheet. A coherent generic child is NOT sufficient: the same characteristic facial shapes and hair must be recognizable; use unsure if the pixels cannot establish likeness. ageAppropriate checks the stated age in face AND whole body: for age 4 or 5 expect a preschool torso, narrow small shoulders, short child limbs, small hands and feet, not an older school-age or adult build or mature stance. Judge visible anatomy, not clothing or assumed age from a name. scaleRight compares the whole child against children of the SAME age at the SAME ground depth, never nearby adults. A small adult-shaped figure is not a preschool body. Do not solve age or readability with a giant head, imagined zoom detail, photographic texture, blind whole-figure shrinking or a foreground move. Do not demand hidden limbs through natural occlusion; use unsure when the visible evidence cannot establish the required check. Each fail needs its own located fault; advisory complaints never invent severe failure.";
-export function localPatchBoardJudgePrompt(request: Pick<LocalPatchBoardJudgeRequest, "boardId" | "hides" | "contentVersion" | "assessmentMode">): string {
+export function localPatchBoardJudgePrompt(request: Pick<LocalPatchBoardJudgeRequest, "boardId" | "hides" | "contentVersion" | "assessmentMode" | "reviewScope">): string {
+  if (request.reviewScope && (request.reviewScope !== "unapproved-only/v1" || request.contentVersion !== INTEGRATED_COLLECTION_VERSION))
+    throw Error("Scoped review requires the integrated release");
   if (request.contentVersion === INTEGRATED_COLLECTION_VERSION) {
-    if (request.hides.length !== 3 || new Set(request.hides.map(h => h.hideId)).size !== 3
+    const scoped = request.reviewScope === "unapproved-only/v1";
+    if ((scoped ? request.hides.length < 1 || request.hides.length > 3 : request.hides.length !== 3)
+      || new Set(request.hides.map(h => h.hideId)).size !== request.hides.length
       || request.hides.some(h => !validChildAge(h.expectation?.ageYears)) || new Set(request.hides.map(h => h.expectation!.ageYears)).size !== 1) throw Error("Integration review requires three distinct hides with one confirmed age");
     return [integratedReviewInstructions(request.hides[0]!.expectation!.ageYears!),
       "Associate images only by EVIDENCE_ID and HIDE_ID labels. The original whole board and canonical portrait are references. Every hide has BEFORE and AFTER. AFTER's LEFT panel is the actual serial player context; RIGHT beyond the gutter is a native closeup of that SAME appearance. Judge both panels, including the surrounding people and lower crop edge. These are three separate turns, not three simultaneous copies. Never count the inset as a duplicate or transfer evidence between hides.",
+      ...(scoped ? [`This scoped repair review contains ${request.hides.length} independently rendered appearances. Unchanged siblings have separate byte-bound approvals and are not evidence in this request. Review ONLY the supplied ids with ALL required checks; do not infer any approval from an omitted sibling.`] : []),
       "Each pair is followed by FOUR overlapping native NEIGHBOR_COMPARISON images, one for every quadrant. In THESE images LEFT=BEFORE and RIGHT=AFTER. Check each quadrant in turn, including LOWER-LEFT and LOWER-RIGHT, before assigning neighborsIntact. Name every damaged face/neck; do not stop after two intact neighbours. Compare a head partly cut at an image edge against BEFORE; a seam through that scalp is a real defect, not natural occlusion.",
       ...request.hides.map(h => `${h.hideId}: evidenceIds=${JSON.stringify(localPatchHideEvidenceIds(h.hideId))}; support=${h.expectation?.support ?? "authored support"}.`),
-      `Return JSON only: {"hides":[{"hideId":"exact supplied id","evidenceIds":["same hideId:before","same hideId:after"],"verdict":{${integratedVerdictFields()}}}]}. Exactly three entries, each supplied id once.`,
+      `Return JSON only: {"hides":[{"hideId":"exact supplied id","evidenceIds":["same hideId:before","same hideId:after"],"verdict":{${integratedVerdictFields()}}}]}. Exactly ${scoped ? request.hides.length : "three"} entries, each supplied id once.`,
       ...(request.assessmentMode === "visible-body-v1" ? [VISIBLE_BODY_ASSESSMENT_DIRECTION] : []),
     ].join("\n");
   }
@@ -720,13 +727,16 @@ function localPatchBoardJudgePromptForCount(request: Pick<LocalPatchBoardJudgeRe
   ].join(" ");
 }
 const VISIBLE_BODY_ASSESSMENT_DIRECTION = "ASSESSMENT MODE visible-body-v1. This narrows the WHOLE-BODY age/scale instructions above to anatomy actually visible; it does not relax face identity, readable head/hair, severe seams or visible head scale. For a naturally occluded peek, do NOT infer an older body from hidden shoulders, torso or legs, require that body to appear, or penalize missing feet/contact shadows. Judge ageAppropriate from the canonical face and whatever anatomy is visible. If the only missing age evidence is a naturally hidden body, honestly report ageAppropriate:unsure with that reason, without inventing an age fault or model pass. Scale remains mandatory: assess the VISIBLE HEAD and any visible body against original nearby people and objects at this same ground depth. A proportionate, coherently drawn head at that depth may pass scaleRight even when legs are hidden; an obviously oversized head, wrong depth or adult-looking visible anatomy must receive its own located fault. If visible head scale cannot be established, keep scaleRight:unsure; do not waive it merely because the body is hidden. Never imagine anatomy, enlarge the head, borrow another hide's evidence or alter a verdict to make publication happen.";
-export function parseLocalPatchBoardVerdicts(raw: string | null, hideIds: readonly string[], contentVersion?: number) {
+export function parseLocalPatchBoardVerdicts(raw: string | null, hideIds: readonly string[], contentVersion?: number,
+  reviewScope?: LocalPatchBoardJudgeRequest["reviewScope"]) {
   const missing = Object.fromEntries(hideIds.map(id => [id, null])) as Record<string, LocalPatchVerdict | null>;
   try {
     const shape = z.object({ hideId: z.string(), verdict: z.unknown() });
     const rowSchema = isLocalPatchAgeVersion(contentVersion)
       ? shape.extend({ evidenceIds: z.tuple([z.string(), z.string()]) }).strict() : shape.strict();
-    if (hideIds.length !== localPatchHidesPerBoard(contentVersion)) return missing;
+    if (reviewScope && (reviewScope !== "unapproved-only/v1" || contentVersion !== INTEGRATED_COLLECTION_VERSION)) return missing;
+    if (reviewScope ? hideIds.length < 1 || hideIds.length > 3 : hideIds.length !== localPatchHidesPerBoard(contentVersion)) return missing;
+    if (new Set(hideIds).size !== hideIds.length) return missing;
     const rows = z.object({ hides: z.array(rowSchema).length(hideIds.length) }).strict().parse(JSON.parse(raw ?? "null")).hides;
     if (new Set(rows.map(r => r.hideId)).size !== hideIds.length || rows.some(row => !hideIds.includes(row.hideId))) return missing;
     return Object.fromEntries(rows.map(row => {
@@ -740,5 +750,5 @@ export async function judgeLocalPatchBoard(apiKey: string, request: LocalPatchBo
   const wire = await requestJudgeWire(apiKey, { settings: localPatchBoardJudgeSettings(request.contentVersion),
     prompt: localPatchBoardJudgePrompt(request), images: localPatchBoardJudgeImages(request), imageLabels: localPatchBoardJudgeImageLabels(request),
     timeoutMs: request.timeoutMs }, fetchOnce);
-  return { ...wire, verdicts: parseLocalPatchBoardVerdicts(wire.wireFault ? null : wire.raw, request.hides.map(h => h.hideId), request.contentVersion) };
+  return { ...wire, verdicts: parseLocalPatchBoardVerdicts(wire.wireFault ? null : wire.raw, request.hides.map(h => h.hideId), request.contentVersion, request.reviewScope) };
 }

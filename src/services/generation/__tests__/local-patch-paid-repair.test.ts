@@ -34,10 +34,11 @@ import { recordLocalPatchPublicationPolicy, hasLocalPatchPublicationPolicy, loca
 import { LocalPatchRetainedPurchaseStore } from "../local-patch-lifecycle";
 import { purchaseOnce } from "../paid-operation";
 import { sha256Bytes } from "../fixed-sprite";
-import { localPatchHideEvidenceIds } from "../local-patch-judge";
+import { localPatchHideEvidenceIds, parseLocalPatchVerdict } from "../local-patch-judge";
 import { resumeAutomaticLocalPatchRecovery, nextPendingGame } from "../queue";
 import type { SelfRepairWire } from "../local-patch-self-repair";
 import { SELF_REPAIR_COMPOSITION_VERSION } from "../../../domain/scene/local-patch-self-repair";
+import { prepareLocalPatchBoardReview, reviewLocalPatchBoard } from "../local-patch-board-review";
 import { bill, boardPng, PASSING_ANSWER, seedApprovedGame } from "./local-patch-fixtures";
 
 const state = vi.hoisted(() => ({ testers: [] as string[], original: Buffer.alloc(0) }));
@@ -47,12 +48,15 @@ vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: "qa", GENERATION_ENA
   adminEmails: () => ["synthetic-admin@example.invalid"] }));
 vi.mock("../local-patch-hide", async original => ({ ...await original<typeof import("../local-patch-hide")>(),
   readShippedBoardArt: async () => Buffer.from(state.original) }));
-let VERSION: 8 | 10 | 11 = 8;
+let VERSION: 8 | 10 | 11 | 12 = 8;
 let BOARDS = localPatchBoardsForVersion(VERSION);
 let SELECTED = [BOARDS[0]!.hides[0]!], UNREVIEWED: string[] = [];
 let dimensions = { width: 3072, height: 2048 };
 const GOOD = { ...PASSING_ANSWER, faceLikeness: "pass", faceReadable: "pass", severeSeam: "pass" };
-const goodVerdict = () => VERSION >= 10 ? { ...GOOD, ageAppropriate: "pass" } : GOOD;
+const goodVerdict = () => VERSION >= 10 ? { ...GOOD, ageAppropriate: "pass", ...(VERSION === 12 ? {
+  lightingMatch: "pass", neighborsIntact: "pass", integrationEvidence: { style: "Same broad painted planes as surrounding faces.",
+    lighting: "Shared subdued local illumination without portrait fill.", neighbors: "Every original head remains connected to its unchanged body." },
+} : {}) } : GOOD;
 let dir: string, url: string, db: PrismaClient, c: Container, sequence = 0;
 const mails: EmailMessage[] = [];
 const noNetwork = vi.fn(async () => { throw new Error("No real network in paid repair integration"); });
@@ -92,9 +96,9 @@ async function seed() {
       body: { model: "gpt-5.6-luna", usage: { prompt_tokens: 1500, completion_tokens: 150 }, choices: [{ finish_reason: "stop", message: {
         content: JSON.stringify({ checks: { identity: "pass", age: "pass", paintedStyle: "pass", sheetLayout: "pass" }, reason: "Synthetic approved illustrated identity" }) } }] } }) } },
   { gameId, identityAssetId: `ast-sheet-${gameId}`, sheet: seeded.sheet, photo: seeded.sheet, atlas: seeded.sheet, contentVersion: VERSION,
-    provenance: { promptVersion: VERSION === 11 ? "character-v5-refreshed-identity-body" : "character-v4-board-drawn-face-reference", quality: "medium", photoAssetId: `ast-photo-${gameId}`,
+    provenance: { promptVersion: VERSION === 12 ? "character-v6-painted-identity-geometry" : VERSION === 11 ? "character-v5-refreshed-identity-body" : "character-v4-board-drawn-face-reference", quality: "medium", photoAssetId: `ast-photo-${gameId}`,
       photoSha256: sha256Bytes(seeded.sheet), ageYears: 8, crop: null,
-      style: { version: VERSION === 11 ? "board-matched-identity/v3" : "board-matched-identity/v2", catalogSha256, atlasSha256: sha256Bytes(seeded.sheet) } } });
+      style: { version: VERSION === 12 ? "board-matched-identity/v4" : VERSION === 11 ? "board-matched-identity/v3" : "board-matched-identity/v2", catalogSha256, atlasSha256: sha256Bytes(seeded.sheet) } } });
   const png = await sharp(state.original).extract({ left: 0, top: 0, width: 512, height: 768 }).png().toBuffer();
   for (const board of BOARDS) {
     const def = sceneBySlug(board.board, VERSION), sceneId = `gsc-${gameId}-${board.board}`;
@@ -109,7 +113,8 @@ async function seed() {
       const selected = SELECTED.some(h => h.id === hide.id), failed = VERSION >= 10 ? selected : hide.id === SELECTED[1]!.id;
       const attempts = selected ? 3 : 1, pendingReview = UNREVIEWED.includes(hide.id);
       const judgeJson = JSON.stringify({ hide: hide.id, pose: hide.pose, judgedSha256: sha256Bytes(png), geometrySha256: localPatchPublicationGeometryHash(geometry),
-        reviewState: pendingReview ? "pending-board-review" : "board-review-complete", wireFault: null, renderFault: null, verdict: pendingReview ? null : goodVerdict(),
+        reviewState: pendingReview ? "pending-board-review" : "board-review-complete", wireFault: null, renderFault: null,
+        verdict: pendingReview ? null : VERSION === 12 ? parseLocalPatchVerdict(goodVerdict(), 12) : goodVerdict(),
         compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION,
         ...(pendingReview ? {} : { boardReview: { compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION, version: VERSION >= 10 ? "local-patch-board-five-quality/v5-evidence-labeled" : "local-patch-board-five-quality/v3-head-safe" } }) });
       await c.storage.put(`game/${assetId}.png`, png, "image/png");
@@ -178,6 +183,57 @@ function judge(gameId: string, siblingFails = false, failedCheck?: "ageAppropria
 async function tick(gameId: string, repairJudge: ReturnType<typeof judge>, container = c) {
   return runLocalPatchWorldSlice(container, noPaint, gameId, { repairJudge, hardDeadlineAt: Date.now() + 270_000 });
 }
+
+describe("v12 scoped automatic repair review", () => {
+  beforeAll(async () => {
+    VERSION = 12; BOARDS = localPatchBoardsForVersion(12);
+    SELECTED = [BOARDS.find(b => b.board === "antarctica")!.hides[2]!];
+    dimensions = { width: 3840, height: 2160 };
+    state.original = await sharp({ create: { ...dimensions, channels: 4, background: "#d2be96" } }).png().toBuffer();
+  });
+  it.each([false, true])("reviews every unapproved appearance and preserves byte-bound siblings (pending sibling: %s)", async pendingSibling => {
+    const board = BOARDS.find(b => b.board === "antarctica")!;
+    UNREVIEWED = pendingSibling ? [board.hides[0]!.id] : [];
+    const s = await seed(), candidate = s.beforeRows.find(r => r.id.endsWith(SELECTED[0]!.id))!;
+    await db.game.update({ where: { id: s.gameId }, data: { status: "TARGETS_GENERATING" } });
+    const decision = { cause: "composition-clipping", explanation: "Synthetic complete child now fits the return window.",
+      action: "recompose-retained", sourceKey: `${SELECTED[0]!.id}:${SELECTED[0]!.pose}:render:1`,
+      returnWindow: s.repairs[0]!.returnWindow, protectedCore: s.repairs[0]!.protectedCore, faceRect: s.repairs[0]!.faceRect };
+    await db.targetVariantAsset.update({ where: { id: candidate.id }, data: { status: "GENERATED", judgeJson: JSON.stringify({
+      ...JSON.parse(candidate.judgeJson!), compositionVersion: SELF_REPAIR_COMPOSITION_VERSION, reviewState: "pending-board-review",
+      selfRepair: { version: "local-patch-self-repair/v1", phase: "awaiting-review", decision },
+      recoveryComposition: { outsideChangedPixels: 0, protectedChangedPixels: 0 },
+    }) } });
+    const input = { gameId: s.gameId, sceneId: `gsc-${s.gameId}-antarctica` }, deps = { fence: async () => {}, readBoardArt: async () => state.original };
+    const prepared = await prepareLocalPatchBoardReview(c, input, deps);
+    expect(prepared.ready).toBe(true); if (!prepared.ready) throw Error(prepared.reason);
+    expect(prepared.request.reviewScope).toBe("unapproved-only/v1");
+    expect(prepared.request.hides.map(h => h.hideId).sort()).toEqual([...UNREVIEWED, SELECTED[0]!.id].sort());
+    const reviewer = vi.fn(async (request: import("../local-patch-judge").LocalPatchBoardJudgeRequest) => ({
+      verdict: null, verdicts: {}, raw: JSON.stringify({ hides: request.hides.map(h => ({ hideId: h.hideId,
+        evidenceIds: localPatchHideEvidenceIds(h.hideId), verdict: goodVerdict() })) }),
+      usage: { prompt_tokens: 12000, completion_tokens: 1000 }, requestId: `req-scoped-${s.gameId}`,
+      model: "gpt-5.6-sol", finishReason: "stop", wireFault: null, costUnknown: false,
+    }));
+    expect(await reviewLocalPatchBoard(c, input, { ...deps, judge: reviewer })).toMatchObject({ state: "done", replayed: false });
+    const budget = boardWizardBudgetOf(c), paid = await budget.readRequest(boardWizardWorldId(s.gameId), prepared.requestKey);
+    expect(paid?.reserveMicroUsd).toBe(pendingSibling ? 400000 : 300000);
+    expect(await reviewLocalPatchBoard(c, input, { ...deps, judge: reviewer })).toMatchObject({ state: "done", replayed: true });
+    expect(reviewer).toHaveBeenCalledOnce();
+    for (const original of s.beforeRows.filter(r => prepared.protectedRows.has(r.id))) {
+      const after = await db.targetVariantAsset.findUniqueOrThrow({ where: { id: original.id } });
+      expect(after.judgeJson).toBe(original.judgeJson); expect(after.assetId).toBe(original.assetId);
+    }
+    const after = await db.targetVariantAsset.findUniqueOrThrow({ where: { id: candidate.id } });
+    const binding = { gameId: s.gameId, sceneVersion: 12, hideId: SELECTED[0]!.id, variantId: after.id, attempts: after.attempts,
+      identityAssetId: `ast-sheet-${s.gameId}`, identitySha256: sha256Bytes(s.sheet), assetId: after.assetId!,
+      imageSha256: JSON.parse(after.judgeJson!).judgedSha256, geometrySha256: localPatchPublicationGeometryHash(after), judgeJson: after.judgeJson };
+    expect(await hasLocalPatchPublicationPolicy(c, binding)).toBe(true);
+    const tampered = JSON.parse(after.judgeJson!); tampered.boardReview.reviewedHideIds = [board.hides[1]!.id];
+    await expect(db.$transaction(tx => recordLocalPatchPublicationPolicy(tx, { ...binding, judgeJson: JSON.stringify(tampered) }))).rejects.toThrow("quality policy");
+    expect(noNetwork).not.toHaveBeenCalled();
+  }, 180000);
+});
 
 describe.each([8, 10, 11] as const)("v%s paid repairs through actual stage, real ledger, durable queue and publication", version => {
   beforeAll(async () => {

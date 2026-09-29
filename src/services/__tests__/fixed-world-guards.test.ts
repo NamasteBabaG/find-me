@@ -48,6 +48,7 @@ function setup(row = game()) {
     targetVariantAsset: { updateMany: vi.fn(), findMany: vi.fn().mockResolvedValue([]), aggregate: vi.fn().mockResolvedValue({ _sum: { costCents: 0 } }) },
     gameScene: { update: vi.fn() },
     auditLog: { findMany: vi.fn().mockResolvedValue([]) },
+    worldBudgetLedger: { findMany: vi.fn().mockResolvedValue([]) },
     asset: { findUnique: vi.fn().mockResolvedValue({ id: "identity", status: "READY", width: 1024, height: 1024 }), findUniqueOrThrow: vi.fn(), findMany: vi.fn().mockResolvedValue([]), aggregate: vi.fn().mockResolvedValue({ _sum: { costCents: 0 } }) },
     $transaction: vi.fn(),
   };

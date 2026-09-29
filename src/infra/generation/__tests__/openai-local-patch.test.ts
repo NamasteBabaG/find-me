@@ -171,12 +171,11 @@ describe("buying one local patch", () => {
     expect("evidence" in result).toBe(true);
   }, 60_000);
 
-  it("says nothing came back at all, rather than inventing an answer", async () => {
-    // Nothing priced and nothing kept: there is no purchase to describe, only a
-    // dispatch that may have been billed. A throw is read as exactly that.
+  it("retains sanitized interruption facts without inventing an image or bill", async () => {
     await expect(buyLocalPatch("sk-test-only", request(), {
       fetchOnce: (async () => { throw new Error("socket hung up"); }) as unknown as typeof fetch,
-    })).rejects.toThrow(/LOCAL_PATCH_PAINTER/);
+    })).resolves.toMatchObject({ png: null, evidence: null, unknownReason: "image-request-transport-failed",
+      failureReceipt: { reason: "transport", billing: "unknown", transport: "unclassified" } });
   }, 60_000);
 
   it("keeps a picture whose receipt is unreadable, and refuses one from another model", async () => {
@@ -273,7 +272,7 @@ describe("buying one local patch", () => {
     })) as unknown as typeof fetch;
     const started = Date.now();
     await expect(buyLocalPatch("sk-test-only", { ...request(), timeoutMs: 1_000 }, { fetchOnce: hang }))
-      .rejects.toThrow(/LOCAL_PATCH_PAINTER/);
+      .resolves.toMatchObject({ png: null, evidence: null, failureReceipt: { transport: "timeout", billing: "unknown" } });
     // Its own allowance is four minutes; this must not have waited for it.
     expect(Date.now() - started).toBeLessThan(30_000);
   }, 20_000);

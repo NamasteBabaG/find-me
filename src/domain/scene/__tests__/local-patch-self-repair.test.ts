@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { needsSelfRepair, selfRepairDecisionSchema, selfRepairRecipe, selfRepairRenderInstructions } from "../local-patch-self-repair";
+import { needsSelfRepair, selfRepairDecisionSchema, selfRepairRecipe, selfRepairRenderInstructions, selfRepairExcludedRegions } from "../local-patch-self-repair";
 
 const decision = { cause: "composition-clipping" as const, explanation: "A full head exists in the raw image above the old return.",
   action: "recompose-retained" as const, sourceKey: "test:standing:render:1",
@@ -7,6 +7,14 @@ const decision = { cause: "composition-clipping" as const, explanation: "A full 
   protectedCore: { left: 150, top: 160, width: 180, height: 500 },
   faceRect: { left: 170, top: 180, width: 80, height: 90 } };
 describe("autonomous repair contracts", () => {
+  it("gives diagnosis exact local coordinates for occupied sibling areas, including partial intersections", () => {
+    expect(selfRepairExcludedRegions({ left: 100, top: 200, width: 512, height: 768 }, [
+      { left: 590, top: 180, width: 512, height: 768 },
+      { left: 80, top: 900, width: 100, height: 768 },
+      { left: 612, top: 200, width: 512, height: 768 },
+      { left: 0, top: 0, width: 50, height: 50 },
+    ])).toEqual([{ left: 490, top: 0, width: 22, height: 748 }, { left: 0, top: 700, width: 80, height: 68 }]);
+  });
   it("bounds verbose diagnostic prose without losing a valid repair or relaxing geometry", () => {
     const verbose = { ...decision, explanation: "Observed rendering mismatch. ".repeat(50) };
     const parsed = selfRepairDecisionSchema.parse(verbose);

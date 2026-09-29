@@ -10,6 +10,7 @@ import { PrismaRetainedPurchaseStore } from "../../infra/db/prisma-retained-purc
 import { sameChargeEvidence } from "./world-budget";
 import type { PaidRepairBatch } from "./local-patch-paid-repair";
 import { SELF_REPAIR_COMPOSITION_VERSION, SELF_REPAIR_VERSION, selfRepairDecisionSchema } from "../../domain/scene/local-patch-self-repair";
+import { NEIGHBOR_QUADRANTS } from "./local-patch-integration-evidence";
 
 export const LOCAL_PATCH_PUBLICATION_POLICY = "publish-with-visual-warnings/v1";
 export const LOCAL_PATCH_STRICT_PUBLICATION_POLICY = "publish-with-severe-quality-guard/v2";
@@ -164,12 +165,28 @@ function allowed(input: LocalPatchPublicationBinding): boolean {
   if (!isLocalPatchStrictVersion(input.sceneVersion)) return true;
   try {
     const receipt = JSON.parse(input.judgeJson ?? "null");
+    const review = receipt?.boardReview;
+    let repairWireCount = input.sceneVersion === 12 ? 20 : 8;
+    if (review?.reviewScope !== undefined) {
+      const ids: unknown = review.reviewedHideIds;
+      if (input.sceneVersion !== 12 || review.reviewScope !== "unapproved-only/v1" || !Array.isArray(ids)
+        || ids.length < 1 || ids.length > 3 || new Set(ids).size !== ids.length || !ids.includes(input.hideId)) return false;
+      const boardId = /^([a-z]+)-v12-[123]$/.exec(input.hideId)?.[1];
+      const board = boardId && localPatchBoardForVersion(boardId, 12);
+      if (!board || ids.some(id => !board.hides.some(h => h.id === id))) return false;
+      const hideIds = ids as string[], parsed = parseLocalPatchBoardVerdicts(review.raw, hideIds, 12, review.reviewScope);
+      if (!parsed[input.hideId] || !equalJson(parsed[input.hideId], receipt.verdict)) return false;
+      const evidenceIds = [`${boardId}:original-board`, `${boardId}:canonical-portrait`,
+        ...hideIds.flatMap(id => [`${id}:before`, `${id}:after`, ...NEIGHBOR_QUADRANTS.map(q => `${id}:neighbors:${q}`)])];
+      if (!equalJson(review.evidenceIds, evidenceIds) || review.imageLabels?.length !== evidenceIds.length) return false;
+      repairWireCount = evidenceIds.length;
+    }
     const compositionVersion = receipt?.compositionVersion === SELF_REPAIR_COMPOSITION_VERSION
       && isCollectionVersion(input.sceneVersion) && receipt?.selfRepair?.version === SELF_REPAIR_VERSION
       && receipt.selfRepair.phase === "awaiting-review" && selfRepairDecisionSchema.safeParse(receipt.selfRepair.decision).success
       && receipt.recoveryComposition?.outsideChangedPixels === 0 && receipt.recoveryComposition?.protectedChangedPixels === 0
       && isTheModelWeAsked(receipt.boardReview?.model ?? null, "gpt-5.6-sol")
-      && receipt.boardReview?.wireHashes?.length === (input.sceneVersion === 12 ? 20 : 8) && receipt.boardReview?.requestKey?.startsWith("self-repair:board:")
+      && receipt.boardReview?.wireHashes?.length === repairWireCount && receipt.boardReview?.requestKey?.startsWith("self-repair:board:")
       ? SELF_REPAIR_COMPOSITION_VERSION : LOCAL_PATCH_COMPOSITION_VERSION;
     return receipt?.reviewState === "board-review-complete" && receipt.wireFault === null
       && receipt?.compositionVersion === compositionVersion
