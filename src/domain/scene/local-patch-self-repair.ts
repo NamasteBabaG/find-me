@@ -13,7 +13,9 @@ const contains = (outer: RecoveryRect, inner: RecoveryRect, guard = 0) => inner.
   && inner.top + inner.height + guard <= outer.top + outer.height;
 export const selfRepairDecisionSchema = z.object({
   cause: z.enum(["composition-clipping", "background-registration", "wrong-identity", "age-or-scale", "unreadable-evidence", "drawing-defect", "paint-style", "portrait-lighting", "neighbor-damage"]),
-  explanation: z.string().min(12).max(800),
+  // Explanatory prose never drives the renderer. Retain a bounded summary rather
+  // than discarding a valid structural plan for a verbose diagnostic sentence.
+  explanation: z.string().trim().min(12).max(2400).transform(text => text.slice(0, 800)),
   action: z.enum(["recompose-retained", "redraw-with-new-placement", "restyle-retained"]),
   sourceKey: z.string().min(1).max(240),
   returnWindow: rect, protectedCore: rect, faceRect: rect,

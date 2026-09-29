@@ -7,6 +7,13 @@ const decision = { cause: "composition-clipping" as const, explanation: "A full 
   protectedCore: { left: 150, top: 160, width: 180, height: 500 },
   faceRect: { left: 170, top: 180, width: 80, height: 90 } };
 describe("autonomous repair contracts", () => {
+  it("bounds verbose diagnostic prose without losing a valid repair or relaxing geometry", () => {
+    const verbose = { ...decision, explanation: "Observed rendering mismatch. ".repeat(50) };
+    const parsed = selfRepairDecisionSchema.parse(verbose);
+    expect(parsed.explanation).toHaveLength(800);
+    expect(selfRepairRecipe(parsed)).toBe(selfRepairRecipe(decision));
+    expect(selfRepairDecisionSchema.safeParse({ ...verbose, faceRect: { ...decision.faceRect, width: 2 } }).success).toBe(false);
+  });
   it("surface-only repair cannot pretend to fix anatomy and changes its recipe when the retained source changes", () => {
     const style = { ...decision, action: "restyle-retained", cause: "paint-style" };
     expect(selfRepairDecisionSchema.safeParse(style).success).toBe(true);
