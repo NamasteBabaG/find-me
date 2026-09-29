@@ -36,6 +36,18 @@ async function fixture(reply: () => Promise<Response> = async () => response()) 
   return { deps, input, budget, fetchOnce, beforeDispatch, rows, enrollment, c };
 }
 describe("identity style gate (synthetic images and HTTP; zero paid calls)", () => {
+  it.each(["pass", "fail", "uncertain"])("v12 requires painted style %s independently of likeness or automatic selection", async style => {
+    const f = await fixture(async () => response(answer(style), { model: "gpt-5.6-luna" }));
+    f.input.provenance.promptVersion = "character-v6-painted-identity-geometry";
+    f.input.provenance.style.version = "board-matched-identity/v4";
+    const receipt = await reviewBoardWizardIdentity(f.deps, { ...f.input, contentVersion: 12 });
+    const selected = { ...receipt, automaticSelection: { policy: "identity-best-of-two/v1", sourceFingerprint: receipt.fingerprint,
+      candidates: [receipt.identityAssetId], selectedIdentityAssetId: receipt.identityAssetId, reason: "budget-fallback" } };
+    expect(identityReceiptReadyForPublication(receipt, 12)).toBe(style === "pass");
+    expect(identityReceiptReadyForPublication(selected, 12)).toBe(style === "pass");
+    expect(identityReceiptReadyForPublication(receipt, 11)).toBe(false);
+    expect(receipt.prompt).toContain("Painted style also requires explicit pass");
+  });
   it("bounded selection preserves warnings, binds its source, and cannot change older publication policies", async () => {
     const f = await fixture(async () => response({ checks: { identity: "uncertain", age: "fail", paintedStyle: "pass", sheetLayout: "pass" }, reason: "Synthetic likeness doubt" }, { model: "gpt-5.6-luna" }));
     f.input.provenance.promptVersion = "character-v4-board-drawn-face-reference";

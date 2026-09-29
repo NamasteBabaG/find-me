@@ -113,12 +113,12 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
     </Notice>
   ) : null;
 
-  if (!s) return offline ? reconnecting : <div className="fm-skeleton" style={{ height: "var(--space-16)" }} aria-busy />;
+  if (!s) return <div className="fm-stack fm-stack--3"><h1 className="create__title">{tf(cr.title, { name: childName })}</h1>{offline ? reconnecting : <div className="fm-skeleton" style={{ height: "var(--space-16)" }} aria-busy />}</div>;
 
   if (s.status === "CHECKOUT_PENDING" || s.status === "PACKAGE_SELECTED" || s.status === "PAYMENT_FAILED") {
     return (
       <div className="fm-stack fm-stack--3">
-        <Notice kind="warn">{s.status === "PAYMENT_FAILED" ? cr.paymentFailed : cr.waitingPayment}</Notice>
+        <h1 className="create__title">{s.status === "PAYMENT_FAILED" ? cr.paymentFailed : cr.waitingPayment}</h1>
         <LinkButton href="/checkout" variant="secondary">
           {cr.backToCheckout}
         </LinkButton>
@@ -128,9 +128,9 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
 
   if (s.state === "failed") {
     return (
-      <Notice kind="danger">
-        {cr.failed} <Link href="/library">{cr.backToLibrary}</Link> {isAdmin ? <Link href={`/admin/orders/${gameId}`}>{cr.adminLink}</Link> : null}
-      </Notice>
+      <div className="fm-stack fm-stack--3"><h1 className="create__title">{cr.failed}</h1>
+        <Notice kind="danger"><Link href="/library">{cr.backToLibrary}</Link> {isAdmin ? <Link href={`/admin/orders/${gameId}`}>{cr.adminLink}</Link> : null}</Notice>
+      </div>
     );
   }
 
@@ -149,7 +149,7 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
 
   if (s.qaPreviewUrl) {
     return <div className="fm-card fm-card--pad-6 fm-stack fm-stack--3 fm-center">
-      <h2>{locale === "he" ? "העולם מוכן לבדיקה שלך" : "Your world is ready for private QA"}</h2>
+      <h1>{locale === "he" ? "העולם מוכן לבדיקה שלך" : "Your world is ready for private QA"}</h1>
       <p>{locale === "he" ? "9 בורדים ו־27 הופעות. תוצאות השיפוט והופעות שעדיין דורשות בדיקה מוצגות במשחק; זה אינו משחק מאושר לפרסום." : "9 boards and 27 appearances. Review results and any unresolved appearances are shown in the game; this is not a published game."}</p>
       <LinkButton href={s.qaPreviewUrl} size="lg">{locale === "he" ? "פתיחת משחק הבדיקה" : "Open private QA game"}</LinkButton>
       <QaBoardProgress status={s} hebrew={locale === "he"} />
@@ -158,7 +158,7 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
   if (s.done && s.playUrl) {
     const mailLine = s.delivered && !s.mailSimulated ? cr.mailSent : cr.mailNotSent;
     return (
-      <div className="fm-card fm-card--pad-6 fm-stack fm-stack--3 fm-center cp cp--done">
+      <div className="fm-card cp__card cp cp--done">
         <div className="cp__stage cp__stage--done">
           {s.avatarUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -169,13 +169,13 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
             </span>
           )}
         </div>
-        <h2>{tf(cr.readyTitle, { name: childName })}</h2>
+        <h1 className="cp__title">{tf(cr.readyTitle, { name: childName })}</h1>
         <p className="fm-lead">{cr.readyOpen}</p>
-        <LinkButton href={s.playUrl} size="lg" className="cp__open">
+        <LinkButton href={s.playUrl} size="lg" block className="cp__open">
           {cr.open}
         </LinkButton>
-        <p className="fm-small">
-          {mailLine}{" "}
+        <div className="cp__delivery fm-small">
+          <p>{mailLine}</p>
           {resend === "sent" ? (
             <strong>{cr.resent}</strong>
           ) : resend === "simulated" ? (
@@ -190,7 +190,7 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
               </button>
             </>
           )}
-        </p>
+        </div>
         <Link href="/library" className="fm-small">
           {cr.manage}
         </Link>
@@ -209,6 +209,10 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
 
   return (
     <div className="fm-stack fm-stack--3 cp">
+      <div className="create__head">
+        <h1 className="create__title">{tf(cr.title, { name: childName })}</h1>
+        <p className="fm-lead">{cr.lead}</p>
+      </div>
       {reconnecting}
       {s.state === "needs_new_photo" && s.newPhotoUrl ? (
         <Notice kind="warn">
@@ -236,14 +240,6 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
 
         <div className="cp__bar" role="progressbar" aria-label={cr.progressAria} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} aria-valuetext={s.state === "held" ? tf(cr.heldPercent, { percent }) : undefined}>
           <div className="cp__fill" style={{ width: `${percent}%` }} />
-          <span className="cp__rider" style={{ insetInlineStart: `${percent}%` }} aria-hidden>
-            {s.avatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={s.avatarUrl} alt="" width={40} height={40} />
-            ) : (
-              "✨"
-            )}
-          </span>
         </div>
         <p className="cp__percent">{tf(s.state === "held" ? cr.heldPercent : cr.percent, { percent })}</p>
       </section>

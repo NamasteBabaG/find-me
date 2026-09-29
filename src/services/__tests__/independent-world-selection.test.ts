@@ -56,7 +56,7 @@ describe("independent worlds are a choice, not a difficulty ladder", () => {
     const g = await draft(true), c = context();
     await selectPackage(c, g.id, "ONE_WORLD");
     const before = await scenes(g.id);
-    expect(before).toHaveLength(9); expect(before.every(s => s.sceneVersion === 11)).toBe(true);
+    expect(before).toHaveLength(9); expect(before.every(s => s.sceneVersion === 12)).toBe(true);
     expect(await selectWorlds(c, g.id, ["kingdom"])).toMatchObject({ ok: false, code: "SCENE_UNAVAILABLE" });
     expect(await scenes(g.id)).toEqual(before);
     expect(await selectPackage(c, g.id, "TWO_WORLDS")).toMatchObject({ ok: false, code: "PACKAGE_UNAVAILABLE" });

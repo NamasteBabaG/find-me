@@ -1,7 +1,7 @@
 import { BOARD_JUDGE_MODEL, BOARD_JUDGE_MAX_TOKENS } from "./board-verdict";
 
 export type IdentityReviewInput = { prompt: string; images: readonly Buffer[];
-  settings?: { model: string; effort: "low" | "high"; maxOutputTokens: number }; timeoutMs?: number };
+  settings?: { model: string; effort: "low" | "medium" | "high"; maxOutputTokens: number }; timeoutMs?: number };
 export interface IdentityStyleReviewer {
   review(input: IdentityReviewInput): Promise<{ httpOk: boolean; requestId: string | null; body: unknown }>;
 }

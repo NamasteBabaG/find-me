@@ -61,7 +61,7 @@ export const LOCAL_PATCH_IMAGE_POLICY: FixedSourcePolicy = Object.freeze({
  * Initial character creation uses its separate MEDIUM contract, unchanged. */
 const FIVE_HIDE_IMAGE_POLICY: FixedSourcePolicy = Object.freeze({ ...LOCAL_PATCH_IMAGE_POLICY, quality: "low" });
 export const localPatchImagePolicyForVersion = (contentVersion?: number): FixedSourcePolicy =>
-  isLocalPatchAdvisoryVersion(contentVersion) ? FIVE_HIDE_IMAGE_POLICY : LOCAL_PATCH_IMAGE_POLICY;
+  contentVersion === 12 ? LOCAL_PATCH_IMAGE_POLICY : isLocalPatchAdvisoryVersion(contentVersion) ? FIVE_HIDE_IMAGE_POLICY : LOCAL_PATCH_IMAGE_POLICY;
 
 /**
  * What the render fingerprint pins, beside the prompt and the pictures: change

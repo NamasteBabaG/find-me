@@ -10,7 +10,7 @@ import {
   type JudgeWireFault, type LocalPatchJudgeRequest, type LocalPatchJudgeResult, type LocalPatchVerdict,
 } from "./local-patch-judge";
 import { judgeCharge } from "../../infra/generation/judge";
-import { LOCAL_PATCH_POSE_WORDING, LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_CANONICAL_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION, LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION, localPatchPrompt, type LocalPatchRepairCheck, type LocalPatchPaintRecipe } from "./local-patch-prompt";
+import { LOCAL_PATCH_POSE_WORDING, LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_CANONICAL_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION, LOCAL_PATCH_INTEGRATED_PROMPT_VERSION, LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION, localPatchPrompt, type LocalPatchRepairCheck, type LocalPatchPaintRecipe } from "./local-patch-prompt";
 import { purchaseOnce, type PurchaseLedger, type RetainedPurchaseStore } from "./paid-operation";
 import { LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, type LocalPatchPurchase, type LocalPatchReferenceMode } from "../../infra/generation/openai-local-patch";
 import type { BudgetJson } from "./world-budget";
@@ -18,6 +18,7 @@ import { isLocalPatchAdvisoryVersion, isLocalPatchAgeVersion, isLocalPatchStrict
 import type { LocalPatchRecoveryDirective } from "../../domain/scene/local-patch-recovery-directive";
 import { adaptiveRecoveryPrompt, type AdaptiveRecoveryPlan } from "./local-patch-adaptive-recovery";
 import { selfRepairDecisionSchema, selfRepairRenderInstructions, type SelfRepairDecision } from "../../domain/scene/local-patch-self-repair";
+import { retainedRestylePrompt } from "./local-patch-restyle";
 
 /**
  * One paid attempt at one hide, out of the scripts and into the product.
@@ -99,6 +100,8 @@ export type LocalPatchAttemptInput = {
   readonly adaptiveRecovery?: AdaptiveRecoveryPlan;
   /** Separate durable recovery key; never repurposes a historical purchase. */
   readonly selfRepair?: { readonly cycle: number; readonly decision: SelfRepairDecision };
+  /** Authenticated retained source for a v12 surface-only recovery. */
+  readonly restyleSourcePng?: Buffer;
   readonly apiKey: string;
   /**
    * When this worker's request is going to be taken away from it, absolute.
@@ -302,6 +305,7 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
 }
 
 function promptVersionOf(input: LocalPatchAttemptInput): string {
+  if (input.paintRecipe === "scene-integration-v3") return LOCAL_PATCH_INTEGRATED_PROMPT_VERSION;
   if (input.paintRecipe === "identity-body-v2") return LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION;
   if (input.paintRecipe === "board-paint-v1") return LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION;
   if (isLocalPatchAgeVersion(input.contentVersion)) return LOCAL_PATCH_AGE_PROMPT_VERSION;
@@ -326,18 +330,26 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   if (input.selfRepair && (!isCollectionVersion(input.contentVersion) || !Number.isSafeInteger(input.selfRepair.cycle)
     || input.selfRepair.cycle < 1 || input.adaptiveRecovery || input.recoveryDirective)) throw Error("Invalid autonomous render recipe");
   const recovery = input.selfRepair ? selfRepairDecisionSchema.parse(input.selfRepair.decision) : null;
+  const restyling = recovery?.action === "restyle-retained";
+  if (restyling ? input.contentVersion !== 12 || !input.restyleSourcePng?.length : input.restyleSourcePng !== undefined)
+    throw Error("Retained surface repair requires a v12 diagnosis and authenticated source");
   const mask = recovery?.protectedCore ?? maskForHide(hide);
   if (input.adaptiveRecovery && (attempt !== 3 || !isLocalPatchStrictVersion(input.contentVersion) || input.recoveryDirective)) {
     throw Error("ADAPTIVE_RECOVERY: a diagnosis belongs only to its final normal attempt");
   }
-  const prompt = localPatchPrompt({ ground: board.ground, pose: hide.pose, ageYears: input.ageYears, repairChecks: input.repairChecks, boardPeopleReference: !!input.boardPeoplePng,
+  const prompt = restyling ? retainedRestylePrompt(recovery) : localPatchPrompt({ ground: board.ground, pose: hide.pose, ageYears: input.ageYears, repairChecks: input.repairChecks, boardPeopleReference: !!input.boardPeoplePng,
     wardrobe: board.wardrobe, placement: hide.placement, mask, contentVersion: input.contentVersion,
     hideId: hide.id, recoveryDirective: input.recoveryDirective, paintRecipe: input.paintRecipe })
     + (input.adaptiveRecovery ? `\n\n${adaptiveRecoveryPrompt(input.adaptiveRecovery, hide)}` : "")
     + (recovery ? `\n\n${selfRepairRenderInstructions(recovery)}` : "");
 
   const meta = await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).metadata();
-  const stylePng = await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).extract(crop).png().toBuffer();
+  const stylePng = restyling ? await sharp(input.restyleSourcePng!, { limitInputPixels: 8_294_400 }).resize(512, 768, { fit: "fill" }).png().toBuffer()
+    : await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).extract(crop).png().toBuffer();
+  // The already drawn target is its own locator during surface repair. Supplying
+  // another large portrait encouraged the painter to put its face on a neighbour.
+  // The independent final review still compares against the canonical identity.
+  const renderIdentityPng = restyling ? await sharp(stylePng).extract(mask).png().toBuffer() : input.identityPng;
   const maskPng = await poseMask(recovery ? { ...hide, mask } : hide);
 
   const renderKey = input.selfRepair ? `${hide.id}:${hide.pose}:self-repair:${input.selfRepair.cycle}` : `${hide.id}:${hide.pose}:render:${attempt}`;
@@ -345,7 +357,8 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   // prompt, mask or crop is a different purchase and must never replay this one.
   const renderFingerprint = fingerprintOf({
     version: promptVersion, hide: hide.id, pose: hide.pose, crop,
-    prompt: sha(Buffer.from(prompt)), style: sha(stylePng), identity: sha(input.identityPng), mask: sha(maskPng),
+    prompt: sha(Buffer.from(prompt)), style: sha(stylePng), identity: sha(renderIdentityPng), mask: sha(maskPng),
+    ...(restyling ? { canonicalGeometry: sha(input.identityPng) } : {}),
     ...(input.boardPeoplePng ? { boardPeople: sha(input.boardPeoplePng) } : {}),
     ...(input.canonicalIdentityPng ? { canonicalIdentity: sha(input.canonicalIdentityPng) } : {}),
     ...(input.referenceMode ? { referenceMode: input.referenceMode } : {}),
@@ -372,7 +385,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     worldId, requestKey: renderKey, scope: "image",
     operationFingerprint: renderFingerprint, reserveMicroUsd: LOCAL_PATCH_RESERVE.renderMicroUsd,
     buy: async ({ timeoutMs }) => {
-      const result = await deps.render({ worldId, requestKey: renderKey, prompt, stylePng, identityPng: input.identityPng, maskPng,
+      const result = await deps.render({ worldId, requestKey: renderKey, prompt, stylePng, identityPng: renderIdentityPng, maskPng,
         ...(input.boardPeoplePng ? { boardPeoplePng: input.boardPeoplePng } : {}),
         ...(input.canonicalIdentityPng ? { canonicalIdentityPng: input.canonicalIdentityPng } : {}),
         ...(input.referenceMode ? { referenceMode: input.referenceMode } : {}),
@@ -406,7 +419,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   }
   const patchPng = await sharp(Buffer.from(painted.bytesBase64, "base64")).resize(LOCAL_PATCH_CROP.width, LOCAL_PATCH_CROP.height, { fit: "fill" }).png().toBuffer();
   const bounded = isLocalPatchStrictVersion(input.contentVersion)
-    ? await composeBoundedLocalPatch(input.composedPng, crop, patchPng, mask) : null;
+    ? await composeBoundedLocalPatch(input.composedPng, crop, patchPng, mask, { requireAligned: input.contentVersion === 12 }) : null;
   const seam = bounded?.report ?? await analysePatchSeam(input.composedPng, crop, patchPng, { allowedRect: { left: 0, top: 0, ...LOCAL_PATCH_CROP } });
   const fade = seam.verdict === "clean" || seam.verdict === "fade-recommended";
   const candidate = bounded?.candidate ?? await applyLocalPatch(input.composedPng, crop, patchPng, { fade, report: seam });

@@ -169,7 +169,7 @@ function allowed(input: LocalPatchPublicationBinding): boolean {
       && receipt.selfRepair.phase === "awaiting-review" && selfRepairDecisionSchema.safeParse(receipt.selfRepair.decision).success
       && receipt.recoveryComposition?.outsideChangedPixels === 0 && receipt.recoveryComposition?.protectedChangedPixels === 0
       && isTheModelWeAsked(receipt.boardReview?.model ?? null, "gpt-5.6-sol")
-      && receipt.boardReview?.wireHashes?.length === 8 && receipt.boardReview?.requestKey?.startsWith("self-repair:board:")
+      && receipt.boardReview?.wireHashes?.length === (input.sceneVersion === 12 ? 20 : 8) && receipt.boardReview?.requestKey?.startsWith("self-repair:board:")
       ? SELF_REPAIR_COMPOSITION_VERSION : LOCAL_PATCH_COMPOSITION_VERSION;
     return receipt?.reviewState === "board-review-complete" && receipt.wireFault === null
       && receipt?.compositionVersion === compositionVersion

@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import { prepareNeighborComparisons } from "./local-patch-integration-evidence";
 import type { Prisma, Asset, TargetVariantAsset } from "@prisma/client";
 import type { Container } from "../container";
 import { SpriteRefSchema } from "../../domain/game/config";
@@ -73,7 +74,7 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
   const strict = isLocalPatchStrictVersion(scene.sceneVersion);
   const reviewVersion = isLocalPatchAgeVersion(scene.sceneVersion) ? LOCAL_PATCH_AGE_BOARD_REVIEW_VERSION
     : strict ? LOCAL_PATCH_STRICT_BOARD_REVIEW_VERSION : LOCAL_PATCH_BOARD_REVIEW_VERSION;
-  let settings: { model: string; effort: "low"; maxOutputTokens: number; endpoint: string; timeoutMs: number } = localPatchBoardJudgeSettings(scene.sceneVersion);
+  let settings: { model: string; effort: "low" | "medium"; maxOutputTokens: number; endpoint: string; timeoutMs: number } = localPatchBoardJudgeSettings(scene.sceneVersion);
   demand(game.id === input.gameId && game.styleVersion === "local-patch-world-v1"
     && (game.status === "TARGETS_GENERATING" || options.recovery && isLocalPatchAgeVersion(scene.sceneVersion) && game.status === "GENERATION_FAILED")
     && !game.deletedAt && game.ownerId && child && !child.deletedAt && child.ownerId === game.ownerId
@@ -142,7 +143,7 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
   // siblings. Previously unreviewed siblings DO receive their first real review.
   const protectedRows = new Set(extraPlan?.others.filter(entry => entry.reviewState === "board-review-complete").map(entry => entry.rowId));
   const recovering = isCollectionVersion(scene.sceneVersion) && entries.some(e => JSON.parse(e.row.judgeJson!).compositionVersion === SELF_REPAIR_COMPOSITION_VERSION);
-  if (recovering) settings = LOCAL_PATCH_JUDGE;
+  if (recovering && scene.sceneVersion !== 12) settings = LOCAL_PATCH_JUDGE;
   if (recovering) for (const e of entries) {
     if (await hasLocalPatchPublicationPolicy(c, { gameId: game.id, sceneVersion: scene.sceneVersion, hideId: e.hide.id,
       variantId: e.row.id, attempts: e.row.attempts, identityAssetId: identity.id, identitySha256: sha256Bytes(sheet),
@@ -190,6 +191,7 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
         ]).png().toBuffer();
       }
       return { hideId: e.hide.id, beforePng, afterPng, ...(closeupPng && afterEvidencePng ? { closeupPng, afterEvidencePng } : {}),
+        ...(scene.sceneVersion === 12 ? { neighborComparisons: await prepareNeighborComparisons(beforePng, afterPng) } : {}),
         expectation: { ageYears: child.ageYears, support: `${e.hide.pose} on ${board.ground}` } };
     })),
   };
@@ -229,7 +231,7 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
   await c.db.$transaction(async tx => { await fenceLocalPatchImages(tx, game.id); await deps.fence(tx); });
   if (recovering) await inventorySelfRepairRequest(c, game.id, requestKey, deps.fence);
   const bought = await purchaseOnce({ ledger: budget, store: new LocalPatchRetainedPurchaseStore(c, game.id, budget) }, {
-    worldId, requestKey, scope: "judge", operationFingerprint: fingerprint, reserveMicroUsd: recovering || scene.sceneVersion === 11 ? 500_000 : 30_000,
+    worldId, requestKey, scope: "judge", operationFingerprint: fingerprint, reserveMicroUsd: recovering || scene.sceneVersion === 11 || scene.sceneVersion === 12 ? 500_000 : 30_000,
     ...(input.deadlineAt === undefined ? {} : { dispatchWindow: { deadlineAt: input.deadlineAt,
       needMs: LOCAL_PATCH_MIN_PROVIDER_MS.judge + LOCAL_PATCH_PHASE_MARGIN_MS, retainMs: LOCAL_PATCH_PHASE_MARGIN_MS } }),
     buy: async ({ timeoutMs }) => {

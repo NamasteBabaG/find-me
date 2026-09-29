@@ -290,7 +290,7 @@ export function boundedCompositionPermission(report: SeamReport): LocalPatchComp
   return "refused";
 }
 
-export async function composeBoundedLocalPatch(boardPng: Buffer, crop: PatchRegion, patchPng: Buffer, child: PatchRegion) {
+export async function composeBoundedLocalPatch(boardPng: Buffer, crop: PatchRegion, patchPng: Buffer, child: PatchRegion, options: { requireAligned?: boolean } = {}) {
   if (![child.left, child.top, child.width, child.height].every(Number.isInteger)
     || child.left < 0 || child.top < 0 || child.width <= 0 || child.height <= 0
     || child.left + child.width > crop.width || child.top + child.height > crop.height) {
@@ -311,7 +311,7 @@ export async function composeBoundedLocalPatch(boardPng: Buffer, crop: PatchRegi
   // Here this is deliberately a BOUNDARY diagnosis, not a claim that scenery
   // inside the child's box is unchanged. The visual review checks that separately.
   const report = await analysePatchSeam(boardPng, region, patch, { allowedRect: { left: 0, top: 0, width: local.width, height: local.height } });
-  const compositionPermission = boundedCompositionPermission(report);
+  const compositionPermission = options.requireAligned && report.verdict === "misaligned" ? "refused" : boundedCompositionPermission(report);
   const usable = compositionPermission !== "refused";
   // All permitted candidates use the same bounded fade, without moving pixels
   // or modifying the raw report. A refused hard-placement remains evidence only.

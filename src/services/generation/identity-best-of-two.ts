@@ -1,3 +1,4 @@
+import { isRefreshedCollectionVersion } from "../../domain/scene/local-patch-versions";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import type { Container } from "../container";
@@ -47,7 +48,7 @@ async function saveCheckpoint(tx: Prisma.TransactionClient, jobId: string, value
  * actual identity/age pass and diagnoses failed candidates before another
  * budgeted attempt. The first candidate remains retained across worker slices. */
 export async function selectBestIdentity(c: Container, initialClaim: BoardWizardIdentityClaim, input: {
-  atlas: Buffer; contentVersion: 9 | 10 | 11; deadlineAt?: number; preflight(): Promise<void>;
+  atlas: Buffer; contentVersion: 9 | 10 | 11 | 12; deadlineAt?: number; preflight(): Promise<void>;
 }): Promise<BoardWizardIdentityClaim | null> {
   const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(initialClaim.gameId);
   let claim = initialClaim;
@@ -89,7 +90,7 @@ export async function selectBestIdentity(c: Container, initialClaim: BoardWizard
       // The existing $4 world ceiling includes the second image ($0.50 reserve)
       // and its single comparison ($0.04 reserve); no ceiling increase.
       if ((await budget.audit(worldId)).remainingMicroUsd < 540_000) {
-        if (input.contentVersion === 11) throw new LocalPatchIdentityDeferred();
+        if (isRefreshedCollectionVersion(input.contentVersion)) throw new LocalPatchIdentityDeferred();
         reason = "budget-fallback";
       }
       else {
@@ -123,10 +124,10 @@ export async function selectBestIdentity(c: Container, initialClaim: BoardWizard
     if (checkpoint.second) second = await review(checkpoint.second, true);
   }
   if ((await budget.audit(worldId)).held) { await holdBoardWizardIdentity(c, claim, "unresolved-identity"); return null; }
-  const winner = input.contentVersion === 11
-    ? identityReceiptReadyForPublication(first, 11) ? 1 : second && identityReceiptReadyForPublication(second, 11) ? 2 : null
+  const winner = isRefreshedCollectionVersion(input.contentVersion)
+    ? identityReceiptReadyForPublication(first, input.contentVersion) ? 1 : second && identityReceiptReadyForPublication(second, input.contentVersion) ? 2 : null
     : chooseIdentityCandidate(first, second);
-  if (!winner && input.contentVersion === 11 && second && checkpoint.second) {
+  if (!winner && isRefreshedCollectionVersion(input.contentVersion) && second && checkpoint.second) {
     const diagnosis = diagnoseIdentityFailures(first, second, claim.ageYears!);
     checkpoint = { policy: IDENTITY_SELECTION_POLICY, first: checkpoint.first,
       recovery: { nextAttempt: (checkpoint.recovery?.nextAttempt ?? 2) + 1, current: checkpoint.second, diagnosis,

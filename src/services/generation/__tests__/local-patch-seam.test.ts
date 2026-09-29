@@ -57,6 +57,16 @@ async function boundaryFixture(input: {
 }
 
 describe("returning a locally rendered rectangle to the board", () => {
+  it("v12 sends even a one-pixel misregistered return to diagnosis, preserving the raw refusal", async () => {
+    const f = await boundaryFixture({ borderShift: { dx: 1, dy: 0 } });
+    const legacy = await composeBoundedLocalPatch(f.board, f.crop, f.patch, f.child);
+    const strict = await composeBoundedLocalPatch(f.board, f.crop, f.patch, f.child, { requireAligned: true });
+    expect(legacy).toMatchObject({ usable: true, compositionPermission: "one-pixel-per-axis-tolerance" });
+    expect(strict).toMatchObject({ usable: false, compositionPermission: "refused" });
+    expect(strict.report).toEqual(legacy.report);
+    const clean = await boundaryFixture({});
+    expect((await composeBoundedLocalPatch(clean.board, clean.crop, clean.patch, clean.child, { requireAligned: true })).usable).toBe(true);
+  });
   it("does not infer a border shift from changed interior when the entire returned border band is unchanged", async () => {
     const fixture = await boundaryFixture({ interiorShift: { dx: -2, dy: 0 } });
     const result = await composeBoundedLocalPatch(fixture.board, fixture.crop, fixture.patch, fixture.child);

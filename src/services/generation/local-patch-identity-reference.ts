@@ -31,7 +31,10 @@ export async function prepareLocalPatchIdentityReferences(sheet: Buffer, content
   const half = Math.floor(meta.width / 2);
   const portrait = await sharp(sheet).extract({ left: 0, top: 0, width: half, height: half }).png().toBuffer();
   return {
-    identityPng: await sharp(portrait).resize(1024, 1024, { fit: "inside", withoutEnlargement: true }).png().toBuffer(),
+    // V12 paints a small scene figure. A full-resolution portrait encourages
+    // photographic micro-detail absent from its neighbours. Retain geometry at
+    // a comparable scale; the independent judge still gets the full portrait.
+    identityPng: await sharp(portrait).resize(contentVersion === 12 ? 192 : 1024, contentVersion === 12 ? 192 : 1024, { fit: "inside", withoutEnlargement: true }).png().toBuffer(),
     judgeIdentityPng: await sharp(portrait).resize(512, 512, { fit: "inside", withoutEnlargement: true }).png().toBuffer(),
     ...(isLocalPatchAgeVersion(contentVersion)
       ? { referenceMode: LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE }

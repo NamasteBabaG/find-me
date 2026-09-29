@@ -7,6 +7,19 @@ const decision = { cause: "composition-clipping" as const, explanation: "A full 
   protectedCore: { left: 150, top: 160, width: 180, height: 500 },
   faceRect: { left: 170, top: 180, width: 80, height: 90 } };
 describe("autonomous repair contracts", () => {
+  it("surface-only repair cannot pretend to fix anatomy and changes its recipe when the retained source changes", () => {
+    const style = { ...decision, action: "restyle-retained", cause: "paint-style" };
+    expect(selfRepairDecisionSchema.safeParse(style).success).toBe(true);
+    expect(selfRepairDecisionSchema.safeParse({ ...style, cause: "neighbor-damage" }).success).toBe(false);
+    const parsed = selfRepairDecisionSchema.parse(style);
+    expect(selfRepairRecipe(parsed)).not.toBe(selfRepairRecipe({ ...parsed, sourceKey: "other-paid-source" }));
+  });
+  it.each(["paint-style", "portrait-lighting", "neighbor-damage"] as const)("changes treatment for %s without turning freeform diagnosis into a prompt", cause => {
+    const plan = selfRepairDecisionSchema.parse({ ...decision, cause, action: "redraw-with-new-placement" });
+    expect(selfRepairRenderInstructions(plan)).not.toBe(selfRepairRenderInstructions(decision));
+    expect(selfRepairRecipe(plan)).not.toBe(selfRepairRecipe({ ...plan, cause: "drawing-defect" }));
+    expect(selfRepairRenderInstructions(plan)).toContain("Final visual review is still required");
+  });
   it("routes two concluded failures to diagnosis, never interrupts a pending paid attempt", () => {
     expect(needsSelfRepair({ status: "FAILED", attempts: 1 })).toBe(false);
     expect(needsSelfRepair({ status: "FAILED", attempts: 2 })).toBe(true);

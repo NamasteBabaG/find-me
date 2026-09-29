@@ -25,7 +25,7 @@ import { localPatchHideEvidenceIds, type LocalPatchBoardJudgeRequest, type Local
 import { sha256Bytes } from "../fixed-sprite";
 import { bill, paintedCrop, paintedOk, PASSING_ANSWER, seedApprovedGame } from "./local-patch-fixtures";
 
-const GAME = "collection-world-synthetic", BOARDS = localPatchBoardsForVersion(11);
+const GAME = "collection-world-synthetic", BOARDS = localPatchBoardsForVersion(12);
 const keepFixture = process.env.COLLECTION_E2E_FIXTURE === "1" && !process.env.VERCEL;
 vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: "qa", GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: 0,
   GENERATION_PROVIDER: "openai", GENERATION_MODEL: "gpt-image-2", GENERATION_QUALITY: "medium" }),
@@ -52,7 +52,7 @@ it("wizard selection → 27 actual purchases → 9 reviews → publication → 5
     status: "DRAFT", withJob: true, scenes: [] });
   expect(await selectWorlds(c, GAME, ["journey"])).toEqual({ ok: true });
   const selected = await db.gameScene.findMany({ where: { gameId: GAME } });
-  expect(selected.every(s => s.sceneVersion === 11)).toBe(true);
+  expect(selected.every(s => s.sceneVersion === 12)).toBe(true);
   expect(gameShape(selected)).toEqual({ worlds: 1, places: 9, spots: 27 });
   await db.game.update({ where: { id: GAME }, data: { status: "TARGETS_GENERATING" } });
   await c.storage.put(`private/photo-${GAME}.jpg`, seeded.sheet, "image/png");
@@ -66,16 +66,16 @@ it("wizard selection → 27 actual purchases → 9 reviews → publication → 5
     write: work => db.$transaction(work), reviewer: { review: async () => ({ httpOk: true, requestId: "req-collection-identity",
       body: { model: "gpt-5.6-luna", service_tier: "default", usage: { prompt_tokens: 1500, completion_tokens: 150 },
         choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ checks: { identity: "pass", age: "pass", paintedStyle: "pass", sheetLayout: "pass" }, reason: "Controlled provider" }) } }] } }) },
-  }, { gameId: GAME, identityAssetId: `ast-sheet-${GAME}`, sheet: seeded.sheet, photo: seeded.sheet, atlas: seeded.sheet, contentVersion: 11,
-    provenance: { promptVersion: "character-v5-refreshed-identity-body", quality: "medium", photoAssetId: `ast-photo-${GAME}`,
+  }, { gameId: GAME, identityAssetId: `ast-sheet-${GAME}`, sheet: seeded.sheet, photo: seeded.sheet, atlas: seeded.sheet, contentVersion: 12,
+    provenance: { promptVersion: "character-v6-painted-identity-geometry", quality: "medium", photoAssetId: `ast-photo-${GAME}`,
       photoSha256: sha256Bytes(seeded.sheet), ageYears: 8, crop: null,
-      style: { version: "board-matched-identity/v3", catalogSha256, atlasSha256: sha256Bytes(seeded.sheet) } } });
+      style: { version: "board-matched-identity/v4", catalogSha256, atlasSha256: sha256Bytes(seeded.sheet) } } });
   const paintKeys: string[] = [], allHides = BOARDS.flatMap(b => b.hides);
   const deps: LocalPatchHideDeps = { renderPolicySha256: "f".repeat(64),
     judge: async () => { throw Error("No per-hide review in grouped route"); },
     render: async ({ requestKey, stylePng, prompt }) => {
       expect(prompt).toContain("BODY AGE CONTRACT: 8 years");
-      expect(prompt).toContain("IDENTITY PRECEDENCE");
+      expect(prompt).toContain("INTEGRATION CONTRACT");
       paintKeys.push(requestKey);
       const hide = allHides.find(h => requestKey.startsWith(`${h.id}:`))!;
       return paintedOk(await paintedCrop(stylePng, hide), bill(`req-${requestKey}`));
@@ -83,7 +83,7 @@ it("wizard selection → 27 actual purchases → 9 reviews → publication → 5
   };
   const boardJudge = vi.fn(async (request: LocalPatchBoardJudgeRequest): Promise<LocalPatchBoardJudgeResult> => ({
     verdict: null, verdicts: {}, raw: JSON.stringify({ hides: request.hides.map(h => ({ hideId: h.hideId,
-      evidenceIds: localPatchHideEvidenceIds(h.hideId), verdict: { ...PASSING_ANSWER, faceLikeness: "pass", faceReadable: "pass", severeSeam: "pass", ageAppropriate: "pass" } })) }),
+      evidenceIds: localPatchHideEvidenceIds(h.hideId), verdict: { ...PASSING_ANSWER, faceLikeness: "pass", faceReadable: "pass", severeSeam: "pass", ageAppropriate: "pass", lightingMatch: "pass", neighborsIntact: "pass", integrationEvidence: { style: "Controlled original-face paint comparison", lighting: "Controlled local-light comparison", neighbors: "Controlled complete-neighbour comparison" } } })) }),
     model: "gpt-5.6-sol", requestId: `req-review-${request.boardId}`, usage: { prompt_tokens: 9000, completion_tokens: 1400 },
     finishReason: "stop", wireFault: null, costUnknown: false,
   }));
@@ -100,8 +100,8 @@ it("wizard selection → 27 actual purchases → 9 reviews → publication → 5
   expect(paintKeys).toHaveLength(27); expect(new Set(paintKeys).size).toBe(27);
   expect(boardJudge).toHaveBeenCalledTimes(9);
   const inventory = await localPatchPrivateInventory(c, GAME);
-  expect(inventory.retainedPurchaseKeys).toContain(retainedPurchaseKey(boardWizardWorldId(GAME), localPatchBoardReviewKey("giza", [1, 1, 1], undefined, 11)));
-  expect(boardJudge.mock.calls.every(([r]) => r.hides.length === 3 && r.contentVersion === 11)).toBe(true);
+  expect(inventory.retainedPurchaseKeys).toContain(retainedPurchaseKey(boardWizardWorldId(GAME), localPatchBoardReviewKey("giza", [1, 1, 1], undefined, 12)));
+  expect(boardJudge.mock.calls.every(([r]) => r.hides.length === 3 && r.contentVersion === 12)).toBe(true);
   expect((await boardWizardBudgetOf(c).audit(boardWizardWorldId(GAME))).held).toBe(false);
   for (const board of config.adventure!.boards) {
     for (const discovery of board.discoveries) {
@@ -117,7 +117,7 @@ it("wizard selection → 27 actual purchases → 9 reviews → publication → 5
   await expect(ownerAdventureAlbum(db, "stranger", GAME)).rejects.toThrow("not-owned");
   await runLocalPatchWorldSlice(c, deps, GAME, { boardJudge });
   expect(paintKeys).toHaveLength(27);
-  expect(localPatchBoardReviewKeys("giza", 11).some(k => k.includes("three-review:v11:1-1-1:"))).toBe(true);
+  expect(localPatchBoardReviewKeys("giza", 12).some(k => k.includes("three-review:v12:1-1-1:"))).toBe(true);
   if (keepFixture) {
     const link = await ensurePlayerLink(c, GAME);
     mkdirSync("output/collection-e2e", { recursive: true });

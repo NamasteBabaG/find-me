@@ -1,4 +1,4 @@
-import { REFRESHED_COLLECTION_VERSION } from "../../src/domain/scene/local-patch-versions";
+import { REFRESHED_COLLECTION_VERSION, INTEGRATED_COLLECTION_VERSION } from "../../src/domain/scene/local-patch-versions";
 import { validateSceneDefinition, type SceneDefinition } from "@/domain/scene/schema";
 import amazon from "./amazon/scene.json";
 import paris from "./paris/scene.json";
@@ -92,7 +92,7 @@ const fiveHideVersions = RAW_SCENES.filter(raw => WORLD_LOCAL_PATCH_HIDES.some(b
 const strictHideVersions = RAW_SCENES.filter(raw => WORLD_LOCAL_PATCH_HIDES.some(board => board.board === (raw as { slug: string }).slug)).map(localPatchStrictSceneRelease);
 const ageHideVersions = RAW_SCENES.filter(raw => WORLD_LOCAL_PATCH_HIDES.some(board => board.board === (raw as { slug: string }).slug)).map(localPatchAgeSceneRelease);
 const collectionVersions = RAW_SCENES.filter(raw => WORLD_LOCAL_PATCH_HIDES.some(board => board.board === (raw as { slug: string }).slug)).map(raw => collectionSceneRelease(raw));
-const HISTORICAL_SCENES: readonly SceneDefinition[] = [...preRefresh, ...prePlacement, ...preForeground, ...preContract, ...localPatchVersions, ...fiveHideVersions, ...strictHideVersions, ...ageHideVersions, ...collectionVersions, ...RAW_SCENES.filter(raw => WORLD_LOCAL_PATCH_HIDES.some(board => board.board === (raw as { slug: string }).slug)).map(raw => collectionSceneRelease(raw, REFRESHED_COLLECTION_VERSION))].map(raw => {
+const HISTORICAL_SCENES: readonly SceneDefinition[] = [...preRefresh, ...prePlacement, ...preForeground, ...preContract, ...localPatchVersions, ...fiveHideVersions, ...strictHideVersions, ...ageHideVersions, ...collectionVersions, ...RAW_SCENES.filter(raw => WORLD_LOCAL_PATCH_HIDES.some(board => board.board === (raw as { slug: string }).slug)).flatMap(raw => [collectionSceneRelease(raw, REFRESHED_COLLECTION_VERSION), collectionSceneRelease(raw, INTEGRATED_COLLECTION_VERSION)])].map(raw => {
   const parsed = validateSceneDefinition(raw);
   if (!parsed.ok || !parsed.scene) throw new Error(`Invalid archived scene ${(raw as { slug: string }).slug}: ${parsed.errors.join(", ")}`);
   return parsed.scene;

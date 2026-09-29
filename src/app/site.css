@@ -515,9 +515,18 @@
 /* Each card is as tall as its own words: a summary stretched to the pay card's height was half empty. */
 .summary { display: grid; gap: var(--space-3); grid-template-columns: minmax(0, 1fr); align-items: start; }
 .summary__face { width: var(--space-10); height: var(--space-10); flex-shrink: 0; }
+.summary__identity { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-2); align-items: center; }
+.summary__identity > div { min-width: 0; display: grid; gap: var(--space-0-5); }
+.summary__edit { justify-self: start; display: inline-flex; align-items: center; min-height: var(--touch-min); font-size: var(--fs-100); }
+.summary__passport { padding: var(--space-2); background: var(--sun-soft); border-radius: var(--radius-2); }
+.summary__pay[aria-busy="true"] .fm-btn__label { visibility: visible; }
+.summary__pay[aria-busy="true"] .fm-spinner { position: static; margin: 0; }
+@media (max-width: 720px) {
+  .summary > .fm-card { padding: var(--space-3); gap: var(--space-2); }
+  .summary__face { width: var(--space-8); height: var(--space-8); }
+  .summary__identity h3 { font-size: var(--fs-300); line-height: var(--lh-300); }
+}
 @media (min-width: 900px) { .summary { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); } }
-/* Phones: the email + pay card comes first so the CTA is above the fold; the summary follows. */
-@media (max-width: 899px) { .summary > form { order: -1; } }
 .summary__row { display: flex; justify-content: space-between; gap: var(--space-2); padding-block: var(--space-1); border-bottom: 1px solid var(--line); }
 .summary__row:last-child { border-bottom: 0; }
 .summary__scenes { display: flex; gap: var(--space-1); flex-wrap: wrap; }
@@ -525,9 +534,6 @@
 .summary__more > summary::before { content: "▸ "; }
 .summary__more[open] > summary::before { content: "▾ "; }
 .summary__more[open] > summary { margin-bottom: var(--space-1); }
-.summary__brief { display: grid; gap: var(--space-0-5); padding: var(--space-2); border-radius: var(--radius-2); background: var(--paper-2); font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); }
-.summary__brief strong { font-family: var(--font-display); font-size: var(--fs-200); line-height: var(--lh-200); color: var(--ink); }
-.summary__brief-price { font-family: var(--font-display); font-weight: 800; color: var(--ink); }
 
 /* Mock payment (sandbox PSP page) */
 .psp { max-width: 560px; }
@@ -544,12 +550,11 @@
 .psp__foot { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); }
 @media (max-width: 720px) { .psp__card { border-radius: var(--radius-3); } .psp__body { gap: var(--space-2); padding: var(--space-2); } .psp__body h1 { font-size: var(--fs-400); line-height: var(--lh-400); } .psp .fm-input { min-height: var(--touch-min); } .psp .fm-field { gap: var(--space-0-5); } .psp .fm-label { font-size: var(--fs-200); line-height: var(--lh-200); } }
 
-/* Creating — the wait as a small game: the sticker appears when it exists,
-   the bar moves with every hiding spot painted, the child rides the bar. */
+/* Creating: one portrait, with progress underneath. */
 .cp__card { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); text-align: center; padding: var(--space-4); overflow: hidden; }
 .cp__stage {
   position: relative; width: var(--space-20); height: var(--space-20); border-radius: var(--radius-pill);
-  display: grid; place-items: center;
+  display: grid; place-items: center; margin: var(--space-1) auto;
   background: radial-gradient(circle at 50% 40%, var(--sun-soft), var(--paper-2) 72%);
   box-shadow: inset 0 0 0 3px var(--white);
 }
@@ -560,7 +565,9 @@
 }
 .cp__stage--met::before { border-style: solid; animation: cp-bloom var(--dur-3) var(--ease-out) both; }
 .cp__stage--done::before { border-style: solid; animation: none; }
-.cp__avatar { width: var(--space-16); height: var(--space-16); border-radius: 18px; object-fit: contain; box-shadow: var(--sticker-outline), var(--shadow-sticker); background: var(--white); animation: cp-pop var(--dur-3) var(--ease-out) both; }
+.cp__avatar { width: 100%; height: 100%; border-radius: var(--radius-pill); object-fit: cover; background: var(--white); animation: cp-pop var(--dur-3) var(--ease-out) both; }
+.cp--done { gap: var(--space-3); }
+.cp__delivery { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); padding-top: var(--space-2); border-top: 1px solid var(--line); width: 100%; }
 .cp__pencil { font-size: var(--fs-800); line-height: 1; animation: cp-scribble 1.6s ease-in-out infinite; transform-origin: 80% 80%; }
 .cp__party { font-size: var(--fs-800); line-height: 1; }
 .cp__title { font-family: var(--font-display); font-size: var(--fs-500); line-height: var(--lh-500); font-weight: 800; letter-spacing: -0.01em; }
@@ -568,14 +575,6 @@
 .cp__bar { position: relative; width: 100%; height: var(--space-2); margin-top: var(--space-3); border-radius: var(--radius-pill); background: var(--paper-2); box-shadow: inset 0 0 0 2px var(--line); }
 .cp__fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--sun), var(--sun-deep)); transition: width var(--dur-4) var(--ease-out); }
 [dir="rtl"] .cp__fill { background: linear-gradient(270deg, var(--sun), var(--sun-deep)); }
-.cp__rider {
-  position: absolute; top: 50%; width: var(--space-5); height: var(--space-5); margin-inline-start: calc(var(--space-5) * -0.5);
-  display: grid; place-items: center; transform: translateY(-50%);
-  border-radius: var(--radius-pill); background: var(--white); box-shadow: var(--sticker-outline), var(--shadow-sticker);
-  font-size: var(--fs-200); line-height: 1; overflow: hidden;
-  transition: inset-inline-start var(--dur-4) var(--ease-out);
-}
-.cp__rider img { width: 100%; height: 100%; object-fit: cover; }
 .cp__percent { font-family: var(--font-display); font-weight: 800; font-size: var(--fs-200); line-height: var(--lh-200); color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .cp__steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
 .cp__step { display: flex; align-items: center; gap: var(--space-2); min-height: var(--touch-min); padding: var(--space-1) var(--space-2); border-radius: var(--radius-3); background: var(--white); box-shadow: var(--shadow-1); font-family: var(--font-display); font-weight: 600; font-size: var(--fs-200); line-height: var(--lh-200); }
@@ -585,7 +584,7 @@
 .cp__dot { flex-shrink: 0; width: var(--space-4); height: var(--space-4); border-radius: var(--radius-pill); display: grid; place-items: center; background: var(--paper-2); font-size: var(--fs-100); }
 .cp__step--done .cp__dot { background: var(--leaf); color: var(--white); }
 .cp__step--active .cp__dot { background: var(--sun-soft); }
-.cp__label { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-0-5) var(--space-1); }
+.cp__label { display: grid; gap: var(--space-0-5); min-width: 0; }
 .cp__count { font-family: var(--font-body); font-weight: 600; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-3); font-variant-numeric: tabular-nums; }
 @keyframes cp-spin { to { transform: rotate(360deg); } }
 @keyframes cp-bloom { 0% { transform: scale(0.85); opacity: 0; } 100% { transform: none; opacity: 0.7; } }
@@ -603,12 +602,11 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .cp__stage::before, .cp__pencil, .cp__avatar { animation: none; }
-  .cp__fill, .cp__rider { transition: none; }
+  .cp__fill { transition: none; }
 }
 @media (max-width: 720px) {
   .cp__card { padding: var(--space-3); }
   .cp__stage { width: var(--space-16); height: var(--space-16); }
-  .cp__avatar { width: var(--space-12); height: var(--space-12); }
   .cp__title { font-size: var(--fs-400); line-height: var(--lh-400); }
 }
 

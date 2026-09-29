@@ -1,3 +1,4 @@
+import { isRefreshedCollectionVersion } from "../../domain/scene/local-patch-versions";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import sharp from "sharp";
@@ -158,7 +159,7 @@ export async function reserveBoardWizardIdentity(c: Container, gameId: string, f
   if (!Number.isSafeInteger(attempt) || attempt < 1) throw Error("Invalid identity attempt");
   if (attempt > 2) {
     const scenes = await c.db.gameScene.findMany({ where: { gameId }, select: { sceneVersion: true } });
-    if (scenes.length !== 9 || scenes.some(s => s.sceneVersion !== 11)) throw Error("Additional identity attempts require the refreshed collection");
+    if (scenes.length !== 9 || scenes.some(s => !isRefreshedCollectionVersion(s.sceneVersion))) throw Error("Additional identity attempts require the refreshed collection");
   }
   const result = await budgetOf(c).reserve(scope(gameId), { requestKey: `wizard:identity:${attempt}`, scope: "identity", operationFingerprint: boardConditioningHash(fingerprintInput), reserveMicroUsd: 500_000 });
   demand(result.acquired, "Identity dispatch is already reserved or paid; recover its retained output instead of buying again");

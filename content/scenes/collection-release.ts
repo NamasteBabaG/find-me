@@ -1,5 +1,6 @@
 import { REFRESHED_COLLECTION_BOARDS, REFRESHED_WIZARD_CATALOG } from "../adventures/wizard-refresh-release";
-import { REFRESHED_COLLECTION_VERSION } from "../../src/domain/scene/local-patch-versions";
+import { isRefreshedCollectionVersion, INTEGRATED_COLLECTION_VERSION } from "../../src/domain/scene/local-patch-versions";
+import { INTEGRATED_COLLECTION_BOARDS, INTEGRATED_WIZARD_CATALOG } from "../adventures/wizard-integrated-release";
 import { SceneDefinitionSchema } from "../../src/domain/scene/schema";
 import { maskOf } from "../../src/domain/scene/local-patch-hides";
 import { COLLECTION_PATCH_BOARDS, COLLECTION_SCENE_VERSION, WIZARD_ADVENTURE_CATALOG } from "../adventures/wizard-release";
@@ -7,8 +8,8 @@ import { localPatchSceneRelease } from "./local-patch-release";
 
 export function collectionSceneRelease(raw: unknown, version = COLLECTION_SCENE_VERSION): unknown {
   const legacy = SceneDefinitionSchema.parse(localPatchSceneRelease(raw));
-  const board = (version === REFRESHED_COLLECTION_VERSION ? REFRESHED_COLLECTION_BOARDS : COLLECTION_PATCH_BOARDS).find(b => b.board === legacy.slug);
-  const plan = (version === REFRESHED_COLLECTION_VERSION ? REFRESHED_WIZARD_CATALOG : WIZARD_ADVENTURE_CATALOG).boards.find(b => b.boardSlug === legacy.slug);
+  const board = (version === INTEGRATED_COLLECTION_VERSION ? INTEGRATED_COLLECTION_BOARDS : isRefreshedCollectionVersion(version) ? REFRESHED_COLLECTION_BOARDS : COLLECTION_PATCH_BOARDS).find(b => b.board === legacy.slug);
+  const plan = (version === INTEGRATED_COLLECTION_VERSION ? INTEGRATED_WIZARD_CATALOG : isRefreshedCollectionVersion(version) ? REFRESHED_WIZARD_CATALOG : WIZARD_ADVENTURE_CATALOG).boards.find(b => b.boardSlug === legacy.slug);
   if (!board || !plan || plan.status !== "ready") throw new Error(`Missing collection board ${legacy.slug}`);
   return { ...legacy, version, artStatus: "final",
     art: { ...plan.art, thumbnail: plan.art.base, palette: legacy.art.palette }, ambient: [], bonus: undefined,

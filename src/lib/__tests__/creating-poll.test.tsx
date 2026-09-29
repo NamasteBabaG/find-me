@@ -29,6 +29,8 @@ describe("the mounted creating screen", () => {
     expect(view.getByText(en.create.creating.automaticCheck)).toBeTruthy();
     expect(view.queryByText(en.create.creating.milestones.check)).toBeNull();
     expect(view.getByText("10 of 45 hiding spots")).toBeTruthy();
+    expect(view.container.querySelectorAll("img")).toHaveLength(1);
+    expect(view.getByRole("progressbar").querySelector("img")).toBeNull();
   });
   it.each(["READY", "DELIVERED"] as const)("invites opening a %s game on the real playable link only", async (value) => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(status(value)));
@@ -38,6 +40,8 @@ describe("the mounted creating screen", () => {
     expect(open.getAttribute("href")).toBe("/play/test");
     expect(open.classList.contains("cp__open")).toBe(true);
     expect(view.container.querySelectorAll(".cp__open")).toHaveLength(1);
+    expect(view.getByRole("heading", { level: 1 }).textContent).toBe("Test's adventure is ready!");
+    expect(view.queryByText("Preparing Test's adventure")).toBeNull();
     expect(view.getByRole("link", { name: en.create.creating.manage }).classList.contains("cp__open")).toBe(false);
   });
   it.each([["QA_PENDING", "/play/test"], ["READY", null]] as const)("does not invite before a playable game and URL both exist (%s / %s)", async (value, playUrl) => {

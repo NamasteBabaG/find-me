@@ -15,7 +15,7 @@ import { boardsOfWorlds, purchasableWorlds } from "./world-catalog.service";
 import { SYSTEM } from "./audit.service";
 import { env } from "@/lib/env";
 import { LOCAL_PATCH_STYLE } from "./generation/local-patch-world";
-import { REFRESHED_COLLECTION_VERSION } from "../domain/scene/local-patch-catalog";
+import { INTEGRATED_COLLECTION_VERSION } from "../domain/scene/local-patch-versions";
 
 /**
  * The parent's creation flow, step by step. A "draft" is just a Game in
@@ -166,7 +166,7 @@ export function newDraftStyleVersion() {
 }
 
 export function sceneVersionForDraft(styleVersion: string) {
-  return styleVersion === LOCAL_PATCH_STYLE ? REFRESHED_COLLECTION_VERSION : undefined;
+  return styleVersion === LOCAL_PATCH_STYLE ? INTEGRATED_COLLECTION_VERSION : undefined;
 }
 
 export async function worldsForDraft(c: Container, styleVersion = newDraftStyleVersion()) {

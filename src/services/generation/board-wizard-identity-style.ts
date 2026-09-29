@@ -64,7 +64,7 @@ export async function buildBoardPeopleStyle(boardId: string, root = process.cwd(
   return { ...await boardPeopleTile(catalog, boardId, root), catalogSha256, version: BOARD_WIZARD_IDENTITY_STYLE_VERSION };
 }
 export async function buildBoardWizardIdentityStyle(root = process.cwd(), version: QaCharacterStyleContract["version"] = BOARD_WIZARD_IDENTITY_STYLE_VERSION) {
-  if (version === "board-matched-identity/v3") return buildRefreshedIdentityStyle(root);
+  if (version === "board-matched-identity/v3" || version === "board-matched-identity/v4") return { ...await buildRefreshedIdentityStyle(root), version };
   if (version === LEGACY_BOARD_WIZARD_IDENTITY_STYLE_VERSION) return buildLegacyBoardWizardIdentityStyle(root);
   if (version !== BOARD_WIZARD_IDENTITY_STYLE_VERSION) throw new Error("BOARD_IDENTITY_STYLE: unknown identity style version");
   const { catalog, sha256: catalogSha256 } = await readBoardConditionedCatalog(root);

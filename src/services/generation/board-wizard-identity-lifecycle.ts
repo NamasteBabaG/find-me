@@ -1,3 +1,4 @@
+import { isRefreshedCollectionVersion } from "../../domain/scene/local-patch-versions";
 import { Prisma } from "@prisma/client";
 import type { Container } from "../container";
 import type { Actor } from "../audit.service";
@@ -76,7 +77,7 @@ export async function generateBoardWizardIdentity(c: Container, claim: BoardWiza
   if (deps.attempt !== undefined && (!Number.isSafeInteger(deps.attempt) || deps.attempt < 1)) throw Error("Invalid identity attempt");
   if ((deps.attempt ?? 1) > 2) {
     const scenes = await c.db.gameScene.findMany({ where: { gameId: claim.gameId }, select: { sceneVersion: true } });
-    demand(scenes.length === 9 && scenes.every(s => s.sceneVersion === 11));
+    demand(scenes.length === 9 && scenes.every(s => isRefreshedCollectionVersion(s.sceneVersion)));
   }
   const requestKey = `wizard:identity:${deps.attempt ?? 1}`;
   try {

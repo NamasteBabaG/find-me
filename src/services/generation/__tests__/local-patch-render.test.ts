@@ -11,6 +11,7 @@ import type { PurchaseLedger, RetainedPurchase, RetainedPurchaseStore } from "..
 import { WorldBudgetError } from "../world-budget";
 import type { WorldBudgetRequest, WorldChargeEvidence } from "../world-budget";
 import { LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, localPatchImagePolicyForVersion, localPatchRenderPolicySha256 } from "../../../infra/generation/openai-local-patch";
+import type { SelfRepairDecision } from "../../../domain/scene/local-patch-self-repair";
 
 const BOARD = { width: 3072, height: 2048 };
 const board: LocalPatchBoard = {
@@ -97,6 +98,31 @@ async function attempt(deps: LocalPatchRenderDeps, over: Record<string, unknown>
 }
 
 describe("one paid attempt at one hide", () => {
+  it("surface repair edits the bound paid source, keeps its own key, and refuses a swapped source before repurchasing", async () => {
+    const w = world(), source = await sharp({ create: { width: 512, height: 768, channels: 3, background: "#445566" } }).png().toBuffer();
+    const b = localPatchBoardsForVersion(12)[0]!, h = b.hides[0]!;
+    const composed = await sharp({ create: { width: 3840, height: 2160, channels: 3, background: "#ccbbaa" } }).png().toBuffer();
+    const decision: SelfRepairDecision = { action: "restyle-retained", cause: "paint-style", explanation: "Retained figure is complete; only its surface is photographic.",
+      sourceKey: `${h.id}:${h.pose}:render:2`, returnWindow: { left: 20, top: 20, width: 470, height: 730 },
+      protectedCore: { left: 100, top: 160, width: 200, height: 400 }, faceRect: { left: 140, top: 180, width: 80, height: 90 } };
+    const render = vi.fn(async (input: Parameters<LocalPatchRenderDeps["render"]>[0]) => {
+      expect(await sharp(input.stylePng).raw().toBuffer()).toEqual(await sharp(source).raw().toBuffer());
+      expect(input.prompt).toContain("Edit the EXISTING target child");
+      expect(input.prompt).not.toContain("adding exactly ONE");
+      return { png: source, rejected: null, quarantined: null, evidence: evidence("restyle-receipt"), unknownReason: null };
+    });
+    const worker = w.process({ render });
+    const input = { worldId: "retained-style-test", board: b, hide: h, composedPng: composed, identityPng: await small(), judgeIdentityPng: await small(),
+      contentVersion: 12, paintRecipe: "scene-integration-v3" as const, referenceMode: LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, ageYears: 8, attempt: 2, apiKey: "synthetic",
+      selfRepair: { cycle: 1, decision }, restyleSourcePng: source };
+    await renderLocalPatchHide(worker.deps, input);
+    await renderLocalPatchHide(worker.deps, input);
+    expect(render).toHaveBeenCalledTimes(1);
+    const changed = await sharp(source).modulate({ brightness: 1.1 }).png().toBuffer();
+    expect((await renderLocalPatchHide(worker.deps, { ...input, restyleSourcePng: changed })).accepted).toBe(false);
+    expect(render).toHaveBeenCalledTimes(1);
+    await expect(renderLocalPatchHide(worker.deps, { ...input, contentVersion: 11 })).rejects.toThrow("v12 diagnosis");
+  });
   it("rejects a recipe mismatch without reserving budget or calling providers", async () => {
     const w = world(), worker = w.process();
     await expect(attempt(worker.deps, { expectedPromptVersion: LOCAL_PATCH_AGE_PROMPT_VERSION })).rejects.toThrow("prompt provenance conflict");

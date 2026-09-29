@@ -12,12 +12,14 @@ const contains = (outer: RecoveryRect, inner: RecoveryRect, guard = 0) => inner.
   && inner.top - guard >= outer.top && inner.left + inner.width + guard <= outer.left + outer.width
   && inner.top + inner.height + guard <= outer.top + outer.height;
 export const selfRepairDecisionSchema = z.object({
-  cause: z.enum(["composition-clipping", "background-registration", "wrong-identity", "age-or-scale", "unreadable-evidence", "drawing-defect"]),
+  cause: z.enum(["composition-clipping", "background-registration", "wrong-identity", "age-or-scale", "unreadable-evidence", "drawing-defect", "paint-style", "portrait-lighting", "neighbor-damage"]),
   explanation: z.string().min(12).max(800),
-  action: z.enum(["recompose-retained", "redraw-with-new-placement"]),
+  action: z.enum(["recompose-retained", "redraw-with-new-placement", "restyle-retained"]),
   sourceKey: z.string().min(1).max(240),
   returnWindow: rect, protectedCore: rect, faceRect: rect,
 }).strict().superRefine((p, ctx) => {
+  if (p.action === "restyle-retained" && p.cause !== "paint-style" && p.cause !== "portrait-lighting")
+    ctx.addIssue({ code: "custom", message: "Surface repair cannot correct anatomy, identity or neighbouring people" });
   if (!contains({ left: 1, top: 1, width: 510, height: 766 }, p.returnWindow)
     || !contains(p.returnWindow, p.protectedCore, 18) || !contains(p.protectedCore, p.faceRect)
     || p.faceRect.width < 30 || p.faceRect.height < 30) ctx.addIssue({ code: "custom",
@@ -33,6 +35,9 @@ export function selfRepairRenderInstructions(plan: SelfRepairDecision): string {
     "age-or-scale": "Establish the stated age and scene depth with youthful shoulders, torso, limbs and hands before facial detail. Do not fill the maximum envelope with an oversized body.",
     "unreadable-evidence": "Make the complete canonical face and enough naturally visible shoulder/body evidence clear at native scale. Keep natural hiding and the stated age.",
     "drawing-defect": "Reconstruct the entire visible child as one coherent figure, with the correct pose and support; remove partial limbs and preserve surrounding people.",
+    "paint-style": "Change the rendering approach: draw the child's face with the board's visible ink-like contours and a few clearly separated flat matte light/shadow shapes. Draw eyes, nose and lips as economical illustrated marks. Group curls into broad dark locks with sparse painted accents, not individual strands. Retain the specific facial geometry and hair shape. Do not copy the portrait's smooth skin gradients, detailed eyes or photographic hair. This is a complete painted reconstruction of the same child, not a photo with a texture overlay.",
+    "portrait-lighting": "Rebuild the child's illumination from the original scene: use the same shadow shapes and subdued highlights as people at the same depth. Remove frontal portrait fill, rim glow and isolated bright eyes. Keep natural skin colour and the recognizable facial geometry.",
+    "neighbor-damage": "Redraw only the target in a corrected envelope that leaves neighbouring people whole. Restore the original foreground heads, necks, shoulders and hands at their exact coordinates. Keep the child behind those silhouettes. Never paint half of a neighbour or introduce a second face at the return boundary.",
   };
   return `AUTONOMOUS RECOVERY ${SELF_REPAIR_VERSION}. The previous approach failed; use this corrected placement.\n`
     + `Maximum child envelope in the original 512x768 crop: ${JSON.stringify(plan.protectedCore)}. `
@@ -41,7 +46,7 @@ export function selfRepairRenderInstructions(plan: SelfRepairDecision): string {
 }
 export function selfRepairRecipe(plan: SelfRepairDecision): string {
   // Different explanatory prose is not a different approach.
-  return JSON.stringify([plan.action, plan.action === "recompose-retained" ? plan.sourceKey : plan.cause,
+  return JSON.stringify([plan.action, plan.action === "recompose-retained" ? plan.sourceKey : plan.action === "restyle-retained" ? [plan.sourceKey, plan.cause] : plan.cause,
     plan.returnWindow, plan.protectedCore, plan.faceRect]);
 }
 export function needsSelfRepair(row: { status: string; attempts: number; lastError?: string | null } | undefined): boolean {

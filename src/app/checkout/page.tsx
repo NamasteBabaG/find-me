@@ -5,6 +5,7 @@ import { gameShape, worldsOwned } from "@/services/world-catalog.service";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
 import { boardsFor, priceFor, WORLD_PRICES } from "@/domain/package";
 import { childHasPaidWorld } from "@/services/child-pricing.service";
+import { isCollectionVersion } from "@/domain/scene/local-patch-versions";
 import { getCurrency, getI18n } from "@/i18n/server";
 import { formatMoney, pick, tf } from "@/i18n";
 import { CreateFrame } from "../create/CreateLayout";
@@ -43,15 +44,18 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
     <CreateFrame width="mid" step={4} title={ck.title} lead={ck.lead} user={user} isAdmin={isAdminEmail(user?.email)}>
       <div className="summary">
         <div className="fm-card fm-card--pad-4 fm-stack fm-stack--3">
-          <div className="fm-row">
+          <div className="summary__identity">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/api/drafts/photo" alt="" className="fm-sticker summary__face" width={80} height={80} />
             <div>
               <h3>{tf(ck.gameTitle, { name })}</h3>
-              {summary.child?.ageYears != null ? <p>{tf(ck.childAge, { age: summary.child.ageYears })} · <a href="/create">{ck.editChild}</a></p> : null}
-              <p>{worldNames}</p>
-              <p className="fm-muted">{tf(ck.summaryLine, { pkg: packageName, boards: shape.places, spots: shape.spots })}</p>
+              {summary.child?.ageYears != null ? <p className="fm-muted">{tf(ck.childAge, { age: summary.child.ageYears })}</p> : null}
+              <a className="summary__edit" href="/create">{ck.editChild}</a>
             </div>
+          </div>
+          <div className="fm-stack fm-stack--1">
+            <h3>{worldNames}</h3>
+            <p className="fm-muted">{tf(ck.summaryLine, { pkg: packageName, boards: shape.places, spots: shape.spots })}</p>
           </div>
           {/* The full list is there for whoever wants it; it is not the first thing on the page. */}
           <details className="summary__more">
@@ -66,25 +70,20 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
           </details>
           <div>
             <div className="summary__row">
-              <span>{packageName}</span>
-              <strong>{price}</strong>
-            </div>
-            <div className="summary__row">
               <span>{ck.total}</span>
               <strong className="package__worlds">{price}</strong>
             </div>
           </div>
-          <p>{t.home.pricing.passport}</p>
+          <p className="summary__passport">{t.home.pricing.passport}</p>
           {continuation ? <p className="fm-hint">{tf(t.home.pricing.returning, { price: formatMoney(WORLD_PRICES[currency].additional, currency, locale) })}</p> : null}
           <p className="fm-small">{ck.vat}</p>
         </div>
         <CheckoutForm
-          automaticPublication={summary.game.scenes.every(scene => scene.sceneVersion === 7)}
+          automaticPublication={summary.game.scenes.every(scene => scene.sceneVersion === 7 || isCollectionVersion(scene.sceneVersion))}
           defaultEmail={defaultEmail}
           priceLabel={price}
           outcome={outcome}
           backHref={backHref}
-          brief={{ name: tf(ck.gameTitle, { name }), worlds: worldNames, shape: tf(ck.summaryLine, { pkg: packageName, boards: shape.places, spots: shape.spots }) }}
         />
       </div>
     </CreateFrame>

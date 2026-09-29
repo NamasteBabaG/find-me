@@ -1,5 +1,6 @@
+import { INTEGRATED_WIZARD_CATALOG } from "../../../content/adventures/wizard-integrated-release";
 import { REFRESHED_WIZARD_CATALOG } from "../../../content/adventures/wizard-refresh-release";
-import { isCollectionVersion, REFRESHED_COLLECTION_VERSION } from "../../domain/scene/local-patch-versions";
+import { isCollectionVersion, REFRESHED_COLLECTION_VERSION, INTEGRATED_COLLECTION_VERSION } from "../../domain/scene/local-patch-versions";
 import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { GameConfigSchema, SpriteRefSchema, type GameConfig, type PlayWorld } from "../../domain/game/config";
@@ -120,7 +121,7 @@ export async function composeLocalPatchGame(c: Container, gameId: string): Promi
   const config = GameConfigSchema.parse(composeGame({ gameId, child: who, locale, packageTier: "ONE_WORLD", styleVersion: STYLE,
     scenes, worlds: [...worlds.values()], ...(game.giftJson ? { gift: JSON.parse(game.giftJson) } : {}) }));
   return game.scenes.every(scene => isCollectionVersion(scene.sceneVersion))
-    ? attachAdventureBook(config, game.scenes[0]!.sceneVersion === REFRESHED_COLLECTION_VERSION ? REFRESHED_WIZARD_CATALOG : WIZARD_ADVENTURE_CATALOG, scenes.map(scene => scene.slug),
+    ? attachAdventureBook(config, game.scenes[0]!.sceneVersion === INTEGRATED_COLLECTION_VERSION ? INTEGRATED_WIZARD_CATALOG : game.scenes[0]!.sceneVersion === REFRESHED_COLLECTION_VERSION ? REFRESHED_WIZARD_CATALOG : WIZARD_ADVENTURE_CATALOG, scenes.map(scene => scene.slug),
       partialRelease?.version === 2 ? { verifiedSubset: Object.fromEntries(scenes.filter(scene => scene.targets.length === 2)
         .map(scene => [scene.slug, scene.targets.map(target => target.id)])) } : {}) : config;
 }
