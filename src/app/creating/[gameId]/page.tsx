@@ -3,6 +3,7 @@ import { getContainer } from "@/services/container";
 import { currentUser, draftTokenFromCookie, isAdminEmail } from "@/lib/server/session";
 import { SiteHeader } from "@/ui/Shell";
 import { CreatingStatus } from "./CreatingStatus";
+import { GameConfigSchema } from "@/domain/game/config";
 
 export const metadata = { robots: { index: false } };
 
@@ -13,7 +14,14 @@ export default async function CreatingPage({ params }: { params: Promise<{ gameI
   if (!game) notFound();
   const allowed = (draftToken && game.draftToken === draftToken) || (user && game.ownerId === user.id) || isAdminEmail(user?.email);
   if (!allowed) notFound();
-  const name = game.childProfile?.displayName ?? "";
+  let name = game.childProfile?.displayName ?? "";
+  if (!name && game.configJson) {
+    try {
+      // Older delivered games can retain their child in the published config
+      // without a linked profile. Keep the ready heading personal for them too.
+      name = GameConfigSchema.parse(JSON.parse(game.configJson)).child.name;
+    } catch { /* An unfinished config is not a source of display data. */ }
+  }
   return (
     <>
       <SiteHeader user={user} isAdmin={isAdminEmail(user?.email)} />

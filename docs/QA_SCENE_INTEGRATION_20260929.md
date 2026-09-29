@@ -22,3 +22,17 @@ Validation before this commit:
 At commit time the current delivered game is unchanged. Other private repair candidates remain under review; code tests and a technical composition pass do not establish visual acceptance. The original photograph has already expired under retention, so this incident's likeness reviews use the approved canonical identity. Private images, provider responses, retained paid ledgers and screenshots stay outside the release source.
 
 The real run also exposed otherwise valid plans whose explanation exceeded 800 characters. The parser now bounds that non-executable prose without relaxing numeric geometry or action validation, and the prompt requests a concise explanation. A separate bounded engineering validation follows this correction; both research ledgers remain retained. Production world allowances are unchanged.
+
+## QA deployment and incident repair outcome
+
+Commit `e88a1ea900f6e261d6e44f8c8fa3905b3f80601f` passed GitHub Actions run `36570863840`, the clean build and the private-source audit. Deployment `dpl_2rFHsip9dXX1XBgQwpPJ5AdrYtQP` was promoted to the dedicated QA alias.
+
+Nineteen replacement images passed the independent, byte-bound review and manual inspection. They were published to the existing delivered QA game in one fenced transaction, including target geometry, scene configurations and the saved passport. All nine boards and 27 hides remain. Database verification confirmed 19 replaced assets, the expected configuration digest, an identical game/passport image book, and preservation of all 18 existing finds and discovery progress. The prior configuration, progress and replaced assets remain recoverable through the incident audit.
+
+The replacements cover all hides in New York, the Amazon, Paris, Marrakech and Antarctica, plus Tokyo hides 1 and 3 and Sydney hides 1 and 2. This includes the Marrakech fountain and Tokyo pastry-stall defects reported in the screenshots. Eight images remain unchanged and unresolved: all three in Giza, all three at the Great Wall, Tokyo hide 2 and Sydney hide 3. This is a partial repair, not evidence that the whole game or a fresh 27-hide purchase meets the requested visual quality.
+
+A private head-only repaint experiment was excluded from the release: manual inspection found a clipped neighbouring face despite a model pass. Its code was reverted and its candidate was not published. The judge's explicit checks improve detection but do not establish perfect anatomical detection. No failed candidate was manually marked as a passing model result.
+
+The two retained engineering repair ledgers settled approximately USD 4.76 and USD 4.85 respectively, separate from the original game's charges and earlier audit/reference experiments. Further paid loops stopped at the remaining reservation allowance or the bounded round limit. Imported assets do not represent free image generation; their original engineering receipts remain in the retained private ledgers.
+
+Live QA inspection verified the ready layout through an existing owned test game. That older game has no linked child profile; the page now falls back to its validated published child name. The available browser account does not own the incident game, so database/asset evidence must not be represented as a completed owner-session playthrough of that game.
