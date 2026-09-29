@@ -2,7 +2,6 @@ import type { Container } from "../container";
 import { CasWorldBudgetRepository } from "../../infra/db/world-budget-repository";
 import { PrismaWorldBudgetStore } from "../../infra/db/prisma-world-budget-store";
 import { fixedSourceFailureReceiptSchema } from "../../infra/generation/fixed-source-diagnostics";
-import { localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
 import { boardWizardBudget } from "./board-wizard-budget";
 import { boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { LocalPatchRetainedPurchaseStore, fenceLocalPatchImages } from "./local-patch-lifecycle";
@@ -10,6 +9,7 @@ import { RETAINED_RENDER_VERSION } from "./local-patch-render";
 import { sha256Bytes } from "./fixed-sprite";
 import { WorldBudgetError, type WorldAutomaticImageRecovery, type WorldBudget } from "./world-budget";
 import type { Prisma } from "@prisma/client";
+import { interruptedLocalPatchImageRequest } from "../../domain/scene/local-patch-image-request";
 
 export const IMAGE_INTERRUPTION_POLICY = "local-patch-image-interruption/v1" as const;
 const hash = (value: unknown) => sha256Bytes(Buffer.from(JSON.stringify(value)));
@@ -44,10 +44,10 @@ export async function recoverLocalPatchImageInterruptions(c: Container, gameId: 
   const store = new LocalPatchRetainedPurchaseStore(c, gameId, budget);
   let recovered = 0;
   for (const requestKey of audit.unknownRequestKeys) {
-    const match = /^([a-z]+-v12-[123]):(standing|kneeling|seated|peeking):render:1$/.exec(requestKey);
-    if (!match) continue;
-    const scene = game.scenes.find(s => localPatchBoardForVersion(s.sceneSlug, 12)?.hides.some(h => h.id === match[1] && h.pose === match[2]));
-    const hide = scene && localPatchBoardForVersion(scene.sceneSlug, 12)?.hides.find(h => h.id === match[1]);
+    const authored = interruptedLocalPatchImageRequest(requestKey);
+    if (!authored || authored.attempt !== 1) continue;
+    const scene = game.scenes.find(s => s.sceneSlug === authored.board.board);
+    const hide = authored.hide;
     if (!scene || !hide) continue;
     const row = await c.db.targetVariantAsset.findFirst({ where: { variant: "A", targetInstance: { gameSceneId: scene.id, targetId: hide.targetId } } });
     if (!row || row.attempts !== 1 || row.assetId || row.provider !== "local-patch") continue;

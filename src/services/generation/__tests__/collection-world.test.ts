@@ -47,7 +47,7 @@ afterAll(async () => {
   if (!keepFixture && path.dirname(dir) === realpathSync(tmpdir()) && path.basename(dir).startsWith("findme-collection-test-")) rmSync(dir, { recursive: true, force: true });
 });
 
-it("wizard selection → 27 actual purchases → 9 reviews → publication → 54 collected items, idempotent saved album", async () => {
+it("wizard selection → 27 actual purchases → 27 independent reviews → publication → 54 collected items, idempotent saved album", async () => {
   const seeded = await seedApprovedGame(c, db, { gameId: GAME, approved: false, styleVersion: LOCAL_PATCH_STYLE,
     status: "DRAFT", withJob: true, scenes: [] });
   expect(await selectWorlds(c, GAME, ["journey"])).toEqual({ ok: true });
@@ -84,10 +84,10 @@ it("wizard selection → 27 actual purchases → 9 reviews → publication → 5
   const boardJudge = vi.fn(async (request: LocalPatchBoardJudgeRequest): Promise<LocalPatchBoardJudgeResult> => ({
     verdict: null, verdicts: {}, raw: JSON.stringify({ hides: request.hides.map(h => ({ hideId: h.hideId,
       evidenceIds: localPatchHideEvidenceIds(h.hideId), verdict: { ...PASSING_ANSWER, faceLikeness: "pass", faceReadable: "pass", severeSeam: "pass", ageAppropriate: "pass", lightingMatch: "pass", neighborsIntact: "pass", integrationEvidence: { style: "Controlled original-face paint comparison", lighting: "Controlled local-light comparison", neighbors: "Controlled complete-neighbour comparison" } } })) }),
-    model: "gpt-5.6-sol", requestId: `req-review-${request.boardId}`, usage: { prompt_tokens: 9000, completion_tokens: 1400 },
+    model: "gpt-5.6-sol", requestId: `req-review-${request.hides.map(h => h.hideId).join("-")}`, usage: { prompt_tokens: 9000, completion_tokens: 1400 },
     finishReason: "stop", wireFault: null, costUnknown: false,
   }));
-  for (let tick = 0; tick < 12; tick++) {
+  for (let tick = 0; tick < 32; tick++) {
     const result = await runLocalPatchWorldSlice(c, deps, GAME, { maxHides: 3, boardJudge, hardDeadlineAt: Date.now() + 270000 });
     expect(result.attention).toBeNull(); expect(result.blocked).toEqual([]);
     if (!result.pending) break;
@@ -98,10 +98,10 @@ it("wizard selection → 27 actual purchases → 9 reviews → publication → 5
   expect(config.scenes.flatMap(s => s.targets)).toHaveLength(27);
   expect(config.adventure?.boards.flatMap(b => b.discoveries)).toHaveLength(54);
   expect(paintKeys).toHaveLength(27); expect(new Set(paintKeys).size).toBe(27);
-  expect(boardJudge).toHaveBeenCalledTimes(9);
+  expect(boardJudge).toHaveBeenCalledTimes(27);
   const inventory = await localPatchPrivateInventory(c, GAME);
   expect(inventory.retainedPurchaseKeys).toContain(retainedPurchaseKey(boardWizardWorldId(GAME), localPatchBoardReviewKey("giza", [1, 1, 1], undefined, 12)));
-  expect(boardJudge.mock.calls.every(([r]) => r.hides.length === 3 && r.contentVersion === 12)).toBe(true);
+  expect(boardJudge.mock.calls.every(([r]) => r.hides.length === 1 && r.contentVersion === 12 && r.reviewScope === "ready-only/v1")).toBe(true);
   expect((await boardWizardBudgetOf(c).audit(boardWizardWorldId(GAME))).held).toBe(false);
   for (const board of config.adventure!.boards) {
     for (const discovery of board.discoveries) {

@@ -508,7 +508,8 @@ describe("actual wizard to durable QA world orchestration (synthetic engine, no 
       if (pause === "daily-ceiling") { await db.asset.update({ where: { id: f.identityId }, data: { costCents: 2 } }); fakes.dailyCeiling = 1; }
       else fakes.generationEnabled = "off";
 
-      await expect(runBoardConditionedWizardSlice(f.c, f.gameId)).resolves.toEqual({ pending: true });
+      const result = await runBoardConditionedWizardSlice(f.c, f.gameId);
+      expect(result, (await f.job()).lastError ?? "no job error").toEqual({ pending: true });
       const paused = await f.job();
       expect(paused.status).toBe("QUEUED");
       expect(paused.lastError).toContain("paused");

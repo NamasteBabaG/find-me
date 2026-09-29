@@ -25,6 +25,7 @@ import { sceneBySlug } from "../scene-catalog.service";
 import type { BudgetJson } from "./world-budget";
 import { LOCAL_PATCH_COMPOSITION_VERSION, LOCAL_PATCH_RETURN_GUARD } from "./local-patch-seam";
 import { readLocalPatchExtraAttemptPlan, requireLocalPatchExtraReview, fenceLocalPatchExtraReview } from "./local-patch-extra-attempt";
+import { localPatchEvidenceRecovery } from "./local-patch-review-recovery";
 
 export const LOCAL_PATCH_BOARD_REVIEW_VERSION = "local-patch-board-five-luna-low/v1";
 export const LOCAL_PATCH_STRICT_BOARD_REVIEW_VERSION = "local-patch-board-five-quality/v3-head-safe";
@@ -82,9 +83,13 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
   const board = localPatchBoardForVersion(scene.sceneSlug, scene.sceneVersion);
   const stagedExtra = isLocalPatchAgeVersion(scene.sceneVersion) ? await readLocalPatchExtraAttemptPlan(c, game.id) : null;
   const extraPlan = stagedExtra && [...stagedExtra.selected, ...stagedExtra.reviewOnly].some(entry => entry.sceneId === scene.id) ? stagedExtra : null;
+  const incremental = scene.sceneVersion === 12 && !extraPlan && !options.recovery;
   const versions = await c.db.gameScene.findMany({ where: { gameId: game.id }, select: { sceneVersion: true } });
   demand(versions.length > 0 && versions.every(row => row.sceneVersion === scene.sceneVersion), "Mixed content versions cannot acquire an advisory review");
-  demand(board?.hides.length === localPatchHidesPerBoard(scene.sceneVersion) && scene.targets.length === board.hides.length, "Every authored target is required");
+  demand(board?.hides.length === localPatchHidesPerBoard(scene.sceneVersion)
+    && (incremental ? scene.targets.length <= board.hides.length
+      && scene.targets.every(target => board.hides.some(hide => hide.targetId === target.targetId))
+      : scene.targets.length === board.hides.length), "Every target must belong to the authored board");
   const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(game.id);
   demand(child.identityAssetId && child.ageYears, "Identity source is missing");
   const identity = await c.db.asset.findUniqueOrThrow({ where: { id: child.identityAssetId } });
@@ -106,9 +111,9 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
   for (const hide of board.hides) {
     const target = scene.targets.find(t => t.targetId === hide.targetId);
     const row = target?.variants.find(v => v.variant === LOCAL_PATCH_VARIANT);
-    if (!row || !(row.status === "GENERATED" || (options.recovery && isLocalPatchAgeVersion(scene.sceneVersion)
+    if (!row || !(row.status === "GENERATED" || incremental && localPatchEvidenceRecovery(row)?.retry || (options.recovery && isLocalPatchAgeVersion(scene.sceneVersion)
       || extraPlan?.reviewOnly.some(entry => entry.rowId === row.id)) && row.status === "FAILED") || !row.assetId)
-      return { ready: false as const, reason: "Five usable patches are not ready" };
+      { if (incremental) continue; return { ready: false as const, reason: "Usable patches are not ready" }; }
     demand(row.provider === LOCAL_PATCH_PROVIDER && row.rectJson && row.hitRectJson && row.headAnchorJson, "Patch metadata is incomplete");
     const asset = await c.db.asset.findUniqueOrThrow({ where: { id: row.assetId } });
     demand(asset.ownerId === game.ownerId && asset.type === "TARGET_SPRITE" && asset.visibility === "GAME" && asset.status === "READY"
@@ -135,6 +140,7 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
       && sprite.rect.w === crop.width / meta.width! && sprite.rect.h === crop.height / meta.height!, "Shipping placement differs from the authored crop");
     entries.push({ hide, row, asset, bytes, crop, imageSha256, geometrySha256 });
   }
+  if (!entries.length) return { ready: false as const, reason: "No ready appearance awaits review" };
   if (entries.some(entry => entry.row.attempts > LOCAL_PATCH_MAX_ATTEMPTS)) {
     demand(extraPlan, "A fourth-attempt review requires its original scoped authority");
   }
@@ -144,19 +150,37 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
   const protectedRows = new Set(extraPlan?.others.filter(entry => entry.reviewState === "board-review-complete").map(entry => entry.rowId));
   const recovering = isCollectionVersion(scene.sceneVersion) && entries.some(e => JSON.parse(e.row.judgeJson!).compositionVersion === SELF_REPAIR_COMPOSITION_VERSION);
   if (recovering && scene.sceneVersion !== 12) settings = LOCAL_PATCH_JUDGE;
-  if (recovering) for (const e of entries) {
+  if (recovering || incremental) for (const e of entries) {
     if (await hasLocalPatchPublicationPolicy(c, { gameId: game.id, sceneVersion: scene.sceneVersion, hideId: e.hide.id,
       variantId: e.row.id, attempts: e.row.attempts, identityAssetId: identity.id, identitySha256: sha256Bytes(sheet),
       assetId: e.asset.id, imageSha256: e.imageSha256, geometrySha256: e.geometrySha256, judgeJson: e.row.judgeJson })) protectedRows.add(e.row.id);
+  }
+  let evidenceReviewAttempt = 1;
+  let requestEntries = entries;
+  let readyScope = false;
+  // New ordinary reviews need only the selected evidence. Do not reconstruct
+  // all three large native panels unless replay requires the old full question.
+  if (incremental && !recovering) {
+    const unapproved = entries.filter(e => !protectedRows.has(e.row.id));
+    const oldKey = entries.length === board.hides.length ? localPatchBoardReviewKey(board.board, entries.map(e => e.row.attempts),
+      LOCAL_PATCH_COMPOSITION_VERSION, scene.sceneVersion) : null;
+    if (!oldKey || unapproved.some(e => localPatchEvidenceRecovery(e.row)) || !await budget.readRequest(worldId, oldKey)) {
+      requestEntries = [(unapproved.length ? unapproved : entries).sort((a, b) => (localPatchEvidenceRecovery(a.row)?.nextAttempt ?? 1)
+        - (localPatchEvidenceRecovery(b.row)?.nextAttempt ?? 1))[0]!];
+      evidenceReviewAttempt = localPatchEvidenceRecovery(requestEntries[0]!.row)?.nextAttempt ?? 1;
+      if (evidenceReviewAttempt > 1) settings = { ...settings, effort: "medium" };
+      readyScope = true;
+    }
   }
   // Historical v7 reviews its five-patch composition. V8 plays serially: the
   // original board provides context, and each AFTER is its own base+one patch.
   const composed = strict ? before : await sharp(before).composite(entries.map(e => ({ input: e.bytes, left: e.crop.left, top: e.crop.top }))).png().toBuffer();
   let request: LocalPatchBoardJudgeRequest = { boardId: board.board, ...(strict ? { contentVersion: scene.sceneVersion } : {}),
+    ...(readyScope ? { reviewScope: "ready-only/v1" as const } : {}),
     ...(extraPlan ? { assessmentMode: "visible-body-v1" as const } : {}),
     boardPng: await sharp(composed).resize(1536, 1024, { fit: "inside" }).png().toBuffer(),
     identityPng: references.judgeIdentityPng,
-    hides: await Promise.all(entries.map(async e => {
+    hides: await Promise.all(requestEntries.map(async e => {
       const left = Math.max(0, e.crop.left - LOCAL_PATCH_REVIEW_CONTEXT_PX), top = Math.max(0, e.crop.top - LOCAL_PATCH_REVIEW_CONTEXT_PX);
       const context = strict ? { left, top,
         width: Math.min(meta.width!, e.crop.left + e.crop.width + LOCAL_PATCH_REVIEW_CONTEXT_PX) - left,
@@ -196,26 +220,49 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
     })),
   };
   const question = (request: LocalPatchBoardJudgeRequest) => {
-    const prompt = localPatchBoardJudgePrompt(request) + (recovering ? " AUTONOMOUS REPAIR REVIEW: inspect the actual repaired output independently of its diagnosis. A generic child is insufficient: require the same canonical facial proportions, eyes, jaw and hair silhouette at native scale. Inspect the complete head, all visible limbs, replaced bystanders and the entire new join. Reject clipping, orphan limbs, severe seams, wrong identity, age or scale. The diagnosis is not an approval." : "");
+    const independent = request.reviewScope === "ready-only/v1";
+    const supplied = independent ? entries.filter(e => request.hides.some(h => h.hideId === e.hide.id)) : entries;
+    const repairingSupplied = independent ? supplied.some(e => JSON.parse(e.row.judgeJson!).compositionVersion === SELF_REPAIR_COMPOSITION_VERSION) : recovering;
+    const prompt = localPatchBoardJudgePrompt(request) + (repairingSupplied ? " AUTONOMOUS REPAIR REVIEW: inspect the actual repaired output independently of its diagnosis. A generic child is insufficient: require the same canonical facial proportions, eyes, jaw and hair silhouette at native scale. Inspect the complete head, all visible limbs, replaced bystanders and the entire new join. Reject clipping, orphan limbs, severe seams, wrong identity, age or scale. The diagnosis is not an approval." : "")
+      + (request.reviewScope === "ready-only/v1" && evidenceReviewAttempt > 1 ? " EVIDENCE RECOVERY: the previous response was unreadable, not a visual refusal. Independently inspect these exact unchanged pixels. Return only the exact JSON schema with every supplied hide and evidence ID; no prose or markdown. Do not infer the previous verdict." : "");
     const fingerprint = hash({ version: reviewVersion, sceneId: scene.id, contentVersion: scene.sceneVersion,
     settings, prompt,
+    ...(request.reviewScope === "ready-only/v1" ? { evidenceReviewAttempt } : {}),
     identitySha256: sha256Bytes(sheet), originalSha256: sha256Bytes(before), composedSha256: sha256Bytes(composed),
     wireHashes: localPatchBoardJudgeImages(request).map(sha256Bytes),
     ...(isLocalPatchAgeVersion(scene.sceneVersion) ? { evidenceIds: localPatchBoardEvidenceIds(request), imageLabels: localPatchBoardJudgeImageLabels(request) } : {}),
     ...(strict ? { compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION } : {}),
     ...(extraPlan ? { extraAttemptAuthorizationId: extraPlan.authorizationId, protectedRows: [...protectedRows].sort() } : {}),
-    ...(recovering ? { selfRepair: entries.map(e => JSON.parse(e.row.judgeJson!).selfRepair ?? null), protectedRows: [...protectedRows].sort() } : {}),
-    hides: entries.map(e => ({ hide: e.hide.id, target: e.row.targetInstanceId, attempts: e.row.attempts, asset: e.asset.id,
+    ...(repairingSupplied ? { selfRepair: supplied.map(e => JSON.parse(e.row.judgeJson!).selfRepair ?? null),
+      ...(!independent ? { protectedRows: [...protectedRows].sort() } : {}) } : {}),
+    hides: supplied.map(e => ({ hide: e.hide.id, target: e.row.targetInstanceId, attempts: e.row.attempts, asset: e.asset.id,
       imageSha256: e.imageSha256, geometrySha256: e.geometrySha256 })),
   });
-    const requestKey = recovering ? `self-repair:board:${board.board}:${fingerprint}` : localPatchBoardReviewKey(board.board, strict ? entries.map(e => e.row.attempts) : undefined, LOCAL_PATCH_COMPOSITION_VERSION, scene.sceneVersion, extraPlan ? 4 : 3)
+    const requestKey = recovering || request.reviewScope === "ready-only/v1" ? `self-repair:board:${board.board}:${fingerprint}` : localPatchBoardReviewKey(board.board, strict ? entries.map(e => e.row.attempts) : undefined, LOCAL_PATCH_COMPOSITION_VERSION, scene.sceneVersion, extraPlan ? 4 : 3)
       + (extraPlan ? ":visible-body-v1" : "");
     return { prompt, fingerprint, requestKey };
   };
-  let { prompt, fingerprint, requestKey } = question(request);
+  // Reconstruct historical full questions only when all of their inputs exist.
+  // An already-purchased question stays addressable and is replayed verbatim.
+  const fullQuestion = !request.reviewScope && entries.length === board.hides.length ? question(request) : null;
+  let selected = entries;
+  if (incremental) {
+    const unapproved = entries.filter(e => !protectedRows.has(e.row.id));
+    if (unapproved.length && (!fullQuestion || unapproved.some(e => localPatchEvidenceRecovery(e.row))
+      || !await budget.readRequest(worldId, fullQuestion.requestKey))) {
+      selected = [unapproved.sort((a, b) => (localPatchEvidenceRecovery(a.row)?.nextAttempt ?? 1)
+        - (localPatchEvidenceRecovery(b.row)?.nextAttempt ?? 1))[0]!];
+      evidenceReviewAttempt = localPatchEvidenceRecovery(selected[0]!.row)?.nextAttempt ?? 1;
+      if (evidenceReviewAttempt > 1) settings = { ...settings, effort: "medium" };
+      const ids = new Set(selected.map(e => e.hide.id));
+      request = { ...request, reviewScope: "ready-only/v1", hides: request.hides.filter(h => ids.has(h.hideId)) };
+    }
+    if (!fullQuestion && !request.reviewScope) request = { ...request, reviewScope: "ready-only/v1" };
+  }
+  let { prompt, fingerprint, requestKey } = request.reviewScope ? question(request) : fullQuestion ?? question(request);
   // Preserve any already-paid full question on replay. A new repair question
   // can omit ONLY siblings with matching image/geometry/identity approvals.
-  if (recovering && scene.sceneVersion === 12 && !extraPlan && protectedRows.size > 0 && protectedRows.size < entries.length
+  if (!incremental && recovering && scene.sceneVersion === 12 && !extraPlan && protectedRows.size > 0 && protectedRows.size < entries.length
     && !await budget.readRequest(worldId, requestKey)) {
     const unapproved = new Set(entries.filter(e => !protectedRows.has(e.row.id)).map(e => e.hide.id));
     request = { ...request, reviewScope: "unapproved-only/v1", hides: request.hides.filter(h => unapproved.has(h.hideId)) };
@@ -223,25 +270,26 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
   }
   if (extraPlan) demand(extraPlan.reviewRequestKeys.includes(requestKey), "The review is outside its scoped authority");
   return { ready: true as const, scene, game, child, board, budget, worldId, identity, sheet, entries, request, fingerprint,
-    requestKey, settings, strict, reviewVersion, composed, extraPlan, protectedRows, recovering, prompt };
+    requestKey, settings, strict, reviewVersion, composed, extraPlan, protectedRows, recovering, prompt, evidenceReviewAttempt };
 }
 
-/** One paid review of the actual five-patch board; no per-hide review purchases.
- * The response is retained before settlement, and all five findings + publication
- * bindings commit together behind the existing lifecycle and queue fences. */
+/** Historical board questions replay intact. New v12 questions review one ready
+ * appearance; absent siblings receive no writes or invented publication proof. */
 export async function reviewLocalPatchBoard(c: Container, input: { gameId: string; sceneId: string; deadlineAt?: number },
   deps: LocalPatchBoardReviewDeps): Promise<LocalPatchBoardReviewOutcome> {
   const prepared = await prepareLocalPatchBoardReview(c, input, deps);
   if (!prepared.ready) return { state: "pending", reason: prepared.reason, costCents: 0, replayed: false };
   const { scene, game, budget, worldId, identity, sheet, entries, request, fingerprint,
-    requestKey, settings, strict, reviewVersion, composed, extraPlan, protectedRows, recovering, prompt } = prepared;
-  if (recovering && protectedRows.size === entries.length) return { state: "done", reason: null, costCents: 0, replayed: true };
+    requestKey, settings, strict, reviewVersion, composed, extraPlan, protectedRows, recovering, prompt, evidenceReviewAttempt } = prepared;
+  const boardComplete = entries.length === prepared.board.hides.length;
+  if ((recovering || scene.sceneVersion === 12) && protectedRows.size === entries.length)
+    return { state: boardComplete ? "done" : "pending", reason: boardComplete ? null : "Other appearances await generation or review", costCents: 0, replayed: true };
   demand(game.ownerId, "A review requires its verified owner");
   demand(deps.judge || deps.apiKey?.trim(), "Configured existing judge credential is required");
   // Unlike a replay, a new dispatch must consult the current kill switch/owner.
   await assertGenerationSpendAllowed(c, game.ownerId);
   await c.db.$transaction(async tx => { await fenceLocalPatchImages(tx, game.id); await deps.fence(tx); });
-  if (recovering) await inventorySelfRepairRequest(c, game.id, requestKey, deps.fence);
+  if (recovering || request.reviewScope === "ready-only/v1") await inventorySelfRepairRequest(c, game.id, requestKey, deps.fence);
   const bought = await purchaseOnce({ ledger: budget, store: new LocalPatchRetainedPurchaseStore(c, game.id, budget) }, {
     worldId, requestKey, scope: "judge", operationFingerprint: fingerprint,
     reserveMicroUsd: request.reviewScope ? 200_000 + 100_000 * request.hides.length : recovering || scene.sceneVersion === 11 || scene.sceneVersion === 12 ? 500_000 : 30_000,
@@ -267,15 +315,19 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
   const keep = JSON.parse(bought.bytes.toString()) as { raw: string | null; wireFault: string | null; model: string | null; finishReason: string | null };
   const readable = !keep.wireFault && isTheModelWeAsked(keep.model, settings.model) && keep.finishReason === "stop";
   const verdicts = parseLocalPatchBoardVerdicts(readable ? keep.raw : null, request.hides.map(h => h.hideId), scene.sceneVersion, request.reviewScope);
-  const dispositions = entries.map(e => strict ? localPatchQualityDisposition(protectedRows.has(e.row.id)
+  const reviewedIds = new Set(request.hides.map(h => h.hideId));
+  const committedEntries = entries.filter(e => protectedRows.has(e.row.id) || reviewedIds.has(e.hide.id));
+  const dispositions = committedEntries.map(e => strict ? localPatchQualityDisposition(protectedRows.has(e.row.id)
     ? JSON.parse(e.row.judgeJson!).verdict : verdicts[e.hide.id] ?? null, scene.sceneVersion, { hideId: e.hide.id }) : { state: "acceptable" as const, faults: [] });
   await c.db.$transaction(async tx => {
     await fenceLocalPatchImages(tx, game.id); await deps.fence(tx);
     if (extraPlan) await fenceLocalPatchExtraReview(tx, { gameId: game.id, sceneId: scene.id, authorizationId: extraPlan.authorizationId });
-    for (const [index, e] of entries.entries()) {
+    for (const [index, e] of committedEntries.entries()) {
       const current = await tx.targetVariantAsset.findUniqueOrThrow({ where: { id: e.row.id } });
       const reviewOnly = extraPlan?.reviewOnly.some(entry => entry.rowId === current.id);
-      demand((current.status === "GENERATED" || reviewOnly && current.status === "FAILED") && current.assetId === e.asset.id && current.attempts === e.row.attempts
+      const evidenceOnly = request.reviewScope === "ready-only/v1" && localPatchEvidenceRecovery(e.row)?.retry;
+      demand((current.status === "GENERATED" || (reviewOnly || evidenceOnly) && current.status === "FAILED") && current.assetId === e.asset.id && current.attempts === e.row.attempts
+        && current.judgeJson === e.row.judgeJson
         && localPatchPublicationGeometryHash(current) === e.geometrySha256, "Target changed while its board was reviewed");
       if (protectedRows.has(e.row.id)) {
         demand(current.judgeJson === e.row.judgeJson
@@ -289,7 +341,8 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
         wireFault: keep.wireFault ?? (verdicts[e.hide.id] ? null : "schema"), judgedSha256: e.imageSha256,
         ...(strict ? { qualityDisposition: disposition, compositionVersion } : {}),
         boardReview: { version: reviewVersion, fingerprint, requestKey, composedSha256: sha256Bytes(composed),
-          ...(request.reviewScope ? { reviewScope: request.reviewScope, reviewedHideIds: request.hides.map(h => h.hideId) } : {}),
+          ...(request.reviewScope ? { reviewScope: request.reviewScope, reviewedHideIds: request.hides.map(h => h.hideId), evidenceReviewAttempt,
+            evidenceReviewedAt: new Date().toISOString() } : {}),
           ...(extraPlan ? { assessmentMode: "visible-body-v1", extraAttemptAuthorizationId: extraPlan.authorizationId } : {}),
           ...(strict ? { compositionVersion, wireHashes: localPatchBoardJudgeImages(request).map(sha256Bytes) } : {}),
           ...(isLocalPatchAgeVersion(scene.sceneVersion) ? { evidenceIds: localPatchBoardEvidenceIds(request), imageLabels: localPatchBoardJudgeImageLabels(request) } : {}),
@@ -301,9 +354,9 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
       await tx.targetVariantAsset.update({ where: { id: e.row.id }, data: { judgeJson, ...(rejected ? {
         status: "FAILED", lastError: `quality-${disposition.state}: ${disposition.faults.join("; ") || "Required quality evidence is unresolved"}`.slice(0, 500),
         rejectedAssetIdsJson: JSON.stringify([...new Set([...retainedIds, e.asset.id])]),
-      } : reviewOnly ? { status: "GENERATED", lastError: null } : {}) } });
+      } : reviewOnly || evidenceOnly ? { status: "GENERATED", lastError: null } : {}) } });
       if (rejected) await tx.targetInstance.update({ where: { id: e.row.targetInstanceId }, data: { status: "FAILED" } });
-      else if (reviewOnly) await tx.targetInstance.update({ where: { id: e.row.targetInstanceId }, data: { status: "GENERATED" } });
+      else if (reviewOnly || evidenceOnly) await tx.targetInstance.update({ where: { id: e.row.targetInstanceId }, data: { status: "GENERATED" } });
       if (!rejected) await recordLocalPatchPublicationPolicy(tx, { gameId: game.id, sceneVersion: scene.sceneVersion, hideId: e.hide.id,
         variantId: e.row.id, attempts: e.row.attempts, identityAssetId: identity.id, identitySha256: sha256Bytes(sheet),
         assetId: e.asset.id, imageSha256: e.imageSha256, geometrySha256: e.geometrySha256, judgeJson });
@@ -311,8 +364,9 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
   }, { timeout: 30_000 });
   const blocked = dispositions.some(d => d.state === "unresolved");
   const retry = dispositions.some(d => d.state === "retry");
-  return { state: blocked ? "blocked" : retry ? "retry" : "done",
+  const complete = boardComplete && committedEntries.length === entries.length;
+  return { state: blocked ? "blocked" : retry ? "retry" : complete ? "done" : "pending",
     reason: blocked ? "Required quality evidence is unresolved" : retry ? (isLocalPatchAgeVersion(scene.sceneVersion)
-      ? "Required visual quality defect requires a bounded replacement" : "Severe seam or face defect requires a bounded replacement") : null,
+      ? "Required visual quality defect requires a bounded replacement" : "Severe seam or face defect requires a bounded replacement") : complete ? null : "Other appearances await generation or review",
     replayed: bought.replayed, costCents: bought.evidence.amountMicroUsd / 10_000 };
 }

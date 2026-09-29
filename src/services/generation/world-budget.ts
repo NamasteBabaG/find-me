@@ -5,6 +5,7 @@
  * This is NOT a production atomicity claim. An adapter must implement the
  * serializable/durable transaction contract below before callers may rely on it.
  */
+import { interruptedLocalPatchImageRequest } from "../../domain/scene/local-patch-image-request";
 export const WORLD_BUDGET_CAP_MICRO_USD = 5_000_000;
 export const WORLD_BUDGET_SCOPES = ["identity", "sheet", "image", "judge", "repair"] as const;
 export type WorldBudgetScope = typeof WORLD_BUDGET_SCOPES[number];
@@ -236,7 +237,7 @@ export function validateUnknownContinuationApproval(value: WorldContinuationReco
   if (!automatic && value.version !== "world-unknown-continuation/v1") fail("invalid_input", "Unknown continuation approval version");
   if (automatic && (value.policyId !== "local-patch-image-interruption/v1" || value.scope !== "image"
     || value.reserveMicroUsd < 120_000 || value.reserveMicroUsd > 150_000
-    || !/^[a-z]+-v12-[123]:(standing|kneeling|seated|peeking):render:[12]$/.test(value.requestKey)))
+    || !interruptedLocalPatchImageRequest(value.requestKey)))
     fail("invalid_input", "Automatic recovery is limited to a bounded collection image interruption");
   if (!automatic && (typeof value.operatorId !== "string" || !/^[A-Za-z0-9_:.@/-]{1,500}$/.test(value.operatorId) || value.operatorId.includes("://") || /^sk-/i.test(value.operatorId)))
     fail("invalid_input", "Continuation approval requires a bounded operator identifier");

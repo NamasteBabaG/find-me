@@ -169,7 +169,7 @@ function allowed(input: LocalPatchPublicationBinding): boolean {
     let repairWireCount = input.sceneVersion === 12 ? 20 : 8;
     if (review?.reviewScope !== undefined) {
       const ids: unknown = review.reviewedHideIds;
-      if (input.sceneVersion !== 12 || review.reviewScope !== "unapproved-only/v1" || !Array.isArray(ids)
+      if (input.sceneVersion !== 12 || !["unapproved-only/v1", "ready-only/v1"].includes(review.reviewScope) || !Array.isArray(ids)
         || ids.length < 1 || ids.length > 3 || new Set(ids).size !== ids.length || !ids.includes(input.hideId)) return false;
       const boardId = /^([a-z]+)-v12-[123]$/.exec(input.hideId)?.[1];
       const board = boardId && localPatchBoardForVersion(boardId, 12);

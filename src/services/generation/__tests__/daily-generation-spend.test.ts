@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { sumDailyGenerationSpend } from "../daily-generation-spend";
+import { dailyGenerationSpend, sumDailyGenerationSpend } from "../daily-generation-spend";
+import { retainedPurchaseKey } from "../../../infra/db/prisma-retained-purchase-store";
+import type { PrismaClient } from "@prisma/client";
 import type { WorldBudgetRequest, WorldBudgetSnapshot } from "../world-budget";
 
 const bill = (key: string, amount = 50_000, scope: "image" | "identity" | "judge" = "image"): WorldBudgetRequest => ({
@@ -39,5 +41,26 @@ describe("daily generation spend uses each purchase once", () => {
   });
   it("never treats corrupt ledger data as zero spend", () => {
     expect(() => sumDailyGenerationSpend({ assets, spots, ledgers: [world([bill("same"), bill("same")])] })).toThrow();
+  });
+  it("does not move yesterday's paid responses into today when a ledger or display row changes", () => {
+    const yesterday = new Date("2026-09-28T23:00:00Z"), today = new Date("2026-09-29T01:00:00Z");
+    expect(sumDailyGenerationSpend({ assets, spots, ledgers: [world([bill("old-image"), bill("new-review", 70_000, "judge")])],
+      since: new Date("2026-09-29T00:00:00Z"), purchaseDates: new Map([
+        [retainedPurchaseKey("game:board-wizard", "old-image"), yesterday],
+        [retainedPurchaseKey("game:board-wizard", "new-review"), today],
+      ]) })).toMatchObject({ ledgerMicroUsd: 70_000, legacySpotCents: 0, coveredSpots: 1 });
+  });
+  it("includes an old untouched UNKNOWN ledger and reads only purchase dates, not private response bytes", async () => {
+    const unknown = { requestKey: "old-unknown", scope: "image" as const, operationFingerprint: "pending-operation", reserveMicroUsd: 120_000,
+      origin: "reserved" as const, unknownReasons: ["timeout"], conflicts: [], state: "unknown" as const };
+    let ledgerQuery: unknown, purchaseQuery: unknown;
+    const db = { asset: { findMany: async () => [] }, targetVariantAsset: { findMany: async () => [] },
+      worldBudgetLedger: { findMany: async (query: unknown) => { ledgerQuery = query; return [{ worldId: "game:board-wizard",
+        snapshotJson: JSON.stringify(world([unknown])), updatedAt: new Date("2026-09-28T01:00:00Z") }]; } },
+      fileBlob: { findMany: async (query: unknown) => { purchaseQuery = query; return []; } } } as unknown as PrismaClient;
+    expect(await dailyGenerationSpend(db, new Date("2026-09-29T12:00:00Z"))).toMatchObject({ reservationsMicroUsd: 120_000, totalCents: 12 });
+    expect(ledgerQuery).toEqual({ select: { worldId: true, snapshotJson: true, updatedAt: true } });
+    expect(purchaseQuery).toMatchObject({ select: { key: true, createdAt: true } });
+    expect((purchaseQuery as { select: object }).select).not.toHaveProperty("data");
   });
 });

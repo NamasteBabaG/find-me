@@ -610,8 +610,8 @@ fetchOnce: typeof fetch): Promise<LocalPatchJudgeResult> {
 export type LocalPatchAssessmentMode = "visible-body-v1";
 export type LocalPatchBoardJudgeRequest = {
   contentVersion?: number;
-  /** Only byte-bound approvals of unchanged siblings may be omitted. */
-  reviewScope?: "unapproved-only/v1";
+  /** Omitted siblings either retain their approvals or remain unreviewed. */
+  reviewScope?: "unapproved-only/v1" | "ready-only/v1";
   /** A new question on a new paid key; absent preserves historical wire bytes. */
   assessmentMode?: LocalPatchAssessmentMode;
   boardId: string; boardPng: Buffer; identityPng: Buffer; timeoutMs?: number;
@@ -652,16 +652,17 @@ export function localPatchBoardJudgeImageLabels(request: Pick<LocalPatchBoardJud
 export type LocalPatchBoardJudgeResult = LocalPatchJudgeResult & { verdicts: Record<string, LocalPatchVerdict | null> };
 const AGE_REVIEW_DIRECTION = "For this new contract five checks require explicit pass: faceLikeness, faceReadable, severeSeam, ageAppropriate and scaleRight. Image2 authorizes FACE AND HAIR identity, not an old target age or the body from its source sheet. A coherent generic child is NOT sufficient: the same characteristic facial shapes and hair must be recognizable; use unsure if the pixels cannot establish likeness. ageAppropriate checks the stated age in face AND whole body: for age 4 or 5 expect a preschool torso, narrow small shoulders, short child limbs, small hands and feet, not an older school-age or adult build or mature stance. Judge visible anatomy, not clothing or assumed age from a name. scaleRight compares the whole child against children of the SAME age at the SAME ground depth, never nearby adults. A small adult-shaped figure is not a preschool body. Do not solve age or readability with a giant head, imagined zoom detail, photographic texture, blind whole-figure shrinking or a foreground move. Do not demand hidden limbs through natural occlusion; use unsure when the visible evidence cannot establish the required check. Each fail needs its own located fault; advisory complaints never invent severe failure.";
 export function localPatchBoardJudgePrompt(request: Pick<LocalPatchBoardJudgeRequest, "boardId" | "hides" | "contentVersion" | "assessmentMode" | "reviewScope">): string {
-  if (request.reviewScope && (request.reviewScope !== "unapproved-only/v1" || request.contentVersion !== INTEGRATED_COLLECTION_VERSION))
+  if (request.reviewScope && (!["unapproved-only/v1", "ready-only/v1"].includes(request.reviewScope) || request.contentVersion !== INTEGRATED_COLLECTION_VERSION))
     throw Error("Scoped review requires the integrated release");
   if (request.contentVersion === INTEGRATED_COLLECTION_VERSION) {
-    const scoped = request.reviewScope === "unapproved-only/v1";
+    const scoped = !!request.reviewScope;
     if ((scoped ? request.hides.length < 1 || request.hides.length > 3 : request.hides.length !== 3)
       || new Set(request.hides.map(h => h.hideId)).size !== request.hides.length
       || request.hides.some(h => !validChildAge(h.expectation?.ageYears)) || new Set(request.hides.map(h => h.expectation!.ageYears)).size !== 1) throw Error("Integration review requires three distinct hides with one confirmed age");
     return [integratedReviewInstructions(request.hides[0]!.expectation!.ageYears!),
       "Associate images only by EVIDENCE_ID and HIDE_ID labels. The original whole board and canonical portrait are references. Every hide has BEFORE and AFTER. AFTER's LEFT panel is the actual serial player context; RIGHT beyond the gutter is a native closeup of that SAME appearance. Judge both panels, including the surrounding people and lower crop edge. These are three separate turns, not three simultaneous copies. Never count the inset as a duplicate or transfer evidence between hides.",
-      ...(scoped ? [`This scoped repair review contains ${request.hides.length} independently rendered appearances. Unchanged siblings have separate byte-bound approvals and are not evidence in this request. Review ONLY the supplied ids with ALL required checks; do not infer any approval from an omitted sibling.`] : []),
+      ...(request.reviewScope === "ready-only/v1" ? [`This incremental review contains ${request.hides.length} ready appearance(s). Other hides may still be unrendered or unapproved. Review ONLY the supplied ids with ALL required checks. An omitted hide receives no verdict and no approval.`]
+        : scoped ? [`This scoped repair review contains ${request.hides.length} independently rendered appearances. Unchanged siblings have separate byte-bound approvals and are not evidence in this request. Review ONLY the supplied ids with ALL required checks; do not infer any approval from an omitted sibling.`] : []),
       "Each pair is followed by FOUR overlapping native NEIGHBOR_COMPARISON images, one for every quadrant. In THESE images LEFT=BEFORE and RIGHT=AFTER. Check each quadrant in turn, including LOWER-LEFT and LOWER-RIGHT, before assigning neighborsIntact. Name every damaged face/neck; do not stop after two intact neighbours. Compare a head partly cut at an image edge against BEFORE; a seam through that scalp is a real defect, not natural occlusion.",
       ...request.hides.map(h => `${h.hideId}: evidenceIds=${JSON.stringify(localPatchHideEvidenceIds(h.hideId))}; support=${h.expectation?.support ?? "authored support"}.`),
       `Return JSON only: {"hides":[{"hideId":"exact supplied id","evidenceIds":["same hideId:before","same hideId:after"],"verdict":{${integratedVerdictFields()}}}]}. Exactly ${scoped ? request.hides.length : "three"} entries, each supplied id once.`,
@@ -734,7 +735,7 @@ export function parseLocalPatchBoardVerdicts(raw: string | null, hideIds: readon
     const shape = z.object({ hideId: z.string(), verdict: z.unknown() });
     const rowSchema = isLocalPatchAgeVersion(contentVersion)
       ? shape.extend({ evidenceIds: z.tuple([z.string(), z.string()]) }).strict() : shape.strict();
-    if (reviewScope && (reviewScope !== "unapproved-only/v1" || contentVersion !== INTEGRATED_COLLECTION_VERSION)) return missing;
+    if (reviewScope && (!["unapproved-only/v1", "ready-only/v1"].includes(reviewScope) || contentVersion !== INTEGRATED_COLLECTION_VERSION)) return missing;
     if (reviewScope ? hideIds.length < 1 || hideIds.length > 3 : hideIds.length !== localPatchHidesPerBoard(contentVersion)) return missing;
     if (new Set(hideIds).size !== hideIds.length) return missing;
     const rows = z.object({ hides: z.array(rowSchema).length(hideIds.length) }).strict().parse(JSON.parse(raw ?? "null")).hides;

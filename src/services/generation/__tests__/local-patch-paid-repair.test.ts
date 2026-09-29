@@ -37,6 +37,7 @@ import { sha256Bytes } from "../fixed-sprite";
 import { localPatchHideEvidenceIds, parseLocalPatchVerdict } from "../local-patch-judge";
 import { resumeAutomaticLocalPatchRecovery, nextPendingGame } from "../queue";
 import type { SelfRepairWire } from "../local-patch-self-repair";
+import { runLocalPatchSelfRepair } from "../local-patch-self-repair";
 import { SELF_REPAIR_COMPOSITION_VERSION } from "../../../domain/scene/local-patch-self-repair";
 import { prepareLocalPatchBoardReview, reviewLocalPatchBoard } from "../local-patch-board-review";
 import { bill, boardPng, PASSING_ANSWER, seedApprovedGame } from "./local-patch-fixtures";
@@ -207,19 +208,21 @@ describe("v12 scoped automatic repair review", () => {
     const input = { gameId: s.gameId, sceneId: `gsc-${s.gameId}-antarctica` }, deps = { fence: async () => {}, readBoardArt: async () => state.original };
     const prepared = await prepareLocalPatchBoardReview(c, input, deps);
     expect(prepared.ready).toBe(true); if (!prepared.ready) throw Error(prepared.reason);
-    expect(prepared.request.reviewScope).toBe("unapproved-only/v1");
-    expect(prepared.request.hides.map(h => h.hideId).sort()).toEqual([...UNREVIEWED, SELECTED[0]!.id].sort());
+    expect(prepared.request.reviewScope).toBe("ready-only/v1");
+    expect(prepared.request.hides).toHaveLength(1);
+    expect([...UNREVIEWED, SELECTED[0]!.id]).toContain(prepared.request.hides[0]!.hideId);
     const reviewer = vi.fn(async (request: import("../local-patch-judge").LocalPatchBoardJudgeRequest) => ({
       verdict: null, verdicts: {}, raw: JSON.stringify({ hides: request.hides.map(h => ({ hideId: h.hideId,
         evidenceIds: localPatchHideEvidenceIds(h.hideId), verdict: goodVerdict() })) }),
-      usage: { prompt_tokens: 12000, completion_tokens: 1000 }, requestId: `req-scoped-${s.gameId}`,
+      usage: { prompt_tokens: 12000, completion_tokens: 1000 }, requestId: `req-scoped-${s.gameId}-${request.hides[0]!.hideId}`,
       model: "gpt-5.6-sol", finishReason: "stop", wireFault: null, costUnknown: false,
     }));
-    expect(await reviewLocalPatchBoard(c, input, { ...deps, judge: reviewer })).toMatchObject({ state: "done", replayed: false });
+    expect(await reviewLocalPatchBoard(c, input, { ...deps, judge: reviewer })).toMatchObject({ state: pendingSibling ? "pending" : "done", replayed: false });
     const budget = boardWizardBudgetOf(c), paid = await budget.readRequest(boardWizardWorldId(s.gameId), prepared.requestKey);
-    expect(paid?.reserveMicroUsd).toBe(pendingSibling ? 400000 : 300000);
+    expect(paid?.reserveMicroUsd).toBe(300000);
+    if (pendingSibling) expect(await reviewLocalPatchBoard(c, input, { ...deps, judge: reviewer })).toMatchObject({ state: "done", replayed: false });
     expect(await reviewLocalPatchBoard(c, input, { ...deps, judge: reviewer })).toMatchObject({ state: "done", replayed: true });
-    expect(reviewer).toHaveBeenCalledOnce();
+    expect(reviewer).toHaveBeenCalledTimes(pendingSibling ? 2 : 1);
     for (const original of s.beforeRows.filter(r => prepared.protectedRows.has(r.id))) {
       const after = await db.targetVariantAsset.findUniqueOrThrow({ where: { id: original.id } });
       expect(after.judgeJson).toBe(original.judgeJson); expect(after.assetId).toBe(original.assetId);
@@ -440,7 +443,12 @@ describe.each([8, 10, 11] as const)("v%s paid repairs through actual stage, real
     const compositor = vi.spyOn(repairComposer, "recomputePaidPatchJoin").mockRejectedValueOnce(new Error("LOCAL_PATCH_REPAIR_COMPOSE: board and paid crop must be opaque"));
     try { expect(await runLocalPatchWorldSlice(c, noPaint, s.gameId, { maxHides: 1, diagnose })).toMatchObject({ pending: true, attention: null }); }
     finally { compositor.mockRestore(); }
-    await runLocalPatchWorldSlice(c, noPaint, s.gameId, { maxHides: 1, diagnose });
+    // The scheduler now gives another hide its first cycle before this hide's
+    // second one. Inspect this service's next durable phase directly, without
+    // making this compositor regression depend on whole-world scheduling.
+    const board = BOARDS.find(b => b.hides.some(hide => hide.id === h.id))!;
+    await runLocalPatchSelfRepair(c, { gameId: s.gameId, sceneId: `gsc-${s.gameId}-${board.board}`, board, hide: h },
+      { ...noPaint, fence: async () => {}, diagnose });
     const current = await db.targetVariantAsset.findUniqueOrThrow({ where: { id: `tva-${s.gameId}-${h.id}` } });
     expect(JSON.parse(current.judgeJson!).selfRepair).toMatchObject({ phase: "diagnosing", cycle: 2,
       feedback: "LOCAL_PATCH_REPAIR_COMPOSE: board and paid crop must be opaque", history: [{ result: "LOCAL_PATCH_REPAIR_COMPOSE: board and paid crop must be opaque" }] });

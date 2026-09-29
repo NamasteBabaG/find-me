@@ -3,7 +3,8 @@ import type { Container } from "../container";
 import { LEASE_MS as PIPELINE_LEASE_MS, RESUMABLE_STATUSES, runGenerationPipeline } from "./pipeline";
 import { FIXED_WORLD_STYLE_PREFIX, isFixedWorldStyle } from "./fixed-world-stage-record";
 import { BOARD_WIZARD_STYLE, boardWizardEnabled, runBoardConditionedWizardSlice } from "./board-conditioned-wizard";
-import { LOCAL_PATCH_LEASE_MS, LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_QUALITY_FAILED, LOCAL_PATCH_RECOVERY_BUDGET_WAIT, LOCAL_PATCH_RECOVERY_BACKOFF_MS, LOCAL_PATCH_STYLE, localPatchPainterDeps, runLocalPatchWorldSlice } from "./local-patch-world";
+import { LOCAL_PATCH_LEASE_MS, LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_QUALITY_FAILED, LOCAL_PATCH_RECOVERY_BUDGET_WAIT, LOCAL_PATCH_RECOVERY_BACKOFF_MS, LOCAL_PATCH_EVIDENCE_RETRY_WAIT, LOCAL_PATCH_STYLE, localPatchPainterDeps, runLocalPatchWorldSlice } from "./local-patch-world";
+import { LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS } from "./local-patch-review-recovery";
 import { selfRepairEnabled } from "../../domain/scene/local-patch-self-repair";
 import { transitionGame } from "../game-status";
 import { SYSTEM } from "../audit.service";
@@ -50,6 +51,7 @@ export async function nextPendingGame(c: Container): Promise<string | null> {
           none: { OR: [{ paymentStatus: "REFUNDED" }, { refundedAt: { not: null } }] },
         } }] },
         { NOT: { jobs: { some: { currentStep: LOCAL_PATCH_RECOVERY_BUDGET_WAIT, updatedAt: { gt: new Date(Date.now() - LOCAL_PATCH_RECOVERY_BACKOFF_MS) } } } } },
+        { NOT: { jobs: { some: { currentStep: LOCAL_PATCH_EVIDENCE_RETRY_WAIT, updatedAt: { gt: new Date(Date.now() - LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS) } } } } },
         { NOT: { jobs: { some: { currentStep: LOCAL_PATCH_QUALITY_FAILED } }, OR: [
           { scenes: { none: {} } }, { scenes: { some: { sceneVersion: { notIn: [10, 11, 12] } } } },
         ] } },
