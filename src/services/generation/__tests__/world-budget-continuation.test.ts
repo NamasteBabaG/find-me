@@ -24,6 +24,39 @@ const approval = (): WorldUnknownContinuationInput => ({ ...reserve, approvalId:
 async function unknown(f: ReturnType<typeof fixture>, worldId = "world") { await f.budget.reserve(worldId, reserve); await f.budget.markUnknown(worldId, reserve.requestKey, "transport-unresolved"); }
 
 describe("explicit unknown-charge continuation, no providers or live database", () => {
+  it("requires a trusted review policy and keeps both unknown reviews fully counted inside four dollars", async () => {
+    const f = fixture(), b = boardWizardBudget(f.repository, 1, { authorizeAutomaticReviewRecovery: async () => true });
+    const inputs = ["a", "b", "c"].map(letter => ({ requestKey: `self-repair:board:giza:${letter.repeat(64)}`, scope: "judge" as const,
+      operationFingerprint: letter.repeat(64), reserveMicroUsd: 300_000 }));
+    // Reserve concurrently dispatched work before any interruption holds the world.
+    for (const input of inputs) await b.reserve("world", input);
+    for (const input of inputs) await b.markUnknown("world", input.requestKey, "no response");
+    const continuation = (index: number) => ({ ...inputs[index]!, approvalId: `review-${index}`, policyId: "local-patch-review-interruption/v1" as const,
+      unknownReasons: ["no response"], authorizationSha256: "d".repeat(64), authorizedAt: "2026-09-30T01:00:00.000Z" });
+    await expect(new WorldBudget(f.repository).authorizeAutomaticReviewRecovery("world", continuation(0))).rejects.toMatchObject({ code: "invalid_input" });
+    expect(await b.authorizeAutomaticReviewRecovery("world", continuation(0))).toMatchObject({ acquired: true });
+    expect(await b.authorizeAutomaticReviewRecovery("world", continuation(0))).toMatchObject({ acquired: false });
+    await b.authorizeAutomaticReviewRecovery("world", continuation(1));
+    await expect(b.authorizeAutomaticReviewRecovery("world", continuation(2))).rejects.toMatchObject({ code: "invalid_snapshot" });
+    expect(await b.audit("world")).toMatchObject({ held: true, reservedMicroUsd: 900_000, capMicroUsd: 4_000_000 });
+    expect(f.rows.get("world")!.snapshot.unknownContinuationApprovals).toHaveLength(2);
+  });
+  it("never accepts a review continuation with a different fingerprint, scope or reservation", async () => {
+    const f = fixture(), b = boardWizardBudget(f.repository, 1, { authorizeAutomaticReviewRecovery: async () => true });
+    const input = { requestKey: `self-repair:board:giza:${"a".repeat(64)}`, scope: "judge" as const,
+      operationFingerprint: "a".repeat(64), reserveMicroUsd: 300_000 };
+    await b.reserve("world", input); await b.markUnknown("world", input.requestKey, "no response");
+    const continuation = { ...input, approvalId: "review-one", policyId: "local-patch-review-interruption/v1" as const,
+      unknownReasons: ["no response"], authorizationSha256: "d".repeat(64), authorizedAt: "2026-09-30T01:00:00.000Z" };
+    const before = structuredClone(f.rows.get("world"));
+    for (const override of [{ scope: "image" as const }, { reserveMicroUsd: 1 }, { operationFingerprint: "b".repeat(64) },
+      { requestKey: `self-repair:board:missing:${"a".repeat(64)}` }])
+      await expect(b.authorizeAutomaticReviewRecovery("world", { ...continuation, ...override })).rejects.toMatchObject({ code: "invalid_input" });
+    expect(f.rows.get("world")).toEqual(before);
+    await b.authorizeAutomaticReviewRecovery("world", continuation);
+    await b.reserve("world", { ...input, requestKey: "remaining", reserveMicroUsd: 3_700_000 });
+    await expect(b.reserve("world", { ...input, requestKey: "too-much", reserveMicroUsd: 1 })).rejects.toMatchObject({ code: "cap_exceeded" });
+  });
   it("preserves the complete unknown request/reservation/history while permitting only newly reserved operations", async () => {
     const f = fixture(); await unknown(f); const original = (await f.budget.readRequest("world", reserve.requestKey))!;
     const result = await f.budget.authorizeUnknownContinuation("world", approval());

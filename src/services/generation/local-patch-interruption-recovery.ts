@@ -23,8 +23,10 @@ export async function localPatchBudgetReadyForPublication(budget: Pick<WorldBudg
   if (audit.held || audit.pendingRequestKeys.length) return false;
   if (audit.reservedMicroUsd === 0) return true;
   if (contentVersion !== 12 || !audit.unknownRequestKeys.length) return false;
-  for (const key of audit.unknownRequestKeys)
-    if ((await budget.readContinuationApproval(worldId, key))?.version !== "world-automatic-image-recovery/v1") return false;
+  for (const key of audit.unknownRequestKeys) {
+    const version = (await budget.readContinuationApproval(worldId, key))?.version;
+    if (version !== "world-automatic-image-recovery/v1" && version !== "world-automatic-review-recovery/v1") return false;
+  }
   return true;
 }
 

@@ -26,6 +26,7 @@ import type { BudgetJson } from "./world-budget";
 import { LOCAL_PATCH_COMPOSITION_VERSION, LOCAL_PATCH_RETURN_GUARD } from "./local-patch-seam";
 import { readLocalPatchExtraAttemptPlan, requireLocalPatchExtraReview, fenceLocalPatchExtraReview } from "./local-patch-extra-attempt";
 import { localPatchEvidenceRecovery } from "./local-patch-review-recovery";
+import { recoverPreparedLocalPatchReview } from "./local-patch-review-interruption-recovery";
 
 export const LOCAL_PATCH_BOARD_REVIEW_VERSION = "local-patch-board-five-luna-low/v1";
 export const LOCAL_PATCH_STRICT_BOARD_REVIEW_VERSION = "local-patch-board-five-quality/v3-head-safe";
@@ -310,8 +311,12 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
         costBasis: "conservative-upper-estimate" as const } };
     },
   });
-  if (bought.kind !== "bought") return { state: bought.kind === "unresolved" || (bought.kind === "deferred" && bought.reserved) ? "held" : "pending",
-    reason: bought.reason, replayed: false, costCents: 0 };
+  if (bought.kind !== "bought") {
+    if (bought.kind === "unresolved" && await recoverPreparedLocalPatchReview(c, prepared, deps.fence))
+      return { state: "pending", reason: "Interrupted review retained its full unknown charge; unchanged pixels await a new evidence question", replayed: false, costCents: 0 };
+    return { state: bought.kind === "unresolved" || (bought.kind === "deferred" && bought.reserved) ? "held" : "pending",
+      reason: bought.reason, replayed: false, costCents: 0 };
+  }
   const keep = JSON.parse(bought.bytes.toString()) as { raw: string | null; wireFault: string | null; model: string | null; finishReason: string | null };
   const readable = !keep.wireFault && isTheModelWeAsked(keep.model, settings.model) && keep.finishReason === "stop";
   const verdicts = parseLocalPatchBoardVerdicts(readable ? keep.raw : null, request.hides.map(h => h.hideId), scene.sceneVersion, request.reviewScope);

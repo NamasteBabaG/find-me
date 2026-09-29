@@ -10,7 +10,7 @@ import { env } from "../../lib/env";
 import { finishLocalPatchGame } from "./local-patch-player";
 import { deliverGameMail } from "../publish.service";
 import { SYSTEM } from "../audit.service";
-import { reviewLocalPatchBoard, localPatchBoardReviewKeys, type LocalPatchBoardReviewDeps } from "./local-patch-board-review";
+import { prepareLocalPatchBoardReview, reviewLocalPatchBoard, localPatchBoardReviewKeys, type LocalPatchBoardReviewDeps } from "./local-patch-board-review";
 import { transitionGame } from "../game-status";
 import { LOCAL_PATCH_MIN_PROVIDER_MS, LOCAL_PATCH_PHASE_MARGIN_MS } from "./local-patch-render";
 import { localPatchAttemptPlan, localPatchSettled, localPatchFinalRepairAllowed, LOCAL_PATCH_NORMAL_ATTEMPTS } from "../../domain/scene/local-patch-attempts";
@@ -21,6 +21,7 @@ import { needsSelfRepair, selfRepairEnabled } from "../../domain/scene/local-pat
 import { runLocalPatchSelfRepair, SELF_REPAIR_REQUEST_ACTION, type SelfRepairDeps } from "./local-patch-self-repair";
 import { WorldBudgetError } from "./world-budget";
 import { recoverLocalPatchImageInterruptions } from "./local-patch-interruption-recovery";
+import { recoverPreparedLocalPatchReview } from "./local-patch-review-interruption-recovery";
 import { localPatchEvidenceRecovery, LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS } from "./local-patch-review-recovery";
 import {
   LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, runLocalPatchHide,
@@ -136,6 +137,14 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   if (!job) return { ...empty, pending: false, claimed: false, paused: false };
   if (automatic && job.currentStep === LOCAL_PATCH_NEEDS_RELEASE) {
     await recoverLocalPatchImageInterruptions(c, gameId);
+    const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(gameId);
+    const audit = await budget.audit(worldId);
+    if (game.scenes.every(scene => scene.sceneVersion === 12) && audit.unknownRequestKeys.some(key => key.startsWith("self-repair:board:"))) {
+      for (const scene of game.scenes) {
+        const prepared = await prepareLocalPatchBoardReview(c, { gameId, sceneId: scene.id }, { readBoardArt: deps.readBoardArt });
+        if (prepared.ready && audit.unknownRequestKeys.includes(prepared.requestKey)) await recoverPreparedLocalPatchReview(c, prepared);
+      }
+    }
     job = await c.db.generationJob.findUniqueOrThrow({ where: { id: job.id } });
   }
   if (job.currentStep === LOCAL_PATCH_RECOVERY_BUDGET_WAIT && job.updatedAt.getTime() > Date.now() - LOCAL_PATCH_RECOVERY_BACKOFF_MS)

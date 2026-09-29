@@ -1,4 +1,4 @@
-import { auditWorldBudget, WorldBudget, WorldBudgetError, type WorldBudgetAudit, type WorldBudgetRepository, type WorldReservationInput, type WorldChargeEvidence, type WorldBudgetOptions, type WorldUnknownContinuationInput, type WorldAutomaticImageRecoveryInput } from "./world-budget";
+import { auditWorldBudget, WorldBudget, WorldBudgetError, type WorldBudgetAudit, type WorldBudgetRepository, type WorldReservationInput, type WorldChargeEvidence, type WorldBudgetOptions, type WorldUnknownContinuationInput, type WorldAutomaticImageRecoveryInput, type WorldAutomaticReviewRecoveryInput } from "./world-budget";
 
 export const BOARD_WIZARD_CAP_MICRO_USD = 4_000_000;
 /** Read-only consumers must show the SAME commercial ceiling as reservations,
@@ -47,6 +47,7 @@ export function boardWizardBudget(repository: WorldBudgetRepository, attempt = 1
     override readContinuationApproval(worldId: string, requestKey: string) { return super.readContinuationApproval(worldId, key(requestKey)); }
     override authorizeUnknownContinuation(worldId: string, input: WorldUnknownContinuationInput) { return super.authorizeUnknownContinuation(worldId, { ...input, requestKey: key(input.requestKey) }); }
     override authorizeAutomaticImageRecovery(worldId: string, input: WorldAutomaticImageRecoveryInput) { return super.authorizeAutomaticImageRecovery(worldId, { ...input, requestKey: key(input.requestKey) }); }
+    override authorizeAutomaticReviewRecovery(worldId: string, input: WorldAutomaticReviewRecoveryInput) { return super.authorizeAutomaticReviewRecovery(worldId, { ...input, requestKey: key(input.requestKey) }); }
   }
   return new AttemptBudget(guarded, options);
 }

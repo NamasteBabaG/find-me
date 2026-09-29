@@ -11,7 +11,7 @@ import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wi
 import { reviewBoardWizardIdentity } from "../board-wizard-identity-gate";
 import { readBoardConditionedCatalog } from "../board-conditioned-catalog";
 import { prepareLocalPatchBoardReview, reviewLocalPatchBoard } from "../local-patch-board-review";
-import { localPatchBoardJudgeImages, localPatchHideEvidenceIds, type LocalPatchBoardJudgeRequest } from "../local-patch-judge";
+import { localPatchBoardJudgeImages, localPatchHideEvidenceIds, type LocalPatchBoardJudgeRequest, type LocalPatchBoardJudgeResult } from "../local-patch-judge";
 import { runLocalPatchHide, type LocalPatchHideDeps } from "../local-patch-hide";
 import { LOCAL_PATCH_PUBLICATION_ACTION } from "../local-patch-publication-policy";
 import { localPatchPrivateInventory } from "../local-patch-world";
@@ -22,6 +22,8 @@ import { LOCAL_PATCH_COMPOSITION_VERSION } from "../local-patch-seam";
 import { retainedPurchaseKey } from "../../../infra/db/prisma-retained-purchase-store";
 import { LocalPatchRetainedPurchaseStore } from "../local-patch-lifecycle";
 import { purchaseOnce } from "../paid-operation";
+import { recoverPreparedLocalPatchReview, REVIEW_INTERRUPTION_POLICY } from "../local-patch-review-interruption-recovery";
+import { localPatchBudgetReadyForPublication } from "../local-patch-interruption-recovery";
 import { sha256Bytes } from "../fixed-sprite";
 import { bill, paintedCrop, paintedOk, seedApprovedGame, PASSING_ANSWER } from "./local-patch-fixtures";
 
@@ -48,6 +50,8 @@ async function seed(gameId: string, count = 1) {
   const seeded = await seedApprovedGame(c, db, { gameId, approved: false, styleVersion: "local-patch-world-v1", status: "TARGETS_GENERATING",
     withJob: true, scenes: BOARDS.map(b => ({ slug: b.board, version: 12 })) });
   testers.push(seeded.email);
+  await db.order.create({ data: { id: `ord-${gameId}`, gameId, userId: seeded.userId, provider: "mock", packageTier: "ONE_WORLD",
+    amountAgorot: 3900, paymentStatus: "PAID", paidAt: new Date() } });
   await c.storage.put(`private/photo-${gameId}.jpg`, seeded.sheet, "image/png");
   const catalog = await readBoardConditionedCatalog();
   await reviewBoardWizardIdentity({ db, apiKey: "synthetic", budget: boardWizardBudgetOf(c), beforeDispatch: async () => {},
@@ -65,7 +69,7 @@ async function seed(gameId: string, count = 1) {
   const deps = { renderPolicySha256: "f".repeat(64), render, judge: async () => { throw Error("Per-hide judge forbidden"); } };
   for (const hide of BOARD.hides.slice(0, count)) await runLocalPatchHide(c, deps, { gameId, board: BOARD, hide });
   let number = 0;
-  const judge = vi.fn(async (request: LocalPatchBoardJudgeRequest) => ({ verdict: null, verdicts: {},
+  const judge = vi.fn<(request: LocalPatchBoardJudgeRequest) => Promise<LocalPatchBoardJudgeResult>>(async request => ({ verdict: null, verdicts: {},
     raw: JSON.stringify({ hides: request.hides.map(h => ({ hideId: h.hideId, evidenceIds: localPatchHideEvidenceIds(h.hideId), verdict: good })) }),
     model: "gpt-5.6-sol", requestId: `judge-${gameId}-${++number}`, usage: { prompt_tokens: 1000, completion_tokens: 400 },
     finishReason: "stop", wireFault: null, costUnknown: false }));
@@ -73,8 +77,110 @@ async function seed(gameId: string, count = 1) {
 }
 const review = (s: Awaited<ReturnType<typeof seed>>) => reviewLocalPatchBoard(c, s, { fence: async () => {}, judge: s.judge });
 const rows = (gameId: string) => db.targetVariantAsset.findMany({ where: { targetInstance: { gameScene: { gameId } } }, orderBy: { id: "asc" } });
+const interruptedReply = { verdict: null, verdicts: {}, raw: null, model: null, usage: null, requestId: null,
+  finishReason: null, wireFault: "timeout" as const, costUnknown: true };
 
 describe("v12 ready appearances have independent paid review and publication bindings", () => {
+  it("automatically replaces a no-response review, preserving unknown billing, identical pixels and approved siblings", async () => {
+    const s = await seed("incremental-transport", 3);
+    await review(s);
+    const before = await rows(s.gameId), protectedRow = before.find(row => JSON.parse(row.judgeJson!).verdict)!;
+    const prepared = await prepareLocalPatchBoardReview(c, s, {}); if (!prepared.ready) throw Error("Fixture must be ready");
+    const budget = prepared.budget, worldId = prepared.worldId, originalKey = prepared.requestKey;
+    s.judge.mockImplementationOnce(async () => interruptedReply);
+    expect((await review(s)).state).toBe("pending");
+    const interrupted = (await rows(s.gameId)).find(row => JSON.parse(row.judgeJson!).reviewInterruption)!;
+    expect(interrupted).toMatchObject({ status: "FAILED", assetId: before.find(row => row.id === interrupted.id)!.assetId, attempts: 1 });
+    expect(await budget.audit(worldId)).toMatchObject({ held: false, reservedMicroUsd: 300_000, capMicroUsd: 4_000_000 });
+    expect(await budget.readRequest(worldId, originalKey)).toMatchObject({ state: "unknown", reserveMicroUsd: 300_000 });
+    expect(await db.auditLog.count({ where: { entityId: s.gameId, action: LOCAL_PATCH_PUBLICATION_ACTION } })).toBe(1);
+    await review(s); // the never-reviewed sibling gets its first turn before evidence recovery
+    expect((await review(s)).state).toBe("done");
+    const after = await rows(s.gameId), recovered = after.find(row => row.id === interrupted.id)!;
+    expect(after.find(row => row.id === protectedRow.id)).toEqual(protectedRow);
+    expect(recovered).toMatchObject({ status: "GENERATED", assetId: interrupted.assetId, attempts: interrupted.attempts });
+    const receipt = JSON.parse(recovered.judgeJson!);
+    expect(receipt.boardReview).toMatchObject({ evidenceReviewAttempt: 2, effort: "medium" });
+    expect(receipt.boardReview.requestKey).not.toBe(originalKey);
+    expect(localPatchBoardJudgeImages(prepared.request)).toEqual(localPatchBoardJudgeImages(s.judge.mock.calls[3]![0]));
+    expect(await budget.audit(worldId)).toMatchObject({ held: false, reservedMicroUsd: 300_000 });
+    expect(await localPatchBudgetReadyForPublication(budget, worldId, 12)).toBe(true);
+    expect(await localPatchBudgetReadyForPublication(budget, worldId, 11)).toBe(false);
+    expect((await localPatchPrivateInventory(c, s.gameId)).retainedPurchaseKeys).toEqual(expect.arrayContaining([
+      retainedPurchaseKey(worldId, originalKey), retainedPurchaseKey(worldId, receipt.boardReview.requestKey) ]));
+    expect(s.render).toHaveBeenCalledTimes(3);
+  }, 120000);
+  it("replays recovery after a crash between its durable accounting and row transition without charging again", async () => {
+    const s = await seed("incremental-transport-crash");
+    const prepared = await prepareLocalPatchBoardReview(c, s, {}); if (!prepared.ready) throw Error("Fixture must be ready");
+    const buy = vi.fn(async () => ({ bytes: Buffer.from(JSON.stringify(interruptedReply)), unknownReason: "Grouped review charge could not be verified" }));
+    const operation = { worldId: prepared.worldId, requestKey: prepared.requestKey, scope: "judge" as const,
+      operationFingerprint: prepared.fingerprint, reserveMicroUsd: 300_000, buy };
+    const store = new LocalPatchRetainedPurchaseStore(c, s.gameId, prepared.budget);
+    expect((await purchaseOnce({ ledger: prepared.budget, store }, operation)).kind).toBe("unresolved");
+    const original = await prepared.budget.readRequest(prepared.worldId, prepared.requestKey);
+    await expect(recoverPreparedLocalPatchReview(c, prepared, async () => { throw Error("Worker died after accounting"); })).rejects.toThrow("Worker died");
+    expect(await recoverPreparedLocalPatchReview(c, prepared)).toBe(true);
+    expect(await recoverPreparedLocalPatchReview(c, prepared)).toBe(false);
+    expect(await db.auditLog.count({ where: { entityId: s.gameId, action: REVIEW_INTERRUPTION_POLICY } })).toBe(1);
+    expect(await prepared.budget.readRequest(prepared.worldId, prepared.requestKey)).toEqual(original);
+    expect((await purchaseOnce({ ledger: prepared.budget, store }, operation)).kind).toBe("unresolved");
+    expect(buy).toHaveBeenCalledOnce();
+    await review(s); expect(s.render).toHaveBeenCalledOnce();
+  }, 120000);
+  it.each([
+    { wireFault: "http" as const }, { wireFault: "no-receipt" as const }, { raw: "unpriced usable answer" },
+    { requestId: "req-with-missing-usage" }, { model: "gpt-5.6-sol" },
+  ])("keeps an unpriced nontransport answer held without another purchase: %j", async override => {
+    const s = await seed(`incremental-nontransport-${Object.values(override)[0]!.replaceAll(/[^a-z]/g, "")}`);
+    s.judge.mockImplementationOnce(async () => ({ ...interruptedReply, ...override }));
+    const before = await rows(s.gameId);
+    expect((await review(s)).state).toBe("held");
+    expect(await rows(s.gameId)).toEqual(before);
+    expect(await db.auditLog.count({ where: { entityId: s.gameId, action: REVIEW_INTERRUPTION_POLICY } })).toBe(0);
+    expect(await boardWizardBudgetOf(c).audit(boardWizardWorldId(s.gameId))).toMatchObject({ held: true, reservedMicroUsd: 300_000 });
+    expect(s.render).toHaveBeenCalledOnce();
+  }, 120000);
+  it("does not resume a refunded game's unknown review", async () => {
+    const s = await seed("incremental-transport-refunded");
+    s.judge.mockImplementationOnce(async () => {
+      await db.order.update({ where: { id: `ord-${s.gameId}` }, data: { paymentStatus: "REFUNDED", refundedAt: new Date() } });
+      return interruptedReply;
+    });
+    expect((await review(s)).state).toBe("held");
+    expect(await db.auditLog.count({ where: { entityId: s.gameId, action: REVIEW_INTERRUPTION_POLICY } })).toBe(0);
+  }, 120000);
+  it("recovers an existing parked world through the main slice and defers honestly when its remaining budget cannot fit review", async () => {
+    const s = await seed("incremental-parked-budget"), prepared = await prepareLocalPatchBoardReview(c, s, {});
+    if (!prepared.ready) throw Error("Fixture must be ready");
+    const priorSpend = 3_586_026 - (await prepared.budget.audit(prepared.worldId)).committedMicroUsd;
+    await prepared.budget.reserve(prepared.worldId, { requestKey: "prior-work", scope: "image", operationFingerprint: "prior-work", reserveMicroUsd: priorSpend });
+    await prepared.budget.settle(prepared.worldId, "prior-work", bill("prior-parked-budget", priorSpend));
+    await purchaseOnce({ ledger: prepared.budget, store: new LocalPatchRetainedPurchaseStore(c, s.gameId, prepared.budget) }, {
+      worldId: prepared.worldId, requestKey: prepared.requestKey, operationFingerprint: prepared.fingerprint, scope: "judge", reserveMicroUsd: 300_000,
+      buy: async () => ({ bytes: Buffer.from(JSON.stringify(interruptedReply)), unknownReason: "Grouped review charge could not be verified" }) });
+    await db.generationJob.update({ where: { id: `job_${s.gameId}` }, data: { status: "FAILED", currentStep: "local-patch:needs-release" } });
+    const before = await prepared.budget.audit(prepared.worldId), result = await runLocalPatchWorldSlice(c, s.deps, s.gameId, { maxHides: 1, boardJudge: s.judge });
+    expect(result).toMatchObject({ claimed: true, pending: true, attention: null });
+    expect(await prepared.budget.audit(prepared.worldId)).toMatchObject({ held: false, committedMicroUsd: before.committedMicroUsd,
+      settledMicroUsd: before.settledMicroUsd, reservedMicroUsd: 300_000, remainingMicroUsd: 113_974 });
+    expect(await db.generationJob.findUniqueOrThrow({ where: { id: `job_${s.gameId}` } })).toMatchObject({ currentStep: "local-patch:recovery-budget-wait" });
+    expect(s.judge).not.toHaveBeenCalled(); expect(s.render).toHaveBeenCalledOnce();
+    expect(await db.auditLog.count({ where: { entityId: s.gameId, action: LOCAL_PATCH_PUBLICATION_ACTION } })).toBe(0);
+  }, 120000);
+  it("bounds no-response review continuations at two without recycling old keys or dropping unknown charges", async () => {
+    const s = await seed("incremental-transport-limit");
+    s.judge.mockImplementation(async () => interruptedReply);
+    expect((await review(s)).state).toBe("pending");
+    expect((await review(s)).state).toBe("pending");
+    expect((await review(s)).state).toBe("held");
+    const audit = await boardWizardBudgetOf(c).audit(boardWizardWorldId(s.gameId));
+    expect(audit).toMatchObject({ held: true, reservedMicroUsd: 900_000, capMicroUsd: 4_000_000 });
+    expect(audit.unknownRequestKeys).toHaveLength(3);
+    expect(await db.auditLog.count({ where: { entityId: s.gameId, action: REVIEW_INTERRUPTION_POLICY } })).toBe(2);
+    expect(await db.auditLog.count({ where: { entityId: s.gameId, action: LOCAL_PATCH_PUBLICATION_ACTION } })).toBe(0);
+    expect(s.render).toHaveBeenCalledOnce();
+  }, 120000);
   it("reviews one hide before either sibling exists and fits the retained run's 0.413974 dollar headroom", async () => {
     const s = await seed("incremental-headroom"), budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(s.gameId);
     const amount = 3_586_026 - (await budget.audit(worldId)).committedMicroUsd;
@@ -127,9 +233,11 @@ describe("v12 ready appearances have independent paid review and publication bin
     if (!old.ready) throw Error("Historical full question must be ready");
     expect(old.request.hides).toHaveLength(3); expect(old.request.reviewScope).toBeUndefined();
     const reply = await s.judge(old.request), budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(s.gameId);
+    if (!reply.model || !reply.requestId) throw Error("Historical fixture requires an authentic synthetic receipt");
+    const evidence = { ...bill(reply.requestId), model: reply.model };
     await purchaseOnce({ ledger: budget, store: new LocalPatchRetainedPurchaseStore(c, s.gameId, budget) }, {
       worldId, requestKey: old.requestKey, operationFingerprint: old.fingerprint, scope: "judge", reserveMicroUsd: 500_000,
-      buy: async () => ({ bytes: Buffer.from(JSON.stringify(reply)), evidence: { ...bill(reply.requestId), model: reply.model } }),
+      buy: async () => ({ bytes: Buffer.from(JSON.stringify(reply)), evidence }),
     });
     s.judge.mockClear(); const before = await budget.audit(worldId);
     expect(await review(s)).toMatchObject({ state: "done", replayed: true });
@@ -140,9 +248,11 @@ describe("v12 ready appearances have independent paid review and publication bin
     const s = await seed("incremental-independent-key", 3), prepared = await prepareLocalPatchBoardReview(c, s, {});
     if (!prepared.ready) throw Error("Ready appearance required");
     const reply = await s.judge(prepared.request), budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(s.gameId);
+    if (!reply.model || !reply.requestId) throw Error("Independent fixture requires an authentic synthetic receipt");
+    const evidence = { ...bill(reply.requestId), model: reply.model };
     await purchaseOnce({ ledger: budget, store: new LocalPatchRetainedPurchaseStore(c, s.gameId, budget) }, {
       worldId, requestKey: prepared.requestKey, operationFingerprint: prepared.fingerprint, scope: "judge", reserveMicroUsd: 300_000,
-      buy: async () => ({ bytes: Buffer.from(JSON.stringify(reply)), evidence: { ...bill(reply.requestId), model: reply.model } }),
+      buy: async () => ({ bytes: Buffer.from(JSON.stringify(reply)), evidence }),
     });
     const sibling = prepared.entries.find(e => e.hide.id !== prepared.request.hides[0]!.hideId)!;
     await db.targetVariantAsset.update({ where: { id: sibling.row.id }, data: { attempts: 2 } });
