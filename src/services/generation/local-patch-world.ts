@@ -22,6 +22,7 @@ import { runLocalPatchSelfRepair, SELF_REPAIR_REQUEST_ACTION, type SelfRepairDep
 import { WorldBudgetError } from "./world-budget";
 import { recoverLocalPatchImageInterruptions } from "./local-patch-interruption-recovery";
 import { recoverPreparedLocalPatchReview } from "./local-patch-review-interruption-recovery";
+import { activateLocalPatchEmergencyBudget } from "./local-patch-budget-recovery";
 import { localPatchEvidenceRecovery, LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS } from "./local-patch-review-recovery";
 import {
   LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, runLocalPatchHide,
@@ -207,6 +208,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   });
   const deferBudget = async (error: unknown): Promise<boolean> => {
     if (!automatic || !(error instanceof WorldBudgetError) || error.code !== "cap_exceeded") return false;
+    if (await activateLocalPatchEmergencyBudget(c, gameId, error, fence)) return true;
     await c.db.$transaction(async tx => {
       await fence(tx);
       await tx.generationJob.update({ where: { id: job.id }, data: { status: "QUEUED", currentStep: LOCAL_PATCH_RECOVERY_BUDGET_WAIT,

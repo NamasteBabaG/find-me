@@ -19,6 +19,7 @@ import { characterNeedsApproval, identityApprovedForDisplay } from "@/services/g
 import { env } from "@/lib/env";
 import { auditWorldBudget } from "@/services/generation/world-budget";
 import { applyBoardWizardBudgetCap } from "@/services/generation/board-wizard-budget";
+import { readLocalPatchEmergencyBudget } from "@/services/generation/local-patch-budget-recovery";
 
 export const runtime = "nodejs";
 
@@ -108,7 +109,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
       if (snapshot.worldId !== worldId) throw new Error("Wrong local-patch budget world");
       // This ledger already includes identity, painting and judging. Adding
       // asset costs here would count the same image purchase a second time.
-      const audit = applyBoardWizardBudgetCap(auditWorldBudget(snapshot));
+      const extension = await readLocalPatchEmergencyBudget(c, worldId);
+      const audit = applyBoardWizardBudgetCap(auditWorldBudget(snapshot), extension?.capMicroUsd);
       qaCost = { spentCents: audit.settledMicroUsd / 10_000, reservedCents: audit.reservedMicroUsd / 10_000,
         capCents: audit.capMicroUsd / 10_000, held: audit.held };
       localPatchBudgetHeld = audit.held;

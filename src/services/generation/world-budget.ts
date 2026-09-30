@@ -116,7 +116,8 @@ export interface WorldBudgetRepository {
 
 export type WorldBudgetErrorCode = "invalid_input" | "invalid_snapshot" | "arithmetic_overflow" | "key_conflict" | "request_missing" | "world_held" | "cap_exceeded" | "evidence_conflict";
 export class WorldBudgetError extends Error {
-  constructor(readonly code: WorldBudgetErrorCode, message: string) { super(message); this.name = "WorldBudgetError"; }
+  constructor(readonly code: WorldBudgetErrorCode, message: string,
+    readonly refusedReservation?: WorldReservationInput & { worldId: string }) { super(message); this.name = "WorldBudgetError"; }
 }
 
 export interface WorldBudgetAudit {

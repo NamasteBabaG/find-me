@@ -2,12 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   game: vi.fn(), asset: vi.fn(), job: vi.fn(), user: vi.fn(), denied: vi.fn(), link: vi.fn(), proof: vi.fn(), hash: vi.fn(), wizard: vi.fn(), ledger: vi.fn(),
-  approved: vi.fn(),
+  approved: vi.fn(), emergencyBudget: vi.fn(),
 }));
 vi.mock("@/lib/server/qa-access", () => ({ qaAccessDenied: mocks.denied }));
 vi.mock("@/lib/server/session", () => ({ currentUser: mocks.user, draftTokenFromCookie: async () => null, isAdminEmail: () => false }));
 vi.mock("@/services/container", () => ({ getContainer: () => ({ db: { game: { findUnique: mocks.game }, asset: { findUnique: mocks.asset }, generationJob: { findUnique: mocks.job }, worldBudgetLedger: { findUnique: mocks.ledger } }, email: { id: "console" } }) }));
 vi.mock("@/services/generation/board-conditioned-wizard", () => ({ BOARD_WIZARD_STYLE: "fixed-sprite-board-wizard-v1", readBoardWizard: mocks.wizard }));
+vi.mock("@/services/generation/local-patch-budget-recovery", () => ({ readLocalPatchEmergencyBudget: mocks.emergencyBudget }));
 // Only the expensive lookup is stubbed. `characterNeedsApproval` is the real
 // decision rule under test, so it runs for real.
 vi.mock("@/services/generation/board-wizard-identity-gate", async importOriginal => ({
@@ -39,7 +40,7 @@ beforeEach(() => {
   mocks.game.mockResolvedValue({ ...game }); mocks.asset.mockResolvedValue({ status: "READY" });
   mocks.job.mockResolvedValue({ gameId: game.id, status: "DONE", stepsJson: "{}" });
   mocks.proof.mockReturnValue(null); mocks.hash.mockReturnValue("synthetic-hash"); mocks.link.mockResolvedValue({ url: "/synthetic-play" });
-  mocks.ledger.mockResolvedValue(null); mocks.approved.mockResolvedValue(true);
+  mocks.ledger.mockResolvedValue(null); mocks.approved.mockResolvedValue(true); mocks.emergencyBudget.mockResolvedValue(null);
 });
 async function response() { return GET(new Request("https://example.invalid/api/games/synthetic/status"), { params: Promise.resolve({ gameId: "synthetic" }) }); }
 function assembled(status = "MANUAL_REVIEW") {
@@ -104,8 +105,34 @@ describe("fixed-world creation status boundary", () => {
     const paid = snapshot.requests[0];
     if (paid?.state !== "settled") throw new Error("Fixture needs a paid identity");
     paid.evidence.amountMicroUsd += 4_100_000 - 150_800;
+    paid.reserveMicroUsd = paid.evidence.amountMicroUsd;
     mocks.ledger.mockResolvedValue({ snapshotJson: JSON.stringify(snapshot) });
     expect(await (await response()).json()).toMatchObject({ pending: false, state: "held", qaCost: { spentCents: 410, capCents: 400, held: true } });
+  });
+  it("continues polling above four dollars when the engine has verified the standing five-dollar grant", async () => {
+    mocks.game.mockResolvedValue({ ...game, status: "TARGETS_GENERATING", styleVersion: "local-patch-world-v1" });
+    const snapshot = localBudget(), paid = snapshot.requests[0];
+    if (paid?.state !== "settled") throw new Error("Fixture needs a paid identity");
+    paid.evidence.amountMicroUsd += 4_100_000 - 150_800;
+    paid.reserveMicroUsd = paid.evidence.amountMicroUsd;
+    mocks.ledger.mockResolvedValue({ snapshotJson: JSON.stringify(snapshot) });
+    mocks.emergencyBudget.mockResolvedValue({ worldId: snapshot.worldId, capMicroUsd: 5_000_000, authorizationSha256: "a".repeat(64) });
+    expect(await (await response()).json()).toMatchObject({ pending: true, state: "working", awaitingQa: false,
+      qaCost: { spentCents: 410, capCents: 500, held: false } });
+    expect(mocks.emergencyBudget.mock.calls[0]?.[1]).toBe(snapshot.worldId);
+  });
+  it("a verified five-dollar grant still counts UNKNOWN charges and cannot clear an accounting hold", async () => {
+    mocks.game.mockResolvedValue({ ...game, status: "TARGETS_GENERATING", styleVersion: "local-patch-world-v1" });
+    mocks.ledger.mockResolvedValue({ snapshotJson: JSON.stringify(localBudget("unknown")) });
+    mocks.emergencyBudget.mockResolvedValue({ worldId: "synthetic:board-wizard", capMicroUsd: 5_000_000, authorizationSha256: "a".repeat(64) });
+    expect(await (await response()).json()).toMatchObject({ pending: false, state: "held",
+      qaCost: { spentCents: 15.08, reservedCents: 40, capCents: 500, held: true } });
+  });
+  it("does not fabricate budget permission when the emergency receipt fails verification", async () => {
+    mocks.game.mockResolvedValue({ ...game, status: "TARGETS_GENERATING", styleVersion: "local-patch-world-v1" });
+    mocks.ledger.mockResolvedValue({ snapshotJson: JSON.stringify(localBudget()) });
+    mocks.emergencyBudget.mockRejectedValue(Error("Invalid policy receipt"));
+    expect(await (await response()).json()).toMatchObject({ pending: false, state: "held", qaCost: null });
   });
   it.each(["uniform", "mixed", "incomplete"])("only selects catalog7 display policy for a complete uniformly pinned world: %s", async shape => {
     const slugs = ["sydney", "antarctica", "giza", "tokyo", "paris", "marrakech", "amazon", "newyork", "greatwall"];

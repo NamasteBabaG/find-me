@@ -27,7 +27,9 @@ export function boardWizardBudget(repository: WorldBudgetRepository, attempt = 1
   const guarded: WorldBudgetRepository = { transactWorld: (worldId, work) => repository.transactWorld(worldId, tx => work({ snapshot: tx.snapshot,
     createRequest: async request => {
       if (request.origin === "reserved" && auditWorldBudget(tx.snapshot).committedMicroUsd + request.reserveMicroUsd > await capFor(worldId)) {
-        throw new WorldBudgetError("cap_exceeded", "Reservation exceeds the inclusive authorized QA world ceiling");
+        throw new WorldBudgetError("cap_exceeded", "Reservation exceeds the inclusive authorized QA world ceiling",
+          { worldId, requestKey: request.requestKey, scope: request.scope, operationFingerprint: request.operationFingerprint,
+            reserveMicroUsd: request.reserveMicroUsd });
       }
       return tx.createRequest(request);
     },

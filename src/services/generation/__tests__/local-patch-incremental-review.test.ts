@@ -150,7 +150,7 @@ describe("v12 ready appearances have independent paid review and publication bin
     expect((await review(s)).state).toBe("held");
     expect(await db.auditLog.count({ where: { entityId: s.gameId, action: REVIEW_INTERRUPTION_POLICY } })).toBe(0);
   }, 120000);
-  it("recovers an existing parked world through the main slice and defers honestly when its remaining budget cannot fit review", async () => {
+  it("recovers an existing parked world and automatically extends its exhausted base budget through the main slice", async () => {
     const s = await seed("incremental-parked-budget"), prepared = await prepareLocalPatchBoardReview(c, s, {});
     if (!prepared.ready) throw Error("Fixture must be ready");
     const priorSpend = 3_586_026 - (await prepared.budget.audit(prepared.worldId)).committedMicroUsd;
@@ -163,10 +163,11 @@ describe("v12 ready appearances have independent paid review and publication bin
     const before = await prepared.budget.audit(prepared.worldId), result = await runLocalPatchWorldSlice(c, s.deps, s.gameId, { maxHides: 1, boardJudge: s.judge });
     expect(result).toMatchObject({ claimed: true, pending: true, attention: null });
     expect(await prepared.budget.audit(prepared.worldId)).toMatchObject({ held: false, committedMicroUsd: before.committedMicroUsd,
-      settledMicroUsd: before.settledMicroUsd, reservedMicroUsd: 300_000, remainingMicroUsd: 113_974 });
-    expect(await db.generationJob.findUniqueOrThrow({ where: { id: `job_${s.gameId}` } })).toMatchObject({ currentStep: "local-patch:recovery-budget-wait" });
+      settledMicroUsd: before.settledMicroUsd, reservedMicroUsd: 300_000, capMicroUsd: 5_000_000, remainingMicroUsd: 1_113_974 });
+    expect(await db.generationJob.findUniqueOrThrow({ where: { id: `job_${s.gameId}` } })).toMatchObject({ currentStep: "local-patch" });
     expect(s.judge).not.toHaveBeenCalled(); expect(s.render).toHaveBeenCalledOnce();
     expect(await db.auditLog.count({ where: { entityId: s.gameId, action: LOCAL_PATCH_PUBLICATION_ACTION } })).toBe(0);
+    expect((await review(s)).state).toBe("pending"); expect(s.judge).toHaveBeenCalledOnce();
   }, 120000);
   it("bounds no-response review continuations at two without recycling old keys or dropping unknown charges", async () => {
     const s = await seed("incremental-transport-limit");

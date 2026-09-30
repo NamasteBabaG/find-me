@@ -30,6 +30,7 @@ import { needsBoardStandingRemeasurement } from "./board-wizard-remeasurement";
 import { needsBoardSourceRemeasurement } from "./board-wizard-source-remeasurement";
 import { requireBoardWizardIdentityApproval } from "./board-wizard-identity-gate";
 import { readBoardWizardBudgetExtension } from "./board-wizard-budget-extension";
+import { readLocalPatchEmergencyBudget } from "./local-patch-budget-recovery";
 import { recoverBoardOccludedUpperBody, type BoardUpperBodyRecoveryRequest } from "./board-upper-body-recovery";
 import { prepareBoardUpperBodyRecoveryPlayerBoard, bindBoardUpperBodyRecoveryPlayerGame } from "./board-conditioned-player";
 
@@ -106,7 +107,8 @@ export function readBoardWizard(raw: string): Capsule {
 const scope = (gameId: string) => `${gameId}:board-wizard`;
 const assetId = (gameId: string, key: string) => `ast_bcw_${boardConditioningHash([gameId, key])}`;
 const assetPath = (id: string) => `private/board-wizard/${id}.png`;
-function budgetOf(c: Container, attempt = 1) { return boardWizardBudget(new CasWorldBudgetRepository(new PrismaWorldBudgetStore(c.db)), attempt, {}, worldId => readBoardWizardBudgetExtension(c, worldId)); }
+function budgetOf(c: Container, attempt = 1) { return boardWizardBudget(new CasWorldBudgetRepository(new PrismaWorldBudgetStore(c.db)), attempt, {},
+  async worldId => await readLocalPatchEmergencyBudget(c, worldId) ?? readBoardWizardBudgetExtension(c, worldId)); }
 
 async function spendCheck(c: Container, ownerId: string, engine: "board-wizard" | "local-patch" = "board-wizard") {
   demand((engine === "local-patch" ? env().APP_ENV === "qa" : boardWizardEnabled()) && c.storage.id === "db", "QA generation is not explicitly enabled with durable storage");
