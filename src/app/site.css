@@ -857,3 +857,6 @@
   body:has(.service-receipt) .service-document, body:has(.service-receipt) .service-receipt__actions { display: none; }
   .service-receipt { box-shadow: none; border: 1px solid #888; break-inside: avoid; }
 }
+
+.create__loading-line { height: var(--space-3); margin-block: var(--space-3); border-radius: var(--radius-pill); background: var(--paper-2); }
+.create__loading-line:nth-child(2) { width: 70%; }

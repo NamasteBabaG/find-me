@@ -66,10 +66,10 @@
 .fm-btn:active { transform: translateY(0) scale(0.98); box-shadow: var(--shadow-1); }
 .fm-btn:disabled, .fm-btn[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: var(--shadow-1); }
 a.fm-btn[aria-disabled="true"] { pointer-events: none; }
-/* Loading keeps the button's width: the words go invisible under a centred spinner instead of being pushed aside. */
+/* Loading keeps the action readable while the request runs. */
 .fm-btn[aria-busy="true"] { position: relative; }
-.fm-btn[aria-busy="true"] .fm-btn__label { visibility: hidden; }
-.fm-btn[aria-busy="true"] .fm-spinner { position: absolute; inset: 0; margin: auto; }
+.fm-btn[aria-busy="true"] .fm-btn__label { visibility: visible; }
+.fm-btn[aria-busy="true"] .fm-spinner { flex-shrink: 0; }
 .fm-btn__label { display: inline-flex; align-items: center; gap: var(--space-1); }
 .fm-btn--secondary { background: var(--white); color: var(--ink); box-shadow: inset 0 0 0 2px var(--line), var(--shadow-1); }
 .fm-btn--secondary:hover { box-shadow: inset 0 0 0 2px var(--ink-4), var(--shadow-2); }

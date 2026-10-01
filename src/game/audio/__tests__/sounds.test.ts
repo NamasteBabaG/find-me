@@ -39,6 +39,19 @@ beforeEach(() => {
 afterEach(() => { vi.runOnlyPendingTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); document.body.replaceChildren(); });
 
 describe("mobile audio unlock, interruption and lifecycle", () => {
+  it("varies finds with the board, gives drawer/page feedback, and keeps all new cues silent when muted", async () => {
+    manager.unlock(); await settled(); const ctx = contexts[0]!;
+    vi.spyOn(Math, "random").mockReturnValue(.1);
+    manager.setScene("giza"); manager.play("discovery");
+    const wooden = ctx.oscillators.map(n => [n.type, n.frequency.value]);
+    manager.setScene("antarctica"); manager.play("discovery");
+    expect(ctx.oscillators.slice(3).map(n => [n.type, n.frequency.value])).not.toEqual(wooden);
+    manager.play("drawer"); manager.play("page");
+    expect(ctx.sources).toHaveLength(1);
+    const count = ctx.oscillators.length;
+    manager.setMuted(true); manager.play("drawer"); manager.play("page"); manager.play("discovery");
+    expect(ctx.oscillators).toHaveLength(count); expect(ctx.sources).toHaveLength(1);
+  });
   it("plays one short paper-stamp impact only after unlock and respects mute", async () => {
     manager.play("stamp"); expect(contexts).toHaveLength(0);
     manager.unlock(); await settled(); const ctx = contexts[0]!;

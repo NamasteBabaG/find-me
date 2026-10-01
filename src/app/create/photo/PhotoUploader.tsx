@@ -52,7 +52,7 @@ async function forUpload(file: File): Promise<Blob> {
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext("2d");
-  if (!ctx) return file;
+  if (!ctx) { bitmap.close(); return file; }
   ctx.drawImage(bitmap, 0, 0, w, h);
   bitmap.close();
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
@@ -84,6 +84,12 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/
   // A guarded future step must not be prefetched before this photo exists.
   // Upload is a Route Handler mutation, not a cache-invalidating Server Action.
   const [file, setFile] = useState<File | null>(null);
+  const preparedPhoto = useRef<{ file: File; promise: Promise<Blob | null> } | null>(null);
+  useEffect(() => {
+    // Resize/strip metadata while the parent chooses the crop, rather than
+    // starting that work only after Continue is pressed. Nothing is uploaded.
+    preparedPhoto.current = file ? { file, promise: forUpload(file).catch(() => null) } : null;
+  }, [file]);
   const [url, setUrl] = useState<string | null>(null);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -195,12 +201,16 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/
   const onPointerUp = () => (drag.current = null);
 
   const upload = async () => {
-    if (!file || !natural || !consent) return;
+    if (busy || !file || !natural || !consent) return;
     setBusy(true);
     setError(null);
     const crop = { x: -offset.x / scale / natural.w, y: -offset.y / scale / natural.h, w: BOX / scale / natural.w, h: BOX / scale / natural.h };
     let prepared: Blob;
-    try { prepared = await forUpload(file); }
+    try {
+      const ready = preparedPhoto.current?.file === file ? await preparedPhoto.current.promise : await forUpload(file);
+      if (!ready) throw new Error("unreadable");
+      prepared = ready;
+    }
     catch {
       setError(p.unreadable);
       setBusy(false);

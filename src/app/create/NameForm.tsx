@@ -52,7 +52,7 @@ export function NameForm({ initialName, initialAge, children = [], initialChildI
       {/* The step's own step count is on the stepper above; it was said twice. */}
       <div className="create__actions">
         <Button type="submit" size="lg" loading={pending}>
-          {n.next}
+          {pending ? t.common.savingStep : n.next}
           <span className="fm-btn__arrow" aria-hidden>
             ➜
           </span>

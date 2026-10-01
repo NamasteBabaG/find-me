@@ -396,7 +396,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           if (!found) break;
           const result = store.collectDiscovery(hit.id);
           if (result === "none") break;
-          sounds().play(result === "collected" ? "twinkle" : "tap");
+          sounds().play(result === "collected" ? "discovery" : "tap");
           clearTimeout(bubbleTimer.current);
           const words = guided ? g.collection : g.album;
           const text = tf(store.replay || store.demo ? (result === "collected" ? g.replay.found : g.replay.already) : (result === "collected" ? words.collected : words.again), { name: found.name });
@@ -547,7 +547,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
       </div>
 
       {flight ? <StarFlight key={flight.key} path={flight.path} /> : null}
-      {guided && board ? <Collection board={board} scene={scene} collectedIds={collectedIds} selectedId={selectedDiscovery} hintLevel={discoveryHint} disabled={turn || !revealed || loadFailed || showComplete || (mission.phase !== "searching" && mission.phase !== "complete")} muted={store.muted} arrival={arrival} repeat={repeatTap} onSelect={selectDiscovery} onHint={requestDiscoveryHint} /> : null}
+      {guided && board ? <Collection board={board} scene={scene} collectedIds={collectedIds} selectedId={selectedDiscovery} hintLevel={discoveryHint} searchComplete={mission.phase === "complete"} disabled={turn || !revealed || loadFailed || showComplete || (mission.phase !== "searching" && mission.phase !== "complete")} muted={store.muted} arrival={arrival} repeat={repeatTap} onSelect={selectDiscovery} onHint={requestDiscoveryHint} /> : null}
       {albumToast ? (
         <div key={albumToast.key} className="scene__album-toast" role="status">
           <span aria-hidden>🃏</span> {albumToast.text}
@@ -605,7 +605,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
       ) : null}
 
       {mission.phase === "complete" && showComplete ? (
-        board?.targetIds.length === 3 && board.discoveries.length === 6 && store.album ? <PassportCompletion scene={scene} store={store} onStay={() => setShowComplete(false)} /> : <SceneCompleteCard scene={scene} bonusFound={mission.bonusFound} hintsUsed={Object.values(mission.found).reduce((n, r) => n + r.hintsUsed, 0)} store={store} onStay={guided ? () => setShowComplete(false) : undefined} />
+        !store.replay && board?.targetIds.length === 3 && board.discoveries.length === 6 && store.album ? <PassportCompletion scene={scene} store={store} onStay={() => setShowComplete(false)} /> : <SceneCompleteCard scene={scene} bonusFound={mission.bonusFound} hintsUsed={Object.values(mission.found).reduce((n, r) => n + r.hintsUsed, 0)} store={store} onStay={guided ? () => setShowComplete(false) : undefined} />
       ) : null}
     </div>
   );
@@ -653,7 +653,6 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, onStay }: { sc
           {g.complete.stamp}
         </div>
         <h2 id="complete-title" className="complete__title">{store.demo ? tf(g.complete.demoFound, { name: store.config.child.name }) : store.replay ? g.replay.complete : scene.celebration.completeText}</h2>
-        {store.replay && !store.demo ? <p className="complete__replay-note">{g.replay.note}</p> : null}
         {(
           <div className="complete__stars">
             <StarTray lit={stars} total={stars} size={stars > 3 ? "md" : "lg"} celebrate label={tf(g.stars.tray, { earned: stars, total: stars })} />
@@ -678,7 +677,9 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, onStay }: { sc
         )}
         <div className="complete__actions">
           {onStay ? <button type="button" className="fm-btn fm-btn--secondary" onClick={onStay}>{g.collection.keep}</button> : null}
-          {store.demo ? null : allDone && !store.gameDone() ? (
+          {store.demo ? null : allDone && store.round?.active ? (
+            <button type="button" className="fm-btn fm-btn--lg" onClick={() => store.goToMap(scene.slug)} autoFocus>{g.replay.roundFinished}</button>
+          ) : allDone && !store.gameDone() ? (
             // This journey is finished but the game is not: the next choice is
             // which world to go to, not which board.
             <button type="button" className="fm-btn fm-btn--lg" onClick={store.goToWorlds} autoFocus>

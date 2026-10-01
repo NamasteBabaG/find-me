@@ -20,7 +20,17 @@ type Ctx = AudioContext;
  * the renderer's own chrome plays. "star" belongs to the star tray, not to a
  * board, so it stays out of the scene schema.
  */
-export type PlayCue = SoundCue | "star" | "stamp";
+export type PlayCue = SoundCue | "star" | "stamp" | "discovery" | "drawer" | "page";
+type SoundTheme = "default" | "forest" | "water" | "bells" | "wood" | "crystal" | "city";
+const SCENE_THEMES: Record<string, SoundTheme> = {
+  amazon: "forest", fairyforest: "forest", sydney: "water", underwater: "water",
+  tokyo: "bells", greatwall: "bells", giza: "wood", marrakech: "wood",
+  antarctica: "crystal", icepalace: "crystal", newyork: "city", paris: "city", cloudcity: "city",
+};
+const THEME_NOTES: Record<SoundTheme, readonly number[]> = {
+  default: [523, 659, 784, 1047], forest: [659, 784, 988, 1175], water: [523, 698, 880, 1047],
+  bells: [587, 740, 880, 1175], wood: [392, 494, 587, 784], crystal: [880, 1175, 1568, 1760], city: [523, 622, 784, 1047],
+};
 
 /** A note in a phrase: frequency, length, offset from the phrase start, voice and loudness. */
 type Note = readonly [freq: number, dur: number, at: number, type: OscillatorType, vol: number];
@@ -124,12 +134,14 @@ export class SoundManager {
   private pendingCue: { cue: PlayCue; requestedAt: number } | null = null;
   private oneShots = new Map<AudioScheduledSourceNode, () => void>();
   private _muted = false;
+  private theme: SoundTheme = "default";
   /** Which voicing each cue played last, so the next one is different. */
   private last: Partial<Record<PlayCue, number>> = {};
 
   get muted(): boolean {
     return this._muted;
   }
+  setScene(slug: string): void { this.theme = SCENE_THEMES[slug] ?? "default"; }
 
   unlock(): void {
     if (typeof window === "undefined" || this.paused || this._muted) return;
@@ -216,10 +228,21 @@ export class SoundManager {
         this.blip(between(440, 640), 0.08, t, "sine", 0.4);
         break;
       case "tap":
-        this.blip(between(250, 360), 0.05, t, "triangle", 0.25);
+        this.blip(between(250, 360), 0.05, t, "triangle", 0.16);
         break;
       case "success":
-        this.phrase(SUCCESS[this.pick(cue, SUCCESS.length)]!, t, semitones(between(-2, 2)));
+        if (this.theme === "default") this.phrase(SUCCESS[this.pick(cue, SUCCESS.length)]!, t, semitones(between(-2, 2)));
+        else this.themedFind(cue, t);
+        break;
+      case "discovery":
+        this.themedFind(cue, t);
+        break;
+      case "drawer":
+        this.sweep(420, 660, 0.09, t, "sine", 0.14);
+        this.blip(880, 0.1, t + .07, "sine", .12);
+        break;
+      case "page":
+        this.noise(.13, t, 850, .1);
         break;
       case "fanfare":
         this.phrase(FANFARE[this.pick(cue, FANFARE.length)]!, t, semitones(between(-1, 1)));
@@ -329,6 +352,15 @@ export class SoundManager {
   private phrase(notes: readonly Note[], at: number, pitch: number): void {
     for (const [freq, dur, offset, type, vol] of notes) this.blip(freq * pitch, dur, at + offset, type, vol);
   }
+  private themedFind(cue: "success" | "discovery", at: number): void {
+    const notes = THEME_NOTES[this.theme], variant = this.pick(cue, 3);
+    const order = variant === 0 ? [0, 1, 3] : variant === 1 ? [1, 2, 3] : [2, 1, 3];
+    const voice = this.theme === "wood" || this.theme === "city" ? "triangle" : "sine";
+    const pitch = semitones(between(-.5, .5));
+    order.forEach((index, i) => this.blip(notes[index]! * pitch, i === 2 ? .22 : .09, at + i * .085, voice, cue === "discovery" ? .22 : .3));
+    if (this.theme === "forest") this.sweep(1100, 1700, .07, at + .22, "sine", .08);
+    if (this.theme === "water") this.blip(notes[0]! / 2, .13, at, "sine", .13);
+  }
 
   private trackOneShot(source: AudioScheduledSourceNode, nodes: AudioNode[]): void {
     const cleanup = () => {
@@ -416,19 +448,28 @@ export function sounds(): SoundManager {
  * gift/map screens and returning mobile tabs. No sound is played by the hook. */
 export function bindGameAudio(element: HTMLElement, manager = sounds()): () => void {
   const gesture = () => manager.unlock();
+  const click = (event: Event) => {
+    manager.unlock();
+    const button = event.target instanceof Element ? event.target.closest<HTMLElement>("button, a[href]") : null;
+    if (!button || button.matches(":disabled, [aria-disabled=true]")) return;
+    const cue = button.dataset.gameCue;
+    manager.play(cue === "drawer" || cue === "page" ? cue : "tap");
+  };
   const keyboard = (event: KeyboardEvent) => {
     if (event.key === "Enter" || event.key === " ") manager.unlock();
   };
   const visibility = () => document.hidden ? manager.suspend() : manager.resume();
   const hidden = () => manager.suspend();
-  for (const type of ["pointerup", "touchend", "click"]) element.addEventListener(type, gesture, { capture: true, passive: true });
+  for (const type of ["pointerup", "touchend"]) element.addEventListener(type, gesture, { capture: true, passive: true });
+  element.addEventListener("click", click, { capture: true, passive: true });
   element.addEventListener("keydown", keyboard, true);
   document.addEventListener("visibilitychange", visibility);
   window.addEventListener("pagehide", hidden);
   window.addEventListener("pageshow", visibility);
   visibility();
   return () => {
-    for (const type of ["pointerup", "touchend", "click"]) element.removeEventListener(type, gesture, true);
+    for (const type of ["pointerup", "touchend"]) element.removeEventListener(type, gesture, true);
+    element.removeEventListener("click", click, true);
     element.removeEventListener("keydown", keyboard, true);
     document.removeEventListener("visibilitychange", visibility);
     window.removeEventListener("pagehide", hidden);

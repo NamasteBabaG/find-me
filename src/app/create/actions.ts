@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { requireQaAccess } from "@/lib/server/qa-access";
 import { getContainer } from "@/services/container";
 import { getCurrency } from "@/i18n/server";
-import { createDraft, draftBelongsTo, loadDraft, selectPackage, selectWorlds } from "@/services/create-flow.service";
+import { createDraft, draftBelongsTo, selectPackage, selectWorlds } from "@/services/create-flow.service";
 import { startCheckout } from "@/services/order.service";
 import { isEditableDraft } from "@/domain/order-state";
 import { validChildAge } from "@/domain/child-appearance";
@@ -25,11 +25,13 @@ export async function currentDraft() {
   const c = getContainer();
   const token = await draftTokenFromCookie();
   if (!token) return null;
-  const game = await c.db.game.findUnique({ where: { draftToken: token } });
+  const [game, user] = await Promise.all([
+    c.db.game.findUnique({ where: { draftToken: token }, include: { childProfile: true, scenes: { orderBy: { orderIndex: "asc" } } } }),
+    currentUser(),
+  ]);
   if (!game || !isEditableDraft(statusOf(game))) return null;
-  const user = await currentUser();
   if (!draftBelongsTo(game, token, user?.id ?? null)) return null;
-  return loadDraft(c, game.id);
+  return game;
 }
 
 export async function saveNameAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
@@ -40,19 +42,20 @@ export async function saveNameAction(_prev: ActionResult | null, formData: FormD
   const familyChildId = String(formData.get("familyChildId") ?? "") || null;
   if (!validChildAge(ageYears)) return flowError("INVALID_CHILD_AGE", "בחרו את גיל הדמות במשחק, בין 2 ל־10.");
   const guarded = await guardDb(async () => {
-  let draft = await currentDraft();
-  if (formData.get("freshAdventure") === "1") draft = null;
-  const [user, locale, draftToken] = await Promise.all([currentUser(), getLocale(), draftTokenFromCookie()]);
+  let [draft, user, locale, draftToken] = await Promise.all([
+    formData.get("freshAdventure") === "1" ? null : currentDraft(), currentUser(), getLocale(), draftTokenFromCookie(),
+  ]);
   if (draft?.childProfileId && draft.familyChildId !== familyChildId) draft = null;
   let token = draftToken;
+  let gameId = draft?.id;
   if (!draft) {
     const created = await createDraft(c, user?.id ?? null, locale);
     await setDraftCookie(created.draftToken);
     token = created.draftToken;
-    draft = await loadDraft(c, created.gameId);
+    gameId = created.gameId;
   }
-    if (!draft) return flowError("DRAFT_NOT_FOUND", "לא הצלחנו להתחיל טיוטה.");
-    return chooseDraftChild(c.db, { gameId: draft.id, actorId: user?.id ?? null, draftToken: token, familyChildId, name, ageYears });
+    if (!gameId) return flowError("DRAFT_NOT_FOUND", "לא הצלחנו להתחיל טיוטה.");
+    return chooseDraftChild(c.db, { gameId, actorId: user?.id ?? null, draftToken: token, familyChildId, name, ageYears });
   });
   if (!guarded.ok) return guarded;
   redirect("/create/photo");

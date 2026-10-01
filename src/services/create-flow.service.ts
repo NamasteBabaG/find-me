@@ -173,8 +173,8 @@ export async function worldsForDraft(c: Container, styleVersion = newDraftStyleV
   return purchasableWorlds(c, sceneVersionForDraft(styleVersion));
 }
 
-export async function availablePackages(c: Container, styleVersion = newDraftStyleVersion()) {
-  const tiers = purchasableTiers((await worldsForDraft(c, styleVersion)).length);
+export async function availablePackages(c: Container, styleVersion = newDraftStyleVersion(), availableWorldCount?: number) {
+  const tiers = purchasableTiers(availableWorldCount ?? (await worldsForDraft(c, styleVersion)).length);
   return env().APP_ENV === "qa" || styleVersion === LOCAL_PATCH_STYLE ? tiers.filter(p => p.tier === "ONE_WORLD") : tiers;
 }
 

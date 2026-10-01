@@ -51,7 +51,7 @@ export function PackagePicker({ options, defaultTier, availableWorldCount, conti
           {t.common.back}
         </LinkButton>
         <Button type="submit" size="lg" loading={pending}>
-          {options.find(o => o.tier === tier)?.worldCount === availableWorldCount ? p.nextSummary : p.next}
+          {pending ? t.common.savingStep : options.find(o => o.tier === tier)?.worldCount === availableWorldCount ? p.nextSummary : p.next}
           <span className="fm-btn__arrow" aria-hidden>
             ➜
           </span>

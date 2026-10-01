@@ -62,7 +62,7 @@ export function ScenePicker({ scenes, want, preselected }: { scenes: SceneOption
           {s.change}
         </LinkButton>
         <Button type="submit" size="lg" loading={pending} disabled={!full}>
-          {s.next}
+          {pending ? t.common.savingStep : s.next}
           <span className="fm-btn__arrow" aria-hidden>
             ➜
           </span>

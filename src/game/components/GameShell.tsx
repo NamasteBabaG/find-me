@@ -16,6 +16,8 @@ import { ScenePlayer } from "./ScenePlayer";
 import { Passport } from "./Passport";
 import { AdventurePassport, prefetchOwnerPassport } from "./AdventurePassport";
 import { bindGameAudio } from "../audio/sounds";
+import { searchProgress } from "@/domain/game/round";
+import { RoundControls } from "./RoundControls";
 
 interface Props {
   playToken?: string;
@@ -59,6 +61,7 @@ function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false
   const multiWorld = gameWorlds(config).length > 1;
   const landscapeTip = useLandscapeTip();
   const gameRef = useRef<HTMLDivElement>(null);
+  const historyMounted = useRef(false);
 
   useEffect(() => gameRef.current ? bindGameAudio(gameRef.current) : undefined, []);
 
@@ -91,6 +94,16 @@ function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false
 
   useEffect(() => {
     if (demo || singleMission) return;
+    // A refreshed scene entry now lands on the map. Replace its stale marker
+    // instead of going back to a different page the player visited earlier.
+    if (!historyMounted.current) {
+      historyMounted.current = true;
+      if (stepOf(window.history.state)) {
+        const { [STEP_KEY]: _previousStep, ...rest } = window.history.state;
+        window.history.replaceState(rest, "");
+      }
+      return;
+    }
     const step = state.screen === "scene" || state.screen === "passport" ? state.screen : null;
     const top = stepOf(window.history.state);
     if (step && !top) window.history.pushState({ ...window.history.state, [STEP_KEY]: step }, "");
@@ -99,7 +112,7 @@ function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false
   }, [state.screen, demo, singleMission]);
 
   // While the owner looks at the map, the passport book is fetched in the background, so opening it is instant.
-  // Only the book's data: its pictures still load when a page is opened.
+  // Warm only the saved spread and its neighbour, including their decoded pictures.
   useEffect(() => {
     if (state.screen === "map" && state.albumMode === "owner") prefetchOwnerPassport(config.gameId).catch(() => undefined);
   }, [state.screen, state.albumMode, config.gameId]);
@@ -115,15 +128,18 @@ function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false
       case "passport":
         return config.adventure?.boards.every(b => b.targetIds.length === 3 && b.discoveries.length === 6) ? <AdventurePassport store={state} /> : <Passport config={config} progress={state.progress} onMap={state.goToMap} onOpen={state.openScene} onReplay={state.replayScene} album={state.album} albumMode={state.albumMode} albumState={state.albumState} />;
       case "worlds":
-        return <WorldHub config={config} progress={state.progress} currentWorld={state.worldSlug} onEnter={(slug) => state.goToMap(null, slug)} onPassport={state.openPassport} />;
+        return <><RoundControls store={state} /><WorldHub config={config} progress={searchProgress(state.round, state.progress)} roundRoute={state.round?.active ? state.round.route : undefined} currentWorld={state.worldSlug} onEnter={(slug) => state.goToMap(null, slug)} onPassport={state.openPassport} /></>;
       case "map":
       default:
         return (
           <>
+            <RoundControls store={state} />
             <WorldMap
               config={config}
               world={state.world()}
-              progress={state.progress}
+              progress={searchProgress(state.round, state.progress)}
+              roundRoute={state.round?.active ? state.round.route : undefined}
+              onReplay={state.startRound}
               onOpen={state.openScene}
               onPassport={state.openPassport}
               onWorlds={multiWorld ? state.goToWorlds : null}

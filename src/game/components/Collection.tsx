@@ -19,6 +19,7 @@ export interface Arrival { id: string; from: Point; key: number }
 export const STICKER_FLIGHT_MS = 700;
 /** The tray holds itself open once, on arrival, so the button is never a mystery. */
 export const PEEK_MS = 2000;
+export const REMINDER_MS = 3200;
 /** Long enough to read as folding back into the button, short enough not to be a wait. */
 const SHEET_OUT_MS = 220;
 const WIGGLE_MS = 600;
@@ -35,6 +36,7 @@ interface Props {
   hintLevel: DiscoveryHintLevel;
   disabled: boolean;
   muted: boolean;
+  searchComplete?: boolean;
   arrival?: Arrival | null;
   /** A tap on something already collected: its sticker wiggles instead of a second card. */
   repeat?: { id: string; key: number } | null;
@@ -63,7 +65,7 @@ interface Props {
  * hints in three steps. Selection is guidance only, never permission to collect
  * — hit-testing and storage stay in SceneViewport and the album store.
  */
-export function Collection({ board, scene, collectedIds, selectedId, hintLevel, disabled, muted, arrival = null, repeat = null, onSelect, onHint }: Props) {
+export function Collection({ board, scene, collectedIds, selectedId, hintLevel, disabled, muted, searchComplete = false, arrival = null, repeat = null, onSelect, onHint }: Props) {
   const { g, tf, locale } = useGameText();
   const c = g.collection;
   const root = useRef<HTMLElement>(null);
@@ -71,7 +73,8 @@ export function Collection({ board, scene, collectedIds, selectedId, hintLevel, 
   const total = board.discoveries.length;
   const count = board.discoveries.filter((d) => collectedIds.includes(d.id)).length;
   const complete = total > 0 && count === total;
-  const selected = board.discoveries.find((d) => d.id === selectedId && !collectedIds.includes(d.id)) ?? null;
+  const selected = board.discoveries.find((d) => d.id === selectedId) ?? null;
+  const selectedCollected = !!selected && collectedIds.includes(selected.id);
   // On a bounded phone camera, a low-edge item cannot be panned above the
   // bottom hint card. Once the camera focuses it, use the opposite edge.
   const seekAbove = hintLevel >= 2 && !!selected && selected.hitRect.y + selected.hitRect.h / 2 > 0.5;
@@ -91,6 +94,7 @@ export function Collection({ board, scene, collectedIds, selectedId, hintLevel, 
   const outTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const peekTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const peeked = useRef(false);
+  const reminded = useRef(false);
 
   // What is open, readable from a timer that was armed several renders ago: the
   // peek's own closer fires two seconds after the render that armed it, and a
@@ -147,6 +151,21 @@ export function Collection({ board, scene, collectedIds, selectedId, hintLevel, 
     peekTimer.current = setTimeout(() => { peekTimer.current = null; shut(false); }, PEEK_MS);
     return cancelPeek;
   }, [disabled, complete]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Let the last-star celebration finish first. Returning to the board then
+  // reminds the player once; taking over the tray cancels its automatic closer.
+  useEffect(() => {
+    if (reminded.current || !searchComplete || disabled || complete || !total || selectedId) return;
+    const timer = setTimeout(() => {
+      if (openRef.current === "user") { reminded.current = true; return; }
+      reminded.current = true;
+      if (stillMotion()) return;
+      cancelPeek();
+      setBump((b) => b + 1);
+      setOpen("peek");
+      peekTimer.current = setTimeout(() => { peekTimer.current = null; shut(false); }, REMINDER_MS);
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [searchComplete, disabled, complete, total, selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
   // The board went busy (a page turn, the curtain): fold away, do not take focus.
   useEffect(() => {
     if (disabled) shut(false);
@@ -205,7 +224,7 @@ export function Collection({ board, scene, collectedIds, selectedId, hintLevel, 
           ref={(el) => { if (el) slots.current.set(d.id, el); else slots.current.delete(d.id); }}
           type="button"
           className={className}
-          disabled={disabled || got}
+          disabled={disabled}
           aria-pressed={seeking}
           aria-label={got ? tf(c.collectedAria, { name: d.name }) : tf(c.pending, { name: d.name })}
           data-discovery={d.id}
@@ -235,7 +254,7 @@ export function Collection({ board, scene, collectedIds, selectedId, hintLevel, 
   const asDialog = open === "user";
   return (
     <aside ref={root} className={`collect${complete ? " collect--complete" : ""}${seekAbove ? " collect--seek-above" : ""}`} aria-label={c.title}>
-      <button ref={trigger} type="button" className="collect__fab" disabled={disabled} aria-expanded={asDialog} aria-controls={sheetId} aria-label={countAria} onClick={toggle}>
+      <button ref={trigger} type="button" className="collect__fab" data-game-cue="drawer" disabled={disabled} aria-expanded={asDialog} aria-controls={sheetId} aria-label={countAria} onClick={toggle}>
         <svg className="collect__ring" viewBox="0 0 48 48" aria-hidden>
           <circle className="collect__ring-track" cx="24" cy="24" r="21" />
           <circle className="collect__ring-fill" cx="24" cy="24" r="21" style={{ strokeDasharray: ring, strokeDashoffset: ring * (1 - (total ? count / total : 0)) }} />
@@ -247,16 +266,16 @@ export function Collection({ board, scene, collectedIds, selectedId, hintLevel, 
       </button>
 
       {selected && !showSheet ? (
-        <div className="collect__seek" role="status">
-          <AlbumCrop art={scene.art} crop={selected.cardCrop} className="collect__seek-thumb" />
+        <div className="collect__seek" role="status" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onSelect(null); trigger.current?.focus(); } }}>
+          <AlbumCrop art={scene.art} crop={selected.cardCrop} className="collect__seek-thumb" label={selected.name} />
           <div className="collect__seek-body">
-            <small className="collect__seek-label">{c.seeking}</small>
+            <small className="collect__seek-label">{selectedCollected ? c.foundLabel : c.seeking}</small>
             <strong className="collect__seek-name">{selected.name}</strong>
-            {hintLevel > 0 ? <p className="collect__seek-hint">{hintLevel === 1 ? selected.hint : hintLevel === 2 ? c.hintBroad : c.hintPrecise}</p> : null}
+            {!selectedCollected && hintLevel > 0 ? <p className="collect__seek-hint">{hintLevel === 1 ? selected.hint : hintLevel === 2 ? c.hintBroad : c.hintPrecise}</p> : null}
           </div>
           <button type="button" className="collect__close collect__seek-close" aria-label={c.stopSeeking} onClick={() => onSelect(null)}><span aria-hidden>×</span></button>
           <div className="collect__seek-actions">
-            <button type="button" className="collect__hint" disabled={disabled || hintLevel >= 3} onClick={onHint}>{hintLevel === 0 ? c.hint : hintLevel === 1 ? c.hintArea : c.hintShow}</button>
+            {!selectedCollected ? <button type="button" className="collect__hint" disabled={disabled || hintLevel >= 3} onClick={onHint}>{hintLevel === 0 ? c.hint : hintLevel === 1 ? c.hintArea : c.hintShow}</button> : null}
             {canSpeak ? <button type="button" className="collect__speak" disabled={disabled || muted} aria-label={c.listen} onClick={() => speak(hintLevel === 1 ? selected.hint : selected.name)}><span aria-hidden>🔊</span></button> : null}
           </div>
         </div>

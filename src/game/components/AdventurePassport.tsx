@@ -11,6 +11,7 @@ import type { PassportView } from "@/domain/passport/passport";
 import { readPassportPreferences, keepPassportPreference } from "../engine/passport-storage";
 import { PassportMemory } from "./PassportMemory";
 import { AlbumCrop } from "./Album";
+import { warmPassportBook } from "@/ui/passport/image-preload";
 
 type RemoteBook = { book: PassportView; childId: string };
 
@@ -23,13 +24,17 @@ const remoteBooks = new Map<string, { at: number; value: RemoteBook | null; pend
 export function prefetchOwnerPassport(gameId: string, maxAgeMs = 30_000): Promise<RemoteBook> {
   const entry = remoteBooks.get(gameId);
   if (entry?.pending) return entry.pending;
-  if (entry?.value && Date.now() - entry.at < maxAgeMs) return Promise.resolve(entry.value);
+  if (entry?.value && Date.now() - entry.at < maxAgeMs) {
+    warmPassportBook(entry.value.book, entry.value.childId);
+    return Promise.resolve(entry.value);
+  }
   const pending = fetch(`/api/passport?gameId=${encodeURIComponent(gameId)}`, { cache: "no-store" })
     .then(async response => {
       if (!response.ok) throw new Error("passport-unavailable");
       const data = await response.json();
       const value: RemoteBook = { book: data.book, childId: data.childId };
       remoteBooks.set(gameId, { at: Date.now(), value, pending: null });
+      warmPassportBook(value.book, value.childId);
       return value;
     })
     .catch(error => {

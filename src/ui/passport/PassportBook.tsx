@@ -7,11 +7,13 @@ import { arrowPage, swipePage } from "./book-navigation";
 import { PassportStamp } from "./StampMark";
 import { useQaImageRecovery } from "./useQaImageRecovery";
 import { useHomeQaRecovery } from "@/ui/qa/HomeQaRecovery";
+import { passportImageReady, warmPassportBook } from "./image-preload";
 import "./passport.css";
 
 function Picture({ src, label, onFailure, onRecovery }: { src: string; label: string; onFailure: () => void; onRecovery: () => void }) {
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [ready, setReady] = useState(() => passportImageReady(src));
   const { t } = useI18n();
   useEffect(() => {
     if (!failed || attempt >= 2) return;
@@ -21,7 +23,15 @@ function Picture({ src, label, onFailure, onRecovery }: { src: string; label: st
     return () => clearTimeout(timer);
   }, [failed, attempt]);
   // Tiles are not live regions: announce recovery once for the whole reader.
-  return failed ? <span className="travel-passport__photo-wait">{t.travelPassport.pictureUnavailable}</span> : <img src={src} alt={label} onError={() => { setFailed(true); onFailure(); }} onLoad={onRecovery} loading="eager" decoding="async" />;
+  return failed ? <span className="travel-passport__photo-wait">{t.travelPassport.pictureUnavailable}</span> : <span className="travel-passport__picture" data-ready={ready} aria-busy={!ready}>
+    {!ready ? <span className="travel-passport__picture-loading" aria-hidden="true" /> : null}
+    <img src={src} alt={label} onError={() => { setReady(false); setFailed(true); onFailure(); }} onLoad={event => {
+      const img = event.currentTarget;
+      onRecovery();
+      if (img.decode) void img.decode().catch(() => {}).then(() => { if (img.isConnected) setReady(true); });
+      else setReady(true);
+    }} loading="eager" decoding="async" />
+  </span>;
 }
 
 function Chevron({ right }: { right: boolean }) {
@@ -54,6 +64,9 @@ export function PassportBook({ book, mode = "owner", onPhotoSelect, onPlay, rend
   const visibleImages = open ? [page?.photoUrl, ...page?.discoveries.filter(d => d.collected).map(d => d.imageUrl) ?? [],
     ...(panel === "choose" ? page?.photoChoices?.map(c => c.imageUrl) ?? [] : [])] : [book.avatarUrl];
   const imageFailed = failedImages.some(url => visibleImages.includes(url));
+  useEffect(() => {
+    if (open && !renderImage && page) warmPassportBook(book, cursorKey, page.id);
+  }, [open, book, cursorKey, page?.id, renderImage]);
   const homeQa = useHomeQaRecovery(mode === "demo", open && imageFailed, () => {
     if (!failedImages.length) return;
     setFailedImages([]); setImageEpoch(n => n + 1);
@@ -106,6 +119,7 @@ export function PassportBook({ book, mode = "owner", onPhotoSelect, onPlay, rend
   function retryImages() { setFailedImages([]); setImageEpoch(n => n + 1); focusPage(); }
   function stopAnimation() { if (animationTimer.current) clearTimeout(animationTimer.current); setTurn(null); setOpening(false); turning.current = false; }
   function openBook() {
+    if (!renderImage) warmPassportBook(book, cursorKey, page?.id);
     setOpen(true); setOpening(!reduced.current); focusPage();
     if (!reduced.current) animationTimer.current = setTimeout(() => setOpening(false), 900);
   }
@@ -172,7 +186,7 @@ export function PassportBook({ book, mode = "owner", onPhotoSelect, onPlay, rend
         </nav>
       </header>
       <div className="travel-passport__frame">
-        {!open ? <div className="travel-passport__cover">{coverArt}{world ? <button ref={coverButton} className="fm-btn fm-btn--lg" type="button" onClick={openBook}>{copy.open}<Chevron right={dir === "ltr"} /></button> : <p>{book.preparing ? copy.preparing : copy.empty}</p>}</div> : <div className="travel-passport__book" data-opening={opening || undefined} data-turn={turn?.direction} onPointerDown={pointerStart} onPointerMove={pointerMove} onPointerUp={pointerEnd} onPointerCancel={() => { gesture.current = null; }} onClickCapture={e => { if (suppressClick.current) { e.preventDefault(); e.stopPropagation(); suppressClick.current = false; } }} onKeyDown={e => {
+        {!open ? <div className="travel-passport__cover">{coverArt}{world ? <button ref={coverButton} data-game-cue="drawer" className="fm-btn fm-btn--lg" type="button" onClick={openBook}>{copy.open}<Chevron right={dir === "ltr"} /></button> : <p>{book.preparing ? copy.preparing : copy.empty}</p>}</div> : <div className="travel-passport__book" data-opening={opening || undefined} data-turn={turn?.direction} onPointerDown={pointerStart} onPointerMove={pointerMove} onPointerUp={pointerEnd} onPointerCancel={() => { gesture.current = null; }} onClickCapture={e => { if (suppressClick.current) { e.preventDefault(); e.stopPropagation(); suppressClick.current = false; } }} onKeyDown={e => {
           if (e.altKey || e.ctrlKey || e.metaKey || (e.target as HTMLElement).closest("input, select, textarea, [contenteditable=true]")) return;
           const amount = arrowPage(e.key, dir); if (amount) { e.preventDefault(); move(amount); }
         }}>
@@ -209,8 +223,8 @@ export function PassportBook({ book, mode = "owner", onPhotoSelect, onPlay, rend
           {turn ? <div className="travel-passport__turning-leaf" aria-hidden="true"><div className="travel-passport__turn-face"><span className="travel-passport__eyebrow">{world?.title}</span><h3>{turn.page.title}</h3>{turn.page.photoUrl ? <div className="travel-passport__photo">{image(turn.page.photoUrl, "")}</div> : <span className="travel-passport__ghost-crest">✦</span>}</div><div className="travel-passport__turn-back"><span>✦</span></div></div> : null}
           {opening ? <div className="travel-passport__opening-cover" aria-hidden="true"><div className="travel-passport__cover">{coverArt}</div></div> : null}
         </div>}
-        {open ? <><button type="button" className="travel-passport__edge travel-passport__edge--previous" aria-label={copy.previous} title={copy.previous} disabled={index === 0 || busy || Boolean(turn)} onClick={() => move(-1)}><span><Chevron right={dir === "rtl"} /></span></button>
-        <button type="button" className="travel-passport__edge travel-passport__edge--next" aria-label={copy.next} title={copy.next} disabled={!world || index === world.pages.length - 1 || busy || Boolean(turn)} onClick={() => move(1)}><span><Chevron right={dir === "ltr"} /></span></button></> : null}
+        {open ? <><button type="button" data-game-cue="page" className="travel-passport__edge travel-passport__edge--previous" aria-label={copy.previous} title={copy.previous} disabled={index === 0 || busy || Boolean(turn)} onClick={() => move(-1)}><span><Chevron right={dir === "rtl"} /></span></button>
+        <button type="button" data-game-cue="page" className="travel-passport__edge travel-passport__edge--next" aria-label={copy.next} title={copy.next} disabled={!world || index === world.pages.length - 1 || busy || Boolean(turn)} onClick={() => move(1)}><span><Chevron right={dir === "ltr"} /></span></button></> : null}
       </div>
       <footer className="travel-passport__reader-footer" inert={!open} aria-hidden={!open}><p className="travel-passport__swipe-hint">{copy.swipe}</p><nav className="travel-passport__places" aria-label={copy.places}>{world?.pages.map((p, n) => <button type="button" key={p.id} disabled={busy || Boolean(turn)} aria-label={`${n + 1}. ${p.title}`} aria-current={p.id === page?.id ? "page" : undefined} onClick={() => navigate(p)} className={`travel-passport__place${["stamped", "complete"].includes(p.state) ? " is-stamped" : ""}`}><span>{n + 1}</span></button>)}</nav><p className="travel-passport__reader-status" aria-live="polite" aria-atomic="true">{qaSignIn ? copy.qaSessionExpired : imageFailed ? copy.photoUnavailable : page ? `${page.title} · ${tf(copy.page, { n: index + 1, total: world!.pages.length })}` : ""}</p></footer>
     </div>

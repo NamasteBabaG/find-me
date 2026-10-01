@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { guidedFixture } from "../../../domain/adventure/__tests__/guided-fixture";
 import { GameI18nProvider } from "../../i18n";
-import { Collection, PEEK_MS, STICKER_FLIGHT_MS } from "../Collection";
+import { Collection, PEEK_MS, REMINDER_MS, STICKER_FLIGHT_MS } from "../Collection";
 
 /**
  * The sticker collection on the board: ONE shape on every screen — a button in
@@ -107,7 +107,7 @@ describe("the discovery tray", () => {
     act(() => { vi.advanceTimersByTime(PEEK_MS + 400); });
     fireEvent.click(screen.getByRole("button", { name: "Discoveries: 1 of 6 collected" }));
     expect(screen.getByRole("dialog", { name: "Discoveries in Synthetic market" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Item 1 — collected" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Item 1 — collected" }).hasAttribute("disabled")).toBe(false);
     expect(view.container.querySelectorAll(".collect__grid .sticker")).toHaveLength(6);
     expect(screen.getAllByText("Common")).toHaveLength(3);
     expect(screen.getAllByText("Special")).toHaveLength(2);
@@ -137,6 +137,49 @@ describe("the discovery tray", () => {
     expect(onSelect).toHaveBeenLastCalledWith(null);
     view.rerender(provide(<Collection {...base} collectedIds={["item-1", "item-4"]} selectedId="item-4" onSelect={onSelect} onHint={onHint} />));
     expect(screen.queryByText("Looking for")).toBeNull();
+    expect(screen.getByText("In my passport")).toBeTruthy();
+    expect(view.container.querySelector(".collect__seek-thumb")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "A hint, please?" })).toBeNull();
+  });
+
+  it("reminds once after all hides, waits for the celebration, and lets a tap take over", () => {
+    vi.useFakeTimers();
+    const props = { ...base, collectedIds: ["item-0"], onSelect: vi.fn(), onHint: vi.fn() };
+    const view = render(provide(<Collection {...props} />));
+    act(() => vi.advanceTimersByTime(PEEK_MS + 400));
+    view.rerender(provide(<Collection {...props} searchComplete disabled />));
+    act(() => vi.advanceTimersByTime(6000));
+    expect(view.container.querySelector(".collect__sheet")).toBeNull();
+    view.rerender(provide(<Collection {...props} searchComplete />));
+    act(() => vi.advanceTimersByTime(1200));
+    expect(view.container.querySelector(".collect__sheet--peek")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Discoveries: 1 of 6 collected" }));
+    act(() => vi.advanceTimersByTime(REMINDER_MS + 400));
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    act(() => vi.advanceTimersByTime(400));
+    view.rerender(provide(<Collection {...props} searchComplete disabled />));
+    view.rerender(provide(<Collection {...props} searchComplete />));
+    act(() => vi.advanceTimersByTime(6000));
+    expect(view.container.querySelector(".collect__sheet")).toBeNull();
+  });
+
+  it("folds the reminder away smoothly and never reminds for a full collection", () => {
+    vi.useFakeTimers();
+    const props = { ...base, onSelect: vi.fn(), onHint: vi.fn() };
+    const view = render(provide(<Collection {...props} collectedIds={[]} />));
+    act(() => vi.advanceTimersByTime(PEEK_MS + 400));
+    view.rerender(provide(<Collection {...props} collectedIds={[]} searchComplete />));
+    act(() => vi.advanceTimersByTime(1200));
+    expect(view.container.querySelector(".collect__sheet--peek")).not.toBeNull();
+    act(() => vi.advanceTimersByTime(REMINDER_MS));
+    expect(view.container.querySelector(".collect__sheet--closing")).not.toBeNull();
+    act(() => vi.advanceTimersByTime(400));
+    expect(view.container.querySelector(".collect__sheet")).toBeNull();
+    cleanup();
+    const full = render(provide(<Collection {...props} collectedIds={board.discoveries.map(d => d.id)} searchComplete />));
+    act(() => vi.advanceTimersByTime(6000));
+    expect(full.container.querySelector(".collect__sheet")).toBeNull();
   });
 
   it("moves focused low-edge discovery guidance away from the bottom item", () => {

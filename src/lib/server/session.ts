@@ -1,4 +1,5 @@
 import { cookies, headers } from "next/headers";
+import { cache } from "react";
 import { adminEmails } from "@/lib/env";
 import { getContainer } from "@/services/container";
 import { userFromSession } from "@/services/auth.service";
@@ -6,13 +7,16 @@ import { userFromSession } from "@/services/auth.service";
 /** Next.js glue for cookies. Everything else lives in services. */
 export const SESSION_COOKIE = "findme_session";
 export const DRAFT_COOKIE = "findme_draft";
+// Deduplicate authentication within one server render, keyed by the actual
+// cookie so setting/clearing a session in an action never returns an old user.
+const sessionUser = cache((token: string) => userFromSession(getContainer(), token));
 
 export async function currentUser() {
   const jar = await cookies();
   const token = jar.get(SESSION_COOKIE)?.value;
   if (!token) return null;
   try {
-    return await userFromSession(getContainer(), token);
+    return await sessionUser(token);
   } catch (err) {
     // No database (or a broken one) must not take the public pages down: treat the visitor as signed out.
     console.warn("[session] lookup failed:", err instanceof Error ? err.message.split("\n")[0] : err);

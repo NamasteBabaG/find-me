@@ -111,7 +111,7 @@ export function MissionCard({ index, total, target, found, order, stars, trayRef
             {!findAny ? <span className="mission__count">{tf(g.scene.missionOf, { n: index, total })}</span> : null}
           </> : null}
         </div>
-        {minimal ? null : (
+        {minimal || remainingToFinish === 0 ? null : (
           // A word, not a lightbulb: an icon needs decoding, and the child asks a
           // grown-up anyway — the word is the design language (Guy).
           <button type="button" className={`mission__hintbtn${hintPulse ? " mission__hintbtn--pulse" : ""}`} onClick={onHint} aria-label={hintLevel >= 3 && !repeatLastHint ? g.scene.hintLast : g.scene.hint} title={g.scene.hint} disabled={(hintLevel >= 3 && !repeatLastHint) || !target}>
@@ -126,18 +126,15 @@ export function MissionCard({ index, total, target, found, order, stars, trayRef
         {!minimal && hintLevel >= 1 && target?.mission ? <p className="mission__hint">{target.mission}</p> : null}
         {!minimal && hintLevel >= 1 && hintText ? <p className="mission__hint">💡 {hintText}</p> : null}
       </div> : null}
+      {onReplay ? <button type="button" className="mission__continue" onClick={onReplay}>{g.complete.again}</button> : null}
       {onAdvance ? (
-        <button type="button" className="mission__continue" onClick={onAdvance}>
+        <button type="button" className={onReplay ? "fm-btn fm-btn--ghost fm-btn--sm" : "mission__continue"} onClick={onAdvance}>
           {advanceLabel ?? g.scene.canContinue}
           <span className="fm-btn__arrow" aria-hidden>
             ➜
           </span>
         </button>
       ) : null}
-      {onReplay ? <div className="mission__replay">
-        <button type="button" className="fm-btn fm-btn--secondary fm-btn--sm" onClick={onReplay} aria-describedby={showReplayNote ? "replay-note" : undefined}>{g.complete.again}</button>
-        {showReplayNote ? <p id="replay-note" className="mission__replay-note">{g.replay.note}</p> : null}
-      </div> : null}
     </section>
   );
 }

@@ -50,7 +50,7 @@ function completed(collect = true) {
   return store;
 }
 
-describe("temporary board replay", () => {
+describe("resumable replay separate from earned progress", () => {
   it("starts children and items from zero, repeats the same layout, and never writes earned progress or rewards", () => {
     const store = completed();
     const progress = store.getState().progress, album = store.getState().album;
@@ -71,7 +71,7 @@ describe("temporary board replay", () => {
     expect(store.getState().progress).toBe(progress);
     expect(store.getState().album).toBe(album);
     expect(store.getState().gameDone()).toBe(true);
-    expect(write).not.toHaveBeenCalled();
+    expect(write.mock.calls.every(([key]) => key === `findme:round:v1:${config.gameId}`)).toBe(true);
     expect(track.mock.calls.map(([event]) => event.eventType)).not.toEqual(expect.arrayContaining(["target_found", "scene_completed", "game_completed", "scene_unlocked"]));
     store.getState().replayScene();
     expect(store.getState().visitId).toBe(visit + 2);
@@ -89,14 +89,14 @@ describe("temporary board replay", () => {
     expect(store.getState().album!.discoveries).toEqual([{ boardSlug: scene.slug, discoveryId: "cat" }]);
     expect(storage.getItem(albumKey)).not.toBe(saved);
     expect(store.getState().album!.finds).toHaveLength(3);
-    store.getState().goToMap(); store.getState().openScene(scene.slug);
+    store.getState().pauseRound(); store.getState().openScene(scene.slug);
     // Ordinary revisits can still finish collecting the real album.
     expect(store.getState().replay).toBeNull();
     expect(store.getState().collectDiscovery("cat")).toBe("again");
     expect(store.getState().album!.discoveries).toHaveLength(1);
   });
 
-  it.each(["goToMap", "goToWorlds", "openPassport"] as const)("%s ends the round; revisiting restores the completed board", navigate => {
+  it.each(["goToMap", "goToWorlds", "openPassport"] as const)("%s leaves the resumable round intact; only returning to saved progress restores earned stars", navigate => {
     const store = completed();
     store.getState().replayScene();
     store.getState()[navigate]();
@@ -104,26 +104,30 @@ describe("temporary board replay", () => {
     expect(store.getState().mission).toBeNull();
     store.getState().openScene(scene.slug);
     store.getState().dispatch({ type: "START", now: 1 });
+    expect(store.getState().replay).not.toBeNull();
+    expect(store.getState().mission!.phase).toBe("searching");
+    expect(Object.keys(store.getState().mission!.found)).toHaveLength(0);
+    store.getState().pauseRound(); store.getState().openScene(scene.slug);
+    store.getState().dispatch({ type: "START", now: 1 });
     expect(store.getState().replay).toBeNull();
     expect(store.getState().mission!.phase).toBe("complete");
     expect(Object.keys(store.getState().mission!.found)).toHaveLength(3);
     expect(store.getState().album!.discoveries).toHaveLength(1);
   });
 
-  it("refresh discards the unfinished round, not any earned stars, items or completion", () => {
+  it("refresh retains the unfinished round and all earned stars, items and completion", () => {
     const store = completed();
     store.getState().replayScene(); store.getState().dispatch({ type: "START", now: 1 });
     store.getState().dispatch({ type: "TAP_TARGET", targetId: store.getState().mission!.plan.order[0]!, now: 2 });
     expect(Object.keys(store.getState().mission!.found)).toHaveLength(1);
-    // A refresh lands on the map (no board reopens by itself, Guy 2026-10-01); opened again, the board is the
-    // completed one, not the unfinished round.
+    // The map offers continuation of this round; the earned passport is untouched.
     const refreshed = createPlayStore(config, { copy }); refreshed.getState().hydrate();
     expect(refreshed.getState().replay).toBeNull();
     expect(refreshed.getState().screen).toBe("map"); expect(refreshed.getState().mission).toBeNull();
     refreshed.getState().openScene(scene.slug);
-    expect(refreshed.getState().replay).toBeNull();
+    expect(refreshed.getState().replay).not.toBeNull();
     expect(refreshed.getState().sceneSlug).toBe(scene.slug);
-    expect(Object.keys(refreshed.getState().mission!.found)).toHaveLength(3);
+    expect(Object.keys(refreshed.getState().mission!.found)).toHaveLength(1);
     expect(refreshed.getState().album!.discoveries).toHaveLength(1);
     expect(sceneIsComplete(refreshed.getState().progress, scene)).toBe(true);
   });

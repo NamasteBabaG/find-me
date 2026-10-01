@@ -23,6 +23,8 @@ interface Props {
   /** The board just finished: the marker travels from it to the next one. */
   travelFrom?: string | null;
   onTravelDone?: () => void;
+  onReplay?: (slug: string) => void;
+  roundRoute?: string[];
 }
 
 /** Roughly the brief's 1.2–1.8s, and skippable. */
@@ -39,33 +41,34 @@ const CHOOSE_MS = 700;
  * an ordered list of nine buttons for anyone using a keyboard or a screen
  * reader. A game composed before worlds existed falls back to the island grid.
  */
-export function WorldMap({ config, world: shown, progress, onOpen, onPassport, onWorlds, demo, travelFrom, onTravelDone }: Props) {
+export function WorldMap({ config, world: shown, progress, onOpen, onPassport, onWorlds, demo, travelFrom, onTravelDone, onReplay, roundRoute }: Props) {
   const world = shown ?? gameWorlds(config)[0];
   if (!world) return <IslandGrid config={config} progress={progress} onOpen={onOpen} onPassport={onPassport} demo={demo} />;
-  return <WorldMapView config={config} world={world} progress={progress} onOpen={onOpen} onPassport={onPassport} onWorlds={onWorlds} demo={demo} travelFrom={travelFrom} onTravelDone={onTravelDone} />;
+  return <WorldMapView config={config} world={world} progress={progress} onOpen={onOpen} onPassport={onPassport} onWorlds={onWorlds} demo={demo} travelFrom={travelFrom} onTravelDone={onTravelDone} onReplay={onReplay} roundRoute={roundRoute} />;
 }
 
-function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, demo, travelFrom, onTravelDone }: Props & { world: PlayWorld }) {
+function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, demo, travelFrom, onTravelDone, onReplay, roundRoute }: Props & { world: PlayWorld }) {
   const { g, tf } = useGameText();
   // Only this world's boards. Counting the whole game against nine nodes is
   // how a two-world game reported 10/9 — and how world two's map lit up
   // because world one had been finished.
-  const mine = useMemo(() => scenesOfWorld(config, world.slug), [config, world.slug]);
+  const mine = useMemo(() => scenesOfWorld(config, world.slug).filter(s => !roundRoute || roundRoute.includes(s.slug)), [config, world.slug, roundRoute]);
+  const nodes = useMemo(() => world.nodes.filter(n => !roundRoute || roundRoute.includes(n.boardSlug)), [world.nodes, roundRoute]);
   const completed = useMemo(() => mine.filter((s) => sceneIsComplete(progress, s)).map((s) => s.slug), [mine, progress]);
   const passed = useMemo(() => mine.filter((s) => sceneCanAdvance(progress, s)).map((s) => s.slug), [mine, progress]);
-  const states = useMemo(() => nodeStates(world, { completedBoards: passed }), [world.nodes, passed]);
+  const states = useMemo(() => nodeStates({ ...world, nodes }, { completedBoards: passed }), [world, nodes, passed]);
   const free = mine.some(scene => scene.playMode === "find-any");
   const stars = gameStars(progress, mine);
   const boards = useMemo(() => new Map(mine.map((s) => [s.slug, s])), [mine]);
   const done = completed.length;
-  const total = world.nodes.length;
-  const complete = total > 0 && isWorldComplete(world, { completedBoards: passed });
+  const total = nodes.length;
+  const complete = total > 0 && isWorldComplete({ ...world, nodes }, { completedBoards: passed });
   const fullyComplete = total > 0 && completed.length === total;
   const replayBoard = boardSlugs(world).find((slug) => boards.has(slug));
   const completionTitleId = useId();
 
   // The marker's position is saved progress; the travel is only its presentation.
-  const marker = world.nodes.find((n) => states[n.boardSlug] === "current") ?? world.nodes[world.nodes.length - 1]!;
+  const marker = nodes.find((n) => states[n.boardSlug] === "current") ?? nodes[nodes.length - 1] ?? world.nodes[0]!;
   // A completed journey has no next stop: neither animate nor offer "skip next".
   const from = travelFrom && !complete ? world.nodes.find((n) => n.boardSlug === travelFrom) : undefined;
   const [travelling, setTravelling] = useState(Boolean(from));
@@ -172,7 +175,7 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
             <p className="wmap__complete-replay">{g.map.completedReplay}</p>
             <div className="wmap__complete-actions">
               <button type="button" className="fm-btn fm-btn--kid" onClick={onPassport}>{g.map.viewCollection}</button>
-              {replayBoard ? <button type="button" className="fm-btn fm-btn--secondary fm-btn--kid" onClick={() => onOpen(replayBoard)}>{g.map.replayWorld}</button> : null}
+              {replayBoard ? <button type="button" className="fm-btn fm-btn--secondary fm-btn--kid" onClick={() => (onReplay ?? onOpen)(replayBoard)}>{g.map.replayWorld}</button> : null}
             </div>
           </div>
         </section>
@@ -187,12 +190,15 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
               thumbnails and no drawn route on top of the painting: only the child marks a place.
               This list is also the map for a keyboard or a screen reader. */}
           <ol className="wmap__nodes" aria-label={g.map.stopsAria}>
-            {world.nodes.map((node) => {
+            {nodes.map((node) => {
               const board = boards.get(node.boardSlug);
               const state: NodeState = states[node.boardSlug] ?? "future";
               const sp = sceneProgress(progress, node.boardSlug);
               const label = board?.name ?? node.boardSlug;
-              const playable = board?.playMode === "find-any" ? sceneIsPlayable(progress, config, board) : state !== "future";
+              const playable = roundRoute ? roundRoute.slice(0, roundRoute.indexOf(node.boardSlug)).every(slug => {
+                const preceding = config.scenes.find(s => s.slug === slug);
+                return !!preceding && sceneCanAdvance(progress, preceding);
+              }) : board?.playMode === "find-any" ? sceneIsPlayable(progress, config, board) : state !== "future";
               const boardComplete = board ? sceneIsComplete(progress, board) : sp.completed;
               const count = board ? sceneFoundIds(progress, board).length : 0;
               const here = at.boardSlug === node.boardSlug;

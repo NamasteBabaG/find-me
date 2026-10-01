@@ -118,11 +118,12 @@ describe("find-any rendering and mobile feedback", () => {
       expect(view.container.textContent).not.toMatch(locale === "en" ? /more hiding|stars to|find 3/ : /עוד מחבוא|עוד [123]|מוצאים 3/);
       const top = view.container.querySelector(".mission__top")!;
       expect(top.querySelector(".mission__text")?.parentElement).toBe(top.querySelector(".mission__stars")?.parentElement);
-      expect(top.querySelector(".mission__hintbtn")?.parentElement).toBe(top);
+      if (count < 5) expect(top.querySelector(".mission__hintbtn")?.parentElement).toBe(top);
+      else expect(top.querySelector(".mission__hintbtn")).toBeNull();
       expect(view.container.querySelector(".mission__body")).toBeNull();
       const heading = view.getByRole("heading").textContent!;
       if (count > 0 && count < 5) expect(heading).toContain(locale === "en" ? "another hiding spot" : "איפה Alex עכשיו?");
-      if (count === 5) expect(heading).toBe(locale === "en" ? "All hiding spots found!" : "מצאתם את כל המחבואים!");
+      if (count === 5) expect(heading).toBe(locale === "en" ? "All found!" : "מצאתם את כל המחבואים!");
     }
     view.rerender(card(1, 4));
     expect(view.container.querySelector(".mission__rules")).toBeNull();

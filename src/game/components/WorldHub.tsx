@@ -12,6 +12,7 @@ interface Props {
   currentWorld: string;
   onEnter: (worldSlug: string) => void;
   onPassport: () => void;
+  roundRoute?: readonly string[];
 }
 
 /**
@@ -25,15 +26,15 @@ interface Props {
  *
  * A one-world game never sees this: GameShell goes straight to the map.
  */
-export function WorldHub({ config, progress, currentWorld, onEnter, onPassport }: Props) {
+export function WorldHub({ config, progress, currentWorld, onEnter, onPassport, roundRoute }: Props) {
   const { g, tf } = useGameText();
   const worlds = useMemo(() => gameWorlds(config), [config]);
 
   const rows = worlds.map((world) => {
-    const mine = scenesOfWorld(config, world.slug);
+    const mine = scenesOfWorld(config, world.slug).filter((s) => !roundRoute || roundRoute.includes(s.slug));
     const done = mine.filter((s) => sceneIsComplete(progress, s)).length;
-    return { world, done, total: mine.length || world.nodes.length, stars: gameStars(progress, mine) };
-  });
+    return { world, done, total: mine.length, stars: gameStars(progress, mine) };
+  }).filter((r) => !roundRoute || r.total > 0);
   const finished = rows.filter((r) => r.done === r.total && r.total > 0).length;
 
   return (

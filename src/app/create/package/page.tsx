@@ -19,14 +19,14 @@ export async function generateMetadata() {
 
 export default async function CreatePackagePage() {
   const c = getContainer();
-  const [user, draft, { t, locale }] = await Promise.all([currentUser(), currentDraft(), getI18n()]);
+  const [user, draft, { t, locale }, currency] = await Promise.all([currentUser(), currentDraft(), getI18n(), getCurrency()]);
   if (!draft?.childProfile) redirect("/create");
   if (!draft.childProfile.originalPhotoAssetId) redirect("/create/photo");
-  const currency = await getCurrency();
-  const [packages, worlds, continuation] = await Promise.all([
-    availablePackages(c, draft.styleVersion), worldsForDraft(c, draft.styleVersion),
+  const [worlds, continuation] = await Promise.all([
+    worldsForDraft(c, draft.styleVersion),
     user && user.id === draft.ownerId ? childHasPaidWorld(c.db, { ownerId: user.id, familyChildId: draft.familyChildId, excludeGameId: draft.id }) : false,
   ]);
+  const packages = await availablePackages(c, draft.styleVersion, worlds.length);
   const available = new Set(packages.map((p) => p.tier));
   const availableWorldCount = worlds.length;
   // Package selection re-enrolls editable QA drafts in this same release.

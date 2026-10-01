@@ -14,7 +14,7 @@ import { GameShell } from "../components/GameShell";
 import { GameI18nProvider } from "../i18n";
 import { createPlayStore } from "../store/play-store";
 
-vi.mock("../audio/sounds", () => ({ sounds: () => ({ unlock() {}, play() {}, startAmbient() {}, stopAmbient() {} }), bindGameAudio: () => () => {} }));
+vi.mock("../audio/sounds", () => ({ sounds: () => ({ unlock() {}, play() {}, setScene() {}, startAmbient() {}, stopAmbient() {} }), bindGameAudio: () => () => {} }));
 beforeEach(() => {
   vi.stubGlobal("React", React);
   vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, addEventListener() {}, removeEventListener() {} })));
@@ -139,5 +139,17 @@ describe("a finished world's map", () => {
     fireEvent.click(view.getByRole("button", { name: getDict("he").game.passport.map }));
     expect(view.getByRole("region", { name: world.completion.title })).toBeTruthy();
     expect(JSON.parse(window.localStorage.getItem(`findme:progress:v1:${config.gameId}`)!)).toEqual(progress);
+  });
+
+  it("refreshing a board history entry replaces its stale step without leaving the game", () => {
+    const config = fixture("he"), world = config.worlds![0]!;
+    const progress = { ...finish(config, boardSlugs(world)), revealed: true, lastWorld: world.slug };
+    window.localStorage.setItem(`findme:progress:v1:${config.gameId}`, JSON.stringify(progress));
+    window.history.replaceState({ findMeGameStep: "scene", __NA: true }, "");
+    const back = vi.spyOn(window.history, "back");
+    const view = render(<GameShell config={config} />);
+    expect(view.getByRole("region", { name: world.completion.title })).toBeTruthy();
+    expect(window.history.state).toEqual({ __NA: true });
+    expect(back).not.toHaveBeenCalled();
   });
 });

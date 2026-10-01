@@ -4,6 +4,7 @@ import { I18nProvider } from "@/i18n/client";
 import { getI18n } from "@/i18n/server";
 import { env } from "@/lib/env";
 import { dirOf } from "@/i18n/config";
+import { InteractionFeedback } from "@/ui/InteractionFeedback";
 import "./globals.css";
 
 // Rubik carries the site (400–900, Latin + Hebrew). Fredoka is reserved for kid-facing game UI.
@@ -33,6 +34,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang={locale} dir={dirOf(locale)} className={`${rubik.variable} ${fredoka.variable}`}>
       <body>
+        <InteractionFeedback />
         <I18nProvider locale={locale} dict={t}>
           {children}
         </I18nProvider>

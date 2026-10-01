@@ -679,3 +679,19 @@
   .travel-passport__rarity { line-height: 12px; }
   .travel-passport__collection-head { padding-top: 0; margin-bottom: var(--space-0-5); }
 }
+
+/* A reserved image surface while bytes decode; never a blank book leaf. */
+.travel-passport__picture { position: relative; display: block; width: 100%; height: 100%; min-height: var(--touch-min); }
+.travel-passport__picture > img { display: block; width: 100%; height: 100%; opacity: 0; transition: opacity 180ms var(--ease-out); }
+.travel-passport__picture[data-ready="true"] > img { opacity: 1; }
+.travel-passport__picture-loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--gold-deep); background: linear-gradient(100deg, var(--paper-2), var(--sun-soft), var(--paper-2)); background-size: 200% 100%; animation: passport-picture-warm 1.6s ease-in-out infinite; font-size: var(--fs-400); }
+.travel-passport__picture-loading::before { content: "✦"; }
+@keyframes passport-picture-warm { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .travel-passport__picture-loading { animation: none; } .travel-passport__picture > img { transition: none; } }
+
+.travel-passport__item > .travel-passport__picture { width: min(100%, 78px); height: auto; aspect-ratio: 1; min-height: 0; }
+.travel-passport__zoom > .travel-passport__picture { height: auto; }
+.travel-passport__zoom > .travel-passport__picture > img { height: auto; max-height: 80dvh; object-fit: contain; }
+.travel-passport__fact > .travel-passport__picture { width: 128px; height: 128px; margin: 0 auto var(--space-3); }
+.travel-passport__fact > .travel-passport__picture > img { margin: 0; }
+.travel-passport__photo-picker .travel-passport__picture { height: auto; aspect-ratio: 1; min-height: 0; }

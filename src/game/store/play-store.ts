@@ -6,6 +6,8 @@ import { createMissionState, missionReducer, sceneSummary, type MissionAction, t
 import { planScenePlay } from "@/domain/game/replay";
 import { adoptFinds, collectibles, completedScenes, emptyProgress, recordSceneCompleted, recordFindAny, sceneCanAdvance, sceneFoundIds, sceneIsComplete, sceneIsPlayable, sceneProgress, type GameProgress } from "@/domain/game/progress";
 import { loadProgress, saveProgress } from "../engine/progress-storage";
+import { gameRoute, newRound, roundCanOpen, searchProgress, type PlayRound } from "@/domain/game/round";
+import { loadRound, saveRound } from "../engine/round-storage";
 import type { AdventureBook } from "@/domain/adventure/book-schema";
 import { AdventureError } from "@/domain/adventure/compose";
 import { emptyAdventureProgress, readAdventureProgress, recordAdventureEvent, type AdventureEvent, type AdventureProgress } from "@/domain/adventure/progress";
@@ -31,8 +33,11 @@ export interface PlayStore {
   screen: Screen;
   sceneSlug: string | null;
   mission: MissionState | null;
-  /** In-memory practice only. Never serialised or merged into the earned album. */
+  /** The open board's practice collection. Separate from the earned album. */
   replay: { discoveryIds: string[] } | null;
+  /** A resumable new search, kept separately from all earned achievements. */
+  round: PlayRound | null;
+  roundSaved: boolean;
   /** Remount all choreography on every entry, including same-layout replays. */
   visitId: number;
   muted: boolean;
@@ -77,6 +82,9 @@ export interface PlayStore {
   dispatch(action: MissionAction): void;
   completeScene(): void;
   replayScene(slug?: string): void;
+  startRound(startScene?: string): void;
+  resumeRound(): void;
+  pauseRound(): void;
   nextScene(): string | null;
   /** Every board of the current journey is done. */
   worldDone(): boolean;
@@ -199,6 +207,8 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     sceneSlug: null,
     mission: null,
     replay: null,
+    round: null,
+    roundSaved: true,
     visitId: 0,
     travelFrom: null,
     continueTo: null,
@@ -227,21 +237,24 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     hydrate() {
       if (!persist) return;
       const progress = loadProgress(config.gameId);
+      const round = loadRound(config);
       const { screen } = get();
       // Back to the world the player was in, not the first one. A three-world
       // game used to reopen on world one's map whatever had just been finished
       // in world three; and a returning player who never picked a world gets
       // the hub, where the choice is.
       const worlds = gameWorlds(config);
-      const remembered = progress.lastWorld && worlds.some((w) => w.slug === progress.lastWorld) ? progress.lastWorld : null;
+      const roundWorld = round?.active && round.progress.lastScene ? worldOfScene(config, round.progress.lastScene)?.slug : null;
+      const remembered = roundWorld ?? (progress.lastWorld && worlds.some((w) => w.slug === progress.lastWorld) ? progress.lastWorld : null);
       const landing = remembered ? "map" : worlds.length > 1 ? "worlds" : "map";
-      set({ progress, screen: screen === "gift" && progress.revealed ? landing : screen, ...(remembered ? { worldSlug: remembered } : {}) });
+      set({ progress, round, screen: screen === "gift" && (progress.revealed || round) ? landing : screen, ...(remembered ? { worldSlug: remembered } : {}) });
       // A returning player lands on the map, where the child already stands at the next place and one big
       // button continues it (per Guy, 2026-10-01: jumping straight back into the last board made opening the
       // game from the family area feel like a wrong turn). Only an explicit request (?board=) opens a board.
       const openRequested = () => {
         const requested = config.scenes.find(scene => scene.slug === requestedScene);
-        if (requested && sceneIsPlayable(get().progress, config, requested)) get().openScene(requested.slug);
+        const round = get().round?.active ? get().round : null;
+        if (requested && (round ? roundCanOpen(round, config, requested.slug) : sceneIsPlayable(get().progress, config, requested))) get().openScene(requested.slug);
       };
       openRequested();
       if (!book) { requestedScene = undefined; return; }
@@ -329,6 +342,11 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       const from = typeof travelFrom === "string" ? travelFrom : null;
       set({ screen: "map", sceneSlug: null, mission: null, replay: null, travelFrom: from, continueTo: from ? continueTo : null, ...(worldSlug ? { worldSlug } : {}) });
       if (worldSlug && persist) {
+        if (get().round?.active) {
+          const round = { ...get().round!, progress: { ...get().round!.progress, lastWorld: worldSlug } };
+          set({ round, roundSaved: saveRound(round) });
+          return;
+        }
         const progress = { ...get().progress, lastWorld: worldSlug };
         saveProgress(progress);
         set({ progress });
@@ -355,30 +373,38 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       if (demo && slug !== demoScene) return;
       const scene = get().config.scenes.find((s) => s.slug === slug);
       if (!scene) return;
-      if (!opts.readOnlyPreview && !demo && !sceneIsPlayable(get().progress, config, scene)) return;
+      const round = get().round?.active ? get().round : null;
+      if (!opts.readOnlyPreview && !demo && !(round ? roundCanOpen(round, config, slug) : sceneIsPlayable(get().progress, config, scene))) return;
       // A replay is an explicit visit, not a reset or a way to unlock a board.
-      if (options?.replay && !demo && !sceneIsComplete(get().progress, scene)) return;
+      if (options?.replay && !demo && !round && !sceneIsComplete(get().progress, scene)) return;
       sounds().unlock();
-      const history = sceneProgress(get().progress, slug);
+      const playingProgress = searchProgress(get().round, get().progress);
+      const history = sceneProgress(playingProgress, slug);
       let plan = planScenePlay(scene, { plays: history.plays, lastVariants: history.lastVariants, lastOrder: history.lastOrder }, get().config.gameId);
       const free = scene.playMode === "find-any" && !opts.singleMission;
       // Legacy sequential boards already reopen as a new play. Keep that UX,
       // but make their repeat rewards ephemeral too.
-      const replaying = !!options?.replay || (!free && sceneIsComplete(get().progress, scene));
-      const savedIds = free && !replaying ? sceneFoundIds(get().progress, scene) : [];
+      const replaying = !!round || !!options?.replay || (!free && sceneIsComplete(get().progress, scene));
+      const savedIds = free && (!replaying || round) ? sceneFoundIds(playingProgress, scene) : [];
       // Returning to a five-hide board resumes its exact layout, not a shuffled replay.
       if (free && history.sceneVersion === scene.version && history.lastOrder.length === scene.targets.length && new Set(history.lastOrder).size === scene.targets.length && history.lastOrder.every(id => scene.targets.some(target => target.id === id))) {
         plan = { ...plan, playIndex: 0, order: history.lastOrder, variants: Object.fromEntries(scene.targets.map(target => [target.id, history.lastVariants[target.id] ?? "A"])) };
       }
       if (opts.singleMission) plan = { ...plan, order: plan.order.slice(0, 1) };
-      const mission = createMissionState(slug, plan, free ? { playMode: "find-any", findsRequiredToAdvance: scene.findsRequiredToAdvance, found: Object.fromEntries(savedIds.map(id => [id, history.foundRecords?.[id] ?? { hintsUsed: 0, misses: 0, elapsedMs: 0 }])) } : {});
+      const mission = createMissionState(slug, plan, { ...(free ? { playMode: "find-any" as const, findsRequiredToAdvance: scene.findsRequiredToAdvance } : {}),
+        found: Object.fromEntries((free ? savedIds : round ? sceneFoundIds(playingProgress, scene) : []).map(id => [id, history.foundRecords?.[id] ?? { hintsUsed: 0, misses: 0, elapsedMs: 0 }])) });
       telemetry.track({ eventType: history.plays > 0 ? "game_replayed" : "scene_started", sceneSlug: slug });
       if (history.plays > 0) telemetry.track({ eventType: "scene_started", sceneSlug: slug });
+      sounds().setScene(scene.slug);
       sounds().startAmbient(scene.sounds.ambient);
       // A board carries its own world, so entering one from the hub, a link or
       // the passport lands the player on the right map when they come back.
       const world = worldOfScene(get().config, slug);
-      set({ screen: "scene", sceneSlug: slug, mission, replay: replaying ? { discoveryIds: [] } : null, visitId: get().visitId + 1, travelFrom: null, continueTo: null, ...(world ? { worldSlug: world.slug } : {}) });
+      set({ screen: "scene", sceneSlug: slug, mission, replay: replaying ? { discoveryIds: round?.discoveries[slug] ?? [] } : null, visitId: get().visitId + 1, travelFrom: null, continueTo: null, ...(world ? { worldSlug: world.slug } : {}) });
+      if (round) {
+        const updated = { ...round, progress: { ...round.progress, lastScene: slug, ...(world ? { lastWorld: world.slug } : {}) } };
+        set({ round: updated, roundSaved: !persist || saveRound(updated) });
+      }
       if (!replaying && ((world && persist) || free)) {
         const progress = { ...get().progress, ...(world ? { lastWorld: world.slug } : {}), lastScene: slug };
         if (persist) saveProgress(progress);
@@ -395,6 +421,13 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       const next = missionReducer(mission, action, missionCopy(scene, opts.copy));
       if (next === mission) return;
       if (action.type === "TAP_TARGET" && next.lastFeedback?.kind === "hit") {
+        if (get().round?.active) {
+          const round = get().round!;
+          const roundScenes = config.scenes.filter(s => round.route.includes(s.slug));
+          // Persist every distinct hit before its animation, including partial boards.
+          const updated = { ...round, progress: recordFindAny(round.progress, scene, next, roundScenes) };
+          set({ round: updated, roundSaved: !persist || saveRound(updated) });
+        }
         if (!get().replay) telemetry.track({ eventType: "target_found", sceneSlug: scene.slug, targetId: action.targetId, hintsUsed: mission.hintLevel });
         if (scene.playMode === "find-any" && !get().replay) {
           const before = get().progress;
@@ -430,12 +463,56 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     },
 
     replayScene(slug = get().sceneSlug ?? undefined) {
-      if (slug) get().openScene(slug, { replay: true });
+      if (!slug) return;
+      const scene = config.scenes.find(s => s.slug === slug);
+      if (!scene || (!demo && !sceneIsComplete(searchProgress(get().round, get().progress), scene))) return;
+      if (demo || opts.readOnlyPreview) { get().openScene(slug, { replay: true }); return; }
+      if (get().round?.active) {
+        const round = get().round!;
+        const { [slug]: _previous, ...scenes } = round.progress.scenes;
+        const { [slug]: _discoveries, ...discoveries } = round.discoveries;
+        const updated = { ...round, progress: { ...round.progress, scenes, completedAt: undefined, journeyFinishedAt: undefined }, discoveries };
+        set({ round: updated, roundSaved: !persist || saveRound(updated) });
+        get().openScene(slug);
+        return;
+      }
+      // A finished board starts a new search here, then continues along the route.
+      get().startRound(slug);
+    },
+
+    startRound(startScene = gameRoute(config)[0]) {
+      if (demo || opts.readOnlyPreview) return;
+      const round = newRound(config, startScene);
+      if (!round) return;
+      set({ round, roundSaved: saveRound(round) });
+      get().openScene(round.route[0]!);
+    },
+
+    resumeRound() {
+      const saved = get().round;
+      if (!saved || demo || opts.readOnlyPreview) return;
+      const round = { ...saved, active: true };
+      set({ round, roundSaved: saveRound(round) });
+      get().openScene(round.progress.lastScene ?? round.route[0]!);
+    },
+
+    pauseRound() {
+      const saved = get().round;
+      if (!saved) return;
+      const round = { ...saved, active: false };
+      set({ round, roundSaved: !persist || saveRound(round), worldSlug: get().progress.lastWorld ?? gameWorlds(config)[0]?.slug ?? "" });
+      get().goToMap();
     },
 
     nextScene() {
       if (demo) return null;
       const { progress, sceneSlug } = get();
+      const round = get().round?.active ? get().round : null;
+      if (round) {
+        const index = sceneSlug ? round.route.indexOf(sceneSlug) : -1;
+        const current = get().scene();
+        return current && sceneCanAdvance(round.progress, current) ? round.route[index + 1] ?? null : null;
+      }
       // Within this journey only. Wrapping across the whole game sent a child
       // straight from the last board of one world to the first of the next,
       // with no moment of having finished anything and never passing the hub.
@@ -451,14 +528,14 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     },
 
     worldDone() {
-      const { progress } = get();
-      const mine = get().worldScenes();
+      const progress = searchProgress(get().round, get().progress);
+      const mine = get().worldScenes().filter(s => !get().round?.active || get().round!.route.includes(s.slug));
       return mine.length > 0 && mine.every((s) => sceneCanAdvance(progress, s));
     },
 
     gameDone() {
-      const { config, progress } = get();
-      return config.scenes.every((s) => sceneCanAdvance(progress, s));
+      const { config, round } = get(), progress = searchProgress(round, get().progress);
+      return config.scenes.filter(s => !round?.active || round.route.includes(s.slug)).every((s) => sceneCanAdvance(progress, s));
     },
 
     openPassport() {
@@ -487,6 +564,10 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       if (replay) {
         if (replay.discoveryIds.includes(discoveryId)) return "again";
         set({ replay: { discoveryIds: [...replay.discoveryIds, discoveryId] } });
+        if (get().round?.active) {
+          const round = get().round!, updated = { ...round, discoveries: { ...round.discoveries, [board.boardSlug]: [...replay.discoveryIds, discoveryId] } };
+          set({ round: updated, roundSaved: !persist || saveRound(updated) });
+        }
         recordAlbum(set, get, { kind: "discovery-found", boardSlug: board.boardSlug, discoveryId });
         return "collected";
       }

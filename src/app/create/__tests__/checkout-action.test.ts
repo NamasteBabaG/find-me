@@ -13,7 +13,7 @@ import { checkoutAction } from "../actions";
 import { LEGAL_VERSION } from "@/domain/legal";
 beforeEach(() => {
   vi.clearAllMocks(); f.limit.mockReturnValue({ ok: true });
-  f.container.mockReturnValue({ db: { game: { findUnique: async () => ({ status: "PACKAGE_SELECTED" }) } } });
+  f.container.mockReturnValue({ db: { game: { findUnique: async () => ({ ...f.draft, status: "PACKAGE_SELECTED" }) } } });
   f.checkout.mockResolvedValue({ ok: true, checkoutUrl: "/checkout/synthetic" });
 });
 describe("checkout server action rate gates", () => {

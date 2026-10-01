@@ -172,6 +172,7 @@ describe("versioned five-hide player", () => {
       expect(store.getState().replay).not.toBeNull(); expect(store.getState().mission!.found).toEqual({});
       store.getState().dispatch({ type: "START", now: 1 });
       scene.targets.forEach(target => find(store, target.id));
+      store.getState().pauseRound();
     }
     expect(gameStars(store.getState().progress, config.scenes)).toEqual({ found: 45, total: 45 });
     expect(store.getState().progress.completedAt).toBeTruthy();
