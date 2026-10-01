@@ -15,9 +15,67 @@ function cacheCrop(key: string, bytes: Buffer) {
   if (bytes.length <= 16 * 1024 * 1024 && !crops.has(key)) { crops.set(key, { bytes, expires: Date.now() + 5 * 60_000 }); cropBytes += bytes.length; }
 }
 
+// A passport page asks for its photo and six cards at once, all from one board. Decoding that 3840px board once,
+// instead of once per picture, was most of the wait (Guy, 2026-10-01: passport pictures took very long). Public
+// scene art only, never a child's pixels; one board, one minute, so the memory stays bounded (~25-33 MB).
+export type DecodedBoard = { data: Buffer; info: { width: number; height: number; channels: 1 | 2 | 3 | 4 } };
+const decoded = new Map<string, { at: number; value: Promise<DecodedBoard> }>();
+function decodedBoard(key: string, base: Buffer): Promise<DecodedBoard> {
+  const hit = decoded.get(key);
+  if (hit && Date.now() - hit.at < 60_000) return hit.value;
+  decoded.clear();
+  const value = sharp(base, { limitInputPixels: 50_000_000 }).raw().toBuffer({ resolveWithObject: true })
+    .then(({ data, info }) => ({ data, info: { width: info.width, height: info.height, channels: info.channels } }));
+  value.catch(() => decoded.delete(key));
+  decoded.set(key, { at: Date.now(), value });
+  return value;
+}
+
+// Requests that arrive together share one read of the child's games; nothing is kept once they are answered,
+// and every request still runs the final ownership and liveness checks on its own.
+const sourcesInFlight = new Map<string, ReturnType<typeof passportSources>>();
+function sharedSources(db: Pick<Container, "db">["db"], ownerId: string, childId: string) {
+  const key = `${ownerId}\u0000${childId}`;
+  const hit = sourcesInFlight.get(key);
+  if (hit) return hit;
+  const read = passportSources(db, ownerId, childId).finally(() => sourcesInFlight.delete(key));
+  sourcesInFlight.set(key, read);
+  return read;
+}
+
+/**
+ * The keepsake picture: the board's crop with the child's patch laid in, resized for the passport. It crops first and
+ * lays in only the part of the patch that falls inside the crop, at its offset: the same pixels as compositing the
+ * whole board and cropping it (pinned by passport-media-raster.test.ts), without re-encoding a 3840px board per picture.
+ */
+export async function passportRaster(input: {
+  raw: DecodedBoard;
+  crop: { x: number; y: number; w: number; h: number };
+  outputWidth: number;
+  patch?: { bytes: Buffer; left: number; top: number; width: number; height: number };
+}): Promise<Buffer> {
+  const { raw, crop, patch } = input;
+  const W = raw.info.width, H = raw.info.height;
+  const left = Math.floor(crop.x * W), top = Math.floor(crop.y * H);
+  const width = Math.min(W - left, Math.ceil(crop.w * W)), height = Math.min(H - top, Math.ceil(crop.h * H));
+  let region = sharp(raw.data, { raw: raw.info, limitInputPixels: 50_000_000 }).extract({ left, top, width, height });
+  if (patch) {
+    const x0 = Math.max(patch.left, left), y0 = Math.max(patch.top, top);
+    const x1 = Math.min(patch.left + patch.width, left + width), y1 = Math.min(patch.top + patch.height, top + height);
+    if (x1 > x0 && y1 > y0) {
+      const sprite = await sharp(patch.bytes, { limitInputPixels: 50_000_000 }).resize(patch.width, patch.height, { fit: "fill" }).png().toBuffer();
+      const part = await sharp(sprite).extract({ left: x0 - patch.left, top: y0 - patch.top, width: x1 - x0, height: y1 - y0 }).png().toBuffer();
+      // Sharp resizes before it composites, so the composite is finished before the resize below.
+      const composed = await region.composite([{ input: part, left: x0 - left, top: y0 - top }]).raw().toBuffer({ resolveWithObject: true });
+      region = sharp(composed.data, { raw: { width: composed.info.width, height: composed.info.height, channels: composed.info.channels as DecodedBoard["info"]["channels"] } });
+    }
+  }
+  return region.resize({ width: input.outputWidth, withoutEnlargement: true }).webp({ quality: 86 }).toBuffer();
+}
+
 /** No signed source URLs are returned. Only small cropped raster bytes. */
 export async function ownerPassportMedia(c: Pick<Container, "db" | "storage" | "appUrl">, ownerId: string, input: { childId: string; gameId: string; board: string; kind: "photo" | "discovery"; id: string }) {
-  const { sources } = await passportSources(c.db, ownerId, input.childId);
+  const { sources } = await sharedSources(c.db, ownerId, input.childId);
   const source = sources.find(s => s.game.id === input.gameId);
   const board = source?.progress.book.boards.find(b => b.boardSlug === input.board);
   if (!source || !board) throw new PassportAccessError("not-found");
@@ -48,16 +106,10 @@ export async function ownerPassportMedia(c: Pick<Container, "db" | "storage" | "
   const cached = crops.get(key);
   const bytes = cached && cached.expires > Date.now() ? cached.bytes : await (async () => {
     const base = await loadSceneArt(c.appUrl, board.art.base, board.artSha256);
-    const metadata = await sharp(base).metadata();
-    if (metadata.width !== board.art.width || metadata.height !== board.art.height) throw new Error("passport-media-dimensions");
-    let raster = sharp(base, { limitInputPixels: 50_000_000 });
-    if (patch) raster = raster.composite([{ input: await sharp(await c.storage.get(patch.storagePath), { limitInputPixels: 50_000_000 }).resize(patch.width, patch.height, { fit: "fill" }).png().toBuffer(), left: patch.left, top: patch.top }]);
-    // Complete the composite before extracting; Sharp otherwise extracts the base
-    // first while patch coordinates still refer to the full board.
-    const composite = patch ? await raster.png().toBuffer() : base;
-    const left = Math.floor(crop.x * board.art.width), top = Math.floor(crop.y * board.art.height);
-    return sharp(composite).extract({ left, top, width: Math.min(board.art.width - left, Math.ceil(crop.w * board.art.width)), height: Math.min(board.art.height - top, Math.ceil(crop.h * board.art.height)) })
-      .resize({ width: input.kind === "photo" ? 900 : 192, withoutEnlargement: true }).webp({ quality: 86 }).toBuffer();
+    const raw = await decodedBoard(`${board.art.base}\u0000${board.artSha256 ?? ""}`, base);
+    if (raw.info.width !== board.art.width || raw.info.height !== board.art.height) throw new Error("passport-media-dimensions");
+    return passportRaster({ raw, crop, outputWidth: input.kind === "photo" ? 900 : 192,
+      patch: patch ? { ...patch, bytes: await c.storage.get(patch.storagePath) } : undefined });
   })();
   // Recheck authorization after I/O: concurrent deletion/reassignment must not
   // return pixels using an earlier read. No public/source asset cache shortcut.

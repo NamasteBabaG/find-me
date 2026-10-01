@@ -67,7 +67,9 @@ export interface PlayStore {
   reveal(): void;
   /** The board the marker should walk away from, once. */
   travelFrom: string | null;
-  goToMap(travelFrom?: string | null, worldSlug?: string): void;
+  /** A place to open as soon as the marker has walked to it ("Next place" after a finished board). */
+  continueTo: string | null;
+  goToMap(travelFrom?: string | null, worldSlug?: string, continueTo?: string | null): void;
   /** The hub. Only meaningful when the game spans more than one world. */
   goToWorlds(): void;
   endTravel(): void;
@@ -183,6 +185,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     replay: null,
     visitId: 0,
     travelFrom: null,
+    continueTo: null,
     muted: false,
     demo,
     telemetry,
@@ -217,8 +220,9 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       const remembered = progress.lastWorld && worlds.some((w) => w.slug === progress.lastWorld) ? progress.lastWorld : null;
       const landing = remembered ? "map" : worlds.length > 1 ? "worlds" : "map";
       set({ progress, screen: screen === "gift" && progress.revealed ? landing : screen, ...(remembered ? { worldSlug: remembered } : {}) });
-      const resumed = config.scenes.find(scene => scene.slug === progress.lastScene && scene.playMode === "find-any");
-      if (!requestedScene && resumed && progress.revealed && sceneIsPlayable(progress, config, resumed)) get().openScene(resumed.slug);
+      // A returning player lands on the map, where the child already stands at the next place and one big
+      // button continues it (per Guy, 2026-10-01: jumping straight back into the last board made opening the
+      // game from the family area feel like a wrong turn). Only an explicit request (?board=) opens a board.
       const openRequested = () => {
         const requested = config.scenes.find(scene => scene.slug === requestedScene);
         if (requested && sceneIsPlayable(get().progress, config, requested)) get().openScene(requested.slug);
@@ -298,11 +302,13 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
      * board just finished to the next one — presentation only: the progress it
      * animates was already saved by completeScene().
      */
-    goToMap(travelFrom = null, worldSlug) {
+    goToMap(travelFrom = null, worldSlug, continueTo = null) {
       if (demo) return;
       requestedScene = undefined;
       sounds().stopAmbient();
-      set({ screen: "map", sceneSlug: null, mission: null, replay: null, travelFrom, ...(worldSlug ? { worldSlug } : {}) });
+      // Only a board slug can be walked from; a click event handed in by a button is not one.
+      const from = typeof travelFrom === "string" ? travelFrom : null;
+      set({ screen: "map", sceneSlug: null, mission: null, replay: null, travelFrom: from, continueTo: from ? continueTo : null, ...(worldSlug ? { worldSlug } : {}) });
       if (worldSlug && persist) {
         const progress = { ...get().progress, lastWorld: worldSlug };
         saveProgress(progress);
@@ -315,11 +321,14 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       if (gameWorlds(get().config).length < 2) { get().goToMap(); return; }
       requestedScene = undefined;
       sounds().stopAmbient();
-      set({ screen: "worlds", sceneSlug: null, mission: null, replay: null, travelFrom: null });
+      set({ screen: "worlds", sceneSlug: null, mission: null, replay: null, travelFrom: null, continueTo: null });
     },
 
     endTravel() {
-      if (get().travelFrom) set({ travelFrom: null });
+      const next = get().continueTo;
+      if (get().travelFrom || next) set({ travelFrom: null, continueTo: null });
+      // The walk was the way to the next place: now open it.
+      if (next && get().screen === "map") get().openScene(next);
     },
 
     openScene(slug, options) {
@@ -350,7 +359,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       // A board carries its own world, so entering one from the hub, a link or
       // the passport lands the player on the right map when they come back.
       const world = worldOfScene(get().config, slug);
-      set({ screen: "scene", sceneSlug: slug, mission, replay: replaying ? { discoveryIds: [] } : null, visitId: get().visitId + 1, travelFrom: null, ...(world ? { worldSlug: world.slug } : {}) });
+      set({ screen: "scene", sceneSlug: slug, mission, replay: replaying ? { discoveryIds: [] } : null, visitId: get().visitId + 1, travelFrom: null, continueTo: null, ...(world ? { worldSlug: world.slug } : {}) });
       if (!replaying && ((world && persist) || free)) {
         const progress = { ...get().progress, ...(world ? { lastWorld: world.slug } : {}), lastScene: slug };
         if (persist) saveProgress(progress);
@@ -437,7 +446,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       if (demo) return;
       requestedScene = undefined;
       sounds().stopAmbient();
-      set({ screen: "passport", sceneSlug: null, mission: null, replay: null });
+      set({ screen: "passport", sceneSlug: null, mission: null, replay: null, travelFrom: null, continueTo: null });
     },
 
     toggleMute() {

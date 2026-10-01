@@ -115,7 +115,12 @@ describe("temporary board replay", () => {
     store.getState().replayScene(); store.getState().dispatch({ type: "START", now: 1 });
     store.getState().dispatch({ type: "TAP_TARGET", targetId: store.getState().mission!.plan.order[0]!, now: 2 });
     expect(Object.keys(store.getState().mission!.found)).toHaveLength(1);
+    // A refresh lands on the map (no board reopens by itself, Guy 2026-10-01); opened again, the board is the
+    // completed one, not the unfinished round.
     const refreshed = createPlayStore(config, { copy }); refreshed.getState().hydrate();
+    expect(refreshed.getState().replay).toBeNull();
+    expect(refreshed.getState().screen).toBe("map"); expect(refreshed.getState().mission).toBeNull();
+    refreshed.getState().openScene(scene.slug);
     expect(refreshed.getState().replay).toBeNull();
     expect(refreshed.getState().sceneSlug).toBe(scene.slug);
     expect(Object.keys(refreshed.getState().mission!.found)).toHaveLength(3);
@@ -155,7 +160,8 @@ describe("temporary board replay", () => {
     const owner = createPlayStore(config, { copy, albumOwner: true });
     owner.getState().hydrate(); await flush();
     expect(owner.getState().albumState).toBe("offline");
-    owner.getState().replayScene(); owner.getState().dispatch({ type: "START", now: 1 });
+    // The game opens on the map, so the round is started on the board itself.
+    owner.getState().replayScene(scene.slug); owner.getState().dispatch({ type: "START", now: 1 });
     owner.getState().collectDiscovery("cat");
     await flush(); // settle the failed offline request before the reconnect event
     online = true; for (const fn of listeners.online ?? []) fn(); await flush();

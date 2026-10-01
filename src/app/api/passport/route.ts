@@ -7,6 +7,7 @@ import { getContainer } from "@/services/container";
 import { ownerPassport, passportSources, PassportAccessError, PassportChoiceSchema, updatePassportPage } from "@/services/passport.service";
 import { passportCeremony, passportPhoto } from "@/domain/passport/passport";
 import { reconcilePaidFamilyChildren } from "@/services/family.service";
+import { withFreshAssetUrls } from "@/services/asset.service";
 
 const Id = z.string().regex(/^[A-Za-z0-9_-]{1,160}$/);
 const Body = z.object({ childId: Id, gameId: Id, board: Id, choice: PassportChoiceSchema }).strict();
@@ -34,7 +35,8 @@ export async function GET(req: Request) {
       const board = query.get("board")!, preference = source.preferences[board];
       return NextResponse.json({ ok: true, childId, pending: passportCeremony(source.progress, board, preference), photoTargetId: passportPhoto(source.progress, board, preference?.photoTargetId)?.targetId ?? null }, { headers });
     }
-    return NextResponse.json({ ok: true, childId, book: await ownerPassport(getContainer().db, user.id, childId!) }, { headers });
+    // The child's sticker is a game picture: signed like the game's own, so the browser keeps it between visits.
+    return NextResponse.json({ ok: true, childId, book: withFreshAssetUrls(getContainer(), await ownerPassport(getContainer().db, user.id, childId!)) }, { headers });
   }
   catch (error) { return NextResponse.json({ ok: false }, { status: error instanceof PassportAccessError ? 404 : 503, headers }); }
 }

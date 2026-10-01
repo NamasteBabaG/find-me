@@ -17,7 +17,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ assetId: string
   const url = new URL(req.url);
   const user = await currentUser();
   const result = await readAsset(getContainer(), assetId, { userId: user?.id ?? null, isAdmin: isAdminEmail(user?.email), signature: url.searchParams.get("s"), expires: url.searchParams.get("e") });
-  if ("error" in result) return new Response(result.error === 404 ? "not found" : "forbidden", { status: result.error });
+  // Every answer states its own caching: the QA gate leaves this route's header alone (see middleware).
+  if ("error" in result) return new Response(result.error === 404 ? "not found" : "forbidden", { status: result.error, headers: { "Cache-Control": "private, no-store" } });
   // Cacheability is the asset's, not the query string's. Deciding it by the
   // presence of `?s=` let an owner's own request for a PRIVATE photograph come
   // back immutable-for-a-day, which outlives both the session and the deletion.

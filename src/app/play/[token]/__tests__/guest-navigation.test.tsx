@@ -34,7 +34,15 @@ it("preserves account-backed progress and family navigation for the verified own
   rig.user.mockResolvedValue({ id: "owner" });
   const result = await page();
   expect(result.props.albumOwner).toBe(true);
-  expect(result.props.parentZoneHref).toBe("/library");
+  expect(result.props.parentZoneHref).toBe("/family");
+});
+
+it("takes the verified owner back to this child's page, not the family list", async () => {
+  rig.user.mockResolvedValue({ id: "owner" });
+  rig.game.mockResolvedValue({ ownerId: "owner", familyChildId: "fam_child" });
+  expect((await page()).props.parentZoneHref).toBe("/family/fam_child");
+  rig.user.mockResolvedValue({ id: "other-parent" });
+  expect((await page()).props.parentZoneHref).toBeUndefined();
 });
 
 it.each(["invalid", "revoked", "not-ready"])("does not send recipients to the website when a link is %s", async reason => {

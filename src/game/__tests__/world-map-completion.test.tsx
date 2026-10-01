@@ -53,7 +53,9 @@ describe("a finished world's map", () => {
       expect(view.container.querySelector(".wmap__skip")).toBeNull();
       expect(view.container.querySelectorAll(".wmap__node--completed")).toHaveLength(9);
       expect(view.container.querySelectorAll('[aria-current="step"]')).toHaveLength(0);
-      for (const node of view.container.querySelectorAll(".wmap__dot")) expect(node.getAttribute("aria-disabled")).toBeNull();
+      const places = view.container.querySelectorAll(".wmap__place");
+      expect(places).toHaveLength(9);
+      for (const node of places) expect(node.getAttribute("aria-disabled")).toBeNull();
       cleanup();
     }
   });

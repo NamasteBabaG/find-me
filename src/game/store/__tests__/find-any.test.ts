@@ -133,7 +133,7 @@ describe("versioned five-hide player", () => {
     expect(missionReducer(state, { type: "TAP_TARGET", targetId: "not-a-hide", now: 4 }, copy)).toBe(state);
   });
 
-  it.each([2, 3, 4])("persists %i/5 before animation and restores exact finds/layout on refresh", count => {
+  it.each([2, 3, 4])("persists %i/5 before animation and restores exact finds/layout when the board is reopened after a refresh", count => {
     const config = fixture(); const scene = config.scenes[0]!;
     const store = createPlayStore(config, { copy }); store.getState().reveal(); store.getState().openScene(scene.slug); store.getState().dispatch({ type: "START", now: 1 });
     const ids = [...store.getState().mission!.plan.order].reverse();
@@ -142,7 +142,11 @@ describe("versioned five-hide player", () => {
     expect(store.getState().mission!.phase).toBe("found");
     const raw = window.localStorage.getItem(`findme:progress:v1:${config.gameId}`);
     expect(sceneFoundIds(parseProgress(raw, config.gameId), scene)).toHaveLength(count);
+    // A refresh lands on the map (Guy, 2026-10-01: the game must not jump back into the last board by itself);
+    // reopening the board brings back exactly what was found, where it was.
     const again = createPlayStore(config, { copy }); again.getState().hydrate();
+    expect(again.getState().screen).toBe("map"); expect(again.getState().mission).toBeNull();
+    again.getState().openScene(scene.slug);
     expect(again.getState().screen).toBe("scene"); expect(again.getState().sceneSlug).toBe(scene.slug);
     expect(Object.keys(again.getState().mission!.found).sort()).toEqual(ids.slice(0, count).sort());
     expect(again.getState().mission!.plan.variants).toEqual(store.getState().mission!.plan.variants);
