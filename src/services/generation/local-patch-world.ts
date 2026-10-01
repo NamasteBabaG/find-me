@@ -18,6 +18,7 @@ import { localPatchNeedsRecomposition, recomposeLocalPatchHide } from "./local-p
 import { runLocalPatchPaidRepair, LOCAL_PATCH_PAID_REPAIR_ACTION, LocalPatchPaidRepairError } from "./local-patch-paid-repair";
 import { readLocalPatchExtraAttemptPlan } from "./local-patch-extra-attempt";
 import { needsSelfRepair, selfRepairEnabled } from "../../domain/scene/local-patch-self-repair";
+import { needsPlayerReview, playerReviewEnabled } from "./local-patch-player-review";
 import { runLocalPatchSelfRepair, SELF_REPAIR_REQUEST_ACTION, type SelfRepairDeps } from "./local-patch-self-repair";
 import { WorldBudgetError } from "./world-budget";
 import { recoverLocalPatchImageInterruptions } from "./local-patch-interruption-recovery";
@@ -144,6 +145,12 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       for (const scene of game.scenes) {
         const prepared = await prepareLocalPatchBoardReview(c, { gameId, sceneId: scene.id }, { readBoardArt: deps.readBoardArt });
         if (prepared.ready && audit.unknownRequestKeys.includes(prepared.requestKey)) await recoverPreparedLocalPatchReview(c, prepared);
+        else if (playerReviewEnabled() && (!prepared.ready || !prepared.extraPlan)) {
+          const calibrated = await prepareLocalPatchBoardReview(c, { gameId, sceneId: scene.id }, { readBoardArt: deps.readBoardArt },
+            { includePlayerCandidates: true, playerReview: true });
+          if (calibrated.ready && audit.unknownRequestKeys.includes(calibrated.requestKey))
+            await recoverPreparedLocalPatchReview(c, calibrated);
+        }
       }
     }
     job = await c.db.generationJob.findUniqueOrThrow({ where: { id: job.id } });
@@ -273,7 +280,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   if (strict) {
     const stale = work.filter(item => {
       const row = stateOf(item.sceneId, item.hide.targetId);
-      return row && localPatchNeedsRecomposition(row, 8);
+      return row && localPatchNeedsRecomposition(row, game.scenes.find(scene => scene.id === item.sceneId)!.sceneVersion, playerReviewEnabled());
     });
     const refreshLimit = Math.max(1, options.maxHides ?? 5);
     try {
@@ -309,8 +316,18 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   if (automatic && !extraPlan) {
     for (const scene of game.scenes) {
       if (scene.sceneVersion !== 12 || scene.generationStatus === "GENERATED") continue;
-      if (!rows.some(row => row.targetInstance.gameSceneId === scene.id
-        && (row.status === "GENERATED" || localPatchEvidenceRecovery(row)?.retry))) continue;
+      const sceneRows = rows.filter(row => row.targetInstance.gameSceneId === scene.id);
+      const ready = sceneRows.filter(row => row.status === "GENERATED");
+      // Planning only: incomplete boards with exclusively concluded approvals
+      // have no new evidence to review. Final assembly still validates every
+      // actual image/geometry/identity binding, including tampered pixels.
+      const needsAssessment = sceneRows.some(row => localPatchEvidenceRecovery(row)?.retry
+        || playerReviewEnabled() && needsPlayerReview(row)) || ready.some(row => {
+          try { const receipt = JSON.parse(row.judgeJson ?? "null");
+            return receipt?.reviewState !== "board-review-complete" || receipt.qualityDisposition?.state !== "acceptable";
+          } catch { return true; }
+        });
+      if (!needsAssessment && ready.length !== localPatchBoardFor(scene.sceneSlug, scene.sceneVersion)?.hides.length) continue;
       try {
         const review = await reviewLocalPatchBoard(c, { gameId, sceneId: scene.id, deadlineAt: options.hardDeadlineAt },
           { fence, apiKey: deps.apiKey, judge: options.boardJudge, readBoardArt: deps.readBoardArt });
@@ -324,6 +341,9 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
         scene.generationStatus = review.state === "done" ? "GENERATED" : "NEEDS_REGENERATION";
         await c.db.$transaction(async tx => { await fence(tx); await tx.gameScene.update({ where: { id: scene.id },
           data: { generationStatus: scene.generationStatus } }); });
+        // One paid assessment per slice. Do not spend the provider window on
+        // every board before the worker can durably yield its claim.
+        if (playerReviewEnabled() && review.costCents > 0) break;
       } catch (error) {
         if (error instanceof WorldBudgetError && error.code === "cap_exceeded") { deferredBudgetError = error; continue; }
         if (error instanceof GenerationPaused) {
@@ -368,7 +388,8 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // Finish those reviews before handing any earlier failure its last attempt.
   const automaticWork = automatic && !extraPlan ? work.filter(item => {
     const row = stateOf(item.sceneId, item.hide.targetId);
-    return needsSelfRepair(row) && !(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion === 12 && localPatchEvidenceRecovery(row!));
+    return needsSelfRepair(row) && !(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion === 12
+      && (localPatchEvidenceRecovery(row!) || playerReviewEnabled() && needsPlayerReview(row!)));
   }).sort((a, b) => {
     const cycle = (item: typeof a) => {
       try {
@@ -388,6 +409,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     if (automaticWork.includes(item)) return false;
     const candidate = stateOf(item.sceneId, item.hide.targetId);
     if (automatic && game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion === 12 && candidate && localPatchEvidenceRecovery(candidate)) return false;
+    if (playerReviewEnabled() && candidate && needsPlayerReview(candidate)) return false;
     if (!plan.finalRepair || !normalReviewsPending) return true;
     const row = stateOf(item.sceneId, item.hide.targetId);
     // Reviews gate a NEW final purchase, never recovery of one already started.

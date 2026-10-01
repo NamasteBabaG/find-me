@@ -28,6 +28,8 @@ const EnvSchema = z.object({
   /** Blocks new protected work in instances that loaded "off". Does not cancel
    * in-flight calls or govern every manual script; verify the deployed value. */
   GENERATION_ENABLED: z.enum(["on", "off"]).default("on"),
+  /** Versioned visual calibration; existing paid questions still replay intact. */
+  LOCAL_PATCH_PLAYER_REVIEW: z.enum(["on", "off"]).default("off"),
   EMAIL_PROVIDER: z.enum(["console", "resend"]).default("console"),
   STORAGE_PROVIDER: z.enum(["local", "supabase", "db"]).default("local"),
   ANALYTICS_PROVIDER: z.enum(["console", "posthog", "none"]).default("console"),

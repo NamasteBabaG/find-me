@@ -1,5 +1,6 @@
 import { isCollectionVersion } from "../../domain/scene/local-patch-versions";
 import { createHash } from "node:crypto";
+import { PLAYER_REVIEW_MODE, PLAYER_REVIEW_VERSION } from "./local-patch-player-review";
 import type { Prisma, TargetVariantAsset } from "@prisma/client";
 import type { Container } from "../container";
 import { isLocalPatchAdvisoryVersion, isLocalPatchAgeVersion, isLocalPatchStrictVersion, localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
@@ -166,6 +167,9 @@ function allowed(input: LocalPatchPublicationBinding): boolean {
   try {
     const receipt = JSON.parse(input.judgeJson ?? "null");
     const review = receipt?.boardReview;
+    const playerReview = review?.assessmentMode === PLAYER_REVIEW_MODE;
+    if (playerReview && (input.sceneVersion !== 12 || review.reviewScope !== "ready-only/v1"
+      || review.reviewedHideIds?.length !== 1)) return false;
     let repairWireCount = input.sceneVersion === 12 ? 20 : 8;
     if (review?.reviewScope !== undefined) {
       const ids: unknown = review.reviewedHideIds;
@@ -191,7 +195,7 @@ function allowed(input: LocalPatchPublicationBinding): boolean {
     return receipt?.reviewState === "board-review-complete" && receipt.wireFault === null
       && receipt?.compositionVersion === compositionVersion
       && receipt?.boardReview?.compositionVersion === compositionVersion
-      && receipt?.boardReview?.version === (isLocalPatchAgeVersion(input.sceneVersion) ? "local-patch-board-five-quality/v5-evidence-labeled" : "local-patch-board-five-quality/v3-head-safe")
+      && receipt?.boardReview?.version === (playerReview ? PLAYER_REVIEW_VERSION : isLocalPatchAgeVersion(input.sceneVersion) ? "local-patch-board-five-quality/v5-evidence-labeled" : "local-patch-board-five-quality/v3-head-safe")
       && localPatchQualityDisposition(receipt.verdict, input.sceneVersion, { hideId: input.hideId }).state === "acceptable";
   } catch { return false; }
 }

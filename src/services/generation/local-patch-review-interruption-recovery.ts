@@ -75,6 +75,7 @@ export async function recoverPreparedLocalPatchReview(c: Container, prepared: Pr
         judgeJson: JSON.stringify({ ...JSON.parse(selected.row.judgeJson!), reviewState: "board-review-complete", verdict: null,
           wireFault: "timeout", reviewInterruption: { ...proof, recoveryId: approvalId, reservedMicroUsd: held.reserveMicroUsd },
           boardReview: { version: prepared.reviewVersion, fingerprint, requestKey, reviewScope: "ready-only/v1",
+            ...(request.assessmentMode ? { assessmentMode: request.assessmentMode } : {}),
             reviewedHideIds: [selected.hide.id], evidenceReviewAttempt: prepared.evidenceReviewAttempt,
             evidenceReviewedAt: new Date().toISOString(), raw: null, model: null, costUnknown: true } }) } });
     if (changed.count !== 1) return false;

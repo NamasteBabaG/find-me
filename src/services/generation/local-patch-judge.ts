@@ -1,6 +1,7 @@
 import { childBodyDirection } from "../../domain/child-body";
 import { REFRESHED_COLLECTION_VERSION, INTEGRATED_COLLECTION_VERSION } from "../../domain/scene/local-patch-versions";
 import { INTEGRATION_CHECKS, INTEGRATION_REVIEW_DIRECTION } from "./local-patch-integration";
+import { PLAYER_REVIEW_MODE, playerReviewInstructions } from "./local-patch-player-review";
 import { NEIGHBOR_QUADRANTS, type NeighborComparison } from "./local-patch-integration-evidence";
 /**
  * Looking at a finished local patch the way a person does.
@@ -607,7 +608,7 @@ fetchOnce: typeof fetch): Promise<LocalPatchJudgeResult> {
   return { verdict: null, raw, usage, requestId, model, finishReason, wireFault: null, costUnknown: !billed };
 }
 
-export type LocalPatchAssessmentMode = "visible-body-v1";
+export type LocalPatchAssessmentMode = "visible-body-v1" | typeof PLAYER_REVIEW_MODE;
 export type LocalPatchBoardJudgeRequest = {
   contentVersion?: number;
   /** Omitted siblings either retain their approvals or remain unreviewed. */
@@ -652,6 +653,17 @@ export function localPatchBoardJudgeImageLabels(request: Pick<LocalPatchBoardJud
 export type LocalPatchBoardJudgeResult = LocalPatchJudgeResult & { verdicts: Record<string, LocalPatchVerdict | null> };
 const AGE_REVIEW_DIRECTION = "For this new contract five checks require explicit pass: faceLikeness, faceReadable, severeSeam, ageAppropriate and scaleRight. Image2 authorizes FACE AND HAIR identity, not an old target age or the body from its source sheet. A coherent generic child is NOT sufficient: the same characteristic facial shapes and hair must be recognizable; use unsure if the pixels cannot establish likeness. ageAppropriate checks the stated age in face AND whole body: for age 4 or 5 expect a preschool torso, narrow small shoulders, short child limbs, small hands and feet, not an older school-age or adult build or mature stance. Judge visible anatomy, not clothing or assumed age from a name. scaleRight compares the whole child against children of the SAME age at the SAME ground depth, never nearby adults. A small adult-shaped figure is not a preschool body. Do not solve age or readability with a giant head, imagined zoom detail, photographic texture, blind whole-figure shrinking or a foreground move. Do not demand hidden limbs through natural occlusion; use unsure when the visible evidence cannot establish the required check. Each fail needs its own located fault; advisory complaints never invent severe failure.";
 export function localPatchBoardJudgePrompt(request: Pick<LocalPatchBoardJudgeRequest, "boardId" | "hides" | "contentVersion" | "assessmentMode" | "reviewScope">): string {
+  if (request.assessmentMode === PLAYER_REVIEW_MODE) {
+    if (request.contentVersion !== INTEGRATED_COLLECTION_VERSION || request.reviewScope !== "ready-only/v1"
+      || request.hides.length !== 1 || !validChildAge(request.hides[0]?.expectation?.ageYears))
+      throw Error("Player assessment requires one age-bound integrated appearance");
+    const hide = request.hides[0]!;
+    return [playerReviewInstructions(hide.expectation!.ageYears!),
+      "Associate evidence ONLY by EVIDENCE_ID and HIDE_ID. REFERENCE_BOARD and CANONICAL_FACE_REFERENCE are not hides. AFTER LEFT is actual player context; RIGHT beyond the white gutter is a native closeup of the SAME child, not a duplicate. The FOUR neighbour comparisons use LEFT=BEFORE and RIGHT=AFTER. The boundary of an evidence crop is not the boundary of a generated patch.",
+      `${hide.hideId}: evidenceIds=${JSON.stringify(localPatchHideEvidenceIds(hide.hideId))}; support=${hide.expectation?.support ?? "authored support"}. Review ONLY this supplied hide; omitted siblings receive no verdict.`,
+      `Return JSON only: {"hides":[{"hideId":"${hide.hideId}","evidenceIds":${JSON.stringify(localPatchHideEvidenceIds(hide.hideId))},"verdict":{${integratedVerdictFields()}}}]}. Exactly one supplied hide.`,
+    ].join("\n");
+  }
   if (request.reviewScope && (!["unapproved-only/v1", "ready-only/v1"].includes(request.reviewScope) || request.contentVersion !== INTEGRATED_COLLECTION_VERSION))
     throw Error("Scoped review requires the integrated release");
   if (request.contentVersion === INTEGRATED_COLLECTION_VERSION) {

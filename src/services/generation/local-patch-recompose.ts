@@ -18,6 +18,7 @@ import { LOCAL_PATCH_RESERVE, RETAINED_RENDER_VERSION } from "./local-patch-rend
 import { sameChargeEvidence } from "./world-budget";
 import { sha256Bytes } from "./fixed-sprite";
 import { SELF_REPAIR_COMPOSITION_VERSION } from "../../domain/scene/local-patch-self-repair";
+import { playerReviewEnabled, PLAYER_REVIEW_MODE } from "./local-patch-player-review";
 
 export const LOCAL_PATCH_RECOMPOSE_ACTION = "local-patch:recomposed-from-paid-render";
 const hash = (value: unknown) => sha256Bytes(Buffer.from(JSON.stringify(value)));
@@ -25,7 +26,7 @@ function demand(value: unknown, reason: string): asserts value { if (!value) thr
 
 /** Pending attempts use the ordinary same-key purchase replay and account once.
  * Only concluded rows need this free migration; old v6/v7 are never touched. */
-export function localPatchNeedsRecomposition(row: { status: string; attempts: number; judgeJson: string | null }, contentVersion: number): boolean {
+export function localPatchNeedsRecomposition(row: { status: string; attempts: number; judgeJson: string | null }, contentVersion: number, playerReview = false): boolean {
   if (!isLocalPatchStrictVersion(contentVersion) || !["GENERATED", "FAILED"].includes(row.status) || row.attempts < 1) return false;
   try {
     const receipt = JSON.parse(row.judgeJson ?? "null");
@@ -33,6 +34,11 @@ export function localPatchNeedsRecomposition(row: { status: string; attempts: nu
     // Provider/schema/transport refusals have no recoverable compositor pixels.
     // They keep the ordinary bounded retry path, not a permanent refresh hold.
     if (row.status === "FAILED" && typeof receipt?.renderFault === "string" && !/^quality-seam(?::|$)/.test(receipt.renderFault)) return false;
+    if (playerReview && contentVersion === 12 && row.status === "FAILED" && receipt?.renderFault?.startsWith("quality-seam:")
+      && receipt.playerSeamReview !== PLAYER_REVIEW_MODE && receipt.seam?.verdict === "misaligned"
+      && Number.isFinite(receipt.seam.borderMeanDiff) && receipt.seam.borderMeanDiff <= 24 && receipt.seam.borderMeanDiff >= 0
+      && Number.isInteger(receipt.seam.shift?.dx) && Number.isInteger(receipt.seam.shift?.dy)
+      && Math.max(Math.abs(receipt.seam.shift.dx), Math.abs(receipt.seam.shift.dy)) <= 2) return true;
     return receipt?.compositionVersion !== LOCAL_PATCH_COMPOSITION_VERSION;
   }
   catch { return true; }
@@ -56,7 +62,7 @@ export async function recomposeLocalPatchHide(c: Container, input: {
     && board.hides.some(item => item.id === hide.id && item.targetId === hide.targetId), "The original v8 hide must belong to this game");
   const instance = await c.db.targetInstance.findUniqueOrThrow({ where: { gameSceneId_targetId: { gameSceneId: scene.id, targetId: hide.targetId } } });
   const row = await c.db.targetVariantAsset.findUniqueOrThrow({ where: { targetInstanceId_variant: { targetInstanceId: instance.id, variant: LOCAL_PATCH_VARIANT } } });
-  if (!localPatchNeedsRecomposition(row, scene.sceneVersion)) return false;
+  if (!localPatchNeedsRecomposition(row, scene.sceneVersion, playerReviewEnabled())) return false;
   demand(row.provider === LOCAL_PATCH_PROVIDER && row.attempts <= LOCAL_PATCH_MAX_ATTEMPTS, "The original bounded image attempt is required");
   const identity = await c.db.asset.findUniqueOrThrow({ where: { id: child.identityAssetId } });
   demand(identity.ownerId === game.ownerId && identity.type === "IDENTITY_SHEET" && identity.visibility === "PRIVATE"
@@ -101,7 +107,9 @@ export async function recomposeLocalPatchHide(c: Container, input: {
     const rawMeta = await sharp(raw, { limitInputPixels: 8_294_400 }).metadata();
     demand(rawMeta.format === "png" && (rawMeta.pages ?? 1) === 1, "The retained image is not one PNG");
     const patch = await sharp(raw, { limitInputPixels: 8_294_400 }).resize(LOCAL_PATCH_CROP.width, LOCAL_PATCH_CROP.height, { fit: "fill" }).png().toBuffer();
-    const result = await composeBoundedLocalPatch(original, crop, patch, maskForHide(hide));
+    const result = await composeBoundedLocalPatch(original, crop, patch, maskForHide(hide), {
+      playerReview: scene.sceneVersion === 12 && playerReviewEnabled(),
+    });
     inspected.push({ requestKey, payloadSha256: retained.payloadSha256, usable: result.usable,
       report: result.report, compositionPermission: result.compositionPermission });
     return { requestKey, retained, result };
@@ -130,6 +138,7 @@ export async function recomposeLocalPatchHide(c: Container, input: {
   const key = `${result.usable ? "game" : "private"}/${assetId}.png`;
   const auditId = `aud_lpc_${hash([gameId, row.id, row.attempts, LOCAL_PATCH_COMPOSITION_VERSION, imageSha256]).slice(0, 28)}`;
   const judgeJson = JSON.stringify({ verdict: null, wireFault: null, seam: result.report, compositionPermission: result.compositionPermission,
+    ...(scene.sceneVersion === 12 && playerReviewEnabled() ? { playerSeamReview: PLAYER_REVIEW_MODE } : {}),
     compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION, judgedSha256: imageSha256, geometrySha256: localPatchPublicationGeometryHash(geometry),
     geometryBasis: measured.basis, measuredFraction: Number(measured.measuredFraction.toFixed(4)), hide: hide.id, pose: hide.pose,
     reviewState: result.usable ? "pending-board-review" : "composition-refused", renderFault: result.usable ? null : `quality-seam: ${result.report.reason}`,

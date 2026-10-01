@@ -2,7 +2,8 @@ import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { PrismaClient } from "@prisma/client";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { PLAYER_REVIEW_MODE, PLAYER_REVIEW_VERSION } from "../local-patch-player-review";
 import { applyTestSchema } from "../../../lib/test-schema";
 import { DbStorage } from "../../../infra/storage/db";
 import { localPatchBoardsForVersion } from "../../../domain/scene/local-patch-catalog";
@@ -16,7 +17,7 @@ import { runLocalPatchHide, type LocalPatchHideDeps } from "../local-patch-hide"
 import { LOCAL_PATCH_PUBLICATION_ACTION } from "../local-patch-publication-policy";
 import { localPatchPrivateInventory } from "../local-patch-world";
 import { runLocalPatchWorldSlice, LOCAL_PATCH_EVIDENCE_RETRY_WAIT } from "../local-patch-world";
-import { nextPendingGame } from "../queue";
+import { nextPendingGame, tickGeneration } from "../queue";
 import { LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS } from "../local-patch-review-recovery";
 import { LOCAL_PATCH_COMPOSITION_VERSION } from "../local-patch-seam";
 import { retainedPurchaseKey } from "../../../infra/db/prisma-retained-purchase-store";
@@ -29,10 +30,13 @@ import { bill, paintedCrop, paintedOk, seedApprovedGame, PASSING_ANSWER } from "
 
 const BOARDS = localPatchBoardsForVersion(12), BOARD = BOARDS.find(b => b.board === "giza")!;
 const testers: string[] = [];
+let playerMode = false;
 vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: "qa", GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: 0,
+  LOCAL_PATCH_PLAYER_REVIEW: playerMode ? "on" : "off",
   GENERATION_PROVIDER: "openai", GENERATION_MODEL: "gpt-image-2", GENERATION_QUALITY: "medium" }),
   spendGuard: () => ({ appEnv: "qa", realGeneration: true, testers }), flag: () => false }));
 let directory: string, db: PrismaClient, c: Container;
+beforeEach(() => { playerMode = false; });
 beforeAll(async () => {
   directory = realpathSync(mkdtempSync(path.join(realpathSync(tmpdir()), "findme-incremental-review-")));
   db = new PrismaClient({ datasources: { db: { url: `file:${path.join(directory, "test.db").replaceAll("\\", "/")}` } } });
@@ -81,6 +85,67 @@ const interruptedReply = { verdict: null, verdicts: {}, raw: null, model: null, 
   finishReason: null, wireFault: "timeout" as const, costUnknown: true };
 
 describe("v12 ready appearances have independent paid review and publication bindings", () => {
+  it("reassesses an old refusal once without repainting or changing an approved sibling", async () => {
+    const s = await seed("player-visible-calibration", 2);
+    await review(s);
+    const accepted = (await rows(s.gameId)).find(row => JSON.parse(row.judgeJson!).verdict)!;
+    s.judge.mockImplementationOnce(async request => ({ verdict: null, verdicts: {},
+      raw: JSON.stringify({ hides: request.hides.map(h => ({ hideId: h.hideId, evidenceIds: localPatchHideEvidenceIds(h.hideId),
+        verdict: { ...good, neighborsIntact: "fail", pictureWhole: "fail", verdict: "fail", faults: [
+          { check: "neighborsIntact", where: "A background bystander was cleanly removed, with no cut anatomy" },
+          { check: "pictureWhole", where: "The original crowd count changed" },
+        ] } })) }), model: "gpt-5.6-sol", requestId: "judge-original-refusal", usage: { prompt_tokens: 1000, completion_tokens: 400 },
+      finishReason: "stop", wireFault: null, costUnknown: false }));
+    await review(s);
+    const failed = (await rows(s.gameId)).find(row => row.status === "FAILED")!;
+    const originalReview = JSON.parse(failed.judgeJson!).boardReview;
+    const oldCharge = await boardWizardBudgetOf(c).readRequest(boardWizardWorldId(s.gameId), originalReview.requestKey);
+    playerMode = true;
+    expect((await review(s)).state).toBe("pending"); // third hide still absent
+    const after = await rows(s.gameId), recovered = after.find(row => row.id === failed.id)!;
+    expect(after.find(row => row.id === accepted.id)).toEqual(accepted);
+    expect(recovered).toMatchObject({ status: "GENERATED", attempts: failed.attempts, assetId: failed.assetId });
+    const receipt = JSON.parse(recovered.judgeJson!);
+    expect(receipt.boardReview).toMatchObject({ version: PLAYER_REVIEW_VERSION, assessmentMode: PLAYER_REVIEW_MODE });
+    expect(receipt.boardReview.requestKey).not.toBe(originalReview.requestKey);
+    expect(receipt.reviewHistory[0].boardReview).toEqual(originalReview);
+    expect(await boardWizardBudgetOf(c).readRequest(boardWizardWorldId(s.gameId), originalReview.requestKey)).toEqual(oldCharge);
+    expect(s.render).toHaveBeenCalledTimes(2);
+    expect(s.judge).toHaveBeenCalledTimes(3);
+    expect((await review(s))).toMatchObject({ state: "pending", costCents: 0, replayed: true });
+    expect(s.judge).toHaveBeenCalledTimes(3);
+    expect(await db.auditLog.count({ where: { entityId: s.gameId, action: LOCAL_PATCH_PUBLICATION_ACTION } })).toBe(2);
+  }, 120000);
+  it("still refuses a clear cut scalp under player calibration and never repeats that assessment", async () => {
+    const s = await seed("player-visible-real-cut");
+    playerMode = true;
+    s.judge.mockImplementation(async request => ({ verdict: null, verdicts: {},
+      raw: JSON.stringify({ hides: request.hides.map(h => ({ hideId: h.hideId, evidenceIds: localPatchHideEvidenceIds(h.hideId),
+        verdict: { ...good, faceReadable: "fail", verdict: "fail", faults: [
+          { check: "faceReadable", where: "A straight return edge visibly cuts the child's scalp in the AFTER player context" },
+        ] } })) }), model: "gpt-5.6-sol", requestId: "judge-player-real-cut", usage: { prompt_tokens: 1000, completion_tokens: 400 },
+      finishReason: "stop", wireFault: null, costUnknown: false }));
+    expect((await review(s)).state).toBe("retry");
+    const failed = (await rows(s.gameId))[0]!;
+    expect(failed.status).toBe("FAILED");
+    expect(JSON.parse(failed.judgeJson!).boardReview.assessmentMode).toBe(PLAYER_REVIEW_MODE);
+    expect(await db.auditLog.count({ where: { entityId: s.gameId, action: LOCAL_PATCH_PUBLICATION_ACTION } })).toBe(0);
+    await review(s);
+    expect(s.judge).toHaveBeenCalledOnce(); expect(s.render).toHaveBeenCalledOnce();
+  }, 120000);
+  it("revalidates retained bytes before giving a rejected image its new assessment", async () => {
+    const s = await seed("player-visible-mutated-image");
+    s.judge.mockImplementationOnce(async request => ({ verdict: null, verdicts: {},
+      raw: JSON.stringify({ hides: request.hides.map(h => ({ hideId: h.hideId, evidenceIds: localPatchHideEvidenceIds(h.hideId),
+        verdict: { ...good, styleMatch: "fail", verdict: "fail", faults: [{ check: "styleMatch", where: "Slightly smoother portrait shading" }] } })) }),
+      model: "gpt-5.6-sol", requestId: "judge-old-style", usage: { prompt_tokens: 1000, completion_tokens: 400 },
+      finishReason: "stop", wireFault: null, costUnknown: false }));
+    await review(s); playerMode = true;
+    const failed = (await rows(s.gameId))[0]!, asset = await db.asset.findUniqueOrThrow({ where: { id: failed.assetId! } });
+    await db.fileBlob.update({ where: { key: asset.storagePath }, data: { data: new Uint8Array(Buffer.from("changed pixels")) } });
+    await expect(review(s)).rejects.toThrow("render-completion binding");
+    expect(s.judge).toHaveBeenCalledOnce(); expect(s.render).toHaveBeenCalledOnce();
+  }, 120000);
   it("automatically replaces a no-response review, preserving unknown billing, identical pixels and approved siblings", async () => {
     const s = await seed("incremental-transport", 3);
     await review(s);
@@ -150,8 +215,9 @@ describe("v12 ready appearances have independent paid review and publication bin
     expect((await review(s)).state).toBe("held");
     expect(await db.auditLog.count({ where: { entityId: s.gameId, action: REVIEW_INTERRUPTION_POLICY } })).toBe(0);
   }, 120000);
-  it("recovers an existing parked world and automatically extends its exhausted base budget through the main slice", async () => {
-    const s = await seed("incremental-parked-budget"), prepared = await prepareLocalPatchBoardReview(c, s, {});
+  it.each([false, true])("recovers a parked world without changing its frozen question (player calibration: %s)", async calibrated => {
+    playerMode = calibrated;
+    const s = await seed(`incremental-parked-budget-${calibrated}`), prepared = await prepareLocalPatchBoardReview(c, s, {}, { playerReview: calibrated });
     if (!prepared.ready) throw Error("Fixture must be ready");
     const priorSpend = 3_586_026 - (await prepared.budget.audit(prepared.worldId)).committedMicroUsd;
     await prepared.budget.reserve(prepared.worldId, { requestKey: "prior-work", scope: "image", operationFingerprint: "prior-work", reserveMicroUsd: priorSpend });
@@ -168,6 +234,30 @@ describe("v12 ready appearances have independent paid review and publication bin
     expect(s.judge).not.toHaveBeenCalled(); expect(s.render).toHaveBeenCalledOnce();
     expect(await db.auditLog.count({ where: { entityId: s.gameId, action: LOCAL_PATCH_PUBLICATION_ACTION } })).toBe(0);
     expect((await review(s)).state).toBe("pending"); expect(s.judge).toHaveBeenCalledOnce();
+  }, 120000);
+  it("never resumes an owner-stopped world, even with an interrupted paid review", async () => {
+    const s = await seed("incremental-owner-stopped");
+    const prepared = await prepareLocalPatchBoardReview(c, s, {});
+    if (!prepared.ready) throw Error("Fixture must be ready");
+    await purchaseOnce({ ledger: prepared.budget, store: new LocalPatchRetainedPurchaseStore(c, s.gameId, prepared.budget) }, {
+      worldId: prepared.worldId, requestKey: prepared.requestKey, operationFingerprint: prepared.fingerprint, scope: "judge", reserveMicroUsd: 300_000,
+      buy: async () => ({ bytes: Buffer.from(JSON.stringify(interruptedReply)), unknownReason: "Grouped review charge could not be verified" }) });
+    await db.$transaction(async tx => {
+      await tx.game.update({ where: { id: s.gameId }, data: { status: "CANCELLED", lastError: "generation-stopped-by-owner" } });
+      await tx.generationJob.update({ where: { id: `job_${s.gameId}` }, data: { status: "DONE", currentStep: "owner-stopped", attempts: { increment: 1 } } });
+    });
+    const beforeRows = await rows(s.gameId), beforeBudget = await prepared.budget.audit(prepared.worldId);
+    const beforeJob = await db.generationJob.findUniqueOrThrow({ where: { id: `job_${s.gameId}` } });
+    playerMode = true;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      expect(await tickGeneration(c, s.gameId, 60_000)).toMatchObject({ status: "CANCELLED", pending: false });
+      expect(await runLocalPatchWorldSlice(c, s.deps, s.gameId, { boardJudge: s.judge })).toMatchObject({ claimed: false, pending: false });
+    }
+    expect(await nextPendingGame(c)).not.toBe(s.gameId);
+    expect(await rows(s.gameId)).toEqual(beforeRows);
+    expect(await prepared.budget.audit(prepared.worldId)).toEqual(beforeBudget);
+    expect(await db.generationJob.findUniqueOrThrow({ where: { id: beforeJob.id } })).toEqual(beforeJob);
+    expect(s.judge).not.toHaveBeenCalled(); expect(s.render).toHaveBeenCalledOnce();
   }, 120000);
   it("bounds no-response review continuations at two without recycling old keys or dropping unknown charges", async () => {
     const s = await seed("incremental-transport-limit");

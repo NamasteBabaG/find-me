@@ -27,6 +27,7 @@ import { LOCAL_PATCH_COMPOSITION_VERSION, LOCAL_PATCH_RETURN_GUARD } from "./loc
 import { readLocalPatchExtraAttemptPlan, requireLocalPatchExtraReview, fenceLocalPatchExtraReview } from "./local-patch-extra-attempt";
 import { localPatchEvidenceRecovery } from "./local-patch-review-recovery";
 import { recoverPreparedLocalPatchReview } from "./local-patch-review-interruption-recovery";
+import { needsPlayerReview, playerReviewEnabled, PLAYER_REVIEW_MODE, PLAYER_REVIEW_VERSION } from "./local-patch-player-review";
 
 export const LOCAL_PATCH_BOARD_REVIEW_VERSION = "local-patch-board-five-luna-low/v1";
 export const LOCAL_PATCH_STRICT_BOARD_REVIEW_VERSION = "local-patch-board-five-quality/v3-head-safe";
@@ -69,12 +70,12 @@ export type LocalPatchBoardReviewDeps = {
 /** Read-only reconstruction of the exact question. Recovery may inspect FAILED
  * v9 rows, but gets no authority to dispatch, settle or publish from this API. */
 export async function prepareLocalPatchBoardReview(c: Container, input: { gameId: string; sceneId: string },
-  deps: Pick<LocalPatchBoardReviewDeps, "readBoardArt">, options: { recovery?: boolean } = {}) {
+  deps: Pick<LocalPatchBoardReviewDeps, "readBoardArt">, options: { recovery?: boolean; includePlayerCandidates?: boolean; playerReview?: boolean; skipApprovedEvidence?: boolean } = {}) {
   const scene = await c.db.gameScene.findUniqueOrThrow({ where: { id: input.sceneId },
     include: { game: { include: { childProfile: true } }, targets: { include: { variants: true } } } });
   const game = scene.game, child = game.childProfile;
   const strict = isLocalPatchStrictVersion(scene.sceneVersion);
-  const reviewVersion = isLocalPatchAgeVersion(scene.sceneVersion) ? LOCAL_PATCH_AGE_BOARD_REVIEW_VERSION
+  const reviewVersion = options.playerReview ? PLAYER_REVIEW_VERSION : isLocalPatchAgeVersion(scene.sceneVersion) ? LOCAL_PATCH_AGE_BOARD_REVIEW_VERSION
     : strict ? LOCAL_PATCH_STRICT_BOARD_REVIEW_VERSION : LOCAL_PATCH_BOARD_REVIEW_VERSION;
   let settings: { model: string; effort: "low" | "medium"; maxOutputTokens: number; endpoint: string; timeoutMs: number } = localPatchBoardJudgeSettings(scene.sceneVersion);
   demand(game.id === input.gameId && game.styleVersion === "local-patch-world-v1"
@@ -85,6 +86,7 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
   const stagedExtra = isLocalPatchAgeVersion(scene.sceneVersion) ? await readLocalPatchExtraAttemptPlan(c, game.id) : null;
   const extraPlan = stagedExtra && [...stagedExtra.selected, ...stagedExtra.reviewOnly].some(entry => entry.sceneId === scene.id) ? stagedExtra : null;
   const incremental = scene.sceneVersion === 12 && !extraPlan && !options.recovery;
+  demand(!options.playerReview || incremental, "Player calibration requires an ordinary v12 review");
   const versions = await c.db.gameScene.findMany({ where: { gameId: game.id }, select: { sceneVersion: true } });
   demand(versions.length > 0 && versions.every(row => row.sceneVersion === scene.sceneVersion), "Mixed content versions cannot acquire an advisory review");
   demand(board?.hides.length === localPatchHidesPerBoard(scene.sceneVersion)
@@ -112,7 +114,8 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
   for (const hide of board.hides) {
     const target = scene.targets.find(t => t.targetId === hide.targetId);
     const row = target?.variants.find(v => v.variant === LOCAL_PATCH_VARIANT);
-    if (!row || !(row.status === "GENERATED" || incremental && localPatchEvidenceRecovery(row)?.retry || (options.recovery && isLocalPatchAgeVersion(scene.sceneVersion)
+    if (!row || !(row.status === "GENERATED" || incremental && (localPatchEvidenceRecovery(row)?.retry
+      || options.includePlayerCandidates && needsPlayerReview(row)) || (options.recovery && isLocalPatchAgeVersion(scene.sceneVersion)
       || extraPlan?.reviewOnly.some(entry => entry.rowId === row.id)) && row.status === "FAILED") || !row.assetId)
       { if (incremental) continue; return { ready: false as const, reason: "Usable patches are not ready" }; }
     demand(row.provider === LOCAL_PATCH_PROVIDER && row.rectJson && row.hitRectJson && row.headAnchorJson, "Patch metadata is incomplete");
@@ -156,16 +159,22 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
       variantId: e.row.id, attempts: e.row.attempts, identityAssetId: identity.id, identitySha256: sha256Bytes(sheet),
       assetId: e.asset.id, imageSha256: e.imageSha256, geometrySha256: e.geometrySha256, judgeJson: e.row.judgeJson })) protectedRows.add(e.row.id);
   }
+  // Keep ownership, bytes, geometry and original approvals checked. Avoid
+  // rebuilding eight large evidence panels for an unchanged approved sibling.
+  if (options.skipApprovedEvidence && (recovering || incremental) && protectedRows.size === entries.length) {
+    return { ready: false as const, reason: "Other appearances await generation or review", alreadyReviewed: true as const,
+      boardComplete: entries.length === board.hides.length };
+  }
   let evidenceReviewAttempt = 1;
   let requestEntries = entries;
   let readyScope = false;
   // New ordinary reviews need only the selected evidence. Do not reconstruct
   // all three large native panels unless replay requires the old full question.
-  if (incremental && !recovering) {
+  if (incremental && (!recovering || options.playerReview)) {
     const unapproved = entries.filter(e => !protectedRows.has(e.row.id));
     const oldKey = entries.length === board.hides.length ? localPatchBoardReviewKey(board.board, entries.map(e => e.row.attempts),
       LOCAL_PATCH_COMPOSITION_VERSION, scene.sceneVersion) : null;
-    if (!oldKey || unapproved.some(e => localPatchEvidenceRecovery(e.row)) || !await budget.readRequest(worldId, oldKey)) {
+    if (options.playerReview || !oldKey || unapproved.some(e => localPatchEvidenceRecovery(e.row)) || !await budget.readRequest(worldId, oldKey)) {
       requestEntries = [(unapproved.length ? unapproved : entries).sort((a, b) => (localPatchEvidenceRecovery(a.row)?.nextAttempt ?? 1)
         - (localPatchEvidenceRecovery(b.row)?.nextAttempt ?? 1))[0]!];
       evidenceReviewAttempt = localPatchEvidenceRecovery(requestEntries[0]!.row)?.nextAttempt ?? 1;
@@ -177,6 +186,7 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
   // original board provides context, and each AFTER is its own base+one patch.
   const composed = strict ? before : await sharp(before).composite(entries.map(e => ({ input: e.bytes, left: e.crop.left, top: e.crop.top }))).png().toBuffer();
   let request: LocalPatchBoardJudgeRequest = { boardId: board.board, ...(strict ? { contentVersion: scene.sceneVersion } : {}),
+    ...(options.playerReview ? { assessmentMode: PLAYER_REVIEW_MODE } : {}),
     ...(readyScope ? { reviewScope: "ready-only/v1" as const } : {}),
     ...(extraPlan ? { assessmentMode: "visible-body-v1" as const } : {}),
     boardPng: await sharp(composed).resize(1536, 1024, { fit: "inside" }).png().toBuffer(),
@@ -278,8 +288,20 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
  * appearance; absent siblings receive no writes or invented publication proof. */
 export async function reviewLocalPatchBoard(c: Container, input: { gameId: string; sceneId: string; deadlineAt?: number },
   deps: LocalPatchBoardReviewDeps): Promise<LocalPatchBoardReviewOutcome> {
-  const prepared = await prepareLocalPatchBoardReview(c, input, deps);
-  if (!prepared.ready) return { state: "pending", reason: prepared.reason, costCents: 0, replayed: false };
+  const calibrated = playerReviewEnabled();
+  const preparation = { includePlayerCandidates: calibrated, skipApprovedEvidence: true };
+  let prepared = await prepareLocalPatchBoardReview(c, input, deps, preparation);
+  if (prepared.ready && calibrated && prepared.scene.sceneVersion === 12 && !prepared.extraPlan) {
+    const suppliedIds = new Set(prepared.request.hides.map(h => h.hideId));
+    const selected = prepared.entries.filter(e => suppliedIds.has(e.hide.id));
+    // Existing purchases, including unknown/pending ones, keep their exact
+    // historical question. A concluded visual refusal gets ONE new assessment.
+    if (selected.some(e => needsPlayerReview(e.row)) || !await prepared.budget.readRequest(prepared.worldId, prepared.requestKey))
+      prepared = await prepareLocalPatchBoardReview(c, input, deps, { ...preparation, playerReview: true });
+  }
+  if (!prepared.ready) return { state: "alreadyReviewed" in prepared && prepared.boardComplete ? "done" : "pending",
+    reason: "alreadyReviewed" in prepared && prepared.boardComplete ? null : prepared.reason, costCents: 0,
+    replayed: "alreadyReviewed" in prepared };
   const { scene, game, budget, worldId, identity, sheet, entries, request, fingerprint,
     requestKey, settings, strict, reviewVersion, composed, extraPlan, protectedRows, recovering, prompt, evidenceReviewAttempt } = prepared;
   const boardComplete = entries.length === prepared.board.hides.length;
@@ -330,7 +352,8 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
     for (const [index, e] of committedEntries.entries()) {
       const current = await tx.targetVariantAsset.findUniqueOrThrow({ where: { id: e.row.id } });
       const reviewOnly = extraPlan?.reviewOnly.some(entry => entry.rowId === current.id);
-      const evidenceOnly = request.reviewScope === "ready-only/v1" && localPatchEvidenceRecovery(e.row)?.retry;
+      const evidenceOnly = request.reviewScope === "ready-only/v1" && (localPatchEvidenceRecovery(e.row)?.retry
+        || request.assessmentMode === PLAYER_REVIEW_MODE && needsPlayerReview(e.row));
       demand((current.status === "GENERATED" || (reviewOnly || evidenceOnly) && current.status === "FAILED") && current.assetId === e.asset.id && current.attempts === e.row.attempts
         && current.judgeJson === e.row.judgeJson
         && localPatchPublicationGeometryHash(current) === e.geometrySha256, "Target changed while its board was reviewed");
@@ -343,9 +366,14 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
       const compositionVersion = prior.compositionVersion === SELF_REPAIR_COMPOSITION_VERSION ? SELF_REPAIR_COMPOSITION_VERSION : LOCAL_PATCH_COMPOSITION_VERSION;
       const disposition = dispositions[index]!;
       const judgeJson = JSON.stringify({ ...prior, reviewState: "board-review-complete", verdict: verdicts[e.hide.id] ?? null,
+        ...(request.assessmentMode === PLAYER_REVIEW_MODE && prior.boardReview ? { reviewHistory: [
+          ...(Array.isArray(prior.reviewHistory) ? prior.reviewHistory : []),
+          { boardReview: prior.boardReview, verdict: prior.verdict, qualityDisposition: prior.qualityDisposition, wireFault: prior.wireFault },
+        ] } : {}),
         wireFault: keep.wireFault ?? (verdicts[e.hide.id] ? null : "schema"), judgedSha256: e.imageSha256,
         ...(strict ? { qualityDisposition: disposition, compositionVersion } : {}),
         boardReview: { version: reviewVersion, fingerprint, requestKey, composedSha256: sha256Bytes(composed),
+          ...(request.assessmentMode === PLAYER_REVIEW_MODE ? { assessmentMode: PLAYER_REVIEW_MODE } : {}),
           ...(request.reviewScope ? { reviewScope: request.reviewScope, reviewedHideIds: request.hides.map(h => h.hideId), evidenceReviewAttempt,
             evidenceReviewedAt: new Date().toISOString() } : {}),
           ...(extraPlan ? { assessmentMode: "visible-body-v1", extraAttemptAuthorizationId: extraPlan.authorizationId } : {}),

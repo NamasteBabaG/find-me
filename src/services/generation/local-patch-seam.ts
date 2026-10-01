@@ -273,7 +273,7 @@ async function blendLocalPatch(boardPng: Buffer, region: PatchRegion, patchPng: 
 // that decision. Version the derived pixels separately from the paid request.
 export const LOCAL_PATCH_COMPOSITION_VERSION = "bounded-return/v3-head-safe-axis";
 export const LOCAL_PATCH_RETURN_GUARD = 120;
-export type LocalPatchCompositionPermission = "aligned" | "one-pixel-per-axis-tolerance" | "refused";
+export type LocalPatchCompositionPermission = "aligned" | "one-pixel-per-axis-tolerance" | "two-pixel-player-review" | "refused";
 
 /** v8 boundary permission, NOT a visual verdict. One native pixel on each axis
  * can be harmless resampling or a genuinely broken face: only the mandatory
@@ -281,16 +281,18 @@ export type LocalPatchCompositionPermission = "aligned" | "one-pixel-per-axis-to
  * Diagonal neighbours are candidates too, not proof that their joins are safe.
  * Keep the measured report intact; never translate pixels to cancel its shift.
  */
-export function boundedCompositionPermission(report: SeamReport): LocalPatchCompositionPermission {
+export function boundedCompositionPermission(report: SeamReport, playerReview = false): LocalPatchCompositionPermission {
   if (!Number.isFinite(report.borderMeanDiff) || report.borderMeanDiff < 0 || report.borderMeanDiff > 24) return "refused";
   if (report.verdict === "clean" || report.verdict === "fade-recommended") return "aligned";
   const { dx, dy } = report.shift;
   if (report.verdict === "misaligned" && Number.isInteger(dx) && Number.isInteger(dy)
     && Math.max(Math.abs(dx), Math.abs(dy)) === 1) return "one-pixel-per-axis-tolerance";
+  if (playerReview && report.verdict === "misaligned" && Number.isInteger(dx) && Number.isInteger(dy)
+    && Math.max(Math.abs(dx), Math.abs(dy)) === 2) return "two-pixel-player-review";
   return "refused";
 }
 
-export async function composeBoundedLocalPatch(boardPng: Buffer, crop: PatchRegion, patchPng: Buffer, child: PatchRegion, options: { requireAligned?: boolean } = {}) {
+export async function composeBoundedLocalPatch(boardPng: Buffer, crop: PatchRegion, patchPng: Buffer, child: PatchRegion, options: { requireAligned?: boolean; playerReview?: boolean } = {}) {
   if (![child.left, child.top, child.width, child.height].every(Number.isInteger)
     || child.left < 0 || child.top < 0 || child.width <= 0 || child.height <= 0
     || child.left + child.width > crop.width || child.top + child.height > crop.height) {
@@ -311,7 +313,7 @@ export async function composeBoundedLocalPatch(boardPng: Buffer, crop: PatchRegi
   // Here this is deliberately a BOUNDARY diagnosis, not a claim that scenery
   // inside the child's box is unchanged. The visual review checks that separately.
   const report = await analysePatchSeam(boardPng, region, patch, { allowedRect: { left: 0, top: 0, width: local.width, height: local.height } });
-  const compositionPermission = options.requireAligned && report.verdict === "misaligned" ? "refused" : boundedCompositionPermission(report);
+  const compositionPermission = options.requireAligned && report.verdict === "misaligned" ? "refused" : boundedCompositionPermission(report, options.playerReview);
   const usable = compositionPermission !== "refused";
   // All permitted candidates use the same bounded fade, without moving pixels
   // or modifying the raw report. A refused hard-placement remains evidence only.

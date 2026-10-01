@@ -1,6 +1,7 @@
 import { isCollectionVersion } from "../../domain/scene/local-patch-versions";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
+import { playerReviewEnabled } from "./local-patch-player-review";
 import {
   LOCAL_PATCH_CROP, type LocalPatchBoard, type LocalPatchHide, cropOf, maskForHide,
 } from "../../domain/scene/local-patch-hides";
@@ -422,7 +423,10 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   }
   const patchPng = await sharp(Buffer.from(painted.bytesBase64, "base64")).resize(LOCAL_PATCH_CROP.width, LOCAL_PATCH_CROP.height, { fit: "fill" }).png().toBuffer();
   const bounded = isLocalPatchStrictVersion(input.contentVersion)
-    ? await composeBoundedLocalPatch(input.composedPng, crop, patchPng, mask, { requireAligned: input.contentVersion === 12 }) : null;
+    ? await composeBoundedLocalPatch(input.composedPng, crop, patchPng, mask, {
+      requireAligned: input.contentVersion === 12 && !playerReviewEnabled(),
+      playerReview: input.contentVersion === 12 && playerReviewEnabled(),
+    }) : null;
   const seam = bounded?.report ?? await analysePatchSeam(input.composedPng, crop, patchPng, { allowedRect: { left: 0, top: 0, ...LOCAL_PATCH_CROP } });
   const fade = seam.verdict === "clean" || seam.verdict === "fade-recommended";
   const candidate = bounded?.candidate ?? await applyLocalPatch(input.composedPng, crop, patchPng, { fade, report: seam });

@@ -57,6 +57,23 @@ async function boundaryFixture(input: {
 }
 
 describe("returning a locally rendered rectangle to the board", () => {
+  it("routes small registration differences to visual review without shifting the child or touching the outer board", async () => {
+    const f = await boundaryFixture({ borderShift: { dx: 2, dy: 1 } });
+    const old = await composeBoundedLocalPatch(f.board, f.crop, f.patch, f.child, { requireAligned: true });
+    const candidate = await composeBoundedLocalPatch(f.board, f.crop, f.patch, f.child, { playerReview: true });
+    expect(old.usable).toBe(false);
+    expect(candidate).toMatchObject({ usable: true, compositionPermission: "two-pixel-player-review", report: old.report });
+    const pixels = await sharp(candidate.candidate).ensureAlpha().raw().toBuffer();
+    for (let y = 0; y < f.crop.height; y++) for (let x = 0; x < f.crop.width; x++) {
+      const r = f.returned, i = (y * f.crop.width + x) * 4;
+      if (x < r.left || y < r.top || x >= r.left + r.width || y >= r.top + r.height)
+        expect(pixels.subarray(i, i + 4)).toEqual(f.original.subarray(i, i + 4));
+      if (x >= f.child.left && x < f.child.left + f.child.width && y >= f.child.top && y < f.child.top + f.child.height)
+        expect(pixels.subarray(i, i + 4)).toEqual(f.painted.subarray(i, i + 4));
+    }
+    expect(boundedCompositionPermission({ ...old.report, shift: { dx: 3, dy: 0 } }, true)).toBe("refused");
+    expect(boundedCompositionPermission({ ...old.report, borderMeanDiff: 25 }, true)).toBe("refused");
+  }, 20000);
   it("v12 sends even a one-pixel misregistered return to diagnosis, preserving the raw refusal", async () => {
     const f = await boundaryFixture({ borderShift: { dx: 1, dy: 0 } });
     const legacy = await composeBoundedLocalPatch(f.board, f.crop, f.patch, f.child);
