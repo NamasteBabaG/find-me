@@ -1,6 +1,6 @@
 import { isCollectionVersion } from "../../domain/scene/local-patch-versions";
 import { createHash } from "node:crypto";
-import { PLAYER_REVIEW_MODE, PLAYER_REVIEW_VERSION } from "./local-patch-player-review";
+import { PLAYER_REVIEW_MODE, PLAYER_REVIEW_VERSION, LEGACY_PLAYER_REVIEW_MODE, LEGACY_PLAYER_REVIEW_VERSION } from "./local-patch-player-review";
 import type { Prisma, TargetVariantAsset } from "@prisma/client";
 import type { Container } from "../container";
 import { isLocalPatchAdvisoryVersion, isLocalPatchAgeVersion, isLocalPatchStrictVersion, localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
@@ -11,7 +11,7 @@ import { PrismaRetainedPurchaseStore } from "../../infra/db/prisma-retained-purc
 import { sameChargeEvidence } from "./world-budget";
 import type { PaidRepairBatch } from "./local-patch-paid-repair";
 import { SELF_REPAIR_COMPOSITION_VERSION, SELF_REPAIR_VERSION, selfRepairDecisionSchema } from "../../domain/scene/local-patch-self-repair";
-import { NEIGHBOR_QUADRANTS } from "./local-patch-integration-evidence";
+import { NEIGHBOR_QUADRANTS, RETURN_EDGES } from "./local-patch-integration-evidence";
 
 export const LOCAL_PATCH_PUBLICATION_POLICY = "publish-with-visual-warnings/v1";
 export const LOCAL_PATCH_STRICT_PUBLICATION_POLICY = "publish-with-severe-quality-guard/v2";
@@ -167,7 +167,8 @@ function allowed(input: LocalPatchPublicationBinding): boolean {
   try {
     const receipt = JSON.parse(input.judgeJson ?? "null");
     const review = receipt?.boardReview;
-    const playerReview = review?.assessmentMode === PLAYER_REVIEW_MODE;
+    const boundaryReview = review?.assessmentMode === PLAYER_REVIEW_MODE;
+    const playerReview = boundaryReview || review?.assessmentMode === LEGACY_PLAYER_REVIEW_MODE;
     if (playerReview && (input.sceneVersion !== 12 || review.reviewScope !== "ready-only/v1"
       || review.reviewedHideIds?.length !== 1)) return false;
     let repairWireCount = input.sceneVersion === 12 ? 20 : 8;
@@ -178,10 +179,10 @@ function allowed(input: LocalPatchPublicationBinding): boolean {
       const boardId = /^([a-z]+)-v12-[123]$/.exec(input.hideId)?.[1];
       const board = boardId && localPatchBoardForVersion(boardId, 12);
       if (!board || ids.some(id => !board.hides.some(h => h.id === id))) return false;
-      const hideIds = ids as string[], parsed = parseLocalPatchBoardVerdicts(review.raw, hideIds, 12, review.reviewScope);
+      const hideIds = ids as string[], parsed = parseLocalPatchBoardVerdicts(review.raw, hideIds, 12, review.reviewScope, review.assessmentMode);
       if (!parsed[input.hideId] || !equalJson(parsed[input.hideId], receipt.verdict)) return false;
       const evidenceIds = [`${boardId}:original-board`, `${boardId}:canonical-portrait`,
-        ...hideIds.flatMap(id => [`${id}:before`, `${id}:after`, ...NEIGHBOR_QUADRANTS.map(q => `${id}:neighbors:${q}`)])];
+        ...hideIds.flatMap(id => [`${id}:before`, `${id}:after`, ...(boundaryReview ? RETURN_EDGES.map(edge => `${id}:return:${edge}`) : NEIGHBOR_QUADRANTS.map(q => `${id}:neighbors:${q}`))])];
       if (!equalJson(review.evidenceIds, evidenceIds) || review.imageLabels?.length !== evidenceIds.length) return false;
       repairWireCount = evidenceIds.length;
     }
@@ -195,7 +196,7 @@ function allowed(input: LocalPatchPublicationBinding): boolean {
     return receipt?.reviewState === "board-review-complete" && receipt.wireFault === null
       && receipt?.compositionVersion === compositionVersion
       && receipt?.boardReview?.compositionVersion === compositionVersion
-      && receipt?.boardReview?.version === (playerReview ? PLAYER_REVIEW_VERSION : isLocalPatchAgeVersion(input.sceneVersion) ? "local-patch-board-five-quality/v5-evidence-labeled" : "local-patch-board-five-quality/v3-head-safe")
+      && receipt?.boardReview?.version === (boundaryReview ? PLAYER_REVIEW_VERSION : playerReview ? LEGACY_PLAYER_REVIEW_VERSION : isLocalPatchAgeVersion(input.sceneVersion) ? "local-patch-board-five-quality/v5-evidence-labeled" : "local-patch-board-five-quality/v3-head-safe")
       && localPatchQualityDisposition(receipt.verdict, input.sceneVersion, { hideId: input.hideId }).state === "acceptable";
   } catch { return false; }
 }

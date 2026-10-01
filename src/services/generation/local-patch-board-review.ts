@@ -1,5 +1,5 @@
 import sharp from "sharp";
-import { prepareNeighborComparisons } from "./local-patch-integration-evidence";
+import { prepareNeighborComparisons, prepareBoundaryComparisons } from "./local-patch-integration-evidence";
 import type { Prisma, Asset, TargetVariantAsset } from "@prisma/client";
 import type { Container } from "../container";
 import { SpriteRefSchema } from "../../domain/game/config";
@@ -192,10 +192,11 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
     boardPng: await sharp(composed).resize(1536, 1024, { fit: "inside" }).png().toBuffer(),
     identityPng: references.judgeIdentityPng,
     hides: await Promise.all(requestEntries.map(async e => {
-      const left = Math.max(0, e.crop.left - LOCAL_PATCH_REVIEW_CONTEXT_PX), top = Math.max(0, e.crop.top - LOCAL_PATCH_REVIEW_CONTEXT_PX);
+      const padding = options.playerReview ? 192 : LOCAL_PATCH_REVIEW_CONTEXT_PX;
+      const left = Math.max(0, e.crop.left - padding), top = Math.max(0, e.crop.top - padding);
       const context = strict ? { left, top,
-        width: Math.min(meta.width!, e.crop.left + e.crop.width + LOCAL_PATCH_REVIEW_CONTEXT_PX) - left,
-        height: Math.min(meta.height!, e.crop.top + e.crop.height + LOCAL_PATCH_REVIEW_CONTEXT_PX) - top,
+        width: Math.min(meta.width!, e.crop.left + e.crop.width + padding) - left,
+        height: Math.min(meta.height!, e.crop.top + e.crop.height + padding) - top,
       } : e.crop;
       const beforePng = await sharp(before).extract(context).png().toBuffer();
       // Keep untouched pixels on both sides of the rectangle boundary visible.
@@ -225,8 +226,17 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
           { input: afterPng, left: 0, top: 0 }, { input: closeupPng, left: context.width + 24, top: 0 },
         ]).png().toBuffer();
       }
+      const receipt = JSON.parse(e.row.judgeJson!);
+      const mask = maskForHide(e.hide), guard = LOCAL_PATCH_RETURN_GUARD;
+      const returned = receipt.compositionVersion === SELF_REPAIR_COMPOSITION_VERSION
+        ? selfRepairDecisionSchema.parse(receipt.selfRepair.decision).returnWindow
+        : { left: Math.max(0, mask.left - guard), top: Math.max(0, mask.top - guard),
+          width: Math.min(e.crop.width, mask.left + mask.width + guard) - Math.max(0, mask.left - guard),
+          height: Math.min(e.crop.height, mask.top + mask.height + guard) - Math.max(0, mask.top - guard) };
       return { hideId: e.hide.id, beforePng, afterPng, ...(closeupPng && afterEvidencePng ? { closeupPng, afterEvidencePng } : {}),
-        ...(scene.sceneVersion === 12 ? { neighborComparisons: await prepareNeighborComparisons(beforePng, afterPng) } : {}),
+        ...(options.playerReview ? { boundaryComparisons: await prepareBoundaryComparisons(beforePng, afterPng,
+          { ...returned, left: e.crop.left - context.left + returned.left, top: e.crop.top - context.top + returned.top }) }
+          : scene.sceneVersion === 12 ? { neighborComparisons: await prepareNeighborComparisons(beforePng, afterPng) } : {}),
         expectation: { ageYears: child.ageYears, support: `${e.hide.pose} on ${board.ground}` } };
     })),
   };
@@ -341,7 +351,7 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
   }
   const keep = JSON.parse(bought.bytes.toString()) as { raw: string | null; wireFault: string | null; model: string | null; finishReason: string | null };
   const readable = !keep.wireFault && isTheModelWeAsked(keep.model, settings.model) && keep.finishReason === "stop";
-  const verdicts = parseLocalPatchBoardVerdicts(readable ? keep.raw : null, request.hides.map(h => h.hideId), scene.sceneVersion, request.reviewScope);
+  const verdicts = parseLocalPatchBoardVerdicts(readable ? keep.raw : null, request.hides.map(h => h.hideId), scene.sceneVersion, request.reviewScope, request.assessmentMode);
   const reviewedIds = new Set(request.hides.map(h => h.hideId));
   const committedEntries = entries.filter(e => protectedRows.has(e.row.id) || reviewedIds.has(e.hide.id));
   const dispositions = committedEntries.map(e => strict ? localPatchQualityDisposition(protectedRows.has(e.row.id)

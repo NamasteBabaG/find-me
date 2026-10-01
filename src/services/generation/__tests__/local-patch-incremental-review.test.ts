@@ -48,6 +48,7 @@ afterAll(async () => {
   if (path.dirname(directory) === realpathSync(tmpdir()) && path.basename(directory).startsWith("findme-incremental-review-")) rmSync(directory, { recursive: true });
 });
 const good = { ...PASSING_ANSWER, faceLikeness: "pass", faceReadable: "pass", severeSeam: "pass", ageAppropriate: "pass",
+  boundaryIntegrity: Object.fromEntries(["left", "top", "right", "bottom"].map(edge => [edge, { status: "pass", observation: "Continuous native heads, bodies and supports across this join" }])),
   lightingMatch: "pass", neighborsIntact: "pass", integrationEvidence: { style: "Painted contours match original faces",
     lighting: "Local scene shadows match", neighbors: "All four original neighbor quadrants preserved" } };
 async function seed(gameId: string, count = 1) {

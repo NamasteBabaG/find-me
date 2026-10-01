@@ -19,6 +19,7 @@ import { LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSIO
 import { LOCAL_PATCH_JUDGE, requestJudgeWire, isTheModelWeAsked, type LocalPatchJudgeResult } from "./local-patch-judge";
 import { recomputePaidPatchJoin } from "./local-patch-repair-compose";
 import { integrationDiagnosisPrompt } from "./local-patch-integration-diagnosis";
+import { PLAYER_REVIEW_MODE } from "./local-patch-player-review";
 import { localPatchPublicationGeometryHash } from "./local-patch-publication-policy";
 import { purchaseOnce } from "./paid-operation";
 import { sameChargeEvidence, type BudgetJson } from "./world-budget";
@@ -38,6 +39,8 @@ const stateSchema = z.object({ version: z.literal(SELF_REPAIR_VERSION), cycle: z
   // Absent on historical paid questions; pinned before dispatch on new cycles.
   excludedRegions: z.array(z.object({ left: z.number().int().nonnegative(), top: z.number().int().nonnegative(),
     width: z.number().int().positive(), height: z.number().int().positive() }).strict()).optional(),
+  // Frozen at cycle start. Historical paid diagnostic inputs remain unchanged.
+  boundaryContext: z.literal(true).optional(),
 }).strict();
 type State = z.infer<typeof stateSchema>;
 export type SelfRepairWire = { prompt: string; images: readonly Buffer[]; imageLabels: readonly string[];
@@ -98,6 +101,7 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
       decision: null, history, feedback: (state?.phase === "rejected" ? state.feedback : row.lastError ?? "Two completed attempts did not produce a publishable appearance").slice(0, 1200),
       sourceKeys: state?.sourceKeys ?? Array.from({ length: row.attempts }, (_, i) => `${hide.id}:${hide.pose}:render:${i + 1}`),
       ...(scene.sceneVersion === 12 ? { excludedRegions: selfRepairExcludedRegions(crop, board.hides.filter(h => h.id !== hide.id).map(cropOf)) } : {}),
+      ...(scene.sceneVersion === 12 && previous.boardReview?.assessmentMode === PLAYER_REVIEW_MODE ? { boundaryContext: true as const } : {}),
       imageCostCents: 0, diagnosisCostCents: 0 };
   }
   const active = state;
@@ -158,10 +162,22 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
       const asset = await c.db.asset.findUniqueOrThrow({ where: { id: row.assetId } });
       demand(asset.ownerId === game.ownerId && asset.providerRequestId === gameId && !asset.deletedAt, "Failed composition belongs to another game");
       images.push(await c.storage.get(asset.storagePath)); labels.push("FAILED SHIPPING COMPOSITION, 512x768: compare with RAW to locate clipping introduced by the compositor");
+      if (active.boundaryContext) {
+        const meta = await sharp(original).metadata();
+        const left = Math.max(0, crop.left - 192), top = Math.max(0, crop.top - 192);
+        const context = { left, top, width: Math.min(meta.width!, crop.left + crop.width + 192) - left,
+          height: Math.min(meta.height!, crop.top + crop.height + 192) - top };
+        const before = await sharp(original).extract(context).png().toBuffer();
+        const after = await sharp(before).composite([{ input: images.at(-1)!, left: crop.left - left, top: crop.top - top }]).png().toBuffer();
+        images.push(before, after);
+        labels.push("CONTINUOUS ORIGINAL player context beyond ALL crop edges, before this one hide",
+          "CONTINUOUS FAILED player context, original plus ONLY this shipping patch; follow crossing neighbours through their complete heads and bodies");
+      }
     }
     const prompt = scene.sceneVersion === 12 ? integrationDiagnosisPrompt({ ageYears: child.ageYears, pose: hide.pose,
       support: hide.placement?.support ?? board.ground, envelope: maskForHide(hide), sourceKeys: selected,
       excludedRegions: active.excludedRegions,
+      ...(active.boundaryContext ? { boundaryContext: true } : {}),
       feedback: { feedback: active.feedback, verdict: previous.verdict ?? null, seam: previous.seam ?? null }, history: active.history })
       : `Diagnose a personalized hidden-child game after repeated failures. Return a repair PLAN, never an approval. All rectangles use ORIGINAL crop coordinates, 512x768. `
       + `Child age=${child.ageYears}; pose=${hide.pose}; support=${board.ground}. Original editable envelope=${JSON.stringify(maskForHide(hide))}. `

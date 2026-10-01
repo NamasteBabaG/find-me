@@ -1,7 +1,15 @@
 import { env } from "../../lib/env";
 
-export const PLAYER_REVIEW_MODE = "player-visible-v2" as const;
-export const PLAYER_REVIEW_VERSION = "local-patch-board-quality/v6-player-visible";
+export const LEGACY_PLAYER_REVIEW_MODE = "player-visible-v2" as const;
+export const LEGACY_PLAYER_REVIEW_VERSION = "local-patch-board-quality/v6-player-visible";
+export const PLAYER_REVIEW_MODE = "player-visible-v3" as const;
+export const PLAYER_REVIEW_VERSION = "local-patch-board-quality/v7-continuous-boundaries";
+
+export const boundaryReviewInstructions = [
+  "Before the overall verdict inspect the FOUR RETURN_BOUNDARY comparisons, one continuous strip for each actual returned edge, LEFT=BEFORE and RIGHT=AFTER. Coordinates in labels identify the join within EACH panel; the outer evidence crop edge is not a game cut. Follow every intersecting head through its neck, shoulders, torso and visible hands on BOTH sides of that join. Never describe a whole crowd as intact without checking these connections.",
+  "A leftover HALF FACE beside another head, a repeated half torso, a head ending against a straight join, or the original half of a person joined to a different newly painted body FAILS even when the target child looks good and the seam's average colour matches. Natural occlusion needs a coherent foreground object covering the hidden part; a duplicated partial face is not a second person standing behind someone. Inspect the AFTER context to confirm the defect is visible in the actual game.",
+  "Clean complete removal or replacement of a bystander still PASSES. Do not enforce original crowd count, exact pose or microscopic paint matching. For EACH edge return boundaryIntegrity with status pass|fail|unsure and an observation identifying the crossing people/objects and their continuity. A clear broken connection must be fail; do not soften it to unsure. A boundary failure is a pictureWhole defect and triggers automatic repair; the engine never accepts an overall pass that contradicts it.",
+].join("\n");
 
 export function playerReviewEnabled(): boolean {
   const settings = env();
