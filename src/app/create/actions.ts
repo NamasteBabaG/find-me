@@ -1,4 +1,5 @@
 "use server";
+import { LEGAL_VERSION } from "@/domain/legal";
 
 import { redirect } from "next/navigation";
 import { requireQaAccess } from "@/lib/server/qa-access";
@@ -96,10 +97,13 @@ export async function checkoutAction(_prev: ActionResult | null, formData: FormD
   if (!rateLimit(`checkout-draft:${draft.id}`, LIMITS.checkout.limit, LIMITS.checkout.windowMs).ok) {
     return flowError("TOO_MANY_REQUESTS", "יותר מדי ניסיונות. נסו שוב בעוד כמה דקות.");
   }
+  if (formData.get("legalAccepted") !== "1" || formData.get("legalVersion") !== LEGAL_VERSION) {
+    return flowError("TERMS_REQUIRED", "יש לאשר את תנאי השימוש ומדיניות הביטול לפני התשלום.");
+  }
   const email = String(formData.get("email") ?? "");
   const currency = await getCurrency();
   const [draftToken, user] = await Promise.all([draftTokenFromCookie(), currentUser()]);
-  const res = await guardDb(() => startCheckout(c, { gameId: draft.id, email, currency, access: { draftToken, userId: user?.id ?? null } }));
+  const res = await guardDb(() => startCheckout(c, { gameId: draft.id, email, currency, access: { draftToken, userId: user?.id ?? null }, legalVersion: LEGAL_VERSION }));
   if (!res.ok) return res;
   redirect(res.checkoutUrl);
 }

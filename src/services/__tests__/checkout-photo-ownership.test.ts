@@ -12,6 +12,7 @@ import { createDraft, setChildName, attachPhoto, selectPackage } from "../create
 import { startCheckout, handlePaymentWebhook } from "../order.service";
 import * as auth from "../auth.service";
 import { deleteGame } from "../game.service";
+import { LEGAL_VERSION } from "@/domain/legal";
 
 vi.mock("../../lib/env", () => ({ env: () => ({ APP_ENV: "qa" }), spendGuard: () => ({ appEnv: "qa", realGeneration: false, testers: [] }) }));
 vi.mock("../../domain/spend-policy", () => ({ spendAllowedFor: () => true }));
@@ -51,6 +52,20 @@ async function unchangedOwners(f: Awaited<ReturnType<typeof fixture>>) {
 }
 
 describe("checkout adopts only its proven draft's private child photo", () => {
+  it("records current terms against the exact priced order before opening payment", async () => {
+    const f = await fixture();
+    const result = await startCheckout(f.c, { ...f.input, legalVersion: LEGAL_VERSION });
+    expect(result.ok).toBe(true);
+    const order = await db.order.findFirstOrThrow({ where: { gameId: f.game.id } });
+    const accepted = await db.auditLog.findFirstOrThrow({ where: { action: "checkout:terms-accepted", entityType: "Order", entityId: order.id } });
+    expect(JSON.parse(accepted.metaJson!)).toMatchObject({ version: LEGAL_VERSION, gameId: f.game.id, amountAgorot: order.amountAgorot, currency: order.currency });
+    expect(accepted.actorId).toBe(order.userId);
+  });
+  it("stale policy acceptance leaves account, asset ownership and payment untouched", async () => {
+    const f = await fixture();
+    expect(await startCheckout(f.c, { ...f.input, legalVersion: "previous" })).toMatchObject({ ok: false, code: "TERMS_REQUIRED" });
+    await unchangedOwners(f);
+  });
   it("supports anonymous draft → real upload → checkout → mock payment → fenced QA deletion", async () => {
     const f = await fixture(); expect(f.asset.ownerId).toBeNull();
     const result = await startCheckout(f.c, f.input); expect(result.ok).toBe(true); if (!result.ok) throw new Error("Synthetic checkout failed");

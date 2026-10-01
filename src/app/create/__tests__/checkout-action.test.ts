@@ -10,6 +10,7 @@ vi.mock("@/services/create-flow.service", () => ({ draftBelongsTo: () => true, l
 vi.mock("@/services/order.service", () => ({ startCheckout: f.checkout }));
 vi.mock("@/lib/server/db-guard", () => ({ guardDb: (run: () => unknown) => run() }));
 import { checkoutAction } from "../actions";
+import { LEGAL_VERSION } from "@/domain/legal";
 beforeEach(() => {
   vi.clearAllMocks(); f.limit.mockReturnValue({ ok: true });
   f.container.mockReturnValue({ db: { game: { findUnique: async () => ({ status: "PACKAGE_SELECTED" }) } } });
@@ -27,8 +28,15 @@ describe("checkout server action rate gates", () => {
     expect(f.limit).toHaveBeenLastCalledWith("checkout-draft:draft", 10, 600000); expect(f.checkout).not.toHaveBeenCalled();
   });
   it("preserves normal checkout", async () => {
-    await expect(checkoutAction(null, new FormData())).rejects.toThrow("REDIRECT:/checkout/synthetic");
+    const form = new FormData(); form.set("legalAccepted", "1"); form.set("legalVersion", LEGAL_VERSION);
+    await expect(checkoutAction(null, form)).rejects.toThrow("REDIRECT:/checkout/synthetic");
     expect(f.checkout).toHaveBeenCalledOnce();
     expect(f.limit).toHaveBeenNthCalledWith(1, "checkout:192.0.2.1", 10, 600000);
+  });
+  it.each(["missing", "stale"])("rejects %s terms acceptance before any payment", async kind => {
+    const form = new FormData();
+    if (kind === "stale") { form.set("legalAccepted", "1"); form.set("legalVersion", "previous"); }
+    expect(await checkoutAction(null, form)).toMatchObject({ ok: false, code: "TERMS_REQUIRED" });
+    expect(f.checkout).not.toHaveBeenCalled();
   });
 });

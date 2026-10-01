@@ -6,6 +6,8 @@ import { navigateToSavedStep } from "../saved-step-navigation";
 import { Notice } from "@/ui/primitives";
 import { useI18n } from "@/i18n/client";
 import { errorText } from "@/i18n/errors";
+import Link from "next/link";
+import { serviceCopy } from "@/domain/legal";
 
 interface Props {
   childName: string;
@@ -77,7 +79,7 @@ async function faceBox(image: HTMLImageElement): Promise<{ x: number; y: number;
 }
 
 export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/api/drafts/photo", nextHref = "/create/package" }: Props) {
-  const { t, tf } = useI18n();
+  const { t, tf, locale } = useI18n();
   const p = t.create.photo;
   // A guarded future step must not be prefetched before this photo exists.
   // Upload is a Route Handler mutation, not a cache-invalidating Server Action.
@@ -227,6 +229,8 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/
     // The tick is the product's own: a sun-filled rounded box, not the
     // operating system's blue square, which was the one foreign thing on the
     // screen. The whole label is the target.
+    <div className="fm-stack fm-stack--2">
+    <p className="fm-hint">{serviceCopy[locale].photoNotice} <Link href="/privacy">{serviceCopy[locale].privacy}</Link> · <Link href="/support">{serviceCopy[locale].support}</Link></p>
     <label className="uploader__consent">
       <input type="checkbox" name="consent" checked={consent} onChange={(e) => setConsent(e.target.checked)} required />
       <span className="uploader__tick" aria-hidden>
@@ -234,6 +238,7 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/
       </span>
       <span>{p.consent}</span>
     </label>
+    </div>
   );
 
   return (

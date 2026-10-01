@@ -4,6 +4,7 @@ import { deleteAsset } from "./asset.service";
 import { statusOf, transitionGame } from "./game-status";
 import { SYSTEM, audit } from "./audit.service";
 import { removeRenderEvidence } from "./generation/render-evidence";
+import { purgeSupportContent } from "./support.service";
 
 /**
  * How long each kind of thing lives, and what happens when it has lived too long.
@@ -106,6 +107,7 @@ export async function runRetention(c: Container, now = new Date(), days: Retenti
     report.stuckToReview++;
   }
 
+  await purgeSupportContent(c.db, now);
   await audit(c, SYSTEM, "retention:run", "System", "retention", { ...report });
   return report;
 }

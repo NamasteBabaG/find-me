@@ -198,7 +198,8 @@ a.fm-btn[aria-disabled="true"] { pointer-events: none; }
 .fm-lang__item.is-active { background: var(--sun-soft, #fff3c4); color: var(--ink); }
 .fm-lang__item .fm-lang__code { margin-inline-start: auto; font-weight: 600; color: var(--ink-3, #6f6e86); }
 .fm-footer { padding-block: var(--space-10) var(--space-6); color: var(--ink-3); font-size: var(--fs-100); line-height: var(--lh-100); }
-.fm-footer__grid { display: grid; gap: var(--space-6); grid-template-columns: 2fr 1fr 1fr; padding-bottom: var(--space-6); border-bottom: 1px solid var(--line); }
+.fm-footer__grid { display: grid; gap: var(--space-6); grid-template-columns: 1.6fr 1fr 1fr 1.4fr; padding-bottom: var(--space-6); border-bottom: 1px solid var(--line); }
+@media (min-width: 721px) and (max-width: 1000px) { .fm-footer__grid { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 720px) { .fm-footer__grid { grid-template-columns: 1fr; } }
 .fm-footer__col { display: flex; flex-direction: column; gap: var(--space-1); }
 .fm-footer__col a { color: var(--ink-2); text-decoration: none; min-height: var(--touch-min); display: inline-flex; align-items: center; }

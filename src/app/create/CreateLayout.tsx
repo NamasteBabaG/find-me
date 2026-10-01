@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { getI18n } from "@/i18n/server";
 import { tf } from "@/i18n";
-import { SiteHeader, Stepper } from "@/ui/Shell";
+import { SiteHeader, SiteFooter, Stepper } from "@/ui/Shell";
 import { ScrollToTop } from "./ScrollToTop";
 
 /**
@@ -25,6 +25,7 @@ export async function CreateFrame({ step, title, lead, user, isAdmin, width = "n
         </div>
         {children}
       </main>
+      <SiteFooter />
     </>
   );
 }

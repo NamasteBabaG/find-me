@@ -29,6 +29,7 @@ export type FlowErrorCode =
   | "PHOTO_TOO_LARGE"
   | "UPLOAD_FAILED"
   | "CONSENT_REQUIRED"
+  | "TERMS_REQUIRED"
   | "SERVICE_UNAVAILABLE"
   | "TOO_MANY_REQUESTS";
 

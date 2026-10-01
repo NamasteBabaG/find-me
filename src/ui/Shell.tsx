@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { isDev } from "@/lib/env";
 import { getI18n } from "@/i18n/server";
 import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
+import { serviceCopy } from "@/domain/legal";
 
 /** The account mark: a head and shoulders, in the toolbar's stroke language. */
 function AccountMark() {
@@ -53,7 +54,8 @@ export async function SiteHeader({ user, isAdmin, clear = false }: { user: { ema
 }
 
 export async function SiteFooter() {
-  const { t } = await getI18n();
+  const { t, locale } = await getI18n();
+  const service = serviceCopy[locale];
   return (
     <footer className="fm-footer">
       <div className="fm-container">
@@ -77,7 +79,6 @@ export async function SiteFooter() {
           <div className="fm-footer__col">
             <span className="fm-footer__title">{t.footer.account}</span>
             <Link href="/family">{t.common.myGames}</Link>
-            <Link href="/#trust">{t.footer.privacy}</Link>
             {/* Developer pages: /dev/outbox is 404 in production and the design system is not for visitors. */}
             {isDev() ? (
               <>
@@ -85,6 +86,14 @@ export async function SiteFooter() {
                 <Link href="/dev/outbox">{t.footer.outbox}</Link>
               </>
             ) : null}
+          </div>
+          <div className="fm-footer__col">
+            <span className="fm-footer__title">{service.navigation}</span>
+            <Link href="/support">{service.support}</Link>
+            <Link href="/privacy">{service.privacy}</Link>
+            <Link href="/terms">{service.terms}</Link>
+            <Link href="/cancellation">{service.cancellation}</Link>
+            <Link href="/accessibility">{service.accessibility}</Link>
           </div>
         </div>
         <div className="fm-footer__bottom">

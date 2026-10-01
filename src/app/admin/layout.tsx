@@ -29,6 +29,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <Link href="/admin/orders">הזמנות</Link>
           <Link href="/admin/scenes">עולמות</Link>
           <Link href="/admin/costs">עלויות</Link>
+          <Link href="/admin/support">פניות שירות</Link>
         </nav>
         {children}
       </main>

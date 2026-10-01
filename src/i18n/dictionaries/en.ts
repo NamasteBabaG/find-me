@@ -689,6 +689,7 @@ export const en = {
     SERVICE_UNAVAILABLE: "New games cannot be created right now. You can play the demo and try creating a game later.",
     TOO_MANY_REQUESTS: "Please wait before another attempt. Try again in a few minutes.",
     CONSENT_REQUIRED: "Please confirm you're the parent or guardian, or have permission to upload this photo.",
+    TERMS_REQUIRED: "Please accept the terms of use and cancellation policy before payment.",
   } as Record<string, string>,
   email: {
     magic: {

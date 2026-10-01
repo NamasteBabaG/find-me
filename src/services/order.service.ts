@@ -1,4 +1,5 @@
 import { newId } from "@/lib/ids";
+import { LEGAL_VERSION } from "@/domain/legal";
 import { Prisma } from "@prisma/client";
 import { boardsFor, PACKAGES, isPackageTier, isCurrency, priceFor } from "@/domain/package";
 import { type Currency, pick, type Locale } from "@/i18n/config";
@@ -23,7 +24,8 @@ export type CheckoutDraftAccess = { draftToken: string | null; userId: string | 
 class CheckoutDraftConflict extends Error {}
 function requireCheckoutDraft(ok: unknown): asserts ok { if (!ok) throw new CheckoutDraftConflict("Checkout draft ownership or photo changed"); }
 
-export async function startCheckout(c: Container, input: { gameId: string; email: string; currency: Currency; access: CheckoutDraftAccess }): Promise<{ ok: true; checkoutUrl: string; userId: string } | FlowError> {
+export async function startCheckout(c: Container, input: { gameId: string; email: string; currency: Currency; access: CheckoutDraftAccess; legalVersion?: string }): Promise<{ ok: true; checkoutUrl: string; userId: string } | FlowError> {
+  if (input.legalVersion !== undefined && input.legalVersion !== LEGAL_VERSION) return flowError("TERMS_REQUIRED", "יש לאשר את הנוסח העדכני לפני התשלום.");
   // Server callers must resolve geography explicitly. Never infer money from
   // the child's game language, and fail before side effects on invalid input.
   if (!isCurrency(input.currency)) throw new Error("Checkout requires a server-resolved currency");
@@ -99,6 +101,8 @@ export async function startCheckout(c: Container, input: { gameId: string; email
     });
   }
 
+  if (input.legalVersion) await audit(c, { type: "USER", id: user.id }, "checkout:terms-accepted", "Order", order.id,
+    { version: input.legalVersion, locale, gameId: game.id, amountAgorot: order.amountAgorot, currency: order.currency });
   const session = await c.payment.createCheckout({
     orderId: order.id,
     amountAgorot: order.amountAgorot,

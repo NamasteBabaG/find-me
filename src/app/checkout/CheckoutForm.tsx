@@ -6,9 +6,12 @@ import { Notice } from "@/ui/primitives";
 import { useI18n } from "@/i18n/client";
 import { errorText } from "@/i18n/errors";
 import { checkoutAction, type ActionResult } from "../create/actions";
+import Link from "next/link";
+import { LEGAL_VERSION, serviceCopy } from "@/domain/legal";
 
 export function CheckoutForm({ defaultEmail, priceLabel, outcome, backHref, automaticPublication = false }: { defaultEmail: string; priceLabel: string; outcome: "declined" | "cancelled" | null; backHref: "/create/scenes" | "/create/package"; automaticPublication?: boolean }) {
-  const { t, tf } = useI18n();
+  const { t, tf, locale } = useI18n();
+  const legal = serviceCopy[locale];
   const ck = t.create.checkout;
   const [state, action, pending] = useActionState<ActionResult | null, FormData>(checkoutAction, null);
   return (
@@ -22,7 +25,11 @@ export function CheckoutForm({ defaultEmail, priceLabel, outcome, backHref, auto
         <p className="fm-hint">{ck.emailHint}</p>
         {state && !state.ok ? <p className="fm-error">{errorText(t, state)}</p> : null}
       </div>
-      <div className="create__actions create__actions--sticky create__actions--single">
+      <p className="fm-hint">{legal.checkoutNotice} <Link href="/cancellation">{legal.cancellation}</Link></p>
+      <input type="hidden" name="legalVersion" value={LEGAL_VERSION} />
+      <label className="service-acceptance"><input type="checkbox" name="legalAccepted" value="1" required /><span>{legal.acceptance}</span></label>
+      <p className="fm-hint"><Link href="/terms">{legal.terms}</Link> · <Link href="/privacy">{legal.privacy}</Link> · <Link href="/support">{legal.support}</Link></p>
+      <div className="create__actions create__actions--single">
         <Button type="submit" size="lg" block loading={pending} className="summary__pay">
           {pending ? ck.openingPayment : tf(ck.pay, { price: priceLabel })}
         </Button>
