@@ -5,8 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { allWorlds } from "../../../content/worlds";
 import { boardSlugs } from "@/domain/world";
 import { composeWorld } from "@/domain/game/compose";
-import type { GameConfig, PlayWorld } from "@/domain/game/config";
-import { emptyProgress, recordSceneCompleted, type GameProgress } from "@/domain/game/progress";
+import type { GameConfig, PlayWorld, SceneConfig } from "@/domain/game/config";
+import { adoptFinds, emptyProgress, recordSceneCompleted, type GameProgress } from "@/domain/game/progress";
 import { getDict, tf, type Locale } from "@/i18n";
 import { buildDemoConfig } from "@/services/demo";
 import { WorldMap } from "../components/WorldMap";
@@ -53,7 +53,9 @@ describe("a finished world's map", () => {
       expect(view.container.querySelector(".wmap__skip")).toBeNull();
       expect(view.container.querySelectorAll(".wmap__node--completed")).toHaveLength(9);
       expect(view.container.querySelectorAll('[aria-current="step"]')).toHaveLength(0);
-      for (const node of view.container.querySelectorAll(".wmap__dot")) expect(node.getAttribute("aria-disabled")).toBeNull();
+      const places = view.container.querySelectorAll(".wmap__place");
+      expect(places).toHaveLength(9);
+      for (const node of places) expect(node.getAttribute("aria-disabled")).toBeNull();
       cleanup();
     }
   });
@@ -72,6 +74,19 @@ describe("a finished world's map", () => {
     const view = mount(config, finish(config, boardSlugs(world).slice(0, done)));
     expect(view.queryByRole("region", { name: world.completion.title })).toBeNull();
     expect(view.container.querySelector(".wmap__go")?.textContent).toContain(config.scenes[done]!.name);
+  });
+
+  it("counts the stars already found at the next place instead of calling all of them waiting", () => {
+    // Only a find-any board can be part-found; the demo boards are sequential, so the first one is made find-any.
+    const base = fixture(); const first = base.scenes[0]!; const g = getDict(base.locale).game;
+    expect(first.targets).toHaveLength(3);
+    const scene: SceneConfig = { ...first, playMode: "find-any", appearancesPerBoard: 3, findsRequiredToAdvance: 3 };
+    const config: GameConfig = { ...base, scenes: [scene, ...base.scenes.slice(1)] };
+    const two = scene.targets.slice(0, 2).map(t => ({ boardSlug: scene.slug, targetId: t.id, variant: "A" as const }));
+    const view = mount(config, adoptFinds(emptyProgress(config.gameId), config, two).progress);
+    const go = view.container.querySelector(".wmap__go")!.textContent!;
+    expect(go).toContain(tf(g.stars.tray, { earned: 2, total: scene.targets.length }));
+    expect(go).not.toContain(tf(g.stars.here, { total: scene.targets.length }));
   });
 
   it("does not mistake nine completions elsewhere, or a global timestamp, for this world's completion", () => {

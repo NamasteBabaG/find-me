@@ -474,7 +474,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
         {store.demo ? (
           <span />
         ) : (
-          <button type="button" className="scene__btn" onClick={onBack} aria-label={g.scene.backToMap}>
+          <button type="button" className="scene__btn" onClick={() => onBack()} aria-label={g.scene.backToMap}>
             <ToolIcon name="map" />
           </button>
         )}

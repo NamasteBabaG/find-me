@@ -1,5 +1,229 @@
-.family-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 24px; }
-.family-child { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; }
-.family-child__portrait { width: 96px; height: 96px; object-fit: contain; }
-.family-child__initial { width: 80px; height: 80px; display: grid; place-items: center; border-radius: 50%; background: var(--color-primary, #ffcc45); font-size: 2rem; font-weight: 800; }
-.family-child .fm-btn { margin-block-start: auto; }
+/* ─── The family area ───────────────────────────────────────────────────────
+   Where a parent finds each child's adventures. Two objects carry it, both
+   taken from the game itself: the child's map with the child standing where
+   they are (the same picture, the same sticker, the same place label as the
+   map in the game), and the passport as the small bound book it is. Every
+   other element stays quiet: one way in per adventure, plain words, no labels
+   above labels. Tokens only; adult controls are at least --touch-min. */
+
+.family { display: flex; flex-direction: column; gap: var(--space-4); padding-block: var(--space-6) var(--space-12); }
+
+/* A way back, as an adult control: a full touch height, quiet until pointed at. */
+.family-back, .family-manage {
+  display: inline-flex; align-items: center; gap: var(--space-1); min-height: var(--touch-min);
+  padding-inline: var(--space-2); border-radius: var(--radius-pill);
+  color: var(--ink-2); font-weight: 700; text-decoration: none;
+  transition: background var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out);
+}
+.family-back { align-self: flex-start; margin-inline-start: calc(var(--space-2) * -1); margin-block-end: calc(var(--space-2) * -1); }
+.family-back:hover, .family-manage:hover { background: var(--paper-2); color: var(--ink); }
+
+.family-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
+.family-head h1, .family-head p { margin: 0; }
+
+/* The child, by name. The sticker is the one they play as. */
+.family-hero { display: flex; align-items: center; gap: var(--space-3); }
+.family-hero h1 { margin: 0; font-size: var(--fs-800); line-height: var(--lh-800); letter-spacing: -0.02em; overflow-wrap: anywhere; }
+.family-sticker { flex-shrink: 0; width: var(--space-8); height: var(--space-8); }
+.family-hero__sticker { width: var(--space-12); height: var(--space-12); }
+.family-sticker--initial {
+  display: grid; place-items: center; border-radius: var(--radius-pill);
+  background: var(--sun); color: var(--ink); font-weight: 900; font-size: var(--fs-500);
+  box-shadow: var(--sticker-outline), var(--shadow-sticker);
+}
+.family-hero__sticker.family-sticker--initial { font-size: var(--fs-700); }
+
+/* ─── The child's page: adventures beside the passport ─────────────────── */
+.family-desk { display: grid; gap: var(--space-4); align-items: start; }
+.family-desk__main, .family-desk__side { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+@media (min-width: 960px) {
+  .family-desk { grid-template-columns: minmax(0, 1fr) 352px; gap: var(--space-6); }
+  .family-desk__side { position: sticky; top: var(--space-4); }
+}
+
+.adventure { background: var(--white); border-radius: var(--radius-4); box-shadow: var(--shadow-1); overflow: hidden; }
+.adventure__map { display: block; }
+.adventure__body { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4) var(--space-4); }
+.adventure__body h2 { margin: 0; font-size: var(--fs-500); line-height: var(--lh-500); }
+.adventure__title { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
+.adventure__progress { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin: 0; color: var(--ink-2); font-size: var(--fs-100); line-height: var(--lh-100); font-weight: 700; }
+.adventure__actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-block-start: var(--space-1); }
+.adventure__worlds { display: flex; flex-wrap: wrap; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
+.adventure__worlds li {
+  padding: var(--space-0-5) var(--space-2); border-radius: var(--radius-pill);
+  background: var(--paper-2); color: var(--ink-2); font-size: var(--fs-100); line-height: var(--lh-100); font-weight: 700;
+}
+.adventure__worlds li.is-current { background: var(--sun-soft); color: var(--ink); }
+.adventure__worlds li.is-done::before { content: "✓"; margin-inline-end: var(--space-0-5); color: var(--leaf-deep); }
+/* Being made: the child waits on blank paper, no map yet. */
+.adventure__wait {
+  display: grid; place-items: center; height: var(--space-20);
+  background: repeating-linear-gradient(135deg, var(--paper-2) 0 var(--space-2), var(--paper) var(--space-2) var(--space-4));
+}
+/* Wide enough, the map and its words sit side by side, so the way in is on screen with the map. */
+.family-desk__main { container-type: inline-size; }
+@container (min-width: 720px) {
+  .adventure { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
+  .adventure__map, .adventure .glimpse, .adventure__wait { height: 100%; }
+  .adventure .glimpse { min-height: 100%; }
+  .adventure__body { justify-content: center; padding: var(--space-4); }
+  .adventure__actions { flex-direction: column; align-items: stretch; }
+  .adventure__actions .family-manage { justify-content: center; }
+}
+
+/* ─── The map, with the child on it ─────────────────────────────────────── */
+.glimpse { position: relative; aspect-ratio: 3 / 2; overflow: hidden; background: var(--sea-soft); }
+.glimpse__map { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* Anchored by the place label's middle, like the game's marker. Kept clear of the edges so a place near the
+   rim of the map still shows its child whole. */
+.glimpse__here {
+  position: absolute; display: flex; flex-direction: column; align-items: center; gap: var(--space-0-5);
+  left: clamp(var(--space-8), var(--x), calc(100% - var(--space-8)));
+  top: clamp(var(--space-10), var(--y), calc(100% - var(--space-2)));
+  transform: translate(-50%, calc(-100% + var(--space-2)));
+  pointer-events: none;
+}
+.glimpse__sticker { width: var(--space-8); height: var(--space-8); animation: family-here 2400ms var(--ease-out) 600ms 3 both; }
+.glimpse__place {
+  padding: var(--space-0-5) var(--space-2); border-radius: var(--radius-pill);
+  background: var(--sun); color: var(--ink); font-weight: 800; font-size: var(--fs-100); line-height: var(--lh-100); white-space: nowrap;
+  box-shadow: 0 0 0 2px var(--white), var(--shadow-sticker);
+}
+/* "Here": a slow ring that leaves the sticker, three times, and then is still. */
+@keyframes family-here {
+  0% { box-shadow: var(--sticker-outline), var(--shadow-sticker), 0 0 0 var(--space-0-5) color-mix(in srgb, var(--sun) 80%, transparent); }
+  70%, 100% { box-shadow: var(--sticker-outline), var(--shadow-sticker), 0 0 0 var(--space-3) color-mix(in srgb, var(--sun) 0%, transparent); }
+}
+
+/* One mark per place, as the route on the map: stamped places in the passport's "found" green, the child's
+   place in the map's sun, the rest still paper. */
+.route { display: inline-flex; flex-wrap: wrap; gap: var(--space-0-5); }
+.route__mark { width: var(--space-2); height: var(--space-2); border-radius: var(--radius-pill); background: var(--paper-3); }
+.route__mark--stamped { background: var(--leaf); }
+.route__mark--here { background: var(--sun); box-shadow: inset 0 0 0 2px var(--sun-deep); }
+
+/* Gold stars, as the game counts them. */
+.tally {
+  display: inline-flex; align-items: center; gap: var(--space-0-5); white-space: nowrap;
+  padding: var(--space-0-5) var(--space-2); border-radius: var(--radius-pill);
+  background: var(--gold-soft); color: var(--ink); font-weight: 800; font-size: var(--fs-100); line-height: var(--lh-100);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gold) 60%, transparent);
+}
+.tally__star {
+  width: var(--space-2); height: var(--space-2); background: var(--grad-gold);
+  clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+}
+.tally__total { color: var(--ink-3); font-weight: 700; }
+
+/* ─── The passport: the same board, foil and keyline as the book itself ── */
+.family-passport {
+  position: relative; isolation: isolate; display: flex; flex-direction: column; align-items: center; gap: var(--space-1);
+  padding: var(--space-5) var(--space-4);
+  border-radius: var(--radius-2) var(--radius-3) var(--radius-3) var(--radius-2);
+  border-inline-start: var(--space-1) solid color-mix(in srgb, var(--night) 72%, #000);
+  background:
+    radial-gradient(ellipse at 72% 12%, color-mix(in srgb, var(--white) 14%, transparent), transparent 62%),
+    repeating-linear-gradient(45deg, color-mix(in srgb, var(--white) 4%, transparent) 0 1px, transparent 1px 5px),
+    repeating-linear-gradient(-45deg, color-mix(in srgb, #000 10%, transparent) 0 1px, transparent 1px 5px),
+    var(--night);
+  color: var(--gold-light); text-align: center; text-decoration: none;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--gold-light) 22%, transparent),
+    var(--space-0-5) var(--space-0-5) 0 var(--paper-2),
+    6px 6px 0 var(--paper-3),
+    10px 10px 0 color-mix(in srgb, var(--night) 72%, #000),
+    var(--shadow-2);
+  transition: transform var(--dur-2) var(--ease-out);
+}
+[dir="rtl"] .family-passport { border-radius: var(--radius-3) var(--radius-2) var(--radius-2) var(--radius-3); }
+.family-passport::before {
+  content: ""; position: absolute; inset: var(--space-2); z-index: -1; pointer-events: none;
+  border: 1px solid color-mix(in srgb, var(--gold-light) 38%, transparent); border-radius: var(--radius-1);
+}
+.family-passport:hover { transform: translateY(calc(var(--space-0-5) * -1)); }
+.family-passport:focus-visible { outline: 3px solid var(--sun); outline-offset: 4px; }
+.family-passport__crest {
+  display: grid; place-items: center; width: var(--space-5); height: var(--space-5); margin-block-end: var(--space-1);
+  border: 1px solid color-mix(in srgb, var(--gold-light) 60%, transparent); border-radius: var(--radius-pill); font-size: var(--fs-300);
+}
+.family-passport__title { font-weight: 900; font-size: var(--fs-400); line-height: var(--lh-400); letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.family-passport__count { font-size: var(--fs-100); line-height: var(--lh-100); font-weight: 700; opacity: 0.86; }
+.family-passport__open {
+  display: inline-flex; align-items: center; min-height: var(--touch-min); margin-block-start: var(--space-2); padding-inline: var(--space-3);
+  border-radius: var(--radius-pill); background: var(--sun); color: var(--ink); font-weight: 800;
+  box-shadow: 0 4px 0 var(--gold-edge);
+}
+
+.family-more { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); padding: var(--space-3); border: 2px dashed var(--ink-4); border-radius: var(--radius-4); }
+.family-more p { margin: 0; color: var(--ink-2); font-size: var(--fs-100); line-height: var(--lh-100); }
+
+/* ─── The family shelf: one card per child ──────────────────────────────── */
+.family-shelf { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 352px), 1fr)); gap: var(--space-4); margin: 0; padding: 0; list-style: none; }
+.kid {
+  display: flex; flex-direction: column; height: 100%; overflow: hidden;
+  background: var(--white); border-radius: var(--radius-4); box-shadow: var(--shadow-1);
+  color: inherit; text-decoration: none;
+  transition: transform var(--dur-2) var(--ease-out), box-shadow var(--dur-2) var(--ease-out);
+}
+.kid:hover { transform: translateY(calc(var(--space-0-5) * -1)); box-shadow: var(--shadow-2); }
+.kid__wait {
+  display: grid; place-items: center; aspect-ratio: 3 / 2;
+  background: repeating-linear-gradient(135deg, var(--paper-2) 0 var(--space-2), var(--paper) var(--space-2) var(--space-4));
+}
+.kid__wait .family-sticker { width: var(--space-12); height: var(--space-12); }
+.kid__body { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-0-5) var(--space-2); padding: var(--space-3) var(--space-4) var(--space-4); }
+.kid__name { grid-column: 1; margin: 0; font-size: var(--fs-500); line-height: var(--lh-500); overflow-wrap: anywhere; }
+.kid__line { grid-column: 1; color: var(--ink-2); font-weight: 700; }
+.kid__progress { grid-column: 1; display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; color: var(--ink-3); font-size: var(--fs-100); line-height: var(--lh-100); font-weight: 700; }
+.kid__go {
+  grid-column: 2; grid-row: 1 / span 3; display: grid; place-items: center;
+  width: var(--touch-min); height: var(--touch-min); border-radius: var(--radius-pill);
+  background: var(--sun); color: var(--ink); font-size: var(--fs-300);
+  transition: box-shadow var(--dur-2) var(--ease-out);
+}
+.kid:hover .kid__go { box-shadow: var(--shadow-glow-sun); }
+
+/* Room for another child: an open place on the shelf, not another card. */
+.family-add {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2);
+  height: 100%; min-height: var(--space-20); padding: var(--space-4); border-radius: var(--radius-4);
+  color: var(--ink-2); font-weight: 800; text-align: center; text-decoration: none;
+  transition: background var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out);
+}
+.family-add:hover { background: var(--paper-2); color: var(--ink); }
+.family-add__plus {
+  display: grid; place-items: center; width: var(--space-10); height: var(--space-10); border-radius: var(--radius-pill);
+  border: 2px dashed var(--ink-4); color: var(--ink-2); font-size: var(--fs-600); font-weight: 400; line-height: 1;
+  transition: border-color var(--dur-1) var(--ease-out), background var(--dur-1) var(--ease-out);
+}
+.family-add:hover .family-add__plus { border-color: var(--ink-3); background: var(--white); }
+
+.family-empty { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); padding: var(--space-6); background: var(--white); border-radius: var(--radius-4); box-shadow: var(--shadow-1); }
+.family-empty h2, .family-empty p { margin: 0; }
+
+.family-drafts { display: flex; flex-direction: column; gap: var(--space-2); }
+.family-drafts h2 { margin: 0; font-size: var(--fs-400); line-height: var(--lh-400); }
+.family-draft { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; padding: var(--space-2) var(--space-3); background: var(--white); border-radius: var(--radius-3); box-shadow: var(--shadow-1); }
+
+/* ─── Phones ──────────────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .family { gap: var(--space-3); padding-block: var(--space-4) var(--space-10); }
+  /* Under the title on a phone, sign-out lines up with it instead of floating in its own padding. */
+  .family-head .fm-btn--ghost { padding-inline: 0; }
+  .family-hero { gap: var(--space-2); }
+  .family-hero__sticker { width: var(--space-8); height: var(--space-8); }
+  .family-hero__sticker.family-sticker--initial { font-size: var(--fs-500); }
+  .adventure__body, .kid__body { padding: var(--space-2) var(--space-3) var(--space-3); }
+  .adventure__actions .fm-btn { flex: 1 1 100%; }
+  .adventure__actions .family-manage { margin-inline: auto; }
+  .glimpse__here { left: clamp(var(--space-6), var(--x), calc(100% - var(--space-6))); top: clamp(var(--space-8), var(--y), calc(100% - var(--space-2))); }
+  .glimpse__sticker { width: var(--space-6); height: var(--space-6); }
+  .glimpse__place { font-size: var(--fs-50); line-height: var(--lh-50); }
+  .family-passport { padding: var(--space-4) var(--space-3); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glimpse__sticker { animation: none; }
+  .kid, .family-passport, .family-back, .family-manage, .family-add, .kid__go { transition: none; }
+  .kid:hover, .family-passport:hover { transform: none; }
+}

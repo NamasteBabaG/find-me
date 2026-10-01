@@ -8,7 +8,7 @@ import { adoptFinds, collectibles, completedScenes, emptyProgress, recordSceneCo
 import { loadProgress, saveProgress } from "../engine/progress-storage";
 import type { AdventureBook } from "@/domain/adventure/book-schema";
 import { AdventureError } from "@/domain/adventure/compose";
-import { emptyAdventureProgress, recordAdventureEvent, type AdventureEvent, type AdventureProgress } from "@/domain/adventure/progress";
+import { emptyAdventureProgress, readAdventureProgress, recordAdventureEvent, type AdventureEvent, type AdventureProgress } from "@/domain/adventure/progress";
 import { loadAlbum, saveAlbum, type AlbumStatus } from "../engine/album-storage";
 import { AlbumSync, type AlbumSyncState } from "../engine/album-sync";
 import { Telemetry } from "../engine/telemetry";
@@ -67,7 +67,9 @@ export interface PlayStore {
   reveal(): void;
   /** The board the marker should walk away from, once. */
   travelFrom: string | null;
-  goToMap(travelFrom?: string | null, worldSlug?: string): void;
+  /** A place to open as soon as the marker has walked to it ("Next place" after a finished board). */
+  continueTo: string | null;
+  goToMap(travelFrom?: string | null, worldSlug?: string, continueTo?: string | null): void;
   /** The hub. Only meaningful when the game spans more than one world. */
   goToWorlds(): void;
   endTravel(): void;
@@ -113,18 +115,34 @@ export interface PlayStoreOptions {
    * player link never sets this.
    */
   albumOwner?: boolean;
+  /**
+   * The owner's album as the page read it from the account (finds and discoveries; the book is the config's).
+   * The map then opens with the child where they really are, instead of where this browser last saw them and
+   * then walking them across the map when the account answers. The account is still read again.
+   */
+  initialAlbum?: Pick<AdventureProgress, "finds" | "discoveries">;
   copy: ReducerCopy;
 }
 
 export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
   const demo = Boolean(opts.demo);
   const persist = !demo && !opts.readOnlyPreview;
-  // Never touch localStorage here: the store is created during render, on the
-  // server too. Saved progress arrives via hydrate() after mount.
-  const initialProgress: GameProgress = demo ? { v: 1, gameId: config.gameId, revealed: true, scenes: {} } : emptyProgress(config.gameId);
   const telemetry = new Telemetry(config.gameId, persist, opts.playToken);
   // Demo plays the same collection rules in memory, never in the account or storage.
   const book = persist || demo ? config.adventure ?? null : null;
+  // The account's album as the page read it (owner only). Invalid or foreign content is simply not used.
+  const seededAlbum = (() => {
+    if (!opts.albumOwner || !opts.initialAlbum || !book || !persist) return null;
+    try { return readAdventureProgress({ ...emptyAdventureProgress(config.gameId, book), finds: opts.initialAlbum.finds, discoveries: opts.initialAlbum.discoveries }, config.gameId, book); }
+    catch { return null; }
+  })();
+  // Never touch localStorage here: the store is created during render, on the
+  // server too. Saved progress arrives via hydrate() after mount. The owner's
+  // account album is the one exception: it came with the page, so the server and
+  // the browser draw the same first map (a fixed date keeps the two identical;
+  // hydrate() replaces this state before anything is saved).
+  const initialProgress: GameProgress = demo ? { v: 1, gameId: config.gameId, revealed: true, scenes: {} }
+    : seededAlbum ? adoptFinds(emptyProgress(config.gameId), config, seededAlbum.finds, new Date(0)).progress : emptyProgress(config.gameId);
   const demoScene = demo ? config.scenes[0]?.slug : undefined;
   // A passport deep link may need account progress before its board unlocks.
   // This is a one-shot intent, cancelled as soon as the player navigates.
@@ -183,10 +201,11 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     replay: null,
     visitId: 0,
     travelFrom: null,
+    continueTo: null,
     muted: false,
     demo,
     telemetry,
-    album: demo && book ? emptyAdventureProgress(config.gameId, book) : null,
+    album: demo && book ? emptyAdventureProgress(config.gameId, book) : seededAlbum,
     albumMode: book && persist ? (opts.albumOwner ? "owner" : "guest") : "none",
     albumState: "idle",
 
@@ -217,8 +236,9 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       const remembered = progress.lastWorld && worlds.some((w) => w.slug === progress.lastWorld) ? progress.lastWorld : null;
       const landing = remembered ? "map" : worlds.length > 1 ? "worlds" : "map";
       set({ progress, screen: screen === "gift" && progress.revealed ? landing : screen, ...(remembered ? { worldSlug: remembered } : {}) });
-      const resumed = config.scenes.find(scene => scene.slug === progress.lastScene && scene.playMode === "find-any");
-      if (!requestedScene && resumed && progress.revealed && sceneIsPlayable(progress, config, resumed)) get().openScene(resumed.slug);
+      // A returning player lands on the map, where the child already stands at the next place and one big
+      // button continues it (per Guy, 2026-10-01: jumping straight back into the last board made opening the
+      // game from the family area feel like a wrong turn). Only an explicit request (?board=) opens a board.
       const openRequested = () => {
         const requested = config.scenes.find(scene => scene.slug === requestedScene);
         if (requested && sceneIsPlayable(get().progress, config, requested)) get().openScene(requested.slug);
@@ -233,52 +253,55 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       else set({ album: null, albumState: albumStatus() });
       if (opts.albumOwner) {
         albumSync?.stop();
+        // The account's copy is the truth, but nothing this browser found is
+        // dropped: a guest's play before signing in, or finds made offline,
+        // are sent to the account (each recorded once there) and shown
+        // meanwhile on top of the account's copy.
+        const adoptAccount = (server: AdventureProgress) => {
+          const local = get().album;
+          const waiting = sync.pendingEvents();
+          const owed = local ? missingEvents(local, server).filter((e) => !waiting.some((w) => sameEvent(w, e))) : [];
+          for (const event of owed) sync.push(event);
+          let merged = server;
+          for (const event of sync.pendingEvents()) {
+            try {
+              merged = recordAdventureEvent(merged, config.gameId, book, event).progress;
+            } catch {
+              // The account will refuse it too; nothing to show.
+            }
+          }
+          kept = saveAlbum(merged);
+          unreadable = false;
+          set({ album: merged, albumState: albumStatus() });
+          // The game itself agrees with the album: finds the account knows from
+          // another device become this browser's found children, stars and open
+          // places. A board that is open meanwhile takes them into its live
+          // mission (never reopened: that put the board back into its intro
+          // with nothing to start it again).
+          const adopted = adoptFinds(get().progress, config, merged.finds);
+          if (adopted.changed) {
+            saveProgress(adopted.progress);
+            set({ progress: adopted.progress });
+            const { mission, sceneSlug } = get();
+            if (mission && sceneSlug && !get().replay) {
+              const records = sceneProgress(adopted.progress, sceneSlug).foundRecords ?? {};
+              const found = Object.fromEntries(Object.entries(records).filter(([id]) => !mission.found[id]));
+              if (Object.keys(found).length) get().dispatch({ type: "ADOPT_FOUND", found, now: Date.now() });
+            }
+          }
+          openRequested();
+          // A locked or invalid link stays on the map, never bypasses gates,
+          // and must not unexpectedly reopen after a later completion.
+          requestedScene = undefined;
+        };
         const sync = new AlbumSync({
           gameId: config.gameId,
           onState: (state) => { syncState = state; set({ albumState: albumStatus() }); },
-          onProgress: (server) => {
-            // The account's copy is the truth, but nothing this browser found is
-            // dropped: a guest's play before signing in, or finds made offline,
-            // are sent to the account (each recorded once there) and shown
-            // meanwhile on top of the account's copy.
-            const local = get().album;
-            const waiting = sync.pendingEvents();
-            const owed = local ? missingEvents(local, server).filter((e) => !waiting.some((w) => sameEvent(w, e))) : [];
-            for (const event of owed) sync.push(event);
-            let merged = server;
-            for (const event of sync.pendingEvents()) {
-              try {
-                merged = recordAdventureEvent(merged, config.gameId, book, event).progress;
-              } catch {
-                // The account will refuse it too; nothing to show.
-              }
-            }
-            kept = saveAlbum(merged);
-            unreadable = false;
-            set({ album: merged, albumState: albumStatus() });
-            // The game itself agrees with the album: finds the account knows from
-            // another device become this browser's found children, stars and open
-            // places. A board that is open meanwhile takes them into its live
-            // mission (never reopened: that put the board back into its intro
-            // with nothing to start it again).
-            const adopted = adoptFinds(get().progress, config, merged.finds);
-            if (adopted.changed) {
-              saveProgress(adopted.progress);
-              set({ progress: adopted.progress });
-              const { mission, sceneSlug } = get();
-              if (mission && sceneSlug && !get().replay) {
-                const records = sceneProgress(adopted.progress, sceneSlug).foundRecords ?? {};
-                const found = Object.fromEntries(Object.entries(records).filter(([id]) => !mission.found[id]));
-                if (Object.keys(found).length) get().dispatch({ type: "ADOPT_FOUND", found, now: Date.now() });
-              }
-            }
-            openRequested();
-            // A locked or invalid link stays on the map, never bypasses gates,
-            // and must not unexpectedly reopen after a later completion.
-            requestedScene = undefined;
-          },
+          onProgress: adoptAccount,
         });
         albumSync = sync;
+        // The copy that came with the page first, so nothing moves on the map while the account is read again.
+        if (seededAlbum) adoptAccount(seededAlbum);
         void sync.load();
       }
     },
@@ -298,11 +321,13 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
      * board just finished to the next one — presentation only: the progress it
      * animates was already saved by completeScene().
      */
-    goToMap(travelFrom = null, worldSlug) {
+    goToMap(travelFrom = null, worldSlug, continueTo = null) {
       if (demo) return;
       requestedScene = undefined;
       sounds().stopAmbient();
-      set({ screen: "map", sceneSlug: null, mission: null, replay: null, travelFrom, ...(worldSlug ? { worldSlug } : {}) });
+      // Only a board slug can be walked from; a click event handed in by a button is not one.
+      const from = typeof travelFrom === "string" ? travelFrom : null;
+      set({ screen: "map", sceneSlug: null, mission: null, replay: null, travelFrom: from, continueTo: from ? continueTo : null, ...(worldSlug ? { worldSlug } : {}) });
       if (worldSlug && persist) {
         const progress = { ...get().progress, lastWorld: worldSlug };
         saveProgress(progress);
@@ -315,11 +340,14 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       if (gameWorlds(get().config).length < 2) { get().goToMap(); return; }
       requestedScene = undefined;
       sounds().stopAmbient();
-      set({ screen: "worlds", sceneSlug: null, mission: null, replay: null, travelFrom: null });
+      set({ screen: "worlds", sceneSlug: null, mission: null, replay: null, travelFrom: null, continueTo: null });
     },
 
     endTravel() {
-      if (get().travelFrom) set({ travelFrom: null });
+      const next = get().continueTo;
+      if (get().travelFrom || next) set({ travelFrom: null, continueTo: null });
+      // The walk was the way to the next place: now open it.
+      if (next && get().screen === "map") get().openScene(next);
     },
 
     openScene(slug, options) {
@@ -350,7 +378,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       // A board carries its own world, so entering one from the hub, a link or
       // the passport lands the player on the right map when they come back.
       const world = worldOfScene(get().config, slug);
-      set({ screen: "scene", sceneSlug: slug, mission, replay: replaying ? { discoveryIds: [] } : null, visitId: get().visitId + 1, travelFrom: null, ...(world ? { worldSlug: world.slug } : {}) });
+      set({ screen: "scene", sceneSlug: slug, mission, replay: replaying ? { discoveryIds: [] } : null, visitId: get().visitId + 1, travelFrom: null, continueTo: null, ...(world ? { worldSlug: world.slug } : {}) });
       if (!replaying && ((world && persist) || free)) {
         const progress = { ...get().progress, ...(world ? { lastWorld: world.slug } : {}), lastScene: slug };
         if (persist) saveProgress(progress);
@@ -437,7 +465,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       if (demo) return;
       requestedScene = undefined;
       sounds().stopAmbient();
-      set({ screen: "passport", sceneSlug: null, mission: null, replay: null });
+      set({ screen: "passport", sceneSlug: null, mission: null, replay: null, travelFrom: null, continueTo: null });
     },
 
     toggleMute() {

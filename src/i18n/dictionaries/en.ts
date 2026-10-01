@@ -348,6 +348,8 @@ export const en = {
     open: "Adventures for {name}", add: "Create for another child", more: "Another adventure for {name}",
     passport: "{name}’s passport", back: "Family area", empty: "The first adventure starts here", emptyLead: "Create an adventure for a child. Their place in the family area appears after purchase.",
     tests: "QA: unassigned test adventures", count: "{n} adventures", preparing: "This adventure is being prepared", noAdventures: "No adventures here yet.",
+    places: "{n} of {total} places", stars: "{n} of {total} stars", stamps: "{n} of {total} stamps", currentPlace: "Current place: {place}",
+    playStart: "Start playing", playContinue: "Continue playing", playAgain: "Play again", openPassport: "Open the passport",
   },
   passportSharing: {
     copyOnce: "For privacy, the link is shown only when created. Preview and confirm to replace it if you need a new copy.",
@@ -368,7 +370,7 @@ export const en = {
     locked: "A place for a future adventure", available: "Your next discovery is waiting", photoWait: "Find all three hiding spots to keep a picture here.", photoUnavailable: "We couldn't load this picture. Your stamp is safe.", pictureUnavailable: "No picture", retryImages: "Try loading the pictures again",
     collected: "My discoveries", unknown: "Not found yet", details: "About {name}", choosePhoto: "Choose my picture", photoChoice: "Picture {n}", selected: "Selected", saved: "Picture saved", saveFailed: "We couldn’t save that yet. Please try again.",
     play: "Back to this place", preparing: "An adventure is being prepared. Its pages will appear here when it is ready.", empty: "Your passport is ready for its first adventure.",
-    ceremony: "A new page in my passport!", newItems: "New discoveries for my passport!", skip: "Show my page", savedLocal: "Kept in this browser", savedAccount: "Saved to your passport", saving: "Saving your discoveries…", retry: "Try again",
+    ceremony: "A new page in my passport!", newItems: "New discoveries for my passport!", skip: "Show my page", savedLocal: "Kept in this browser", savedAccount: "Saved to your passport", saving: "Saving your discoveries…", opening: "Opening the passport…",retry: "Try again",
     demo: "Example passport — an imaginary adventure", unavailable: "We couldn’t open the passport just now. Your progress has not been reset.",
   },
   library: {

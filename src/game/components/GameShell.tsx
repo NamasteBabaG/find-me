@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import Link from "next/link";
 import type { GameConfig } from "@/domain/game/config";
+import type { AdventureProgress } from "@/domain/adventure/progress";
 import { dirOf, getDict } from "@/i18n";
 import { createPlayStore } from "../store/play-store";
 import { GameI18nProvider, useGameText } from "../i18n";
@@ -13,7 +14,7 @@ import { WorldMap } from "./WorldMap";
 import { WorldHub } from "./WorldHub";
 import { ScenePlayer } from "./ScenePlayer";
 import { Passport } from "./Passport";
-import { AdventurePassport } from "./AdventurePassport";
+import { AdventurePassport, prefetchOwnerPassport } from "./AdventurePassport";
 import { bindGameAudio } from "../audio/sounds";
 
 interface Props {
@@ -32,6 +33,8 @@ interface Props {
   singleMission?: boolean;
   /** The page found the viewer to be the game's owner (from the session). The album is then also kept in the family account. */
   albumOwner?: boolean;
+  /** The owner's album as the page read it from the account, so the first map already shows where the child is. */
+  initialAlbum?: Pick<AdventureProgress, "finds" | "discoveries">;
 }
 
 /**
@@ -47,9 +50,9 @@ export function GameShell(props: Props) {
   );
 }
 
-function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false, parentZoneHref, autoStartScene, singleMission = false, albumOwner = false, playToken }: Props) {
+function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false, parentZoneHref, autoStartScene, singleMission = false, albumOwner = false, playToken, initialAlbum }: Props) {
   const { g } = useGameText();
-  const [store] = useState(() => createPlayStore(config, { demo, skipGift, readOnlyPreview, autoStartScene, singleMission, albumOwner, playToken, copy: getDict(config.locale).game.copy }));
+  const [store] = useState(() => createPlayStore(config, { demo, skipGift, readOnlyPreview, autoStartScene, singleMission, albumOwner, playToken, initialAlbum, copy: getDict(config.locale).game.copy }));
   const state = useStore(store);
   const scene = state.scene();
   // One world needs no hub: the map is the whole journey.
@@ -71,6 +74,35 @@ function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false
     window.addEventListener("pagehide", onUnload);
     return () => window.removeEventListener("pagehide", onUnload);
   }, [state.telemetry]);
+
+  // Browser history follows the game (per Guy, 2026-10-01: the flow between boards, the map and the passport felt
+  // broken). A board or the passport is one step above the map, so the back button or a phone's back gesture
+  // returns to the map instead of leaving the game; the game's own way back takes that step off again. Only one
+  // step is ever kept, so "back" never walks through every board played. The landing demo keeps no history.
+  useEffect(() => {
+    if (demo || singleMission) return;
+    const onPop = () => {
+      const now = store.getState();
+      if (!stepOf(window.history.state) && (now.screen === "scene" || now.screen === "passport")) now.goToMap();
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [store, demo, singleMission]);
+
+  useEffect(() => {
+    if (demo || singleMission) return;
+    const step = state.screen === "scene" || state.screen === "passport" ? state.screen : null;
+    const top = stepOf(window.history.state);
+    if (step && !top) window.history.pushState({ ...window.history.state, [STEP_KEY]: step }, "");
+    else if (step && top !== step) window.history.replaceState({ ...window.history.state, [STEP_KEY]: step }, "");
+    else if (!step && top) window.history.back();
+  }, [state.screen, demo, singleMission]);
+
+  // While the owner looks at the map, the passport book is fetched in the background, so opening it is instant.
+  // Only the book's data: its pictures still load when a page is opened.
+  useEffect(() => {
+    if (state.screen === "map" && state.albumMode === "owner") prefetchOwnerPassport(config.gameId).catch(() => undefined);
+  }, [state.screen, state.albumMode, config.gameId]);
 
   const body = useMemo(() => {
     switch (state.screen) {
@@ -115,6 +147,12 @@ function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false
       {body}
     </div>
   );
+}
+
+/** The history entry the game adds above the map, and which screen it stands for. */
+const STEP_KEY = "findMeGameStep";
+function stepOf(state: unknown): string | undefined {
+  return state && typeof state === "object" && STEP_KEY in state ? String((state as Record<string, unknown>)[STEP_KEY]) : undefined;
 }
 
 function useLandscapeTip(): boolean {

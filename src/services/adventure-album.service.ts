@@ -1,7 +1,7 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
-import { parseGameConfig } from "@/domain/game/config";
+import { parseGameConfig, type GameConfig } from "@/domain/game/config";
 import { AdventureError } from "@/domain/adventure/compose";
-import { AdventureEventSchema, adventureAlbum, emptyAdventureProgress, readAdventureProgress, recordAdventureEvent, type AdventureEvent } from "@/domain/adventure/progress";
+import { AdventureEventSchema, adventureAlbum, emptyAdventureProgress, readAdventureProgress, recordAdventureEvent, type AdventureEvent, type AdventureProgress } from "@/domain/adventure/progress";
 
 type Database = Pick<PrismaClient, "$transaction">;
 type AlbumRow = { revision: number; snapshotJson: string };
@@ -48,6 +48,22 @@ export async function ownerAdventureAlbum(db: Database, ownerId: string, gameId:
   // Serializable on both sides of a deletion: a save that reads the game while
   // deleteGame takes its config away is aborted instead of re-creating the album.
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
+/**
+ * The owner's album as a page hands it to the game: finds and discoveries only (the book is in the config). Read
+ * from the game row the page already loaded, after the page's own ownership checks; anything unreadable is left
+ * to the game's own read of the account.
+ */
+export function albumSeed(config: GameConfig, snapshotJson: string | null | undefined): Pick<AdventureProgress, "finds" | "discoveries"> | undefined {
+  if (!config.adventure) return undefined;
+  try {
+    const saved: unknown = snapshotJson ? JSON.parse(snapshotJson) : emptyAdventureProgress(config.gameId, config.adventure);
+    const progress = readAdventureProgress(saved, config.gameId, config.adventure);
+    return { finds: progress.finds, discoveries: progress.discoveries };
+  } catch {
+    return undefined;
+  }
 }
 
 /** Call inside the deletion transaction BEFORE removing/revoking a game.

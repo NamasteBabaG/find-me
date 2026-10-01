@@ -27,6 +27,8 @@ interface Props {
 
 /** Roughly the brief's 1.2–1.8s, and skippable. */
 const TRAVEL_MS = 1500;
+/** Choosing a place: the child walks there first, briefly, then the place opens. */
+const CHOOSE_MS = 700;
 
 /**
  * The world map: one painted illustration, nine destinations, and the child's
@@ -78,6 +80,11 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
     }
   }, [complete, travelFrom]);
 
+  // A walk asked from a place this map does not show still has to finish, or a queued next place would never open.
+  useEffect(() => {
+    if (!complete && travelFrom && !from) doneRef.current?.();
+  }, [complete, travelFrom, from]);
+
   useEffect(() => {
     if (complete || !from) return;
     if (reduced) {
@@ -112,13 +119,22 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
     return () => clearTimeout(id);
   }, [travelling]);
 
-  const at = travelling && from ? from : marker;
+  // Per Guy (2026-10-01): the map shows places by name and the child alone. Tapping a place walks the child there
+  // first and then opens it, so the child is always standing where they are about to play.
+  const [chosen, setChosen] = useState<string | null>(null);
+  useEffect(() => {
+    if (!chosen) return;
+    const id = setTimeout(() => onOpen(chosen), CHOOSE_MS);
+    return () => clearTimeout(id);
+  }, [chosen, onOpen]);
+  const choose = (slug: string) => {
+    if (chosen) return;
+    if (reduced || slug === marker.boardSlug) onOpen(slug);
+    else setChosen(slug);
+  };
+  const chosenNode = chosen ? world.nodes.find((n) => n.boardSlug === chosen) : undefined;
+  const at = chosenNode ?? (travelling && from ? from : marker);
   const currentBoard = boards.get(marker.boardSlug);
-  // Two real paths rather than one with a dash offset: mixing pathLength with a
-  // non-uniform viewBox and non-scaling strokes is not reliable across browsers,
-  // and "the part already travelled" is just a prefix of the same points.
-  const path = (nodes: typeof world.nodes) => nodes.map((n, i) => `${i === 0 ? "M" : "L"} ${(n.x * 100).toFixed(2)} ${(n.y * 100).toFixed(2)}`).join(" ");
-  const travelled = world.nodes.slice(0, Math.max(world.nodes.findIndex((n) => n.boardSlug === marker.boardSlug), 0) + 1);
 
   return (
     <div className="wmap" style={{ ["--wmap-sky" as string]: world.map.palette.sky, ["--wmap-accent" as string]: world.map.palette.accent }}>
@@ -167,13 +183,9 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={world.map.art} alt="" className="wmap__img" width={world.map.width} height={world.map.height} draggable={false} />
 
-          {/* The journey, drawn in journey order so it always matches the real route. */}
-          <svg className="wmap__route" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
-            <path d={path(world.nodes)} className="wmap__route-line" />
-            {travelled.length > 1 ? <path d={path(travelled)} className="wmap__route-done" /> : null}
-          </svg>
-
-          {/* Nine buttons, in route order: this list is the map for a keyboard. */}
+          {/* Nine places, in route order: each is its name, and the name is the button. No board
+              thumbnails and no drawn route on top of the painting: only the child marks a place.
+              This list is also the map for a keyboard or a screen reader. */}
           <ol className="wmap__nodes" aria-label={g.map.stopsAria}>
             {world.nodes.map((node) => {
               const board = boards.get(node.boardSlug);
@@ -183,12 +195,13 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
               const playable = board?.playMode === "find-any" ? sceneIsPlayable(progress, config, board) : state !== "future";
               const boardComplete = board ? sceneIsComplete(progress, board) : sp.completed;
               const count = board ? sceneFoundIds(progress, board).length : 0;
+              const here = at.boardSlug === node.boardSlug;
               return (
-                <li key={node.boardSlug} className={`wmap__node wmap__node--${state === "completed" && !boardComplete ? "visited" : state}`} style={{ left: `${node.x * 100}%`, top: `${node.y * 100}%` }}>
+                <li key={node.boardSlug} className={`wmap__node wmap__node--${state === "completed" && !boardComplete ? "visited" : state}${here ? " is-here" : ""}`} style={{ left: `${node.x * 100}%`, top: `${node.y * 100}%` }}>
                   <button
                     type="button"
-                    className="wmap__dot"
-                    onClick={() => { sounds().play("tap"); if (playable) onOpen(node.boardSlug); else setTeaser(node.boardSlug); }}
+                    className="wmap__place"
+                    onClick={() => { sounds().play("tap"); if (playable) choose(node.boardSlug); else setTeaser(node.boardSlug); }}
                     // Kept focusable and announced rather than `disabled`: a child
                     // should be able to reach a later destination and be told, in a
                     // friendly way, that it is still ahead of them.
@@ -197,22 +210,15 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
                     aria-label={`${node.routeIndex}. ${label} — ${board?.playMode === "find-any" ? tf(g.scene.boardStars, { found: count, total: board.targets.length }) : stateLabel(g, state, sp.completed)}`}
                     data-board={node.boardSlug}
                   >
-                    <span className="wmap__icon" aria-hidden>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      {board ? <img src={board.art.thumbnail} alt="" loading="lazy" /> : null}
-                    </span>
+                    {boardComplete ? <span className="wmap__place-done" aria-hidden>✓</span> : null}
+                    <span className="wmap__place-name" aria-hidden>{label}</span>
+                    {/* The gold stars it holds, as one star and a count: what there is to come back for. */}
+                    {board && count > 0 && !boardComplete ? (
+                      <span className="wmap__place-stars" aria-hidden>
+                        <StarCounter earned={count} total={board.targets.length} size="sm" />
+                      </span>
+                    ) : null}
                   </button>
-                  {/* A place wears the gold stars it has earned on the rim of its dot: three slots
-                      for a three-hide board, a star and a count for a five-hide one (five slots do
-                      not fit under a dot). The one just finished pops them in as the child arrives. */}
-                  {board && count > 0 ? (
-                    board.targets.length <= 3
-                      ? <StarTray lit={count} total={board.targets.length} size="xs" className="wmap__stars" celebrate={node.boardSlug === travelFrom} />
-                      : <span className={`wmap__stars wmap__stars--count${boardComplete ? " is-full" : ""}`} aria-hidden><StarCounter earned={count} total={board.targets.length} size="sm" /></span>
-                  ) : null}
-                  <span className={`wmap__label wmap__label--${node.labelAnchor}`} aria-hidden>
-                    {label}
-                  </span>
                   {teaser === node.boardSlug ? (
                     <span className="wmap__teaser" role="status">
                       {g.map.notYet}
@@ -223,10 +229,10 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
             })}
           </ol>
 
-          {/* The child, standing on the map. */}
+          {/* The child, standing above the place they are at or have just chosen. */}
           <div
-            className={`wmap__marker${travelling ? " wmap__marker--travel" : ""} wmap__marker--${at.travelStyle}`}
-            style={{ left: `${at.x * 100}%`, top: `${at.y * 100}%`, transitionDuration: `${TRAVEL_MS}ms` }}
+            className={`wmap__marker${travelling || chosen ? " wmap__marker--travel" : ""} wmap__marker--${at.travelStyle}`}
+            style={{ left: `${at.x * 100}%`, top: `${at.y * 100}%`, transitionDuration: `${chosen ? CHOOSE_MS : TRAVEL_MS}ms` }}
             aria-hidden
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -256,7 +262,10 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
             {/* What this place is worth, before a single tap: its empty slots, or the stars it already holds. */}
             <span className="wmap__go-stars">
               <StarTray lit={sceneFoundIds(progress, currentBoard).length} total={currentBoard.targets.length} size="xs" />
-              <span>{tf(g.stars.here, { total: currentBoard.targets.length })}</span>
+              {/* Once some are found, say how many: "3 are waiting here" beside two lit stars read as a mistake. */}
+              <span>{sceneFoundIds(progress, currentBoard).length > 0
+                ? tf(g.stars.tray, { earned: sceneFoundIds(progress, currentBoard).length, total: currentBoard.targets.length })
+                : tf(g.stars.here, { total: currentBoard.targets.length })}</span>
             </span>
           </span>
           <span className="wmap__go-arrow" aria-hidden>

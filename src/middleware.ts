@@ -12,7 +12,7 @@ export async function middleware(req: NextRequest) {
     const response = NextResponse.next();
     response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
     // Prevent a CDN-cached authenticated document from outliving entry access.
-    if (!path.startsWith("/_next/static/")) response.headers.set("Cache-Control", "private, no-store");
+    if (!path.startsWith("/_next/static/") && !ownsCacheHeader(path)) response.headers.set("Cache-Control", "private, no-store");
     return response;
   }
   if (!read || path.startsWith("/api/") || !qaAccessConfigured(c)) return qaDeniedResponse(c);
@@ -24,6 +24,16 @@ export async function middleware(req: NextRequest) {
   response.headers.set("Cache-Control", "private, no-store");
   response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
   return response;
+}
+
+/**
+ * Picture routes that set their own Cache-Control on every response: `private` (never a shared cache), kept by this
+ * browser only while it is safe (a signed game picture, or the owner's passport picture for ten minutes), `no-store`
+ * otherwise. A header set here wins over the route's, so forcing no-store made every passport page download all its
+ * pictures again on each visit (Guy, 2026-10-01: passport pictures took very long to appear).
+ */
+function ownsCacheHeader(path: string) {
+  return path === "/api/passport/media" || /^\/api\/assets\/[^/]+$/.test(path);
 }
 
 export const config = { matcher: ["/:path*"] };

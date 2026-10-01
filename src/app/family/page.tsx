@@ -3,14 +3,16 @@ import { currentUser, isAdminEmail } from "@/lib/server/session";
 import { requireQaAccess } from "@/lib/server/qa-access";
 import { env } from "@/lib/env";
 import { getI18n } from "@/i18n/server";
-import { tf } from "@/i18n";
+import { tf, type Dictionary } from "@/i18n";
 import { getContainer } from "@/services/container";
-import { familyDrafts, familyOverview } from "@/services/family.service";
+import { familyDrafts } from "@/services/family.service";
+import { familyAdventures, type FamilyChild } from "@/services/family-adventures.service";
 import { resumeFamilyDraft } from "./actions";
 import { SiteHeader, SiteFooter, Notice } from "@/ui/Shell";
 import { LinkButton } from "@/ui/Button";
 import { LoginForm } from "../library/LoginForm";
 import { logoutAction } from "../library/actions";
+import { currentWorld, MapGlimpse, PlaceRoute, Sticker } from "./FamilyParts";
 import "./family.css";
 
 export const metadata = { robots: { index: false, follow: false } };
@@ -18,32 +20,49 @@ export const metadata = { robots: { index: false, follow: false } };
 export default async function FamilyPage({ searchParams }: { searchParams: Promise<{ error?: string; deleted?: string }> }) {
   await requireQaAccess();
   const [user, { t }, params] = await Promise.all([currentUser(), getI18n(), searchParams]);
-  const [children, drafts] = user ? await Promise.all([familyOverview(getContainer().db, user.id), familyDrafts(getContainer().db, user.id)]) : [[], []];
+  const c = getContainer();
+  const [children, drafts] = user ? await Promise.all([familyAdventures(c, user.id), familyDrafts(c.db, user.id)]) : [[], []];
   const admin = isAdminEmail(user?.email);
+  const f = t.family;
   return <>
     <SiteHeader user={user} isAdmin={admin} />
-    <main className={`fm-container fm-section fm-stack fm-stack--4${user ? "" : " fm-container--narrow"}`}>
-      <header className="library__head">
-        <div><h1>{user ? t.family.title : t.common.signIn}</h1><p className="fm-lead">{user ? t.family.lead : t.library.loginLead}</p></div>
+    <main className={`fm-container family${user ? "" : " fm-container--narrow"}`}>
+      <header className="family-head">
+        <div className="fm-stack fm-stack--1"><h1>{user ? f.title : t.common.signIn}</h1>{user ? null : <p className="fm-lead">{t.library.loginLead}</p>}</div>
         {user ? <form action={logoutAction}><button type="submit" className="fm-btn fm-btn--ghost">{t.library.signOut}</button></form> : null}
       </header>
       {params.error === "expired" ? <Notice kind="warn">{t.library.expired}</Notice> : null}
       {params.deleted === "1" ? <Notice kind="success">{t.library.deleted}</Notice> : null}
-      {!user ? <LoginForm devOutbox={getContainer().email.id === "console"} /> : <>
-        {children.length === 0 ? <section className="fm-card fm-card--pad-6 fm-stack fm-stack--3">
-          <h2>{t.family.empty}</h2><p>{t.family.emptyLead}</p><LinkButton href="/create?child=new">{t.library.createFirst}</LinkButton>
-        </section> : <div className="family-grid">{children.map(child => {
-          const avatar = child.games.find(game => game.childProfile?.avatarAssetId)?.childProfile?.avatarAssetId;
-          return <article className="fm-card fm-card--pad-4 family-child" key={child.id}>
-            {avatar ? <img src={`/api/assets/${avatar}`} width={96} height={96} alt="" className="family-child__portrait" /> : <span className="family-child__initial" aria-hidden>{child.displayName.slice(0, 1)}</span>}
-            <h2>{child.displayName}</h2><p className="fm-muted">{tf(t.family.count, { n: child.games.length })}</p>
-            <LinkButton href={`/family/${child.id}`}>{tf(t.family.open, { name: child.displayName })}</LinkButton>
-          </article>;
-        })}</div>}
-        {children.length > 0 ? <div><LinkButton href="/create?child=new" variant="secondary">{t.family.add}</LinkButton></div> : null}
-        {drafts.length > 0 ? <section className="fm-stack fm-stack--3" aria-label={t.family.drafts}><h2>{t.family.drafts}</h2>{drafts.map(draft => <form action={resumeFamilyDraft} className="fm-card fm-card--pad-4 fm-row" key={draft.id}><input type="hidden" name="gameId" value={draft.id} /><strong>{draft.title || t.family.untitledDraft}</strong><button type="submit" className="fm-btn fm-btn--secondary">{t.family.resumeDraft}</button></form>)}</section> : null}
-        {admin && env().APP_ENV === "qa" ? <Link href="/library?tests=1">{t.family.tests}</Link> : null}
+      {!user ? <LoginForm devOutbox={c.email.id === "console"} /> : <>
+        {children.length === 0 ? <section className="family-empty">
+          <h2>{f.empty}</h2><p>{f.emptyLead}</p><LinkButton href="/create?child=new">{t.library.createFirst}</LinkButton>
+        </section> : <ul className="family-shelf">
+          {children.map((child, i) => <li key={child.id}><ChildCard child={child} t={t} eager={i < 2} /></li>)}
+          <li><Link href="/create?child=new" className="family-add"><span className="family-add__plus" aria-hidden>+</span>{f.add}</Link></li>
+        </ul>}
+        {drafts.length > 0 ? <section className="family-drafts" aria-label={f.drafts}><h2>{f.drafts}</h2>{drafts.map(draft => <form action={resumeFamilyDraft} className="family-draft" key={draft.id}><input type="hidden" name="gameId" value={draft.id} /><strong>{draft.title || f.untitledDraft}</strong><button type="submit" className="fm-btn fm-btn--secondary">{f.resumeDraft}</button></form>)}</section> : null}
+        {admin && env().APP_ENV === "qa" ? <Link href="/library?tests=1" className="family-manage">{f.tests}</Link> : null}
       </>}
     </main><SiteFooter />
   </>;
+}
+
+/** A child's card: their map with them on it, their name, how far they've come. The whole card opens their page. */
+function ChildCard({ child, t, eager }: { child: FamilyChild; t: Dictionary; eager: boolean }) {
+  const f = t.family;
+  const playable = child.adventures.filter(a => a.ready && a.worlds.length > 0);
+  // The adventure still under way, or the newest one once every place is stamped.
+  const adventure = playable.find(a => a.tracked && a.worlds.some(w => w.stamped < w.places)) ?? playable[playable.length - 1];
+  const world = adventure ? currentWorld(adventure) : undefined;
+  const line = world ? world.name : child.adventures.some(a => !a.ready) ? f.preparing : f.noAdventures;
+  return <Link href={`/family/${child.id}`} className="kid">
+    {world ? <MapGlimpse world={world} avatarUrl={child.avatarUrl} name={child.name} eager={eager} /> : <span className="kid__wait" aria-hidden="true"><Sticker url={child.avatarUrl} name={child.name} /></span>}
+    <span className="kid__body">
+      <h2 className="kid__name">{child.name}</h2>
+      <span className="kid__line">{line}</span>
+      {world && adventure!.tracked ? <span className="kid__progress"><PlaceRoute world={world} />{tf(f.places, { n: world.stamped, total: world.places })}</span> : null}
+      {world ? <span className="visually-hidden">{tf(f.currentPlace, { place: world.here.name })}</span> : null}
+      <span className="kid__go" aria-hidden="true"><span className="fm-btn__arrow">➜</span></span>
+    </span>
+  </Link>;
 }

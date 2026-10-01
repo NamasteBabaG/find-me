@@ -69,5 +69,7 @@ export async function deleteGameAction(formData: FormData): Promise<void> {
   const gameId = String(formData.get("gameId") ?? "");
   await deleteGame(getContainer(), gameId, { type: "USER", id: user.id }, user.id);
   revalidatePath("/library");
-  redirect("/library?deleted=1");
+  revalidatePath("/family", "layout");
+  // Straight to the family area, where the notice is shown (/library only redirects there).
+  redirect("/family?deleted=1");
 }

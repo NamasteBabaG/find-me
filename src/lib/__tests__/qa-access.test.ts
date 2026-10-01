@@ -101,6 +101,23 @@ describe("QA middleware and cron boundary", () => {
     expect(res.headers.get("x-robots-tag")).toContain("noindex");
     expect(res.headers.get("cache-control")).toContain("no-store");
   });
+  it("leaves the two picture routes their own private caching, and keeps every other answer no-store", async () => {
+    setQaEnv();
+    const cookie = `__Host-findme_qa=${await createQaSession(fixture)}`;
+    const at = (path: string) => middleware(new NextRequest(`https://qa.findmeworlds.com${path}`, { headers: { cookie } }));
+    for (const path of ["/api/passport/media?childId=c&gameId=g&board=b&kind=photo&id=t", "/api/assets/ast_synthetic?e=1&s=x"]) {
+      const res = await at(path);
+      expect(res.headers.get("x-middleware-next")).toBe("1");
+      expect(res.headers.get("cache-control")).toBeNull();
+    }
+    for (const path of ["/api/passport?childId=c", "/api/passport/media/other", "/api/assets/a/b", "/family", "/demo/noa-portrait.png"]) {
+      expect((await at(path)).headers.get("cache-control")).toContain("no-store");
+    }
+    // Without the QA session the gate still answers, uncacheable, before either route runs.
+    const anonymous = await middleware(new NextRequest("https://qa.findmeworlds.com/api/passport/media?childId=c"));
+    expect(anonymous.status).toBe(401);
+    expect(anonymous.headers.get("cache-control")).toContain("no-store");
+  });
   it("keeps login and its static UI available, but missing config closes everything else", async () => {
     setQaEnv();
     vi.stubEnv("QA_ACCESS_PASSWORD", "");
