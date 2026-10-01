@@ -102,12 +102,12 @@ describe("a setting with an invisible character in it", () => {
    * threw, and every route reads the environment. One character nobody could
    * see took down the whole site.
    */
-  it("reads the setting that was meant, and says it had to", async () => {
+  it.each(["GENERATION_ENABLED", "LOCAL_PATCH_PLAYER_REVIEW"])("reads %s as meant, and says it had to", async key => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const read = await envWith({ APP_ENV: "qa", GENERATION_PROVIDER: "mock", GENERATION_ENABLED: "\uFEFFoff" });
+    const read = await envWith({ APP_ENV: "qa", GENERATION_PROVIDER: "mock", [key]: "\uFEFFoff" });
     expect(read).not.toThrow();
-    expect(read().GENERATION_ENABLED).toBe("off");
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("GENERATION_ENABLED"));
+    expect(read()[key as "GENERATION_ENABLED" | "LOCAL_PATCH_PLAYER_REVIEW"]).toBe("off");
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(key));
     warn.mockRestore();
   });
 
