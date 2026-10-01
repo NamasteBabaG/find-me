@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import Link from "next/link";
 import type { GameConfig } from "@/domain/game/config";
+import type { AdventureProgress } from "@/domain/adventure/progress";
 import { dirOf, getDict } from "@/i18n";
 import { createPlayStore } from "../store/play-store";
 import { GameI18nProvider, useGameText } from "../i18n";
@@ -32,6 +33,8 @@ interface Props {
   singleMission?: boolean;
   /** The page found the viewer to be the game's owner (from the session). The album is then also kept in the family account. */
   albumOwner?: boolean;
+  /** The owner's album as the page read it from the account, so the first map already shows where the child is. */
+  initialAlbum?: Pick<AdventureProgress, "finds" | "discoveries">;
 }
 
 /**
@@ -47,9 +50,9 @@ export function GameShell(props: Props) {
   );
 }
 
-function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false, parentZoneHref, autoStartScene, singleMission = false, albumOwner = false, playToken }: Props) {
+function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false, parentZoneHref, autoStartScene, singleMission = false, albumOwner = false, playToken, initialAlbum }: Props) {
   const { g } = useGameText();
-  const [store] = useState(() => createPlayStore(config, { demo, skipGift, readOnlyPreview, autoStartScene, singleMission, albumOwner, playToken, copy: getDict(config.locale).game.copy }));
+  const [store] = useState(() => createPlayStore(config, { demo, skipGift, readOnlyPreview, autoStartScene, singleMission, albumOwner, playToken, initialAlbum, copy: getDict(config.locale).game.copy }));
   const state = useStore(store);
   const scene = state.scene();
   // One world needs no hub: the map is the whole journey.

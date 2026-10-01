@@ -262,7 +262,10 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
             {/* What this place is worth, before a single tap: its empty slots, or the stars it already holds. */}
             <span className="wmap__go-stars">
               <StarTray lit={sceneFoundIds(progress, currentBoard).length} total={currentBoard.targets.length} size="xs" />
-              <span>{tf(g.stars.here, { total: currentBoard.targets.length })}</span>
+              {/* Once some are found, say how many: "3 are waiting here" beside two lit stars read as a mistake. */}
+              <span>{sceneFoundIds(progress, currentBoard).length > 0
+                ? tf(g.stars.tray, { earned: sceneFoundIds(progress, currentBoard).length, total: currentBoard.targets.length })
+                : tf(g.stars.here, { total: currentBoard.targets.length })}</span>
             </span>
           </span>
           <span className="wmap__go-arrow" aria-hidden>
