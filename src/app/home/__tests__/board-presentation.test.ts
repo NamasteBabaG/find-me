@@ -29,9 +29,9 @@ describe("approved two-world display sources", () => {
       expect(thumb.length).toBeLessThan(400_000);
       for (const locale of ["he", "en"] as const) {
         const tile = carouselWorlds(locale).find(w => w.slug === route.world)!.tiles.find(t => t.key === route.route)!;
-        expect(tile.thumb).toBe(actual.thumbnail);
         expect(tile.label).toBe(actual.name[locale]);
-        expect(tile.spots).toEqual(actual.discoveries.map(d => d.name[locale]));
+        expect(tile).not.toHaveProperty("thumb");
+        expect(tile).not.toHaveProperty("spots");
       }
     }
   });

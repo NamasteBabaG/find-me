@@ -2,7 +2,7 @@ import { SCENE_CATALOG } from "../../content/scenes";
 import { buildDemoConfig } from "@/services/demo";
 import { getContainer } from "@/services/container";
 import { boardsOfWorlds, ownedWorldSlugs } from "@/services/world-catalog.service";
-import { newDraftStyleVersion, sceneVersionForDraft, worldsForDraft } from "@/services/create-flow.service";
+import { newDraftStyleVersion, worldsForDraft } from "@/services/create-flow.service";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
 import { getCurrency, getI18n } from "@/i18n/server";
 import { SiteFooter, SiteHeader } from "@/ui/Shell";
@@ -44,7 +44,7 @@ export default async function HomePage() {
         <PassportDemo locale={locale} />
         <HowItWorks t={t} locale={locale} />
         <Inside t={t} locale={locale} />
-        <Worlds t={t} carousel={carouselWorlds(locale, owned, { available: worlds, sceneVersion: sceneVersionForDraft(styleVersion) })} />
+        <Worlds t={t} carousel={carouselWorlds(locale, owned, { available: worlds })} />
         <GiftSection t={t} locale={locale} />
         <Pricing t={t} locale={locale} activeCount={worlds.length} currency={currency} />
         <Trust t={t} locale={locale} />

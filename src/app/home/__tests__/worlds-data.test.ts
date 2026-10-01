@@ -1,15 +1,34 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { carouselWorlds } from "../worlds-data";
+import { hasPlaceEmblem } from "../PlaceEmblem";
+import { WorldsCarousel } from "../WorldsCarousel";
+import React, { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { getDict } from "@/i18n";
 
-import { findScene } from "../../../../content/scenes";
 import { boardPresentation, presentationMatchesScene } from "../../../../content/home/board-presentation";
-import { COLLECTION_SCENE_VERSION } from "../../../../content/adventures/wizard-release";
+beforeEach(() => vi.stubGlobal("React", React));
+afterEach(() => vi.unstubAllGlobals());
 describe("the worlds carousel", () => {
-  it("shows every painted world whole, hiding spots included", () => {
+  it("teases every place with its own symbol, without sending paintings or discovery clues", () => {
     for (const world of carouselWorlds("en").filter((w) => !w.upcoming)) {
+      expect(world.tiles).toHaveLength(9);
       for (const tile of world.tiles) {
-        expect(tile.thumb, `${world.slug}/${tile.key} has a painting`).toBeTruthy();
-        expect(tile.spots?.length, `${world.slug}/${tile.key} names its search objects`).toBe(["journey", "kingdom"].includes(world.slug) ? 6 : 3);
+        expect(tile.label).toBeTruthy();
+        expect(hasPlaceEmblem(tile.key), `${world.slug}/${tile.key} needs a destination symbol`).toBe(true);
+        expect(tile).not.toHaveProperty("thumb");
+        expect(tile).not.toHaveProperty("spots");
+      }
+      expect(JSON.stringify(world)).not.toMatch(/\/(?:scenes|api\/assets)\//);
+    }
+  });
+
+  it("renders destination illustrations with no board image elements in either language", () => {
+    for (const locale of ["he", "en"] as const) {
+      for (const world of carouselWorlds(locale)) {
+        const html = renderToStaticMarkup(createElement(WorldsCarousel, { worlds: [world], copy: getDict(locale).home.worlds }));
+        expect(html).not.toContain("<img");
+        expect(html.match(/class=\"place-emblem\"/g)).toHaveLength(9);
       }
     }
   });
@@ -31,16 +50,12 @@ describe("the worlds carousel", () => {
     expect(carouselWorlds("en", [second.slug])[0]!.owned).toBe(false);
   });
 
-  it("explicitly marks the approved preview that differs from the v10 purchase", () => {
+  it("keeps purchase availability independent of the destination illustrations", () => {
     for (const locale of ["he", "en"] as const) {
-      const worlds = carouselWorlds(locale, [], { available: ["journey"], sceneVersion: COLLECTION_SCENE_VERSION });
+      const worlds = carouselWorlds(locale, [], { available: ["journey"] });
       expect(worlds.filter(w => w.available).map(w => w.slug)).toEqual(["journey"]);
-      expect(worlds.find(w => w.slug === "journey")?.previewArt).toBe(true);
-      expect(worlds.find(w => w.slug === "kingdom")).toMatchObject({ available: false, previewArt: true });
-      for (const world of worlds.filter(w => !w.upcoming)) {
-        const differs = world.tiles.some(t => boardPresentation(t.key) && !presentationMatchesScene(t.key, findScene(t.key, COLLECTION_SCENE_VERSION)?.art));
-        expect(world.previewArt).toBe(differs);
-      }
+      expect(worlds.find(w => w.slug === "kingdom")).toMatchObject({ available: false });
+      expect(worlds.find(w => w.slug === "timetravel")).toMatchObject({ available: false });
     }
   });
 
@@ -58,7 +73,7 @@ describe("the worlds carousel", () => {
     for (const world of upcoming) {
       expect(world.owned).toBe(false);
       expect(world.tiles.every((t) => t.soon)).toBe(true);
-      expect(world.tiles.every((t) => t.spots === undefined)).toBe(true);
+      expect(world.tiles.every((t) => !("spots" in t) && !("thumb" in t))).toBe(true);
     }
     // Painted worlds come first, unpainted after, in journey order.
     const firstUpcoming = worlds.findIndex((w) => w.upcoming);

@@ -81,7 +81,6 @@
    theirs and we do not grade it — and the greyed "coming soon" and locked
    states, whose own filters below outrank this one because grey there is a
    state and not a colour. */
-.world__img img,
 .tf-world__base,
 .tf-world__patch,
 .tf-portrait img,
@@ -305,16 +304,27 @@
 .worlds { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
 @media (min-width: 1024px) { .worlds { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); } }
 .world { position: relative; overflow: hidden; border-radius: var(--radius-4); background: var(--white); box-shadow: var(--shadow-1); transition: transform var(--dur-2) var(--ease-out), box-shadow var(--dur-2); }
-.world:hover { transform: translateY(-6px); box-shadow: var(--shadow-2); }
-.world__img { aspect-ratio: 16 / 10; overflow: hidden; }
-.world__img img { width: 100%; height: 100%; object-fit: cover; transition: transform var(--dur-3) var(--ease-out); }
-.world:hover .world__img img { transform: scale(1.06); }
-.world__body { padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-0-5); }
-.world__name { font-family: var(--font-display); font-weight: 800; font-size: var(--fs-400); line-height: var(--lh-400); }
-.world__items { display: flex; gap: var(--space-0-5); flex-wrap: wrap; margin-top: var(--space-1); }
-.world__items span { font-size: var(--fs-50); line-height: var(--lh-50); padding: var(--space-0-5) var(--space-1); border-radius: var(--radius-pill); background: var(--paper-2); font-weight: 600; color: var(--ink-2); }
-.world--soon .world__img img { filter: grayscale(0.7) opacity(0.6); }
-.world__soon { position: absolute; top: var(--space-2); inset-inline-start: var(--space-2); }
+.world:hover { transform: translateY(-3px); box-shadow: var(--shadow-2); }
+.world__destination { position: relative; display: grid; place-items: center; padding: var(--space-2) var(--space-3) 0; background: linear-gradient(160deg, var(--white), var(--paper)); }
+.world__route { position: absolute; inset-block-start: var(--space-2); inset-inline-start: var(--space-3); font-family: var(--font-display); font-size: var(--fs-100); font-weight: 800; color: var(--ink-2); opacity: .65; letter-spacing: .06em; }
+.place-emblem { display: block; width: min(100%, 188px); height: auto; transition: transform var(--dur-3) var(--ease-out); }
+.world:hover .place-emblem { transform: translateY(-2px) rotate(-2deg); }
+.world__body { position: relative; margin-inline: var(--space-3); padding: var(--space-2) 0 var(--space-3); display: grid; place-items: center; border-top: 1px dashed var(--line); }
+.world__body::before, .world__body::after { content: ""; position: absolute; top: -7px; width: 14px; height: 14px; background: var(--paper); border-radius: 50%; }
+.world__body::before { inset-inline-start: calc(-1 * var(--space-3) - 7px); }
+.world__body::after { inset-inline-end: calc(-1 * var(--space-3) - 7px); }
+.world__name { font-family: var(--font-display); font-weight: 800; font-size: var(--fs-300); line-height: var(--lh-300); text-align: center; }
+@media (max-width: 600px) {
+  .worlds { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+  .world { border-radius: var(--radius-3); }
+  .world__destination { padding: var(--space-2) var(--space-1) 0; }
+  .world__body { margin-inline: var(--space-2); padding-block: var(--space-1) var(--space-2); min-height: 56px; }
+  .world__body::before { inset-inline-start: calc(-1 * var(--space-2) - 7px); }
+  .world__body::after { inset-inline-end: calc(-1 * var(--space-2) - 7px); }
+  .world__route { inset-inline-start: var(--space-2); font-size: var(--fs-50); }
+  .world__name { font-size: var(--fs-200); line-height: var(--lh-200); }
+}
+@media (prefers-reduced-motion: reduce) { .world, .place-emblem { transition: none; } .world:hover, .world:hover .place-emblem { transform: none; } }
 .worlds-count { font-family: var(--font-display); font-weight: 900; font-size: var(--fs-900); line-height: var(--lh-900); letter-spacing: -0.03em; }
 
 /* Pricing */
@@ -794,16 +804,6 @@
   display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
   gap: var(--space-2); margin: 0; font-size: var(--fs-100); color: var(--ink-2);
 }
-.wc__soon {
-  padding: 2px var(--space-1); border-radius: var(--radius-1);
-  background: var(--paper-2); color: var(--ink-2);
-}
-/* A world nobody has painted yet shows its places, not a picture it does not have. */
-.worlds--upcoming .world__img {
-  display: grid; place-items: center;
-  background: linear-gradient(160deg, var(--wc-sky), var(--wc-ground));
-}
-.world__veil { font-size: var(--fs-700); opacity: .55; filter: grayscale(.2); }
 .wc__dots { display: flex; justify-content: center; gap: 0; }
 .wc__dot {
   inline-size: var(--touch-min); block-size: var(--touch-min); padding: 0; border: 0; cursor: pointer;

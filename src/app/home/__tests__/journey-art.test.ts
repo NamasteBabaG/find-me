@@ -17,7 +17,7 @@ describe("approved first-world presentation art", () => {
       expect(createHash("sha256").update(readFileSync(`public${art.base}`)).digest("hex")).toBe(art.sha256);
       const thumb = await sharp(`public${art.thumbnail.split("?")[0]}`).metadata();
       expect([thumb.width, thumb.height]).toEqual([960, 540]);
-      expect(carouselWorlds("he")[0]!.tiles.find(t => t.key === slug)?.thumb).toBe(art.thumbnail);
+      expect(carouselWorlds("he")[0]!.tiles.find(t => t.key === slug)).not.toHaveProperty("thumb");
     }
     expect(journeyPresentation("dragoncave")).toBeUndefined();
   });

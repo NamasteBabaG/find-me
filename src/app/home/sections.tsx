@@ -168,8 +168,6 @@ export function Worlds({ t, carousel }: { t: Dictionary; carousel: CarouselWorld
             owned: w.owned,
             inTheMaking: w.inTheMaking,
             available: w.available,
-            previewArt: w.previewArt,
-            spotsAria: w.spotsAria,
           }}
         />
       </div>
