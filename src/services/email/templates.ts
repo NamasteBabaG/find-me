@@ -3,24 +3,75 @@ import { dirOf, getDict, tf, type Locale } from "@/i18n";
 
 /**
  * Transactional emails in the recipient's language. Warm, one big button,
- * no marketing. Inline styles only (email clients).
+ * no marketing. Inline styles and tables only (email clients, Outlook too);
+ * no images, so nothing depends on a host the mail client may not reach.
  */
-function layout(locale: Locale, title: string, bodyHtml: string): string {
-  const t = getDict(locale);
-  return `<!doctype html><html dir="${dirOf(locale)}" lang="${locale}"><body style="margin:0;background:#FBF8F2;font-family:Rubik,Arial,sans-serif;color:#17162B;">
-  <div style="max-width:520px;margin:0 auto;padding:40px 24px;">
-    <div style="background:#FFFFFF;border-radius:24px;padding:32px;box-shadow:0 8px 24px rgba(23,22,43,0.08);">
-      <div style="font-size:14px;color:#807E96;margin-bottom:16px;">${t.common.brand}</div>
-      <h1 style="font-size:28px;line-height:36px;margin:0 0 16px;">${title}</h1>
-      ${bodyHtml}
-    </div>
-    <p style="font-size:12px;color:#807E96;text-align:center;margin-top:24px;">${t.email.footer}</p>
-  </div></body></html>`;
+const P = {
+  page: "#FBF6EC",
+  card: "#FFFFFF",
+  ink: "#17162B",
+  text: "#4D4B63",
+  muted: "#8C89A3",
+  sun: "#FFC53D",
+  sunGlow: "rgba(245,178,27,0.32)",
+  sunSoft: "#FFF2CC",
+  panel: "#FFF8E8",
+};
+const FONT = "Rubik,'Segoe UI',Helvetica,Arial,sans-serif";
+
+interface LayoutOptions {
+  /** A friendly mark in the sunny band at the top of the card. */
+  emoji?: string;
+  /** Inbox preview line, shown in the list and hidden in the message. */
+  preheader?: string;
+  /** Short messages read best centred; lists (the admin mail) keep the reading edge. */
+  align?: "center" | "start";
 }
 
-function button(href: string, label: string): string {
-  return `<a href="${href}" style="display:inline-block;background:#FFC53D;color:#17162B;text-decoration:none;font-weight:700;font-size:18px;padding:16px 32px;border-radius:999px;margin:8px 0 16px;">${label}</a>`;
+function layout(locale: Locale, title: string, bodyHtml: string, options: LayoutOptions = {}): string {
+  const t = getDict(locale);
+  const dir = dirOf(locale);
+  const start = dir === "rtl" ? "right" : "left";
+  const align = options.align === "center" ? "center" : start;
+  const preheader = options.preheader
+    ? `<div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;mso-hide:all;">${options.preheader}</div>`
+    : "";
+  const band = options.emoji
+    ? `<tr><td align="center" bgcolor="${P.sunSoft}" style="background:${P.sunSoft};padding:30px 24px 26px;border-radius:28px 28px 0 0;">
+        <div style="display:inline-block;width:78px;height:78px;line-height:78px;border-radius:999px;background:${P.card};font-size:38px;text-align:center;box-shadow:0 8px 18px ${P.sunGlow};">${options.emoji}</div>
+      </td></tr>`
+    : "";
+  return `<!doctype html><html dir="${dir}" lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light only"><meta name="supported-color-schemes" content="light"><title>${title}</title></head>
+<body style="margin:0;padding:0;background:${P.page};">${preheader}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${P.page}" style="background:${P.page};"><tr><td align="center" style="padding:32px 14px 40px;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" dir="${dir}" style="max-width:520px;font-family:${FONT};color:${P.ink};">
+    <tr><td style="padding:0 6px 18px;text-align:${start};">
+      <span style="display:inline-block;width:34px;height:34px;line-height:34px;border-radius:10px;background:${P.sun};font-size:18px;text-align:center;vertical-align:middle;">👀</span><span style="display:inline-block;vertical-align:middle;margin-${start}:10px;font-size:17px;font-weight:700;color:${P.ink};">${t.common.brand}</span>
+    </td></tr>
+    <tr><td bgcolor="${P.card}" style="background:${P.card};border-radius:28px;box-shadow:0 14px 34px rgba(23,22,43,0.07);">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        ${band}
+        <tr><td style="padding:28px 30px 32px;text-align:${align};">
+          <h1 style="margin:0 0 12px;font-family:${FONT};font-size:28px;line-height:36px;font-weight:800;color:${P.ink};">${title}</h1>
+          ${bodyHtml}
+        </td></tr>
+      </table>
+    </td></tr>
+    <tr><td style="padding:22px 12px 0;text-align:center;font-family:${FONT};font-size:12px;line-height:18px;color:${P.muted};">${t.email.footer}</td></tr>
+  </table>
+</td></tr></table>
+</body></html>`;
 }
+
+/** A pill that stays a pill where it can, and a clear block everywhere else. */
+function button(href: string, label: string, align: "center" | "start" = "center"): string {
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0"${align === "center" ? ' align="center"' : ""} style="margin:24px ${align === "center" ? "auto" : "0"} 6px;"><tr><td bgcolor="${P.sun}" style="background:${P.sun};border-radius:999px;box-shadow:0 8px 18px ${P.sunGlow};">
+    <a href="${href}" style="display:inline-block;padding:16px 36px;font-family:${FONT};font-size:18px;line-height:22px;font-weight:700;color:${P.ink};text-decoration:none;border-radius:999px;">${label}</a>
+  </td></tr></table>`;
+}
+
+const paragraph = (html: string, size = 17) =>
+  `<p style="margin:0 auto;max-width:430px;font-family:${FONT};font-size:${size}px;line-height:${size + 10}px;color:${P.text};">${html}</p>`;
 
 export function magicLinkEmail(input: { to: string; link: string; locale: Locale }): EmailMessage {
   const m = getDict(input.locale).email.magic;
@@ -28,7 +79,12 @@ export function magicLinkEmail(input: { to: string; link: string; locale: Locale
     to: input.to,
     tag: "magic-link",
     subject: m.subject,
-    html: layout(input.locale, m.title, `<p style="font-size:16px;line-height:24px;">${m.body}</p>${button(input.link, m.button)}<p style="font-size:14px;color:#807E96;">${m.ignore}</p>`),
+    html: layout(
+      input.locale,
+      m.title,
+      `${paragraph(m.body, 16)}${button(input.link, m.button)}<p style="margin:14px auto 0;max-width:430px;font-family:${FONT};font-size:13px;line-height:20px;color:${P.muted};">${m.ignore}</p>`,
+      { emoji: "🔑", preheader: m.title, align: "center" },
+    ),
     text: tf(m.text, { link: input.link }),
   };
 }
@@ -39,21 +95,23 @@ export function gameReadyEmail(input: { to: string; childName: string; playLink:
   const vars = { name: input.childName, count: input.sceneCount, stars: input.targetCount ?? input.sceneCount * 5, play: input.playLink, library: input.libraryLink ?? "" };
   const variableWorld = input.targetCount !== undefined && input.targetCount !== input.sceneCount * 5;
   const body = tf(input.playMode === "find-any" ? (variableWorld ? r.bodyVariable : r.bodyFive) : r.body, vars);
+  const start = dirOf(input.locale) === "rtl" ? "right" : "left";
+  // Who can open the game and where it is managed: a quiet panel under the button, not a second call.
   const manage = input.libraryLink
-    ? `<p style="font-size:14px;line-height:24px;">${r.manageLead}</p>
-       <p><a href="${input.libraryLink}" style="color:#1B6FA8;font-size:14px;">${r.manage}</a></p>`
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:22px;"><tr><td bgcolor="${P.panel}" style="background:${P.panel};border-radius:18px;padding:16px 18px;text-align:${start};">
+        <p style="margin:0 0 6px;font-family:${FONT};font-size:14px;line-height:22px;color:${P.text};">${r.manageLead}</p>
+        <a href="${input.libraryLink}" style="font-family:${FONT};font-size:14px;line-height:22px;font-weight:700;color:${P.ink};text-decoration:underline;">${r.manage}</a>
+      </td></tr></table>`
     : "";
   return {
     to: input.to,
     tag: "game-ready",
     subject: tf(r.subject, vars),
-    html: layout(
-      input.locale,
-      tf(r.title, vars),
-      `<p style="font-size:16px;line-height:24px;">${body}</p>
-       ${button(input.playLink, r.button)}
-       ${manage}`,
-    ),
+    html: layout(input.locale, tf(r.title, vars), `${paragraph(body)}${button(input.playLink, r.button)}${manage}`, {
+      emoji: "🔍",
+      preheader: body,
+      align: "center",
+    }),
     text: (input.playMode === "find-any" ? `${body}\n${r.text}` : r.text)
       .split("\n")
       .filter((line) => input.libraryLink || !line.includes("{library}"))
@@ -109,7 +167,7 @@ export function adminAlertEmail(input: {
      ${list("שגיאה", error)}
      ${list("מה נמצא", problems)}
      ${list("מחבואים שלא צוירו", spots)}
-     ${button(input.adminUrl, "לפתוח באדמין")}`,
+     ${button(input.adminUrl, "לפתוח באדמין", "start")}`,
   );
   const text = [subject, "", head.lead, "", ...facts, ...(error.length ? ["", ...error] : []), ...(problems.length ? ["", "מה נמצא:", ...problems] : []), ...(spots.length ? ["", "מחבואים שלא צוירו:", ...spots] : []), "", `לפתוח באדמין: ${input.adminUrl}`].join("\n");
   return { tag: "admin-alert", subject, html, text };

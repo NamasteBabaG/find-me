@@ -21,30 +21,29 @@ export function NameForm({ initialName, initialAge, children = [], initialChildI
       <input type="hidden" name="freshAdventure" value={fresh ? "1" : "0"} />
       {children.length > 0 ? <div className="fm-field">
         <label className="fm-label" htmlFor="familyChildId">{t.family.choose}</label>
-        <span className="fm-select"><select className="fm-input" id="familyChildId" name="familyChildId" value={selectedId} onChange={e => { setSelectedId(e.target.value); setAge(""); }} aria-describedby="family-choice-hint">
+        <span className="fm-select"><select className="fm-input" id="familyChildId" name="familyChildId" value={selectedId} onChange={e => { setSelectedId(e.target.value); setAge(""); }} aria-describedby={selected ? "family-choice-hint" : undefined}>
           <option value="">{t.family.newChild}</option>
           {children.map(child => <option key={child.id} value={child.id}>{child.displayName}</option>)}
         </select></span>
-        <p className="fm-hint" id="family-choice-hint">{selected ? t.family.existingHint : t.family.newChildHint}</p>
+        {/* Only a returning child needs a word: their adventure takes a new photo. */}
+        {selected ? <p className="fm-hint" id="family-choice-hint">{t.family.existingHint}</p> : null}
       </div> : <input type="hidden" name="familyChildId" value="" />}
+      {/* Name and age, nothing more (per Guy): the labels say it, the stepper says what comes next. */}
       <div className="create__child-fields">
         <div className="fm-field">
           <label htmlFor="name" className="fm-label">{n.label}</label>
-          <input id="name" name="name" className="fm-input" value={selected?.displayName ?? newName} onChange={e => setNewName(e.target.value)} readOnly={Boolean(selected)} placeholder={n.placeholder} maxLength={24} minLength={2} required autoFocus={!selected} autoComplete="off" aria-describedby="child-name-hint" />
-          <p id="child-name-hint" className="fm-hint">{n.hint}</p>
+          <input id="name" name="name" className="fm-input" value={selected?.displayName ?? newName} onChange={e => setNewName(e.target.value)} readOnly={Boolean(selected)} placeholder={n.placeholder} maxLength={24} minLength={2} required autoFocus={!selected} autoComplete="off" />
         </div>
         <div className="fm-field">
           <label htmlFor="ageYears" className="fm-label">{n.ageLabel}</label>
           {/* The product's own chevron on the select; the browser's arrow is drawn away. */}
           <span className="fm-select">
-            <select id="ageYears" name="ageYears" className="fm-input" value={age} onChange={e => setAge(e.target.value)} required aria-invalid={ageInvalid ? true : undefined} aria-describedby={state && !state.ok ? "child-age-hint child-form-error" : "child-age-hint"}>
+            <select id="ageYears" name="ageYears" className="fm-input" value={age} onChange={e => setAge(e.target.value)} required aria-invalid={ageInvalid ? true : undefined} aria-describedby={state && !state.ok ? "child-form-error" : undefined}>
               <option value="" disabled>{n.agePlaceholder}</option>
               {CHILD_AGES.map(age => <option key={age} value={age}>{age}</option>)}
             </select>
           </span>
         </div>
-        {/* Four lines of hint under a narrow select made the row lopsided: the age hint runs under both fields. */}
-        <p id="child-age-hint" className="fm-hint create__child-note">{n.ageHint}</p>
       </div>
       {state && !state.ok ? <p id="child-form-error" className="fm-error fm-center" role="alert">{errorText(t, state)}</p> : null}
       {state && !state.ok && state.code === "SERVICE_UNAVAILABLE" ? (

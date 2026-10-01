@@ -18,7 +18,7 @@ export default async function CreatePhotoPage() {
   const hasPhoto = Boolean(draft.childProfile.originalPhotoAssetId);
   const rejectedCode = draft.status === "PHOTO_REJECTED" ? (draft.lastError?.split(":")[0] ?? null) : null;
   return (
-    <CreateFrame step={1} title={tf(t.create.photo.title, { name })} lead={t.create.photo.lead} user={user} isAdmin={isAdminEmail(user?.email)}>
+    <CreateFrame step={1} title={tf(t.create.photo.title, { name })} user={user} isAdmin={isAdminEmail(user?.email)}>
       <PhotoUploader childName={name} hasPhoto={hasPhoto} rejectedCode={rejectedCode} />
     </CreateFrame>
   );

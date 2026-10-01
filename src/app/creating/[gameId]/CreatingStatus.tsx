@@ -267,9 +267,7 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
         <Notice kind="info">
           {cr.qa} {isAdmin ? <Link href={`/admin/orders/${gameId}`}>{cr.qaAdmin}</Link> : cr.qaParent}
         </Notice>
-      ) : (
-        <p className="fm-small fm-center">{cr.usually}</p>
-      )}
+      ) : null}
       <QaBoardProgress status={s} hebrew={locale === "he"} />
     </div>
   );
