@@ -527,6 +527,25 @@ describe("a world of hides, one slice at a time", () => {
     expect(direct.attention).toMatch(/reserved and not dispatched/);
   }, 180_000);
 
+  it("gives another paid game a turn while a failed attempt backs off and while a legacy worker owns its lease", async () => {
+    const older = await seed({ gameId: "game-older-retry" });
+    const newer = await seed({ gameId: "game-newer-retry" });
+    const now = Date.now(), clock = vi.spyOn(Date, "now").mockReturnValue(now);
+    try {
+      await db.game.update({ where: { id: older.gameId }, data: { status: "GENERATION_FAILED", paidAt: new Date(now - 3_600_000) } });
+      await db.game.update({ where: { id: newer.gameId }, data: { paidAt: new Date(now) } });
+      await db.generationJob.update({ where: { id: `job_${older.gameId}` }, data: { status: "FAILED", updatedAt: new Date(now) } });
+      expect(await nextPendingGame(c)).toBe(newer.gameId);
+      await db.generationJob.update({ where: { id: `job_${older.gameId}` }, data: { updatedAt: new Date(now - 5 * 60_000) } });
+      expect(await nextPendingGame(c)).toBe(older.gameId);
+      await db.game.update({ where: { id: older.gameId }, data: { styleVersion: "collage-v1", status: "TARGETS_GENERATING" } });
+      await db.generationJob.update({ where: { id: `job_${older.gameId}` }, data: { status: "RUNNING", updatedAt: new Date(now) } });
+      expect(await nextPendingGame(c)).toBe(newer.gameId);
+      await db.generationJob.update({ where: { id: `job_${older.gameId}` }, data: { updatedAt: new Date(now - PIPELINE_LEASE_MS - 1) } });
+      expect(await nextPendingGame(c)).toBe(older.gameId);
+    } finally { clock.mockRestore(); }
+  }, 180_000);
+
   it.each(["local-patch", null])("skips a live local-patch lease (%s) but selects it again once takeover is allowed", async currentStep => {
     const active = await seed({ gameId: "game-older-active-lease" });
     const queued = await seed({ gameId: "game-newer-queued-lease" });

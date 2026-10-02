@@ -1,9 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
-import type { SceneConfig } from "@/domain/game/config";
-import { scenePreview } from "@/game/engine/scene-preview";
+import { useEffect, useRef, useState } from "react";
 import { useHomeQaRecovery } from "@/ui/qa/HomeQaRecovery";
 
 /**
@@ -27,31 +25,42 @@ export function TransformationPortrait({ src, alt, unavailable }: { src: string;
   );
 }
 
-export function TransformationScene({ scene, targetId, alt, line, unavailable, loading }: { scene: SceneConfig; targetId: string; alt: string; line: string; unavailable: string; loading: string }) {
-  const target = scene.targets.find(t => t.id === targetId);
-  const preview = target ? scenePreview(scene, target) : null;
-  const [loaded, setLoaded] = useState({ base: false, patch: false });
+type PreparedPreview = { src: string; width: number; height: number; bubble: { x: number; y: number } };
+
+/** A prepared crop of the exact public demo, including its child. The full game
+ * masters are never downloaded to render this below-the-fold marketing card.
+ */
+export function TransformationScene({ preview, alt, line, unavailable, loading }: { preview: PreparedPreview; alt: string; line: string; unavailable: string; loading: string }) {
+  const root = useRef<HTMLDivElement>(null);
+  const [near, setNear] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   const [retry, setRetry] = useState(0);
   useHomeQaRecovery(true, failed, () => {
     if (!failed) return;
-    setLoaded({ base: false, patch: false }); setFailed(false); setRetry(n => n + 1);
+    setLoaded(false); setFailed(false); setRetry(n => n + 1);
   });
-  const ready = loaded.base && loaded.patch && !failed && preview !== null;
   useEffect(() => {
-    if (ready || failed || !preview) return;
+    if (typeof IntersectionObserver === "undefined") { setNear(true); return; }
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) { setNear(true); observer.disconnect(); }
+    }, { rootMargin: "240px" });
+    if (root.current) observer.observe(root.current);
+    return () => observer.disconnect();
+  }, []);
+  const ready = loaded && !failed;
+  useEffect(() => {
+    if (!near || ready || failed) return;
     const timer = setTimeout(() => setFailed(true), 15_000);
     return () => clearTimeout(timer);
-  }, [ready, failed, preview !== null]);
+  }, [near, ready, failed, retry]);
   return (
-    <div className="tf-card__media tf-card__media--world" role={ready ? "img" : undefined} aria-label={ready ? alt : undefined}>
-      {!ready ? <p className="tf-media__status" role="status">{failed || !preview ? unavailable : loading}</p> : null}
-      {preview ? <div key={retry} className="tf-world__composition" style={{ visibility: ready ? "visible" : "hidden" }}>
-        <Image src={scene.art.base} alt="" width={scene.art.width} height={scene.art.height} unoptimized loading="eager"
-          className="tf-world__base" style={preview.baseStyle} onLoad={() => setLoaded(s => ({ ...s, base: true }))} onError={() => setFailed(true)} />
-        <Image src={preview.sprite.url} alt="" width={preview.sprite.width} height={preview.sprite.height} unoptimized loading="eager"
-          className="tf-world__patch" style={preview.patchStyle} onLoad={() => setLoaded(s => ({ ...s, patch: true }))} onError={() => setFailed(true)} />
-        {ready ? <span className="tf-world__bubble tf-world__bubble--free" style={preview.bubbleStyle}>{line}</span> : null}
+    <div ref={root} className="tf-card__media tf-card__media--world" role={ready ? "img" : undefined} aria-label={ready ? alt : undefined}>
+      {!ready ? <p className="tf-media__status" role="status">{failed ? unavailable : loading}</p> : null}
+      {near ? <div key={retry} className="tf-world__composition" style={{ visibility: ready ? "visible" : "hidden" }}>
+        <Image src={preview.src} alt="" width={preview.width} height={preview.height} unoptimized loading="lazy" decoding="async"
+          className="tf-world__prepared" onLoad={() => setLoaded(true)} onError={() => setFailed(true)} />
+        {ready ? <span className="tf-world__bubble tf-world__bubble--free" style={{ left: `${preview.bubble.x * 100}%`, top: `${preview.bubble.y * 100}%` }}>{line}</span> : null}
       </div> : null}
     </div>
   );

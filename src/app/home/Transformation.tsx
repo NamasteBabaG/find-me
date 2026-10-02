@@ -7,6 +7,7 @@ import { getI18n } from "@/i18n/server";
 import { buildDemoConfig } from "@/services/demo";
 import { TransformationPortrait, TransformationScene } from "./TransformationMedia";
 import { Reveal } from "./Reveal";
+import preparedPreview from "../../../content/home/transformation-preview.json";
 
 /** A prepared example, using the same placement contract as the playable game. */
 export async function Transformation() {
@@ -48,7 +49,7 @@ export async function Transformation() {
           </Reveal>
 
           <Reveal as="li" className="tf-card" delay={320}>
-            <TransformationScene scene={scene} targetId={example.target} alt={tr.worldAlt} line={foundLine} unavailable={tr.previewUnavailable} loading={tr.previewLoading} />
+            <TransformationScene preview={preparedPreview} alt={tr.worldAlt} line={foundLine} unavailable={tr.previewUnavailable} loading={tr.previewLoading} />
             <span className="tf-card__label">{tr.world.label}</span>
             <p className="tf-card__text">{tr.world.text}</p>
           </Reveal>

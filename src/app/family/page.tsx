@@ -54,7 +54,8 @@ function ChildCard({ child, t, eager }: { child: FamilyChild; t: Dictionary; eag
   // The adventure still under way, or the newest one once every place is stamped.
   const adventure = playable.find(a => a.tracked && a.worlds.some(w => w.stamped < w.places)) ?? playable[playable.length - 1];
   const world = adventure ? currentWorld(adventure) : undefined;
-  const line = world ? world.name : child.adventures.some(a => !a.ready) ? f.preparing : f.noAdventures;
+  const waiting = [...child.adventures].reverse().find(a => !a.ready);
+  const line = world ? world.name : waiting ? f.generationState[waiting.preparation ?? "preparing"].title : f.noAdventures;
   return <Link href={`/family/${child.id}`} className="kid">
     {world ? <MapGlimpse world={world} avatarUrl={child.avatarUrl} name={child.name} eager={eager} /> : <span className="kid__wait" aria-hidden="true"><Sticker url={child.avatarUrl} name={child.name} /></span>}
     <span className="kid__body">

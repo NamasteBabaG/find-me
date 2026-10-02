@@ -1,0 +1,32 @@
+{
+  "src": "/home/transform-found-a14cedbfd0a82bbf47bf3573aca0162459a4f4942f93c968d620330c11e1552e.webp",
+  "sha256": "a14cedbfd0a82bbf47bf3573aca0162459a4f4942f93c968d620330c11e1552e",
+  "bytes": 192966,
+  "width": 720,
+  "height": 900,
+  "crop": {
+    "left": 931,
+    "top": 662,
+    "width": 1016,
+    "height": 1270
+  },
+  "bubble": {
+    "x": 0.4881889763779528,
+    "y": 0.4393700787401575
+  },
+  "source": {
+    "board": "/scenes/demo-beach-v1/base.webp",
+    "boardSha256": "e5c2f0e04ef36aed55e3f96c3a9f234bfb87ef2b4da6e5f02420e9cea0c561c3",
+    "patch": "/demo/beach-v1/15afabe78ed9465fc9d49f3f2463229b130f72a991a780f0b093d6369804721f.webp",
+    "patchSha256": "15afabe78ed9465fc9d49f3f2463229b130f72a991a780f0b093d6369804721f",
+    "sceneVersion": 9,
+    "target": "sandcastle",
+    "variant": "A",
+    "rect": {
+      "left": 1220,
+      "top": 850,
+      "width": 512,
+      "height": 768
+    }
+  }
+}

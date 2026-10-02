@@ -142,6 +142,12 @@ describe("the admin alert", () => {
     await expect(sendAdminAlert(f.c, input)).resolves.toEqual({ sent: [], failed: [], skipped: [] });
   });
 
+  it("does not send a queued stalled-game notice after the game became playable", async () => {
+    const f = fakes({ admins: ["ops@example.com"] });
+    expect(await sendAdminAlert(f.c, { gameId: "gam_x", kind: "generation-stalled" })).toEqual({ sent: [], failed: [], skipped: ["ops@example.com"] });
+    expect(f.sent).toEqual([]);
+  });
+
   it("is retried from the cron for whoever was not reached", async () => {
     const f = fakes({ admins: ["ops@example.com"], fail: () => true });
     await sendAdminAlert(f.c, input);

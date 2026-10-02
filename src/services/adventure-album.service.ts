@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
+import { sqlTable } from "@/infra/db/sql-table";
 import { parseGameConfig, type GameConfig } from "@/domain/game/config";
 import { AdventureError } from "@/domain/adventure/compose";
 import { AdventureEventSchema, adventureAlbum, emptyAdventureProgress, readAdventureProgress, recordAdventureEvent, type AdventureEvent, type AdventureProgress } from "@/domain/adventure/progress";
@@ -14,8 +15,9 @@ type AlbumRow = { revision: number; snapshotJson: string };
  * itself and a guest's progress stays in their own browser. SQL is
  * parameterized and shared by SQLite/Postgres; no provider calls, no money.
  */
-export async function ownerAdventureAlbum(db: Database, ownerId: string, gameId: string, event?: AdventureEvent) {
+export async function ownerAdventureAlbum(db: Database, ownerId: string, gameId: string, event?: AdventureEvent, databaseUrl?: string) {
   const parsedEvent = event === undefined ? undefined : AdventureEventSchema.parse(event);
+  const albumTable = sqlTable("AdventureAlbumProgress", databaseUrl), gameTable = sqlTable("Game", databaseUrl);
   return db.$transaction(async tx => {
     const game = await tx.game.findUnique({ where: { id: gameId }, select: { ownerId: true, deletedAt: true, status: true, configJson: true } });
     if (!ownerId || !game || game.ownerId !== ownerId || game.deletedAt || !["READY", "DELIVERED"].includes(game.status) || !game.configJson) throw new AdventureError("not-owned");
@@ -23,7 +25,7 @@ export async function ownerAdventureAlbum(db: Database, ownerId: string, gameId:
     if (config.gameId !== gameId) throw new AdventureError("content-mismatch");
     const book = config.adventure;
     if (!book) throw new AdventureError("not-ready");
-    const rows = await tx.$queryRaw<AlbumRow[]>(Prisma.sql`SELECT "revision", "snapshotJson" FROM "AdventureAlbumProgress" WHERE "gameId" = ${gameId}`);
+    const rows = await tx.$queryRaw<AlbumRow[]>(Prisma.sql`SELECT "revision", "snapshotJson" FROM ${albumTable} WHERE "gameId" = ${gameId}`);
     const row = rows[0];
     if (row && (!Number.isSafeInteger(row.revision) || row.revision < 1)) throw new AdventureError("corrupt-progress");
     let saved: unknown;
@@ -36,11 +38,11 @@ export async function ownerAdventureAlbum(db: Database, ownerId: string, gameId:
       // A changed/deleted/reassigned game cannot accept an event authorised on
       // an earlier read. Concurrent album writers cannot overwrite one another.
       const updated = row
-        ? await tx.$executeRaw(Prisma.sql`UPDATE "AdventureAlbumProgress" SET "snapshotJson" = ${snapshot}, "revision" = "revision" + 1
+        ? await tx.$executeRaw(Prisma.sql`UPDATE ${albumTable} SET "snapshotJson" = ${snapshot}, "revision" = "revision" + 1
             WHERE "gameId" = ${gameId} AND "revision" = ${row.revision}
-            AND EXISTS (SELECT 1 FROM "Game" WHERE "id" = ${gameId} AND "ownerId" = ${ownerId} AND "deletedAt" IS NULL AND "status" IN ('READY', 'DELIVERED') AND "configJson" = ${game.configJson})`)
-        : await tx.$executeRaw(Prisma.sql`INSERT INTO "AdventureAlbumProgress" ("gameId", "revision", "snapshotJson")
-            SELECT ${gameId}, 1, ${snapshot} FROM "Game" WHERE "id" = ${gameId} AND "ownerId" = ${ownerId} AND "deletedAt" IS NULL AND "status" IN ('READY', 'DELIVERED') AND "configJson" = ${game.configJson}
+            AND EXISTS (SELECT 1 FROM ${gameTable} WHERE "id" = ${gameId} AND "ownerId" = ${ownerId} AND "deletedAt" IS NULL AND "status" IN ('READY', 'DELIVERED') AND "configJson" = ${game.configJson})`)
+        : await tx.$executeRaw(Prisma.sql`INSERT INTO ${albumTable} ("gameId", "revision", "snapshotJson")
+            SELECT ${gameId}, 1, ${snapshot} FROM ${gameTable} WHERE "id" = ${gameId} AND "ownerId" = ${ownerId} AND "deletedAt" IS NULL AND "status" IN ('READY', 'DELIVERED') AND "configJson" = ${game.configJson}
             ON CONFLICT ("gameId") DO NOTHING`);
       if (updated !== 1) throw new AdventureError("content-mismatch", "concurrent-update-retry-same-event");
     }
@@ -70,11 +72,11 @@ export function albumSeed(config: GameConfig, snapshotJson: string | null | unde
  * `deleteGame` does exactly that: a soft delete takes the album with it, in
  * the same Serializable transaction (see adventure-album-delete.test.ts).
  */
-export async function deleteAdventureAlbum(tx: Pick<Prisma.TransactionClient, "$executeRaw">, gameId: string): Promise<void> {
+export async function deleteAdventureAlbum(tx: Pick<Prisma.TransactionClient, "$executeRaw">, gameId: string, databaseUrl?: string): Promise<void> {
   // Deletion changes the scope the parent consented to share. Revoke even when
   // other adventures remain; a later purchase cannot revive an old capability.
-  await tx.$executeRaw(Prisma.sql`UPDATE "PassportShare" SET "revokedAt" = ${new Date()}
-    WHERE "revokedAt" IS NULL AND "familyChildId" IN (SELECT "familyChildId" FROM "Game" WHERE "id" = ${gameId})`);
-  await tx.$executeRaw(Prisma.sql`DELETE FROM "PassportPagePreference" WHERE "gameId" = ${gameId}`);
-  await tx.$executeRaw(Prisma.sql`DELETE FROM "AdventureAlbumProgress" WHERE "gameId" = ${gameId}`);
+  await tx.$executeRaw(Prisma.sql`UPDATE ${sqlTable("PassportShare", databaseUrl)} SET "revokedAt" = ${new Date()}
+    WHERE "revokedAt" IS NULL AND "familyChildId" IN (SELECT "familyChildId" FROM ${sqlTable("Game", databaseUrl)} WHERE "id" = ${gameId})`);
+  await tx.$executeRaw(Prisma.sql`DELETE FROM ${sqlTable("PassportPagePreference", databaseUrl)} WHERE "gameId" = ${gameId}`);
+  await tx.$executeRaw(Prisma.sql`DELETE FROM ${sqlTable("AdventureAlbumProgress", databaseUrl)} WHERE "gameId" = ${gameId}`);
 }

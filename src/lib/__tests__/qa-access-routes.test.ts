@@ -118,6 +118,7 @@ describe("defense in depth without running middleware", () => {
       (await import("@/app/api/play/progress/route")).POST,
       (await import("@/app/api/health/route")).GET,
       (await import("@/app/auth/magic-link/route")).GET,
+      (await import("@/app/auth/magic-link/route")).POST,
     ];
     for (const handler of handlers) {
       const res = await handler(new Request(`${origin}/api/jobs/tick`, { headers: { "x-middleware-subrequest": "middleware", "x-vercel-protection-bypass": "forged", authorization: "Bearer forged" } }));

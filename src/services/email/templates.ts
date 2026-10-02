@@ -1,5 +1,6 @@
 import type { EmailMessage } from "@/infra/email/types";
 import { dirOf, getDict, tf, type Locale } from "@/i18n";
+import { escapeHtml } from "./html";
 
 /**
  * Transactional emails in the recipient's language. Warm, one big button,
@@ -34,14 +35,14 @@ function layout(locale: Locale, title: string, bodyHtml: string, options: Layout
   const start = dir === "rtl" ? "right" : "left";
   const align = options.align === "center" ? "center" : start;
   const preheader = options.preheader
-    ? `<div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;mso-hide:all;">${options.preheader}</div>`
+    ? `<div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;mso-hide:all;">${escapeHtml(options.preheader)}</div>`
     : "";
   const band = options.emoji
     ? `<tr><td align="center" bgcolor="${P.sunSoft}" style="background:${P.sunSoft};padding:30px 24px 26px;border-radius:28px 28px 0 0;">
         <div style="display:inline-block;width:78px;height:78px;line-height:78px;border-radius:999px;background:${P.card};font-size:38px;text-align:center;box-shadow:0 8px 18px ${P.sunGlow};">${options.emoji}</div>
       </td></tr>`
     : "";
-  return `<!doctype html><html dir="${dir}" lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light only"><meta name="supported-color-schemes" content="light"><title>${title}</title></head>
+  return `<!doctype html><html dir="${dir}" lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light only"><meta name="supported-color-schemes" content="light"><title>${escapeHtml(title)}</title></head>
 <body style="margin:0;padding:0;background:${P.page};">${preheader}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${P.page}" style="background:${P.page};"><tr><td align="center" style="padding:32px 14px 40px;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" dir="${dir}" style="max-width:520px;font-family:${FONT};color:${P.ink};">
@@ -52,7 +53,7 @@ function layout(locale: Locale, title: string, bodyHtml: string, options: Layout
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
         ${band}
         <tr><td style="padding:28px 30px 32px;text-align:${align};">
-          <h1 style="margin:0 0 12px;font-family:${FONT};font-size:28px;line-height:36px;font-weight:800;color:${P.ink};">${title}</h1>
+          <h1 style="margin:0 0 12px;font-family:${FONT};font-size:28px;line-height:36px;font-weight:800;color:${P.ink};">${escapeHtml(title)}</h1>
           ${bodyHtml}
         </td></tr>
       </table>
@@ -66,12 +67,12 @@ function layout(locale: Locale, title: string, bodyHtml: string, options: Layout
 /** A pill that stays a pill where it can, and a clear block everywhere else. */
 function button(href: string, label: string, align: "center" | "start" = "center"): string {
   return `<table role="presentation" cellpadding="0" cellspacing="0" border="0"${align === "center" ? ' align="center"' : ""} style="margin:24px ${align === "center" ? "auto" : "0"} 6px;"><tr><td bgcolor="${P.sun}" style="background:${P.sun};border-radius:999px;box-shadow:0 8px 18px ${P.sunGlow};">
-    <a href="${href}" style="display:inline-block;padding:16px 36px;font-family:${FONT};font-size:18px;line-height:22px;font-weight:700;color:${P.ink};text-decoration:none;border-radius:999px;">${label}</a>
+    <a href="${escapeHtml(href)}" style="display:inline-block;padding:16px 36px;font-family:${FONT};font-size:18px;line-height:22px;font-weight:700;color:${P.ink};text-decoration:none;border-radius:999px;">${escapeHtml(label)}</a>
   </td></tr></table>`;
 }
 
-const paragraph = (html: string, size = 17) =>
-  `<p style="margin:0 auto;max-width:430px;font-family:${FONT};font-size:${size}px;line-height:${size + 10}px;color:${P.text};">${html}</p>`;
+const paragraph = (text: string, size = 17) =>
+  `<p style="margin:0 auto;max-width:430px;font-family:${FONT};font-size:${size}px;line-height:${size + 10}px;color:${P.text};">${escapeHtml(text)}</p>`;
 
 export function magicLinkEmail(input: { to: string; link: string; locale: Locale }): EmailMessage {
   const m = getDict(input.locale).email.magic;
@@ -100,7 +101,7 @@ export function gameReadyEmail(input: { to: string; childName: string; playLink:
   const manage = input.libraryLink
     ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:22px;"><tr><td bgcolor="${P.panel}" style="background:${P.panel};border-radius:18px;padding:16px 18px;text-align:${start};">
         <p style="margin:0 0 6px;font-family:${FONT};font-size:14px;line-height:22px;color:${P.text};">${r.manageLead}</p>
-        <a href="${input.libraryLink}" style="font-family:${FONT};font-size:14px;line-height:22px;font-weight:700;color:${P.ink};text-decoration:underline;">${r.manage}</a>
+        <a href="${escapeHtml(input.libraryLink)}" style="font-family:${FONT};font-size:14px;line-height:22px;font-weight:700;color:${P.ink};text-decoration:underline;">${r.manage}</a>
       </td></tr></table>`
     : "";
   return {
@@ -120,9 +121,10 @@ export function gameReadyEmail(input: { to: string; childName: string; playLink:
   };
 }
 
-export type AdminAlertKind = "delivered-with-problems" | "held-for-review" | "generation-failed" | "needs-new-photo";
+export type AdminAlertKind = "delivered-with-problems" | "held-for-review" | "generation-failed" | "needs-new-photo" | "generation-stalled";
 
 const ALERT_HEAD: Record<AdminAlertKind, { subject: string; lead: string }> = {
+  "generation-stalled": { subject: "⏳ ההכנה של {name} מתעכבת", lead: "המשחק שולם אך ההכנה אינה מתקדמת או ממתינה לקיבולת שירות. לפתוח באדמין ולברר את חסימת התפעול. אין לבקש אישור איכות מההורה, לפרסם מחבואים פגומים או לחרוג מתקציב העולם." },
   "delivered-with-problems": { subject: "⚠️ המשחק של {name} נשלח עם בעיות", lead: "המשחק נשלח להורה בכל מקרה. אלה הבעיות שנמצאו לפני השליחה:" },
   "held-for-review": { subject: "🔎 המשחק של {name} ממתין לבדיקה", lead: "המשחק סיים עם בעיות ולא נשלח להורה: הוא מחכה לאדם. לפתוח באדמין, להסתכל על המחבואים, ולאשר או להריץ מחדש." },
   "generation-failed": { subject: "❌ יצירת המשחק של {name} נכשלה", lead: "הצינור נעצר בשגיאה והמשחק לא נשלח. לפתוח באדמין, לקרוא את השגיאה ולהריץ מחדש." },
@@ -157,8 +159,7 @@ export function adminAlertEmail(input: {
   const problems = input.problems.map((p) => `• ${p}`);
   const spots = input.failedSpots.map((f) => `• ${f.where} — ${f.attempts} ניסיונות — ${f.reason || "בלי סיבה רשומה"}`);
   const error = input.error ? [`שגיאה: ${input.error}`] : [];
-  const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const list = (title: string, lines: string[]) => (lines.length ? `<p style="font-size:14px;line-height:22px;margin:16px 0 4px;font-weight:700;">${title}</p><p style="font-size:14px;line-height:22px;margin:0;">${lines.map(esc).join("<br>")}</p>` : "");
+  const list = (title: string, lines: string[]) => (lines.length ? `<p style="font-size:14px;line-height:22px;margin:16px 0 4px;font-weight:700;">${title}</p><p style="font-size:14px;line-height:22px;margin:0;">${lines.map(escapeHtml).join("<br>")}</p>` : "");
   const html = layout(
     "he",
     subject,

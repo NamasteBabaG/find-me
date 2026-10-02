@@ -43,3 +43,10 @@ assets/*.png
 /tmp/legal-*
 /tmp/qa-readiness-*
 /tmp/production-readiness-*
+
+# Scratch output may contain customer photos, bearer links or local credentials.
+/tmp/
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal

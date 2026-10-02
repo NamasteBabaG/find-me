@@ -15,6 +15,7 @@ import { MissionCard } from "@/game/components/MissionCard";
 import { GameI18nProvider } from "@/game/i18n";
 import { I18nProvider } from "@/i18n/client";
 import { HomeQaRecovery } from "@/ui/qa/HomeQaRecovery";
+import prepared from "../../../../content/home/transformation-preview.json";
 
 vi.mock("next/image", () => ({ default: ({ fill, unoptimized, ...props }: any) => <img {...props} /> }));
 vi.mock("../Reveal", () => ({ Reveal: ({ as: Tag = "div", children, className }: any) => <Tag className={className}>{children}</Tag> }));
@@ -23,13 +24,13 @@ beforeEach(() => vi.stubGlobal("React", React));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe("the photo-to-game proof", () => {
-  it("recovers removed portraits and hidden compositions after normal QA sign-in, waiting for both layers again", async () => {
+  it("recovers the portrait and prepared demo crop after normal QA sign-in", async () => {
     const fetcher = vi.fn().mockResolvedValue({ status: 401, json: async () => ({ code: "QA_ACCESS_REQUIRED" }) });
     vi.stubGlobal("fetch", fetcher);
     const view = render(<I18nProvider locale="he" dict={getDict("he")}><HomeQaRecovery enabled>{await Transformation()}</HomeQaRecovery></I18nProvider>);
     await act(async () => {
       fireEvent.error(view.container.querySelector(".tf-portrait img")!);
-      fireEvent.error(view.container.querySelector(".tf-world__patch")!);
+      fireEvent.error(view.container.querySelector(".tf-world__prepared")!);
     });
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(view.container.querySelector(".tf-portrait img")).toBeNull();
@@ -38,9 +39,7 @@ describe("the photo-to-game proof", () => {
     await act(async () => fireEvent(window, new Event("focus")));
     expect(view.container.querySelector(".qa-home-recovery")).toBeNull();
     expect(view.container.querySelector(".tf-portrait img")).not.toBeNull();
-    fireEvent.load(view.container.querySelector(".tf-world__base")!);
-    expect(view.container.querySelector(".tf-world__bubble")).toBeNull();
-    fireEvent.load(view.container.querySelector(".tf-world__patch")!);
+    fireEvent.load(view.container.querySelector(".tf-world__prepared")!);
     expect(view.getByRole("img", { name: getDict("he").home.transform.worldAlt })).toBeTruthy();
   });
   it("keeps the selected example's eyes, nose and cheeks opaque over the board", async () => {
@@ -55,21 +54,20 @@ describe("the photo-to-game proof", () => {
     }
     expect(samples).toBeGreaterThan(1000);
   });
-  it("renders the real server composition, and waits for BOTH board and child before showing the bubble", async () => {
+  it("renders the prepared complete demo composition, and waits for it before showing the bubble", async () => {
     const view = render(await Transformation());
-    const board = view.container.querySelector(".tf-world__base")!;
-    const patch = view.container.querySelector(".tf-world__patch")!;
+    const picture = view.container.querySelector(".tf-world__prepared")!;
     expect(example.sprite.kind).toBe("image");
-    expect(patch.getAttribute("src")).toBe(example.sprite.kind === "image" ? example.sprite.url : "");
+    expect(picture.getAttribute("src")).toBe(prepared.src);
+    expect(picture.getAttribute("loading")).toBe("lazy");
+    expect(view.container.querySelector(`img[src="${buildDemoConfig("en").scenes[0]!.art.base}"]`)).toBeNull();
     expect(view.container.querySelector(".tf-portrait img")?.getAttribute("src")).toBe(example.identitySheet);
     expect(view.container.textContent).not.toContain("כובע");
     expect(view.container.querySelector(".tf-world__bubble")).toBeNull();
-    fireEvent.load(board);
-    expect(view.container.querySelector(".tf-world__bubble")).toBeNull();
-    fireEvent.load(patch);
+    fireEvent.load(picture);
     expect(view.getByRole("img", { name: getDict("he").home.transform.worldAlt })).toBeTruthy();
     expect(view.container.querySelector(".tf-world__bubble")).not.toBeNull();
-    fireEvent.error(patch);
+    fireEvent.error(picture);
     expect(view.container.querySelector(".tf-world__bubble")).toBeNull();
     expect(view.getByRole("status").textContent).toBe(getDict("he").home.transform.previewUnavailable);
   });
@@ -88,6 +86,47 @@ describe("the photo-to-game proof", () => {
     act(() => vi.advanceTimersByTime(15_000));
     expect(view.getByRole("status").textContent).toBe(getDict("he").home.transform.previewUnavailable);
     expect(view.container.querySelector(".tf-world__bubble")).toBeNull();
+  });
+
+  it("does not request or time out an offscreen preview, even after a long pause", async () => {
+    vi.useFakeTimers();
+    let enter!: (entries: { isIntersecting: boolean }[]) => void;
+    const disconnect = vi.fn();
+    vi.stubGlobal("IntersectionObserver", class {
+      constructor(callback: typeof enter) { enter = callback; }
+      observe() {}
+      disconnect = disconnect;
+    });
+    const view = render(await Transformation());
+    expect(view.container.querySelector(".tf-world__prepared")).toBeNull();
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(view.getByRole("status").textContent).toBe(getDict("he").home.transform.previewLoading);
+    act(() => enter([{ isIntersecting: true }]));
+    expect(view.container.querySelector(".tf-world__prepared")?.getAttribute("src")).toBe(prepared.src);
+    expect(disconnect).toHaveBeenCalled();
+    fireEvent.load(view.container.querySelector(".tf-world__prepared")!);
+    expect(view.container.querySelector(".tf-world__bubble")).not.toBeNull();
+  });
+
+  it("binds the small display crop to the exact public demo masters and head", async () => {
+    const hash = (file: string) => createHash("sha256").update(readFileSync(file)).digest("hex");
+    expect(hash(`public${prepared.source.board}`)).toBe(prepared.source.boardSha256);
+    expect(hash(`public${prepared.source.patch}`)).toBe(prepared.source.patchSha256);
+    expect(hash(`public${prepared.src}`)).toBe(prepared.sha256);
+    const meta = await sharp(`public${prepared.src}`).metadata();
+    expect([meta.width, meta.height]).toEqual([720, 900]);
+    expect(readFileSync(`public${prepared.src}`).length).toBeLessThan(250_000);
+    const layer = await sharp(`public${prepared.source.patch}`).resize(prepared.source.rect.width, prepared.source.rect.height, { fit: "fill" }).png().toBuffer();
+    const composition = await sharp(`public${prepared.source.board}`).composite([{ input: layer, left: prepared.source.rect.left, top: prepared.source.rect.top }]).png().toBuffer();
+    const expected = await sharp(composition).extract(prepared.crop).resize(720, 900).webp({ quality: 80, effort: 6 }).toBuffer();
+    expect(readFileSync(`public${prepared.src}`).equals(expected)).toBe(true);
+    const scene = buildDemoConfig("en").scenes[0]!;
+    const target = scene.targets.find(t => t.id === example.target)!;
+    const geometry = targetGeometry(scene, target, "A");
+    expect(prepared.source.sceneVersion).toBe(scene.version);
+    expect(prepared.source.target).toBe(target.id);
+    expect(prepared.bubble.x).toBeCloseTo((geometry.head.x * scene.art.width - prepared.crop.left) / prepared.crop.width);
+    expect(prepared.bubble.y).toBeCloseTo((geometry.head.y * scene.art.height - prepared.crop.top) / prepared.crop.height);
   });
 
   it("shows the illustrated identity cue even when the hiding spot has a composed costume", () => {

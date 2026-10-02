@@ -3,8 +3,19 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 describe("reviewed release tooling", () => {
+  it("requires passing evidence for the exact commit and latest quality run", () => {
+    const moduleUrl = pathToFileURL(path.resolve("scripts/qa-ci-proof.mjs")).href;
+    const evaluate = (runs: unknown) => spawnSync(process.execPath, ["--input-type=module", "-e",
+      `import { passingQaCiRun } from ${JSON.stringify(moduleUrl)}; console.log(passingQaCiRun(JSON.parse(process.argv[1]), process.argv[2]));`, JSON.stringify(runs), "a".repeat(40)], { encoding: "utf8" });
+    const pass = { databaseId: 123, headSha: "a".repeat(40), workflowName: "Quality gate", status: "completed", conclusion: "success" };
+    expect(evaluate([pass]).stdout.trim()).toBe("123");
+    for (const runs of [[], [{ ...pass, headSha: "b".repeat(40) }], [{ ...pass, status: "in_progress" }], [{ ...pass, conclusion: "failure" }, pass], [{ ...pass, workflowName: "Other workflow" }]]) {
+      expect(evaluate(runs).stderr).toContain("Refusing QA deployment");
+    }
+  });
   it("keeps mock application environment confined to the build step", () => {
     const workflow = readFileSync(".github/workflows/quality.yml", "utf8");
     const beforeBuild = workflow.split("      - name: Production build and private-asset audit")[0]!;
@@ -25,6 +36,7 @@ describe("reviewed release tooling", () => {
       git("checkout", "-b", "codex/release-fixture"); git("remote", "add", "find-me", remote);
       writeFileSync(path.join(repo, ".gitignore"), ".vercel/\n");
       writeFileSync(path.join(repo, "guard.mjs"), readFileSync("scripts/deploy-qa-clean.mjs"));
+      writeFileSync(path.join(repo, "qa-ci-proof.mjs"), readFileSync("scripts/qa-ci-proof.mjs"));
       mkdirSync(path.join(repo, ".vercel"));
       const project = path.join(repo, ".vercel/project.json");
       const valid = { projectId: "prj_LbqCRqwU8WfZpeaWU7HTXM4SsfG4", orgId: "team_2bLUDGyHayGB1UHIvcCBgyWh" };

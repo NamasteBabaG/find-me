@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-const f = vi.hoisted(() => ({ tick: vi.fn(), notify: vi.fn(), retention: vi.fn() }));
+const f = vi.hoisted(() => ({ tick: vi.fn(), notify: vi.fn(), health: vi.fn(), retention: vi.fn() }));
 vi.mock("@/services/container", () => ({ getContainer: () => ({}) }));
 vi.mock("@/lib/server/qa-access", () => ({ qaAccessDenied: async () => null }));
 vi.mock("@/lib/env", () => ({ env: () => ({ CRON_SECRET: "synthetic-cron" }) }));
 vi.mock("@/services/generation/queue", () => ({ tickGeneration: f.tick }));
 vi.mock("@/services/admin-alert.service", () => ({ retryFailedAdminAlerts: f.notify }));
+vi.mock("@/services/generation-health.service", () => ({ alertStalledGeneration: f.health }));
 vi.mock("@/services/retention.service", () => ({ runRetentionIfDue: f.retention }));
 import { POST } from "./route";
 const request = () => new Request("https://qa.example/api/jobs/tick", { method: "POST", headers: { authorization: "Bearer synthetic-cron" } });
@@ -12,7 +13,7 @@ beforeEach(() => {
   vi.useFakeTimers(); vi.clearAllMocks();
   vi.spyOn(console, "info").mockImplementation(() => {}); vi.spyOn(console, "error").mockImplementation(() => {});
   f.tick.mockResolvedValue({ gameId: null, status: null, pending: false });
-  f.notify.mockResolvedValue(null); f.retention.mockResolvedValue(null);
+  f.notify.mockResolvedValue(null); f.health.mockResolvedValue({ attempted: 0 }); f.retention.mockResolvedValue(null);
 });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 describe("tick diagnostics and remaining budget", () => {
@@ -22,6 +23,7 @@ describe("tick diagnostics and remaining budget", () => {
     expect(logs.map(row => row[1]?.phase)).toContain("generation");
     expect(logs.at(-1)?.[1]).toMatchObject({ event: "end" });
     expect(JSON.stringify(logs)).not.toContain("synthetic-cron"); expect(vi.getTimerCount()).toBe(0);
+    expect(f.health).toHaveBeenCalledOnce();
   });
   it("defers instead of starting a painter after the available window is exhausted", async () => {
     f.notify.mockImplementation(async () => { vi.setSystemTime(Date.now() + 250_000); });

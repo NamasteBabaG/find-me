@@ -28,6 +28,8 @@ import { runGenerationPipeline } from "./generation/pipeline";
  */
 export interface Container {
   db: Db;
+  /** Trusted datasource identity for raw SQL schema qualification; never expose or log it. */
+  databaseUrl?: string;
   storage: StorageProvider;
   payment: PaymentProvider;
   avatars: AvatarProvider;
@@ -84,6 +86,7 @@ function build(): Container {
 
   const container: Container = {
     db: prisma,
+    databaseUrl: e.DATABASE_URL,
     storage,
     payment,
     avatars:

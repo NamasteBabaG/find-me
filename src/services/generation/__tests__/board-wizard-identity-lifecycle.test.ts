@@ -491,6 +491,10 @@ describe("QA identity lifecycle: real DB and synthetic provider only", () => {
     expect((await f.job()).lastError).not.toContain("synthetic sensitive");
     expect((await f.ledger()).requests[0]).toMatchObject({ state: "unknown", reserveMicroUsd: 500_000 });
     const next = await fixture();
+    // A fresh RUNNING fixture belongs to another worker; select it only after
+    // that worker releases its lease, rather than spending a cron turn on it.
+    expect(await nextPendingGame(f.c)).toBeNull();
+    await db.generationJob.update({ where: { id: next.claim.jobId }, data: { status: "QUEUED" } });
     expect(await nextPendingGame(f.c)).toBe(next.id);
     await runGenerationPipeline(f.c, f.id); expect(calls).toBe(1);
     await db.game.update({ where: { id: next.id }, data: { status: "MANUAL_REVIEW" } });

@@ -61,11 +61,15 @@ function AdventureCard({ adventure, child, t, eager }: { adventure: FamilyAdvent
   const f = t.family;
   const manage = <Link href={`/library/${adventure.gameId}`} className="family-manage">{t.library.manage}</Link>;
   if (!adventure.ready) {
+    const state = adventure.preparation ?? "preparing";
+    const copy = f.generationState[state];
     return <article className="adventure adventure--preparing">
       <div className="adventure__wait" aria-hidden="true"><Sticker url={child.avatarUrl} name={child.name} /></div>
       <div className="adventure__body">
-        <h2>{f.preparing}</h2>
-        <div className="adventure__actions"><LinkButton href={`/creating/${adventure.gameId}`} variant="secondary">{t.library.viewProgress}</LinkButton>{manage}</div>
+        <h2>{copy.title}</h2><p>{copy.hint}</p>
+        <div className="adventure__actions">{state === "attention" || state === "unavailable"
+          ? <LinkButton href={`/support?order=${encodeURIComponent(adventure.gameId)}`} variant="secondary">{f.getHelp}</LinkButton>
+          : <LinkButton href={`/creating/${adventure.gameId}`} variant="secondary">{t.library.viewProgress}</LinkButton>}{manage}</div>
       </div>
     </article>;
   }

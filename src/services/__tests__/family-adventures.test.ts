@@ -102,7 +102,7 @@ describe("the family area's view of a child", () => {
     const byId = Object.fromEntries(child!.adventures.map(a => [a.gameId, a]));
     expect(byId.game_ready).toMatchObject({ ready: true, tracked: true });
     expect(byId.game_ready!.worlds[0]).toMatchObject({ slug: "journey", stamped: 2, stars: 7 });
-    expect(byId.game_broken).toMatchObject({ ready: true, tracked: false, worlds: [] });
+    expect(byId.game_broken).toMatchObject({ ready: false, tracked: false, worlds: [], preparation: "unavailable" });
     expect(byId.game_drawing).toMatchObject({ ready: false, worlds: [] });
     // The sticker is the one the child plays as in the playable game, not the one still being drawn.
     expect(child!.avatarUrl).toBe(config.child.avatarUrl);
@@ -128,5 +128,17 @@ describe("the family area's view of a child", () => {
   it("shows nothing of one parent's children to another", async () => {
     expect(await familyAdventures({ db, secret }, "other", "fam_yuval")).toEqual([]);
     expect(await familyAdventures({ db, secret }, "", "fam_yuval")).toEqual([]);
+  });
+
+  it("distinguishes a failed game, a budget wait and a new-photo request without exposing internal errors", async () => {
+    await db.familyChild.create({ data: { id: "fam_waiting", ownerId: "parent", displayName: "Example" } });
+    await paidGame("game_failed", "fam_waiting", { status: "GENERATION_FAILED" });
+    await paidGame("game_budget", "fam_waiting", { status: "TARGETS_GENERATING" });
+    await paidGame("game_photo", "fam_waiting", { status: "NEEDS_NEW_PHOTO" });
+    await db.generationJob.create({ data: { id: "job_game_budget", gameId: "game_budget", status: "QUEUED", currentStep: "local-patch:recovery-budget-wait", lastError: "sensitive-ledger-detail" } });
+    const [child] = await familyAdventures({ db, secret }, "parent", "fam_waiting");
+    expect(child!.adventures.map(a => [a.gameId, a.preparation])).toEqual([["game_failed", "attention"], ["game_budget", "delayed"], ["game_photo", "needsPhoto"]]);
+    expect(JSON.stringify(child)).not.toContain("sensitive-ledger-detail");
+    expect(child!.adventures.every(a => !a.ready)).toBe(true);
   });
 });

@@ -5,7 +5,7 @@ import type { Locale } from "@/i18n/config";
 import { serviceCopy } from "@/domain/legal";
 type Topic = keyof typeof serviceCopy.en.topics;
 
-export function SupportForm({ locale, initialTopic = "help" }: { locale: Locale; initialTopic?: Topic }) {
+export function SupportForm({ locale, initialTopic = "help", initialOrder = "" }: { locale: Locale; initialTopic?: Topic; initialOrder?: string }) {
   const c = serviceCopy[locale];
   const [pending, setPending] = useState(false), [error, setError] = useState(false);
   const [receipt, setReceipt] = useState<{ reference: string; receivedAt: string } | null>(null);
@@ -34,7 +34,7 @@ export function SupportForm({ locale, initialTopic = "help" }: { locale: Locale;
     <h2 id="request-title">{c.requestTitle}</h2>
     <label className="fm-field"><span className="fm-label">{c.topic}</span><select name="topic" className="fm-input" defaultValue={initialTopic}>{Object.entries(c.topics).map(([value, title]) => <option key={value} value={value}>{title}</option>)}</select></label>
     <label className="fm-field"><span className="fm-label">{c.contactEmail}</span><input className="fm-input" name="email" type="email" maxLength={254} autoComplete="email" required dir="ltr" /></label>
-    <label className="fm-field"><span className="fm-label">{c.order}</span><input className="fm-input" name="order" maxLength={160} autoComplete="off" /></label>
+    <label className="fm-field"><span className="fm-label">{c.order}</span><input className="fm-input" name="order" maxLength={160} autoComplete="off" defaultValue={initialOrder} /></label>
     <label className="fm-field"><span className="fm-label">{c.message}</span><textarea className="fm-input" name="message" maxLength={2500} rows={5} /></label>
     <div className="service-trap" aria-hidden="true"><label>Website<input name="website" tabIndex={-1} autoComplete="off" /></label></div>
     <p className="fm-hint">{c.minimisation}</p><p className="fm-hint">{c.requestPrivacy} <Link href="/privacy">{c.privacy}</Link></p>

@@ -182,7 +182,7 @@
 /* A child's buttons on a painting: white and round, with a white rim so they
    read on any art, the ink glyph inside, and a gold light under the finger.
    They were dark grey discs with hairline icons — a video player's furniture. */
-.scene__btn { width: var(--touch-min); height: var(--touch-min); border-radius: var(--radius-pill); background: rgba(255, 255, 255, 0.92); backdrop-filter: blur(10px); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.95), 0 4px 12px rgba(23, 22, 43, 0.3); color: var(--ink); display: grid; place-items: center; line-height: 1; transition: transform var(--dur-2) var(--ease-pop), background var(--dur-1), box-shadow var(--dur-2); }
+.scene__btn { width: var(--touch-kid); height: var(--touch-kid); border-radius: var(--radius-pill); background: rgba(255, 255, 255, 0.92); backdrop-filter: blur(10px); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.95), 0 4px 12px rgba(23, 22, 43, 0.3); color: var(--ink); display: grid; place-items: center; line-height: 1; transition: transform var(--dur-2) var(--ease-pop), background var(--dur-1), box-shadow var(--dur-2); }
 .scene__btn:hover { background: var(--sun); box-shadow: inset 0 0 0 2px var(--white), var(--shadow-glow-sun); transform: translateY(-2px); }
 .scene__btn:active { transform: scale(0.88); background: var(--sun-deep); box-shadow: inset 0 0 0 2px var(--white), var(--shadow-1); }
 .scene__btn:disabled { opacity: 0.45; transform: none; background: rgba(255, 255, 255, 0.92); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.95), var(--shadow-1); }
@@ -279,7 +279,7 @@
 @media (max-width: 720px) {
   /* The chrome sits over the picture, so it stays as small as a finger allows. */
   .scene__bar { padding: var(--space-1); }
-  .scene__btn { width: 48px; height: 48px; }
+  .scene__btn { width: var(--touch-kid); height: var(--touch-kid); }
   .scene__title { min-height: 36px; padding-inline: var(--space-1); }
 }
 /* Landscape on a phone: the board is short, so the top bar hugs the corners
@@ -410,7 +410,7 @@
 @media (max-width: 720px), (max-height: 480px) {
   .mission { max-width: min(calc(var(--space-16) * 2), calc(100% - var(--space-8))); gap: var(--space-0-5); }
   .mission__thumb--face { width: var(--space-5); height: var(--space-5); }
-  .scene__btn { width: var(--touch-min); height: var(--touch-min); }
+  .scene__btn { width: var(--touch-kid); height: var(--touch-kid); }
 }
 /* Compact on every screen, not only narrow phones. Keep the hint's 48px
    touch target and all five stars; map/completion trays retain their sizes. */
@@ -454,9 +454,9 @@
 .wmap__title { font-size: var(--fs-500); line-height: var(--lh-500); }
 .wmap__sub { color: var(--ink-2); font-size: var(--fs-200); line-height: var(--lh-200); }
 
-.wmap__frame { flex: 0 1 auto; min-height: 0; display: grid; place-items: center; }
-.wmap__art { position: relative; width: 100%; max-width: min(100%, calc((100dvh - var(--wmap-chrome) - var(--round-controls-height, 0px)) * var(--wmap-ratio, 1.5))); max-height: max(120px, calc(100dvh - var(--wmap-chrome) - var(--round-controls-height, 0px))); border-radius: var(--radius-4); overflow: hidden; box-shadow: var(--shadow-3); }
-.wmap__img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.wmap__frame { flex: 0 0 auto; min-height: calc(var(--touch-kid) * 3); display: grid; place-items: center; }
+.wmap__art { position: relative; width: 100%; max-width: min(100%, max(calc(var(--space-12) * 3), calc((100dvh - var(--wmap-chrome) - var(--round-controls-height, 0px)) * var(--wmap-ratio, 1.5)))); min-height: max(calc(var(--touch-kid) * 3), var(--wmap-labels-height, 0px)); max-height: max(calc(var(--touch-kid) * 3), var(--wmap-labels-height, 0px), calc(100dvh - var(--wmap-chrome) - var(--round-controls-height, 0px))); container-type: inline-size; border-radius: var(--radius-4); overflow: visible; box-shadow: var(--shadow-3); }
+.wmap__img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
 
 /* Per Guy (2026-10-01): a place is its name. No board thumbnails and no route
    drawn over the painting (the art has its own trail): only the child marks
@@ -465,20 +465,21 @@
 .wmap__nodes { position: absolute; inset: 0; list-style: none; margin: 0; padding: 0; }
 .wmap__node { position: absolute; transform: translate(-50%, -50%); z-index: 2; }
 .wmap__node.is-here { z-index: 3; }
-.wmap__place { position: relative; display: inline-flex; align-items: center; gap: var(--space-0-5); min-height: var(--space-4); padding-inline: var(--space-2); border-radius: var(--radius-pill); background: rgba(23, 22, 43, 0.74); color: var(--white); font-family: var(--font-display); font-weight: 600; font-size: var(--fs-100); line-height: var(--lh-100); white-space: nowrap; box-shadow: 0 2px 8px rgba(23, 22, 43, 0.35); transition: transform var(--dur-1) var(--ease-out), background var(--dur-2) var(--ease-out); }
-.wmap__place::after { content: ""; position: absolute; inset: calc((var(--touch-kid) - var(--space-4)) / -2) calc(var(--space-1) * -1); border-radius: var(--radius-pill); }
+.wmap__place { position: relative; display: inline-flex; align-items: center; gap: var(--space-0-5); min-height: var(--space-4); max-width: calc(100cqw / 3 - var(--space-2) - var(--space-0-5)); padding-inline: var(--space-2); border-radius: var(--radius-pill); background: rgba(23, 22, 43, 0.74); color: var(--white); font-family: var(--font-display); font-weight: 600; font-size: var(--fs-100); line-height: var(--lh-100); white-space: nowrap; box-shadow: 0 2px 8px rgba(23, 22, 43, 0.35); transition: transform var(--dur-1) var(--ease-out), background var(--dur-2) var(--ease-out); }
+.wmap__place::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(calc(100% + var(--space-2)), var(--touch-kid)); height: max(100%, var(--touch-kid)); transform: translate(-50%, -50%); border-radius: var(--radius-pill); }
+.wmap__place-name { min-width: 0; white-space: normal; overflow-wrap: anywhere; text-align: center; }
 .wmap__place:hover { transform: translateY(-2px); }
 .wmap__place:active { transform: scale(0.96); }
 .wmap__place:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
 .wmap__place-done { display: inline-grid; place-items: center; width: var(--space-2); height: var(--space-2); border-radius: 50%; background: var(--leaf); color: var(--white); font-size: var(--fs-50); line-height: 1; }
-.wmap__place-stars { display: inline-flex; align-items: center; margin-inline-start: var(--space-0-5); padding: 0 var(--space-0-5); border-radius: var(--radius-pill); background: var(--white); color: var(--ink); }
+.wmap__place-stars { display: inline-flex; align-items: center; flex-shrink: 0; margin-inline-start: var(--space-0-5); padding: 0 var(--space-0-5); border-radius: var(--radius-pill); background: var(--white); color: var(--ink); }
 /* Here: where the child stands (and the place they just chose) is the sunny one. */
 .wmap__node.is-here .wmap__place { background: var(--sun); color: var(--ink); box-shadow: 0 0 0 3px var(--white), 0 4px 12px rgba(23, 22, 43, 0.35); }
 /* Ahead: quieter, never a padlock. */
 .wmap__node--future .wmap__place { background: rgba(23, 22, 43, 0.5); color: rgba(255, 255, 255, 0.86); box-shadow: none; }
 /* Words for a place still ahead: a small dark pill under its name. */
 .wmap__teaser { position: absolute; left: 50%; top: calc(100% + var(--space-1)); transform: translateX(-50%); z-index: 4; padding: var(--space-0-5) var(--space-2); border-radius: var(--radius-pill); background: var(--ink); color: var(--white); font-family: var(--font-display); font-weight: 600; font-size: var(--fs-100); line-height: var(--lh-100); white-space: nowrap; box-shadow: var(--shadow-2); animation: fm-pop-in var(--dur-3) var(--ease-pop); pointer-events: none; }
-.wmap__starsbtn { display: inline-flex; align-items: center; min-height: var(--touch-min); padding-inline: var(--space-2); border-radius: var(--radius-pill); background: var(--white); box-shadow: inset 0 0 0 2px var(--gold-light), var(--shadow-1); transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-1); }
+.wmap__starsbtn { display: inline-flex; align-items: center; min-height: var(--touch-kid); padding-inline: var(--space-2); border-radius: var(--radius-pill); background: var(--white); box-shadow: inset 0 0 0 2px var(--gold-light), var(--shadow-1); transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-1); }
 .wmap__starsbtn:hover { transform: translateY(-1px); box-shadow: inset 0 0 0 2px var(--gold), var(--shadow-glow-gold), var(--shadow-1); }
 
 /* The child stands just above the name of the place they are at. */
@@ -492,16 +493,18 @@
 @keyframes wmap-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
 @keyframes wmap-float { 0%, 100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-6px) rotate(2deg); } }
 
-.wmap__skip { align-self: center; min-height: var(--control-h-sm); padding-inline: var(--space-3); border-radius: var(--radius-pill); background: rgba(23, 22, 43, 0.5); color: var(--white); font-size: var(--fs-100); }
+.wmap__skip { align-self: center; min-height: var(--touch-kid); padding-inline: var(--space-3); border-radius: var(--radius-pill); background: rgba(23, 22, 43, 0.5); color: var(--white); font-size: var(--fs-100); }
 
 @media (max-width: 720px) {
   /* A phone's header wraps to two rows and the padding is smaller. */
   .wmap { --wmap-chrome: 232px; padding: var(--space-2); gap: var(--space-1); }
   .wmap__title { font-size: var(--fs-400); line-height: var(--lh-400); }
-  /* On a phone the names stay (they are the places now), smaller; the ring keeps a 48px target without
+  /* On a phone the names stay (they are the places now), smaller; the ring keeps a 64px target without
      swallowing a neighbour, and the big "go" button under the map is the kid-sized way in. */
   .wmap__place { min-height: var(--space-3); padding-inline: var(--space-1); gap: 2px; font-size: var(--fs-50); line-height: var(--lh-50); }
-  .wmap__place::after { inset: calc((var(--touch-min) - var(--space-3)) / -2) calc(var(--space-0-5) * -1); }
+  /* A part-found count gets its own line so a full translated name still fits. */
+  .wmap__place:has(.wmap__place-stars) { flex-direction: column; gap: var(--space-0-5); padding-block: var(--space-0-5); }
+  .wmap__place-stars { margin-inline-start: 0; }
   .wmap__place-done { width: 12px; height: 12px; font-size: 9px; }
   .wmap__marker { transform: translate(-50%, calc(-100% - var(--space-2))); }
   /* 32px keeps the child clear of the name above (Paris over Marrakech is the tightest pair). */
@@ -529,6 +532,7 @@
 .wmap__go-name { font-family: var(--font-display); font-weight: 600; font-size: var(--fs-300); line-height: var(--lh-300); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wmap__go-stars { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--fs-50); line-height: var(--lh-50); font-weight: 700; color: var(--ink-2); }
 .wmap__go-arrow { font-size: var(--fs-400); }
+[dir="rtl"] .wmap__go-arrow { transform: scaleX(-1); }
 
 /* A finished journey stays finished on return: no modal, reset, or sales pitch.
    Place the keepsake and replay actions before the map so phones see them too. */
@@ -691,3 +695,7 @@
 @media (prefers-reduced-motion: reduce) {
   .scene__album-toast, .complete__postcard { animation: none; }
 }
+
+/* Map chrome and a live board are child controls, including the compact hint. */
+.wmap__actions .fm-btn { min-height: var(--touch-kid); }
+.scene { --touch-min: var(--touch-kid); }

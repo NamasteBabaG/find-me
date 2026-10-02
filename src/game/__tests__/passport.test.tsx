@@ -9,12 +9,24 @@ import { boardSlugs } from "@/domain/world";
 import { getDict } from "@/i18n";
 import { Passport } from "../components/Passport";
 import { GameI18nProvider } from "../i18n";
+import previews from "../../../content/home/board-presentation.json";
 
 vi.mock("next/image", () => ({ default: ({ fill, unoptimized, ...props }: any) => <img {...props} /> }));
 beforeEach(() => vi.stubGlobal("React", React));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("the illustrated adventure bag", () => {
+  it("uses a prepared preview for a full-master thumbnail without changing old saved art", () => {
+    const config = buildDemoConfig("en");
+    const p = previews[0]!;
+    config.scenes[0]!.art = { ...config.scenes[0]!.art, base: p.base, thumbnail: p.base };
+    config.adventure!.boards[0]!.art.base = p.base;
+    config.adventure!.boards[0]!.artSha256 = p.sha256;
+    const saved = JSON.stringify(config);
+    const view = render(<GameI18nProvider locale="en"><Passport config={config} progress={emptyProgress(config.gameId)} onMap={() => {}} onOpen={() => {}} /></GameI18nProvider>);
+    expect(view.container.querySelector(".loot__image img")?.getAttribute("src")).toBe(p.thumbnail);
+    expect(JSON.stringify(config)).toBe(saved);
+  });
   it.each(["he", "en"] as const)("offers a separate replay button only for completed boards in %s", locale => {
     const config = buildDemoConfig(locale);
     config.scenes = boardSlugs(allWorlds()[0]!).slice(0, 2).map(slug => buildDemoConfig(locale, slug).scenes[0]!);

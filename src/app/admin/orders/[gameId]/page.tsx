@@ -21,6 +21,7 @@ import { LocalPatchPartialReleaseForm } from "./LocalPatchPartialReleaseForm";
 import { adjustTargetAction, adminDeleteAction, adminRotateLinkAction, approveAction, recutAvatarAction, refundAction, regenTargetAction, requestPhotoAction, retryAction } from "../../actions";
 import { LOCAL_PATCH_NEEDS_RELEASE } from "@/services/generation/local-patch-world";
 import { LOCAL_PATCH_HUMAN_CONFIRMATION } from "@/services/generation/local-patch-human-approval";
+import { getI18n } from "@/i18n/server";
 
 // The explicit as-is action hashes the 27 retained crops and publishes them
 // transactionally; it makes no provider calls, but is not a short page action.
@@ -37,9 +38,9 @@ function judgeLabel(judge: { verdict: string; reason: string; claimedVerdict?: s
   return "? השופט לא הכריע";
 }
 
-export default async function AdminOrderPage({ params, searchParams }: { params: Promise<{ gameId: string }>; searchParams: Promise<{ v?: string; repair?: string; paidRepair?: string; partialRelease?: string; delivery?: string }> }) {
+export default async function AdminOrderPage({ params, searchParams }: { params: Promise<{ gameId: string }>; searchParams: Promise<{ v?: string; repair?: string; paidRepair?: string; partialRelease?: string; delivery?: string; refund?: string }> }) {
   await requireAdmin();
-  const [{ gameId }, { v, repair, paidRepair, partialRelease, delivery }] = await Promise.all([params, searchParams]);
+  const [{ gameId }, { v, repair, paidRepair, partialRelease, delivery, refund }, { t }] = await Promise.all([params, searchParams, getI18n()]);
   const variant: "A" | "B" = v === "B" ? "B" : "A";
   const c = getContainer();
   const detail = await orderDetailForAdmin(c, gameId);
@@ -85,6 +86,8 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
         </div>
       </div>
       {game.lastError ? <Notice kind="danger">{game.lastError}</Notice> : null}
+      {refund === "recorded" ? <Notice>{t.adminRefund.recorded}</Notice> : null}
+      {refund === "review" ? <Notice kind="danger">{t.adminRefund.review}</Notice> : null}
       {repair === "queued" ? <Notice>ניסיונות התיקון אושרו ונוספו לתור היצירה בשרת.</Notice> : null}
       {repair === "blocked" ? <Notice kind="danger">התיקון לא אושר. רעננו ובדקו את מצב המשחק, ההרשאה והחיובים לפני ניסיון נוסף.</Notice> : null}
       {paidRepair === "queued" ? <Notice>התיקונים מתמונות שכבר שולמו נוספו לתור לבדיקה. אין רינדור חדש ואין אישור פרסום בשלב זה.</Notice> : null}

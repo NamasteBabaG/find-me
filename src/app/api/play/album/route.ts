@@ -38,7 +38,8 @@ async function handle(req: Request, gameId: string, event?: z.infer<typeof Adven
   const user = await currentUser();
   if (!user) return NextResponse.json({ ok: false, code: "sign-in" }, { status: 401 });
   try {
-    const result = await ownerAdventureAlbum(getContainer().db, user.id, gameId, event);
+    const c = getContainer();
+    const result = await ownerAdventureAlbum(c.db, user.id, gameId, event, c.databaseUrl);
     return NextResponse.json({ ok: true, progress: result.progress, revision: result.revision, changed: result.changed }, { headers: { "cache-control": "no-store" } });
   } catch (error) {
     return failure(error);

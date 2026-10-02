@@ -3,6 +3,19 @@
  * playful; never salesy. `{placeholders}` are filled with tf().
  */
 export const en = {
+  adminRefund: {
+    recorded: "The refund was recorded on this order.",
+    review: "The refund was not confirmed in the system. Check the payment provider and this order before trying again.",
+  },
+  magicLinkConfirm: {
+    title: "Sign in to your family area",
+    lead: "Continue only if this is the account you want to use.",
+    account: "Account",
+    confirm: "Sign in",
+    invalidTitle: "Request a new sign-in link",
+    invalidBody: "This link expired, was already used, or needs to be opened again from your email.",
+    back: "Back to the family area",
+  },
   identityPilot: {
     title: "Bounded identity correction — private QA",
     note: "One selected appearance may use its next existing attempt, then the server stops. The existing inclusive budget and three-attempt limit stay unchanged. Resuming requests automatic review; it does not approve or publish any image.",
@@ -347,6 +360,15 @@ export const en = {
     open: "Adventures for {name}", add: "Create for another child", more: "Another adventure for {name}",
     passport: "{name}’s passport", back: "Family area", empty: "The first adventure starts here", emptyLead: "Create an adventure for a child. Their place in the family area appears after purchase.",
     tests: "QA: unassigned test adventures", count: "{n} adventures", preparing: "This adventure is being prepared", noAdventures: "No adventures here yet.",
+    getHelp: "Get help",
+    generationState: {
+      preparing: { title: "This adventure is being prepared", hint: "You can leave this page. Preparation continues on the server." },
+      repairing: { title: "Finishing this adventure", hint: "Automatic recovery is continuing. Your progress is saved." },
+      delayed: { title: "Preparation is taking longer", hint: "Preparation is waiting for the service. Your progress is saved; you do not need to approve pictures." },
+      needsPhoto: { title: "A new photo is needed", hint: "Open the progress page to provide a new photo." },
+      attention: { title: "Preparation needs service attention", hint: "The adventure is not ready to play. Contact us for help; no picture approval is needed." },
+      unavailable: { title: "This adventure is temporarily unavailable", hint: "We could not open its content. Contact us for help. Saved discoveries have not been reset." },
+    },
     places: "{n} of {total} places", stars: "{n} of {total} stars", stamps: "{n} of {total} stamps", currentPlace: "Current place: {place}",
     playStart: "Start playing", playContinue: "Continue playing", playAgain: "Play again", openPassport: "Open the passport",
   },
@@ -368,7 +390,7 @@ export const en = {
     qaHomeExpired: "QA sign-in needed to load the pictures. Sign in, then return to this tab.",
     locked: "A place for a future adventure", available: "Your next discovery is waiting", photoWait: "Find all three hiding spots to keep a picture here.", photoUnavailable: "We couldn't load this picture. Your stamp is safe.", pictureUnavailable: "No picture", retryImages: "Try loading the pictures again",
     collected: "My discoveries", unknown: "Not found yet", details: "About {name}", choosePhoto: "Choose my picture", photoChoice: "Picture {n}", selected: "Selected", saved: "Picture saved", saveFailed: "We couldn’t save that yet. Please try again.",
-    play: "Back to this place", preparing: "An adventure is being prepared. Its pages will appear here when it is ready.", empty: "Your passport is ready for its first adventure.",
+    play: "Back to this place", preparing: "An adventure is not available yet. Check its status in the family area; its pages will appear here when ready.", empty: "Your passport is ready for its first adventure.",
     ceremony: "A new page in my passport!", newItems: "New discoveries for my passport!", skip: "Show my page", savedLocal: "Kept in this browser", savedAccount: "Saved to your passport", saving: "Saving your discoveries…", opening: "Opening the passport…",retry: "Try again",
     demo: "Example passport — an imaginary adventure", unavailable: "We couldn’t open the passport just now. Your progress has not been reset.",
   },

@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { passingQaCiRun } from "./qa-ci-proof.mjs";
 
 // Run from a clean release worktree with its own .vercel/project.json.
 // Never promotes an alias: inspect the build and privacy audit before promote.
@@ -20,6 +21,10 @@ if (!remoteBranches.length) throw Error("Refusing an unpushed release commit; pu
 if (process.argv.includes("--check")) {
   console.log(JSON.stringify({ target: "find-me-qa", commit, remoteBranches, clean: true }));
 } else if (process.argv.includes("--deploy")) {
+  const runs = JSON.parse(execFileSync(process.platform === "win32" ? "gh.exe" : "gh", ["run", "list", "--repo", "NamasteBabaG/find-me", "--workflow", "quality.yml", "--commit", commit,
+    "--limit", "20", "--json", "databaseId,headSha,workflowName,status,conclusion"], { encoding: "utf8" }));
+  const ciRun = passingQaCiRun(runs, commit);
+  console.log(JSON.stringify({ commit, ciRun, target: "find-me-qa" }));
   execFileSync(process.platform === "win32" ? "vercel.cmd" : "vercel", ["deploy", "--prod", "--skip-domain", "--yes", "--no-wait",
     "--meta", `releaseCommit=${commit}`, "--env", `APP_COMMIT=${commit}`, "--build-env", `APP_COMMIT=${commit}`,
   ], { stdio: "inherit", shell: process.platform === "win32" });

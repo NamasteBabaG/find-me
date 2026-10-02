@@ -39,7 +39,10 @@ export async function familyOverview(db: PrismaClient, ownerId: string, childId?
     select: { id: true, displayName: true, games: {
       where: { ownerId, deletedAt: null, status: { notIn: ["CANCELLED", "DELETED", "REFUNDED"] }, orders: { some: { userId: ownerId, paymentStatus: "PAID" } } },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-      select: { id: true, title: true, status: true, childProfile: { select: { avatarAssetId: true } } },
+      select: { id: true, title: true, status: true, styleVersion: true, updatedAt: true,
+        scenes: { select: { sceneVersion: true } },
+        jobs: { select: { status: true, currentStep: true, updatedAt: true }, orderBy: { updatedAt: "desc" }, take: 1 },
+        childProfile: { select: { avatarAssetId: true } } },
     } },
   });
 }

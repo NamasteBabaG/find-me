@@ -30,7 +30,7 @@ export const ALERT_RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const RETRY_PAGE_SIZE = 100;
 const RETRY_LIMIT = 20;
 const FAILURE_KINDS = new Map<string, AdminAlertKind>(
-  (["delivered-with-problems", "held-for-review", "generation-failed", "needs-new-photo"] as const)
+  (["delivered-with-problems", "held-for-review", "generation-failed", "needs-new-photo", "generation-stalled"] as const)
     .map((kind) => [`admin-alert:${kind}:failed`, kind]),
 );
 const RETRY_ACTIONS = [...FAILURE_KINDS.keys(), ...[...FAILURE_KINDS.keys()].map((action) => action.replace(/:failed$/, ""))];
@@ -58,8 +58,8 @@ interface AlertMeta {
   error?: string;
 }
 
-export async function sendAdminAlert(c: Container, input: AdminAlertInput): Promise<AdminAlertOutcome> {
-  return sendAlert(c, input);
+export async function sendAdminAlert(c: Container, input: AdminAlertInput, options: { deadlineAt?: number } = {}): Promise<AdminAlertOutcome> {
+  return sendAlert(c, input, undefined, options.deadlineAt);
 }
 
 /** A retry carries only the recipients who failed, and when each last failed. */
@@ -92,7 +92,13 @@ async function sendAlert(c: Container, input: AdminAlertInput, retryFailures?: M
     outcome.skipped.push(...admins.filter((to) => already.has(to)));
     if (due.length === 0) return outcome;
 
-    const game = await c.db.game.findUniqueOrThrow({ where: { id: input.gameId }, include: { childProfile: true, owner: { select: { email: true } }, scenes: true } });
+    const game = await c.db.game.findUniqueOrThrow({ where: { id: input.gameId }, include: { childProfile: true, owner: { select: { email: true } }, scenes: true, orders: true } });
+    // A queued health notice must not outlive completion, deletion or refund.
+    if (input.kind === "generation-stalled" && (game.deletedAt || ["READY", "DELIVERED", "DELETED", "REFUNDED", "CANCELLED", "NEEDS_NEW_PHOTO"].includes(game.status)
+      || game.orders.some(order => order.paymentStatus === "REFUNDED" || order.refundedAt))) {
+      outcome.skipped.push(...due);
+      return outcome;
+    }
     const failedSpots = await failedSpotsForAdmin(c, input.gameId).catch(() => []);
     const costCents = await generationCostForDisplay(c, input.gameId);
     const mail = adminAlertEmail({

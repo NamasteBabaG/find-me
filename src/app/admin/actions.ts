@@ -100,8 +100,12 @@ export async function resumeLocalPatchRepairsAction(fd: FormData): Promise<void>
 
 export async function refundAction(fd: FormData): Promise<void> {
   const actor = await admin();
-  await refundOrder(getContainer(), str(fd, "orderId"), actor);
-  revalidatePath(`/admin/orders/${str(fd, "gameId")}`);
+  const destination = `/admin/orders/${encodeURIComponent(str(fd, "gameId"))}`;
+  let confirmed = false;
+  try { confirmed = (await refundOrder(getContainer(), str(fd, "orderId"), actor)).ok; }
+  catch { /* The provider may have acted: ask for reconciliation, not another click. */ }
+  revalidatePath(destination);
+  redirect(`${destination}?refund=${confirmed ? "recorded" : "review"}`);
 }
 
 export async function adminDeleteAction(fd: FormData): Promise<void> {

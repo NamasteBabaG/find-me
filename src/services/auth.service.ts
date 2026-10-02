@@ -44,6 +44,18 @@ export async function requestMagicLink(c: Container, rawEmail: string, next = "/
   return { ok: true };
 }
 
+/** Read-only account disclosure to the holder of an unexpired sign-in capability.
+ * Opening a link (including an email scanner) must never spend it or sign in. */
+export async function inspectMagicLink(c: Container, token: string): Promise<{ email: string } | null> {
+  if (!token || token.length > 256) return null;
+  const record = await c.db.magicLinkToken.findUnique({
+    where: { tokenHash: hashToken(token) },
+    select: { usedAt: true, expiresAt: true, user: { select: { email: true } } },
+  });
+  if (!record || record.usedAt || record.expiresAt.getTime() <= Date.now()) return null;
+  return { email: record.user.email };
+}
+
 /**
  * Spend a sign-in link, once.
  *

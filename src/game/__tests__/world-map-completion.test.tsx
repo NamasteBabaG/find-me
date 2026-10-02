@@ -13,6 +13,7 @@ import { WorldMap } from "../components/WorldMap";
 import { GameShell } from "../components/GameShell";
 import { GameI18nProvider } from "../i18n";
 import { createPlayStore } from "../store/play-store";
+import preview from "../../../content/home/board-presentation.json";
 
 vi.mock("../audio/sounds", () => ({ sounds: () => ({ unlock() {}, play() {}, setScene() {}, startAmbient() {}, stopAmbient() {} }), bindGameAudio: () => () => {} }));
 beforeEach(() => {
@@ -42,6 +43,17 @@ function mount(config: GameConfig, progress: GameProgress, world = config.worlds
 }
 
 describe("a finished world's map", () => {
+  it("shows a prepared small matching thumbnail without rebinding saved board pixels", () => {
+    const config = fixture();
+    const p = preview[0]!;
+    config.scenes[0]!.art = { ...config.scenes[0]!.art, base: p.base, thumbnail: p.base };
+    const demoBook = buildDemoConfig("en").adventure!;
+    config.adventure = { ...demoBook, boards: [{ ...demoBook.boards[0]!, boardSlug: config.scenes[0]!.slug, art: { ...demoBook.boards[0]!.art, base: p.base }, artSha256: p.sha256 }] };
+    const saved = JSON.stringify(config);
+    const view = mount(config, emptyProgress(config.gameId));
+    expect(view.container.querySelector(".wmap__go-thumb img")?.getAttribute("src")).toBe(p.thumbnail);
+    expect(JSON.stringify(config)).toBe(saved);
+  });
   it.each(["en", "he"] as const)("uses each world's title and localized completion copy in %s, with all nine places still replayable", locale => {
     const config = fixture(locale, 3);
     for (const world of config.worlds!) {

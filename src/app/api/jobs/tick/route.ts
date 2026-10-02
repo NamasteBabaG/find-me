@@ -4,6 +4,7 @@ import { getContainer } from "@/services/container";
 import { tickGeneration } from "@/services/generation/queue";
 import { runRetentionIfDue } from "@/services/retention.service";
 import { retryFailedAdminAlerts } from "@/services/admin-alert.service";
+import { alertStalledGeneration } from "@/services/generation-health.service";
 import { env } from "@/lib/env";
 import { currentUser, draftTokenFromCookie, isAdminEmail } from "@/lib/server/session";
 import { safeEqual } from "@/lib/ids";
@@ -62,6 +63,10 @@ export async function POST(req: Request) {
     // Give persisted notification intent a bounded turn before new painting.
     enter("notification-retry");
     if (!gameId) await retryFailedAdminAlerts(c, { deadlineAt: Math.min(hardDeadlineAt, Date.now() + 20_000) });
+    if (!gameId) {
+      enter("generation-health");
+      await alertStalledGeneration(c, { deadlineAt: Math.min(hardDeadlineAt, Date.now() + 15_000) });
+    }
     if (hardDeadlineAt - Date.now() < SLICE_MS) {
       log("deferred");
       return NextResponse.json({ pending: true, deferred: true }, { status: 202, headers: { "Cache-Control": "no-store", "Retry-After": "30" } });

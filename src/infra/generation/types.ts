@@ -167,8 +167,8 @@ export interface SlotMatteResponse extends GenerationCost {
 }
 
 /**
- * Image generation behind an interface. The mock produces a real "photo
- * sticker" (crop + circle + white outline) so the whole product works with
+ * Image generation behind an interface. The mock produces a generic illustrated
+ * sticker, independent of private photo inputs, so the whole product works with
  * zero generation credits; a real provider draws the child and paints her in.
  */
 export interface AvatarProvider {

@@ -8,6 +8,7 @@ import { LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS } from "./local-patch-review-reco
 import { selfRepairEnabled } from "../../domain/scene/local-patch-self-repair";
 import { transitionGame } from "../game-status";
 import { SYSTEM } from "../audit.service";
+import { GENERATION_RETRY_BACKOFF_MS } from "../../domain/generation-health";
 
 /**
  * Moving generation forward a slice at a time.
@@ -46,6 +47,12 @@ export async function nextPendingGame(c: Container): Promise<string | null> {
       // already held by another worker. Match the world claimant's strict
       // takeover boundary; queued/released jobs remain immediately runnable.
       AND: [
+        // A failed attempt gets a bounded retry pause; the remaining paid games
+        // receive cron turns while it waits. Direct owner ticks remain available.
+        { NOT: { status: "GENERATION_FAILED", jobs: { some: { status: "FAILED", updatedAt: { gt: new Date(Date.now() - GENERATION_RETRY_BACKOFF_MS) } } } } },
+        { NOT: { styleVersion: { not: LOCAL_PATCH_STYLE }, jobs: { some: {
+          status: "RUNNING", updatedAt: { gte: new Date(Date.now() - PIPELINE_LEASE_MS) },
+        } } } },
         { OR: [{ jobs: { none: { currentStep: LOCAL_PATCH_QUALITY_FAILED } } }, { orders: {
           some: { paymentStatus: "PAID", paidAt: { not: null }, refundedAt: null },
           none: { OR: [{ paymentStatus: "REFUNDED" }, { refundedAt: { not: null } }] },

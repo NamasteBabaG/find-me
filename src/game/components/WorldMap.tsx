@@ -9,6 +9,8 @@ import { sounds } from "../audio/sounds";
 import { IslandGrid } from "./IslandGrid";
 import { StarCounter } from "./StarCounter";
 import { StarTray } from "./StarTray";
+import { boardThumbnail } from "../engine/board-thumbnail";
+import { useMapLabels } from "../engine/useMapLabels";
 
 interface Props {
   config: GameConfig;
@@ -138,6 +140,8 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
   const chosenNode = chosen ? world.nodes.find((n) => n.boardSlug === chosen) : undefined;
   const at = chosenNode ?? (travelling && from ? from : marker);
   const currentBoard = boards.get(marker.boardSlug);
+  const { ref: mapRef, positions, minHeight: labelsMinHeight } = useMapLabels(nodes);
+  const displayPosition = (node: typeof marker) => positions[node.boardSlug] ?? node;
 
   return (
     <div className="wmap" style={{ ["--wmap-sky" as string]: world.map.palette.sky, ["--wmap-accent" as string]: world.map.palette.accent }}>
@@ -182,7 +186,7 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
       ) : null}
 
       <div className="wmap__frame">
-        <div className="wmap__art" style={{ aspectRatio: `${world.map.width} / ${world.map.height}` }}>
+        <div ref={mapRef} className="wmap__art" style={{ aspectRatio: `${world.map.width} / ${world.map.height}`, ["--wmap-labels-height" as string]: `${labelsMinHeight}px` }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={world.map.art} alt="" className="wmap__img" width={world.map.width} height={world.map.height} draggable={false} />
 
@@ -203,7 +207,7 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
               const count = board ? sceneFoundIds(progress, board).length : 0;
               const here = at.boardSlug === node.boardSlug;
               return (
-                <li key={node.boardSlug} className={`wmap__node wmap__node--${state === "completed" && !boardComplete ? "visited" : state}${here ? " is-here" : ""}`} style={{ left: `${node.x * 100}%`, top: `${node.y * 100}%` }}>
+                <li key={node.boardSlug} className={`wmap__node wmap__node--${state === "completed" && !boardComplete ? "visited" : state}${here ? " is-here" : ""}`} style={{ left: `${displayPosition(node).x * 100}%`, top: `${displayPosition(node).y * 100}%` }}>
                   <button
                     type="button"
                     className="wmap__place"
@@ -238,7 +242,7 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
           {/* The child, standing above the place they are at or have just chosen. */}
           <div
             className={`wmap__marker${travelling || chosen ? " wmap__marker--travel" : ""} wmap__marker--${at.travelStyle}`}
-            style={{ left: `${at.x * 100}%`, top: `${at.y * 100}%`, transitionDuration: `${chosen ? CHOOSE_MS : TRAVEL_MS}ms` }}
+            style={{ left: `${displayPosition(at).x * 100}%`, top: `${displayPosition(at).y * 100}%`, transitionDuration: `${chosen ? CHOOSE_MS : TRAVEL_MS}ms` }}
             aria-hidden
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -260,7 +264,7 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
         <button type="button" className="wmap__go" onClick={() => onOpen(currentBoard.slug)}>
           <span className="wmap__go-thumb" aria-hidden>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={currentBoard.art.thumbnail} alt="" />
+            <img src={boardThumbnail(currentBoard, config.adventure)} alt="" />
           </span>
           <span className="wmap__go-text">
             <span className="wmap__go-kicker">{done === 0 ? g.map.here : g.map.soon}</span>

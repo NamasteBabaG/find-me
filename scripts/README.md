@@ -13,7 +13,7 @@ private input pictures exist. scripts/ is never imported by production src/.
 | Local album pilot | pilot-test-board.ts, pilot-game.ts | Draws the marked 16:9 dummy board and creates the pilot game in a LOCAL file: database only (refuses anything else); public demo art, no photo, no provider, no money. See docs/ADVENTURE_PILOT_2026-09-14.md |
 | Build/setup | prisma-generate.mjs, prisma-sql.mjs, finalize-build-traces.mjs | Generated local files; schema commands are separately guarded |
 | Product diagnostics | game-status.ts, inspect-five-hide-layout.ts | DB reads / local previews; require the correct owned QA inputs |
-| Marketing | refresh-hero-found.ts, build-demo-assets.ts | Public demo assets, explicit apply where supported; never customer images |
+| Marketing | refresh-hero-found.ts, prepare-transformation-preview.ts, build-demo-assets.ts | Public demo assets, explicit apply where supported; never customer images |
 | Paid local-patch pilot/recovery | local-patch-style-pilot.ts, resume-local-patch-repairs.ts | Real spend/writes when enabled; explicit scope and budget required |
 | Environment/deployment | qa-secrets.mjs, qa-env-preflight.mjs | Preflight inspects; secrets script changes real settings |
 | Historical authoring | fixed-*, board-conditioned-*, author-*, slot-patch.ts, prepare-boards.ts, rejudge.ts, character.ts | Different generations of contracts; may call providers or rewrite assets |

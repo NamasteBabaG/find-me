@@ -10,6 +10,7 @@ import { StarTray } from "./StarTray";
 import { AlbumSection } from "./Album";
 import type { AdventureProgress } from "@/domain/adventure/progress";
 import type { AlbumStatus } from "../engine/album-storage";
+import { boardThumbnail } from "../engine/board-thumbnail";
 
 function BoardThumbnail({ thumbnail, base }: { thumbnail: string; base: string }) {
   const [failed, setFailed] = useState<string[]>([]);
@@ -53,7 +54,7 @@ export function Passport({ config, progress, onMap, onOpen, onReplay, album = nu
               {/* The name says completed or not, and how many stars a five-hide board holds; the stars themselves stay decoration. */}
               <button type="button" className="loot__btn" disabled={!playable} onClick={() => onOpen(scene.slug)} aria-label={`${scene.name} — ${isComplete ? g.passport.collected : g.passport.notYet}${scene.playMode === "find-any" ? ` — ${count}/${scene.targets.length}` : ""}`}>
                 <span className="loot__image">
-                  <BoardThumbnail key={scene.art.thumbnail} thumbnail={scene.art.thumbnail} base={scene.art.base} />
+                  <BoardThumbnail key={scene.art.base} thumbnail={boardThumbnail(scene, config.adventure)} base={scene.art.base} />
                   {isComplete ? <span className="loot__completed">{g.passport.collected}</span> : null}
                 </span>
                 <span className="loot__foot">

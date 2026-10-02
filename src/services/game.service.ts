@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { sqlTable } from "@/infra/db/sql-table";
 import { isPlayable } from "@/domain/order-state";
 import { deleteAdventureAlbum } from "./adventure-album.service";
 import { parseGameConfig, type GameConfig } from "@/domain/game/config";
@@ -105,9 +106,9 @@ function rejectedIds(json: string | null): string[] {
 export async function deleteGame(c: Container, gameId: string, actor: Actor, userId?: string): Promise<boolean> {
   // Revoke before any engine-specific deletion. Failing closed is intentional:
   // even if asset cleanup needs a retry, an old consent link stays disabled.
-  await c.db.$executeRaw(Prisma.sql`UPDATE "PassportShare" SET "revokedAt" = ${new Date()}
+  await c.db.$executeRaw(Prisma.sql`UPDATE ${sqlTable("PassportShare", c.databaseUrl)} SET "revokedAt" = ${new Date()}
     WHERE "revokedAt" IS NULL AND "familyChildId" IN
-      (SELECT "familyChildId" FROM "Game" WHERE "id" = ${gameId} AND "deletedAt" IS NULL
+      (SELECT "familyChildId" FROM ${sqlTable("Game", c.databaseUrl)} WHERE "id" = ${gameId} AND "deletedAt" IS NULL
         ${userId ? Prisma.sql`AND "ownerId" = ${userId}` : Prisma.empty})`);
   const engine = await c.db.game.findUnique({ where: { id: gameId }, select: { styleVersion: true } });
   if (engine?.styleVersion === LOCAL_PATCH_STYLE) return deleteLocalPatchGame(c, gameId, actor, userId);
@@ -164,7 +165,7 @@ export async function deleteGame(c: Container, gameId: string, actor: Actor, use
   // two separate statements could re-create the album after the game was gone.
   await c.db.$transaction(async (tx) => {
     await tx.game.update({ where: { id: gameId }, data: { configJson: null } });
-    await deleteAdventureAlbum(tx, gameId);
+    await deleteAdventureAlbum(tx, gameId, c.databaseUrl);
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   await transitionGame(c, gameId, "DELETED", actor);
   c.analytics.track("game_deleted", { gameId });
