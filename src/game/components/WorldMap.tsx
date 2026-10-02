@@ -140,7 +140,7 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
   const chosenNode = chosen ? world.nodes.find((n) => n.boardSlug === chosen) : undefined;
   const at = chosenNode ?? (travelling && from ? from : marker);
   const currentBoard = boards.get(marker.boardSlug);
-  const { ref: mapRef, positions, minHeight: labelsMinHeight } = useMapLabels(nodes);
+  const { ref: mapRef, positions, minHeight: labelsMinHeight, markerClearance } = useMapLabels(nodes, at.boardSlug);
   const displayPosition = (node: typeof marker) => positions[node.boardSlug] ?? node;
 
   return (
@@ -242,7 +242,7 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
           {/* The child, standing above the place they are at or have just chosen. */}
           <div
             className={`wmap__marker${travelling || chosen ? " wmap__marker--travel" : ""} wmap__marker--${at.travelStyle}`}
-            style={{ left: `${displayPosition(at).x * 100}%`, top: `${displayPosition(at).y * 100}%`, transitionDuration: `${chosen ? CHOOSE_MS : TRAVEL_MS}ms` }}
+            style={{ left: `${displayPosition(at).x * 100}%`, top: `${displayPosition(at).y * 100}%`, transitionDuration: `${chosen ? CHOOSE_MS : TRAVEL_MS}ms`, ["--wmap-marker-clearance" as string]: `${markerClearance}px` }}
             aria-hidden
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}

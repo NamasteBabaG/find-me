@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { allWorlds } from "../../../../content/worlds";
-import { fitMapLabels, mapLabelsMinHeight, type MapLabel } from "../map-labels";
+import { fitMapLabels, mapLabelsMinHeight, mapMarkerSpace, type MapLabel } from "../map-labels";
 import { readFileSync } from "node:fs";
 
 describe("64px map controls", () => {
@@ -57,6 +57,27 @@ describe("64px map controls", () => {
     expect(mapLabelsMinHeight([])).toBe(0);
   });
 
+  it.each([[44, 64], [112, 64], [60, 48]])("keeps a %ipx current pill clear of its %ipx marker and every neighboring target", (buttonHeight, markerHeight) => {
+    const space = mapMarkerSpace(buttonHeight, markerHeight);
+    const labels: MapLabel[] = Array.from({ length: 9 }, (_, i) => ({ id: `${i}`, x: 0.5, y: 0.5, width: 93, height: i === 0 ? Math.max(64, buttonHeight + 1, space.height) : 64 }));
+    const saved = JSON.stringify(labels);
+    const width = 288, height = mapLabelsMinHeight(labels);
+    const positions = fitMapLabels(labels, width, height);
+    const active = positions["0"]!, x = active.x * width, y = active.y * height;
+    const markerTop = y - space.clearance - markerHeight - 8; // Include the existing upward travel bob.
+    const markerBottom = y - space.clearance;
+    expect(y - buttonHeight / 2 - markerBottom).toBe(8);
+    expect(markerTop).toBeGreaterThanOrEqual(0);
+    expect(markerBottom).toBeLessThanOrEqual(height);
+    for (const other of labels.slice(1)) {
+      const q = positions[other.id]!, otherX = q.x * width, otherY = q.y * height;
+      // The measured 64px sticker and its upward motion never enter another control.
+      const separate = x + 32 <= otherX - other.width / 2 || x - 32 >= otherX + other.width / 2 || markerBottom <= otherY - 32 || markerTop >= otherY + 32;
+      expect(separate).toBe(true);
+    }
+    expect(JSON.stringify(labels)).toBe(saved);
+  });
+
   it("keeps spaced authored labels in place and ignores an unmeasured frame", () => {
     const labels = [{ id: "first", x: 0.2, y: 0.2, width: 80 }, { id: "last", x: 0.8, y: 0.8, width: 80 }];
     expect(fitMapLabels(labels, 500, 400)).toEqual({ first: { x: 0.2, y: 0.2 }, last: { x: 0.8, y: 0.8 } });
@@ -73,6 +94,11 @@ describe("64px map controls", () => {
     expect(css).toContain("height: max(100%, var(--touch-kid)); transform: translate(-50%, -50%)");
     expect(css).toContain(".wmap__place:has(.wmap__place-stars) { flex-direction: column;");
     expect(css).toContain("var(--wmap-labels-height, 0px)");
+    expect(css).toContain("width: 100%; max-width: 100%; min-width: 0;");
+    expect(css).toContain("grid-template-columns: minmax(0, 1fr)");
+    const markerRules = Array.from(css.matchAll(/\.wmap__marker\s*\{([^}]+)\}/g));
+    expect(markerRules.filter(rule => rule[1]?.includes("transform:"))).toHaveLength(1);
+    expect(css).toContain("calc(-100% - var(--wmap-marker-clearance, var(--space-4)))");
     expect(css).not.toContain("(var(--touch-min) - var(--space-3))");
     expect(css).toContain('[dir="rtl"] .wmap__go-arrow { transform: scaleX(-1); }');
   });

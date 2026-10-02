@@ -5,6 +5,15 @@ const ROW_GAP = 8;
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
 const labelHeight = (label: MapLabel) => Math.max(TOUCH, label.height ?? TOUCH);
 
+/** The sticker stands above the visible pill, even when its star badge adds lines.
+ * A symmetric reservation lets the same collision fitter protect both the marker
+ * and the label. One 8px allowance also contains the existing travel bob.
+ */
+export function mapMarkerSpace(buttonHeight: number, markerHeight: number): { clearance: number; height: number } {
+  const clearance = buttonHeight / 2 + ROW_GAP;
+  return { clearance, height: (clearance + markerHeight + ROW_GAP) * 2 };
+}
+
 function gridRows(labels: readonly MapLabel[]) {
   const columns = Math.min(3, labels.length);
   const heights = Array.from({ length: Math.ceil(labels.length / columns) }, (_, row) => Math.max(...labels.slice(row * columns, (row + 1) * columns).map(labelHeight)));
