@@ -8,6 +8,7 @@ import { DbStorage } from "../../../infra/storage/db";
 import { fixedSourceFailureReceipt } from "../../../infra/generation/fixed-source-diagnostics";
 import { localPatchBoardsForVersion } from "../../../domain/scene/local-patch-catalog";
 import type { Container } from "../../container";
+import { boardsOfWorlds } from "../../world-catalog.service";
 import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wizard";
 import { recoverLocalPatchImageInterruptions, localPatchBudgetReadyForPublication } from "../local-patch-interruption-recovery";
 import { LocalPatchRetainedPurchaseStore } from "../local-patch-lifecycle";
@@ -16,7 +17,8 @@ import { localPatchNeedsRecomposition } from "../local-patch-recompose";
 
 let db: PrismaClient, c: Container, directory: string;
 vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: "qa", STORAGE_PROVIDER: "db" }) }));
-const boards = localPatchBoardsForVersion(12);
+const journeySlugs = new Set(boardsOfWorlds(["journey"]));
+const boards = localPatchBoardsForVersion(12).filter(board => journeySlugs.has(board.board));
 beforeAll(async () => {
   directory = realpathSync(mkdtempSync(path.join(realpathSync(tmpdir()), "findme-image-interruption-")));
   db = new PrismaClient({ datasources: { db: { url: `file:${path.join(directory, "test.db").replaceAll("\\", "/")}` } } });

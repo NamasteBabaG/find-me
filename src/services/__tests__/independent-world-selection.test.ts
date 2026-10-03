@@ -52,15 +52,20 @@ describe("independent worlds are a choice, not a difficulty ladder", () => {
     await selectPackage(c, g.id, "TWO_WORLDS");
     expect(await selectWorlds(c, g.id, ["kingdom", "kingdom"])).toMatchObject({ ok: false, code: "WRONG_SCENE_COUNT" });
   });
-  it("keeps unfinished magic out of the current three-hide rendering engine", async () => {
+  it("offers either complete updated world on the current three-hide rendering engine", async () => {
     const g = await draft(true), c = context();
     await selectPackage(c, g.id, "ONE_WORLD");
-    const before = await scenes(g.id);
-    expect(before).toHaveLength(9); expect(before.every(s => s.sceneVersion === 12)).toBe(true);
-    expect(await selectWorlds(c, g.id, ["kingdom"])).toMatchObject({ ok: false, code: "SCENE_UNAVAILABLE" });
-    expect(await scenes(g.id)).toEqual(before);
+    expect(await selectWorlds(c, g.id, ["kingdom"])).toEqual({ ok: true });
+    const magic = await scenes(g.id);
+    expect(magic.map(s => s.sceneSlug)).toEqual(boardsOfWorlds(["kingdom"]));
+    expect(magic).toHaveLength(9); expect(magic.every(s => s.sceneVersion === 12)).toBe(true);
+    expect(await selectPackage(c, g.id, "ONE_WORLD")).toEqual({ ok: true });
+    expect((await scenes(g.id)).map(s => s.sceneSlug)).toEqual(boardsOfWorlds(["kingdom"]));
+    const beforeUnavailable = await scenes(g.id);
+    expect(await selectWorlds(c, g.id, ["timetravel"])).toMatchObject({ ok: false, code: "SCENE_UNAVAILABLE" });
+    expect(await scenes(g.id)).toEqual(beforeUnavailable);
     expect(await selectPackage(c, g.id, "TWO_WORLDS")).toMatchObject({ ok: false, code: "PACKAGE_UNAVAILABLE" });
-    expect((await worldsForDraft(c, g.styleVersion)).map(w => w.slug)).toEqual(["journey"]);
+    expect((await worldsForDraft(c, g.styleVersion)).map(w => w.slug)).toEqual(["journey", "kingdom"]);
     expect((await availablePackages(c, g.styleVersion)).map(p => p.tier)).toEqual(["ONE_WORLD"]);
   });
   it("rolls back metadata and all scenes if inserting one board fails", async () => {

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { SceneDefinition } from "@/domain/scene/schema";
-import { PACKAGES, PACKAGE_ORDER, WORLD_PRICES, boardsFor, priceFor } from "@/domain/package";
+import { PACKAGES, PACKAGE_ORDER, WORLD_PRICES, boardsFor, priceFor, type PackageTier } from "@/domain/package";
 import { formatMoney, pick, tf, type Currency, type Dictionary, type Locale } from "@/i18n";
 import { Reveal } from "./Reveal";
 import { WorldsCarousel, type CarouselWorld } from "./WorldsCarousel";
@@ -176,7 +176,7 @@ export function Worlds({ t, carousel }: { t: Dictionary; carousel: CarouselWorld
 }
 
 /* ─── Pricing ─── */
-export function Pricing({ t, locale, activeCount, currency }: SectionProps & { activeCount: number; currency: Currency }) {
+export function Pricing({ t, locale, allowedTiers, currency }: SectionProps & { allowedTiers: readonly PackageTier[]; currency: Currency }) {
   const p = t.home.pricing;
   return (
     <section id="pricing" className="pricing-sec">
@@ -189,7 +189,7 @@ export function Pricing({ t, locale, activeCount, currency }: SectionProps & { a
         <div className="pricing">
           {PACKAGE_ORDER.map((tier, i) => {
             const pkg = PACKAGES[tier];
-            const available = pkg.worldCount <= activeCount;
+            const available = allowedTiers.includes(tier);
             const name = pick(pkg.name, locale);
             return (
               <Reveal key={tier} className={`plan${pkg.popular ? " plan--hot" : ""}${available ? "" : " plan--soon"}`} delay={i * 90}>

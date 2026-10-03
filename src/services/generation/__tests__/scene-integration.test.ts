@@ -63,9 +63,13 @@ describe("mandatory scene integration", () => {
   });
   it("pins new purchases to v12 while preserving v11 receipts and the same 27 locations", () => {
     expect(sceneVersionForDraft("local-patch-world-v1")).toBe(12);
-    expect(INTEGRATED_COLLECTION_BOARDS.flatMap(b => b.hides)).toHaveLength(27);
-    expect(INTEGRATED_WIZARD_CATALOG.boards.flatMap(b => b.status === "ready" ? b.discoveries : [])).toHaveLength(54);
-    for (const board of INTEGRATED_COLLECTION_BOARDS) expect(findScene(board.board, 12)!.art).toEqual(findScene(board.board, 11)!.art);
+    expect(INTEGRATED_COLLECTION_BOARDS.flatMap(b => b.hides)).toHaveLength(54);
+    expect(INTEGRATED_WIZARD_CATALOG.boards.flatMap(b => b.status === "ready" ? b.discoveries : [])).toHaveLength(108);
+    for (const board of INTEGRATED_COLLECTION_BOARDS) {
+      const historic = findScene(board.board, 11);
+      if (historic) expect(findScene(board.board, 12)!.art).toEqual(historic.art);
+      else expect(findScene(board.board, 12)!.targets).toHaveLength(3);
+    }
     expect(pinnedLocalPatchPromptVersion(null, LOCAL_PATCH_AGE_PROMPT_VERSION, 12)).toBe(LOCAL_PATCH_INTEGRATED_PROMPT_VERSION);
     expect(pinnedLocalPatchPromptVersion({ attempts: 2, promptVersion: "local-patch-prompt/v13-identity-body-lock" }, LOCAL_PATCH_AGE_PROMPT_VERSION, 11)).toBe("local-patch-prompt/v13-identity-body-lock");
     expect(localPatchBoardJudgeSettings(11).policyVersion).toBe("local-patch-sol-low-identity-body/v4");

@@ -35,7 +35,7 @@ for (const board of localPatchArt.boards) {
     throw new Error(`Local-patch published and renderer pixels differ: ${board.board}`);
 }
 const expectedLocalPatch = [localPatchArtPath, ...localPatchArt.renderSources.map(source => source.path)].map(file => path.resolve(file));
-const collectionManifests = ["content/adventures/wizard-art.json", "content/adventures/wizard-refresh-art.json"];
+const collectionManifests = ["content/adventures/wizard-art.json", "content/adventures/wizard-refresh-art.json", "content/adventures/wizard-kingdom-art.json"];
 const collectionImages = collectionManifests.flatMap(file => {
   const rows = JSON.parse(readFileSync(file, "utf8"));
   if (rows.length !== 9 || new Set(rows.map(a => a.path)).size !== 9) throw new Error("Nine unique collection images required per release");
@@ -64,7 +64,7 @@ const jobs = routes.find(route => route.manifest === ".next/server/app/api/jobs/
 const problems = [];
 if (!jobs || jobs.catalogFiles !== 37) problems.push("generation route does not trace all36 static PNGs pluscatalog");
 if (!jobs || jobs.localPatchFiles !== 10) problems.push("generation route does not trace nine local-patch base images plus manifest");
-if (!jobs || jobs.collectionFiles !== 2) problems.push("generation route must trace both historical and refreshed collection hash manifests");
+if (!jobs || jobs.collectionFiles !== collectionManifests.length) problems.push("generation route must trace historical journey, refreshed journey and kingdom collection hash manifests");
 if (routes.some(route => route.privateFiles.length)) problems.push("private local files or dotenv were traced");
 if (routes.some(route => route.missingFiles.length)) problems.push("trace references missing files");
 if (routes.some(route => route.publicCdnFiles)) problems.push("undeclared public CDN scene art duplicated inside server function");

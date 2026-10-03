@@ -14,7 +14,7 @@ import {
 import { fenceLocalPatchImages, LocalPatchRetainedPurchaseStore } from "./local-patch-lifecycle";
 import { normalizeBoardWizardIdentity } from "./board-wizard-identity";
 import { requireBoardWizardIdentityApproval } from "./board-wizard-identity-gate";
-import { readBoardConditionedCatalog } from "./board-conditioned-catalog";
+import { identityStyleCatalogSha256 } from "./local-patch-identity-catalog";
 import { assertGenerationSpendAllowed, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { localPatchGeometry, type LocalPatchGeometry } from "./local-patch-geometry";
 import { renderLocalPatchHide, type LocalPatchRenderDeps } from "./local-patch-render";
@@ -233,7 +233,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     && identity.status === "READY" && !identity.deletedAt, "the identity sheet is not a live private asset of this owner");
   const sheet = await c.storage.get(identity.storagePath);
   const normalized = await normalizeBoardWizardIdentity(sheet);
-  const { sha256: catalogSha256 } = await readBoardConditionedCatalog();
+  const catalogSha256 = await identityStyleCatalogSha256(scene.sceneSlug, scene.sceneVersion);
   const worldId = boardWizardWorldId(gameId);
   const budget = boardWizardBudgetOf(c);
   // The same gate, at full strength: hash-bound to this sheet, this photograph,

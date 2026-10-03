@@ -1,10 +1,13 @@
 import { REFRESHED_COLLECTION_BOARDS, REFRESHED_WIZARD_CATALOG } from "../../../content/adventures/wizard-refresh-release";
+import { INTEGRATED_COLLECTION_BOARDS, INTEGRATED_WIZARD_CATALOG } from "../../../content/adventures/wizard-integrated-release";
 import { cropOf } from "../../domain/scene/local-patch-hides";
-import { readCollectionArt } from "./collection-art";
+import { readCollectionArt, type IdentityArtCache } from "./collection-art";
 import sharp, { type OverlayOptions } from "sharp";
 import { readBoardConditionedCatalog, loadBoardConditionedCatalogBoard, type BoardConditionedCatalog } from "./board-conditioned-catalog";
 import { sha256Bytes } from "./fixed-sprite";
 import type { QaCharacterStyleContract } from "../../infra/generation/types";
+import { identityStyleCatalogSha256 } from "./local-patch-identity-catalog";
+import { INTEGRATED_COLLECTION_VERSION } from "../../domain/scene/local-patch-versions";
 
 export const BOARD_WIZARD_IDENTITY_STYLE_VERSION = "board-matched-identity/v2" as const;
 export const LEGACY_BOARD_WIZARD_IDENTITY_STYLE_VERSION = "board-matched-identity/v1" as const;
@@ -63,8 +66,10 @@ export async function buildBoardPeopleStyle(boardId: string, root = process.cwd(
   const { catalog, sha256: catalogSha256 } = await readBoardConditionedCatalog(root);
   return { ...await boardPeopleTile(catalog, boardId, root), catalogSha256, version: BOARD_WIZARD_IDENTITY_STYLE_VERSION };
 }
-export async function buildBoardWizardIdentityStyle(root = process.cwd(), version: QaCharacterStyleContract["version"] = BOARD_WIZARD_IDENTITY_STYLE_VERSION) {
-  if (version === "board-matched-identity/v3" || version === "board-matched-identity/v4") return { ...await buildRefreshedIdentityStyle(root), version };
+export async function buildBoardWizardIdentityStyle(root = process.cwd(), version: QaCharacterStyleContract["version"] = BOARD_WIZARD_IDENTITY_STYLE_VERSION,
+  worldSlug: "journey" | "kingdom" = "journey", identityArtCache?: IdentityArtCache) {
+  if (worldSlug === "kingdom" && version !== "board-matched-identity/v4") throw Error("Kingdom requires its integrated identity style");
+  if (version === "board-matched-identity/v3" || version === "board-matched-identity/v4") return { ...await buildRefreshedIdentityStyle(root, worldSlug, identityArtCache), version };
   if (version === LEGACY_BOARD_WIZARD_IDENTITY_STYLE_VERSION) return buildLegacyBoardWizardIdentityStyle(root);
   if (version !== BOARD_WIZARD_IDENTITY_STYLE_VERSION) throw new Error("BOARD_IDENTITY_STYLE: unknown identity style version");
   const { catalog, sha256: catalogSha256 } = await readBoardConditionedCatalog(root);
@@ -108,13 +113,21 @@ async function buildLegacyBoardWizardIdentityStyle(root: string) {
 }
 
 /** Current scene contexts, never enlarged stranger faces. All pixels/hash-bound. */
-async function buildRefreshedIdentityStyle(root: string) {
-  const { sha256: catalogSha256 } = await readBoardConditionedCatalog(root);
+async function buildRefreshedIdentityStyle(root: string, worldSlug: "journey" | "kingdom", identityArtCache?: IdentityArtCache) {
+  const plans = worldSlug === "kingdom" ? INTEGRATED_WIZARD_CATALOG.boards.filter(board => board.worldSlug === "kingdom") : REFRESHED_WIZARD_CATALOG.boards;
+  const boards = worldSlug === "kingdom" ? INTEGRATED_COLLECTION_BOARDS.filter(board => plans.some(plan => plan.boardSlug === board.board)) : REFRESHED_COLLECTION_BOARDS;
+  // Journey keeps its exact historical provenance. Kingdom pins its own source
+  // recipe; extending the catalog must not invalidate an identity already paid for.
+  const catalogSha256 = worldSlug === "kingdom"
+    ? await identityStyleCatalogSha256(boards[0]!.board, INTEGRATED_COLLECTION_VERSION, root)
+    : (await readBoardConditionedCatalog(root)).sha256;
   const composites: OverlayOptions[] = [], examples = [];
-  for (const [i, board] of REFRESHED_COLLECTION_BOARDS.entries()) {
-    const plan = REFRESHED_WIZARD_CATALOG.boards.find(b => b.boardSlug === board.board)!;
+  for (const [i, board] of boards.entries()) {
+    const plan = plans.find(b => b.boardSlug === board.board)!;
     if (plan.status !== "ready") throw Error("Refreshed identity art unavailable");
-    const bytes = await readCollectionArt(board.art, plan.art.sha256, root);
+    const retained = identityArtCache?.get(plan.art.sha256);
+    if (retained && sha256Bytes(retained) !== plan.art.sha256) throw Error("Refreshed identity cached art changed");
+    const bytes = retained ?? await readCollectionArt(board.art, plan.art.sha256, root);
     if (!bytes) throw Error("Refreshed identity art missing from manifest");
     const crop = cropOf(board.hides[0]!);
     const native = await sharp(bytes).extract(crop).png().toBuffer();

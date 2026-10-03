@@ -10,7 +10,7 @@ import { SYSTEM } from "../audit.service";
 import { transitionGame } from "../game-status";
 import { sha256Bytes } from "./fixed-sprite";
 import { boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
-import { readBoardConditionedCatalog } from "./board-conditioned-catalog";
+import { identityStyleCatalogSha256 } from "./local-patch-identity-catalog";
 import { requireBoardWizardIdentityApproval } from "./board-wizard-identity-gate";
 import { prepareLocalPatchIdentityReferences } from "./local-patch-identity-reference";
 import { LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, readShippedBoardArt } from "./local-patch-hide";
@@ -83,7 +83,7 @@ async function identityOf(c: Container, gameId: string) {
   demand(identity.ownerId === game.ownerId && identity.type === "IDENTITY_SHEET" && identity.status === "READY" && !identity.deletedAt && identity.visibility === "PRIVATE", "Canonical identity is unavailable");
   const sheet = await c.storage.get(identity.storagePath), identitySha256 = sha256Bytes(sheet);
   await requireBoardWizardIdentityApproval(c, boardWizardBudgetOf(c), { gameId, identityAssetId: identity.id, sheetSha256: identitySha256,
-    catalogSha256: (await readBoardConditionedCatalog()).sha256, photoAssetId: child.originalPhotoAssetId, ageYears: child.ageYears,
+    catalogSha256: await identityStyleCatalogSha256(game.scenes[0]!.sceneSlug, contentVersion), photoAssetId: child.originalPhotoAssetId, ageYears: child.ageYears,
     crop: child.photoCropJson ? JSON.parse(child.photoCropJson) : null, contentVersion });
   return { game, child, identity, sheet, identitySha256, contentVersion };
 }

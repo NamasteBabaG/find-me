@@ -61,7 +61,7 @@ afterEach(() => { delete process.env.QA_BOARD_CONDITIONED_WIZARD; });
 
 /** A paid game whose identity a real gate has approved; this box may spend on it. */
 async function seed(options: { gameId?: string; approved?: boolean } = {}) {
-  const seeded = await seedApprovedGame(c, db, options);
+  const seeded = await seedApprovedGame(c, db, { ...options, scenes: [{ slug: BOARD.board, version: 6 }] });
   fakes.testers = [...fakes.testers, seeded.email];
   return seeded;
 }

@@ -18,8 +18,15 @@ export function collectionSceneRelease(raw: unknown, version = COLLECTION_SCENE_
     celebration: { ...legacy.celebration, completeText: { he: "מצאתם את {name} שלוש פעמים — הבורד הושלם!", en: "You found {name} three times — board complete!" } },
     targets: board.hides.map((hide, i) => {
       const template = legacy.targets[Math.min(i, legacy.targets.length - 1)]!;
+      const { action: _action, expression: _expression, ...neutralTemplate } = template;
       const box = maskOf(hide), x = (box.left + box.width / 2) / plan.art.width, y = (box.top + box.height / 2) / plan.art.height;
-      return { ...template, id: hide.targetId, targetType: `${legacy.slug}_v${version}_${i + 1}`,
+      return { ...(plan.worldSlug === "kingdom" ? { ...neutralTemplate,
+        mission: { en: "Find {name}", he: "מצאו את {name}" },
+        item: { en: "the hidden explorer", he: "הדמות המסתתרת" },
+        success: [{ en: "You found me!", he: "מצאתם אותי!" },
+          { en: "What a great hiding place!", he: "איזה מקום מחבוא נהדר!" },
+          { en: "Ready for another adventure?", he: "מוכנים לעוד הרפתקה?" }],
+      } : template), id: hide.targetId, targetType: `${legacy.slug}_v${version}_${i + 1}`,
         difficulty: (i + 1), slots: template.slots.map((slot, variant) => ({ ...slot,
           id: `${hide.targetId}-${variant ? "B" : "A"}`, x, y, scale: box.height / plan.art.height,
           hintText: hide.hint!, hintZone: { x, y, r: Math.max(0.04, box.width / plan.art.width) },

@@ -20,7 +20,7 @@ describe("refreshed main creation pipeline", () => {
   it("selects the storefront's nine current masters and keeps paid v10 addressable", async () => {
     const version = sceneVersionForDraft("local-patch-world-v1");
     expect(version).toBe(12);
-    expect(localPatchBoardsForVersion(version!).flatMap(b => b.hides)).toHaveLength(27);
+    expect(localPatchBoardsForVersion(version!).filter(b => REFRESHED_COLLECTION_BOARDS.some(old => old.board === b.board)).flatMap(b => b.hides)).toHaveLength(27);
     expect(localPatchBoardsForVersion(10).flatMap(b => b.hides)).toHaveLength(27);
     for (const board of REFRESHED_COLLECTION_BOARDS) {
       const route = TWO_WORLD_RELEASE_ROUTES.find(r => r.world === "journey" && r.route === board.board)!;

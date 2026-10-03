@@ -10,7 +10,7 @@ import type { Container } from "../../container";
 import { GameConfigSchema } from "../../../domain/game/config";
 import { localPatchBoardsForVersion } from "../../../domain/scene/local-patch-catalog";
 import { selectWorlds } from "../../create-flow.service";
-import { gameShape } from "../../world-catalog.service";
+import { boardsOfWorlds, gameShape } from "../../world-catalog.service";
 import { ownerAdventureAlbum } from "../../adventure-album.service";
 import { ensurePlayerLink } from "../../share-link.service";
 import { runLocalPatchWorldSlice, LOCAL_PATCH_STYLE, localPatchPrivateInventory } from "../local-patch-world";
@@ -18,18 +18,17 @@ import { retainedPurchaseKey } from "../../../infra/db/prisma-retained-purchase-
 import { localPatchBoardReviewKey } from "../local-patch-board-review";
 import { reviewBoardWizardIdentity } from "../board-wizard-identity-gate";
 import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wizard";
-import { readBoardConditionedCatalog } from "../board-conditioned-catalog";
+import { buildBoardWizardIdentityStyle } from "../board-wizard-identity-style";
 import { localPatchBoardReviewKeys } from "../local-patch-board-review";
 import type { LocalPatchHideDeps } from "../local-patch-hide";
 import { localPatchHideEvidenceIds, type LocalPatchBoardJudgeRequest, type LocalPatchBoardJudgeResult } from "../local-patch-judge";
 import { sha256Bytes } from "../fixed-sprite";
 import { bill, paintedCrop, paintedOk, PASSING_ANSWER, seedApprovedGame } from "./local-patch-fixtures";
 
-const GAME = "collection-world-synthetic", BOARDS = localPatchBoardsForVersion(12);
 const keepFixture = process.env.COLLECTION_E2E_FIXTURE === "1" && !process.env.VERCEL;
 vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: "qa", GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: 0,
   GENERATION_PROVIDER: "openai", GENERATION_MODEL: "gpt-image-2", GENERATION_QUALITY: "medium" }),
-  spendGuard: () => ({ appEnv: "qa", realGeneration: true, testers: ["collection-world-synthetic@example.com"] }),
+  spendGuard: () => ({ appEnv: "qa", realGeneration: true, testers: ["collection-world-synthetic@example.com", "collection-kingdom-synthetic@example.com"] }),
   flag: () => false, adminEmails: () => [],
 }));
 let dir: string, db: PrismaClient, c: Container;
@@ -47,13 +46,19 @@ afterAll(async () => {
   if (!keepFixture && path.dirname(dir) === realpathSync(tmpdir()) && path.basename(dir).startsWith("findme-collection-test-")) rmSync(dir, { recursive: true, force: true });
 });
 
-it("wizard selection → 27 actual purchases → 27 independent reviews → publication → 54 collected items, idempotent saved album", async () => {
+it.each(["journey", "kingdom"] as const)("%s: wizard selection → 27 actual purchases → 27 independent reviews → publication → 54 collected items, idempotent saved album", async worldSlug => {
+  const GAME = worldSlug === "journey" ? "collection-world-synthetic" : "collection-kingdom-synthetic";
   const seeded = await seedApprovedGame(c, db, { gameId: GAME, approved: false, styleVersion: LOCAL_PATCH_STYLE,
     status: "DRAFT", withJob: true, scenes: [] });
-  expect(await selectWorlds(c, GAME, ["journey"])).toEqual({ ok: true });
-  const selected = await db.gameScene.findMany({ where: { gameId: GAME } });
+  expect(await selectWorlds(c, GAME, [worldSlug])).toEqual({ ok: true });
+  const selected = await db.gameScene.findMany({ where: { gameId: GAME }, orderBy: { orderIndex: "asc" } });
+  const selectedSlugs = new Set(selected.map(scene => scene.sceneSlug));
+  const BOARDS = localPatchBoardsForVersion(12).filter(board => selectedSlugs.has(board.board));
+  expect(BOARDS).toHaveLength(9);
   expect(selected.every(s => s.sceneVersion === 12)).toBe(true);
   expect(gameShape(selected)).toEqual({ worlds: 1, places: 9, spots: 27 });
+  await db.order.create({ data: { id: `ord-${GAME}`, gameId: GAME, userId: seeded.userId, provider: "mock", packageTier: "ONE_WORLD",
+    amountAgorot: 3900, paymentStatus: "PAID", paidAt: new Date() } });
   await db.game.update({ where: { id: GAME }, data: { status: "TARGETS_GENERATING" } });
   await c.storage.put(`private/photo-${GAME}.jpg`, seeded.sheet, "image/png");
   const avatar = await avatarDisplayFromSheet(seeded.sheet, 1024), avatarId = `ast-avatar-${GAME}`;
@@ -61,15 +66,15 @@ it("wizard selection → 27 actual purchases → 27 independent reviews → publ
   await db.asset.create({ data: { id: avatarId, ownerId: seeded.userId, type: "AVATAR", visibility: "GAME", status: "READY",
     storagePath: `game/${avatarId}.png`, mimeType: "image/png", width: 512, height: 512, bytes: avatar.length } });
   await db.childProfile.update({ where: { id: `chl-${GAME}` }, data: { avatarAssetId: avatarId, retainOriginalPhoto: true } });
-  const { sha256: catalogSha256 } = await readBoardConditionedCatalog();
+  const identityStyle = await buildBoardWizardIdentityStyle(undefined, "board-matched-identity/v4", worldSlug);
   await reviewBoardWizardIdentity({ db, apiKey: "synthetic", budget: boardWizardBudgetOf(c), beforeDispatch: async () => {},
-    write: work => db.$transaction(work), reviewer: { review: async () => ({ httpOk: true, requestId: "req-collection-identity",
+    write: work => db.$transaction(work), reviewer: { review: async () => ({ httpOk: true, requestId: `req-collection-identity-${worldSlug}`,
       body: { model: "gpt-5.6-luna", service_tier: "default", usage: { prompt_tokens: 1500, completion_tokens: 150 },
         choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ checks: { identity: "pass", age: "pass", paintedStyle: "pass", sheetLayout: "pass" }, reason: "Controlled provider" }) } }] } }) },
-  }, { gameId: GAME, identityAssetId: `ast-sheet-${GAME}`, sheet: seeded.sheet, photo: seeded.sheet, atlas: seeded.sheet, contentVersion: 12,
+  }, { gameId: GAME, identityAssetId: `ast-sheet-${GAME}`, sheet: seeded.sheet, photo: seeded.sheet, atlas: identityStyle.png, contentVersion: 12,
     provenance: { promptVersion: "character-v6-painted-identity-geometry", quality: "medium", photoAssetId: `ast-photo-${GAME}`,
       photoSha256: sha256Bytes(seeded.sheet), ageYears: 8, crop: null,
-      style: { version: "board-matched-identity/v4", catalogSha256, atlasSha256: sha256Bytes(seeded.sheet) } } });
+      style: { version: identityStyle.version, catalogSha256: identityStyle.catalogSha256, atlasSha256: identityStyle.atlasSha256 } } });
   const paintKeys: string[] = [], allHides = BOARDS.flatMap(b => b.hides);
   const deps: LocalPatchHideDeps = { renderPolicySha256: "f".repeat(64),
     judge: async () => { throw Error("No per-hide review in grouped route"); },
@@ -95,14 +100,22 @@ it("wizard selection → 27 actual purchases → 27 independent reviews → publ
   const game = await db.game.findUniqueOrThrow({ where: { id: GAME } });
   expect(game.status, game.lastError ?? "no error").toBe("DELIVERED");
   const config = GameConfigSchema.parse(JSON.parse(game.configJson!));
+  expect(config.worlds?.map(world => world.slug)).toEqual([worldSlug]);
+  expect(config.scenes.map(scene => scene.slug)).toEqual(selected.map(scene => scene.sceneSlug));
+  expect(config.scenes.every(scene => scene.worldSlug === worldSlug && scene.version === 12)).toBe(true);
+  expect(config.adventure?.boards.every(board => board.worldSlug === worldSlug && board.sceneVersion === 12)).toBe(true);
   expect(config.scenes.flatMap(s => s.targets)).toHaveLength(27);
   expect(config.adventure?.boards.flatMap(b => b.discoveries)).toHaveLength(54);
   expect(paintKeys).toHaveLength(27); expect(new Set(paintKeys).size).toBe(27);
   expect(boardJudge).toHaveBeenCalledTimes(27);
   const inventory = await localPatchPrivateInventory(c, GAME);
-  expect(inventory.retainedPurchaseKeys).toContain(retainedPurchaseKey(boardWizardWorldId(GAME), localPatchBoardReviewKey("giza", [1, 1, 1], undefined, 12)));
+  const reviewedBoard = BOARDS[0]!.board;
+  expect(inventory.retainedPurchaseKeys).toContain(retainedPurchaseKey(boardWizardWorldId(GAME), localPatchBoardReviewKey(reviewedBoard, [1, 1, 1], undefined, 12)));
   expect(boardJudge.mock.calls.every(([r]) => r.hides.length === 1 && r.contentVersion === 12 && r.reviewScope === "ready-only/v1")).toBe(true);
-  expect((await boardWizardBudgetOf(c).audit(boardWizardWorldId(GAME))).held).toBe(false);
+  const budgetAudit = await boardWizardBudgetOf(c).audit(boardWizardWorldId(GAME));
+  expect(budgetAudit.held).toBe(false);
+  expect(budgetAudit.committedMicroUsd).toBeLessThanOrEqual(5_000_000);
+  expect(budgetAudit.capMicroUsd).toBeLessThanOrEqual(5_000_000);
   for (const board of config.adventure!.boards) {
     for (const discovery of board.discoveries) {
       const event = { kind: "discovery-found" as const, boardSlug: board.boardSlug, discoveryId: discovery.id };
@@ -117,8 +130,8 @@ it("wizard selection → 27 actual purchases → 27 independent reviews → publ
   await expect(ownerAdventureAlbum(db, "stranger", GAME)).rejects.toThrow("not-owned");
   await runLocalPatchWorldSlice(c, deps, GAME, { boardJudge });
   expect(paintKeys).toHaveLength(27);
-  expect(localPatchBoardReviewKeys("giza", 12).some(k => k.includes("three-review:v12:1-1-1:"))).toBe(true);
-  if (keepFixture) {
+  expect(localPatchBoardReviewKeys(reviewedBoard, 12).some(k => k.includes("three-review:v12:1-1-1:"))).toBe(true);
+  if (keepFixture && worldSlug === "journey") {
     const link = await ensurePlayerLink(c, GAME);
     mkdirSync("output/collection-e2e", { recursive: true });
     writeFileSync("output/collection-e2e/fixture.json", JSON.stringify({
@@ -128,3 +141,18 @@ it("wizard selection → 27 actual purchases → 27 independent reviews → publ
     }, null, 2));
   }
 }, 240000);
+
+it.each(["mixed-nine", "both-worlds"])("rejects %s before any recovery or purchase", async selection => {
+  const gameId = `collection-${selection}-synthetic`;
+  const slugs = selection === "mixed-nine"
+    ? [...boardsOfWorlds(["journey"]).slice(0, 8), boardsOfWorlds(["kingdom"])[0]!]
+    : boardsOfWorlds(["journey", "kingdom"]);
+  await seedApprovedGame(c, db, { gameId, approved: false, styleVersion: LOCAL_PATCH_STYLE,
+    status: "TARGETS_GENERATING", withJob: true, scenes: slugs.map(slug => ({ slug, version: 12 })) });
+  const render = vi.fn<LocalPatchHideDeps["render"]>(), judge = vi.fn<NonNullable<LocalPatchHideDeps["judge"]>>();
+  await expect(runLocalPatchWorldSlice(c, { render, judge, renderPolicySha256: "f".repeat(64) }, gameId)).rejects.toThrow("one complete world");
+  expect(render).not.toHaveBeenCalled(); expect(judge).not.toHaveBeenCalled();
+  expect(await db.worldBudgetLedger.count({ where: { worldId: boardWizardWorldId(gameId) } })).toBe(0);
+  expect(await db.targetVariantAsset.count({ where: { targetInstance: { gameScene: { gameId } } } })).toBe(0);
+  expect(await db.generationJob.findUniqueOrThrow({ where: { id: `job_${gameId}` } })).toMatchObject({ status: "QUEUED", attempts: 0 });
+});

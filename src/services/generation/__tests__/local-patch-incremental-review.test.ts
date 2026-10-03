@@ -8,6 +8,7 @@ import { applyTestSchema } from "../../../lib/test-schema";
 import { DbStorage } from "../../../infra/storage/db";
 import { localPatchBoardsForVersion } from "../../../domain/scene/local-patch-catalog";
 import type { Container } from "../../container";
+import { boardsOfWorlds } from "../../world-catalog.service";
 import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wizard";
 import { reviewBoardWizardIdentity } from "../board-wizard-identity-gate";
 import { readBoardConditionedCatalog } from "../board-conditioned-catalog";
@@ -28,7 +29,8 @@ import { localPatchBudgetReadyForPublication } from "../local-patch-interruption
 import { sha256Bytes } from "../fixed-sprite";
 import { bill, paintedCrop, paintedOk, seedApprovedGame, PASSING_ANSWER } from "./local-patch-fixtures";
 
-const BOARDS = localPatchBoardsForVersion(12), BOARD = BOARDS.find(b => b.board === "giza")!;
+const journeySlugs = new Set(boardsOfWorlds(["journey"]));
+const BOARDS = localPatchBoardsForVersion(12).filter(board => journeySlugs.has(board.board)), BOARD = BOARDS.find(b => b.board === "giza")!;
 const testers: string[] = [];
 let playerMode = false;
 vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: "qa", GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: 0,

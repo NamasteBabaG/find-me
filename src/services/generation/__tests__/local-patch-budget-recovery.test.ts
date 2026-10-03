@@ -9,6 +9,7 @@ import { PrismaWorldBudgetStore } from "../../../infra/db/prisma-world-budget-st
 import { CasWorldBudgetRepository } from "../../../infra/db/world-budget-repository";
 import { localPatchBoardsForVersion } from "../../../domain/scene/local-patch-catalog";
 import type { Container } from "../../container";
+import { boardsOfWorlds } from "../../world-catalog.service";
 import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wizard";
 import { boardWizardBudget } from "../board-wizard-budget";
 import { WorldBudgetError } from "../world-budget";
@@ -27,14 +28,17 @@ beforeAll(async () => {
 beforeEach(() => { fakes.appEnv = "qa"; vi.stubGlobal("fetch", vi.fn(async () => { throw Error("Network forbidden"); })); });
 afterAll(async () => { vi.unstubAllGlobals(); await db.$disconnect();
   if (path.dirname(directory) === realpathSync(tmpdir()) && path.basename(directory).startsWith("findme-emergency-budget-")) rmSync(directory, { recursive: true }); });
-async function seed(amountMicroUsd = 3_900_000) {
+async function seed(amountMicroUsd = 3_900_000, worldSlug = "journey") {
   const gameId = `emergency-${++serial}`, ownerId = `owner-${gameId}`, childId = `child-${gameId}`;
   await db.user.create({ data: { id: ownerId, email: `${ownerId}@example.invalid` } });
   await db.childProfile.create({ data: { id: childId, ownerId, displayName: "Synthetic", ageYears: 8 } });
   await db.game.create({ data: { id: gameId, ownerId, childProfileId: childId, styleVersion: "local-patch-world-v1", status: "TARGETS_GENERATING", sceneCount: 9, packageTier: "ONE_WORLD" } });
   await db.order.create({ data: { id: `order-${gameId}`, gameId, userId: ownerId, paymentStatus: "PAID", paidAt: new Date(), provider: "mock", packageTier: "ONE_WORLD", amountAgorot: 3900 } });
   await db.generationJob.create({ data: { id: `job_${gameId}`, gameId, status: "RUNNING", currentStep: "local-patch" } });
-  for (const [orderIndex, board] of localPatchBoardsForVersion(12).entries())
+  const worldSlugs = new Set(boardsOfWorlds([worldSlug]));
+  const boards = localPatchBoardsForVersion(12).filter(board => worldSlugs.has(board.board));
+  expect(boards).toHaveLength(9);
+  for (const [orderIndex, board] of boards.entries())
     await db.gameScene.create({ data: { id: `scene-${gameId}-${board.board}`, gameId, sceneSlug: board.board, sceneVersion: 12, orderIndex } });
   const worldId = boardWizardWorldId(gameId), budget = boardWizardBudgetOf(c);
   await budget.reserve(worldId, { requestKey: "previous-work", scope: "image", operationFingerprint: "previous-work", reserveMicroUsd: amountMicroUsd });
@@ -72,6 +76,19 @@ describe("standing automatic five-dollar v12 recovery policy", () => {
     expect(await activateLocalPatchEmergencyBudget(c, f.gameId, f.refused, async () => {})).toBe(true);
     expect(await f.budget.readRequest(f.worldId, image.requestKey)).toEqual(original);
     expect(await f.budget.audit(f.worldId)).toMatchObject({ capMicroUsd: 5_000_000, held: false, reservedMicroUsd: 120_000, committedMicroUsd: 3_920_000 });
+  });
+  it("gives a separate complete kingdom purchase its own five-dollar ceiling without extending the journey ledger", async () => {
+    const journey = await seed(), kingdom = await seed(3_900_000, "kingdom");
+    expect(kingdom.worldId).not.toBe(journey.worldId);
+    expect(await activateLocalPatchEmergencyBudget(c, kingdom.gameId, kingdom.refused, async () => {})).toBe(true);
+    expect(await kingdom.budget.audit(kingdom.worldId)).toMatchObject({ capMicroUsd: 5_000_000, settledMicroUsd: 3_900_000 });
+    expect(await journey.budget.audit(journey.worldId)).toMatchObject({ capMicroUsd: 4_000_000, settledMicroUsd: 3_900_000 });
+    await kingdom.budget.reserve(kingdom.worldId, { ...kingdom.request, requestKey: "kingdom-five", reserveMicroUsd: 1_100_000 });
+    await expect(kingdom.budget.reserve(kingdom.worldId, { ...kingdom.request, requestKey: "kingdom-over-five", reserveMicroUsd: 1 }))
+      .rejects.toMatchObject({ code: "cap_exceeded" });
+    expect(await activateLocalPatchEmergencyBudget(c, journey.gameId, journey.refused, async () => {})).toBe(true);
+    expect(await journey.budget.audit(journey.worldId)).toMatchObject({ capMicroUsd: 5_000_000, settledMicroUsd: 3_900_000 });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
   it.each(["unpaid", "refunded", "deleted", "old-version", "wrong-world", "unapproved-unknown", "pending", "over-five", "production"])("does not bypass %s", async kind => {
     const f = await seed();

@@ -71,6 +71,19 @@ describe("mandatory child-free static original-people atlas", () => {
     const f = await fixture();
     await expect(buildBoardPeopleStyle("board-0", f.root)).rejects.toThrow("no authored style source");
   });
+  it("preserves the purchased Journey v4 atlas and builds Kingdom from its own nine current masters", async () => {
+    const journey = await buildBoardWizardIdentityStyle(undefined, "board-matched-identity/v4");
+    expect(journey.atlasSha256).toBe("313c054685b84ea961b52fa9a98c1ac91f26562c418eacf19000e9cac85199d6");
+    expect(journey.catalogSha256).toBe("e3a7558b783174c3655d810be3f711cfba373d8b549bfedfe957a15e052bac70");
+    const kingdom = await buildBoardWizardIdentityStyle(undefined, "board-matched-identity/v4", "kingdom");
+    expect(kingdom.examples.map(e => e.boardId)).toEqual(["castlegate", "fairyforest", "dragoncave", "icepalace",
+      "underwater", "cloudcity", "sweetworkshop", "giantlibrary", "nightcarnival"]);
+    expect(kingdom.atlasSha256).not.toBe(journey.atlasSha256);
+    expect(kingdom.catalogSha256).not.toBe(journey.catalogSha256);
+    expect(kingdom.atlasSha256).toBe(sha256Bytes(kingdom.png));
+    expect(await sharp(kingdom.png).metadata()).toMatchObject({ width: 1024, height: 1024 });
+    await expect(buildBoardWizardIdentityStyle(undefined, "board-matched-identity/v3", "kingdom")).rejects.toThrow("integrated identity style");
+  }, 30_000);
   it("requires the named original face and refuses a face outside its person context, never using the inserted child's eye geometry", async () => {
     const f = await fixture(); f.catalog.boards[0]!.boardId = "amazon"; await f.save();
     await expect(buildBoardPeopleStyle("amazon", f.root)).rejects.toThrow("authored face rectangle is missing");

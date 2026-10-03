@@ -47,6 +47,7 @@ import { localPatchSceneRelease } from "./local-patch-release";
 import { collectionSceneRelease } from "./collection-release";
 import { localPatchFiveSceneRelease, localPatchStrictSceneRelease, localPatchAgeSceneRelease } from "./local-patch-five-release";
 import { WORLD_LOCAL_PATCH_HIDES } from "../../src/domain/scene/local-patch-hides";
+import { INTEGRATED_COLLECTION_BOARDS } from "../adventures/wizard-integrated-release";
 
 /**
  * The scene catalog is data. Adding a world = adding a folder with
@@ -92,7 +93,11 @@ const fiveHideVersions = RAW_SCENES.filter(raw => WORLD_LOCAL_PATCH_HIDES.some(b
 const strictHideVersions = RAW_SCENES.filter(raw => WORLD_LOCAL_PATCH_HIDES.some(board => board.board === (raw as { slug: string }).slug)).map(localPatchStrictSceneRelease);
 const ageHideVersions = RAW_SCENES.filter(raw => WORLD_LOCAL_PATCH_HIDES.some(board => board.board === (raw as { slug: string }).slug)).map(localPatchAgeSceneRelease);
 const collectionVersions = RAW_SCENES.filter(raw => WORLD_LOCAL_PATCH_HIDES.some(board => board.board === (raw as { slug: string }).slug)).map(raw => collectionSceneRelease(raw));
-const HISTORICAL_SCENES: readonly SceneDefinition[] = [...preRefresh, ...prePlacement, ...preForeground, ...preContract, ...localPatchVersions, ...fiveHideVersions, ...strictHideVersions, ...ageHideVersions, ...collectionVersions, ...RAW_SCENES.filter(raw => WORLD_LOCAL_PATCH_HIDES.some(board => board.board === (raw as { slug: string }).slug)).flatMap(raw => [collectionSceneRelease(raw, REFRESHED_COLLECTION_VERSION), collectionSceneRelease(raw, INTEGRATED_COLLECTION_VERSION)])].map(raw => {
+const refreshedVersions = RAW_SCENES.filter(raw => WORLD_LOCAL_PATCH_HIDES.some(board => board.board === (raw as { slug: string }).slug))
+  .map(raw => collectionSceneRelease(raw, REFRESHED_COLLECTION_VERSION));
+const integratedVersions = RAW_SCENES.filter(raw => INTEGRATED_COLLECTION_BOARDS.some(board => board.board === (raw as { slug: string }).slug))
+  .map(raw => collectionSceneRelease(raw, INTEGRATED_COLLECTION_VERSION));
+const HISTORICAL_SCENES: readonly SceneDefinition[] = [...preRefresh, ...prePlacement, ...preForeground, ...preContract, ...localPatchVersions, ...fiveHideVersions, ...strictHideVersions, ...ageHideVersions, ...collectionVersions, ...refreshedVersions, ...integratedVersions].map(raw => {
   const parsed = validateSceneDefinition(raw);
   if (!parsed.ok || !parsed.scene) throw new Error(`Invalid archived scene ${(raw as { slug: string }).slug}: ${parsed.errors.join(", ")}`);
   return parsed.scene;

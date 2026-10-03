@@ -1,7 +1,8 @@
 import { Prisma } from "@prisma/client";
 import type { Container } from "../container";
 import { type LocalPatchBoard, type LocalPatchHide } from "../../domain/scene/local-patch-hides";
-import { ALL_LOCAL_PATCH_BOARDS, localPatchBoardsForVersion, localPatchBoardForVersion, isLocalPatchAdvisoryVersion, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
+import { ALL_LOCAL_PATCH_BOARDS, localPatchBoardForVersion, isLocalPatchAdvisoryVersion, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
+import { worldsOwned } from "../world-catalog.service";
 import { deliverLocalPatchNotifications } from "../local-patch-notifications";
 import { GenerationPaused, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { retainedPurchaseKeysFor } from "../../infra/db/prisma-retained-purchase-store";
@@ -127,6 +128,12 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   if (game.scenes.some(scene => isLocalPatchAdvisoryVersion(scene.sceneVersion))
     && (!advisory || new Set(game.scenes.map(scene => scene.sceneVersion)).size !== 1)) {
     throw new Error("LOCAL_PATCH_WORLD: mixed legacy and five-hide scene versions are not a valid world");
+  }
+  // The catalog can offer several worlds under one content version. A purchase
+  // still owns one complete nine-board world; reject a mixed selection before
+  // recovery, reservation or provider dispatch can spend against it.
+  if (game.scenes.length >= 9 && (game.scenes.length !== 9 || worldsOwned(game.scenes.map(scene => scene.sceneSlug)).length !== 1)) {
+    throw new Error("LOCAL_PATCH_WORLD: all nine boards must belong to one complete world");
   }
   // A v7 hide buys only its image. Reuse the dispatch boundary's conservative
   // minimum, then let it recheck after reservation and bound the actual call.
@@ -571,7 +578,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       const row = after.find(r => r.targetInstance.gameSceneId === item.sceneId && r.targetInstance.targetId === item.hide.targetId);
       return !row || !["GENERATED", "APPROVED"].includes(row.status);
     });
-    const expected = localPatchBoardsForVersion(game.scenes[0]!.sceneVersion).reduce((sum, board) => sum + board.hides.length, 0);
+    const expected = game.scenes.reduce((sum, scene) => sum + (localPatchBoardFor(scene.sceneSlug, scene.sceneVersion)?.hides.length ?? 0), 0);
     if (!blocked.length && !failures.length && work.length === expected) {
       await finishLocalPatchGame(c, gameId, fence);
       // Readiness is already committed. Notification failure must never turn

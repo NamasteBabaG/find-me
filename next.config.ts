@@ -5,8 +5,11 @@ const isDev = process.env.NODE_ENV !== "production";
 const tracingExcludedDirectories = ["work", "storage", "assets", "output", "tmp", ".claude", "public/worlds", "public/scenes"];
 const refreshedCollectionArtPath = "content/adventures/wizard-refresh-art.json";
 const collectionArtPath = "content/adventures/wizard-art.json";
+const kingdomCollectionArtPath = "content/adventures/wizard-kingdom-art.json";
 const collectionArt = JSON.parse(readFileSync(collectionArtPath, "utf8")) as { path: string }[];
 if (collectionArt.length !== 9 || new Set(collectionArt.map(a => a.path)).size !== 9 || collectionArt.some(a => !/^public\/scenes\/adventure-[a-z0-9-]+\/base\.webp$/.test(a.path))) throw new Error("Nine child-free collection boards required");
+const kingdomCollectionArt = JSON.parse(readFileSync(kingdomCollectionArtPath, "utf8")) as { path: string }[];
+if (kingdomCollectionArt.length !== 9 || new Set(kingdomCollectionArt.map(a => a.path)).size !== 9 || kingdomCollectionArt.some(a => !/^public\/scenes\/(?:magic-[a-z0-9-]+|fairyforest)\/base\.webp$/.test(a.path))) throw new Error("Nine child-free kingdom collection boards required");
 const tracingExcludes = [...tracingExcludedDirectories.map(directory => `./${directory}/**/*`),
   "./.env", "./.env.*", "./prisma/*.db", "./prisma/*.db-journal"];
 const activeBoardCatalogPath = "content/board-conditioned-qa/catalog.json";
@@ -72,13 +75,13 @@ const nextConfig: NextConfig = {
   // Only child-free frozen world inputs. Private work/, uploads and pilot
   // imagery are never part of a deployment. Dynamic fs reads need tracing.
   outputFileTracingIncludes: {
-    "/*": [activeBoardCatalogPath, ...activeBoardAssetPaths, localPatchArtPath, ...localPatchArtPaths, collectionArtPath, refreshedCollectionArtPath].map(file => `./${file}`),
+    "/*": [activeBoardCatalogPath, ...activeBoardAssetPaths, localPatchArtPath, ...localPatchArtPaths, collectionArtPath, refreshedCollectionArtPath, kingdomCollectionArtPath].map(file => `./${file}`),
   },
   outputFileTracingExcludes: {
     // Local-only preview routes and Prisma's dotenv fallback otherwise cause
     // the tracer to collect private files that must NEVER ship in a function.
-    // Historical patches retain their PNG sources. V10 verifies its nine CDN
-    // WebPs by manifest hash; duplicating 110MB here exceeds the function limit.
+    // Historical patches retain their PNG sources. Collection releases verify
+    // CDN WebPs by manifest hash; full-resolution art stays outside functions.
     // public/demo metadata stays local for the landing-page demo.
     "/*": tracingExcludes,
   },

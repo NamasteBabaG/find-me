@@ -1,0 +1,38 @@
+[
+  {
+    "path": "public/scenes/magic-castlegate-v18/base.webp",
+    "sha256": "822c8ae9a2d7fe325685feb97702349e29a74f56d73c6f45b8135aac8876b55a"
+  },
+  {
+    "path": "public/scenes/magic-fairyforest-v6/base.webp",
+    "sha256": "435e80bba3bcf03e12773f80c9202d6e2b2a6f026333ef7eaf03d0def086e741"
+  },
+  {
+    "path": "public/scenes/magic-dragoncave-refresh-v3/base.webp",
+    "sha256": "aedb4f928db9c89d85fa84b13c50f4b67388901c8abd78e626496d1c0bdbadcd"
+  },
+  {
+    "path": "public/scenes/magic-icepalace-refresh-v2/base.webp",
+    "sha256": "306022c253a4a48e378f16b1c5fa0b09c7814948656fd3c5eb34ed4e7a4ac755"
+  },
+  {
+    "path": "public/scenes/magic-underwater-refresh-v2/base.webp",
+    "sha256": "cdd49614fb9b44831b629acc75cd5e31d6c4e6f0ebf2672a01144c598766b9e5"
+  },
+  {
+    "path": "public/scenes/magic-cloudcity-refresh-v1/base.webp",
+    "sha256": "2ea78eb265a299e850479cc00c66b0f9f73ad620577ed3c2b3bf28321e15edef"
+  },
+  {
+    "path": "public/scenes/magic-sweetworkshop-refresh-v3/base.webp",
+    "sha256": "af85c124ca9dfab2ee2ca86d86a86a9b18cbc746468aba4f30084a6606b1710d"
+  },
+  {
+    "path": "public/scenes/magic-giantlibrary-v5/base.webp",
+    "sha256": "1d2b5586f7fcc59fd310904bd01c4f7ed06f10c9e47725fbfc8486a86068e415"
+  },
+  {
+    "path": "public/scenes/magic-nightcarnival-refresh-v1/base.webp",
+    "sha256": "90566075003b54df9b3d8de0b23a1ad9b3bd95e9a8f387ef6314b5a37ab37988"
+  }
+]

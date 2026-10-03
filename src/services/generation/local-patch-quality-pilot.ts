@@ -8,7 +8,7 @@ import { transitionGame } from "../game-status";
 import { localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
 import { LOCAL_PATCH_MAX_ATTEMPTS } from "../../domain/scene/local-patch-attempts";
 import { boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
-import { readBoardConditionedCatalog } from "./board-conditioned-catalog";
+import { identityStyleCatalogSha256 } from "./local-patch-identity-catalog";
 import { requireBoardWizardIdentityApproval } from "./board-wizard-identity-gate";
 import { sha256Bytes } from "./fixed-sprite";
 import { localPatchPublicationGeometryHash } from "./local-patch-publication-policy";
@@ -59,7 +59,7 @@ async function identity(c: Container, gameId: string, contentVersion: 9 | 10 = 9
   demand(asset.ownerId === game.ownerId && asset.status === "READY" && !asset.deletedAt && asset.type === "IDENTITY_SHEET" && asset.visibility === "PRIVATE", "Owned canonical identity required");
   const identitySha256 = sha256Bytes(await c.storage.get(asset.storagePath)), budget = boardWizardBudgetOf(c);
   await requireBoardWizardIdentityApproval(c, budget, { gameId, identityAssetId: asset.id, sheetSha256: identitySha256,
-    catalogSha256: (await readBoardConditionedCatalog()).sha256, photoAssetId: child.originalPhotoAssetId, ageYears: child.ageYears,
+    catalogSha256: await identityStyleCatalogSha256(game.scenes[0]!.sceneSlug, contentVersion), photoAssetId: child.originalPhotoAssetId, ageYears: child.ageYears,
     crop: child.photoCropJson ? JSON.parse(child.photoCropJson) : null, contentVersion });
   return { game, child, identityAssetId: asset.id, identitySha256, budget };
 }

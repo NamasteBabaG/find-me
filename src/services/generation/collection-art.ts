@@ -1,4 +1,5 @@
 import refreshedManifest from "../../../content/adventures/wizard-refresh-art.json";
+import kingdomManifest from "../../../content/adventures/wizard-kingdom-art.json";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import manifest from "../../../content/adventures/wizard-art.json";
@@ -7,6 +8,10 @@ import { sha256Bytes } from "./fixed-sprite";
 import { env } from "../../lib/env";
 
 const MAX_BYTES = 20 * 1024 * 1024;
+/** One world's verified public sources only, scoped to one identity preparation.
+ * Current nine-board releases use 109 MiB or less; never retain private pixels. */
+export const MAX_IDENTITY_ART_CACHE_BYTES = 128 * 1024 * 1024;
+export type IdentityArtCache = Map<string, Buffer>;
 const cache = new Map<string, Buffer>(); // Child-free only, at most two verified files.
 export function collectionArtOrigin(): string {
   const url = new URL(env().APP_URL);
@@ -18,14 +23,15 @@ export function collectionArtOrigin(): string {
 
 /** Read the exact published pixels, never a model URL or a request-supplied host.
  * Local verification reads disk. Deployed servers read their own static CDN:
- * bundling another 110MB into every function would exceed the platform limit.
+ * Full-resolution WebPs stay on the static CDN; only their hash manifests are
+ * packaged in functions, preserving room for the engine and native libraries.
  * Redirects, unlisted paths, wrong hashes, oversized bodies and login HTML fail
  * before any paid rendering. No credentials or image bytes are logged. */
 export async function readCollectionArt(art: string, expectedHash: string, root = process.cwd(),
   remote?: { fetch: typeof fetch; cookie: string }): Promise<Buffer | null> {
-  const entry = [...manifest, ...refreshedManifest].find(row => row.path === art);
+  const entry = [...manifest, ...refreshedManifest, ...kingdomManifest].find(row => row.path === art);
   if (!entry) return null;
-  if (entry.sha256 !== expectedHash || !/^public\/scenes\/(?:adventure|journey)-[a-z0-9-]+\/base\.webp$/.test(art)) throw Error("COLLECTION_ART: unexpected pinned artwork");
+  if (entry.sha256 !== expectedHash || !/^public\/scenes\/(?:(?:adventure|journey|magic)-[a-z0-9-]+|fairyforest)\/base\.webp$/.test(art)) throw Error("COLLECTION_ART: unexpected pinned artwork");
   if (!remote) {
     try {
       const bytes = await readFile(path.join(root, art));

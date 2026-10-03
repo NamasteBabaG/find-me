@@ -31,7 +31,9 @@ import { boardWizardBudget } from "./board-wizard-budget";
 import { CasWorldBudgetRepository } from "../../infra/db/world-budget-repository";
 import { PrismaWorldBudgetStore } from "../../infra/db/prisma-world-budget-store";
 import { LOCAL_PATCH_STYLE, LOCAL_PATCH_QUALITY_FAILED, localPatchPainterDeps, runLocalPatchWorldSlice } from "./local-patch-world";
-import { finishLocalPatchIdentity, preflightLocalPatchIdentity, requireLocalPatchIdentityTime, LocalPatchIdentityDeferred } from "./local-patch-identity";
+import { finishLocalPatchIdentity, preflightLocalPatchIdentity, requireLocalPatchIdentityTime, LocalPatchIdentityDeferred, type LocalPatchIdentityPreflightProof } from "./local-patch-identity";
+import { worldForBoard } from "../world-catalog.service";
+import type { IdentityArtCache } from "./collection-art";
 
 /**
  * Background generation. Every step is idempotent and resumable:
@@ -164,12 +166,18 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
 
   let qaIdentityClaim: BoardWizardIdentityClaim | null = null;
   let canonicalReuseClaim = false;
+  let identityArtCache: IdentityArtCache | undefined;
+  let identityPreflightProof: LocalPatchIdentityPreflightProof | undefined;
   try {
     // Resolve every pinned version before any billable identity/patch work.
     // A missing historical definition must never silently use today's board.
     for (const gs of game.scenes) sceneBySlug(gs.sceneSlug, gs.sceneVersion);
     const contentVersion = localPatch ? game.scenes[0]?.sceneVersion : undefined;
-    const preflightIdentity = () => localPatch ? preflightLocalPatchIdentity(c, gameId) : preflightBoardConditionedWizard(c, gameId);
+    if (localPatch && isRefreshedCollectionVersion(contentVersion)) identityArtCache = new Map();
+    const preflightIdentity = async () => {
+      if (localPatch) identityPreflightProof = await preflightLocalPatchIdentity(c, gameId, undefined, identityArtCache, identityPreflightProof);
+      else await preflightBoardConditionedWizard(c, gameId);
+    };
     if (localPatch || boardWizardEnabled()) await preflightIdentity();
     // ── Step 1: avatar ──
     await mark("avatar", { status: "running", startedAt: new Date().toISOString() });
@@ -199,7 +207,15 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
       const retained = await c.db.auditLog.findFirst({ where: { action: "sheet:painted", entityId: child.identityAssetId, entityType: "Asset" }, orderBy: { createdAt: "desc" } });
       retainedIdentityStyleVersion = identityProvenanceSchema.parse(JSON.parse(retained?.metaJson ?? "{}").identityProvenance).style.version;
     }
-    const identityStyle = qaIdentityClaim ? await buildBoardWizardIdentityStyle(undefined, retainedIdentityStyleVersion ?? (contentVersion === 12 ? "board-matched-identity/v4" : isRefreshedCollectionVersion(contentVersion) ? "board-matched-identity/v3" : undefined)) : null;
+    const identityWorld = localPatch && worldForBoard(game.scenes[0]!.sceneSlug)?.slug === "kingdom" ? "kingdom" : "journey";
+    let identityStyle: Awaited<ReturnType<typeof buildBoardWizardIdentityStyle>> | null = null;
+    try {
+      if (qaIdentityClaim) identityStyle = await buildBoardWizardIdentityStyle(undefined, retainedIdentityStyleVersion ?? (contentVersion === 12 ? "board-matched-identity/v4" : isRefreshedCollectionVersion(contentVersion) ? "board-matched-identity/v3" : undefined), identityWorld, identityArtCache);
+    } finally {
+      // Release the full public masters before reading private reference photos
+      // or dispatching providers. Later preflights revalidate without retaining.
+      identityArtCache?.clear(); identityArtCache = undefined;
+    }
     const avatarValid = child.avatarAssetId ? (await c.db.asset.findUnique({ where: { id: child.avatarAssetId } }))?.status === "READY" : false;
     if (!avatarValid) {
       if (status !== "AVATAR_GENERATING") await transitionGame(c, gameId, "AVATAR_GENERATING", SYSTEM);
@@ -569,6 +585,8 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
     c.analytics.track("generation_failed", { gameId, reason: message.slice(0, 80) });
     // The admins hear about a crash even when nobody is watching the admin page.
     await sendAdminAlert(c, { gameId, kind: "generation-failed", error: message }).catch((e: unknown) => console.error(`[admin-alert] ${gameId}:`, e));
+  } finally {
+    identityArtCache?.clear();
   }
 }
 

@@ -18,6 +18,7 @@ void Promise.all([validateAdventureAssets(ADVENTURE_PILOT, publicRoot), validate
     console.log(`Density-v3 local pilot: ${density.ready} native 4K boards verified; parent likeness review remains separate.`);
     console.log(`QA wizard v10: ${wizard.ready} native 4K boards verified, 27 authored hides and 54 mapped discoveries. Historical purchases remain pinned.`);
     console.log(`QA wizard v11: ${refreshed.ready} refreshed native 4K boards verified, 27 hides and 54 discoveries, shared with the storefront and main generation pipeline.`);
-    console.log(`QA wizard v12: ${integrated.ready} current 4K masters verified; mandatory style, lighting and neighbour integrity review for all 27 hides.`);
+    const integratedHides = INTEGRATED_WIZARD_CATALOG.boards.reduce((total, board) => total + board.plannedHides, 0);
+    console.log(`QA wizard v12: ${integrated.ready} current 4K masters verified, ${integratedHides} hides across Journey and Kingdom (27 per purchased world), with version-bound automatic review.`);
   })
   .catch(error => { console.error(error); process.exitCode = 1; });

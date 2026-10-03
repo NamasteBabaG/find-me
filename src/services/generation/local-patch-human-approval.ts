@@ -11,7 +11,7 @@ import { boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wiz
 import { localPatchGeometry } from "./local-patch-geometry";
 import { readShippedBoardArt } from "./local-patch-hide";
 import { finishLocalPatchGame } from "./local-patch-player";
-import { readBoardConditionedCatalog } from "./board-conditioned-catalog";
+import { identityStyleCatalogSha256 } from "./local-patch-identity-catalog";
 import { requireBoardWizardIdentityApproval } from "./board-wizard-identity-gate";
 
 export const LOCAL_PATCH_HUMAN_ACTION = "local-patch:human-approved-as-is";
@@ -62,9 +62,11 @@ export async function approveLocalPatchAsIs(c: Container, gameId: string, actor:
   demand(identity.ownerId === game.ownerId && identity.type === "IDENTITY_SHEET" && identity.status === "READY" && !identity.deletedAt, "The current identity is unavailable");
   const identitySha256 = digest(await c.storage.get(identity.storagePath));
   demand(child.ageYears && child.originalPhotoAssetId, "The original approved identity inputs must remain available");
+  const identityScene = game.scenes[0];
+  demand(identityScene, "A pinned scene is required for identity approval");
   await requireBoardWizardIdentityApproval(c, boardWizardBudgetOf(c), {
     gameId, identityAssetId: identity.id, sheetSha256: identitySha256,
-    catalogSha256: (await readBoardConditionedCatalog()).sha256, photoAssetId: child.originalPhotoAssetId,
+    catalogSha256: await identityStyleCatalogSha256(identityScene.sceneSlug, identityScene.sceneVersion), photoAssetId: child.originalPhotoAssetId,
     ageYears: child.ageYears, crop: child.photoCropJson ? JSON.parse(child.photoCropJson) : null,
   });
   const job = game.jobs.find(item => item.id === `job_${gameId}`);

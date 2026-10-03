@@ -6,6 +6,7 @@ import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyTestSchema } from "../../../lib/test-schema";
 import { DbStorage } from "../../../infra/storage/db";
+import { LOCAL_PATCH_SCENE_VERSION } from "../../../../content/scenes/local-patch-release";
 import { PrismaRetainedPurchaseStore } from "../../../infra/db/prisma-retained-purchase-store";
 import { buyLocalPatch, localPatchRenderPolicySha256 } from "../../../infra/generation/openai-local-patch";
 import type { Container } from "../../container";
@@ -47,7 +48,8 @@ beforeEach(async () => {
 });
 
 async function seed() {
-  const seeded = await seedApprovedGame(c, db, { styleVersion: LOCAL_PATCH_STYLE, status: "TARGETS_GENERATING", withJob: true });
+  const seeded = await seedApprovedGame(c, db, { styleVersion: LOCAL_PATCH_STYLE, status: "TARGETS_GENERATING", withJob: true,
+    scenes: [{ slug: BOARD.board, version: LOCAL_PATCH_SCENE_VERSION }] });
   fakes.testers.push(seeded.email);
   return seeded;
 }
@@ -64,7 +66,7 @@ describe("local-patch deletion through the owner/admin game action", () => {
     const { gameId, userId } = await seed();
     await run(gameId);
     const other = await seedApprovedGame(c, db, { gameId: "other-pilot-game", styleVersion: LOCAL_PATCH_STYLE,
-      status: "TARGETS_GENERATING", withJob: true });
+      status: "TARGETS_GENERATING", withJob: true, scenes: [{ slug: BOARD.board, version: LOCAL_PATCH_SCENE_VERSION }] });
     const actions = ["local-patch:quality-pilot", "local-patch:quality-pilot:review-requeued", "local-patch:extra-attempt", "local-patch:partial-release"];
     for (const [prefix, entityId] of [["deleted", gameId], ["retained", other.gameId]] as const) {
       for (const [index, action] of actions.entries()) await db.auditLog.create({ data: {

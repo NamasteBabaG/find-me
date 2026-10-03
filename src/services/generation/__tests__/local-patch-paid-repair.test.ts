@@ -15,6 +15,7 @@ import { retainedPurchaseKey } from "../../../infra/db/prisma-retained-purchase-
 import { avatarDisplayFromSheet } from "../../../infra/generation/avatar-cut";
 import type { EmailMessage } from "../../../infra/email/types";
 import type { Container } from "../../container";
+import { boardsOfWorlds } from "../../world-catalog.service";
 import { GameConfigSchema } from "../../../domain/game/config";
 import { localPatchBoardsForVersion } from "../../../domain/scene/local-patch-catalog";
 import { cropOf, maskForHide } from "../../../domain/scene/local-patch-hides";
@@ -50,7 +51,9 @@ vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: "qa", GENERATION_ENA
 vi.mock("../local-patch-hide", async original => ({ ...await original<typeof import("../local-patch-hide")>(),
   readShippedBoardArt: async () => Buffer.from(state.original) }));
 let VERSION: 8 | 10 | 11 | 12 = 8;
-let BOARDS = localPatchBoardsForVersion(VERSION);
+const journeySlugs = new Set(boardsOfWorlds(["journey"]));
+const journeyBoards = (version: number) => localPatchBoardsForVersion(version).filter(board => journeySlugs.has(board.board));
+let BOARDS = journeyBoards(VERSION);
 let SELECTED = [BOARDS[0]!.hides[0]!], UNREVIEWED: string[] = [];
 let dimensions = { width: 3072, height: 2048 };
 const GOOD = { ...PASSING_ANSWER, faceLikeness: "pass", faceReadable: "pass", severeSeam: "pass" };
@@ -187,7 +190,7 @@ async function tick(gameId: string, repairJudge: ReturnType<typeof judge>, conta
 
 describe("v12 scoped automatic repair review", () => {
   beforeAll(async () => {
-    VERSION = 12; BOARDS = localPatchBoardsForVersion(12);
+    VERSION = 12; BOARDS = journeyBoards(12);
     SELECTED = [BOARDS.find(b => b.board === "antarctica")!.hides[2]!];
     dimensions = { width: 3840, height: 2160 };
     state.original = await sharp({ create: { ...dimensions, channels: 4, background: "#d2be96" } }).png().toBuffer();
@@ -240,7 +243,7 @@ describe("v12 scoped automatic repair review", () => {
 
 describe.each([8, 10, 11] as const)("v%s paid repairs through actual stage, real ledger, durable queue and publication", version => {
   beforeAll(async () => {
-    VERSION = version; BOARDS = localPatchBoardsForVersion(version);
+    VERSION = version; BOARDS = journeyBoards(version);
     SELECTED = version >= 10
       ? [BOARDS.find(b => b.board === "antarctica")!.hides[2]!, BOARDS.find(b => b.board === "giza")!.hides[1]!]
       : [BOARDS.find(b => b.board === "tokyo")!.hides[2]!, BOARDS.find(b => b.board === "greatwall")!.hides[4]!];

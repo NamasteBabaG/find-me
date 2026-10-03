@@ -20,6 +20,14 @@ if (localPatchPaths.length !== 9 || new Set(localPatchPaths).size !== 9
   || localPatchPaths.some(file => !activeCatalogFiles.has(file)))
   throw new Error("Expected nine safe local-patch base images");
 const localPatchFiles = new Set(localPatchPaths);
+const collectionManifestPaths = ["content/adventures/wizard-art.json", "content/adventures/wizard-refresh-art.json", "content/adventures/wizard-kingdom-art.json"];
+// Static WebPs remain on the CDN. These small, deployment-owned manifests are
+// the only collection-art additions allowed into each server function.
+for (const manifest of collectionManifestPaths) {
+  const rows = JSON.parse(readFileSync(path.join(root, manifest), "utf8"));
+  if (rows.length !== 9 || new Set(rows.map(row => row.path)).size !== 9)
+    throw new Error("Nine unique collection images required per release");
+}
 const walk = directory => readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
   const target = path.join(directory, entry.name);
   return entry.isDirectory() ? walk(target) : entry.isFile() ? [target] : [];
@@ -45,4 +53,5 @@ for (const file of manifests) {
 console.log(JSON.stringify({ version: "private-build-trace-filter/v1", manifests: manifests.length, changed, removed,
   activeCatalogRevision: catalog.revision, activeCatalogFileCount: activeCatalogFiles.size,
   localPatchBaseCount: localPatchFiles.size,
+  collectionManifestCount: collectionManifestPaths.length,
   privateAssetBytesRead: 0, sourceFilesChanged: 0 }));

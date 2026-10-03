@@ -4,6 +4,7 @@ import { WORLD_LOCAL_PATCH_HIDES } from "../../../domain/scene/local-patch-hides
 import { sceneBySlug } from "../../scene-catalog.service";
 import { LOCAL_PATCH_STYLE } from "../local-patch-world";
 import { preflightLocalPatchIdentity } from "../local-patch-identity";
+import { boardsOfWorlds } from "../../world-catalog.service";
 
 const settings = vi.hoisted(() => ({ appEnv: "qa", model: "gpt-image-2", enabled: "on" }));
 vi.mock("../../../lib/env", () => ({
@@ -44,6 +45,19 @@ describe("free local-patch identity preflight", () => {
   it("rejects mixed content versions before any identity purchase", async () => {
     const f = fixture(); f.game.scenes[0]!.sceneVersion = 7;
     await expect(preflightLocalPatchIdentity(f.c, "synthetic")).rejects.toThrow("one pinned content version");
+    expect(f.generate).not.toHaveBeenCalled();
+  });
+  it("verifies all nine current Kingdom masters before spending", async () => {
+    const f = fixture();
+    f.game.scenes = boardsOfWorlds(["kingdom"]).map(sceneSlug => ({ sceneSlug, sceneVersion: 12 }));
+    await preflightLocalPatchIdentity(f.c, "synthetic");
+    expect(f.generate).not.toHaveBeenCalled();
+  });
+  it("rejects a mixed nine-board selection before reading or purchasing identity", async () => {
+    const f = fixture();
+    f.game.scenes = boardsOfWorlds(["journey"]).map(sceneSlug => ({ sceneSlug, sceneVersion: 12 }));
+    f.game.scenes[0]!.sceneSlug = "castlegate";
+    await expect(preflightLocalPatchIdentity(f.c, "synthetic")).rejects.toThrow("one complete selected world");
     expect(f.generate).not.toHaveBeenCalled();
   });
 });

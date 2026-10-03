@@ -8,7 +8,7 @@ import { isCollectionVersion, localPatchHidesPerBoard, isLocalPatchAdvisoryVersi
 import { LOCAL_PATCH_MAX_ATTEMPTS } from "../../domain/scene/local-patch-attempts";
 import { CURRENT_JUDGE_PRICING_VERSION, judgeCharge } from "../../infra/generation/judge";
 import { assertGenerationSpendAllowed, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
-import { readBoardConditionedCatalog } from "./board-conditioned-catalog";
+import { identityStyleCatalogSha256 } from "./local-patch-identity-catalog";
 import { requireBoardWizardIdentityApproval } from "./board-wizard-identity-gate";
 import { prepareLocalPatchIdentityReferences } from "./local-patch-identity-reference";
 import { fenceLocalPatchImages, LocalPatchRetainedPurchaseStore } from "./local-patch-lifecycle";
@@ -100,7 +100,7 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
     && identity.status === "READY" && !identity.deletedAt, "Identity is unavailable or unrelated");
   const sheet = await c.storage.get(identity.storagePath);
   const references = await prepareLocalPatchIdentityReferences(sheet, scene.sceneVersion);
-  const { sha256: catalogSha256 } = await readBoardConditionedCatalog();
+  const catalogSha256 = await identityStyleCatalogSha256(scene.sceneSlug, scene.sceneVersion);
   await requireBoardWizardIdentityApproval(c, budget, { gameId: game.id, identityAssetId: identity.id,
     sheetSha256: sha256Bytes(sheet), catalogSha256, photoAssetId: child.originalPhotoAssetId, ageYears: child.ageYears,
     crop: child.photoCropJson ? JSON.parse(child.photoCropJson) : null, contentVersion: scene.sceneVersion });

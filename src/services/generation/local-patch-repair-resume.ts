@@ -11,7 +11,7 @@ import { LOCAL_PATCH_STYLE } from "./local-patch-world";
 import { LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT } from "./local-patch-hide";
 import { boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { requireBoardWizardIdentityApproval } from "./board-wizard-identity-gate";
-import { readBoardConditionedCatalog } from "./board-conditioned-catalog";
+import { identityStyleCatalogSha256 } from "./local-patch-identity-catalog";
 import { sha256Bytes } from "./fixed-sprite";
 
 export const LOCAL_PATCH_REPAIR_RESUME_ACTION = "local-patch:repair-resume-authorized";
@@ -72,7 +72,8 @@ async function inspectRepairResume(c: Container, gameId: string) {
     }
     const sheet = await tx.asset.findUniqueOrThrow({ where: { id: child.identityAssetId } });
     await requireBoardWizardIdentityApproval(tc, budget, { gameId: game.id, identityAssetId: sheet.id,
-      sheetSha256: sha256Bytes(await tc.storage.get(sheet.storagePath)), catalogSha256: (await readBoardConditionedCatalog()).sha256,
+      sheetSha256: sha256Bytes(await tc.storage.get(sheet.storagePath)),
+      catalogSha256: await identityStyleCatalogSha256(game.scenes[0]!.sceneSlug, game.scenes[0]!.sceneVersion),
       photoAssetId: child.originalPhotoAssetId, ageYears: child.ageYears, crop: child.photoCropJson ? JSON.parse(child.photoCropJson) : null });
   return { game, job, states, repairHideIds, spending, auditId };
 }

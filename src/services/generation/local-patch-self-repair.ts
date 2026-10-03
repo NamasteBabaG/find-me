@@ -9,7 +9,7 @@ import { SELF_REPAIR_VERSION, SELF_REPAIR_COMPOSITION_VERSION, selfRepairDecisio
 import { CURRENT_JUDGE_PRICING_VERSION, judgeCharge } from "../../infra/generation/judge";
 import { sceneBySlug } from "../scene-catalog.service";
 import { assertGenerationSpendAllowed, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
-import { readBoardConditionedCatalog } from "./board-conditioned-catalog";
+import { identityStyleCatalogSha256 } from "./local-patch-identity-catalog";
 import { requireBoardWizardIdentityApproval } from "./board-wizard-identity-gate";
 import { prepareLocalPatchIdentityReferences } from "./local-patch-identity-reference";
 import { fenceLocalPatchImages, LocalPatchRetainedPurchaseStore } from "./local-patch-lifecycle";
@@ -84,7 +84,7 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
   const sheet = await c.storage.get(identity.storagePath), identitySha256 = sha256Bytes(sheet);
   const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(gameId), store = new LocalPatchRetainedPurchaseStore(c, gameId, budget);
   await requireBoardWizardIdentityApproval(c, budget, { gameId, identityAssetId: identity.id, sheetSha256: identitySha256,
-    catalogSha256: (await readBoardConditionedCatalog()).sha256, photoAssetId: child.originalPhotoAssetId, ageYears: child.ageYears,
+    catalogSha256: await identityStyleCatalogSha256(scene.sceneSlug, scene.sceneVersion), photoAssetId: child.originalPhotoAssetId, ageYears: child.ageYears,
     crop: child.photoCropJson ? JSON.parse(child.photoCropJson) : null, contentVersion: scene.sceneVersion });
   const definition = sceneBySlug(scene.sceneSlug, scene.sceneVersion), original = await (deps.readBoardArt ?? readShippedBoardArt)(board.art, definition.art.sha256 ?? "");
   const crop = cropOf(hide), contextSha256 = hash({ gameId, rowId: row.id, attempts: row.attempts, hide,
