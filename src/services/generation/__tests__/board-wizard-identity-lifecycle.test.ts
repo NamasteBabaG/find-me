@@ -46,6 +46,7 @@ import { sha256Bytes } from "../fixed-sprite";
 import { LOCAL_PATCH_STYLE } from "../local-patch-world";
 import { createDraft } from "../../create-flow.service";
 import { identityApprovedForDisplay } from "../board-wizard-identity-gate";
+import { seedAdminAlertNotification, expectAdminAlertPurged, expectAdminAlertUnchanged } from "../../__tests__/admin-alert-deletion-fixture";
 
 let db: PrismaClient, scratch: string, png: Buffer, seq = 0;
 beforeAll(async () => {
@@ -395,9 +396,11 @@ describe("QA identity lifecycle: real DB and synthetic provider only", () => {
 
   it("deletion during the paid call wins, but exact known billing is retained", async () => {
     const f = await fixture(), started = deferred<void>(), answer = deferred<CharacterOutput>();
+    const alert = await seedAdminAlertNotification(db, f.id, "sending");
     const running = generateBoardWizardIdentity(f.c, f.claim, { reserve: f.reserve, generate: () => { started.resolve(); return answer.promise; } });
     await started.promise;
     expect(await deleteGame(f.c, f.id, { type: "USER", id: f.ownerId }, f.ownerId)).toBe(true);
+    await expectAdminAlertPurged(db, alert);
     answer.resolve(f.result()); expect(await running).toBe(false);
     expect(await f.game()).toMatchObject({ status: "DELETED", configJson: null });
     expect(await db.childProfile.findUniqueOrThrow({ where: { id: f.childId } })).toMatchObject({ identityAssetId: null, avatarAssetId: null, originalPhotoAssetId: null });
@@ -409,11 +412,15 @@ describe("QA identity lifecycle: real DB and synthetic provider only", () => {
 
   it("deletion after publication reads the current identity IDs and removes both images", async () => {
     const f = await fixture();
+    const alert = await seedAdminAlertNotification(db, f.id);
     expect(await generateBoardWizardIdentity(f.c, f.claim, { reserve: f.reserve, generate: async () => f.result() })).toBe(true);
     const child = await db.childProfile.findUniqueOrThrow({ where: { id: f.childId } });
     expect(child.identityAssetId).toBeTruthy(); expect(child.avatarAssetId).toBeTruthy();
     const assets = await db.asset.findMany({ where: { ownerId: f.ownerId }, select: { storagePath: true } });
+    expect(await deleteGame(f.c, f.id, { type: "USER", id: "other-owner" }, "other-owner")).toBe(false);
+    await expectAdminAlertUnchanged(db, alert);
     await deleteGame(f.c, f.id, { type: "USER", id: f.ownerId }, f.ownerId);
+    await expectAdminAlertPurged(db, alert);
     expect(await db.asset.count({ where: { ownerId: f.ownerId, status: "READY" } })).toBe(0);
     expect(await db.fileBlob.count({ where: { key: { in: assets.map(a => a.storagePath) } } })).toBe(0);
     expect((await f.ledger()).requests[0].state).toBe("settled");

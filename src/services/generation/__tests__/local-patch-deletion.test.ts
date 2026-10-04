@@ -14,6 +14,7 @@ import { deleteGame, updateGift } from "../../game.service";
 import { LOCAL_PATCH_STYLE, localPatchPrivateInventory } from "../local-patch-world";
 import { runLocalPatchHide, type LocalPatchHideDeps } from "../local-patch-hide";
 import { LocalPatchDeleted } from "../local-patch-lifecycle";
+import { seedAdminAlertNotification, expectAdminAlertPurged, expectAdminAlertUnchanged } from "../../__tests__/admin-alert-deletion-fixture";
 import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wizard";
 import { LOCAL_PATCH_TEST_BOARD, bill, boardPng, clearWorld, paintedCrop, paintedOk, reply, seedApprovedGame } from "./local-patch-fixtures";
 
@@ -95,6 +96,7 @@ describe("local-patch deletion through the owner/admin game action", () => {
   it("purges published, retained, rejected and orphan imagery, revokes the claim and links, and retains accounting", async () => {
     const { gameId, userId } = await seed();
     await run(gameId);
+    const alert = await seedAdminAlertNotification(db, gameId, "sending");
     const before = await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId));
     for (const id of ["ast-orphan", "ast-rejected"]) {
       await db.asset.create({ data: { id, ownerId: userId, type: "REJECTED_PATCH", visibility: "PRIVATE",
@@ -111,6 +113,7 @@ describe("local-patch deletion through the owner/admin game action", () => {
     expect((await db.fileBlob.findMany()).filter(b => inventory.retainedPurchaseKeys.includes(b.key))).toHaveLength(2);
 
     expect(await remove(gameId, userId)).toBe(true);
+    await expectAdminAlertPurged(db, alert);
     expect(await remove(gameId, userId)).toBe(false);
     expect(await db.game.findUnique({ where: { id: gameId } })).toMatchObject({ status: "DELETED", configJson: null, title: null, giftJson: null });
     expect(await db.generationJob.findUnique({ where: { id: `job_${gameId}` } })).toMatchObject({ status: "DONE", currentStep: null, attempts: 1 });
@@ -146,16 +149,20 @@ describe("local-patch deletion through the owner/admin game action", () => {
 
   it("requires the owner or a configured, authenticated administrator", async () => {
     const { gameId, userId } = await seed();
+    const alert = await seedAdminAlertNotification(db, gameId);
     expect(await remove(gameId, "other-owner")).toBe(false);
     await expect(deleteGame(c, gameId, { type: "SYSTEM" }, userId)).rejects.toThrow(/Owner authorization/);
     await expect(deleteGame(c, gameId, { type: "ADMIN", id: userId })).rejects.toThrow(/Administrator not authorized/);
+    await expectAdminAlertUnchanged(db, alert);
     expect(await db.game.findUnique({ where: { id: gameId } })).toMatchObject({ deletedAt: null });
     c.adminEmails = [`${gameId}@example.com`];
     expect(await deleteGame(c, gameId, { type: "ADMIN", id: userId })).toBe(true);
+    await expectAdminAlertPurged(db, alert);
   }, 180_000);
 
   it("rolls the whole deletion back if its final durable write fails", async () => {
     const { gameId, userId } = await seed();
+    const alert = await seedAdminAlertNotification(db, gameId);
     const before = await db.fileBlob.count();
     await db.$executeRawUnsafe(`CREATE TRIGGER fail_local_delete BEFORE INSERT ON AuditLog WHEN NEW.action = 'local_patch.deleted'
       BEGIN SELECT RAISE(ABORT, 'injected deletion failure'); END`);
@@ -163,10 +170,12 @@ describe("local-patch deletion through the owner/admin game action", () => {
     try { await expect(remove(gameId, userId)).rejects.toThrow(); }
     finally { await db.$executeRawUnsafe("DROP TRIGGER fail_local_delete"); }
     expect(await db.fileBlob.count()).toBe(before);
+    await expectAdminAlertUnchanged(db, alert);
     expect(await db.game.findUnique({ where: { id: gameId } })).toMatchObject({ deletedAt: null, status: "TARGETS_GENERATING" });
     expect(await db.generationJob.findUnique({ where: { id: `job_${gameId}` } })).toMatchObject({ status: "QUEUED", attempts: 0 });
     expect(await db.childProfile.findFirst()).toMatchObject({ deletedAt: null, identityAssetId: `ast-sheet-${gameId}` });
     expect(await remove(gameId, userId)).toBe(true);
+    await expectAdminAlertPurged(db, alert);
   }, 180_000);
 
   it.each([false, true])("a late render records its bill/unknown charge without recreating imagery or buying a judge (unknown=%s)", async unknown => {

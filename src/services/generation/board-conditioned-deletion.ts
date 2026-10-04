@@ -3,6 +3,7 @@ import type { Container } from "../container";
 import type { Actor } from "../audit.service";
 import { env } from "../../lib/env";
 import { newId } from "../../lib/ids";
+import { purgeAdminAlertNotifications } from "../admin-alert-deletion";
 import { boardConditionedCheckpointKeys } from "../../infra/db/board-conditioned-checkpoints";
 import { BOARD_CONDITIONED_QA_STYLE, BoardConditionedQaJobError, boardConditionedQaPrivateInventory, boardQaReferenceLineageKey } from "./board-conditioned-qa-job";
 
@@ -39,6 +40,7 @@ export async function deleteBoardConditionedQaGame(c: Container, gameId: string,
     const stopped = await tx.generationJob.updateMany({ where: { id: job.id, gameId, status: job.status, attempts: job.attempts, currentStep: job.currentStep, stepsJson: job.stepsJson },
       data: { status: "DONE", currentStep: null, stepsJson: "{}", lastError: null } });
     demand(stopped.count === 1, "conflict", "Deletion lost its exact job fence");
+    await purgeAdminAlertNotifications(tx, gameId);
     const inventory = await boardConditionedQaPrivateInventory(tx, job.stepsJson, gameId), record = inventory.record;
     demand(record.ownerId === game.ownerId && record.childProfileId === game.childProfileId && record.worldId === `${gameId}:board-conditioned`
       && game.scenes.length === record.boards.length && game.scenes.every((scene, i) => scene.sceneSlug === record.boards[i]!.boardId && scene.sceneVersion === record.boards[i]!.sceneVersion && scene.orderIndex === i),

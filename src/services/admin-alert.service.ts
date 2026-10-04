@@ -1,217 +1,273 @@
+import { createHash } from "node:crypto";
+import { Prisma } from "@prisma/client";
+import { z } from "zod";
 import type { Container } from "./container";
 import { audit, SYSTEM } from "./audit.service";
 import { statusOf } from "./game-status";
 import { failedSpotsForAdmin, generationCostForDisplay } from "./admin.service";
 import { adminAlertEmail, type AdminAlertKind } from "./email/templates";
+import type { EmailMessage } from "../infra/email/types";
 import { deliverLocalPatchNotifications } from "./local-patch-notifications";
+import { generationHealthConcern } from "./generation-health.service";
+import { adminAlertNotificationPrefix } from "./admin-alert-deletion";
+export { adminAlertNotificationPrefix } from "./admin-alert-deletion";
 
-/**
- * Tell the admins about a game that needs a look, without holding it back.
- *
- * With no human gate (QA_AUTO_APPROVE on a QA box) a finished game goes to the
- * parent the moment it is done, problems and all; this is the other half of
- * that bargain. One mail per admin, sent right after the parent's, with what
- * went wrong, which hiding spots did not come out and why, what it cost, and
- * the way in. A game held for a person gets the same mail, so the person
- * knows.
- *
- * Nothing here ever throws: the parent already has the game, and an alert
- * must not undo that. A mail that failed is audited as failed and tried
- * again on the next call or the next cron tick; only a mail that was actually
- * sent counts against the six-hour repeat, per recipient. Cron retries resolve
- * each recipient's failure against later successes, even after six hours.
- * They are not reminders for an alert that already arrived. The first version
- * audited the attempt and read that back as "already sent", so one bad
- * afternoon at the mail provider silenced the alert for six hours.
- */
-export const ALERT_ONCE_MS = 6 * 60 * 60 * 1000;
-/** How far back a failed alert is still worth retrying. */
 export const ALERT_RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
+const RETRY_WINDOW_MS = 23 * 60 * 60 * 1000;
+const MAX_ATTEMPTS = 3;
+const LEASE_MS = 60_000;
 const RETRY_PAGE_SIZE = 100;
 const RETRY_LIMIT = 20;
-const FAILURE_KINDS = new Map<string, AdminAlertKind>(
-  (["delivered-with-problems", "held-for-review", "generation-failed", "needs-new-photo", "generation-stalled"] as const)
-    .map((kind) => [`admin-alert:${kind}:failed`, kind]),
-);
-const RETRY_ACTIONS = [...FAILURE_KINDS.keys(), ...[...FAILURE_KINDS.keys()].map((action) => action.replace(/:failed$/, ""))];
+export const ADMIN_ALERT_PENDING_ACTION = "admin-alert:notification-pending";
+const KINDS = ["delivered-with-problems", "held-for-review", "generation-failed", "needs-new-photo", "generation-stalled"] as const;
+const SUCCESS_ACTIONS = KINDS.map(kind => `admin-alert:${kind}`);
+const FAILURE_KINDS = new Map<string, AdminAlertKind>(KINDS.map(kind => [`admin-alert:${kind}:failed`, kind]));
+const sha = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
+const recipients = (c: Container) => [...new Set((c.adminEmails ?? []).map(to => to.trim().toLowerCase()).filter(Boolean))];
+const noticeId = (gameId: string, kind: AdminAlertKind, to: string) => {
+  if (!/^[A-Za-z0-9_-]{1,160}$/.test(gameId)) throw Error("ADMIN_ALERT: canonical game id required");
+  return `aud_aan_${sha(JSON.stringify([gameId, kind, to])).slice(0, 40)}`;
+};
 
-export interface AdminAlertInput {
-  gameId: string;
-  kind: AdminAlertKind;
-  problems?: string[];
-  error?: string;
+const noticeSchema = z.object({
+  version: z.literal("admin-alert-notification/v1"), kind: z.enum(KINDS),
+  state: z.enum(["pending", "sending", "sent", "unknown", "cancelled"]),
+  payloadKey: z.string().nullable(), payloadSha256: z.string().regex(/^[a-f0-9]{64}$/).nullable(),
+  recipientSha256: z.string().regex(/^[a-f0-9]{64}$/),
+  attempts: z.number().int().min(0).max(MAX_ATTEMPTS), firstAttemptAt: z.number().int().min(0).nullable(),
+  nextAttemptAt: z.number().int().min(0), leaseUntil: z.number().int().min(0),
+  providerId: z.string().min(1).max(256).optional(),
+}).strict();
+type Notice = z.infer<typeof noticeSchema>;
+type Event = { id: string; action: string; entityId: string; metaJson: string | null };
+
+export interface AdminAlertInput { gameId: string; kind: AdminAlertKind; problems?: string[]; error?: string }
+export interface AdminAlertOutcome { sent: string[]; failed: string[]; skipped: string[] }
+interface AlertMeta { sentTo: string[]; failedTo: string[]; noticeId?: string }
+
+async function context(c: Container, input: AdminAlertInput) {
+  const game = await c.db.game.findUniqueOrThrow({ where: { id: input.gameId }, include: {
+    childProfile: true, owner: { select: { email: true } }, scenes: true, orders: true,
+    jobs: { select: { status: true, currentStep: true, updatedAt: true }, orderBy: { updatedAt: "desc" }, take: 1 },
+  } });
+  const failedSpots = await failedSpotsForAdmin(c, input.gameId);
+  return { game, failedSpots };
+}
+function relevant(input: AdminAlertInput, current: Awaited<ReturnType<typeof context>>, allowReadyIntent = false): boolean {
+  const { game, failedSpots } = current;
+  if (game.deletedAt || ["DELETED", "REFUNDED", "CANCELLED"].includes(game.status)
+    || game.orders.some(order => order.paymentStatus === "REFUNDED" || order.refundedAt)) return false;
+  if (input.kind === "delivered-with-problems") return (game.status === "DELIVERED" || (allowReadyIntent && game.status === "READY"))
+    && (!!game.lastError?.trim() || failedSpots.length > 0);
+  if (["READY", "DELIVERED"].includes(game.status)) return false;
+  if (input.kind === "generation-stalled") return generationHealthConcern(game, Date.now()) !== null;
+  if (input.kind === "needs-new-photo") return game.status === "NEEDS_NEW_PHOTO";
+  if (input.kind === "held-for-review") return ["QA_PENDING", "MANUAL_REVIEW"].includes(game.status);
+  return game.status === "GENERATION_FAILED" || (["PAID", "AVATAR_GENERATING", "TARGETS_GENERATING", "SCENES_COMPOSING", "NEEDS_REGENERATION", "MANUAL_REVIEW"].includes(game.status)
+    && game.jobs[0]?.status === "FAILED");
 }
 
-export interface AdminAlertOutcome {
-  /** Recipients the mail reached this time. */
-  sent: string[];
-  /** Recipients the provider refused this time; they are tried again later. */
-  failed: string[];
-  /** Recipients who already had this alert within the window. */
-  skipped: string[];
-}
-
-interface AlertMeta {
-  sentTo?: string[];
-  failedTo?: string[];
-  problems?: string[];
-  error?: string;
-}
-
-export async function sendAdminAlert(c: Container, input: AdminAlertInput, options: { deadlineAt?: number } = {}): Promise<AdminAlertOutcome> {
-  return sendAlert(c, input, undefined, options.deadlineAt);
-}
-
-/** A retry carries only the recipients who failed, and when each last failed. */
-async function sendAlert(c: Container, input: AdminAlertInput, retryFailures?: Map<string, Date>, deadlineAt?: number): Promise<AdminAlertOutcome> {
-  const outcome: AdminAlertOutcome = { sent: [], failed: [], skipped: [] };
-  const admins = [...new Set(c.adminEmails ?? [])].filter((to) => !retryFailures || retryFailures.has(to));
-  const action = `admin-alert:${input.kind}`;
+/** Old sends without a provider key are never replayed on rollout. */
+async function seedTerminal(c: Container, input: AdminAlertInput, to: string, state: "sent" | "unknown") {
+  const id = noticeId(input.gameId, input.kind, to);
+  const notice: Notice = { version: "admin-alert-notification/v1", kind: input.kind, state,
+    payloadKey: null, payloadSha256: null, recipientSha256: sha(to), attempts: 0,
+    firstAttemptAt: null, nextAttemptAt: 0, leaseUntil: 0 };
   try {
-    if (admins.length === 0) {
-      console.warn(`[admin-alert] ${input.gameId}: ${input.kind}, but ADMIN_EMAILS is empty — nobody to tell`);
-      return outcome;
-    }
-    // New alerts use the six-hour throttle. For retries, a success after that
-    // recipient's failed attempt resolves it permanently, not just for six hours.
-    const throttleSince = Date.now() - ALERT_ONCE_MS;
-    let since = throttleSince;
-    if (retryFailures) for (const failedAt of retryFailures.values()) since = Math.min(since, failedAt.getTime());
-    const recent = await c.db.auditLog.findMany({
-      where: { action, entityType: "Game", entityId: input.gameId, createdAt: { gte: new Date(since) } },
-      select: { metaJson: true, createdAt: true },
-    });
-    const already = new Set<string>();
-    for (const row of recent) {
-      for (const to of parseMeta(row.metaJson).sentTo ?? []) {
-        const failedAt = retryFailures?.get(to);
-        if (row.createdAt.getTime() > throttleSince || (failedAt && row.createdAt >= failedAt)) already.add(to);
-      }
-    }
-    const due = admins.filter((to) => !already.has(to));
-    outcome.skipped.push(...admins.filter((to) => already.has(to)));
-    if (due.length === 0) return outcome;
-
-    const game = await c.db.game.findUniqueOrThrow({ where: { id: input.gameId }, include: { childProfile: true, owner: { select: { email: true } }, scenes: true, orders: true } });
-    // A queued health notice must not outlive completion, deletion or refund.
-    if (input.kind === "generation-stalled" && (game.deletedAt || ["READY", "DELIVERED", "DELETED", "REFUNDED", "CANCELLED", "NEEDS_NEW_PHOTO"].includes(game.status)
-      || game.orders.some(order => order.paymentStatus === "REFUNDED" || order.refundedAt))) {
-      outcome.skipped.push(...due);
-      return outcome;
-    }
-    const failedSpots = await failedSpotsForAdmin(c, input.gameId).catch(() => []);
-    const costCents = await generationCostForDisplay(c, input.gameId);
-    const mail = adminAlertEmail({
-      kind: input.kind,
-      gameId: input.gameId,
-      adminUrl: `${c.appUrl}/admin/orders/${input.gameId}`,
-      childName: game.childProfile?.displayName ?? "",
-      ownerEmail: game.owner?.email ?? null,
-      status: statusOf(game),
-      sceneCount: game.scenes.length,
-      problems: input.problems ?? [],
-      failedSpots: failedSpots.map((f) => ({ where: `${f.sceneSlug}/${f.targetId}/${f.variant}`, attempts: f.attempts, reason: f.lastError ?? "" })),
-      costCents,
-      error: input.error,
-    });
-    for (const to of due) {
-      if (deadlineAt !== undefined && deadlineAt - Date.now() < 4_000) break;
-      try {
-        await c.email.send({ ...mail, to }, deadlineAt === undefined ? undefined : { deadlineAt: deadlineAt - 3_000 });
-        outcome.sent.push(to);
-      } catch (err) {
-        outcome.failed.push(to);
-        console.error(`[admin-alert] ${input.gameId}: could not mail ${to}:`, err instanceof Error ? err.message : err);
-      }
-    }
-    const meta: AlertMeta = { sentTo: outcome.sent, failedTo: outcome.failed, problems: input.problems?.slice(0, 10), error: input.error?.slice(0, 200) };
-    // Sent and failed are separate records, so a failure can be found and retried
-    // and never reads as "already sent".
-    if (outcome.sent.length > 0) await audit(c, SYSTEM, action, "Game", input.gameId, { ...meta });
-    if (outcome.failed.length > 0) await audit(c, SYSTEM, `${action}:failed`, "Game", input.gameId, { ...meta });
-  } catch (err) {
-    console.error(`[admin-alert] ${input.gameId}: ${input.kind} could not be sent:`, err instanceof Error ? err.message : err);
+    return await c.db.auditLog.create({ data: { id, actorType: "SYSTEM", action: `admin-alert:notification-${state}`,
+      entityType: "Game", entityId: input.gameId, metaJson: JSON.stringify(notice) } });
+  } catch (error) {
+    if ((error as { code?: string }).code !== "P2002") throw error;
+    return c.db.auditLog.findUniqueOrThrow({ where: { id } });
   }
+}
+async function historicalState(c: Container, input: AdminAlertInput, to: string): Promise<"sent" | "unknown" | null> {
+  // No time cutoff: a success from months ago resolves the same alert forever.
+  const rows = await c.db.auditLog.findMany({ where: { entityType: "Game", entityId: input.gameId,
+    action: { in: [`admin-alert:${input.kind}`, `admin-alert:${input.kind}:failed`] } }, select: { action: true, metaJson: true } });
+  if (rows.some(row => row.action === `admin-alert:${input.kind}` && parseMeta(row.metaJson).sentTo.includes(to))) return "sent";
+  return rows.some(row => parseMeta(row.metaJson).failedTo.includes(to)) ? "unknown" : null;
+}
+async function ensureNotice(c: Container, input: AdminAlertInput, to: string): Promise<Event | null> {
+  const id = noticeId(input.gameId, input.kind, to), existing = await c.db.auditLog.findUnique({ where: { id } });
+  if (existing) return existing;
+  const historical = await historicalState(c, input, to);
+  if (historical) return seedTerminal(c, input, to, historical);
+  const current = await context(c, input);
+  if (!relevant(input, current, true)) return null;
+  const { game, failedSpots } = current;
+  const message: EmailMessage = { ...adminAlertEmail({ kind: input.kind, gameId: input.gameId,
+    adminUrl: `${c.appUrl}/admin/orders/${encodeURIComponent(input.gameId)}`,
+    childName: game.childProfile?.displayName ?? "", ownerEmail: game.owner?.email ?? null,
+    status: statusOf(game), sceneCount: game.scenes.length, problems: input.problems ?? [],
+    failedSpots: failedSpots.map(f => ({ where: `${f.sceneSlug}/${f.targetId}/${f.variant}`, attempts: f.attempts, reason: f.lastError ?? "" })),
+    costCents: await generationCostForDisplay(c, input.gameId), error: input.error }), to, idempotencyKey: id };
+  const bytes = Buffer.from(JSON.stringify(message)), payloadKey = `${adminAlertNotificationPrefix(input.gameId)}${id}.json`;
+  const notice: Notice = { version: "admin-alert-notification/v1", kind: input.kind, state: "pending",
+    payloadKey, payloadSha256: sha(bytes), recipientSha256: sha(to), attempts: 0,
+    firstAttemptAt: null, nextAttemptAt: 0, leaseUntil: 0 };
+  try {
+    return await c.db.$transaction(async tx => {
+      // Deletion acquires this same game row before purging private blobs.
+      // Hold its lock through intent publication so a stale context cannot
+      // insert private email bytes after deletion has finished its purge.
+      const live = await tx.game.updateMany({ where: { id: input.gameId, ownerId: game.ownerId,
+        status: game.status, deletedAt: null, updatedAt: game.updatedAt }, data: { updatedAt: game.updatedAt } });
+      if (live.count !== 1) return null;
+      await tx.fileBlob.create({ data: { key: payloadKey, contentType: "application/json", data: new Uint8Array(bytes) } });
+      return tx.auditLog.create({ data: { id, actorType: "SYSTEM", action: ADMIN_ALERT_PENDING_ACTION,
+        entityType: "Game", entityId: input.gameId, metaJson: JSON.stringify(notice) } });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 10_000 });
+  } catch (error) {
+    if ((error as { code?: string }).code !== "P2002") throw error;
+    return c.db.auditLog.findUniqueOrThrow({ where: { id } });
+  }
+}
+async function deliverNotice(c: Container, event: Event, to: string, deadlineAt: number): Promise<"sent" | "failed" | "skipped"> {
+  const parsed = noticeSchema.safeParse(parseJson(event.metaJson));
+  if (!parsed.success || event.id !== noticeId(event.entityId, parsed.data.kind, to)
+    || parsed.data.recipientSha256 !== sha(to)) return "skipped";
+  let notice = parsed.data;
+  if (event.action !== ADMIN_ALERT_PENDING_ACTION || !["pending", "sending"].includes(notice.state)
+    || notice.nextAttemptAt > Date.now() || notice.leaseUntil > Date.now() || deadlineAt - Date.now() < 4_000) return "skipped";
+  const finish = async (state: "unknown" | "cancelled") => {
+    await c.db.auditLog.updateMany({ where: { id: event.id, action: ADMIN_ALERT_PENDING_ACTION, metaJson: JSON.stringify(notice) },
+      data: { action: `admin-alert:notification-${state}`, metaJson: JSON.stringify({ ...notice, state, leaseUntil: 0 }) } });
+  };
+  if (!recipients(c).includes(to)) { await finish("cancelled"); return "skipped"; }
+  if (notice.attempts >= MAX_ATTEMPTS || (notice.firstAttemptAt !== null && Date.now() - notice.firstAttemptAt >= RETRY_WINDOW_MS)) {
+    await finish("unknown"); return "skipped";
+  }
+  if (!notice.payloadKey || notice.payloadKey !== `${adminAlertNotificationPrefix(event.entityId)}${event.id}.json` || !notice.payloadSha256) {
+    await finish("cancelled"); return "skipped";
+  }
+  const blob = await c.db.fileBlob.findUnique({ where: { key: notice.payloadKey } });
+  if (!blob || sha(Buffer.from(blob.data)) !== notice.payloadSha256) { await finish("cancelled"); return "skipped"; }
+  const mail = parseJson(Buffer.from(blob.data).toString()) as EmailMessage | null;
+  if (!mail || mail.to !== to || mail.tag !== "admin-alert" || mail.idempotencyKey !== event.id) {
+    await finish("cancelled"); return "skipped";
+  }
+  const sending: Notice = { ...notice, state: "sending", attempts: notice.attempts + 1,
+    firstAttemptAt: notice.firstAttemptAt ?? Date.now(), leaseUntil: Date.now() + LEASE_MS };
+  const claim = await c.db.auditLog.updateMany({ where: { id: event.id, action: ADMIN_ALERT_PENDING_ACTION, metaJson: event.metaJson }, data: { metaJson: JSON.stringify(sending) } });
+  if (claim.count !== 1) return "skipped";
+  if (deadlineAt - Date.now() < 4_000) {
+    await c.db.auditLog.updateMany({ where: { id: event.id, action: ADMIN_ALERT_PENDING_ACTION, metaJson: JSON.stringify(sending) }, data: { metaJson: event.metaJson } });
+    return "skipped";
+  }
+  notice = sending;
+  try {
+    // Recheck lifecycle and the current heartbeat after claiming the message.
+    const current = await context(c, { gameId: event.entityId, kind: notice.kind });
+    if (!recipients(c).includes(to) || !relevant({ gameId: event.entityId, kind: notice.kind }, current, true)) { await finish("cancelled"); return "skipped"; }
+    if (notice.kind === "delivered-with-problems" && current.game.status === "READY") {
+      // The customer notification can still be pending after publication. Keep
+      // the report until delivery without spending a transport retry attempt.
+      const waiting: Notice = { ...parsed.data, state: "pending", nextAttemptAt: Date.now() + 60_000, leaseUntil: 0 };
+      await c.db.auditLog.updateMany({ where: { id: event.id, action: ADMIN_ALERT_PENDING_ACTION, metaJson: JSON.stringify(sending) }, data: { metaJson: JSON.stringify(waiting) } });
+      return "skipped";
+    }
+    if (deadlineAt - Date.now() < 4_000) {
+      await c.db.auditLog.updateMany({ where: { id: event.id, action: ADMIN_ALERT_PENDING_ACTION, metaJson: JSON.stringify(sending) }, data: { metaJson: event.metaJson } });
+      return "skipped";
+    }
+    const receipt = await c.email.send(mail, { deadlineAt: deadlineAt - 3_000 });
+    const recorded = await c.db.auditLog.updateMany({ where: { id: event.id, action: ADMIN_ALERT_PENDING_ACTION, metaJson: JSON.stringify(sending) },
+      data: { action: "admin-alert:notification-sent", metaJson: JSON.stringify({ ...notice, state: "sent", leaseUntil: 0, providerId: receipt.id }) } });
+    if (recorded.count !== 1) return "skipped";
+    // Losing the secondary historical audit cannot undo this durable receipt.
+    await audit(c, SYSTEM, `admin-alert:${notice.kind}`, "Game", event.entityId, { sentTo: [to], failedTo: [], noticeId: event.id }).catch(() => {
+      console.error("[admin-alert] historical audit unavailable; durable delivery receipt retained");
+    });
+    return "sent";
+  } catch {
+    const pending: Notice = { ...notice, state: "pending", nextAttemptAt: Date.now() + 60_000, leaseUntil: 0 };
+    await c.db.auditLog.updateMany({ where: { id: event.id, action: ADMIN_ALERT_PENDING_ACTION, metaJson: JSON.stringify(sending) }, data: { metaJson: JSON.stringify(pending) } });
+    await audit(c, SYSTEM, `admin-alert:${notice.kind}:failed`, "Game", event.entityId, { sentTo: [], failedTo: [to], noticeId: event.id }).catch(() => undefined);
+    return "failed";
+  }
+}
+
+/** One immutable internal alert; transport retries reuse its key and body. */
+export async function sendAdminAlert(c: Container, input: AdminAlertInput, options: { deadlineAt?: number } = {}): Promise<AdminAlertOutcome> {
+  const outcome: AdminAlertOutcome = { sent: [], failed: [], skipped: [] }, deadlineAt = Math.min(options.deadlineAt ?? Infinity, Date.now() + 20_000);
+  try {
+    for (const to of recipients(c)) {
+      if (deadlineAt - Date.now() < 4_000) break;
+      const event = await ensureNotice(c, input, to), result = event ? await deliverNotice(c, event, to, deadlineAt) : "skipped";
+      outcome[result].push(to);
+    }
+  } catch { console.error("[admin-alert] bounded internal notification unavailable"); }
   return outcome;
 }
 
-/**
- * Try again for every alert that failed to reach someone in the last day.
- * Page through the day's outcomes BEFORE applying the send limit. One
- * game's repeated failures must not crowd another game out of a `take: 20`.
- * Group by game/kind, retaining each recipient's latest failure. Oldest last
- * attempt first gives unattempted games a turn when an outage spans >20 games.
- * Resolved groups do not consume the limit. This is an audit-backed retry, not
- * an atomic outbox: overlapping workers / a failed post-send audit can still
- * duplicate mail. The existing schema is unchanged.
- */
+/** Cron retries only idempotent intents. Old failures without provider keys
+ * are quarantined, never replayed on rollout. Customer mail remains separate. */
 export async function retryFailedAdminAlerts(c: Container, options: { deadlineAt?: number } = {}): Promise<{ retried: number }> {
-  const deadlineAt = Math.min(options.deadlineAt ?? Infinity, Date.now() + 20_000);
-  await deliverLocalPatchNotifications(c, undefined, { deadlineAt }).catch(err => console.error("[local-patch notifications] retry failed:", err instanceof Error ? err.message : String(err)));
-  let retried = 0;
+  const deadlineAt = Math.min(options.deadlineAt ?? Infinity, Date.now() + 20_000), sent = new Set<string>();
+  await deliverLocalPatchNotifications(c, undefined, { deadlineAt }).catch(() => console.error("[local-patch notifications] bounded retry unavailable"));
   try {
-    const admins = new Set(c.adminEmails ?? []);
-    if (admins.size === 0) return { retried };
-    const passAt = new Date();
-    const pending = new Map<string, { input: AdminAlertInput; failures: Map<string, Date>; successes: Map<string, Date>; lastAttempt: number }>();
+    const admins = recipients(c);
+    if (!admins.length || deadlineAt - Date.now() < 4_000) return { retried: 0 };
+    const pending: Event[] = [], passAt = new Date();
     let cursor: string | undefined;
-    while (true) {
-      if (deadlineAt - Date.now() < 4_000) return { retried };
-      const rows = await c.db.auditLog.findMany({
-        where: { action: { in: RETRY_ACTIONS }, entityType: "Game", createdAt: { gt: new Date(passAt.getTime() - ALERT_RETRY_WINDOW_MS), lte: passAt } },
-        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-        take: RETRY_PAGE_SIZE,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        select: { id: true, action: true, entityId: true, metaJson: true, createdAt: true },
-      });
+    for (;;) {
+      if (deadlineAt - Date.now() < 4_000) return { retried: sent.size };
+      const rows = await c.db.auditLog.findMany({ where: { action: ADMIN_ALERT_PENDING_ACTION, entityType: "Game", createdAt: { lte: passAt } },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: RETRY_PAGE_SIZE, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}) });
+      pending.push(...rows);
+      if (rows.length < RETRY_PAGE_SIZE) break;
+      cursor = rows.at(-1)!.id;
+    }
+    const due = pending.map(event => ({ event, notice: noticeSchema.safeParse(parseJson(event.metaJson)) }))
+      .filter(row => row.notice.success && row.notice.data.nextAttemptAt <= Date.now() && row.notice.data.leaseUntil <= Date.now())
+      .sort((a, b) => (a.notice.success ? a.notice.data.nextAttemptAt : 0) - (b.notice.success ? b.notice.data.nextAttemptAt : 0));
+    let attempted = 0;
+    for (const row of due) {
+      if (deadlineAt - Date.now() < 4_000 || attempted >= RETRY_LIMIT) break;
+      if (!row.notice.success) continue;
+      const notice = row.notice.data, to = admins.find(to => sha(to) === notice.recipientSha256);
+      if (!to) {
+        await c.db.auditLog.updateMany({ where: { id: row.event.id, action: ADMIN_ALERT_PENDING_ACTION, metaJson: row.event.metaJson },
+          data: { action: "admin-alert:notification-cancelled", metaJson: JSON.stringify({ ...notice, state: "cancelled", leaseUntil: 0 }) } });
+        continue;
+      }
+      const result = await deliverNotice(c, row.event, to, deadlineAt);
+      if (result === "sent") sent.add(JSON.stringify([row.event.entityId, notice.kind]));
+      if (result !== "skipped") attempted++;
+    }
+    const legacy = new Map<string, { input: AdminAlertInput; to: string }>();
+    cursor = undefined;
+    for (;;) {
+      if (deadlineAt - Date.now() < 4_000) return { retried: sent.size };
+      const rows: Array<Event & { createdAt: Date }> = await c.db.auditLog.findMany({ where: { action: { in: [...FAILURE_KINDS.keys()] }, entityType: "Game",
+        createdAt: { gt: new Date(passAt.getTime() - ALERT_RETRY_WINDOW_MS), lte: passAt } },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: RETRY_PAGE_SIZE, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}) });
       for (const row of rows) {
-        const failed = FAILURE_KINDS.has(row.action);
-        const kind = FAILURE_KINDS.get(failed ? row.action : `${row.action}:failed`);
-        if (!kind) continue;
-        const meta = parseMeta(row.metaJson);
-        const recipients = ((failed ? meta.failedTo : meta.sentTo) ?? []).filter((to) => admins.has(to));
-        if (recipients.length === 0) continue;
-        const key = JSON.stringify([row.entityId, kind]);
-        const group = pending.get(key) ?? { input: { gameId: row.entityId, kind }, failures: new Map<string, Date>(), successes: new Map<string, Date>(), lastAttempt: 0 };
-        if (failed) group.input = { gameId: row.entityId, kind, problems: meta.problems, error: meta.error };
-        for (const to of recipients) (failed ? group.failures : group.successes).set(to, row.createdAt);
-        pending.set(key, group);
+        const kind = FAILURE_KINDS.get(row.action), meta = parseMeta(row.metaJson);
+        if (!kind || meta.noticeId) continue;
+        for (const to of meta.failedTo.filter(to => admins.includes(to))) legacy.set(noticeId(row.entityId, kind, to), { input: { gameId: row.entityId, kind }, to });
       }
       if (rows.length < RETRY_PAGE_SIZE) break;
-      cursor = rows[rows.length - 1]!.id;
+      cursor = rows.at(-1)!.id;
     }
-    // Resolve in bulk, rather than one database read per already-resolved game.
-    // The send still rechecks for success that landed after this pass's snapshot.
-    for (const [key, group] of pending) {
-      for (const [to, failedAt] of group.failures) {
-        const sentAt = group.successes.get(to);
-        if (sentAt && sentAt >= failedAt) group.failures.delete(to);
-        else group.lastAttempt = Math.max(group.lastAttempt, failedAt.getTime());
+    if (legacy.size) {
+      const successful = await c.db.auditLog.findMany({ where: { action: { in: SUCCESS_ACTIONS }, entityType: "Game", entityId: { in: [...new Set([...legacy.values()].map(item => item.input.gameId))] } }, select: { action: true, entityId: true, metaJson: true } });
+      const delivered = new Set(successful.flatMap(row => parseMeta(row.metaJson).sentTo.map(to => noticeId(row.entityId, row.action.slice("admin-alert:".length) as AdminAlertKind, to))));
+      for (const [id, item] of legacy) {
+        if (deadlineAt - Date.now() < 4_000) break;
+        if (!(await c.db.auditLog.findUnique({ where: { id } }))) await seedTerminal(c, item.input, item.to, delivered.has(id) ? "sent" : "unknown");
       }
-      if (group.failures.size === 0) pending.delete(key);
     }
-    let attempted = 0;
-    for (const group of [...pending.values()].sort((a, b) => a.lastAttempt - b.lastAttempt)) {
-      if (deadlineAt - Date.now() < 4_000) break;
-      const outcome = await sendAlert(c, group.input, group.failures, deadlineAt);
-      if (outcome.sent.length > 0) retried++;
-      if (outcome.sent.length + outcome.failed.length > 0 && ++attempted >= RETRY_LIMIT) break;
-    }
-  } catch (err) {
-    console.error("[admin-alert] retry pass failed:", err instanceof Error ? err.message : err);
-  }
-  return { retried };
+  } catch { console.error("[admin-alert] bounded internal notification retry unavailable"); }
+  return { retried: sent.size };
 }
 
+function parseJson(json: string | null | undefined): unknown {
+  try { return json ? JSON.parse(json) : null; } catch { return null; }
+}
 function parseMeta(json: string | null | undefined): AlertMeta {
-  if (!json) return {};
-  try {
-    const meta: unknown = JSON.parse(json);
-    if (!meta || typeof meta !== "object" || Array.isArray(meta)) return {};
-    const value = meta as Record<string, unknown>;
-    const strings = (v: unknown): string[] => Array.isArray(v) ? v.filter((item): item is string => typeof item === "string") : [];
-    return { sentTo: strings(value.sentTo), failedTo: strings(value.failedTo), problems: strings(value.problems), error: typeof value.error === "string" ? value.error : undefined };
-  } catch {
-    return {};
-  }
+  const parsed = parseJson(json), value = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+  const addresses = (input: unknown) => Array.isArray(input) ? [...new Set(input.filter((item): item is string => typeof item === "string").map(to => to.trim().toLowerCase()).filter(Boolean))] : [];
+  return { sentTo: addresses(value.sentTo), failedTo: addresses(value.failedTo), ...(typeof value.noticeId === "string" ? { noticeId: value.noticeId } : {}) };
 }

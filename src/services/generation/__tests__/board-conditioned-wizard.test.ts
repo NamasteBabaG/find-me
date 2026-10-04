@@ -7,6 +7,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { applyTestSchema } from "../../../lib/test-schema";
 import { DbStorage } from "../../../infra/storage/db";
 import type { Container } from "../../container";
+import { seedAdminAlertNotification, expectAdminAlertPurged, expectAdminAlertUnchanged } from "../../__tests__/admin-alert-deletion-fixture";
 import { findScene } from "../../../../content/scenes";
 import journey from "../../../../content/worlds/journey/world.json";
 import { sha256Bytes } from "../fixed-sprite";
@@ -408,6 +409,7 @@ describe("actual wizard to durable QA world orchestration (synthetic engine, no 
   });
   it("persists all27 exact private image refs and exposes only a review world, then purges their exact inventory", async () => {
     const f = await fixture(); fakes.succeed = true; await enrollBoardConditionedWizard(f.c, f.gameId, `job_${f.gameId}`);
+    const alert = await seedAdminAlertNotification(db, f.gameId, "sending");
     await runBoardConditionedWizardSlice(f.c, f.gameId);
     expect(fakes.calls).toEqual([f.boards[0]!.boardId]); expect(fakes.reviews).toHaveLength(0);
     expect((await db.game.findUniqueOrThrow({ where: { id: f.gameId } })).status).toBe("TARGETS_GENERATING");
@@ -420,7 +422,10 @@ describe("actual wizard to durable QA world orchestration (synthetic engine, no 
     expect(await db.asset.count({ where: { ownerId: f.ownerId, provider: "board-conditioned-wizard", visibility: "PRIVATE" } })).toBe(36);
     const recoveryKeys = [f.boards[0]!.boardId, `${f.boards[0]!.boardId}--attempt-2`].map(id => boardConditionedCheckpointKeys(`${f.gameId}:board-wizard`, id, 2).measurement);
     for (const key of recoveryKeys) await db.fileBlob.create({ data: { key, contentType: "application/json", data: new Uint8Array(Buffer.from("synthetic private landmarks")) } });
+    expect(await deleteBoardConditionedWizard(f.c, f.gameId, { type: "USER", id: "other-owner" }, "other-owner")).toBe(false);
+    await expectAdminAlertUnchanged(db, alert);
     await expect(deleteBoardConditionedWizard(f.c, f.gameId, { type: "USER", id: f.ownerId }, f.ownerId)).resolves.toBe(true);
+    await expectAdminAlertPurged(db, alert);
     expect(await db.fileBlob.count({ where: { key: { in: recoveryKeys } } })).toBe(0);
     expect(await db.asset.count({ where: { ownerId: f.ownerId, provider: "board-conditioned-wizard", status: "READY" } })).toBe(0);
     expect(await db.worldBudgetLedger.count({ where: { worldId: `${f.gameId}:board-wizard` } })).toBe(1);

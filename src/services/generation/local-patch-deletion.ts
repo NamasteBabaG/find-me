@@ -6,6 +6,7 @@ import { newId } from "../../lib/ids";
 import { LOCAL_PATCH_STYLE, localPatchPrivateInventory } from "./local-patch-world";
 import { LOCAL_PATCH_PROVIDER } from "./local-patch-hide";
 import { localPatchNotificationPrefix } from "../local-patch-notifications";
+import { purgeAdminAlertNotifications } from "../admin-alert-deletion";
 
 function demand(value: unknown, message: string): asserts value {
   if (!value) throw new Error(`LOCAL_PATCH_DELETE: ${message}`);
@@ -45,6 +46,7 @@ export async function deleteLocalPatchGame(c: Container, gameId: string, actor: 
     await tx.generationJob.updateMany({ where: { gameId }, data: {
       status: "DONE", attempts: { increment: 1 }, currentStep: null, stepsJson: "{}", lastError: null,
     } });
+    await purgeAdminAlertNotifications(tx, gameId);
     const inventory = await localPatchPrivateInventory({ db: tx }, gameId);
     const keys = new Set(inventory.retainedPurchaseKeys), ids = new Set<string>();
     // Immutable email bodies can contain the child's name and bearer play link.

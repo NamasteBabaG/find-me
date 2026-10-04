@@ -16,6 +16,7 @@ import { sha256Bytes, sha256Rgba } from "../fixed-sprite";
 import { FIXED_WORLD_STYLE_VERSION, fixedStageStoragePath, readFixedWorldStage, readFixedWorldEnrollment, fixedWorldConfigSha256, fixedStageJsonSha256 } from "../fixed-world-stage-record";
 import { stageQualifiedFixedWorld, approveFixedWorldForPublication, deleteFixedWorldGame } from "../fixed-world-staging";
 import { enrollFixedWorld } from "../fixed-world-enrollment";
+import { seedAdminAlertNotification, expectAdminAlertPurged, expectAdminAlertUnchanged } from "../../__tests__/admin-alert-deletion-fixture";
 
 // Real disposable SQLite; these are synthetic rectangles/fabricated receipts,
 // NOT a real child, paid generation, visual approval, browser test or live game.
@@ -122,11 +123,13 @@ describe("atomic fixed-world staging on real disposable SQLite", () => {
 
   it("can delete an unstaged enrollment while retaining every unknown reserve byte", async () => {
     const s = await setup(), snapshot = structuredClone(s.input.budget.snapshot);
+    const alert = await seedAdminAlertNotification(db, s.id, "sending");
     snapshot.requests = [...snapshot.requests, { requestKey: "unknown-before-stage", scope: "image", operationFingerprint: s.input.planSha256, reserveMicroUsd: 250_000, origin: "reserved", unknownReasons: ["Synthetic missing provider reply"], conflicts: [], state: "unknown" }];
     expect(await new PrismaWorldBudgetStore(db).compareAndSwap(snapshot.worldId, 1, snapshot)).toBe(true);
     const ledger = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: snapshot.worldId } });
     await expect(approveFixedWorldForPublication(s.c, s.id, admin)).rejects.toThrow();
     expect(await deleteFixedWorldGame(s.c, s.id, { type: "USER", id: s.ownerId }, s.ownerId)).toBe(true);
+    await expectAdminAlertPurged(db, alert);
     expect(await db.game.findUnique({ where: { id: s.id } })).toMatchObject({ status: "DELETED", configJson: null, paidAt: null, readyAt: null });
     expect(await db.childProfile.findUnique({ where: { id: s.childId } })).toMatchObject({ avatarAssetId: null, identityAssetId: null, originalPhotoAssetId: null, deletedAt: expect.any(Date) });
     expect(await db.asset.count({ where: { ownerId: s.ownerId, status: "READY" } })).toBe(0);
@@ -234,9 +237,13 @@ describe("atomic fixed-world staging on real disposable SQLite", () => {
   });
   it("owner deletion purges all private evidence, sources, boards and child assets, never resetting the spent ledger", async () => {
     const s = await setup(); await stageQualifiedFixedWorld(s.c, s.input, admin);
+    const alert = await seedAdminAlertNotification(db, s.id);
     await db.shareLink.create({ data: { id: `${s.id}-share`, gameId: s.id, tokenHash: `${s.id}-hash` } });
     await expect(deleteFixedWorldGame(s.c, s.id, { type: "USER", id: s.ownerId })).rejects.toMatchObject({ code: "permission" });
+    expect(await deleteFixedWorldGame(s.c, s.id, { type: "USER", id: "other-owner" }, "other-owner")).toBe(false);
+    await expectAdminAlertUnchanged(db, alert);
     expect(await deleteFixedWorldGame(s.c, s.id, { type: "USER", id: s.ownerId }, s.ownerId)).toBe(true);
+    await expectAdminAlertPurged(db, alert);
     expect(await db.asset.count({ where: { ownerId: s.ownerId, status: "READY" } })).toBe(0);
     expect(await db.shareLink.findUnique({ where: { id: `${s.id}-share` } })).toMatchObject({ active: false });
     expect(await db.game.findUnique({ where: { id: s.id } })).toMatchObject({ status: "DELETED", configJson: null });

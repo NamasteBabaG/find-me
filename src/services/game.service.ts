@@ -5,7 +5,8 @@ import { deleteAdventureAlbum } from "./adventure-album.service";
 import { parseGameConfig, type GameConfig } from "@/domain/game/config";
 import { PACKAGES, isPackageTier } from "@/domain/package";
 import type { Container } from "./container";
-import { statusOf, transitionGame } from "./game-status";
+import { GameStatusConflict, statusOf, transitionGame } from "./game-status";
+import { purgeAdminAlertNotifications } from "./admin-alert-deletion";
 import { ensurePlayerLink, revokePlayerLinks } from "./share-link.service";
 import { deleteAsset } from "./asset.service";
 import type { Actor } from "./audit.service";
@@ -164,10 +165,13 @@ export async function deleteGame(c: Container, gameId: string, actor: Actor, use
   // account's save is guarded by the config it read, so a save landing between
   // two separate statements could re-create the album after the game was gone.
   await c.db.$transaction(async (tx) => {
-    await tx.game.update({ where: { id: gameId }, data: { configJson: null } });
+    const fenced = await tx.game.updateMany({ where: { id: gameId, ownerId: g.ownerId, deletedAt: null,
+      styleVersion: g.styleVersion, updatedAt: g.updatedAt }, data: { configJson: null } });
+    if (fenced.count !== 1) throw new GameStatusConflict(gameId, statusOf(g), "DELETED");
+    await transitionGame(c, gameId, "DELETED", actor, undefined, tx);
+    await purgeAdminAlertNotifications(tx, gameId);
     await deleteAdventureAlbum(tx, gameId, c.databaseUrl);
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-  await transitionGame(c, gameId, "DELETED", actor);
   c.analytics.track("game_deleted", { gameId });
   return true;
 }

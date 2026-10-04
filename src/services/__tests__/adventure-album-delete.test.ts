@@ -59,7 +59,7 @@ describe("album deletion with the game", () => {
         typeof fn === "function" ? (tx: Prisma.TransactionClient) => (fn as (t: unknown) => unknown)(racing(tx, { $transaction: (run: (t: unknown) => unknown) => run(tx) } as unknown as AlbumDb)) : fn, opts);
       if (prop === "game") return new Proxy(value as object, { get(model, p, r) {
         const member = Reflect.get(model, p, r) as unknown;
-        if (p === "update") return async (args: { data?: { configJson?: unknown } }) => {
+        if (p === "updateMany") return async (args: { data?: { configJson?: unknown } }) => {
           if (args.data?.configJson === null && raced++ === 0) await ownerAdventureAlbum(via, owner, gameId, sneak);
           return (member as (a: unknown) => unknown).call(model, args);
         };

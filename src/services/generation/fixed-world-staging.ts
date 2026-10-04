@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import sharp from "sharp";
 import type { Container } from "../container";
 import type { Actor } from "../audit.service";
+import { purgeAdminAlertNotifications } from "../admin-alert-deletion";
 import { signedAssetUrl } from "../asset.service";
 import { env } from "../../lib/env";
 import { newId } from "../../lib/ids";
@@ -324,6 +325,7 @@ export async function deleteFixedWorldGame(c: Container, gameId: string, actor: 
       const claimJob = await tx.generationJob.updateMany({ where: { id: job.id, stepsJson: job.stepsJson, status: job.status }, data: { status: "DONE", currentStep: null, stepsJson: "{}", lastError: null } });
       requireThat(claimJob.count === 1, "conflict", "Deletion job fence was lost");
     }
+    await purgeAdminAlertNotifications(tx, gameId);
     const ids = new Set(record.assets.map(asset => asset.id));
     for (const scene of game.scenes) for (const target of scene.targets) {
       requireThat(!target.spriteAssetId || ids.has(target.spriteAssetId), "integrity", "Target deletion pointer is outside this game's capsule");

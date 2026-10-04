@@ -2,6 +2,7 @@ import { isRefreshedCollectionVersion } from "../../domain/scene/local-patch-ver
 import { Prisma } from "@prisma/client";
 import type { Container } from "../container";
 import type { Actor } from "../audit.service";
+import { purgeAdminAlertNotifications } from "../admin-alert-deletion";
 import type { CharacterOutput } from "../../infra/generation/types";
 import { env } from "../../lib/env";
 import { newId } from "../../lib/ids";
@@ -161,6 +162,7 @@ export async function deleteBoardWizardIdentityGame(c: Container, gameId: string
       data: { status: "DELETED", deletedAt: now, configJson: null, title: null, giftJson: null } });
     demand(changed.count === 1);
     await tx.generationJob.updateMany({ where: { gameId }, data: { status: "DONE", stepsJson: "{}", currentStep: null, lastError: null } });
+    await purgeAdminAlertNotifications(tx, gameId);
     const child = game.childProfileId ? await tx.childProfile.findUnique({ where: { id: game.childProfileId } }) : null;
     if (child && await tx.game.count({ where: { childProfileId: child.id, deletedAt: null, NOT: { id: gameId } } }) === 0) {
       for (const id of [child.originalPhotoAssetId, child.identityAssetId, child.avatarAssetId].filter((id): id is string => !!id)) {

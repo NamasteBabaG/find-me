@@ -16,6 +16,7 @@ import { enrollBoardConditionedQaGame, registerBoardConditionedQaReference, boar
 import { deleteGame } from "../../game.service";
 import { deleteBoardConditionedQaGame } from "../board-conditioned-deletion";
 import { sha256Bytes } from "../fixed-sprite";
+import { seedAdminAlertNotification, expectAdminAlertPurged, expectAdminAlertUnchanged } from "../../__tests__/admin-alert-deletion-fixture";
 
 vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: "qa" }), spendGuard: () => ({ appEnv: "qa", realGeneration: false, testers: [] }) }));
 const admin = { type: "ADMIN" as const, id: "deletion-admin" };
@@ -71,8 +72,10 @@ async function fixture(options: { ownerId?: string; derivative?: boolean } = {})
 describe("board-conditioned private game deletion on real isolated SQLite", () => {
   it("dispatches exact new style, purges all owned imagery including lineage, and preserves every bill", async () => {
     const f = await fixture({ derivative: true });
+    const alert = await seedAdminAlertNotification(db, f.gameId, "sending");
     const beforeLedger = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: f.worldId } });
     expect(await deleteGame(f.c, f.gameId, f.owner, f.ownerId)).toBe(true);
+    await expectAdminAlertPurged(db, alert);
     expect(await db.game.findUniqueOrThrow({ where: { id: f.gameId } })).toMatchObject({ status: "DELETED", configJson: null, title: null, giftJson: null });
     expect(await db.generationJob.findUniqueOrThrow({ where: { id: `job_${f.gameId}` } })).toMatchObject({ status: "DONE", currentStep: null, stepsJson: "{}" });
     expect(await db.fileBlob.count({ where: { key: { in: f.privateKeys } } })).toBe(0);
@@ -88,10 +91,12 @@ describe("board-conditioned private game deletion on real isolated SQLite", () =
   });
   it("rejects forged roles and wrong owner without touching the game", async () => {
     const f = await fixture(), before = await db.game.findUniqueOrThrow({ where: { id: f.gameId } });
+    const alert = await seedAdminAlertNotification(db, f.gameId);
     await expect(deleteGame(f.c, f.gameId, { type: "SYSTEM" })).rejects.toMatchObject({ code: "permission" });
     await expect(deleteGame(f.c, f.gameId, { type: "ADMIN", id: f.ownerId })).rejects.toMatchObject({ code: "permission" });
     await expect(deleteGame(f.c, f.gameId, { type: "USER", id: "other-owner" }, f.ownerId)).rejects.toMatchObject({ code: "permission" });
     expect(await deleteGame(f.c, f.gameId, { type: "USER", id: "other-owner" }, "other-owner")).toBe(false);
+    await expectAdminAlertUnchanged(db, alert);
     expect(await db.game.findUniqueOrThrow({ where: { id: f.gameId } })).toEqual(before);
     expect(await db.fileBlob.count({ where: { key: { in: f.privateKeys } } })).toBe(f.privateKeys.length);
   });
@@ -123,6 +128,7 @@ describe("board-conditioned private game deletion on real isolated SQLite", () =
   });
   it("rolls back the entire deletion when the final write crashes, then safely retries", async () => {
     const f = await fixture(), gameBefore = await db.game.findUniqueOrThrow({ where: { id: f.gameId } }), jobBefore = await db.generationJob.findUniqueOrThrow({ where: { id: `job_${f.gameId}` } });
+    const alert = await seedAdminAlertNotification(db, f.gameId);
     const trigger = `fail_delete_${count}`;
     await db.$executeRawUnsafe(`CREATE TRIGGER ${trigger} BEFORE INSERT ON AuditLog WHEN NEW.action = 'board_conditioned.deleted' BEGIN SELECT RAISE(ABORT, 'synthetic deletion failure'); END`);
     try {
@@ -131,8 +137,10 @@ describe("board-conditioned private game deletion on real isolated SQLite", () =
       expect(await db.generationJob.findUniqueOrThrow({ where: { id: jobBefore.id } })).toEqual(jobBefore);
       expect(await db.fileBlob.count({ where: { key: { in: f.privateKeys } } })).toBe(f.privateKeys.length);
       expect(await db.asset.findUniqueOrThrow({ where: { id: f.identityId } })).toMatchObject({ status: "READY", deletedAt: null });
+      await expectAdminAlertUnchanged(db, alert);
     } finally { await db.$executeRawUnsafe(`DROP TRIGGER ${trigger}`); }
     expect(await deleteGame(f.c, f.gameId, f.owner, f.ownerId)).toBe(true);
+    await expectAdminAlertPurged(db, alert);
   });
   it("refuses to adopt non-QA commerce state or an unbound private key", async () => {
     const f = await fixture();
