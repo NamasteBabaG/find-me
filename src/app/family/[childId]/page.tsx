@@ -97,7 +97,8 @@ function AdventureCard({ adventure, child, t, eager, friendIntent }: { adventure
       {world && adventure.tracked ? <p className="adventure__progress"><PlaceRoute world={world} /><span>{tf(f.places, { n: world.stamped, total: world.places })}</span></p> : null}
       {world ? <p className="visually-hidden">{tf(f.currentPlace, { place: world.here.name })}</p> : null}
       {adventure.worlds.length > 1 ? <ul className="adventure__worlds">{adventure.worlds.map(w => <li key={w.slug} className={w === world ? "is-current" : adventure.tracked && w.stamped === w.places ? "is-done" : undefined}>{w.name}</li>)}</ul> : null}
-      <div className="adventure__actions"><LinkButton href={play}>{label}</LinkButton>{manage}</div>
+      {/* The play button's hit area stretches over the whole card (fm-stretch): the card is the way in, and stays one link. */}
+      <div className="adventure__actions"><LinkButton href={play} className="adventure__play fm-stretch">{label}</LinkButton>{manage}</div>
       {friendWorlds.length > 0 ? <FamilyFriendSharing gameId={adventure.gameId} worlds={friendWorlds.map(world => ({ slug: world.slug, name: world.name }))}
         initialOpen={Boolean(friendIntent && friendWorlds.some(world => world.slug === friendIntent))} initialWorld={friendIntent ?? undefined} /> : null}
     </div>

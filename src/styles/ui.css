@@ -102,6 +102,18 @@ a.fm-btn[aria-disabled="true"] { pointer-events: none; }
 .fm-btn:hover .fm-btn__arrow--back { transform: scaleX(-1) translateX(4px); }
 [dir="rtl"] .fm-btn__arrow--back { transform: none; }
 [dir="rtl"] .fm-btn:hover .fm-btn__arrow--back { transform: translateX(4px); }
+/* An English game inside the Hebrew site: the rules above match the page's own dir, so its "next" arrows pointed
+   back. :dir() asks the nearest dir; each in its own rule, so a browser without :dir() keeps the rules above. */
+.fm-btn__arrow:dir(ltr) { transform: none; }
+.fm-btn:hover .fm-btn__arrow:dir(ltr) { transform: translateX(4px); }
+.fm-btn__arrow--back:dir(ltr) { transform: scaleX(-1); }
+.fm-btn:hover .fm-btn__arrow--back:dir(ltr) { transform: scaleX(-1) translateX(4px); }
+/* A link that is its whole card: its ::after covers the card (the card is position: relative; the card's other
+   controls sit above it with position: relative and a z-index). A transform, scale or filter on the link makes the link
+   the frame of that cover, which then shrinks to the button mid-press and the click lands on the card instead. So the
+   link keeps still, globals.css leaves it out of the press feedback, and its card answers hover and press. */
+.fm-stretch::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+.fm-stretch:hover, .fm-stretch:active { transform: none; }
 
 /* Cards & surfaces */
 .fm-card { background: var(--white); border-radius: var(--radius-4); padding: var(--space-4); box-shadow: var(--shadow-1); border: 2px solid transparent; }
@@ -233,10 +245,6 @@ a.fm-btn[aria-disabled="true"] { pointer-events: none; }
 .fm-dialog__title { margin: 0; font-family: var(--font-display); font-weight: 800; font-size: var(--fs-400); line-height: var(--lh-400); }
 .fm-dialog__text { color: var(--ink-2); font-size: var(--fs-200); line-height: var(--lh-200); }
 .fm-dialog__actions { justify-content: flex-end; }
-
-/* Copy field */
-.fm-copy { display: flex; gap: var(--space-1); align-items: stretch; }
-.fm-copy .fm-input { direction: ltr; text-align: left; font-family: ui-monospace, monospace; font-size: var(--fs-100); }
 
 /* Scroll reveal */
 .rv { opacity: 0; transform: translateY(var(--space-3)); transition: opacity var(--dur-3) var(--ease-out), transform var(--dur-3) var(--ease-out); transition-delay: var(--rv-delay, 0ms); }

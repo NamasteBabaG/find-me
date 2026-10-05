@@ -655,6 +655,17 @@
   .passport-finale__items li { line-height: 1.15; }
   .passport-finale__actions > .fm-btn { line-height: 1.2; padding-block: 8px; }
 }
+/* A very short phone (an iPhone SE, or a browser's bars taking the rest): every action stays in view without
+   scrolling (Guy, 2026-10-05). The photograph gives way first, then the margins; the place's name stays. */
+@media (max-width: 600px) and (max-height: 600px) {
+  .passport-finale header h2 { font-size: 20px; margin-block: 2px 4px; }
+  .passport-finale__memory { padding-block: 4px; }
+  .passport-finale__imprint { display: none; }
+  .passport-finale__photo .passport-memory-fit { width: min(260px, calc(clamp(56px, 100dvh - 470px, 100px) * var(--memory-aspect))); }
+  .passport-finale__collection { padding-bottom: 16px; }
+  .passport-finale__items li > .album__crop, .passport-finale__items li[data-collected=false] { width: 40px; }
+  .passport-finale__status { margin: 6px 0 2px; }
+}
 @media (prefers-reduced-motion: reduce) { .passport-finale *, .passport-finale *::before, .passport-finale *::after { animation: none !important; transition: none !important; } .passport-finale .celebration { display: none; } }
 @media (max-width: 760px) {
   .passport-view { padding: var(--space-0-5) var(--space-2); justify-content: flex-start; gap: 0; }

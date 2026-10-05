@@ -426,6 +426,12 @@
   60% { transform: translate(-50%, calc(-100% - var(--space-4))) scale(1.08); opacity: 1; }
   100% { transform: translate(-50%, calc(-100% - var(--space-4))) scale(1); }
 }
+/* A wide screen has room: at 256px "Find Yuval in another hiding spot!" broke into three lines beside the face
+   and the hint (Guy, 2026-10-05). The card still keeps clear of the tool rail. */
+@media (min-width: 900px) {
+  .mission { max-width: min(calc(var(--space-10) * 5), calc(100% - var(--space-10))); }
+}
+.mission__text { text-wrap: balance; }
 @media (max-width: 720px), (max-height: 480px) {
   .mission { max-width: min(calc(var(--space-16) * 2), calc(100% - var(--space-8))); gap: var(--space-0-5); }
   .mission__thumb--face { width: var(--space-5); height: var(--space-5); }
@@ -551,6 +557,8 @@
 .wmap__go-stars { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--fs-50); line-height: var(--lh-50); font-weight: 700; color: var(--ink-2); }
 .wmap__go-arrow { font-size: var(--fs-400); }
 [dir="rtl"] .wmap__go-arrow { transform: scaleX(-1); }
+/* An English game inside the Hebrew site points forward: :dir() asks the nearest dir (ui.css has the same for buttons). */
+.wmap__go-arrow:dir(ltr) { transform: none; }
 
 /* A finished journey stays finished on return: no modal, reset, or sales pitch.
    Place the keepsake and replay actions before the map so phones see them too. */
@@ -677,7 +685,11 @@
 .postcard__patch { position: absolute; display: block; pointer-events: none; }
 .postcard__title { font-family: var(--font-kid); font-weight: 600; font-size: var(--fs-200); line-height: var(--lh-200); color: var(--ink); text-align: center; }
 .complete__postcard { display: flex; flex-direction: column; gap: var(--space-1); width: 100%; align-items: center; animation: fm-fade-up var(--dur-3) var(--ease-out); }
-.complete__postcard .postcard { max-width: 320px; }
+/* The picture is sized by the height left for it, so the card fits a phone without scrolling at any height (Guy,
+   2026-10-05); the caption takes the card's width and stays on one line. 610px is what the rest of the card needs. */
+.complete__postcard .postcard { max-width: none; align-items: center; }
+.complete__postcard .postcard__picture { width: min(100%, 320px, max(120px, calc((100dvh - 610px) * 1.3))); }
+.game--demo .complete__postcard .postcard__picture { width: 100%; }
 .complete__postcard-text { margin: 0; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); text-align: center; }
 /* A short screen (an iPhone SE or 8 is 667px tall, many Androids 640): the whole card fits without scrolling.
    Tighter gaps and title, the postcard sized by the screen's height, and Stay beside the replay icon.
@@ -685,10 +697,21 @@
 @media (max-height: 740px) {
   .complete__card { padding: var(--space-4) var(--space-2) var(--space-3); gap: var(--space-2); }
   .complete__title { font-size: var(--fs-400); line-height: var(--lh-400); }
-  .complete__postcard .postcard { max-width: min(320px, 28dvh); }
+  .complete__postcard .postcard__picture { width: min(100%, 320px, max(96px, calc((100dvh - 500px) * 1.3))); }
   .complete__actions { flex-direction: row; flex-wrap: wrap; justify-content: center; }
   .complete__actions > .fm-btn--lg:first-child { flex: 1 1 100%; }
   .complete__actions > .fm-btn--secondary { flex: 1 1 0; min-width: 0; padding-inline: var(--space-2); font-size: var(--fs-200); white-space: normal; }
+}
+/* A very short screen (an iPhone SE, or any phone whose browser bars take the rest): smaller stars and title, the
+   stars' words left to the stars themselves (the tray keeps its label), and a smaller postcard. Every phone fits the
+   whole card without scrolling (Guy, 2026-10-05). */
+@media (max-height: 600px) {
+  .complete__card { padding: var(--space-3) var(--space-2) var(--space-2); gap: var(--space-1); }
+  .complete__title { font-size: var(--fs-300); line-height: var(--lh-300); }
+  .complete__stars .stars--lg { --star-size: var(--space-5); gap: var(--space-1); }
+  .complete__stars .stars--lg .stars__slot:nth-child(2) { margin-top: 0; }
+  .complete__stars-text { display: none; }
+  .complete__postcard .postcard__picture { width: min(100%, 320px, max(72px, calc((100dvh - 440px) * 1.3))); }
 }
 .album { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3); border-radius: var(--radius-4); background: var(--white); box-shadow: var(--shadow-1); }
 .album__head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-1); }

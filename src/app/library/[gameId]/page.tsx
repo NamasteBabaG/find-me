@@ -22,11 +22,12 @@ export default async function ManageGamePage({ params }: { params: Promise<{ gam
   const owned = await getOwnedGame(getContainer(), gameId, user.id);
   if (!owned) notFound();
   const { game, playable, playUrl, gift, status } = owned;
-  const name = game.childProfile?.displayName ?? "";
   const l = t.library;
   // A family game is managed from its child's page, so that is where "back" goes, and it is played the way that
   // page plays it. Older games without a child go back to the family area.
   const child = game.familyChildId ? await getContainer().db.familyChild.findFirst({ where: { id: game.familyChildId, ownerId: user.id, deletedAt: null }, select: { id: true, displayName: true } }) : null;
+  // The name the share speaks: the game's own child profile, else the family's child (family games may have none).
+  const name = game.childProfile?.displayName || child?.displayName || "";
   const back = child ? { href: `/family/${child.id}`, label: tf(t.family.open, { name: child.displayName }) } : { href: "/family", label: l.allGames };
   const play = child && playable ? `/family/${child.id}/play/${game.id}` : playUrl;
 

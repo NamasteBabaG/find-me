@@ -69,7 +69,7 @@ interface Props {
  * — hit-testing and storage stay in SceneViewport and the album store.
  */
 export function Collection({ board, scene, collectedIds, selectedId, hintLevel, disabled, obscured = false, muted, searchComplete = false, arrival = null, repeat = null, onSelect, onHint }: Props) {
-  const { g, tf, locale } = useGameText();
+  const { g, tf, locale, dir } = useGameText();
   const c = g.collection;
   const root = useRef<HTMLElement>(null);
   const sheetId = useId();
@@ -290,7 +290,9 @@ export function Collection({ board, scene, collectedIds, selectedId, hintLevel, 
   const leftBadge = searchComplete && !complete && total > 0 && !showSheet && !selected;
   return (
     <aside ref={root} className={`collect${complete ? " collect--complete" : ""}${seekAbove ? " collect--seek-above" : ""}${obscured ? " collect--obscured" : ""}`} aria-label={c.title} aria-hidden={obscured || undefined} inert={obscured || undefined}>
-      <button ref={trigger} type="button" className="collect__fab" data-game-cue="drawer" disabled={disabled || obscured} aria-expanded={asDialog} aria-controls={sheetId} aria-label={countAria} onClick={toggle}>
+      {/* The box is laid out left-to-right so the button keeps its physical corner (collection.css); each part
+          carries the game's own direction for its words and marks. */}
+      <button ref={trigger} type="button" className="collect__fab" dir={dir} data-game-cue="drawer" disabled={disabled || obscured} aria-expanded={asDialog} aria-controls={sheetId} aria-label={countAria} onClick={toggle}>
         <svg className="collect__ring" viewBox="0 0 48 48" aria-hidden>
           <circle className="collect__ring-track" cx="24" cy="24" r="21" />
           <circle className="collect__ring-fill" cx="24" cy="24" r="21" style={{ strokeDasharray: ring, strokeDashoffset: ring * (1 - (total ? count / total : 0)) }} />
@@ -303,7 +305,7 @@ export function Collection({ board, scene, collectedIds, selectedId, hintLevel, 
       </button>
 
       {selected && !showSheet ? (
-        <div className="collect__seek" role="status" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onSelect(null); trigger.current?.focus(); } }}>
+        <div className="collect__seek" dir={dir} role="status" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onSelect(null); trigger.current?.focus(); } }}>
           <button ref={inspectTrigger} type="button" className="collect__inspect" disabled={disabled} aria-haspopup="dialog" aria-label={tf(c.inspectPicture, { name: selected.name })} onClick={() => setInspectedId(selected.id)}>
             <AlbumCrop art={scene.art} crop={selected.cardCrop} className="collect__seek-thumb" />
             <span className="collect__inspect-mark" aria-hidden="true"><ToolIcon name="zoom-in" /></span>
@@ -325,6 +327,7 @@ export function Collection({ board, scene, collectedIds, selectedId, hintLevel, 
         <div
           ref={sheet}
           id={sheetId}
+          dir={dir}
           className={`collect__sheet${closing ? " collect__sheet--closing" : ""}${open === "peek" ? " collect__sheet--peek" : ""}`}
           role={asDialog ? "dialog" : undefined}
           aria-label={asDialog ? tf(c.sheetTitle, { place: scene.name }) : undefined}
@@ -346,7 +349,7 @@ export function Collection({ board, scene, collectedIds, selectedId, hintLevel, 
         </div>
       ) : null}
 
-      {inspected && !obscured && !disabled ? <dialog ref={preview} className="collect__preview" aria-labelledby={previewTitleId}
+      {inspected && !obscured && !disabled ? <dialog ref={preview} className="collect__preview" dir={dir} aria-labelledby={previewTitleId}
         onCancel={event => { event.preventDefault(); event.stopPropagation(); closePreview(); }}
         onClick={event => { if (event.target === event.currentTarget) closePreview(); }}>
         <header className="collect__preview-head"><h2 id={previewTitleId}>{inspected.name}</h2>

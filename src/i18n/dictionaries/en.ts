@@ -177,10 +177,15 @@ export const en = {
     pricing: {
       pill: "💛 Simple pricing",
       title: "How far will your adventure go?",
-      lead: "The same personal search, in the size that suits you. Nine places in every world.",
+      lead: "Start with one world and add more whenever you like. Nine places in every world.",
       feats: { boards: "{boards} illustrated places", time: "Play at your own pace", link: "Game link and family area", wrap: "Digital gift wrap" },
-      choose: "Choose the {name} package",
-      soon: "Unlocks when enough worlds are ready",
+      /** One price story: the first world, then each world added after it. */
+      firstWorld: "The first world",
+      start: "Create the first adventure",
+      eachMore: "Each additional world",
+      eachMoreHow: "Add it from the family area whenever it's time for the next adventure.",
+      /** Only when buying several worlds together is allowed; it costs the same as adding them one by one. */
+      bundle: "{count} worlds together: {price}",
       note: "One-time payment for the worlds you choose. Billed in ₪ in Israel and in USD elsewhere; VAT included where it applies.",
       passport: "A personal passport is included and fills with discoveries as you play.",
       continuation: "Start with one world and add more later — each additional world is {price}.",
@@ -462,6 +467,11 @@ export const en = {
       pending: "The link will appear here once the game is ready.",
       shareTitle: "Where's {name}?",
       shareText: "Come and find {name} in a Where Am I? adventure!",
+      /** The link as a thing to send; the address itself shows only if copying fails. */
+      linkLabel: "{name}'s game link",
+      ready: "Ready to send",
+      rotated: "A new link is ready. The previous one no longer works.",
+      rotateHint: "If the link reached someone it shouldn't have.",
     },
     gift: {
       title: "Add a gift greeting",

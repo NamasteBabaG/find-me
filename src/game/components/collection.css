@@ -15,12 +15,11 @@
    sentence — and the mission card already owns the top right. `column-reverse`
    keeps the button itself flush in the corner with everything else stacked
    above it, so it never moves when the tray opens. */
-.collect { position: absolute; z-index: var(--z-ui); right: max(var(--space-2), env(safe-area-inset-right)); bottom: max(var(--space-2), env(safe-area-inset-bottom)); display: flex; flex-direction: column-reverse; align-items: flex-end; gap: var(--space-1); max-width: calc(100% - var(--space-4)); font-family: var(--font-display); color: var(--ink); pointer-events: none; }
-/* `align-items` follows the writing direction, so in Hebrew `flex-end` is the
-   LEFT edge: the button drifted 296px inward — the width of the open tray —
-   the moment the tray opened. The corner is physical, so the alignment must be
-   too, while the text inside the tray keeps its own direction. */
-[dir="rtl"] .collect { align-items: flex-start; }
+/* `align-items` follows the writing direction: in Hebrew `flex-end` is the LEFT edge, and the button drifted
+   inward by the width of the open tray. A `[dir="rtl"]` rule fixed Hebrew games but also matched an English game
+   inside the Hebrew site (the page's own dir), and pushed its button left instead (Guy, 2026-10-05). The corner is
+   physical, so this box is laid out left-to-right always, and each child carries the game's own `dir` (Collection.tsx). */
+.collect { direction: ltr; position: absolute; z-index: var(--z-ui); right: max(var(--space-2), env(safe-area-inset-right)); bottom: max(var(--space-2), env(safe-area-inset-bottom)); display: flex; flex-direction: column-reverse; align-items: flex-end; gap: var(--space-1); max-width: calc(100% - var(--space-4)); font-family: var(--font-display); color: var(--ink); pointer-events: none; }
 .collect > * { pointer-events: auto; }
 .collect { transition: opacity var(--dur-1) var(--ease-out), translate var(--dur-1) var(--ease-out); }
 .collect--obscured { opacity: 0; translate: 0 var(--space-1); pointer-events: none; }
@@ -41,6 +40,9 @@
 @keyframes collect-tick { 0% { transform: translate(30%, -30%) scale(0); } 60% { transform: translate(30%, -30%) scale(1.25); } 100% { transform: translate(30%, -30%) scale(1); } }
 [dir="rtl"] .sticker__check { animation-name: collect-tick-rtl; }
 @keyframes collect-tick-rtl { 0% { transform: translate(-30%, -30%) scale(0); } 60% { transform: translate(-30%, -30%) scale(1.25); } 100% { transform: translate(-30%, -30%) scale(1); } }
+/* An English tray inside the Hebrew site: `:dir()` asks the nearest dir, not any ancestor. Without :dir() support
+   the rules above stand. */
+.sticker__check:dir(ltr) { transform: translate(30%, -30%); animation-name: collect-tick; }
 
 .sticker--fresh .sticker__face { animation: fm-pop-in var(--dur-3) var(--ease-pop); }
 .sticker--fresh .sticker__face::after { content: ""; position: absolute; inset: 0; border-radius: 50%; box-shadow: 0 0 0 3px var(--leaf-soft); animation: fm-star-ring var(--dur-3) var(--ease-out) both; pointer-events: none; }
@@ -89,7 +91,9 @@
 /* It grows out of the button's own corner and folds back into it, so the button
    reads as the thing that holds it. The corner is physical for the same reason
    the button is. */
-.collect__sheet { transform-origin: bottom right; width: min(360px, calc(100vw - var(--space-4))); max-height: min(72dvh, 520px); overflow: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2); border-radius: var(--radius-3); background: var(--white); box-shadow: 0 0 0 1px rgba(23, 22, 43, 0.05), var(--shadow-3); animation: collect-sheet-in var(--dur-2) var(--ease-pop) both; scrollbar-width: thin; }
+/* Never sideways: a long rarity word ("Extraordinary") is wider than its column, and with `overflow: auto` on both
+   axes the tray scrolled sideways (Guy, 2026-10-05). It scrolls up and down only. */
+.collect__sheet { transform-origin: bottom right; width: min(360px, calc(100vw - var(--space-4))); max-height: min(72dvh, 520px); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2); border-radius: var(--radius-3); background: var(--white); box-shadow: 0 0 0 1px rgba(23, 22, 43, 0.05), var(--shadow-3); animation: collect-sheet-in var(--dur-2) var(--ease-pop) both; scrollbar-width: thin; }
 @keyframes collect-sheet-in { from { opacity: 0; transform: translateY(var(--space-2)) scale(0.84); } to { opacity: 1; transform: none; } }
 .collect__sheet--closing { animation: collect-sheet-out 220ms var(--ease-out) both; pointer-events: none; }
 @keyframes collect-sheet-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(var(--space-1)) scale(0.88); } }
@@ -177,4 +181,6 @@
   .collect { transition: none; }
   .collect__sheet, .collect__sheet--closing, .collect__seek, .collect__seek-hint, .collect__fly, .collect__fly-arc, .collect__fly-sticker, .collect__count--bump, .sticker__check, .sticker--fresh .sticker__face, .sticker--fresh .sticker__face::after, .sticker--arriving .sticker__face, .sticker--seeking .sticker__face, .sticker--wiggle .sticker__face { animation: none; }
   [dir="rtl"] .sticker__check { animation: none; }
+  /* Its own rule: a browser that does not know :dir() drops the whole rule it is in. */
+  .sticker__check:dir(ltr) { animation: none; }
 }

@@ -43,7 +43,14 @@ img.family-sticker { border-radius: var(--radius-2); object-fit: contain; }
   .family-desk__side { position: sticky; top: var(--space-4); }
 }
 
-.adventure { background: var(--white); border-radius: var(--radius-4); box-shadow: var(--shadow-1); overflow: hidden; }
+.adventure { position: relative; background: var(--white); border-radius: var(--radius-4); box-shadow: var(--shadow-1); overflow: hidden; }
+/* The whole card is the way into the world (Guy, 2026-10-05): the play button is an .fm-stretch link (ui.css) whose
+   cover spans the card, and the card's other controls sit above it. A screen reader still meets one link. The button
+   keeps still, so the card answers for it: a lift on hover, a dip on press. */
+.adventure { transition: box-shadow var(--dur-2) var(--ease-out), filter var(--dur-1); }
+.adventure:has(.adventure__play:hover) { box-shadow: var(--shadow-2); }
+.adventure:has(.adventure__play:active, .adventure__play[data-press-feedback="true"]) { filter: brightness(0.97); }
+.adventure .family-manage, .adventure .family-friends { position: relative; z-index: 1; }
 .adventure__map { display: block; }
 .adventure__body { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4) var(--space-4); }
 .adventure__body h2 { margin: 0; font-size: var(--fs-500); line-height: var(--lh-500); }
@@ -66,8 +73,10 @@ img.family-sticker { border-radius: var(--radius-2); object-fit: contain; }
 .family-desk__main { container-type: inline-size; }
 @container (min-width: 720px) {
   .adventure { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
-  .adventure__map, .adventure .glimpse, .adventure__wait { height: 100%; }
-  .adventure .glimpse { min-height: 100%; }
+  /* The map keeps its own 3:2 shape (the child's marker is placed by its proportions) and sits centred in its
+     column on the sea. Stretched to the column's height, it grew wider than the column and covered the words. */
+  .adventure__map { display: grid; align-content: center; background: var(--sea-soft); }
+  .adventure__wait { height: 100%; }
   .adventure__body { justify-content: center; padding: var(--space-4); }
   .adventure__actions { flex-direction: column; align-items: stretch; }
   .adventure__actions .family-manage { justify-content: center; }

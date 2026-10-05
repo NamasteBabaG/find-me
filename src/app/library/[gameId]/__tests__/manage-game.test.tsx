@@ -70,13 +70,50 @@ describe("manage game: the questions before the irreversible", () => {
     const writeText = vi.fn().mockRejectedValueOnce(new Error("blocked")).mockResolvedValueOnce(undefined);
     vi.stubGlobal("navigator", { clipboard: { writeText } });
     const view = mount();
+    // The address is not printed until it is needed.
+    expect(view.queryByDisplayValue("https://example.test/play/shr_1.sig")).toBeNull();
     fireEvent.click(view.getByRole("button", { name: en.library.share.copy }));
-    await waitFor(() => expect(view.getByRole("status").textContent).toBe(en.library.share.copyFailed));
+    await waitFor(() => expect(view.getByText(en.library.share.copyFailed)).toBeTruthy());
     expect(view.getByDisplayValue("https://example.test/play/shr_1.sig")).toBeTruthy();
     expect(view.queryByText(en.library.share.copied)).toBeNull();
     fireEvent.click(view.getByRole("button", { name: en.library.share.copy }));
     await waitFor(() => expect(view.getByRole("button", { name: en.library.share.copied })).toBeTruthy());
-    expect(view.queryByRole("status")).toBeNull();
+    expect(view.queryByText(en.library.share.copyFailed)).toBeNull();
+    expect(view.queryByDisplayValue("https://example.test/play/shr_1.sig")).toBeNull();
     expect(writeText).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("manage game: the link to send", () => {
+  const remount = (view: ReturnType<typeof mount>, playUrl: string) =>
+    view.rerender(<I18nProvider locale="en" dict={en}><ManageGame gameId="game-1" playUrl={playUrl} gift={{}} childName="Noa" /></I18nProvider>);
+
+  it("names the link instead of printing its address, and says so when a new link replaced it", () => {
+    const view = mount();
+    const ticket = view.container.querySelector(".share-ticket")!;
+    expect(ticket.textContent).toContain("Noa's game link");
+    expect(ticket.textContent).toContain("example.test");
+    expect(ticket.textContent).not.toContain("shr_1");
+    remount(view, "https://example.test/play/shr_2.sig");
+    expect(view.container.querySelector(".share-ticket [role=status]")?.textContent).toBe(en.library.share.rotated);
+  });
+
+  it("shares the current link, also after it was replaced", async () => {
+    const share = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { share, clipboard: { writeText: vi.fn() } });
+    const view = mount();
+    remount(view, "https://example.test/play/shr_2.sig");
+    fireEvent.click(view.getByRole("button", { name: en.library.share.send }));
+    await waitFor(() => expect(share).toHaveBeenCalledWith(expect.objectContaining({ url: "https://example.test/play/shr_2.sig" })));
+  });
+
+  it("confirming a new link sends the replacement once, for this game", async () => {
+    const view = mount();
+    const rotate = [...view.container.querySelectorAll("form")].find((f) => f.textContent?.includes("Replace link"))!;
+    rotate.requestSubmit = () => { fireEvent.submit(rotate); };
+    fireEvent.submit(rotate);
+    fireEvent.click(within(view.dialog).getByRole("button", { name: "Replace link" }));
+    await waitFor(() => expect(actions.rotateLinkAction).toHaveBeenCalledTimes(1));
+    expect((actions.rotateLinkAction.mock.calls[0]![0] as FormData).get("gameId")).toBe("game-1");
   });
 });

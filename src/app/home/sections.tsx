@@ -176,8 +176,15 @@ export function Worlds({ t, carousel }: { t: Dictionary; carousel: CarouselWorld
 }
 
 /* ─── Pricing ─── */
+/**
+ * One price story, not a ladder of package cards (Guy, 2026-10-05): the first world, and each world added after
+ * it. Two or three worlds cost exactly that sum, so they appear only as small links, and only when the purchase
+ * policy allows buying them together.
+ */
 export function Pricing({ t, locale, allowedTiers, currency }: SectionProps & { allowedTiers: readonly PackageTier[]; currency: Currency }) {
   const p = t.home.pricing;
+  const money = (amount: number) => formatMoney(amount, currency, locale);
+  const bundles = PACKAGE_ORDER.filter(tier => tier !== "ONE_WORLD" && allowedTiers.includes(tier));
   return (
     <section id="pricing" className="pricing-sec">
       <div className="fm-container">
@@ -186,40 +193,27 @@ export function Pricing({ t, locale, allowedTiers, currency }: SectionProps & { 
           <h2>{p.title}</h2>
           <p className="fm-lead">{p.lead}</p>
         </Reveal>
-        <div className="pricing">
-          {PACKAGE_ORDER.map((tier, i) => {
-            const pkg = PACKAGES[tier];
-            const available = allowedTiers.includes(tier);
-            const name = pick(pkg.name, locale);
-            return (
-              <Reveal key={tier} className={`plan${pkg.popular ? " plan--hot" : ""}${available ? "" : " plan--soon"}`} delay={i * 90}>
-                {pkg.popular && available ? <span className="fm-sticker-badge plan__ribbon">{t.common.popular} 💛</span> : null}
-                <h3>{name}</h3>
-                <div className="plan__worlds">
-                  {pkg.worldCount}
-                  <small>{pkg.worldCount === 1 ? p.world : p.worlds}</small>
-                </div>
-                <ul className="plan__feats">
-                  <li className="plan__feat">{tf(p.feats.boards, { boards: boardsFor(tier) })}</li>
-                  <li className="plan__feat">{p.feats.time}</li>
-                  <li className="plan__feat">{p.feats.link}</li>
-                  <li className="plan__feat">{p.feats.wrap}</li>
-                </ul>
-                <div className="plan__price">{formatMoney(priceFor(tier, currency), currency, locale)}</div>
-                <p className="plan__feat">{p.passport}</p>
-                {available ? (
-                  <Link href="/create" className={`fm-btn fm-btn--lg${pkg.popular ? "" : " fm-btn--secondary"}`}>
-                    {tf(p.choose, { name })}
-                  </Link>
-                ) : (
-                  <span className="fm-badge fm-badge--outline">{p.soon}</span>
-                )}
-              </Reveal>
-            );
-          })}
-        </div>
-        <p className="fm-center" style={{ marginTop: "var(--space-3)" }}>{tf(p.continuation, { price: formatMoney(WORLD_PRICES[currency].additional, currency, locale) })}</p>
-        <p className="fm-small fm-center">{p.sameChild}</p>
+        <Reveal className="offer">
+          <div className="offer__first">
+            <div className="offer__head"><h3>{p.firstWorld}</h3><span className="offer__price">{money(WORLD_PRICES[currency].first)}</span></div>
+            <ul className="offer__feats">
+              <li>{tf(p.feats.boards, { boards: boardsFor("ONE_WORLD") })}</li>
+              <li>{p.passport}</li>
+              <li>{p.feats.time}</li>
+              <li>{p.feats.link}</li>
+              <li>{p.feats.wrap}</li>
+            </ul>
+            {allowedTiers.includes("ONE_WORLD") ? <Link href="/create" className="fm-btn fm-btn--lg">{p.start}</Link> : null}
+          </div>
+          <span className="offer__plus" aria-hidden="true">+</span>
+          <div className="offer__more">
+            <div className="offer__head"><h3>{p.eachMore}</h3><span className="offer__price">{money(WORLD_PRICES[currency].additional)}</span></div>
+            <p>{p.eachMoreHow}</p>
+            <p className="fm-small">{p.sameChild}</p>
+            {bundles.length ? <div className="offer__bundles">{bundles.map(tier => <Link key={tier} href="/create" className="fm-btn fm-btn--secondary">
+              {tf(p.bundle, { count: PACKAGES[tier].worldCount, price: money(priceFor(tier, currency)) })}</Link>)}</div> : null}
+          </div>
+        </Reveal>
         <p className="fm-small fm-center" style={{ marginTop: "var(--space-3)" }}>
           {p.note}
         </p>

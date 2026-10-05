@@ -329,23 +329,23 @@
 
 /* Pricing */
 .pricing-sec { padding-block: var(--space-12); }
-.pricing { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); align-items: stretch; }
-.plan { position: relative; display: flex; flex-direction: column; gap: var(--space-3); background: var(--white); border-radius: var(--radius-4); padding: var(--space-5) var(--space-4); box-shadow: var(--shadow-1); transition: transform var(--dur-2) var(--ease-out), box-shadow var(--dur-2); }
-.plan:hover { transform: translateY(-6px); box-shadow: var(--shadow-2); }
-.plan--hot { background: var(--ink); color: var(--white); box-shadow: var(--shadow-3); }
-.plan--hot h3, .plan--hot .plan__price { color: var(--white); }
-.plan--hot .plan__feat { color: rgba(255, 255, 255, 0.8); }
-@media (min-width: 1024px) { .plan--hot { transform: scale(1.04); } .plan--hot:hover { transform: scale(1.04) translateY(-6px); } }
-.plan__ribbon { position: absolute; top: calc(var(--space-2) * -1); inset-inline-start: var(--space-4); }
-.plan__worlds { font-family: var(--font-display); font-weight: 900; font-size: var(--fs-800); line-height: var(--lh-800); letter-spacing: -0.02em; }
-.plan__worlds small { font-size: var(--fs-300); font-weight: 700; color: var(--ink-3); margin-inline-start: var(--space-1); }
-.plan--hot .plan__worlds small { color: rgba(255, 255, 255, 0.7); }
-.plan__price { font-family: var(--font-display); font-weight: 900; font-size: var(--fs-600); line-height: var(--lh-600); }
-.plan__feats { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
-.plan__feat { display: flex; gap: var(--space-1); align-items: center; color: var(--ink-2); }
-.plan__feat::before { content: "✓"; color: var(--aqua-deep); font-weight: 900; }
-.plan--soon { opacity: 0.6; }
-.plan .fm-btn { margin-top: auto; }
+/* One offer (Guy, 2026-10-05): the first world on the dark panel, each additional world beside it, and the "+"
+   between them is the whole formula. A zero-width middle track holds the "+" on the seam in either direction. */
+.offer { display: grid; grid-template-columns: minmax(0, 3fr) 0 minmax(0, 2fr); max-width: 880px; margin-inline: auto; border-radius: var(--radius-4); overflow: hidden; background: var(--white); box-shadow: var(--shadow-2); }
+.offer__first, .offer__more { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-5); }
+.offer__first { background: var(--ink); color: var(--white); }
+.offer__head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-1) var(--space-2); }
+.offer__head h3 { margin: 0; font-size: var(--fs-400); line-height: var(--lh-400); }
+.offer__first h3 { color: var(--white); }
+.offer__price { font-family: var(--font-display); font-weight: 900; font-size: var(--fs-700); line-height: var(--lh-700); letter-spacing: -0.02em; white-space: nowrap; }
+.offer__more .offer__price { font-size: var(--fs-600); line-height: var(--lh-600); }
+.offer__feats { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.offer__feats li { display: flex; gap: var(--space-1); align-items: baseline; color: rgba(255, 255, 255, 0.85); }
+.offer__feats li::before { content: "✓"; color: var(--aqua); font-weight: 900; }
+.offer__first .fm-btn { align-self: flex-start; margin-top: auto; }
+.offer__more p { margin: 0; color: var(--ink-2); }
+.offer__plus { grid-column: 2; align-self: center; justify-self: center; z-index: 1; display: grid; place-items: center; width: var(--space-8); height: var(--space-8); border-radius: 50%; background: var(--sun); color: var(--ink); box-shadow: 0 0 0 var(--space-0-5) var(--white), var(--shadow-1); font-family: var(--font-display); font-weight: 900; font-size: var(--fs-500); line-height: 1; }
+.offer__bundles { display: flex; flex-wrap: wrap; gap: var(--space-1); }
 
 /* Trust */
 .trust-sec { padding-block: var(--space-10); }
@@ -629,6 +629,27 @@
 .library__head-actions { display: flex; align-items: center; gap: var(--space-1); }
 @media (max-width: 720px) { .library__head-actions { width: 100%; } .library__head-actions .fm-btn { flex: 1; } }
 .library { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+/* Sharing a game: the link as a ticket to send, not a long address to read (Guy, 2026-10-05). Two equal ways to send
+   it, and replacing it is a quiet line below, with what it is for. */
+.share-ticket { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: var(--radius-3); background: var(--paper-2); box-shadow: inset 0 0 0 2px var(--line); }
+.share-ticket__icon { display: grid; place-items: center; flex-shrink: 0; width: var(--space-6); height: var(--space-6); border-radius: 50%; background: var(--white); box-shadow: var(--shadow-1); font-size: var(--fs-300); }
+.share-ticket__text { display: flex; flex-direction: column; gap: var(--space-0-5); min-width: 0; }
+.share-ticket__text strong { font-family: var(--font-display); font-size: var(--fs-300); line-height: var(--lh-300); overflow-wrap: anywhere; }
+.share-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-1); }
+.share-actions .fm-btn { white-space: normal; text-align: center; }
+.share-ticket__news { color: var(--leaf-deep); font-weight: 700; }
+.share-rotate { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--space-1); }
+/* The quiet button's words line up with the card's other words; its hover wash reaches into the card's padding. */
+.share-rotate .fm-btn { padding-inline: var(--space-2); margin-inline-start: calc(var(--space-2) * -1); }
+.share-rotate .fm-small { color: var(--ink-3); }
+/* A phone keeps the ticket to two short lines: smaller name, and the state without the site's name. */
+@media (max-width: 480px) {
+  .share-ticket { padding: var(--space-2); }
+  .share-ticket__icon { width: var(--space-5); height: var(--space-5); font-size: var(--fs-200); }
+  .share-ticket__text strong { font-size: var(--fs-200); line-height: var(--lh-200); }
+  .share-ticket__host { display: none; }
+  .share-actions { grid-template-columns: minmax(0, 1fr); }
+}
 .lib { position: relative; display: flex; flex-direction: column; background: var(--white); border-radius: var(--radius-4); box-shadow: var(--shadow-1); overflow: hidden; transition: transform var(--dur-2) var(--ease-out), box-shadow var(--dur-2) var(--ease-out); animation: fm-fade-up var(--dur-3) var(--ease-out) both; }
 .lib:hover { transform: translateY(-4px); box-shadow: var(--shadow-2); }
 .library > .lib:nth-child(2) { animation-delay: 60ms; } .library > .lib:nth-child(3) { animation-delay: 120ms; } .library > .lib:nth-child(4) { animation-delay: 180ms; } .library > .lib:nth-child(5) { animation-delay: 240ms; } .library > .lib:nth-child(n+6) { animation-delay: 300ms; }
@@ -764,11 +785,14 @@
   .hero4__cta .fm-btn { min-height: var(--control-h); font-size: var(--fs-200); }
   /* One column: two narrow cards shredded the copy. */
   .occasions { grid-template-columns: minmax(0, 1fr); }
-  .pricing { grid-template-columns: minmax(0, 1fr); }
-  .plan .fm-btn { white-space: normal; text-align: center; padding: var(--space-1) var(--space-2); }
+  /* The offer stacks: first world, the "+" on the seam (a zero-height middle row), then each additional world. */
+  .offer { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 0 auto; }
+  .offer__plus { grid-column: 1; grid-row: 2; }
+  .offer__first, .offer__more { padding: var(--space-4) var(--space-3); }
+  .offer__first .fm-btn { align-self: stretch; white-space: normal; text-align: center; padding: var(--space-1) var(--space-2); }
   .occasion { min-height: 0; }
-  .steps, .features, .worlds, .pricing, .trust, .occasions { gap: var(--space-2); }
-  .step, .feature, .plan, .trust__item { padding: var(--space-3); }
+  .steps, .features, .worlds, .trust, .occasions { gap: var(--space-2); }
+  .step, .feature, .trust__item { padding: var(--space-3); }
   .step__icon { width: var(--space-8); height: var(--space-8); font-size: var(--fs-500); }
   .fm-footer { padding-block: var(--space-6) var(--space-4); }
   .fm-footer__grid { gap: var(--space-4); padding-bottom: var(--space-4); }

@@ -5,14 +5,16 @@
 @import "../game/game.css";
 @import "./site.css";
 
-/* The individual scale property leaves each control's position/animations intact. */
-:is(button, a.fm-btn, [role="button"], summary)[data-press-feedback="true"],
-:is(button, a.fm-btn, [role="button"], summary):active:not(:disabled):not([aria-disabled="true"]) {
+/* The individual scale property leaves each control's position/animations intact.
+   A link stretched over its card (.fm-stretch, ui.css) is left out: scale or filter would shrink its cover to the
+   button mid-press. Its card shows the press. */
+:is(button, a.fm-btn, [role="button"], summary):not(.fm-stretch)[data-press-feedback="true"],
+:is(button, a.fm-btn, [role="button"], summary):not(.fm-stretch):active:not(:disabled):not([aria-disabled="true"]) {
   scale: .96;
   filter: brightness(.94);
 }
 a:not(.fm-btn)[data-press-feedback="true"] { background-color: rgba(96, 179, 196, .18); }
 @media (prefers-reduced-motion: reduce) {
-  :is(button, a.fm-btn, [role="button"], summary)[data-press-feedback="true"],
-  :is(button, a.fm-btn, [role="button"], summary):active { scale: 1; }
+  :is(button, a.fm-btn, [role="button"], summary):not(.fm-stretch)[data-press-feedback="true"],
+  :is(button, a.fm-btn, [role="button"], summary):not(.fm-stretch):active { scale: 1; }
 }
