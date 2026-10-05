@@ -95,6 +95,8 @@ export function AlbumSection({ config, album, mode, state, onOpen }: { config: G
     view = null;
   }
   const note = syncCopy(g, mode, view ? state : "unreadable");
+  const required = book.boards[0]?.findsRequiredToAdvance ?? 0;
+  const uniformAdvance = book.boards.every(board => board.findsRequiredToAdvance === required);
   return (
     <section className="album" aria-labelledby="album-title">
       <header className="album__head">
@@ -109,7 +111,7 @@ export function AlbumSection({ config, album, mode, state, onOpen }: { config: G
         </div>
         {note ? <p className="album__sync" data-album-state={state}>{note}</p> : null}
       </header>
-      <p className="album__note">{tf(g.album.continueNote, { required: Math.min(...book.boards.map((board) => board.findsRequiredToAdvance)) })}</p>
+      <p className="album__note">{uniformAdvance ? tf(g.album.continueNote, { required }) : g.album.continueNoteMixed}</p>
       {book.boards.map((board: BookBoard) => {
         const scene = config.scenes.find((s) => s.slug === board.boardSlug);
         const boardView = view?.boards.find((b) => b.boardSlug === board.boardSlug) ?? null;

@@ -5,9 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { allWorlds } from "../../../content/worlds";
 import { boardSlugs } from "@/domain/world";
 import { composeWorld } from "@/domain/game/compose";
-import type { GameConfig } from "@/domain/game/config";
+import { GameConfigSchema, type GameConfig } from "@/domain/game/config";
 import { emptyProgress, recordSceneCompleted } from "@/domain/game/progress";
-import { getDict, type Locale } from "@/i18n";
+import { getDict, tf, type Locale } from "@/i18n";
+import { publicBeachDemo } from "../../../content/demo/beach-v1";
 import { buildDemoConfig } from "@/services/demo";
 import { GiftReveal } from "../components/GiftReveal";
 import { WorldMap } from "../components/WorldMap";
@@ -34,6 +35,21 @@ function fixture(locale: Locale): GameConfig {
 }
 
 describe("the child's own bubbles", () => {
+  it.each(["en", "he"] as const)("does not promise a two-find threshold for every place in a valid mixed retained/normal gift in %s", locale => {
+    const base = publicBeachDemo(locale), normal = base.scenes[0]!, board = base.adventure!.boards[0]!;
+    const mixed = GameConfigSchema.parse({ ...base, world: undefined, worlds: undefined,
+      scenes: [{ ...normal, slug: "retained-beach", version: 10, retainedSubset: "qa-retained-subset/v1", appearancesPerBoard: 2, findsRequiredToAdvance: 2, targets: normal.targets.slice(0, 2) }, normal],
+      adventure: { ...base.adventure!, boards: [{ ...board, boardSlug: "retained-beach", sceneVersion: 10, retainedSubset: "qa-retained-subset/v1", findsRequiredToAdvance: 2,
+        targetIds: board.targetIds.slice(0, 2), targetImages: board.targetImages.slice(0, 2) }, board] } });
+    const before = structuredClone(mixed);
+    const view = render(<GameI18nProvider locale={locale}><GiftReveal config={mixed} onOpen={vi.fn()} /></GameI18nProvider>);
+    fireEvent.click(view.getByRole("button")); act(() => { vi.advanceTimersByTime(701); });
+    expect(view.container.querySelector(".gift__lead")?.textContent).toBe(tf(getDict(locale).game.gift.instructionsMixed,
+      { name: mixed.child.name, count: 2, stars: 5 }));
+    expect(mixed.scenes.map(scene => scene.findsRequiredToAdvance)).toEqual([2, 3]);
+    expect(mixed).toEqual(before);
+  });
+
   it.each(["en", "he"] as const)("says hello from the cover sticker in %s", (locale) => {
     const config = fixture(locale);
     const view = render(<GameI18nProvider locale={locale}><GiftReveal config={config} onOpen={vi.fn()} /></GameI18nProvider>);

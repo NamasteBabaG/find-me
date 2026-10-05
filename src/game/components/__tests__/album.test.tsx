@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { adventureFixture } from "../../../domain/adventure/__tests__/fixture";
 import { attachAdventureBook } from "../../../domain/adventure/compose";
 import { emptyAdventureProgress, recordAdventureEvent, type AdventureEvent } from "../../../domain/adventure/progress";
+import { GameConfigSchema } from "../../../domain/game/config";
+import { getDict } from "@/i18n";
 import { createMissionState } from "../../../domain/game/mission";
 import { planScenePlay } from "../../../domain/game/replay";
 import { GameI18nProvider } from "../../i18n";
@@ -31,6 +33,25 @@ beforeEach(() => { vi.stubGlobal("React", React); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("the album in the bag", () => {
+  it.each(["en", "he"] as const)("uses board-specific continuation words without changing mixed two/three-hide progress in %s", locale => {
+    const source = adventureFixture(3), normal = attachAdventureBook(source.config, source.catalog, ["pilot-test"]);
+    const scene = normal.scenes[0]!, board = normal.adventure!.boards[0]!;
+    const mixed = GameConfigSchema.parse({ ...normal,
+      scenes: [{ ...scene, slug: "retained-pilot", version: 10, retainedSubset: "qa-retained-subset/v1", appearancesPerBoard: 2, findsRequiredToAdvance: 2, targets: scene.targets.slice(0, 2) }, scene],
+      adventure: { ...normal.adventure!, boards: [{ ...board, boardSlug: "retained-pilot", sceneVersion: 10, retainedSubset: "qa-retained-subset/v1", findsRequiredToAdvance: 2,
+        targetIds: board.targetIds.slice(0, 2), targetImages: board.targetImages.slice(0, 2) }, board] } });
+    let progress = emptyAdventureProgress(mixed.gameId, mixed.adventure!);
+    for (const current of mixed.adventure!.boards) for (const targetId of current.targetIds.slice(0, 2)) progress = recordAdventureEvent(progress, mixed.gameId, mixed.adventure!,
+      { kind: "target-found", boardSlug: current.boardSlug, targetId, variant: "A" }).progress;
+    const before = structuredClone(progress);
+    const view = render(<GameI18nProvider locale={locale}><AlbumSection config={mixed} album={progress} mode="guest" state="idle" /></GameI18nProvider>);
+    expect(view.container.querySelector(".album__note")?.textContent).toBe(getDict(locale).game.album.continueNoteMixed);
+    expect(view.container.querySelector('[data-board="retained-pilot"] .album__postcard-wait')).toBeNull();
+    expect(view.container.querySelector('[data-board="pilot-test"] [data-postcard-remaining]')?.getAttribute("data-postcard-remaining")).toBe("1");
+    expect(progress.book.boards.map(current => current.findsRequiredToAdvance)).toEqual([2, 3]);
+    expect(progress).toEqual(before);
+  });
+
   it("shows a missing card with its hint, a collected card with the picture, and what the postcard still needs", () => {
     let progress = emptyAdventureProgress(config.gameId, book);
     const empty = render(<GameI18nProvider locale="en"><AlbumSection config={config} album={progress} mode="guest" state="idle" /></GameI18nProvider>);

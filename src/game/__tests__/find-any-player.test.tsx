@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from "react";
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useStore } from "zustand";
 import { readFileSync } from "node:fs";
@@ -19,6 +19,8 @@ import { emptyProgress, parseProgress } from "@/domain/game/progress";
 import { GameI18nProvider } from "../i18n";
 import { createPlayStore, type PlayStoreApi } from "../store/play-store";
 import { clampTransform, stageToScreen } from "../engine/viewport-math";
+import { publicBeachDemo } from "../../../content/demo/beach-v1";
+import { getDict } from "@/i18n";
 
 const rig = vi.hoisted(() => ({ tap: (_x: number, _y: number) => {}, viewport: { transform: { tx: 0, ty: 0, scale: 0.2 }, viewport: { width: 390, height: 650 }, fit: 0.2, isDragging: false, bind: {}, reset: vi.fn(), focusOn: vi.fn(), zoomBy: vi.fn() } }));
 vi.mock("../engine/useViewport", () => ({ useViewport: (_ref: unknown, _stage: unknown, tap: typeof rig.tap) => { rig.tap = tap; return rig.viewport; } }));
@@ -54,6 +56,67 @@ beforeEach(() => { vi.stubGlobal("React", React); vi.stubGlobal("Image", LoadedI
 afterEach(() => { cleanup(); vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
 describe("find-any rendering and mobile feedback", () => {
+  it.each(["en", "he"] as const)("keeps a map exit on a legacy completion with no Stay in %s", async locale => {
+    const base = buildDemoConfig(locale), original = base.scenes[0]!;
+    const scene = { ...original, playMode: undefined, appearancesPerBoard: undefined, findsRequiredToAdvance: undefined };
+    const config = { ...base, gameId: `legacy-completion-map-${locale}`, adventure: undefined, worlds: undefined, world: undefined,
+      scenes: [scene, { ...scene, slug: "next-board" }] };
+    const store = createPlayStore(config, { copy, readOnlyPreview: true, skipGift: true });
+    store.getState().openScene(scene.slug); store.getState().dispatch({ type: "START", now: 1 });
+    function Player() {
+      const state = useStore(store);
+      return <GameI18nProvider locale={locale}>{state.mission ? <ScenePlayer scene={scene} mission={state.mission} store={state} onBack={state.goToMap} onSceneComplete={state.completeScene} /> : null}</GameI18nProvider>;
+    }
+    const view = render(<Player />); await decodeAll();
+    for (let i = 0; i < scene.targets.length; i++) {
+      act(() => store.getState().dispatch({ type: "TAP_TARGET", targetId: currentTargetId(store.getState().mission!)!, now: Date.now() }));
+      act(() => vi.advanceTimersByTime(2200)); act(() => vi.advanceTimersByTime(560)); act(() => vi.advanceTimersByTime(160)); act(() => vi.advanceTimersByTime(901));
+    }
+    const dialog = within(view.getByRole("dialog")), progress = store.getState().progress;
+    expect(progress.scenes[scene.slug]!.completed).toBe(true);
+    expect(dialog.queryByRole("button", { name: /Stay|נשארים/ })).toBeNull();
+    expect(dialog.getByRole("button", { name: getDict(locale).game.complete.next })).toBeTruthy();
+    fireEvent.click(dialog.getByRole("button", { name: getDict(locale).game.scene.backToMap }));
+    expect(store.getState().screen).toBe("map");
+    expect(store.getState().progress).toBe(progress);
+    expect(store.getState().round).toBeNull();
+  });
+
+  it.each([false, true])("keeps the completed round and earned album on the map with no discoveries left (last board: %s)", async last => {
+    const base = publicBeachDemo("en", "Example"), scene = base.scenes[0]!, board = base.adventure!.boards[0]!;
+    const config = { ...base, gameId: `guided-completion-map-${last}`, world: undefined, worlds: undefined,
+      scenes: last ? [scene] : [scene, { ...scene, slug: "next-board" }] };
+    const store = createPlayStore(config, { copy, skipGift: true });
+    store.getState().hydrate(); store.getState().openScene(scene.slug); store.getState().dispatch({ type: "START", now: 1 });
+    for (const target of scene.targets) {
+      store.getState().dispatch({ type: "TAP_TARGET", targetId: target.id, now: 2 });
+      store.getState().dispatch({ type: "FOUND_DONE", now: 3 });
+    }
+    for (const item of board.discoveries) store.getState().collectDiscovery(item.id);
+    const progress = store.getState().progress, album = store.getState().album;
+    store.getState().startRound(scene.slug); store.getState().dispatch({ type: "START", now: 4 });
+    for (const item of board.discoveries) store.getState().collectDiscovery(item.id);
+    function Player() {
+      const state = useStore(store);
+      return <GameI18nProvider locale="en">{state.mission ? <ScenePlayer scene={scene} mission={state.mission} store={state} onBack={state.goToMap} onSceneComplete={state.completeScene} /> : null}</GameI18nProvider>;
+    }
+    const view = render(<Player />); await decodeAll();
+    for (let i = 0; i < scene.targets.length; i++) {
+      act(() => store.getState().dispatch({ type: "TAP_TARGET", targetId: currentTargetId(store.getState().mission!)!, now: Date.now() }));
+      act(() => vi.advanceTimersByTime(2200)); act(() => vi.advanceTimersByTime(560)); act(() => vi.advanceTimersByTime(160)); act(() => vi.advanceTimersByTime(901));
+    }
+    const dialog = within(view.getByRole("dialog")), round = store.getState().round;
+    expect(dialog.queryByRole("button", { name: /Stay/ })).toBeNull();
+    expect(round!.progress.scenes[scene.slug]!.foundTargetIds).toHaveLength(scene.targets.length);
+    expect(round!.discoveries[scene.slug]).toHaveLength(board.discoveries.length);
+    if (last) expect(dialog.queryByRole("button", { name: getDict("en").game.scene.backToMap })).toBeNull();
+    fireEvent.click(dialog.getByRole("button", { name: last ? getDict("en").game.replay.roundFinished : getDict("en").game.scene.backToMap }));
+    expect(store.getState().screen).toBe("map");
+    expect(store.getState().progress).toBe(progress);
+    expect(store.getState().album).toBe(album);
+    expect(store.getState().round).toBe(round);
+  });
+
   it.each(["en", "he"] as const)("plays all four appearances, unlocks at three and celebrates four actual stars in %s", async locale => {
     const scene = fourScene();
     const config = { ...buildDemoConfig(locale), scenes: [scene, { ...fiveScene(), slug: "next-board" }], worlds: undefined, world: undefined };

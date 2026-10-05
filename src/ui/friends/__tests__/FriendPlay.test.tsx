@@ -3,7 +3,7 @@ import React from "react";
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "@/i18n/client";
-import { getDict } from "@/i18n";
+import { getDict, tf } from "@/i18n";
 import { emptyGuestSnapshot, mergeGuestSnapshot, type GuestSnapshot } from "@/domain/guest-sharing";
 import type { GuestParticipantView, GuestSessionView } from "@/services/guest-sharing.service";
 import { publicBeachDemo } from "../../../../content/demo/beach-v1";
@@ -15,6 +15,7 @@ vi.mock("@/game/components/GameShell", () => ({ GameShell: (props: typeof game.p
   return <div data-testid="guest-game"><span>{props.friend?.participantId}</span></div>;
 } }));
 const text = getDict("en").friends;
+const unsavedTitle = tf(text.unsavedTitle, { name: "Fox" });
 const config = publicBeachDemo("en"), shareId = `gsr_${"1".repeat(20)}`, token = `${shareId}.${"x".repeat(43)}`;
 function participant(id = "gpt_old", nicknameId: GuestParticipantView["nicknameId"] = "fox"): GuestParticipantView {
   const snapshot = emptyGuestSnapshot();
@@ -172,15 +173,15 @@ describe("the friends lobby and current guest", () => {
     // A tap while the save is on its way waits for it, busy, and says whose finds are being kept.
     fireEvent.click(another);
     await waitFor(() => expect(another.getAttribute("aria-busy")).toBe("true"));
-    expect(document.getElementById(another.getAttribute("aria-describedby")!)?.textContent).toBe("Saving Fox's finds…");
+    expect(document.getElementById(another.getAttribute("aria-describedby")!)?.textContent).toBe(tf(text.switchSaving, { name: "Fox" }));
     await act(async () => { release(reply({}, 503)); });
     // The save could not be made: a sheet says so, the game stays and nothing switched.
-    await page.findByRole("dialog", { name: "Fox's finds aren't saved yet" });
+    await page.findByRole("dialog", { name: unsavedTitle });
     expect(page.getByTestId("guest-game").textContent).toContain(old.id);
     expect(calls.filter(call => call.body.operation === "inspect")).toHaveLength(1);
     expect(JSON.parse(window.localStorage.getItem(outboxKey(old))!)).toEqual(pendingSnapshot);
     fireEvent.click(page.getByRole("button", { name: text.keepPlaying }));
-    expect(page.queryByRole("dialog", { name: "Fox's finds aren't saved yet" })).toBeNull();
+    expect(page.queryByRole("dialog", { name: unsavedTitle })).toBeNull();
     online = true; act(() => { window.dispatchEvent(new Event("online")); }); await page.findByText(text.saved);
     expect((page.getByRole("button", { name: text.another }) as HTMLButtonElement).disabled).toBe(false);
     expect(window.localStorage.getItem(outboxKey(old))).toBeNull();
@@ -191,6 +192,38 @@ describe("the friends lobby and current guest", () => {
     expect(calls.filter(call => call.body.operation === "another")).toEqual([]);
     fireEvent.click(page.getByRole("button", { name: text.back }));
     expect(page.getByRole("button", { name: "Continue as Fox" })).toBeTruthy();
+  });
+  it("closes the unsaved sheet after automatic recovery and keeps the same player until another explicit switch", async () => {
+    const old = participant(), pendingSnapshot = laterFind(old); let online = false;
+    const calls: Array<{ path: string; body: Record<string, unknown> }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (path: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)); calls.push({ path, body });
+      if (path.endsWith("/progress")) return online ? reply({ snapshot: body.snapshot }) : reply({}, 503);
+      if (path.endsWith("/play")) return reply(active(old));
+      return reply({ view: view(old) });
+    }));
+    const page = mount(); fireEvent.click(await page.findByRole("button", { name: "Continue as Fox" }));
+    await page.findByTestId("guest-game");
+    await act(async () => { game.props.friend!.onProgress(pendingSnapshot); });
+    await page.findByText(text.offline);
+    fireEvent.click(page.getByRole("button", { name: text.another }));
+    await page.findByRole("dialog", { name: unsavedTitle });
+    expect(JSON.parse(window.localStorage.getItem(outboxKey(old))!)).toEqual(pendingSnapshot);
+
+    online = true; act(() => { window.dispatchEvent(new Event("online")); });
+    await page.findByText(text.saved);
+    expect(page.queryByRole("dialog", { name: unsavedTitle })).toBeNull();
+    expect(window.localStorage.getItem(outboxKey(old))).toBeNull();
+    expect(page.getByTestId("guest-game").textContent).toContain(old.id);
+    expect(game.props.friend!.participantId).toBe(old.id);
+    expect(page.queryByRole("group", { name: text.chooseName })).toBeNull();
+    expect(calls.filter(call => call.body.operation === "inspect")).toHaveLength(1);
+    expect(calls.filter(call => call.body.operation === "another")).toEqual([]);
+    expect(calls.filter(call => call.path.endsWith("/progress")).every(call => call.body.participantId === old.id)).toBe(true);
+
+    fireEvent.click(page.getByRole("button", { name: text.another }));
+    await page.findByRole("group", { name: text.chooseName });
+    expect(calls.filter(call => call.body.operation === "inspect")).toHaveLength(2);
   });
   it("a restored unsaved outbox makes Another wait for its save on the way, then switches", async () => {
     const old = participant(), pendingSnapshot = laterFind(old);
@@ -284,7 +317,7 @@ describe("the friends lobby and current guest", () => {
     expect(JSON.parse(window.localStorage.getItem(outboxKey(old))!)).toEqual(pendingSnapshot);
     // Another cannot leave these finds behind: it says they are not saved yet and keeps the game.
     fireEvent.click(page.getByRole("button", { name: text.another }));
-    await page.findByRole("dialog", { name: "Fox's finds aren't saved yet" });
+    await page.findByRole("dialog", { name: unsavedTitle });
     expect(page.queryByRole("group", { name: text.chooseName })).toBeNull();
     fireEvent.click(page.getByRole("button", { name: text.keepPlaying }));
     online = true; act(() => { window.dispatchEvent(new Event("online")); }); await page.findByText(text.saved);

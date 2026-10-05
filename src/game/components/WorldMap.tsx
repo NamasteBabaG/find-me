@@ -48,8 +48,10 @@ const CHOOSE_MS = 700;
  * reader. A game composed before worlds existed falls back to the island grid.
  */
 export function WorldMap({ config, world: shown, progress, onOpen, onPassport, onWorlds, worldSelector, demo, travelFrom, onTravelDone, onReplay, roundRoute, onStartOver }: Props) {
+  const { g } = useGameText();
   const world = shown ?? gameWorlds(config)[0];
-  if (!world) return <>{worldSelector ? <div className="owner-worlds__fallback">{worldSelector}</div> : null}<IslandGrid config={config} progress={progress} onOpen={onOpen} onPassport={onPassport} demo={demo} /></>;
+  if (!world) return <>{worldSelector ? <div className="owner-worlds__fallback">{worldSelector}</div> : null}<IslandGrid config={config} progress={progress} onOpen={onOpen} onPassport={onPassport} demo={demo} />
+    {onStartOver ? <button type="button" className="fm-btn fm-btn--ghost wmap__again" onClick={onStartOver}>{g.replay.startOver}</button> : null}</>;
   return <WorldMapView config={config} world={world} progress={progress} onOpen={onOpen} onPassport={onPassport} onWorlds={onWorlds} worldSelector={worldSelector} demo={demo} travelFrom={travelFrom} onTravelDone={onTravelDone} onReplay={onReplay} roundRoute={roundRoute} onStartOver={onStartOver} />;
 }
 

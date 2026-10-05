@@ -641,13 +641,14 @@ const STAR_CLIMB_SEMITONES = [0, 2, 4, 5, 7];
 
 /**
  * One primary action, always the way forward. Staying is the one secondary, and only while there is
- * something left to find here; replaying is an icon. "To the map" left: system Back goes there (GameShell),
- * the board's map button is there again after Stay, and a fourth button made the card a menu, not a moment.
+ * something left to find here; replay and the map are quiet icons. The scene's toolbar is behind this
+ * overlay, so its map exit must stay reachable even when there are no discoveries left to Stay for.
  */
 function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, remaining, onStay }: { scene: SceneConfig; bonusFound: boolean; hintsUsed: number; store: PlayStore; remaining: number; onStay?: () => void }) {
   const { g, tf } = useGameText();
   const next = store.nextScene();
   const allDone = next === null;
+  const primaryReturnsToMap = allDone && Boolean(store.round?.active);
   // Every hiding spot found: the postcard, from the pixels of the find itself.
   const postcard = (() => {
     if (!store.album || !store.config.adventure) return null;
@@ -729,9 +730,14 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, remaining, onS
             </button>
           ) : null}
           {store.demo ? null : (
-            <button type="button" className="scene__btn complete__replay" onClick={() => store.replayScene()} aria-label={tf(g.replay.boardAria, { place: scene.name })} title={g.complete.again}>
-              <ToolIcon name="replay" />
-            </button>
+            <div className="complete__tools">
+              {!primaryReturnsToMap ? <button type="button" className="scene__btn complete__map" onClick={() => store.goToMap(scene.slug)} aria-label={g.scene.backToMap} title={g.scene.backToMap}>
+                <ToolIcon name="map" />
+              </button> : null}
+              <button type="button" className="scene__btn complete__replay" onClick={() => store.replayScene()} aria-label={tf(g.replay.boardAria, { place: scene.name })} title={g.complete.again}>
+                <ToolIcon name="replay" />
+              </button>
+            </div>
           )}
         </div>
       </div>

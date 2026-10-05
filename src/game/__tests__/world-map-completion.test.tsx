@@ -14,6 +14,7 @@ import { GameShell } from "../components/GameShell";
 import { RoundControls } from "../components/RoundControls";
 import { GameI18nProvider } from "../i18n";
 import { createPlayStore } from "../store/play-store";
+import { loadRound } from "../engine/round-storage";
 
 vi.mock("../audio/sounds", () => ({ sounds: () => ({ unlock() {}, play() {}, setScene() {}, startAmbient() {}, stopAmbient() {} }), bindGameAudio: () => () => {} }));
 beforeEach(() => {
@@ -54,6 +55,27 @@ describe("the map's one face", () => {
 });
 
 describe("starting over, and the round strip", () => {
+  it("starts a full round from the historical grid without resetting earned progress", () => {
+    vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+    const config = { ...fixture(), world: undefined, worlds: undefined, adventure: undefined };
+    const progress = { ...finish(config, [config.scenes[0]!.slug]), revealed: true };
+    const progressKey = `findme:progress:v1:${config.gameId}`;
+    window.localStorage.setItem(progressKey, JSON.stringify(progress));
+    const view = render(<GameShell config={config} />);
+    expect(view.container.querySelector(".map__islands")).not.toBeNull();
+    expect(view.container.querySelector(".round-controls")).toBeNull();
+    const again = view.getByRole("button", { name: getDict(config.locale).game.replay.startOver });
+    expect(again.classList.contains("wmap__again")).toBe(true);
+    fireEvent.click(again);
+    const round = loadRound(config)!;
+    expect(round.active).toBe(true);
+    expect(round.route).toEqual(config.scenes.map(scene => scene.slug));
+    expect(round.progress.lastScene).toBe(config.scenes[0]!.slug);
+    expect(round.progress.scenes).toEqual({});
+    expect(JSON.parse(window.localStorage.getItem(progressKey)!)).toEqual(progress);
+    expect(view.container.querySelector(".scene")).not.toBeNull();
+  });
+
   it("puts a quiet Play from the beginning under Go when the shell offers one, and none on a finished world", () => {
     const config = fixture("he"), world = config.worlds![0]!, g = getDict("he").game, onStartOver = vi.fn();
     const started = finish(config, boardSlugs(world).slice(0, 1));

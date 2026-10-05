@@ -24,8 +24,10 @@ export function GiftReveal({ config, onOpen }: { config: GameConfig; onOpen: () 
   // Every number comes from the game itself: a fixed "five" or "three" was wrong for any other board shape.
   const perPlace = config.scenes[0]?.targets.length ?? 0;
   const uniform = config.scenes.every(scene => scene.targets.length === perPlace);
-  const required = Math.min(...config.scenes.map(scene => scene.findsRequiredToAdvance ?? 3));
-  const giftLead = !findAny ? g.gift.lead : uniform ? g.gift.findAnyLead : g.gift.findAnyVariableLead;
+  const required = config.scenes[0] ? config.scenes[0].findsRequiredToAdvance ?? config.scenes[0].targets.length : 0;
+  const uniformAdvance = config.scenes.every(scene => (scene.findsRequiredToAdvance ?? scene.targets.length) === required);
+  const giftLead = !uniformAdvance || !findAny && !uniform ? g.gift.instructionsMixed
+    : !findAny ? g.gift.lead : uniform ? g.gift.findAnyLead : g.gift.findAnyVariableLead;
 
   const tear = () => {
     sounds().unlock();

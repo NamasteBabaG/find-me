@@ -86,10 +86,15 @@ export function AdventurePassport({ store }: { store: PlayStore }) {
       // The book's own space is held while it opens, so nothing jumps when it arrives, and a failure is
       // said inside the same frame with its way back.
       <div className="travel-passport adventure-passport__frame-host">
+        <div className="travel-passport__toolbar" aria-hidden="true" />
         <div className="adventure-passport__frame">
           <span className="adventure-passport__seal" aria-hidden>✦</span>
           <p role="status" className="adventure-passport__wait">{failed ? copy.unavailable : copy.opening}</p>
           {failed ? <button className="fm-btn" onClick={() => setAttempt(n => n + 1)}>{copy.retry}</button> : null}
+        </div>
+        <div className="travel-passport__reader-footer adventure-passport__frame-footer" aria-hidden="true">
+          <div className="travel-passport__places"><span className="travel-passport__place" /></div>
+          <p className="travel-passport__reader-status">&nbsp;</p>
         </div>
       </div>
     )}

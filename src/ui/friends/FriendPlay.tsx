@@ -118,7 +118,7 @@ function FriendActive({ play, token, switchError, onAnother, onExit }: { play: P
   const [switching, setSwitching] = useState(false), [unsaved, setUnsaved] = useState(false), switchPending = useRef(false), mounted = useRef(true);
   const name = text.nicknames[play.participant.nicknameId];
   const [sync] = useState<FriendProgressSync>(() => new FriendProgressSync({ config: play.config, shareToken: token, shareId: play.shareId, participantId: play.participant.id,
-    initial: play.participant.snapshot, onState: state => { setStatus(state); setSnapshot(sync.current()); } }));
+    initial: play.participant.snapshot, onState: state => { setStatus(state); setSnapshot(sync.current()); if (state === "saved") setUnsaved(false); } }));
   const [seed] = useState(() => friendAlbumSeed(sync.current()));
   useEffect(() => {
     mounted.current = true;

@@ -46,7 +46,9 @@
 @keyframes game-tip { 0% { opacity: 0; transform: translate(-50%, var(--space-1)); } 8%, 82% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, var(--space-1)); } }
 /* The adults' way out sits under the map; it is a footnote, not a row of its own. */
 .game__parents { text-align: center; padding: var(--space-1) var(--space-3) max(var(--space-1), env(safe-area-inset-bottom)); font-size: var(--fs-100); }
-.game__parents a { color: var(--ink-3); }
+.game__parents a { display: inline-flex; align-items: center; justify-content: center; min-height: var(--touch-min); padding-inline: var(--space-2); color: var(--ink-3); border-radius: var(--radius-pill); }
+.game__parents a:focus-visible { outline: 2px solid var(--grape); outline-offset: 2px; }
+.game__parents a:active { background: var(--paper-2); }
 
 /* ── Gift ── */
 .gift { position: relative; overflow: hidden; flex: 1; display: grid; place-items: center; padding: var(--space-4); text-align: center; }
@@ -291,8 +293,8 @@
 /* Scene complete */
 /* The demo frame on a phone is short: the card has to fit inside it, not spill
    out of the bottom, so the overlay scrolls and the card stays within it. */
-.complete { position: absolute; inset: 0; z-index: var(--z-overlay); display: grid; place-items: center; padding: max(var(--space-3), env(safe-area-inset-top)) var(--space-3) max(var(--space-3), env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain; background: rgba(23, 22, 43, 0.35); backdrop-filter: blur(4px); }
-.complete__card { position: relative; width: min(92vw, 520px); max-width: 100%; background: var(--white); border-radius: var(--radius-4); padding: var(--space-5) var(--space-4) var(--space-4); box-shadow: var(--shadow-3); display: flex; flex-direction: column; gap: var(--space-3); align-items: center; text-align: center; animation: fm-pop-in var(--dur-3) var(--ease-pop); }
+.complete { position: absolute; inset: 0; z-index: var(--z-overlay); display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; padding: max(var(--space-3), env(safe-area-inset-top)) var(--space-2) max(var(--space-3), env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain; background: rgba(23, 22, 43, 0.35); backdrop-filter: blur(4px); }
+.complete__card { position: relative; width: min(100%, 520px); max-width: 100%; background: var(--white); border-radius: var(--radius-4); padding: var(--space-5) var(--space-4) var(--space-4); box-shadow: var(--shadow-3); display: flex; flex-direction: column; gap: var(--space-3); align-items: center; text-align: center; animation: fm-pop-in var(--dur-3) var(--ease-pop); }
 .complete__stamp { position: absolute; top: calc(var(--space-3) * -1); inset-inline-end: var(--space-3); background: var(--berry); color: var(--white); font-family: var(--font-display); font-weight: 600; font-size: var(--fs-300); padding: var(--space-1) var(--space-3); border-radius: var(--radius-2); transform: rotate(-8deg); box-shadow: var(--shadow-2); animation: fm-stamp var(--dur-3) var(--ease-pop); }
 .complete__stamp--big { position: static; display: inline-block; font-size: var(--fs-500); padding: var(--space-2) var(--space-4); }
 .complete__title { font-size: var(--fs-500); line-height: var(--lh-500); }
@@ -306,7 +308,8 @@
 .complete__icon { font-size: var(--fs-700); line-height: 1; animation: fm-float 2s var(--ease-in-out) infinite; }
 .complete__actions { display: flex; flex-direction: column; gap: var(--space-1); width: 100%; }
 /* Replay is an icon under the two words, so the card keeps exactly one gold action. */
-.complete__replay { align-self: center; box-shadow: inset 0 0 0 2px var(--line), var(--shadow-1); }
+.complete__tools { display: flex; justify-content: center; gap: var(--space-1); }
+.complete__map, .complete__replay { align-self: center; box-shadow: inset 0 0 0 2px var(--line), var(--shadow-1); }
 .game--demo .complete__card { padding: var(--space-4); gap: var(--space-2); }
 
 /* Passport */
@@ -451,8 +454,8 @@
 /* A real game also shows the adults' link under the map; the demo does not.
    Counting it only when it is there is the difference between a screen that
    fits and one that scrolls by exactly its height. */
-.game:has(.game__parents) .wmap { --wmap-chrome: 304px; }
-@media (max-width: 720px) { .game:has(.game__parents) .wmap { --wmap-chrome: 272px; } }
+.game:has(.game__parents) .wmap { --wmap-chrome: 336px; }
+@media (max-width: 720px) { .game:has(.game__parents) .wmap { --wmap-chrome: 304px; } }
 .wmap__bar { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); max-width: var(--container); width: 100%; margin-inline: auto; }
 .wmap__who { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
 .wmap__title { font-size: var(--fs-500); line-height: var(--lh-500); }
@@ -669,7 +672,7 @@
    Tighter gaps and title, the postcard sized by the screen's height, and Stay beside the replay icon.
    It comes after the card's own rules, so it wins over them at the same weight. */
 @media (max-height: 740px) {
-  .complete__card { padding: var(--space-4) var(--space-3) var(--space-3); gap: var(--space-2); }
+  .complete__card { padding: var(--space-4) var(--space-2) var(--space-3); gap: var(--space-2); }
   .complete__title { font-size: var(--fs-400); line-height: var(--lh-400); }
   .complete__postcard .postcard { max-width: min(320px, 28dvh); }
   .complete__actions { flex-direction: row; flex-wrap: wrap; justify-content: center; }

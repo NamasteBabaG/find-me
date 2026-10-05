@@ -486,7 +486,8 @@
 /* The child's way back to the map keeps the 64px floor. */
 .adventure-passport__map { min-height: var(--touch-kid); }
 /* While the book opens, its own space is already there: a waiting page with a dashed seal, the size of a closed passport. */
-.adventure-passport__frame-host { margin-block-start: var(--space-2); }
+.adventure-passport__frame-footer { visibility: hidden; }
+.adventure-passport__frame button { min-height: var(--touch-kid); }
 .adventure-passport__frame { box-sizing: border-box; width: min(100%, var(--leaf-width)); height: var(--book-height); margin-inline: auto; display: grid; place-content: center; justify-items: center; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-2) var(--radius-3) var(--radius-3) var(--radius-2); background: var(--paper-2); box-shadow: inset 0 0 0 2px var(--line); text-align: center; }
 .adventure-passport__seal { display: grid; place-items: center; width: var(--space-10); height: var(--space-10); border-radius: 50%; border: 3px dashed var(--ink-4); color: var(--gold-deep); font-size: var(--fs-600); line-height: 1; }
 .adventure-passport__wait { margin: 0; max-width: 28ch; font-family: var(--font-kid); font-weight: 600; font-size: var(--fs-200); line-height: var(--lh-200); color: var(--ink-2); }

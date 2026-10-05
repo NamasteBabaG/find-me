@@ -512,6 +512,7 @@ export const en = {
       lead: "{name} is hiding in {count} places. {spots} hiding spots in each.",
       findAnyLead: "{name} is hiding in {count} places. {spots} hiding spots in each — find any {required} to continue!",
       findAnyVariableLead: "{name} is hiding in {count} places, with {stars} hiding spots to discover. Find any {required} in each place to continue!",
+      instructionsMixed: "{name} is hiding in {count} places, with {stars} hiding spots to discover. Each place shows how to continue.",
       start: "Start the adventure ✨",
       /** The child's first words, from the sticker on the cover. */
       hello: "Here I am!",
@@ -645,6 +646,7 @@ export const en = {
       cardAria: "{name} — discovery card",
       /** {required} finds open the next place; the postcard needs every hiding spot. Said at the choice and in the album, never fixed in the HUD. */
       continueNote: "{required} finds open the next place. The postcard waits for whoever finds every hiding spot.",
+      continueNoteMixed: "Each place shows how many finds open the next stop. Find every hiding spot to earn its postcard.",
       postcardRemaining: "{remaining} more hiding spots for the postcard",
       postcardRemainingOne: "1 more hiding spot for the postcard",
       postcardEarned: "The postcard is yours!",

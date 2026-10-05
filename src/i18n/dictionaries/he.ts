@@ -509,6 +509,7 @@ export const he: Dictionary = {
       lead: "{count} מקומות מחכים ל{name}. בכל אחד — {spots} מחבואים.",
       findAnyLead: "{count} מקומות מחכים ל{name}. בכל אחד {spots} מחבואים — מוצאים {required} וממשיכים!",
       findAnyVariableLead: "{count} מקומות מחכים ל{name}, עם {stars} מחבואים לגלות. מוצאים {required} בכל מקום וממשיכים!",
+      instructionsMixed: "{count} מקומות מחכים ל{name}, עם {stars} מחבואים לגלות. בכל מקום רואים כמה צריך למצוא כדי להמשיך.",
       start: "לפתיחת ההרפתקה ✨",
       hello: "הנה אני!",
     },
@@ -637,6 +638,7 @@ export const he: Dictionary = {
       cardAria: "{name} — כרטיס תגלית",
       /** {required} finds open the next place; the postcard needs every hiding spot. Said at the choice and in the album, never fixed in the HUD. */
       continueNote: "{required} מציאות פותחות את המקום הבא. הגלויה מחכה למי שמוצא את כל המחבואים.",
+      continueNoteMixed: "בכל מקום רואים כמה מחבואים צריך למצוא כדי להמשיך. כל המחבואים נמצאו? הגלויה שלכם!",
       postcardRemaining: "עוד {remaining} מחבואים והגלויה שלכם!",
       postcardRemainingOne: "עוד מחבוא אחד והגלויה שלכם!",
       postcardEarned: "יש לכם גלויה חדשה!",
