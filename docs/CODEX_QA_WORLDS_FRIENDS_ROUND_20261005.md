@@ -97,7 +97,6 @@ actual passport imagery. The final full check passed 346 files and 4,389
 tests, with two expected failures and 55 skips, exit 0. The local build and
 private-asset audit passed, with no private leaks or tracing problems.
 Exact CI/deployment/alias results are recorded in
-exact CI/deployment/alias results are recorded in
 ignored release evidence before publication.
 
 Accepted captures and measured JSON are under ignored
