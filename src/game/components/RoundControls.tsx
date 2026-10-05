@@ -25,12 +25,14 @@ export function RoundControls({ store }: { store: PlayStore }) {
   if (!visible) return null;
   const round = store.round!;
   const stars = gameStars(round.progress, store.config.scenes.filter(s => round.route.includes(s.slug)));
+  // On the map, an active round is continued by Go itself; a second "continue" stacked another 64px row above the map.
+  const resume = !round.active || store.screen !== "map";
   return <section ref={panel} className="round-controls" aria-label={g.replay.roundTitle}>
     <div className="round-controls__copy">
       <strong>{tf(g.replay.roundStars, { earned: stars.found, total: stars.total })}</strong>
     </div>
     <div className="round-controls__actions">
-      <button type="button" className="fm-btn" onClick={store.resumeRound}>{g.replay.resumeRound}</button>
+      {resume ? <button type="button" className="fm-btn" onClick={store.resumeRound}>{g.replay.resumeRound}</button> : null}
       {round.active ? <button type="button" className="fm-btn fm-btn--secondary" onClick={store.pauseRound}>{g.replay.savedJourney}</button> : null}
       <button type="button" className="fm-btn fm-btn--ghost" onClick={() => store.startRound()}>{g.replay.startOver}</button>
     </div>

@@ -1,6 +1,6 @@
 # Claude: worlds and friends polish, batch 1 (2026-10-05)
 
-Branch `claude/worlds-friends-polish-20261005`, from `beab331a` ("Add owned worlds, continuation purchases and independent friends"). Two commits (batch 1, then batch 2 below), not pushed. Batch 1 implements section 4 of `CLAUDE_DESIGN_REVIEW_WORLDS_FRIENDS_20261005.md` (the brief), except item 5 (invitation states, link-once, replace confirmation, clipboard fallback). Codex shipped item 5 before this, along with the Go emblem, purchase labels and `LinkButton` pending; none of that is touched here.
+Branch `claude/worlds-friends-polish-20261005`, from `beab331a` ("Add owned worlds, continuation purchases and independent friends"). Three commits (batch 1, batch 2 below, and a small round-strip follow-up), not pushed. Batch 1 implements section 4 of `CLAUDE_DESIGN_REVIEW_WORLDS_FRIENDS_20261005.md` (the brief), except item 5 (invitation states, link-once, replace confirmation, clipboard fallback). Codex shipped item 5 before this, along with the Go emblem, purchase labels and `LinkButton` pending; none of that is touched here.
 
 ## What changed, by brief item
 
@@ -106,6 +106,8 @@ Guy's direction (2026-10-05): phones play upright, because sideways things disap
    - Its one line is "This round: {earned}/{total} ★"; the "Another player?" heading is gone.
    - Without a round, "Play from the beginning" is a quiet 64px text button under Go, shown once something is found.
    - That button's height comes out of the map's budget (`--wmap-again-height`), the same way the strip's height does.
+   - On the map, an active round's strip has no "Continue this round", because Go already continues it. That option shows when the round is paused, and on the multi-world hub, which has no Go.
+   - At 390 the strip is now 184px instead of about 265px (three stacked 64px buttons) (third commit).
 3. **The map completion panel is a title, one line and two actions (V17).** `completedReplay` is removed.
 4. **The completion card fits short phones held upright (screens up to 740px tall).**
    - Tighter gaps and title, the postcard sized by the screen's height (28dvh), and Stay beside the replay icon.
@@ -139,7 +141,7 @@ Batch 2 verification:
 - Browser, Hebrew, local fixture. Friends data was made through the real services (`work/friends-seed.ts`):
   - **Report at 390 and 320.** Current invitation first, earlier ones under their own heading, chips read shape-first right to left, and "New" stays after the seen-write.
   - **Map without a round.** No strip, and a 64px "לשחק מההתחלה" under Go.
-  - **Map with a round.** "הסיבוב הזה: 0/27 ★" with three 64px choices; paused, two choices.
+  - **Map with a round.** "הסיבוב הזה: 0/27 ★". Active: "חזרה להתקדמות השמורה" and "לשחק מההתחלה", while Go says "אתם כאן". Paused: "ממשיכים בסיבוב הזה" and "לשחק מההתחלה".
   - **Turn tip, using screen size and touch emulation.**
     - Phone upright: none.
     - Phone sideways: the upright tip.

@@ -86,13 +86,20 @@ describe("starting over, and the round strip", () => {
     const strip = () => render(<GameI18nProvider locale="he"><RoundControls store={store.getState()} /></GameI18nProvider>);
     expect(strip().container.querySelector(".round-controls")).toBeNull();
     cleanup();
-    store.getState().startRound();
+    store.getState().startRound(); store.setState({ screen: "map" });
     const view = strip(), route = store.getState().round!.route;
     const total = config.scenes.filter(scene => route.includes(scene.slug)).reduce((n, scene) => n + scene.targets.length, 0);
     expect(view.container.querySelector(".round-controls strong")?.textContent).toBe(tf(g.replay.roundStars, { earned: 0, total }));
-    expect(view.getByRole("button", { name: g.replay.resumeRound })).toBeTruthy();
+    // On the map, Go continues an active round: no second "continue" stacked above the map.
+    expect(view.queryByRole("button", { name: g.replay.resumeRound })).toBeNull();
     expect(view.getByRole("button", { name: g.replay.savedJourney })).toBeTruthy();
     expect(view.container.textContent).not.toContain("עוד מישהו רוצה לשחק?");
+    cleanup();
+    // Paused, the strip is the way back into the round.
+    store.setState({ round: { ...store.getState().round!, active: false } });
+    const paused = strip();
+    expect(paused.getByRole("button", { name: g.replay.resumeRound })).toBeTruthy();
+    expect(paused.queryByRole("button", { name: g.replay.savedJourney })).toBeNull();
   });
 });
 
