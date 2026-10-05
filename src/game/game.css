@@ -23,7 +23,6 @@
 }
 .game--demo .complete { overflow: auto; overscroll-behavior: contain; }
 .game--demo .complete__card { max-height: calc(100cqh - 24px); overflow: auto; }
-.game--demo .complete__postcard .postcard { max-width: min(320px, 38cqh); }
 .game--demo .collect__sheet { width: min(360px, calc(100cqw - 24px)); max-height: min(440px, calc(100cqh - 160px)); }
 .game--demo .collect { left: auto; right: max(var(--space-2), env(safe-area-inset-right)); align-items: flex-end; }
 .game--demo .collect__strip { background: rgba(255, 255, 255, 0.65); backdrop-filter: blur(5px); }
@@ -307,9 +306,22 @@
 .complete__loot { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); font-size: var(--fs-300); line-height: var(--lh-300); }
 .complete__icon { font-size: var(--fs-700); line-height: 1; animation: fm-float 2s var(--ease-in-out) infinite; }
 .complete__actions { display: flex; flex-direction: column; gap: var(--space-1); width: 100%; }
-/* Replay is an icon under the two words, so the card keeps exactly one gold action. */
+/* The visible pill/circle is slimmer while the child's real button remains at least 64px high.
+   Insetting the skin leaves the full transparent area interactive, including its upper and lower edges. */
+.complete__actions .fm-btn, .complete__actions .scene__btn { position: relative; isolation: isolate; background: transparent; box-shadow: none; backdrop-filter: none; }
+.complete__actions .fm-btn { min-height: var(--touch-kid); padding-inline: var(--space-2); line-height: var(--lh-100); }
+.complete__actions .scene__btn { width: var(--touch-kid); height: var(--touch-kid); }
+.complete__actions .fm-btn::before, .complete__actions .scene__btn::before { content: ""; position: absolute; z-index: -1; pointer-events: none; inset-block: calc(var(--touch-kid) / 8); inset-inline: 0; border-radius: inherit; background: var(--sun); box-shadow: var(--shadow-1); transition: background var(--dur-1) var(--ease-out), box-shadow var(--dur-2) var(--ease-out); }
+.complete__actions .fm-btn--secondary::before { background: var(--white); box-shadow: inset 0 0 0 2px var(--line), var(--shadow-1); }
+.complete__actions .scene__btn::before { inset-inline: calc(var(--touch-kid) / 8); background: var(--white); box-shadow: inset 0 0 0 2px var(--line), var(--shadow-1); }
+.complete__actions .fm-btn:hover, .complete__actions .fm-btn:active, .complete__actions .scene__btn:hover, .complete__actions .scene__btn:active { background: transparent; box-shadow: none; }
+.complete__actions .fm-btn:hover::before, .complete__actions .scene__btn:hover::before { box-shadow: var(--shadow-glow-sun); }
+.complete__actions .fm-btn--secondary:hover::before { box-shadow: inset 0 0 0 2px var(--ink-4), var(--shadow-2); }
+.complete__actions .scene__btn:hover::before { background: var(--sun); }
+.complete__actions .fm-btn:active::before, .complete__actions .scene__btn:active::before { background: var(--sun-deep); box-shadow: var(--shadow-1); }
+/* Replay and the map stay quiet icons, so the card keeps exactly one gold action. */
 .complete__tools { display: flex; justify-content: center; gap: var(--space-1); }
-.complete__map, .complete__replay { align-self: center; box-shadow: inset 0 0 0 2px var(--line), var(--shadow-1); }
+.complete__map, .complete__replay { align-self: center; }
 .game--demo .complete__card { padding: var(--space-4); gap: var(--space-2); }
 
 /* Passport */
@@ -684,34 +696,30 @@
 .postcard__picture { width: 100%; border-radius: var(--radius-2); box-shadow: 0 0 0 4px var(--white), var(--shadow-2); }
 .postcard__patch { position: absolute; display: block; pointer-events: none; }
 .postcard__title { font-family: var(--font-kid); font-weight: 600; font-size: var(--fs-200); line-height: var(--lh-200); color: var(--ink); text-align: center; }
-.complete__postcard { display: flex; flex-direction: column; gap: var(--space-1); width: 100%; align-items: center; animation: fm-fade-up var(--dur-3) var(--ease-out); }
-/* The picture is sized by the height left for it, so the card fits a phone without scrolling at any height (Guy,
-   2026-10-05); the caption takes the card's width and stays on one line. 610px is what the rest of the card needs. */
-.complete__postcard .postcard { max-width: none; align-items: center; }
-.complete__postcard .postcard__picture { width: min(100%, 320px, max(120px, calc((100dvh - 610px) * 1.3))); }
-.game--demo .complete__postcard .postcard__picture { width: 100%; }
-.complete__postcard-text { margin: 0; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); text-align: center; }
-/* A short screen (an iPhone SE or 8 is 667px tall, many Androids 640): the whole card fits without scrolling.
-   Tighter gaps and title, the postcard sized by the screen's height, and Stay beside the replay icon.
+.complete__place { display: flex; flex-direction: column; align-items: center; gap: var(--space-0-5); width: 100%; animation: fm-fade-up var(--dur-3) var(--ease-out); }
+.complete__place-emblem { width: var(--space-10); height: var(--space-10); }
+.complete__place-emblem .place-emblem { display: block; width: 100%; height: 100%; }
+.complete__place-name { margin: 0; font-family: var(--font-kid); font-weight: 600; font-size: var(--fs-200); line-height: var(--lh-100); overflow-wrap: anywhere; }
+.game--demo .complete__place-emblem { width: var(--touch-kid); height: var(--touch-kid); }
+/* A short screen (an iPhone SE or 8 is 667px tall, many Androids 640) uses tighter gaps and title,
+   with Stay beside the quiet icons where there is room.
    It comes after the card's own rules, so it wins over them at the same weight. */
 @media (max-height: 740px) {
   .complete__card { padding: var(--space-4) var(--space-2) var(--space-3); gap: var(--space-2); }
   .complete__title { font-size: var(--fs-400); line-height: var(--lh-400); }
-  .complete__postcard .postcard__picture { width: min(100%, 320px, max(96px, calc((100dvh - 500px) * 1.3))); }
   .complete__actions { flex-direction: row; flex-wrap: wrap; justify-content: center; }
   .complete__actions > .fm-btn--lg:first-child { flex: 1 1 100%; }
   .complete__actions > .fm-btn--secondary { flex: 1 1 0; min-width: 0; padding-inline: var(--space-2); font-size: var(--fs-200); white-space: normal; }
 }
-/* A very short screen (an iPhone SE, or any phone whose browser bars take the rest): smaller stars and title, the
-   stars' words left to the stars themselves (the tray keeps its label), and a smaller postcard. Every phone fits the
-   whole card without scrolling (Guy, 2026-10-05). */
+/* A very short screen uses smaller stars, title and place illustration. The stars keep their accessible
+   label, and every action keeps its child touch floor while the visible skin is slimmer. */
 @media (max-height: 600px) {
   .game:not(.game--demo) .complete__card { padding: var(--space-3) var(--space-2) var(--space-2); gap: var(--space-1); }
   .game:not(.game--demo) .complete__title { font-size: var(--fs-300); line-height: var(--lh-300); }
   .game:not(.game--demo) .complete__stars .stars--lg { --star-size: var(--space-5); gap: var(--space-1); }
   .game:not(.game--demo) .complete__stars .stars--lg .stars__slot:nth-child(2) { margin-top: 0; }
   .game:not(.game--demo) .complete__stars-text { display: none; }
-  .game:not(.game--demo) .complete__postcard .postcard__picture { width: min(100%, 320px, max(72px, calc((100dvh - 440px) * 1.3))); }
+  .game:not(.game--demo) .complete__place-emblem { width: var(--touch-kid); height: var(--touch-kid); }
   /* Give each word action its own wide cell, rather than squeezing Stay beside two 64px icons.
      The map stays beside the way forward; replay stays beside Stay. A map primary needs no duplicate icon. */
   .game:not(.game--demo) .complete__actions--stay { display: grid; grid-template-columns: minmax(0, 1fr) var(--touch-kid); align-items: stretch; }
@@ -757,7 +765,8 @@
   .passport__stars { min-width: 0; flex-basis: 100%; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .scene__album-toast, .complete__postcard { animation: none; }
+  .scene__album-toast, .complete__place { animation: none; }
+  .complete__actions .fm-btn::before, .complete__actions .scene__btn::before { transition: none; }
 }
 
 /* Map chrome and a live board are child controls, including the compact hint. */

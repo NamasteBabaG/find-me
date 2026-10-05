@@ -47,6 +47,11 @@ The live search card is separately compact: 48px contained portrait on desktop, 
 
 ## The game
 
+- The ordinary/replay completion popup shows the homepage's destination
+  illustration and the place name beneath it, without adventure prose or a
+  tiny postcard. Actual passport memories keep their pictures. Popup action
+  skins draw at 48px inside 64px child touch boxes; the transparent edges are
+  interactive, with the same press and focus feedback.
 - Target size comes from the pinned placement/age contract. Do not copy the old 4% / 3% / 2.5% heuristic to new boards; recognition and coherent scale must be checked at playable zoom. Child interaction targets use the shared geometry and touch policy.
 - Feedback 300–800ms; world-specific particles; speech bubbles in screen space, Fredoka 20/32.
 - Search HUD: contained face, name/stars stack and hint in one compact row. Map, zoom, reset and sound remain on the separate tool rail. No find-three helper sentence or world-wide counter inside the board.

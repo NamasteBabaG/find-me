@@ -31,19 +31,27 @@ checkout and Claude's checkout were not edited.
    A physical drag hides/inerts collection/HUD/sound, leaves the map available
    and records no find. Captures: `13-mixed-language-tray.jpg`,
    `14-magnifier-mixed.jpg`, `15-pan-mixed.jpg`.
-4. **Completion and passport finale — passed measured layouts; improved Stay.**
+4. **Completion and passport finale — passed measured layouts; simplified popup.**
    At 320x460, Stay previously wrapped into three cramped lines beside two
    icons. The live-game short layout now has Next + map on row one and Stay +
-   replay on row two. Stay is 184x64px and takes two lines; the card spans
-   y=41.75..418.25 and all actions remain within the screen. A map primary
-   spans the first row, without adding a duplicate map icon. No-Stay behavior
-   is retained. Completion was measured at 320x460, 320x568, 360x640, 375x553,
+   replay on row two. Stay takes two lines. A map primary spans the first row,
+   without adding a duplicate map icon. No-Stay behavior
+   is retained. After Guy's follow-up, the popup uses the same destination
+   illustration as the homepage, with just the place name underneath. Its
+   postcard preview and adventure prose are removed; actual passport memories
+   retain their photographs. Visible action skins are 48px high inside real
+   64px touch boxes. The child-size invariant exposed an ambiguous grouped
+   min-height rule; word/button sizing is now explicit and its 21 focused
+   size/navigation tests pass. At 320x460 the updated card spans y=32..428 and Stay has
+   a 184x64px box. A real click in Next's transparent upper edge opens the next
+   board directly, confirming the full touch area is live. Completion was
+   remeasured at 320x460, 320x568, 360x640, 375x553,
    375x667, 390x664, 390x844, 1024x768 and 1440x900: no document overflow and
    all action targets at least 64px. The actual newly earned final passport
    page was checked at those phone sizes plus 1024x768; its three actions
    remain 64px high and in view. Replay's Next opens the next painting directly.
-   Captures: `02-completion-before.jpg`, `16-completion-after.jpg`,
-   `completion-390x844.jpg`, `10-finale-320x460.jpg` and `finale-*.jpg`.
+   Captures: `02-completion-before.jpg`, `18-completion-emblem-mobile.jpg`,
+   `19-completion-emblem-short.jpg`, `10-finale-320x460.jpg` and `finale-*.jpg`.
 5. **Desktop mission — passed.** At 1440px, the long English mission with
    “Test Explorer” is one 24px line in a 394px-wide card, clear of the tools
    and bag. The measured compact-frame rules retain precedence. Capture:
@@ -82,11 +90,13 @@ Its board names/crops intentionally reuse synthetic demonstration data and
 are not evidence of generated-art quality. Source assets, scene contracts,
 all required hides, $5 budget, pricing arithmetic and payment rules are unchanged.
 
-The three additional fixes touch only the family card CSS, ManageGame and its
-tests, and completion markup/CSS. Focused checks: 14 sharing tests, 41
-completion/navigation tests, TypeScript and diff checks passed. Full
-`npm run check -- --maxWorkers=4` passed: 345 files, 4,383 tests, two expected
-failures and 55 skips, exit 0. Build/private-asset audit and
+The additional fixes touch only the family card CSS, ManageGame and its
+tests, and completion markup/CSS/tests. Focused checks include 14 sharing,
+41 completion/navigation, six new HE/EN action cases and preservation of
+actual passport imagery. The final full check passed 346 files and 4,389
+tests, with two expected failures and 55 skips, exit 0. The local build and
+private-asset audit passed, with no private leaks or tracing problems.
+Exact CI/deployment/alias results are recorded in
 exact CI/deployment/alias results are recorded in
 ignored release evidence before publication.
 

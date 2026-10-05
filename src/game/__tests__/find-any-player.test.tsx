@@ -144,6 +144,10 @@ describe("find-any rendering and mobile feedback", () => {
       act(() => vi.advanceTimersByTime(2200)); act(() => vi.advanceTimersByTime(560)); act(() => vi.advanceTimersByTime(160)); act(() => vi.advanceTimersByTime(901));
     }
     const dialog = within(view.getByRole("dialog")), progress = store.getState().progress;
+    const place = dialog.getByText(scene.name).closest(".complete__place")!;
+    expect(place.querySelector(".place-emblem")).not.toBeNull();
+    expect(place.querySelector("img")).toBeNull();
+    expect(view.container.querySelector(".complete__postcard")).toBeNull();
     expect(progress.scenes[scene.slug]!.completed).toBe(true);
     expect(dialog.queryByRole("button", { name: /Stay|נשארים/ })).toBeNull();
     expect(dialog.getByRole("button", { name: getDict(locale).game.complete.next })).toBeTruthy();
@@ -177,6 +181,9 @@ describe("find-any rendering and mobile feedback", () => {
       act(() => vi.advanceTimersByTime(2200)); act(() => vi.advanceTimersByTime(560)); act(() => vi.advanceTimersByTime(160)); act(() => vi.advanceTimersByTime(901));
     }
     const dialog = within(view.getByRole("dialog")), round = store.getState().round;
+    expect(dialog.getByText(scene.name).closest(".complete__place")?.querySelector(".place-emblem")).not.toBeNull();
+    expect(view.container.querySelector(".complete__postcard")).toBeNull();
+    expect(dialog.queryByText(getDict("en").game.album.postcardEarned)).toBeNull();
     expect(dialog.queryByRole("button", { name: /Stay/ })).toBeNull();
     expect(round!.progress.scenes[scene.slug]!.foundTargetIds).toHaveLength(scene.targets.length);
     expect(round!.discoveries[scene.slug]).toHaveLength(board.discoveries.length);

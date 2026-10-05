@@ -17,11 +17,10 @@ import { CelebrationOverlay } from "./CelebrationOverlay";
 import { CloudBank } from "./Clouds";
 import { FLIGHT_MS, StarFlight, type FlightPath } from "./StarFlight";
 import { StarTray } from "./StarTray";
-import { Postcard } from "./Album";
+import { PlaceEmblem } from "@/app/home/PlaceEmblem";
 import { PassportCompletion } from "./PassportCompletion";
 import { Collection, type Arrival } from "./Collection";
 import { discoveryHintRect, nextDiscoveryHint, type DiscoveryHintLevel } from "@/domain/adventure/discovery-guidance";
-import { adventureAlbum } from "@/domain/adventure/progress";
 import { isPassportBoard } from "@/domain/passport/passport";
 import type { PlayStore } from "../store/play-store";
 import { useGameText } from "../i18n";
@@ -664,15 +663,6 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, remaining, onS
   const allDone = next === null;
   const primaryReturnsToMap = allDone && Boolean(store.round?.active);
   const hasStay = Boolean(onStay && remaining > 0);
-  // Every hiding spot found: the postcard, from the pixels of the find itself.
-  const postcard = (() => {
-    if (!store.album || !store.config.adventure) return null;
-    try {
-      return adventureAlbum(store.album).boards.find((b) => b.boardSlug === scene.slug)?.postcard ?? null;
-    } catch {
-      return null;
-    }
-  })();
   // The board's own stars, all of them, one after another. What the world
   // has collected is for the map and the bag, not for this moment (Guy).
   const stars = scene.targets.length;
@@ -694,12 +684,10 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, remaining, onS
             <p className="complete__stars-text">{tf(g.complete.goldStars, { n: stars })}</p>
           </div>
         )}
-        {postcard ? (
-          <div className="complete__postcard">
-            <Postcard scene={scene} postcard={postcard} />
-            {!store.replay && !store.demo ? <p className="complete__postcard-text">{g.album.postcardEarned} {tf(g.album.postcardLead, { place: scene.name })}</p> : null}
-          </div>
-        ) : null}
+        <div className="complete__place">
+          <div className="complete__place-emblem" aria-hidden="true"><PlaceEmblem place={scene.slug} /></div>
+          <p className="complete__place-name">{scene.name}</p>
+        </div>
         {store.demo || store.replay ? null : (
         <div className="complete__loot">
           <span className="complete__icon" aria-hidden>
