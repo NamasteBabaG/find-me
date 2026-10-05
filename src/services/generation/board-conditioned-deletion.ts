@@ -4,6 +4,7 @@ import type { Actor } from "../audit.service";
 import { env } from "../../lib/env";
 import { newId } from "../../lib/ids";
 import { purgeAdminAlertNotifications } from "../admin-alert-deletion";
+import { deleteAdventureAlbum } from "../adventure-album.service";
 import { boardConditionedCheckpointKeys } from "../../infra/db/board-conditioned-checkpoints";
 import { BOARD_CONDITIONED_QA_STYLE, BoardConditionedQaJobError, boardConditionedQaPrivateInventory, boardQaReferenceLineageKey } from "./board-conditioned-qa-job";
 
@@ -41,6 +42,7 @@ export async function deleteBoardConditionedQaGame(c: Container, gameId: string,
       data: { status: "DONE", currentStep: null, stepsJson: "{}", lastError: null } });
     demand(stopped.count === 1, "conflict", "Deletion lost its exact job fence");
     await purgeAdminAlertNotifications(tx, gameId);
+    await deleteAdventureAlbum(tx, gameId, c.databaseUrl);
     const inventory = await boardConditionedQaPrivateInventory(tx, job.stepsJson, gameId), record = inventory.record;
     demand(record.ownerId === game.ownerId && record.childProfileId === game.childProfileId && record.worldId === `${gameId}:board-conditioned`
       && game.scenes.length === record.boards.length && game.scenes.every((scene, i) => scene.sceneSlug === record.boards[i]!.boardId && scene.sceneVersion === record.boards[i]!.sceneVersion && scene.orderIndex === i),

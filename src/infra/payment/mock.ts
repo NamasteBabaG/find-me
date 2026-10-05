@@ -10,6 +10,7 @@ import type { CheckoutRequest, CheckoutSession, PaymentProvider, WebhookParseRes
  */
 export class MockPaymentProvider implements PaymentProvider {
   readonly id = "mock" as const;
+  readonly supportsCheckoutIdempotency = true;
   constructor(
     private readonly appUrl: string,
     private readonly secret: string,
@@ -23,6 +24,11 @@ export class MockPaymentProvider implements PaymentProvider {
       cancel: req.cancelUrl,
     });
     return { checkoutUrl: `${this.appUrl}/checkout/mock?${params.toString()}`, providerPaymentId: `mockpay_${req.orderId}` };
+  }
+
+  /** Mock payment dispatch checks the durable close receipt under its game fence. */
+  async closeCheckout(req: import("./types").CloseCheckoutRequest): Promise<import("./types").CloseCheckoutResult> {
+    return { state: "closed_unpaid", providerCloseId: `mockclose_${req.orderId}` };
   }
 
   /** Used by the mock checkout page to sign its webhook body. */

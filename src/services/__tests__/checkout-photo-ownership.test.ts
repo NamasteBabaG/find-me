@@ -8,7 +8,7 @@ import { applyTestSchema } from "../../lib/test-schema";
 import { DbStorage } from "../../infra/storage/db";
 import { MockPaymentProvider } from "../../infra/payment/mock";
 import type { Container } from "../container";
-import { createDraft, setChildName, attachPhoto, selectPackage } from "../create-flow.service";
+import { createDraft, setChildName, attachPhoto, selectPackage, selectWorlds } from "../create-flow.service";
 import { startCheckout, handlePaymentWebhook } from "../order.service";
 import * as auth from "../auth.service";
 import { deleteGame } from "../game.service";
@@ -149,5 +149,86 @@ describe("checkout adopts only its proven draft's private child photo", () => {
     try { expect(await startCheckout(f.c, f.input)).toMatchObject({ ok: false, code: "DRAFT_LOCKED" }); }
     finally { race.mockRestore(); }
     await unchangedOwners(f); expect((await db.game.findUniqueOrThrow({ where: { id: f.game.id } })).status).toBe("CANCELLED");
+  });
+  it("the first anonymous purchase durably locks the draft before provider I/O, so a late photo edit cannot strand paid delivery", async () => {
+    const f = await fixture(), create = MockPaymentProvider.prototype.createCheckout.bind(f.payment);
+    let release!: () => void, started!: () => void;
+    const blocked = new Promise<void>(resolve => { release = resolve; }), arrived = new Promise<void>(resolve => { started = resolve; });
+    f.pay.mockImplementationOnce(async request => { started(); await blocked; return create(request); });
+    const paying = startCheckout(f.c, f.input);
+    await arrived;
+    try {
+      const order = await db.order.findFirstOrThrow({ where: { gameId: f.game.id } });
+      expect(order).toMatchObject({ paymentStatus: "PENDING", checkoutUrl: null, checkoutKey: `world-checkout:${f.game.id}` });
+      expect(order.checkoutClaimUntil!.getTime()).toBeGreaterThan(Date.now());
+      expect((await db.game.findUniqueOrThrow({ where: { id: f.game.id } })).status).toBe("CHECKOUT_PENDING");
+      expect(await attachPhoto(f.c, f.game.id, { buffer: photo, mimeType: "image/png", crop: null })).toMatchObject({ ok: false, code: "CHECKOUT_IN_PROGRESS" });
+      expect(await setChildName(f.c, f.game.id, "Changed synthetic", 5)).toMatchObject({ ok: false, code: "CHECKOUT_IN_PROGRESS" });
+      expect(await selectPackage(f.c, f.game.id, "ONE_WORLD")).toMatchObject({ ok: false, code: "CHECKOUT_IN_PROGRESS" });
+      expect(await selectWorlds(f.c, f.game.id, ["kingdom"])).toMatchObject({ ok: false, code: "CHECKOUT_IN_PROGRESS" });
+      expect((await db.childProfile.findUniqueOrThrow({ where: { id: f.game.childProfileId! } })).originalPhotoAssetId).toBe(f.asset.id);
+      expect(await db.generationJob.count({ where: { gameId: f.game.id } })).toBe(0);
+    } finally { release(); }
+    expect(await paying).toMatchObject({ ok: true });
+    const order = await db.order.findFirstOrThrow({ where: { gameId: f.game.id } });
+    const body = JSON.stringify({ eventId: `${order.id}-paid`, orderId: order.id, kind: "PAID", amountAgorot: order.amountAgorot, currency: order.currency });
+    expect((await handlePaymentWebhook(f.c, body, { "x-mock-signature": f.payment.sign(body) })).status).toBe(200);
+    expect((await db.game.findUniqueOrThrow({ where: { id: f.game.id } })).status).toBe("PAID");
+  });
+  it("a first-purchase lost provider acknowledgement never opens another order or unlocks photo edits", async () => {
+    const f = await fixture(), create = MockPaymentProvider.prototype.createCheckout.bind(f.payment);
+    f.pay.mockImplementationOnce(async request => { await create(request); throw Error("accepted response lost"); });
+    expect(await startCheckout(f.c, f.input)).toMatchObject({ ok: false, code: "CHECKOUT_IN_PROGRESS" });
+    const order = await db.order.findFirstOrThrow({ where: { gameId: f.game.id } });
+    expect(await attachPhoto(f.c, f.game.id, { buffer: photo, mimeType: "image/png", crop: null })).toMatchObject({ ok: false, code: "CHECKOUT_IN_PROGRESS" });
+    expect(await startCheckout(f.c, f.input)).toMatchObject({ ok: false, code: "CHECKOUT_IN_PROGRESS" });
+    await db.order.update({ where: { id: order.id }, data: { checkoutClaimUntil: new Date(0) } });
+    expect(await startCheckout(f.c, f.input)).toMatchObject({ ok: true });
+    expect(f.pay.mock.calls[0]).toEqual(f.pay.mock.calls[1]); expect(f.pay).toHaveBeenCalledTimes(2);
+    expect(await db.order.count({ where: { gameId: f.game.id } })).toBe(1);
+  });
+  it("a first-purchase adapter without idempotency support is not dispatched", async () => {
+    const f = await fixture(), payment = { id: "mock" as const, createCheckout: f.pay };
+    expect(await startCheckout({ ...f.c, payment } as unknown as Container, f.input)).toMatchObject({ ok: false, code: "SERVICE_UNAVAILABLE" });
+    expect(f.pay).not.toHaveBeenCalled(); expect(await db.order.count({ where: { gameId: f.game.id } })).toBe(0);
+  });
+
+  it("an anonymous ordinary checkout resumes the exact declined hosted session and a later verified payment queues it once", async () => {
+    const f = await fixture(), opened = await startCheckout(f.c, f.input);
+    expect(opened.ok).toBe(true); if (!opened.ok) throw Error("Synthetic checkout did not open");
+    const order = await db.order.findFirstOrThrow({ where: { gameId: f.game.id } });
+    const declined = JSON.stringify({ eventId: `${order.id}-declined`, orderId: order.id, kind: "FAILED", amountAgorot: order.amountAgorot, currency: order.currency });
+    expect((await handlePaymentWebhook(f.c, declined, { "x-mock-signature": f.payment.sign(declined) })).status).toBe(200);
+    const failed = await db.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect((await db.game.findUniqueOrThrow({ where: { id: f.game.id } })).status).toBe("PAYMENT_FAILED");
+    expect(await startCheckout(f.c, f.input)).toEqual(opened);
+    expect(f.pay).toHaveBeenCalledTimes(1);
+    expect(await db.order.findUniqueOrThrow({ where: { id: order.id } })).toEqual(failed);
+    expect(await db.order.count({ where: { gameId: f.game.id } })).toBe(1);
+    expect(await attachPhoto(f.c, f.game.id, { buffer: photo, mimeType: "image/png", crop: null })).toMatchObject({ ok: false, code: "CHECKOUT_IN_PROGRESS" });
+    expect(await db.generationJob.count({ where: { gameId: f.game.id } })).toBe(0);
+    const paid = JSON.stringify({ eventId: `${order.id}-paid-after-retry`, orderId: order.id, kind: "PAID", amountAgorot: order.amountAgorot, currency: order.currency });
+    expect((await handlePaymentWebhook(f.c, paid, { "x-mock-signature": f.payment.sign(paid) })).status).toBe(200);
+    expect((await handlePaymentWebhook(f.c, paid, { "x-mock-signature": f.payment.sign(paid) })).status).toBe(200);
+    expect((await db.game.findUniqueOrThrow({ where: { id: f.game.id } })).status).toBe("PAID");
+    expect((await db.order.findUniqueOrThrow({ where: { id: order.id } })).paymentStatus).toBe("PAID");
+    expect((f.c.analytics.track as ReturnType<typeof vi.fn>).mock.calls.filter(([name]) => name === "payment_completed")).toHaveLength(1);
+  });
+
+  it.each(["no saved URL", "changed currency", "unknown closure"] as const)("a declined ordinary session remains immutable and blocked with %s", async condition => {
+    const f = await fixture(); expect(await startCheckout(f.c, f.input)).toMatchObject({ ok: true });
+    const order = await db.order.findFirstOrThrow({ where: { gameId: f.game.id } });
+    const declined = JSON.stringify({ eventId: `${order.id}-declined-${condition}`, orderId: order.id, kind: "FAILED", amountAgorot: order.amountAgorot, currency: order.currency });
+    expect((await handlePaymentWebhook(f.c, declined, { "x-mock-signature": f.payment.sign(declined) })).status).toBe(200);
+    if (condition === "no saved URL") await db.order.update({ where: { id: order.id }, data: { checkoutUrl: null, checkoutClaimUntil: new Date(0) } });
+    if (condition === "unknown closure") {
+      const { checkoutCloseReceiptId } = await import("../checkout-close.service");
+      await db.auditLog.create({ data: { id: checkoutCloseReceiptId(order.id), actorType: "USER", actorId: order.userId, action: "checkout:close", entityType: "Order", entityId: order.id,
+        metaJson: JSON.stringify({ version: "checkout-close/v1", state: "unknown", leaseUntil: 0, orderId: order.id }) } });
+    }
+    const before = await db.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(await startCheckout(f.c, { ...f.input, currency: condition === "changed currency" ? "USD" : "ILS" })).toMatchObject({ ok: false, code: "CHECKOUT_IN_PROGRESS" });
+    expect(f.pay).toHaveBeenCalledTimes(1); expect(await db.order.findUniqueOrThrow({ where: { id: order.id } })).toEqual(before);
+    expect(await db.order.count({ where: { gameId: f.game.id } })).toBe(1);
   });
 });

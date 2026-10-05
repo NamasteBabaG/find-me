@@ -12,6 +12,8 @@ import { readPassportPreferences, keepPassportPreference } from "../engine/passp
 import { PassportMemory } from "./PassportMemory";
 import { AlbumCrop } from "./Album";
 import { warmPassportBook } from "@/ui/passport/image-preload";
+import { FriendDiscoveries } from "@/ui/friends/FriendDiscoveries";
+import { guestWorldEligible } from "@/domain/guest-sharing";
 
 type RemoteBook = { book: PassportView; childId: string };
 
@@ -49,7 +51,8 @@ export function AdventurePassport({ store }: { store: PlayStore }) {
   const owner = store.albumMode === "owner";
   const [remote, setRemote] = useState<RemoteBook | null>(() => owner ? remoteBooks.get(store.config.gameId)?.value ?? null : null);
   const [failed, setFailed] = useState(false), [attempt, setAttempt] = useState(0);
-  const [preferences, setPreferences] = useState(() => store.demo ? {} : readPassportPreferences(store.config.gameId));
+  const preferenceKey = store.storageScope ?? store.config.gameId;
+  const [preferences, setPreferences] = useState(() => store.demo ? {} : readPassportPreferences(preferenceKey));
   const dict = getDict(store.config.locale), copy = dict.travelPassport;
   useEffect(() => {
     if (!owner) return;
@@ -69,8 +72,9 @@ export function AdventurePassport({ store }: { store: PlayStore }) {
     return true;
   };
   return <I18nProvider locale={store.config.locale} dict={dict}><div className="adventure-passport"><button type="button" className="fm-btn fm-btn--ghost" onClick={() => store.goToMap()}>{dict.game.complete.map}</button>
-    {owner && remote ? <OwnerPassport key={remote.childId} initial={remote.book} childId={remote.childId} onPlayHere={playHere} /> : book ? <PassportBook book={book} cursorKey={store.config.gameId} onPlay={id => store.openScene(id)} onPhotoSelect={async (board, id) => {
-      if (!store.demo && !keepPassportPreference(store.config.gameId, board, { photoTargetId: id })) throw new Error("storage-unavailable");
+    {owner && store.worldSlug && guestWorldEligible(store.config, store.worldSlug) ? <FriendDiscoveries gameId={store.config.gameId} worldSlug={store.worldSlug} /> : null}
+    {owner && remote ? <OwnerPassport key={remote.childId} initial={remote.book} childId={remote.childId} onPlayHere={playHere} /> : book ? <PassportBook book={book} cursorKey={preferenceKey} onPlay={id => store.openScene(id)} onPhotoSelect={async (board, id) => {
+      if (!store.demo && !keepPassportPreference(preferenceKey, board, { photoTargetId: id })) throw new Error("storage-unavailable");
       setPreferences(p => ({ ...p, [board]: { ...p[board] ?? { stampSeen: false, seenDiscoveries: [] }, photoTargetId: id } }));
     }} renderImage={(src, label) => {
       if (!src.includes("|")) return <img src={src} alt={label} />;

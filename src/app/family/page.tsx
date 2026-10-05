@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
 import { requireQaAccess } from "@/lib/server/qa-access";
+import { safeLocalPath } from "@/lib/safe-redirect";
 import { env } from "@/lib/env";
 import { getI18n } from "@/i18n/server";
 import { tf, type Dictionary } from "@/i18n";
@@ -17,9 +19,13 @@ import "./family.css";
 
 export const metadata = { robots: { index: false, follow: false } };
 
-export default async function FamilyPage({ searchParams }: { searchParams: Promise<{ error?: string; deleted?: string }> }) {
+export default async function FamilyPage({ searchParams }: { searchParams: Promise<{ error?: string; deleted?: string; next?: string | string[] }> }) {
   await requireQaAccess();
   const [user, { t }, params] = await Promise.all([currentUser(), getI18n(), searchParams]);
+  const next = safeLocalPath(typeof params.next === "string" ? params.next : undefined, "/family");
+  // Login keeps the original child/world checkout context. A return to this
+  // index itself stays here, including query/hash variants, without a loop.
+  if (user && next.split(/[?#]/)[0]!.replace(/\/+$/, "") !== "/family") redirect(next);
   const c = getContainer();
   const [children, drafts] = user ? await Promise.all([familyAdventures(c, user.id), familyDrafts(c.db, user.id)]) : [[], []];
   const admin = isAdminEmail(user?.email);
@@ -33,7 +39,7 @@ export default async function FamilyPage({ searchParams }: { searchParams: Promi
       </header>
       {params.error === "expired" ? <Notice kind="warn">{t.library.expired}</Notice> : null}
       {params.deleted === "1" ? <Notice kind="success">{t.library.deleted}</Notice> : null}
-      {!user ? <LoginForm devOutbox={c.email.id === "console"} /> : <>
+      {!user ? <LoginForm devOutbox={c.email.id === "console"} next={next} /> : <>
         {children.length === 0 ? <section className="family-empty">
           <h2>{f.empty}</h2><p>{f.emptyLead}</p><LinkButton href="/create?child=new">{t.library.createFirst}</LinkButton>
         </section> : <ul className="family-shelf">

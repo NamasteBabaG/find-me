@@ -5,13 +5,13 @@ import { gameWorlds, scenesOfWorld, worldOfScene, type GameConfig, type PlayWorl
 import { createMissionState, missionReducer, sceneSummary, type MissionAction, type MissionCopy, type MissionState } from "@/domain/game/mission";
 import { planScenePlay } from "@/domain/game/replay";
 import { adoptFinds, collectibles, completedScenes, emptyProgress, recordSceneCompleted, recordFindAny, sceneCanAdvance, sceneFoundIds, sceneIsComplete, sceneIsPlayable, sceneProgress, type GameProgress } from "@/domain/game/progress";
-import { loadProgress, saveProgress } from "../engine/progress-storage";
+import { loadProgress as loadStoredProgress, saveProgress as saveStoredProgress } from "../engine/progress-storage";
 import { gameRoute, newRound, roundCanOpen, searchProgress, type PlayRound } from "@/domain/game/round";
-import { loadRound, saveRound } from "../engine/round-storage";
+import { loadRound as loadStoredRound, saveRound as saveStoredRound } from "../engine/round-storage";
 import type { AdventureBook } from "@/domain/adventure/book-schema";
 import { AdventureError } from "@/domain/adventure/compose";
 import { emptyAdventureProgress, readAdventureProgress, recordAdventureEvent, type AdventureEvent, type AdventureProgress } from "@/domain/adventure/progress";
-import { loadAlbum, saveAlbum, type AlbumStatus } from "../engine/album-storage";
+import { loadAlbum as loadStoredAlbum, saveAlbum as saveStoredAlbum, type AlbumStatus } from "../engine/album-storage";
 import { AlbumSync, type AlbumSyncState } from "../engine/album-sync";
 import { Telemetry } from "../engine/telemetry";
 import { sounds } from "../audio/sounds";
@@ -29,6 +29,9 @@ export interface ReducerCopy {
 
 export interface PlayStore {
   config: GameConfig;
+  /** An independent friend keeps every browser cache apart from the family and other participants. */
+  storageScope?: string;
+  boardReady(slug: string): void;
   progress: GameProgress;
   screen: Screen;
   sceneSlug: string | null;
@@ -109,6 +112,9 @@ function missionCopy(scene: SceneConfig, copy: ReducerCopy): MissionCopy {
 }
 
 export interface PlayStoreOptions {
+  storageScope?: string;
+  friendParticipantId?: string;
+  onBoardReady?: (slug: string) => void;
   playToken?: string;
   demo?: boolean;
   skipGift?: boolean;
@@ -135,22 +141,30 @@ export interface PlayStoreOptions {
 export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
   const demo = Boolean(opts.demo);
   const persist = !demo && !opts.readOnlyPreview;
-  const telemetry = new Telemetry(config.gameId, persist, opts.playToken);
+  const telemetry = new Telemetry(config.gameId, persist && !opts.friendParticipantId, opts.playToken);
+  const loadProgress = (gameId: string) => loadStoredProgress(gameId, opts.storageScope);
+  const saveProgress = (progress: GameProgress) => saveStoredProgress(progress, opts.storageScope);
+  const loadRound = (game: GameConfig) => loadStoredRound(game, opts.storageScope);
+  const saveRound = (round: PlayRound) => saveStoredRound(round, opts.storageScope);
+  const loadAlbum = (gameId: string, book: AdventureBook) => loadStoredAlbum(gameId, book, opts.storageScope);
+  const saveAlbum = (album: AdventureProgress) => saveStoredAlbum(album, opts.storageScope);
   // Demo plays the same collection rules in memory, never in the account or storage.
   const book = persist || demo ? config.adventure ?? null : null;
   // The account's album as the page read it (owner only). Invalid or foreign content is simply not used.
   const seededAlbum = (() => {
-    if (!opts.albumOwner || !opts.initialAlbum || !book || !persist) return null;
+    if ((!opts.albumOwner && !opts.friendParticipantId) || !opts.initialAlbum || !book || !persist) return null;
     try { return readAdventureProgress({ ...emptyAdventureProgress(config.gameId, book), finds: opts.initialAlbum.finds, discoveries: opts.initialAlbum.discoveries }, config.gameId, book); }
     catch { return null; }
   })();
+  // Friends restore server finds even when a historical find-any game has no passport book.
+  const friendFinds = persist && opts.friendParticipantId ? opts.initialAlbum?.finds ?? [] : [];
   // Never touch localStorage here: the store is created during render, on the
   // server too. Saved progress arrives via hydrate() after mount. The owner's
   // account album is the one exception: it came with the page, so the server and
   // the browser draw the same first map (a fixed date keeps the two identical;
   // hydrate() replaces this state before anything is saved).
   const initialProgress: GameProgress = demo ? { v: 1, gameId: config.gameId, revealed: true, scenes: {} }
-    : seededAlbum ? adoptFinds(emptyProgress(config.gameId), config, seededAlbum.finds, new Date(0)).progress : emptyProgress(config.gameId);
+    : seededAlbum || friendFinds.length ? adoptFinds(emptyProgress(config.gameId), config, seededAlbum?.finds ?? friendFinds, new Date(0)).progress : emptyProgress(config.gameId);
   const demoScene = demo ? config.scenes[0]?.slug : undefined;
   // A passport deep link may need account progress before its board unlocks.
   // This is a one-shot intent, cancelled as soon as the player navigates.
@@ -201,6 +215,8 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
 
   const store = create<PlayStore>((set, get) => ({
     config,
+    storageScope: opts.storageScope,
+    boardReady(slug) { if (get().sceneSlug === slug) opts.onBoardReady?.(slug); },
     progress: initialProgress,
     screen: demo || opts.skipGift ? "map" : "gift",
     worldSlug: gameWorlds(config)[0]?.slug ?? "",
@@ -236,7 +252,9 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
 
     hydrate() {
       if (!persist) return;
-      const progress = loadProgress(config.gameId);
+      const localProgress = loadProgress(config.gameId);
+      const progress = opts.friendParticipantId ? adoptFinds(localProgress, config, friendFinds).progress : localProgress;
+      if (opts.friendParticipantId) saveProgress(progress);
       const round = loadRound(config);
       const { screen } = get();
       // Back to the world the player was in, not the first one. A three-world
@@ -264,6 +282,16 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       unreadable = !loaded.ok;
       if (loaded.ok) set({ album: loaded.progress, albumState: albumStatus() });
       else set({ album: null, albumState: albumStatus() });
+      if (opts.friendParticipantId && seededAlbum) {
+        let merged = loaded.ok ? loaded.progress : seededAlbum;
+        for (const event of missingEvents(seededAlbum, merged)) merged = recordAdventureEvent(merged, config.gameId, book, event).progress;
+        kept = saveAlbum(merged);
+        const adopted = adoptFinds(get().progress, config, merged.finds);
+        saveProgress(adopted.progress);
+        set({ album: merged, progress: adopted.progress, albumState: albumStatus() });
+        openRequested();
+        requestedScene = undefined;
+      }
       if (opts.albumOwner) {
         albumSync?.stop();
         // The account's copy is the truth, but nothing this browser found is

@@ -162,6 +162,18 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
   const [turn, setTurn] = useState(false);
   const [turnSwapped, setTurnSwapped] = useState(false);
   const revealed = useScrollReveal(stageRef, store.demo, viewportReady && assetsReady && visibleAssetsReady);
+  // A visit means the board is decoded, visible and playable; prefetch/navigation are not visits.
+  const visitReported = useRef(false);
+  useEffect(() => {
+    const report = () => {
+      if (visitReported.current || !revealed || loadFailed || turn || document.hidden
+        || (mission.phase !== "searching" && mission.phase !== "complete")) return;
+      visitReported.current = true; store.boardReady?.(scene.slug);
+    };
+    const timer = setTimeout(report, CURTAIN_MS);
+    document.addEventListener("visibilitychange", report);
+    return () => { clearTimeout(timer); document.removeEventListener("visibilitychange", report); };
+  }, [revealed, loadFailed, turn, mission.phase, scene.slug, store]);
   // The found choreography ends with the swap, and the swap must not depend on
   // the feedback that started it: it used to be scheduled inside the feedback
   // effect, and the moment FOUND_DONE cleared the feedback that effect's

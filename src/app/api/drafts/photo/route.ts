@@ -19,10 +19,12 @@ export async function POST(req: Request) {
   if (!limited.ok) return tooManyRequests(limited);
   const c = getContainer();
   const token = await draftTokenFromCookie();
-  if (!token) return NextResponse.json({ ok: false, code: "DRAFT_NOT_FOUND", reason: "הטיוטה לא נמצאה. התחילו מחדש." }, { status: 400 });
-  const game = await c.db.game.findUnique({ where: { draftToken: token } });
+  const gameId = new URL(req.url).searchParams.get("game");
+  if (!token && !gameId) return NextResponse.json({ ok: false, code: "DRAFT_NOT_FOUND", reason: "הטיוטה לא נמצאה. התחילו מחדש." }, { status: 400 });
+  const game = await c.db.game.findUnique({ where: gameId ? { id: gameId } : { draftToken: token! } });
   const user = await currentUser();
-  if (!game || !draftBelongsTo(game, token, user?.id ?? null)) return NextResponse.json({ ok: false, code: "DRAFT_NOT_FOUND", reason: "הטיוטה לא נמצאה." }, { status: 404 });
+  if (!game || game.deletedAt || !draftBelongsTo(game, token, user?.id ?? null)
+    || gameId && (!user || game.ownerId !== user.id || !await c.db.childWorldPurchase.findFirst({ where: { activeGameId: game.id, ownerId: user.id, familyChildId: game.familyChildId ?? "" } }))) return NextResponse.json({ ok: false, code: "DRAFT_NOT_FOUND", reason: "הטיוטה לא נמצאה." }, { status: 404 });
 
   // The browser downscales before sending, so anything this big is either a
   // client that could not re-encode or someone poking the endpoint. Either way
@@ -72,12 +74,15 @@ export async function GET(req: Request) {
   if (denied) return denied;
   const c = getContainer();
   const token = await draftTokenFromCookie();
-  if (!token) return new Response("not found", { status: 404 });
-  const game = await c.db.game.findUnique({ where: { draftToken: token }, include: { childProfile: true } });
+  const gameId = new URL(req.url).searchParams.get("game");
+  if (!token && !gameId) return new Response("not found", { status: 404 });
+  const game = await c.db.game.findUnique({ where: gameId ? { id: gameId } : { draftToken: token! }, include: { childProfile: true } });
+  const user = gameId ? await currentUser() : null;
+  if (gameId && (!user || game?.ownerId !== user.id || !await c.db.childWorldPurchase.findFirst({ where: { activeGameId: gameId, ownerId: user.id, familyChildId: game.familyChildId ?? "" } }))) return new Response("not found", { status: 404 });
   const photoId = game?.childProfile?.originalPhotoAssetId;
-  if (!game || !photoId) return new Response("not found", { status: 404 });
+  if (!game || game.deletedAt || game.childProfile?.deletedAt || !photoId) return new Response("not found", { status: 404 });
   const asset = await c.db.asset.findUnique({ where: { id: photoId } });
-  if (!asset || asset.status === "DELETED") return new Response("not found", { status: 404 });
+  if (!asset || asset.status !== "READY" || asset.deletedAt || asset.ownerId !== game.ownerId || asset.visibility !== "PRIVATE" || asset.type !== "ORIGINAL_PHOTO") return new Response("not found", { status: 404 });
   const buffer = await c.storage.get(asset.storagePath);
   return new Response(new Uint8Array(buffer), { headers: { "Content-Type": asset.mimeType, "Cache-Control": "private, no-store" } });
 }

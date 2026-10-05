@@ -11,6 +11,7 @@ interface Props {
   cancelLabel: string;
   /** The confirming button's look: the destructive one for deletion. */
   danger?: boolean;
+  pending?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -20,7 +21,7 @@ interface Props {
  * words and look: a native <dialog> (focus trap, Escape, backdrop) dressed as
  * `.fm-dialog`, instead of the browser's confirm() box.
  */
-export function ConfirmDialog({ open, title, children, confirmLabel, cancelLabel, danger = false, onConfirm, onCancel }: Props) {
+export function ConfirmDialog({ open, title, children, confirmLabel, cancelLabel, danger = false, pending = false, onConfirm, onCancel }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   useEffect(() => {
@@ -47,7 +48,7 @@ export function ConfirmDialog({ open, title, children, confirmLabel, cancelLabel
         {children ? <div className="fm-dialog__text">{children}</div> : null}
         <div className="fm-row fm-dialog__actions">
           <Button type="button" variant="ghost" onClick={onCancel}>{cancelLabel}</Button>
-          <Button type="button" variant={danger ? "danger" : "primary"} onClick={onConfirm} autoFocus>{confirmLabel}</Button>
+          <Button type="button" variant={danger ? "danger" : "primary"} onClick={onConfirm} autoFocus loading={pending}>{confirmLabel}</Button>
         </div>
       </div>
     </dialog>

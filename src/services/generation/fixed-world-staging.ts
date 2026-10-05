@@ -3,6 +3,7 @@ import sharp from "sharp";
 import type { Container } from "../container";
 import type { Actor } from "../audit.service";
 import { purgeAdminAlertNotifications } from "../admin-alert-deletion";
+import { deleteAdventureAlbum } from "../adventure-album.service";
 import { signedAssetUrl } from "../asset.service";
 import { env } from "../../lib/env";
 import { newId } from "../../lib/ids";
@@ -326,6 +327,7 @@ export async function deleteFixedWorldGame(c: Container, gameId: string, actor: 
       requireThat(claimJob.count === 1, "conflict", "Deletion job fence was lost");
     }
     await purgeAdminAlertNotifications(tx, gameId);
+    await deleteAdventureAlbum(tx, gameId, c.databaseUrl);
     const ids = new Set(record.assets.map(asset => asset.id));
     for (const scene of game.scenes) for (const target of scene.targets) {
       requireThat(!target.spriteAssetId || ids.has(target.spriteAssetId), "integrity", "Target deletion pointer is outside this game's capsule");

@@ -21,6 +21,7 @@ export type FlowErrorCode =
   | "PREVIOUS_STEPS"
   | "INVALID_EMAIL"
   | "SCENES_INCOMPLETE"
+  | "CHECKOUT_IN_PROGRESS"
   | "TOO_LARGE"
   | "BAD_TYPE"
   | "TOO_SMALL"

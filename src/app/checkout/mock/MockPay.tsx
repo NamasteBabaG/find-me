@@ -9,13 +9,13 @@ import { useI18n } from "@/i18n/client";
  * Fake card form for testing. "Pay" and "Simulate failure" both POST to the
  * dev helper, which signs a webhook and feeds it through the real handler.
  */
-export function MockPay({ orderId, successUrl, cancelUrl, amountLabel }: { orderId: string; successUrl: string; cancelUrl: string; amountLabel: string }) {
+export function MockPay({ orderId, successUrl, cancelUrl, declinedUrl, amountLabel }: { orderId: string; successUrl: string; cancelUrl: string; declinedUrl: string; amountLabel: string }) {
   const { t, tf } = useI18n();
   const m = t.create.mock;
-  const [busy, setBusy] = useState<"PAID" | "FAILED" | null>(null);
+  const [busy, setBusy] = useState<"PAID" | "FAILED" | "CANCELLED" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const pay = async (kind: "PAID" | "FAILED") => {
+  const pay = async (kind: "PAID" | "FAILED" | "CANCELLED") => {
     setBusy(kind);
     setError(null);
     try {
@@ -26,9 +26,7 @@ export function MockPay({ orderId, successUrl, cancelUrl, amountLabel }: { order
         setBusy(null);
         return;
       }
-      // A declined card and a closed window are different stories for the
-      // parent, so they go back to checkout under different flags.
-      window.location.href = kind === "PAID" ? successUrl : cancelUrl.replace("cancelled=1", "declined=1");
+      window.location.href = kind === "PAID" ? successUrl : kind === "FAILED" ? declinedUrl : cancelUrl;
     } catch {
       setError(tf(m.rejected, { body: "network" }));
       setBusy(null);
@@ -78,9 +76,9 @@ export function MockPay({ orderId, successUrl, cancelUrl, amountLabel }: { order
         <Button type="button" variant="danger" size="sm" onClick={() => pay("FAILED")} loading={busy === "FAILED"} disabled={busy !== null}>
           {m.fail}
         </Button>
-        <a href={cancelUrl} className="fm-small">
+        <Button type="button" variant="ghost" size="sm" onClick={() => pay("CANCELLED")} loading={busy === "CANCELLED"} disabled={busy !== null}>
           {m.cancel}
-        </a>
+        </Button>
         <p className="fm-small fm-center">{m.note}</p>
       </div>
     </form>

@@ -1,9 +1,14 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getContainer } from "@/services/container";
 import { getI18n } from "@/i18n/server";
 import { formatMoney, pick, tf } from "@/i18n";
 import { PACKAGES, isPackageTier } from "@/domain/package";
+import { currentUser, draftTokenFromCookie, isAdminEmail } from "@/lib/server/session";
+import { requireQaAccess } from "@/lib/server/qa-access";
+import { familySignInHref } from "@/lib/safe-redirect";
 import { MockPay } from "./MockPay";
+
+export const dynamic = "force-dynamic";
 
 export async function generateMetadata() {
   const { t } = await getI18n();
@@ -12,11 +17,29 @@ export async function generateMetadata() {
 
 /** Stand-in for the PSP's hosted checkout page. Dev only. */
 export default async function MockCheckoutPage({ searchParams }: { searchParams: Promise<{ orderId?: string; success?: string; cancel?: string }> }) {
+  await requireQaAccess();
   const c = getContainer();
   if (c.payment.id !== "mock") notFound();
-  const [params, { t, locale }] = await Promise.all([searchParams, getI18n()]);
-  const order = params.orderId ? await c.db.order.findUnique({ where: { id: params.orderId }, include: { game: { include: { childProfile: true } } } }) : null;
-  if (!order) notFound();
+  const [params, user, draftToken, { t, locale }] = await Promise.all([searchParams, currentUser(), draftTokenFromCookie(), getI18n()]);
+  const orderId = typeof params.orderId === "string" ? params.orderId : "";
+  if (!/^[A-Za-z0-9_-]{1,160}$/.test(orderId)) notFound();
+  const order = await c.db.order.findUnique({ where: { id: orderId }, include: { game: { include: { childProfile: true } } } });
+  if (!order || order.provider !== "mock") notFound();
+  // Match the mock payment API: the creator's draft proof also supports the
+  // first anonymous checkout, which has not created an account session yet.
+  const accountAuthority = Boolean(user && (order.userId === user.id || order.game.ownerId === user.id || isAdminEmail(user.email)));
+  const draftAuthority = Boolean(draftToken && order.game.draftToken && draftToken === order.game.draftToken);
+  const ownsOrder = accountAuthority || draftAuthority;
+  if (!ownsOrder) {
+    if (!user) redirect(familySignInHref(`/checkout/mock?${new URLSearchParams({ orderId: order.id })}`));
+    notFound();
+  }
+  // Query-string destinations are untrusted. An authenticated owner can use
+  // financial recovery; a creator with only draft proof returns to that draft.
+  const successUrl = `/creating/${encodeURIComponent(order.gameId)}`;
+  const closeUrl = `/checkout/close?${new URLSearchParams({ game: order.gameId })}`;
+  const cancelUrl = accountAuthority ? closeUrl : "/checkout?cancelled=1";
+  const declinedUrl = accountAuthority ? closeUrl : "/checkout?declined=1";
   const m = t.create.mock;
   const amount = formatMoney(order.amountAgorot, order.currency === "USD" ? "USD" : "ILS", locale);
   const pkgName = isPackageTier(order.packageTier) ? pick(PACKAGES[order.packageTier].name, locale) : order.packageTier;
@@ -48,7 +71,7 @@ export default async function MockCheckoutPage({ searchParams }: { searchParams:
               <dd className="psp__amount">{amount}</dd>
             </div>
           </dl>
-          <MockPay orderId={order.id} successUrl={params.success ?? "/library"} cancelUrl={params.cancel ?? "/checkout"} amountLabel={amount} />
+          <MockPay orderId={order.id} successUrl={successUrl} cancelUrl={cancelUrl} declinedUrl={declinedUrl} amountLabel={amount} />
         </div>
       </div>
     </main>

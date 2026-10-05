@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
-const f = vi.hoisted(() => ({ lookup: vi.fn(), user: vi.fn(), access: vi.fn(), create: vi.fn(), choose: vi.fn(), cookie: vi.fn(), token: "draft-token" }));
+const f = vi.hoisted(() => ({ lookup: vi.fn(), intent: vi.fn(), user: vi.fn(), access: vi.fn(), create: vi.fn(), choose: vi.fn(), cookie: vi.fn(), token: "draft-token" }));
 vi.mock("@/lib/server/qa-access", () => ({ requireQaAccess: f.access }));
-vi.mock("@/services/container", () => ({ getContainer: () => ({ db: { game: { findUnique: f.lookup } } }) }));
+vi.mock("@/services/container", () => ({ getContainer: () => ({ db: { game: { findUnique: f.lookup }, childWorldPurchase: { findFirst: f.intent } } }) }));
 vi.mock("@/lib/server/session", () => ({ currentUser: f.user, draftTokenFromCookie: async () => f.token, setDraftCookie: f.cookie }));
 vi.mock("@/i18n/server", () => ({ getLocale: async () => "en" }));
 vi.mock("@/lib/server/db-guard", () => ({ guardDb: (fn: () => unknown) => fn() }));
@@ -13,6 +13,20 @@ import { currentDraft, saveNameAction } from "../actions";
 beforeEach(() => {
   vi.clearAllMocks(); f.token = "draft-token"; f.access.mockResolvedValue(undefined); f.user.mockResolvedValue({ id: "owner" });
   f.lookup.mockResolvedValue({ id: "draft", draftToken: f.token, ownerId: "owner", status: "PHOTO_APPROVED", childProfile: { displayName: "Example" }, scenes: [] });
+  f.intent.mockResolvedValue({ ownerId: "owner", activeGameId: "draft" });
+});
+it("an explicit owned world draft keeps its target when another tab has changed the cookie", async () => {
+  f.token = "other-tab-cookie";
+  f.lookup.mockResolvedValue({ id: "selected-world", ownerId: "owner", familyChildId: "selected-child", draftToken: "original-token", status: "PACKAGE_SELECTED", scenes: [] });
+  expect(await currentDraft("selected-world")).toMatchObject({ id: "selected-world" });
+  expect(f.lookup.mock.calls[0]![0].where).toEqual({ id: "selected-world" });
+  expect(f.intent).toHaveBeenCalledWith({ where: { activeGameId: "selected-world", ownerId: "owner", familyChildId: "selected-child" } });
+});
+it.each(["signed-out", "foreign-owner", "no-intent"])("an explicit draft rejects %s even with a matching cookie", async kind => {
+  if (kind === "signed-out") f.user.mockResolvedValue(null);
+  if (kind === "foreign-owner") f.user.mockResolvedValue({ id: "another-parent" });
+  if (kind === "no-intent") f.intent.mockResolvedValue(null);
+  expect(await currentDraft("draft")).toBeNull();
 });
 it("reads an authorized editable draft and its relations in one query", async () => {
   expect(await currentDraft()).toMatchObject({ id: "draft", childProfile: { displayName: "Example" }, scenes: [] });

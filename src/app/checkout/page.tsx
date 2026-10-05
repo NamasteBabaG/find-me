@@ -11,20 +11,28 @@ import { formatMoney, pick, tf } from "@/i18n";
 import { CreateFrame } from "../create/CreateLayout";
 import { currentDraft } from "../create/actions";
 import { CheckoutForm } from "./CheckoutForm";
+import { worldPurchaseDraftHref, worldPurchaseHref, worldPurchaseSignInHref } from "@/domain/world-purchase";
+import { outstandingCheckout } from "@/services/draft-checkout-lock";
+import { ClosePaymentForm } from "./close/ClosePaymentForm";
 
 export async function generateMetadata() {
   const { t } = await getI18n();
   return { title: t.create.checkout.title };
 }
 
-export default async function CheckoutPage({ searchParams }: { searchParams: Promise<{ cancelled?: string; declined?: string }> }) {
+export default async function CheckoutPage({ searchParams }: { searchParams: Promise<{ cancelled?: string; declined?: string; game?: string }> }) {
   const c = getContainer();
-  const [user, draft, params, { t, locale }] = await Promise.all([currentUser(), currentDraft(), searchParams, getI18n()]);
+  const params = await searchParams;
+  const [user, draft, { t, locale }] = await Promise.all([currentUser(), currentDraft(params.game), getI18n()]);
+  if (params.game && !user) redirect(worldPurchaseSignInHref(worldPurchaseDraftHref(params.game, "checkout")));
   if (!draft?.childProfile) redirect("/create");
+  const intent = user && draft.ownerId === user.id ? await c.db.childWorldPurchase.findUnique({ where: { activeGameId: draft.id } }) : null;
+  const purchase = intent && user && intent.ownerId === user.id && intent.familyChildId === draft.familyChildId ? intent : null;
+  if (purchase && !draft.childProfile.originalPhotoAssetId) redirect(`/create/photo?game=${encodeURIComponent(draft.id)}`);
   const [summary, worldCount] = await Promise.all([draftSummary(c, draft.id), worldsForDraft(c, draft.styleVersion).then(w => w.length)]);
   if (!summary?.pkg || summary.scenes.length !== boardsFor(summary.pkg.tier)) redirect("/create/scenes");
   // When the package takes every world there is, the worlds step was skipped, so "back" means the package step.
-  const backHref = worldCount === summary.pkg.worldCount ? "/create/package" : "/create/scenes";
+  const backHref = purchase ? worldPurchaseHref(purchase.familyChildId, purchase.worldSlug, purchase.returnGameId) : worldCount === summary.pkg.worldCount ? "/create/package" : "/create/scenes";
   const ck = t.create.checkout;
   const currency = await getCurrency();
   const continuation = !!user && user.id === draft.ownerId && await childHasPaidWorld(c.db, { ownerId: user.id, familyChildId: draft.familyChildId, excludeGameId: draft.id });
@@ -46,11 +54,11 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
         <div className="fm-card fm-card--pad-4 fm-stack fm-stack--3">
           <div className="summary__identity">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/api/drafts/photo" alt="" className="fm-sticker summary__face" width={80} height={80} />
+            <img src={purchase ? `/api/drafts/photo?game=${encodeURIComponent(draft.id)}` : "/api/drafts/photo"} alt="" className="fm-sticker summary__face" width={80} height={80} />
             <div>
               <h3>{tf(ck.gameTitle, { name })}</h3>
               {summary.child?.ageYears != null ? <p className="fm-muted">{tf(ck.childAge, { age: summary.child.ageYears })}</p> : null}
-              <a className="summary__edit" href="/create">{ck.editChild}</a>
+              {purchase ? <p className="fm-hint">{tf(t.worldPurchase.frozenAge, { age: summary.child?.ageYears ?? "" })}</p> : <a className="summary__edit" href="/create">{ck.editChild}</a>}
             </div>
           </div>
           <div className="fm-stack fm-stack--1">
@@ -78,13 +86,17 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
           {continuation ? <p className="fm-hint">{tf(t.home.pricing.returning, { price: formatMoney(WORLD_PRICES[currency].additional, currency, locale) })}</p> : null}
           <p className="fm-small">{ck.vat}</p>
         </div>
-        <CheckoutForm
+        <div className="fm-stack fm-stack--3"><CheckoutForm
           automaticPublication={summary.game.scenes.every(scene => scene.sceneVersion === 7 || isCollectionVersion(scene.sceneVersion))}
           defaultEmail={defaultEmail}
           priceLabel={price}
           outcome={outcome}
           backHref={backHref}
+          gameId={purchase ? draft.id : undefined}
+          backLabel={purchase ? t.worldPurchase.checkoutBack : undefined}
+          lockedEmail={Boolean(purchase)}
         />
+        {user && lastOrder?.userId === user.id && outstandingCheckout(lastOrder) ? <ClosePaymentForm gameId={draft.id} orderId={lastOrder.id} /> : null}</div>
       </div>
     </CreateFrame>
   );

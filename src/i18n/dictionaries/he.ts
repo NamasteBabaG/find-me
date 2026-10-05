@@ -1,7 +1,11 @@
 import type { Dictionary } from "./en";
+import { worldPurchaseHe, worldSelectorHe, friendsHe } from "./world-features";
 
 /** עברית — ניטרלית מגדרית: ״מצאו את {name}״, הילד מדבר בגוף ראשון. */
 export const he: Dictionary = {
+  worldPurchase: worldPurchaseHe,
+  worldSelector: worldSelectorHe,
+  friends: friendsHe,
   adminRefund: {
     recorded: "ההחזר עודכן בהזמנה.",
     review: "לא התקבל אישור להחזר במערכת. יש לבדוק את מצב ההזמנה אצל ספק התשלום לפני ניסיון נוסף.",
@@ -683,6 +687,7 @@ export const he: Dictionary = {
     },
   },
   errors: {
+    CHECKOUT_IN_PROGRESS: "תשלום קודם עדיין פתוח. צריך להשלים או לסגור אותו לפני שמתחילים תשלום נוסף.",
     DRAFT_LOCKED: "אי אפשר לערוך את פרטי המשחק בשלב הזה. חזרו לאזור המשפחתי כדי לראות את מצבו.",
     DRAFT_NOT_FOUND: "לא מצאנו את המשחק הזה. אם כבר שילמתם, בדקו באזור המשפחתי לפני יצירת משחק חדש.",
     NAME_TOO_SHORT: "השם צריך לכלול לפחות 2 תווים.",

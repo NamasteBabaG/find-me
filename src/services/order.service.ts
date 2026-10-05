@@ -10,11 +10,15 @@ import { spendGuard } from "@/lib/env";
 import type { PaymentWebhookEvent } from "@/infra/payment/types";
 import { canTransition, isAfterPayment, type GameStatus } from "@/domain/order-state";
 import { ensureUser } from "./auth.service";
-import { draftBelongsTo, loadDraft } from "./create-flow.service";
-import { statusOf, transitionGame } from "./game-status";
+import { draftBelongsTo, loadDraft, selectPackage, worldsForDraft, sceneVersionForDraft } from "./create-flow.service";
+import { GameStatusConflict, statusOf, transitionGame } from "./game-status";
 import { WEBHOOK, audit, type Actor } from "./audit.service";
 import { bindCheckoutFamilyChild, reconcilePaidFamilyChildren } from "./family.service";
 import { childHasPaidWorld } from "./child-pricing.service";
+import { claimChildWorldForCheckout, startOrdinaryCheckout, startWorldPurchaseCheckout } from "./world-purchase-checkout.service";
+import { DraftCheckoutInProgress } from "./draft-checkout-lock";
+import { boardSlugs } from "@/domain/world";
+import { checkoutCloseReceiptId, closeReceiptState } from "./checkout-close.service";
 
 /**
  * Checkout + payment webhook. The webhook is the single source of truth for
@@ -31,12 +35,27 @@ export async function startCheckout(c: Container, input: { gameId: string; email
   if (!isCurrency(input.currency)) throw new Error("Checkout requires a server-resolved currency");
   // On a QA box with a real painter, the money starts here.
   if (!spendAllowedFor(spendGuard(), input.email)) return flowError("QA_TESTERS_ONLY", "זו סביבת בדיקה. רק בודקים רשומים יכולים ליצור כאן משחקים.");
-  const game = await loadDraft(c, input.gameId);
+  let game = await loadDraft(c, input.gameId);
   if (!game || !game.childProfile || game.deletedAt || !input.access || !draftBelongsTo(game, input.access.draftToken, input.access.userId)) return flowError("DRAFT_NOT_FOUND", "הטיוטה לא נמצאה.");
+  if (game.status === "PHOTO_APPROVED" && game.familyChildId && await c.db.childWorldPurchase.findUnique({ where: { activeGameId: game.id } })) {
+    const selected = await selectPackage(c, game.id, "ONE_WORLD");
+    if (!selected.ok) return selected;
+    game = await loadDraft(c, input.gameId);
+    if (!game?.childProfile) return flowError("DRAFT_NOT_FOUND", "הטיוטה לא נמצאה.");
+  }
   const status = statusOf(game);
   if (status !== "PACKAGE_SELECTED" && status !== "CHECKOUT_PENDING" && status !== "PAYMENT_FAILED") return flowError("PREVIOUS_STEPS", "צריך לסיים את השלבים הקודמים.");
   if (!game.packageTier || !isPackageTier(game.packageTier)) return flowError("PICK_PACKAGE_FIRST", "קודם בוחרים חבילה.");
   if (game.scenes.length !== boardsFor(game.packageTier)) return flowError("SCENES_INCOMPLETE", "בחירת העולמות לא הושלמה.");
+  if (game.familyChildId) {
+    const intent = await c.db.childWorldPurchase.findUnique({ where: { activeGameId: game.id } });
+    if (intent) {
+      const offered = (await worldsForDraft(c, game.styleVersion)).find(w => w.slug === intent.worldSlug);
+      const version = sceneVersionForDraft(game.styleVersion);
+      if (!offered || game.packageTier !== "ONE_WORLD" || intent.ownerId !== game.ownerId || intent.familyChildId !== game.familyChildId
+        || !boardSlugs(offered).every(slug => game!.scenes.some(s => s.sceneSlug === slug && (version === undefined || s.sceneVersion === version)))) return flowError("SCENE_UNAVAILABLE", "העולם אינו זמין להזמנה הזאת.");
+    }
+  }
 
   let user;
   try {
@@ -81,10 +100,12 @@ export async function startCheckout(c: Container, input: { gameId: string; email
         type: "ORIGINAL_PHOTO", visibility: "PRIVATE", status: "READY", deletedAt: null }, data: { ownerId: user.id } });
       requireCheckoutDraft(childChanged.count === 1 && photoChanged.count === 1);
       if (current.familyChildId) requireCheckoutDraft(await bindCheckoutFamilyChild(tx, { gameId: game.id, familyChildId: current.familyChildId, ownerId: user.id, displayName: child.displayName }));
+      if (current.familyChildId) requireCheckoutDraft(await claimChildWorldForCheckout(tx, { gameId: game.id, ownerId: user.id, familyChildId: current.familyChildId, scenes: game.scenes }));
       continuation = await childHasPaidWorld(tx, { ownerId: user.id, familyChildId: current.familyChildId, excludeGameId: game.id });
       await tx.user.update({ where: { id: user.id }, data: { locale } });
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 15_000 });
   } catch (error) {
+    if (error instanceof DraftCheckoutInProgress || error instanceof Prisma.PrismaClientKnownRequestError && ["P2034", "P1008"].includes(error.code)) return flowError("CHECKOUT_IN_PROGRESS", "צריך לסיים את התשלום הקיים לפני פתיחת עולם נוסף.");
     if (error instanceof CheckoutDraftConflict) return flowError("DRAFT_LOCKED", "הטיוטה או התמונה השתנו. פתחו שוב את הטיוטה לפני התשלום.");
     throw error;
   }
@@ -92,30 +113,16 @@ export async function startCheckout(c: Container, input: { gameId: string; email
   const pkg = PACKAGES[game.packageTier];
   const currency = input.currency;
   const amount = priceFor(pkg.tier, currency, continuation); // server-verified child's price
-  const existing = await c.db.order.findFirst({ where: { gameId: game.id, paymentStatus: "PENDING" }, orderBy: { createdAt: "desc" } });
-  let order = existing;
-  if (!order || order.amountAgorot !== amount || order.currency !== currency || order.userId !== user.id) {
-    if (order) await c.db.order.update({ where: { id: order.id }, data: { paymentStatus: "CANCELLED" } });
-    order = await c.db.order.create({
-      data: { id: newId("ord"), userId: user.id, gameId: game.id, amountAgorot: amount, currency, packageTier: pkg.tier, provider: c.payment.id },
-    });
+  if (game.familyChildId && await c.db.childWorldPurchase.findUnique({ where: { activeGameId: game.id } })) {
+    return startWorldPurchaseCheckout(c, { gameId: game.id, userId: user.id, email: user.email, currency, amount, locale,
+      description: `${pick({ en: `Where's ${game.childProfile!.displayName}?`, he: `איפה ${game.childProfile!.displayName}?` }, locale)} — ${pick(pkg.name, locale)}`,
+      legalVersion: input.legalVersion });
   }
-
-  if (input.legalVersion) await audit(c, { type: "USER", id: user.id }, "checkout:terms-accepted", "Order", order.id,
-    { version: input.legalVersion, locale, gameId: game.id, amountAgorot: order.amountAgorot, currency: order.currency });
-  const session = await c.payment.createCheckout({
-    orderId: order.id,
-    amountAgorot: order.amountAgorot,
-    currency: order.currency,
+  return startOrdinaryCheckout(c, {
+    gameId: game.id, userId: user.id, email: user.email, currency, amount, locale,
     description: `${pick({ en: `Where's ${game.childProfile.displayName}?`, he: `איפה ${game.childProfile.displayName}?` }, locale)} — ${pick(pkg.name, locale)}`,
-    customerEmail: user.email,
-    successUrl: `${c.appUrl}/creating/${game.id}`,
-    cancelUrl: `${c.appUrl}/checkout?cancelled=1`,
+    legalVersion: input.legalVersion,
   });
-  await c.db.order.update({ where: { id: order.id }, data: { checkoutUrl: session.checkoutUrl, providerPaymentId: session.providerPaymentId ?? null } });
-  if (status !== "CHECKOUT_PENDING") await transitionGame(c, game.id, "CHECKOUT_PENDING", { type: "USER", id: user.id }, { orderId: order.id });
-  c.analytics.track("checkout_started", { gameId: game.id, packageTier: pkg.tier });
-  return { ok: true, checkoutUrl: session.checkoutUrl, userId: user.id };
 }
 
 export type WebhookOutcome = { status: 200 | 400 | 404; body: string };
@@ -127,17 +134,11 @@ export async function handlePaymentWebhook(c: Container, rawBody: string, header
 
   const order = await c.db.order.findUnique({ where: { id: ev.orderId } });
   if (!order) return { status: 404, body: "unknown order" };
+  if (order.provider !== c.payment.id) return { status: 400, body: "provider mismatch" };
 
   // A replay is answered before anything is touched.
   const seen = await c.db.paymentEvent.findUnique({ where: { provider_providerEventId: { provider: c.payment.id, providerEventId: ev.providerEventId } } });
   if (seen) return { status: 200, body: "duplicate event ignored" };
-
-  // What the provider says was paid has to be what the order asked for, in the
-  // currency it asked for. 990 of the wrong currency is not 990.
-  if (ev.kind === "PAID" && (ev.amountAgorot !== order.amountAgorot || (ev.currency !== undefined && ev.currency !== order.currency))) {
-    await audit(c, WEBHOOK, "payment:amount-mismatch", "Order", order.id, { expected: `${order.amountAgorot} ${order.currency}`, got: `${ev.amountAgorot} ${ev.currency ?? "?"}` });
-    return { status: 400, body: "amount mismatch" };
-  }
 
   // The order's money, the game's status and the event record commit together
   // or not at all.
@@ -156,15 +157,34 @@ export async function handlePaymentWebhook(c: Container, rawBody: string, header
   let applied: Applied;
   try {
     applied = await c.db.$transaction(async (tx) => {
-      // Re-read under the transaction: the order may have moved since the
-      // duplicate check above.
+      // Checkout, cancellation and payment all acquire Game -> FamilyChild.
+      // The row write serializes close receipts and the sibling's price quote
+      // with this money event; a stale game snapshot must be retried by the PSP.
+      const game = await tx.game.findUniqueOrThrow({ where: { id: order.gameId } });
+      const fenced = await tx.game.updateMany({ where: { id: game.id, status: game.status, updatedAt: game.updatedAt },
+        data: { updatedAt: new Date(Math.max(Date.now(), game.updatedAt.getTime() + 1)) } });
+      if (fenced.count !== 1) throw new GameStatusConflict(game.id, statusOf(game), statusOf(game));
+      if (game.familyChildId) {
+        const child = await tx.familyChild.findUnique({ where: { id: game.familyChildId } });
+        if (child) await tx.familyChild.updateMany({ where: { id: child.id }, data: { displayName: child.displayName } });
+      }
+      // Re-read after the write fence: another delivery or a confirmed close
+      // may have committed while this request was waiting for its turn.
       const current = await tx.order.findUniqueOrThrow({ where: { id: order.id } });
+      if (current.provider !== c.payment.id) return { body: "provider mismatch", track: [], rejected: true };
+      // Validate immutable money under the same fence as checkout repricing.
+      if (ev.kind === "PAID" && (ev.amountAgorot !== current.amountAgorot || (ev.currency !== undefined && ev.currency !== current.currency))) {
+        await audit(c, WEBHOOK, "payment:amount-mismatch", "Order", current.id,
+          { expected: `${current.amountAgorot} ${current.currency}`, got: `${ev.amountAgorot} ${ev.currency ?? "?"}` }, tx);
+        return { body: "amount mismatch", track: [], rejected: true };
+      }
       const result = await applyPaymentEvent(c, tx, current, ev);
+      if (result.rejected) return result;
       await tx.paymentEvent.create({
         data: { id: newId("pev"), orderId: order.id, provider: c.payment.id, providerEventId: ev.providerEventId, kind: ev.kind, payloadJson: JSON.stringify(ev.raw) },
       });
       return result;
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 15_000 });
   } catch (err) {
     // Only a unique-key collision is a duplicate — two deliveries racing, and
     // the loser's writes have just been rolled back with it. Any other error
@@ -178,7 +198,7 @@ export async function handlePaymentWebhook(c: Container, rawBody: string, header
   for (const event of applied.track) c.analytics.track(event.name, event.props);
   // Presentation identity must not roll back the provider's committed money.
   // A crash/failure here is repaired idempotently on the next family read.
-  if (ev.kind === "PAID") {
+  if (ev.kind === "PAID" && !applied.rejected) {
     try {
       const game = await c.db.game.findUnique({ where: { id: order.gameId }, select: { ownerId: true } });
       if (game?.ownerId) await reconcilePaidFamilyChildren(c.db, game.ownerId, order.gameId);
@@ -186,10 +206,10 @@ export async function handlePaymentWebhook(c: Container, rawBody: string, header
       console.warn("[passport] post-payment family reconciliation deferred", { gameId: order.gameId });
     }
   }
-  return { status: 200, body: applied.body };
+  return { status: applied.rejected ? 400 : 200, body: applied.body };
 }
 
-type Applied = { body: string; track: Array<{ name: "payment_completed"; props: Record<string, string> }> };
+type Applied = { body: string; track: Array<{ name: "payment_completed"; props: Record<string, string> }>; rejected?: boolean };
 type OrderRow = { id: string; gameId: string; paymentStatus: string; packageTier: string };
 
 /**
@@ -213,6 +233,14 @@ async function applyPaymentEvent(c: Container, tx: Prisma.TransactionClient, ord
   const moveGame = async (to: GameStatus, done: (from: GameStatus) => boolean) => {
     const from = await gameStatus();
     if (done(from)) return;
+    // A decline need not close the provider's hosted session. A later actual
+    // payment for that same order is reconciled through existing transitions,
+    // without opening another payment or waiting for a redirect to recover it.
+    if (to === "PAID" && from === "PAYMENT_FAILED") {
+      await transitionGame(c, order.gameId, "CHECKOUT_PENDING", WEBHOOK, { orderId: order.id, source: "late-paid-reconciliation" }, tx);
+      await transitionGame(c, order.gameId, "PAID", WEBHOOK, { orderId: order.id, source: "late-paid-reconciliation" }, tx);
+      return;
+    }
     if (!canTransition(from, to)) {
       await audit(c, WEBHOOK, "payment:game-unreachable", "Game", order.gameId, { from, to, orderId: order.id, event: ev.kind }, tx);
       return;
@@ -221,9 +249,28 @@ async function applyPaymentEvent(c: Container, tx: Prisma.TransactionClient, ord
   };
 
   if (ev.kind === "PAID") {
+    // The mock is the provider here: a durable terminal-close receipt is proof
+    // that this session cannot charge. Real PSP money is never discarded based
+    // merely on local CANCELLED/FAILED state or an expired checkout lease.
+    if (c.payment.id === "mock") {
+      const id = checkoutCloseReceiptId(order.id);
+      const close = await tx.auditLog.findUnique({ where: { id } });
+      if (close?.action === "checkout:close" && close.entityType === "Order" && close.entityId === order.id && closeReceiptState(close.metaJson) === "closed_unpaid") {
+        return { body: "rejected: closed mock checkout", track: [], rejected: true };
+      }
+    }
     if (order.paymentStatus === "REFUNDED") return { body: "ignored: order already refunded", track: [] };
     const first = order.paymentStatus !== "PAID";
+    const previousPaid = await tx.order.findFirst({ where: { gameId: order.gameId, NOT: { id: order.id },
+      OR: [{ paymentStatus: { in: ["PAID", "REFUNDED"] } }, { paidAt: { not: null } }] }, select: { id: true } });
     if (first) await tx.order.update({ where: { id: order.id }, data: { paymentStatus: "PAID", paidAt: new Date(), providerPaymentId: ev.providerPaymentId } });
+    if (previousPaid) {
+      if (first) await audit(c, WEBHOOK, "payment:duplicate-order-paid", "Game", order.gameId,
+        { orderId: order.id, previousOrderId: previousPaid.id, provider: c.payment.id, providerEventId: ev.providerEventId }, tx);
+      // Preserve both actual payments for settlement, but never enqueue or
+      // count this second purchase as another successfully sold game.
+      return { body: first ? "duplicate payment recorded" : "already paid", track: [] };
+    }
     // `isAfterPayment`, not `=== "PAID"`: a game already being drawn has moved
     // on, and must never be dragged back to the start of the queue.
     await moveGame("PAID", isAfterPayment);

@@ -5,6 +5,7 @@ import { validChildAge } from "@/domain/child-appearance";
 import { normalizeChildName } from "@/lib/copy";
 import { newId } from "@/lib/ids";
 import { flowError, type FlowResult } from "@/i18n/errors";
+import { assertNoOutstandingCheckout, DraftCheckoutInProgress } from "./draft-checkout-lock";
 
 export async function listFamilyChildren(db: PrismaClient, ownerId: string) {
   if (!ownerId) return [];
@@ -91,6 +92,14 @@ export async function chooseDraftChild(db: PrismaClient, input: {
       if (game.childProfileId && game.familyChildId !== input.familyChildId) return flowError("DRAFT_LOCKED", "צריך להתחיל הרפתקה חדשה לילד אחר.");
       const name = selected?.displayName ?? normalizeChildName(input.name);
       if (name.length < 2) return flowError("NAME_TOO_SHORT", "כתבו שם של לפחות שתי אותיות.");
+      const continuation = await tx.childWorldPurchase.findUnique({ where: { activeGameId: game.id } });
+      if (continuation) {
+        const profile = game.childProfileId ? await tx.childProfile.findUnique({ where: { id: game.childProfileId } }) : null;
+        if (continuation.familyChildId !== input.familyChildId || !profile || profile.deletedAt
+          || profile.ownerId !== game.ownerId || profile.displayName !== name || profile.ageYears !== input.ageYears) {
+          return flowError("DRAFT_LOCKED", "הפרטים נשמרו להרפתקה הזאת.");
+        }
+      }
       const childId = game.childProfileId ?? newId("chl");
       const changed = await tx.game.updateMany({
         where: { id: game.id, status: game.status, ownerId: game.ownerId, draftToken: game.draftToken,
@@ -98,6 +107,7 @@ export async function chooseDraftChild(db: PrismaClient, input: {
         data: { familyChildId: selected?.id ?? null, title: game.locale === "he" ? `איפה ${name}?` : `Where's ${name}?` },
       });
       if (changed.count !== 1) throw new ChildSelectionConflict();
+      await assertNoOutstandingCheckout(tx, game.id);
       if (game.childProfileId) {
         if (await tx.game.count({ where: { childProfileId: childId, NOT: { id: game.id } } }) !== 0) throw new ChildSelectionConflict();
         const updated = await tx.childProfile.updateMany({ where: { id: childId, ownerId: game.ownerId, deletedAt: null }, data: { displayName: name, ageYears: input.ageYears } });
@@ -109,6 +119,7 @@ export async function chooseDraftChild(db: PrismaClient, input: {
       return { ok: true } as const;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (error) {
+    if (error instanceof DraftCheckoutInProgress) return flowError("CHECKOUT_IN_PROGRESS", "התשלום כבר התחיל. חזרו למסך התשלום כדי להמשיך.");
     if (error instanceof ChildSelectionConflict || error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
       return flowError("DRAFT_LOCKED", "הטיוטה השתנתה. נסו שוב.");
     }

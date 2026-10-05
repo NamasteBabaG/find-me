@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { currentUser } from "@/lib/server/session";
 import { requireQaAccess } from "@/lib/server/qa-access";
+import { familySignInHref } from "@/lib/safe-redirect";
 import { getContainer } from "@/services/container";
 import { withFreshAssetUrls } from "@/services/asset.service";
 import { ownerPassport, PassportAccessError } from "@/services/passport.service";
@@ -14,7 +15,7 @@ export const metadata = { robots: { index: false, follow: false } };
 export default async function PassportPage({ params }: { params: Promise<{ childId: string }> }) {
   await requireQaAccess();
   const [user, { childId }, { t }] = await Promise.all([currentUser(), params, getI18n()]);
-  if (!user) redirect("/family");
+  if (!user) redirect(familySignInHref(`/family/${encodeURIComponent(childId)}/passport`));
   let book;
   // The child's sticker is a game picture: signed like the game's own, so the browser keeps it between visits.
   try { book = withFreshAssetUrls(getContainer(), await ownerPassport(getContainer().db, user.id, childId)); }

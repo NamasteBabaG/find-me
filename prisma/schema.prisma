@@ -34,6 +34,7 @@ model User {
   sessions      Session[]
   magicLinks    MagicLinkToken[]
   assets        Asset[]
+  childWorldPurchases ChildWorldPurchase[]
 }
 
 model MagicLinkToken {
@@ -73,6 +74,7 @@ model FamilyChild {
   owner User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   games Game[]
   passportShare PassportShare?
+  worldPurchases ChildWorldPurchase[]
 
   @@index([ownerId, createdAt])
 }
@@ -141,6 +143,8 @@ model Game {
   playSessions PlaySession[]
   adventureAlbum AdventureAlbumProgress?
   passportPages PassportPagePreference[]
+  friendsShares GuestShare[]
+  activeWorldPurchase ChildWorldPurchase?
 
   @@index([familyChildId, createdAt])
   @@index([ownerId])
@@ -278,6 +282,8 @@ model Order {
   provider          String
   providerPaymentId String?
   checkoutUrl       String?
+  checkoutKey       String? @unique
+  checkoutClaimUntil DateTime?
   createdAt         DateTime  @default(now())
   paidAt            DateTime?
   refundedAt        DateTime?
@@ -323,6 +329,60 @@ model ShareLink {
   game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
   @@index([gameId])
+}
+
+/// Server-owned one-child/world purchase slot, independent of legacy orders.
+model ChildWorldPurchase {
+  id String @id
+  ownerId String
+  familyChildId String
+  worldSlug String
+  activeGameId String? @unique
+  returnGameId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  familyChild FamilyChild @relation(fields: [familyChildId], references: [id], onDelete: Cascade)
+  activeGame Game? @relation(fields: [activeGameId], references: [id], onDelete: SetNull)
+  @@unique([familyChildId, worldSlug])
+  @@index([ownerId])
+}
+
+/// A separate friends capability: frozen game + one world, never a PLAYER or passport token.
+model GuestShare {
+  id String @id
+  gameId String
+  ownerId String
+  worldSlug String
+  tokenHash String @unique
+  sourceConfigSha256 String
+  configJson String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  resultsDeleteAt DateTime
+  revokedAt DateTime?
+  revision Int @default(0)
+  seenRevision Int @default(0)
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  participants GuestParticipant[]
+  @@index([gameId, worldSlug, createdAt])
+  @@index([resultsDeleteAt])
+}
+
+/// Opaque browser identity, a predefined nickname and idempotent distinct sets; no PII/free text.
+model GuestParticipant {
+  id String @id
+  shareId String
+  tokenHash String @unique
+  nicknameId String
+  snapshotJson String
+  revision Int @default(0)
+  activityRevision Int @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  removedAt DateTime?
+  share GuestShare @relation(fields: [shareId], references: [id], onDelete: Cascade)
+  @@index([shareId, createdAt])
 }
 
 // ─── Generation workflow ─────────────────────────────────────

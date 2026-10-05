@@ -1,6 +1,7 @@
 import { emptyAdventureProgress, readAdventureProgress } from "@/domain/adventure/progress";
 import { summarizeWorlds, type WorldSummary } from "@/domain/adventure/summary";
-import { parseGameConfig, type GameConfig } from "@/domain/game/config";
+import { gameWorlds, parseGameConfig, type GameConfig } from "@/domain/game/config";
+import { guestWorldEligible } from "@/domain/guest-sharing";
 import { signedAssetUrl, withFreshAssetUrls } from "./asset.service";
 import type { Container } from "./container";
 import { familyOverview } from "./family.service";
@@ -17,6 +18,8 @@ export type FamilyAdventure = {
   preparation?: PreparationState;
   /** Each world of the game with the child's progress. Empty while it is being made, or if its content can't be read. */
   worlds: WorldSummary[];
+  /** Server-derived content eligibility, independent of whether a legacy album exists. */
+  shareableWorldSlugs: string[];
   /** The account keeps this game's progress. False for older formats, whose progress stays in the child's browser. */
   tracked: boolean;
 };
@@ -40,27 +43,28 @@ export async function familyAdventures(c: Pick<Container, "db" | "secret">, owne
     let avatarUrl: string | null = null;
     const adventures = child.games.map((game): FamilyAdventure => {
       const row = rows.get(game.id);
-      if (!PLAYABLE.includes(game.status)) return { gameId: game.id, title: game.title, ready: false, worlds: [], tracked: false,
+      if (!PLAYABLE.includes(game.status)) return { gameId: game.id, title: game.title, ready: false, worlds: [], shareableWorldSlugs: [], tracked: false,
         preparation: preparationState({ ...game, job: game.jobs[0], automaticRecovery: game.styleVersion === "local-patch-world-v1"
           && game.scenes.length === 9 && game.scenes.every(scene => [10, 11, 12].includes(scene.sceneVersion)) }) };
-      if (!row?.configJson) return { gameId: game.id, title: game.title, ready: false, worlds: [], tracked: false, preparation: "unavailable" };
+      if (!row?.configJson) return { gameId: game.id, title: game.title, ready: false, worlds: [], shareableWorldSlugs: [], tracked: false, preparation: "unavailable" };
       let config: GameConfig;
       try {
         config = parseGameConfig(row.configJson);
         if (config.gameId !== game.id) throw new Error("family-content-mismatch");
       } catch {
         // One unreadable game never takes the family area down or claims to be playable.
-        return { gameId: game.id, title: game.title, ready: false, worlds: [], tracked: false, preparation: "unavailable" };
+        return { gameId: game.id, title: game.title, ready: false, worlds: [], shareableWorldSlugs: [], tracked: false, preparation: "unavailable" };
       }
       // The newest playable game's sticker: the child as they look in the game they play now, signed afresh.
       avatarUrl = withFreshAssetUrls(c, { url: config.child.avatarUrl }).url;
-      if (!config.adventure) return { gameId: game.id, title: game.title, ready: true, worlds: summarizeWorlds(config, null), tracked: false };
+      const shareableWorldSlugs = gameWorlds(config).filter(world => guestWorldEligible(config, world.slug)).map(world => world.slug);
+      if (!config.adventure) return { gameId: game.id, title: game.title, ready: true, worlds: summarizeWorlds(config, null), shareableWorldSlugs, tracked: false };
       try {
         const snapshot = row.adventureAlbum ? JSON.parse(row.adventureAlbum.snapshotJson) : emptyAdventureProgress(game.id, config.adventure);
-        return { gameId: game.id, title: game.title, ready: true, worlds: summarizeWorlds(config, readAdventureProgress(snapshot, game.id, config.adventure)), tracked: true };
+        return { gameId: game.id, title: game.title, ready: true, worlds: summarizeWorlds(config, readAdventureProgress(snapshot, game.id, config.adventure)), shareableWorldSlugs, tracked: true };
       } catch {
         // Progress that can't be read is not shown as zero: the map stays, without counts.
-        return { gameId: game.id, title: game.title, ready: true, worlds: summarizeWorlds(config, null), tracked: false };
+        return { gameId: game.id, title: game.title, ready: true, worlds: summarizeWorlds(config, null), shareableWorldSlugs, tracked: false };
       }
     });
     // Before any game is playable, the sticker made for the child while their game is being drawn, if there is one.

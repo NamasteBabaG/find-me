@@ -13,7 +13,6 @@ import { WorldMap } from "../components/WorldMap";
 import { GameShell } from "../components/GameShell";
 import { GameI18nProvider } from "../i18n";
 import { createPlayStore } from "../store/play-store";
-import preview from "../../../content/home/board-presentation.json";
 
 vi.mock("../audio/sounds", () => ({ sounds: () => ({ unlock() {}, play() {}, setScene() {}, startAmbient() {}, stopAmbient() {} }), bindGameAudio: () => () => {} }));
 beforeEach(() => {
@@ -43,16 +42,45 @@ function mount(config: GameConfig, progress: GameProgress, world = config.worlds
 }
 
 describe("a finished world's map", () => {
-  it("shows a prepared small matching thumbnail without rebinding saved board pixels", () => {
-    const config = fixture();
-    const p = preview[0]!;
-    config.scenes[0]!.art = { ...config.scenes[0]!.art, base: p.base, thumbnail: p.base };
-    const demoBook = buildDemoConfig("en").adventure!;
-    config.adventure = { ...demoBook, boards: [{ ...demoBook.boards[0]!, boardSlug: config.scenes[0]!.slug, art: { ...demoBook.boards[0]!.art, base: p.base }, artSha256: p.sha256 }] };
+  it.each(["en", "he"] as const)("keeps both worlds' unreached board art out of map image sources in %s", locale => {
+    const config = fixture(locale, 2);
     const saved = JSON.stringify(config);
-    const view = mount(config, emptyProgress(config.gameId));
-    expect(view.container.querySelector(".wmap__go-thumb img")?.getAttribute("src")).toBe(p.thumbnail);
+    for (const world of config.worlds!) {
+      // lastScene is persisted when opening, before the board has actually loaded.
+      // It must not make a preview of the first unreached board appear on the map.
+      const progress = { ...emptyProgress(config.gameId), lastScene: boardSlugs(world)[0] };
+      const view = mount(config, progress, world);
+      const go = view.container.querySelector<HTMLButtonElement>(".wmap__go")!;
+      expect(go.querySelector(".place-emblem")).toBeTruthy();
+      expect(go.querySelector("img")).toBeNull();
+      const sources = [...view.container.querySelectorAll("img")].map(img => img.getAttribute("src"));
+      for (const scene of config.scenes) {
+        expect(sources).not.toContain(scene.art.base);
+        expect(sources).not.toContain(scene.art.thumbnail);
+      }
+      fireEvent.click(go);
+      expect(view.onOpen).toHaveBeenCalledExactlyOnceWith(boardSlugs(world)[0]);
+      cleanup();
+    }
     expect(JSON.stringify(config)).toBe(saved);
+  });
+
+  it("keeps place emblems after a partial find and on the newly unlocked next board", () => {
+    const base = fixture(); const first = base.scenes[0]!;
+    const scene: SceneConfig = { ...first, playMode: "find-any", appearancesPerBoard: 3, findsRequiredToAdvance: 3 };
+    const config: GameConfig = { ...base, scenes: [scene, ...base.scenes.slice(1)] };
+    const partial = adoptFinds(emptyProgress(config.gameId), config, [{ boardSlug: scene.slug, targetId: scene.targets[0]!.id, variant: "A" }]).progress;
+    const view = mount(config, partial);
+    expect(view.container.querySelector(".wmap__go-name")?.textContent).toBe(scene.name);
+    expect(view.container.querySelector(".wmap__go-thumb .place-emblem")).toBeTruthy();
+    expect(view.container.querySelector(".wmap__go-thumb img")).toBeNull();
+    const complete = adoptFinds(partial, config, scene.targets.map(target => ({ boardSlug: scene.slug, targetId: target.id, variant: "A" as const }))).progress;
+    view.rerender(<GameI18nProvider locale={config.locale}><WorldMap config={config} progress={complete} onOpen={view.onOpen} onPassport={view.onPassport} /></GameI18nProvider>);
+    expect(view.container.querySelector(".wmap__go-name")?.textContent).toBe(config.scenes[1]!.name);
+    expect(view.container.querySelector(".wmap__go-thumb .place-emblem")).toBeTruthy();
+    expect(view.container.querySelector(".wmap__go-thumb img")).toBeNull();
+    fireEvent.click(view.container.querySelector(".wmap__go")!);
+    expect(view.onOpen).toHaveBeenCalledExactlyOnceWith(config.scenes[1]!.slug);
   });
   it.each(["en", "he"] as const)("uses each world's title and localized completion copy in %s, with all nine places still replayable", locale => {
     const config = fixture(locale, 3);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { gameWorlds, scenesOfWorld, type GameConfig, type PlayWorld } from "@/domain/game/config";
 import { gameStars, sceneCanAdvance, sceneFoundIds, sceneIsComplete, sceneIsPlayable, sceneProgress, type GameProgress } from "@/domain/game/progress";
 import { boardSlugs, isWorldComplete, nodeStates, type NodeState } from "@/domain/world";
@@ -9,7 +9,7 @@ import { sounds } from "../audio/sounds";
 import { IslandGrid } from "./IslandGrid";
 import { StarCounter } from "./StarCounter";
 import { StarTray } from "./StarTray";
-import { boardThumbnail } from "../engine/board-thumbnail";
+import { PlaceEmblem } from "@/app/home/PlaceEmblem";
 import { useMapLabels } from "../engine/useMapLabels";
 
 interface Props {
@@ -21,6 +21,8 @@ interface Props {
   onPassport: () => void;
   /** Back to the hub. Absent when the game has only one world. */
   onWorlds?: (() => void) | null;
+  /** Owner's other purchases, fetched separately from this shareable config. */
+  worldSelector?: ReactNode;
   demo?: boolean;
   /** The board just finished: the marker travels from it to the next one. */
   travelFrom?: string | null;
@@ -43,13 +45,13 @@ const CHOOSE_MS = 700;
  * an ordered list of nine buttons for anyone using a keyboard or a screen
  * reader. A game composed before worlds existed falls back to the island grid.
  */
-export function WorldMap({ config, world: shown, progress, onOpen, onPassport, onWorlds, demo, travelFrom, onTravelDone, onReplay, roundRoute }: Props) {
+export function WorldMap({ config, world: shown, progress, onOpen, onPassport, onWorlds, worldSelector, demo, travelFrom, onTravelDone, onReplay, roundRoute }: Props) {
   const world = shown ?? gameWorlds(config)[0];
-  if (!world) return <IslandGrid config={config} progress={progress} onOpen={onOpen} onPassport={onPassport} demo={demo} />;
-  return <WorldMapView config={config} world={world} progress={progress} onOpen={onOpen} onPassport={onPassport} onWorlds={onWorlds} demo={demo} travelFrom={travelFrom} onTravelDone={onTravelDone} onReplay={onReplay} roundRoute={roundRoute} />;
+  if (!world) return <>{worldSelector ? <div className="owner-worlds__fallback">{worldSelector}</div> : null}<IslandGrid config={config} progress={progress} onOpen={onOpen} onPassport={onPassport} demo={demo} /></>;
+  return <WorldMapView config={config} world={world} progress={progress} onOpen={onOpen} onPassport={onPassport} onWorlds={onWorlds} worldSelector={worldSelector} demo={demo} travelFrom={travelFrom} onTravelDone={onTravelDone} onReplay={onReplay} roundRoute={roundRoute} />;
 }
 
-function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, demo, travelFrom, onTravelDone, onReplay, roundRoute }: Props & { world: PlayWorld }) {
+function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, worldSelector, demo, travelFrom, onTravelDone, onReplay, roundRoute }: Props & { world: PlayWorld }) {
   const { g, tf } = useGameText();
   // Only this world's boards. Counting the whole game against nine nodes is
   // how a two-world game reported 10/9 — and how world two's map lit up
@@ -155,7 +157,8 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
           </div>
         </div>
         <div className="wmap__actions">
-          {onWorlds ? (
+          {worldSelector}
+          {!worldSelector && onWorlds ? (
             <button type="button" className="fm-btn fm-btn--secondary fm-btn--sm" onClick={onWorlds}>
               🗺️ {g.hub.back}
             </button>
@@ -263,8 +266,7 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, d
       ) : currentBoard ? (
         <button type="button" className="wmap__go" onClick={() => onOpen(currentBoard.slug)}>
           <span className="wmap__go-thumb" aria-hidden>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={boardThumbnail(currentBoard, config.adventure)} alt="" />
+            <PlaceEmblem place={currentBoard.slug} />
           </span>
           <span className="wmap__go-text">
             <span className="wmap__go-kicker">{done === 0 ? g.map.here : g.map.soon}</span>

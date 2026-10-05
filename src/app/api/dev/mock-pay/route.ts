@@ -5,6 +5,7 @@ import { handlePaymentWebhook } from "@/services/order.service";
 import { currentUser, draftTokenFromCookie, isAdminEmail } from "@/lib/server/session";
 import { spendAllowedFor } from "@/domain/spend-policy";
 import { spendGuard } from "@/lib/env";
+import { closeDraftCheckout } from "@/services/checkout-close.service";
 
 export const runtime = "nodejs";
 
@@ -30,11 +31,16 @@ export async function POST(req: Request) {
   if (c.payment.id !== "mock") return NextResponse.json({ ok: false, body: "not available" }, { status: 404 });
   const payment = c.payment as { id: string; sign?: (raw: string) => string };
   if (payment.id !== "mock" || typeof payment.sign !== "function") return NextResponse.json({ ok: false, body: "PAYMENT_PROVIDER is not mock" }, { status: 400 });
-  const { orderId, kind } = (await req.json()) as { orderId?: string; kind?: "PAID" | "FAILED" | "REFUNDED" };
+  const { orderId, kind } = (await req.json()) as { orderId?: string; kind?: "PAID" | "FAILED" | "REFUNDED" | "CANCELLED" };
   if (!orderId || !kind) return NextResponse.json({ ok: false, body: "missing fields" }, { status: 400 });
   const order = await c.db.order.findUnique({ where: { id: orderId }, include: { game: { select: { ownerId: true, draftToken: true } }, user: { select: { email: true } } } });
   if (!order) return NextResponse.json({ ok: false, body: "unknown order" }, { status: 404 });
   if (!(await ownsOrder(order))) return NextResponse.json({ ok: false, body: "not your order" }, { status: 403 });
+  if (kind === "CANCELLED") {
+    if (req.headers.get("origin") !== new URL(c.appUrl).origin) return NextResponse.json({ ok: false, body: "invalid origin" }, { status: 403 });
+    const result = await closeDraftCheckout(c, { ownerId: order.userId, gameId: order.gameId, orderId: order.id });
+    return NextResponse.json({ ok: result.ok, body: result.ok ? "payment closed" : result.code }, { status: result.ok ? 200 : 409 });
+  }
   // Owning the order is not enough on a QA box with a real painter: this is
   // the click that makes a game PAID, which is the click that starts spending.
   if (!spendAllowedFor(spendGuard(), order.user.email)) return NextResponse.json({ ok: false, body: "testers only" }, { status: 403 });

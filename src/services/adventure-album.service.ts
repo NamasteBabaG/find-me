@@ -73,6 +73,9 @@ export function albumSeed(config: GameConfig, snapshotJson: string | null | unde
  * the same Serializable transaction (see adventure-album-delete.test.ts).
  */
 export async function deleteAdventureAlbum(tx: Pick<Prisma.TransactionClient, "$executeRaw">, gameId: string, databaseUrl?: string): Promise<void> {
+  // Every soft-delete engine calls this inside its game-row deletion fence.
+  // Cascades erase all guest credentials/progress and the frozen shared copy.
+  await tx.$executeRaw(Prisma.sql`DELETE FROM ${sqlTable("GuestShare", databaseUrl)} WHERE "gameId" = ${gameId}`);
   // Deletion changes the scope the parent consented to share. Revoke even when
   // other adventures remain; a later purchase cannot revive an old capability.
   await tx.$executeRaw(Prisma.sql`UPDATE ${sqlTable("PassportShare", databaseUrl)} SET "revokedAt" = ${new Date()}

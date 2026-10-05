@@ -207,7 +207,6 @@
    The postcard's child rides its parent's filter, exactly as on the board. */
 .island__thumb img,
 .wmap__dot img,
-.wmap__go-thumb img,
 .loot__image img,
 .sticker__picture,
 .collect__seek-thumb,
@@ -525,7 +524,7 @@
 .wmap__go { display: flex; align-items: center; gap: var(--space-2); align-self: center; width: min(100%, 420px); min-height: var(--touch-kid); padding: var(--space-1) var(--space-3) var(--space-1) var(--space-1); border-radius: var(--radius-pill); background: var(--sun); color: var(--ink); box-shadow: var(--shadow-2); text-align: start; transition: transform var(--dur-1) var(--ease-out); }
 .wmap__go:hover { transform: translateY(-2px); }
 .wmap__go-thumb { width: var(--space-8); height: var(--space-8); flex-shrink: 0; border-radius: 50%; overflow: hidden; box-shadow: inset 0 0 0 3px var(--white); }
-.wmap__go-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.wmap__go-thumb .place-emblem { width: 100%; height: 100%; display: block; }
 .wmap__go-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .wmap__go-kicker { font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); }
 .wmap__go-name { font-family: var(--font-display); font-weight: 600; font-size: var(--fs-300); line-height: var(--lh-300); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -24,6 +24,7 @@ import { type BudgetJson } from "./world-budget";
 import { sha256Bytes } from "./fixed-sprite";
 import type { Actor } from "../audit.service";
 import { purgeAdminAlertNotifications } from "../admin-alert-deletion";
+import { deleteAdventureAlbum } from "../adventure-album.service";
 import { boardWizardVisualKeys, judgeBoardWizardAppearance } from "./board-wizard-visual-judge";
 import { boardWizardContextKey, prepareBoardWizardReviews } from "./board-wizard-review-input";
 import { BOARD_WIZARD_IDENTITY_VERSION, normalizeBoardWizardIdentity } from "./board-wizard-identity";
@@ -472,6 +473,7 @@ export async function deleteBoardConditionedWizard(c: Container, gameId: string,
     demand(fence.count === 1, "Deletion lost game fence");
     await tx.generationJob.update({ where: { id: job.id }, data: { status: "DONE", stepsJson: "{}", currentStep: null, lastError: null } });
     await purgeAdminAlertNotifications(tx, gameId);
+    await deleteAdventureAlbum(tx, gameId, c.databaseUrl);
     const keys: string[] = [], ids = record.boards.flatMap(b => b.assetIds);
     keys.push(...record.boards.flatMap(b => b.derivationKey ? [b.derivationKey] : []));
     for (const board of record.boards) for (const id of [board.boardId, `${board.boardId}--attempt-2`]) for (const measurementAttempt of [1, 2] as const) {

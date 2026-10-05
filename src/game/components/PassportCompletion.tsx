@@ -47,7 +47,7 @@ export function PassportCompletion({ store, scene, onStay }: { store: PlayStore;
     if (!store.album || delta) return;
     // Earned local progress can celebrate immediately. Persistence is reported
     // separately below; neither AlbumSync nor the preference GET is an animation gate.
-    const preference = store.demo ? demoSeen.get(store.config)?.[scene.slug] : readPassportPreferences(store.config.gameId)[scene.slug];
+    const preference = store.demo ? demoSeen.get(store.config)?.[scene.slug] : readPassportPreferences(store.storageScope ?? store.config.gameId)[scene.slug];
     const next = passportCeremony(store.album, scene.slug, preference);
     setPhotoTargetId(preference?.photoTargetId ?? null);
     setDelta(next); setPhase(reduced.current || !next.stamp && !next.discoveryIds.length ? "settled" : "playing");
@@ -62,7 +62,7 @@ export function PassportCompletion({ store, scene, onStay }: { store: PlayStore;
         .then(data => {
           if (!active) return;
           if (!data.pending || !data.childId) throw new Error();
-          const local = readPassportPreferences(store.config.gameId)[scene.slug];
+          const local = readPassportPreferences(store.storageScope ?? store.config.gameId)[scene.slug];
           if (local) sendSeen(data.childId, store.config.gameId, scene.slug, { stamp: local.stampSeen, discoveryIds: local.seenDiscoveries });
           setPhotoTargetId(data.photoTargetId ?? null); setChildId(data.childId);
           // Reconcile an earlier visit on another device, but never restart a
@@ -84,7 +84,7 @@ export function PassportCompletion({ store, scene, onStay }: { store: PlayStore;
       all[scene.slug] = { photoTargetId, stampSeen: Boolean(old?.stampSeen || delta.stamp), seenDiscoveries: [...new Set([...old?.seenDiscoveries ?? [], ...delta.discoveryIds])] };
       demoSeen.set(store.config, all); return;
     }
-    keepPassportPreference(store.config.gameId, scene.slug, { stampSeen: delta.stamp, seenDiscoveries: delta.discoveryIds });
+    keepPassportPreference(store.storageScope ?? store.config.gameId, scene.slug, { stampSeen: delta.stamp, seenDiscoveries: delta.discoveryIds });
     if (store.albumMode === "owner" && childId) {
       sendSeen(childId, store.config.gameId, scene.slug, delta);
     }

@@ -12,12 +12,14 @@ import { SESSION_COOKIE, clearSessionCookie, currentUser, requestHeaders } from 
 import { LIMITS, rateLimit } from "@/lib/server/rate-limit";
 import { getLocale } from "@/i18n/server";
 import { flowError, type FlowResult } from "@/i18n/errors";
+import { safeLocalPath } from "@/lib/safe-redirect";
 
 export type LoginResult = { ok: true; email: string } | { ok: false; reason: string; code?: string } | null;
 
 export async function requestMagicLinkAction(_prev: LoginResult, formData: FormData): Promise<LoginResult> {
   await requireQaAccess();
   const email = String(formData.get("email") ?? "");
+  const next = safeLocalPath(String(formData.get("next") ?? ""), "/family");
   const locale = await getLocale();
   // This sends mail to an address the caller typed, so it is rate limited per
   // caller and per address: neither an inbox nor our sending reputation is a toy.
@@ -28,7 +30,7 @@ export async function requestMagicLinkAction(_prev: LoginResult, formData: FormD
       return { ok: false, reason: "יותר מדי בקשות. נסו שוב בעוד כמה דקות.", code: "TOO_MANY_REQUESTS" };
     }
   }
-  const res = await requestMagicLink(getContainer(), email, "/family", locale);
+  const res = await requestMagicLink(getContainer(), email, next, locale);
   return res.ok ? { ok: true, email } : { ok: false, reason: res.reason, code: "INVALID_EMAIL" };
 }
 

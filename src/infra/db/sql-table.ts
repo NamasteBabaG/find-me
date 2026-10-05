@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 
-type RawTable = "Game" | "AdventureAlbumProgress" | "PassportShare" | "PassportPagePreference";
-const TABLES = new Set<RawTable>(["Game", "AdventureAlbumProgress", "PassportShare", "PassportPagePreference"]);
+type RawTable = "Game" | "AdventureAlbumProgress" | "PassportShare" | "PassportPagePreference" | "GuestShare";
+const TABLES = new Set<RawTable>(["Game", "AdventureAlbumProgress", "PassportShare", "PassportPagePreference", "GuestShare"]);
 
 /** Identifiers come only from the server's configured datasource, never a request.
  * Qualify PostgreSQL SQL explicitly: pooled connections must not decide which

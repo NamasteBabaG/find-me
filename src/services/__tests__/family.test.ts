@@ -26,6 +26,16 @@ async function child(ownerId = "parent", displayName = "Same name") {
 }
 const select = (game: { id: string; draftToken: string | null }, familyChildId: string | null, actorId: string | null = "parent") => chooseDraftChild(db, { gameId: game.id, draftToken: game.draftToken, actorId, familyChildId, name: "New child", ageYears: 5 });
 describe("family identity is separate from rendering identity", () => {
+  it("keeps the confirmed age and child fixed for a continuation purchase", async () => {
+    const saved = await child(), game = await draft();
+    await select(game, saved.id);
+    await db.childWorldPurchase.create({ data: { id: `intent-${game.id}`, ownerId: "parent", familyChildId: saved.id, worldSlug: "journey", activeGameId: game.id } });
+    const unchanged = { gameId: game.id, actorId: "parent", draftToken: game.draftToken, familyChildId: saved.id, name: saved.displayName, ageYears: 5 };
+    expect(await chooseDraftChild(db, unchanged)).toEqual({ ok: true });
+    expect(await chooseDraftChild(db, { ...unchanged, ageYears: 8 })).toMatchObject({ ok: false, code: "DRAFT_LOCKED" });
+    const current = await db.game.findUniqueOrThrow({ where: { id: game.id }, include: { childProfile: true } });
+    expect(current.childProfile?.ageYears).toBe(5);
+  });
   it("repairs old paid games once, without merging same-name children or claiming another parent's game", async () => {
     const games = await Promise.all([draft(), draft(), draft("other"), draft()]);
     for (const [i, game] of games.entries()) {

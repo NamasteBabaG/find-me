@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
 import { requireQaAccess } from "@/lib/server/qa-access";
+import { familySignInHref } from "@/lib/safe-redirect";
 import { getI18n, getCurrency } from "@/i18n/server";
 import { tf, formatMoney, type Dictionary } from "@/i18n";
 import { WORLD_PRICES } from "@/domain/package";
@@ -12,6 +13,7 @@ import { SiteHeader, SiteFooter } from "@/ui/Shell";
 import { LinkButton } from "@/ui/Button";
 import { currentWorld, MapGlimpse, PlaceRoute, StarTally, Sticker } from "../FamilyParts";
 import "../family.css";
+import { FamilyFriendSharing } from "@/ui/friends/FamilyFriendSharing";
 
 export const metadata = { robots: { index: false, follow: false } };
 
@@ -19,10 +21,15 @@ export const metadata = { robots: { index: false, follow: false } };
  * One child's place in the family area (Guy, 2026-10-01: the area felt odd and unfinished). Each adventure is its
  * map with the child standing where they are, and one way in; the passport is the small book beside it.
  */
-export default async function ChildPage({ params }: { params: Promise<{ childId: string }> }) {
+export default async function ChildPage({ params, searchParams }: { params: Promise<{ childId: string }>; searchParams: Promise<{ friends?: string; world?: string }> }) {
   await requireQaAccess();
-  const [user, { t, locale }, { childId }, currency] = await Promise.all([currentUser(), getI18n(), params, getCurrency()]);
-  if (!user) redirect("/family");
+  const [user, { t, locale }, { childId }, currency, query] = await Promise.all([currentUser(), getI18n(), params, getCurrency(), searchParams]);
+  if (!user) {
+    const context = new URLSearchParams();
+    if (typeof query.friends === "string") context.set("friends", query.friends);
+    if (typeof query.world === "string") context.set("world", query.world);
+    redirect(familySignInHref(`/family/${encodeURIComponent(childId)}${context.size ? `?${context}` : ""}`));
+  }
   const c = getContainer();
   const child = (await familyAdventures(c, user.id, childId))[0];
   if (!child) notFound();
@@ -39,7 +46,7 @@ export default async function ChildPage({ params }: { params: Promise<{ childId:
       <div className="family-desk">
         <section className="family-desk__main" aria-label={tf(f.open, { name: child.name })}>
           {child.adventures.length === 0 ? <p className="fm-lead">{f.noAdventures}</p> : null}
-          {child.adventures.map((adventure, i) => <AdventureCard key={adventure.gameId} adventure={adventure} child={child} t={t} eager={i === 0} />)}
+          {child.adventures.map((adventure, i) => <AdventureCard key={adventure.gameId} adventure={adventure} child={child} t={t} eager={i === 0} friendIntent={query.friends === adventure.gameId ? query.world ?? null : null} />)}
         </section>
         <aside className="family-desk__side">
           <Link href={`/family/${child.id}/passport`} className="family-passport">
@@ -57,7 +64,7 @@ export default async function ChildPage({ params }: { params: Promise<{ childId:
     </main><SiteFooter /></>;
 }
 
-function AdventureCard({ adventure, child, t, eager }: { adventure: FamilyAdventure; child: FamilyChild; t: Dictionary; eager: boolean }) {
+function AdventureCard({ adventure, child, t, eager, friendIntent }: { adventure: FamilyAdventure; child: FamilyChild; t: Dictionary; eager: boolean; friendIntent?: string | null }) {
   const f = t.family;
   const manage = <Link href={`/library/${adventure.gameId}`} className="family-manage">{t.library.manage}</Link>;
   if (!adventure.ready) {
@@ -74,6 +81,7 @@ function AdventureCard({ adventure, child, t, eager }: { adventure: FamilyAdvent
     </article>;
   }
   const world = currentWorld(adventure);
+  const friendWorlds = adventure.worlds.filter(world => adventure.shareableWorldSlugs.includes(world.slug));
   const play = `/family/${child.id}/play/${adventure.gameId}`;
   const finished = adventure.tracked && adventure.worlds.every(w => w.stamped === w.places);
   const started = adventure.tracked && adventure.worlds.some(w => w.stars > 0);
@@ -90,6 +98,8 @@ function AdventureCard({ adventure, child, t, eager }: { adventure: FamilyAdvent
       {world ? <p className="visually-hidden">{tf(f.currentPlace, { place: world.here.name })}</p> : null}
       {adventure.worlds.length > 1 ? <ul className="adventure__worlds">{adventure.worlds.map(w => <li key={w.slug} className={w === world ? "is-current" : adventure.tracked && w.stamped === w.places ? "is-done" : undefined}>{w.name}</li>)}</ul> : null}
       <div className="adventure__actions"><LinkButton href={play}>{label}</LinkButton>{manage}</div>
+      {friendWorlds.length > 0 ? <FamilyFriendSharing gameId={adventure.gameId} worlds={friendWorlds.map(world => ({ slug: world.slug, name: world.name }))}
+        initialOpen={Boolean(friendIntent && friendWorlds.some(world => world.slug === friendIntent))} initialWorld={friendIntent ?? undefined} /> : null}
     </div>
   </article>;
 }

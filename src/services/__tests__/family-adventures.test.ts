@@ -11,6 +11,7 @@ import { GameConfigSchema, type GameConfig } from "@/domain/game/config";
 import { emptyAdventureProgress, recordAdventureEvent, type AdventureProgress } from "@/domain/adventure/progress";
 import { summarizeWorlds } from "@/domain/adventure/summary";
 import { familyAdventures } from "../family-adventures.service";
+import { guestConfig } from "./guest-sharing-fixture";
 
 /** The reviewed demo board standing in for every place of the real "Around the World" map. Fictional art only. */
 function journeyGame(gameId: string): GameConfig {
@@ -91,6 +92,25 @@ async function paidGame(id: string, childId: string, data: { status: string; con
 }
 
 describe("the family area's view of a child", () => {
+  it("offers sharing only for eligible nine-board worlds, including bookless find-any games", async () => {
+    const childId = "fam_sharing_test";
+    await db.familyChild.create({ data: { id: childId, ownerId: "parent", displayName: "Synthetic" } });
+    const mixed = guestConfig("game_mixed_sharing");
+    for (const scene of mixed.scenes.filter(scene => scene.worldSlug === "world-2")) {
+      delete scene.playMode; delete scene.appearancesPerBoard; delete scene.findsRequiredToAdvance;
+    }
+    mixed.adventure!.boards = mixed.adventure!.boards.filter(board => board.worldSlug === "world-1");
+    GameConfigSchema.parse(mixed);
+    await paidGame(mixed.gameId, childId, { status: "DELIVERED", configJson: JSON.stringify(mixed) });
+    const bookless = guestConfig("game_bookless_sharing"); delete bookless.adventure;
+    await paidGame(bookless.gameId, childId, { status: "DELIVERED", configJson: JSON.stringify(bookless) });
+    const [child] = await familyAdventures({ db, secret }, "parent", childId);
+    const byId = Object.fromEntries(child!.adventures.map(adventure => [adventure.gameId, adventure]));
+    expect(byId[mixed.gameId]!.worlds.map(world => world.slug)).toEqual(["world-1", "world-2"]);
+    expect(byId[mixed.gameId]!.shareableWorldSlugs).toEqual(["world-1"]);
+    expect(byId[bookless.gameId]!.shareableWorldSlugs).toEqual(["world-1", "world-2"]);
+    expect(byId[bookless.gameId]!.tracked).toBe(false);
+  });
   it("brings each paid adventure with its map and the child's progress, and survives a game it can't read", async () => {
     await db.familyChild.create({ data: { id: "fam_yuval", ownerId: "parent", displayName: "Yuval" } });
     const config = journeyGame("game_ready");

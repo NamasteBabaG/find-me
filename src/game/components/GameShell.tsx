@@ -18,8 +18,13 @@ import { AdventurePassport, prefetchOwnerPassport } from "./AdventurePassport";
 import { bindGameAudio } from "../audio/sounds";
 import { searchProgress } from "@/domain/game/round";
 import { RoundControls } from "./RoundControls";
+import { OwnerWorldSelector } from "./OwnerWorldSelector";
+import type { GuestSnapshot } from "@/domain/guest-sharing";
+import { friendSnapshotFromPlay } from "../engine/friend-progress";
 
 interface Props {
+  /** A distinct friends grant, never an owner or ordinary PLAYER capability. */
+  friend?: { shareId: string; participantId: string; onProgress: (snapshot: GuestSnapshot) => void; onBoardReady: (slug: string) => void };
   playToken?: string;
   config: GameConfig;
   demo?: boolean;
@@ -31,6 +36,8 @@ interface Props {
   parentZoneHref?: string;
   /** Open this scene immediately (landing demo). */
   autoStartScene?: string;
+  /** An owner route may enter a map of a historical multi-world game. */
+  initialWorld?: string;
   /** Landing demo: one mission only, minimal chrome. */
   singleMission?: boolean;
   /** The page found the viewer to be the game's owner (from the session). The album is then also kept in the family account. */
@@ -52,9 +59,10 @@ export function GameShell(props: Props) {
   );
 }
 
-function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false, parentZoneHref, autoStartScene, singleMission = false, albumOwner = false, playToken, initialAlbum }: Props) {
+function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false, parentZoneHref, autoStartScene, initialWorld, singleMission = false, albumOwner = false, playToken, initialAlbum, friend }: Props) {
   const { g } = useGameText();
-  const [store] = useState(() => createPlayStore(config, { demo, skipGift, readOnlyPreview, autoStartScene, singleMission, albumOwner, playToken, initialAlbum, copy: getDict(config.locale).game.copy }));
+  const [store] = useState(() => createPlayStore(config, { demo, skipGift, readOnlyPreview, autoStartScene, singleMission, albumOwner: friend ? false : albumOwner, playToken: friend ? undefined : playToken, initialAlbum,
+    ...(friend ? { storageScope: `friend:${friend.shareId}:${friend.participantId}`, friendParticipantId: friend.participantId, onBoardReady: friend.onBoardReady } : {}), copy: getDict(config.locale).game.copy }));
   const state = useStore(store);
   const scene = state.scene();
   // One world needs no hub: the map is the whole journey.
@@ -63,14 +71,21 @@ function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false
   const gameRef = useRef<HTMLDivElement>(null);
   const historyMounted = useRef(false);
 
+  useEffect(() => { friend?.onProgress(friendSnapshotFromPlay(state)); }, [friend, state.progress, state.album, state.mission]);
+
   useEffect(() => gameRef.current ? bindGameAudio(gameRef.current) : undefined, []);
 
   // Saved progress lives in localStorage: read it only after mount so the first
   // client render matches the server (returning players then jump to the map).
   useEffect(() => {
     store.getState().hydrate();
+    if (!autoStartScene && initialWorld && gameWorlds(config).some(world => world.slug === initialWorld)) {
+      const hydrated = store.getState();
+      if (hydrated.round?.active && hydrated.worldSlug !== initialWorld) hydrated.pauseRound();
+      store.getState().goToMap(null, initialWorld);
+    }
     return () => store.getState().stopAlbumSync();
-  }, [store]);
+  }, [store, config, initialWorld, autoStartScene]);
 
   useEffect(() => {
     const onUnload = () => state.telemetry.flush();
@@ -143,6 +158,10 @@ function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false
               onOpen={state.openScene}
               onPassport={state.openPassport}
               onWorlds={multiWorld ? state.goToWorlds : null}
+              worldSelector={albumOwner && !friend && !demo && !readOnlyPreview ? <OwnerWorldSelector gameId={config.gameId} worldSlug={state.worldSlug ?? undefined} icon={state.world()?.completion.icon} onCurrentWorld={slug => {
+                if (state.round?.active && state.worldSlug !== slug) state.pauseRound();
+                state.goToMap(null, slug);
+              }} /> : undefined}
               demo={demo}
               travelFrom={state.travelFrom}
               onTravelDone={state.endTravel}
@@ -155,7 +174,7 @@ function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false
           </>
         );
     }
-  }, [state, scene, config, demo, parentZoneHref, g.parents]);
+  }, [state, scene, config, demo, parentZoneHref, g.parents, albumOwner, readOnlyPreview, multiWorld]);
 
   return (
     <div ref={gameRef} className={`game${demo ? " game--demo" : ""}`} dir={dirOf(config.locale)} lang={config.locale}>

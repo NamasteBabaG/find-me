@@ -16,20 +16,22 @@ import { getLocale } from "@/i18n/server";
 import { flowError, type FlowResult } from "@/i18n/errors";
 import { guardDb } from "@/lib/server/db-guard";
 import { chooseDraftChild } from "@/services/family.service";
+import { worldPurchaseDraftHref, worldPurchaseSignInHref } from "@/domain/world-purchase";
 
 export type ActionResult = FlowResult;
 
 /** The draft this browser is working on (by cookie), if it is still editable. */
-export async function currentDraft() {
+export async function currentDraft(explicitGameId?: string) {
   await requireQaAccess();
   const c = getContainer();
   const token = await draftTokenFromCookie();
-  if (!token) return null;
+  if (!token && !explicitGameId) return null;
   const [game, user] = await Promise.all([
-    c.db.game.findUnique({ where: { draftToken: token }, include: { childProfile: true, scenes: { orderBy: { orderIndex: "asc" } } } }),
+    c.db.game.findUnique({ where: explicitGameId ? { id: explicitGameId } : { draftToken: token! }, include: { childProfile: true, scenes: { orderBy: { orderIndex: "asc" } } } }),
     currentUser(),
   ]);
   if (!game || !isEditableDraft(statusOf(game))) return null;
+  if (game.deletedAt || explicitGameId && (!user || game.ownerId !== user.id || !await c.db.childWorldPurchase.findFirst({ where: { activeGameId: game.id, ownerId: user.id, familyChildId: game.familyChildId ?? "" } }))) return null;
   if (!draftBelongsTo(game, token, user?.id ?? null)) return null;
   return game;
 }
@@ -95,7 +97,10 @@ export async function checkoutAction(_prev: ActionResult | null, formData: FormD
     return flowError("TOO_MANY_REQUESTS", "יותר מדי ניסיונות. נסו שוב בעוד כמה דקות.");
   }
   const c = getContainer();
-  const draft = await currentDraft();
+  const gameId = String(formData.get("gameId") ?? "") || undefined;
+  const user = await currentUser();
+  if (gameId && !user) redirect(worldPurchaseSignInHref(worldPurchaseDraftHref(gameId, "checkout")));
+  const draft = await currentDraft(gameId);
   if (!draft) redirect("/create");
   if (!rateLimit(`checkout-draft:${draft.id}`, LIMITS.checkout.limit, LIMITS.checkout.windowMs).ok) {
     return flowError("TOO_MANY_REQUESTS", "יותר מדי ניסיונות. נסו שוב בעוד כמה דקות.");
@@ -105,7 +110,7 @@ export async function checkoutAction(_prev: ActionResult | null, formData: FormD
   }
   const email = String(formData.get("email") ?? "");
   const currency = await getCurrency();
-  const [draftToken, user] = await Promise.all([draftTokenFromCookie(), currentUser()]);
+  const draftToken = await draftTokenFromCookie();
   const res = await guardDb(() => startCheckout(c, { gameId: draft.id, email, currency, access: { draftToken, userId: user?.id ?? null }, legalVersion: LEGAL_VERSION }));
   if (!res.ok) return res;
   redirect(res.checkoutUrl);

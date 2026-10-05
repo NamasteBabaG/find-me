@@ -4,7 +4,7 @@ import { qaAccessDenied } from "@/lib/server/qa-access";
 import { getContainer } from "@/services/container";
 import { consumeMagicLink, inspectMagicLink } from "@/services/auth.service";
 import { setSessionCookie } from "@/lib/server/session";
-import { safeLocalPath } from "@/lib/safe-redirect";
+import { familySignInHref, safeLocalPath } from "@/lib/safe-redirect";
 import { createMagicConfirmation, MAGIC_CONFIRM_COOKIE, MAGIC_CONFIRM_COOKIE_PATH, MAGIC_CONFIRM_TTL_SECONDS, validMagicConfirmation } from "./challenge";
 
 export const runtime = "nodejs";
@@ -41,7 +41,7 @@ async function openConfirmation(req: Request): Promise<Response> {
   const container = getContainer();
   const trustedOrigin = new URL(container.appUrl).origin;
   if (url.origin !== trustedOrigin) return NextResponse.json({ ok: false }, { status: 400 });
-  if (!(await inspectMagicLink(container, token))) return NextResponse.redirect(new URL("/library?error=expired", trustedOrigin));
+  if (!(await inspectMagicLink(container, token))) return NextResponse.redirect(new URL(familySignInHref(safeNext, "expired"), trustedOrigin));
   const confirmation = new URL("/auth/magic-link/confirm", trustedOrigin);
   confirmation.searchParams.set("token", token);
   confirmation.searchParams.set("next", safeNext);
@@ -69,12 +69,12 @@ async function confirmSignIn(req: Request): Promise<Response> {
   const container = getContainer();
   const trustedOrigin = new URL(container.appUrl).origin;
   if (url.origin !== trustedOrigin) return NextResponse.json({ ok: false }, { status: 403 });
+  const safeNext = safeLocalPath(String(form.get("next") ?? ""), "/library");
   if (!validMagicConfirmation(container.secret, token, cookie, nonce)) {
-    return NextResponse.redirect(new URL("/library?error=expired", trustedOrigin), 303);
+    return NextResponse.redirect(new URL(familySignInHref(safeNext, "expired"), trustedOrigin), 303);
   }
   const session = await consumeMagicLink(container, token);
-  const safeNext = safeLocalPath(String(form.get("next") ?? ""), "/library");
-  const response = NextResponse.redirect(new URL(session ? safeNext : "/library?error=expired", trustedOrigin), 303);
+  const response = NextResponse.redirect(new URL(session ? safeNext : familySignInHref(safeNext, "expired"), trustedOrigin), 303);
   response.cookies.set(MAGIC_CONFIRM_COOKIE, "", { path: MAGIC_CONFIRM_COOKIE_PATH, maxAge: 0 });
   if (!session) return response;
   await setSessionCookie(session.sessionToken, session.expiresAt);

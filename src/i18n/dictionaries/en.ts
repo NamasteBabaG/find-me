@@ -2,7 +2,12 @@
  * English — the default voice of the product. Warm, confident, a little
  * playful; never salesy. `{placeholders}` are filled with tf().
  */
+import { worldPurchaseEn, worldSelectorEn, friendsEn } from "./world-features";
+
 export const en = {
+  worldPurchase: worldPurchaseEn,
+  worldSelector: worldSelectorEn,
+  friends: friendsEn,
   adminRefund: {
     recorded: "The refund was recorded on this order.",
     review: "The refund was not confirmed in the system. Check the payment provider and this order before trying again.",
@@ -689,6 +694,7 @@ export const en = {
     },
   },
   errors: {
+    CHECKOUT_IN_PROGRESS: "An earlier payment is still open. Finish it or close it before starting another payment.",
     DRAFT_LOCKED: "These game details cannot be edited at this stage. Return to the family area to check its status.",
     DRAFT_NOT_FOUND: "We couldn’t find this game. If you have already paid, check your family area before creating a new game.",
     NAME_TOO_SHORT: "Please enter at least two letters.",

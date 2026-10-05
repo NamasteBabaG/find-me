@@ -9,19 +9,20 @@ import { checkoutAction, type ActionResult } from "../create/actions";
 import Link from "next/link";
 import { LEGAL_VERSION, serviceCopy } from "@/domain/legal";
 
-export function CheckoutForm({ defaultEmail, priceLabel, outcome, backHref, automaticPublication = false }: { defaultEmail: string; priceLabel: string; outcome: "declined" | "cancelled" | null; backHref: "/create/scenes" | "/create/package"; automaticPublication?: boolean }) {
+export function CheckoutForm({ defaultEmail, priceLabel, outcome, backHref, automaticPublication = false, gameId, backLabel, lockedEmail = false }: { defaultEmail: string; priceLabel: string; outcome: "declined" | "cancelled" | null; backHref: string; automaticPublication?: boolean; gameId?: string; backLabel?: string; lockedEmail?: boolean }) {
   const { t, tf, locale } = useI18n();
   const legal = serviceCopy[locale];
   const ck = t.create.checkout;
   const [state, action, pending] = useActionState<ActionResult | null, FormData>(checkoutAction, null);
   return (
     <form action={action} className="fm-card fm-card--pad-4 fm-stack fm-stack--3">
+      {gameId ? <input type="hidden" name="gameId" value={gameId} /> : null}
       {outcome === "declined" ? <Notice kind="warn">{ck.declined}</Notice> : outcome === "cancelled" ? <Notice kind="warn">{ck.cancelled}</Notice> : null}
       <div className="fm-field">
         <label htmlFor="email" className="fm-label">
           {ck.emailLabel}
         </label>
-        <input id="email" name="email" type="email" className="fm-input" defaultValue={defaultEmail} placeholder="you@example.com" required autoComplete="email" dir="ltr" />
+        <input id="email" name="email" type="email" className="fm-input" defaultValue={defaultEmail} placeholder="you@example.com" required autoComplete="email" dir="ltr" readOnly={lockedEmail} />
         <p className="fm-hint">{ck.emailHint}</p>
         {state && !state.ok ? <p className="fm-error">{errorText(t, state)}</p> : null}
       </div>
@@ -39,7 +40,7 @@ export function CheckoutForm({ defaultEmail, priceLabel, outcome, backHref, auto
         <span className="fm-btn__arrow fm-btn__arrow--back" aria-hidden>
           ➜
         </span>
-        {backHref === "/create/package" ? ck.backPackage : ck.backScenes}
+        {backLabel ?? (backHref === "/create/package" ? ck.backPackage : ck.backScenes)}
       </LinkButton>
     </form>
   );

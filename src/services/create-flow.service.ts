@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { newDraftToken, newId } from "@/lib/ids";
 import { normalizeChildName } from "@/lib/copy";
 import { validChildAge } from "@/domain/child-appearance";
@@ -16,6 +17,9 @@ import { SYSTEM } from "./audit.service";
 import { env } from "@/lib/env";
 import { LOCAL_PATCH_STYLE } from "./generation/local-patch-world";
 import { INTEGRATED_COLLECTION_VERSION } from "../domain/scene/local-patch-versions";
+import { assertNoOutstandingCheckout, DraftCheckoutInProgress } from "./draft-checkout-lock";
+
+const paymentEditingError = () => flowError("CHECKOUT_IN_PROGRESS", "צריך לסיים את התשלום הקיים לפני שינוי הטיוטה.");
 
 /**
  * The parent's creation flow, step by step. A "draft" is just a Game in
@@ -54,17 +58,30 @@ export async function setChildName(c: Container, gameId: string, rawName: string
   const name = normalizeChildName(rawName);
   if (name.length < 2) return flowError("NAME_TOO_SHORT", "כתבו שם של לפחות שתי אותיות.");
   if (ageYears !== undefined && !validChildAge(ageYears)) return flowError("INVALID_CHILD_AGE", "בחרו את גיל הדמות במשחק, בין 2 ל־10.");
-  const game = await loadDraft(c, gameId);
-  if (!game || !isEditableDraft(statusOf(game))) return flowError("DRAFT_LOCKED", "הטיוטה כבר לא ניתנת לעריכה.");
-
-  if (game.childProfile) {
-    await c.db.childProfile.update({ where: { id: game.childProfile.id }, data: { displayName: name, ...(ageYears === undefined ? {} : { ageYears }) } });
-  } else {
-    const child = await c.db.childProfile.create({ data: { id: newId("chl"), ownerId: game.ownerId, displayName: name, ageYears } });
-    await c.db.game.update({ where: { id: gameId }, data: { childProfileId: child.id } });
+  try {
+    return await c.db.$transaction(async tx => {
+      const game = await tx.game.findUnique({ where: { id: gameId }, include: { childProfile: true } });
+      if (!game || game.deletedAt || !isEditableDraft(statusOf(game))) return flowError("DRAFT_LOCKED", "הטיוטה כבר לא ניתנת לעריכה.");
+      const fenced = await tx.game.updateMany({ where: { id: game.id, updatedAt: game.updatedAt, status: game.status, deletedAt: null },
+        data: { updatedAt: new Date(Math.max(Date.now(), game.updatedAt.getTime() + 1)) } });
+      if (fenced.count !== 1) return flowError("DRAFT_LOCKED", "הטיוטה השתנתה.");
+      await assertNoOutstandingCheckout(tx, gameId);
+      const purchase = await tx.childWorldPurchase.findUnique({ where: { activeGameId: gameId } });
+      if (purchase && (game.childProfile?.displayName !== name || ageYears !== undefined && game.childProfile?.ageYears !== ageYears)) {
+        return flowError("DRAFT_LOCKED", "פרטי הדמות נשמרו להרפתקה הזאת.");
+      }
+      if (game.childProfile) await tx.childProfile.update({ where: { id: game.childProfile.id }, data: { displayName: name, ...(ageYears === undefined ? {} : { ageYears }) } });
+      else {
+        const child = await tx.childProfile.create({ data: { id: newId("chl"), ownerId: game.ownerId, displayName: name, ageYears } });
+        await tx.game.update({ where: { id: gameId }, data: { childProfileId: child.id } });
+      }
+      await tx.game.update({ where: { id: gameId }, data: { title: pick({ en: `Where's ${name}?`, he: `איפה ${name}?` }, gameLocale(game)) } });
+      return { ok: true } as const;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  } catch (error) {
+    if (error instanceof DraftCheckoutInProgress || error instanceof Prisma.PrismaClientKnownRequestError && ["P2034", "P1008"].includes(error.code)) return paymentEditingError();
+    throw error;
   }
-  await c.db.game.update({ where: { id: gameId }, data: { title: pick({ en: `Where's ${name}?`, he: `איפה ${name}?` }, gameLocale(game)) } });
-  return { ok: true };
 }
 
 export async function attachPhoto(c: Container, gameId: string, input: { buffer: Buffer; mimeType: string; crop: CropBox | null }): Promise<FlowResult> {
@@ -73,35 +90,97 @@ export async function attachPhoto(c: Container, gameId: string, input: { buffer:
   const status = statusOf(game);
   if (!isEditableDraft(status)) return flowError("DRAFT_LOCKED", "הטיוטה כבר לא ניתנת לעריכה.");
 
-  // Coming back from checkout: the state machine only allows a photo change from the package step,
-  // so rewind first (the unpaid order simply stays pending and is reused at the next checkout).
-  if (status === "PAYMENT_FAILED") await transitionGame(c, gameId, "CHECKOUT_PENDING", SYSTEM, { reason: "photo change" });
-  if (status === "CHECKOUT_PENDING" || status === "PAYMENT_FAILED") await transitionGame(c, gameId, "PACKAGE_SELECTED", SYSTEM, { reason: "photo change" });
-  await transitionGame(c, gameId, "PHOTO_UPLOADED", SYSTEM);
-  await transitionGame(c, gameId, "PHOTO_VALIDATING", SYSTEM);
+  // Claim the photo step together with the payment check. Checkout and edits
+  // share the game write fence; no payment attempt can appear in the gap.
+  let photoClaim: Date;
+  try {
+    const claimed = await c.db.$transaction(async tx => {
+      const locked = await tx.game.updateMany({ where: { id: gameId, status: game.status, updatedAt: game.updatedAt, childProfileId: game.childProfileId, ownerId: game.ownerId, deletedAt: null },
+        data: { updatedAt: new Date(Math.max(Date.now(), game.updatedAt.getTime() + 1)) } });
+      if (locked.count !== 1) return null;
+      await assertNoOutstandingCheckout(tx, gameId);
+      if (status === "PAYMENT_FAILED") await transitionGame(c, gameId, "CHECKOUT_PENDING", SYSTEM, { reason: "photo change" }, tx);
+      if (status === "CHECKOUT_PENDING" || status === "PAYMENT_FAILED") await transitionGame(c, gameId, "PACKAGE_SELECTED", SYSTEM, { reason: "photo change" }, tx);
+      await transitionGame(c, gameId, "PHOTO_UPLOADED", SYSTEM, undefined, tx);
+      await transitionGame(c, gameId, "PHOTO_VALIDATING", SYSTEM, undefined, tx);
+      return (await tx.game.findUniqueOrThrow({ where: { id: gameId }, select: { updatedAt: true } })).updatedAt;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    if (!claimed) return flowError("DRAFT_LOCKED", "הטיוטה השתנתה לפני העלאת התמונה.");
+    photoClaim = claimed;
+  } catch (error) {
+    if (error instanceof DraftCheckoutInProgress || error instanceof Prisma.PrismaClientKnownRequestError && ["P2034", "P1008"].includes(error.code)) return paymentEditingError();
+    if (error instanceof GameStatusConflict) return flowError("DRAFT_LOCKED", "הטיוטה השתנתה.");
+    throw error;
+  }
   const check = await checkPhoto(input.buffer, input.mimeType);
   if (!check.ok) {
-    await c.db.game.update({ where: { id: gameId }, data: { lastError: `${check.code}: ${check.reason}` } });
-    await transitionGame(c, gameId, "PHOTO_REJECTED", SYSTEM, { code: check.code });
+    const rejected = await c.db.$transaction(async tx => {
+      if (!await fencePhotoCompletion(tx, game, photoClaim)) return false;
+      await tx.game.update({ where: { id: gameId }, data: { lastError: `${check.code}: ${check.reason}` } });
+      await transitionGame(c, gameId, "PHOTO_REJECTED", SYSTEM, { code: check.code }, tx);
+      return true;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    if (!rejected) return flowError("DRAFT_LOCKED", "תמונה אחרת כבר התקבלה לטיוטה.");
     c.analytics.track("photo_rejected", { reason: check.code });
     return flowError(check.code, check.reason);
   }
 
   try {
-    await swapChildPhoto(c, game.ownerId, game.childProfile, input, check);
+    if (!await swapDraftPhoto(c, game, photoClaim, input, check)) return flowError("DRAFT_LOCKED", "תמונה אחרת כבר התקבלה לטיוטה.");
   } catch (error) {
     // The storage was out, or the row would not take the new pointer. The
     // draft used to be left in PHOTO_VALIDATING — which is not an editable
     // state — so the parent's next attempt was answered DRAFT_LOCKED and a
     // passing outage became a dead draft. Hand the step back instead.
-    await releaseValidatingDraft(c, gameId, error);
+    await releaseValidatingDraft(c, gameId, error, photoClaim);
     return flowError("UPLOAD_FAILED", "לא הצלחנו לשמור את התמונה. אפשר לנסות שוב.");
   }
-  await c.db.game.update({ where: { id: gameId }, data: { lastError: null } });
-  await transitionGame(c, gameId, "PHOTO_APPROVED", SYSTEM);
+  const purchase = await c.db.childWorldPurchase.findUnique({ where: { activeGameId: gameId } });
+  if (purchase) {
+    const selected = await selectPackage(c, gameId, "ONE_WORLD");
+    if (!selected.ok) return selected;
+  }
   c.analytics.track("photo_uploaded", {});
   c.analytics.track("photo_approved", {});
   return { ok: true };
+}
+
+async function fencePhotoCompletion(tx: Prisma.TransactionClient, game: DraftGame, photoClaim: Date): Promise<boolean> {
+  const changed = await tx.game.updateMany({ where: { id: game.id, updatedAt: photoClaim, status: "PHOTO_VALIDATING", deletedAt: null,
+    ownerId: game.ownerId, childProfileId: game.childProfileId, familyChildId: game.familyChildId },
+    data: { updatedAt: new Date(Math.max(Date.now(), photoClaim.getTime() + 1)) } });
+  if (changed.count !== 1) return false;
+  await assertNoOutstandingCheckout(tx, game.id);
+  return true;
+}
+
+/** Storage may finish after a newer upload or checkout. Only this exact photo
+ * claim can publish its pointer and approval; a stale candidate is removed. */
+async function swapDraftPhoto(c: Container, game: DraftGame, photoClaim: Date,
+  input: { buffer: Buffer; crop: CropBox | null }, check: { mimeType: string; width: number; height: number }): Promise<boolean> {
+  const child = game.childProfile!;
+  const asset = await storeAsset(c, { ownerId: game.ownerId, type: "ORIGINAL_PHOTO", visibility: "PRIVATE", buffer: input.buffer,
+    mimeType: check.mimeType, width: check.width, height: check.height });
+  let saved: boolean;
+  try {
+    saved = await c.db.$transaction(async tx => {
+      if (!await fencePhotoCompletion(tx, game, photoClaim)) return false;
+      const changed = await tx.childProfile.updateMany({ where: { id: child.id, ownerId: game.ownerId, deletedAt: null,
+        originalPhotoAssetId: child.originalPhotoAssetId, avatarAssetId: child.avatarAssetId, identityAssetId: child.identityAssetId },
+        data: { originalPhotoAssetId: asset.id, avatarAssetId: null, photoCropJson: input.crop ? JSON.stringify(input.crop) : null } });
+      if (changed.count !== 1) throw new GameStatusConflict(game.id, "PHOTO_VALIDATING", "PHOTO_VALIDATING");
+      await tx.game.update({ where: { id: game.id }, data: { lastError: null } });
+      await transitionGame(c, game.id, "PHOTO_APPROVED", SYSTEM, undefined, tx);
+      return true;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  } catch (error) {
+    await deleteAsset(c, asset.id);
+    if (error instanceof GameStatusConflict || error instanceof DraftCheckoutInProgress) return false;
+    throw error;
+  }
+  if (!saved) { await deleteAsset(c, asset.id); return false; }
+  for (const old of [child.originalPhotoAssetId, child.avatarAssetId]) await deleteAsset(c, old);
+  return true;
 }
 
 /**
@@ -147,13 +226,16 @@ async function swapChildPhoto(
  * PHOTO_VALIDATING — a retry that succeeded, a delete — its state stands, and
  * this failure does not drag the draft backwards.
  */
-async function releaseValidatingDraft(c: Container, gameId: string, error: unknown): Promise<void> {
+async function releaseValidatingDraft(c: Container, gameId: string, error: unknown, photoClaim?: Date): Promise<void> {
   const reason = error instanceof Error ? error.message : String(error);
   try {
-    const game = await c.db.game.findUniqueOrThrow({ where: { id: gameId }, select: { status: true } });
-    if (statusOf(game) !== "PHOTO_VALIDATING") return;
-    await c.db.game.update({ where: { id: gameId }, data: { lastError: `UPLOAD_FAILED: ${reason}`.slice(0, 500) } });
-    await transitionGame(c, gameId, "PHOTO_REJECTED", SYSTEM, { code: "UPLOAD_FAILED" });
+    await c.db.$transaction(async tx => {
+      const game = await tx.game.findUniqueOrThrow({ where: { id: gameId }, select: { status: true, updatedAt: true } });
+      if (statusOf(game) !== "PHOTO_VALIDATING" || photoClaim && game.updatedAt.getTime() !== photoClaim.getTime()) return;
+      const changed = await tx.game.updateMany({ where: { id: gameId, status: "PHOTO_VALIDATING", updatedAt: game.updatedAt, deletedAt: null }, data: { lastError: `UPLOAD_FAILED: ${reason}`.slice(0, 500) } });
+      if (changed.count !== 1) return;
+      await transitionGame(c, gameId, "PHOTO_REJECTED", SYSTEM, { code: "UPLOAD_FAILED" }, tx);
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (release) {
     if (release instanceof GameStatusConflict) return;
     throw release;
@@ -191,13 +273,29 @@ export async function selectPackage(c: Container, gameId: string, tierRaw: strin
   if (!purchasableTiers(worlds.length).some((p) => p.tier === tier)
     || (env().APP_ENV === "qa" && tier !== "ONE_WORLD")) return flowError("PACKAGE_UNAVAILABLE", "החבילה הזאת עדיין לא זמינה.");
 
+  const purchase = await c.db.childWorldPurchase.findUnique({ where: { activeGameId: gameId } });
+  if (purchase) {
+    const world = worlds.find(w => w.slug === purchase.worldSlug);
+    if (tier !== "ONE_WORLD" || !world || purchase.ownerId !== game.ownerId || purchase.familyChildId !== game.familyChildId) return flowError("DRAFT_LOCKED", "העולם נשמר להזמנה הזאת.");
+    const pinned = boardSlugs(world);
+    if (game.scenes.length !== pinned.length || !pinned.every(slug => game.scenes.some(s => s.sceneSlug === slug && s.sceneVersion === sceneBySlug(slug, sceneVersionForDraft(game.styleVersion)).version))) {
+      return flowError("DRAFT_LOCKED", "בחירת העולם השתנתה.");
+    }
+    return fencedDraftEdit(c, game, async tx => {
+      // Photo completion can resume this transition after an interrupted upload.
+      if (status === "PHOTO_APPROVED") await transitionGame(c, gameId, "PACKAGE_SELECTED", SYSTEM, { source: "world-purchase" }, tx);
+      return { ok: true };
+    });
+  }
+
   // Keep a deliberate choice when returning to this step. Fill only new slots;
   // catalog order is presentation, never an ownership or difficulty prerequisite.
   const held = new Set(game.scenes.map(s => s.sceneSlug));
   const chosen = worlds.filter(w => boardSlugs(w).every(slug => held.has(slug))).map(w => w.slug);
   const selection = [...chosen, ...worlds.map(w => w.slug).filter(slug => !chosen.includes(slug))].slice(0, PACKAGES[tier].worldCount);
   const boards = boardsOfWorlds(worlds.filter(w => selection.includes(w.slug)).map(w => w.slug));
-  if (!await replaceDraftSelection(c, game, boards, tier)) return flowError("DRAFT_LOCKED", "הטיוטה השתנתה. רעננו ונסו שוב.");
+  const replaced = await replaceDraftSelection(c, game, boards, tier);
+  if (!replaced.ok) return replaced;
   c.analytics.track("package_selected", { packageTier: tier, sceneCount: boards.length });
   return { ok: true };
 }
@@ -244,39 +342,49 @@ export async function selectWorlds(c: Container, gameId: string, slugs: string[]
   const offered = await worldsForDraft(c, game.styleVersion);
   const available = new Set(offered.map((w) => w.slug));
   if (!unique.every((s) => available.has(s))) return flowError("SCENE_UNAVAILABLE", "אחד העולמות אינו זמין.");
+  const purchase = await c.db.childWorldPurchase.findUnique({ where: { activeGameId: gameId } });
+  if (purchase) return fencedDraftEdit(c, game, async () => purchase.worldSlug === unique[0] && unique.length === 1 && purchase.ownerId === game.ownerId && purchase.familyChildId === game.familyChildId
+    ? { ok: true } : flowError("DRAFT_LOCKED", "העולם נשמר להזמנה הזאת."));
   const boards = boardsOfWorlds(offered.filter(w => unique.includes(w.slug)).map(w => w.slug));
-  if (!await replaceDraftSelection(c, game, boards)) return flowError("DRAFT_LOCKED", "הטיוטה השתנתה. רעננו ונסו שוב.");
+  const replaced = await replaceDraftSelection(c, game, boards);
+  if (!replaced.ok) return replaced;
   c.analytics.track("scenes_selected", { sceneCount: boards.length });
   return { ok: true };
 }
 
 /** Metadata, scene versions and status are one fenced write, never delete-then-hope. */
-async function replaceDraftSelection(c: Container, game: DraftGame, slugs: string[], tier?: PackageTier): Promise<boolean> {
+async function fencedDraftEdit(c: Container, game: DraftGame, work: (tx: Prisma.TransactionClient) => Promise<FlowResult>): Promise<FlowResult> {
+  try {
+    return await c.db.$transaction(async tx => {
+      const claimed = await tx.game.updateMany({ where: { id: game.id, status: game.status, updatedAt: game.updatedAt, deletedAt: null,
+        ownerId: game.ownerId, draftToken: game.draftToken, childProfileId: game.childProfileId, familyChildId: game.familyChildId,
+        orders: { none: { paymentStatus: { in: ["PAID", "REFUNDED"] } } } },
+        data: { updatedAt: new Date(Math.max(Date.now(), game.updatedAt.getTime() + 1)) } });
+      if (claimed.count !== 1) return flowError("DRAFT_LOCKED", "הטיוטה השתנתה. רעננו ונסו שוב.");
+      await assertNoOutstandingCheckout(tx, game.id);
+      return work(tx);
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  } catch (error) {
+    if (error instanceof DraftCheckoutInProgress || error instanceof Prisma.PrismaClientKnownRequestError && ["P2034", "P1008"].includes(error.code)) return paymentEditingError();
+    if (error instanceof GameStatusConflict) return flowError("DRAFT_LOCKED", "הטיוטה השתנתה. רעננו ונסו שוב.");
+    throw error;
+  }
+}
+
+async function replaceDraftSelection(c: Container, game: DraftGame, slugs: string[], tier?: PackageTier): Promise<FlowResult> {
   const version = sceneVersionForDraft(game.styleVersion);
   // Resolve every version before touching the existing selection.
   const data = slugs.map((slug, i) => ({ id: newId("gsc"), gameId: game.id, sceneSlug: slug, sceneVersion: sceneBySlug(slug, version).version, orderIndex: i }));
-  try {
-    return await c.db.$transaction(async tx => {
-      const claimed = await tx.game.updateMany({ where: {
-        id: game.id, status: game.status, updatedAt: game.updatedAt, deletedAt: null,
-        ownerId: game.ownerId, draftToken: game.draftToken, childProfileId: game.childProfileId,
-        familyChildId: game.familyChildId, styleVersion: game.styleVersion, packageTier: game.packageTier,
-        orders: { none: { paymentStatus: { in: ["PAID", "REFUNDED"] } } },
-      }, data: { sceneCount: data.length, ...(tier ? { packageTier: tier } : {}),
-        updatedAt: new Date(Math.max(Date.now(), game.updatedAt.getTime() + 1)) } });
-      if (claimed.count !== 1) return false;
+  return fencedDraftEdit(c, game, async tx => {
+      await tx.game.update({ where: { id: game.id }, data: { sceneCount: data.length, ...(tier ? { packageTier: tier } : {}) } });
       await tx.gameScene.deleteMany({ where: { gameId: game.id } });
       await tx.gameScene.createMany({ data });
       if (tier) {
         if (game.status === "PAYMENT_FAILED") await transitionGame(c, game.id, "CHECKOUT_PENDING", SYSTEM, { reason: "package change" }, tx);
         await transitionGame(c, game.id, "PACKAGE_SELECTED", SYSTEM, { tier }, tx);
       }
-      return true;
-    });
-  } catch (error) {
-    if (error instanceof GameStatusConflict) return false;
-    throw error;
-  }
+      return { ok: true };
+  });
 }
 
 export async function draftSummary(c: Container, gameId: string) {

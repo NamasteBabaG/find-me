@@ -8,7 +8,7 @@ import { useI18n } from "@/i18n/client";
 import { errorText } from "@/i18n/errors";
 import { requestMagicLinkAction, type LoginResult } from "./actions";
 
-export function LoginForm({ devOutbox }: { devOutbox: boolean }) {
+export function LoginForm({ devOutbox, next = "/family" }: { devOutbox: boolean; next?: string }) {
   const { t, tf } = useI18n();
   const l = t.library;
   const [state, action, pending] = useActionState<LoginResult, FormData>(requestMagicLinkAction, null);
@@ -26,6 +26,7 @@ export function LoginForm({ devOutbox }: { devOutbox: boolean }) {
   }
   return (
     <form action={action} className="fm-card fm-card--pad-4 fm-stack fm-stack--3">
+      <input type="hidden" name="next" value={next} />
       <div className="fm-field">
         <label htmlFor="email" className="fm-label">
           {l.emailLabel}

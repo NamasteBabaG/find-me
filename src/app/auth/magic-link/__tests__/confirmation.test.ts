@@ -74,7 +74,7 @@ describe("browser-bound sign-in confirmation", () => {
     if (problem === "different-token") nonce = confirmationCookie(undefined, "other-account-token");
     if (problem === "wrong-nonce") nonce = "forged";
     if (problem === "expired") nonce = confirmationCookie(Date.now() - 601_000);
-    expect((await POST(post(nonce))).headers.get("location")).toBe(`${origin}/library?error=expired`);
+    expect((await POST(post(nonce))).headers.get("location")).toBe(`${origin}/family?error=expired&next=%2Ffamily`);
     expect(mocks.consume).not.toHaveBeenCalled();
     expect(mocks.setSession).not.toHaveBeenCalled();
   });
@@ -86,13 +86,13 @@ describe("browser-bound sign-in confirmation", () => {
   });
   it("a used or expired token cannot open a session even with valid browser proof", async () => {
     mocks.consume.mockResolvedValue(null);
-    expect((await POST(post(confirmationCookie()))).headers.get("location")).toBe(`${origin}/library?error=expired`);
+    expect((await POST(post(confirmationCookie()))).headers.get("location")).toBe(`${origin}/family?error=expired&next=%2Ffamily`);
     expect(mocks.setSession).not.toHaveBeenCalled();
   });
   it("an invalid GET cannot issue a challenge", async () => {
     mocks.inspect.mockResolvedValue(null);
     const response = await GET(new Request(`${origin}/auth/magic-link?token=${token}`));
-    expect(response.headers.get("location")).toBe(`${origin}/library?error=expired`);
+    expect(response.headers.get("location")).toBe(`${origin}/family?error=expired&next=%2Flibrary`);
     expect(issuedChallenge(response)).toBeUndefined();
     expect(mocks.consume).not.toHaveBeenCalled();
   });
@@ -109,6 +109,33 @@ describe("browser-bound sign-in confirmation", () => {
     expect((await POST(request)).status).toBe(403);
     expect(mocks.consume).not.toHaveBeenCalled();
     expect(mocks.setSession).not.toHaveBeenCalled();
+  });
+  it.each(["invalid-open", "invalid-proof", "expired-confirm"] as const)("%s preserves a safe selected adventure for a new sign-in without authenticating", async failure => {
+    const targets = [
+      "/family/fam_test/worlds/kingdom/purchase?ageYears=8&returnGame=game_source",
+      "/family/fam_test/play/game_source?board=tokyo&world=journey",
+      "/family/fam_test/passport",
+      "https://outside.invalid/checkout", "//outside.invalid/checkout", "/\\outside.invalid/checkout",
+    ];
+    for (const next of targets) {
+      let response: Response;
+      if (failure === "invalid-open") {
+        mocks.inspect.mockResolvedValue(null);
+        const url = new URL(`${origin}/auth/magic-link`); url.searchParams.set("token", token); url.searchParams.set("next", next);
+        response = await GET(new Request(url));
+      } else {
+        if (failure === "expired-confirm") mocks.consume.mockResolvedValue(null);
+        response = await POST(post(failure === "invalid-proof" ? "forged" : confirmationCookie(), { next }));
+      }
+      const location = new URL(response.headers.get("location")!);
+      expect(location.origin).toBe(origin); expect(location.pathname).toBe("/family");
+      expect(location.searchParams.get("error")).toBe("expired");
+      expect(location.searchParams.get("next")).toBe(next.startsWith("/family/") ? next : "/library");
+      expect(location.searchParams.has("token")).toBe(false); expect(location.searchParams.has("confirmation")).toBe(false);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+    }
+    expect(mocks.setSession).not.toHaveBeenCalled();
+    if (failure !== "expired-confirm") expect(mocks.consume).not.toHaveBeenCalled();
   });
   it("challenge signatures reject wrong secrets, token substitutions, expired and malformed values", () => {
     const now = Date.now(), cookie = createMagicConfirmation(secret, token, now), nonce = magicConfirmationNonce(secret, token, cookie, now)!;

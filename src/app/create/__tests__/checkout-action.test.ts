@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const f = vi.hoisted(() => ({ limit: vi.fn(), checkout: vi.fn(), container: vi.fn(), draft: { id: "draft" } }));
+const f = vi.hoisted(() => ({ limit: vi.fn(), checkout: vi.fn(), container: vi.fn(), user: vi.fn(), draft: { id: "draft" } }));
 vi.mock("next/navigation", () => ({ redirect: (url: string) => { throw Error(`REDIRECT:${url}`); } }));
 vi.mock("@/lib/server/qa-access", () => ({ requireQaAccess: async () => {} }));
-vi.mock("@/lib/server/session", () => ({ currentUser: async () => ({ id: "owner" }), draftTokenFromCookie: async () => "cookie", requestHeaders: async () => ({ "x-forwarded-for": "192.0.2.1, 192.0.2.2" }) }));
+vi.mock("@/lib/server/session", () => ({ currentUser: f.user, draftTokenFromCookie: async () => "cookie", requestHeaders: async () => ({ "x-forwarded-for": "192.0.2.1, 192.0.2.2" }) }));
 vi.mock("@/i18n/server", () => ({ getCurrency: async () => "ILS" }));
 vi.mock("@/lib/server/rate-limit", () => ({ LIMITS: { checkout: { limit: 10, windowMs: 600000 } }, rateLimit: f.limit }));
 vi.mock("@/services/container", () => ({ getContainer: f.container }));
@@ -13,6 +13,7 @@ import { checkoutAction } from "../actions";
 import { LEGAL_VERSION } from "@/domain/legal";
 beforeEach(() => {
   vi.clearAllMocks(); f.limit.mockReturnValue({ ok: true });
+  f.user.mockResolvedValue({ id: "owner" });
   f.container.mockReturnValue({ db: { game: { findUnique: async () => ({ ...f.draft, status: "PACKAGE_SELECTED" }) } } });
   f.checkout.mockResolvedValue({ ok: true, checkoutUrl: "/checkout/synthetic" });
 });
@@ -37,6 +38,12 @@ describe("checkout server action rate gates", () => {
     const form = new FormData();
     if (kind === "stale") { form.set("legalAccepted", "1"); form.set("legalVersion", "previous"); }
     expect(await checkoutAction(null, form)).toMatchObject({ ok: false, code: "TERMS_REQUIRED" });
+    expect(f.checkout).not.toHaveBeenCalled();
+  });
+  it("an expired parent session preserves the explicit world draft through login before reading or opening payment", async () => {
+    f.user.mockResolvedValue(null);
+    const form = new FormData(); form.set("gameId", "world-draft"); form.set("legalAccepted", "1"); form.set("legalVersion", LEGAL_VERSION);
+    await expect(checkoutAction(null, form)).rejects.toThrow("REDIRECT:/family?next=%2Fcheckout%3Fgame%3Dworld-draft");
     expect(f.checkout).not.toHaveBeenCalled();
   });
 });
