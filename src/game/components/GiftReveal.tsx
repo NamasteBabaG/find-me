@@ -21,8 +21,11 @@ export function GiftReveal({ config, onOpen }: { config: GameConfig; onOpen: () 
   const message = config.gift?.message;
   const name = config.child.name;
   const findAny = config.scenes.every(scene => scene.playMode === "find-any");
-  const giftLead = !findAny ? g.gift.lead
-    : config.scenes.every(scene => scene.targets.length === 5) ? g.gift.findAnyLead : g.gift.findAnyVariableLead;
+  // Every number comes from the game itself: a fixed "five" or "three" was wrong for any other board shape.
+  const perPlace = config.scenes[0]?.targets.length ?? 0;
+  const uniform = config.scenes.every(scene => scene.targets.length === perPlace);
+  const required = Math.min(...config.scenes.map(scene => scene.findsRequiredToAdvance ?? 3));
+  const giftLead = !findAny ? g.gift.lead : uniform ? g.gift.findAnyLead : g.gift.findAnyVariableLead;
 
   const tear = () => {
     sounds().unlock();
@@ -65,7 +68,7 @@ export function GiftReveal({ config, onOpen }: { config: GameConfig; onOpen: () 
             </span>
             <p className="fm-eyebrow">{tf(g.gift.made, { name })}</p>
             <h1 className="gift__title gift__title--big">{tf(g.gift.title, { name })}</h1>
-            <p className="gift__lead">{tf(giftLead, { name, count: config.scenes.length, stars: config.scenes.reduce((sum, scene) => sum + scene.targets.length, 0) })}</p>
+            <p className="gift__lead">{tf(giftLead, { name, count: config.scenes.length, spots: perPlace, required, stars: config.scenes.reduce((sum, scene) => sum + scene.targets.length, 0) })}</p>
             {message ? <p className="gift__message">“{message}”</p> : null}
             <button type="button" className="fm-btn fm-btn--lg gift__btn" onClick={onOpen} autoFocus>
               {g.gift.start}

@@ -68,20 +68,32 @@ describe("passport completion choreography", () => {
     expect(stamp.textContent).toBe("");
     expect(stamp.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
   });
-  it("skip settles without navigating, keeps six slots and never auto-closes", () => {
+  it("a tap anywhere settles without navigating, keeps six slots and never auto-closes", () => {
     const f = fixture(), view = render(f.ui());
     expect(view.container.querySelector("dialog")?.dataset.phase).toBe("playing");
     expect(view.container.querySelectorAll(".passport-finale__items li")).toHaveLength(6);
-    fireEvent.click(screen.getByRole("button", { name: "Show my page" }));
+    // Skipping the flourish is a tap on the page, not a fourth button competing with the way forward.
+    expect(screen.queryByRole("button", { name: "Show my page" })).toBeNull();
+    fireEvent.click(view.container.querySelector(".passport-finale__inside")!);
     expect(view.container.querySelector("dialog")?.dataset.phase).toBe("settled");
     act(() => { vi.advanceTimersByTime(10_000); });
     expect(view.container.querySelector("dialog")?.hasAttribute("open")).toBe(true);
     expect(f.onStay).not.toHaveBeenCalled(); expect(f.store.openScene).not.toHaveBeenCalled();
     expect(readPassportPreferences(f.store.config.gameId)[f.scene.slug]?.stampSeen).toBe(true);
   });
+  it("staying names what is left to find, and is gone once nothing is", () => {
+    const f = fixture(), c = getDict("en").game.collection;
+    render(f.ui());
+    fireEvent.click(screen.getByRole("button", { name: c.keepMore.replace("{n}", "5") }));
+    expect(f.onStay).toHaveBeenCalledTimes(1);
+    cleanup();
+    for (const item of f.board.discoveries) f.store.album = recordAdventureEvent(f.store.album, f.store.config.gameId, f.store.config.adventure!, { kind: "discovery-found", boardSlug: f.scene.slug, discoveryId: item.id }).progress;
+    render(f.ui());
+    expect(screen.queryByRole("button", { name: /Stay/ })).toBeNull();
+  });
   it("a replay does not stamp again; a newly collected item still has its own arrival", () => {
     const f = fixture();
-    render(f.ui()); fireEvent.click(screen.getByRole("button", { name: "Show my page" })); cleanup();
+    const first = render(f.ui()); fireEvent.click(first.container.querySelector(".passport-finale__inside")!); cleanup();
     const second = render(f.ui());
     expect(second.container.querySelector("dialog")?.dataset.phase).toBe("settled");
     expect(second.container.querySelector(".passport-finale__stamp")?.getAttribute("data-new")).toBe("false");
@@ -108,7 +120,7 @@ describe("passport completion choreography", () => {
     const view = render(f.ui());
     await act(async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); });
     expect(screen.getByTestId("memory").textContent).toBe(chosen);
-    fireEvent.click(screen.getByRole("button", { name: "Show my page" }));
+    fireEvent.click(view.container.querySelector(".passport-finale__inside")!);
     expect(request.mock.calls.filter(call => call[1]?.method === "POST")).toHaveLength(1);
     expect(view.container.querySelector("dialog")?.hasAttribute("open")).toBe(true);
   });

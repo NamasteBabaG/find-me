@@ -109,7 +109,7 @@ export function AlbumSection({ config, album, mode, state, onOpen }: { config: G
         </div>
         {note ? <p className="album__sync" data-album-state={state}>{note}</p> : null}
       </header>
-      <p className="album__note">{g.album.continueNote}</p>
+      <p className="album__note">{tf(g.album.continueNote, { required: Math.min(...book.boards.map((board) => board.findsRequiredToAdvance)) })}</p>
       {book.boards.map((board: BookBoard) => {
         const scene = config.scenes.find((s) => s.slug === board.boardSlug);
         const boardView = view?.boards.find((b) => b.boardSlug === board.boardSlug) ?? null;

@@ -193,6 +193,20 @@ describe("MissionCard", () => {
     expect(onExpand).toHaveBeenCalledTimes(1);
   });
 
+  it("after staying, the way forward is still the gold one and playing again is the quieter choice", () => {
+    const onAdvance = vi.fn(), onReplay = vi.fn();
+    const view = he(<MissionCard index={5} total={5} target={null} found={["a", "b", "c", "d", "e"]}
+      order={["a", "b", "c", "d", "e"]} hintLevel={0} hintPulse={false} hintText={null} onHint={vi.fn()}
+      onAdvance={onAdvance} onReplay={onReplay} advanceLabel="למקום הבא" childName="נועה" findAny />);
+    const buttons = Array.from(view.container.querySelectorAll<HTMLButtonElement>(".mission > button"));
+    // Forward first and gold; replay second and white. Neither is the 40px small button any more.
+    expect(buttons.map(b => b.className)).toEqual(["mission__continue", "mission__continue mission__continue--secondary"]);
+    expect(buttons[0]!.textContent).toContain("למקום הבא");
+    expect(view.container.querySelector(".fm-btn--sm")).toBeNull();
+    fireEvent.click(buttons[0]!); fireEvent.click(buttons[1]!);
+    expect(onAdvance).toHaveBeenCalledTimes(1); expect(onReplay).toHaveBeenCalledTimes(1);
+  });
+
   it("does not offer an inert expand control before any hint details exist", () => {
     const onExpand = vi.fn(), onHint = vi.fn();
     const view = he(<MissionCard index={1} total={5} target={target("a")} found={[]}

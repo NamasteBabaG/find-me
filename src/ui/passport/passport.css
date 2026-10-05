@@ -483,6 +483,15 @@
 /* ─── Pieces shared with the in-game reader and the shared link ───────────── */
 .passport-memory { position: relative; overflow: hidden; border-radius: var(--radius-1, 8px); }
 .adventure-passport { padding: var(--space-1) var(--space-3) var(--space-2); height: 100dvh; overflow-y: auto; background: var(--paper); }
+/* The child's way back to the map keeps the 64px floor. */
+.adventure-passport__map { min-height: var(--touch-kid); }
+/* While the book opens, its own space is already there: a waiting page with a dashed seal, the size of a closed passport. */
+.adventure-passport__frame-host { margin-block-start: var(--space-2); }
+.adventure-passport__frame { box-sizing: border-box; width: min(100%, var(--leaf-width)); height: var(--book-height); margin-inline: auto; display: grid; place-content: center; justify-items: center; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-2) var(--radius-3) var(--radius-3) var(--radius-2); background: var(--paper-2); box-shadow: inset 0 0 0 2px var(--line); text-align: center; }
+.adventure-passport__seal { display: grid; place-items: center; width: var(--space-10); height: var(--space-10); border-radius: 50%; border: 3px dashed var(--ink-4); color: var(--gold-deep); font-size: var(--fs-600); line-height: 1; }
+.adventure-passport__wait { margin: 0; max-width: 28ch; font-family: var(--font-kid); font-weight: 600; font-size: var(--fs-200); line-height: var(--lh-200); color: var(--ink-2); }
+/* A phone on its side is shorter than the book: the words, and the retry with them, wait at the top of its space, in view. */
+@media (max-height: 480px) { .adventure-passport__frame { align-content: start; } }
 .travel-passport__item { width: 100%; min-height: var(--touch-kid); border: 0; background: none; color: inherit; font: inherit; font-family: var(--font-kid); font-weight: 600; font-size: var(--fs-50); line-height: var(--lh-100); padding: 0; display: grid; justify-items: center; gap: var(--space-0-5); cursor: pointer; }
 .travel-passport__item > .album__crop { width: min(100%, 78px); aspect-ratio: 1 !important; border: 3px solid var(--white); border-radius: var(--radius-2); box-shadow: var(--shadow-1); transition: transform var(--dur-2) var(--ease-pop), box-shadow var(--dur-2) var(--ease-out); }
 /* Guest photos are composited from authorized board/sprite pixels. Size the
@@ -584,7 +593,6 @@
   text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px;
 }
 .passport-finale__actions > .fm-btn--ghost:hover { color: var(--gold-light); }
-.passport-finale__skip:disabled { visibility: hidden; }
 .passport-finale[data-phase=playing] .passport-finale__stamp[data-new=true] { animation: passport-stamp 280ms 40ms cubic-bezier(.2,.8,.2,1.2) both; }
 .passport-finale[data-phase=waiting] .passport-finale__stamp { visibility: hidden; }
 /* Full-colour memories from the first frame, even while the account is saving. */

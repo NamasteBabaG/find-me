@@ -98,7 +98,8 @@ describe("passport authorization, preferences and live revocable sharing", () =>
   });
   it("does not stamp two finds and does not expose hidden discovery details", async () => {
     const f = await seed(2, 6), book = await ownerPassport(db, owner, f.child.id);
-    expect(book.worlds[0]!.pages[0]).toMatchObject({ state: "in-progress", finds: 2 });
+    // The page carries the board's own total, so no reader prints an assumed "3".
+    expect(book.worlds[0]!.pages[0]).toMatchObject({ state: "in-progress", finds: 2, total: 3 });
     expect(book.worlds[0]!.pages[0]!.photoUrl).toBeUndefined();
     await expect(updatePassportPage(db, owner, f.child.id, f.config.gameId, f.board.boardSlug, { kind: "photo", targetId: f.board.targetIds[0] })).rejects.toThrow();
   });

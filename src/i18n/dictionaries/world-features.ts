@@ -6,7 +6,7 @@ export const worldSelectorEn = {
   catalog: "More adventures", current: "You're here", start: "Start", continue: "Continue", revisit: "Visit again",
   preparing: "Being prepared", paymentPending: "Waiting for a parent", attention: "Being checked", unavailable: "Coming later",
   progress: "{done} of {total} places", preview: "Explore this world",
-  previewText: "A new adventure with nine places to explore.", previewStats: "9 places · 27 hiding spots",
+  previewText: "A new adventure with {places} places to explore.", previewStats: "{places} places",
   parentAction: "Ask a parent", parentNote: "A parent can add this world to the same passport.",
   parentContinue: "Continue as a parent", back: "Back", preparationAction: "View progress with a parent",
 };
@@ -17,7 +17,7 @@ export const worldSelectorHe: typeof worldSelectorEn = {
   catalog: "עוד הרפתקאות", current: "כאן אנחנו", start: "מתחילים", continue: "ממשיכים", revisit: "מבקרים שוב",
   preparing: "בהכנה", paymentPending: "מחכים להורה", attention: "בבדיקה", unavailable: "בהמשך",
   progress: "{done} מתוך {total} מקומות", preview: "מגלים את העולם",
-  previewText: "הרפתקה חדשה עם תשעה מקומות לגלות.", previewStats: "9 מקומות · 27 מחבואים",
+  previewText: "הרפתקה חדשה עם {places} מקומות לגלות.", previewStats: "{places} מקומות",
   parentAction: "פותחים עם הורה", parentNote: "הורה יכול להוסיף את העולם הזה לאותו דרכון.",
   parentContinue: "ממשיכים בתור הורה", back: "חזרה", preparationAction: "בודקים את ההתקדמות עם הורה",
 };
@@ -73,6 +73,7 @@ export const friendsEn = {
     scope: "Friends see the child's name shown in this game and play this world with their own progress. They cannot open your family area or the original photo.",
     lifetime: "The invitation lasts 30 days. Results are removed 90 days after it closes.",
     cache: "Closing the invitation stops further access. Copies already saved by a recipient cannot be recalled.",
+    whatShared: "How long it lasts and what closing does",
     adult: "A quick parent sign-in is needed to create an invitation.", reauth: "Email me a sign-in link",
     emailed: "Check your email to continue.", active: "Invitation open", inactive: "Invitation closed",
     expired: "Invitation ended on {date}", revoked: "Invitation closed on {date}",
@@ -110,6 +111,7 @@ export const friendsHe: typeof friendsEn = {
     scope: "החברים רואים את שם הילד שמוצג במשחק ומשחקים בעולם הזה עם התקדמות משלהם. אין להם גישה לאזור המשפחה או לתמונה המקורית.",
     lifetime: "ההזמנה תקפה ל־30 יום. התוצאות נמחקות 90 יום לאחר סגירתה.",
     cache: "סגירת ההזמנה עוצרת גישה נוספת. אי אפשר למשוך בחזרה עותקים שכבר נשמרו אצל מי שקיבל אותה.",
+    whatShared: "כמה זמן זה נמשך ומה קורה כשסוגרים",
     adult: "כדי ליצור הזמנה צריך כניסת הורה קצרה.", reauth: "שליחת קישור כניסה למייל",
     emailed: "קישור ההמשך מחכה במייל.", active: "ההזמנה פתוחה", inactive: "ההזמנה סגורה",
     expired: "ההזמנה הסתיימה ב־{date}", revoked: "ההזמנה נסגרה ב־{date}",

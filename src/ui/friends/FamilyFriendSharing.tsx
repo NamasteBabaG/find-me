@@ -69,7 +69,9 @@ export function FamilyFriendSharing({ gameId, worlds, initialOpen = false, initi
     <FriendDialog open={open} title={text.share} onClose={() => { setOpen(false); setConfirm(null); }}>
       {worlds.length > 1 ? <label className="family-friends__world">{text.selectWorld}<select value={worldSlug} disabled={busy} onChange={event => setWorldSlug(event.target.value)}>{worlds.map(world => <option key={world.slug} value={world.slug}>{world.name}</option>)}</select></label>
         : <h3>{worlds[0]?.name}</h3>}
-      <p>{text.scope}</p><p className="family-friends__note">{text.lifetime}</p><p className="family-friends__note">{text.cache}</p>
+      {/* What friends see stays in view; the lifetime and what closing can't undo sit one tap away. */}
+      <p>{text.scope}</p>
+      <details className="family-friends__details"><summary>{text.whatShared}</summary><p className="family-friends__note">{text.lifetime}</p><p className="family-friends__note">{text.cache}</p></details>
       {failed ? <><p role="status">{text.error}</p><Button disabled={busy} onClick={() => setAttempt(n => n + 1)}>{text.refresh}</Button></> : null}
       {shareStatus ? <p role="status">{shareStatus}</p> : null}
       {share?.active ? <p>{tf(text.expires, { date: date(share.expiresAt) })}</p> : null}

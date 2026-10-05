@@ -24,7 +24,9 @@
 /* The child, by name. The sticker is the one they play as. */
 .family-hero { display: flex; align-items: center; gap: var(--space-3); }
 .family-hero h1 { margin: 0; font-size: var(--fs-800); line-height: var(--lh-800); letter-spacing: -0.02em; overflow-wrap: anywhere; }
+/* The whole illustrated portrait, contained like the game's face: a circle crop cut the hair off. */
 .family-sticker { flex-shrink: 0; width: var(--space-8); height: var(--space-8); }
+img.family-sticker { border-radius: var(--radius-2); object-fit: contain; }
 .family-hero__sticker { width: var(--space-12); height: var(--space-12); }
 .family-sticker--initial {
   display: grid; place-items: center; border-radius: var(--radius-pill);

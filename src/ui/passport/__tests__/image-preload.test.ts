@@ -13,7 +13,7 @@ it("prepares the saved spread and neighbour, never hidden items or the whole pas
     decode() { return Promise.resolve(); }
   });
   const book: PassportView = { name: "Example", preparing: 0, worlds: [{ id: "world", title: "World", pages: [1, 2, 3, 4].map(n => ({
-    id: `warm-${n}`, title: "Place", state: "complete", finds: 3, stampIcon: "star", photoUrl: `/warm-${n}.webp`,
+    id: `warm-${n}`, title: "Place", state: "complete", finds: 3, total: 3, stampIcon: "star", photoUrl: `/warm-${n}.webp`,
     discoveries: [{ id: "found", collected: true, rarity: "common", imageUrl: `/warm-item-${n}.webp` }, { id: "hidden", collected: false, rarity: "common", imageUrl: "/do-not-fetch.webp" }],
     photoChoices: [{ id: "other", selected: false, imageUrl: "/do-not-fetch-choice.webp" }],
   })) }] };

@@ -6,7 +6,8 @@ export type PassportPreference = { photoTargetId: string | null; stampSeen: bool
 export type PassportPageState = "locked" | "available" | "in-progress" | "stamped" | "complete";
 export type PassportDiscoveryView = { id: string; collected: boolean; rarity: "common" | "rare" | "epic"; name?: string; description?: string; imageUrl?: string };
 export type PassportPageView = {
-  id: string; title: string; state: PassportPageState; finds: number;
+  /** `total` is the board's own hiding-spot count, so no reader ever has to assume one. */
+  id: string; title: string; state: PassportPageState; finds: number; total: number;
   stampIcon: string; photoUrl?: string;
   discoveries: PassportDiscoveryView[];
   photoChoices?: Array<{ id: string; imageUrl: string; selected: boolean }>;
@@ -60,11 +61,11 @@ export function projectPassport(config: GameConfig, raw: AdventureProgress, pref
     }
     const finds = progress.finds.filter(f => f.boardSlug === board.boardSlug).length;
     const collected = new Set(progress.discoveries.filter(d => d.boardSlug === board.boardSlug).map(d => d.discoveryId));
-    const complete = finds === 3;
+    const complete = finds === board.targetIds.length;
     const unlocked = world.pages.length === 0 || ["stamped", "complete"].includes(world.pages[world.pages.length - 1]!.state);
     const photo = passportPhoto(progress, board.boardSlug, preferences[board.boardSlug]?.photoTargetId);
     world.pages.push({
-      id: board.boardSlug, title: scene.name, finds,
+      id: board.boardSlug, title: scene.name, finds, total: board.targetIds.length,
       state: complete ? collected.size === 6 ? "complete" : "stamped" : finds || collected.size ? "in-progress" : unlocked ? "available" : "locked",
       stampIcon: scene.collectible.icon,
       ...(photo ? { photoUrl: media(board.boardSlug, "photo", photo.targetId) } : {}),

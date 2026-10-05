@@ -57,6 +57,13 @@
 .family-friends__world { display: grid; gap: var(--space-1); font-weight: 700; }
 .family-friends__world select { min-height: var(--touch-min); padding: var(--space-1) var(--space-2); font: inherit; border-radius: var(--radius-2); background: var(--white); color: var(--ink); }
 .family-friends__note { font-size: var(--fs-100); color: var(--ink-2); }
+.family-friends__details { margin-block: var(--space-1); }
+/* Flex hides the native marker, so the row says it opens the way the FAQ does: a "+" that turns into "×". */
+.family-friends__details > summary { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: var(--touch-min); font-weight: 700; color: var(--ink); cursor: pointer; list-style: none; }
+.family-friends__details > summary::-webkit-details-marker { display: none; }
+.family-friends__details > summary::after { content: "+"; width: var(--space-4); height: var(--space-4); border-radius: var(--radius-pill); background: var(--white); display: grid; place-items: center; font-weight: 900; transition: transform var(--dur-2) var(--ease-out); flex-shrink: 0; }
+.family-friends__details[open] > summary::after { transform: rotate(45deg); }
+.family-friends__details > .family-friends__note { margin-block: var(--space-1) 0; }
 .family-friends__consent { display: flex; align-items: center; gap: var(--space-2); min-height: var(--touch-min); margin-block: var(--space-3); cursor: pointer; }
 .family-friends__consent input { width: var(--space-3); height: var(--space-3); accent-color: var(--grape); flex-shrink: 0; }
 .family-friends__actions, .family-friends__link { display: flex; flex-wrap: wrap; gap: var(--space-2); }
@@ -69,4 +76,4 @@
   .friend-play .scene__tools { display: grid; grid-template-columns: repeat(2, var(--touch-kid)); gap: var(--space-1); }
 }
 @media (max-width: 600px) { .friend-lobby__card { padding: var(--space-3); } .friend-person__places { grid-template-columns: repeat(2, minmax(0, 1fr)); } .friend-person { padding: var(--space-2); } .friend-dialog__body { padding-inline: var(--space-2); } .friend-reaction__choices { grid-template-columns: 1fr; } }
-@media (prefers-reduced-motion: reduce) { .friend-dialog[open] { animation: none; } .friend-names__choice { transition: none; } .friend-names__choice:active, .friend-reaction__choices button:active { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .friend-dialog[open] { animation: none; } .friend-names__choice, .family-friends__details > summary::after { transition: none; } .friend-names__choice:active, .friend-reaction__choices button:active { transform: none; } }

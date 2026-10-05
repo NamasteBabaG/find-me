@@ -35,6 +35,26 @@ describe("the discovery tray", () => {
     expect(view.container.querySelectorAll(".collect__fab")).toHaveLength(1);
   });
 
+  it("says how many are left with a still badge once the hiding spots are done, for every motion setting", () => {
+    vi.useFakeTimers();
+    for (const still of [false, true]) {
+      motion(still);
+      // Mid-search: no badge yet, the child is still looking for themself.
+      const view = render(provide(<Collection {...base} collectedIds={["item-1"]} disabled onSelect={vi.fn()} onHint={vi.fn()} />));
+      expect(view.container.querySelector(".collect__left")).toBeNull();
+      // Hiding spots done, five of six left: the badge says so, whether or not the reminder may move.
+      view.rerender(provide(<Collection {...base} collectedIds={["item-1"]} searchComplete disabled onSelect={vi.fn()} onHint={vi.fn()} />));
+      expect(view.container.querySelector(".collect__left")?.textContent).toContain(`${board.discoveries.length - 1} left`);
+      expect(view.container.querySelector(".collect__left")?.getAttribute("aria-hidden")).toBe("true");
+      // Everything collected: nothing left to point at.
+      view.rerender(provide(<Collection {...base} collectedIds={board.discoveries.map((d) => d.id)} searchComplete disabled onSelect={vi.fn()} onHint={vi.fn()} />));
+      expect(view.container.querySelector(".collect__left")).toBeNull();
+      cleanup();
+    }
+    const he = render(provide(<Collection {...base} collectedIds={[]} searchComplete disabled onSelect={vi.fn()} onHint={vi.fn()} />, "he"));
+    expect(he.container.querySelector(".collect__left")?.textContent).toContain(`עוד ${board.discoveries.length}`);
+  });
+
   it("holds itself open for two seconds without taking focus or announcing a dialog, then folds back into the button", () => {
     vi.useFakeTimers();
     const view = render(provide(<Collection {...base} collectedIds={[]} onSelect={vi.fn()} onHint={vi.fn()} />));

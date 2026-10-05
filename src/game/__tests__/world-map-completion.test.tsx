@@ -41,6 +41,17 @@ function mount(config: GameConfig, progress: GameProgress, world = config.worlds
   return { ...view, onOpen, onPassport };
 }
 
+describe("the map's one face", () => {
+  it("shows the child once, as the marker on the painting, never again in the header", () => {
+    const config = fixture("he");
+    const view = mount(config, emptyProgress(config.gameId));
+    const faces = [...view.container.querySelectorAll("img")].filter(img => img.getAttribute("src") === config.child.avatarUrl);
+    expect(faces).toHaveLength(1);
+    expect(faces[0]!.closest(".wmap__marker")).not.toBeNull();
+    expect(view.container.querySelector(".wmap__bar img")).toBeNull();
+  });
+});
+
 describe("a finished world's map", () => {
   it.each(["en", "he"] as const)("keeps both worlds' unreached board art out of map image sources in %s", locale => {
     const config = fixture(locale, 2);

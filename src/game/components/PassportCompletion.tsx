@@ -24,7 +24,7 @@ function sendSeen(childId: string, gameId: string, board: string, delta: Delta) 
 }
 /** Earned progress drives the celebration; account persistence is reported separately. */
 export function PassportCompletion({ store, scene, onStay }: { store: PlayStore; scene: SceneConfig; onStay: () => void }) {
-  const { g } = useGameText(), copy = getDict(store.config.locale).travelPassport;
+  const { g, tf } = useGameText(), copy = getDict(store.config.locale).travelPassport;
   const [delta, setDelta] = useState<Delta | null>(null), [childId, setChildId] = useState<string | null>(null);
   const [phase, setPhase] = useState<"waiting" | "playing" | "settled">("waiting");
   const [attempt, setAttempt] = useState(0), [failed, setFailed] = useState(false);
@@ -102,6 +102,7 @@ export function PassportCompletion({ store, scene, onStay }: { store: PlayStore;
   function leave(action: () => void) { acknowledge(); action(); }
   const photo = store.album ? passportPhoto(store.album, scene.slug, photoTargetId) : null;
   const found = new Set(store.album?.discoveries.filter(d => d.boardSlug === scene.slug).map(d => d.discoveryId));
+  const remaining = board.discoveries.filter(item => !found.has(item.id)).length;
   const next = store.nextScene();
   const multiWorld = gameWorlds(store.config).length > 1;
   const folio = store.config.scenes.findIndex(s => s.slug === scene.slug) * 2 + 1;
@@ -109,8 +110,9 @@ export function PassportCompletion({ store, scene, onStay }: { store: PlayStore;
   const saveIssue = store.albumState === "unsaved" ? g.album.unsaved
     : store.albumState === "unreadable" ? g.album.unreadable
     : store.albumMode === "owner" && ["offline", "refused"].includes(store.albumState) ? g.album.offline : null;
+  // The stamp's short flourish is skipped by a tap anywhere on the page, not by a fourth button.
   return <dialog ref={dialog} className={`passport-finale${store.demo ? " passport-finale--demo" : ""}`} data-phase={phase} aria-labelledby={titleId} onCancel={e => { e.preventDefault(); leave(onStay); }}>
-    <div className="passport-finale__inside">
+    <div className="passport-finale__inside" onClick={() => { if (phase === "playing") settle(); }}>
       {phase === "playing" ? <CelebrationOverlay kind={scene.celebration.kind} small seed={store.visitId} /> : null}
       <header><p className="travel-passport__eyebrow">{scene.name}</p><h2 id={titleId}>{!delta ? copy.saving : delta.stamp ? copy.ceremony : delta.discoveryIds.length ? copy.newItems : g.replay.complete}</h2></header>
       <div className="passport-finale__binding">
@@ -128,9 +130,8 @@ export function PassportCompletion({ store, scene, onStay }: { store: PlayStore;
       {failed ? <button className="fm-btn fm-btn--ghost" onClick={() => setAttempt(n => n + 1)}>{copy.retry}</button> : null}
       <div className="passport-finale__actions">
         {!store.demo ? <button className="fm-btn fm-btn--lg" autoFocus onClick={() => leave(next ? () => store.openScene(next) : store.round?.active ? () => store.goToMap(scene.slug) : multiWorld ? store.goToWorlds : () => store.goToMap(scene.slug))}>{next ? g.complete.next : store.round?.active ? g.replay.roundFinished : multiWorld ? g.hub.back : g.scene.backToMap}</button> : <button className="fm-btn fm-btn--lg" autoFocus onClick={() => leave(() => store.replayScene())}>{g.complete.again}</button>}
-        <button className="fm-btn fm-btn--secondary" onClick={() => leave(onStay)}>{g.collection.keep}</button>
+        {remaining > 0 ? <button className="fm-btn fm-btn--secondary" onClick={() => leave(onStay)}>{remaining === 1 ? g.collection.keepMoreOne : tf(g.collection.keepMore, { n: remaining })}</button> : null}
         {!store.demo ? <button className="fm-btn fm-btn--ghost" onClick={() => leave(store.openPassport)}>{copy.open}</button> : null}
-        <button className="fm-btn fm-btn--ghost passport-finale__skip" onClick={settle} disabled={phase !== "playing"}>{copy.skip}</button>
       </div>
     </div>
   </dialog>;

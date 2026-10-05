@@ -389,14 +389,14 @@ export const en = {
     demoHeading: "The adventure comes home with you", demoLead: "Every place becomes a keepsake: a picture, a stamp and the discoveries you found. Open this example and take a look.", demoWorld: "A little seaside adventure", demoFuture: "A new place is waiting",
     enlarge: "A closer look", closePicture: "Back to my page",
     title: "My passport", subtitle: "Little discoveries. Big adventures.", open: "Open my passport", close: "Back to the cover", worlds: "Choose a world", places: "Places in this world",
-    previous: "Previous page", next: "Next page", page: "Place {n} of {total}", stamped: "I was here!", progress: "{n} of 3 hiding spots found",
+    previous: "Previous page", next: "Next page", page: "Place {n} of {total}", stamped: "I was here!", progress: "{n} of {total} hiding spots found",
     qaSignIn: "Sign in to QA in a new tab",
     qaSessionExpired: "QA sign-in needed. Sign in ↗, then return here. Your stamp is safe.",
     qaHomeExpired: "QA sign-in needed to load the pictures. Sign in, then return to this tab.",
-    locked: "A place for a future adventure", available: "Your next discovery is waiting", photoWait: "Find all three hiding spots to keep a picture here.", photoUnavailable: "We couldn't load this picture. Your stamp is safe.", pictureUnavailable: "No picture", retryImages: "Try loading the pictures again",
+    locked: "A place for a future adventure", available: "Your next discovery is waiting", photoWait: "Find all {total} hiding spots to keep a picture here.", photoUnavailable: "We couldn't load this picture. Your stamp is safe.", pictureUnavailable: "No picture", retryImages: "Try loading the pictures again",
     collected: "My discoveries", unknown: "Not found yet", details: "About {name}", choosePhoto: "Choose my picture", photoChoice: "Picture {n}", selected: "Selected", saved: "Picture saved", saveFailed: "We couldn’t save that yet. Please try again.",
     play: "Back to this place", preparing: "An adventure is not available yet. Check its status in the family area; its pages will appear here when ready.", empty: "Your passport is ready for its first adventure.",
-    ceremony: "A new page in my passport!", newItems: "New discoveries for my passport!", skip: "Show my page", savedLocal: "Kept in this browser", savedAccount: "Saved to your passport", saving: "Saving your discoveries…", opening: "Opening the passport…",retry: "Try again",
+    ceremony: "A new page in my passport!", newItems: "New discoveries for my passport!", savedLocal: "Kept in this browser", savedAccount: "Saved to your passport", saving: "Saving your discoveries…", opening: "Opening the passport…",retry: "Try again",
     demo: "Example passport — an imaginary adventure", unavailable: "We couldn’t open the passport just now. Your progress has not been reset.",
   },
   library: {
@@ -508,9 +508,9 @@ export const en = {
       open: "🎁 Open the gift",
       made: "We made a game just for {name}",
       title: "Where's {name}?",
-      lead: "{name} is hiding in {count} places. Three hiding spots in each.",
-      findAnyLead: "{name} is hiding in {count} places. Five hiding spots in each — find any three to continue!",
-      findAnyVariableLead: "{name} is hiding in {count} places, with {stars} hiding spots to discover. Find any three in each place to continue!",
+      lead: "{name} is hiding in {count} places. {spots} hiding spots in each.",
+      findAnyLead: "{name} is hiding in {count} places. {spots} hiding spots in each — find any {required} to continue!",
+      findAnyVariableLead: "{name} is hiding in {count} places, with {stars} hiding spots to discover. Find any {required} in each place to continue!",
       start: "Start the adventure ✨",
       /** The child's first words, from the sticker on the cover. */
       hello: "Here I am!",
@@ -532,7 +532,7 @@ export const en = {
       /** Said from the marker when it reaches the next place. */
       arrived: "We're here!",
       done: "done",
-      spots: "3 hiding spots",
+      spots: "{n} hiding spots",
       playAgain: "Play again?",
       played: "Played {n} times",
       stamp: "Found!",
@@ -592,9 +592,8 @@ export const en = {
     complete: {
       dialogAria: "All hiding spots in this place found",
       stamp: "Found!",
-      threeStars: "Three gold stars!",
-      fourStars: "Four gold stars!",
-      fiveStars: "Five gold stars!",
+      /** The board's own total, whatever it is: a fixed "three" was wrong on every other board. */
+      goldStars: "{n} gold stars!",
       loot: "You got: {item}",
       eagle: "🦅 Eagle eyes — no hints!",
       zik: "✨ You also found Zik",
@@ -643,8 +642,8 @@ export const en = {
       notYet: "Not found yet",
       hintFor: "Hint: {hint}",
       cardAria: "{name} — discovery card",
-      /** Three finds open the next place; the postcard needs every hiding spot. Said at the choice and in the album, never fixed in the HUD. */
-      continueNote: "Three finds open the next place. The postcard waits for whoever finds every hiding spot.",
+      /** {required} finds open the next place; the postcard needs every hiding spot. Said at the choice and in the album, never fixed in the HUD. */
+      continueNote: "{required} finds open the next place. The postcard waits for whoever finds every hiding spot.",
       postcardRemaining: "{remaining} more hiding spots for the postcard",
       postcardRemainingOne: "1 more hiding spot for the postcard",
       postcardEarned: "The postcard is yours!",
@@ -680,7 +679,11 @@ export const en = {
       collected: "A new sticker in the album: {name}!",
       again: "You already found {name}!",
       complete: "Every discovery collected!",
-      keep: "Stay and collect discoveries",
+      /** The completion card's one secondary action, with what there is left to find. */
+      keepMore: "Stay and find {n} more",
+      keepMoreOne: "Stay and find 1 more",
+      /** A still badge on the discoveries button once the hiding spots are done: the cue that never depends on motion. */
+      left: "{n} left",
       seekInBoard: "Back to look",
       close: "Back to the search",
       rarity: { common: "Common", rare: "Special", epic: "Extraordinary" },

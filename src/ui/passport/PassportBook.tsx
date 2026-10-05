@@ -194,7 +194,7 @@ export function PassportBook({ book, mode = "owner", onPhotoSelect, onPlay, rend
             <div className="travel-passport__spread">
               <section className="travel-passport__leaf travel-passport__memory" aria-label={copy.memory}>
                 <header className="travel-passport__page-head"><p className="travel-passport__eyebrow">{world?.title}</p><h2 ref={heading} tabIndex={-1}>{page.title}</h2><p>{tf(copy.page, { n: index + 1, total: world!.pages.length })}</p></header>
-                <div className="travel-passport__photo">{page.photoUrl ? <button type="button" className="travel-passport__enlarge" aria-label={copy.enlarge} title={copy.enlarge} onClick={() => setPanel("photo")}>{image(page.photoUrl, page.title)}</button> : <div className="travel-passport__photo-wait"><span aria-hidden>✦</span><p>{page.state === "locked" ? copy.locked : copy.photoWait}</p></div>}
+                <div className="travel-passport__photo">{page.photoUrl ? <button type="button" className="travel-passport__enlarge" aria-label={copy.enlarge} title={copy.enlarge} onClick={() => setPanel("photo")}>{image(page.photoUrl, page.title)}</button> : <div className="travel-passport__photo-wait"><span aria-hidden>✦</span><p>{page.state === "locked" ? copy.locked : tf(copy.photoWait, { total: page.total })}</p></div>}
                   {/* Recovery stays beside the visible picture, even when the
                       toolbar has scrolled behind the site's sticky header. */}
                   {imageFailed ? recovery("fm-btn fm-btn--white travel-passport__picture-retry") : null}
@@ -202,7 +202,7 @@ export function PassportBook({ book, mode = "owner", onPhotoSelect, onPlay, rend
                 {/* The mark alone. The words went inside the aria-label rather
                     than off the page: a stamp is a picture, and a reader that
                     cannot see it still has to be told the place was visited. */}
-                {!["stamped", "complete"].includes(page.state) ? <p className="travel-passport__progress">{tf(copy.progress, { n: page.finds })}</p> : null}
+                {!["stamped", "complete"].includes(page.state) ? <p className="travel-passport__progress">{tf(copy.progress, { n: page.finds, total: page.total })}</p> : null}
                 <div className="travel-passport__memory-actions">
                 {["stamped", "complete"].includes(page.state) ? <PassportStamp className="travel-passport__stamp" label={copy.stamped} /> : null}
                 {mode === "owner" && page.photoChoices && onPhotoSelect ? <button className="fm-btn fm-btn--ghost travel-passport__choose" type="button" onClick={() => setPanel("choose")}>{copy.choosePhoto}</button> : null}

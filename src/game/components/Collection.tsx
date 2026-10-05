@@ -252,6 +252,9 @@ export function Collection({ board, scene, collectedIds, selectedId, hintLevel, 
   const ring = 2 * Math.PI * 21;
   const showSheet = open !== null || closing;
   const asDialog = open === "user";
+  // The still cue that more is waiting here. The peek and the reminder are motion and skip a reader who
+  // asked for less of it; this badge is for everyone, once the hiding spots are done.
+  const leftBadge = searchComplete && !complete && total > 0 && !showSheet && !selected;
   return (
     <aside ref={root} className={`collect${complete ? " collect--complete" : ""}${seekAbove ? " collect--seek-above" : ""}`} aria-label={c.title}>
       <button ref={trigger} type="button" className="collect__fab" data-game-cue="drawer" disabled={disabled} aria-expanded={asDialog} aria-controls={sheetId} aria-label={countAria} onClick={toggle}>
@@ -263,6 +266,7 @@ export function Collection({ board, scene, collectedIds, selectedId, hintLevel, 
           {latest ? <AlbumCrop art={scene.art} crop={latest.cardCrop} className="sticker__picture" /> : <span aria-hidden>✦</span>}
         </span>
         <b key={bump} className={`collect__count${bump ? " collect__count--bump" : ""}`} aria-hidden>{tally}</b>
+        {leftBadge ? <span className="collect__left" aria-hidden><span>✦</span> {tf(c.left, { n: total - count })}</span> : null}
       </button>
 
       {selected && !showSheet ? (

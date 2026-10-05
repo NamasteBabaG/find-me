@@ -28,9 +28,9 @@ export function RoundControls({ store }: { store: PlayStore }) {
       <span>{active && stars ? tf(g.stars.tray, { earned: stars.found, total: stars.total }) : g.replay.note}</span>
     </div>
     <div className="round-controls__actions">
-      {store.round ? <button type="button" className="fm-btn fm-btn--sm" onClick={store.resumeRound}>{g.replay.resumeRound}</button> : null}
-      {active ? <button type="button" className="fm-btn fm-btn--secondary fm-btn--sm" onClick={store.pauseRound}>{g.replay.savedJourney}</button> : null}
-      <button type="button" className={`fm-btn fm-btn--sm ${store.round ? "fm-btn--ghost" : "fm-btn--secondary"}`} onClick={() => store.startRound()}>{g.replay.startOver}</button>
+      {store.round ? <button type="button" className="fm-btn" onClick={store.resumeRound}>{g.replay.resumeRound}</button> : null}
+      {active ? <button type="button" className="fm-btn fm-btn--secondary" onClick={store.pauseRound}>{g.replay.savedJourney}</button> : null}
+      <button type="button" className={`fm-btn ${store.round ? "fm-btn--ghost" : "fm-btn--secondary"}`} onClick={() => store.startRound()}>{g.replay.startOver}</button>
     </div>
     {store.round && !store.roundSaved ? <p className="round-controls__issue" role="status">{g.replay.unsaved}</p> : null}
   </section>;

@@ -148,9 +148,8 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, w
   return (
     <div className="wmap" style={{ ["--wmap-sky" as string]: world.map.palette.sky, ["--wmap-accent" as string]: world.map.palette.accent }}>
       <header className="wmap__bar">
+        {/* No portrait here: the marker on the painting is the child on this screen, and two faces read as two children. */}
         <div className="wmap__who">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={config.child.avatarUrl} alt="" className="fm-sticker wmap__face" width={48} height={48} />
           <div>
             <h1 className="wmap__title">{world.name}</h1>
             <p className="wmap__sub">{done === 0 ? world.tagline : tf(g.map.stamps, { done, total, piece: world.collectible.piece })}</p>

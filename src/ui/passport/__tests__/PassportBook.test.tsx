@@ -9,7 +9,7 @@ import { PassportBook } from "../PassportBook";
 import { demoPassport } from "@/domain/passport/demo";
 
 const book: PassportView = { name: "Example", preparing: 0, worlds: [{ id: "world", title: "My world", pages: [1, 2, 3].map(n => ({
-  id: `p${n}`, title: `Place ${n}`, state: n === 1 ? "stamped" : "locked", finds: n === 1 ? 3 : 0, stampIcon: "✦",
+  id: `p${n}`, title: `Place ${n}`, state: n === 1 ? "stamped" : "locked", finds: n === 1 ? 3 : 0, total: 3, stampIcon: "✦",
   ...(n === 1 ? { photoUrl: "/example.webp", photoChoices: [{ id: "t1", imageUrl: "/example.webp", selected: true }], playHref: "/play/example" } : {}),
   discoveries: Array.from({ length: 6 }, (_, i) => i === 0 && n === 1 ? { id: `item-${i}`, collected: true, rarity: "common", name: "Compass", description: "A little story.", imageUrl: "/item.webp" } : { id: `item-${i}`, collected: false, rarity: "rare" }),
 })) }] };

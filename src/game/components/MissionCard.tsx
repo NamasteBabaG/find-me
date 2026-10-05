@@ -126,15 +126,16 @@ export function MissionCard({ index, total, target, found, order, stars, trayRef
         {!minimal && hintLevel >= 1 && target?.mission ? <p className="mission__hint">{target.mission}</p> : null}
         {!minimal && hintLevel >= 1 && hintText ? <p className="mission__hint">💡 {hintText}</p> : null}
       </div> : null}
-      {onReplay ? <button type="button" className="mission__continue" onClick={onReplay}>{g.complete.again}</button> : null}
+      {/* The way forward stays the gold one; playing this place again is the quieter choice beside it. */}
       {onAdvance ? (
-        <button type="button" className={onReplay ? "fm-btn fm-btn--ghost fm-btn--sm" : "mission__continue"} onClick={onAdvance}>
+        <button type="button" className="mission__continue" onClick={onAdvance}>
           {advanceLabel ?? g.scene.canContinue}
           <span className="fm-btn__arrow" aria-hidden>
             ➜
           </span>
         </button>
       ) : null}
+      {onReplay ? <button type="button" className={onAdvance ? "mission__continue mission__continue--secondary" : "mission__continue"} onClick={onReplay}>{g.complete.again}</button> : null}
     </section>
   );
 }

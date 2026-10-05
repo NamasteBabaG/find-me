@@ -82,7 +82,7 @@ describe("find-any rendering and mobile feedback", () => {
     expect(store.getState().mission!.phase).toBe("complete");
     expect(view.container.querySelectorAll("[data-target]")).toHaveLength(0);
     expect(view.container.querySelectorAll(".complete__stars .stars__slot")).toHaveLength(4);
-    expect(view.container.querySelector(".complete__stars-text")?.textContent).toBe(locale === "en" ? "Four gold stars!" : "ארבעה כוכבי זהב!");
+    expect(view.container.querySelector(".complete__stars-text")?.textContent).toBe(locale === "en" ? "4 gold stars!" : "4 כוכבי זהב!");
     expect(view.container.querySelector(".mission__rules")).toBeNull();
   });
 
@@ -93,7 +93,7 @@ describe("find-any rendering and mobile feedback", () => {
     const gift = render(<GameI18nProvider locale={locale}><GiftReveal config={config} onOpen={vi.fn()} /></GameI18nProvider>);
     fireEvent.click(gift.getByRole("button")); act(() => vi.advanceTimersByTime(701));
     expect(gift.container.querySelector(".gift__lead")?.textContent).toContain("43");
-    expect(gift.container.querySelector(".gift__lead")?.textContent).not.toContain(locale === "en" ? "Five hiding spots in each" : "בכל אחד חמישה");
+    expect(gift.container.querySelector(".gift__lead")?.textContent).not.toContain(locale === "en" ? "hiding spots in each" : "בכל אחד");
     gift.unmount();
     const map = render(<GameI18nProvider locale={locale}><IslandGrid config={config} progress={progress} onOpen={vi.fn()} onPassport={vi.fn()} /></GameI18nProvider>);
     const labels = Array.from(map.container.querySelectorAll(".island__meta")).map(node => node.textContent);
@@ -303,8 +303,9 @@ describe("find-any rendering and mobile feedback", () => {
     expect(view.getByRole("dialog").textContent).toContain("You found every hiding spot in this round!");
     expect(view.container.querySelector(".complete__loot")).toBeNull();
     expect(store.getState().progress).toBe(progress);
-    // A second replay must also discard completion and choreography state.
-    fireEvent.click(view.getByRole("button", { name: "Play again" }));
+    // A second replay must also discard completion and choreography state. On the card, replay is an
+    // icon named for the place, so the card keeps one gold action.
+    fireEvent.click(view.getByRole("button", { name: `Play ${scene.name} again` }));
     await decodeAll(); act(() => vi.advanceTimersByTime(901));
     expect(view.queryByRole("dialog")).toBeNull();
     expect(store.getState().mission!.phase).toBe("searching");
@@ -316,13 +317,14 @@ describe("find-any rendering and mobile feedback", () => {
     const config = { ...buildDemoConfig(locale), scenes: [fiveScene()] };
     const view = render(<GameI18nProvider locale={locale}><GiftReveal config={config} onOpen={vi.fn()} /></GameI18nProvider>);
     fireEvent.click(view.getByRole("button")); act(() => vi.advanceTimersByTime(701));
-    expect(view.container.querySelector(".gift__lead")?.textContent).toContain(locale === "en" ? "Five hiding spots" : "חמישה מחבואים");
+    // The numbers are the game's own, never a fixed "five" and "three".
+    expect(view.container.querySelector(".gift__lead")?.textContent).toContain(locale === "en" ? "5 hiding spots in each — find any 3" : "בכל אחד 5 מחבואים — מוצאים 3");
     view.unmount();
     const legacyBase = buildDemoConfig(locale);
     const legacyConfig = { ...legacyBase, adventure: undefined, scenes: legacyBase.scenes.map(scene => ({ ...scene, playMode: undefined, appearancesPerBoard: undefined, findsRequiredToAdvance: undefined })) };
     const legacy = render(<GameI18nProvider locale={locale}><GiftReveal config={legacyConfig} onOpen={vi.fn()} /></GameI18nProvider>);
     fireEvent.click(legacy.getByRole("button")); act(() => vi.advanceTimersByTime(701));
-    expect(legacy.container.querySelector(".gift__lead")?.textContent).toContain(locale === "en" ? "Three hiding spots" : "שלושה מחבואים");
+    expect(legacy.container.querySelector(".gift__lead")?.textContent).toContain(locale === "en" ? "3 hiding spots in each" : "בכל אחד — 3 מחבואים");
   });
 
   it("provides opaque fallback, fixed bubble anchors, full-face HUD and room to pan edge hides out from under it", () => {

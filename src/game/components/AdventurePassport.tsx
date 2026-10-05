@@ -71,7 +71,7 @@ export function AdventurePassport({ store }: { store: PlayStore }) {
     store.openScene(board);
     return true;
   };
-  return <I18nProvider locale={store.config.locale} dict={dict}><div className="adventure-passport"><button type="button" className="fm-btn fm-btn--ghost" onClick={() => store.goToMap()}>{dict.game.complete.map}</button>
+  return <I18nProvider locale={store.config.locale} dict={dict}><div className="adventure-passport"><button type="button" className="fm-btn fm-btn--ghost adventure-passport__map" onClick={() => store.goToMap()}>{dict.game.complete.map}</button>
     {owner && store.worldSlug && guestWorldEligible(store.config, store.worldSlug) ? <FriendDiscoveries gameId={store.config.gameId} worldSlug={store.worldSlug} /> : null}
     {owner && remote ? <OwnerPassport key={remote.childId} initial={remote.book} childId={remote.childId} onPlayHere={playHere} /> : book ? <PassportBook book={book} cursorKey={preferenceKey} onPlay={id => store.openScene(id)} onPhotoSelect={async (board, id) => {
       if (!store.demo && !keepPassportPreference(preferenceKey, board, { photoTargetId: id })) throw new Error("storage-unavailable");
@@ -82,7 +82,16 @@ export function AdventurePassport({ store }: { store: PlayStore }) {
       const scene = store.config.scenes.find(s => s.slug === board);
       const item = store.config.adventure!.boards.find(b => b.boardSlug === board)?.discoveries.find(d => d.id === id);
       return kind === "photo" && store.album ? <PassportMemory config={store.config} progress={store.album} boardSlug={board!} targetId={id!} label={label} /> : scene && item ? <AlbumCrop art={scene.art} crop={item.cardCrop} label={label} /> : null;
-    }} /> : <p role="status" className="adventure-passport__wait">{failed ? copy.unavailable : copy.opening}</p>}
-    {failed && !remote ? <button className="fm-btn" onClick={() => setAttempt(n => n + 1)}>{copy.retry}</button> : null}
+    }} /> : (
+      // The book's own space is held while it opens, so nothing jumps when it arrives, and a failure is
+      // said inside the same frame with its way back.
+      <div className="travel-passport adventure-passport__frame-host">
+        <div className="adventure-passport__frame">
+          <span className="adventure-passport__seal" aria-hidden>✦</span>
+          <p role="status" className="adventure-passport__wait">{failed ? copy.unavailable : copy.opening}</p>
+          {failed ? <button className="fm-btn" onClick={() => setAttempt(n => n + 1)}>{copy.retry}</button> : null}
+        </div>
+      </div>
+    )}
   </div></I18nProvider>;
 }

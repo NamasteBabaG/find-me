@@ -14,6 +14,6 @@ export function demoPassport(locale: Locale): PassportView {
   const pages = projectPassport(config, progress, {}, (_, kind, id) => (kind === "photo" ? assets.photos : assets.discoveries)[id as never], false)[0]!.pages;
   // Eight explicitly future, unnamed places demonstrate book navigation, not
   // eight fabricated purchasable boards or copies of another child's images.
-  for (let i = 1; i < 9; i++) pages.push({ id: `example-future-${i}`, title: copy.demoFuture, state: "locked", finds: 0, stampIcon: "", discoveries: board.discoveries.map((d, n) => ({ id: `example-${i}-${n}`, collected: false, rarity: d.rarity ?? "common" })) });
+  for (let i = 1; i < 9; i++) pages.push({ id: `example-future-${i}`, title: copy.demoFuture, state: "locked", finds: 0, total: board.targetIds.length, stampIcon: "", discoveries: board.discoveries.map((d, n) => ({ id: `example-${i}-${n}`, collected: false, rarity: d.rarity ?? "common" })) });
   return { name: config.child.name, avatarUrl: config.child.avatarUrl, preparing: 0, worlds: [{ id: "example-seaside", title: copy.demoWorld, pages }] };
 }

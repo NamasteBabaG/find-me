@@ -40,7 +40,7 @@ describe("the album in the bag", () => {
     expect(missing.querySelector(".album__crop")).toBeNull();
     expect(empty.container.querySelector("[data-postcard-remaining]")?.getAttribute("data-postcard-remaining")).toBe("5");
     expect(empty.container.querySelector(".album__sync")?.textContent).toBe("Progress saved in this browser");
-    expect(empty.container.querySelector(".album__note")?.textContent).toContain("Three finds open the next place");
+    expect(empty.container.querySelector(".album__note")?.textContent).toContain("3 finds open the next place");
     cleanup();
     progress = recordAdventureEvent(progress, config.gameId, book, event({ kind: "discovery-found", boardSlug: "pilot-test", discoveryId: "cat" })).progress;
     for (const id of ["hide-1", "hide-2", "hide-3"]) progress = recordAdventureEvent(progress, config.gameId, book, event({ kind: "target-found", boardSlug: "pilot-test", targetId: id, variant: "B" })).progress;

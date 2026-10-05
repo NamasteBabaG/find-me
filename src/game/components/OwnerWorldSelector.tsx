@@ -104,8 +104,8 @@ export function OwnerWorldSelector({ gameId, worldSlug, icon = "🌍", onCurrent
         </header>
         {selected ? <div className="owner-worlds__preview">
           <div className="owner-worlds__emblem owner-worlds__emblem--large" aria-hidden>{selected.icon}</div>
-          <p className="owner-worlds__tagline">{selected.tagline || copy.previewText}</p>
-          <p className="owner-worlds__state">{selected.status === "available" ? copy.previewStats : status(selected)}</p>
+          <p className="owner-worlds__tagline">{selected.tagline || tf(copy.previewText, { places: selected.totalPlaces })}</p>
+          <p className="owner-worlds__state">{selected.status === "available" ? tf(copy.previewStats, { places: selected.totalPlaces }) : status(selected)}</p>
           {selected.purchaseHref ? <>
             {parent ? <><p className="owner-worlds__parent-note">{copy.parentNote}</p><Link className="fm-btn fm-btn--primary" href={selected.purchaseHref} replace><ParentContinueLabel label={copy.parentContinue} opening={copy.parentOpening} /></Link></>
               : <button type="button" className="fm-btn fm-btn--secondary" onClick={() => setParent(true)}>{selected.status === "available" ? copy.parentAction : copy.preparationAction}</button>}

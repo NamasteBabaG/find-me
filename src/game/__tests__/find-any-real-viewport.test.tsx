@@ -176,7 +176,7 @@ describe("guided discoveries through the real viewport", () => {
     }
     expect(player.store.getState().mission!.phase).toBe("complete");
     expect(player.visible()).toHaveLength(0);
-    fireEvent.click(screen.getByRole("button",{name:"Stay and collect discoveries"}));
+    fireEvent.click(screen.getByRole("button",{name:/^Stay and find \d+ more$/}));
     collect(4);
     expect(player.store.getState().album!.discoveries).toHaveLength(2);
     expect(screen.queryByText("Looking for")).toBeNull();

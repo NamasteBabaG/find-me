@@ -610,14 +610,14 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           {/* The choice, said plainly: going on is allowed, the postcard is not yet earned. */}
           {board ? <p className="scene__advance-note">{tf(total - foundIds.length === 1 ? g.album.postcardRemainingOne : g.album.postcardRemaining, { remaining: total - foundIds.length })}</p> : null}
           <div className="scene__advance-actions">
-            <button type="button" className="fm-btn fm-btn--sm" onClick={advance}>{advanceLabel}</button>
-            <button type="button" className="fm-btn fm-btn--ghost fm-btn--sm" onClick={() => setStaying(true)}>{g.scene.keepSearching}</button>
+            <button type="button" className="fm-btn" onClick={advance}>{advanceLabel}</button>
+            <button type="button" className="fm-btn fm-btn--ghost" onClick={() => setStaying(true)}>{g.scene.keepSearching}</button>
           </div>
         </section>
       ) : null}
 
       {mission.phase === "complete" && showComplete ? (
-        !store.replay && board?.targetIds.length === 3 && board.discoveries.length === 6 && store.album ? <PassportCompletion scene={scene} store={store} onStay={() => setShowComplete(false)} /> : <SceneCompleteCard scene={scene} bonusFound={mission.bonusFound} hintsUsed={Object.values(mission.found).reduce((n, r) => n + r.hintsUsed, 0)} store={store} onStay={guided ? () => setShowComplete(false) : undefined} />
+        !store.replay && board?.targetIds.length === 3 && board.discoveries.length === 6 && store.album ? <PassportCompletion scene={scene} store={store} onStay={() => setShowComplete(false)} /> : <SceneCompleteCard scene={scene} bonusFound={mission.bonusFound} hintsUsed={Object.values(mission.found).reduce((n, r) => n + r.hintsUsed, 0)} store={store} remaining={guided && board ? board.discoveries.filter((d) => !collectedIds.includes(d.id)).length : 0} onStay={guided ? () => setShowComplete(false) : undefined} />
       ) : null}
     </div>
   );
@@ -637,7 +637,12 @@ const STAR_POP_GAP_MS = 260;
 /** Each star a little higher than the one before: a climb, not five identical dings. */
 const STAR_CLIMB_SEMITONES = [0, 2, 4, 5, 7];
 
-function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, onStay }: { scene: SceneConfig; bonusFound: boolean; hintsUsed: number; store: PlayStore; onStay?: () => void }) {
+/**
+ * One primary action, always the way forward. Staying is the one secondary, and only while there is
+ * something left to find here; replaying is an icon. "To the map" left: system Back goes there (GameShell),
+ * the board's map button is there again after Stay, and a fourth button made the card a menu, not a moment.
+ */
+function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, remaining, onStay }: { scene: SceneConfig; bonusFound: boolean; hintsUsed: number; store: PlayStore; remaining: number; onStay?: () => void }) {
   const { g, tf } = useGameText();
   const next = store.nextScene();
   const allDone = next === null;
@@ -668,7 +673,7 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, onStay }: { sc
         {(
           <div className="complete__stars">
             <StarTray lit={stars} total={stars} size={stars > 3 ? "md" : "lg"} celebrate label={tf(g.stars.tray, { earned: stars, total: stars })} />
-            <p className="complete__stars-text">{stars === 5 ? g.complete.fiveStars : stars === 4 ? g.complete.fourStars : g.complete.threeStars}</p>
+            <p className="complete__stars-text">{tf(g.complete.goldStars, { n: stars })}</p>
           </div>
         )}
         {postcard ? (
@@ -688,7 +693,6 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, onStay }: { sc
         </div>
         )}
         <div className="complete__actions">
-          {onStay ? <button type="button" className="fm-btn fm-btn--secondary" onClick={onStay}>{g.collection.keep}</button> : null}
           {store.demo ? null : allDone && store.round?.active ? (
             <button type="button" className="fm-btn fm-btn--lg" onClick={() => store.goToMap(scene.slug)} autoFocus>{g.replay.roundFinished}</button>
           ) : allDone && !store.gameDone() ? (
@@ -712,14 +716,21 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, onStay }: { sc
               </span>
             </button>
           )}
-          <button type="button" className={`fm-btn ${store.demo ? "fm-btn--lg" : "fm-btn--secondary"}`} onClick={() => store.replayScene()}>
-            {g.complete.again}
-          </button>
-          {!store.demo ? (
-            <button type="button" className="fm-btn fm-btn--ghost" onClick={() => store.goToMap(scene.slug)}>
-              {g.complete.map}
+          {store.demo ? (
+            <button type="button" className="fm-btn fm-btn--lg" onClick={() => store.replayScene()} autoFocus>
+              {g.complete.again}
             </button>
           ) : null}
+          {onStay && remaining > 0 ? (
+            <button type="button" className="fm-btn fm-btn--secondary fm-btn--lg" onClick={onStay}>
+              {remaining === 1 ? g.collection.keepMoreOne : tf(g.collection.keepMore, { n: remaining })}
+            </button>
+          ) : null}
+          {store.demo ? null : (
+            <button type="button" className="scene__btn complete__replay" onClick={() => store.replayScene()} aria-label={tf(g.replay.boardAria, { place: scene.name })} title={g.complete.again}>
+              <ToolIcon name="replay" />
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -735,7 +746,7 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, onStay }: { sc
  * frame that means "show me all of it", a speaker with two arcs, and a folded
  * map instead of the emoji that was the odd one out.
  */
-function ToolIcon({ name }: { name: "map" | "zoom-in" | "zoom-out" | "fit" | "sound-on" | "sound-off" }) {
+function ToolIcon({ name }: { name: "map" | "zoom-in" | "zoom-out" | "fit" | "sound-on" | "sound-off" | "replay" }) {
   const common = { fill: "none", stroke: "currentColor", strokeWidth: 2.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
   return (
     <svg className="scene__icon" viewBox="0 0 24 24" aria-hidden focusable="false">
@@ -759,6 +770,12 @@ function ToolIcon({ name }: { name: "map" | "zoom-in" | "zoom-out" | "fit" | "so
           <path d="M20 9.5V5.6A1.6 1.6 0 0 0 18.4 4H14.5" />
           <path d="M4 14.5v3.9A1.6 1.6 0 0 0 5.6 20H9.5" />
           <path d="M20 14.5v3.9A1.6 1.6 0 0 1 18.4 20H14.5" />
+        </g>
+      ) : null}
+      {name === "replay" ? (
+        <g {...common}>
+          <path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3" />
+          <path d="M19.8 3.8v4.6h-4.6" />
         </g>
       ) : null}
       {name === "sound-on" || name === "sound-off" ? (

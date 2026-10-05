@@ -77,6 +77,11 @@
 .collect__count { position: absolute; bottom: calc(var(--space-0-5) * -1); inset-inline-end: calc(var(--space-1) * -1); padding: 0 var(--space-0-5); border-radius: var(--radius-pill); background: var(--ink); color: var(--white); font-family: var(--font-kid); font-weight: 700; font-size: var(--fs-50); line-height: var(--lh-50); box-shadow: var(--sticker-outline); }
 .collect--complete .collect__count { background: var(--leaf-deep); }
 .collect__count--bump { animation: fm-count-bump var(--dur-3) var(--ease-pop); }
+/* "2 left": a still label beside the button once the hiding spots are done. It never moves, so it is
+   the cue a reader who turned motion off gets too. Physical left, because the button is physically
+   in the bottom-right corner in both directions. */
+.collect__left { position: absolute; top: 50%; right: calc(100% + var(--space-1)); translate: 0 -50%; display: inline-flex; align-items: center; gap: var(--space-0-5); padding: var(--space-0-5) var(--space-1); border-radius: var(--radius-pill); background: var(--sun); color: var(--ink); font-family: var(--font-kid); font-weight: 700; font-size: var(--fs-100); line-height: var(--lh-100); white-space: nowrap; box-shadow: var(--sticker-outline), var(--shadow-1); pointer-events: none; }
+.collect__left > span { color: var(--gold-deep); }
 
 /* ─── The tray ────────────────────────────────────────────────────────────── */
 /* It grows out of the button's own corner and folds back into it, so the button
