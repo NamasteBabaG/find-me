@@ -91,6 +91,8 @@ export class FriendProgressSync {
   private acknowledged = "";
   private timer: ReturnType<typeof setTimeout> | undefined;
   private pending = false;
+  /** The request on its way, if any; resolves when it ends, whatever its outcome. */
+  private inFlight: Promise<void> = Promise.resolve();
   private stopped = false;
   private terminal = false;
   private rejections = 0;
@@ -119,6 +121,12 @@ export class FriendProgressSync {
   }
   current() { return this.snapshot; }
   isSaved() { return !this.pending && !this.terminal && JSON.stringify(this.snapshot) === this.acknowledged; }
+  /** Waits for a request already on its way, then sends whatever is still owed: true once every find is acknowledged. */
+  async saveNow(): Promise<boolean> {
+    await this.inFlight;
+    await this.flush();
+    return this.isSaved();
+  }
   push(incoming: GuestSnapshot) {
     if (this.terminal || this.participantSwitched()) return;
     let merged: ReturnType<typeof mergeGuestSnapshot>;
@@ -155,6 +163,8 @@ export class FriendProgressSync {
     const sent = this.snapshot, serialized = JSON.stringify(sent);
     if (serialized === this.acknowledged) { this.options.onState("saved"); return; }
     this.pending = true;
+    let settle!: () => void;
+    this.inFlight = new Promise<void>(resolve => { settle = resolve; });
     this.options.onState("saving");
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15_000);
@@ -195,6 +205,6 @@ export class FriendProgressSync {
       if (JSON.stringify(this.snapshot) !== this.acknowledged) this.schedule(response.status === 400 ? 1000 * this.rejections : 0);
     } catch {
       if (!this.stopped) { this.options.onState("offline"); this.schedule(5_000); }
-    } finally { clearTimeout(timeout); this.pending = false; }
+    } finally { clearTimeout(timeout); this.pending = false; settle(); }
   }
 }

@@ -14,6 +14,22 @@ export type PassportPageView = {
   playHref?: string;
 };
 export type PassportWorldView = { id: string; title: string; pages: PassportPageView[] };
+
+/**
+ * The passport's product contract: a board earns a page with exactly three hiding spots and six discoveries.
+ * Older five-hide formats stay playable with the classic completion card and bag, and never enter the passport
+ * (`passport.service.ts`). Every gate, on the client and the server, reads this one rule instead of its own numbers.
+ */
+export const PASSPORT_TARGETS = 3;
+export const PASSPORT_DISCOVERIES = 6;
+type ContractBoard = { targetIds: readonly unknown[]; discoveries: readonly unknown[] };
+export function isPassportBoard(board: ContractBoard): boolean {
+  return board.targetIds.length === PASSPORT_TARGETS && board.discoveries.length === PASSPORT_DISCOVERIES;
+}
+/** A game plays with the passport only when every board of its book keeps the contract. */
+export function isPassportBook(book: { boards: readonly ContractBoard[] } | null | undefined): boolean {
+  return !!book && book.boards.every(isPassportBoard);
+}
 export type PassportView = { name: string; avatarUrl?: string; worlds: PassportWorldView[]; preparing: number };
 
 /** Repeated purchases stay separate, with distinct reader labels. No merging
@@ -31,10 +47,10 @@ export function distinguishPassportWorlds(worlds: PassportWorldView[]): Passport
 /** Last find at first completion is stable: progress is an ordered, unique union. */
 export function passportPhoto(progress: AdventureProgress, boardSlug: string, preferred?: string | null) {
   const board = progress.book.boards.find(b => b.boardSlug === boardSlug);
-  if (!board || board.targetIds.length !== 3) return null;
+  if (!board || board.targetIds.length !== PASSPORT_TARGETS) return null;
   const found = progress.finds.filter(f => f.boardSlug === boardSlug);
-  if (found.length !== 3) return null;
-  return found.find(f => f.targetId === preferred) ?? found[2]!;
+  if (found.length !== PASSPORT_TARGETS) return null;
+  return found.find(f => f.targetId === preferred) ?? found[found.length - 1]!;
 }
 
 /** Crop a scene around the child, preserving a margin for location/context. */
@@ -51,7 +67,7 @@ export function projectPassport(config: GameConfig, raw: AdventureProgress, pref
   const worlds: PassportWorldView[] = [];
   for (const board of progress.book.boards) {
     // The new product contract, not five-hide test migrations.
-    if (board.targetIds.length !== 3 || board.discoveries.length !== 6) throw new Error("passport-product-contract");
+    if (!isPassportBoard(board)) throw new Error("passport-product-contract");
     const scene = config.scenes.find(s => s.slug === board.boardSlug);
     if (!scene) throw new Error("passport-content-mismatch");
     let world = worlds.find(w => w.id === board.worldSlug);
@@ -66,7 +82,7 @@ export function projectPassport(config: GameConfig, raw: AdventureProgress, pref
     const photo = passportPhoto(progress, board.boardSlug, preferences[board.boardSlug]?.photoTargetId);
     world.pages.push({
       id: board.boardSlug, title: scene.name, finds, total: board.targetIds.length,
-      state: complete ? collected.size === 6 ? "complete" : "stamped" : finds || collected.size ? "in-progress" : unlocked ? "available" : "locked",
+      state: complete ? collected.size === board.discoveries.length ? "complete" : "stamped" : finds || collected.size ? "in-progress" : unlocked ? "available" : "locked",
       stampIcon: scene.collectible.icon,
       ...(photo ? { photoUrl: media(board.boardSlug, "photo", photo.targetId) } : {}),
       discoveries: board.discoveries.map(d => collected.has(d.id) ? {
@@ -81,7 +97,7 @@ export function projectPassport(config: GameConfig, raw: AdventureProgress, pref
 /** Delta acknowledgements never grant achievements and never reissue stamps. */
 export function passportCeremony(progress: AdventureProgress, boardSlug: string, preference?: PassportPreference) {
   const board = progress.book.boards.find(b => b.boardSlug === boardSlug);
-  const complete = Boolean(board && board.targetIds.length === 3 && progress.finds.filter(f => f.boardSlug === boardSlug).length === 3);
+  const complete = Boolean(board && board.targetIds.length === PASSPORT_TARGETS && progress.finds.filter(f => f.boardSlug === boardSlug).length === PASSPORT_TARGETS);
   if (!complete) return { stamp: false, discoveryIds: [] as string[] };
   return { stamp: !preference?.stampSeen, discoveryIds: progress.discoveries.filter(d => d.boardSlug === boardSlug && !preference?.seenDiscoveries.includes(d.discoveryId)).map(d => d.discoveryId) };
 }

@@ -41,7 +41,7 @@
   .game--demo .scene { --touch-min: 64px; }
 }
 /* On a dark page the tip inherited light text on pale yellow and was unreadable. */
-/* "It is best sideways": one small pill over the board that leaves on its own, never a strip that pushes the board down. */
+/* Which way to hold it (sideways on a tablet, upright on a phone): one small pill over the board that leaves on its own, never a strip that pushes the board down. */
 .game__tip { position: absolute; z-index: var(--z-toast); left: 50%; bottom: calc(max(var(--space-2), env(safe-area-inset-bottom)) + var(--space-20)); transform: translateX(-50%); max-width: calc(100% - var(--space-4)); padding: var(--space-1) var(--space-2); border-radius: var(--radius-pill); text-align: center; font-family: var(--font-display); font-weight: 600; font-size: var(--fs-100); line-height: var(--lh-100); background: var(--ink); color: var(--white); box-shadow: var(--shadow-2); pointer-events: none; animation: game-tip 7s var(--ease-out) both; }
 @keyframes game-tip { 0% { opacity: 0; transform: translate(-50%, var(--space-1)); } 8%, 82% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, var(--space-1)); } }
 /* The adults' way out sits under the map; it is a footnote, not a row of its own. */
@@ -107,8 +107,8 @@
 .island__meta { font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-3); padding-inline: var(--space-1); padding-bottom: var(--space-1); }
 
 /* ── Scene: the stage fills the box; all chrome floats on top ──
-   The scene is a flex child of .game (min-height: 100dvh), so it takes whatever
-   the landscape tip leaves — never more than the viewport, so the mission card
+   The scene is a flex child of .game (min-height: 100dvh), so it takes the
+   height that is left — never more than the viewport, so the mission card
    and the hint button always stay on screen in portrait. */
 .scene { position: relative; flex: 1; min-height: 0; background: var(--scene-sky, var(--sea-soft)); }
 .game--demo .scene { height: 100%; }
@@ -459,7 +459,7 @@
 .wmap__sub { color: var(--ink-2); font-size: var(--fs-200); line-height: var(--lh-200); }
 
 .wmap__frame { flex: 0 0 auto; width: 100%; max-width: 100%; min-width: 0; min-height: calc(var(--touch-kid) * 3); display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; }
-.wmap__art { position: relative; width: 100%; min-width: 0; max-width: min(100%, max(calc(var(--space-12) * 3), calc((100dvh - var(--wmap-chrome) - var(--round-controls-height, 0px)) * var(--wmap-ratio, 1.5)))); min-height: max(calc(var(--touch-kid) * 3), var(--wmap-labels-height, 0px)); max-height: max(calc(var(--touch-kid) * 3), var(--wmap-labels-height, 0px), calc(100dvh - var(--wmap-chrome) - var(--round-controls-height, 0px))); container-type: inline-size; border-radius: var(--radius-4); overflow: visible; box-shadow: var(--shadow-3); }
+.wmap__art { position: relative; width: 100%; min-width: 0; max-width: min(100%, max(calc(var(--space-12) * 3), calc((100dvh - var(--wmap-chrome) - var(--round-controls-height, 0px) - var(--wmap-again-height, 0px)) * var(--wmap-ratio, 1.5)))); min-height: max(calc(var(--touch-kid) * 3), var(--wmap-labels-height, 0px)); max-height: max(calc(var(--touch-kid) * 3), var(--wmap-labels-height, 0px), calc(100dvh - var(--wmap-chrome) - var(--round-controls-height, 0px) - var(--wmap-again-height, 0px))); container-type: inline-size; border-radius: var(--radius-4); overflow: visible; box-shadow: var(--shadow-3); }
 .wmap__img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
 
 /* Per Guy (2026-10-01): a place is its name. No board thumbnails and no route
@@ -545,7 +545,10 @@
 .wmap__complete-body { min-width: 0; flex: 1; }
 .wmap__complete-title { font-size: var(--fs-500); line-height: var(--lh-500); }
 .wmap__complete-text { margin-block-start: var(--space-1); font-size: var(--fs-200); line-height: var(--lh-200); color: var(--ink-2); }
-.wmap__complete-replay { margin-block-start: var(--space-1); font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); }
+/* Without a round, starting over is a quiet text button under Go (V16): the child's 64px, no box, and its
+   height comes out of the picture's budget like the round strip's does. */
+.wmap__again { align-self: center; min-height: var(--touch-kid); padding-inline: var(--space-3); font-size: var(--fs-200); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; }
+.wmap:has(.wmap__again) { --wmap-again-height: calc(var(--touch-kid) + var(--space-3)); }
 .wmap__complete-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-block-start: var(--space-2); }
 .wmap__complete-actions .fm-btn { min-height: var(--touch-kid); white-space: normal; }
 @media (max-width: 720px) {
@@ -662,6 +665,17 @@
 .complete__postcard { display: flex; flex-direction: column; gap: var(--space-1); width: 100%; align-items: center; animation: fm-fade-up var(--dur-3) var(--ease-out); }
 .complete__postcard .postcard { max-width: 320px; }
 .complete__postcard-text { margin: 0; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); text-align: center; }
+/* A short screen (an iPhone SE or 8 is 667px tall, many Androids 640): the whole card fits without scrolling.
+   Tighter gaps and title, the postcard sized by the screen's height, and Stay beside the replay icon.
+   It comes after the card's own rules, so it wins over them at the same weight. */
+@media (max-height: 740px) {
+  .complete__card { padding: var(--space-4) var(--space-3) var(--space-3); gap: var(--space-2); }
+  .complete__title { font-size: var(--fs-400); line-height: var(--lh-400); }
+  .complete__postcard .postcard { max-width: min(320px, 28dvh); }
+  .complete__actions { flex-direction: row; flex-wrap: wrap; justify-content: center; }
+  .complete__actions > .fm-btn--lg:first-child { flex: 1 1 100%; }
+  .complete__actions > .fm-btn--secondary { flex: 1 1 0; min-width: 0; padding-inline: var(--space-2); font-size: var(--fs-200); white-space: normal; }
+}
 .album { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3); border-radius: var(--radius-4); background: var(--white); box-shadow: var(--shadow-1); }
 .album__head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-1); }
 .album__heading { display: flex; flex-direction: column; gap: var(--space-0-5); }

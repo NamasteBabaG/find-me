@@ -11,6 +11,9 @@
 .friend-names__choice { min-height: var(--touch-kid); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-1); border: 2px solid transparent; border-radius: var(--radius-2); background: var(--white); color: var(--ink); padding: var(--space-2); font: inherit; cursor: pointer; box-shadow: var(--shadow-1); transition: transform var(--dur-1) var(--ease-pop), background var(--dur-1); }
 .friend-names__choice span { font-size: var(--fs-400); }
 .friend-names__choice.is-selected { border-color: var(--grape); background: var(--lavender); }
+/* The chosen nickname says so with a mark, not only a colour. */
+.friend-names__choice { position: relative; }
+.friend-names__choice.is-selected::after { content: "✓"; position: absolute; top: var(--space-0-5); inset-inline-end: var(--space-1); color: var(--grape); font-weight: 900; }
 .friend-names__choice:active, .friend-reaction__choices button:active { transform: scale(.96); }
 .friend-names__choice:focus-visible, .friend-play__identity button:focus-visible, .friend-person:focus-visible { outline: var(--space-0-5) solid var(--grape); outline-offset: var(--space-0-5); }
 .friend-play { height: 100dvh; display: flex; flex-direction: column; background: var(--paper); }
@@ -36,17 +39,19 @@
 .friend-report__toolbar { display: flex; justify-content: flex-end; margin-bottom: var(--space-2); }
 .friend-person { border-radius: var(--radius-3); background: var(--white); padding: var(--space-3); box-shadow: var(--shadow-1); }
 .friend-person header { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); }
-.friend-person header h3, .friend-person header p { margin: 0; }
+.friend-person header :is(h3, h4), .friend-person header p { margin: 0; }
+.friend-person__when { color: var(--ink-2); font-size: var(--fs-100); line-height: var(--lh-100); }
 .friend-person__avatar { display: grid; place-items: center; width: var(--touch-kid); height: var(--touch-kid); background: var(--lavender); border-radius: var(--radius-pill); font-size: var(--fs-400); }
-.friend-person__places { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
-.friend-person__places li { display: grid; align-content: start; gap: var(--space-1); padding: var(--space-2); border-radius: var(--radius-2); background: var(--paper); }
+/* The current invitation's players first; earlier, closed invitations under their own heading. */
+.friend-report__group { display: grid; gap: var(--space-2); }
+.friend-report__group > h3 { margin: 0; font-size: var(--fs-200); line-height: var(--lh-200); color: var(--ink-2); }
+/* One strip of places that wraps: a shape and a count tell each place, the colour only repeats it. */
+.friend-person__places { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.friend-person__places li { display: inline-flex; align-items: center; gap: var(--space-0-5); padding: var(--space-0-5) var(--space-1); border-radius: var(--radius-pill); background: var(--paper); font-size: var(--fs-100); line-height: var(--lh-100); }
 .friend-person__places li.is-complete { background: var(--lime); }
 .friend-person__places li.is-partial { background: var(--lavender); }
 .friend-person__places li.is-visited { background: var(--aqua); }
-.friend-person__places li strong { overflow-wrap: anywhere; }
-.friend-person__places li > span:not(.friend-person__stars) { font-size: var(--fs-100); }
-.friend-person__number { color: var(--ink-2); }
-.friend-person__stars { color: var(--ink); font-size: var(--fs-200); white-space: nowrap; }
+.friend-person__mark { font-weight: 800; white-space: nowrap; }
 .friend-new { display: inline-flex; margin-inline-start: var(--space-1); padding: var(--space-0-5) var(--space-1); border-radius: var(--radius-pill); background: var(--sun); color: var(--ink); font-size: var(--fs-100); font-weight: 700; }
 .friend-person__postcard { background: var(--grad-sun); padding: var(--space-3); border-radius: var(--radius-3); margin-top: var(--space-3); font-size: var(--fs-300); font-family: var(--font-kid), sans-serif; }
 .friend-reaction { max-width: var(--container-narrow); margin-inline: auto; display: grid; gap: var(--space-2); text-align: center; }
@@ -75,5 +80,5 @@
   .friend-play .scene__bar { flex-direction: row; align-items: flex-start; }
   .friend-play .scene__tools { display: grid; grid-template-columns: repeat(2, var(--touch-kid)); gap: var(--space-1); }
 }
-@media (max-width: 600px) { .friend-lobby__card { padding: var(--space-3); } .friend-person__places { grid-template-columns: repeat(2, minmax(0, 1fr)); } .friend-person { padding: var(--space-2); } .friend-dialog__body { padding-inline: var(--space-2); } .friend-reaction__choices { grid-template-columns: 1fr; } }
+@media (max-width: 600px) { .friend-lobby__card { padding: var(--space-3); } .friend-person { padding: var(--space-2); } .friend-dialog__body { padding-inline: var(--space-2); } .friend-reaction__choices { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .friend-dialog[open] { animation: none; } .friend-names__choice, .family-friends__details > summary::after { transition: none; } .friend-names__choice:active, .friend-reaction__choices button:active { transform: none; } }

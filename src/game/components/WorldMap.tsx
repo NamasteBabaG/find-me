@@ -29,6 +29,8 @@ interface Props {
   onTravelDone?: () => void;
   onReplay?: (slug: string) => void;
   roundRoute?: string[];
+  /** Start a new round from the beginning. Given only while there is no round; it is then a quiet button under Go. */
+  onStartOver?: () => void;
 }
 
 /** Roughly the brief's 1.2–1.8s, and skippable. */
@@ -45,13 +47,13 @@ const CHOOSE_MS = 700;
  * an ordered list of nine buttons for anyone using a keyboard or a screen
  * reader. A game composed before worlds existed falls back to the island grid.
  */
-export function WorldMap({ config, world: shown, progress, onOpen, onPassport, onWorlds, worldSelector, demo, travelFrom, onTravelDone, onReplay, roundRoute }: Props) {
+export function WorldMap({ config, world: shown, progress, onOpen, onPassport, onWorlds, worldSelector, demo, travelFrom, onTravelDone, onReplay, roundRoute, onStartOver }: Props) {
   const world = shown ?? gameWorlds(config)[0];
   if (!world) return <>{worldSelector ? <div className="owner-worlds__fallback">{worldSelector}</div> : null}<IslandGrid config={config} progress={progress} onOpen={onOpen} onPassport={onPassport} demo={demo} /></>;
-  return <WorldMapView config={config} world={world} progress={progress} onOpen={onOpen} onPassport={onPassport} onWorlds={onWorlds} worldSelector={worldSelector} demo={demo} travelFrom={travelFrom} onTravelDone={onTravelDone} onReplay={onReplay} roundRoute={roundRoute} />;
+  return <WorldMapView config={config} world={world} progress={progress} onOpen={onOpen} onPassport={onPassport} onWorlds={onWorlds} worldSelector={worldSelector} demo={demo} travelFrom={travelFrom} onTravelDone={onTravelDone} onReplay={onReplay} roundRoute={roundRoute} onStartOver={onStartOver} />;
 }
 
-function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, worldSelector, demo, travelFrom, onTravelDone, onReplay, roundRoute }: Props & { world: PlayWorld }) {
+function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, worldSelector, demo, travelFrom, onTravelDone, onReplay, roundRoute, onStartOver }: Props & { world: PlayWorld }) {
   const { g, tf } = useGameText();
   // Only this world's boards. Counting the whole game against nine nodes is
   // how a two-world game reported 10/9 — and how world two's map lit up
@@ -178,7 +180,7 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, w
               {/* Older saved configs can carry retired/gendered completion copy. */}
               <p className="wmap__complete-text">{free && !fullyComplete ? g.scene.keepSearching : tf(g.map.completedText, { name: config.child.name })}</p>
             </div>
-            <p className="wmap__complete-replay">{g.map.completedReplay}</p>
+            {/* A title, one line and two actions (V17): "Play this world again" already says what a third line explained. */}
             <div className="wmap__complete-actions">
               <button type="button" className="fm-btn fm-btn--kid" onClick={onPassport}>{g.map.viewCollection}</button>
               {replayBoard ? <button type="button" className="fm-btn fm-btn--secondary fm-btn--kid" onClick={() => (onReplay ?? onOpen)(replayBoard)}>{g.map.replayWorld}</button> : null}
@@ -283,6 +285,9 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, w
             ➜
           </span>
         </button>
+      ) : null}
+      {!complete && !travelling && currentBoard && onStartOver ? (
+        <button type="button" className="fm-btn fm-btn--ghost wmap__again" onClick={onStartOver}>{g.replay.startOver}</button>
       ) : null}
       {demo ? <p className="map__demo">{g.map.demoNote}</p> : null}
     </div>

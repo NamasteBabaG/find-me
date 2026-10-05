@@ -1,6 +1,6 @@
 # Claude: worlds and friends polish, batch 1 (2026-10-05)
 
-Branch `claude/worlds-friends-polish-20261005`, from `beab331a` ("Add owned worlds, continuation purchases and independent friends"). One commit, not pushed. It implements section 4 of `CLAUDE_DESIGN_REVIEW_WORLDS_FRIENDS_20261005.md` (the brief), except item 5 (invitation states, link-once, replace confirmation, clipboard fallback). Codex shipped item 5 before this, along with the Go emblem, purchase labels and `LinkButton` pending; none of that is touched here.
+Branch `claude/worlds-friends-polish-20261005`, from `beab331a` ("Add owned worlds, continuation purchases and independent friends"). Two commits (batch 1, then batch 2 below), not pushed. Batch 1 implements section 4 of `CLAUDE_DESIGN_REVIEW_WORLDS_FRIENDS_20261005.md` (the brief), except item 5 (invitation states, link-once, replace confirmation, clipboard fallback). Codex shipped item 5 before this, along with the Go emblem, purchase labels and `LinkButton` pending; none of that is touched here.
 
 ## What changed, by brief item
 
@@ -79,11 +79,11 @@ Also:
   - The finale's actions sit 178px below inside the dialog.
   - Both are reachable only by scrolling, while the game asks children to turn the phone sideways.
   - This was there before this change; removing buttons made both shorter.
-  - The demo already sizes its postcard by container height (`.game--demo .complete__postcard .postcard`). The real card needs a landscape layout, for example the postcard beside the actions. Suggested for batch 2.
+  - Batch 2 settles it: phones play upright (Guy), the turn tip says so to a phone held sideways, and the card now fits short upright phones.
 - **The round strip on a phone held sideways.**
   - With its 64px button, the "Another player?" strip is about 24px taller than with the old 40px one.
   - At 640x360 it takes the top 95px, and the map only starts at about y=255.
-  - The strip rework (V16, batch 2) is what fixes this: it should not sit above the map permanently.
+  - Batch 2 removes the permanent strip (V16).
 - **"To the parents' area" under the map is 76x17,** below the 48px adult floor.
   - `game.css` calls it a deliberate footnote.
   - A bigger target is also easier for a child to hit by accident. This is a product call, so it is left as is.
@@ -93,11 +93,69 @@ Also:
   - the English locale (unit-tested).
 - **Fixture note.** The owner world selector names worlds in the game's stored `locale`. A fixture game without `locale` previews Hebrew worlds in English. Real games store it.
 
-## Left for batch 2 (from the brief)
+## Batch 2 (second commit, same day)
 
-- The finale gate (3 targets and 6 discoveries), with a five-target fixture.
-- Report grouping, and "new" kept visible for the session.
-- The guest switch sheet.
-- The round-strip rework: the permanent "Another player?" strip on the map (V16). Do this first; see the landscape note above.
-- The map completion panel trim (V17).
-- The landscape completion layout above.
+Guy's direction (2026-10-05): phones play upright, because sideways things disappear; only a tablet may suggest playing sideways.
+
+1. **The turn tip follows the device.** `src/game/engine/useTurnTip.ts` decides it.
+   - The previous tip ("more fun with the phone in landscape") showed on every upright phone. Now the device decides:
+     - A touch device whose screen's short side is at least 600px (a tablet), held upright: "It's more fun with the tablet sideways ↔️".
+     - A phone held sideways: "Hold the phone upright to see everything 📱".
+     - A phone upright, a tablet sideways, a mouse, or a screen of unknown size: nothing.
+2. **The round strip shows only while a round exists (V16).**
+   - Its one line is "This round: {earned}/{total} ★"; the "Another player?" heading is gone.
+   - Without a round, "Play from the beginning" is a quiet 64px text button under Go, shown once something is found.
+   - That button's height comes out of the map's budget (`--wmap-again-height`), the same way the strip's height does.
+3. **The map completion panel is a title, one line and two actions (V17).** `completedReplay` is removed.
+4. **The completion card fits short phones held upright (screens up to 740px tall).**
+   - Tighter gaps and title, the postcard sized by the screen's height (28dvh), and Stay beside the replay icon.
+   - The block sits after the card's own rules in `game.css`. It first lost to `.complete__postcard .postcard { max-width: 320px }`, which came later at the same weight.
+5. **The unlock toast lasts 4 seconds instead of 7**, since the HUD keeps the way forward.
+6. **"Who found me?" (Q6).**
+   - Players from the current invitation come first, then earlier, closed ones under their own heading. Headings appear only when they say something.
+   - Each player's places sit on one wrapping strip of chips, marked by a shape and a count, never colour alone: `·` not visited, `○ 0` looked, `◐ 2/3` partly found, `★` all found. The words stay in the chip for screen readers.
+   - Each card says "Last played {date}".
+   - "New" stays on the cards for the whole visit after the seen-write, and clears on close. Acknowledging is unchanged.
+7. **The guest switch (Q5).**
+   - The button is "Another player" ("מחליפים שחקן"), enabled whenever play is live.
+   - A tap waits for a save that is already on its way, busy and saying "Saving Fox's finds…". This uses the new `FriendProgressSync.saveNow()`, because `flush()` returns at once while a request is in flight.
+   - A save that cannot be made opens a sheet: "Fox's finds aren't saved yet", with Save now and Keep playing. There is never a "switch anyway".
+   - The status chip says "✓ Saved", and the lobby marks the chosen nickname with a ✓.
+8. **The finale gate: the passport contract, named once.**
+   - The gate is not removed. The server keeps older five-hide formats out of the passport on purpose (`passport.service.ts`: they "must not poison the current 3-find/6-discovery passport, nor invent extra stamps").
+   - Page saves require three finds, and the seen list is capped at six.
+   - Gating on adventure and album alone, as the brief proposed, would send delivered five-hide games into a passport the server refuses.
+   - Instead, `PASSPORT_TARGETS`, `PASSPORT_DISCOVERIES`, `isPassportBoard` and `isPassportBook` (`src/domain/passport/passport.ts`) are read by every gate: ScenePlayer, GameShell, passport.service, projectPassport, passportPhoto and passportCeremony.
+   - Behaviour is unchanged, and changing the contract later is one place.
+
+Batch 2 verification:
+- `npm run check` passes: 344 test files, 4330 passed, 2 expected fails, 55 skipped.
+- New tests:
+  - the turn tip;
+  - report grouping, marks, and "New" kept for the visit;
+  - the round strip, the quiet button and the trimmed panel;
+  - the named passport contract.
+- Three guest tests now describe the new flow: waiting for a save already on its way, and the not-saved sheet. They used to assert a disabled button.
+- Browser, Hebrew, local fixture. Friends data was made through the real services (`work/friends-seed.ts`):
+  - **Report at 390 and 320.** Current invitation first, earlier ones under their own heading, chips read shape-first right to left, and "New" stays after the seen-write.
+  - **Map without a round.** No strip, and a 64px "לשחק מההתחלה" under Go.
+  - **Map with a round.** "הסיבוב הזה: 0/27 ★" with three 64px choices; paused, two choices.
+  - **Turn tip, using screen size and touch emulation.**
+    - Phone upright: none.
+    - Phone sideways: the upright tip.
+    - iPad upright: the sideways tip.
+    - iPad sideways: none.
+    - Desktop: none.
+  - **Completion card.** Every action is in view at 320x640, 360x640, 375x667 and 390x844.
+  - **Guest.**
+    - The lobby marks the chosen nickname with a ✓.
+    - The strip shows "מחליפים שחקן" and "✓ נשמר".
+    - A failed save shows the "המציאות של שועל עדיין לא נשמרו" sheet, and the game stays.
+    - Keep playing closes the sheet.
+    - After a successful save, the switch opens the chooser.
+
+## Still open
+
+- The parents' link under the map (76x17), a product call (see above).
+- An on-screen way to the map from the completion card when there is no Stay (see batch 1, item 3), if wanted.
+- The brief asks for a Hebrew speaker to review the guest strings ("מחליפים שחקן", "המציאות של {name} עדיין לא נשמרו").

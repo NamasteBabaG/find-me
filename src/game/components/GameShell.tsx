@@ -17,10 +17,13 @@ import { Passport } from "./Passport";
 import { AdventurePassport, prefetchOwnerPassport } from "./AdventurePassport";
 import { bindGameAudio } from "../audio/sounds";
 import { searchProgress } from "@/domain/game/round";
+import { gameStars } from "@/domain/game/progress";
+import { isPassportBook } from "@/domain/passport/passport";
 import { RoundControls } from "./RoundControls";
 import { OwnerWorldSelector } from "./OwnerWorldSelector";
 import type { GuestSnapshot } from "@/domain/guest-sharing";
 import { friendSnapshotFromPlay } from "../engine/friend-progress";
+import { useTurnTip } from "../engine/useTurnTip";
 
 interface Props {
   /** A distinct friends grant, never an owner or ordinary PLAYER capability. */
@@ -67,7 +70,7 @@ function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false
   const scene = state.scene();
   // One world needs no hub: the map is the whole journey.
   const multiWorld = gameWorlds(config).length > 1;
-  const landscapeTip = useLandscapeTip();
+  const turnTip = useTurnTip();
   const gameRef = useRef<HTMLDivElement>(null);
   const historyMounted = useRef(false);
 
@@ -141,7 +144,7 @@ function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false
           <ScenePlayer key={`${scene.slug}:${state.visitId}`} scene={scene} mission={state.mission} store={state} onBack={state.goToMap} onSceneComplete={state.completeScene} />
         ) : null;
       case "passport":
-        return config.adventure?.boards.every(b => b.targetIds.length === 3 && b.discoveries.length === 6) ? <AdventurePassport store={state} /> : <Passport config={config} progress={state.progress} onMap={state.goToMap} onOpen={state.openScene} onReplay={state.replayScene} album={state.album} albumMode={state.albumMode} albumState={state.albumState} />;
+        return isPassportBook(config.adventure) ? <AdventurePassport store={state} /> : <Passport config={config} progress={state.progress} onMap={state.goToMap} onOpen={state.openScene} onReplay={state.replayScene} album={state.album} albumMode={state.albumMode} albumState={state.albumState} />;
       case "worlds":
         return <><RoundControls store={state} /><WorldHub config={config} progress={searchProgress(state.round, state.progress)} roundRoute={state.round?.active ? state.round.route : undefined} currentWorld={state.worldSlug} onEnter={(slug) => state.goToMap(null, slug)} onPassport={state.openPassport} /></>;
       case "map":
@@ -155,6 +158,8 @@ function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false
               progress={searchProgress(state.round, state.progress)}
               roundRoute={state.round?.active ? state.round.route : undefined}
               onReplay={state.startRound}
+              // Once something has been found, and only while there is no round: the strip shows a round instead.
+              onStartOver={!state.round && !demo && !readOnlyPreview && gameStars(state.progress, config.scenes).found > 0 ? () => state.startRound() : undefined}
               onOpen={state.openScene}
               onPassport={state.openPassport}
               onWorlds={multiWorld ? state.goToWorlds : null}
@@ -178,7 +183,7 @@ function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false
 
   return (
     <div ref={gameRef} className={`game${demo ? " game--demo" : ""}`} dir={dirOf(config.locale)} lang={config.locale}>
-      {landscapeTip && state.screen === "scene" ? <div className="game__tip">{g.landscapeTip}</div> : null}
+      {turnTip && state.screen === "scene" ? <div className="game__tip">{g.turnTip[turnTip]}</div> : null}
       {body}
     </div>
   );
@@ -190,13 +195,3 @@ function stepOf(state: unknown): string | undefined {
   return state && typeof state === "object" && STEP_KEY in state ? String((state as Record<string, unknown>)[STEP_KEY]) : undefined;
 }
 
-function useLandscapeTip(): boolean {
-  const [tip, setTip] = useState(false);
-  useEffect(() => {
-    const check = () => setTip(window.innerWidth < 700 && window.innerHeight > window.innerWidth);
-    check();
-    window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
-  }, []);
-  return tip;
-}

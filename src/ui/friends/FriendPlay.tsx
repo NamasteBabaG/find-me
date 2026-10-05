@@ -115,7 +115,8 @@ function FriendActive({ play, token, switchError, onAnother, onExit }: { play: P
   const [reaction, setReaction] = useState<GuestSnapshot["reactionId"]>(null);
   const [reactionOpen, setReactionOpen] = useState(false);
   const saveStatusId = useId();
-  const [switching, setSwitching] = useState(false), switchPending = useRef(false), mounted = useRef(true);
+  const [switching, setSwitching] = useState(false), [unsaved, setUnsaved] = useState(false), switchPending = useRef(false), mounted = useRef(true);
+  const name = text.nicknames[play.participant.nicknameId];
   const [sync] = useState<FriendProgressSync>(() => new FriendProgressSync({ config: play.config, shareToken: token, shareId: play.shareId, participantId: play.participant.id,
     initial: play.participant.snapshot, onState: state => { setStatus(state); setSnapshot(sync.current()); } }));
   const [seed] = useState(() => friendAlbumSeed(sync.current()));
@@ -130,17 +131,23 @@ function FriendActive({ play, token, switchError, onAnother, onExit }: { play: P
   const terminal = status === "unavailable" || status === "switched" || status === "sync-error";
   const complete = guestBoardStates(play.config, snapshot).every(board => board.state === "complete");
   const savedReaction = snapshot.reactionId && status === "saved";
-  async function exitSaved() {
-    if (switchPending.current || status !== "saved") return;
+  /**
+   * Another player starts only once this one's finds are saved. A save already on its way is waited for, with the
+   * button busy; one that cannot be made opens a sheet that says so. There is never a "switch anyway".
+   */
+  async function switchPlayer() {
+    if (switchPending.current || terminal) return;
     switchPending.current = true; setSwitching(true);
-    try { await sync.flush(); if (sync.isSaved()) await onAnother(() => sync.isSaved()); }
-    finally { switchPending.current = false; if (mounted.current) setSwitching(false); }
+    try {
+      if (await sync.saveNow()) { if (mounted.current) setUnsaved(false); await onAnother(() => sync.isSaved()); }
+      else if (mounted.current) setUnsaved(true);
+    } finally { switchPending.current = false; if (mounted.current) setSwitching(false); }
   }
   return <div className="friend-play">
-    <div className="friend-play__identity"><span>{NICKNAME_ICONS[play.participant.nicknameId]} {tf(text.player, { name: text.nicknames[play.participant.nicknameId] })}</span>
-      <button type="button" disabled={status !== "saved" || switching} aria-busy={switching || undefined} aria-describedby={!terminal ? saveStatusId : undefined} onClick={() => void exitSaved()}>{text.another}</button>
+    <div className="friend-play__identity"><span>{NICKNAME_ICONS[play.participant.nicknameId]} {tf(text.player, { name })}</span>
+      <button type="button" disabled={terminal || switching} aria-busy={switching || undefined} aria-describedby={!terminal ? saveStatusId : undefined} onClick={() => void switchPlayer()}>{switching ? <span className="fm-spinner" aria-hidden="true" /> : null}{text.another}</button>
       {complete && !terminal ? <button type="button" onClick={() => setReactionOpen(true)}>{savedReaction ? text.reactionSent : text.reactionSend}</button> : null}
-      <span id={saveStatusId} className="friend-play__save" role="status">{terminal ? "" : switching ? text.loading : status === "saving" ? text.saving : status === "saved" ? text.saved : text.offline}</span>
+      <span id={saveStatusId} className="friend-play__save" role="status">{terminal ? "" : switching ? tf(text.switchSaving, { name }) : status === "saving" ? text.saving : status === "saved" ? text.saved : text.offline}</span>
       {switchError ? <span role="status">{switchError === "unavailable" ? text.unavailable : text.network}</span> : null}
     </div>
     {terminal ? <section className="friend-lobby__card"><p role="status">{status === "switched" ? text.switching : status === "sync-error" ? text.saveError : text.unavailable}</p><Button size="kid" onClick={onExit}>{status === "sync-error" ? text.retry : text.back}</Button></section>
@@ -153,5 +160,14 @@ function FriendActive({ play, token, switchError, onAnother, onExit }: { play: P
         {snapshot.reactionId && status === "offline" ? <p role="status">{text.offline}</p> : null}
       </> : <p>{REACTION_ICONS[snapshot.reactionId!]} {text.reactions[snapshot.reactionId!]}</p>}
     </section></FriendDialog> : null}
+    <FriendDialog open={unsaved && !terminal} title={tf(text.unsavedTitle, { name })} onClose={() => setUnsaved(false)}>
+      <section className="friend-unsaved">
+        <p>{text.unsavedHelp}</p>
+        <div className="friend-lobby__actions">
+          <Button size="kid" loading={switching} onClick={() => void switchPlayer()}>{text.saveNow}</Button>
+          <Button size="kid" variant="secondary" disabled={switching} onClick={() => setUnsaved(false)}>{text.keepPlaying}</Button>
+        </div>
+      </section>
+    </FriendDialog>
   </div>;
 }

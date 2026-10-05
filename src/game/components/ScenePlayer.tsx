@@ -21,6 +21,7 @@ import { PassportCompletion } from "./PassportCompletion";
 import { Collection, type Arrival } from "./Collection";
 import { discoveryHintRect, nextDiscoveryHint, type DiscoveryHintLevel } from "@/domain/adventure/discovery-guidance";
 import { adventureAlbum } from "@/domain/adventure/progress";
+import { isPassportBoard } from "@/domain/passport/passport";
 import type { PlayStore } from "../store/play-store";
 import { useGameText } from "../i18n";
 import { QA_HOME_SIGN_IN, useHomeQaRecovery } from "@/ui/qa/HomeQaRecovery";
@@ -38,8 +39,9 @@ const QUIET_AFTER_MS = 6000;
  */
 const STAR_LAUNCH_MS = 650;
 const STAR_LAUNCH_FREE_MS = 350;
-/** How long the "next place is open" toast stays before leaving the board to the child. */
-const UNLOCK_TOAST_MS = 7000;
+/** How long the "next place is open" toast stays before leaving the board to the child. Short, because the
+ *  HUD keeps the way forward once it has gone. */
+const UNLOCK_TOAST_MS = 4000;
 /** A discovery's card slides into the album: a short note, never a wall. */
 const ALBUM_TOAST_MS = 2600;
 
@@ -617,7 +619,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
       ) : null}
 
       {mission.phase === "complete" && showComplete ? (
-        !store.replay && board?.targetIds.length === 3 && board.discoveries.length === 6 && store.album ? <PassportCompletion scene={scene} store={store} onStay={() => setShowComplete(false)} /> : <SceneCompleteCard scene={scene} bonusFound={mission.bonusFound} hintsUsed={Object.values(mission.found).reduce((n, r) => n + r.hintsUsed, 0)} store={store} remaining={guided && board ? board.discoveries.filter((d) => !collectedIds.includes(d.id)).length : 0} onStay={guided ? () => setShowComplete(false) : undefined} />
+        !store.replay && board && isPassportBoard(board) && store.album ? <PassportCompletion scene={scene} store={store} onStay={() => setShowComplete(false)} /> : <SceneCompleteCard scene={scene} bonusFound={mission.bonusFound} hintsUsed={Object.values(mission.found).reduce((n, r) => n + r.hintsUsed, 0)} store={store} remaining={guided && board ? board.discoveries.filter((d) => !collectedIds.includes(d.id)).length : 0} onStay={guided ? () => setShowComplete(false) : undefined} />
       ) : null}
     </div>
   );

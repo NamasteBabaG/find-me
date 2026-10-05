@@ -154,7 +154,7 @@ describe("the friends lobby and current guest", () => {
     expect(calls.filter(call => call.path.endsWith("/progress"))).toHaveLength(1);
     expect(calls.filter(call => call.body.operation === "another")).toEqual([]);
   });
-  it("an active player cannot switch while saving or offline, and can switch once the server acknowledges", async () => {
+  it("an active player's switch waits for a save on its way, never leaves unsaved finds behind, and switches once they are acknowledged", async () => {
     const old = participant(), pendingSnapshot = laterFind(old); let online = false;
     let release!: (response: Response) => void; const pending = new Promise<Response>(resolve => { release = resolve; });
     const calls: Array<{ path: string; body: Record<string, unknown> }> = [];
@@ -167,18 +167,20 @@ describe("the friends lobby and current guest", () => {
     const page = mount(); fireEvent.click(await page.findByRole("button", { name: "Continue as Fox" })); await page.findByTestId("guest-game");
     await act(async () => { game.props.friend!.onProgress(pendingSnapshot); });
     const another = page.getByRole("button", { name: text.another });
-    expect((another as HTMLButtonElement).disabled).toBe(true); expect(page.getByText(text.saving)).toBeTruthy();
+    expect(page.getByText(text.saving)).toBeTruthy();
     expect(document.getElementById(another.getAttribute("aria-describedby")!)?.textContent).toBe(text.saving);
+    // A tap while the save is on its way waits for it, busy, and says whose finds are being kept.
     fireEvent.click(another);
-    await waitFor(() => expect(calls.some(call => call.path.endsWith("/progress"))).toBe(true));
+    await waitFor(() => expect(another.getAttribute("aria-busy")).toBe("true"));
+    expect(document.getElementById(another.getAttribute("aria-describedby")!)?.textContent).toBe("Saving Fox's finds…");
     await act(async () => { release(reply({}, 503)); });
-    await page.findByText(text.offline);
-    expect((page.getByRole("button", { name: text.another }) as HTMLButtonElement).disabled).toBe(true);
-    expect(document.getElementById(another.getAttribute("aria-describedby")!)?.textContent).toBe(text.offline);
-    fireEvent.click(page.getByRole("button", { name: text.another }));
+    // The save could not be made: a sheet says so, the game stays and nothing switched.
+    await page.findByRole("dialog", { name: "Fox's finds aren't saved yet" });
     expect(page.getByTestId("guest-game").textContent).toContain(old.id);
     expect(calls.filter(call => call.body.operation === "inspect")).toHaveLength(1);
     expect(JSON.parse(window.localStorage.getItem(outboxKey(old))!)).toEqual(pendingSnapshot);
+    fireEvent.click(page.getByRole("button", { name: text.keepPlaying }));
+    expect(page.queryByRole("dialog", { name: "Fox's finds aren't saved yet" })).toBeNull();
     online = true; act(() => { window.dispatchEvent(new Event("online")); }); await page.findByText(text.saved);
     expect((page.getByRole("button", { name: text.another }) as HTMLButtonElement).disabled).toBe(false);
     expect(window.localStorage.getItem(outboxKey(old))).toBeNull();
@@ -190,7 +192,7 @@ describe("the friends lobby and current guest", () => {
     fireEvent.click(page.getByRole("button", { name: text.back }));
     expect(page.getByRole("button", { name: "Continue as Fox" })).toBeTruthy();
   });
-  it("a restored unsaved outbox disables Another while its active save is still in flight", async () => {
+  it("a restored unsaved outbox makes Another wait for its save on the way, then switches", async () => {
     const old = participant(), pendingSnapshot = laterFind(old);
     window.localStorage.setItem(outboxKey(old), JSON.stringify(pendingSnapshot));
     let release!: (response: Response) => void; const pending = new Promise<Response>(resolve => { release = resolve; });
@@ -203,12 +205,16 @@ describe("the friends lobby and current guest", () => {
     }));
     const page = mount(); fireEvent.click(await page.findByRole("button", { name: "Continue as Fox" })); await page.findByTestId("guest-game");
     await waitFor(() => expect(calls.some(call => call.path.endsWith("/progress"))).toBe(true));
-    expect((page.getByRole("button", { name: text.another }) as HTMLButtonElement).disabled).toBe(true);
     expect(page.getByText(text.saving)).toBeTruthy();
+    const another = page.getByRole("button", { name: text.another });
+    fireEvent.click(another); fireEvent.click(another);
+    await waitFor(() => expect(another.getAttribute("aria-busy")).toBe("true"));
+    expect(page.queryByRole("group", { name: text.chooseName })).toBeNull();
+    expect(calls.filter(call => call.body.operation === "inspect")).toHaveLength(1);
     await act(async () => { release(reply({ snapshot: pendingSnapshot })); });
-    await page.findByText(text.saved);
-    expect((page.getByRole("button", { name: text.another }) as HTMLButtonElement).disabled).toBe(false);
+    await page.findByRole("group", { name: text.chooseName });
     expect(window.localStorage.getItem(outboxKey(old))).toBeNull();
+    expect(calls.filter(call => call.body.operation === "inspect")).toHaveLength(2);
   });
   it("opens the nickname chooser directly after a fresh inspect and keeps active play mounted while that inspect is pending", async () => {
     const old = participant(); let inspections = 0;
@@ -276,7 +282,11 @@ describe("the friends lobby and current guest", () => {
     expect(page.getByTestId("guest-game").textContent).toContain(old.id);
     expect(page.queryByRole("group", { name: text.chooseName })).toBeNull();
     expect(JSON.parse(window.localStorage.getItem(outboxKey(old))!)).toEqual(pendingSnapshot);
-    expect((page.getByRole("button", { name: text.another }) as HTMLButtonElement).disabled).toBe(true);
+    // Another cannot leave these finds behind: it says they are not saved yet and keeps the game.
+    fireEvent.click(page.getByRole("button", { name: text.another }));
+    await page.findByRole("dialog", { name: "Fox's finds aren't saved yet" });
+    expect(page.queryByRole("group", { name: text.chooseName })).toBeNull();
+    fireEvent.click(page.getByRole("button", { name: text.keepPlaying }));
     online = true; act(() => { window.dispatchEvent(new Event("online")); }); await page.findByText(text.saved);
     fireEvent.click(page.getByRole("button", { name: text.another }));
     await page.findByRole("group", { name: text.chooseName });

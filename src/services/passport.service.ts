@@ -2,10 +2,10 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { parseGameConfig } from "@/domain/game/config";
 import { emptyAdventureProgress, readAdventureProgress } from "@/domain/adventure/progress";
-import { distinguishPassportWorlds, passportCeremony, projectPassport, type PassportPreference, type PassportView } from "@/domain/passport/passport";
+import { distinguishPassportWorlds, isPassportBoard, PASSPORT_DISCOVERIES, PASSPORT_TARGETS, passportCeremony, projectPassport, type PassportPreference, type PassportView } from "@/domain/passport/passport";
 
 type Db = Pick<PrismaClient, "familyChild" | "game" | "passportPagePreference">;
-const Seen = z.array(z.string().min(1).max(160)).max(6);
+const Seen = z.array(z.string().min(1).max(160)).max(PASSPORT_DISCOVERIES);
 export class PassportAccessError extends Error {}
 
 export async function passportSources(db: Db, ownerId: string, childId: string) {
@@ -21,7 +21,7 @@ export async function passportSources(db: Db, ownerId: string, childId: string) 
     if (config.gameId !== game.id) throw new Error("passport-content-unavailable");
     // Old test formats remain playable from the family card. They must not
     // poison the current 3-find/6-discovery passport, nor invent extra stamps.
-    if (!config.adventure || !config.adventure.boards.every(b => b.targetIds.length === 3 && b.discoveries.length === 6)) return [];
+    if (!config.adventure || !config.adventure.boards.every(isPassportBoard)) return [];
     if (game.adventureAlbum && (!Number.isSafeInteger(game.adventureAlbum.revision) || game.adventureAlbum.revision < 1)) throw new Error("passport-progress-unavailable");
     const progress = readAdventureProgress(game.adventureAlbum ? JSON.parse(game.adventureAlbum.snapshotJson) : emptyAdventureProgress(game.id, config.adventure), game.id, config.adventure);
     const preferences: Record<string, PassportPreference> = Object.fromEntries(game.passportPages.map(p => [p.boardSlug, { photoTargetId: p.photoTargetId, stampSeen: p.stampSeen, seenDiscoveries: Seen.parse(JSON.parse(p.seenDiscoveries)) }]));
@@ -53,7 +53,7 @@ export async function updatePassportPage(db: PrismaClient, ownerId: string, chil
     const source = sources.find(s => s.game.id === gameId);
     if (!source) throw new PassportAccessError("not-found");
     const board = source.progress.book.boards.find(b => b.boardSlug === boardSlug);
-    if (!board || board.targetIds.length !== 3 || source.progress.finds.filter(f => f.boardSlug === boardSlug).length !== 3) throw new PassportAccessError("not-complete");
+    if (!board || board.targetIds.length !== PASSPORT_TARGETS || source.progress.finds.filter(f => f.boardSlug === boardSlug).length !== PASSPORT_TARGETS) throw new PassportAccessError("not-complete");
     const previous = source.preferences[boardSlug] ?? { photoTargetId: null, stampSeen: false, seenDiscoveries: [] };
     const next = { ...previous };
     if (choice.kind === "photo") {

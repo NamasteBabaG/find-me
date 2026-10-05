@@ -497,7 +497,7 @@ export const he: Dictionary = {
     "reference": "מספר תקלה: {reference}"
   },
   game: {
-    landscapeTip: "המשחק הכי כיף כשהטלפון לרוחב 📱↔️",
+    turnTip: { tablet: "המשחק הכי כיף כשהטאבלט לרוחב ↔️", phone: "מחזיקים את הטלפון לאורך ורואים הכול 📱" },
     parents: "לאזור ההורים",
     gift: {
       eyebrow: "משהו קטן מחכה",
@@ -539,7 +539,6 @@ export const he: Dictionary = {
       later: "מקום בהמשך",
       skip: "לדלג למקום הבא",
       completedText: "{name}, כל המחבואים בעולם הזה נמצאו!",
-      completedReplay: "רוצים לחפש שוב? פותחים מקום שהושלם ובוחרים ״לשחק מחדש״.",
       viewCollection: "פותחים את הדרכון שלי",
       replayWorld: "לעוד סיבוב בעולם הזה",
     },
@@ -602,7 +601,7 @@ export const he: Dictionary = {
       label: "משחקים מחדש",
       note: "הדרכון וההישגים שלכם נשארים שמורים.",
       roundTitle: "סיבוב חדש",
-      savedTitle: "עוד מישהו רוצה לשחק?",
+      roundStars: "הסיבוב הזה: {earned}/{total} ★",
       startOver: "לשחק מההתחלה",
       resumeRound: "ממשיכים בסיבוב הזה",
       savedJourney: "חזרה להתקדמות השמורה",

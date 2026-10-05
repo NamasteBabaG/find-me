@@ -5,11 +5,14 @@ import { gameStars } from "@/domain/game/progress";
 import { useGameText } from "../i18n";
 import { useLayoutEffect, useRef } from "react";
 
+/**
+ * The strip is about a round, so it is there only while one exists (V16). Without one, starting over is a quiet
+ * button under the map's Go, and nothing sits above the map asking "Another player?".
+ */
 export function RoundControls({ store }: { store: PlayStore }) {
   const { g, tf } = useGameText();
   const panel = useRef<HTMLElement>(null);
-  const earned = gameStars(store.progress, store.config.scenes);
-  const visible = !store.demo && !!(earned.found || store.round);
+  const visible = !store.demo && !!store.round;
   useLayoutEffect(() => {
     const element = panel.current, game = element?.closest<HTMLElement>(".game");
     if (!element || !game) return;
@@ -19,19 +22,18 @@ export function RoundControls({ store }: { store: PlayStore }) {
     observer?.observe(element);
     return () => { observer?.disconnect(); game.style.removeProperty("--round-controls-height"); };
   }, [visible]);
-  if (store.demo || (!earned.found && !store.round)) return null;
-  const active = store.round?.active;
-  const stars = store.round ? gameStars(store.round.progress, store.config.scenes.filter(s => store.round!.route.includes(s.slug))) : null;
+  if (!visible) return null;
+  const round = store.round!;
+  const stars = gameStars(round.progress, store.config.scenes.filter(s => round.route.includes(s.slug)));
   return <section ref={panel} className="round-controls" aria-label={g.replay.roundTitle}>
     <div className="round-controls__copy">
-      <strong>{active ? g.replay.roundTitle : g.replay.savedTitle}</strong>
-      <span>{active && stars ? tf(g.stars.tray, { earned: stars.found, total: stars.total }) : g.replay.note}</span>
+      <strong>{tf(g.replay.roundStars, { earned: stars.found, total: stars.total })}</strong>
     </div>
     <div className="round-controls__actions">
-      {store.round ? <button type="button" className="fm-btn" onClick={store.resumeRound}>{g.replay.resumeRound}</button> : null}
-      {active ? <button type="button" className="fm-btn fm-btn--secondary" onClick={store.pauseRound}>{g.replay.savedJourney}</button> : null}
-      <button type="button" className={`fm-btn ${store.round ? "fm-btn--ghost" : "fm-btn--secondary"}`} onClick={() => store.startRound()}>{g.replay.startOver}</button>
+      <button type="button" className="fm-btn" onClick={store.resumeRound}>{g.replay.resumeRound}</button>
+      {round.active ? <button type="button" className="fm-btn fm-btn--secondary" onClick={store.pauseRound}>{g.replay.savedJourney}</button> : null}
+      <button type="button" className="fm-btn fm-btn--ghost" onClick={() => store.startRound()}>{g.replay.startOver}</button>
     </div>
-    {store.round && !store.roundSaved ? <p className="round-controls__issue" role="status">{g.replay.unsaved}</p> : null}
+    {!store.roundSaved ? <p className="round-controls__issue" role="status">{g.replay.unsaved}</p> : null}
   </section>;
 }

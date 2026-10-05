@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { publicBeachDemo } from "../../../../content/demo/beach-v1";
 import { emptyAdventureProgress, recordAdventureEvent } from "../../adventure/progress";
-import { passportCeremony, passportPhoto, passportPhotoCrop, projectPassport } from "../passport";
+import { isPassportBoard, isPassportBook, passportCeremony, passportPhoto, passportPhotoCrop, projectPassport } from "../passport";
 
 const config = publicBeachDemo("en"), book = config.adventure!, board = book.boards[0]!;
 const empty = () => emptyAdventureProgress(config.gameId, book);
@@ -12,6 +12,16 @@ function complete() {
 }
 const media = (_board: string, kind: string, id: string) => `/only-authorized-crop/${kind}/${id}`;
 describe("passport derives achievements from current product progress", () => {
+  it("names its contract once: three hiding spots and six discoveries, on every board of the book", () => {
+    expect(isPassportBoard(board)).toBe(true);
+    // A five-hide board keeps the classic completion card and bag; it never enters the passport.
+    const fiveHides = { ...board, targetIds: [...board.targetIds, "fourth", "fifth"] };
+    expect(isPassportBoard(fiveHides)).toBe(false);
+    expect(isPassportBoard({ ...board, discoveries: board.discoveries.slice(0, 4) })).toBe(false);
+    expect(isPassportBook(book)).toBe(true);
+    expect(isPassportBook({ ...book, boards: [...book.boards, fiveHides] })).toBe(false);
+    expect(isPassportBook(undefined)).toBe(false);
+  });
   it("all six items without three finds do not earn a stamp or a child photograph", () => {
     let progress = empty();
     for (const d of board.discoveries) progress = recordAdventureEvent(progress, config.gameId, book, { kind: "discovery-found", discoveryId: d.id, boardSlug: board.boardSlug }).progress;

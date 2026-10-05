@@ -11,6 +11,7 @@ import { getDict, tf, type Locale } from "@/i18n";
 import { buildDemoConfig } from "@/services/demo";
 import { WorldMap } from "../components/WorldMap";
 import { GameShell } from "../components/GameShell";
+import { RoundControls } from "../components/RoundControls";
 import { GameI18nProvider } from "../i18n";
 import { createPlayStore } from "../store/play-store";
 
@@ -49,6 +50,49 @@ describe("the map's one face", () => {
     expect(faces).toHaveLength(1);
     expect(faces[0]!.closest(".wmap__marker")).not.toBeNull();
     expect(view.container.querySelector(".wmap__bar img")).toBeNull();
+  });
+});
+
+describe("starting over, and the round strip", () => {
+  it("puts a quiet Play from the beginning under Go when the shell offers one, and none on a finished world", () => {
+    const config = fixture("he"), world = config.worlds![0]!, g = getDict("he").game, onStartOver = vi.fn();
+    const started = finish(config, boardSlugs(world).slice(0, 1));
+    const view = mount(config, started, world, { onStartOver });
+    const again = view.getByRole("button", { name: g.replay.startOver });
+    expect(view.container.querySelector(".wmap__go")!.compareDocumentPosition(again) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(again); expect(onStartOver).toHaveBeenCalledOnce();
+    cleanup();
+    expect(mount(config, started, world).queryByRole("button", { name: g.replay.startOver })).toBeNull();
+    cleanup();
+    const finished = mount(config, finish(config, boardSlugs(world)), world, { onStartOver });
+    expect(finished.queryByRole("button", { name: g.replay.startOver })).toBeNull();
+    // The finished world's panel: a title, one line and two actions (V17).
+    expect(finished.container.querySelectorAll(".wmap__complete p")).toHaveLength(1);
+  });
+
+  it("offers starting over on the map once something is found, with no strip above the map", () => {
+    const config = fixture("he"), world = config.worlds![0]!, g = getDict("he").game;
+    const progress = { ...finish(config, boardSlugs(world).slice(0, 1)), revealed: true, lastWorld: world.slug };
+    window.localStorage.setItem(`findme:progress:v1:${config.gameId}`, JSON.stringify(progress));
+    const view = render(<GameShell config={config} />);
+    expect(view.getByRole("button", { name: g.replay.startOver }).classList.contains("wmap__again")).toBe(true);
+    expect(view.container.querySelector(".round-controls")).toBeNull();
+  });
+
+  it("shows the round strip only while a round exists, with this round's stars and no 'Another player?'", () => {
+    const config = fixture("he"), g = getDict("he").game;
+    const store = createPlayStore(config, { copy: g.copy });
+    store.setState({ progress: { ...finish(config, boardSlugs(config.worlds![0]!).slice(0, 1)), revealed: true } });
+    const strip = () => render(<GameI18nProvider locale="he"><RoundControls store={store.getState()} /></GameI18nProvider>);
+    expect(strip().container.querySelector(".round-controls")).toBeNull();
+    cleanup();
+    store.getState().startRound();
+    const view = strip(), route = store.getState().round!.route;
+    const total = config.scenes.filter(scene => route.includes(scene.slug)).reduce((n, scene) => n + scene.targets.length, 0);
+    expect(view.container.querySelector(".round-controls strong")?.textContent).toBe(tf(g.replay.roundStars, { earned: 0, total }));
+    expect(view.getByRole("button", { name: g.replay.resumeRound })).toBeTruthy();
+    expect(view.getByRole("button", { name: g.replay.savedJourney })).toBeTruthy();
+    expect(view.container.textContent).not.toContain("עוד מישהו רוצה לשחק?");
   });
 });
 

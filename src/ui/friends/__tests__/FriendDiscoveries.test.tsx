@@ -48,6 +48,58 @@ describe("who found me", () => {
     expect(within(dialog).getByText("0 of 27 found")).toBeTruthy();
     expect(within(dialog).queryByRole("button", { name: text.remove })).toBeNull();
   });
+  it("tells each place by a shape and a count, and keeps the words for a screen reader", async () => {
+    const fox = person("gpt_fox", "fox", 1);
+    fox.boards = fox.boards.map((board, i) => i === 1 ? { ...board, state: "partial" as const, finds: 2 } : i === 2 ? { ...board, state: "complete" as const, finds: 3 } : board);
+    vi.stubGlobal("fetch", vi.fn(async () => response(report([fox]))));
+    const page = mount(); fireEvent.click(page.getByRole("button", { name: new RegExp(text.title) }));
+    const card = (await page.findByRole("heading", { name: "Fox" })).closest("article")!;
+    // · not visited, ○ 0 looked, ◐ 2/3 partly, ★ all: never colour alone.
+    expect([...card.querySelectorAll(".friend-person__mark")].slice(0, 4).map(mark => mark.textContent)).toEqual(["○ 0", "◐ 2/3", "★", "·"]);
+    expect(card.querySelector(".friend-person__mark")?.getAttribute("aria-hidden")).toBe("true");
+    expect(within(card).getByText("2 of 3 found")).toBeTruthy();
+    expect(within(card).getByText(`Last played ${new Date(fox.lastActivityAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`)).toBeTruthy();
+  });
+  it("lists the current invitation's players first and puts closed invitations under their own heading", async () => {
+    const closed = { id: "gsr_old", active: false, expiresAt: "2026-01-01T00:00:00.000Z", revokedAt: "2025-12-01T00:00:00.000Z", revision: 1, seenRevision: 1 };
+    const both = report([{ ...person("gpt_fox", "fox", 1), shareId: "gsr_old" }, person("gpt_star", "star", 2)]);
+    both.shares.push(closed);
+    vi.stubGlobal("fetch", vi.fn(async () => response(both)));
+    const page = mount(); fireEvent.click(page.getByRole("button", { name: new RegExp(text.title) }));
+    const dialog = page.getByRole("dialog", { name: text.title });
+    await within(dialog).findByRole("heading", { name: text.currentGroup });
+    const headings = within(dialog).getAllByRole("heading").map(heading => `${heading.tagName}:${heading.textContent}`);
+    expect(headings).toEqual([`H2:${text.title}`, `H3:${text.currentGroup}`, "H4:Star", `H3:${text.earlierGroup}`, "H4:Fox"]);
+    cleanup();
+    // Only the current invitation: no headings to read through.
+    vi.stubGlobal("fetch", vi.fn(async () => response(report())));
+    const plain = mount(); fireEvent.click(plain.getByRole("button", { name: new RegExp(text.title) }));
+    await plain.findByRole("heading", { name: "Fox" });
+    expect(within(plain.getByRole("dialog", { name: text.title })).getAllByRole("heading").map(heading => `${heading.tagName}:${heading.textContent}`)).toEqual([`H2:${text.title}`, "H3:Fox", "H3:Star"]);
+  });
+  it("keeps New on the cards for the whole visit after they are marked seen, and drops it once the sheet closes", async () => {
+    let seen = false;
+    vi.stubGlobal("fetch", vi.fn(async (_path: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)), value = report();
+      if (body.operation === "seen") seen = true;
+      if (seen) { value.shares[0]!.seenRevision = 2; value.participants.forEach(p => { p.hasNew = false; }); value.hasNew = false; }
+      return response(value);
+    }));
+    const page = mount(); const open = () => page.getByRole("button", { name: new RegExp(text.title) });
+    await waitFor(() => expect(open().textContent).toContain(text.new));
+    fireEvent.click(open()); await waitFor(() => expect(observation.size).toBe(2));
+    const cards = () => [...page.getByRole("dialog", { name: text.title }).querySelectorAll("article")];
+    vi.useFakeTimers();
+    await act(async () => { for (const card of cards()) intersect(card, true); vi.advanceTimersByTime(500); });
+    await act(async () => { vi.advanceTimersByTime(450); });
+    vi.useRealTimers();
+    // The report now says nothing is new (the button agrees), but the cards being read keep their badge.
+    await waitFor(() => expect(open().textContent).not.toContain(text.new));
+    expect(cards().map(card => card.querySelector(".friend-new")?.textContent)).toEqual([text.new, text.new]);
+    fireEvent.click(page.getByRole("button", { name: getDict("en").friends.close }));
+    fireEvent.click(open()); await waitFor(() => expect(observation.size).toBe(2));
+    expect(cards().map(card => card.querySelector(".friend-new"))).toEqual([null, null]);
+  });
   it("keeps the previous report on a network error and a refresh can recover", async () => {
     let fail = false;
     vi.stubGlobal("fetch", vi.fn(async () => { if (fail) throw new Error("offline"); return response(report()); }));

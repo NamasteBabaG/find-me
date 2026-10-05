@@ -499,7 +499,8 @@ export const en = {
     "reference": "Reference: {reference}"
   },
   game: {
-    landscapeTip: "It's more fun with the phone in landscape 📱↔️",
+    /** Said once over a board: a tablet plays sideways, a phone upright (on its side a phone cuts things off). */
+    turnTip: { tablet: "It's more fun with the tablet sideways ↔️", phone: "Hold the phone upright to see everything 📱" },
     parents: "Parents' area",
     gift: {
       eyebrow: "Something small is waiting",
@@ -543,7 +544,6 @@ export const en = {
       later: "a later place",
       skip: "Skip to the next place",
       completedText: "{name}, you found every hiding spot in this world!",
-      completedReplay: "Every place on this map is yours to visit again.",
       viewCollection: "Open my passport",
       replayWorld: "Play this world again",
     },
@@ -608,7 +608,8 @@ export const en = {
       label: "Playing again",
       note: "Your passport and achievements stay saved.",
       roundTitle: "New round",
-      savedTitle: "Another player?",
+      /** The round strip's one line; it shows only while a round exists. */
+      roundStars: "This round: {earned}/{total} ★",
       startOver: "Play from the beginning",
       resumeRound: "Continue this round",
       savedJourney: "Back to saved progress",
