@@ -48,6 +48,8 @@ img.family-sticker { border-radius: var(--radius-2); object-fit: contain; }
    cover spans the card, and the card's other controls sit above it. A screen reader still meets one link. The button
    keeps still, so the card answers for it: a lift on hover, a dip on press. */
 .adventure { transition: box-shadow var(--dur-2) var(--ease-out), filter var(--dur-1); }
+/* The hit cover follows the card's corners, not the play button's pill. */
+.adventure .adventure__play::after { border-radius: var(--radius-4); }
 .adventure:has(.adventure__play:hover) { box-shadow: var(--shadow-2); }
 .adventure:has(.adventure__play:active, .adventure__play[data-press-feedback="true"]) { filter: brightness(0.97); }
 .adventure .family-manage, .adventure .family-friends { position: relative; z-index: 1; }

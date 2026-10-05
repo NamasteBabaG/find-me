@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState, type FormEvent } from "react";
+import { useActionState, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/ui/Button";
 import { ConfirmDialog } from "@/ui/ConfirmDialog";
 import { Notice } from "@/ui/primitives";
@@ -25,19 +25,35 @@ export function ManageGame({ gameId, playUrl, gift, childName }: Props) {
   const l = t.library;
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
+  const copyGeneration = useRef(0);
+  const copyResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const invalidateCopy = () => {
+    copyGeneration.current += 1;
+    if (copyResetTimer.current !== null) {
+      clearTimeout(copyResetTimer.current);
+      copyResetTimer.current = null;
+    }
+  };
   const [giftState, giftAction, giftPending] = useActionState<FlowResult | null, FormData>(updateGiftAction, null);
   // Replacing the link is a server action; the page comes back with the new link as `playUrl`, and the share and
   // copy buttons use that prop, so they always send the current link. With the address no longer on screen, the
   // change is said in words.
-  const [, rotateAction, rotatePending] = useActionState<null, FormData>(async (_, data) => { await rotateLinkAction(data); return null; }, null);
+  const [, rotateAction, rotatePending] = useActionState<null, FormData>(async (_, data) => {
+    invalidateCopy();
+    setCopied(false);
+    await rotateLinkAction(data);
+    return null;
+  }, null);
   const [rotated, setRotated] = useState(false);
   const shownUrl = useRef(playUrl);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (shownUrl.current === playUrl) return;
     const replaced = shownUrl.current !== null && playUrl !== null;
+    invalidateCopy();
     shownUrl.current = playUrl;
     setCopied(false); setCopyFailed(false); setRotated(replaced);
   }, [playUrl]);
+  useEffect(() => () => { invalidateCopy(); }, []);
   // The two things that cannot be undone ask first, in the product's own dialog.
   // A submit goes through only once the dialog has armed it.
   const [ask, setAsk] = useState<"rotate" | "delete" | null>(null);
@@ -58,20 +74,30 @@ export function ManageGame({ gameId, playUrl, gift, childName }: Props) {
   };
 
   const copy = async () => {
-    if (!playUrl) return;
-    setCopyFailed(false); setRotated(false);
+    if (!playUrl || rotatePending) return;
+    invalidateCopy();
+    const generation = copyGeneration.current;
+    const requestedUrl = playUrl;
+    const isCurrent = () => copyGeneration.current === generation && shownUrl.current === requestedUrl;
+    setCopied(false); setCopyFailed(false); setRotated(false);
     try {
-      await navigator.clipboard.writeText(playUrl);
+      await navigator.clipboard.writeText(requestedUrl);
+      if (!isCurrent()) return;
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      copyResetTimer.current = setTimeout(() => {
+        if (!isCurrent()) return;
+        copyResetTimer.current = null;
+        setCopied(false);
+      }, 2000);
     } catch {
+      if (!isCurrent()) return;
       setCopied(false);
       setCopyFailed(true);
     }
   };
 
   const share = async () => {
-    if (!playUrl) return;
+    if (!playUrl || rotatePending) return;
     if (navigator.share) {
       try {
         await navigator.share({ title: tf(l.share.shareTitle, { name: childName }), text: tf(l.share.shareText, { name: childName }), url: playUrl });
@@ -103,10 +129,10 @@ export function ManageGame({ gameId, playUrl, gift, childName }: Props) {
               </span>
             </div>
             <div className="share-actions">
-              <Button variant="sea" onClick={share}>
+              <Button variant="sea" onClick={share} disabled={rotatePending}>
                 {l.share.send}
               </Button>
-              <Button variant="secondary" onClick={copy}>
+              <Button variant="secondary" onClick={copy} disabled={rotatePending}>
                 {copied ? l.share.copied : l.share.copy}
               </Button>
             </div>

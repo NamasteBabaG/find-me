@@ -663,6 +663,7 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, remaining, onS
   const next = store.nextScene();
   const allDone = next === null;
   const primaryReturnsToMap = allDone && Boolean(store.round?.active);
+  const hasStay = Boolean(onStay && remaining > 0);
   // Every hiding spot found: the postcard, from the pixels of the find itself.
   const postcard = (() => {
     if (!store.album || !store.config.adventure) return null;
@@ -709,7 +710,7 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, remaining, onS
           {bonusFound ? <span className="fm-badge fm-badge--sea">{g.complete.zik}</span> : null}
         </div>
         )}
-        <div className="complete__actions">
+        <div className={`complete__actions${hasStay ? " complete__actions--stay" : ""}${primaryReturnsToMap ? " complete__actions--map-primary" : ""}`}>
           {store.demo ? null : allDone && store.round?.active ? (
             <button type="button" className="fm-btn fm-btn--lg" onClick={() => store.goToMap(scene.slug)} autoFocus>{g.replay.roundFinished}</button>
           ) : allDone && !store.gameDone() ? (
@@ -738,7 +739,7 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, remaining, onS
               {g.complete.again}
             </button>
           ) : null}
-          {onStay && remaining > 0 ? (
+          {hasStay ? (
             <button type="button" className="fm-btn fm-btn--secondary fm-btn--lg" onClick={onStay}>
               {remaining === 1 ? g.collection.keepMoreOne : tf(g.collection.keepMore, { n: remaining })}
             </button>

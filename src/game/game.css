@@ -706,12 +706,21 @@
    stars' words left to the stars themselves (the tray keeps its label), and a smaller postcard. Every phone fits the
    whole card without scrolling (Guy, 2026-10-05). */
 @media (max-height: 600px) {
-  .complete__card { padding: var(--space-3) var(--space-2) var(--space-2); gap: var(--space-1); }
-  .complete__title { font-size: var(--fs-300); line-height: var(--lh-300); }
-  .complete__stars .stars--lg { --star-size: var(--space-5); gap: var(--space-1); }
-  .complete__stars .stars--lg .stars__slot:nth-child(2) { margin-top: 0; }
-  .complete__stars-text { display: none; }
-  .complete__postcard .postcard__picture { width: min(100%, 320px, max(72px, calc((100dvh - 440px) * 1.3))); }
+  .game:not(.game--demo) .complete__card { padding: var(--space-3) var(--space-2) var(--space-2); gap: var(--space-1); }
+  .game:not(.game--demo) .complete__title { font-size: var(--fs-300); line-height: var(--lh-300); }
+  .game:not(.game--demo) .complete__stars .stars--lg { --star-size: var(--space-5); gap: var(--space-1); }
+  .game:not(.game--demo) .complete__stars .stars--lg .stars__slot:nth-child(2) { margin-top: 0; }
+  .game:not(.game--demo) .complete__stars-text { display: none; }
+  .game:not(.game--demo) .complete__postcard .postcard__picture { width: min(100%, 320px, max(72px, calc((100dvh - 440px) * 1.3))); }
+  /* Give each word action its own wide cell, rather than squeezing Stay beside two 64px icons.
+     The map stays beside the way forward; replay stays beside Stay. A map primary needs no duplicate icon. */
+  .game:not(.game--demo) .complete__actions--stay { display: grid; grid-template-columns: minmax(0, 1fr) var(--touch-kid); align-items: stretch; }
+  .game:not(.game--demo) .complete__actions--stay > .fm-btn--lg:first-child { grid-column: 1; grid-row: 1; min-width: 0; padding-inline: var(--space-2); white-space: normal; }
+  .game:not(.game--demo) .complete__actions--stay > .fm-btn--secondary { grid-column: 1; grid-row: 2; }
+  .game:not(.game--demo) .complete__actions--stay .complete__tools { display: contents; }
+  .game:not(.game--demo) .complete__actions--stay .complete__map { grid-column: 2; grid-row: 1; }
+  .game:not(.game--demo) .complete__actions--stay .complete__replay { grid-column: 2; grid-row: 2; }
+  .game:not(.game--demo) .complete__actions--stay.complete__actions--map-primary > .fm-btn--lg:first-child { grid-column: 1 / -1; }
 }
 .album { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3); border-radius: var(--radius-4); background: var(--white); box-shadow: var(--shadow-1); }
 .album__head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-1); }
