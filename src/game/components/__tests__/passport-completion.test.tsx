@@ -10,7 +10,7 @@ import { PassportCompletion } from "../PassportCompletion";
 import { readPassportPreferences } from "../../engine/passport-storage";
 import { getDict } from "@/i18n";
 
-const audio = vi.hoisted(() => ({ play: vi.fn(), unlock: vi.fn(), setScene: vi.fn(), startAmbient: vi.fn() }));
+const audio = vi.hoisted(() => ({ muted: false, restoreMutePreference() { return false; }, subscribeMuted() { return () => {}; }, play: vi.fn(), unlock: vi.fn(), setScene: vi.fn(), startAmbient: vi.fn() }));
 vi.mock("../../audio/sounds", () => ({ sounds: () => audio }));
 vi.mock("../CelebrationOverlay", () => ({ CelebrationOverlay: () => <div data-testid="celebration" /> }));
 vi.mock("../PassportMemory", () => ({ PassportMemory: ({ targetId }: { targetId: string }) => <span data-testid="memory">{targetId}</span> }));

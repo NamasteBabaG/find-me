@@ -6,6 +6,7 @@ import type { SceneConfig } from "@/domain/game/config";
 import type { DiscoveryHintLevel } from "@/domain/adventure/discovery-guidance";
 import { useGameText } from "../i18n";
 import { AlbumCrop } from "./Album";
+import { ToolIcon } from "./ToolIcon";
 import { flightLift } from "./StarFlight";
 import "./collection.css";
 
@@ -35,6 +36,8 @@ interface Props {
   selectedId: string | null;
   hintLevel: DiscoveryHintLevel;
   disabled: boolean;
+  /** Camera gestures briefly clear the painting without discarding the chosen discovery or its hints. */
+  obscured?: boolean;
   muted: boolean;
   searchComplete?: boolean;
   arrival?: Arrival | null;
@@ -65,11 +68,12 @@ interface Props {
  * hints in three steps. Selection is guidance only, never permission to collect
  * — hit-testing and storage stay in SceneViewport and the album store.
  */
-export function Collection({ board, scene, collectedIds, selectedId, hintLevel, disabled, muted, searchComplete = false, arrival = null, repeat = null, onSelect, onHint }: Props) {
+export function Collection({ board, scene, collectedIds, selectedId, hintLevel, disabled, obscured = false, muted, searchComplete = false, arrival = null, repeat = null, onSelect, onHint }: Props) {
   const { g, tf, locale } = useGameText();
   const c = g.collection;
   const root = useRef<HTMLElement>(null);
   const sheetId = useId();
+  const previewTitleId = useId();
   const total = board.discoveries.length;
   const count = board.discoveries.filter((d) => collectedIds.includes(d.id)).length;
   const complete = total > 0 && count === total;
@@ -82,6 +86,10 @@ export function Collection({ board, scene, collectedIds, selectedId, hintLevel, 
   const [open, setOpen] = useState<null | "peek" | "user">(null);
   const [closing, setClosing] = useState(false);
   const [canSpeak, setCanSpeak] = useState(false);
+  const [inspectedId, setInspectedId] = useState<string | null>(null);
+  const inspected = board.discoveries.find(d => d.id === inspectedId) ?? null;
+  const preview = useRef<HTMLDialogElement>(null);
+  const inspectTrigger = useRef<HTMLButtonElement>(null);
   // Stickers that have landed in their slot. One that is still in the air stays plain until it lands.
   const [landed, setLanded] = useState<string[]>(() => [...collectedIds]);
   const landedAtMount = useRef(new Set(collectedIds));
@@ -122,6 +130,7 @@ export function Collection({ board, scene, collectedIds, selectedId, hintLevel, 
    * closing it a moment before it would have closed itself is a wasted tap.
    */
   const toggle = () => {
+    if (disabled || obscured) return;
     cancelPeek();
     if (open === "user") shut(true); else setOpen("user");
   };
@@ -137,6 +146,21 @@ export function Collection({ board, scene, collectedIds, selectedId, hintLevel, 
     setClosing(false);
     onSelect(id);
   };
+  const closePreview = () => {
+    preview.current?.close?.();
+    setInspectedId(null);
+    if (!obscured && !disabled) inspectTrigger.current?.focus();
+  };
+
+  useEffect(() => {
+    if (disabled || obscured || inspectedId !== selectedId) setInspectedId(null);
+  }, [disabled, obscured, inspectedId, selectedId]);
+  useEffect(() => {
+    const dialog = preview.current;
+    if (!dialog || !inspected || disabled || obscured) return;
+    if (dialog.showModal) dialog.showModal(); else dialog.setAttribute("open", "");
+    return () => { if (dialog.open) dialog.close?.(); };
+  }, [inspected, disabled, obscured]);
 
   useEffect(() => { setCanSpeak("speechSynthesis" in window); }, []);
   useEffect(() => () => { if (outTimer.current) clearTimeout(outTimer.current); cancelPeek(); }, []);
@@ -144,17 +168,17 @@ export function Collection({ board, scene, collectedIds, selectedId, hintLevel, 
   // behind the cloud curtain, never on a board already finished, never for a
   // reader who asked for less motion.
   useEffect(() => {
-    if (peeked.current || disabled || complete) return;
+    if (peeked.current || disabled || obscured || complete || selectedId) return;
     peeked.current = true;
     if (stillMotion()) return;
     setOpen("peek");
     peekTimer.current = setTimeout(() => { peekTimer.current = null; shut(false); }, PEEK_MS);
     return cancelPeek;
-  }, [disabled, complete]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [disabled, obscured, complete, selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
   // Let the last-star celebration finish first. Returning to the board then
   // reminds the player once; taking over the tray cancels its automatic closer.
   useEffect(() => {
-    if (reminded.current || !searchComplete || disabled || complete || !total || selectedId) return;
+    if (reminded.current || !searchComplete || disabled || obscured || complete || !total || selectedId) return;
     const timer = setTimeout(() => {
       if (openRef.current === "user") { reminded.current = true; return; }
       reminded.current = true;
@@ -165,13 +189,22 @@ export function Collection({ board, scene, collectedIds, selectedId, hintLevel, 
       peekTimer.current = setTimeout(() => { peekTimer.current = null; shut(false); }, REMINDER_MS);
     }, 1200);
     return () => clearTimeout(timer);
-  }, [searchComplete, disabled, complete, total, selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [searchComplete, disabled, obscured, complete, total, selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
   // The board went busy (a page turn, the curtain): fold away, do not take focus.
   useEffect(() => {
+    if (obscured) {
+      if (openRef.current === "peek") {
+        if (searchComplete) reminded.current = false; else peeked.current = false;
+      }
+      cancelPeek();
+      if (outTimer.current) { clearTimeout(outTimer.current); outTimer.current = null; }
+      setOpen(null); setClosing(false);
+      return;
+    }
     if (disabled) shut(false);
-  }, [disabled]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [disabled, obscured, searchComplete]); // eslint-disable-line react-hooks/exhaustive-deps
   // Only a tray they opened takes the focus; the peek must not steal it mid-search.
-  useEffect(() => { if (open === "user") sheet.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus(); }, [open]);
+  useEffect(() => { if (open === "user" && !obscured) sheet.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus(); }, [open, obscured]);
   useEffect(() => () => { if ("speechSynthesis" in window) window.speechSynthesis.cancel(); }, []);
   useEffect(() => { if (muted && "speechSynthesis" in window) window.speechSynthesis.cancel(); }, [muted]);
 
@@ -250,14 +283,14 @@ export function Collection({ board, scene, collectedIds, selectedId, hintLevel, 
   const tally = tf(c.tally, { found: count, total });
   const countAria = tf(c.countAria, { found: count, total });
   const ring = 2 * Math.PI * 21;
-  const showSheet = open !== null || closing;
-  const asDialog = open === "user";
+  const showSheet = !obscured && (open !== null || closing);
+  const asDialog = !obscured && open === "user";
   // The still cue that more is waiting here. The peek and the reminder are motion and skip a reader who
   // asked for less of it; this badge is for everyone, once the hiding spots are done.
   const leftBadge = searchComplete && !complete && total > 0 && !showSheet && !selected;
   return (
-    <aside ref={root} className={`collect${complete ? " collect--complete" : ""}${seekAbove ? " collect--seek-above" : ""}`} aria-label={c.title}>
-      <button ref={trigger} type="button" className="collect__fab" data-game-cue="drawer" disabled={disabled} aria-expanded={asDialog} aria-controls={sheetId} aria-label={countAria} onClick={toggle}>
+    <aside ref={root} className={`collect${complete ? " collect--complete" : ""}${seekAbove ? " collect--seek-above" : ""}${obscured ? " collect--obscured" : ""}`} aria-label={c.title} aria-hidden={obscured || undefined} inert={obscured || undefined}>
+      <button ref={trigger} type="button" className="collect__fab" data-game-cue="drawer" disabled={disabled || obscured} aria-expanded={asDialog} aria-controls={sheetId} aria-label={countAria} onClick={toggle}>
         <svg className="collect__ring" viewBox="0 0 48 48" aria-hidden>
           <circle className="collect__ring-track" cx="24" cy="24" r="21" />
           <circle className="collect__ring-fill" cx="24" cy="24" r="21" style={{ strokeDasharray: ring, strokeDashoffset: ring * (1 - (total ? count / total : 0)) }} />
@@ -271,7 +304,10 @@ export function Collection({ board, scene, collectedIds, selectedId, hintLevel, 
 
       {selected && !showSheet ? (
         <div className="collect__seek" role="status" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onSelect(null); trigger.current?.focus(); } }}>
-          <AlbumCrop art={scene.art} crop={selected.cardCrop} className="collect__seek-thumb" label={selected.name} />
+          <button ref={inspectTrigger} type="button" className="collect__inspect" disabled={disabled} aria-haspopup="dialog" aria-label={tf(c.inspectPicture, { name: selected.name })} onClick={() => setInspectedId(selected.id)}>
+            <AlbumCrop art={scene.art} crop={selected.cardCrop} className="collect__seek-thumb" />
+            <span className="collect__inspect-mark" aria-hidden="true"><ToolIcon name="zoom-in" /></span>
+          </button>
           <div className="collect__seek-body">
             <small className="collect__seek-label">{selectedCollected ? c.foundLabel : c.seeking}</small>
             <strong className="collect__seek-name">{selected.name}</strong>
@@ -309,6 +345,17 @@ export function Collection({ board, scene, collectedIds, selectedId, hintLevel, 
           <p className="collect__note">{complete ? c.complete : c.note}</p>
         </div>
       ) : null}
+
+      {inspected && !obscured && !disabled ? <dialog ref={preview} className="collect__preview" aria-labelledby={previewTitleId}
+        onCancel={event => { event.preventDefault(); event.stopPropagation(); closePreview(); }}
+        onClick={event => { if (event.target === event.currentTarget) closePreview(); }}>
+        <header className="collect__preview-head"><h2 id={previewTitleId}>{inspected.name}</h2>
+          <button type="button" className="collect__close" autoFocus onClick={closePreview} aria-label={c.closePicture}><span aria-hidden="true">×</span></button>
+        </header>
+        <AlbumCrop art={scene.art} crop={inspected.cardCrop} className="collect__preview-picture" label={inspected.name} />
+        {!selectedCollected && hintLevel > 0 ? <p className="collect__preview-hint">{hintLevel === 1 ? inspected.hint : hintLevel === 2 ? c.hintBroad : c.hintPrecise}</p> : null}
+        {canSpeak ? <button type="button" className="collect__speak" disabled={muted} aria-label={c.listen} onClick={() => speak(hintLevel === 1 ? inspected.hint : inspected.name)}><span aria-hidden="true">🔊</span></button> : null}
+      </dialog> : null}
 
       {flight ? (
         <div

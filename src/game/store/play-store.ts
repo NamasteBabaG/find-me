@@ -170,6 +170,8 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
   // This is a one-shot intent, cancelled as soon as the player navigates.
   let requestedScene = persist ? opts.autoStartScene : undefined;
   let albumSync: AlbumSync | null = null;
+  let stopMuteSync: (() => void) | null = null;
+  let audioHydrated = false;
   // The three things the player is told about the album, kept apart: what the
   // account says, whether this browser could read its copy, whether it could write.
   let syncState: AlbumSyncState = "idle";
@@ -251,6 +253,12 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     },
 
     hydrate() {
+      const audio = sounds();
+      set({ muted: audio.restoreMutePreference() });
+      stopMuteSync ??= audio.subscribeMuted(muted => set({ muted }));
+      audioHydrated = true;
+      const bootScene = get().scene();
+      if (bootScene) { audio.setScene(bootScene.slug); audio.startAmbient(bootScene.sounds.ambient); }
       if (!persist) return;
       const localProgress = loadProgress(config.gameId);
       const progress = opts.friendParticipantId ? adoptFinds(localProgress, config, friendFinds).progress : localProgress;
@@ -405,7 +413,9 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       if (!opts.readOnlyPreview && !demo && !(round ? roundCanOpen(round, config, slug) : sceneIsPlayable(get().progress, config, scene))) return;
       // A replay is an explicit visit, not a reset or a way to unlock a board.
       if (options?.replay && !demo && !round && !sceneIsComplete(get().progress, scene)) return;
-      sounds().unlock();
+      // Demo/preview boot also enters a scene during render. Only the mounted
+      // game may request unlock; first audio still comes from its gesture.
+      if (audioHydrated) sounds().unlock();
       const playingProgress = searchProgress(get().round, get().progress);
       const history = sceneProgress(playingProgress, slug);
       let plan = planScenePlay(scene, { plays: history.plays, lastVariants: history.lastVariants, lastOrder: history.lastOrder }, get().config.gameId);
@@ -423,8 +433,7 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
         found: Object.fromEntries((free ? savedIds : round ? sceneFoundIds(playingProgress, scene) : []).map(id => [id, history.foundRecords?.[id] ?? { hintsUsed: 0, misses: 0, elapsedMs: 0 }])) });
       telemetry.track({ eventType: history.plays > 0 ? "game_replayed" : "scene_started", sceneSlug: slug });
       if (history.plays > 0) telemetry.track({ eventType: "scene_started", sceneSlug: slug });
-      sounds().setScene(scene.slug);
-      sounds().startAmbient(scene.sounds.ambient);
+      if (audioHydrated) { sounds().setScene(scene.slug); sounds().startAmbient(scene.sounds.ambient); }
       // A board carries its own world, so entering one from the hub, a link or
       // the passport lands the player on the right map when they come back.
       const world = worldOfScene(get().config, slug);
@@ -574,9 +583,9 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     },
 
     toggleMute() {
-      const muted = !get().muted;
+      const muted = !sounds().muted;
       sounds().setMuted(muted);
-      if (!muted) sounds().unlock();
+      if (!muted) { sounds().unlock(); sounds().play("tap"); }
       set({ muted });
     },
 
@@ -605,6 +614,8 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
     stopAlbumSync() {
       albumSync?.stop();
       albumSync = null;
+      stopMuteSync?.();
+      stopMuteSync = null;
     },
   }));
 

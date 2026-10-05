@@ -22,6 +22,8 @@
    too, while the text inside the tray keeps its own direction. */
 [dir="rtl"] .collect { align-items: flex-start; }
 .collect > * { pointer-events: auto; }
+.collect { transition: opacity var(--dur-1) var(--ease-out), translate var(--dur-1) var(--ease-out); }
+.collect--obscured { opacity: 0; translate: 0 var(--space-1); pointer-events: none; }
 
 /* ─── The sticker, shared with the album ──────────────────────────────────── */
 .sticker { --sticker-size: var(--touch-kid); position: relative; display: grid; justify-items: center; gap: 0; padding: 0; border: 0; background: none; color: var(--ink); font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
@@ -110,6 +112,11 @@
    over a discovery near the board's lower edge. */
 .collect--seek-above .collect__seek { position: fixed; top: calc(max(var(--space-2), env(safe-area-inset-top)) + var(--space-10) + var(--space-8)); inset-inline-start: max(var(--space-2), env(safe-area-inset-left)); }
 .collect__seek-thumb { width: 112px; height: 112px; flex-shrink: 0; border-radius: var(--radius-2); box-shadow: var(--sticker-outline), 0 0 0 3px var(--sea); }
+.collect__inspect { position: relative; width: 112px; height: 112px; min-width: var(--touch-kid); min-height: var(--touch-kid); padding: 0; border: 0; border-radius: var(--radius-2); background: transparent; cursor: pointer; transition: transform var(--dur-1) var(--ease-out); }
+.collect__inspect:active, .collect__close:active, .collect__speak:not(:disabled):active { transform: scale(0.92); }
+.collect__inspect:focus-visible { outline: 3px solid var(--sea-deep); outline-offset: var(--space-0-5); }
+.collect__inspect-mark { position: absolute; bottom: 0; inset-inline-end: 0; width: var(--space-3); height: var(--space-3); padding: var(--space-0-5); border-radius: var(--radius-pill); background: var(--white); color: var(--ink); fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; box-shadow: var(--shadow-1); }
+.collect__inspect-mark .scene__icon { width: 100%; height: 100%; }
 .collect__seek-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .collect__seek-label { font-size: var(--fs-50); line-height: var(--lh-50); font-weight: 700; color: var(--sea-deep); letter-spacing: 0.04em; }
 .collect__seek-name { font-family: var(--font-kid); font-weight: 600; font-size: var(--fs-200); line-height: 1.3; overflow-wrap: break-word; }
@@ -125,6 +132,29 @@
 .collect__speak:disabled { opacity: 0.4; cursor: default; }
 /* Beside the hint card it is a filled control, not a header action. */
 .collect__seek-actions .collect__speak { background: var(--paper-2); color: var(--ink-2); }
+
+/* A close look uses the same native dialog, paper and child controls as the game's other sheets.
+   It enlarges the existing board crop; no different image or extra hint is introduced. */
+.collect__preview { width: min(calc(var(--touch-kid) * 7), calc(100vw - var(--space-4))); max-height: calc(100dvh - var(--space-4)); padding: var(--space-2); border: 0; border-radius: var(--radius-3); background: var(--paper); color: var(--ink); box-shadow: var(--shadow-3); overflow: auto; overscroll-behavior: contain; }
+.collect__preview::backdrop { background: color-mix(in srgb, var(--night) 48%, transparent); backdrop-filter: blur(4px); }
+.collect__preview-head { display: flex; align-items: center; gap: var(--space-1); margin-block-end: var(--space-2); }
+.collect__preview-head h2 { flex: 1; min-width: 0; margin: 0; font-family: var(--font-kid); font-size: var(--fs-400); line-height: var(--lh-400); overflow-wrap: anywhere; }
+.collect__preview-picture { width: 100%; border-radius: var(--radius-2); box-shadow: var(--sticker-outline), var(--shadow-1); }
+.collect__preview-hint { margin-block: var(--space-2) 0; font-family: var(--font-kid); font-size: var(--fs-200); line-height: var(--lh-200); }
+
+/* The viewport supplies this class from its measured frame, so a phone-sized demo on a desktop
+   gets the same compact tray. All six named pictures keep their 64px touch floor. Rarity stays in the passport. */
+.scene--compact .collect__sheet { width: calc(var(--touch-kid) * 5); max-width: 100%; padding: var(--space-1); gap: var(--space-1); }
+.scene--compact .collect__sheet-title { font-size: var(--fs-200); line-height: var(--lh-200); }
+.scene--compact .collect__grid { row-gap: var(--space-1); padding-block: var(--space-1); }
+.scene--compact .collect__item { width: 100%; }
+.scene--compact .collect__grid .sticker { min-width: var(--touch-kid); width: 100%; }
+.scene--compact .collect__grid .sticker__rarity, .scene--compact .collect__note { display: none; }
+.scene--compact .collect__grid .sticker__name { margin-top: var(--space-0-5); font-size: var(--fs-50); line-height: var(--lh-50); max-width: 100%; }
+.scene--compact .collect__seek { width: calc(var(--touch-kid) * 5); max-width: 100%; grid-template-columns: var(--touch-kid) minmax(0, 1fr) var(--touch-kid); }
+.scene--compact .collect__inspect, .scene--compact .collect__seek-thumb { width: var(--touch-kid); height: var(--touch-kid); }
+.scene--compact .collect__seek-name { font-size: var(--fs-100); line-height: var(--lh-100); }
+.scene--compact .collect__seek-label { display: none; }
 
 /* The sticker flying from where it was tapped into its slot */
 .collect__fly { position: absolute; top: 0; left: 0; z-index: var(--z-toast); width: 0; height: 0; pointer-events: none; animation: fm-fly var(--fly-ms) var(--ease-in-out) both; }
@@ -144,6 +174,7 @@
   .collect--seek-above .collect__seek { top: max(var(--space-2), env(safe-area-inset-top)); left: calc(max(var(--space-2), env(safe-area-inset-left)) + var(--space-8)); right: auto; width: min(360px, calc(100vw - var(--space-20))); }
 }
 @media (prefers-reduced-motion: reduce) {
+  .collect { transition: none; }
   .collect__sheet, .collect__sheet--closing, .collect__seek, .collect__seek-hint, .collect__fly, .collect__fly-arc, .collect__fly-sticker, .collect__count--bump, .sticker__check, .sticker--fresh .sticker__face, .sticker--fresh .sticker__face::after, .sticker--arriving .sticker__face, .sticker--seeking .sticker__face, .sticker--wiggle .sticker__face { animation: none; }
   [dir="rtl"] .sticker__check { animation: none; }
 }

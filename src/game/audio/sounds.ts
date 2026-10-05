@@ -1,4 +1,5 @@
 import type { SoundCue } from "@/domain/scene/schema";
+import { readMutePreference, writeMutePreference } from "./mute-preference";
 
 /**
  * Tiny synthesized sound kit (WebAudio). No audio files needed for the MVP;
@@ -134,6 +135,7 @@ export class SoundManager {
   private pendingCue: { cue: PlayCue; requestedAt: number } | null = null;
   private oneShots = new Map<AudioScheduledSourceNode, () => void>();
   private _muted = false;
+  private muteListeners = new Set<(muted: boolean) => void>();
   private theme: SoundTheme = "default";
   /** Which voicing each cue played last, so the next one is different. */
   private last: Partial<Record<PlayCue, number>> = {};
@@ -168,9 +170,28 @@ export class SoundManager {
   }
 
   setMuted(muted: boolean): void {
+    writeMutePreference(muted);
+    this.applyMuted(muted);
+  }
+
+  /** Called after mount, never while constructing an SSR-rendered store. */
+  restoreMutePreference(): boolean {
+    const saved = readMutePreference();
+    if (saved !== null) this.applyMuted(saved);
+    return this._muted;
+  }
+
+  subscribeMuted(listener: (muted: boolean) => void): () => void {
+    this.muteListeners.add(listener);
+    return () => { this.muteListeners.delete(listener); };
+  }
+
+  private applyMuted(muted: boolean): void {
+    const changed = this._muted !== muted;
     this._muted = muted;
     if (muted) { this.pendingCue = null; this.stopOneShots(); }
     if (this.master && this.ctx && this.ctx.state !== "closed") this.master.gain.setTargetAtTime(muted ? 0 : 0.5, this.ctx.currentTime, 0.02);
+    if (changed) for (const listener of this.muteListeners) listener(muted);
   }
 
   suspend(): void {
@@ -439,6 +460,7 @@ function semitones(n: number): number {
 }
 
 let shared: SoundManager | null = null;
+const bindings = new WeakMap<SoundManager, Set<symbol>>();
 export function sounds(): SoundManager {
   if (!shared) shared = new SoundManager();
   return shared;
@@ -447,6 +469,10 @@ export function sounds(): SoundManager {
 /** Scope gesture unlock and page lifecycle to the mounted game, including
  * gift/map screens and returning mobile tabs. No sound is played by the hook. */
 export function bindGameAudio(element: HTMLElement, manager = sounds()): () => void {
+  const owners = bindings.get(manager) ?? new Set<symbol>(), owner = Symbol("game-audio");
+  owners.add(owner); bindings.set(manager, owners);
+  let disposed = false;
+  manager.restoreMutePreference();
   const gesture = () => manager.unlock();
   const click = (event: Event) => {
     manager.unlock();
@@ -468,13 +494,17 @@ export function bindGameAudio(element: HTMLElement, manager = sounds()): () => v
   window.addEventListener("pageshow", visibility);
   visibility();
   return () => {
+    if (disposed) return;
+    disposed = true;
     for (const type of ["pointerup", "touchend"]) element.removeEventListener(type, gesture, true);
     element.removeEventListener("click", click, true);
     element.removeEventListener("keydown", keyboard, true);
     document.removeEventListener("visibilitychange", visibility);
     window.removeEventListener("pagehide", hidden);
     window.removeEventListener("pageshow", visibility);
-    manager.stopAmbient();
-    manager.suspend();
+    owners.delete(owner);
+    // A landing demo or another shell may still be using the shared kit.
+    // Removing one widget must not pause audio for every remaining gesture.
+    if (!owners.size) { bindings.delete(manager); manager.stopAmbient(); manager.suspend(); }
   };
 }

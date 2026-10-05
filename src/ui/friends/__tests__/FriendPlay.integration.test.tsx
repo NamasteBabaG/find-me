@@ -12,7 +12,7 @@ import { publicBeachDemo } from "../../../../content/demo/beach-v1";
 import { findWorld } from "../../../../content/worlds";
 import { FriendPlay } from "../FriendPlay";
 
-vi.mock("@/game/audio/sounds", () => ({ sounds: () => ({ unlock() {}, play() {}, setScene() {}, startAmbient() {}, stopAmbient() {} }), bindGameAudio: () => () => {} }));
+vi.mock("@/game/audio/sounds", () => ({ sounds: () => ({ muted: false, restoreMutePreference() { return false; }, subscribeMuted() { return () => {}; }, unlock() {}, play() {}, setScene() {}, startAmbient() {}, stopAmbient() {} }), bindGameAudio: () => () => {} }));
 const text = getDict("en").friends;
 const shareId = `gsr_${"2".repeat(20)}`, token = `${shareId}.${"y".repeat(43)}`;
 function fixture() {

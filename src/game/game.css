@@ -400,6 +400,17 @@
 .scene__bar { left: max(var(--space-1), env(safe-area-inset-left)); right: auto; top: max(var(--space-1), env(safe-area-inset-top)); padding: 0; flex-direction: column; align-items: start; }
 .scene__tools { flex-direction: column; gap: 4px; }
 .scene__title { display: none; }
+/* Phones search with a finger: the map remains at the top, sound joins the
+   collection at the bottom, and the picture gets the old camera rail back. */
+.scene--compact .scene__bar { bottom: max(var(--space-2), env(safe-area-inset-bottom)); }
+.scene--compact .scene__camera { display: none; }
+.scene--compact .scene__tools { transition: opacity var(--dur-1) var(--ease-out); }
+.scene--compact .mission { max-width: calc(100% - var(--space-12)); gap: var(--space-0-5); transition: opacity var(--dur-1) var(--ease-out), translate var(--dur-1) var(--ease-out); }
+.scene--compact .mission__top { gap: var(--space-0-5); }
+.scene--compact .mission__thumb--face { width: var(--space-5); height: var(--space-5); }
+.scene--compact .mission--obscured { opacity: 0; translate: 0 calc(var(--space-1) * -1); }
+.scene--compact[data-chrome-hidden="true"] .scene__tools { opacity: 0; }
+@media (prefers-reduced-motion: reduce) { .scene--compact .mission, .scene--compact .scene__tools { transition: none; } }
 /* "The next place is open": one moment — a slim toast at the bottom that leaves on its own. */
 /* Centred with auto margins, not a translateX: the entrance animates `transform`, and a
    transform-centred toast slid in off-centre and jumped into place when it ended. */

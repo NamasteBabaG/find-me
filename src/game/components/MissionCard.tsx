@@ -32,6 +32,8 @@ interface Props {
    * being looked for. A tap on the folded card unfolds it.
    */
   quiet?: boolean;
+  /** Temporarily out of the way during a physical phone-camera gesture. */
+  obscured?: boolean;
   onExpand?: () => void;
   onHint: () => void;
   /** Guided collection can move the camera away from the final child hint. */
@@ -62,7 +64,7 @@ interface Props {
  * score a child keeps glancing at. What the WORLD has collected is not shown
  * here at all - inside a board, only that board's stars matter (Guy).
  */
-export function MissionCard({ index, total, target, found, order, stars, trayRef, hintLevel, hintPulse, hintText, onHint, repeatLastHint = false, avatarUrl, childName, quiet = false, onExpand, minimal = false, findAny = false, onAdvance, advanceLabel, replay = false, showReplayNote = true, onReplay }: Props) {
+export function MissionCard({ index, total, target, found, order, stars, trayRef, hintLevel, hintPulse, hintText, onHint, repeatLastHint = false, avatarUrl, childName, quiet = false, obscured = false, onExpand, minimal = false, findAny = false, onAdvance, advanceLabel, replay = false, showReplayNote = true, onReplay }: Props) {
   const { g, tf } = useGameText();
   const foundCount = Math.min(found.length, total);
   const lit = Math.min(stars ?? found.length, total);
@@ -76,7 +78,9 @@ export function MissionCard({ index, total, target, found, order, stars, trayRef
   void order;
   return (
     <section
-      className={`mission${expandable ? " mission--quiet" : ""}${findAny ? " mission--free" : ""}`}
+      className={`mission${expandable ? " mission--quiet" : ""}${findAny ? " mission--free" : ""}${obscured ? " mission--obscured" : ""}`}
+      inert={obscured ? true : undefined}
+      aria-hidden={obscured ? true : undefined}
       onClick={expandable ? onExpand : undefined}
       // Folded, the card is a control: a real button to a keyboard and a screen reader, not a div that happens to listen.
       role={expandable ? "button" : undefined}

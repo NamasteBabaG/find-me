@@ -576,7 +576,7 @@ export const en = {
       loadRetry: "Once more ✨",
       loadBack: "Back to the map",
       /** Read out when the picture takes focus: searching without a finger. */
-      keyboardHint: "Use the arrow keys to move the marker over the picture, hold Shift to move faster, and press Enter to look there. Escape puts the marker away.",
+      keyboardHint: "Use the arrow keys to move the marker over the picture, hold Shift to move faster, and press Enter to look there. + and − zoom; 0 shows the whole picture. Escape puts the marker away.",
       expandMission: "Show the mission",
       missionOf: "Mission {n} of {total}",
       foundOf: "{found} of {total} hiding spots found",
@@ -669,6 +669,8 @@ export const en = {
       sheetTitle: "Discoveries in {place}",
       note: "Any order, and never needed to move on.",
       seeking: "Looking for",
+      inspectPicture: "Take a closer look at {name}",
+      closePicture: "Back to the discovery",
       foundLabel: "In my passport",
       hint: "A hint, please?",
       hintArea: "Where should I look?",

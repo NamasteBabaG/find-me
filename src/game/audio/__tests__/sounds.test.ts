@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { bindGameAudio, SoundManager } from "../sounds";
+import { MUTE_PREFERENCE_KEY } from "../mute-preference";
 
 class FakeParam {
   value = 0;
@@ -33,12 +34,58 @@ const settled = async () => { await Promise.resolve(); await Promise.resolve(); 
 let manager: SoundManager;
 beforeEach(() => {
   vi.useFakeTimers(); contexts.length = 0; manager = new SoundManager();
+  localStorage.clear();
   vi.stubGlobal("AudioContext", FakeAudioContext);
   vi.spyOn(document, "hidden", "get").mockReturnValue(false);
 });
 afterEach(() => { vi.runOnlyPendingTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); document.body.replaceChildren(); });
 
 describe("mobile audio unlock, interruption and lifecycle", () => {
+  it("restores a deliberate mute after reload without creating audio, and keeps explicit unmute for the next reload", async () => {
+    manager.setMuted(true);
+    const reloaded = new SoundManager();
+    expect(reloaded.restoreMutePreference()).toBe(true); reloaded.unlock();
+    expect(contexts).toHaveLength(0);
+    reloaded.setMuted(false); reloaded.unlock(); await settled();
+    expect(contexts).toHaveLength(1);
+    expect(JSON.parse(localStorage.getItem(MUTE_PREFERENCE_KEY)!)).toEqual({ version: 1, muted: false });
+    expect(new SoundManager().restoreMutePreference()).toBe(false);
+  });
+
+  it.each(["{broken", '{"version":2,"muted":false}', '{"version":1,"muted":"false"}', '{"version":1,"muted":false,"extra":true}'])
+    ("does not overwrite the current mute with malformed/stale preference %s", value => {
+      manager.setMuted(true); localStorage.setItem(MUTE_PREFERENCE_KEY, value);
+      expect(manager.restoreMutePreference()).toBe(true);
+    });
+
+  it("storage failure cannot break mute or unlock, or erase a user's current choice", () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new DOMException("Blocked", "SecurityError"); });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new DOMException("Blocked", "SecurityError"); });
+    expect(() => manager.setMuted(true)).not.toThrow(); expect(manager.restoreMutePreference()).toBe(true);
+    manager.unlock(); expect(contexts).toHaveLength(0);
+  });
+
+  it("updates subscribed mute widgets and unsubscribes without changing sound preference", () => {
+    const a = vi.fn(), b = vi.fn(), stopA = manager.subscribeMuted(a), stopB = manager.subscribeMuted(b);
+    manager.setMuted(true); expect(a).toHaveBeenCalledWith(true); expect(b).toHaveBeenCalledWith(true);
+    stopA(); manager.setMuted(false); expect(a).toHaveBeenCalledTimes(1); expect(b).toHaveBeenLastCalledWith(false);
+    stopB(); manager.setMuted(true); expect(b).toHaveBeenCalledTimes(2);
+  });
+
+  it("one shell unmount cannot silence another, and repeated old cleanup cannot silence a replacement", async () => {
+    const first = document.createElement("div"), second = document.createElement("div");
+    const stopFirst = bindGameAudio(first, manager), stopSecond = bindGameAudio(second, manager);
+    manager.unlock(); await settled(); const ctx = contexts[0]!;
+    stopFirst(); expect(ctx.suspend).not.toHaveBeenCalled();
+    second.dispatchEvent(new Event("click", { bubbles: true })); manager.play("tap");
+    expect(ctx.oscillators).toHaveLength(1);
+    stopSecond(); await settled(); expect(ctx.suspend).toHaveBeenCalledTimes(1);
+    const replacement = document.createElement("div"), stopReplacement = bindGameAudio(replacement, manager); await settled();
+    stopFirst(); stopSecond(); expect(ctx.state).toBe("running"); expect(ctx.suspend).toHaveBeenCalledTimes(1);
+    replacement.dispatchEvent(new Event("touchend", { bubbles: true })); manager.play("tap");
+    expect(ctx.oscillators).toHaveLength(2); stopReplacement();
+  });
+
   it("varies finds with the board, gives drawer/page feedback, and keeps all new cues silent when muted", async () => {
     manager.unlock(); await settled(); const ctx = contexts[0]!;
     vi.spyOn(Math, "random").mockReturnValue(.1);

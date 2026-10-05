@@ -9,7 +9,7 @@ import { type SceneConfig } from "@/domain/game/config";
 import { createMissionState, currentTargetId, missionReducer, type MissionCopy } from "@/domain/game/mission";
 import { planScenePlay } from "@/domain/game/replay";
 import { SceneViewport } from "../components/SceneViewport";
-import { ScenePlayer } from "../components/ScenePlayer";
+import { CHROME_RETURN_MS, ScenePlayer } from "../components/ScenePlayer";
 import { MissionCard } from "../components/MissionCard";
 import { WorldMap } from "../components/WorldMap";
 import { Passport } from "../components/Passport";
@@ -52,10 +52,81 @@ function fourScene(): SceneConfig {
   const scene = fiveScene();
   return { ...scene, appearancesPerBoard: 4, targets: scene.targets.slice(0, 4) };
 }
-beforeEach(() => { vi.stubGlobal("React", React); vi.stubGlobal("Image", LoadedImage); LoadedImage.instances = []; vi.useFakeTimers(); window.matchMedia = (() => ({ matches: true, addEventListener() {}, removeEventListener() {} })) as never; });
+beforeEach(() => { vi.stubGlobal("React", React); vi.stubGlobal("Image", LoadedImage); LoadedImage.instances = []; rig.viewport.isDragging = false; rig.viewport.viewport = { width: 390, height: 650 }; vi.useFakeTimers(); window.matchMedia = (() => ({ matches: true, addEventListener() {}, removeEventListener() {} })) as never; });
 afterEach(() => { cleanup(); vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
 describe("find-any rendering and mobile feedback", () => {
+  it.each([{ width: 390, height: 844, compact: true }, { width: 1400, height: 844, compact: false }, { width: 844, height: 390, compact: true }])("gives the board room during a gesture and restores controls without losing finds at $width × $height", async ({ width, height, compact }) => {
+    rig.viewport.viewport = { width, height };
+    const base = publicBeachDemo("he");
+    const config = { ...base, gameId: `mobile-chrome-${width}`, adventure: { ...base.adventure!, boards: base.adventure!.boards.map(board => ({ ...board, collectionUi: "guided-v1" as const })) } };
+    const scene = config.scenes[0]!, g = getDict("he").game;
+    const store = createPlayStore(config, { copy, skipGift: true });
+    store.getState().hydrate(); store.getState().openScene(scene.slug); store.getState().dispatch({ type: "START", now: 1 });
+    const onBack = vi.fn();
+    function Player() {
+      const state = useStore(store);
+      return <GameI18nProvider locale="he"><ScenePlayer scene={scene} mission={state.mission!} store={state} onBack={onBack} onSceneComplete={state.completeScene} /></GameI18nProvider>;
+    }
+    const view = render(<Player />); await decodeAll(); act(() => vi.advanceTimersByTime(2200));
+    const before = structuredClone(store.getState().progress);
+    const mission = view.container.querySelector(".mission")!, collection = view.container.querySelector(".collect")!;
+    const hint = view.getByRole("button", { name: g.scene.hint });
+    fireEvent.click(hint);
+    expect(mission.hasAttribute("inert")).toBe(false); // A requested hint is not a physical gesture.
+    const camera = view.container.querySelector(".viewport")!;
+    rig.viewport.isDragging = true; view.rerender(<Player />);
+    expect(mission.hasAttribute("inert")).toBe(compact);
+    expect(collection.hasAttribute("inert")).toBe(compact);
+    expect(view.container.querySelector(".scene__tools")!.hasAttribute("inert")).toBe(compact);
+    const map = view.getByRole("button", { name: g.scene.backToMap });
+    expect(map.closest("[inert]")).toBeNull();
+    expect(camera.hasAttribute("inert")).toBe(false);
+    rig.viewport.isDragging = false; view.rerender(<Player />);
+    act(() => vi.advanceTimersByTime(CHROME_RETURN_MS - 1));
+    expect(mission.hasAttribute("inert")).toBe(compact);
+    act(() => vi.advanceTimersByTime(1));
+    expect(mission.hasAttribute("inert")).toBe(false);
+    expect(collection.hasAttribute("inert")).toBe(false);
+    expect(store.getState().progress).toEqual(before);
+    fireEvent.click(map); expect(onBack).toHaveBeenCalledOnce();
+    store.getState().stopAlbumSync();
+  });
+
+  it("keeps the phone HUD away across consecutive gestures and restores it immediately on a wider frame", async () => {
+    const config = publicBeachDemo("en"), scene = config.scenes[0]!;
+    const store = createPlayStore(config, { copy, readOnlyPreview: true, skipGift: true });
+    store.getState().openScene(scene.slug); store.getState().dispatch({ type: "START", now: 1 });
+    function Player() { const state = useStore(store); return <GameI18nProvider locale="en"><ScenePlayer scene={scene} mission={state.mission!} store={state} onBack={state.goToMap} onSceneComplete={state.completeScene} /></GameI18nProvider>; }
+    const view = render(<Player />); await decodeAll();
+    const mission = view.container.querySelector(".mission")!;
+    rig.viewport.isDragging = true; view.rerender(<Player />);
+    rig.viewport.isDragging = false; view.rerender(<Player />);
+    act(() => vi.advanceTimersByTime(CHROME_RETURN_MS - 100));
+    rig.viewport.isDragging = true; view.rerender(<Player />);
+    act(() => vi.advanceTimersByTime(CHROME_RETURN_MS));
+    expect(mission.hasAttribute("inert")).toBe(true);
+    rig.viewport.viewport = { width: 1024, height: 768 }; view.rerender(<Player />);
+    expect(mission.hasAttribute("inert")).toBe(false);
+    expect(view.container.querySelector(".scene")?.classList.contains("scene--compact")).toBe(false);
+  });
+
+  it("keeps keyboard zoom/reset when camera buttons are hidden, without intercepting browser zoom or finding a target", async () => {
+    const scene = fourScene(), onHit = vi.fn();
+    const mission = missionReducer(createMissionState(scene.slug, planScenePlay(scene, { plays: 0 }, "mobile-keyboard"), scene), { type: "START", now: 1 }, copy);
+    const view = render(<SceneViewport scene={scene} mission={mission} hintLevel={0} bonusFound={false} onHit={onHit} />); await decodeAll();
+    const viewport = view.getByRole("application");
+    rig.viewport.zoomBy.mockClear(); rig.viewport.reset.mockClear();
+    for (const key of ["+", "-", "0"]) fireEvent.keyDown(viewport, { key });
+    expect(rig.viewport.zoomBy.mock.calls.map(call => call[0])).toEqual([1.5, 1 / 1.5]);
+    expect(rig.viewport.reset).toHaveBeenCalledOnce();
+    fireEvent.keyDown(viewport, { key: "+", ctrlKey: true });
+    fireEvent.keyDown(viewport, { key: "0", metaKey: true });
+    expect(rig.viewport.zoomBy).toHaveBeenCalledTimes(2);
+    expect(rig.viewport.reset).toHaveBeenCalledOnce();
+    expect(onHit).not.toHaveBeenCalled();
+  });
+
   it.each(["en", "he"] as const)("keeps a map exit on a legacy completion with no Stay in %s", async locale => {
     const base = buildDemoConfig(locale), original = base.scenes[0]!;
     const scene = { ...original, playMode: undefined, appearancesPerBoard: undefined, findsRequiredToAdvance: undefined };

@@ -24,6 +24,8 @@ interface Props {
   discoveries?: readonly { id: string; hitRect: AdventureRect }[];
   onHit: (hit: Hit) => void;
   onReady?: (api: ViewportApi) => void;
+  /** Physical pan/pinch only; camera animations and hint focus do not hide the UI. */
+  onGestureChange?: (active: boolean) => void;
   /** Every image this board can show has decoded — base, foreground, all three children, the bonus. */
   onAssetsReady?: () => void;
   /** The currently mounted board/child images, not just off-DOM preloads, decoded. */
@@ -50,7 +52,7 @@ interface Ripple {
  * All hit-testing is math on normalized coordinates (no DOM hit targets), so a
  * tap resolves the same way on every device and at every zoom.
  */
-export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveries = [], onHit, onReady, onAssetsReady, onVisibleAssetsReady, onAssetsFailed, retryToken = 0, ariaLabel, keyboardHint, children }: Props) {
+export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveries = [], onHit, onReady, onGestureChange, onAssetsReady, onVisibleAssetsReady, onAssetsFailed, retryToken = 0, ariaLabel, keyboardHint, children }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const keyboardHintId = useId();
   const stage = useMemo(() => ({ width: scene.art.width, height: scene.art.height }), [scene.art.width, scene.art.height]);
@@ -150,6 +152,7 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveri
   // Demo and full game share strict boundaries on mouse, touch and pen.
   const api = useViewport(containerRef, stage, onTap);
   apiRef.current = api;
+  useEffect(() => { onGestureChange?.(api.isDragging); }, [api.isDragging, onGestureChange]);
 
   /**
    * Searching with a keyboard.
@@ -173,6 +176,16 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveri
       const vp = apiRef.current;
       const box = containerRef.current?.getBoundingClientRect();
       if (!vp || !box) return;
+      // Compact touch screens have no camera buttons. Keyboard users keep the
+      // same zoom/reset actions without intercepting browser zoom shortcuts.
+      if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (e.key === "+" || e.key === "=" || e.key === "-") {
+          e.preventDefault();
+          vp.zoomBy(e.key === "-" ? 1 / 1.5 : 1.5);
+          return;
+        }
+        if (e.key === "0") { e.preventDefault(); vp.reset(); setCursor(null); return; }
+      }
       // The measured viewport, not the DOM rect's size: the transform is built
       // from the measured box, and the rect only says where it is on the page.
       const middle = () => vp.toNormalized(box.left + vp.viewport.width / 2, box.top + vp.viewport.height / 2) ?? { x: 0.5, y: 0.5 };

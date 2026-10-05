@@ -189,7 +189,9 @@ describe("who found me", () => {
     fireEvent.click(within(page.getByRole("dialog", { name: text.removeConfirm })).getByRole("button", { name: text.remove }));
     await page.findByText(text.adult);
     expect(page.getByRole("heading", { name: "Fox" })).toBeTruthy();
-    expect(page.queryByRole("dialog", { name: text.removeConfirm })).toBeNull();
+    // The prompt is rendered before ConfirmDialog's passive effect closes the
+    // native modal. Wait for the actual exit before starting reauthentication.
+    await waitFor(() => expect(page.queryByRole("dialog", { name: text.removeConfirm })).toBeNull());
     const reauth = page.getByRole("button", { name: text.reauth }); fireEvent.click(reauth); fireEvent.click(reauth);
     expect((reauth as HTMLButtonElement).disabled).toBe(true); expect(reauth.getAttribute("aria-busy")).toBe("true");
     expect(calls.filter(call => call.body.operation === "reauth")).toEqual([{ path: "/api/friends/share", body: { gameId: "game_test", worldSlug: "journey", operation: "reauth", locale: "en" } }]);

@@ -17,7 +17,7 @@ import { loadRound, saveRound } from "../../engine/round-storage";
 import { saveProgress } from "../../engine/progress-storage";
 const router = vi.hoisted(() => ({ replace: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
-vi.mock("../../audio/sounds", () => ({ sounds: () => ({ unlock() {}, play() {}, setScene() {}, startAmbient() {}, stopAmbient() {} }), bindGameAudio: () => () => {} }));
+vi.mock("../../audio/sounds", () => ({ sounds: () => ({ muted: false, restoreMutePreference() { return false; }, subscribeMuted() { return () => {}; }, unlock() {}, play() {}, setScene() {}, startAmbient() {}, stopAmbient() {} }), bindGameAudio: () => () => {} }));
 
 const card = (worldSlug: string, extra: Partial<FamilyWorldCard> = {}): FamilyWorldCard => ({
   worldSlug, name: worldSlug === "journey" ? "Around the World" : "The Enchanted Kingdom", tagline: "An adventure", icon: worldSlug === "journey" ? "🌍" : "👑",

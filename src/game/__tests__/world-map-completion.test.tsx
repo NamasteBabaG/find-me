@@ -16,7 +16,7 @@ import { GameI18nProvider } from "../i18n";
 import { createPlayStore } from "../store/play-store";
 import { loadRound } from "../engine/round-storage";
 
-vi.mock("../audio/sounds", () => ({ sounds: () => ({ unlock() {}, play() {}, setScene() {}, startAmbient() {}, stopAmbient() {} }), bindGameAudio: () => () => {} }));
+vi.mock("../audio/sounds", () => ({ sounds: () => ({ muted: false, restoreMutePreference() { return false; }, subscribeMuted() { return () => {}; }, unlock() {}, play() {}, setScene() {}, startAmbient() {}, stopAmbient() {} }), bindGameAudio: () => () => {} }));
 beforeEach(() => {
   vi.stubGlobal("React", React);
   vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, addEventListener() {}, removeEventListener() {} })));

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPlayStore } from "../play-store";
 import type { GameConfig } from "@/domain/game/config";
+import { MUTE_PREFERENCE_KEY } from "../../audio/mute-preference";
 
 /**
  * A refresh must bring the player back to the world they were in. An auditor
@@ -70,16 +71,19 @@ describe("coming back to a multi-world game", () => {
   it("plays all five private-preview boards with normal navigation and three missions, without reading or writing real progress or telemetry", () => {
     const partial = { ...config, worlds: undefined, world: undefined,
       scenes: Array.from({ length: 5 }, (_, i) => scene(`partial-${i}`, "")) } as unknown as GameConfig;
-    const key = `findme:progress:v1:${config.gameId}`, saved = "untouched real-game progress";
-    window.localStorage.setItem(key, saved);
-    const read = vi.spyOn(window.localStorage, "getItem"), write = vi.spyOn(window.localStorage, "setItem");
+    const protectedValues = new Map(["progress", "album", "round"].map(kind => [`findme:${kind}:v1:${config.gameId}`, `untouched real-game ${kind}`]));
+    for (const [key, value] of protectedValues) window.localStorage.setItem(key, value);
+    window.localStorage.setItem(MUTE_PREFERENCE_KEY, JSON.stringify({ version: 1, muted: true }));
+    const read = vi.spyOn(window.localStorage, "getItem"), write = vi.spyOn(window.localStorage, "setItem"), remove = vi.spyOn(window.localStorage, "removeItem");
     const transport = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response());
     try {
       const store = createPlayStore(partial, { copy, skipGift: true, readOnlyPreview: true });
+      expect(read).not.toHaveBeenCalled(); expect(write).not.toHaveBeenCalled(); expect(remove).not.toHaveBeenCalled(); // Rendering stays storage-free.
       store.getState().hydrate();
       expect(store.getState().config.gameId).toBe(config.gameId);
       expect(store.getState().demo).toBe(false); expect(store.getState().screen).toBe("map");
       expect(store.getState().progress.scenes).toEqual({});
+      expect(store.getState().muted).toBe(true); expect(store.getState().round).toBeNull(); expect(store.getState().album).toBeNull();
       for (const [i, board] of partial.scenes.entries()) {
         store.getState().openScene(board.slug);
         expect(store.getState().mission!.plan.order).toHaveLength(3);
@@ -90,9 +94,12 @@ describe("coming back to a multi-world game", () => {
       expect(store.getState().gameDone()).toBe(true); // ephemeral review session only
       store.getState().openPassport(); expect(store.getState().screen).toBe("passport");
       store.getState().telemetry.flush();
-      expect(read).not.toHaveBeenCalled(); expect(write).not.toHaveBeenCalled(); expect(transport).not.toHaveBeenCalled();
-    } finally { read.mockRestore(); write.mockRestore(); transport.mockRestore(); }
-    expect(window.localStorage.getItem(key)).toBe(saved);
+      expect(read.mock.calls).toEqual([[MUTE_PREFERENCE_KEY]]);
+      expect(write).not.toHaveBeenCalled(); expect(remove).not.toHaveBeenCalled(); expect(transport).not.toHaveBeenCalled();
+      store.getState().stopAlbumSync();
+    } finally { read.mockRestore(); write.mockRestore(); remove.mockRestore(); transport.mockRestore(); }
+    for (const [key, value] of protectedValues) expect(window.localStorage.getItem(key)).toBe(value);
+    expect(window.localStorage.getItem(MUTE_PREFERENCE_KEY)).toBe(JSON.stringify({ version: 1, muted: true }));
   });
   it("returns to the world of the last board opened", () => {
     const first = createPlayStore(config, { copy });

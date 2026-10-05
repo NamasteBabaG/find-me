@@ -23,10 +23,108 @@ function motion(still: boolean) {
 }
 const provide = (ui: React.ReactElement, locale: "en" | "he" = "en") => <GameI18nProvider locale={locale}>{ui}</GameI18nProvider>;
 
-beforeEach(() => { vi.stubGlobal("React", React); motion(false); });
+beforeEach(() => {
+  vi.stubGlobal("React", React); motion(false);
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
+});
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe("the discovery tray", () => {
+  it("clears the painting during a gesture without taking focus or clearing the selected hint", () => {
+    vi.useFakeTimers();
+    const onSelect = vi.fn(), onHint = vi.fn();
+    const props = { ...base, selectedId: "item-4", hintLevel: 2 as const, collectedIds: [], onSelect, onHint };
+    const ui = (obscured = false) => provide(<><button type="button">Board control</button><Collection {...props} obscured={obscured} /></>);
+    const view = render(ui());
+    fireEvent.click(screen.getByRole("button", { name: "Discoveries: 0 of 6 collected" }));
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    const boardControl = screen.getByRole("button", { name: "Board control" });
+    boardControl.focus();
+    view.rerender(ui(true));
+    const collection = view.container.querySelector(".collect")!;
+    expect(collection.getAttribute("aria-hidden")).toBe("true");
+    expect(collection.hasAttribute("inert")).toBe(true);
+    expect(collection.classList.contains("collect--obscured")).toBe(true);
+    expect(view.container.querySelector(".collect__sheet")).toBeNull();
+    expect(document.activeElement).toBe(boardControl);
+    act(() => vi.advanceTimersByTime(6000));
+    view.rerender(ui());
+    expect(collection.hasAttribute("inert")).toBe(false);
+    expect(collection.hasAttribute("aria-hidden")).toBe(false);
+    expect(view.container.querySelector(".collect__sheet")).toBeNull();
+    expect(screen.getByText("Item 4")).toBeTruthy();
+    expect(screen.getByText("Look inside the marked area")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Show me" }));
+    expect(onHint).toHaveBeenCalledOnce();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("waits to peek or remind until the camera is still, including an interrupted peek", () => {
+    vi.useFakeTimers();
+    const props = { ...base, collectedIds: [], onSelect: vi.fn(), onHint: vi.fn() };
+    const view = render(provide(<Collection {...props} obscured />));
+    act(() => vi.advanceTimersByTime(6000));
+    expect(view.container.querySelector(".collect__sheet")).toBeNull();
+    view.rerender(provide(<Collection {...props} />));
+    expect(view.container.querySelector(".collect__sheet--peek")).not.toBeNull();
+    act(() => vi.advanceTimersByTime(1000));
+    view.rerender(provide(<Collection {...props} obscured />));
+    act(() => vi.advanceTimersByTime(6000));
+    expect(view.container.querySelector(".collect__sheet")).toBeNull();
+    view.rerender(provide(<Collection {...props} />));
+    expect(view.container.querySelector(".collect__sheet--peek")).not.toBeNull();
+    act(() => vi.advanceTimersByTime(PEEK_MS + 400));
+    view.rerender(provide(<Collection {...props} searchComplete obscured />));
+    act(() => vi.advanceTimersByTime(6000));
+    expect(view.container.querySelector(".collect__sheet")).toBeNull();
+    view.rerender(provide(<Collection {...props} searchComplete />));
+    act(() => vi.advanceTimersByTime(1199));
+    expect(view.container.querySelector(".collect__sheet")).toBeNull();
+    act(() => vi.advanceTimersByTime(1));
+    expect(view.container.querySelector(".collect__sheet--peek")).not.toBeNull();
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it.each(["en", "he"] as const)("opens the existing board crop for a closer look and returns to the same guidance in %s", locale => {
+    motion(true);
+    const onSelect = vi.fn(), onHint = vi.fn(), item = board.discoveries[4]!;
+    const view = render(provide(<Collection {...base} collectedIds={[]} selectedId={item.id} hintLevel={1} onSelect={onSelect} onHint={onHint} />, locale));
+    const inspect = screen.getByRole("button", { name: locale === "en" ? `Take a closer look at ${item.name}` : `מגדילים את ${item.name}` });
+    expect(inspect.getAttribute("aria-haspopup")).toBe("dialog");
+    inspect.focus(); fireEvent.click(inspect);
+    const dialog = screen.getByRole("dialog", { name: item.name });
+    const crop = view.container.querySelector<HTMLElement>(".collect__preview-picture")!;
+    expect(crop.getAttribute("role")).toBe("img");
+    expect(crop.getAttribute("aria-label")).toBe(item.name);
+    expect(crop.style.backgroundImage).toContain(scene.art.base);
+    expect(crop.style.aspectRatio).toBe(`${item.cardCrop.w * scene.art.width} / ${item.cardCrop.h * scene.art.height}`);
+    expect(dialog.textContent).toContain(item.hint);
+    fireEvent.click(screen.getByRole("button", { name: locale === "en" ? "Back to the discovery" : "חוזרים לתגלית" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(inspect);
+    fireEvent.click(inspect);
+    fireEvent(screen.getByRole("dialog", { name: item.name }), new Event("cancel", { bubbles: true, cancelable: true }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(inspect);
+    expect(onSelect).not.toHaveBeenCalled(); expect(onHint).not.toHaveBeenCalled();
+  });
+
+  it("closes the closer look when the painting is obscured and retains its selected discovery", () => {
+    motion(true);
+    const onSelect = vi.fn(), onHint = vi.fn();
+    const props = { ...base, collectedIds: [], selectedId: "item-4", hintLevel: 2 as const, onSelect, onHint };
+    const view = render(provide(<Collection {...props} />));
+    fireEvent.click(screen.getByRole("button", { name: "Take a closer look at Item 4" }));
+    expect(screen.getByRole("dialog", { name: "Item 4" })).toBeTruthy();
+    view.rerender(provide(<Collection {...props} obscured />));
+    expect(view.container.querySelector(".collect__preview")).toBeNull();
+    view.rerender(provide(<Collection {...props} />));
+    expect(screen.getByText("Item 4")).toBeTruthy();
+    expect(screen.getByText("Look inside the marked area")).toBeTruthy();
+    expect(onSelect).not.toHaveBeenCalled(); expect(onHint).not.toHaveBeenCalled();
+  });
+
   it("is one button and one tray — no second, wider arrangement and nothing to fold", () => {
     const view = render(provide(<Collection {...base} collectedIds={["item-1"]} onSelect={vi.fn()} onHint={vi.fn()} />));
     expect(view.container.querySelector(".collect__strip")).toBeNull();

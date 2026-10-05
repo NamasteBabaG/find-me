@@ -23,12 +23,14 @@ export interface ViewportApi {
   transform: ViewTransform;
   viewport: Size;
   fit: number;
+  /** Active pan or pinch; stays true for a pinch's remaining finger until release/cancel. */
   isDragging: boolean;
   bind: {
     onPointerDown: (e: ReactPointerEvent<HTMLDivElement>) => void;
     onPointerMove: (e: ReactPointerEvent<HTMLDivElement>) => void;
     onPointerUp: (e: ReactPointerEvent<HTMLDivElement>) => void;
     onPointerCancel: (e: ReactPointerEvent<HTMLDivElement>) => void;
+    onLostPointerCapture?: (e: ReactPointerEvent<HTMLDivElement>) => void;
     onWheel?: (e: ReactWheelEvent<HTMLDivElement>) => void;
   };
   toNormalized: (clientX: number, clientY: number) => { x: number; y: number } | null;
@@ -201,6 +203,7 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
       const [a, b] = Array.from(pointers.current.values());
       g.pinchDist = a && b ? Math.hypot(a.x - b.x, a.y - b.y) : null;
       g.moved = true;
+      setDragging(true);
     }
   };
 
@@ -301,7 +304,7 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
     fit,
     isDragging,
     // Wheel zoom is opt-in: on the landing page the wheel must scroll the page, not the world.
-    bind: { onPointerDown, onPointerMove, onPointerUp: (e) => endPointer(e, false), onPointerCancel: (e) => endPointer(e, true), ...(options.wheelZoom ? { onWheel } : {}) },
+    bind: { onPointerDown, onPointerMove, onPointerUp: (e) => endPointer(e, false), onPointerCancel: (e) => endPointer(e, true), onLostPointerCapture: (e) => endPointer(e, true), ...(options.wheelZoom ? { onWheel } : {}) },
     toNormalized,
     zoomBy,
     reset,

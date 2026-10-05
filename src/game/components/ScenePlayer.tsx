@@ -12,6 +12,7 @@ import type { ViewportApi } from "../engine/useViewport";
 import { useScrollReveal } from "../engine/useScrollReveal";
 import { SceneViewport, targetStagePoint, type Hit } from "./SceneViewport";
 import { MissionCard } from "./MissionCard";
+import { ToolIcon } from "./ToolIcon";
 import { CelebrationOverlay } from "./CelebrationOverlay";
 import { CloudBank } from "./Clouds";
 import { FLIGHT_MS, StarFlight, type FlightPath } from "./StarFlight";
@@ -31,6 +32,8 @@ import { getDict } from "@/i18n";
 const CURTAIN_MS = 900;
 /** How long the words on the HUD stay open before folding to face + stars + hint. */
 const QUIET_AFTER_MS = 6000;
+/** A brief pause lets the eye finish searching before the phone controls return. */
+export const CHROME_RETURN_MS = 600;
 /**
  * When the gold star sets off after a find. On a three-hide board the camera
  * first settles on the child (450ms) and the bubble pops, so the star visibly
@@ -133,12 +136,22 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
   // the viewport has a size AND every picture has decoded. There is no frame,
   // not even the first, in which the world is visible without the child in it.
   const [viewportReady, setViewportReady] = useState(false);
+  const [compact, setCompact] = useState(false);
+  const [gestureActive, setGestureActive] = useState(false);
+  const [chromeHidden, setChromeHidden] = useState(false);
+  useEffect(() => {
+    if (!compact) { setChromeHidden(false); return; }
+    if (gestureActive) { setChromeHidden(true); return; }
+    const timer = setTimeout(() => setChromeHidden(false), CHROME_RETURN_MS);
+    return () => clearTimeout(timer);
+  }, [compact, gestureActive]);
   const [viewportSize, setViewportSize] = useState("");
   const [assetsReady, setAssetsReady] = useState(false);
   const [visibleAssetsReady, setVisibleAssetsReady] = useState(false);
   const onReady = useCallback((api: ViewportApi) => {
     apiRef.current = api;
     setViewportReady(true);
+    setCompact(api.viewport.width <= 720 || api.viewport.height <= 500);
     setViewportSize(`${api.viewport.width}:${api.viewport.height}`);
   }, []);
   const onAssetsReady = useCallback(() => setAssetsReady(true), []);
@@ -483,7 +496,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
   }, [unlockToast]);
 
   return (
-    <div ref={sceneRef} className="scene" data-replay={!!store.replay} data-mission-phase={mission.phase} data-found-count={foundIds.length} data-turning={turn} style={{ ["--scene-sky" as string]: scene.art.palette.sky, ["--scene-accent" as string]: scene.art.palette.accent }}>
+    <div ref={sceneRef} className={`scene${compact ? " scene--compact" : ""}`} data-chrome-hidden={compact && chromeHidden} data-replay={!!store.replay} data-mission-phase={mission.phase} data-found-count={foundIds.length} data-turning={turn} style={{ ["--scene-sky" as string]: scene.art.palette.sky, ["--scene-accent" as string]: scene.art.palette.accent }}>
       <header className="scene__bar">
         {store.demo ? (
           <span />
@@ -500,19 +513,19 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
             </span>
           </div>
         ) : null}
-        <div className="scene__tools">
-          <button type="button" className="scene__btn" disabled={turn || !revealed || loadFailed} onClick={() => apiRef.current?.zoomBy(1.5)} aria-label={g.scene.zoomIn}>
+        <div className="scene__tools" inert={compact && chromeHidden ? true : undefined} aria-hidden={compact && chromeHidden ? true : undefined}>
+          <button type="button" className="scene__btn scene__camera" disabled={turn || !revealed || loadFailed} onClick={() => apiRef.current?.zoomBy(1.5)} aria-label={g.scene.zoomIn}>
             <ToolIcon name="zoom-in" />
           </button>
-          <button type="button" className="scene__btn" disabled={turn || !revealed || loadFailed} onClick={() => apiRef.current?.zoomBy(1 / 1.5)} aria-label={g.scene.zoomOut}>
+          <button type="button" className="scene__btn scene__camera" disabled={turn || !revealed || loadFailed} onClick={() => apiRef.current?.zoomBy(1 / 1.5)} aria-label={g.scene.zoomOut}>
             <ToolIcon name="zoom-out" />
           </button>
           {(
             <>
-              <button type="button" className="scene__btn" disabled={turn || !revealed || loadFailed} onClick={() => apiRef.current?.reset()} aria-label={g.scene.reset}>
+              <button type="button" className="scene__btn scene__camera" disabled={turn || !revealed || loadFailed} onClick={() => apiRef.current?.reset()} aria-label={g.scene.reset}>
                 <ToolIcon name="fit" />
               </button>
-              <button type="button" className="scene__btn" onClick={store.toggleMute} aria-label={store.muted ? g.scene.unmute : g.scene.mute}>
+              <button type="button" className="scene__btn scene__sound" onClick={store.toggleMute} aria-pressed={store.muted} aria-label={store.muted ? g.scene.unmute : g.scene.mute}>
                 <ToolIcon name={store.muted ? "sound-off" : "sound-on"} />
               </button>
             </>
@@ -521,7 +534,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
       </header>
 
       <div className="scene__stage" ref={stageRef}>
-        <SceneViewport scene={scene} mission={mission} hintLevel={mission.hintLevel} bonusFound={mission.bonusFound} discoveries={board?.discoveries} onHit={onHit} onReady={onReady} onAssetsReady={onAssetsReady} onVisibleAssetsReady={onVisibleAssetsReady} onAssetsFailed={onAssetsFailed} retryToken={retryToken} ariaLabel={tf(g.scene.sceneAria, { name: scene.name })} keyboardHint={g.scene.keyboardHint}>
+        <SceneViewport scene={scene} mission={mission} hintLevel={mission.hintLevel} bonusFound={mission.bonusFound} discoveries={board?.discoveries} onHit={onHit} onReady={onReady} onGestureChange={setGestureActive} onAssetsReady={onAssetsReady} onVisibleAssetsReady={onVisibleAssetsReady} onAssetsFailed={onAssetsFailed} retryToken={retryToken} ariaLabel={tf(g.scene.sceneAria, { name: scene.name })} keyboardHint={g.scene.keyboardHint}>
           {(vp) => {
             liveTransform.current = vp.transform;
             const p = bubble ? stageToScreen(vp.transform, bubble.x, bubble.y) : null;
@@ -561,7 +574,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
       </div>
 
       {flight ? <StarFlight key={flight.key} path={flight.path} /> : null}
-      {guided && board ? <Collection board={board} scene={scene} collectedIds={collectedIds} selectedId={selectedDiscovery} hintLevel={discoveryHint} searchComplete={mission.phase === "complete"} disabled={turn || !revealed || loadFailed || showComplete || (mission.phase !== "searching" && mission.phase !== "complete")} muted={store.muted} arrival={arrival} repeat={repeatTap} onSelect={selectDiscovery} onHint={requestDiscoveryHint} /> : null}
+      {guided && board ? <Collection board={board} scene={scene} collectedIds={collectedIds} selectedId={selectedDiscovery} hintLevel={discoveryHint} obscured={compact && chromeHidden} searchComplete={mission.phase === "complete"} disabled={turn || !revealed || loadFailed || showComplete || (mission.phase !== "searching" && mission.phase !== "complete")} muted={store.muted} arrival={arrival} repeat={repeatTap} onSelect={selectDiscovery} onHint={requestDiscoveryHint} /> : null}
       {albumToast ? (
         <div key={albumToast.key} className="scene__album-toast" role="status">
           <span aria-hidden>🃏</span> {albumToast.text}
@@ -593,6 +606,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           avatarUrl={store.config.child.avatarUrl}
           childName={store.config.child.name}
           quiet={quiet}
+          obscured={compact && chromeHidden}
           onExpand={() => setQuiet(false)}
           minimal={false}
           findAny={free}
@@ -742,56 +756,5 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, remaining, onS
         </div>
       </div>
     </div>
-  );
-}
-
-/**
- * The tools a child presses, drawn as one family.
- *
- * They were thin grey strokes in dark grey discs — a video player's furniture
- * sitting on a painting (Guy). Now they are chunky rounded shapes on a white
- * button that lights up gold under a finger: a magnifier with a real handle, a
- * frame that means "show me all of it", a speaker with two arcs, and a folded
- * map instead of the emoji that was the odd one out.
- */
-function ToolIcon({ name }: { name: "map" | "zoom-in" | "zoom-out" | "fit" | "sound-on" | "sound-off" | "replay" }) {
-  const common = { fill: "none", stroke: "currentColor", strokeWidth: 2.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
-  return (
-    <svg className="scene__icon" viewBox="0 0 24 24" aria-hidden focusable="false">
-      {name === "map" ? (
-        <g {...common}>
-          <path d="M3 6.4 9 4l6 2.4L21 4v13.6L15 20l-6-2.4L3 20z" />
-          <path d="M9 4v13.6M15 6.4V20" />
-        </g>
-      ) : null}
-      {name === "zoom-in" || name === "zoom-out" ? (
-        <g {...common}>
-          <circle cx="10.2" cy="10.2" r="6.2" />
-          <path d="M15 15 20.5 20.5" />
-          <path d="M7.4 10.2h5.6" />
-          {name === "zoom-in" ? <path d="M10.2 7.4v5.6" /> : null}
-        </g>
-      ) : null}
-      {name === "fit" ? (
-        <g {...common}>
-          <path d="M4 9.5V5.6A1.6 1.6 0 0 1 5.6 4H9.5" />
-          <path d="M20 9.5V5.6A1.6 1.6 0 0 0 18.4 4H14.5" />
-          <path d="M4 14.5v3.9A1.6 1.6 0 0 0 5.6 20H9.5" />
-          <path d="M20 14.5v3.9A1.6 1.6 0 0 1 18.4 20H14.5" />
-        </g>
-      ) : null}
-      {name === "replay" ? (
-        <g {...common}>
-          <path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3" />
-          <path d="M19.8 3.8v4.6h-4.6" />
-        </g>
-      ) : null}
-      {name === "sound-on" || name === "sound-off" ? (
-        <g {...common}>
-          <path d="M4.5 9.2h3L11.8 5.4v13.2L7.5 14.8h-3z" />
-          {name === "sound-on" ? <path d="M15.4 9.4a3.7 3.7 0 0 1 0 5.2M18.2 6.6a7.6 7.6 0 0 1 0 10.8" /> : <path d="m16.2 9.6 5.2 4.8m0-4.8-5.2 4.8" />}
-        </g>
-      ) : null}
-    </svg>
   );
 }
