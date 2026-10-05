@@ -499,8 +499,8 @@ export const en = {
     "reference": "Reference: {reference}"
   },
   game: {
-    /** Said once over a board: a tablet plays sideways, a phone upright (on its side a phone cuts things off). */
-    turnTip: { tablet: "It's more fun with the tablet sideways ↔️", phone: "Hold the phone upright to see everything 📱" },
+    /** Said once over a board when a phone is held sideways (on its side a phone cuts things off). Tablets hear nothing. */
+    turnTip: "Hold the phone upright to see everything 📱",
     parents: "Parents' area",
     gift: {
       eyebrow: "Something small is waiting",

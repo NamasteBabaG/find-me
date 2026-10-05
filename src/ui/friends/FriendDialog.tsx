@@ -14,7 +14,8 @@ export function FriendDialog({ open, title, onClose, children }: { open: boolean
   }, [open]);
   return <dialog ref={ref} className="friend-dialog" aria-labelledby={titleId} onCancel={event => { event.preventDefault(); onClose(); }}
     onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
-    <div className="friend-dialog__head"><h2 id={titleId}>{title}</h2><button type="button" autoFocus onClick={onClose}>{t.friends.close}</button></div>
+    {/* A plain X, which a child reads at a glance where the word did not (Guy); the word stays its name for screen readers. */}
+    <div className="friend-dialog__head"><h2 id={titleId}>{title}</h2><button type="button" className="friend-dialog__close" autoFocus onClick={onClose} aria-label={t.friends.close}><span aria-hidden="true">×</span></button></div>
     <div className="friend-dialog__body">{children}</div>
   </dialog>;
 }

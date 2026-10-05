@@ -1,6 +1,6 @@
 # Claude: worlds and friends polish, batch 1 (2026-10-05)
 
-Branch `claude/worlds-friends-polish-20261005`, from `beab331a` ("Add owned worlds, continuation purchases and independent friends"). Three commits (batch 1, batch 2 below, and a small round-strip follow-up), not pushed. Batch 1 implements section 4 of `CLAUDE_DESIGN_REVIEW_WORLDS_FRIENDS_20261005.md` (the brief), except item 5 (invitation states, link-once, replace confirmation, clipboard fallback). Codex shipped item 5 before this, along with the Go emblem, purchase labels and `LinkButton` pending; none of that is touched here.
+Branch `claude/worlds-friends-polish-20261005`, from `beab331a` ("Add owned worlds, continuation purchases and independent friends"). Four commits, not pushed: batch 1, batch 2 below, a small round-strip follow-up, and Guy's two follow-ups (an X on the friends dialogs, no tablet tip). Batch 1 implements section 4 of `CLAUDE_DESIGN_REVIEW_WORLDS_FRIENDS_20261005.md` (the brief), except item 5 (invitation states, link-once, replace confirmation, clipboard fallback). Codex shipped item 5 before this, along with the Go emblem, purchase labels and `LinkButton` pending; none of that is touched here.
 
 ## What changed, by brief item
 
@@ -95,13 +95,13 @@ Also:
 
 ## Batch 2 (second commit, same day)
 
-Guy's direction (2026-10-05): phones play upright, because sideways things disappear; only a tablet may suggest playing sideways.
+Guy's direction (2026-10-05): phones play upright, because sideways things disappear. He first allowed a "better sideways" tip on tablets, then withdrew it: tablets are never told which way to hold them.
 
 1. **The turn tip follows the device.** `src/game/engine/useTurnTip.ts` decides it.
-   - The previous tip ("more fun with the phone in landscape") showed on every upright phone. Now the device decides:
-     - A touch device whose screen's short side is at least 600px (a tablet), held upright: "It's more fun with the tablet sideways ↔️".
+   - The previous tip ("more fun with the phone in landscape") showed on every upright phone. Now:
      - A phone held sideways: "Hold the phone upright to see everything 📱".
-     - A phone upright, a tablet sideways, a mouse, or a screen of unknown size: nothing.
+     - A phone upright, a tablet held either way (a touch screen whose short side is at least 600px), a mouse, or a screen of unknown size: nothing.
+     - The tablet tip was removed in the fourth commit, at Guy's request.
 2. **The round strip shows only while a round exists (V16).**
    - Its one line is "This round: {earned}/{total} ★"; the "Another player?" heading is gone.
    - Without a round, "Play from the beginning" is a quiet 64px text button under Go, shown once something is found.
@@ -145,7 +145,7 @@ Batch 2 verification:
   - **Turn tip, using screen size and touch emulation.**
     - Phone upright: none.
     - Phone sideways: the upright tip.
-    - iPad upright: the sideways tip.
+    - iPad upright: none (after the fourth commit; it showed the sideways tip before).
     - iPad sideways: none.
     - Desktop: none.
   - **Completion card.** Every action is in view at 320x640, 360x640, 375x667 and 390x844.
@@ -155,6 +155,11 @@ Batch 2 verification:
     - A failed save shows the "המציאות של שועל עדיין לא נשמרו" sheet, and the game stays.
     - Keep playing closes the sheet.
     - After a successful save, the switch opens the chooser.
+
+## Guy's follow-ups (fourth commit)
+
+- **The friends dialogs close with a plain ×**, in a 64px white circle like the world selector's, instead of the word "סגירה". Children read an X at a glance. The word stays the button's accessible name, so screen readers and the tests still find "Close".
+- **No tablet tip.** Guy withdrew it. Only a phone held sideways is told to stand it up.
 
 ## Still open
 

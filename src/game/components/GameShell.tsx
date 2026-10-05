@@ -183,7 +183,7 @@ function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false
 
   return (
     <div ref={gameRef} className={`game${demo ? " game--demo" : ""}`} dir={dirOf(config.locale)} lang={config.locale}>
-      {turnTip && state.screen === "scene" ? <div className="game__tip">{g.turnTip[turnTip]}</div> : null}
+      {turnTip && state.screen === "scene" ? <div className="game__tip">{g.turnTip}</div> : null}
       {body}
     </div>
   );

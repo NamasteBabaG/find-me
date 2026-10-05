@@ -33,6 +33,12 @@ describe("the friends native dialog", () => {
     else fireEvent.click(dialog);
     expect(page.queryByRole("dialog")).toBeNull(); expect(native.close).toHaveBeenCalledOnce(); expect(document.activeElement).toBe(trigger);
   });
+  it("closes with a plain X a child reads at a glance, and still names it for a screen reader", () => {
+    const page = mount(); fireEvent.click(page.getByRole("button", { name: "Open sheet" }));
+    const close = page.getByRole("button", { name: getDict("en").friends.close });
+    expect(close.textContent).toBe("×");
+    expect(close.firstElementChild?.getAttribute("aria-hidden")).toBe("true");
+  });
   it("does not dismiss when tapping dialog contents", () => {
     const page = mount(); fireEvent.click(page.getByRole("button", { name: "Open sheet" })); fireEvent.click(page.getByRole("button", { name: "Inside" }));
     expect(page.getByRole("dialog", { name: "Discoveries" })).toBeTruthy(); expect(native.close).not.toHaveBeenCalled();

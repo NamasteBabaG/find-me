@@ -41,7 +41,7 @@
   .game--demo .scene { --touch-min: 64px; }
 }
 /* On a dark page the tip inherited light text on pale yellow and was unreadable. */
-/* Which way to hold it (sideways on a tablet, upright on a phone): one small pill over the board that leaves on its own, never a strip that pushes the board down. */
+/* "Hold the phone upright", to a phone held sideways only: one small pill over the board that leaves on its own, never a strip that pushes the board down. */
 .game__tip { position: absolute; z-index: var(--z-toast); left: 50%; bottom: calc(max(var(--space-2), env(safe-area-inset-bottom)) + var(--space-20)); transform: translateX(-50%); max-width: calc(100% - var(--space-4)); padding: var(--space-1) var(--space-2); border-radius: var(--radius-pill); text-align: center; font-family: var(--font-display); font-weight: 600; font-size: var(--fs-100); line-height: var(--lh-100); background: var(--ink); color: var(--white); box-shadow: var(--shadow-2); pointer-events: none; animation: game-tip 7s var(--ease-out) both; }
 @keyframes game-tip { 0% { opacity: 0; transform: translate(-50%, var(--space-1)); } 8%, 82% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, var(--space-1)); } }
 /* The adults' way out sits under the map; it is a footnote, not a row of its own. */

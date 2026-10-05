@@ -497,7 +497,7 @@ export const he: Dictionary = {
     "reference": "מספר תקלה: {reference}"
   },
   game: {
-    turnTip: { tablet: "המשחק הכי כיף כשהטאבלט לרוחב ↔️", phone: "מחזיקים את הטלפון לאורך ורואים הכול 📱" },
+    turnTip: "מחזיקים את הטלפון לאורך ורואים הכול 📱",
     parents: "לאזור ההורים",
     gift: {
       eyebrow: "משהו קטן מחכה",
