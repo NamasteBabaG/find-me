@@ -1,6 +1,6 @@
 # Claude: worlds and friends polish, batch 1 (2026-10-05)
 
-Branch `claude/worlds-friends-polish-20261005`, from `beab331a` ("Add owned worlds, continuation purchases and independent friends"). Four commits, not pushed: batch 1, batch 2 below, a small round-strip follow-up, and Guy's two follow-ups (an X on the friends dialogs, no tablet tip). Batch 1 implements section 4 of `CLAUDE_DESIGN_REVIEW_WORLDS_FRIENDS_20261005.md` (the brief), except item 5 (invitation states, link-once, replace confirmation, clipboard fallback). Codex shipped item 5 before this, along with the Go emblem, purchase labels and `LinkButton` pending; none of that is touched here.
+Branch `claude/worlds-friends-polish-20261005`, from `beab331a` ("Add owned worlds, continuation purchases and independent friends"). Not pushed. The first four commits (batch 1, batch 2 below, a small round-strip follow-up, and Guy's two follow-ups: an X on the friends dialogs, no tablet tip) are already in Codex's `codex/service-legal-20261001`. The fifth, Guy's QA round (below), was rebased onto that branch's head `6998af78`, so the branch now fast-forwards it. Batch 1 implements section 4 of `CLAUDE_DESIGN_REVIEW_WORLDS_FRIENDS_20261005.md` (the brief), except item 5 (invitation states, link-once, replace confirmation, clipboard fallback). Codex shipped item 5 before this, along with the Go emblem, purchase labels and `LinkButton` pending; none of that is touched here.
 
 ## What changed, by brief item
 
@@ -161,8 +161,52 @@ Batch 2 verification:
 - **The friends dialogs close with a plain ×**, in a 64px white circle like the world selector's, instead of the word "סגירה". Children read an X at a glance. The word stays the button's accessible name, so screen readers and the tests still find "Close".
 - **No tablet tip.** Guy withdrew it. Only a phone held sideways is told to stand it up.
 
+## Guy's QA round (fifth commit)
+
+Guy tested the polish on QA (2026-10-05) and sent six screenshots. The commit sits on Codex's `6998af78`; the one conflict, the tray's `Collection.tsx`, keeps Codex's hidden-while-panning box and close-look dialog and adds the game's `dir` to each part, the new dialog included.
+
+1. **Pricing is one price story.** The first world is 39₪ and each world after it 30₪ (`WORLD_PRICES`), so three package cards compared what is really one formula.
+   - `Pricing` (`src/app/home/sections.tsx`) is one panel: "The first world", its price, what it includes and one way in ("Create the first adventure"); a "+" on the seam; "Each additional world", its price and where it is added (the family area).
+   - Two or three worlds together cost exactly the sum, so they show only as small links ("2 worlds together: 69₪"), and only when the purchase policy allows them. QA sells only the first world, so none show there.
+   - `choose` and `soon` are gone from the dictionaries, and the `.plan` styles with them.
+2. **The whole adventure card enters the world.**
+   - The play button is an `fm-stretch` link (new in `ui.css`); its cover spans the card, and manage and friends sit above it.
+   - The first version failed in the browser. The button's hover lift and the global press feedback (`scale` and `filter`, `globals.css`) made the button the frame of its own cover, so the cover shrank to the button mid-press and the click landed on the card.
+   - Now a stretched link keeps still, the global press feedback leaves it out, and the card lifts on hover and dims a little on press. `DESIGN_SYSTEM.md` records the rule.
+3. **The card's words are whole on desktop.** The map, stretched to the column's height, grew wider than its column and covered the title. It keeps its 3:2 shape, centred on the sea.
+4. **The bag keeps its corner in an English game inside the Hebrew site.**
+   - `[dir="rtl"] .collect`, which fixed Hebrew games, matched the page's own `dir` and pushed the button left when the tray opened.
+   - `.collect` is laid out left-to-right always; the button, the seek card, the tray and the close-look dialog carry the game's `dir`.
+   - The tray never scrolls sideways (`overflow-x: hidden`): a long rarity word was wider than its column.
+   - The same page-`dir` match turned Go's arrow and the buttons' arrows backwards in that game. `:dir(ltr)` rules, each in its own rule, turn them forward; a browser without `:dir()` keeps the old look.
+5. **The completion card fits every phone height without scrolling.** The postcard is sized by the height left for it; under 600px the stars shrink and their words go. The passport finale has the same tier.
+6. **Desktop mission card:** up to 400px from 900px wide (at 256px, "Find Yuval in another hiding spot!" broke into three lines), with balanced lines.
+7. **Sharing a game.**
+   - The long address is gone. The link is a ticket: "Noa's game link", the site's name, and its state ("Ready to send", "Link copied", or "A new link is ready. The previous one no longer works.").
+   - Share and Copy are two equal buttons. "Replace link" is a quiet line below with what it is for, and still asks first in the product's dialog.
+   - The address shows only if copying fails, selected for copying by hand.
+   - A game without a child profile (my fixture's had none; real games get one when created) takes the family child's name instead of an empty one, in the ticket and in the share text.
+   - On a phone the ticket keeps to two short lines (the site's name goes).
+   - The unused `.fm-copy` field is gone.
+
+Verification:
+- `npm run check` on the rebased branch passes: 345 test files, 4376 passed, 2 expected fails, 55 skipped (before the rebase: 344 files, 4335 passed).
+- New tests: the pricing story (one offer, the two prices, one link, bundle links only when allowed) and the share ticket (named, no address, the replaced state, Share after a replace, the replace confirmation sent once for this game).
+- Browser (headless Chrome over CDP), Hebrew site, local fixture, mock providers, before and after the rebase:
+  - Pricing at 1440 and 390: one offer, the "+" on the seam, no sideways scroll.
+  - Child page at 1440: the title whole and the map in its column. A real mouse click on the card's title enters the world. "Who found me?" still opens its dialog. Hover shows a hand and lifts the card. Ordinary buttons still dip when pressed.
+  - English game in the Hebrew site at 1440 and 390: Go's arrow points forward, the bag stays in its corner when the tray opens, the tray does not scroll sideways, and the long title takes one line at 1440.
+  - Completion card (with Codex's map and replay icons) and passport finale at 320x460, 320x568, 360x560, 360x640, 375x553, 375x667, 390x664, 390x844, 412x780 and 430x740: every action in view, nothing scrolls.
+  - Share at 1440 and 390: the named ticket; Copy writes the link; after a replace, Share and Copy use the new link, the old link opens "we couldn't open the game", and the new one opens the gift. No console errors.
+- Not checked: a real share sheet (stubbed), the clipboard on a real iPhone, Safari.
+
+Found while verifying, not changed:
+- At 320x460 the Stay button shares a row with the map and replay icons, and its words take three lines. It fits, but it is cramped.
+- Locally the family page shows the next world's price in dollars on the Hebrew site: the currency follows the visitor's country (`getCurrency`), not the language. From Israel it is ₪.
+
 ## Still open
 
-- The parents' link under the map (76x17), a product call (see above).
-- An on-screen way to the map from the completion card when there is no Stay (see batch 1, item 3), if wanted.
-- The brief asks for a Hebrew speaker to review the guest strings ("מחליפים שחקן", "המציאות של {name} עדיין לא נשמרו").
+- Codex settled two earlier items in `5d6fb1cf` (`QA_DESIGN_POLISH_RELEASE_20261005.md`): the parents' link under the map is a 48px target, and the completion card has a map icon beside replay.
+- The brief asks for a Hebrew speaker to review the guest strings ("מחליפים שחקן" and the not-saved sheet).
+- The cramped Stay at 320x460 (above), if it should change.
+- Codex QAs this round: `CLAUDE_TO_CODEX_QA_BRIEF_20261005.md`.
