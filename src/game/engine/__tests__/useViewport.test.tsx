@@ -229,6 +229,45 @@ describe("active camera gestures", () => {
     expect(result.current.isDragging).toBe(false);
     expect(tap).not.toHaveBeenCalled();
   });
+
+  it("paints gesture frames through onFrame without React while nothing follows the camera, and publishes on release", () => {
+    let renders = 0, following = false;
+    const painted: number[] = [];
+    const { result } = renderHook(() => {
+      renders += 1;
+      const ref = useRef<HTMLDivElement | null>(document.createElement("div"));
+      return useViewport(ref, STAGE, () => {}, { onFrame: t => painted.push(t.tx), liveState: () => following });
+    });
+    act(() => FakeResizeObserver.latest!.resize(390, 650));
+    const initial = result.current.transform;
+    act(() => result.current.bind.onPointerDown(pointer(1, 180, 300)));
+    act(() => result.current.bind.onPointerMove(pointer(1, 200, 300))); // past the slop: the gesture starts
+    const before = renders;
+    painted.length = 0;
+    for (let frame = 1; frame <= 10; frame += 1) {
+      for (let sample = 1; sample <= 4; sample += 1) act(() => result.current.bind.onPointerMove(pointer(1, 200 + frame * 8 + sample, 300)));
+      flushFrame();
+    }
+    // One paint per frame, at the latest position, and no React work at all.
+    expect(painted).toHaveLength(10);
+    expect(painted.at(-1)).toBeCloseTo(initial.tx + 104);
+    expect(renders).toBe(before);
+    expect(result.current.live().tx).toBeCloseTo(initial.tx + 104);
+    expect(result.current.toNormalized(300, 300)!.x).toBeCloseTo((300 - initial.tx - 104) / initial.scale / STAGE.width);
+    // Something starts following the camera: React sees the next frame too.
+    following = true;
+    act(() => result.current.bind.onPointerMove(pointer(1, 310, 300)));
+    flushFrame();
+    expect(renders).toBe(before + 1);
+    following = false;
+    act(() => result.current.bind.onPointerMove(pointer(1, 320, 300)));
+    flushFrame();
+    expect(renders).toBe(before + 1);
+    // Release always catches React up to where the stage is.
+    act(() => result.current.bind.onPointerUp(pointer(1, 320, 300)));
+    expect(result.current.transform.tx).toBeCloseTo(initial.tx + 140);
+    expect(result.current.transform).toBe(result.current.live());
+  });
 });
 
 describe("the viewport after a resize", () => {

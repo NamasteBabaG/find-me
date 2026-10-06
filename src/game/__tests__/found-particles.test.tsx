@@ -9,7 +9,7 @@ import { SceneViewport } from "../components/SceneViewport";
 import { targetGeometry } from "../engine/target-geometry";
 import { readFileSync } from "node:fs";
 
-const viewport = vi.hoisted(() => ({ transform: { tx: 12, ty: -24, scale: 0.5 }, viewport: { width: 1024, height: 768 }, isDragging: false, bind: {} }));
+const viewport = vi.hoisted(() => ({ transform: { tx: 12, ty: -24, scale: 0.5 }, live() { return this.transform; }, viewport: { width: 1024, height: 768 }, isDragging: false, bind: {} }));
 vi.mock("../engine/useViewport", () => ({ useViewport: () => viewport }));
 beforeEach(() => vi.stubGlobal("React", React));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });

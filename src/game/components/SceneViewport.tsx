@@ -37,9 +37,13 @@ interface Props {
   ariaLabel?: string;
   /** How to search with a keyboard, for whoever is not using a finger. */
   keyboardHint?: string;
+  /** Something `children` draws follows the camera right now (a bubble), so every camera frame must reach it. */
+  followsCamera?: boolean;
   /** Screen-space overlays get the transform via render prop. */
   children?: (api: ViewportApi) => React.ReactNode;
 }
+
+const stageTransform = (t: { tx: number; ty: number; scale: number }) => `translate(${t.tx}px, ${t.ty}px) scale(${t.scale})`;
 
 interface Ripple {
   id: number;
@@ -54,8 +58,11 @@ const NO_DISCOVERIES: NonNullable<Props["discoveries"]> = [];
  * All hit-testing is math on normalized coordinates (no DOM hit targets), so a
  * tap resolves the same way on every device and at every zoom.
  */
-export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveries = NO_DISCOVERIES, onHit, onReady, onGestureChange, onAssetsReady, onVisibleAssetsReady, onAssetsFailed, retryToken = 0, ariaLabel, keyboardHint, children }: Props) {
+export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveries = NO_DISCOVERIES, onHit, onReady, onGestureChange, onAssetsReady, onVisibleAssetsReady, onAssetsFailed, retryToken = 0, ariaLabel, keyboardHint, followsCamera = false, children }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  /** Whether anything React draws on this frame follows the camera (set on every render, read per frame). */
+  const followers = useRef(false);
   const keyboardHintId = useId();
   const stage = useMemo(() => ({ width: scene.art.width, height: scene.art.height }), [scene.art.width, scene.art.height]);
   const [ripples, setRipples] = useState<Ripple[]>([]);
@@ -81,7 +88,7 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveri
   const onTap = useCallback(
     (nx: number, ny: number) => {
       const api = apiRef.current;
-      const scale = api?.transform.scale ?? 1;
+      const scale = api?.live().scale ?? 1;
       const m = missionRef.current;
       const candidates: HitCandidate<Hit>[] = [];
       // Only the child being looked for is on the board, so she is the only
@@ -152,7 +159,13 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveri
   );
 
   // Demo and full game share strict boundaries on mouse, touch and pen.
-  const api = useViewport(containerRef, stage, onTap);
+  // A drag or pinch frame moves the stage directly; React renders it only while something it draws follows the
+  // camera. A React commit per frame was most of a slow tablet's main thread during a drag (2026-10-06: about
+  // 6 ms of a 16 ms frame at a 4x CPU slowdown, for one transform).
+  const api = useViewport(containerRef, stage, onTap, {
+    onFrame: (t) => { const el = stageRef.current; if (el) el.style.transform = stageTransform(t); },
+    liveState: () => followers.current,
+  });
   apiRef.current = api;
   useEffect(() => { onGestureChange?.(api.isDragging); }, [api.isDragging, onGestureChange]);
 
@@ -199,16 +212,17 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveri
         // screen, wherever the picture has been panned to.
         const from = cursor ?? middle();
         const px = e.shiftKey ? KEY_STEP_FAR_PX : KEY_STEP_PX;
+        const live = vp.live();
         const next = {
-          x: Math.min(1, Math.max(0, from.x + (direction[0] * px) / (stage.width * vp.transform.scale))),
-          y: Math.min(1, Math.max(0, from.y + (direction[1] * px) / (stage.height * vp.transform.scale))),
+          x: Math.min(1, Math.max(0, from.x + (direction[0] * px) / (stage.width * live.scale))),
+          y: Math.min(1, Math.max(0, from.y + (direction[1] * px) / (stage.height * live.scale))),
         };
         setCursor(next);
         // Keep it in sight: at the edge of the window the picture comes along.
-        const screen = stageToScreen(vp.transform, next.x * stage.width, next.y * stage.height);
+        const screen = stageToScreen(live, next.x * stage.width, next.y * stage.height);
         const margin = 64;
         if (screen.x < margin || screen.y < margin || screen.x > vp.viewport.width - margin || screen.y > vp.viewport.height - margin) {
-          vp.focusOn(next.x, next.y, vp.transform.scale / vp.fit, 160);
+          vp.focusOn(next.x, next.y, live.scale / vp.fit, 160);
         }
         return;
       }
@@ -350,12 +364,18 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveri
     }, failed);
     return () => { active = false; clearTimeout(timeout); };
   }, [visible, scene.art.base, retryToken]);
-  const { transform } = api;
+  // Every render paints the camera as it is now, never the last React state: between a gesture's frames the stage
+  // is moved directly (onFrame above), and a render for any other reason must not put it back.
+  const transform = api.live();
+  const live: ViewportApi = { ...api, transform };
   const stageStyle: React.CSSProperties = {
     width: stage.width,
     height: stage.height,
-    transform: `translate(${transform.tx}px, ${transform.ty}px) scale(${transform.scale})`,
+    transform: stageTransform(transform),
   };
+  const magnifierShown = hintLevel >= 3 && !!currentPlaced && mission.phase === "searching";
+  const sparkling = onBoard.some(p => isFound(mission, p.target.id) && mission.lastFeedback?.kind === "hit" && mission.lastFeedback.targetId === p.target.id);
+  followers.current = followsCamera || !!cursor || ripples.length > 0 || magnifierShown || sparkling;
 
   // Camera frames change the containing transform and screen overlays. The
   // painting itself only changes on a mission, hint, bonus or ambient event.
@@ -445,7 +465,7 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveri
       <p id={keyboardHintId} className="visually-hidden">
         {keyboardHint}
       </p>
-      <div className="stage" style={stageStyle}>{art}</div>
+      <div ref={stageRef} className="stage" style={stageStyle}>{art}</div>
 
       {/* screen-space overlays */}
       <div className="overlay" aria-hidden>
@@ -459,7 +479,7 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveri
           const p = stageToScreen(transform, r.x * stage.width, r.y * stage.height);
           return <span key={r.id} className="ripple" style={{ left: p.x, top: p.y }} />;
         })}
-        {hintLevel >= 3 && currentPlaced && mission.phase === "searching"
+        {magnifierShown && currentPlaced
           ? (() => {
               const p = stageToScreen(transform, currentPlaced.head.x * stage.width, currentPlaced.head.y * stage.height);
               return (
@@ -469,7 +489,7 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveri
               );
             })()
           : null}
-        {children?.(api)}
+        {children?.(live)}
       </div>
       <div className="viewport__particles" aria-hidden>
         {onBoard.filter(p => isFound(mission, p.target.id) && mission.lastFeedback?.kind === "hit" && mission.lastFeedback.targetId === p.target.id).map(p => {

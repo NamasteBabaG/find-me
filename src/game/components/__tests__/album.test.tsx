@@ -19,7 +19,7 @@ import { SceneViewport, type Hit } from "../SceneViewport";
  * pixels, the postcard waits for every hiding spot, and a discovery under the
  * child loses the tap to her.
  */
-const rig = vi.hoisted(() => ({ tap: (_x: number, _y: number) => {}, viewport: { transform: { tx: 0, ty: 0, scale: 0.5 }, viewport: { width: 800, height: 450 }, fit: 0.5, isDragging: false, bind: {}, reset() {}, focusOn() {}, zoomBy() {} } }));
+const rig = vi.hoisted(() => ({ tap: (_x: number, _y: number) => {}, viewport: { transform: { tx: 0, ty: 0, scale: 0.5 }, live() { return this.transform; }, viewport: { width: 800, height: 450 }, fit: 0.5, isDragging: false, bind: {}, reset() {}, focusOn() {}, zoomBy() {} } }));
 vi.mock("../../engine/useViewport", () => ({ useViewport: (_ref: unknown, _stage: unknown, tap: typeof rig.tap) => { rig.tap = tap; return rig.viewport; } }));
 vi.mock("next/image", () => ({ default: ({ unoptimized: _u, fill: _f, ...props }: React.ImgHTMLAttributes<HTMLImageElement> & { unoptimized?: boolean; fill?: boolean }) => <img {...props} alt="" /> }));
 

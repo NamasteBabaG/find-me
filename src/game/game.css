@@ -202,7 +202,11 @@
    what the world is lifted by and never separates from it by being brighter.
    And the window is a fixed size while the board is not, so the cost of the
    filter is the size of the screen and not the size of the world, however far
-   a child zooms in. The cloud curtain is outside it and stays white. */
+   a child zooms in. The cloud curtain is outside it and stays white.
+   Re-measured 2026-10-06 against the same lift on every piece of art inside
+   the stage, with a 4x CPU slowdown: no difference in frames once warm, and
+   the art version cost four times the raster time. Safari is still to be
+   measured on a device (docs/CLAUDE_WEAK_DEVICE_PERFORMANCE_20261006.md). */
 .viewport { position: absolute; inset: 0; overflow: hidden; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; background: var(--scene-sky, var(--sea-soft)); filter: var(--lit-art); }
 /* And the same lift wherever a board is shown as a picture of itself: the
    hub's islands, the map's stops, the bag's covers, the album's postcards, and
@@ -266,16 +270,20 @@
 
 .celebration { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: var(--z-overlay); }
 /* Paper confetti (see CelebrationOverlay.tsx): three transform layers per
-   piece. The outer flutters side to side (infinite, phase-shifted); the
-   middle falls at the piece's own speed and leaves past the bottom; the
-   inner is the paper itself, spinning in 3D around its own random axis so it
-   thins to a line and flashes back the way falling paper does. A piece waits
-   above the top edge until its fall begins; nothing fades mid-air. */
-.celebration__p { position: absolute; will-change: transform; animation: fm-sway var(--swayDur, 1200ms) var(--ease-in-out) var(--phase, 0ms) infinite alternate; }
-.celebration__y { display: block; will-change: transform; animation: fm-rain cubic-bezier(0.25, 0.1, 0.6, 0.92) both; }
-.celebration__s { display: block; will-change: transform; animation: fm-flip linear infinite; }
+   piece. The outer flutters side to side (phase-shifted); the middle falls at
+   the piece's own speed and leaves past the bottom; the inner is the paper
+   itself, spinning in 3D around its own random axis so it thins to a line and
+   flashes back the way falling paper does. A piece waits above the top edge
+   until its fall begins; nothing fades mid-air. The motion is set from the
+   component with the Web Animations API, not here: as CSS animations with
+   their own durations, seventy pieces woke the main thread on almost every
+   frame (React listens for animation events). */
+.celebration__p { position: absolute; will-change: transform; }
+.celebration__y { display: block; will-change: transform; }
+.celebration__s { display: block; will-change: transform; }
+/* Without motion the pieces would only hang above the top edge: show none. */
 @media (prefers-reduced-motion: reduce) {
-  .celebration__p, .celebration__y, .celebration__s { animation-duration: 1ms; animation-delay: 0ms; }
+  .celebration { display: none; }
 }
 
 

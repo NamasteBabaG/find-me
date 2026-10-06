@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SceneConfig } from "@/domain/game/config";
 import { currentTargetId, missionCanAdvance, type MissionState } from "@/domain/game/mission";
-import { shouldPulseHint } from "@/domain/game/hints";
+import { HINT_PULSE_AFTER_MS, shouldPulseHint } from "@/domain/game/hints";
 import { slotFor } from "@/domain/game/replay";
 import { sounds } from "../audio/sounds";
 import { stageToScreen, type ViewTransform } from "../engine/viewport-math";
@@ -127,11 +127,16 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
     return () => clearTimeout(t);
   }, [albumToast]);
 
-  // idle clock for the hint pulse (one tick per second is plenty)
+  // The hint pulse needs one moment, not a clock. A one-second tick re-rendered the whole board to learn whether
+  // twenty seconds had passed: 5-14 ms of a slow tablet's main thread every second, a dropped frame while dragging
+  // (2026-10-06 measurement). Now the board re-renders once, when they have.
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
+    if (mission.phase !== "searching") return;
+    const due = mission.missionStartedAt + HINT_PULSE_AFTER_MS - Date.now();
+    if (due <= 0) { setNow(Date.now()); return; }
+    const id = setTimeout(() => setNow(Date.now()), due);
+    return () => clearTimeout(id);
+  }, [mission.phase, mission.missionStartedAt]);
 
   // The curtain is drawn shut from the very first render and opens only when
   // the viewport has a size AND every picture has decoded. There is no frame,
@@ -305,7 +310,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
         if (!free && target && api) {
           const variant = mission.plan.variants[fb.targetId] ?? "A";
           const { center } = targetGeometry(scene, target, variant);
-          api.focusOn(center.x, center.y, Math.max(1.6, api.transform.scale / api.fit), 450);
+          api.focusOn(center.x, center.y, Math.max(1.6, api.live().scale / api.fit), 450);
         }
         // Position immediately in stage space. Camera motion then moves this
         // same bubble; there is no delayed second instance after a new event.
@@ -537,7 +542,8 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
       </header>
 
       <div className="scene__stage" ref={stageRef}>
-        <SceneViewport scene={scene} mission={mission} hintLevel={mission.hintLevel} bonusFound={mission.bonusFound} discoveries={board?.discoveries} onHit={onHit} onReady={onReady} onGestureChange={setGestureActive} onAssetsReady={onAssetsReady} onVisibleAssetsReady={onVisibleAssetsReady} onAssetsFailed={onAssetsFailed} retryToken={retryToken} ariaLabel={tf(g.scene.sceneAria, { name: scene.name })} keyboardHint={g.scene.keyboardHint}>
+        <SceneViewport scene={scene} mission={mission} hintLevel={mission.hintLevel} bonusFound={mission.bonusFound} discoveries={board?.discoveries} onHit={onHit} onReady={onReady} onGestureChange={setGestureActive} onAssetsReady={onAssetsReady} onVisibleAssetsReady={onVisibleAssetsReady} onAssetsFailed={onAssetsFailed} retryToken={retryToken} ariaLabel={tf(g.scene.sceneAria, { name: scene.name })} keyboardHint={g.scene.keyboardHint}
+          followsCamera={!!bubble || !!(discoveryRegion && !turn && revealed)}>
           {(vp) => {
             liveTransform.current = vp.transform;
             const p = bubble ? stageToScreen(vp.transform, bubble.x, bubble.y) : null;

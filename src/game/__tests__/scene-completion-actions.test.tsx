@@ -14,7 +14,7 @@ import { createPlayStore } from "../store/play-store";
 
 // The real player, completion transitions and earned album are exercised.
 // Browser image loading and camera layout are supplied locally, with no I/O.
-const camera = vi.hoisted(() => ({ transform: { tx: 0, ty: 0, scale: 1 }, viewport: { width: 1280, height: 800 }, fit: 1,
+const camera = vi.hoisted(() => ({ transform: { tx: 0, ty: 0, scale: 1 }, live() { return this.transform; }, viewport: { width: 1280, height: 800 }, fit: 1,
   isDragging: false, bind: {}, reset: vi.fn(), focusOn: vi.fn(), zoomBy: vi.fn() }));
 vi.mock("../engine/useViewport", () => ({ useViewport: () => camera }));
 vi.mock("next/image", () => ({ default: ({ unoptimized: _u, fill: _f, ...props }: React.ImgHTMLAttributes<HTMLImageElement> & { unoptimized?: boolean; fill?: boolean }) => <img {...props} /> }));

@@ -87,4 +87,41 @@ describe("static scene painting during camera work", () => {
     expect(work.sprite).toHaveBeenCalledTimes(2);
     expect(view.container.querySelector("[data-target]")?.getAttribute("data-target")).toBe(mission.plan.order[1]);
   });
+
+  it("moves the stage on every drag frame without re-rendering, unless something it draws follows the camera", async () => {
+    const scene = structuredClone(buildDemoConfig("en").scenes[0]!);
+    const mission = { ...createMissionState(scene.slug, planScenePlay(scene, { plays: 0 }, "synthetic")), phase: "searching" as const };
+    let renders = 0;
+    const overlay = () => { renders += 1; return null; };
+    const view = render(<SceneViewport scene={scene} mission={mission} hintLevel={0} bonusFound={false} onHit={vi.fn()}>{overlay}</SceneViewport>);
+    act(() => LayoutObserver.latest.resize(1024, 768));
+    await act(async () => {});
+    const viewport = view.container.querySelector(".viewport")!, stage = view.container.querySelector<HTMLElement>(".stage")!;
+    const pointer = (type: string, x: number) => {
+      const event = new MouseEvent(type, { bubbles: true, clientX: x, clientY: 300 });
+      Object.defineProperty(event, "pointerId", { value: 1 });
+      fireEvent(viewport, event);
+    };
+    const frame = () => act(() => { const scheduled = [...frames.values()]; frames.clear(); for (const callback of scheduled) callback(performance.now()); });
+    // At 1024×768 the 16:9 board fills the height, so a horizontal drag has room to move.
+    pointer("pointerdown", 500);
+    pointer("pointermove", 520);
+    frame();
+    const before = renders, transforms = new Set<string>();
+    for (let i = 1; i <= 20; i += 1) { pointer("pointermove", 520 - i * 6); frame(); transforms.add(stage.style.transform); }
+    expect(renders).toBe(before);
+    expect(transforms.size).toBe(20); // the stage itself moved on every frame
+    pointer("pointerup", 400);
+    expect(renders).toBeGreaterThan(before); // release catches React up
+
+    // A bubble follows the camera: every frame reaches the render prop.
+    view.rerender(<SceneViewport scene={scene} mission={mission} hintLevel={0} bonusFound={false} onHit={vi.fn()} followsCamera>{overlay}</SceneViewport>);
+    pointer("pointerdown", 400);
+    pointer("pointermove", 420);
+    frame();
+    const following = renders;
+    for (let i = 1; i <= 5; i += 1) { pointer("pointermove", 420 + i * 6); frame(); }
+    expect(renders - following).toBe(5);
+    pointer("pointerup", 450);
+  });
 });

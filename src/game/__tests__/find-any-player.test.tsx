@@ -22,7 +22,7 @@ import { clampTransform, stageToScreen } from "../engine/viewport-math";
 import { publicBeachDemo } from "../../../content/demo/beach-v1";
 import { getDict } from "@/i18n";
 
-const rig = vi.hoisted(() => ({ tap: (_x: number, _y: number) => {}, viewport: { transform: { tx: 0, ty: 0, scale: 0.2 }, viewport: { width: 390, height: 650 }, fit: 0.2, isDragging: false, bind: {}, reset: vi.fn(), focusOn: vi.fn(), zoomBy: vi.fn() } }));
+const rig = vi.hoisted(() => ({ tap: (_x: number, _y: number) => {}, viewport: { transform: { tx: 0, ty: 0, scale: 0.2 }, live() { return this.transform; }, viewport: { width: 390, height: 650 }, fit: 0.2, isDragging: false, bind: {}, reset: vi.fn(), focusOn: vi.fn(), zoomBy: vi.fn() } }));
 vi.mock("../engine/useViewport", () => ({ useViewport: (_ref: unknown, _stage: unknown, tap: typeof rig.tap) => { rig.tap = tap; return rig.viewport; } }));
 vi.mock("next/image", () => ({ default: ({ unoptimized: _unoptimized, fill: _fill, ...props }: React.ImgHTMLAttributes<HTMLImageElement> & { unoptimized?: boolean; fill?: boolean }) => <img {...props} /> }));
 const copy: MissionCopy = { successByTarget: {}, itemByTarget: {}, wrongTarget: "Other", wrongTargetNoItem: "Other", bonus: "Bonus", fallbackSuccess: "Found" };

@@ -20,7 +20,10 @@ import {
  * `touch-action: none`.
  */
 export interface ViewportApi {
+  /** The camera as of the last React render. During a gesture this can trail `live()` (see `liveState`). */
   transform: ViewTransform;
+  /** The camera now: what taps resolve against and what the stage shows after this frame. */
+  live: () => ViewTransform;
   viewport: Size;
   fit: number;
   /** Active pan or pinch; stays true for a pinch's remaining finger until release/cancel. */
@@ -42,13 +45,37 @@ export interface ViewportApi {
 
 const MAX_ZOOM_FACTOR = 4;
 
-export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>, stage: Size, onTap: (nx: number, ny: number) => void, options: { wheelZoom?: boolean; panPadding?: number } = {}): ViewportApi {
+interface ViewportOptions {
+  wheelZoom?: boolean;
+  panPadding?: number;
+  /**
+   * Paint one camera frame without React: called once per display frame with the latest transform (and on every
+   * flush), so the caller can write the stage's transform itself. Without it, frames are painted by React state.
+   */
+  onFrame?: (t: ViewTransform) => void;
+  /**
+   * Whether React must also see this frame: true while something drawn by React follows the camera (a bubble,
+   * a cursor). When false, a gesture frame is painted by `onFrame` alone and React catches up on release.
+   * Defaults to always.
+   */
+  liveState?: () => boolean;
+}
+
+const sameTransform = (a: ViewTransform, b: ViewTransform) => a.scale === b.scale && a.tx === b.tx && a.ty === b.ty;
+
+export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>, stage: Size, onTap: (nx: number, ny: number) => void, options: ViewportOptions = {}): ViewportApi {
   const panPadding = options.panPadding ?? 0;
+  const onFrameRef = useRef(options.onFrame);
+  onFrameRef.current = options.onFrame;
+  const liveStateRef = useRef(options.liveState);
+  liveStateRef.current = options.liveState;
   const [viewport, setViewport] = useState<Size>({ width: 0, height: 0 });
   const [transform, setTransform] = useState<ViewTransform>({ scale: 1, tx: 0, ty: 0 });
   const [isDragging, setDragging] = useState(false);
   const transformRef = useRef(transform);
   const publishedTransform = useRef(transform);
+  /** The last transform put on screen, by React or by `onFrame`. */
+  const paintedTransform = useRef(transform);
   const gestureFrame = useRef<number | null>(null);
   // Every method below reads the viewport through this ref, never through the
   // `viewport` state in its closure. The scene player keeps the API object it
@@ -78,36 +105,45 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
 
   const publishTransform = useCallback(() => {
     const next = transformRef.current;
-    const previous = publishedTransform.current;
-    if (previous.scale === next.scale && previous.tx === next.tx && previous.ty === next.ty) return;
+    paintedTransform.current = next;
+    if (sameTransform(publishedTransform.current, next)) return;
     publishedTransform.current = next;
     setTransform(next);
   }, []);
 
+  /** Put the latest transform on screen: by `onFrame` if there is one, and in React state unless told it can wait. */
+  const paint = useCallback((react: boolean) => {
+    const next = transformRef.current;
+    onFrameRef.current?.(next);
+    paintedTransform.current = next;
+    if (react || !onFrameRef.current || !liveStateRef.current || liveStateRef.current()) publishTransform();
+  }, [publishTransform]);
+
   const flushTransform = useCallback(() => {
     if (gestureFrame.current !== null) cancelAnimationFrame(gestureFrame.current);
     gestureFrame.current = null;
-    publishTransform();
-  }, [publishTransform]);
+    paint(true);
+  }, [paint]);
 
   const apply = useCallback(
     (t: ViewTransform, deferPaint = false) => {
       const vp = viewportRef.current;
       const f = fitRef.current;
-      const next = vp.width ? clampTransform(t, vp, stage, f, f * MAX_ZOOM_FACTOR, panPadding) : t;
+      const clamped = vp.width ? clampTransform(t, vp, stage, f, f * MAX_ZOOM_FACTOR, panPadding) : t;
+      // Same values, same object: input held against an edge changes nothing anyone has to look at.
+      const next = sameTransform(clamped, transformRef.current) ? transformRef.current : clamped;
       transformRef.current = next;
       // Pointer input can arrive several times before one display frame. Keep
-      // the camera maths live for every event, but reconcile overlays/art once
-      // per frame. A release/reset publishes the final position immediately.
+      // the camera maths live for every event, but paint once per frame. A
+      // release/reset publishes the final position immediately.
       if (!deferPaint) { flushTransform(); return; }
-      const previous = publishedTransform.current;
-      if (previous.scale === next.scale && previous.tx === next.tx && previous.ty === next.ty) return;
+      if (sameTransform(paintedTransform.current, next)) return;
       if (gestureFrame.current === null) gestureFrame.current = requestAnimationFrame(() => {
         gestureFrame.current = null;
-        publishTransform();
+        paint(false);
       });
     },
-    [stage, panPadding, flushTransform, publishTransform],
+    [stage, panPadding, flushTransform, paint],
   );
 
   const measure = useCallback((rect: Size) => {
@@ -138,8 +174,8 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
         const next = clampTransform(centerOnNormalized(cx, cy, f * (prev.scale / previousFit), vp, stage), vp, stage, f, f * MAX_ZOOM_FACTOR, panPadding);
         transformRef.current = next;
       }
-      publishTransform();
-  }, [stage, panPadding, publishTransform]);
+      paint(true);
+  }, [stage, panPadding, paint]);
 
   // Measure the container and fit on first layout / resize. Reset also uses
   // this path: a browser's resize notification can arrive after the curtain's
@@ -330,6 +366,7 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
 
   return {
     transform,
+    live: () => transformRef.current,
     viewport,
     fit,
     isDragging,
