@@ -9,7 +9,7 @@ import { isCollectionVersion } from "@/domain/scene/local-patch-versions";
 import { getCurrency, getI18n } from "@/i18n/server";
 import { formatMoney, pick, tf } from "@/i18n";
 import { CreateFrame } from "../create/CreateLayout";
-import { currentDraft } from "../create/actions";
+import { currentDraft } from "@/lib/server/current-draft";
 import { CheckoutForm } from "./CheckoutForm";
 import { worldPurchaseDraftHref, worldPurchaseHref, worldPurchaseSignInHref } from "@/domain/world-purchase";
 import { outstandingCheckout } from "@/services/draft-checkout-lock";

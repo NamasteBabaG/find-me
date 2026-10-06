@@ -7,7 +7,7 @@ import { childHasPaidWorld } from "@/services/child-pricing.service";
 import { getCurrency, getI18n } from "@/i18n/server";
 import { formatMoney, pick, tf } from "@/i18n";
 import { CreateFrame } from "../CreateLayout";
-import { currentDraft } from "../actions";
+import { currentDraft } from "@/lib/server/current-draft";
 import { PackagePicker } from "./PackagePicker";
 import { LOCAL_PATCH_STYLE } from "@/services/generation/local-patch-world";
 import { COLLECTION_SCENE_VERSION, localPatchHidesPerBoard } from "@/domain/scene/local-patch-catalog";

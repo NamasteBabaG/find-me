@@ -1,3 +1,4 @@
+import { canManageGameCreation } from "@/domain/game/access";
 import { NextResponse } from "next/server";
 import { qaAccessDenied } from "@/lib/server/qa-access";
 import { getContainer } from "@/services/container";
@@ -15,7 +16,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ gameId: string
   const c = getContainer();
   const [game, user, draftToken] = await Promise.all([c.db.game.findUnique({ where: { id: gameId }, select: { ownerId: true, draftToken: true } }), currentUser(), draftTokenFromCookie()]);
   if (!game) return NextResponse.json({ ok: false, code: "NOT_FOUND" }, { status: 404 });
-  const allowed = (draftToken && game.draftToken === draftToken) || (user && game.ownerId === user.id) || isAdminEmail(user?.email);
+  const allowed = canManageGameCreation(game, draftToken, user?.id ?? null, isAdminEmail(user?.email));
   if (!allowed) return NextResponse.json({ ok: false, code: "FORBIDDEN" }, { status: 403 });
   const result = await resendGameMail(c, gameId, user ? { type: "USER", id: user.id } : SYSTEM);
   if (!result.ok) return NextResponse.json(result, { status: result.code === "WAIT" ? 429 : 409 });

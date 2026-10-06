@@ -3,7 +3,7 @@ import { z } from "zod";
 import { FIXED_SOURCE_MAX_REFERENCES, FIXED_SOURCE_SIZES, fixedSourceVersion, type FixedSourceResult } from "../generation/openai-fixed-source";
 import { fixedSourceFailureReceiptSchema, type FixedSourceFailureReceipt } from "../generation/fixed-source-diagnostics";
 import { boardObserverFailureSchema, type BoardObserverFailure } from "../generation/board-observer-diagnostics";
-import type { BoardConditionedCheckpointStore, BoardMeasurement } from "../../services/generation/board-conditioned-generation";
+import type { BoardConditionedCheckpointStore, BoardMeasurement } from "../generation/board-checkpoint-types";
 import { sha256Bytes } from "../../services/generation/fixed-sprite";
 
 type GeneratedSource = Extract<FixedSourceResult, { kind: "generated" }>;

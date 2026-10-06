@@ -13,7 +13,7 @@ vi.mock("@/services/container", () => ({ getContainer: () => ({}) }));
 vi.mock("@/services/create-flow.service", () => ({ worldsForDraft: async () => allWorlds(), sceneVersionForDraft: () => 10 }));
 vi.mock("@/lib/server/session", () => ({ currentUser: async () => null, isAdminEmail: () => false }));
 vi.mock("@/i18n/server", () => ({ getI18n: async () => ({ t: en, locale: "en" }) }));
-vi.mock("../../actions", () => ({ currentDraft: async () => ({ childProfile: {}, packageTier: Object.values(PACKAGES)[0]!.tier, scenes: [] }) }));
+vi.mock("@/lib/server/current-draft", () => ({ currentDraft: async () => ({ childProfile: {}, packageTier: Object.values(PACKAGES)[0]!.tier, scenes: [] }) }));
 
 describe("creation world artwork", () => {
   it("uses only artwork bound to the purchased scene, otherwise the actual scene or map", async () => {

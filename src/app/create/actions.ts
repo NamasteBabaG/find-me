@@ -5,11 +5,10 @@ import { redirect } from "next/navigation";
 import { requireQaAccess } from "@/lib/server/qa-access";
 import { getContainer } from "@/services/container";
 import { getCurrency } from "@/i18n/server";
-import { createDraft, draftBelongsTo, selectPackage, selectWorlds } from "@/services/create-flow.service";
+import { createDraft, selectPackage, selectWorlds } from "@/services/create-flow.service";
 import { startCheckout } from "@/services/order.service";
-import { isEditableDraft } from "@/domain/order-state";
 import { validChildAge } from "@/domain/child-appearance";
-import { statusOf } from "@/services/game-status";
+import { currentDraft } from "@/lib/server/current-draft";
 import { currentUser, draftTokenFromCookie, setDraftCookie, requestHeaders } from "@/lib/server/session";
 import { LIMITS, rateLimit } from "@/lib/server/rate-limit";
 import { getLocale } from "@/i18n/server";
@@ -20,22 +19,6 @@ import { worldPurchaseDraftHref, worldPurchaseSignInHref } from "@/domain/world-
 import { purchasingClosed, purchasingEnabled } from "@/lib/purchasing";
 
 export type ActionResult = FlowResult;
-
-/** The draft this browser is working on (by cookie), if it is still editable. */
-export async function currentDraft(explicitGameId?: string) {
-  await requireQaAccess();
-  const c = getContainer();
-  const token = await draftTokenFromCookie();
-  if (!token && !explicitGameId) return null;
-  const [game, user] = await Promise.all([
-    c.db.game.findUnique({ where: explicitGameId ? { id: explicitGameId } : { draftToken: token! }, include: { childProfile: true, scenes: { orderBy: { orderIndex: "asc" } } } }),
-    currentUser(),
-  ]);
-  if (!game || !isEditableDraft(statusOf(game))) return null;
-  if (game.deletedAt || explicitGameId && (!user || game.ownerId !== user.id || !await c.db.childWorldPurchase.findFirst({ where: { activeGameId: game.id, ownerId: user.id, familyChildId: game.familyChildId ?? "" } }))) return null;
-  if (!draftBelongsTo(game, token, user?.id ?? null)) return null;
-  return game;
-}
 
 export async function saveNameAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   await requireQaAccess();

@@ -1,4 +1,4 @@
-# יצירת בורדים ועולמות — 14.9.2026
+# יצירת בורדים ועולמות — 6.10.2026
 
 **עולם** הוא מסע של תשעה בורדים (`content/worlds`).
 **בורד/סצנה** הוא ארט + הגדרות (`content/scenes`).
@@ -11,7 +11,7 @@
 | הגדרות סצנה בסיסיות/ישנות | `src/domain/scene/schema.ts`, קובצי scene.json |
 | גרסאות משחקים קיימים | `content/scenes/releases` ו־findScene(slug, version) |
 | local-patch | `content/local-patch-world`, `domain/scene/local-patch-catalog.ts`, מחוללי release ב־content/scenes |
-| ספר ההרפתקאות העתידי | `content/adventures`, `domain/adventure/content.ts`, בריף בורדי החיפוש |
+| אוספים, דרכון ובורדי פיילוט | `content/adventures`, `domain/adventure/content.ts`, בריף בורדי החיפוש; תוכן planned עדיין אינו פעיל |
 
 אין להחליף את הארט של גרסה ששולמה. יוצרים גרסה חדשה עם מיקומים, hashes ומדיניות תואמים.
 גרסאות היסטוריות נשמרות לשחקן, התאוששות ומחיקה. לא מוחקים אותן במהלך ניקיון.
@@ -34,9 +34,11 @@
 משימות וחגיגה כוללות `{name}` כנדרש בסכימה. יש לבדוק רמזים מול המיקום האמיתי, לא סלוט ישן.
 
 - חוזה סצנה ללא playMode: בדיוק שלוש מטרות.
-- `playMode: "find-any"`: בתוכן המחבר בדיוק חמש מטרות,
-  `appearancesPerBoard: 5`, `findsRequiredToAdvance: 3`.
-- ארבע מטרות הן אפשרות **פרסום חלקי של GameConfig**, לא scene.json מחובר למחצה.
+- `playMode: "find-any"`: מספר המטרות מוצמד לגרסה. באוספים v10–v12 בדיוק שלוש,
+  `appearancesPerBoard: 3`, ובחוזים ההיסטוריים v7–v9 חמש, `appearancesPerBoard: 5`.
+  בשניהם `findsRequiredToAdvance: 3`.
+- פרסומי GameConfig חלקיים היסטוריים נשארים לקריאה לפי החוזה השמור;
+  אין להשתמש בהם כדי להסיר מחבואים נדרשים מעולם אוסף חדש.
 - A/B נשארים חלק מהחוזה; אין להמציא מיקום B בלי ארט וגאומטריה.
 - קואורדינטות מנורמלות למידות הארט. rect/hitRect/anchor עוברים דרך החוזים המשותפים.
 - הערכת scale כללית אינה אישור לגיל או לזיהוי פנים. בדקו את הדמות בשכנים, בנייד ובזום.

@@ -41,9 +41,11 @@ Three tracked modules currently have no non-test caller in this checkout:
   contract, not checkout routing.
 
 They are retained intentionally for now. Before removal, migrate any external
-authoring consumers and keep their evidence readable. Separately, adventure
-geometry and the album service are intentionally staged future capabilities;
-their missing UI caller is documented in ADVENTURE_FOUNDATION_2026-09-14.md.
+authoring consumers and keep their evidence readable. Adventure geometry and
+the album service are active: the player, authenticated album API and deletion
+lifecycle use them. The original ADVENTURE_FOUNDATION_2026-09-14.md is historical;
+see ARCHITECTURE.md for the current connections. Pilot boards without approved
+artwork remain planned and are not part of the active creation catalog.
 
 ## Reproducible maintenance
 

@@ -1,7 +1,7 @@
 import {
   auditWorldBudget, WorldBudgetError, validateWorldUnknownContinuationApprovals, validateUnknownContinuationApproval,
   type WorldBudgetRepository, type WorldBudgetRequest, type WorldBudgetSnapshot, type WorldBudgetTransaction,
-} from "../../services/generation/world-budget";
+} from "../../domain/generation/world-budget";
 
 export interface VersionedWorldBudgetSnapshot {
   /** Monotonic, non-reused safe integer. The initial persisted revision is 0. */

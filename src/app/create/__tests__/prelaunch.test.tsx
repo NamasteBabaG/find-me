@@ -11,7 +11,7 @@ vi.mock("@/ui/Shell", () => ({ SiteHeader: () => <header />, SiteFooter: () => <
 vi.mock("../ScrollToTop", () => ({ ScrollToTop: () => null }));
 vi.mock("@/lib/server/session", () => ({ currentUser: f.user, isAdminEmail: () => false }));
 vi.mock("@/services/container", () => ({ getContainer: f.container }));
-vi.mock("../actions", () => ({ currentDraft: f.draft }));
+vi.mock("@/lib/server/current-draft", () => ({ currentDraft: f.draft }));
 import CreateNamePage from "../page";
 import { CreateFrame, CreationPrelaunch } from "../CreateLayout";
 

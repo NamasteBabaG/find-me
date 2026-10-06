@@ -9,7 +9,8 @@ vi.mock("@/lib/server/db-guard", () => ({ guardDb: (fn: () => unknown) => fn() }
 vi.mock("@/services/create-flow.service", async importOriginal => ({ ...await importOriginal<typeof import("@/services/create-flow.service")>(), createDraft: f.create }));
 vi.mock("@/services/family.service", () => ({ chooseDraftChild: f.choose }));
 vi.mock("next/navigation", () => ({ redirect: (url: string) => { throw Error(`redirect:${url}`); } }));
-import { choosePackageAction, chooseScenesAction, currentDraft, saveNameAction } from "../actions";
+import { choosePackageAction, chooseScenesAction, saveNameAction } from "../actions";
+import { currentDraft } from "@/lib/server/current-draft";
 
 beforeEach(() => {
   vi.clearAllMocks(); f.token = "draft-token"; f.access.mockResolvedValue(undefined); f.user.mockResolvedValue({ id: "owner" });
@@ -47,11 +48,28 @@ it("reads an authorized editable draft and its relations in one query", async ()
   expect(f.lookup).toHaveBeenCalledOnce(); expect(f.access).toHaveBeenCalledOnce();
   expect(f.lookup.mock.calls[0]![0].include).toEqual({ childProfile: true, scenes: { orderBy: { orderIndex: "asc" } } });
 });
-it.each(["foreign", "locked", "no-cookie"])("still rejects a %s draft", async kind => {
+it.each(["foreign", "locked", "no-cookie", "deleted"])("still rejects a %s draft", async kind => {
   if (kind === "foreign") f.lookup.mockResolvedValue({ id: "draft", draftToken: "different", ownerId: "different", status: "DRAFT" });
   if (kind === "locked") f.lookup.mockResolvedValue({ id: "draft", draftToken: f.token, ownerId: "owner", status: "READY" });
   if (kind === "no-cookie") f.token = "";
+  if (kind === "deleted") f.lookup.mockResolvedValue({ id: "draft", draftToken: f.token, ownerId: "owner", status: "DRAFT", deletedAt: new Date() });
   expect(await currentDraft()).toBeNull();
+});
+it("still permits an anonymous browser's matching editable cookie draft", async () => {
+  f.user.mockResolvedValue(null);
+  f.lookup.mockResolvedValue({ id: "draft", draftToken: f.token, ownerId: null, status: "DRAFT", scenes: [] });
+  expect(await currentDraft()).toMatchObject({ id: "draft" });
+  expect(f.intent).not.toHaveBeenCalled();
+});
+it("an explicit owned continuation draft does not require the other tab's cookie", async () => {
+  f.token = "";
+  expect(await currentDraft("draft")).toMatchObject({ id: "draft" });
+  expect(f.intent).toHaveBeenCalledOnce();
+});
+it("rejects at the QA gate before querying a private draft", async () => {
+  f.access.mockRejectedValue(Error("qa denied"));
+  await expect(currentDraft()).rejects.toThrow("qa denied");
+  expect(f.lookup).not.toHaveBeenCalled(); expect(f.user).not.toHaveBeenCalled();
 });
 it("starts a fresh child's draft without fetching an empty draft again before the guarded mutation", async () => {
   f.create.mockResolvedValue({ gameId: "new-draft", draftToken: "new-token" }); f.choose.mockResolvedValue({ ok: true });

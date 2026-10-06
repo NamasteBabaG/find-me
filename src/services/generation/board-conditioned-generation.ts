@@ -3,31 +3,11 @@ import sharp from "sharp";
 import { prepareBoardConditionedSource, type BoardConditioningInput } from "./board-conditioned-source";
 import { BoardSpriteExtractionError, extractBoardSprites } from "./board-sprite-extraction";
 import { composeBoardPlacement } from "./board-placement";
-import type { ObservedBoardPoseSource } from "../../infra/generation/board-pose-observer";
 import { sha256Bytes } from "./fixed-sprite";
 import type { WorldBudget, WorldChargeEvidence } from "./world-budget";
-import { BOARD_POSE_OBSERVER_SETTINGS, prepareBoardPoseObservation, decideBoardPoseObservation, type BoardPoseObserverPolicy, type BoardPoseObservationReceipt, type BoardPoseCompletenessDeferral } from "../../infra/generation/board-pose-observer";
-
-type GeneratedSource = Extract<FixedSourceResult, { kind: "generated" }>;
-type Seed = ObservedBoardPoseSource;
-export interface BoardMeasurement {
-  sheetSha256: string;
-  fingerprint: string;
-  status: "ok" | "uncertain" | "invalid";
-  sources: Seed[] | null;
-  evidence: WorldChargeEvidence;
-  receipt?: BoardPoseObservationReceipt;
-  /** Cells whose visible completeness only the destination can settle. Optional
-   * so measurements checkpointed before 9 September 2026 still load unchanged. */
-  completenessDeferred?: BoardPoseCompletenessDeferral[];
-}
-export interface BoardConditionedCheckpointStore {
-  /** Durable immutable put-if-absent. Same key with changed bytes must fail. */
-  putSource(worldId: string, boardId: string, source: GeneratedSource): Promise<void>;
-  getSource(worldId: string, boardId: string): Promise<GeneratedSource | null>;
-  putMeasurement(worldId: string, boardId: string, result: BoardMeasurement, measurementAttempt?: 1 | 2): Promise<void>;
-  getMeasurement(worldId: string, boardId: string, measurementAttempt?: 1 | 2): Promise<BoardMeasurement | null>;
-}
+import { BOARD_POSE_OBSERVER_SETTINGS, prepareBoardPoseObservation, decideBoardPoseObservation, type BoardPoseObserverPolicy } from "../../infra/generation/board-pose-observer";
+import type { BoardConditionedCheckpointStore, BoardMeasurement } from "../../infra/generation/board-checkpoint-types";
+export type { BoardConditionedCheckpointStore, BoardMeasurement } from "../../infra/generation/board-checkpoint-types";
 export interface BoardGenerationDependencies {
   sourcePolicy: FixedSourcePolicy;
   observerPolicy: BoardPoseObserverPolicy;

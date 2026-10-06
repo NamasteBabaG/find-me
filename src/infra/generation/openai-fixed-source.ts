@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { z } from "zod";
-import { WorldBudget, WorldBudgetError, type WorldBudgetAudit, type WorldChargeEvidence } from "../../services/generation/world-budget";
+import { WorldBudget, WorldBudgetError, type WorldBudgetAudit, type WorldChargeEvidence } from "../../domain/generation/world-budget";
 import { fixedSourceFailureReceipt, isSafeFixedSourceRequestId, type FixedSourceFailureReceipt, type FixedSourceFailureSink } from "./fixed-source-diagnostics";
 
 const ENDPOINT = "https://api.openai.com/v1/images/edits";

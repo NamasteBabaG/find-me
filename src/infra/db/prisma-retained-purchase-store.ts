@@ -4,9 +4,9 @@ import { z } from "zod";
 import {
   RETAINED_PURCHASE_VERSION, RetainedPurchaseRefused, retainedPayloadDigest,
   type RetainedPurchase, type RetainedPurchaseStore,
-} from "../../services/generation/paid-operation";
-import { WORLD_BUDGET_SCOPES, WorldBudgetError, sameChargeEvidence, validateChargeEvidence } from "../../services/generation/world-budget";
-import type { WorldChargeEvidence } from "../../services/generation/world-budget";
+} from "../../domain/generation/retained-purchase";
+import { WORLD_BUDGET_SCOPES, WorldBudgetError, sameChargeEvidence, validateChargeEvidence } from "../../domain/generation/world-budget";
+import type { WorldChargeEvidence } from "../../domain/generation/world-budget";
 
 /**
  * Where a paid answer lives between being bought and being settled - on disk,

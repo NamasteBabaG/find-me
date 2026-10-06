@@ -34,11 +34,7 @@ export async function loadDraft(c: Container, gameId: string) {
   return c.db.game.findUnique({ where: { id: gameId }, include: { childProfile: true, scenes: { orderBy: { orderIndex: "asc" } } } });
 }
 
-export function draftBelongsTo(game: { draftToken: string | null; ownerId: string | null }, draftToken: string | null, userId: string | null): boolean {
-  if (draftToken && game.draftToken === draftToken) return true;
-  if (userId && game.ownerId === userId) return true;
-  return false;
-}
+export { draftBelongsTo } from "@/domain/game/access";
 
 export function gameLocale(game: { locale: string }): Locale {
   return game.locale === "he" ? "he" : "en";

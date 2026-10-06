@@ -4,7 +4,7 @@ import { z } from "zod";
 import { judgeCharge } from "./judge";
 import { sha256Rgba } from "../../services/generation/fixed-sprite";
 import { resolveStandingPixel } from "../../services/generation/standing-pixels";
-import { WorldBudget, WorldBudgetError, type WorldBudgetAudit, type WorldChargeEvidence } from "../../services/generation/world-budget";
+import { WorldBudget, WorldBudgetError, type WorldBudgetAudit, type WorldChargeEvidence } from "../../domain/generation/world-budget";
 import { boardObserverFailure, type BoardObserverFailure } from "./board-observer-diagnostics";
 
 /**

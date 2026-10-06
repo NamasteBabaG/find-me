@@ -3,7 +3,7 @@ import { z } from "zod";
 import {
   auditWorldBudget, WorldBudgetError, WORLD_BUDGET_SCOPES, validateUnknownContinuationApproval, validateWorldUnknownContinuationApprovals,
   type BudgetJson, type WorldBudgetSnapshot, type WorldContinuationRecord,
-} from "../../services/generation/world-budget";
+} from "../../domain/generation/world-budget";
 import type { AtomicWorldBudgetStore, VersionedWorldBudgetSnapshot } from "./world-budget-repository";
 
 export const WORLD_BUDGET_LEDGER_SCHEMA_VERSION = 1;

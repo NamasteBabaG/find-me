@@ -30,7 +30,7 @@ const usageKeys = new Set(["totalTokens", "inputTokens", "outputTokens", "textIn
   "total_tokens", "input_tokens", "output_tokens", "text_input_tokens", "image_input_tokens"]);
 
 /** Game -> Job -> Child matches identity deletion's lock order. */
-async function fence(tx: Prisma.TransactionClient, claim: BoardWizardIdentityClaim) {
+export async function fenceBoardWizardIdentityClaim(tx: Prisma.TransactionClient, claim: BoardWizardIdentityClaim) {
   const game = await tx.game.updateMany({ where: { id: claim.gameId, ownerId: claim.ownerId, childProfileId: claim.childId,
     styleVersion: claim.styleVersion, deletedAt: null, status: { in: ["PAID", "AVATAR_GENERATING", "GENERATION_FAILED"] } }, data: { styleVersion: claim.styleVersion } });
   const job = await tx.generationJob.updateMany({ where: { id: claim.jobId, gameId: claim.gameId, attempts: claim.jobAttempt, status: "RUNNING", currentStep: "avatar" }, data: { currentStep: "avatar" } });
@@ -42,7 +42,7 @@ async function fence(tx: Prisma.TransactionClient, claim: BoardWizardIdentityCla
 
 export async function withBoardWizardIdentityClaim<T>(c: Container, claim: BoardWizardIdentityClaim, work: (tx: Prisma.TransactionClient) => Promise<T>) {
   demand(enabled(claim.styleVersion) && c.storage.id === "db");
-  return c.db.$transaction(async tx => { await fence(tx, claim); return work(tx); },
+  return c.db.$transaction(async tx => { await fenceBoardWizardIdentityClaim(tx, claim); return work(tx); },
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30_000 });
 }
 
@@ -72,6 +72,8 @@ export async function holdBoardWizardIdentity(c: Container, claim: BoardWizardId
 /** One paid call at most. Billing survives a lost/deleted image publication. */
 export async function generateBoardWizardIdentity(c: Container, claim: BoardWizardIdentityClaim, deps: {
   reserve(): Promise<void>; generate(): Promise<CharacterOutput>; provenance?: IdentityProvenance;
+  /** A refused, unacquired reservation may defer; a dispatched call never may. */
+  deferReservation?(error: unknown): Promise<boolean>;
   attempt?: number;
   onPersisted?(tx: Prisma.TransactionClient, ids: { identityAssetId: string; avatarAssetId: string }): Promise<void>;
 }): Promise<boolean> {
@@ -82,10 +84,12 @@ export async function generateBoardWizardIdentity(c: Container, claim: BoardWiza
     demand(scenes.length === 9 && scenes.every(s => isRefreshedCollectionVersion(s.sceneVersion)));
   }
   const requestKey = `wizard:identity:${deps.attempt ?? 1}`;
+  let reserved = false;
   try {
     demand(enabled(claim.styleVersion) && c.storage.id === "db");
-    await c.db.$transaction(tx => fence(tx, claim), { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    await c.db.$transaction(tx => fenceBoardWizardIdentityClaim(tx, claim), { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     await deps.reserve();
+    reserved = true;
     const character = await deps.generate();
     const providerRequestId = /^req[-_][A-Za-z0-9_-]{1,160}$/.test(character.providerRequestId ?? "") && !character.providerRequestId?.includes("sk-") ? character.providerRequestId : null;
     const usage = character.usage && Object.keys(character.usage).length > 0 && Object.keys(character.usage).length <= 30
@@ -103,7 +107,7 @@ export async function generateBoardWizardIdentity(c: Container, claim: BoardWiza
     else await budget.markUnknown(scope(claim.gameId), requestKey, "Identity response lacks trustworthy request-level billing evidence");
 
     await c.db.$transaction(async tx => {
-      await fence(tx, claim);
+      await fenceBoardWizardIdentityClaim(tx, claim);
       const sheetId = newId("ast"), avatarId = newId("ast");
       for (const asset of [
         { id: sheetId, type: "IDENTITY_SHEET", visibility: "PRIVATE", png: character.sheetPng, width: character.sheetWidth, height: character.sheetHeight },
@@ -124,7 +128,8 @@ export async function generateBoardWizardIdentity(c: Container, claim: BoardWiza
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30_000 });
     if (!known) { await holdBoardWizardIdentity(c, claim, "unresolved-identity"); return false; }
     return true;
-  } catch {
+  } catch (error) {
+    if (!reserved && await deps.deferReservation?.(error)) return false;
     // A response may have been billed even if transport or postprocessing failed.
     // Known settled evidence is never downgraded. No raw exception is persisted.
     try {

@@ -1,3 +1,4 @@
+import { canManageGameCreation } from "@/domain/game/access";
 import { NextResponse } from "next/server";
 import { qaAccessDenied } from "@/lib/server/qa-access";
 import { getContainer } from "@/services/container";
@@ -48,7 +49,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
     draftTokenFromCookie(),
   ]);
   if (!game) return NextResponse.json({ error: "not found" }, { status: 404 });
-  const allowed = (draftToken && game.draftToken === draftToken) || (user && game.ownerId === user.id) || isAdminEmail(user?.email);
+  const allowed = canManageGameCreation(game, draftToken, user?.id ?? null, isAdminEmail(user?.email));
   if (!allowed) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   const status = statusOf(game);
   const step = creationStep(status);

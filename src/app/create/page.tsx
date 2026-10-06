@@ -2,7 +2,7 @@ import { currentUser, isAdminEmail } from "@/lib/server/session";
 import { getI18n } from "@/i18n/server";
 import { CreateFrame, CreationPrelaunch } from "./CreateLayout";
 import { NameForm } from "./NameForm";
-import { currentDraft } from "./actions";
+import { currentDraft } from "@/lib/server/current-draft";
 import { getContainer } from "@/services/container";
 import { listFamilyChildren } from "@/services/family.service";
 import { purchasingEnabled } from "@/lib/purchasing";

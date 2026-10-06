@@ -46,6 +46,8 @@ import { sha256Bytes } from "../fixed-sprite";
 import { LOCAL_PATCH_STYLE } from "../local-patch-world";
 import { createDraft } from "../../create-flow.service";
 import { identityApprovedForDisplay } from "../board-wizard-identity-gate";
+import { LOCAL_PATCH_EMERGENCY_BUDGET_POLICY } from "../local-patch-budget-recovery";
+import { bill } from "./local-patch-fixtures";
 import { seedAdminAlertNotification, expectAdminAlertPurged, expectAdminAlertUnchanged } from "../../__tests__/admin-alert-deletion-fixture";
 
 let db: PrismaClient, scratch: string, png: Buffer, seq = 0;
@@ -125,6 +127,108 @@ async function reviewPublished(f: Fixture, reviewer = { review: async () => ({ h
 }
 
 describe("QA identity lifecycle: real DB and synthetic provider only", () => {
+  it.each([
+    { refusedScope: "identity", exhausted: false }, { refusedScope: "judge", exhausted: false }, { refusedScope: "planning-floor", exhausted: false },
+    { refusedScope: "identity", exhausted: true }, { refusedScope: "judge", exhausted: true },
+  ] as const)("catalog12 requests exact $refusedScope reservations (existing fifth dollar exhausted: $exhausted)", async ({ refusedScope, exhausted }) => {
+    const f = await fixture(); await fullWorld(f, 12);
+    await db.childProfile.update({ where: { id: f.childId }, data: { ageYears: 8 } });
+    await db.game.update({ where: { id: f.id }, data: { styleVersion: LOCAL_PATCH_STYLE } });
+    await db.order.create({ data: { id: `order-${f.id}`, gameId: f.id, userId: f.ownerId, provider: "mock", packageTier: "ONE_WORLD",
+      paymentStatus: "PAID", paidAt: new Date(), amountAgorot: 3900 } });
+    await db.generationJob.update({ where: { id: f.claim.jobId }, data: { status: "QUEUED", attempts: 0, currentStep: null } });
+    const budget = boardWizardBudgetOf(f.c), worldId = boardWizardWorldId(f.id), previousAmount = refusedScope === "identity" ? 3_450_000 : refusedScope === "judge" ? 3_500_000 : 3_430_000;
+    await budget.reserve(worldId, { requestKey: "retained-work", scope: "identity", operationFingerprint: "retained-synthetic-work", reserveMicroUsd: previousAmount });
+    await budget.settle(worldId, "retained-work", bill(`retained-${f.id}`, previousAmount));
+    const retained = await budget.readRequest(worldId, "retained-work");
+    let calls = 0, reviews = 0;
+    f.c.avatars.createCharacter = vi.fn(async request => {
+      calls++; expect(request.qaStyleContract?.version).toBe("board-matched-identity/v4");
+      return { ...f.result(), costCents: refusedScope === "judge" ? 50 : 5.2, providerRequestId: `req_${f.id}_${calls}` };
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      reviews++;
+      return new Response(JSON.stringify({ model: "gpt-5.6-luna", usage: { prompt_tokens: 2000, completion_tokens: 400 },
+        choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ checks: {
+          identity: refusedScope !== "judge" && reviews === 1 ? "fail" : "pass", age: "pass", paintedStyle: "pass", sheetLayout: "pass" },
+          reason: "Synthetic identity review evidence", ...(reviews > 1 ? { preferredCandidate: "second" } : {}) }) } }] }),
+        { headers: { "x-request-id": `req_review_${f.id}_${reviews}` } });
+    }));
+    await runGenerationPipeline(f.c, f.id);
+    if (refusedScope === "planning-floor") {
+      // The historical $0.54 combined floor would loop here. The actual $0.50
+      // image fits, settles below its reserve, and leaves room for its review.
+      expect(await f.game()).toMatchObject({ status: "TARGETS_GENERATING", configJson: null });
+      expect(calls).toBe(2); expect(reviews).toBe(2);
+      expect(await budget.audit(worldId)).toMatchObject({ capMicroUsd: 4_000_000, held: false });
+      expect(await budget.readRequest(worldId, "retained-work")).toEqual(retained);
+      expect(await db.auditLog.count({ where: { entityId: f.id, action: LOCAL_PATCH_EMERGENCY_BUDGET_POLICY } })).toBe(0);
+      expect((await f.ledger()).requests.every((r: { state: string }) => r.state === "settled")).toBe(true);
+      await db.game.update({ where: { id: f.id }, data: { status: "MANUAL_REVIEW" } });
+      return;
+    }
+    expect(await f.game()).toMatchObject({ status: "AVATAR_GENERATING", configJson: null, readyAt: null });
+    expect(await f.job()).toMatchObject({ status: "QUEUED", currentStep: "avatar" });
+    expect(calls).toBe(1); expect(reviews).toBe(refusedScope === "identity" ? 1 : 0);
+    const grant = await db.auditLog.findFirstOrThrow({ where: { entityId: f.id, action: LOCAL_PATCH_EMERGENCY_BUDGET_POLICY } });
+    const receipt = JSON.parse(grant.metaJson!);
+    expect(receipt).toMatchObject({ capMicroUsd: 5_000_000, refusedReservation: { scope: refusedScope,
+      reserveMicroUsd: refusedScope === "identity" ? 500_000 : 40_000,
+      requestKey: refusedScope === "identity" ? "wizard:identity:2" : expect.stringMatching(/^wizard:identity-style:1:/) } });
+    expect(await budget.readRequest(worldId, receipt.refusedReservation.requestKey)).toBeNull();
+    expect(await budget.audit(worldId)).toMatchObject({ capMicroUsd: 5_000_000, held: false });
+    if (exhausted) {
+      const leaveMicroUsd = refusedScope === "identity" ? 100_000 : 20_000;
+      const fillMicroUsd = (await budget.audit(worldId)).remainingMicroUsd - leaveMicroUsd;
+      await budget.reserve(worldId, { requestKey: "retained-fifth-dollar-work", scope: "identity", operationFingerprint: "retained-fifth-dollar-work", reserveMicroUsd: fillMicroUsd });
+      await budget.settle(worldId, "retained-fifth-dollar-work", bill(`fifth-dollar-${f.id}`, fillMicroUsd));
+      const before = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } });
+      const childBefore = await db.childProfile.findUniqueOrThrow({ where: { id: f.childId } });
+      const assetCount = await db.asset.count({ where: { ownerId: f.ownerId } });
+      // The generic cap refuses before adapter metadata is attached. Deferral
+      // must keep the existing receipt, money and images over repeated ticks.
+      for (let tick = 0; tick < 2; tick++) {
+        await runGenerationPipeline(f.c, f.id);
+        expect(await f.game()).toMatchObject({ status: "AVATAR_GENERATING", configJson: null });
+        expect(await f.job()).toMatchObject({ status: "QUEUED", currentStep: "avatar" });
+        expect((await f.job()).lastError).toContain("five-dollar budget");
+      }
+      expect(calls).toBe(1); expect(reviews).toBe(refusedScope === "identity" ? 1 : 0);
+      expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } })).toEqual(before);
+      expect(await budget.readRequest(worldId, receipt.refusedReservation.requestKey)).toBeNull();
+      expect(await db.auditLog.findUniqueOrThrow({ where: { id: grant.id } })).toEqual(grant);
+      expect(await db.auditLog.count({ where: { entityId: f.id, action: LOCAL_PATCH_EMERGENCY_BUDGET_POLICY } })).toBe(1);
+      expect(await db.asset.count({ where: { ownerId: f.ownerId } })).toBe(assetCount);
+      const childAfter = await db.childProfile.findUniqueOrThrow({ where: { id: f.childId } });
+      expect(childAfter.identityAssetId).toBe(childBefore.identityAssetId); expect(childAfter.avatarAssetId).toBe(childBefore.avatarAssetId);
+      expect(await budget.audit(worldId)).toMatchObject({ capMicroUsd: 5_000_000, remainingMicroUsd: leaveMicroUsd, held: false });
+      await db.game.update({ where: { id: f.id }, data: { status: "MANUAL_REVIEW" } });
+      return;
+    }
+    // A short worker slice must not consume the grant twice or repurchase the
+    // retained first identity; the next normal slice resumes its exact key.
+    await runGenerationPipeline(f.c, f.id, { hardDeadlineAt: Date.now() + 10_000 });
+    expect(calls).toBe(1); expect(await f.game()).toMatchObject({ status: "AVATAR_GENERATING" });
+    await runGenerationPipeline(f.c, f.id);
+    expect(await f.game()).toMatchObject({ status: "TARGETS_GENERATING", configJson: null });
+    expect(await f.job()).toMatchObject({ status: "QUEUED", currentStep: "local-patch" });
+    expect(calls).toBe(refusedScope === "identity" ? 2 : 1); expect(reviews).toBe(refusedScope === "identity" ? 2 : 1);
+    expect(await db.auditLog.findUniqueOrThrow({ where: { id: grant.id } })).toEqual(grant);
+    expect(await db.auditLog.count({ where: { entityId: f.id, action: LOCAL_PATCH_EMERGENCY_BUDGET_POLICY } })).toBe(1);
+    expect(await budget.readRequest(worldId, "retained-work")).toEqual(retained);
+    expect((await f.ledger()).requests.every((r: { state: string }) => r.state === "settled")).toBe(true);
+    const child = await db.childProfile.findUniqueOrThrow({ where: { id: f.childId } });
+    expect(await identityApprovedForDisplay(f.c, child, 12)).toBe(true);
+    await db.game.update({ where: { id: f.id }, data: { status: "MANUAL_REVIEW" } });
+  });
+  it("never defers a dispatched identity or releases its unresolved purchase", async () => {
+    const f = await fixture(), deferReservation = vi.fn(async () => true);
+    const generated = await generateBoardWizardIdentity(f.c, f.claim, { reserve: f.reserve, deferReservation,
+      generate: async () => { throw new Error("Synthetic provider transport interruption after dispatch"); } });
+    expect(generated).toBe(false); expect(deferReservation).not.toHaveBeenCalled();
+    expect((await f.ledger()).requests[0]).toMatchObject({ state: "unknown", reserveMicroUsd: 500_000 });
+    expect(await f.game()).toMatchObject({ status: "MANUAL_REVIEW" });
+  });
   it("catalog11 diagnoses two likeness/age failures, resumes a changed third attempt, and deletes every candidate", async () => {
     const f = await fixture(); await fullWorld(f, 11);
     await db.childProfile.update({ where: { id: f.childId }, data: { ageYears: 8 } });

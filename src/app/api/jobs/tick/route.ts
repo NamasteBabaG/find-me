@@ -1,3 +1,4 @@
+import { canManageGameCreation } from "@/domain/game/access";
 import { NextResponse } from "next/server";
 import { qaAccessDenied } from "@/lib/server/qa-access";
 import { getContainer } from "@/services/container";
@@ -105,7 +106,7 @@ async function isAllowed(req: Request, gameId: string | null): Promise<boolean> 
     const c = getContainer();
     const [game, user, draftToken] = await Promise.all([c.db.game.findUnique({ where: { id: gameId }, select: { ownerId: true, draftToken: true } }), currentUser(), draftTokenFromCookie()]);
     if (!game) return false;
-    return Boolean((draftToken && game.draftToken === draftToken) || (user && game.ownerId === user.id) || isAdminEmail(user?.email));
+    return canManageGameCreation(game, draftToken, user?.id ?? null, isAdminEmail(user?.email));
   } catch (err) {
     console.warn("[jobs/tick] cannot check access:", err instanceof Error ? err.message.split("\n")[0] : err);
     return false;

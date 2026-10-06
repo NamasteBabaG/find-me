@@ -13,7 +13,7 @@ vi.mock("@/services/generation/local-patch-world", () => ({ LOCAL_PATCH_STYLE: "
 vi.mock("@/lib/server/session", () => ({ currentUser: async () => pricing.user, isAdminEmail: () => false }));
 vi.mock("@/services/child-pricing.service", () => ({ childHasPaidWorld: pricing.eligible }));
 vi.mock("@/i18n/server", () => ({ getCurrency: async () => "ILS", getI18n: async () => ({ t: he, locale: "he" }) }));
-vi.mock("../../actions", () => ({ currentDraft: async () => ({ id: "draft", ownerId: "parent", familyChildId: "passport", childProfile: { displayName: "בר", originalPhotoAssetId: "photo" }, styleVersion: "local-patch-world-v1", packageTier: "ONE_WORLD" }) }));
+vi.mock("@/lib/server/current-draft", () => ({ currentDraft: async () => ({ id: "draft", ownerId: "parent", familyChildId: "passport", childProfile: { displayName: "בר", originalPhotoAssetId: "photo" }, styleVersion: "local-patch-world-v1", packageTier: "ONE_WORLD" }) }));
 vi.mock("../../CreateLayout", () => ({ CreateFrame: () => null }));
 vi.mock("../PackagePicker", () => ({ PackagePicker: () => null }));
 afterEach(() => vi.unstubAllGlobals());

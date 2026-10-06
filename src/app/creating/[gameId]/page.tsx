@@ -1,3 +1,4 @@
+import { canManageGameCreation } from "@/domain/game/access";
 import { notFound } from "next/navigation";
 import { getContainer } from "@/services/container";
 import { currentUser, draftTokenFromCookie, isAdminEmail } from "@/lib/server/session";
@@ -12,7 +13,7 @@ export default async function CreatingPage({ params }: { params: Promise<{ gameI
   const c = getContainer();
   const [game, user, draftToken] = await Promise.all([c.db.game.findUnique({ where: { id: gameId }, include: { childProfile: true, owner: { select: { email: true } } } }), currentUser(), draftTokenFromCookie()]);
   if (!game) notFound();
-  const allowed = (draftToken && game.draftToken === draftToken) || (user && game.ownerId === user.id) || isAdminEmail(user?.email);
+  const allowed = canManageGameCreation(game, draftToken, user?.id ?? null, isAdminEmail(user?.email));
   if (!allowed) notFound();
   let name = game.childProfile?.displayName ?? "";
   if (!name && game.configJson) {

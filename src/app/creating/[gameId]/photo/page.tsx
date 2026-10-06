@@ -1,3 +1,4 @@
+import { canManageGameCreation } from "@/domain/game/access";
 import { notFound, redirect } from "next/navigation";
 import { getContainer } from "@/services/container";
 import { currentUser, draftTokenFromCookie, isAdminEmail } from "@/lib/server/session";
@@ -15,7 +16,7 @@ export default async function NewPhotoPage({ params }: { params: Promise<{ gameI
   const c = getContainer();
   const [game, user, draftToken, { t }] = await Promise.all([c.db.game.findUnique({ where: { id: gameId }, include: { childProfile: true } }), currentUser(), draftTokenFromCookie(), getI18n()]);
   if (!game || !game.childProfile) notFound();
-  const allowed = (draftToken && game.draftToken === draftToken) || (user && game.ownerId === user.id) || isAdminEmail(user?.email);
+  const allowed = canManageGameCreation(game, draftToken, user?.id ?? null, isAdminEmail(user?.email));
   if (!allowed) notFound();
   if (statusOf(game) !== "NEEDS_NEW_PHOTO") redirect(`/creating/${gameId}`);
   const name = game.childProfile.displayName;

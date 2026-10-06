@@ -16,7 +16,7 @@ vi.mock("@/lib/server/rate-limit", () => ({ LIMITS: { checkout: { limit: 10, win
 vi.mock("@/i18n/server", () => ({ getI18n: async () => ({ t: getDict("en"), locale: "en" }), getLocale: async () => "en", getCurrency: async () => "ILS" }));
 vi.mock("@/ui/Shell", () => ({ SiteHeader: () => null, SiteFooter: () => null }));
 vi.mock("../PurchasePanel", () => ({ PurchasePanel: () => null }));
-vi.mock("@/app/create/actions", () => ({ currentDraft: f.draft }));
+vi.mock("@/lib/server/current-draft", () => ({ currentDraft: f.draft }));
 import WorldPurchasePage from "../page";
 import { continueWorldAction } from "../actions";
 import CreatePhotoPage from "@/app/create/photo/page";

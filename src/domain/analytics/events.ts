@@ -60,13 +60,3 @@ export const ALLOWED_PROPS = [
 ] as const;
 
 export type AnalyticsProps = Partial<Record<(typeof ALLOWED_PROPS)[number], string | number | boolean>>;
-
-export function sanitizeProps(props: Record<string, unknown> | undefined): AnalyticsProps {
-  if (!props) return {};
-  const out: Record<string, string | number | boolean> = {};
-  for (const key of ALLOWED_PROPS) {
-    const v = props[key];
-    if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") out[key] = v;
-  }
-  return out as AnalyticsProps;
-}

@@ -7,7 +7,7 @@ vi.mock("@/lib/server/session", () => ({ currentUser: f.user, draftTokenFromCook
 vi.mock("@/i18n/server", () => ({ getCurrency: async () => "ILS" }));
 vi.mock("@/lib/server/rate-limit", () => ({ LIMITS: { checkout: { limit: 10, windowMs: 600000 } }, rateLimit: f.limit }));
 vi.mock("@/services/container", () => ({ getContainer: f.container }));
-vi.mock("@/services/create-flow.service", () => ({ draftBelongsTo: () => true, loadDraft: async () => f.draft }));
+vi.mock("@/lib/server/current-draft", () => ({ currentDraft: async () => f.draft }));
 vi.mock("@/services/order.service", () => ({ startCheckout: f.checkout }));
 vi.mock("@/lib/server/db-guard", () => ({ guardDb: (run: () => unknown) => run() }));
 import { checkoutAction } from "../actions";

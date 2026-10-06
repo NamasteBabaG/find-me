@@ -14,8 +14,9 @@ import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wi
 import { boardWizardBudget } from "../board-wizard-budget";
 import { WorldBudgetError } from "../world-budget";
 import { activateLocalPatchEmergencyBudget, readLocalPatchEmergencyBudget, localPatchEmergencyBudgetAuditId,
-  LOCAL_PATCH_EMERGENCY_BUDGET_POLICY } from "../local-patch-budget-recovery";
+  LOCAL_PATCH_EMERGENCY_BUDGET_POLICY, deferLocalPatchIdentityAtAuthorizedCap } from "../local-patch-budget-recovery";
 import { bill } from "./local-patch-fixtures";
+import { fenceBoardWizardIdentityClaim, type BoardWizardIdentityClaim } from "../board-wizard-identity-lifecycle";
 
 const fakes = vi.hoisted(() => ({ appEnv: "qa" }));
 vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: fakes.appEnv }), spendGuard: () => ({}) }));
@@ -47,9 +48,99 @@ async function seed(amountMicroUsd = 3_900_000, worldSlug = "journey") {
   let refused: unknown;
   try { await budget.reserve(worldId, request); } catch (error) { refused = error; }
   expect(refused).toBeInstanceOf(WorldBudgetError);
-  return { gameId, worldId, ownerId, budget, request, refused };
+  return { gameId, worldId, ownerId, childId, budget, request, refused };
+}
+async function identityFixture() {
+  const f = await seed(), photoId = `photo-${f.gameId}`;
+  await db.asset.create({ data: { id: photoId, ownerId: f.ownerId, type: "ORIGINAL_PHOTO", visibility: "PRIVATE",
+    mimeType: "image/png", storagePath: `private/${photoId}.png` } });
+  await db.childProfile.update({ where: { id: f.childId }, data: { originalPhotoAssetId: photoId } });
+  await db.game.update({ where: { id: f.gameId }, data: { status: "AVATAR_GENERATING" } });
+  await db.generationJob.update({ where: { id: `job_${f.gameId}` }, data: { currentStep: "avatar", attempts: 1 } });
+  const claim: BoardWizardIdentityClaim = { gameId: f.gameId, jobId: `job_${f.gameId}`, jobAttempt: 1, styleVersion: "local-patch-world-v1",
+    ownerId: f.ownerId, childId: f.childId, photoAssetId: photoId, identityAssetId: null, avatarAssetId: null, childName: "Synthetic", ageYears: 8 };
+  const request = { requestKey: "wizard:identity:2", scope: "identity" as const, operationFingerprint: "b".repeat(64), reserveMicroUsd: 500_000 };
+  let refused: unknown;
+  try { await f.budget.reserve(f.worldId, request); } catch (error) { refused = error; }
+  expect(refused).toBeInstanceOf(WorldBudgetError);
+  return { ...f, claim, request, refused, fence: (tx: Parameters<typeof fenceBoardWizardIdentityClaim>[0]) => fenceBoardWizardIdentityClaim(tx, claim) };
 }
 describe("standing automatic five-dollar v12 recovery policy", () => {
+  it.each(["pending", "unknown", "overrun", "refunded", "deleted", "stale-job", "changed-child", "wrong-stage"])("native-cap deferral does not bypass %s", async kind => {
+    const f = await identityFixture();
+    expect(await activateLocalPatchEmergencyBudget(c, f.gameId, f.refused, f.fence, "identity")).toBe(true);
+    await f.budget.reserve(f.worldId, { requestKey: "retained-authorized-work", scope: "identity", operationFingerprint: "retained-authorized-work", reserveMicroUsd: 1_000_000 });
+    await f.budget.settle(f.worldId, "retained-authorized-work", bill(`authorized-${f.gameId}`, 1_000_000));
+    await db.generationJob.update({ where: { id: f.claim.jobId }, data: { status: "RUNNING" } });
+    let error: unknown;
+    try { await f.budget.reserve(f.worldId, f.request); } catch (refusal) { error = refusal; }
+    expect(error).toBeInstanceOf(WorldBudgetError); expect((error as WorldBudgetError).refusedReservation).toBeUndefined();
+    if (["pending", "unknown", "overrun"].includes(kind)) {
+      await f.budget.reserve(f.worldId, { requestKey: "unresolved", scope: "identity", operationFingerprint: "unresolved", reserveMicroUsd: 10_000 });
+      if (kind === "unknown") await f.budget.markUnknown(f.worldId, "unresolved", "Unresolved synthetic bill");
+      if (kind === "overrun") await f.budget.settle(f.worldId, "unresolved", bill(`overrun-native-${f.gameId}`, 20_000));
+    }
+    if (kind === "refunded") await db.order.update({ where: { id: `order-${f.gameId}` }, data: { paymentStatus: "REFUNDED", refundedAt: new Date() } });
+    if (kind === "deleted") await db.game.update({ where: { id: f.gameId }, data: { status: "DELETED", deletedAt: new Date() } });
+    if (kind === "stale-job") await db.generationJob.update({ where: { id: f.claim.jobId }, data: { attempts: 2 } });
+    if (kind === "changed-child") await db.childProfile.update({ where: { id: f.childId }, data: { ageYears: 9 } });
+    if (kind === "wrong-stage") await db.game.update({ where: { id: f.gameId }, data: { status: "GENERATION_FAILED" } });
+    const before = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: f.worldId } });
+    const deferral = deferLocalPatchIdentityAtAuthorizedCap(c, f.gameId, error, f.request, f.fence);
+    if (["deleted", "stale-job", "changed-child"].includes(kind)) await expect(deferral).rejects.toThrow();
+    else expect(await deferral).toBe(false);
+    expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: f.worldId } })).toEqual(before);
+    expect(await db.generationJob.findUniqueOrThrow({ where: { id: f.claim.jobId } })).toMatchObject({ status: "RUNNING" });
+    expect(await db.auditLog.count({ where: { entityId: f.gameId, action: LOCAL_PATCH_EMERGENCY_BUDGET_POLICY } })).toBe(1);
+  });
+  it("uses the same immutable receipt for the fenced identity stage and revokes it on refund", async () => {
+    const f = await identityFixture(), before = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: f.worldId } });
+    expect(await activateLocalPatchEmergencyBudget(c, f.gameId, f.refused, f.fence, "identity")).toBe(true);
+    expect(await db.generationJob.findUniqueOrThrow({ where: { id: f.claim.jobId } })).toMatchObject({ status: "QUEUED", currentStep: "avatar", attempts: 1 });
+    expect(await db.game.findUniqueOrThrow({ where: { id: f.gameId } })).toMatchObject({ status: "AVATAR_GENERATING", configJson: null });
+    expect((await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: f.worldId } })).snapshotJson).toBe(before.snapshotJson);
+    expect(await f.budget.audit(f.worldId)).toMatchObject({ capMicroUsd: 5_000_000, settledMicroUsd: 3_900_000 });
+    await db.order.update({ where: { id: `order-${f.gameId}` }, data: { paymentStatus: "REFUNDED", refundedAt: new Date() } });
+    expect(await readLocalPatchEmergencyBudget(c, f.worldId)).toBeNull();
+    await expect(f.budget.reserve(f.worldId, f.request)).rejects.toMatchObject({ code: "cap_exceeded" });
+    expect(await db.auditLog.count({ where: { entityId: f.gameId, action: LOCAL_PATCH_EMERGENCY_BUDGET_POLICY } })).toBe(1);
+  });
+  it.each(["unpaid", "refunded", "deleted", "wrong-owner", "deleted-child", "old-version", "pending", "unknown", "overrun", "stale-job", "changed-child", "wrong-stage", "wrong-scope", "production"])("identity-stage activation does not bypass %s", async kind => {
+    const f = await identityFixture();
+    if (kind === "unpaid" || kind === "refunded") await db.order.update({ where: { id: `order-${f.gameId}` }, data: { paymentStatus: kind === "unpaid" ? "PENDING" : "REFUNDED", ...(kind === "refunded" ? { refundedAt: new Date() } : {}) } });
+    if (kind === "deleted") await db.game.update({ where: { id: f.gameId }, data: { status: "DELETED", deletedAt: new Date() } });
+    if (kind === "wrong-owner") {
+      const otherOwnerId = `other-${f.ownerId}`;
+      await db.user.create({ data: { id: otherOwnerId, email: `${otherOwnerId}@example.invalid` } });
+      await db.order.update({ where: { id: `order-${f.gameId}` }, data: { userId: otherOwnerId } });
+    }
+    if (kind === "deleted-child") await db.childProfile.update({ where: { id: f.childId }, data: { deletedAt: new Date() } });
+    if (kind === "old-version") await db.gameScene.updateMany({ where: { gameId: f.gameId }, data: { sceneVersion: 11 } });
+    if (kind === "stale-job") await db.generationJob.update({ where: { id: f.claim.jobId }, data: { attempts: 2 } });
+    if (kind === "changed-child") await db.childProfile.update({ where: { id: f.childId }, data: { ageYears: 9 } });
+    if (kind === "wrong-stage") await db.game.update({ where: { id: f.gameId }, data: { status: "PAID" } });
+    if (["pending", "unknown", "overrun"].includes(kind)) {
+      const request = { requestKey: "retained-unresolved", scope: "identity" as const, operationFingerprint: "retained-unresolved", reserveMicroUsd: 10_000 };
+      await f.budget.reserve(f.worldId, request);
+      if (kind === "unknown") await f.budget.markUnknown(f.worldId, request.requestKey, "No reliable provider charge");
+      if (kind === "overrun") await f.budget.settle(f.worldId, request.requestKey, bill(`overrun-${f.gameId}`, 20_000));
+    }
+    if (kind === "production") fakes.appEnv = "production";
+    let error = f.refused;
+    if (kind === "wrong-scope") {
+      try { await f.budget.reserve(f.worldId, { ...f.request, requestKey: "board-review" }); } catch (refusal) { error = refusal; }
+    }
+    const before = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: f.worldId } });
+    const jobBefore = await db.generationJob.findUniqueOrThrow({ where: { id: f.claim.jobId } });
+    const activation = activateLocalPatchEmergencyBudget(c, f.gameId, error, f.fence, "identity");
+    if (["deleted", "deleted-child", "stale-job", "changed-child"].includes(kind)) await expect(activation).rejects.toThrow();
+    else expect(await activation).toBe(false);
+    expect((await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: f.worldId } })).snapshotJson).toBe(before.snapshotJson);
+    expect((await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: f.worldId } })).revision).toBe(before.revision);
+    expect((await db.generationJob.findUniqueOrThrow({ where: { id: f.claim.jobId } })).status).toBe(jobBefore.status);
+    expect((await db.generationJob.findUniqueOrThrow({ where: { id: f.claim.jobId } })).attempts).toBe(jobBefore.attempts);
+    expect(await db.auditLog.count({ where: { entityId: f.gameId, action: LOCAL_PATCH_EMERGENCY_BUDGET_POLICY } })).toBe(0);
+  });
   it("activates only after a real base-cap refusal, preserves every request and never stacks or publishes", async () => {
     const f = await seed(), before = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: f.worldId } });
     expect(await readLocalPatchEmergencyBudget(c, f.worldId)).toBeNull();

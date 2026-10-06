@@ -3,7 +3,7 @@ import { currentUser, isAdminEmail } from "@/lib/server/session";
 import { getI18n } from "@/i18n/server";
 import { tf } from "@/i18n";
 import { CreateFrame } from "../CreateLayout";
-import { currentDraft } from "../actions";
+import { currentDraft } from "@/lib/server/current-draft";
 import { PhotoUploader } from "./PhotoUploader";
 import { getContainer } from "@/services/container";
 import { worldPurchaseDraftHref, worldPurchaseHref, worldPurchaseReturnHref, worldPurchaseSignInHref } from "@/domain/world-purchase";

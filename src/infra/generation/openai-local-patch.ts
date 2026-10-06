@@ -5,7 +5,7 @@ import {
   BudgetedOpenAiFixedSourceProvider, FixedSourceError, prepareFixedSource,
   type FixedSourceLedger, type FixedSourcePolicy,
 } from "./openai-fixed-source";
-import { auditWorldBudget, type WorldBudgetAudit, type WorldChargeEvidence } from "../../services/generation/world-budget";
+import { auditWorldBudget, type WorldBudgetAudit, type WorldChargeEvidence } from "../../domain/generation/world-budget";
 import type { FixedSourceFailureReceipt } from "./fixed-source-diagnostics";
 
 /**

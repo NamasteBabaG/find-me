@@ -3,9 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   game: vi.fn(), asset: vi.fn(), job: vi.fn(), user: vi.fn(), denied: vi.fn(), link: vi.fn(), proof: vi.fn(), hash: vi.fn(), wizard: vi.fn(), ledger: vi.fn(),
   approved: vi.fn(), emergencyBudget: vi.fn(),
+  token: null as string | null, admin: false,
 }));
 vi.mock("@/lib/server/qa-access", () => ({ qaAccessDenied: mocks.denied }));
-vi.mock("@/lib/server/session", () => ({ currentUser: mocks.user, draftTokenFromCookie: async () => null, isAdminEmail: () => false }));
+vi.mock("@/lib/server/session", () => ({ currentUser: mocks.user, draftTokenFromCookie: async () => mocks.token, isAdminEmail: () => mocks.admin }));
 vi.mock("@/services/container", () => ({ getContainer: () => ({ db: { game: { findUnique: mocks.game }, asset: { findUnique: mocks.asset }, generationJob: { findUnique: mocks.job }, worldBudgetLedger: { findUnique: mocks.ledger } }, email: { id: "console" } }) }));
 vi.mock("@/services/generation/board-conditioned-wizard", () => ({ BOARD_WIZARD_STYLE: "fixed-sprite-board-wizard-v1", readBoardWizard: mocks.wizard }));
 vi.mock("@/services/generation/local-patch-budget-recovery", () => ({ readLocalPatchEmergencyBudget: mocks.emergencyBudget }));
@@ -36,6 +37,7 @@ const game = { id: "synthetic", ownerId: "owner", childProfileId: "child", style
   childProfile: { avatarAssetId: "avatar", identityAssetId: "identity", originalPhotoAssetId: "photo", ageYears: 8 } };
 beforeEach(() => {
   vi.resetAllMocks();
+  mocks.token = null; mocks.admin = false;
   mocks.denied.mockResolvedValue(null); mocks.user.mockResolvedValue({ id: "owner", email: "owner@example.invalid" });
   mocks.game.mockResolvedValue({ ...game }); mocks.asset.mockResolvedValue({ status: "READY" });
   mocks.job.mockResolvedValue({ gameId: game.id, status: "DONE", stepsJson: "{}" });
@@ -64,6 +66,24 @@ function localBudget(pendingState?: "pending" | "unknown"): WorldBudgetSnapshot 
 }
 
 describe("fixed-world creation status boundary", () => {
+  it.each(["cookie", "owner", "admin"])("preserves %s authority for the status route", async authority => {
+    mocks.game.mockResolvedValue({ ...game, draftToken: "synthetic-draft", styleVersion: "collage-v1" });
+    mocks.user.mockResolvedValue(authority === "owner" ? { id: "owner" } : authority === "admin" ? { id: "admin" } : null);
+    mocks.token = authority === "cookie" ? "synthetic-draft" : "foreign-draft";
+    mocks.admin = authority === "admin";
+    expect((await response()).status).toBe(200);
+  });
+  it.each(["anonymous", "foreign-owner", "participant"])("refuses %s before reading private generation evidence", async authority => {
+    mocks.user.mockResolvedValue(authority === "anonymous" ? null : { id: authority });
+    mocks.token = "foreign-draft";
+    expect((await response()).status).toBe(403);
+    expect(mocks.asset).not.toHaveBeenCalled(); expect(mocks.job).not.toHaveBeenCalled(); expect(mocks.proof).not.toHaveBeenCalled();
+  });
+  it("a missing status game retains 404 before all private evidence reads", async () => {
+    mocks.game.mockResolvedValue(null);
+    expect((await response()).status).toBe(404);
+    expect(mocks.asset).not.toHaveBeenCalled(); expect(mocks.job).not.toHaveBeenCalled();
+  });
   it("reports terminal strict quality failure without another tick or a human-approval hold", async () => {
     mocks.game.mockResolvedValue({ ...game, status: "GENERATION_FAILED", styleVersion: "local-patch-world-v1" });
     mocks.job.mockResolvedValue({ gameId: game.id, status: "DONE", currentStep: "local-patch:quality-failed", stepsJson: "{}" });

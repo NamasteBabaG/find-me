@@ -7,7 +7,7 @@ import { boardSlugs } from "@/domain/world";
 import { getI18n } from "@/i18n/server";
 import { pick } from "@/i18n";
 import { CreateFrame } from "../CreateLayout";
-import { currentDraft } from "../actions";
+import { currentDraft } from "@/lib/server/current-draft";
 import { ScenePicker } from "./ScenePicker";
 import { boardPresentation, presentationMatchesScene } from "../../../../content/home/board-presentation";
 import { findScene } from "../../../../content/scenes";

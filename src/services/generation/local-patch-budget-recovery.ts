@@ -5,7 +5,7 @@ import { env } from "../../lib/env";
 import { PrismaWorldBudgetStore, WORLD_BUDGET_LEDGER_MAX_REVISION } from "../../infra/db/prisma-world-budget-store";
 import { boardConditioningHash } from "./board-conditioned-source";
 import type { BoardWizardBudgetExtension } from "./board-wizard-budget";
-import { auditWorldBudget, WorldBudgetError } from "./world-budget";
+import { auditWorldBudget, WorldBudgetError, type WorldReservationInput } from "./world-budget";
 import { fenceLocalPatchImages } from "./local-patch-lifecycle";
 
 /** Owner approved a standing five-dollar per-world ceiling on 2026-09-30.
@@ -57,14 +57,17 @@ export async function readLocalPatchEmergencyBudget(c: Container, worldId: strin
  * refused purchase must fit five dollars; conflicts, pending purchases and
  * unapproved UNKNOWNs cannot be bypassed. No request/asset/approval is edited. */
 export async function activateLocalPatchEmergencyBudget(c: Container, gameId: string, error: unknown,
-  fence: (tx: Prisma.TransactionClient) => Promise<void>): Promise<boolean> {
+  fence: (tx: Prisma.TransactionClient) => Promise<void>, stage: "targets" | "identity" = "targets"): Promise<boolean> {
   if (env().APP_ENV !== "qa" || c.storage.id !== "db" || !(error instanceof WorldBudgetError)
     || error.code !== "cap_exceeded" || !error.refusedReservation || error.refusedReservation.worldId !== `${gameId}:board-wizard`) return false;
   const worldId = error.refusedReservation.worldId, auditId = localPatchEmergencyBudgetAuditId(worldId);
+  if (stage === "identity" && !(error.refusedReservation.scope === "identity"
+    && /^wizard:identity:[1-9][0-9]*$/.test(error.refusedReservation.requestKey)
+    || error.refusedReservation.scope === "judge" && /^wizard:identity-style:[12]:[^:]+$/.test(error.refusedReservation.requestKey))) return false;
   return c.db.$transaction(async tx => {
     await fenceLocalPatchImages(tx, gameId); await fence(tx);
     const game = await tx.game.findUniqueOrThrow({ where: { id: gameId }, include: { childProfile: true, scenes: true, orders: true } });
-    if (!eligible(game) || game.status !== "TARGETS_GENERATING" || game.configJson || game.readyAt) return false;
+    if (!eligible(game) || game.status !== (stage === "identity" ? "AVATAR_GENERATING" : "TARGETS_GENERATING") || game.configJson || game.readyAt) return false;
     const previous = await tx.auditLog.findUnique({ where: { id: auditId } });
     // A single immutable grant is never stacked. A concurrent acknowledgement
     // uses the existing receipt, with no second dollar or new reservation.
@@ -87,7 +90,36 @@ export async function activateLocalPatchEmergencyBudget(c: Container, gameId: st
     if (locked.count !== 1) throw Error("World ledger changed during emergency budget activation");
     await tx.auditLog.create({ data: { id: auditId, actorType: "SYSTEM", action: policy.version,
       entityType: "Game", entityId: gameId, metaJson: JSON.stringify(receipt) } });
-    await tx.generationJob.update({ where: { id: `job_${gameId}` }, data: { status: "QUEUED", currentStep: "local-patch", lastError: null } });
+    await tx.generationJob.update({ where: { id: `job_${gameId}` }, data: { status: "QUEUED", currentStep: stage === "identity" ? "avatar" : "local-patch", lastError: null } });
+    return true;
+  }, { isolationLevel: "Serializable", timeout: 30_000 });
+}
+
+/** The generic five-dollar cap refuses before the narrower adapter can attach
+ * reservation evidence. It can only defer an existing verified grant: never
+ * manufacture refusal metadata, extend again, reserve or alter paid evidence. */
+export async function deferLocalPatchIdentityAtAuthorizedCap(c: Container, gameId: string, error: unknown,
+  expected: Pick<WorldReservationInput, "requestKey" | "scope" | "reserveMicroUsd">,
+  fence: (tx: Prisma.TransactionClient) => Promise<void>): Promise<boolean> {
+  if (env().APP_ENV !== "qa" || c.storage.id !== "db" || !(error instanceof WorldBudgetError)
+    || error.code !== "cap_exceeded" || error.refusedReservation) return false;
+  if (!(expected.scope === "identity" && expected.reserveMicroUsd === 500_000 && /^wizard:identity:[1-9][0-9]*$/.test(expected.requestKey)
+    || expected.scope === "judge" && expected.reserveMicroUsd === 40_000 && /^wizard:identity-style:[12]:[^:]+$/.test(expected.requestKey))) return false;
+  expected = { ...expected };
+  const worldId = `${gameId}:board-wizard`;
+  return c.db.$transaction(async tx => {
+    await fenceLocalPatchImages(tx, gameId); await fence(tx);
+    const game = await tx.game.findUniqueOrThrow({ where: { id: gameId } });
+    if (game.status !== "AVATAR_GENERATING" || game.configJson || game.readyAt
+      || !await readLocalPatchEmergencyBudget({ ...c, db: tx as Container["db"] }, worldId)) return false;
+    const stored = await PrismaWorldBudgetStore.forContinuationApprovalTransaction(tx).read(worldId);
+    if (!stored) return false;
+    const audit = auditWorldBudget(stored.snapshot);
+    if (audit.held || audit.pendingRequestKeys.length || audit.overCapMicroUsd || audit.conflictRequestKeys.length || audit.overrunRequestKeys.length
+      || stored.snapshot.requests.some(r => r.state === "unknown" || r.requestKey === expected.requestKey)
+      || expected.reserveMicroUsd <= audit.remainingMicroUsd) return false;
+    await tx.generationJob.update({ where: { id: `job_${gameId}` }, data: { status: "QUEUED", currentStep: "avatar",
+      lastError: "Local-patch identity awaits capacity within the authorized five-dollar budget; no image approval is required" } });
     return true;
   }, { isolationLevel: "Serializable", timeout: 30_000 });
 }

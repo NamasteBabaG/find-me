@@ -8,11 +8,13 @@ import { readAssetBuffer } from "../asset.service";
 import { avatarDisplayFromSheet } from "../../infra/generation/avatar-cut";
 import type { CropBox } from "../../infra/generation/types";
 import { boardWizardBudgetOf, boardWizardWorldId, reserveBoardWizardIdentity } from "./board-conditioned-wizard";
-import { generateBoardWizardIdentity, holdBoardWizardIdentity, withBoardWizardIdentityClaim, type BoardWizardIdentityClaim } from "./board-wizard-identity-lifecycle";
+import { fenceBoardWizardIdentityClaim, generateBoardWizardIdentity, holdBoardWizardIdentity, withBoardWizardIdentityClaim, type BoardWizardIdentityClaim } from "./board-wizard-identity-lifecycle";
 import { IDENTITY_GATE_ACTION, IDENTITY_SELECTION_POLICY, identityGateReceiptSchema, identityProvenanceSchema,
   identityReceiptReadyForPublication, reviewBoardWizardIdentity, type IdentityGateReceipt } from "./board-wizard-identity-gate";
 import { LocalPatchIdentityDeferred, requireLocalPatchIdentityTime } from "./local-patch-identity";
 import { boardConditioningHash } from "./board-conditioned-source";
+import { activateLocalPatchEmergencyBudget, deferLocalPatchIdentityAtAuthorizedCap } from "./local-patch-budget-recovery";
+import { WorldBudgetError, type WorldReservationInput } from "./world-budget";
 
 const idsSchema = z.object({ identityAssetId: z.string().min(1), avatarAssetId: z.string().min(1) }).strict();
 const checkpointSchema = z.object({ policy: z.literal(IDENTITY_SELECTION_POLICY), first: idsSchema,
@@ -65,18 +67,34 @@ export async function selectBestIdentity(c: Container, initialClaim: BoardWizard
 
   const photo = await readAssetBuffer(c, claim.photoAssetId);
   const firstSheet = await readAssetBuffer(c, checkpoint.first.identityAssetId);
+  const deferReservation = async (error: unknown, expected: Pick<WorldReservationInput, "requestKey" | "scope" | "reserveMicroUsd">): Promise<boolean> => {
+    if (input.contentVersion !== 12 || !(error instanceof WorldBudgetError) || error.code !== "cap_exceeded") return false;
+    if (!error.refusedReservation) return deferLocalPatchIdentityAtAuthorizedCap(c, claim.gameId, error, expected,
+      tx => fenceBoardWizardIdentityClaim(tx, claim));
+    if (error.refusedReservation.worldId !== worldId) return false;
+    if (await activateLocalPatchEmergencyBudget(c, claim.gameId, error, tx => fenceBoardWizardIdentityClaim(tx, claim), "identity")) return true;
+    // A fully used fifth dollar still cannot authorize spending or waive a
+    // review. Preserve the existing deferred policy without inventing a grant.
+    throw new LocalPatchIdentityDeferred();
+  };
   const review = async (ids: z.infer<typeof idsSchema>, compare = false) => {
     const painted = await c.db.auditLog.findFirst({ where: { action: "sheet:painted", entityType: "Asset", entityId: ids.identityAssetId }, orderBy: { createdAt: "desc" } });
     const provenance = identityProvenanceSchema.parse(JSON.parse(painted?.metaJson ?? "{}").identityProvenance);
-    return reviewBoardWizardIdentity({ db: c.db, apiKey: env().OPENAI_API_KEY!, budget,
+    try {
+      return await reviewBoardWizardIdentity({ db: c.db, apiKey: env().OPENAI_API_KEY!, budget,
       beforeDispatch: async () => { await input.preflight(); requireLocalPatchIdentityTime(input.deadlineAt, 115_000);
         await withBoardWizardIdentityClaim(c, claim, async () => undefined); },
       write: work => withBoardWizardIdentityClaim(c, claim, work),
     }, { gameId: claim.gameId, identityAssetId: ids.identityAssetId, sheet: compare ? await readAssetBuffer(c, ids.identityAssetId) : firstSheet,
       photo, atlas: input.atlas, provenance, contentVersion: input.contentVersion, deadlineAt: input.deadlineAt,
       ...(compare ? { compareWith: { identityAssetId: checkpoint.first.identityAssetId, sheet: firstSheet } } : {}) });
+    } catch (error) {
+      if (await deferReservation(error, { requestKey: `wizard:identity-style:${compare ? 2 : 1}:${ids.identityAssetId}`, scope: "judge", reserveMicroUsd: 40_000 })) return null;
+      throw error;
+    }
   };
   const first = await review(checkpoint.first);
+  if (!first) return null;
   // Known subjective findings are a reason to improve, not an operator hold.
   // Unresolved transport/billing is NOT subjective likeness and cannot spend on.
   if (!first.checks || (await budget.audit(worldId)).held) {
@@ -87,9 +105,10 @@ export async function selectBestIdentity(c: Container, initialClaim: BoardWizard
   if (!identityReceiptReadyForPublication(first, input.contentVersion) || checkpoint.second) {
     reason = "best-of-two";
     if (!checkpoint.second) {
-      // The existing $4 world ceiling includes the second image ($0.50 reserve)
-      // and its single comparison ($0.04 reserve); no ceiling increase.
-      if ((await budget.audit(worldId)).remainingMicroUsd < 540_000) {
+      // Historical selection keeps its aggregate planning floor. V12 requests
+      // each real reservation so its actual base-cap refusal can activate the
+      // standing $5 policy; settlement releases any unused image reservation.
+      if (input.contentVersion !== 12 && (await budget.audit(worldId)).remainingMicroUsd < 540_000) {
         if (isRefreshedCollectionVersion(input.contentVersion)) throw new LocalPatchIdentityDeferred();
         reason = "budget-fallback";
       }
@@ -100,6 +119,7 @@ export async function selectBestIdentity(c: Container, initialClaim: BoardWizard
         const provenance = identityProvenanceSchema.parse({ ...first.provenance,
           repair: { policy: IDENTITY_SELECTION_POLICY, feedbackSha256: boardConditioningHash(feedback) } });
         const ok = await generateBoardWizardIdentity(c, claim, { attempt, provenance,
+          deferReservation: error => deferReservation(error, { requestKey: `wizard:identity:${attempt}`, scope: "identity", reserveMicroUsd: 500_000 }),
           reserve: () => reserveBoardWizardIdentity(c, claim.gameId, { policy: IDENTITY_SELECTION_POLICY,
             firstIdentityAssetId: checkpoint.first.identityAssetId, provenance, model: "gpt-image-2", attempts: 1 }, attempt),
           generate: async () => {
@@ -121,7 +141,11 @@ export async function selectBestIdentity(c: Container, initialClaim: BoardWizard
         claim = { ...claim, ...idsSchema.parse(checkpoint.second) };
       }
     }
-    if (checkpoint.second) second = await review(checkpoint.second, true);
+    if (checkpoint.second) {
+      const reviewed = await review(checkpoint.second, true);
+      if (!reviewed) return null;
+      second = reviewed;
+    }
   }
   if ((await budget.audit(worldId)).held) { await holdBoardWizardIdentity(c, claim, "unresolved-identity"); return null; }
   const winner = isRefreshedCollectionVersion(input.contentVersion)

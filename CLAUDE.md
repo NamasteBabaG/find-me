@@ -43,7 +43,7 @@ src/domain             חוקים טהורים: package, order-state, scene/sche
 src/infra              אדפטרים: db, storage, payment, generation (mock | openai), email, analytics, jobs
 src/services           use-cases; container.ts הוא ה־composition root
 src/services/generation pipeline/queue, local-patch-*, paid-operation/world-budget; slot-patches ומנועים היסטוריים נשמרים לתאימות
-content/adventures + src/domain/adventure תשתית הספר העתידי; planned אינו בורד פעיל
+content/adventures + src/domain/adventure תוכן האוסף והדרכון הפעילים; planned אינו בורד פעיל
 src/game               renderer: engine (viewport, gestures), store, components, audio
 src/ui + src/styles    מערכת העיצוב
 src/app                routes (דקים — קוראים ל־services)
