@@ -2,6 +2,8 @@ import type { NextConfig } from "next";
 import { readFileSync } from "node:fs";
 
 const isDev = process.env.NODE_ENV !== "production";
+const databaseSchemaTrace = /^postgres(ql)?:\/\//.test(process.env.DATABASE_URL ?? "")
+  ? ["prisma/generated/schema.postgres.prisma"] : [];
 const tracingExcludedDirectories = ["work", "storage", "assets", "output", "tmp", ".claude", "public/worlds", "public/scenes"];
 const refreshedCollectionArtPath = "content/adventures/wizard-refresh-art.json";
 const collectionArtPath = "content/adventures/wizard-art.json";
@@ -75,7 +77,9 @@ const nextConfig: NextConfig = {
   // Only child-free frozen world inputs. Private work/, uploads and pilot
   // imagery are never part of a deployment. Dynamic fs reads need tracing.
   outputFileTracingIncludes: {
-    "/*": [activeBoardCatalogPath, ...activeBoardAssetPaths, localPatchArtPath, ...localPatchArtPaths, collectionArtPath, refreshedCollectionArtPath, kingdomCollectionArtPath].map(file => `./${file}`),
+    // Public Supabase CA. Prisma's generated Postgres schema resolves the
+    // strict-TLS URL sslcert=../supabase-root-ca.crt from prisma/generated.
+    "/*": ["prisma/supabase-root-ca.crt", ...databaseSchemaTrace, activeBoardCatalogPath, ...activeBoardAssetPaths, localPatchArtPath, ...localPatchArtPaths, collectionArtPath, refreshedCollectionArtPath, kingdomCollectionArtPath].map(file => `./${file}`),
   },
   outputFileTracingExcludes: {
     // Local-only preview routes and Prisma's dotenv fallback otherwise cause

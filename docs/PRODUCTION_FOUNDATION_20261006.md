@@ -54,6 +54,13 @@ probe were still pending normal Supabase dashboard sign-in. No production
 deployment, health acceptance or default/custom-domain promotion is recorded.
 Do not treat resource creation as completed application connectivity.
 
+After authenticated Connect discovery, the restricted runtime connected through
+the exact shared transaction pooler with strict certificate verification and
+completed synthetic CRUD plus rollback without persistent rows. The public
+Supabase CA and generated PostgreSQL schema directory are explicitly traced and
+checked in the build audit; see [`DATABASE_TLS.md`](../prisma/DATABASE_TLS.md).
+This is a local credential-bound database probe, not deployed health evidence.
+
 The protected foundation must use the fixed safe flags in
 `scripts/production-prelaunch-proof.mjs`: purchasing and generation off; mock
 generation/payment; console email; database storage; no analytics; no QA approval

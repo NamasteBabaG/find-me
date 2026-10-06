@@ -103,8 +103,23 @@ describe("active-catalog-only server traces", () => {
     const f = await fixture();
     await promoteCatalogRecoverably(f.options);
     await writeFile(path.join(f.root, "next.config.ts"), "synthetic next configuration");
+    const databaseCa = "prisma/supabase-root-ca.crt";
+    const databaseSchema = "prisma/generated/schema.postgres.prisma";
+    const clientSchema = "node_modules/.prisma/client/schema.prisma";
+    const syntheticSchema = 'datasource db {\n provider = "postgresql"\n url = env("DATABASE_URL")\n}\nmodel Synthetic {\n id String @id\n}\n';
+    for (const file of [databaseCa, databaseSchema, clientSchema]) await mkdir(path.dirname(path.join(f.root, file)), { recursive: true });
+    // This is a public trust anchor, not a key or a customer fixture. Both
+    // schema files are authored synthetic metadata; no client is generated.
+    await writeFile(path.join(f.root, databaseCa), await readFile(path.join(project, databaseCa)));
+    await writeFile(path.join(f.root, databaseSchema), syntheticSchema);
+    await writeFile(path.join(f.root, clientSchema), syntheticSchema);
+    const tlsPaths = [databaseCa, databaseSchema, clientSchema];
     const entry = path.join(f.root, ".next/server/app/api/jobs/tick/route.js");
     await mkdir(path.dirname(entry), { recursive: true }); await writeFile(entry, "export{};");
+    const healthEntry = path.join(f.root, ".next/server/app/api/health/route.js");
+    await mkdir(path.dirname(healthEntry), { recursive: true }); await writeFile(healthEntry, "export{};");
+    await writeFile(`${healthEntry}.nft.json`, JSON.stringify({ version: 1,
+      files: tlsPaths.map(file => path.relative(path.dirname(healthEntry), path.join(f.root, file))) }));
     const assets = f.staged.catalog.boards.flatMap(board => [board.board.path, ...board.slots.map(slot => slot.foreground.path)]);
     const stale = "content/board-conditioned-qa/stale-v1/board-0/board.png";
     await mkdir(path.dirname(path.join(f.root, stale)), { recursive: true }); await writeFile(path.join(f.root, stale), "unused old bytes");
@@ -140,7 +155,7 @@ describe("active-catalog-only server traces", () => {
     await writeFile(path.join(f.root, kingdomManifest), JSON.stringify(collectionArt));
     const undeclaredPublic = "public/scenes/sydney/old-thumbnail.webp";
     await writeFile(path.join(f.root, undeclaredPublic), "not a declared painter input");
-    const tracePaths = ["content/board-conditioned-qa/catalog.json", ...assets, stale, privateFile,
+    const tracePaths = [...tlsPaths, "content/board-conditioned-qa/catalog.json", ...assets, stale, privateFile,
       localPatchManifest, ...localPatchBoards.map(board => `public${board.base}`), undeclaredPublic,
       collectionManifest, refreshedManifest, kingdomManifest, ...collectionArt.map(board => board.path)];
     await writeFile(`${entry}.nft.json`, JSON.stringify({ version: 1, files: tracePaths.map(file => path.relative(path.dirname(entry), path.join(f.root, file))) }));
@@ -153,8 +168,27 @@ describe("active-catalog-only server traces", () => {
     expect(result.jobs.localPatchFiles).toBe(10);
     expect(result.jobs.collectionFiles).toBe(3);
     expect(result.jobs.publicCdnFiles).toBe(0);
+    expect(result.jobs.databaseCaTraced).toBe(true);
+    expect(result.jobs.databaseSchemaTraced).toBe(true);
     expect(await present(path.join(f.root, stale))).toBe(true); expect(await present(path.join(f.root, privateFile))).toBe(true);
     expect(run("finalize-build-traces.mjs").stdout).toContain('"changed":0');
+    // A CA file present in the build source cannot compensate for its absence
+    // from a function. Nor can a CA-only closure preserve Prisma's generated
+    // configDir; health and jobs must each retain the source schema anchor.
+    for (const routeEntry of [entry, healthEntry]) {
+      const original = await readFile(`${routeEntry}.nft.json`, "utf8");
+      for (const [file, reason] of [[databaseCa, "database trust certificate missing"],
+        [databaseSchema, "Postgres source schema directory missing"]]) {
+        const missing = JSON.parse(original);
+        missing.files = missing.files.filter((item: string) => path.resolve(path.dirname(routeEntry), item) !== path.join(f.root, file!));
+        await writeFile(`${routeEntry}.nft.json`, JSON.stringify(missing));
+        const rejected = run("audit-board-catalog-tracing.mjs");
+        expect(rejected.status, rejected.stderr).toBe(1);
+        expect(rejected.stdout).toContain(reason);
+        await writeFile(`${routeEntry}.nft.json`, original);
+      }
+    }
+    expect(run("audit-board-catalog-tracing.mjs").status).toBe(0);
     const traced = JSON.parse(await readFile(`${entry}.nft.json`, "utf8"));
     traced.files = traced.files.filter((file: string) => path.resolve(path.dirname(entry), file) !== path.join(f.root, kingdomManifest));
     await writeFile(`${entry}.nft.json`, JSON.stringify(traced));

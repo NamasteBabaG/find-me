@@ -1,11 +1,19 @@
 /** Read-only post-Next-build deployment preflight. No env, DB, providers or
  * network. Run again on the Linux remote build to measure actual native deps. */
-import { createHash } from "node:crypto";
+import { createHash, X509Certificate } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
 
 const root = process.cwd();
+const databaseCaPath = "prisma/supabase-root-ca.crt";
+const databaseSchemaPath = "prisma/generated/schema.postgres.prisma";
+const usesPostgres = /provider\s*=\s*"postgresql"/.test(readFileSync("node_modules/.prisma/client/schema.prisma", "utf8"));
+const databaseCa = new X509Certificate(readFileSync(databaseCaPath));
+// Public trust anchor linked by Supabase's Database Settings. Pin the DER
+// fingerprint, independent of checkout line endings; never accept a key file.
+if (!databaseCa.ca || databaseCa.fingerprint256 !== "80:70:25:AD:50:D4:ED:21:9D:2C:9C:7D:29:9C:00:4F:82:4E:B0:0C:F7:F6:5A:FE:F6:07:D0:7B:72:E6:CA:FA"
+  || Date.parse(databaseCa.validTo) <= Date.now()) throw new Error("Expected valid public Supabase database CA");
 const sha = bytes => createHash("sha256").update(bytes).digest("hex");
 const rel = file => path.relative(root, file).split(path.sep).join("/");
 const walk = dir => readdirSync(dir, { withFileTypes: true }).flatMap(entry =>
@@ -54,6 +62,8 @@ const routes = manifests.map(manifest => {
   const staleCatalogFiles = [...paths].filter(file => rel(file).startsWith("content/board-conditioned-qa/") && !expected.includes(file)).map(rel);
   const bytes = [...paths].reduce((sum, file) => sum + (existsSync(file) ? statSync(file).size : 0), 0);
   return { manifest: rel(manifest), tracedFiles: paths.size, uncompressedBytes: bytes,
+    databaseCaTraced: paths.has(path.resolve(databaseCaPath)),
+    databaseSchemaTraced: paths.has(path.resolve(databaseSchemaPath)),
     catalogFiles: expected.filter(file => paths.has(file)).length,
     localPatchFiles: expectedLocalPatch.filter(file => paths.has(file)).length,
     collectionFiles: expectedCollection.filter(file => paths.has(file)).length,
@@ -62,6 +72,12 @@ const routes = manifests.map(manifest => {
 });
 const jobs = routes.find(route => route.manifest === ".next/server/app/api/jobs/tick/route.js.nft.json");
 const problems = [];
+for (const route of ["api/health", "api/jobs/tick"]) {
+  if (!routes.find(row => row.manifest === `.next/server/app/${route}/route.js.nft.json`)?.databaseCaTraced)
+    problems.push(`database trust certificate missing from ${route} runtime`);
+  if (usesPostgres && !routes.find(row => row.manifest === `.next/server/app/${route}/route.js.nft.json`)?.databaseSchemaTraced)
+    problems.push(`Postgres source schema directory missing from ${route} TLS runtime`);
+}
 if (!jobs || jobs.catalogFiles !== 37) problems.push("generation route does not trace all36 static PNGs pluscatalog");
 if (!jobs || jobs.localPatchFiles !== 10) problems.push("generation route does not trace nine local-patch base images plus manifest");
 if (!jobs || jobs.collectionFiles !== collectionManifests.length) problems.push("generation route must trace historical journey, refreshed journey and kingdom collection hash manifests");
