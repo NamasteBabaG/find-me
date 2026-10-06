@@ -15,6 +15,7 @@ import { readMutePreference, writeMutePreference } from "./mute-preference";
  * "פתיחת ההרפתקה" button.
  */
 type Ctx = AudioContext;
+type KeepNode = <T extends AudioNode>(node: T) => T;
 
 /**
  * What the kit can play: every cue a scene may ask for, plus the ones only
@@ -131,8 +132,12 @@ export class SoundManager {
   private master: GainNode | null = null;
   private ambient: { source: AudioBufferSourceNode; gain: GainNode; lfo: OscillatorNode; filter: BiquadFilterNode; lfoGain: GainNode } | null = null;
   private ambientCue: SoundCue | undefined;
+  private ambientTimer: ReturnType<typeof setTimeout> | undefined;
+  private ambientFailed = false;
+  private ambientBuffer: AudioBuffer | null = null;
+  private noiseBuffers = new Map<number, AudioBuffer>();
   private paused = false;
-  private pendingCue: { cue: PlayCue; requestedAt: number } | null = null;
+  private pendingCue: { cue: PlayCue; pitch: number | undefined; requestedAt: number } | null = null;
   private oneShots = new Map<AudioScheduledSourceNode, () => void>();
   private _muted = false;
   private muteListeners = new Set<(muted: boolean) => void>();
@@ -150,19 +155,29 @@ export class SoundManager {
     if (!this.ctx || this.ctx.state === "closed") {
       this.stopOneShots();
       this.pendingCue = null;
+      this.cancelAmbientStart();
       this.releaseAmbient(false);
-      this.master?.disconnect();
+      this.ambientFailed = false;
+      this.ambientBuffer = null;
+      this.noiseBuffers.clear();
+      if (this.master) this.releaseNodes([this.master], false);
       this.ctx = null;
       this.master = null;
       const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (!AC) return;
+      let ctx: Ctx | undefined, master: GainNode | undefined;
       try {
-        const ctx = new AC();
+        ctx = new AC();
+        master = ctx.createGain();
+        master.gain.value = 0.5;
+        master.connect(ctx.destination);
         this.ctx = ctx;
-        this.master = ctx.createGain();
-        this.master.gain.value = 0.5;
-        this.master.connect(ctx.destination);
-      } catch { return; } // Audio availability must not stop the game.
+        this.master = master;
+      } catch {
+        if (master) this.releaseNodes([master], false);
+        try { if (ctx) void ctx.close().catch(() => {}); } catch { /* An unavailable device may also refuse close. */ }
+        return;
+      } // Audio availability must not stop the game.
     }
     // Safari can report "interrupted", not just "suspended". Retry here on
     // EACH genuine gesture, even if an earlier non-gesture resume is pending.
@@ -189,8 +204,16 @@ export class SoundManager {
   private applyMuted(muted: boolean): void {
     const changed = this._muted !== muted;
     this._muted = muted;
-    if (muted) { this.pendingCue = null; this.stopOneShots(); }
-    if (this.master && this.ctx && this.ctx.state !== "closed") this.master.gain.setTargetAtTime(muted ? 0 : 0.5, this.ctx.currentTime, 0.02);
+    if (changed && !muted) this.ambientFailed = false;
+    if (muted) {
+      this.pendingCue = null;
+      this.stopOneShots();
+      this.cancelAmbientStart();
+      this.releaseAmbient(false);
+    }
+    try {
+      if (this.master && this.ctx && this.ctx.state !== "closed") this.master.gain.setTargetAtTime(muted ? 0 : 0.5, this.ctx.currentTime, 0.02);
+    } catch { /* Still publish the chosen mute if the audio device has failed. */ }
     if (changed) for (const listener of this.muteListeners) listener(muted);
   }
 
@@ -198,6 +221,7 @@ export class SoundManager {
     this.paused = true;
     this.pendingCue = null;
     this.stopOneShots();
+    this.cancelAmbientStart();
     const ctx = this.ctx;
     if (!ctx || ctx.state === "closed") return;
     try { void ctx.suspend().catch(() => {}); } catch { /* Device already gone. */ }
@@ -220,18 +244,18 @@ export class SoundManager {
 
   private audioReady(ctx: Ctx): void {
     if (ctx !== this.ctx || ctx.state !== "running" || this.paused || this._muted) return;
-    if (!this.ambient && this.ambientCue) this.createAmbient(this.ambientCue);
     const pending = this.pendingCue;
     this.pendingCue = null;
     // Never replay a backlog of finds after an interruption or permission prompt.
-    if (pending && Date.now() - pending.requestedAt <= 1000) this.play(pending.cue);
+    if (pending && Date.now() - pending.requestedAt <= 1000) this.play(pending.cue, { pitch: pending.pitch });
+    this.scheduleAmbientStart();
   }
 
   /** `pitch` shifts a phrase by that many semitones — a row of stars climbs. */
   play(cue: PlayCue, options: { pitch?: number } = {}): void {
     if (!this.ctx || !this.master || this._muted || this.paused) return;
     if (this.ctx.state !== "running") {
-      if (this.ctx.state !== "closed") this.pendingCue = { cue, requestedAt: Date.now() };
+      if (this.ctx.state !== "closed") this.pendingCue = { cue, pitch: options.pitch, requestedAt: Date.now() };
       return;
     }
     const t = this.ctx.currentTime;
@@ -303,12 +327,33 @@ export class SoundManager {
 
   startAmbient(cue: SoundCue | undefined): void {
     this.stopAmbient();
+    this.ambientFailed = false;
     this.ambientCue = cue;
-    if (cue && !this._muted && !this.paused && this.ctx?.state === "running") this.createAmbient(cue);
+    this.scheduleAmbientStart();
   }
 
-  private createAmbient(cue: SoundCue): void {
-    if (!this.ctx || !this.master) return;
+  private cancelAmbientStart(): void {
+    clearTimeout(this.ambientTimer);
+    this.ambientTimer = undefined;
+  }
+
+  private scheduleAmbientStart(): void {
+    if (this.ambient || this.ambientFailed || this.ambientTimer !== undefined || !this.ambientCue || this._muted || this.paused || this.ctx?.state !== "running") return;
+    const ctx = this.ctx;
+    // A first gesture must schedule its feedback before filling an ambience
+    // buffer. Leave capture and the game handler free to finish immediately.
+    this.ambientTimer = setTimeout(() => {
+      this.ambientTimer = undefined;
+      if (ctx !== this.ctx || ctx.state !== "running" || this._muted || this.paused || !this.ambientCue) return;
+      // An allocation failure must not escape this deferred task, or repeatedly
+      // retry a large buffer on every tap. A new scene request/context retries.
+      if (!this.createAmbient(this.ambientCue)) this.ambientFailed = true;
+    }, 0);
+  }
+
+  private createAmbient(cue: SoundCue): boolean {
+    const ctx = this.ctx, master = this.master;
+    if (!ctx || !master) return false;
     const settings: Record<string, { freq: number; q: number; gain: number }> = {
       waves: { freq: 220, q: 0.6, gain: 0.08 },
       jungle: { freq: 900, q: 1.2, gain: 0.05 },
@@ -316,32 +361,40 @@ export class SoundManager {
       crowd: { freq: 300, q: 0.8, gain: 0.05 },
     };
     const s = settings[cue];
-    if (!s) return;
-    const buffer = this.ctx.createBuffer(1, this.ctx.sampleRate * 2, this.ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
-    const source = this.ctx.createBufferSource();
-    source.buffer = buffer;
-    source.loop = true;
-    const filter = this.ctx.createBiquadFilter();
-    filter.type = "lowpass";
-    filter.frequency.value = s.freq;
-    filter.Q.value = s.q;
-    const lfo = this.ctx.createOscillator();
-    lfo.frequency.value = cue === "waves" ? 0.12 : 0.05;
-    const lfoGain = this.ctx.createGain();
-    lfoGain.gain.value = s.gain * 0.6;
-    const gain = this.ctx.createGain();
-    gain.gain.value = s.gain;
-    lfo.connect(lfoGain).connect(gain.gain);
-    source.connect(filter).connect(gain).connect(this.master);
-    source.start();
-    lfo.start();
-    this.ambient = { source, gain, lfo, filter, lfoGain };
+    if (!s) return true;
+    // The filters and modulation give each world its character; their shared
+    // two-second noise bed only needs to be allocated once per context.
+    return this.createNodes(keep => {
+      if (!this.ambientBuffer) {
+        const buffer = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+        this.ambientBuffer = buffer;
+      }
+      const source = keep(ctx.createBufferSource());
+      source.buffer = this.ambientBuffer;
+      source.loop = true;
+      const filter = keep(ctx.createBiquadFilter());
+      filter.type = "lowpass";
+      filter.frequency.value = s.freq;
+      filter.Q.value = s.q;
+      const lfo = keep(ctx.createOscillator());
+      lfo.frequency.value = cue === "waves" ? 0.12 : 0.05;
+      const lfoGain = keep(ctx.createGain());
+      lfoGain.gain.value = s.gain * 0.6;
+      const gain = keep(ctx.createGain());
+      gain.gain.value = s.gain;
+      lfo.connect(lfoGain).connect(gain.gain);
+      source.connect(filter).connect(gain).connect(master);
+      source.start();
+      lfo.start();
+      this.ambient = { source, gain, lfo, filter, lfoGain };
+    });
   }
 
   stopAmbient(): void {
     this.ambientCue = undefined;
+    this.cancelAmbientStart();
     this.releaseAmbient(true);
   }
 
@@ -349,14 +402,10 @@ export class SoundManager {
     if (!this.ambient) return;
     const { source, gain, lfo, filter, lfoGain } = this.ambient;
     this.ambient = null;
-    const stop = () => {
-      try { source.stop(); } catch { /* Already stopped or closed. */ }
-      try { lfo.stop(); } catch { /* Stop the modulation oscillator too. */ }
-      source.disconnect(); lfo.disconnect(); gain.disconnect(); filter.disconnect(); lfoGain.disconnect();
-    };
+    const stop = () => this.releaseNodes([source, lfo, gain, filter, lfoGain], true);
     if (fade && this.ctx?.state === "running") {
-      gain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.3);
-      setTimeout(stop, 800);
+      try { gain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.3); setTimeout(stop, 800); }
+      catch { stop(); }
     } else stop();
   }
 
@@ -384,14 +433,34 @@ export class SoundManager {
   }
 
   private trackOneShot(source: AudioScheduledSourceNode, nodes: AudioNode[]): void {
+    let released = false;
     const cleanup = () => {
-      this.oneShots.delete(source);
-      source.onended = null;
-      source.disconnect();
-      for (const node of nodes) node.disconnect();
+      if (released) return;
+      released = true;
+      this.releaseNodes([source, ...nodes], false);
     };
     source.onended = cleanup;
     this.oneShots.set(source, cleanup);
+  }
+
+  /** Allocate a graph transactionally. Partial or already-started sources are
+   * stopped and detached when a device refuses an allocation/connect/start. */
+  private createNodes(build: (keep: KeepNode) => void): boolean {
+    const nodes: AudioNode[] = [];
+    try { build(node => { nodes.push(node); return node; }); return true; }
+    catch { this.releaseNodes(nodes, true); return false; }
+  }
+
+  private releaseNodes(nodes: readonly AudioNode[], stop: boolean): void {
+    for (const node of nodes) {
+      const source = node as AudioScheduledSourceNode;
+      if (typeof source.stop === "function") {
+        source.onended = null;
+        this.oneShots.delete(source);
+        if (stop) try { source.stop(); } catch { /* Not started, already ended or device gone. */ }
+      }
+      try { node.disconnect(); } catch { /* Cleanup must tolerate a failed/closed device too. */ }
+    }
   }
 
   private stopOneShots(): void {
@@ -402,50 +471,65 @@ export class SoundManager {
   }
 
   private blip(freq: number, dur: number, at: number, type: OscillatorType, vol: number): void {
-    if (!this.ctx || !this.master) return;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-    osc.type = type;
-    osc.frequency.value = freq;
-    gain.gain.setValueAtTime(0.0001, at);
-    gain.gain.exponentialRampToValueAtTime(vol, at + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, at + dur);
-    osc.connect(gain).connect(this.master);
-    this.trackOneShot(osc, [gain]);
-    osc.start(at);
-    osc.stop(at + dur + 0.02);
+    const ctx = this.ctx, master = this.master;
+    if (!ctx || !master) return;
+    this.createNodes(keep => {
+      const osc = keep(ctx.createOscillator());
+      const gain = keep(ctx.createGain());
+      osc.type = type;
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, at);
+      gain.gain.exponentialRampToValueAtTime(vol, at + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+      osc.connect(gain).connect(master);
+      this.trackOneShot(osc, [gain]);
+      osc.start(at);
+      osc.stop(at + dur + 0.02);
+    });
   }
 
   private sweep(from: number, to: number, dur: number, at: number, type: OscillatorType, vol: number): void {
-    if (!this.ctx || !this.master) return;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-    osc.type = type;
-    osc.frequency.setValueAtTime(from, at);
-    osc.frequency.exponentialRampToValueAtTime(to, at + dur);
-    gain.gain.setValueAtTime(vol, at);
-    gain.gain.exponentialRampToValueAtTime(0.0001, at + dur);
-    osc.connect(gain).connect(this.master);
-    this.trackOneShot(osc, [gain]);
-    osc.start(at);
-    osc.stop(at + dur + 0.02);
+    const ctx = this.ctx, master = this.master;
+    if (!ctx || !master) return;
+    this.createNodes(keep => {
+      const osc = keep(ctx.createOscillator());
+      const gain = keep(ctx.createGain());
+      osc.type = type;
+      osc.frequency.setValueAtTime(from, at);
+      osc.frequency.exponentialRampToValueAtTime(to, at + dur);
+      gain.gain.setValueAtTime(vol, at);
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+      osc.connect(gain).connect(master);
+      this.trackOneShot(osc, [gain]);
+      osc.start(at);
+      osc.stop(at + dur + 0.02);
+    });
   }
 
   private noise(dur: number, at: number, cutoff: number, vol: number): void {
-    if (!this.ctx || !this.master) return;
-    const buffer = this.ctx.createBuffer(1, Math.ceil(this.ctx.sampleRate * dur), this.ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
-    const src = this.ctx.createBufferSource();
-    src.buffer = buffer;
-    const filter = this.ctx.createBiquadFilter();
-    filter.type = "lowpass";
-    filter.frequency.value = cutoff;
-    const gain = this.ctx.createGain();
-    gain.gain.value = vol;
-    src.connect(filter).connect(gain).connect(this.master);
-    this.trackOneShot(src, [filter, gain]);
-    src.start(at);
+    const ctx = this.ctx, master = this.master;
+    if (!ctx || !master) return;
+    this.createNodes(keep => {
+      // There are five fixed noise lengths in the cue kit. Reuse their samples,
+      // but create fresh source/filter/gain nodes for independently timed cues.
+      let buffer = this.noiseBuffers.get(dur);
+      if (!buffer) {
+        buffer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * dur), ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+        this.noiseBuffers.set(dur, buffer);
+      }
+      const src = keep(ctx.createBufferSource());
+      src.buffer = buffer;
+      const filter = keep(ctx.createBiquadFilter());
+      filter.type = "lowpass";
+      filter.frequency.value = cutoff;
+      const gain = keep(ctx.createGain());
+      gain.gain.value = vol;
+      src.connect(filter).connect(gain).connect(master);
+      this.trackOneShot(src, [filter, gain]);
+      src.start(at);
+    });
   }
 }
 

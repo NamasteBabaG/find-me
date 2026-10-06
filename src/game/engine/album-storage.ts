@@ -47,12 +47,3 @@ export function saveAlbum(progress: AdventureProgress, scope?: string): boolean 
     return false;
   }
 }
-
-export function clearAlbum(gameId: string, scope?: string): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.removeItem(KEY(gameId, scope));
-  } catch {
-    /* ignore */
-  }
-}

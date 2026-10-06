@@ -36,6 +36,7 @@ class LoadedImage {
   onerror: (() => void) | null = null;
   src = "";
   decode() { return Promise.resolve(); }
+  removeAttribute(name: string) { if (name === "src") this.src = ""; }
   constructor() { LoadedImage.instances.push(this); }
 }
 
@@ -109,6 +110,45 @@ async function mountPlayer(size: { width: number; height: number }, scene = scen
   const curtainOpen = () => view.container.querySelector(".scene__curtain")?.classList.contains("is-open");
   return { ...view, store, stage, viewport, hit, tap, visible, curtainOpen, scene };
 }
+
+describe("tablet interaction feedback", () => {
+  it("schedules a find sound before subscribers render, once, and keeps progress if audio fails", async () => {
+    const player = await mountPlayer({ width: 1366, height: 1024 });
+    const order: string[] = [];
+    const play = vi.spyOn(sounds(), "play").mockImplementation(cue => {
+      order.push(`audio:${cue}`);
+      if (cue === "success") throw new Error("Synthetic unavailable audio device");
+    });
+    const unsubscribe = player.store.subscribe(() => order.push("state"));
+    const targetId = player.visible()[0]!;
+    player.hit(targetId);
+    expect(order[0]).toBe("audio:success");
+    expect(order.indexOf("state")).toBeGreaterThan(0);
+    expect(play.mock.calls.filter(([cue]) => cue === "success")).toHaveLength(1);
+    expect(player.store.getState().mission!.found[targetId]).toBeDefined();
+    expect(player.store.getState().progress.scenes[player.scene.slug]!.foundTargetIds).toContain(targetId);
+    unsubscribe();
+  });
+
+  it("idles cloud animation after opening and wakes it for the next hidden swap", async () => {
+    const player = await mountPlayer({ width: 1366, height: 1024 });
+    const curtain = () => player.container.querySelector(".scene__curtain")!;
+    act(() => vi.advanceTimersByTime(1000));
+    expect(curtain().classList.contains("is-settled")).toBe(true);
+    player.hit(player.visible()[0]!);
+    act(() => vi.advanceTimersByTime(2200));
+    expect(curtain().classList.contains("is-open")).toBe(false);
+    expect(curtain().classList.contains("is-settled")).toBe(false);
+    await act(async () => { vi.advanceTimersByTime(560); });
+    act(() => vi.advanceTimersByTime(160));
+    expect(curtain().classList.contains("is-open")).toBe(true);
+    expect(curtain().classList.contains("is-settled")).toBe(false);
+    act(() => vi.advanceTimersByTime(999));
+    expect(curtain().classList.contains("is-settled")).toBe(false);
+    act(() => vi.advanceTimersByTime(1));
+    expect(curtain().classList.contains("is-settled")).toBe(true);
+  });
+});
 
 describe("guided discoveries through the real viewport", () => {
   it("collects exact small objects on a phone even when their invisible touch padding overlaps", async () => {
@@ -192,8 +232,22 @@ describe("one child at a time through the actual animated viewport", () => {
     scene.art.foreground = "/never-settles.webp";
     LoadedImage.stalled.add(scene.art.foreground);
     const { store } = await mountPlayer({ width: 390, height: 844 }, scene);
+    const optional = LoadedImage.instances.find(image => image.src === scene.art.foreground)!;
+    expect(optional.onload).toBeTypeOf("function");
     act(() => vi.advanceTimersByTime(20_000));
     expect(store.getState().mission!.phase).toBe("searching");
+    expect(optional.src).toBe("");
+    expect(optional.onload).toBeNull();
+    expect(optional.onerror).toBeNull();
+  });
+
+  it("releases the active board's preload sources and handlers when leaving", async () => {
+    const player = await mountPlayer({ width: 1024, height: 768 });
+    const owned = [...LoadedImage.instances];
+    expect(owned).toHaveLength(6); // One board + five variant-selected hides.
+    expect(owned.every(image => image.src.length > 0)).toBe(true);
+    player.unmount();
+    expect(owned.every(image => image.src === "" && image.onload === null && image.onerror === null)).toBe(true);
   });
   it.each([{ width: 1280, height: 800 }, { width: 320, height: 650 }])("awards once, then lights one gold star only when its real flight lands at $width×$height", async size => {
     const player = await mountPlayer(size);

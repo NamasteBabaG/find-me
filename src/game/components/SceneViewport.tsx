@@ -47,12 +47,14 @@ interface Ripple {
   y: number;
 }
 
+const NO_DISCOVERIES: NonNullable<Props["discoveries"]> = [];
+
 /**
  * The stage: base art → sprites behind foreground → foreground → sprites → bonus.
  * All hit-testing is math on normalized coordinates (no DOM hit targets), so a
  * tap resolves the same way on every device and at every zoom.
  */
-export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveries = [], onHit, onReady, onGestureChange, onAssetsReady, onVisibleAssetsReady, onAssetsFailed, retryToken = 0, ariaLabel, keyboardHint, children }: Props) {
+export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveries = NO_DISCOVERIES, onHit, onReady, onGestureChange, onAssetsReady, onVisibleAssetsReady, onAssetsFailed, retryToken = 0, ariaLabel, keyboardHint, children }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const keyboardHintId = useId();
   const stage = useMemo(() => ({ width: scene.art.width, height: scene.art.height }), [scene.art.width, scene.art.height]);
@@ -246,10 +248,10 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveri
   const preloadedImages = useRef<HTMLImageElement[]>([]);
   useEffect(() => {
     let settled = false;
+    const pending = new Set<() => void>();
     const settle = (verdict: "ready" | "failed") => {
       if (settled) return;
       settled = true;
-      clearTimeout(slow);
       if (verdict === "ready") assetsReadyRef.current?.();
       else assetsFailedRef.current?.();
     };
@@ -258,7 +260,12 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveri
     // board with an impossible mission. The foreground and the bonus are
     // decoration and may fail quietly. Twenty seconds is a slow phone on a
     // slow network; what happens then is the retry screen, not a blind open.
-    const slow = setTimeout(() => settle("failed"), 20_000);
+    const slow = setTimeout(() => {
+      settle("failed");
+      // Decoration may still be pending after the essential barrier opened.
+      // Bound those requests too, without turning them into a game failure.
+      for (const cancel of [...pending]) cancel();
+    }, 20_000);
     const load =
         (url: string) =>
           new Promise<LoadResult>((resolve) => {
@@ -266,11 +273,22 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveri
             // A delayed/failed decode takes the ordinary bounded retry path.
             const img = new Image();
             preloadedImages.current.push(img);
-            img.onload = () => {
-              if (typeof img.decode !== "function") { resolve({ url, ok: true }); return; }
-              void img.decode().then(() => resolve({ url, ok: true }), () => resolve({ url, ok: false }));
+            let finished = false;
+            const finish = (ok: boolean) => {
+              if (finished) return;
+              finished = true;
+              img.onload = null; img.onerror = null;
+              pending.delete(cancel);
+              if (!pending.size) clearTimeout(slow);
+              resolve({ url, ok });
             };
-            img.onerror = () => resolve({ url, ok: false });
+            const cancel = () => { img.removeAttribute?.("src"); finish(false); };
+            pending.add(cancel);
+            img.onload = () => {
+              if (typeof img.decode !== "function") { finish(true); return; }
+              void img.decode().then(() => finish(true), () => finish(false));
+            };
+            img.onerror = () => finish(false);
             img.src = url;
           });
     // Optional art must never hold the ready barrier hostage. Keep loading it
@@ -280,7 +298,8 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveri
     return () => {
       settled = true;
       clearTimeout(slow);
-      for (const img of preloadedImages.current) { img.onload = null; img.onerror = null; }
+      for (const cancel of [...pending]) cancel();
+      for (const img of preloadedImages.current) { img.onload = null; img.onerror = null; img.removeAttribute?.("src"); }
       preloadedImages.current = [];
     };
     // Once per board, and again on an explicit retry.
@@ -307,7 +326,7 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveri
    * replaced by the next one.
    */
   const visible = visibleTargetId(mission);
-  const onBoard = placedTargets.filter((p) => p.target.id === visible);
+  const onBoard = useMemo(() => placedTargets.filter((p) => p.target.id === visible), [placedTargets, visible]);
   const visibleReadyRef = useRef(onVisibleAssetsReady);
   visibleReadyRef.current = onVisibleAssetsReady;
   const decodedMounted = useRef(new WeakMap<HTMLImageElement, string>());
@@ -338,40 +357,30 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveri
     transform: `translate(${transform.tx}px, ${transform.ty}px) scale(${transform.scale})`,
   };
 
-  const renderTarget = (p: (typeof placedTargets)[number]) => {
-    const found = isFound(mission, p.target.id);
-    const h = p.anchor.scale * stage.height;
-    const w = h * spriteAspect(p.sprite);
-    const rect = p.sprite.kind === "image" ? p.sprite.rect : undefined;
-    // A slot patch is a piece of the world painted with the child: draw it exactly where it was cut from.
-    const box = rect
-      ? { left: rect.x * stage.width, top: rect.y * stage.height, width: rect.w * stage.width, height: rect.h * stage.height, zIndex: p.slot.zIndex, transform: p.slot.flip ? "scaleX(-1)" : undefined }
-      : { left: p.anchor.x * stage.width, top: p.anchor.y * stage.height, width: w, height: h, zIndex: p.slot.zIndex, transform: `translate(-50%, -50%) rotate(${p.slot.rotation}deg)${p.slot.flip ? " scaleX(-1)" : ""}` };
-    // A find changes no pixels, filters, transforms or stacking of the child.
-    // Its feedback is rendered separately, above ALL board layers, below.
+  // Camera frames change the containing transform and screen overlays. The
+  // painting itself only changes on a mission, hint, bonus or ambient event.
+  // Keep its elements stable so panning does not reconcile the full art/SVG
+  // tree (including the legacy composed-sprite renderer).
+  const art = useMemo(() => {
+    const renderTarget = (p: (typeof placedTargets)[number]) => {
+      const found = isFound(mission, p.target.id);
+      const h = p.anchor.scale * stage.height;
+      const w = h * spriteAspect(p.sprite);
+      const rect = p.sprite.kind === "image" ? p.sprite.rect : undefined;
+      // A slot patch is a piece of the world painted with the child: draw it exactly where it was cut from.
+      const box = rect
+        ? { left: rect.x * stage.width, top: rect.y * stage.height, width: rect.w * stage.width, height: rect.h * stage.height, zIndex: p.slot.zIndex, transform: p.slot.flip ? "scaleX(-1)" : undefined }
+        : { left: p.anchor.x * stage.width, top: p.anchor.y * stage.height, width: w, height: h, zIndex: p.slot.zIndex, transform: `translate(-50%, -50%) rotate(${p.slot.rotation}deg)${p.slot.flip ? " scaleX(-1)" : ""}` };
+      // A find changes no pixels, filters, transforms or stacking of the child.
+      // Its feedback is rendered separately, above ALL board layers, below.
+      return (
+        <div key={p.target.id} className={`stage__target${p.isPatch ? " stage__target--patch" : ""}`} style={box} data-target={p.target.id} data-found={found}>
+          <Sprite sprite={p.sprite} title={p.target.item} className="stage__sprite" />
+        </div>
+      );
+    };
     return (
-      <div key={p.target.id} className={`stage__target${p.isPatch ? " stage__target--patch" : ""}`} style={box} data-target={p.target.id} data-found={found}>
-        <Sprite sprite={p.sprite} title={p.target.item} className="stage__sprite" />
-      </div>
-    );
-  };
-
-  return (
-    <div
-      ref={containerRef}
-      className={`viewport${api.isDragging ? " viewport--dragging" : ""}`}
-      {...api.bind}
-      role="application"
-      aria-label={ariaLabel ?? scene.name}
-      aria-describedby={keyboardHintId}
-      tabIndex={0}
-      onKeyDown={onKeyDown}
-      onBlur={() => setCursor(null)}
-    >
-      <p id={keyboardHintId} className="visually-hidden">
-        {keyboardHint}
-      </p>
-      <div className="stage" style={stageStyle}>
+      <>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={scene.art.base} alt="" width={stage.width} height={stage.height} className="stage__layer stage__base" decoding="async" draggable={false} />
         <div className="stage__layer">{onBoard.filter((p) => p.slot.layer === "behindForeground").map(renderTarget)}</div>
@@ -417,7 +426,26 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveri
             aria-hidden
           />
         ) : null}
-      </div>
+      </>
+    );
+  }, [scene, stage, mission, onBoard, bonus, bonusFound, ambientAnim, hintLevel, currentPlaced]);
+
+  return (
+    <div
+      ref={containerRef}
+      className={`viewport${api.isDragging ? " viewport--dragging" : ""}`}
+      {...api.bind}
+      role="application"
+      aria-label={ariaLabel ?? scene.name}
+      aria-describedby={keyboardHintId}
+      tabIndex={0}
+      onKeyDown={onKeyDown}
+      onBlur={() => setCursor(null)}
+    >
+      <p id={keyboardHintId} className="visually-hidden">
+        {keyboardHint}
+      </p>
+      <div className="stage" style={stageStyle}>{art}</div>
 
       {/* screen-space overlays */}
       <div className="overlay" aria-hidden>

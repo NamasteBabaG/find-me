@@ -10,11 +10,27 @@ import { env } from "@/lib/env";
  * Worlds are rendered once and live in `public/`, so a dev box reads them off
  * disk. A serverless host serves them from its CDN and may not have them in the
  * function bundle, so we fall back to fetching them from our own origin. Either
- * way an art file is immutable for the life of a scene version, so one copy per
- * process is enough — nine worlds is ~18MB, and a run touches only the ones it
- * generates for.
+ * way an art file is immutable for the life of a scene version. Current 4K
+ * lossless boards are about 12MB each, so retain a bounded working set rather
+ * than every world/version a warm process has ever served.
  */
+const MAX_IMAGE_BYTES = 32 * 1024 * 1024;
+const MAX_CACHE_BYTES = 32 * 1024 * 1024;
 const cache = new Map<string, Buffer>();
+const inFlight = new Map<string, Promise<Buffer>>();
+let cacheBytes = 0;
+let cacheGeneration = 0;
+
+function remember(key: string, bytes: Buffer): void {
+  if (bytes.length > MAX_CACHE_BYTES) return;
+  while (cacheBytes + bytes.length > MAX_CACHE_BYTES && cache.size) {
+    const [oldestKey, oldest] = cache.entries().next().value!;
+    cache.delete(oldestKey);
+    cacheBytes -= oldest.length;
+  }
+  cache.set(key, bytes);
+  cacheBytes += bytes.length;
+}
 
 export async function loadSceneArt(appUrl: string, relativePath: string, expectedSha256?: string): Promise<Buffer> {
   // Fixed public raster artwork only. No arbitrary URL, private asset route,
@@ -25,11 +41,24 @@ export async function loadSceneArt(appUrl: string, relativePath: string, expecte
   const assetPath = `/${relativePath.replace(/^\//, "")}`;
   const key = `${origin.origin}:${assetPath}:${expectedSha256 ?? "legacy"}`;
   const hit = cache.get(key);
-  if (hit) return hit;
-  const buffer = (await fromDisk(assetPath)) ?? (await fromOrigin(origin.origin, assetPath));
-  if (expectedSha256 && createHash("sha256").update(buffer).digest("hex") !== expectedSha256) throw new Error(`Scene art hash mismatch: ${relativePath}`);
-  cache.set(key, buffer);
-  return buffer;
+  if (hit) {
+    cache.delete(key);
+    cache.set(key, hit);
+    return hit;
+  }
+  const pending = inFlight.get(key);
+  if (pending) return pending;
+  const generation = cacheGeneration;
+  const read = (async () => {
+    const buffer = (await fromDisk(assetPath)) ?? (await fromOrigin(origin.origin, assetPath));
+    if (buffer.length > MAX_IMAGE_BYTES) throw new Error("Static scene art exceeds image limit");
+    if (expectedSha256 && createHash("sha256").update(buffer).digest("hex") !== expectedSha256) throw new Error(`Scene art hash mismatch: ${relativePath}`);
+    if (generation === cacheGeneration) remember(key, buffer);
+    return buffer;
+  })();
+  inFlight.set(key, read);
+  try { return await read; }
+  finally { if (inFlight.get(key) === read) inFlight.delete(key); }
 }
 
 async function fromDisk(relativePath: string): Promise<Buffer | null> {
@@ -58,11 +87,14 @@ async function fromOrigin(appUrl: string, relativePath: string): Promise<Buffer>
   if (!res.ok) throw new Error(`scene art not found: ${url} (${res.status})`);
   if (!/^image\/(?:png|webp|jpeg|avif)(?:;|$)/i.test(res.headers.get("content-type") ?? "")) throw new Error("Static scene art response is not a raster image");
   const bytes = Buffer.from(await res.arrayBuffer());
-  if (bytes.length > 32 * 1024 * 1024) throw new Error("Static scene art exceeds image limit");
+  if (bytes.length > MAX_IMAGE_BYTES) throw new Error("Static scene art exceeds image limit");
   return bytes;
 }
 
 /** Tests and long-running scripts that swap art between runs. */
 export function clearSceneArtCache(): void {
   cache.clear();
+  cacheBytes = 0;
+  cacheGeneration++;
+  inFlight.clear();
 }

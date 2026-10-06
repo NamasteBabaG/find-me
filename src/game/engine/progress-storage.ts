@@ -23,12 +23,3 @@ export function saveProgress(progress: GameProgress, scope?: string): void {
     /* private mode / quota — the game still works for this session */
   }
 }
-
-export function clearProgress(gameId: string, scope?: string): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.removeItem(KEY(gameId, scope));
-  } catch {
-    /* ignore */
-  }
-}

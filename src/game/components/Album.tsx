@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties, ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { AdventureBook } from "@/domain/adventure/book-schema";
 import type { AdventureRect } from "@/domain/adventure/content";
 import { gameAssetId } from "@/domain/adventure/image-binding";
@@ -16,21 +16,42 @@ type AlbumView = ReturnType<typeof adventureAlbum>;
 type BoardView = AlbumView["boards"][number];
 type Art = SceneConfig["art"];
 
+/** The scrolling legacy album releases full board images outside its nearby
+ * viewport. Live collection/completion pictures keep their eager default. */
+function useNearbyCrop(lazy: boolean) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [nearby, setNearby] = useState(!lazy);
+  useEffect(() => {
+    if (!lazy) return;
+    const element = ref.current;
+    if (!element) return;
+    if (typeof IntersectionObserver === "undefined") { setNearby(true); return; }
+    const observer = new IntersectionObserver(entries => {
+      const entry = entries.find(value => value.target === element);
+      if (entry) setNearby(entry.isIntersecting);
+    }, { rootMargin: "300px" });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [lazy]);
+  return { ref, visible: !lazy || nearby };
+}
+
 /**
  * A window onto the board's existing pixels. The card and the postcard are
  * crops of the picture the child already searched, drawn with CSS: no new
  * image is generated, uploaded or paid for (rule 6 of the album).
  */
-export function AlbumCrop({ art, crop, className, label, children }: { art: Art; crop: AdventureRect; className?: string; label?: string; children?: ReactNode }) {
+export function AlbumCrop({ art, crop, className, label, children, lazy = false }: { art: Art; crop: AdventureRect; className?: string; label?: string; children?: ReactNode; lazy?: boolean }) {
+  const { ref, visible } = useNearbyCrop(lazy);
   const style: CSSProperties = {
     aspectRatio: `${crop.w * art.width} / ${crop.h * art.height}`,
-    backgroundImage: `url("${art.base}")`,
+    backgroundImage: visible ? `url("${art.base}")` : undefined,
     backgroundSize: `${100 / crop.w}% auto`,
     backgroundPosition: `${crop.w < 1 ? (crop.x / (1 - crop.w)) * 100 : 0}% ${crop.h < 1 ? (crop.y / (1 - crop.h)) * 100 : 0}%`,
   };
   return (
-    <div className={`album__crop${className ? ` ${className}` : ""}`} style={style} role={label ? "img" : undefined} aria-label={label} aria-hidden={label ? undefined : true}>
-      {children}
+    <div ref={ref} className={`album__crop${className ? ` ${className}` : ""}`} style={style} role={label ? "img" : undefined} aria-label={label} aria-hidden={label ? undefined : true}>
+      {visible ? children : null}
     </div>
   );
 }
@@ -39,7 +60,7 @@ export function AlbumCrop({ art, crop, className, label, children }: { art: Art;
  * The postcard: the place, with the child painted in it, exactly the pixels of
  * the find that earned it (the variant of the first find, frozen by the book).
  */
-export function Postcard({ scene, postcard, className }: { scene: SceneConfig; postcard: NonNullable<BoardView["postcard"]>; className?: string }) {
+export function Postcard({ scene, postcard, className, lazy = false }: { scene: SceneConfig; postcard: NonNullable<BoardView["postcard"]>; className?: string; lazy?: boolean }) {
   const { g, tf } = useGameText();
   const target = scene.targets.find((t) => t.id === postcard.targetId);
   const sprite = target ? (target.spriteByVariant?.[postcard.variant] ?? target.sprite) : null;
@@ -47,13 +68,15 @@ export function Postcard({ scene, postcard, className }: { scene: SceneConfig; p
   const crop = postcard.crop;
   return (
     <figure className={`postcard${className ? ` ${className}` : ""}`}>
-      <AlbumCrop art={scene.art} crop={crop} className="postcard__picture" label={tf(g.album.postcardAria, { title: postcard.title })}>
+      <AlbumCrop art={scene.art} crop={crop} className="postcard__picture" label={tf(g.album.postcardAria, { title: postcard.title })} lazy={lazy}>
         {patch ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={patch.url}
             alt=""
             className="postcard__patch"
+            loading={lazy ? "lazy" : undefined}
+            decoding={lazy ? "async" : undefined}
             draggable={false}
             style={{ left: `${((patch.rect.x - crop.x) / crop.w) * 100}%`, top: `${((patch.rect.y - crop.y) / crop.h) * 100}%`, width: `${(patch.rect.w / crop.w) * 100}%`, height: `${(patch.rect.h / crop.h) * 100}%` }}
           />
@@ -135,7 +158,7 @@ export function AlbumSection({ config, album, mode, state, onOpen }: { config: G
               <div className="album__postcards">
                 <h4 className="album__kind">{g.album.postcards}</h4>
                 {boardView?.postcard ? (
-                  <Postcard scene={scene} postcard={boardView.postcard} className="album__postcard" />
+                  <Postcard scene={scene} postcard={boardView.postcard} className="album__postcard" lazy />
                 ) : (
                   <div className="album__postcard-wait" data-postcard-remaining={remaining}>
                     <span className="album__postcard-stamp" aria-hidden>✉️</span>
@@ -154,7 +177,7 @@ export function AlbumSection({ config, album, mode, state, onOpen }: { config: G
                       <li key={d.id} className={`album__sticker${collected ? " album__sticker--got" : ""}`} data-discovery={d.id} data-collected={collected}>
                         <div className={`sticker${collected ? " sticker--got" : ""}`} role="img" aria-label={collected ? tf(c.collectedAria, { name: d.name }) : reveal ? tf(c.pending, { name: d.name }) : g.album.notYet}>
                           <span className="sticker__face">
-                            {reveal ? <AlbumCrop art={scene.art} crop={d.cardCrop} className="sticker__picture" /> : <span className="sticker__blank" aria-hidden>?</span>}
+                            {reveal ? <AlbumCrop art={scene.art} crop={d.cardCrop} className="sticker__picture" lazy /> : <span className="sticker__blank" aria-hidden>?</span>}
                             {/* The same green tick as on the board: one language for "found", in the bag too. */}
                             {collected ? <span className="sticker__check" aria-hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round"><path d="M5 13l4.5 4.5L19 7" /></svg></span> : null}
                           </span>

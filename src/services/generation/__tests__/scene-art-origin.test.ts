@@ -31,6 +31,44 @@ describe("same-origin static CDN artwork in serverless QA", () => {
     await loadSceneArt(origin, asset, hash);
     expect(new Headers(fetchMock.mock.calls[0]![1].headers).has("cookie")).toBe(false);
   });
+  it("shares simultaneous reads of the same frozen board", async () => {
+    const results = await Promise.all(Array.from({ length: 7 }, () => loadSceneArt(origin, asset, hash)));
+    expect(results.every(result => result.equals(bytes))).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+  it("retries after a shared read fails instead of retaining the failure", async () => {
+    fetchMock.mockRejectedValueOnce(new Error("synthetic temporary failure"));
+    const results = await Promise.allSettled([loadSceneArt(origin, asset, hash), loadSceneArt(origin, asset, hash)]);
+    expect(results.every(result => result.status === "rejected")).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(await loadSceneArt(origin, asset, hash)).toEqual(bytes);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+  it("keeps a 32MiB working set and evicts the least recently used board", async () => {
+    // Transport-only synthetic bytes, about the encoded size of one current
+    // 4K lossless board. No image decoding or customer fixture is involved.
+    const large = Buffer.alloc(12 * 1024 * 1024, 42);
+    fetchMock.mockImplementation(async () => new Response(large, { headers: { "content-type": "image/webp" } }));
+    const a = "/scenes/synthetic-a/base.webp", b = "/scenes/synthetic-b/base.webp", c = "/scenes/synthetic-c/base.webp";
+    await loadSceneArt(origin, a); await loadSceneArt(origin, b);
+    await loadSceneArt(origin, a); // A is now the board to keep.
+    await loadSceneArt(origin, c); // Three boards exceed the memory budget.
+    await loadSceneArt(origin, a);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    await loadSceneArt(origin, b);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+  it("does not let an old pending read repopulate a cleared cache", async () => {
+    let finish!: (response: Response) => void;
+    fetchMock.mockImplementationOnce(() => new Promise<Response>(resolve => { finish = resolve; }));
+    const pending = loadSceneArt(origin, asset, hash);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    clearSceneArtCache();
+    finish(new Response(bytes, { headers: { "content-type": "image/webp" } }));
+    expect(await pending).toEqual(bytes);
+    expect(await loadSceneArt(origin, asset, hash)).toEqual(bytes);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
   it.each(["https://evil.example/a.png", "//evil.example/a.png", "/api/assets/private.png", "/scenes/../private.png",
     "/scenes/%2e%2e/private.png", "/scenes/x/base.webp?next=https://evil.example", "/scenes/x/base.webp#fragment", "/scenes/x/../../.env", "/scenes/x/base.svg", "/scenes\\x\\base.png"])("refuses unsafe asset path %s before any fetch", async value => {
     await expect(loadSceneArt(origin, value)).rejects.toThrow(/Invalid static/); expect(fetchMock).not.toHaveBeenCalled();

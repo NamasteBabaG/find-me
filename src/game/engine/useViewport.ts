@@ -48,7 +48,8 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
   const [transform, setTransform] = useState<ViewTransform>({ scale: 1, tx: 0, ty: 0 });
   const [isDragging, setDragging] = useState(false);
   const transformRef = useRef(transform);
-  transformRef.current = transform;
+  const publishedTransform = useRef(transform);
+  const gestureFrame = useRef<number | null>(null);
   // Every method below reads the viewport through this ref, never through the
   // `viewport` state in its closure. The scene player keeps the API object it
   // was handed at first layout and calls focusOn() from it for hints and
@@ -75,15 +76,38 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
   });
   const raf = useRef<number | null>(null);
 
+  const publishTransform = useCallback(() => {
+    const next = transformRef.current;
+    const previous = publishedTransform.current;
+    if (previous.scale === next.scale && previous.tx === next.tx && previous.ty === next.ty) return;
+    publishedTransform.current = next;
+    setTransform(next);
+  }, []);
+
+  const flushTransform = useCallback(() => {
+    if (gestureFrame.current !== null) cancelAnimationFrame(gestureFrame.current);
+    gestureFrame.current = null;
+    publishTransform();
+  }, [publishTransform]);
+
   const apply = useCallback(
-    (t: ViewTransform) => {
+    (t: ViewTransform, deferPaint = false) => {
       const vp = viewportRef.current;
       const f = fitRef.current;
       const next = vp.width ? clampTransform(t, vp, stage, f, f * MAX_ZOOM_FACTOR, panPadding) : t;
       transformRef.current = next;
-      setTransform(next);
+      // Pointer input can arrive several times before one display frame. Keep
+      // the camera maths live for every event, but reconcile overlays/art once
+      // per frame. A release/reset publishes the final position immediately.
+      if (!deferPaint) { flushTransform(); return; }
+      const previous = publishedTransform.current;
+      if (previous.scale === next.scale && previous.tx === next.tx && previous.ty === next.ty) return;
+      if (gestureFrame.current === null) gestureFrame.current = requestAnimationFrame(() => {
+        gestureFrame.current = null;
+        publishTransform();
+      });
     },
-    [stage, panPadding],
+    [stage, panPadding, flushTransform, publishTransform],
   );
 
   const measure = useCallback((rect: Size) => {
@@ -96,10 +120,11 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
       setViewport(vp);
       const f = fitScale(vp, stage, chooseFitMode(vp, stage));
       fitRef.current = f;
+      if (gestureFrame.current !== null) cancelAnimationFrame(gestureFrame.current);
+      gestureFrame.current = null;
       if (!previousViewport.width || !previousViewport.height) {
         const t = centeredTransform(vp, stage, f);
-        transformRef.current = t;
-        setTransform(clampTransform(t, vp, stage, f, f * MAX_ZOOM_FACTOR, panPadding));
+        transformRef.current = clampTransform(t, vp, stage, f, f * MAX_ZOOM_FACTOR, panPadding);
       } else {
         // Keep the place being searched and the user's RELATIVE zoom. Keeping
         // absolute pixels made portrait → landscape stay unnecessarily zoomed.
@@ -112,9 +137,9 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
         const cy = (previousViewport.height / 2 - prev.ty) / prev.scale / stage.height;
         const next = clampTransform(centerOnNormalized(cx, cy, f * (prev.scale / previousFit), vp, stage), vp, stage, f, f * MAX_ZOOM_FACTOR, panPadding);
         transformRef.current = next;
-        setTransform(next);
       }
-  }, [stage, panPadding]);
+      publishTransform();
+  }, [stage, panPadding, publishTransform]);
 
   // Measure the container and fit on first layout / resize. Reset also uses
   // this path: a browser's resize notification can arrive after the curtain's
@@ -132,6 +157,8 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
       ro.disconnect();
       if (raf.current) cancelAnimationFrame(raf.current);
       raf.current = null;
+      if (gestureFrame.current !== null) cancelAnimationFrame(gestureFrame.current);
+      gestureFrame.current = null;
       pointers.current.clear();
     };
   }, [containerRef, measure]);
@@ -188,6 +215,7 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
 
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     cancelAnim();
+    flushTransform();
     (e.currentTarget as HTMLDivElement).setPointerCapture?.(e.pointerId);
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const g = gesture.current;
@@ -218,7 +246,7 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
       const mid = local((a.x + b.x) / 2, (a.y + b.y) / 2);
       if (g.pinchDist && g.pinchDist > 0) {
         const factor = dist / g.pinchDist;
-        apply(zoomAt(transformRef.current, mid.x, mid.y, factor));
+        apply(zoomAt(transformRef.current, mid.x, mid.y, factor), true);
       }
       g.pinchDist = dist;
       return;
@@ -233,7 +261,7 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
       g.lastX = e.clientX;
       g.lastY = e.clientY;
       const t = transformRef.current;
-      apply({ ...t, tx: t.tx + dx, ty: t.ty + dy });
+      apply({ ...t, tx: t.tx + dx, ty: t.ty + dy }, true);
     }
   };
 
@@ -241,6 +269,7 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
     const had = pointers.current.delete(e.pointerId);
     const g = gesture.current;
     if (!had) return;
+    flushTransform();
     if (pointers.current.size === 0) {
       setDragging(false);
       const dur = performance.now() - g.startT;
@@ -272,9 +301,10 @@ export function useViewport(containerRef: React.RefObject<HTMLDivElement | null>
 
   const onWheel = (e: ReactWheelEvent<HTMLDivElement>) => {
     e.preventDefault();
+    cancelAnim();
     const p = local(e.clientX, e.clientY);
     const factor = Math.pow(1.0015, -e.deltaY);
-    apply(zoomAt(transformRef.current, p.x, p.y, factor));
+    apply(zoomAt(transformRef.current, p.x, p.y, factor), true);
   };
 
   const zoomBy = useCallback(

@@ -457,6 +457,25 @@ export function createPlayStore(config: GameConfig, opts: PlayStoreOptions) {
       if (get().replay && action.type === "ADOPT_FOUND") return;
       const next = missionReducer(mission, action, missionCopy(scene, opts.copy));
       if (next === mission) return;
+      // Schedule accepted tap feedback before local persistence, subscribers
+      // or the next React commit. Audio is optional: a failed browser audio
+      // device must never prevent a find from being recorded.
+      if (next.lastFeedback && next.lastFeedback !== mission.lastFeedback) {
+        try {
+          switch (next.lastFeedback.kind) {
+            case "hit": sounds().play("success"); break;
+            case "wrongTarget": sounds().play("boing"); break;
+            case "miss": sounds().play("pop"); break;
+            case "bonus":
+            case "hint": sounds().play("twinkle"); break;
+            case "ambient": {
+              const id = next.lastFeedback.ambientId;
+              sounds().play(scene.ambient.find(a => a.id === id)?.sound ?? "tap");
+              break;
+            }
+          }
+        } catch { /* Keep progress and interaction working without audio. */ }
+      }
       if (action.type === "TAP_TARGET" && next.lastFeedback?.kind === "hit") {
         if (get().round?.active) {
           const round = get().round!;

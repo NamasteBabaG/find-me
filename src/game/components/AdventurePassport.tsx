@@ -11,45 +11,16 @@ import type { PassportView } from "@/domain/passport/passport";
 import { readPassportPreferences, keepPassportPreference } from "../engine/passport-storage";
 import { PassportMemory } from "./PassportMemory";
 import { AlbumCrop } from "./Album";
-import { warmPassportBook } from "@/ui/passport/image-preload";
 import { FriendDiscoveries } from "@/ui/friends/FriendDiscoveries";
 import { guestWorldEligible } from "@/domain/guest-sharing";
+import { cachedOwnerPassport, prefetchOwnerPassport, type RemoteBook } from "../engine/owner-passport-preload";
 
-type RemoteBook = { book: PassportView; childId: string };
-
-/**
- * The owner's book, kept for this page session. The map asks for it in the background, so opening the passport
- * shows it at once and only refreshes it; one request at a time per game. Never stored beyond the page.
- */
-const remoteBooks = new Map<string, { at: number; value: RemoteBook | null; pending: Promise<RemoteBook> | null }>();
-
-export function prefetchOwnerPassport(gameId: string, maxAgeMs = 30_000): Promise<RemoteBook> {
-  const entry = remoteBooks.get(gameId);
-  if (entry?.pending) return entry.pending;
-  if (entry?.value && Date.now() - entry.at < maxAgeMs) {
-    warmPassportBook(entry.value.book, entry.value.childId);
-    return Promise.resolve(entry.value);
-  }
-  const pending = fetch(`/api/passport?gameId=${encodeURIComponent(gameId)}`, { cache: "no-store" })
-    .then(async response => {
-      if (!response.ok) throw new Error("passport-unavailable");
-      const data = await response.json();
-      const value: RemoteBook = { book: data.book, childId: data.childId };
-      remoteBooks.set(gameId, { at: Date.now(), value, pending: null });
-      warmPassportBook(value.book, value.childId);
-      return value;
-    })
-    .catch(error => {
-      remoteBooks.set(gameId, { at: entry?.at ?? 0, value: entry?.value ?? null, pending: null });
-      throw error;
-    });
-  remoteBooks.set(gameId, { at: entry?.at ?? 0, value: entry?.value ?? null, pending });
-  return pending;
-}
+// Preserve the existing caller API; maps use the small engine module directly.
+export { prefetchOwnerPassport } from "../engine/owner-passport-preload";
 
 export function AdventurePassport({ store }: { store: PlayStore }) {
   const owner = store.albumMode === "owner";
-  const [remote, setRemote] = useState<RemoteBook | null>(() => owner ? remoteBooks.get(store.config.gameId)?.value ?? null : null);
+  const [remote, setRemote] = useState<RemoteBook | null>(() => owner ? cachedOwnerPassport(store.config.gameId) : null);
   const [failed, setFailed] = useState(false), [attempt, setAttempt] = useState(0);
   const preferenceKey = store.storageScope ?? store.config.gameId;
   const [preferences, setPreferences] = useState(() => store.demo ? {} : readPassportPreferences(preferenceKey));

@@ -33,6 +33,8 @@ const CURTAIN_MS = 900;
 const QUIET_AFTER_MS = 6000;
 /** A brief pause lets the eye finish searching before the phone controls return. */
 export const CHROME_RETURN_MS = 600;
+/** Cloud opacity finishes after its 900ms transform. Hidden banks can idle. */
+export const CURTAIN_SETTLE_MS = 1000;
 /**
  * When the gold star sets off after a find. On a three-hide board the camera
  * first settles on the child (450ms) and the bubble pops, so the star visibly
@@ -176,6 +178,14 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
   const [turn, setTurn] = useState(false);
   const [turnSwapped, setTurnSwapped] = useState(false);
   const revealed = useScrollReveal(stageRef, store.demo, viewportReady && assetsReady && visibleAssetsReady);
+  const curtainOpen = revealed && !turn && !loadFailed;
+  const [curtainSettled, setCurtainSettled] = useState(false);
+  useEffect(() => {
+    setCurtainSettled(false);
+    if (!curtainOpen) return;
+    const timer = setTimeout(() => setCurtainSettled(true), CURTAIN_SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [curtainOpen]);
   // A visit means the board is decoded, visible and playable; prefetch/navigation are not visits.
   const visitReported = useRef(false);
   useEffect(() => {
@@ -270,7 +280,8 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
     [scene, mission.plan.variants],
   );
 
-  // React to reducer feedback: sounds, bubbles, particles, timers.
+  // Tap sounds have already been scheduled by dispatch. React owns the
+  // visual choreography and deliberately timed star/finish sounds.
   const fb = mission.lastFeedback;
   useEffect(() => {
     if (!fb) return;
@@ -288,7 +299,6 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
     };
     switch (fb.kind) {
       case "hit": {
-        sounds().play("success");
         const target = scene.targets.find((t) => t.id === fb.targetId);
         // Five-hide play keeps the search view during the celebration. Both
         // modes replace the child and reset the view behind the cloud turn.
@@ -341,18 +351,15 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
         return;
       }
       case "wrongTarget": {
-        sounds().play("boing");
         placeBubble(fb.targetId, fb.bubble);
         bubbleTimer.current = setTimeout(() => { setBubble(null); setAnnouncement(""); }, 2600);
         dispatch({ type: "CLEAR_FEEDBACK" });
         return;
       }
       case "miss":
-        sounds().play("pop");
         dispatch({ type: "CLEAR_FEEDBACK" });
         return;
       case "bonus": {
-        sounds().play("twinkle");
         if (scene.bonus) {
           const slot = mission.plan.bonusVariant === "A" ? scene.bonus.slots[0] : scene.bonus.slots[1];
           setBubble({ text: fb.bubble, x: slot.x * scene.art.width, y: slot.y * scene.art.height, key: Date.now() });
@@ -364,8 +371,6 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
       }
       case "ambient": {
         const a = scene.ambient.find((x) => x.id === fb.ambientId);
-        if (a?.sound) sounds().play(a.sound);
-        else sounds().play("tap");
         if (a?.reaction) {
           setBubble({ text: a.reaction, x: (a.x + a.w / 2) * scene.art.width, y: a.y * scene.art.height, key: Date.now() });
           setAnnouncement(a.reaction);
@@ -375,7 +380,6 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
         return;
       }
       case "hint":
-        sounds().play("twinkle");
         if (fb.level === 3 && api) {
           const id = currentTargetId(mission);
           const target = id ? scene.targets.find((t) => t.id === id) : null;
@@ -397,10 +401,10 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
     const justFound = previousPhase.current === "found";
     previousPhase.current = mission.phase;
     if (mission.phase !== "complete" || !justFound) return;
-    sounds().play("fanfare");
+    onSceneComplete();
+    try { sounds().play("fanfare"); } catch { /* Optional audio cannot interrupt the earned completion. */ }
     setBurst({ key: Date.now(), small: false });
     const t = setTimeout(() => setShowComplete(true), 900);
-    onSceneComplete();
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mission.phase]);
@@ -548,7 +552,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
         </SceneViewport>
         {burst ? <CelebrationOverlay key={burst.key} kind={scene.celebration.kind} small={burst.small} seed={burst.key} /> : null}
         {mission.phase === "intro" ? <div className="scene__intro-veil" aria-hidden /> : null}
-        <div className={`scene__curtain${revealed && !turn && !loadFailed ? " is-open" : ""}`} aria-hidden>
+        <div className={`scene__curtain${curtainOpen ? ` is-open${curtainSettled ? " is-settled" : ""}` : ""}`} aria-hidden>
           <CloudBank side="l" />
           <CloudBank side="r" />
         </div>

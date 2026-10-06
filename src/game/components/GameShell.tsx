@@ -13,8 +13,7 @@ import { gameWorlds } from "@/domain/game/config";
 import { WorldMap } from "./WorldMap";
 import { WorldHub } from "./WorldHub";
 import { ScenePlayer } from "./ScenePlayer";
-import { Passport } from "./Passport";
-import { AdventurePassport, prefetchOwnerPassport } from "./AdventurePassport";
+import { prefetchOwnerPassport } from "../engine/owner-passport-preload";
 import { bindGameAudio } from "../audio/sounds";
 import { searchProgress } from "@/domain/game/round";
 import { gameStars } from "@/domain/game/progress";
@@ -24,6 +23,7 @@ import { OwnerWorldSelector } from "./OwnerWorldSelector";
 import type { GuestSnapshot } from "@/domain/guest-sharing";
 import { friendSnapshotFromPlay } from "../engine/friend-progress";
 import { useTurnTip } from "../engine/useTurnTip";
+import { PassportReaderLoader } from "./PassportReaderLoader";
 
 interface Props {
   /** A distinct friends grant, never an owner or ordinary PLAYER capability. */
@@ -144,7 +144,7 @@ function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false
           <ScenePlayer key={`${scene.slug}:${state.visitId}`} scene={scene} mission={state.mission} store={state} onBack={state.goToMap} onSceneComplete={state.completeScene} />
         ) : null;
       case "passport":
-        return isPassportBook(config.adventure) ? <AdventurePassport store={state} /> : <Passport config={config} progress={state.progress} onMap={state.goToMap} onOpen={state.openScene} onReplay={state.replayScene} album={state.album} albumMode={state.albumMode} albumState={state.albumState} />;
+        return <PassportReaderLoader kind={isPassportBook(config.adventure) ? "adventure" : "legacy"} store={state} />;
       case "worlds":
         return <><RoundControls store={state} /><WorldHub config={config} progress={searchProgress(state.round, state.progress)} roundRoute={state.round?.active ? state.round.route : undefined} currentWorld={state.worldSlug} onEnter={(slug) => state.goToMap(null, slug)} onPassport={state.openPassport} /></>;
       case "map":
@@ -194,4 +194,3 @@ const STEP_KEY = "findMeGameStep";
 function stepOf(state: unknown): string | undefined {
   return state && typeof state === "object" && STEP_KEY in state ? String((state as Record<string, unknown>)[STEP_KEY]) : undefined;
 }
-

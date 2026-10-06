@@ -28,6 +28,16 @@ class FakeResizeObserver {
 }
 
 const STAGE = { width: 3072, height: 2048 };
+const frames = new Map<number, FrameRequestCallback>();
+let frameId = 0;
+
+function flushFrame() {
+  act(() => {
+    const scheduled = [...frames.values()];
+    frames.clear();
+    for (const callback of scheduled) callback(performance.now());
+  });
+}
 
 function mount(onTap: (nx: number, ny: number) => void = () => {}) {
   return renderHook(() => {
@@ -37,16 +47,87 @@ function mount(onTap: (nx: number, ny: number) => void = () => {}) {
 }
 
 beforeEach(() => {
+  frames.clear();
+  frameId = 0;
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { frames.set(++frameId, callback); return frameId; });
+  vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
   (globalThis as { ResizeObserver?: unknown }).ResizeObserver = FakeResizeObserver as never;
   window.matchMedia = (() => ({ matches: true, addEventListener() {}, removeEventListener() {} })) as never;
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 function pointer(pointerId: number, clientX: number, clientY: number) {
   return { pointerId, clientX, clientY, currentTarget: document.createElement("div") } as ReactPointerEvent<HTMLDivElement>;
 }
 
 describe("active camera gestures", () => {
+  it("publishes 120 pointer samples once per frame while keeping hit coordinates live", () => {
+    let renders = 0;
+    const { result } = renderHook(() => {
+      renders += 1;
+      const ref = useRef<HTMLDivElement | null>(document.createElement("div"));
+      return useViewport(ref, STAGE, () => {});
+    });
+    act(() => FakeResizeObserver.latest!.resize(390, 650));
+    const initial = result.current.transform;
+    act(() => result.current.bind.onPointerDown(pointer(1, 180, 300)));
+    const before = renders;
+    for (let x = 181; x <= 300; x += 1) act(() => result.current.bind.onPointerMove(pointer(1, x, 300)));
+    expect(renders - before).toBe(1); // The gesture starts; camera publications wait.
+    expect(frames.size).toBe(1);
+    const hit = result.current.toNormalized(300, 300)!;
+    expect(hit.x).toBeCloseTo((300 - initial.tx - 120) / initial.scale / STAGE.width);
+    flushFrame();
+    expect(renders - before).toBe(2);
+    expect(result.current.transform.tx).toBeCloseTo(initial.tx + 120);
+    expect(frames.size).toBe(0);
+  });
+
+  it("does not render or schedule frames for repeated input against a clamped edge", () => {
+    let renders = 0;
+    const { result } = renderHook(() => {
+      renders += 1;
+      const ref = useRef<HTMLDivElement | null>(document.createElement("div"));
+      return useViewport(ref, STAGE, () => {});
+    });
+    act(() => FakeResizeObserver.latest!.resize(390, 650));
+    act(() => result.current.bind.onPointerDown(pointer(1, 180, 300)));
+    act(() => result.current.bind.onPointerMove(pointer(1, -1000, 300)));
+    flushFrame();
+    const before = renders;
+    const edge = result.current.transform;
+    for (let x = -1001; x >= -1120; x -= 1) act(() => result.current.bind.onPointerMove(pointer(1, x, 300)));
+    expect(renders).toBe(before);
+    expect(frames.size).toBe(0);
+    expect(result.current.transform).toBe(edge);
+  });
+
+  it("flushes the final pan on release and cancels a pending frame on resize or unmount", () => {
+    const { result, unmount } = mount();
+    act(() => FakeResizeObserver.latest!.resize(390, 650));
+    const initial = result.current.transform;
+    act(() => result.current.bind.onPointerDown(pointer(1, 180, 300)));
+    act(() => result.current.bind.onPointerMove(pointer(1, 200, 300)));
+    expect(frames.size).toBe(1);
+    act(() => result.current.bind.onPointerUp(pointer(1, 200, 300)));
+    expect(frames.size).toBe(0);
+    expect(result.current.transform.tx).toBeCloseTo(initial.tx + 20);
+
+    act(() => result.current.bind.onPointerDown(pointer(2, 180, 300)));
+    act(() => result.current.bind.onPointerMove(pointer(2, 200, 300)));
+    act(() => FakeResizeObserver.latest!.resize(844, 330));
+    expect(frames.size).toBe(0);
+    const resized = result.current.transform;
+    flushFrame();
+    expect(result.current.transform).toBe(resized);
+
+    act(() => result.current.bind.onPointerDown(pointer(3, 180, 150)));
+    act(() => result.current.bind.onPointerMove(pointer(3, 180, 170)));
+    expect(frames.size).toBe(1);
+    unmount();
+    expect(frames.size).toBe(0);
+  });
+
   it("keeps taps and small motion quiet, starts pan at the existing slop and ends on release", () => {
     const tap = vi.fn(), { result } = mount(tap);
     act(() => FakeResizeObserver.latest!.resize(390, 650));
@@ -62,6 +143,7 @@ describe("active camera gestures", () => {
     act(() => result.current.bind.onPointerDown(pointer(2, 180, 300)));
     const initial = result.current.transform;
     act(() => result.current.bind.onPointerMove(pointer(2, 189, 300)));
+    flushFrame();
     expect(result.current.isDragging).toBe(true);
     expect(result.current.transform.tx).toBeCloseTo(initial.tx + 9);
     act(() => result.current.bind.onPointerUp(pointer(2, 189, 300)));
@@ -79,12 +161,14 @@ describe("active camera gestures", () => {
     expect(result.current.isDragging).toBe(true);
     expect(result.current.transform).toBe(fitted);
     act(() => result.current.bind.onPointerMove(pointer(2, 350, 300)));
+    flushFrame();
     expect(result.current.transform.scale).toBeCloseTo(fitted.scale * 1.25);
     const pinched = result.current.transform;
     act(() => result.current.bind.onPointerUp(pointer(2, 350, 300)));
     expect(result.current.isDragging).toBe(true);
     expect(result.current.transform).toBe(pinched);
     act(() => result.current.bind.onPointerMove(pointer(1, 112, 300)));
+    flushFrame();
     expect(result.current.transform.scale).toBe(pinched.scale);
     expect(result.current.transform.tx).toBeCloseTo(pinched.tx + 12);
     act(() => result.current.bind.onPointerUp(pointer(1, 112, 300)));
@@ -109,6 +193,7 @@ describe("active camera gestures", () => {
     act(() => FakeResizeObserver.latest!.resize(390, 650));
     act(() => result.current.bind.onPointerDown(pointer(1, 180, 300)));
     act(() => result.current.bind.onPointerMove(pointer(1, 210, 300)));
+    flushFrame();
     expect(result.current.isDragging).toBe(true);
     const camera = result.current.transform;
     act(() => {

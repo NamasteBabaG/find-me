@@ -81,7 +81,7 @@ describe("QA password and session contract", () => {
 });
 
 describe("QA middleware and cron boundary", () => {
-  it.each(["/", "/create", "/checkout", "/play/synthetic", "/admin", "/demo/noa-portrait.png"])("gates anonymous page or asset %s", async (path) => {
+  it.each(["/", "/create", "/checkout", "/play/synthetic", "/admin", "/demo/noa-portrait.png", "/scenes/synthetic/base.webp", "/worlds/synthetic/thumb.webp"])("gates anonymous page or asset %s", async (path) => {
     setQaEnv();
     const res = await middleware(new NextRequest(`https://qa.findmeworlds.com${path}`));
     expect(res.status).toBe(307);
@@ -101,7 +101,7 @@ describe("QA middleware and cron boundary", () => {
     expect(res.headers.get("x-robots-tag")).toContain("noindex");
     expect(res.headers.get("cache-control")).toContain("no-store");
   });
-  it("leaves the two picture routes their own private caching, and keeps every other answer no-store", async () => {
+  it("leaves the two picture routes their own private caching, and keeps documents and other assets no-store", async () => {
     setQaEnv();
     const cookie = `__Host-findme_qa=${await createQaSession(fixture)}`;
     const at = (path: string) => middleware(new NextRequest(`https://qa.findmeworlds.com${path}`, { headers: { cookie } }));
@@ -117,6 +117,40 @@ describe("QA middleware and cron boundary", () => {
     const anonymous = await middleware(new NextRequest("https://qa.findmeworlds.com/api/passport/media?childId=c"));
     expect(anonymous.status).toBe(401);
     expect(anonymous.headers.get("cache-control")).toContain("no-store");
+  });
+  it("permits only private revalidation of authored static board images after the gate", async () => {
+    setQaEnv();
+    const token = await createQaSession(fixture);
+    for (const method of ["GET", "HEAD"]) for (const path of ["/scenes/synthetic/base.webp", "/scenes/synthetic/v2/foreground.png", "/worlds/synthetic/thumb.jpg"]) {
+      const res = await middleware(new NextRequest(`https://qa.findmeworlds.com${path}`, { method, headers: {
+        cookie: `__Host-findme_qa=${token}`, "if-none-match": '"synthetic-etag"',
+      } }));
+      expect(res.headers.get("x-middleware-next")).toBe("1");
+      expect(res.headers.get("cache-control")).toBe("private, max-age=0, must-revalidate");
+    }
+    for (const path of ["/scenes/synthetic/page.html", "/scenes/synthetic/base.svg", "/scenes/synthetic/base.webp/other", "/private/photo.png", "/demo/noa-portrait.png"]) {
+      const res = await middleware(new NextRequest(`https://qa.findmeworlds.com${path}`, { headers: { cookie: `__Host-findme_qa=${token}` } }));
+      expect(res.headers.get("cache-control")).toContain("no-store");
+    }
+  });
+  it("does not let conditional static requests bypass an expired or revoked QA session", async () => {
+    setQaEnv();
+    const token = await createQaSession(fixture);
+    const expired = await createQaSession(fixture, Date.now() - QA_SESSION_SECONDS * 1000 - 1000);
+    const request = (value?: string) => new NextRequest("https://qa.findmeworlds.com/scenes/synthetic/base.webp", { headers: {
+      "if-none-match": '"synthetic-etag"', ...(value ? { cookie: `__Host-findme_qa=${value}` } : {}),
+    } });
+    for (const value of [undefined, "forged", expired]) {
+      const res = await middleware(request(value));
+      expect(res.status).toBe(307);
+      expect(res.headers.get("cache-control")).toContain("no-store");
+      expect(res.headers.get("x-middleware-next")).toBeNull();
+    }
+    vi.stubEnv("QA_ACCESS_PASSWORD", `${fixture.password}-rotated`);
+    const revoked = await middleware(request(token));
+    expect(revoked.status).toBe(307);
+    expect(revoked.headers.get("cache-control")).toContain("no-store");
+    expect(revoked.headers.get("x-middleware-next")).toBeNull();
   });
   it("keeps login and its static UI available, but missing config closes everything else", async () => {
     setQaEnv();

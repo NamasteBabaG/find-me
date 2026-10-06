@@ -5,7 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { publicBeachDemo } from "../../../../content/demo/beach-v1";
 import { getDict } from "@/i18n";
 import { createPlayStore } from "../../store/play-store";
-import { AdventurePassport } from "../AdventurePassport";
+import { AdventurePassport, prefetchOwnerPassport } from "../AdventurePassport";
+import { prefetchOwnerPassport as prefetchWithoutReader } from "../../engine/owner-passport-preload";
+import type { PassportView } from "@/domain/passport/passport";
 
 const copy = { wrongTarget: "no", wrongTargetNoItem: "no", bonus: "bonus", fallbackSuccess: "found" };
 
@@ -19,6 +21,19 @@ function owner(gameId: string) {
 }
 
 describe("the in-game passport while its book opens", () => {
+  it("shares the map's prefetch cache and shows its cached book as soon as the reader mounts", async () => {
+    expect(prefetchOwnerPassport).toBe(prefetchWithoutReader);
+    const book: PassportView = { name: "Cached owner", preparing: 0, worlds: [] };
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ book, childId: "cached-owner" })));
+    vi.stubGlobal("fetch", fetcher);
+    await prefetchWithoutReader("passport-cached");
+    const view = render(<AdventurePassport store={owner("passport-cached")} />);
+    expect(view.container.querySelector(".travel-passport__name")?.textContent).toBe("Cached owner");
+    expect(view.container.querySelector(".adventure-passport__frame")).toBeNull();
+    await act(async () => {});
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
   it("holds the book's frame with the opening words, and no retry while it is only waiting", () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => undefined)));
     const view = render(<AdventurePassport store={owner("passport-wait")} />);

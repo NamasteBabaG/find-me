@@ -14,21 +14,26 @@ class FakeNode {
   type = "sine"; loop = false; buffer: unknown;
   connect = vi.fn((node: unknown) => node);
   disconnect = vi.fn(); start = vi.fn(); stop = vi.fn();
+  onended: (() => void) | null = null;
 }
 const contexts: FakeAudioContext[] = [];
 class FakeAudioContext {
   state = "suspended";
   currentTime = 10; sampleRate = 20;
   destination = new FakeNode();
-  gains: FakeNode[] = []; oscillators: FakeNode[] = []; sources: FakeNode[] = [];
+  gains: FakeNode[] = []; oscillators: FakeNode[] = []; sources: FakeNode[] = []; filters: FakeNode[] = [];
   constructor() { contexts.push(this); }
   resume = vi.fn(async () => { this.state = "running"; });
   suspend = vi.fn(async () => { this.state = "suspended"; });
+  close = vi.fn(async () => { this.state = "closed"; });
   createGain() { const node = new FakeNode(); this.gains.push(node); return node; }
   createOscillator() { const node = new FakeNode(); this.oscillators.push(node); return node; }
   createBufferSource() { const node = new FakeNode(); this.sources.push(node); return node; }
-  createBiquadFilter() { return new FakeNode(); }
-  createBuffer(_channels: number, length: number) { return { getChannelData: () => new Float32Array(length) }; }
+  createBiquadFilter() { const node = new FakeNode(); this.filters.push(node); return node; }
+  createBuffer = vi.fn((_channels: number, length: number) => {
+    const data = new Float32Array(length);
+    return { getChannelData: () => data };
+  });
 }
 const settled = async () => { await Promise.resolve(); await Promise.resolve(); };
 let manager: SoundManager;
@@ -122,6 +127,23 @@ describe("mobile audio unlock, interruption and lifecycle", () => {
     expect(contexts).toHaveLength(1); await settled(); cleanup();
   });
 
+  it("leaves ambience allocation out of gesture capture and schedules the first tap immediately", async () => {
+    const element = document.createElement("div"), button = document.createElement("button"); element.append(button);
+    const cleanup = bindGameAudio(element, manager);
+    manager.startAmbient("waves");
+    button.addEventListener("touchend", () => {
+      manager.play("tap");
+      expect(contexts[0]!.createBuffer).not.toHaveBeenCalled();
+      expect(contexts[0]!.oscillators).toHaveLength(1);
+    });
+    button.dispatchEvent(new Event("touchend", { bubbles: true }));
+    await settled(); const ctx = contexts[0]!;
+    expect(ctx.createBuffer).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(0);
+    expect(ctx.createBuffer).toHaveBeenCalledTimes(1); expect(ctx.sources).toHaveLength(1);
+    cleanup();
+  });
+
   it.each(["pointerup", "click"])("retries Safari interrupted audio from %s instead of ignoring it", async type => {
     manager.unlock(); await settled();
     const ctx = contexts[0]!; ctx.state = "interrupted"; ctx.resume.mockClear();
@@ -143,6 +165,20 @@ describe("mobile audio unlock, interruption and lifecycle", () => {
     manager.resume(); expect(ctx.oscillators).toHaveLength(1);
   });
 
+  it("plays resumed feedback before deferred ambience and preserves its pitch", async () => {
+    manager.unlock(); await settled(); const ctx = contexts[0]!;
+    ctx.state = "suspended";
+    let resolve!: () => void;
+    ctx.resume.mockImplementation(() => new Promise<void>(done => { resolve = () => { ctx.state = "running"; done(); }; }));
+    vi.spyOn(Math, "random").mockReturnValue(.1);
+    manager.startAmbient("waves"); manager.unlock(); manager.play("star", { pitch: 7 });
+    resolve(); await settled();
+    expect(ctx.createBuffer).not.toHaveBeenCalled();
+    expect(ctx.oscillators[0]!.frequency.value).toBeCloseTo(1318.51 * 2 ** ((7 - .4) / 12));
+    vi.advanceTimersByTime(0); expect(ctx.createBuffer).toHaveBeenCalledTimes(1);
+    manager.stopAmbient();
+  });
+
   it("handles a rejected resume without an unhandled rejection and retries on the next gesture", async () => {
     manager.unlock(); await settled(); const ctx = contexts[0]!; ctx.state = "interrupted";
     ctx.resume.mockRejectedValueOnce(new DOMException("Permission needed", "NotAllowedError"));
@@ -159,9 +195,9 @@ describe("mobile audio unlock, interruption and lifecycle", () => {
   });
 
   it("recreates a closed context only at a gesture and restores the requested ambience", async () => {
-    manager.unlock(); await settled(); manager.startAmbient("waves"); const first = contexts[0]!;
+    manager.unlock(); await settled(); manager.startAmbient("waves"); vi.advanceTimersByTime(0); const first = contexts[0]!;
     first.state = "closed"; manager.resume(); expect(contexts).toHaveLength(1);
-    manager.unlock(); await settled(); expect(contexts).toHaveLength(2);
+    manager.unlock(); await settled(); vi.advanceTimersByTime(0); expect(contexts).toHaveLength(2);
     expect(first.sources[0]!.stop).toHaveBeenCalledTimes(1);
     expect(first.oscillators[0]!.stop).toHaveBeenCalledTimes(1);
     expect(contexts[1]!.sources).toHaveLength(1); manager.stopAmbient();
@@ -222,13 +258,141 @@ describe("mobile audio unlock, interruption and lifecycle", () => {
   });
 
   it("stops and disconnects the ambient source AND its modulation oscillator", async () => {
-    manager.unlock(); await settled(); manager.startAmbient("waves"); const ctx = contexts[0]!;
+    manager.unlock(); await settled(); manager.startAmbient("waves"); vi.advanceTimersByTime(0); const ctx = contexts[0]!;
     manager.startAmbient("jungle"); vi.advanceTimersByTime(800);
     expect(ctx.sources[0]!.stop).toHaveBeenCalledTimes(1); expect(ctx.oscillators[0]!.stop).toHaveBeenCalledTimes(1);
     expect(ctx.oscillators[0]!.disconnect).toHaveBeenCalledTimes(1);
     expect(ctx.sources[1]!.stop).not.toHaveBeenCalled();
     manager.stopAmbient(); vi.advanceTimersByTime(800);
     expect(ctx.sources[1]!.stop).toHaveBeenCalledTimes(1); expect(ctx.oscillators[1]!.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("reuses noise samples across repeated cues and world ambience without reusing source nodes", async () => {
+    manager.unlock(); await settled(); const ctx = contexts[0]!;
+    manager.play("page"); manager.play("page"); manager.play("stamp"); manager.play("stamp");
+    expect(ctx.createBuffer).toHaveBeenCalledTimes(2);
+    expect(ctx.sources).toHaveLength(4);
+    expect(ctx.sources[0]!.buffer).toBe(ctx.sources[1]!.buffer);
+    expect(ctx.sources[2]!.buffer).toBe(ctx.sources[3]!.buffer);
+    manager.startAmbient("waves"); vi.advanceTimersByTime(0);
+    manager.startAmbient("jungle"); vi.advanceTimersByTime(0);
+    expect(ctx.createBuffer).toHaveBeenCalledTimes(3);
+    expect(ctx.sources[4]!.buffer).toBe(ctx.sources[5]!.buffer);
+    manager.stopAmbient();
+  });
+
+  it.each(["stop", "mute", "suspend"])("cancels deferred ambience on %s and cannot start it later", async reason => {
+    manager.unlock(); await settled(); const ctx = contexts[0]!;
+    manager.startAmbient("waves");
+    if (reason === "stop") manager.stopAmbient();
+    if (reason === "mute") manager.setMuted(true);
+    if (reason === "suspend") manager.suspend();
+    vi.advanceTimersByTime(0); expect(ctx.createBuffer).not.toHaveBeenCalled(); expect(ctx.sources).toHaveLength(0);
+  });
+
+  it("stops muted ambience while retaining its cue for a later explicit unmute", async () => {
+    manager.unlock(); await settled(); manager.startAmbient("waves"); vi.advanceTimersByTime(0);
+    const ctx = contexts[0]!, buffer = ctx.sources[0]!.buffer;
+    manager.setMuted(true);
+    expect(ctx.sources[0]!.stop).toHaveBeenCalledOnce(); expect(ctx.oscillators[0]!.stop).toHaveBeenCalledOnce();
+    manager.setMuted(false); manager.unlock(); vi.advanceTimersByTime(0);
+    expect(ctx.sources).toHaveLength(2); expect(ctx.sources[1]!.buffer).toBe(buffer);
+    expect(ctx.createBuffer).toHaveBeenCalledOnce(); manager.stopAmbient();
+  });
+
+  it("allocates fresh noise buffers after a closed context is recreated", async () => {
+    manager.unlock(); await settled(); const first = contexts[0]!;
+    manager.play("page"); manager.startAmbient("waves"); vi.advanceTimersByTime(0);
+    first.state = "closed";
+    manager.unlock(); await settled(); manager.play("page"); vi.advanceTimersByTime(0);
+    const second = contexts[1]!;
+    expect(second.createBuffer).toHaveBeenCalledTimes(2);
+    expect(second.sources[0]!.buffer).not.toBe(first.sources[0]!.buffer);
+    expect(second.sources[1]!.buffer).not.toBe(first.sources[1]!.buffer);
+    manager.stopAmbient();
+  });
+
+  it.each(["buffer", "gain", "start"])("contains a deferred ambient %s failure, releases partial nodes, and retries only explicitly", async fault => {
+    manager.unlock(); await settled(); const ctx = contexts[0]!;
+    if (fault === "buffer") ctx.createBuffer.mockImplementationOnce(() => { throw new Error("Buffer unavailable"); });
+    if (fault === "gain") vi.spyOn(ctx, "createGain").mockImplementationOnce(() => { throw new Error("Gain unavailable"); });
+    if (fault === "start") vi.spyOn(ctx, "createOscillator").mockImplementationOnce(() => {
+      const lfo = new FakeNode(); ctx.oscillators.push(lfo);
+      lfo.start.mockImplementationOnce(() => { throw new Error("Start unavailable"); });
+      return lfo;
+    });
+    manager.startAmbient("waves");
+    expect(() => vi.advanceTimersByTime(0)).not.toThrow();
+    for (const source of [...ctx.sources, ...ctx.oscillators]) {
+      expect(source.stop).toHaveBeenCalledOnce(); expect(source.disconnect).toHaveBeenCalledOnce();
+    }
+    for (const filter of ctx.filters) expect(filter.disconnect).toHaveBeenCalledOnce();
+    if (fault === "start") expect(ctx.sources[0]!.start).toHaveBeenCalledOnce(); // Already started before the LFO failed.
+    const allocations = ctx.createBuffer.mock.calls.length;
+    for (let i = 0; i < 5; i += 1) manager.unlock();
+    vi.advanceTimersByTime(0);
+    expect(ctx.createBuffer).toHaveBeenCalledTimes(allocations);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(() => manager.play("tap")).not.toThrow();
+    expect(ctx.oscillators.at(-1)!.start).toHaveBeenCalledOnce();
+    manager.startAmbient("waves"); vi.advanceTimersByTime(0);
+    const recovered = ctx.sources.at(-1)!;
+    expect(recovered.start).toHaveBeenCalledOnce(); expect(recovered.stop).not.toHaveBeenCalled();
+    expect(() => manager.setMuted(true)).not.toThrow();
+    expect(recovered.stop).toHaveBeenCalledOnce(); expect(manager.muted).toBe(true);
+  });
+
+  it.each(["buffer", "gain", "start", "scheduled stop"])("keeps a one-shot %s failure inside the kit and can play the next healthy cue", async fault => {
+    manager.unlock(); await settled(); const ctx = contexts[0]!;
+    if (fault === "buffer") ctx.createBuffer.mockImplementationOnce(() => { throw new Error("Buffer unavailable"); });
+    if (fault === "gain") vi.spyOn(ctx, "createGain").mockImplementationOnce(() => { throw new Error("Gain unavailable"); });
+    if (fault === "start") vi.spyOn(ctx, "createBufferSource").mockImplementationOnce(() => {
+      const source = new FakeNode(); ctx.sources.push(source);
+      source.start.mockImplementationOnce(() => { throw new Error("Start unavailable"); });
+      return source;
+    });
+    if (fault === "scheduled stop") vi.spyOn(ctx, "createOscillator").mockImplementationOnce(() => {
+      const source = new FakeNode(); ctx.oscillators.push(source);
+      source.stop.mockImplementationOnce(() => { throw new Error("Scheduled stop unavailable"); });
+      return source;
+    });
+    expect(() => manager.play(fault === "gain" || fault === "scheduled stop" ? "tap" : "page")).not.toThrow();
+    const failed = [...ctx.oscillators, ...ctx.sources];
+    for (const source of failed) {
+      expect(source.disconnect).toHaveBeenCalledOnce(); expect(source.onended).toBeNull();
+    }
+    for (const node of [...ctx.filters, ...ctx.gains.slice(1)]) expect(node.disconnect).toHaveBeenCalledOnce();
+    expect(() => manager.play("tap")).not.toThrow();
+    const healthy = ctx.oscillators.at(-1)!;
+    expect(healthy.start).toHaveBeenCalledOnce(); expect(healthy.disconnect).not.toHaveBeenCalled();
+    expect(() => manager.setMuted(true)).not.toThrow();
+    expect(healthy.disconnect).toHaveBeenCalledOnce();
+    for (const source of failed) expect(source.disconnect).toHaveBeenCalledOnce(); // No failed graph left tracked.
+  });
+
+  it("discards a context whose master allocation failed and retries on the next real unlock", async () => {
+    vi.spyOn(FakeAudioContext.prototype, "createGain").mockImplementationOnce(() => { throw new Error("Master unavailable"); });
+    expect(() => manager.unlock()).not.toThrow(); await settled();
+    expect(contexts[0]!.close).toHaveBeenCalledOnce();
+    expect(() => manager.play("tap")).not.toThrow();
+    manager.unlock(); await settled(); manager.play("tap");
+    expect(contexts).toHaveLength(2); expect(contexts[1]!.oscillators[0]!.start).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the mute choice and listeners working when gain automation or cleanup fails", async () => {
+    manager.unlock(); await settled(); const ctx = contexts[0]!;
+    manager.play("tap"); const source = ctx.oscillators[0]!;
+    source.stop.mockImplementationOnce(() => { throw new Error("Device gone"); });
+    source.disconnect.mockImplementationOnce(() => { throw new Error("Device gone"); });
+    ctx.gains[0]!.gain.setTargetAtTime.mockImplementationOnce(() => { throw new Error("Device gone"); });
+    const listener = vi.fn(); manager.subscribeMuted(listener);
+    expect(() => manager.setMuted(true)).not.toThrow();
+    expect(listener).toHaveBeenCalledWith(true); expect(manager.muted).toBe(true);
+    expect(JSON.parse(localStorage.getItem(MUTE_PREFERENCE_KEY)!)).toEqual({ version: 1, muted: true });
+    expect(ctx.gains[1]!.disconnect).toHaveBeenCalledOnce();
+    expect(() => manager.suspend()).not.toThrow();
+    manager.setMuted(false); manager.resume(); await settled(); manager.play("tap");
+    expect(ctx.oscillators.at(-1)!.start).toHaveBeenCalledOnce();
   });
 
   it("keeps construction and closed-context suspension failures out of the game", async () => {

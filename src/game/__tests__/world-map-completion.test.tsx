@@ -251,7 +251,7 @@ describe("a finished world's map", () => {
     expect(onTravelDone).toHaveBeenCalledOnce();
   });
 
-  it("restores the completion panel from saved progress on a fresh game-shell mount", () => {
+  it("restores the completion panel from saved progress on a fresh game-shell mount", async () => {
     const config = fixture("he"); const world = config.worlds![0]!;
     const progress = { ...finish(config, boardSlugs(world)), revealed: true, lastWorld: world.slug };
     window.localStorage.setItem(`findme:progress:v1:${config.gameId}`, JSON.stringify(progress));
@@ -259,7 +259,7 @@ describe("a finished world's map", () => {
     expect(view.getByRole("region", { name: world.completion.title })).toBeTruthy();
     expect(view.container.querySelector(".game")?.getAttribute("dir")).toBe("rtl");
     fireEvent.click(view.getByRole("button", { name: getDict("he").game.map.viewCollection }));
-    expect(view.getByRole("heading", { name: "הדרכון של Test" })).toBeTruthy();
+    expect(await view.findByRole("heading", { name: "הדרכון של Test" })).toBeTruthy();
     fireEvent.click(view.getByRole("button", { name: getDict("he").game.passport.map }));
     expect(view.getByRole("region", { name: world.completion.title })).toBeTruthy();
     expect(JSON.parse(window.localStorage.getItem(`findme:progress:v1:${config.gameId}`)!)).toEqual(progress);

@@ -76,6 +76,22 @@ async function completedPopup(locale: "en" | "he") {
 }
 
 describe("completion popup keeps its place and earned progress", () => {
+  it("records the earned completion before a failed fanfare and still opens the completion card", async () => {
+    let keptAtFanfare = false;
+    audio.play.mockImplementation(cue => {
+      if (cue !== "fanfare") return;
+      const progress = JSON.parse(localStorage.getItem("findme:progress:v1:synthetic-completion-actions-en") ?? "null");
+      keptAtFanfare = progress?.scenes.greatwall.completed === true;
+      throw new Error("Synthetic unavailable audio device");
+    });
+    try {
+      const { dialog, store, scene } = await completedPopup("en");
+      expect(keptAtFanfare).toBe(true);
+      expect(dialog).toBeTruthy();
+      expect(store.getState().progress.scenes[scene.slug]!.completed).toBe(true);
+    } finally { audio.play.mockReset(); }
+  });
+
   it.each(["en", "he"] as const)("shows the place emblem/name, then opens the next board directly in %s", async locale => {
     const { view, store, scene, dialog, album } = await completedPopup(locale);
     const place = dialog.querySelector(".complete__place")!;
