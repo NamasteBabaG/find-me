@@ -7,6 +7,7 @@ import { currentUser, draftTokenFromCookie, isAdminEmail } from "@/lib/server/se
 import { requireQaAccess } from "@/lib/server/qa-access";
 import { familySignInHref } from "@/lib/safe-redirect";
 import { MockPay } from "./MockPay";
+import { isLiveShop } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,7 @@ export async function generateMetadata() {
 /** Stand-in for the PSP's hosted checkout page. Dev only. */
 export default async function MockCheckoutPage({ searchParams }: { searchParams: Promise<{ orderId?: string; success?: string; cancel?: string }> }) {
   await requireQaAccess();
+  if (isLiveShop()) notFound();
   const c = getContainer();
   if (c.payment.id !== "mock") notFound();
   const [params, user, draftToken, { t, locale }] = await Promise.all([searchParams, currentUser(), draftTokenFromCookie(), getI18n()]);

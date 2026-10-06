@@ -9,9 +9,11 @@ import { guardDb } from "@/lib/server/db-guard";
 import { flowError, type FlowResult } from "@/i18n/errors";
 import { LIMITS, rateLimit } from "@/lib/server/rate-limit";
 import { worldPurchaseHref, worldPurchaseSignInHref } from "@/domain/world-purchase";
+import { purchasingClosed, purchasingEnabled } from "@/lib/purchasing";
 
 export async function continueWorldAction(childId: string, worldSlug: string, _previous: FlowResult | null, form: FormData): Promise<FlowResult> {
   await requireQaAccess();
+  if (!purchasingEnabled()) return purchasingClosed();
   const user = await currentUser();
   const ageYears = Number(form.get("ageYears"));
   const returnGameId = String(form.get("returnGame") ?? "") || null;

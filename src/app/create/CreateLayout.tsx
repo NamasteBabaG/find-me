@@ -3,6 +3,27 @@ import { getI18n } from "@/i18n/server";
 import { tf } from "@/i18n";
 import { SiteHeader, SiteFooter, Stepper } from "@/ui/Shell";
 import { ScrollToTop } from "./ScrollToTop";
+import { Button, LinkButton } from "@/ui/Button";
+import { purchasingEnabled } from "@/lib/purchasing";
+import type { Dictionary } from "@/i18n/dictionaries/en";
+
+export function CreationPrelaunchNotice({ t, heading = "h1" }: { t: Dictionary; heading?: "h1" | "h2" }) {
+  const Heading = heading;
+  return <div className="fm-stack fm-stack--3 fm-center">
+    <Heading className="create__title">{t.create.prelaunch.title}</Heading>
+    <p className="fm-lead">{t.errors.PURCHASING_CLOSED}</p>
+    <Button disabled size="lg">{t.create.prelaunch.action}</Button>
+    <LinkButton href="/#demo" variant="secondary" size="lg">{t.nav.demo}</LinkButton>
+  </div>;
+}
+
+export async function CreationPrelaunch({ user = null, isAdmin = false }: { user?: { email: string } | null; isAdmin?: boolean }) {
+  const { t } = await getI18n();
+  return <><SiteHeader user={user} isAdmin={isAdmin} />
+    <main className="fm-container fm-container--narrow fm-section create"><CreationPrelaunchNotice t={t} /></main>
+    <SiteFooter />
+  </>;
+}
 
 /**
  * A step that shows a form is read at a form's width; a step that shows three
@@ -12,6 +33,7 @@ import { ScrollToTop } from "./ScrollToTop";
  * and lead stay a paragraph wide inside it.
  */
 export async function CreateFrame({ step, title, lead, user, isAdmin, width = "narrow", children }: { step: number; title: string; lead?: string; user: { email: string } | null; isAdmin: boolean; width?: "narrow" | "mid"; children: ReactNode }) {
+  if (!purchasingEnabled()) return <CreationPrelaunch user={user} isAdmin={isAdmin} />;
   const { t } = await getI18n();
   return (
     <>

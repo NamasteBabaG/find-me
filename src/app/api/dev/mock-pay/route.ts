@@ -4,7 +4,7 @@ import { getContainer } from "@/services/container";
 import { handlePaymentWebhook } from "@/services/order.service";
 import { currentUser, draftTokenFromCookie, isAdminEmail } from "@/lib/server/session";
 import { spendAllowedFor } from "@/domain/spend-policy";
-import { spendGuard } from "@/lib/env";
+import { isLiveShop, spendGuard } from "@/lib/env";
 import { closeDraftCheckout } from "@/services/checkout-close.service";
 
 export const runtime = "nodejs";
@@ -20,13 +20,12 @@ export const runtime = "nodejs";
  * same way /api/jobs/tick does: their session, or the draft cookie they created
  * the game with.
  *
- * The route stays available in production on purpose. Until the real PSP is
- * live, this *is* the checkout, and killing it here would only mean the button
- * does nothing.
+ * Production never accepts simulated payment, even before the real PSP launches.
  */
 export async function POST(req: Request) {
   const denied = await qaAccessDenied(req);
   if (denied) return denied;
+  if (isLiveShop()) return NextResponse.json({ ok: false, body: "not available" }, { status: 404 });
   const c = getContainer();
   if (c.payment.id !== "mock") return NextResponse.json({ ok: false, body: "not available" }, { status: 404 });
   const payment = c.payment as { id: string; sign?: (raw: string) => string };

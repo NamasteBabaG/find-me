@@ -15,6 +15,7 @@ import { activeScenes, sceneBySlug } from "./scene-catalog.service";
 import { boardsOfWorlds, purchasableWorlds } from "./world-catalog.service";
 import { SYSTEM } from "./audit.service";
 import { env } from "@/lib/env";
+import { purchasingClosed, purchasingEnabled } from "@/lib/purchasing";
 import { LOCAL_PATCH_STYLE } from "./generation/local-patch-world";
 import { INTEGRATED_COLLECTION_VERSION } from "../domain/scene/local-patch-versions";
 import { assertNoOutstandingCheckout, DraftCheckoutInProgress } from "./draft-checkout-lock";
@@ -85,6 +86,7 @@ export async function setChildName(c: Container, gameId: string, rawName: string
 }
 
 export async function attachPhoto(c: Container, gameId: string, input: { buffer: Buffer; mimeType: string; crop: CropBox | null }): Promise<FlowResult> {
+  if (!purchasingEnabled()) return purchasingClosed();
   const game = await loadDraft(c, gameId);
   if (!game || !game.childProfile) return flowError("NEED_NAME", "קודם צריך להכניס שם.");
   const status = statusOf(game);

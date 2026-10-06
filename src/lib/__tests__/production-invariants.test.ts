@@ -87,6 +87,34 @@ describe("a QA deployment", () => {
   });
 });
 
+describe("production prelaunch purchasing", () => {
+  it("keeps production closed unless explicitly enabled", async () => {
+    const read = await envWith({ APP_ENV: "production", GENERATION_PROVIDER: "mock", PAYMENT_PROVIDER: "mock" });
+    expect(read().PURCHASING_ENABLED).toBe("off");
+    const { purchasingEnabled } = await import("../purchasing");
+    expect(purchasingEnabled()).toBe(false);
+  });
+
+  it("refuses to enable simulated purchases in production", async () => {
+    const read = await envWith({ APP_ENV: "production", GENERATION_PROVIDER: "mock", PAYMENT_PROVIDER: "mock", PURCHASING_ENABLED: "on" });
+    expect(read).toThrow(/PURCHASING_ENABLED=on requires PAYMENT_PROVIDER=payme/);
+  });
+
+  it("requires an explicit launch choice with the real payment adapter", async () => {
+    const read = await envWith({ APP_ENV: "production", GENERATION_PROVIDER: "mock", PAYMENT_PROVIDER: "payme", PURCHASING_ENABLED: "on" });
+    read();
+    const { purchasingEnabled } = await import("../purchasing");
+    expect(purchasingEnabled()).toBe(true);
+  });
+
+  it.each(["qa", "development"])("preserves the %s creation flow with the production gate off", async appEnv => {
+    const read = await envWith({ APP_ENV: appEnv, GENERATION_PROVIDER: "mock", PAYMENT_PROVIDER: "mock", PURCHASING_ENABLED: "off" });
+    read();
+    const { purchasingEnabled } = await import("../purchasing");
+    expect(purchasingEnabled()).toBe(true);
+  });
+});
+
 describe("development", () => {
   it("is left alone, where every provider is a mock by design", async () => {
     const read = await envWith({ NODE_ENV: "development", GENERATION_PROVIDER: "openai", PAYMENT_PROVIDER: "mock", EMAIL_PROVIDER: "console" });
@@ -102,11 +130,11 @@ describe("a setting with an invisible character in it", () => {
    * threw, and every route reads the environment. One character nobody could
    * see took down the whole site.
    */
-  it.each(["GENERATION_ENABLED", "LOCAL_PATCH_PLAYER_REVIEW"])("reads %s as meant, and says it had to", async key => {
+  it.each(["GENERATION_ENABLED", "LOCAL_PATCH_PLAYER_REVIEW", "PURCHASING_ENABLED"])("reads %s as meant, and says it had to", async key => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const read = await envWith({ APP_ENV: "qa", GENERATION_PROVIDER: "mock", [key]: "\uFEFFoff" });
     expect(read).not.toThrow();
-    expect(read()[key as "GENERATION_ENABLED" | "LOCAL_PATCH_PLAYER_REVIEW"]).toBe("off");
+    expect(read()[key as "GENERATION_ENABLED" | "LOCAL_PATCH_PLAYER_REVIEW" | "PURCHASING_ENABLED"]).toBe("off");
     expect(warn).toHaveBeenCalledWith(expect.stringContaining(key));
     warn.mockRestore();
   });

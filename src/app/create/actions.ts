@@ -17,6 +17,7 @@ import { flowError, type FlowResult } from "@/i18n/errors";
 import { guardDb } from "@/lib/server/db-guard";
 import { chooseDraftChild } from "@/services/family.service";
 import { worldPurchaseDraftHref, worldPurchaseSignInHref } from "@/domain/world-purchase";
+import { purchasingClosed, purchasingEnabled } from "@/lib/purchasing";
 
 export type ActionResult = FlowResult;
 
@@ -38,6 +39,7 @@ export async function currentDraft(explicitGameId?: string) {
 
 export async function saveNameAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   await requireQaAccess();
+  if (!purchasingEnabled()) return purchasingClosed();
   const c = getContainer();
   const name = String(formData.get("name") ?? "");
   const ageYears = Number(formData.get("ageYears"));
@@ -65,6 +67,7 @@ export async function saveNameAction(_prev: ActionResult | null, formData: FormD
 
 export async function choosePackageAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   await requireQaAccess();
+  if (!purchasingEnabled()) return purchasingClosed();
   const c = getContainer();
   const tier = String(formData.get("tier") ?? "");
   const res = await guardDb(async () => {
@@ -78,6 +81,7 @@ export async function choosePackageAction(_prev: ActionResult | null, formData: 
 
 export async function chooseScenesAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   await requireQaAccess();
+  if (!purchasingEnabled()) return purchasingClosed();
   const c = getContainer();
   const slugs = formData.getAll("scene").map(String);
   const res = await guardDb(async () => {
@@ -91,6 +95,7 @@ export async function chooseScenesAction(_prev: ActionResult | null, formData: F
 
 export async function checkoutAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   await requireQaAccess();
+  if (!purchasingEnabled()) return purchasingClosed();
   const h = await requestHeaders();
   const ip = h["x-forwarded-for"]?.split(",")[0]?.trim() || h["x-real-ip"] || "unknown";
   if (!rateLimit(`checkout:${ip}`, LIMITS.checkout.limit, LIMITS.checkout.windowMs).ok) {

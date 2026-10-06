@@ -4,6 +4,7 @@ import { getContainer } from "@/services/container";
 import { attachPhoto, draftBelongsTo } from "@/services/create-flow.service";
 import { currentUser, draftTokenFromCookie } from "@/lib/server/session";
 import { LIMITS, callerKey, rateLimit, tooManyRequests } from "@/lib/server/rate-limit";
+import { purchasingClosed, purchasingEnabled } from "@/lib/purchasing";
 
 export const runtime = "nodejs";
 
@@ -14,6 +15,7 @@ const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 export async function POST(req: Request) {
   const denied = await qaAccessDenied(req);
   if (denied) return denied;
+  if (!purchasingEnabled()) return NextResponse.json(purchasingClosed(), { status: 503, headers: { "Cache-Control": "no-store" } });
   // Uploads cost storage and generation, so a stranger gets a handful per window.
   const limited = rateLimit(callerKey(req, "photo"), LIMITS.photoUpload.limit, LIMITS.photoUpload.windowMs);
   if (!limited.ok) return tooManyRequests(limited);

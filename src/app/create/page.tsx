@@ -1,10 +1,11 @@
 import { currentUser, isAdminEmail } from "@/lib/server/session";
 import { getI18n } from "@/i18n/server";
-import { CreateFrame } from "./CreateLayout";
+import { CreateFrame, CreationPrelaunch } from "./CreateLayout";
 import { NameForm } from "./NameForm";
 import { currentDraft } from "./actions";
 import { getContainer } from "@/services/container";
 import { listFamilyChildren } from "@/services/family.service";
+import { purchasingEnabled } from "@/lib/purchasing";
 
 export async function generateMetadata() {
   const { t } = await getI18n();
@@ -12,6 +13,7 @@ export async function generateMetadata() {
 }
 
 export default async function CreateNamePage({ searchParams }: { searchParams: Promise<{ name?: string; child?: string }> }) {
+  if (!purchasingEnabled()) return <CreationPrelaunch />;
   const [user, draft, params, { t }] = await Promise.all([currentUser(), currentDraft(), searchParams, getI18n()]);
   const initialName = draft?.childProfile?.displayName ?? (params.name ?? "").slice(0, 24);
   const children = user ? await listFamilyChildren(getContainer().db, user.id) : [];

@@ -229,6 +229,7 @@ export const en = {
   },
   create: {
     steps: ["Name & age", "Photo", "Package", "Choose worlds", "Summary & payment"],
+    prelaunch: { title: "Personal adventures are coming soon", action: "Creation opens soon" },
     name: {
       title: "Who's hiding?",
       label: "Name",
@@ -725,6 +726,7 @@ export const en = {
     WRONG_SCENE_COUNT: "Please choose exactly {want} worlds.",
     SCENE_UNAVAILABLE: "One of those worlds isn't available.",
     QA_TESTERS_ONLY: "This is a test environment. Only listed testers can create games here.",
+    PURCHASING_CLOSED: "Personal games are not available for purchase yet. You can try the demo.",
     PREVIOUS_STEPS: "Please finish the previous steps first.",
     INVALID_EMAIL: "That email address doesn't look right.",
     SCENES_INCOMPLETE: "The world selection isn't complete.",

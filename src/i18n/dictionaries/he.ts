@@ -225,6 +225,7 @@ export const he: Dictionary = {
   },
   create: {
     steps: ["שם וגיל", "תמונה", "חבילה", "בחירת עולמות", "סיכום ותשלום"],
+    prelaunch: { title: "ההרפתקאות האישיות בדרך", action: "היצירה תיפתח בקרוב" },
     name: {
       title: "מי מתחבא?",
       label: "שם",
@@ -710,6 +711,7 @@ export const he: Dictionary = {
     WRONG_SCENE_COUNT: "בחרו בדיוק {want} עולמות.",
     SCENE_UNAVAILABLE: "הזמינות השתנתה. חזרו לבחירת חבילה כדי לראות מה זמין עכשיו.",
     QA_TESTERS_ONLY: "זו סביבת בדיקה. רק בודקים רשומים יכולים ליצור כאן משחקים.",
+    PURCHASING_CLOSED: "רכישת משחק אישי עדיין לא פתוחה. אפשר לשחק בהדגמה.",
     PREVIOUS_STEPS: "צריך לסיים את השלבים הקודמים.",
     INVALID_EMAIL: "בדקו שכתובת המייל מלאה ותקינה.",
     SCENES_INCOMPLETE: "בחירת העולמות לא הושלמה.",

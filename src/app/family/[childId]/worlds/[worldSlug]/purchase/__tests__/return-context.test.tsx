@@ -4,7 +4,8 @@ import { getDict } from "@/i18n";
 import { worldPurchaseDraftHref, worldPurchaseHref, worldPurchaseSignInHref } from "@/domain/world-purchase";
 import { safeLocalPath } from "@/lib/safe-redirect";
 
-const f = vi.hoisted(() => ({ user: vi.fn(), context: vi.fn(), begin: vi.fn(), draft: vi.fn(), cookie: vi.fn(), container: vi.fn(), limit: vi.fn() }));
+const f = vi.hoisted(() => ({ user: vi.fn(), context: vi.fn(), begin: vi.fn(), draft: vi.fn(), cookie: vi.fn(), container: vi.fn(), limit: vi.fn(), enabled: true }));
+vi.mock("@/lib/purchasing", async original => ({ ...await original<typeof import("@/lib/purchasing")>(), purchasingEnabled: () => f.enabled }));
 vi.mock("next/navigation", () => ({ redirect: (href: string) => { throw Error(`REDIRECT:${href}`); }, notFound: () => { throw Error("NOT_FOUND"); } }));
 vi.mock("@/lib/server/qa-access", () => ({ requireQaAccess: async () => {} }));
 vi.mock("@/lib/server/session", () => ({ currentUser: f.user, isAdminEmail: () => false, setDraftCookie: f.cookie }));
@@ -24,6 +25,7 @@ import ClosePaymentPage from "@/app/checkout/close/page";
 
 beforeEach(() => {
   vi.clearAllMocks(); vi.stubGlobal("React", React);
+  f.enabled = true;
   f.user.mockResolvedValue(null); f.draft.mockResolvedValue(null); f.limit.mockReturnValue({ ok: true }); f.container.mockReturnValue({ db: {} });
 });
 afterEach(() => { vi.unstubAllGlobals(); });
@@ -39,6 +41,17 @@ function panelProps(node: unknown): Record<string, unknown> | undefined {
 }
 
 describe("world purchase session recovery", () => {
+  it("prelaunch confirmation refuses before creating a continuation draft or reading an account", async () => {
+    f.enabled = false;
+    expect(await continueWorldAction(route.childId, route.worldSlug, null, new FormData())).toMatchObject({ ok: false, code: "PURCHASING_CLOSED" });
+    expect(f.user).not.toHaveBeenCalled(); expect(f.container).not.toHaveBeenCalled(); expect(f.begin).not.toHaveBeenCalled(); expect(f.cookie).not.toHaveBeenCalled();
+  });
+  it.each(["new", "photo", "checkout"])("a prelaunch %s continuation page does not offer photo-wizard entry", async state => {
+    f.enabled = false; f.user.mockResolvedValue({ id: "owner", email: "owner@example.invalid" });
+    f.context.mockResolvedValue({ child: { displayName: "Synthetic" }, world: { name: { he: "ממלכה", en: "Kingdom" } }, state, ageYears: 8, active: state === "new" ? null : { id: "synthetic-draft" }, returnHref: "/family/child-test" });
+    expect(panelProps(await WorldPurchasePage({ params: Promise.resolve(route), searchParams: Promise.resolve({}) }))).toBeUndefined();
+    expect(f.begin).not.toHaveBeenCalled();
+  });
   it("the parent GET retains its child, world, requested age and owned-return context without reading private context while signed out", async () => {
     await expect(WorldPurchasePage({ params: Promise.resolve(route), searchParams: Promise.resolve({ ageYears: "8", returnGame: "source-game" }) })).rejects.toThrow(`REDIRECT:${signIn}`);
     expect(f.context).not.toHaveBeenCalled(); expect(f.begin).not.toHaveBeenCalled();

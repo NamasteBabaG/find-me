@@ -7,6 +7,7 @@ import { flowError, type FlowError } from "@/i18n/errors";
 import type { Container } from "./container";
 import { spendAllowedFor } from "@/domain/spend-policy";
 import { spendGuard } from "@/lib/env";
+import { purchasingClosed, purchasingEnabled } from "@/lib/purchasing";
 import type { PaymentWebhookEvent } from "@/infra/payment/types";
 import { canTransition, isAfterPayment, type GameStatus } from "@/domain/order-state";
 import { ensureUser } from "./auth.service";
@@ -29,6 +30,7 @@ class CheckoutDraftConflict extends Error {}
 function requireCheckoutDraft(ok: unknown): asserts ok { if (!ok) throw new CheckoutDraftConflict("Checkout draft ownership or photo changed"); }
 
 export async function startCheckout(c: Container, input: { gameId: string; email: string; currency: Currency; access: CheckoutDraftAccess; legalVersion?: string }): Promise<{ ok: true; checkoutUrl: string; userId: string } | FlowError> {
+  if (!purchasingEnabled()) return purchasingClosed();
   if (input.legalVersion !== undefined && input.legalVersion !== LEGAL_VERSION) return flowError("TERMS_REQUIRED", "יש לאשר את הנוסח העדכני לפני התשלום.");
   // Server callers must resolve geography explicitly. Never infer money from
   // the child's game language, and fail before side effects on invalid input.

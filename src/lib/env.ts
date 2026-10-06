@@ -24,6 +24,8 @@ const EnvSchema = z.object({
   SESSION_SECRET: z.string().min(16).default(DEV_SESSION_SECRET),
 
   PAYMENT_PROVIDER: z.enum(["mock", "payme"]).default("mock"),
+  /** Production creation and checkout stay closed until explicitly launched. QA/dev retain their existing flow. */
+  PURCHASING_ENABLED: z.enum(["on", "off"]).default("off"),
   GENERATION_PROVIDER: z.enum(["mock", "replicate", "openai"]).default("mock"),
   /** Blocks new protected work in instances that loaded "off". Does not cancel
    * in-flight calls or govern every manual script; verify the deployed value. */
@@ -160,6 +162,9 @@ export function env(): Env {
   // the rule is keyed on what the deployment says it is, not on NODE_ENV, which
   // cannot tell a staging box from the real thing.
   const appEnv = parsed.data.APP_ENV ?? (parsed.data.NODE_ENV === "production" ? "production" : "development");
+  if (appEnv === "production" && parsed.data.PURCHASING_ENABLED === "on" && parsed.data.PAYMENT_PROVIDER !== "payme") {
+    throw new Error("PURCHASING_ENABLED=on requires PAYMENT_PROVIDER=payme in production — simulated purchases must remain closed.");
+  }
   if (appEnv === "production" && parsed.data.GENERATION_PROVIDER !== "mock" && parsed.data.PAYMENT_PROVIDER !== "payme") {
     throw new Error(
       `GENERATION_PROVIDER is "${parsed.data.GENERATION_PROVIDER}" while PAYMENT_PROVIDER is "${parsed.data.PAYMENT_PROVIDER}": every game would cost real money and collect none. Set PAYMENT_PROVIDER=payme, or GENERATION_PROVIDER=mock - or, if this deployment is a staging box, set APP_ENV=qa.`,

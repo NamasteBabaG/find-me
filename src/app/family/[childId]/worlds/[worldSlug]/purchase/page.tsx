@@ -11,6 +11,8 @@ import { LinkButton } from "@/ui/Button";
 import { PurchasePanel } from "./PurchasePanel";
 import { validChildAge } from "@/domain/child-appearance";
 import { worldPurchaseHref, worldPurchaseSignInHref } from "@/domain/world-purchase";
+import { purchasingEnabled } from "@/lib/purchasing";
+import { CreationPrelaunchNotice } from "@/app/create/CreateLayout";
 
 export const metadata = { robots: { index: false, follow: false } };
 
@@ -31,6 +33,7 @@ export default async function WorldPurchasePage({ params, searchParams }: {
       <section className="fm-card fm-card--pad-4 fm-stack fm-stack--3">
         <p className="fm-hint">{t.worldPurchase.selectedWorld}</p><h2>{pick(context.world.name, locale)}</h2>
         {ready || preparing ? <><p>{ready ? t.worldPurchase.owned : t.worldPurchase.preparing}</p><LinkButton href={href!} size="lg">{ready ? t.worldPurchase.playWorld : t.worldPurchase.viewPreparation}</LinkButton></>
+          : !purchasingEnabled() ? <CreationPrelaunchNotice t={t} heading="h2" />
           : <><p className="fm-lead">{t.worldPurchase.priceLabel}: <bdi>{formatMoney(priceFor("ONE_WORLD", currency, context.continuation), currency, locale)}</bdi></p>
             <p>{t.worldPurchase.photoNeeded}</p><PurchasePanel childId={route.childId} worldSlug={route.worldSlug} ageYears={!context.active && validChildAge(requestedAge) ? requestedAge : context.ageYears} returnGameId={context.returnGameId} resuming={Boolean(context.active)} /></>}
       </section>

@@ -11,6 +11,7 @@ import { newDraftStyleVersion, sceneVersionForDraft, worldsForDraft } from "./cr
 import { sceneBySlug } from "./scene-catalog.service";
 import { childHasPaidWorld } from "./child-pricing.service";
 import { outstandingCheckout } from "./draft-checkout-lock";
+import { purchasingClosed, purchasingEnabled } from "@/lib/purchasing";
 
 const selection = { childProfile: true, orders: true, scenes: { orderBy: { orderIndex: "asc" as const } } };
 function paidForOwner(orders: readonly { userId: string; paymentStatus: string; refundedAt: Date | null }[], ownerId: string) {
@@ -56,6 +57,7 @@ export type WorldPurchaseResult = { ok: true; gameId: string; href: string; draf
 
 /** No provider or generation work: one parent confirmation creates one unpaid draft. */
 export async function beginWorldPurchase(c: Container, input: WorldPurchaseInput & { ageYears: number; locale: Locale }): Promise<WorldPurchaseResult> {
+  if (!purchasingEnabled()) return purchasingClosed();
   if (!validChildAge(input.ageYears)) return flowError("INVALID_CHILD_AGE", "בחרו גיל בין 2 ל־10.");
   const styleVersion = newDraftStyleVersion(), version = sceneVersionForDraft(styleVersion);
   const world = (await worldsForDraft(c, styleVersion)).find(w => w.slug === input.worldSlug);

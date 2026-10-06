@@ -1,5 +1,6 @@
 import { beforeEach, expect, it, vi } from "vitest";
-const f = vi.hoisted(() => ({ lookup: vi.fn(), intent: vi.fn(), user: vi.fn(), access: vi.fn(), create: vi.fn(), choose: vi.fn(), cookie: vi.fn(), token: "draft-token" }));
+const f = vi.hoisted(() => ({ lookup: vi.fn(), intent: vi.fn(), user: vi.fn(), access: vi.fn(), create: vi.fn(), choose: vi.fn(), cookie: vi.fn(), token: "draft-token", enabled: true }));
+vi.mock("@/lib/purchasing", async original => ({ ...await original<typeof import("@/lib/purchasing")>(), purchasingEnabled: () => f.enabled }));
 vi.mock("@/lib/server/qa-access", () => ({ requireQaAccess: f.access }));
 vi.mock("@/services/container", () => ({ getContainer: () => ({ db: { game: { findUnique: f.lookup }, childWorldPurchase: { findFirst: f.intent } } }) }));
 vi.mock("@/lib/server/session", () => ({ currentUser: f.user, draftTokenFromCookie: async () => f.token, setDraftCookie: f.cookie }));
@@ -8,12 +9,25 @@ vi.mock("@/lib/server/db-guard", () => ({ guardDb: (fn: () => unknown) => fn() }
 vi.mock("@/services/create-flow.service", async importOriginal => ({ ...await importOriginal<typeof import("@/services/create-flow.service")>(), createDraft: f.create }));
 vi.mock("@/services/family.service", () => ({ chooseDraftChild: f.choose }));
 vi.mock("next/navigation", () => ({ redirect: (url: string) => { throw Error(`redirect:${url}`); } }));
-import { currentDraft, saveNameAction } from "../actions";
+import { choosePackageAction, chooseScenesAction, currentDraft, saveNameAction } from "../actions";
 
 beforeEach(() => {
   vi.clearAllMocks(); f.token = "draft-token"; f.access.mockResolvedValue(undefined); f.user.mockResolvedValue({ id: "owner" });
+  f.enabled = true;
   f.lookup.mockResolvedValue({ id: "draft", draftToken: f.token, ownerId: "owner", status: "PHOTO_APPROVED", childProfile: { displayName: "Example" }, scenes: [] });
   f.intent.mockResolvedValue({ ownerId: "owner", activeGameId: "draft" });
+});
+it.each(["fresh", "existing"])("prelaunch blocks %s child creation without saving names or drafts", async kind => {
+  f.enabled = false;
+  const form = new FormData(); form.set("name", "Synthetic"); form.set("ageYears", "8");
+  if (kind === "fresh") form.set("freshAdventure", "1");
+  expect(await saveNameAction(null, form)).toMatchObject({ ok: false, code: "PURCHASING_CLOSED" });
+  expect(f.lookup).not.toHaveBeenCalled(); expect(f.create).not.toHaveBeenCalled(); expect(f.choose).not.toHaveBeenCalled(); expect(f.cookie).not.toHaveBeenCalled();
+});
+it.each([choosePackageAction, chooseScenesAction])("prelaunch blocks saved-draft selection mutations", async action => {
+  f.enabled = false;
+  expect(await action(null, new FormData())).toMatchObject({ ok: false, code: "PURCHASING_CLOSED" });
+  expect(f.lookup).not.toHaveBeenCalled(); expect(f.user).not.toHaveBeenCalled();
 });
 it("an explicit owned world draft keeps its target when another tab has changed the cookie", async () => {
   f.token = "other-tab-cookie";

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const f = vi.hoisted(() => ({ limit: vi.fn(), checkout: vi.fn(), container: vi.fn(), user: vi.fn(), draft: { id: "draft" } }));
+const f = vi.hoisted(() => ({ limit: vi.fn(), checkout: vi.fn(), container: vi.fn(), user: vi.fn(), draft: { id: "draft" }, enabled: true }));
+vi.mock("@/lib/purchasing", async original => ({ ...await original<typeof import("@/lib/purchasing")>(), purchasingEnabled: () => f.enabled }));
 vi.mock("next/navigation", () => ({ redirect: (url: string) => { throw Error(`REDIRECT:${url}`); } }));
 vi.mock("@/lib/server/qa-access", () => ({ requireQaAccess: async () => {} }));
 vi.mock("@/lib/server/session", () => ({ currentUser: f.user, draftTokenFromCookie: async () => "cookie", requestHeaders: async () => ({ "x-forwarded-for": "192.0.2.1, 192.0.2.2" }) }));
@@ -13,11 +14,17 @@ import { checkoutAction } from "../actions";
 import { LEGAL_VERSION } from "@/domain/legal";
 beforeEach(() => {
   vi.clearAllMocks(); f.limit.mockReturnValue({ ok: true });
+  f.enabled = true;
   f.user.mockResolvedValue({ id: "owner" });
   f.container.mockReturnValue({ db: { game: { findUnique: async () => ({ ...f.draft, status: "PACKAGE_SELECTED" }) } } });
   f.checkout.mockResolvedValue({ ok: true, checkoutUrl: "/checkout/synthetic" });
 });
 describe("checkout server action rate gates", () => {
+  it("prelaunch refuses before any checkout or draft lookup", async () => {
+    f.enabled = false;
+    expect(await checkoutAction(null, new FormData())).toMatchObject({ ok: false, code: "PURCHASING_CLOSED" });
+    expect(f.container).not.toHaveBeenCalled(); expect(f.checkout).not.toHaveBeenCalled(); expect(f.user).not.toHaveBeenCalled();
+  });
   it("rejects an IP flood before reading a draft or contacting a provider", async () => {
     f.limit.mockReturnValue({ ok: false });
     expect(await checkoutAction(null, new FormData())).toMatchObject({ ok: false, code: "TOO_MANY_REQUESTS" });

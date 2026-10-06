@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDict } from "@/i18n";
 import { familySignInHref } from "@/lib/safe-redirect";
 
-const f = vi.hoisted(() => ({ user: vi.fn(), token: vi.fn(), admin: vi.fn(), read: vi.fn(), access: vi.fn(), provider: "mock" }));
+const f = vi.hoisted(() => ({ user: vi.fn(), token: vi.fn(), admin: vi.fn(), read: vi.fn(), access: vi.fn(), provider: "mock", live: false }));
+vi.mock("@/lib/env", () => ({ isLiveShop: () => f.live }));
 vi.mock("next/navigation", () => ({ redirect: (url: string) => { throw Error(`REDIRECT:${url}`); }, notFound: () => { throw Error("NOT_FOUND"); } }));
 vi.mock("@/lib/server/qa-access", () => ({ requireQaAccess: f.access }));
 vi.mock("@/lib/server/session", () => ({ currentUser: f.user, draftTokenFromCookie: f.token, isAdminEmail: f.admin }));
@@ -14,6 +15,7 @@ import MockCheckoutPage from "./page";
 
 beforeEach(() => {
   vi.clearAllMocks(); vi.stubGlobal("React", React); f.provider = "mock";
+  f.live = false;
   f.access.mockResolvedValue(undefined); f.user.mockResolvedValue({ id: "owner", email: "owner@example.invalid" }); f.token.mockResolvedValue(null); f.admin.mockReturnValue(false);
   f.read.mockResolvedValue({ id: "stored-order", gameId: "stored-game", userId: "owner", provider: "mock", amountAgorot: 3900, currency: "ILS", packageTier: "ONE_WORLD",
     game: { id: "stored-game", ownerId: "owner", draftToken: "creator-draft", childProfile: { displayName: "Synthetic" } } });
@@ -28,6 +30,11 @@ function paymentProps(node: unknown): Record<string, unknown> | undefined {
 }
 
 describe("mock checkout display authority and stored return destinations", () => {
+  it("production hides the mock checkout before reading an order or account", async () => {
+    f.live = true;
+    await expect(MockCheckoutPage({ searchParams: Promise.resolve({ orderId: "stored-order" }) })).rejects.toThrow("NOT_FOUND");
+    expect(f.read).not.toHaveBeenCalled(); expect(f.user).not.toHaveBeenCalled();
+  });
   it.each(["javascript:alert(1)", "https://outside.invalid/collect", "//outside.invalid/collect", "/creating/foreign-game"])("ignores the untrusted success/cancel destination %s", async malicious => {
     const tree = await MockCheckoutPage({ searchParams: Promise.resolve({ orderId: "stored-order", success: malicious, cancel: malicious }) });
     expect(paymentProps(tree)).toMatchObject({ orderId: "stored-order", successUrl: "/creating/stored-game", cancelUrl: "/checkout/close?game=stored-game", declinedUrl: "/checkout/close?game=stored-game" });
