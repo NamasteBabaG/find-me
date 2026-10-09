@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { requireQaAccess } from "@/lib/server/qa-access";
 import { getContainer } from "@/services/container";
 import { getCurrency } from "@/i18n/server";
-import { createDraft, searchLevelQuestion, selectPackage, selectWorlds } from "@/services/create-flow.service";
+import { createDraft, searchLevelTerms, selectPackage, selectWorlds } from "@/services/create-flow.service";
 import { startCheckout } from "@/services/order.service";
 import { validChildAge } from "@/domain/child-appearance";
 import { isSearchLevel, type SearchLevel } from "@/domain/search-level";
@@ -35,19 +35,23 @@ export async function saveNameAction(_prev: ActionResult | null, formData: FormD
     formData.get("freshAdventure") === "1" ? null : currentDraft(), currentUser(), getLocale(), draftTokenFromCookie(),
   ]);
   if (draft?.childProfileId && draft.familyChildId !== familyChildId) draft = null;
-  // The server decides whether the cards were asked, never the form: a level is
-  // required exactly when they were, and checked before any draft is created.
-  const choice = await searchLevelQuestion(c, draft);
+  // Three separate facts, all decided by the server before any draft or cookie:
+  // whether this draft must answer (the server's terms, never the form), whether an
+  // answer was sent, and whether that answer can be sold now. A sent Detectives
+  // answer that cannot be sold is refused, never quietly dropped to Explorers; a
+  // legacy form without the field keeps its legacy meaning.
+  const terms = await searchLevelTerms(c, draft);
+  const sent = typeof level === "string" && level !== "" ? level : null;
   let searchLevel: SearchLevel | undefined;
-  if (choice.shown) {
-    if (!isSearchLevel(level)) return flowError("SEARCH_LEVEL_REQUIRED", "בחרו מגלים או בלשים.");
-    if (level === "detectives" && !choice.detectives) return flowError("SEARCH_LEVEL_UNAVAILABLE", "מסלול הבלשים עוד לא פתוח.");
-    searchLevel = level;
-  }
+  if (sent !== null) {
+    if (!isSearchLevel(sent)) return flowError("SEARCH_LEVEL_REQUIRED", "בחרו מגלים או בלשים.");
+    if (sent === "detectives" && !terms.detectives) return flowError("SEARCH_LEVEL_UNAVAILABLE", "מסלול הבלשים עוד לא פתוח.");
+    searchLevel = sent;
+  } else if (terms.asked) return flowError("SEARCH_LEVEL_REQUIRED", "בחרו מגלים או בלשים.");
   let token = draftToken;
   let gameId = draft?.id;
   if (!draft) {
-    const created = await createDraft(c, user?.id ?? null, locale);
+    const created = await createDraft(c, user?.id ?? null, locale, { askSearchLevel: terms.asked });
     await setDraftCookie(created.draftToken);
     token = created.draftToken;
     gameId = created.gameId;

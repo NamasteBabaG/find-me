@@ -8,7 +8,8 @@ import { formatMoney } from "@/i18n";
 const pricing = vi.hoisted(() => ({ user: null as { id: string; email: string } | null, eligible: vi.fn() }));
 
 vi.mock("@/services/container", () => ({ getContainer: () => ({}) }));
-vi.mock("@/services/create-flow.service", () => ({ availablePackages: async () => PACKAGE_ORDER.map(t => PACKAGES[t]), worldsForDraft: async () => ["journey", "magic", "time"].map(slug => ({ slug })), sceneVersionForLevel: () => 12 }));
+vi.mock("@/services/create-flow.service", () => ({ availablePackages: async () => PACKAGE_ORDER.map(t => PACKAGES[t]), worldsForDraft: async () => ["journey", "magic", "time"].map(slug => ({ slug })), sceneVersionForLevel: () => 12,
+  searchLevelTerms: async () => ({ asked: false, required: false, stale: false, openPayment: false, detectives: false }) }));
 vi.mock("@/services/generation/local-patch-world", () => ({ LOCAL_PATCH_STYLE: "local-patch-world-v1" }));
 vi.mock("@/lib/server/session", () => ({ currentUser: async () => pricing.user, isAdminEmail: () => false }));
 vi.mock("@/services/child-pricing.service", () => ({ childHasPaidWorld: pricing.eligible }));

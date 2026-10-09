@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getContainer } from "@/services/container";
-import { draftSummary, sceneVersionForLevel, searchLevelChoice, worldsForDraft } from "@/services/create-flow.service";
+import { detectiveSelectionEligible, draftSummary, searchLevelTerms, worldsForDraft } from "@/services/create-flow.service";
 import { storedSearchLevel } from "@/domain/search-level";
 import { gameShape, worldsOwned } from "@/services/world-catalog.service";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
@@ -30,12 +30,14 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
   const intent = user && draft.ownerId === user.id ? await c.db.childWorldPurchase.findUnique({ where: { activeGameId: draft.id } }) : null;
   const purchase = intent && user && intent.ownerId === user.id && intent.familyChildId === draft.familyChildId ? intent : null;
   if (purchase && !draft.childProfile.originalPhotoAssetId) redirect(`/create/photo?game=${encodeURIComponent(draft.id)}`);
-  // A draft from before the cards were asked answers them first; a family world purchase fixed its level when it began.
-  const levels = await searchLevelChoice(c, draft.styleVersion);
-  if (!draft.searchLevel && !purchase && levels.shown) redirect("/create");
+  // The same terms checkout applies. Only a draft that was asked must have answered; a
+  // level that can no longer be sold is asked again; an open payment keeps its terms and
+  // is never sent away from them. A family world purchase fixed its level when it began.
+  const terms = await searchLevelTerms(c, draft);
   const level = storedSearchLevel(draft.searchLevel);
-  // A level whose boards were withdrawn is answered again before any payment page.
-  if (!purchase && sceneVersionForLevel(draft.styleVersion, level) === null) redirect("/create");
+  if (!purchase && !terms.openPayment && (terms.stale || terms.required && !draft.searchLevel)) redirect("/create");
+  // A Detectives world withdrawn after it was chosen is chosen again where worlds are chosen.
+  if (!purchase && !terms.openPayment && level === "detectives" && !await detectiveSelectionEligible(c, draft)) redirect("/create/scenes");
   const [summary, worldCount] = await Promise.all([draftSummary(c, draft.id), worldsForDraft(c, draft.styleVersion, level).then(w => w.length)]);
   if (!summary?.pkg || summary.scenes.length !== boardsFor(summary.pkg.tier)) redirect("/create/scenes");
   // When the package takes every world there is, the worlds step was skipped, so "back" means the package step.

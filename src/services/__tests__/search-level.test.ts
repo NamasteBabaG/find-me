@@ -10,14 +10,14 @@ import { MockPaymentProvider } from "@/infra/payment/mock";
 import { LEGAL_VERSION } from "@/domain/legal";
 import type { DetectiveRelease } from "@/domain/search-level";
 import type { Container } from "../container";
-import { attachPhoto, createDraft, searchLevelChoice, searchLevelQuestion, selectPackage, selectWorlds, worldsForDraft } from "../create-flow.service";
+import { attachPhoto, createDraft, detectiveSelectionEligible, searchLevelChoice, searchLevelTerms, selectPackage, selectWorlds, worldsForDraft } from "../create-flow.service";
 import { chooseDraftChild } from "../family.service";
 import { startCheckout } from "../order.service";
 import { beginWorldPurchase } from "../world-purchase.service";
 import { boardsOfWorlds } from "../world-catalog.service";
 
-// Synthetic flags and a synthetic Detectives release. The release points journey at the
-// existing v12 boards ONLY to exercise the plumbing; no real Detectives content is implied.
+// Synthetic flags and synthetic Detectives releases. They point journey (and, where a test says
+// so, kingdom) at the existing v12 boards ONLY to exercise the plumbing; no real Detectives content is implied.
 const f = vi.hoisted(() => ({ env: { APP_ENV: "qa", SEARCH_LEVEL_CHOICE: "off" } as Record<string, string>, releases: [] as DetectiveRelease[] }));
 vi.mock("@/lib/env", () => ({ env: () => f.env, spendGuard: () => ({ appEnv: "qa", realGeneration: false, testers: [] }) }));
 vi.mock("@/domain/spend-policy", () => ({ spendAllowedFor: () => true }));
@@ -25,6 +25,7 @@ vi.mock("../../../content/worlds/detective-releases", () => ({ get DETECTIVE_REL
 
 const STYLE = "local-patch-world-v1";
 const JOURNEY_AT_12: DetectiveRelease = { worldSlug: "journey", styleVersion: STYLE, sceneVersion: 12 };
+const KINGDOM_AT_12: DetectiveRelease = { ...JOURNEY_AT_12, worldSlug: "kingdom" };
 let db: PrismaClient, scratch: string, photo: Buffer, c: Container, sequence = 0;
 beforeAll(async () => {
   scratch = mkdtempSync(path.join(realpathSync(tmpdir()), "findme-search-level-"));
@@ -41,8 +42,9 @@ afterAll(async () => {
 });
 beforeEach(() => { f.env = { APP_ENV: "qa", SEARCH_LEVEL_CHOICE: "on" }; f.releases = [JOURNEY_AT_12]; });
 
+/** A draft made the way the name step makes one: pinned exactly when its cards are shown. */
 async function named(input: { ageYears: number; searchLevel?: "explorers" | "detectives" }) {
-  const draft = await createDraft(c, null, "he");
+  const draft = await createDraft(c, null, "he", { askSearchLevel: (await searchLevelTerms(c, null)).asked });
   expect(await chooseDraftChild(db, { gameId: draft.gameId, actorId: null, draftToken: draft.draftToken, familyChildId: null, name: "Synthetic", ...input })).toEqual({ ok: true });
   return draft;
 }
@@ -52,6 +54,9 @@ async function photographed(input: Parameters<typeof named>[0]) {
   expect(await attachPhoto(c, draft.gameId, { buffer: photo, mimeType: "image/png", crop: null })).toEqual({ ok: true });
   return draft;
 }
+const checkout = (draft: { gameId: string; draftToken: string }) => ({ gameId: draft.gameId, email: `level-${++sequence}@example.invalid`, currency: "ILS" as const,
+  access: { draftToken: draft.draftToken, userId: null }, legalVersion: LEGAL_VERSION });
+const orders = (gameId: string) => db.order.findMany({ where: { gameId } });
 
 describe("whether the parent is asked", () => {
   it("asks only while Detectives can be sold; development shows the cards for review", async () => {
@@ -67,19 +72,32 @@ describe("whether the parent is asked", () => {
     expect(await searchLevelChoice(c, STYLE)).toEqual({ shown: true, detectives: false });
   });
 
-  it("asks again when a draft holds a level that can no longer be served, instead of looping or switching in silence", async () => {
-    const draft = await named({ ageYears: 7, searchLevel: "detectives" });
-    f.releases = []; f.env.SEARCH_LEVEL_CHOICE = "off";
-    expect(await searchLevelQuestion(c, await game(draft.gameId))).toEqual({ shown: true, detectives: false });
-    const explorers = await named({ ageYears: 7, searchLevel: "explorers" });
-    expect(await searchLevelQuestion(c, await game(explorers.gameId))).toEqual({ shown: false, detectives: false });
-    expect(await searchLevelQuestion(c, null)).toEqual({ shown: false, detectives: false });
+  it("pins the question to the draft it was asked on: a later switch neither adds nor removes it", async () => {
+    f.env.SEARCH_LEVEL_CHOICE = "off";
+    const legacy = await named({ ageYears: 6 });
+    f.env.SEARCH_LEVEL_CHOICE = "on";
+    expect(await searchLevelTerms(c, await game(legacy.gameId))).toMatchObject({ asked: false, required: false });
+    const asked = await named({ ageYears: 6 });
+    expect(await searchLevelTerms(c, await game(asked.gameId))).toMatchObject({ asked: true, required: true });
+    f.env.SEARCH_LEVEL_CHOICE = "off";
+    expect(await searchLevelTerms(c, await game(asked.gameId))).toMatchObject({ asked: true, required: true });
   });
 
-  it("offers a Detectives world only with its own release, never by falling back to Explorers", async () => {
+  it("asks again when a draft's level can no longer be sold, instead of looping or switching in silence", async () => {
+    const detectives = await named({ ageYears: 7, searchLevel: "detectives" });
+    const explorers = await named({ ageYears: 7, searchLevel: "explorers" });
+    f.releases = []; f.env.SEARCH_LEVEL_CHOICE = "off";
+    expect(await searchLevelTerms(c, await game(detectives.gameId))).toMatchObject({ asked: true, stale: true, detectives: false });
+    expect(await searchLevelTerms(c, await game(explorers.gameId))).toMatchObject({ asked: false, stale: false, required: true });
+    expect(await searchLevelTerms(c, null)).toMatchObject({ asked: false, required: false });
+  });
+
+  it("sells a Detectives world only with its own release and while the choice is on", async () => {
     expect((await worldsForDraft(c, STYLE, "detectives")).map(w => w.slug)).toEqual(["journey"]);
     expect((await worldsForDraft(c, STYLE, "explorers")).map(w => w.slug)).toEqual(["journey", "kingdom"]);
-    f.releases = [];
+    f.env.SEARCH_LEVEL_CHOICE = "off";
+    expect(await worldsForDraft(c, STYLE, "detectives")).toEqual([]);
+    f.env.SEARCH_LEVEL_CHOICE = "on"; f.releases = [];
     expect(await worldsForDraft(c, STYLE, "detectives")).toEqual([]);
   });
 
@@ -98,7 +116,7 @@ describe("the level on the draft", () => {
     expect(await game(five.gameId)).toMatchObject({ searchLevel: "detectives", childProfile: { ageYears: 5 } });
   });
 
-  it("is left untouched when the cards were not asked", async () => {
+  it("is left untouched when no answer is given", async () => {
     const draft = await named({ ageYears: 6, searchLevel: "detectives" });
     expect(await chooseDraftChild(db, { gameId: draft.gameId, actorId: null, draftToken: draft.draftToken, familyChildId: null, name: "Synthetic", ageYears: 7 })).toEqual({ ok: true });
     expect(await game(draft.gameId)).toMatchObject({ searchLevel: "detectives", childProfile: { ageYears: 7 } });
@@ -116,6 +134,7 @@ describe("the level on the draft", () => {
   });
 
   it("a draft from before the cards keeps its boards when the parent then chooses Explorers", async () => {
+    f.env.SEARCH_LEVEL_CHOICE = "off";
     const draft = await photographed({ ageYears: 4 });
     expect(await selectPackage(c, draft.gameId, "ONE_WORLD")).toEqual({ ok: true });
     expect((await game(draft.gameId)).searchLevel).toBeNull();
@@ -135,35 +154,91 @@ describe("boards and checkout follow the level", () => {
     expect(await selectWorlds(c, draft.gameId, ["kingdom"])).toMatchObject({ ok: false, code: "SCENE_UNAVAILABLE" });
   });
 
-  it("refuses Detectives without a release instead of taking other boards", async () => {
+  it("refuses Detectives without a release, or with the choice off, instead of taking other boards", async () => {
     const draft = await photographed({ ageYears: 9, searchLevel: "detectives" });
     f.releases = [];
+    expect(await selectPackage(c, draft.gameId, "ONE_WORLD")).toMatchObject({ ok: false, code: "SEARCH_LEVEL_UNAVAILABLE" });
+    f.releases = [JOURNEY_AT_12]; f.env.SEARCH_LEVEL_CHOICE = "off";
     expect(await selectPackage(c, draft.gameId, "ONE_WORLD")).toMatchObject({ ok: false, code: "SEARCH_LEVEL_UNAVAILABLE" });
     expect((await game(draft.gameId)).scenes).toEqual([]);
   });
 
-  it("does not take payment for an unanswered choice or for Detectives whose release was withdrawn", async () => {
+  it("takes no payment for an asked draft left unanswered, or for Detectives that can no longer be sold", async () => {
     const unanswered = await photographed({ ageYears: 6 });
     expect(await selectPackage(c, unanswered.gameId, "ONE_WORLD")).toEqual({ ok: true });
-    const access = (draft: { draftToken: string }) => ({ email: `level-${++sequence}@example.invalid`, currency: "ILS" as const, access: { draftToken: draft.draftToken, userId: null }, legalVersion: LEGAL_VERSION });
-    expect(await startCheckout(c, { gameId: unanswered.gameId, ...access(unanswered) })).toMatchObject({ ok: false, code: "SEARCH_LEVEL_REQUIRED" });
-
+    expect(await startCheckout(c, checkout(unanswered))).toMatchObject({ ok: false, code: "SEARCH_LEVEL_REQUIRED" });
     const detectives = await photographed({ ageYears: 6, searchLevel: "detectives" });
     expect(await selectPackage(c, detectives.gameId, "ONE_WORLD")).toEqual({ ok: true });
-    f.releases = [];
-    expect(await startCheckout(c, { gameId: detectives.gameId, ...access(detectives) })).toMatchObject({ ok: false, code: "SEARCH_LEVEL_UNAVAILABLE" });
-    expect(await db.order.count({ where: { gameId: { in: [unanswered.gameId, detectives.gameId] } } })).toBe(0);
+    f.env.SEARCH_LEVEL_CHOICE = "off";
+    expect(await startCheckout(c, checkout(detectives))).toMatchObject({ ok: false, code: "SEARCH_LEVEL_UNAVAILABLE" });
+    f.env.SEARCH_LEVEL_CHOICE = "on"; f.releases = [];
+    expect(await startCheckout(c, checkout(detectives))).toMatchObject({ ok: false, code: "SEARCH_LEVEL_UNAVAILABLE" });
+    expect([...await orders(unanswered.gameId), ...await orders(detectives.gameId)]).toEqual([]);
   });
 
   it("freezes the level once a payment is open", async () => {
     const draft = await photographed({ ageYears: 8, searchLevel: "detectives" });
     expect(await selectPackage(c, draft.gameId, "ONE_WORLD")).toEqual({ ok: true });
-    const started = await startCheckout(c, { gameId: draft.gameId, email: `level-${++sequence}@example.invalid`, currency: "ILS", access: { draftToken: draft.draftToken, userId: null }, legalVersion: LEGAL_VERSION });
-    expect(started).toMatchObject({ ok: true });
+    expect(await startCheckout(c, checkout(draft))).toMatchObject({ ok: true });
     const owner = (await game(draft.gameId)).ownerId;
     expect(await chooseDraftChild(db, { gameId: draft.gameId, actorId: owner, draftToken: draft.draftToken, familyChildId: null, name: "Synthetic", ageYears: 8, searchLevel: "explorers" }))
       .toMatchObject({ ok: false, code: "CHECKOUT_IN_PROGRESS" });
     expect(await game(draft.gameId)).toMatchObject({ searchLevel: "detectives", sceneCount: 9 });
+  });
+
+  it("keeps a legacy open checkout resumable when the choice becomes available, with no second order or session", async () => {
+    f.env.SEARCH_LEVEL_CHOICE = "off";
+    const draft = await photographed({ ageYears: 8 });
+    expect(await selectPackage(c, draft.gameId, "ONE_WORLD")).toEqual({ ok: true });
+    const input = checkout(draft);
+    const first = await startCheckout(c, input);
+    if (!first.ok) throw Error(first.code);
+    f.env.SEARCH_LEVEL_CHOICE = "on";
+    expect(await searchLevelTerms(c, await game(draft.gameId))).toMatchObject({ asked: false, required: false, openPayment: true });
+    expect(await startCheckout(c, input)).toEqual(first);
+    const owner = (await game(draft.gameId)).ownerId;
+    expect(await chooseDraftChild(db, { gameId: draft.gameId, actorId: owner, draftToken: draft.draftToken, familyChildId: null, name: "Synthetic", ageYears: 8, searchLevel: "explorers" }))
+      .toMatchObject({ ok: false, code: "CHECKOUT_IN_PROGRESS" });
+    expect(await orders(draft.gameId)).toHaveLength(1);
+    expect((await game(draft.gameId)).searchLevel).toBeNull();
+  });
+
+  it("refuses a new checkout for a withdrawn Detectives world even while another world keeps that version", async () => {
+    f.releases = [JOURNEY_AT_12, KINGDOM_AT_12];
+    const draft = await photographed({ ageYears: 8, searchLevel: "detectives" });
+    expect(await selectPackage(c, draft.gameId, "ONE_WORLD")).toEqual({ ok: true });
+    expect(await selectWorlds(c, draft.gameId, ["kingdom"])).toEqual({ ok: true });
+    f.releases = [JOURNEY_AT_12];
+    expect((await worldsForDraft(c, STYLE, "detectives")).map(w => w.slug)).toEqual(["journey"]);
+    expect(await startCheckout(c, checkout(draft))).toMatchObject({ ok: false, code: "SEARCH_LEVEL_UNAVAILABLE" });
+    expect(await orders(draft.gameId)).toEqual([]);
+  });
+
+  it("sells only the release's exact boards: a stray board or another version is refused", async () => {
+    const draft = await photographed({ ageYears: 8, searchLevel: "detectives" });
+    expect(await selectPackage(c, draft.gameId, "ONE_WORLD")).toEqual({ ok: true });
+    const pinned = await game(draft.gameId);
+    expect(await detectiveSelectionEligible(c, pinned)).toBe(true);
+    const stray = pinned.scenes[0]!, kingdomBoard = boardsOfWorlds(["kingdom"])[0]!;
+    await db.gameScene.update({ where: { id: stray.id }, data: { sceneSlug: kingdomBoard } });
+    expect(await detectiveSelectionEligible(c, await game(draft.gameId))).toBe(false);
+    expect(await startCheckout(c, checkout(draft))).toMatchObject({ ok: false, code: "SEARCH_LEVEL_UNAVAILABLE" });
+    await db.gameScene.update({ where: { id: stray.id }, data: { sceneSlug: stray.sceneSlug, sceneVersion: 11 } });
+    expect(await detectiveSelectionEligible(c, await game(draft.gameId))).toBe(false);
+    await db.gameScene.update({ where: { id: stray.id }, data: { sceneVersion: 12 } });
+    expect(await startCheckout(c, checkout(draft))).toMatchObject({ ok: true });
+    expect(await orders(draft.gameId)).toHaveLength(1);
+  });
+
+  it("honours an open Detectives payment after its world is withdrawn: the same session, no new order", async () => {
+    const draft = await photographed({ ageYears: 8, searchLevel: "detectives" });
+    expect(await selectPackage(c, draft.gameId, "ONE_WORLD")).toEqual({ ok: true });
+    const input = checkout(draft);
+    const first = await startCheckout(c, input);
+    if (!first.ok) throw Error(first.code);
+    f.releases = [];
+    expect(await startCheckout(c, input)).toEqual(first);
+    expect(await orders(draft.gameId)).toHaveLength(1);
   });
 });
 
@@ -174,6 +249,7 @@ describe("adding a world from the family area", () => {
     await db.familyChild.create({ data: { id: childId, ownerId, displayName: "Synthetic child" } });
     return { ownerId, familyChildId: childId, ageYears: 5, locale: "he" as const, returnGameId: null };
   }
+  const games = (familyChildId: string) => db.game.count({ where: { familyChildId } });
 
   it("fixes the chosen level with the draft, like the age", async () => {
     const input = await family();
@@ -182,15 +258,39 @@ describe("adding a world from the family area", () => {
     const draft = await game(started.gameId);
     expect(draft).toMatchObject({ searchLevel: "detectives", childProfile: { ageYears: 5 } });
     expect(draft.scenes.map(s => s.sceneSlug)).toEqual(boardsOfWorlds(["journey"]));
+    expect(await searchLevelTerms(c, draft)).toMatchObject({ required: true });
     expect(await beginWorldPurchase(c, { ...input, worldSlug: "journey", searchLevel: "explorers" })).toMatchObject({ ok: false, code: "DRAFT_LOCKED" });
     expect(await beginWorldPurchase(c, { ...input, worldSlug: "journey", searchLevel: "detectives" })).toMatchObject({ ok: true, gameId: started.gameId, reused: true });
   });
 
-  it("requires an answer where the cards are asked, and asks none for a world without Detectives", async () => {
+  it("requires an answer where asked, refuses Detectives it cannot sell, and keeps a legacy form's meaning", async () => {
     const input = await family();
     expect(await beginWorldPurchase(c, { ...input, worldSlug: "journey" })).toMatchObject({ ok: false, code: "SEARCH_LEVEL_REQUIRED" });
-    const kingdom = await beginWorldPurchase(c, { ...input, worldSlug: "kingdom", searchLevel: "detectives" });
-    if (!kingdom.ok) throw Error(kingdom.code);
-    expect((await game(kingdom.gameId)).searchLevel).toBeNull();
+    expect(await beginWorldPurchase(c, { ...input, worldSlug: "kingdom", searchLevel: "detectives" })).toMatchObject({ ok: false, code: "SEARCH_LEVEL_UNAVAILABLE" });
+    expect(await beginWorldPurchase(c, { ...input, worldSlug: "kingdom", searchLevel: "hard" })).toMatchObject({ ok: false, code: "SEARCH_LEVEL_REQUIRED" });
+    expect(await games(input.familyChildId)).toBe(0);
+    const legacy = await beginWorldPurchase(c, { ...input, worldSlug: "kingdom" });
+    if (!legacy.ok) throw Error(legacy.code);
+    expect((await game(legacy.gameId)).searchLevel).toBeNull();
+  });
+
+  it("refuses a sent Detectives answer when the choice is switched off before saving", async () => {
+    const input = await family();
+    f.env.SEARCH_LEVEL_CHOICE = "off";
+    expect(await beginWorldPurchase(c, { ...input, worldSlug: "journey", ageYears: 8, searchLevel: "detectives" })).toMatchObject({ ok: false, code: "SEARCH_LEVEL_UNAVAILABLE" });
+    expect(await games(input.familyChildId)).toBe(0);
+    const explorers = await beginWorldPurchase(c, { ...input, worldSlug: "journey", ageYears: 8, searchLevel: "explorers" });
+    if (!explorers.ok) throw Error(explorers.code);
+    expect((await game(explorers.gameId)).searchLevel).toBe("explorers");
+  });
+
+  it("keeps an existing draft reachable at its own level after Detectives stops selling", async () => {
+    const input = await family();
+    const started = await beginWorldPurchase(c, { ...input, worldSlug: "journey", searchLevel: "detectives" });
+    if (!started.ok) throw Error(started.code);
+    f.env.SEARCH_LEVEL_CHOICE = "off";
+    expect(await beginWorldPurchase(c, { ...input, worldSlug: "journey", searchLevel: "detectives" })).toMatchObject({ ok: true, gameId: started.gameId, reused: true });
+    expect(await beginWorldPurchase(c, { ...input, worldSlug: "journey", searchLevel: "explorers" })).toMatchObject({ ok: false, code: "DRAFT_LOCKED" });
+    expect(await games(input.familyChildId)).toBe(1);
   });
 });

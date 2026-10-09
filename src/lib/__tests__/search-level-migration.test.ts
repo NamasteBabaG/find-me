@@ -9,8 +9,8 @@ const moduleUrl = pathToFileURL(path.resolve("scripts/qa-search-level-migrate.mj
 const sql = readFileSync("prisma/changes/20261009-search-level.sql", "utf8");
 
 /** Importing the CLI cannot open a database or read .vercel: only the pure checks run. */
-function run(call: "column" | "values", input: unknown) {
-  const fn = call === "column" ? "assertSearchLevelColumn" : "assertSearchLevelValues";
+function run(call: "column" | "values" | "client", input: unknown) {
+  const fn = call === "column" ? "assertSearchLevelColumn" : call === "values" ? "assertSearchLevelValues" : "assertPostgresClient";
   const script = `import { ${fn} } from ${JSON.stringify(moduleUrl)};
     console.log(JSON.stringify(${fn}(JSON.parse(process.argv[1]))));`;
   return spawnSync(process.execPath, ["--input-type=module", "-e", script, JSON.stringify(input)], {
@@ -43,6 +43,18 @@ describe("search level rollout", () => {
     const result = run("column", mutate(column()));
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("Game.searchLevel metadata mismatch");
+  });
+
+  it("refuses to run with the local SQLite client and says how to generate the PostgreSQL one, never a push", () => {
+    const sqlite = run("client", 'generator client {\n  provider = "prisma-client-js"\n}\ndatasource db {\n  provider = "sqlite"\n  url = env("DATABASE_URL")\n}');
+    expect(sqlite.status).toBe(1);
+    expect(sqlite.stderr).toContain("node scripts/prisma-generate.mjs");
+    expect(sqlite.stderr).toContain("npm run db:client:local");
+    expect(sqlite.stderr).not.toMatch(/db push|db:push/);
+    expect(run("client", "").status).toBe(1);
+    const postgres = run("client", 'datasource db {\n  provider = "postgresql"\n  url = env("DATABASE_URL")\n}');
+    expect(postgres.status, postgres.stderr).toBe(0);
+    expect(JSON.parse(postgres.stdout)).toBe("postgresql");
   });
 
   it("reports level counts and refuses a value outside the closed list", () => {

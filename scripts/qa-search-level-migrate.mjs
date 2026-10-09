@@ -1,6 +1,9 @@
 /** QA-only additive rollout of Game.searchLevel. Run it BEFORE deploying the client that reads the column.
+ * Prerequisite: the PostgreSQL Prisma client, generated under the QA environment (never a schema push):
+ *   vercel env run -e production -- node scripts/prisma-generate.mjs
  *   vercel env run -e production -- node scripts/qa-search-level-migrate.mjs --dry-run
- * --dry-run executes the DDL and rolls back; --apply commits; --verify only checks.
+ * --dry-run is a rollback rehearsal: it executes the DDL inside a transaction and rolls it back.
+ * --apply commits; --verify only checks. Afterwards restore the local SQLite client: npm run db:client:local.
  * Never prints credentials, child names or row contents. */
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -20,6 +23,16 @@ export function assertSearchLevelColumn(rows) {
   return { column: "searchLevel", type: row.type, nullable: row.nullable };
 }
 
+/** The local client is generated for SQLite and refuses a PostgreSQL URL with a confusing datasource
+ * error, before any connection. Say what to do instead, from the generated schema's own datasource. */
+export function assertPostgresClient(generatedSchema) {
+  const provider = /datasource\s+\w+\s*\{[^}]*?\bprovider\s*=\s*"([^"]+)"/.exec(generatedSchema ?? "")?.[1];
+  if (provider !== "postgresql") {
+    throw new Error(`The generated Prisma client is for "${provider ?? "unknown"}", not PostgreSQL. Run "vercel env run -e production -- node scripts/prisma-generate.mjs" first (never a schema push), then this runner; restore the local client with "npm run db:client:local".`);
+  }
+  return provider;
+}
+
 /** Values outside the closed list would be read as corrupt data by domain/search-level.ts. */
 export function assertSearchLevelValues(counts) {
   const unknown = (counts ?? []).filter(row => row.level !== null && !LEVELS.includes(row.level));
@@ -34,6 +47,7 @@ async function main() {
   const project = JSON.parse(readFileSync(".vercel/project.json", "utf8"));
   if (project.projectName !== "find-me-qa" || process.env.APP_ENV !== "qa" || schema !== "qa"
     || !["postgres:", "postgresql:"].includes(target.protocol) || process.env.PAYMENT_PROVIDER !== "mock") throw new Error("Refusing non-QA target");
+  assertPostgresClient(readFileSync("node_modules/.prisma/client/schema.prisma", "utf8"));
   const source = readFileSync(SQL_PATH, "utf8");
   const sql = source.replaceAll("__FINDME_SCHEMA__", schema);
   const db = new PrismaClient();
@@ -41,7 +55,7 @@ async function main() {
   let report;
   try {
     await db.$transaction(async tx => {
-      const [scope] = await tx.$queryRawUnsafe("SELECT current_schema() AS schema");
+      const [scope] = await tx.$queryRawUnsafe("SELECT current_schema() AS schema, current_database() AS database");
       if (scope.schema !== schema) throw new Error("Database scope is not QA");
       // Bound locks: never stall QA while a generation or checkout is writing.
       await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '5s'");
@@ -63,7 +77,8 @@ async function main() {
       const levels = assertSearchLevelValues(await tx.$queryRawUnsafe(`SELECT "searchLevel" AS level, count(*)::int AS games FROM "qa"."Game" GROUP BY 1 ORDER BY 1`));
       // The generated client must read the new field against this database.
       await tx.game.findFirst({ select: { id: true, searchLevel: true } });
-      report = { mode, schema, unchangedGames: before.games, column, levels, sqlSha256: createHash("sha256").update(source).digest("hex"), at: new Date().toISOString() };
+      // The operator confirms the exact QA project, database and schema from this report before --apply.
+      report = { mode, project: project.projectName, database: scope.database, schema, unchangedGames: before.games, column, levels, sqlSha256: createHash("sha256").update(source).digest("hex"), at: new Date().toISOString() };
       if (mode === "--dry-run") throw new DryRunRollback();
     }, { timeout: 60_000, isolationLevel: "Serializable" });
   } catch (error) { if (!(error instanceof DryRunRollback)) throw error; }

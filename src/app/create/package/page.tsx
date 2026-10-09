@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getContainer } from "@/services/container";
-import { availablePackages, sceneVersionForLevel, worldsForDraft } from "@/services/create-flow.service";
+import { availablePackages, sceneVersionForLevel, searchLevelTerms, worldsForDraft } from "@/services/create-flow.service";
 import { storedSearchLevel } from "@/domain/search-level";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
 import { PACKAGES, PACKAGE_ORDER, WORLD_PRICES, boardsFor, priceFor, type PackageTier } from "@/domain/package";
@@ -24,8 +24,10 @@ export default async function CreatePackagePage() {
   if (!draft?.childProfile) redirect("/create");
   if (!draft.childProfile.originalPhotoAssetId) redirect("/create/photo");
   const level = storedSearchLevel(draft.searchLevel);
-  // A level whose release was withdrawn after it was chosen goes back to the choice, never to other boards.
-  if (sceneVersionForLevel(draft.styleVersion, level) === null) redirect("/create");
+  // A level that can no longer be sold goes back to the choice, never to other boards;
+  // an open payment keeps its own terms.
+  const terms = await searchLevelTerms(c, draft);
+  if (sceneVersionForLevel(draft.styleVersion, level) === null || terms.stale && !terms.openPayment) redirect("/create");
   const [worlds, continuation] = await Promise.all([
     worldsForDraft(c, draft.styleVersion, level),
     user && user.id === draft.ownerId ? childHasPaidWorld(c.db, { ownerId: user.id, familyChildId: draft.familyChildId, excludeGameId: draft.id }) : false,

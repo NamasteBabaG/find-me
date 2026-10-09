@@ -10,6 +10,7 @@ import type { Locale } from "@/i18n/config";
 import type { Container } from "./container";
 import { newDraftStyleVersion, sceneVersionForLevel, searchLevelChoice, worldsForDraft } from "./create-flow.service";
 import { isSearchLevel, storedSearchLevel, type SearchLevel } from "@/domain/search-level";
+import { pinSearchLevelChoice } from "./search-level-policy";
 import { sceneBySlug } from "./scene-catalog.service";
 import { childHasPaidWorld } from "./child-pricing.service";
 import { outstandingCheckout } from "./draft-checkout-lock";
@@ -61,21 +62,20 @@ export type WorldPurchaseResult = { ok: true; gameId: string; href: string; draf
 
 /** No provider or generation work: one parent confirmation creates one unpaid draft.
  * The search level is asked only while this world can be sold at both levels, and it
- * is fixed with the draft, like the age. */
+ * is fixed with the draft, like the age. A sent answer is never dropped: an unknown
+ * value is refused, and Detectives that cannot be sold now is refused before a new
+ * draft exists. An existing draft at the same level stays reachable, so an open
+ * payment is never cut off from its own checkout. */
 export async function beginWorldPurchase(c: Container, input: WorldPurchaseInput & { ageYears: number; locale: Locale; searchLevel?: string | null }): Promise<WorldPurchaseResult> {
   if (!purchasingEnabled()) return purchasingClosed();
   if (!validChildAge(input.ageYears)) return flowError("INVALID_CHILD_AGE", "בחרו גיל בין 2 ל־10.");
+  const sent = typeof input.searchLevel === "string" && input.searchLevel !== "" ? input.searchLevel : null;
+  if (sent !== null && !isSearchLevel(sent)) return flowError("SEARCH_LEVEL_REQUIRED", "בחרו מגלים או בלשים.");
+  const requested: SearchLevel | null = sent;
   const styleVersion = newDraftStyleVersion();
   const choice = await searchLevelChoice(c, styleVersion, input.worldSlug);
-  let chosen: SearchLevel | null = null;
-  if (choice.shown) {
-    if (!isSearchLevel(input.searchLevel)) return flowError("SEARCH_LEVEL_REQUIRED", "בחרו מגלים או בלשים.");
-    if (input.searchLevel === "detectives" && !choice.detectives) return flowError("SEARCH_LEVEL_UNAVAILABLE", "מסלול הבלשים עוד לא פתוח בעולם הזה.");
-    chosen = input.searchLevel;
-  }
-  const level = chosen ?? "explorers", version = sceneVersionForLevel(styleVersion, level);
-  if (version === null) return flowError("SEARCH_LEVEL_UNAVAILABLE", "מסלול הבלשים עוד לא פתוח בעולם הזה.");
-  const world = (await worldsForDraft(c, styleVersion, level)).find(w => w.slug === input.worldSlug);
+  // The world as sold today. Its Detectives boards are checked where a new draft is made.
+  const world = (await worldsForDraft(c, styleVersion, "explorers")).find(w => w.slug === input.worldSlug);
   if (!world) return flowError("SCENE_UNAVAILABLE", "העולם אינו זמין.");
   const boards = boardSlugs(world);
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -99,7 +99,7 @@ export async function beginWorldPurchase(c: Container, input: WorldPurchaseInput
           if (state === "closed" && active.orders.some(outstandingCheckout)) return flowError("DRAFT_LOCKED", "יש תשלום קודם שעדיין לא נסגר.");
           // An unpaid draft keeps the level it began with. Owning the world at the other level is
           // not a second purchase slot: that commercial model is not defined yet.
-          if (state !== "closed" && !owned && chosen && storedSearchLevel(active.searchLevel) !== chosen) {
+          if (state !== "closed" && !owned && requested && storedSearchLevel(active.searchLevel) !== requested) {
             return flowError("DRAFT_LOCKED", "ההרפתקה בעולם הזה כבר נשמרה במסלול אחר.");
           }
           if (state !== "closed") {
@@ -110,17 +110,23 @@ export async function beginWorldPurchase(c: Container, input: WorldPurchaseInput
             href: state === "ready" ? `/family/${encodeURIComponent(child.id)}/play/${encodeURIComponent(active.id)}` : state === "photo" ? `/create/photo?game=${encodeURIComponent(active.id)}` : state === "checkout" ? `/checkout?game=${encodeURIComponent(active.id)}` : `/creating/${encodeURIComponent(active.id)}` };
           }
         }
+        // A new draft: answered where the cards are asked, and sellable at that level now.
+        if (!requested && choice.shown) return flowError("SEARCH_LEVEL_REQUIRED", "בחרו מגלים או בלשים.");
+        if (requested === "detectives" && !choice.detectives) return flowError("SEARCH_LEVEL_UNAVAILABLE", "מסלול הבלשים עוד לא פתוח בעולם הזה.");
+        const version = sceneVersionForLevel(styleVersion, requested ?? "explorers");
+        if (version === null) return flowError("SEARCH_LEVEL_UNAVAILABLE", "מסלול הבלשים עוד לא פתוח בעולם הזה.");
         const returnGameId = input.returnGameId && games.some(g => g.id === input.returnGameId) ? input.returnGameId : null;
         const gameId = newId("game"), childId = newId("chl"), draftToken = newDraftToken();
         // Fresh rendering profile protects every historical game's frozen age/photo.
         await tx.childProfile.create({ data: { id: childId, ownerId: input.ownerId, displayName: child.displayName, ageYears: input.ageYears } });
         await tx.game.create({ data: { id: gameId, ownerId: input.ownerId, familyChildId: child.id, childProfileId: childId,
-          draftToken, status: "DRAFT", locale: input.locale, ...(styleVersion ? { styleVersion } : {}), ...(chosen ? { searchLevel: chosen } : {}), packageTier: "ONE_WORLD", sceneCount: boards.length,
+          draftToken, status: "DRAFT", locale: input.locale, ...(styleVersion ? { styleVersion } : {}), ...(requested ? { searchLevel: requested } : {}), packageTier: "ONE_WORLD", sceneCount: boards.length,
           title: input.locale === "he" ? `איפה ${child.displayName}?` : `Where's ${child.displayName}?` } });
         if (styleVersion === "local-patch-world-v1" && c.pinDualVisualReview) {
           if (!c.visualReview) throw Error("Dual visual review credentials are not configured");
           await pinVisualReviewRelease(tx, gameId);
         }
+        if (choice.shown) await pinSearchLevelChoice(tx, gameId);
         await tx.gameScene.createMany({ data: boards.map((slug, orderIndex) => ({ id: newId("gsc"), gameId, sceneSlug: slug, sceneVersion: sceneBySlug(slug, version).version, orderIndex })) });
         await tx.childWorldPurchase.upsert({ where: { familyChildId_worldSlug: { familyChildId: child.id, worldSlug: world.slug } },
           create: { id: `wpr_${createHash("sha256").update(JSON.stringify([child.id, world.slug])).digest("hex").slice(0, 32)}`, ownerId: input.ownerId, familyChildId: child.id, worldSlug: world.slug, activeGameId: gameId, returnGameId },

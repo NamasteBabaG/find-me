@@ -18,10 +18,11 @@ import { env } from "@/lib/env";
 import { purchasingClosed, purchasingEnabled } from "@/lib/purchasing";
 import { LOCAL_PATCH_STYLE } from "./generation/local-patch-world";
 import { INTEGRATED_COLLECTION_VERSION } from "../domain/scene/local-patch-versions";
-import { assertNoOutstandingCheckout, DraftCheckoutInProgress } from "./draft-checkout-lock";
+import { assertNoOutstandingCheckout, DraftCheckoutInProgress, hasOutstandingCheckout } from "./draft-checkout-lock";
 import { pinVisualReviewRelease } from "./generation/visual-review-release";
-import { detectiveRelease, isSearchLevel, storedSearchLevel, type SearchLevel } from "@/domain/search-level";
+import { detectiveRelease, storedSearchLevel, type SearchLevel } from "@/domain/search-level";
 import { DETECTIVE_RELEASES } from "../../content/worlds/detective-releases";
+import { pinSearchLevelChoice, searchLevelAsked } from "./search-level-policy";
 
 const paymentEditingError = () => flowError("CHECKOUT_IN_PROGRESS", "צריך לסיים את התשלום הקיים לפני שינוי הטיוטה.");
 
@@ -43,7 +44,9 @@ export function gameLocale(game: { locale: string }): Locale {
   return game.locale === "he" ? "he" : "en";
 }
 
-export async function createDraft(c: Container, ownerId: string | null, locale: Locale): Promise<{ gameId: string; draftToken: string }> {
+/** `askSearchLevel`: the parent was shown the Explorers/Detectives cards while
+ * creating this draft, so it must answer them before payment (and only then). */
+export async function createDraft(c: Container, ownerId: string | null, locale: Locale, options: { askSearchLevel?: boolean } = {}): Promise<{ gameId: string; draftToken: string }> {
   const draftToken = newDraftToken();
   const styleVersion = newDraftStyleVersion();
   // Pin the QA engine before the first generated preview. Existing games and
@@ -53,6 +56,7 @@ export async function createDraft(c: Container, ownerId: string | null, locale: 
     const created = await tx.game.create({ data: { id: newId("game"), draftToken, ownerId, status: "DRAFT", locale,
       ...(styleVersion ? { styleVersion } : {}) } });
     if (styleVersion === LOCAL_PATCH_STYLE && c.pinDualVisualReview) await pinVisualReviewRelease(tx, created.id);
+    if (options.askSearchLevel) await pinSearchLevelChoice(tx, created.id);
     return created;
   });
   c.analytics.track("create_started", {});
@@ -268,11 +272,27 @@ export function sceneVersionForLevel(styleVersion: string, level: SearchLevel): 
  * asked before it exists matches the one asked after. */
 const draftEngine = (styleVersion: string) => styleVersion || "collage-v1";
 
+/** The worlds a level can be sold for now. Detectives needs the choice switched on
+ * AND the world's own registered release: switching the choice off stops new
+ * Detectives sales, and a world without a release is never offered at that level. */
 export async function worldsForDraft(c: Container, styleVersion = newDraftStyleVersion(), level: SearchLevel = "explorers") {
   if (level === "explorers") return purchasableWorlds(c, sceneVersionForDraft(styleVersion));
-  // Never a silent fallback: a world without its own Detectives release is not offered at that level.
   const release = detectiveRelease(DETECTIVE_RELEASES, draftEngine(styleVersion));
-  return release ? (await purchasableWorlds(c, release.sceneVersion)).filter(world => release.worlds.has(world.slug)) : [];
+  if (env().SEARCH_LEVEL_CHOICE !== "on" || !release) return [];
+  return (await purchasableWorlds(c, release.sceneVersion)).filter(world => release.worlds.has(world.slug));
+}
+
+/** A Detectives selection is sellable only as whole worlds that are eligible
+ * now, with exactly their boards at the release's version: no withdrawn world,
+ * no stray or missing board, no other version under the Detectives name. */
+export async function detectiveSelectionEligible(c: Container, game: { styleVersion: string; scenes: readonly { sceneSlug: string; sceneVersion: number }[] }): Promise<boolean> {
+  const version = sceneVersionForLevel(game.styleVersion, "detectives");
+  if (version == null || !game.scenes.length) return false;
+  const held = new Set(game.scenes.map(scene => scene.sceneSlug));
+  const chosen = (await worldsForDraft(c, game.styleVersion, "detectives")).filter(world => boardSlugs(world).some(slug => held.has(slug)));
+  const expected = new Set(chosen.flatMap(world => boardSlugs(world)));
+  return chosen.length > 0 && expected.size === game.scenes.length && held.size === game.scenes.length
+    && game.scenes.every(scene => expected.has(scene.sceneSlug) && scene.sceneVersion === sceneBySlug(scene.sceneSlug, version).version);
 }
 
 export async function availablePackages(c: Container, styleVersion = newDraftStyleVersion(), availableWorldCount?: number, level: SearchLevel = "explorers") {
@@ -293,15 +313,37 @@ export async function searchLevelChoice(c: Container, styleVersion = newDraftSty
   return { shown: detectives || env().APP_ENV === "development", detectives };
 }
 
-/** The question the name step asks for this draft (null: a new one). Besides the
- * ordinary rule, a draft holding a level that can no longer be served is asked
- * again: the parent answers, rather than being moved to other boards in silence
- * or sent back and forth between steps. */
-export async function searchLevelQuestion(c: Container, draft: { styleVersion: string; searchLevel: string | null } | null) {
+export interface SearchLevelTerms {
+  /** The name step shows the cards, and its action needs an answer. */
+  asked: boolean;
+  /** This draft was created while the cards were shown, so an answer must exist before payment. */
+  required: boolean;
+  /** The stored level cannot be sold now (Detectives switched off or withdrawn). */
+  stale: boolean;
+  /** A hosted payment may already be open: its terms stand, nothing is re-asked under it. */
+  openPayment: boolean;
+  /** Detectives can be chosen now on this draft's engine. */
+  detectives: boolean;
+}
+
+/**
+ * The search-level terms of one draft (null: the draft a new visitor is about to
+ * create), decided in one place for the name step, its action, every later page
+ * and checkout. Only a draft created while the cards were shown must answer them
+ * (`createDraft`'s pin), so switching the choice on never traps an older draft or
+ * an open payment. A stored level that can no longer be sold is asked again
+ * unless a payment is already open.
+ */
+export async function searchLevelTerms(c: Container, draft: { id: string; styleVersion: string; searchLevel: string | null } | null): Promise<SearchLevelTerms> {
   const styleVersion = draft?.styleVersion ?? newDraftStyleVersion();
   const choice = await searchLevelChoice(c, styleVersion);
-  const stale = Boolean(draft && isSearchLevel(draft.searchLevel) && sceneVersionForLevel(styleVersion, draft.searchLevel) === null);
-  return { shown: choice.shown || stale, detectives: choice.detectives };
+  if (!draft) return { asked: choice.shown, required: choice.shown, stale: false, openPayment: false, detectives: choice.detectives };
+  const [pinned, openPayment] = await Promise.all([searchLevelAsked(c.db, draft.id), hasOutstandingCheckout(c.db, draft.id)]);
+  const stale = storedSearchLevel(draft.searchLevel) === "detectives" && !choice.detectives;
+  // Shown again while the choice is offered, while the draft still owes its answer, or
+  // when its answer can no longer be sold; never over an open payment.
+  const asked = !openPayment && (stale || pinned && (choice.shown || !draft.searchLevel));
+  return { asked, required: pinned, stale, openPayment, detectives: choice.detectives };
 }
 
 const levelUnavailable = () => flowError("SEARCH_LEVEL_UNAVAILABLE", "מסלול הבלשים עוד לא פתוח בעולם הזה.");
@@ -319,6 +361,7 @@ export async function selectPackage(c: Container, gameId: string, tierRaw: strin
   const version = sceneVersionForLevel(game.styleVersion, level);
   if (version === null) return levelUnavailable();
   const worlds = await worldsForDraft(c, game.styleVersion, level);
+  if (level === "detectives" && !worlds.length) return levelUnavailable();
   if (!purchasableTiers(worlds.length).some((p) => p.tier === tier)
     || (env().APP_ENV === "qa" && tier !== "ONE_WORLD")) return flowError("PACKAGE_UNAVAILABLE", "החבילה הזאת עדיין לא זמינה.");
 
@@ -391,6 +434,7 @@ export async function selectWorlds(c: Container, gameId: string, slugs: string[]
   const level = storedSearchLevel(game.searchLevel);
   if (sceneVersionForLevel(game.styleVersion, level) === null) return levelUnavailable();
   const offered = await worldsForDraft(c, game.styleVersion, level);
+  if (level === "detectives" && !offered.length) return levelUnavailable();
   const available = new Set(offered.map((w) => w.slug));
   if (!unique.every((s) => available.has(s))) return flowError("SCENE_UNAVAILABLE", "אחד העולמות אינו זמין.");
   const purchase = await c.db.childWorldPurchase.findUnique({ where: { activeGameId: gameId } });

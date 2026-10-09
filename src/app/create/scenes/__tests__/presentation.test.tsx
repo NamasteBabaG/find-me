@@ -10,7 +10,8 @@ import CreateScenesPage from "../page";
 import { ScenePicker } from "../ScenePicker";
 
 vi.mock("@/services/container", () => ({ getContainer: () => ({}) }));
-vi.mock("@/services/create-flow.service", () => ({ worldsForDraft: async () => allWorlds(), sceneVersionForLevel: () => 10 }));
+vi.mock("@/services/create-flow.service", () => ({ worldsForDraft: async () => allWorlds(), sceneVersionForLevel: () => 10,
+  searchLevelTerms: async () => ({ asked: false, required: false, stale: false, openPayment: false, detectives: false }) }));
 vi.mock("@/lib/server/session", () => ({ currentUser: async () => null, isAdminEmail: () => false }));
 vi.mock("@/i18n/server", () => ({ getI18n: async () => ({ t: en, locale: "en" }) }));
 vi.mock("@/lib/server/current-draft", () => ({ currentDraft: async () => ({ childProfile: {}, packageTier: Object.values(PACKAGES)[0]!.tier, scenes: [] }) }));

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getContainer } from "@/services/container";
-import { sceneVersionForLevel, worldsForDraft } from "@/services/create-flow.service";
+import { sceneVersionForLevel, searchLevelTerms, worldsForDraft } from "@/services/create-flow.service";
 import { storedSearchLevel } from "@/domain/search-level";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
 import { PACKAGES, isPackageTier } from "@/domain/package";
@@ -27,7 +27,8 @@ export default async function CreateScenesPage() {
   const want = PACKAGES[draft.packageTier].worldCount;
   const level = storedSearchLevel(draft.searchLevel);
   const version = sceneVersionForLevel(draft.styleVersion, level);
-  if (version === null) redirect("/create");
+  const terms = await searchLevelTerms(c, draft);
+  if (version === null || terms.stale && !terms.openPayment) redirect("/create");
   const worlds = await worldsForDraft(c, draft.styleVersion, level);
   // Said where worlds are chosen: a world without its own Detectives boards is not on this list.
   const explorersOnly = level === "detectives"

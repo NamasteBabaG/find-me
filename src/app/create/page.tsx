@@ -6,7 +6,7 @@ import { currentDraft } from "@/lib/server/current-draft";
 import { getContainer } from "@/services/container";
 import { listFamilyChildren } from "@/services/family.service";
 import { purchasingEnabled } from "@/lib/purchasing";
-import { searchLevelQuestion } from "@/services/create-flow.service";
+import { searchLevelTerms } from "@/services/create-flow.service";
 import { isSearchLevel } from "@/domain/search-level";
 
 export async function generateMetadata() {
@@ -22,13 +22,13 @@ export default async function CreateNamePage({ searchParams }: { searchParams: P
   const children = user ? await listFamilyChildren(c.db, user.id) : [];
   const preferred = params.child === "new" ? "" : params.child ?? draft?.familyChildId ?? "";
   const initialChildId = children.some(child => child.id === preferred) ? preferred : "";
-  // The same question the save will ask: this draft's, or a new one for a fresh adventure.
-  const levels = await searchLevelQuestion(c, params.child ? null : draft);
+  // The same terms the save will apply: this draft's, or a new one for a fresh adventure.
+  const levels = await searchLevelTerms(c, params.child ? null : draft);
   const savedLevel = params.child ? null : draft?.searchLevel;
   return (
     <CreateFrame step={0} title={t.create.name.title} user={user} isAdmin={isAdminEmail(user?.email)}>
       <NameForm initialName={params.child === "new" ? "" : initialName} initialAge={params.child ? null : draft?.childProfile?.ageYears} children={children} initialChildId={initialChildId} fresh={Boolean(params.child)}
-        levelChoice={levels.shown} initialLevel={isSearchLevel(savedLevel) ? savedLevel : null} />
+        levelChoice={levels.asked} initialLevel={isSearchLevel(savedLevel) ? savedLevel : null} />
     </CreateFrame>
   );
 }
