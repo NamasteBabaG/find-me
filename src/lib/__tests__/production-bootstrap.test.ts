@@ -120,7 +120,7 @@ describe("offline production bootstrap", () => {
     const models = [...original.matchAll(/^model\s+(\w+)\s*\{/gm)].map(row => row[1]);
     expect(Object.keys(result.metadata.tables).sort()).toEqual(models.sort());
     expect(result.tables).toBe(26);
-    expect(result.columns).toBe(229);
+    expect(result.columns).toBe(230);
     expect(result.indexes).toBe(63);
     expect(result.foreignKeys).toBe(26);
     expect(result.metadata.constraints["GuestParticipant.GuestParticipant_shareId_fkey"].deleteAction).toBe("c");
