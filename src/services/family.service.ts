@@ -2,6 +2,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { GAME_STATUSES, isEditableDraft, type GameStatus } from "@/domain/order-state";
 import { validChildAge } from "@/domain/child-appearance";
+import { isSearchLevel, storedSearchLevel, type SearchLevel } from "@/domain/search-level";
 import { normalizeChildName } from "@/lib/copy";
 import { newId } from "@/lib/ids";
 import { flowError, type FlowResult } from "@/i18n/errors";
@@ -71,12 +72,15 @@ export async function reconcilePaidFamilyChildren(db: PrismaClient, ownerId: str
   }
 }
 
-/** Session identity, not the draft cookie, authorizes attaching a family child. */
+/** Session identity, not the draft cookie, authorizes attaching a family child.
+ * `searchLevel` is written only when the parent was asked for it; undefined
+ * leaves the draft's level untouched. */
 export async function chooseDraftChild(db: PrismaClient, input: {
   gameId: string; actorId: string | null; draftToken: string | null;
-  familyChildId: string | null; name: string; ageYears: number;
+  familyChildId: string | null; name: string; ageYears: number; searchLevel?: SearchLevel;
 }): Promise<FlowResult> {
   if (!validChildAge(input.ageYears)) return flowError("INVALID_CHILD_AGE", "בחרו את גיל הדמות במשחק, בין 2 ל־10.");
+  if (input.searchLevel !== undefined && !isSearchLevel(input.searchLevel)) return flowError("SEARCH_LEVEL_REQUIRED", "בחרו מגלים או בלשים.");
   try {
     return await db.$transaction(async tx => {
       const game = await tx.game.findUnique({ where: { id: input.gameId } });
@@ -93,10 +97,13 @@ export async function chooseDraftChild(db: PrismaClient, input: {
       const name = selected?.displayName ?? normalizeChildName(input.name);
       if (name.length < 2) return flowError("NAME_TOO_SHORT", "כתבו שם של לפחות שתי אותיות.");
       const continuation = await tx.childWorldPurchase.findUnique({ where: { activeGameId: game.id } });
+      // A level that differs from the stored one is a new choice. NULL plays Explorers, so choosing
+      // Explorers for a draft from before the cards keeps its boards.
+      const levelChanged = input.searchLevel !== undefined && storedSearchLevel(game.searchLevel) !== input.searchLevel;
       if (continuation) {
         const profile = game.childProfileId ? await tx.childProfile.findUnique({ where: { id: game.childProfileId } }) : null;
         if (continuation.familyChildId !== input.familyChildId || !profile || profile.deletedAt
-          || profile.ownerId !== game.ownerId || profile.displayName !== name || profile.ageYears !== input.ageYears) {
+          || profile.ownerId !== game.ownerId || profile.displayName !== name || profile.ageYears !== input.ageYears || levelChanged) {
           return flowError("DRAFT_LOCKED", "הפרטים נשמרו להרפתקה הזאת.");
         }
       }
@@ -104,10 +111,17 @@ export async function chooseDraftChild(db: PrismaClient, input: {
       const changed = await tx.game.updateMany({
         where: { id: game.id, status: game.status, ownerId: game.ownerId, draftToken: game.draftToken,
           childProfileId: game.childProfileId, familyChildId: game.familyChildId, updatedAt: game.updatedAt, deletedAt: null },
-        data: { familyChildId: selected?.id ?? null, title: game.locale === "he" ? `איפה ${name}?` : `Where's ${name}?` },
+        data: { familyChildId: selected?.id ?? null, title: game.locale === "he" ? `איפה ${name}?` : `Where's ${name}?`,
+          ...(input.searchLevel !== undefined && !continuation ? { searchLevel: input.searchLevel } : {}) },
       });
       if (changed.count !== 1) throw new ChildSelectionConflict();
       await assertNoOutstandingCheckout(tx, game.id);
+      // Boards pinned for the other level must not survive the change: the worlds step picks them
+      // again at this level. Payment cannot be open here (asserted just above).
+      if (levelChanged) {
+        await tx.gameScene.deleteMany({ where: { gameId: game.id } });
+        await tx.game.update({ where: { id: game.id }, data: { sceneCount: 0 } });
+      }
       if (game.childProfileId) {
         if (await tx.game.count({ where: { childProfileId: childId, NOT: { id: game.id } } }) !== 0) throw new ChildSelectionConflict();
         const updated = await tx.childProfile.updateMany({ where: { id: childId, ownerId: game.ownerId, deletedAt: null }, data: { displayName: name, ageYears: input.ageYears } });

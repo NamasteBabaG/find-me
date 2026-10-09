@@ -13,8 +13,9 @@ interface SceneOption {
   thumbnail: string;
 }
 
-/** Independent adventures. The server offers only complete, renderable worlds. */
-export function ScenePicker({ scenes, want, preselected }: { scenes: SceneOption[]; want: number; preselected: string[] }) {
+/** Independent adventures. The server offers only complete, renderable worlds.
+ * `note` says which worlds the chosen search level leaves out, where worlds are chosen. */
+export function ScenePicker({ scenes, want, preselected, note }: { scenes: SceneOption[]; want: number; preselected: string[]; note?: string }) {
   const { t, tf } = useI18n();
   const s = t.create.scenes;
   const [state, action, pending] = useActionState<ActionResult | null, FormData>(chooseScenesAction, null);
@@ -34,6 +35,7 @@ export function ScenePicker({ scenes, want, preselected }: { scenes: SceneOption
         <span className="fm-badge fm-badge--leaf">{tf(s.counter, { picked: included.length, want })}</span>
       </div>
       <p id="world-choice-help" className="fm-center">{want === 1 ? s.swap : s.limit}</p>
+      {note ? <p className="fm-notice fm-center">{note}</p> : null}
       <div className="picker" role="group" aria-label={s.title} aria-describedby="world-choice-help">
         {scenes.map((sc) => {
           const on = included.includes(sc.slug);

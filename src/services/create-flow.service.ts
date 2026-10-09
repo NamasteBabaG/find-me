@@ -20,6 +20,8 @@ import { LOCAL_PATCH_STYLE } from "./generation/local-patch-world";
 import { INTEGRATED_COLLECTION_VERSION } from "../domain/scene/local-patch-versions";
 import { assertNoOutstandingCheckout, DraftCheckoutInProgress } from "./draft-checkout-lock";
 import { pinVisualReviewRelease } from "./generation/visual-review-release";
+import { detectiveRelease, isSearchLevel, storedSearchLevel, type SearchLevel } from "@/domain/search-level";
+import { DETECTIVE_RELEASES } from "../../content/worlds/detective-releases";
 
 const paymentEditingError = () => flowError("CHECKOUT_IN_PROGRESS", "צריך לסיים את התשלום הקיים לפני שינוי הטיוטה.");
 
@@ -255,14 +257,54 @@ export function sceneVersionForDraft(styleVersion: string) {
   return styleVersion === LOCAL_PATCH_STYLE ? INTEGRATED_COLLECTION_VERSION : undefined;
 }
 
-export async function worldsForDraft(c: Container, styleVersion = newDraftStyleVersion()) {
-  return purchasableWorlds(c, sceneVersionForDraft(styleVersion));
+/** The content version that serves a search level on the draft's engine.
+ * Explorers is the engine's existing collection; Detectives only a registered
+ * release. null: that level has no boards on this engine. */
+export function sceneVersionForLevel(styleVersion: string, level: SearchLevel): number | undefined | null {
+  return level === "explorers" ? sceneVersionForDraft(styleVersion) : detectiveRelease(DETECTIVE_RELEASES, draftEngine(styleVersion))?.sceneVersion ?? null;
 }
 
-export async function availablePackages(c: Container, styleVersion = newDraftStyleVersion(), availableWorldCount?: number) {
-  const tiers = purchasableTiers(availableWorldCount ?? (await worldsForDraft(c, styleVersion)).length);
+/** A draft created without an engine gets the schema's default, so the question
+ * asked before it exists matches the one asked after. */
+const draftEngine = (styleVersion: string) => styleVersion || "collage-v1";
+
+export async function worldsForDraft(c: Container, styleVersion = newDraftStyleVersion(), level: SearchLevel = "explorers") {
+  if (level === "explorers") return purchasableWorlds(c, sceneVersionForDraft(styleVersion));
+  // Never a silent fallback: a world without its own Detectives release is not offered at that level.
+  const release = detectiveRelease(DETECTIVE_RELEASES, draftEngine(styleVersion));
+  return release ? (await purchasableWorlds(c, release.sceneVersion)).filter(world => release.worlds.has(world.slug)) : [];
+}
+
+export async function availablePackages(c: Container, styleVersion = newDraftStyleVersion(), availableWorldCount?: number, level: SearchLevel = "explorers") {
+  const tiers = purchasableTiers(availableWorldCount ?? (await worldsForDraft(c, styleVersion, level)).length);
   return env().APP_ENV === "qa" || styleVersion === LOCAL_PATCH_STYLE ? tiers.filter(p => p.tier === "ONE_WORLD") : tiers;
 }
+
+/**
+ * Whether the parent is asked to choose Explorers or Detectives for a draft on
+ * this engine (optionally for one world). On qa and production only while a
+ * Detectives world can actually be sold there: a level with nothing behind it
+ * is never presented as available. Development shows the cards for review.
+ */
+export async function searchLevelChoice(c: Container, styleVersion = newDraftStyleVersion(), worldSlug?: string): Promise<{ shown: boolean; detectives: boolean }> {
+  if (env().SEARCH_LEVEL_CHOICE !== "on") return { shown: false, detectives: false };
+  const worlds = await worldsForDraft(c, styleVersion, "detectives");
+  const detectives = worldSlug === undefined ? worlds.length > 0 : worlds.some(world => world.slug === worldSlug);
+  return { shown: detectives || env().APP_ENV === "development", detectives };
+}
+
+/** The question the name step asks for this draft (null: a new one). Besides the
+ * ordinary rule, a draft holding a level that can no longer be served is asked
+ * again: the parent answers, rather than being moved to other boards in silence
+ * or sent back and forth between steps. */
+export async function searchLevelQuestion(c: Container, draft: { styleVersion: string; searchLevel: string | null } | null) {
+  const styleVersion = draft?.styleVersion ?? newDraftStyleVersion();
+  const choice = await searchLevelChoice(c, styleVersion);
+  const stale = Boolean(draft && isSearchLevel(draft.searchLevel) && sceneVersionForLevel(styleVersion, draft.searchLevel) === null);
+  return { shown: choice.shown || stale, detectives: choice.detectives };
+}
+
+const levelUnavailable = () => flowError("SEARCH_LEVEL_UNAVAILABLE", "מסלול הבלשים עוד לא פתוח בעולם הזה.");
 
 export async function selectPackage(c: Container, gameId: string, tierRaw: string): Promise<FlowResult> {
   if (!isPackageTier(tierRaw)) return flowError("UNKNOWN_PACKAGE", "חבילה לא מוכרת.");
@@ -273,7 +315,10 @@ export async function selectPackage(c: Container, gameId: string, tierRaw: strin
   if (game.styleVersion === LOCAL_PATCH_STYLE && tier !== "ONE_WORLD") return flowError("PACKAGE_UNAVAILABLE", "בגרסת QA זו זמין עולם אחד עם תשעה בורדים.");
   if (status === "DRAFT" || status === "PHOTO_UPLOADED" || status === "PHOTO_VALIDATING" || status === "PHOTO_REJECTED") return flowError("PHOTO_FIRST", "קודם צריך להעלות תמונה.");
 
-  const worlds = await worldsForDraft(c, game.styleVersion);
+  const level = storedSearchLevel(game.searchLevel);
+  const version = sceneVersionForLevel(game.styleVersion, level);
+  if (version === null) return levelUnavailable();
+  const worlds = await worldsForDraft(c, game.styleVersion, level);
   if (!purchasableTiers(worlds.length).some((p) => p.tier === tier)
     || (env().APP_ENV === "qa" && tier !== "ONE_WORLD")) return flowError("PACKAGE_UNAVAILABLE", "החבילה הזאת עדיין לא זמינה.");
 
@@ -282,7 +327,7 @@ export async function selectPackage(c: Container, gameId: string, tierRaw: strin
     const world = worlds.find(w => w.slug === purchase.worldSlug);
     if (tier !== "ONE_WORLD" || !world || purchase.ownerId !== game.ownerId || purchase.familyChildId !== game.familyChildId) return flowError("DRAFT_LOCKED", "העולם נשמר להזמנה הזאת.");
     const pinned = boardSlugs(world);
-    if (game.scenes.length !== pinned.length || !pinned.every(slug => game.scenes.some(s => s.sceneSlug === slug && s.sceneVersion === sceneBySlug(slug, sceneVersionForDraft(game.styleVersion)).version))) {
+    if (game.scenes.length !== pinned.length || !pinned.every(slug => game.scenes.some(s => s.sceneSlug === slug && s.sceneVersion === sceneBySlug(slug, version).version))) {
       return flowError("DRAFT_LOCKED", "בחירת העולם השתנתה.");
     }
     return fencedDraftEdit(c, game, async tx => {
@@ -343,7 +388,9 @@ export async function selectWorlds(c: Container, gameId: string, slugs: string[]
   const want = PACKAGES[game.packageTier].worldCount;
   const unique = Array.from(new Set(slugs));
   if (unique.length !== want) return flowError("WRONG_SCENE_COUNT", `בחרו בדיוק ${want} עולמות.`, { want });
-  const offered = await worldsForDraft(c, game.styleVersion);
+  const level = storedSearchLevel(game.searchLevel);
+  if (sceneVersionForLevel(game.styleVersion, level) === null) return levelUnavailable();
+  const offered = await worldsForDraft(c, game.styleVersion, level);
   const available = new Set(offered.map((w) => w.slug));
   if (!unique.every((s) => available.has(s))) return flowError("SCENE_UNAVAILABLE", "אחד העולמות אינו זמין.");
   const purchase = await c.db.childWorldPurchase.findUnique({ where: { activeGameId: gameId } });
@@ -376,7 +423,9 @@ async function fencedDraftEdit(c: Container, game: DraftGame, work: (tx: Prisma.
 }
 
 async function replaceDraftSelection(c: Container, game: DraftGame, slugs: string[], tier?: PackageTier): Promise<FlowResult> {
-  const version = sceneVersionForDraft(game.styleVersion);
+  // The level is part of the pin: a Detectives draft never takes Explorers boards.
+  const version = sceneVersionForLevel(game.styleVersion, storedSearchLevel(game.searchLevel));
+  if (version === null) return levelUnavailable();
   // Resolve every version before touching the existing selection.
   const data = slugs.map((slug, i) => ({ id: newId("gsc"), gameId: game.id, sceneSlug: slug, sceneVersion: sceneBySlug(slug, version).version, orderIndex: i }));
   return fencedDraftEdit(c, game, async tx => {

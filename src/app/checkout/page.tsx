@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getContainer } from "@/services/container";
-import { draftSummary, worldsForDraft } from "@/services/create-flow.service";
+import { draftSummary, sceneVersionForLevel, searchLevelChoice, worldsForDraft } from "@/services/create-flow.service";
+import { storedSearchLevel } from "@/domain/search-level";
 import { gameShape, worldsOwned } from "@/services/world-catalog.service";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
 import { boardsFor, priceFor, WORLD_PRICES } from "@/domain/package";
@@ -29,7 +30,13 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
   const intent = user && draft.ownerId === user.id ? await c.db.childWorldPurchase.findUnique({ where: { activeGameId: draft.id } }) : null;
   const purchase = intent && user && intent.ownerId === user.id && intent.familyChildId === draft.familyChildId ? intent : null;
   if (purchase && !draft.childProfile.originalPhotoAssetId) redirect(`/create/photo?game=${encodeURIComponent(draft.id)}`);
-  const [summary, worldCount] = await Promise.all([draftSummary(c, draft.id), worldsForDraft(c, draft.styleVersion).then(w => w.length)]);
+  // A draft from before the cards were asked answers them first; a family world purchase fixed its level when it began.
+  const levels = await searchLevelChoice(c, draft.styleVersion);
+  if (!draft.searchLevel && !purchase && levels.shown) redirect("/create");
+  const level = storedSearchLevel(draft.searchLevel);
+  // A level whose boards were withdrawn is answered again before any payment page.
+  if (!purchase && sceneVersionForLevel(draft.styleVersion, level) === null) redirect("/create");
+  const [summary, worldCount] = await Promise.all([draftSummary(c, draft.id), worldsForDraft(c, draft.styleVersion, level).then(w => w.length)]);
   if (!summary?.pkg || summary.scenes.length !== boardsFor(summary.pkg.tier)) redirect("/create/scenes");
   // When the package takes every world there is, the worlds step was skipped, so "back" means the package step.
   const backHref = purchase ? worldPurchaseHref(purchase.familyChildId, purchase.worldSlug, purchase.returnGameId) : worldCount === summary.pkg.worldCount ? "/create/package" : "/create/scenes";
@@ -58,7 +65,9 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
             <div>
               <h3>{tf(ck.gameTitle, { name })}</h3>
               {summary.child?.ageYears != null ? <p className="fm-muted">{tf(ck.childAge, { age: summary.child.ageYears })}</p> : null}
-              {purchase ? <p className="fm-hint">{tf(t.worldPurchase.frozenAge, { age: summary.child?.ageYears ?? "" })}</p> : <a className="summary__edit" href="/create">{ck.editChild}</a>}
+              {/* The parent sees what they chose before paying; a game from before the cards says nothing new. */}
+              {draft.searchLevel ? <p className="fm-muted">{tf(t.create.level.chosen, { level: t.create.level[level].name })}</p> : null}
+              {purchase ? <p className="fm-hint">{tf(t.worldPurchase.frozenAge, { age: summary.child?.ageYears ?? "" })}</p> : <a className="summary__edit" href="/create">{draft.searchLevel ? ck.editChildLevel : ck.editChild}</a>}
             </div>
           </div>
           <div className="fm-stack fm-stack--1">

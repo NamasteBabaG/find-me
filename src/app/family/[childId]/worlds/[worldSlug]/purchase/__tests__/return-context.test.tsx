@@ -68,7 +68,8 @@ describe("world purchase session recovery", () => {
   });
   it("after login, restores the parent's valid new-game age, but a resumed game keeps its frozen age", async () => {
     f.user.mockResolvedValue({ id: "owner", email: "owner@example.invalid" });
-    const context = { child: { displayName: "Synthetic" }, world: { name: { he: "ממלכה", en: "Kingdom" } }, state: "new", continuation: true, ageYears: 5, active: null, returnGameId: "source-game", returnHref: "/family/child-test/worlds" };
+    const context = { child: { displayName: "Synthetic" }, world: { name: { he: "ממלכה", en: "Kingdom" } }, state: "new", continuation: true, ageYears: 5, active: null, returnGameId: "source-game", returnHref: "/family/child-test/worlds",
+      levels: { shown: false, detectives: false }, activeLevel: null };
     f.context.mockResolvedValue(context);
     const args = { params: Promise.resolve(route), searchParams: Promise.resolve({ ageYears: "8", returnGame: "source-game" }) };
     expect(panelProps(await WorldPurchasePage(args))).toMatchObject({ ageYears: 8, returnGameId: "source-game", resuming: false });

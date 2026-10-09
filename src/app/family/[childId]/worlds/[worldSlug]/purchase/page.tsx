@@ -10,6 +10,7 @@ import { SiteHeader, SiteFooter } from "@/ui/Shell";
 import { LinkButton } from "@/ui/Button";
 import { PurchasePanel } from "./PurchasePanel";
 import { validChildAge } from "@/domain/child-appearance";
+import { isSearchLevel } from "@/domain/search-level";
 import { worldPurchaseHref, worldPurchaseSignInHref } from "@/domain/world-purchase";
 import { purchasingEnabled } from "@/lib/purchasing";
 import { CreationPrelaunchNotice } from "@/app/create/CreateLayout";
@@ -17,12 +18,13 @@ import { CreationPrelaunchNotice } from "@/app/create/CreateLayout";
 export const metadata = { robots: { index: false, follow: false } };
 
 export default async function WorldPurchasePage({ params, searchParams }: {
-  params: Promise<{ childId: string; worldSlug: string }>; searchParams: Promise<{ returnGame?: string; ageYears?: string }>;
+  params: Promise<{ childId: string; worldSlug: string }>; searchParams: Promise<{ returnGame?: string; ageYears?: string; searchLevel?: string }>;
 }) {
   await requireQaAccess();
   const [user, route, query, { t, locale }, currency] = await Promise.all([currentUser(), params, searchParams, getI18n(), getCurrency()]);
   const requestedAge = Number(query.ageYears);
-  if (!user) redirect(worldPurchaseSignInHref(worldPurchaseHref(route.childId, route.worldSlug, query.returnGame, requestedAge)));
+  const requestedLevel = isSearchLevel(query.searchLevel) ? query.searchLevel : null;
+  if (!user) redirect(worldPurchaseSignInHref(worldPurchaseHref(route.childId, route.worldSlug, query.returnGame, requestedAge, requestedLevel)));
   const context = await worldPurchaseContext(getContainer(), { ownerId: user.id, familyChildId: route.childId, worldSlug: route.worldSlug, returnGameId: query.returnGame });
   if (!context) notFound();
   const ready = context.state === "ready", preparing = context.state === "preparing";
@@ -35,7 +37,8 @@ export default async function WorldPurchasePage({ params, searchParams }: {
         {ready || preparing ? <><p>{ready ? t.worldPurchase.owned : t.worldPurchase.preparing}</p><LinkButton href={href!} size="lg">{ready ? t.worldPurchase.playWorld : t.worldPurchase.viewPreparation}</LinkButton></>
           : !purchasingEnabled() ? <CreationPrelaunchNotice t={t} heading="h2" />
           : <><p className="fm-lead">{t.worldPurchase.priceLabel}: <bdi>{formatMoney(priceFor("ONE_WORLD", currency, context.continuation), currency, locale)}</bdi></p>
-            <p>{t.worldPurchase.photoNeeded}</p><PurchasePanel childId={route.childId} worldSlug={route.worldSlug} ageYears={!context.active && validChildAge(requestedAge) ? requestedAge : context.ageYears} returnGameId={context.returnGameId} resuming={Boolean(context.active)} /></>}
+            <p>{t.worldPurchase.photoNeeded}</p><PurchasePanel childId={route.childId} worldSlug={route.worldSlug} ageYears={!context.active && validChildAge(requestedAge) ? requestedAge : context.ageYears} returnGameId={context.returnGameId} resuming={Boolean(context.active)}
+              levelChoice={context.levels.shown} initialLevel={context.active ? null : requestedLevel} frozenLevel={context.activeLevel} /></>}
       </section>
       {context.earlierPaymentHref ? <LinkButton href={context.earlierPaymentHref} variant="ghost">{t.worldPurchase.returnPayment}</LinkButton> : null}
       <LinkButton href={context.returnHref} variant="ghost">{t.worldPurchase.back}</LinkButton>

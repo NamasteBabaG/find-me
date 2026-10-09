@@ -1,5 +1,6 @@
 import { isAfterPayment, isEditableDraft, isGameStatus } from "./order-state";
 import { validChildAge } from "./child-appearance";
+import { isSearchLevel } from "./search-level";
 
 /** Purchase lifecycle is independent of play progress and challenge preferences. */
 export function worldPurchaseState(game: { id: string; status: string; deletedAt: Date | null; draftToken: string | null; hasPhoto: boolean; paid: boolean }) {
@@ -9,11 +10,13 @@ export function worldPurchaseState(game: { id: string; status: string; deletedAt
 }
 
 /** Only our route builder creates return URLs; no request URL is redirected to. */
-export function worldPurchaseHref(childId: string, worldSlug: string, returnGameId?: string | null, ageYears?: number | null): string {
+export function worldPurchaseHref(childId: string, worldSlug: string, returnGameId?: string | null, ageYears?: number | null, searchLevel?: string | null): string {
   const base = `/family/${encodeURIComponent(childId)}/worlds/${encodeURIComponent(worldSlug)}/purchase`;
   const query = new URLSearchParams();
   if (returnGameId) query.set("returnGame", returnGameId);
   if (validChildAge(ageYears)) query.set("ageYears", String(ageYears));
+  // Only a closed-list value survives sign-in; anything else is dropped, never echoed.
+  if (isSearchLevel(searchLevel)) query.set("searchLevel", searchLevel);
   return query.size ? `${base}?${query}` : base;
 }
 

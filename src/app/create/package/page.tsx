@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getContainer } from "@/services/container";
-import { availablePackages, worldsForDraft } from "@/services/create-flow.service";
+import { availablePackages, sceneVersionForLevel, worldsForDraft } from "@/services/create-flow.service";
+import { storedSearchLevel } from "@/domain/search-level";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
 import { PACKAGES, PACKAGE_ORDER, WORLD_PRICES, boardsFor, priceFor, type PackageTier } from "@/domain/package";
 import { childHasPaidWorld } from "@/services/child-pricing.service";
@@ -22,11 +23,14 @@ export default async function CreatePackagePage() {
   const [user, draft, { t, locale }, currency] = await Promise.all([currentUser(), currentDraft(), getI18n(), getCurrency()]);
   if (!draft?.childProfile) redirect("/create");
   if (!draft.childProfile.originalPhotoAssetId) redirect("/create/photo");
+  const level = storedSearchLevel(draft.searchLevel);
+  // A level whose release was withdrawn after it was chosen goes back to the choice, never to other boards.
+  if (sceneVersionForLevel(draft.styleVersion, level) === null) redirect("/create");
   const [worlds, continuation] = await Promise.all([
-    worldsForDraft(c, draft.styleVersion),
+    worldsForDraft(c, draft.styleVersion, level),
     user && user.id === draft.ownerId ? childHasPaidWorld(c.db, { ownerId: user.id, familyChildId: draft.familyChildId, excludeGameId: draft.id }) : false,
   ]);
-  const packages = await availablePackages(c, draft.styleVersion, worlds.length);
+  const packages = await availablePackages(c, draft.styleVersion, worlds.length, level);
   const available = new Set(packages.map((p) => p.tier));
   const availableWorldCount = worlds.length;
   // Package selection re-enrolls editable QA drafts in this same release.

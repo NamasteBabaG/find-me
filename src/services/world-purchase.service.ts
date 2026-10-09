@@ -8,7 +8,8 @@ import { newDraftToken, newId } from "@/lib/ids";
 import { flowError, type FlowError } from "@/i18n/errors";
 import type { Locale } from "@/i18n/config";
 import type { Container } from "./container";
-import { newDraftStyleVersion, sceneVersionForDraft, worldsForDraft } from "./create-flow.service";
+import { newDraftStyleVersion, sceneVersionForLevel, searchLevelChoice, worldsForDraft } from "./create-flow.service";
+import { isSearchLevel, storedSearchLevel, type SearchLevel } from "@/domain/search-level";
 import { sceneBySlug } from "./scene-catalog.service";
 import { childHasPaidWorld } from "./child-pricing.service";
 import { outstandingCheckout } from "./draft-checkout-lock";
@@ -48,20 +49,33 @@ export async function worldPurchaseContext(c: Container, input: WorldPurchaseInp
     select: { id: true, orders: { where: { userId: input.ownerId, paymentStatus: { in: ["PENDING", "FAILED", "CANCELLED"] } },
       select: { paymentStatus: true, checkoutUrl: true, checkoutClaimUntil: true, providerPaymentId: true } } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
   const earlierPayment = financialGames.find(g => g.orders.some(outstandingCheckout));
+  const levels = await searchLevelChoice(c, newDraftStyleVersion(), world.slug);
   return { child, world, active: state === "closed" ? null : active, state: state === "closed" ? "new" as const : state,
-    ageYears, continuation: await childHasPaidWorld(c.db, { ownerId: input.ownerId, familyChildId: child.id }),
+    ageYears, levels, activeLevel: active && state !== "closed" ? storedSearchLevel(active.searchLevel) : null,
+    continuation: await childHasPaidWorld(c.db, { ownerId: input.ownerId, familyChildId: child.id }),
     returnGameId, returnHref: worldPurchaseReturnHref(child.id, returnGameId),
     earlierPaymentHref: earlierPayment ? `/checkout/close?game=${encodeURIComponent(earlierPayment.id)}` : null };
 }
 
 export type WorldPurchaseResult = { ok: true; gameId: string; href: string; draftToken: string | null; reused: boolean } | FlowError;
 
-/** No provider or generation work: one parent confirmation creates one unpaid draft. */
-export async function beginWorldPurchase(c: Container, input: WorldPurchaseInput & { ageYears: number; locale: Locale }): Promise<WorldPurchaseResult> {
+/** No provider or generation work: one parent confirmation creates one unpaid draft.
+ * The search level is asked only while this world can be sold at both levels, and it
+ * is fixed with the draft, like the age. */
+export async function beginWorldPurchase(c: Container, input: WorldPurchaseInput & { ageYears: number; locale: Locale; searchLevel?: string | null }): Promise<WorldPurchaseResult> {
   if (!purchasingEnabled()) return purchasingClosed();
   if (!validChildAge(input.ageYears)) return flowError("INVALID_CHILD_AGE", "בחרו גיל בין 2 ל־10.");
-  const styleVersion = newDraftStyleVersion(), version = sceneVersionForDraft(styleVersion);
-  const world = (await worldsForDraft(c, styleVersion)).find(w => w.slug === input.worldSlug);
+  const styleVersion = newDraftStyleVersion();
+  const choice = await searchLevelChoice(c, styleVersion, input.worldSlug);
+  let chosen: SearchLevel | null = null;
+  if (choice.shown) {
+    if (!isSearchLevel(input.searchLevel)) return flowError("SEARCH_LEVEL_REQUIRED", "בחרו מגלים או בלשים.");
+    if (input.searchLevel === "detectives" && !choice.detectives) return flowError("SEARCH_LEVEL_UNAVAILABLE", "מסלול הבלשים עוד לא פתוח בעולם הזה.");
+    chosen = input.searchLevel;
+  }
+  const level = chosen ?? "explorers", version = sceneVersionForLevel(styleVersion, level);
+  if (version === null) return flowError("SEARCH_LEVEL_UNAVAILABLE", "מסלול הבלשים עוד לא פתוח בעולם הזה.");
+  const world = (await worldsForDraft(c, styleVersion, level)).find(w => w.slug === input.worldSlug);
   if (!world) return flowError("SCENE_UNAVAILABLE", "העולם אינו זמין.");
   const boards = boardSlugs(world);
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -83,6 +97,11 @@ export async function beginWorldPurchase(c: Container, input: WorldPurchaseInput
           // A closed game's outstanding PSP session may still accept money.
           // Never replace it with a second payable game while that is uncertain.
           if (state === "closed" && active.orders.some(outstandingCheckout)) return flowError("DRAFT_LOCKED", "יש תשלום קודם שעדיין לא נסגר.");
+          // An unpaid draft keeps the level it began with. Owning the world at the other level is
+          // not a second purchase slot: that commercial model is not defined yet.
+          if (state !== "closed" && !owned && chosen && storedSearchLevel(active.searchLevel) !== chosen) {
+            return flowError("DRAFT_LOCKED", "ההרפתקה בעולם הזה כבר נשמרה במסלול אחר.");
+          }
           if (state !== "closed") {
             if (!owned) await tx.childWorldPurchase.upsert({ where: { familyChildId_worldSlug: { familyChildId: child.id, worldSlug: world.slug } },
               create: { id: `wpr_${createHash("sha256").update(JSON.stringify([child.id, world.slug])).digest("hex").slice(0, 32)}`, ownerId: input.ownerId, familyChildId: child.id, worldSlug: world.slug, activeGameId: active.id,
@@ -96,7 +115,7 @@ export async function beginWorldPurchase(c: Container, input: WorldPurchaseInput
         // Fresh rendering profile protects every historical game's frozen age/photo.
         await tx.childProfile.create({ data: { id: childId, ownerId: input.ownerId, displayName: child.displayName, ageYears: input.ageYears } });
         await tx.game.create({ data: { id: gameId, ownerId: input.ownerId, familyChildId: child.id, childProfileId: childId,
-          draftToken, status: "DRAFT", locale: input.locale, ...(styleVersion ? { styleVersion } : {}), packageTier: "ONE_WORLD", sceneCount: boards.length,
+          draftToken, status: "DRAFT", locale: input.locale, ...(styleVersion ? { styleVersion } : {}), ...(chosen ? { searchLevel: chosen } : {}), packageTier: "ONE_WORLD", sceneCount: boards.length,
           title: input.locale === "he" ? `איפה ${child.displayName}?` : `Where's ${child.displayName}?` } });
         if (styleVersion === "local-patch-world-v1" && c.pinDualVisualReview) {
           if (!c.visualReview) throw Error("Dual visual review credentials are not configured");

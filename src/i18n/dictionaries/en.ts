@@ -236,6 +236,15 @@ export const en = {
       next: "Continue to the photo",
       tooShort: "Please enter at least two letters.",
     },
+    /** Explorers or Detectives: how busy the boards are. Never a judgement of the child. */
+    level: {
+      title: "Which path suits you?",
+      explorers: { name: "Explorers", ages: "Ages 3–5", line: "A gentle first search" },
+      detectives: { name: "Detectives", ages: "Ages 6+", line: "More details, more challenge" },
+      recommended: "Suits age {age}",
+      chosen: "Path: {level}",
+      frozen: "{level} is saved for this adventure.",
+    },
     photo: {
       title: "Choose a photo of {name}",
       pick: "Choose a photo of {name}",
@@ -277,6 +286,7 @@ export const en = {
       limit: "To swap a world, deselect it first.",
       change: "Change package",
       next: "Continue to summary",
+      explorersOnly: "Detectives isn't open yet in: {worlds}. They're available on Explorers.",
     },
     checkout: {
       title: "Summary & payment",
@@ -284,6 +294,7 @@ export const en = {
       summaryLine: "{pkg} · {boards} places · {spots} hiding spots",
       childAge: "Age {age}",
       editChild: "Edit name or age",
+      editChildLevel: "Edit name, age or path",
       total: "Total",
       vat: "Price includes VAT.",
       emailLabel: "Email for managing the game",
@@ -738,6 +749,8 @@ export const en = {
     TOO_MANY_REQUESTS: "Please wait before another attempt. Try again in a few minutes.",
     CONSENT_REQUIRED: "Please confirm you're the parent or guardian, or have permission to upload this photo.",
     TERMS_REQUIRED: "Please accept the terms of use and cancellation policy before payment.",
+    SEARCH_LEVEL_REQUIRED: "Choose Explorers or Detectives.",
+    SEARCH_LEVEL_UNAVAILABLE: "Detectives isn't open for this world yet. Choose Explorers to continue.",
   } as Record<string, string>,
   email: {
     magic: {

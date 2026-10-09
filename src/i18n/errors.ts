@@ -33,7 +33,9 @@ export type FlowErrorCode =
   | "CONSENT_REQUIRED"
   | "TERMS_REQUIRED"
   | "SERVICE_UNAVAILABLE"
-  | "TOO_MANY_REQUESTS";
+  | "TOO_MANY_REQUESTS"
+  | "SEARCH_LEVEL_REQUIRED"
+  | "SEARCH_LEVEL_UNAVAILABLE";
 
 export interface FlowError {
   ok: false;

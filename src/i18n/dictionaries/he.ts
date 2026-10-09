@@ -232,6 +232,14 @@ export const he: Dictionary = {
       next: "ממשיכים לתמונה",
       tooShort: "השם צריך לכלול לפחות 2 תווים.",
     },
+    level: {
+      title: "איזה מסלול מתאים לכם?",
+      explorers: { name: "מגלים", ages: "גילאי 3-5", line: "חיפוש נעים להתחלה" },
+      detectives: { name: "בלשים", ages: "גילאי 6+", line: "יותר פרטים, יותר אתגר" },
+      recommended: "מומלץ לגיל {age}",
+      chosen: "מסלול: {level}",
+      frozen: "מסלול {level} נשמר להרפתקה הזאת.",
+    },
     photo: {
       title: "בוחרים תמונה של {name}",
       pick: "בוחרים תמונה של {name}",
@@ -273,6 +281,7 @@ export const he: Dictionary = {
       limit: "כדי להחליף עולם, בטלו קודם את הבחירה בו.",
       change: "להחלפת החבילה",
       next: "ממשיכים לסיכום",
+      explorersOnly: "אין עדיין מסלול בלשים בעולמות: {worlds}. הם זמינים במסלול מגלים.",
     },
     checkout: {
       title: "סיכום ותשלום",
@@ -280,6 +289,7 @@ export const he: Dictionary = {
       summaryLine: "{pkg} · {boards} מקומות · {spots} מחבואים",
       childAge: "גיל {age}",
       editChild: "עריכת שם או גיל",
+      editChildLevel: "עריכת שם, גיל או מסלול",
       total: "סך הכול לתשלום",
       vat: "המחיר כולל מע״מ.",
       emailLabel: "כתובת מייל לניהול המשחק",
@@ -723,6 +733,8 @@ export const he: Dictionary = {
     TOO_MANY_REQUESTS: "צריך להמתין מעט לפני ניסיון נוסף. נסו שוב בעוד כמה דקות.",
     CONSENT_REQUIRED: "צריך לאשר שאתם ההורה או האפוטרופוס, או שיש לכם רשות להעלות את התמונה.",
     TERMS_REQUIRED: "יש לאשר את תנאי השימוש ומדיניות הביטול לפני התשלום.",
+    SEARCH_LEVEL_REQUIRED: "בחרו מגלים או בלשים.",
+    SEARCH_LEVEL_UNAVAILABLE: "מסלול הבלשים עוד לא פתוח בעולם הזה. בחרו מגלים כדי להמשיך.",
   },
   email: {
     magic: {

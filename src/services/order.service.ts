@@ -11,7 +11,8 @@ import { purchasingClosed, purchasingEnabled } from "@/lib/purchasing";
 import type { PaymentWebhookEvent } from "@/infra/payment/types";
 import { canTransition, isAfterPayment, type GameStatus } from "@/domain/order-state";
 import { ensureUser } from "./auth.service";
-import { draftBelongsTo, loadDraft, selectPackage, worldsForDraft, sceneVersionForDraft } from "./create-flow.service";
+import { draftBelongsTo, loadDraft, selectPackage, worldsForDraft, sceneVersionForLevel, searchLevelChoice } from "./create-flow.service";
+import { storedSearchLevel } from "@/domain/search-level";
 import { GameStatusConflict, statusOf, transitionGame } from "./game-status";
 import { WEBHOOK, audit, type Actor } from "./audit.service";
 import { bindCheckoutFamilyChild, reconcilePaidFamilyChildren } from "./family.service";
@@ -49,11 +50,20 @@ export async function startCheckout(c: Container, input: { gameId: string; email
   if (status !== "PACKAGE_SELECTED" && status !== "CHECKOUT_PENDING" && status !== "PAYMENT_FAILED") return flowError("PREVIOUS_STEPS", "צריך לסיים את השלבים הקודמים.");
   if (!game.packageTier || !isPackageTier(game.packageTier)) return flowError("PICK_PACKAGE_FIRST", "קודם בוחרים חבילה.");
   if (game.scenes.length !== boardsFor(game.packageTier)) return flowError("SCENES_INCOMPLETE", "בחירת העולמות לא הושלמה.");
+  const level = storedSearchLevel(game.searchLevel);
+  const levelVersion = sceneVersionForLevel(game.styleVersion, level);
+  const intentRow = game.familyChildId ? await c.db.childWorldPurchase.findUnique({ where: { activeGameId: game.id } }) : null;
+  // A parent who was shown the cards must have answered them; a family world purchase fixed its level when it began.
+  if (!game.searchLevel && !intentRow && (await searchLevelChoice(c, game.styleVersion)).shown) return flowError("SEARCH_LEVEL_REQUIRED", "בחרו מגלים או בלשים.");
+  // Detectives is paid for only with its own release's boards, never Explorers boards under its name.
+  if (level === "detectives" && (levelVersion == null || game.scenes.some(s => s.sceneVersion !== levelVersion))) {
+    return flowError("SEARCH_LEVEL_UNAVAILABLE", "מסלול הבלשים עוד לא פתוח בעולם הזה.");
+  }
   if (game.familyChildId) {
-    const intent = await c.db.childWorldPurchase.findUnique({ where: { activeGameId: game.id } });
+    const intent = intentRow;
     if (intent) {
-      const offered = (await worldsForDraft(c, game.styleVersion)).find(w => w.slug === intent.worldSlug);
-      const version = sceneVersionForDraft(game.styleVersion);
+      const offered = (await worldsForDraft(c, game.styleVersion, level)).find(w => w.slug === intent.worldSlug);
+      const version = levelVersion;
       if (!offered || game.packageTier !== "ONE_WORLD" || intent.ownerId !== game.ownerId || intent.familyChildId !== game.familyChildId
         || !boardSlugs(offered).every(slug => game!.scenes.some(s => s.sceneSlug === slug && (version === undefined || s.sceneVersion === version)))) return flowError("SCENE_UNAVAILABLE", "העולם אינו זמין להזמנה הזאת.");
     }

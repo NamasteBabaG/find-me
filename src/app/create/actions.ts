@@ -5,9 +5,10 @@ import { redirect } from "next/navigation";
 import { requireQaAccess } from "@/lib/server/qa-access";
 import { getContainer } from "@/services/container";
 import { getCurrency } from "@/i18n/server";
-import { createDraft, selectPackage, selectWorlds } from "@/services/create-flow.service";
+import { createDraft, searchLevelQuestion, selectPackage, selectWorlds } from "@/services/create-flow.service";
 import { startCheckout } from "@/services/order.service";
 import { validChildAge } from "@/domain/child-appearance";
+import { isSearchLevel, type SearchLevel } from "@/domain/search-level";
 import { currentDraft } from "@/lib/server/current-draft";
 import { currentUser, draftTokenFromCookie, setDraftCookie, requestHeaders } from "@/lib/server/session";
 import { LIMITS, rateLimit } from "@/lib/server/rate-limit";
@@ -27,12 +28,22 @@ export async function saveNameAction(_prev: ActionResult | null, formData: FormD
   const name = String(formData.get("name") ?? "");
   const ageYears = Number(formData.get("ageYears"));
   const familyChildId = String(formData.get("familyChildId") ?? "") || null;
+  const level = formData.get("searchLevel");
   if (!validChildAge(ageYears)) return flowError("INVALID_CHILD_AGE", "בחרו את גיל הדמות במשחק, בין 2 ל־10.");
   const guarded = await guardDb(async () => {
   let [draft, user, locale, draftToken] = await Promise.all([
     formData.get("freshAdventure") === "1" ? null : currentDraft(), currentUser(), getLocale(), draftTokenFromCookie(),
   ]);
   if (draft?.childProfileId && draft.familyChildId !== familyChildId) draft = null;
+  // The server decides whether the cards were asked, never the form: a level is
+  // required exactly when they were, and checked before any draft is created.
+  const choice = await searchLevelQuestion(c, draft);
+  let searchLevel: SearchLevel | undefined;
+  if (choice.shown) {
+    if (!isSearchLevel(level)) return flowError("SEARCH_LEVEL_REQUIRED", "בחרו מגלים או בלשים.");
+    if (level === "detectives" && !choice.detectives) return flowError("SEARCH_LEVEL_UNAVAILABLE", "מסלול הבלשים עוד לא פתוח.");
+    searchLevel = level;
+  }
   let token = draftToken;
   let gameId = draft?.id;
   if (!draft) {
@@ -42,7 +53,7 @@ export async function saveNameAction(_prev: ActionResult | null, formData: FormD
     gameId = created.gameId;
   }
     if (!gameId) return flowError("DRAFT_NOT_FOUND", "לא הצלחנו להתחיל טיוטה.");
-    return chooseDraftChild(c.db, { gameId, actorId: user?.id ?? null, draftToken: token, familyChildId, name, ageYears });
+    return chooseDraftChild(c.db, { gameId, actorId: user?.id ?? null, draftToken: token, familyChildId, name, ageYears, searchLevel });
   });
   if (!guarded.ok) return guarded;
   redirect("/create/photo");

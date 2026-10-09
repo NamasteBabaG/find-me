@@ -16,12 +16,13 @@ export async function continueWorldAction(childId: string, worldSlug: string, _p
   if (!purchasingEnabled()) return purchasingClosed();
   const user = await currentUser();
   const ageYears = Number(form.get("ageYears"));
+  const searchLevel = String(form.get("searchLevel") ?? "") || null;
   const returnGameId = String(form.get("returnGame") ?? "") || null;
-  if (!user) redirect(worldPurchaseSignInHref(worldPurchaseHref(childId, worldSlug, returnGameId, ageYears)));
+  if (!user) redirect(worldPurchaseSignInHref(worldPurchaseHref(childId, worldSlug, returnGameId, ageYears, searchLevel)));
   if (!rateLimit(`world-purchase:${user.id}`, LIMITS.checkout.limit, LIMITS.checkout.windowMs).ok) return flowError("TOO_MANY_REQUESTS", "יותר מדי ניסיונות.");
   const locale = await getLocale();
   const result = await guardDb(() => beginWorldPurchase(getContainer(), { ownerId: user.id, familyChildId: childId, worldSlug,
-    ageYears, locale, returnGameId }));
+    ageYears, locale, returnGameId, searchLevel }));
   if (!result.ok) return result;
   if (result.draftToken) await setDraftCookie(result.draftToken);
   redirect(result.href);
