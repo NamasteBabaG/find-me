@@ -23,12 +23,17 @@ export default async function CreateNamePage({ searchParams }: { searchParams: P
   const preferred = params.child === "new" ? "" : params.child ?? draft?.familyChildId ?? "";
   const initialChildId = children.some(child => child.id === preferred) ? preferred : "";
   // The same terms the save will apply: this draft's, or a new one for a fresh adventure.
-  const levels = await searchLevelTerms(c, params.child ? null : draft);
-  const savedLevel = params.child ? null : draft?.searchLevel;
+  const continuing = params.child ? null : draft;
+  const levels = await searchLevelTerms(c, continuing);
+  // Choosing another child in the form starts a new draft on save (the action drops a draft
+  // that already has a different child), so the form also needs a new draft's terms.
+  const fresh = continuing?.childProfileId ? await searchLevelTerms(c, null) : levels;
+  const savedLevel = continuing?.searchLevel;
   return (
     <CreateFrame step={0} title={t.create.name.title} user={user} isAdmin={isAdminEmail(user?.email)}>
       <NameForm initialName={params.child === "new" ? "" : initialName} initialAge={params.child ? null : draft?.childProfile?.ageYears} children={children} initialChildId={initialChildId} fresh={Boolean(params.child)}
-        levelChoice={levels.asked} initialLevel={isSearchLevel(savedLevel) ? savedLevel : null} />
+        levelChoice={levels.asked} freshLevelChoice={fresh.asked} initialLevel={isSearchLevel(savedLevel) ? savedLevel : null}
+        draftChild={continuing?.childProfileId ? { familyChildId: continuing.familyChildId ?? "" } : null} />
     </CreateFrame>
   );
 }

@@ -18,7 +18,7 @@ import { WEBHOOK, audit, type Actor } from "./audit.service";
 import { bindCheckoutFamilyChild, reconcilePaidFamilyChildren } from "./family.service";
 import { childHasPaidWorld } from "./child-pricing.service";
 import { claimChildWorldForCheckout, startOrdinaryCheckout, startWorldPurchaseCheckout } from "./world-purchase-checkout.service";
-import { DraftCheckoutInProgress } from "./draft-checkout-lock";
+import { DraftCheckoutInProgress, outstandingCheckoutOrder } from "./draft-checkout-lock";
 import { boardSlugs } from "@/domain/world";
 import { checkoutCloseReceiptId, closeReceiptState } from "./checkout-close.service";
 
@@ -54,13 +54,17 @@ export async function startCheckout(c: Container, input: { gameId: string; email
   const terms = await searchLevelTerms(c, game);
   // Only a draft that was asked must have answered; a family world purchase answered when it began.
   if (terms.required && !game.searchLevel) return flowError("SEARCH_LEVEL_REQUIRED", "בחרו מגלים או בלשים.");
-  // Payment terms already offered stand: an open hosted session resumes with its pinned
-  // boards. A new Detectives checkout sells only whole worlds eligible now, with exactly
-  // their boards at the release's version: never a withdrawn world, never other boards.
-  const honoured = level === "detectives" && terms.openPayment;
-  if (level === "detectives" && !honoured && !await detectiveSelectionEligible(c, game)) {
-    return flowError("SEARCH_LEVEL_UNAVAILABLE", "מסלול הבלשים עוד לא פתוח בעולם הזה.");
+  // A Detectives checkout sells only whole worlds eligible now, with exactly their boards
+  // at the release's version: never a withdrawn world, never other boards. Terms already
+  // offered stand, but only as a resumption of that exact open order: the payment claim
+  // re-checks it under its own transaction and refuses anything new if it has closed.
+  let resumeOrderId: string | undefined;
+  if (level === "detectives" && !await detectiveSelectionEligible(c, game)) {
+    const open = await outstandingCheckoutOrder(c.db, game.id);
+    if (!open) return flowError("SEARCH_LEVEL_UNAVAILABLE", "מסלול הבלשים עוד לא פתוח בעולם הזה.");
+    resumeOrderId = open.id;
   }
+  const honoured = resumeOrderId !== undefined;
   if (game.familyChildId) {
     const intent = await c.db.childWorldPurchase.findUnique({ where: { activeGameId: game.id } });
     if (intent) {
@@ -132,12 +136,12 @@ export async function startCheckout(c: Container, input: { gameId: string; email
   if (game.familyChildId && await c.db.childWorldPurchase.findUnique({ where: { activeGameId: game.id } })) {
     return startWorldPurchaseCheckout(c, { gameId: game.id, userId: user.id, email: user.email, currency, amount, locale,
       description: `${pick({ en: `Where's ${game.childProfile!.displayName}?`, he: `איפה ${game.childProfile!.displayName}?` }, locale)} — ${pick(pkg.name, locale)}`,
-      legalVersion: input.legalVersion });
+      legalVersion: input.legalVersion, ...(resumeOrderId ? { resumeOrderId } : {}) });
   }
   return startOrdinaryCheckout(c, {
     gameId: game.id, userId: user.id, email: user.email, currency, amount, locale,
     description: `${pick({ en: `Where's ${game.childProfile.displayName}?`, he: `איפה ${game.childProfile.displayName}?` }, locale)} — ${pick(pkg.name, locale)}`,
-    legalVersion: input.legalVersion,
+    legalVersion: input.legalVersion, ...(resumeOrderId ? { resumeOrderId } : {}),
   });
 }
 

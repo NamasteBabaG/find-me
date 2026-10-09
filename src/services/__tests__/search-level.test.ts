@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { PrismaClient } from "@prisma/client";
 import sharp from "sharp";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyTestSchema } from "@/lib/test-schema";
 import { DbStorage } from "@/infra/storage/db";
 import { MockPaymentProvider } from "@/infra/payment/mock";
@@ -12,6 +12,7 @@ import type { DetectiveRelease } from "@/domain/search-level";
 import type { Container } from "../container";
 import { attachPhoto, createDraft, detectiveSelectionEligible, searchLevelChoice, searchLevelTerms, selectPackage, selectWorlds, worldsForDraft } from "../create-flow.service";
 import { chooseDraftChild } from "../family.service";
+import { closeDraftCheckout } from "../checkout-close.service";
 import { startCheckout } from "../order.service";
 import { beginWorldPurchase } from "../world-purchase.service";
 import { boardsOfWorlds } from "../world-catalog.service";
@@ -41,6 +42,8 @@ afterAll(async () => {
   if (path.dirname(absolute) === realpathSync(tmpdir()) && path.basename(absolute).startsWith("findme-search-level-")) rmSync(absolute, { recursive: true, force: true });
 });
 beforeEach(() => { f.env = { APP_ENV: "qa", SEARCH_LEVEL_CHOICE: "on" }; f.releases = [JOURNEY_AT_12]; });
+// A failed assertion must not leave a provider or transaction spy counting into the next test.
+afterEach(() => { vi.restoreAllMocks(); });
 
 /** A draft made the way the name step makes one: pinned exactly when its cards are shown. */
 async function named(input: { ageYears: number; searchLevel?: "explorers" | "detectives" }) {
@@ -57,6 +60,22 @@ async function photographed(input: Parameters<typeof named>[0]) {
 const checkout = (draft: { gameId: string; draftToken: string }) => ({ gameId: draft.gameId, email: `level-${++sequence}@example.invalid`, currency: "ILS" as const,
   access: { draftToken: draft.draftToken, userId: null }, legalVersion: LEGAL_VERSION });
 const orders = (gameId: string) => db.order.findMany({ where: { gameId } });
+/** A signed-in parent with one saved child, as the family area starts a world purchase. */
+async function family() {
+  const id = `level-family-${++sequence}`, ownerId = `${id}-owner`, childId = `${id}-child`;
+  await db.user.create({ data: { id: ownerId, email: `${id}@example.invalid` } });
+  await db.familyChild.create({ data: { id: childId, ownerId, displayName: "Synthetic child" } });
+  return { ownerId, familyChildId: childId, ageYears: 5, locale: "he" as const, returnGameId: null };
+}
+/** Another tab acting in the gap right after this request's next transaction commits. */
+function afterNextTransaction(between: () => Promise<void>) {
+  const run = db.$transaction.bind(db) as (...args: unknown[]) => Promise<unknown>;
+  return vi.spyOn(db, "$transaction").mockImplementationOnce((async (...args: unknown[]) => {
+    const result = await run(...args);
+    await between();
+    return result;
+  }) as unknown as typeof db.$transaction);
+}
 
 describe("whether the parent is asked", () => {
   it("asks only while Detectives can be sold; development shows the cards for review", async () => {
@@ -229,26 +248,75 @@ describe("boards and checkout follow the level", () => {
     expect(await startCheckout(c, checkout(draft))).toMatchObject({ ok: true });
     expect(await orders(draft.gameId)).toHaveLength(1);
   });
+});
 
-  it("honours an open Detectives payment after its world is withdrawn: the same session, no new order", async () => {
-    const draft = await photographed({ ageYears: 8, searchLevel: "detectives" });
-    expect(await selectPackage(c, draft.gameId, "ONE_WORLD")).toEqual({ ok: true });
-    const input = checkout(draft);
+// Terms already offered stand only as that exact open order: a request let through to resume
+// it holds no permission of its own, so the payment claim re-checks the order and sells nothing
+// new once it has closed. Both purchase paths share the claim, so both are exercised.
+describe.each(["ordinary", "family"] as const)("a Detectives payment opened before its world was withdrawn (%s checkout)", flow => {
+  /** One open Detectives payment: from the wizard, or from the family area's world purchase. */
+  async function opened() {
+    let input: Parameters<typeof startCheckout>[1];
+    if (flow === "ordinary") {
+      const draft = await photographed({ ageYears: 8, searchLevel: "detectives" });
+      expect(await selectPackage(c, draft.gameId, "ONE_WORLD")).toEqual({ ok: true });
+      input = checkout(draft);
+    } else {
+      const parent = await family();
+      const started = await beginWorldPurchase(c, { ...parent, ageYears: 8, worldSlug: "journey", searchLevel: "detectives" });
+      if (!started.ok) throw Error(started.code);
+      expect(await attachPhoto(c, started.gameId, { buffer: photo, mimeType: "image/png", crop: null })).toEqual({ ok: true });
+      const { email } = await db.user.findUniqueOrThrow({ where: { id: parent.ownerId } });
+      input = { gameId: started.gameId, email, currency: "ILS", access: { draftToken: started.draftToken, userId: parent.ownerId }, legalVersion: LEGAL_VERSION };
+    }
     const first = await startCheckout(c, input);
     if (!first.ok) throw Error(first.code);
+    const [order] = await orders(input.gameId);
+    return { input, first, order: order! };
+  }
+
+  it("honours an open Detectives payment after its world is withdrawn: the same session, no new order", async () => {
+    const { input, first, order } = await opened();
     f.releases = [];
+    const provider = vi.spyOn(c.payment, "createCheckout");
     expect(await startCheckout(c, input)).toEqual(first);
-    expect(await orders(draft.gameId)).toHaveLength(1);
+    expect((await orders(input.gameId)).map(o => [o.id, o.paymentStatus])).toEqual([[order.id, "PENDING"]]);
+    expect(provider).not.toHaveBeenCalled();
+  });
+
+  it("refuses once that payment closes between the check and the claim: no new order, no provider call", async () => {
+    const { input, first, order } = await opened();
+    f.releases = [];
+    const provider = vi.spyOn(c.payment, "createCheckout");
+    // The parent closes the payment in another tab after this request's ownership
+    // transaction, before its payment claim: the gap the resume check used to leave open.
+    const gap = afterNextTransaction(async () => {
+      expect(await closeDraftCheckout(c, { ownerId: first.userId, gameId: input.gameId, orderId: order.id })).toEqual({ ok: true });
+    });
+    try {
+      expect(await startCheckout(c, input)).toMatchObject({ ok: false, code: "SEARCH_LEVEL_UNAVAILABLE" });
+    } finally { gap.mockRestore(); }
+    expect((await orders(input.gameId)).map(o => [o.id, o.paymentStatus])).toEqual([[order.id, "CANCELLED"]]);
+    expect(provider).not.toHaveBeenCalled();
+    expect((await game(input.gameId)).status).toBe("PACKAGE_SELECTED");
+    // Nothing reopens it later either.
+    expect(await startCheckout(c, input)).toMatchObject({ ok: false, code: "SEARCH_LEVEL_UNAVAILABLE" });
+    expect(await orders(input.gameId)).toHaveLength(1);
+  });
+
+  it("still sells a new attempt while the product stays eligible", async () => {
+    const { input, first, order } = await opened();
+    expect(await closeDraftCheckout(c, { ownerId: first.userId, gameId: input.gameId, orderId: order.id })).toEqual({ ok: true });
+    const provider = vi.spyOn(c.payment, "createCheckout");
+    const next = await startCheckout(c, input);
+    if (!next.ok) throw Error(next.code);
+    expect(next.checkoutUrl).not.toBe(first.checkoutUrl);
+    expect((await orders(input.gameId)).map(o => o.paymentStatus).sort()).toEqual(["CANCELLED", "PENDING"]);
+    expect(provider).toHaveBeenCalledTimes(1);
   });
 });
 
 describe("adding a world from the family area", () => {
-  async function family() {
-    const id = `level-family-${++sequence}`, ownerId = `${id}-owner`, childId = `${id}-child`;
-    await db.user.create({ data: { id: ownerId, email: `${id}@example.invalid` } });
-    await db.familyChild.create({ data: { id: childId, ownerId, displayName: "Synthetic child" } });
-    return { ownerId, familyChildId: childId, ageYears: 5, locale: "he" as const, returnGameId: null };
-  }
   const games = (familyChildId: string) => db.game.count({ where: { familyChildId } });
 
   it("fixes the chosen level with the draft, like the age", async () => {

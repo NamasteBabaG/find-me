@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from "react";
-import { cleanup, fireEvent, render, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor, within, type RenderResult } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "@/i18n/client";
 import { en } from "@/i18n/dictionaries/en";
@@ -85,5 +85,79 @@ describe("the name step", () => {
   it("restores a saved path", () => {
     const view = render(<I18nProvider locale="en" dict={en}><NameForm {...props} levelChoice initialLevel="detectives" /></I18nProvider>);
     expect((view.getByRole("radio", { name: /Detectives/ }) as HTMLInputElement).checked).toBe(true);
+  });
+});
+
+// Choosing another child than the continued draft's starts a new draft on save, which
+// follows a new draft's terms. The form shows those terms, never the old draft's.
+describe("changing the child of a saved draft", () => {
+  const family = [{ id: "old-child", displayName: "Synthetic old" }, { id: "new-child", displayName: "Synthetic new" }];
+  /** The first child's draft, saved before the cards; a new draft would be asked. */
+  const legacy = { initialName: "Synthetic old", initialAge: 8, children: family, initialChildId: "old-child",
+    draftChild: { familyChildId: "old-child" }, levelChoice: false, freshLevelChoice: true, initialLevel: null };
+  const choose = (view: RenderResult, id: string) => fireEvent.change(view.container.querySelector('select[name="familyChildId"]')!, { target: { value: id } });
+  const age = (view: RenderResult, years: string) => fireEvent.change(view.getByLabelText(en.create.name.ageLabel), { target: { value: years } });
+  const submit = (view: RenderResult) => fireEvent.click(view.container.querySelector('.create__actions button[type="submit"]')!);
+  const sent = async () => {
+    await waitFor(() => expect(action).toHaveBeenCalledTimes(1));
+    const data = (action.mock.calls[0] as unknown as [unknown, FormData])[1];
+    return { familyChildId: data.get("familyChildId"), name: data.get("name"), searchLevel: data.get("searchLevel"), ageYears: data.get("ageYears") };
+  };
+
+  it.each([["another saved child", "new-child"], ["a new child", ""]])("asks for %s's new adventure, with nothing chosen, and sends the answer", async (_label, id) => {
+    const view = render(<I18nProvider locale="en" dict={en}><NameForm {...legacy} /></I18nProvider>);
+    expect(view.queryAllByRole("radio")).toHaveLength(0);
+    choose(view, id);
+    expect((view.getAllByRole("radio") as HTMLInputElement[]).map(radio => radio.checked)).toEqual([false, false]);
+    if (!id) fireEvent.change(view.getByLabelText(en.create.name.label), { target: { value: "Synthetic third" } });
+    age(view, "8");
+    submit(view);
+    expect(view.getByRole("alert").textContent).toBe(en.errors.SEARCH_LEVEL_REQUIRED);
+    expect(action).not.toHaveBeenCalled();
+    fireEvent.click(view.getByRole("radio", { name: /Explorers/ }));
+    submit(view);
+    expect(await sent()).toEqual({ familyChildId: id, name: id ? "Synthetic new" : "Synthetic third", searchLevel: "explorers", ageYears: "8" });
+  });
+
+  it("returning to the draft's own child puts its terms back: no cards, the legacy meaning", async () => {
+    const view = render(<I18nProvider locale="en" dict={en}><NameForm {...legacy} /></I18nProvider>);
+    choose(view, "new-child");
+    fireEvent.click(view.getByRole("radio", { name: /Detectives/ }));
+    choose(view, "old-child");
+    expect(view.queryAllByRole("radio")).toHaveLength(0);
+    age(view, "8");
+    submit(view);
+    expect(await sent()).toEqual({ familyChildId: "old-child", name: "Synthetic old", searchLevel: null, ageYears: "8" });
+  });
+
+  it("never carries a saved path to another child, and restores it with its own child", () => {
+    const view = render(<I18nProvider locale="en" dict={en}><NameForm {...legacy} levelChoice initialLevel="detectives" /></I18nProvider>);
+    const checked = () => (view.getAllByRole("radio") as HTMLInputElement[]).map(radio => radio.checked);
+    expect(checked()).toEqual([false, true]);
+    choose(view, "new-child");
+    expect(checked()).toEqual([false, false]);
+    choose(view, "old-child");
+    expect(checked()).toEqual([false, true]);
+  });
+
+  it("follows the server when the choice is off: no cards for another child, and nothing holds the form back", async () => {
+    const view = render(<I18nProvider locale="en" dict={en}><NameForm {...legacy} freshLevelChoice={false} /></I18nProvider>);
+    choose(view, "new-child");
+    expect(view.queryAllByRole("radio")).toHaveLength(0);
+    age(view, "6");
+    submit(view);
+    expect(await sent()).toEqual({ familyChildId: "new-child", name: "Synthetic new", searchLevel: null, ageYears: "6" });
+  });
+
+  it("keeps a new child's typed name across switches", () => {
+    const view = render(<I18nProvider locale="en" dict={en}><NameForm {...legacy} /></I18nProvider>);
+    const name = () => (view.getByLabelText(en.create.name.label) as HTMLInputElement).value;
+    choose(view, "");
+    fireEvent.change(view.getByLabelText(en.create.name.label), { target: { value: "Synthetic third" } });
+    choose(view, "new-child");
+    expect(name()).toBe("Synthetic new");
+    choose(view, "");
+    expect(name()).toBe("Synthetic third");
+    expect(view.getAllByRole("radio")).toHaveLength(2);
   });
 });

@@ -9,10 +9,13 @@ import type { SearchLevel } from "@/domain/search-level";
 import { saveNameAction, type ActionResult } from "./actions";
 import { SearchLevelChoice } from "./SearchLevelChoice";
 
-export function NameForm({ initialName, initialAge, children = [], initialChildId = "", fresh = false, levelChoice = false, initialLevel = null }: {
+export function NameForm({ initialName, initialAge, children = [], initialChildId = "", fresh = false, levelChoice = false, freshLevelChoice = levelChoice, initialLevel = null, draftChild = null }: {
   initialName: string; initialAge?: number | null; children?: Array<{ id: string; displayName: string }>; initialChildId?: string; fresh?: boolean;
-  /** Ask Explorers or Detectives (the server decides; it re-checks on save). */
+  /** Ask Explorers or Detectives for the draft being continued (the server decides; it re-checks on save). */
   levelChoice?: boolean; initialLevel?: SearchLevel | null;
+  /** The continued draft already has a child: choosing another one starts a new draft on
+   * save, which follows a new draft's terms (`freshLevelChoice`), not the continued one's. */
+  draftChild?: { familyChildId: string } | null; freshLevelChoice?: boolean;
 }) {
   const { t } = useI18n();
   const n = t.create.name;
@@ -22,6 +25,9 @@ export function NameForm({ initialName, initialAge, children = [], initialChildI
   // No level is chosen for the parent: the first visit asks for a clear answer.
   const [level, setLevel] = useState<SearchLevel | null>(initialLevel);
   const [levelMissing, setLevelMissing] = useState(false);
+  const startsFresh = (childId: string) => Boolean(draftChild) && childId !== draftChild!.familyChildId;
+  // The cards follow the draft the save will use, so an answer the server needs is never out of reach.
+  const asking = startsFresh(selectedId) ? freshLevelChoice : levelChoice;
   const selected = children.find(child => child.id === selectedId);
   const [state, action, pending] = useActionState<ActionResult | null, FormData>(saveNameAction, null);
   const ageInvalid = Boolean(state && !state.ok && state.code === "INVALID_CHILD_AGE");
@@ -29,7 +35,7 @@ export function NameForm({ initialName, initialAge, children = [], initialChildI
   return (
     <form action={action} className="fm-card fm-card--pad-6 fm-stack fm-stack--3" onSubmit={event => {
       // Answered on the spot, in the product's words, before a round trip.
-      if (!levelChoice || level) return;
+      if (!asking || level) return;
       event.preventDefault();
       setLevelMissing(true);
       event.currentTarget.querySelector<HTMLInputElement>('input[name="searchLevel"]')?.focus();
@@ -37,7 +43,12 @@ export function NameForm({ initialName, initialAge, children = [], initialChildI
       <input type="hidden" name="freshAdventure" value={fresh ? "1" : "0"} />
       {children.length > 0 ? <div className="fm-field">
         <label className="fm-label" htmlFor="familyChildId">{t.family.choose}</label>
-        <span className="fm-select"><select className="fm-input" id="familyChildId" name="familyChildId" value={selectedId} onChange={e => { setSelectedId(e.target.value); setAge(""); }} aria-describedby={selected ? "family-choice-hint" : undefined}>
+        <span className="fm-select"><select className="fm-input" id="familyChildId" name="familyChildId" value={selectedId} onChange={e => {
+          const next = e.target.value;
+          setSelectedId(next); setAge(""); setLevelMissing(false);
+          // Another child's adventure never inherits this draft's path; coming back restores it.
+          setLevel(startsFresh(next) ? null : initialLevel);
+        }} aria-describedby={selected ? "family-choice-hint" : undefined}>
           <option value="">{t.family.newChild}</option>
           {children.map(child => <option key={child.id} value={child.id}>{child.displayName}</option>)}
         </select></span>
@@ -46,12 +57,12 @@ export function NameForm({ initialName, initialAge, children = [], initialChildI
       </div> : <input type="hidden" name="familyChildId" value="" />}
       {/* Name and age, nothing more (per Guy): the labels say it, the stepper says what comes next.
           With the search level the order is name, path, exact age (Guy, 2026-10-09). */}
-      <div className={`create__child-fields${levelChoice ? " create__child-fields--level" : ""}`}>
+      <div className={`create__child-fields${asking ? " create__child-fields--level" : ""}`}>
         <div className="fm-field">
           <label htmlFor="name" className="fm-label">{n.label}</label>
           <input id="name" name="name" className="fm-input" value={selected?.displayName ?? newName} onChange={e => setNewName(e.target.value)} readOnly={Boolean(selected)} placeholder={n.placeholder} maxLength={24} minLength={2} required autoFocus={!selected} autoComplete="off" />
         </div>
-        {levelChoice ? (
+        {asking ? (
           <>
             <SearchLevelChoice value={level} ageYears={age ? Number(age) : null} invalid={levelInvalid}
               describedBy={levelMissing ? "level-error" : levelInvalid ? "child-form-error" : undefined}

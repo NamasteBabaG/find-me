@@ -1,4 +1,4 @@
-import { beforeEach, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const f = vi.hoisted(() => ({ lookup: vi.fn(), user: vi.fn(), create: vi.fn(), choose: vi.fn(), terms: vi.fn(), cookie: vi.fn() }));
 vi.mock("@/lib/purchasing", async original => ({ ...await original<typeof import("@/lib/purchasing")>(), purchasingEnabled: () => true }));
@@ -64,6 +64,33 @@ it("asks with the draft's own terms and saves the answer with the exact age", as
   expect(f.terms).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: "draft", styleVersion: "local-patch-world-v1" }));
   expect(f.choose).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ gameId: "draft", ageYears: 8, searchLevel: "explorers" }));
   expect(f.create).not.toHaveBeenCalled();
+});
+
+describe("a saved draft whose child is changed in the form", () => {
+  // The first child's draft predates the cards; a new draft would be asked.
+  beforeEach(() => {
+    f.user.mockResolvedValue({ id: "synthetic-parent", email: "synthetic-parent@example.invalid" });
+    f.lookup.mockResolvedValue({ id: "legacy", draftToken: "draft-token", ownerId: "synthetic-parent", status: "DRAFT", styleVersion: "local-patch-world-v1",
+      searchLevel: null, childProfileId: "legacy-profile", familyChildId: "old-child", childProfile: { id: "legacy-profile" }, scenes: [] });
+    f.terms.mockImplementation(async (_c: unknown, draft: unknown) => terms(!draft, true));
+  });
+  const forChild = (familyChildId: string, level?: string) => { const data = form(level); data.set("familyChildId", familyChildId); return data; };
+
+  it.each(["new-child", ""])("starts a new draft for another child (%j) on a new draft's terms", async other => {
+    expect(await saveNameAction(null, forChild(other))).toMatchObject({ ok: false, code: "SEARCH_LEVEL_REQUIRED" });
+    expect(f.terms).toHaveBeenCalledWith(expect.anything(), null);
+    expect(f.create).not.toHaveBeenCalled(); expect(f.cookie).not.toHaveBeenCalled();
+    await expect(saveNameAction(null, forChild(other, "explorers"))).rejects.toThrow("redirect:/create/photo");
+    expect(f.create).toHaveBeenCalledWith(expect.anything(), "synthetic-parent", "he", { askSearchLevel: true });
+    expect(f.choose).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ gameId: "new-draft", familyChildId: other || null, searchLevel: "explorers" }));
+  });
+
+  it("continues the draft for its own child on the draft's terms, with no answer needed", async () => {
+    await expect(saveNameAction(null, forChild("old-child"))).rejects.toThrow("redirect:/create/photo");
+    expect(f.terms).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: "legacy" }));
+    expect(f.choose).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ gameId: "legacy", familyChildId: "old-child", searchLevel: undefined }));
+    expect(f.create).not.toHaveBeenCalled();
+  });
 });
 
 it("pins a new draft to the question it was asked, and checks the answer before creating it", async () => {

@@ -48,6 +48,10 @@ export async function claimChildWorldForCheckout(tx: Prisma.TransactionClient, i
 
 type CheckoutClaimInput = {
   gameId: string; userId: string; email: string; currency: Currency; amount: number; description: string; locale: Locale; legalVersion?: string;
+  /** Set only when the product can no longer be sold: this request may resume this exact
+   * open order (or recover its uncertain dispatch under the same key), never create,
+   * replace, reprice or adopt another. Checked under the claim transaction. */
+  resumeOrderId?: string;
 };
 type CheckoutClaimResult = { ok: true; checkoutUrl: string; userId: string } | FlowError;
 
@@ -84,6 +88,9 @@ async function startClaimedCheckout(c: Container, input: CheckoutClaimInput, req
       // earlier quote cannot decide money after another world was paid.
       const amount = priceFor(game.packageTier, input.currency, await childHasPaidWorld(tx, { ownerId: input.userId, familyChildId: game.familyChildId, excludeGameId: game.id }));
       let order = await tx.order.findUnique({ where: { checkoutKey: key } });
+      // A resume-only request holds no permission of its own: if its exact order closed,
+      // changed or was replaced since the caller looked, nothing new is sold under it.
+      if (input.resumeOrderId && (!order || order.id !== input.resumeOrderId || !outstandingCheckout(order))) return { state: "resume-lost" as const };
       if (order && (order.userId !== input.userId || order.provider !== c.payment.id || !["PENDING", "FAILED"].includes(order.paymentStatus))) return { state: "locked" as const };
       if (order && order.paymentStatus === "FAILED") {
         if (outstandingCheckout(order)) {
@@ -139,6 +146,7 @@ async function startClaimedCheckout(c: Container, input: CheckoutClaimInput, req
     throw error;
   }
   if (claimed.state === "ready") return { ok: true, checkoutUrl: claimed.order.checkoutUrl!, userId: input.userId };
+  if (claimed.state === "resume-lost") return flowError("SEARCH_LEVEL_UNAVAILABLE", "התשלום הקודם נסגר, ומסלול הבלשים כבר לא פתוח בעולם הזה.");
   if (claimed.state === "busy") return flowError("CHECKOUT_IN_PROGRESS", "התשלום נפתח בלשונית אחרת.");
   if (claimed.state === "unsupported") return flowError("SERVICE_UNAVAILABLE", "ספק התשלום עדיין אינו תומך ברכישה בטוחה.");
   if (claimed.state !== "claimed") return flowError("DRAFT_LOCKED", "ההזמנה השתנתה. פתחו שוב את העולם.");

@@ -10,13 +10,16 @@ export class DraftCheckoutInProgress extends Error {
   constructor() { super("An existing payment attempt must finish before this draft can change"); }
 }
 
-/** Whether a payment attempt for this game may still be open (the same rule the fence uses). */
-export async function hasOutstandingCheckout(db: Pick<Prisma.TransactionClient, "order">, gameId: string): Promise<boolean> {
-  const order = await db.order.findFirst({ where: { gameId, OR: [
+/** The newest payment attempt for this game that may still be open (the same rule the fence uses). */
+export async function outstandingCheckoutOrder(db: Pick<Prisma.TransactionClient, "order">, gameId: string): Promise<{ id: string } | null> {
+  return db.order.findFirst({ where: { gameId, OR: [
     { paymentStatus: { in: ["PENDING", "FAILED", "CANCELLED"] }, OR: [{ checkoutUrl: { not: null } }, { checkoutClaimUntil: { not: null } }] },
     { paymentStatus: { in: ["PENDING", "FAILED"] }, providerPaymentId: { not: null } },
-  ] }, select: { id: true } });
-  return Boolean(order);
+  ] }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true } });
+}
+
+export async function hasOutstandingCheckout(db: Pick<Prisma.TransactionClient, "order">, gameId: string): Promise<boolean> {
+  return Boolean(await outstandingCheckoutOrder(db, gameId));
 }
 
 /** Call only after taking the game's write fence, in the same transaction. */
