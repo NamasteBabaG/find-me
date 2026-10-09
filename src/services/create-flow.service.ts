@@ -19,6 +19,7 @@ import { purchasingClosed, purchasingEnabled } from "@/lib/purchasing";
 import { LOCAL_PATCH_STYLE } from "./generation/local-patch-world";
 import { INTEGRATED_COLLECTION_VERSION } from "../domain/scene/local-patch-versions";
 import { assertNoOutstandingCheckout, DraftCheckoutInProgress } from "./draft-checkout-lock";
+import { pinVisualReviewRelease } from "./generation/visual-review-release";
 
 const paymentEditingError = () => flowError("CHECKOUT_IN_PROGRESS", "צריך לסיים את התשלום הקיים לפני שינוי הטיוטה.");
 
@@ -45,8 +46,13 @@ export async function createDraft(c: Container, ownerId: string | null, locale: 
   const styleVersion = newDraftStyleVersion();
   // Pin the QA engine before the first generated preview. Existing games and
   // production drafts retain their own engine; no later flag can change this one.
-  const game = await c.db.game.create({ data: { id: newId("game"), draftToken, ownerId, status: "DRAFT", locale,
-    ...(styleVersion ? { styleVersion } : {}) } });
+  if (c.pinDualVisualReview && !c.visualReview) throw Error("Dual visual review credentials are not configured");
+  const game = await c.db.$transaction(async tx => {
+    const created = await tx.game.create({ data: { id: newId("game"), draftToken, ownerId, status: "DRAFT", locale,
+      ...(styleVersion ? { styleVersion } : {}) } });
+    if (styleVersion === LOCAL_PATCH_STYLE && c.pinDualVisualReview) await pinVisualReviewRelease(tx, created.id);
+    return created;
+  });
   c.analytics.track("create_started", {});
   return { gameId: game.id, draftToken };
 }

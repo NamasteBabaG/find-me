@@ -32,6 +32,8 @@ const EnvSchema = z.object({
   GENERATION_ENABLED: z.enum(["on", "off"]).default("on"),
   /** Versioned visual calibration; existing paid questions still replay intact. */
   LOCAL_PATCH_PLAYER_REVIEW: z.enum(["on", "off"]).default("off"),
+  /** Prospective QA release; captured on new drafts, never retroactive. */
+  LOCAL_PATCH_VISUAL_REVIEW: z.enum(["legacy", "dual-high-v1"]).default("legacy"),
   EMAIL_PROVIDER: z.enum(["console", "resend"]).default("console"),
   STORAGE_PROVIDER: z.enum(["local", "supabase", "db"]).default("local"),
   ANALYTICS_PROVIDER: z.enum(["console", "posthog", "none"]).default("console"),
@@ -52,6 +54,7 @@ const EnvSchema = z.object({
   PAYME_WEBHOOK_SECRET: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
+  ANTHROPIC_API_KEY: z.string().optional(),
   /** Vercel sets this and sends it as a bearer token on scheduled invocations. */
   CRON_SECRET: z.string().optional(),
   /** Image model for the character sheet and the slot patches. */

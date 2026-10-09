@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { BOARDS_PER_WORLD } from "../package";
+import { localPatchReturnRegion } from "./local-patch-return-region";
 
 /**
  * Where a child is painted into each board, how she is posed there, and the
@@ -85,8 +86,12 @@ export const LocalPatchHideSchema = z.object({
    * transforms do not carry forward to the new placement.
    */
   targetId: z.string().min(1),
+  /** Optional authored outfit for THIS appearance. Omission keeps historical paid recipes unchanged. */
+  wardrobe: z.string().min(12).optional(),
   /** v7 authoring only. Omission preserves every legacy pixel and fingerprint. */
   mask: z.object({ left: z.number().int().nonnegative(), top: z.number().int().nonnegative(), width: z.number().int().positive(), height: z.number().int().positive() }).strict().optional(),
+  /** Opt-in authoring: pixels returned to the board, relative to the context crop. */
+  returnRect: z.object({ left: z.number().int().nonnegative(), top: z.number().int().nonnegative(), width: z.number().int().positive(), height: z.number().int().positive() }).strict().optional(),
   hint: z.object({ en: z.string().min(12), he: z.string().min(8) }).strict().optional(),
   placement: z.object({
     depth: z.enum(["near", "middle", "deep"]),
@@ -164,6 +169,7 @@ export function assertPlaceable(board: LocalPatchBoard, dimensions: { width: num
     if (box.left < 0 || box.left + box.width > LOCAL_PATCH_CROP.width || box.top < 0 || box.top + box.height > LOCAL_PATCH_CROP.height) {
       throw new Error(`LOCAL_PATCH: the ${hide.pose} box does not fit the crop at ${hide.id}`);
     }
+    if (hide.returnRect) localPatchReturnRegion(crop, box, hide.returnRect);
     if (!board.sittable && LOW_POSES.includes(hide.pose)) {
       throw new Error(`LOCAL_PATCH: ${hide.id} is ${hide.pose} on ${board.ground}, which nobody sits on`);
     }

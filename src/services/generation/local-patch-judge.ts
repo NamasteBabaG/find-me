@@ -247,7 +247,12 @@ export const localPatchAgeVerdictSchema = localPatchVerdictWireSchema.extend({
 });
 export type LocalPatchAgeVerdict = z.infer<typeof localPatchAgeVerdictSchema>;
 const integrationEvidenceSchema = z.object({ style: z.string().trim().min(12).max(600), lighting: z.string().trim().min(12).max(600), neighbors: z.string().trim().min(12).max(600) }).strict();
-const edgeObservation = z.object({ status: check, observation: z.string().trim().min(12).max(240) }).strict();
+// A full-span join may contain several connected people. Retained, complete
+// reviews at 241-260 characters were unreadable solely because of prose length,
+// despite explicit checks and four inspected boundaries. Keep a bounded text
+// payload without turning a verbose observation into a failed picture.
+export const LOCAL_PATCH_BOUNDARY_OBSERVATION_MAX = 600;
+const edgeObservation = z.object({ status: check, observation: z.string().trim().min(12).max(LOCAL_PATCH_BOUNDARY_OBSERVATION_MAX) }).strict();
 const boundaryIntegritySchema = z.object({ left: edgeObservation, top: edgeObservation, right: edgeObservation, bottom: edgeObservation }).strict();
 export const localPatchIntegratedVerdictSchema = localPatchVerdictWireSchema.extend({
   faceLikeness: check, faceReadable: check, severeSeam: check, ageAppropriate: check,
@@ -547,7 +552,7 @@ export async function judgeLocalPatch(apiKey: string, request: LocalPatchJudgeRe
 export async function requestJudgeWire(apiKey: string, request: { prompt: string; images: readonly Buffer[];
   /** When supplied, each label is immediately adjacent to its image on the wire. */
   imageLabels?: readonly string[];
-  settings: { model: string; effort: "low" | "medium"; maxOutputTokens: number; endpoint: string; timeoutMs: number }; timeoutMs?: number },
+  settings: { model: string; effort: "low" | "medium" | "high"; maxOutputTokens: number; endpoint: string; timeoutMs: number }; timeoutMs?: number },
 fetchOnce: typeof fetch): Promise<LocalPatchJudgeResult> {
   const { settings, prompt } = request;
   if (request.imageLabels && (request.imageLabels.length !== request.images.length

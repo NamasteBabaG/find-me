@@ -15,7 +15,7 @@ import { prepareLocalPatchIdentityReferences } from "./local-patch-identity-refe
 import { fenceLocalPatchImages, LocalPatchRetainedPurchaseStore } from "./local-patch-lifecycle";
 import { LOCAL_PATCH_PROVIDER, readShippedBoardArt, type LocalPatchHideDeps } from "./local-patch-hide";
 import { renderLocalPatchHide, RETAINED_RENDER_VERSION } from "./local-patch-render";
-import { LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION, LOCAL_PATCH_INTEGRATED_PROMPT_VERSION, LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION } from "./local-patch-prompt";
+import { LOCAL_PATCH_AGE_PROMPT_VERSION, paintRecipeForPinnedPrompt } from "./local-patch-prompt";
 import { LOCAL_PATCH_JUDGE, requestJudgeWire, isTheModelWeAsked, type LocalPatchJudgeResult } from "./local-patch-judge";
 import { recomputePaidPatchJoin } from "./local-patch-repair-compose";
 import { integrationDiagnosisPrompt } from "./local-patch-integration-diagnosis";
@@ -238,9 +238,7 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
     const result = await renderLocalPatchHide({ ledger: budget, store, render: deps.render, renderPolicySha256: deps.renderPolicySha256 }, {
       worldId, board, hide, composedPng: original, contentVersion: scene.sceneVersion, ...references, ageYears: child.ageYears,
       expectedPromptVersion: row.promptVersion ?? LOCAL_PATCH_AGE_PROMPT_VERSION,
-      ...(row.promptVersion === LOCAL_PATCH_INTEGRATED_PROMPT_VERSION ? { paintRecipe: "scene-integration-v3" as const } : {}),
-      ...(row.promptVersion === LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION ? { paintRecipe: "identity-body-v2" as const } : {}),
-      ...(row.promptVersion === LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION ? { paintRecipe: "board-paint-v1" as const } : {}),
+      ...(paintRecipeForPinnedPrompt(row.promptVersion) ? { paintRecipe: paintRecipeForPinnedPrompt(row.promptVersion) } : {}),
       attempt: row.attempts, apiKey: deps.apiKey ?? "", selfRepair: { cycle: active.cycle, decision }, deadlineAt: input.deadlineAt,
       ...(decision.action === "restyle-retained" ? { restyleSourcePng: raw! } : {}),
     });

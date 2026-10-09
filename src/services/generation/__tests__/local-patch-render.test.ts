@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { describe, expect, it, vi } from "vitest";
 import { LOCAL_PATCH_CROP, POSE_MASK, cropOf, maskForHide, maskInCrop, type LocalPatchBoard, type LocalPatchHide } from "../../../domain/scene/local-patch-hides";
-import { LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION, localPatchPrompt } from "../local-patch-prompt";
+import { LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION, LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION, localPatchPrompt } from "../local-patch-prompt";
 import { localPatchBoardsForVersion } from "../../../domain/scene/local-patch-catalog";
 import { RETAINED_PURCHASE_VERSION, retainedPayloadDigest } from "../paid-operation";
 import { LOCAL_PATCH_RESERVE, poseMask, renderLocalPatchHide, type LocalPatchRenderDeps } from "../local-patch-render";
@@ -98,7 +98,72 @@ async function attempt(deps: LocalPatchRenderDeps, over: Record<string, unknown>
 }
 
 describe("one paid attempt at one hide", () => {
-  it("surface repair edits the bound paid source, keeps its own key, and refuses a swapped source before repurchasing", async () => {
+  it("refuses unsafe authored windows before decoding pixels, reserving or dispatching", async () => {
+    const worker=world().process();
+    const reserve=vi.spyOn(worker.deps.ledger,"reserve");
+    await expect(attempt(worker.deps,{contentVersion:12,composedPng:Buffer.alloc(0),hide:{...hide,returnRect:{left:0,top:0,width:513,height:768}}})).rejects.toThrow("invalid authored return window");
+    expect(reserve).not.toHaveBeenCalled();
+    expect(worker.dispatched).toEqual([]);
+  });
+
+  it("pins authored return geometry and never reuses its purchase for a different join", async () => {
+    const w=world(), render=vi.fn(async (input: Parameters<LocalPatchRenderDeps["render"]>[0])=>({png:await sharp(input.stylePng).resize(768,1152).png().toBuffer(),rejected:null,quarantined:null,evidence:evidence("authored-return"),unknownReason:null}));
+    const worker=w.process({render});
+    const h={...hide,mask:maskForHide(hide),placement:{depth:"middle" as const,standingHeightPx:400,support:"Knees supported on the beach sand",lighting:"Soft local daylight matching nearby children",occlusion:"Own hands visible above the sand model",comparators:"Children playing at the same ground depth"},returnRect:{left:30,top:180,width:450,height:560}};
+    const options={contentVersion:12,hide:h,referenceMode:LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE,paintRecipe:"scene-integration-v4"};
+    expect(await attempt(worker.deps,options)).toMatchObject({accepted:true,compositionVersion:"bounded-return/v4-authored-source-boundaries"});
+    expect(await attempt(worker.deps,options)).toMatchObject({accepted:true,replayed:true});
+    expect(await attempt(worker.deps,{...options,hide:{...h,returnRect:{...h.returnRect,left:40,width:440}}})).toMatchObject({refusedBecause:"stopped"});
+    expect(render).toHaveBeenCalledTimes(1);
+  });
+
+  it("opts into a separate neutral recipe without replaying or rewriting the old curl-biased purchase", async () => {
+    const b = localPatchBoardsForVersion(12)[0]!, h = { ...b.hides[0]!, wardrobe: "A neutral navy cotton jacket, child trousers and secure winter boots." };
+    const w = world();
+    const render = vi.fn(async (input: Parameters<LocalPatchRenderDeps["render"]>[0]) => ({ png: await sharp(input.stylePng).resize(768, 1152).png().toBuffer(), rejected: null, quarantined: null, evidence: evidence("neutral-recipe-receipt"), unknownReason: null }));
+    const worker = w.process({ render });
+    const input = { worldId: "synthetic-reference-neutral", board: b, hide: h,
+      composedPng: await sharp({ create: { width: 3840, height: 2160, channels: 3, background: "#ccbbaa" } }).png().toBuffer(),
+      identityPng: await small(), judgeIdentityPng: await small(), contentVersion: 12,
+      referenceMode: LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, ageYears: 8, attempt: 1, apiKey: "synthetic" };
+    const old = await renderLocalPatchHide(worker.deps, { ...input, paintRecipe: "scene-integration-v3" });
+    expect(old.promptVersion).toBe("local-patch-prompt/v14-scene-integration");
+    expect(render.mock.calls[0]![0].prompt).toContain("Keep the reference curl silhouette");
+    const conflict = await renderLocalPatchHide(worker.deps, { ...input, paintRecipe: "scene-integration-v4" });
+    expect(conflict.refusedBecause).toBe("stopped");
+    expect(render).toHaveBeenCalledTimes(1);
+    const fresh = await renderLocalPatchHide(worker.deps, { ...input, attempt: 2, paintRecipe: "scene-integration-v4" });
+    expect(fresh.promptVersion).toBe(LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION);
+    const prompt = render.mock.calls[1]![0].prompt;
+    expect(prompt).toContain("Straight hair stays straight, short hair stays short");
+    expect(prompt).not.toContain("Keep the reference curl silhouette");
+    expect(prompt).not.toContain("curls form broad dark locks");
+    expect(prompt).toContain("ACTUAL hairline, part, length, natural colour and texture");
+  });
+
+  it("sends the authored hide outfit and fences a changed outfit from its retained paid receipt", async () => {
+    const b = localPatchBoardsForVersion(12)[0]!;
+    const h = { ...b.hides[0]!, wardrobe: "A muted rust child cardigan with navy trousers and brown sneakers, only for this appearance." };
+    const w = world();
+    const render = vi.fn(async (_input: Parameters<LocalPatchRenderDeps["render"]>[0]) => ({ png: await sharp(_input.stylePng).resize(768, 1152).png().toBuffer(), rejected: null, quarantined: null, evidence: evidence("hide-wardrobe-receipt"), unknownReason: null }));
+    const worker = w.process({ render });
+    const input = { worldId: "synthetic-hide-wardrobe", board: b, hide: h,
+      composedPng: await sharp({ create: { width: 3840, height: 2160, channels: 3, background: "#ccbbaa" } }).png().toBuffer(),
+      identityPng: await small(), judgeIdentityPng: await small(), contentVersion: 12,
+      paintRecipe: "scene-integration-v3" as const, referenceMode: LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE,
+      ageYears: 8, attempt: 1, apiKey: "synthetic" };
+    expect((await renderLocalPatchHide(worker.deps, input)).accepted).toBe(true);
+    const bought = render.mock.calls[0]![0];
+    expect(bought.prompt).toContain(h.wardrobe);
+    expect(bought.prompt).not.toContain(b.wardrobe);
+    expect(bought.prompt).toMatch(/BODY AGE CONTRACT:\s*8 years/);
+    const changed = await renderLocalPatchHide(worker.deps, { ...input, hide: { ...h, wardrobe: "A muted teal child blouse with beige trousers and dark sneakers, only for this appearance." } });
+    expect(changed.refusedBecause).toBe("stopped");
+    expect(changed.stoppedReason).toMatch(/different operation/);
+    expect(render).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["scene-integration-v3", "scene-integration-v4"] as const)("surface repair %s respects pinned hair directions and refuses a swapped source before repurchasing", async (paintRecipe) => {
     const w = world(), source = await sharp({ create: { width: 512, height: 768, channels: 3, background: "#445566" } }).png().toBuffer();
     const b = localPatchBoardsForVersion(12)[0]!, h = b.hides[0]!;
     const composed = await sharp({ create: { width: 3840, height: 2160, channels: 3, background: "#ccbbaa" } }).png().toBuffer();
@@ -109,11 +174,15 @@ describe("one paid attempt at one hide", () => {
       expect(await sharp(input.stylePng).raw().toBuffer()).toEqual(await sharp(source).raw().toBuffer());
       expect(input.prompt).toContain("Edit the EXISTING target child");
       expect(input.prompt).not.toContain("adding exactly ONE");
+      if(paintRecipe === "scene-integration-v4") {
+        expect(input.prompt).not.toMatch(/dark curls|dark locks|Group curls/);
+        expect(input.prompt).toContain("reference's actual colour and texture");
+      } else expect(input.prompt).toContain("large grouped dark curls");
       return { png: source, rejected: null, quarantined: null, evidence: evidence("restyle-receipt"), unknownReason: null };
     });
     const worker = w.process({ render });
     const input = { worldId: "retained-style-test", board: b, hide: h, composedPng: composed, identityPng: await small(), judgeIdentityPng: await small(),
-      contentVersion: 12, paintRecipe: "scene-integration-v3" as const, referenceMode: LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, ageYears: 8, attempt: 2, apiKey: "synthetic",
+      contentVersion: 12, paintRecipe, referenceMode: LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, ageYears: 8, attempt: 2, apiKey: "synthetic",
       selfRepair: { cycle: 1, decision }, restyleSourcePng: source };
     await renderLocalPatchHide(worker.deps, input);
     await renderLocalPatchHide(worker.deps, input);

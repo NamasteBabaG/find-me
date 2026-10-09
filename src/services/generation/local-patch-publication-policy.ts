@@ -12,6 +12,8 @@ import { sameChargeEvidence } from "./world-budget";
 import type { PaidRepairBatch } from "./local-patch-paid-repair";
 import { SELF_REPAIR_COMPOSITION_VERSION, SELF_REPAIR_VERSION, selfRepairDecisionSchema } from "../../domain/scene/local-patch-self-repair";
 import { NEIGHBOR_QUADRANTS, RETURN_EDGES } from "./local-patch-integration-evidence";
+import { hasDualVisualReview, DUAL_VISUAL_REVIEW_VERSION } from "./visual-review-release";
+import { allowedDualPublication } from "./local-patch-dual-publication";
 
 export const LOCAL_PATCH_PUBLICATION_POLICY = "publish-with-visual-warnings/v1";
 export const LOCAL_PATCH_STRICT_PUBLICATION_POLICY = "publish-with-severe-quality-guard/v2";
@@ -203,7 +205,7 @@ function allowed(input: LocalPatchPublicationBinding): boolean {
 
 /** Written with the target, not minted later by the assembler. No visual pass or human decision is invented. */
 export async function recordLocalPatchPublicationPolicy(tx: Prisma.TransactionClient, input: LocalPatchPublicationBinding) {
-  if (!(isRepair(input) ? await allowedRepair(tx, input) : allowed(input))) throw new Error("Unsupported or unresolved local-patch publication quality policy");
+  if (!await allowedForGame(tx, input)) throw new Error("Unsupported or unresolved local-patch publication quality policy");
   const id = idOf(input), metaJson = JSON.stringify(recordOf(input));
   const row = await tx.auditLog.upsert({ where: { id }, update: {}, create: {
     id, actorType: "SYSTEM", action: LOCAL_PATCH_PUBLICATION_ACTION, entityType: "Game", entityId: input.gameId, metaJson,
@@ -214,8 +216,16 @@ export async function recordLocalPatchPublicationPolicy(tx: Prisma.TransactionCl
 }
 
 export async function hasLocalPatchPublicationPolicy(c: Pick<Container, "db">, input: LocalPatchPublicationBinding) {
-  if (!(isRepair(input) ? await allowedRepair(c.db, input) : allowed(input))) return false;
+  if (!await allowedForGame(c.db, input)) return false;
   const row = await c.db.auditLog.findUnique({ where: { id: idOf(input) } });
   return !!row && row.actorType === "SYSTEM" && row.actorId === null && row.action === LOCAL_PATCH_PUBLICATION_ACTION
     && row.entityType === "Game" && row.entityId === input.gameId && row.metaJson === JSON.stringify(recordOf(input));
+}
+
+async function allowedForGame(db: Prisma.TransactionClient, input: LocalPatchPublicationBinding) {
+  if (await hasDualVisualReview(db, input.gameId)) return allowedDualPublication(db, input);
+  // Never apply a prospective receipt to a game without its immutable pin.
+  try { if (JSON.parse(input.judgeJson ?? "null")?.boardReview?.version === DUAL_VISUAL_REVIEW_VERSION) return false; }
+  catch { /* Historical advisory versions did not require a structured verdict. */ }
+  return isRepair(input) ? allowedRepair(db, input) : allowed(input);
 }

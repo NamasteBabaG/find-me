@@ -20,6 +20,8 @@ import { InProcessJobRunner } from "@/infra/jobs/in-process";
 import { InlineJobRunner } from "@/infra/jobs/inline";
 import { DbStorage } from "@/infra/storage/db";
 import { runGenerationPipeline } from "./generation/pipeline";
+import { requestVisualReview, type VisualReviewQuestion } from "./generation/visual-review";
+import type { LocalPatchJudgeResult } from "./generation/local-patch-judge";
 
 /**
  * Composition root. Every provider is chosen here, by env, exactly once.
@@ -53,6 +55,9 @@ export interface Container {
   deliverWithProblems?: boolean;
   /** Who is told when a game goes out with problems, or does not go out at all (ADMIN_EMAILS). */
   adminEmails?: string[];
+  /** Explicit provider selection for newly pinned QA games. No model fallback. */
+  visualReview?: { request(question: VisualReviewQuestion, timeoutMs?: number): Promise<LocalPatchJudgeResult> };
+  pinDualVisualReview?: boolean;
 }
 
 /**
@@ -107,6 +112,12 @@ function build(): Container {
     autoApprove: flag("QA_AUTO_APPROVE"),
     deliverWithProblems: deliverWithProblemsOf(flag("QA_AUTO_APPROVE"), e.APP_ENV, flag("QA_DELIVER_WITH_PROBLEMS")),
     adminEmails: adminEmails(),
+    pinDualVisualReview: e.APP_ENV === "qa" && e.LOCAL_PATCH_VISUAL_REVIEW === "dual-high-v1",
+    // Keep the transport available for a pinned game even when new enrollment
+    // is disabled. Missing credentials fail before a paid reservation.
+    ...(e.GENERATION_PROVIDER === "openai" && e.ANTHROPIC_API_KEY?.trim() && e.OPENAI_API_KEY?.trim()
+      ? { visualReview: { request: (question: VisualReviewQuestion, timeoutMs?: number) =>
+        requestVisualReview(question.role === "scene-quality" ? e.ANTHROPIC_API_KEY! : e.OPENAI_API_KEY!, question, fetch, timeoutMs) } } : {}),
   };
 
   container.jobs.register("generate-game", ({ gameId }) => runGenerationPipeline(container, gameId));

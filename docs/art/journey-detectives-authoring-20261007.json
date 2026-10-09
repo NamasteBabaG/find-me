@@ -1,0 +1,1294 @@
+{
+  "formatVersion": 1,
+  "scope": "art-authoring-only",
+  "world": "journey",
+  "sourceWorldDefinition": "content/worlds/journey/world.json",
+  "category": {
+    "id": "detectives",
+    "name": {
+      "en": "Detectives",
+      "he": "בלשים"
+    }
+  },
+  "recommendedMinAge": 6,
+  "ageRecommendationKind": "advisory",
+  "ageGatesAccess": false,
+  "plannedHidesPerBoard": 3,
+  "densityReference": {
+    "route": "newyork",
+    "artVariant": "newyork-detectives-v7",
+    "approval": "user-approved-art",
+    "masterSha256": "f0c5391f72f0db708c2a20bab1dc615b1cc73abf7c06565f6df71602e5fe285f",
+    "guide": "docs/DETECTIVES_BOARD_ART_DIRECTION_20261007.md"
+  },
+  "runtimeCatalogStatus": "existing-art-and-game-versions-retained",
+  "boards": [
+    {
+      "route": "newyork",
+      "routeIndex": 1,
+      "name": {
+        "en": "New York",
+        "he": "ניו יורק"
+      },
+      "categoryId": "detectives",
+      "status": "user-approved-art",
+      "gameReady": false,
+      "artVariant": "newyork-detectives-v7",
+      "masterSource": "output/imagegen/newyork-detectives-v7/newyork-detectives-v7.png",
+      "masterSourceKind": "ignored-authoring-provenance",
+      "masterSha256": "f0c5391f72f0db708c2a20bab1dc615b1cc73abf7c06565f6df71602e5fe285f",
+      "packagedAsset": "public/scenes/journey-newyork-detectives-v1/base.webp",
+      "packagedSha256": "66429a8efd93433c4c4b62157c76c787060a466e033728ba3ead68b52ef8fd1b",
+      "packagedWidth": 3840,
+      "packagedHeight": 2160,
+      "prompt": "docs/art/journey-newyork-detectives-v7.prompt.txt"
+    },
+    {
+      "route": "amazon",
+      "routeIndex": 2,
+      "name": {
+        "en": "Amazon",
+        "he": "אמזונס"
+      },
+      "categoryId": "detectives",
+      "status": "user-approved-art",
+      "gameReady": false,
+      "artVariant": "amazon-detectives-v3",
+      "masterSource": "output/imagegen/amazon-detectives-v3/amazon-detectives-v3.png",
+      "masterSourceKind": "ignored-authoring-provenance",
+      "masterSha256": "85a7e58698012bc68375d54c9c9448f113ab149b02a2904804d80b6f3c6b7922",
+      "packagedAsset": "public/scenes/journey-amazon-detectives-v3/base.webp",
+      "packagedSha256": "2d641f25808666a72cf092bac5069ba0c9ab68b518199c3d584cdc802c8b885d",
+      "packagedWidth": 3840,
+      "packagedHeight": 2160,
+      "prompt": "docs/art/journey-amazon-detectives-v3-color-support.prompt.txt",
+      "retainedAttempts": [
+        {
+          "artVariant": "amazon-detectives-v1",
+          "masterSha256": "9c2a71843b754024b42204b3769ea45fbf30ad5af31a1c055ea31fc1dbc51a52",
+          "packagedAsset": "public/scenes/journey-amazon-detectives-v1/base.webp",
+          "packagedSha256": "a27be390cf6d0ceb278793fecffe4a0640c7e0351c32eff502106c13b7a1568d",
+          "prompt": "docs/art/journey-amazon-detectives-v1.prompt.txt",
+          "status": "retained-density-revision-needed",
+          "review": {
+            "method": "full-board comparison and three native detail crops",
+            "densityMatchesApprovedReference": false,
+            "userApproved": false,
+            "findings": [
+              "Lower human density than approved New York v7; upper-right contains wildlife and canopy without people.",
+              "Several activity groups repeat table-based study.",
+              "Orange frog and lower-left bird prop are oversized for intended small discoveries."
+            ],
+            "positiveFindings": [
+              "Distinct crisp illustrated faces and many school-age children.",
+              "Recognizable Amazon identity with varied native wildlife.",
+              "No obvious interior assembly seam or gross support defect in reviewed views."
+            ],
+            "fineAnatomyCertified": false
+          }
+        },
+        {
+          "artVariant": "amazon-detectives-v2",
+          "masterSha256": "8d4c7b43b49b8dfd3ed7c34d9e5092ed28a13d50d91b29f0d7fd3fd29e640aa8",
+          "packagedAsset": "public/scenes/journey-amazon-detectives-v2/base.webp",
+          "packagedSha256": "f9ddb46c548eca40fb75cf58e4a737cb66a8717a775614cd8c3038a1f94a0078",
+          "prompt": "docs/art/journey-amazon-detectives-v2-density.prompt.txt",
+          "status": "user-approved-composition-color-support-revision-needed",
+          "review": {
+            "method": "Full-board comparison and three native detail crops",
+            "densityImproved": true,
+            "userLikedComposition": true,
+            "userRequestedColorSeparation": true,
+            "issues": [
+              "Two unsupported children outside canoe end at waterline.",
+              "Earth and clothes share muddy olive-brown saturation."
+            ],
+            "fineAnatomyCertified": false
+          }
+        }
+      ],
+      "visualReview": {
+        "method": "Full-board visual comparison and native river/palette detail crops",
+        "paletteRefinementRequestedByUser": true,
+        "unsupportedRiverFiguresRemoved": true,
+        "compositionAndDensityPreservedExceptTwoRemovedFigures": true,
+        "userApproved": true,
+        "fineAnatomyCertified": false
+      },
+      "approvalDate": "2026-10-07"
+    },
+    {
+      "route": "paris",
+      "routeIndex": 3,
+      "name": {
+        "en": "Paris",
+        "he": "פריז"
+      },
+      "categoryId": "detectives",
+      "status": "user-approved-art",
+      "gameReady": false,
+      "artVariant": "paris-detectives-v4",
+      "masterSource": "output/imagegen/paris-detectives-v4/paris-detectives-v4.png",
+      "masterSourceKind": "ignored-authoring-provenance",
+      "masterSha256": "cbe73d8fbf1396acf8e201c65ad5acbe789a3f392e38bb7784e70ed02219a9ef",
+      "packagedAsset": "public/scenes/journey-paris-detectives-v4/base.webp",
+      "packagedSha256": "85e29b9efead0e06eea5b9cc40d9a7d2af84f114cb1bdf01338c9cbf381f01a4",
+      "packagedWidth": 3840,
+      "packagedHeight": 2160,
+      "prompt": "docs/art/journey-paris-detectives-v4-visible-faces-calm-paving.prompt.txt",
+      "retainedAttempts": [
+        {
+          "artVariant": "paris-detectives-v1",
+          "masterSha256": "ebde06fcb7b1a0772f83f2eb3b8ac977b14d42100236e05e3c46c5353e280dfd",
+          "packagedAsset": "public/scenes/journey-paris-detectives-v1/base.webp",
+          "packagedSha256": "96aba3bd350d3c67adf5637c0b0d4fcd6cb1f310ca13a1fc523d42391405e686",
+          "prompt": "docs/art/journey-paris-detectives-v1.prompt.txt",
+          "status": "retained-candidate-basin-support-revision-needed",
+          "review": {
+            "method": "Full-board view and native basin detail crop",
+            "issues": [
+              "Toy-boat basin contains five unsupported figures; targeted masked native-resolution repair requested."
+            ],
+            "userApproved": false,
+            "discoveryCandidatesValidated": false,
+            "fineAnatomyCertified": false
+          }
+        },
+        {
+          "artVariant": "paris-detectives-v2",
+          "masterSha256": "0851572976b540a81f7272e1464e07481ea7b0cffdc5a16fefb75270a0403a45",
+          "packagedAsset": "public/scenes/journey-paris-detectives-v2/base.webp",
+          "packagedSha256": "30a8e1a8918596fe155b75ffcca95495a0539b933aad53deb93fd73adbdc2eb7",
+          "prompt": "docs/art/journey-paris-detectives-v2-basin-support.prompt.txt",
+          "status": "retained-candidate-basin-seam-revision-needed",
+          "review": {
+            "method": "Full-board and native composed basin view",
+            "unsupportedWaterFiguresRemoved": true,
+            "issues": [
+              "Old basin rim and water crescent remain at left edge of repaired window; narrow masked paving repair requested."
+            ],
+            "userApproved": false,
+            "discoveryCandidatesValidated": false,
+            "fineAnatomyCertified": false
+          }
+        },
+        {
+          "artVariant": "paris-detectives-v3",
+          "masterSha256": "853946b36d223cbdd0c6321761cd1aa7f35f9f142cb3e7022060d4d18a384f59",
+          "packagedAsset": "public/scenes/journey-paris-detectives-v3/base.webp",
+          "packagedSha256": "bbeb1e3af2172ec483e3869ee33e81c865cbb96598ffa78baa9c27a44ff03942",
+          "promptSet": [
+            "docs/art/journey-paris-detectives-v1.prompt.txt",
+            "docs/art/journey-paris-detectives-v2-basin-support.prompt.txt",
+            "docs/art/journey-paris-detectives-v3-basin-seam.prompt.txt"
+          ],
+          "status": "user-requested-revision-visible-faces-floor-color",
+          "userFeedback": {
+            "date": "2026-10-07",
+            "issues": [
+              "Too many new children show backs, limiting personal face-search placements.",
+              "Need more children and meaningful details in middle and foreground.",
+              "Paving texture is visually noisy.",
+              "Color needs cleaner more distinct vivid separation."
+            ],
+            "accepted": false
+          }
+        }
+      ],
+      "promptSet": [
+        "docs/art/journey-paris-detectives-v4-visible-faces-calm-paving.prompt.txt"
+      ],
+      "visualReview": {
+        "method": "Full-board view and three native detail crops: audience, middle and foreground",
+        "findings": [
+          "Puppet audience mostly exposes facial features; some incidental rear/profile figures remain.",
+          "Visible-faced children participate in middle flower/music/mime stories and lower craft/cafe/scooter groups.",
+          "Paving has broad calmer flagstones and softer shadow detail rather than noisy cracked cobbles.",
+          "Clothing and activity props use clearer blue,coral,purple/teal colors against pale neutral paving.",
+          "No obvious interior body cut or water support defect in reviewed views."
+        ],
+        "exactPopulationCountVerified": false,
+        "projectedScaleUniformityMeasured": false,
+        "userApproved": true,
+        "discoveryCandidatesValidated": false,
+        "fineAnatomyCertified": false
+      },
+      "feedbackAddressedFromVariant": "paris-detectives-v3",
+      "approvalDate": "2026-10-07"
+    },
+    {
+      "route": "marrakech",
+      "routeIndex": 4,
+      "name": {
+        "en": "Marrakech",
+        "he": "מרקש"
+      },
+      "categoryId": "detectives",
+      "status": "user-approved-art",
+      "gameReady": false,
+      "artVariant": "marrakech-detectives-v2",
+      "prompt": "docs/art/journey-marrakech-detectives-v2-extra-children-varied-earth.prompt.txt",
+      "faceAndGroundReference": "paris-detectives-v4",
+      "densityReference": "newyork-detectives-v7",
+      "masterSource": "output/imagegen/marrakech-detectives-v2/marrakech-detectives-v2.png",
+      "masterSourceKind": "ignored-authoring-provenance",
+      "masterSha256": "a6842f855630f4f740bce770de079188311e0cb60a21882395c9b12775310472",
+      "packagedAsset": "public/scenes/journey-marrakech-detectives-v2/base.webp",
+      "packagedSha256": "d9d8c7807e7f1774fdda23ec0491aaef62912de6f3b2d26ef4a0b3f02bd8f9c4",
+      "packagedWidth": 3840,
+      "packagedHeight": 2160,
+      "visualReview": {
+        "method": "Full-board comparison to v1 and three native details: basket/kite area, foreground toy group, pottery",
+        "findings": [
+          "Additional visible-faced children appear at the kite workshop, pottery table and foreground spinning-top group.",
+          "Broad paving is slightly darker and varies softly between sandstone and muted red-earth/clay flagstones.",
+          "Main Marrakech architecture, stories and layout remain recognizable, with cooler clothing colors separated from ground.",
+          "No obvious interior anatomy/support defect in reviewed child groups."
+        ],
+        "caveats": [
+          "Original small upper passage figures and nonuniform projected scale remain."
+        ],
+        "exactPopulationCountVerified": false,
+        "projectedScaleUniformityMeasured": false,
+        "userApproved": true,
+        "discoveryCandidatesValidated": false,
+        "fineAnatomyCertified": false
+      },
+      "retainedAttempts": [
+        {
+          "artVariant": "marrakech-detectives-v1",
+          "masterSha256": "b4c4693d104ed65874935a39ba86f8977f8b1dc9f78a05d6d27436996539e77f",
+          "packagedAsset": "public/scenes/journey-marrakech-detectives-v1/base.webp",
+          "packagedSha256": "acfd55e1cf813586f6c89e8059d62d08017b4df9583f4d57d8d0eea5dc025480",
+          "prompt": "docs/art/journey-marrakech-detectives-v1-open-faces-calm-ground.prompt.txt",
+          "status": "user-liked-direction-extra-children-ground-refinement-requested",
+          "userFeedback": {
+            "date": "2026-10-07",
+            "likedVisualDirection": true,
+            "requestedChanges": [
+              "A few additional visible-faced children.",
+              "Slightly darker paving, some flagstones more muted red-earth/clay and some less, maintaining a quiet floor."
+            ],
+            "finalArtApproved": false
+          },
+          "review": {
+            "method": "Full-board view and three native detail crops: foreground pottery, middle and upper scale",
+            "findings": [
+              "Distinct Marrakech coral architecture, zellige, rugs, local crafts, mint tea, juice, music and kites.",
+              "Many visible-faced children in middle and foreground craft groups; some incidental back/profile poses remain.",
+              "Broad pale quiet paving with cleaner cooler clothing colors against warm environment.",
+              "No active-playfield basin; figures have dry support in inspected views."
+            ],
+            "caveats": [
+              "Several small figures remain in an upper passage and overall projected scale is not uniform."
+            ],
+            "exactPopulationCountVerified": false,
+            "projectedScaleUniformityMeasured": false,
+            "userApproved": false,
+            "discoveryCandidatesValidated": false,
+            "fineAnatomyCertified": false
+          }
+        }
+      ],
+      "feedbackAddressedFromVariant": "marrakech-detectives-v1",
+      "approvalDate": "2026-10-07"
+    },
+    {
+      "route": "giza",
+      "routeIndex": 5,
+      "name": {
+        "en": "Giza",
+        "he": "גיזה"
+      },
+      "categoryId": "detectives",
+      "status": "user-approved-art",
+      "gameReady": false,
+      "artVariant": "giza-detectives-v4",
+      "masterSource": "output/imagegen/giza-detectives-v4/giza-detectives-v4.png",
+      "masterSourceKind": "ignored-authoring-provenance",
+      "masterSha256": "94344dcba5faf0be90560dd9b12ea26d00ea2ae3f9a713e15730391b42f2f4cd",
+      "packagedAsset": "public/scenes/journey-giza-detectives-v4/base.webp",
+      "packagedSha256": "d02ad65ef1024d531e1bc07727cc881db2720c0682b372991f048b9de2a940b9",
+      "packagedWidth": 3840,
+      "packagedHeight": 2160,
+      "prompt": "docs/art/journey-giza-detectives-v4-parallel-scale.prompt.txt",
+      "densityReference": "newyork-detectives-v7",
+      "visualReview": {
+        "method": "User screenshot matched visually to original v4 preview; preferred composition selected without a new render",
+        "findings": [
+          "User prefers v4 Giza composition and atmosphere to the flattened v5.",
+          "Original v4 pixels preserve camels, decorated tent/workshop setting, landmarks, material volume and busy active groups."
+        ],
+        "caveats": [
+          "Original perspective variation remains; numerical scale uniformity is not certified.",
+          "Art approval does not mean mapped personal hides, discoveries or a playable release."
+        ],
+        "userPreferredComposition": true,
+        "userApproved": true,
+        "projectedScaleUniformityMeasured": false,
+        "exactPopulationCountVerified": false,
+        "discoveryCandidatesValidated": false,
+        "fineAnatomyCertified": false
+      },
+      "retainedAttempts": [
+        {
+          "artVariant": "giza-detectives-v1",
+          "status": "user-rejected-composition",
+          "masterSource": "output/imagegen/giza-detectives-v1/giza-detectives-v1.png",
+          "masterSha256": "bb425a771b04d7bfa1412bf138ebba3dd2fa6083f74e3ff14adaa4cc0a7bf0e5",
+          "packagedAsset": "public/scenes/journey-giza-detectives-v1/base.webp",
+          "packagedSha256": "a3c6caa645bbd8dc44d17f283ee9113420de8685b87de125be327bc41759d747",
+          "prompt": "docs/art/journey-giza-detectives-v1-visible-faces-desert-discovery.prompt.txt",
+          "userFeedback": {
+            "date": "2026-10-07",
+            "userRejected": true,
+            "reasons": [
+              "Needs a wider zoomed-out view with many more children and situations.",
+              "Scene feels empty and repeats seated circles/workshop groups.",
+              "Needs walking, standing and playing children with more varied activity."
+            ]
+          },
+          "review": {
+            "method": "Full-board view plus four native detail crops: foreground artifact sorting, middle children and ground, upper/camel group, left dig and papyrus",
+            "findings": [
+              "Distinct Giza pyramid and Sphinx landmarks with excavation, mapping, hieroglyph, model-building, artifact and camel stories.",
+              "Many visible front/three-quarter child faces in middle and foreground; selected gestures, knees, seats and tool contact have coherent support.",
+              "Blue, teal, coral and purple clothing separates from warm pale limestone and sand, without a global yellow cast.",
+              "No obvious interior assembly seam or gross halved-body defect in reviewed groups."
+            ],
+            "caveats": [
+              "Some upper-left audience and middle-right sketching children face away; tiny distant figures and projected-scale variation remain.",
+              "Sand has more mottled/grainy texture than the calm flagstones of approved Marrakech; floor calmness is not fully matched.",
+              "Exact population and requested discovery signatures have not been counted or validated."
+            ],
+            "exactPopulationCountVerified": false,
+            "projectedScaleUniformityMeasured": false,
+            "userApproved": false,
+            "discoveryCandidatesValidated": false,
+            "fineAnatomyCertified": false
+          }
+        },
+        {
+          "artVariant": "giza-detectives-v2",
+          "status": "internal-anatomy-defect-corrected-in-v3",
+          "masterSource": "output/imagegen/giza-detectives-v2/giza-detectives-v2.png",
+          "masterSha256": "7bef4161e69910be84252025a3ebb2ee80d2b72f2727caea81608627352a505f",
+          "prompt": "docs/art/journey-giza-detectives-v2-wide-active-crowd.prompt.txt",
+          "qualityIssue": "Disconnected child head at the extended guide arm; preserved as rejected repair evidence.",
+          "userApproved": false
+        },
+        {
+          "artVariant": "giza-detectives-v3",
+          "status": "user-liked-activity-perspective-revision-needed",
+          "masterSource": "output/imagegen/giza-detectives-v3/giza-detectives-v3.png",
+          "masterSha256": "7917d87b4baf0deac287ca9f28145517569836f645b7c7af3d5deb395bd8d51c",
+          "packagedAsset": "public/scenes/journey-giza-detectives-v3/base.webp",
+          "packagedSha256": "11c6ae3435600ce9bc3694319d99eb546ccf6ee7186227733d6b78632faa474b",
+          "prompt": "docs/art/journey-giza-detectives-v2-wide-active-crowd.prompt.txt",
+          "repairPrompt": "docs/art/journey-giza-detectives-v3-guide-head-repair.prompt.txt",
+          "localRepairEvidence": "output/imagegen/giza-detectives-v3/composition-verification.json",
+          "userFeedback": {
+            "date": "2026-10-07",
+            "likedActivityDirection": true,
+            "artApproved": false,
+            "requestedChanges": [
+              "Correct deep perspective and tiny rear people.",
+              "Keep the quantity of people, children and simultaneous activities.",
+              "Use nearly similar projected figure scale across the board."
+            ]
+          },
+          "review": {
+            "method": "Full-board comparison to rejected v1, five native crops across active middle, map foreground, camera/ribbons, upper crowd and right dig; native integrated guide repair review",
+            "findings": [
+              "Fresh wider Giza composition has visibly more children and distributed crowd, with walking, running, hoop/ball play, standing map/clue groups, ribbons, sketching and dig activities.",
+              "Middle and foreground include many visible front/three-quarter child faces instead of repeated seated circles.",
+              "Calm broad sand/limestone and cooler varied clothing are retained, with distinctive Giza landmarks.",
+              "A disconnected child head beside the guide was found in v2 and removed with one local AI repair; native integration was reviewed for gesture, background and seams.",
+              "Original v2 pixels are unchanged outside the bounded repair in the final PNG."
+            ],
+            "caveats": [
+              "Upper background figures remain smaller than foreground, and some incidental back/profile poses remain.",
+              "Requested population, pose percentages and numerical zoom factor are prompt goals rather than measured facts.",
+              "Discovery signatures and future personal hide positions remain unvalidated."
+            ],
+            "exactPopulationCountVerified": false,
+            "projectedScaleUniformityMeasured": false,
+            "userApproved": false,
+            "discoveryCandidatesValidated": false,
+            "fineAnatomyCertified": false
+          }
+        },
+        {
+          "artVariant": "giza-detectives-v5",
+          "status": "user-rejected-giza-atmosphere-loss",
+          "masterSource": "output/imagegen/giza-detectives-v5/giza-detectives-v5.png",
+          "masterSha256": "7dba6f5ba19ecad582253f50bcd7859d4114ac4f948b7ff28cbad2ac7d131ef1",
+          "packagedAsset": "public/scenes/journey-giza-detectives-v5/base.webp",
+          "packagedSha256": "438e751d40483cb98e9cc71680fb164089dabd5f51a7edbb032f37207c6fb1db",
+          "prompt": "docs/art/journey-giza-detectives-v5-layout-bound-perspective.prompt.txt",
+          "userFeedback": {
+            "date": "2026-10-07",
+            "preferredComposition": "giza-detectives-v4",
+            "rejectedVariant": "giza-detectives-v5",
+            "finalArtApproved": false,
+            "reason": "The latest flattening lost the Giza magic and atmosphere; the user attached v4 as the better basis.",
+            "userQuote": "העלמת את כל הקסם של גיזה; דווקא זה היה לא רע",
+            "nextCorrectionConstraint": "Preserve v4 composition, Giza atmosphere, camels, decorated tents, landmarks, active crowd and material/color depth. Any perspective refinement must remain restrained and targeted."
+          },
+          "review": {
+            "method": "Full-board comparison to v3/v4 and five native review crops: upper-left and upper-right scale, middle play support, lower standing faces/scale, lower-left workshops",
+            "findings": [
+              "Tiny distant crowd is removed; upper groups now have readable full bodies/faces in the nearby playfield.",
+              "Upper-to-foreground projected-size gap is materially reduced compared with v3/v4; landmarks remain beyond a low upper boundary without miniature tourists.",
+              "Busy Giza story inventory remains: camels, drink cart and three stalls, glyph clues, map/drawing groups, ball/hoops, ribbons/spinners, drum/tea, photography/sketching, models/dig and sundial.",
+              "Standing/walking/playing children remain the main activity mix, with several smaller seated/kneeling workshops.",
+              "No obvious orphan head, gross interior half-body defect or unsupported scene transition in the reviewed views."
+            ],
+            "caveats": [
+              "Some size variation remains from age/pose and illustrated projection; exact scale uniformity is not certified.",
+              "The structural guide contains 130 markers, but the generated population has not been counted against that number or the source board.",
+              "Some incidental back/profile poses remain; no discovery or personal-hide geometry has been mapped."
+            ],
+            "perspectiveImproved": true,
+            "tinyDistantCrowdRemoved": true,
+            "exactPopulationCountVerified": false,
+            "projectedScaleUniformityMeasured": false,
+            "userApproved": false,
+            "discoveryCandidatesValidated": false,
+            "fineAnatomyCertified": false
+          }
+        }
+      ],
+      "densityAndMovementReference": "newyork-detectives-v7",
+      "faceAndColorReference": "marrakech-detectives-v2",
+      "feedbackAddressedFromVariant": "giza-detectives-v5",
+      "userFeedback": {
+        "date": "2026-10-07",
+        "preferredComposition": "giza-detectives-v4",
+        "artApproved": true,
+        "approvalEvidence": {
+          "date": "2026-10-07",
+          "userText": "אחלה תמשיך להבא",
+          "scope": "art approval to continue the board sequence; no gameplay or numerical perspective certification"
+        }
+      },
+      "previousPerspectiveAssessment": {
+        "status": "perspective-gap-remains-not-selected",
+        "review": {
+          "method": "Full-board comparison to v3",
+          "upperFiguresEnlarged": true,
+          "perspectiveRequirementMet": false,
+          "findings": [
+            "Upper crowd is larger than v3, but foreground children remain approximately twice the projected standing size of many upper children.",
+            "Full-board edit still anchors to deep perspective in input artwork.",
+            "Activity/crowd remains busy, but projection requires a new structural reference."
+          ],
+          "userApproved": false
+        }
+      },
+      "restoration": {
+        "date": "2026-10-07",
+        "sourcePixelsUnchanged": true,
+        "providerCallsDuringRestoration": 0,
+        "scope": "authoring selection only"
+      },
+      "approvalDate": "2026-10-07",
+      "approvalEvidence": {
+        "date": "2026-10-07",
+        "userText": "אחלה תמשיך להבא",
+        "scope": "art approval to continue the board sequence; no gameplay or numerical perspective certification"
+      }
+    },
+    {
+      "route": "tokyo",
+      "routeIndex": 6,
+      "name": {
+        "en": "Tokyo",
+        "he": "טוקיו"
+      },
+      "categoryId": "detectives",
+      "status": "user-approved-art",
+      "gameReady": false,
+      "prompt": "docs/art/journey-tokyo-detectives-v1-neon-active-plaza.prompt.txt",
+      "sourceLocationReference": "public/scenes/journey-tokyo-refresh-v6/base.webp",
+      "densityAndMovementReference": "newyork-detectives-v7",
+      "artVariant": "tokyo-detectives-v1",
+      "masterSource": "output/imagegen/tokyo-detectives-v1/tokyo-detectives-v1.png",
+      "masterSourceKind": "ignored-authoring-provenance",
+      "masterSha256": "055ce33254613be016ca214558d3c96d27c115b0182fdd76475737bacd6ed969",
+      "packagedAsset": "public/scenes/journey-tokyo-detectives-v1/base.webp",
+      "packagedSha256": "caa544e98c94fb46462632087bee1a6fa8aa4bdc63692293bc66d8d68344439e",
+      "packagedWidth": 3840,
+      "packagedHeight": 2160,
+      "sourceLocationSha256": "84eb745d3ffb69f08024d5f1052b7b49efd46601b3f3b58eb14f9c04baea7d0b",
+      "visualReview": {
+        "method": "Full-board comparison to existing Tokyo v6 plus six native crops: upper warm faces, robot/kendama, origami, model cars, right-side scale/passage, floor robot/umbrella",
+        "findings": [
+          "Existing Tokyo neon storefront identity, warm food counters, dimensional painted people and mint service robot remain recognizable.",
+          "More school-age children and small standing/playing/showing-prize/map interactions populate the near field.",
+          "Natural shared local face light and coherent body support were observed in reviewed origami, model-car, robot and floor-toy groups.",
+          "No obvious orphan head, gross interior sliced person or assembly seam in inspected groups."
+        ],
+        "caveats": [
+          "Deep passage and smaller background pedestrians remain at the far right; projected scale is not uniform over every person.",
+          "Some children face away at machines/front craft seats, and the foreground craft table remains prominent.",
+          "Requested population, six unique discovery signatures and a complete anatomy census have not been verified."
+        ],
+        "exactPopulationCountVerified": false,
+        "projectedScaleUniformityMeasured": false,
+        "userApproved": true,
+        "discoveryCandidatesValidated": false,
+        "fineAnatomyCertified": false,
+        "userPreferredPreviousPaintingOverScaleRevision": true
+      },
+      "userFeedback": {
+        "date": "2026-10-07",
+        "userSelectedVariant": "tokyo-detectives-v1",
+        "userRejectedVariant": "tokyo-detectives-v3",
+        "reason": "User sees image smearing in the latest revision, prefers the preceding presented painting and explicitly asks to retain it and continue.",
+        "quote": "יש פה מריחה של התמונה... הקודמת הייתה טובה יותר.. נשאיר את הקודמת... נקסט"
+      },
+      "promptSet": [
+        "docs/art/journey-tokyo-detectives-v1-neon-active-plaza.prompt.txt"
+      ],
+      "retainedAttempts": [
+        {
+          "artVariant": "tokyo-detectives-v2",
+          "masterSource": "output/imagegen/tokyo-detectives-v2/tokyo-detectives-v2.png",
+          "masterSha256": "39f18efa6cf02d50223435d2f1bef20c127bf0d7eeecdc9c2bfaefb0c4901683",
+          "prompt": "docs/art/journey-tokyo-detectives-v2-smaller-shallow-field.prompt.txt",
+          "status": "main-scale-improved-right-group-repair-needed",
+          "review": {
+            "method": "Full-board comparison to v1 and six native face/scale/support crops",
+            "findings": [
+              "Foreground robot and craft/model groups are smaller, with more visible paving and retained Tokyo neon atmosphere.",
+              "Receding right crowd reduced and frontage continued, but the remaining small right group still needs a local scale correction.",
+              "No obvious gross anatomy/support defect in reviewed main groups."
+            ],
+            "nearScaleImproved": true,
+            "rightGroupScaleComplete": false,
+            "userApproved": false
+          }
+        },
+        {
+          "artVariant": "tokyo-detectives-v3",
+          "masterSource": "output/imagegen/tokyo-detectives-v3/tokyo-detectives-v3.png",
+          "masterSha256": "79ebe8fc9495e4b0a011b236206a9ec91731b4f9137a09fc5a6bf987a477b7f9",
+          "packagedAsset": "public/scenes/journey-tokyo-detectives-v3/base.webp",
+          "packagedSha256": "4eceda7e436936f6ca7d574024d54b9634c0b554d501de48722275aeaba2418d",
+          "promptSet": [
+            "docs/art/journey-tokyo-detectives-v2-smaller-shallow-field.prompt.txt",
+            "docs/art/journey-tokyo-detectives-v3-near-right-group.prompt.txt"
+          ],
+          "status": "user-rejected-smearing",
+          "userFeedback": {
+            "date": "2026-10-07",
+            "userSelectedVariant": "tokyo-detectives-v1",
+            "userRejectedVariant": "tokyo-detectives-v3",
+            "reason": "User sees image smearing in the latest revision, prefers the preceding presented painting and explicitly asks to retain it and continue.",
+            "quote": "יש פה מריחה של התמונה... הקודמת הייתה טובה יותר.. נשאיר את הקודמת... נקסט"
+          },
+          "review": {
+            "method": "Full-board view plus four native-resolution crops: corrected right people, origami, central robot/standing children, model cars/floor support",
+            "findings": [
+              "Foreground people, robot and activity furniture are visibly smaller than v1, opening a broader near playfield.",
+              "The former deep right passage is replaced by a closer toy/bookshop frontage and more readable nearby children.",
+              "The corrected right group is closer in projected scale to adjoining children; natural age, pose and scale variation remains.",
+              "Tokyo neon storefronts, warm counters, train, service robot, origami, model cars, toy display and playful near-field interactions remain recognizable.",
+              "Reviewed faces remain dimensional painted figures with shared local light; no obvious orphan head, gross interior halved body or assembly seam was found in these views."
+            ],
+            "caveats": [
+              "A few small incidental figures remain inside the far-right shop; complete uniformity of all human scale is not certified.",
+              "Some incidental rear/profile poses remain, and the exact population was not counted.",
+              "The provider repainted outside the requested local mask. The entire coherent generated v3 image was selected, with no manual rectangle composite.",
+              "Discovery candidates, personal hide geometry and complete fine anatomy have not been validated."
+            ],
+            "foregroundScaleReduced": true,
+            "rightPassageReduced": true,
+            "nearRightScaleImproved": true,
+            "exactPopulationCountVerified": false,
+            "exactShrinkPercentageMeasured": false,
+            "projectedScaleUniformityMeasured": false,
+            "pixelPreservationOutsideMaskVerified": false,
+            "userApproved": false,
+            "discoveryCandidatesValidated": false,
+            "fineAnatomyCertified": false
+          }
+        }
+      ],
+      "feedbackHistory": [
+        {
+          "date": "2026-10-07",
+          "artApproved": false,
+          "requestedChanges": [
+            "Less depth; remove the deep side passage/tiny rear crowd.",
+            "Zoom out and make foreground people smaller.",
+            "People approximately similar projected size across the board."
+          ],
+          "preserve": [
+            "Tokyo neon atmosphere and dimensional painted materials.",
+            "Abundant children and varied activity."
+          ]
+        },
+        {
+          "date": "2026-10-07",
+          "userSelectedVariant": "tokyo-detectives-v1",
+          "userRejectedVariant": "tokyo-detectives-v3",
+          "reason": "User sees image smearing in the latest revision, prefers the preceding presented painting and explicitly asks to retain it and continue.",
+          "quote": "יש פה מריחה של התמונה... הקודמת הייתה טובה יותר.. נשאיר את הקודמת... נקסט"
+        }
+      ],
+      "approvalDate": "2026-10-07"
+    },
+    {
+      "route": "greatwall",
+      "routeIndex": 7,
+      "name": {
+        "en": "Great Wall of China",
+        "he": "החומה הסינית"
+      },
+      "categoryId": "detectives",
+      "status": "user-approved-art",
+      "gameReady": false,
+      "prompt": "docs/art/journey-greatwall-detectives-v2-extra-children-chinese-red.prompt.txt",
+      "sourceLocationReference": "public/scenes/greatwall/local-patch-20260912/base.webp",
+      "densityAndMovementReference": "newyork-detectives-v7",
+      "artVariant": "greatwall-detectives-v3",
+      "masterSource": "output/imagegen/greatwall-detectives-v3/greatwall-detectives-v3.png",
+      "masterSourceKind": "ignored-authoring-provenance",
+      "masterSha256": "50c6b3891bdc5597f0fa0e317f17b82f4f0efd064f047b82c37022cd50e264d9",
+      "packagedAsset": "public/scenes/journey-greatwall-detectives-v3/base.webp",
+      "packagedSha256": "60759448d71fb5c8cddb92cacc257cb0ceef31819fee015b1729855151cc88ad",
+      "packagedWidth": 3840,
+      "packagedHeight": 2160,
+      "sourceLocationSha256": "3d399a4265e7d7fe74153cf66beba08fc2dbec9c44f5e1a497e7c8eda0a0c8cd",
+      "visualReview": {
+        "method": "Full-board v1/v2/v3 comparison; five native v2 detail crops, same-coordinate clarity comparison, and native composed edge/support/seam inspection",
+        "findings": [
+          "Additional visible children and near interactions appear by the left food/lantern group, gate, shadow puppets, spinning tops and foreground kite exchange.",
+          "Chinese red is stronger in lanterns, gate hangings, the dragon body, a stall canopy/trim, paper props and varied garments, with blue/green/plum contrasts and neutral stone retained.",
+          "The main Great Wall backdrop and nearby court/camera remain recognizable, without a new tiny distant tourist crowd.",
+          "Reviewed face and contour detail remains clearly painted at native size compared to v1; no obvious oily smear was found in these views.",
+          "The accidental bottom-edge green-shirt child and his large kite were removed by a local AI repair. Both neighboring standing kite boys have complete own feet and supported bodies in the composed result.",
+          "The composed repair has continuous floor/table support with no obvious rectangular seam in the native review. All RGB pixels outside its bounded return area are verified identical to v2."
+        ],
+        "caveats": [
+          "The full v2 edit also altered some existing local people, clothing, poses and props; there is no exact all-person preservation claim.",
+          "The local provider output modified nearby trousers/table detail within the return area, while complete neighbor support was checked visually.",
+          "Some upper people remain smaller than foreground figures; exact population increase and complete scale uniformity are not measured.",
+          "Fine paving/stone hatch texture and some incidental profile/back poses remain.",
+          "Chinese lettering, six unique discovery signatures and full fine anatomy are not certified; personal hides and discoveries need later mapping."
+        ],
+        "userApproved": true,
+        "exactPopulationCountVerified": false,
+        "projectedScaleUniformityMeasured": false,
+        "discoveryCandidatesValidated": false,
+        "fineAnatomyCertified": false,
+        "outsideReturnBoundsPixelsPreserved": true
+      },
+      "userFeedback": {
+        "date": "2026-10-07",
+        "artApproved": false,
+        "requestedChanges": [
+          "A few more children and people, with more varied situations.",
+          "A stronger Chinese red presence in the scene."
+        ],
+        "preserve": [
+          "Recognizable Great Wall atmosphere and main stories.",
+          "Shallow nearby playfield, modest people scale, dimensional painted native detail."
+        ],
+        "quote": "עוד קצת ילדים אנשים וסיטואציות.. וציפית לראות יותר אדום של סין.."
+      },
+      "promptSet": [
+        "docs/art/journey-greatwall-detectives-v2-extra-children-chinese-red.prompt.txt",
+        "docs/art/journey-greatwall-detectives-v3-bottom-edge-repair.prompt.txt"
+      ],
+      "feedbackAddressedFromVariant": "greatwall-detectives-v1",
+      "retainedAttempts": [
+        {
+          "artVariant": "greatwall-detectives-v1",
+          "status": "user-requested-extra-activity-chinese-red",
+          "masterSource": "output/imagegen/greatwall-detectives-v1/greatwall-detectives-v1.png",
+          "masterSha256": "1795c56b7a813947085f90aeab53fb1596bd1d4fb5ae9f7463cff1e1a8bea082",
+          "packagedAsset": "public/scenes/journey-greatwall-detectives-v1/base.webp",
+          "packagedSha256": "6109160d7a021c3e4ed7548fa86475689b6d507792732a02fb05b4221abda79c",
+          "prompt": "docs/art/journey-greatwall-detectives-v1-near-festival.prompt.txt",
+          "userFeedback": {
+            "date": "2026-10-07",
+            "artApproved": false,
+            "requestedChanges": [
+              "A few more children and people, with more varied situations.",
+              "A stronger Chinese red presence in the scene."
+            ],
+            "preserve": [
+              "Recognizable Great Wall atmosphere and main stories.",
+              "Shallow nearby playfield, modest people scale, dimensional painted native detail."
+            ],
+            "quote": "עוד קצת ילדים אנשים וסיטואציות.. וציפית לראות יותר אדום של סין.."
+          },
+          "review": {
+            "method": "Full-board inspection and five native-resolution crops: upper close gate/scale, dragon carriers, foreground paper crafts, left food/candy area, diabolo/shadow puppets",
+            "findings": [
+              "The Great Wall and mountains remain a scenic backdrop; no miniature receding tourist crowd is visible on the distant wall.",
+              "Children and diverse near activities populate the upper, middle and foreground court, with many open front/three-quarter faces.",
+              "A vivid crafted dragon, red lanterns, near gate, stone lions, kites, food, tea, paper craft, toy model, calligraphy and shadow-puppet activity retain the local illustrated magic.",
+              "The reviewed faces and contours are clearly drawn at native size; no obvious oily smear or gross interior half-body/orphan head was found in these crops.",
+              "Dragon carriers have separate own limbs and supported feet; inspected paper/food craft children have plausible seating, knees and object contact.",
+              "Blue/teal/plum/coral clothes contrast with neutral stone paving and varied orange/red festive details."
+            ],
+            "caveats": [
+              "Some upper figures remain smaller than foreground figures; exact shallow-scale uniformity and the requested percentage range were not measured or certified.",
+              "Several foreground activities remain seated workshops, and some incidental rear/profile poses remain.",
+              "Fine stone crack/hatch texture remains in native detail, though the paving has broad comparatively quiet regions in the full-board view.",
+              "Exact population, six unique discovery signatures and a full fine-anatomy census have not been validated."
+            ],
+            "userApproved": false,
+            "exactPopulationCountVerified": false,
+            "projectedScaleUniformityMeasured": false,
+            "discoveryCandidatesValidated": false,
+            "fineAnatomyCertified": false
+          }
+        },
+        {
+          "artVariant": "greatwall-detectives-v2",
+          "status": "retained-candidate-bottom-edge-repair-needed",
+          "masterSource": "output/imagegen/greatwall-detectives-v2/greatwall-detectives-v2.png",
+          "masterSha256": "ed824f64a595310037c44b62ec14bb74c4639bdd6d9a2ea61295c323f0467201",
+          "prompt": "docs/art/journey-greatwall-detectives-v2-extra-children-chinese-red.prompt.txt",
+          "review": {
+            "method": "Full-board comparison and five native detail crops plus same-coordinate v1/v2 clarity comparison",
+            "findings": [
+              "Additional children populate left, gate, puppet/lantern and foreground kite/top interactions.",
+              "The dragon body, stall canopy/trim, gate hangings, lanterns and several garments have noticeably stronger Chinese red accents.",
+              "Reviewed existing and new faces retain clear native painted contours, with no obvious oily smear.",
+              "The same near court, Great Wall backdrop, neutral paving and contrasting blue/green/plum garments remain recognizable."
+            ],
+            "issues": [
+              "A newly added lowest green-shirt child holding a large kite has a body truncated by the bottom image boundary. Local masked removal requested, preserving the two complete standing kite boys beside it."
+            ],
+            "caveats": [
+              "Provider changes include existing local garments/poses/props; no exact person or pixel preservation claim.",
+              "Requested population increase and full projected-scale uniformity were not numerically measured."
+            ],
+            "userApproved": false,
+            "exactPopulationCountVerified": false,
+            "projectedScaleUniformityMeasured": false,
+            "discoveryCandidatesValidated": false,
+            "fineAnatomyCertified": false
+          }
+        }
+      ],
+      "approvalDate": "2026-10-07",
+      "approvalFeedback": {
+        "date": "2026-10-07",
+        "quote": "אחלה זה הרבה יותר סין — נקסט",
+        "scope": "Art approval to proceed to Sydney; not personal-game release approval"
+      }
+    },
+    {
+      "route": "sydney",
+      "routeIndex": 8,
+      "name": {
+        "en": "Sydney",
+        "he": "סידני"
+      },
+      "categoryId": "detectives",
+      "status": "user-approved-art",
+      "gameReady": false,
+      "prompt": "docs/art/journey-sydney-detectives-v4-extra-children-cheerful-color.prompt.txt",
+      "sourceLocationReference": "public/scenes/journey-sydney-refresh-v6/base.webp",
+      "densityAndMovementReference": "greatwall-detectives-v3",
+      "referenceStrategy": "Refine intact coherent v3 with extra children, cheerful local color and removal of known bottom-left crop; no manual final composite",
+      "artVariant": "sydney-detectives-v4",
+      "masterSource": "output/imagegen/sydney-detectives-v4/sydney-detectives-v4.png",
+      "masterSourceKind": "ignored-authoring-provenance",
+      "masterSha256": "8fab910cad911c40b2403266c9c69ab3f0752e15bfc95db1adc5a0776005a34c",
+      "packagedAsset": "public/scenes/journey-sydney-detectives-v4/base.webp",
+      "packagedSha256": "34ebb5fe859a3dc046f86269717205ac63209361f0348240eb549180e841ac1c",
+      "packagedWidth": 3840,
+      "packagedHeight": 2160,
+      "promptSet": [
+        "docs/art/journey-sydney-detectives-v4-extra-children-cheerful-color.prompt.txt"
+      ],
+      "visualReview": {
+        "method": "Full-board comparison to v3 and five native crops: new middle children/color, paddle/snack play, cleared lower-left, basin faces/support and foreground feet/color",
+        "findings": [
+          "Additional children appear among the near shore/rock groups, paddle play, model-boat observers and kiosk snack interaction.",
+          "Clean coral/pink, turquoise, blue, lavender and sunny yellow accents are more visible in clothing and beach props, with natural neutral ground and recognizable coastal light.",
+          "Friendly smiles, a paddle/soft-ball game, shared snacks and active near children give a more cheerful feeling while focused craft activities remain natural.",
+          "The specified cropped pink-hat/striped-shirt girl and green-shirt waving boy are removed from the lower-left edge; their former area is coherent dry boardwalk without orphan remnants.",
+          "Reviewed face contours remain clear and dimensional at native size; inspected paddle players, basin observers and central foreground feet have plausible support with no obvious gross interior halved body or pasted seam.",
+          "Sydney landmarks, ferry, main beach layout, native wildlife, surfboards and existing stories remain recognizable."
+        ],
+        "caveats": [
+          "Small distant upper-right beach people and remaining projected scale variation persist.",
+          "Exact population increase, full fine anatomy, sign accuracy and six unique discovery signatures have not been validated.",
+          "Some foreground seated workshops/picnic and incidental profile/back poses remain.",
+          "The provider edited some existing local people/garments/props as well as additions; no pixel-exact preservation guarantee."
+        ],
+        "knownBottomLeftFrameCropResolved": true,
+        "reviewedNewChildrenSupportPlausible": true,
+        "userRequestedCheerfulColorAddressed": true,
+        "exactPopulationCountVerified": false,
+        "projectedScaleUniformityMeasured": false,
+        "completeAllPeopleFramingVerified": false,
+        "discoveryCandidatesValidated": false,
+        "fineAnatomyCertified": false,
+        "userApproved": true
+      },
+      "retainedAttempts": [
+        {
+          "artVariant": "sydney-detectives-v1",
+          "status": "internal-review-near-framing-density-revision-needed",
+          "masterSource": "output/imagegen/sydney-detectives-v1/sydney-detectives-v1.png",
+          "masterSha256": "b391cff70a38115c6253e316acdc7c28afac69e7f63478848c4f9929fbb83f74",
+          "prompt": "docs/art/journey-sydney-detectives-v1-child-rich-shallow-beach.prompt.txt",
+          "review": {
+            "method": "Full-board comparison against source Sydney v6 and approved Detectives composition",
+            "positiveFindings": [
+              "Recognizable Sydney harbor landmarks, surf learning, Australian wildlife and colorful near beach activity remain.",
+              "Additional near kiosk/craft/shore children are visible."
+            ],
+            "issues": [
+              "The source close composition is too strongly retained: large foreground people/furniture and relatively low added population.",
+              "Foreground standing children are truncated by the bottom frame boundary.",
+              "Projected scale varies more than requested across near people."
+            ],
+            "diagnosis": "Full Sydney composition reference anchored the old close camera despite widening/density prompt.",
+            "nextStrategy": "Use an approved child-rich near-field Detectives board as primary structural reference; use only Sydney landmark and material crops for place/mood. Create a new painting, not an edit of failed v1.",
+            "userApproved": false,
+            "exactPopulationCountVerified": false,
+            "projectedScaleUniformityMeasured": false,
+            "fineAnatomyCertified": false
+          }
+        },
+        {
+          "artVariant": "sydney-detectives-v2",
+          "status": "internal-review-wide-frame-recovery-needed",
+          "masterSource": "output/imagegen/sydney-detectives-v2/sydney-detectives-v2.png",
+          "masterSha256": "9e4442dbf00ff87dbc50fda7d1f88ea00bd1bfb675cb9da21a4f866063229677",
+          "prompt": "docs/art/journey-sydney-detectives-v2-density-reference-wide-near-field.prompt.txt",
+          "review": {
+            "method": "Full-board comparison to v1 and approved near-field composition",
+            "findings": [
+              "Recognizable Sydney harbor, local beach games and wildlife remain in a changed composition."
+            ],
+            "issues": [
+              "Large foreground people and activity furniture remain, and several foreground standing bodies are clipped by the bottom boundary.",
+              "Small distant beach people remain at the upper right, and the human field is less dense than the requested reference."
+            ],
+            "diagnosis": "Two whole-image prompts retained a close foreground and camera framing. Changing prompt/reference alone did not enforce room for complete figures or smaller framing.",
+            "nextStrategy": "Expand the actual canvas around a modestly reduced v2 painting; masked outpainting completes edge bodies and adds near activity. Preserve prepared interior pixels by deterministic composition rather than selecting an unrestricted whole-image rewrite.",
+            "userApproved": false,
+            "exactPopulationCountVerified": false,
+            "projectedScaleUniformityMeasured": false,
+            "fineAnatomyCertified": false
+          }
+        },
+        {
+          "artVariant": "sydney-detectives-v3",
+          "status": "user-requested-more-children-cheer",
+          "masterSource": "output/imagegen/sydney-detectives-v3/sydney-detectives-v3.png",
+          "masterSha256": "ca465f8c567899f6bcd41c6c9e45fb61ff8fccaa4b4921df0883b07a1d704721",
+          "packagedAsset": "public/scenes/journey-sydney-detectives-v3/base.webp",
+          "packagedSha256": "91100f50f268fd9aecaf0aa4b36955a64cacd6a11d83e4838f03ec8b79dd5d1d",
+          "promptSet": [
+            "docs/art/journey-sydney-detectives-v2-density-reference-wide-near-field.prompt.txt",
+            "docs/art/journey-sydney-detectives-v3-expanded-frame-outpaint.prompt.txt"
+          ],
+          "userFeedback": {
+            "date": "2026-10-07",
+            "artApproved": false,
+            "requestedChanges": [
+              "A few more children.",
+              "A somewhat happier, more cheerful feeling."
+            ],
+            "preserve": [
+              "Recognizable Sydney composition and local coastal atmosphere.",
+              "Native painted face/material clarity and quiet ground."
+            ],
+            "quote": "עוד טיה ילדים.. וקצת יותר שמח"
+          },
+          "review": {
+            "method": "Full-board comparison across three attempts, followed by five native crops of left additions, completed bottom bodies, right wildlife/kiosk, basin support and upper people",
+            "findings": [
+              "Sydney Opera House, Harbour Bridge, ferry, blue harbor, beach hut, surfboards and Australian wildlife remain recognizable in a broader finished frame.",
+              "The near field includes new kite and greeting/bag interactions on the sides, and more complete foreground bodies and activity furniture than v1/v2.",
+              "The selected intact provider painting has continuous bodies, ground and bridge architecture; the rejected rectangular composite seams are absent.",
+              "Reviewed faces, hands and material detail remain dimensional matte painted forms with shared coastal daylight; no obvious oily smear or gross interior orphan head was found in those views.",
+              "Children beside the model-boat basin are supported on its dry surroundings, and the inspected newly completed central foreground feet have plausible ground contact."
+            ],
+            "caveats": [
+              "Human scale remains nonuniform and small distant people persist at the upper-right beach; numerical shallow-scale compliance is not certified.",
+              "Two added foreground children at the lower-left still extend beyond the bottom frame; the all-people-inside framing request is not fully satisfied.",
+              "Several foreground craft/picnic groups and incidental rear/profile poses remain.",
+              "Exact population increase, six unique discovery signatures, sign accuracy and full fine anatomy have not been validated.",
+              "The provider revised pixels and composition within the requested protected area; the selected full image has no pixel-preservation guarantee."
+            ],
+            "userApproved": false,
+            "exactPopulationCountVerified": false,
+            "projectedScaleUniformityMeasured": false,
+            "completeAllPeopleFramingVerified": false,
+            "discoveryCandidatesValidated": false,
+            "fineAnatomyCertified": false
+          }
+        }
+      ],
+      "userFeedback": {
+        "date": "2026-10-07",
+        "artApproved": false,
+        "requestedChanges": [
+          "A few more children.",
+          "A somewhat happier, more cheerful feeling."
+        ],
+        "preserve": [
+          "Recognizable Sydney composition and local coastal atmosphere.",
+          "Native painted face/material clarity and quiet ground."
+        ],
+        "quote": "עוד טיה ילדים.. וקצת יותר שמח"
+      },
+      "feedbackAddressedFromVariant": "sydney-detectives-v3",
+      "approvalDate": "2026-10-07",
+      "approvalFeedback": {
+        "date": "2026-10-07",
+        "quote": "אחלה מעולה — תמשיך לבא",
+        "scope": "Art approval to continue to Antarctica; not a personal-game release"
+      }
+    },
+    {
+      "route": "antarctica",
+      "routeIndex": 9,
+      "name": {
+        "en": "Antarctica",
+        "he": "אנטארקטיקה"
+      },
+      "categoryId": "detectives",
+      "status": "user-approved-art",
+      "gameReady": false,
+      "artVariant": "antarctica-detectives-v9",
+      "masterSource": "output/imagegen/antarctica-detectives-v9/antarctica-detectives-v9.png",
+      "masterSourceKind": "ignored-authoring-provenance",
+      "masterSha256": "4ab0d79c5fd9b23ed2ac5925eb3f517cdde37f99a22a1aed9255be139ab694be",
+      "packagedAsset": "public/scenes/journey-antarctica-detectives-v9/base.webp",
+      "packagedSha256": "89d24177ba32c3c3a479a0d8a8e5f7f7c95bb21a1d9590730103e3e85e813e65",
+      "packagedWidth": 3840,
+      "packagedHeight": 2160,
+      "promptSet": [
+        "docs/art/journey-antarctica-detectives-v9-filled-foreground-near-crowd.prompt.txt"
+      ],
+      "visualReview": {
+        "authoringUsable": true,
+        "userApproved": true,
+        "method": "Full v8/v9 comparison and five native 4K crops: upper humans, foreground left/middle/right and proposed side activities.",
+        "findings": [
+          "Foreground is now occupied across left, middle and right, including sled pullers, a shadow-screen/ice activity, running kite children and cocoa/map group.",
+          "The small station/whale people are visibly larger and redistributed as near groups instead of the prior tiny distant row.",
+          "Recognizable whale/station/igloo composition, varied winter clothing, wildlife, ice science and local polar atmosphere remain.",
+          "Inspected new foreground people have connected bodies/props and are inside the frame; running poses show natural motion rather than orphan feet."
+        ],
+        "caveats": [
+          "Exact added population and scale uniformity were not measured; some natural body-size and remaining perspective variation exists.",
+          "The entire provider painting may differ from v8; no exact pixel-preservation claim.",
+          "Fine anatomy and every discovery prop have not been comprehensively certified.",
+          "Three personal appearances are planned only; no paid render on v9 and no QA activation."
+        ]
+      },
+      "localRepairEvidence": "output/imagegen/antarctica-detectives-v5/preservation.json",
+      "userFeedback": {
+        "date": "2026-10-08",
+        "artApproved": false,
+        "quote": "הפרספקטיבה לא רדודה מספיק\nיש דמויות רחוקות וקקטנות..\nתטפך ותן יותר אופי גם ללבוש, שלא כולם יראו אותו הדבר.. אולי קצת אקסימוסים גם ואיגלו.. שים לב שאתה משאיר הרבה דמויות",
+        "requestedChanges": [
+          "Remove miniature rear people/deep human perspective while preserving a plentiful crowd.",
+          "Vary winter silhouettes/fabrics/hats as well as color; include some Inuit-inspired attire.",
+          "Add a visible igloo with same-scale people at its entrance."
+        ],
+        "preserve": [
+          "Polar ice-whale/research-station magic and established dimensional painted style.",
+          "Rich children and stories.",
+          "Previously corrected complete bodies and dry camera-operator boot support."
+        ],
+        "summary": "הפרספקטיבה לא רדודה מספיק; יש דמויות רחוקות וקטנות. יותר אופי ללבוש, מעט לבוש אינואיטי ואיגלו, ולהשאיר הרבה דמויות."
+      },
+      "approvalDate": "2026-10-08",
+      "approvalFeedback": {
+        "date": "2026-10-08",
+        "quote": "הילד או הילדה שיהיו במחבוא גם חייבים כובע פה; הבורד עובר מבחינתי",
+        "scope": "v9 art approval with mandatory winter hat on each personalized appearance; no increase to the private authoring budget."
+      },
+      "reason": "User requested a newly wider, denser, blue/grey and mistier Antarctica board with three new hides.",
+      "retainedAttempts": [
+        {
+          "artVariant": "antarctica-detectives-v1",
+          "status": "internal-review-frame-scale-revision-needed",
+          "masterSource": "output/imagegen/antarctica-detectives-v1/antarctica-detectives-v1.png",
+          "masterSha256": "1839375e9c6f7b50ef98593fd60f15a5264cd96a52abe036e0258e077e05b58a",
+          "packagedAsset": "public/scenes/journey-antarctica-detectives-v1/base.webp",
+          "packagedSha256": "df3606eaab3465ba1a168db6f2fc18679795a8c9687a949b35bb8688e087cc5b",
+          "prompt": "docs/art/journey-antarctica-detectives-v1-wide-polar-wonder.prompt.txt",
+          "reviewRecord": "output/imagegen/antarctica-detectives-v1/artifact.json",
+          "userApproved": false
+        },
+        {
+          "artVariant": "antarctica-detectives-v2",
+          "status": "internal-review-local-support-edge-revision-needed",
+          "masterSource": "output/imagegen/antarctica-detectives-v2/antarctica-detectives-v2.png",
+          "masterSha256": "c93590a0359ee4da58f8456e6dc24d1e0c79c4a8465930920002c028ebd16f26",
+          "packagedAsset": "public/scenes/journey-antarctica-detectives-v2/base.webp",
+          "packagedSha256": "4cfc3613a6fba6b7dc3c5e0c0ab01cb2c8269f24975197a904b126ee905e5028",
+          "prompt": "docs/art/journey-antarctica-detectives-v2-expanded-frame.prompt.txt",
+          "reviewRecord": "output/imagegen/antarctica-detectives-v2/artifact.json",
+          "userApproved": false
+        },
+        {
+          "artVariant": "antarctica-detectives-v3",
+          "status": "user-requested-shallower-perspective-varied-wardrobe-igloo",
+          "masterSource": "output/imagegen/antarctica-detectives-v3/antarctica-detectives-v3.png",
+          "masterSha256": "fea4a947bfc39a1e143260ef6627b1221e2d7a7801bd34f418c75b6972c55875",
+          "packagedAsset": "public/scenes/journey-antarctica-detectives-v3/base.webp",
+          "packagedSha256": "7c5de65f2a809f8f5e6b9c0e53bc8d137bdebf70df38b30c1fcbfd8cb2952c9a",
+          "prompt": "docs/art/journey-antarctica-detectives-v3-local-support-edge.prompt.txt",
+          "reviewRecord": "output/imagegen/antarctica-detectives-v3/artifact.json",
+          "userApproved": false,
+          "userFeedback": {
+            "date": "2026-10-08",
+            "artApproved": false,
+            "quote": "הפרספקטיבה לא רדודה מספיק\nיש דמויות רחוקות וקקטנות..\nתטפך ותן יותר אופי גם ללבוש, שלא כולם יראו אותו הדבר.. אולי קצת אקסימוסים גם ואיגלו.. שים לב שאתה משאיר הרבה דמויות",
+            "requestedChanges": [
+              "Remove miniature rear people/deep human perspective while preserving a plentiful crowd.",
+              "Vary winter silhouettes/fabrics/hats as well as color; include some Inuit-inspired attire.",
+              "Add a visible igloo with same-scale people at its entrance."
+            ],
+            "preserve": [
+              "Polar ice-whale/research-station magic and established dimensional painted style.",
+              "Rich children and stories.",
+              "Previously corrected complete bodies and dry camera-operator boot support."
+            ],
+            "summary": "הפרספקטיבה לא רדודה מספיק; יש דמויות רחוקות וקטנות. יותר אופי ללבוש, מעט לבוש אינואיטי ואיגלו, ולהשאיר הרבה דמויות."
+          }
+        },
+        {
+          "artVariant": "antarctica-detectives-v4",
+          "status": "internal-review-two-local-corrections-needed",
+          "masterSource": "output/imagegen/antarctica-detectives-v4/antarctica-detectives-v4.png",
+          "masterSha256": "1f942c9961b154bb5aaa9340842d883e743b8b871de99618913f5725b5bb0b20",
+          "packagedAsset": "public/scenes/journey-antarctica-detectives-v4/base.webp",
+          "packagedSha256": "d9ed3976d5f37ed78adbb1717269459b7c767f5feb3833a5816a6f2adc93d43a",
+          "prompt": "docs/art/journey-antarctica-detectives-v4-shallow-varied-winter-igloo.prompt.txt",
+          "reviewRecord": "output/imagegen/antarctica-detectives-v4/artifact.json",
+          "userApproved": false,
+          "userFeedback": {
+            "date": "2026-10-08",
+            "artApproved": false,
+            "quote": "הפרספקטיבה לא רדודה מספיק\nיש דמויות רחוקות וקקטנות..\nתטפך ותן יותר אופי גם ללבוש, שלא כולם יראו אותו הדבר.. אולי קצת אקסימוסים גם ואיגלו.. שים לב שאתה משאיר הרבה דמויות",
+            "requestedChanges": [
+              "Remove miniature rear people/deep human perspective while preserving a plentiful crowd.",
+              "Vary winter silhouettes/fabrics/hats as well as color; include some Inuit-inspired attire.",
+              "Add a visible igloo with same-scale people at its entrance."
+            ],
+            "preserve": [
+              "Polar ice-whale/research-station magic and established dimensional painted style.",
+              "Rich children and stories.",
+              "Previously corrected complete bodies and dry camera-operator boot support."
+            ],
+            "summary": "הפרספקטיבה לא רדודה מספיק; יש דמויות רחוקות וקטנות. יותר אופי ללבוש, מעט לבוש אינואיטי ואיגלו, ולהשאיר הרבה דמויות."
+          }
+        },
+        {
+          "artVariant": "antarctica-detectives-v6",
+          "status": "user-rejected-repetitive-composition",
+          "masterSource": "output/imagegen/antarctica-detectives-v6/antarctica-detectives-v6.png",
+          "masterSha256": "edda924b7aebcce20577621402a2e7e68feb58a241eafdb92a49cd6c0ab691fe",
+          "prompt": "docs/art/journey-antarctica-detectives-v6-wide-misty-expedition.prompt.txt",
+          "userApproved": false
+        },
+        {
+          "artVariant": "antarctica-detectives-v7",
+          "status": "user-rejected-repetitive-composition",
+          "masterSource": "output/imagegen/antarctica-detectives-v7/antarctica-detectives-v7.png",
+          "masterSha256": "a5c419fbc05c0319ee51bacf6b205201649e585a3e7869e7cd7a2e0b099045b0",
+          "packagedAsset": "public/scenes/journey-antarctica-detectives-v7/base.webp",
+          "packagedSha256": "0abf3569f0b040d27d4c01dc12ce678b0402dcdd81e3f85905ea669e3656c4be",
+          "userApproved": false,
+          "feedback": "People/wardrobe look copied; return to the previous composition with only a modest wider frame and more varied people/activities."
+        },
+        {
+          "route": "antarctica",
+          "routeIndex": 9,
+          "name": {
+            "en": "Antarctica",
+            "he": "אנטארקטיקה"
+          },
+          "categoryId": "detectives",
+          "status": "superseded-user-approved-art",
+          "gameReady": false,
+          "artVariant": "antarctica-detectives-v5",
+          "masterSource": "output/imagegen/antarctica-detectives-v5/antarctica-detectives-v5.png",
+          "masterSourceKind": "ignored-authoring-provenance",
+          "masterSha256": "6828cd8b2d1db1b23a5bb8522792b10a0766baa6ea131cf746897167e0f2a0c9",
+          "packagedAsset": "public/scenes/journey-antarctica-detectives-v5/base.webp",
+          "packagedSha256": "90ff28828c01c92316d9a697a806f340f9cf6804254cb4d1d3c1d5b379246859",
+          "packagedWidth": 3840,
+          "packagedHeight": 2160,
+          "promptSet": [
+            "docs/art/journey-antarctica-detectives-v4-shallow-varied-winter-igloo.prompt.txt",
+            "docs/art/journey-antarctica-detectives-v5-final-small-figure-dry-boots.prompt.txt"
+          ],
+          "visualReview": {
+            "method": "Full v3/v4/v5 comparison, six native v4 crops, then full v5 and native composed rear-removal/camera-boot return views; outside-area RGB preservation verified separately",
+            "findings": [
+              "The main people near the ice-whale arches are visibly larger and more readable than in v3; the human field has less apparent depth and retains a plentiful child-heavy crowd.",
+              "The isolated miniature rear-facing child beside the walrus is completely removed; the neighboring near children and animal outlines remain coherent.",
+              "Winter attire now varies in length, silhouette, knitwear, trim and hat/boot shape, including patterned Inuit-inspired anoraks, plain short quilted jackets and longer coats.",
+              "A large readable open-front snow-block igloo replaces the wooden reading shelter; an adult and children share reading/cocoa at the near entrance with additional nearby people.",
+              "The ice whale, red research station, fantasy wildlife, many visible child faces and near snow/science activities remain recognizable.",
+              "The camera operator has two complete separate boots with dry snow/ice support; the water and hanging camera remain to the left.",
+              "The native composed return views show no obvious rectangular seam, orphan remnant or gross interior halved body; the adjacent flag children remain complete.",
+              "Reviewed face contours remain dimensional matte-painted; inspected foreground bodies/table feet are supported and framed."
+            ],
+            "caveats": [
+              "Some variation in projected figure/head scale remains between bands, adults/children and poses; uniformity and exact population counts have not been measured.",
+              "Snow retains painted grain and some science/reading groups sit or kneel.",
+              "No comprehensive fine anatomy, every discovery signature, flag lettering, historical garment authenticity or age-suitability certification was performed.",
+              "The full v4 provider edit rearranged people, activities and animals; exact pixel preservation applies only outside the two v5 return regions relative to v4.",
+              "The candidate is authoring art only; personal hide/discovery geometry and live gameplay are not connected or verified."
+            ],
+            "solitaryRearMiniatureResolved": true,
+            "cameraTwoBootsDrySupportResolved": true,
+            "iglooPresent": true,
+            "wardrobeSilhouettesVaried": true,
+            "userApproved": true,
+            "exactPopulationCountVerified": false,
+            "projectedScaleUniformityMeasured": false,
+            "completeAllPeopleFramingVerified": false,
+            "fineAnatomyCertified": false,
+            "discoveryCandidatesValidated": false
+          },
+          "localRepairEvidence": "output/imagegen/antarctica-detectives-v5/preservation.json",
+          "userFeedback": {
+            "date": "2026-10-08",
+            "artApproved": false,
+            "quote": "הפרספקטיבה לא רדודה מספיק\nיש דמויות רחוקות וקקטנות..\nתטפך ותן יותר אופי גם ללבוש, שלא כולם יראו אותו הדבר.. אולי קצת אקסימוסים גם ואיגלו.. שים לב שאתה משאיר הרבה דמויות",
+            "requestedChanges": [
+              "Remove miniature rear people/deep human perspective while preserving a plentiful crowd.",
+              "Vary winter silhouettes/fabrics/hats as well as color; include some Inuit-inspired attire.",
+              "Add a visible igloo with same-scale people at its entrance."
+            ],
+            "preserve": [
+              "Polar ice-whale/research-station magic and established dimensional painted style.",
+              "Rich children and stories.",
+              "Previously corrected complete bodies and dry camera-operator boot support."
+            ],
+            "summary": "הפרספקטיבה לא רדודה מספיק; יש דמויות רחוקות וקטנות. יותר אופי ללבוש, מעט לבוש אינואיטי ואיגלו, ולהשאיר הרבה דמויות."
+          },
+          "approvalDate": "2026-10-08",
+          "approvalFeedback": {
+            "date": "2026-10-08",
+            "quote": "ניראה טוב",
+            "scope": "Approval of Antarctica v5 art only; no gameplay or QA release claim."
+          },
+          "reason": "Original v5 remains the composition reference; new requested modest wider v8 is a candidate only.",
+          "pendingAuthoringRequest": {
+            "status": "modest-v5-outpaint-in-progress",
+            "activeInRuntime": false
+          }
+        },
+        {
+          "route": "antarctica",
+          "routeIndex": 9,
+          "name": {
+            "en": "Antarctica",
+            "he": "אנטארקטיקה"
+          },
+          "categoryId": "detectives",
+          "status": "user-rejected-empty-foreground-and-tiny-rear-people",
+          "gameReady": false,
+          "artVariant": "antarctica-detectives-v8",
+          "masterSource": "output/imagegen/antarctica-detectives-v8/antarctica-detectives-v8.png",
+          "masterSourceKind": "ignored-authoring-provenance",
+          "masterSha256": "f52332c1e70e90be5f8f2b52f6f5b41ef241bd5aa9cf88d3895df3a6f146da02",
+          "packagedAsset": "public/scenes/journey-antarctica-detectives-v8/base.webp",
+          "packagedSha256": "1101fc103e8004ddfc602466a4f486938d853f30bc35d44aa558ac571b9526aa",
+          "packagedWidth": 3840,
+          "packagedHeight": 2160,
+          "promptSet": [
+            "docs/art/journey-antarctica-detectives-v8-preserved-v5-outpaint.prompt.txt"
+          ],
+          "visualReview": {
+            "authoringUsable": false,
+            "userApproved": false,
+            "method": "Compare v5 and v8 full board, then native left/right new groups and three proposed source crops; reject the failed exact-center recomposition.",
+            "findings": [
+              "Recognizable v5 whale/station/igloo composition and diverse existing activities retained semantically in a modest wider frame.",
+              "New margin activities include a sled/field notebook, map readers, magnifier at ice block, windsock and field-kit walkers.",
+              "New side clothing is mainly blue/grey/green, with the original mixed wardrobe retained across the main field.",
+              "Native source people at proposed locations have coherent heads, supported bodies and complete limbs through adjacent boundaries."
+            ],
+            "caveats": [
+              "The provider did not keep the masked center exactly registered; selected v8 is the intact provider painting, not an exact-pixel preserved-center composite.",
+              "Fine anatomy, exact population count and projected scale uniformity were not comprehensively measured.",
+              "No private child has been rendered on v8; three proposed hides are unvalidated.",
+              "Awaiting user art feedback; no runtime activation or QA deployment."
+            ],
+            "userRejection": {
+              "date": "2026-10-08",
+              "reason": "Foreground still empty; small distant people remain.",
+              "nextStrategy": "Fill the whole lower near field, enlarge the actual upper-near children, preserve the original polar composition and avoid cloned faces/outfits."
+            }
+          },
+          "localRepairEvidence": "output/imagegen/antarctica-detectives-v5/preservation.json",
+          "userFeedback": {
+            "date": "2026-10-08",
+            "artApproved": false,
+            "quote": "הפרספקטיבה לא רדודה מספיק\nיש דמויות רחוקות וקקטנות..\nתטפך ותן יותר אופי גם ללבוש, שלא כולם יראו אותו הדבר.. אולי קצת אקסימוסים גם ואיגלו.. שים לב שאתה משאיר הרבה דמויות",
+            "requestedChanges": [
+              "Remove miniature rear people/deep human perspective while preserving a plentiful crowd.",
+              "Vary winter silhouettes/fabrics/hats as well as color; include some Inuit-inspired attire.",
+              "Add a visible igloo with same-scale people at its entrance."
+            ],
+            "preserve": [
+              "Polar ice-whale/research-station magic and established dimensional painted style.",
+              "Rich children and stories.",
+              "Previously corrected complete bodies and dry camera-operator boot support."
+            ],
+            "summary": "הפרספקטיבה לא רדודה מספיק; יש דמויות רחוקות וקטנות. יותר אופי ללבוש, מעט לבוש אינואיטי ואיגלו, ולהשאיר הרבה דמויות."
+          },
+          "approvalDate": null,
+          "approvalFeedback": null,
+          "reason": "User requested a newly wider, denser, blue/grey and mistier Antarctica board with three new hides.",
+          "pendingAuthoringRequest": {
+            "status": "v9-foreground-and-upper-scale-revision-running",
+            "privateExamplesRenderedOnV8": 0,
+            "activeInRuntime": false
+          },
+          "userApproved": false
+        }
+      ],
+      "pendingAuthoringRequest": {
+        "status": "three-v9-hides-with-required-hats-prepared-not-rendered",
+        "activeInRuntime": false
+      }
+    }
+  ],
+  "paletteReference": {
+    "route": "amazon",
+    "artVariant": "amazon-detectives-v3",
+    "approval": "user-approved-art",
+    "masterSha256": "85a7e58698012bc68375d54c9c9448f113ab149b02a2904804d80b6f3c6b7922",
+    "principle": "Location-specific calm environment colors and modestly clearer varied clothing; no separate face spotlights."
+  },
+  "faceAndGroundReference": {
+    "route": "paris",
+    "artVariant": "paris-detectives-v4",
+    "approval": "user-approved-art",
+    "masterSha256": "cbe73d8fbf1396acf8e201c65ad5acbe789a3f392e38bb7784e70ed02219a9ef",
+    "principle": "Many visible-faced children in middle and foreground, calm broad paving and clean location-specific color."
+  },
+  "warmGroundReference": {
+    "route": "marrakech",
+    "artVariant": "marrakech-detectives-v2",
+    "approval": "user-approved-art",
+    "masterSha256": "a6842f855630f4f740bce770de079188311e0cb60a21882395c9b12775310472",
+    "principle": "Calm broad ground with modest natural tonal variation; retain clothing/environment separation and visible child faces."
+  }
+}

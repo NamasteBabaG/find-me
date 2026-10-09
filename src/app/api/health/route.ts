@@ -5,6 +5,7 @@ import { getContainer } from "@/services/container";
 import { env } from "@/lib/env";
 import { BOARD_JUDGE_VERSION } from "@/infra/generation/board-verdict";
 import { deliverWithProblemsOf } from "@/services/container";
+import { visualReviewPolicy } from "@/domain/generation/visual-review-policy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,8 +28,10 @@ export async function GET(req: Request) {
   const started = Date.now();
   const e = env();
   const db = await checkDb();
+  const dualConfigured = Boolean(e.OPENAI_API_KEY?.trim() && e.ANTHROPIC_API_KEY?.trim());
+  const ok = db.ok && !(e.APP_ENV === "qa" && e.LOCAL_PATCH_VISUAL_REVIEW === "dual-high-v1" && !dualConfigured);
   const body = {
-    ok: db.ok,
+    ok,
     db,
     host: await hostCheck(),
     appEnv: e.APP_ENV,
@@ -36,12 +39,16 @@ export async function GET(req: Request) {
     patchQuality: e.GENERATION_PATCH_QUALITY ?? e.GENERATION_QUALITY,
     patchRetryQuality: e.GENERATION_PATCH_RETRY_QUALITY ?? null,
     qualityGate: { version: BOARD_JUDGE_VERSION, autoApproveClean: e.QA_AUTO_APPROVE === "true", deliverWithProblems: deliverWithProblemsOf(e.QA_AUTO_APPROVE === "true", e.APP_ENV, e.QA_DELIVER_WITH_PROBLEMS === "true") },
+    visualReview: { newGames: e.APP_ENV === "qa" ? e.LOCAL_PATCH_VISUAL_REVIEW : "legacy",
+      configured: dualConfigured,
+      quality: { model: visualReviewPolicy("scene-quality").model, effort: "high" },
+      continuity: { model: visualReviewPolicy("head-continuity").model, effort: "high" } },
     // CLI deploys carry no git sha; APP_COMMIT is set at deploy time so what is
     // checked can be shown to be what is deployed.
     commit: (process.env.APP_COMMIT ?? process.env.VERCEL_GIT_COMMIT_SHA ?? "local").slice(0, 7),
     tookMs: Date.now() - started,
   };
-  return NextResponse.json(body, { status: db.ok ? 200 : 503, headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json(body, { status: ok ? 200 : 503, headers: { "Cache-Control": "no-store" } });
 }
 
 async function checkDb(): Promise<{ ok: boolean; code?: string; error?: string }> {

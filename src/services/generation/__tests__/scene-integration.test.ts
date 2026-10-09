@@ -4,7 +4,7 @@ import { findScene } from "../../../../content/scenes";
 import { sceneVersionForDraft } from "../../create-flow.service";
 import { needsSelfRepair, selfRepairEnabled } from "../../../domain/scene/local-patch-self-repair";
 import { INTEGRATED_REQUIRED_CHECKS, localPatchBoardJudgePrompt, localPatchBoardJudgeSettings, localPatchExplicitUncertaintyChecks, localPatchQualityDisposition, parseLocalPatchVerdict } from "../local-patch-judge";
-import { localPatchPrompt, localPatchRepairChecks, pinnedLocalPatchPromptVersion, LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_INTEGRATED_PROMPT_VERSION } from "../local-patch-prompt";
+import { localPatchPrompt, localPatchRepairChecks, pinnedLocalPatchPromptVersion, paintRecipeForPinnedPrompt, LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_INTEGRATED_PROMPT_VERSION, LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION } from "../local-patch-prompt";
 import { PASSING_ANSWER } from "./local-patch-fixtures";
 import sharp from "sharp";
 import { prepareNeighborComparisons } from "../local-patch-integration-evidence";
@@ -70,7 +70,14 @@ describe("mandatory scene integration", () => {
       if (historic) expect(findScene(board.board, 12)!.art).toEqual(historic.art);
       else expect(findScene(board.board, 12)!.targets).toHaveLength(3);
     }
-    expect(pinnedLocalPatchPromptVersion(null, LOCAL_PATCH_AGE_PROMPT_VERSION, 12)).toBe(LOCAL_PATCH_INTEGRATED_PROMPT_VERSION);
+    expect(pinnedLocalPatchPromptVersion(null, LOCAL_PATCH_AGE_PROMPT_VERSION, 12)).toBe(LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION);
+    expect(paintRecipeForPinnedPrompt(LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION)).toBe("scene-integration-v4");
+    for (const attempts of [0, 2]) {
+      const pinned=pinnedLocalPatchPromptVersion({attempts,promptVersion:LOCAL_PATCH_INTEGRATED_PROMPT_VERSION},LOCAL_PATCH_AGE_PROMPT_VERSION,12);
+      expect(pinned).toBe(LOCAL_PATCH_INTEGRATED_PROMPT_VERSION);
+      expect(paintRecipeForPinnedPrompt(pinned)).toBe("scene-integration-v3");
+    }
+    expect(pinnedLocalPatchPromptVersion({attempts:0,promptVersion:null},LOCAL_PATCH_AGE_PROMPT_VERSION,12)).toBe(LOCAL_PATCH_AGE_PROMPT_VERSION);
     expect(pinnedLocalPatchPromptVersion({ attempts: 2, promptVersion: "local-patch-prompt/v13-identity-body-lock" }, LOCAL_PATCH_AGE_PROMPT_VERSION, 11)).toBe("local-patch-prompt/v13-identity-body-lock");
     expect(localPatchBoardJudgeSettings(11).policyVersion).toBe("local-patch-sol-low-identity-body/v4");
     expect(localPatchBoardJudgeSettings(12)).toMatchObject({ effort: "medium", policyVersion: "local-patch-sol-medium-scene-integration/v5" });

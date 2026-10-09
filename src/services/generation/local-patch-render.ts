@@ -1,4 +1,5 @@
 import { isCollectionVersion } from "../../domain/scene/local-patch-versions";
+import { localPatchReturnRegion, AUTHORED_PATCH_COMPOSITION_VERSION, type LocalPatchCompositionVersion } from "../../domain/scene/local-patch-return-region";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { playerReviewEnabled } from "./local-patch-player-review";
@@ -11,7 +12,7 @@ import {
   type JudgeWireFault, type LocalPatchJudgeRequest, type LocalPatchJudgeResult, type LocalPatchVerdict,
 } from "./local-patch-judge";
 import { judgeCharge } from "../../infra/generation/judge";
-import { LOCAL_PATCH_POSE_WORDING, LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_CANONICAL_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION, LOCAL_PATCH_INTEGRATED_PROMPT_VERSION, LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION, localPatchPrompt, type LocalPatchRepairCheck, type LocalPatchPaintRecipe } from "./local-patch-prompt";
+import { LOCAL_PATCH_POSE_WORDING, LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_CANONICAL_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION, LOCAL_PATCH_INTEGRATED_PROMPT_VERSION, LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION, LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION, localPatchPrompt, type LocalPatchRepairCheck, type LocalPatchPaintRecipe } from "./local-patch-prompt";
 import { purchaseOnce, type PurchaseLedger, type RetainedPurchaseStore } from "./paid-operation";
 import { LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, type LocalPatchPurchase, type LocalPatchReferenceMode } from "../../infra/generation/openai-local-patch";
 import type { BudgetJson } from "./world-budget";
@@ -20,6 +21,7 @@ import type { LocalPatchRecoveryDirective } from "../../domain/scene/local-patch
 import { adaptiveRecoveryPrompt, type AdaptiveRecoveryPlan } from "./local-patch-adaptive-recovery";
 import { selfRepairDecisionSchema, selfRepairRenderInstructions, type SelfRepairDecision } from "../../domain/scene/local-patch-self-repair";
 import { retainedRestylePrompt } from "./local-patch-restyle";
+import { referenceNeutralHairDirections } from "./local-patch-prompt";
 import { fixedSourceFailureReceiptSchema, type FixedSourceFailureReceipt } from "../../infra/generation/fixed-source-diagnostics";
 
 /**
@@ -149,7 +151,7 @@ export type LocalPatchAttempt = {
   readonly seam: SeamReport | null;
   /** v8 local blend permission only; never substitutes for final visual review. */
   readonly compositionPermission?: LocalPatchCompositionPermission;
-  readonly compositionVersion?: typeof LOCAL_PATCH_COMPOSITION_VERSION;
+  readonly compositionVersion?: LocalPatchCompositionVersion;
   readonly verdict: LocalPatchVerdict | null;
   readonly wireFault: JudgeWireFault | null;
   readonly promptVersion: string;
@@ -302,12 +304,21 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
   if (input.expectedPromptVersion !== undefined && input.expectedPromptVersion !== promptVersionOf(input)) {
     throw new Error(`LOCAL_PATCH: prompt provenance conflict; stored ${input.expectedPromptVersion}, selected ${promptVersionOf(input)}`);
   }
+  if (input.hide.returnRect) {
+    // An authored source window is not interchangeable with a diagnosed recovery window.
+    // Keep this opt-in authoring contract out of historical and recovery purchases.
+    if (input.contentVersion !== 12 || input.selfRepair || input.adaptiveRecovery || input.recoveryDirective) {
+      throw new Error("LOCAL_PATCH: authored return windows require a v12 normal authoring attempt");
+    }
+    localPatchReturnRegion(cropOf(input.hide), maskForHide(input.hide), input.hide.returnRect);
+  }
   const result = await renderLocalPatchHideInner(deps, input);
   return { ...result, promptVersion: promptVersionOf(input),
-    ...(isLocalPatchStrictVersion(input.contentVersion) ? { compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION } : {}) };
+    ...(isLocalPatchStrictVersion(input.contentVersion) ? { compositionVersion: input.hide.returnRect ? AUTHORED_PATCH_COMPOSITION_VERSION : LOCAL_PATCH_COMPOSITION_VERSION } : {}) };
 }
 
 function promptVersionOf(input: LocalPatchAttemptInput): string {
+  if (input.paintRecipe === "scene-integration-v4") return LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION;
   if (input.paintRecipe === "scene-integration-v3") return LOCAL_PATCH_INTEGRATED_PROMPT_VERSION;
   if (input.paintRecipe === "identity-body-v2") return LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION;
   if (input.paintRecipe === "board-paint-v1") return LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION;
@@ -340,11 +351,12 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   if (input.adaptiveRecovery && (attempt !== 3 || !isLocalPatchStrictVersion(input.contentVersion) || input.recoveryDirective)) {
     throw Error("ADAPTIVE_RECOVERY: a diagnosis belongs only to its final normal attempt");
   }
-  const prompt = restyling ? retainedRestylePrompt(recovery) : localPatchPrompt({ ground: board.ground, pose: hide.pose, ageYears: input.ageYears, repairChecks: input.repairChecks, boardPeopleReference: !!input.boardPeoplePng,
-    wardrobe: board.wardrobe, placement: hide.placement, mask, contentVersion: input.contentVersion,
+  const recipePrompt = restyling ? retainedRestylePrompt(recovery) : localPatchPrompt({ ground: board.ground, pose: hide.pose, ageYears: input.ageYears, repairChecks: input.repairChecks, boardPeopleReference: !!input.boardPeoplePng,
+    wardrobe: hide.wardrobe ?? board.wardrobe, placement: hide.placement, mask, contentVersion: input.contentVersion,
     hideId: hide.id, recoveryDirective: input.recoveryDirective, paintRecipe: input.paintRecipe })
     + (input.adaptiveRecovery ? `\n\n${adaptiveRecoveryPrompt(input.adaptiveRecovery, hide)}` : "")
     + (recovery ? `\n\n${selfRepairRenderInstructions(recovery)}` : "");
+  const prompt = input.paintRecipe === "scene-integration-v4" ? referenceNeutralHairDirections(recipePrompt) : recipePrompt;
 
   const meta = await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).metadata();
   const stylePng = restyling ? await sharp(input.restyleSourcePng!, { limitInputPixels: 8_294_400 }).resize(512, 768, { fit: "fill" }).png().toBuffer()
@@ -366,6 +378,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     ...(input.canonicalIdentityPng ? { canonicalIdentity: sha(input.canonicalIdentityPng) } : {}),
     ...(input.referenceMode ? { referenceMode: input.referenceMode } : {}),
     ...(isLocalPatchStrictVersion(input.contentVersion) ? { composition: "bounded-return/v1" } : {}),
+    ...(hide.returnRect ? { authoredReturn: { version: AUTHORED_PATCH_COMPOSITION_VERSION, rect: hide.returnRect } } : {}),
     policy: deps.renderPolicySha256,
     // The SHAPE of what is kept, not only what was bought. A record written
     // before this envelope existed would otherwise be read under this same
@@ -426,6 +439,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     ? await composeBoundedLocalPatch(input.composedPng, crop, patchPng, mask, {
       requireAligned: input.contentVersion === 12 && !playerReviewEnabled(),
       playerReview: input.contentVersion === 12 && playerReviewEnabled(),
+      ...(hide.returnRect ? { returnRect: hide.returnRect } : {}),
     }) : null;
   const seam = bounded?.report ?? await analysePatchSeam(input.composedPng, crop, patchPng, { allowedRect: { left: 0, top: 0, ...LOCAL_PATCH_CROP } });
   const fade = seam.verdict === "clean" || seam.verdict === "fade-recommended";

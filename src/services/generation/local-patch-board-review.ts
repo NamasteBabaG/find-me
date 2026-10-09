@@ -28,6 +28,8 @@ import { readLocalPatchExtraAttemptPlan, requireLocalPatchExtraReview, fenceLoca
 import { localPatchEvidenceRecovery } from "./local-patch-review-recovery";
 import { recoverPreparedLocalPatchReview } from "./local-patch-review-interruption-recovery";
 import { needsPlayerReview, playerReviewEnabled, PLAYER_REVIEW_MODE, PLAYER_REVIEW_VERSION } from "./local-patch-player-review";
+import { DUAL_VISUAL_REVIEW_VERSION, hasDualVisualReview } from "./visual-review-release";
+import { buyDualLocalPatchReview } from "./local-patch-dual-review";
 
 export const LOCAL_PATCH_BOARD_REVIEW_VERSION = "local-patch-board-five-luna-low/v1";
 export const LOCAL_PATCH_STRICT_BOARD_REVIEW_VERSION = "local-patch-board-five-quality/v3-head-safe";
@@ -298,10 +300,11 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
  * appearance; absent siblings receive no writes or invented publication proof. */
 export async function reviewLocalPatchBoard(c: Container, input: { gameId: string; sceneId: string; deadlineAt?: number },
   deps: LocalPatchBoardReviewDeps): Promise<LocalPatchBoardReviewOutcome> {
-  const calibrated = playerReviewEnabled();
+  const dual = await hasDualVisualReview(c.db, input.gameId);
+  const calibrated = dual || playerReviewEnabled();
   const preparation = { includePlayerCandidates: calibrated, skipApprovedEvidence: true };
-  let prepared = await prepareLocalPatchBoardReview(c, input, deps, preparation);
-  if (prepared.ready && calibrated && prepared.scene.sceneVersion === 12 && !prepared.extraPlan) {
+  let prepared = await prepareLocalPatchBoardReview(c, input, deps, { ...preparation, ...(dual ? { playerReview: true } : {}) });
+  if (!dual && prepared.ready && calibrated && prepared.scene.sceneVersion === 12 && !prepared.extraPlan) {
     const suppliedIds = new Set(prepared.request.hides.map(h => h.hideId));
     const selected = prepared.entries.filter(e => suppliedIds.has(e.hide.id));
     // Existing purchases, including unknown/pending ones, keep their exact
@@ -318,12 +321,14 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
   if ((recovering || scene.sceneVersion === 12) && protectedRows.size === entries.length)
     return { state: boardComplete ? "done" : "pending", reason: boardComplete ? null : "Other appearances await generation or review", costCents: 0, replayed: true };
   demand(game.ownerId, "A review requires its verified owner");
-  demand(deps.judge || deps.apiKey?.trim(), "Configured existing judge credential is required");
+  demand(dual ? c.visualReview : deps.judge || deps.apiKey?.trim(), "Configured visual review providers are required");
   // Unlike a replay, a new dispatch must consult the current kill switch/owner.
   await assertGenerationSpendAllowed(c, game.ownerId);
   await c.db.$transaction(async tx => { await fenceLocalPatchImages(tx, game.id); await deps.fence(tx); });
-  if (recovering || request.reviewScope === "ready-only/v1") await inventorySelfRepairRequest(c, game.id, requestKey, deps.fence);
-  const bought = await purchaseOnce({ ledger: budget, store: new LocalPatchRetainedPurchaseStore(c, game.id, budget) }, {
+  if (!dual && (recovering || request.reviewScope === "ready-only/v1")) await inventorySelfRepairRequest(c, game.id, requestKey, deps.fence);
+  const evaluated = dual ? await buyDualLocalPatchReview(c, prepared, deps, input.deadlineAt) : null;
+  if (evaluated?.kind === "waiting") return evaluated.outcome;
+  const bought = evaluated?.bought ?? await purchaseOnce({ ledger: budget, store: new LocalPatchRetainedPurchaseStore(c, game.id, budget) }, {
     worldId, requestKey, scope: "judge", operationFingerprint: fingerprint,
     reserveMicroUsd: request.reviewScope ? 200_000 + 100_000 * request.hides.length : recovering || scene.sceneVersion === 11 || scene.sceneVersion === 12 ? 500_000 : 30_000,
     ...(input.deadlineAt === undefined ? {} : { dispatchWindow: { deadlineAt: input.deadlineAt,
@@ -349,9 +354,9 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
     return { state: bought.kind === "unresolved" || (bought.kind === "deferred" && bought.reserved) ? "held" : "pending",
       reason: bought.reason, replayed: false, costCents: 0 };
   }
-  const keep = JSON.parse(bought.bytes.toString()) as { raw: string | null; wireFault: string | null; model: string | null; finishReason: string | null };
+  const keep = evaluated?.wire ?? JSON.parse(bought.bytes.toString()) as { raw: string | null; wireFault: string | null; model: string | null; finishReason: string | null };
   const readable = !keep.wireFault && isTheModelWeAsked(keep.model, settings.model) && keep.finishReason === "stop";
-  const verdicts = parseLocalPatchBoardVerdicts(readable ? keep.raw : null, request.hides.map(h => h.hideId), scene.sceneVersion, request.reviewScope, request.assessmentMode);
+  const verdicts = evaluated?.verdicts ?? parseLocalPatchBoardVerdicts(readable ? keep.raw : null, request.hides.map(h => h.hideId), scene.sceneVersion, request.reviewScope, request.assessmentMode);
   const reviewedIds = new Set(request.hides.map(h => h.hideId));
   const committedEntries = entries.filter(e => protectedRows.has(e.row.id) || reviewedIds.has(e.hide.id));
   const dispositions = committedEntries.map(e => strict ? localPatchQualityDisposition(protectedRows.has(e.row.id)
@@ -382,14 +387,18 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
         ] } : {}),
         wireFault: keep.wireFault ?? (verdicts[e.hide.id] ? null : "schema"), judgedSha256: e.imageSha256,
         ...(strict ? { qualityDisposition: disposition, compositionVersion } : {}),
-        boardReview: { version: reviewVersion, fingerprint, requestKey, composedSha256: sha256Bytes(composed),
+        boardReview: { version: evaluated ? DUAL_VISUAL_REVIEW_VERSION : reviewVersion,
+          fingerprint: evaluated?.proof.quality.fingerprint ?? fingerprint,
+          requestKey: evaluated?.proof.quality.requestKey ?? requestKey, composedSha256: sha256Bytes(composed),
+          ...(evaluated ? { dual: evaluated.proof } : {}),
           ...(request.assessmentMode === PLAYER_REVIEW_MODE ? { assessmentMode: PLAYER_REVIEW_MODE } : {}),
           ...(request.reviewScope ? { reviewScope: request.reviewScope, reviewedHideIds: request.hides.map(h => h.hideId), evidenceReviewAttempt,
             evidenceReviewedAt: new Date().toISOString() } : {}),
           ...(extraPlan ? { assessmentMode: "visible-body-v1", extraAttemptAuthorizationId: extraPlan.authorizationId } : {}),
           ...(strict ? { compositionVersion, wireHashes: localPatchBoardJudgeImages(request).map(sha256Bytes) } : {}),
           ...(isLocalPatchAgeVersion(scene.sceneVersion) ? { evidenceIds: localPatchBoardEvidenceIds(request), imageLabels: localPatchBoardJudgeImageLabels(request) } : {}),
-          model: keep.model, effort: settings.effort, raw: keep.raw, costMicroUsd: bought.evidence.amountMicroUsd },
+          model: keep.model, effort: evaluated ? "high" : settings.effort, raw: keep.raw, costMicroUsd: evaluated
+            ? evaluated.proof.quality.costMicroUsd + (evaluated.proof.continuity?.costMicroUsd ?? 0) : bought.evidence.amountMicroUsd },
       });
       const rejected = disposition.state !== "acceptable";
       const retainedIds: unknown = JSON.parse(current.rejectedAssetIdsJson ?? "[]");
@@ -411,5 +420,5 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
   return { state: blocked ? "blocked" : retry ? "retry" : complete ? "done" : "pending",
     reason: blocked ? "Required quality evidence is unresolved" : retry ? (isLocalPatchAgeVersion(scene.sceneVersion)
       ? "Required visual quality defect requires a bounded replacement" : "Severe seam or face defect requires a bounded replacement") : complete ? null : "Other appearances await generation or review",
-    replayed: bought.replayed, costCents: bought.evidence.amountMicroUsd / 10_000 };
+    replayed: bought.replayed, costCents: evaluated?.newCostCents ?? bought.evidence.amountMicroUsd / 10_000 };
 }

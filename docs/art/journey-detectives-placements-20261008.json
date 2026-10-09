@@ -1,0 +1,815 @@
+{
+  "formatVersion": 2,
+  "scope": "detectives-placement-authoring",
+  "world": "journey",
+  "categoryId": "detectives",
+  "plannedBoardCount": 9,
+  "hidesPerBoard": 3,
+  "sourceArtworkManifest": "docs/art/journey-detectives-authoring-20261007.json",
+  "validationPolicy": "existing-v12-scene-integration-and-player-boundary-review",
+  "activeInRuntime": false,
+  "boards": [
+    {
+      "board": "newyork",
+      "art": "public/scenes/journey-newyork-detectives-v1/base.webp",
+      "ground": "dry New York neighborhood sidewalk and stoop paving; quiet warm autumn daylight",
+      "sittable": true,
+      "wardrobe": "An ordinary parent's-stated-age child's modest autumn jacket, cotton top, dark jeans and child sneakers in locally muted rust, olive, plum or blue; choose colors from neighboring garments, no bright white portrait shirt, no adult tailoring, no glowing accessories. Preserve only the canonical child's face and hair, not bystander features.",
+      "hides": [
+        {
+          "id": "newyork-detectives-hide-1",
+          "targetId": "hide-1",
+          "left": 900,
+          "top": 160,
+          "pose": "standing",
+          "mask": {
+            "left": 145,
+            "top": 265,
+            "width": 175,
+            "height": 365
+          },
+          "hint": {
+            "en": "Look among the flowers beside the florist's doorway.",
+            "he": "חפשו בין הפרחים ליד הכניסה לחנות הפרחים."
+          },
+          "placement": {
+            "depth": "middle",
+            "standingHeightPx": 320,
+            "support": "Replace the orange-jacket flower-buying child completely, including the original head, hands, trousers and both sneakers. The new child's two feet rest on the same dry sidewalk beside the flower crates, with plausible parent-stated-age child shoulders and limbs. they may hold a small flower naturally.",
+            "lighting": "Shared soft warm autumn daylight, subdued local shadow under the awning, matte face tones and the same restrained highlights as the florist and nearby blue-jacket youth; no extra brightness, rim light or spotlight.",
+            "occlusion": "Flowers and the low wooden planter may overlap a small part of the lower body naturally; keep the complete recognizable face and characteristic hair visible in an open three-quarter view. Keep the florist's arms/hands and all adjacent people coherently connected.",
+            "comparators": "Source flower child is about 300 native pixels tall; use roughly 320 pixels for a school-age source reference at this depth, with a 50-65 pixel head comparable to nearby children. The taller blue-jacket youth is older and is not the target body. Participate in the flower exchange, not a front-facing posed portrait. Source body heights are depth references, not age caps. The caller's explicit age governs the new child's proportions."
+          },
+          "wardrobe": "A muted olive autumn field jacket over a cream cotton top, dark indigo jeans and dusty rose child sneakers; natural open jacket and simple small fastenings. This is the specific outfit for THIS hide only. Follow its garments and dominant colours rather than copying another appearance or the canonical portrait's clothes. Keep child-appropriate fit and the scene's matte cloth texture, local light and muted exposure; no brighter face, neon garment or costume that changes canonical identity."
+        },
+        {
+          "id": "newyork-detectives-hide-2",
+          "targetId": "hide-2",
+          "left": 260,
+          "top": 1380,
+          "pose": "kneeling",
+          "mask": {
+            "left": 145,
+            "top": 300,
+            "width": 255,
+            "height": 300
+          },
+          "hint": {
+            "en": "Look beside the leaf drawings, below the reading bench.",
+            "he": "חפשו ליד ציורי העלים, מתחת לספסל הקריאה."
+          },
+          "placement": {
+            "depth": "near",
+            "standingHeightPx": 390,
+            "support": "Replace only the pink-jacket child drawing a leaf on paper. Knees and shins rest naturally on dry stone pavement, with their hands using the drawing paper; implied school-age standing height about 390 pixels, visible kneeling body shorter. Remove the original child's face/hair completely.",
+            "lighting": "Same warm soft autumn light and low contrast as the adjacent green-jacket drawing child and bench readers, no bright face or luminous hair. Muted plum/pink or rust jacket may blend with this activity.",
+            "occlusion": "Drawing paper can naturally hide part of knees/hands. The reference child's face remains visible with a gentle downward open three-quarter angle; do not hide all eyes with hair. Preserve bench readers' trouser legs/boots, the adjacent green-jacket child's complete limbs and all paper edges at the return joins.",
+            "comparators": "Use the neighboring school-age leaf-drawing child's head and hand scale, not the adults on the bench. A kneeling parent-stated-age child has a youthful torso and small hands; no toddler body and no oversized portrait face. Keep the leaf-drawing activity and shared ground contact. Source body heights are depth references, not age caps. The caller's explicit age governs the new child's proportions."
+          },
+          "wardrobe": "A dusty rose/plum soft open cardigan over a subdued pale cotton blouse, blue child jeans and dark practical sneakers; no olive field jacket. This is the specific outfit for THIS hide only. Follow its garments and dominant colours rather than copying another appearance or the canonical portrait's clothes. Keep child-appropriate fit and the scene's matte cloth texture, local light and muted exposure; no brighter face, neon garment or costume that changes canonical identity."
+        },
+        {
+          "id": "newyork-detectives-hide-3",
+          "targetId": "hide-3",
+          "left": 2960,
+          "top": 600,
+          "pose": "standing",
+          "mask": {
+            "left": 125,
+            "top": 210,
+            "width": 225,
+            "height": 480
+          },
+          "hint": {
+            "en": "Look beside the green newsstand, near the music and newspapers.",
+            "he": "חפשו ליד דוכן העיתונים הירוק, סמוך לנגנים ולעיתונים."
+          },
+          "placement": {
+            "depth": "middle",
+            "standingHeightPx": 390,
+            "support": "Replace the green-jacket newspaper-reading boy completely, including his original head, bag, trousers and shoes. Draw a naturally standing parent-stated-age child reading a folded paper, with feet on the same dry sidewalk. Keep the nearby bass instrument, vendor and foreground children complete.",
+            "lighting": "Shared warm autumn ambient light with soft shade beside the kiosk, low matte face highlights like neighboring people. Use a muted olive/plum jacket and dark trousers that do not spotlight the target.",
+            "occlusion": "The folded newspaper covers part of the torso, and intact foreground children may naturally obscure part of the lower body. Keep the new face readable in an open three-quarter view. Never redraw half of the foreground blue-hooded child's head or the vendor; their connected bodies must remain intact across the return boundary.",
+            "comparators": "The source newspaper youth is about 430 pixels tall; a school-age source reference at this plane is about 390 pixels with natural youthful limbs and a head comparable to near children. The adult bass player is not an age comparator. Fit the child's whole body naturally inside the authored area without enlarging the head. Source body heights are depth references, not age caps. The caller's explicit age governs the new child's proportions."
+          },
+          "wardrobe": "A muted dark-plum open autumn jacket over a subdued beige cotton top, dark indigo child jeans and brown sneakers; distinct from the olive field jacket and dusty rose cardigan in the other appearances. Keep the actual canonical face and hair, age-appropriate fit and the same local matte painted exposure."
+        }
+      ]
+    },
+    {
+      "board": "amazon",
+      "ground": "solid damp forest ground, roots and dry timber platforms beside the Amazon river; no child stands in open water",
+      "sittable": true,
+      "wardrobe": "Age-appropriate practical rainforest exploration clothes: muted teal, plum, rust or olive cotton field shirt, shorts or light trousers, a modest backpack and secure child walking shoes. No adult clothing, glamorous accessories or copying bystander facial/ethnic/hair features. Use local garment color and damp green-filtered light without recoloring canonical skin/hair identity.",
+      "hides": [
+        {
+          "id": "amazon-detectives-hide-1",
+          "targetId": "hide-1",
+          "left": 240,
+          "top": 210,
+          "pose": "standing",
+          "mask": {
+            "left": 170,
+            "top": 180,
+            "width": 205,
+            "height": 310
+          },
+          "hint": {
+            "en": "Look beside the leaf shelter on the left timber platform.",
+            "he": "חפשו ליד מחסה העלים על משטח העץ משמאל."
+          },
+          "placement": {
+            "depth": "middle",
+            "standingHeightPx": 340,
+            "support": "Replace the upper pink-shirt/backpack child working on the leaf shelter completely. Feet and lower body rest on the same dry timber/solid soil behind the leaf workbench, not on floating leaves or water; hands participate in joining the large leaf.",
+            "lighting": "Share the exact local light direction, exposure, shadow and muted saturation of nearby people. No white face spotlight, bright halo, glossy skin or photographic rendering; readable identity should not come from extra illumination.",
+            "occlusion": "Leaf shelter and timber edge can hide part of the lower body naturally. Keep the front kneeling children, the yellow-shirt child behind and guide intact; show a recognizable open three-quarter face rather than a pure profile. Preserve complete neighboring heads, necks, shoulders, hands and bodies through all four return joins. Natural foreground overlap is valid; never repaint only half a neighbor or leave remnants of the replaced child.",
+            "comparators": "Match the actual neighboring school-age children at this same depth, using the measured source figure as a scale reference, not a cap for a different age. The caller's parent-stated age governs shoulders, torso, limbs and hands. Keep canonical facial/hair geometry independent of all bystander identities, with matte dimensional painted detail and no photographic face."
+          },
+          "wardrobe": "A muted teal short-sleeve cotton T-shirt, khaki exploration shorts, secure walking shoes and a small blue-purple backpack; practical rainforest summer clothes. This is the specific outfit for THIS hide only. Follow its garments and dominant colours rather than copying another appearance or the canonical portrait's clothes. Keep child-appropriate fit and the scene's matte cloth texture, local light and muted exposure; no brighter face, neon garment or costume that changes canonical identity."
+        },
+        {
+          "id": "amazon-detectives-hide-2",
+          "targetId": "hide-2",
+          "left": 0,
+          "top": 1210,
+          "pose": "kneeling",
+          "mask": {
+            "left": 60,
+            "top": 115,
+            "width": 270,
+            "height": 285
+          },
+          "hint": {
+            "en": "Look at the fruit table in the lower-left forest corner.",
+            "he": "חפשו ליד שולחן הפירות בפינה השמאלית של היער."
+          },
+          "placement": {
+            "depth": "near",
+            "standingHeightPx": 410,
+            "support": "Replace the purple-backpack/blue-shirt child beside the fruit table only. Knees/shins or a low seated body rest on solid forest soil behind the rough table; their hands and notebook remain a plausible nature-study interaction.",
+            "lighting": "Share the exact local light direction, exposure, shadow and muted saturation of nearby people. No white face spotlight, bright halo, glossy skin or photographic rendering; readable identity should not come from extra illumination.",
+            "occlusion": "The table naturally occludes lower legs; keep a complete readable face and characteristic hair with a gentle open three-quarter turn. Preserve the father, yellow-shirt note-taker, fruit bowls, foreground writer and their connected limbs. Preserve complete neighboring heads, necks, shoulders, hands and bodies through all four return joins. Natural foreground overlap is valid; never repaint only half a neighbor or leave remnants of the replaced child.",
+            "comparators": "Match the actual neighboring school-age children at this same depth, using the measured source figure as a scale reference, not a cap for a different age. The caller's parent-stated age governs shoulders, torso, limbs and hands. Keep canonical facial/hair geometry independent of all bystander identities, with matte dimensional painted detail and no photographic face."
+          },
+          "wardrobe": "A dusty coral rolled-sleeve cotton field blouse, navy child trousers, simple brown walking shoes and a small beige shoulder pouch; no teal T-shirt or purple backpack. This is the specific outfit for THIS hide only. Follow its garments and dominant colours rather than copying another appearance or the canonical portrait's clothes. Keep child-appropriate fit and the scene's matte cloth texture, local light and muted exposure; no brighter face, neon garment or costume that changes canonical identity."
+        },
+        {
+          "id": "amazon-detectives-hide-3",
+          "targetId": "hide-3",
+          "left": 3200,
+          "top": 1080,
+          "pose": "standing",
+          "mask": {
+            "left": 335,
+            "top": 145,
+            "width": 165,
+            "height": 350
+          },
+          "hint": {
+            "en": "Look among the explorers beside the rope instruments on the right.",
+            "he": "חפשו בין החוקרים ליד כלי החבלים בצד ימין."
+          },
+          "placement": {
+            "depth": "near",
+            "standingHeightPx": 350,
+            "support": "Replace the upper-right orange-shirt/red-backpack standing child completely. Body is supported on solid bank/roots behind the foreground orange-shirt child and nature-study table; no water or floating support.",
+            "lighting": "Share the exact local light direction, exposure, shadow and muted saturation of nearby people. No white face spotlight, bright halo, glossy skin or photographic rendering; readable identity should not come from extra illumination.",
+            "occlusion": "Foreground child and table may overlap lower body naturally. Keep the canonical face visible in an open three-quarter view, and preserve both foreground observers and the guide operating the rope instrument. Preserve complete neighboring heads, necks, shoulders, hands and bodies through all four return joins. Natural foreground overlap is valid; never repaint only half a neighbor or leave remnants of the replaced child. CRITICAL REGISTERED OCCLUDERS: keep the complete orange-shirt foreground child, blue backpack, dark hair, cheek, nose, neck and torso at their exact original coordinates. Keep the rope guide's whole hat/head, khaki sleeve, forearm and hands registered, and keep the seated green-shirt man's complete head and arms unchanged. The child belongs behind them. No shift, rescaling or redesign of those silhouettes, and no rectangular leaf/cloth block at a return edge.",
+            "comparators": "Match the actual neighboring school-age children at this same depth, using the measured source figure as a scale reference, not a cap for a different age. The caller's parent-stated age governs shoulders, torso, limbs and hands. Keep canonical facial/hair geometry independent of all bystander identities, with matte dimensional painted detail and no photographic face."
+          },
+          "wardrobe": "A light muted olive rain jacket over a subdued ochre cotton top, brown child trousers and secure dark shoes; a small burgundy shoulder strap is optional, no teal T-shirt or purple backpack. This is the specific outfit for THIS hide only. Follow its garments and dominant colours rather than copying another appearance or the canonical portrait's clothes. Keep child-appropriate fit and the scene's matte cloth texture, local light and muted exposure; no brighter face, neon garment or costume that changes canonical identity."
+        }
+      ],
+      "art": "public/scenes/journey-amazon-detectives-v3/base.webp"
+    },
+    {
+      "board": "paris",
+      "ground": "dry broad pale stone paving of a Paris riverside play/craft square; nearby cafe and bakery counters provide coherent supports",
+      "sittable": true,
+      "wardrobe": "Age-appropriate everyday Paris spring clothes: a soft plum, coral, blue or cream cotton top, light cardigan/denim jacket, child trousers or skirt and secure sneakers. Match neighboring clean painted garments and quiet daylight; no white portrait glow, adult fashions, heavy makeup or borrowed bystander facial/hair features.",
+      "hides": [
+        {
+          "id": "paris-detectives-hide-1",
+          "targetId": "hide-1",
+          "left": 500,
+          "top": 650,
+          "pose": "crouching",
+          "mask": {
+            "left": 120,
+            "top": 230,
+            "width": 190,
+            "height": 320
+          },
+          "hint": {
+            "en": "Look beside the children playing with the shiny petanque balls on the left.",
+            "he": "חפשו ליד הילדים המשחקים בכדורי הפטאנק משמאל."
+          },
+          "placement": {
+            "depth": "middle",
+            "standingHeightPx": 380,
+            "support": "Replace the blue-jacket crouching child beside the petanque game completely. Crouch naturally on the same dry paving, with knees bent and feet/heels supported, holding or inspecting one small game ball. The eight-year-old example uses a school-age body; the caller's stated age governs future anatomy.",
+            "lighting": "Use the shared soft Paris daylight and quiet pavement reflection, with the same matte face highlights as the adjacent map readers. No extra face spotlight or luminous hair.",
+            "occlusion": "The crouching body remains in the original blue-jacket child's low footprint. Preserve the foreground flower carrier at the far right with their COMPLETE existing face, hair, neck, arms and body; never erase their head or let the new child overlap it. Preserve the kneeling older man, the map readers and ground balls with natural continuous outlines.",
+            "comparators": "Source visible crouching body is around 280-320 native pixels high, with an implied standing height around 380. Keep the head, hands and youthfulness comparable to nearby school-age children; do not turn this into a tall standing portrait. Canonical face/hair geometry only, not neighboring identities."
+          },
+          "wardrobe": "A dusty coral rolled-sleeve blouse, navy cropped child trousers and taupe canvas sneakers for crouching at petanque; no cream cardigan or denim jacket. This is the specific outfit for THIS hide only. Follow its garments and dominant colours rather than copying another appearance or the canonical portrait's clothes. Keep child-appropriate fit and the scene's matte cloth texture, local light and muted exposure; no brighter face, neon garment or costume that changes canonical identity."
+        },
+        {
+          "id": "paris-detectives-hide-2",
+          "targetId": "hide-2",
+          "left": 2800,
+          "top": 1220,
+          "pose": "standing",
+          "mask": {
+            "left": 205,
+            "top": 145,
+            "width": 205,
+            "height": 570
+          },
+          "hint": {
+            "en": "Look beside the hopscotch squares and the green scooter.",
+            "he": "חפשו ליד משבצות הקלאס והקורקינט הירוק."
+          },
+          "placement": {
+            "depth": "near",
+            "standingHeightPx": 510,
+            "support": "Replace the blue-jacket child holding the green/yellow scooter completely. Child hands grasp the existing handlebar naturally; one foot rests on the scooter deck and the other balances on the paving, or both are stably supported on the stationary deck. Keep the coherent scooter frame and wheels.",
+            "lighting": "Share the exact local light direction, exposure, shadow and muted saturation of nearby people. No white face spotlight, bright halo, glossy skin or photographic rendering; readable identity should not come from extra illumination.",
+            "occlusion": "The scooter can overlap shins naturally, but no foot floats or loses its owner. Preserve the pink-helmet friend and their complete body/hands; keep a recognizable open three-quarter face rather than copying the old boy. Preserve complete neighboring heads, necks, shoulders, hands and bodies through all four return joins. Natural foreground overlap is valid; never repaint only half a neighbor or leave remnants of the replaced child.",
+            "comparators": "Match the actual neighboring school-age children at this same depth, using the measured source figure as a scale reference, not a cap for a different age. The caller's parent-stated age governs shoulders, torso, limbs and hands. Keep canonical facial/hair geometry independent of all bystander identities, with matte dimensional painted detail and no photographic face."
+          },
+          "wardrobe": "A soft cream cardigan over a muted plum cotton top, indigo child jeans and brown sneakers for the stationary scooter; no coral blouse or blue work jacket. This is the specific outfit for THIS hide only. Follow its garments and dominant colours rather than copying another appearance or the canonical portrait's clothes. Keep child-appropriate fit and the scene's matte cloth texture, local light and muted exposure; no brighter face, neon garment or costume that changes canonical identity."
+        },
+        {
+          "id": "paris-detectives-hide-3",
+          "targetId": "hide-3",
+          "left": 2900,
+          "top": 210,
+          "pose": "standing",
+          "mask": {
+            "left": 135,
+            "top": 290,
+            "width": 140,
+            "height": 390
+          },
+          "hint": {
+            "en": "Look among the small bakers beside the bread counter.",
+            "he": "חפשו בין האופים הקטנים ליד דלפק הלחם."
+          },
+          "placement": {
+            "depth": "middle",
+            "standingHeightPx": 350,
+            "support": "Replace the yellow-shirt dough-making child behind the bakery counter completely. New child stands on the same dry paving with a naturally supported body behind the work surface and holds/shapes a little dough. Remove the old head, hands, shirt, trousers and shoes wherever visible.",
+            "lighting": "Share the exact local light direction, exposure, shadow and muted saturation of nearby people. No white face spotlight, bright halo, glossy skin or photographic rendering; readable identity should not come from extra illumination.",
+            "occlusion": "Bakery counter and other intact people can naturally hide part of the torso/legs. Preserve the baker, blue-shirt neighbor, serving adult arms/tray and foreground child across every return edge. Show the complete canonical face with a readable gentle three-quarter angle. Preserve complete neighboring heads, necks, shoulders, hands and bodies through all four return joins. Natural foreground overlap is valid; never repaint only half a neighbor or leave remnants of the replaced child.",
+            "comparators": "Match the actual neighboring school-age children at this same depth, using the measured source figure as a scale reference, not a cap for a different age. The caller's parent-stated age governs shoulders, torso, limbs and hands. Keep canonical facial/hair geometry independent of all bystander identities, with matte dimensional painted detail and no photographic face."
+          },
+          "wardrobe": "A muted denim-blue child work jacket over a subdued pale cotton top, blue child trousers and taupe shoes for shaping bread dough; no cream cardigan or coral blouse. This is the specific outfit for THIS hide only. Follow its garments and dominant colours rather than copying another appearance or the canonical portrait's clothes. Keep child-appropriate fit and the scene's matte cloth texture, local light and muted exposure; no brighter face, neon garment or costume that changes canonical identity."
+        }
+      ],
+      "art": "public/scenes/journey-paris-detectives-v4/base.webp"
+    },
+    {
+      "board": "marrakech",
+      "ground": "solid broad terracotta courtyard paving and woven activity mats in the Moroccan market",
+      "sittable": true,
+      "wardrobe": "Modest age-appropriate light cotton tunic, blouse or simple shirt with child trousers/skirt and practical shoes in muted plum, teal, coral or ochre. Clothing may include understated local embroidery; no adult tailoring, makeup or changing canonical facial geometry/hair to match local people.",
+      "hides": [
+        {
+          "id": "marrakech-detectives-hide-1",
+          "targetId": "hide-1",
+          "left": 640,
+          "top": 330,
+          "pose": "standing",
+          "mask": {
+            "left": 100,
+            "top": 120,
+            "width": 195,
+            "height": 430
+          },
+          "hint": {
+            "en": "Look among the dancing children beside the musicians on the left.",
+            "he": "חפשו בין הילדים הרוקדים ליד הנגנים משמאל."
+          },
+          "placement": {
+            "depth": "middle",
+            "standingHeightPx": 385,
+            "support": "Replace the yellow-skirt/light-blouse dancing child completely, including old hair, face, arms and shoes. Feet remain on solid courtyard paving beside the musician; hands may clap gently at chest level with a natural school-age body.",
+            "lighting": "Share the exact local light direction, exposure, shadow and muted saturation of nearby people. No white face spotlight, bright halo, glossy skin or photographic rendering; readable identity should not come from extra illumination.",
+            "occlusion": "Nearby people may overlap parts naturally; show an open three-quarter face, and preserve the tambourine player, small blue-shirt dancer, rear children and lower seated storyteller group. Preserve complete neighboring heads, necks, shoulders, hands and bodies through all four return joins. Natural foreground overlap is valid; never repaint only half a neighbor or leave remnants of the replaced child.",
+            "comparators": "Match the actual neighboring school-age children at this same depth, using the measured source figure as a scale reference, not a cap for a different age. The caller's parent-stated age governs shoulders, torso, limbs and hands. Keep canonical facial/hair geometry independent of all bystander identities, with matte dimensional painted detail and no photographic face."
+          },
+          "wardrobe": "A muted warm-rust cotton child blouse with tiny understated embroidery, navy loose child trousers and simple brown shoes for clapping beside the musicians. This is the specific outfit for THIS hide only. Follow its garments and dominant colours rather than copying another appearance or the canonical portrait's clothes. Keep child-appropriate fit and the scene's matte cloth texture, local light and muted exposure; no brighter face, neon garment or costume that changes canonical identity."
+        },
+        {
+          "id": "marrakech-detectives-hide-2",
+          "targetId": "hide-2",
+          "left": 480,
+          "top": 1130,
+          "pose": "sitting-cross-legged",
+          "mask": {
+            "left": 205,
+            "top": 180,
+            "width": 245,
+            "height": 405
+          },
+          "hint": {
+            "en": "Look beside the woven baskets and the little pottery table on the left.",
+            "he": "חפשו ליד הסלים הקלועים ושולחן הקדרות הקטן משמאל."
+          },
+          "placement": {
+            "depth": "near",
+            "standingHeightPx": 425,
+            "support": "Replace the violet-shirt child holding a small woven basket completely. Sit naturally cross-legged or with coherently folded legs on the same courtyard mat beside the low pottery table, holding the basket with connected small hands.",
+            "lighting": "Share the exact local light direction, exposure, shadow and muted saturation of nearby people. No white face spotlight, bright halo, glossy skin or photographic rendering; readable identity should not come from extra illumination.",
+            "occlusion": "Basket and low tabletop may overlap parts of the lap. Preserve the turquoise-shirt child and older teacher beside their, and the larger drawing activity in front; no leftover source face or half-repainted foreground arm. Preserve complete neighboring heads, necks, shoulders, hands and bodies through all four return joins. Natural foreground overlap is valid; never repaint only half a neighbor or leave remnants of the replaced child.",
+            "comparators": "Match the actual neighboring school-age children at this same depth, using the measured source figure as a scale reference, not a cap for a different age. The caller's parent-stated age governs shoulders, torso, limbs and hands. Keep canonical facial/hair geometry independent of all bystander identities, with matte dimensional painted detail and no photographic face."
+          },
+          "wardrobe": "A muted teal short cotton vest over a pale plum tunic, a subdued ochre child skirt or folded trousers and practical sandals for sitting at the basket table. This is the specific outfit for THIS hide only. Follow its garments and dominant colours rather than copying another appearance or the canonical portrait's clothes. Keep child-appropriate fit and the scene's matte cloth texture, local light and muted exposure; no brighter face, neon garment or costume that changes canonical identity."
+        },
+        {
+          "id": "marrakech-detectives-hide-3",
+          "targetId": "hide-3",
+          "left": 3030,
+          "top": 1210,
+          "pose": "kneeling",
+          "mask": {
+            "left": 105,
+            "top": 145,
+            "width": 220,
+            "height": 290
+          },
+          "hint": {
+            "en": "Look near the little saplings and terracotta pots at the right.",
+            "he": "חפשו ליד השתילים הקטנים ועציצי החרס בצד ימין."
+          },
+          "placement": {
+            "depth": "middle",
+            "standingHeightPx": 425,
+            "support": "Replace ONLY the dark blue short-sleeve child kneeling to plant a sapling at the far-right garden. The reference child is kneeling on the dry paving, with a connected natural torso/neck and both own hands gently supporting the small plant/root ball over its pot. Keep age-appropriate shoulders, arm lengths and small hands; no standing portrait torso above a table. The pots may naturally occlude part of the knees.",
+            "lighting": "Share the exact local light direction, exposure, shadow and muted saturation of nearby people. No white face spotlight, bright halo, glossy skin or photographic rendering; readable identity should not come from extra illumination.",
+            "occlusion": "Preserve the gardener with the ochre headscarf to the RIGHT: keep the complete original face at approximately crop x=360,y=275, white blouse, own hands and connected skirt/feet across the entire returned area. Preserve the seated book-reading child and adult above, the rust-shirt gardener on the left, and the child holding a patterned pot below. Do not borrow any of their faces or attach the target hands to the adult. Keep every head/neck/body intact across all four crop joins.",
+            "comparators": "Match the actual neighboring school-age children at this same depth, using the measured source figure as a scale reference, not a cap for a different age. The caller's parent-stated age governs shoulders, torso, limbs and hands. Keep canonical facial/hair geometry independent of all bystander identities, with matte dimensional painted detail and no photographic face."
+          },
+          "wardrobe": "A deep muted plum short-sleeve cotton blouse, tan child trousers and simple dark shoes for mosaic crafts; no rust blouse or teal vest. This is the specific outfit for THIS hide only. Follow its garments and dominant colours rather than copying another appearance or the canonical portrait's clothes. Keep child-appropriate fit and the scene's matte cloth texture, local light and muted exposure; no brighter face, neon garment or costume that changes canonical identity."
+        }
+      ],
+      "art": "public/scenes/journey-marrakech-detectives-v2/base.webp"
+    },
+    {
+      "board": "giza",
+      "ground": "dry firm sand and low stone-paved areas beside the Giza expedition camp",
+      "sittable": true,
+      "wardrobe": "Age-appropriate light cotton field shirt/tunic or simple child dress, child shorts/trousers and practical shoes in locally muted blue, teal, terracotta, plum or cream. Match soft dusty daylight and canvas shade; no brilliant white outfit, adult robes or borrowing the source people's facial/hair features.",
+      "hides": [
+        {
+          "id": "giza-detectives-hide-1",
+          "targetId": "hide-1",
+          "left": 330,
+          "top": 390,
+          "pose": "standing",
+          "mask": {
+            "left": 190,
+            "top": 215,
+            "width": 160,
+            "height": 415
+          },
+          "hint": {
+            "en": "Look beside the camels and their guide on the left.",
+            "he": "חפשו ליד הגמלים והמדריך בצד שמאל."
+          },
+          "placement": {
+            "depth": "middle",
+            "standingHeightPx": 350,
+            "support": "Replace the blue-dress child beside the camel guide completely, including old hair, face, hands, legs and shoes. Feet are supported on the same dry ground and the child may naturally observe or gently gesture toward the camel.",
+            "lighting": "Share the exact local light direction, exposure, shadow and muted saturation of nearby people. No white face spotlight, bright halo, glossy skin or photographic rendering; readable identity should not come from extra illumination.",
+            "occlusion": "Camel flank, tent edge and nearby people can overlap naturally. Show a readable open three-quarter face; keep the white-robed guide and both neighboring children intact. Preserve complete neighboring heads, necks, shoulders, hands and bodies through all four return joins. Natural foreground overlap is valid; never repaint only half a neighbor or leave remnants of the replaced child.",
+            "comparators": "Match the actual neighboring school-age children at this same depth, using the measured source figure as a scale reference, not a cap for a different age. The caller's parent-stated age governs shoulders, torso, limbs and hands. Keep canonical facial/hair geometry independent of all bystander identities, with matte dimensional painted detail and no photographic face."
+          },
+          "wardrobe": "A dusty teal short-sleeve cotton field shirt, tan child shorts and practical brown walking shoes beside the camel guide; no vivid white shirt. This is the specific outfit for THIS hide only. Follow its garments and dominant colours rather than copying another appearance or the canonical portrait's clothes. Keep child-appropriate fit and the scene's matte cloth texture, local light and muted exposure; no brighter face, neon garment or costume that changes canonical identity."
+        },
+        {
+          "id": "giza-detectives-hide-2",
+          "targetId": "hide-2",
+          "left": 620,
+          "top": 1240,
+          "pose": "standing",
+          "mask": {
+            "left": 120,
+            "top": 105,
+            "width": 230,
+            "height": 635
+          },
+          "hint": {
+            "en": "Look among the listeners beside the hand drum and tea table.",
+            "he": "חפשו בין המאזינים ליד התוף ושולחן התה."
+          },
+          "placement": {
+            "depth": "near",
+            "standingHeightPx": 575,
+            "support": "Replace the blue-shirt/skirt child clapping beside the drummer completely. Both feet remain supported on the same sandy camp ground, with natural child shoulders/limbs and hands clapping at chest level. The source figure is a near-plane scale reference, not the target age.",
+            "lighting": "Share the exact local light direction, exposure, shadow and muted saturation of nearby people. No white face spotlight, bright halo, glossy skin or photographic rendering; readable identity should not come from extra illumination.",
+            "occlusion": "The foreground yellow-shirt child can naturally hide part of the lower body; keep that child's head, arms, torso and legs complete, as well as the drummer and tea table. The canonical face stays readable and no larger than nearby same-plane children. Preserve complete neighboring heads, necks, shoulders, hands and bodies through all four return joins. Natural foreground overlap is valid; never repaint only half a neighbor or leave remnants of the replaced child.",
+            "comparators": "Match the actual neighboring school-age children at this same depth, using the measured source figure as a scale reference, not a cap for a different age. The caller's parent-stated age governs shoulders, torso, limbs and hands. Keep canonical facial/hair geometry independent of all bystander identities, with matte dimensional painted detail and no photographic face."
+          },
+          "wardrobe": "Muted terracotta/rust cotton child clothing with dark child trousers, or a simple dress/leggings when appropriate to the reference child and sand-colored shoes for listening to the drum; no teal field shirt or blue jacket. This is the specific outfit for THIS hide only. Follow its garments and dominant colours rather than copying another appearance or the canonical portrait's clothes. Keep child-appropriate fit and the scene's matte cloth texture, local light and muted exposure; no brighter face, neon garment or costume that changes canonical identity."
+        },
+        {
+          "id": "giza-detectives-hide-3",
+          "targetId": "hide-3",
+          "left": 3280,
+          "top": 910,
+          "pose": "kneeling",
+          "mask": {
+            "left": 240,
+            "top": 125,
+            "width": 220,
+            "height": 330
+          },
+          "hint": {
+            "en": "Look behind the sand-model workbench on the right.",
+            "he": "חפשו מאחורי שולחן דגמי החול בצד ימין."
+          },
+          "placement": {
+            "depth": "middle",
+            "standingHeightPx": 360,
+            "support": "Replace the blue-shirt child working behind the low sand-model box completely. Knees/shins rest on dry sand behind the low workbench and hands naturally shape or investigate the sand model, never float or enter a wooden edge.",
+            "lighting": "Share the exact local light direction, exposure, shadow and muted saturation of nearby people. No white face spotlight, bright halo, glossy skin or photographic rendering; readable identity should not come from extra illumination.",
+            "occlusion": "The complete wooden box hides lower legs naturally. Show an open three-quarter canonical face; preserve the green-shirt left child, right working child, foreground artist and all box/table joins. Preserve complete neighboring heads, necks, shoulders, hands and bodies through all four return joins. Natural foreground overlap is valid; never repaint only half a neighbor or leave remnants of the replaced child.",
+            "comparators": "Match the actual neighboring school-age children at this same depth, using the measured source figure as a scale reference, not a cap for a different age. The caller's parent-stated age governs shoulders, torso, limbs and hands. Keep canonical facial/hair geometry independent of all bystander identities, with matte dimensional painted detail and no photographic face."
+          },
+          "wardrobe": "A muted cornflower-blue rolled-sleeve field shirt, beige child cargo shorts and secure tan shoes for kneeling at the sand model; no rust dress or teal shirt. This is the specific outfit for THIS hide only. Follow its garments and dominant colours rather than copying another appearance or the canonical portrait's clothes. Keep child-appropriate fit and the scene's matte cloth texture, local light and muted exposure; no brighter face, neon garment or costume that changes canonical identity."
+        }
+      ],
+      "art": "public/scenes/journey-giza-detectives-v4/base.webp"
+    },
+    {
+      "board": "tokyo",
+      "ground": "solid dark wet-look city paving in a Tokyo night market; no child stands in open water",
+      "sittable": true,
+      "wardrobe": "Ordinary age-appropriate night-market clothes: muted plum, blue, coral or olive jacket/hoodie over a child cotton top, dark trousers/skirt and practical sneakers. Share neighboring warm stall light with subtle cool neon reflections, not brighter skin or glowing hair. Preserve canonical facial geometry, hairline, brown hair color/texture, never borrow local faces or black straight hair.",
+      "hides": [
+        {
+          "id": "tokyo-detectives-hide-1",
+          "targetId": "hide-1",
+          "left": 0,
+          "top": 480,
+          "pose": "standing",
+          "mask": {
+            "left": 65,
+            "top": 205,
+            "width": 250,
+            "height": 515
+          },
+          "hint": {
+            "en": "Look near the controls of the bright claw machine on the far left.",
+            "he": "חפשו ליד הכפתורים של מכונת הבובות המוארת בקצה השמאלי."
+          },
+          "placement": {
+            "depth": "middle",
+            "standingHeightPx": 450,
+            "support": "Replace ONLY the red-orange jacket child with a small pink backpack operating the claw-machine control at the FAR LEFT. The reference child participates at that same cabinet, with one connected hand naturally touching the control and a readable gentle open three-quarter face. Keep a school-age body supported on the original paving; original lower legs may be naturally occluded by the foreground green-jacket child. Remove the intended original face and clothes coherently, without a duplicate head.",
+            "lighting": "Share the exact local light direction, exposure, shadow and muted saturation of nearby people. No white face spotlight, bright halo, glossy skin or photographic rendering; readable identity should not come from extra illumination.",
+            "occlusion": "Preserve the COMPLETE foreground green-jacket child holding a snack basket: their head is at approximately crop x=265,y=500 and their neck/body continue BELOW this crop. Preserve the purple-jacket friend at the right, their own hands at the cabinet, and the dark-haired snack child at lower right. The target belongs behind the green-jacket foreground child. Never paint across that foreground head or replace it with a leg; keep every silhouette connected through the actual bottom crop join. Do not change the robot or the food-stall walker, which are outside this new location.",
+            "comparators": "Match the actual neighboring school-age children at this same depth, using the measured source figure as a scale reference, not a cap for a different age. The caller's parent-stated age governs shoulders, torso, limbs and hands. Keep canonical facial/hair geometry independent of all bystander identities, with matte dimensional painted detail and no photographic face."
+          },
+          "wardrobe": "A muted denim-blue light child jacket over a subdued cream cotton top, taupe trousers and dark sneakers at the food counter; no plum hoodie. This is the specific outfit for THIS hide only. Follow its garments and dominant colours rather than copying another appearance or the canonical portrait's clothes. Keep child-appropriate fit and the scene's matte cloth texture, local light and muted exposure; no brighter face, neon garment or costume that changes canonical identity."
+        },
+        {
+          "id": "tokyo-detectives-hide-2",
+          "targetId": "hide-2",
+          "left": 360,
+          "top": 1170,
+          "pose": "standing",
+          "mask": {
+            "left": 100,
+            "top": 170,
+            "width": 235,
+            "height": 335
+          },
+          "hint": {
+            "en": "Look at the origami table beside the grandmother and the little green frog.",
+            "he": "חפשו ליד שולחן האוריגמי, הסבתא והצפרדע הירוקה."
+          },
+          "placement": {
+            "depth": "near",
+            "standingHeightPx": 420,
+            "support": "Replace the pink-jacket child holding the little robot toy at the origami table completely where visible. The new child is naturally seated or standing at the table with a coherent supported body behind it, showing the toy or helping fold paper; do not force a floor pose that cannot reach the table.",
+            "lighting": "Share the exact local light direction, exposure, shadow and muted saturation of nearby people. No white face spotlight, bright halo, glossy skin or photographic rendering; readable identity should not come from extra illumination.",
+            "occlusion": "The intact table/bench naturally hides lower body. Preserve the neighboring yellow-jacket child, older origami teacher and foreground phone-holder's head and hands. Keep a complete readable canonical face and hair, not an extra cropped head. Preserve complete neighboring heads, necks, shoulders, hands and bodies through all four return joins. Natural foreground overlap is valid; never repaint only half a neighbor or leave remnants of the replaced child.",
+            "comparators": "Match the actual neighboring school-age children at this same depth, using the measured source figure as a scale reference, not a cap for a different age. The caller's parent-stated age governs shoulders, torso, limbs and hands. Keep canonical facial/hair geometry independent of all bystander identities, with matte dimensional painted detail and no photographic face."
+          },
+          "wardrobe": "A dusty brick-pink child pullover hoodie, navy trousers and beige sneakers beside the origami and toy robot; keep the hood down and canonical actual hair texture visible. This is the specific outfit for THIS hide only. Follow its garments and dominant colours rather than copying another appearance or the canonical portrait's clothes. Keep child-appropriate fit and the scene's matte cloth texture, local light and muted exposure; no brighter face, neon garment or costume that changes canonical identity."
+        },
+        {
+          "id": "tokyo-detectives-hide-3",
+          "targetId": "hide-3",
+          "left": 3080,
+          "top": 620,
+          "pose": "standing",
+          "mask": {
+            "left": 165,
+            "top": 195,
+            "width": 185,
+            "height": 430
+          },
+          "hint": {
+            "en": "Look among the children holding sweets by the blue machines on the right.",
+            "he": "חפשו בין הילדים עם הממתקים ליד המכונות הכחולות מימין."
+          },
+          "placement": {
+            "depth": "middle",
+            "standingHeightPx": 385,
+            "support": "Replace the light-grey-jacket child holding a tiny capsule/toy beside the vending-machine group completely. Feet stand naturally on the same city paving, with a modest child backpack and coherent toy-holding hands.",
+            "lighting": "Share the exact local light direction, exposure, shadow and muted saturation of nearby people. No white face spotlight, bright halo, glossy skin or photographic rendering; readable identity should not come from extra illumination.",
+            "occlusion": "Keep nearby red-jacket child, yellow-shirt child and foreground adult/child group intact. A gentle open three-quarter face reveals identity without facing straight at the viewer or acquiring a spotlight. Preserve complete neighboring heads, necks, shoulders, hands and bodies through all four return joins. Natural foreground overlap is valid; never repaint only half a neighbor or leave remnants of the replaced child.",
+            "comparators": "Match the actual neighboring school-age children at this same depth, using the measured source figure as a scale reference, not a cap for a different age. The caller's parent-stated age governs shoulders, torso, limbs and hands. Keep canonical facial/hair geometry independent of all bystander identities, with matte dimensional painted detail and no photographic face."
+          },
+          "wardrobe": "A muted sage zip vest over a soft plum long-sleeve cotton top, gray child trousers and brown sneakers beside the capsule toys; no pink hoodie or blue jacket. This is the specific outfit for THIS hide only. Follow its garments and dominant colours rather than copying another appearance or the canonical portrait's clothes. Keep child-appropriate fit and the scene's matte cloth texture, local light and muted exposure; no brighter face, neon garment or costume that changes canonical identity."
+        }
+      ],
+      "art": "public/scenes/journey-tokyo-detectives-v1/base.webp"
+    },
+    {
+      "board": "greatwall",
+      "ground": "solid dry pale stone paving inside the Great Wall festival courtyard; stable craft tables and food counters",
+      "sittable": true,
+      "wardrobe": "Age-appropriate Chinese festival play clothes: a simple muted plum, teal, rust or red cotton child jacket, child trousers and secure cloth shoes. A few quiet embroidered details are appropriate; no adult costume, glossy red spotlight or copying the bystanders' faces, eyes or straight black hair. Match the illustrated scene while retaining only the canonical child identity.",
+      "hides": [
+        {
+          "id": "greatwall-detectives-hide-1",
+          "targetId": "hide-1",
+          "left": 270,
+          "top": 350,
+          "pose": "standing",
+          "mask": {
+            "left": 180,
+            "top": 230,
+            "width": 200,
+            "height": 330
+          },
+          "hint": {
+            "en": "Look among the small pinwheels near the upper-left stone parapet.",
+            "he": "חפשו בין השבשבות הקטנות ליד מעקה האבן משמאל למעלה."
+          },
+          "placement": {
+            "depth": "middle",
+            "standingHeightPx": 300,
+            "support": "Replace ONLY the pink cotton-jacket child holding a small pinwheel on the upper-left paving near the stone parapet, including that child's hair, face, clothes, hands and shoes. Keep a supported school-age body at the same ground depth, with feet on the original dry paving; do not move toward the foreground food stall. The parent-stated age governs anatomy and the measured standing height is a local reference.",
+            "lighting": "Share the exact local light direction, exposure, shadow and muted saturation of nearby people. No white face spotlight, bright halo, glossy skin or photographic rendering; readable identity should not come from extra illumination.",
+            "occlusion": "The intended person is ABOVE the purple-jacket kite child, not the purple child or the red-brocade child farther below. Preserve those two complete children, especially the red child's connected torso, legs, cuffs and shoes. Also preserve the map readers to the left and the yellow/pink jacket child on the right at their original coordinates. Do not erase the foreground to create space. Keep the target's recognizable canonical face in a gentle open three-quarter view; no original-source face or limb remnants.",
+            "comparators": "Match the actual neighboring school-age children at this same depth, using the measured source figure as a scale reference, not a cap for a different age. The caller's parent-stated age governs shoulders, torso, limbs and hands. Keep canonical facial/hair geometry independent of all bystander identities, with matte dimensional painted detail and no photographic face."
+          },
+          "wardrobe": "A muted rust-red cotton child jacket with tiny simple embroidered details, navy trousers and dark cloth shoes for playing with a kite; ordinary child proportions. This is the specific outfit for THIS hide only. Follow its garments and dominant colours rather than copying another appearance or the canonical portrait's clothes. Keep child-appropriate fit and the scene's matte cloth texture, local light and muted exposure; no brighter face, neon garment or costume that changes canonical identity."
+        },
+        {
+          "id": "greatwall-detectives-hide-2",
+          "targetId": "hide-2",
+          "left": 110,
+          "top": 1310,
+          "pose": "standing",
+          "mask": {
+            "left": 145,
+            "top": 220,
+            "width": 220,
+            "height": 490
+          },
+          "hint": {
+            "en": "Look beside the flowers and the small bowl in the lower-left corner.",
+            "he": "חפשו ליד הפרחים והקערה הקטנה בפינה השמאלית התחתונה."
+          },
+          "placement": {
+            "depth": "near",
+            "standingHeightPx": 440,
+            "support": "Replace the pale-blue-jacket child holding a little bowl beside the lower-left flower border completely. Feet are planted on dry paving next to the craft table, and the bowl rests in two naturally connected child hands.",
+            "lighting": "Share the exact local light direction, exposure, shadow and muted saturation of nearby people. No white face spotlight, bright halo, glossy skin or photographic rendering; readable identity should not come from extra illumination.",
+            "occlusion": "Flowers may naturally overlap a small part of shoes. Preserve the red-jacket branch-holder, seated craft teacher, table legs and every nearby head/neck through the returned boundaries. Keep the canonical face readable without presenting a brighter frontal portrait. Preserve complete neighboring heads, necks, shoulders, hands and bodies through all four return joins. Natural foreground overlap is valid; never repaint only half a neighbor or leave remnants of the replaced child.",
+            "comparators": "Match the actual neighboring school-age children at this same depth, using the measured source figure as a scale reference, not a cap for a different age. The caller's parent-stated age governs shoulders, torso, limbs and hands. Keep canonical facial/hair geometry independent of all bystander identities, with matte dimensional painted detail and no photographic face."
+          },
+          "wardrobe": "A muted sage-green cotton blouse, a simple dark plum child skirt or trousers and brown cloth shoes while holding the little bowl; no rust jacket. This is the specific outfit for THIS hide only. Follow its garments and dominant colours rather than copying another appearance or the canonical portrait's clothes. Keep child-appropriate fit and the scene's matte cloth texture, local light and muted exposure; no brighter face, neon garment or costume that changes canonical identity."
+        },
+        {
+          "id": "greatwall-detectives-hide-3",
+          "targetId": "hide-3",
+          "left": 3130,
+          "top": 910,
+          "pose": "standing",
+          "mask": {
+            "left": 135,
+            "top": 235,
+            "width": 220,
+            "height": 410
+          },
+          "hint": {
+            "en": "Look beside the lantern stall and the tea table on the right.",
+            "he": "חפשו ליד דוכן הפנסים ושולחן התה מימין."
+          },
+          "placement": {
+            "depth": "middle",
+            "standingHeightPx": 380,
+            "support": "Replace the pink-jacket child holding a little treat beside the right lantern and tea stall completely. Both feet remain planted on the same dry stone ground, with relaxed school-age shoulders and a believable snack-holding hand.",
+            "lighting": "Share the exact local light direction, exposure, shadow and muted saturation of nearby people. No white face spotlight, bright halo, glossy skin or photographic rendering; readable identity should not come from extra illumination.",
+            "occlusion": "The stall post may overlap a little sleeve naturally. Preserve the lanterns, elderly tea drinker, blue-jacket seller, purple-jacket customer and the connected arms and faces of foreground tea guests. Do not leave the original child's head or hands behind. Preserve complete neighboring heads, necks, shoulders, hands and bodies through all four return joins. Natural foreground overlap is valid; never repaint only half a neighbor or leave remnants of the replaced child.",
+            "comparators": "Match the actual neighboring school-age children at this same depth, using the measured source figure as a scale reference, not a cap for a different age. The caller's parent-stated age governs shoulders, torso, limbs and hands. Keep canonical facial/hair geometry independent of all bystander identities, with matte dimensional painted detail and no photographic face."
+          },
+          "wardrobe": "A muted indigo short child jacket over a pale beige top, subdued brick-red trousers and brown shoes beside the lantern and tea stall; no sage blouse or rust jacket. This is the specific outfit for THIS hide only. Follow its garments and dominant colours rather than copying another appearance or the canonical portrait's clothes. Keep child-appropriate fit and the scene's matte cloth texture, local light and muted exposure; no brighter face, neon garment or costume that changes canonical identity."
+        }
+      ],
+      "art": "public/scenes/journey-greatwall-detectives-v3/base.webp"
+    },
+    {
+      "board": "sydney",
+      "ground": "dry beach sand, stable rocks and solid timber boardwalk beside Sydney harbor; no body or feet in open water",
+      "sittable": true,
+      "wardrobe": "Age-appropriate cheerful beach-day clothes: muted coral, plum, aqua or teal cotton T-shirt, practical shorts or a light skirt and secure child sandals or sneakers. Modest clothing only, no swimwear emphasis. Use shared warm daylight and quiet local saturation; no white face highlight or borrowed bystander facial identity.",
+      "hides": [
+        {
+          "id": "sydney-detectives-hide-1",
+          "targetId": "hide-1",
+          "left": 650,
+          "top": 700,
+          "pose": "kneeling",
+          "mask": {
+            "left": 90,
+            "top": 100,
+            "width": 240,
+            "height": 330
+          },
+          "hint": {
+            "en": "Look beside the shells and the rocks on the left beach.",
+            "he": "חפשו ליד הצדפים והסלעים בחוף משמאל."
+          },
+          "placement": {
+            "depth": "middle",
+            "standingHeightPx": 380,
+            "support": "Replace the light-shirt/blue-jeans crouching child examining shells beside the left tidal rocks completely. Knees/shins and feet are supported by solid dry sand/rock, never by reflective water. Hands gently inspect a shell in the same activity.",
+            "lighting": "Share the exact local light direction, exposure, shadow and muted saturation of nearby people. No white face spotlight, bright halo, glossy skin or photographic rendering; readable identity should not come from extra illumination.",
+            "occlusion": "Keep the blue-hat child behind, nearby orange-hat observer, pelican and sand-castle group complete. A low crouching body fits below the surrounding heads, with a recognizable open three-quarter face instead of hiding the eyes under hair. Preserve complete neighboring heads, necks, shoulders, hands and bodies through all four return joins. Natural foreground overlap is valid; never repaint only half a neighbor or leave remnants of the replaced child.",
+            "comparators": "Match the actual neighboring school-age children at this same depth, using the measured source figure as a scale reference, not a cap for a different age. The caller's parent-stated age governs shoulders, torso, limbs and hands. Keep canonical facial/hair geometry independent of all bystander identities, with matte dimensional painted detail and no photographic face."
+          },
+          "wardrobe": "A dusty coral short-sleeve child T-shirt, muted teal shorts and secure tan sandals for crouching beside the dry rocks and shells. This is the specific outfit for THIS hide only. Follow its garments and dominant colours rather than copying another appearance or the canonical portrait's clothes. Keep child-appropriate fit and the scene's matte cloth texture, local light and muted exposure; no brighter face, neon garment or costume that changes canonical identity."
+        },
+        {
+          "id": "sydney-detectives-hide-2",
+          "targetId": "hide-2",
+          "left": 1010,
+          "top": 1390,
+          "pose": "sitting-cross-legged",
+          "mask": {
+            "left": 75,
+            "top": 120,
+            "width": 235,
+            "height": 390
+          },
+          "hint": {
+            "en": "Look at the nature drawings on the lower-left wooden table.",
+            "he": "חפשו ליד ציורי הטבע על שולחן העץ משמאל למטה."
+          },
+          "placement": {
+            "depth": "near",
+            "standingHeightPx": 470,
+            "support": "Replace the pale-lavender/blue patterned-shirt child sitting beside the lower-left nature-art table completely. Seat/knees rest on the same dry boardwalk, while child arms reach naturally toward the paper and shell artwork on the tabletop. No floating chair, knees or feet.",
+            "lighting": "Share the exact local light direction, exposure, shadow and muted saturation of nearby people. No white face spotlight, bright halo, glossy skin or photographic rendering; readable identity should not come from extra illumination.",
+            "occlusion": "The tabletop can naturally occlude part of the lap. Preserve the turquoise-shirt teacher, blue-shirt seated friend, paper edge, table legs and red-shirt foreground map-holder as coherent full people. Face looks gently toward the artwork with at least one clearly readable eye. Preserve complete neighboring heads, necks, shoulders, hands and bodies through all four return joins. Natural foreground overlap is valid; never repaint only half a neighbor or leave remnants of the replaced child.",
+            "comparators": "Match the actual neighboring school-age children at this same depth, using the measured source figure as a scale reference, not a cap for a different age. The caller's parent-stated age governs shoulders, torso, limbs and hands. Keep canonical facial/hair geometry independent of all bystander identities, with matte dimensional painted detail and no photographic face."
+          },
+          "wardrobe": "A muted aqua/teal simple cotton child dress or long summer top over navy shorts, with secure brown sandals while seated at the nature-art table; no coral T-shirt. This is the specific outfit for THIS hide only. Follow its garments and dominant colours rather than copying another appearance or the canonical portrait's clothes. Keep child-appropriate fit and the scene's matte cloth texture, local light and muted exposure; no brighter face, neon garment or costume that changes canonical identity."
+        },
+        {
+          "id": "sydney-detectives-hide-3",
+          "targetId": "hide-3",
+          "left": 2950,
+          "top": 440,
+          "pose": "standing",
+          "mask": {
+            "left": 165,
+            "top": 190,
+            "width": 205,
+            "height": 450
+          },
+          "hint": {
+            "en": "Look beside the colorful toy and the ice-cream queue on the right.",
+            "he": "חפשו ליד הצעצוע הצבעוני ותור הגלידה מימין."
+          },
+          "placement": {
+            "depth": "middle",
+            "standingHeightPx": 400,
+            "support": "Replace the pink-shirt child playing with a small colorful spinner beside the ice-cream queue completely. Both feet remain supported on the same dry sand/boardwalk; hands and the small toy connect naturally to the child body.",
+            "lighting": "Share the exact local light direction, exposure, shadow and muted saturation of nearby people. No white face spotlight, bright halo, glossy skin or photographic rendering; readable identity should not come from extra illumination.",
+            "occlusion": "Keep the yellow-clothes friend on the left, the tall-hat adult and ice-cream counter to the right, and all picnic people below complete. No floating feet, standing on water, brighter skin spotlight or duplicated old child face. Preserve complete neighboring heads, necks, shoulders, hands and bodies through all four return joins. Natural foreground overlap is valid; never repaint only half a neighbor or leave remnants of the replaced child.",
+            "comparators": "Match the actual neighboring school-age children at this same depth, using the measured source figure as a scale reference, not a cap for a different age. The caller's parent-stated age governs shoulders, torso, limbs and hands. Keep canonical facial/hair geometry independent of all bystander identities, with matte dimensional painted detail and no photographic face."
+          },
+          "wardrobe": "A subdued ochre short-sleeve cotton T-shirt, navy beach shorts and dark secure sandals at the ice-cream queue; no coral shirt or aqua summer dress. This is the specific outfit for THIS hide only. Follow its garments and dominant colours rather than copying another appearance or the canonical portrait's clothes. Keep child-appropriate fit and the scene's matte cloth texture, local light and muted exposure; no brighter face, neon garment or costume that changes canonical identity."
+        }
+      ],
+      "art": "public/scenes/journey-sydney-detectives-v4/base.webp"
+    },
+    {
+      "board": "antarctica",
+      "art": "public/scenes/journey-antarctica-detectives-v9/base.webp",
+      "ground": "dry supported snow beside the new side expedition activities, in the original shallow polar composition",
+      "sittable": true,
+      "wardrobe": "Reference-appropriate varied practical child winter garments in subdued slate-blue, charcoal, navy, plum, rust or teal, with trousers, mittens, knit hats and supported snow boots. Match actual canonical hairline, length, colour and texture, not assumed curls or gender. A real visible fitted winter hat is mandatory for each personalized appearance, without obscuring the canonical face and eyes.",
+      "hides": [
+        {
+          "id": "antarctica-detectives-hide-1",
+          "left": 56,
+          "top": 500,
+          "pose": "standing",
+          "targetId": "hide-1",
+          "wardrobe": "A muted slate-grey short child expedition coat, navy snow trousers, a subdued plum wool hat, warm mittens and dark practical snow boots; no bright face or copied source hairstyle. WINTER HAT IS REQUIRED in this appearance, for every reference child. Keep the authored warm hat visibly on the head, fitted to the actual canonical head shape; never draw a bare head or replace the hat with a vague hood. The hat may cover some hair, but preserve the actual hairline/texture where visible and keep the complete canonical face and both eyes readable below it.",
+          "mask": {
+            "left": 129,
+            "top": 205,
+            "width": 215,
+            "height": 360
+          },
+          "hint": {
+            "en": "Look near the equipment sled and field notebook at the far left.",
+            "he": "חפשו ליד מזחלת הציוד ופנקס המחקר בקצה השמאלי."
+          },
+          "placement": {
+            "depth": "middle",
+            "standingHeightPx": 350,
+            "support": "Replace ONLY the blue-coat child holding the field notebook and towing the small equipment sled at the far left. Keep a natural school-age standing body, a readable open three-quarter canonical face above the notebook, one own hand holding the rope and the other the notebook. Both boots remain supported on the same dry snow. REQUIRED SCENE CLOTHING: a visible fitted warm winter hat in the specified appearance, with complete face and eyes visible. A bare head fails this authored appearance contract even when likeness is otherwise recognizable.",
+            "lighting": "Use the same cool diffuse local polar light and matte painted exposure as nearby children; retain actual canonical skin/hair identity without extra brightness or portrait fill.",
+            "occlusion": "Keep the complete teal-coated companion at right, including their head/neck/body beyond the crop edge. Preserve both foreground map readers BELOW the target: their entire hat/head regions are inside the authored return window, while their bodies continue below it. Keep each head connected naturally to its own original neck. Do not put a new boot over either original head or erase a forehead to create room. Keep the sled, rope and original ground joins coherent. A correctly fitted winter hat is mandatory. The hat must not hide the eyes or change the canonical face; preserve the actual reference hair wherever it remains visible.",
+            "comparators": "Source school-age companions at the same shallow ground depth; use source standing height as a local reference rather than a target-age cap."
+          },
+          "returnRect": {
+            "left": 9,
+            "top": 85,
+            "width": 503,
+            "height": 665
+          }
+        },
+        {
+          "id": "antarctica-detectives-hide-2",
+          "left": 120,
+          "top": 1320,
+          "pose": "kneeling",
+          "targetId": "hide-2",
+          "wardrobe": "A muted deep-plum padded child jacket, charcoal snow trousers, a subdued blue-grey knitted hat, mittens and dark snow boots for kneeling beside the ice sample; different from grey and teal coats in the other appearances. WINTER HAT IS REQUIRED in this appearance, for every reference child. Keep the authored warm hat visibly on the head, fitted to the actual canonical head shape; never draw a bare head or replace the hat with a vague hood. The hat may cover some hair, but preserve the actual hairline/texture where visible and keep the complete canonical face and both eyes readable below it.",
+          "mask": {
+            "left": 30,
+            "top": 330,
+            "width": 250,
+            "height": 365
+          },
+          "hint": {
+            "en": "Look beside the clear ice block and shadow screen at the lower left.",
+            "he": "חפשו ליד גוש הקרח השקוף ומסך הצללים בצד שמאל למטה."
+          },
+          "placement": {
+            "depth": "middle",
+            "standingHeightPx": 410,
+            "support": "Replace ONLY the green-jacket child kneeling at the foreground ice block beside the shadow screen at lower left. Keep their knees/shins supported on dry snow, an age-appropriate low school-age body and two connected own hands naturally handling or examining a small ice sample on the block. Do not add a magnifying glass that is absent from this activity or draw a standing portrait body. REQUIRED SCENE CLOTHING: a visible fitted warm winter hat in the specified appearance, with complete face and eyes visible. A bare head fails this authored appearance contract even when likeness is otherwise recognizable.",
+            "lighting": "Use the same cool diffuse local polar light and matte painted exposure as nearby children; retain actual canonical skin/hair identity without extra brightness or portrait fill.",
+            "occlusion": "Preserve the blue-jacket companion to the RIGHT with complete head, neck, own pointing hand and grounded knees. Their body continues outside the crop on the right; do not erase half a face or blend the target arm into theirs. Preserve the purple-coat ice examiner ABOVE, the upper map-reader boots, the ice block and shadow-screen poles with continuous source silhouettes across all returned boundaries. A correctly fitted winter hat is mandatory. The hat must not hide the eyes or change the canonical face; preserve the actual reference hair wherever it remains visible.",
+            "comparators": "Source school-age companions at the same shallow ground depth; use source standing height as a local reference rather than a target-age cap."
+          },
+          "returnRect": {
+            "left": 0,
+            "top": 220,
+            "width": 512,
+            "height": 520
+          }
+        },
+        {
+          "id": "antarctica-detectives-hide-3",
+          "left": 3328,
+          "top": 710,
+          "pose": "standing",
+          "targetId": "hide-3",
+          "wardrobe": "A muted deep-teal simple child winter coat, grey insulated trousers, a subdued charcoal ear-flap hat, mittens and dark supported snow boots while carrying a small field case; no matching plum jacket or grey expedition coat. WINTER HAT IS REQUIRED in this appearance, for every reference child. Keep the authored warm hat visibly on the head, fitted to the actual canonical head shape; never draw a bare head or replace the hat with a vague hood. The hat may cover some hair, but preserve the actual hairline/texture where visible and keep the complete canonical face and both eyes readable below it.",
+          "mask": {
+            "left": 55,
+            "top": 215,
+            "width": 180,
+            "height": 365
+          },
+          "hint": {
+            "en": "Look near the windsock and little field case at the far right.",
+            "he": "חפשו ליד שק הרוח ותיק ציוד המחקר הקטן בקצה הימני."
+          },
+          "placement": {
+            "depth": "middle",
+            "standingHeightPx": 340,
+            "support": "Replace ONLY the blue-jacket child holding the windsock pole and small grey field case on the far right. Keep an age-appropriate standing body, one connected own mitten at the pole and the other holding the case, with two supported boots on the original dry snow. Keep canonical hair/face readable in a gentle open three-quarter angle. REQUIRED SCENE CLOTHING: a visible fitted warm winter hat in the specified appearance, with complete face and eyes visible. A bare head fails this authored appearance contract even when likeness is otherwise recognizable.",
+            "lighting": "Use the same cool diffuse local polar light and matte painted exposure as nearby children; retain actual canonical skin/hair identity without extra brightness or portrait fill.",
+            "occlusion": "Preserve the tan-coated windsock helper on the left at their original coordinates, the pole and its connected hands, and the COMPLETE blue-coated walking child in the foreground right: the entire head and neck are inside the authored return window, and the legs extend below the crop. No erase of that forehead, neck or torso; no target foot over an existing head. Keep the adjacent penguin and snow-bank edges intact. A correctly fitted winter hat is mandatory. The hat must not hide the eyes or change the canonical face; preserve the actual reference hair wherever it remains visible.",
+            "comparators": "Source school-age companions at the same shallow ground depth; use source standing height as a local reference rather than a target-age cap."
+          },
+          "returnRect": {
+            "left": 20,
+            "top": 95,
+            "width": 492,
+            "height": 585
+          }
+        }
+      ]
+    }
+  ],
+  "boundaryHeadZones": "docs/art/journey-detectives-boundary-head-zones-20261008.json"
+}

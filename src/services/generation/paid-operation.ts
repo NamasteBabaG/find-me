@@ -57,8 +57,9 @@ export type PurchaseOutcome =
   /**
    * A charge that may have happened, or a mismatch. Never auto-retried.
    *
-   * `bytes` is present when the provider did answer and the result was kept -
-   * an unpriceable bill does not throw the picture away.
+   * `bytes` is present when the provider answered and those bytes are still
+   * available. The reason states whether they were durably kept; if storage
+   * permanently refused them, the owner can retain this returned copy.
    */
   | { kind: "unresolved"; reason: string; bytes?: Buffer }
   /**
@@ -154,10 +155,17 @@ export async function purchaseOnce(
     if (wrong) return { kind: "unresolved", reason: `${requestKey}: ${wrong}` };
   }
 
-  const retained = existing ? await deps.store.get(worldId, requestKey) : null;
+  // Validate the durable address and read its contents BEFORE reserving or
+  // dispatching, even for a new key. A key accepted by the ledger can still be
+  // unusable by the store; discovering that after buying loses a paid answer.
+  // A failed read must propagate, never masquerade as an empty slot.
+  const retained = await deps.store.get(worldId, requestKey);
   if (retained) {
     const wrong = envelopeMismatch(retained, input);
     if (wrong) return { kind: "unresolved", reason: `${requestKey}: ${wrong}` };
+    if (!existing) {
+      return { kind: "unresolved", reason: `${requestKey}: a paid result is retained without its ledger reservation; reconcile it before any new purchase`, bytes: retained.bytes };
+    }
   }
 
   if (existing && settledStates.has(existing.state)) {
@@ -265,7 +273,17 @@ export async function purchaseOnce(
   const unpriceable = async (why: string): Promise<PurchaseOutcome> => {
     // An amount nobody can support recorded as an invoice reads as free, so
     // nothing is settled - but the bytes were bought and are kept regardless.
-    await deps.store.put(worldId, requestKey, { ...base, evidence: null, unknownReason: why });
+    try {
+      await deps.store.put(worldId, requestKey, { ...base, evidence: null, unknownReason: why });
+    } catch (error) {
+      if (!(error instanceof RetainedPurchaseRefused) || !error.permanent) throw error;
+      // Dropping the bill cannot repair an invalid address or an oversized
+      // answer. Finish the conservative hold even when neither envelope can
+      // be stored, and let the owning caller retain the returned bytes.
+      const reason = `${requestKey}: the provider answered but its result could not be durably retained (${error.message}); the charge is unknown (${why})`;
+      await deps.ledger.markUnknown(worldId, requestKey, reason);
+      return { kind: "unresolved", reason, bytes: bought.bytes };
+    }
     const reason = `${requestKey}: the provider answered and its charge cannot be stated (${why}); the result is kept and the charge is unknown`;
     await deps.ledger.markUnknown(worldId, requestKey, reason);
     return { kind: "unresolved", reason, bytes: bought.bytes };

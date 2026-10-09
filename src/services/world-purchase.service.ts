@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { pinVisualReviewRelease } from "./generation/visual-review-release";
 import { createHash } from "node:crypto";
 import { validChildAge } from "@/domain/child-appearance";
 import { boardSlugs } from "@/domain/world";
@@ -97,6 +98,10 @@ export async function beginWorldPurchase(c: Container, input: WorldPurchaseInput
         await tx.game.create({ data: { id: gameId, ownerId: input.ownerId, familyChildId: child.id, childProfileId: childId,
           draftToken, status: "DRAFT", locale: input.locale, ...(styleVersion ? { styleVersion } : {}), packageTier: "ONE_WORLD", sceneCount: boards.length,
           title: input.locale === "he" ? `איפה ${child.displayName}?` : `Where's ${child.displayName}?` } });
+        if (styleVersion === "local-patch-world-v1" && c.pinDualVisualReview) {
+          if (!c.visualReview) throw Error("Dual visual review credentials are not configured");
+          await pinVisualReviewRelease(tx, gameId);
+        }
         await tx.gameScene.createMany({ data: boards.map((slug, orderIndex) => ({ id: newId("gsc"), gameId, sceneSlug: slug, sceneVersion: sceneBySlug(slug, version).version, orderIndex })) });
         await tx.childWorldPurchase.upsert({ where: { familyChildId_worldSlug: { familyChildId: child.id, worldSlug: world.slug } },
           create: { id: `wpr_${createHash("sha256").update(JSON.stringify([child.id, world.slug])).digest("hex").slice(0, 32)}`, ownerId: input.ownerId, familyChildId: child.id, worldSlug: world.slug, activeGameId: gameId, returnGameId },

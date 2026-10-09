@@ -19,6 +19,7 @@
  * where the child is, so it can never wash over her face or feet.
  */
 import sharp from "sharp";
+import { localPatchReturnRegion, LOCAL_PATCH_RETURN_FEATHER } from "../../domain/scene/local-patch-return-region";
 
 export type PatchRegion = { readonly left: number; readonly top: number; readonly width: number; readonly height: number };
 
@@ -45,7 +46,7 @@ export type SeamReport = {
 
 export const SEAM_LIMITS = Object.freeze({
   /** Border band width in patch pixels; also the widest a fade may reach. */
-  bandPx: 12,
+  bandPx: LOCAL_PATCH_RETURN_FEATHER,
   /** Below this mean difference the border is effectively the same pixels. */
   cleanMeanDiff: 2,
   /** Above this the border is not the same scene any more. */
@@ -271,8 +272,7 @@ async function blendLocalPatch(boardPng: Buffer, region: PatchRegion, patchPng: 
 // Leave120px of predeclared context, including room outside that drift for the
 // 12px feather. This is not proof of anatomy: final close-up review still owns
 // that decision. Version the derived pixels separately from the paid request.
-export const LOCAL_PATCH_COMPOSITION_VERSION = "bounded-return/v3-head-safe-axis";
-export const LOCAL_PATCH_RETURN_GUARD = 120;
+export { LOCAL_PATCH_COMPOSITION_VERSION, LOCAL_PATCH_RETURN_GUARD } from "../../domain/scene/local-patch-return-region";
 export type LocalPatchCompositionPermission = "aligned" | "one-pixel-per-axis-tolerance" | "two-pixel-player-review" | "refused";
 
 /** v8 boundary permission, NOT a visual verdict. One native pixel on each axis
@@ -292,23 +292,8 @@ export function boundedCompositionPermission(report: SeamReport, playerReview = 
   return "refused";
 }
 
-export async function composeBoundedLocalPatch(boardPng: Buffer, crop: PatchRegion, patchPng: Buffer, child: PatchRegion, options: { requireAligned?: boolean; playerReview?: boolean } = {}) {
-  if (![child.left, child.top, child.width, child.height].every(Number.isInteger)
-    || child.left < 0 || child.top < 0 || child.width <= 0 || child.height <= 0
-    || child.left + child.width > crop.width || child.top + child.height > crop.height) {
-    throw new Error("LOCAL_PATCH: invalid declared child box");
-  }
-  const left = Math.max(0, child.left - LOCAL_PATCH_RETURN_GUARD);
-  const top = Math.max(0, child.top - LOCAL_PATCH_RETURN_GUARD);
-  const right = Math.min(crop.width, child.left + child.width + LOCAL_PATCH_RETURN_GUARD);
-  const bottom = Math.min(crop.height, child.top + child.height + LOCAL_PATCH_RETURN_GUARD);
-  // Do not feather through the child's face when an authored box hugs an edge.
-  if (Math.min(child.left - left, child.top - top, right - child.left - child.width,
-    bottom - child.top - child.height) < SEAM_LIMITS.bandPx) {
-    throw new Error("LOCAL_PATCH: declared child box has no safe seam margin");
-  }
-  const local = { left, top, width: right - left, height: bottom - top };
-  const region = { ...local, left: crop.left + left, top: crop.top + top };
+export async function composeBoundedLocalPatch(boardPng: Buffer, crop: PatchRegion, patchPng: Buffer, child: PatchRegion, options: { requireAligned?: boolean; playerReview?: boolean; returnRect?: PatchRegion } = {}) {
+  const { local, region } = localPatchReturnRegion(crop, child, options.returnRect);
   const patch = await sharp(patchPng, { limitInputPixels: 8_294_400 }).extract(local).png().toBuffer();
   // Here this is deliberately a BOUNDARY diagnosis, not a claim that scenery
   // inside the child's box is unchanged. The visual review checks that separately.

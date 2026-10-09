@@ -69,12 +69,23 @@ export const LOCAL_PATCH_AGE_PROMPT_VERSION = "local-patch-prompt/v11-canonical-
 export const LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION = "local-patch-prompt/v12-board-paint-identity";
 export const LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION = "local-patch-prompt/v13-identity-body-lock";
 export const LOCAL_PATCH_INTEGRATED_PROMPT_VERSION = "local-patch-prompt/v14-scene-integration";
-export type LocalPatchPaintRecipe = "board-paint-v1" | "identity-body-v2" | "scene-integration-v3";
+/** Fresh v12 rows use reference-neutral rendering; existing rows retain their exact question. */
+export const LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION = "local-patch-prompt/v15-reference-neutral-integration";
+export type LocalPatchPaintRecipe = "board-paint-v1" | "identity-body-v2" | "scene-integration-v3" | "scene-integration-v4";
 
 export function pinnedLocalPatchPromptVersion(existing: { promptVersion: string | null; attempts: number } | null, legacyVersion: string, contentVersion?: number): string {
-  if (!existing) return contentVersion === INTEGRATED_COLLECTION_VERSION ? LOCAL_PATCH_INTEGRATED_PROMPT_VERSION : contentVersion === REFRESHED_COLLECTION_VERSION ? LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION : LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION;
+  if (!existing) return contentVersion === INTEGRATED_COLLECTION_VERSION ? LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION : contentVersion === REFRESHED_COLLECTION_VERSION ? LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION : LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION;
   // Missing provenance on a historical row is not permission to change a paid question.
   return existing.promptVersion || legacyVersion;
+}
+
+/** Normal generation and autonomous recovery must dispatch the same pinned recipe. */
+export function paintRecipeForPinnedPrompt(version: string | null): LocalPatchPaintRecipe | undefined {
+  if (version === LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION) return "scene-integration-v4";
+  if (version === LOCAL_PATCH_INTEGRATED_PROMPT_VERSION) return "scene-integration-v3";
+  if (version === LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION) return "identity-body-v2";
+  if (version === LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION) return "board-paint-v1";
+  return undefined;
 }
 
 const REPAIR_DIRECTIONS = {
@@ -156,6 +167,7 @@ export function localPatchPrompt(input: LocalPatchPromptInput): string {
     if (!isLocalPatchAgeVersion(contentVersion)) throw new Error("LOCAL_PATCH: site recovery belongs only to the v9 age contract");
     recoveryText = resolveLocalPatchRecoveryDirective(input.hideId ?? "", input.recoveryDirective);
   }
+  if (input.paintRecipe === "scene-integration-v4") return referenceNeutralIntegratedPrompt(input, recoveryText);
   if (input.paintRecipe === "scene-integration-v3") return integratedScenePrompt(input, recoveryText);
   if (input.paintRecipe === "identity-body-v2") return identityBodyPrompt(input, recoveryText);
   if (input.paintRecipe === "board-paint-v1") return boardPaintPrompt(input, recoveryText);
@@ -236,6 +248,26 @@ function boardPaintPrompt(input: LocalPatchPromptInput, recoveryText?: string): 
     ...(repairChecks === undefined ? [] : ["REPAIR: correct only these named defects without changing identity or the authored location:", ...repairChecks.map(check => BOARD_PAINT_REPAIR_DIRECTIONS[check as keyof typeof BOARD_PAINT_REPAIR_DIRECTIONS])]),
     ...(recoveryText === undefined ? [] : [recoveryText]),
   ].join("\n");
+}
+
+/** Apply to the entire v15 request, including appended diagnosis/restyle instructions.
+ * Historical text remains byte-for-byte unchanged in its original recipe.
+ */
+export function referenceNeutralHairDirections(prompt: string): string {
+  return prompt
+    .replaceAll("Keep the reference curl silhouette using grouped dark locks, not fine strands.",
+      "Match the reference's ACTUAL hairline, part, length, natural colour and texture using economical painted shapes. Straight hair stays straight, short hair stays short; do not invent curls, length or a different hairstyle.")
+    .replaceAll("curls form broad dark locks with sparse painted accents, not individual strands.",
+      "the reference's actual hair texture forms economical painted masses with sparse accents, not photographic individual strands.")
+    .replaceAll("hair length and curl silhouette", "hair length and actual hair texture")
+    .replaceAll("Group curls into broad dark locks with sparse painted accents, not individual strands.",
+      "Group the reference's actual hair texture into economical painted shapes, preserving its length and natural colour, not photographic individual strands.")
+    .replaceAll("large grouped dark curls", "large grouped painted hair shapes preserving the reference's actual colour and texture");
+}
+
+function referenceNeutralIntegratedPrompt(input: LocalPatchPromptInput, recoveryText?: string): string {
+  return referenceNeutralHairDirections(integratedScenePrompt(input, recoveryText))
+    .concat("\nUse reference-appropriate, age-appropriate garments for the stated activity. Neither the child's name nor a neighbouring person's gender or hairstyle defines this child's identity.");
 }
 
 function integratedScenePrompt(input: LocalPatchPromptInput, recoveryText?: string): string {

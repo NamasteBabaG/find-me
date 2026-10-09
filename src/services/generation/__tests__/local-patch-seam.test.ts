@@ -57,6 +57,23 @@ async function boundaryFixture(input: {
 }
 
 describe("returning a locally rendered rectangle to the board", () => {
+  it("composes exactly the authored window, including its extra context, leaving all outside pixels intact", async () => {
+    const f=await boundaryFixture({});
+    const returnRect={left:40,top:220,width:440,height:500};
+    const patch=await sharp(f.board).composite([20,450].map(left=>({left,top:350,input:Buffer.from('<svg width="10" height="10"><rect width="10" height="10" fill="#ee8844"/></svg>')}))).png().toBuffer();
+    const result=await composeBoundedLocalPatch(f.board,f.crop,patch,f.child,{returnRect});
+    expect(result).toMatchObject({usable:true,region:returnRect});
+    const pixels=await sharp(result.candidate).ensureAlpha().raw().toBuffer();
+    const painted=await sharp(patch).ensureAlpha().raw().toBuffer();
+    const inside=(350*f.crop.width+450)*4;
+    expect(pixels.subarray(inside,inside+4)).toEqual(painted.subarray(inside,inside+4));
+    expect(pixels.subarray(inside,inside+4)).not.toEqual(f.original.subarray(inside,inside+4));
+    for(let y=0;y<f.crop.height;y++)for(let x=0;x<f.crop.width;x++){
+      if(x>=40&&x<480&&y>=220&&y<720)continue;
+      const i=(y*f.crop.width+x)*4;
+      if(!pixels.subarray(i,i+4).equals(f.original.subarray(i,i+4)))throw new Error(`Changed outside authored return at ${x},${y}`);
+    }
+  });
   it("routes small registration differences to visual review without shifting the child or touching the outer board", async () => {
     const f = await boundaryFixture({ borderShift: { dx: 2, dy: 1 } });
     const old = await composeBoundedLocalPatch(f.board, f.crop, f.patch, f.child, { requireAligned: true });

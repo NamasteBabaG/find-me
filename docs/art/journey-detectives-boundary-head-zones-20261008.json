@@ -1,0 +1,117 @@
+{
+  "formatVersion": 1,
+  "scope": "source-boundary-head-annotations",
+  "note": "Manually identified source head/neck regions, not an automatic detector or generated anatomy verdict. Only Antarctica is annotated in this revision. Whole-person changes/removals are allowed if visually coherent. Existing accepted boards remain frozen.",
+  "boards": [
+    {
+      "board": "antarctica",
+      "sourceArt": "public/scenes/journey-antarctica-detectives-v9/base.webp",
+      "sourceSha256": "89d24177ba32c3c3a479a0d8a8e5f7f7c95bb21a1d9590730103e3e85e813e65",
+      "hides": [
+        {
+          "hideId": "antarctica-detectives-hide-1",
+          "previousReturnRegion": {
+            "left": 65,
+            "top": 585,
+            "width": 447,
+            "height": 600
+          },
+          "heads": [
+            {
+              "id": "teal-companion",
+              "left": 417,
+              "top": 779,
+              "width": 129,
+              "height": 150
+            },
+            {
+              "id": "left-map-reader",
+              "left": 186,
+              "top": 1061,
+              "width": 145,
+              "height": 145
+            },
+            {
+              "id": "right-map-reader",
+              "left": 322,
+              "top": 1092,
+              "width": 145,
+              "height": 140
+            },
+            {
+              "id": "lower-notebook-reader",
+              "left": 462,
+              "top": 1262,
+              "width": 154,
+              "height": 178
+            }
+          ]
+        },
+        {
+          "hideId": "antarctica-detectives-hide-2",
+          "previousReturnRegion": {
+            "left": 30,
+            "top": 1530,
+            "width": 482,
+            "height": 568
+          },
+          "heads": [
+            {
+              "id": "blue-ice-companion",
+              "left": 423,
+              "top": 1678,
+              "width": 149,
+              "height": 179
+            },
+            {
+              "id": "purple-ice-examiner",
+              "left": 59,
+              "top": 1355,
+              "width": 170,
+              "height": 180
+            },
+            {
+              "id": "upper-notebook-reader",
+              "left": 462,
+              "top": 1262,
+              "width": 154,
+              "height": 178
+            }
+          ]
+        },
+        {
+          "hideId": "antarctica-detectives-hide-3",
+          "previousReturnRegion": {
+            "left": 3328,
+            "top": 805,
+            "width": 355,
+            "height": 605
+          },
+          "heads": [
+            {
+              "id": "foreground-blue-walker",
+              "left": 3566,
+              "top": 1088,
+              "width": 181,
+              "height": 197
+            },
+            {
+              "id": "left-windsock-helper",
+              "left": 3220,
+              "top": 840,
+              "width": 110,
+              "height": 230
+            },
+            {
+              "id": "lower-map-reader",
+              "left": 3270,
+              "top": 1401,
+              "width": 220,
+              "height": 210
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

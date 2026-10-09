@@ -73,6 +73,21 @@ function record(worldId: string, requestKey: string, over: Partial<RetainedPurch
 }
 
 describe("retained purchases on disk", () => {
+  it("rejects an unstorable new request before any reservation or provider dispatch", async () => {
+    const w = world();
+    const ledger = new WorldBudget(new CasWorldBudgetRepository(new PrismaWorldBudgetStore(db)));
+    const store = new PrismaRetainedPurchaseStore(db);
+    let dispatches = 0;
+    await expect(purchaseOnce({ ledger, store }, {
+      worldId: w, requestKey: "authoring-calibration:body-check/v1", scope: "judge",
+      operationFingerprint: "a".repeat(64), reserveMicroUsd: 200_000,
+      buy: async () => { dispatches++; return { bytes: Buffer.from("a verdict"), evidence: bill("must-not-be-bought") }; },
+    })).rejects.toThrow(/bounded nonsecret request key/);
+    expect(dispatches).toBe(0);
+    expect(await ledger.readRequest(w, "authoring-calibration:body-check/v1")).toBeNull();
+    expect(await db.worldBudgetLedger.count({ where: { worldId: w } })).toBe(0);
+  }, 60_000);
+
   it("is still there for a process that did not buy it", async () => {
     const w = world();
     const bought = record(w, "sydney-2:render:1");
