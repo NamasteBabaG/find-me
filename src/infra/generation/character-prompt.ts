@@ -5,7 +5,14 @@ import type { QaCharacterStyleContract } from "./types";
 export const CHARACTER_PROMPT_VERSION = "character-v2-child-age-detailed";
 export const LEGACY_QA_CHARACTER_PROMPT_VERSION = "character-v3-board-matched-matte";
 export const QA_CHARACTER_PROMPT_VERSION = "character-v4-board-drawn-face-reference";
+/** v4 told every sheet to draw "broad curl groups filled with dark paint",
+ * whatever the photograph shows; the board painter then copies the sheet's
+ * hair. v5 is v4 with only that sentence changed to the reference's own hair. */
+const V4_HAIR = "Hair is a few broad curl groups filled with dark paint and sparse contour accents.";
+const V5_HAIR = "Hair keeps the photograph's actual colour, length, part and texture, drawn as a few economical painted shapes with sparse contour accents: straight hair stays straight and short hair stays short; never invent curls or darken the colour.";
+
 export function qaCharacterPromptVersion(version: QaCharacterStyleContract["version"]) {
+  if (version === "board-matched-identity/v5") return "character-v7-reference-hair-identity";
   if (version === "board-matched-identity/v4") return "character-v6-painted-identity-geometry";
   if (version === "board-matched-identity/v3") return "character-v5-refreshed-identity-body";
   if (version === "board-matched-identity/v1") return LEGACY_QA_CHARACTER_PROMPT_VERSION;
@@ -14,6 +21,11 @@ export function qaCharacterPromptVersion(version: QaCharacterStyleContract["vers
 }
 
 export function characterPrompt(input: { styled: boolean; ageYears?: number | null; qaStyleContractVersion?: QaCharacterStyleContract["version"] }): string {
+  if (input.qaStyleContractVersion === "board-matched-identity/v5") {
+    const v4 = characterPrompt({ ...input, qaStyleContractVersion: "board-matched-identity/v4" });
+    if (v4.split(V4_HAIR).length !== 2) throw Error("CHARACTER_STYLE: the v5 hair sentence lost its v4 anchor");
+    return v4.replace(V4_HAIR, V5_HAIR);
+  }
   if (input.qaStyleContractVersion === "board-matched-identity/v4") {
     if (!input.styled) throw Error("Painted identity requires the verified refreshed atlas");
     return [

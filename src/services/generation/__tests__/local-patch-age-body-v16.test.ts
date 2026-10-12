@@ -5,7 +5,7 @@ import { childBodyDirection } from "../../../domain/child-body";
 import type { SelfRepairDecision } from "../../../domain/scene/local-patch-self-repair";
 import { selfRepairRenderInstructions } from "../../../domain/scene/local-patch-self-repair";
 import { INTEGRATED_COLLECTION_BOARDS } from "../../../../content/adventures/wizard-integrated-release";
-import { characterPrompt } from "../../../infra/generation/character-prompt";
+import { characterPrompt, qaCharacterPromptVersion } from "../../../infra/generation/character-prompt";
 import {
   AGE_BODY_CONTRACT, ageBodyRequestDirections, localPatchPrompt, paintRecipeForPinnedPrompt, pinnedLocalPatchPromptVersion, referenceNeutralHairDirections,
   LOCAL_PATCH_AGE_BODY_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION, LOCAL_PATCH_INTEGRATED_PROMPT_VERSION,
@@ -147,6 +147,22 @@ describe("v16: the stated age shapes the body; the placement only locates the ch
     expect(exact).not.toContain("age8");
     expect(exact).toContain(`Keep the ${age}-year-old body of the BODY AGE CONTRACT: never change its age to fit the window`);
     expect(exact).toContain(childBodyDirection(age));
+  });
+});
+
+describe("v16 identity sheet (style v5): the photograph's own hair", () => {
+  const V4_HAIR = "Hair is a few broad curl groups filled with dark paint and sparse contour accents.";
+  it.each(AGES)("changes only v4's hair sentence for age %i; the body, layout and painted style stay the same", age => {
+    const v4 = characterPrompt({ styled: true, ageYears: age, qaStyleContractVersion: "board-matched-identity/v4" });
+    const v5 = characterPrompt({ styled: true, ageYears: age, qaStyleContractVersion: "board-matched-identity/v5" });
+    expect(v4).toContain(V4_HAIR);
+    expect(v5).not.toMatch(/curl groups|dark paint|broad dark/i);
+    expect(v5).toContain("straight hair stays straight and short hair stays short; never invent curls or darken the colour");
+    const [before, after] = v4.split(V4_HAIR);
+    expect(v5.startsWith(before!)).toBe(true); expect(v5.endsWith(after!)).toBe(true);
+    expect(v5).toContain(childBodyDirection(age));
+    expect(qaCharacterPromptVersion("board-matched-identity/v5")).toBe("character-v7-reference-hair-identity");
+    expect(qaCharacterPromptVersion("board-matched-identity/v4")).toBe("character-v6-painted-identity-geometry");
   });
 });
 

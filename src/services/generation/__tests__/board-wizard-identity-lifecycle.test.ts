@@ -281,9 +281,9 @@ describe("QA identity lifecycle: real DB and synthetic provider only", () => {
       await db.generationJob.update({ where: { id: f.claim.jobId }, data: { status: "QUEUED", attempts: 0, currentStep: null } });
       // An allowed 584-character review, as measured on 9 October.
       const reason = "Synthetic face borrows a neighbour's eye spacing and every full-body view reads younger than eight. ".repeat(8).slice(0, 584);
-      const repairs: string[] = []; let calls = 0, reviews = 0;
+      const repairs: string[] = [], styles: (string | undefined)[] = []; let calls = 0, reviews = 0;
       f.c.avatars.createCharacter = vi.fn(async request => {
-        calls++; if (request.identityRepair) repairs.push(request.identityRepair.reason);
+        calls++; styles.push(request.qaStyleContract?.version); if (request.identityRepair) repairs.push(request.identityRepair.reason);
         return { ...f.result(), providerRequestId: `req_${f.id}_${calls}` };
       });
       vi.stubGlobal("fetch", vi.fn(async () => {
@@ -299,6 +299,10 @@ describe("QA identity lifecycle: real DB and synthetic provider only", () => {
       const checkpoint = JSON.parse((await f.job()).stepsJson).identityBestOfTwo;
       // The provider reads at most the first 1,200 characters of the feedback.
       const third = repairs.at(-1)!, seen = third.slice(0, 1200);
+      // A new v12 identity under v16 draws the sheet's hair from the photograph (style v5), all three candidates alike.
+      expect(styles).toEqual(Array(3).fill(release === "v16" ? "board-matched-identity/v5" : "board-matched-identity/v4"));
+      const child = await db.childProfile.findUniqueOrThrow({ where: { id: f.childId } });
+      expect(await identityApprovedForDisplay(f.c, child, 12)).toBe(true);
       if (release === "v16") {
         expect(checkpoint.feedback).toBe("strategy-first/v1");
         expect(third.length).toBeLessThanOrEqual(1200);

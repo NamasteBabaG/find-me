@@ -210,7 +210,11 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
     const identityWorld = localPatch && worldForBoard(game.scenes[0]!.sceneSlug)?.slug === "kingdom" ? "kingdom" : "journey";
     let identityStyle: Awaited<ReturnType<typeof buildBoardWizardIdentityStyle>> | null = null;
     try {
-      if (qaIdentityClaim) identityStyle = await buildBoardWizardIdentityStyle(undefined, retainedIdentityStyleVersion ?? (contentVersion === 12 ? "board-matched-identity/v4" : isRefreshedCollectionVersion(contentVersion) ? "board-matched-identity/v3" : undefined), identityWorld, identityArtCache);
+      // A new v12 identity takes the chosen prompt release: v16 draws the sheet's
+      // hair from the photograph (v5) instead of v4's default broad dark curls.
+      if (qaIdentityClaim) identityStyle = await buildBoardWizardIdentityStyle(undefined, retainedIdentityStyleVersion ?? (contentVersion === 12
+        ? env().LOCAL_PATCH_PROMPT_RELEASE === "v16" ? "board-matched-identity/v5" : "board-matched-identity/v4"
+        : isRefreshedCollectionVersion(contentVersion) ? "board-matched-identity/v3" : undefined), identityWorld, identityArtCache);
     } finally {
       // Release the full public masters before reading private reference photos
       // or dispatching providers. Later preflights revalidate without retaining.

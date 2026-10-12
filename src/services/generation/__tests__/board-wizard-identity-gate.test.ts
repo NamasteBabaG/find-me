@@ -48,6 +48,19 @@ describe("identity style gate (synthetic images and HTTP; zero paid calls)", () 
     expect(identityReceiptReadyForPublication(receipt, 11)).toBe(false);
     expect(receipt.prompt).toContain("Painted style also requires explicit pass");
   });
+  it.each(["pass", "fail"])("accepts the v5 sheet (the photograph's own hair) where v12 accepts v4: painted style %s", async style => {
+    const f = await fixture(async () => response(answer(style), { model: "gpt-5.6-luna" }));
+    f.input.provenance.promptVersion = "character-v7-reference-hair-identity";
+    f.input.provenance.style.version = "board-matched-identity/v5";
+    const receipt = await reviewBoardWizardIdentity(f.deps, { ...f.input, contentVersion: 12 });
+    expect(identityReceiptReadyForPublication(receipt, 12)).toBe(style === "pass");
+    expect(identityReceiptReadyForPublication(receipt, 11)).toBe(false);
+    // The sheet prompt and the style version are bound to each other.
+    const mixed = await fixture(async () => response(answer(style), { model: "gpt-5.6-luna" }));
+    mixed.input.provenance.promptVersion = "character-v6-painted-identity-geometry";
+    mixed.input.provenance.style.version = "board-matched-identity/v5";
+    await expect(reviewBoardWizardIdentity(mixed.deps, { ...mixed.input, contentVersion: 12 })).rejects.toThrow("Identity prompt/style versions differ");
+  });
   it("bounded selection preserves warnings, binds its source, and cannot change older publication policies", async () => {
     const f = await fixture(async () => response({ checks: { identity: "uncertain", age: "fail", paintedStyle: "pass", sheetLayout: "pass" }, reason: "Synthetic likeness doubt" }, { model: "gpt-5.6-luna" }));
     f.input.provenance.promptVersion = "character-v4-board-drawn-face-reference";

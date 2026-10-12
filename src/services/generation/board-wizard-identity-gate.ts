@@ -27,10 +27,10 @@ export const IDENTITY_GATE_ACTION = "board-wizard:identity-style-reviewed";
 export const IDENTITY_SELECTION_POLICY = "identity-best-of-two/v1";
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 export const identityProvenanceSchema = z.object({
-  promptVersion: z.enum([LEGACY_QA_CHARACTER_PROMPT_VERSION, QA_CHARACTER_PROMPT_VERSION, "character-v5-refreshed-identity-body", "character-v6-painted-identity-geometry"]),
+  promptVersion: z.enum([LEGACY_QA_CHARACTER_PROMPT_VERSION, QA_CHARACTER_PROMPT_VERSION, "character-v5-refreshed-identity-body", "character-v6-painted-identity-geometry", "character-v7-reference-hair-identity"]),
   quality: z.literal("medium"), photoAssetId: z.string(), photoSha256: digest,
   crop: z.unknown(), ageYears: z.number().int().min(2).max(10),
-  style: z.object({ version: z.enum(["board-matched-identity/v1", "board-matched-identity/v2", "board-matched-identity/v3", "board-matched-identity/v4"]), catalogSha256: digest, atlasSha256: digest }).strict(),
+  style: z.object({ version: z.enum(["board-matched-identity/v1", "board-matched-identity/v2", "board-matched-identity/v3", "board-matched-identity/v4", "board-matched-identity/v5"]), catalogSha256: digest, atlasSha256: digest }).strict(),
   repair: z.object({ policy: z.literal(IDENTITY_SELECTION_POLICY), feedbackSha256: digest }).strict().optional(),
 }).strict().refine(p => p.promptVersion === qaCharacterPromptVersion(p.style.version), "Identity prompt/style versions differ");
 export type IdentityProvenance = z.infer<typeof identityProvenanceSchema>;
@@ -48,7 +48,7 @@ export const identityGateReceiptSchema = z.object({ version: z.enum([LEGACY_IDEN
   requestId: z.string().nullable(), costMicroUsd: z.number().int().nonnegative(), usage: z.record(z.number()).nullable(),
   model: z.enum([BOARD_JUDGE_MODEL, "gpt-5.6-luna"]), effort: z.enum(["high", "low"]), prompt: z.string(),
 }).strict().refine(r => r.version === ADVISORY_IDENTITY_GATE_VERSION || r.version === AGE_IDENTITY_GATE_VERSION
-  ? ["board-matched-identity/v2", "board-matched-identity/v3", "board-matched-identity/v4"].includes(r.provenance.style.version) && r.model === advisorySettings.model && r.effort === "low"
+  ? ["board-matched-identity/v2", "board-matched-identity/v3", "board-matched-identity/v4", "board-matched-identity/v5"].includes(r.provenance.style.version) && r.model === advisorySettings.model && r.effort === "low"
   : r.version === (r.provenance.style.version === "board-matched-identity/v1" ? LEGACY_IDENTITY_GATE_VERSION : IDENTITY_GATE_VERSION)
     && r.model === BOARD_JUDGE_MODEL && r.effort === "high", "Identity review/style/model versions differ")
   .refine(r => r.imageHashes.length === (r.comparison ? 5 : 3) && (!r.comparison || r.version === AGE_IDENTITY_GATE_VERSION), "Invalid comparison images/policy")
@@ -125,7 +125,7 @@ export async function reviewBoardWizardIdentity(deps: {
       await prepareCharacterPhoto(input.photo, null, 1024));
   }
   const advisory = isLocalPatchAdvisoryVersion(input.contentVersion);
-  demand(!advisory || ["board-matched-identity/v2", "board-matched-identity/v3", "board-matched-identity/v4"].includes(provenance.style.version), "New games require the source-backed board-face style contract");
+  demand(!advisory || ["board-matched-identity/v2", "board-matched-identity/v3", "board-matched-identity/v4", "board-matched-identity/v5"].includes(provenance.style.version), "New games require the source-backed board-face style contract");
   const version = isLocalPatchAgeVersion(input.contentVersion) ? AGE_IDENTITY_GATE_VERSION
     : advisory ? ADVISORY_IDENTITY_GATE_VERSION : provenance.style.version === "board-matched-identity/v1" ? LEGACY_IDENTITY_GATE_VERSION : IDENTITY_GATE_VERSION;
   const settings = advisory ? advisorySettings : { model: BOARD_JUDGE_MODEL, effort: "high", maxOutputTokens: BOARD_JUDGE_MAX_TOKENS } as const;
@@ -262,7 +262,10 @@ export function identityReceiptReadyForPublication(value: unknown, contentVersio
   const receipt = parsed.data;
   // A bounded automated choice is not a fabricated visual pass. Keep the raw
   // verdict, but do not ask a parent to resolve subjective likeness/age doubt.
-  if (isRefreshedCollectionVersion(contentVersion) && (receipt.provenance.style.version !== (contentVersion === 12 ? "board-matched-identity/v4" : "board-matched-identity/v3") || receipt.checks?.identity !== "pass" || receipt.checks?.age !== "pass")) return false;
+  // v12 accepts its integrated style (v4) and the same style with the reference's own hair (v5).
+  const style = receipt.provenance.style.version;
+  if (isRefreshedCollectionVersion(contentVersion) && (!(contentVersion === 12 ? style === "board-matched-identity/v4" || style === "board-matched-identity/v5" : style === "board-matched-identity/v3")
+    || receipt.checks?.identity !== "pass" || receipt.checks?.age !== "pass")) return false;
   if (contentVersion === 12 && receipt.checks?.paintedStyle !== "pass") return false;
   if (isLocalPatchAgeVersion(contentVersion) && receipt.automaticSelection) return receipt.version === AGE_IDENTITY_GATE_VERSION
     && !!receipt.requestId && !!receipt.usage && receipt.costMicroUsd > 0
@@ -359,5 +362,5 @@ export async function requireBoardWizardIdentityApproval(c: Container, budget: W
 
 export function identityReviewRequestKey(receipt: Pick<IdentityGateReceipt, "identityAssetId" | "provenance" | "comparison">) {
   const key = receipt.comparison ? "wizard:identity-style:2" : IDENTITY_GATE_KEY;
-  return ["board-matched-identity/v3", "board-matched-identity/v4"].includes(receipt.provenance.style.version) ? key + ":" + receipt.identityAssetId : key;
+  return ["board-matched-identity/v3", "board-matched-identity/v4", "board-matched-identity/v5"].includes(receipt.provenance.style.version) ? key + ":" + receipt.identityAssetId : key;
 }
