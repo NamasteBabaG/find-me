@@ -87,6 +87,13 @@ export const LOCAL_PATCH_EVIDENCE_RETRY_WAIT = "local-patch:evidence-retry-wait"
  */
 export const LOCAL_PATCH_RECOVERY_EXHAUSTED = "local-patch:recovery-exhausted";
 const PARKED_STEPS = [LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_RECOVERY_EXHAUSTED];
+/**
+ * A free decision asks no provider, but it is not free of time: it rebuilds one
+ * board's evidence (identity, original art, the patch and its panels) and
+ * commits it. None starts with less than one phase margin before the worker's
+ * hard deadline; the claim is handed back with that free work still runnable.
+ */
+export const LOCAL_PATCH_FREE_DECISION_MS = LOCAL_PATCH_PHASE_MARGIN_MS;
 
 export type LocalPatchSliceResult = {
   readonly gameId: string;
@@ -365,6 +372,14 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     if (dual) for (const scene of game.scenes) {
       if (scene.sceneVersion !== 12) continue;
       for (let turn = 0; turn < 3 && rows.some(row => row.targetInstance.gameSceneId === scene.id && localPatchRetainedAnswerUndecided(row)); turn++) {
+        // Out of time is not out of options: yield the claim with the rest of the
+        // free work runnable. The next tick starts here again, before anything
+        // paid, and nothing is parked for a reason a later tick resolves.
+        if (options.hardDeadlineAt !== undefined && options.hardDeadlineAt - Date.now() < LOCAL_PATCH_FREE_DECISION_MS) {
+          await c.db.$transaction(async tx => { await fence(tx); await tx.generationJob.update({ where: { id: job.id },
+            data: { status: "QUEUED", currentStep: "local-patch", lastError: null } }); });
+          return { ...empty, claimed: true, pending: true, paused: false };
+        }
         let decided;
         try {
           decided = await reviewLocalPatchBoard(c, { gameId, sceneId: scene.id },

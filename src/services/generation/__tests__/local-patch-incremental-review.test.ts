@@ -781,3 +781,65 @@ describe("Codex independent incident recovery", () => {
     expect(s.request).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("Codex independent recovery deadline", () => {
+  it("yields remaining free re-reads after its hard deadline instead of starting another board reconstruction", async () => {
+    const s = await dualSeed("codex-free-deadline", hideId => longAnswer(hideId, 1013, 954, 466), { count: 2 });
+    for (let question = 0; question < 4; question++) await s.run();
+    for (const row of await rows(s.gameId)) await asDeployedReaderRefusal(db, s.gameId, row);
+    const start = Date.now(), deadline = start + 270_000;
+    let clock = start, artReads = 0;
+    const now = vi.spyOn(Date, "now").mockImplementation(() => clock);
+    const { readShippedBoardArt } = await import("../local-patch-hide");
+    try {
+      await runLocalPatchWorldSlice(s.container, { ...s.deps, readBoardArt: async (art, hash) => {
+        artReads++;
+        const bytes = await readShippedBoardArt(art, hash);
+        // The first expensive reconstruction consumes the request's remaining
+        // time. Its atomic decision may finish, but another one must not start.
+        clock = deadline + 1;
+        return bytes;
+      } }, s.gameId, { hardDeadlineAt: deadline, maxHides: 1 });
+      const decided = (await rows(s.gameId)).filter(row => JSON.parse(row.judgeJson!).boardReview?.dual?.continuity?.reading);
+      expect(artReads).toBeGreaterThan(0);
+      expect(decided.length).toBeLessThanOrEqual(1);
+    } finally { now.mockRestore(); }
+  }, 120_000);
+
+  it("finishes the free work on the next tick after yielding at the deadline: no purchase, duplicate decision or parked world", async () => {
+    const s = await dualSeed("free-deadline-resume", hideId => longAnswer(hideId, 1013, 954, 466), { count: 2 });
+    for (let question = 0; question < 4; question++) await s.run();
+    for (const row of await rows(s.gameId)) await asDeployedReaderRefusal(db, s.gameId, row);
+    const worldId = boardWizardWorldId(s.gameId), ledger = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } });
+    const calls = s.request.mock.calls.length, paints = s.render.mock.calls.length;
+    const { readShippedBoardArt } = await import("../local-patch-hide");
+    /** One tick whose first reconstruction leaves `left` milliseconds before its hard deadline. */
+    const tick = async (left: number) => {
+      const start = Date.now(), deadline = start + 270_000;
+      let clock = start;
+      const now = vi.spyOn(Date, "now").mockImplementation(() => clock);
+      try {
+        return await runLocalPatchWorldSlice(s.container, { ...s.deps, readBoardArt: async (art, hash) => {
+          const bytes = await readShippedBoardArt(art, hash); clock = deadline - left; return bytes;
+        } }, s.gameId, { hardDeadlineAt: deadline, maxHides: 1 });
+      } finally { now.mockRestore(); }
+    };
+    const decided = async () => (await rows(s.gameId)).filter(row => JSON.parse(row.judgeJson!).boardReview?.dual?.continuity?.reading);
+    // Out of time after one decision: the other waits, the claim is handed back.
+    expect(await tick(-1)).toMatchObject({ claimed: true, pending: true, attention: null });
+    expect(await decided()).toHaveLength(1);
+    expect(await db.generationJob.findUniqueOrThrow({ where: { id: `job_${s.gameId}` } }))
+      .toMatchObject({ status: "QUEUED", currentStep: "local-patch", lastError: null });
+    // The next tick decides the other one first. Too little time remains after it
+    // for anything paid (a picture needs 240 s), so nothing else is bought.
+    expect(await tick(100_000)).toMatchObject({ claimed: true, pending: true, attention: null });
+    const all = await rows(s.gameId);
+    expect(await decided()).toHaveLength(2);
+    expect(all.every(row => row.status === "GENERATED" && JSON.parse(row.judgeJson!).reviewHistory.length === 1)).toBe(true);
+    expect(await db.auditLog.count({ where: { entityId: s.gameId, action: LOCAL_PATCH_PUBLICATION_ACTION } })).toBe(2);
+    expect(s.request.mock.calls.length).toBe(calls); expect(s.render.mock.calls.length).toBe(paints);
+    expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } })).toEqual(ledger);
+    expect(await db.generationJob.findUniqueOrThrow({ where: { id: `job_${s.gameId}` } }))
+      .toMatchObject({ status: "QUEUED", currentStep: "local-patch" });
+  }, 120_000);
+});

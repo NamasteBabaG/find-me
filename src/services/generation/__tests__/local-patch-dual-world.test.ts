@@ -187,8 +187,14 @@ describe("a whole v12 world under two independent HIGH reviews", () => {
     expect(JSON.stringify(plan)).not.toContain("Each visible head joins");
     expect(await state()).toEqual(before);
 
-    // One slice: everything already paid for is decided; nothing new is bought; the world parks.
-    const result = await runLocalPatchWorldSlice(container, deps, gameId, { hardDeadlineAt: Date.now() + 270_000 });
+    // Ticks: everything already paid for is decided first; nothing new is bought;
+    // then the world parks. A slow tick hands back its claim at the deadline with
+    // the free work runnable, so this does not depend on one tick being enough.
+    let result = await runLocalPatchWorldSlice(container, deps, gameId, { hardDeadlineAt: Date.now() + 270_000 });
+    for (let tick = 1; tick < 4 && result.pending; tick++) {
+      expect(result.attention).toBeNull();
+      result = await runLocalPatchWorldSlice(container, deps, gameId, { hardDeadlineAt: Date.now() + 270_000 });
+    }
     expect(result).toMatchObject({ claimed: true, pending: false });
     expect(result.attention).toContain("no automatic action remains within the authorized world budget");
     expect(result.attention).toContain("298229 of 5000000 micro-USD remain with nothing in flight");
