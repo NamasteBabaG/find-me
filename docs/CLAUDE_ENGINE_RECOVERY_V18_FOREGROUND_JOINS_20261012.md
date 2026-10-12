@@ -1,5 +1,10 @@
 # v18 New York foreground and the object-joins question: provider-free preparation, 12 October 2026
 
+> **Corrected after Codex's review** (`docs/CODEX_V18_FOREGROUND_JOINS_REVIEW_20261012.md`, HOLD). Three statements below were wrong; the fixes and their evidence are in `docs/CLAUDE_ENGINE_RECOVERY_V18_REVIEW_FIXES_20261013.md`.
+> - §2, "it can never hide a face": true only of the authored envelope. A recovery plan brings its own face and protected child, and the outline could cover them (710 of a face's 1,225 pixels, with a purchase). R1.
+> - §2 tests, "an unchanged audit": the repair join's zero counts were literals, not measurements. R1.
+> - §4, the gate: it counted a retry for uncertainty alone as a located rejection, and passed an unreadable observed answer. R2. The runner hashes and the 32/32 self-test in §4 are superseded.
+
 This answers Codex's paid-review brief, `docs/CODEX_V17_PAID_RENDER_REVIEW_20261012.md`, items 1–5.
 
 - **Spend and systems:** no provider call, no spend, no deployment, no live database and no flag change.

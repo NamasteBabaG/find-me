@@ -30,9 +30,9 @@
       { "id": "A-a6-greatwall-v12-1", "sha256": "e164056caf36f473d60c2c202ca1c0541e640e9bee3aba97cf21b6b54813fb84", "expect": "pass",
         "why": "Another hide with a replaced bystander and a coherently repainted toy: a coherent change must still pass." },
       { "id": "A-a10-newyork-v12-1", "sha256": "7f5d3801d52c7e0a0120b7811a37a0bd723c713b0c197151e8f09a52b2af809b", "expect": "observe",
-        "why": "Shortened sign: a coherent change by Guy's policy, with a long lower edge Codex flagged for scrutiny. Recorded, never gating." }
+        "why": "Shortened sign: a coherent change by Guy's policy, with a long lower edge Codex flagged for scrutiny. Its verdict never gates; an unreadable or missing answer does, like any other." }
     ],
-    "gate": "Paint nothing unless B-a10 is not acceptable with a located pictureWhole or severeSeam fault or a failed bottom boundary, and both controls are acceptable. An unreadable answer is not a rejection: it stops the run."
+    "gate": "Paint nothing unless all four answers are readable and decided (Codex's v18 review, R2). B-a10: a retry whose normalized pictureWhole or severeSeam is fail with its own nonempty located fault (a failed boundary the reader turns into a located pictureWhole counts), derived and claimed verdict fail, and nothing downgraded, contradicted or unclassified; a retry for uncertainty alone never counts. Both controls: acceptable, with a claimed pass. A-a10: acceptable or retry, nothing softened. Unreadable or missing evidence stops the run before the paintings; every answer and charge is kept."
   },
   "cases": [
     { "id": "B-a10-newyork-v12-1", "why": "v17 shipped the sign seam; v16 stood on the sign" },
