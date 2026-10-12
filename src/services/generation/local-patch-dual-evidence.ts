@@ -11,6 +11,9 @@ import { PrismaRetainedPurchaseStore } from "../../infra/db/prisma-retained-purc
 import { sha256Bytes } from "./fixed-sprite";
 import { sameChargeEvidence, type WorldChargeEvidence } from "./world-budget";
 import { DUAL_VISUAL_REVIEW_V2, DUAL_VISUAL_REVIEW_VERSION, isDualVisualReviewVersion, type DualVisualReviewVersion } from "./visual-review-release";
+import { QUALITY_READER_LOCATED, QUALITY_READER_STRICT, QUALITY_READERS, localPatchQualityDisposition, type LocalPatchVerdict, type QualityReader } from "./local-patch-judge";
+import { parseVisualSceneVerdicts } from "./visual-review";
+import { PLAYER_REVIEW_MODE } from "./local-patch-player-review";
 
 /** A later reading of the SAME retained answer: recorded beside the original,
  * never in place of it, and bound to its request, fingerprint and exact text. */
@@ -19,19 +22,50 @@ export type ContinuityReReading = {
   readonly sourceRequestKey: string; readonly sourceFingerprint: string; readonly rawSha256: string;
   readonly disposition: "pass" | "repair" | "unresolved"; readonly reason: string; readonly readAt: string;
 };
-export type DualReviewStage = { requestKey: string; fingerprint: string; attempt: number;
+/** The same, for a retained scene-quality answer. */
+export type QualityReReading = {
+  readonly version: "quality-reading/v1"; readonly reader: QualityReader; readonly previousReader: QualityReader;
+  readonly sourceRequestKey: string; readonly sourceFingerprint: string; readonly rawSha256: string;
+  readonly disposition: "acceptable" | "retry" | "unresolved"; readonly readAt: string;
+};
+/** One paid role's retained answer, as bought. */
+export type DualStageBase = { requestKey: string; fingerprint: string; attempt: number;
   policy: VisualReviewPolicy; raw: string | null; model: string | null; finishReason: string | null;
   wireFault: string | null; costMicroUsd: number;
-  /** The reader that decided this answer. Absent on stages written before readers were named. */
-  reader?: ContinuityReader;
   /** The recovery variant of the question, when it was not the standard one. */
   strategy?: EvidenceStrategy;
   /** Why the answer could not be used: a code and a JSON path, never answer text. */
-  readFault?: ContinuityReadFault | null;
-  reading?: ContinuityReReading };
+  readFault?: ContinuityReadFault | null };
+/** Each role names the reader that decided it. Absent on stages written before readers were named. */
+export type ContinuityStage = DualStageBase & { reader?: ContinuityReader; reading?: ContinuityReReading };
+export type QualityStage = DualStageBase & { reader?: QualityReader; reading?: QualityReReading };
+export type DualReviewStage = ContinuityStage | QualityStage;
 export type DualReviewProof = { version: DualVisualReviewVersion; hideId: string;
   imageSha256: string; geometrySha256: string; identitySha256: string;
-  quality: DualReviewStage; continuity: DualReviewStage | null };
+  quality: QualityStage; continuity: ContinuityStage | null };
+
+/** The reader new scene-quality answers are decided by, under either pinned question. */
+export const CURRENT_QUALITY_READER: QualityReader = QUALITY_READER_LOCATED;
+
+/** The reader that decided a quality stage: its re-reading, its own record, or the strict historical one. */
+export function qualityStageReader(stage: Pick<QualityStage, "reader" | "reading">): QualityReader | null {
+  const reader = stage.reading?.reader ?? stage.reader ?? QUALITY_READER_STRICT;
+  return (QUALITY_READERS as readonly string[]).includes(reader) ? reader : null;
+}
+
+/** A retained quality answer read exactly as its decision was made, or null. A
+ * re-reading must still describe this exact answer and agree with itself. */
+export function readQualityStage(stage: QualityStage, hideId: string): LocalPatchVerdict | null {
+  const reader = qualityStageReader(stage);
+  if (!reader || !visualStageReadable(stage)) return null;
+  const verdict = parseVisualSceneVerdicts(stage.raw, [hideId], 12, "ready-only/v1", PLAYER_REVIEW_MODE, reader)[hideId] ?? null;
+  const reading = stage.reading;
+  if (reading && (reading.version !== "quality-reading/v1" || reading.previousReader !== (stage.reader ?? QUALITY_READER_STRICT)
+    || reading.reader === reading.previousReader || reading.sourceRequestKey !== stage.requestKey
+    || reading.sourceFingerprint !== stage.fingerprint || reading.rawSha256 !== sha256Bytes(Buffer.from(stage.raw ?? ""))
+    || reading.disposition !== localPatchQualityDisposition(verdict, 12, { hideId }).state)) return null;
+  return verdict;
+}
 
 /** Which readers may decide an answer to each pinned question. The strict
  * reader remains the reading of every historical v1 stage that names none. */
@@ -51,14 +85,14 @@ export function visualStageReadable(stage: Pick<DualReviewStage, "policy" | "mod
 }
 
 /** The reader that decided a stage: its re-reading, its own record, or the strict historical one. */
-export function continuityStageReader(stage: Pick<DualReviewStage, "reader" | "reading">, version: DualVisualReviewVersion): ContinuityReader | null {
+export function continuityStageReader(stage: Pick<ContinuityStage, "reader" | "reading">, version: DualVisualReviewVersion): ContinuityReader | null {
   const reader = stage.reading?.reader ?? stage.reader ?? (version === DUAL_VISUAL_REVIEW_VERSION ? CONTINUITY_READER_STRICT : null);
   return reader && CONTINUITY_READERS_FOR[version].includes(reader) ? reader : null;
 }
 
 /** Read a retained continuity stage exactly as its decision was made. A
  * re-reading must still describe this exact answer and agree with itself. */
-export function readContinuityStage(stage: DualReviewStage, hideId: string, version: DualVisualReviewVersion): ContinuityReading | null {
+export function readContinuityStage(stage: ContinuityStage, hideId: string, version: DualVisualReviewVersion): ContinuityReading | null {
   const reader = continuityStageReader(stage, version);
   if (!reader || !visualStageReadable(stage)) return null;
   const read = readLocalPatchBodyContinuity(stage.raw, [`${hideId}:people`], reader);
@@ -74,17 +108,30 @@ export function readContinuityStage(stage: DualReviewStage, hideId: string, vers
 }
 
 /**
- * A FAILED appearance whose complete, transport-clean continuity answer was
- * decided by a reader its question no longer uses (in practice: the strict
- * 600-character reader). Such an answer can be decided again for free, once;
- * the re-reading is recorded beside it and never repeated.
+ * A FAILED appearance whose complete, transport-clean answer was decided by a
+ * reader its question no longer uses. Such an answer can be decided again for
+ * free, once; the re-reading is recorded beside it and never repeated.
+ *
+ * - Continuity: the anatomy answer was refused by the strict 600-character reader.
+ * - Quality alone: the Opus answer itself was refused by the strict reader, so no
+ *   anatomy question was ever bought. Only a refusal qualifies (a readable strict
+ *   verdict reads the same under every reader), and only when the current reader
+ *   does NOT find it acceptable: a re-read pass would still need its anatomy
+ *   question, which is never free, so it stays with the paid evidence route.
  */
 export function localPatchRetainedAnswerUndecided(row: { status: string; lastError?: string | null; judgeJson?: string | null }): boolean {
   try {
     const receipt = JSON.parse(row.judgeJson ?? "null"), review = receipt?.boardReview, proof = review?.dual as DualReviewProof | undefined;
     if (!proof || row.status !== "FAILED" || !row.lastError?.startsWith("quality-unresolved:") || receipt?.reviewState !== "board-review-complete"
-      || !isDualVisualReviewVersion(review?.version) || proof.version !== review.version || !proof.quality || !proof.continuity
-      || proof.imageSha256 !== receipt.judgedSha256 || proof.continuity.reading) return false;
+      || !isDualVisualReviewVersion(review?.version) || proof.version !== review.version || !proof.quality
+      || proof.imageSha256 !== receipt.judgedSha256) return false;
+    if (!proof.continuity) {
+      if (receipt.verdict !== null || proof.quality.reading || !visualStageReadable(proof.quality)
+        || (proof.quality.reader ?? QUALITY_READER_STRICT) === CURRENT_QUALITY_READER) return false;
+      const verdict = parseVisualSceneVerdicts(proof.quality.raw, [proof.hideId], 12, "ready-only/v1", PLAYER_REVIEW_MODE, CURRENT_QUALITY_READER)[proof.hideId] ?? null;
+      return localPatchQualityDisposition(verdict, 12, { hideId: proof.hideId }).state !== "acceptable";
+    }
+    if (proof.continuity.reading) return false;
     return visualStageReadable(proof.quality) && visualStageReadable(proof.continuity)
       && (proof.continuity.reader ?? CONTINUITY_READER_STRICT) !== CURRENT_CONTINUITY_READER[proof.version];
   } catch { return false; }

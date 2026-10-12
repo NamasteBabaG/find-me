@@ -33,8 +33,12 @@ import { pinVisualReviewRelease, hasDualVisualReview, dualVisualReviewVersion, D
   type DualVisualReviewVersion } from "../visual-review-release";
 import { CONTINUITY_READER_BOUNDED, CONTINUITY_READER_CROWD, CONTINUITY_READER_STRICT } from "../../../domain/scene/local-patch-body-continuity";
 import type { TargetVariantAsset } from "@prisma/client";
-import { asDeployedReaderRefusal, atEvidenceRound, longAnswer, prose, publicationBinding, spendTo } from "./local-patch-dual-fixtures";
+import { asDeployedQualityRefusal, asDeployedReaderRefusal, atEvidenceRound, LOCATED_390, LOCATED_390_DEFECT, located390Answer, located390Verdict,
+  longAnswer, prose, publicationBinding, spendTo } from "./local-patch-dual-fixtures";
 import { allowedDualPublication } from "../local-patch-dual-publication";
+import { localPatchRetainedAnswerUndecided } from "../local-patch-dual-evidence";
+import { QUALITY_READER_LOCATED, QUALITY_READER_STRICT } from "../local-patch-judge";
+import { visualReviewPolicy } from "../../../domain/generation/visual-review-policy";
 import { localPatchPublicationGeometryHash } from "../local-patch-publication-policy";
 import { createDraft } from "../../create-flow.service";
 
@@ -933,5 +937,132 @@ describe("Codex independent quality evidence classification", () => {
     expect(localPatchEvidenceRecovery(row)).toMatchObject({ retry: false, exhausted: true });
     expect(row).toMatchObject({ status: "FAILED", attempts: 1 }); expect(s.render).toHaveBeenCalledTimes(1);
     expect(await boardWizardBudgetOf(c).audit(boardWizardWorldId(s.gameId))).toMatchObject({ reservedMicroUsd: 0, pendingRequestKeys: [], unknownRequestKeys: [] });
+  });
+});
+
+describe("a named quality reader decides a refused Opus answer for free, never into an approval", () => {
+  type Seeded = Awaited<ReturnType<typeof dualSeed>>;
+  const decide = (s: Seeded) => reviewLocalPatchBoard(s.container, s, { fence: async () => {} }, { decideRetained: true });
+  /** Opus answers its `call`-th scene-quality question with `raw`; Sol keeps its own answers. */
+  const opusRaw = (s: Seeded, raw: (hideId: string, call: number) => string) => {
+    const original = s.request.getMockImplementation()!;
+    let calls = 0;
+    s.request.mockImplementation(async (question, timeoutMs) => {
+      const answer = await original(question, timeoutMs);
+      if (question.role !== "scene-quality") return answer;
+      const asked = (JSON.parse(/Immutable candidate binding: (\{.*?\})\. Evidence attempt/.exec(question.prompt)![1]!) as { hideId: string }).hideId;
+      return { ...answer, raw: raw(asked, ++calls) };
+    });
+  };
+  const ledgerOf = (s: Seeded) => db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: boardWizardWorldId(s.gameId) } });
+  const published = (s: Seeded) => db.auditLog.count({ where: { entityId: s.gameId, action: LOCAL_PATCH_PUBLICATION_ACTION } });
+
+  it("reads a fresh 390-character answer as the repair it reports: one Opus question, no anatomy question", async () => {
+    const s = await dualSeed("quality-390-fresh");
+    opusRaw(s, hideId => located390Answer(hideId));
+    expect((await s.run()).state).toBe("retry");
+    const row = (await rows(s.gameId))[0]!, receipt = JSON.parse(row.judgeJson!);
+    expect(row).toMatchObject({ status: "FAILED", attempts: 1 }); expect(row.lastError).toMatch(/^quality-retry: pictureWhole/);
+    expect(receipt.boardReview.dual.quality.reader).toBe(QUALITY_READER_LOCATED);
+    expect(receipt.boardReview.dual.continuity).toBeNull();
+    expect(receipt.verdict.faults[0].where).toHaveLength(LOCATED_390.where);
+    expect(localPatchEvidenceRecovery(row)).toBeNull();
+    expect(s.request.mock.calls.map(([q]) => q.role)).toEqual(["scene-quality"]);
+    expect(s.render).toHaveBeenCalledTimes(1); expect(await published(s)).toBe(0);
+  });
+
+  it.each([1, 9])("decides the retained 390-character refusal at round %i as a repair for free, keeping the whole paid answer", async round => {
+    const s = await dualSeed(`quality-390-retained-${round}`);
+    opusRaw(s, hideId => located390Answer(hideId));
+    await s.run();
+    const deployed = await atEvidenceRound(db, await asDeployedQualityRefusal(db, s.gameId, (await rows(s.gameId))[0]!), round);
+    const original = JSON.parse(deployed.judgeJson!).boardReview;
+    expect(original.dual.continuity).toBeNull(); expect(original.dual.quality).not.toHaveProperty("reader");
+    expect(localPatchRetainedAnswerUndecided(deployed)).toBe(true);
+    const ledger = await ledgerOf(s), calls = s.request.mock.calls.length;
+    expect(await decide(s)).toMatchObject({ state: "retry", decidedRetained: true, costCents: 0, replayed: true });
+    const row = (await rows(s.gameId))[0]!, receipt = JSON.parse(row.judgeJson!);
+    expect(row).toMatchObject({ status: "FAILED", attempts: 1, assetId: deployed.assetId }); expect(row.lastError).toMatch(/^quality-retry: pictureWhole/);
+    // The paid answer is kept whole; the verdict's location is all 390 characters of it.
+    expect(receipt.boardReview.dual.quality.raw).toBe(original.dual.quality.raw);
+    expect(receipt.boardReview.dual.quality).not.toHaveProperty("reader");
+    expect(receipt.verdict.pictureWhole).toBe("fail"); expect(receipt.verdict.faults).toHaveLength(1);
+    expect(receipt.verdict.faults[0].where).toBe(located390Verdict().faults[0]!.where);
+    expect(receipt.verdict.faults[0].where.startsWith(LOCATED_390_DEFECT)).toBe(true);
+    expect(receipt.boardReview.dual.quality.reading).toMatchObject({ version: "quality-reading/v1", reader: QUALITY_READER_LOCATED,
+      previousReader: QUALITY_READER_STRICT, disposition: "retry", sourceRequestKey: original.dual.quality.requestKey,
+      sourceFingerprint: original.dual.quality.fingerprint, rawSha256: sha256Bytes(Buffer.from(original.dual.quality.raw)) });
+    expect(receipt.boardReview.evidenceReviewAttempt).toBe(round); expect(receipt.reviewHistory.at(-1).boardReview).toEqual(original);
+    // An Opus failure needs no anatomy reviewer: nothing is asked, bought or published.
+    expect(receipt.boardReview.dual.continuity).toBeNull();
+    expect(s.request.mock.calls.length).toBe(calls); expect(s.render).toHaveBeenCalledTimes(1);
+    expect(await ledgerOf(s)).toEqual(ledger);
+    expect(localPatchEvidenceRecovery(row)).toBeNull();
+    expect(await publishable(s.gameId, row)).toBe(false); expect(await published(s)).toBe(0);
+    expect(await decide(s)).toMatchObject({ state: "pending", costCents: 0 });
+    expect(await rows(s.gameId)).toEqual([row]);
+  });
+
+  it("names a historical refusal above the new bound exactly, for free, and leaves the shortening to one paid compact question", async () => {
+    const s = await dualSeed("quality-700-retained");
+    const failing = (where: string) => ({ ...located390Verdict(), faults: [{ check: "pictureWhole", where }] });
+    opusRaw(s, (hideId, call) => located390Answer(hideId, failing(prose(call === 1 ? 700 : 241, `${LOCATED_390_DEFECT}.`))));
+    expect((await s.run()).state).toBe("blocked");
+    const deployed = await asDeployedQualityRefusal(db, s.gameId, (await rows(s.gameId))[0]!);
+    expect(localPatchRetainedAnswerUndecided(deployed)).toBe(true);
+    const ledger = await ledgerOf(s), calls = s.request.mock.calls.length;
+    expect(await decide(s)).toMatchObject({ state: "blocked", decidedRetained: true, costCents: 0 });
+    let row = (await rows(s.gameId))[0]!;
+    const receipt = JSON.parse(row.judgeJson!);
+    expect(receipt.boardReview.dual.quality.readFault).toEqual({ code: "length", path: "hides.0.verdict.faults.0.where" });
+    expect(receipt.boardReview.dual.quality.reading).toMatchObject({ reader: QUALITY_READER_LOCATED, previousReader: QUALITY_READER_STRICT, disposition: "unresolved" });
+    expect(receipt.evidenceAttempts).toMatchObject([{ attempt: 1, role: "quality", kind: "length", path: "hides.0.verdict.faults.0.where", strategy: "standard/v1" }]);
+    expect(localPatchEvidenceRecovery(row)).toMatchObject({ retry: true, role: "quality", strategy: "compact/v1" });
+    expect(localPatchRetainedAnswerUndecided(row)).toBe(false);
+    expect(s.request.mock.calls.length).toBe(calls); expect(await ledgerOf(s)).toEqual(ledger);
+    // The next PAID question asks for shorter text; its answer is read as the repair it reports.
+    expect((await s.run()).state).toBe("retry");
+    const prompts = s.request.mock.calls.filter(([q]) => q.role === "scene-quality").map(([q]) => q.prompt);
+    expect(prompts).toHaveLength(2); expect(prompts[1]).toContain("SIZE RECOVERY");
+    row = (await rows(s.gameId))[0]!;
+    expect(row.lastError).toMatch(/^quality-retry: pictureWhole/); expect(s.render).toHaveBeenCalledTimes(1); expect(await published(s)).toBe(0);
+  });
+
+  it("leaves a refusal the current reader would pass to the paid route: an approval is never decided for free", () => {
+    const policy = visualReviewPolicy("scene-quality", "high"), hideId = BOARD.hides[0]!.id, image = "a".repeat(64);
+    const rowFor = (raw: string) => ({ status: "FAILED", lastError: "quality-unresolved: integration-review-unreadable", judgeJson: JSON.stringify({
+      reviewState: "board-review-complete", judgedSha256: image, verdict: null, wireFault: "schema",
+      boardReview: { version: DUAL_VISUAL_REVIEW_VERSION, dual: { version: DUAL_VISUAL_REVIEW_VERSION, hideId, imageSha256: image,
+        geometrySha256: "b".repeat(64), identitySha256: "c".repeat(64), continuity: null,
+        quality: { requestKey: `self-repair:board:giza:${"d".repeat(64)}`, fingerprint: "d".repeat(64), attempt: 1, policy, raw,
+          model: policy.model, finishReason: "end_turn", wireFault: null, costMicroUsd: 18_000 } } } }) });
+    expect(localPatchRetainedAnswerUndecided(rowFor(located390Answer(hideId)))).toBe(true);
+    const passing = "```json\n" + JSON.stringify({ hides: [{ hideId, evidenceIds: localPatchHideEvidenceIds(hideId), verdict: good }] }) + "\n```";
+    expect(localPatchRetainedAnswerUndecided(rowFor(passing))).toBe(false);
+  });
+
+  it("publishes only under the reader each answer names: a forged, stale or conflicting quality reading authorizes nothing", async () => {
+    const s = await dualSeed("quality-reader-publication");
+    await s.run(); await s.run();
+    const row = (await rows(s.gameId))[0]!, receipt = JSON.parse(row.judgeJson!);
+    expect(row.status).toBe("GENERATED"); expect(receipt.boardReview.dual.quality.reader).toBe(QUALITY_READER_LOCATED);
+    expect(await publishable(s.gameId, row)).toBe(true);
+    const q = receipt.boardReview.dual.quality, { reader: _reader, ...strictStage } = q;
+    const reading = { version: "quality-reading/v1", reader: QUALITY_READER_LOCATED, previousReader: QUALITY_READER_STRICT, sourceRequestKey: q.requestKey,
+      sourceFingerprint: q.fingerprint, rawSha256: sha256Bytes(Buffer.from(q.raw)), disposition: "acceptable", readAt: new Date().toISOString() };
+    const withQuality = (stage: unknown) => JSON.stringify({ ...receipt, boardReview: { ...receipt.boardReview, dual: { ...receipt.boardReview.dual, quality: stage } } });
+    // Strictly, or through a self-consistent re-reading, this passing answer reads the same; nothing new is authorized.
+    expect(await publishable(s.gameId, row, withQuality(strictStage))).toBe(true);
+    expect(await publishable(s.gameId, row, withQuality({ ...strictStage, reading }))).toBe(true);
+    for (const forged of [
+      { ...q, reader: "quality-read/v0-lenient" },
+      { ...strictStage, reading: { ...reading, reader: "quality-read/v0-lenient" } },
+      { ...strictStage, reading: { ...reading, rawSha256: "0".repeat(64) } },
+      { ...strictStage, reading: { ...reading, sourceFingerprint: "f".repeat(64) } },
+      { ...strictStage, reading: { ...reading, sourceRequestKey: `self-repair:board:giza:${"f".repeat(64)}` } },
+      { ...strictStage, reading: { ...reading, disposition: "retry" } },
+      { ...strictStage, reading: { ...reading, reader: QUALITY_READER_STRICT } },
+      { ...q, reading },
+    ]) expect(await publishable(s.gameId, row, withQuality(forged))).toBe(false);
   });
 });

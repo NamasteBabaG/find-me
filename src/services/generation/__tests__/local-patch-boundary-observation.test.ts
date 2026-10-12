@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { parseLocalPatchBoardVerdicts, localPatchQualityDisposition } from '../local-patch-judge';
+import { parseLocalPatchBoardVerdicts, localPatchQualityDisposition, QUALITY_READER_LOCATED, QUALITY_READER_STRICT, type QualityReader } from '../local-patch-judge';
 import { PLAYER_REVIEW_MODE } from '../local-patch-player-review';
 import { diagnoseVisualSceneAnswer, parseVisualSceneVerdicts } from '../visual-review';
+import { LOCATED_390, LOCATED_390_DEFECT, located390Answer, located390Verdict } from './local-patch-dual-fixtures';
 
 const id = 'synthetic-boundary-hide';
 const observation = 'The foreground head connects to its neck, shoulders, hands and torso across the actual return edge. The bench legs and nearby child remain complete with natural overlap. No half face, disconnected limb or hard rectangular join is visible in the player view.';
@@ -78,5 +79,48 @@ describe('why an answer was refused: a code and a JSON path, never its text',()=
   it('names no reviewer text anywhere in a diagnosis',()=>{
     const raw=answer({...verdict(),pictureWhole:'fail',verdict:'fail',faults:[{check:'pictureWhole',where:'SECRET-PROSE '.repeat(40)}]});
     expect(JSON.stringify(diagnose(raw))).not.toContain('SECRET');
+  });
+});
+
+describe('named quality readers: the located reader admits a longer location, never a pass',()=>{
+  const answer=(v:unknown)=>'```json\n'+JSON.stringify({hides:[{hideId:id,evidenceIds:[id+':before',id+':after'],verdict:v}]})+'\n```';
+  const read=(raw:string,reader?:QualityReader)=>parseVisualSceneVerdicts(raw,[id],12,'ready-only/v1',PLAYER_REVIEW_MODE,reader)[id]??null;
+  const diagnose=(raw:string,reader?:QualityReader)=>diagnoseVisualSceneAnswer(raw,[id],12,'ready-only/v1',PLAYER_REVIEW_MODE,reader);
+  const failing=(where:string)=>({...verdict(),pictureWhole:'fail',verdict:'fail',faults:[{check:'pictureWhole',where}]});
+  it('reads the retained 390-character refusal as the repair it reports, every character kept',()=>{
+    const raw=located390Answer(id);
+    expect(located390Verdict().faults[0]!.where).toHaveLength(LOCATED_390.where);
+    // The deployed reading: unreadable, for that one field alone.
+    expect(read(raw)).toBeNull(); expect(read(raw,QUALITY_READER_STRICT)).toBeNull();
+    expect(diagnose(raw,QUALITY_READER_STRICT)).toEqual({code:'length',path:'hides.0.verdict.faults.0.where'});
+    const v=read(raw,QUALITY_READER_LOCATED)!;
+    expect(diagnose(raw,QUALITY_READER_LOCATED)).toBeNull();
+    expect(v.pictureWhole).toBe('fail'); expect(v.verdict).toBe('fail');
+    expect(v.faults).toHaveLength(1); expect(v.faults[0]!.where).toHaveLength(LOCATED_390.where);
+    expect(v.faults[0]!.where.startsWith(LOCATED_390_DEFECT)).toBe(true);
+    expect(localPatchQualityDisposition(v,12)).toEqual({state:'retry',faults:['pictureWhole']});
+  });
+  it('keeps a defect named at the end of a 600-character location, and names 601 as a size fault',()=>{
+    const ending=' Last: a disc hangs beside the child with no hand holding it.';
+    const where=(n:number)=>'The child stands on the cobbles and the neighbours are whole. '.repeat(20).slice(0,n-ending.length)+ending;
+    const whole=read(answer(failing(where(600))),QUALITY_READER_LOCATED)!;
+    expect(whole.faults[0]!.where).toHaveLength(600); expect(whole.faults[0]!.where.endsWith(ending)).toBe(true);
+    expect(localPatchQualityDisposition(whole,12).state).toBe('retry');
+    expect(read(answer(failing(where(601))),QUALITY_READER_LOCATED)).toBeNull();
+    expect(diagnose(answer(failing(where(601))),QUALITY_READER_LOCATED)).toEqual({code:'length',path:'hides.0.verdict.faults.0.where'});
+  });
+  it('reads every answer the strict reader reads exactly as it did',()=>{
+    for(const v of [verdict(),failing('A disc hangs beside the child with no hand holding it.')])
+      expect(read(answer(v),QUALITY_READER_LOCATED)).toEqual(read(answer(v),QUALITY_READER_STRICT));
+  });
+  it('keeps a failed boundary with a long observation a repair under either reader',()=>{
+    // The parser derives "Return boundary left: <observation>" itself; that derived
+    // location must not make a located defect unreadable when it is re-derived.
+    const v=verdict();v.boundaryIntegrity.left={status:'fail',observation:'At the left join a foreground head ends against a straight edge with no neck below it. '.repeat(7).slice(0,590).trimEnd()+'.'};
+    for(const reader of [QUALITY_READER_STRICT,QUALITY_READER_LOCATED]){
+      const result=read(answer(v),reader)!;
+      expect(result.pictureWhole).toBe('fail');
+      expect(localPatchQualityDisposition(result,12)).toEqual({state:'retry',faults:['pictureWhole']});
+    }
   });
 });

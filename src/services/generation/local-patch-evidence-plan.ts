@@ -70,6 +70,12 @@ export async function planLocalPatchEvidenceRecovery(c: Container, gameId: strin
         const retained = imageSha256 && identitySha256 ? await readRetainedAnswer(c.db, worldId, version, receipt.boardReview?.dual,
           { hideId: hide.id, imageSha256, geometrySha256: binding.geometrySha256, identitySha256 }) : { ok: false as const, reason: "Stored pixels or identity are unavailable" };
         if (!retained.ok) hides.push(entry("unverifiable", retained.reason));
+        else if (retained.role === "quality") {
+          // A refused Opus answer read again: a located defect is a free repair
+          // decision; anything else still needs a question, never an approval.
+          hides.push(entry(retained.disposition === "retry" ? "free-repair" : "free-undecided",
+            `${retained.reader}: ${retained.fault ? `${retained.fault.code} at ${retained.fault.path}` : retained.disposition}`));
+        }
         else hides.push(entry(retained.verdict.disposition === "pass" ? "free-pass" : retained.verdict.disposition === "repair" ? "free-repair" : "free-undecided",
           `${retained.reader}: ${retained.verdict.reason}`));
         continue;

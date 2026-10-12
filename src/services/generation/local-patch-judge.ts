@@ -118,7 +118,11 @@ const localPatchVerdictWireSchema = z.object({
    * operator nor the product owner could locate. A located claim can be checked;
    * an unlocated one cannot, so the schema stops accepting them.
    */
-  faults: z.array(z.preprocess(raw => {
+  faults: z.array(faultEntry(300)).max(8).default([]),
+}).strict();
+/** One located fault, its location bounded by the reader that reads it. */
+function faultEntry(whereMax: number) {
+  return z.preprocess(raw => {
     // The model answers this field in several shapes across runs: a sentence, an
     // object keyed `where`, an object keyed `location`. All three are the same
     // information, and rejecting two of them on shape discarded real findings -
@@ -133,9 +137,9 @@ const localPatchVerdictWireSchema = z.object({
     return raw;
   }, z.object({
     check: z.string().trim().min(1).max(40),
-    where: z.string().trim().min(1).max(300).describe("where in the AFTER image, in plain words"),
-  }).strict())).max(8).default([]),
-}).strict();
+    where: z.string().trim().min(1).max(whereMax).describe("where in the AFTER image, in plain words"),
+  }).strict());
+}
 export const localPatchVerdictSchema = localPatchVerdictWireSchema.transform(v => {
   const normalised = { ...v };
 
@@ -254,11 +258,28 @@ const integrationEvidenceSchema = z.object({ style: z.string().trim().min(12).ma
 export const LOCAL_PATCH_BOUNDARY_OBSERVATION_MAX = 600;
 const edgeObservation = z.object({ status: check, observation: z.string().trim().min(12).max(LOCAL_PATCH_BOUNDARY_OBSERVATION_MAX) }).strict();
 const boundaryIntegritySchema = z.object({ left: edgeObservation, top: edgeObservation, right: edgeObservation, bottom: edgeObservation }).strict();
-export const localPatchIntegratedVerdictSchema = localPatchVerdictWireSchema.extend({
+/**
+ * Named readers of a v12 scene-quality answer. A paid answer is decided by the
+ * reader its stage names; a stage written before readers were named was read
+ * strictly, and stays so. The located reader differs in ONE bound: a fault
+ * location may be as long as the evidence and boundary observations beside it,
+ * where the strict reader allowed 300 characters although the question states
+ * no limit. A complete answer that located a real defect (an unheld prop) in 390
+ * characters was unreadable for that alone, and an unreadable answer is asked
+ * again and paid for again. Above the bound it is still refused, as a size fault.
+ */
+export const QUALITY_READER_STRICT = "quality-read/v1-strict-300" as const;
+export const QUALITY_READER_LOCATED = "quality-read/v1-located-600" as const;
+export const QUALITY_READERS = [QUALITY_READER_STRICT, QUALITY_READER_LOCATED] as const;
+export type QualityReader = typeof QUALITY_READERS[number];
+export const QUALITY_FAULT_LOCATION_MAX: Readonly<Record<QualityReader, number>> = Object.freeze({
+  [QUALITY_READER_STRICT]: 300, [QUALITY_READER_LOCATED]: LOCAL_PATCH_BOUNDARY_OBSERVATION_MAX,
+});
+const integratedVerdictSchema = (reader: QualityReader) => localPatchVerdictWireSchema.extend({
   faceLikeness: check, faceReadable: check, severeSeam: check, ageAppropriate: check,
   lightingMatch: check, neighborsIntact: check, integrationEvidence: integrationEvidenceSchema,
   boundaryIntegrity: boundaryIntegritySchema.optional(),
-  faults: localPatchVerdictWireSchema.shape.faults.removeDefault().max(16).default([]),
+  faults: z.array(faultEntry(QUALITY_FAULT_LOCATION_MAX[reader])).max(16).default([]),
 }).strict().transform(v => {
   // Thirteen checks can produce thirteen legitimate faults. The legacy parser's
   // eight-fault limit must not discard an otherwise actionable v12 diagnosis.
@@ -284,16 +305,22 @@ export const localPatchIntegratedVerdictSchema = localPatchVerdictWireSchema.ext
   result.verdictOverridden = result.verdict !== result.claimedVerdict;
   return result;
 });
-const verdictSchemaFor = (contentVersion?: number) => contentVersion === INTEGRATED_COLLECTION_VERSION ? localPatchIntegratedVerdictSchema : isLocalPatchAgeVersion(contentVersion) ? localPatchAgeVerdictSchema
+/** The strict historical reading: unchanged for every existing caller and receipt. */
+export const localPatchIntegratedVerdictSchema = integratedVerdictSchema(QUALITY_READER_STRICT);
+const LOCATED_INTEGRATED_VERDICT_SCHEMA = integratedVerdictSchema(QUALITY_READER_LOCATED);
+const verdictSchemaFor = (contentVersion?: number, reader: QualityReader = QUALITY_READER_STRICT) => contentVersion === INTEGRATED_COLLECTION_VERSION
+  ? reader === QUALITY_READER_LOCATED ? LOCATED_INTEGRATED_VERDICT_SCHEMA : localPatchIntegratedVerdictSchema
+  : isLocalPatchAgeVersion(contentVersion) ? localPatchAgeVerdictSchema
   : isLocalPatchStrictVersion(contentVersion) ? localPatchQualityVerdictSchema : localPatchVerdictSchema;
 
 /** The historical single-hide prompt literally asks for "brief reason".
  * Normalize that field name only, without changing its paid prompt/fingerprint
- * or dropping an actual failed/uncertain check. Conflicting aliases stay invalid. */
-export function parseLocalPatchVerdict(value: unknown, contentVersion?: number): LocalPatchVerdict | null {
+ * or dropping an actual failed/uncertain check. Conflicting aliases stay invalid.
+ * A named quality reader applies to v12 answers only; every older version keeps its schema. */
+export function parseLocalPatchVerdict(value: unknown, contentVersion?: number, reader?: QualityReader): LocalPatchVerdict | null {
   const normalized = withReasonAlias(value);
   if (normalized === CONFLICTING_REASON) return null;
-  const parsed = verdictSchemaFor(contentVersion).safeParse(normalized);
+  const parsed = verdictSchemaFor(contentVersion, reader).safeParse(normalized);
   return parsed.success ? parsed.data : null;
 }
 const CONFLICTING_REASON = Symbol("conflicting reason aliases");
@@ -395,13 +422,28 @@ export function localPatchQualityDisposition(verdict: LocalPatchVerdict | null, 
     : { state: "acceptable", faults: [], ...(contextualWarning ? { contextualWarning } : {}) };
 }
 
+/** The faults a normalized verdict's answer listed, without the located
+ * pictureWhole fault the parser appends for each failed return boundary. */
+function answerFaults(wire: Record<string, unknown>): unknown {
+  const boundary = wire.boundaryIntegrity as Record<string, { status?: unknown; observation?: unknown } | undefined> | undefined;
+  if (!Array.isArray(wire.faults) || !boundary || typeof boundary !== "object") return wire.faults;
+  const derived = new Set(RETURN_EDGES.filter(edge => boundary[edge]?.status === "fail").map(edge => `Return boundary ${edge}: ${boundary[edge]!.observation}`));
+  return wire.faults.filter((f: { check?: unknown; where?: unknown } | null) => !(f?.check === "pictureWhole" && derived.has(String(f.where))));
+}
+
 /** Require the complete normalized result, including the new observed evidence.
  * Old receipts and contradictory flags cannot acquire a new approval. */
 function readIntegratedNormalizedVerdict(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const { downgraded, contradicted, unclassified, claimedVerdict, verdictOverridden, ...wire } = value as Record<string, unknown>;
   if (!Array.isArray(downgraded) || !Array.isArray(contradicted) || !Array.isArray(unclassified) || !check.safeParse(claimedVerdict).success) return null;
-  const parsed = localPatchIntegratedVerdictSchema.safeParse({ ...wire, verdict: claimedVerdict });
+  // Any named reader's verdict. Accepting the paid TEXT is its reader's decision,
+  // and publication re-reads that text under the reader its stage names; this
+  // only re-derives the normalized fields, which no bound changes. The parser's
+  // own "Return boundary <edge>: <observation>" faults are left for it to derive
+  // again: they are not the answer's, and a 600-character observation makes one
+  // longer than any location bound, which turned a located defect unreadable.
+  const parsed = LOCATED_INTEGRATED_VERDICT_SCHEMA.safeParse({ ...wire, faults: answerFaults(wire), verdict: claimedVerdict });
   if (!parsed.success || parsed.data.verdict !== wire.verdict || parsed.data.verdictOverridden !== verdictOverridden
     || JSON.stringify(parsed.data.downgraded) !== JSON.stringify(downgraded)
     || JSON.stringify(parsed.data.contradicted) !== JSON.stringify(contradicted)
@@ -767,7 +809,7 @@ function localPatchBoardJudgePromptForCount(request: Pick<LocalPatchBoardJudgeRe
 }
 const VISIBLE_BODY_ASSESSMENT_DIRECTION = "ASSESSMENT MODE visible-body-v1. This narrows the WHOLE-BODY age/scale instructions above to anatomy actually visible; it does not relax face identity, readable head/hair, severe seams or visible head scale. For a naturally occluded peek, do NOT infer an older body from hidden shoulders, torso or legs, require that body to appear, or penalize missing feet/contact shadows. Judge ageAppropriate from the canonical face and whatever anatomy is visible. If the only missing age evidence is a naturally hidden body, honestly report ageAppropriate:unsure with that reason, without inventing an age fault or model pass. Scale remains mandatory: assess the VISIBLE HEAD and any visible body against original nearby people and objects at this same ground depth. A proportionate, coherently drawn head at that depth may pass scaleRight even when legs are hidden; an obviously oversized head, wrong depth or adult-looking visible anatomy must receive its own located fault. If visible head scale cannot be established, keep scaleRight:unsure; do not waive it merely because the body is hidden. Never imagine anatomy, enlarge the head, borrow another hide's evidence or alter a verdict to make publication happen.";
 export function parseLocalPatchBoardVerdicts(raw: string | null, hideIds: readonly string[], contentVersion?: number,
-  reviewScope?: LocalPatchBoardJudgeRequest["reviewScope"], assessmentMode?: LocalPatchAssessmentMode) {
+  reviewScope?: LocalPatchBoardJudgeRequest["reviewScope"], assessmentMode?: LocalPatchAssessmentMode, reader?: QualityReader) {
   const missing = Object.fromEntries(hideIds.map(id => [id, null])) as Record<string, LocalPatchVerdict | null>;
   try {
     const shape = z.object({ hideId: z.string(), verdict: z.unknown() });
@@ -782,7 +824,7 @@ export function parseLocalPatchBoardVerdicts(raw: string | null, hideIds: readon
       if (isLocalPatchAgeVersion(contentVersion) && (!("evidenceIds" in row)
         || JSON.stringify(row.evidenceIds) !== JSON.stringify(localPatchHideEvidenceIds(row.hideId)))) return [row.hideId, null];
       if (assessmentMode === PLAYER_REVIEW_MODE && (contentVersion !== 12 || !boundaryIntegritySchema.safeParse((row.verdict as Record<string, unknown> | null)?.boundaryIntegrity).success)) return [row.hideId, null];
-      return [row.hideId, parseLocalPatchVerdict(row.verdict, contentVersion)];
+      return [row.hideId, parseLocalPatchVerdict(row.verdict, contentVersion, reader)];
     }));
   } catch { return missing; }
 }
@@ -800,7 +842,7 @@ export type QualityReadFault = { readonly code: "empty" | "syntax" | "shape" | "
  * for shorter text, not by asking again for the JSON it already sent).
  */
 export function diagnoseLocalPatchBoardAnswer(text: string | null, hideIds: readonly string[], contentVersion?: number,
-  reviewScope?: LocalPatchBoardJudgeRequest["reviewScope"], assessmentMode?: LocalPatchAssessmentMode): QualityReadFault | null {
+  reviewScope?: LocalPatchBoardJudgeRequest["reviewScope"], assessmentMode?: LocalPatchAssessmentMode, reader?: QualityReader): QualityReadFault | null {
   const fault = (code: QualityReadFault["code"], path = ""): QualityReadFault => ({ code, path });
   // A string over its bound is the only size failure; a short or missing field is malformed.
   const fromIssue = (error: z.ZodError, prefix: string) => {
@@ -808,7 +850,7 @@ export function diagnoseLocalPatchBoardAnswer(text: string | null, hideIds: read
     return fault(issue.code === "too_big" ? issue.type === "string" ? "length" : issue.type === "array" ? "count" : "shape" : "shape", path);
   };
   if (!text?.trim()) return fault("empty");
-  const verdicts = parseLocalPatchBoardVerdicts(text, hideIds, contentVersion, reviewScope, assessmentMode);
+  const verdicts = parseLocalPatchBoardVerdicts(text, hideIds, contentVersion, reviewScope, assessmentMode, reader);
   if (hideIds.length && hideIds.every(id => verdicts[id])) return null;
   let value: unknown;
   try { value = JSON.parse(text); } catch { return fault("syntax"); }
@@ -837,7 +879,7 @@ export function diagnoseLocalPatchBoardAnswer(text: string | null, hideIds: read
     }
     const normalized = withReasonAlias(row.verdict);
     if (normalized === CONFLICTING_REASON) return fault("shape", `${at}.verdict.reason`);
-    const parsed = verdictSchemaFor(contentVersion).safeParse(normalized);
+    const parsed = verdictSchemaFor(contentVersion, reader).safeParse(normalized);
     if (!parsed.success) return fromIssue(parsed.error, `${at}.verdict`);
   }
   // The steps above mirror the parser; disagreeing with it must never read as clean.
