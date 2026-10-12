@@ -21,7 +21,8 @@ import type { LocalPatchRecoveryDirective } from "../../domain/scene/local-patch
 import { adaptiveRecoveryPrompt, type AdaptiveRecoveryPlan } from "./local-patch-adaptive-recovery";
 import { selfRepairDecisionSchema, selfRepairRenderInstructions, type SelfRepairDecision } from "../../domain/scene/local-patch-self-repair";
 import { retainedRestylePrompt } from "./local-patch-restyle";
-import { ageBodyRequestDirections, LOCAL_PATCH_AGE_BODY_PROMPT_VERSION, LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION, referenceNeutralHairDirections } from "./local-patch-prompt";
+import { ageBodyRequestDirections, LOCAL_PATCH_AGE_BODY_PROMPT_VERSION, LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION, LOCAL_PATCH_FOREGROUND_PROMPT_VERSION, referenceNeutralHairDirections } from "./local-patch-prompt";
+import { foregroundForPinnedPrompt, foregroundRecord, occludeLocalPatch, type LocalPatchForegroundRecord } from "./local-patch-foreground";
 import { fixedSourceFailureReceiptSchema, type FixedSourceFailureReceipt } from "../../infra/generation/fixed-source-diagnostics";
 
 /**
@@ -152,6 +153,8 @@ export type LocalPatchAttempt = {
   /** v8 local blend permission only; never substitutes for final visual review. */
   readonly compositionPermission?: LocalPatchCompositionPermission;
   readonly compositionVersion?: LocalPatchCompositionVersion;
+  /** v18 rows of a hide with an authored outline: what was restored, bound to `shippingPng`. */
+  readonly foreground?: LocalPatchForegroundRecord;
   readonly verdict: LocalPatchVerdict | null;
   readonly wireFault: JudgeWireFault | null;
   readonly promptVersion: string;
@@ -318,6 +321,7 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
 }
 
 function promptVersionOf(input: LocalPatchAttemptInput): string {
+  if (input.paintRecipe === "scene-integration-v7") return LOCAL_PATCH_FOREGROUND_PROMPT_VERSION;
   if (input.paintRecipe === "scene-integration-v6") return LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION;
   if (input.paintRecipe === "scene-integration-v5") return LOCAL_PATCH_AGE_BODY_PROMPT_VERSION;
   if (input.paintRecipe === "scene-integration-v4") return LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION;
@@ -343,6 +347,8 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   }
   const crop = cropOf(hide);
   const promptVersion = promptVersionOf(input);
+  // Validated here, before anything is bought; an invalid outline throws rather than being skipped.
+  const foreground = isLocalPatchStrictVersion(input.contentVersion) ? foregroundForPinnedPrompt(hide, promptVersion) : null;
   if (input.selfRepair && (!isCollectionVersion(input.contentVersion) || !Number.isSafeInteger(input.selfRepair.cycle)
     || input.selfRepair.cycle < 1 || input.adaptiveRecovery || input.recoveryDirective)) throw Error("Invalid autonomous render recipe");
   const recovery = input.selfRepair ? selfRepairDecisionSchema.parse(input.selfRepair.decision) : null;
@@ -359,7 +365,8 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     + (input.adaptiveRecovery ? `\n\n${adaptiveRecoveryPrompt(input.adaptiveRecovery, hide)}` : "")
     + (recovery ? `\n\n${selfRepairRenderInstructions(recovery)}` : "");
   const prompt = input.paintRecipe === "scene-integration-v4" ? referenceNeutralHairDirections(recipePrompt)
-    : input.paintRecipe === "scene-integration-v5" || input.paintRecipe === "scene-integration-v6" ? ageBodyRequestDirections(recipePrompt) : recipePrompt;
+    : input.paintRecipe === "scene-integration-v5" || input.paintRecipe === "scene-integration-v6" || input.paintRecipe === "scene-integration-v7"
+      ? ageBodyRequestDirections(recipePrompt) : recipePrompt;
 
   const meta = await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).metadata();
   const stylePng = restyling ? await sharp(input.restyleSourcePng!, { limitInputPixels: 8_294_400 }).resize(512, 768, { fit: "fill" }).png().toBuffer()
@@ -438,8 +445,12 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     return refusedRender(painted.rejected ?? `${renderKey}: nothing usable was retained`, renderCents);
   }
   const patchPng = await sharp(Buffer.from(painted.bytesBase64, "base64")).resize(LOCAL_PATCH_CROP.width, LOCAL_PATCH_CROP.height, { fit: "fill" }).png().toBuffer();
+  // The outline is restored before the join, so the seam report describes the published pixels.
+  const occluded = foreground ? await occludeLocalPatch(patchPng,
+    await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).extract(crop).png().toBuffer(), foreground) : null;
+  const restored = (shipping: Buffer) => occluded ? { foreground: foregroundRecord(foreground!, occluded.restoredPixels, sha(shipping)) } : {};
   const bounded = isLocalPatchStrictVersion(input.contentVersion)
-    ? await composeBoundedLocalPatch(input.composedPng, crop, patchPng, mask, {
+    ? await composeBoundedLocalPatch(input.composedPng, crop, occluded?.png ?? patchPng, mask, {
       requireAligned: input.contentVersion === 12 && !playerReviewEnabled(),
       playerReview: input.contentVersion === 12 && playerReviewEnabled(),
       ...(hide.returnRect ? { returnRect: hide.returnRect } : {}),
@@ -453,7 +464,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     const shipping = await sharp(candidate).extract(crop).png().toBuffer();
     return { ...refusedRender(`quality-seam: ${seam.reason}`, renderCents),
       patchPng, shippingPng: shipping, judgedSha256: sha(shipping), seam, compositionPermission: bounded.compositionPermission,
-      compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION, replayed: bought.replayed };
+      compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION, replayed: bought.replayed, ...restored(shipping) };
   }
 
   if (isLocalPatchAdvisoryVersion(input.contentVersion)) {
@@ -464,7 +475,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     return { accepted: true, refusedBecause: null, stoppedReason: null, renderFault: null, needsOperator: false,
       patchPng, shippingPng: shipping, composedPng: candidate, seam, verdict: null, wireFault: null,
       ...(bounded ? { compositionPermission: bounded.compositionPermission, compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION } : {}),
-      promptVersion, judgedSha256: sha(shipping), renderCents, judgeCents: 0, costUnknown: false, replayed: bought.replayed };
+      promptVersion, judgedSha256: sha(shipping), renderCents, judgeCents: 0, costUnknown: false, replayed: bought.replayed, ...restored(shipping) };
   }
 
   const size = { width: meta.width ?? 0, height: meta.height ?? 0 };

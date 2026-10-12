@@ -5,6 +5,7 @@ import { childAgeDirection, validChildAge } from "../../domain/child-appearance"
 import type { LocalPatchHide, LocalPatchPose } from "../../domain/scene/local-patch-hides";
 import { isLocalPatchAgeVersion, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
 import { resolveLocalPatchRecoveryDirective, type LocalPatchRecoveryDirective } from "../../domain/scene/local-patch-recovery-directive";
+import { authoredLocalPatchForeground, type LocalPatchForeground } from "../../domain/scene/local-patch-foreground";
 import { localPatchExplicitUncertaintyChecks, type LocalPatchQualityContext } from "./local-patch-judge";
 
 /**
@@ -80,15 +81,21 @@ export const LOCAL_PATCH_AGE_BODY_PROMPT_VERSION = "local-patch-prompt/v16-age-b
  * held prop left floating; a taller child moved off its support), and the Great
  * Wall diabolo hide described as it is drawn. v16 stays exactly as tested. */
 export const LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION = "local-patch-prompt/v17-age-body-prop-support";
-export type LocalPatchPaintRecipe = "board-paint-v1" | "identity-body-v2" | "scene-integration-v3" | "scene-integration-v4" | "scene-integration-v5" | "scene-integration-v6";
-export type LocalPatchPromptRelease = "v15" | "v16" | "v17";
+/** Chosen explicitly (LOCAL_PATCH_PROMPT_RELEASE=v18) for fresh v12 rows: v17,
+ * plus an authored fixed foreground where a hide has one (`local-patch-foreground`).
+ * The painter is told the object is drawn back from the original, and every
+ * composition of these rows restores it. v17 stays exactly as rendered. */
+export const LOCAL_PATCH_FOREGROUND_PROMPT_VERSION = "local-patch-prompt/v18-fixed-foreground";
+export type LocalPatchPaintRecipe = "board-paint-v1" | "identity-body-v2" | "scene-integration-v3" | "scene-integration-v4" | "scene-integration-v5" | "scene-integration-v6" | "scene-integration-v7";
+export type LocalPatchPromptRelease = "v15" | "v16" | "v17" | "v18";
 /** Releases whose stated age alone shapes the body: their identities use style v5 and the strategy-first feedback. */
-export const isAgeBodyPromptRelease = (release: LocalPatchPromptRelease | undefined) => release === "v16" || release === "v17";
+export const isAgeBodyPromptRelease = (release: LocalPatchPromptRelease | undefined) => release === "v16" || release === "v17" || release === "v18";
 
 export function pinnedLocalPatchPromptVersion(existing: { promptVersion: string | null; attempts: number } | null, legacyVersion: string, contentVersion?: number,
   release: LocalPatchPromptRelease = "v15"): string {
   if (!existing) return contentVersion === INTEGRATED_COLLECTION_VERSION
-    ? release === "v17" ? LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION : release === "v16" ? LOCAL_PATCH_AGE_BODY_PROMPT_VERSION : LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION
+    ? release === "v18" ? LOCAL_PATCH_FOREGROUND_PROMPT_VERSION : release === "v17" ? LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION
+      : release === "v16" ? LOCAL_PATCH_AGE_BODY_PROMPT_VERSION : LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION
     : contentVersion === REFRESHED_COLLECTION_VERSION ? LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION : LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION;
   // Missing provenance on a historical row is not permission to change a paid question.
   return existing.promptVersion || legacyVersion;
@@ -96,6 +103,7 @@ export function pinnedLocalPatchPromptVersion(existing: { promptVersion: string 
 
 /** Normal generation and autonomous recovery must dispatch the same pinned recipe. */
 export function paintRecipeForPinnedPrompt(version: string | null): LocalPatchPaintRecipe | undefined {
+  if (version === LOCAL_PATCH_FOREGROUND_PROMPT_VERSION) return "scene-integration-v7";
   if (version === LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION) return "scene-integration-v6";
   if (version === LOCAL_PATCH_AGE_BODY_PROMPT_VERSION) return "scene-integration-v5";
   if (version === LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION) return "scene-integration-v4";
@@ -184,6 +192,7 @@ export function localPatchPrompt(input: LocalPatchPromptInput): string {
     if (!isLocalPatchAgeVersion(contentVersion)) throw new Error("LOCAL_PATCH: site recovery belongs only to the v9 age contract");
     recoveryText = resolveLocalPatchRecoveryDirective(input.hideId ?? "", input.recoveryDirective);
   }
+  if (input.paintRecipe === "scene-integration-v7") return foregroundIntegratedPrompt(input, recoveryText);
   if (input.paintRecipe === "scene-integration-v6") return ageBodyPropIntegratedPrompt(input, recoveryText);
   if (input.paintRecipe === "scene-integration-v5") return ageBodyIntegratedPrompt(input, recoveryText);
   if (input.paintRecipe === "scene-integration-v4") return referenceNeutralIntegratedPrompt(input, recoveryText);
@@ -357,6 +366,21 @@ function ageBodyPropIntegratedPrompt(input: LocalPatchPromptInput, recoveryText?
     occlusion: ageBodyPropPlacementText(input.placement.occlusion), comparators: ageBodyPropPlacementText(input.placement.comparators) };
   return ageBodyRequestDirections(referenceNeutralIntegratedPrompt({ ...input, ...(placement ? { placement } : {}) }, recoveryText))
     .concat(`\n${AGE_BODY_CONTRACT}\n${PROP_SUPPORT_CONTRACT}`);
+}
+
+/** The v18 sentence for a hide with an authored foreground. The composition
+ * restores the object whatever is painted there; the words keep the painter from
+ * moving or copying it (a copy outside the outline would survive as a double). */
+export function foregroundContract(foreground: LocalPatchForeground): string {
+  return `FIXED FOREGROUND: ${foreground.what} stand in front of this child's support. After painting, the original picture of them is drawn back over your result exactly as it is now, `
+    + "so keep them exactly where and how they are: never move, resize, shorten, copy or redraw them. The child stands on the support behind them, at their depth; they may hide the "
+    + "shoes and lower legs, which may continue below the editable envelope behind them. Never put the feet on top of them.";
+}
+
+/** v18: v17's request, plus the fixed-foreground sentence where the hide has an outline. */
+function foregroundIntegratedPrompt(input: LocalPatchPromptInput, recoveryText?: string): string {
+  const foreground = input.hideId ? authoredLocalPatchForeground(input.hideId) : null;
+  return ageBodyPropIntegratedPrompt(input, recoveryText) + (foreground ? `\n${foregroundContract(foreground)}` : "");
 }
 
 function integratedScenePrompt(input: LocalPatchPromptInput, recoveryText?: string): string {

@@ -14,6 +14,8 @@ import { SELF_REPAIR_COMPOSITION_VERSION, SELF_REPAIR_VERSION, selfRepairDecisio
 import { NEIGHBOR_QUADRANTS, RETURN_EDGES } from "./local-patch-integration-evidence";
 import { hasDualVisualReview, isDualVisualReviewVersion } from "./visual-review-release";
 import { allowedDualPublication } from "./local-patch-dual-publication";
+import { authoredLocalPatchForeground } from "../../domain/scene/local-patch-foreground";
+import { foregroundBound } from "./local-patch-foreground";
 
 export const LOCAL_PATCH_PUBLICATION_POLICY = "publish-with-visual-warnings/v1";
 export const LOCAL_PATCH_STRICT_PUBLICATION_POLICY = "publish-with-severe-quality-guard/v2";
@@ -222,7 +224,21 @@ export async function hasLocalPatchPublicationPolicy(c: Pick<Container, "db">, i
     && row.entityType === "Game" && row.entityId === input.gameId && row.metaJson === JSON.stringify(recordOf(input));
 }
 
+/** A v18 row with an authored outline publishes only with a record of that outline
+ * on this exact image; every other row must carry none. Rows of hides without an
+ * outline that claim none are not looked up at all. */
+export async function localPatchForegroundPublishable(db: Prisma.TransactionClient, input: LocalPatchPublicationBinding): Promise<boolean> {
+  let receipt: { foreground?: unknown } | null;
+  try { receipt = JSON.parse(input.judgeJson ?? "null"); } catch { receipt = null; }
+  if (!authoredLocalPatchForeground(input.hideId) && receipt?.foreground === undefined) return true;
+  const boardId = /^([a-z]+)-v12-[123]$/.exec(input.hideId)?.[1];
+  const hide = input.sceneVersion === 12 && boardId ? localPatchBoardForVersion(boardId, 12)?.hides.find(h => h.id === input.hideId) : undefined;
+  const row = await db.targetVariantAsset.findUnique({ where: { id: input.variantId }, select: { promptVersion: true } });
+  return !!hide && !!row && foregroundBound(receipt, hide, row.promptVersion, input.imageSha256);
+}
+
 async function allowedForGame(db: Prisma.TransactionClient, input: LocalPatchPublicationBinding) {
+  if (!await localPatchForegroundPublishable(db, input)) return false;
   if (await hasDualVisualReview(db, input.gameId)) return allowedDualPublication(db, input);
   // Never apply a prospective receipt to a game without its immutable pin.
   try { if (isDualVisualReviewVersion(JSON.parse(input.judgeJson ?? "null")?.boardReview?.version)) return false; }

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { LOCAL_PATCH_BOARD, LOCAL_PATCH_CROP } from "../../domain/scene/local-patch-hides";
 import { analysePatchSeam, type PatchRegion, type SeamReport } from "./local-patch-seam";
 import type { PatchGeometry } from "./patch";
+import { foregroundRecord, type AppliedForeground, type LocalPatchForegroundRecord } from "./local-patch-foreground";
 
 export const LOCAL_PATCH_REPAIR_COMPOSITION_VERSION = "paid-mask-join/v1";
 const GUARD = 12, FEATHER_RADIUS = 3, PIXELS = LOCAL_PATCH_CROP.width * LOCAL_PATCH_CROP.height;
@@ -28,12 +29,17 @@ export type PaidPatchJoinInput = {
   readonly returnWindow: PatchRegion;
   readonly protectedCore: PatchRegion;
   readonly faceRect: PatchRegion;
+  /** A v18 row's authored outline: the paid pixels under it are replaced by the board's
+   * before the join, exactly as in every other composition of that row. */
+  readonly foreground?: AppliedForeground;
 };
 export type PaidPatchJoinResult = {
   readonly version: typeof LOCAL_PATCH_REPAIR_COMPOSITION_VERSION;
   readonly candidatePng: Buffer;
   readonly candidateSha256: string;
   readonly geometry: PatchGeometry;
+  /** Present exactly when an outline was restored, bound to `candidateSha256`. */
+  readonly foreground?: LocalPatchForegroundRecord;
   readonly audit: {
     readonly state: "UNREVIEWED";
     readonly sourceSha256: string; readonly rawSha256: string; readonly resizedRawSha256: string; readonly alphaSha256: string;
@@ -91,6 +97,16 @@ export async function recomputePaidPatchJoin(input: PaidPatchJoinInput): Promise
     sharp(input.alphaPng, options).toColourspace("b-w").raw().toBuffer(),
   ]);
   if (alpha.length !== PIXELS || original.length !== PIXELS * 4 || paid.length !== PIXELS * 4) fail("decoded channel count changed");
+  let restoredPixels = 0;
+  if (input.foreground) {
+    if (input.foreground.alpha.length !== PIXELS) fail("foreground coverage must be 512x768");
+    for (let p = 0; p < PIXELS; p++) {
+      const a = input.foreground.alpha[p]!;
+      if (!a) continue;
+      restoredPixels++;
+      for (let channel = 0; channel < 3; channel++) paid[p * 4 + channel] = Math.round((original[p * 4 + channel]! * a + paid[p * 4 + channel]! * (255 - a)) / 255);
+    }
+  }
   const hard = new Uint8Array(PIXELS), positive = new Uint8Array(PIXELS);
   for (let p = 0; p < PIXELS; p++) {
     const x = p % 512, y = Math.floor(p / 512), value = alpha[p]!;
@@ -129,7 +145,9 @@ export async function recomputePaidPatchJoin(input: PaidPatchJoinInput): Promise
     hitRect: { x: (crop.left + protectedCore.left) / boardSize.width, y: (crop.top + protectedCore.top) / boardSize.height, w: protectedCore.width / boardSize.width, h: protectedCore.height / boardSize.height },
     anchor: { x: (crop.left + faceRect.left + faceRect.width / 2) / boardSize.width, y: (crop.top + faceRect.top) / boardSize.height },
   };
-  return { version: LOCAL_PATCH_REPAIR_COMPOSITION_VERSION, candidatePng, candidateSha256: digest(candidatePng), geometry,
+  const candidateSha256 = digest(candidatePng);
+  return { version: LOCAL_PATCH_REPAIR_COMPOSITION_VERSION, candidatePng, candidateSha256, geometry,
+    ...(input.foreground ? { foreground: foregroundRecord(input.foreground, restoredPixels, candidateSha256) } : {}),
     audit: { state: "UNREVIEWED", sourceSha256: digest(input.beforePng), rawSha256: digest(input.rawPng), resizedRawSha256: digest(raw), alphaSha256: digest(input.alphaPng),
       crop: { ...crop }, returnWindow: { ...returnWindow }, protectedCore: { ...protectedCore }, protectedWithGuard, faceRect: { ...faceRect }, originalRawSeamReport,
       protectedGuardPx: GUARD, maximumFeatherWidthPx: 6, blendedPixels, paidPixels, originalPixels, outsideChangedPixels: 0, protectedChangedPixels: 0 } };

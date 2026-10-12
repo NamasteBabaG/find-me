@@ -19,6 +19,7 @@ import { sameChargeEvidence } from "./world-budget";
 import { sha256Bytes } from "./fixed-sprite";
 import { SELF_REPAIR_COMPOSITION_VERSION } from "../../domain/scene/local-patch-self-repair";
 import { playerReviewEnabled, PLAYER_REVIEW_MODE } from "./local-patch-player-review";
+import { foregroundForPinnedPrompt, foregroundRecord, occludeLocalPatch } from "./local-patch-foreground";
 
 export const LOCAL_PATCH_RECOMPOSE_ACTION = "local-patch:recomposed-from-paid-render";
 const hash = (value: unknown) => sha256Bytes(Buffer.from(JSON.stringify(value)));
@@ -77,6 +78,9 @@ export async function recomposeLocalPatchHide(c: Container, input: {
   demand(`public${definition.art.base}` === board.art, "The original authored artwork changed");
   const original = await (deps.readBoardArt ?? readShippedBoardArt)(board.art, definition.art.sha256 ?? "");
   const crop = cropOf(hide), store = new LocalPatchRetainedPurchaseStore(c, gameId, budget);
+  // A v18 row is recomposed exactly as it was painted: its outline is restored first.
+  const foreground = foregroundForPinnedPrompt(hide, row.promptVersion);
+  const boardCrop = foreground ? await sharp(original, { limitInputPixels: 8_294_400 }).extract(crop).png().toBuffer() : null;
   const inspected: Record<string, unknown>[] = [];
   const inspect = async (attempt: number, required: boolean) => {
     const requestKey = `${hide.id}:${hide.pose}:render:${attempt}`;
@@ -107,12 +111,13 @@ export async function recomposeLocalPatchHide(c: Container, input: {
     const rawMeta = await sharp(raw, { limitInputPixels: 8_294_400 }).metadata();
     demand(rawMeta.format === "png" && (rawMeta.pages ?? 1) === 1, "The retained image is not one PNG");
     const patch = await sharp(raw, { limitInputPixels: 8_294_400 }).resize(LOCAL_PATCH_CROP.width, LOCAL_PATCH_CROP.height, { fit: "fill" }).png().toBuffer();
-    const result = await composeBoundedLocalPatch(original, crop, patch, maskForHide(hide), {
+    const occluded = foreground ? await occludeLocalPatch(patch, boardCrop!, foreground) : null;
+    const result = await composeBoundedLocalPatch(original, crop, occluded?.png ?? patch, maskForHide(hide), {
       playerReview: scene.sceneVersion === 12 && playerReviewEnabled(),
     });
     inspected.push({ requestKey, payloadSha256: retained.payloadSha256, usable: result.usable,
       report: result.report, compositionPermission: result.compositionPermission });
-    return { requestKey, retained, result };
+    return { requestKey, retained, result, restoredPixels: occluded?.restoredPixels ?? 0 };
   };
   // Latest first, then at most the already-paid earlier attempts. Keep the row's
   // high-water attempt unchanged even when the selected pixels came from #1.
@@ -123,7 +128,7 @@ export async function recomposeLocalPatchHide(c: Container, input: {
     const prior = await inspect(attempt, false);
     if (prior?.result.usable) { selected = prior; break; }
   }
-  const { requestKey, retained, result } = selected;
+  const { requestKey, retained, result, restoredPixels } = selected;
   const recompositionSelection = {
     reason: selected !== latest ? "latest-composition-refused-earlier-paid-image-usable"
       : latest.result.usable ? "latest-paid-image-usable" : "latest-composition-refused-no-earlier-usable",
@@ -144,6 +149,7 @@ export async function recomposeLocalPatchHide(c: Container, input: {
     reviewState: result.usable ? "pending-board-review" : "composition-refused", renderFault: result.usable ? null : `quality-seam: ${result.report.reason}`,
     renderPurchase: { requestKey, operationFingerprint: retained.operationFingerprint, payloadSha256: retained.payloadSha256 },
     recompositionSelection,
+    ...(foreground ? { foreground: foregroundRecord(foreground, restoredPixels, imageSha256) } : {}),
   });
   await c.db.$transaction(async tx => {
     await fenceLocalPatchImages(tx, gameId); await deps.fence(tx);

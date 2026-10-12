@@ -15,10 +15,11 @@ import { prepareLocalPatchIdentityReferences } from "./local-patch-identity-refe
 import { fenceLocalPatchImages, LocalPatchRetainedPurchaseStore } from "./local-patch-lifecycle";
 import { LOCAL_PATCH_PROVIDER, readShippedBoardArt, type LocalPatchHideDeps } from "./local-patch-hide";
 import { renderLocalPatchHide, RETAINED_RENDER_VERSION } from "./local-patch-render";
-import { ageBodyPlacementText, ageBodyPropPlacementText, LOCAL_PATCH_AGE_BODY_PROMPT_VERSION, LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION,
+import { ageBodyPlacementText, ageBodyPropPlacementText, LOCAL_PATCH_AGE_BODY_PROMPT_VERSION, LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_FOREGROUND_PROMPT_VERSION,
   paintRecipeForPinnedPrompt } from "./local-patch-prompt";
 import { LOCAL_PATCH_JUDGE, requestJudgeWire, isTheModelWeAsked, type LocalPatchJudgeResult } from "./local-patch-judge";
 import { recomputePaidPatchJoin } from "./local-patch-repair-compose";
+import { foregroundForPinnedPrompt } from "./local-patch-foreground";
 import { integrationDiagnosisPrompt } from "./local-patch-integration-diagnosis";
 import { PLAYER_REVIEW_MODE } from "./local-patch-player-review";
 import { localPatchPublicationGeometryHash } from "./local-patch-publication-policy";
@@ -175,9 +176,10 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
           "CONTINUOUS FAILED player context, original plus ONLY this shipping patch; follow crossing neighbours through their complete heads and bodies");
       }
     }
-    // A v16/v17 row is diagnosed in its own wording: the stated age, and the
-    // support sentence as its painter read it. Older rows keep their exact question.
-    const propSupport = row.promptVersion === LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION;
+    // A v16-v18 row is diagnosed in its own wording: the stated age, and the
+    // support sentence as its painter read it (v18 reads v17's). Older rows keep
+    // their exact question. A v18 outline is restored after any join the diagnosis chooses.
+    const propSupport = row.promptVersion === LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION || row.promptVersion === LOCAL_PATCH_FOREGROUND_PROMPT_VERSION;
     const ageBody = propSupport || row.promptVersion === LOCAL_PATCH_AGE_BODY_PROMPT_VERSION;
     const support = hide.placement?.support ?? board.ground;
     const prompt = scene.sceneVersion === 12 ? integrationDiagnosisPrompt({ ageYears: child.ageYears, pose: hide.pose,
@@ -261,9 +263,11 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
     Math.max(0, Math.min(x - r.left, y - r.top, r.left + r.width - 1 - x, r.top + r.height - 1 - y) / 6)));
   const alphaPng = await sharp(alpha, { raw: { width: 512, height: 768, channels: 1 } }).toColourspace("b-w").png().toBuffer();
   let joined: Awaited<ReturnType<typeof recomputePaidPatchJoin>>;
+  // A v18 row's outline is restored in the repair join too, never only in its first painting.
+  const foreground = foregroundForPinnedPrompt(hide, row.promptVersion);
   try {
     joined = await recomputePaidPatchJoin({ beforePng: original, rawPng: raw, alphaPng, crop, boardSize: { width: 3840, height: 2160 },
-      returnWindow: r, protectedCore: decision.protectedCore, faceRect: decision.faceRect });
+      returnWindow: r, protectedCore: decision.protectedCore, faceRect: decision.faceRect, ...(foreground ? { foreground } : {}) });
   } catch (error) {
     if (!(error instanceof Error) || !error.message.startsWith("LOCAL_PATCH_REPAIR_COMPOSE:")) throw error;
     await save({ phase: "rejected", sourceKeys, imageCostCents, feedback: error.message.slice(0, 1200),
@@ -291,7 +295,9 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
       reviewState: "pending-board-review", compositionVersion: SELF_REPAIR_COMPOSITION_VERSION,
       judgedSha256: joined.candidateSha256, geometrySha256: localPatchPublicationGeometryHash(geometry),
       hide: hide.id, pose: hide.pose, seam: joined.audit.originalRawSeamReport, renderFault: null,
-      selfRepair: { ...active, phase: "awaiting-review", sourceKeys, imageCostCents }, recoveryComposition: joined.audit };
+      selfRepair: { ...active, phase: "awaiting-review", sourceKeys, imageCostCents }, recoveryComposition: joined.audit,
+      // Bound to this candidate; an earlier picture's record never survives the join.
+      foreground: joined.foreground };
     await tx.targetVariantAsset.update({ where: { id: row.id }, data: { status: "GENERATED", lastError: null, assetId, ...geometry,
       costCents: row.costCents + Math.ceil(imageCostCents), judgeJson: JSON.stringify(receipt),
       rejectedAssetIdsJson: JSON.stringify([...new Set([...rejected, ...(row.assetId ? [row.assetId] : [])])]) } });

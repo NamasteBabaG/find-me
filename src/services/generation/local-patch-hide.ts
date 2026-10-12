@@ -18,7 +18,7 @@ import { identityStyleCatalogSha256 } from "./local-patch-identity-catalog";
 import { assertGenerationSpendAllowed, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { localPatchGeometry, type LocalPatchGeometry } from "./local-patch-geometry";
 import { renderLocalPatchHide, type LocalPatchRenderDeps } from "./local-patch-render";
-import { LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_CANONICAL_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION, LOCAL_PATCH_INTEGRATED_PROMPT_VERSION, LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION, LOCAL_PATCH_AGE_BODY_PROMPT_VERSION, LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION, LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION, pinnedLocalPatchPromptVersion, paintRecipeForPinnedPrompt, localPatchRepairChecks, type LocalPatchRepairCheck } from "./local-patch-prompt";
+import { LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_CANONICAL_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION, LOCAL_PATCH_INTEGRATED_PROMPT_VERSION, LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION, LOCAL_PATCH_AGE_BODY_PROMPT_VERSION, LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION, LOCAL_PATCH_FOREGROUND_PROMPT_VERSION, LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION, pinnedLocalPatchPromptVersion, paintRecipeForPinnedPrompt, localPatchRepairChecks, type LocalPatchRepairCheck } from "./local-patch-prompt";
 import { prepareLocalPatchIdentityReferences } from "./local-patch-identity-reference";
 import { buildBoardPeopleStyle } from "./board-wizard-identity-style";
 import type { PatchGeometry } from "./patch";
@@ -298,7 +298,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   // Historical recipes require their original scene/reference contract; do
   // not guess one when data disagrees, even if no receipt has yet been bought.
   if (!(scene.sceneVersion === 12 && (promptVersion === LOCAL_PATCH_INTEGRATED_PROMPT_VERSION || promptVersion === LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION
-    || promptVersion === LOCAL_PATCH_AGE_BODY_PROMPT_VERSION || promptVersion === LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION)) && !(scene.sceneVersion === 11 && promptVersion === LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION) && promptVersion !== LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION && promptVersion !== legacyPromptVersion) {
+    || promptVersion === LOCAL_PATCH_AGE_BODY_PROMPT_VERSION || promptVersion === LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION || promptVersion === LOCAL_PATCH_FOREGROUND_PROMPT_VERSION)) && !(scene.sceneVersion === 11 && promptVersion === LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION) && promptVersion !== LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION && promptVersion !== legacyPromptVersion) {
     return { ...base, state: "stopped", reason: `Prompt provenance conflict: stored ${promptVersion}, scene requires ${legacyPromptVersion}; operator review required` };
   }
 
@@ -411,7 +411,8 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
       rejectedAssetIdsJson: rejectedIds.length ? JSON.stringify(rejectedIds) : null,
       judgeJson: JSON.stringify({ ...(adaptiveRecovery ? { adaptiveRecovery, judgedSha256: attemptResult.judgedSha256 } : {}), verdict: attemptResult.verdict, wireFault: attemptResult.wireFault, seam: attemptResult.seam, promptVersion: attemptResult.promptVersion,
         ...(isLocalPatchStrictVersion(scene.sceneVersion) ? { renderFault: attemptResult.renderFault, compositionPermission: attemptResult.compositionPermission,
-          compositionVersion: attemptResult.compositionVersion, hide: hide.id, pose: hide.pose } : {}) }),
+          compositionVersion: attemptResult.compositionVersion, hide: hide.id, pose: hide.pose } : {}),
+        ...(attemptResult.foreground ? { foreground: attemptResult.foreground } : {}) }),
       } });
     });
     const exhaustedNow = attempt >= attemptLimit;
@@ -450,6 +451,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     const judgeJson = JSON.stringify({ ...(adaptiveRecovery ? { adaptiveRecovery } : {}), verdict: attemptResult.verdict, seam: attemptResult.seam, judgedSha256: attemptResult.judgedSha256,
       ...(isLocalPatchStrictVersion(scene.sceneVersion) ? { compositionPermission: attemptResult.compositionPermission, compositionVersion: attemptResult.compositionVersion } : {}),
       ...(isLocalPatchAdvisoryVersion(scene.sceneVersion) ? { wireFault: attemptResult.wireFault, reviewState: "pending-board-review", geometrySha256: localPatchPublicationGeometryHash(geometry) } : {}),
+      ...(attemptResult.foreground ? { foreground: attemptResult.foreground } : {}),
       geometryBasis: measured.basis, measuredFraction: Number(measured.measuredFraction.toFixed(4)), hide: hide.id, pose: hide.pose });
     await tx.targetVariantAsset.update({ where: { id: row.id }, data: {
       assetId,
