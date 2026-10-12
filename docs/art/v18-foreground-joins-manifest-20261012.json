@@ -1,0 +1,66 @@
+{
+  "manifest": "v18-foreground-joins/v1",
+  "date": "2026-10-12",
+  "purpose": "Codex's paid-review brief (docs/CODEX_V17_PAID_RENDER_REVIEW_20261012.md, item 5): test both sides. First, the revised quality question (dual release v3, object-joins/v1) must reject the saved broken New York image and keep passing coherent saved images. Then, and only if it does, three new New York paintings under release v18 (the taxi sign and roof restored from the board) must stay natural. Not authorized: it needs Guy's own spend approval, and it is a new run identity, never the completed v17 run's.",
+  "run": "pv18-20261012",
+  "release": { "promptVersion": "local-patch-prompt/v18-fixed-foreground", "paintRecipe": "scene-integration-v7", "default": "v15",
+    "foreground": { "version": "local-patch-foreground/v1", "hideId": "newyork-v12-1",
+      "polygonSha256": "4be0c68ac7ca32ebbcd5790b538a573d88a9f9785b235d55a7c1688bcb3a640f",
+      "alphaSha256": "7f2e115b8961a46ad647195fef56bd06ebacc2c2452098687b9b5cc737cd2f67", "restoredPixels": 10925 } },
+  "reviews": { "release": "local-patch-dual-high/v3", "qualityQuestion": "object-joins/v1", "qualityReader": "quality-read/v1-located-600",
+    "continuityReader": "continuity-read/v1-output-bounded", "effort": "high" },
+  "identity": {
+    "rule": "Reuse the v5 identity sheets bought on 12 October, byte for byte. Refuse to run if a sheet's SHA-256 differs.",
+    "style": "board-matched-identity/v5",
+    "sheets": {
+      "A-a6": "604b97b04e862de569e7cacceb17a07b271fbefb761755b24b42be7e75b41799",
+      "A-a10": "8735b95fad64789e68705fd63a605fade466f524c03f8b97b7587a10b066c6ea",
+      "B-a6": "988cdf7194c0c14cb7da31ba8ab0aa2c6418f09bea44dbbaf8b9bf9284757859",
+      "B-a10": "903435d931a3a76d1d6240917be61903f48be045279bcb13c9d0b18b5d995ad5"
+    }
+  },
+  "qualification": {
+    "rule": "One Opus HIGH review per saved picture, with the v3 question, on the exact saved v17 shipping crop composed on the board through the product's evidence path. No painting is bought. Refuse to run if a saved picture's SHA-256 differs.",
+    "source": "work/private-v16-controlled-render-20261012/renders-v17/<case>-shipping.png (git-ignored)",
+    "pictures": [
+      { "id": "B-a10-newyork-v12-1", "sha256": "8987d91bdd619bfc749ed72a7b129d214ce817c28d36c0d58c0fa701050b6fbe", "expect": "reject",
+        "why": "A new taxi sign joined to the original's lower half at the bottom join: lettering cut, doubled left edge. v17's Opus passed it." },
+      { "id": "B-a6-newyork-v12-1", "sha256": "7a0d1c84977cdc7a12e98744819cd8e47716488ed74dcac9c7298050eb786df1", "expect": "pass",
+        "why": "Same hide, sign coherent and unchanged: the question must not reject a sound join on the same object." },
+      { "id": "A-a6-greatwall-v12-1", "sha256": "e164056caf36f473d60c2c202ca1c0541e640e9bee3aba97cf21b6b54813fb84", "expect": "pass",
+        "why": "Another hide with a replaced bystander and a coherently repainted toy: a coherent change must still pass." },
+      { "id": "A-a10-newyork-v12-1", "sha256": "7f5d3801d52c7e0a0120b7811a37a0bd723c713b0c197151e8f09a52b2af809b", "expect": "observe",
+        "why": "Shortened sign: a coherent change by Guy's policy, with a long lower edge Codex flagged for scrutiny. Recorded, never gating." }
+    ],
+    "gate": "Paint nothing unless B-a10 is not acceptable with a located pictureWhole or severeSeam fault or a failed bottom boundary, and both controls are acceptable. An unreadable answer is not a rejection: it stops the run."
+  },
+  "cases": [
+    { "id": "B-a10-newyork-v12-1", "why": "v17 shipped the sign seam; v16 stood on the sign" },
+    { "id": "A-a10-newyork-v12-1", "why": "v17 shortened the sign to make room for a shoe" },
+    { "id": "B-a6-newyork-v12-1", "why": "control: the shorter child never touched the sign" }
+  ],
+  "pass": [
+    "Qualification: the gate above.",
+    "Every new painting ships the board's own sign and roof: its receipt names the pinned outline, 10925 restored pixels, and the shipped image.",
+    "No new painting shows a second, ghost or partial sign outside the outline, and no shoe stands on top of the sign (eye, and both reviewers).",
+    "Both reviewers accept each new painting; a rejection of a natural painting is recorded as a false rejection of the v3 question, not hidden.",
+    "Identity, gender and hair as in the v17 paintings; the 10-year-olds visibly taller than the 6-year-old."
+  ],
+  "estimate": {
+    "basis": "12 October settled amounts (conservative estimates from usage): painting at most $0.0478; Opus HIGH at $4/M input and $20/M output tokens, 12,381-13,520 input and 1,407-2,603 output tokens for the 8-image question; the four join images add about 3,500 input tokens; Sol HIGH at most $0.0408.",
+    "items": { "qualificationOpusReviews": 4, "paintings": 3, "opusReviews": 3, "solReviews": 3 },
+    "perItemUsd": { "opusV3Expected": 0.099, "opusV3Upper": 0.124, "painting": 0.048, "solUpper": 0.041 },
+    "expectedUsd": 0.95,
+    "upperUsd": 1.14,
+    "reservations": { "paintingMicroUsd": 120000, "reviewMicroUsd": 300000 },
+    "peakUpperUsd": 1.40,
+    "peakBasis": "Sequential purchases: the highest committed total is the settled total before the last Sol review plus its $0.30 reservation (upper 1.093 + 0.30).",
+    "capUsd": 1.5,
+    "ifGateFails": "Stops after the four qualification reviews, about $0.40-0.50 settled."
+  },
+  "notTested": [
+    "More than one painting per case; hides other than these two; other foreground objects.",
+    "Repairs: offline tests only (local-patch-foreground.test.ts covers the self-repair join).",
+    "A real photograph turned into an illustration; any real child, game, the live queue or Postgres."
+  ]
+}
