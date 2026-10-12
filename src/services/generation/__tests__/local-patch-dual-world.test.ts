@@ -27,7 +27,8 @@ import { nextPendingGame } from "../queue";
 import { pinVisualReviewRelease } from "../visual-review-release";
 import { sha256Bytes } from "../fixed-sprite";
 import { bill, paintedCrop, paintedOk, seedApprovedGame } from "./local-patch-fixtures";
-import { asDeployedReaderRefusal, dualReviewer, longAnswer, prose, spendTo } from "./local-patch-dual-fixtures";
+import { asDeployedReaderRefusal, atEvidenceRound, dualReviewer, longAnswer, prose, spendTo } from "./local-patch-dual-fixtures";
+import { localPatchEvidenceRecovery } from "../local-patch-review-recovery";
 
 const fakes = vi.hoisted(() => ({ testers: [] as string[], release: "v15" as "v15" | "v16" }));
 vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: "qa", GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: 0, LOCAL_PATCH_PLAYER_REVIEW: "on",
@@ -144,11 +145,20 @@ describe("a whole v12 world under two independent HIGH reviews", () => {
       if (reviewed++ >= 16) break;
       for (let question = 0; question < 2; question++) await reviewLocalPatchBoard(container, { gameId, sceneId: `gsc-${gameId}-${board.board}` }, { fence: async () => {} });
     }
-    for (const row of (await rows(gameId)).filter(row => row.status === "GENERATED" && JSON.parse(row.judgeJson!).boardReview?.dual))
-      await asDeployedReaderRefusal(db, gameId, row);
+    // Refused by the deployed reader at the evidence rounds those answers had
+    // reached: the loop asked again and again, one candidate up to round nine.
+    // Every one is still its FIRST picture: evidence rounds are not image attempts.
+    const ROUNDS = [1, 3, 4, 9], roundOf = new Map<string, number>();
+    for (const [index, row] of (await rows(gameId)).filter(row => row.status === "GENERATED" && JSON.parse(row.judgeJson!).boardReview?.dual).entries()) {
+      roundOf.set(row.id, ROUNDS[index % ROUNDS.length]!);
+      await atEvidenceRound(db, await asDeployedReaderRefusal(db, gameId, row), roundOf.get(row.id)!);
+    }
     const refused = HIDES.slice(0, 16).map(h => h.id), waiting = HIDES.slice(16).map(h => h.id);
     let all = await rows(gameId);
     expect(refused.every(id => rowOf(all, id)?.lastError === "quality-unresolved: integration-review-unreadable")).toBe(true);
+    expect(roundOf.size).toBe(16); expect(refused.every(id => rowOf(all, id)!.attempts === 1)).toBe(true);
+    // Rounds four and nine have no paid question left; only a free reading can decide them.
+    expect(all.filter(row => (roundOf.get(row.id) ?? 0) >= 4).every(row => localPatchEvidenceRecovery(row)?.exhausted)).toBe(true);
     expect(waiting.every(id => JSON.parse(rowOf(all, id)!.judgeJson!).reviewState === "pending-board-review")).toBe(true);
     expect(await published(gameId)).toBe(0);
     // The money as it stood: the four-dollar ceiling refused, the automatic five-dollar extension ran, $4.701771 committed.
@@ -188,6 +198,8 @@ describe("a whole v12 world under two independent HIGH reviews", () => {
     for (const id of refused) {
       const row = rowOf(all, id)!, receipt = JSON.parse(row.judgeJson!);
       expect(row.status).toBe("GENERATED"); expect(receipt.boardReview.dual.continuity.reading).toMatchObject({ disposition: "pass", reason: "pass" });
+      // Decided at the round it had reached, on its first picture.
+      expect(row.attempts).toBe(1); expect(receipt.boardReview.evidenceReviewAttempt).toBe(roundOf.get(row.id));
     }
     expect(await published(gameId)).toBe(16);
     // The 11 are neither approved on the strength of the 16 nor dropped: byte-for-byte unchanged.

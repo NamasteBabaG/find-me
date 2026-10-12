@@ -54,6 +54,20 @@ export async function spendTo(c: Container, gameId: string, committedMicroUsd: n
 }
 
 /**
+ * The same refusal after `round` evidence rounds: the deployed loop reached
+ * nine, and both persisted counters belong to that round. Evidence rounds are
+ * questions about ONE picture; the row's `attempts` (pictures painted) is not
+ * touched, and the paid answers stay exactly the ones bought.
+ */
+export async function atEvidenceRound(db: PrismaClient, row: TargetVariantAsset, round: number) {
+  const receipt = JSON.parse(row.judgeJson!);
+  receipt.boardReview.evidenceReviewAttempt = round;
+  receipt.boardReview.dual.continuity.attempt = round;
+  await db.targetVariantAsset.update({ where: { id: row.id }, data: { judgeJson: JSON.stringify(receipt) } });
+  return db.targetVariantAsset.findUniqueOrThrow({ where: { id: row.id } });
+}
+
+/**
  * The row exactly as the deployed code (ee74b6c3) wrote it after reading this
  * same paid answer with its 600-character reader: unreadable, no reader named,
  * not published. Only the reading changes; the paid evidence is the real one.

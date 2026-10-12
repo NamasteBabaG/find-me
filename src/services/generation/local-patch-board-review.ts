@@ -401,7 +401,12 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
       const reviewOnly = extraPlan?.reviewOnly.some(entry => entry.rowId === current.id);
       const evidenceOnly = request.reviewScope === "ready-only/v1" && (localPatchEvidenceRecovery(e.row)?.retry
         || request.assessmentMode === PLAYER_REVIEW_MODE && needsPlayerReview(e.row));
-      demand((current.status === "GENERATED" || (reviewOnly || evidenceOnly) && current.status === "FAILED") && current.assetId === e.asset.id && current.attempts === e.row.attempts
+      // A verified reading of an answer already paid for decides the round it
+      // re-reads, whatever that round's number. The allowance to ASK another
+      // question (spent by historical rounds that reached nine) is not what
+      // admits it, since nothing is asked; every binding guard below still is.
+      const retainedOnly = options.decideRetained === true && evaluated?.salvaged === true && localPatchRetainedAnswerUndecided(e.row);
+      demand((current.status === "GENERATED" || (reviewOnly || evidenceOnly || retainedOnly) && current.status === "FAILED") && current.assetId === e.asset.id && current.attempts === e.row.attempts
         && current.judgeJson === e.row.judgeJson
         && localPatchPublicationGeometryHash(current) === e.geometrySha256, "Target changed while its board was reviewed");
       if (protectedRows.has(e.row.id)) {
@@ -453,9 +458,9 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
       await tx.targetVariantAsset.update({ where: { id: e.row.id }, data: { judgeJson, ...(rejected ? {
         status: "FAILED", lastError: `quality-${disposition.state}: ${disposition.faults.join("; ") || "Required quality evidence is unresolved"}${note}`.slice(0, 500),
         rejectedAssetIdsJson: JSON.stringify([...new Set([...retainedIds, e.asset.id])]),
-      } : reviewOnly || evidenceOnly ? { status: "GENERATED", lastError: null } : {}) } });
+      } : reviewOnly || evidenceOnly || retainedOnly ? { status: "GENERATED", lastError: null } : {}) } });
       if (rejected) await tx.targetInstance.update({ where: { id: e.row.targetInstanceId }, data: { status: "FAILED" } });
-      else if (reviewOnly || evidenceOnly) await tx.targetInstance.update({ where: { id: e.row.targetInstanceId }, data: { status: "GENERATED" } });
+      else if (reviewOnly || evidenceOnly || retainedOnly) await tx.targetInstance.update({ where: { id: e.row.targetInstanceId }, data: { status: "GENERATED" } });
       if (!rejected) await recordLocalPatchPublicationPolicy(tx, { gameId: game.id, sceneVersion: scene.sceneVersion, hideId: e.hide.id,
         variantId: e.row.id, attempts: e.row.attempts, identityAssetId: identity.id, identitySha256: sha256Bytes(sheet),
         assetId: e.asset.id, imageSha256: e.imageSha256, geometrySha256: e.geometrySha256, judgeJson });

@@ -33,7 +33,7 @@ import { pinVisualReviewRelease, hasDualVisualReview, dualVisualReviewVersion, D
   type DualVisualReviewVersion } from "../visual-review-release";
 import { CONTINUITY_READER_BOUNDED, CONTINUITY_READER_CROWD, CONTINUITY_READER_STRICT } from "../../../domain/scene/local-patch-body-continuity";
 import type { TargetVariantAsset } from "@prisma/client";
-import { asDeployedReaderRefusal, longAnswer, prose, publicationBinding, spendTo } from "./local-patch-dual-fixtures";
+import { asDeployedReaderRefusal, atEvidenceRound, longAnswer, prose, publicationBinding, spendTo } from "./local-patch-dual-fixtures";
 import { allowedDualPublication } from "../local-patch-dual-publication";
 import { localPatchPublicationGeometryHash } from "../local-patch-publication-policy";
 import { createDraft } from "../../create-flow.service";
@@ -685,4 +685,99 @@ describe("v12 ready appearances have independent paid review and publication bin
     expect(preparationState({ status: "TARGETS_GENERATING", updatedAt: new Date(),
       job: await db.generationJob.findUniqueOrThrow({ where: { id: `job_${s.gameId}` } }), automaticRecovery: true })).toBe("attention");
   }, 120000);
+});
+
+describe("Codex independent incident recovery", () => {
+  it.each([4, 9])("re-reads a paid legacy answer at exhausted round %i without a new purchase", async round => {
+    const s = await dualSeed(`codex-legacy-round-${round}`, hideId => longAnswer(hideId, 2169, 2232, 655));
+    await s.run(); await s.run();
+    const legacy = await asDeployedReaderRefusal(db, s.gameId, (await rows(s.gameId))[0]!);
+    const receipt = JSON.parse(legacy.judgeJson!);
+    // The deployed loop could reach nine. Both persisted counters belong to
+    // that historical round, before the corrected reader was introduced.
+    receipt.boardReview.evidenceReviewAttempt = round;
+    receipt.boardReview.dual.continuity.attempt = round;
+    await db.targetVariantAsset.update({ where: { id: legacy.id }, data: { judgeJson: JSON.stringify(receipt) } });
+    const exhausted = (await rows(s.gameId))[0]!;
+    expect(localPatchEvidenceRecovery(exhausted)).toMatchObject({ retry: false, exhausted: true });
+    const worldId = boardWizardWorldId(s.gameId);
+    const ledger = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } });
+    const calls = s.request.mock.calls.length;
+    await expect(reviewLocalPatchBoard(s.container, s, { fence: async () => {} }, { decideRetained: true }))
+      .resolves.toMatchObject({ decidedRetained: true, costCents: 0, replayed: true });
+    expect((await rows(s.gameId))[0]).toMatchObject({ status: "GENERATED", lastError: null });
+    expect(s.request.mock.calls.length).toBe(calls);
+    expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } })).toEqual(ledger);
+  });
+
+  const decideRetained = (s: Awaited<ReturnType<typeof dualSeed>>) =>
+    reviewLocalPatchBoard(s.container, s, { fence: async () => {} }, { decideRetained: true });
+  it.each([1, 3, 4, 9])("publishes a complete answer refused at evidence round %i once, keeping its counters, paid bytes and ledger", async round => {
+    const s = await dualSeed(`retained-round-pass-${round}`, hideId => longAnswer(hideId, 2169, 2232, 655));
+    await s.run(); await s.run();
+    const refused = await atEvidenceRound(db, await asDeployedReaderRefusal(db, s.gameId, (await rows(s.gameId))[0]!), round);
+    const original = JSON.parse(refused.judgeJson!).boardReview;
+    const worldId = boardWizardWorldId(s.gameId), ledger = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } });
+    const calls = s.request.mock.calls.length;
+    expect(await decideRetained(s)).toMatchObject({ decidedRetained: true, costCents: 0, replayed: true });
+    const row = (await rows(s.gameId))[0]!, receipt = JSON.parse(row.judgeJson!);
+    // One picture throughout: evidence rounds are not image attempts.
+    expect(row).toMatchObject({ status: "GENERATED", lastError: null, attempts: 1, assetId: refused.assetId });
+    expect(receipt.boardReview.evidenceReviewAttempt).toBe(round);
+    expect(receipt.boardReview.dual.continuity).toMatchObject({ attempt: round, raw: original.dual.continuity.raw });
+    expect(receipt.boardReview.dual.quality.raw).toBe(original.dual.quality.raw);
+    expect(receipt.reviewHistory.at(-1).boardReview).toEqual(original);
+    expect(await publishable(s.gameId, row)).toBe(true);
+    expect(await db.auditLog.count({ where: { entityId: s.gameId, action: LOCAL_PATCH_PUBLICATION_ACTION } })).toBe(1);
+    expect(s.request.mock.calls.length).toBe(calls); expect(s.render).toHaveBeenCalledTimes(1);
+    expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } })).toEqual(ledger);
+    // Decided once: a repeat finds nothing to read and writes nothing.
+    expect(await decideRetained(s)).toMatchObject({ state: "pending", costCents: 0 });
+    expect(await rows(s.gameId)).toEqual([row]);
+  });
+  it.each([1, 3, 4, 9])("keeps a defect written late in an answer refused at round %i as a repair decision, never an approval", async round => {
+    const s = await dualSeed(`retained-round-defect-${round}`, hideId => longAnswer(hideId, 2169, 2232, 655,
+      { faults: [{ kind: "hard-cut", where: prose(700, "A straight top join slices the vendor's forehead") }] }));
+    await s.run(); await s.run();
+    const refused = await atEvidenceRound(db, await asDeployedReaderRefusal(db, s.gameId, (await rows(s.gameId))[0]!), round);
+    const worldId = boardWizardWorldId(s.gameId), ledger = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } });
+    const calls = s.request.mock.calls.length;
+    expect(await decideRetained(s)).toMatchObject({ state: "retry", decidedRetained: true, costCents: 0, replayed: true });
+    const row = (await rows(s.gameId))[0]!, receipt = JSON.parse(row.judgeJson!);
+    expect(row).toMatchObject({ status: "FAILED", attempts: 1, assetId: refused.assetId });
+    expect(row.lastError).toMatch(/^quality-retry: .*pictureWhole/);
+    expect(receipt.verdict.pictureWhole).toBe("fail");
+    expect(receipt.verdict.faults.some((f: { check: string; where: string }) => f.check === "pictureWhole" && f.where.startsWith("A straight top join"))).toBe(true);
+    expect(receipt.boardReview.dual.continuity.reading).toMatchObject({ disposition: "repair", reason: "defect" });
+    expect(receipt.boardReview.evidenceReviewAttempt).toBe(round);
+    // The bounded image route takes it from here; no evidence question is left open.
+    expect(localPatchEvidenceRecovery(row)).toBeNull();
+    expect(await publishable(s.gameId, row)).toBe(false);
+    expect(await db.auditLog.count({ where: { entityId: s.gameId, action: LOCAL_PATCH_PUBLICATION_ACTION } })).toBe(0);
+    expect(s.request.mock.calls.length).toBe(calls); expect(s.render).toHaveBeenCalledTimes(1);
+    expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } })).toEqual(ledger);
+    expect(await decideRetained(s)).toMatchObject({ state: "pending", costCents: 0 });
+    expect(await rows(s.gameId)).toEqual([row]);
+  });
+  it.each(["refunded", "stopped", "deleted", "tampered"] as const)("still refuses a %s world or evidence at round nine", async kind => {
+    const s = await dualSeed(`retained-round-nine-${kind}`, hideId => longAnswer(hideId, 1817, 1602, 779));
+    await s.run(); await s.run();
+    const legacy = await atEvidenceRound(db, await asDeployedReaderRefusal(db, s.gameId, (await rows(s.gameId))[0]!), 9);
+    const worldId = boardWizardWorldId(s.gameId), ledger = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } });
+    if (kind === "refunded") await db.order.update({ where: { id: `ord-${s.gameId}` }, data: { paymentStatus: "REFUNDED", refundedAt: new Date() } });
+    if (kind === "stopped") await db.game.update({ where: { id: s.gameId }, data: { status: "CANCELLED" } });
+    if (kind === "deleted") await db.game.update({ where: { id: s.gameId }, data: { status: "DELETED", deletedAt: new Date() } });
+    if (kind === "tampered") {
+      const receipt = JSON.parse(legacy.judgeJson!); receipt.boardReview.dual.continuity.costMicroUsd += 1;
+      await db.targetVariantAsset.update({ where: { id: legacy.id }, data: { judgeJson: JSON.stringify(receipt) } });
+    }
+    const before = await rows(s.gameId);
+    const attempt = decideRetained(s);
+    if (kind === "stopped" || kind === "deleted") await expect(attempt).rejects.toThrow();
+    else expect(await attempt).toMatchObject({ state: "pending", costCents: 0 });
+    expect(await rows(s.gameId)).toEqual(before);
+    expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } })).toEqual(ledger);
+    expect(await db.auditLog.count({ where: { entityId: s.gameId, action: LOCAL_PATCH_PUBLICATION_ACTION } })).toBe(0);
+    expect(s.request).toHaveBeenCalledTimes(2);
+  });
 });
