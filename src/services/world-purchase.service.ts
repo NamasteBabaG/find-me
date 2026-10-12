@@ -124,7 +124,7 @@ export async function beginWorldPurchase(c: Container, input: WorldPurchaseInput
           title: input.locale === "he" ? `איפה ${child.displayName}?` : `Where's ${child.displayName}?` } });
         if (styleVersion === "local-patch-world-v1" && c.pinDualVisualReview) {
           if (!c.visualReview) throw Error("Dual visual review credentials are not configured");
-          await pinVisualReviewRelease(tx, gameId);
+          await pinVisualReviewRelease(tx, gameId, c.dualVisualReviewRelease);
         }
         if (choice.shown) await pinSearchLevelChoice(tx, gameId);
         await tx.gameScene.createMany({ data: boards.map((slug, orderIndex) => ({ id: newId("gsc"), gameId, sceneSlug: slug, sceneVersion: sceneBySlug(slug, version).version, orderIndex })) });

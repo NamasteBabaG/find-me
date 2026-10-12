@@ -55,7 +55,7 @@ export async function createDraft(c: Container, ownerId: string | null, locale: 
   const game = await c.db.$transaction(async tx => {
     const created = await tx.game.create({ data: { id: newId("game"), draftToken, ownerId, status: "DRAFT", locale,
       ...(styleVersion ? { styleVersion } : {}) } });
-    if (styleVersion === LOCAL_PATCH_STYLE && c.pinDualVisualReview) await pinVisualReviewRelease(tx, created.id);
+    if (styleVersion === LOCAL_PATCH_STYLE && c.pinDualVisualReview) await pinVisualReviewRelease(tx, created.id, c.dualVisualReviewRelease);
     if (options.askSearchLevel) await pinSearchLevelChoice(tx, created.id);
     return created;
   });

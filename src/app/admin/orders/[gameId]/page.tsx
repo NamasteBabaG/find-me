@@ -19,7 +19,7 @@ import { LocalPatchPaidRepairForm } from "./LocalPatchPaidRepairForm";
 import { LocalPatchExtraAttemptForm } from "./LocalPatchExtraAttemptForm";
 import { LocalPatchPartialReleaseForm } from "./LocalPatchPartialReleaseForm";
 import { adjustTargetAction, adminDeleteAction, adminRotateLinkAction, approveAction, recutAvatarAction, refundAction, regenTargetAction, requestPhotoAction, retryAction } from "../../actions";
-import { LOCAL_PATCH_NEEDS_RELEASE } from "@/services/generation/local-patch-world";
+import { LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_RECOVERY_EXHAUSTED } from "@/services/generation/local-patch-world";
 import { LOCAL_PATCH_HUMAN_CONFIRMATION } from "@/services/generation/local-patch-human-approval";
 import { getI18n } from "@/i18n/server";
 
@@ -381,6 +381,11 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
             {game.jobs[0]?.currentStep === LOCAL_PATCH_NEEDS_RELEASE ? (
               <p className="fm-small" style={{ color: "var(--fm-danger, #b00)" }}>
                 ממתין לשחרור ידני: {game.jobs[0].lastError ?? LOCAL_PATCH_NEEDS_RELEASE}
+              </p>
+            ) : null}
+            {game.jobs[0]?.currentStep === LOCAL_PATCH_RECOVERY_EXHAUSTED ? (
+              <p className="fm-small" style={{ color: "var(--fm-danger, #b00)" }}>
+                ההתאוששות האוטומטית מוצתה, נדרשת החלטת שירות: {game.jobs[0].lastError ?? LOCAL_PATCH_RECOVERY_EXHAUSTED}
               </p>
             ) : null}
           </section>

@@ -10,7 +10,8 @@ export function preparationState(input: {
   automaticRecovery?: boolean;
 }, now = Date.now()): PreparationState {
   if (input.status === "NEEDS_NEW_PHOTO") return "needsPhoto";
-  if (input.status === "MANUAL_REVIEW" || input.job?.currentStep === "local-patch:needs-release") return "attention";
+  if (input.status === "MANUAL_REVIEW" || input.job?.currentStep === "local-patch:needs-release"
+    || input.job?.currentStep === "local-patch:recovery-exhausted") return "attention";
   if (input.job?.currentStep === "local-patch:recovery-budget-wait" || input.job?.currentStep === "local-patch:evidence-retry-wait") return "delayed";
   if (input.status === "GENERATION_FAILED") return input.automaticRecovery ? "repairing" : "attention";
   if (input.job?.status === "FAILED") return input.automaticRecovery ? "repairing" : "attention";

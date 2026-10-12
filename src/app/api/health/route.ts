@@ -29,7 +29,7 @@ export async function GET(req: Request) {
   const e = env();
   const db = await checkDb();
   const dualConfigured = Boolean(e.OPENAI_API_KEY?.trim() && e.ANTHROPIC_API_KEY?.trim());
-  const ok = db.ok && !(e.APP_ENV === "qa" && e.LOCAL_PATCH_VISUAL_REVIEW === "dual-high-v1" && !dualConfigured);
+  const ok = db.ok && !(e.APP_ENV === "qa" && e.LOCAL_PATCH_VISUAL_REVIEW !== "legacy" && !dualConfigured);
   const body = {
     ok,
     db,

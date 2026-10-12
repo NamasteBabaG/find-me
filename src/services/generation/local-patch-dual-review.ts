@@ -1,8 +1,12 @@
 import sharp from "sharp";
+import type { Prisma } from "@prisma/client";
 import type { Container } from "../container";
+import { PLAYER_REVIEW_MODE } from "./local-patch-player-review";
 import { visualReviewCharge } from "../../infra/generation/visual-review-pricing";
-import { readContinuity, runtimeContinuityDisposition, visualStageReadable, type DualReviewProof, type DualReviewStage } from "./local-patch-dual-evidence";
-import { localPatchHeadContinuityPrompt } from "./local-patch-body-continuity";
+import { CONTINUITY_READER_STRICT, localPatchRuntimeContinuityVerdict, readLocalPatchBodyContinuity, type ContinuityReading } from "../../domain/scene/local-patch-body-continuity";
+import { nextLocalPatchEvidenceStep, type EvidenceAttempt, type EvidenceDiagnosis, type EvidenceFaultKind, type EvidenceRole, type EvidenceStrategy } from "../../domain/scene/local-patch-evidence-policy";
+import { CURRENT_CONTINUITY_READER, verifiedDualStage, visualStageReadable, type ContinuityReReading, type DualReviewProof, type DualReviewStage } from "./local-patch-dual-evidence";
+import { localPatchCrowdContinuityPrompt, localPatchHeadContinuityPrompt } from "./local-patch-body-continuity";
 import { prepareVisualReview, sceneQualityQuestion, parseVisualSceneVerdicts, type PreparedVisualReview } from "./visual-review";
 import type { LocalPatchJudgeResult, LocalPatchBoardJudgeResult } from "./local-patch-judge";
 import { localPatchQualityDisposition, parseLocalPatchVerdict } from "./local-patch-judge";
@@ -13,14 +17,38 @@ import { inventorySelfRepairRequest } from "./local-patch-self-repair";
 import { LOCAL_PATCH_PHASE_MARGIN_MS, LOCAL_PATCH_MIN_PROVIDER_MS } from "./local-patch-render";
 import { sha256Bytes } from "./fixed-sprite";
 import { recoverPreparedLocalPatchReview } from "./local-patch-review-interruption-recovery";
-import { DUAL_VISUAL_REVIEW_VERSION } from "./visual-review-release";
+import { localPatchEvidenceHistory, localPatchEvidenceRecovery, evidenceKindOfWireFault } from "./local-patch-review-recovery";
+import { DUAL_VISUAL_REVIEW_V2, DUAL_VISUAL_REVIEW_VERSION, dualVisualReviewVersion, type DualVisualReviewVersion } from "./visual-review-release";
 import type { BudgetJson } from "./world-budget";
 
 type Prepared = Extract<Awaited<ReturnType<typeof prepareLocalPatchBoardReview>>, { ready: true }>;
 type Bought = Extract<PurchaseOutcome, { kind: "bought" }>;
+const STANDARD: EvidenceStrategy = "standard/v1";
+const WIRE_FAULTS = ["timeout", "http", "no-content", "truncated", "wrong-model", "not-json"] as const;
+const CROWD_FOCUS = "Every visible person in this final context, especially people crossing the four compositing joins, not only the personalized child.";
+/** The v1 runtime question, verbatim: its paid fingerprints must not move. */
+const V1_CROWD_INSPECTION = "\nRUNTIME CROWD INSPECTION: This case covers ALL people in the context. Trace each visible head/body separately, including bystanders. The case is broken if ANY visible person has a located impossible connection or straight cut. A coherent case requires ALL visible people to be coherent; a good target never excuses a broken neighbour. Summarize the observed connections in headTrace/bodyTrace. Clean complete removal of a bystander is allowed. Do not fail a person naturally continuing outside an evidence crop; use the context. Use unsure only for genuinely insufficient evidence.";
+
+/** What a recovery question changes. Never the model, effort, images or policy;
+ * a standard question carries no addendum, so its historical bytes are kept. */
+function continuityAddendum(strategy: EvidenceStrategy, version: DualVisualReviewVersion): string {
+  if (strategy === "strict-json/v1") return "\nFORMAT RECOVERY: a previous answer to this question about these same pixels could not be read; this is not a visual refusal. Return exactly one JSON object in the contract above, with no Markdown fence, prose or second object, exactly the listed keys, and every case id exactly once. Do not infer any previous verdict.";
+  if (strategy === "compact/v1") return version === DUAL_VISUAL_REVIEW_V2
+    ? "\nSIZE RECOVERY: a previous answer to this question about these same pixels was cut off or exceeded the stated limits. Use one short sentence per trace, at most 120 characters, and list only the required people. Never omit a defect or a defective person to save space."
+    : "\nSIZE RECOVERY: a previous answer to this question about these same pixels was cut off or exceeded its bounds. Keep headTrace, bodyTrace and occlusion each to at most 400 characters and each fault location to at most 200, naming the observed connections in one or two sentences. Never omit a fault to save space.";
+  if (strategy === "decide/v1") return "\nDECISION RECOVERY: a previous independent answer about these same pixels was uncertain or did not show the personalized child. Decide from the FINAL AFTER context and the same-pixels head detail: name the solid occluder for any natural occlusion; mark broken and locate a cut, missing head, merged face or disconnected limb. Use unsure only when these pixels genuinely cannot show a connection.";
+  return "";
+}
+function qualityAddendum(strategy: EvidenceStrategy): string {
+  if (strategy === "strict-json/v1") return "\nFORMAT RECOVERY: a previous answer about these exact unchanged pixels could not be read; this is not a visual refusal. Inspect them independently and return only the exact JSON schema with every supplied hide and evidence ID, with no prose or Markdown. Do not infer the previous verdict.";
+  if (strategy === "compact/v1") return "\nSIZE RECOVERY: a previous answer about these exact unchanged pixels was cut off or exceeded its bounds. Keep the reason, every observation and every fault location short, at most 300 characters each, while reporting every failed check with its own located fault.";
+  return "";
+}
+
 /** Same FINAL pixels at each join, with a head detail. No BEFORE/portrait may
  * supply an imagined missing head. The context disambiguates evidence borders. */
-export async function runtimeContinuityQuestion(prepared: Prepared, binding: object, attempt: number) {
+export async function runtimeContinuityQuestion(prepared: Prepared, binding: object, attempt: number,
+  version: DualVisualReviewVersion = DUAL_VISUAL_REVIEW_VERSION, strategy: EvidenceStrategy = STANDARD) {
   const hide = prepared.request.hides[0]!;
   if (!hide.closeupPng || hide.boundaryComparisons?.length !== 4) throw Error("Dual review requires all four continuous joins and the final head detail");
   const id = `${hide.hideId}:people`;
@@ -34,37 +62,152 @@ export async function runtimeContinuityQuestion(prepared: Prepared, binding: obj
     images.push(await sharp(strip.png).extract({ left: width + 16, top: 0, width, height: meta.height }).png().toBuffer());
     labels.push(`CASE ${id}: FINAL AFTER ${strip.edge} join; ${strip.axis}=${strip.joinOffset} in this strip. Evidence crop borders are not cuts in the game. Verify against the full AFTER context.`);
   }
+  const question = version === DUAL_VISUAL_REVIEW_V2 ? localPatchCrowdContinuityPrompt(id, CROWD_FOCUS)
+    : localPatchHeadContinuityPrompt([{ id, focus: CROWD_FOCUS }]) + V1_CROWD_INSPECTION;
   return prepareVisualReview({ role: "head-continuity", effort: "high", images, labels,
-    prompt: localPatchHeadContinuityPrompt([{ id, focus: "Every visible person in this final context, especially people crossing the four compositing joins, not only the personalized child." }])
-      + "\nRUNTIME CROWD INSPECTION: This case covers ALL people in the context. Trace each visible head/body separately, including bystanders. The case is broken if ANY visible person has a located impossible connection or straight cut. A coherent case requires ALL visible people to be coherent; a good target never excuses a broken neighbour. Summarize the observed connections in headTrace/bodyTrace. Clean complete removal of a bystander is allowed. Do not fail a person naturally continuing outside an evidence crop; use the context. Use unsure only for genuinely insufficient evidence."
-      + `\nImmutable candidate binding: ${JSON.stringify(binding)}. Evidence attempt: ${attempt}.` });
+    prompt: question + continuityAddendum(strategy, version) + `\nImmutable candidate binding: ${JSON.stringify(binding)}. Evidence attempt: ${attempt}.` });
+}
+
+/** A review round whose evidence could not decide: the exact class, for the
+ * receipt's per-image log, and what the recovery policy makes of it. */
+export type DualEvidenceFault = { readonly attempt: EvidenceAttempt; readonly diagnosis: EvidenceDiagnosis | null; readonly reread: boolean };
+type Reviewed = { kind: "reviewed"; bought: Bought; wire: LocalPatchJudgeResult; verdicts: LocalPatchBoardJudgeResult["verdicts"];
+  proof: DualReviewProof; newCostCents: number; evidence: DualEvidenceFault | null; diagnosis: EvidenceDiagnosis | null; salvaged: boolean };
+type Waiting = { kind: "waiting"; outcome: { state: "pending" | "held"; reason: string; replayed: boolean; costCents: number } };
+
+function wireKind(stage: DualReviewStage): EvidenceFaultKind {
+  if (stage.wireFault) return evidenceKindOfWireFault(stage.wireFault) === "unknown" ? "shape" : evidenceKindOfWireFault(stage.wireFault);
+  if (stage.model !== stage.policy.model) return "wrong-model";
+  return "truncated";
+}
+function readKind(read: ContinuityReading, reason: string): { kind: EvidenceFaultKind; code: string; path: string | null } {
+  if (!read.ok) return { kind: read.fault.code, code: read.fault.code, path: read.fault.path || null };
+  return { kind: reason === "conflict" ? "conflict" : "unsure", code: reason, path: null };
+}
+/** Located faults from a reading, for the existing picture-defect route. */
+function readFaults(read: ContinuityReading) {
+  if (!read.ok) return [];
+  const faults = read.people.flatMap(p => p.faults.map(f => ({ check: "pictureWhole", where: f.where.slice(0, 300) })));
+  if (!faults.length) faults.push({ check: "pictureWhole", where: (read.people.find(p => p.state === "broken")?.bodyTrace ?? read.people[0]?.bodyTrace ?? "Impossible head/body connection in final context").slice(0, 300) });
+  return faults;
+}
+/** The quality reviewer's verdict with the independent anatomy result applied:
+ * a located defect fails pictureWhole; persistent explicit uncertainty about
+ * the pixels leaves pictureWhole unsure, which the bounded image route repairs. */
+function withAnatomy(verdicts: LocalPatchBoardJudgeResult["verdicts"], hideId: string, result: "repair" | "uncertain", read: ContinuityReading) {
+  const wireVerdict = Object.fromEntries(Object.entries(verdicts[hideId]!).filter(([key]) =>
+    !["claimedVerdict", "verdictOverridden", "downgraded", "contradicted", "unclassified"].includes(key)));
+  return { ...verdicts, [hideId]: result === "repair"
+    ? parseLocalPatchVerdict({ ...wireVerdict, pictureWhole: "fail", verdict: "fail", reason: "Independent final-image anatomy review found a visible defect",
+      faults: [...verdicts[hideId]!.faults, ...readFaults(read)].slice(0, 16) }, 12)
+    : parseLocalPatchVerdict({ ...wireVerdict, pictureWhole: "unsure", verdict: "unsure",
+      reason: "Independent final-image anatomy review stayed uncertain about these pixels after a decisive question",
+      faults: verdicts[hideId]!.faults.filter(f => f.check !== "pictureWhole") }, 12) };
+}
+
+/**
+ * Read-only: what a retained dual answer decides under the reader its question
+ * now uses. Only an answer read by a superseded reader qualifies, only for the
+ * exact pixels, geometry and identity it was asked about, and only while both
+ * paid stages still prove their own settled bills. Nothing is reserved, bought
+ * or written: the automatic pipeline and the dry-run planner share this.
+ */
+export async function readRetainedAnswer(db: Prisma.TransactionClient, worldId: string, version: DualVisualReviewVersion,
+  prior: DualReviewProof | undefined, binding: { imageSha256: string; geometrySha256: string; identitySha256: string; hideId: string }) {
+  if (!prior?.quality || !prior.continuity || prior.version !== version || prior.hideId !== binding.hideId
+    || prior.imageSha256 !== binding.imageSha256 || prior.geometrySha256 !== binding.geometrySha256 || prior.identitySha256 !== binding.identitySha256
+    || prior.continuity.reading || (prior.continuity.reader ?? CONTINUITY_READER_STRICT) === CURRENT_CONTINUITY_READER[version])
+    return { ok: false as const, reason: "No retained answer awaits a corrected reading" };
+  const quality = await verifiedDualStage(db, worldId, prior.quality, "scene-quality");
+  if (!quality || !await verifiedDualStage(db, worldId, prior.continuity, "head-continuity"))
+    return { ok: false as const, reason: "Retained review answers no longer prove their own settled charges" };
+  const verdicts = parseVisualSceneVerdicts(prior.quality.raw, [binding.hideId], 12, "ready-only/v1", PLAYER_REVIEW_MODE);
+  if (localPatchQualityDisposition(verdicts[binding.hideId] ?? null, 12, { hideId: binding.hideId }).state !== "acceptable")
+    return { ok: false as const, reason: "The retained quality answer does not pass" };
+  const reader = CURRENT_CONTINUITY_READER[version], read = readLocalPatchBodyContinuity(prior.continuity.raw, [`${binding.hideId}:people`], reader);
+  return { ok: true as const, prior: { ...prior, continuity: prior.continuity }, quality, verdicts, reader, read, verdict: localPatchRuntimeContinuityVerdict(read) };
+}
+
+/** Decide a retained answer again, with no reservation, question or provider. */
+async function decideRetainedAnswer(c: Container, prepared: Prepared, version: DualVisualReviewVersion,
+  binding: { imageSha256: string; geometrySha256: string; identitySha256: string; hideId: string }): Promise<Reviewed | Waiting> {
+  const entry = prepared.entries.find(e => e.hide.id === binding.hideId)!;
+  const receipt = JSON.parse(entry.row.judgeJson!);
+  const not = (reason: string): Waiting => ({ kind: "waiting", outcome: { state: "pending", reason, replayed: true, costCents: 0 } });
+  // Only a live, paid, unrefunded world receives a decision, as for any review.
+  const live = await c.db.game.findUnique({ where: { id: prepared.game.id }, include: { orders: true } });
+  if (!live || live.status !== "TARGETS_GENERATING" || live.deletedAt || live.ownerId !== prepared.game.ownerId
+    || !live.orders.some(o => o.userId === live.ownerId && o.paymentStatus === "PAID" && o.paidAt && !o.refundedAt)
+    || live.orders.some(o => o.paymentStatus === "REFUNDED" || o.refundedAt)) return not("The game is no longer a paid world in generation");
+  const retained = await readRetainedAnswer(c.db, prepared.worldId, version, receipt.boardReview?.dual as DualReviewProof | undefined, binding);
+  if (!retained.ok) return not(retained.reason);
+  const { prior, quality, verdicts, reader, read, verdict } = retained;
+  const reading: ContinuityReReading = { version: "continuity-reading/v1", reader, previousReader: prior.continuity.reader ?? CONTINUITY_READER_STRICT,
+    sourceRequestKey: prior.continuity.requestKey, sourceFingerprint: prior.continuity.fingerprint,
+    rawSha256: sha256Bytes(Buffer.from(prior.continuity.raw ?? "")), disposition: verdict.disposition, reason: verdict.reason, readAt: new Date().toISOString() };
+  const proof: DualReviewProof = { ...prior, continuity: { ...prior.continuity, reading } };
+  const wire = JSON.parse(quality.bytes.toString()) as LocalPatchJudgeResult;
+  const bought: Bought = { kind: "bought", bytes: quality.bytes, evidence: quality.evidence, replayed: true, settledFromRetained: false };
+  const base = { kind: "reviewed" as const, bought, proof, newCostCents: 0, salvaged: true };
+  if (verdict.disposition === "pass") return { ...base, wire, verdicts, evidence: null, diagnosis: null };
+  if (verdict.disposition === "repair") return { ...base, wire, verdicts: withAnatomy(verdicts, binding.hideId, "repair", read), evidence: null, diagnosis: null };
+  // Still undecided under the new reading: the round keeps its number; its
+  // classification is now exact, and the policy chooses the next question.
+  const { kind, code, path } = readKind(read, verdict.reason);
+  const attempt: EvidenceAttempt = { attempt: prior.continuity.attempt, role: "continuity", kind, code, path,
+    strategy: prior.continuity.strategy ?? STANDARD, at: reading.readAt, imageSha256: binding.imageSha256 };
+  return classify({ ...base, wire, verdicts }, entry.row, receipt, attempt, read, binding.hideId, true);
+}
+
+/** Record an undecided round and apply the policy: another question later, or
+ * (for an explicitly uncertain reviewer after a decisive question) the image route. */
+function classify(result: Omit<Reviewed, "evidence" | "diagnosis">, row: Prepared["entries"][number]["row"], receipt: Record<string, unknown>,
+  attempt: EvidenceAttempt, read: ContinuityReading | null, hideId: string, reread: boolean): Reviewed {
+  const history = localPatchEvidenceHistory(receipt, row.updatedAt).filter(h => !(reread && h.attempt === attempt.attempt));
+  const step = nextLocalPatchEvidenceStep([...history, attempt], Date.now());
+  if (step?.action === "repair" && read && result.verdicts[hideId])
+    return { ...result, verdicts: withAnatomy(result.verdicts, hideId, "uncertain", read), evidence: null, diagnosis: step.diagnosis };
+  // The row keeps a wire-fault marker for every older reader of receipts; the
+  // exact class, code and JSON path live in the per-image evidence log.
+  const exact = WIRE_FAULTS.find(fault => fault === attempt.code);
+  const wireFault = result.wire.wireFault ?? exact ?? (attempt.kind === "syntax" ? "not-json" : "schema");
+  const diagnosis = step && "diagnosis" in step ? step.diagnosis : null;
+  return { ...result, wire: { ...result.wire, wireFault }, verdicts: {}, evidence: { attempt, diagnosis, reread }, diagnosis };
 }
 
 /** One new paid question per worker slice. Each role has its own durable key,
- * receipt, price policy and reservation; a restart reuses the finished role. */
-export async function buyDualLocalPatchReview(c: Container, prepared: Prepared, deps: LocalPatchBoardReviewDeps, deadlineAt?: number): Promise<
-  { kind: "waiting"; outcome: { state: "pending" | "held"; reason: string; replayed: boolean; costCents: number } }
-  | { kind: "reviewed"; bought: Bought; wire: LocalPatchJudgeResult; verdicts: LocalPatchBoardJudgeResult["verdicts"]; proof: DualReviewProof; newCostCents: number }
-> {
-  if (!c.visualReview) throw Error("Both HIGH visual-review providers must be configured before any reservation");
+ * receipt, price policy and reservation; a restart reuses the finished role.
+ * `decideRetained` never buys: it only re-reads an answer already paid for. */
+export async function buyDualLocalPatchReview(c: Container, prepared: Prepared, deps: LocalPatchBoardReviewDeps, deadlineAt?: number,
+  options: { decideRetained?: boolean } = {}): Promise<Waiting | Reviewed> {
+  if (!options.decideRetained && !c.visualReview) throw Error("Both HIGH visual-review providers must be configured before any reservation");
   if (prepared.scene.sceneVersion !== 12 || prepared.extraPlan || prepared.request.reviewScope !== "ready-only/v1"
     || prepared.request.hides.length !== 1) throw Error("Dual review requires one ready v12 appearance");
   const { request, entries, game, budget, worldId, evidenceReviewAttempt } = prepared;
+  const version = await dualVisualReviewVersion(c.db, game.id);
+  if (!version) throw Error("Dual review requires its pinned visual review release");
   const hideId = request.hides[0]!.hideId, entry = entries.find(e => e.hide.id === hideId)!;
-  const binding = { version: DUAL_VISUAL_REVIEW_VERSION, gameId: game.id, sceneId: prepared.scene.id, hideId,
+  const binding = { version, gameId: game.id, sceneId: prepared.scene.id, hideId,
     variantId: entry.row.id, imageSha256: entry.imageSha256, geometrySha256: entry.geometrySha256,
     identitySha256: sha256Bytes(prepared.sheet), attempts: entry.row.attempts };
+  if (options.decideRetained) return decideRetainedAnswer(c, prepared, version, binding);
   const priorReceipt = JSON.parse(entry.row.judgeJson!);
   const prior = (priorReceipt.boardReview?.dual ?? priorReceipt.dualQualityCheckpoint) as DualReviewProof | undefined;
-  // An unreadable Sol reply does not buy a second good Opus assessment.
+  // The recovery policy chose this round's question for the role that failed.
+  const recovery = localPatchEvidenceRecovery(entry.row);
+  const strategyFor = (role: EvidenceRole) => recovery?.retry && recovery.role === role && recovery.strategy ? recovery.strategy : STANDARD;
+  // An unreadable Sol reply does not buy a second good Opus assessment: the
+  // identical earlier question (same attempt and strategy) is replayed.
   const oldQuality = prior?.quality;
   const oldVerdict = oldQuality && parseVisualSceneVerdicts(visualStageReadable(oldQuality) ? oldQuality.raw : null,
     [hideId], 12, request.reviewScope, request.assessmentMode)[hideId];
-  const qualityAttempt = prior?.imageSha256 === binding.imageSha256 && oldQuality && Number.isSafeInteger(oldQuality.attempt)
-    && oldQuality.attempt > 0 && localPatchQualityDisposition(oldVerdict ?? null, 12, { hideId }).state === "acceptable"
-    ? oldQuality.attempt : evidenceReviewAttempt;
+  const reuse = prior?.imageSha256 === binding.imageSha256 && oldQuality && Number.isSafeInteger(oldQuality.attempt)
+    && oldQuality.attempt > 0 && localPatchQualityDisposition(oldVerdict ?? null, 12, { hideId }).state === "acceptable";
+  const qualityAttempt = reuse ? oldQuality!.attempt : evidenceReviewAttempt;
+  const qualityStrategy = reuse ? oldQuality!.strategy ?? STANDARD : strategyFor("quality");
   const quality = sceneQualityQuestion(request, "high");
-  const q = prepareVisualReview({ ...quality, prompt: quality.prompt + `\nImmutable candidate binding: ${JSON.stringify(binding)}. Evidence attempt: ${qualityAttempt}.` });
+  const q = prepareVisualReview({ ...quality, prompt: quality.prompt + qualityAddendum(qualityStrategy)
+    + `\nImmutable candidate binding: ${JSON.stringify(binding)}. Evidence attempt: ${qualityAttempt}.` });
   const makeKey = (question: PreparedVisualReview) => `self-repair:board:${prepared.board.board}:${question.fingerprint}`;
   const buy = async (question: PreparedVisualReview) => {
     const requestKey = makeKey(question);
@@ -85,30 +228,42 @@ export async function buyDualLocalPatchReview(c: Container, prepared: Prepared, 
       },
     });
   };
-  const waiting = async (bought: Exclude<PurchaseOutcome, Bought>, question: PreparedVisualReview) => {
+  const waiting = async (bought: Exclude<PurchaseOutcome, Bought>, question: PreparedVisualReview, strategy: EvidenceStrategy): Promise<Waiting> => {
     const recovered = bought.kind === "unresolved" && await recoverPreparedLocalPatchReview(c,
-      { ...prepared, requestKey: makeKey(question), fingerprint: question.fingerprint }, deps.fence);
+      { ...prepared, requestKey: makeKey(question), fingerprint: question.fingerprint }, deps.fence,
+      { role: question.role === "scene-quality" ? "quality" : "continuity", strategy });
     return { kind: "waiting" as const, outcome: { state: recovered ? "pending" as const
       : bought.kind === "unresolved" || bought.kind === "deferred" && bought.reserved ? "held" as const : "pending" as const,
       reason: recovered ? "Interrupted review retained its charge; exact pixels await automatic evidence recovery" : bought.reason,
       replayed: false, costCents: 0 } };
   };
-  const stage = (bought: Bought, question: PreparedVisualReview, attempt: number): DualReviewStage => {
+  const stage = (bought: Bought, question: PreparedVisualReview, attempt: number, strategy: EvidenceStrategy): DualReviewStage => {
     const wire = JSON.parse(bought.bytes.toString()) as LocalPatchJudgeResult;
     return { requestKey: makeKey(question), fingerprint: question.fingerprint, attempt, policy: question.policy,
-      raw: wire.raw, model: wire.model, finishReason: wire.finishReason, wireFault: wire.wireFault, costMicroUsd: bought.evidence.amountMicroUsd };
+      raw: wire.raw, model: wire.model, finishReason: wire.finishReason, wireFault: wire.wireFault, costMicroUsd: bought.evidence.amountMicroUsd,
+      ...(strategy === STANDARD ? {} : { strategy }) };
   };
   const qualityBought = await buy(q);
-  if (qualityBought.kind !== "bought") return waiting(qualityBought, q);
-  const qualityStage = stage(qualityBought, q, qualityAttempt);
+  if (qualityBought.kind !== "bought") return waiting(qualityBought, q, qualityStrategy);
+  const qualityStage = stage(qualityBought, q, qualityAttempt, qualityStrategy);
   const verdicts = parseVisualSceneVerdicts(visualStageReadable(qualityStage) ? qualityStage.raw : null,
     [hideId], 12, request.reviewScope, request.assessmentMode);
-  const proof: DualReviewProof = { version: DUAL_VISUAL_REVIEW_VERSION, hideId, imageSha256: binding.imageSha256,
+  const proof: DualReviewProof = { version, hideId, imageSha256: binding.imageSha256,
     geometrySha256: binding.geometrySha256, identitySha256: binding.identitySha256, quality: qualityStage, continuity: null };
   const primaryWire = JSON.parse(qualityBought.bytes.toString()) as LocalPatchJudgeResult;
   let newCostCents = qualityBought.replayed ? 0 : qualityBought.evidence.amountMicroUsd / 10_000;
   const qualityGood = localPatchQualityDisposition(verdicts[hideId] ?? null, 12, { hideId }).state === "acceptable";
-  if (!qualityGood) return { kind: "reviewed", bought: qualityBought, wire: primaryWire, verdicts, proof, newCostCents };
+  const base = { kind: "reviewed" as const, salvaged: false };
+  if (!qualityGood) {
+    if (verdicts[hideId]) return { ...base, bought: qualityBought, wire: primaryWire, verdicts, proof, newCostCents, evidence: null, diagnosis: null };
+    // The quality answer itself could not be used: a wire fault, a reply that is
+    // not one JSON document, or one outside its schema.
+    let kind: EvidenceFaultKind = visualStageReadable(qualityStage) ? "shape" : wireKind(qualityStage);
+    if (kind === "shape") try { JSON.parse(qualityStage.raw?.trim().replace(/^```(?:json)?[\t ]*\r?\n([\s\S]*?)\r?\n```$/i, "$1") ?? ""); } catch { kind = "syntax"; }
+    const attempt: EvidenceAttempt = { attempt: qualityAttempt, role: "quality", kind, code: qualityStage.wireFault ?? kind, path: null,
+      strategy: qualityStrategy, at: new Date().toISOString(), imageSha256: binding.imageSha256 };
+    return classify({ ...base, bought: qualityBought, wire: primaryWire, verdicts, proof, newCostCents }, entry.row, priorReceipt, attempt, null, hideId, false);
+  }
   if (!qualityBought.replayed) {
     await c.db.$transaction(async tx => {
       await fenceLocalPatchImages(tx, game.id); await deps.fence(tx);
@@ -120,23 +275,26 @@ export async function buyDualLocalPatchReview(c: Container, prepared: Prepared, 
     return { kind: "waiting", outcome: { state: "pending", reason: "Quality receipt retained; independent anatomy review is next",
       replayed: false, costCents: newCostCents } };
   }
-  const anatomy = await runtimeContinuityQuestion(prepared, binding, evidenceReviewAttempt);
+  const continuityStrategy = strategyFor("continuity");
+  const anatomy = await runtimeContinuityQuestion(prepared, binding, evidenceReviewAttempt, version, continuityStrategy);
   const anatomyBought = await buy(anatomy);
-  if (anatomyBought.kind !== "bought") return waiting(anatomyBought, anatomy);
-  proof.continuity = stage(anatomyBought, anatomy, evidenceReviewAttempt);
+  if (anatomyBought.kind !== "bought") return waiting(anatomyBought, anatomy, continuityStrategy);
+  const reader = CURRENT_CONTINUITY_READER[version];
+  proof.continuity = { ...stage(anatomyBought, anatomy, evidenceReviewAttempt, continuityStrategy), reader };
   newCostCents += anatomyBought.replayed ? 0 : anatomyBought.evidence.amountMicroUsd / 10_000;
-  const cases = readContinuity(visualStageReadable(proof.continuity) ? proof.continuity.raw : null, `${hideId}:people`);
-  const disposition = runtimeContinuityDisposition(cases);
-  if (disposition === "unresolved") return { kind: "reviewed", bought: anatomyBought,
-    wire: { ...primaryWire, wireFault: "schema" }, verdicts: {}, proof, newCostCents };
-  if (disposition === "repair") {
-    const faults = cases?.flatMap(item => item.faults.map(f => ({ check: "pictureWhole", where: f.where.slice(0, 300) }))) ?? [];
-    if (!faults.length) faults.push({ check: "pictureWhole", where: cases?.[0]?.bodyTrace.slice(0, 300) ?? "Impossible head/body connection in final context" });
-    const wireVerdict = Object.fromEntries(Object.entries(verdicts[hideId]!).filter(([key]) =>
-      !["claimedVerdict", "verdictOverridden", "downgraded", "contradicted", "unclassified"].includes(key)));
-    verdicts[hideId] = parseLocalPatchVerdict({ ...wireVerdict, pictureWhole: "fail", verdict: "fail",
-      reason: "Independent final-image anatomy review found a visible defect",
-      faults: [...verdicts[hideId]!.faults, ...faults].slice(0, 16) }, 12);
+  const result = { ...base, bought: anatomyBought, wire: primaryWire, verdicts, proof, newCostCents };
+  const at = new Date().toISOString();
+  if (!visualStageReadable(proof.continuity)) {
+    const kind = wireKind(proof.continuity);
+    return classify(result, entry.row, priorReceipt, { attempt: evidenceReviewAttempt, role: "continuity", kind,
+      code: proof.continuity.wireFault ?? kind, path: null, strategy: continuityStrategy, at, imageSha256: binding.imageSha256 }, null, hideId, false);
   }
-  return { kind: "reviewed", bought: anatomyBought, wire: primaryWire, verdicts, proof, newCostCents };
+  const read = readLocalPatchBodyContinuity(proof.continuity.raw, [`${hideId}:people`], reader);
+  if (!read.ok) proof.continuity.readFault = read.fault;
+  const verdict = localPatchRuntimeContinuityVerdict(read);
+  if (verdict.disposition === "pass") return { ...result, evidence: null, diagnosis: null };
+  if (verdict.disposition === "repair") return { ...result, verdicts: withAnatomy(verdicts, hideId, "repair", read), evidence: null, diagnosis: null };
+  const { kind, code, path } = readKind(read, verdict.reason);
+  return classify(result, entry.row, priorReceipt, { attempt: evidenceReviewAttempt, role: "continuity", kind, code, path,
+    strategy: continuityStrategy, at, imageSha256: binding.imageSha256 }, read, hideId, false);
 }

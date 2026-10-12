@@ -17,7 +17,8 @@ import { localPatchBoardJudgeImages, localPatchHideEvidenceIds, type LocalPatchB
 import { runLocalPatchHide, type LocalPatchHideDeps } from "../local-patch-hide";
 import { LOCAL_PATCH_PUBLICATION_ACTION } from "../local-patch-publication-policy";
 import { localPatchPrivateInventory } from "../local-patch-world";
-import { runLocalPatchWorldSlice, LOCAL_PATCH_EVIDENCE_RETRY_WAIT } from "../local-patch-world";
+import { runLocalPatchWorldSlice, LOCAL_PATCH_RECOVERY_EXHAUSTED } from "../local-patch-world";
+import { preparationState } from "../../../domain/generation-health";
 import { nextPendingGame, tickGeneration } from "../queue";
 import { LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS, localPatchEvidenceRecovery } from "../local-patch-review-recovery";
 import { LOCAL_PATCH_COMPOSITION_VERSION } from "../local-patch-seam";
@@ -28,7 +29,11 @@ import { recoverPreparedLocalPatchReview, REVIEW_INTERRUPTION_POLICY } from "../
 import { localPatchBudgetReadyForPublication } from "../local-patch-interruption-recovery";
 import { sha256Bytes } from "../fixed-sprite";
 import { bill, paintedCrop, paintedOk, seedApprovedGame, PASSING_ANSWER } from "./local-patch-fixtures";
-import { pinVisualReviewRelease, hasDualVisualReview, DUAL_VISUAL_REVIEW_VERSION } from "../visual-review-release";
+import { pinVisualReviewRelease, hasDualVisualReview, dualVisualReviewVersion, DUAL_VISUAL_REVIEW_VERSION, DUAL_VISUAL_REVIEW_V2,
+  type DualVisualReviewVersion } from "../visual-review-release";
+import { CONTINUITY_READER_BOUNDED, CONTINUITY_READER_CROWD, CONTINUITY_READER_STRICT } from "../../../domain/scene/local-patch-body-continuity";
+import type { TargetVariantAsset } from "@prisma/client";
+import { asDeployedReaderRefusal, longAnswer, prose, publicationBinding, spendTo } from "./local-patch-dual-fixtures";
 import { allowedDualPublication } from "../local-patch-dual-publication";
 import { localPatchPublicationGeometryHash } from "../local-patch-publication-policy";
 import { createDraft } from "../../create-flow.service";
@@ -91,11 +96,17 @@ const rows = (gameId: string) => db.targetVariantAsset.findMany({ where: { targe
 const interruptedReply = { verdict: null, verdicts: {}, raw: null, model: null, usage: null, requestId: null,
   finishReason: null, wireFault: "timeout" as const, costUnknown: true };
 
-async function dualSeed(id: string, anatomy: "pass" | "broken" | "schema" = "pass") {
-  const s = await seed(id);
-  await db.$transaction(tx => pinVisualReviewRelease(tx, s.gameId));
+const publishable = (gameId: string, row: TargetVariantAsset, judgeJson = row.judgeJson) =>
+  db.$transaction(tx => allowedDualPublication(tx, { ...publicationBinding(gameId, row), judgeJson }));
+
+/** An anatomy reply: its text, or its text with the provider's own finish reason. */
+type AnatomyReply = string | { raw: string; finishReason: string };
+async function dualSeed(id: string, anatomy: "pass" | "broken" | "schema" | ((hideId: string, call: number) => AnatomyReply) = "pass",
+  options: { count?: number; release?: DualVisualReviewVersion } = {}) {
+  const s = await seed(id, options.count ?? 1);
+  await db.$transaction(tx => pinVisualReviewRelease(tx, s.gameId, options.release));
   const hideId = BOARD.hides[0]!.id;
-  let calls = 0;
+  let calls = 0, anatomyCalls = 0;
   const request = vi.fn<NonNullable<Container["visualReview"]>["request"]>(async question => {
     expect(question.effort).toBe("high");
     const quality = question.role === "scene-quality";
@@ -103,10 +114,14 @@ async function dualSeed(id: string, anatomy: "pass" | "broken" | "schema" = "pas
       expect(question.images).toHaveLength(6);
       expect(question.labels.every(label => !label.includes("BEFORE") && !label.includes("canonical-portrait"))).toBe(true);
     }
+    // The binding names the hide under review, so each answer is about the right pixels.
+    const asked = (JSON.parse(/Immutable candidate binding: (\{.*?\})\. Evidence attempt/.exec(question.prompt)![1]!) as { hideId: string }).hideId;
+    const reply = !quality && typeof anatomy === "function" ? anatomy(asked, ++anatomyCalls) : null;
     return { verdict: null, model: quality ? "claude-opus-5-5" : "gpt-6.1-sol", requestId: `dual-${id}-${++calls}`,
-      finishReason: quality ? "end_turn" : "stop", wireFault: null, costUnknown: false,
+      finishReason: quality ? "end_turn" : typeof reply === "object" && reply ? reply.finishReason : "stop", wireFault: null, costUnknown: false,
       usage: quality ? { input_tokens: 2000, output_tokens: 500 } : { prompt_tokens: 2000, completion_tokens: 500 },
-      raw: quality ? "```json\n" + JSON.stringify({ hides: [{ hideId, evidenceIds: localPatchHideEvidenceIds(hideId), verdict: good }] }) + "\n```"
+      raw: quality ? "```json\n" + JSON.stringify({ hides: [{ hideId: asked, evidenceIds: localPatchHideEvidenceIds(asked), verdict: good }] }) + "\n```"
+        : reply !== null ? typeof reply === "string" ? reply : reply.raw
         : anatomy === "schema" ? "{}" : JSON.stringify({ cases: [{ id: `${hideId}:people`, state: anatomy === "broken" ? "broken" : "coherent",
           visibleBody: true, headConnection: anatomy === "broken" ? "missing" : "connected", headTrace: "Visible head contours and neck connections checked in the final context",
           bodyTrace: "All final bodies connect naturally to their heads and limbs", occlusion: "",
@@ -147,6 +162,11 @@ describe("prospective Opus/Sol HIGH pipeline", () => {
       identityAssetId: `ast-sheet-${s.gameId}`, identitySha256: receipt.boardReview.dual.identitySha256, assetId: row.assetId!,
       imageSha256: receipt.judgedSha256, geometrySha256: localPatchPublicationGeometryHash(row), judgeJson: row.judgeJson };
     expect(await db.$transaction(tx => allowedDualPublication(tx, proof))).toBe(true);
+    // A stage the deployed code wrote names no reader: it is still read strictly, and this short answer still passes.
+    const { reader: _reader, ...unnamed } = receipt.boardReview.dual.continuity;
+    const withStage = (stage: unknown) => JSON.stringify({ ...receipt, boardReview: { ...receipt.boardReview, dual: { ...receipt.boardReview.dual, continuity: stage } } });
+    expect(await db.$transaction(tx => allowedDualPublication(tx, { ...proof, judgeJson: withStage(unnamed) }))).toBe(true);
+    expect(await db.$transaction(tx => allowedDualPublication(tx, { ...proof, judgeJson: withStage({ ...unnamed, reader: CONTINUITY_READER_CROWD }) }))).toBe(false);
     receipt.boardReview.dual.continuity.raw = "{}";
     expect(await db.$transaction(tx => allowedDualPublication(tx, { ...proof, judgeJson: JSON.stringify(receipt) }))).toBe(false);
   });
@@ -162,10 +182,167 @@ describe("prospective Opus/Sol HIGH pipeline", () => {
   it("retries malformed anatomy evidence with the same pixels and reuses the good Opus receipt", async () => {
     const s = await dualSeed("dual-malformed-anatomy", "schema");
     await s.run(); expect((await s.run()).state).toBe("blocked");
-    expect(localPatchEvidenceRecovery((await rows(s.gameId))[0]!)).toMatchObject({ retry: true });
+    expect(localPatchEvidenceRecovery((await rows(s.gameId))[0]!)).toMatchObject({ retry: true, strategy: "strict-json/v1", role: "continuity" });
     await s.run();
     expect(s.request.mock.calls.map(([q]) => q.role)).toEqual(["scene-quality", "head-continuity", "head-continuity"]);
     expect(s.render).toHaveBeenCalledTimes(1);
+    // The same malformed answer under the stricter question twice: no fourth question, ever.
+    await s.run(); await s.run(); await s.run();
+    expect(s.request.mock.calls.map(([q]) => q.role)).toEqual(["scene-quality", "head-continuity", "head-continuity", "head-continuity"]);
+    const anatomy = s.request.mock.calls.filter(([q]) => q.role === "head-continuity").map(([q]) => q.prompt);
+    expect(anatomy[0]).not.toContain("FORMAT RECOVERY"); expect(anatomy.slice(1).every(prompt => prompt.includes("FORMAT RECOVERY"))).toBe(true);
+    const row = (await rows(s.gameId))[0]!, receipt = JSON.parse(row.judgeJson!);
+    expect(receipt.evidenceAttempts.map((a: { attempt: number; role: string; kind: string; path: string; strategy: string }) => [a.attempt, a.role, a.kind, a.path, a.strategy]))
+      .toEqual([[1, "continuity", "shape", "cases", "standard/v1"], [2, "continuity", "shape", "cases", "strict-json/v1"], [3, "continuity", "shape", "cases", "strict-json/v1"]]);
+    expect(receipt.evidenceDiagnosis).toMatchObject({ role: "continuity", family: "format", next: "exhausted" });
+    expect(localPatchEvidenceRecovery(row)).toMatchObject({ retry: false, exhausted: true });
+    expect(row).toMatchObject({ status: "FAILED", attempts: 1 }); expect(s.render).toHaveBeenCalledTimes(1);
+    expect(await db.auditLog.count({ where: { entityId: s.gameId, action: LOCAL_PATCH_PUBLICATION_ACTION } })).toBe(0);
+  });
+  it("asks a cut-off anatomy answer again in compact form, never as the same question and never as a new picture", async () => {
+    // The provider stopped at its output ceiling: a size failure, not a format one.
+    const s = await dualSeed("dual-truncated-anatomy", hideId => ({ raw: longAnswer(hideId, 2169, 2232, 655).slice(0, 3000), finishReason: "length" }));
+    await s.run(); expect((await s.run()).state).toBe("blocked");
+    expect(localPatchEvidenceRecovery((await rows(s.gameId))[0]!)).toMatchObject({ retry: true, strategy: "compact/v1", role: "continuity" });
+    await s.run(); await s.run(); await s.run(); await s.run();
+    expect(s.request.mock.calls.map(([q]) => q.role)).toEqual(["scene-quality", "head-continuity", "head-continuity", "head-continuity"]);
+    const anatomy = s.request.mock.calls.filter(([q]) => q.role === "head-continuity").map(([q]) => q.prompt);
+    expect(anatomy[0]).not.toContain("SIZE RECOVERY"); expect(anatomy.slice(1).every(prompt => prompt.includes("SIZE RECOVERY"))).toBe(true);
+    const row = (await rows(s.gameId))[0]!, receipt = JSON.parse(row.judgeJson!);
+    expect(receipt.evidenceAttempts.map((a: { attempt: number; kind: string; code: string; strategy: string }) => [a.attempt, a.kind, a.code, a.strategy]))
+      .toEqual([[1, "truncated", "truncated", "standard/v1"], [2, "truncated", "truncated", "compact/v1"], [3, "truncated", "truncated", "compact/v1"]]);
+    expect(receipt.evidenceDiagnosis).toMatchObject({ role: "continuity", family: "size", next: "exhausted" });
+    expect(row.lastError).toContain("evidence continuity truncated, round 3");
+    expect(row).toMatchObject({ status: "FAILED", attempts: 1 }); expect(s.render).toHaveBeenCalledTimes(1);
+    expect(await db.auditLog.count({ where: { entityId: s.gameId, action: LOCAL_PATCH_PUBLICATION_ACTION } })).toBe(0);
+  });
+  it.each([[1013, 954, 466], [1817, 1602, 779], [2169, 2232, 655]])("accepts a complete anatomy answer at the observed lengths (%i, %i, %i) with no further question or image", async (head, body, occlusion) => {
+    const s = await dualSeed(`dual-long-${head}`, hideId => longAnswer(hideId, head, body, occlusion));
+    await s.run(); await s.run(); await s.run();
+    expect(s.request.mock.calls.map(([q]) => q.role)).toEqual(["scene-quality", "head-continuity"]);
+    const row = (await rows(s.gameId))[0]!, receipt = JSON.parse(row.judgeJson!);
+    expect(row.status).toBe("GENERATED");
+    expect(receipt.boardReview.dual.continuity).toMatchObject({ reader: CONTINUITY_READER_BOUNDED, wireFault: null });
+    expect(await db.auditLog.count({ where: { entityId: s.gameId, action: LOCAL_PATCH_PUBLICATION_ACTION } })).toBe(1);
+    expect(await publishable(s.gameId, row)).toBe(true);
+    expect(s.render).toHaveBeenCalledTimes(1);
+  });
+  it("keeps a defect written after a long explanation and sends the picture to its repair", async () => {
+    const s = await dualSeed("dual-long-defect", hideId => longAnswer(hideId, 2169, 2232, 655,
+      { faults: [{ kind: "hard-cut", where: prose(700, "A straight top join slices the vendor's forehead") }] }));
+    await s.run(); expect((await s.run()).state).toBe("retry");
+    const row = (await rows(s.gameId))[0]!, receipt = JSON.parse(row.judgeJson!);
+    expect(row.status).toBe("FAILED"); expect(row.lastError).toMatch(/^quality-retry: .*pictureWhole/);
+    expect(receipt.verdict.pictureWhole).toBe("fail");
+    expect(receipt.verdict.faults.some((f: { check: string; where: string }) => f.check === "pictureWhole" && f.where.startsWith("A straight top join"))).toBe(true);
+    expect(localPatchEvidenceRecovery(row)).toBeNull();
+    expect(await db.auditLog.count({ where: { entityId: s.gameId, action: LOCAL_PATCH_PUBLICATION_ACTION } })).toBe(0);
+    expect(s.request).toHaveBeenCalledTimes(2); expect(s.render).toHaveBeenCalledTimes(1);
+  });
+  it("decides an answer the deployed reader refused, with no question, reservation, spend or image, even below one reservation", async () => {
+    const s = await dualSeed("dual-retained-decision", hideId => longAnswer(hideId, 2169, 2232, 655));
+    await s.run(); await s.run();
+    const legacy = await asDeployedReaderRefusal(db, s.gameId, (await rows(s.gameId))[0]!);
+    expect(await publishable(s.gameId, legacy)).toBe(false);
+    // Without a free reading, the policy would buy a stricter question next.
+    expect(localPatchEvidenceRecovery(legacy)).toMatchObject({ retry: true, strategy: "strict-json/v1" });
+    await spendTo(c, s.gameId, 3_701_771);
+    const worldId = boardWizardWorldId(s.gameId), budget = boardWizardBudgetOf(c);
+    const before = await budget.audit(worldId), ledger = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } });
+    expect(before).toMatchObject({ remainingMicroUsd: 298_229, held: false });
+    const calls = s.request.mock.calls.length;
+    expect(await reviewLocalPatchBoard(s.container, s, { fence: async () => {} }, { decideRetained: true }))
+      .toMatchObject({ decidedRetained: true, costCents: 0, replayed: true });
+    expect(s.request.mock.calls.length).toBe(calls);
+    expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } })).toEqual(ledger);
+    const row = (await rows(s.gameId))[0]!, receipt = JSON.parse(row.judgeJson!);
+    expect(row).toMatchObject({ status: "GENERATED", lastError: null, assetId: legacy.assetId, attempts: legacy.attempts });
+    const original = JSON.parse(legacy.judgeJson!).boardReview;
+    expect(receipt.boardReview.dual.continuity).not.toHaveProperty("reader");
+    expect(receipt.boardReview.dual.continuity.reading).toMatchObject({ version: "continuity-reading/v1", reader: CONTINUITY_READER_BOUNDED,
+      previousReader: CONTINUITY_READER_STRICT, disposition: "pass", reason: "pass", sourceRequestKey: original.dual.continuity.requestKey,
+      sourceFingerprint: original.dual.continuity.fingerprint });
+    expect(receipt.reviewHistory.at(-1).boardReview).toEqual(original);
+    expect(await db.auditLog.count({ where: { entityId: s.gameId, action: LOCAL_PATCH_PUBLICATION_ACTION } })).toBe(1);
+    expect(await publishable(s.gameId, row)).toBe(true);
+    const reading = receipt.boardReview.dual.continuity.reading;
+    for (const forged of [{ ...reading, disposition: "repair" }, { ...reading, rawSha256: "0".repeat(64) }, { ...reading, reader: CONTINUITY_READER_CROWD }])
+      expect(await publishable(s.gameId, row, JSON.stringify({ ...receipt, boardReview: { ...receipt.boardReview,
+        dual: { ...receipt.boardReview.dual, continuity: { ...receipt.boardReview.dual.continuity, reading: forged } } } }))).toBe(false);
+    // Decided once: never read again, never bought again.
+    expect(await reviewLocalPatchBoard(s.container, s, { fence: async () => {} }, { decideRetained: true })).toMatchObject({ state: "pending", costCents: 0 });
+    expect(await rows(s.gameId)).toEqual([row]); expect(s.render).toHaveBeenCalledTimes(1);
+  });
+  it.each(["refunded", "stopped", "deleted", "tampered"] as const)("never decides a retained answer for a %s world or evidence", async kind => {
+    const s = await dualSeed(`dual-retained-${kind}`, hideId => longAnswer(hideId, 1817, 1602, 779));
+    await s.run(); await s.run();
+    const legacy = await asDeployedReaderRefusal(db, s.gameId, (await rows(s.gameId))[0]!);
+    const worldId = boardWizardWorldId(s.gameId), ledger = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } });
+    if (kind === "refunded") await db.order.update({ where: { id: `ord-${s.gameId}` }, data: { paymentStatus: "REFUNDED", refundedAt: new Date() } });
+    if (kind === "stopped") await db.game.update({ where: { id: s.gameId }, data: { status: "CANCELLED" } });
+    if (kind === "deleted") await db.game.update({ where: { id: s.gameId }, data: { status: "DELETED", deletedAt: new Date() } });
+    if (kind === "tampered") {
+      const receipt = JSON.parse(legacy.judgeJson!); receipt.boardReview.dual.continuity.costMicroUsd += 1;
+      await db.targetVariantAsset.update({ where: { id: legacy.id }, data: { judgeJson: JSON.stringify(receipt) } });
+    }
+    const before = await rows(s.gameId);
+    const attempt = reviewLocalPatchBoard(s.container, s, { fence: async () => {} }, { decideRetained: true });
+    if (kind === "stopped" || kind === "deleted") await expect(attempt).rejects.toThrow();
+    else expect(await attempt).toMatchObject({ state: "pending", costCents: 0 });
+    expect(await rows(s.gameId)).toEqual(before);
+    expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } })).toEqual(ledger);
+    expect(await db.auditLog.count({ where: { entityId: s.gameId, action: LOCAL_PATCH_PUBLICATION_ACTION } })).toBe(0);
+    expect(s.request).toHaveBeenCalledTimes(2);
+  });
+  it("asks an uncertain anatomy reviewer to decide once, then sends the picture to the bounded image route", async () => {
+    const s = await dualSeed("dual-unsure", hideId => longAnswer(hideId, 300, 300, 0, { state: "unsure", headConnection: "unsure" }));
+    await s.run(); expect((await s.run()).state).toBe("blocked");
+    expect(localPatchEvidenceRecovery((await rows(s.gameId))[0]!)).toMatchObject({ retry: true, strategy: "decide/v1", role: "continuity" });
+    expect((await s.run()).state).toBe("retry");
+    const anatomy = s.request.mock.calls.filter(([q]) => q.role === "head-continuity").map(([q]) => q.prompt);
+    expect(anatomy).toHaveLength(2); expect(anatomy[1]).toContain("DECISION RECOVERY");
+    const row = (await rows(s.gameId))[0]!, receipt = JSON.parse(row.judgeJson!);
+    expect(receipt.verdict.pictureWhole).toBe("unsure"); expect(row.lastError).toMatch(/^quality-retry: pictureWhole/);
+    expect(receipt.evidenceDiagnosis).toMatchObject({ family: "visual", next: "repair" });
+    expect(localPatchEvidenceRecovery(row)).toBeNull();
+    expect(s.request.mock.calls.map(([q]) => q.role)).toEqual(["scene-quality", "head-continuity", "head-continuity"]);
+    expect(await db.auditLog.count({ where: { entityId: s.gameId, action: LOCAL_PATCH_PUBLICATION_ACTION } })).toBe(0);
+    expect(s.render).toHaveBeenCalledTimes(1);
+  });
+  it("asks a v2 game one bounded entry per person and publishes only on a crowd answer", async () => {
+    const person = (ref: string, role: "target" | "bystander") => ({ ref, role, state: "coherent", visibleBody: true, headConnection: "connected",
+      headTrace: "Round head joins its own neck above the collar.", bodyTrace: "Torso continues into both arms and standing legs.", occlusion: "", faults: [] });
+    const s = await dualSeed("dual-crowd-v2", (hideId, call) => call === 1 ? longAnswer(hideId, 300, 300, 0)
+      : JSON.stringify({ cases: [{ id: `${hideId}:people`, people: [person("target", "target"), person("vendor", "bystander")], unlisted: 0 }] }),
+    { release: DUAL_VISUAL_REVIEW_V2 });
+    expect(await dualVisualReviewVersion(db, s.gameId)).toBe(DUAL_VISUAL_REVIEW_V2);
+    await s.run(); expect((await s.run()).state).toBe("blocked");
+    const first = (await rows(s.gameId))[0]!;
+    // A v1-shaped answer to the v2 question is a format failure, never a pass.
+    expect(JSON.parse(first.judgeJson!).evidenceAttempts).toMatchObject([{ role: "continuity", kind: "shape", strategy: "standard/v1" }]);
+    await s.run();
+    const sol = s.request.mock.calls.filter(([q]) => q.role === "head-continuity").map(([q]) => q.prompt);
+    expect(sol[0]).toContain("Give each visible person their own entry"); expect(sol[0]).toContain(`"version":"${DUAL_VISUAL_REVIEW_V2}"`);
+    expect(sol[0]).not.toContain("Summarize the observed connections in headTrace/bodyTrace");
+    const row = (await rows(s.gameId))[0]!, receipt = JSON.parse(row.judgeJson!);
+    expect(row.status).toBe("GENERATED");
+    expect(receipt.boardReview).toMatchObject({ version: DUAL_VISUAL_REVIEW_V2, dual: { version: DUAL_VISUAL_REVIEW_V2, continuity: { reader: CONTINUITY_READER_CROWD } } });
+    expect(await publishable(s.gameId, row)).toBe(true);
+    // One question's reader never decides another question's answer.
+    const asV1 = { ...receipt.boardReview.dual.continuity, reader: CONTINUITY_READER_BOUNDED };
+    expect(await publishable(s.gameId, row, JSON.stringify({ ...receipt, boardReview: { ...receipt.boardReview,
+      dual: { ...receipt.boardReview.dual, continuity: asV1 } } }))).toBe(false);
+  });
+  it("reads exactly the known pinned pairings and refuses any other pin", async () => {
+    const container = { ...c, pinDualVisualReview: true, visualReview: { request: vi.fn() }, analytics: { track: vi.fn() } } as unknown as Container;
+    const v1 = await createDraft(container, null, "he");
+    const v2 = await createDraft({ ...container, dualVisualReviewRelease: DUAL_VISUAL_REVIEW_V2 } as Container, null, "he");
+    const none = await createDraft({ ...container, pinDualVisualReview: false } as Container, null, "he");
+    expect(await dualVisualReviewVersion(db, v1.gameId)).toBe(DUAL_VISUAL_REVIEW_VERSION);
+    expect(await dualVisualReviewVersion(db, v2.gameId)).toBe(DUAL_VISUAL_REVIEW_V2);
+    expect(await dualVisualReviewVersion(db, none.gameId)).toBeNull();
+    await db.auditLog.update({ where: { id: `aud_visual_policy_${v2.gameId}` }, data: { metaJson: JSON.stringify({ version: "local-patch-dual-high/v3" }) } });
+    await expect(hasDualVisualReview(db, v2.gameId)).rejects.toThrow("refusing a fallback");
   });
   it("makes no purchase with missing credentials or a short worker deadline", async () => {
     const s = await dualSeed("dual-preflight");
@@ -363,12 +540,20 @@ describe("v12 ready appearances have independent paid review and publication bin
     expect(await db.generationJob.findUniqueOrThrow({ where: { id: beforeJob.id } })).toEqual(beforeJob);
     expect(s.judge).not.toHaveBeenCalled(); expect(s.render).toHaveBeenCalledOnce();
   }, 120000);
-  it("bounds no-response review continuations at two without recycling old keys or dropping unknown charges", async () => {
+  it("bounds no-response review continuations at two, waits out the outage between them, and never recycles keys or drops unknown charges", async () => {
     const s = await seed("incremental-transport-limit");
     s.judge.mockImplementation(async () => interruptedReply);
     expect((await review(s)).state).toBe("pending");
     expect((await review(s)).state).toBe("pending");
-    expect((await review(s)).state).toBe("held");
+    // Two transport failures in a row: the same question waits out the outage
+    // instead of a third purchase now; the wait changes no count or reservation.
+    expect(await review(s)).toMatchObject({ state: "pending", costCents: 0 });
+    expect(s.judge).toHaveBeenCalledTimes(2);
+    const waiting = await boardWizardBudgetOf(c).audit(boardWizardWorldId(s.gameId));
+    expect(waiting).toMatchObject({ held: false, reservedMicroUsd: 600_000 }); expect(waiting.unknownRequestKeys).toHaveLength(2);
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS + 60_000);
+    try { expect((await review(s)).state).toBe("held"); } finally { clock.mockRestore(); }
+    expect(s.judge).toHaveBeenCalledTimes(3);
     const audit = await boardWizardBudgetOf(c).audit(boardWizardWorldId(s.gameId));
     expect(audit).toMatchObject({ held: true, reservedMicroUsd: 900_000, capMicroUsd: 4_000_000 });
     expect(audit.unknownRequestKeys).toHaveLength(3);
@@ -457,7 +642,7 @@ describe("v12 ready appearances have independent paid review and publication bin
     expect(s.judge).not.toHaveBeenCalled();
     expect((await rows(s.gameId)).find(r => r.id === sibling.row.id)?.judgeJson).toBe(sibling.row.judgeJson);
   }, 120000);
-  it("backs off unreadable evidence without starving other games, then automatically buys a fresh review", async () => {
+  it("stops unreadable evidence after its stricter question fails twice and parks for a service decision, without starving other games or redrawing", async () => {
     const s = await seed("incremental-review-outage", 3);
     // Give all remaining appearances a completed status so only the malformed
     // judge response is runnable; they are never published by this fixture.
@@ -474,27 +659,30 @@ describe("v12 ready appearances have independent paid review and publication bin
     s.judge.mockImplementation(async request => ({ ...await passing(request), raw: "{bad json" }));
     await review(s); await review(s); await review(s);
     const failed = (await rows(s.gameId)).find(r => r.status === "FAILED")!;
+    const receipt = JSON.parse(failed.judgeJson!);
+    // Round one asked the standard question; rounds two and three the stricter one.
+    expect(receipt.evidenceAttempts.map((a: { attempt: number; kind: string; strategy: string }) => [a.attempt, a.kind, a.strategy])).toEqual([
+      [1, "syntax", "standard/v1"], [2, "syntax", "strict-json/v1"], [3, "syntax", "strict-json/v1"]]);
+    expect(receipt.evidenceDiagnosis).toMatchObject({ role: "quality", family: "format", next: "exhausted", rounds: 3 });
+    expect(failed.lastError).toContain("evidence quality syntax, round 3, next exhausted");
+    expect(localPatchEvidenceRecovery(failed)).toMatchObject({ retry: false, waiting: false, exhausted: true });
     const costs = (await boardWizardBudgetOf(c).audit(boardWizardWorldId(s.gameId))).settledMicroUsd;
     const noDraw = vi.fn(async () => { throw Error("A wire outage cannot authorize an image"); });
     const result = await runLocalPatchWorldSlice(c, { ...s.deps, render: noDraw }, s.gameId, { boardJudge: s.judge });
-    expect(result).toMatchObject({ claimed: true, pending: true, attention: null });
+    expect(result).toMatchObject({ claimed: true, pending: false });
+    expect(result.attention).toContain("no automatic evidence question left (quality syntax)");
     expect(await db.generationJob.findUniqueOrThrow({ where: { id: `job_${s.gameId}` } })).toMatchObject({
-      status: "QUEUED", currentStep: LOCAL_PATCH_EVIDENCE_RETRY_WAIT });
+      status: "FAILED", currentStep: LOCAL_PATCH_RECOVERY_EXHAUSTED });
     expect(await nextPendingGame(c)).not.toBe(s.gameId);
-    expect(await runLocalPatchWorldSlice(c, { ...s.deps, render: noDraw }, s.gameId, { boardJudge: s.judge }))
-      .toMatchObject({ claimed: false, pending: true, attention: null });
+    // Parked, not polled: no later tick buys, waits or redraws for it.
+    for (let tick = 0; tick < 2; tick++) expect(await runLocalPatchWorldSlice(c, { ...s.deps, render: noDraw }, s.gameId, { boardJudge: s.judge }))
+      .toMatchObject({ claimed: false, pending: false, attention: result.attention });
     expect((await boardWizardBudgetOf(c).audit(boardWizardWorldId(s.gameId))).settledMicroUsd).toBe(costs);
-    const old = new Date(Date.now() - LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS - 1000);
-    const receipt = JSON.parse(failed.judgeJson!); receipt.boardReview.evidenceReviewedAt = old.toISOString();
-    await db.targetVariantAsset.update({ where: { id: failed.id }, data: { judgeJson: JSON.stringify(receipt) } });
-    await db.generationJob.update({ where: { id: `job_${s.gameId}` }, data: { updatedAt: old } });
-    s.judge.mockImplementation(passing); s.judge.mockClear();
-    // The slice's direct preparation and paid review use the newly due evidence;
-    // never route the malformed row back to rendering/self-repair.
-    expect(await review(s)).toMatchObject({ state: "done" });
-    expect(s.judge).toHaveBeenCalledOnce(); expect(noDraw).not.toHaveBeenCalled();
-    const recovered = await db.targetVariantAsset.findUniqueOrThrow({ where: { id: failed.id } });
-    expect(recovered.assetId).toBe(failed.assetId); expect(recovered.attempts).toBe(failed.attempts);
-    expect(JSON.parse(recovered.judgeJson!).boardReview.evidenceReviewAttempt).toBe(4);
+    expect(s.judge).toHaveBeenCalledTimes(5); expect(noDraw).not.toHaveBeenCalled();
+    const kept = await db.targetVariantAsset.findUniqueOrThrow({ where: { id: failed.id } });
+    expect(kept).toMatchObject({ assetId: failed.assetId, attempts: failed.attempts, status: "FAILED" });
+    expect(await db.auditLog.count({ where: { entityId: s.gameId, action: LOCAL_PATCH_PUBLICATION_ACTION } })).toBe(2);
+    expect(preparationState({ status: "TARGETS_GENERATING", updatedAt: new Date(),
+      job: await db.generationJob.findUniqueOrThrow({ where: { id: `job_${s.gameId}` } }), automaticRecovery: true })).toBe("attention");
   }, 120000);
 });

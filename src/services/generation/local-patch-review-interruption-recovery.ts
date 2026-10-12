@@ -8,6 +8,7 @@ import type { prepareLocalPatchBoardReview } from "./local-patch-board-review";
 import { fenceLocalPatchImages, LocalPatchRetainedPurchaseStore } from "./local-patch-lifecycle";
 import { sha256Bytes } from "./fixed-sprite";
 import { WorldBudgetError, type WorldAutomaticReviewRecovery } from "./world-budget";
+import type { EvidenceRole, EvidenceStrategy } from "../../domain/scene/local-patch-evidence-policy";
 
 export const REVIEW_INTERRUPTION_POLICY = "local-patch-review-interruption/v1" as const;
 type Prepared = Extract<Awaited<ReturnType<typeof prepareLocalPatchBoardReview>>, { ready: true }>;
@@ -16,7 +17,9 @@ type Prepared = Extract<Awaited<ReturnType<typeof prepareLocalPatchBoardReview>>
  * retained no-response transport failure qualifies. The full unknown charge
  * stays reserved; at most two such continuations fit the unchanged world cap. */
 export async function recoverPreparedLocalPatchReview(c: Container, prepared: Prepared,
-  fence?: (tx: Prisma.TransactionClient) => Promise<void>): Promise<boolean> {
+  fence?: (tx: Prisma.TransactionClient) => Promise<void>,
+  /** The interrupted question's role and variant, for the image's evidence log. */
+  question: { role: EvidenceRole; strategy: EvidenceStrategy } = { role: "quality", strategy: "standard/v1" }): Promise<boolean> {
   const { game, scene, request, requestKey, fingerprint, worldId, budget } = prepared;
   if (scene.sceneVersion !== 12 || prepared.extraPlan || request.reviewScope !== "ready-only/v1"
     || request.hides.length !== 1 || !interruptedLocalPatchReviewRequest(requestKey, fingerprint)) return false;
@@ -68,11 +71,15 @@ export async function recoverPreparedLocalPatchReview(c: Container, prepared: Pr
       || currentGame.deletedAt || currentGame.readyAt || !paid(currentGame)
       || currentGame.scenes.length !== 9 || currentGame.scenes.some(s => s.sceneVersion !== 12))
       throw Error("Interrupted review game changed before recovery");
+    const prior = JSON.parse(selected.row.judgeJson!);
+    // The interrupted round counts against this image's fixed evidence total.
+    const evidenceAttempts = [...(Array.isArray(prior.evidenceAttempts) ? prior.evidenceAttempts : []), { attempt: prepared.evidenceReviewAttempt,
+      role: question.role, kind: "transport", code: "timeout", path: null, strategy: question.strategy, at: new Date().toISOString(), imageSha256: selected.imageSha256 }];
     const changed = await tx.targetVariantAsset.updateMany({ where: { id: selected.row.id, status: selected.row.status,
       assetId: selected.asset.id, attempts: selected.row.attempts, judgeJson: selected.row.judgeJson,
       rectJson: selected.row.rectJson, hitRectJson: selected.row.hitRectJson, headAnchorJson: selected.row.headAnchorJson },
       data: { status: "FAILED", lastError: "quality-unresolved: review transport interrupted; inspect the same pixels again",
-        judgeJson: JSON.stringify({ ...JSON.parse(selected.row.judgeJson!), reviewState: "board-review-complete", verdict: null,
+        judgeJson: JSON.stringify({ ...prior, reviewState: "board-review-complete", verdict: null, evidenceAttempts,
           wireFault: "timeout", reviewInterruption: { ...proof, recoveryId: approvalId, reservedMicroUsd: held.reserveMicroUsd },
           boardReview: { version: prepared.reviewVersion, fingerprint, requestKey, reviewScope: "ready-only/v1",
             ...(request.assessmentMode ? { assessmentMode: request.assessmentMode } : {}),

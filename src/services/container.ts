@@ -22,6 +22,7 @@ import { DbStorage } from "@/infra/storage/db";
 import { runGenerationPipeline } from "./generation/pipeline";
 import { requestVisualReview, type VisualReviewQuestion } from "./generation/visual-review";
 import type { LocalPatchJudgeResult } from "./generation/local-patch-judge";
+import { DUAL_VISUAL_REVIEW_V2, DUAL_VISUAL_REVIEW_VERSION, type DualVisualReviewVersion } from "./generation/visual-review-release";
 
 /**
  * Composition root. Every provider is chosen here, by env, exactly once.
@@ -58,6 +59,8 @@ export interface Container {
   /** Explicit provider selection for newly pinned QA games. No model fallback. */
   visualReview?: { request(question: VisualReviewQuestion, timeoutMs?: number): Promise<LocalPatchJudgeResult> };
   pinDualVisualReview?: boolean;
+  /** Which dual pairing new drafts pin (explicit; absent means the original v1). */
+  dualVisualReviewRelease?: DualVisualReviewVersion;
 }
 
 /**
@@ -112,7 +115,10 @@ function build(): Container {
     autoApprove: flag("QA_AUTO_APPROVE"),
     deliverWithProblems: deliverWithProblemsOf(flag("QA_AUTO_APPROVE"), e.APP_ENV, flag("QA_DELIVER_WITH_PROBLEMS")),
     adminEmails: adminEmails(),
-    pinDualVisualReview: e.APP_ENV === "qa" && e.LOCAL_PATCH_VISUAL_REVIEW === "dual-high-v1",
+    pinDualVisualReview: e.APP_ENV === "qa" && e.LOCAL_PATCH_VISUAL_REVIEW !== "legacy",
+    // A new question version is chosen by name, never by default: the deployed
+    // dual-high-v1 value keeps meaning v1 exactly.
+    dualVisualReviewRelease: e.LOCAL_PATCH_VISUAL_REVIEW === "dual-high-v2" ? DUAL_VISUAL_REVIEW_V2 : DUAL_VISUAL_REVIEW_VERSION,
     // Keep the transport available for a pinned game even when new enrollment
     // is disabled. Missing credentials fail before a paid reservation.
     ...(e.GENERATION_PROVIDER === "openai" && e.ANTHROPIC_API_KEY?.trim() && e.OPENAI_API_KEY?.trim()

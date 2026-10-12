@@ -12,7 +12,7 @@ import { sameChargeEvidence } from "./world-budget";
 import type { PaidRepairBatch } from "./local-patch-paid-repair";
 import { SELF_REPAIR_COMPOSITION_VERSION, SELF_REPAIR_VERSION, selfRepairDecisionSchema } from "../../domain/scene/local-patch-self-repair";
 import { NEIGHBOR_QUADRANTS, RETURN_EDGES } from "./local-patch-integration-evidence";
-import { hasDualVisualReview, DUAL_VISUAL_REVIEW_VERSION } from "./visual-review-release";
+import { hasDualVisualReview, isDualVisualReviewVersion } from "./visual-review-release";
 import { allowedDualPublication } from "./local-patch-dual-publication";
 
 export const LOCAL_PATCH_PUBLICATION_POLICY = "publish-with-visual-warnings/v1";
@@ -225,7 +225,7 @@ export async function hasLocalPatchPublicationPolicy(c: Pick<Container, "db">, i
 async function allowedForGame(db: Prisma.TransactionClient, input: LocalPatchPublicationBinding) {
   if (await hasDualVisualReview(db, input.gameId)) return allowedDualPublication(db, input);
   // Never apply a prospective receipt to a game without its immutable pin.
-  try { if (JSON.parse(input.judgeJson ?? "null")?.boardReview?.version === DUAL_VISUAL_REVIEW_VERSION) return false; }
+  try { if (isDualVisualReviewVersion(JSON.parse(input.judgeJson ?? "null")?.boardReview?.version)) return false; }
   catch { /* Historical advisory versions did not require a structured verdict. */ }
   return isRepair(input) ? allowedRepair(db, input) : allowed(input);
 }

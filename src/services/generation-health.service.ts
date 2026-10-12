@@ -22,6 +22,7 @@ export function generationConcern(game: Candidate, now: number): string | null {
   const job = game.jobs[0];
   if (job?.currentStep === "local-patch:needs-release") return "Generation is held by an unresolved operation or accounting record.";
   if (job?.currentStep === "local-patch:recovery-budget-wait") return "Automatic generation is waiting for authorized service budget capacity.";
+  if (job?.currentStep === "local-patch:recovery-exhausted") return "Automatic recovery has no action left within policy; a service decision is required, not a parent approval.";
   if (game.status === "MANUAL_REVIEW") return "Paid generation needs a service investigation; it is not a parent approval request.";
   const lastActivity = job?.updatedAt ?? game.paidAt ?? game.updatedAt;
   return now - lastActivity.getTime() >= GENERATION_STALE_MS ? "Paid preparation has recorded no generation activity for at least 30 minutes." : null;

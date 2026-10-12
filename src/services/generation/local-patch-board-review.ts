@@ -25,11 +25,14 @@ import { sceneBySlug } from "../scene-catalog.service";
 import type { BudgetJson } from "./world-budget";
 import { LOCAL_PATCH_COMPOSITION_VERSION, LOCAL_PATCH_RETURN_GUARD } from "./local-patch-seam";
 import { readLocalPatchExtraAttemptPlan, requireLocalPatchExtraReview, fenceLocalPatchExtraReview } from "./local-patch-extra-attempt";
-import { localPatchEvidenceRecovery } from "./local-patch-review-recovery";
+import { evidenceKindOfWireFault, localPatchEvidenceHistory, localPatchEvidenceRecovery } from "./local-patch-review-recovery";
+import { nextLocalPatchEvidenceStep, type EvidenceAttempt, type EvidenceFaultKind } from "../../domain/scene/local-patch-evidence-policy";
+import type { DualEvidenceFault } from "./local-patch-dual-review";
 import { recoverPreparedLocalPatchReview } from "./local-patch-review-interruption-recovery";
 import { needsPlayerReview, playerReviewEnabled, PLAYER_REVIEW_MODE, PLAYER_REVIEW_VERSION } from "./local-patch-player-review";
-import { DUAL_VISUAL_REVIEW_VERSION, hasDualVisualReview } from "./visual-review-release";
+import { hasDualVisualReview } from "./visual-review-release";
 import { buyDualLocalPatchReview } from "./local-patch-dual-review";
+import { localPatchRetainedAnswerUndecided } from "./local-patch-dual-evidence";
 
 export const LOCAL_PATCH_BOARD_REVIEW_VERSION = "local-patch-board-five-luna-low/v1";
 export const LOCAL_PATCH_STRICT_BOARD_REVIEW_VERSION = "local-patch-board-five-quality/v3-head-safe";
@@ -61,7 +64,23 @@ export function localPatchBoardReviewKeys(boardId: string, contentVersion = 8): 
 }
 const hash = (value: unknown) => sha256Bytes(Buffer.from(JSON.stringify(value)));
 function demand(value: unknown, message: string): asserts value { if (!value) throw new Error(`LOCAL_PATCH_BOARD_REVIEW: ${message}`); }
-export type LocalPatchBoardReviewOutcome = { state: "done" | "pending" | "held" | "retry" | "blocked"; reason: string | null; replayed: boolean; costCents: number };
+
+/** The single-judge path's undecided round, classified like a dual one. Its
+ * retries already carry the format-recovery addendum, so a later round is
+ * recorded under the strict strategy it actually asked. */
+function singleJudgeEvidence(keep: { raw: string | null; wireFault: string | null }, round: number, imageSha256: string,
+  prior: Record<string, unknown>, updatedAt: Date): DualEvidenceFault {
+  let kind: EvidenceFaultKind = keep.wireFault ? evidenceKindOfWireFault(keep.wireFault) : "shape";
+  if (kind === "unknown") kind = "shape";
+  if (!keep.wireFault) try { JSON.parse((keep.raw ?? "").trim().replace(/^```(?:json)?[\t ]*\r?\n([\s\S]*?)\r?\n```$/i, "$1")); } catch { kind = "syntax"; }
+  const attempt: EvidenceAttempt = { attempt: round, role: "quality", kind, code: keep.wireFault ?? kind, path: null,
+    strategy: round > 1 ? "strict-json/v1" : "standard/v1", at: new Date().toISOString(), imageSha256 };
+  const step = nextLocalPatchEvidenceStep([...localPatchEvidenceHistory({ ...prior, judgedSha256: imageSha256 }, updatedAt), attempt], Date.now());
+  return { attempt, diagnosis: step && "diagnosis" in step ? step.diagnosis : null, reread: false };
+}
+export type LocalPatchBoardReviewOutcome = { state: "done" | "pending" | "held" | "retry" | "blocked"; reason: string | null; replayed: boolean; costCents: number;
+  /** A retained answer was decided again with no question or charge. */
+  decidedRetained?: boolean };
 export type LocalPatchBoardReviewDeps = {
   fence(tx: Prisma.TransactionClient): Promise<void>;
   apiKey?: string;
@@ -72,7 +91,9 @@ export type LocalPatchBoardReviewDeps = {
 /** Read-only reconstruction of the exact question. Recovery may inspect FAILED
  * v9 rows, but gets no authority to dispatch, settle or publish from this API. */
 export async function prepareLocalPatchBoardReview(c: Container, input: { gameId: string; sceneId: string },
-  deps: Pick<LocalPatchBoardReviewDeps, "readBoardArt">, options: { recovery?: boolean; includePlayerCandidates?: boolean; playerReview?: boolean; skipApprovedEvidence?: boolean } = {}) {
+  deps: Pick<LocalPatchBoardReviewDeps, "readBoardArt">, options: { recovery?: boolean; includePlayerCandidates?: boolean; playerReview?: boolean; skipApprovedEvidence?: boolean;
+    /** Select only an appearance whose retained dual answer awaits a corrected reading. */
+    decideRetained?: boolean } = {}) {
   const scene = await c.db.gameScene.findUniqueOrThrow({ where: { id: input.sceneId },
     include: { game: { include: { childProfile: true } }, targets: { include: { variants: true } } } });
   const game = scene.game, child = game.childProfile;
@@ -117,7 +138,7 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
     const target = scene.targets.find(t => t.targetId === hide.targetId);
     const row = target?.variants.find(v => v.variant === LOCAL_PATCH_VARIANT);
     if (!row || !(row.status === "GENERATED" || incremental && (localPatchEvidenceRecovery(row)?.retry
-      || options.includePlayerCandidates && needsPlayerReview(row)) || (options.recovery && isLocalPatchAgeVersion(scene.sceneVersion)
+      || options.includePlayerCandidates && needsPlayerReview(row) || options.decideRetained && localPatchRetainedAnswerUndecided(row)) || (options.recovery && isLocalPatchAgeVersion(scene.sceneVersion)
       || extraPlan?.reviewOnly.some(entry => entry.rowId === row.id)) && row.status === "FAILED") || !row.assetId)
       { if (incremental) continue; return { ready: false as const, reason: "Usable patches are not ready" }; }
     demand(row.provider === LOCAL_PATCH_PROVIDER && row.rectJson && row.hitRectJson && row.headAnchorJson, "Patch metadata is incomplete");
@@ -170,16 +191,21 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
   let evidenceReviewAttempt = 1;
   let requestEntries = entries;
   let readyScope = false;
+  // A corrected reading decides the round it re-reads; it is not a new round.
+  const eligible = (e: typeof entries[number]) => !protectedRows.has(e.row.id) && (!options.decideRetained || localPatchRetainedAnswerUndecided(e.row));
+  const roundOf = (row: TargetVariantAsset) => options.decideRetained ? Math.max(1, Number(JSON.parse(row.judgeJson!).boardReview?.evidenceReviewAttempt ?? 1))
+    : localPatchEvidenceRecovery(row)?.nextAttempt ?? 1;
+  if (options.decideRetained && !entries.some(eligible)) return { ready: false as const, reason: "No retained answer awaits a corrected reading" };
   // New ordinary reviews need only the selected evidence. Do not reconstruct
   // all three large native panels unless replay requires the old full question.
   if (incremental && (!recovering || options.playerReview)) {
-    const unapproved = entries.filter(e => !protectedRows.has(e.row.id));
+    const unapproved = entries.filter(eligible);
     const oldKey = entries.length === board.hides.length ? localPatchBoardReviewKey(board.board, entries.map(e => e.row.attempts),
       LOCAL_PATCH_COMPOSITION_VERSION, scene.sceneVersion) : null;
     if (options.playerReview || !oldKey || unapproved.some(e => localPatchEvidenceRecovery(e.row)) || !await budget.readRequest(worldId, oldKey)) {
       requestEntries = [(unapproved.length ? unapproved : entries).sort((a, b) => (localPatchEvidenceRecovery(a.row)?.nextAttempt ?? 1)
         - (localPatchEvidenceRecovery(b.row)?.nextAttempt ?? 1))[0]!];
-      evidenceReviewAttempt = localPatchEvidenceRecovery(requestEntries[0]!.row)?.nextAttempt ?? 1;
+      evidenceReviewAttempt = roundOf(requestEntries[0]!.row);
       if (evidenceReviewAttempt > 1) settings = { ...settings, effort: "medium" };
       readyScope = true;
     }
@@ -270,12 +296,12 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
   const fullQuestion = !request.reviewScope && entries.length === board.hides.length ? question(request) : null;
   let selected = entries;
   if (incremental) {
-    const unapproved = entries.filter(e => !protectedRows.has(e.row.id));
+    const unapproved = entries.filter(eligible);
     if (unapproved.length && (!fullQuestion || unapproved.some(e => localPatchEvidenceRecovery(e.row))
       || !await budget.readRequest(worldId, fullQuestion.requestKey))) {
       selected = [unapproved.sort((a, b) => (localPatchEvidenceRecovery(a.row)?.nextAttempt ?? 1)
         - (localPatchEvidenceRecovery(b.row)?.nextAttempt ?? 1))[0]!];
-      evidenceReviewAttempt = localPatchEvidenceRecovery(selected[0]!.row)?.nextAttempt ?? 1;
+      evidenceReviewAttempt = roundOf(selected[0]!.row);
       if (evidenceReviewAttempt > 1) settings = { ...settings, effort: "medium" };
       const ids = new Set(selected.map(e => e.hide.id));
       request = { ...request, reviewScope: "ready-only/v1", hides: request.hides.filter(h => ids.has(h.hideId)) };
@@ -299,10 +325,14 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
 /** Historical board questions replay intact. New v12 questions review one ready
  * appearance; absent siblings receive no writes or invented publication proof. */
 export async function reviewLocalPatchBoard(c: Container, input: { gameId: string; sceneId: string; deadlineAt?: number },
-  deps: LocalPatchBoardReviewDeps): Promise<LocalPatchBoardReviewOutcome> {
+  deps: LocalPatchBoardReviewDeps, options: {
+    /** Decide a retained dual answer under its question's current reader: no
+     * reservation, provider or spend switch is involved, because nothing is bought. */
+    decideRetained?: boolean } = {}): Promise<LocalPatchBoardReviewOutcome> {
   const dual = await hasDualVisualReview(c.db, input.gameId);
+  if (options.decideRetained && !dual) return { state: "pending", reason: "Only dual review answers have a corrected reading", replayed: true, costCents: 0 };
   const calibrated = dual || playerReviewEnabled();
-  const preparation = { includePlayerCandidates: calibrated, skipApprovedEvidence: true };
+  const preparation = { includePlayerCandidates: calibrated, skipApprovedEvidence: true, ...(options.decideRetained ? { decideRetained: true } : {}) };
   let prepared = await prepareLocalPatchBoardReview(c, input, deps, { ...preparation, ...(dual ? { playerReview: true } : {}) });
   if (!dual && prepared.ready && calibrated && prepared.scene.sceneVersion === 12 && !prepared.extraPlan) {
     const suppliedIds = new Set(prepared.request.hides.map(h => h.hideId));
@@ -321,12 +351,14 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
   if ((recovering || scene.sceneVersion === 12) && protectedRows.size === entries.length)
     return { state: boardComplete ? "done" : "pending", reason: boardComplete ? null : "Other appearances await generation or review", costCents: 0, replayed: true };
   demand(game.ownerId, "A review requires its verified owner");
-  demand(dual ? c.visualReview : deps.judge || deps.apiKey?.trim(), "Configured visual review providers are required");
-  // Unlike a replay, a new dispatch must consult the current kill switch/owner.
-  await assertGenerationSpendAllowed(c, game.ownerId);
+  if (!options.decideRetained) {
+    demand(dual ? c.visualReview : deps.judge || deps.apiKey?.trim(), "Configured visual review providers are required");
+    // Unlike a replay, a new dispatch must consult the current kill switch/owner.
+    await assertGenerationSpendAllowed(c, game.ownerId);
+  }
   await c.db.$transaction(async tx => { await fenceLocalPatchImages(tx, game.id); await deps.fence(tx); });
   if (!dual && (recovering || request.reviewScope === "ready-only/v1")) await inventorySelfRepairRequest(c, game.id, requestKey, deps.fence);
-  const evaluated = dual ? await buyDualLocalPatchReview(c, prepared, deps, input.deadlineAt) : null;
+  const evaluated = dual ? await buyDualLocalPatchReview(c, prepared, deps, input.deadlineAt, { decideRetained: options.decideRetained }) : null;
   if (evaluated?.kind === "waiting") return evaluated.outcome;
   const bought = evaluated?.bought ?? await purchaseOnce({ ledger: budget, store: new LocalPatchRetainedPurchaseStore(c, game.id, budget) }, {
     worldId, requestKey, scope: "judge", operationFingerprint: fingerprint,
@@ -380,14 +412,25 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
       const prior = JSON.parse(current.judgeJson ?? "{}");
       const compositionVersion = prior.compositionVersion === SELF_REPAIR_COMPOSITION_VERSION ? SELF_REPAIR_COMPOSITION_VERSION : LOCAL_PATCH_COMPOSITION_VERSION;
       const disposition = dispositions[index]!;
+      // Every undecided round joins this image's log; a corrected reading of a
+      // round replaces only that round's classification, never its number.
+      const evidence = evaluated && reviewedIds.has(e.hide.id) ? evaluated.evidence
+        : !evaluated && request.reviewScope === "ready-only/v1" && reviewedIds.has(e.hide.id) && !verdicts[e.hide.id]
+          ? singleJudgeEvidence(keep, evidenceReviewAttempt, e.imageSha256, prior, current.updatedAt) : null;
+      const logged = (Array.isArray(prior.evidenceAttempts) ? prior.evidenceAttempts : []).filter((a: { attempt?: unknown; imageSha256?: unknown }) =>
+        !(evidence?.reread && a.attempt === evidence.attempt.attempt && a.imageSha256 === evidence.attempt.imageSha256));
+      const evidenceAttempts = evidence ? [...logged, evidence.attempt] : logged;
       const judgeJson = JSON.stringify({ ...prior, reviewState: "board-review-complete", verdict: verdicts[e.hide.id] ?? null,
+        ...(evidenceAttempts.length ? { evidenceAttempts } : {}),
+        ...((evidence?.diagnosis ?? (evaluated && reviewedIds.has(e.hide.id) ? evaluated.diagnosis : null))
+          ? { evidenceDiagnosis: evidence?.diagnosis ?? evaluated!.diagnosis } : {}),
         ...(request.assessmentMode === PLAYER_REVIEW_MODE && prior.boardReview ? { reviewHistory: [
           ...(Array.isArray(prior.reviewHistory) ? prior.reviewHistory : []),
           { boardReview: prior.boardReview, verdict: prior.verdict, qualityDisposition: prior.qualityDisposition, wireFault: prior.wireFault },
         ] } : {}),
         wireFault: keep.wireFault ?? (verdicts[e.hide.id] ? null : "schema"), judgedSha256: e.imageSha256,
         ...(strict ? { qualityDisposition: disposition, compositionVersion } : {}),
-        boardReview: { version: evaluated ? DUAL_VISUAL_REVIEW_VERSION : reviewVersion,
+        boardReview: { version: evaluated ? evaluated.proof.version : reviewVersion,
           fingerprint: evaluated?.proof.quality.fingerprint ?? fingerprint,
           requestKey: evaluated?.proof.quality.requestKey ?? requestKey, composedSha256: sha256Bytes(composed),
           ...(evaluated ? { dual: evaluated.proof } : {}),
@@ -403,8 +446,12 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
       const rejected = disposition.state !== "acceptable";
       const retainedIds: unknown = JSON.parse(current.rejectedAssetIdsJson ?? "[]");
       demand(Array.isArray(retainedIds) && retainedIds.every(id => typeof id === "string"), "Rejected image inventory is malformed");
+      // Codes and JSON paths only: the reviewer's text is private evidence.
+      const a = evidence?.attempt, next = evidence?.diagnosis?.next;
+      const note = a ? `; evidence ${a.role} ${a.kind}${a.code && a.code !== a.kind ? `:${a.code}` : ""}${a.path ? ` at ${a.path}` : ""}, round ${a.attempt}`
+        + (next ? `, next ${next}` : "") : "";
       await tx.targetVariantAsset.update({ where: { id: e.row.id }, data: { judgeJson, ...(rejected ? {
-        status: "FAILED", lastError: `quality-${disposition.state}: ${disposition.faults.join("; ") || "Required quality evidence is unresolved"}`.slice(0, 500),
+        status: "FAILED", lastError: `quality-${disposition.state}: ${disposition.faults.join("; ") || "Required quality evidence is unresolved"}${note}`.slice(0, 500),
         rejectedAssetIdsJson: JSON.stringify([...new Set([...retainedIds, e.asset.id])]),
       } : reviewOnly || evidenceOnly ? { status: "GENERATED", lastError: null } : {}) } });
       if (rejected) await tx.targetInstance.update({ where: { id: e.row.targetInstanceId }, data: { status: "FAILED" } });
@@ -420,5 +467,6 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
   return { state: blocked ? "blocked" : retry ? "retry" : complete ? "done" : "pending",
     reason: blocked ? "Required quality evidence is unresolved" : retry ? (isLocalPatchAgeVersion(scene.sceneVersion)
       ? "Required visual quality defect requires a bounded replacement" : "Severe seam or face defect requires a bounded replacement") : complete ? null : "Other appearances await generation or review",
-    replayed: bought.replayed, costCents: evaluated?.newCostCents ?? bought.evidence.amountMicroUsd / 10_000 };
+    replayed: bought.replayed, costCents: evaluated?.newCostCents ?? bought.evidence.amountMicroUsd / 10_000,
+    ...(evaluated?.salvaged ? { decidedRetained: true } : {}) };
 }

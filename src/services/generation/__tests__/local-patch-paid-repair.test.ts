@@ -20,7 +20,7 @@ import { GameConfigSchema } from "../../../domain/game/config";
 import { localPatchBoardsForVersion } from "../../../domain/scene/local-patch-catalog";
 import { cropOf, maskForHide } from "../../../domain/scene/local-patch-hides";
 import { sceneBySlug } from "../../scene-catalog.service";
-import { runLocalPatchWorldSlice, LOCAL_PATCH_STYLE, LOCAL_PATCH_QUALITY_FAILED, LOCAL_PATCH_RECOVERY_BUDGET_WAIT, localPatchPrivateInventory } from "../local-patch-world";
+import { runLocalPatchWorldSlice, LOCAL_PATCH_STYLE, LOCAL_PATCH_QUALITY_FAILED, LOCAL_PATCH_RECOVERY_EXHAUSTED, localPatchPrivateInventory } from "../local-patch-world";
 import { stageLocalPatchPaidRepair, readLocalPatchPaidRepair, runLocalPatchPaidRepair } from "../local-patch-paid-repair";
 import { recomputePaidPatchJoin } from "../local-patch-repair-compose";
 import * as repairComposer from "../local-patch-repair-compose";
@@ -458,17 +458,21 @@ describe.each([8, 10, 11] as const)("v%s paid repairs through actual stage, real
     expect(diagnose).toHaveBeenCalledTimes(1);
     expect((await db.game.findUniqueOrThrow({ where: { id: s.gameId } })).status).toBe("TARGETS_GENERATING");
   }, 240_000);
-  it.runIf(version >= 10)("preserves the spending ceiling and backs off an operational budget outage without failing the game or starving the queue", async () => {
+  it.runIf(version >= 10)("preserves the spending ceiling and parks a world no automatic action can finish, without failing the game or starving the queue", async () => {
     const s = await seed(); await resumeAutomaticLocalPatchRecovery(c, s.gameId);
     const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(s.gameId), spent = (await budget.audit(worldId)).settledMicroUsd;
     await budget.importSettled(worldId, { scope: "image", operationFingerprint: `synthetic-near-budget-${s.gameId}`,
       evidence: { ...bill(`req-${s.gameId}-budget-fixture`), amountMicroUsd: 3_990_000 - spent } });
     const diagnose = vi.fn(async () => { throw Error("An exhausted world must not dispatch a diagnostic call"); });
+    // A v10/v11 world has no automatic extension and nothing is in flight, so
+    // another hour cannot change the refusal (it used to re-queue every hour,
+    // forever). It is parked with the exact amounts and the game does not fail.
+    const reason = expect.stringMatching(/^local-patch: no automatic action remains within the authorized world budget; the next required purchase reserves \d+ and 10000 of 4000000 micro-USD remain with nothing in flight\. A service decision is required/);
     await runLocalPatchWorldSlice(c, noPaint, s.gameId, { maxHides: 1, diagnose });
-    expect(await runLocalPatchWorldSlice(c, noPaint, s.gameId, { maxHides: 1, diagnose })).toMatchObject({ pending: true, attention: null });
+    expect(await runLocalPatchWorldSlice(c, noPaint, s.gameId, { maxHides: 1, diagnose })).toMatchObject({ pending: false, attention: reason });
     expect(await db.game.findUniqueOrThrow({ where: { id: s.gameId } })).toMatchObject({ status: "TARGETS_GENERATING", configJson: null });
-    expect(await db.generationJob.findUniqueOrThrow({ where: { id: `job_${s.gameId}` } })).toMatchObject({ status: "QUEUED", currentStep: LOCAL_PATCH_RECOVERY_BUDGET_WAIT });
-    expect(await runLocalPatchWorldSlice(c, noPaint, s.gameId, { maxHides: 1, diagnose })).toMatchObject({ claimed: false, pending: true, attention: null });
+    expect(await db.generationJob.findUniqueOrThrow({ where: { id: `job_${s.gameId}` } })).toMatchObject({ status: "FAILED", currentStep: LOCAL_PATCH_RECOVERY_EXHAUSTED, lastError: reason });
+    expect(await runLocalPatchWorldSlice(c, noPaint, s.gameId, { maxHides: 1, diagnose })).toMatchObject({ claimed: false, pending: false, attention: reason });
     expect(await nextPendingGame(c)).not.toBe(s.gameId);
     expect(diagnose).not.toHaveBeenCalled(); expect((await budget.audit(worldId)).settledMicroUsd).toBe(3_990_000);
   }, 240_000);

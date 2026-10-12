@@ -4,7 +4,7 @@ import { qaAccessDenied } from "@/lib/server/qa-access";
 import { getContainer } from "@/services/container";
 import { creationStep, isPlayable } from "@/domain/order-state";
 import { creationProgress, type CreationSignals } from "@/domain/creation-progress";
-import { LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_QUALITY_FAILED, LOCAL_PATCH_STYLE } from "@/services/generation/local-patch-world";
+import { LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_QUALITY_FAILED, LOCAL_PATCH_RECOVERY_EXHAUSTED, LOCAL_PATCH_STYLE } from "@/services/generation/local-patch-world";
 import { isLocalPatchAdvisoryVersion } from "@/domain/scene/local-patch-catalog";
 import { selfRepairEnabled } from "@/domain/scene/local-patch-self-repair";
 import { statusOf } from "@/services/game-status";
@@ -177,8 +177,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
   // A world parked for a person is not a world in progress. The tick already
   // refuses it; this is the half the PARENT sees, and without it the screen goes
   // on saying the game is being made and goes on asking for another slice.
-  const parked = game.styleVersion === LOCAL_PATCH_STYLE
-    && (await readStatusJob())?.currentStep === LOCAL_PATCH_NEEDS_RELEASE;
+  const parkedStep = game.styleVersion === LOCAL_PATCH_STYLE ? (await readStatusJob())?.currentStep : undefined;
+  const parked = parkedStep === LOCAL_PATCH_NEEDS_RELEASE || parkedStep === LOCAL_PATCH_RECOVERY_EXHAUSTED;
   const qualityFailed = game.styleVersion === LOCAL_PATCH_STYLE
     && !(game.scenes.length === 9 && game.scenes.every(scene => selfRepairEnabled(scene.sceneVersion)))
     && (await readStatusJob())?.currentStep === LOCAL_PATCH_QUALITY_FAILED;
