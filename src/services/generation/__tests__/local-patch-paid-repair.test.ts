@@ -30,7 +30,7 @@ import { readBoardConditionedCatalog } from "../board-conditioned-catalog";
 import { LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, runLocalPatchHide, type LocalPatchHideDeps } from "../local-patch-hide";
 import { LOCAL_PATCH_COMPOSITION_VERSION, LOCAL_PATCH_RETURN_GUARD } from "../local-patch-seam";
 import { LOCAL_PATCH_RESERVE, RETAINED_RENDER_VERSION } from "../local-patch-render";
-import { LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION } from "../local-patch-prompt";
+import { AGE_BODY_CONTRACT, LOCAL_PATCH_AGE_BODY_PROMPT_VERSION, LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION } from "../local-patch-prompt";
 import { recordLocalPatchPublicationPolicy, hasLocalPatchPublicationPolicy, localPatchPublicationGeometryHash } from "../local-patch-publication-policy";
 import { LocalPatchRetainedPurchaseStore } from "../local-patch-lifecycle";
 import { purchaseOnce } from "../paid-operation";
@@ -41,7 +41,7 @@ import type { SelfRepairWire } from "../local-patch-self-repair";
 import { runLocalPatchSelfRepair } from "../local-patch-self-repair";
 import { SELF_REPAIR_COMPOSITION_VERSION } from "../../../domain/scene/local-patch-self-repair";
 import { prepareLocalPatchBoardReview, reviewLocalPatchBoard } from "../local-patch-board-review";
-import { bill, boardPng, PASSING_ANSWER, seedApprovedGame } from "./local-patch-fixtures";
+import { bill, boardPng, paintedOk, PASSING_ANSWER, seedApprovedGame } from "./local-patch-fixtures";
 
 const state = vi.hoisted(() => ({ testers: [] as string[], original: Buffer.alloc(0) }));
 vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: "qa", GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: 0,
@@ -237,6 +237,34 @@ describe("v12 scoped automatic repair review", () => {
     expect(await hasLocalPatchPublicationPolicy(c, binding)).toBe(true);
     const tampered = JSON.parse(after.judgeJson!); tampered.boardReview.reviewedHideIds = [board.hides[1]!.id];
     await expect(db.$transaction(tx => recordLocalPatchPublicationPolicy(tx, { ...binding, judgeJson: JSON.stringify(tampered) }))).rejects.toThrow("quality policy");
+    expect(noNetwork).not.toHaveBeenCalled();
+  }, 180000);
+  it("diagnoses and redraws a v16 appearance in its own words: the stated age, and the recipe its row pinned", async () => {
+    UNREVIEWED = [];
+    const s = await seed(), hide = SELECTED[0]!, board = BOARDS.find(b => b.board === "antarctica")!;
+    const row = s.beforeRows.find(r => r.id.endsWith(hide.id))!;
+    await db.game.update({ where: { id: s.gameId }, data: { status: "TARGETS_GENERATING" } });
+    await db.targetVariantAsset.update({ where: { id: row.id }, data: { promptVersion: LOCAL_PATCH_AGE_BODY_PROMPT_VERSION } });
+    const repair = s.repairs[0]!, asked: string[] = [], painted: string[] = [];
+    const decision = { cause: "age-or-scale", explanation: "The visible body reads younger than the stated age; redraw it in a taller envelope.",
+      action: "redraw-with-new-placement", sourceKey: `${hide.id}:${hide.pose}:render:1`, returnWindow: repair.returnWindow,
+      protectedCore: { ...repair.protectedCore, height: repair.protectedCore.height + 20 }, faceRect: repair.faceRect };
+    const diagnose = vi.fn(async (wire: SelfRepairWire) => { asked.push(wire.prompt); return { verdict: null, raw: JSON.stringify(decision),
+      usage: { prompt_tokens: 8000, completion_tokens: 500 }, requestId: `req-${s.gameId}-v16-plan`, model: "gpt-5.6-sol", finishReason: "stop", wireFault: null, costUnknown: false }; });
+    const render: LocalPatchHideDeps["render"] = async input => { painted.push(input.prompt);
+      return paintedOk(await sharp(input.stylePng).resize(768, 1152).png().toBuffer(), bill(`req-${s.gameId}-v16-redraw`)); };
+    const input = { gameId: s.gameId, sceneId: `gsc-${s.gameId}-antarctica`, board, hide }, deps = { ...noPaint, render, fence: async () => {}, diagnose };
+    // One durable phase per slice: freeze, then the bought diagnosis, then the redraw.
+    for (let slice = 0; slice < 3 && !asked.length; slice++) await runLocalPatchSelfRepair(c, input, deps);
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toContain("Keep the 8-year-old body of the BODY AGE CONTRACT: never change its age to fit the window");
+    expect(asked[0]).not.toContain("age8");
+    expect(JSON.parse((await db.targetVariantAsset.findUniqueOrThrow({ where: { id: row.id } })).judgeJson!).selfRepair).toMatchObject({ phase: "applying" });
+    for (let slice = 0; slice < 3 && !painted.length; slice++) await runLocalPatchSelfRepair(c, input, deps);
+    expect(painted).toHaveLength(1);
+    expect(painted[0]).toContain(AGE_BODY_CONTRACT); expect(painted[0]).toContain("AUTONOMOUS RECOVERY");
+    expect(painted[0]).not.toMatch(/dark curls|dark locks|Group curls/);
+    expect((await db.targetVariantAsset.findUniqueOrThrow({ where: { id: row.id } })).promptVersion).toBe(LOCAL_PATCH_AGE_BODY_PROMPT_VERSION);
     expect(noNetwork).not.toHaveBeenCalled();
   }, 180000);
 });

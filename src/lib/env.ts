@@ -34,6 +34,9 @@ const EnvSchema = z.object({
   LOCAL_PATCH_PLAYER_REVIEW: z.enum(["on", "off"]).default("off"),
   /** Prospective QA release; captured on new drafts, never retroactive. */
   LOCAL_PATCH_VISUAL_REVIEW: z.enum(["legacy", "dual-high-v1", "dual-high-v2"]).default("legacy"),
+  /** Painter, diagnosis and identity-repair wording for NEW questions only: a
+   * stored hide row or identity checkpoint keeps the release it started with. */
+  LOCAL_PATCH_PROMPT_RELEASE: z.enum(["v15", "v16"]).default("v15"),
   /** Explorers/Detectives cards under the child's name. On qa/production they
    * appear only while a Detectives world can actually be sold
    * (content/worlds/detective-releases.ts); development shows them for review. */

@@ -18,6 +18,7 @@ import { reviewBoardWizardIdentity } from "../board-wizard-identity-gate";
 import { readBoardConditionedCatalog } from "../board-conditioned-catalog";
 import { reviewLocalPatchBoard } from "../local-patch-board-review";
 import { runLocalPatchHide, type LocalPatchHideDeps } from "../local-patch-hide";
+import { AGE_BODY_CONTRACT, LOCAL_PATCH_AGE_BODY_PROMPT_VERSION, LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION } from "../local-patch-prompt";
 import { LOCAL_PATCH_PUBLICATION_ACTION } from "../local-patch-publication-policy";
 import { LOCAL_PATCH_RECOVERY_BUDGET_WAIT, LOCAL_PATCH_RECOVERY_EXHAUSTED, LOCAL_PATCH_STYLE, runLocalPatchWorldSlice } from "../local-patch-world";
 import { activateLocalPatchEmergencyBudget } from "../local-patch-budget-recovery";
@@ -28,9 +29,9 @@ import { sha256Bytes } from "../fixed-sprite";
 import { bill, paintedCrop, paintedOk, seedApprovedGame } from "./local-patch-fixtures";
 import { asDeployedReaderRefusal, dualReviewer, longAnswer, prose, spendTo } from "./local-patch-dual-fixtures";
 
-const fakes = vi.hoisted(() => ({ testers: [] as string[] }));
+const fakes = vi.hoisted(() => ({ testers: [] as string[], release: "v15" as "v15" | "v16" }));
 vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: "qa", GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: 0, LOCAL_PATCH_PLAYER_REVIEW: "on",
-  GENERATION_PROVIDER: "openai", GENERATION_MODEL: "gpt-image-2", GENERATION_QUALITY: "medium" }),
+  GENERATION_PROVIDER: "openai", GENERATION_MODEL: "gpt-image-2", GENERATION_QUALITY: "medium", LOCAL_PATCH_PROMPT_RELEASE: fakes.release }),
   spendGuard: () => ({ appEnv: "qa", realGeneration: true, testers: fakes.testers }), flag: () => false, adminEmails: () => [] }));
 
 const journeySlugs = new Set(boardsOfWorlds(["journey"]));
@@ -220,4 +221,37 @@ describe("a whole v12 world under two independent HIGH reviews", () => {
     expect(request).not.toHaveBeenCalled();
     expect(await budget.readRequest(worldId, "in-flight-review")).toMatchObject({ state: "pending", reserveMicroUsd: 300_000 });
   }, 900_000);
+});
+
+describe("v16 on a real v12 world", () => {
+  it("asks a fresh appearance the chosen v16 question, keeps a stored row on v15, and repairs each in its own words", async () => {
+    const gameId = "dual-world-v16"; await world(gameId);
+    const prompts = new Map<string, string>(), renders: string[] = [], base = painter(gameId, renders);
+    const deps: LocalPatchHideDeps = { ...base, render: async input => { prompts.set(input.requestKey, input.prompt); return base.render(input); } };
+    const board = BOARDS.find(b => b.board === "greatwall")!, [stored, fresh] = [board.hides[2]!, board.hides[0]!];
+    const versions = async () => Object.fromEntries((await rows(gameId)).filter(r => r.promptVersion)
+      .map(r => [JSON.parse(r.judgeJson ?? "{}").hide as string, r.promptVersion]));
+    try {
+      fakes.release = "v15";
+      expect(await runLocalPatchHide(c, deps, { gameId, board, hide: stored })).toMatchObject({ attempt: 1 });
+      fakes.release = "v16";
+      expect(await runLocalPatchHide(c, deps, { gameId, board, hide: fresh })).toMatchObject({ attempt: 1 });
+      expect(await versions()).toEqual({ [stored.id]: LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION, [fresh.id]: LOCAL_PATCH_AGE_BODY_PROMPT_VERSION });
+      const first = prompts.get(`${fresh.id}:${fresh.pose}:render:1`)!;
+      expect(first).toContain(AGE_BODY_CONTRACT); expect(first).toMatch(/BODY AGE CONTRACT: 8 years/);
+      expect(first).toContain("The new child's hands hold the same sticks");
+      expect(prompts.get(`${stored.id}:${stored.pose}:render:1`)).not.toContain(AGE_BODY_CONTRACT);
+      // A repair keeps each row's own question, whatever release is chosen now.
+      for (const hide of [stored, fresh]) {
+        const row = (await rows(gameId)).find(r => JSON.parse(r.judgeJson ?? "{}").hide === hide.id)!;
+        await db.targetVariantAsset.update({ where: { id: row.id }, data: { status: "FAILED", lastError: "quality-retry: ageAppropriate" } });
+        expect(await runLocalPatchHide(c, deps, { gameId, board, hide, repairChecks: ["ageAppropriate"] })).toMatchObject({ attempt: 2 });
+      }
+      const repaired = prompts.get(`${fresh.id}:${fresh.pose}:render:2`)!;
+      expect(repaired).toContain(AGE_BODY_CONTRACT); expect(repaired).toContain("CORRECT THE REPORTED DEFECTS:");
+      expect(prompts.get(`${stored.id}:${stored.pose}:render:2`)).not.toContain(AGE_BODY_CONTRACT);
+      expect(await versions()).toEqual({ [stored.id]: LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION, [fresh.id]: LOCAL_PATCH_AGE_BODY_PROMPT_VERSION });
+      expect(renders).toHaveLength(4);
+    } finally { fakes.release = "v15"; }
+  }, 300_000);
 });

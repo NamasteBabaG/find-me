@@ -16,9 +16,16 @@ import { boardConditioningHash } from "./board-conditioned-source";
 import { activateLocalPatchEmergencyBudget, deferLocalPatchIdentityAtAuthorizedCap } from "./local-patch-budget-recovery";
 import { WorldBudgetError, type WorldReservationInput } from "./world-budget";
 
+/** v16 identity feedback: the repair strategy, then the check codes, then the
+ * reviewers' evidence, sized for the provider's 1,200-character feedback window.
+ * The historical order put long evidence first, so a cut could drop the strategy. */
+export const IDENTITY_FEEDBACK_ORDER = "strategy-first/v1";
+export const IDENTITY_FEEDBACK_MAX = 1200;
 const idsSchema = z.object({ identityAssetId: z.string().min(1), avatarAssetId: z.string().min(1) }).strict();
 const checkpointSchema = z.object({ policy: z.literal(IDENTITY_SELECTION_POLICY), first: idsSchema,
   second: idsSchema.optional(), selected: idsSchema.optional(),
+  /** Chosen when the checkpoint is created and kept for every later attempt. */
+  feedback: z.literal(IDENTITY_FEEDBACK_ORDER).optional(),
   recovery: z.object({ nextAttempt: z.number().int().min(3), current: idsSchema, diagnosis: z.string(), failedIdentityIds: z.array(z.string()) }).strict().optional() }).strict();
 type Checkpoint = z.infer<typeof checkpointSchema>;
 export const IDENTITY_CANDIDATE_ACTION = "identity-best-of-two:candidate";
@@ -59,6 +66,7 @@ export async function selectBestIdentity(c: Container, initialClaim: BoardWizard
   const saved = JSON.parse(job.stepsJson).identityBestOfTwo;
   let checkpoint: Checkpoint = saved ? checkpointSchema.parse(saved) : {
     policy: IDENTITY_SELECTION_POLICY, first: { identityAssetId: claim.identityAssetId, avatarAssetId: claim.avatarAssetId },
+    ...(input.contentVersion === 12 && env().LOCAL_PATCH_PROMPT_RELEASE === "v16" ? { feedback: IDENTITY_FEEDBACK_ORDER } : {}),
   };
   const expectedCurrent = checkpoint.selected ?? checkpoint.second ?? checkpoint.recovery?.current ?? checkpoint.first;
   demand(expectedCurrent.identityAssetId === claim.identityAssetId && expectedCurrent.avatarAssetId === claim.avatarAssetId, "Checkpoint/child differ");
@@ -114,7 +122,8 @@ export async function selectBestIdentity(c: Container, initialClaim: BoardWizard
       }
       else {
         await input.preflight(); requireLocalPatchIdentityTime(input.deadlineAt, 175_000);
-        const feedback = JSON.stringify({ checks: first.checks, reason: first.reason, ...(checkpoint.recovery ? { diagnosis: checkpoint.recovery.diagnosis, attempt: checkpoint.recovery.nextAttempt } : {}) });
+        const evidence = { checks: first.checks, reason: first.reason, ...(checkpoint.recovery ? { diagnosis: checkpoint.recovery.diagnosis, attempt: checkpoint.recovery.nextAttempt } : {}) };
+        const feedback = checkpoint.feedback === IDENTITY_FEEDBACK_ORDER ? identityRepairFeedback(evidence) : JSON.stringify(evidence);
         const attempt = checkpoint.recovery?.nextAttempt ?? 2;
         const provenance = identityProvenanceSchema.parse({ ...first.provenance,
           repair: { policy: IDENTITY_SELECTION_POLICY, feedbackSha256: boardConditioningHash(feedback) } });
@@ -153,7 +162,7 @@ export async function selectBestIdentity(c: Container, initialClaim: BoardWizard
     : chooseIdentityCandidate(first, second);
   if (!winner && isRefreshedCollectionVersion(input.contentVersion) && second && checkpoint.second) {
     const diagnosis = diagnoseIdentityFailures(first, second, claim.ageYears!);
-    checkpoint = { policy: IDENTITY_SELECTION_POLICY, first: checkpoint.first,
+    checkpoint = { policy: IDENTITY_SELECTION_POLICY, first: checkpoint.first, ...(checkpoint.feedback ? { feedback: checkpoint.feedback } : {}),
       recovery: { nextAttempt: (checkpoint.recovery?.nextAttempt ?? 2) + 1, current: checkpoint.second, diagnosis,
         failedIdentityIds: [...(checkpoint.recovery?.failedIdentityIds ?? []), checkpoint.first.identityAssetId, checkpoint.second.identityAssetId] } };
     await withBoardWizardIdentityClaim(c, claim, tx => saveCheckpoint(tx, claim.jobId, checkpoint));
@@ -188,4 +197,29 @@ export function diagnoseIdentityFailures(first: IdentityGateReceipt, second: Ide
       ...(body ? ["Build a new skeleton and torso for the explicit age " + age + " independently of the photo body and atlas people. Correct standing height, limb length and head-to-body ratio before adding clothes. Retain facial identity."] : []),
       "Reconstruct all four complete views from the same identity/anatomy plan, then add matte paint and neutral clothing. Use the located evidence above to change the construction, not simply repeat the last drawing.",
     ] });
+}
+
+/**
+ * v16 identity feedback, sized for the provider's window: the strategy (what to
+ * change: face construction, the body for the explicit age, four complete
+ * views), then the check codes, then the reviewers' evidence. Only the evidence
+ * is shortened, from its end, so the strategy always arrives whole.
+ */
+export function identityRepairFeedback(input: { checks: unknown; reason: string; diagnosis?: string; attempt?: number }): string {
+  let strategy: string[] = [], candidates: unknown[] = [], reasons = [input.reason];
+  if (input.diagnosis) try {
+    const diagnosis = JSON.parse(input.diagnosis) as { strategy?: unknown; observations?: unknown };
+    if (Array.isArray(diagnosis?.strategy)) strategy = diagnosis.strategy.filter((item): item is string => typeof item === "string");
+    if (Array.isArray(diagnosis?.observations)) {
+      candidates = diagnosis.observations.map((o: { checks?: unknown }) => o?.checks ?? null);
+      const evidence = diagnosis.observations.map((o: { evidence?: unknown }) => typeof o?.evidence === "string" ? o.evidence : "").filter(Boolean);
+      if (evidence.length) reasons = evidence;
+    }
+  } catch { /* An unreadable diagnosis adds no strategy; the checks and evidence still go. */ }
+  const head = { order: IDENTITY_FEEDBACK_ORDER, ...(input.attempt ? { attempt: input.attempt } : {}), strategy,
+    checks: input.checks ?? null, ...(candidates.length ? { candidates } : {}) };
+  const size = (evidence: string) => JSON.stringify({ ...head, evidence }).length;
+  let evidence = reasons.join(" | ");
+  while (evidence && size(evidence) > IDENTITY_FEEDBACK_MAX) evidence = evidence.slice(0, Math.max(0, evidence.length - (size(evidence) - IDENTITY_FEEDBACK_MAX)));
+  return JSON.stringify({ ...head, evidence });
 }

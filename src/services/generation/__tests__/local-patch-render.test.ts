@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { describe, expect, it, vi } from "vitest";
 import { LOCAL_PATCH_CROP, POSE_MASK, cropOf, maskForHide, maskInCrop, type LocalPatchBoard, type LocalPatchHide } from "../../../domain/scene/local-patch-hides";
-import { LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION, LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION, localPatchPrompt } from "../local-patch-prompt";
+import { AGE_BODY_CONTRACT, LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_AGE_BODY_PROMPT_VERSION, LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION, LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION, localPatchPrompt } from "../local-patch-prompt";
 import { localPatchBoardsForVersion } from "../../../domain/scene/local-patch-catalog";
 import { RETAINED_PURCHASE_VERSION, retainedPayloadDigest } from "../paid-operation";
 import { LOCAL_PATCH_RESERVE, poseMask, renderLocalPatchHide, type LocalPatchRenderDeps } from "../local-patch-render";
@@ -163,21 +163,49 @@ describe("one paid attempt at one hide", () => {
     expect(render).toHaveBeenCalledTimes(1);
   });
 
-  it.each(["scene-integration-v3", "scene-integration-v4"] as const)("surface repair %s respects pinned hair directions and refuses a swapped source before repurchasing", async (paintRecipe) => {
+  it("asks the chosen v16 question for two synthetic identities, straight-short and curly, without replaying a v15 purchase", async () => {
+    const b = localPatchBoardsForVersion(12).find(board => board.hides.some(h => h.id === "greatwall-v12-1"))!, h = b.hides.find(x => x.id === "greatwall-v12-1")!;
+    const w = world();
+    const render = vi.fn(async (input: Parameters<LocalPatchRenderDeps["render"]>[0]) => ({ png: await sharp(input.stylePng).resize(768, 1152).png().toBuffer(), rejected: null, quarantined: null, evidence: evidence(`v16-${input.requestKey}`), unknownReason: null }));
+    const worker = w.process({ render });
+    // Two synthetic references: only the image differs; no hair type is in the words.
+    const straightShort = await sharp({ create: { width: 64, height: 64, channels: 4, background: { r: 230, g: 205, b: 150, alpha: 255 } } }).png().toBuffer();
+    const curlyLong = await sharp({ create: { width: 64, height: 64, channels: 4, background: { r: 40, g: 28, b: 22, alpha: 255 } } }).png().toBuffer();
+    const input = { worldId: "synthetic-age-body", board: b, hide: h,
+      composedPng: await sharp({ create: { width: 3840, height: 2160, channels: 3, background: "#ccbbaa" } }).png().toBuffer(),
+      judgeIdentityPng: await small(), contentVersion: 12, referenceMode: LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, ageYears: 5, apiKey: "synthetic" };
+    const v15 = await renderLocalPatchHide(worker.deps, { ...input, identityPng: straightShort, attempt: 1, paintRecipe: "scene-integration-v4" });
+    expect(v15.promptVersion).toBe(LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION);
+    // A v15 row's stored question is never answered with v16 words.
+    const conflict = await renderLocalPatchHide(worker.deps, { ...input, identityPng: straightShort, attempt: 1, paintRecipe: "scene-integration-v5" });
+    expect(conflict.refusedBecause).toBe("stopped");
+    await expect(renderLocalPatchHide(worker.deps, { ...input, identityPng: straightShort, attempt: 2, paintRecipe: "scene-integration-v5",
+      expectedPromptVersion: LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION })).rejects.toThrow("prompt provenance conflict");
+    const straight = await renderLocalPatchHide(worker.deps, { ...input, identityPng: straightShort, attempt: 2, paintRecipe: "scene-integration-v5", expectedPromptVersion: LOCAL_PATCH_AGE_BODY_PROMPT_VERSION });
+    const curly = await renderLocalPatchHide(w.process({ render }).deps, { ...input, worldId: "synthetic-age-body-2", identityPng: curlyLong, attempt: 2, paintRecipe: "scene-integration-v5" });
+    expect([straight.promptVersion, curly.promptVersion]).toEqual([LOCAL_PATCH_AGE_BODY_PROMPT_VERSION, LOCAL_PATCH_AGE_BODY_PROMPT_VERSION]);
+    const [first, second] = [render.mock.calls[1]![0], render.mock.calls[2]![0]];
+    expect(first.prompt).toBe(second.prompt);
+    expect(first.identityPng.equals(second.identityPng)).toBe(false);
+    expect(first.prompt).toContain(AGE_BODY_CONTRACT); expect(first.prompt).toMatch(/BODY AGE CONTRACT: 5 years/);
+    expect(first.prompt).toContain("The new child's hands hold the same sticks"); expect(first.prompt).not.toContain("His hands");
+    expect(first.prompt).toContain("Straight hair stays straight, short hair stays short"); expect(first.prompt).not.toMatch(/dark curls|dark locks|curl silhouette/);
+    expect(render.mock.calls[0]![0].prompt).not.toContain(AGE_BODY_CONTRACT);
+    expect(render).toHaveBeenCalledTimes(3);
+  });
+
+  it.each(["scene-integration-v3", "scene-integration-v4", "scene-integration-v5"] as const)("surface repair %s respects pinned hair directions and refuses a swapped source before repurchasing", async (paintRecipe) => {
     const w = world(), source = await sharp({ create: { width: 512, height: 768, channels: 3, background: "#445566" } }).png().toBuffer();
     const b = localPatchBoardsForVersion(12)[0]!, h = b.hides[0]!;
     const composed = await sharp({ create: { width: 3840, height: 2160, channels: 3, background: "#ccbbaa" } }).png().toBuffer();
     const decision: SelfRepairDecision = { action: "restyle-retained", cause: "paint-style", explanation: "Retained figure is complete; only its surface is photographic.",
       sourceKey: `${h.id}:${h.pose}:render:2`, returnWindow: { left: 20, top: 20, width: 470, height: 730 },
       protectedCore: { left: 100, top: 160, width: 200, height: 400 }, faceRect: { left: 140, top: 180, width: 80, height: 90 } };
+    // Captured and checked outside the provider stub: a failed expectation inside
+    // it is treated as a provider failure and would not fail this test.
+    const sent: { prompt: string; style: Buffer }[] = [];
     const render = vi.fn(async (input: Parameters<LocalPatchRenderDeps["render"]>[0]) => {
-      expect(await sharp(input.stylePng).raw().toBuffer()).toEqual(await sharp(source).raw().toBuffer());
-      expect(input.prompt).toContain("Edit the EXISTING target child");
-      expect(input.prompt).not.toContain("adding exactly ONE");
-      if(paintRecipe === "scene-integration-v4") {
-        expect(input.prompt).not.toMatch(/dark curls|dark locks|Group curls/);
-        expect(input.prompt).toContain("reference's actual colour and texture");
-      } else expect(input.prompt).toContain("large grouped dark curls");
+      sent.push({ prompt: input.prompt, style: await sharp(input.stylePng).raw().toBuffer() });
       return { png: source, rejected: null, quarantined: null, evidence: evidence("restyle-receipt"), unknownReason: null };
     });
     const worker = w.process({ render });
@@ -187,6 +215,14 @@ describe("one paid attempt at one hide", () => {
     await renderLocalPatchHide(worker.deps, input);
     await renderLocalPatchHide(worker.deps, input);
     expect(render).toHaveBeenCalledTimes(1);
+    const [{ prompt, style }] = sent as [typeof sent[number]];
+    expect(style).toEqual(await sharp(source).raw().toBuffer());
+    expect(prompt).toContain("Edit the EXISTING target child");
+    expect(prompt).not.toContain("adding exactly ONE");
+    if (paintRecipe !== "scene-integration-v3") {
+      expect(prompt).not.toMatch(/dark curls|dark locks|Group curls/);
+      expect(prompt).toContain("reference's actual colour and texture");
+    } else expect(prompt).toContain("large grouped dark curls");
     const changed = await sharp(source).modulate({ brightness: 1.1 }).png().toBuffer();
     expect((await renderLocalPatchHide(worker.deps, { ...input, restyleSourcePng: changed })).accepted).toBe(false);
     expect(render).toHaveBeenCalledTimes(1);

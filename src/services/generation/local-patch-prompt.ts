@@ -71,16 +71,24 @@ export const LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION = "local-patch-prompt/v13-
 export const LOCAL_PATCH_INTEGRATED_PROMPT_VERSION = "local-patch-prompt/v14-scene-integration";
 /** Fresh v12 rows use reference-neutral rendering; existing rows retain their exact question. */
 export const LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION = "local-patch-prompt/v15-reference-neutral-integration";
-export type LocalPatchPaintRecipe = "board-paint-v1" | "identity-body-v2" | "scene-integration-v3" | "scene-integration-v4";
+/** Chosen explicitly (LOCAL_PATCH_PROMPT_RELEASE=v16) for fresh v12 rows: the
+ * stated age alone shapes the body; the replaced person and neighbours only
+ * locate the child. v13-v15 rows keep their exact questions. */
+export const LOCAL_PATCH_AGE_BODY_PROMPT_VERSION = "local-patch-prompt/v16-age-body-neutral";
+export type LocalPatchPaintRecipe = "board-paint-v1" | "identity-body-v2" | "scene-integration-v3" | "scene-integration-v4" | "scene-integration-v5";
+export type LocalPatchPromptRelease = "v15" | "v16";
 
-export function pinnedLocalPatchPromptVersion(existing: { promptVersion: string | null; attempts: number } | null, legacyVersion: string, contentVersion?: number): string {
-  if (!existing) return contentVersion === INTEGRATED_COLLECTION_VERSION ? LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION : contentVersion === REFRESHED_COLLECTION_VERSION ? LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION : LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION;
+export function pinnedLocalPatchPromptVersion(existing: { promptVersion: string | null; attempts: number } | null, legacyVersion: string, contentVersion?: number,
+  release: LocalPatchPromptRelease = "v15"): string {
+  if (!existing) return contentVersion === INTEGRATED_COLLECTION_VERSION ? release === "v16" ? LOCAL_PATCH_AGE_BODY_PROMPT_VERSION : LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION
+    : contentVersion === REFRESHED_COLLECTION_VERSION ? LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION : LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION;
   // Missing provenance on a historical row is not permission to change a paid question.
   return existing.promptVersion || legacyVersion;
 }
 
 /** Normal generation and autonomous recovery must dispatch the same pinned recipe. */
 export function paintRecipeForPinnedPrompt(version: string | null): LocalPatchPaintRecipe | undefined {
+  if (version === LOCAL_PATCH_AGE_BODY_PROMPT_VERSION) return "scene-integration-v5";
   if (version === LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION) return "scene-integration-v4";
   if (version === LOCAL_PATCH_INTEGRATED_PROMPT_VERSION) return "scene-integration-v3";
   if (version === LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION) return "identity-body-v2";
@@ -167,6 +175,7 @@ export function localPatchPrompt(input: LocalPatchPromptInput): string {
     if (!isLocalPatchAgeVersion(contentVersion)) throw new Error("LOCAL_PATCH: site recovery belongs only to the v9 age contract");
     recoveryText = resolveLocalPatchRecoveryDirective(input.hideId ?? "", input.recoveryDirective);
   }
+  if (input.paintRecipe === "scene-integration-v5") return ageBodyIntegratedPrompt(input, recoveryText);
   if (input.paintRecipe === "scene-integration-v4") return referenceNeutralIntegratedPrompt(input, recoveryText);
   if (input.paintRecipe === "scene-integration-v3") return integratedScenePrompt(input, recoveryText);
   if (input.paintRecipe === "identity-body-v2") return identityBodyPrompt(input, recoveryText);
@@ -268,6 +277,47 @@ export function referenceNeutralHairDirections(prompt: string): string {
 function referenceNeutralIntegratedPrompt(input: LocalPatchPromptInput, recoveryText?: string): string {
   return referenceNeutralHairDirections(integratedScenePrompt(input, recoveryText))
     .concat("\nUse reference-appropriate, age-appropriate garments for the stated activity. Neither the child's name nor a neighbouring person's gender or hairstyle defines this child's identity.");
+}
+
+/**
+ * v16 placement wording, sentence by sentence. Each sentence names who is
+ * replaced or kept, so a blanket word swap would lose the location; text that
+ * matches none of these passes through unchanged.
+ *  - Scale: 24 Journey hides tied the new child's head and hands to the child
+ *    being replaced, and a few others to a neighbour. Depth stays; size goes.
+ *  - Gender: two sentences described the painted child as "he". Eleven name the
+ *    source child to replace as a boy; the clothing and position still locate it.
+ */
+const AGE_BODY_PLACEMENT_REWRITES: readonly (readonly [string | RegExp, string])[] = [
+  ["Exactly parent-stated age with the source child head and hand scale at this physical depth, not miniature or enlarged foreground.",
+    "Exactly the parent-stated age at the replaced child's physical depth; that child's head and hand size is not a body template. Not a miniature and not an enlarged foreground figure."],
+  ["parent-stated age. Same physical depth and head/hand scale as the selected child, not an adult and not a miniature toddler.",
+    "Parent-stated age at the selected child's physical depth; that child's head and hand size is not a body template. Not an adult and not a miniature toddler."],
+  ["Match the scale of nearby children, with the proportions of a age-appropriate. Do not enlarge toward the foreground.",
+    "Nearby people show the depth only; the parent-stated age decides height and proportions. Do not enlarge toward the foreground."],
+  ["Same natural child scale as the girl.", "Same physical depth as the girl; the parent-stated age, not her size, decides the body."],
+  ["at the original head size.", "with a head sized for the parent-stated age at this depth."],
+  ["at the same scale as the neighbors.", "at the same depth as the neighbors; the parent-stated age decides the body."],
+  ["His hands hold the same sticks", "The new child's hands hold the same sticks"],
+  ["the taller child beside him", "the other child beside the new child"],
+  [/(Replace ONLY the [^.;]*?)\bboy\b/g, "$1child"],
+];
+export function ageBodyPlacementText(text: string): string {
+  return AGE_BODY_PLACEMENT_REWRITES.reduce((out, [from, to]) => typeof from === "string" ? out.replaceAll(from, to) : out.replace(from, to), text);
+}
+export const AGE_BODY_CONTRACT = "AGE, BODY AND IDENTITY: the authored placement fixes only WHERE this child is and at what depth. The person being replaced and every neighbour only locate the edit: their height, head and hand size, age, gender, hair and clothes are not a template for this child. Build the body from the BODY AGE CONTRACT above at this depth, so a child older or younger than the replaced person is drawn taller or shorter than them. Never draw an adult or older child scaled down, nor a younger child stretched to fill the space. Image 2 alone decides the face and hair; the stated age never changes facial identity. Dress the child in everyday children's clothes for this activity.";
+
+/** The whole v16 request, including appended recovery or restyle text: the
+ * reference's actual hair, never a default hair type. */
+export function ageBodyRequestDirections(prompt: string): string {
+  return referenceNeutralHairDirections(prompt);
+}
+
+function ageBodyIntegratedPrompt(input: LocalPatchPromptInput, recoveryText?: string): string {
+  const placement = input.placement && { ...input.placement, support: ageBodyPlacementText(input.placement.support),
+    occlusion: ageBodyPlacementText(input.placement.occlusion), comparators: ageBodyPlacementText(input.placement.comparators) };
+  return ageBodyRequestDirections(referenceNeutralIntegratedPrompt({ ...input, ...(placement ? { placement } : {}) }, recoveryText))
+    .concat(`\n${AGE_BODY_CONTRACT}`);
 }
 
 function integratedScenePrompt(input: LocalPatchPromptInput, recoveryText?: string): string {

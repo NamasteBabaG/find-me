@@ -18,7 +18,7 @@ import { identityStyleCatalogSha256 } from "./local-patch-identity-catalog";
 import { assertGenerationSpendAllowed, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { localPatchGeometry, type LocalPatchGeometry } from "./local-patch-geometry";
 import { renderLocalPatchHide, type LocalPatchRenderDeps } from "./local-patch-render";
-import { LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_CANONICAL_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION, LOCAL_PATCH_INTEGRATED_PROMPT_VERSION, LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION, LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION, pinnedLocalPatchPromptVersion, paintRecipeForPinnedPrompt, localPatchRepairChecks, type LocalPatchRepairCheck } from "./local-patch-prompt";
+import { LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_CANONICAL_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION, LOCAL_PATCH_INTEGRATED_PROMPT_VERSION, LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION, LOCAL_PATCH_AGE_BODY_PROMPT_VERSION, LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION, pinnedLocalPatchPromptVersion, paintRecipeForPinnedPrompt, localPatchRepairChecks, type LocalPatchRepairCheck } from "./local-patch-prompt";
 import { prepareLocalPatchIdentityReferences } from "./local-patch-identity-reference";
 import { buildBoardPeopleStyle } from "./board-wizard-identity-style";
 import type { PatchGeometry } from "./patch";
@@ -258,7 +258,8 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
       spriteKind: "image", slotAId: target.slots[0].id, slotBId: target.slots[1].id,
     } });
   const existingRow = await c.db.targetVariantAsset.findUnique({ where: { targetInstanceId_variant: { targetInstanceId: instance.id, variant: LOCAL_PATCH_VARIANT } } });
-  const promptVersion = pinnedLocalPatchPromptVersion(existingRow, legacyPromptVersion, scene.sceneVersion);
+  // A fresh row takes the release chosen for new questions; a stored one keeps its own.
+  const promptVersion = pinnedLocalPatchPromptVersion(existingRow, legacyPromptVersion, scene.sceneVersion, env().LOCAL_PATCH_PROMPT_RELEASE);
   const row = existingRow ?? await c.db.targetVariantAsset.create({ data: {
       id: newId("tva"), targetInstanceId: instance.id, variant: LOCAL_PATCH_VARIANT, slotId: target.slots[0].id,
       provider: LOCAL_PATCH_PROVIDER, promptVersion,
@@ -296,7 +297,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   // A stored recipe is a constraint, not a label to overwrite on success.
   // Historical recipes require their original scene/reference contract; do
   // not guess one when data disagrees, even if no receipt has yet been bought.
-  if (!(scene.sceneVersion === 12 && (promptVersion === LOCAL_PATCH_INTEGRATED_PROMPT_VERSION || promptVersion === LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION)) && !(scene.sceneVersion === 11 && promptVersion === LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION) && promptVersion !== LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION && promptVersion !== legacyPromptVersion) {
+  if (!(scene.sceneVersion === 12 && (promptVersion === LOCAL_PATCH_INTEGRATED_PROMPT_VERSION || promptVersion === LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION || promptVersion === LOCAL_PATCH_AGE_BODY_PROMPT_VERSION)) && !(scene.sceneVersion === 11 && promptVersion === LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION) && promptVersion !== LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION && promptVersion !== legacyPromptVersion) {
     return { ...base, state: "stopped", reason: `Prompt provenance conflict: stored ${promptVersion}, scene requires ${legacyPromptVersion}; operator review required` };
   }
 

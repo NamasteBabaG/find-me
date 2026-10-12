@@ -13,9 +13,10 @@ import type { CharacterOutput } from "../../../infra/generation/types";
 import { findScene } from "../../../../content/scenes";
 
 const fake = vi.hoisted(() => ({ appEnv: "qa", testers: [] as string[], png: null as Buffer | null, catalogSha256: "", atlasSha256: "", styleMissing: false,
-  styleVersion: "board-matched-identity/v1", requestedStyleVersions: [] as (string | undefined)[] }));
+  styleVersion: "board-matched-identity/v1", requestedStyleVersions: [] as (string | undefined)[], release: "v15" as "v15" | "v16" }));
 vi.mock("../../../lib/env", () => ({
-  env: () => ({ APP_ENV: fake.appEnv, GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: 0, GENERATION_PROVIDER: "openai", GENERATION_MODEL: "gpt-image-2", GENERATION_QUALITY: "medium", OPENAI_API_KEY: "synthetic-never-live" }),
+  env: () => ({ APP_ENV: fake.appEnv, GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: 0, GENERATION_PROVIDER: "openai", GENERATION_MODEL: "gpt-image-2", GENERATION_QUALITY: "medium", OPENAI_API_KEY: "synthetic-never-live",
+    LOCAL_PATCH_PROMPT_RELEASE: fake.release }),
   spendGuard: () => ({ appEnv: fake.appEnv, realGeneration: true, testers: fake.testers }), flag: () => false,
 }));
 // Only static-art preflight/style are stubbed. Actual pipeline, reservation,
@@ -268,6 +269,48 @@ describe("QA identity lifecycle: real DB and synthetic provider only", () => {
     expect(ledger.requests.every((r: { state: string }) => r.state === "settled")).toBe(true);
     await deleteGame(f.c, f.id, { type: "USER", id: f.ownerId }, f.ownerId);
     expect(await db.asset.count({ where: { ownerId: f.ownerId, status: "READY" } })).toBe(0);
+  });
+  it.each(["v15", "v16"] as const)("catalog12 repairs a twice-failed identity; under %s the strategy reaches the provider window only when it comes first", async release => {
+    fake.release = release;
+    try {
+      const f = await fixture(); await fullWorld(f, 12);
+      await db.childProfile.update({ where: { id: f.childId }, data: { ageYears: 8 } });
+      await db.game.update({ where: { id: f.id }, data: { styleVersion: LOCAL_PATCH_STYLE } });
+      await db.order.create({ data: { id: `order-${f.id}`, gameId: f.id, userId: f.ownerId, provider: "mock", packageTier: "ONE_WORLD",
+        paymentStatus: "PAID", paidAt: new Date(), amountAgorot: 3900 } });
+      await db.generationJob.update({ where: { id: f.claim.jobId }, data: { status: "QUEUED", attempts: 0, currentStep: null } });
+      // An allowed 584-character review, as measured on 9 October.
+      const reason = "Synthetic face borrows a neighbour's eye spacing and every full-body view reads younger than eight. ".repeat(8).slice(0, 584);
+      const repairs: string[] = []; let calls = 0, reviews = 0;
+      f.c.avatars.createCharacter = vi.fn(async request => {
+        calls++; if (request.identityRepair) repairs.push(request.identityRepair.reason);
+        return { ...f.result(), providerRequestId: `req_${f.id}_${calls}` };
+      });
+      vi.stubGlobal("fetch", vi.fn(async () => {
+        reviews++;
+        return new Response(JSON.stringify({ model: "gpt-5.6-luna", usage: { prompt_tokens: 2000, completion_tokens: 400 },
+          choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ checks: {
+            identity: reviews < 3 ? "fail" : "pass", age: reviews < 3 ? "fail" : "pass", paintedStyle: "pass", sheetLayout: "pass" },
+            reason, ...(reviews > 1 ? { preferredCandidate: "second" } : {}) }) } }] }),
+          { headers: { "x-request-id": `req_review_${f.id}_${reviews}` } });
+      }));
+      for (let tick = 0; tick < 4 && calls < 3; tick++) await runGenerationPipeline(f.c, f.id);
+      expect(calls).toBe(3);
+      const checkpoint = JSON.parse((await f.job()).stepsJson).identityBestOfTwo;
+      // The provider reads at most the first 1,200 characters of the feedback.
+      const third = repairs.at(-1)!, seen = third.slice(0, 1200);
+      if (release === "v16") {
+        expect(checkpoint.feedback).toBe("strategy-first/v1");
+        expect(third.length).toBeLessThanOrEqual(1200);
+        expect(seen).toContain("original photo FIRST"); expect(seen).toContain("explicit age 8");
+        expect(JSON.parse(third)).toMatchObject({ order: "strategy-first/v1", attempt: 3 });
+      } else {
+        // A checkpoint that began before v16 keeps its exact feedback, whose strategy lies past the window.
+        expect(checkpoint.feedback).toBeUndefined();
+        expect(third).toContain("explicit age 8"); expect(seen).not.toContain("explicit age 8");
+      }
+      await db.game.update({ where: { id: f.id }, data: { status: "MANUAL_REVIEW" } });
+    } finally { fake.release = "v15"; }
   });
   it.each(["first", "second"] as const)("catalog9 chooses %s from two candidates and continues despite subjective warnings", async preferredCandidate => {
     const f = await fixture(); await fullWorld(f, 9); fake.styleVersion = "board-matched-identity/v2";

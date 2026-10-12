@@ -15,7 +15,7 @@ import { prepareLocalPatchIdentityReferences } from "./local-patch-identity-refe
 import { fenceLocalPatchImages, LocalPatchRetainedPurchaseStore } from "./local-patch-lifecycle";
 import { LOCAL_PATCH_PROVIDER, readShippedBoardArt, type LocalPatchHideDeps } from "./local-patch-hide";
 import { renderLocalPatchHide, RETAINED_RENDER_VERSION } from "./local-patch-render";
-import { LOCAL_PATCH_AGE_PROMPT_VERSION, paintRecipeForPinnedPrompt } from "./local-patch-prompt";
+import { ageBodyPlacementText, LOCAL_PATCH_AGE_BODY_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, paintRecipeForPinnedPrompt } from "./local-patch-prompt";
 import { LOCAL_PATCH_JUDGE, requestJudgeWire, isTheModelWeAsked, type LocalPatchJudgeResult } from "./local-patch-judge";
 import { recomputePaidPatchJoin } from "./local-patch-repair-compose";
 import { integrationDiagnosisPrompt } from "./local-patch-integration-diagnosis";
@@ -174,10 +174,14 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
           "CONTINUOUS FAILED player context, original plus ONLY this shipping patch; follow crossing neighbours through their complete heads and bodies");
       }
     }
+    // A v16 row is diagnosed in its own wording: the stated age, and the support
+    // sentence as its painter read it. Older rows keep their exact question.
+    const ageBody = row.promptVersion === LOCAL_PATCH_AGE_BODY_PROMPT_VERSION;
+    const support = hide.placement?.support ?? board.ground;
     const prompt = scene.sceneVersion === 12 ? integrationDiagnosisPrompt({ ageYears: child.ageYears, pose: hide.pose,
-      support: hide.placement?.support ?? board.ground, envelope: maskForHide(hide), sourceKeys: selected,
+      support: ageBody ? ageBodyPlacementText(support) : support, envelope: maskForHide(hide), sourceKeys: selected,
       excludedRegions: active.excludedRegions,
-      ...(active.boundaryContext ? { boundaryContext: true } : {}),
+      ...(active.boundaryContext ? { boundaryContext: true } : {}), ...(ageBody ? { exactAge: true } : {}),
       feedback: { feedback: active.feedback, verdict: previous.verdict ?? null, seam: previous.seam ?? null }, history: active.history })
       : `Diagnose a personalized hidden-child game after repeated failures. Return a repair PLAN, never an approval. All rectangles use ORIGINAL crop coordinates, 512x768. `
       + `Child age=${child.ageYears}; pose=${hide.pose}; support=${board.ground}. Original editable envelope=${JSON.stringify(maskForHide(hide))}. `

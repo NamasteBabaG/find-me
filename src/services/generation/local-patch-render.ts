@@ -21,7 +21,7 @@ import type { LocalPatchRecoveryDirective } from "../../domain/scene/local-patch
 import { adaptiveRecoveryPrompt, type AdaptiveRecoveryPlan } from "./local-patch-adaptive-recovery";
 import { selfRepairDecisionSchema, selfRepairRenderInstructions, type SelfRepairDecision } from "../../domain/scene/local-patch-self-repair";
 import { retainedRestylePrompt } from "./local-patch-restyle";
-import { referenceNeutralHairDirections } from "./local-patch-prompt";
+import { ageBodyRequestDirections, LOCAL_PATCH_AGE_BODY_PROMPT_VERSION, referenceNeutralHairDirections } from "./local-patch-prompt";
 import { fixedSourceFailureReceiptSchema, type FixedSourceFailureReceipt } from "../../infra/generation/fixed-source-diagnostics";
 
 /**
@@ -318,6 +318,7 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
 }
 
 function promptVersionOf(input: LocalPatchAttemptInput): string {
+  if (input.paintRecipe === "scene-integration-v5") return LOCAL_PATCH_AGE_BODY_PROMPT_VERSION;
   if (input.paintRecipe === "scene-integration-v4") return LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION;
   if (input.paintRecipe === "scene-integration-v3") return LOCAL_PATCH_INTEGRATED_PROMPT_VERSION;
   if (input.paintRecipe === "identity-body-v2") return LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION;
@@ -356,7 +357,8 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     hideId: hide.id, recoveryDirective: input.recoveryDirective, paintRecipe: input.paintRecipe })
     + (input.adaptiveRecovery ? `\n\n${adaptiveRecoveryPrompt(input.adaptiveRecovery, hide)}` : "")
     + (recovery ? `\n\n${selfRepairRenderInstructions(recovery)}` : "");
-  const prompt = input.paintRecipe === "scene-integration-v4" ? referenceNeutralHairDirections(recipePrompt) : recipePrompt;
+  const prompt = input.paintRecipe === "scene-integration-v4" ? referenceNeutralHairDirections(recipePrompt)
+    : input.paintRecipe === "scene-integration-v5" ? ageBodyRequestDirections(recipePrompt) : recipePrompt;
 
   const meta = await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).metadata();
   const stylePng = restyling ? await sharp(input.restyleSourcePng!, { limitInputPixels: 8_294_400 }).resize(512, 768, { fit: "fill" }).png().toBuffer()

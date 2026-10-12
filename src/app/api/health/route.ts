@@ -43,6 +43,8 @@ export async function GET(req: Request) {
       configured: dualConfigured,
       quality: { model: visualReviewPolicy("scene-quality").model, effort: "high" },
       continuity: { model: visualReviewPolicy("head-continuity").model, effort: "high" } },
+    // Which wording NEW hides and identities receive; stored ones keep their own.
+    promptRelease: e.LOCAL_PATCH_PROMPT_RELEASE,
     // CLI deploys carry no git sha; APP_COMMIT is set at deploy time so what is
     // checked can be shown to be what is deployed.
     commit: (process.env.APP_COMMIT ?? process.env.VERCEL_GIT_COMMIT_SHA ?? "local").slice(0, 7),
