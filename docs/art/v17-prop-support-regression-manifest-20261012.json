@@ -1,0 +1,40 @@
+{
+  "manifest": "v17-prop-support-regression/v1",
+  "date": "2026-10-12",
+  "purpose": "The smallest paid comparison that can show whether v17 removes the two v16 defects found by the controlled render of 12 October (docs/CLAUDE_ENGINE_RECOVERY_V16_CONTROLLED_RENDER_20261012.md): a held prop left floating at Great Wall, and a taller child standing on the taxi sign at New York. Not authorized: running it needs Guy's explicit spend approval.",
+  "release": { "candidate": "v17", "promptVersion": "local-patch-prompt/v17-age-body-prop-support", "paintRecipe": "scene-integration-v6", "compareWith": ["v15", "v16"], "default": "v15" },
+  "identity": {
+    "rule": "Reuse the v5 identity sheets bought on 12 October, byte for byte. Do not regenerate an identity because the painter version changes. Refuse to run if a sheet's SHA-256 differs.",
+    "style": "board-matched-identity/v5",
+    "sheets": {
+      "A-a3": "4939a9536e4a51377af8974fe11ca82cd50f4f96d5ba5897c176ae2f827ae1ce",
+      "A-a6": "604b97b04e862de569e7cacceb17a07b271fbefb761755b24b42be7e75b41799",
+      "A-a10": "8735b95fad64789e68705fd63a605fade466f524c03f8b97b7587a10b066c6ea",
+      "B-a6": "988cdf7194c0c14cb7da31ba8ab0aa2c6418f09bea44dbbaf8b9bf9284757859",
+      "B-a10": "903435d931a3a76d1d6240917be61903f48be045279bcb13c9d0b18b5d995ad5"
+    },
+    "sheetLocation": "work/private-v16-controlled-render-20261012/sheets/<ref>-a<age>-v5.png (git-ignored, synthetic references only)"
+  },
+  "cases": [
+    { "id": "A-a3-greatwall-v12-1", "why": "v16 failure: unheld disc on its bar", "v16": "retry (pictureWhole)", "v15": "acceptable" },
+    { "id": "A-a10-greatwall-v12-1", "why": "v16 failure: unheld disc on its bar", "v16": "retry (pictureWhole)", "v15": "acceptable" },
+    { "id": "B-a6-greatwall-v12-1", "why": "v16 failure: unheld disc on its bar; the 390-character answer", "v16": "unreadable under the strict reader; retry under quality-read/v1-located-600", "v15": "acceptable" },
+    { "id": "B-a10-newyork-v12-1", "why": "v16 failure: shoes on the taxi roof sign", "v16": "retry (support)", "v15": "acceptable" },
+    { "id": "A-a10-newyork-v12-1", "why": "v16 borderline by eye: just above the same sign", "v16": "acceptable", "v15": "acceptable" },
+    { "id": "A-a6-greatwall-v12-1", "why": "control: v16 accepted on the same board", "v16": "acceptable", "v15": "acceptable" },
+    { "id": "B-a6-newyork-v12-1", "why": "control: v16 accepted on the same board", "v16": "acceptable", "v15": "acceptable" }
+  ],
+  "reviews": "Both HIGH reviewers on product-identical evidence (quality: quality-read/v1-located-600; continuity: continuity-read/v1-output-bounded), exactly as the controlled render.",
+  "replay": "The v15 and v16 paintings and reviews already bought replay free from the private ledger; only the v17 paintings and their reviews are new.",
+  "estimate": { "paintings": 7, "reviews": 14, "approxUsd": 1.16, "capUsd": 3, "basis": "12 October unit costs: painting 0.046, Opus HIGH 0.087, Sol HIGH 0.032" },
+  "pass": [
+    "No Great Wall case leaves any part of the replaced child's toy unheld (eye and Opus).",
+    "No New York case stands on the taxi or its sign; every child stands on the stoop or sidewalk (eye and Opus).",
+    "Both controls stay acceptable; identity, gender and hair unchanged from their v16 paintings.",
+    "Age: the 3- and 10-year-olds stay visibly different in size, with feet on the same support."
+  ],
+  "notTested": [
+    "Photo-to-illustration: these references are painted portraits, so this cannot show how a real photograph renders (conspicuous, brighter faces).",
+    "Hides other than these two; repairs and the identity feedback path under v17; any real child or game."
+  ]
+}

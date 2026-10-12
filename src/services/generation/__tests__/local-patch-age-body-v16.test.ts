@@ -7,9 +7,10 @@ import { selfRepairRenderInstructions } from "../../../domain/scene/local-patch-
 import { INTEGRATED_COLLECTION_BOARDS } from "../../../../content/adventures/wizard-integrated-release";
 import { characterPrompt, qaCharacterPromptVersion } from "../../../infra/generation/character-prompt";
 import {
-  AGE_BODY_CONTRACT, ageBodyRequestDirections, localPatchPrompt, paintRecipeForPinnedPrompt, pinnedLocalPatchPromptVersion, referenceNeutralHairDirections,
-  LOCAL_PATCH_AGE_BODY_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION, LOCAL_PATCH_INTEGRATED_PROMPT_VERSION,
-  LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION, type LocalPatchPaintRecipe, type LocalPatchRepairCheck,
+  AGE_BODY_CONTRACT, ageBodyPropPlacementText, ageBodyRequestDirections, isAgeBodyPromptRelease, localPatchPrompt, paintRecipeForPinnedPrompt, pinnedLocalPatchPromptVersion,
+  referenceNeutralHairDirections, LOCAL_PATCH_AGE_BODY_PROMPT_VERSION, LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION,
+  LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION, LOCAL_PATCH_INTEGRATED_PROMPT_VERSION, LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION, PROP_SUPPORT_CONTRACT,
+  type LocalPatchPaintRecipe, type LocalPatchRepairCheck,
 } from "../local-patch-prompt";
 import { integrationDiagnosisPrompt } from "../local-patch-integration-diagnosis";
 import { retainedRestylePrompt } from "../local-patch-restyle";
@@ -147,6 +148,63 @@ describe("v16: the stated age shapes the body; the placement only locates the ch
     expect(exact).not.toContain("age8");
     expect(exact).toContain(`Keep the ${age}-year-old body of the BODY AGE CONTRACT: never change its age to fit the window`);
     expect(exact).toContain(childBodyDirection(age));
+  });
+});
+
+describe("v17: v16 with held props and support kept, for a fresh row only when chosen", () => {
+  const v17 = (id: string, age = 8, repairChecks?: readonly LocalPatchRepairCheck[]) => {
+    const { board, hide } = HIDES.find(x => x.hide.id === id)!; return painter(board, hide, age, "scene-integration-v6", repairChecks);
+  };
+  const repairs = [undefined, ["ageAppropriate"], ["styleMatch", "lightingMatch", "neighborsIntact", "pictureWhole", "faceLikeness"]] as const;
+
+  it("keeps v16 byte for byte as its controlled render was asked, for every hide, age and repair set", () => {
+    // Recorded with the prompt code that reproduces the nine prompts of the 12 October
+    // controlled render exactly. A difference here changes what that render tested.
+    const recorded = { 3: "6e8ea377591fee71", 5: "c8e4f2de30325d41", 6: "2150785b332afaf4", 8: "1e528473e15ee862", 10: "6bf65dfbc415e1a3" };
+    for (const age of AGES) expect(sha(HIDES.flatMap(({ board, hide }) => repairs.map(r => ageBodyRequestDirections(painter(board, hide, age, "scene-integration-v5", r))))
+      .join("\n§\n")), `v16 painter, age ${age}`).toBe(recorded[age]);
+  });
+
+  it("pins v17 only for a fresh v12 row when it is chosen; a stored row keeps its own question", () => {
+    expect(pinnedLocalPatchPromptVersion(null, LOCAL_PATCH_AGE_PROMPT_VERSION, 12, "v17")).toBe(LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION);
+    expect(pinnedLocalPatchPromptVersion(null, LOCAL_PATCH_AGE_PROMPT_VERSION, 11, "v17")).toBe(LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION);
+    for (const stored of [LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION, LOCAL_PATCH_AGE_BODY_PROMPT_VERSION])
+      expect(pinnedLocalPatchPromptVersion({ attempts: 2, promptVersion: stored }, LOCAL_PATCH_AGE_PROMPT_VERSION, 12, "v17")).toBe(stored);
+    expect(pinnedLocalPatchPromptVersion({ attempts: 2, promptVersion: LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION }, LOCAL_PATCH_AGE_PROMPT_VERSION, 12, "v15"))
+      .toBe(LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION);
+    expect(paintRecipeForPinnedPrompt(LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION)).toBe("scene-integration-v6");
+    expect([isAgeBodyPromptRelease("v15"), isAgeBodyPromptRelease("v16"), isAgeBodyPromptRelease("v17"), isAgeBodyPromptRelease(undefined)]).toEqual([false, true, true, false]);
+  });
+
+  it("adds only the held-things and support contract to every hide but one, at every age and repair set", () => {
+    for (const age of AGES) for (const { board, hide } of HIDES) for (const r of repairs) {
+      if (hide.id === "greatwall-v12-1") continue;
+      expect(painter(board, hide, age, "scene-integration-v6", r), `${hide.id} ${age}`).toBe(`${painter(board, hide, age, "scene-integration-v5", r)}\n${PROP_SUPPORT_CONTRACT}`);
+    }
+    expect(PROP_SUPPORT_CONTRACT).toContain("never leave part of it standing, hanging or floating where their hand was");
+    expect(PROP_SUPPORT_CONTRACT).toContain("never on a foreground object or vehicle");
+    expect(PROP_SUPPORT_CONTRACT).toContain("the WHOLE body scaled together for the stated age, upward from that contact; never a stretched or shrunk head, torso or legs");
+  });
+
+  it("describes the Great Wall diabolo as it is drawn and sends it with the child or removes it whole", () => {
+    const prompt = v17("greatwall-v12-1");
+    expect(v16("greatwall-v12-1")).toContain("Preserve the diabolo, sticks, strings and balanced stance.");
+    expect(prompt).not.toContain("Preserve the diabolo, sticks, strings");
+    expect(prompt).not.toMatch(/\bHis hands\b|Replace ONLY the [^.;]*\bboy\b/);
+    expect(prompt).toContain("Replace ONLY the teal jacket child holding the diabolo toy beside the noodle stall");
+    expect(prompt).toContain("The replaced child's diabolo is drawn as two discs hanging from one short stick.");
+    expect(prompt).toContain("No disc, stick or string stays where the old hand was; no added fingers or dangling source limbs.");
+    expect(prompt).toContain(AGE_BODY_CONTRACT); expect(prompt.endsWith(PROP_SUPPORT_CONTRACT)).toBe(true);
+    expect(ageBodyPropPlacementText("the teal jacket boy playing diabolo beside the noodle stall")).toBe("the teal jacket child holding the diabolo toy beside the noodle stall");
+  });
+
+  it.each(AGES)("keeps v16's age, identity and hair rules at age %i, and imposes no hair type through any repair", age => {
+    for (const { hide } of HIDES) {
+      const plain = v17(hide.id, age), repaired = v17(hide.id, age, REPAIRS);
+      expect(plain.split(childBodyDirection(age)).length - 1, hide.id).toBe(1);
+      expect(plain).not.toMatch(SCALE_ANCHORS); expect(plain).not.toMatch(/\bage8\b/);
+      for (const text of [plain, repaired]) { expect(text, hide.id).not.toMatch(IMPOSED_HAIR); expect(text).toContain(PROP_SUPPORT_CONTRACT); }
+    }
   });
 });
 

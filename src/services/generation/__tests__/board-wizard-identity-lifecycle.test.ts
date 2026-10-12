@@ -13,7 +13,7 @@ import type { CharacterOutput } from "../../../infra/generation/types";
 import { findScene } from "../../../../content/scenes";
 
 const fake = vi.hoisted(() => ({ appEnv: "qa", testers: [] as string[], png: null as Buffer | null, catalogSha256: "", atlasSha256: "", styleMissing: false,
-  styleVersion: "board-matched-identity/v1", requestedStyleVersions: [] as (string | undefined)[], release: "v15" as "v15" | "v16" }));
+  styleVersion: "board-matched-identity/v1", requestedStyleVersions: [] as (string | undefined)[], release: "v15" as "v15" | "v16" | "v17" }));
 vi.mock("../../../lib/env", () => ({
   env: () => ({ APP_ENV: fake.appEnv, GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: 0, GENERATION_PROVIDER: "openai", GENERATION_MODEL: "gpt-image-2", GENERATION_QUALITY: "medium", OPENAI_API_KEY: "synthetic-never-live",
     LOCAL_PATCH_PROMPT_RELEASE: fake.release }),
@@ -270,7 +270,7 @@ describe("QA identity lifecycle: real DB and synthetic provider only", () => {
     await deleteGame(f.c, f.id, { type: "USER", id: f.ownerId }, f.ownerId);
     expect(await db.asset.count({ where: { ownerId: f.ownerId, status: "READY" } })).toBe(0);
   });
-  it.each(["v15", "v16"] as const)("catalog12 repairs a twice-failed identity; under %s the strategy reaches the provider window only when it comes first", async release => {
+  it.each(["v15", "v16", "v17"] as const)("catalog12 repairs a twice-failed identity; under %s the strategy reaches the provider window only when it comes first", async release => {
     fake.release = release;
     try {
       const f = await fixture(); await fullWorld(f, 12);
@@ -299,11 +299,11 @@ describe("QA identity lifecycle: real DB and synthetic provider only", () => {
       const checkpoint = JSON.parse((await f.job()).stepsJson).identityBestOfTwo;
       // The provider reads at most the first 1,200 characters of the feedback.
       const third = repairs.at(-1)!, seen = third.slice(0, 1200);
-      // A new v12 identity under v16 draws the sheet's hair from the photograph (style v5), all three candidates alike.
-      expect(styles).toEqual(Array(3).fill(release === "v16" ? "board-matched-identity/v5" : "board-matched-identity/v4"));
+      // A new v12 identity under v16 or v17 draws the sheet's hair from the photograph (style v5), all three candidates alike.
+      expect(styles).toEqual(Array(3).fill(release !== "v15" ? "board-matched-identity/v5" : "board-matched-identity/v4"));
       const child = await db.childProfile.findUniqueOrThrow({ where: { id: f.childId } });
       expect(await identityApprovedForDisplay(f.c, child, 12)).toBe(true);
-      if (release === "v16") {
+      if (release !== "v15") {
         expect(checkpoint.feedback).toBe("strategy-first/v1");
         expect(third.length).toBeLessThanOrEqual(1200);
         expect(seen).toContain("original photo FIRST"); expect(seen).toContain("explicit age 8");

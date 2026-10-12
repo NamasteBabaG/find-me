@@ -75,12 +75,20 @@ export const LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION = "local-patch-prompt/
  * stated age alone shapes the body; the replaced person and neighbours only
  * locate the child. v13-v15 rows keep their exact questions. */
 export const LOCAL_PATCH_AGE_BODY_PROMPT_VERSION = "local-patch-prompt/v16-age-body-neutral";
-export type LocalPatchPaintRecipe = "board-paint-v1" | "identity-body-v2" | "scene-integration-v3" | "scene-integration-v4" | "scene-integration-v5";
-export type LocalPatchPromptRelease = "v15" | "v16";
+/** Chosen explicitly (LOCAL_PATCH_PROMPT_RELEASE=v17) for fresh v12 rows: v16,
+ * plus the two corrections its controlled render of 12 October called for (a
+ * held prop left floating; a taller child moved off its support), and the Great
+ * Wall diabolo hide described as it is drawn. v16 stays exactly as tested. */
+export const LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION = "local-patch-prompt/v17-age-body-prop-support";
+export type LocalPatchPaintRecipe = "board-paint-v1" | "identity-body-v2" | "scene-integration-v3" | "scene-integration-v4" | "scene-integration-v5" | "scene-integration-v6";
+export type LocalPatchPromptRelease = "v15" | "v16" | "v17";
+/** Releases whose stated age alone shapes the body: their identities use style v5 and the strategy-first feedback. */
+export const isAgeBodyPromptRelease = (release: LocalPatchPromptRelease | undefined) => release === "v16" || release === "v17";
 
 export function pinnedLocalPatchPromptVersion(existing: { promptVersion: string | null; attempts: number } | null, legacyVersion: string, contentVersion?: number,
   release: LocalPatchPromptRelease = "v15"): string {
-  if (!existing) return contentVersion === INTEGRATED_COLLECTION_VERSION ? release === "v16" ? LOCAL_PATCH_AGE_BODY_PROMPT_VERSION : LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION
+  if (!existing) return contentVersion === INTEGRATED_COLLECTION_VERSION
+    ? release === "v17" ? LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION : release === "v16" ? LOCAL_PATCH_AGE_BODY_PROMPT_VERSION : LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION
     : contentVersion === REFRESHED_COLLECTION_VERSION ? LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION : LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION;
   // Missing provenance on a historical row is not permission to change a paid question.
   return existing.promptVersion || legacyVersion;
@@ -88,6 +96,7 @@ export function pinnedLocalPatchPromptVersion(existing: { promptVersion: string 
 
 /** Normal generation and autonomous recovery must dispatch the same pinned recipe. */
 export function paintRecipeForPinnedPrompt(version: string | null): LocalPatchPaintRecipe | undefined {
+  if (version === LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION) return "scene-integration-v6";
   if (version === LOCAL_PATCH_AGE_BODY_PROMPT_VERSION) return "scene-integration-v5";
   if (version === LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION) return "scene-integration-v4";
   if (version === LOCAL_PATCH_INTEGRATED_PROMPT_VERSION) return "scene-integration-v3";
@@ -175,6 +184,7 @@ export function localPatchPrompt(input: LocalPatchPromptInput): string {
     if (!isLocalPatchAgeVersion(contentVersion)) throw new Error("LOCAL_PATCH: site recovery belongs only to the v9 age contract");
     recoveryText = resolveLocalPatchRecoveryDirective(input.hideId ?? "", input.recoveryDirective);
   }
+  if (input.paintRecipe === "scene-integration-v6") return ageBodyPropIntegratedPrompt(input, recoveryText);
   if (input.paintRecipe === "scene-integration-v5") return ageBodyIntegratedPrompt(input, recoveryText);
   if (input.paintRecipe === "scene-integration-v4") return referenceNeutralIntegratedPrompt(input, recoveryText);
   if (input.paintRecipe === "scene-integration-v3") return integratedScenePrompt(input, recoveryText);
@@ -318,6 +328,35 @@ function ageBodyIntegratedPrompt(input: LocalPatchPromptInput, recoveryText?: st
     occlusion: ageBodyPlacementText(input.placement.occlusion), comparators: ageBodyPlacementText(input.placement.comparators) };
   return ageBodyRequestDirections(referenceNeutralIntegratedPrompt({ ...input, ...(placement ? { placement } : {}) }, recoveryText))
     .concat(`\n${AGE_BODY_CONTRACT}`);
+}
+
+/**
+ * v17 placement wording: v16's, after one content correction. The Great Wall
+ * diabolo hide asked the painter to "preserve the diabolo, sticks, strings" while
+ * the board draws the replaced boy's toy as two discs hanging from one short
+ * stick; v16 paintings kept that stick and disc standing beside the new child.
+ * The toy is now described as drawn, and it goes with the child or goes whole.
+ */
+const PROP_SUPPORT_PLACEMENT_REWRITES: readonly (readonly [string, string])[] = [
+  ["Preserve the diabolo, sticks, strings and balanced stance. His hands hold the same sticks; no added fingers or dangling source limbs.",
+    "The replaced child's diabolo is drawn as two discs hanging from one short stick. It belongs to that child: the new child holds the whole toy, "
+    + "with its stick and string, in a balanced stance, or it is removed whole. No disc, stick or string stays where the old hand was; no added fingers or dangling source limbs."],
+  ["the teal jacket boy playing diabolo beside the noodle stall", "the teal jacket child holding the diabolo toy beside the noodle stall"],
+];
+export function ageBodyPropPlacementText(text: string): string {
+  return ageBodyPlacementText(PROP_SUPPORT_PLACEMENT_REWRITES.reduce((out, [from, to]) => out.replaceAll(from, to), text));
+}
+/** What v16's paintings got wrong, stated for every hide, not one board. */
+export const PROP_SUPPORT_CONTRACT = "HELD THINGS: anything a replaced person was holding or using belongs to them. Repaint it whole in the new child's hands, or remove it whole; "
+  + "never leave part of it standing, hanging or floating where their hand was. SUPPORT AND SCALE: the feet, knees or seat rest on the authored support, at the replaced "
+  + "person's contact when someone is replaced, and never on a foreground object or vehicle. A taller or shorter child is the WHOLE body scaled together for the stated "
+  + "age, upward from that contact; never a stretched or shrunk head, torso or legs.";
+
+function ageBodyPropIntegratedPrompt(input: LocalPatchPromptInput, recoveryText?: string): string {
+  const placement = input.placement && { ...input.placement, support: ageBodyPropPlacementText(input.placement.support),
+    occlusion: ageBodyPropPlacementText(input.placement.occlusion), comparators: ageBodyPropPlacementText(input.placement.comparators) };
+  return ageBodyRequestDirections(referenceNeutralIntegratedPrompt({ ...input, ...(placement ? { placement } : {}) }, recoveryText))
+    .concat(`\n${AGE_BODY_CONTRACT}\n${PROP_SUPPORT_CONTRACT}`);
 }
 
 function integratedScenePrompt(input: LocalPatchPromptInput, recoveryText?: string): string {

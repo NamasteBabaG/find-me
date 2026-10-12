@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 import type { Container } from "../container";
 import { env } from "../../lib/env";
 import { newId } from "../../lib/ids";
+import { isAgeBodyPromptRelease } from "./local-patch-prompt";
 import { readAssetBuffer } from "../asset.service";
 import { avatarDisplayFromSheet } from "../../infra/generation/avatar-cut";
 import type { CropBox } from "../../infra/generation/types";
@@ -66,7 +67,7 @@ export async function selectBestIdentity(c: Container, initialClaim: BoardWizard
   const saved = JSON.parse(job.stepsJson).identityBestOfTwo;
   let checkpoint: Checkpoint = saved ? checkpointSchema.parse(saved) : {
     policy: IDENTITY_SELECTION_POLICY, first: { identityAssetId: claim.identityAssetId, avatarAssetId: claim.avatarAssetId },
-    ...(input.contentVersion === 12 && env().LOCAL_PATCH_PROMPT_RELEASE === "v16" ? { feedback: IDENTITY_FEEDBACK_ORDER } : {}),
+    ...(input.contentVersion === 12 && isAgeBodyPromptRelease(env().LOCAL_PATCH_PROMPT_RELEASE) ? { feedback: IDENTITY_FEEDBACK_ORDER } : {}),
   };
   const expectedCurrent = checkpoint.selected ?? checkpoint.second ?? checkpoint.recovery?.current ?? checkpoint.first;
   demand(expectedCurrent.identityAssetId === claim.identityAssetId && expectedCurrent.avatarAssetId === claim.avatarAssetId, "Checkpoint/child differ");
