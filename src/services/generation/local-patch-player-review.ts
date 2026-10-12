@@ -11,6 +11,18 @@ export const boundaryReviewInstructions = [
   "Clean complete removal or replacement of a bystander still PASSES. Do not enforce original crowd count, exact pose or microscopic paint matching. For EACH edge return boundaryIntegrity with status pass|fail|unsure and an observation identifying the crossing people/objects and their continuity. A clear broken connection must be fail; do not soften it to unsure. A boundary failure is a pictureWhole defect and triggers automatic repair; the engine never accepts an overall pass that contradicts it.",
 ].join("\n");
 
+/** Dual release v3 only (`object-joins/v1`). The v17 render's B-a10 shipped a new taxi
+ * sign joined to the original's lower half; Opus saw "slightly softened lettering"
+ * and passed it. The break is named here as a break, and coherent change still passes. */
+export const objectJoinInstructions = "OBJECT JOINS (four JOIN_DETAIL images): each magnifies one returned edge; the red ticks in the white margin mark the join line. "
+  + "In AFTER, follow every object, contour, lettering and person ACROSS that line: what was painted on one side must continue what was kept on the other as ONE coherent thing. "
+  + "A newly painted part meeting an original part at a different position, size, angle, outline or lettering is a BROKEN OBJECT even when each side looks plausible alone: "
+  + "a word or sign cut along the line, a doubled or ghost edge, a stepped contour, half of an old object beside a new one. Name it as a break, never as softening or blur; "
+  + "when it is visible in the AFTER player context, fail pictureWhole and severeSeam with a located fault and fail that edge's boundaryIntegrity. "
+  + "A one- or two-pixel registration difference or a slightly different paint texture across the line is not a break. Judge continuity in AFTER, not fidelity to BEFORE: "
+  + "an object repainted, moved, resized or removed wholly on one side of the line passes when it is complete and coherent where it meets the line, "
+  + "and natural occlusion by a coherent foreground object passes.";
+
 export function playerReviewEnabled(): boolean {
   const settings = env();
   return settings.APP_ENV === "qa" && settings.LOCAL_PATCH_PLAYER_REVIEW === "on";

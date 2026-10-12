@@ -22,7 +22,7 @@ import { DbStorage } from "@/infra/storage/db";
 import { runGenerationPipeline } from "./generation/pipeline";
 import { requestVisualReview, type VisualReviewQuestion } from "./generation/visual-review";
 import type { LocalPatchJudgeResult } from "./generation/local-patch-judge";
-import { DUAL_VISUAL_REVIEW_V2, DUAL_VISUAL_REVIEW_VERSION, type DualVisualReviewVersion } from "./generation/visual-review-release";
+import { DUAL_VISUAL_REVIEW_V2, DUAL_VISUAL_REVIEW_V3, DUAL_VISUAL_REVIEW_VERSION, type DualVisualReviewVersion } from "./generation/visual-review-release";
 
 /**
  * Composition root. Every provider is chosen here, by env, exactly once.
@@ -118,7 +118,8 @@ function build(): Container {
     pinDualVisualReview: e.APP_ENV === "qa" && e.LOCAL_PATCH_VISUAL_REVIEW !== "legacy",
     // A new question version is chosen by name, never by default: the deployed
     // dual-high-v1 value keeps meaning v1 exactly.
-    dualVisualReviewRelease: e.LOCAL_PATCH_VISUAL_REVIEW === "dual-high-v2" ? DUAL_VISUAL_REVIEW_V2 : DUAL_VISUAL_REVIEW_VERSION,
+    dualVisualReviewRelease: e.LOCAL_PATCH_VISUAL_REVIEW === "dual-high-v3" ? DUAL_VISUAL_REVIEW_V3
+      : e.LOCAL_PATCH_VISUAL_REVIEW === "dual-high-v2" ? DUAL_VISUAL_REVIEW_V2 : DUAL_VISUAL_REVIEW_VERSION,
     // Keep the transport available for a pinned game even when new enrollment
     // is disabled. Missing credentials fail before a paid reservation.
     ...(e.GENERATION_PROVIDER === "openai" && e.ANTHROPIC_API_KEY?.trim() && e.OPENAI_API_KEY?.trim()

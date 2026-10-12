@@ -50,6 +50,53 @@ export async function prepareFullBoardBoundaryEvidence(beforeBoardPng: Buffer, a
   const returned = { ...returnedInCrop, left: crop.left - left + returnedInCrop.left, top: crop.top - top + returnedInCrop.top };
   return { context, beforePng, afterPng, boundaries: await prepareBoundaryComparisons(beforePng, afterPng, returned, padding) };
 }
+/** Object-join evidence (dual release v3). Each returned edge's own span, a band of
+ * JOIN_DETAIL_HALF native pixels on each side of the join, magnified so a cut word
+ * or a doubled edge is not read as "softening". BEFORE above AFTER for the top and
+ * bottom joins, BEFORE left of AFTER for the side joins. Red ticks in a white
+ * margin mark the join line; nothing covers the pixels. */
+export const JOIN_DETAIL_HALF = 40;
+export const JOIN_DETAIL_MARGIN = 14;
+export type JoinDetail = { edge: typeof RETURN_EDGES[number]; png: Buffer; scale: number;
+  /** Where the join runs inside each magnified band, in its pixels. */ joinOffset: number;
+  /** The native band, in the context image the comparisons are cut from. */ band: PatchRegion };
+export async function prepareJoinDetails(beforePng: Buffer, afterPng: Buffer, returned: PatchRegion): Promise<JoinDetail[]> {
+  const [before, after] = await Promise.all([sharp(beforePng).metadata(), sharp(afterPng).metadata()]);
+  const W = before.width!, H = before.height!;
+  if (!W || !H || W !== after.width || H !== after.height || !Object.values(returned).every(Number.isInteger) || returned.left < 0 || returned.top < 0
+    || returned.width <= 0 || returned.height <= 0 || returned.left + returned.width > W || returned.top + returned.height > H)
+    throw Error("Join details require registered context and a valid return window");
+  const half = JOIN_DETAIL_HALF, m = JOIN_DETAIL_MARGIN;
+  return Promise.all(RETURN_EDGES.map(async edge => {
+    const vertical = edge === "left" || edge === "right";
+    const join = vertical ? returned.left + (edge === "right" ? returned.width : 0) : returned.top + (edge === "bottom" ? returned.height : 0);
+    const acrossStart = Math.max(0, join - half), acrossEnd = Math.min(vertical ? W : H, join + half);
+    const alongStart = Math.max(0, (vertical ? returned.top : returned.left) - half);
+    const alongEnd = Math.min(vertical ? H : W, (vertical ? returned.top + returned.height : returned.left + returned.width) + half);
+    const band = vertical ? { left: acrossStart, top: alongStart, width: acrossEnd - acrossStart, height: alongEnd - alongStart }
+      : { left: alongStart, top: acrossStart, width: alongEnd - alongStart, height: acrossEnd - acrossStart };
+    const along = alongEnd - alongStart, scale = Math.max(2, Math.min(3, Math.floor(1500 / along)));
+    const [old, current] = await Promise.all([beforePng, afterPng].map(png => sharp(png).extract(band)
+      .resize(band.width * scale, band.height * scale, { kernel: "nearest" }).png().toBuffer()));
+    const joinOffset = (join - acrossStart) * scale, w = band.width * scale, h = band.height * scale, gap = 16;
+    // Ticks point at the join from the margin on both ends of each band.
+    const tick = (x: number, y: number, dir: "down" | "up" | "right" | "left") => {
+      const s = 6, p = dir === "down" ? `${x - s},${y - m + 2} ${x + s},${y - m + 2} ${x},${y - 1}` : dir === "up" ? `${x - s},${y + m - 2} ${x + s},${y + m - 2} ${x},${y + 1}`
+        : dir === "right" ? `${x - m + 2},${y - s} ${x - m + 2},${y + s} ${x - 1},${y}` : `${x + m - 2},${y - s} ${x + m - 2},${y + s} ${x + 1},${y}`;
+      return `<polygon points="${p}" fill="#e00000"/>`;
+    };
+    if (vertical) {
+      const width = 2 * w + gap, height = h + 2 * m, ticks = [0, w + gap].flatMap(x0 => [tick(x0 + joinOffset, m, "down"), tick(x0 + joinOffset, m + h, "up")]).join("");
+      const png = await sharp({ create: { width, height, channels: 3, background: "white" } }).composite([{ input: old, left: 0, top: m }, { input: current, left: w + gap, top: m },
+        { input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">${ticks}</svg>`), left: 0, top: 0 }]).png().toBuffer();
+      return { edge, png, scale, joinOffset, band };
+    }
+    const width = w + 2 * m, height = 2 * h + gap, ticks = [0, h + gap].flatMap(y0 => [tick(m, y0 + joinOffset, "right"), tick(m + w, y0 + joinOffset, "left")]).join("");
+    const png = await sharp({ create: { width, height, channels: 3, background: "white" } }).composite([{ input: old, left: m, top: 0 }, { input: current, left: m, top: h + gap },
+      { input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">${ticks}</svg>`), left: 0, top: 0 }]).png().toBuffer();
+    return { edge, png, scale, joinOffset, band };
+  }));
+}
 export const NEIGHBOR_QUADRANTS = ["upper-left", "upper-right", "lower-left", "lower-right"] as const;
 export type NeighborComparison = { quadrant: typeof NEIGHBOR_QUADRANTS[number]; png: Buffer };
 /** Registered native pairs with centre overlap; no resized or invented detail. */

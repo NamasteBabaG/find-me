@@ -10,7 +10,7 @@ import { PrismaWorldBudgetStore } from "../../infra/db/prisma-world-budget-store
 import { PrismaRetainedPurchaseStore } from "../../infra/db/prisma-retained-purchase-store";
 import { sha256Bytes } from "./fixed-sprite";
 import { sameChargeEvidence, type WorldChargeEvidence } from "./world-budget";
-import { DUAL_VISUAL_REVIEW_V2, DUAL_VISUAL_REVIEW_VERSION, isDualVisualReviewVersion, type DualVisualReviewVersion } from "./visual-review-release";
+import { DUAL_VISUAL_REVIEW_V2, DUAL_VISUAL_REVIEW_V3, DUAL_VISUAL_REVIEW_VERSION, isDualVisualReviewVersion, type DualVisualReviewVersion } from "./visual-review-release";
 import { QUALITY_READER_LOCATED, QUALITY_READER_STRICT, QUALITY_READERS, localPatchQualityDisposition, type LocalPatchVerdict, type QualityReader } from "./local-patch-judge";
 import { parseVisualSceneVerdicts } from "./visual-review";
 import { PLAYER_REVIEW_MODE } from "./local-patch-player-review";
@@ -72,11 +72,14 @@ export function readQualityStage(stage: QualityStage, hideId: string): LocalPatc
 export const CONTINUITY_READERS_FOR: Readonly<Record<DualVisualReviewVersion, readonly ContinuityReader[]>> = Object.freeze({
   [DUAL_VISUAL_REVIEW_VERSION]: [CONTINUITY_READER_STRICT, CONTINUITY_READER_BOUNDED],
   [DUAL_VISUAL_REVIEW_V2]: [CONTINUITY_READER_CROWD],
+  // v3 asks v1's continuity question; its stages always name their reader.
+  [DUAL_VISUAL_REVIEW_V3]: [CONTINUITY_READER_BOUNDED],
 });
 /** The reader new answers to each question are decided by. */
 export const CURRENT_CONTINUITY_READER: Readonly<Record<DualVisualReviewVersion, ContinuityReader>> = Object.freeze({
   [DUAL_VISUAL_REVIEW_VERSION]: CONTINUITY_READER_BOUNDED,
   [DUAL_VISUAL_REVIEW_V2]: CONTINUITY_READER_CROWD,
+  [DUAL_VISUAL_REVIEW_V3]: CONTINUITY_READER_BOUNDED,
 });
 
 export function visualStageReadable(stage: Pick<DualReviewStage, "policy" | "model" | "wireFault" | "finishReason">) {

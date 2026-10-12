@@ -29,8 +29,13 @@ import { recoverPreparedLocalPatchReview, REVIEW_INTERRUPTION_POLICY } from "../
 import { localPatchBudgetReadyForPublication } from "../local-patch-interruption-recovery";
 import { sha256Bytes } from "../fixed-sprite";
 import { bill, paintedCrop, paintedOk, seedApprovedGame, PASSING_ANSWER } from "./local-patch-fixtures";
-import { pinVisualReviewRelease, hasDualVisualReview, dualVisualReviewVersion, DUAL_VISUAL_REVIEW_VERSION, DUAL_VISUAL_REVIEW_V2,
+import { pinVisualReviewRelease, hasDualVisualReview, dualVisualReviewVersion, DUAL_VISUAL_REVIEW_VERSION, DUAL_VISUAL_REVIEW_V2, DUAL_VISUAL_REVIEW_V3,
   type DualVisualReviewVersion } from "../visual-review-release";
+import sharp from "sharp";
+import { cropOf, maskForHide } from "../../../domain/scene/local-patch-hides";
+import { prepareJoinDetails } from "../local-patch-integration-evidence";
+import { objectJoinInstructions } from "../local-patch-player-review";
+import { localPatchRepairChecks } from "../local-patch-prompt";
 import { CONTINUITY_READER_BOUNDED, CONTINUITY_READER_CROWD, CONTINUITY_READER_STRICT } from "../../../domain/scene/local-patch-body-continuity";
 import type { TargetVariantAsset } from "@prisma/client";
 import { asDeployedQualityRefusal, asDeployedReaderRefusal, atEvidenceRound, LOCATED_390, LOCATED_390_DEFECT, located390Answer, located390Verdict,
@@ -106,7 +111,7 @@ const publishable = (gameId: string, row: TargetVariantAsset, judgeJson = row.ju
 /** An anatomy reply: its text, or its text with the provider's own finish reason. */
 type AnatomyReply = string | { raw: string; finishReason: string };
 async function dualSeed(id: string, anatomy: "pass" | "broken" | "schema" | ((hideId: string, call: number) => AnatomyReply) = "pass",
-  options: { count?: number; release?: DualVisualReviewVersion } = {}) {
+  options: { count?: number; release?: DualVisualReviewVersion; quality?: Record<string, unknown> } = {}) {
   const s = await seed(id, options.count ?? 1);
   await db.$transaction(tx => pinVisualReviewRelease(tx, s.gameId, options.release));
   const hideId = BOARD.hides[0]!.id;
@@ -124,7 +129,7 @@ async function dualSeed(id: string, anatomy: "pass" | "broken" | "schema" | ((hi
     return { verdict: null, model: quality ? "claude-opus-5-5" : "gpt-6.1-sol", requestId: `dual-${id}-${++calls}`,
       finishReason: quality ? "end_turn" : typeof reply === "object" && reply ? reply.finishReason : "stop", wireFault: null, costUnknown: false,
       usage: quality ? { input_tokens: 2000, output_tokens: 500 } : { prompt_tokens: 2000, completion_tokens: 500 },
-      raw: quality ? "```json\n" + JSON.stringify({ hides: [{ hideId: asked, evidenceIds: localPatchHideEvidenceIds(asked), verdict: good }] }) + "\n```"
+      raw: quality ? "```json\n" + JSON.stringify({ hides: [{ hideId: asked, evidenceIds: localPatchHideEvidenceIds(asked), verdict: options.quality ?? good }] }) + "\n```"
         : reply !== null ? typeof reply === "string" ? reply : reply.raw
         : anatomy === "schema" ? "{}" : JSON.stringify({ cases: [{ id: `${hideId}:people`, state: anatomy === "broken" ? "broken" : "coherent",
           visibleBody: true, headConnection: anatomy === "broken" ? "missing" : "connected", headTrace: "Visible head contours and neck connections checked in the final context",
@@ -1064,5 +1069,56 @@ describe("a named quality reader decides a refused Opus answer for free, never i
       { ...strictStage, reading: { ...reading, reader: QUALITY_READER_STRICT } },
       { ...q, reading },
     ]) expect(await publishable(s.gameId, row, withQuality(forged))).toBe(false);
+  });
+});
+
+describe("dual release v3: object joins", () => {
+  const raw = async (png: Buffer) => sharp(png).removeAlpha().raw().toBuffer();
+  it("asks Opus about each join magnified from the same registered pixels, keeps v1's continuity question, and publishes under its own pin", async () => {
+    const v3 = await dualSeed("dual-v3-joins", "pass", { release: DUAL_VISUAL_REVIEW_V3 });
+    const v1 = await dualSeed("dual-v1-plain", "pass", { release: DUAL_VISUAL_REVIEW_VERSION });
+    for (const s of [v3, v1]) { await s.run(); await s.run(); }
+    const [q3, a3] = v3.request.mock.calls.map(call => call[0]), [q1, a1] = v1.request.mock.calls.map(call => call[0]);
+    expect([q3!.role, a3!.role, q1!.role, a1!.role]).toEqual(["scene-quality", "head-continuity", "scene-quality", "head-continuity"]);
+    expect(q1!.images).toHaveLength(8); expect(q3!.images).toHaveLength(12);
+    expect(q3!.labels.slice(0, 8).map(l => l.replaceAll(v3.gameId, ""))).toEqual(q1!.labels.map(l => l.replaceAll(v1.gameId, "")));
+    expect(q3!.labels.slice(8).every(l => l.includes("ROLE=JOIN_DETAIL"))).toBe(true);
+    expect(q3!.prompt).toContain(objectJoinInstructions); expect(q1!.prompt).not.toContain("OBJECT JOINS");
+    // The joins are cut from the very pixels and window of the other evidence: the authored mask plus the 120 px guard.
+    const hide = BOARD.hides[0]!, crop = cropOf(hide), mask = maskForHide(hide), before = q3!.images[2]!, meta = await sharp(before).metadata();
+    const after = await sharp(q3!.images[3]!).extract({ left: 0, top: 0, width: meta.width!, height: meta.height! }).png().toBuffer();
+    const ctx = { left: Math.max(0, crop.left - 192), top: Math.max(0, crop.top - 192) }, l = Math.max(0, mask.left - 120), t = Math.max(0, mask.top - 120);
+    const window = { left: crop.left - ctx.left + l, top: crop.top - ctx.top + t,
+      width: Math.min(crop.width, mask.left + mask.width + 120) - l, height: Math.min(crop.height, mask.top + mask.height + 120) - t };
+    const expected = await prepareJoinDetails(before, after, window);
+    for (const [i, detail] of expected.entries()) expect((await raw(q3!.images[8 + i]!)).equals(await raw(detail.png))).toBe(true);
+    // Sol's question is v1's: same images and labels, same words up to the binding that names the release.
+    const unbound = (prompt: string) => prompt.replace(/\nImmutable candidate binding: [\s\S]*$/, "");
+    expect(a3!.images).toHaveLength(6); expect(a3!.labels).toEqual(a1!.labels); expect(unbound(a3!.prompt)).toBe(unbound(a1!.prompt));
+    const row = (await rows(v3.gameId))[0]!, receipt = JSON.parse(row.judgeJson!), hideId = hide.id;
+    expect(row.status).toBe("GENERATED");
+    expect(receipt.boardReview).toMatchObject({ version: DUAL_VISUAL_REVIEW_V3, dual: { version: DUAL_VISUAL_REVIEW_V3, continuity: { reader: CONTINUITY_READER_BOUNDED } } });
+    expect(receipt.boardReview.wireHashes).toHaveLength(12);
+    expect(receipt.boardReview.evidenceIds.slice(-4)).toEqual(["left", "top", "right", "bottom"].map(e => `${hideId}:join:${e}`));
+    expect(await publishable(v3.gameId, row)).toBe(true);
+    expect(await db.auditLog.count({ where: { entityId: v3.gameId, action: LOCAL_PATCH_PUBLICATION_ACTION } })).toBe(1);
+    // A v3 answer is never read as another release's.
+    expect(await publishable(v3.gameId, row, JSON.stringify({ ...receipt, boardReview: { ...receipt.boardReview, version: DUAL_VISUAL_REVIEW_VERSION } }))).toBe(false);
+    const { reader: _r, ...unnamed } = receipt.boardReview.dual.continuity;
+    expect(await publishable(v3.gameId, row, JSON.stringify({ ...receipt, boardReview: { ...receipt.boardReview,
+      dual: { ...receipt.boardReview.dual, continuity: unnamed } } }))).toBe(false);
+  });
+
+  it("routes a broken object join that Opus names to repair, with the seam and picture checks", async () => {
+    const broken = { ...good, pictureWhole: "fail", severeSeam: "fail", verdict: "fail", reason: "A newly painted sign meets the original lower half at the bottom join.",
+      faults: [{ check: "pictureWhole", where: "Bottom join: the sign lettering is cut along the line" }, { check: "severeSeam", where: "Bottom join: doubled left edge of the sign" }],
+      boundaryIntegrity: { ...good.boundaryIntegrity, bottom: { status: "fail", observation: "The sign is cut along the join; its lettering does not continue" } } };
+    const s = await dualSeed("dual-v3-broken-join", "pass", { release: DUAL_VISUAL_REVIEW_V3, quality: broken });
+    expect((await s.run()).state).toBe("retry");
+    expect(s.request).toHaveBeenCalledTimes(1);
+    const row = (await rows(s.gameId))[0]!;
+    expect(row.status).toBe("FAILED"); expect(row.lastError).toMatch(/^quality-retry/);
+    expect(localPatchRepairChecks(row.judgeJson, 12, { hideId: BOARD.hides[0]!.id })).toEqual(expect.arrayContaining(["pictureWhole", "severeSeam"]));
+    expect(await publishable(s.gameId, row)).toBe(false);
   });
 });

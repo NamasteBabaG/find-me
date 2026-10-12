@@ -1,8 +1,9 @@
 import { childBodyDirection } from "../../domain/child-body";
 import { REFRESHED_COLLECTION_VERSION, INTEGRATED_COLLECTION_VERSION } from "../../domain/scene/local-patch-versions";
 import { INTEGRATION_CHECKS, INTEGRATION_REVIEW_DIRECTION } from "./local-patch-integration";
-import { PLAYER_REVIEW_MODE, LEGACY_PLAYER_REVIEW_MODE, boundaryReviewInstructions, playerReviewInstructions } from "./local-patch-player-review";
-import { NEIGHBOR_QUADRANTS, RETURN_EDGES, type NeighborComparison, type BoundaryComparison } from "./local-patch-integration-evidence";
+import { PLAYER_REVIEW_MODE, LEGACY_PLAYER_REVIEW_MODE, boundaryReviewInstructions, objectJoinInstructions, playerReviewInstructions } from "./local-patch-player-review";
+import { NEIGHBOR_QUADRANTS, RETURN_EDGES, type NeighborComparison, type BoundaryComparison, type JoinDetail } from "./local-patch-integration-evidence";
+import type { PatchRegion } from "./local-patch-seam";
 /**
  * Looking at a finished local patch the way a person does.
  *
@@ -675,35 +676,55 @@ export type LocalPatchBoardJudgeRequest = {
   reviewScope?: "unapproved-only/v1" | "ready-only/v1";
   /** A new question on a new paid key; absent preserves historical wire bytes. */
   assessmentMode?: LocalPatchAssessmentMode;
+  /** Dual release v3's quality question. Absent: the historical question, byte for byte. */
+  qualityQuestion?: "object-joins/v1";
   boardId: string; boardPng: Buffer; identityPng: Buffer; timeoutMs?: number;
-  hides: readonly { hideId: string; beforePng: Buffer; afterPng: Buffer; closeupPng?: Buffer; afterEvidencePng?: Buffer; neighborComparisons?: readonly NeighborComparison[]; boundaryComparisons?: readonly BoundaryComparison[]; expectation?: LocalPatchExpectation }[];
+  hides: readonly { hideId: string; beforePng: Buffer; afterPng: Buffer; closeupPng?: Buffer; afterEvidencePng?: Buffer; neighborComparisons?: readonly NeighborComparison[]; boundaryComparisons?: readonly BoundaryComparison[];
+    /** The returned window in this hide's context coordinates; not wire evidence by itself. */ returnedWindow?: PatchRegion;
+    /** Present exactly for the object-joins question, one per return edge. */ joinDetails?: readonly JoinDetail[];
+    expectation?: LocalPatchExpectation }[];
+};
+const objectJoins = (request: Pick<LocalPatchBoardJudgeRequest, "qualityQuestion" | "assessmentMode" | "hides">) => {
+  if (!request.qualityQuestion) {
+    if (request.hides.some(h => h.joinDetails)) throw Error("Join details belong only to the object-joins question");
+    return false;
+  }
+  if (request.qualityQuestion !== "object-joins/v1" || request.assessmentMode !== PLAYER_REVIEW_MODE
+    || request.hides.some(h => h.joinDetails?.length !== 4 || h.joinDetails.some((d, i) => d.edge !== RETURN_EDGES[i] || !d.png.length
+      || !Number.isInteger(d.joinOffset) || d.joinOffset < 0 || ![2, 3].includes(d.scale))))
+    throw Error("The object-joins question requires the player review and four magnified joins per hide");
+  return true;
 };
 /** Shared by transport and the paid fingerprint: neither may omit evidence. */
 export function localPatchBoardJudgeImages(request: LocalPatchBoardJudgeRequest): Buffer[] {
   const strict = isLocalPatchStrictVersion(request.contentVersion);
   if (strict && request.hides.some(hide => !hide.closeupPng?.length || !hide.afterEvidencePng?.length)) throw new Error("Strict board review requires five native AFTER closeup panels");
-  const boundary = request.assessmentMode === PLAYER_REVIEW_MODE;
+  const boundary = request.assessmentMode === PLAYER_REVIEW_MODE, joins = objectJoins(request);
   if (boundary && request.hides.some(h => h.boundaryComparisons?.length !== 4 || h.boundaryComparisons.some((p, i) => p.edge !== RETURN_EDGES[i] || !p.png.length
     || !Number.isInteger(p.joinOffset) || p.joinOffset < 0))) throw Error("Boundary review requires four continuous native return comparisons per hide");
   if (!boundary && request.contentVersion === INTEGRATED_COLLECTION_VERSION && request.hides.some(h => h.neighborComparisons?.length !== 4
     || h.neighborComparisons.some((p, i) => p.quadrant !== NEIGHBOR_QUADRANTS[i] || !p.png.length))) throw Error("Integration review requires four registered native neighbour comparisons per hide");
   return [request.boardPng, request.identityPng, ...request.hides.flatMap(hide => strict
-    ? [hide.beforePng, hide.afterEvidencePng!, ...(boundary ? hide.boundaryComparisons!.map(p => p.png) : request.contentVersion === INTEGRATED_COLLECTION_VERSION ? hide.neighborComparisons!.map(p => p.png) : [])]
+    ? [hide.beforePng, hide.afterEvidencePng!, ...(boundary ? hide.boundaryComparisons!.map(p => p.png) : request.contentVersion === INTEGRATED_COLLECTION_VERSION ? hide.neighborComparisons!.map(p => p.png) : []),
+      ...(joins ? hide.joinDetails!.map(d => d.png) : [])]
     : [hide.beforePng, hide.afterPng])];
 }
 /** Stable identifiers, not ordinal image counting. These describe the actual
- * twelve wire images; the native inset is part of AFTER, not an extra image. */
-export function localPatchBoardEvidenceIds(request: Pick<LocalPatchBoardJudgeRequest, "boardId" | "hides" | "contentVersion" | "assessmentMode">): string[] {
+ * wire images (four more per hide for object joins); the native inset is part of AFTER, not an extra image. */
+export function localPatchBoardEvidenceIds(request: Pick<LocalPatchBoardJudgeRequest, "boardId" | "hides" | "contentVersion" | "assessmentMode" | "qualityQuestion">): string[] {
+  const joins = objectJoins(request);
   return [`${request.boardId}:original-board`, `${request.boardId}:canonical-portrait`,
     ...request.hides.flatMap(hide => [...localPatchHideEvidenceIds(hide.hideId), ...(request.assessmentMode === PLAYER_REVIEW_MODE ? RETURN_EDGES.map(edge => `${hide.hideId}:return:${edge}`)
-      : request.contentVersion === INTEGRATED_COLLECTION_VERSION ? NEIGHBOR_QUADRANTS.map(q => `${hide.hideId}:neighbors:${q}`) : [])])];
+      : request.contentVersion === INTEGRATED_COLLECTION_VERSION ? NEIGHBOR_QUADRANTS.map(q => `${hide.hideId}:neighbors:${q}`) : []),
+      ...(joins ? RETURN_EDGES.map(edge => `${hide.hideId}:join:${edge}`) : [])])];
 }
 export function localPatchHideEvidenceIds(hideId: string): [string, string] {
   return [`${hideId}:before`, `${hideId}:after`];
 }
 /** Opt-in labels preserve old paid wire bytes. Shared by dispatch and fingerprint. */
-export function localPatchBoardJudgeImageLabels(request: Pick<LocalPatchBoardJudgeRequest, "boardId" | "hides" | "contentVersion" | "assessmentMode">): string[] | undefined {
+export function localPatchBoardJudgeImageLabels(request: Pick<LocalPatchBoardJudgeRequest, "boardId" | "hides" | "contentVersion" | "assessmentMode" | "qualityQuestion">): string[] | undefined {
   if (!isLocalPatchAgeVersion(request.contentVersion)) return undefined;
+  const joins = objectJoins(request);
   return [
     `EVIDENCE_ID=${request.boardId}:original-board | ROLE=REFERENCE_BOARD | Original whole-board context only; contains no generated target. This is not a BEFORE/AFTER pair.`,
     `EVIDENCE_ID=${request.boardId}:canonical-portrait | ROLE=CANONICAL_FACE_REFERENCE | Approved canonical face and hair authority only; not a hide, not a BEFORE/AFTER pair, and not target body-age authority.`,
@@ -712,18 +733,22 @@ export function localPatchBoardJudgeImageLabels(request: Pick<LocalPatchBoardJud
       `EVIDENCE_ID=${hide.hideId}:after | HIDE_ID=${hide.hideId} | ROLE=AFTER | One serial appearance. LEFT panel is actual player context; RIGHT panel beyond the white gutter is a native closeup of this SAME appearance, not another hide or an extra evidence image. Compare ONLY with EVIDENCE_ID=${hide.hideId}:before.`,
       ...(request.assessmentMode === PLAYER_REVIEW_MODE ? hide.boundaryComparisons!.map(p => `EVIDENCE_ID=${hide.hideId}:return:${p.edge} | HIDE_ID=${hide.hideId} | ROLE=RETURN_BOUNDARY | ${p.edge} join at ${p.axis}=${p.joinOffset} native pixels within EACH panel; LEFT=BEFORE, RIGHT=AFTER. Continuous full-span context across this actual returned edge. Follow every crossing head, neck, torso and visible limb; distinguish coherent occlusion from half-erased anatomy. Outer crop edges are not return edges.`)
         : request.contentVersion === INTEGRATED_COLLECTION_VERSION ? NEIGHBOR_QUADRANTS.map(q => `EVIDENCE_ID=${hide.hideId}:neighbors:${q} | HIDE_ID=${hide.hideId} | ROLE=NEIGHBOR_COMPARISON | ${q} at native scale: LEFT=BEFORE original, RIGHT=AFTER player. Inspect EVERY head and connected body, including near all four image edges. One pair of the same location, not two targets.`) : []),
+      ...(joins ? hide.joinDetails!.map(d => `EVIDENCE_ID=${hide.hideId}:join:${d.edge} | HIDE_ID=${hide.hideId} | ROLE=JOIN_DETAIL | the ${d.edge} returned join magnified ${d.scale}x: `
+        + `${d.edge === "left" || d.edge === "right" ? "LEFT=BEFORE, RIGHT=AFTER" : "TOP=BEFORE, BOTTOM=AFTER"}. The red ticks in the white margin mark the join line, ${d.joinOffset} magnified pixels into each band. `
+        + "Inside AFTER, compare what lies on the two sides of that line.") : []),
     ]),
   ];
 }
 export type LocalPatchBoardJudgeResult = LocalPatchJudgeResult & { verdicts: Record<string, LocalPatchVerdict | null> };
 const AGE_REVIEW_DIRECTION = "For this new contract five checks require explicit pass: faceLikeness, faceReadable, severeSeam, ageAppropriate and scaleRight. Image2 authorizes FACE AND HAIR identity, not an old target age or the body from its source sheet. A coherent generic child is NOT sufficient: the same characteristic facial shapes and hair must be recognizable; use unsure if the pixels cannot establish likeness. ageAppropriate checks the stated age in face AND whole body: for age 4 or 5 expect a preschool torso, narrow small shoulders, short child limbs, small hands and feet, not an older school-age or adult build or mature stance. Judge visible anatomy, not clothing or assumed age from a name. scaleRight compares the whole child against children of the SAME age at the SAME ground depth, never nearby adults. A small adult-shaped figure is not a preschool body. Do not solve age or readability with a giant head, imagined zoom detail, photographic texture, blind whole-figure shrinking or a foreground move. Do not demand hidden limbs through natural occlusion; use unsure when the visible evidence cannot establish the required check. Each fail needs its own located fault; advisory complaints never invent severe failure.";
-export function localPatchBoardJudgePrompt(request: Pick<LocalPatchBoardJudgeRequest, "boardId" | "hides" | "contentVersion" | "assessmentMode" | "reviewScope">): string {
+export function localPatchBoardJudgePrompt(request: Pick<LocalPatchBoardJudgeRequest, "boardId" | "hides" | "contentVersion" | "assessmentMode" | "reviewScope" | "qualityQuestion">): string {
   if (request.assessmentMode === PLAYER_REVIEW_MODE || request.assessmentMode === LEGACY_PLAYER_REVIEW_MODE) {
     if (request.contentVersion !== INTEGRATED_COLLECTION_VERSION || request.reviewScope !== "ready-only/v1"
       || request.hides.length !== 1 || !validChildAge(request.hides[0]?.expectation?.ageYears))
       throw Error("Player assessment requires one age-bound integrated appearance");
     const hide = request.hides[0]!;
     const boundary = request.assessmentMode === PLAYER_REVIEW_MODE;
+    if (objectJoins(request)) return objectJoinPrompt(localPatchBoardJudgePrompt({ ...request, qualityQuestion: undefined, hides: request.hides.map(({ joinDetails: _joins, ...h }) => h) }));
     return [boundary ? playerReviewInstructions(hide.expectation!.ageYears!).replace("Review all four neighbour comparison quadrants, including below the target,", "Review all four continuous return boundaries, including below the target,") : playerReviewInstructions(hide.expectation!.ageYears!),
       boundary ? "Associate evidence ONLY by EVIDENCE_ID and HIDE_ID. REFERENCE_BOARD and CANONICAL_FACE_REFERENCE are not hides. AFTER LEFT is actual player context; RIGHT beyond the white gutter is a native closeup of the SAME child, not a duplicate. The FOUR continuous return comparisons use LEFT=BEFORE and RIGHT=AFTER. The boundary of an evidence crop is not the boundary of a generated patch."
         : "Associate evidence ONLY by EVIDENCE_ID and HIDE_ID. REFERENCE_BOARD and CANONICAL_FACE_REFERENCE are not hides. AFTER LEFT is actual player context; RIGHT beyond the white gutter is a native closeup of the SAME child, not a duplicate. The FOUR neighbour comparisons use LEFT=BEFORE and RIGHT=AFTER. The boundary of an evidence crop is not the boundary of a generated patch.",
@@ -756,6 +781,15 @@ export function localPatchBoardJudgePrompt(request: Pick<LocalPatchBoardJudgeReq
     return request.contentVersion === REFRESHED_COLLECTION_VERSION ? prompt + "\n" + childBodyDirection(request.hides[0]!.expectation!.ageYears!) + "\nRefreshed release: childPresent, childOnlyOnce, childComplete and pictureWhole also require explicit pass. Compare each native target face against the canonical portrait, not against surrounding people. Matching clothing/style alone never establishes likeness. Fail faceLikeness when eye spacing, face shape, nose/mouth, hairline or actual hair pattern drift toward a bystander; use unsure if identity cannot be established. A five-year-old body for a stated eight-year-old fails ageAppropriate even when the face matches. Diagnose each located failure for automatic recovery; never waive it to complete a game." : prompt;
   }
   return localPatchBoardJudgePromptForCount(request, "five");
+}
+
+/** The object-joins question: the historical player question, the join paragraph
+ * before the answer schema, and boundary observations that name objects too. */
+function objectJoinPrompt(historical: string): string {
+  const lines = historical.split("\n"), schema = lines.findIndex(line => line.startsWith("Return JSON only:"));
+  if (schema < 0 || !historical.includes('"observation":"specific crossing anatomy"')) throw Error("The object-joins question extends only the boundary player question");
+  lines.splice(schema, 0, objectJoinInstructions);
+  return lines.join("\n").replaceAll('"observation":"specific crossing anatomy"', '"observation":"specific crossing people and objects"');
 }
 
 function integratedVerdictFields() {

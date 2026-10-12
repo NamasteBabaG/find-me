@@ -5,8 +5,15 @@ import { visualReviewPolicy } from "../../domain/generation/visual-review-policy
 export const DUAL_VISUAL_REVIEW_VERSION = "local-patch-dual-high/v1";
 /** The same models, effort and policies; Sol answers one bounded entry per person. */
 export const DUAL_VISUAL_REVIEW_V2 = "local-patch-dual-high/v2";
-export const DUAL_VISUAL_REVIEW_VERSIONS = [DUAL_VISUAL_REVIEW_VERSION, DUAL_VISUAL_REVIEW_V2] as const;
+/** v1's continuity question and readers, exactly; Opus is also shown each returned
+ * join magnified and asked whether every object and person continues across it
+ * (`object-joins/v1`). Prompted by the v17 render's accepted New York sign seam. */
+export const DUAL_VISUAL_REVIEW_V3 = "local-patch-dual-high/v3";
+export const DUAL_VISUAL_REVIEW_VERSIONS = [DUAL_VISUAL_REVIEW_VERSION, DUAL_VISUAL_REVIEW_V2, DUAL_VISUAL_REVIEW_V3] as const;
 export type DualVisualReviewVersion = typeof DUAL_VISUAL_REVIEW_VERSIONS[number];
+/** The quality question a pinned release asks: v1 and v2 ask the historical one. */
+export const QUALITY_QUESTION_OBJECT_JOINS = "object-joins/v1";
+export const qualityQuestionFor = (version: DualVisualReviewVersion) => version === DUAL_VISUAL_REVIEW_V3 ? QUALITY_QUESTION_OBJECT_JOINS : undefined;
 export const DUAL_VISUAL_REVIEW_ACTION = "generation:visual-review-policy";
 const idOf = (gameId: string) => `aud_visual_policy_${gameId}`;
 const policy = (version: DualVisualReviewVersion) => ({ version,

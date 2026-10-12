@@ -19,7 +19,8 @@ import { LOCAL_PATCH_PHASE_MARGIN_MS, LOCAL_PATCH_MIN_PROVIDER_MS } from "./loca
 import { sha256Bytes } from "./fixed-sprite";
 import { recoverPreparedLocalPatchReview } from "./local-patch-review-interruption-recovery";
 import { localPatchEvidenceHistory, localPatchEvidenceRecovery, evidenceKindOfWireFault } from "./local-patch-review-recovery";
-import { DUAL_VISUAL_REVIEW_V2, DUAL_VISUAL_REVIEW_VERSION, dualVisualReviewVersion, type DualVisualReviewVersion } from "./visual-review-release";
+import { DUAL_VISUAL_REVIEW_V2, DUAL_VISUAL_REVIEW_VERSION, dualVisualReviewVersion, qualityQuestionFor, QUALITY_QUESTION_OBJECT_JOINS, type DualVisualReviewVersion } from "./visual-review-release";
+import { prepareJoinDetails } from "./local-patch-integration-evidence";
 import type { BudgetJson } from "./world-budget";
 
 type Prepared = Extract<Awaited<ReturnType<typeof prepareLocalPatchBoardReview>>, { ready: true }>;
@@ -225,13 +226,31 @@ function classify(result: Omit<Reviewed, "evidence" | "diagnosis">, row: Prepare
  * receipt, price policy and reservation; a restart reuses the finished role.
  * `decideRetained` never buys: it only re-reads an answer already paid for. */
 export async function buyDualLocalPatchReview(c: Container, prepared: Prepared, deps: LocalPatchBoardReviewDeps, deadlineAt?: number,
-  options: { decideRetained?: boolean } = {}): Promise<Waiting | Reviewed> {
+  options: { decideRetained?: boolean } = {}): Promise<Waiting | (Reviewed & { asked: Prepared["request"] })> {
   if (!options.decideRetained && !c.visualReview) throw Error("Both HIGH visual-review providers must be configured before any reservation");
   if (prepared.scene.sceneVersion !== 12 || prepared.extraPlan || prepared.request.reviewScope !== "ready-only/v1"
     || prepared.request.hides.length !== 1) throw Error("Dual review requires one ready v12 appearance");
-  const { request, entries, game, budget, worldId, evidenceReviewAttempt } = prepared;
-  const version = await dualVisualReviewVersion(c.db, game.id);
+  const version = await dualVisualReviewVersion(c.db, prepared.game.id);
   if (!version) throw Error("Dual review requires its pinned visual review release");
+  // The pinned release decides the quality question: v3 adds each join magnified,
+  // derived from the same registered pixels; v1/v2 ask the prepared one byte for byte.
+  const asked = await dualQualityRequest(version, prepared.request);
+  const result = await dualReview(c, { ...prepared, request: asked }, deps, version, deadlineAt, options);
+  return result.kind === "reviewed" ? { ...result, asked } : result;
+}
+
+/** The quality request a pinned release asks about one ready appearance. */
+export async function dualQualityRequest(version: DualVisualReviewVersion, request: Prepared["request"]): Promise<Prepared["request"]> {
+  if (qualityQuestionFor(version) !== QUALITY_QUESTION_OBJECT_JOINS) return request;
+  return { ...request, qualityQuestion: QUALITY_QUESTION_OBJECT_JOINS, hides: await Promise.all(request.hides.map(async hide => {
+    if (!hide.returnedWindow) throw Error("The object-joins question requires the registered return window");
+    return { ...hide, joinDetails: await prepareJoinDetails(hide.beforePng, hide.afterPng, hide.returnedWindow) };
+  })) };
+}
+
+async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoardReviewDeps, version: DualVisualReviewVersion, deadlineAt: number | undefined,
+  options: { decideRetained?: boolean }): Promise<Waiting | Reviewed> {
+  const { request, entries, game, budget, worldId, evidenceReviewAttempt } = prepared;
   const hideId = request.hides[0]!.hideId, entry = entries.find(e => e.hide.id === hideId)!;
   const binding = { version, gameId: game.id, sceneId: prepared.scene.id, hideId,
     variantId: entry.row.id, imageSha256: entry.imageSha256, geometrySha256: entry.geometrySha256,

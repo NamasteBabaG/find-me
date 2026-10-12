@@ -261,9 +261,10 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
         : { left: Math.max(0, mask.left - guard), top: Math.max(0, mask.top - guard),
           width: Math.min(e.crop.width, mask.left + mask.width + guard) - Math.max(0, mask.left - guard),
           height: Math.min(e.crop.height, mask.top + mask.height + guard) - Math.max(0, mask.top - guard) };
+      // The same window for the boundary strips and, under the object-joins question, its magnified joins.
+      const returnedWindow = { ...returned, left: e.crop.left - context.left + returned.left, top: e.crop.top - context.top + returned.top };
       return { hideId: e.hide.id, beforePng, afterPng, ...(closeupPng && afterEvidencePng ? { closeupPng, afterEvidencePng } : {}),
-        ...(options.playerReview ? { boundaryComparisons: await prepareBoundaryComparisons(beforePng, afterPng,
-          { ...returned, left: e.crop.left - context.left + returned.left, top: e.crop.top - context.top + returned.top }) }
+        ...(options.playerReview ? { boundaryComparisons: await prepareBoundaryComparisons(beforePng, afterPng, returnedWindow), returnedWindow }
           : scene.sceneVersion === 12 ? { neighborComparisons: await prepareNeighborComparisons(beforePng, afterPng) } : {}),
         expectation: { ageYears: child.ageYears, support: `${e.hide.pose} on ${board.ground}` } };
     })),
@@ -443,8 +444,10 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
           ...(request.reviewScope ? { reviewScope: request.reviewScope, reviewedHideIds: request.hides.map(h => h.hideId), evidenceReviewAttempt,
             evidenceReviewedAt: new Date().toISOString() } : {}),
           ...(extraPlan ? { assessmentMode: "visible-body-v1", extraAttemptAuthorizationId: extraPlan.authorizationId } : {}),
-          ...(strict ? { compositionVersion, wireHashes: localPatchBoardJudgeImages(request).map(sha256Bytes) } : {}),
-          ...(isLocalPatchAgeVersion(scene.sceneVersion) ? { evidenceIds: localPatchBoardEvidenceIds(request), imageLabels: localPatchBoardJudgeImageLabels(request) } : {}),
+          // The question actually asked: a dual release may add evidence to the prepared one.
+          ...(strict ? { compositionVersion, wireHashes: localPatchBoardJudgeImages(evaluated?.asked ?? request).map(sha256Bytes) } : {}),
+          ...(isLocalPatchAgeVersion(scene.sceneVersion) ? { evidenceIds: localPatchBoardEvidenceIds(evaluated?.asked ?? request),
+            imageLabels: localPatchBoardJudgeImageLabels(evaluated?.asked ?? request) } : {}),
           model: keep.model, effort: evaluated ? "high" : settings.effort, raw: keep.raw, costMicroUsd: evaluated
             ? evaluated.proof.quality.costMicroUsd + (evaluated.proof.continuity?.costMicroUsd ?? 0) : bought.evidence.amountMicroUsd },
       });
