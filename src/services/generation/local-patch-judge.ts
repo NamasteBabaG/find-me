@@ -291,14 +291,16 @@ const verdictSchemaFor = (contentVersion?: number) => contentVersion === INTEGRA
  * Normalize that field name only, without changing its paid prompt/fingerprint
  * or dropping an actual failed/uncertain check. Conflicting aliases stay invalid. */
 export function parseLocalPatchVerdict(value: unknown, contentVersion?: number): LocalPatchVerdict | null {
-  let normalized = value;
-  if (value && typeof value === "object" && !Array.isArray(value) && Object.hasOwn(value, "brief reason")) {
-    const { "brief reason": reason, ...rest } = value as Record<string, unknown>;
-    if (Object.hasOwn(rest, "reason") && rest.reason !== reason) return null;
-    normalized = { ...rest, reason };
-  }
+  const normalized = withReasonAlias(value);
+  if (normalized === CONFLICTING_REASON) return null;
   const parsed = verdictSchemaFor(contentVersion).safeParse(normalized);
   return parsed.success ? parsed.data : null;
+}
+const CONFLICTING_REASON = Symbol("conflicting reason aliases");
+function withReasonAlias(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value) || !Object.hasOwn(value, "brief reason")) return value;
+  const { "brief reason": reason, ...rest } = value as Record<string, unknown>;
+  return Object.hasOwn(rest, "reason") && rest.reason !== reason ? CONFLICTING_REASON : { ...rest, reason };
 }
 
 const explicitAgeUncertaintySchema = localPatchVerdictWireSchema.extend({
@@ -783,6 +785,63 @@ export function parseLocalPatchBoardVerdicts(raw: string | null, hideIds: readon
       return [row.hideId, parseLocalPatchVerdict(row.verdict, contentVersion)];
     }));
   } catch { return missing; }
+}
+
+/** Why an answer could not be read: a machine code and a JSON path, never its
+ * text. A field over its bound is a size failure; everything else malformed is
+ * a format failure, or an identity one when the answer names the wrong hides. */
+export type QualityReadFault = { readonly code: "empty" | "syntax" | "shape" | "length" | "count" | "ids"; readonly path: string };
+
+/**
+ * Explains a refusal of `parseLocalPatchBoardVerdicts`, for the recovery policy.
+ * Acceptance remains the parser's alone: null means every supplied hide parsed.
+ * Otherwise the first failing step names what was wrong and where, so the next
+ * question can address it (a 850-character observation is answered by asking
+ * for shorter text, not by asking again for the JSON it already sent).
+ */
+export function diagnoseLocalPatchBoardAnswer(text: string | null, hideIds: readonly string[], contentVersion?: number,
+  reviewScope?: LocalPatchBoardJudgeRequest["reviewScope"], assessmentMode?: LocalPatchAssessmentMode): QualityReadFault | null {
+  const fault = (code: QualityReadFault["code"], path = ""): QualityReadFault => ({ code, path });
+  // A string over its bound is the only size failure; a short or missing field is malformed.
+  const fromIssue = (error: z.ZodError, prefix: string) => {
+    const issue = error.issues[0]!, path = [prefix, ...issue.path.map(String)].filter(Boolean).join(".");
+    return fault(issue.code === "too_big" ? issue.type === "string" ? "length" : issue.type === "array" ? "count" : "shape" : "shape", path);
+  };
+  if (!text?.trim()) return fault("empty");
+  const verdicts = parseLocalPatchBoardVerdicts(text, hideIds, contentVersion, reviewScope, assessmentMode);
+  if (hideIds.length && hideIds.every(id => verdicts[id])) return null;
+  let value: unknown;
+  try { value = JSON.parse(text); } catch { return fault("syntax"); }
+  if (reviewScope && (!["unapproved-only/v1", "ready-only/v1"].includes(reviewScope) || contentVersion !== INTEGRATED_COLLECTION_VERSION)
+    || (reviewScope ? hideIds.length < 1 || hideIds.length > 3 : hideIds.length !== localPatchHidesPerBoard(contentVersion))
+    || new Set(hideIds).size !== hideIds.length) return fault("ids");
+  const top = z.object({ hides: z.array(z.unknown()) }).strict().safeParse(value);
+  if (!top.success) return fromIssue(top.error, "");
+  if (top.data.hides.length !== hideIds.length) return fault("ids", "hides");
+  const evidence = isLocalPatchAgeVersion(contentVersion);
+  const rowShape = z.object({ hideId: z.string(), verdict: z.unknown(), ...(evidence ? { evidenceIds: z.tuple([z.string(), z.string()]) } : {}) }).strict();
+  const rows: { hideId: string; verdict: unknown; evidenceIds?: [string, string] }[] = [];
+  for (const [index, row] of top.data.hides.entries()) {
+    const parsed = rowShape.safeParse(row);
+    if (!parsed.success) return fromIssue(parsed.error, `hides.${index}`);
+    rows.push(parsed.data as typeof rows[number]);
+  }
+  if (new Set(rows.map(r => r.hideId)).size !== hideIds.length || rows.some(r => !hideIds.includes(r.hideId))) return fault("ids", "hides");
+  for (const [index, row] of rows.entries()) {
+    const at = `hides.${index}`;
+    if (evidence && JSON.stringify(row.evidenceIds) !== JSON.stringify(localPatchHideEvidenceIds(row.hideId))) return fault("ids", `${at}.evidenceIds`);
+    if (assessmentMode === PLAYER_REVIEW_MODE) {
+      if (contentVersion !== INTEGRATED_COLLECTION_VERSION) return fault("shape", `${at}.verdict`);
+      const boundary = boundaryIntegritySchema.safeParse((row.verdict as Record<string, unknown> | null)?.boundaryIntegrity);
+      if (!boundary.success) return fromIssue(boundary.error, `${at}.verdict.boundaryIntegrity`);
+    }
+    const normalized = withReasonAlias(row.verdict);
+    if (normalized === CONFLICTING_REASON) return fault("shape", `${at}.verdict.reason`);
+    const parsed = verdictSchemaFor(contentVersion).safeParse(normalized);
+    if (!parsed.success) return fromIssue(parsed.error, `${at}.verdict`);
+  }
+  // The steps above mirror the parser; disagreeing with it must never read as clean.
+  return fault("shape");
 }
 export async function judgeLocalPatchBoard(apiKey: string, request: LocalPatchBoardJudgeRequest, fetchOnce: typeof fetch = fetch): Promise<LocalPatchBoardJudgeResult> {
   const wire = await requestJudgeWire(apiKey, { settings: localPatchBoardJudgeSettings(request.contentVersion),

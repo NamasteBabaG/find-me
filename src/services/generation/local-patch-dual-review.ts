@@ -7,7 +7,7 @@ import { CONTINUITY_READER_STRICT, localPatchRuntimeContinuityVerdict, readLocal
 import { nextLocalPatchEvidenceStep, type EvidenceAttempt, type EvidenceDiagnosis, type EvidenceFaultKind, type EvidenceRole, type EvidenceStrategy } from "../../domain/scene/local-patch-evidence-policy";
 import { CURRENT_CONTINUITY_READER, verifiedDualStage, visualStageReadable, type ContinuityReReading, type DualReviewProof, type DualReviewStage } from "./local-patch-dual-evidence";
 import { localPatchCrowdContinuityPrompt, localPatchHeadContinuityPrompt } from "./local-patch-body-continuity";
-import { prepareVisualReview, sceneQualityQuestion, parseVisualSceneVerdicts, type PreparedVisualReview } from "./visual-review";
+import { prepareVisualReview, sceneQualityQuestion, parseVisualSceneVerdicts, diagnoseVisualSceneAnswer, type PreparedVisualReview } from "./visual-review";
 import type { LocalPatchJudgeResult, LocalPatchBoardJudgeResult } from "./local-patch-judge";
 import { localPatchQualityDisposition, parseLocalPatchVerdict } from "./local-patch-judge";
 import type { prepareLocalPatchBoardReview, LocalPatchBoardReviewDeps } from "./local-patch-board-review";
@@ -41,7 +41,7 @@ function continuityAddendum(strategy: EvidenceStrategy, version: DualVisualRevie
 }
 function qualityAddendum(strategy: EvidenceStrategy): string {
   if (strategy === "strict-json/v1") return "\nFORMAT RECOVERY: a previous answer about these exact unchanged pixels could not be read; this is not a visual refusal. Inspect them independently and return only the exact JSON schema with every supplied hide and evidence ID, with no prose or Markdown. Do not infer the previous verdict.";
-  if (strategy === "compact/v1") return "\nSIZE RECOVERY: a previous answer about these exact unchanged pixels was cut off or exceeded its bounds. Keep the reason, every observation and every fault location short, at most 300 characters each, while reporting every failed check with its own located fault.";
+  if (strategy === "compact/v1") return "\nSIZE RECOVERY: a previous answer about these exact unchanged pixels was cut off or exceeded its bounds. Keep the reason, every observation and every fault location short, at most 300 characters each, with one located fault per failed check. Never omit a failed check or its location to save space.";
   return "";
 }
 
@@ -256,11 +256,13 @@ export async function buyDualLocalPatchReview(c: Container, prepared: Prepared, 
   const base = { kind: "reviewed" as const, salvaged: false };
   if (!qualityGood) {
     if (verdicts[hideId]) return { ...base, bought: qualityBought, wire: primaryWire, verdicts, proof, newCostCents, evidence: null, diagnosis: null };
-    // The quality answer itself could not be used: a wire fault, a reply that is
-    // not one JSON document, or one outside its schema.
-    let kind: EvidenceFaultKind = visualStageReadable(qualityStage) ? "shape" : wireKind(qualityStage);
-    if (kind === "shape") try { JSON.parse(qualityStage.raw?.trim().replace(/^```(?:json)?[\t ]*\r?\n([\s\S]*?)\r?\n```$/i, "$1") ?? ""); } catch { kind = "syntax"; }
-    const attempt: EvidenceAttempt = { attempt: qualityAttempt, role: "quality", kind, code: qualityStage.wireFault ?? kind, path: null,
+    // The quality answer itself could not be used: a wire fault, or a complete
+    // reply the reader refused. Which field, and why, decides the next question:
+    // a field over its bound is a size failure, never a request for stricter JSON.
+    const fault = visualStageReadable(qualityStage) ? diagnoseVisualSceneAnswer(qualityStage.raw, [hideId], 12, request.reviewScope, request.assessmentMode) : null;
+    if (fault) qualityStage.readFault = fault;
+    const kind: EvidenceFaultKind = fault?.code ?? wireKind(qualityStage);
+    const attempt: EvidenceAttempt = { attempt: qualityAttempt, role: "quality", kind, code: qualityStage.wireFault ?? kind, path: fault?.path || null,
       strategy: qualityStrategy, at: new Date().toISOString(), imageSha256: binding.imageSha256 };
     return classify({ ...base, bought: qualityBought, wire: primaryWire, verdicts, proof, newCostCents }, entry.row, priorReceipt, attempt, null, hideId, false);
   }

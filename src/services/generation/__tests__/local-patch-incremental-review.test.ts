@@ -843,3 +843,95 @@ describe("Codex independent recovery deadline", () => {
       .toMatchObject({ status: "QUEUED", currentStep: "local-patch" });
   }, 120_000);
 });
+
+describe("Codex independent quality evidence classification", () => {
+  it("classifies an oversized otherwise valid Opus observation as size, so the next question actually shortens it", async () => {
+    const s = await dualSeed("codex-opus-length");
+    const original = s.request.getMockImplementation()!;
+    s.request.mockImplementation(async (question, timeoutMs) => {
+      const answer = await original(question, timeoutMs);
+      if (question.role !== "scene-quality") return answer;
+      const parsed = JSON.parse(answer.raw!.trim().replace(/^```(?:json)?[\t ]*\r?\n([\s\S]*?)\r?\n```$/i, "$1"));
+      parsed.hides[0].verdict.integrationEvidence.style = prose(850, "Consistent illustration and local contours");
+      return { ...answer, raw: JSON.stringify(parsed) };
+    });
+    await s.run();
+    const row = (await rows(s.gameId))[0]!;
+    expect(localPatchEvidenceRecovery(row)).toMatchObject({ retry: true, role: "quality", strategy: "compact/v1" });
+    expect(s.request).toHaveBeenCalledTimes(1);
+    expect(s.render).toHaveBeenCalledTimes(1);
+  });
+
+  /** Opus's answer to its `call`-th question: the standard passing verdict, changed by `edit`. */
+  type Verdict = { integrationEvidence: Record<string, string>; boundaryIntegrity: Record<string, { status: string; observation: string }> } & Record<string, unknown>;
+  const opusSays = (s: Awaited<ReturnType<typeof dualSeed>>, edit: (verdict: Verdict, call: number) => void) => {
+    const original = s.request.getMockImplementation()!;
+    let calls = 0;
+    s.request.mockImplementation(async (question, timeoutMs) => {
+      const answer = await original(question, timeoutMs);
+      if (question.role !== "scene-quality") return answer;
+      const parsed = JSON.parse(answer.raw!.trim().replace(/^```(?:json)?[\t ]*\r?\n([\s\S]*?)\r?\n```$/i, "$1"));
+      edit(parsed.hides[0].verdict, ++calls);
+      return { ...answer, raw: "```json\n" + JSON.stringify(parsed) + "\n```" };
+    });
+  };
+  const qualityPrompts = (s: Awaited<ReturnType<typeof dualSeed>>) => s.request.mock.calls.filter(([q]) => q.role === "scene-quality").map(([q]) => q.prompt);
+  it.each([
+    ["integrationEvidence.style", (v: Verdict) => { v.integrationEvidence.style = prose(850, "Consistent illustration and local contours"); }],
+    ["integrationEvidence.lighting", (v: Verdict) => { v.integrationEvidence.lighting = prose(850, "Warm daylight from the upper left on face and jacket"); }],
+    ["integrationEvidence.neighbors", (v: Verdict) => { v.integrationEvidence.neighbors = prose(850, "Every neighbour keeps one head joined to its own body"); }],
+    ["boundaryIntegrity.left.observation", (v: Verdict) => { v.boundaryIntegrity.left!.observation = prose(850, "Heads, bodies and supports continue across this join"); }],
+  ])("names an over-long %s as a size fault at its path and asks the compact question next", async (path, edit) => {
+    const s = await dualSeed(`quality-length-${path.replaceAll(".", "-").toLowerCase()}`);
+    opusSays(s, edit);
+    expect((await s.run()).state).toBe("blocked");
+    const row = (await rows(s.gameId))[0]!, receipt = JSON.parse(row.judgeJson!);
+    expect(receipt.evidenceAttempts).toMatchObject([{ attempt: 1, role: "quality", kind: "length", path: `hides.0.verdict.${path}`, strategy: "standard/v1" }]);
+    expect(receipt.boardReview.dual.quality.readFault).toEqual({ code: "length", path: `hides.0.verdict.${path}` });
+    expect(receipt.evidenceDiagnosis).toMatchObject({ role: "quality", family: "size", kind: "length", next: "compact/v1" });
+    expect(localPatchEvidenceRecovery(row)).toMatchObject({ retry: true, role: "quality", strategy: "compact/v1" });
+    // Codes and paths only: the row's error carries none of the reviewer's text.
+    expect(row.lastError).toContain(`evidence quality length at hides.0.verdict.${path}, round 1, next compact/v1`);
+    expect(row.lastError).not.toContain("Consistent illustration");
+    expect(s.request).toHaveBeenCalledTimes(1); expect(s.render).toHaveBeenCalledTimes(1);
+  });
+  it("keeps a defect located after long evidence: over its bound it is a size fault, and the compact answer is read as the repair it reports", async () => {
+    const s = await dualSeed("quality-long-location");
+    opusSays(s, (v, call) => {
+      v.integrationEvidence = { style: prose(590, "Same inked contours and painted fabric as the neighbours"),
+        lighting: prose(590, "Warm daylight from the upper left with a soft cast shadow"), neighbors: prose(590, "Every neighbour keeps a coherent head, neck and hands") };
+      v.pictureWhole = "fail"; v.verdict = "fail";
+      v.faults = [{ check: "pictureWhole", where: prose(call === 1 ? 700 : 241, "Left of the child a disc on a bar hangs in the air with no hand holding it") }];
+    });
+    expect((await s.run()).state).toBe("blocked");
+    expect(JSON.parse((await rows(s.gameId))[0]!.judgeJson!).evidenceAttempts).toMatchObject([{ kind: "length", path: "hides.0.verdict.faults.0.where" }]);
+    expect((await s.run()).state).toBe("retry");
+    const prompts = qualityPrompts(s);
+    expect(prompts).toHaveLength(2);
+    expect(prompts[0]).not.toContain("SIZE RECOVERY");
+    expect(prompts[1]).toContain("SIZE RECOVERY"); expect(prompts[1]).toContain("one located fault per failed check"); expect(prompts[1]).not.toContain("FORMAT RECOVERY");
+    const row = (await rows(s.gameId))[0]!, receipt = JSON.parse(row.judgeJson!);
+    expect(row).toMatchObject({ status: "FAILED", attempts: 1 }); expect(row.lastError).toMatch(/^quality-retry: pictureWhole/);
+    expect(receipt.verdict.faults).toHaveLength(1);
+    expect(receipt.verdict.faults[0].where.startsWith("Left of the child a disc on a bar")).toBe(true);
+    // A failed quality answer needs no anatomy question, and no new image was bought here.
+    expect(s.request.mock.calls.map(([q]) => q.role)).toEqual(["scene-quality", "scene-quality"]);
+    expect(s.render).toHaveBeenCalledTimes(1);
+    expect(await db.auditLog.count({ where: { entityId: s.gameId, action: LOCAL_PATCH_PUBLICATION_ACTION } })).toBe(0);
+  });
+  it("retires the compact question after it fails twice: three Opus questions in all, no image, nothing held", async () => {
+    const s = await dualSeed("quality-length-exhausted");
+    opusSays(s, v => { v.integrationEvidence.style = prose(850, "Consistent illustration and local contours"); });
+    for (let tick = 0; tick < 5; tick++) await s.run();
+    const prompts = qualityPrompts(s);
+    expect(s.request.mock.calls.map(([q]) => q.role)).toEqual(["scene-quality", "scene-quality", "scene-quality"]);
+    expect(prompts[0]).not.toContain("SIZE RECOVERY"); expect(prompts.slice(1).every(prompt => prompt.includes("SIZE RECOVERY"))).toBe(true);
+    const row = (await rows(s.gameId))[0]!, receipt = JSON.parse(row.judgeJson!);
+    expect(receipt.evidenceAttempts.map((a: { attempt: number; role: string; kind: string; strategy: string }) => [a.attempt, a.role, a.kind, a.strategy]))
+      .toEqual([[1, "quality", "length", "standard/v1"], [2, "quality", "length", "compact/v1"], [3, "quality", "length", "compact/v1"]]);
+    expect(receipt.evidenceDiagnosis).toMatchObject({ role: "quality", family: "size", next: "exhausted" });
+    expect(localPatchEvidenceRecovery(row)).toMatchObject({ retry: false, exhausted: true });
+    expect(row).toMatchObject({ status: "FAILED", attempts: 1 }); expect(s.render).toHaveBeenCalledTimes(1);
+    expect(await boardWizardBudgetOf(c).audit(boardWizardWorldId(s.gameId))).toMatchObject({ reservedMicroUsd: 0, pendingRequestKeys: [], unknownRequestKeys: [] });
+  });
+});

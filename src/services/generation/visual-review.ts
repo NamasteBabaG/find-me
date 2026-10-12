@@ -5,7 +5,7 @@ import { visualReviewCharge } from "../../infra/generation/visual-review-pricing
 import { purchaseOnce, type PurchaseLedger, type RetainedPurchaseStore } from "./paid-operation";
 import type { BudgetJson } from "./world-budget";
 import { requestJudgeWire, localPatchBoardJudgePrompt, localPatchBoardJudgeImages, localPatchBoardJudgeImageLabels,
-  parseLocalPatchBoardVerdicts, type LocalPatchBoardJudgeRequest, type LocalPatchJudgeResult } from "./local-patch-judge";
+  diagnoseLocalPatchBoardAnswer, parseLocalPatchBoardVerdicts, type LocalPatchBoardJudgeRequest, type LocalPatchJudgeResult } from "./local-patch-judge";
 
 export type VisualReviewQuestion = {
   readonly role: VisualReviewRole;
@@ -61,9 +61,17 @@ export async function judgeSceneQuality(apiKey: string, request: LocalPatchBoard
  * convenient JSON fragment from prose or weaken the existing verdict schema. */
 export function parseVisualSceneVerdicts(...args: Parameters<typeof parseLocalPatchBoardVerdicts>) {
   const [raw, ...contract] = args;
+  return parseLocalPatchBoardVerdicts(unfenced(raw), ...contract);
+}
+
+/** Why `parseVisualSceneVerdicts` refused the same text: a code and a JSON path, or null when it read every hide. */
+export function diagnoseVisualSceneAnswer(...args: Parameters<typeof diagnoseLocalPatchBoardAnswer>) {
+  const [raw, ...contract] = args;
+  return diagnoseLocalPatchBoardAnswer(unfenced(raw), ...contract);
+}
+function unfenced(raw: string | null) {
   const text = raw?.trim() ?? null;
-  const fenced = text?.match(/^```(?:json)?[\t ]*\r?\n([\s\S]*?)\r?\n```$/i);
-  return parseLocalPatchBoardVerdicts(fenced?.[1] ?? text, ...contract);
+  return text?.match(/^```(?:json)?[\t ]*\r?\n([\s\S]*?)\r?\n```$/i)?.[1] ?? text;
 }
 
 /** The same durable purchase path as image generation. Credentials and evidence

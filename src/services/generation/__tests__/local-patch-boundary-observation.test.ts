@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseLocalPatchBoardVerdicts, localPatchQualityDisposition } from '../local-patch-judge';
 import { PLAYER_REVIEW_MODE } from '../local-patch-player-review';
-import { parseVisualSceneVerdicts } from '../visual-review';
+import { diagnoseVisualSceneAnswer, parseVisualSceneVerdicts } from '../visual-review';
 
 const id = 'synthetic-boundary-hide';
 const observation = 'The foreground head connects to its neck, shoulders, hands and torso across the actual return edge. The bench legs and nearby child remain complete with natural overlap. No half face, disconnected limb or hard rectangular join is visible in the player view.';
@@ -46,5 +46,37 @@ describe('bounded complete return-boundary observations',()=>{
     expect(parseVisualSceneVerdicts(wrap(['other:before','other:after'],verdict()),[id],12,'ready-only/v1',PLAYER_REVIEW_MODE)[id]).toBeNull();
     delete v.boundaryIntegrity.right;
     expect(parseVisualSceneVerdicts(wrap([id+':before',id+':after'],v),[id],12,'ready-only/v1',PLAYER_REVIEW_MODE)[id]).toBeNull();
+  });
+});
+
+describe('why an answer was refused: a code and a JSON path, never its text',()=>{
+  const answer=(v:unknown,over:Record<string,unknown>={})=>'```json\n'+JSON.stringify({hides:[{hideId:id,evidenceIds:[id+':before',id+':after'],verdict:v,...over}]})+'\n```';
+  const diagnose=(raw:string|null)=>diagnoseVisualSceneAnswer(raw,[id],12,'ready-only/v1',PLAYER_REVIEW_MODE);
+  const read=(raw:string|null)=>parseVisualSceneVerdicts(raw,[id],12,'ready-only/v1',PLAYER_REVIEW_MODE)[id]??null;
+  const long=(n:number)=>'Painted contours continue across the join. '.repeat(Math.ceil(n/43)).slice(0,n).trimEnd()+'.';
+  const cases:[string,string|null,{code:string;path:string}|null][]=[
+    ['a readable answer',answer(verdict()),null],
+    ['no answer',null,{code:'empty',path:''}],
+    ['prose',answer(verdict()).replace('```json\n','Here is my review:\n'),{code:'syntax',path:''}],
+    ['an over-long style observation',answer({...verdict(),integrationEvidence:{...verdict().integrationEvidence,style:long(850)}}),{code:'length',path:'hides.0.verdict.integrationEvidence.style'}],
+    ['an over-long boundary observation',answer({...verdict(),boundaryIntegrity:{...verdict().boundaryIntegrity,top:{status:'pass',observation:long(700)}}}),{code:'length',path:'hides.0.verdict.boundaryIntegrity.top.observation'}],
+    ['an over-long fault location',answer({...verdict(),pictureWhole:'fail',verdict:'fail',faults:[{check:'pictureWhole',where:long(901)}]}),{code:'length',path:'hides.0.verdict.faults.0.where'}],
+    ['seventeen faults',answer({...verdict(),pictureWhole:'fail',verdict:'fail',faults:Array.from({length:17},()=>({check:'pictureWhole',where:'A disc hangs with no hand holding it'}))}),{code:'count',path:'hides.0.verdict.faults'}],
+    ['a too-short observation',answer({...verdict(),integrationEvidence:{...verdict().integrationEvidence,lighting:'okay'}}),{code:'shape',path:'hides.0.verdict.integrationEvidence.lighting'}],
+    ['an invented check value',answer({...verdict(),styleMatch:'probably'}),{code:'shape',path:'hides.0.verdict.styleMatch'}],
+    ['an unknown field',answer({...verdict(),mood:'calm'}),{code:'shape',path:'hides.0.verdict'}],
+    ['another hide',answer(verdict(),{hideId:'other-hide'}),{code:'ids',path:'hides'}],
+    ['wrong evidence ids',answer(verdict(),{evidenceIds:['other:before','other:after']}),{code:'ids',path:'hides.0.evidenceIds'}],
+    ['two hides for one',(()=>{const row={hideId:id,evidenceIds:[id+':before',id+':after'],verdict:verdict()};return JSON.stringify({hides:[row,row]});})(),{code:'ids',path:'hides'}],
+    ['a missing boundary',(()=>{const v=verdict();delete v.boundaryIntegrity.right;return answer(v);})(),{code:'shape',path:'hides.0.verdict.boundaryIntegrity.right'}],
+  ];
+  it.each(cases)('%s',(_label,raw,expected)=>{
+    expect(diagnose(raw)).toEqual(expected);
+    // Acceptance is the parser's alone: a diagnosis exists exactly when it refuses.
+    expect(read(raw)===null).toBe(expected!==null);
+  });
+  it('names no reviewer text anywhere in a diagnosis',()=>{
+    const raw=answer({...verdict(),pictureWhole:'fail',verdict:'fail',faults:[{check:'pictureWhole',where:'SECRET-PROSE '.repeat(40)}]});
+    expect(JSON.stringify(diagnose(raw))).not.toContain('SECRET');
   });
 });
