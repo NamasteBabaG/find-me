@@ -15,7 +15,7 @@ import { NEIGHBOR_QUADRANTS, RETURN_EDGES } from "./local-patch-integration-evid
 import { hasDualVisualReview, isDualVisualReviewVersion } from "./visual-review-release";
 import { allowedDualPublication } from "./local-patch-dual-publication";
 import { authoredLocalPatchForeground } from "../../domain/scene/local-patch-foreground";
-import { foregroundBound } from "./local-patch-foreground";
+import { foregroundBound, foregroundForPinnedPrompt, foregroundPlanConflict } from "./local-patch-foreground";
 
 export const LOCAL_PATCH_PUBLICATION_POLICY = "publish-with-visual-warnings/v1";
 export const LOCAL_PATCH_STRICT_PUBLICATION_POLICY = "publish-with-severe-quality-guard/v2";
@@ -226,15 +226,18 @@ export async function hasLocalPatchPublicationPolicy(c: Pick<Container, "db">, i
 
 /** A v18 row with an authored outline publishes only with a record of that outline
  * on this exact image; every other row must carry none. Rows of hides without an
- * outline that claim none are not looked up at all. */
+ * outline that claim none are not looked up at all. A recovery candidate also needs
+ * a plan the outline clears - the join refuses any other, and so does publication. */
 export async function localPatchForegroundPublishable(db: Prisma.TransactionClient, input: LocalPatchPublicationBinding): Promise<boolean> {
-  let receipt: { foreground?: unknown } | null;
+  let receipt: { foreground?: unknown; selfRepair?: { decision?: unknown } } | null;
   try { receipt = JSON.parse(input.judgeJson ?? "null"); } catch { receipt = null; }
   if (!authoredLocalPatchForeground(input.hideId) && receipt?.foreground === undefined) return true;
   const boardId = /^([a-z]+)-v12-[123]$/.exec(input.hideId)?.[1];
   const hide = input.sceneVersion === 12 && boardId ? localPatchBoardForVersion(boardId, 12)?.hides.find(h => h.id === input.hideId) : undefined;
   const row = await db.targetVariantAsset.findUnique({ where: { id: input.variantId }, select: { promptVersion: true } });
-  return !!hide && !!row && foregroundBound(receipt, hide, row.promptVersion, input.imageSha256);
+  if (!hide || !row || !foregroundBound(receipt, hide, row.promptVersion, input.imageSha256)) return false;
+  const applied = foregroundForPinnedPrompt(hide, row.promptVersion), plan = selfRepairDecisionSchema.safeParse(receipt?.selfRepair?.decision);
+  return !(applied && plan.success && foregroundPlanConflict(applied, plan.data));
 }
 
 async function allowedForGame(db: Prisma.TransactionClient, input: LocalPatchPublicationBinding) {

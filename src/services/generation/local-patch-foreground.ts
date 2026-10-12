@@ -1,7 +1,8 @@
 import sharp from "sharp";
 import { LOCAL_PATCH_CROP, type LocalPatchHide } from "../../domain/scene/local-patch-hides";
-import { assertLocalPatchForeground, authoredLocalPatchForeground, localPatchForegroundAlphaSha256, localPatchForegroundSha256,
-  LOCAL_PATCH_FOREGROUND_VERSION, type LocalPatchForeground } from "../../domain/scene/local-patch-foreground";
+import { assertLocalPatchForeground, authoredLocalPatchForeground, localPatchForegroundAlphaSha256, localPatchForegroundBounds,
+  localPatchForegroundPlanConflict, localPatchForegroundSha256, LOCAL_PATCH_FOREGROUND_CLEARANCE_PX, LOCAL_PATCH_FOREGROUND_VERSION,
+  type LocalPatchForeground } from "../../domain/scene/local-patch-foreground";
 import { LOCAL_PATCH_FOREGROUND_PROMPT_VERSION } from "./local-patch-prompt";
 
 /**
@@ -35,6 +36,20 @@ export function foregroundForPinnedPrompt(hide: LocalPatchHide, promptVersion: s
   if (promptVersion !== LOCAL_PATCH_FOREGROUND_PROMPT_VERSION) return null;
   const foreground = authoredLocalPatchForeground(hide.id);
   return foreground ? { foreground, alpha: assertLocalPatchForeground(hide, foreground) } : null;
+}
+
+type PlanRect = { readonly left: number; readonly top: number; readonly width: number; readonly height: number };
+/**
+ * The one rule for a recovery plan on a row that restores an outline: the
+ * diagnosis that proposes it, the phase that applies it, the painter's purchase
+ * and the join all ask this, and refuse on any answer but null.
+ */
+export const foregroundPlanConflict = (applied: AppliedForeground, plan: { readonly protectedCore: PlanRect; readonly faceRect: PlanRect }) =>
+  localPatchForegroundPlanConflict(applied.foreground, applied.alpha, plan);
+
+/** What a diagnosis of such a row is told before it plans: the object, its bounds and the clearance. */
+export function foregroundDiagnosisData(applied: AppliedForeground) {
+  return { what: applied.foreground.what, bounds: localPatchForegroundBounds(applied.alpha)!, clearancePx: LOCAL_PATCH_FOREGROUND_CLEARANCE_PX };
 }
 
 /** The 512x768 painting with the board's own pixels restored under the outline. */

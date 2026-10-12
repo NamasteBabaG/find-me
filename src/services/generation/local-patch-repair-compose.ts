@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { LOCAL_PATCH_BOARD, LOCAL_PATCH_CROP } from "../../domain/scene/local-patch-hides";
 import { analysePatchSeam, type PatchRegion, type SeamReport } from "./local-patch-seam";
 import type { PatchGeometry } from "./patch";
-import { foregroundRecord, type AppliedForeground, type LocalPatchForegroundRecord } from "./local-patch-foreground";
+import { foregroundPlanConflict, foregroundRecord, type AppliedForeground, type LocalPatchForegroundRecord } from "./local-patch-foreground";
 
 export const LOCAL_PATCH_REPAIR_COMPOSITION_VERSION = "paid-mask-join/v1";
 const GUARD = 12, FEATHER_RADIUS = 3, PIXELS = LOCAL_PATCH_CROP.width * LOCAL_PATCH_CROP.height;
@@ -30,7 +30,8 @@ export type PaidPatchJoinInput = {
   readonly protectedCore: PatchRegion;
   readonly faceRect: PatchRegion;
   /** A v18 row's authored outline: the paid pixels under it are replaced by the board's
-   * before the join, exactly as in every other composition of that row. */
+   * before the join, exactly as in every other composition of that row. It must clear
+   * the face and the protected child with its guard, or the join is refused. */
   readonly foreground?: AppliedForeground;
 };
 export type PaidPatchJoinResult = {
@@ -47,7 +48,11 @@ export type PaidPatchJoinResult = {
     readonly originalRawSeamReport: SeamReport;
     readonly protectedGuardPx: 12; readonly maximumFeatherWidthPx: 6;
     readonly blendedPixels: number; readonly paidPixels: number; readonly originalPixels: number;
-    readonly outsideChangedPixels: 0; readonly protectedChangedPixels: 0;
+    /** Measured on the candidate, never asserted: pixels outside `returnWindow` that differ
+     * from the board, and pixels of `protectedWithGuard` that differ from the retained paid
+     * painting (before any outline). A join that changes either is refused, so a result
+     * always reports 0 - because it was counted. */
+    readonly outsideChangedPixels: number; readonly protectedChangedPixels: number;
   };
 };
 
@@ -77,6 +82,12 @@ export async function recomputePaidPatchJoin(input: PaidPatchJoinInput): Promise
   const protectedWithGuard = grow(protectedCore, GUARD);
   validRect(protectedWithGuard, returnWindow, "protectedCore plus12px guard"); validRect(faceRect, protectedCore, "faceRect");
   if (faceRect.width < 30 || faceRect.height < 30) fail("faceRect must be at least30x30 native pixels");
+  if (input.foreground) {
+    if (input.foreground.alpha.length !== PIXELS) fail("foreground coverage must be 512x768");
+    // Defensive: every caller refuses such a plan before buying, and this join never makes one.
+    const conflict = foregroundPlanConflict(input.foreground, { protectedCore, faceRect });
+    if (conflict) fail(conflict);
+  }
   for (const [name, bytes] of [["board", input.beforePng], ["raw", input.rawPng], ["alpha", input.alphaPng]] as const) {
     if (!Buffer.isBuffer(bytes) || bytes.length === 0 || bytes.length > 32 * 1024 * 1024) fail(`${name} payload is empty or too large`);
   }
@@ -97,9 +108,10 @@ export async function recomputePaidPatchJoin(input: PaidPatchJoinInput): Promise
     sharp(input.alphaPng, options).toColourspace("b-w").raw().toBuffer(),
   ]);
   if (alpha.length !== PIXELS || original.length !== PIXELS * 4 || paid.length !== PIXELS * 4) fail("decoded channel count changed");
+  // The retained paid painting as decoded, before any outline: what every protected pixel must still be.
+  const retained = input.foreground ? Buffer.from(paid) : paid;
   let restoredPixels = 0;
   if (input.foreground) {
-    if (input.foreground.alpha.length !== PIXELS) fail("foreground coverage must be 512x768");
     for (let p = 0; p < PIXELS; p++) {
       const a = input.foreground.alpha[p]!;
       if (!a) continue;
@@ -118,8 +130,9 @@ export async function recomputePaidPatchJoin(input: PaidPatchJoinInput): Promise
   }
   const seed = protectedCore.top * 512 + protectedCore.left;
   connected(hard, 1, seed); connected(hard, 0, 0); connected(positive, 1, seed);
-  let blendedPixels = 0, paidPixels = 0, originalPixels = 0;
+  let blendedPixels = 0, paidPixels = 0, originalPixels = 0, outsideChangedPixels = 0, protectedChangedPixels = 0;
   const out = Buffer.from(original);
+  const differs = (from: Buffer, p: number) => out[p * 4] !== from[p * 4] || out[p * 4 + 1] !== from[p * 4 + 1] || out[p * 4 + 2] !== from[p * 4 + 2];
   for (let p = 0; p < PIXELS; p++) {
     const x = p % 512, y = Math.floor(p / 512), value = alpha[p]!;
     if (value > 0 && value < 255) {
@@ -135,7 +148,11 @@ export async function recomputePaidPatchJoin(input: PaidPatchJoinInput): Promise
     for (const n of [x < 511 ? p + 1 : -1, y < 767 ? p + 512 : -1]) if (n >= 0 && Math.abs(value - alpha[n]!) === 255) fail("alpha contains an unfeathered hard boundary");
     const weight = value / 255;
     for (let channel = 0; channel < 3; channel++) out[p * 4 + channel] = Math.round(paid[p * 4 + channel]! * weight + original[p * 4 + channel]! * (1 - weight));
+    if (!inside(x, y, returnWindow) && differs(original, p)) outsideChangedPixels++;
+    if (inside(x, y, protectedWithGuard) && differs(retained, p)) protectedChangedPixels++;
   }
+  if (outsideChangedPixels || protectedChangedPixels)
+    fail(`the join changed ${protectedChangedPixels} protected pixels and ${outsideChangedPixels} pixels outside returnWindow`);
   const candidatePng = await sharp(out, { raw: { width: 512, height: 768, channels: 4 } }).png().toBuffer();
   const region = { ...returnWindow, left: crop.left + returnWindow.left, top: crop.top + returnWindow.top };
   const tile = await sharp(raw).extract(returnWindow).png().toBuffer();
@@ -150,5 +167,5 @@ export async function recomputePaidPatchJoin(input: PaidPatchJoinInput): Promise
     ...(input.foreground ? { foreground: foregroundRecord(input.foreground, restoredPixels, candidateSha256) } : {}),
     audit: { state: "UNREVIEWED", sourceSha256: digest(input.beforePng), rawSha256: digest(input.rawPng), resizedRawSha256: digest(raw), alphaSha256: digest(input.alphaPng),
       crop: { ...crop }, returnWindow: { ...returnWindow }, protectedCore: { ...protectedCore }, protectedWithGuard, faceRect: { ...faceRect }, originalRawSeamReport,
-      protectedGuardPx: GUARD, maximumFeatherWidthPx: 6, blendedPixels, paidPixels, originalPixels, outsideChangedPixels: 0, protectedChangedPixels: 0 } };
+      protectedGuardPx: GUARD, maximumFeatherWidthPx: 6, blendedPixels, paidPixels, originalPixels, outsideChangedPixels, protectedChangedPixels } };
 }

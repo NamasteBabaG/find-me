@@ -17,8 +17,11 @@ import { LOCAL_PATCH_CROP, maskForHide, type LocalPatchHide } from "./local-patc
  *
  * What it guarantees, and what it does not:
  *  - inside the outline every published pixel is the board's own;
- *  - it never covers the authored envelope, and it always enters from the crop's
- *    edge, so it cannot hide a face or leave an island of board inside a painting;
+ *  - it never covers the authored envelope, nor a recovery plan's face, protected
+ *    child or the 12 px the join keeps around it (such a plan is refused before
+ *    anything is bought: `localPatchForegroundPlanConflict`);
+ *  - it always enters from the crop's edge, so it cannot leave an island of board
+ *    inside a painting;
  *  - it does NOT remove a copy of the object the painter drew outside the outline
  *    (a doubled object). The painter's wording and the visual review own that.
  */
@@ -106,6 +109,51 @@ export function assertLocalPatchForeground(hide: LocalPatchHide, foreground: Loc
   for (let y = 0; y < height && !edge; y++) edge = !!alpha[y * width] || !!alpha[y * width + width - 1];
   if (!edge) fail("the outline must enter from the crop's edge; a floating island would cut a painting from inside");
   return alpha;
+}
+
+type CropRect = { readonly left: number; readonly top: number; readonly width: number; readonly height: number };
+
+/** The 12 px the repair join (`paid-mask-join/v1`) keeps unblended around a recovery
+ * plan's protected child. The outline keeps the same distance from it. */
+export const LOCAL_PATCH_FOREGROUND_CLEARANCE_PX = 12;
+
+/** Covered crop pixels (coverage above zero) inside `rect` grown by `margin`, clipped to the crop. */
+export function localPatchForegroundPixelsIn(alpha: Uint8Array, rect: CropRect, margin = 0): number {
+  const { width, height } = LOCAL_PATCH_CROP;
+  let covered = 0;
+  for (let y = Math.max(0, rect.top - margin); y < Math.min(height, rect.top + rect.height + margin); y++)
+    for (let x = Math.max(0, rect.left - margin); x < Math.min(width, rect.left + rect.width + margin); x++) if (alpha[y * width + x]) covered++;
+  return covered;
+}
+
+/** The smallest crop rectangle holding every covered pixel; null for an empty outline. */
+export function localPatchForegroundBounds(alpha: Uint8Array): CropRect | null {
+  const { width, height } = LOCAL_PATCH_CROP;
+  let left: number = width, top: number = height, right = -1, bottom = -1;
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) if (alpha[y * width + x]) {
+    left = Math.min(left, x); top = Math.min(top, y); right = Math.max(right, x); bottom = Math.max(bottom, y);
+  }
+  return right < 0 ? null : { left, top, width: right - left + 1, height: bottom - top + 1 };
+}
+
+/**
+ * A recovery plan (self-repair) brings its own protected child: `protectedCore`
+ * and `faceRect`, in crop pixels, in place of the authored envelope. The outline is
+ * an object IN FRONT of that child. It may hide what the plan leaves outside the
+ * protected child - the feet behind the sign, as in the scene - and never the face,
+ * the protected child, or the 12 px the join keeps around it: every protected pixel
+ * stays the paid painting's. Null when the plan is clear; otherwise the reason, sized
+ * for the next diagnosis to read.
+ */
+export function localPatchForegroundPlanConflict(foreground: LocalPatchForeground, alpha: Uint8Array,
+  plan: { readonly protectedCore: CropRect; readonly faceRect: CropRect }): string | null {
+  const face = localPatchForegroundPixelsIn(alpha, plan.faceRect);
+  const core = localPatchForegroundPixelsIn(alpha, plan.protectedCore, LOCAL_PATCH_FOREGROUND_CLEARANCE_PX);
+  if (!face && !core) return null;
+  return `The fixed foreground (${foreground.what}) is restored from the original board over every composition. `
+    + `This plan puts it over ${face} pixels of faceRect and ${core} pixels of protectedCore with its ${LOCAL_PATCH_FOREGROUND_CLEARANCE_PX}px guard. `
+    + `It may hide only what lies outside the protected child: keep faceRect, and protectedCore grown by ${LOCAL_PATCH_FOREGROUND_CLEARANCE_PX}px, `
+    + `clear of its bounds ${JSON.stringify(localPatchForegroundBounds(alpha))}.`;
 }
 
 const sha = (bytes: Uint8Array | string) => createHash("sha256").update(bytes).digest("hex");

@@ -22,7 +22,7 @@ import { adaptiveRecoveryPrompt, type AdaptiveRecoveryPlan } from "./local-patch
 import { selfRepairDecisionSchema, selfRepairRenderInstructions, type SelfRepairDecision } from "../../domain/scene/local-patch-self-repair";
 import { retainedRestylePrompt } from "./local-patch-restyle";
 import { ageBodyRequestDirections, LOCAL_PATCH_AGE_BODY_PROMPT_VERSION, LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION, LOCAL_PATCH_FOREGROUND_PROMPT_VERSION, referenceNeutralHairDirections } from "./local-patch-prompt";
-import { foregroundForPinnedPrompt, foregroundRecord, occludeLocalPatch, type LocalPatchForegroundRecord } from "./local-patch-foreground";
+import { foregroundForPinnedPrompt, foregroundPlanConflict, foregroundRecord, occludeLocalPatch, type LocalPatchForegroundRecord } from "./local-patch-foreground";
 import { fixedSourceFailureReceiptSchema, type FixedSourceFailureReceipt } from "../../infra/generation/fixed-source-diagnostics";
 
 /**
@@ -352,6 +352,11 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   if (input.selfRepair && (!isCollectionVersion(input.contentVersion) || !Number.isSafeInteger(input.selfRepair.cycle)
     || input.selfRepair.cycle < 1 || input.adaptiveRecovery || input.recoveryDirective)) throw Error("Invalid autonomous render recipe");
   const recovery = input.selfRepair ? selfRepairDecisionSchema.parse(input.selfRepair.decision) : null;
+  // A recovery plan replaces the authored envelope with its own protected child, which
+  // the outline must clear too. Refused here, before anything is reserved; the
+  // self-repair phases refuse it first and return to diagnosis.
+  const conflict = recovery && foreground ? foregroundPlanConflict(foreground, recovery) : null;
+  if (conflict) throw new Error(`LOCAL_PATCH_FOREGROUND: ${hide.id}: ${conflict}`);
   const restyling = recovery?.action === "restyle-retained";
   if (restyling ? input.contentVersion !== 12 || !input.restyleSourcePng?.length : input.restyleSourcePng !== undefined)
     throw Error("Retained surface repair requires a v12 diagnosis and authenticated source");

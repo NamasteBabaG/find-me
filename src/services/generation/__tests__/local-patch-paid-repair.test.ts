@@ -30,7 +30,9 @@ import { readBoardConditionedCatalog } from "../board-conditioned-catalog";
 import { LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, runLocalPatchHide, type LocalPatchHideDeps } from "../local-patch-hide";
 import { LOCAL_PATCH_COMPOSITION_VERSION, LOCAL_PATCH_RETURN_GUARD } from "../local-patch-seam";
 import { LOCAL_PATCH_RESERVE, RETAINED_RENDER_VERSION } from "../local-patch-render";
-import { AGE_BODY_CONTRACT, LOCAL_PATCH_AGE_BODY_PROMPT_VERSION, LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION } from "../local-patch-prompt";
+import { AGE_BODY_CONTRACT, LOCAL_PATCH_AGE_BODY_PROMPT_VERSION, LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION, LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION,
+  LOCAL_PATCH_FOREGROUND_PROMPT_VERSION } from "../local-patch-prompt";
+import { foregroundBound } from "../local-patch-foreground";
 import { recordLocalPatchPublicationPolicy, hasLocalPatchPublicationPolicy, localPatchPublicationGeometryHash } from "../local-patch-publication-policy";
 import { LocalPatchRetainedPurchaseStore } from "../local-patch-lifecycle";
 import { purchaseOnce } from "../paid-operation";
@@ -266,6 +268,105 @@ describe("v12 scoped automatic repair review", () => {
     expect(painted[0]).not.toMatch(/dark curls|dark locks|Group curls/);
     expect((await db.targetVariantAsset.findUniqueOrThrow({ where: { id: row.id } })).promptVersion).toBe(LOCAL_PATCH_AGE_BODY_PROMPT_VERSION);
     expect(noNetwork).not.toHaveBeenCalled();
+  }, 180000);
+});
+
+describe("v18 recovery plans and the fixed foreground (Codex's v18 review, R1)", () => {
+  type Rect = { left: number; top: number; width: number; height: number };
+  const MAGENTA = { r: 230, g: 20, b: 200 };
+  let hide: (typeof SELECTED)[number], board: (typeof BOARDS)[number];
+  beforeAll(async () => {
+    VERSION = 12; BOARDS = journeyBoards(12); UNREVIEWED = [];
+    board = BOARDS.find(b => b.board === "newyork")!; hide = board.hides.find(h => h.id === "newyork-v12-1")!; SELECTED = [hide];
+    dimensions = { width: 3840, height: 2160 };
+    state.original = await sharp({ create: { ...dimensions, channels: 4, background: "#d2be96" } }).png().toBuffer();
+  });
+  // Keys in the schema's order, as a stored state holds them.
+  const plan = (protectedCore: Rect, faceRect: Rect, returnWindow: Rect) => ({ cause: "drawing-defect",
+    explanation: "Redraw the complete child at a corrected placement behind the taxi sign.", action: "redraw-with-new-placement",
+    sourceKey: `${hide.id}:${hide.pose}:render:1`, returnWindow, protectedCore, faceRect });
+  // Codex's plan: the sign over 710 of its face's 1225 pixels. The clear one ends its protected child above the sign.
+  const crossing = () => plan({ left: 210, top: 620, width: 80, height: 120 }, { left: 225, top: 695, width: 35, height: 35 }, { left: 100, top: 580, width: 400, height: 187 });
+  const clear = () => plan({ left: 210, top: 400, width: 80, height: 290 }, { left: 225, top: 410, width: 35, height: 35 }, { left: 100, top: 300, width: 400, height: 460 });
+  async function setup(promptVersion: string, decisions: ReturnType<typeof plan>[]) {
+    const s = await seed(), row = s.beforeRows.find(r => r.id.endsWith(hide.id))!, asked: string[] = [], painted: Rect[] = [];
+    await db.game.update({ where: { id: s.gameId }, data: { status: "TARGETS_GENERATING" } });
+    await db.targetVariantAsset.update({ where: { id: row.id }, data: { promptVersion } });
+    const diagnose = vi.fn(async (wire: SelfRepairWire) => { asked.push(wire.prompt); return { verdict: null, raw: JSON.stringify(decisions[asked.length - 1]),
+      usage: { prompt_tokens: 8000, completion_tokens: 500 }, requestId: `req-${s.gameId}-plan-${asked.length}`, model: "gpt-5.6-sol", finishReason: "stop", wireFault: null, costUnknown: false }; });
+    // The painter draws a flat child over the plan's protected child and on down to the crop's foot.
+    const render: LocalPatchHideDeps["render"] = async input => {
+      const core = selfRepairOf(await read()).decision.protectedCore as Rect; painted.push(core);
+      const child = await sharp({ create: { width: core.width, height: 760 - core.top, channels: 3, background: MAGENTA } }).png().toBuffer();
+      return paintedOk(await sharp(await sharp(input.stylePng).composite([{ input: child, left: core.left, top: core.top }]).png().toBuffer()).resize(768, 1152).png().toBuffer(),
+        bill(`req-${s.gameId}-redraw-${painted.length}`));
+    };
+    const read = () => db.targetVariantAsset.findUniqueOrThrow({ where: { id: row.id } });
+    const selfRepairOf = (r: { judgeJson: string | null }) => JSON.parse(r.judgeJson!).selfRepair;
+    const input = { gameId: s.gameId, sceneId: `gsc-${s.gameId}-${board.board}`, board, hide }, deps = { ...noPaint, render, fence: async () => {}, diagnose };
+    const until = async (done: () => Promise<boolean>) => { for (let slice = 0; slice < 4 && !await done(); slice++) await runLocalPatchSelfRepair(c, input, deps); };
+    const ledger = (cycle: number) => boardWizardBudgetOf(c).readRequest(boardWizardWorldId(s.gameId), `${hide.id}:${hide.pose}:self-repair:${cycle}`);
+    const at = async (png: Buffer, x: number, y: number) => [...(await sharp(png).removeAlpha().raw().toBuffer()).subarray((y * 512 + x) * 3, (y * 512 + x) * 3 + 3)];
+    return { s, row, asked, painted, read, selfRepairOf, until, ledger, at };
+  }
+
+  it("a diagnosis that puts the sign over the face goes back to diagnosis with the reason; the next, clear plan paints once and ships the sign", async () => {
+    const t = await setup(LOCAL_PATCH_FOREGROUND_PROMPT_VERSION, [crossing(), clear()]);
+    await t.until(async () => t.asked.length === 1 && t.selfRepairOf(await t.read())?.phase === "rejected");
+    const refused = t.selfRepairOf(await t.read());
+    expect(refused).toMatchObject({ cycle: 1, phase: "rejected" });
+    expect(refused.feedback).toMatch(/^Error: SELF_REPAIR: The fixed foreground \(The taxi roof sign "7E95".*over 710 pixels of faceRect and 4467 pixels of protectedCore with its 12px guard/);
+    expect(t.asked[0]).toContain('Fixed foreground DATA: {"what":"The taxi roof sign \\"7E95\\" and the yellow taxi roof at the bottom of Image 1","bounds":{"left":160,"top":703,"width":282,"height":65},"clearancePx":12}.');
+    expect(t.painted).toEqual([]);
+    expect(await t.ledger(1)).toBeNull();
+    // The engine diagnoses again with the reason as data, accepts the clear plan, and buys one painting.
+    await t.until(async () => t.selfRepairOf(await t.read())?.phase === "awaiting-review");
+    expect(t.asked).toHaveLength(2);
+    expect(t.asked[1]).toContain("over 710 pixels of faceRect");
+    expect(t.painted).toEqual([clear().protectedCore]);
+    expect(await t.ledger(1)).toBeNull();
+    expect(await t.ledger(2)).toMatchObject({ state: "settled" });
+    const row = await t.read(), receipt = JSON.parse(row.judgeJson!);
+    expect(receipt.selfRepair).toMatchObject({ cycle: 2, phase: "awaiting-review" });
+    expect(foregroundBound(receipt, hide, LOCAL_PATCH_FOREGROUND_PROMPT_VERSION, receipt.judgedSha256)).toBe(true);
+    expect(receipt.recoveryComposition).toMatchObject({ outsideChangedPixels: 0, protectedChangedPixels: 0 });
+    const shipped = await c.storage.get(`game/${row.assetId}.png`);
+    expect(sha256Bytes(shipped)).toBe(receipt.judgedSha256);
+    expect(await t.at(shipped, 240, 420)).toEqual([MAGENTA.r, MAGENTA.g, MAGENTA.b]);
+    expect(await t.at(shipped, 250, 740)).toEqual([0xd2, 0xbe, 0x96]);
+    expect(noNetwork).not.toHaveBeenCalled();
+  }, 180000);
+
+  it("a crossing plan already frozen in the applying phase is refused before any purchase and recorded; the engine then diagnoses again", async () => {
+    const t = await setup(LOCAL_PATCH_FOREGROUND_PROMPT_VERSION, [clear()]);
+    await t.until(async () => t.selfRepairOf(await t.read())?.phase === "applying");
+    // As if frozen by a build without this rule: the crossing plan in place of the accepted one.
+    const frozen = await t.read(), receipt = JSON.parse(frozen.judgeJson!);
+    await db.targetVariantAsset.update({ where: { id: frozen.id }, data: { judgeJson: JSON.stringify({ ...receipt, selfRepair: { ...receipt.selfRepair, decision: crossing() } }) } });
+    await t.until(async () => t.selfRepairOf(await t.read())?.phase === "rejected");
+    const refused = t.selfRepairOf(await t.read());
+    expect(refused.feedback).toMatch(/^The fixed foreground .*over 710 pixels of faceRect/);
+    expect(refused.history).toHaveLength(1);
+    expect(refused.history[0]).toMatchObject({ cause: "drawing-defect", imageSha256: null });
+    expect(refused.history[0].result).toMatch(/over 710 pixels of faceRect/);
+    expect(t.painted).toEqual([]);
+    expect(await t.ledger(1)).toBeNull();
+    // No exception loop: the next slice opens a new cycle at diagnosis.
+    await runLocalPatchSelfRepair(c, { gameId: t.s.gameId, sceneId: `gsc-${t.s.gameId}-${board.board}`, board, hide }, { ...noPaint, fence: async () => {} });
+    expect(t.selfRepairOf(await t.read())).toMatchObject({ cycle: 2, phase: "diagnosing" });
+  }, 180000);
+
+  it("a v17 row keeps its behaviour: the same crossing plan is accepted, painted and joined without any outline", async () => {
+    const t = await setup(LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION, [crossing()]);
+    await t.until(async () => t.selfRepairOf(await t.read())?.phase === "awaiting-review");
+    expect(t.asked).toHaveLength(1);
+    expect(t.asked[0]).not.toContain("Fixed foreground DATA");
+    expect(t.painted).toEqual([crossing().protectedCore]);
+    const row = await t.read(), receipt = JSON.parse(row.judgeJson!);
+    expect(receipt.foreground).toBeUndefined();
+    expect(receipt.recoveryComposition).toMatchObject({ outsideChangedPixels: 0, protectedChangedPixels: 0 });
+    // Its face is the painter's child, where a v18 row would have refused the plan.
+    expect(await t.at(await c.storage.get(`game/${row.assetId}.png`), 240, 712)).toEqual([MAGENTA.r, MAGENTA.g, MAGENTA.b]);
   }, 180000);
 });
 

@@ -4,8 +4,9 @@ import { describe, expect, it, vi } from "vitest";
 import type { Prisma } from "@prisma/client";
 import { INTEGRATED_COLLECTION_BOARDS } from "../../../../content/adventures/wizard-integrated-release";
 import { cropOf, maskForHide, type LocalPatchHide } from "../../../domain/scene/local-patch-hides";
-import { authoredLocalPatchForeground } from "../../../domain/scene/local-patch-foreground";
-import { foregroundBound, foregroundForPinnedPrompt, foregroundRecord, occludeLocalPatch } from "../local-patch-foreground";
+import { authoredLocalPatchForeground, LOCAL_PATCH_FOREGROUND_CLEARANCE_PX } from "../../../domain/scene/local-patch-foreground";
+import { selfRepairDecisionSchema, type SelfRepairDecision } from "../../../domain/scene/local-patch-self-repair";
+import { foregroundBound, foregroundDiagnosisData, foregroundForPinnedPrompt, foregroundPlanConflict, foregroundRecord, occludeLocalPatch } from "../local-patch-foreground";
 import { foregroundContract, isAgeBodyPromptRelease, localPatchPrompt, paintRecipeForPinnedPrompt, pinnedLocalPatchPromptVersion,
   LOCAL_PATCH_AGE_BODY_PROMPT_VERSION, LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_FOREGROUND_PROMPT_VERSION,
   LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION } from "../local-patch-prompt";
@@ -57,9 +58,43 @@ function worker(paint: (style: Buffer) => Promise<Buffer>) {
   return { deps, dispatched, reserve: vi.spyOn(ledger, "reserve") };
 }
 const small = () => sharp({ create: { width: 64, height: 64, channels: 3, background: "#c8a078" } }).png().toBuffer();
-async function render(deps: LocalPatchRenderDeps, board: Buffer, paintRecipe: "scene-integration-v6" | "scene-integration-v7", hide: LocalPatchHide = NY) {
+async function render(deps: LocalPatchRenderDeps, board: Buffer, paintRecipe: "scene-integration-v6" | "scene-integration-v7", hide: LocalPatchHide = NY,
+  selfRepair?: { cycle: number; decision: SelfRepairDecision }) {
   return renderLocalPatchHide(deps, { worldId: "fg-test", board: BOARD, hide, composedPng: board, identityPng: await small(), judgeIdentityPng: await small(),
-    contentVersion: 12, paintRecipe, referenceMode: LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, ageYears: 10, attempt: 1, apiKey: "synthetic" });
+    contentVersion: 12, paintRecipe, referenceMode: LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, ageYears: 10, attempt: selfRepair ? 2 : 1, apiKey: "synthetic",
+    ...(selfRepair ? { selfRepair } : {}) });
+}
+/** Codex's valid recovery plan from the v18 review (R1): the sign crosses its face. */
+const CODEX_PLAN = selfRepairDecisionSchema.parse({ cause: "drawing-defect", explanation: "The new protected face is entirely inside the proposed return window.",
+  action: "redraw-with-new-placement", sourceKey: "new-image", returnWindow: { left: 100, top: 580, width: 400, height: 187 },
+  protectedCore: { left: 210, top: 620, width: 80, height: 120 }, faceRect: { left: 225, top: 695, width: 35, height: 35 } });
+/** A plan whose protected child ends 14 px above the sign (its guard 2 px); the sign hides the feet below it. */
+const CLEAR_PLAN = selfRepairDecisionSchema.parse({ ...CODEX_PLAN, explanation: "The protected child ends above the taxi sign, which hides the feet.",
+  returnWindow: { left: 100, top: 300, width: 400, height: 460 }, protectedCore: { left: 210, top: 400, width: 80, height: 290 }, faceRect: { left: 225, top: 410, width: 35, height: 35 } });
+type Rect = { left: number; top: number; width: number; height: number };
+const within = (x: number, y: number, r: Rect) => x >= r.left && x < r.left + r.width && y >= r.top && y < r.top + r.height;
+/** The repair join's inputs for a plan, with a 6 px feathered return window (as self-repair builds it). */
+async function joinInput(plan: SelfRepairDecision, before: Buffer, rawPng: Buffer) {
+  const r = plan.returnWindow, weights = Buffer.alloc(512 * 768);
+  for (let y = 0; y < 768; y++) for (let x = 0; x < 512; x++) weights[y * 512 + x] = Math.round(255 * Math.min(1,
+    Math.max(0, Math.min(x - r.left, y - r.top, r.left + r.width - 1 - x, r.top + r.height - 1 - y) / 6)));
+  const alphaPng = await sharp(weights, { raw: { width: 512, height: 768, channels: 1 } }).toColourspace("b-w").png().toBuffer();
+  return { beforePng: before, rawPng, alphaPng, crop: { ...cropOf(NY) }, boardSize: { width: 3840 as const, height: 2160 as const },
+    returnWindow: r, protectedCore: plan.protectedCore, faceRect: plan.faceRect };
+}
+/** Counted again, independently of the join: protected pixels that are not the retained painting's, and pixels outside the window that are not the board's. */
+async function recount(candidatePng: Buffer, rawPng: Buffer, before: Buffer, plan: SelfRepairDecision) {
+  const [out, raw, board] = await Promise.all([sharp(candidatePng).removeAlpha().raw().toBuffer(), sharp(rawPng).resize(512, 768, { fit: "fill" }).removeAlpha().raw().toBuffer(),
+    sharp(before).extract(cropOf(NY)).removeAlpha().raw().toBuffer()]);
+  const g = LOCAL_PATCH_FOREGROUND_CLEARANCE_PX, guard = { left: plan.protectedCore.left - g, top: plan.protectedCore.top - g,
+    width: plan.protectedCore.width + 2 * g, height: plan.protectedCore.height + 2 * g };
+  let protectedChanged = 0, outsideChanged = 0;
+  for (let p = 0; p < 512 * 768; p++) {
+    const x = p % 512, y = Math.floor(p / 512), at = (b: Buffer) => b.subarray(p * 3, p * 3 + 3);
+    if (within(x, y, guard) && !at(out).equals(at(raw))) protectedChanged++;
+    if (!within(x, y, plan.returnWindow) && !at(out).equals(at(board))) outsideChanged++;
+  }
+  return { protectedChanged, outsideChanged };
 }
 
 describe("v18: an authored fixed foreground", () => {
@@ -162,6 +197,81 @@ describe("v18: an authored fixed foreground", () => {
   });
 });
 
+describe("v18 review R1: a recovery plan brings its own protected child, which the outline must clear", () => {
+  const applied = foregroundForPinnedPrompt(NY, LOCAL_PATCH_FOREGROUND_PROMPT_VERSION)!;
+  /** A flat child painted over the plan's protected child and on down to the crop's foot. */
+  const childOver = (core: Rect) => async (style: Buffer) => sharp(style).composite([{ input: await sharp({ create: { width: core.width, height: 760 - core.top,
+    channels: 3, background: MAGENTA } }).png().toBuffer(), left: core.left, top: core.top }]).png().toBuffer();
+
+  it("refuses Codex's plan before anything is reserved or painted; v17 buys and composes the same plan as it always did", async () => {
+    expect(foregroundPlanConflict(applied, CODEX_PLAN)).toMatch(/over 710 pixels of faceRect and 4467 pixels of protectedCore with its 12px guard/);
+    const board = await patternBoard(), v18 = worker(childOver(CODEX_PLAN.protectedCore)), v17 = worker(childOver(CODEX_PLAN.protectedCore));
+    await expect(render(v18.deps, board, "scene-integration-v7", NY, { cycle: 1, decision: CODEX_PLAN }))
+      .rejects.toThrow(/^LOCAL_PATCH_FOREGROUND: newyork-v12-1: The fixed foreground .* over 710 pixels of faceRect/);
+    expect(v18.reserve).not.toHaveBeenCalled();
+    expect(v18.dispatched).toEqual([]);
+    const a17 = await render(v17.deps, board, "scene-integration-v6", NY, { cycle: 1, decision: CODEX_PLAN });
+    expect(v17.reserve).toHaveBeenCalledTimes(1);
+    expect(v17.dispatched).toEqual(["newyork-v12-1:" + NY.pose + ":self-repair:1"]);
+    expect(a17.foreground).toBeUndefined();
+    // No outline in v17: its plan's face keeps the painter's child where v18's would have had the sign.
+    expect(await pixel(a17.shippingPng!, 240, 712)).toEqual([MAGENTA.r, MAGENTA.g, MAGENTA.b]);
+  });
+
+  it("a clear plan paints once, and the sign hides only what lies outside the protected child", async () => {
+    expect(foregroundPlanConflict(applied, CLEAR_PLAN)).toBeNull();
+    const board = await patternBoard(), w = worker(childOver(CLEAR_PLAN.protectedCore));
+    const a18 = await render(w.deps, board, "scene-integration-v7", NY, { cycle: 1, decision: CLEAR_PLAN });
+    expect(w.dispatched).toHaveLength(1);
+    expect(a18.foreground).toEqual(foregroundRecord(applied, 10925, a18.judgedSha256!));
+    const boardAt = (x: number, y: number) => pixel(board, cropOf(NY).left + x, cropOf(NY).top + y);
+    // The painter's return region is the plan's child plus 120 px, down to the crop's foot: the face, the
+    // protected child and the strip below it are the painting; under the sign, the board.
+    for (const [x, y] of [[240, 420], [250, 550], [250, 689], [250, 700]] as const) expect(await pixel(a18.shippingPng!, x, y)).toEqual([MAGENTA.r, MAGENTA.g, MAGENTA.b]);
+    for (const [x, y] of [[250, 740], [280, 720]] as const) expect(await pixel(a18.shippingPng!, x, y)).toEqual(await boardAt(x, y));
+  });
+
+  it("the join refuses the same plan, and only with the outline; the guard is the join's own 12 px", async () => {
+    const before = await sharp({ create: { width: 3840, height: 2160, channels: 3, background: "#5a6f80" } }).png().toBuffer();
+    const crop = await sharp(before).extract(cropOf(NY)).png().toBuffer();
+    const raw = await childOver(CODEX_PLAN.protectedCore)(crop), input = await joinInput(CODEX_PLAN, before, raw);
+    const plain = await recomputePaidPatchJoin(input);
+    expect(plain.audit).toMatchObject({ protectedGuardPx: LOCAL_PATCH_FOREGROUND_CLEARANCE_PX, outsideChangedPixels: 0, protectedChangedPixels: 0 });
+    expect(await recount(plain.candidatePng, raw, before, CODEX_PLAN)).toEqual({ protectedChanged: 0, outsideChanged: 0 });
+    await expect(recomputePaidPatchJoin({ ...input, foreground: applied }))
+      .rejects.toThrow(/^LOCAL_PATCH_REPAIR_COMPOSE: The fixed foreground .* over 710 pixels of faceRect and 4467 pixels of protectedCore/);
+    // A face well clear of the sign, and a protected child whose 12 px guard reaches the sign's top row by one row (4 pixels).
+    const near = (height: number) => selfRepairDecisionSchema.parse({ ...CLEAR_PLAN, protectedCore: { left: 250, top: 400, width: 80, height }, faceRect: { left: 260, top: 410, width: 35, height: 35 } });
+    const at = async (plan: SelfRepairDecision) => recomputePaidPatchJoin({ ...await joinInput(plan, before, await childOver(plan.protectedCore)(crop)), foreground: applied });
+    await expect(at(near(292))).rejects.toThrow(/over 0 pixels of faceRect and 4 pixels of protectedCore/);
+    expect((await at(near(291))).audit).toMatchObject({ outsideChangedPixels: 0, protectedChangedPixels: 0 });
+  });
+
+  it("counts the audit against the retained painting: the protected child is the painter's, the feet under the sign are the board's", async () => {
+    const before = await patternBoard(3840, 2160), crop = await sharp(before).extract(cropOf(NY)).png().toBuffer();
+    const raw = await childOver(CLEAR_PLAN.protectedCore)(crop);
+    const joined = await recomputePaidPatchJoin({ ...await joinInput(CLEAR_PLAN, before, raw), foreground: applied });
+    expect(joined.audit).toMatchObject({ outsideChangedPixels: 0, protectedChangedPixels: 0 });
+    expect(await recount(joined.candidatePng, raw, before, CLEAR_PLAN)).toEqual({ protectedChanged: 0, outsideChanged: 0 });
+    expect(joined.foreground).toEqual(foregroundRecord(applied, 10925, joined.candidateSha256));
+    // The painted child continues below the protected child (to 759); under the outline it is the board's, above it the painter's.
+    const [out, b] = await Promise.all([sharp(joined.candidatePng).removeAlpha().raw().toBuffer(), sharp(crop).removeAlpha().raw().toBuffer()]);
+    let hidden = 0, shown = 0;
+    for (let y = CLEAR_PLAN.protectedCore.top + CLEAR_PLAN.protectedCore.height; y < 760; y++) for (let x = 210; x < 290; x++) {
+      const p = (y * 512 + x) * 3, a = applied.alpha[y * 512 + x]!;
+      if (a === 255 && out.subarray(p, p + 3).equals(b.subarray(p, p + 3))) hidden++;
+      if (a === 0 && out.subarray(p, p + 3).equals(Buffer.from([MAGENTA.r, MAGENTA.g, MAGENTA.b]))) shown++;
+    }
+    expect(hidden).toBeGreaterThan(3500);
+    expect(shown).toBeGreaterThan(800);
+  });
+
+  it("tells a v18 diagnosis the object, its bounds and the clearance before it plans", () => {
+    expect(foregroundDiagnosisData(applied)).toEqual({ what: "The taxi roof sign \"7E95\" and the yellow taxi roof at the bottom of Image 1",
+      bounds: { left: 160, top: 703, width: 282, height: 65 }, clearancePx: 12 });
+  });
+});
+
 describe("v18 publication requires the outline on the exact picture", () => {
   const applied = foregroundForPinnedPrompt(NY, LOCAL_PATCH_FOREGROUND_PROMPT_VERSION)!;
   const record = (image: string, restored = 10925) => foregroundRecord(applied, restored, image);
@@ -195,5 +305,16 @@ describe("v18 publication requires the outline on the exact picture", () => {
     expect(await localPatchForegroundPublishable(db, binding(NY.id, { verdict: null }))).toBe(true);
     findUnique.mockResolvedValueOnce(null as never);
     expect(await localPatchForegroundPublishable(db, binding(NY.id, { foreground: record("img") }))).toBe(false);
+  });
+
+  it("refuses a recovery candidate whose plan the outline would cut, even with a bound record; v17 has no such rule", async () => {
+    const findUnique = vi.fn(async () => ({ promptVersion: LOCAL_PATCH_FOREGROUND_PROMPT_VERSION as string | null }));
+    const db = { targetVariantAsset: { findUnique } } as unknown as Prisma.TransactionClient;
+    const binding = (judgeJson: unknown) => ({ gameId: "g", sceneVersion: 12, hideId: NY.id, variantId: "tva_1", attempts: 3,
+      identityAssetId: "id", identitySha256: "i", assetId: "ast", imageSha256: "img", geometrySha256: "geo", judgeJson: JSON.stringify(judgeJson) });
+    expect(await localPatchForegroundPublishable(db, binding({ foreground: record("img"), selfRepair: { decision: CODEX_PLAN } }))).toBe(false);
+    expect(await localPatchForegroundPublishable(db, binding({ foreground: record("img"), selfRepair: { decision: CLEAR_PLAN } }))).toBe(true);
+    findUnique.mockResolvedValueOnce({ promptVersion: LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION });
+    expect(await localPatchForegroundPublishable(db, binding({ selfRepair: { decision: CODEX_PLAN } }))).toBe(true);
   });
 });

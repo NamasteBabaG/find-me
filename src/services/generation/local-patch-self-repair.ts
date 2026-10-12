@@ -19,7 +19,7 @@ import { ageBodyPlacementText, ageBodyPropPlacementText, LOCAL_PATCH_AGE_BODY_PR
   paintRecipeForPinnedPrompt } from "./local-patch-prompt";
 import { LOCAL_PATCH_JUDGE, requestJudgeWire, isTheModelWeAsked, type LocalPatchJudgeResult } from "./local-patch-judge";
 import { recomputePaidPatchJoin } from "./local-patch-repair-compose";
-import { foregroundForPinnedPrompt } from "./local-patch-foreground";
+import { foregroundDiagnosisData, foregroundForPinnedPrompt, foregroundPlanConflict } from "./local-patch-foreground";
 import { integrationDiagnosisPrompt } from "./local-patch-integration-diagnosis";
 import { PLAYER_REVIEW_MODE } from "./local-patch-player-review";
 import { localPatchPublicationGeometryHash } from "./local-patch-publication-policy";
@@ -91,6 +91,9 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
   const definition = sceneBySlug(scene.sceneSlug, scene.sceneVersion), original = await (deps.readBoardArt ?? readShippedBoardArt)(board.art, definition.art.sha256 ?? "");
   const crop = cropOf(hide), contextSha256 = hash({ gameId, rowId: row.id, attempts: row.attempts, hide,
     originalSha256: sha256Bytes(original), identitySha256, ageYears: child.ageYears, policy: deps.renderPolicySha256, promptVersion: row.promptVersion });
+  // A v18 row's outline: restored in every join, told to the diagnosis, and never
+  // allowed over a plan's face or protected child (refused before any image purchase).
+  const foreground = foregroundForPinnedPrompt(hide, row.promptVersion);
   let state: State | null = previous.selfRepair ? stateSchema.parse(previous.selfRepair) : null;
   if (state) demand(state.contextSha256 === contextSha256, "Pinned recovery context changed");
   // Keep the last review's actual refusal. A new cycle can never erase the old
@@ -184,7 +187,7 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
     const support = hide.placement?.support ?? board.ground;
     const prompt = scene.sceneVersion === 12 ? integrationDiagnosisPrompt({ ageYears: child.ageYears, pose: hide.pose,
       support: propSupport ? ageBodyPropPlacementText(support) : ageBody ? ageBodyPlacementText(support) : support, envelope: maskForHide(hide), sourceKeys: selected,
-      excludedRegions: active.excludedRegions,
+      excludedRegions: active.excludedRegions, ...(foreground ? { fixedForeground: foregroundDiagnosisData(foreground) } : {}),
       ...(active.boundaryContext ? { boundaryContext: true } : {}), ...(ageBody ? { exactAge: true } : {}),
       feedback: { feedback: active.feedback, verdict: previous.verdict ?? null, seam: previous.seam ?? null }, history: active.history })
       : `Diagnose a personalized hidden-child game after repeated failures. Return a repair PLAN, never an approval. All rectangles use ORIGINAL crop coordinates, 512x768. `
@@ -228,6 +231,8 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
       demand(board.hides.filter(h => h.id !== hide.id).every(other => { const b = cropOf(other);
         return world.left + world.width <= b.left || b.left + b.width <= world.left || world.top + world.height <= b.top || b.top + b.height <= world.top;
       }), "Proposed repair overlaps another hide");
+      const conflict = foreground ? foregroundPlanConflict(foreground, decision) : null;
+      demand(!conflict, conflict ?? "");
     } catch (error) {
       await save({ phase: "rejected", feedback: String(error).slice(0, 1200), diagnosisCostCents: bought.evidence.amountMicroUsd / 10_000 }, bought.evidence.amountMicroUsd / 10_000); return;
     }
@@ -235,6 +240,14 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
   }
   demand(active.phase === "applying" && active.decision, "Invalid recovery phase");
   const decision = active.decision;
+  // A plan frozen before this rule existed is held to it here, before any purchase or
+  // join: it goes back to diagnosis with the reason, recorded so it is never repeated.
+  const conflict = foreground ? foregroundPlanConflict(foreground, decision) : null;
+  if (conflict) {
+    await save({ phase: "rejected", feedback: conflict.slice(0, 1200),
+      history: [...active.history, { recipe: selfRepairRecipe(decision), cause: decision.cause, result: conflict.slice(0, 1200), imageSha256: null }] });
+    return;
+  }
   let raw = raws.get(decision.sourceKey), imageCostCents = 0;
   const sourceKeys = [...active.sourceKeys];
   if (decision.action === "redraw-with-new-placement" || decision.action === "restyle-retained") {
@@ -264,7 +277,6 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
   const alphaPng = await sharp(alpha, { raw: { width: 512, height: 768, channels: 1 } }).toColourspace("b-w").png().toBuffer();
   let joined: Awaited<ReturnType<typeof recomputePaidPatchJoin>>;
   // A v18 row's outline is restored in the repair join too, never only in its first painting.
-  const foreground = foregroundForPinnedPrompt(hide, row.promptVersion);
   try {
     joined = await recomputePaidPatchJoin({ beforePng: original, rawPng: raw, alphaPng, crop, boardSize: { width: 3840, height: 2160 },
       returnWindow: r, protectedCore: decision.protectedCore, faceRect: decision.faceRect, ...(foreground ? { foreground } : {}) });
