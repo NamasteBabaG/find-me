@@ -271,11 +271,25 @@ const boundaryIntegritySchema = z.object({ left: edgeObservation, top: edgeObser
  */
 export const QUALITY_READER_STRICT = "quality-read/v1-strict-300" as const;
 export const QUALITY_READER_LOCATED = "quality-read/v1-located-600" as const;
-export const QUALITY_READERS = [QUALITY_READER_STRICT, QUALITY_READER_LOCATED] as const;
+/**
+ * v2 parses exactly as v1-located-600. Its decision differs in one rule: when it
+ * re-reads its own normalized verdict, a check the parser downgraded (a `fail` the
+ * answer never located) is restored to `fail` first, so the downgrade is derived
+ * again instead of breaking the comparison. A readable answer with one located and
+ * one unlocated failure is then a retry for the located one; under v1 it read as
+ * `integration-review-unreadable` and went straight to a self-repair diagnosis.
+ * The unlocated check stays `unsure`, never a pass, so no acceptance changes.
+ * Stages that name a v1 reader keep the v1 decision.
+ */
+export const QUALITY_READER_LOCATED_V2 = "quality-read/v2-located-600" as const;
+export const QUALITY_READERS = [QUALITY_READER_STRICT, QUALITY_READER_LOCATED, QUALITY_READER_LOCATED_V2] as const;
 export type QualityReader = typeof QUALITY_READERS[number];
 export const QUALITY_FAULT_LOCATION_MAX: Readonly<Record<QualityReader, number>> = Object.freeze({
   [QUALITY_READER_STRICT]: 300, [QUALITY_READER_LOCATED]: LOCAL_PATCH_BOUNDARY_OBSERVATION_MAX,
+  [QUALITY_READER_LOCATED_V2]: LOCAL_PATCH_BOUNDARY_OBSERVATION_MAX,
 });
+/** Whether a reader's decision re-derives the parser's downgrades (v2 and later). */
+const restoresDowngrades = (reader: QualityReader | undefined) => reader === QUALITY_READER_LOCATED_V2;
 const integratedVerdictSchema = (reader: QualityReader) => localPatchVerdictWireSchema.extend({
   faceLikeness: check, faceReadable: check, severeSeam: check, ageAppropriate: check,
   lightingMatch: check, neighborsIntact: check, integrationEvidence: integrationEvidenceSchema,
@@ -310,7 +324,7 @@ const integratedVerdictSchema = (reader: QualityReader) => localPatchVerdictWire
 export const localPatchIntegratedVerdictSchema = integratedVerdictSchema(QUALITY_READER_STRICT);
 const LOCATED_INTEGRATED_VERDICT_SCHEMA = integratedVerdictSchema(QUALITY_READER_LOCATED);
 const verdictSchemaFor = (contentVersion?: number, reader: QualityReader = QUALITY_READER_STRICT) => contentVersion === INTEGRATED_COLLECTION_VERSION
-  ? reader === QUALITY_READER_LOCATED ? LOCATED_INTEGRATED_VERDICT_SCHEMA : localPatchIntegratedVerdictSchema
+  ? reader === QUALITY_READER_LOCATED || reader === QUALITY_READER_LOCATED_V2 ? LOCATED_INTEGRATED_VERDICT_SCHEMA : localPatchIntegratedVerdictSchema
   : isLocalPatchAgeVersion(contentVersion) ? localPatchAgeVerdictSchema
   : isLocalPatchStrictVersion(contentVersion) ? localPatchQualityVerdictSchema : localPatchVerdictSchema;
 
@@ -342,8 +356,11 @@ const explicitAgeUncertaintySchema = localPatchVerdictWireSchema.extend({
 
 export const LOCAL_PATCH_OCCLUDED_AGE_POLICY = "authored-peeking-occluded-body-age/v1";
 /** The caller identifies the immutable catalog entry, never a model-supplied
- * pose or a free-text explanation that could change the acceptance rule. */
-export type LocalPatchQualityContext = { readonly hideId: string };
+ * pose or a free-text explanation that could change the acceptance rule.
+ * `reader`: the named reader whose decision this is (a v12 dual stage). Absent for
+ * a stage written before readers were named and for the single-judge path, which
+ * keep the v1 decision. */
+export type LocalPatchQualityContext = { readonly hideId: string; readonly reader?: QualityReader };
 export type LocalPatchOccludedAgeWarning = {
   readonly policy: typeof LOCAL_PATCH_OCCLUDED_AGE_POLICY;
   readonly hideId: string;
@@ -375,7 +392,7 @@ export function localPatchOccludedAgeWarning(verdict: unknown, contentVersion?: 
  * wire/model/evidence-ID and paid-image bindings. Bad evidence parses as null. */
 export function localPatchExplicitUncertaintyChecks(verdict: unknown, contentVersion?: number, context?: LocalPatchQualityContext): string[] {
   if (contentVersion === INTEGRATED_COLLECTION_VERSION) {
-    const v = readIntegratedNormalizedVerdict(verdict);
+    const v = readIntegratedNormalizedVerdict(verdict, restoresDowngrades(context?.reader));
     if (!v || v.downgraded.length || v.contradicted.length || v.unclassified.length) return [];
     return INTEGRATED_REQUIRED_CHECKS.filter(key => v[key] === "unsure" && !v.faults.some(f => f.check === key));
   }
@@ -396,7 +413,7 @@ export function localPatchQualityDisposition(verdict: LocalPatchVerdict | null, 
   state: "acceptable" | "retry" | "unresolved"; faults: string[]; contextualWarning?: LocalPatchOccludedAgeWarning;
 } {
   if (contentVersion === INTEGRATED_COLLECTION_VERSION) {
-    const v = readIntegratedNormalizedVerdict(verdict);
+    const v = readIntegratedNormalizedVerdict(verdict, restoresDowngrades(context?.reader));
     if (!v) return { state: "unresolved", faults: ["integration-review-unreadable"] };
     const failures = INTEGRATED_REQUIRED_CHECKS.filter(key => v[key] === "fail" && v.faults.some(f => f.check === key));
     const uncertain = localPatchExplicitUncertaintyChecks(verdict, contentVersion, context);
@@ -434,17 +451,22 @@ function answerFaults(wire: Record<string, unknown>): unknown {
 
 /** Require the complete normalized result, including the new observed evidence.
  * Old receipts and contradictory flags cannot acquire a new approval. */
-function readIntegratedNormalizedVerdict(value: unknown) {
+function readIntegratedNormalizedVerdict(value: unknown, restoreDowngrades = false) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const { downgraded, contradicted, unclassified, claimedVerdict, verdictOverridden, ...wire } = value as Record<string, unknown>;
   if (!Array.isArray(downgraded) || !Array.isArray(contradicted) || !Array.isArray(unclassified) || !check.safeParse(claimedVerdict).success) return null;
+  // v2: each downgraded check was the answer's own unlocated `fail`, recorded here as
+  // `unsure`. Restoring the `fail` lets the parser derive the downgrade again; a
+  // record that does not fit that shape is not a downgrade and stays unreadable.
+  if (restoreDowngrades && downgraded.some(key => !(INTEGRATED_REQUIRED_CHECKS as readonly unknown[]).includes(key) || wire[String(key)] !== "unsure")) return null;
+  const source = restoreDowngrades ? { ...wire, ...Object.fromEntries(downgraded.map(key => [String(key), "fail"])) } : wire;
   // Any named reader's verdict. Accepting the paid TEXT is its reader's decision,
   // and publication re-reads that text under the reader its stage names; this
   // only re-derives the normalized fields, which no bound changes. The parser's
   // own "Return boundary <edge>: <observation>" faults are left for it to derive
   // again: they are not the answer's, and a 600-character observation makes one
   // longer than any location bound, which turned a located defect unreadable.
-  const parsed = LOCATED_INTEGRATED_VERDICT_SCHEMA.safeParse({ ...wire, faults: answerFaults(wire), verdict: claimedVerdict });
+  const parsed = LOCATED_INTEGRATED_VERDICT_SCHEMA.safeParse({ ...source, faults: answerFaults(source), verdict: claimedVerdict });
   if (!parsed.success || parsed.data.verdict !== wire.verdict || parsed.data.verdictOverridden !== verdictOverridden
     || JSON.stringify(parsed.data.downgraded) !== JSON.stringify(downgraded)
     || JSON.stringify(parsed.data.contradicted) !== JSON.stringify(contradicted)

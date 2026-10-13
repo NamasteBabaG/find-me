@@ -41,8 +41,9 @@ import type { TargetVariantAsset } from "@prisma/client";
 import { asDeployedQualityRefusal, asDeployedReaderRefusal, atEvidenceRound, LOCATED_390, LOCATED_390_DEFECT, located390Answer, located390Verdict,
   longAnswer, prose, publicationBinding, spendTo } from "./local-patch-dual-fixtures";
 import { allowedDualPublication } from "../local-patch-dual-publication";
-import { localPatchRetainedAnswerUndecided } from "../local-patch-dual-evidence";
-import { QUALITY_READER_LOCATED, QUALITY_READER_STRICT } from "../local-patch-judge";
+import { CURRENT_QUALITY_READER, localPatchRetainedAnswerUndecided, readQualityStage } from "../local-patch-dual-evidence";
+import { localPatchQualityDisposition, QUALITY_READER_LOCATED, QUALITY_READER_LOCATED_V2, QUALITY_READER_STRICT } from "../local-patch-judge";
+import { needsSelfRepair } from "../../../domain/scene/local-patch-self-repair";
 import { visualReviewPolicy } from "../../../domain/generation/visual-review-policy";
 import { localPatchPublicationGeometryHash } from "../local-patch-publication-policy";
 import { createDraft } from "../../create-flow.service";
@@ -968,7 +969,7 @@ describe("a named quality reader decides a refused Opus answer for free, never i
     expect((await s.run()).state).toBe("retry");
     const row = (await rows(s.gameId))[0]!, receipt = JSON.parse(row.judgeJson!);
     expect(row).toMatchObject({ status: "FAILED", attempts: 1 }); expect(row.lastError).toMatch(/^quality-retry: pictureWhole/);
-    expect(receipt.boardReview.dual.quality.reader).toBe(QUALITY_READER_LOCATED);
+    expect(receipt.boardReview.dual.quality.reader).toBe(CURRENT_QUALITY_READER);
     expect(receipt.boardReview.dual.continuity).toBeNull();
     expect(receipt.verdict.faults[0].where).toHaveLength(LOCATED_390.where);
     expect(localPatchEvidenceRecovery(row)).toBeNull();
@@ -994,7 +995,7 @@ describe("a named quality reader decides a refused Opus answer for free, never i
     expect(receipt.verdict.pictureWhole).toBe("fail"); expect(receipt.verdict.faults).toHaveLength(1);
     expect(receipt.verdict.faults[0].where).toBe(located390Verdict().faults[0]!.where);
     expect(receipt.verdict.faults[0].where.startsWith(LOCATED_390_DEFECT)).toBe(true);
-    expect(receipt.boardReview.dual.quality.reading).toMatchObject({ version: "quality-reading/v1", reader: QUALITY_READER_LOCATED,
+    expect(receipt.boardReview.dual.quality.reading).toMatchObject({ version: "quality-reading/v1", reader: CURRENT_QUALITY_READER,
       previousReader: QUALITY_READER_STRICT, disposition: "retry", sourceRequestKey: original.dual.quality.requestKey,
       sourceFingerprint: original.dual.quality.fingerprint, rawSha256: sha256Bytes(Buffer.from(original.dual.quality.raw)) });
     expect(receipt.boardReview.evidenceReviewAttempt).toBe(round); expect(receipt.reviewHistory.at(-1).boardReview).toEqual(original);
@@ -1020,7 +1021,7 @@ describe("a named quality reader decides a refused Opus answer for free, never i
     let row = (await rows(s.gameId))[0]!;
     const receipt = JSON.parse(row.judgeJson!);
     expect(receipt.boardReview.dual.quality.readFault).toEqual({ code: "length", path: "hides.0.verdict.faults.0.where" });
-    expect(receipt.boardReview.dual.quality.reading).toMatchObject({ reader: QUALITY_READER_LOCATED, previousReader: QUALITY_READER_STRICT, disposition: "unresolved" });
+    expect(receipt.boardReview.dual.quality.reading).toMatchObject({ reader: CURRENT_QUALITY_READER, previousReader: QUALITY_READER_STRICT, disposition: "unresolved" });
     expect(receipt.evidenceAttempts).toMatchObject([{ attempt: 1, role: "quality", kind: "length", path: "hides.0.verdict.faults.0.where", strategy: "standard/v1" }]);
     expect(localPatchEvidenceRecovery(row)).toMatchObject({ retry: true, role: "quality", strategy: "compact/v1" });
     expect(localPatchRetainedAnswerUndecided(row)).toBe(false);
@@ -1050,7 +1051,7 @@ describe("a named quality reader decides a refused Opus answer for free, never i
     const s = await dualSeed("quality-reader-publication");
     await s.run(); await s.run();
     const row = (await rows(s.gameId))[0]!, receipt = JSON.parse(row.judgeJson!);
-    expect(row.status).toBe("GENERATED"); expect(receipt.boardReview.dual.quality.reader).toBe(QUALITY_READER_LOCATED);
+    expect(row.status).toBe("GENERATED"); expect(receipt.boardReview.dual.quality.reader).toBe(CURRENT_QUALITY_READER);
     expect(await publishable(s.gameId, row)).toBe(true);
     const q = receipt.boardReview.dual.quality, { reader: _reader, ...strictStage } = q;
     const reading = { version: "quality-reading/v1", reader: QUALITY_READER_LOCATED, previousReader: QUALITY_READER_STRICT, sourceRequestKey: q.requestKey,
@@ -1120,5 +1121,49 @@ describe("dual release v3: object joins", () => {
     expect(row.status).toBe("FAILED"); expect(row.lastError).toMatch(/^quality-retry/);
     expect(localPatchRepairChecks(row.judgeJson, 12, { hideId: BOARD.hides[0]!.id })).toEqual(expect.arrayContaining(["pictureWhole", "severeSeam"]));
     expect(await publishable(s.gameId, row)).toBe(false);
+  });
+});
+
+describe("quality reader v2: a located failure beside an unlocated one", () => {
+  // Codex's reproduction (v18 fixes recheck, 13 October): readable, with one located failure and one never located.
+  const mixed = { ...good, pictureWhole: "fail", severeSeam: "fail", verdict: "fail", reason: "The sign is cut at the bottom join, and a seam shows somewhere.",
+    faults: [{ check: "pictureWhole", where: "Bottom join: the sign lettering is cut along the line" }] };
+  it("is a second attempt that repairs the located check, decided by the reader its stage names: never a self-repair diagnosis, a pass or a publication", async () => {
+    expect(CURRENT_QUALITY_READER).toBe(QUALITY_READER_LOCATED_V2);
+    const s = await dualSeed("quality-v2-mixed", "pass", { release: DUAL_VISUAL_REVIEW_V3, quality: mixed });
+    const hide = BOARD.hides[0]!;
+    expect((await s.run()).state).toBe("retry");
+    // Opus alone: a refused picture needs no anatomy question.
+    expect(s.request.mock.calls.map(([q]) => q.role)).toEqual(["scene-quality"]);
+    const row = (await rows(s.gameId))[0]!, receipt = JSON.parse(row.judgeJson!);
+    expect(row).toMatchObject({ status: "FAILED", attempts: 1, lastError: "quality-retry: pictureWhole" });
+    expect(receipt.qualityDisposition).toEqual({ state: "retry", faults: ["pictureWhole"] });
+    expect(receipt.boardReview.dual.quality.reader).toBe(QUALITY_READER_LOCATED_V2);
+    // The paid answer and the parser's record are kept: the unlocated failure stays unsure and downgraded, never a pass.
+    expect(receipt.verdict).toMatchObject({ pictureWhole: "fail", severeSeam: "unsure", downgraded: ["severeSeam"] });
+    expect(readQualityStage(receipt.boardReview.dual.quality, hide.id)).toEqual(receipt.verdict);
+    // The same verdict decided by a v1 reader reads as before: that is the stages already written.
+    expect(localPatchQualityDisposition(receipt.verdict, 12, { hideId: hide.id, reader: QUALITY_READER_LOCATED }))
+      .toEqual({ state: "unresolved", faults: ["integration-review-unreadable"] });
+    expect(await publishable(s.gameId, row)).toBe(false);
+    expect(localPatchEvidenceRecovery(row)).toBeNull();
+    expect(localPatchRetainedAnswerUndecided(row)).toBe(false);
+    // The world's route: no self-repair diagnosis (the v1 label went straight there), but the next normal attempt.
+    expect(needsSelfRepair(row)).toBe(false);
+    expect(needsSelfRepair({ ...row, lastError: "quality-unresolved: integration-review-unreadable" })).toBe(true);
+    expect(localPatchRepairChecks(row.judgeJson, 12, { hideId: hide.id })).toEqual(["pictureWhole"]);
+    // A second review buys nothing; the next action is that attempt, asked to repair the located check only.
+    await s.run();
+    expect(s.request).toHaveBeenCalledTimes(1);
+    const before = s.render.mock.calls.length;
+    expect(await runLocalPatchHide(c, s.deps, { gameId: s.gameId, board: BOARD, hide })).toMatchObject({ attempt: 2 });
+    expect(s.render.mock.calls.length).toBe(before + 1);
+    const next = s.render.mock.calls.at(-1)![0];
+    expect(next.requestKey).toBe(`${hide.id}:${hide.pose}:render:2`);
+    expect(next.prompt).toContain("Keep the scene coherent at every edge.");
+    expect(next.prompt).not.toContain("SEAM REPAIR");
+    const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(s.gameId);
+    expect(await budget.readRequest(worldId, `${hide.id}:${hide.pose}:render:2`)).toMatchObject({ state: "settled", scope: "image" });
+    expect(await budget.readRequest(worldId, `self-repair:${hide.id}:diagnosis:1`)).toBeNull();
   });
 });
