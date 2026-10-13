@@ -14,7 +14,7 @@ import { SELF_REPAIR_COMPOSITION_VERSION, SELF_REPAIR_VERSION, selfRepairDecisio
 import { NEIGHBOR_QUADRANTS, RETURN_EDGES } from "./local-patch-integration-evidence";
 import { hasDualVisualReview, isDualVisualReviewVersion } from "./visual-review-release";
 import { allowedDualPublication } from "./local-patch-dual-publication";
-import { authoredLocalPatchForeground } from "../../domain/scene/local-patch-foreground";
+import { authoredLocalPatchFixedScenery, authoredLocalPatchForeground } from "../../domain/scene/local-patch-foreground";
 import { foregroundBound, foregroundForPinnedPrompt, foregroundPlanConflict } from "./local-patch-foreground";
 
 export const LOCAL_PATCH_PUBLICATION_POLICY = "publish-with-visual-warnings/v1";
@@ -231,7 +231,7 @@ export async function hasLocalPatchPublicationPolicy(c: Pick<Container, "db">, i
 export async function localPatchForegroundPublishable(db: Prisma.TransactionClient, input: LocalPatchPublicationBinding): Promise<boolean> {
   let receipt: { foreground?: unknown; selfRepair?: { decision?: unknown } } | null;
   try { receipt = JSON.parse(input.judgeJson ?? "null"); } catch { receipt = null; }
-  if (!authoredLocalPatchForeground(input.hideId) && receipt?.foreground === undefined) return true;
+  if (!authoredLocalPatchForeground(input.hideId) && !authoredLocalPatchFixedScenery(input.hideId) && receipt?.foreground === undefined) return true;
   const boardId = /^([a-z]+)-v12-[123]$/.exec(input.hideId)?.[1];
   const hide = input.sceneVersion === 12 && boardId ? localPatchBoardForVersion(boardId, 12)?.hides.find(h => h.id === input.hideId) : undefined;
   const row = await db.targetVariantAsset.findUnique({ where: { id: input.variantId }, select: { promptVersion: true } });

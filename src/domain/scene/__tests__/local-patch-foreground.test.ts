@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { INTEGRATED_COLLECTION_BOARDS } from "../../../../content/adventures/wizard-integrated-release";
 import { maskForHide } from "../local-patch-hides";
-import { assertLocalPatchForeground, authoredLocalPatchForeground, localPatchForegroundAlpha, localPatchForegroundAlphaSha256, localPatchForegroundBounds,
+import { assertLocalPatchFixedScenery, assertLocalPatchForeground, authoredLocalPatchFixedScenery, authoredLocalPatchForeground, fixedSceneryOutline,
+  localPatchFixedScenerySha256, localPatchForegroundAlpha, localPatchForegroundAlphaSha256, localPatchForegroundBounds,
   localPatchForegroundPixelsIn, localPatchForegroundPlanConflict, localPatchForegroundSha256, LOCAL_PATCH_FOREGROUND_CLEARANCE_PX, LOCAL_PATCH_FOREGROUNDS,
-  type LocalPatchForeground } from "../local-patch-foreground";
+  type LocalPatchFixedScenery, type LocalPatchForeground } from "../local-patch-foreground";
 import { selfRepairDecisionSchema } from "../local-patch-self-repair";
 
 const hideOf = (id: string) => INTEGRATED_COLLECTION_BOARDS.flatMap(b => b.hides).find(h => h.id === id)!;
@@ -68,11 +69,95 @@ describe("authored foreground", () => {
     expect(localPatchForegroundPixelsIn(alpha, { left: 250, top: 691, width: 80, height: 77 })).toBeGreaterThan(3000);
   });
 
+  it("v2 fixed scenery (release v19): the taxi sign as before, and the awning lettering a return join crosses", () => {
+    const hide = hideOf("newyork-v12-1"), scenery = authoredLocalPatchFixedScenery(hide.id)!, alpha = assertLocalPatchFixedScenery(hide, scenery);
+    const count = (a: Uint8Array) => [a.reduce((n, v) => n + (v ? 1 : 0), 0), a.reduce((n, v) => n + (v === 255 ? 1 : 0), 0)];
+    expect(localPatchFixedScenerySha256(scenery)).toBe("57e6e472407428112257896e736b6cca3d303fb1f65b8d99e00ded1c0ee85017");
+    expect(localPatchForegroundAlphaSha256(alpha)).toBe("f4b28cbe1b64129106fd30c14e13922e3324465cdabea321bcf1168fc110def9");
+    expect(count(alpha)).toEqual([37076, 36348]);
+    expect(scenery.regions.map(r => r.role)).toEqual(["in-front", "fixed"]);
+    // The sign region is v1's outline, point for point; v1 and its pins are untouched.
+    const sign = fixedSceneryOutline(scenery, [scenery.regions[0]!]), awning = localPatchForegroundAlpha(fixedSceneryOutline(scenery, [scenery.regions[1]!]));
+    expect(sign.polygons).toEqual(authoredLocalPatchForeground(hide.id)!.polygons);
+    expect(localPatchForegroundSha256(authoredLocalPatchForeground(hide.id)!)).toBe("4be0c68ac7ca32ebbcd5790b538a573d88a9f9785b235d55a7c1688bcb3a640f");
+    expect(count(awning)).toEqual([26151, 25733]);
+    expect(localPatchForegroundBounds(awning)).toEqual({ left: 243, top: 230, width: 269, height: 118 });
+    // The return window (60..469 x 250..767) crosses the lettering: B, O, the right join's letters, the valance and a scallop are restored.
+    for (const [x, y] of [[365, 265], [430, 262], [468, 265], [400, 300], [320, 340], [480, 330]] as const) expect(at(alpha, x, y)).toBe(255);
+    // Never the florist's cap below the valance, the shop side left of the panel, or where a child's head can rise above the envelope.
+    for (const [x, y] of [[410, 360], [260, 290], [296, 320], [300, 355], [250, 369]] as const) expect(at(alpha, x, y)).toBe(0);
+    const mask = maskForHide(hide);
+    for (let y = mask.top; y < mask.top + mask.height; y++) for (let x = mask.left; x < mask.left + mask.width; x++) expect(at(alpha, x, y)).toBe(0);
+  });
+
+  it("v2 validates every polygon on its own: a second region may not float on the first one's edge", () => {
+    const hide = hideOf("newyork-v12-1"), base = authoredLocalPatchFixedScenery(hide.id)!;
+    const variant = (regions: LocalPatchFixedScenery["regions"], hideId = hide.id): LocalPatchFixedScenery => ({ hideId, regions });
+    const floating = { what: "an island", role: "fixed" as const, polygons: [[[20, 700], [120, 700], [120, 740], [20, 740]]] as const };
+    expect(() => assertLocalPatchFixedScenery(hide, variant([...base.regions, floating]))).toThrow(/edge/);
+    expect(() => assertLocalPatchFixedScenery(hide, variant([...base.regions, { ...floating, polygons: [[[150, 600], [400, 600], [400, 768], [150, 768]]] }]))).toThrow(/envelope/);
+    expect(() => assertLocalPatchFixedScenery(hide, variant([{ ...base.regions[1]!, role: "behind" as never }]))).toThrow(/unknown role/);
+    expect(() => assertLocalPatchFixedScenery(hide, variant([]))).toThrow(/at least one region/);
+    expect(() => assertLocalPatchFixedScenery(hide, variant(base.regions, "greatwall-v12-1"))).toThrow(/belongs to/);
+    expect(authoredLocalPatchFixedScenery("greatwall-v12-1")).toBeNull();
+  });
+
+  it("names each v2 region, with its own bounds, to a recovery plan it would cut", () => {
+    const hide = hideOf("newyork-v12-1"), scenery = authoredLocalPatchFixedScenery(hide.id)!, alpha = assertLocalPatchFixedScenery(hide, scenery);
+    const regions = scenery.regions.map(r => ({ what: r.what, bounds: localPatchForegroundBounds(localPatchForegroundAlpha(fixedSceneryOutline(scenery, [r]))) }));
+    const outline = fixedSceneryOutline(scenery);
+    expect(localPatchForegroundPlanConflict(outline, alpha, { protectedCore: { left: 210, top: 400, width: 80, height: 290 }, faceRect: { left: 225, top: 410, width: 35, height: 35 } }, regions)).toBeNull();
+    const face = { left: 360, top: 295, width: 35, height: 35 };
+    const cut = localPatchForegroundPlanConflict(outline, alpha, { protectedCore: { left: 340, top: 280, width: 90, height: 150 }, faceRect: face }, regions)!;
+    expect(localPatchForegroundPixelsIn(alpha, face)).toBe(1225);
+    expect(cut).toMatch(/^The fixed scenery \(The taxi roof sign "7E95" .*; The green shop awning .*\) is restored from the original board over every composition\. This plan puts it over 1225 pixels of faceRect/);
+    expect(cut).toContain('clear of each region: The taxi roof sign "7E95" and the yellow taxi roof at the bottom of Image 1 at {"left":160,"top":703,"width":282,"height":65}; '
+      + 'The green shop awning with its "BLOOM & CO." lettering and scalloped edge at the top right of Image 1 at {"left":243,"top":230,"width":269,"height":118}.');
+  });
+
   it("restores the union of its polygons, deterministically", () => {
     const hide = hideOf("newyork-v12-1");
     const two: LocalPatchForeground = { hideId: hide.id, what: "two blocks", polygons: [[[0, 740], [40, 740], [40, 768], [0, 768]], [[30, 750], [80, 750], [80, 768], [30, 768]]] };
     const alpha = assertLocalPatchForeground(hide, two);
     expect([at(alpha, 10, 745), at(alpha, 35, 760), at(alpha, 70, 760), at(alpha, 70, 745)]).toEqual([255, 255, 255, 0]);
     expect(localPatchForegroundAlphaSha256(localPatchForegroundAlpha(two))).toBe(localPatchForegroundAlphaSha256(alpha));
+  });
+
+  it("computes exactly what testing every sample against every edge computes, row by row", () => {
+    // The reference: the coverage as v1 first computed it, one sample at a time.
+    const insidePolygon = (points: readonly (readonly [number, number])[], x: number, y: number) => {
+      let inside = false;
+      for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+        const [xi, yi] = points[i]!, [xj, yj] = points[j]!;
+        if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+      }
+      return inside;
+    };
+    const reference = (foreground: LocalPatchForeground) => {
+      const alpha = new Uint8Array(512 * 768);
+      for (const polygon of foreground.polygons) {
+        const ys = polygon.map(p => p[1]), xs = polygon.map(p => p[0]);
+        const top = Math.max(0, Math.floor(Math.min(...ys))), bottom = Math.min(767, Math.ceil(Math.max(...ys)));
+        const left = Math.max(0, Math.floor(Math.min(...xs))), right = Math.min(511, Math.ceil(Math.max(...xs)));
+        for (let y = top; y <= bottom; y++) for (let x = left; x <= right; x++) {
+          let hits = 0;
+          for (let sy = 0; sy < 4; sy++) for (let sx = 0; sx < 4; sx++) if (insidePolygon(polygon, x + (sx + 0.5) / 4, y + (sy + 0.5) / 4)) hits++;
+          const value = Math.round(hits * 255 / 16);
+          if (value > alpha[y * 512 + x]!) alpha[y * 512 + x] = value;
+        }
+      }
+      return alpha;
+    };
+    const ny = "newyork-v12-1", shapes: LocalPatchForeground[] = [authoredLocalPatchForeground(ny)!, fixedSceneryOutline(authoredLocalPatchFixedScenery(ny)!)];
+    // Small random polygons, self-crossing ones included, with points on the sample grid (eighths) so
+    // vertices and horizontal edges land exactly on sample rows and columns, and at the crop's edges.
+    let seed = 20261013;
+    const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let n = 0; n < 24; n++) {
+      const [cx, cy, grid] = [Math.floor(random() * 560) - 24, Math.floor(random() * 816) - 24, n % 3 ? 8 : 1];
+      shapes.push({ hideId: ny, what: `random ${n}`, polygons: [Array.from({ length: 3 + Math.floor(random() * 14) }, () =>
+        [Math.min(512, Math.max(0, Math.round((cx + random() * 90) * grid) / grid)), Math.min(768, Math.max(0, Math.round((cy + random() * 90) * grid) / grid))] as const)] });
+    }
+    for (const shape of shapes) expect(localPatchForegroundAlphaSha256(localPatchForegroundAlpha(shape)), shape.what).toBe(localPatchForegroundAlphaSha256(reference(shape)));
   });
 });

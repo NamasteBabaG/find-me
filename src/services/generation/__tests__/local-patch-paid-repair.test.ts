@@ -31,7 +31,7 @@ import { LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, runLocalPatchHide, type Loca
 import { LOCAL_PATCH_COMPOSITION_VERSION, LOCAL_PATCH_RETURN_GUARD } from "../local-patch-seam";
 import { LOCAL_PATCH_RESERVE, RETAINED_RENDER_VERSION } from "../local-patch-render";
 import { AGE_BODY_CONTRACT, LOCAL_PATCH_AGE_BODY_PROMPT_VERSION, LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION, LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION,
-  LOCAL_PATCH_FOREGROUND_PROMPT_VERSION } from "../local-patch-prompt";
+  LOCAL_PATCH_FIXED_SCENERY_PROMPT_VERSION, LOCAL_PATCH_FOREGROUND_PROMPT_VERSION } from "../local-patch-prompt";
 import { foregroundBound } from "../local-patch-foreground";
 import { recordLocalPatchPublicationPolicy, hasLocalPatchPublicationPolicy, localPatchPublicationGeometryHash } from "../local-patch-publication-policy";
 import { LocalPatchRetainedPurchaseStore } from "../local-patch-lifecycle";
@@ -367,6 +367,33 @@ describe("v18 recovery plans and the fixed foreground (Codex's v18 review, R1)",
     expect(receipt.recoveryComposition).toMatchObject({ outsideChangedPixels: 0, protectedChangedPixels: 0 });
     // Its face is the painter's child, where a v18 row would have refused the plan.
     expect(await t.at(await c.storage.get(`game/${row.assetId}.png`), 240, 712)).toEqual([MAGENTA.r, MAGENTA.g, MAGENTA.b]);
+  }, 180000);
+
+  it("a v19 row: the diagnosis reads both regions; a plan under the awning goes back with the reason; the clear plan ships bound to the v2 record", async () => {
+    const underAwning = () => plan({ left: 330, top: 280, width: 100, height: 260 }, { left: 360, top: 295, width: 35, height: 35 }, { left: 300, top: 250, width: 200, height: 330 });
+    const t = await setup(LOCAL_PATCH_FIXED_SCENERY_PROMPT_VERSION, [underAwning(), clear()]);
+    await t.until(async () => t.asked.length === 1 && t.selfRepairOf(await t.read())?.phase === "rejected");
+    const refused = t.selfRepairOf(await t.read());
+    expect(refused).toMatchObject({ cycle: 1, phase: "rejected" });
+    expect(refused.feedback).toMatch(/^Error: SELF_REPAIR: The fixed scenery \(The taxi roof sign "7E95".*; The green shop awning .*over 1225 pixels of faceRect and 9167 pixels of protectedCore with its 12px guard.*clear of each region: /);
+    expect(t.asked[0]).toContain('Fixed scenery DATA: {"regions":[{"what":"The taxi roof sign \\"7E95\\" and the yellow taxi roof at the bottom of Image 1","role":"in-front",'
+      + '"bounds":{"left":160,"top":703,"width":282,"height":65}},{"what":"The green shop awning with its \\"BLOOM & CO.\\" lettering and scalloped edge at the top right of Image 1",'
+      + '"role":"fixed","bounds":{"left":243,"top":230,"width":269,"height":118}}],"clearancePx":12}.');
+    expect(t.asked[0]).not.toContain("Fixed foreground DATA");
+    expect(t.painted).toEqual([]);
+    expect(await t.ledger(1)).toBeNull();
+    await t.until(async () => t.selfRepairOf(await t.read())?.phase === "awaiting-review");
+    expect(t.asked).toHaveLength(2);
+    expect(t.asked[1]).toContain("over 1225 pixels of faceRect");
+    expect(t.painted).toEqual([clear().protectedCore]);
+    expect(await t.ledger(2)).toMatchObject({ state: "settled" });
+    const row = await t.read(), receipt = JSON.parse(row.judgeJson!);
+    expect(receipt.foreground).toMatchObject({ version: "local-patch-foreground/v2", hideId: hide.id, restoredPixels: 37076, imageSha256: receipt.judgedSha256 });
+    expect(foregroundBound(receipt, hide, LOCAL_PATCH_FIXED_SCENERY_PROMPT_VERSION, receipt.judgedSha256)).toBe(true);
+    expect(foregroundBound(receipt, hide, LOCAL_PATCH_FOREGROUND_PROMPT_VERSION, receipt.judgedSha256)).toBe(false);
+    expect(receipt.recoveryComposition).toMatchObject({ outsideChangedPixels: 0, protectedChangedPixels: 0 });
+    expect(sha256Bytes(await c.storage.get(`game/${row.assetId}.png`))).toBe(receipt.judgedSha256);
+    expect(noNetwork).not.toHaveBeenCalled();
   }, 180000);
 });
 

@@ -15,7 +15,7 @@ import { prepareLocalPatchIdentityReferences } from "./local-patch-identity-refe
 import { fenceLocalPatchImages, LocalPatchRetainedPurchaseStore } from "./local-patch-lifecycle";
 import { LOCAL_PATCH_PROVIDER, readShippedBoardArt, type LocalPatchHideDeps } from "./local-patch-hide";
 import { renderLocalPatchHide, RETAINED_RENDER_VERSION } from "./local-patch-render";
-import { ageBodyPlacementText, ageBodyPropPlacementText, LOCAL_PATCH_AGE_BODY_PROMPT_VERSION, LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_FOREGROUND_PROMPT_VERSION,
+import { ageBodyPlacementText, ageBodyPropPlacementText, LOCAL_PATCH_AGE_BODY_PROMPT_VERSION, LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_FIXED_SCENERY_PROMPT_VERSION, LOCAL_PATCH_FOREGROUND_PROMPT_VERSION,
   paintRecipeForPinnedPrompt } from "./local-patch-prompt";
 import { LOCAL_PATCH_JUDGE, requestJudgeWire, isTheModelWeAsked, type LocalPatchJudgeResult } from "./local-patch-judge";
 import { recomputePaidPatchJoin } from "./local-patch-repair-compose";
@@ -182,7 +182,8 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
     // A v16-v18 row is diagnosed in its own wording: the stated age, and the
     // support sentence as its painter read it (v18 reads v17's). Older rows keep
     // their exact question. A v18 outline is restored after any join the diagnosis chooses.
-    const propSupport = row.promptVersion === LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION || row.promptVersion === LOCAL_PATCH_FOREGROUND_PROMPT_VERSION;
+    const propSupport = row.promptVersion === LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION || row.promptVersion === LOCAL_PATCH_FOREGROUND_PROMPT_VERSION
+      || row.promptVersion === LOCAL_PATCH_FIXED_SCENERY_PROMPT_VERSION;
     const ageBody = propSupport || row.promptVersion === LOCAL_PATCH_AGE_BODY_PROMPT_VERSION;
     const support = hide.placement?.support ?? board.ground;
     const prompt = scene.sceneVersion === 12 ? integrationDiagnosisPrompt({ ageYears: child.ageYears, pose: hide.pose,
