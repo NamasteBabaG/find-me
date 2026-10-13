@@ -11,7 +11,8 @@ import { PrismaRetainedPurchaseStore } from "../../infra/db/prisma-retained-purc
 import { sha256Bytes } from "./fixed-sprite";
 import { sameChargeEvidence, type WorldChargeEvidence } from "./world-budget";
 import { DUAL_VISUAL_REVIEW_V2, DUAL_VISUAL_REVIEW_V3, DUAL_VISUAL_REVIEW_VERSION, isDualVisualReviewVersion, type DualVisualReviewVersion } from "./visual-review-release";
-import { QUALITY_READER_LOCATED, QUALITY_READER_STRICT, QUALITY_READERS, localPatchQualityDisposition, type LocalPatchVerdict, type QualityReader } from "./local-patch-judge";
+import { QUALITY_FAULT_LOCATION_MAX, QUALITY_READER_LOCATED_V2, QUALITY_READER_STRICT, QUALITY_READERS, localPatchQualityDisposition,
+  type LocalPatchVerdict, type QualityReader } from "./local-patch-judge";
 import { parseVisualSceneVerdicts } from "./visual-review";
 import { PLAYER_REVIEW_MODE } from "./local-patch-player-review";
 
@@ -45,7 +46,12 @@ export type DualReviewProof = { version: DualVisualReviewVersion; hideId: string
   quality: QualityStage; continuity: ContinuityStage | null };
 
 /** The reader new scene-quality answers are decided by, under either pinned question. */
-export const CURRENT_QUALITY_READER: QualityReader = QUALITY_READER_LOCATED;
+export const CURRENT_QUALITY_READER: QualityReader = QUALITY_READER_LOCATED_V2;
+/** A free re-reading of a refused answer can only help when the current reader reads
+ * more of it. v1-located and v2 parse alike, so an answer refused by v1-located is
+ * never re-read for nothing; a strict refusal still is. */
+export const qualityReaderReadsMore = (current: QualityReader, previous: QualityReader | undefined) =>
+  QUALITY_FAULT_LOCATION_MAX[current] > (QUALITY_FAULT_LOCATION_MAX[previous ?? QUALITY_READER_STRICT] ?? Infinity);
 
 /** The reader that decided a quality stage: its re-reading, its own record, or the strict historical one. */
 export function qualityStageReader(stage: Pick<QualityStage, "reader" | "reading">): QualityReader | null {
@@ -63,7 +69,7 @@ export function readQualityStage(stage: QualityStage, hideId: string): LocalPatc
   if (reading && (reading.version !== "quality-reading/v1" || reading.previousReader !== (stage.reader ?? QUALITY_READER_STRICT)
     || reading.reader === reading.previousReader || reading.sourceRequestKey !== stage.requestKey
     || reading.sourceFingerprint !== stage.fingerprint || reading.rawSha256 !== sha256Bytes(Buffer.from(stage.raw ?? ""))
-    || reading.disposition !== localPatchQualityDisposition(verdict, 12, { hideId }).state)) return null;
+    || reading.disposition !== localPatchQualityDisposition(verdict, 12, { hideId, reader }).state)) return null;
   return verdict;
 }
 
@@ -130,9 +136,9 @@ export function localPatchRetainedAnswerUndecided(row: { status: string; lastErr
       || proof.imageSha256 !== receipt.judgedSha256) return false;
     if (!proof.continuity) {
       if (receipt.verdict !== null || proof.quality.reading || !visualStageReadable(proof.quality)
-        || (proof.quality.reader ?? QUALITY_READER_STRICT) === CURRENT_QUALITY_READER) return false;
+        || !qualityReaderReadsMore(CURRENT_QUALITY_READER, proof.quality.reader)) return false;
       const verdict = parseVisualSceneVerdicts(proof.quality.raw, [proof.hideId], 12, "ready-only/v1", PLAYER_REVIEW_MODE, CURRENT_QUALITY_READER)[proof.hideId] ?? null;
-      return localPatchQualityDisposition(verdict, 12, { hideId: proof.hideId }).state !== "acceptable";
+      return localPatchQualityDisposition(verdict, 12, { hideId: proof.hideId, reader: CURRENT_QUALITY_READER }).state !== "acceptable";
     }
     if (proof.continuity.reading) return false;
     return visualStageReadable(proof.quality) && visualStageReadable(proof.continuity)

@@ -1,9 +1,9 @@
 import type { Prisma } from "@prisma/client";
 import { localPatchRuntimeContinuityVerdict } from "../../domain/scene/local-patch-body-continuity";
 import { SELF_REPAIR_COMPOSITION_VERSION, SELF_REPAIR_VERSION, selfRepairDecisionSchema } from "../../domain/scene/local-patch-self-repair";
-import { localPatchQualityDisposition } from "./local-patch-judge";
+import { localPatchQualityDisposition, QUALITY_READER_STRICT } from "./local-patch-judge";
 import { dualVisualReviewVersion } from "./visual-review-release";
-import { readContinuityStage, readQualityStage, verifiedDualStage, type DualReviewProof } from "./local-patch-dual-evidence";
+import { qualityStageReader, readContinuityStage, readQualityStage, verifiedDualStage, type DualReviewProof } from "./local-patch-dual-evidence";
 import { PLAYER_REVIEW_MODE } from "./local-patch-player-review";
 import { LOCAL_PATCH_COMPOSITION_VERSION } from "./local-patch-seam";
 import type { LocalPatchPublicationBinding } from "./local-patch-publication-policy";
@@ -40,7 +40,8 @@ export async function allowedDualPublication(db: Prisma.TransactionClient, input
     const quality = readQualityStage(proof.quality, input.hideId);
     const continuity = readContinuityStage(proof.continuity, input.hideId, version);
     return review.raw === proof.quality.raw && review.model === proof.quality.model
-      && equal(quality, receipt.verdict) && localPatchQualityDisposition(quality ?? null, 12, { hideId: input.hideId }).state === "acceptable"
+      && equal(quality, receipt.verdict)
+      && localPatchQualityDisposition(quality ?? null, 12, { hideId: input.hideId, reader: qualityStageReader(proof.quality) ?? QUALITY_READER_STRICT }).state === "acceptable"
       && !!continuity && localPatchRuntimeContinuityVerdict(continuity).disposition === "pass";
   } catch { return false; }
 }

@@ -5,7 +5,7 @@ import { PLAYER_REVIEW_MODE } from "./local-patch-player-review";
 import { visualReviewCharge } from "../../infra/generation/visual-review-pricing";
 import { CONTINUITY_READER_STRICT, localPatchRuntimeContinuityVerdict, readLocalPatchBodyContinuity, type ContinuityReading } from "../../domain/scene/local-patch-body-continuity";
 import { nextLocalPatchEvidenceStep, type EvidenceAttempt, type EvidenceDiagnosis, type EvidenceFaultKind, type EvidenceRole, type EvidenceStrategy } from "../../domain/scene/local-patch-evidence-policy";
-import { CURRENT_CONTINUITY_READER, CURRENT_QUALITY_READER, qualityStageReader, readQualityStage, verifiedDualStage, visualStageReadable,
+import { CURRENT_CONTINUITY_READER, CURRENT_QUALITY_READER, qualityReaderReadsMore, qualityStageReader, readQualityStage, verifiedDualStage, visualStageReadable,
   type ContinuityReReading, type DualReviewProof, type DualReviewStage, type DualStageBase, type QualityReReading, type QualityStage } from "./local-patch-dual-evidence";
 import { localPatchCrowdContinuityPrompt, localPatchHeadContinuityPrompt } from "./local-patch-body-continuity";
 import { prepareVisualReview, sceneQualityQuestion, parseVisualSceneVerdicts, diagnoseVisualSceneAnswer, type PreparedVisualReview } from "./visual-review";
@@ -133,7 +133,7 @@ export async function readRetainedAnswer(db: Prisma.TransactionClient, worldId: 
     return { ok: false as const, reason: "Retained review answers no longer prove their own settled charges" };
   // The quality answer keeps the reading its own decision was made with.
   const qualityVerdict = readQualityStage(prior.quality, binding.hideId), qualityReader = qualityStageReader(prior.quality) ?? QUALITY_READER_STRICT;
-  if (localPatchQualityDisposition(qualityVerdict, 12, { hideId: binding.hideId }).state !== "acceptable")
+  if (localPatchQualityDisposition(qualityVerdict, 12, { hideId: binding.hideId, reader: qualityReader }).state !== "acceptable")
     return { ok: false as const, reason: "The retained quality answer does not pass" };
   const verdicts: LocalPatchBoardJudgeResult["verdicts"] = { [binding.hideId]: qualityVerdict };
   const reader = CURRENT_CONTINUITY_READER[version], read = readLocalPatchBodyContinuity(prior.continuity.raw, [`${binding.hideId}:people`], reader);
@@ -145,7 +145,7 @@ export async function readRetainedAnswer(db: Prisma.TransactionClient, worldId: 
  * readable answer is what a fresh one would be under that reader; one still
  * unreadable is named exactly (code and path) for the recovery policy. */
 async function readRetainedQuality(db: Prisma.TransactionClient, worldId: string, prior: DualReviewProof, binding: RetainedBinding) {
-  if (prior.quality.reading || (prior.quality.reader ?? QUALITY_READER_STRICT) === CURRENT_QUALITY_READER)
+  if (prior.quality.reading || !qualityReaderReadsMore(CURRENT_QUALITY_READER, prior.quality.reader))
     return { ok: false as const, reason: "No retained answer awaits a corrected reading" };
   const quality = await verifiedDualStage(db, worldId, prior.quality, "scene-quality");
   if (!quality) return { ok: false as const, reason: "Retained review answers no longer prove their own settled charges" };
@@ -153,7 +153,7 @@ async function readRetainedQuality(db: Prisma.TransactionClient, worldId: string
   const verdicts = parseVisualSceneVerdicts(prior.quality.raw, [binding.hideId], 12, "ready-only/v1", PLAYER_REVIEW_MODE, reader);
   const fault: QualityReadFault | null = verdicts[binding.hideId] ? null
     : diagnoseVisualSceneAnswer(prior.quality.raw, [binding.hideId], 12, "ready-only/v1", PLAYER_REVIEW_MODE, reader);
-  const disposition = localPatchQualityDisposition(verdicts[binding.hideId] ?? null, 12, { hideId: binding.hideId }).state;
+  const disposition = localPatchQualityDisposition(verdicts[binding.hideId] ?? null, 12, { hideId: binding.hideId, reader }).state;
   // A pass would still need its anatomy question, which is never free.
   if (disposition === "acceptable") return { ok: false as const, reason: "The re-read quality answer passes; its anatomy question is a paid one" };
   return { ok: true as const, role: "quality" as const, prior, quality, verdicts, reader, fault, disposition };
@@ -267,7 +267,7 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
   // Read as its own decision was made: under its named reader, or its verified re-reading.
   const oldVerdict = oldQuality ? readQualityStage(oldQuality, hideId) : null;
   const reuse = prior?.imageSha256 === binding.imageSha256 && oldQuality && Number.isSafeInteger(oldQuality.attempt)
-    && oldQuality.attempt > 0 && localPatchQualityDisposition(oldVerdict ?? null, 12, { hideId }).state === "acceptable";
+    && oldQuality.attempt > 0 && localPatchQualityDisposition(oldVerdict ?? null, 12, { hideId, reader: qualityStageReader(oldQuality) ?? QUALITY_READER_STRICT }).state === "acceptable";
   const qualityAttempt = reuse ? oldQuality!.attempt : evidenceReviewAttempt;
   const qualityStrategy = reuse ? oldQuality!.strategy ?? STANDARD : strategyFor("quality");
   const quality = sceneQualityQuestion(request, "high");
@@ -318,7 +318,7 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
     geometrySha256: binding.geometrySha256, identitySha256: binding.identitySha256, quality: qualityStage, continuity: null };
   const primaryWire = JSON.parse(qualityBought.bytes.toString()) as LocalPatchJudgeResult;
   let newCostCents = qualityBought.replayed ? 0 : qualityBought.evidence.amountMicroUsd / 10_000;
-  const qualityGood = localPatchQualityDisposition(verdicts[hideId] ?? null, 12, { hideId }).state === "acceptable";
+  const qualityGood = localPatchQualityDisposition(verdicts[hideId] ?? null, 12, { hideId, reader: CURRENT_QUALITY_READER }).state === "acceptable";
   const base = { kind: "reviewed" as const, salvaged: false };
   if (!qualityGood) {
     if (verdicts[hideId]) return { ...base, bought: qualityBought, wire: primaryWire, verdicts, proof, newCostCents, evidence: null, diagnosis: null };

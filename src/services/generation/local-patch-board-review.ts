@@ -14,7 +14,7 @@ import { prepareLocalPatchIdentityReferences } from "./local-patch-identity-refe
 import { fenceLocalPatchImages, LocalPatchRetainedPurchaseStore } from "./local-patch-lifecycle";
 import { LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, readShippedBoardArt } from "./local-patch-hide";
 import { LOCAL_PATCH_JUDGE, requestJudgeWire, localPatchBoardJudgeSettings, localPatchQualityDisposition, isTheModelWeAsked, judgeLocalPatchBoard, localPatchBoardJudgePrompt, localPatchBoardJudgeImages, localPatchBoardJudgeImageLabels, localPatchBoardEvidenceIds, parseLocalPatchBoardVerdicts,
-  type LocalPatchBoardJudgeRequest, type LocalPatchBoardJudgeResult } from "./local-patch-judge";
+  QUALITY_READER_STRICT, type LocalPatchBoardJudgeRequest, type LocalPatchBoardJudgeResult } from "./local-patch-judge";
 import { localPatchPublicationGeometryHash, recordLocalPatchPublicationPolicy, hasLocalPatchPublicationPolicy } from "./local-patch-publication-policy";
 import { SELF_REPAIR_COMPOSITION_VERSION, selfRepairDecisionSchema } from "../../domain/scene/local-patch-self-repair";
 import { inventorySelfRepairRequest } from "./local-patch-self-repair";
@@ -32,7 +32,7 @@ import { recoverPreparedLocalPatchReview } from "./local-patch-review-interrupti
 import { needsPlayerReview, playerReviewEnabled, PLAYER_REVIEW_MODE, PLAYER_REVIEW_VERSION } from "./local-patch-player-review";
 import { hasDualVisualReview } from "./visual-review-release";
 import { buyDualLocalPatchReview } from "./local-patch-dual-review";
-import { localPatchRetainedAnswerUndecided } from "./local-patch-dual-evidence";
+import { localPatchRetainedAnswerUndecided, qualityStageReader } from "./local-patch-dual-evidence";
 
 export const LOCAL_PATCH_BOARD_REVIEW_VERSION = "local-patch-board-five-luna-low/v1";
 export const LOCAL_PATCH_STRICT_BOARD_REVIEW_VERSION = "local-patch-board-five-quality/v3-head-safe";
@@ -392,8 +392,11 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
   const verdicts = evaluated?.verdicts ?? parseLocalPatchBoardVerdicts(readable ? keep.raw : null, request.hides.map(h => h.hideId), scene.sceneVersion, request.reviewScope, request.assessmentMode);
   const reviewedIds = new Set(request.hides.map(h => h.hideId));
   const committedEntries = entries.filter(e => protectedRows.has(e.row.id) || reviewedIds.has(e.hide.id));
+  // A dual answer is routed by the reader its quality stage names; the single judge keeps the v1 decision.
+  const readerOf = (e: typeof committedEntries[number]) => evaluated && reviewedIds.has(e.hide.id) && !protectedRows.has(e.row.id)
+    ? { reader: qualityStageReader(evaluated.proof.quality) ?? QUALITY_READER_STRICT } : {};
   const dispositions = committedEntries.map(e => strict ? localPatchQualityDisposition(protectedRows.has(e.row.id)
-    ? JSON.parse(e.row.judgeJson!).verdict : verdicts[e.hide.id] ?? null, scene.sceneVersion, { hideId: e.hide.id }) : { state: "acceptable" as const, faults: [] });
+    ? JSON.parse(e.row.judgeJson!).verdict : verdicts[e.hide.id] ?? null, scene.sceneVersion, { hideId: e.hide.id, ...readerOf(e) }) : { state: "acceptable" as const, faults: [] });
   await c.db.$transaction(async tx => {
     await fenceLocalPatchImages(tx, game.id); await deps.fence(tx);
     if (extraPlan) await fenceLocalPatchExtraReview(tx, { gameId: game.id, sceneId: scene.id, authorizationId: extraPlan.authorizationId });

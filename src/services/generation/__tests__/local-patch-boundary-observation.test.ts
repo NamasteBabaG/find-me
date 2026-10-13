@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseLocalPatchBoardVerdicts, localPatchQualityDisposition, QUALITY_READER_LOCATED, QUALITY_READER_STRICT, type QualityReader } from '../local-patch-judge';
+import { parseLocalPatchBoardVerdicts, localPatchQualityDisposition, QUALITY_READER_LOCATED, QUALITY_READER_LOCATED_V2, QUALITY_READER_STRICT, type QualityReader } from '../local-patch-judge';
 import { PLAYER_REVIEW_MODE } from '../local-patch-player-review';
 import { diagnoseVisualSceneAnswer, parseVisualSceneVerdicts } from '../visual-review';
 import { LOCATED_390, LOCATED_390_DEFECT, located390Answer, located390Verdict } from './local-patch-dual-fixtures';
@@ -122,5 +122,52 @@ describe('named quality readers: the located reader admits a longer location, ne
       expect(result.pictureWhole).toBe('fail');
       expect(localPatchQualityDisposition(result,12)).toEqual({state:'retry',faults:['pictureWhole']});
     }
+  });
+});
+
+describe('quality-read/v2-located-600: a downgraded check is derived again, never read as unreadable',()=>{
+  const answer=(v:unknown)=>'```json\n'+JSON.stringify({hides:[{hideId:id,evidenceIds:[id+':before',id+':after'],verdict:v}]})+'\n```';
+  const read=(raw:string,reader?:QualityReader)=>parseVisualSceneVerdicts(raw,[id],12,'ready-only/v1',PLAYER_REVIEW_MODE,reader)[id]??null;
+  const decide=(v:unknown,reader?:QualityReader)=>localPatchQualityDisposition(read(answer(v),reader??QUALITY_READER_LOCATED),12,{hideId:id,...(reader?{reader}:{})});
+  // Codex's reproduction (v18 fixes recheck, 13 October): one located failure and one the answer never located.
+  const mixed=()=>({...verdict(),pictureWhole:'fail',severeSeam:'fail',verdict:'fail',reason:'The sign is cut at the bottom join, and a seam shows somewhere.',
+    faults:[{check:'pictureWhole',where:'Bottom join: the sign lettering is cut along the line'}]});
+  const unlocated=()=>({...verdict(),pictureWhole:'fail',severeSeam:'fail',verdict:'fail',reason:'Something is broken at the joins.',faults:[]});
+  const contradicted=()=>({...verdict(),severeSeam:'fail',verdict:'fail',reason:'A seam crosses the sign.',
+    faults:[{check:'severeSeam',where:'Bottom join: doubled left edge of the sign'},{check:'pictureWhole',where:'Bottom join: the sign lettering is cut along the line'}]});
+  const located=()=>({...verdict(),pictureWhole:'fail',verdict:'fail',faults:[{check:'pictureWhole',where:'Bottom join: the sign lettering is cut along the line'}]});
+  it('parses byte for byte as v1-located: only the decision changes',()=>{
+    for(const v of [verdict(),located(),mixed(),unlocated(),contradicted()])
+      expect(read(answer(v),QUALITY_READER_LOCATED_V2)).toEqual(read(answer(v),QUALITY_READER_LOCATED));
+  });
+  it('decides the mixed answer as a retry for its located check, where v1 read it as unreadable',()=>{
+    const v=read(answer(mixed()),QUALITY_READER_LOCATED_V2)!;
+    // The unlocated failure stays what the parser made of it: unsure and recorded as downgraded, never a pass.
+    expect(v).toMatchObject({pictureWhole:'fail',severeSeam:'unsure',verdict:'fail',claimedVerdict:'fail',downgraded:['severeSeam'],contradicted:[],unclassified:[]});
+    expect(decide(mixed(),QUALITY_READER_LOCATED_V2)).toEqual({state:'retry',faults:['pictureWhole']});
+    // Every v1 decision, and a stage that names no reader, is unchanged.
+    for(const reader of [undefined,QUALITY_READER_STRICT,QUALITY_READER_LOCATED])
+      expect(decide(mixed(),reader)).toEqual({state:'unresolved',faults:['integration-review-unreadable']});
+  });
+  it('names the checks of an answer that located nothing, and still never retries it',()=>{
+    expect(decide(unlocated(),QUALITY_READER_LOCATED)).toEqual({state:'unresolved',faults:['integration-review-unreadable']});
+    expect(decide(unlocated(),QUALITY_READER_LOCATED_V2)).toEqual({state:'unresolved',faults:['severeSeam','pictureWhole']});
+  });
+  it('changes no acceptance and no other decision',()=>{
+    for(const v of [verdict(),located(),contradicted()])
+      expect(decide(v,QUALITY_READER_LOCATED_V2)).toEqual(decide(v,QUALITY_READER_LOCATED));
+    expect(decide(verdict(),QUALITY_READER_LOCATED_V2).state).toBe('acceptable');
+    expect(decide(contradicted(),QUALITY_READER_LOCATED_V2)).toEqual({state:'retry',faults:['severeSeam']});
+  });
+  it('restores only a real downgrade: a forged record stays unreadable',()=>{
+    const v=read(answer(mixed()),QUALITY_READER_LOCATED_V2)!;
+    const forged=(over:Record<string,unknown>)=>localPatchQualityDisposition({...v,...over} as typeof v,12,{hideId:id,reader:QUALITY_READER_LOCATED_V2});
+    // A downgrade of a check that now reads pass, or of a field no check owns, is not the parser's.
+    expect(forged({severeSeam:'pass'})).toEqual({state:'unresolved',faults:['integration-review-unreadable']});
+    expect(forged({downgraded:['severeSeam','mood']})).toEqual({state:'unresolved',faults:['integration-review-unreadable']});
+    // Without its downgrade the record is another self-consistent verdict (explicit doubt), decided alike by both readers.
+    const doubt={...v,downgraded:[]} as typeof v;
+    expect(localPatchQualityDisposition(doubt,12,{hideId:id,reader:QUALITY_READER_LOCATED_V2}))
+      .toEqual(localPatchQualityDisposition(doubt,12,{hideId:id,reader:QUALITY_READER_LOCATED}));
   });
 });
