@@ -1,5 +1,13 @@
 # The two cost experiments, ready for Codex's review (14 October 2026)
 
+> **Superseded in part.** Codex held both runs (R1–R4). The fixes are in `docs/CLAUDE_COST_RUNNERS_R1_R4_20261014.md`:
+> - opaque wire IDs;
+> - absolute qualification in place of the J0-relative acceptance below;
+> - the money settled first;
+> - a report that survives a contact-sheet failure.
+>
+> This note stays as the record of the first round.
+
 **Status:**
 - Nothing has been bought, sent to a provider or deployed.
 - The product code is unchanged since the two opt-in commits (`1770fe03` for E1, `c533b70c` for E2). This note and the plan's update are the only tracked changes.

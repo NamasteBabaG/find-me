@@ -75,13 +75,19 @@ That makes 21 controls: 8 good, 11 reject, 2 observe-only.
 - **Chosen by eye.** The rectangle is chosen on a pixel grid and pinned with the result's SHA-256. Two automatic constructions left the head whole: the painter repaints the scenery around the child, so the difference from the board never isolates her.
 - **New York only.** Only New York's hide adds the child in front of plain scenery. Amazon-3 and Great Wall-1 replace a child the board already has, so a rectangle returned there grafts that child's hair onto ours. That is a different failure, and not this control.
 
-### Measures and acceptance
+**What the judge is shown** (Codex's R1). Each control reaches the judge only under a pinned opaque wire ID: a random token, the same for all four variants, carrying nothing of its label, class, release or identity. The descriptive names, labels and reasons stay in the local manifest and report. The self-test captures the exact outgoing request of all 84 questions and checks that none of them leaks. It also checks that changing every local name, label, class and reason changes no question.
 
-Each variant is compared with the labels and with J0. A variant passes only if all of these hold:
-- it catches **every** reject that J0 catches, each with a located fault in the right check;
-- it rejects no more good controls than J0 does;
-- every answer is read by its reader;
-- truncation is no more frequent than J0's.
+### Measures and qualification
+
+**Qualification is absolute** (Codex's R2), against the pinned labels and never against what J0 happened to catch. A variant qualifies only if all of these hold:
+- the run is complete and financially closed: nothing open, unknown, held, charged past its reservation, or over the cap (R3);
+- **all 8 verified good pictures pass**;
+- **all 11 verified rejects are caught**, each by its own class's check with a located fault;
+- no answer is unread or truncated.
+
+The two observe-only pictures stay outside the score. On a run that is not complete, the scores are provisional, not a qualification.
+
+**J0 is a diagnostic beside the gate, never the bar.** The report lists, per Sol variant, the rejects caught by J0 only or by the variant only, and the good pictures each rejected. A bad baseline can neither lower the bar nor block a good candidate. If a label is ever disputed, it is resolved and pinned before a new paid run, never after seeing which model failed.
 
 The run reports its measurements:
 - input, reasoning and visible output tokens;
@@ -141,6 +147,13 @@ Mini LOW is left for later. A cheaper painter that needs more repairs can cost m
 
 Guy has the final word on likeness and style.
 
+**How E2 is read** (Codex's comparison note):
+- **Results are paired per case:** the MEDIUM painting beside P1 and P2.
+- **Saved MEDIUM paintings are visual references only.** The same prompt text does not establish the same effective images, sheet, mask, policy or compositor, so they enter no aggregate.
+- **Aggregates cover matched cases only:** P1 against P2 on all six, and P0, P1 and P2 on the two Amazon cases P0 painted. P0's paid cost stays separate and is never set against P1's or P2's six-case figures.
+- **The price per accepted hide includes refused paintings.** E2 has no retries and no identity stage, so it is not yet the average cost of a delivered game.
+- **One painting per case and painter is a first screening.** It can justify a separately bounded QA-world trial of a cheaper painter. It does not establish production failure rates.
+
 **Expected: about $2.25** (paintings $0.31, reviews of up to 14 accepted paintings $1.94). **Proposed cap: $3.00.** The earlier $2.75 left out the two Amazon P0 paintings and their reviews.
 
 ## 4. What the product needs first
@@ -165,6 +178,11 @@ These changes are provider-free, opt-in and versioned. None is a default.
 ## 6. A projection to check, not a promise
 
 This is per world, at the QA world's retry mix. Each step's saving is measured before the next step counts on it.
+
+**What E1 does not change** (Codex's note): the continuity review stays Sol HIGH.
+- At about $0.035 each, the 27 first-pass continuity reviews alone are about $0.95.
+- That leaves about $1.05 of the $2 target for every quality review, painting, identity step and retry.
+- A later MED or lean continuity qualification may be needed. It is neither authorized nor implemented.
 
 | Step | About |
 | --- | --- |
