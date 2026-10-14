@@ -8,6 +8,8 @@
 import { interruptedLocalPatchImageRequest } from "../scene/local-patch-image-request";
 import { interruptedLocalPatchReviewRequest } from "../scene/local-patch-review-request";
 export const WORLD_BUDGET_CAP_MICRO_USD = 5_000_000;
+/** Six dollars requires a trusted per-world QA authorization resolver; default remains five. */
+export type WorldBudgetCapMicroUsd = typeof WORLD_BUDGET_CAP_MICRO_USD | 6_000_000;
 export const WORLD_BUDGET_SCOPES = ["identity", "sheet", "image", "judge", "repair"] as const;
 export type WorldBudgetScope = typeof WORLD_BUDGET_SCOPES[number];
 export type BudgetJson = null | boolean | number | string | readonly BudgetJson[] | { readonly [key: string]: BudgetJson };
@@ -77,6 +79,9 @@ export type WorldContinuationRecord = WorldUnknownContinuationApproval | WorldAu
 export type WorldAutomaticImageRecoveryInput = Omit<WorldAutomaticImageRecovery, "version" | "worldId">;
 export type WorldAutomaticReviewRecoveryInput = Omit<WorldAutomaticReviewRecovery, "version" | "worldId">;
 export interface WorldBudgetOptions {
+  /** Trusted composition root resolves immutable world authority inside each transaction.
+   * Snapshot/caller JSON cannot raise the cap; absence preserves historical five dollars. */
+  resolveCapMicroUsd?: (worldId: string) => Promise<WorldBudgetCapMicroUsd>;
   /** Trusted operator entrypoint supplies this verifier after authenticating the
    * actor/grant. A JSON caller's self-asserted role is not authorization. */
   authorizeUnknownContinuation?: (approval: Readonly<WorldUnknownContinuationApproval>) => Promise<boolean>;
@@ -304,7 +309,8 @@ export function getMatchingUnknownContinuationApproval(snapshot: WorldBudgetSnap
 }
 
 /** Pure audit; corrupt/duplicate canonical rows fail closed instead of undercounting. */
-export function auditWorldBudget(snapshot: WorldBudgetSnapshot): WorldBudgetAudit {
+export function auditWorldBudget(snapshot: WorldBudgetSnapshot, capMicroUsd: WorldBudgetCapMicroUsd = WORLD_BUDGET_CAP_MICRO_USD): WorldBudgetAudit {
+  if (capMicroUsd !== WORLD_BUDGET_CAP_MICRO_USD && capMicroUsd !== 6_000_000) fail("invalid_input", "Unsupported verified world budget ceiling");
   nonempty(snapshot.worldId, "worldId");
   validateWorldUnknownContinuationApprovals(snapshot);
   const byScope = Object.fromEntries(WORLD_BUDGET_SCOPES.map(item => [item, { settledMicroUsd: 0, reservedMicroUsd: 0 }])) as WorldBudgetAudit["byScope"];
@@ -344,10 +350,10 @@ export function auditWorldBudget(snapshot: WorldBudgetSnapshot): WorldBudgetAudi
     } else fail("invalid_snapshot", "Invalid request state");
   }
   const committedMicroUsd = add(settledMicroUsd, reservedMicroUsd);
-  const overCapMicroUsd = Math.max(0, committedMicroUsd - WORLD_BUDGET_CAP_MICRO_USD);
-  const remainingMicroUsd = Math.max(0, WORLD_BUDGET_CAP_MICRO_USD - committedMicroUsd);
+  const overCapMicroUsd = Math.max(0, committedMicroUsd - capMicroUsd);
+  const remainingMicroUsd = Math.max(0, capMicroUsd - committedMicroUsd);
   const held = Boolean(unknownRequestKeys.some(key => !getMatchingUnknownContinuationApproval(snapshot, key)) || overrunRequestKeys.length || conflictRequestKeys.length || overCapMicroUsd);
-  return { worldId: snapshot.worldId, capMicroUsd: WORLD_BUDGET_CAP_MICRO_USD, settledMicroUsd, reservedMicroUsd, committedMicroUsd, remainingMicroUsd, overCapMicroUsd, held, canReserve: !held && remainingMicroUsd > 0, state: held ? "held" : remainingMicroUsd === 0 ? "exhausted" : "open", pendingRequestKeys, unknownRequestKeys, overrunRequestKeys, conflictRequestKeys, linkedRequestKeys, byScope };
+  return { worldId: snapshot.worldId, capMicroUsd, settledMicroUsd, reservedMicroUsd, committedMicroUsd, remainingMicroUsd, overCapMicroUsd, held, canReserve: !held && remainingMicroUsd > 0, state: held ? "held" : remainingMicroUsd === 0 ? "exhausted" : "open", pendingRequestKeys, unknownRequestKeys, overrunRequestKeys, conflictRequestKeys, linkedRequestKeys, byScope };
 }
 
 export interface WorldBudgetResult { request: WorldBudgetRequest; audit: WorldBudgetAudit }
@@ -359,16 +365,17 @@ export interface WorldReserveResult extends WorldBudgetResult {
 export class WorldBudget {
   constructor(private readonly repository: WorldBudgetRepository, private readonly options: WorldBudgetOptions = {}) {}
 
-  private transact<T>(worldId: string, work: (tx: WorldBudgetTransaction) => Promise<T>) {
+  private transact<T>(worldId: string, work: (tx: WorldBudgetTransaction, capMicroUsd: WorldBudgetCapMicroUsd) => Promise<T>) {
     nonempty(worldId, "worldId");
     return this.repository.transactWorld(worldId, async tx => {
       if (tx.snapshot.worldId !== worldId) fail("invalid_snapshot", "Repository returned the wrong world");
-      auditWorldBudget(tx.snapshot);
-      return work(tx);
+      const capMicroUsd = await this.options.resolveCapMicroUsd?.(worldId) ?? WORLD_BUDGET_CAP_MICRO_USD;
+      auditWorldBudget(tx.snapshot, capMicroUsd);
+      return work(tx, capMicroUsd);
     });
   }
 
-  async audit(worldId: string): Promise<WorldBudgetAudit> { return this.transact(worldId, async tx => auditWorldBudget(tx.snapshot)); }
+  async audit(worldId: string): Promise<WorldBudgetAudit> { return this.transact(worldId, async (tx, capMicroUsd) => auditWorldBudget(tx.snapshot, capMicroUsd)); }
 
   /** Read-only binding check for durable generation checkpoints; never renews a reservation. */
   async readRequest(worldId: string, requestKey: string): Promise<WorldBudgetRequest | null> {
@@ -398,21 +405,21 @@ export class WorldBudget {
   }
 
   private async authorizeAutomaticRecovery(worldId: string, captured: WorldAutomaticImageRecovery | WorldAutomaticReviewRecovery) {
-    return this.transact(worldId, async tx => {
+    return this.transact(worldId, async (tx, capMicroUsd) => {
       const prior = tx.snapshot.unknownContinuationApprovals?.find(a => a.approvalId === captured.approvalId);
       if (prior) {
         if (json(prior as unknown as BudgetJson) !== json(captured as unknown as BudgetJson)) fail("key_conflict", "Automatic recovery evidence changed");
-        return { acquired: false, audit: auditWorldBudget(tx.snapshot) };
+        return { acquired: false, audit: auditWorldBudget(tx.snapshot, capMicroUsd) };
       }
       const request = tx.snapshot.requests.find(r => r.requestKey === captured.requestKey);
       if (!request || request.state !== "unknown" || request.origin !== "reserved" || request.conflicts.length
         || request.scope !== captured.scope || request.operationFingerprint !== captured.operationFingerprint || request.reserveMicroUsd !== captured.reserveMicroUsd
         || json(request.unknownReasons) !== json(captured.unknownReasons)) fail("key_conflict", "Recovery must bind the exact interrupted reservation");
-      const before = auditWorldBudget(tx.snapshot);
+      const before = auditWorldBudget(tx.snapshot, capMicroUsd);
       if (before.overCapMicroUsd || before.overrunRequestKeys.length || before.conflictRequestKeys.length) fail("world_held", "A billing conflict cannot be recovered automatically");
       if (!tx.appendUnknownContinuationApproval) fail("invalid_input", "Durable continuation storage is required");
       const next = { ...tx.snapshot, unknownContinuationApprovals: [...(tx.snapshot.unknownContinuationApprovals ?? []), captured] };
-      const audit = auditWorldBudget(next);
+      const audit = auditWorldBudget(next, capMicroUsd);
       await tx.appendUnknownContinuationApproval!(structuredClone(captured));
       return { acquired: true, audit };
     });
@@ -423,12 +430,12 @@ export class WorldBudget {
     validateUnknownContinuationApproval(approval);
     const captured = structuredClone(approval);
     if (!this.options.authorizeUnknownContinuation || await this.options.authorizeUnknownContinuation(structuredClone(captured)) !== true) fail("invalid_input", "Explicit authenticated operator continuation authority is required");
-    return this.transact(worldId, async tx => {
+    return this.transact(worldId, async (tx, capMicroUsd) => {
       const previous = tx.snapshot.unknownContinuationApprovals?.find(a => a.approvalId === captured.approvalId);
       if (previous) {
         if (previous.version !== "world-unknown-continuation/v1") return fail("key_conflict", "Continuation authority type changed");
         if (json(previous as unknown as BudgetJson) !== json(captured as unknown as BudgetJson)) fail("key_conflict", "Immutable continuation approval ID already pins different evidence");
-        return { acquired: false, approval: structuredClone(previous), audit: auditWorldBudget(tx.snapshot) };
+        return { acquired: false, approval: structuredClone(previous), audit: auditWorldBudget(tx.snapshot, capMicroUsd) };
       }
       const request = tx.snapshot.requests.find(r => r.requestKey === captured.requestKey);
       if (!request || request.state !== "unknown" || request.origin !== "reserved" || request.conflicts.length
@@ -436,7 +443,7 @@ export class WorldBudget {
         || json(request.unknownReasons) !== json(captured.unknownReasons)) fail("key_conflict", "Approval must bind the exact currently unknown request and reason history");
       if (!tx.appendUnknownContinuationApproval) fail("invalid_input", "Repository cannot durably retain a continuation approval");
       const next: WorldBudgetSnapshot = { ...tx.snapshot, unknownContinuationApprovals: [...(tx.snapshot.unknownContinuationApprovals ?? []), captured] };
-      const audit = auditWorldBudget(next);
+      const audit = auditWorldBudget(next, capMicroUsd);
       await tx.appendUnknownContinuationApproval!(structuredClone(captured));
       return { acquired: true, approval: captured, audit };
     });
@@ -447,17 +454,17 @@ export class WorldBudget {
     if (input.requestKey.startsWith(IMPORT_PREFIX)) fail("invalid_input", "Reserved import key prefix");
     // Clone caller data before awaiting storage: mutable inputs cannot change a reservation.
     input = structuredClone(input);
-    return this.transact(worldId, async tx => {
+    return this.transact(worldId, async (tx, capMicroUsd) => {
       const existing = tx.snapshot.requests.find(item => item.requestKey === input.requestKey);
-      const audit = auditWorldBudget(tx.snapshot);
+      const audit = auditWorldBudget(tx.snapshot, capMicroUsd);
       if (existing) {
         if (existing.origin !== "reserved" || existing.scope !== input.scope || existing.operationFingerprint !== input.operationFingerprint || existing.reserveMicroUsd !== input.reserveMicroUsd) fail("key_conflict", "Request key already pins different operation inputs or reservation");
         return { acquired: false, request: structuredClone(existing), audit };
       }
       if (audit.held) fail("world_held", "World has unresolved cost, overrun or conflicting evidence; no new request may dispatch");
-      if (input.reserveMicroUsd > audit.remainingMicroUsd) fail("cap_exceeded", "Reservation exceeds the five-dollar world budget");
+      if (input.reserveMicroUsd > audit.remainingMicroUsd) fail("cap_exceeded", capMicroUsd === WORLD_BUDGET_CAP_MICRO_USD ? "Reservation exceeds the five-dollar world budget" : "Reservation exceeds the verified six-dollar QA world budget");
       const request: WorldBudgetRequest = { ...input, origin: "reserved", state: "pending", unknownReasons: [], conflicts: [] };
-      const nextAudit = auditWorldBudget(snapshotWith(tx.snapshot, request));
+      const nextAudit = auditWorldBudget(snapshotWith(tx.snapshot, request), capMicroUsd);
       await tx.createRequest(structuredClone(request));
       return { acquired: true, request, audit: nextAudit };
     });
@@ -465,14 +472,14 @@ export class WorldBudget {
 
   async markUnknown(worldId: string, requestKey: string, reason: string): Promise<WorldBudgetResult> {
     nonempty(requestKey, "requestKey"); nonempty(reason, "reason");
-    return this.transact(worldId, async tx => {
+    return this.transact(worldId, async (tx, capMicroUsd) => {
       const existing = tx.snapshot.requests.find(item => item.requestKey === requestKey);
       if (!existing) return fail("request_missing", "Cannot mark an unreserved request unknown");
       // A late timeout/error cannot reopen a successfully settled request.
-      if (existing.state === "settled" || existing.state === "linked") return { request: structuredClone(existing), audit: auditWorldBudget(tx.snapshot) };
+      if (existing.state === "settled" || existing.state === "linked") return { request: structuredClone(existing), audit: auditWorldBudget(tx.snapshot, capMicroUsd) };
       const request: WorldBudgetRequest = { ...existing, state: "unknown", unknownReasons: [...new Set([...existing.unknownReasons, reason])] };
       await tx.updateRequest(requestKey, structuredClone(request));
-      return { request, audit: auditWorldBudget(snapshotWith(tx.snapshot, request)) };
+      return { request, audit: auditWorldBudget(snapshotWith(tx.snapshot, request), capMicroUsd) };
     });
   }
 
@@ -483,10 +490,10 @@ export class WorldBudget {
     return { error: new WorldBudgetError("evidence_conflict", reason) };
   }
 
-  private async persistCharge(tx: WorldBudgetTransaction, request: WorldBudgetRequest, create: boolean) {
+  private async persistCharge(tx: WorldBudgetTransaction, request: WorldBudgetRequest, create: boolean, capMicroUsd: WorldBudgetCapMicroUsd) {
     if (create) await tx.createRequest(structuredClone(request));
     else await tx.updateRequest(request.requestKey, structuredClone(request));
-    try { return { result: { request, audit: auditWorldBudget(snapshotWith(tx.snapshot, request)) } }; }
+    try { return { result: { request, audit: auditWorldBudget(snapshotWith(tx.snapshot, request), capMicroUsd) } }; }
     catch (error) {
       // Each external amount may be a valid safe integer while their sum is not.
       // Keep the exact per-request bill, commit, then fail closed outside this
@@ -500,12 +507,12 @@ export class WorldBudget {
   /** Missing/invalid response evidence must be followed by markUnknown, never a retry. */
   async settle(worldId: string, requestKey: string, incoming: WorldChargeEvidence): Promise<WorldBudgetResult> {
     nonempty(requestKey, "requestKey"); evidence(incoming); incoming = structuredClone(incoming);
-    const outcome = await this.transact(worldId, async tx => {
+    const outcome = await this.transact(worldId, async (tx, capMicroUsd) => {
       const existing = tx.snapshot.requests.find(item => item.requestKey === requestKey);
       if (!existing) return fail("request_missing", "Reserve before dispatch; use importSettled for already-billed external requests");
       if (existing.state === "settled" || existing.state === "linked") {
         if (!sameEvidence(existing.evidence, incoming)) return this.conflict(tx, existing, incoming, "A settled request cannot be overwritten by different cost, usage or provider evidence");
-        return { result: { request: structuredClone(existing), audit: auditWorldBudget(tx.snapshot) } };
+        return { result: { request: structuredClone(existing), audit: auditWorldBudget(tx.snapshot, capMicroUsd) } };
       }
       const canonical = tx.snapshot.requests.find(item => item.state === "settled" && chargeIdentity(item.evidence) === chargeIdentity(incoming));
       if (canonical && canonical.state === "settled" && !sameEvidence(canonical.evidence, incoming)) return this.conflict(tx, existing, incoming, "Provider request ID already has conflicting settled evidence");
@@ -515,7 +522,7 @@ export class WorldBudget {
         : { ...existing, state: "settled", evidence: incoming };
       // Persist FULL external cost, even above the reserve or cap. Audit then
       // holds the world; never clamp, substitute zero, or throw away the bill.
-      return this.persistCharge(tx, request, false);
+      return this.persistCharge(tx, request, false, capMicroUsd);
     });
     if ("error" in outcome) throw outcome.error;
     return outcome.result;
@@ -528,17 +535,17 @@ export class WorldBudget {
    */
   async importSettled(worldId: string, input: { scope: WorldBudgetScope; operationFingerprint: string; evidence: WorldChargeEvidence }): Promise<WorldBudgetResult> {
     scope(input.scope); nonempty(input.operationFingerprint, "operationFingerprint"); evidence(input.evidence); input = structuredClone(input);
-    const outcome = await this.transact(worldId, async tx => {
+    const outcome = await this.transact(worldId, async (tx, capMicroUsd) => {
       const existing = tx.snapshot.requests.find(item => item.state === "settled" && chargeIdentity(item.evidence) === chargeIdentity(input.evidence));
       if (existing && existing.state === "settled") {
         if (!sameEvidence(existing.evidence, input.evidence)) return this.conflict(tx, existing, input.evidence, "Imported provider request ID conflicts with existing cost or usage");
         if (existing.scope !== input.scope || existing.operationFingerprint !== input.operationFingerprint) return this.conflict(tx, existing, input.evidence, "Imported request metadata must describe the original operation, not a different operation or consuming atlas cell");
-        return { result: { request: structuredClone(existing), audit: auditWorldBudget(tx.snapshot) } };
+        return { result: { request: structuredClone(existing), audit: auditWorldBudget(tx.snapshot, capMicroUsd) } };
       }
       const request: WorldBudgetRequest = { requestKey: `${IMPORT_PREFIX}${chargeIdentity(input.evidence)}`, origin: "imported", state: "settled", scope: input.scope, operationFingerprint: input.operationFingerprint, reserveMicroUsd: 0, evidence: input.evidence, unknownReasons: [], conflicts: [] };
       // Imports must record already incurred costs even when the world is held
       // or this reveals an exceeded cap. This never authorizes another call.
-      return this.persistCharge(tx, request, true);
+      return this.persistCharge(tx, request, true, capMicroUsd);
     });
     if ("error" in outcome) throw outcome.error;
     return outcome.result;

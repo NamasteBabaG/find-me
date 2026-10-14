@@ -14,6 +14,7 @@ import { auditWorldBudget } from "./world-budget";
 import { boardConditioningHash } from "./board-conditioned-source";
 import { readBoardConditionedCatalog } from "./board-conditioned-catalog";
 import { boardWizardWorldId } from "./board-conditioned-wizard";
+import { readNewQaWorldBudget } from "./local-patch-qa-budget";
 import { identityGateReceiptSchema, identityReceiptReadyForPublication, IDENTITY_GATE_ACTION, IDENTITY_GATE_KEY } from "./board-wizard-identity-gate";
 import { avatarDisplayFromSheet } from "../../infra/generation/avatar-cut";
 import { sha256Bytes } from "./fixed-sprite";
@@ -104,7 +105,8 @@ async function inspectSource(c: Container, sourceGameId: string, expectedIdentit
   }
   const ledger = await new PrismaWorldBudgetStore(c.db).read(boardWizardWorldId(source.id));
   demand(ledger, "Original identity accounting is missing");
-  const cost = auditWorldBudget(ledger.snapshot);
+  const grant = await readNewQaWorldBudget(c, boardWizardWorldId(source.id));
+  const cost = auditWorldBudget(ledger.snapshot, grant?.capMicroUsd ?? 5_000_000);
   demand(!cost.held && cost.reservedMicroUsd === 0, "Source accounting is unresolved");
   const review = ledger.snapshot.requests.find(row => row.requestKey === (receipt.comparison ? "wizard:identity-style:2" : IDENTITY_GATE_KEY));
   const render = ledger.snapshot.requests.find(row => row.requestKey === (receipt.provenance.repair ? "wizard:identity:2" : "wizard:identity:1"));

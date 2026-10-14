@@ -26,7 +26,7 @@ import { recoverLocalPatchImageInterruptions } from "./local-patch-interruption-
 import { recoverPreparedLocalPatchReview } from "./local-patch-review-interruption-recovery";
 import { activateLocalPatchEmergencyBudget } from "./local-patch-budget-recovery";
 import { localPatchEvidenceRecovery, LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS } from "./local-patch-review-recovery";
-import { localPatchRetainedAnswerUndecided } from "./local-patch-dual-evidence";
+import { localPatchRetainedAnswerUndecided, localPatchContinuityPending } from "./local-patch-dual-evidence";
 import { hasDualVisualReview } from "./visual-review-release";
 import {
   LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, runLocalPatchHide,
@@ -417,8 +417,8 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
           return receipt?.reviewState !== "board-review-complete" || receipt.qualityDisposition?.state !== "acceptable";
         } catch { return true; }
       });
-      return { scene, ready, firstWork, retry: sceneRows.some(row => localPatchEvidenceRecovery(row)?.retry) };
-    }).sort((a, b) => Number(!a.firstWork) - Number(!b.firstWork));
+      return { scene, ready, firstWork, continuityPending: sceneRows.some(localPatchContinuityPending), retry: sceneRows.some(row => localPatchEvidenceRecovery(row)?.retry) };
+    }).sort((a, b) => Number(!a.continuityPending) - Number(!b.continuityPending) || Number(!a.firstWork) - Number(!b.firstWork));
     for (const { scene, ready, firstWork, retry } of plans) {
       if (scene.sceneVersion !== 12 || scene.generationStatus === "GENERATED") continue;
       if (!(firstWork || retry) && ready.length !== localPatchBoardFor(scene.sceneSlug, scene.sceneVersion)?.hides.length) continue;
@@ -573,6 +573,9 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     include: { targetInstance: { select: { targetId: true, gameSceneId: true } } },
   });
   let pendingReviews = 0;
+  // Do not open fresh Opus work while a saved quality receipt still needs Sol,
+  // including a checkpoint created in the first review phase of THIS slice.
+  let continuityPending = automatic && !extraPlan && after.some(localPatchContinuityPending);
   for (const scene of game.scenes) {
     const board = localPatchBoardFor(scene.sceneSlug, scene.sceneVersion);
     if (!board || localPatchBoardBlockedReason(board)) continue;
@@ -582,6 +585,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     const reviewOnlyReady = !!extraPlan && mine.every(row => row && (row.status === "GENERATED"
       || row.status === "FAILED" && extraPlan.reviewOnly.some(entry => entry.rowId === row.id)));
     if (advisory && (good || reviewOnlyReady) && scene.generationStatus !== "GENERATED") {
+      if (scene.sceneVersion === 12 && continuityPending && !mine.some(row => row && localPatchContinuityPending(row))) { pendingReviews++; continue; }
       if (reviewedScenes.has(scene.id)) { pendingReviews++; continue; }
       if (attention || paused) { pendingReviews++; continue; }
       try {
@@ -589,6 +593,11 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
           ...(options.hardDeadlineAt === undefined ? {} : { deadlineAt: options.hardDeadlineAt }) }, {
           fence, apiKey: deps.apiKey, judge: options.boardJudge, readBoardArt: deps.readBoardArt,
         });
+        if (automatic && !extraPlan && scene.sceneVersion === 12 && reviewed.costCents > 0) {
+          after = await c.db.targetVariantAsset.findMany({ where: { variant: LOCAL_PATCH_VARIANT, targetInstance: { gameScene: { gameId } } },
+            include: { targetInstance: { select: { targetId: true, gameSceneId: true } } } });
+          continuityPending = after.some(localPatchContinuityPending);
+        }
         if (reviewed.state === "blocked") {
           if (automatic) {
             await c.db.$transaction(async tx => { await fence(tx); await tx.gameScene.update({ where: { id: scene.id }, data: { generationStatus: "NEEDS_REGENERATION" } }); });

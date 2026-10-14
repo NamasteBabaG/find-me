@@ -14,6 +14,7 @@ import { fixedWorldJsonSha256 } from "./generation/fixed-world-materializer";
 import { auditWorldBudget } from "./generation/world-budget";
 import { PrismaWorldBudgetStore } from "@/infra/db/prisma-world-budget-store";
 import { boardWizardWorldId } from "./generation/board-conditioned-wizard";
+import { readNewQaWorldBudget } from "./generation/local-patch-qa-budget";
 import { rebindLocalPatchNotificationAvatar } from "./local-patch-notifications";
 
 async function assertLegacyMutation(c: Container, gameId: string) {
@@ -311,7 +312,8 @@ export async function localPatchCostForDisplay(c: Container, gameId: string) {
   try {
     const ledger = await new PrismaWorldBudgetStore(c.db).read(boardWizardWorldId(gameId));
     if (!ledger) return null;
-    const cost = auditWorldBudget(ledger.snapshot);
+    const grant = await readNewQaWorldBudget(c, boardWizardWorldId(gameId));
+    const cost = auditWorldBudget(ledger.snapshot, grant?.capMicroUsd ?? 5_000_000);
     return { settledMicroUsd: cost.settledMicroUsd, reservedMicroUsd: cost.reservedMicroUsd,
       unresolved: cost.held || cost.reservedMicroUsd > 0 || cost.pendingRequestKeys.length > 0,
       unknownCharges: cost.unknownRequestKeys.length, byScope: cost.byScope,

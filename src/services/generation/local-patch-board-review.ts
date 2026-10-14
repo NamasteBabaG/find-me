@@ -32,7 +32,7 @@ import { recoverPreparedLocalPatchReview } from "./local-patch-review-interrupti
 import { needsPlayerReview, playerReviewEnabled, PLAYER_REVIEW_MODE, PLAYER_REVIEW_VERSION } from "./local-patch-player-review";
 import { hasDualVisualReview } from "./visual-review-release";
 import { buyDualLocalPatchReview } from "./local-patch-dual-review";
-import { localPatchRetainedAnswerUndecided, qualityStageReader } from "./local-patch-dual-evidence";
+import { localPatchRetainedAnswerUndecided, localPatchContinuityPending, qualityStageReader } from "./local-patch-dual-evidence";
 
 export const LOCAL_PATCH_BOARD_REVIEW_VERSION = "local-patch-board-five-luna-low/v1";
 export const LOCAL_PATCH_STRICT_BOARD_REVIEW_VERSION = "local-patch-board-five-quality/v3-head-safe";
@@ -199,7 +199,7 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
   // New ordinary reviews need only the selected evidence. Do not reconstruct
   // all three large native panels unless replay requires the old full question.
   if (incremental && (!recovering || options.playerReview)) {
-    const unapproved = entries.filter(eligible);
+    const unapproved = entries.filter(eligible).sort((a, b) => Number(!localPatchContinuityPending(a.row)) - Number(!localPatchContinuityPending(b.row)));
     const oldKey = entries.length === board.hides.length ? localPatchBoardReviewKey(board.board, entries.map(e => e.row.attempts),
       LOCAL_PATCH_COMPOSITION_VERSION, scene.sceneVersion) : null;
     if (options.playerReview || !oldKey || unapproved.some(e => localPatchEvidenceRecovery(e.row)) || !await budget.readRequest(worldId, oldKey)) {

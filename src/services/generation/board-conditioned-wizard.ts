@@ -20,7 +20,7 @@ import { boardConditioningHash, prepareBoardConditionedSource } from "./board-co
 import { generateBoardConditionedAppearances, type BoardConditionedCheckpointStore } from "./board-conditioned-generation";
 import { prepareBoardConditionedPlayerBoard, bindBoardConditionedPlayerGame, type BoardConditionedPrivateAsset } from "./board-conditioned-player";
 import { boardWizardBudget, BOARD_WIZARD_CAP_MICRO_USD } from "./board-wizard-budget";
-import { type BudgetJson } from "./world-budget";
+import { type BudgetJson, type WorldBudgetOptions } from "./world-budget";
 import { sha256Bytes } from "./fixed-sprite";
 import type { Actor } from "../audit.service";
 import { purgeAdminAlertNotifications } from "../admin-alert-deletion";
@@ -33,6 +33,7 @@ import { needsBoardSourceRemeasurement } from "./board-wizard-source-remeasureme
 import { requireBoardWizardIdentityApproval } from "./board-wizard-identity-gate";
 import { readBoardWizardBudgetExtension } from "./board-wizard-budget-extension";
 import { readLocalPatchEmergencyBudget } from "./local-patch-budget-recovery";
+import { readNewQaWorldBudget } from "./local-patch-qa-budget";
 import { recoverBoardOccludedUpperBody, type BoardUpperBodyRecoveryRequest } from "./board-upper-body-recovery";
 import { prepareBoardUpperBodyRecoveryPlayerBoard, bindBoardUpperBodyRecoveryPlayerGame } from "./board-conditioned-player";
 
@@ -109,8 +110,8 @@ export function readBoardWizard(raw: string): Capsule {
 const scope = (gameId: string) => `${gameId}:board-wizard`;
 const assetId = (gameId: string, key: string) => `ast_bcw_${boardConditioningHash([gameId, key])}`;
 const assetPath = (id: string) => `private/board-wizard/${id}.png`;
-function budgetOf(c: Container, attempt = 1) { return boardWizardBudget(new CasWorldBudgetRepository(new PrismaWorldBudgetStore(c.db)), attempt, {},
-  async worldId => await readLocalPatchEmergencyBudget(c, worldId) ?? readBoardWizardBudgetExtension(c, worldId)); }
+function budgetOf(c: Container, attempt = 1, options: WorldBudgetOptions = {}) { return boardWizardBudget(new CasWorldBudgetRepository(new PrismaWorldBudgetStore(c.db)), attempt, options,
+  async worldId => await readNewQaWorldBudget(c, worldId) ?? await readLocalPatchEmergencyBudget(c, worldId) ?? readBoardWizardBudgetExtension(c, worldId)); }
 
 async function spendCheck(c: Container, ownerId: string, engine: "board-wizard" | "local-patch" = "board-wizard") {
   demand((engine === "local-patch" ? env().APP_ENV === "qa" : boardWizardEnabled()) && c.storage.id === "db", "QA generation is not explicitly enabled with durable storage");
@@ -136,7 +137,7 @@ async function spendCheck(c: Container, ownerId: string, engine: "board-wizard" 
  * switch somebody has to remember to turn off too.
  */
 export const boardWizardWorldId = (gameId: string) => scope(gameId);
-export const boardWizardBudgetOf = (c: Container, attempt = 1) => budgetOf(c, attempt);
+export const boardWizardBudgetOf = (c: Container, attempt = 1, options: WorldBudgetOptions = {}) => budgetOf(c, attempt, options);
 export const assertGenerationSpendAllowed = (c: Container, ownerId: string) => spendCheck(c, ownerId, "local-patch");
 
 /** Free route/asset preflight before identity spend. Unsupported worlds never fall through to the old painter. */

@@ -1,9 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import type { Container } from "../container";
-import { CasWorldBudgetRepository } from "../../infra/db/world-budget-repository";
-import { PrismaWorldBudgetStore } from "../../infra/db/prisma-world-budget-store";
 import { interruptedLocalPatchReviewRequest } from "../../domain/scene/local-patch-review-request";
-import { boardWizardBudget } from "./board-wizard-budget";
+import { boardWizardBudgetOf } from "./board-conditioned-wizard";
 import type { prepareLocalPatchBoardReview } from "./local-patch-board-review";
 import { fenceLocalPatchImages, LocalPatchRetainedPurchaseStore } from "./local-patch-lifecycle";
 import { sha256Bytes } from "./fixed-sprite";
@@ -57,7 +55,7 @@ export async function recoverPreparedLocalPatchReview(c: Container, prepared: Pr
     requestKey, scope: "judge", operationFingerprint: fingerprint, reserveMicroUsd: held.reserveMicroUsd,
     unknownReasons: held.unknownReasons, policyId: REVIEW_INTERRUPTION_POLICY, authorizationSha256: proofHash,
     authorizedAt: prior?.version === "world-automatic-review-recovery/v1" ? prior.authorizedAt : selected.row.updatedAt.toISOString() };
-  const recoveringBudget = boardWizardBudget(new CasWorldBudgetRepository(new PrismaWorldBudgetStore(c.db)), 1,
+  const recoveringBudget = boardWizardBudgetOf(c, 1,
     { authorizeAutomaticReviewRecovery: async captured => JSON.stringify(captured) === JSON.stringify(recovery) });
   try { await recoveringBudget.authorizeAutomaticReviewRecovery(worldId, recovery); }
   catch (error) {

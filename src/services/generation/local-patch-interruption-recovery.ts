@@ -1,8 +1,5 @@
 import type { Container } from "../container";
-import { CasWorldBudgetRepository } from "../../infra/db/world-budget-repository";
-import { PrismaWorldBudgetStore } from "../../infra/db/prisma-world-budget-store";
 import { fixedSourceFailureReceiptSchema } from "../../infra/generation/fixed-source-diagnostics";
-import { boardWizardBudget } from "./board-wizard-budget";
 import { boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { LocalPatchRetainedPurchaseStore, fenceLocalPatchImages } from "./local-patch-lifecycle";
 import { RETAINED_RENDER_VERSION } from "./local-patch-render";
@@ -89,7 +86,7 @@ export async function recoverLocalPatchImageInterruptions(c: Container, gameId: 
       requestKey, scope: "image", operationFingerprint: request.operationFingerprint, reserveMicroUsd: request.reserveMicroUsd,
       unknownReasons: request.unknownReasons, policyId: IMAGE_INTERRUPTION_POLICY, authorizationSha256: proofHash,
       authorizedAt: prior?.version === "world-automatic-image-recovery/v1" ? prior.authorizedAt : row.updatedAt.toISOString() };
-    const recoveringBudget = boardWizardBudget(new CasWorldBudgetRepository(new PrismaWorldBudgetStore(c.db)), 1,
+    const recoveringBudget = boardWizardBudgetOf(c, 1,
       { authorizeAutomaticImageRecovery: async captured => JSON.stringify(captured) === JSON.stringify(recovery) });
     try { await recoveringBudget.authorizeAutomaticImageRecovery(worldId, recovery); }
     catch (error) {

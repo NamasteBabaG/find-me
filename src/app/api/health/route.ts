@@ -1,11 +1,13 @@
 import { promises as dns } from "node:dns";
 import { qaAccessDenied } from "@/lib/server/qa-access";
 import { NextResponse } from "next/server";
+import { NEW_QA_WORLD_BUDGET_POLICY, NEW_QA_WORLD_CAP_MICRO_USD, newQaWorldBudgetEnabled } from "@/domain/generation/qa-world-budget-policy";
 import { getContainer } from "@/services/container";
 import { env } from "@/lib/env";
 import { BOARD_JUDGE_VERSION } from "@/infra/generation/board-verdict";
 import { deliverWithProblemsOf } from "@/services/container";
 import { visualReviewPolicy } from "@/domain/generation/visual-review-policy";
+import { DUAL_VISUAL_REVIEW_V3 } from "@/services/generation/visual-review-release";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,6 +47,9 @@ export async function GET(req: Request) {
       continuity: { model: visualReviewPolicy("head-continuity").model, effort: "high" } },
     // Which wording NEW hides and identities receive; stored ones keep their own.
     promptRelease: e.LOCAL_PATCH_PROMPT_RELEASE,
+    worldBudget: { newQaPolicy: newQaWorldBudgetEnabled({ appEnv: e.APP_ENV, storageId: e.STORAGE_PROVIDER ?? "",
+      promptRelease: e.LOCAL_PATCH_PROMPT_RELEASE, reviewRelease: e.LOCAL_PATCH_VISUAL_REVIEW === "dual-high-v3" ? DUAL_VISUAL_REVIEW_V3 : undefined })
+      ? { version: NEW_QA_WORLD_BUDGET_POLICY, capMicroUsd: NEW_QA_WORLD_CAP_MICRO_USD } : null, historicalDefaultCapMicroUsd: 5_000_000 },
     // CLI deploys carry no git sha; APP_COMMIT is set at deploy time so what is
     // checked can be shown to be what is deployed.
     commit: (process.env.APP_COMMIT ?? process.env.VERCEL_GIT_COMMIT_SHA ?? "local").slice(0, 7),

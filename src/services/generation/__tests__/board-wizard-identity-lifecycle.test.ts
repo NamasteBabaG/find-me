@@ -191,8 +191,8 @@ describe("QA identity lifecycle: real DB and synthetic provider only", () => {
       for (let tick = 0; tick < 2; tick++) {
         await runGenerationPipeline(f.c, f.id);
         expect(await f.game()).toMatchObject({ status: "AVATAR_GENERATING", configJson: null });
-        expect(await f.job()).toMatchObject({ status: "QUEUED", currentStep: "avatar" });
-        expect((await f.job()).lastError).toContain("five-dollar budget");
+        expect(await f.job()).toMatchObject({ status: "FAILED", currentStep: "local-patch:recovery-exhausted" });
+        expect((await f.job()).lastError).toContain("authorized 5 USD world budget");
       }
       expect(calls).toBe(1); expect(reviews).toBe(refusedScope === "identity" ? 1 : 0);
       expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } })).toEqual(before);

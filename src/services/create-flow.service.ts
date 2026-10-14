@@ -20,6 +20,7 @@ import { LOCAL_PATCH_STYLE } from "./generation/local-patch-world";
 import { INTEGRATED_COLLECTION_VERSION } from "../domain/scene/local-patch-versions";
 import { assertNoOutstandingCheckout, DraftCheckoutInProgress, hasOutstandingCheckout } from "./draft-checkout-lock";
 import { pinVisualReviewRelease } from "./generation/visual-review-release";
+import { pinNewQaWorldBudget } from "./generation/local-patch-qa-budget";
 import { detectiveRelease, storedSearchLevel, type SearchLevel } from "@/domain/search-level";
 import { DETECTIVE_RELEASES } from "../../content/worlds/detective-releases";
 import { pinSearchLevelChoice, searchLevelAsked } from "./search-level-policy";
@@ -55,7 +56,10 @@ export async function createDraft(c: Container, ownerId: string | null, locale: 
   const game = await c.db.$transaction(async tx => {
     const created = await tx.game.create({ data: { id: newId("game"), draftToken, ownerId, status: "DRAFT", locale,
       ...(styleVersion ? { styleVersion } : {}) } });
-    if (styleVersion === LOCAL_PATCH_STYLE && c.pinDualVisualReview) await pinVisualReviewRelease(tx, created.id, c.dualVisualReviewRelease);
+    if (styleVersion === LOCAL_PATCH_STYLE && c.pinDualVisualReview) {
+      await pinVisualReviewRelease(tx, created.id, c.dualVisualReviewRelease);
+      await pinNewQaWorldBudget(tx, created.id, c.storage?.id ?? "", c.dualVisualReviewRelease);
+    }
     if (options.askSearchLevel) await pinSearchLevelChoice(tx, created.id);
     return created;
   });

@@ -146,6 +146,19 @@ export function localPatchRetainedAnswerUndecided(row: { status: string; lastErr
   } catch { return false; }
 }
 
+/** Scheduling hint only. The paid review still verifies all durable evidence,
+ * pixels, questions and ownership; this helper never approves or dispatches. */
+export function localPatchContinuityPending(row: { status: string; judgeJson?: string | null }): boolean {
+  if (row.status !== "GENERATED") return false;
+  try {
+    const receipt = JSON.parse(row.judgeJson ?? "null"), proof = receipt?.dualQualityCheckpoint as DualReviewProof | undefined;
+    if (!proof || receipt.boardReview || !isDualVisualReviewVersion(proof.version) || !proof.quality || proof.continuity
+      || proof.hideId !== receipt.hide || proof.imageSha256 !== receipt.judgedSha256 || proof.geometrySha256 !== receipt.geometrySha256) return false;
+    const reader = qualityStageReader(proof.quality), verdict = readQualityStage(proof.quality, proof.hideId);
+    return reader !== null && localPatchQualityDisposition(verdict, 12, { hideId: proof.hideId, reader }).state === "acceptable";
+  } catch { return false; }
+}
+
 /**
  * Proof that a stage is the answer that was actually paid for: the world's own
  * settled bill, the retained envelope and the stage agree in every field. Pure

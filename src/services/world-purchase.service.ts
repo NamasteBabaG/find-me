@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { pinVisualReviewRelease } from "./generation/visual-review-release";
+import { pinNewQaWorldBudget } from "./generation/local-patch-qa-budget";
 import { createHash } from "node:crypto";
 import { validChildAge } from "@/domain/child-appearance";
 import { boardSlugs } from "@/domain/world";
@@ -125,6 +126,7 @@ export async function beginWorldPurchase(c: Container, input: WorldPurchaseInput
         if (styleVersion === "local-patch-world-v1" && c.pinDualVisualReview) {
           if (!c.visualReview) throw Error("Dual visual review credentials are not configured");
           await pinVisualReviewRelease(tx, gameId, c.dualVisualReviewRelease);
+          await pinNewQaWorldBudget(tx, gameId, c.storage?.id ?? "", c.dualVisualReviewRelease);
         }
         if (choice.shown) await pinSearchLevelChoice(tx, gameId);
         await tx.gameScene.createMany({ data: boards.map((slug, orderIndex) => ({ id: newId("gsc"), gameId, sceneSlug: slug, sceneVersion: sceneBySlug(slug, version).version, orderIndex })) });

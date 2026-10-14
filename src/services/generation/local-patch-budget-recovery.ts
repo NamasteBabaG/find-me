@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import type { Container } from "../container";
 import { env } from "../../lib/env";
+import { readNewQaWorldBudget } from "./local-patch-qa-budget";
 import { PrismaWorldBudgetStore, WORLD_BUDGET_LEDGER_MAX_REVISION } from "../../infra/db/prisma-world-budget-store";
 import { boardConditioningHash } from "./board-conditioned-source";
 import type { BoardWizardBudgetExtension } from "./board-wizard-budget";
@@ -68,6 +69,7 @@ export async function activateLocalPatchEmergencyBudget(c: Container, gameId: st
     await fenceLocalPatchImages(tx, gameId); await fence(tx);
     const game = await tx.game.findUniqueOrThrow({ where: { id: gameId }, include: { childProfile: true, scenes: true, orders: true } });
     if (!eligible(game) || game.status !== (stage === "identity" ? "AVATAR_GENERATING" : "TARGETS_GENERATING") || game.configJson || game.readyAt) return false;
+    if (await readNewQaWorldBudget({ ...c, db: tx as Container["db"] }, worldId)) return false;
     const previous = await tx.auditLog.findUnique({ where: { id: auditId } });
     // A single immutable grant is never stacked. A concurrent acknowledgement
     // uses the existing receipt, with no second dollar or new reservation.
@@ -95,8 +97,8 @@ export async function activateLocalPatchEmergencyBudget(c: Container, gameId: st
   }, { isolationLevel: "Serializable", timeout: 30_000 });
 }
 
-/** The generic five-dollar cap refuses before the narrower adapter can attach
- * reservation evidence. It can only defer an existing verified grant: never
+/** The generic verified cap refuses before the narrower adapter can attach
+ * reservation evidence. It can only park an exhausted existing verified grant: never
  * manufacture refusal metadata, extend again, reserve or alter paid evidence. */
 export async function deferLocalPatchIdentityAtAuthorizedCap(c: Container, gameId: string, error: unknown,
   expected: Pick<WorldReservationInput, "requestKey" | "scope" | "reserveMicroUsd">,
@@ -110,16 +112,18 @@ export async function deferLocalPatchIdentityAtAuthorizedCap(c: Container, gameI
   return c.db.$transaction(async tx => {
     await fenceLocalPatchImages(tx, gameId); await fence(tx);
     const game = await tx.game.findUniqueOrThrow({ where: { id: gameId } });
-    if (game.status !== "AVATAR_GENERATING" || game.configJson || game.readyAt
-      || !await readLocalPatchEmergencyBudget({ ...c, db: tx as Container["db"] }, worldId)) return false;
+    if (game.status !== "AVATAR_GENERATING" || game.configJson || game.readyAt) return false;
+    const transactional = { ...c, db: tx as Container["db"] };
+    const grant = await readNewQaWorldBudget(transactional, worldId) ?? await readLocalPatchEmergencyBudget(transactional, worldId);
+    if (!grant) return false;
     const stored = await PrismaWorldBudgetStore.forContinuationApprovalTransaction(tx).read(worldId);
     if (!stored) return false;
-    const audit = auditWorldBudget(stored.snapshot);
+    const audit = auditWorldBudget(stored.snapshot, grant.capMicroUsd);
     if (audit.held || audit.pendingRequestKeys.length || audit.overCapMicroUsd || audit.conflictRequestKeys.length || audit.overrunRequestKeys.length
       || stored.snapshot.requests.some(r => r.state === "unknown" || r.requestKey === expected.requestKey)
       || expected.reserveMicroUsd <= audit.remainingMicroUsd) return false;
-    await tx.generationJob.update({ where: { id: `job_${gameId}` }, data: { status: "QUEUED", currentStep: "avatar",
-      lastError: "Local-patch identity awaits capacity within the authorized five-dollar budget; no image approval is required" } });
+    await tx.generationJob.update({ where: { id: `job_${gameId}` }, data: { status: "FAILED", currentStep: "local-patch:recovery-exhausted",
+      lastError: "Local-patch identity has no automatic purchase within the authorized " + (grant.capMicroUsd / 1_000_000) + " USD world budget; service attention is required, not image approval" } });
     return true;
   }, { isolationLevel: "Serializable", timeout: 30_000 });
 }
