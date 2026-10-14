@@ -64,10 +64,16 @@ Labels are pinned before anything is bought. They come from earlier controlled r
 | Broken background join | B-a10 NY v17 (the taxi sign sliced at the seam); A-a10 NY v17 (the ledge cut at the crop's edge) | reject |
 | Unnatural object or body | A-a10 GW v16 and A-a3 GW v16 (a toy left floating in the air) | reject |
 | Wrong support | B-a10 NY v16 (feet on the taxi's roof sign) | reject |
-| Cut figure (built by an exact local edit) | two good paintings with the top of the head cut straight, back to the original board pixels | reject |
+| Cut figure (built by an exact local edit) | two good NY v19 paintings (A-a6, B-a10) with the top of the head returned to the original board's pixels in one reviewed rectangle | reject |
 | Weak likeness (built) | A's painting judged against B's portrait, and the reverse | reject |
 | Wrong age or scale (built) | a 10-year-old painting judged as age 3, and a 3-year-old judged as age 10 | reject |
-| Observe only, never counted | B-a6 NY v17 (the borderline doubled awning letters); the v16 seam-shift pictures | |
+| Observe only, never counted | B-a6 NY v17 (the borderline doubled awning letters); B-a10 Amazon-3 v16 (the 1 px seam shift) | |
+
+That makes 21 controls: 8 good, 11 reject, 2 observe-only.
+
+**How the cut figures are built.** Each is one rectangle of a good painting returned to the original board's pixels, from above the hair to just above the eyebrows.
+- **Chosen by eye.** The rectangle is chosen on a pixel grid and pinned with the result's SHA-256. Two automatic constructions left the head whole: the painter repaints the scenery around the child, so the difference from the board never isolates her.
+- **New York only.** Only New York's hide adds the child in front of plain scenery. Amazon-3 and Great Wall-1 replace a child the board already has, so a rectangle returned there grafts that child's hair onto ours. That is a different failure, and not this control.
 
 ### Measures and acceptance
 
@@ -86,17 +92,27 @@ These are measurements, not projections.
 
 ### Size and cap
 
-There are about 20 controls:
-- J1–J3: about 60 Sol questions at about $0.04–0.05 each.
-- J0 baseline: 11 new Opus questions at $0.10. The nine pv19 and gate pictures already have paid Opus v3 answers, and those are reused, not bought again.
+21 controls × 4 variants = 84 questions, one answer each, no retries.
+- **J0 is bought fresh for all 21.** Nine of these pictures already have paid Opus v3 answers from pv19, but those were asked with other bindings, inside the pipeline's worlds. The Sol variants must be compared with Opus on the same question text and evidence. The earlier answers become a free repeatability check. Reusing them would save about $0.93.
+- **Each variant buys in its own world.** The product refuses any world past $5, and the 84 questions together cost more. The runner's self-test caught this. The run's own cap spans the four worlds. Before any database is touched, the runner refuses if a world could reach $5 even if every answer cost its maximum (J0's worst case is $4.82).
 
-**Expected: about $3.8. Proposed cap: $5.50,** enforced by the ledger as in pv19.
+| Variant | Each, about | Total, about | Basis |
+| --- | ---: | ---: | --- |
+| J0 Opus HIGH | $0.103 | $2.16 | the nine pv19 Opus bills, $0.096–0.118 |
+| J1 Sol MEDIUM | $0.06 | $1.26 | the input bound and the pv19 Sol bills |
+| J2 short | $0.055 | $1.16 | |
+| J3 short and lean | $0.05 | $1.05 | |
+
+**Expected: about $5.6** ($5.0–6.2). **Proposed cap: $7.00,** enforced by the ledger as in pv19.
+- Each question reserves $0.25, and is admitted only if the most it can be billed fits that.
+- The run can therefore never commit more than the cap.
+- The earlier $3.8 and $5.50 assumed the reuse above and Sol at $0.04–0.05.
 
 ## 3. Experiment E2: the painter, in parallel
 
 | Variant | Model and quality | Size sent | Note |
 | --- | --- | --- | --- |
-| P0, baseline | gpt-image-2 MEDIUM | 768×1152 | existing paintings of the same cases; nothing bought |
+| P0, baseline | gpt-image-2 MEDIUM | 768×1152 | saved paintings from the same prompt where they exist; painted only for Amazon-3 (see below) |
 | P1 | **gpt-image-2 LOW** | 768×1152 | the same request in every other respect. The owner already accepted LOW for the earlier five-hide boards. |
 | P2 | **gpt-image-1-mini MEDIUM** | 1024×1536 | Mini takes only standard sizes; the output is reduced to the shipping 512×768 like today's |
 
@@ -111,16 +127,21 @@ There are about 20 controls:
 
 Mini LOW is left for later. A cheaper painter that needs more repairs can cost more in the end, so the measure is the **price per accepted hide**.
 
-**Cases.** New York 1, Great Wall 1 and Amazon 3, each for identities A and B at age 6: 6 cases per variant, 12 paintings in all.
+**Cases.** New York 1, Great Wall 1 and Amazon 3, each for identities A and B at age 6: 6 cases for P1 and for P2.
+
+**The MEDIUM baseline (P0)** must come from the same prompt:
+- **New York** has the pv19 v19 paintings.
+- **Great Wall:** the v17, v18 and v19 painter prompts are byte for byte the same there, so the v17 paintings serve. Both passed both reviews.
+- **Amazon 3** has only v15 and v16 paintings, from other prompts. P0 paints its two cases, so E2 buys 14 paintings, not 12.
 
 **Checks on each painting:**
-- the product's deterministic checks (seam and fixed scenery);
+- the product's deterministic checks (seam and fixed scenery). A painting they refuse is a result, recorded and not reviewed;
 - the current reviews (Opus v3 and Sol);
-- a contact sheet beside the P0 painting of the same case, for likeness and style by eye.
+- a contact sheet per case: the portrait, the MEDIUM painting, P1 and P2, for likeness and style by eye.
 
 Guy has the final word on likeness and style.
 
-**Expected: about $1.9** (paintings $0.2, reviews $1.6). **Proposed cap: $2.75.**
+**Expected: about $2.25** (paintings $0.31, reviews of up to 14 accepted paintings $1.94). **Proposed cap: $3.00.** The earlier $2.75 left out the two Amazon P0 paintings and their reviews.
 
 ## 4. What the product needs first
 
@@ -157,6 +178,6 @@ This is per world, at the QA world's retry mix. Each step's saving is measured b
 
 1. Commit the product opt-ins in focused, tested commits, then build the runners with a dry run.
 2. Codex reviews the code, the runners, the pinned controls and labels, and the caps.
-3. Guy approves E1 ($5.50) and E2 ($2.75), or either one.
+3. Guy approves E1 ($7.00) and E2 ($3.00), or either one.
 4. Run, report, and Codex reviews the results.
 5. Only then is anything adopted, in a new release that new drafts pin. Existing worlds keep their release.
