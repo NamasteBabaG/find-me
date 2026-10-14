@@ -37,6 +37,33 @@ describe("explicit two-provider visual review", () => {
     for (const changed of [{ ...q, effort: "high" as const }, { ...q, role: "head-continuity" as const }, { ...q, labels: ["different"] }, { ...q, images: [Buffer.from("different")] }])
       expect(prepareVisualReview(changed).fingerprint).not.toBe(fingerprint);
   });
+  it("asks Sol the quality question only when named: its own policy, fingerprint, transport, cap and rates", async () => {
+    // The standing judges' policies are unchanged, byte for byte, and naming the standing judge changes nothing.
+    expect(JSON.stringify(visualReviewPolicy("scene-quality"))).toBe(JSON.stringify({ version: "visual-review-scene-quality-high/v1", role: "scene-quality",
+      effort: "high", provider: "anthropic", model: "claude-opus-5-5", endpoint: "https://api.anthropic.com/v1/messages", maxOutputTokens: 6500,
+      timeoutMs: 240000, pricingVersion: "visual-review-standard-2026-10-08" }));
+    expect(visualReviewPolicy("scene-quality", "high", "claude-opus-5-5")).toEqual(visualReviewPolicy("scene-quality", "high"));
+    expect(visualReviewPolicy("head-continuity", "high", "gpt-6.1-sol")).toEqual(visualReviewPolicy("head-continuity", "high"));
+    const sol = visualReviewPolicy("scene-quality", "medium", "gpt-6.1-sol");
+    expect(sol).toEqual({ version: "visual-review-scene-quality-sol-medium/v1", role: "scene-quality", effort: "medium", provider: "openai",
+      model: "gpt-6.1-sol", endpoint: "https://api.openai.com/v1/chat/completions", maxOutputTokens: 6500, timeoutMs: 240000,
+      pricingVersion: "visual-review-standard-2026-10-08" });
+    expect(() => visualReviewPolicy("head-continuity", "high", "claude-opus-5-5")).toThrow("Unsupported visual review judge");
+    expect(() => visualReviewPolicy("scene-quality", "high", "gpt-5.6-sol" as never)).toThrow("Unsupported visual review judge");
+    // The same words and pictures asked of another judge are another purchase.
+    const q = question();
+    expect(prepareVisualReview({ ...q, judge: "gpt-6.1-sol" }).fingerprint).not.toBe(prepareVisualReview(q).fingerprint);
+    expect(prepareVisualReview({ ...q, judge: "claude-opus-5-5" }).fingerprint).toBe(prepareVisualReview(q).fingerprint);
+    // Sent to OpenAI at MEDIUM with the quality question's cap, and priced at Sol's rates.
+    const fetcher = vi.fn(async () => response({ model: "gpt-6.1-sol", choices: [{ message: { content: "{}" }, finish_reason: "stop" }],
+      usage: { prompt_tokens: 1000, completion_tokens: 500 } }));
+    expect(await requestVisualReview("synthetic-key", { ...q, judge: "gpt-6.1-sol" }, fetcher)).toMatchObject({ model: "gpt-6.1-sol", wireFault: null, costUnknown: false });
+    const call = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect(call[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(JSON.parse(call[1].body as string)).toMatchObject({ model: "gpt-6.1-sol", reasoning_effort: "medium", max_completion_tokens: 6500, store: false });
+    expect(visualReviewCharge(sol, "gpt-6.1-sol", { prompt_tokens: 1000, completion_tokens: 500 })).toEqual({ costCents: 0.75, costUnknown: false });
+    expect(visualReviewCharge(sol, "claude-opus-5-5", { input_tokens: 1000, output_tokens: 500 }).costUnknown).toBe(true);
+  });
   it("charges MED/HIGH at the same token rates and treats absent cache-write data conservatively", () => {
     for (const effort of ["medium", "high"] as const) {
       expect(visualReviewCharge(visualReviewPolicy("scene-quality", effort), "claude-opus-5-5", { input_tokens: 1000, output_tokens: 500 }))

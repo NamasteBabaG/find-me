@@ -1,7 +1,7 @@
 import { childBodyDirection } from "../../domain/child-body";
 import { REFRESHED_COLLECTION_VERSION, INTEGRATED_COLLECTION_VERSION } from "../../domain/scene/local-patch-versions";
 import { INTEGRATION_CHECKS, INTEGRATION_REVIEW_DIRECTION } from "./local-patch-integration";
-import { PLAYER_REVIEW_MODE, LEGACY_PLAYER_REVIEW_MODE, boundaryReviewInstructions, objectJoinInstructions, playerReviewInstructions } from "./local-patch-player-review";
+import { PLAYER_REVIEW_MODE, LEGACY_PLAYER_REVIEW_MODE, boundaryReviewInstructions, leanBoundaryReviewInstructions, objectJoinInstructions, playerReviewInstructions } from "./local-patch-player-review";
 import { NEIGHBOR_QUADRANTS, RETURN_EDGES, type NeighborComparison, type BoundaryComparison, type JoinDetail } from "./local-patch-integration-evidence";
 import type { PatchRegion } from "./local-patch-seam";
 /**
@@ -700,8 +700,9 @@ export type LocalPatchBoardJudgeRequest = {
   reviewScope?: "unapproved-only/v1" | "ready-only/v1";
   /** A new question on a new paid key; absent preserves historical wire bytes. */
   assessmentMode?: LocalPatchAssessmentMode;
-  /** Dual release v3's quality question. Absent: the historical question, byte for byte. */
-  qualityQuestion?: "object-joins/v1";
+  /** Dual release v3's quality question. Absent: the historical question, byte for byte.
+   * `object-joins-lean/v1` (cost experiment E1 only) omits the four return comparisons. */
+  qualityQuestion?: "object-joins/v1" | "object-joins-lean/v1";
   boardId: string; boardPng: Buffer; identityPng: Buffer; timeoutMs?: number;
   hides: readonly { hideId: string; beforePng: Buffer; afterPng: Buffer; closeupPng?: Buffer; afterEvidencePng?: Buffer; neighborComparisons?: readonly NeighborComparison[]; boundaryComparisons?: readonly BoundaryComparison[];
     /** The returned window in this hide's context coordinates; not wire evidence by itself. */ returnedWindow?: PatchRegion;
@@ -713,32 +714,35 @@ const objectJoins = (request: Pick<LocalPatchBoardJudgeRequest, "qualityQuestion
     if (request.hides.some(h => h.joinDetails)) throw Error("Join details belong only to the object-joins question");
     return false;
   }
-  if (request.qualityQuestion !== "object-joins/v1" || request.assessmentMode !== PLAYER_REVIEW_MODE
+  if (!["object-joins/v1", "object-joins-lean/v1"].includes(request.qualityQuestion) || request.assessmentMode !== PLAYER_REVIEW_MODE
     || request.hides.some(h => h.joinDetails?.length !== 4 || h.joinDetails.some((d, i) => d.edge !== RETURN_EDGES[i] || !d.png.length
       || !Number.isInteger(d.joinOffset) || d.joinOffset < 0 || ![2, 3].includes(d.scale))))
     throw Error("The object-joins question requires the player review and four magnified joins per hide");
   return true;
 };
+/** The player question's four return comparisons, unless the lean question omits them. */
+const returnStrips = (request: Pick<LocalPatchBoardJudgeRequest, "assessmentMode" | "qualityQuestion">) =>
+  request.assessmentMode === PLAYER_REVIEW_MODE && request.qualityQuestion !== "object-joins-lean/v1";
 /** Shared by transport and the paid fingerprint: neither may omit evidence. */
 export function localPatchBoardJudgeImages(request: LocalPatchBoardJudgeRequest): Buffer[] {
   const strict = isLocalPatchStrictVersion(request.contentVersion);
   if (strict && request.hides.some(hide => !hide.closeupPng?.length || !hide.afterEvidencePng?.length)) throw new Error("Strict board review requires five native AFTER closeup panels");
-  const boundary = request.assessmentMode === PLAYER_REVIEW_MODE, joins = objectJoins(request);
-  if (boundary && request.hides.some(h => h.boundaryComparisons?.length !== 4 || h.boundaryComparisons.some((p, i) => p.edge !== RETURN_EDGES[i] || !p.png.length
+  const boundary = request.assessmentMode === PLAYER_REVIEW_MODE, joins = objectJoins(request), strips = returnStrips(request);
+  if (strips && request.hides.some(h => h.boundaryComparisons?.length !== 4 || h.boundaryComparisons.some((p, i) => p.edge !== RETURN_EDGES[i] || !p.png.length
     || !Number.isInteger(p.joinOffset) || p.joinOffset < 0))) throw Error("Boundary review requires four continuous native return comparisons per hide");
   if (!boundary && request.contentVersion === INTEGRATED_COLLECTION_VERSION && request.hides.some(h => h.neighborComparisons?.length !== 4
     || h.neighborComparisons.some((p, i) => p.quadrant !== NEIGHBOR_QUADRANTS[i] || !p.png.length))) throw Error("Integration review requires four registered native neighbour comparisons per hide");
   return [request.boardPng, request.identityPng, ...request.hides.flatMap(hide => strict
-    ? [hide.beforePng, hide.afterEvidencePng!, ...(boundary ? hide.boundaryComparisons!.map(p => p.png) : request.contentVersion === INTEGRATED_COLLECTION_VERSION ? hide.neighborComparisons!.map(p => p.png) : []),
+    ? [hide.beforePng, hide.afterEvidencePng!, ...(boundary ? strips ? hide.boundaryComparisons!.map(p => p.png) : [] : request.contentVersion === INTEGRATED_COLLECTION_VERSION ? hide.neighborComparisons!.map(p => p.png) : []),
       ...(joins ? hide.joinDetails!.map(d => d.png) : [])]
     : [hide.beforePng, hide.afterPng])];
 }
 /** Stable identifiers, not ordinal image counting. These describe the actual
  * wire images (four more per hide for object joins); the native inset is part of AFTER, not an extra image. */
 export function localPatchBoardEvidenceIds(request: Pick<LocalPatchBoardJudgeRequest, "boardId" | "hides" | "contentVersion" | "assessmentMode" | "qualityQuestion">): string[] {
-  const joins = objectJoins(request);
+  const joins = objectJoins(request), strips = returnStrips(request);
   return [`${request.boardId}:original-board`, `${request.boardId}:canonical-portrait`,
-    ...request.hides.flatMap(hide => [...localPatchHideEvidenceIds(hide.hideId), ...(request.assessmentMode === PLAYER_REVIEW_MODE ? RETURN_EDGES.map(edge => `${hide.hideId}:return:${edge}`)
+    ...request.hides.flatMap(hide => [...localPatchHideEvidenceIds(hide.hideId), ...(request.assessmentMode === PLAYER_REVIEW_MODE ? strips ? RETURN_EDGES.map(edge => `${hide.hideId}:return:${edge}`) : []
       : request.contentVersion === INTEGRATED_COLLECTION_VERSION ? NEIGHBOR_QUADRANTS.map(q => `${hide.hideId}:neighbors:${q}`) : []),
       ...(joins ? RETURN_EDGES.map(edge => `${hide.hideId}:join:${edge}`) : [])])];
 }
@@ -748,14 +752,14 @@ export function localPatchHideEvidenceIds(hideId: string): [string, string] {
 /** Opt-in labels preserve old paid wire bytes. Shared by dispatch and fingerprint. */
 export function localPatchBoardJudgeImageLabels(request: Pick<LocalPatchBoardJudgeRequest, "boardId" | "hides" | "contentVersion" | "assessmentMode" | "qualityQuestion">): string[] | undefined {
   if (!isLocalPatchAgeVersion(request.contentVersion)) return undefined;
-  const joins = objectJoins(request);
+  const joins = objectJoins(request), strips = returnStrips(request);
   return [
     `EVIDENCE_ID=${request.boardId}:original-board | ROLE=REFERENCE_BOARD | Original whole-board context only; contains no generated target. This is not a BEFORE/AFTER pair.`,
     `EVIDENCE_ID=${request.boardId}:canonical-portrait | ROLE=CANONICAL_FACE_REFERENCE | Approved canonical face and hair authority only; not a hide, not a BEFORE/AFTER pair, and not target body-age authority.`,
     ...request.hides.flatMap(hide => [
       `EVIDENCE_ID=${hide.hideId}:before | HIDE_ID=${hide.hideId} | ROLE=BEFORE | Untouched original context for this hide only. Compare ONLY with EVIDENCE_ID=${hide.hideId}:after.`,
       `EVIDENCE_ID=${hide.hideId}:after | HIDE_ID=${hide.hideId} | ROLE=AFTER | One serial appearance. LEFT panel is actual player context; RIGHT panel beyond the white gutter is a native closeup of this SAME appearance, not another hide or an extra evidence image. Compare ONLY with EVIDENCE_ID=${hide.hideId}:before.`,
-      ...(request.assessmentMode === PLAYER_REVIEW_MODE ? hide.boundaryComparisons!.map(p => `EVIDENCE_ID=${hide.hideId}:return:${p.edge} | HIDE_ID=${hide.hideId} | ROLE=RETURN_BOUNDARY | ${p.edge} join at ${p.axis}=${p.joinOffset} native pixels within EACH panel; LEFT=BEFORE, RIGHT=AFTER. Continuous full-span context across this actual returned edge. Follow every crossing head, neck, torso and visible limb; distinguish coherent occlusion from half-erased anatomy. Outer crop edges are not return edges.`)
+      ...(request.assessmentMode === PLAYER_REVIEW_MODE ? !strips ? [] : hide.boundaryComparisons!.map(p => `EVIDENCE_ID=${hide.hideId}:return:${p.edge} | HIDE_ID=${hide.hideId} | ROLE=RETURN_BOUNDARY | ${p.edge} join at ${p.axis}=${p.joinOffset} native pixels within EACH panel; LEFT=BEFORE, RIGHT=AFTER. Continuous full-span context across this actual returned edge. Follow every crossing head, neck, torso and visible limb; distinguish coherent occlusion from half-erased anatomy. Outer crop edges are not return edges.`)
         : request.contentVersion === INTEGRATED_COLLECTION_VERSION ? NEIGHBOR_QUADRANTS.map(q => `EVIDENCE_ID=${hide.hideId}:neighbors:${q} | HIDE_ID=${hide.hideId} | ROLE=NEIGHBOR_COMPARISON | ${q} at native scale: LEFT=BEFORE original, RIGHT=AFTER player. Inspect EVERY head and connected body, including near all four image edges. One pair of the same location, not two targets.`) : []),
       ...(joins ? hide.joinDetails!.map(d => `EVIDENCE_ID=${hide.hideId}:join:${d.edge} | HIDE_ID=${hide.hideId} | ROLE=JOIN_DETAIL | the ${d.edge} returned join magnified ${d.scale}x: `
         + `${d.edge === "left" || d.edge === "right" ? "LEFT=BEFORE, RIGHT=AFTER" : "TOP=BEFORE, BOTTOM=AFTER"}. The red ticks in the white margin mark the join line, ${d.joinOffset} magnified pixels into each band. `
@@ -772,7 +776,10 @@ export function localPatchBoardJudgePrompt(request: Pick<LocalPatchBoardJudgeReq
       throw Error("Player assessment requires one age-bound integrated appearance");
     const hide = request.hides[0]!;
     const boundary = request.assessmentMode === PLAYER_REVIEW_MODE;
-    if (objectJoins(request)) return objectJoinPrompt(localPatchBoardJudgePrompt({ ...request, qualityQuestion: undefined, hides: request.hides.map(({ joinDetails: _joins, ...h }) => h) }));
+    if (objectJoins(request)) {
+      const historical = localPatchBoardJudgePrompt({ ...request, qualityQuestion: undefined, hides: request.hides.map(({ joinDetails: _joins, ...h }) => h) });
+      return objectJoinPrompt(request.qualityQuestion === "object-joins-lean/v1" ? leanJoinQuestion(historical) : historical);
+    }
     return [boundary ? playerReviewInstructions(hide.expectation!.ageYears!).replace("Review all four neighbour comparison quadrants, including below the target,", "Review all four continuous return boundaries, including below the target,") : playerReviewInstructions(hide.expectation!.ageYears!),
       boundary ? "Associate evidence ONLY by EVIDENCE_ID and HIDE_ID. REFERENCE_BOARD and CANONICAL_FACE_REFERENCE are not hides. AFTER LEFT is actual player context; RIGHT beyond the white gutter is a native closeup of the SAME child, not a duplicate. The FOUR continuous return comparisons use LEFT=BEFORE and RIGHT=AFTER. The boundary of an evidence crop is not the boundary of a generated patch."
         : "Associate evidence ONLY by EVIDENCE_ID and HIDE_ID. REFERENCE_BOARD and CANONICAL_FACE_REFERENCE are not hides. AFTER LEFT is actual player context; RIGHT beyond the white gutter is a native closeup of the SAME child, not a duplicate. The FOUR neighbour comparisons use LEFT=BEFORE and RIGHT=AFTER. The boundary of an evidence crop is not the boundary of a generated patch.",
@@ -807,6 +814,20 @@ export function localPatchBoardJudgePrompt(request: Pick<LocalPatchBoardJudgeReq
   return localPatchBoardJudgePromptForCount(request, "five");
 }
 
+/** Cost experiment E1's lean question: each mention of the return comparisons it
+ * omits points at the magnified joins of the same edges instead. Every rewrite must
+ * apply exactly once, or the historical question it starts from has changed. */
+function leanJoinQuestion(historical: string): string {
+  const rewrites: [string, string][] = [
+    ["Review all four continuous return boundaries, including below the target,", "Review all four magnified joins, including below the target,"],
+    [" The FOUR continuous return comparisons use LEFT=BEFORE and RIGHT=AFTER.", " The FOUR JOIN_DETAIL images magnify the four returned edges."],
+    [boundaryReviewInstructions, leanBoundaryReviewInstructions],
+  ];
+  return rewrites.reduce((prompt, [from, to]) => {
+    if (prompt.split(from).length !== 2) throw Error("The lean question rewrites each return-comparison mention exactly once");
+    return prompt.replace(from, () => to);
+  }, historical);
+}
 /** The object-joins question: the historical player question, the join paragraph
  * before the answer schema, and boundary observations that name objects too. */
 function objectJoinPrompt(historical: string): string {

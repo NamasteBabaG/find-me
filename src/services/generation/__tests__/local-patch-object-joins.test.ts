@@ -2,9 +2,10 @@ import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import { prepareBoundaryComparisons, prepareJoinDetails, JOIN_DETAIL_HALF, JOIN_DETAIL_MARGIN } from "../local-patch-integration-evidence";
 import { localPatchBoardEvidenceIds, localPatchBoardJudgeImageLabels, localPatchBoardJudgeImages, localPatchBoardJudgePrompt, type LocalPatchBoardJudgeRequest } from "../local-patch-judge";
-import { objectJoinInstructions, PLAYER_REVIEW_MODE, LEGACY_PLAYER_REVIEW_MODE } from "../local-patch-player-review";
-import { dualQualityRequest } from "../local-patch-dual-review";
-import { DUAL_VISUAL_REVIEW_V2, DUAL_VISUAL_REVIEW_V3, DUAL_VISUAL_REVIEW_VERSION, QUALITY_QUESTION_OBJECT_JOINS, qualityQuestionFor } from "../visual-review-release";
+import { boundaryReviewInstructions, leanBoundaryReviewInstructions, objectJoinInstructions, PLAYER_REVIEW_MODE, LEGACY_PLAYER_REVIEW_MODE } from "../local-patch-player-review";
+import { dualQualityQuestion, dualQualityRequest, QUALITY_ANSWER_SHORT_WHEN_PASSING } from "../local-patch-dual-review";
+import { DUAL_VISUAL_REVIEW_V2, DUAL_VISUAL_REVIEW_V3, DUAL_VISUAL_REVIEW_VERSION, QUALITY_QUESTION_OBJECT_JOINS, QUALITY_QUESTION_OBJECT_JOINS_LEAN,
+  qualityQuestionFor } from "../visual-review-release";
 
 const GRAY = { r: 120, g: 120, b: 120 }, RED = [255, 0, 0], TICK = [224, 0, 0];
 const flat = (width: number, height: number) => sharp({ create: { width, height, channels: 3, background: GRAY } }).png().toBuffer();
@@ -103,5 +104,46 @@ describe("the object-joins question", () => {
     expect(() => localPatchBoardJudgeImages({ ...asked, assessmentMode: LEGACY_PLAYER_REVIEW_MODE })).toThrow("four magnified joins");
     const { returnedWindow: _w, ...unregistered } = request.hides[0]!;
     await expect(dualQualityRequest(DUAL_VISUAL_REVIEW_V3, { ...request, hides: [unregistered] })).rejects.toThrow("registered return window");
+  });
+});
+
+describe("the lean object-joins question (cost experiment E1)", () => {
+  it("is v3's question without the four return comparisons: eight images, their ids and labels, and three exact rewrites", async () => {
+    const v3 = await dualQualityRequest(DUAL_VISUAL_REVIEW_V3, await playerRequest()), lean = { ...v3, qualityQuestion: QUALITY_QUESTION_OBJECT_JOINS_LEAN };
+    const full = { images: localPatchBoardJudgeImages(v3), ids: localPatchBoardEvidenceIds(v3), labels: localPatchBoardJudgeImageLabels(v3)!, prompt: localPatchBoardJudgePrompt(v3) };
+    const images = localPatchBoardJudgeImages(lean), ids = localPatchBoardEvidenceIds(lean), labels = localPatchBoardJudgeImageLabels(lean)!;
+    // Board, portrait, BEFORE, AFTER and the four joins, in v3's order: only the return comparisons (images 5-8) are gone.
+    expect(images).toHaveLength(8);
+    expect(images).toEqual([...full.images.slice(0, 4), ...full.images.slice(8)]);
+    expect(ids).toEqual([...full.ids.slice(0, 4), ...full.ids.slice(8)]);
+    expect(labels).toEqual([...full.labels.slice(0, 4), ...full.labels.slice(8)]);
+    expect(ids.some(id => id.includes(":return:"))).toBe(false);
+    const prompt = localPatchBoardJudgePrompt(lean);
+    expect(prompt).not.toMatch(/RETURN_BOUNDARY|return comparisons|return boundaries/);
+    expect(prompt).toContain(objectJoinInstructions); expect(prompt).toContain(leanBoundaryReviewInstructions);
+    // Undo the three rewrites and the lean question is v3's, byte for byte.
+    expect(prompt.replace(leanBoundaryReviewInstructions, () => boundaryReviewInstructions)
+      .replace(" The FOUR JOIN_DETAIL images magnify the four returned edges.", " The FOUR continuous return comparisons use LEFT=BEFORE and RIGHT=AFTER.")
+      .replace("Review all four magnified joins, including below the target,", "Review all four continuous return boundaries, including below the target,")).toBe(full.prompt);
+    // The boundary rules after the first line are v3's own.
+    expect(leanBoundaryReviewInstructions.split("\n").slice(1)).toEqual(boundaryReviewInstructions.split("\n").slice(1));
+    // Without its joins the lean question is refused like v3's.
+    const bare = await playerRequest();
+    expect(() => localPatchBoardJudgeImages({ ...bare, qualityQuestion: QUALITY_QUESTION_OBJECT_JOINS_LEAN })).toThrow("four magnified joins");
+  });
+
+  it("asks today's quality question unless a variant is named, and each named variant is its own purchase", async () => {
+    const v3 = await dualQualityRequest(DUAL_VISUAL_REVIEW_V3, await playerRequest()), binding = { version: DUAL_VISUAL_REVIEW_V3, hideId: "newyork-v12-1" };
+    const today = dualQualityQuestion(v3, binding, 1);
+    expect(today).toMatchObject({ role: "scene-quality", effort: "high", policy: { model: "claude-opus-5-5", effort: "high" } });
+    expect(today.prompt).toBe(`${localPatchBoardJudgePrompt(v3)}\nImmutable candidate binding: ${JSON.stringify(binding)}. Evidence attempt: 1.`);
+    expect(dualQualityQuestion(v3, binding, 1, "standard/v1", {}).fingerprint).toBe(today.fingerprint);
+    const sol = dualQualityQuestion(v3, binding, 1, "standard/v1", { judge: "gpt-6.1-sol", effort: "medium" });
+    expect(sol.policy).toMatchObject({ provider: "openai", model: "gpt-6.1-sol", effort: "medium", maxOutputTokens: 6500 });
+    expect(sol.prompt).toBe(today.prompt);
+    const short = dualQualityQuestion(v3, binding, 1, "standard/v1", { judge: "gpt-6.1-sol", effort: "medium", answer: QUALITY_ANSWER_SHORT_WHEN_PASSING });
+    expect(short.prompt.startsWith(localPatchBoardJudgePrompt(v3) + "\nANSWER LENGTH: for every check that passes")).toBe(true);
+    expect(short.prompt).toMatch(/never omit, merge or soften a failure, a required field or an evidence ID to save space\.\nImmutable candidate binding: /);
+    expect(new Set([today, sol, short].map(q => q.fingerprint)).size).toBe(3);
   });
 });

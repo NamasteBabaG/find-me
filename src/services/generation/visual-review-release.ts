@@ -14,6 +14,9 @@ export type DualVisualReviewVersion = typeof DUAL_VISUAL_REVIEW_VERSIONS[number]
 /** The quality question a pinned release asks: v1 and v2 ask the historical one. */
 export const QUALITY_QUESTION_OBJECT_JOINS = "object-joins/v1";
 export const qualityQuestionFor = (version: DualVisualReviewVersion) => version === DUAL_VISUAL_REVIEW_V3 ? QUALITY_QUESTION_OBJECT_JOINS : undefined;
+/** Cost experiment E1 only, never pinned by a release: the object-joins question without
+ * the four return comparisons, whose pixels the contexts and joins already carry. */
+export const QUALITY_QUESTION_OBJECT_JOINS_LEAN = "object-joins-lean/v1" as const;
 export const DUAL_VISUAL_REVIEW_ACTION = "generation:visual-review-policy";
 const idOf = (gameId: string) => `aud_visual_policy_${gameId}`;
 const policy = (version: DualVisualReviewVersion) => ({ version,

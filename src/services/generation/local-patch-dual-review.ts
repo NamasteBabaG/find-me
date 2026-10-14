@@ -21,6 +21,7 @@ import { recoverPreparedLocalPatchReview } from "./local-patch-review-interrupti
 import { localPatchEvidenceHistory, localPatchEvidenceRecovery, evidenceKindOfWireFault } from "./local-patch-review-recovery";
 import { DUAL_VISUAL_REVIEW_V2, DUAL_VISUAL_REVIEW_V3, DUAL_VISUAL_REVIEW_VERSION, dualVisualReviewVersion, qualityQuestionFor, QUALITY_QUESTION_OBJECT_JOINS, type DualVisualReviewVersion } from "./visual-review-release";
 import { prepareJoinDetails } from "./local-patch-integration-evidence";
+import type { VisualReviewEffort, VisualReviewJudge } from "../../domain/generation/visual-review-policy";
 import type { BudgetJson } from "./world-budget";
 import type { WorldBudgetRequest } from "../../domain/generation/world-budget";
 import { dualQuestionReserveMicroUsd, type DualReviewRole } from "../../domain/generation/dual-review-reserve";
@@ -250,12 +251,25 @@ export async function dualQualityRequest(version: DualVisualReviewVersion, reque
   })) };
 }
 
+/** Cost experiment E1 only: the answer stays short for every check that passes, and a
+ * failure keeps its full located detail. The reader's 12-character minimum still holds. */
+export const QUALITY_ANSWER_SHORT_WHEN_PASSING = "short-when-passing/v1" as const;
+const SHORT_WHEN_PASSING = "\nANSWER LENGTH: for every check that passes, keep each required observation to one short sentence of 3 to 20 words, "
+  + "and the reason to one sentence. For every check that fails, give its faults entry with the exact check, the visible location and the defect in at most 300 characters. "
+  + "Shorten only what passes; never omit, merge or soften a failure, a required field or an evidence ID to save space.";
+/** Who answers the quality question, at what effort, in what length. Absent: today's
+ * question exactly (Opus, HIGH, full answer). Anything else is a separate experiment. */
+export type DualQualityVariant = { readonly judge?: VisualReviewJudge; readonly effort?: VisualReviewEffort;
+  readonly answer?: typeof QUALITY_ANSWER_SHORT_WHEN_PASSING };
+
 /** The quality question about one appearance: the scene question, its recovery
  * strategy's addendum and the immutable binding, byte for byte as it is bought. */
-export function dualQualityQuestion(request: Prepared["request"], binding: object, attempt: number, strategy: EvidenceStrategy = STANDARD) {
-  const quality = sceneQualityQuestion(request, "high");
-  return prepareVisualReview({ ...quality, prompt: quality.prompt + qualityAddendum(strategy)
-    + `\nImmutable candidate binding: ${JSON.stringify(binding)}. Evidence attempt: ${attempt}.` });
+export function dualQualityQuestion(request: Prepared["request"], binding: object, attempt: number, strategy: EvidenceStrategy = STANDARD,
+  variant: DualQualityVariant = {}) {
+  const quality = sceneQualityQuestion(request, variant.effort ?? "high");
+  return prepareVisualReview({ ...quality, ...(variant.judge ? { judge: variant.judge } : {}),
+    prompt: quality.prompt + qualityAddendum(strategy) + (variant.answer === QUALITY_ANSWER_SHORT_WHEN_PASSING ? SHORT_WHEN_PASSING : "")
+      + `\nImmutable candidate binding: ${JSON.stringify(binding)}. Evidence attempt: ${attempt}.` });
 }
 
 /** The candidate a dual question is bound to: its pixels, geometry, identity and attempt. */

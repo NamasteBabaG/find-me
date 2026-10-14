@@ -20,7 +20,7 @@ import { InProcessJobRunner } from "@/infra/jobs/in-process";
 import { InlineJobRunner } from "@/infra/jobs/inline";
 import { DbStorage } from "@/infra/storage/db";
 import { runGenerationPipeline } from "./generation/pipeline";
-import { requestVisualReview, type VisualReviewQuestion } from "./generation/visual-review";
+import { prepareVisualReview, requestVisualReview, type VisualReviewQuestion } from "./generation/visual-review";
 import type { LocalPatchJudgeResult } from "./generation/local-patch-judge";
 import { DUAL_VISUAL_REVIEW_V2, DUAL_VISUAL_REVIEW_V3, DUAL_VISUAL_REVIEW_VERSION, type DualVisualReviewVersion } from "./generation/visual-review-release";
 
@@ -124,7 +124,8 @@ function build(): Container {
     // is disabled. Missing credentials fail before a paid reservation.
     ...(e.GENERATION_PROVIDER === "openai" && e.ANTHROPIC_API_KEY?.trim() && e.OPENAI_API_KEY?.trim()
       ? { visualReview: { request: (question: VisualReviewQuestion, timeoutMs?: number) =>
-        requestVisualReview(question.role === "scene-quality" ? e.ANTHROPIC_API_KEY! : e.OPENAI_API_KEY!, question, fetch, timeoutMs) } } : {}),
+        // The key follows the provider that answers, not the role: Sol may answer the quality question.
+        requestVisualReview(prepareVisualReview(question).policy.provider === "anthropic" ? e.ANTHROPIC_API_KEY! : e.OPENAI_API_KEY!, question, fetch, timeoutMs) } } : {}),
   };
 
   container.jobs.register("generate-game", ({ gameId }) => runGenerationPipeline(container, gameId));

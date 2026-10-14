@@ -11,6 +11,14 @@ export const boundaryReviewInstructions = [
   "Clean complete removal or replacement of a bystander still PASSES. Do not enforce original crowd count, exact pose or microscopic paint matching. For EACH edge return boundaryIntegrity with status pass|fail|unsure and an observation identifying the crossing people/objects and their continuity. A clear broken connection must be fail; do not soften it to unsure. A boundary failure is a pictureWhole defect and triggers automatic repair; the engine never accepts an overall pass that contradicts it.",
 ].join("\n");
 
+/** Cost experiment E1's lean question (`object-joins-lean/v1`): the same boundary rules,
+ * read from the four magnified joins and the full contexts instead of the return
+ * comparisons it omits, whose pixels those images already carry. */
+export const leanBoundaryReviewInstructions = [
+  "Before the overall verdict inspect the FOUR JOIN_DETAIL images, one magnified band for each actual returned edge, BEFORE beside AFTER, together with the full AFTER context. The outer evidence crop edge is not a game cut. Follow every intersecting head through its neck, shoulders, torso and visible hands on BOTH sides of that join. Never describe a whole crowd as intact without checking these connections.",
+  ...boundaryReviewInstructions.split("\n").slice(1),
+].join("\n");
+
 /** Dual release v3 only (`object-joins/v1`). The v17 render's B-a10 shipped a new taxi
  * sign joined to the original's lower half; Opus saw "slightly softened lettering"
  * and passed it. The break is named here as a break, and coherent change still passes. */

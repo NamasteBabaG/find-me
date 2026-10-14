@@ -8,10 +8,10 @@ import { DUAL_REVIEW_LEGACY_RESERVE_MICRO_USD, DUAL_REVIEW_RESERVES_MICRO_USD, D
 import type { EvidenceStrategy } from "../../../domain/scene/local-patch-evidence-policy";
 import { PLAYER_REVIEW_MODE } from "../local-patch-player-review";
 import { prepareBoundaryComparisons, prepareJoinDetails } from "../local-patch-integration-evidence";
-import { dualQualityQuestion, runtimeContinuityQuestion } from "../local-patch-dual-review";
+import { dualQualityQuestion, QUALITY_ANSWER_SHORT_WHEN_PASSING, runtimeContinuityQuestion } from "../local-patch-dual-review";
 import type { LocalPatchBoardJudgeRequest } from "../local-patch-judge";
 import { visualReviewMaxCharge, type PreparedVisualReview } from "../visual-review";
-import { DUAL_VISUAL_REVIEW_V3, QUALITY_QUESTION_OBJECT_JOINS } from "../visual-review-release";
+import { DUAL_VISUAL_REVIEW_V3, QUALITY_QUESTION_OBJECT_JOINS, QUALITY_QUESTION_OBJECT_JOINS_LEAN } from "../visual-review-release";
 
 const opus = visualReviewPolicy("scene-quality", "high"), sol = visualReviewPolicy("head-continuity", "high");
 const micro = (charge: { costCents: number; costUnknown: boolean }) => { expect(charge.costUnknown).toBe(false); return Math.ceil(charge.costCents * 10_000); };
@@ -61,6 +61,17 @@ describe("bounded dual review reservations", () => {
       expect(most.outputTokens).toBe(role === "quality" ? 6_500 : 4_096);
       expect(most.microUsd).toBeLessThanOrEqual(DUAL_REVIEW_V3_RESERVE_MICRO_USD[role]);
     }
+  });
+
+  it("admit cost experiment E1's Sol quality variants at their largest, full, short or lean, under the same quality reservation", async () => {
+    const request = await largestRequest(), lean = { ...request, qualityQuestion: QUALITY_QUESTION_OBJECT_JOINS_LEAN };
+    for (const [asked, answer] of [[request, undefined], [request, QUALITY_ANSWER_SHORT_WHEN_PASSING], [lean, QUALITY_ANSWER_SHORT_WHEN_PASSING]] as const)
+      for (const strategy of STRATEGIES.quality) {
+        const question = dualQualityQuestion(asked, BINDING, 99, strategy, { judge: "gpt-6.1-sol", effort: "medium", ...(answer ? { answer } : {}) });
+        expect(question.policy.model).toBe("gpt-6.1-sol");
+        const most = visualReviewMaxCharge(question);
+        expect(most.ok && most.outputTokens === 6_500 && most.microUsd <= DUAL_REVIEW_V3_RESERVE_MICRO_USD.quality).toBe(true);
+      }
   });
 
   it("price the most a question can be billed at or above every bill the rate card accepts within its bounds", async () => {
