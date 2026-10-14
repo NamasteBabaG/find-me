@@ -8,7 +8,7 @@ import { nextLocalPatchEvidenceStep, type EvidenceAttempt, type EvidenceDiagnosi
 import { CURRENT_CONTINUITY_READER, CURRENT_QUALITY_READER, qualityReaderReadsMore, qualityStageReader, readQualityStage, verifiedDualStage, visualStageReadable,
   type ContinuityReReading, type DualReviewProof, type DualReviewStage, type DualStageBase, type QualityReReading, type QualityStage } from "./local-patch-dual-evidence";
 import { localPatchCrowdContinuityPrompt, localPatchHeadContinuityPrompt } from "./local-patch-body-continuity";
-import { prepareVisualReview, sceneQualityQuestion, parseVisualSceneVerdicts, diagnoseVisualSceneAnswer, type PreparedVisualReview } from "./visual-review";
+import { prepareVisualReview, sceneQualityQuestion, parseVisualSceneVerdicts, diagnoseVisualSceneAnswer, visualReviewMaxCharge, type PreparedVisualReview } from "./visual-review";
 import type { LocalPatchJudgeResult, LocalPatchBoardJudgeResult, QualityReader, QualityReadFault } from "./local-patch-judge";
 import { QUALITY_READER_STRICT, localPatchQualityDisposition, parseLocalPatchVerdict } from "./local-patch-judge";
 import type { prepareLocalPatchBoardReview, LocalPatchBoardReviewDeps } from "./local-patch-board-review";
@@ -22,7 +22,8 @@ import { localPatchEvidenceHistory, localPatchEvidenceRecovery, evidenceKindOfWi
 import { DUAL_VISUAL_REVIEW_V2, DUAL_VISUAL_REVIEW_V3, DUAL_VISUAL_REVIEW_VERSION, dualVisualReviewVersion, qualityQuestionFor, QUALITY_QUESTION_OBJECT_JOINS, type DualVisualReviewVersion } from "./visual-review-release";
 import { prepareJoinDetails } from "./local-patch-integration-evidence";
 import type { BudgetJson } from "./world-budget";
-import { dualQuestionReserveMicroUsd } from "../../domain/generation/dual-review-reserve";
+import type { WorldBudgetRequest } from "../../domain/generation/world-budget";
+import { dualQuestionReserveMicroUsd, type DualReviewRole } from "../../domain/generation/dual-review-reserve";
 
 type Prepared = Extract<Awaited<ReturnType<typeof prepareLocalPatchBoardReview>>, { ready: true }>;
 type Bought = Extract<PurchaseOutcome, { kind: "bought" }>;
@@ -249,14 +250,27 @@ export async function dualQualityRequest(version: DualVisualReviewVersion, reque
   })) };
 }
 
-async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoardReviewDeps, version: DualVisualReviewVersion, deadlineAt: number | undefined,
-  options: { decideRetained?: boolean }): Promise<Waiting | Reviewed> {
-  const { request, entries, game, budget, worldId, evidenceReviewAttempt } = prepared;
-  const hideId = request.hides[0]!.hideId, entry = entries.find(e => e.hide.id === hideId)!;
-  const binding = { version, gameId: game.id, sceneId: prepared.scene.id, hideId,
+/** The quality question about one appearance: the scene question, its recovery
+ * strategy's addendum and the immutable binding, byte for byte as it is bought. */
+export function dualQualityQuestion(request: Prepared["request"], binding: object, attempt: number, strategy: EvidenceStrategy = STANDARD) {
+  const quality = sceneQualityQuestion(request, "high");
+  return prepareVisualReview({ ...quality, prompt: quality.prompt + qualityAddendum(strategy)
+    + `\nImmutable candidate binding: ${JSON.stringify(binding)}. Evidence attempt: ${attempt}.` });
+}
+
+/** The candidate a dual question is bound to: its pixels, geometry, identity and attempt. */
+function dualBinding(prepared: Prepared, version: DualVisualReviewVersion) {
+  const hideId = prepared.request.hides[0]!.hideId, entry = prepared.entries.find(e => e.hide.id === hideId)!;
+  return { version, gameId: prepared.game.id, sceneId: prepared.scene.id, hideId,
     variantId: entry.row.id, imageSha256: entry.imageSha256, geometrySha256: entry.geometrySha256,
     identitySha256: sha256Bytes(prepared.sheet), attempts: entry.row.attempts };
-  if (options.decideRetained) return decideRetainedAnswer(c, prepared, version, binding);
+}
+
+/** The questions a dual review asks about one prepared appearance, built exactly
+ * as they are bought. Read-only: the purchase and the dry-run planner share it. */
+async function dualQuestions(prepared: Prepared, version: DualVisualReviewVersion) {
+  const { request, entries, evidenceReviewAttempt } = prepared;
+  const binding = dualBinding(prepared, version), hideId = binding.hideId, entry = entries.find(e => e.hide.id === hideId)!;
   const priorReceipt = JSON.parse(entry.row.judgeJson!);
   const prior = (priorReceipt.boardReview?.dual ?? priorReceipt.dualQualityCheckpoint) as DualReviewProof | undefined;
   // The recovery policy chose this round's question for the role that failed.
@@ -267,22 +281,77 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
   const oldQuality = prior?.quality;
   // Read as its own decision was made: under its named reader, or its verified re-reading.
   const oldVerdict = oldQuality ? readQualityStage(oldQuality, hideId) : null;
-  const reuse = prior?.imageSha256 === binding.imageSha256 && oldQuality && Number.isSafeInteger(oldQuality.attempt)
+  const reuse = prior?.imageSha256 === binding.imageSha256 && !!oldQuality && Number.isSafeInteger(oldQuality.attempt)
     && oldQuality.attempt > 0 && localPatchQualityDisposition(oldVerdict ?? null, 12, { hideId, reader: qualityStageReader(oldQuality) ?? QUALITY_READER_STRICT }).state === "acceptable";
   const qualityAttempt = reuse ? oldQuality!.attempt : evidenceReviewAttempt;
   const qualityStrategy = reuse ? oldQuality!.strategy ?? STANDARD : strategyFor("quality");
-  const quality = sceneQualityQuestion(request, "high");
-  const q = prepareVisualReview({ ...quality, prompt: quality.prompt + qualityAddendum(qualityStrategy)
-    + `\nImmutable candidate binding: ${JSON.stringify(binding)}. Evidence attempt: ${qualityAttempt}.` });
+  const q = dualQualityQuestion(request, binding, qualityAttempt, qualityStrategy);
+  const continuityStrategy = strategyFor("continuity");
+  return { binding, entry, priorReceipt, reuse, q, qualityAttempt, qualityStrategy, continuityStrategy,
+    anatomy: () => runtimeContinuityQuestion(prepared, binding, evidenceReviewAttempt, version, continuityStrategy) };
+}
+
+export type DualQuestionAdmission = {
+  readonly requestKey: string; readonly role: DualReviewRole; readonly reserveMicroUsd: number;
+  /** Already in the ledger: replayed, awaited or held there, never reserved again. */
+  readonly existing: WorldBudgetRequest["state"] | null;
+  /** The most a NEW question can be billed (visualReviewMaxCharge); null for an existing key. */
+  readonly maxChargeMicroUsd: number | null;
+  /** Why a new question may not be reserved or sent, or null. */
+  readonly refused: string | null;
+};
+/**
+ * What buying a dual question reserves, and whether it may be bought. A key
+ * already in the ledger keeps the reservation it was made with and is never
+ * reserved again. A new question reserves its release's amount for its role
+ * (dual-review-reserve.ts) and is admitted only when the most it can be billed,
+ * computed from the exact request, fits that amount. Read-only.
+ */
+export async function dualQuestionAdmission(budget: Pick<Prepared["budget"], "readRequest">, worldId: string, boardId: string,
+  version: DualVisualReviewVersion, question: PreparedVisualReview): Promise<DualQuestionAdmission> {
+  const requestKey = `self-repair:board:${boardId}:${question.fingerprint}`, role: DualReviewRole = question.role === "scene-quality" ? "quality" : "continuity";
+  const stored = await budget.readRequest(worldId, requestKey);
+  const reserveMicroUsd = dualQuestionReserveMicroUsd(stored?.reserveMicroUsd, version === DUAL_VISUAL_REVIEW_V3, role);
+  if (stored) return { requestKey, role, reserveMicroUsd, existing: stored.state, maxChargeMicroUsd: null, refused: null };
+  const most = visualReviewMaxCharge(question);
+  const refused = !most.ok ? `the ${role} question cannot be bounded: ${most.reason}`
+    : most.microUsd > reserveMicroUsd ? `the ${role} question could be billed up to ${most.microUsd} micro-USD `
+      + `(${most.inputTokens} input and ${most.outputTokens} output tokens), more than its ${reserveMicroUsd} reservation` : null;
+  return { requestKey, role, reserveMicroUsd, existing: null, maxChargeMicroUsd: most.ok ? most.microUsd : null, refused };
+}
+
+/**
+ * The next purchase a dual review of this prepared appearance makes, read-only
+ * (the dry-run planner): its quality question; or, once a passing quality answer
+ * for these exact pixels is settled (it replays for free), its continuity
+ * question. Null when no dual purchase follows: not a single ready v12
+ * appearance, or a settled quality answer without that passing record, which
+ * is replayed and decided first.
+ */
+export async function nextDualReviewPurchase(prepared: Prepared, version: DualVisualReviewVersion): Promise<DualQuestionAdmission | null> {
+  if (prepared.scene.sceneVersion !== 12 || prepared.extraPlan || prepared.request.reviewScope !== "ready-only/v1"
+    || prepared.request.hides.length !== 1) return null;
+  const questions = await dualQuestions({ ...prepared, request: await dualQualityRequest(version, prepared.request) }, version);
+  const quality = await dualQuestionAdmission(prepared.budget, prepared.worldId, prepared.board.board, version, questions.q);
+  if (quality.existing !== "settled" && quality.existing !== "linked") return quality;
+  return questions.reuse ? dualQuestionAdmission(prepared.budget, prepared.worldId, prepared.board.board, version, await questions.anatomy()) : null;
+}
+
+async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoardReviewDeps, version: DualVisualReviewVersion, deadlineAt: number | undefined,
+  options: { decideRetained?: boolean }): Promise<Waiting | Reviewed> {
+  const { request, game, budget, worldId, evidenceReviewAttempt } = prepared;
+  if (options.decideRetained) return decideRetainedAnswer(c, prepared, version, dualBinding(prepared, version));
+  const { binding, entry, priorReceipt, q, qualityAttempt, qualityStrategy, continuityStrategy, anatomy: anatomyQuestion } = await dualQuestions(prepared, version);
+  const hideId = binding.hideId;
   const makeKey = (question: PreparedVisualReview) => `self-repair:board:${prepared.board.board}:${question.fingerprint}`;
-  const buy = async (question: PreparedVisualReview) => {
+  // Refused before its request is recorded, reserved or sent: the world parks
+  // with the exact reason, and nothing is spent.
+  const refused = (admitted: DualQuestionAdmission): Waiting => ({ kind: "waiting", outcome: { state: "held",
+    reason: `${admitted.requestKey}: ${admitted.refused}; nothing was reserved or sent`, replayed: false, costCents: 0 } });
+  const buy = async (question: PreparedVisualReview, reserveMicroUsd: number) => {
     const requestKey = makeKey(question);
     await c.db.$transaction(async tx => { await fenceLocalPatchImages(tx, game.id); await deps.fence(tx); });
     await inventorySelfRepairRequest(c, game.id, requestKey, deps.fence);
-    // A question already in the ledger keeps the reservation it was made with (the
-    // ledger pins it); a new one reserves its release's bound (dual-review-reserve.ts).
-    const reserveMicroUsd = dualQuestionReserveMicroUsd((await budget.readRequest(worldId, requestKey))?.reserveMicroUsd,
-      version === DUAL_VISUAL_REVIEW_V3, question.role === "scene-quality" ? "quality" : "continuity");
     return purchaseOnce({ ledger: budget, store: new LocalPatchRetainedPurchaseStore(c, game.id, budget) }, {
       worldId, requestKey, operationFingerprint: question.fingerprint, scope: "judge", reserveMicroUsd,
       ...(deadlineAt === undefined ? {} : { dispatchWindow: { deadlineAt,
@@ -313,7 +382,9 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
       raw: wire.raw, model: wire.model, finishReason: wire.finishReason, wireFault: wire.wireFault, costMicroUsd: bought.evidence.amountMicroUsd,
       ...(strategy === STANDARD ? {} : { strategy }) };
   };
-  const qualityBought = await buy(q);
+  const qualityAdmitted = await dualQuestionAdmission(budget, worldId, prepared.board.board, version, q);
+  if (qualityAdmitted.refused) return refused(qualityAdmitted);
+  const qualityBought = await buy(q, qualityAdmitted.reserveMicroUsd);
   if (qualityBought.kind !== "bought") return waiting(qualityBought, q, qualityStrategy);
   // Decided now, so read by the current reader, which the stage names for every later reading.
   const qualityStage: QualityStage = { ...stage(qualityBought, q, qualityAttempt, qualityStrategy), reader: CURRENT_QUALITY_READER };
@@ -349,9 +420,10 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
     return { kind: "waiting", outcome: { state: "pending", reason: "Quality receipt retained; independent anatomy review is next",
       replayed: false, costCents: newCostCents } };
   }
-  const continuityStrategy = strategyFor("continuity");
-  const anatomy = await runtimeContinuityQuestion(prepared, binding, evidenceReviewAttempt, version, continuityStrategy);
-  const anatomyBought = await buy(anatomy);
+  const anatomy = await anatomyQuestion();
+  const anatomyAdmitted = await dualQuestionAdmission(budget, worldId, prepared.board.board, version, anatomy);
+  if (anatomyAdmitted.refused) return refused(anatomyAdmitted);
+  const anatomyBought = await buy(anatomy, anatomyAdmitted.reserveMicroUsd);
   if (anatomyBought.kind !== "bought") return waiting(anatomyBought, anatomy, continuityStrategy);
   const reader = CURRENT_CONTINUITY_READER[version];
   proof.continuity = { ...stage(anatomyBought, anatomy, evidenceReviewAttempt, continuityStrategy), reader };

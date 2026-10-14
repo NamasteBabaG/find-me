@@ -17,7 +17,9 @@ import { localPatchBoardJudgeImages, localPatchHideEvidenceIds, type LocalPatchB
 import { runLocalPatchHide, type LocalPatchHideDeps } from "../local-patch-hide";
 import { LOCAL_PATCH_PUBLICATION_ACTION } from "../local-patch-publication-policy";
 import { localPatchPrivateInventory } from "../local-patch-world";
-import { runLocalPatchWorldSlice, LOCAL_PATCH_RECOVERY_EXHAUSTED } from "../local-patch-world";
+import { runLocalPatchWorldSlice, LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_RECOVERY_EXHAUSTED } from "../local-patch-world";
+import { planLocalPatchEvidenceRecovery } from "../local-patch-evidence-plan";
+import { prepareVisualReview, visualReviewMaxCharge, type VisualReviewQuestion } from "../visual-review";
 import { preparationState } from "../../../domain/generation-health";
 import { nextPendingGame, tickGeneration } from "../queue";
 import { LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS, localPatchEvidenceRecovery } from "../local-patch-review-recovery";
@@ -38,7 +40,7 @@ import { objectJoinInstructions } from "../local-patch-player-review";
 import { localPatchRepairChecks } from "../local-patch-prompt";
 import { CONTINUITY_READER_BOUNDED, CONTINUITY_READER_CROWD, CONTINUITY_READER_STRICT } from "../../../domain/scene/local-patch-body-continuity";
 import type { TargetVariantAsset } from "@prisma/client";
-import { asDeployedQualityRefusal, asDeployedReaderRefusal, atEvidenceRound, LOCATED_390, LOCATED_390_DEFECT, located390Answer, located390Verdict,
+import { asDeployedQualityRefusal, asDeployedReaderRefusal, atEvidenceRound, boundHide, LOCATED_390, LOCATED_390_DEFECT, located390Answer, located390Verdict,
   longAnswer, prose, publicationBinding, spendTo } from "./local-patch-dual-fixtures";
 import { allowedDualPublication } from "../local-patch-dual-publication";
 import { CURRENT_QUALITY_READER, localPatchRetainedAnswerUndecided, readQualityStage } from "../local-patch-dual-evidence";
@@ -56,6 +58,13 @@ vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: "qa", GENERATION_ENA
   LOCAL_PATCH_PLAYER_REVIEW: playerMode ? "on" : "off",
   GENERATION_PROVIDER: "openai", GENERATION_MODEL: "gpt-image-2", GENERATION_QUALITY: "medium" }),
   spendGuard: () => ({ appEnv: "qa", realGeneration: true, testers }), flag: () => false }));
+/** A smaller v3 reservation for a NEW question, for one test: the real bound of the real question must then refuse it. */
+const reserveOverride = vi.hoisted(() => ({ v3: null as null | Partial<Record<"quality" | "continuity", number>> }));
+vi.mock("../../../domain/generation/dual-review-reserve", async importOriginal => {
+  const real = await importOriginal<typeof import("../../../domain/generation/dual-review-reserve")>();
+  return { ...real, dualQuestionReserveMicroUsd: (stored: number | undefined, bounded: boolean, role: "quality" | "continuity") =>
+    stored === undefined && bounded && reserveOverride.v3?.[role] !== undefined ? reserveOverride.v3[role]! : real.dualQuestionReserveMicroUsd(stored, bounded, role) };
+});
 let directory: string, db: PrismaClient, c: Container;
 beforeEach(() => { playerMode = false; });
 beforeAll(async () => {
@@ -1162,6 +1171,114 @@ describe("dual release v3: object joins", () => {
     expect(s.request).toHaveBeenCalledTimes(3);
     expect((await boardWizardBudgetOf(c).audit(worldId)).unknownRequestKeys).toEqual(audit.unknownRequestKeys);
     expect(await judgeReservations(worldId)).toEqual([[250_000, "unknown"], [250_000, "settled"], [66_000, "settled"]]);
+  });
+
+  /** The judge requests in a world's ledger, in order, with their keys. */
+  const judgeRequests = async (worldId: string) => (JSON.parse((await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } })).snapshotJson) as
+    { requests: { requestKey: string; reserveMicroUsd: number; state: string; evidence?: { amountMicroUsd: number } }[] }).requests
+    .filter(r => r.requestKey.startsWith("self-repair:board:")).map(r => ({ requestKey: r.requestKey, reserveMicroUsd: r.reserveMicroUsd, state: r.state }));
+  /** Every question sent was admitted first: the most its exact request can be billed fits what it reserved. */
+  const everySentAdmitted = async (worldId: string, sent: readonly VisualReviewQuestion[]) => {
+    const reserved = new Map((await judgeRequests(worldId)).map(r => [r.requestKey.split(":").at(-1), r.reserveMicroUsd]));
+    expect(sent.length).toBeGreaterThan(0);
+    for (const question of sent.map(prepareVisualReview)) {
+      const most = visualReviewMaxCharge(question);
+      expect(most.ok && most.microUsd <= reserved.get(question.fingerprint)!).toBe(true);
+    }
+  };
+  const plan = (s: Awaited<ReturnType<typeof dualSeed>>) => planLocalPatchEvidenceRecovery(s.container as unknown as Container, s.gameId);
+
+  it("refuses a new question its reservation cannot cover before any reservation, request record or dispatch, and parks the world with that reason", async () => {
+    const s = await dualSeed("dual-v3-admission-refused", "pass", { release: DUAL_VISUAL_REVIEW_V3 });
+    const worldId = boardWizardWorldId(s.gameId);
+    const state = async () => ({ ledger: await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } }), rows: await rows(s.gameId),
+      audits: await db.auditLog.findMany({ where: { entityId: s.gameId }, orderBy: { id: "asc" } }) });
+    const before = await state();
+    // The real quality question, bounded from its own twelve images and words, can be billed far more than 100,000.
+    reserveOverride.v3 = { quality: 100_000 };
+    try {
+      // The plan sees the same refusal, and that the world parks at it.
+      const planned = await plan(s);
+      expect(planned.nextQuestions).toMatchObject([{ boardId: "giza", role: "quality", reserveMicroUsd: 100_000, existing: null,
+        refused: expect.stringContaining("more than its 100000 reservation") }]);
+      expect(planned.summary).toMatchObject({ nextQuestion: null, nextQuestionFits: false });
+      expect(planned.summary.notes.join(" ")).toContain("The world parks there before reserving or sending it.");
+      const refused = await s.run();
+      expect(refused).toMatchObject({ state: "held", costCents: 0 });
+      expect(refused.reason).toMatch(/^self-repair:board:giza:[a-f0-9]{64}: the quality question could be billed up to \d+ micro-USD \(\d+ input and 6500 output tokens\), more than its 100000 reservation; nothing was reserved or sent$/);
+      expect(s.request).not.toHaveBeenCalled();
+      expect(await state()).toEqual(before);
+      // The pipeline parks the world with the same reason for a service decision; nothing is painted or bought.
+      const renders = s.render.mock.calls.length;
+      const result = await runLocalPatchWorldSlice(s.container as unknown as Container, s.deps, s.gameId, { hardDeadlineAt: Date.now() + 270_000 });
+      expect(result.attention).toBe(refused.reason);
+      expect(await db.generationJob.findUniqueOrThrow({ where: { id: `job_${s.gameId}` } })).toMatchObject({ status: "FAILED", currentStep: LOCAL_PATCH_NEEDS_RELEASE });
+      expect(s.request).not.toHaveBeenCalled(); expect(s.render).toHaveBeenCalledTimes(renders);
+      expect((await state()).ledger).toEqual(before.ledger);
+    } finally { reserveOverride.v3 = null; }
+  });
+
+  it("plans the purchase the pipeline then makes: a first review's quality question, then the saved answer's continuity question within 100,000", async () => {
+    const s = await dualSeed("dual-v3-plan-next", "pass", { release: DUAL_VISUAL_REVIEW_V3 });
+    const worldId = boardWizardWorldId(s.gameId), hideId = BOARD.hides[0]!.id;
+    const first = await plan(s);
+    expect(first.summary).toMatchObject({ "first-review": 1, "continuity-review": 0, paidQuestionsStillNeeded: 2, questionReserveMicroUsd: 250_000, nextQuestionFits: true,
+      nextQuestion: { boardId: "giza", hideId, role: "quality", reserveMicroUsd: 250_000, existing: null, refused: null } });
+    expect(first.summary.nextQuestion!.maxChargeMicroUsd).toBeLessThanOrEqual(250_000);
+    await s.run();
+    expect(await judgeRequests(worldId)).toEqual([{ requestKey: first.summary.nextQuestion!.requestKey, reserveMicroUsd: 250_000, state: "settled" }]);
+    // Codex's fixture: a paid passing quality answer is saved and 100,000 remain.
+    await spendTo(c, s.gameId, 4_000_000 - 100_000);
+    const second = await plan(s);
+    expect(second.summary).toMatchObject({ "first-review": 0, "continuity-review": 1, paidQuestionsStillNeeded: 1, questionReserveMicroUsd: 66_000, nextQuestionFits: true,
+      nextQuestion: { boardId: "giza", hideId, role: "continuity", reserveMicroUsd: 66_000, existing: null, refused: null } });
+    expect(second.summary.notes.join(" ")).not.toContain("No automatic path");
+    await s.run();
+    // The quality answer replayed with no new question; the planned continuity question was bought, as planned.
+    expect(s.request.mock.calls.map(([question]) => question.role)).toEqual(["scene-quality", "head-continuity"]);
+    expect((await judgeRequests(worldId)).at(-1)).toEqual({ requestKey: second.summary.nextQuestion!.requestKey, reserveMicroUsd: 66_000, state: "settled" });
+    const row = (await rows(s.gameId))[0]!;
+    expect(row.status).toBe("GENERATED"); expect(await publishable(s.gameId, row)).toBe(true);
+    await everySentAdmitted(worldId, s.request.mock.calls.map(([question]) => question));
+  }, 60_000);
+
+  it("replays an old v3 quality answer reserved at 300,000 without reserving it again, and plans and buys only the continuity question", async () => {
+    const s = await dualSeed("dual-v3-historical-300000", "pass", { release: DUAL_VISUAL_REVIEW_V3 });
+    const worldId = boardWizardWorldId(s.gameId);
+    await s.run();
+    // As if reserved before the bounded amounts: the same settled answer, its key at the historical flat reservation.
+    const ledger = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } }), snapshot = JSON.parse(ledger.snapshotJson);
+    const quality = snapshot.requests.find((r: { requestKey: string }) => r.requestKey.startsWith("self-repair:board:"));
+    quality.reserveMicroUsd = 300_000;
+    await db.worldBudgetLedger.update({ where: { worldId }, data: { snapshotJson: JSON.stringify(snapshot) } });
+    const planned = await plan(s);
+    expect(planned.summary).toMatchObject({ "continuity-review": 1, questionReserveMicroUsd: 66_000, nextQuestionFits: true,
+      nextQuestion: { role: "continuity", reserveMicroUsd: 66_000, existing: null } });
+    await s.run();
+    expect(s.request.mock.calls.map(([question]) => question.role)).toEqual(["scene-quality", "head-continuity"]);
+    expect(await judgeRequests(worldId)).toEqual([{ requestKey: quality.requestKey, reserveMicroUsd: 300_000, state: "settled" },
+      { requestKey: planned.summary.nextQuestion!.requestKey, reserveMicroUsd: 66_000, state: "settled" }]);
+    expect((await rows(s.gameId))[0]!.status).toBe("GENERATED");
+    expect(await boardWizardBudgetOf(c).audit(worldId)).toMatchObject({ held: false, reservedMicroUsd: 0 });
+  });
+
+  it("keeps a bill above its reservation whole and holds the world: the known overrun Codex reproduced", async () => {
+    const s = await dualSeed("dual-v3-known-overrun", "pass", { release: DUAL_VISUAL_REVIEW_V3 });
+    const worldId = boardWizardWorldId(s.gameId);
+    await s.run();
+    // Sol bills more input than its request's bound: 11,000 x 2.5 + 4,096 x 10 = 68,460 micro-USD against 66,000 reserved.
+    s.request.mockImplementationOnce(async question => ({ verdict: null, model: "gpt-6.1-sol", requestId: "dual-overrun-sol", finishReason: "stop",
+      wireFault: null, costUnknown: false, usage: { prompt_tokens: 11_000, completion_tokens: 4_096 },
+      raw: longAnswer(boundHide(question.prompt).hideId, 300, 300, 0) }));
+    await s.run();
+    const sol = (await judgeRequests(worldId)).at(-1)!;
+    expect(sol).toMatchObject({ reserveMicroUsd: 66_000, state: "settled" });
+    const audit = await boardWizardBudgetOf(c).audit(worldId);
+    expect(audit).toMatchObject({ held: true, overrunRequestKeys: [sol.requestKey] });
+    // The whole bill is recorded, never clamped to its reservation.
+    const settled = (JSON.parse((await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } })).snapshotJson) as
+      { requests: { requestKey: string; evidence?: { amountMicroUsd: number } }[] }).requests.find(r => r.requestKey === sol.requestKey)!;
+    expect(settled.evidence!.amountMicroUsd).toBe(68_460);
   });
 });
 

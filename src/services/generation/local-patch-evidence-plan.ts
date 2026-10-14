@@ -3,8 +3,9 @@ import { localPatchBoardForVersion } from "../../domain/scene/local-patch-catalo
 import { needsSelfRepair } from "../../domain/scene/local-patch-self-repair";
 import { boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { LOCAL_PATCH_VARIANT } from "./local-patch-hide";
-import { localPatchRetainedAnswerUndecided, type DualReviewProof } from "./local-patch-dual-evidence";
-import { readRetainedAnswer } from "./local-patch-dual-review";
+import { localPatchContinuityPending, localPatchRetainedAnswerUndecided, type DualReviewProof } from "./local-patch-dual-evidence";
+import { nextDualReviewPurchase, readRetainedAnswer, type DualQuestionAdmission } from "./local-patch-dual-review";
+import { prepareLocalPatchBoardReview } from "./local-patch-board-review";
 import { localPatchEvidenceRecovery } from "./local-patch-review-recovery";
 import { hasLocalPatchPublicationPolicy, localPatchPublicationGeometryHash } from "./local-patch-publication-policy";
 import { DUAL_VISUAL_REVIEW_V3, dualVisualReviewVersion } from "./visual-review-release";
@@ -14,11 +15,13 @@ import { sha256Bytes } from "./fixed-sprite";
 
 export type LocalPatchEvidencePlanHide = {
   readonly hideId: string; readonly boardId: string; readonly status: string; readonly attempts: number;
-  readonly plan: "approved" | "free-pass" | "free-repair" | "free-undecided" | "unverifiable" | "first-review"
+  readonly plan: "approved" | "free-pass" | "free-repair" | "free-undecided" | "unverifiable" | "first-review" | "continuity-review"
     | "evidence-question" | "evidence-wait" | "evidence-exhausted" | "image-route" | "unpainted" | "other";
   /** Machine detail only (a strategy, a code, a reason class): never answer text. */
   readonly detail: string | null;
 };
+/** One board's next paid review question, built and admitted exactly as its purchase would be. */
+export type LocalPatchNextQuestion = DualQuestionAdmission & { readonly boardId: string; readonly hideId: string };
 export type LocalPatchEvidencePlan = {
   readonly gameId: string; readonly status: string; readonly dualVersion: string | null;
   readonly job: { readonly status: string; readonly currentStep: string | null } | null;
@@ -26,14 +29,19 @@ export type LocalPatchEvidencePlan = {
     readonly reservedMicroUsd: number; readonly remainingMicroUsd: number; readonly held: boolean;
     readonly pendingRequests: number; readonly unknownRequests: number };
   readonly hides: readonly LocalPatchEvidencePlanHide[];
+  /** Per board, in the order the pipeline asks them: a saved quality answer's continuity question first. */
+  readonly nextQuestions: readonly LocalPatchNextQuestion[];
   readonly summary: Record<LocalPatchEvidencePlanHide["plan"], number> & {
     readonly paidQuestionsStillNeeded: number; readonly questionReserveMicroUsd: number;
+    /** The new purchase the pipeline makes next: the first admitted question that fits, else the first admitted one it reaches. */
+    readonly nextQuestion: LocalPatchNextQuestion | null;
     readonly nextQuestionFits: boolean; readonly notes: readonly string[] };
 };
 
 /**
  * Dry run: what an unfinished local-patch world can still do, and at what cost.
- * Reads rows, retained answers, the ledger and stored pixels only. It never
+ * Reads rows, retained answers, the ledger, the boards and stored pixels only,
+ * and builds each board's next question as its purchase would. It never
  * reserves, settles, dispatches, writes a row or an audit record, and it makes
  * no promise that the remaining budget completes the world.
  */
@@ -61,7 +69,8 @@ export async function planLocalPatchEvidenceRecovery(c: Container, gameId: strin
         identityAssetId: identity?.id ?? "", identitySha256: identitySha256 ?? "", assetId: row.assetId,
         imageSha256: imageSha256 ?? "", geometrySha256: localPatchPublicationGeometryHash(row), judgeJson: row.judgeJson };
       if (row.status === "GENERATED") {
-        if (receipt.reviewState !== "board-review-complete") hides.push(entry("first-review"));
+        // A passing quality answer already saved for these pixels leaves only its continuity question.
+        if (receipt.reviewState !== "board-review-complete") hides.push(entry(localPatchContinuityPending(row) ? "continuity-review" : "first-review"));
         else hides.push(await hasLocalPatchPublicationPolicy(c, binding) ? entry("approved") : entry("other", "reviewed without a valid publication record"));
         continue;
       }
@@ -88,22 +97,52 @@ export async function planLocalPatchEvidenceRecovery(c: Container, gameId: strin
     }
   }
   const count = (plan: LocalPatchEvidencePlanHide["plan"]) => hides.filter(h => h.plan === plan).length;
-  const plans = ["approved", "free-pass", "free-repair", "free-undecided", "unverifiable", "first-review", "evidence-question",
+  const plans = ["approved", "free-pass", "free-repair", "free-undecided", "unverifiable", "first-review", "continuity-review", "evidence-question",
     "evidence-wait", "evidence-exhausted", "image-route", "unpainted", "other"] as const;
   const counts = Object.fromEntries(plans.map(plan => [plan, count(plan)])) as Record<LocalPatchEvidencePlanHide["plan"], number>;
   // A lower bound: a first review is two questions (quality, then anatomy); a
-  // re-asked anatomy question reuses its passing quality answer. Image routes
-  // also need a new picture and its reviews, so they are counted separately.
-  const paidQuestionsStillNeeded = 2 * counts["first-review"] + counts["evidence-question"] + counts["free-undecided"];
+  // saved passing quality answer and a re-asked anatomy question leave one.
+  // Image routes also need a new picture and its reviews, so they are counted separately.
+  const paidQuestionsStillNeeded = 2 * counts["first-review"] + counts["continuity-review"] + counts["evidence-question"] + counts["free-undecided"];
+  const notes: string[] = [];
+  // The next question of each board with an appearance awaiting one, built and
+  // admitted as the purchase builds and admits it, in the pipeline's order: a
+  // saved quality answer's continuity question before new Opus work. A board with
+  // an answer still to be decided for free is skipped: that decision comes first
+  // and chooses what it needs next.
+  const nextQuestions: LocalPatchNextQuestion[] = [];
+  if (version) {
+    const continuityFirst = (sceneId: string) => Number(!rows.some(r => r.targetInstance.gameSceneId === sceneId && localPatchContinuityPending(r)));
+    const asking = new Set(hides.filter(h => ["first-review", "continuity-review", "evidence-question"].includes(h.plan)).map(h => h.boardId));
+    for (const scene of [...game.scenes].sort((a, b) => continuityFirst(a.id) - continuityFirst(b.id))) {
+      if (scene.sceneVersion !== 12 || !asking.has(scene.sceneSlug)
+        || rows.some(r => r.targetInstance.gameSceneId === scene.id && localPatchRetainedAnswerUndecided(r))) continue;
+      let prepared;
+      try { prepared = await prepareLocalPatchBoardReview(c, { gameId, sceneId: scene.id }, {}, { includePlayerCandidates: true, skipApprovedEvidence: true, playerReview: true }); }
+      catch (error) { notes.push(`${scene.sceneSlug}: its next question cannot be built (${(error instanceof Error ? error.message : String(error)).slice(0, 200)}).`); continue; }
+      if (!prepared.ready || prepared.protectedRows.size === prepared.entries.length) continue;
+      const next = await nextDualReviewPurchase(prepared, version);
+      if (next) nextQuestions.push({ ...next, boardId: scene.sceneSlug, hideId: prepared.request.hides[0]!.hideId });
+    }
+  }
+  // As the pipeline goes through them: a key already in the ledger is replayed or
+  // awaited, never reserved again; a refused question parks the world; a question
+  // the budget refuses is passed for the next board's; the first that fits is bought.
+  let nextQuestion: LocalPatchNextQuestion | null = null, affordable = false, parksAt: LocalPatchNextQuestion | null = null;
+  for (const q of nextQuestions.filter(q => !q.existing)) {
+    if (q.refused) { parksAt = q; break; }
+    nextQuestion ??= q;
+    if (!audit.held && audit.remainingMicroUsd >= q.reserveMicroUsd) { nextQuestion = q; affordable = true; break; }
+  }
   // Under the ceiling in force now. The world's one automatic extension (four to
   // five dollars, where policy allows it) is the pipeline's decision, not this plan's.
-  // Each dual question reserves before dispatch, the two roles in turn: v3 its bound
-  // (the quality question's, the larger), v1/v2 the flat legacy amount.
-  const questionReserveMicroUsd = dualReviewReserveMicroUsd(version === DUAL_VISUAL_REVIEW_V3, "quality");
-  const nextQuestionFits = !audit.held && audit.remainingMicroUsd >= questionReserveMicroUsd;
-  const notes: string[] = [];
+  // With no question to build yet, the role still waiting decides the amount.
+  const questionReserveMicroUsd = nextQuestion?.reserveMicroUsd
+    ?? dualReviewReserveMicroUsd(version === DUAL_VISUAL_REVIEW_V3, counts["continuity-review"] ? "continuity" : "quality");
+  const nextQuestionFits = affordable || (!nextQuestion && !parksAt && !audit.held && audit.remainingMicroUsd >= questionReserveMicroUsd);
   if (counts["free-pass"] + counts["free-repair"]) notes.push(`${counts["free-pass"] + counts["free-repair"]} appearances are decided from answers already paid for, with no new question or reservation.`);
-  if (paidQuestionsStillNeeded && !nextQuestionFits) notes.push(`At least ${paidQuestionsStillNeeded} paid questions remain; each reserves up to ${questionReserveMicroUsd} micro-USD and ${audit.remainingMicroUsd} remain of ${audit.capMicroUsd}. `
+  if (parksAt) notes.push(`${parksAt.boardId} ${parksAt.hideId}: ${parksAt.refused}. The world parks there before reserving or sending it.`);
+  if (paidQuestionsStillNeeded && !nextQuestionFits) notes.push(`At least ${paidQuestionsStillNeeded} paid questions remain; the next reserves ${questionReserveMicroUsd} micro-USD and ${audit.remainingMicroUsd} remain of ${audit.capMicroUsd}. `
     + (audit.capMicroUsd < 5_000_000 ? "The pipeline decides at its first refusal whether the world's one automatic extension to 5000000 applies; this plan does not activate it."
       : "No automatic path exists within the authorized ceiling: a service decision is required."));
   if (counts["image-route"] || counts["unpainted"]) notes.push("Image routes and unpainted appearances also need new pictures and their reviews; actual settled costs vary and this plan promises no completion.");
@@ -111,5 +150,5 @@ export async function planLocalPatchEvidenceRecovery(c: Container, gameId: strin
     budget: { capMicroUsd: audit.capMicroUsd, committedMicroUsd: audit.committedMicroUsd, settledMicroUsd: audit.settledMicroUsd,
       reservedMicroUsd: audit.reservedMicroUsd, remainingMicroUsd: audit.remainingMicroUsd, held: audit.held,
       pendingRequests: audit.pendingRequestKeys.length, unknownRequests: audit.unknownRequestKeys.length },
-    hides, summary: { ...counts, paidQuestionsStillNeeded, questionReserveMicroUsd, nextQuestionFits, notes } };
+    hides, nextQuestions, summary: { ...counts, paidQuestionsStillNeeded, questionReserveMicroUsd, nextQuestion, nextQuestionFits, notes } };
 }

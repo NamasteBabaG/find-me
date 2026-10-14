@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
 import { visualReviewPolicy, VISUAL_REVIEW_DEFAULT_EFFORT, type VisualReviewEffort, type VisualReviewPolicy, type VisualReviewRole } from "../../domain/generation/visual-review-policy";
+import { visualReviewInputBound } from "../../domain/generation/visual-review-input-bound";
 import { requestAnthropicVisualReview } from "../../infra/generation/anthropic-visual-review";
 import { visualReviewCharge } from "../../infra/generation/visual-review-pricing";
 import { purchaseOnce, type PurchaseLedger, type RetainedPurchaseStore } from "./paid-operation";
 import type { BudgetJson } from "./world-budget";
 import { requestJudgeWire, localPatchBoardJudgePrompt, localPatchBoardJudgeImages, localPatchBoardJudgeImageLabels,
-  diagnoseLocalPatchBoardAnswer, parseLocalPatchBoardVerdicts, type LocalPatchBoardJudgeRequest, type LocalPatchJudgeResult } from "./local-patch-judge";
+  diagnoseLocalPatchBoardAnswer, parseLocalPatchBoardVerdicts, JUDGE_IMAGE_DETAIL, type LocalPatchBoardJudgeRequest, type LocalPatchJudgeResult } from "./local-patch-judge";
 
 export type VisualReviewQuestion = {
   readonly role: VisualReviewRole;
@@ -27,6 +28,26 @@ export function prepareVisualReview(question: VisualReviewQuestion): PreparedVis
   const images = question.images.map(b => Buffer.from(b)), labels = [...question.labels];
   const fingerprint = sha(JSON.stringify({ policy, prompt: question.prompt, labels, images: images.map(sha) }));
   return { ...question, images, labels, policy, fingerprint };
+}
+
+export type VisualReviewMaxCharge =
+  | { readonly ok: true; readonly inputTokens: number; readonly outputTokens: number; readonly microUsd: number }
+  | { readonly ok: false; readonly reason: string };
+/** The most a prepared question can be billed: its input bound (visual-review-input-bound.ts)
+ * with its full output cap, thinking and reasoning included, priced by the rate card that
+ * prices its real bill. Every input token gets the highest rate the card can give it: these
+ * requests set no Anthropic cache breakpoint, and no OpenAI cache state prices a token above
+ * the card's ordinary rate. */
+export function visualReviewMaxCharge(question: PreparedVisualReview): VisualReviewMaxCharge {
+  const { policy } = question;
+  const bound = visualReviewInputBound({ provider: policy.provider, model: policy.model, detail: policy.provider === "openai" ? JUDGE_IMAGE_DETAIL : null,
+    prompt: question.prompt, labels: question.labels, images: question.images });
+  if (!bound.ok) return bound;
+  const charge = visualReviewCharge(policy, policy.model, policy.provider === "anthropic"
+    ? { input_tokens: bound.inputTokens, output_tokens: policy.maxOutputTokens }
+    : { prompt_tokens: bound.inputTokens, completion_tokens: policy.maxOutputTokens });
+  if (charge.costUnknown) return { ok: false, reason: `The rate card cannot price ${bound.inputTokens} input tokens for ${policy.model}` };
+  return { ok: true, inputTokens: bound.inputTokens, outputTokens: policy.maxOutputTokens, microUsd: Math.ceil(charge.costCents * 10_000) };
 }
 
 export function sceneQualityQuestion(request: LocalPatchBoardJudgeRequest, effort: VisualReviewEffort = VISUAL_REVIEW_DEFAULT_EFFORT): VisualReviewQuestion {

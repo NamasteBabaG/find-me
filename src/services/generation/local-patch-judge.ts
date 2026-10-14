@@ -615,6 +615,8 @@ export async function judgeLocalPatch(apiKey: string, request: LocalPatchJudgeRe
   return verdict ? { ...wire, verdict } : { ...wire, wireFault: "schema" };
 }
 
+/** The `detail` every OpenAI review image is sent with; the input bound prices images at it. */
+export const JUDGE_IMAGE_DETAIL = "high" as const;
 /** Shared wire validation for single-hide legacy review and grouped advisory review. */
 export async function requestJudgeWire(apiKey: string, request: { prompt: string; images: readonly Buffer[];
   /** When supplied, each label is immediately adjacent to its image on the wire. */
@@ -624,7 +626,7 @@ fetchOnce: typeof fetch): Promise<LocalPatchJudgeResult> {
   const { settings, prompt } = request;
   if (request.imageLabels && (request.imageLabels.length !== request.images.length
     || request.imageLabels.some(label => !label.trim()))) throw new Error("Every review image requires its own nonempty adjacent label");
-  const image = (png: Buffer) => ({ type: "image_url" as const, image_url: { url: `data:image/png;base64,${png.toString("base64")}`, detail: "high" as const } });
+  const image = (png: Buffer) => ({ type: "image_url" as const, image_url: { url: `data:image/png;base64,${png.toString("base64")}`, detail: JUDGE_IMAGE_DETAIL } });
   const images = request.imageLabels
     ? request.images.flatMap((png, index) => [{ type: "text" as const, text: request.imageLabels![index]! }, image(png)])
     : request.images.map(image);

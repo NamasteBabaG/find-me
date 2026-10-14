@@ -25,6 +25,7 @@ import { activateLocalPatchEmergencyBudget } from "../local-patch-budget-recover
 import { planLocalPatchEvidenceRecovery } from "../local-patch-evidence-plan";
 import { nextPendingGame } from "../queue";
 import { pinVisualReviewRelease } from "../visual-review-release";
+import { prepareVisualReview, visualReviewMaxCharge } from "../visual-review";
 import { sha256Bytes } from "../fixed-sprite";
 import { bill, paintedCrop, paintedOk, seedApprovedGame } from "./local-patch-fixtures";
 import { asDeployedReaderRefusal, atEvidenceRound, dualReviewer, longAnswer, prose, spendTo } from "./local-patch-dual-fixtures";
@@ -130,6 +131,13 @@ describe("a whole v12 world under two independent HIGH reviews", () => {
     expect(audit).toMatchObject({ held: false, reservedMicroUsd: 0, pendingRequestKeys: [], unknownRequestKeys: [] });
     // Every bill settled at its own amount: renders at 48,800 and the two review roles at their rate-card charge.
     expect(audit.settledMicroUsd - seeded).toBe(29 * 48_800 + 29 * 18_000 + 29 * 10_000);
+    // Every question sent was admitted first: the most its exact request could be billed fits what it reserved.
+    const reserved = new Map((JSON.parse((await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } })).snapshotJson) as
+      { requests: { requestKey: string; reserveMicroUsd: number }[] }).requests.map(r => [r.requestKey.split(":").at(-1), r.reserveMicroUsd]));
+    for (const question of request.mock.calls.map(([question]) => prepareVisualReview(question))) {
+      const most = visualReviewMaxCharge(question);
+      expect(most.ok && most.microUsd <= reserved.get(question.fingerprint)!).toBe(true);
+    }
     expect(fetch).not.toHaveBeenCalled();
   }, 900_000);
 
