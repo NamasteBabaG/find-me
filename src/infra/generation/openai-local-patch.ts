@@ -63,6 +63,15 @@ export const LOCAL_PATCH_IMAGE_POLICY: FixedSourcePolicy = Object.freeze({
 const FIVE_HIDE_IMAGE_POLICY: FixedSourcePolicy = Object.freeze({ ...LOCAL_PATCH_IMAGE_POLICY, quality: "low" });
 export const localPatchImagePolicyForVersion = (contentVersion?: number): FixedSourcePolicy =>
   contentVersion === 12 ? LOCAL_PATCH_IMAGE_POLICY : isLocalPatchAdvisoryVersion(contentVersion) ? FIVE_HIDE_IMAGE_POLICY : LOCAL_PATCH_IMAGE_POLICY;
+/** Cost experiment E2 only (docs/CLAUDE_COST_EXPERIMENTS_PLAN_20261014.md); no version
+ * selects either. LOW is today's v12 request at low quality: the five-hide policy. */
+export const LOCAL_PATCH_LOW_IMAGE_POLICY: FixedSourcePolicy = FIVE_HIDE_IMAGE_POLICY;
+/** gpt-image-1-mini at MEDIUM. It paints only the standard sizes, so the crop's 2:3 is
+ * asked at 1024x1536, half its size back. Its published rates are $2 text, $2.50
+ * image input and $8 image output per million tokens; the input rate is rounded UP to
+ * a whole micro-USD per token, so a bill is never stated below what was charged. */
+export const LOCAL_PATCH_MINI_IMAGE_POLICY: FixedSourcePolicy = Object.freeze({ ...LOCAL_PATCH_IMAGE_POLICY,
+  model: "gpt-image-1-mini", size: "1024x1536", rateCard: { id: "gpt-image-1-mini-2-3-8-microusd-v1", textInput: 2, imageInput: 3, imageOutput: 8 } });
 
 /**
  * What the render fingerprint pins, beside the prompt and the pictures: change
@@ -71,7 +80,8 @@ export const localPatchImagePolicyForVersion = (contentVersion?: number): FixedS
  */
 export const localPatchRenderPolicySha256 = (policy: FixedSourcePolicy = LOCAL_PATCH_IMAGE_POLICY) =>
   createHash("sha256").update(JSON.stringify({
-    version: "local-patch-painter/v1", quality: policy.quality, size: policy.size,
+    version: "local-patch-painter/v1", ...(policy.model && policy.model !== "gpt-image-2" ? { model: policy.model } : {}),
+    quality: policy.quality, size: policy.size,
     background: policy.background, rateCard: policy.rateCard, timeoutMs: policy.timeoutMs,
   })).digest("hex");
 

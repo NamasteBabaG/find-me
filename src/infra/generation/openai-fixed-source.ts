@@ -25,12 +25,20 @@ export type FixedSourceQuality = "low" | "medium";
  *  - `1280x2160` and `3840x2160` remain available for the wider layouts that
  *    were costed. Above 2560x1440 the provider documents the resolution as
  *    experimental, which is a quality risk to watch rather than a size error.
+ *  - `1024x1536` is the local-patch crop's 2:3 at a STANDARD size, for
+ *    gpt-image-1-mini (cost experiment E2), which paints only standard sizes.
  *
  * All are multiples of 16, inside the documented 1:3..3:1 ratio, and within the
  * 655,360..8,294,400 pixel range.
  */
-export const FIXED_SOURCE_SIZES = ["768x1152", "1024x1024", "1024x2160", "1280x2160", "3840x2160"] as const;
+export const FIXED_SOURCE_SIZES = ["768x1152", "1024x1024", "1024x1536", "1024x2160", "1280x2160", "3840x2160"] as const;
 export type FixedSourceSize = (typeof FIXED_SOURCE_SIZES)[number];
+/** The image models this route may buy. Omitted means gpt-image-2, so every frozen
+ * fingerprint stays where it is; gpt-image-1-mini is cost experiment E2's, and it
+ * paints only the standard sizes. */
+export const FIXED_SOURCE_MODELS = ["gpt-image-2", "gpt-image-1-mini"] as const;
+export type FixedSourceModel = (typeof FIXED_SOURCE_MODELS)[number];
+const STANDARD_SIZES: readonly FixedSourceSize[] = ["1024x1024", "1024x1536"];
 /** The version names the size, so a new size can never quietly reuse an old
  * identity. The 1024 string is untouched, so no frozen fingerprint moves. */
 /**
@@ -40,12 +48,15 @@ export type FixedSourceSize = (typeof FIXED_SOURCE_SIZES)[number];
  * we had already paid for.
  */
 export type FixedSourceBackground = "transparent" | "opaque";
-export const fixedSourceVersion = (quality: FixedSourceQuality, size: FixedSourceSize, background: FixedSourceBackground = "transparent") =>
-  size === "1024x1024" && background === "transparent"
+export const fixedSourceVersion = (quality: FixedSourceQuality, size: FixedSourceSize, background: FixedSourceBackground = "transparent",
+  model: FixedSourceModel = "gpt-image-2") =>
+  model !== "gpt-image-2" ? `fixed-source-${model}-${quality}-${size}${background === "opaque" ? "-opaque" : ""}/v1`
+  : size === "1024x1024" && background === "transparent"
     ? `fixed-source-${quality}/v1`
     : `fixed-source-${quality}-${size}${background === "opaque" ? "-opaque" : ""}/v1`;
-export const fixedSourceSettings = (quality: FixedSourceQuality, size: FixedSourceSize = "1024x1024", background: FixedSourceBackground = "transparent") => Object.freeze({
-  version: fixedSourceVersion(quality, size, background), model: "gpt-image-2", quality,
+export const fixedSourceSettings = (quality: FixedSourceQuality, size: FixedSourceSize = "1024x1024", background: FixedSourceBackground = "transparent",
+  model: FixedSourceModel = "gpt-image-2") => Object.freeze({
+  version: fixedSourceVersion(quality, size, background, model), model, quality,
   size, background, output_format: "png", n: 1,
 } as const);
 /**
@@ -105,6 +116,8 @@ export interface FixedSourceRequest {
   expectedFingerprint: string;
 }
 export interface FixedSourcePolicy {
+  /** Omitted means gpt-image-2, so existing callers and their frozen fingerprints do not move. */
+  model?: FixedSourceModel;
   /** Omitted means LOW, so existing callers and their frozen fingerprints do not move. */
   quality?: FixedSourceQuality;
   /** Omitted means the 1024 single-board sheet, for the same reason. */
@@ -173,6 +186,12 @@ function policyCopy(input: FixedSourcePolicy): FixedSourcePolicy {
   if (input.background !== undefined && input.background !== "transparent" && input.background !== "opaque") {
     fail("invalid_input", "Background is not one this route may buy");
   }
+  if (input.model !== undefined && !(FIXED_SOURCE_MODELS as readonly string[]).includes(input.model)) {
+    fail("invalid_input", "Image model is not one this route may buy");
+  }
+  if (input.model === "gpt-image-1-mini" && !STANDARD_SIZES.includes(input.size ?? "1024x1024")) {
+    fail("invalid_input", "gpt-image-1-mini paints only the standard sizes");
+  }
   return structuredClone(input);
 }
 
@@ -218,7 +237,7 @@ export async function prepareFixedSource(input: Omit<FixedSourceRequest, "worldI
   // With no extra atlases the capture keeps exactly the shape and key order every
   // sheet bought so far was fingerprinted with, so nothing frozen moves.
   const capture = {
-    settings: fixedSourceSettings(policy.quality ?? "low", policy.size ?? "1024x1024", policy.background ?? "transparent"), sourceGroupKey, policy,
+    settings: fixedSourceSettings(policy.quality ?? "low", policy.size ?? "1024x1024", policy.background ?? "transparent", policy.model), sourceGroupKey, policy,
     promptSha256: hash(prompt),
     inputOrder: extras.length ? ["style", "identity", ...extras.map((_, i) => `reference-${i + 1}`)] : (["style", "identity"] as const),
     styleSha256: hash(stylePng), identitySha256: hash(identityPng),
@@ -317,6 +336,7 @@ export class BudgetedOpenAiFixedSourceProvider {
     const diagnosticFailure = async (code: FixedSourceError["code"], message: string, reason: FixedSourceFailureReceipt["reason"], billing: FixedSourceFailureReceipt["billing"],
       established?: { evidence?: WorldChargeEvidence; png?: Buffer; rejectedPng?: Buffer }): Promise<never> => {
       const receipt = fixedSourceFailureReceipt({ worldId, requestKey, fingerprint: prepared.fingerprint,
+        ...(prepared.capture.settings.model === "gpt-image-2" ? {} : { model: prepared.capture.settings.model }),
         quality: prepared.capture.settings.quality, reason, billing, response, json, jsonStatus, usageValid, transport });
       let stored = false;
       // A diagnostic storage failure never authorizes redispatch, zero cost, or
@@ -398,7 +418,7 @@ export class BudgetedOpenAiFixedSourceProvider {
     // raster is wrong - and those bytes are evidence only, however well formed
     // they are. Handing a refused image back as usable would be the same mistake
     // as losing a usable one, in the other direction.
-    const wrongModel = body.success && body.data.model !== undefined && body.data.model !== FIXED_SOURCE_SETTINGS.model;
+    const wrongModel = body.success && body.data.model !== undefined && body.data.model !== prepared.capture.settings.model;
     const wrongQuality = body.success && body.data.quality !== undefined && body.data.quality !== prepared.capture.settings.quality;
     const keptForRefusal = bounded ? { rejectedPng: bounded } : {};
     // Image approval is independent of whether the receipt can be priced. In
@@ -423,7 +443,7 @@ export class BudgetedOpenAiFixedSourceProvider {
     if (!Number.isSafeInteger(amountMicroUsd) || amountMicroUsd <= 0) return unknown("image-charge-arithmetic-invalid", "charge-arithmetic", keptForBilling);
     const evidence: WorldChargeEvidence = {
       providerNamespace: this.policy.providerNamespace, providerRequestId: requestId, usageId: requestId,
-      model: FIXED_SOURCE_SETTINGS.model, amountMicroUsd, costBasis: "conservative-upper-estimate",
+      model: prepared.capture.settings.model, amountMicroUsd, costBasis: "conservative-upper-estimate",
       rawUsage: { input_tokens: u.input_tokens, output_tokens: u.output_tokens,
         input_tokens_details: { text_tokens: u.input_tokens_details.text_tokens, image_tokens: u.input_tokens_details.image_tokens } },
     };

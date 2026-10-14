@@ -14,7 +14,7 @@ export const fixedSourceFailureReceiptSchema = z.object({
   requestIdStatus: z.enum(["missing", "safe", "invalid"]),
   transport: z.enum(["timeout", "network-or-runtime", "unclassified"]).nullable(),
   jsonStatus: z.enum(["not-read", "invalid", "parsed"]),
-  requestedModel: z.literal("gpt-image-2"), requestedQuality: z.enum(["low", "medium"]),
+  requestedModel: z.enum(["gpt-image-2", "gpt-image-1-mini"]), requestedQuality: z.enum(["low", "medium"]),
   returnedModel: z.enum(["absent", "expected", "unexpected", "invalid"]),
   usage: z.object({ present: z.boolean(), valid: z.boolean(), inputTokensInvalid: z.boolean(), outputTokensInvalid: z.boolean(),
     detailsInvalid: z.boolean(), textTokensInvalid: z.boolean(), imageTokensInvalid: z.boolean(), totalTokensInvalid: z.boolean(), inconsistentTotals: z.boolean() }).strict(),
@@ -26,6 +26,8 @@ const object = (v: unknown): Record<string, unknown> | null => v !== null && typ
 const count = (v: unknown) => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
 /** Projects only whitelisted facts; never copy an arbitrary API response field. */
 export function fixedSourceFailureReceipt(input: { worldId: string; requestKey: string; fingerprint: string;
+  /** The model asked for; absent is gpt-image-2, as every receipt before cost experiment E2. */
+  model?: FixedSourceFailureReceipt["requestedModel"];
   quality: "low" | "medium"; reason: FixedSourceFailureReceipt["reason"]; billing: FixedSourceFailureReceipt["billing"];
   response?: Pick<Response, "status" | "headers">; json?: unknown; jsonStatus: FixedSourceFailureReceipt["jsonStatus"];
   usageValid?: boolean; transport?: FixedSourceFailureReceipt["transport"] }): FixedSourceFailureReceipt {
@@ -37,12 +39,13 @@ export function fixedSourceFailureReceipt(input: { worldId: string; requestKey: 
       || u.input_tokens !== (details.text_tokens as number) + (details.image_tokens as number)
       || u.total_tokens !== undefined && u.total_tokens !== (u.input_tokens as number) + (u.output_tokens as number));
   const pick = <T extends readonly string[]>(allowed: T, value: unknown): T[number] | null => value === undefined || value === null ? null : typeof value === "string" && allowed.includes(value) ? value : "unrecognized";
+  const requestedModel = input.model ?? "gpt-image-2";
   return fixedSourceFailureReceiptSchema.parse({
     version: "fixed-source-failure/v1", worldId: input.worldId, requestKey: input.requestKey, fingerprint: input.fingerprint,
     reason: input.reason, billing: input.billing, httpStatus: input.response?.status ?? null,
     requestId: validId ? id : null, requestIdStatus: id === null ? "missing" : validId ? "safe" : "invalid",
-    transport: input.transport ?? null, jsonStatus: input.jsonStatus, requestedModel: "gpt-image-2", requestedQuality: input.quality,
-    returnedModel: body?.model === undefined ? "absent" : typeof body.model !== "string" ? "invalid" : body.model === "gpt-image-2" ? "expected" : "unexpected",
+    transport: input.transport ?? null, jsonStatus: input.jsonStatus, requestedModel, requestedQuality: input.quality,
+    returnedModel: body?.model === undefined ? "absent" : typeof body.model !== "string" ? "invalid" : body.model === requestedModel ? "expected" : "unexpected",
     usage: { present: body?.usage !== undefined, valid: input.usageValid === true, inputTokensInvalid: !count(u?.input_tokens),
       outputTokensInvalid: !count(u?.output_tokens) || u?.output_tokens === 0, detailsInvalid: !details,
       textTokensInvalid: !count(details?.text_tokens), imageTokensInvalid: !count(details?.image_tokens),

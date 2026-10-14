@@ -1,7 +1,8 @@
 import sharp from "sharp";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import {
-  LOCAL_PATCH_IMAGE_POLICY, LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, buyLocalPatch, localPatchImagePolicyForVersion, localPatchRenderPolicySha256,
+  LOCAL_PATCH_IMAGE_POLICY, LOCAL_PATCH_LOW_IMAGE_POLICY, LOCAL_PATCH_MINI_IMAGE_POLICY, LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, buyLocalPatch,
+  localPatchImagePolicyForVersion, localPatchRenderPolicySha256,
 } from "../openai-local-patch";
 
 /**
@@ -284,6 +285,49 @@ describe("buying one local patch", () => {
     expect(localPatchRenderPolicySha256({ ...LOCAL_PATCH_IMAGE_POLICY, size: "1024x1024" })).not.toBe(base);
     expect(localPatchRenderPolicySha256({ ...LOCAL_PATCH_IMAGE_POLICY,
       rateCard: { ...LOCAL_PATCH_IMAGE_POLICY.rateCard, imageOutput: 31 } })).not.toBe(base);
+    expect(localPatchRenderPolicySha256({ ...LOCAL_PATCH_IMAGE_POLICY, model: "gpt-image-1-mini" })).not.toBe(base);
+    // Naming today's model changes nothing.
+    expect(localPatchRenderPolicySha256({ ...LOCAL_PATCH_IMAGE_POLICY, model: "gpt-image-2" })).toBe(base);
     expect(localPatchRenderPolicySha256()).toBe(base);
+  });
+});
+
+describe("cost experiment E2's painters (opt-in, selected by no version)", () => {
+  const mini = (extra: Record<string, unknown> = {}) => answer({ model: "gpt-image-1-mini", data: [{ b64_json: painted1536.toString("base64") }], ...extra });
+  let painted1536: Buffer;
+  beforeAll(async () => { painted1536 = await sharp({ create: { width: 1024, height: 1536, channels: 4, background: "#8090a0" } }).png().toBuffer(); }, 60_000);
+
+  it("LOW is today's v12 request at low quality, nothing else", async () => {
+    expect(LOCAL_PATCH_LOW_IMAGE_POLICY).toEqual({ ...LOCAL_PATCH_IMAGE_POLICY, quality: "low" });
+    expect(localPatchImagePolicyForVersion(12)).toBe(LOCAL_PATCH_IMAGE_POLICY);
+    const fetchOnce = vi.fn<typeof fetch>(async () => answer());
+    await buyLocalPatch("synthetic-never-live", request(), { policy: LOCAL_PATCH_LOW_IMAGE_POLICY, fetchOnce });
+    const form = fetchOnce.mock.calls[0]![1]!.body as FormData;
+    expect([form.get("model"), form.get("quality"), form.get("size"), form.get("background")]).toEqual(["gpt-image-2", "low", "768x1152", "opaque"]);
+  });
+
+  it("Mini is asked at the crop's 2:3 standard size, billed on its own rate card, and named in every record", async () => {
+    const fetchOnce = vi.fn<typeof fetch>(async () => mini());
+    const result = await buyLocalPatch("synthetic-never-live", request(), { policy: LOCAL_PATCH_MINI_IMAGE_POLICY, fetchOnce });
+    const form = fetchOnce.mock.calls[0]![1]!.body as FormData;
+    expect([form.get("model"), form.get("quality"), form.get("size"), form.get("background")]).toEqual(["gpt-image-1-mini", "medium", "1024x1536", "opaque"]);
+    expect(form.has("input_fidelity")).toBe(false);
+    // 10 text x 2 + 20 image x 3 (the $2.50 rate rounded up) + 196 output x 8 micro-USD.
+    expect(result.evidence).toMatchObject({ model: "gpt-image-1-mini", amountMicroUsd: 10 * 2 + 20 * 3 + 196 * 8 });
+    expect(await sharp(result.png!).metadata()).toMatchObject({ width: 1024, height: 1536 });
+  });
+
+  it("refuses Mini's picture from another model or at another size, and keeps its bill", async () => {
+    const wrongModel = await buyLocalPatch("synthetic-never-live", request(), { policy: LOCAL_PATCH_MINI_IMAGE_POLICY, fetchOnce: async () => mini({ model: "gpt-image-2" }) });
+    expect(wrongModel).toMatchObject({ png: null, failureReceipt: { requestedModel: "gpt-image-1-mini", returnedModel: "unexpected" } });
+    const wrongSize = await buyLocalPatch("synthetic-never-live", request(), { policy: LOCAL_PATCH_MINI_IMAGE_POLICY, fetchOnce: async () => answer({ model: "gpt-image-1-mini" }) });
+    expect(wrongSize).toMatchObject({ png: null, evidence: { model: "gpt-image-1-mini" }, failureReceipt: { requestedModel: "gpt-image-1-mini", reason: "image-raster" } });
+  });
+
+  it("refuses a model or size this route may not buy before any request", async () => {
+    const fetchOnce = vi.fn<typeof fetch>(async () => mini());
+    await expect(buyLocalPatch("synthetic-never-live", request(), { policy: { ...LOCAL_PATCH_MINI_IMAGE_POLICY, size: "768x1152" }, fetchOnce })).rejects.toThrow("only the standard sizes");
+    await expect(buyLocalPatch("synthetic-never-live", request(), { policy: { ...LOCAL_PATCH_IMAGE_POLICY, model: "gpt-image-1" as never }, fetchOnce })).rejects.toThrow("Image model is not one");
+    expect(fetchOnce).not.toHaveBeenCalled();
   });
 });
