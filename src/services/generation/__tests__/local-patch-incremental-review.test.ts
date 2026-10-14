@@ -1075,6 +1075,9 @@ describe("a named quality reader decides a refused Opus answer for free, never i
 
 describe("dual release v3: object joins", () => {
   const raw = async (png: Buffer) => sharp(png).removeAlpha().raw().toBuffer();
+  // Two native 4K fixtures, four retained review stages and byte comparisons.
+  // This verifies pixel/evidence integrity, not wall-clock performance; allow
+  // bounded CI contention without changing any product deadline or assertion.
   it("asks Opus about each join magnified from the same registered pixels, keeps v1's continuity question, and publishes under its own pin", async () => {
     const v3 = await dualSeed("dual-v3-joins", "pass", { release: DUAL_VISUAL_REVIEW_V3 });
     const v1 = await dualSeed("dual-v1-plain", "pass", { release: DUAL_VISUAL_REVIEW_VERSION });
@@ -1108,7 +1111,7 @@ describe("dual release v3: object joins", () => {
     const { reader: _r, ...unnamed } = receipt.boardReview.dual.continuity;
     expect(await publishable(v3.gameId, row, JSON.stringify({ ...receipt, boardReview: { ...receipt.boardReview,
       dual: { ...receipt.boardReview.dual, continuity: unnamed } } }))).toBe(false);
-  });
+  }, 60_000);
 
   it("routes a broken object join that Opus names to repair, with the seam and picture checks", async () => {
     const broken = { ...good, pictureWhole: "fail", severeSeam: "fail", verdict: "fail", reason: "A newly painted sign meets the original lower half at the bottom join.",

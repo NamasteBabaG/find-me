@@ -58,3 +58,7 @@ The local complete check uses three workers. Its network guard does not alter ap
 Rollout: commit named reviewed files, push the release branch, wait for completed CI on that exact commit, stage on find-me-qa with public release variables and APP_COMMIT, verify READY and health, then promote the same staged deployment to the QA alias. Keep protection, credentials, daily spend ceiling and the business production project intact.
 
 Live health must show v19, dual-high-v3, both HIGH roles, the new $6 policy, historical default $5, a reachable database and the released commit. A synthetic wizard smoke stops before a photo upload, checkout or paid generation. For a subsequent owner-run full game, start a **new draft after this release**; an older open wizard is not the qualified new policy.
+
+## CI timing correction
+
+The first remote run on 39c61416 (38512429916) passed 4,984 assertions, with one 20-second timeout in the v3 native-pixel/publication regression (379 of 380 files passed). That test builds two 4K fixtures, runs four retained review stages and compares magnified native joins. Its assertions and production deadlines are unchanged; only that integration test now has a bounded 60-second allowance. The corrected test is run locally, followed by fresh complete remote CI and a deployment of the corrected exact commit. The candidate on 39c61416 is not promoted.
