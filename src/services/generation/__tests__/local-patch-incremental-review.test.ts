@@ -1125,6 +1125,44 @@ describe("dual release v3: object joins", () => {
     expect(localPatchRepairChecks(row.judgeJson, 12, { hideId: BOARD.hides[0]!.id })).toEqual(expect.arrayContaining(["pictureWhole", "severeSeam"]));
     expect(await publishable(s.gameId, row)).toBe(false);
   });
+
+  /** The judge requests in a world's ledger: [reservation, state] in order. */
+  const judgeReservations = async (worldId: string) => (JSON.parse((await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } })).snapshotJson) as
+    { requests: { requestKey: string; reserveMicroUsd: number; state: string }[] }).requests
+    .filter(r => r.requestKey.startsWith("self-repair:board:")).map(r => [r.reserveMicroUsd, r.state]);
+  it("reserves each v3 question's bound, so both fit the 0.289913 USD the first full v19/v3 world parked with", async () => {
+    const s = await dualSeed("dual-v3-bounded-reserve", "pass", { release: DUAL_VISUAL_REVIEW_V3 });
+    const worldId = boardWizardWorldId(s.gameId), budget = boardWizardBudgetOf(c);
+    await spendTo(c, s.gameId, 4_000_000 - 289_913);
+    expect(await budget.audit(worldId)).toMatchObject({ remainingMicroUsd: 289_913, held: false });
+    await s.run(); await s.run();
+    expect(s.request.mock.calls.map(([question]) => question.role)).toEqual(["scene-quality", "head-continuity"]);
+    expect(await judgeReservations(worldId)).toEqual([[250_000, "settled"], [66_000, "settled"]]);
+    const row = (await rows(s.gameId))[0]!;
+    expect(row.status).toBe("GENERATED"); expect(await publishable(s.gameId, row)).toBe(true);
+    expect(await budget.audit(worldId)).toMatchObject({ held: false, reservedMicroUsd: 0 });
+  });
+  it("keeps v1's flat reservation: at the same headroom it asks nothing and reserves nothing", async () => {
+    const s = await dualSeed("dual-v1-flat-reserve", "pass");
+    const worldId = boardWizardWorldId(s.gameId);
+    await spendTo(c, s.gameId, 4_000_000 - 289_913);
+    const ledger = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } });
+    await expect(s.run()).rejects.toMatchObject({ code: "cap_exceeded" });
+    expect(s.request).not.toHaveBeenCalled();
+    expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } })).toEqual(ledger);
+  });
+  it("recovers an interrupted v3 question reserved at its bound, with the whole reservation still counted", async () => {
+    const s = await dualSeed("dual-v3-timeout", "pass", { release: DUAL_VISUAL_REVIEW_V3 });
+    s.request.mockResolvedValueOnce(interruptedReply);
+    expect((await s.run()).state).toBe("pending");
+    const worldId = boardWizardWorldId(s.gameId), audit = await boardWizardBudgetOf(c).audit(worldId);
+    expect(audit.unknownRequestKeys).toHaveLength(1); expect(audit.held).toBe(false);
+    expect(audit.reservedMicroUsd).toBe(250_000);
+    await s.run(); await s.run();
+    expect(s.request).toHaveBeenCalledTimes(3);
+    expect((await boardWizardBudgetOf(c).audit(worldId)).unknownRequestKeys).toEqual(audit.unknownRequestKeys);
+    expect(await judgeReservations(worldId)).toEqual([[250_000, "unknown"], [250_000, "settled"], [66_000, "settled"]]);
+  });
 });
 
 describe("quality reader v2: a located failure beside an unlocated one", () => {

@@ -19,9 +19,10 @@ import { LOCAL_PATCH_PHASE_MARGIN_MS, LOCAL_PATCH_MIN_PROVIDER_MS } from "./loca
 import { sha256Bytes } from "./fixed-sprite";
 import { recoverPreparedLocalPatchReview } from "./local-patch-review-interruption-recovery";
 import { localPatchEvidenceHistory, localPatchEvidenceRecovery, evidenceKindOfWireFault } from "./local-patch-review-recovery";
-import { DUAL_VISUAL_REVIEW_V2, DUAL_VISUAL_REVIEW_VERSION, dualVisualReviewVersion, qualityQuestionFor, QUALITY_QUESTION_OBJECT_JOINS, type DualVisualReviewVersion } from "./visual-review-release";
+import { DUAL_VISUAL_REVIEW_V2, DUAL_VISUAL_REVIEW_V3, DUAL_VISUAL_REVIEW_VERSION, dualVisualReviewVersion, qualityQuestionFor, QUALITY_QUESTION_OBJECT_JOINS, type DualVisualReviewVersion } from "./visual-review-release";
 import { prepareJoinDetails } from "./local-patch-integration-evidence";
 import type { BudgetJson } from "./world-budget";
+import { dualQuestionReserveMicroUsd } from "../../domain/generation/dual-review-reserve";
 
 type Prepared = Extract<Awaited<ReturnType<typeof prepareLocalPatchBoardReview>>, { ready: true }>;
 type Bought = Extract<PurchaseOutcome, { kind: "bought" }>;
@@ -278,8 +279,12 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
     const requestKey = makeKey(question);
     await c.db.$transaction(async tx => { await fenceLocalPatchImages(tx, game.id); await deps.fence(tx); });
     await inventorySelfRepairRequest(c, game.id, requestKey, deps.fence);
+    // A question already in the ledger keeps the reservation it was made with (the
+    // ledger pins it); a new one reserves its release's bound (dual-review-reserve.ts).
+    const reserveMicroUsd = dualQuestionReserveMicroUsd((await budget.readRequest(worldId, requestKey))?.reserveMicroUsd,
+      version === DUAL_VISUAL_REVIEW_V3, question.role === "scene-quality" ? "quality" : "continuity");
     return purchaseOnce({ ledger: budget, store: new LocalPatchRetainedPurchaseStore(c, game.id, budget) }, {
-      worldId, requestKey, operationFingerprint: question.fingerprint, scope: "judge", reserveMicroUsd: 300_000,
+      worldId, requestKey, operationFingerprint: question.fingerprint, scope: "judge", reserveMicroUsd,
       ...(deadlineAt === undefined ? {} : { dispatchWindow: { deadlineAt,
         needMs: LOCAL_PATCH_MIN_PROVIDER_MS.judge + LOCAL_PATCH_PHASE_MARGIN_MS, retainMs: LOCAL_PATCH_PHASE_MARGIN_MS } }),
       buy: async ({ timeoutMs }) => {

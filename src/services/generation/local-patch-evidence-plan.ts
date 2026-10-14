@@ -7,11 +7,10 @@ import { localPatchRetainedAnswerUndecided, type DualReviewProof } from "./local
 import { readRetainedAnswer } from "./local-patch-dual-review";
 import { localPatchEvidenceRecovery } from "./local-patch-review-recovery";
 import { hasLocalPatchPublicationPolicy, localPatchPublicationGeometryHash } from "./local-patch-publication-policy";
-import { dualVisualReviewVersion } from "./visual-review-release";
+import { DUAL_VISUAL_REVIEW_V3, dualVisualReviewVersion } from "./visual-review-release";
+import { dualReviewReserveMicroUsd } from "../../domain/generation/dual-review-reserve";
 import { sha256Bytes } from "./fixed-sprite";
 
-/** Each dual question reserves this before dispatch; the two roles reserve in turn. */
-export const LOCAL_PATCH_DUAL_QUESTION_RESERVE_MICRO_USD = 300_000;
 
 export type LocalPatchEvidencePlanHide = {
   readonly hideId: string; readonly boardId: string; readonly status: string; readonly attempts: number;
@@ -98,10 +97,13 @@ export async function planLocalPatchEvidenceRecovery(c: Container, gameId: strin
   const paidQuestionsStillNeeded = 2 * counts["first-review"] + counts["evidence-question"] + counts["free-undecided"];
   // Under the ceiling in force now. The world's one automatic extension (four to
   // five dollars, where policy allows it) is the pipeline's decision, not this plan's.
-  const nextQuestionFits = !audit.held && audit.remainingMicroUsd >= LOCAL_PATCH_DUAL_QUESTION_RESERVE_MICRO_USD;
+  // Each dual question reserves before dispatch, the two roles in turn: v3 its bound
+  // (the quality question's, the larger), v1/v2 the flat legacy amount.
+  const questionReserveMicroUsd = dualReviewReserveMicroUsd(version === DUAL_VISUAL_REVIEW_V3, "quality");
+  const nextQuestionFits = !audit.held && audit.remainingMicroUsd >= questionReserveMicroUsd;
   const notes: string[] = [];
   if (counts["free-pass"] + counts["free-repair"]) notes.push(`${counts["free-pass"] + counts["free-repair"]} appearances are decided from answers already paid for, with no new question or reservation.`);
-  if (paidQuestionsStillNeeded && !nextQuestionFits) notes.push(`At least ${paidQuestionsStillNeeded} paid questions remain; each reserves ${LOCAL_PATCH_DUAL_QUESTION_RESERVE_MICRO_USD} micro-USD and ${audit.remainingMicroUsd} remain of ${audit.capMicroUsd}. `
+  if (paidQuestionsStillNeeded && !nextQuestionFits) notes.push(`At least ${paidQuestionsStillNeeded} paid questions remain; each reserves up to ${questionReserveMicroUsd} micro-USD and ${audit.remainingMicroUsd} remain of ${audit.capMicroUsd}. `
     + (audit.capMicroUsd < 5_000_000 ? "The pipeline decides at its first refusal whether the world's one automatic extension to 5000000 applies; this plan does not activate it."
       : "No automatic path exists within the authorized ceiling: a service decision is required."));
   if (counts["image-route"] || counts["unpainted"]) notes.push("Image routes and unpainted appearances also need new pictures and their reviews; actual settled costs vary and this plan promises no completion.");
@@ -109,5 +111,5 @@ export async function planLocalPatchEvidenceRecovery(c: Container, gameId: strin
     budget: { capMicroUsd: audit.capMicroUsd, committedMicroUsd: audit.committedMicroUsd, settledMicroUsd: audit.settledMicroUsd,
       reservedMicroUsd: audit.reservedMicroUsd, remainingMicroUsd: audit.remainingMicroUsd, held: audit.held,
       pendingRequests: audit.pendingRequestKeys.length, unknownRequests: audit.unknownRequestKeys.length },
-    hides, summary: { ...counts, paidQuestionsStillNeeded, questionReserveMicroUsd: LOCAL_PATCH_DUAL_QUESTION_RESERVE_MICRO_USD, nextQuestionFits, notes } };
+    hides, summary: { ...counts, paidQuestionsStillNeeded, questionReserveMicroUsd, nextQuestionFits, notes } };
 }

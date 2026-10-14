@@ -7,6 +7,7 @@ import { fenceLocalPatchImages, LocalPatchRetainedPurchaseStore } from "./local-
 import { sha256Bytes } from "./fixed-sprite";
 import { WorldBudgetError, type WorldAutomaticReviewRecovery } from "./world-budget";
 import type { EvidenceRole, EvidenceStrategy } from "../../domain/scene/local-patch-evidence-policy";
+import { dualReviewReserves } from "../../domain/generation/dual-review-reserve";
 
 export const REVIEW_INTERRUPTION_POLICY = "local-patch-review-interruption/v1" as const;
 type Prepared = Extract<Awaited<ReturnType<typeof prepareLocalPatchBoardReview>>, { ready: true }>;
@@ -34,7 +35,7 @@ export async function recoverPreparedLocalPatchReview(c: Container, prepared: Pr
   if (audit.overCapMicroUsd || audit.conflictRequestKeys.length || audit.overrunRequestKeys.length) return false;
   const held = await budget.readRequest(worldId, requestKey);
   if (!held || held.state !== "unknown" || held.origin !== "reserved" || held.scope !== "judge"
-    || held.operationFingerprint !== fingerprint || held.reserveMicroUsd !== 300_000 || held.conflicts.length) return false;
+    || held.operationFingerprint !== fingerprint || !dualReviewReserves(question.role).includes(held.reserveMicroUsd) || held.conflicts.length) return false;
   const retained = await new LocalPatchRetainedPurchaseStore(c, game.id, budget).get(worldId, requestKey);
   if (!retained || retained.evidence || retained.operationFingerprint !== fingerprint
     || retained.unknownReason !== "Grouped review charge could not be verified") return false;

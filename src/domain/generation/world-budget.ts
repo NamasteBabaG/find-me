@@ -7,6 +7,7 @@
  */
 import { interruptedLocalPatchImageRequest } from "../scene/local-patch-image-request";
 import { interruptedLocalPatchReviewRequest } from "../scene/local-patch-review-request";
+import { DUAL_REVIEW_RESERVES_MICRO_USD } from "./dual-review-reserve";
 export const WORLD_BUDGET_CAP_MICRO_USD = 5_000_000;
 /** Six dollars requires a trusted per-world QA authorization resolver; default remains five. */
 export type WorldBudgetCapMicroUsd = typeof WORLD_BUDGET_CAP_MICRO_USD | 6_000_000;
@@ -255,7 +256,7 @@ export function validateUnknownContinuationApproval(value: WorldContinuationReco
     || !interruptedLocalPatchImageRequest(value.requestKey)))
     fail("invalid_input", "Automatic recovery is limited to a bounded collection image interruption");
   if (value.version === "world-automatic-review-recovery/v1" && (value.policyId !== "local-patch-review-interruption/v1"
-    || value.scope !== "judge" || value.reserveMicroUsd !== 300_000
+    || value.scope !== "judge" || !DUAL_REVIEW_RESERVES_MICRO_USD.includes(value.reserveMicroUsd)
     || !interruptedLocalPatchReviewRequest(value.requestKey, value.operationFingerprint)))
     fail("invalid_input", "Automatic recovery is limited to an independent collection review interruption");
   if (!automatic && (typeof value.operatorId !== "string" || !/^[A-Za-z0-9_:.@/-]{1,500}$/.test(value.operatorId) || value.operatorId.includes("://") || /^sk-/i.test(value.operatorId)))
