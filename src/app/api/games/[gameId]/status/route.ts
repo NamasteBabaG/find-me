@@ -21,6 +21,7 @@ import { env } from "@/lib/env";
 import { auditWorldBudget } from "@/services/generation/world-budget";
 import { applyBoardWizardBudgetCap } from "@/services/generation/board-wizard-budget";
 import { readLocalPatchEmergencyBudget } from "@/services/generation/local-patch-budget-recovery";
+import { readNewQaWorldBudget } from "@/services/generation/local-patch-qa-budget";
 
 export const runtime = "nodejs";
 
@@ -110,8 +111,10 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
       if (snapshot.worldId !== worldId) throw new Error("Wrong local-patch budget world");
       // This ledger already includes identity, painting and judging. Adding
       // asset costs here would count the same image purchase a second time.
-      const extension = await readLocalPatchEmergencyBudget(c, worldId);
-      const audit = applyBoardWizardBudgetCap(auditWorldBudget(snapshot), extension?.capMicroUsd);
+      // The ceiling the ledger itself enforces, in the engine's own order: a new
+      // QA world's six-dollar policy, then the standing five-dollar grant, else four.
+      const extension = await readNewQaWorldBudget(c, worldId) ?? await readLocalPatchEmergencyBudget(c, worldId);
+      const audit = applyBoardWizardBudgetCap(auditWorldBudget(snapshot, extension?.capMicroUsd === 6_000_000 ? 6_000_000 : undefined), extension?.capMicroUsd);
       qaCost = { spentCents: audit.settledMicroUsd / 10_000, reservedCents: audit.reservedMicroUsd / 10_000,
         capCents: audit.capMicroUsd / 10_000, held: audit.held };
       localPatchBudgetHeld = audit.held;

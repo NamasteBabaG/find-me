@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   game: vi.fn(), asset: vi.fn(), job: vi.fn(), user: vi.fn(), denied: vi.fn(), link: vi.fn(), proof: vi.fn(), hash: vi.fn(), wizard: vi.fn(), ledger: vi.fn(),
-  approved: vi.fn(), emergencyBudget: vi.fn(),
+  approved: vi.fn(), emergencyBudget: vi.fn(), newQaBudget: vi.fn(),
   token: null as string | null, admin: false,
 }));
 vi.mock("@/lib/server/qa-access", () => ({ qaAccessDenied: mocks.denied }));
@@ -10,6 +10,7 @@ vi.mock("@/lib/server/session", () => ({ currentUser: mocks.user, draftTokenFrom
 vi.mock("@/services/container", () => ({ getContainer: () => ({ db: { game: { findUnique: mocks.game }, asset: { findUnique: mocks.asset }, generationJob: { findUnique: mocks.job }, worldBudgetLedger: { findUnique: mocks.ledger } }, email: { id: "console" } }) }));
 vi.mock("@/services/generation/board-conditioned-wizard", () => ({ BOARD_WIZARD_STYLE: "fixed-sprite-board-wizard-v1", readBoardWizard: mocks.wizard }));
 vi.mock("@/services/generation/local-patch-budget-recovery", () => ({ readLocalPatchEmergencyBudget: mocks.emergencyBudget }));
+vi.mock("@/services/generation/local-patch-qa-budget", () => ({ readNewQaWorldBudget: mocks.newQaBudget }));
 // Only the expensive lookup is stubbed. `characterNeedsApproval` is the real
 // decision rule under test, so it runs for real.
 vi.mock("@/services/generation/board-wizard-identity-gate", async importOriginal => ({
@@ -43,6 +44,7 @@ beforeEach(() => {
   mocks.job.mockResolvedValue({ gameId: game.id, status: "DONE", stepsJson: "{}" });
   mocks.proof.mockReturnValue(null); mocks.hash.mockReturnValue("synthetic-hash"); mocks.link.mockResolvedValue({ url: "/synthetic-play" });
   mocks.ledger.mockResolvedValue(null); mocks.approved.mockResolvedValue(true); mocks.emergencyBudget.mockResolvedValue(null);
+  mocks.newQaBudget.mockResolvedValue(null);
 });
 async function response() { return GET(new Request("https://example.invalid/api/games/synthetic/status"), { params: Promise.resolve({ gameId: "synthetic" }) }); }
 function assembled(status = "MANUAL_REVIEW") {
@@ -152,6 +154,38 @@ describe("fixed-world creation status boundary", () => {
     mocks.game.mockResolvedValue({ ...game, status: "TARGETS_GENERATING", styleVersion: "local-patch-world-v1" });
     mocks.ledger.mockResolvedValue({ snapshotJson: JSON.stringify(localBudget()) });
     mocks.emergencyBudget.mockRejectedValue(Error("Invalid policy receipt"));
+    expect(await (await response()).json()).toMatchObject({ pending: false, state: "held", qaCost: null });
+  });
+  /** The fixture ledger, settled at exactly `spent` micro-USD. */
+  function spentTo(spent: number) {
+    const snapshot = localBudget(), paid = snapshot.requests[0];
+    if (paid?.state !== "settled") throw new Error("Fixture needs a paid identity");
+    paid.evidence.amountMicroUsd += spent - 150_800;
+    paid.reserveMicroUsd = paid.evidence.amountMicroUsd;
+    return snapshot;
+  }
+  it.each([4_100_000, 5_400_000])("keeps polling a new six-dollar QA world at %i micro-USD, under the ceiling its ledger enforces", async spent => {
+    mocks.game.mockResolvedValue({ ...game, status: "TARGETS_GENERATING", styleVersion: "local-patch-world-v1" });
+    const snapshot = spentTo(spent);
+    mocks.ledger.mockResolvedValue({ snapshotJson: JSON.stringify(snapshot) });
+    mocks.newQaBudget.mockResolvedValue({ worldId: snapshot.worldId, capMicroUsd: 6_000_000, authorizationSha256: "b".repeat(64) });
+    expect(await (await response()).json()).toMatchObject({ pending: true, state: "working", awaitingQa: false,
+      qaCost: { spentCents: spent / 10_000, capCents: 600, held: false } });
+    expect(mocks.newQaBudget.mock.calls[0]?.[1]).toBe(snapshot.worldId);
+    // The verified six-dollar policy decides; the five-dollar receipt is not consulted.
+    expect(mocks.emergencyBudget).not.toHaveBeenCalled();
+  });
+  it("holds a six-dollar QA world above its own ceiling", async () => {
+    mocks.game.mockResolvedValue({ ...game, status: "TARGETS_GENERATING", styleVersion: "local-patch-world-v1" });
+    const snapshot = spentTo(6_100_000);
+    mocks.ledger.mockResolvedValue({ snapshotJson: JSON.stringify(snapshot) });
+    mocks.newQaBudget.mockResolvedValue({ worldId: snapshot.worldId, capMicroUsd: 6_000_000, authorizationSha256: "b".repeat(64) });
+    expect(await (await response()).json()).toMatchObject({ pending: false, state: "held", qaCost: { spentCents: 610, capCents: 600, held: true } });
+  });
+  it("does not fabricate budget permission when the six-dollar policy fails verification", async () => {
+    mocks.game.mockResolvedValue({ ...game, status: "TARGETS_GENERATING", styleVersion: "local-patch-world-v1" });
+    mocks.ledger.mockResolvedValue({ snapshotJson: JSON.stringify(spentTo(4_100_000)) });
+    mocks.newQaBudget.mockRejectedValue(Error("Invalid new-QA world budget policy; refusing a fallback"));
     expect(await (await response()).json()).toMatchObject({ pending: false, state: "held", qaCost: null });
   });
   it.each(["uniform", "mixed", "incomplete"])("only selects catalog7 display policy for a complete uniformly pinned world: %s", async shape => {
