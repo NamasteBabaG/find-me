@@ -32,7 +32,7 @@ It answers Codex's 15 October return brief and the overnight brief in `work/code
 
 **The last step to about $2 needs a cheaper quality judge that qualifies.**
 - With Sol HIGH replacing Opus, the model gives **$1.90–2.27** a world. The range is set by Sol HIGH's real price and how many paintings it rejects.
-- **E3 decides this.** Its stage one, about $0.77, decides it outright if Sol HIGH misses a known defect.
+- **E3 decides this.** Its stage one, about $0.77, decides it outright if the candidate pair misses a known defect. Sol HIGH alone missing a cut that continuity repairs does not stop the run; the report keeps that as Sol HIGH's own failure.
 
 **What does not get there:**
 - **Prompt caching:** at most about 8% of an Opus question, and E1 never saw a cache hit.
@@ -41,7 +41,7 @@ It answers Codex's 15 October return brief and the overnight brief in `work/code
 - **Selective escalation behind Sol MEDIUM:** unsafe on E1's evidence.
 
 **The order recommended:**
-1. **Approve E3.** The cap is $4; the expected cost is about $0.8 if Sol HIGH fails stage one, $2.6 if it qualifies.
+1. **Approve E3.** The proposed cap is $4; the expected cost is about $0.8 if the candidate pair fails stage one, $2.6 if it qualifies.
 2. **Engineering, provider-free:**
    - a Flex adapter for Sol first, worth about −$0.60 a world, with Sol's model, effort and evidence unchanged, contract-tested with no live call;
    - Batch adapters for Opus and the painter, only if Guy accepts an open-ended delivery time: several sequential batches, each of which can expire after 24 hours.
@@ -228,9 +228,16 @@ Stage one is 13 questions, about $0.77, bought first:
   - It puts today's pair on R6, R7, R12 and R13: Q0 on R12 and R13, and C on all four.
   - This answers Codex's correction 2: does the complete live decision path catch unequivocal cuts?
 - **Q1 on R5, R10, R4, R3, R14, R12 and R13**, in that order: Sol MEDIUM's misses first.
-  - The run is decided at Q1's first miss: a verified reject not caught on its class's check with a located fault, an unreadable answer, or a truncated one.
-  - One such miss disqualifies Q1 under the pinned absolute rule, and nothing more is bought.
-  - A decided run reports Q1 as not qualifying, and the cut test.
+- **Each Q1 answer is screened as the candidate pair decides** (`stageOneScreen` in `e3-run.ts`). E3 qualifies the pair, not Sol HIGH alone. In the live gate, a located continuity repair blocks a cut that quality accepted (`local-patch-dual-publication.ts:44-45`). Codex's pair-screen review, 15 October, found that the first version stopped on any Q1 miss, which could eliminate a pair that does block the defect.
+  - **Caught:** Q1 caught it on its class's check, with a located fault, read and not truncated. The run continues.
+  - **Rescued:** Q1 missed a cut figure, and that cut's continuity answer is a repair at a located fault, read and not truncated. That answer was bought earlier in stage one; the guard refuses a stage one that screens a cut before its continuity answer. The run continues. Q1 alone has failed, and the report keeps that.
+  - **Decided:** anything else, and nothing more is bought:
+    - a non-cut defect Q1 misses (continuity never rescues those);
+    - a cut both reviews miss;
+    - an unreadable or truncated Q1 answer;
+    - a continuity answer that is unresolved, unreadable or truncated, or none bought.
+  - **A decided run is final:** the candidate pair, and Q1 alone, do not qualify. Today's pair is read only where it was asked, and the cut test is reported in full.
+  - **Unchanged:** every label, the non-cut classes' requirements, the strictness on unread, truncated and unresolved answers, and every money guard. A rescue never qualifies anything: every positive and every remaining negative control is still measured in stage two before a pair can qualify.
 
 ### Stage two
 
@@ -278,14 +285,16 @@ Stage two is the other 38 questions, about $1.8.
 
 ### Bound inputs
 
+These are the pins after the pair screen; the earlier pins, at `b958443f`, are in §10.
+
 | Input | SHA-256 |
 | --- | --- |
-| `manifest-e3.json` | `7b708217ba39c745e63c9883726f3a5e7ca05fd86713245636f8b4086e562312` |
-| effective binding (`dry-run/effective-binding.json`) | `b62ea01bfd83952ebe1989832117cae759a393202314026f5f563349d3f909d6` (binding digest `ce7aad46e74d34a2`) |
+| `manifest-e3.json` | `e126d28dbbd604ac386b65bf89c530febda2f4b168a66eaa424865af44d39f75` |
+| effective binding (`dry-run/effective-binding.json`) | `426243e0980b63154a338104f672baf54c93f18ec9d37b379428421c6d0e696d` (binding digest `d6cffa8e4405ec89`) |
 | E1's ledger, reused from a copy | `43a5c78d22f24df0c45d29f14da9e35de89f892d0e36d7ed8230087cc0da7627` |
-| `e3-guard.ts` | `4e9243e8484cadc6789f7844351aa7dd4e3ff79265115e6a024b9b6164c3cddd` |
-| `e3-run.ts` | `09c461530201a2c66c728148f4fd2ed9c5c305e050584cac36dcee858dd4db65` |
-| `run-e3.ts` | `a2a64b0ba53eaa8c60a83a988d03d9b96c8c3fc422d2a4192a3bd1e6007faea4` |
+| `e3-guard.ts` | `60842671b9aee9e2d5cde5bed5d9df9cbdfbe06b0294ac07f0d7bb2dc6e5e03e` |
+| `e3-run.ts` | `1203d40ec6fd17b83af8c605481bfb08e86838f0c52ab8ce8a81a7e029237f6e` |
+| `run-e3.ts` | `8044f2827cc68a45e971543182d7f0d014b44b58cdc4110e6c8f384a6c3c0e3f` |
 | `run-e3.ps1` | `36a0e9e7148ff1810ab97ae0ab67dfc579c6b3299dc3a6d0de95a6d8bd53d0a7` |
 | `binding.ts`, `run-guard.ts` (copies Codex reviewed) | `a84e3b42…`, `de249a64…` |
 | R12 / R13 built pictures | `36ff26de…`, `0bdefc4c…` |
@@ -408,7 +417,7 @@ Results arrive unordered: only a mapped, unique result settles its purchase, and
 
 ## 10. Status of the preparation, and checks
 
-**The selftest** (`work/private-e3-runner/logs/selftest-e3.log`) runs provider-free, with the network blocked and synthetic bills. It covers:
+**The selftest** (`work/private-e3-runner/selftest-e3.ts`) runs provider-free, with the network blocked and synthetic bills. It covers:
 - the pins, including stage one and `shift-rect`'s rules;
 - that no label reaches any of the 72 outgoing questions;
 - Q0's reuse, and its refusals when not as planned;
@@ -421,7 +430,7 @@ Results arrive unordered: only a mapped, unique result settles its purchase, and
 - cap, lock and identity;
 - E1's ledger and the saved pictures unchanged.
 
-**Results, on the pinned runner** (`e3-guard.ts` `4e9243e8…`, `e3-run.ts` `09c46153…`; manifest `7b708217…`; binding `ce7aad46…`):
+**Results at `b958443f`, before the pair screen** (`e3-guard.ts` `4e9243e8…`, `e3-run.ts` `09c46153…`; manifest `7b708217…`; binding `ce7aad46…`):
 
 | Check | Command (from the worktree root) | Result |
 | --- | --- | --- |
@@ -447,6 +456,58 @@ Results arrive unordered: only a mapped, unique result settles its purchase, and
 - the pinned controls: the manifest compared, carried controls compared with E1, repeated wire ids, built picture bytes, `shift-rect`'s two rules.
 
 No product source changed, so the repository's full suite was not rerun.
+
+**The logs from `b958443f`:**
+- **Mutation:** preserved, with copies under versioned names (`logs/mutate-e3-b958443f.*`).
+- **Selftest:** its local file was overwritten on 15 October. A full run started for the pair screen and was stopped to split a section; it wrote to the same name. That 85/85 log's hash, `eb2376fb…`, is recorded here and in Codex's `final-handoff-review.json`, but its bytes are gone. The stopped run's partial output is kept as `logs/selftest-e3-pair-screen-aborted.log`. Every result since is written under a new name.
+
+**Results after the pair screen** (this delta; the pins are in §6). Codex scoped this round: the new rescue cases, the existing stage, pairs and money checks, the type and binding checks, and focused mutants for the changed screen. A full rerun only to repeat green counts was not required.
+
+| Check | Command (from the worktree root) | Result |
+| --- | --- | --- |
+| Types | `node node_modules/typescript/bin/tsc -p work/private-e3-runner/tsconfig.json` | exit 0 |
+| Dry run | as above | exit 0; binding `d6cffa8e…` matches manifest `e126d28d…`; 21 reused, 3 to buy, 51 admitted |
+| Focused selftest | `E3_SECTIONS=screen,pins,stage,rescue,pairs,money`, same environment (file `dedc0884…`) | **67/67, exit 0**, 14 min; log `logs/selftest-e3-pair-screen.log` `53003f99…` |
+| Focused mutants | `node work/private-e3-runner/mutate-e3.cjs --group pair-screen` | **10/10 caught by their own check**, after one fix to two checks and two single reruns (below); both sources restored and hash-verified each time |
+| After the mutants | `sha256sum -c` against the hashes taken before, then the dry run again | both sources OK, no backup left; binding `d6cffa8e…` still matches |
+
+**How the focused mutants reached 10/10.** Three runs:
+1. **The group run** caught 8 of 10 (`logs/mutate-e3-pair-screen-run1.log`, `78dc6bc2…`). Two were not caught:
+   - **"The report hides a rescued cut" crashed.** The rescue check read the screen's verdict without guarding against a missing screen, so it threw instead of failing.
+   - **"A decided run leaves the candidate pair unjudged" produced no output at all** (child exit unknown). The desktop session restarted during that last mutant, and its child produced nothing, consistent with being killed.
+2. **The fix:** the rescue checks now fail, never crash, when a screen is missing (`?.`). The rescue section was rerun on the fixed file (`selftest-e3.ts` `2889f415…`): 12/12, exit 0 (`logs/selftest-e3-pair-screen-rescue-rerun.log`, `6e9d683e…`). No runner file changed, so the binding is unchanged.
+3. **Each of the two was rerun alone,** with its child's output and exit status now recorded (`--only`). Both were caught by their own check, with child exit 1:
+   - `logs/mutate-e3-pair-screen-only-unjudged.log` `aa1fe94e…`;
+   - `logs/mutate-e3-pair-screen-only-report.log` `93088234…`.
+
+**The ten breaks:**
+- the screen never decides;
+- continuity rescues without a located repair;
+- a truncated continuity repair rescues;
+- continuity rescues a non-cut defect;
+- an unreadable or truncated Q1 answer can be rescued;
+- a truncated Q1 answer counts as caught;
+- the screen ignores continuity answers;
+- the report hides a rescued cut;
+- a cut can be screened before its continuity answer;
+- a decided run leaves the candidate pair unjudged.
+
+The stale anchors of two earlier stage-one breaks in the full list were updated to the screen. That full list was not rerun, as Codex scoped.
+
+**What the focused selftest adds for the pair screen:**
+- **The screen's truth table (16 cases):** Codex's eight rows (two classes × Q1 caught or missed × continuity caught or missed), plus the strict cases around the rescue:
+  - an unreadable, missing or truncated Q1 answer;
+  - a truncated, unresolved or unread continuity answer;
+  - a repair with no located fault;
+  - no continuity answer bought before the screen.
+- **End to end:**
+  - a cut Q1 accepts but continuity repairs is rescued: the run completes, Q1 alone fails on it, and the candidate pair still qualifies;
+  - a cut both reviews miss decides the run, and relaunching after that early stop buys nothing;
+  - unresolved, unreadable and truncated continuity answers never rescue;
+  - an unreadable Q1 answer on a cut is not rescued;
+  - a continuity repair never rescues a non-cut defect, even when bought before the screen;
+  - a rescued cut is recorded and the screen goes on to the next question.
+- **The guard:** it refuses a stage one that screens a cut before buying its continuity answer.
 
 **Not done:**
 - the E4a and E4b runners: specified here, built after Codex agrees on the shape;
