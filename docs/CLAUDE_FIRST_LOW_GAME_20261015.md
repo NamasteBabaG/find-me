@@ -2,19 +2,26 @@
 
 **What Guy asked for:** "I just want to see a game." It should be made at the lowest cost I can offer, without hurting quality, and pass the judges. All decisions are delegated.
 
-**What exists now:** a complete, playable journey world, made on the plan's path A2 (`CLAUDE_COST_LOW_THREE_DOLLAR_PLAN_20261015.md`):
+**What exists now:** a complete, playable journey world, made with the LOW paintings of the plan's path A2 (`CLAUDE_COST_LOW_THREE_DOLLAR_PLAN_20261015.md`). Its reviews ran synchronously at standard prices, not on Batch:
 - 9 boards, 27 hides and 54 discoveries.
 - A synthetic child, "נועם", age 6.
 - **Every hide was painted at gpt-image-2 LOW and accepted by BOTH of today's qualified judges:** Opus 5.5 HIGH on quality, and Sol 6.1 HIGH on continuity, read and not truncated.
 - It was assembled through the product's own world path and plays locally, in Hebrew.
 
-**What it would cost on path A2 (computed, not yet measured on Batch):**
-- **$2.73** for the purchases this world actually needed.
-- **About $2.80** with a customer's identity stage ($0.074).
-- The $3 target is met.
+> **Corrected 15 October after Codex's QA** (`CLAUDE_LOW_GAME_QA_FIXES_R1R2_20261015.md`). The A2 figure no longer halves the unknown charge. Every figure is labelled as recorded, projected or measured. Batch is no longer said to remove timeouts. The giza-v12-2 re-ask is marked as the purchase the corrected rule (R1) now forbids.
 
-**What was actually spent** at standard prices, with nothing on Batch yet:
-- **$4.846543.** That is $2.424932 for E4a and $2.421611 for E4c.
+**A Batch-rate projection for path A2. This is not a measured world price and not an average:**
+- **$2.759757 (≈ $2.76)** for the purchases this world needed:
+  - its settled purchases repriced at Batch rates, $2.693757;
+  - plus the $0.066 unknown charge held in full. A Batch discount is never applied to an unknown.
+- **≈ $2.83** with a customer's identity stage ($0.074).
+- This is one world under one cost model. Guy's target is about $3 **on average**, with reasonable exceptions. One projection does not establish an average.
+- E5 later found that OpenAI's Batch answered none of 4 Sol questions in 3 h. If Sol stays synchronous, this projection becomes $3.286008, ≈ $3.36 with identity (`CLAUDE_LOW_GAME_QA_FIXES_R1R2_20261015.md` §4).
+
+**What was recorded** at standard prices, with nothing on Batch yet:
+- **$4.846543 exposure.** That is **$4.780543 in settled usage estimates**, plus **$0.066 unknown**, which is held in full.
+- No provider invoice has been verified.
+- By run: $2.424932 for E4a, which includes the unknown, and $2.421611 for E4c.
 - The approvals were: stage A ≤ $1.50, stage B within E4a's $5, the rework ≤ $3.00.
 
 **What was not changed:** no live database, no flag, no deployment, no customer picture, and no product code.
@@ -25,7 +32,7 @@
 | --- | --- | --- |
 | Paint | E4a stage A | 29 LOW paintings for 27 hides. The product's checks refused 2 (marrakech-v12-1 a1, greatwall-v12-2 a1); their second attempts were accepted. Gate 27/27. $0.517726. |
 | Judge | E4a stage B | 14 hides judged, then the run stopped: Sol's continuity call on giza-v12-2 timed out at 240 s. That charge could not be stated, so the ledger kept it as an **unknown charge held in full ($0.066)** and bought nothing again. 11 hides were accepted by both judges. amazon-v12-3 was rejected by quality (severeSeam, pictureWhole, neighborsIntact). paris-v12-2's continuity answer was truncated. |
-| Finish | E4c (new) | E4c is the rework, and every one of its hides and attempts has its own ledger world, so one more timeout would hold only itself. It handled three cases. **13 unreviewed hides:** E4a's own paintings were judged, and 12 were accepted by both. greatwall-v12-2 was rejected by quality; its repaint at a3 was refused by the checks, and a4 was accepted by both. **Two re-asks:** giza-v12-2's continuity was re-asked once and passed. paris-v12-2's re-ask truncated again. **Repaints:** amazon-v12-3's a3 was accepted by both. paris-v12-2's a3 truncated twice more, and its a4 passed. Result: 16/16, $2.421611 within $3.00. |
+| Finish | E4c (new) | E4c is the rework, and every one of its hides and attempts has its own ledger world, so one more timeout would hold only itself. It handled three cases. **13 unreviewed hides:** E4a's own paintings were judged, and 12 were accepted by both. greatwall-v12-2 was rejected by quality; its repaint at a3 was refused by the checks, and a4 was accepted by both. **Two re-asks:** giza-v12-2's continuity was re-asked once and passed. That first question's charge was still unknown, and the corrected rule (R1) no longer allows this re-ask. The purchase stays in history as it is. Under R1 this world counts as images complete with its accounting open until the $0.066 is reconciled. paris-v12-2's re-ask truncated again. **Repaints:** amazon-v12-3's a3 was accepted by both. paris-v12-2's a3 truncated twice more, and its a4 passed. Result: 16/16, $2.421611 within $3.00. |
 | Assemble | `build-game.ts` | The product's own seed, world selection, identity gate, `runLocalPatchWorldSlice` and publication produced a DELIVERED game with a player link. |
 
 **How the assembly stays honest:**
@@ -48,14 +55,20 @@
 - The judges rejected 2 of 29 distinct paintings they read.
 
 **The cost on A2:**
-- **What was spent:** paintings $0.607, Opus $3.121, Sol $1.053, plus the timeout's $0.066 held.
-- **On A2:** paintings at standard, and reviews at Batch's half: **$2.727**.
+- **What was recorded:** settled paintings $0.606971, Opus $3.121070 and Sol $1.052502, plus the timeout's $0.066 unknown, held.
+- **Projected on A2:** paintings at standard and settled reviews at Batch's half, $0.606971 + $4.173572 / 2 = $2.693757. The unknown $0.066 stays in full, for **$2.759757**.
+- This is a projection, not measured Batch spend. E5 sampled only the channel (`CLAUDE_LOW_GAME_QA_FIXES_R1R2_20261015.md`).
 
 **Two failure modes, each seen and handled:**
 1. **A synchronous timeout.**
    - **What happened:** Sol's call ran past its 240 s limit (the median is 63 s). The product correctly holds the charge as unknown, and that held the whole review world.
    - **What changed:** E4c isolates each hide's questions in its own world.
-   - **The product fix:** Batch removes the timeout itself, which is §3 of the plan.
+   - **What Batch does and does not change:** Batch removes the synchronous wait for an answer. It does not remove the money uncertainty:
+     - a batch can expire;
+     - it can be cancelled at a deadline;
+     - it can lose its create response.
+
+     Each of these leaves a charge unknown until it is reconciled. E5's cancelled OpenAI request is one: it is unknown, with no result. The product's protection is the same as E4c's: isolate each check, reconcile, and ask again only what is proven unbilled.
 2. **Continuity truncation on a crowded board.**
    - **What happened:** paris-v12-2 ran out of output on reasoning 4 times, on three different paintings. Sol spent all 4,096 tokens thinking.
    - **What does not help:** a new painting. It passed only on the fourth painting.
@@ -74,7 +87,7 @@
 
 ## 4. Files
 
-Everything is private and git-ignored. Each file below is listed with the first 16 characters of its SHA-256.
+Everything is private and git-ignored. Each file below is listed with the first 16 characters of its SHA-256, as it stood when this document was first written. The rework runner and its test have changed since (R1). Their final signatures are in `CLAUDE_LOW_GAME_QA_FIXES_R1R2_20261015.md`.
 
 **Runs:**
 - `work/private-e4a-runner/out/results.json`: `223db9c6c673d264`
@@ -102,6 +115,6 @@ Everything is private and git-ignored. Each file below is listed with the first 
 ## 5. Next
 
 1. **Codex QA** of E4c, the builder and the game, then publication to QA so the game can be played on a phone.
-2. **E5:** the batch contract test (≈ $0.30, cap $1). It proves the A2 price on real batches.
+2. **E5:** the batch contract test (≈ $0.30, cap $1). It validates the channel and the cost of its 8-question sample. It does not measure a world's price or the average.
 3. **The 8,000-token continuity re-ask**, as a product change for Codex's review.
-4. **Path A2 in the product:** the batch purchase from the prototype, rounds, and the deadline fallback.
+4. **Path A2 in the product:** the batch purchase from the prototype, and rounds. The fallback at a deadline asks synchronously only after the round is reconciled, and only the questions proven unbilled. An unknown holds.

@@ -1,5 +1,11 @@
 # A ~$3 world: LOW paintings, both reviews on Batch (15 October 2026)
 
+> **Corrected 15 October after Codex's QA** (`CLAUDE_LOW_GAME_QA_FIXES_R1R2_20261015.md`).
+> - Every world figure here is a model projection, not a measured price or average.
+> - Batch removes the synchronous wait, but not timeouts, expiry or money uncertainty.
+> - 6 h is a proposed policy, not a promise.
+> - A deadline's synchronous fallback asks only questions proven unbilled after reconciliation.
+
 **Status.**
 - Preparation only: no provider call, no paid render, no live database, no flag, no deployment.
 - Everything runnable here is provider-free. The next paid step is a separate proposal (§7) and needs Guy's own approval.
@@ -97,9 +103,9 @@ They do not change:
 | --- | ---: | ---: | --- | --- | --- |
 | P0 today: MEDIUM; Opus and Sol synchronous | $5.93 | 0 | ~1.8 h (modelled) | slow slices, retries | today's code |
 | A: LOW synchronous, Opus on Batch, Sol on Flex | $2.93 | 2–3 | ~1–3 h | each Opus round up to 24 h; a Flex timeout is an unknown charge that holds the world | Anthropic batch adapter; Flex inside the 270 s slice |
-| **A2: LOW synchronous, Opus and Sol on Batch, first pass in one round, 6 h deadline** | **$3.01** | 2 | ~0.7–2.2 h | ~8 h: at the deadline, every open question goes synchronous at standard price | one two-phase batch purchase, two provider adapters |
-| H: A2, with rework asked synchronously | $3.34 | 1 | ~0.7–1.5 h | ~8 h | A2, plus today's synchronous path |
-| B: A2, plus paintings and identity on Batch | $2.63 | 3 | ~0.9–3.1 h | ~8 h | A2, plus an images batch (see below) |
+| **A2: LOW synchronous, Opus and Sol on Batch, first pass in one round, proposed 6 h deadline** | **$3.01** | 2 | ~0.7–2.2 h | no hard bound: at the deadline open questions are cancelled and reconciled; only those proven unbilled are asked synchronously at standard price; an unknown holds the world | one two-phase batch purchase, two provider adapters |
+| H: A2, with rework asked synchronously | $3.34 | 1 | ~0.7–1.5 h | as A2 | A2, plus today's synchronous path |
+| B: A2, plus paintings and identity on Batch | $2.63 | 3 | ~0.9–3.1 h | as A2 | A2, plus an images batch (see below) |
 
 **Sensitivity.** A2's margin is thin. If LOW reworks more than the measured MEDIUM world did, A2 drifts over $3. That is the number E4a starts to measure (§7).
 
@@ -110,7 +116,7 @@ They do not change:
 | +50% | $3.30 | $2.88 |
 
 **Why A2.**
-1. **It meets "about $3" with the fewest moving parts.**
+1. **Its projection ($3.01 a world) is the closest to "about $3" with the fewest moving parts.** It is a model, not a measured price.
    - One purchase pattern covers both reviews.
    - No review call runs inside a serverless slice.
    - Sol's first-pass question is asked in the same round as Opus's. It costs $0.08 a world more than asking Sol after Opus accepts, and saves a whole round of waiting.
@@ -118,7 +124,12 @@ They do not change:
    - Sol already takes 72 s (p90 105 s) at standard, and Flex is documented as slower.
    - A 429 when Flex has no capacity is documented as unbilled.
    - A timeout is not: it becomes an unknown charge, which holds the world until a person reconciles it.
-   - Batch costs the same as Flex and has no timeout.
+   - Batch costs the same as Flex, and no synchronous call waits inside a slice. Batch still has its own uncertainty:
+     - a batch can expire after 24 h;
+     - it can be cancelled at a deadline;
+     - it can lose its create response.
+
+     Each of these leaves a charge unknown until it is reconciled. E5's cancelled OpenAI request is one.
 3. **H misses the target ($3.34).** Rework at standard price costs $0.33 a world.
 4. **B saves $0.38 more but adds the hardest part.** That part is an images batch:
    - multipart edits become JSON lines carrying image data, in files of at most 200 MB;
@@ -130,8 +141,10 @@ They do not change:
 5. **Delivery time stays close to today's,** if batch rounds take under an hour.
    - Today's reviews are serialized at one per minute: about 1.5 h for a world.
    - A batch round answers all 54 first-pass questions at once.
-   - The tail is what changes. Without a deadline, a world could wait 24 h per round. **With a deadline, the worst case is bounded.** The 6 h here is a proposal.
-   - Choosing the deadline, and accepting that a world past it pays standard price for what is left, is **an explicit product decision for Guy** (§6).
+   - The tail is what changes. Without a deadline, a world could wait 24 h per round.
+   - **A deadline bounds how long the product waits before it cancels and reconciles. It does not bound delivery:** a charge still unknown after reconciliation holds the world until a person settles it.
+   - The 6 h is a proposed product policy, not a delivery-time promise.
+   - Choosing the deadline is **an explicit product decision for Guy** (§6). So is accepting that, past it, the questions proven unbilled are asked at standard price.
    - The FAQ promises no delivery time: "After payment is confirmed, the game is created and checked."
 
 ## 4. LOW on all 27 hides: E4a, and the truncated answers
@@ -276,7 +289,7 @@ They do not change:
 **What the product would need later** (not in this round):
 - a durable round table (a migration, QA first);
 - batch rates in the pricing; today's Opus pricing refuses any `service_tier` other than standard, which would make every batch answer an unknown charge;
-- the review stage reorganised into rounds, with the deadline fallback through `purchaseOnce` under new keys;
+- the review stage reorganised into rounds. The deadline fallback goes through `purchaseOnce` under new keys, only after the round is reconciled, and only for questions proven unbilled. An unknown is never asked again while it is unresolved.
 - real adapters for Anthropic batches and for OpenAI files and batches. After reconciliation they delete the provider's copies: the Anthropic batch, and OpenAI's input and output files. A review question carries the child's portrait, so the privacy notice is checked as well;
 - Codex to confirm that a zero settlement under `provider-billed` with the result as evidence is the right basis, or to add a third basis.
 
@@ -286,22 +299,26 @@ They do not change:
 | --- | --- |
 | Today (modelled) | ~1.8 h a world |
 | A2, typical (ASSUMED queue) | ~0.7–2.2 h |
-| A2, worst, with a 6 h deadline | ~8 h |
+| A2, with the proposed 6 h deadline | no hard bound. Waiting stops at the deadline. Reconciliation and the synchronous fallback for proven-unbilled questions follow, and an unknown holds the world. |
 
-Batch queue times are the one number no document gives, and they decide whether A2 lengthens creation. E5 (§7) measures them.
+Batch queue times are the one number no document gives, and they decide whether A2 lengthens creation. E5 (§7) measured one sample:
+- Anthropic answered 4 Opus questions in 1 h 34 min.
+- OpenAI answered **none** of 4 Sol questions in 3 h, and they were cancelled unbilled at the deadline. See `CLAUDE_LOW_GAME_QA_FIXES_R1R2_20261015.md`.
+
+One sample is not a distribution, but A2's Sol half is unvalidated until more samples answer in time.
 
 ## 6. Decisions for Guy
 
 1. **The delivery deadline** for a batched world:
-   - **Proposed:** 6 h.
-   - **The trade:** past it, the world's open questions are asked at standard price.
+   - **Proposed:** 6 h. This is a policy, not a promise.
+   - **The trade:** past it, the world's open questions are cancelled and reconciled. Those proven unbilled are asked at standard price. Unknown ones hold the world until reconciled.
    - **The alternative:** with no discounted channel at all, a LOW world stays at about $5.12. Of that, $3.19 is Opus, the largest single cost; Batch halves it.
 2. **B, the paintings on Batch,** stays parked until the measured average under A2 is over $3.
 3. **The next paid experiment:** §7.
 
 ## 7. The recommendation
 
-**Preferred path: A2.** LOW paintings synchronous, Opus quality and Sol continuity on Batch through one two-phase purchase, the first pass in one round, rework in a second, and a deadline fallback.
+**Preferred path: A2.** LOW paintings synchronous, and Opus quality and Sol continuity on Batch through one two-phase purchase. The first pass goes in one round and rework in a second. At the deadline, the fallback asks synchronously only the questions proven unbilled after reconciliation.
 
 **Proven:**
 - the prices and support in §5.1;
