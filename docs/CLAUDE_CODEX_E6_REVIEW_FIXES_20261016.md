@@ -4,6 +4,8 @@ Codex reviewed read-only, through the Codex app's binary (gpt-6.1-sol, read-only
 
 **Verdict: HOLD.** E6a's and E6b's saved results are supported. But two money-safety defects block any further Batch or Flex spending through this code until they are fixed and proven by provider-free regressions.
 
+> **Re-checked by Codex the same night: LIFT HOLD WITH FINDINGS.** Both P0 fixes are confirmed. Two remaining P1s, in the cleanup verifier and in report preservation, are fixed in §"Codex's re-check" at the end.
+
 **What Codex verified independently:**
 - **E6a.**
   - Its binding has no drift.
@@ -125,3 +127,72 @@ After every mutant, all mutated files were restored and their SHA-256 verified.
 | `work/private-channels/verify-cleanup-e5.ts` / `verify-cleanup-e5.ps1` / `out-e5/cleanup-evidence.json` | `aa112e59a7307d66c3b4b3208bcdfc5cb4ac7c0bd66413df1e7c7d1383e92ada` / `458665722191719506b04fe5e193d2577b2073e04568e31b7d87dc8306a38e0a` / `929bf4a69676e715944d93c99b0d3d61809713d2b17f6d715670fb3d690962fd` |
 | logs: `selftest-e5-codex.log` / `selftest-e6b-codex.log` / `selftest-channels-codex.log` / `selftest-store-procs.log` / `mutate-codex-e6.log` | `b864114b3eeb461d9d09c6a43115f4de2b896cf99f955332f2203a7970eb6f6b` / `ae785f4b9dc6ac5726da0a2e754e75d6787001b35938d7b2d5af09f8a5516c3f` / `98b140878a4dd1b09b4aebbbb7d141d609dc7ca38d775d7d2e46d519c450d6f6` / `b009a99125d10246607403dfc3ec71dad5d90df4df24f78593dc49d899ba4b68` / `1ff4832f06e8986ba145f168244462a892f13f8298fc6a32e88c229699c98562` |
 | Codex's review: `work/private-game/reviews/codex-review-e6-20261016.md` | `ea30e0130bb82dd2a391d56d8cc3001f8dc2ff70fedf807516d3d22d54442248` |
+
+## Codex's re-check: LIFT HOLD WITH FINDINGS
+
+Codex re-checked the fixes above, read-only. The re-check is kept at `work/private-game/reviews/codex-recheck-e6-20261016.md`.
+- **P0-1 is closed** for cooperating processes sharing the local NTFS store.
+  - `openSync(..., "wx")` makes the lock exclusive across processes.
+  - The read, check and rename all happen under it, and a killed writer leaves the lock in place.
+  - E5 takes the durable run lock before planning, polling or creating.
+  - The regression genuinely spawns two processes against the real store and SQLite ledger, and the lock-removal mutant fails it.
+- **P0-2 is closed.** The product's model check comes before any rate is chosen.
+- **The cleanup adapters and the corrected historical wording are supported.**
+- **The mutation artifacts,** 9/9, 13/13 and 14/14, match the current sources. All 22 checksums in this document match.
+
+Two P1s remained, both now fixed.
+
+**1. The verifier could report "all deleted" without checking any OpenAI file.**
+- **The defect.** It listed a batch's files from whatever the batch read returned. A failed read, or a 200 with an empty object, therefore listed no files, and the final check passed vacuously. Codex reproduced both cases.
+- **The saved historical result stands:** both OpenAI batch reads were 200, and all five objects 404.
+- **The fix:** `cleanup-verify.ts`, used by `verify-cleanup-e5.ts`. A verification is *complete* only when all of these hold:
+  - every expected round has its batch;
+  - every OpenAI batch reads with a 200, as this batch's own object, naming its input file;
+  - every listed object answers 404 or 200.
+- *All deleted* needs a complete verification with every deletable object at 404. A copy still present makes it complete but **not** all deleted, and names the copy.
+- **Its regressions:** `selftest-verify-cleanup.ts`, 8/8. They cover a 503 batch read, an empty object, another batch's object, a missing round, an unclear file answer, an unclear Anthropic answer, and a copy still present.
+- **Re-run for real,** GET-only: **complete: true; all deleted: true**. The evidence is `out-e5/cleanup-evidence-2026-10-15T21-50-15-419Z.json`; the first evidence file is kept beside it.
+
+**2. "A report is never overwritten" was not guaranteed.**
+- **The defect.** A name was chosen by an existence check, then written in a separate step. Two writers, or two launches in the same millisecond, could land on one file.
+- **The fix:** every report is now created with exclusive creation (`"wx"`, atomic in the OS) in `report-file.ts`, used by E5, E6b and the cleanup proof. A collision moves on to `-2`, `-3`, and so on. The non-atomic `reportFileFor` helper is removed.
+- **Its regressions:** `selftest-report-file.ts`, 3/3.
+  - An existing report survives.
+  - A repeated stamp gets a file of its own, each time.
+  - **Four processes** writing at once, with one name and one stamp, each get their own file.
+
+**Mutants:** `mutate-codex-e6.cjs`, now **12/12**, each caught by its own check:
+- the 9 before, with the report mutant moved to the exclusive writer;
+- the verifier listing files from any batch read;
+- skipping an expected round;
+- counting an unclear answer as deleted.
+
+All files were restored and their SHA-256 verified.
+
+**Self-tests after the re-check:**
+
+| Suite | Result |
+| --- | --- |
+| `selftest-e5.ts` | 31/31 |
+| `selftest-e6b.ts` | 17/17. Its report check moved to `selftest-report-file.ts`. |
+| `selftest-verify-cleanup.ts` | 8/8 |
+| `selftest-report-file.ts` | 3/3 |
+| `selftest-store-procs.ts` | 2/2 |
+| `selftest-channels.ts` | 37/37 |
+
+**Still unchanged:**
+- nothing bought, resent or deployed;
+- three unknown charges awaiting a person: $0.066 (E4a), $0.033 (E5) and $0.066 (E6b).
+
+**Signatures after the re-check.** They supersede the rows above for the same files.
+
+| File | SHA-256 |
+| --- | --- |
+| `work/private-channels/report-file.ts` / `report-worker.ts` / `selftest-report-file.ts` | `d551eb148c66f07c6e2e0966d4db6b73eab82d93f28033a266780cc45516f813` / `5c01c09cc663d5918db8445854de229d02a626d52206f12594c4bee6ee89d40f` / `94404921da4e637194813237a1a8a4932335a3bc8b271422d57c45f4039e9df6` |
+| `work/private-channels/cleanup-verify.ts` / `verify-cleanup-e5.ts` / `selftest-verify-cleanup.ts` | `a88d7f3e66fe3b3c839a22b6f8ab2d27332dce2361aa20ea0f53c64375a7e14b` / `635b646bad675c05b911e800830a245d1a7477278cdf0297fd9610fb0365e179` / `0041ba6f7c1c2ad10c88d708bbfabc7d7e0678aee83c84d59abb272ed83a8e0c` |
+| `work/private-channels/run-e5.ts` / `run-e6b.ts` | `4832f13989e398cb0d10611b0714d1999b1cbf35936bac9bdf1bb485272c3785` / `086282137fa2f7347d17b991772f4f872861205c746c737659d8a5cd3b86dfa5` |
+| `work/private-channels/e6b-flex.ts` / `selftest-e6b.ts` | `442df90f4e12e75a5523db1765aa77ea6a6aa6a2fa5b243ee7e8c4bd2b796560` / `294707e0dbc1f7d318c4a9d10cf2c47d800aef1193ca55ac5d8281ed586c8cc3` |
+| `work/private-channels/mutate-codex-e6.cjs` / `mutate-codex-e6.json` (12/12) | `8a13c10ea81a700028ab7d25aeb46456e8f0fb0d0941c67a9d8bba9d9124fec7` / `a75d7689b3e33c0f216618ee40592e3c4fd8b28eced7b9dd1642bccce054aa6a` |
+| `work/private-channels/out-e5/cleanup-evidence-2026-10-15T21-50-15-419Z.json` | `47e3a81320773c1505e7c6ce08aac9cea691cf9b5d0c789f9df8261425836c67` |
+| logs: `selftest-verify-cleanup.log` / `selftest-report-file.log` / `selftest-e6b-recheck.log` / `selftest-e5-recheck.log` / `mutate-codex-e6.log` | `4ef30bff1f532aa1f7943e02a758f0a8a6c470a0f41e2b1ab4e1fa51592b4162` / `55d63fc2cbba76b8c60f579c20f6dd922732c56f06a42ed6c0d01899725a2957` / `19dc1ef713f4ac555c60d4d355beee463197223a6272c52cf9413672f51c2ebc` / `b864114b3eeb461d9d09c6a43115f4de2b896cf99f955332f2203a7970eb6f6b` / `c40e7b7bae334d4638f5bb72391d64cf707e1b119902587a6b51782a1cf1a739` |
+| Codex's re-check: `work/private-game/reviews/codex-recheck-e6-20261016.md` | `979b1c72096f0899f11f5f83f2c36e5fa18aaa4e80e91b2286adcaed13b8554a` |
