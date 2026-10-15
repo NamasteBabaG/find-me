@@ -1,5 +1,7 @@
 # Antarctica's hat and Sol on Flex: E6a and E6b (15 October 2026)
 
+> **Reviewed by Codex on 16 October.** The results below are confirmed. Codex found four defects in the runners: two P0 (the E5 store across processes; E6b's model check) and two P1 (cleanup acknowledgement; E6b's kept evidence). They are fixed in `CLAUDE_CODEX_E6_REVIEW_FIXES_20261016.md`, whose signatures supersede those below for `e6b-flex.ts` and `run-e6b.ts`.
+
 **Approval.** After the QA round (`CLAUDE_LOW_GAME_QA_FIXES_R1R2_20261015.md`) Guy wrote "מאשר להמשיך בתשלום": continue with payment. That handoff had named two paid items: the Antarctica hat check, and the Sol channel.
 
 **Caps I set:** E6a $1.50, E6b $0.50.

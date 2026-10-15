@@ -93,7 +93,8 @@ This answers Codex's brief "בריף תיקוני QA לעולם LOW ולמסלו
   - An Anthropic candidate that has not ended is **undecided**: only its results' custom ids can prove or rule it out.
   - Absence is declared only from a complete read.
 - **`batch-purchase.ts`: the create is claimed.**
-  - After every reservation exists, a worker writes `phase: "creating", createAttemptAt` by compare-and-set on **both** the phase and the previous claim time. Of two workers, one creates.
+  - After every reservation exists, a worker writes `phase: "creating", createAttemptAt` by compare-and-set on **both** the phase and the previous claim time.
+  - *Corrected 16 October (Codex):* this held only within one process. The on-disk store's read, check and write had no lock between processes, so two processes could both claim. The store now does them under an exclusive lock file, E5 takes the durable run lock, and a two-process test proves one create (`CLAUDE_CODEX_E6_REVIEW_FIXES_20261016.md`).
   - **A grace period.** A claim younger than 15 minutes (`CREATE_GRACE_MS`) is presumed in flight: nothing is created, and no search is trusted.
   - **Older claims.** A batch proven to carry the round is recorded. Two batches hold the round. An undecided search waits. Only a proven absence lets the create be claimed again.
   - **An inconsistent record.** A claim with a reservation missing is held for a person.
@@ -116,7 +117,7 @@ This answers Codex's brief "בריף תיקוני QA לעולם LOW ולמסלו
   - the grace period;
   - an undecided search waiting;
   - only a proven absence re-creating;
-  - **two workers racing.** A search barrier makes both search before either claims, so only the compare-and-set can stop the second create; the loser is refused by the claim;
+  - **two workers racing**, in one process, against an in-memory store. A search barrier makes both search before either claims, so only the compare-and-set can stop the second create; the loser is refused by the claim. The cross-process case came later (16 October);
   - an inconsistent claim held;
   - crashes before, during and after the reservations;
   - a legacy intent.
@@ -181,7 +182,7 @@ Each corrected document opens with a dated note.
   - can neither create nor search for a create;
   - polls, reconciles, writes `out-e5/e5.json`, and deletes the provider copies.
 
-  It ran at 17:25 and **resent nothing**. It deleted both Anthropic batches, and OpenAI's input and error files. Its own tests are in `selftest-e5.ts` (now 23/23):
+  It ran at 17:25 and **resent nothing**. It *attempted* to delete both Anthropic batches, and OpenAI's input and error files, but did not then check the acknowledgements (Codex, 16 October). A read-only check on 16 October proves every one of them gone: each answers 404 (`out-e5/cleanup-evidence.json`). OpenAI keeps its two batch objects, which hold metadata only and cannot be deleted. Its own tests are in `selftest-e5.ts` (now 23/23):
   - E5's exact stop, reproduced;
   - a new process reconciling with zero creates or uploads;
   - each OpenAI input file deleted by a process that never uploaded it. The deletion previously reached only the files the uploading process had seen; it now reads them from the batch object;
