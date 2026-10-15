@@ -1,5 +1,7 @@
 # The road to a $2 world: cost model, next experiments, morning recommendation (15 October 2026)
 
+> **Update, 15 October:** E3 ran with Guy's confirmed $4 cap and was decided at stage one for $0.434724 in recorded estimates. Sol HIGH accepted the wrong-support control R5, so neither Sol HIGH alone nor the candidate pair qualifies. Today's pair stopped all four cut controls. See `docs/CLAUDE_E3_RESULTS_20261015.md`. The scenarios below that need Sol HIGH on quality are therefore off.
+
 **Status: preparation only.** No provider call was made for this document.
 
 - Nothing was rendered or judged, and nothing was deployed. No default or flag changed.
