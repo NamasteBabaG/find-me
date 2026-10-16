@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   QUALITY_BATCH_CREATE_GRACE_MS, QUALITY_BATCH_LATE_SEARCH_MS, QUALITY_BATCH_REFUSAL_BACKOFF_MS, QUALITY_BATCH_VERSION, decideQualityBatchResults, nextQualityBatchStep,
-  qualityBatchCleanupDue, qualityBatchCopyStart, qualityBatchDeletable, qualityBatchEventName, qualityBatchLateDue, qualityBatchReserveMicroUsd, qualityBatchRoundOf, qualityBatchSearchWindow,
-  qualityBatchSearching, type QualityBatchEvent, type QualityBatchIntent,
+  qualityBatchCanonicalJson, qualityBatchCleanupDue, qualityBatchCopyStart, qualityBatchDeletable, qualityBatchEventName, qualityBatchLateDue, qualityBatchOutcomeRead,
+  qualityBatchReserveMicroUsd, qualityBatchRoundOf, qualityBatchSearchWindow, qualityBatchSearching, type QualityBatchEvent, type QualityBatchIntent, type QualityBatchTerminal,
 } from "../generation/quality-batch-round";
 
 const T0 = Date.parse("2026-10-16T08:00:00.000Z"), HOUR = 60 * 60_000;
@@ -217,6 +217,38 @@ describe("a quality question's batch round, pure", () => {
     }
     // Within one minute, the same copy first.
     expect(new Set(Array.from({ length: 60 }, (_, s) => qualityBatchCopyStart(intent.roundId, 5, t + s * 1000 + 999)))).toEqual(new Set([qualityBatchCopyStart(intent.roundId, 5, t)]));
+  });
+
+  it("gives a reading one canonical text, whatever order its keys were serialised in", () => {
+    const usage = { input_tokens: 2000, output_tokens: 500, service_tier: "priority", cache: { read: 1, write: 2 } };
+    const reordered = { cache: { write: 2, read: 1 }, service_tier: "priority", output_tokens: 500, input_tokens: 2000 };
+    expect(qualityBatchCanonicalJson([{ type: "succeeded", usage }])).toBe(qualityBatchCanonicalJson([{ usage: reordered, type: "succeeded" }]));
+    expect(JSON.parse(qualityBatchCanonicalJson(usage))).toEqual(usage);
+    // Arrays keep their order; a null is not a missing key; an undefined value is left out, as JSON leaves it out.
+    expect(qualityBatchCanonicalJson([1, 2])).not.toBe(qualityBatchCanonicalJson([2, 1]));
+    expect(qualityBatchCanonicalJson({ a: null })).not.toBe(qualityBatchCanonicalJson({}));
+    expect(qualityBatchCanonicalJson({ a: undefined, b: 1 })).toBe(qualityBatchCanonicalJson({ b: 1 }));
+  });
+
+  it("knows the reading its outcome recorded: the same answer, or the same results, of the same batch", () => {
+    const usage = { input_tokens: 2000, output_tokens: 500, service_tier: "batch" };
+    const receipt = { type: "succeeded", errorType: null, requestId: "msg_1", model: "claude-opus-5-5", usage };
+    const base = answered("b", 9_000) as Extract<QualityBatchEvent, { kind: "answered" }>;
+    const answer: QualityBatchTerminal = { ...base, evidence: { ...base.evidence, rawUsage: { service_tier: "batch", output_tokens: 500, input_tokens: 2000 } } };
+    expect(qualityBatchOutcomeRead(answer, "b", [receipt])).toBe(true);
+    // Another batch, receipt, usage or model, or more than one result, is another reading.
+    expect(qualityBatchOutcomeRead(answer, "c", [receipt])).toBe(false);
+    expect(qualityBatchOutcomeRead(answer, "b", [{ ...receipt, requestId: "msg_2" }])).toBe(false);
+    expect(qualityBatchOutcomeRead(answer, "b", [{ ...receipt, usage: { ...usage, output_tokens: 900 } }])).toBe(false);
+    expect(qualityBatchOutcomeRead(answer, "b", [{ ...receipt, model: "claude-opus-5" }])).toBe(false);
+    expect(qualityBatchOutcomeRead(answer, "b", [receipt, receipt])).toBe(false);
+    // A hold that read the batch: the same results, in any key order; a hold over copies read none of them.
+    const held = { ...heldUnknown("unpriced", "b"), results: [receipt] } as QualityBatchTerminal;
+    expect(qualityBatchOutcomeRead(held, "b", [{ usage: { service_tier: "batch", output_tokens: 500, input_tokens: 2000 }, model: "claude-opus-5-5", requestId: "msg_1", errorType: null, type: "succeeded" }])).toBe(true);
+    expect(qualityBatchOutcomeRead(held, "b", [{ ...receipt, requestId: "msg_2" }])).toBe(false);
+    expect(qualityBatchOutcomeRead(heldUnknown("2 batches carry this one question") as QualityBatchTerminal, "b", [receipt])).toBe(false);
+    // A fallback is counted as a copy would be: unbilled results add nothing, and billed ones are another charge.
+    expect(qualityBatchOutcomeRead({ kind: "fallback", batchId: "b", resultType: "canceled", errorType: null, at: T0 }, "b", [])).toBe(false);
   });
 
   it("reserves half of the synchronous reservation, rounded up", () => {

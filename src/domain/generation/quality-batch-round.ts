@@ -299,6 +299,36 @@ export function qualityBatchCopyStart(roundId: string, length: number, now: numb
   return hash % length;
 }
 
+/**
+ * A reading's canonical text: object keys sorted at every depth (a key whose value is undefined left out, as JSON
+ * leaves it out), arrays in their order. The same values read twice give the same text, whatever order the provider
+ * serialised them in; a null stays distinct from a missing key.
+ */
+export function qualityBatchCanonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(item => qualityBatchCanonicalJson(item ?? null)).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record).filter(key => record[key] !== undefined).sort()
+      .map(key => `${JSON.stringify(key)}:${qualityBatchCanonicalJson(record[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+/**
+ * Whether the round's recorded outcome read exactly this reading of `batchId` (rule 5): its own batch, with the same
+ * answer (an answered outcome, by its receipt, model and usage) or the same results (a hold that read it). Any other
+ * reading of a batch, by a pass that lost the outcome to another reading, is another possible charge.
+ */
+export function qualityBatchOutcomeRead(terminal: QualityBatchTerminal, batchId: string, receipts: readonly QualityBatchReceipt[]): boolean {
+  if (terminal.batchId !== batchId) return false;
+  if (terminal.kind === "answered") {
+    const [only] = receipts;
+    return receipts.length === 1 && only!.type === "succeeded" && only!.requestId === terminal.evidence.providerRequestId
+      && only!.model === terminal.evidence.model && qualityBatchCanonicalJson(only!.usage) === qualityBatchCanonicalJson(terminal.evidence.rawUsage);
+  }
+  return terminal.kind === "held" && !!terminal.results && qualityBatchCanonicalJson(terminal.results) === qualityBatchCanonicalJson(receipts);
+}
+
 /** Whether the provider's copies of a finished round are still to be deleted (rule 5). */
 export function qualityBatchCleanupDue(round: QualityBatchRound, gameDeleted: boolean): boolean {
   return qualityBatchDeletable(round, gameDeleted).length > 0;

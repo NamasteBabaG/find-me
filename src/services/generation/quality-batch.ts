@@ -6,8 +6,8 @@ import { visualReviewBatchCharge } from "../../infra/generation/visual-review-pr
 import { QualityBatchRefused, type QualityBatchResult, type QualityBatchTransport } from "../../infra/generation/types";
 import { PrismaRetainedPurchaseStore } from "../../infra/db/prisma-retained-purchase-store";
 import {
-  QUALITY_BATCH_VERSION, decideQualityBatchResults, nextQualityBatchStep, qualityBatchCleanupDue, qualityBatchCopyStart, qualityBatchDeletable, qualityBatchEventName,
-  qualityBatchLateDue, qualityBatchReserveMicroUsd, qualityBatchRoundOf, qualityBatchSearchWindow, qualityBatchSearching,
+  QUALITY_BATCH_VERSION, decideQualityBatchResults, nextQualityBatchStep, qualityBatchCanonicalJson, qualityBatchCleanupDue, qualityBatchCopyStart, qualityBatchDeletable,
+  qualityBatchEventName, qualityBatchLateDue, qualityBatchOutcomeRead, qualityBatchReserveMicroUsd, qualityBatchRoundOf, qualityBatchSearchWindow, qualityBatchSearching,
   type QualityBatchEvent, type QualityBatchIntent, type QualityBatchReceipt, type QualityBatchRound,
 } from "../../domain/generation/quality-batch-round";
 import { visualReviewPolicy } from "../../domain/generation/visual-review-policy";
@@ -280,8 +280,20 @@ const decide = (results: readonly QualityBatchResult[], customId: string) =>
 const OUTCOME_LEDGER: Pick<PurchaseLedger, "settle" | "markUnknown"> = { settle: async () => undefined, markUnknown: async () => undefined };
 
 /** One ended batch's result for this round, recorded as its terminal outcome (rule 0): answered, at zero, or
- * held. The ledger follows from the outcome; an answer is retained before it is recorded. */
+ * held. The ledger follows from the outcome; an answer is retained before it is recorded. Two passes may read
+ * the batch at once: the outcome is one of their readings, and the other, if the provider answered it otherwise,
+ * is another possible charge, counted as a copy's would be (rule 5). */
 async function reconcile(ctx: Context, round: QualityBatchRound, batchId: string, results: readonly QualityBatchResult[]): Promise<void> {
+  let failure: unknown = null;
+  try { await recordOutcome(ctx, round, batchId, results); }
+  catch (error) { failure = error; }
+  const terminal = (await readRound(ctx, round.intent.roundId)).terminal;
+  // With no outcome recorded, nothing was decided from this reading: it is read again, and the failure raised.
+  if (!terminal) { if (failure) throw failure; return; }
+  if (!qualityBatchOutcomeRead(terminal, batchId, receiptsOf(results, round.intent.customId))) await lateCharge(ctx, round, batchId, results);
+}
+
+async function recordOutcome(ctx: Context, round: QualityBatchRound, batchId: string, results: readonly QualityBatchResult[]): Promise<void> {
   const { intent } = round, decision = decide(results, intent.customId), receipts = receiptsOf(results, intent.customId);
   if (decision.decision === "unbilled-fallback") {
     await writeEvent(ctx, intent.roundId, { kind: "fallback", batchId, resultType: decision.resultType, errorType: decision.errorType, at: Date.now() });
@@ -357,17 +369,20 @@ async function lateCharge(ctx: Context, round: QualityBatchRound, batchId: strin
   return { amountMicroUsd: null, receipts };
 }
 /** The ledger key of a copy whose charge cannot be stated: its own unknown row beside the round's batch key, one per
- * distinct reading of the copy's bill (the digest of what the provider returned for the question, as `late-n` keeps it). */
+ * distinct reading of the copy's bill (the digest of what the provider returned for the question, as `late-n` keeps it,
+ * in canonical form: the same values give the same key whatever order they were serialised in). */
 export const qualityBatchCopyKeyOf = (batchKey: string, batchId: string, receipts: readonly QualityBatchReceipt[]) =>
-  `${batchKey}:copy:${batchId}:${sha(JSON.stringify(receipts))}`;
+  `${batchKey}:copy:${batchId}:${sha(qualityBatchCanonicalJson(receipts))}`;
 
-/** Records a copy's bill once. Priced against every copy already read, so the next number is written only
- * over the bills it counted; a pass that lost it reads the round again and prices it again. */
+/** Records a copy's bill once in the round's record (`late-n`); a pass that lost the number reads the round again.
+ * Every reading of the copy is counted in the ledger, each under its own key, before anything else. */
 async function recordLate(ctx: Context, roundId: string, batchId: string, results: readonly QualityBatchResult[]) {
   for (let attempt = 0; attempt < 4; attempt++) {
     const round = await readRound(ctx, roundId);
-    if (round.billedIds.includes(batchId)) return;
+    // Counted first, under the ledger's own key for this reading (its receipt, or its digest): the same reading again
+    // is the same row, and another reading another charge, even when another pass recorded this copy since it was read.
     const { amountMicroUsd, receipts } = await lateCharge(ctx, round, batchId, results);
+    if (round.billedIds.includes(batchId)) return;
     if ((await writeEvent({ ...ctx, fence: null }, roundId, { kind: "late", n: round.lates.length + 1, batchId, amountMicroUsd, results: receipts, at: Date.now() })).won) return;
   }
   throw Error("QUALITY_BATCH: a copy's bill could not be recorded");
@@ -379,7 +394,7 @@ async function reconcileLate(ctx: Context, round: QualityBatchRound) {
   const due = qualityBatchLateDue(round);
   // A different copy first each minute: one whose reads keep timing out never keeps the others from theirs.
   const start = qualityBatchCopyStart(round.intent.roundId, due.length, Date.now());
-  let failure: unknown = null;
+  const failures: unknown[] = [];
   for (let i = 0; i < due.length; i++) {
     const batchId = due[(start + i) % due.length]!;
     // Its record and then its results file: room for both reads before the first starts.
@@ -390,9 +405,9 @@ async function reconcileLate(ctx: Context, round: QualityBatchRound) {
     // A bill the ledger or the record refuses leaves its copy unread (and so undeletable); the others are read
     // regardless, and the refusal is raised once they have been.
     try { await recordLate(ctx, round.intent.roundId, batchId, results); }
-    catch (error) { failure ??= error; }
+    catch (error) { failures.push(error); }
   }
-  if (failure) throw failure;
+  raise(failures);
 }
 
 /**
@@ -550,27 +565,41 @@ async function discover(ctx: Context, round: QualityBatchRound): Promise<boolean
 
 /** Copies already known: each one's bill read, then those that may go deleted. */
 async function settleCopies(ctx: Context, round: QualityBatchRound, gameDeleted: boolean) {
-  let failure: unknown = null;
+  const failures: unknown[] = [];
   if (qualityBatchLateDue(round).length) {
     // A copy whose bill cannot be recorded never keeps the billed ones from their deletion; its refusal is raised after.
     try { await reconcileLate(ctx, round); }
-    catch (error) { failure = error; }
-    round = await readRound(ctx, round.intent.roundId);
+    catch (error) { failures.push(error); }
+    try { round = await readRound(ctx, round.intent.roundId); }
+    catch (error) { raise([...failures, error]); }
   }
-  await cleanup(ctx, round, gameDeleted);
-  if (failure) throw failure;
+  try { await cleanup(ctx, round, gameDeleted); }
+  catch (error) { failures.push(error); }
+  raise(failures);
 }
 
 /**
  * A finished round's housekeeping (rules 0 and 5), in the order the money comes first: the ledger made to
  * match its outcome, the bill of every known copy, their deletion where due, and only then the search for
  * further copies, which can take the rest of the time; what it finds is read and deleted in the same pass
- * when there is room, and on a later one otherwise.
+ * when there is room, and on a later one otherwise. Each step runs whatever failed before it, and every
+ * failure is raised at the end: a bill the ledger keeps refusing never keeps the search from further copies.
  */
 async function maintain(ctx: Context, round: QualityBatchRound, gameDeleted: boolean, pendingKeys?: ReadonlySet<string>) {
-  await applyTerminal(ctx, round, pendingKeys);
-  await settleCopies(ctx, round, gameDeleted);
-  if (await discover(ctx, round)) await settleCopies(ctx, await readRound(ctx, round.intent.roundId), gameDeleted);
+  const failures: unknown[] = [];
+  const step = async (work: () => Promise<unknown>) => { try { await work(); } catch (error) { failures.push(error); } };
+  await step(() => applyTerminal(ctx, round, pendingKeys));
+  await step(() => settleCopies(ctx, round, gameDeleted));
+  await step(async () => { if (await discover(ctx, round)) await settleCopies(ctx, await readRound(ctx, round.intent.roundId), gameDeleted); });
+  raise(failures);
+}
+
+/** Raises what went wrong, with nothing lost: one failure as it is, several together, the first first. */
+function raise(failures: readonly unknown[]): void {
+  const messageOf = (failure: unknown) => failure instanceof Error ? failure.message : String(failure);
+  const distinct = failures.filter((failure, i) => failures.findIndex(other => messageOf(other) === messageOf(failure)) === i);
+  if (distinct.length === 1) throw distinct[0];
+  if (distinct.length > 1) throw new AggregateError(distinct, `QUALITY_BATCH: ${distinct.map(messageOf).join("; ")}`);
 }
 
 /**

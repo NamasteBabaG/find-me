@@ -128,7 +128,8 @@ intent ─► reserve batch key (half) ─► claim n ─► create ─► submi
   - **Every copy of the question is read for its bill before it may be deleted**, in every finished round: the round's own batch by the outcome that read it, every other copy afterwards (`late-n`). What the provider returned is kept in the record (result type, receipt, model and usage; never the answer), so the evidence outlives the copy.
   - **The batch key stands for the round's own batch only** (since Codex's eighth pass): the one its outcome read, or, for a create presumed lost, the presumption. **Every other copy is a charge of its own row**, whatever the batch key holds and whenever it is read:
     - a priced copy is imported in full by its receipt (`importSettled`: counted once per receipt, even in a held world or above the ceiling);
-    - a copy whose bill cannot be stated (a tier with no rate, or an anomaly) is recorded as its own unknown charge at the synchronous reservation (`WorldBudget.recordUnknown`: no capacity needed, recorded in a held world too), and holds the world until a person reconciles that row. The row is bound to exactly what was read: `<batch key>:copy:<batch id>:<digest>`, the digest of what the provider returned for the question, as `late-n` keeps it (since Codex's ninth pass). The same reading again is the same row, as a person left it (settled, linked or approved); a reading that returns anything else is another unknown charge, never one already reconciled;
+    - a copy whose bill cannot be stated (a tier with no rate, or an anomaly) is recorded as its own unknown charge at the synchronous reservation (`WorldBudget.recordUnknown`: no capacity needed, recorded in a held world too), and holds the world until a person reconciles that row. The row is bound to exactly what was read: `<batch key>:copy:<batch id>:<digest>`, the digest of what the provider returned for the question, as `late-n` keeps it, in canonical form (object keys sorted at every depth, so the same values give the same key whatever order they were serialised in; since Codex's ninth and tenth passes). The same reading again is the same row, as a person left it (settled, linked or approved); a reading that returns anything else is another unknown charge, never one already reconciled;
+    - every reading is counted, also by a pass that lost to another reading (since the tenth pass): a pass that read a copy while another recorded its bill counts its own reading all the same, under its own key, and a pass that read the round's own batch and lost the outcome to a different reading counts its reading as a copy's would be. The same reading is the same row, so two passes that read the same answer count it once;
     - a copy of a create presumed lost is counted on top of the presumption: more than was billed, never less;
     - a receipt already counted with other usage is recorded as a ledger conflict, which holds the world.
     Nothing about a copy reads or changes the batch key, so no settlement of it, then or later, by a pass or a person, changes how a copy is counted. The ledger never understates.
@@ -172,7 +173,7 @@ intent ─► reserve batch key (half) ─► claim n ─► create ─► submi
   - A round that never reached the provider (stopped after its intent, or every create refused) ends at zero rather than waiting for a create that a stopped game never makes. The close first takes the claim a create would take, so a worker that resumed the game and claimed it keeps its create.
   - A reservation that commits after such a close read the ledger is never used, since nothing is sent under a closing claim. Its own worker reads the round again right after reserving and goes on to the never-created outcome, which settles it at zero; if that worker stopped first, the game's next slice applies that outcome.
   - Every finished round with housekeeping due (a search, a copy's bill, a deletion) is handled whatever its game's state: a held review parks its job, and a parked job runs no slice. Housekeeping moves no money its outcome did not decide, so it needs no slice.
-  - Housekeeping runs in the order the money comes first: the outcome applied to the ledger, the bills of the copies already known, their deletion where due, and only then the search for more, which can take the rest of the round's time; what it finds is read and deleted in the same pass when there is room. A round's copies are read, and deleted, starting from a different copy each minute, chosen by a hash of the round and the minute, so a sweep that comes back to the round only every second or third minute does not meet the same copy first each time; a deletion the provider refuses never stops the others either. A copy whose bill the ledger or the record refuses stays unread, and so undeletable; the others are still read, and the billed ones deleted, before that refusal is raised. One copy that cannot be read, recorded or deleted never keeps the rest waiting for good.
+  - Housekeeping runs in the order the money comes first: the outcome applied to the ledger, the bills of the copies already known, their deletion where due, and only then the search for more, which can take the rest of the round's time; what it finds is read and deleted in the same pass when there is room. A round's copies are read, and deleted, starting from a different copy each minute, chosen by a hash of the round and the minute, so a sweep that comes back to the round only every second or third minute does not meet the same copy first each time; a deletion the provider refuses never stops the others either. A copy whose bill the ledger or the record refuses stays unread, and so undeletable; the others are still read, and the billed ones deleted, before that refusal is raised. Each step of housekeeping (the outcome's ledger effect, the known copies' bills and deletions, the search for further copies) runs whatever failed before it, and every failure is raised at the end, together, so a bill the ledger keeps refusing never stops the search and no failure hides another. One copy that cannot be read, recorded or deleted never keeps the rest waiting for good.
   - An ended batch is read in two calls, not three: the status read carries the batch's result counts, which its results file is checked against.
 - No provider call starts unless its whole timeout fits before the deadline of the slice or tick making it. A create is checked again after the ledger's work and after its claim; a claim it had no room to send is recorded as never sent.
 - In the sweep, rounds start within the tick's 40-second window, and each round started has its own 95 seconds for its calls, so a slow first read never leaves the next one no room, tick after tick.
@@ -186,8 +187,8 @@ intent ─► reserve batch key (half) ─► claim n ─► create ─► submi
 
 | Suite | Result |
 | --- | --- |
-| `quality-batch.test.ts`: real SQLite, ledger, retained store, dual review and world slice, with a scripted provider | **64/64** (21 in `1df2e366`, 2 in `80d7de72`, 6 for Codex's HOLD, 5 for the re-review, 6 for the third pass, 2 for the fourth, 7 for the fifth, 4 for the sixth, 4 for the seventh, 3 for the eighth, 4 for the ninth; 3 rewritten for the fourth, 1 extended for the fifth, 4 for the sixth, 5 for the seventh, 8 for the eighth and 2 for the ninth) |
-| `quality-batch-round.test.ts`: the pure rules | **50/50** (16, plus 5 for the HOLD, 10 for the third pass, 5 for the fourth, 6 for the fifth, 7 for the sixth and 1 for the eighth) |
+| `quality-batch.test.ts`: real SQLite, ledger, retained store, dual review and world slice, with a scripted provider | **71/71** (21 in `1df2e366`, 2 in `80d7de72`, 6 for Codex's HOLD, 5 for the re-review, 6 for the third pass, 2 for the fourth, 7 for the fifth, 4 for the sixth, 4 for the seventh, 3 for the eighth, 4 for the ninth, 7 for the tenth; 3 rewritten for the fourth, 1 extended for the fifth, 4 for the sixth, 5 for the seventh, 8 for the eighth, 2 for the ninth and 2 for the tenth) |
+| `quality-batch-round.test.ts`: the pure rules | **52/52** (16, plus 5 for the HOLD, 10 for the third pass, 5 for the fourth, 6 for the fifth, 7 for the sixth, 1 for the eighth and 2 for the tenth) |
 | `anthropic-message-batches.test.ts`: the transport on a scripted wire, plus pricing | **14/14** (8, plus 1 for the HOLD, 2 for the re-review, 1 for the third pass, 1 for the fifth and 1 for the sixth) |
 | `world-budget.test.ts` and `board-wizard-budget.test.ts`: `WorldBudget.link`, `settle` with `onlyPending`, and `recordUnknown` | **51/51 and 5/5**, of which 5 and 2 are this branch's |
 
@@ -321,6 +322,12 @@ Each mutant edits one anchor and runs only its targeted tests. Each counts only 
   - `recordUnknown` refusing a linked row, in the ledger and end to end;
   - one refused bill stopping the other copies' reading, or their deletion; its refusal not raised, from the reading or from the deletion.
   - None survived. The test for a key bound to its reading spells the key out (copy id and digest) rather than calling the function under test, so a mutant of that function cannot agree with itself.
+- **Codex's tenth pass: 144/144,** each killed by the test it targets, with the tree restored and verified. All 130 from the earlier rounds were run again, 13 of them re-anchored where the code moved (failures now collected in lists; each housekeeping step wrapped; the key's canonical digest). The 14 new:
+  - every reading counted: a copy's reading counted only after the record check; a losing pass's reading of the round's own batch not counted, or counted even when the outcome read exactly it; a failure to keep an answer, with no outcome recorded, not raised;
+  - the outcome's reading: compared for any batch; an answer compared without its usage; a hold's results not compared;
+  - the canonical form unsorted, in the pure rule and end to end; the key hashed without it;
+  - housekeeping stopping at the first failure; its failures not raised; a deletion failure replacing the refusal before it; only the first of several failures raised.
+  - None survived.
 
 **The full suite (`npm run check`) on `1df2e366`:**
 - tsc is clean.
@@ -366,6 +373,10 @@ Each mutant edits one anchor and runs only its targeted tests. Each counts only 
 - tsc is clean.
 - Vitest: 5,178 passed, 2 expected failures, 55 skipped, **3 failed**: 20-second timeouts in `local-patch-incremental-review.test.ts` under full-suite load, the same two as before and a third test in that file. This branch does not change that file. Alone, on this code, it passes 79/79.
 
+**The full suite on the tenth round:**
+- tsc is clean.
+- Vitest: 5,185 passed, 2 expected failures, 55 skipped, **5 failed**, all 20-second timeouts in `local-patch-incremental-review.test.ts` under full-suite load (the machine was slower this run: that file alone took 629 s against 483 s before). This branch does not change that file. Alone, on this code, it passes 79/79.
+
 ## Commits
 
 | Commit | What |
@@ -384,7 +395,8 @@ Each mutant edits one anchor and runs only its targeted tests. Each counts only 
 | `19131d6d` | fix(qa): only a batch round's outcome moves money, and every copy is read before it goes (Codex's sixth pass) |
 | `f993b3a7` | fix(qa): a batch round's key stands for one batch, and every other copy is a charge of its own (Codex's seventh pass) |
 | `98a52e29` | fix(qa): every copy beyond a batch round's own is a ledger row of its own, with no stand-in (Codex's eighth pass) |
-| the commit carrying this section | fix(qa): a batch copy's unknown row is bound to its reading, and one refused bill never holds up the others (Codex's ninth pass) |
+| `1140ce2b` | fix(qa): a batch copy's unknown row is bound to its reading, and one refused bill never holds up the others (Codex's ninth pass) |
+| the commit carrying this section | fix(qa): every reading of a batch is counted, and one failure never stops the rest of housekeeping (Codex's tenth pass) |
 
 Each was verified on its own in a clean worktree:
 - `afbd8ee2`: tsc and its regression test;
@@ -582,3 +594,17 @@ It found one P1 and two P2, one of them the disclosed daily spend:
 | P2 | Imported copy bills take the ledger's mutable date in the daily spend (reproduced again). | **Not fixed; disclosed (§6, item 14).** Codex found the disclosure accurate. | None. |
 
 The ledger format is unchanged; only the key of a copy's unknown row now ends in its reading's digest. Nothing has run on the eighth round's key outside tests.
+
+### Codex's tenth pass on `1140ce2b`: HOLD, and every reading counted
+
+Codex confirmed the ninth round's sequential fix (an unchanged reading reuses its row, a changed receipt creates another), that returning a reconciled linked row is consistent with the ledger's contract, that the change grants no dispatch and leaves approvals alone, and that never twice, the decision slot, outcome-first and the room checks are unchanged. It found two P1 findings and three P2:
+
+| # | Finding | Answer | Regression test |
+| --- | --- | --- | --- |
+| P1 | A pass that read a copy while another pass recorded that copy's bill returned early on the batch id alone, so a different reading of its own was never counted: with the first reading priced and the second unpriced, the copy was deleted with the second reading nowhere in the ledger. | **Every reading is counted, under its own key, before anything else.** `recordLate` counts this pass's reading first (an import by its receipt, or an unknown row by its digest) and only then checks whether the copy is already recorded: the same reading is the same row, another reading another charge. The same holds for the round's own batch: a pass that loses the outcome to a different reading (the store refuses its different answer, or its outcome write loses) counts its reading as a copy's would be, unless the recorded outcome read exactly it (`qualityBatchOutcomeRead`). | Codex's schedule, with one pass held up inside the provider read: the other records a priced reading and deletes the copy; the held-up pass's unpriced reading becomes an unknown row of its own and holds the world. The same for the round's own batch: the answer stands, the losing pass's reading is counted. And two passes reading the same unpriced answer of the own batch: one unknown charge, not two. |
+| P1 | A copy whose bill the ledger kept refusing stopped the search for further copies for good: housekeeping raised the refusal before the search. | Housekeeping runs each step whatever failed before it (the outcome's ledger effect, the known copies, the search and what it finds) and raises every failure at the end. | Codex's case: a deleted game's held round with its search open, one known copy's bill refused on every write, a third copy that ends later. The third is found, read and deleted; so is the second; the refused one stays unread. |
+| P2 | Equivalent usage serialised in another key order gave another digest, so a replay could record a second unknown charge for the same bill. | The digest is of a canonical form: object keys sorted at every depth, arrays in order, a null distinct from a missing key (`qualityBatchCanonicalJson`). | The pure rule, nested objects included. End to end: the replay returns the same answer with its usage keys reversed, and the person's reconciliation of the first row stands, with nothing unknown. The row's key is spelled out in a test with a separate canonical form. |
+| P2 | A failure to record the copies' deletion replaced the earlier refusal of a bill, so the refusal was lost. | Every failure of a pass is raised: one as it is, several together (`AggregateError`, with each message). | A refused bill and a failed deletion record in one pass: both reported. Also: a failure to keep a batch's answer, with no outcome recorded, is still raised, and the next pass answers. |
+| P2 | Imported copy bills take the ledger's mutable date in the daily spend (reproduced again). | **Not fixed; disclosed (§6, item 14).** Codex found the disclosure accurate. | None. |
+
+The record and ledger formats are unchanged by the tenth round.
