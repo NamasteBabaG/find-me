@@ -47,11 +47,14 @@
  *    another could still be running keeps searching until none could be, so every
  *    copy is found; a presumed-lost round searches once more a day later.
  * 6. A batch's results are recorded the first time they are read (`reading`),
- *    before anything is decided from them, and every decision about that batch is
- *    taken from that reading: the outcome for the round's own batch, `late` for a
- *    copy. A later read that returns anything else is a provider fault: it is
- *    recorded (`reread`) and counted as a charge of its own, never decided from,
- *    and a round with no outcome yet is held for a person.
+ *    by a search that proved the batch or by any later read, before anything is
+ *    decided from them; every decision about that batch is taken from that
+ *    reading: the outcome for the round's own batch, `late` for a copy. A later
+ *    read that returns anything else is a provider fault: it is recorded
+ *    (`reread`) and counted as a charge of its own, never decided from; a round
+ *    with no outcome yet is held for a person by its next step, whichever pass
+ *    takes it, before that charge is counted. A copy whose reading is the
+ *    outcome's own reading is the outcome's bill.
  */
 import type { WorldChargeEvidence } from "./world-budget";
 
@@ -232,7 +235,9 @@ export function qualityBatchRoundOf(events: readonly QualityBatchEvent[]): Quali
   // Rule 6: a batch is read once for good; a later read that returned anything else is a charge of its own, never a decision.
   const readings: Record<string, readonly QualityBatchReceipt[]> = Object.create(null) as Record<string, readonly QualityBatchReceipt[]>;
   for (const reading of of("reading")) {
-    if (!batchIds.includes(reading.batchId) || !Array.isArray(reading.results) || readings[reading.batchId]) throw Error("QUALITY_BATCH: a reading of a batch the round knows, once");
+    // A search records what it read before the batch it proved (rule 6), so a reading may come before its batch is known.
+    if (typeof reading.batchId !== "string" || !reading.batchId || !Array.isArray(reading.results) || readings[reading.batchId])
+      throw Error("QUALITY_BATCH: a batch is read once, for good");
     readings[reading.batchId] = reading.results;
   }
   const rereads = of("reread");
@@ -259,11 +264,17 @@ export type QualityBatchStep =
   /** The create is presumed lost: count its charge at the most it could be, then fall back. */
   | { readonly step: "presumed"; readonly reason: string }
   | { readonly step: "duplicates"; readonly reason: string }
-  | { readonly step: "hold"; readonly reason: string };
+  | { readonly step: "hold"; readonly reason: string }
+  /** A provider fault on record before any outcome (rule 6): hold the round, its charge unknown; `batchId`: the round's
+   * own batch, when the fault is that batch's, whose first reading the hold then keeps as the round's bill. */
+  | { readonly step: "fault"; readonly batchId: string | null; readonly reason: string };
 
 /** What this round may do now. */
 export function nextQualityBatchStep(round: QualityBatchRound, now: number): QualityBatchStep {
   if (round.terminal) return { step: "done", terminal: round.terminal };
+  // A provider fault on record holds an open round before anything else could be decided (rule 6).
+  const own = round.submitted?.batchId, fault = round.rereads.find(r => r.batchId === own) ?? round.rereads[0];
+  if (fault) return { step: "fault", batchId: fault.batchId === own ? own : null, reason: `the provider returned other results for ${fault.batchId} on another read` };
   // Once the create is presumed lost, copies found beside the presumption are read for their bills after it (rule 5).
   if (round.presumed) return { step: "presumed", reason: "the create did not answer and no complete search found its batch" };
   if (round.batchIds.length > 1) return { step: "duplicates", reason: `${round.batchIds.length} batches carry this one question` };
@@ -328,7 +339,10 @@ export function qualityBatchCopyStart(roundId: string, length: number, now: numb
   if (length <= 1) return 0;
   let hash = 0x811c9dc5;
   for (const char of `${roundId}:${Math.floor(now / 60_000)}`) hash = Math.imul(hash ^ char.charCodeAt(0), 0x01000193) >>> 0;
-  return hash % length;
+  // A final mix, so every bit depends on every character: FNV's low bit alone follows the characters' parity, which
+  // made two choices salted differently (the copies' order and the phases' turn) move in lockstep.
+  hash ^= hash >>> 16; hash = Math.imul(hash, 0x85ebca6b); hash ^= hash >>> 13; hash = Math.imul(hash, 0xc2b2ae35); hash ^= hash >>> 16;
+  return (hash >>> 0) % length;
 }
 
 /**

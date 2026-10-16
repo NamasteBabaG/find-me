@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import type { Container } from "../container";
 import { anthropicVisualReviewBody, readAnthropicVisualReview } from "../../infra/generation/anthropic-visual-review";
 import { visualReviewBatchCharge } from "../../infra/generation/visual-review-pricing";
-import { QualityBatchRefused, type QualityBatchResult, type QualityBatchTransport } from "../../infra/generation/types";
+import { QualityBatchRefused, type QualityBatchFound, type QualityBatchResult, type QualityBatchTransport } from "../../infra/generation/types";
 import { PrismaRetainedPurchaseStore } from "../../infra/db/prisma-retained-purchase-store";
 import {
   QUALITY_BATCH_VERSION, decideQualityBatchResults, nextQualityBatchStep, qualityBatchCanonicalJson, qualityBatchCleanupDue, qualityBatchCopyStart, qualityBatchDeletable,
@@ -282,20 +282,17 @@ const OUTCOME_LEDGER: Pick<PurchaseLedger, "settle" | "markUnknown"> = { settle:
 /** One ended batch's result for this round: its reading recorded first (rule 6), then, from that reading only,
  * its terminal outcome (rule 0): answered, at zero, or held. The ledger follows from the outcome; an answer is
  * retained before it is recorded. A read that returned anything else than the batch's recorded reading is a
- * provider fault: counted as a charge of its own, never decided from, and a round with no outcome yet is held. */
+ * provider fault, recorded and never decided from: the round's next step holds it, and the record applied then counts it. */
 async function reconcile(ctx: Context, round: QualityBatchRound, batchId: string, results: readonly QualityBatchResult[]): Promise<void> {
-  const noted = await noteReading(ctx, round, batchId, receiptsOf(results, round.intent.customId));
-  if (!noted.anomaly) return recordOutcome(ctx, round, batchId, results);
-  if (!(await readRound(ctx, round.intent.roundId)).terminal)
-    await writeEvent(ctx, round.intent.roundId, { kind: "held", reason: `the provider returned other results for ${batchId} on another read`,
-      charge: "unknown", batchId, results: noted.recorded, at: Date.now() });
+  if (!(await noteReading(ctx, round, batchId, receiptsOf(results, round.intent.customId))).anomaly) await recordOutcome(ctx, round, batchId, results);
 }
 
 /**
  * Records what a read of a batch returned for this question (rule 6): a batch's first reading, once and for good,
  * before anything is decided from it. A later read that returned the same is that reading. One that returned
- * anything else is a provider fault: recorded (`reread`), and counted at once as a charge of its own, under its
- * own key (every pass that applies the record counts it again, idempotently); nothing is decided from it.
+ * anything else is a provider fault, recorded (`reread`) and never decided from: an open round is held by its next
+ * step before it is counted; a finished round's caller counts it at once. Every pass that applies the record counts
+ * it again, idempotently.
  */
 async function noteReading(ctx: Context, round: QualityBatchRound, batchId: string, receipts: readonly QualityBatchReceipt[]) {
   const roundId = round.intent.roundId;
@@ -303,8 +300,27 @@ async function noteReading(ctx: Context, round: QualityBatchRound, batchId: stri
   const recorded = (written.event as Extract<QualityBatchEvent, { kind: "reading" }>).results;
   if (qualityBatchCanonicalJson(recorded) === qualityBatchCanonicalJson(receipts)) return { recorded, anomaly: false };
   await writeEvent({ ...ctx, fence: null }, roundId, { kind: "reread", batchId, digest: sha(qualityBatchCanonicalJson(receipts)).slice(0, 16), results: receipts, at: Date.now() });
-  await lateCharge(ctx, round, batchId, receipts);
   return { recorded, anomaly: true };
+}
+
+/**
+ * Records what a search proved (rules 1 and 6): first the reading each proven batch was proved by, then the batches.
+ * What a search read is never thrown away: a later read of the batch that says otherwise is a reread. A reading
+ * another pass recorded otherwise is a reread too: an open round's next step holds it; a finished round's is counted
+ * here as a charge of its own, and a count that fails is raised once the batches are recorded (and counted again
+ * when the record is applied).
+ */
+async function recordSearch(ctx: Context, roundId: string, found: QualityBatchFound, at: number): Promise<QualityBatchRound> {
+  const round = await readRound(ctx, roundId), failures: unknown[] = [];
+  for (const batchId of found.proven) {
+    const results = found.results?.[batchId];
+    if (!results) continue;
+    const receipts = receiptsOf(results, round.intent.customId), noted = await noteReading(ctx, round, batchId, receipts);
+    if (noted.anomaly && round.terminal) { try { await lateCharge(ctx, round, batchId, receipts); } catch (error) { failures.push(error); } }
+  }
+  const recorded = await recordFound(ctx, roundId, found.proven, !found.undecided, at);
+  raise(failures);
+  return recorded;
 }
 
 async function recordOutcome(ctx: Context, round: QualityBatchRound, batchId: string, results: readonly QualityBatchResult[]): Promise<void> {
@@ -361,7 +377,10 @@ async function recordOutcome(ctx: Context, round: QualityBatchRound, batchId: st
  * Its priced charge, 0 when unbilled, or null when it cannot be priced.
  */
 async function lateCharge(ctx: Context, round: QualityBatchRound, batchId: string, receipts: readonly QualityBatchReceipt[]): Promise<number | null> {
-  const { intent } = round, budget = boardWizardBudgetOf(ctx.c);
+  const { intent } = round, budget = boardWizardBudgetOf(ctx.c), own = round.terminal?.batchId ?? null;
+  // A copy whose reading is the outcome's own reading (the same message, the same usage) is the outcome's bill, which
+  // the batch key counts: it is never imported or recorded again, so it can never pre-empt the outcome's settlement.
+  const outcomes = own !== null && own !== batchId && !!round.readings[own] && qualityBatchCanonicalJson(round.readings[own]) === qualityBatchCanonicalJson(receipts);
   const decision = decideQualityBatchResults(receipts.map(r => ({ customId: intent.customId, type: r.type, errorType: r.errorType })), intent.customId);
   // Errored, canceled and expired requests are documented as unbilled.
   if (decision.decision === "unbilled-fallback" || decision.decision === "unbilled-held") return 0;
@@ -376,12 +395,14 @@ async function lateCharge(ctx: Context, round: QualityBatchRound, batchId: strin
   }
   if (priced) {
     // Imported in full, counted once by its receipt; a receipt already counted with other evidence is recorded as a conflict, which holds the world.
-    try { await budget.importSettled(intent.worldId, { scope: "judge", operationFingerprint: intent.fingerprint, evidence: priced }); }
-    catch (error) { if (!(error instanceof WorldBudgetError) || error.code !== "evidence_conflict") throw error; }
+    if (!outcomes) {
+      try { await budget.importSettled(intent.worldId, { scope: "judge", operationFingerprint: intent.fingerprint, evidence: priced }); }
+      catch (error) { if (!(error instanceof WorldBudgetError) || error.code !== "evidence_conflict") throw error; }
+    }
     return priced.amountMicroUsd;
   }
   const receipt = receipts.find(item => item.requestId)?.requestId;
-  await budget.recordUnknown(intent.worldId, { requestKey: qualityBatchCopyKeyOf(intent.batchKey, batchId, receipts), scope: "judge", operationFingerprint: intent.fingerprint,
+  if (!outcomes) await budget.recordUnknown(intent.worldId, { requestKey: qualityBatchCopyKeyOf(intent.batchKey, batchId, receipts), scope: "judge", operationFingerprint: intent.fingerprint,
     reserveMicroUsd: intent.syncReserveMicroUsd, reason: `quality batch ${intent.roundId}: copy ${batchId}${receipt ? ` (${receipt})` : ""}: ${reason}` });
   return null;
 }
@@ -421,8 +442,13 @@ async function reconcileLate(ctx: Context, round: QualityBatchRound) {
       let results: QualityBatchResult[];
       try { results = await ctx.transport.results(batchId, ctx.deadlineAt); }
       catch { continue; }
-      try { reading = (await noteReading(ctx, round, batchId, receiptsOf(results, round.intent.customId))).recorded; }
-      catch (error) { failures.push(error); continue; }
+      const receipts = receiptsOf(results, round.intent.customId);
+      try {
+        const noted = await noteReading(ctx, round, batchId, receipts);
+        reading = noted.recorded;
+        // Another pass recorded the copy's reading otherwise meanwhile: this one is a charge of its own.
+        if (noted.anomaly) await lateCharge(ctx, round, batchId, receipts);
+      } catch (error) { failures.push(error); if (!reading) continue; }
     }
     // A bill the ledger or the record refuses leaves its copy unbilled (and so undeletable); the others go on,
     // and the refusal is raised once they have.
@@ -466,8 +492,9 @@ async function advance(ctx: Context, roundId: string): Promise<QualityBatchGate>
   for (let turn = 0; turn < 6; turn++) {
     const round = await readRound(ctx, roundId), step = nextQualityBatchStep(round, Date.now());
     if (step.step === "done") {
-      // Whoever wrote the outcome, the ledger is made to match it before anything follows from it (rule 0).
-      await applyTerminal(ctx, round);
+      // Whoever wrote the outcome, the ledger is made to match the record before anything follows from it (rules 0
+      // and 6): the outcome, and every reread counted, so no capacity is admitted ahead of a charge on record.
+      await applyRecord(ctx, round);
       if (step.terminal.kind === "held") return { kind: "held", reason: `Quality question in Message Batches: ${step.terminal.reason}` };
       if (step.terminal.kind === "fallback" || ctx.stopping) return proceed;
       // An answer is delivered only on the charge it settled; one another writer held instead waits for a person.
@@ -486,6 +513,16 @@ async function advance(ctx: Context, roundId: string): Promise<QualityBatchGate>
     }
     // Held with the charge unknown: a person reconciles it; nothing is asked again automatically.
     if (step.step === "duplicates") { await writeEvent(ctx, roundId, { kind: "held", reason: step.reason, charge: "unknown", at: Date.now() }); continue; }
+    // A provider fault (rule 6) is held the same way before it is counted, so a count that fails decides nothing; the
+    // round's own batch keeps its first reading as the round's bill. Every batch the record read carries the question:
+    // one a search read but stopped before recording is kept first, so it is billed and deleted like any copy.
+    if (step.step === "fault") {
+      const unkept = Object.keys(round.readings).filter(id => !round.batchIds.includes(id));
+      if (unkept.length) await recordFound(ctx, roundId, unkept, false, Date.now());
+      await writeEvent(ctx, roundId, { kind: "held", reason: step.reason, charge: "unknown",
+        ...step.batchId ? { batchId: step.batchId, results: round.readings[step.batchId] } : {}, at: Date.now() });
+      continue;
+    }
     if (step.step === "fallback-unsent") {
       const closed = await closeUnsent(ctx, round, step.claim);
       if (closed !== "advanced") return closed;
@@ -510,10 +547,11 @@ async function advance(ctx: Context, roundId: string): Promise<QualityBatchGate>
       // The batches already known are proven already: only new ones are read.
       try { found = await ctx.transport.find(round.intent.customId, step.sinceMs, ctx.deadlineAt, step.untilMs, new Set(round.batchIds)); }
       catch (error) { return waiting(`the provider could not be searched (${error instanceof Error ? error.message.slice(0, 200) : "unknown"})`); }
-      // Every batch proven to carry the question is kept before anything is decided from it: a
-      // later search that no longer sees a copy cannot undo it. Two copies hold the round.
-      const known = await recordFound(ctx, roundId, found.proven, !found.undecided, searchedAt);
-      if (known.batchIds.length > 1) continue;
+      // Every batch proven to carry the question is kept, with what it was proven by, before anything is decided
+      // from it: a later search that no longer sees a copy cannot undo it. Two copies hold the round, as does a
+      // provider fault the search recorded (rule 6), whatever else the search left undecided.
+      const known = await recordSearch(ctx, roundId, found, searchedAt);
+      if (known.batchIds.length > 1 || known.rereads.length) continue;
       // One proven batch is the round's only when no other could still carry the question:
       // recording it while another runs could release that one's charge on the first's outcome.
       if (found.undecided) return waiting(found.truncated ? "the search did not reach back to this question (too many batches, or too little of this request left); nothing is decided meanwhile"
@@ -583,7 +621,7 @@ async function discover(ctx: Context, round: QualityBatchRound): Promise<boolean
   // The copies already known are proven already: a search reads only new ones, so one that cannot be read keeps no search waiting.
   try { found = await ctx.transport.find(round.intent.customId, window.sinceMs, ctx.deadlineAt, window.untilMs, new Set(round.batchIds)); }
   catch { return true; } // the next slice or tick searches again
-  await recordFound(ctx, round.intent.roundId, found.proven, !found.undecided, searchedAt);
+  await recordSearch(ctx, round.intent.roundId, found, searchedAt);
   return true;
 }
 
@@ -745,7 +783,7 @@ export async function sweepQualityBatches(c: Container, options: { deadlineAt: n
   }
   const states = new Map((await c.db.game.findMany({ where: { id: { in: [...byGame.keys()] } }, select: { id: true, status: true, deletedAt: true } }))
     .map(game => [game.id, game]));
-  const work: { gameId: string; roundId: string; terminal: boolean }[] = [];
+  const work: { gameId: string; roundId: string; terminal: boolean; faulted: boolean }[] = [];
   let rounds = 0, failed = 0;
   const readAt = Date.now();
   for (const [gameId, gameRows] of byGame) {
@@ -754,10 +792,11 @@ export async function sweepQualityBatches(c: Container, options: { deadlineAt: n
     // rounds stay as they are, counted, for the next tick or a person.
     try {
       for (const [roundId, events] of roundsOf(gameRows, gameId)) {
-        const round = qualityBatchRoundOf(events);
-        if (round.terminal ? qualityBatchSearching(round, readAt) || qualityBatchLateDue(round).length > 0 || qualityBatchCleanupDue(round, deletedGame(game))
-          // A provider fault on record (rule 6) keeps its round's ledger matched to the record on every tick, whatever else is done.
-          || round.rereads.length > 0 : !generating(game)) work.push({ gameId, roundId, terminal: !!round.terminal });
+        const round = qualityBatchRoundOf(events), faulted = round.rereads.length > 0;
+        // A provider fault on record (rule 6) keeps its round's ledger matched to the record on every tick, whatever else is
+        // done, and an open round with one is held by the tick, whoever's it is.
+        if (faulted || (round.terminal ? qualityBatchSearching(round, readAt) || qualityBatchLateDue(round).length > 0
+          || qualityBatchCleanupDue(round, deletedGame(game)) : !generating(game))) work.push({ gameId, roundId, terminal: !!round.terminal, faulted });
       }
     } catch { failed++; }
   }
@@ -770,7 +809,7 @@ export async function sweepQualityBatches(c: Container, options: { deadlineAt: n
   const start = work.length ? Math.floor(Date.now() / SWEEP_ROTATION_MS) % work.length : 0;
   for (let i = 0; i < work.length; i++) {
     if (Date.now() >= windowEnd || options.deadlineAt - Date.now() < POLL_NEED_MS) break;
-    const { gameId, roundId, terminal } = work[(start + i) % work.length]!;
+    const { gameId, roundId, terminal, faulted } = work[(start + i) % work.length]!;
     // A failed write or read leaves the round as it is, for the next tick or a person.
     try {
       // The game as it is now, and again before any action its own worker would not take.
@@ -780,8 +819,10 @@ export async function sweepQualityBatches(c: Container, options: { deadlineAt: n
       const ctx: Context = { c, transport, gameId, fence: null, question: null, stopping: !live, deadlineAt,
         stillStopped: async () => !generating(await readGame()) };
       if (!terminal) {
-        if (live) continue; // its own slices advance it
-        await advance(ctx, roundId);
+        if (live && !faulted) continue; // its own slices advance it
+        // A live game's faulted round is only held and its record applied (its first steps): as stopping, so whatever
+        // another pass decided meanwhile, the tick never links, creates or cancels for a game that is generating.
+        await advance(live ? { ...ctx, stopping: true } : ctx, roundId);
       // A finished round's housekeeping moves no money its outcome did not decide, so it needs no slice.
       } else await maintain(ctx, await readRound(ctx, roundId), deletedGame(game));
       rounds++;

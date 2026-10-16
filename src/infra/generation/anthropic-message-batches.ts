@@ -1,4 +1,4 @@
-import { QualityBatchRefused, type QualityBatchCounts, type QualityBatchResult, type QualityBatchStatus, type QualityBatchTransport } from "./types";
+import { QualityBatchRefused, type QualityBatchCounts, type QualityBatchFound, type QualityBatchResult, type QualityBatchStatus, type QualityBatchTransport } from "./types";
 
 /**
  * Anthropic Message Batches over raw HTTP, like the product's synchronous Opus
@@ -92,9 +92,10 @@ export class AnthropicMessageBatches implements QualityBatchTransport {
    * A batch the round already knows (`known`) to carry the question is proven already:
    * its results are not read again, so one that cannot be read keeps no search waiting.
    */
-  async find(customId: string, sinceMs: number, deadlineAt?: number, untilMs?: number, known?: ReadonlySet<string>): Promise<{ proven: string[]; undecided: boolean; truncated?: true }> {
+  async find(customId: string, sinceMs: number, deadlineAt?: number, untilMs?: number, known?: ReadonlySet<string>): Promise<QualityBatchFound> {
     if (!CUSTOM_ID.test(customId) || !Number.isFinite(sinceMs) || untilMs !== undefined && !Number.isFinite(untilMs)) throw Error("QUALITY_BATCH: invalid search");
-    const proven: string[] = [];
+    // Every proven batch with the results that proved it: what was read is never thrown away.
+    const proven: string[] = [], results: Record<string, QualityBatchResult[]> = {};
     let undecided = false, after: string | null = null;
     for (let page = 0; page < MAX_LIST_PAGES; page++) {
       if (!roomForRead(deadlineAt)) break;
@@ -113,14 +114,15 @@ export class AnthropicMessageBatches implements QualityBatchTransport {
         if (batch.processing_status !== "ended") { undecided = true; continue; }
         const counts = endedRequestCounts(batch);
         if (counts === null) throw Error(`QUALITY_BATCH: ${batch.id} does not state its request counts`);
-        if (!roomForRead(deadlineAt)) return { proven, undecided: true, truncated: true };
-        if ((await this.resultsOf(batch.id, counts)).some(result => result.customId === customId)) proven.push(batch.id);
+        if (!roomForRead(deadlineAt)) return { proven, undecided: true, truncated: true, results };
+        const read = await this.resultsOf(batch.id, counts);
+        if (read.some(result => result.customId === customId)) { proven.push(batch.id); results[batch.id] = read; }
       }
-      if (reachedIntent || !list.has_more) return { proven, undecided };
+      if (reachedIntent || !list.has_more) return { proven, undecided, results };
       if (!data.length || typeof list.last_id !== "string" || !BATCH_ID.test(list.last_id)) throw Error("QUALITY_BATCH: a list page promised more but gave no batch or no cursor");
       after = list.last_id;
     }
-    return { proven, undecided: true, truncated: true };
+    return { proven, undecided: true, truncated: true, results };
   }
 
   /** The batch's state; an ended batch's record also says how many results of each type it has, which

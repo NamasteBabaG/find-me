@@ -77,7 +77,7 @@ describe("Anthropic Message Batches transport", () => {
     const page2 = { data: [ended("msgbatch_old", new Date(since - QUALITY_BATCH_CLOCK_SKEW_MS - 1).toISOString())], has_more: true, last_id: "msgbatch_old" };
     const fetcher = wire(reply(200, page1), reply(200, null, line("q-other", { type: "succeeded", message: {} })),
       reply(200, null, [line("q-mine", { type: "succeeded", message: {} }), line("q-x", { type: "canceled" })].join("\n")), reply(200, page2));
-    await expect(new AnthropicMessageBatches("synthetic", fetcher).find("q-mine", since)).resolves.toEqual({ proven: ["msgbatch_mine"], undecided: false });
+    await expect(new AnthropicMessageBatches("synthetic", fetcher).find("q-mine", since)).resolves.toMatchObject({ proven: ["msgbatch_mine"], undecided: false });
     // Pages by the documented cursor; reads results from the documented path, never a supplied URL; stops at the intent.
     expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual([
       "https://api.anthropic.com/v1/messages/batches?limit=1000",
@@ -85,7 +85,7 @@ describe("Anthropic Message Batches transport", () => {
       "https://api.anthropic.com/v1/messages/batches/msgbatch_mine/results",
       "https://api.anthropic.com/v1/messages/batches?limit=1000&after_id=msgbatch_mine"]);
     const running = wire(reply(200, { data: [ended("msgbatch_run", at(1), "in_progress")], has_more: false }));
-    await expect(new AnthropicMessageBatches("synthetic", running).find("q-mine", since)).resolves.toEqual({ proven: [], undecided: true });
+    await expect(new AnthropicMessageBatches("synthetic", running).find("q-mine", since)).resolves.toMatchObject({ proven: [], undecided: true });
     const unreadable = wire(reply(503, { type: "error", error: { type: "api_error" } }));
     await expect(new AnthropicMessageBatches("synthetic", unreadable).find("q-mine", since)).rejects.toThrow("list answered 503");
   });
@@ -95,12 +95,12 @@ describe("Anthropic Message Batches transport", () => {
     // Codex's case: unrelated batches keep running in the workspace, every one created after the question's window.
     const page = { data: [ended("msgbatch_newrun", at(90), "in_progress"), ended("msgbatch_newend", at(60)), ended("msgbatch_mine", at(5))], has_more: false };
     const fetcher = wire(reply(200, page), reply(200, null, line("q-mine", { type: "succeeded", message: {} })));
-    await expect(new AnthropicMessageBatches("synthetic", fetcher).find("q-mine", since, undefined, until)).resolves.toEqual({ proven: ["msgbatch_mine"], undecided: false });
+    await expect(new AnthropicMessageBatches("synthetic", fetcher).find("q-mine", since, undefined, until)).resolves.toMatchObject({ proven: ["msgbatch_mine"], undecided: false });
     expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual(["https://api.anthropic.com/v1/messages/batches?limit=1000",
       "https://api.anthropic.com/v1/messages/batches/msgbatch_mine/results"]);
     // Within the clocks' allowance, a batch created just after the window is still a candidate.
     const edge = wire(reply(200, { data: [ended("msgbatch_edge", new Date(until + QUALITY_BATCH_CLOCK_SKEW_MS).toISOString(), "in_progress")], has_more: false }));
-    await expect(new AnthropicMessageBatches("synthetic", edge).find("q-mine", since, undefined, until)).resolves.toEqual({ proven: [], undecided: true });
+    await expect(new AnthropicMessageBatches("synthetic", edge).find("q-mine", since, undefined, until)).resolves.toMatchObject({ proven: [], undecided: true });
   });
 
   it("reads only batches the round does not know yet: a known one, proven already, is neither read again nor kept undecided", async () => {
@@ -108,8 +108,9 @@ describe("Anthropic Message Batches transport", () => {
     // Codex's eleventh-pass case: a known copy whose results cannot be read would otherwise sink every search.
     const page = { data: [ended("msgbatch_new", at(9)), ended("msgbatch_known", at(5)), ended("msgbatch_knownrunning", at(4), "in_progress")], has_more: false };
     const fetcher = wire(reply(200, page), reply(200, null, line("q-mine", { type: "succeeded", message: {} })));
+    // What proved the new batch comes back with it (Codex's twelfth pass: it is the batch's first reading), and nothing else does.
     await expect(new AnthropicMessageBatches("synthetic", fetcher).find("q-mine", since, undefined, undefined, new Set(["msgbatch_known", "msgbatch_knownrunning"])))
-      .resolves.toEqual({ proven: ["msgbatch_new"], undecided: false });
+      .resolves.toEqual({ proven: ["msgbatch_new"], undecided: false, results: { msgbatch_new: [{ customId: "q-mine", type: "succeeded", message: {} }] } });
     expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual(["https://api.anthropic.com/v1/messages/batches?limit=1000",
       "https://api.anthropic.com/v1/messages/batches/msgbatch_new/results"]);
   });
@@ -132,7 +133,7 @@ describe("Anthropic Message Batches transport", () => {
     await expect(search(reply(200, { data: [ended("msgbatch_1", at, "in_progress")], has_more: true }))).rejects.toThrow("promised more");
     await expect(search(reply(200, { data: [], has_more: true, last_id: "msgbatch_1" }))).rejects.toThrow("promised more");
     // The same file, whole, proves the question absent.
-    await expect(search(reply(200, { data: [ended("msgbatch_1", at)], has_more: false }), reply(200, null, other))).resolves.toEqual({ proven: [], undecided: false });
+    await expect(search(reply(200, { data: [ended("msgbatch_1", at)], has_more: false }), reply(200, null, other))).resolves.toMatchObject({ proven: [], undecided: false });
   });
 
   it("refuses results whose types contradict the batch's own counts: a counted success is never read as unbilled", async () => {
@@ -166,7 +167,7 @@ describe("Anthropic Message Batches transport", () => {
         ...Array.from({ length: 10 }, () => reply(200, null, line("q-other", { type: "succeeded", message: {} })))];
       const slow = vi.fn<typeof fetch>(async () => { starts.push(Date.now()); vi.setSystemTime(Date.now() + 29_000); return answers.shift()!; });
       const deadlineAt = t0 + 240_000;
-      await expect(new AnthropicMessageBatches("synthetic", slow).find("q-mine", since, deadlineAt)).resolves.toEqual({ proven: [], undecided: true, truncated: true });
+      await expect(new AnthropicMessageBatches("synthetic", slow).find("q-mine", since, deadlineAt)).resolves.toMatchObject({ proven: [], undecided: true, truncated: true });
       expect(starts.length).toBe(8);
       expect(starts.every(start => deadlineAt - start >= 30_000)).toBe(true);
       // Page after page of batches still running: the next page is asked for only with room for it.
@@ -176,7 +177,7 @@ describe("Anthropic Message Batches transport", () => {
         return reply(200, { data: [ended(`msgbatch_p${pageStarts.length}`, at, "in_progress")], has_more: true, last_id: `msgbatch_p${pageStarts.length}` });
       });
       const pagesDeadline = Date.now() + 100_000;
-      await expect(new AnthropicMessageBatches("synthetic", pages).find("q-mine", since, pagesDeadline)).resolves.toEqual({ proven: [], undecided: true, truncated: true });
+      await expect(new AnthropicMessageBatches("synthetic", pages).find("q-mine", since, pagesDeadline)).resolves.toMatchObject({ proven: [], undecided: true, truncated: true });
       expect(pageStarts.length).toBe(3);
       expect(pageStarts.every(start => pagesDeadline - start >= 30_000)).toBe(true);
       // A batch's results are two reads, its record and its file: each starts only with room for its timeout.
@@ -195,7 +196,7 @@ describe("Anthropic Message Batches transport", () => {
     const since = Date.parse("2026-10-16T08:00:00.000Z"), at = new Date(since + 60_000).toISOString();
     const pages = Array.from({ length: 20 }, (_, i) => reply(200, { data: [ended(`msgbatch_p${i}`, at, "in_progress")], has_more: true, last_id: `msgbatch_p${i}` }));
     const fetcher = wire(...pages);
-    await expect(new AnthropicMessageBatches("synthetic", fetcher).find("q-mine", since)).resolves.toEqual({ proven: [], undecided: true, truncated: true });
+    await expect(new AnthropicMessageBatches("synthetic", fetcher).find("q-mine", since)).resolves.toMatchObject({ proven: [], undecided: true, truncated: true });
     expect(fetcher).toHaveBeenCalledTimes(20);
   });
 

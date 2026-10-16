@@ -215,6 +215,13 @@ describe("a quality question's batch round, pure", () => {
       const starts = new Set(Array.from({ length: 24 }, (_, visit) => qualityBatchCopyStart(intent.roundId, length, t + visit * every * minute)));
       expect(starts.size).toBe(length);
     }
+    // The copies' order and a choice salted apart from it (the phases' turn) are independent: every pairing of the two comes,
+    // whether the round is visited every minute or every second or third (Codex's twelfth pass: they had moved in lockstep).
+    for (const every of [1, 2, 3]) {
+      const pairs = new Set(Array.from({ length: 48 }, (_, visit) => t + visit * every * minute)
+        .map(at => `${qualityBatchCopyStart(intent.roundId, 2, at)}${qualityBatchCopyStart(`${intent.roundId}:search`, 2, at)}`));
+      expect(pairs.size).toBe(4);
+    }
     // Within one minute, the same copy first.
     expect(new Set(Array.from({ length: 60 }, (_, s) => qualityBatchCopyStart(intent.roundId, 5, t + s * 1000 + 999)))).toEqual(new Set([qualityBatchCopyStart(intent.roundId, 5, t)]));
   });
@@ -230,7 +237,7 @@ describe("a quality question's batch round, pure", () => {
     expect(qualityBatchCanonicalJson({ a: undefined, b: 1 })).toBe(qualityBatchCanonicalJson({ b: 1 }));
   });
 
-  it("records a batch's reading once, for a batch the round knows, and a reread only as another reading of it (rule 6)", () => {
+  it("records a batch's reading once, even before the batch is known, and a reread only as another reading of it (rule 6)", () => {
     const usage = { input_tokens: 2000, output_tokens: 500, service_tier: "batch" };
     const first = [{ type: "succeeded", errorType: null, requestId: "msg_1", model: "claude-opus-5-5", usage }];
     const other = [{ ...first[0]!, requestId: "msg_2" }];
@@ -238,13 +245,30 @@ describe("a quality question's batch round, pure", () => {
     const reading = (batchId: string, results: typeof first): QualityBatchEvent => ({ kind: "reading", batchId, results, at: T0 });
     const reread = (results: typeof first, digest = "0123456789abcdef"): QualityBatchEvent => ({ kind: "reread", batchId: "b", digest, results, at: T0 });
     expect(round(...sent, reading("b", first)).readings["b"]).toEqual(first);
-    expect(() => round(...sent, reading("z", first))).toThrow("a reading of a batch the round knows");
+    // A search records what proved a batch before it records the batch: such a reading stands on its own.
+    expect(round(...sent, reading("z", first)).readings["z"]).toEqual(first);
+    expect(() => round(...sent, reading("b", first), reading("b", other))).toThrow("a batch is read once");
     // Another reading of the batch, in any key order, is no reread; any other result is one, named by its digest.
     expect(() => round(...sent, reading("b", first), reread([{ usage: { service_tier: "batch", output_tokens: 500, input_tokens: 2000 }, model: "claude-opus-5-5",
       requestId: "msg_1", errorType: null, type: "succeeded" }]))).toThrow("a reread is another reading");
     expect(round(...sent, reading("b", first), reread(other)).rereads).toHaveLength(1);
     expect(() => round(...sent, reread(other))).toThrow("a reread is another reading");
     expect(() => round(...sent, reading("b", first), reread(other, "not-a-digest"))).toThrow("a reread is another reading");
+  });
+
+  it("holds an open round with a provider fault on record before anything else it could do (rule 6)", () => {
+    const first = [{ type: "canceled", errorType: null, requestId: null, model: null, usage: null }];
+    const other = [{ type: "succeeded", errorType: null, requestId: "msg_2", model: "claude-opus-5-5", usage: { service_tier: "standard" } }];
+    const fault = (batchId: string): QualityBatchEvent[] => [{ kind: "reading", batchId, results: first, at: T0 },
+      { kind: "reread", batchId, digest: "0123456789abcdef", results: other, at: T0 }];
+    const sent: QualityBatchEvent[] = [{ kind: "claim", n: 1, at: T0 }, { kind: "submitted", n: 1, batchId: "b", at: T0 }];
+    // Its own batch's fault: held by that batch, at its deadline too (never polled, so never cancelled).
+    expect(step(T0 + 6 * HOUR, ...sent, ...fault("b"))).toEqual({ step: "fault", batchId: "b", reason: "the provider returned other results for b on another read" });
+    // Another batch's, or one read by a search before any batch was the round's: held by no batch, not searched again.
+    expect(step(T0 + HOUR, ...sent, ...fault("z"))).toEqual({ step: "fault", batchId: null, reason: "the provider returned other results for z on another read" });
+    expect(step(T0 + HOUR, { kind: "claim", n: 1, at: T0 }, ...fault("z"))).toMatchObject({ step: "fault", batchId: null });
+    // Once an outcome is recorded the round is done: the fault is counted, never decided from.
+    expect(step(T0 + HOUR, ...sent, ...fault("b"), heldUnknown("x", "b"))).toMatchObject({ step: "done" });
   });
 
   it("takes a copy's bill from its recorded reading, and names a reading after its batch in lower-case letters and digits", () => {

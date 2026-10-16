@@ -284,6 +284,12 @@ export type QualityBatchResult =
   | { readonly customId: string; readonly type: "errored"; readonly errorType: string | null }
   | { readonly customId: string; readonly type: "canceled" | "expired" }
   | { readonly customId: string; readonly type: "unrecognized"; readonly resultType: string | null };
+/** What a search proved: the batches carrying the question, with the results each was proved by (a batch's first
+ * reading: rule 6 of the round), whether any could still carry it, and whether the search stopped short. */
+export type QualityBatchFound = {
+  proven: string[]; undecided: boolean; truncated?: true;
+  results?: Readonly<Record<string, readonly QualityBatchResult[]>>;
+};
 /** How many results of each type an ended batch's own record says it has. */
 export type QualityBatchCounts = Readonly<Record<string, number>>;
 export type QualityBatchStatus =
@@ -304,7 +310,7 @@ export interface QualityBatchTransport {
    * or when the search ran out of pages or of time before the intent (`truncated`). No read starts that could
    * end after `deadlineAt`. Throws when the provider's inventory cannot be shown complete: absence is never
    * inferred from a partial answer. */
-  find(customId: string, sinceMs: number, deadlineAt?: number, untilMs?: number, known?: ReadonlySet<string>): Promise<{ proven: string[]; undecided: boolean; truncated?: true }>;
+  find(customId: string, sinceMs: number, deadlineAt?: number, untilMs?: number, known?: ReadonlySet<string>): Promise<QualityBatchFound>;
   /** The batch's state, and for an ended batch what its record counts by result type (null when the record does not state them all). */
   status(batchId: string): Promise<QualityBatchStatus>;
   /** Every result of an ended batch, exactly as the batch's own record counts them by type, or a throw;
