@@ -37,6 +37,11 @@ const EnvSchema = z.object({
   /** Painter, diagnosis and identity-repair wording for NEW questions only: a
    * stored hide row or identity checkpoint keeps the release it started with. */
   LOCAL_PATCH_PROMPT_RELEASE: z.enum(["v15", "v16", "v17", "v18", "v19"]).default("v15"),
+  /** Painting quality for NEW local-patch drafts, pinned per game when the draft
+   * is created; a game keeps its pin, and a game without one keeps its content
+   * version's own quality (MEDIUM for v12). low-v1 is qualified only on QA with
+   * v19 and dual-high-v3, and a draft is refused rather than painted otherwise. */
+  LOCAL_PATCH_PAINTER: z.enum(["by-version", "low-v1"]).default("by-version"),
   /** Explorers/Detectives cards under the child's name. On qa/production they
    * appear only while a Detectives world can actually be sold
    * (content/worlds/detective-releases.ts); development shows them for review. */

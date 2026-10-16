@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { pinVisualReviewRelease } from "./generation/visual-review-release";
 import { pinNewQaWorldBudget } from "./generation/local-patch-qa-budget";
+import { pinLocalPatchPainter } from "./generation/painter-release";
 import { createHash } from "node:crypto";
 import { validChildAge } from "@/domain/child-appearance";
 import { boardSlugs } from "@/domain/world";
@@ -128,6 +129,7 @@ export async function beginWorldPurchase(c: Container, input: WorldPurchaseInput
           await pinVisualReviewRelease(tx, gameId, c.dualVisualReviewRelease);
           await pinNewQaWorldBudget(tx, gameId, c.storage?.id ?? "", c.dualVisualReviewRelease);
         }
+        if (styleVersion === "local-patch-world-v1") await pinLocalPatchPainter(tx, gameId, c.localPatchPainter);
         if (choice.shown) await pinSearchLevelChoice(tx, gameId);
         await tx.gameScene.createMany({ data: boards.map((slug, orderIndex) => ({ id: newId("gsc"), gameId, sceneSlug: slug, sceneVersion: sceneBySlug(slug, version).version, orderIndex })) });
         await tx.childWorldPurchase.upsert({ where: { familyChildId_worldSlug: { familyChildId: child.id, worldSlug: world.slug } },

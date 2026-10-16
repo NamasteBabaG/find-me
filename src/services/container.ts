@@ -23,6 +23,7 @@ import { runGenerationPipeline } from "./generation/pipeline";
 import { prepareVisualReview, requestVisualReview, type VisualReviewQuestion } from "./generation/visual-review";
 import type { LocalPatchJudgeResult } from "./generation/local-patch-judge";
 import { DUAL_VISUAL_REVIEW_V2, DUAL_VISUAL_REVIEW_V3, DUAL_VISUAL_REVIEW_VERSION, type DualVisualReviewVersion } from "./generation/visual-review-release";
+import { LOCAL_PATCH_LOW_PAINTER, type LocalPatchPainterRelease } from "./generation/painter-release";
 
 /**
  * Composition root. Every provider is chosen here, by env, exactly once.
@@ -61,6 +62,9 @@ export interface Container {
   pinDualVisualReview?: boolean;
   /** Which dual pairing new drafts pin (explicit; absent means the original v1). */
   dualVisualReviewRelease?: DualVisualReviewVersion;
+  /** The painter release new local-patch drafts pin (explicit; absent means each
+   * content version's own quality, MEDIUM for v12). */
+  localPatchPainter?: LocalPatchPainterRelease;
 }
 
 /**
@@ -120,6 +124,9 @@ function build(): Container {
     // dual-high-v1 value keeps meaning v1 exactly.
     dualVisualReviewRelease: e.LOCAL_PATCH_VISUAL_REVIEW === "dual-high-v3" ? DUAL_VISUAL_REVIEW_V3
       : e.LOCAL_PATCH_VISUAL_REVIEW === "dual-high-v2" ? DUAL_VISUAL_REVIEW_V2 : DUAL_VISUAL_REVIEW_VERSION,
+    // Chosen by name like the review: the default keeps every content version's
+    // own quality, and only drafts created while low-v1 is set are painted LOW.
+    ...(e.LOCAL_PATCH_PAINTER === "low-v1" ? { localPatchPainter: LOCAL_PATCH_LOW_PAINTER } : {}),
     // Keep the transport available for a pinned game even when new enrollment
     // is disabled. Missing credentials fail before a paid reservation.
     ...(e.GENERATION_PROVIDER === "openai" && e.ANTHROPIC_API_KEY?.trim() && e.OPENAI_API_KEY?.trim()

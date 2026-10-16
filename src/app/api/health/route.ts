@@ -8,6 +8,7 @@ import { BOARD_JUDGE_VERSION } from "@/infra/generation/board-verdict";
 import { deliverWithProblemsOf } from "@/services/container";
 import { visualReviewPolicy } from "@/domain/generation/visual-review-policy";
 import { DUAL_VISUAL_REVIEW_V3 } from "@/services/generation/visual-review-release";
+import { lowPainterQualified } from "@/services/generation/painter-release";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,7 +32,10 @@ export async function GET(req: Request) {
   const e = env();
   const db = await checkDb();
   const dualConfigured = Boolean(e.OPENAI_API_KEY?.trim() && e.ANTHROPIC_API_KEY?.trim());
-  const ok = db.ok && !(e.APP_ENV === "qa" && e.LOCAL_PATCH_VISUAL_REVIEW !== "legacy" && !dualConfigured);
+  // A LOW painter outside its qualified configuration refuses every new draft, so say so here first.
+  const painterUnqualified = e.APP_ENV === "qa" && e.LOCAL_PATCH_PAINTER === "low-v1" && !lowPainterQualified({ appEnv: e.APP_ENV,
+    promptRelease: e.LOCAL_PATCH_PROMPT_RELEASE, reviewRelease: e.LOCAL_PATCH_VISUAL_REVIEW === "dual-high-v3" ? DUAL_VISUAL_REVIEW_V3 : undefined });
+  const ok = db.ok && !(e.APP_ENV === "qa" && e.LOCAL_PATCH_VISUAL_REVIEW !== "legacy" && !dualConfigured) && !painterUnqualified;
   const body = {
     ok,
     db,
@@ -47,6 +51,8 @@ export async function GET(req: Request) {
       continuity: { model: visualReviewPolicy("head-continuity").model, effort: "high" } },
     // Which wording NEW hides and identities receive; stored ones keep their own.
     promptRelease: e.LOCAL_PATCH_PROMPT_RELEASE,
+    // The painting quality NEW local-patch drafts are pinned to; existing games keep their own.
+    painter: { newGames: e.APP_ENV === "qa" ? e.LOCAL_PATCH_PAINTER ?? "by-version" : "by-version", qualified: !painterUnqualified },
     worldBudget: { newQaPolicy: newQaWorldBudgetEnabled({ appEnv: e.APP_ENV, storageId: e.STORAGE_PROVIDER ?? "",
       promptRelease: e.LOCAL_PATCH_PROMPT_RELEASE, reviewRelease: e.LOCAL_PATCH_VISUAL_REVIEW === "dual-high-v3" ? DUAL_VISUAL_REVIEW_V3 : undefined })
       ? { version: NEW_QA_WORLD_BUDGET_POLICY, capMicroUsd: NEW_QA_WORLD_CAP_MICRO_USD } : null, historicalDefaultCapMicroUsd: 5_000_000 },

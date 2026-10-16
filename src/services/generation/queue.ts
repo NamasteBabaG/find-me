@@ -3,7 +3,7 @@ import type { Container } from "../container";
 import { LEASE_MS as PIPELINE_LEASE_MS, RESUMABLE_STATUSES, runGenerationPipeline } from "./pipeline";
 import { FIXED_WORLD_STYLE_PREFIX, isFixedWorldStyle } from "./fixed-world-stage-record";
 import { BOARD_WIZARD_STYLE, boardWizardEnabled, runBoardConditionedWizardSlice } from "./board-conditioned-wizard";
-import { LOCAL_PATCH_LEASE_MS, LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_QUALITY_FAILED, LOCAL_PATCH_RECOVERY_EXHAUSTED, LOCAL_PATCH_RECOVERY_BUDGET_WAIT, LOCAL_PATCH_RECOVERY_BACKOFF_MS, LOCAL_PATCH_EVIDENCE_RETRY_WAIT, LOCAL_PATCH_STYLE, localPatchPainterDeps, runLocalPatchWorldSlice } from "./local-patch-world";
+import { LOCAL_PATCH_LEASE_MS, LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_QUALITY_FAILED, LOCAL_PATCH_RECOVERY_EXHAUSTED, LOCAL_PATCH_RECOVERY_BUDGET_WAIT, LOCAL_PATCH_RECOVERY_BACKOFF_MS, LOCAL_PATCH_EVIDENCE_RETRY_WAIT, LOCAL_PATCH_STYLE, localPatchPainterForGame, runLocalPatchWorldSlice } from "./local-patch-world";
 import { LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS } from "./local-patch-review-recovery";
 import { selfRepairEnabled } from "../../domain/scene/local-patch-self-repair";
 import { transitionGame } from "../game-status";
@@ -104,7 +104,7 @@ export async function tickGeneration(c: Container, gameId: string | null, budget
     }
     // Missing spend configuration must stop this pinned engine, never fall
     // through to the legacy painter and quietly generate a different game.
-    const painter = localPatchPainterDeps(c, before.scenes[0]?.sceneVersion);
+    const painter = await localPatchPainterForGame(c, id, before.scenes[0]?.sceneVersion);
     if (!painter) return { gameId: id, status: statusOf(before), pending: false };
     const result = await runLocalPatchWorldSlice(c, painter, id, { hardDeadlineAt: now + hardMs });
     const after = await c.db.game.findUnique({ where: { id }, select: { status: true } });

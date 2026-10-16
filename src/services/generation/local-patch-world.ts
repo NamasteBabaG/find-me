@@ -28,6 +28,7 @@ import { activateLocalPatchEmergencyBudget } from "./local-patch-budget-recovery
 import { localPatchEvidenceRecovery, LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS } from "./local-patch-review-recovery";
 import { localPatchRetainedAnswerUndecided, localPatchContinuityPending } from "./local-patch-dual-evidence";
 import { hasDualVisualReview } from "./visual-review-release";
+import { localPatchPainterRelease, painterReleasePolicy, type LocalPatchPainterRelease } from "./painter-release";
 import {
   LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, runLocalPatchHide,
   type LocalPatchHideDeps, type LocalPatchHideOutcome,
@@ -747,17 +748,27 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
  * They are asked per hide, inside the claim, by the same function that answers
  * them for the board engine - so a world that pauses mid-slice stops at the
  * next hide rather than at the next deploy.
+ *
+ * `release` is the game's own painter pin (`localPatchPainterForGame`); without
+ * one the content version decides, as it always has.
  */
-export function localPatchPainterDeps(_c: Container, contentVersion = 6): LocalPatchHideDeps | null {
+export function localPatchPainterDeps(_c: Container, contentVersion = 6, release: LocalPatchPainterRelease | null = null): LocalPatchHideDeps | null {
   const e = env();
   const apiKey = e.OPENAI_API_KEY?.trim();
   if (e.GENERATION_PROVIDER !== "openai" || !apiKey) return null;
-  const policy = localPatchImagePolicyForVersion(contentVersion);
+  const policy = release ? painterReleasePolicy(release, contentVersion) : localPatchImagePolicyForVersion(contentVersion);
   return {
     apiKey,
     renderPolicySha256: localPatchRenderPolicySha256(policy),
     render: async input => buyLocalPatch(apiKey, input, { policy }),
   };
+}
+
+/** The painter of one game: the release pinned when its draft was created, never
+ * the deployment's current setting. Every paid painting of the game, repairs
+ * included, is bought through what this returns. */
+export async function localPatchPainterForGame(c: Container, gameId: string, contentVersion: number | undefined): Promise<LocalPatchHideDeps | null> {
+  return localPatchPainterDeps(c, contentVersion, await localPatchPainterRelease(c.db, gameId));
 }
 
 /**

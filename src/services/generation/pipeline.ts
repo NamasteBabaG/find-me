@@ -31,7 +31,7 @@ import { isLocalPatchAdvisoryVersion } from "../../domain/scene/local-patch-cata
 import { boardWizardBudget } from "./board-wizard-budget";
 import { CasWorldBudgetRepository } from "../../infra/db/world-budget-repository";
 import { PrismaWorldBudgetStore } from "../../infra/db/prisma-world-budget-store";
-import { LOCAL_PATCH_STYLE, LOCAL_PATCH_QUALITY_FAILED, localPatchPainterDeps, runLocalPatchWorldSlice } from "./local-patch-world";
+import { LOCAL_PATCH_STYLE, LOCAL_PATCH_QUALITY_FAILED, localPatchPainterForGame, runLocalPatchWorldSlice } from "./local-patch-world";
 import { finishLocalPatchIdentity, preflightLocalPatchIdentity, requireLocalPatchIdentityTime, LocalPatchIdentityDeferred, type LocalPatchIdentityPreflightProof } from "./local-patch-identity";
 import { worldForBoard } from "../world-catalog.service";
 import type { IdentityArtCache } from "./collection-art";
@@ -99,7 +99,7 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
   if (localPatch && env().APP_ENV !== "qa") return;
   if (localPatch && (await c.db.generationJob.findUnique({ where: { id: `job_${gameId}` }, select: { currentStep: true } }))?.currentStep === LOCAL_PATCH_QUALITY_FAILED) return;
   if (localPatch && game.status === "TARGETS_GENERATING") {
-    const painter = localPatchPainterDeps(c, game.scenes[0]?.sceneVersion);
+    const painter = await localPatchPainterForGame(c, gameId, game.scenes[0]?.sceneVersion);
     if (painter) await runLocalPatchWorldSlice(c, painter, gameId, { hardDeadlineAt: options.hardDeadlineAt });
     return;
   }
