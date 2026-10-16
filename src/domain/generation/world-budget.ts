@@ -546,12 +546,17 @@ export class WorldBudget {
     }
   }
 
-  /** Missing/invalid response evidence must be followed by markUnknown, never a retry. */
-  async settle(worldId: string, requestKey: string, incoming: WorldChargeEvidence): Promise<WorldBudgetResult> {
+  /**
+   * Missing/invalid response evidence must be followed by markUnknown, never a retry.
+   * `onlyPending`: settle only a request still pending, in the same transaction; one another
+   * writer already settled, linked or held as unknown is returned as it is.
+   */
+  async settle(worldId: string, requestKey: string, incoming: WorldChargeEvidence, options: { onlyPending?: boolean } = {}): Promise<WorldBudgetResult> {
     nonempty(requestKey, "requestKey"); evidence(incoming); incoming = structuredClone(incoming);
     const outcome = await this.transact(worldId, async (tx, capMicroUsd) => {
       const existing = tx.snapshot.requests.find(item => item.requestKey === requestKey);
       if (!existing) return fail("request_missing", "Reserve before dispatch; use importSettled for already-billed external requests");
+      if (options.onlyPending && existing.state !== "pending") return { result: { request: structuredClone(existing), audit: auditWorldBudget(tx.snapshot, capMicroUsd) } };
       if (existing.state === "settled" || existing.state === "linked") {
         if (!sameEvidence(existing.evidence, incoming)) return this.conflict(tx, existing, incoming, "A settled request cannot be overwritten by different cost, usage or provider evidence");
         return { result: { request: structuredClone(existing), audit: auditWorldBudget(tx.snapshot, capMicroUsd) } };

@@ -164,6 +164,10 @@ describe("a quality question's batch round, pure", () => {
     // A hold that did not read the round's batch leaves it to be read, like every copy, before it may go.
     const heldUnread = round(...recorded, { kind: "found", n: 1, batchIds: ["msgbatch_2"], complete: true, at: T0 }, heldUnknown("two"));
     expect([qualityBatchLateDue(heldUnread), qualityBatchCleanupDue(heldUnread, true)]).toEqual([["msgbatch_1", "msgbatch_2"], false]);
+    // Codex's seventh pass: the create's own batch recorded, one copy found by a search left undecided. Two copies hold the
+    // round, and it goes on searching for any third, though only one of the two came from a search.
+    const recordedAndFound = round(...recorded, { kind: "found", n: 1, batchIds: ["msgbatch_2"], complete: false, at: T0 }, heldUnknown("two"));
+    expect([recordedAndFound.found, qualityBatchSearching(recordedAndFound, T0)]).toEqual([["msgbatch_2"], true]);
     // Two copies found while a third might still run: held, still searching; each is read, then deleted with its game.
     const copies: QualityBatchEvent[] = [{ kind: "claim", n: 1, at: T0 }, { kind: "found", n: 1, batchIds: ["msgbatch_1", "msgbatch_2"], complete: false, at: T0 }, heldUnknown("two")];
     const searching = round(...copies);

@@ -45,7 +45,7 @@ export function boardWizardBudget(repository: WorldBudgetRepository, attempt = 1
     }
     override reserve(worldId: string, input: WorldReservationInput) { return super.reserve(worldId, { ...input, requestKey: key(input.requestKey) }); }
     override readRequest(worldId: string, requestKey: string) { return super.readRequest(worldId, key(requestKey)); }
-    override settle(worldId: string, requestKey: string, evidence: WorldChargeEvidence) { return super.settle(worldId, key(requestKey), evidence); }
+    override settle(worldId: string, requestKey: string, evidence: WorldChargeEvidence, options?: { onlyPending?: boolean }) { return super.settle(worldId, key(requestKey), evidence, options); }
     override link(worldId: string, input: WorldLinkInput) { return super.link(worldId, { ...input, requestKey: key(input.requestKey), canonicalRequestKey: key(input.canonicalRequestKey) }); }
     override markUnknown(worldId: string, requestKey: string, reason: string) { return super.markUnknown(worldId, key(requestKey), reason); }
     override readContinuationApproval(worldId: string, requestKey: string) { return super.readContinuationApproval(worldId, key(requestKey)); }

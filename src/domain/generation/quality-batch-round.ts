@@ -268,7 +268,8 @@ export const qualityBatchPresumedLost = (round: QualityBatchRound) =>
  * when any batch its create made has ended and is listed.
  */
 export function qualityBatchSearching(round: QualityBatchRound, now: number): boolean {
-  if (round.terminal?.kind === "held") return round.found.length > 1 && !round.searchComplete;
+  // Every copy the round knows counts, the one its create recorded included: the hold itself counted them all.
+  if (round.terminal?.kind === "held") return round.batchIds.length > 1 && !round.searchComplete;
   if (!qualityBatchPresumedLost(round)) return false;
   const due = round.presumed!.at + QUALITY_BATCH_LATE_SEARCH_MS;
   return now >= due && !(round.completeSearchAt !== null && round.completeSearchAt >= due);

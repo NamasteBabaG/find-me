@@ -113,7 +113,7 @@ A round is append-only AuditLog rows under `generation:quality-batch`. Each even
 intent ─► reserve batch key (half) ─► claim n ─► create ─► submitted ─► [cancel at deadline] ─► answered | fallback | held
 ```
 
-**Only the outcome moves money (since Codex's sixth pass).** A round's terminal outcome (answered, fallback or held) is written first, under one name, and states what the ledger must hold: the answer's charge, zero, the presumption, or unknown. The ledger is then made to match it by whichever pass reads it, as often as needed, and only a still-pending reservation is ever changed. A pass that decided otherwise from an older read loses the name and moves no money.
+**Only the outcome moves money (since Codex's sixth pass).** A round's terminal outcome (answered, fallback or held) is written first, under one name, and states what the ledger must hold: the answer's charge, zero, the presumption, or unknown. The ledger is then made to match it by whichever pass reads it, as often as needed, and only a still-pending reservation is ever changed: checked in the write's own transaction (`settle` with `onlyPending`), so a charge another writer held or settled meanwhile is left as it is, and an answer is delivered only on a charge it settled. A pass that decided otherwise from an older read loses the name and moves no money.
 
 **Never two purchases:**
 - The intent is durable before the reservation, and each claim before its create.
@@ -125,7 +125,8 @@ intent ─► reserve batch key (half) ─► claim n ─► create ─► submi
   - One kept copy, with nothing undecided, is recorded as the round's batch.
   - None, after a complete search, presumes the create lost. **Its charge is settled at the most the batch rate could bill** (the batch reservation, as a conservative upper estimate) and never released. The question is then asked synchronously. Negative evidence never releases money and never sends anything.
   - **A presumed-lost round searches once more, a day after the presumption** (24 h 15 min), when any batch its create made has ended (a batch expires 24 hours after it is created; the two clocks may differ by five minutes each way) and is listed; a search that started before then does not count.
-  - **Every copy of the question is read for its bill before it may be deleted**, in every finished round: the round's own batch by the outcome that read it, every other copy afterwards (`late-n`). What the provider returned is kept in the record (result type, receipt, model and usage; never the answer), so the evidence outlives the copy. The bills read must fit in what the ledger counted for the round beyond its own batch: the presumption, for a create presumed lost; nothing, once the round's batch is billed. A bill above it (an answer the standard tier served, or a copy the provider made), or one that cannot be stated (a tier with no rate, or an anomaly), is recorded beside the settled charge as a ledger conflict at its full amount, which holds the world for a person: the ledger never understates. A charge held as unknown already holds the world; its copies' receipts are kept for the person.
+  - **Every copy of the question is read for its bill before it may be deleted**, in every finished round: the round's own batch by the outcome that read it, every other copy afterwards (`late-n`). What the provider returned is kept in the record (result type, receipt, model and usage; never the answer), so the evidence outlives the copy.
+  - **The batch key stands for one batch** (since Codex's seventh pass): the round's own, when its outcome read one; otherwise, for a create presumed lost, the first copy read, whose bill must fit in the presumption. **Every other copy is a charge of its own**, imported into the ledger in full by its receipt (`importSettled`: counted once per receipt, even in a held world or above the ceiling), whatever the batch key holds. Whoever settles that key, then or later, a person included, settles it for its one batch. A bill the presumption cannot hold (an answer the standard tier served), and any bill that cannot be stated (a tier with no rate, or an anomaly; counted at the synchronous reservation), is also recorded beside a settled charge as a ledger conflict, which holds the world for a person; a charge held as unknown holds it already. The ledger never understates.
   - The round's batch and that presumption are one decision, made once: they share one compare-and-set name, so a pass that read an older round and decides otherwise loses the write and reads again.
   - Two copies (which only the provider could make) hold the round at once and for good, with the charge unknown; its search for further copies goes on as housekeeping, so a deleted game's copies are all found and deleted. Copies found beside a presumption already decided are not a hold: the presumption settles, and each copy is read for its bill (below).
   - A search counts only a complete inventory: every list page to its documented end (`has_more`, with a cursor whenever more follow), and every ended batch's results matching that batch's own `request_counts` type by type, each id once. An empty, cut-off or self-contradicting results file is an error, never "not there" and never "unbilled".
@@ -166,7 +167,7 @@ intent ─► reserve batch key (half) ─► claim n ─► create ─► submi
   - A round that never reached the provider (stopped after its intent, or every create refused) ends at zero rather than waiting for a create that a stopped game never makes. The close first takes the claim a create would take, so a worker that resumed the game and claimed it keeps its create.
   - A reservation that commits after such a close read the ledger is never used, since nothing is sent under a closing claim. Its own worker reads the round again right after reserving and goes on to the never-created outcome, which settles it at zero; if that worker stopped first, the game's next slice applies that outcome.
   - Every finished round with housekeeping due (a search, a copy's bill, a deletion) is handled whatever its game's state: a held review parks its job, and a parked job runs no slice. Housekeeping moves no money its outcome did not decide, so it needs no slice.
-  - Housekeeping runs in the order the money comes first: the outcome applied to the ledger, the bills of the copies already known, their deletion where due, and only then the search for more, which can take the rest of the round's time; what it finds is read and deleted in the same pass when there is room.
+  - Housekeeping runs in the order the money comes first: the outcome applied to the ledger, the bills of the copies already known, their deletion where due, and only then the search for more, which can take the rest of the round's time; what it finds is read and deleted in the same pass when there is room. Each tick starts reading copies one further on, and a deletion the provider refuses never stops the others, so one copy that cannot be read or deleted never keeps the rest waiting.
   - An ended batch is read in two calls, not three: the status read carries the batch's result counts, which its results file is checked against.
 - No provider call starts unless its whole timeout fits before the deadline of the slice or tick making it. A create is checked again after the ledger's work and after its claim; a claim it had no room to send is recorded as never sent.
 - In the sweep, rounds start within the tick's 40-second window, and each round started has its own 95 seconds for its calls, so a slow first read never leaves the next one no room, tick after tick.
@@ -180,10 +181,10 @@ intent ─► reserve batch key (half) ─► claim n ─► create ─► submi
 
 | Suite | Result |
 | --- | --- |
-| `quality-batch.test.ts`: real SQLite, ledger, retained store, dual review and world slice, with a scripted provider | **53/53** (21 in `1df2e366`, 2 in `80d7de72`, 6 for Codex's HOLD, 5 for the re-review, 6 for the third pass, 2 for the fourth, 7 for the fifth, 4 for the sixth; 3 rewritten for the fourth, 1 extended for the fifth and 4 for the sixth) |
+| `quality-batch.test.ts`: real SQLite, ledger, retained store, dual review and world slice, with a scripted provider | **57/57** (21 in `1df2e366`, 2 in `80d7de72`, 6 for Codex's HOLD, 5 for the re-review, 6 for the third pass, 2 for the fourth, 7 for the fifth, 4 for the sixth, 4 for the seventh; 3 rewritten for the fourth, 1 extended for the fifth, 4 for the sixth and 5 for the seventh) |
 | `quality-batch-round.test.ts`: the pure rules | **49/49** (16, plus 5 for the HOLD, 10 for the third pass, 5 for the fourth, 6 for the fifth and 7 for the sixth) |
 | `anthropic-message-batches.test.ts`: the transport on a scripted wire, plus pricing | **14/14** (8, plus 1 for the HOLD, 2 for the re-review, 1 for the third pass, 1 for the fifth and 1 for the sixth) |
-| `world-budget.test.ts` and `board-wizard-budget.test.ts`: `WorldBudget.link` | 3 and 1 new |
+| `world-budget.test.ts` and `board-wizard-budget.test.ts`: `WorldBudget.link`, and `settle` with `onlyPending` | 4 and 1 new |
 
 Among the first 23:
 - **A whole 27-appearance world** reaches READY with:
@@ -298,6 +299,12 @@ Each mutant edits one anchor and runs only its targeted tests. Each counts only 
   - order and window: the window ignored, in the transport and end to end; the window measured from the intent; the search run before the known copies; a found copy left for a later pass;
   - the tick: a live game's housekeeping skipped; a finished round with only deletions due not selected.
   - None survived. One test was made to need two ticks, so that the search alone, with nothing left to read, still brings a parked round back.
+- **Codex's seventh pass: 104/104,** each killed by the test it targets, with the tree restored and verified. 93 from the earlier rounds were run again, 5 re-anchored where the code moved. 4 were retired with the shared allowance they guarded (ignoring the round's own bill, taking it from the reservation, comparing an unknown charge, leaving earlier copies out of the sum). The 11 new:
+  - every copy taken as the presumption's stand-in; no stand-in at all; extra copies not imported, beside a held answer and beside an answered batch; an unpriced extra copy not held;
+  - the hold's search counting found copies only;
+  - copies read in the same order every tick; a refused deletion stopping the others;
+  - outcomes settled without `onlyPending`; an answer linked on a charge not settled; the ledger ignoring `onlyPending`.
+  - None survived.
 
 **The full suite (`npm run check`) on `1df2e366`:**
 - tsc is clean.
@@ -331,6 +338,10 @@ Each mutant edits one anchor and runs only its targeted tests. Each counts only 
 - tsc is clean.
 - Vitest: 5,165 passed, 2 expected failures, 55 skipped, **1 failed**: the same "retries malformed anatomy evidence…" 20-second timeout under full-suite load. Alone, on this code, that file passes 79/79.
 
+**The full suite on the seventh round:**
+- tsc is clean.
+- Vitest: 5,169 passed, 2 expected failures, 55 skipped, **2 failed**: the same two 20-second timeouts in `local-patch-incremental-review.test.ts` under full-suite load. Alone, on this code, that file passes 79/79.
+
 ## Commits
 
 | Commit | What |
@@ -346,7 +357,8 @@ Each mutant edits one anchor and runs only its targeted tests. Each counts only 
 | `dd26cc03` | fix(qa): the batch channel's records hold under time and concurrency (Codex's third pass) |
 | `454a233d` | fix(qa): the batch channel never sends twice and never releases on absence (Codex's fourth pass) |
 | `9bf6aa17` | fix(qa): the batch channel reads a late copy's bill before deleting it (Codex's fifth pass) |
-| the commit carrying this section | fix(qa): only a batch round's outcome moves money, and every copy is read before it goes (Codex's sixth pass) |
+| `19131d6d` | fix(qa): only a batch round's outcome moves money, and every copy is read before it goes (Codex's sixth pass) |
+| the commit carrying this section | fix(qa): a batch round's key stands for one batch, and every other copy is a charge of its own (Codex's seventh pass) |
 
 Each was verified on its own in a clean worktree:
 - `afbd8ee2`: tsc and its regression test;
@@ -372,7 +384,7 @@ The split was proven exact: replaying step 2's edits onto the step-1 versions re
 11. **A provider answer that contradicts itself** (Codex F1) leaves its round waiting, with the charge pending, until a person looks. The stalled-generation alert reports the game.
 12. **Accepted residuals of "never send twice" (Codex's fourth pass).**
     - A create presumed lost that in fact made its batch costs twice: the batch, counted at its maximum, and the synchronous question. Only a create whose answer was lost and whose batch no complete search found after 15 minutes can do this.
-    - Copies the provider itself might make of one request: since the sixth pass, every copy a search finds is read for its bill before deletion, and a second bill holds the world. A search runs only after a create that did not answer, so a copy the provider made of a create that answered normally is never seen: a client cannot stop a provider from billing twice for one request.
+    - Copies the provider itself might make of one request: every copy a search finds is read for its bill before deletion, and since the seventh pass each one beyond the round's own is counted as a charge of its own. A search runs only after a create that did not answer (or while a hold searches), so a copy the provider made of a create that answered normally is never seen: a client cannot stop a provider from billing twice for one request.
     - A search that proves a copy and then fails on a later read does not keep that proof. It can only delay the round, or lead to the presumption, which releases nothing.
     - The presumption counts the most a batch can be billed at Anthropic's documented batch rate (half of standard), which is what the batch reservation covers. Since the fifth pass, every copy a search finds, then or a day later, is read for its bill, and a bill the presumption does not cover holds the world (§7). What remains: a batch the provider never lists, even a day later, is never read, so if the standard tier served it, it is under-counted by up to half its standard price.
 13. **Residuals of the fifth pass.**
@@ -482,3 +494,17 @@ Codex confirmed the zero settlements of the fifth round (a close must win the cl
 | P2 | A parked game (still generating, its job parked) never had a late copy deleted once its bill was read: only its slices deleted, and they do not run. | The scheduled tick does every finished round's housekeeping, generating game or not. | The unpriced copy of a parked game is read and deleted by scheduled ticks alone. |
 
 **The record format changed again, before any deployment.** `answered` carries the charge evidence it settles; `held` states its charge (`zero` with its result, or `unknown`) and, when it read the round's batch, that batch and its receipts; `late-n` carries its receipts and applies to every finished round.
+
+### Codex's seventh pass on `19131d6d`: HOLD, and the batch key's one batch
+
+Codex confirmed that the shared outcome name keeps two ordinary passes from applying different outcomes, that the decision slot holds, that receipts never carry the answer, that every known copy's deletion follows its recorded bill, and that no new call starts without room. It found three P1 findings and two P2:
+
+| # | Finding | Answer | Regression test |
+| --- | --- | --- | --- |
+| P1 | A copy's bill recorded while the held charge was unknown was never compared again once that charge was settled (by a person), so a second bill could go uncounted. | **The batch key stands for one batch; every other copy is a charge of its own,** imported into the ledger in full by its receipt when it is read, whatever the batch key holds. Whoever settles the key later settles it for its one batch; nothing has to be compared again. | A held answer's copy read while the charge is unknown is imported at once; a person then settles the held charge at its own bill, and the copy stays counted beside it. |
+| P1 | A held round whose own batch was later settled gave that settlement to a new copy as its allowance. | No allowance is shared: a copy beyond the round's own batch is imported as its own charge, whether it is read before or after the key is settled. | The same test: a copy read only after the person's settlement is imported in full. An unpriced copy is counted at the synchronous reservation and holds the world. |
+| P1 | A hold over the create's own batch and one found copy stopped searching: the predicate counted only found copies. | The search counts every copy the round knows, the recorded one included. | The pure rules: a recorded batch and one copy found by an undecided search keep the hold searching. |
+| P2 | One copy whose reads always time out starved the readable copies after it, tick after tick. | Each tick starts reading copies one further on; a deletion the provider refuses no longer stops the others either. | Codex's case (an eight-second round read, thirty-second failures): the readable copy is read and deleted within two ticks. A copy the provider will not delete: the others go. |
+| P2 | `applyTerminal` checked "pending" and then settled in a separate transaction. | `WorldBudget.settle` takes `onlyPending`, checked inside the write's transaction; every outcome settles with it, and an answer is delivered only on a charge it settled. | The ledger: a held or settled request is left as it is. Codex's case: a hold made right after the outcome's read stands, and the answer waits for a person. |
+
+The record format is unchanged by the seventh round; the ledger gains imported rows, one per extra copy's receipt.

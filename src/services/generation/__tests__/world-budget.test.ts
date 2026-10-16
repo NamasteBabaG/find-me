@@ -133,6 +133,19 @@ describe("settlement, unknown spend and holds", () => {
     expect((await budget.audit("world")).held).toBe(false);
   });
 
+  it("settles only a request still pending when asked to, in the same transaction, leaving one already held or settled as it is", async () => {
+    const { budget } = fixture();
+    for (const key of ["a", "b", "c"]) await budget.reserve("world", reservation(key));
+    // Another writer held `a` between a caller's read and its settlement: the hold stands.
+    await budget.markUnknown("world", "a", "Held by another writer");
+    expect((await budget.settle("world", "a", charge("a"), { onlyPending: true })).request.state).toBe("unknown");
+    expect(await budget.audit("world")).toMatchObject({ held: true, unknownRequestKeys: ["a"] });
+    // A settled one keeps its bill, with no conflict recorded; a pending one settles as ever.
+    await budget.settle("world", "b", charge("b"));
+    expect((await budget.settle("world", "b", charge("b-other", 1), { onlyPending: true })).request).toMatchObject({ state: "settled", evidence: { providerRequestId: "b" }, conflicts: [] });
+    expect((await budget.settle("world", "c", charge("c"), { onlyPending: true })).request.state).toBe("settled");
+  });
+
   it("records an over-reserve bill without clamping even when total is still below cap", async () => {
     const { budget } = fixture(); await budget.reserve("world", reservation());
     const result = await budget.settle("world", "request-1", charge("overrun", 100_001));

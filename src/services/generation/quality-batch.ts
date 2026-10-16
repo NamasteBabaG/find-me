@@ -7,7 +7,7 @@ import { QualityBatchRefused, type QualityBatchResult, type QualityBatchTranspor
 import { PrismaRetainedPurchaseStore } from "../../infra/db/prisma-retained-purchase-store";
 import {
   QUALITY_BATCH_VERSION, decideQualityBatchResults, nextQualityBatchStep, qualityBatchCleanupDue, qualityBatchDeletable, qualityBatchEventName, qualityBatchLateDue,
-  qualityBatchReserveMicroUsd, qualityBatchRoundOf, qualityBatchSearchWindow, qualityBatchSearching,
+  qualityBatchPresumedLost, qualityBatchReserveMicroUsd, qualityBatchRoundOf, qualityBatchSearchWindow, qualityBatchSearching,
   type QualityBatchEvent, type QualityBatchIntent, type QualityBatchReceipt, type QualityBatchRound,
 } from "../../domain/generation/quality-batch-round";
 import { visualReviewPolicy } from "../../domain/generation/visual-review-policy";
@@ -150,8 +150,10 @@ async function settleUnbilled(ctx: Context, intent: QualityBatchIntent, batchId:
     basis: batchId ? "documented unbilled batch result" : "every create was refused before a batch existed" };
   await boardWizardBudgetOf(ctx.c).settle(intent.worldId, intent.batchKey, canonicalChargeEvidence({ providerNamespace: ctx.transport.namespace,
     providerRequestId: `${batchId ?? "unsent"}/${intent.customId}`, usageId: sha(JSON.stringify(rawUsage)), rawUsage, model: intent.model,
-    amountMicroUsd: 0, costBasis: "provider-billed" }));
+    amountMicroUsd: 0, costBasis: "provider-billed" }), ONLY_PENDING);
 }
+/** An outcome moves only a reservation still pending when its own write runs: never one another writer has settled or held. */
+const ONLY_PENDING = { onlyPending: true } as const;
 
 /**
  * A create presumed lost (rule 1): its charge counted at the most the batch rate could bill, as a
@@ -165,21 +167,22 @@ async function settlePresumed(ctx: Context, round: QualityBatchRound) {
     customId: intent.customId, claim: round.presumed!.n };
   await boardWizardBudgetOf(ctx.c).settle(intent.worldId, intent.batchKey, canonicalChargeEvidence({ providerNamespace: ctx.transport.namespace,
     providerRequestId: `presumed/${intent.customId}`, usageId: sha(JSON.stringify(rawUsage)), rawUsage, model: intent.model,
-    amountMicroUsd: intent.batchReserveMicroUsd, costBasis: "conservative-upper-estimate" }));
+    amountMicroUsd: intent.batchReserveMicroUsd, costBasis: "conservative-upper-estimate" }), ONLY_PENDING);
 }
 
 /**
  * The ledger as the round's terminal outcome says it must be (rule 0). Applied right after the outcome is
  * written, and again by any pass that reads it, since a worker can stop in between: a reservation that
  * committed after a close, by a worker that stopped before settling it, is settled here too. Only a pending
- * reservation is ever changed: once settled or held, the batch key is what the outcome made it, so a pass
- * that decided otherwise from an older read never moves money.
+ * reservation is ever changed, checked in the write's own transaction (`ONLY_PENDING`; marking unknown
+ * never reopens a settled charge): once settled or held, the batch key is what it was made, so a pass
+ * that decided otherwise from an older read never moves money. The reads before it only save writes.
  */
 async function applyTerminal(ctx: Context, round: QualityBatchRound, pendingKeys?: ReadonlySet<string>) {
   const { intent } = round, terminal = round.terminal!, budget = boardWizardBudgetOf(ctx.c);
   if (pendingKeys && !pendingKeys.has(intent.batchKey)) return;
   if ((await budget.readRequest(intent.worldId, intent.batchKey))?.state !== "pending") return;
-  if (terminal.kind === "answered") await budget.settle(intent.worldId, intent.batchKey, terminal.evidence);
+  if (terminal.kind === "answered") await budget.settle(intent.worldId, intent.batchKey, terminal.evidence, ONLY_PENDING);
   else if (terminal.kind === "fallback" && terminal.resultType === "presumed-lost") await settlePresumed(ctx, round);
   else if (terminal.kind === "fallback") await settleUnbilled(ctx, intent, terminal.batchId, terminal.resultType, terminal.errorType);
   else if (terminal.charge === "zero") await settleUnbilled(ctx, intent, terminal.batchId ?? null, terminal.resultType!, terminal.errorType ?? null);
@@ -317,13 +320,20 @@ async function reconcile(ctx: Context, round: QualityBatchRound, batchId: string
     servedTier: String(reading.usage?.service_tier), evidence, at: Date.now() });
 }
 
+/** Different evidence beside a settled charge: recorded as a conflict (committed before the error), which holds the world. */
+async function conflict(ctx: Context, intent: QualityBatchIntent, evidence: WorldChargeEvidence) {
+  try { await boardWizardBudgetOf(ctx.c).settle(intent.worldId, intent.batchKey, evidence); }
+  catch (error) { if (!(error instanceof WorldBudgetError) || error.code !== "evidence_conflict") throw error; }
+}
+
 /**
- * What another copy of a finished round was billed (rule 5), with what the provider returned for it.
- * The bills of the copies read must fit in what the ledger counted for the round beyond its own batch:
- * the presumption, for a create presumed lost; nothing, once the round's batch is billed. A bill above
- * it (an answer the standard tier served, or a copy the provider made), or one that cannot be stated, is
- * recorded against the settled charge as a conflict, which holds the world: the ledger never understates.
- * A charge held as unknown already holds the world; the copy's receipts are kept for the person.
+ * What another copy of a finished round was billed (rule 5), counted in the ledger, with what the provider
+ * returned for it. The batch key stands for one batch: the round's own, when its outcome read one; else,
+ * for a create presumed lost, the first copy read, whose bill must fit in the presumption. Every other
+ * copy is a charge of its own, imported into the ledger in full whatever the batch key holds, so whoever
+ * settles that key, now or later, settles it for its one batch. A bill the presumption cannot hold, and
+ * any bill that cannot be stated, is also recorded against a settled charge as a conflict, which holds the
+ * world for a person (a charge held as unknown holds it already): the ledger never understates.
  */
 async function lateCharge(ctx: Context, round: QualityBatchRound, batchId: string, results: readonly QualityBatchResult[]) {
   const { intent } = round, budget = boardWizardBudgetOf(ctx.c), decision = decide(results, intent.customId), receipts = receiptsOf(results, intent.customId);
@@ -339,20 +349,21 @@ async function lateCharge(ctx: Context, round: QualityBatchRound, batchId: strin
       amountMicroUsd: Math.ceil(charge.costCents * 10_000), costBasis: "conservative-upper-estimate" });
     else reason = `the answer's charge cannot be stated (tier ${String(reading.usage?.service_tier ?? "none")}, model ${reading.model ?? "none"})`;
   }
-  const amountMicroUsd = priced?.amountMicroUsd ?? null, counted = await budget.readRequest(intent.worldId, intent.batchKey);
-  if (counted?.state !== "settled" || !counted.evidence) return { amountMicroUsd, receipts };
-  const allowance = counted.evidence.amountMicroUsd - (round.terminal?.kind === "answered" ? round.terminal.amountMicroUsd : 0);
-  const read = round.lates.map(late => late.amountMicroUsd);
-  if (amountMicroUsd !== null && !read.includes(null) && (read as number[]).reduce((sum, amount) => sum + amount, amountMicroUsd) <= allowance)
-    return { amountMicroUsd, receipts };
+  const amountMicroUsd = priced?.amountMicroUsd ?? null;
   const rawUsage = { basis: "a copy whose bill cannot be stated: counted at the synchronous reservation for a person to reconcile",
     batchId, customId: intent.customId, reason, results: receipts } as unknown as BudgetJson;
   const evidence = priced ?? canonicalChargeEvidence({ providerNamespace: ctx.transport.namespace,
     providerRequestId: receipts.find(receipt => receipt.requestId)?.requestId ?? `late/${batchId}/${intent.customId}`,
     usageId: sha(JSON.stringify(rawUsage)), rawUsage, model: intent.model, amountMicroUsd: intent.syncReserveMicroUsd, costBasis: "conservative-upper-estimate" });
-  // The charge is settled: different evidence is recorded beside it as a conflict (committed), which holds the world.
-  try { await budget.settle(intent.worldId, intent.batchKey, evidence); }
-  catch (error) { if (!(error instanceof WorldBudgetError) || error.code !== "evidence_conflict") throw error; }
+  const counted = await budget.readRequest(intent.worldId, intent.batchKey), settled = counted?.state === "settled" && counted.evidence ? counted.evidence : null;
+  const standIn = qualityBatchPresumedLost(round) && round.lates.length === 0;
+  if (!standIn) {
+    // A charge of its own: imported in full, counted once by its receipt, whatever the batch key holds.
+    try { await budget.importSettled(intent.worldId, { scope: "judge", operationFingerprint: intent.fingerprint, evidence }); }
+    catch (error) { if (!(error instanceof WorldBudgetError) || error.code !== "evidence_conflict") throw error; }
+  }
+  const held = standIn ? amountMicroUsd === null || !settled || amountMicroUsd > settled.amountMicroUsd : amountMicroUsd === null;
+  if (held && settled) await conflict(ctx, intent, evidence);
   return { amountMicroUsd, receipts };
 }
 
@@ -371,7 +382,11 @@ async function recordLate(ctx: Context, roundId: string, batchId: string, result
 /** Each copy of a finished round whose bill is not in the record yet, read before it may be deleted (rule 5).
  * It only reads the provider; a copy that cannot be read yet (one still running) is kept, and read later. */
 async function reconcileLate(ctx: Context, round: QualityBatchRound) {
-  for (const batchId of qualityBatchLateDue(round)) {
+  const due = qualityBatchLateDue(round);
+  // Each tick starts one copy further on: one whose reads keep timing out never keeps the others from theirs.
+  const start = due.length ? Math.floor(Date.now() / SWEEP_ROTATION_MS) % due.length : 0;
+  for (let i = 0; i < due.length; i++) {
+    const batchId = due[(start + i) % due.length]!;
     // Its record and then its results file: room for both reads before the first starts.
     if (!roomFor(ctx, 2 * CALL_NEED_MS)) return;
     let results: QualityBatchResult[];
@@ -419,6 +434,9 @@ async function advance(ctx: Context, roundId: string): Promise<QualityBatchGate>
       await applyTerminal(ctx, round);
       if (step.terminal.kind === "held") return { kind: "held", reason: `Quality question in Message Batches: ${step.terminal.reason}` };
       if (step.terminal.kind === "fallback" || ctx.stopping) return proceed;
+      // An answer is delivered only on the charge it settled; one another writer held instead waits for a person.
+      const charge = await boardWizardBudgetOf(ctx.c).readRequest(round.intent.worldId, round.intent.batchKey);
+      if (charge?.state !== "settled") return { kind: "held", reason: `Quality question in Message Batches: its answered charge is ${charge?.state ?? "missing"}, not settled` };
       await link(ctx, round);
       return proceed;
     }
@@ -509,7 +527,7 @@ async function cleanup(ctx: Context, round: QualityBatchRound, gameDeleted: bool
   for (const batchId of qualityBatchDeletable(round, gameDeleted)) {
     if (!roomFor(ctx, CALL_NEED_MS)) break;
     try { await ctx.transport.remove(batchId); removed.push(batchId); }
-    catch { break; } // retried on a later slice or tick; the round itself is finished
+    catch { continue; } // retried on a later slice or tick, and never keeps the others from going
   }
   if (removed.length) await recordDeleted(ctx, round.intent.roundId, removed);
 }
