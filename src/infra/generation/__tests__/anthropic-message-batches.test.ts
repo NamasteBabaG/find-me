@@ -159,6 +159,11 @@ describe("Anthropic Message Batches transport", () => {
       const record = vi.fn<typeof fetch>(async () => { vi.setSystemTime(Date.now() + 29_000); return reply(200, { id: "msgbatch_1", processing_status: "ended", request_counts: counts(1) }); });
       await expect(new AnthropicMessageBatches("synthetic", record).results("msgbatch_1", Date.now() + 40_000)).rejects.toThrow("too little time");
       expect(record).toHaveBeenCalledTimes(1);
+      // With 29 seconds left neither read starts, whether the record is still to be read or its counts are in hand.
+      const none = vi.fn<typeof fetch>();
+      await expect(new AnthropicMessageBatches("synthetic", none).results("msgbatch_1", Date.now() + 29_000)).rejects.toThrow("too little time");
+      await expect(new AnthropicMessageBatches("synthetic", none).results("msgbatch_1", Date.now() + 29_000, counts(1))).rejects.toThrow("too little time");
+      expect(none).not.toHaveBeenCalled();
     } finally { vi.useRealTimers(); }
   });
 
@@ -194,7 +199,7 @@ describe("Anthropic Message Batches transport", () => {
     const fetcher = wire(reply(200, { id: "msgbatch_1", processing_status: "canceling" }), reply(200, { id: "msgbatch_1", processing_status: "canceling" }),
       reply(200, { id: "msgbatch_1", type: "message_batch_deleted" }), reply(404, { type: "error", error: { type: "not_found_error" } }), reply(200, { id: "msgbatch_1" }));
     const batches = new AnthropicMessageBatches("synthetic", fetcher);
-    await expect(batches.status("msgbatch_1")).resolves.toBe("canceling");
+    await expect(batches.status("msgbatch_1")).resolves.toEqual({ status: "canceling", counts: null });
     await expect(batches.cancel("msgbatch_1")).resolves.toBeUndefined();
     await expect(batches.remove("msgbatch_1")).resolves.toBeUndefined();
     await expect(batches.remove("msgbatch_1")).resolves.toBeUndefined();
@@ -204,6 +209,30 @@ describe("Anthropic Message Batches transport", () => {
       "DELETE https://api.anthropic.com/v1/messages/batches/msgbatch_1", "DELETE https://api.anthropic.com/v1/messages/batches/msgbatch_1",
       "DELETE https://api.anthropic.com/v1/messages/batches/msgbatch_1"]);
     await expect(new AnthropicMessageBatches("synthetic", wire(reply(200, { id: "msgbatch_other", processing_status: "ended" }))).status("msgbatch_1")).rejects.toThrow("recognised status");
+  });
+
+  it("reads an ended batch in two calls: its status carries the counts its results are checked against", async () => {
+    const record = { id: "msgbatch_1", processing_status: "ended", request_counts: counts(1, { canceled: 1 }) };
+    const file = [line("q-mine", { type: "succeeded", message: {} }), line("q-x", { type: "canceled" })].join("\n");
+    const fetcher = wire(reply(200, record), reply(200, null, file)), batches = new AnthropicMessageBatches("synthetic", fetcher);
+    const status = await batches.status("msgbatch_1");
+    expect(status).toEqual({ status: "ended", counts: counts(1, { canceled: 1 }) });
+    await expect(batches.results("msgbatch_1", undefined, status.counts!)).resolves.toHaveLength(2);
+    expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual(["https://api.anthropic.com/v1/messages/batches/msgbatch_1",
+      "https://api.anthropic.com/v1/messages/batches/msgbatch_1/results"]);
+    // The counts are checked exactly as if the record had been read again.
+    await expect(new AnthropicMessageBatches("synthetic", wire(reply(200, null, line("q-mine", { type: "canceled" })))).results("msgbatch_1", undefined, counts(1)))
+      .rejects.toThrow(/do not match its record.*succeeded/);
+    // An ended record that does not state every count gives none, and the results then read the record themselves.
+    await expect(new AnthropicMessageBatches("synthetic", wire(reply(200, { ...record, request_counts: { succeeded: 1 } }))).status("msgbatch_1"))
+      .resolves.toEqual({ status: "ended", counts: null });
+    // With the counts in hand, 31 seconds left is room for the one read the results still need.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const slow = vi.fn<typeof fetch>(async () => { vi.setSystemTime(Date.now() + 29_000); return reply(200, null, line("q-mine", { type: "succeeded", message: {} })); });
+      await expect(new AnthropicMessageBatches("synthetic", slow).results("msgbatch_1", Date.now() + 31_000, counts(1))).resolves.toHaveLength(1);
+      expect(slow).toHaveBeenCalledTimes(1);
+    } finally { vi.useRealTimers(); }
   });
 });
 

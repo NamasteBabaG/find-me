@@ -284,6 +284,11 @@ export type QualityBatchResult =
   | { readonly customId: string; readonly type: "errored"; readonly errorType: string | null }
   | { readonly customId: string; readonly type: "canceled" | "expired" }
   | { readonly customId: string; readonly type: "unrecognized"; readonly resultType: string | null };
+/** How many results of each type an ended batch's own record says it has. */
+export type QualityBatchCounts = Readonly<Record<string, number>>;
+export type QualityBatchStatus =
+  | { readonly status: "in_progress" | "canceling"; readonly counts: null }
+  | { readonly status: "ended"; readonly counts: QualityBatchCounts | null };
 
 /**
  * A discounted, asynchronous channel for review questions (Anthropic Message
@@ -300,10 +305,12 @@ export interface QualityBatchTransport {
    * end after `deadlineAt`. Throws when the provider's inventory cannot be shown complete: absence is never
    * inferred from a partial answer. */
   find(customId: string, sinceMs: number, deadlineAt?: number): Promise<{ proven: string[]; undecided: boolean; truncated?: true }>;
-  status(batchId: string): Promise<"in_progress" | "canceling" | "ended">;
+  /** The batch's state, and for an ended batch what its record counts by result type (null when the record does not state them all). */
+  status(batchId: string): Promise<QualityBatchStatus>;
   /** Every result of an ended batch, exactly as the batch's own record counts them by type, or a throw;
-   * no read starts that could end after `deadlineAt`. */
-  results(batchId: string, deadlineAt?: number): Promise<QualityBatchResult[]>;
+   * no read starts that could end after `deadlineAt`. `counts`: that record's counts as `status` read them,
+   * which spares reading the record again. */
+  results(batchId: string, deadlineAt?: number, counts?: QualityBatchCounts): Promise<QualityBatchResult[]>;
   cancel(batchId: string): Promise<void>;
   /** Deleted means acknowledged: already gone counts, anything else throws. */
   remove(batchId: string): Promise<void>;

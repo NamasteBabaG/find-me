@@ -1,4 +1,4 @@
-import { QualityBatchRefused, type QualityBatchResult, type QualityBatchTransport } from "./types";
+import { QualityBatchRefused, type QualityBatchCounts, type QualityBatchResult, type QualityBatchStatus, type QualityBatchTransport } from "./types";
 
 /**
  * Anthropic Message Batches over raw HTTP, like the product's synchronous Opus
@@ -37,10 +37,9 @@ const checkedBatch = (batchId: string) => {
   return batchId;
 };
 const DOCUMENTED_COUNTS = ["processing", "succeeded", "errored", "canceled", "expired"] as const;
-type RequestCounts = Readonly<Record<string, number>>;
 /** What an ended batch's own record says its results are, by result type (every count it
  * states, none still processing); null when the record cannot say. */
-function endedRequestCounts(batch: Record<string, unknown>): RequestCounts | null {
+function endedRequestCounts(batch: Record<string, unknown>): QualityBatchCounts | null {
   const counts = batch.request_counts;
   if (batch.processing_status !== "ended" || !counts || typeof counts !== "object" || Array.isArray(counts)) return null;
   const values = Object.values(counts as Record<string, unknown>);
@@ -118,21 +117,27 @@ export class AnthropicMessageBatches implements QualityBatchTransport {
     return { proven, undecided: true, truncated: true };
   }
 
-  async status(batchId: string) {
+  /** The batch's state; an ended batch's record also says how many results of each type it has, which
+   * `results` then needs no second read of the record to check. */
+  async status(batchId: string): Promise<QualityBatchStatus> {
     const answer = await this.call(`/v1/messages/batches/${checkedBatch(batchId)}`, { method: "GET" }, READ_TIMEOUT_MS);
     const body = parse(answer.text), status = body?.processing_status;
-    if (!answer.ok || body?.id !== batchId || (status !== "in_progress" && status !== "canceling" && status !== "ended"))
+    if (!answer.ok || !body || body.id !== batchId || (status !== "in_progress" && status !== "canceling" && status !== "ended"))
       throw Error(`QUALITY_BATCH: ${batchId} answered ${answer.status} without a recognised status`);
-    return status;
+    return status === "ended" ? { status, counts: endedRequestCounts(body) } : { status, counts: null };
   }
 
-  /** Every result of an ended batch, checked against the batch's own record; each read only with room before `deadlineAt`. */
-  async results(batchId: string, deadlineAt?: number): Promise<QualityBatchResult[]> {
+  /** Every result of an ended batch, checked against the batch's own record (read here unless `status` already
+   * read its `counts`); each read only with room before `deadlineAt`. */
+  async results(batchId: string, deadlineAt?: number, counts?: QualityBatchCounts): Promise<QualityBatchResult[]> {
     const late = () => Error(`QUALITY_BATCH: too little time is left to read the results of ${batchId}`);
-    if (!roomForRead(deadlineAt)) throw late();
-    const answer = await this.call(`/v1/messages/batches/${checkedBatch(batchId)}`, { method: "GET" }, READ_TIMEOUT_MS);
-    const batch = parse(answer.text), counts = batch && batch.id === batchId ? endedRequestCounts(batch) : null;
-    if (!answer.ok || counts === null) throw Error(`QUALITY_BATCH: ${batchId} answered ${answer.status} without an ended record and its request counts`);
+    if (!counts) {
+      if (!roomForRead(deadlineAt)) throw late();
+      const answer = await this.call(`/v1/messages/batches/${checkedBatch(batchId)}`, { method: "GET" }, READ_TIMEOUT_MS);
+      const batch = parse(answer.text), read = batch && batch.id === batchId ? endedRequestCounts(batch) : null;
+      if (!answer.ok || read === null) throw Error(`QUALITY_BATCH: ${batchId} answered ${answer.status} without an ended record and its request counts`);
+      counts = read;
+    }
     if (!roomForRead(deadlineAt)) throw late();
     return this.resultsOf(batchId, counts);
   }
@@ -143,7 +148,7 @@ export class AnthropicMessageBatches implements QualityBatchTransport {
    * is cut off, or that calls a counted success "canceled", proves nothing; least
    * of all that the question went unbilled.
    */
-  private async resultsOf(batchId: string, counts: RequestCounts): Promise<QualityBatchResult[]> {
+  private async resultsOf(batchId: string, counts: QualityBatchCounts): Promise<QualityBatchResult[]> {
     const answer = await this.call(`/v1/messages/batches/${checkedBatch(batchId)}/results`, { method: "GET" }, READ_TIMEOUT_MS);
     if (!answer.ok) throw Error(`QUALITY_BATCH: results of ${batchId} answered ${answer.status}`);
     const results = answer.text.split("\n").filter(line => line.trim()).map((line): QualityBatchResult => {

@@ -2,17 +2,17 @@ import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import sharp from "sharp";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, type Prisma } from "@prisma/client";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { applyTestSchema } from "../../../lib/test-schema";
 import { DbStorage } from "../../../infra/storage/db";
 import { PrismaRetainedPurchaseStore, retainedPurchaseKey } from "../../../infra/db/prisma-retained-purchase-store";
-import { QualityBatchRefused, type QualityBatchResult, type QualityBatchTransport } from "../../../infra/generation/types";
+import { QualityBatchRefused, type QualityBatchResult, type QualityBatchStatus, type QualityBatchTransport } from "../../../infra/generation/types";
 import { AnthropicMessageBatches } from "../../../infra/generation/anthropic-message-batches";
 import { GameConfigSchema } from "../../../domain/game/config";
 import { localPatchBoardsForVersion } from "../../../domain/scene/local-patch-catalog";
 import { cropOf, maskForHide } from "../../../domain/scene/local-patch-hides";
-import { QUALITY_BATCH_CREATE_GRACE_MS, QUALITY_BATCH_REFUSAL_BACKOFF_MS } from "../../../domain/generation/quality-batch-round";
+import { QUALITY_BATCH_CREATE_GRACE_MS, QUALITY_BATCH_LATE_SEARCH_MS, QUALITY_BATCH_REFUSAL_BACKOFF_MS } from "../../../domain/generation/quality-batch-round";
 import type { Container } from "../../container";
 import { boardsOfWorlds } from "../../world-catalog.service";
 import { deleteGame } from "../../game.service";
@@ -149,7 +149,14 @@ class FakeBatches implements QualityBatchTransport {
     return { proven: candidates.filter(b => b.status === "ended" && b.results!.some(r => r.customId === customId)).map(b => b.id),
       undecided: candidates.some(b => b.status !== "ended") };
   }
-  async status(id: string) { this.calls.push("status"); return this.batch(id).status; }
+  async status(id: string): Promise<QualityBatchStatus> {
+    this.calls.push("status");
+    const b = this.batch(id);
+    if (b.status !== "ended") return { status: b.status, counts: null };
+    const counts: Record<string, number> = { processing: 0, succeeded: 0, errored: 0, canceled: 0, expired: 0 };
+    for (const r of b.results!) { const type = r.type === "unrecognized" ? String(r.resultType) : r.type; counts[type] = (counts[type] ?? 0) + 1; }
+    return { status: "ended", counts };
+  }
   async results(id: string) { this.calls.push("results"); const b = this.batch(id); if (b.status !== "ended") throw Error("not ended"); return b.results!; }
   async cancel(id: string) {
     this.calls.push("cancel");
@@ -169,6 +176,10 @@ const eventNames = async (gameId: string) => (await events(gameId)).map(row => r
 /** Every batch the round's searches kept, in the order kept. */
 const foundOf = async (gameId: string) => (await events(gameId)).map(row => JSON.parse(row.metaJson!) as { kind: string; n: number; batchIds: string[] })
   .filter(event => event.kind === "found").sort((a, b) => a.n - b.n).flatMap(event => event.batchIds);
+/** The bills read of copies found after a create was presumed lost, in order. */
+const latesOf = async (gameId: string) => (await events(gameId)).map(row => JSON.parse(row.metaJson!) as { kind: string; n: number; batchId: string; amountMicroUsd: number | null })
+  .filter(event => event.kind === "late").sort((a, b) => a.n - b.n);
+const eventOf = async (gameId: string, name: string) => JSON.parse((await events(gameId)).find(row => row.id.endsWith(`_${name}`))!.metaJson!);
 const qualityCalls = (request: ReturnType<typeof dualReviewer>) => request.mock.calls.filter(([question]) => question.role === "scene-quality").length;
 async function paintFirst(gameId: string, board = BOARDS[0]!) { await runLocalPatchHide(c, painter(gameId), { gameId, board, hide: board.hides[0]! }); }
 const sol = (gameId: string) => dualReviewer(gameId, hideId => longAnswer(hideId, 300, 300, 0));
@@ -326,6 +337,11 @@ describe("Opus scene-quality questions through Message Batches", () => {
     expect(await w.budget.readRequest(w.worldId, intent.batchKey)).toMatchObject({ state: "settled",
       evidence: { amountMicroUsd: intent.batchReserveMicroUsd, costBasis: "conservative-upper-estimate" } });
     expect(qualityCalls(request)).toBe(1);
+    // A day later it is searched for once more, and a complete search that finds nothing ends the search.
+    vi.setSystemTime(start + QUALITY_BATCH_CREATE_GRACE_MS + QUALITY_BATCH_LATE_SEARCH_MS);
+    for (let i = 0; i < 2; i++) await sweepQualityBatches(container, { deadlineAt: Date.now() + 230_000 });
+    expect(await eventNames(gameId)).toEqual(["claim-1", "found-1", "intent", "submitted", "terminal"]);
+    expect(await eventOf(gameId, "found-1")).toMatchObject({ batchIds: [], complete: true, at: Date.now() });
   }, 300_000);
 
   it("decides a round's batch once: a stale search that found nothing stands down when another recorded the batch", async () => {
@@ -990,6 +1006,245 @@ describe("Opus scene-quality questions through Message Batches", () => {
     expect((await w.budget.audit(w.worldId)).unknownRequestKeys).toEqual([intent.batchKey]);
     expect((await db.game.findUniqueOrThrow({ where: { id: gameId } })).status).toBe("TARGETS_GENERATING");
     expect(fake.creates).toBe(1); expect(request).not.toHaveBeenCalled();
+  }, 300_000);
+
+  it("searches once more a day after presuming a create lost, and reads the copy it finds for its bill before deleting it", async () => {
+    const gameId = "batch-late-copy", w = await world(gameId); await paintFirst(gameId);
+    const fake = new FakeBatches(opus(), "latecopy"), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    fake.createPlan = ["lost-after-create"];
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.now();
+    await review(container, gameId);
+    // Codex's case: the batch the lost create made is not listed yet when the search after the grace runs.
+    const hidden = fake.batches.splice(0), [copy] = hidden as [FakeBatch];
+    vi.setSystemTime(start + QUALITY_BATCH_CREATE_GRACE_MS);
+    await review(container, gameId);
+    expect(await eventOf(gameId, "terminal")).toMatchObject({ kind: "fallback", resultType: "presumed-lost" });
+    expect(qualityCalls(request)).toBe(1);
+    // It is listed later, ended; the game is then deleted.
+    fake.batches.push(...hidden); fake.end();
+    expect(await deleteGame(c, gameId, { type: "USER", id: w.userId }, w.userId)).toBe(true);
+    // Until a day has passed nothing looks for it: a batch the create made could still be running.
+    await sweepQualityBatches(container, { deadlineAt: Date.now() + 230_000 });
+    expect(await foundOf(gameId)).toEqual([]); expect(copy.deleted).toBe(false);
+    // Then one more search finds it; its bill is read, and only then is it deleted.
+    vi.setSystemTime(start + QUALITY_BATCH_CREATE_GRACE_MS + QUALITY_BATCH_LATE_SEARCH_MS);
+    await sweepQualityBatches(container, { deadlineAt: Date.now() + 230_000 });
+    expect(await foundOf(gameId)).toEqual([copy.id]);
+    expect(await latesOf(gameId)).toMatchObject([{ batchId: copy.id, amountMicroUsd: 9_000 }]);
+    expect(copy.deleted).toBe(true);
+    // Billed at the batch rate, it fits in the presumption: the ledger keeps the presumed charge, without a conflict.
+    const intent = await syncKeyOf(gameId);
+    expect(await w.budget.readRequest(w.worldId, intent.batchKey)).toMatchObject({ state: "settled",
+      evidence: { amountMicroUsd: intent.batchReserveMicroUsd, costBasis: "conservative-upper-estimate" }, conflicts: [] });
+    // That search was complete: the round is not searched again.
+    const recorded = await eventNames(gameId);
+    expect(recorded).toEqual(["claim-1", "deleted-1", "found-1", "intent", "late-1", "submitted", "terminal"]);
+    vi.setSystemTime(Date.now() + 60_000);
+    await sweepQualityBatches(container, { deadlineAt: Date.now() + 230_000 });
+    expect(await eventNames(gameId)).toEqual(recorded);
+    expect(fake.creates).toBe(1);
+  }, 300_000);
+
+  it("holds the world when a copy found beside a presumption was billed above it (the presumption won; the standard tier served)", async () => {
+    const gameId = "batch-late-standard", w = await world(gameId); await paintFirst(gameId);
+    // Codex's numbers: 1,000 tokens in and 6,500 out at the standard rate, 134,000 micro-USD.
+    const standard = opus(() => ({ usage: { input_tokens: 1000, output_tokens: 6500, service_tier: "standard" } }));
+    const fake = new FakeBatches(standard, "latestandard"), request = sol(gameId);
+    fake.createPlan = ["lost-after-create"];
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.now();
+    await review({ ...c, visualReview: { request }, qualityBatch: fake } as Container, gameId);
+    const [copy] = fake.batches as [FakeBatch], intent = await syncKeyOf(gameId);
+    expect(134_000).toBeGreaterThan(intent.batchReserveMicroUsd);
+    fake.end();
+    await db.game.update({ where: { id: gameId }, data: { status: "GENERATION_FAILED" } });
+    vi.setSystemTime(start + QUALITY_BATCH_CREATE_GRACE_MS);
+    // Codex's interleaving: two searches at once. The sweep's sees nothing; the other proves the copy and records it just
+    // after the sweep's last read of the round, then loses the decision to the sweep's presumption.
+    fake.find = async () => ({ proven: [], undecided: false });
+    const roundId = /^aud_qb_(qb[a-f0-9]{30})_intent$/.exec((await events(gameId)).find(row => row.id.endsWith("_intent"))!.id)![1]!;
+    let reads = 0;
+    const container = { ...c, qualityBatch: fake, db: dbAround({ "auditLog.findMany": async (read, args) => {
+      const rows = await read();
+      if ((args[0] as { where?: { entityId?: string } } | undefined)?.where?.entityId === gameId && ++reads === 2)
+        await db.auditLog.create({ data: { id: `aud_qb_${roundId}_found-1`, actorType: "SYSTEM", action: QUALITY_BATCH_ACTION, entityType: "Game",
+          entityId: gameId, metaJson: JSON.stringify({ kind: "found", n: 1, batchIds: [copy.id], complete: true, at: Date.now() }) } });
+      return rows;
+    } }) } as Container;
+    await sweepQualityBatches(container, { deadlineAt: Date.now() + 230_000 });
+    expect(reads).toBeGreaterThanOrEqual(2);
+    expect(await eventOf(gameId, "submitted")).toMatchObject({ kind: "presumed" });
+    expect(await eventOf(gameId, "terminal")).toMatchObject({ kind: "fallback", resultType: "presumed-lost" });
+    expect(await foundOf(gameId)).toEqual([copy.id]);
+    // The next sweep reads the copy's bill before it deletes it: above the presumption, so it is recorded beside it as a conflict.
+    await sweepQualityBatches({ ...c, qualityBatch: fake } as Container, { deadlineAt: Date.now() + 230_000 });
+    expect(await latesOf(gameId)).toMatchObject([{ batchId: copy.id, amountMicroUsd: 134_000 }]);
+    expect(await w.budget.readRequest(w.worldId, intent.batchKey)).toMatchObject({ state: "settled",
+      evidence: { amountMicroUsd: intent.batchReserveMicroUsd }, conflicts: [{ evidence: { amountMicroUsd: 134_000 } }] });
+    expect(await w.budget.audit(w.worldId)).toMatchObject({ held: true, conflictRequestKeys: [intent.batchKey] });
+    expect(copy.deleted).toBe(true);
+    expect(fake.creates).toBe(1); expect(request).not.toHaveBeenCalled();
+  }, 300_000);
+
+  it("holds the world when a late copy's bill cannot be stated, reads it only with room for both its reads, and leaves a live game's copy to its slice", async () => {
+    const gameId = "batch-late-unpriced", w = await world(gameId); await paintFirst(gameId);
+    const fake = new FakeBatches(opus(() => ({ usage: { input_tokens: 2000, output_tokens: 500, service_tier: "priority" } })), "lateunpriced");
+    const request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    fake.createPlan = ["lost-after-create"];
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.now();
+    await review(container, gameId);
+    const hidden = fake.batches.splice(0), [copy] = hidden as [FakeBatch];
+    vi.setSystemTime(start + QUALITY_BATCH_CREATE_GRACE_MS);
+    await review(container, gameId);
+    fake.batches.push(...hidden); fake.end();
+    // A day later the game is still generating, its job parked: only the scheduled sweep runs. With fifty seconds
+    // left, the search runs but the copy's record and results, thirty seconds each at most, are not started.
+    vi.setSystemTime(start + QUALITY_BATCH_CREATE_GRACE_MS + QUALITY_BATCH_LATE_SEARCH_MS);
+    await sweepQualityBatches(container, { deadlineAt: Date.now() + 50_000 });
+    expect(await foundOf(gameId)).toEqual([copy.id]); expect(await latesOf(gameId)).toEqual([]);
+    await sweepQualityBatches(container, { deadlineAt: Date.now() + 230_000 });
+    // Served by a tier with no rate, its bill cannot be stated: recorded beside the presumption at the synchronous reservation.
+    const intent = await syncKeyOf(gameId);
+    expect(await latesOf(gameId)).toMatchObject([{ batchId: copy.id, amountMicroUsd: null }]);
+    expect(await w.budget.readRequest(w.worldId, intent.batchKey)).toMatchObject({ state: "settled", evidence: { amountMicroUsd: intent.batchReserveMicroUsd },
+      conflicts: [{ evidence: { amountMicroUsd: intent.syncReserveMicroUsd, providerRequestId: `late/${copy.id}/${intent.customId}` } }] });
+    expect((await w.budget.audit(w.worldId)).held).toBe(true);
+    // The sweep only reads a live game's copies; its own slice deletes them.
+    expect(copy.deleted).toBe(false);
+    await advanceQualityBatches(container, gameId, async () => {});
+    expect(copy.deleted).toBe(true);
+    expect(fake.creates).toBe(1); expect(qualityCalls(request)).toBe(1);
+  }, 300_000);
+
+  it("counts every late copy together: two copies, each within the presumption, together above it, hold the world", async () => {
+    const gameId = "batch-late-pair", w = await world(gameId); await paintFirst(gameId);
+    // At the batch rate, 1,000 tokens in and 6,500 out are 67,000 micro-USD; two such copies, 134,000.
+    const fake = new FakeBatches(opus(() => ({ usage: { input_tokens: 1000, output_tokens: 6500, service_tier: "batch" } })), "latepair");
+    const request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    fake.createPlan = ["lost-after-create"];
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.now();
+    await review(container, gameId);
+    const hidden = fake.batches.splice(0);
+    vi.setSystemTime(start + QUALITY_BATCH_CREATE_GRACE_MS);
+    await review(container, gameId);
+    // Two copies of the lost create (which only the provider could make) are listed later, ended.
+    fake.batches.push(...hidden, { ...structuredClone(hidden[0]!), id: "msgbatch_latepair_b" }); fake.end();
+    const intent = await syncKeyOf(gameId);
+    expect([67_000 <= intent.batchReserveMicroUsd, 134_000 > intent.batchReserveMicroUsd]).toEqual([true, true]);
+    expect(await deleteGame(c, gameId, { type: "USER", id: w.userId }, w.userId)).toBe(true);
+    vi.setSystemTime(start + QUALITY_BATCH_CREATE_GRACE_MS + QUALITY_BATCH_LATE_SEARCH_MS);
+    await sweepQualityBatches(container, { deadlineAt: Date.now() + 230_000 });
+    expect((await latesOf(gameId)).map(late => late.amountMicroUsd)).toEqual([67_000, 67_000]);
+    expect(await w.budget.readRequest(w.worldId, intent.batchKey)).toMatchObject({ conflicts: [{ evidence: { amountMicroUsd: 67_000 } }] });
+    expect((await w.budget.audit(w.worldId)).held).toBe(true);
+    expect(fake.batches.map(batch => batch.deleted)).toEqual([true, true]);
+  }, 300_000);
+
+  it("reads an ended batch in two calls, so slow records and slow reads fit one sweep round (the real transport, scripted)", async () => {
+    const gameId = "batch-slow-ended", w = await world(gameId); await paintFirst(gameId);
+    const id = "msgbatch_slowended", paths: string[] = [];
+    let created: { custom_id: string; params: Record<string, unknown> } | null = null, slow = false;
+    const fetchOnce = vi.fn<typeof fetch>(async (url, init) => {
+      const method = init?.method ?? "GET", path = new URL(String(url)).pathname;
+      if (method === "POST" && path === "/v1/messages/batches") {
+        created = (JSON.parse(String(init!.body)) as { requests: { custom_id: string; params: Record<string, unknown> }[] }).requests[0]!;
+        return new Response(JSON.stringify({ id, processing_status: "in_progress" }), { status: 200 });
+      }
+      if (!path.startsWith(`/v1/messages/batches/${id}`)) throw Error(`unexpected ${method} ${path}`);
+      // Codex's case: the batch has ended, and every read of it takes 29 seconds, within its 30-second timeout.
+      if (slow) { paths.push(`${method} ${path}`); vi.setSystemTime(Date.now() + 29_000); }
+      if (method === "GET" && path === `/v1/messages/batches/${id}`)
+        return new Response(JSON.stringify({ id, processing_status: slow ? "ended" : "in_progress",
+          request_counts: { processing: slow ? 0 : 1, succeeded: slow ? 1 : 0, errored: 0, canceled: 0, expired: 0 } }), { status: 200 });
+      if (method === "GET" && path === `/v1/messages/batches/${id}/results`) {
+        const answer = opus()(created!.params, created!.custom_id) as Extract<QualityBatchResult, { type: "succeeded" }>;
+        return new Response(JSON.stringify({ custom_id: created!.custom_id, result: { type: "succeeded", message: answer.message } }), { status: 200 });
+      }
+      throw Error(`unexpected ${method} ${path}`);
+    });
+    const transport = new AnthropicMessageBatches("synthetic", fetchOnce);
+    await review({ ...c, visualReview: { request: sol(gameId) }, qualityBatch: transport } as Container, gameId);
+    expect(await deleteGame(c, gameId, { type: "USER", id: w.userId }, w.userId)).toBe(true);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    slow = true;
+    // And every read of this game's round record takes eight seconds.
+    const container = { ...c, qualityBatch: transport, db: dbAround({ "auditLog.findMany": async (read, args) => {
+      if ((args[0] as { where?: { entityId?: string } } | undefined)?.where?.entityId === gameId) vi.setSystemTime(Date.now() + 8_000);
+      return read();
+    } }) } as Container;
+    await sweepQualityBatches(container, { deadlineAt: Date.now() + 230_000 });
+    // The status, then the results file: each started with room for its timeout, and the round settled in this one sweep.
+    expect(paths).toEqual([`GET /v1/messages/batches/${id}`, `GET /v1/messages/batches/${id}/results`]);
+    expect(await eventOf(gameId, "terminal")).toMatchObject({ kind: "answered", batchId: id });
+    expect(await w.budget.readRequest(w.worldId, (await syncKeyOf(gameId)).batchKey)).toMatchObject({ state: "settled", evidence: { amountMicroUsd: 9_000 } });
+  }, 300_000);
+
+  it("settles at zero a reservation that committed after a close had ended its round unsent", async () => {
+    const gameId = "batch-reserve-after-close", w = await world(gameId); await paintFirst(gameId);
+    const fake = new FakeBatches(opus(), "reserveclose"), request = sol(gameId);
+    const inventoried = () => db.auditLog.count({ where: { entityId: gameId, action: SELF_REPAIR_REQUEST_ACTION, metaJson: { contains: "self-repair:batch:" } } });
+    // Codex's interleaving: the worker has put the batch key in deletion's inventory and not yet reserved it when the game
+    // stops; the sweep closes the round and finds no reservation to settle. The worker then reserves.
+    let swept = false;
+    const container = { ...c, visualReview: { request }, qualityBatch: fake, db: dbAround({ "$transaction": async run => {
+      const result = await run();
+      if (!swept && await inventoried() > 0) {
+        swept = true;
+        await db.game.update({ where: { id: gameId }, data: { status: "GENERATION_FAILED" } });
+        await sweepQualityBatches({ ...c, qualityBatch: fake } as Container, { deadlineAt: Date.now() + 230_000 });
+      }
+      return result;
+    } }) } as Container;
+    // The worker's lease checks that its game is still generating, so its later writes are refused.
+    const generating = async (tx: Prisma.TransactionClient) => {
+      if ((await tx.game.findUniqueOrThrow({ where: { id: gameId } })).status !== "TARGETS_GENERATING") throw Error("stale generation fence");
+    };
+    await expect(reviewLocalPatchBoard(container, { ...scene(gameId), deadlineAt: Date.now() + 270_000 }, { fence: generating })).rejects.toThrow("stale generation fence");
+    expect(swept).toBe(true);
+    expect(await eventNames(gameId)).toEqual(["claim-1", "intent", "terminal"]);
+    expect(await eventOf(gameId, "claim-1")).toMatchObject({ closing: true });
+    // Nothing was or ever will be sent under the closed round, so the late reservation is settled at zero, not left pending.
+    const intent = await syncKeyOf(gameId);
+    expect(await w.budget.readRequest(w.worldId, intent.batchKey)).toMatchObject({ state: "settled", evidence: { amountMicroUsd: 0 } });
+    expect((await w.budget.audit(w.worldId)).pendingRequestKeys).toEqual([]);
+    expect(fake.creates).toBe(0); expect(request).not.toHaveBeenCalled();
+  }, 300_000);
+
+  it("settles at zero, at the game's next slice, such a reservation when its worker stopped right after making it", async () => {
+    const gameId = "batch-orphan-reserve", w = await world(gameId); await paintFirst(gameId);
+    const fake = new FakeBatches(opus(), "orphan"), request = sol(gameId);
+    const inventoried = () => db.auditLog.count({ where: { entityId: gameId, action: SELF_REPAIR_REQUEST_ACTION, metaJson: { contains: "self-repair:batch:" } } });
+    // The same interleaving, but the worker stops as soon as its reservation is written.
+    let swept = false, stopped = false;
+    const container = { ...c, visualReview: { request }, qualityBatch: fake, db: dbAround({
+      "$transaction": async run => {
+        const result = await run();
+        if (!swept && await inventoried() > 0) {
+          swept = true;
+          await db.game.update({ where: { id: gameId }, data: { status: "GENERATION_FAILED" } });
+          await sweepQualityBatches({ ...c, qualityBatch: fake } as Container, { deadlineAt: Date.now() + 230_000 });
+        }
+        return result;
+      },
+      "worldBudgetLedger.updateMany": async write => {
+        const result = await write();
+        if (swept && !stopped && (await w.budget.readRequest(w.worldId, (await syncKeyOf(gameId)).batchKey))?.state === "pending") { stopped = true; throw Error("worker stopped"); }
+        return result;
+      },
+    }) } as Container;
+    await expect(review(container, gameId)).rejects.toThrow("worker stopped");
+    const intent = await syncKeyOf(gameId);
+    expect(await eventNames(gameId)).toEqual(["claim-1", "intent", "terminal"]);
+    expect(await w.budget.readRequest(w.worldId, intent.batchKey)).toMatchObject({ state: "pending" });
+    // The game resumes: its next slice's housekeeping settles the reservation at zero, as nothing was or will be sent under it.
+    await db.game.update({ where: { id: gameId }, data: { status: "TARGETS_GENERATING" } });
+    await advanceQualityBatches({ ...c, qualityBatch: fake } as Container, gameId, async () => {});
+    expect(await w.budget.readRequest(w.worldId, intent.batchKey)).toMatchObject({ state: "settled", evidence: { amountMicroUsd: 0 } });
+    expect((await w.budget.audit(w.worldId)).pendingRequestKeys).toEqual([]);
+    expect(fake.creates).toBe(0); expect(request).not.toHaveBeenCalled();
   }, 300_000);
 });
 

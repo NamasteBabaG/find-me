@@ -22,7 +22,8 @@
  *    create lost: its charge is counted at the most it could be and is never
  *    released, and the question is asked synchronously. The batch and the
  *    presumption are one decision, made once. Two copies (which only the
- *    provider could make) hold the round.
+ *    provider could make) hold the round, unless its create was already
+ *    presumed lost: then every copy is read for its bill (rule 5).
  * 2. A batch still running at the round's deadline is cancelled once (and again
  *    while it keeps running). What it finished is billed at the batch rate.
  * 3. Only a result the provider documents as unbilled (errored, canceled,
@@ -36,13 +37,18 @@
  *    A held round keeps them for the person reconciling it, unless its game was
  *    deleted: the hold is the ledger's to keep, the imagery is the child's. A round
  *    held over copies while another could still be running keeps searching until
- *    none could be, so every copy is found.
+ *    none could be, so every copy is found. A presumed-lost round searches once
+ *    more a day later; a copy found then is read before it is deleted, and a bill
+ *    above the presumption, or one that cannot be priced, holds the world.
  */
 export const QUALITY_BATCH_VERSION = "quality-batch/v1" as const;
 /** How long a claimed create is presumed in flight: no new create and no negative search before it. */
 export const QUALITY_BATCH_CREATE_GRACE_MS = 15 * 60_000;
 /** After a transient refusal (rate limit), the same create waits this long. */
 export const QUALITY_BATCH_REFUSAL_BACKOFF_MS = 5 * 60_000;
+/** A presumed-lost round searches once more this long after the presumption: by then any batch its
+ * create made has ended (a batch expires 24 hours after it is created) and is listed. */
+export const QUALITY_BATCH_LATE_SEARCH_MS = 24 * 60 * 60_000 + 5 * 60_000;
 
 export type QualityBatchIntent = {
   readonly version: typeof QUALITY_BATCH_VERSION; readonly roundId: string;
@@ -69,12 +75,15 @@ export type QualityBatchEvent =
    * It takes `submitted`'s name: what the round's batch is gets decided once. */
   | { readonly kind: "presumed"; readonly n: number; readonly at: number }
   /** Batches a search proved to carry the question that were not yet recorded (possibly none);
-   * `complete`: that search left no batch undecided. */
+   * `complete`: that search left no batch undecided; `at`: when it started. */
   | { readonly kind: "found"; readonly n: number; readonly batchIds: readonly string[]; readonly complete: boolean; readonly at: number }
   | { readonly kind: "cancel"; readonly at: number }
   | { readonly kind: "answered"; readonly batchId: string; readonly amountMicroUsd: number; readonly servedTier: string; readonly at: number }
   | { readonly kind: "fallback"; readonly batchId: string | null; readonly resultType: string; readonly errorType: string | null; readonly at: number }
   | { readonly kind: "held"; readonly reason: string; readonly at: number }
+  /** A copy found after its create was presumed lost, read before it may be deleted: its priced charge,
+   * 0 when the provider documents it as unbilled, null when it cannot be priced (then held as a conflict). */
+  | { readonly kind: "late"; readonly n: number; readonly batchId: string; readonly amountMicroUsd: number | null; readonly at: number }
   /** Batches of the round deleted at the provider in one pass. */
   | { readonly kind: "deleted"; readonly n: number; readonly batchIds: readonly string[]; readonly at: number };
 export type QualityBatchTerminal = Extract<QualityBatchEvent, { kind: "answered" | "fallback" | "held" }>;
@@ -93,6 +102,11 @@ export type QualityBatchRound = {
   readonly searches: number;
   /** Whether the latest recorded search left no batch undecided. */
   readonly searchComplete: boolean;
+  /** When the latest complete search started, if any. */
+  readonly completeSearchAt: number | null;
+  /** The copies of a presumed-lost round whose bill was read, in order, and their ids. */
+  readonly lates: readonly Extract<QualityBatchEvent, { kind: "late" }>[];
+  readonly lateIds: readonly string[];
   /** Every provider batch known to carry this question: the recorded one and every one found. */
   readonly batchIds: readonly string[];
   /** Those deleted at the provider, and how many `deleted` events recorded them. */
@@ -111,7 +125,7 @@ export const qualityBatchReserveMicroUsd = (syncReserveMicroUsd: number) => Math
 
 /** The event id suffix: one row per name, so writing it twice is refused by the store. */
 export function qualityBatchEventName(event: QualityBatchEvent): string {
-  return event.kind === "claim" || event.kind === "refused" || event.kind === "found" || event.kind === "deleted" ? `${event.kind}-${event.n}`
+  return event.kind === "claim" || event.kind === "refused" || event.kind === "found" || event.kind === "late" || event.kind === "deleted" ? `${event.kind}-${event.n}`
     : event.kind === "answered" || event.kind === "fallback" || event.kind === "held" ? "terminal"
     : event.kind === "presumed" ? "submitted" : event.kind;
 }
@@ -156,12 +170,19 @@ export function qualityBatchRoundOf(events: readonly QualityBatchEvent[]): Quali
     throw Error("QUALITY_BATCH: a round that found a copy of its question never ends unsent");
   if (closing.length && terminal && (terminal.kind !== "fallback" || terminal.batchId !== null)) throw Error("QUALITY_BATCH: a closed round can only fall back unsent");
   const batchIds = [...new Set([...submitted.map(s => s.batchId), ...found])];
-  if (!numbered(deletions) || deletions.some(d => !ids(d.batchIds, false) || d.batchIds.some(id => !batchIds.includes(id))))
-    throw Error("QUALITY_BATCH: a deletion names other batches than the round's");
+  // Rule 5: a copy of a presumed-lost round is read for its bill, once, before it may be deleted.
+  const presumedLost = !!presumed[0] && terminal?.kind === "fallback" && terminal.resultType === "presumed-lost";
+  const lates = of("late").sort((a, b) => a.n - b.n), lateIds = lates.map(l => l.batchId);
+  if (!numbered(lates) || new Set(lateIds).size !== lateIds.length || lates.some(l => !presumedLost || !found.includes(l.batchId)
+    || l.amountMicroUsd !== null && !(Number.isSafeInteger(l.amountMicroUsd) && l.amountMicroUsd >= 0)))
+    throw Error("QUALITY_BATCH: a late copy is read once, only for a presumed-lost round and only one it found");
+  if (!numbered(deletions) || deletions.some(d => !ids(d.batchIds, false) || d.batchIds.some(id => !batchIds.includes(id) || presumedLost && !lateIds.includes(id))))
+    throw Error("QUALITY_BATCH: a deletion names other batches than the round's, or a late copy whose bill was not read");
   const cancel = events.find((e): e is Extract<QualityBatchEvent, { kind: "cancel" }> => e.kind === "cancel");
+  const completeAt = finds.filter(f => f.complete).map(f => f.at);
   return { intent, claims, refusals, submitted: submitted[0] ?? null, presumed: presumed[0] ?? null, cancelAt: cancel?.at ?? null, terminal, found,
-    searches: finds.length, searchComplete: finds.at(-1)?.complete ?? false, batchIds,
-    deletedIds: [...new Set(deletions.flatMap(d => d.batchIds))], deletions: deletions.length };
+    searches: finds.length, searchComplete: finds.at(-1)?.complete ?? false, completeSearchAt: completeAt.length ? Math.max(...completeAt) : null,
+    lates, lateIds, batchIds, deletedIds: [...new Set(deletions.flatMap(d => d.batchIds))], deletions: deletions.length };
 }
 
 export type QualityBatchStep =
@@ -180,8 +201,10 @@ export type QualityBatchStep =
 /** What this round may do now. */
 export function nextQualityBatchStep(round: QualityBatchRound, now: number): QualityBatchStep {
   if (round.terminal) return { step: "done", terminal: round.terminal };
-  if (round.batchIds.length > 1) return { step: "duplicates", reason: `${round.batchIds.length} batches carry this one question` };
+  // Once the create is presumed lost, a copy found beside the presumption is a late copy, read for its bill
+  // (rule 5): holding the round would leave its charge settled at the presumption, and the world not held.
   if (round.presumed) return { step: "presumed", reason: "the create did not answer and no complete search found its batch" };
+  if (round.batchIds.length > 1) return { step: "duplicates", reason: `${round.batchIds.length} batches carry this one question` };
   if (round.submitted) return { step: "poll", batchId: round.submitted.batchId, cancelDue: now >= round.intent.deadlineAt };
   const last = round.claims.at(-1);
   if (last?.closing) return { step: "fallback-unsent", claim: null, reason: "the round was being closed unsent" };
@@ -199,14 +222,37 @@ export function nextQualityBatchStep(round: QualityBatchRound, now: number): Qua
   return { step: "find", sinceMs: round.intent.intentAt };
 }
 
-/** Whether a held round still searches for copies of its question (rule 5). */
-export function qualityBatchSearching(round: QualityBatchRound): boolean {
-  return round.terminal?.kind === "held" && round.found.length > 1 && !round.searchComplete;
+/** Whether the round ended presuming its create lost. */
+export const qualityBatchPresumedLost = (round: QualityBatchRound) =>
+  !!round.presumed && round.terminal?.kind === "fallback" && round.terminal.resultType === "presumed-lost";
+
+/**
+ * Whether a finished round still searches for copies of its question (rule 5): a held round over copies
+ * while another could still be running; and a presumed-lost round once, a day after the presumption,
+ * when any batch its create made has ended and is listed.
+ */
+export function qualityBatchSearching(round: QualityBatchRound, now: number): boolean {
+  if (round.terminal?.kind === "held") return round.found.length > 1 && !round.searchComplete;
+  if (!qualityBatchPresumedLost(round)) return false;
+  const due = round.presumed!.at + QUALITY_BATCH_LATE_SEARCH_MS;
+  return now >= due && !(round.completeSearchAt !== null && round.completeSearchAt >= due);
+}
+
+/** Copies of a presumed-lost round to read before they may be deleted: what each one was billed. */
+export function qualityBatchLateDue(round: QualityBatchRound): readonly string[] {
+  return qualityBatchPresumedLost(round) ? round.found.filter(id => !round.lateIds.includes(id)) : [];
+}
+
+/** Batches of a finished round that may be deleted at the provider now. */
+export function qualityBatchDeletable(round: QualityBatchRound, gameDeleted: boolean): readonly string[] {
+  if (!round.terminal || round.terminal.kind === "held" && !gameDeleted) return [];
+  const late = qualityBatchLateDue(round);
+  return round.batchIds.filter(id => !round.deletedIds.includes(id) && !late.includes(id));
 }
 
 /** Whether the provider's copies of a finished round are still to be deleted (rule 5). */
 export function qualityBatchCleanupDue(round: QualityBatchRound, gameDeleted: boolean): boolean {
-  return !!round.terminal && round.batchIds.some(id => !round.deletedIds.includes(id)) && (round.terminal.kind !== "held" || gameDeleted);
+  return qualityBatchDeletable(round, gameDeleted).length > 0;
 }
 
 /** How one result of an ended batch settles this round. */

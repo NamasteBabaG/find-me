@@ -6,8 +6,8 @@ import { visualReviewBatchCharge } from "../../infra/generation/visual-review-pr
 import { QualityBatchRefused, type QualityBatchResult, type QualityBatchTransport } from "../../infra/generation/types";
 import { PrismaRetainedPurchaseStore } from "../../infra/db/prisma-retained-purchase-store";
 import {
-  QUALITY_BATCH_VERSION, decideQualityBatchResults, nextQualityBatchStep, qualityBatchCleanupDue, qualityBatchEventName, qualityBatchReserveMicroUsd, qualityBatchRoundOf,
-  qualityBatchSearching,
+  QUALITY_BATCH_VERSION, decideQualityBatchResults, nextQualityBatchStep, qualityBatchCleanupDue, qualityBatchDeletable, qualityBatchEventName, qualityBatchLateDue,
+  qualityBatchReserveMicroUsd, qualityBatchRoundOf, qualityBatchSearching,
   type QualityBatchEvent, type QualityBatchIntent, type QualityBatchRound,
 } from "../../domain/generation/quality-batch-round";
 import { visualReviewPolicy } from "../../domain/generation/visual-review-policy";
@@ -156,9 +156,10 @@ async function settleUnbilled(ctx: Context, intent: QualityBatchIntent, batchId:
 }
 
 /**
- * A create presumed lost (rule 1): its charge counted at the most it could be, as a conservative upper
- * estimate, and never released; a copy that turns up later is already paid for in it. The evidence is
- * the round's own, the same for every pass, so a second settlement is the same charge.
+ * A create presumed lost (rule 1): its charge counted at the most the batch rate could bill, as a
+ * conservative upper estimate, and never released. A copy that turns up later is read for its bill
+ * before it is deleted, and a bill above this one holds the world (`lateCharge`). The evidence is the
+ * round's own, the same for every pass, so a second settlement is the same charge.
  */
 async function settlePresumed(ctx: Context, round: QualityBatchRound) {
   const { intent } = round;
@@ -197,14 +198,23 @@ async function closeUnsent(ctx: Context, round: QualityBatchRound, claim: number
   return "advanced";
 }
 
+/** A reservation that committed after its round was closed unsent (rule 4), by a worker that stopped before
+ * settling it: nothing was or will be sent under it, so the game's next slice settles it at zero. */
+async function settleOrphan(ctx: Context, round: QualityBatchRound) {
+  if (round.terminal?.kind !== "fallback" || round.terminal.resultType !== "never-created") return;
+  const held = await boardWizardBudgetOf(ctx.c).readRequest(round.intent.worldId, round.intent.batchKey);
+  if (held?.state === "pending") await settleUnbilled(ctx, round.intent, null, "never-created", null);
+}
+
 /** Keeps for good every batch a search proved to carry the question, and whether the search was
- * complete (`complete` is recorded on its own only for a held round still searching). The next
- * free number wins; a pass that lost it reads the round again and records what is still new. */
-async function recordFound(ctx: Context, roundId: string, proven: readonly string[], complete: boolean): Promise<QualityBatchRound> {
+ * complete (`complete` is recorded on its own only for a finished round still searching); `at`: when
+ * the search started. The next free number wins; a pass that lost it reads the round again and
+ * records what is still new. */
+async function recordFound(ctx: Context, roundId: string, proven: readonly string[], complete: boolean, at: number): Promise<QualityBatchRound> {
   for (let attempt = 0; attempt < 4; attempt++) {
     const round = await readRound(ctx, roundId), fresh = proven.filter(id => !round.found.includes(id));
-    if (!fresh.length && !(complete && qualityBatchSearching(round))) return round;
-    const written = await writeEvent(ctx, roundId, { kind: "found", n: round.searches + 1, batchIds: fresh, complete, at: Date.now() });
+    if (!fresh.length && !(complete && qualityBatchSearching(round, at))) return round;
+    const written = await writeEvent(ctx, roundId, { kind: "found", n: round.searches + 1, batchIds: fresh, complete, at });
     if (written.won) return readRound(ctx, roundId);
   }
   throw Error("QUALITY_BATCH: the batches a search found could not be recorded");
@@ -228,6 +238,12 @@ async function create(ctx: Context, round: QualityBatchRound, claim: number): Pr
     throw Error("QUALITY_BATCH: the question differs from its round's intent");
   const blocked = await ensureReserved(ctx, round.intent);
   if (blocked) return blocked;
+  // A close may have taken this create's claim while the reservation was being made, and read the ledger
+  // before it committed (rule 4): nothing is ever sent under a closing claim, so it is settled at zero here.
+  if ((await readRound(ctx, round.intent.roundId)).claims.some(c => c.closing)) {
+    await settleUnbilled(ctx, round.intent, null, "never-created", null);
+    return "advanced";
+  }
   // Room for the whole create, read again after the ledger's work and again after the claim.
   if (!roomFor(ctx, CREATE_CALL_NEED_MS)) return waiting("too little of this request is left to create the batch");
   // The claim before the create: of two workers only one sends it.
@@ -287,6 +303,66 @@ async function reconcile(ctx: Context, round: QualityBatchRound, batchId: string
   await budget.settle(intent.worldId, intent.batchKey, evidence);
   await writeEvent(ctx, intent.roundId, { kind: "answered", batchId, amountMicroUsd: evidence.amountMicroUsd,
     servedTier: String(reading.usage?.service_tier), at: Date.now() });
+}
+
+/**
+ * What a copy found after its create was presumed lost was billed (rule 5). The presumption counted the
+ * batch reservation, the most the batch rate bills for the question, and the copies read must fit in it
+ * together. A bill above it (an answer the standard tier served), or one that cannot be stated, is recorded
+ * against the presumption as a conflict, which holds the world for a person: the ledger never understates.
+ * Its amount, or null when it cannot be stated.
+ */
+async function lateCharge(ctx: Context, round: QualityBatchRound, batchId: string, results: readonly QualityBatchResult[]): Promise<number | null> {
+  const { intent } = round;
+  const decision = decideQualityBatchResults(results.map(r => ({ customId: r.customId, type: r.type, errorType: r.type === "errored" ? r.errorType : null })), intent.customId);
+  // Errored, canceled and expired requests are documented as unbilled.
+  if (decision.decision === "unbilled-fallback" || decision.decision === "unbilled-held") return 0;
+  let priced: WorldChargeEvidence | null = null, reason = decision.decision === "held" ? decision.reason : "";
+  if (decision.decision === "answer") {
+    const result = results.find(r => r.customId === intent.customId) as Extract<QualityBatchResult, { type: "succeeded" }>;
+    const reading = readAnthropicVisualReview(POLICY, { ok: true, requestId: null }, result.message);
+    const charge = visualReviewBatchCharge(POLICY, reading.model, reading.usage);
+    if (!charge.costUnknown && reading.requestId) priced = canonicalChargeEvidence({ providerNamespace: ctx.transport.namespace, providerRequestId: reading.requestId,
+      usageId: sha(JSON.stringify(reading.usage)), rawUsage: reading.usage as BudgetJson, model: reading.model!,
+      amountMicroUsd: Math.ceil(charge.costCents * 10_000), costBasis: "conservative-upper-estimate" });
+    else reason = `the answer's charge cannot be stated (tier ${String(reading.usage?.service_tier ?? "none")}, model ${reading.model ?? "none"})`;
+  }
+  const read = round.lates.map(late => late.amountMicroUsd);
+  if (priced && !read.includes(null) && (read as number[]).reduce((sum, amount) => sum + amount, priced.amountMicroUsd) <= intent.batchReserveMicroUsd)
+    return priced.amountMicroUsd;
+  const rawUsage = { basis: "a copy of a create presumed lost whose bill cannot be stated: counted at the synchronous reservation for a person to reconcile",
+    batchId, customId: intent.customId, reason };
+  const evidence = priced ?? canonicalChargeEvidence({ providerNamespace: ctx.transport.namespace, providerRequestId: `late/${batchId}/${intent.customId}`,
+    usageId: sha(JSON.stringify(rawUsage)), rawUsage, model: intent.model, amountMicroUsd: intent.syncReserveMicroUsd, costBasis: "conservative-upper-estimate" });
+  // The presumption is settled: different evidence is recorded beside it as a conflict, which holds the world.
+  try { await boardWizardBudgetOf(ctx.c).settle(intent.worldId, intent.batchKey, evidence); }
+  catch (error) { if (!(error instanceof WorldBudgetError) || error.code !== "evidence_conflict") throw error; }
+  return priced?.amountMicroUsd ?? null;
+}
+
+/** Records a late copy's bill once. Priced against every copy already read, so the next number is written
+ * only over the bills it counted; a pass that lost it reads the round again and prices it again. */
+async function recordLate(ctx: Context, roundId: string, batchId: string, results: readonly QualityBatchResult[]) {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const round = await readRound(ctx, roundId);
+    if (round.lateIds.includes(batchId)) return;
+    const amountMicroUsd = await lateCharge(ctx, round, batchId, results);
+    if ((await writeEvent({ ...ctx, fence: null }, roundId, { kind: "late", n: round.lates.length + 1, batchId, amountMicroUsd, at: Date.now() })).won) return;
+  }
+  throw Error("QUALITY_BATCH: a late copy's bill could not be recorded");
+}
+
+/** Each copy of a presumed-lost round, read for its bill before it may be deleted (rule 5). It only reads
+ * the provider; a copy that cannot be read yet is kept, and read on a later slice or tick. */
+async function reconcileLate(ctx: Context, round: QualityBatchRound) {
+  for (const batchId of qualityBatchLateDue(round)) {
+    // Its record and then its results file: room for both reads before the first starts.
+    if (!roomFor(ctx, 2 * CALL_NEED_MS)) return;
+    let results: QualityBatchResult[];
+    try { results = await ctx.transport.results(batchId, ctx.deadlineAt); }
+    catch { return; }
+    await recordLate(ctx, round.intent.roundId, batchId, results);
+  }
 }
 
 /**
@@ -357,11 +433,12 @@ async function advance(ctx: Context, roundId: string): Promise<QualityBatchGate>
     }
     if (step.step === "find") {
       let found: Awaited<ReturnType<QualityBatchTransport["find"]>>;
+      const searchedAt = Date.now();
       try { found = await ctx.transport.find(round.intent.customId, step.sinceMs, ctx.deadlineAt); }
       catch (error) { return waiting(`the provider could not be searched (${error instanceof Error ? error.message.slice(0, 200) : "unknown"})`); }
       // Every batch proven to carry the question is kept before anything is decided from it: a
       // later search that no longer sees a copy cannot undo it. Two copies hold the round.
-      const known = await recordFound(ctx, roundId, found.proven, !found.undecided);
+      const known = await recordFound(ctx, roundId, found.proven, !found.undecided, searchedAt);
       if (known.batchIds.length > 1) continue;
       // One proven batch is the round's only when no other could still carry the question:
       // recording it while another runs could release that one's charge on the first's outcome.
@@ -385,7 +462,7 @@ async function advance(ctx: Context, roundId: string): Promise<QualityBatchGate>
     let status: Awaited<ReturnType<QualityBatchTransport["status"]>>;
     try { status = await ctx.transport.status(step.batchId); }
     catch (error) { return waiting(`the batch could not be read (${error instanceof Error ? error.message.slice(0, 200) : "unknown"})`); }
-    if (status === "in_progress") {
+    if (status.status === "in_progress") {
       if (!step.cancelDue && !ctx.stopping) return waiting("the batch is still running");
       // A game resumed since it was read (perhaps while that status call took its time) keeps its batch.
       if (!step.cancelDue && !await stillStopped(ctx)) return waiting("the game is generating again; its batch runs on");
@@ -396,9 +473,10 @@ async function advance(ctx: Context, roundId: string): Promise<QualityBatchGate>
       if (round.cancelAt === null) await writeEvent(ctx, roundId, { kind: "cancel", at: Date.now() });
       return waiting(ctx.stopping ? "cancelled: the game is not generating" : "cancelled at its deadline; what it finished is settled when it ends");
     }
-    if (status === "canceling") return waiting("the batch is being cancelled");
+    if (status.status === "canceling") return waiting("the batch is being cancelled");
     let results: QualityBatchResult[];
-    try { results = await ctx.transport.results(step.batchId, ctx.deadlineAt); }
+    // The status read the ended batch's record: its counts spare the results a second read of it.
+    try { results = await ctx.transport.results(step.batchId, ctx.deadlineAt, status.counts ?? undefined); }
     catch (error) { return waiting(`the results could not be read (${error instanceof Error ? error.message.slice(0, 200) : "unknown"})`); }
     await reconcile(ctx, round, step.batchId, results);
   }
@@ -406,11 +484,11 @@ async function advance(ctx: Context, roundId: string): Promise<QualityBatchGate>
 }
 
 /** The provider's copies of a finished round, deleted once its outcome is kept. A held round
- * keeps them for the person, unless its game was deleted (rule 5 of quality-batch-round.ts). */
+ * keeps them for the person, unless its game was deleted, and a late copy is kept until its
+ * bill is read (rule 5 of quality-batch-round.ts). */
 async function cleanup(ctx: Context, round: QualityBatchRound, gameDeleted: boolean) {
-  if (!qualityBatchCleanupDue(round, gameDeleted)) return;
   const removed: string[] = [];
-  for (const batchId of round.batchIds.filter(id => !round.deletedIds.includes(id))) {
+  for (const batchId of qualityBatchDeletable(round, gameDeleted)) {
     if (!roomFor(ctx, CALL_NEED_MS)) break;
     try { await ctx.transport.remove(batchId); removed.push(batchId); }
     catch { break; } // retried on a later slice or tick; the round itself is finished
@@ -418,20 +496,26 @@ async function cleanup(ctx: Context, round: QualityBatchRound, gameDeleted: bool
   if (removed.length) await recordDeleted(ctx, round.intent.roundId, removed);
 }
 
-/** A held round whose copies could still be running searches again (rule 5). It only reads the
- * provider and records what it finds: no purchase, create, cancel or release follows from it. */
-async function discover(ctx: Context, round: QualityBatchRound) {
-  if (!qualityBatchSearching(round)) return;
+/** A finished round that could still have a copy it has not found searches again (rule 5): a held round
+ * while another copy could run, a presumed-lost round once a day after the presumption. It only reads the
+ * provider and records what it finds: no purchase, create, cancel or release follows from it. Whether it searched. */
+async function discover(ctx: Context, round: QualityBatchRound): Promise<boolean> {
+  const searchedAt = Date.now();
+  if (!qualityBatchSearching(round, searchedAt)) return false;
   let found: Awaited<ReturnType<QualityBatchTransport["find"]>>;
   try { found = await ctx.transport.find(round.intent.customId, round.intent.intentAt, ctx.deadlineAt); }
-  catch { return; } // the next slice or tick searches again
-  await recordFound(ctx, round.intent.roundId, found.proven, !found.undecided);
+  catch { return true; } // the next slice or tick searches again
+  await recordFound(ctx, round.intent.roundId, found.proven, !found.undecided, searchedAt);
+  return true;
 }
 
-/** A finished round's housekeeping: its search for copies, then their deletion where due. */
-async function maintain(ctx: Context, roundId: string, gameDeleted: boolean) {
-  await discover(ctx, await readRound(ctx, roundId));
-  await cleanup(ctx, await readRound(ctx, roundId), gameDeleted);
+/** A finished round's housekeeping: its search for copies, the bill of each copy of a create presumed
+ * lost, a reservation left behind by an unsent close, then the deletion of copies where due. */
+async function maintain(ctx: Context, round: QualityBatchRound, gameDeleted: boolean) {
+  if (await discover(ctx, round)) round = await readRound(ctx, round.intent.roundId);
+  if (qualityBatchLateDue(round).length) { await reconcileLate(ctx, round); round = await readRound(ctx, round.intent.roundId); }
+  await settleOrphan(ctx, round);
+  await cleanup(ctx, round, gameDeleted);
 }
 
 /**
@@ -480,7 +564,7 @@ export async function advanceQualityBatches(c: Container, gameId: string, fence:
   for (const [roundId, events] of await gameRounds(c.db, gameId)) {
     if (deadlineAt !== undefined && deadlineAt - Date.now() < POLL_NEED_MS) return;
     const round = qualityBatchRoundOf(events), ctx: Context = { c, transport, gameId, fence, question: null, stopping: false, deadlineAt };
-    if (round.terminal) { await maintain(ctx, roundId, false); continue; }
+    if (round.terminal) { await maintain(ctx, round, false); continue; }
     try { await advance(ctx, roundId); }
     // A full world waits for capacity at the review that needs it, which parks or waits as it does today.
     catch (error) { if (!(error instanceof WorldBudgetError)) throw error; }
@@ -510,8 +594,9 @@ const deletedGame = (game: GameState) => !game || !!game.deletedAt || game.statu
  * Rounds of games that are no longer generating (deleted, stopped, refunded,
  * finished): cancelled now, settled when their batch ends, the provider's copies
  * deleted. A deleted game's answer is not kept; its bill is. Never creates,
- * links or falls back. Also every held round still searching for copies, whatever
- * its game's state: a held review parks its job, and a parked job runs no slice.
+ * links or falls back. Also, whatever its game's state, every finished round still
+ * searching for copies and every copy of a presumed-lost create still to be read
+ * for its bill: a held review parks its job, and a parked job runs no slice.
  * For the scheduled tick: provider calls start only within `windowMs` of the
  * records being read, before `deadlineAt`, and only with room to finish.
  */
@@ -531,6 +616,7 @@ export async function sweepQualityBatches(c: Container, options: { deadlineAt: n
     .map(game => [game.id, game]));
   const work: { gameId: string; roundId: string; terminal: boolean }[] = [];
   let rounds = 0, failed = 0;
+  const readAt = Date.now();
   for (const [gameId, gameRows] of byGame) {
     const game = states.get(gameId) ?? null;
     // One game's unreadable record never stops the sweep of the others; that game's
@@ -538,7 +624,8 @@ export async function sweepQualityBatches(c: Container, options: { deadlineAt: n
     try {
       for (const [roundId, events] of roundsOf(gameRows, gameId)) {
         const round = qualityBatchRoundOf(events);
-        if (qualityBatchSearching(round) || !generating(game) && (!round.terminal || qualityBatchCleanupDue(round, deletedGame(game))))
+        if (qualityBatchSearching(round, readAt) || qualityBatchLateDue(round).length
+          || !generating(game) && (!round.terminal || qualityBatchCleanupDue(round, deletedGame(game))))
           work.push({ gameId, roundId, terminal: !!round.terminal });
       }
     } catch { failed++; }
@@ -564,8 +651,12 @@ export async function sweepQualityBatches(c: Container, options: { deadlineAt: n
       if (!terminal) {
         if (live) continue; // its own slices advance it
         await advance(ctx, roundId);
-      } else if (live) await discover(ctx, await readRound(ctx, roundId)); // only the search: the rest is its slices'
-      else await maintain(ctx, roundId, deletedGame(game));
+      } else if (live) {
+        // Only what reads the provider and records it, the search and a late copy's bill: the rest is its slices'.
+        let round = await readRound(ctx, roundId);
+        if (await discover(ctx, round)) round = await readRound(ctx, roundId);
+        await reconcileLate(ctx, round);
+      } else await maintain(ctx, await readRound(ctx, roundId), deletedGame(game));
       rounds++;
     } catch { failed++; }
   }
