@@ -37,6 +37,11 @@ export interface WorldReservationInput {
   reserveMicroUsd: number;
 }
 
+/** A second key for a charge already settled under `canonicalRequestKey`. */
+export interface WorldLinkInput extends WorldReservationInput {
+  canonicalRequestKey: string;
+}
+
 interface RequestBase extends WorldReservationInput {
   origin: "reserved" | "imported";
   unknownReasons: readonly string[];
@@ -468,6 +473,42 @@ export class WorldBudget {
       const nextAudit = auditWorldBudget(snapshotWith(tx.snapshot, request), capMicroUsd);
       await tx.createRequest(structuredClone(request));
       return { acquired: true, request, audit: nextAudit };
+    });
+  }
+
+  /**
+   * Writes `requestKey` straight in as a linked alias of a charge already settled
+   * for the same operation: the same bill under a second key, counted once.
+   *
+   * It reserves nothing, so it needs no capacity. Reserving first and settling
+   * into the alias, as `settle` does for a key that was reserved and dispatched,
+   * refused an answer already paid for whenever the world had less room left than
+   * the key's reservation, and no amount of waiting freed that room. It grants no
+   * dispatch either, so a held world may record it. Only a new key, or exactly
+   * this alias again, is accepted.
+   */
+  async link(worldId: string, input: WorldLinkInput): Promise<WorldBudgetResult> {
+    nonempty(input.requestKey, "requestKey"); nonempty(input.canonicalRequestKey, "canonicalRequestKey"); nonempty(input.operationFingerprint, "operationFingerprint");
+    scope(input.scope); money(input.reserveMicroUsd, "reserveMicroUsd", false);
+    if (input.requestKey.startsWith(IMPORT_PREFIX)) fail("invalid_input", "Reserved import key prefix");
+    if (input.requestKey === input.canonicalRequestKey) fail("invalid_input", "A request cannot be linked to itself");
+    input = structuredClone(input);
+    return this.transact(worldId, async (tx, capMicroUsd) => {
+      const canonical = tx.snapshot.requests.find(item => item.requestKey === input.canonicalRequestKey);
+      if (!canonical || canonical.state !== "settled" || canonical.conflicts.length || canonical.scope !== input.scope || canonical.operationFingerprint !== input.operationFingerprint)
+        return fail("key_conflict", "A link needs a settled, unconflicted charge for the same scope and operation");
+      const existing = tx.snapshot.requests.find(item => item.requestKey === input.requestKey);
+      if (existing) {
+        if (existing.state !== "linked" || existing.canonicalRequestKey !== input.canonicalRequestKey || existing.origin !== "reserved" || existing.scope !== input.scope
+          || existing.operationFingerprint !== input.operationFingerprint || existing.reserveMicroUsd !== input.reserveMicroUsd || !sameEvidence(existing.evidence, canonical.evidence))
+          return fail("key_conflict", "Request key already holds something other than this link");
+        return { request: structuredClone(existing), audit: auditWorldBudget(tx.snapshot, capMicroUsd) };
+      }
+      const { canonicalRequestKey, ...terms } = input;
+      const request: WorldBudgetRequest = { ...terms, origin: "reserved", state: "linked", evidence: structuredClone(canonical.evidence), canonicalRequestKey, unknownReasons: [], conflicts: [] };
+      const audit = auditWorldBudget(snapshotWith(tx.snapshot, request), capMicroUsd);
+      await tx.createRequest(structuredClone(request));
+      return { request, audit };
     });
   }
 

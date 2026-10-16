@@ -260,6 +260,48 @@ describe("imports and provider-request de-duplication", () => {
   });
 });
 
+describe("links: a second key for a charge already paid", () => {
+  const link = (requestKey: string, canonicalRequestKey = "a", reserveMicroUsd = 100_000) =>
+    ({ requestKey, canonicalRequestKey, scope: "image" as const, operationFingerprint: reservation("a").operationFingerprint, reserveMicroUsd });
+  async function paid() {
+    const f = fixture(); await f.budget.reserve("world", reservation("a")); await f.budget.settle("world", "a", charge());
+    return f;
+  }
+
+  it("records the alias without capacity, in an exhausted world and in a held one, counting the bill once", async () => {
+    const { budget } = await paid();
+    await budget.reserve("world", { ...reservation("rest", 4_920_000), operationFingerprint: "rest" });
+    expect(await budget.audit("world")).toMatchObject({ remainingMicroUsd: 0, state: "exhausted" });
+    const linked = await budget.link("world", link("b"));
+    expect(linked.request).toMatchObject({ origin: "reserved", state: "linked", canonicalRequestKey: "a", reserveMicroUsd: 100_000, evidence: charge() });
+    expect(linked.audit).toMatchObject({ settledMicroUsd: 80_000, reservedMicroUsd: 4_920_000, committedMicroUsd: 5_000_000, linkedRequestKeys: ["b"] });
+    await budget.markUnknown("world", "rest", "timeout");
+    expect((await budget.link("world", link("c"))).audit).toMatchObject({ held: true, settledMicroUsd: 80_000, linkedRequestKeys: ["b", "c"] });
+  });
+
+  it("is the same alias when written again, and refuses a key that holds anything else", async () => {
+    const { budget, repository } = await paid();
+    await budget.link("world", link("b"));
+    expect((await budget.link("world", link("b"))).request).toMatchObject({ state: "linked", canonicalRequestKey: "a" });
+    await expect(budget.link("world", link("b", "a", 200_000))).rejects.toMatchObject({ code: "key_conflict" });
+    await budget.reserve("world", { ...reservation("pending"), operationFingerprint: reservation("a").operationFingerprint });
+    await expect(budget.link("world", link("pending"))).rejects.toMatchObject({ code: "key_conflict" });
+    expect((await repository.snapshot()).requests.map(r => [r.requestKey, r.state])).toEqual([["a", "settled"], ["b", "linked"], ["pending", "pending"]]);
+  });
+
+  it("links only to a settled, unconflicted charge of the same scope and operation", async () => {
+    const { budget, repository } = await paid();
+    await budget.reserve("world", { ...reservation("open"), operationFingerprint: reservation("a").operationFingerprint });
+    await budget.link("world", link("alias"));
+    for (const [input, code] of [
+      [link("b", "missing"), "key_conflict"], [link("b", "open"), "key_conflict"], [link("b", "alias"), "key_conflict"],
+      [{ ...link("b"), scope: "judge" as const }, "key_conflict"], [{ ...link("b"), operationFingerprint: "another" }, "key_conflict"],
+      [link("a"), "invalid_input"], [link("b", "a", 0), "invalid_input"], [link("@import/b"), "invalid_input"],
+    ] as const) await expect(budget.link("world", input)).rejects.toMatchObject({ code });
+    expect((await repository.snapshot()).requests.map(r => r.requestKey)).toEqual(["a", "open", "alias"]);
+  });
+});
+
 describe("adapter and audit fail-closed checks", () => {
   it("rejects duplicate canonical charges, broken links and unsafe summed arithmetic", () => {
     const known: WorldBudgetRequest = { ...reservation(), origin: "reserved", state: "settled", evidence: charge(), unknownReasons: [], conflicts: [] };

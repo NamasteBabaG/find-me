@@ -29,6 +29,22 @@ describe("QA wizard four-dollar budget", () => {
     expect((await b.audit("w")).settledMicroUsd).toBe(4_100_000);
     await expect(b.reserve("w", reserve("again", 1))).rejects.toMatchObject({ code: "world_held" });
   });
+  it("links a paid answer at the ceiling without new room, under its attempt's keys", async () => {
+    const repo = repository(), first = boardWizardBudget(repo), second = boardWizardBudget(repo, 2);
+    const question = (key: string, reserveMicroUsd: number) => ({ requestKey: key, scope: "judge" as const, operationFingerprint: "question", reserveMicroUsd });
+    await first.importSettled("w", { scope: "image", operationFingerprint: "earlier", evidence: evidence("earlier", 3_800_000) });
+    await first.reserve("w", question("batch", 125_000));
+    await first.settle("w", "batch", evidence("batch-answer", 9_000));
+    // 191,000 left: the synchronous reservation no longer fits, the next question does.
+    await expect(first.reserve("w", question("sync", 250_000))).rejects.toMatchObject({ code: "cap_exceeded" });
+    const linked = await first.link("w", { ...question("sync", 250_000), canonicalRequestKey: "batch" });
+    expect(linked.audit).toMatchObject({ committedMicroUsd: 3_809_000, linkedRequestKeys: ["sync"], held: false });
+    expect((await first.reserve("w", { ...question("sol", 66_000), operationFingerprint: "sol" })).acquired).toBe(true);
+    await second.reserve("w", question("batch", 1_000)); await second.settle("w", "batch", evidence("batch-answer-2", 900));
+    await second.link("w", { ...question("sync", 2_000), canonicalRequestKey: "batch" });
+    expect(await second.readRequest("w", "sync")).toMatchObject({ requestKey: "attempt-2:sync", canonicalRequestKey: "attempt-2:batch", state: "linked" });
+    expect(await first.readRequest("w", "sync")).toMatchObject({ canonicalRequestKey: "batch", reserveMicroUsd: 250_000 });
+  });
   it("isolates attempt2 request keys without resetting the cumulative ledger", async () => {
     const repo = repository(), first = boardWizardBudget(repo), second = boardWizardBudget(repo, 2);
     await first.reserve("w", reserve("board:source:1", 20));
