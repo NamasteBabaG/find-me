@@ -277,3 +277,37 @@ export interface FaceDetection {
 export interface FaceDetector {
   detect(photo: Buffer): Promise<FaceDetection>;
 }
+
+/** One request's result in an ended batch, as the provider returned it. */
+export type QualityBatchResult =
+  | { readonly customId: string; readonly type: "succeeded"; readonly message: unknown }
+  | { readonly customId: string; readonly type: "errored"; readonly errorType: string | null }
+  | { readonly customId: string; readonly type: "canceled" | "expired" }
+  | { readonly customId: string; readonly type: "unrecognized"; readonly resultType: string | null };
+
+/**
+ * A discounted, asynchronous channel for review questions (Anthropic Message
+ * Batches). Each call is one HTTP request with no hidden retry. A create that
+ * threw anything but `QualityBatchRefused` may have created a batch: only `find`
+ * can say, and only after the batch carrying it has ended.
+ */
+export interface QualityBatchTransport {
+  /** Provider AND billing namespace of every answer this channel delivers. */
+  readonly namespace: string;
+  create(requests: readonly { customId: string; params: Record<string, unknown> }[]): Promise<{ batchId: string }>;
+  /** Batches created at or after `sinceMs` proven to carry `customId`; undecided while one could and has not ended. */
+  find(customId: string, sinceMs: number): Promise<{ proven: string[]; undecided: boolean }>;
+  status(batchId: string): Promise<"in_progress" | "canceling" | "ended">;
+  results(batchId: string): Promise<QualityBatchResult[]>;
+  cancel(batchId: string): Promise<void>;
+  /** Deleted means acknowledged: already gone counts, anything else throws. */
+  remove(batchId: string): Promise<void>;
+}
+
+/** A create the provider refused outright, so nothing was created. `transient`: the same request may be sent later. */
+export class QualityBatchRefused extends Error {
+  constructor(readonly status: number, readonly errorType: string | null, readonly transient: boolean) {
+    super(`QUALITY_BATCH: create refused (${status}${errorType ? ` ${errorType}` : ""}); nothing was created`);
+    this.name = "QualityBatchRefused";
+  }
+}

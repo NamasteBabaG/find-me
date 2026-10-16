@@ -1,0 +1,534 @@
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import sharp from "sharp";
+import { PrismaClient } from "@prisma/client";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { applyTestSchema } from "../../../lib/test-schema";
+import { DbStorage } from "../../../infra/storage/db";
+import { PrismaRetainedPurchaseStore } from "../../../infra/db/prisma-retained-purchase-store";
+import { QualityBatchRefused, type QualityBatchResult, type QualityBatchTransport } from "../../../infra/generation/types";
+import { GameConfigSchema } from "../../../domain/game/config";
+import { localPatchBoardsForVersion } from "../../../domain/scene/local-patch-catalog";
+import { cropOf, maskForHide } from "../../../domain/scene/local-patch-hides";
+import { QUALITY_BATCH_CREATE_GRACE_MS, QUALITY_BATCH_REFUSAL_BACKOFF_MS } from "../../../domain/generation/quality-batch-round";
+import type { Container } from "../../container";
+import { boardsOfWorlds } from "../../world-catalog.service";
+import { deleteGame } from "../../game.service";
+import { createDraft } from "../../create-flow.service";
+import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wizard";
+import { reviewBoardWizardIdentity } from "../board-wizard-identity-gate";
+import { readBoardConditionedCatalog } from "../board-conditioned-catalog";
+import { reviewLocalPatchBoard } from "../local-patch-board-review";
+import { runLocalPatchHide, type LocalPatchHideDeps } from "../local-patch-hide";
+import { localPatchHideEvidenceIds } from "../local-patch-judge";
+import { LOCAL_PATCH_PUBLICATION_ACTION } from "../local-patch-publication-policy";
+import { LOCAL_PATCH_STYLE, runLocalPatchWorldSlice } from "../local-patch-world";
+import { verifiedDualStage } from "../local-patch-dual-evidence";
+import { DUAL_VISUAL_REVIEW_V3, DUAL_VISUAL_REVIEW_VERSION, pinVisualReviewRelease } from "../visual-review-release";
+import { QUALITY_BATCH_CHANNEL, QUALITY_BATCH_DEADLINE_MS, pinQualityChannel, qualityChannelAuditId, qualityChannelOf } from "../quality-channel";
+import { QUALITY_BATCH_ACTION, advanceQualityBatches, qualityBatchKeyOf, sweepQualityBatches } from "../quality-batch";
+import { sha256Bytes } from "../fixed-sprite";
+import { planLocalPatchEvidenceRecovery } from "../local-patch-evidence-plan";
+import { bill, paintedCrop, paintedOk, seedApprovedGame } from "./local-patch-fixtures";
+import { GOOD_V12_VERDICT, boundHide, dualReviewer, longAnswer } from "./local-patch-dual-fixtures";
+
+/**
+ * The Opus scene-quality question delivered by Message Batches, end to end, on
+ * the real ledger, retained store, dual review and world slice. The provider is a
+ * scripted fake behind the transport interface; no request leaves the process.
+ */
+const fakes = vi.hoisted(() => ({ testers: [] as string[] }));
+vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: "qa", GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: 0, LOCAL_PATCH_PLAYER_REVIEW: "on",
+  GENERATION_PROVIDER: "openai", GENERATION_MODEL: "gpt-image-2", GENERATION_QUALITY: "medium", LOCAL_PATCH_PROMPT_RELEASE: "v15" }),
+  spendGuard: () => ({ appEnv: "qa", realGeneration: true, testers: fakes.testers }), flag: () => false, adminEmails: () => [] }));
+
+const journeySlugs = new Set(boardsOfWorlds(["journey"]));
+const BOARDS = localPatchBoardsForVersion(12).filter(board => journeySlugs.has(board.board)), HIDES = BOARDS.flatMap(board => board.hides);
+const HOUR = 60 * 60_000;
+let directory: string, db: PrismaClient, c: Container;
+beforeAll(async () => {
+  directory = realpathSync(mkdtempSync(path.join(realpathSync(tmpdir()), "findme-quality-batch-")));
+  db = new PrismaClient({ datasources: { db: { url: `file:${path.join(directory, "test.db").replaceAll("\\", "/")}` } } });
+  await applyTestSchema(db);
+  c = { db, storage: new DbStorage(db), appUrl: "http://localhost:3000", secret: "synthetic-quality-batch", analytics: { track: vi.fn() }, adminEmails: [],
+    email: { id: "console", send: async () => ({ id: "synthetic-mail" }) }, emailFallbackTo: null } as unknown as Container;
+  vi.stubGlobal("fetch", vi.fn(async () => { throw Error("Live requests forbidden in the batch channel tests"); }));
+}, 180_000);
+afterEach(() => { vi.useRealTimers(); });
+afterAll(async () => {
+  vi.unstubAllGlobals(); await db.$disconnect();
+  if (path.dirname(directory) === realpathSync(tmpdir()) && path.basename(directory).startsWith("findme-quality-batch-")) rmSync(directory, { recursive: true });
+});
+
+/** A paid nine-board v12 journey whose draft was pinned to dual review v3 and, unless asked otherwise, to Message Batches. */
+async function world(gameId: string, options: { pinned?: boolean } = {}) {
+  const seeded = await seedApprovedGame(c, db, { gameId, approved: false, styleVersion: LOCAL_PATCH_STYLE, status: "DRAFT",
+    scenes: BOARDS.map(board => ({ slug: board.board, version: 12 })) });
+  fakes.testers.push(seeded.email);
+  await db.$transaction(async tx => {
+    await pinVisualReviewRelease(tx, gameId, DUAL_VISUAL_REVIEW_V3);
+    if (options.pinned !== false) await pinQualityChannel(tx, gameId, QUALITY_BATCH_CHANNEL);
+  });
+  await db.game.update({ where: { id: gameId }, data: { status: "TARGETS_GENERATING", paidAt: new Date() } });
+  await db.generationJob.create({ data: { id: `job_${gameId}`, gameId, status: "QUEUED" } });
+  await db.order.create({ data: { id: `ord-${gameId}`, gameId, userId: seeded.userId, provider: "mock", packageTier: "ONE_WORLD",
+    amountAgorot: 3900, paymentStatus: "PAID", paidAt: new Date() } });
+  const avatar = await sharp(seeded.sheet).resize(256, 256).png().toBuffer(), avatarId = `ast-avatar-${gameId}`;
+  await c.storage.put(`game/${avatarId}.png`, avatar, "image/png");
+  await db.asset.create({ data: { id: avatarId, ownerId: seeded.userId, type: "AVATAR", visibility: "GAME", status: "READY",
+    storagePath: `game/${avatarId}.png`, mimeType: "image/png", bytes: avatar.length, width: 256, height: 256, provider: "openai" } });
+  await db.childProfile.update({ where: { id: `chl-${gameId}` }, data: { avatarAssetId: avatarId } });
+  await c.storage.put(`private/photo-${gameId}.jpg`, seeded.sheet, "image/png");
+  const catalog = await readBoardConditionedCatalog();
+  await reviewBoardWizardIdentity({ db, apiKey: "synthetic", budget: boardWizardBudgetOf(c), beforeDispatch: async () => {},
+    write: work => db.$transaction(work), reviewer: { review: async () => ({ httpOk: true, requestId: `req-identity-${gameId}`,
+      body: { model: "gpt-5.6-luna", usage: { prompt_tokens: 1500, completion_tokens: 150 }, choices: [{ finish_reason: "stop", message: {
+        content: JSON.stringify({ checks: { identity: "pass", age: "pass", paintedStyle: "pass", sheetLayout: "pass" }, reason: "Controlled identity" }) } }] } }) } },
+  { gameId, identityAssetId: `ast-sheet-${gameId}`, sheet: seeded.sheet, photo: seeded.sheet, atlas: seeded.sheet, contentVersion: 12,
+    provenance: { promptVersion: "character-v6-painted-identity-geometry", quality: "medium", photoAssetId: `ast-photo-${gameId}`,
+      photoSha256: sha256Bytes(seeded.sheet), ageYears: 8, crop: null,
+      style: { version: "board-matched-identity/v4", catalogSha256: catalog.sha256, atlasSha256: sha256Bytes(seeded.sheet) } } });
+  return { ...seeded, worldId: boardWizardWorldId(gameId), budget: boardWizardBudgetOf(c) };
+}
+/** A synthetic painter for every journey appearance; each paid attempt differs. */
+function painter(gameId: string, renders: string[] = []): LocalPatchHideDeps {
+  return { renderPolicySha256: "f".repeat(64), judge: async () => { throw Error("Per-hide judge forbidden"); },
+    render: async ({ requestKey, stylePng }) => {
+      const hide = HIDES.find(h => requestKey.startsWith(`${h.id}:`));
+      if (!hide) throw Error(`Unexpected synthetic request ${requestKey}`);
+      renders.push(requestKey);
+      const attempt = Number(requestKey.split(":").at(-1)), mask = maskForHide(hide), crop = cropOf(hide);
+      const png = await sharp(await paintedCrop(stylePng, hide)).composite([{ input: { create: { width: 6, height: 6, channels: 4,
+        background: { r: 40 * attempt, g: 40, b: 180, alpha: 1 } } }, left: mask.left - crop.left + Math.floor(mask.width / 2),
+        top: mask.top - crop.top + Math.floor(mask.height / 2) }]).png().toBuffer();
+      return paintedOk(png, bill(`paint-${gameId}-${requestKey}`));
+    } };
+}
+
+/** The question a batch request asks, read back from its own params. */
+const promptOf = (params: Record<string, unknown>) => ((params.messages as { content: { text?: string }[] }[])[0]!.content[0]!.text)!;
+let messages = 0;
+/** Opus's passing answer to a batched question, as Message Batches returns it. */
+const opus = (over: (hideId: string) => Record<string, unknown> = () => ({})) => (params: Record<string, unknown>, customId: string): QualityBatchResult => {
+  const hideId = boundHide(promptOf(params)).hideId;
+  return { customId, type: "succeeded", message: { id: `msg_synthetic_${++messages}`, type: "message", role: "assistant", model: "claude-opus-5-5",
+    content: [{ type: "text", text: "```json\n" + JSON.stringify({ hides: [{ hideId, evidenceIds: localPatchHideEvidenceIds(hideId), verdict: GOOD_V12_VERDICT }] }) + "\n```" }],
+    stop_reason: "end_turn", usage: { input_tokens: 2000, output_tokens: 500, service_tier: "batch" }, ...over(hideId) } };
+};
+type FakeBatch = { id: string; createdAt: number; requests: { customId: string; params: Record<string, unknown> }[];
+  status: "in_progress" | "ended"; results: QualityBatchResult[] | null; cancelled: boolean; deleted: boolean };
+/** Message Batches, scripted: a batch runs until the test ends it; a cancel ends what has not run as canceled. */
+class FakeBatches implements QualityBatchTransport {
+  readonly namespace = "anthropic:find-me-existing";
+  readonly batches: FakeBatch[] = [];
+  readonly calls: string[] = [];
+  createPlan: ("ok" | "lost-after-create" | "lost-before-create" | QualityBatchRefused)[] = [];
+  constructor(public answer: (params: Record<string, unknown>, customId: string) => QualityBatchResult) {}
+  get creates() { return this.calls.filter(call => call === "create").length; }
+  private batch(id: string) { const found = this.batches.find(b => b.id === id); if (!found || found.deleted) throw Error(`no such batch ${id}`); return found; }
+  async create(requests: readonly { customId: string; params: Record<string, unknown> }[]) {
+    this.calls.push("create");
+    const plan = this.createPlan.shift() ?? "ok";
+    if (plan instanceof QualityBatchRefused) throw plan;
+    if (plan === "lost-before-create") throw Error("socket hang up before the request was sent");
+    const batch: FakeBatch = { id: `msgbatch_fake${this.batches.length + 1}`, createdAt: Date.now(), requests: structuredClone([...requests]),
+      status: "in_progress", results: null, cancelled: false, deleted: false };
+    this.batches.push(batch);
+    if (plan === "lost-after-create") throw Error("socket hang up after the batch was created");
+    return { batchId: batch.id };
+  }
+  /** The provider finishes every running batch. */
+  end() { for (const b of this.batches) if (b.status === "in_progress") { b.status = "ended"; b.results = b.requests.map(r => this.answer(r.params, r.customId)); } }
+  async find(customId: string, sinceMs: number) {
+    this.calls.push("find");
+    const candidates = this.batches.filter(b => !b.deleted && b.createdAt >= sinceMs - 5 * 60_000);
+    return { proven: candidates.filter(b => b.status === "ended" && b.results!.some(r => r.customId === customId)).map(b => b.id),
+      undecided: candidates.some(b => b.status !== "ended") };
+  }
+  async status(id: string) { this.calls.push("status"); return this.batch(id).status; }
+  async results(id: string) { this.calls.push("results"); const b = this.batch(id); if (b.status !== "ended") throw Error("not ended"); return b.results!; }
+  async cancel(id: string) {
+    this.calls.push("cancel");
+    const b = this.batch(id);
+    b.cancelled = true;
+    if (b.status === "in_progress") { b.status = "ended"; b.results = b.requests.map(r => ({ customId: r.customId, type: "canceled" as const })); }
+  }
+  async remove(id: string) { this.calls.push("remove"); const b = this.batch(id); if (b.status !== "ended") throw Error("cancel first"); b.deleted = true; }
+}
+
+const scene = (gameId: string, board = BOARDS[0]!) => ({ gameId, sceneId: `gsc-${gameId}-${board.board}` });
+const review = (container: Container, gameId: string, board = BOARDS[0]!) =>
+  reviewLocalPatchBoard(container, { ...scene(gameId, board), deadlineAt: Date.now() + 270_000 }, { fence: async () => {} });
+const rows = (gameId: string) => db.targetVariantAsset.findMany({ where: { targetInstance: { gameScene: { gameId } } }, orderBy: { id: "asc" } });
+const events = (gameId: string) => db.auditLog.findMany({ where: { entityId: gameId, action: QUALITY_BATCH_ACTION }, orderBy: { id: "asc" } });
+const eventNames = async (gameId: string) => (await events(gameId)).map(row => row.id.replace(/^aud_qb_qb[a-f0-9]{30}_/, "")).sort();
+const qualityCalls = (request: ReturnType<typeof dualReviewer>) => request.mock.calls.filter(([question]) => question.role === "scene-quality").length;
+async function paintFirst(gameId: string, board = BOARDS[0]!) { await runLocalPatchHide(c, painter(gameId), { gameId, board, hide: board.hides[0]! }); }
+const sol = (gameId: string) => dualReviewer(gameId, hideId => longAnswer(hideId, 300, 300, 0));
+/** The recorded intent of a board's batched question. */
+async function syncKeyOf(gameId: string, board = BOARDS[0]!) {
+  const intent = (await events(gameId)).map(row => JSON.parse(row.metaJson!)).find(e => e.kind === "intent" && e.intent.board === board.board);
+  return intent.intent as { syncKey: string; batchKey: string; customId: string; fingerprint: string; syncReserveMicroUsd: number;
+    batchReserveMicroUsd: number; deadlineAt: number; intentAt: number };
+}
+
+describe("Opus scene-quality questions through Message Batches", () => {
+  it("delivers a whole 27-appearance world at the batch price, with no Opus question asked synchronously and every bill counted once", async () => {
+    const gameId = "batch-world-full", w = await world(gameId), seeded = (await w.budget.audit(w.worldId)).settledMicroUsd;
+    const fake = new FakeBatches(opus()), request = sol(gameId), renders: string[] = [];
+    const container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    let ticks = 0, status = "";
+    for (; ticks < 400; ticks++) {
+      const result = await runLocalPatchWorldSlice(container, painter(gameId, renders), gameId, { hardDeadlineAt: Date.now() + 270_000 });
+      expect(result.attention).toBeNull();
+      // The provider answers in its own time, between the worker's slices.
+      if (ticks % 2) fake.end();
+      status = (await db.game.findUniqueOrThrow({ where: { id: gameId } })).status;
+      if (["READY", "DELIVERED"].includes(status)) break;
+    }
+    expect(["READY", "DELIVERED"]).toContain(status);
+    const game = await db.game.findUniqueOrThrow({ where: { id: gameId } });
+    expect(GameConfigSchema.parse(JSON.parse(game.configJson!)).scenes.flatMap(s => s.targets)).toHaveLength(27);
+    expect(await db.auditLog.count({ where: { entityId: gameId, action: LOCAL_PATCH_PUBLICATION_ACTION } })).toBe(27);
+    // Every Opus question went by batch, once, one question per batch; Sol stayed synchronous.
+    expect(qualityCalls(request)).toBe(0);
+    expect(request.mock.calls.filter(([question]) => question.role === "head-continuity")).toHaveLength(27);
+    expect(fake.creates).toBe(27); expect(fake.batches.every(b => b.requests.length === 1 && !b.cancelled)).toBe(true);
+    expect(renders).toHaveLength(27);
+    // Money: renders, Opus at half its standard 18,000, Sol at its own 10,000; each Opus bill once, its review key a linked alias.
+    const audit = await w.budget.audit(w.worldId);
+    expect(audit).toMatchObject({ held: false, reservedMicroUsd: 0, pendingRequestKeys: [], unknownRequestKeys: [] });
+    expect(audit.linkedRequestKeys).toHaveLength(27);
+    expect(audit.linkedRequestKeys.every(key => key.startsWith("self-repair:board:"))).toBe(true);
+    expect(audit.settledMicroUsd - seeded).toBe(27 * 48_800 + 27 * 9_000 + 27 * 10_000);
+    // Each published appearance's quality stage proves its own settled bill, as for a synchronous answer.
+    for (const row of await rows(gameId)) {
+      const stage = JSON.parse(row.judgeJson!).boardReview.dual.quality;
+      expect(stage).toMatchObject({ costMicroUsd: 9_000, model: "claude-opus-5-5" });
+      expect(await verifiedDualStage(db, w.worldId, stage, "scene-quality")).not.toBeNull();
+    }
+    // The provider's copies are deleted once kept: by the slices, and the last ones by the scheduled sweep.
+    await sweepQualityBatches(container, { deadlineAt: Date.now() + 270_000 });
+    expect(fake.batches.every(b => b.deleted)).toBe(true);
+    expect(fetch).not.toHaveBeenCalled();
+  }, 900_000);
+
+  it("sends a board's three questions before any answer, buys nothing while they wait, then decides each at its own price", async () => {
+    const gameId = "batch-board", w = await world(gameId), board = BOARDS[0]!;
+    for (const hide of board.hides) await runLocalPatchHide(c, painter(gameId), { gameId, board, hide });
+    const fake = new FakeBatches(opus()), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    for (let i = 0; i < 3; i++) expect(await review(container, gameId)).toMatchObject({ state: "pending", costCents: 0 });
+    expect(fake.batches).toHaveLength(3);
+    expect(new Set(fake.batches.map(b => boundHide(promptOf(b.requests[0]!.params)).hideId))).toEqual(new Set(board.hides.map(h => h.id)));
+    // Waiting buys nothing and creates nothing more.
+    for (let i = 0; i < 2; i++) expect(await review(container, gameId)).toMatchObject({ state: "pending", costCents: 0 });
+    expect(fake.creates).toBe(3); expect(request).not.toHaveBeenCalled();
+    const before = await w.budget.audit(w.worldId);
+    expect(before.pendingRequestKeys.filter(key => key.startsWith("self-repair:batch:"))).toHaveLength(3);
+    expect(before.pendingRequestKeys.filter(key => key.startsWith("self-repair:board:"))).toHaveLength(0);
+    // Each holds half the synchronous reservation: every batch rate is half.
+    const waitingIntent = await syncKeyOf(gameId);
+    expect([waitingIntent.syncReserveMicroUsd, waitingIntent.batchReserveMicroUsd]).toEqual([250_000, 125_000]);
+    expect(await w.budget.readRequest(w.worldId, waitingIntent.batchKey)).toMatchObject({ state: "pending", reserveMicroUsd: 125_000 });
+    // The plan reports what is already reserved, not a new question.
+    const plan = await planLocalPatchEvidenceRecovery(container, gameId);
+    expect(plan.nextQuestions.find(q => q.boardId === board.board)).toMatchObject({ existing: "pending", requestKey: expect.stringMatching(/^self-repair:batch:/) });
+    // The scheduled sweep leaves a generating game's rounds to its own slices.
+    const calls = fake.calls.length;
+    await sweepQualityBatches(container, { deadlineAt: Date.now() + 270_000 });
+    expect(fake.calls).toHaveLength(calls);
+    fake.end();
+    await advanceQualityBatches(container, gameId, async () => {});
+    for (let i = 0; i < 6; i++) await review(container, gameId);
+    expect(qualityCalls(request)).toBe(0);
+    expect(request.mock.calls.filter(([question]) => question.role === "head-continuity")).toHaveLength(3);
+    const reviewed = await rows(gameId);
+    expect(reviewed.filter(row => JSON.parse(row.judgeJson!).reviewState === "board-review-complete" && row.status === "GENERATED")).toHaveLength(3);
+    const audit = await w.budget.audit(w.worldId);
+    expect(audit).toMatchObject({ held: false, unknownRequestKeys: [] });
+    expect(audit.linkedRequestKeys).toHaveLength(3);
+    // Kept twice, once per key, as the same bytes and the same bill.
+    const intent = await syncKeyOf(gameId), store = new PrismaRetainedPurchaseStore(db);
+    const [batch, sync] = [await store.get(w.worldId, intent.batchKey), await store.get(w.worldId, intent.syncKey)];
+    expect(batch!.evidence).toEqual(sync!.evidence); expect(batch!.bytes.equals(sync!.bytes)).toBe(true);
+    expect(JSON.parse(batch!.bytes.toString())).toMatchObject({ channel: "anthropic-message-batches", costUnknown: false, model: "claude-opus-5-5" });
+    expect(batch!.evidence).toMatchObject({ amountMicroUsd: 9_000, providerNamespace: "anthropic:find-me-existing", rawUsage: { service_tier: "batch" } });
+  }, 300_000);
+
+  it("cancels a question still running at its deadline, and asks it synchronously only after the provider reports it unbilled", async () => {
+    const gameId = "batch-deadline", w = await world(gameId); await paintFirst(gameId);
+    const fake = new FakeBatches(opus()), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.now();
+    expect(await review(container, gameId)).toMatchObject({ state: "pending" });
+    const intent = await syncKeyOf(gameId);
+    expect(intent.deadlineAt - intent.intentAt).toBe(QUALITY_BATCH_DEADLINE_MS);
+    vi.setSystemTime(start + QUALITY_BATCH_DEADLINE_MS - 60_000);
+    expect(await review(container, gameId)).toMatchObject({ state: "pending" });
+    expect(fake.calls).not.toContain("cancel");
+    vi.setSystemTime(start + QUALITY_BATCH_DEADLINE_MS + 1);
+    expect(await review(container, gameId)).toMatchObject({ state: "pending", reason: expect.stringContaining("cancelled at its deadline") });
+    expect(fake.batches[0]!.cancelled).toBe(true);
+    expect(qualityCalls(request)).toBe(0);
+    await review(container, gameId);
+    // Canceled is documented as unbilled: the batch key settles at zero and the question is asked as for any game.
+    expect(qualityCalls(request)).toBe(1);
+    expect(await w.budget.readRequest(w.worldId, intent.batchKey)).toMatchObject({ state: "settled", evidence: { amountMicroUsd: 0, rawUsage: { resultType: "canceled" } } });
+    expect(await w.budget.readRequest(w.worldId, intent.syncKey)).toMatchObject({ state: "settled", evidence: { amountMicroUsd: 18_000 } });
+    expect(await eventNames(gameId)).toEqual(["cancel", "claim-1", "intent", "submitted", "terminal"]);
+    expect(JSON.parse((await events(gameId)).find(row => row.id.endsWith("_terminal"))!.metaJson!)).toMatchObject({ kind: "fallback", resultType: "canceled" });
+  }, 300_000);
+
+  it("never creates twice: a create whose answer was lost waits out its grace, and a search records the batch it made", async () => {
+    const gameId = "batch-lost-after", w = await world(gameId); await paintFirst(gameId);
+    const fake = new FakeBatches(opus()), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    fake.createPlan = ["lost-after-create"];
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.now();
+    expect(await review(container, gameId)).toMatchObject({ state: "pending", reason: expect.stringContaining("answer was lost") });
+    vi.setSystemTime(start + QUALITY_BATCH_CREATE_GRACE_MS - 1);
+    expect(await review(container, gameId)).toMatchObject({ state: "pending", reason: expect.stringContaining("may still be in flight") });
+    expect(fake.calls).toEqual(["create"]);
+    vi.setSystemTime(start + QUALITY_BATCH_CREATE_GRACE_MS);
+    // The batch it made is still running: the search cannot rule it out, so nothing is created.
+    expect(await review(container, gameId)).toMatchObject({ state: "pending", reason: expect.stringContaining("has not ended") });
+    fake.end();
+    await review(container, gameId);
+    expect(fake.creates).toBe(1); expect(fake.batches).toHaveLength(1);
+    const intent = await syncKeyOf(gameId);
+    expect(await w.budget.readRequest(w.worldId, intent.syncKey)).toMatchObject({ state: "linked", evidence: { amountMicroUsd: 9_000 } });
+    expect(qualityCalls(request)).toBe(0);
+  }, 300_000);
+
+  it("creates again only after a search proves the lost create made nothing", async () => {
+    const gameId = "batch-lost-before", w = await world(gameId); await paintFirst(gameId);
+    const fake = new FakeBatches(opus()), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    fake.createPlan = ["lost-before-create"];
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.now();
+    await review(container, gameId);
+    vi.setSystemTime(start + QUALITY_BATCH_CREATE_GRACE_MS);
+    expect(await review(container, gameId)).toMatchObject({ state: "pending" });
+    expect(fake.calls).toEqual(["create", "find", "create", "status"]);
+    expect(fake.batches).toHaveLength(1);
+    expect(await eventNames(gameId)).toEqual(["claim-1", "claim-2", "intent", "submitted"]);
+    const submitted = JSON.parse((await events(gameId)).find(row => row.id.endsWith("_submitted"))!.metaJson!);
+    expect(submitted).toMatchObject({ n: 2, batchId: fake.batches[0]!.id });
+    // One reservation for the question, whatever the number of creates.
+    expect((await w.budget.audit(w.worldId)).pendingRequestKeys.filter(key => key.startsWith("self-repair:batch:"))).toHaveLength(1);
+  }, 300_000);
+
+  it("holds, with its charge unknown, a question two batches carry", async () => {
+    const gameId = "batch-two", w = await world(gameId); await paintFirst(gameId);
+    const fake = new FakeBatches(opus()), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    fake.createPlan = ["lost-after-create"];
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.now();
+    await review(container, gameId);
+    // Another batch carrying the same request, as a duplicated create would leave.
+    fake.batches.push({ ...structuredClone(fake.batches[0]!), id: "msgbatch_duplicate" });
+    fake.end();
+    vi.setSystemTime(start + QUALITY_BATCH_CREATE_GRACE_MS);
+    expect(await review(container, gameId)).toMatchObject({ state: "held", reason: expect.stringContaining("2 batches carry this one question") });
+    const intent = await syncKeyOf(gameId), audit = await w.budget.audit(w.worldId);
+    expect(audit.held).toBe(true); expect(audit.unknownRequestKeys).toEqual([intent.batchKey]);
+    expect(await w.budget.readRequest(w.worldId, intent.syncKey)).toBeNull();
+    expect(request).not.toHaveBeenCalled();
+  }, 300_000);
+
+  it("waits out a rate-limited create, and holds one refused for good at zero rather than as an unknown charge", async () => {
+    const gameId = "batch-refused", w = await world(gameId); await paintFirst(gameId); await paintFirst(gameId, BOARDS[1]!);
+    const fake = new FakeBatches(opus()), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    fake.createPlan = [new QualityBatchRefused(429, "rate_limit_error", true), "ok", new QualityBatchRefused(400, "invalid_request_error", false)];
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.now();
+    expect(await review(container, gameId)).toMatchObject({ state: "pending", reason: expect.stringContaining("backoff") });
+    vi.setSystemTime(start + QUALITY_BATCH_REFUSAL_BACKOFF_MS);
+    expect(await review(container, gameId)).toMatchObject({ state: "pending" });
+    expect(fake.batches).toHaveLength(1);
+    // The other board's question is refused as invalid: zero, held for a person.
+    expect(await review(container, gameId, BOARDS[1]!)).toMatchObject({ state: "held", reason: expect.stringContaining("400 invalid_request_error") });
+    const refused = await syncKeyOf(gameId, BOARDS[1]!);
+    expect(await w.budget.readRequest(w.worldId, refused.batchKey)).toMatchObject({ state: "settled", evidence: { amountMicroUsd: 0 } });
+    expect((await w.budget.audit(w.worldId)).held).toBe(false);
+    expect(request).not.toHaveBeenCalled();
+  }, 300_000);
+
+  it("falls back to the synchronous question when every create was refused until the deadline", async () => {
+    const gameId = "batch-refused-out", w = await world(gameId); await paintFirst(gameId);
+    const fake = new FakeBatches(opus()), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    fake.createPlan = Array.from({ length: 10 }, () => new QualityBatchRefused(429, "rate_limit_error", true));
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.now();
+    await review(container, gameId);
+    vi.setSystemTime(start + QUALITY_BATCH_DEADLINE_MS);
+    await review(container, gameId);
+    expect(qualityCalls(request)).toBe(1);
+    const intent = await syncKeyOf(gameId);
+    expect(await w.budget.readRequest(w.worldId, intent.batchKey)).toMatchObject({ state: "settled", evidence: { amountMicroUsd: 0, rawUsage: { resultType: "never-created" } } });
+    expect(fake.batches).toHaveLength(0);
+  }, 300_000);
+
+  it.each([
+    ["an unpriced tier", { usage: { input_tokens: 2000, output_tokens: 500, service_tier: "priority" } }],
+    ["no tier at all", { usage: { input_tokens: 2000, output_tokens: 500 } }],
+    ["another model", { model: "claude-sonnet-5-5" }],
+  ])("holds an answer from %s, keeping it with its charge unknown and asking nothing again", async (_label, over) => {
+    const gameId = `batch-unpriced-${_label.replaceAll(" ", "-")}`, w = await world(gameId); await paintFirst(gameId);
+    const fake = new FakeBatches(opus(() => over)), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    await review(container, gameId);
+    fake.end();
+    expect(await review(container, gameId)).toMatchObject({ state: "held", reason: expect.stringContaining("cannot be stated") });
+    const intent = await syncKeyOf(gameId), audit = await w.budget.audit(w.worldId);
+    expect(audit.unknownRequestKeys).toEqual([intent.batchKey]); expect(audit.held).toBe(true);
+    const kept = await new PrismaRetainedPurchaseStore(db).get(w.worldId, intent.batchKey);
+    expect(kept).toMatchObject({ evidence: null, unknownReason: expect.stringContaining("cannot be stated") });
+    expect(await w.budget.readRequest(w.worldId, intent.syncKey)).toBeNull();
+    expect(request).not.toHaveBeenCalled();
+    for (let i = 0; i < 2; i++) expect(await review(container, gameId)).toMatchObject({ state: "held" });
+    expect(fake.creates).toBe(1);
+  }, 300_000);
+
+  it("holds an invalid question at zero, and asks a server-errored one again synchronously", async () => {
+    const gameId = "batch-errored", w = await world(gameId); await paintFirst(gameId); await paintFirst(gameId, BOARDS[1]!);
+    const errored = (errorType: string) => (_params: Record<string, unknown>, customId: string): QualityBatchResult => ({ customId, type: "errored", errorType });
+    const fake = new FakeBatches(errored("invalid_request_error")), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    await review(container, gameId);
+    fake.end();
+    expect(await review(container, gameId)).toMatchObject({ state: "held", reason: expect.stringContaining("refused as invalid") });
+    expect(await w.budget.readRequest(w.worldId, (await syncKeyOf(gameId)).batchKey)).toMatchObject({ state: "settled", evidence: { amountMicroUsd: 0 } });
+    fake.answer = errored("api_error");
+    await review(container, gameId, BOARDS[1]!);
+    fake.end();
+    await review(container, gameId, BOARDS[1]!);
+    expect(qualityCalls(request)).toBe(1);
+    expect((await w.budget.audit(w.worldId)).held).toBe(false);
+  }, 300_000);
+
+  it("finishes a round interrupted after its bill or during its alias, with each bill recorded once", async () => {
+    const gameId = "batch-resume", w = await world(gameId); await paintFirst(gameId); await paintFirst(gameId, BOARDS[1]!);
+    const fake = new FakeBatches(opus()), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    await review(container, gameId); await review(container, gameId, BOARDS[1]!);
+    const first = await syncKeyOf(gameId), second = await syncKeyOf(gameId, BOARDS[1]!);
+    // The second board's alias was reserved, then the worker stopped.
+    await w.budget.reserve(w.worldId, { requestKey: second.syncKey, scope: "judge", operationFingerprint: second.fingerprint, reserveMicroUsd: second.syncReserveMicroUsd });
+    fake.end();
+    await advanceQualityBatches(container, gameId, async () => {});
+    // The first board's terminal record was lost after its bill was settled and kept.
+    await db.auditLog.deleteMany({ where: { entityId: gameId, action: QUALITY_BATCH_ACTION, id: { endsWith: "_terminal" }, metaJson: { contains: fake.batches[0]!.id } } });
+    const entries = async () => {
+      const snapshot = JSON.parse((await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: w.worldId } })).snapshotJson) as { requests: { requestKey: string }[] };
+      return [first.batchKey, first.syncKey, second.batchKey, second.syncKey].map(key => snapshot.requests.find(r => r.requestKey === key));
+    };
+    const before = await entries();
+    await review(container, gameId); await review(container, gameId, BOARDS[1]!);
+    for (const keys of [first, second]) {
+      expect(await w.budget.readRequest(w.worldId, keys.batchKey)).toMatchObject({ state: "settled", reserveMicroUsd: keys.batchReserveMicroUsd, evidence: { amountMicroUsd: 9_000 } });
+      expect(await w.budget.readRequest(w.worldId, keys.syncKey)).toMatchObject({ state: "linked", canonicalRequestKey: keys.batchKey, reserveMicroUsd: keys.syncReserveMicroUsd });
+    }
+    // The replayed round wrote its terminal record again and changed no bill.
+    expect(await entries()).toEqual(before);
+    expect(await eventNames(gameId)).toContain("terminal");
+    expect(await w.budget.audit(w.worldId)).toMatchObject({ held: false, conflictRequestKeys: [], unknownRequestKeys: [] });
+    expect(qualityCalls(request)).toBe(0);
+  }, 300_000);
+
+  it("creates one batch when two workers ask the same question at once", async () => {
+    const gameId = "batch-race", w = await world(gameId); await paintFirst(gameId);
+    const fake = new FakeBatches(opus()), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    await Promise.all([review(container, gameId), review(container, gameId), review(container, gameId)]);
+    expect(fake.creates).toBe(1); expect(fake.batches).toHaveLength(1);
+    expect((await eventNames(gameId)).filter(name => name.startsWith("claim"))).toEqual(["claim-1"]);
+    expect((await w.budget.audit(w.worldId)).pendingRequestKeys.filter(key => key.startsWith("self-repair:batch:"))).toHaveLength(1);
+  }, 300_000);
+
+  it("never also batches a question the synchronous route already bought", async () => {
+    const gameId = "batch-sync-owned", w = await world(gameId, { pinned: false }); await paintFirst(gameId);
+    const fake = new FakeBatches(opus()), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    await review(container, gameId);
+    expect(qualityCalls(request)).toBe(1);
+    // The same game as if its draft had been pinned: its bought question still replays, unbatched.
+    const donor = await createDraft({ ...c, pinDualVisualReview: true, visualReview: { request: vi.fn() }, dualVisualReviewRelease: DUAL_VISUAL_REVIEW_V3,
+      qualityChannel: QUALITY_BATCH_CHANNEL } as unknown as Container, null, "he");
+    const pin = await db.auditLog.findUniqueOrThrow({ where: { id: qualityChannelAuditId(donor.gameId) } });
+    await db.auditLog.create({ data: { id: qualityChannelAuditId(gameId), actorType: "SYSTEM", action: pin.action, entityType: "Game", entityId: gameId,
+      metaJson: pin.metaJson!.replace(donor.gameId, gameId) } });
+    expect(await qualityChannelOf(db, gameId)).not.toBeNull();
+    await review(container, gameId);
+    expect(fake.calls).toEqual([]); expect(await events(gameId)).toEqual([]);
+    expect(qualityCalls(request)).toBe(1);
+    expect((await w.budget.audit(w.worldId)).pendingRequestKeys.filter(key => key.startsWith("self-repair:batch:"))).toEqual([]);
+  }, 300_000);
+
+  it("leaves a game without the pin exactly as it was: its Opus questions are synchronous and no batch exists", async () => {
+    const gameId = "batch-unpinned", w = await world(gameId, { pinned: false }); await paintFirst(gameId);
+    const fake = new FakeBatches(opus()), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    expect(await qualityChannelOf(db, gameId)).toBeNull();
+    await review(container, gameId); await review(container, gameId);
+    expect(qualityCalls(request)).toBe(1);
+    expect(fake.calls).toEqual([]);
+    expect(await events(gameId)).toEqual([]);
+    expect((await w.budget.audit(w.worldId)).linkedRequestKeys).toEqual([]);
+  }, 300_000);
+
+  it("refuses to buy for a pinned game on a box without the batch channel", async () => {
+    const gameId = "batch-unconfigured"; await world(gameId); await paintFirst(gameId);
+    const request = sol(gameId), container = { ...c, visualReview: { request } } as Container;
+    await expect(review(container, gameId)).rejects.toThrow("not configured here");
+    expect(request).not.toHaveBeenCalled();
+  }, 300_000);
+
+  it("for a deleted game: settles a late answer without keeping it, cancels what still runs, deletes the provider's copies", async () => {
+    const gameId = "batch-deleted", w = await world(gameId); await paintFirst(gameId); await paintFirst(gameId, BOARDS[1]!);
+    const fake = new FakeBatches(opus()), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    await review(container, gameId); await review(container, gameId, BOARDS[1]!);
+    const answered = await syncKeyOf(gameId), running = await syncKeyOf(gameId, BOARDS[1]!);
+    // The first board's batch has finished at the provider; nobody has read it yet. The second still runs.
+    const [done] = fake.batches; done!.status = "ended"; done!.results = done!.requests.map(r => fake.answer(r.params, r.customId));
+    expect(await deleteGame(c, gameId, { type: "USER", id: w.userId }, w.userId)).toBe(true);
+    for (let i = 0; i < 3; i++) await sweepQualityBatches(container, { deadlineAt: Date.now() + 270_000 });
+    expect(await w.budget.readRequest(w.worldId, answered.batchKey)).toMatchObject({ state: "settled", evidence: { amountMicroUsd: 9_000 } });
+    expect(await new PrismaRetainedPurchaseStore(db).get(w.worldId, answered.batchKey)).toBeNull();
+    expect(fake.batches[1]!.cancelled).toBe(true);
+    expect(await w.budget.readRequest(w.worldId, running.batchKey)).toMatchObject({ state: "settled", evidence: { amountMicroUsd: 0, rawUsage: { resultType: "canceled" } } });
+    for (const keys of [answered, running]) expect(await w.budget.readRequest(w.worldId, keys.syncKey)).toBeNull();
+    expect(fake.batches.every(b => b.deleted)).toBe(true);
+    expect(await w.budget.audit(w.worldId)).toMatchObject({ pendingRequestKeys: [], unknownRequestKeys: [] });
+    expect(request).not.toHaveBeenCalled();
+  }, 300_000);
+
+  it("purges a delivered batch answer with the game that owned it", async () => {
+    const gameId = "batch-purged", w = await world(gameId); await paintFirst(gameId);
+    const fake = new FakeBatches(opus()), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    await review(container, gameId); fake.end(); await review(container, gameId);
+    const intent = await syncKeyOf(gameId), store = new PrismaRetainedPurchaseStore(db);
+    expect(await store.get(w.worldId, intent.batchKey)).not.toBeNull(); expect(await store.get(w.worldId, intent.syncKey)).not.toBeNull();
+    expect(await deleteGame(c, gameId, { type: "USER", id: w.userId }, w.userId)).toBe(true);
+    expect(await store.get(w.worldId, intent.batchKey)).toBeNull(); expect(await store.get(w.worldId, intent.syncKey)).toBeNull();
+    // Accounting survives the deletion: both bills, counted once.
+    expect(await w.budget.readRequest(w.worldId, intent.syncKey)).toMatchObject({ state: "linked" });
+  }, 300_000);
+});
+
+describe("the per-game quality channel pin", () => {
+  it("pins Message Batches only on a new QA draft under dual review v3, and refuses a changed pin", async () => {
+    const container = { ...c, pinDualVisualReview: true, visualReview: { request: vi.fn() }, qualityChannel: QUALITY_BATCH_CHANNEL } as unknown as Container;
+    const pinned = await createDraft({ ...container, dualVisualReviewRelease: DUAL_VISUAL_REVIEW_V3 } as Container, null, "he");
+    expect(await qualityChannelOf(db, pinned.gameId)).toEqual({ channel: QUALITY_BATCH_CHANNEL, deadlineMs: QUALITY_BATCH_DEADLINE_MS });
+    const before = await db.game.count();
+    await expect(createDraft({ ...container, dualVisualReviewRelease: DUAL_VISUAL_REVIEW_VERSION } as Container, null, "he")).rejects.toThrow("dual review v3");
+    await expect(createDraft({ ...container, pinDualVisualReview: false } as Container, null, "he")).rejects.toThrow("dual review v3");
+    expect(await db.game.count()).toBe(before);
+    const unpinned = await createDraft({ ...container, dualVisualReviewRelease: DUAL_VISUAL_REVIEW_V3, qualityChannel: undefined } as Container, null, "he");
+    expect(await qualityChannelOf(db, unpinned.gameId)).toBeNull();
+    const id = qualityChannelAuditId(pinned.gameId), receipt = JSON.parse((await db.auditLog.findUniqueOrThrow({ where: { id } })).metaJson!);
+    await db.auditLog.update({ where: { id }, data: { metaJson: JSON.stringify({ ...receipt, deadlineMs: 24 * HOUR }) } });
+    await expect(qualityChannelOf(db, pinned.gameId)).rejects.toThrow("refusing a fallback");
+  });
+  it("names the batch key so deletion's inventory accepts it and no recovery mistakes it for a synchronous review", () => {
+    const key = qualityBatchKeyOf("giza", "a".repeat(64));
+    expect(key.startsWith("self-repair:")).toBe(true);
+    expect(/^self-repair:board:[a-z]+:[a-f0-9]{64}$/.test(key)).toBe(false);
+  });
+});

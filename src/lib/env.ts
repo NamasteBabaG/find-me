@@ -42,6 +42,10 @@ const EnvSchema = z.object({
    * version's own quality (MEDIUM for v12). low-v1 is qualified only on QA with
    * v19 and dual-high-v3, and a draft is refused rather than painted otherwise. */
   LOCAL_PATCH_PAINTER: z.enum(["by-version", "low-v1"]).default("by-version"),
+  /** How NEW local-patch drafts have their Opus quality questions delivered, pinned
+   * per game: synchronously, or by Anthropic's Message Batches at half price with a
+   * six-hour deadline. Qualified only on QA with dual-high-v3; never retroactive. */
+  LOCAL_PATCH_QUALITY_CHANNEL: z.enum(["sync", "anthropic-batch-v1"]).default("sync"),
   /** Explorers/Detectives cards under the child's name. On qa/production they
    * appear only while a Detectives world can actually be sold
    * (content/worlds/detective-releases.ts); development shows them for review. */

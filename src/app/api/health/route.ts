@@ -9,6 +9,7 @@ import { deliverWithProblemsOf } from "@/services/container";
 import { visualReviewPolicy } from "@/domain/generation/visual-review-policy";
 import { DUAL_VISUAL_REVIEW_V3 } from "@/services/generation/visual-review-release";
 import { lowPainterQualified } from "@/services/generation/painter-release";
+import { qualityBatchQualified } from "@/services/generation/quality-channel";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,7 +36,13 @@ export async function GET(req: Request) {
   // A LOW painter outside its qualified configuration refuses every new draft, so say so here first.
   const painterUnqualified = e.APP_ENV === "qa" && e.LOCAL_PATCH_PAINTER === "low-v1" && !lowPainterQualified({ appEnv: e.APP_ENV,
     promptRelease: e.LOCAL_PATCH_PROMPT_RELEASE, reviewRelease: e.LOCAL_PATCH_VISUAL_REVIEW === "dual-high-v3" ? DUAL_VISUAL_REVIEW_V3 : undefined });
-  const ok = db.ok && !(e.APP_ENV === "qa" && e.LOCAL_PATCH_VISUAL_REVIEW !== "legacy" && !dualConfigured) && !painterUnqualified;
+  // A batch channel outside its configuration refuses every new draft; without credentials its pinned games stall.
+  const batchRequested = e.APP_ENV === "qa" && e.LOCAL_PATCH_QUALITY_CHANNEL === "anthropic-batch-v1";
+  const batchQualified = !batchRequested || qualityBatchQualified({ appEnv: e.APP_ENV,
+    reviewRelease: e.LOCAL_PATCH_VISUAL_REVIEW === "dual-high-v3" ? DUAL_VISUAL_REVIEW_V3 : undefined });
+  const batchConfigured = !batchRequested || (e.GENERATION_PROVIDER === "openai" && !!e.ANTHROPIC_API_KEY?.trim());
+  const ok = db.ok && !(e.APP_ENV === "qa" && e.LOCAL_PATCH_VISUAL_REVIEW !== "legacy" && !dualConfigured) && !painterUnqualified
+    && batchQualified && batchConfigured;
   const body = {
     ok,
     db,
@@ -53,6 +60,8 @@ export async function GET(req: Request) {
     promptRelease: e.LOCAL_PATCH_PROMPT_RELEASE,
     // The painting quality NEW local-patch drafts are pinned to; existing games keep their own.
     painter: { newGames: e.APP_ENV === "qa" ? e.LOCAL_PATCH_PAINTER ?? "by-version" : "by-version", qualified: !painterUnqualified },
+    // How NEW local-patch drafts have their Opus quality questions delivered; existing games keep their own.
+    qualityChannel: { newGames: batchRequested ? "anthropic-batch-v1" : "sync", qualified: batchQualified, configured: batchConfigured },
     worldBudget: { newQaPolicy: newQaWorldBudgetEnabled({ appEnv: e.APP_ENV, storageId: e.STORAGE_PROVIDER ?? "",
       promptRelease: e.LOCAL_PATCH_PROMPT_RELEASE, reviewRelease: e.LOCAL_PATCH_VISUAL_REVIEW === "dual-high-v3" ? DUAL_VISUAL_REVIEW_V3 : undefined })
       ? { version: NEW_QA_WORLD_BUDGET_POLICY, capMicroUsd: NEW_QA_WORLD_CAP_MICRO_USD } : null, historicalDefaultCapMicroUsd: 5_000_000 },

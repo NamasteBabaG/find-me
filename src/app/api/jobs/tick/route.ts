@@ -6,6 +6,7 @@ import { tickGeneration } from "@/services/generation/queue";
 import { runRetentionIfDue } from "@/services/retention.service";
 import { retryFailedAdminAlerts } from "@/services/admin-alert.service";
 import { alertStalledGeneration } from "@/services/generation-health.service";
+import { sweepQualityBatches } from "@/services/generation/quality-batch";
 import { env } from "@/lib/env";
 import { currentUser, draftTokenFromCookie, isAdminEmail } from "@/lib/server/session";
 import { safeEqual } from "@/lib/ids";
@@ -67,6 +68,11 @@ export async function POST(req: Request) {
     if (!gameId) {
       enter("generation-health");
       await alertStalledGeneration(c, { deadlineAt: Math.min(hardDeadlineAt, Date.now() + 15_000) });
+      // Batch questions of games no longer generating: cancelled, settled, deleted at the provider.
+      enter("quality-batch-sweep");
+      await sweepQualityBatches(c, { deadlineAt: Math.min(hardDeadlineAt, Date.now() + 40_000) }).catch(() => {
+        console.error("[jobs/tick]", { requestId, event: "quality-batch-sweep-failed" });
+      });
     }
     if (hardDeadlineAt - Date.now() < SLICE_MS) {
       log("deferred");

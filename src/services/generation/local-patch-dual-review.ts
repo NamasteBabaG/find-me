@@ -25,6 +25,7 @@ import type { VisualReviewEffort, VisualReviewJudge } from "../../domain/generat
 import type { BudgetJson } from "./world-budget";
 import type { WorldBudgetRequest } from "../../domain/generation/world-budget";
 import { dualQuestionReserveMicroUsd, type DualReviewRole } from "../../domain/generation/dual-review-reserve";
+import { askQualityThroughBatch, qualityBatchKeyOf } from "./quality-batch";
 
 type Prepared = Extract<Awaited<ReturnType<typeof prepareLocalPatchBoardReview>>, { ready: true }>;
 type Bought = Extract<PurchaseOutcome, { kind: "bought" }>;
@@ -347,6 +348,10 @@ export async function nextDualReviewPurchase(prepared: Prepared, version: DualVi
     || prepared.request.hides.length !== 1) return null;
   const questions = await dualQuestions({ ...prepared, request: await dualQualityRequest(version, prepared.request) }, version);
   const quality = await dualQuestionAdmission(prepared.budget, prepared.worldId, prepared.board.board, version, questions.q);
+  // A question already reserved in a Message Batches round is not a new reservation.
+  const batchKey = qualityBatchKeyOf(prepared.board.board, questions.q.fingerprint);
+  const batched = quality.existing ? null : await prepared.budget.readRequest(prepared.worldId, batchKey);
+  if (batched) return { ...quality, requestKey: batchKey, existing: batched.state, maxChargeMicroUsd: null, refused: null };
   if (quality.existing !== "settled" && quality.existing !== "linked") return quality;
   return questions.reuse ? dualQuestionAdmission(prepared.budget, prepared.worldId, prepared.board.board, version, await questions.anatomy()) : null;
 }
@@ -398,6 +403,14 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
   };
   const qualityAdmitted = await dualQuestionAdmission(budget, worldId, prepared.board.board, version, q);
   if (qualityAdmitted.refused) return refused(qualityAdmitted);
+  // A game pinned to Message Batches asks this question there first. Nothing below
+  // changes: the answer arrives under this same key, settled at the batch price,
+  // and `buy` replays it like any answer already paid for; a documented-unbilled
+  // result leaves the key free, and `buy` asks synchronously as for any game.
+  const batched = await askQualityThroughBatch(c, { gameId: game.id, worldId, sceneId: prepared.scene.id, board: prepared.board.board,
+    hideId, variantId: entry.row.id, imageSha256: binding.imageSha256, question: q, syncKey: makeKey(q),
+    reserveMicroUsd: qualityAdmitted.reserveMicroUsd, fence: deps.fence, deadlineAt });
+  if (batched.kind !== "proceed") return { kind: "waiting", outcome: { state: batched.kind === "held" ? "held" : "pending", reason: batched.reason, replayed: false, costCents: 0 } };
   const qualityBought = await buy(q, qualityAdmitted.reserveMicroUsd);
   if (qualityBought.kind !== "bought") return waiting(qualityBought, q, qualityStrategy);
   // Decided now, so read by the current reader, which the stage names for every later reading.

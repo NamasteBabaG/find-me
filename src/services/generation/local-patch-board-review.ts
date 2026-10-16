@@ -33,6 +33,7 @@ import { needsPlayerReview, playerReviewEnabled, PLAYER_REVIEW_MODE, PLAYER_REVI
 import { hasDualVisualReview } from "./visual-review-release";
 import { buyDualLocalPatchReview } from "./local-patch-dual-review";
 import { localPatchRetainedAnswerUndecided, localPatchContinuityPending, qualityStageReader } from "./local-patch-dual-evidence";
+import { qualityBatchWaiting } from "./quality-batch";
 
 export const LOCAL_PATCH_BOARD_REVIEW_VERSION = "local-patch-board-five-luna-low/v1";
 export const LOCAL_PATCH_STRICT_BOARD_REVIEW_VERSION = "local-patch-board-five-quality/v3-head-safe";
@@ -196,6 +197,12 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
   const roundOf = (row: TargetVariantAsset) => options.decideRetained ? Math.max(1, Number(JSON.parse(row.judgeJson!).boardReview?.evidenceReviewAttempt ?? 1))
     : localPatchEvidenceRecovery(row)?.nextAttempt ?? 1;
   if (options.decideRetained && !entries.some(eligible)) return { ready: false as const, reason: "No retained answer awaits a corrected reading" };
+  // An appearance whose question already waits in a Message Batches round goes
+  // last, so its siblings' questions are sent meanwhile. No round: no change.
+  const inBatch = incremental ? await qualityBatchWaiting(c.db, game.id) : new Set<string>();
+  const nextFirst = (a: typeof entries[number], b: typeof entries[number]) =>
+    Number(inBatch.has(`${a.row.id}:${a.imageSha256}`)) - Number(inBatch.has(`${b.row.id}:${b.imageSha256}`))
+    || (localPatchEvidenceRecovery(a.row)?.nextAttempt ?? 1) - (localPatchEvidenceRecovery(b.row)?.nextAttempt ?? 1);
   // The request below and the question it asks pick the SAME appearance: a saved
   // quality answer's continuity question first, then the earliest evidence round.
   const continuityFirst = (a: typeof entries[number], b: typeof entries[number]) =>
@@ -207,8 +214,7 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
     const oldKey = entries.length === board.hides.length ? localPatchBoardReviewKey(board.board, entries.map(e => e.row.attempts),
       LOCAL_PATCH_COMPOSITION_VERSION, scene.sceneVersion) : null;
     if (options.playerReview || !oldKey || unapproved.some(e => localPatchEvidenceRecovery(e.row)) || !await budget.readRequest(worldId, oldKey)) {
-      requestEntries = [(unapproved.length ? unapproved : entries).sort((a, b) => (localPatchEvidenceRecovery(a.row)?.nextAttempt ?? 1)
-        - (localPatchEvidenceRecovery(b.row)?.nextAttempt ?? 1))[0]!];
+      requestEntries = [(unapproved.length ? unapproved : entries).sort(nextFirst)[0]!];
       evidenceReviewAttempt = roundOf(requestEntries[0]!.row);
       if (evidenceReviewAttempt > 1) settings = { ...settings, effort: "medium" };
       readyScope = true;
@@ -304,8 +310,7 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
     const unapproved = entries.filter(eligible);
     if (unapproved.length && (!fullQuestion || unapproved.some(e => localPatchEvidenceRecovery(e.row))
       || !await budget.readRequest(worldId, fullQuestion.requestKey))) {
-      selected = [unapproved.sort(continuityFirst).sort((a, b) => (localPatchEvidenceRecovery(a.row)?.nextAttempt ?? 1)
-        - (localPatchEvidenceRecovery(b.row)?.nextAttempt ?? 1))[0]!];
+      selected = [unapproved.sort(continuityFirst).sort(nextFirst)[0]!];
       evidenceReviewAttempt = roundOf(selected[0]!.row);
       if (evidenceReviewAttempt > 1) settings = { ...settings, effort: "medium" };
       const ids = new Set(selected.map(e => e.hide.id));

@@ -22,6 +22,7 @@ import { assertNoOutstandingCheckout, DraftCheckoutInProgress, hasOutstandingChe
 import { pinVisualReviewRelease } from "./generation/visual-review-release";
 import { pinNewQaWorldBudget } from "./generation/local-patch-qa-budget";
 import { pinLocalPatchPainter } from "./generation/painter-release";
+import { pinQualityChannel } from "./generation/quality-channel";
 import { detectiveRelease, storedSearchLevel, type SearchLevel } from "@/domain/search-level";
 import { DETECTIVE_RELEASES } from "../../content/worlds/detective-releases";
 import { pinSearchLevelChoice, searchLevelAsked } from "./search-level-policy";
@@ -61,7 +62,10 @@ export async function createDraft(c: Container, ownerId: string | null, locale: 
       await pinVisualReviewRelease(tx, created.id, c.dualVisualReviewRelease);
       await pinNewQaWorldBudget(tx, created.id, c.storage?.id ?? "", c.dualVisualReviewRelease);
     }
-    if (styleVersion === LOCAL_PATCH_STYLE) await pinLocalPatchPainter(tx, created.id, c.localPatchPainter);
+    if (styleVersion === LOCAL_PATCH_STYLE) {
+      await pinLocalPatchPainter(tx, created.id, c.localPatchPainter);
+      await pinQualityChannel(tx, created.id, c.qualityChannel);
+    }
     if (options.askSearchLevel) await pinSearchLevelChoice(tx, created.id);
     return created;
   });

@@ -24,6 +24,9 @@ import { prepareVisualReview, requestVisualReview, type VisualReviewQuestion } f
 import type { LocalPatchJudgeResult } from "./generation/local-patch-judge";
 import { DUAL_VISUAL_REVIEW_V2, DUAL_VISUAL_REVIEW_V3, DUAL_VISUAL_REVIEW_VERSION, type DualVisualReviewVersion } from "./generation/visual-review-release";
 import { LOCAL_PATCH_LOW_PAINTER, type LocalPatchPainterRelease } from "./generation/painter-release";
+import { QUALITY_BATCH_CHANNEL, type QualityChannelRelease } from "./generation/quality-channel";
+import type { QualityBatchTransport } from "@/infra/generation/types";
+import { AnthropicMessageBatches } from "@/infra/generation/anthropic-message-batches";
 
 /**
  * Composition root. Every provider is chosen here, by env, exactly once.
@@ -65,6 +68,12 @@ export interface Container {
   /** The painter release new local-patch drafts pin (explicit; absent means each
    * content version's own quality, MEDIUM for v12). */
   localPatchPainter?: LocalPatchPainterRelease;
+  /** How new local-patch drafts pin their Opus quality questions to be delivered
+   * (explicit; absent means synchronously, as every game before it). */
+  qualityChannel?: QualityChannelRelease;
+  /** Message Batches, for games pinned to it. Kept whenever credentials exist, so a
+   * pinned game is never stranded by a later change to new-draft enrollment. */
+  qualityBatch?: QualityBatchTransport;
 }
 
 /**
@@ -127,6 +136,8 @@ function build(): Container {
     // Chosen by name like the review: the default keeps every content version's
     // own quality, and only drafts created while low-v1 is set are painted LOW.
     ...(e.LOCAL_PATCH_PAINTER === "low-v1" ? { localPatchPainter: LOCAL_PATCH_LOW_PAINTER } : {}),
+    ...(e.LOCAL_PATCH_QUALITY_CHANNEL === "anthropic-batch-v1" ? { qualityChannel: QUALITY_BATCH_CHANNEL } : {}),
+    ...(e.GENERATION_PROVIDER === "openai" && e.ANTHROPIC_API_KEY?.trim() ? { qualityBatch: new AnthropicMessageBatches(e.ANTHROPIC_API_KEY) } : {}),
     // Keep the transport available for a pinned game even when new enrollment
     // is disabled. Missing credentials fail before a paid reservation.
     ...(e.GENERATION_PROVIDER === "openai" && e.ANTHROPIC_API_KEY?.trim() && e.OPENAI_API_KEY?.trim()

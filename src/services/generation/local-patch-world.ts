@@ -29,6 +29,7 @@ import { localPatchEvidenceRecovery, LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS } fro
 import { localPatchRetainedAnswerUndecided, localPatchContinuityPending } from "./local-patch-dual-evidence";
 import { hasDualVisualReview } from "./visual-review-release";
 import { localPatchPainterRelease, painterReleasePolicy, type LocalPatchPainterRelease } from "./painter-release";
+import { advanceQualityBatches } from "./quality-batch";
 import {
   LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, runLocalPatchHide,
   type LocalPatchHideDeps, type LocalPatchHideOutcome,
@@ -397,6 +398,9 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
         await reload();
       }
     }
+    // Every open Message Batches round, before any review: polled, cancelled at its
+    // deadline, or settled and linked once its batch has ended. Nothing is bought.
+    if (dual) await advanceQualityBatches(c, gameId, fence, options.hardDeadlineAt);
     // A first image and a first review for every appearance outrank another
     // question about a picture that already had one, so the budget can still
     // finish the other appearances before it pays for a second round.

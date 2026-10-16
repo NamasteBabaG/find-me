@@ -41,3 +41,23 @@ export function visualReviewCharge(policy: VisualReviewPolicy, model: string | n
   }
   return unknown();
 }
+
+/**
+ * An Opus answer delivered by Anthropic's Message Batches, priced by the tier its
+ * own usage says served it. "All usage is charged at 50% of the standard API
+ * prices" (platform.claude.com, batch processing, checked 2026-10-16): every rate
+ * above halves exactly. "standard" is priced at the standard card; any other
+ * tier, or none, is not priced: the standard card is no upper bound for a tier
+ * nobody has a card for.
+ */
+export function visualReviewBatchCharge(policy: VisualReviewPolicy, model: string | null, usage: Record<string, unknown> | null) {
+  if (policy.provider !== "anthropic" || !usage) return unknown();
+  if (usage.service_tier === "standard") return visualReviewCharge(policy, model, usage);
+  if (usage.service_tier !== "batch") return unknown();
+  const standard = visualReviewCharge(policy, model, { ...usage, service_tier: "standard" });
+  if (standard.costUnknown) return standard;
+  // Every standard rate is even, so half of the integer total is exact.
+  const total = Math.round(standard.costCents * 1_000_000);
+  if (!Number.isSafeInteger(total) || total % 2) return unknown();
+  return { costCents: total / 2 / 1_000_000, costUnknown: false };
+}
