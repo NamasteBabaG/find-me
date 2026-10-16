@@ -82,8 +82,8 @@ async function gameRounds(db: Pick<Prisma.TransactionClient, "auditLog">, gameId
     const match = EVENT_ID.exec(row.id);
     let event: QualityBatchEvent | null = null;
     try { event = JSON.parse(row.metaJson ?? "null"); } catch { /* refused below */ }
-    if (!match || !event || row.actorType !== "SYSTEM" || row.actorId !== null || eventId(match[1]!, qualityBatchEventName(event)) !== row.id
-      || (event.kind === "intent" && (event.intent.roundId !== match[1] || event.intent.gameId !== gameId)))
+    if (!match || !event || typeof event !== "object" || row.actorType !== "SYSTEM" || row.actorId !== null || eventId(match[1]!, qualityBatchEventName(event)) !== row.id
+      || (event.kind === "intent" && (event.intent?.roundId !== match[1] || event.intent?.gameId !== gameId)))
       throw Error("QUALITY_BATCH: a round record cannot be read; refusing to guess");
     rounds.set(match[1]!, [...rounds.get(match[1]!) ?? [], event]);
   }
@@ -375,22 +375,26 @@ export async function qualityBatchWaiting(db: Pick<Prisma.TransactionClient, "au
  * deleted. A deleted game's answer is not kept; its bill is. Never creates,
  * links or falls back. For the scheduled tick, within its own deadline.
  */
-export async function sweepQualityBatches(c: Container, options: { deadlineAt: number }): Promise<{ rounds: number }> {
+export async function sweepQualityBatches(c: Container, options: { deadlineAt: number }): Promise<{ rounds: number; failed: number }> {
   const transport = c.qualityBatch;
-  if (!transport) return { rounds: 0 };
+  if (!transport) return { rounds: 0, failed: 0 };
   const games = await c.db.auditLog.findMany({ where: { action: QUALITY_BATCH_ACTION, entityType: "Game" }, select: { entityId: true }, distinct: ["entityId"] });
-  let rounds = 0;
+  let rounds = 0, failed = 0;
   for (const { entityId: gameId } of games) {
     if (!gameId) continue;
-    const game = await c.db.game.findUnique({ where: { id: gameId }, select: { status: true, deletedAt: true } });
-    if (game && game.status === "TARGETS_GENERATING" && !game.deletedAt) continue; // its own slices advance it
-    for (const [roundId, events] of await gameRounds(c.db, gameId)) {
-      if (options.deadlineAt - Date.now() < POLL_NEED_MS) return { rounds };
-      const round = qualityBatchRoundOf(events), ctx: Context = { c, transport, gameId, fence: null, question: null, stopping: true, deadlineAt: options.deadlineAt };
-      if (round.terminal) { if (!round.deleted && round.submitted && round.terminal.kind !== "held") { await cleanup(ctx, round); rounds++; } continue; }
-      await advance(ctx, roundId);
-      rounds++;
-    }
+    // One game's unreadable record or failed write never stops the sweep of the others;
+    // that game's rounds stay as they are, counted, for the next tick or a person.
+    try {
+      const game = await c.db.game.findUnique({ where: { id: gameId }, select: { status: true, deletedAt: true } });
+      if (game && game.status === "TARGETS_GENERATING" && !game.deletedAt) continue; // its own slices advance it
+      for (const [roundId, events] of await gameRounds(c.db, gameId)) {
+        if (options.deadlineAt - Date.now() < POLL_NEED_MS) return { rounds, failed };
+        const round = qualityBatchRoundOf(events), ctx: Context = { c, transport, gameId, fence: null, question: null, stopping: true, deadlineAt: options.deadlineAt };
+        if (round.terminal) { if (!round.deleted && round.submitted && round.terminal.kind !== "held") { await cleanup(ctx, round); rounds++; } continue; }
+        await advance(ctx, roundId);
+        rounds++;
+      }
+    } catch { failed++; }
   }
-  return { rounds };
+  return { rounds, failed };
 }

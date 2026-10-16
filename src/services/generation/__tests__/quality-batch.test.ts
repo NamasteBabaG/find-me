@@ -498,6 +498,31 @@ describe("Opus scene-quality questions through Message Batches", () => {
     expect(request).not.toHaveBeenCalled();
   }, 300_000);
 
+  it("stops a slice at a round record it cannot read, with the reason on the job", async () => {
+    const gameId = "batch-corrupt-slice"; await world(gameId); await paintFirst(gameId);
+    const fake = new FakeBatches(opus()), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    await review(container, gameId);
+    await db.auditLog.updateMany({ where: { entityId: gameId, action: QUALITY_BATCH_ACTION, id: { endsWith: "_intent" } }, data: { metaJson: JSON.stringify({ kind: "intent" }) } });
+    await expect(runLocalPatchWorldSlice(container, painter(gameId), gameId, { hardDeadlineAt: Date.now() + 270_000 })).rejects.toThrow("cannot be read");
+    expect(await db.generationJob.findUniqueOrThrow({ where: { id: `job_${gameId}` } })).toMatchObject({ status: "FAILED", lastError: expect.stringContaining("cannot be read") });
+    expect(fake.creates).toBe(1); expect(request).not.toHaveBeenCalled();
+  }, 300_000);
+
+  it("sweeps past a game whose round record it cannot read", async () => {
+    const broken = "batch-sweep-broken", deleted = "batch-sweep-deleted";
+    await world(broken); await paintFirst(broken);
+    const owner = await world(deleted); await paintFirst(deleted);
+    const fake = new FakeBatches(opus()), request = sol(broken), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    await review(container, broken); await review(container, deleted);
+    expect(fake.batches).toHaveLength(2);
+    await db.auditLog.updateMany({ where: { entityId: broken, action: QUALITY_BATCH_ACTION, id: { endsWith: "_intent" } }, data: { metaJson: JSON.stringify({ kind: "intent" }) } });
+    await db.game.update({ where: { id: broken }, data: { status: "GENERATION_FAILED" } });
+    expect(await deleteGame(c, deleted, { type: "USER", id: owner.userId }, owner.userId)).toBe(true);
+    expect(await sweepQualityBatches(container, { deadlineAt: Date.now() + 270_000 })).toMatchObject({ failed: 1 });
+    // Whatever order the games come in, the deleted game's running batch is cancelled.
+    expect(fake.batches.map(b => b.cancelled)).toEqual([false, true]);
+  }, 300_000);
+
   it("purges a delivered batch answer with the game that owned it", async () => {
     const gameId = "batch-purged", w = await world(gameId); await paintFirst(gameId);
     const fake = new FakeBatches(opus()), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;

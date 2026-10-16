@@ -400,7 +400,15 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     }
     // Every open Message Batches round, before any review: polled, cancelled at its
     // deadline, or settled and linked once its batch has ended. Nothing is bought.
-    if (dual) await advanceQualityBatches(c, gameId, fence, options.hardDeadlineAt);
+    // A round it cannot advance stops the slice with its reason, as a review does.
+    if (dual) {
+      try { await advanceQualityBatches(c, gameId, fence, options.hardDeadlineAt); }
+      catch (error) {
+        await c.db.generationJob.updateMany({ where: { id: job.id, attempts: claim, status: "RUNNING" },
+          data: { status: "FAILED", lastError: (error instanceof Error ? error.message : String(error)).slice(0, 500) } });
+        throw error;
+      }
+    }
     // A first image and a first review for every appearance outrank another
     // question about a picture that already had one, so the budget can still
     // finish the other appearances before it pays for a second round.
