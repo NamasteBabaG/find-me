@@ -51,6 +51,10 @@ export const QUALITY_BATCH_CREATE_NEED_MS = 100_000;
 const POLL_NEED_MS = 35_000;
 /** Room for one more provider call: its 30-second timeout, and a second to keep what it returns. */
 const CALL_NEED_MS = 31_000;
+/** Room for the create call itself: its 90-second timeout, and a second to record its answer. */
+const CREATE_CALL_NEED_MS = 91_000;
+/** A sweep round's own budget for its calls, from its start: three reads of up to 30 seconds. */
+export const QUALITY_BATCH_SWEEP_ROUND_MS = 95_000;
 const CHANNEL = "anthropic-message-batches";
 const POLICY = visualReviewPolicy("scene-quality", "high");
 
@@ -151,6 +155,20 @@ async function settleUnbilled(ctx: Context, intent: QualityBatchIntent, batchId:
     amountMicroUsd: 0, costBasis: "provider-billed" }));
 }
 
+/**
+ * A create presumed lost (rule 1): its charge counted at the most it could be, as a conservative upper
+ * estimate, and never released; a copy that turns up later is already paid for in it. The evidence is
+ * the round's own, the same for every pass, so a second settlement is the same charge.
+ */
+async function settlePresumed(ctx: Context, round: QualityBatchRound) {
+  const { intent } = round;
+  const rawUsage = { basis: "a create that did not answer and that no complete search of the provider's batches found: counted at the most it could be billed",
+    customId: intent.customId, claim: round.presumed!.n };
+  await boardWizardBudgetOf(ctx.c).settle(intent.worldId, intent.batchKey, canonicalChargeEvidence({ providerNamespace: ctx.transport.namespace,
+    providerRequestId: `presumed/${intent.customId}`, usageId: sha(JSON.stringify(rawUsage)), rawUsage, model: intent.model,
+    amountMicroUsd: intent.batchReserveMicroUsd, costBasis: "conservative-upper-estimate" }));
+}
+
 /** The batch key's charge held as unknown, in full: the world reserves nothing more until a person reconciles it. */
 async function holdCharge(ctx: Context, round: QualityBatchRound, reason: string) {
   const budget = boardWizardBudgetOf(ctx.c), held = await budget.readRequest(round.intent.worldId, round.intent.batchKey);
@@ -210,9 +228,16 @@ async function create(ctx: Context, round: QualityBatchRound, claim: number): Pr
     throw Error("QUALITY_BATCH: the question differs from its round's intent");
   const blocked = await ensureReserved(ctx, round.intent);
   if (blocked) return blocked;
+  // Room for the whole create, read again after the ledger's work and again after the claim.
+  if (!roomFor(ctx, CREATE_CALL_NEED_MS)) return waiting("too little of this request is left to create the batch");
   // The claim before the create: of two workers only one sends it.
   const claimed = await writeEvent(ctx, round.intent.roundId, { kind: "claim", n: claim, at: Date.now() });
   if (!claimed.won) return waiting("another worker claimed this create");
+  if (!roomFor(ctx, CREATE_CALL_NEED_MS)) {
+    // Claimed and never sent: recorded as what it is, nothing created, so the next pass may claim again.
+    await writeEvent(ctx, round.intent.roundId, { kind: "refused", n: claim, at: Date.now(), status: 0, errorType: "not-sent", transient: true });
+    return waiting("too little of this request was left to send the create");
+  }
   let batchId: string;
   try { ({ batchId } = await ctx.transport.create([{ customId: round.intent.customId, params }])); }
   catch (error) {
@@ -335,26 +360,24 @@ async function advance(ctx: Context, roundId: string): Promise<QualityBatchGate>
       try { found = await ctx.transport.find(round.intent.customId, step.sinceMs, ctx.deadlineAt); }
       catch (error) { return waiting(`the provider could not be searched (${error instanceof Error ? error.message.slice(0, 200) : "unknown"})`); }
       // Every batch proven to carry the question is kept before anything is decided from it: a
-      // later search that no longer sees a copy cannot undo it. Two kept copies hold the round.
+      // later search that no longer sees a copy cannot undo it. Two copies hold the round.
       const known = await recordFound(ctx, roundId, found.proven, !found.undecided);
-      if (known.found.length > 1) continue;
+      if (known.batchIds.length > 1) continue;
       // One proven batch is the round's only when no other could still carry the question:
       // recording it while another runs could release that one's charge on the first's outcome.
-      if (found.undecided) return waiting(found.truncated ? "the search did not reach back to this question (too many batches, or too little of this request left); nothing is created meanwhile"
+      if (found.undecided) return waiting(found.truncated ? "the search did not reach back to this question (too many batches, or too little of this request left); nothing is decided meanwhile"
         : "a batch that could carry this question has not ended yet");
-      if (known.found.length === 1) {
-        await writeEvent(ctx, roundId, { kind: "submitted", n: round.claims.at(-1)!.n, batchId: known.found[0]!, at: Date.now() });
-        continue;
-      }
-      // Proven never created, and the game is not generating: nothing to ask, nothing billed.
-      if (ctx.stopping) {
-        if (!await stillStopped(ctx)) return waiting("the game is generating again; its own review creates the batch");
-        const closed = await closeUnsent(ctx, round, step.nextClaim);
-        if (closed !== "advanced") return closed;
-        continue;
-      }
-      const created = await create(ctx, round, step.nextClaim);
-      if (created !== "advanced") return created;
+      // What the round's batch is gets decided once (`submitted` and `presumed` share one name):
+      // a pass that read an older round and decides otherwise loses the write and reads again.
+      const n = round.claims.at(-1)!.n;
+      await writeEvent(ctx, roundId, known.found.length === 1 ? { kind: "submitted", n, batchId: known.found[0]!, at: Date.now() }
+        // None found: the create is presumed lost (rule 1). Nothing is sent again.
+        : { kind: "presumed", n, at: Date.now() });
+      continue;
+    }
+    if (step.step === "presumed") {
+      await settlePresumed(ctx, round);
+      await writeEvent(ctx, roundId, { kind: "fallback", batchId: null, resultType: "presumed-lost", errorType: null, at: Date.now() });
       continue;
     }
     // poll
@@ -520,19 +543,22 @@ export async function sweepQualityBatches(c: Container, options: { deadlineAt: n
       }
     } catch { failed++; }
   }
-  // The window opens once the records are read: reading them never takes the time the provider calls need.
-  const deadlineAt = Math.min(options.deadlineAt, Date.now() + (options.windowMs ?? QUALITY_BATCH_SWEEP_WINDOW_MS));
+  // The window for starting rounds opens once the records are read: reading them never takes the time
+  // the provider calls need. Each round started in it has its own budget for its calls, so a slow first
+  // read never leaves the next one no room, tick after tick; no call ends after `deadlineAt`.
+  const windowEnd = Date.now() + (options.windowMs ?? QUALITY_BATCH_SWEEP_WINDOW_MS);
   // Rotated: a round that is slow every time (a provider that answers late, then fails)
   // took each tick's whole window, every tick, and the rounds after it were never reached.
   const start = work.length ? Math.floor(Date.now() / SWEEP_ROTATION_MS) % work.length : 0;
   for (let i = 0; i < work.length; i++) {
-    if (deadlineAt - Date.now() < POLL_NEED_MS) break;
+    if (Date.now() >= windowEnd || options.deadlineAt - Date.now() < POLL_NEED_MS) break;
     const { gameId, roundId, terminal } = work[(start + i) % work.length]!;
     // A failed write or read leaves the round as it is, for the next tick or a person.
     try {
       // The game as it is now, and again before any action its own worker would not take.
       const readGame = () => c.db.game.findUnique({ where: { id: gameId }, select: { status: true, deletedAt: true } });
       const game = await readGame(), live = generating(game);
+      const deadlineAt = Math.min(options.deadlineAt, Date.now() + QUALITY_BATCH_SWEEP_ROUND_MS);
       const ctx: Context = { c, transport, gameId, fence: null, question: null, stopping: !live, deadlineAt,
         stillStopped: async () => !generating(await readGame()) };
       if (!terminal) {

@@ -117,11 +117,14 @@ intent ─► reserve batch key (half) ─► claim n ─► create ─► submi
 - The intent is durable before the reservation, and each claim before its create.
 - A create that did not answer (timeout, network, 5xx, an unreadable 2xx) is uncertain. It waits out a 15-minute grace.
 - After the grace, only a search of the provider's batches decides, newest first, back to the intent. It reads results only from the documented path built from a checked batch id.
+  - **Nothing is ever sent again after a create that may have reached the provider.** At most one create of a round can reach it, so at most one copy of its question can exist; only the provider could make a second.
   - Every batch a search proves to carry the question is kept for good (`found-n`) before anything is decided; a later search that no longer sees it changes nothing.
-  - Two kept copies hold the round at once and for good, with the charge unknown. Its search for further copies goes on as housekeeping until no candidate could still carry the question, so a deleted game's copies are all found and deleted.
   - A candidate that has not ended leaves the search undecided, and the round waits, **even when one batch is already proven**: recording that one could release the other's possible charge on the first one's outcome.
   - One kept copy, with nothing undecided, is recorded as the round's batch.
-  - Only proven absence allows a new claim and create. Absence is proven only by a complete inventory: every list page to its documented end (`has_more`, with a cursor whenever more follow), and every ended batch's results matching that batch's own `request_counts` type by type, each id once. An empty, cut-off or self-contradicting results file is an error, never "not there" and never "unbilled".
+  - None, after a complete search, presumes the create lost. **Its charge is settled at the most it could be** (the batch reservation, as a conservative upper estimate) and never released; a copy that turns up later is already paid for in it. The question is then asked synchronously. Negative evidence never releases money and never sends anything.
+  - The round's batch and that presumption are one decision, made once: they share one compare-and-set name, so a pass that read an older round and decides otherwise loses the write and reads again.
+  - Two copies (which only the provider could make) hold the round at once and for good, with the charge unknown; its search for further copies goes on as housekeeping, so a deleted game's copies are all found and deleted.
+  - A search counts only a complete inventory: every list page to its documented end (`has_more`, with a cursor whenever more follow), and every ended batch's results matching that batch's own `request_counts` type by type, each id once. An empty, cut-off or self-contradicting results file is an error, never "not there" and never "unbilled".
 - A documented 4xx refusal with Anthropic's error envelope proves nothing was created.
   - `429` waits 5 minutes and tries again.
   - Others are held at zero.
@@ -158,7 +161,8 @@ intent ─► reserve batch key (half) ─► claim n ─► create ─► submi
   - Each game's state is read again just before its rounds are touched, and again before a cancel or a close: a game resumed meanwhile is left to its own slices.
   - A round that never reached the provider (stopped after its intent, or every create refused) ends at zero rather than waiting for a create that a stopped game never makes. The close first takes the claim a create would take, so a worker that resumed the game and claimed it keeps its create.
   - A held round still searching for copies is searched for every game, generating or not: a held review parks its job, and a parked job runs no slice.
-- No provider call starts unless its whole timeout fits before the deadline of the slice or tick making it.
+- No provider call starts unless its whole timeout fits before the deadline of the slice or tick making it. A create is checked again after the ledger's work and after its claim; a claim it had no room to send is recorded as never sent.
+- In the sweep, rounds start within the tick's 40-second window, and each round started has its own 95 seconds for its calls, so a slow first read never leaves the next one no room, tick after tick.
 - Finished rounds of generating games are deleted by their own slices.
 - A held round keeps its batches for the person, **unless its game was deleted**: then they are deleted at the provider too, as they are found, each pass recorded (`deleted-n`), while the unknown charge stays held in the ledger. The hold is the ledger's to keep; the imagery is the child's.
 - **Failure handling (`80d7de72`):**
@@ -169,8 +173,8 @@ intent ─► reserve batch key (half) ─► claim n ─► create ─► submi
 
 | Suite | Result |
 | --- | --- |
-| `quality-batch.test.ts`: real SQLite, ledger, retained store, dual review and world slice, with a scripted provider | **40/40** (21 in `1df2e366`, 2 in `80d7de72`, 6 for Codex's HOLD, 5 for the re-review, 6 for the third pass) |
-| `quality-batch-round.test.ts`: the pure rules | **31/31** (16, plus 5 for the HOLD and 10 for the third pass) |
+| `quality-batch.test.ts`: real SQLite, ledger, retained store, dual review and world slice, with a scripted provider | **42/42** (21 in `1df2e366`, 2 in `80d7de72`, 6 for Codex's HOLD, 5 for the re-review, 6 for the third pass, 2 for the fourth; 3 rewritten for it) |
+| `quality-batch-round.test.ts`: the pure rules | **36/36** (16, plus 5 for the HOLD, 10 for the third pass and 5 for the fourth) |
 | `anthropic-message-batches.test.ts`: the transport on a scripted wire, plus pricing | **12/12** (8, plus 1 for the HOLD, 2 for the re-review and 1 for the third pass) |
 | `world-budget.test.ts` and `board-wizard-budget.test.ts`: `WorldBudget.link` | 3 and 1 new |
 
@@ -206,7 +210,7 @@ Among the first 23:
 | --- | --- |
 | Pricing by the tier actually served | `visualReviewBatchCharge`: batch at half, standard at standard, anything else held as unknown. Tests cover each tier, no tier and another model. |
 | Durable waiting beyond the worker window | AuditLog rounds plus the per-slice poller. The question waits across any number of invocations (deadline test: 6 h). |
-| Interruption or 5xx: no double purchase, no deletion of an uncertain charge | Claims, grace and a search that proves absence only from a complete inventory: one batch recorded only when no other could still carry the question, two held. Uncertain charges are only ever marked unknown, never settled or deleted. The interruption replays are tested. |
+| Interruption or 5xx: no double purchase, no deletion of an uncertain charge | No create is ever sent twice. A create that did not answer is found by a complete search and recorded, or presumed lost and settled at the most it could cost; one decision, made once. Uncertain charges are never released: marked unknown, or counted at their maximum. The interruption replays are tested. |
 | 27 valid approved results before READY | The whole-world test: READY only with 27 published appearances, each with a verified quality stage. A held world parks, and is never READY. |
 | A runner's `complete` with `money.held` is not readiness | In the product, a held charge holds the world: no reservation, no publication. The unpriced tests show this. |
 | The judges' questions and the quality requirement unchanged | Same params minus `service_tier`; same reader; same `verifiedDualStage`. Sol is untouched. |
@@ -272,6 +276,8 @@ Each mutant edits one anchor and runs only its targeted tests. Each counts only 
   - the F4 sibling: no game read before a cancel;
   - N3: a cancel without room; a deletion without room; a search's results reads, and its pages, without room; the results file read without room;
   - N4: the sweep skipping a live game's search; housekeeping that never searches.
+- **Codex's fourth pass: 49/49,** each killed by the test it targets, with the tree restored and verified. 41 from the earlier rounds were run again, re-anchored, and 1 was retired with the check it guarded (the refusal of a copy found beside a recorded batch, removed by design). The 8 new: a create sent again after a search; a claim after an uncertain create accepted; a presumed-lost create settled at zero; a presumed fallback without its presumption; the presumption under its own name; no room check after the ledger's work; none after the claim; no budget per sweep round.
+  - One first survived: the window opening before the records are read. Rounds now start until the window ends, so eight seconds of reading no longer kept them all out. Its test now reads for longer than the whole window, and kills it.
 
 **The full suite (`npm run check`) on `1df2e366`:**
 - tsc is clean.
@@ -293,6 +299,10 @@ Each mutant edits one anchor and runs only its targeted tests. Each counts only 
 - tsc is clean.
 - Vitest: 5,131 passed, 2 expected failures, 55 skipped, **2 failed**: the same two load timeouts in `local-patch-incremental-review.test.ts`. Alone, on this code, that file passes 79/79.
 
+**The full suite on the fourth round:**
+- tsc is clean.
+- Vitest: 5,137 passed, 2 expected failures, 55 skipped, **3 failed**, all in `local-patch-incremental-review.test.ts` under full-suite load: the same two 20-second timeouts, and a Prisma interactive transaction that timed out ("Transaction not found") in the painting code, which this branch does not change. Alone, on this code, that file passes 79/79.
+
 ## Commits
 
 | Commit | What |
@@ -305,7 +315,8 @@ Each mutant edits one anchor and runs only its targeted tests. Each counts only 
 | `233c55e7` | feat(budget): link a second key to a settled charge without capacity (Codex P1-5) |
 | `b90d818d` | fix(qa): the batch channel's recovery, deletion and alias (Codex HOLD) |
 | `e086b10c` | fix(qa): the batch channel after Codex's re-review (F1-F5) |
-| the commit carrying this section | fix(qa): the batch channel's records hold under time and concurrency (Codex's third pass) |
+| `dd26cc03` | fix(qa): the batch channel's records hold under time and concurrency (Codex's third pass) |
+| the commit carrying this section | fix(qa): the batch channel never sends twice and never releases on absence (Codex's fourth pass) |
 
 Each was verified on its own in a clean worktree:
 - `afbd8ee2`: tsc and its regression test;
@@ -329,6 +340,11 @@ The split was proven exact: replaying step 2's edits onto the step-1 versions re
 9. **Batch ids.** Anthropic's reference says "The format and length of IDs may change over time." The transport accepts only `msgbatch_` followed by letters and digits. A new format fails closed: every create becomes uncertain and every batched question waits, so a deployment would show it at once, but it would stall the channel until the pattern is widened.
 10. **A dedicated Anthropic workspace (Codex F6).** A search after a lost create reads every batch the API key's workspace created after the round's intent, newest first, up to 20 pages of 1,000, and only while the request has time left. Beyond that it stays undecided, and so does the round: nothing is created or released, and the waiting reason says why. Codex accepted this for the QA channel. A workspace used only by this channel keeps the search to this product's own batches, but does not guarantee the limit: at 27 batches per world, 741 worlds already make 20,000. Making the search resumable across passes is the fix before that volume.
 11. **A provider answer that contradicts itself** (Codex F1) leaves its round waiting, with the charge pending, until a person looks. The stalled-generation alert reports the game.
+12. **Accepted residuals of "never send twice" (Codex's fourth pass).**
+    - A create presumed lost that in fact made its batch costs twice: the batch, counted at its maximum, and the synchronous question. Only a create whose answer was lost and whose batch no complete search found after 15 minutes can do this.
+    - Copies the provider itself might make of one request are held, deleted and counted as one charge: a client cannot stop a provider from billing twice for one request.
+    - A search that proves a copy and then fails on a later read does not keep that proof. It can only delay the round, or lead to the presumption, which releases nothing.
+    - The presumption counts the most a batch can be billed at Anthropic's documented batch rate (half of standard), which is what the batch reservation covers. A presumed-lost batch billed at another rate would be under-counted; one whose answer is read is priced by the tier that served it, as before.
 
 ## 7. Codex's review of `fcf4c0ea`: HOLD, and the fixes
 
@@ -391,3 +407,16 @@ Codex closed F1 (it ran 605 two-line type and count combinations with no wrong a
 **The record format changed again, before any deployment.** `found-n` events keep the copies; `deleted-n` events record each pass's deletions (a round can be cleaned over several passes); a claim may be `closing`; `held` no longer names batches.
 
 **The windows that remain.** A game resumed after the last read and before the close's claim is safe: the claim decides, and the worst case is that a resumed game's question falls back to the synchronous price. A game resumed after the last read and before a cancel costs the same fallback, never money that is not counted.
+
+### Codex's fourth pass on `dd26cc03`: HOLD, and a change of principle
+
+Codex confirmed that the same-name claim now excludes competing creates on every create path, that a close interrupted after its claim finishes without creating, that concurrent `found-n` and `deleted-n` writers keep the union, and that a live game's sweep only searches. It then found four P1 and two P2 findings, all about decisions taken from a negative search or a stale read:
+
+| # | Finding | Answer | Regression test |
+| --- | --- | --- | --- |
+| P1 | A stale negative search could close the round and settle its reservation at zero after another pass had recorded a copy. | **Negative evidence never releases money.** A complete search that finds nothing presumes the create lost and settles its charge at the most it could be (the reservation, as a conservative upper estimate). The zero settlement remains only for rounds no create ever reached (nothing claimed, or every create refused outright), which never search. | A lost create no search finds: settled at its reservation, never at zero, with one create in all; the question is asked synchronously. |
+| P1 | A stale recovery pass could create again after another pass had made the round terminal `held`. | **Nothing is ever sent again after a create that may have reached the provider.** The round only searches; the step that created after a negative search is gone, and the record refuses a claim after an uncertain create. | The same lost create: `["create", "find"]` and nothing more. The pure rules: no create step after an uncertain claim, and such a record refused. |
+| P1 | A search that proved a copy and then failed on a later read lost that proof. | Harmless now: losing a proof can only lead to the presumption, which counts the maximum and releases nothing. The proof gathered before the error is still not kept (§6). | Covered by the two above. |
+| P1 | A late search proving a second copy could make a round that had already recorded its batch unreadable. | With one create, a second copy can only come from the provider. The record no longer refuses a copy found beside the recorded batch: it holds an undecided round, and keeps a decided one readable, with every copy in its deletions. The round's batch and the presumption are one decision under one compare-and-set name. | A stale negative search loses the decision to a pass that recorded the batch right after its last read: no presumption, nothing counted as lost, the round readable. |
+| P2 | The fixed sweep window starved a round whose first read was slow (a 29-second status left no room for the cancel, tick after tick). | Rounds start within the window; each started round has its own 95 seconds for its calls (three reads of up to 30 seconds), always inside the tick's deadline. | A status slow on every tick: the cancel follows in the same tick, each call started with room for its timeout. Four slow deletions: three in one round, the fourth on the next tick. |
+| P2 | A create's room was checked before the ledger's work and the claim, not at dispatch. | Room for the whole 90-second create is checked again after the ledger's work and after the claim. A claim with no room left is recorded as never sent (`refused`, `not-sent`), so the next pass may claim again. | Codex's probe (101 seconds, 11 of them in the ledger): nothing claimed or sent. An 11-second claim write: claimed, recorded as never sent, nothing created. |

@@ -17,7 +17,22 @@ describe("a quality question's batch round, pure", () => {
     expect(step(T0)).toEqual({ step: "create", claim: 1 });
     const claimed: QualityBatchEvent = { kind: "claim", n: 1, at: T0 };
     expect(step(T0 + QUALITY_BATCH_CREATE_GRACE_MS - 1, claimed)).toMatchObject({ step: "wait" });
-    expect(step(T0 + QUALITY_BATCH_CREATE_GRACE_MS, claimed)).toEqual({ step: "find", sinceMs: T0, nextClaim: 2 });
+    expect(step(T0 + QUALITY_BATCH_CREATE_GRACE_MS, claimed)).toEqual({ step: "find", sinceMs: T0 });
+  });
+
+  it("never sends again after a create that may have reached the provider: the batch is found, or the create is presumed lost", () => {
+    const claimed: QualityBatchEvent = { kind: "claim", n: 1, at: T0 };
+    // A search found nothing: presumed lost, which settles at the most and falls back; there is no step that creates.
+    const presumed: QualityBatchEvent = { kind: "presumed", n: 1, at: T0 + QUALITY_BATCH_CREATE_GRACE_MS };
+    expect(step(T0 + 9 * HOUR, claimed, presumed)).toMatchObject({ step: "presumed" });
+    const fellBack = round(claimed, presumed, { kind: "fallback", batchId: null, resultType: "presumed-lost", errorType: null, at: T0 });
+    expect(fellBack.terminal).toMatchObject({ kind: "fallback", resultType: "presumed-lost" });
+    // A copy that turns up later is kept, readable, and deleted like any other: it is already paid for.
+    const late = round(claimed, presumed, { kind: "fallback", batchId: null, resultType: "presumed-lost", errorType: null, at: T0 },
+      { kind: "found", n: 1, batchIds: ["msgbatch_1"], complete: true, at: T0 });
+    expect([late.batchIds, qualityBatchCleanupDue(late, false)]).toEqual([["msgbatch_1"], true]);
+    // The presumption and a recorded batch share one name: a round has one or the other.
+    expect(qualityBatchEventName(presumed)).toBe(qualityBatchEventName({ kind: "submitted", n: 1, batchId: "msgbatch_1", at: T0 }));
   });
 
   it("polls a recorded batch and cancels it only from its deadline", () => {
@@ -31,9 +46,6 @@ describe("a quality question's batch round, pure", () => {
     expect(step(T0 + QUALITY_BATCH_REFUSAL_BACKOFF_MS - 1, ...refused(1, T0))).toMatchObject({ step: "wait" });
     expect(step(T0 + QUALITY_BATCH_REFUSAL_BACKOFF_MS, ...refused(1, T0))).toEqual({ step: "create", claim: 2 });
     expect(step(T0 + 6 * HOUR, ...refused(1, T0), ...refused(2, T0 + HOUR))).toMatchObject({ step: "fallback-unsent" });
-    // One create whose answer was lost may have reached the provider: never an unsent fallback.
-    const lost: QualityBatchEvent[] = [{ kind: "claim", n: 1, at: T0 }, { kind: "claim", n: 2, at: T0 + HOUR }, { kind: "refused", n: 2, at: T0 + HOUR, status: 429, errorType: "rate_limit_error", transient: true }];
-    expect(step(T0 + 7 * HOUR, ...lost)).toEqual({ step: "create", claim: 3 });
   });
 
   it("holds a create refused for good", () => {
@@ -64,10 +76,14 @@ describe("a quality question's batch round, pure", () => {
       { kind: "answered", batchId: "msgbatch_1", amountMicroUsd: 1, servedTier: "batch", at: T0 }, { kind: "deleted", n: 2, batchIds: ["msgbatch_1"], at: T0 }]],
     ["a search naming one batch twice", [{ kind: "claim", n: 1, at: T0 }, { kind: "found", n: 1, batchIds: ["msgbatch_1", "msgbatch_1"], complete: true, at: T0 }]],
     ["searches with a gap", [{ kind: "claim", n: 1, at: T0 }, { kind: "found", n: 2, batchIds: ["msgbatch_1"], complete: true, at: T0 }]],
-    ["one batch recorded and another found", [{ kind: "claim", n: 1, at: T0 }, { kind: "found", n: 1, batchIds: ["msgbatch_2"], complete: false, at: T0 },
-      { kind: "submitted", n: 1, batchId: "msgbatch_1", at: T0 }]],
-    ["two copies found and then not held", [{ kind: "claim", n: 1, at: T0 }, { kind: "found", n: 1, batchIds: ["msgbatch_1", "msgbatch_2"], complete: true, at: T0 },
+    ["two copies found and then never created", [{ kind: "claim", n: 1, at: T0 }, { kind: "found", n: 1, batchIds: ["msgbatch_1", "msgbatch_2"], complete: true, at: T0 },
       { kind: "fallback", batchId: null, resultType: "never-created", errorType: null, at: T0 }]],
+    ["a claim after a create that may have reached the provider", [{ kind: "claim", n: 1, at: T0 }, { kind: "claim", n: 2, at: T0 }]],
+    ["a presumption beside a recorded batch", [{ kind: "claim", n: 1, at: T0 }, { kind: "submitted", n: 1, batchId: "msgbatch_1", at: T0 }, { kind: "presumed", n: 1, at: T0 }]],
+    ["a presumed fallback without the presumption", [{ kind: "claim", n: 1, at: T0 }, { kind: "fallback", batchId: null, resultType: "presumed-lost", errorType: null, at: T0 }]],
+    ["a presumption that falls back as never created", [{ kind: "claim", n: 1, at: T0 }, { kind: "presumed", n: 1, at: T0 },
+      { kind: "fallback", batchId: null, resultType: "never-created", errorType: null, at: T0 }]],
+    ["a presumption under a refused create", [{ kind: "claim", n: 1, at: T0 }, { kind: "refused", n: 1, at: T0, status: 429, errorType: null, transient: true }, { kind: "presumed", n: 1, at: T0 }]],
     ["a closing claim that is not the last", [{ kind: "claim", n: 1, at: T0, closing: true }, { kind: "claim", n: 2, at: T0 }]],
     ["a create sent under a closing claim", [{ kind: "claim", n: 1, at: T0, closing: true }, { kind: "submitted", n: 1, batchId: "msgbatch_1", at: T0 }]],
     ["a closed round held", [{ kind: "claim", n: 1, at: T0, closing: true }, { kind: "held", reason: "x", at: T0 }]],
@@ -84,7 +100,7 @@ describe("a quality question's batch round, pure", () => {
     const one: QualityBatchEvent = { kind: "found", n: 1, batchIds: ["msgbatch_1"], complete: false, at: later };
     // One copy proven while another might still run: the round keeps searching.
     expect(round(claimed, one)).toMatchObject({ found: ["msgbatch_1"], searches: 1, searchComplete: false });
-    expect(step(later, claimed, one)).toEqual({ step: "find", sinceMs: T0, nextClaim: 2 });
+    expect(step(later, claimed, one)).toEqual({ step: "find", sinceMs: T0 });
     // A second copy found later, even with nothing new after it: held, and the hold cannot be undone.
     const two: QualityBatchEvent = { kind: "found", n: 2, batchIds: ["msgbatch_2"], complete: false, at: later };
     expect(step(later, claimed, one, two)).toEqual({ step: "duplicates", reason: "2 batches carry this one question" });

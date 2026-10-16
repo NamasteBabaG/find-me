@@ -12,12 +12,17 @@
  *
  * The rules it keeps, each a way the money or the answer can be lost:
  * 1. The intent is durable before the reservation, and every claim before its
- *    create. A create that did not answer is never "not created": it waits out
- *    the grace, and then only a search of the provider's batches that ends before
- *    the intent decides. Every batch a search proves to carry the question is
- *    recorded at once, for good: a later search that no longer sees it changes
- *    nothing. Two recorded copies hold the round. One is taken as the round's
- *    batch only when no other batch that could carry the question still runs.
+ *    create. A create that did not answer is never "not created", and nothing
+ *    is ever sent again after it: at most one create of a round can reach the
+ *    provider, so at most one copy of its question can exist. After the grace,
+ *    only a search of the provider's batches that ends before the intent
+ *    decides. Every batch it proves to carry the question is recorded at once,
+ *    for good. One copy, with no other batch that could carry the question still
+ *    running, is the round's batch. None, after a complete search, presumes the
+ *    create lost: its charge is counted at the most it could be and is never
+ *    released, and the question is asked synchronously. The batch and the
+ *    presumption are one decision, made once. Two copies (which only the
+ *    provider could make) hold the round.
  * 2. A batch still running at the round's deadline is cancelled once (and again
  *    while it keeps running). What it finished is billed at the batch rate.
  * 3. Only a result the provider documents as unbilled (errored, canceled,
@@ -60,6 +65,9 @@ export type QualityBatchEvent =
   | { readonly kind: "claim"; readonly n: number; readonly at: number; readonly closing?: true }
   | { readonly kind: "refused"; readonly n: number; readonly at: number; readonly status: number; readonly errorType: string | null; readonly transient: boolean }
   | { readonly kind: "submitted"; readonly n: number; readonly batchId: string; readonly at: number }
+  /** The create under claim `n` is presumed lost: it did not answer, and no complete search found its batch.
+   * It takes `submitted`'s name: what the round's batch is gets decided once. */
+  | { readonly kind: "presumed"; readonly n: number; readonly at: number }
   /** Batches a search proved to carry the question that were not yet recorded (possibly none);
    * `complete`: that search left no batch undecided. */
   | { readonly kind: "found"; readonly n: number; readonly batchIds: readonly string[]; readonly complete: boolean; readonly at: number }
@@ -76,6 +84,7 @@ export type QualityBatchRound = {
   readonly claims: readonly Extract<QualityBatchEvent, { kind: "claim" }>[];
   readonly refusals: readonly Extract<QualityBatchEvent, { kind: "refused" }>[];
   readonly submitted: Extract<QualityBatchEvent, { kind: "submitted" }> | null;
+  readonly presumed: Extract<QualityBatchEvent, { kind: "presumed" }> | null;
   readonly cancelAt: number | null;
   readonly terminal: QualityBatchTerminal | null;
   /** Every batch any search proved to carry this question, in the order found. */
@@ -103,7 +112,8 @@ export const qualityBatchReserveMicroUsd = (syncReserveMicroUsd: number) => Math
 /** The event id suffix: one row per name, so writing it twice is refused by the store. */
 export function qualityBatchEventName(event: QualityBatchEvent): string {
   return event.kind === "claim" || event.kind === "refused" || event.kind === "found" || event.kind === "deleted" ? `${event.kind}-${event.n}`
-    : event.kind === "answered" || event.kind === "fallback" || event.kind === "held" ? "terminal" : event.kind;
+    : event.kind === "answered" || event.kind === "fallback" || event.kind === "held" ? "terminal"
+    : event.kind === "presumed" ? "submitted" : event.kind;
 }
 
 const numbered = (events: readonly { n: number }[]) => events.every((e, i) => e.n === i + 1);
@@ -116,55 +126,62 @@ export function qualityBatchRoundOf(events: readonly QualityBatchEvent[]): Quali
   if (intents.length !== 1) throw Error("QUALITY_BATCH: a round has exactly one intent");
   const intent = (intents[0] as Extract<QualityBatchEvent, { kind: "intent" }>).intent;
   const of = <K extends QualityBatchEvent["kind"]>(kind: K) => events.filter((e): e is Extract<QualityBatchEvent, { kind: K }> => e.kind === kind);
-  const claims = of("claim").sort((a, b) => a.n - b.n), refusals = of("refused").sort((a, b) => a.n - b.n), submitted = of("submitted");
+  const claims = of("claim").sort((a, b) => a.n - b.n), refusals = of("refused").sort((a, b) => a.n - b.n);
+  const submitted = of("submitted"), presumed = of("presumed");
   const finds = of("found").sort((a, b) => a.n - b.n), deletions = of("deleted").sort((a, b) => a.n - b.n);
   const terminals = events.filter((e): e is QualityBatchTerminal => e.kind === "answered" || e.kind === "fallback" || e.kind === "held");
   if (!numbered(claims)) throw Error("QUALITY_BATCH: claims are numbered from one without gaps");
-  if (refusals.some(r => !claims.some(c => c.n === r.n)) || submitted.some(s => !claims.some(c => c.n === s.n)))
-    throw Error("QUALITY_BATCH: an outcome names a claim that was never made");
-  if (submitted.length > 1 || terminals.length > 1 || of("cancel").length > 1) throw Error("QUALITY_BATCH: a round records each outcome once");
-  if (submitted[0] && refusals.some(r => r.n === submitted[0]!.n)) throw Error("QUALITY_BATCH: one create was both refused and submitted");
-  // A claim after a refusal or a lost create is allowed; a claim after a recorded batch is not.
-  if (submitted[0] && claims.some(c => c.n > submitted[0]!.n)) throw Error("QUALITY_BATCH: a claim after the batch was recorded");
+  if ([...refusals, ...submitted, ...presumed].some(e => !claims.some(c => c.n === e.n))) throw Error("QUALITY_BATCH: an outcome names a claim that was never made");
+  if (submitted.length + presumed.length > 1 || terminals.length > 1 || of("cancel").length > 1) throw Error("QUALITY_BATCH: a round records each outcome once");
+  const decided = submitted[0] ?? presumed[0] ?? null;
+  if (decided && refusals.some(r => r.n === decided.n)) throw Error("QUALITY_BATCH: one create was both refused and recorded");
+  if (decided && claims.some(c => c.n > decided.n)) throw Error("QUALITY_BATCH: a claim after the round's batch was decided");
+  // Rule 1: after a create that may have reached the provider, nothing is sent again.
+  if (claims.slice(0, -1).some(c => !refusals.some(r => r.n === c.n))) throw Error("QUALITY_BATCH: a claim after a create that may have reached the provider");
   const closing = claims.filter(c => c.closing);
-  if (closing.some(c => c !== claims.at(-1) || refusals.some(r => r.n === c.n) || submitted.some(s => s.n === c.n)))
+  if (closing.some(c => c !== claims.at(-1) || refusals.some(r => r.n === c.n) || decided?.n === c.n))
     throw Error("QUALITY_BATCH: only the last claim may close the round, and nothing is sent under it");
   if (!numbered(finds) || finds.some(f => !ids(f.batchIds, true) || typeof f.complete !== "boolean"))
     throw Error("QUALITY_BATCH: searches are numbered from one and name their batches once");
   const found = [...new Set(finds.flatMap(f => f.batchIds))];
-  if (submitted[0] && found.some(id => id !== submitted[0]!.batchId)) throw Error("QUALITY_BATCH: a round recorded one batch and found another");
   const terminal = terminals[0] ?? null;
   if (terminal?.kind === "answered" && (!submitted[0] || terminal.batchId !== submitted[0].batchId))
     throw Error("QUALITY_BATCH: an answer from a batch this round never recorded");
   if (terminal?.kind === "fallback" && (terminal.batchId === null ? !!submitted[0] : terminal.batchId !== submitted[0]?.batchId))
     throw Error("QUALITY_BATCH: a fallback from a batch this round never recorded");
-  if (terminal && terminal.kind !== "held" && found.length > 1) throw Error("QUALITY_BATCH: a round that found two copies can only be held");
-  if (found.length && (closing.length || terminal?.kind === "fallback" && terminal.batchId === null))
+  if (terminal?.kind === "fallback" && terminal.batchId === null && (terminal.resultType === "presumed-lost") !== !!presumed[0])
+    throw Error("QUALITY_BATCH: a round falls back as presumed lost exactly when it presumed its create lost");
+  // Unsent means no create reached the provider, so no search ever ran: a round that found a copy is never closed unsent.
+  if (found.length && (closing.length || terminal?.kind === "fallback" && terminal.batchId === null && terminal.resultType !== "presumed-lost"))
     throw Error("QUALITY_BATCH: a round that found a copy of its question never ends unsent");
   if (closing.length && terminal && (terminal.kind !== "fallback" || terminal.batchId !== null)) throw Error("QUALITY_BATCH: a closed round can only fall back unsent");
   const batchIds = [...new Set([...submitted.map(s => s.batchId), ...found])];
   if (!numbered(deletions) || deletions.some(d => !ids(d.batchIds, false) || d.batchIds.some(id => !batchIds.includes(id))))
     throw Error("QUALITY_BATCH: a deletion names other batches than the round's");
   const cancel = events.find((e): e is Extract<QualityBatchEvent, { kind: "cancel" }> => e.kind === "cancel");
-  return { intent, claims, refusals, submitted: submitted[0] ?? null, cancelAt: cancel?.at ?? null, terminal, found, searches: finds.length,
-    searchComplete: finds.at(-1)?.complete ?? false, batchIds, deletedIds: [...new Set(deletions.flatMap(d => d.batchIds))], deletions: deletions.length };
+  return { intent, claims, refusals, submitted: submitted[0] ?? null, presumed: presumed[0] ?? null, cancelAt: cancel?.at ?? null, terminal, found,
+    searches: finds.length, searchComplete: finds.at(-1)?.complete ?? false, batchIds,
+    deletedIds: [...new Set(deletions.flatMap(d => d.batchIds))], deletions: deletions.length };
 }
 
 export type QualityBatchStep =
   | { readonly step: "done"; readonly terminal: QualityBatchTerminal }
   | { readonly step: "create"; readonly claim: number }
   | { readonly step: "wait"; readonly reason: string }
-  | { readonly step: "find"; readonly sinceMs: number; readonly nextClaim: number }
+  | { readonly step: "find"; readonly sinceMs: number }
   | { readonly step: "poll"; readonly batchId: string; readonly cancelDue: boolean }
   /** End the round unsent; `claim`: the claim to take first, null when it is already taken. */
   | { readonly step: "fallback-unsent"; readonly claim: number | null; readonly reason: string }
+  /** The create is presumed lost: count its charge at the most it could be, then fall back. */
+  | { readonly step: "presumed"; readonly reason: string }
   | { readonly step: "duplicates"; readonly reason: string }
   | { readonly step: "hold"; readonly reason: string };
 
 /** What this round may do now. */
 export function nextQualityBatchStep(round: QualityBatchRound, now: number): QualityBatchStep {
   if (round.terminal) return { step: "done", terminal: round.terminal };
-  if (round.found.length > 1) return { step: "duplicates", reason: `${round.found.length} batches carry this one question` };
+  if (round.batchIds.length > 1) return { step: "duplicates", reason: `${round.batchIds.length} batches carry this one question` };
+  if (round.presumed) return { step: "presumed", reason: "the create did not answer and no complete search found its batch" };
   if (round.submitted) return { step: "poll", batchId: round.submitted.batchId, cancelDue: now >= round.intent.deadlineAt };
   const last = round.claims.at(-1);
   if (last?.closing) return { step: "fallback-unsent", claim: null, reason: "the round was being closed unsent" };
@@ -179,7 +196,7 @@ export function nextQualityBatchStep(round: QualityBatchRound, now: number): Qua
     return { step: "create", claim: last.n + 1 };
   }
   if (now - last.at < QUALITY_BATCH_CREATE_GRACE_MS) return { step: "wait", reason: "a create may still be in flight" };
-  return { step: "find", sinceMs: round.intent.intentAt, nextClaim: last.n + 1 };
+  return { step: "find", sinceMs: round.intent.intentAt };
 }
 
 /** Whether a held round still searches for copies of its question (rule 5). */

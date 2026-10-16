@@ -28,7 +28,7 @@ import { LOCAL_PATCH_STYLE, runLocalPatchWorldSlice } from "../local-patch-world
 import { verifiedDualStage } from "../local-patch-dual-evidence";
 import { DUAL_VISUAL_REVIEW_V3, DUAL_VISUAL_REVIEW_VERSION, pinVisualReviewRelease } from "../visual-review-release";
 import { QUALITY_BATCH_CHANNEL, QUALITY_BATCH_DEADLINE_MS, pinQualityChannel, qualityChannelAuditId, qualityChannelOf } from "../quality-channel";
-import { QUALITY_BATCH_ACTION, advanceQualityBatches, qualityBatchKeyOf, sweepQualityBatches } from "../quality-batch";
+import { QUALITY_BATCH_ACTION, QUALITY_BATCH_SWEEP_ROUND_MS, advanceQualityBatches, qualityBatchKeyOf, sweepQualityBatches } from "../quality-batch";
 import { sha256Bytes } from "../fixed-sprite";
 import { SELF_REPAIR_REQUEST_ACTION } from "../local-patch-self-repair";
 import { planLocalPatchEvidenceRecovery } from "../local-patch-evidence-plan";
@@ -161,8 +161,8 @@ class FakeBatches implements QualityBatchTransport {
 }
 
 const scene = (gameId: string, board = BOARDS[0]!) => ({ gameId, sceneId: `gsc-${gameId}-${board.board}` });
-const review = (container: Container, gameId: string, board = BOARDS[0]!) =>
-  reviewLocalPatchBoard(container, { ...scene(gameId, board), deadlineAt: Date.now() + 270_000 }, { fence: async () => {} });
+const review = (container: Container, gameId: string, board = BOARDS[0]!, deadlineMs = 270_000) =>
+  reviewLocalPatchBoard(container, { ...scene(gameId, board), deadlineAt: Date.now() + deadlineMs }, { fence: async () => {} });
 const rows = (gameId: string) => db.targetVariantAsset.findMany({ where: { targetInstance: { gameScene: { gameId } } }, orderBy: { id: "asc" } });
 const events = (gameId: string) => db.auditLog.findMany({ where: { entityId: gameId, action: QUALITY_BATCH_ACTION }, orderBy: { id: "asc" } });
 const eventNames = async (gameId: string) => (await events(gameId)).map(row => row.id.replace(/^aud_qb_qb[a-f0-9]{30}_/, "")).sort();
@@ -307,7 +307,7 @@ describe("Opus scene-quality questions through Message Batches", () => {
     expect(qualityCalls(request)).toBe(0);
   }, 300_000);
 
-  it("creates again only after a search proves the lost create made nothing", async () => {
+  it("never sends a lost create again: one no complete search finds is presumed lost, counted at the most, and asked synchronously", async () => {
     const gameId = "batch-lost-before", w = await world(gameId); await paintFirst(gameId);
     const fake = new FakeBatches(opus()), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
     fake.createPlan = ["lost-before-create"];
@@ -315,14 +315,50 @@ describe("Opus scene-quality questions through Message Batches", () => {
     const start = Date.now();
     await review(container, gameId);
     vi.setSystemTime(start + QUALITY_BATCH_CREATE_GRACE_MS);
-    expect(await review(container, gameId)).toMatchObject({ state: "pending" });
-    expect(fake.calls).toEqual(["create", "find", "create", "status"]);
-    expect(fake.batches).toHaveLength(1);
-    expect(await eventNames(gameId)).toEqual(["claim-1", "claim-2", "intent", "submitted"]);
-    const submitted = JSON.parse((await events(gameId)).find(row => row.id.endsWith("_submitted"))!.metaJson!);
-    expect(submitted).toMatchObject({ n: 2, batchId: fake.batches[0]!.id });
-    // One reservation for the question, whatever the number of creates.
-    expect((await w.budget.audit(w.worldId)).pendingRequestKeys.filter(key => key.startsWith("self-repair:batch:"))).toHaveLength(1);
+    await review(container, gameId);
+    // One create, ever: the search found nothing, and nothing is sent again.
+    expect(fake.calls).toEqual(["create", "find"]); expect(fake.batches).toHaveLength(0);
+    expect(await eventNames(gameId)).toEqual(["claim-1", "intent", "submitted", "terminal"]);
+    expect(JSON.parse((await events(gameId)).find(row => row.id.endsWith("_submitted"))!.metaJson!)).toMatchObject({ kind: "presumed", n: 1 });
+    expect(JSON.parse((await events(gameId)).find(row => row.id.endsWith("_terminal"))!.metaJson!)).toMatchObject({ kind: "fallback", batchId: null, resultType: "presumed-lost" });
+    // Its charge is counted at the most it could be, never released; the question is asked synchronously.
+    const intent = await syncKeyOf(gameId);
+    expect(await w.budget.readRequest(w.worldId, intent.batchKey)).toMatchObject({ state: "settled",
+      evidence: { amountMicroUsd: intent.batchReserveMicroUsd, costBasis: "conservative-upper-estimate" } });
+    expect(qualityCalls(request)).toBe(1);
+  }, 300_000);
+
+  it("decides a round's batch once: a stale search that found nothing stands down when another recorded the batch", async () => {
+    const gameId = "batch-one-decision", w = await world(gameId); await paintFirst(gameId);
+    const fake = new FakeBatches(opus(), "onedecision"), request = sol(gameId);
+    fake.createPlan = ["lost-after-create"];
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.now();
+    await review({ ...c, visualReview: { request }, qualityBatch: fake } as Container, gameId);
+    const [batch] = fake.batches as [FakeBatch];
+    await db.game.update({ where: { id: gameId }, data: { status: "GENERATION_FAILED" } });
+    vi.setSystemTime(start + QUALITY_BATCH_CREATE_GRACE_MS);
+    // The sweep's search does not see the batch yet; right after it last reads the round, another pass records it.
+    fake.find = async () => ({ proven: [], undecided: false });
+    const intent = await syncKeyOf(gameId), roundId = /^aud_qb_(qb[a-f0-9]{30})_intent$/.exec((await events(gameId)).find(row => row.id.endsWith("_intent"))!.id)![1]!;
+    let reads = 0;
+    const container = { ...c, qualityBatch: fake, db: dbAround({ "auditLog.findMany": async (read, args) => {
+      const rows = await read();
+      if ((args[0] as { where?: { entityId?: string } } | undefined)?.where?.entityId === gameId && ++reads === 2) {
+        for (const [name, event] of [["found-1", { kind: "found", n: 1, batchIds: [batch.id], complete: true, at: Date.now() }],
+          ["submitted", { kind: "submitted", n: 1, batchId: batch.id, at: Date.now() }]] as const)
+          await db.auditLog.create({ data: { id: `aud_qb_${roundId}_${name}`, actorType: "SYSTEM", action: QUALITY_BATCH_ACTION, entityType: "Game",
+            entityId: gameId, metaJson: JSON.stringify(event) } });
+      }
+      return rows;
+    } }) } as Container;
+    await sweepQualityBatches(container, { deadlineAt: Date.now() + 230_000 });
+    // The presumption lost the slot: the round's batch is the recorded one (cancelled, as the game is stopped), nothing counted as lost.
+    expect(reads).toBeGreaterThanOrEqual(2);
+    expect(await eventNames(gameId)).toEqual(["cancel", "claim-1", "found-1", "intent", "submitted"]);
+    expect(JSON.parse((await events(gameId)).find(row => row.id.endsWith("_submitted"))!.metaJson!)).toMatchObject({ kind: "submitted", batchId: batch.id });
+    expect(await w.budget.readRequest(w.worldId, intent.batchKey)).not.toMatchObject({ evidence: { costBasis: "conservative-upper-estimate" } });
+    expect(fake.creates).toBe(1); expect(request).not.toHaveBeenCalled();
   }, 300_000);
 
   it("holds, with its charge unknown, a question two batches carry", async () => {
@@ -782,9 +818,9 @@ describe("Opus scene-quality questions through Message Batches", () => {
     await review({ ...c, visualReview: { request: sol(gameId) }, qualityBatch: fake } as Container, gameId);
     expect(await deleteGame(c, gameId, { type: "USER", id: w.userId }, w.userId)).toBe(true);
     vi.useFakeTimers({ toFake: ["Date"] });
-    // Codex's case: reading the records takes eight seconds of the tick, four for the rounds and four for the games.
-    const slowOnce = () => { let slow = true; return async (read: () => Promise<unknown>) => { if (slow) { slow = false; vi.setSystemTime(Date.now() + 4_000); } return read(); }; };
-    const container = { ...c, db: dbAround({ auditLog: slowOnce(), game: slowOnce() }), qualityBatch: fake } as Container;
+    // Codex's case, made longer than the whole window: reading the records takes 42 seconds, 21 for the rounds and 21 for the games.
+    const slowOnce = () => { let slow = true; return async (read: () => Promise<unknown>) => { if (slow) { slow = false; vi.setSystemTime(Date.now() + 21_000); } return read(); }; };
+    const container = { ...c, db: dbAround({ "auditLog.findMany": slowOnce(), "game.findMany": slowOnce() }), qualityBatch: fake } as Container;
     await sweepQualityBatches(container, { deadlineAt: Date.now() + 230_000 });
     expect(fake.batches[0]!.cancelled).toBe(true);
   }, 300_000);
@@ -795,7 +831,7 @@ describe("Opus scene-quality questions through Message Batches", () => {
     await review({ ...c, visualReview: { request: sol(gameId) }, qualityBatch: fake } as Container, gameId);
     await db.game.update({ where: { id: gameId }, data: { status: "GENERATION_FAILED" } });
     // Codex's case: the game is resumed just after the sweep has read the games' states.
-    const container = { ...c, qualityBatch: fake, db: dbAround({ game: async read => {
+    const container = { ...c, qualityBatch: fake, db: dbAround({ "game.findMany": async read => {
       const states = await read();
       await db.game.update({ where: { id: gameId }, data: { status: "TARGETS_GENERATING" } });
       return states;
@@ -836,7 +872,7 @@ describe("Opus scene-quality questions through Message Batches", () => {
     // Codex's interleaving: right after the sweep reads this round, a resumed worker claims its create.
     const intentRow = (await events(gameId)).find(row => row.id.endsWith("_intent"))!, roundId = /^aud_qb_(qb[a-f0-9]{30})_intent$/.exec(intentRow.id)![1]!;
     let claimed = false;
-    const container = { ...c, qualityBatch: fake, db: dbAround({ auditLog: async (read, args) => {
+    const container = { ...c, qualityBatch: fake, db: dbAround({ "auditLog.findMany": async (read, args) => {
       const rows = await read();
       if (!claimed && (args[0] as { where?: { entityId?: string } } | undefined)?.where?.entityId === gameId) {
         claimed = true;
@@ -854,21 +890,26 @@ describe("Opus scene-quality questions through Message Batches", () => {
     expect(request).not.toHaveBeenCalled();
   }, 300_000);
 
-  it("starts no provider call that could end after the sweep's window: a slow status leaves the cancel to the next tick", async () => {
+  it("gives each sweep round room for the calls it needs: a status slow on every tick no longer keeps its cancel out", async () => {
     const gameId = "batch-slow-status", w = await world(gameId); await paintFirst(gameId);
     const fake = new FakeBatches(opus(), "slowstatus");
     await review({ ...c, visualReview: { request: sol(gameId) }, qualityBatch: fake } as Container, gameId);
     expect(await deleteGame(c, gameId, { type: "USER", id: w.userId }, w.userId)).toBe(true);
     vi.useFakeTimers({ toFake: ["Date"] });
-    const [batch] = fake.batches as [FakeBatch], status = fake.status.bind(fake);
-    fake.status = async (id: string) => { if (id === batch.id) vi.setSystemTime(Date.now() + 29_000); return status(id); };
-    const opened = Date.now();
-    await sweepQualityBatches({ ...c, qualityBatch: fake } as Container, { deadlineAt: opened + 230_000 });
-    // 29 of the 40 seconds went to the status: the cancel, which may take 30 more, waits for the next tick.
-    expect(batch.cancelled).toBe(false);
-    vi.setSystemTime(opened + 60_000); fake.status = status;
-    await sweepQualityBatches({ ...c, qualityBatch: fake } as Container, { deadlineAt: Date.now() + 230_000 });
+    // Codex's case: every status of this batch takes 29 seconds, on every tick.
+    const [batch] = fake.batches as [FakeBatch], status = fake.status.bind(fake), cancel = fake.cancel.bind(fake), starts: number[] = [];
+    fake.status = async (id: string) => { if (id === batch.id) { starts.push(Date.now()); vi.setSystemTime(Date.now() + 29_000); } return status(id); };
+    fake.cancel = async (id: string) => { if (id === batch.id) starts.push(Date.now()); return cancel(id); };
+    // A tick with 59 seconds left: after the status, 30 remain, too few to start the cancel.
+    await sweepQualityBatches({ ...c, qualityBatch: fake } as Container, { deadlineAt: Date.now() + 59_000 });
+    expect(batch.cancelled).toBe(false); expect(starts).toHaveLength(1);
+    // A full tick: the round's own budget fits its status and its cancel, each started with room for its timeout.
+    vi.setSystemTime(Date.now() + 60_000); starts.length = 0;
+    const opened = Date.now(), deadlineAt = opened + 230_000;
+    await sweepQualityBatches({ ...c, qualityBatch: fake } as Container, { deadlineAt });
     expect(batch.cancelled).toBe(true);
+    expect(starts).toHaveLength(2);
+    expect(starts.every(at => Math.min(deadlineAt, starts[0]! + QUALITY_BATCH_SWEEP_ROUND_MS) - at >= 30_000)).toBe(true);
   }, 300_000);
 
   it("deletes a deleted game's copies across ticks when the provider is slow, recording each deletion", async () => {
@@ -878,21 +919,53 @@ describe("Opus scene-quality questions through Message Batches", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const start = Date.now();
     await review(container, gameId);
-    fake.batches.push({ ...structuredClone(fake.batches[0]!), id: "msgbatch_slowremoves_copy" });
+    // Four copies of one question (which only the provider could make), all ended carrying it.
+    for (const name of ["b", "c", "d"]) fake.batches.push({ ...structuredClone(fake.batches[0]!), id: `msgbatch_slowremoves_${name}` });
     fake.end();
     vi.setSystemTime(start + QUALITY_BATCH_CREATE_GRACE_MS);
-    expect(await review(container, gameId)).toMatchObject({ state: "held", reason: expect.stringContaining("2 batches carry") });
+    expect(await review(container, gameId)).toMatchObject({ state: "held", reason: expect.stringContaining("4 batches carry") });
     expect(await deleteGame(c, gameId, { type: "USER", id: w.userId }, w.userId)).toBe(true);
-    // Each deletion of this game's copies takes 29 seconds: one fits a tick's window.
+    // Each deletion of this game's copies takes 29 seconds: three fit a round's budget, each starting with room.
     const remove = fake.remove.bind(fake), mine = new Set(fake.batches.map(batch => batch.id));
     fake.remove = async (id: string) => { if (mine.has(id)) vi.setSystemTime(Date.now() + 29_000); return remove(id); };
     await sweepQualityBatches(container, { deadlineAt: Date.now() + 230_000 });
-    expect(fake.batches.map(batch => batch.deleted)).toEqual([true, false]);
+    expect(fake.batches.map(batch => batch.deleted)).toEqual([true, true, true, false]);
     expect((await eventNames(gameId)).filter(name => name.startsWith("deleted"))).toEqual(["deleted-1"]);
     vi.setSystemTime(Date.now() + 60_000);
     await sweepQualityBatches(container, { deadlineAt: Date.now() + 230_000 });
-    expect(fake.batches.map(batch => batch.deleted)).toEqual([true, true]);
+    expect(fake.batches.map(batch => batch.deleted)).toEqual([true, true, true, true]);
     expect((await eventNames(gameId)).filter(name => name.startsWith("deleted"))).toEqual(["deleted-1", "deleted-2"]);
+  }, 300_000);
+
+  it("sends a create only with room for its whole timeout, read again after the ledger's work and after the claim", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const started = async (gameId: string) => await db.auditLog.count({ where: { entityId: gameId, action: QUALITY_BATCH_ACTION } }) > 0;
+    // Codex's probe: 101 seconds left on arrival, and the ledger's work then takes 11 of them. Nothing is claimed or sent.
+    const ledger = "batch-room-ledger"; await world(ledger); await paintFirst(ledger);
+    const fakeLedger = new FakeBatches(opus(), "roomledger");
+    let slowLedger = false;
+    const slowAtLedger = { ...c, visualReview: { request: sol(ledger) }, qualityBatch: fakeLedger, db: dbAround({ "worldBudgetLedger.findUnique": async read => {
+      if (!slowLedger && await started(ledger)) { slowLedger = true; vi.setSystemTime(Date.now() + 11_000); }
+      return read();
+    } }) } as Container;
+    expect(await review(slowAtLedger, ledger, BOARDS[0]!, 101_000)).toMatchObject({ state: "pending", reason: expect.stringContaining("too little") });
+    expect(slowLedger).toBe(true);
+    expect(await eventNames(ledger)).toEqual(["intent"]); expect(fakeLedger.creates).toBe(0);
+    // The claim's own write takes 11 seconds: claimed, never sent, and recorded so.
+    const claim = "batch-room-claim"; await world(claim); await paintFirst(claim);
+    const fakeClaim = new FakeBatches(opus(), "roomclaim");
+    const claims = () => db.auditLog.count({ where: { entityId: claim, action: QUALITY_BATCH_ACTION, id: { contains: "_claim-" } } });
+    let slowClaim = false;
+    const slowAtClaim = { ...c, visualReview: { request: sol(claim) }, qualityBatch: fakeClaim, db: dbAround({ "$transaction": async read => {
+      const before = slowClaim ? 0 : await claims(), result = await read();
+      if (!slowClaim && await claims() > before) { slowClaim = true; vi.setSystemTime(Date.now() + 11_000); }
+      return result;
+    } }) } as Container;
+    expect(await review(slowAtClaim, claim, BOARDS[0]!, 100_000)).toMatchObject({ state: "pending", reason: expect.stringContaining("too little") });
+    expect(slowClaim).toBe(true);
+    expect(await eventNames(claim)).toEqual(["claim-1", "intent", "refused-1"]);
+    expect(JSON.parse((await events(claim)).find(row => row.id.endsWith("_refused-1"))!.metaJson!)).toMatchObject({ errorType: "not-sent", transient: true });
+    expect(fakeClaim.creates).toBe(0);
   }, 300_000);
 
   it("keeps searching a live game's held round for copies, though its parked job runs no slice", async () => {
@@ -920,16 +993,22 @@ describe("Opus scene-quality questions through Message Batches", () => {
   }, 300_000);
 });
 
-/** The test database with the `findMany` reads of these models wrapped; each wrapper calls `read` for the real answer. */
-function dbAround(wrap: Partial<Record<"auditLog" | "game", (read: () => Promise<unknown>, args: unknown[]) => Promise<unknown>>>): PrismaClient {
+type Around = (read: () => Promise<unknown>, args: unknown[]) => Promise<unknown>;
+/** The test database with some calls wrapped, named `model.method` or `$transaction`; each wrapper calls `read` for the real answer. */
+function dbAround(wrap: Partial<Record<string, Around>>): PrismaClient {
   return new Proxy(db, { get(target, prop) {
-    const value = Reflect.get(target, prop) as unknown, around = wrap[prop as "auditLog" | "game"];
-    if (!around) return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+    const value = Reflect.get(target, prop) as unknown;
+    if (typeof prop !== "string") return value;
+    if (typeof value === "function") {
+      const fn = (value as (...args: unknown[]) => Promise<unknown>).bind(target), around = wrap[prop];
+      return around ? (...args: unknown[]) => around(() => fn(...args), args) : fn;
+    }
+    if (!value || typeof value !== "object" || !Object.keys(wrap).some(key => key.startsWith(`${prop}.`))) return value;
     return new Proxy(value as object, { get(model, method) {
       const fn = Reflect.get(model, method) as unknown;
       if (typeof fn !== "function") return fn;
-      const call = (fn as (...args: unknown[]) => Promise<unknown>).bind(model);
-      return method === "findMany" ? (...args: unknown[]) => around(() => call(...args), args) : call;
+      const call = (fn as (...args: unknown[]) => Promise<unknown>).bind(model), around = wrap[`${prop}.${String(method)}`];
+      return around ? (...args: unknown[]) => around(() => call(...args), args) : call;
     } });
   } });
 }
