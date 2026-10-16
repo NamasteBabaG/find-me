@@ -326,8 +326,10 @@ async function reconcile(ctx: Context, round: QualityBatchRound, batchId: string
  * outcome counted; every other copy is another bill, a copy of a create presumed lost included (the
  * presumption then counts on top of it: more, never less). A priced bill is imported in full by its
  * receipt; one that cannot be stated is recorded as its own unknown charge at the synchronous reservation,
- * held for a person until reconciled. Nothing here reads or changes the batch key, so no settlement of it,
- * before or after, by a pass or a person, can change how a copy is counted.
+ * held for a person until reconciled, under a key bound to exactly what was read: a later read that
+ * returns anything else is another charge, never one a person already reconciled. Nothing here reads or
+ * changes the batch key, so no settlement of it, before or after, by a pass or a person, can change how a
+ * copy is counted.
  */
 async function lateCharge(ctx: Context, round: QualityBatchRound, batchId: string, results: readonly QualityBatchResult[]) {
   const { intent } = round, budget = boardWizardBudgetOf(ctx.c), decision = decide(results, intent.customId), receipts = receiptsOf(results, intent.customId);
@@ -350,12 +352,14 @@ async function lateCharge(ctx: Context, round: QualityBatchRound, batchId: strin
     return { amountMicroUsd: priced.amountMicroUsd, receipts };
   }
   const receipt = receipts.find(item => item.requestId)?.requestId;
-  await budget.recordUnknown(intent.worldId, { requestKey: qualityBatchCopyKeyOf(intent.batchKey, batchId), scope: "judge", operationFingerprint: intent.fingerprint,
+  await budget.recordUnknown(intent.worldId, { requestKey: qualityBatchCopyKeyOf(intent.batchKey, batchId, receipts), scope: "judge", operationFingerprint: intent.fingerprint,
     reserveMicroUsd: intent.syncReserveMicroUsd, reason: `quality batch ${intent.roundId}: copy ${batchId}${receipt ? ` (${receipt})` : ""}: ${reason}` });
   return { amountMicroUsd: null, receipts };
 }
-/** The ledger key of a copy whose charge cannot be stated: its own unknown row, beside the round's batch key. */
-export const qualityBatchCopyKeyOf = (batchKey: string, batchId: string) => `${batchKey}:copy:${batchId}`;
+/** The ledger key of a copy whose charge cannot be stated: its own unknown row beside the round's batch key, one per
+ * distinct reading of the copy's bill (the digest of what the provider returned for the question, as `late-n` keeps it). */
+export const qualityBatchCopyKeyOf = (batchKey: string, batchId: string, receipts: readonly QualityBatchReceipt[]) =>
+  `${batchKey}:copy:${batchId}:${sha(JSON.stringify(receipts))}`;
 
 /** Records a copy's bill once. Priced against every copy already read, so the next number is written only
  * over the bills it counted; a pass that lost it reads the round again and prices it again. */
@@ -375,15 +379,20 @@ async function reconcileLate(ctx: Context, round: QualityBatchRound) {
   const due = qualityBatchLateDue(round);
   // A different copy first each minute: one whose reads keep timing out never keeps the others from theirs.
   const start = qualityBatchCopyStart(round.intent.roundId, due.length, Date.now());
+  let failure: unknown = null;
   for (let i = 0; i < due.length; i++) {
     const batchId = due[(start + i) % due.length]!;
     // Its record and then its results file: room for both reads before the first starts.
-    if (!roomFor(ctx, 2 * CALL_NEED_MS)) return;
+    if (!roomFor(ctx, 2 * CALL_NEED_MS)) break;
     let results: QualityBatchResult[];
     try { results = await ctx.transport.results(batchId, ctx.deadlineAt); }
     catch { continue; }
-    await recordLate(ctx, round.intent.roundId, batchId, results);
+    // A bill the ledger or the record refuses leaves its copy unread (and so undeletable); the others are read
+    // regardless, and the refusal is raised once they have been.
+    try { await recordLate(ctx, round.intent.roundId, batchId, results); }
+    catch (error) { failure ??= error; }
   }
+  if (failure) throw failure;
 }
 
 /**
@@ -541,8 +550,15 @@ async function discover(ctx: Context, round: QualityBatchRound): Promise<boolean
 
 /** Copies already known: each one's bill read, then those that may go deleted. */
 async function settleCopies(ctx: Context, round: QualityBatchRound, gameDeleted: boolean) {
-  if (qualityBatchLateDue(round).length) { await reconcileLate(ctx, round); round = await readRound(ctx, round.intent.roundId); }
+  let failure: unknown = null;
+  if (qualityBatchLateDue(round).length) {
+    // A copy whose bill cannot be recorded never keeps the billed ones from their deletion; its refusal is raised after.
+    try { await reconcileLate(ctx, round); }
+    catch (error) { failure = error; }
+    round = await readRound(ctx, round.intent.roundId);
+  }
   await cleanup(ctx, round, gameDeleted);
+  if (failure) throw failure;
 }
 
 /**

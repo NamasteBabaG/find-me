@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -18,6 +19,7 @@ import { boardsOfWorlds } from "../../world-catalog.service";
 import { deleteGame } from "../../game.service";
 import { createDraft } from "../../create-flow.service";
 import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wizard";
+import type { WorldChargeEvidence } from "../world-budget";
 import { reviewBoardWizardIdentity } from "../board-wizard-identity-gate";
 import { readBoardConditionedCatalog } from "../board-conditioned-catalog";
 import { reviewLocalPatchBoard } from "../local-patch-board-review";
@@ -28,7 +30,7 @@ import { LOCAL_PATCH_STYLE, runLocalPatchWorldSlice } from "../local-patch-world
 import { verifiedDualStage } from "../local-patch-dual-evidence";
 import { DUAL_VISUAL_REVIEW_V3, DUAL_VISUAL_REVIEW_VERSION, pinVisualReviewRelease } from "../visual-review-release";
 import { QUALITY_BATCH_CHANNEL, QUALITY_BATCH_DEADLINE_MS, pinQualityChannel, qualityChannelAuditId, qualityChannelOf } from "../quality-channel";
-import { QUALITY_BATCH_ACTION, QUALITY_BATCH_SWEEP_ROUND_MS, advanceQualityBatches, qualityBatchKeyOf, sweepQualityBatches } from "../quality-batch";
+import { QUALITY_BATCH_ACTION, QUALITY_BATCH_SWEEP_ROUND_MS, advanceQualityBatches, qualityBatchCopyKeyOf, qualityBatchKeyOf, sweepQualityBatches } from "../quality-batch";
 import { sha256Bytes } from "../fixed-sprite";
 import { SELF_REPAIR_REQUEST_ACTION } from "../local-patch-self-repair";
 import { planLocalPatchEvidenceRecovery } from "../local-patch-evidence-plan";
@@ -179,7 +181,8 @@ const eventNames = async (gameId: string) => (await events(gameId)).map(row => r
 const foundOf = async (gameId: string) => (await events(gameId)).map(row => JSON.parse(row.metaJson!) as { kind: string; n: number; batchIds: string[] })
   .filter(event => event.kind === "found").sort((a, b) => a.n - b.n).flatMap(event => event.batchIds);
 /** The bills read of a finished round's other copies, in order, with what the provider returned for each. */
-type LateBill = { kind: string; n: number; batchId: string; amountMicroUsd: number | null; results: { type: string; requestId: string | null; usage: unknown }[] };
+type LateBill = { kind: string; n: number; batchId: string; amountMicroUsd: number | null;
+  results: { type: string; errorType: string | null; requestId: string | null; model: string | null; usage: unknown }[] };
 const latesOf = async (gameId: string) => (await events(gameId)).map(row => JSON.parse(row.metaJson!) as LateBill)
   .filter(event => event.kind === "late").sort((a, b) => a.n - b.n);
 const eventOf = async (gameId: string, name: string) => JSON.parse((await events(gameId)).find(row => row.id.endsWith(`_${name}`))!.metaJson!);
@@ -1152,7 +1155,9 @@ describe("Opus scene-quality questions through Message Batches", () => {
     const intent = await syncKeyOf(gameId), [bill] = await latesOf(gameId);
     const usage = { input_tokens: 2000, output_tokens: 500, service_tier: "priority" };
     expect(bill).toMatchObject({ batchId: copy.id, amountMicroUsd: null, results: [{ type: "succeeded", requestId: expect.stringMatching(/^msg_synthetic_/), usage }] });
-    expect(await w.budget.readRequest(w.worldId, `${intent.batchKey}:copy:${copy.id}`)).toMatchObject({ state: "unknown", reserveMicroUsd: intent.syncReserveMicroUsd,
+    // Its own row, bound to exactly what was read: the copy's id and the digest of what the provider returned for the question.
+    const copyKey = `${intent.batchKey}:copy:${copy.id}:${createHash("sha256").update(JSON.stringify(bill!.results)).digest("hex")}`;
+    expect(await w.budget.readRequest(w.worldId, copyKey)).toMatchObject({ state: "unknown", reserveMicroUsd: intent.syncReserveMicroUsd,
       unknownReasons: [expect.stringContaining(bill!.results[0]!.requestId!)] });
     expect(await w.budget.readRequest(w.worldId, intent.batchKey)).toMatchObject({ state: "settled", evidence: { amountMicroUsd: intent.batchReserveMicroUsd }, conflicts: [] });
     expect((await w.budget.audit(w.worldId)).held).toBe(true);
@@ -1415,6 +1420,79 @@ describe("Opus scene-quality questions through Message Batches", () => {
     expect(fake.creates).toBe(1); expect(qualityCalls(request)).toBe(0);
   }, 300_000);
 
+  it("counts a copy read again with another receipt as another charge, never as the one a person settled at zero", async () => {
+    const zero = (receipt: string): WorldChargeEvidence => ({ providerNamespace: "anthropic:find-me-existing", providerRequestId: receipt, usageId: "u",
+      rawUsage: { basis: "the copy's receipt, priced by a person" }, model: "claude-opus-5-5", amountMicroUsd: 0, costBasis: "conservative-upper-estimate" });
+    const r = await replayedCopy("batch-copy-replay", "copyreplay", "another", (w, key, receipt) => w.budget.settle(w.worldId, key, zero(receipt)).then(() => {}));
+    expect(r.second).not.toBe(r.first);
+    expect(r.bill).toMatchObject({ batchId: r.copy.id, amountMicroUsd: null, results: [{ requestId: r.secondReceipt }] });
+    // The other receipt is another charge, unknown at the synchronous reservation, holding the world; the person's settlement stands.
+    expect(await r.w.budget.readRequest(r.w.worldId, r.second)).toMatchObject({ state: "unknown", reserveMicroUsd: r.intent.syncReserveMicroUsd,
+      unknownReasons: [expect.stringContaining(r.secondReceipt)] });
+    expect(await r.w.budget.readRequest(r.w.worldId, r.first)).toMatchObject({ state: "settled", evidence: { amountMicroUsd: 0 } });
+    expect(await r.w.budget.audit(r.w.worldId)).toMatchObject({ held: true, unknownRequestKeys: [r.second] });
+    expect(r.fake.batches.map(b => b.deleted)).toEqual([true, true]);
+  }, 300_000);
+
+  it("counts a copy read again with another receipt as another charge, never as the one a person approved to continue", async () => {
+    const approving = boardWizardBudgetOf(c, 1, { authorizeUnknownContinuation: async () => true });
+    const r = await replayedCopy("batch-copy-replay-approved", "copyreplayapproved", "another", async (w, key) => {
+      const row = (await w.budget.readRequest(w.worldId, key))!;
+      await approving.authorizeUnknownContinuation(w.worldId, { approvalId: "approval-copy-replay", requestKey: key, scope: row.scope,
+        operationFingerprint: row.operationFingerprint, reserveMicroUsd: row.reserveMicroUsd, unknownReasons: [...row.unknownReasons],
+        operatorId: "synthetic-admin", authorizationSha256: "a".repeat(64), authorizedAt: new Date().toISOString() });
+    });
+    // The approval binds the first reading only: the second is another unknown charge, and holds the world again.
+    expect(r.second).not.toBe(r.first);
+    expect(await r.w.budget.audit(r.w.worldId)).toMatchObject({ held: true, unknownRequestKeys: [r.first, r.second] });
+    expect(r.fake.batches.map(b => b.deleted)).toEqual([true, true]);
+  }, 300_000);
+
+  it("reads again a copy a person reconciled into a linked alias, and records its bill and deletes it", async () => {
+    // Codex's ninth-pass case: the person settles the copy's row with a receipt the ledger already counts, which links it.
+    const r = await replayedCopy("batch-copy-linked", "copylinked", "same", async (w, key, receipt) => {
+      const evidence: WorldChargeEvidence = { providerNamespace: "anthropic:find-me-existing", providerRequestId: receipt, usageId: "u",
+        rawUsage: { basis: "the copy's receipt, priced by a person" }, model: "claude-opus-5-5", amountMicroUsd: 103_500, costBasis: "conservative-upper-estimate" };
+      const row = (await w.budget.readRequest(w.worldId, key))!;
+      await w.budget.importSettled(w.worldId, { scope: row.scope, operationFingerprint: row.operationFingerprint, evidence });
+      expect((await w.budget.settle(w.worldId, key, evidence)).request.state).toBe("linked");
+    });
+    expect(r.second).toBe(r.first);
+    expect(r.bill).toMatchObject({ batchId: r.copy.id, amountMicroUsd: null });
+    expect(await r.w.budget.readRequest(r.w.worldId, r.first)).toMatchObject({ state: "linked" });
+    expect(await r.w.budget.audit(r.w.worldId)).toMatchObject({ held: false, unknownRequestKeys: [] });
+    expect(r.fake.batches.map(b => b.deleted)).toEqual([true, true]);
+  }, 300_000);
+
+  it("deletes the copies whose bills it recorded though the ledger refuses another's, reading that one first, and raises the refusal", async () => {
+    const gameId = "batch-copy-refused"; await world(gameId); await paintFirst(gameId);
+    const fake = new FakeBatches(opus(), "copyrefused"), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    await review(container, gameId); fake.end(); await review(container, gameId);
+    const [own] = fake.batches as [FakeBatch];
+    const roundId = /^aud_qb_(qb[a-f0-9]{30})_intent$/.exec((await events(gameId)).find(row => row.id.endsWith("_intent"))!.id)![1]!;
+    // Two copies a stale search recorded, both billed; the ledger refuses the first one's bill on every write.
+    const copies = ["a", "b"].map(name => ({ ...structuredClone(own), id: `msgbatch_copyrefused${name}`, deleted: false,
+      results: own.requests.map(r => fake.answer(r.params, r.customId)) })) as [FakeBatch, FakeBatch];
+    fake.batches.push(...copies);
+    await db.auditLog.create({ data: { id: `aud_qb_${roundId}_found-1`, actorType: "SYSTEM", action: QUALITY_BATCH_ACTION, entityType: "Game", entityId: gameId,
+      metaJson: JSON.stringify({ kind: "found", n: 1, batchIds: copies.map(copy => copy.id), complete: true, at: Date.now() }) } });
+    const refused = (copies[0].results![0] as { message: { id: string } }).message.id;
+    const refusing = { ...container, db: dbAround({ "worldBudgetLedger.updateMany": async (write, args) => {
+      if ((args[0] as { data: { snapshotJson?: string } }).data.snapshotJson?.includes(refused)) throw Error("the ledger refuses this bill");
+      return write();
+    } }) } as Container;
+    // In a minute whose order starts with the refused copy.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    let at = Math.ceil(Date.now() / 60_000) * 60_000;
+    while (qualityBatchCopyStart(roundId, 2, at) !== 0) at += 60_000;
+    vi.setSystemTime(at);
+    await expect(advanceQualityBatches(refusing, gameId, async () => {})).rejects.toThrow("the ledger refuses this bill");
+    // The other copy was read regardless, its bill recorded, and deleted; the refused one stays unread, and so undeletable.
+    expect((await latesOf(gameId)).map(bill => bill.batchId)).toEqual([copies[1].id]);
+    expect(copies.map(copy => copy.deleted)).toEqual([false, true]);
+    expect(fake.creates).toBe(1); expect(qualityCalls(request)).toBe(0);
+  }, 300_000);
+
   it("counts copies found beside a held answer as charges of their own, read before or after a person settles the held one", async () => {
     const gameId = "batch-held-extras", w = await world(gameId); await paintFirst(gameId);
     // The round's own batch answers at a tier with no rate: held, its charge unknown, its receipts kept.
@@ -1440,7 +1518,7 @@ describe("Opus scene-quality questions through Message Batches", () => {
     await foundCopy(2, "msgbatch_heldextrasd", opus(() => ({ usage: { input_tokens: 2000, output_tokens: 500, service_tier: "priority" } })));
     await advanceQualityBatches(container, gameId, async () => {});
     expect(await imported("msgbatch_heldextrasb")).toMatchObject({ state: "settled", evidence: { amountMicroUsd: 9_000 } });
-    const unpriced = `${intent.batchKey}:copy:msgbatch_heldextrasd`;
+    const unpriced = qualityBatchCopyKeyOf(intent.batchKey, "msgbatch_heldextrasd", (await latesOf(gameId)).find(late => late.batchId === "msgbatch_heldextrasd")!.results);
     expect(await w.budget.readRequest(w.worldId, unpriced)).toMatchObject({ state: "unknown", reserveMicroUsd: intent.syncReserveMicroUsd });
     // A person reconciles the held charge at its own batch's bill: that settles the one batch. Each copy stays as it was counted:
     // the priced one beside it, the unpriced one still unknown, the world still held for it.
@@ -1618,6 +1696,42 @@ function dbAround(wrap: Partial<Record<string, Around>>): PrismaClient {
       return around ? (...args: unknown[]) => around(() => call(...args), args) : call;
     } });
   } });
+}
+
+/**
+ * Codex's ninth-pass sequence. An answered round; a copy a stale search recorded later, answered by a tier with no rate.
+ * Its first reading's unknown row commits and the worker stops before the bill is recorded; `reconcile` then stands for
+ * a person acting on that row; the copy is read again, returning the same results or another receipt.
+ */
+async function replayedCopy(gameId: string, name: string, again: "same" | "another",
+  reconcile: (w: Awaited<ReturnType<typeof world>>, key: string, receipt: string) => Promise<void>) {
+  const w = await world(gameId); await paintFirst(gameId);
+  const fake = new FakeBatches(opus(), name), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+  await review(container, gameId); fake.end(); await review(container, gameId);
+  const intent = await syncKeyOf(gameId), [own] = fake.batches as [FakeBatch];
+  const roundId = /^aud_qb_(qb[a-f0-9]{30})_intent$/.exec((await events(gameId)).find(row => row.id.endsWith("_intent"))!.id)![1]!;
+  const unpriced = opus(() => ({ usage: { input_tokens: 2000, output_tokens: 500, service_tier: "priority" } }));
+  const receiptOf = (batch: FakeBatch) => (batch.results![0] as { message: { id: string } }).message.id;
+  const copy: FakeBatch = { ...structuredClone(own), id: `msgbatch_${name}b`, deleted: false, results: own.requests.map(r => unpriced(r.params, r.customId)) };
+  fake.batches.push(copy);
+  await db.auditLog.create({ data: { id: `aud_qb_${roundId}_found-1`, actorType: "SYSTEM", action: QUALITY_BATCH_ACTION, entityType: "Game", entityId: gameId,
+    metaJson: JSON.stringify({ kind: "found", n: 1, batchIds: [copy.id], complete: true, at: Date.now() }) } });
+  // The first transaction after the copy's unknown row commits is its bill's record: the worker stops there.
+  let stopped = false;
+  const stopping = { ...container, db: dbAround({ $transaction: async read => {
+    if (!stopped && (await w.budget.audit(w.worldId)).unknownRequestKeys.length) { stopped = true; throw Error("the worker stopped"); }
+    return read();
+  } }) } as Container;
+  await expect(advanceQualityBatches(stopping, gameId, async () => {})).rejects.toThrow("the worker stopped");
+  expect(await latesOf(gameId)).toEqual([]);
+  const [first] = (await w.budget.audit(w.worldId)).unknownRequestKeys as [string];
+  await reconcile(w, first, receiptOf(copy));
+  expect((await w.budget.audit(w.worldId)).held).toBe(false);
+  if (again === "another") copy.results = own.requests.map(r => unpriced(r.params, r.customId));
+  await advanceQualityBatches(container, gameId, async () => {});
+  const [bill] = await latesOf(gameId) as [LateBill];
+  expect(fake.creates).toBe(1); expect(qualityCalls(request)).toBe(0);
+  return { w, fake, intent, copy, first, bill, second: qualityBatchCopyKeyOf(intent.batchKey, copy.id, bill.results), secondReceipt: receiptOf(copy) };
 }
 
 describe("the per-game quality channel pin", () => {

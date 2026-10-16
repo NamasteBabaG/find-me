@@ -150,6 +150,12 @@ describe("settlement, unknown spend and holds", () => {
     // A person reconciles it by settling it; recorded again, it stays as the person left it.
     await budget.settle("world", "copy", charge("copy", 260_000));
     expect((await budget.recordUnknown("world", unknown)).request).toMatchObject({ state: "settled", evidence: { amountMicroUsd: 260_000 } });
+    // Or into a linked alias, when its receipt is already counted (Codex's ninth pass): recorded again, it stays so too.
+    const aliased = { ...reservation("copy-2", 250_000), reason: "a second copy answered by a tier with no rate" };
+    await budget.recordUnknown("world", aliased);
+    await budget.importSettled("world", { scope: aliased.scope, operationFingerprint: aliased.operationFingerprint, evidence: charge("copy-2-receipt", 90_000) });
+    expect((await budget.settle("world", "copy-2", charge("copy-2-receipt", 90_000))).request.state).toBe("linked");
+    expect((await budget.recordUnknown("world", aliased)).request).toMatchObject({ state: "linked", evidence: { providerRequestId: "copy-2-receipt" } });
   });
 
   it("settles only a request still pending when asked to, in the same transaction, leaving one already held or settled as it is", async () => {
