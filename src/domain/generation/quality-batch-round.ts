@@ -13,7 +13,8 @@
  * 1. The intent is durable before the reservation, and every claim before its
  *    create. A create that did not answer is never "not created": it waits out
  *    the grace, and then only a search of the provider's batches that ends before
- *    the intent decides. One batch found is recorded; two hold the round.
+ *    the intent decides. Two batches found hold the round; one is recorded only
+ *    when no other batch that could carry the question is still running.
  * 2. A batch still running at the round's deadline is cancelled once (and again
  *    while it keeps running). What it finished is billed at the batch rate.
  * 3. Only a result the provider documents as unbilled (errored, canceled,
@@ -21,6 +22,9 @@
  *    and every anomaly are held for a person, with the reservation counted.
  * 4. A round whose every create was refused outright never reached the provider:
  *    after its deadline it falls back without any search.
+ * 5. Once a round is finished, the provider's copies of its question are deleted.
+ *    A held round keeps them for the person reconciling it, unless its game was
+ *    deleted: the hold is the ledger's to keep, the imagery is the child's.
  */
 export const QUALITY_BATCH_VERSION = "quality-batch/v1" as const;
 /** How long a claimed create is presumed in flight: no new create and no negative search before it. */
@@ -51,8 +55,10 @@ export type QualityBatchEvent =
   | { readonly kind: "cancel"; readonly at: number }
   | { readonly kind: "answered"; readonly batchId: string; readonly amountMicroUsd: number; readonly servedTier: string; readonly at: number }
   | { readonly kind: "fallback"; readonly batchId: string | null; readonly resultType: string; readonly errorType: string | null; readonly at: number }
-  | { readonly kind: "held"; readonly reason: string; readonly at: number }
-  | { readonly kind: "deleted"; readonly batchId: string; readonly at: number };
+  /** `batchIds`: batches proven to carry the question that the round never recorded (more than one was found). */
+  | { readonly kind: "held"; readonly reason: string; readonly at: number; readonly batchIds?: readonly string[] }
+  /** Every provider batch of the round, deleted at the provider. */
+  | { readonly kind: "deleted"; readonly batchIds: readonly string[]; readonly at: number };
 export type QualityBatchTerminal = Extract<QualityBatchEvent, { kind: "answered" | "fallback" | "held" }>;
 
 export type QualityBatchRound = {
@@ -62,6 +68,8 @@ export type QualityBatchRound = {
   readonly submitted: Extract<QualityBatchEvent, { kind: "submitted" }> | null;
   readonly cancelAt: number | null;
   readonly terminal: QualityBatchTerminal | null;
+  /** Every provider batch proven to carry this question: the recorded one, and any a hold found. */
+  readonly batchIds: readonly string[];
   readonly deleted: boolean;
 };
 
@@ -103,9 +111,15 @@ export function qualityBatchRoundOf(events: readonly QualityBatchEvent[]): Quali
     throw Error("QUALITY_BATCH: an answer from a batch this round never recorded");
   if (terminal?.kind === "fallback" && (terminal.batchId === null ? !!submitted[0] : terminal.batchId !== submitted[0]?.batchId))
     throw Error("QUALITY_BATCH: a fallback from a batch this round never recorded");
-  if (deleted[0] && deleted[0].batchId !== submitted[0]?.batchId) throw Error("QUALITY_BATCH: deleted a batch this round never recorded");
+  const found = terminal?.kind === "held" ? terminal.batchIds : undefined;
+  if (found !== undefined && (!Array.isArray(found) || !found.length || found.some(id => typeof id !== "string" || !id) || new Set(found).size !== found.length))
+    throw Error("QUALITY_BATCH: a hold names its batches as distinct ids");
+  const batchIds = [...new Set([...submitted.map(s => s.batchId), ...found ?? []])];
+  if (deleted[0] && (!Array.isArray(deleted[0].batchIds) || !batchIds.length
+    || JSON.stringify([...deleted[0].batchIds].sort()) !== JSON.stringify([...batchIds].sort())))
+    throw Error("QUALITY_BATCH: a deletion names other batches than the round's");
   const cancel = events.find((e): e is Extract<QualityBatchEvent, { kind: "cancel" }> => e.kind === "cancel");
-  return { intent, claims, refusals, submitted: submitted[0] ?? null, cancelAt: cancel?.at ?? null, terminal, deleted: !!deleted[0] };
+  return { intent, claims, refusals, submitted: submitted[0] ?? null, cancelAt: cancel?.at ?? null, terminal, batchIds, deleted: !!deleted[0] };
 }
 
 export type QualityBatchStep =
@@ -134,6 +148,11 @@ export function nextQualityBatchStep(round: QualityBatchRound, now: number): Qua
   }
   if (now - last.at < QUALITY_BATCH_CREATE_GRACE_MS) return { step: "wait", reason: "a create may still be in flight" };
   return { step: "find", sinceMs: round.intent.intentAt, nextClaim: last.n + 1 };
+}
+
+/** Whether the provider's copies of a finished round are still to be deleted (rule 5). */
+export function qualityBatchCleanupDue(round: QualityBatchRound, gameDeleted: boolean): boolean {
+  return !!round.terminal && !round.deleted && round.batchIds.length > 0 && (round.terminal.kind !== "held" || gameDeleted);
 }
 
 /** How one result of an ended batch settles this round. */

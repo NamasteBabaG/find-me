@@ -11,6 +11,7 @@ import { QualityBatchRefused, type QualityBatchResult, type QualityBatchTranspor
  *
  * Results are read from the documented path built from a checked batch id, never
  * from a URL the provider supplies, so the key is only ever sent to this host.
+ * A result set counts only when it adds up to the batch's own `request_counts`.
  */
 const BASE = "https://api.anthropic.com";
 const BATCH_ID = /^msgbatch_[A-Za-z0-9]{1,200}$/;
@@ -33,6 +34,18 @@ const checkedBatch = (batchId: string) => {
   if (typeof batchId !== "string" || !BATCH_ID.test(batchId)) throw Error("QUALITY_BATCH: not a Message Batch id");
   return batchId;
 };
+const DOCUMENTED_COUNTS = ["processing", "succeeded", "errored", "canceled", "expired"] as const;
+/** How many results an ended batch's own record says it has (every count it states, none still
+ * processing); null when the record cannot say. */
+function endedRequestCount(batch: Record<string, unknown>): number | null {
+  const counts = batch.request_counts;
+  if (batch.processing_status !== "ended" || !counts || typeof counts !== "object" || Array.isArray(counts)) return null;
+  const values = Object.values(counts as Record<string, unknown>);
+  if (DOCUMENTED_COUNTS.some(name => !Object.hasOwn(counts, name)) || (counts as Record<string, unknown>).processing !== 0
+    || values.some(value => !Number.isSafeInteger(value) || (value as number) < 0)) return null;
+  const total = (values as number[]).reduce((sum, value) => sum + value, 0);
+  return Number.isSafeInteger(total) ? total : null;
+}
 
 export class AnthropicMessageBatches implements QualityBatchTransport {
   readonly namespace = "anthropic:find-me-existing";
@@ -67,6 +80,11 @@ export class AnthropicMessageBatches implements QualityBatchTransport {
     return { batchId: body.id };
   }
 
+  /**
+   * Absence is proven only by a complete inventory: every page, to its documented
+   * end, and every ended batch's results adding up to that batch's own request
+   * counts. Anything less throws, and a throw never permits a create.
+   */
   async find(customId: string, sinceMs: number) {
     if (!CUSTOM_ID.test(customId) || !Number.isFinite(sinceMs)) throw Error("QUALITY_BATCH: invalid search");
     const proven: string[] = [];
@@ -74,7 +92,7 @@ export class AnthropicMessageBatches implements QualityBatchTransport {
     for (let page = 0; page < MAX_LIST_PAGES; page++) {
       const answer = await this.call(`/v1/messages/batches?limit=1000${after ? `&after_id=${encodeURIComponent(after)}` : ""}`, { method: "GET" }, READ_TIMEOUT_MS);
       const list = parse(answer.text), data = Array.isArray(list?.data) ? list.data as Record<string, unknown>[] : null;
-      if (!answer.ok || !list || !data) throw Error(`QUALITY_BATCH: list answered ${answer.status}`);
+      if (!answer.ok || !list || !data || typeof list.has_more !== "boolean") throw Error(`QUALITY_BATCH: list answered ${answer.status} without a complete page`);
       let reachedIntent = false;
       for (const batch of data) {
         const created = Date.parse(String(batch?.created_at));
@@ -82,10 +100,13 @@ export class AnthropicMessageBatches implements QualityBatchTransport {
         // Newest first: everything from here on is older than the intent.
         if (created < sinceMs - QUALITY_BATCH_CLOCK_SKEW_MS) { reachedIntent = true; break; }
         if (batch.processing_status !== "ended") { undecided = true; continue; }
-        if ((await this.results(batch.id)).some(result => result.customId === customId)) proven.push(batch.id);
+        const expected = endedRequestCount(batch);
+        if (expected === null) throw Error(`QUALITY_BATCH: ${batch.id} does not state its request counts`);
+        if ((await this.resultsOf(batch.id, expected)).some(result => result.customId === customId)) proven.push(batch.id);
       }
-      if (reachedIntent || list.has_more !== true || !data.length) return { proven, undecided };
-      after = typeof list.last_id === "string" ? list.last_id : String(data[data.length - 1]!.id);
+      if (reachedIntent || !list.has_more) return { proven, undecided };
+      if (!data.length || typeof list.last_id !== "string" || !BATCH_ID.test(list.last_id)) throw Error("QUALITY_BATCH: a list page promised more but gave no batch or no cursor");
+      after = list.last_id;
     }
     return { proven, undecided: true };
   }
@@ -98,10 +119,19 @@ export class AnthropicMessageBatches implements QualityBatchTransport {
     return status;
   }
 
+  /** Every result of an ended batch, checked against the batch's own record. */
   async results(batchId: string): Promise<QualityBatchResult[]> {
+    const answer = await this.call(`/v1/messages/batches/${checkedBatch(batchId)}`, { method: "GET" }, READ_TIMEOUT_MS);
+    const batch = parse(answer.text), expected = batch && batch.id === batchId ? endedRequestCount(batch) : null;
+    if (!answer.ok || expected === null) throw Error(`QUALITY_BATCH: ${batchId} answered ${answer.status} without an ended record and its request counts`);
+    return this.resultsOf(batchId, expected);
+  }
+
+  /** A result set is returned only whole: one result per request the batch counts, each id once. */
+  private async resultsOf(batchId: string, expected: number): Promise<QualityBatchResult[]> {
     const answer = await this.call(`/v1/messages/batches/${checkedBatch(batchId)}/results`, { method: "GET" }, READ_TIMEOUT_MS);
     if (!answer.ok) throw Error(`QUALITY_BATCH: results of ${batchId} answered ${answer.status}`);
-    return answer.text.split("\n").filter(line => line.trim()).map(line => {
+    const results = answer.text.split("\n").filter(line => line.trim()).map((line): QualityBatchResult => {
       const row = parse(line), result = row?.result && typeof row.result === "object" ? row.result as Record<string, unknown> : null;
       if (!row || typeof row.custom_id !== "string" || !result) throw Error(`QUALITY_BATCH: unreadable result line in ${batchId}`);
       const customId = row.custom_id;
@@ -114,6 +144,11 @@ export class AnthropicMessageBatches implements QualityBatchTransport {
       if (result.type === "canceled" || result.type === "expired") return { customId, type: result.type };
       return { customId, type: "unrecognized" as const, resultType: typeof result.type === "string" ? result.type : null };
     });
+    // An empty body or a cut-off file is not "no result for this question": it is an unknown.
+    const distinct = new Set(results.map(result => result.customId)).size;
+    if (results.length !== expected || distinct !== results.length)
+      throw Error(`QUALITY_BATCH: results of ${batchId} do not add up (${results.length} lines, ${distinct} distinct, ${expected} counted)`);
+    return results;
   }
 
   async cancel(batchId: string) {

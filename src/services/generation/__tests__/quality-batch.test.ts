@@ -6,7 +6,7 @@ import { PrismaClient } from "@prisma/client";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { applyTestSchema } from "../../../lib/test-schema";
 import { DbStorage } from "../../../infra/storage/db";
-import { PrismaRetainedPurchaseStore } from "../../../infra/db/prisma-retained-purchase-store";
+import { PrismaRetainedPurchaseStore, retainedPurchaseKey } from "../../../infra/db/prisma-retained-purchase-store";
 import { QualityBatchRefused, type QualityBatchResult, type QualityBatchTransport } from "../../../infra/generation/types";
 import { GameConfigSchema } from "../../../domain/game/config";
 import { localPatchBoardsForVersion } from "../../../domain/scene/local-patch-catalog";
@@ -29,6 +29,7 @@ import { DUAL_VISUAL_REVIEW_V3, DUAL_VISUAL_REVIEW_VERSION, pinVisualReviewRelea
 import { QUALITY_BATCH_CHANNEL, QUALITY_BATCH_DEADLINE_MS, pinQualityChannel, qualityChannelAuditId, qualityChannelOf } from "../quality-channel";
 import { QUALITY_BATCH_ACTION, advanceQualityBatches, qualityBatchKeyOf, sweepQualityBatches } from "../quality-batch";
 import { sha256Bytes } from "../fixed-sprite";
+import { SELF_REPAIR_REQUEST_ACTION } from "../local-patch-self-repair";
 import { planLocalPatchEvidenceRecovery } from "../local-patch-evidence-plan";
 import { bill, paintedCrop, paintedOk, seedApprovedGame } from "./local-patch-fixtures";
 import { GOOD_V12_VERDICT, boundHide, dualReviewer, longAnswer } from "./local-patch-dual-fixtures";
@@ -124,7 +125,8 @@ class FakeBatches implements QualityBatchTransport {
   readonly batches: FakeBatch[] = [];
   readonly calls: string[] = [];
   createPlan: ("ok" | "lost-after-create" | "lost-before-create" | QualityBatchRefused)[] = [];
-  constructor(public answer: (params: Record<string, unknown>, customId: string) => QualityBatchResult) {}
+  /** `name` keeps one test's batch ids apart from the rounds earlier tests left in the shared database. */
+  constructor(public answer: (params: Record<string, unknown>, customId: string) => QualityBatchResult, private readonly name = "fake") {}
   get creates() { return this.calls.filter(call => call === "create").length; }
   private batch(id: string) { const found = this.batches.find(b => b.id === id); if (!found || found.deleted) throw Error(`no such batch ${id}`); return found; }
   async create(requests: readonly { customId: string; params: Record<string, unknown> }[]) {
@@ -132,7 +134,7 @@ class FakeBatches implements QualityBatchTransport {
     const plan = this.createPlan.shift() ?? "ok";
     if (plan instanceof QualityBatchRefused) throw plan;
     if (plan === "lost-before-create") throw Error("socket hang up before the request was sent");
-    const batch: FakeBatch = { id: `msgbatch_fake${this.batches.length + 1}`, createdAt: Date.now(), requests: structuredClone([...requests]),
+    const batch: FakeBatch = { id: `msgbatch_${this.name}${this.batches.length + 1}`, createdAt: Date.now(), requests: structuredClone([...requests]),
       status: "in_progress", results: null, cancelled: false, deleted: false };
     this.batches.push(batch);
     if (plan === "lost-after-create") throw Error("socket hang up after the batch was created");
@@ -434,6 +436,46 @@ describe("Opus scene-quality questions through Message Batches", () => {
     expect(qualityCalls(request)).toBe(0);
   }, 300_000);
 
+  it("delivers a paid answer at the edge of the world's budget without buying the question again", async () => {
+    const gameId = "batch-edge", w = await world(gameId); await paintFirst(gameId);
+    const fake = new FakeBatches(opus()), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    // Earlier work leaves 200,000 of the world: room for the batch reservation, not for a synchronous one.
+    const before = await w.budget.audit(w.worldId);
+    await w.budget.importSettled(w.worldId, { scope: "image", operationFingerprint: "synthetic-earlier-work", evidence: { providerNamespace: "openai:find-me-existing",
+      providerRequestId: `req-earlier-${gameId}`, usageId: `usage-earlier-${gameId}`, rawUsage: { synthetic: 1 }, model: "gpt-image-2",
+      amountMicroUsd: before.capMicroUsd - 200_000 - before.committedMicroUsd, costBasis: "provider-billed" } });
+    expect(await review(container, gameId)).toMatchObject({ state: "pending" });
+    fake.end();
+    for (let i = 0; i < 3; i++) await review(container, gameId);
+    const intent = await syncKeyOf(gameId), audit = await w.budget.audit(w.worldId);
+    expect(audit).toMatchObject({ held: false, unknownRequestKeys: [], pendingRequestKeys: [] });
+    expect(audit.remainingMicroUsd).toBeLessThan(intent.syncReserveMicroUsd);
+    expect(await w.budget.readRequest(w.worldId, intent.syncKey)).toMatchObject({ state: "linked", canonicalRequestKey: intent.batchKey, reserveMicroUsd: intent.syncReserveMicroUsd });
+    // The paid answer was replayed and the review went on to its continuity question.
+    expect(qualityCalls(request)).toBe(0);
+    expect(request.mock.calls.filter(([question]) => question.role === "head-continuity")).toHaveLength(1);
+    expect((await rows(gameId)).filter(row => JSON.parse(row.judgeJson!).reviewState === "board-review-complete")).toHaveLength(1);
+  }, 300_000);
+
+  it("writes the alias's answer again when a worker stopped between the alias and its copy", async () => {
+    const gameId = "batch-alias-copy", w = await world(gameId); await paintFirst(gameId);
+    const fake = new FakeBatches(opus(), "aliascopy"), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    await review(container, gameId);
+    const intent = await syncKeyOf(gameId), store = new PrismaRetainedPurchaseStore(db);
+    await db.$executeRawUnsafe(`CREATE TRIGGER stop_before_copy BEFORE INSERT ON FileBlob WHEN NEW.key = '${retainedPurchaseKey(w.worldId, intent.syncKey)}' `
+      + "BEGIN SELECT RAISE(ABORT, 'worker stopped'); END");
+    fake.end();
+    try { await expect(review(container, gameId)).rejects.toThrow(); }
+    finally { await db.$executeRawUnsafe("DROP TRIGGER stop_before_copy"); }
+    expect(await w.budget.readRequest(w.worldId, intent.syncKey)).toMatchObject({ state: "linked" });
+    expect(await store.get(w.worldId, intent.syncKey)).toBeNull();
+    for (let i = 0; i < 2; i++) await review(container, gameId);
+    expect(await store.get(w.worldId, intent.syncKey)).not.toBeNull();
+    expect(qualityCalls(request)).toBe(0);
+    expect(request.mock.calls.filter(([question]) => question.role === "head-continuity")).toHaveLength(1);
+    expect((await rows(gameId)).filter(row => JSON.parse(row.judgeJson!).reviewState === "board-review-complete")).toHaveLength(1);
+  }, 300_000);
+
   it("creates one batch when two workers ask the same question at once", async () => {
     const gameId = "batch-race", w = await world(gameId); await paintFirst(gameId);
     const fake = new FakeBatches(opus()), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
@@ -533,6 +575,96 @@ describe("Opus scene-quality questions through Message Batches", () => {
     expect(await store.get(w.worldId, intent.batchKey)).toBeNull(); expect(await store.get(w.worldId, intent.syncKey)).toBeNull();
     // Accounting survives the deletion: both bills, counted once.
     expect(await w.budget.readRequest(w.worldId, intent.syncKey)).toMatchObject({ state: "linked" });
+  }, 300_000);
+
+  it("records a found batch only once no other that could carry the question still runs, and deletes every batch a hold names", async () => {
+    const gameId = "batch-two-running", w = await world(gameId); await paintFirst(gameId);
+    const fake = new FakeBatches(opus(), "twofound"), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    fake.createPlan = ["lost-after-create"];
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.now();
+    await review(container, gameId);
+    // A duplicate of the lost create still runs; the first batch has ended, canceled (documented unbilled).
+    fake.batches.push({ ...structuredClone(fake.batches[0]!), id: "msgbatch_twofound_duplicate" });
+    const first = fake.batches[0]!;
+    first.status = "ended"; first.results = first.requests.map(r => ({ customId: r.customId, type: "canceled" as const }));
+    vi.setSystemTime(start + QUALITY_BATCH_CREATE_GRACE_MS);
+    for (let i = 0; i < 2; i++) expect(await review(container, gameId)).toMatchObject({ state: "pending", reason: expect.stringContaining("has not ended") });
+    // Nothing recorded, released or asked: the running one may still bill the question.
+    const intent = await syncKeyOf(gameId);
+    expect(await eventNames(gameId)).toEqual(["claim-1", "intent"]);
+    expect(await w.budget.readRequest(w.worldId, intent.batchKey)).toMatchObject({ state: "pending", reserveMicroUsd: intent.batchReserveMicroUsd });
+    expect(request).not.toHaveBeenCalled();
+    // It ends carrying the question too: held, with both batches named.
+    fake.end();
+    expect(await review(container, gameId)).toMatchObject({ state: "held", reason: expect.stringContaining("2 batches carry") });
+    expect(JSON.parse((await events(gameId)).find(row => row.id.endsWith("_terminal"))!.metaJson!)).toMatchObject({ kind: "held", batchIds: [first.id, "msgbatch_twofound_duplicate"] });
+    expect(fake.creates).toBe(1); expect(request).not.toHaveBeenCalled();
+    expect(await deleteGame(c, gameId, { type: "USER", id: w.userId }, w.userId)).toBe(true);
+    await sweepQualityBatches(container, { deadlineAt: Date.now() + 270_000 });
+    expect(fake.batches.map(b => b.deleted)).toEqual([true, true]);
+  }, 300_000);
+
+  it("deletes a held round's batch with its deleted game, keeping the unknown charge and buying nothing", async () => {
+    const gameId = "batch-deleted-held", w = await world(gameId); await paintFirst(gameId);
+    const unpriced = { usage: { input_tokens: 2000, output_tokens: 500, service_tier: "priority" } };
+    const fake = new FakeBatches(opus(() => unpriced), "heldgone"), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    await review(container, gameId); fake.end();
+    expect(await review(container, gameId)).toMatchObject({ state: "held", reason: expect.stringContaining("cannot be stated") });
+    // While the game lives, a held round keeps its batch for the person reconciling it.
+    await advanceQualityBatches(container, gameId, async () => {});
+    expect(fake.batches[0]!.deleted).toBe(false);
+    expect(await deleteGame(c, gameId, { type: "USER", id: w.userId }, w.userId)).toBe(true);
+    for (let i = 0; i < 3; i++) await sweepQualityBatches(container, { deadlineAt: Date.now() + 270_000 });
+    expect(fake.batches[0]!.deleted).toBe(true);
+    expect(await eventNames(gameId)).toContain("deleted");
+    const intent = await syncKeyOf(gameId), audit = await w.budget.audit(w.worldId);
+    expect(audit.unknownRequestKeys).toEqual([intent.batchKey]); expect(audit.held).toBe(true);
+    expect(fake.creates).toBe(1); expect(request).not.toHaveBeenCalled();
+  }, 300_000);
+
+  it("keeps the batch key in deletion's inventory when a worker stops right after the round's intent", async () => {
+    const gameId = "batch-stopped-after-intent", w = await world(gameId); await paintFirst(gameId);
+    const fake = new FakeBatches(opus()), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    // The worker stops after the intent: the next write it makes for the batch key never lands.
+    await db.$executeRawUnsafe(`CREATE TRIGGER stop_after_intent BEFORE INSERT ON AuditLog WHEN NEW.action = '${SELF_REPAIR_REQUEST_ACTION}' `
+      + "AND NEW.metaJson LIKE '%self-repair:batch:%' BEGIN SELECT RAISE(ABORT, 'worker stopped'); END");
+    // (Prisma reports the trigger's abort under its own wording.)
+    try { await expect(review(container, gameId)).rejects.toThrow("auditLog.upsert"); }
+    finally { await db.$executeRawUnsafe("DROP TRIGGER stop_after_intent"); }
+    expect(await eventNames(gameId)).toEqual(["intent"]);
+    // Resumed, the round goes on to its answer and alias; both are kept.
+    await review(container, gameId); fake.end(); await review(container, gameId);
+    const intent = await syncKeyOf(gameId), store = new PrismaRetainedPurchaseStore(db);
+    expect(await store.get(w.worldId, intent.batchKey)).not.toBeNull(); expect(await store.get(w.worldId, intent.syncKey)).not.toBeNull();
+    expect(fake.creates).toBe(1);
+    expect(await deleteGame(c, gameId, { type: "USER", id: w.userId }, w.userId)).toBe(true);
+    expect(await store.get(w.worldId, intent.batchKey)).toBeNull(); expect(await store.get(w.worldId, intent.syncKey)).toBeNull();
+  }, 300_000);
+
+  it("reaches every stopped game's round even when one round is slow and failing on every tick", async () => {
+    const slow = "batch-sweep-a-slow", later = "batch-sweep-b-later";
+    const owners = [await world(slow), await world(later)]; await paintFirst(slow); await paintFirst(later);
+    const fake = new FakeBatches(opus(), "rotation"), container = { ...c, visualReview: { request: sol(slow) }, qualityBatch: fake } as Container;
+    await review(container, slow); await review(container, later);
+    const [slowBatch, laterBatch] = fake.batches;
+    for (const [gameId, owner] of [[slow, owners[0]!], [later, owners[1]!]] as const) expect(await deleteGame(c, gameId, { type: "USER", id: owner.userId }, owner.userId)).toBe(true);
+    // The provider answers about the slow game's batch six seconds late, then fails, every time.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const status = fake.status.bind(fake);
+    let slowReads = 0;
+    fake.status = async (id: string) => {
+      if (id !== slowBatch!.id) return status(id);
+      slowReads++; vi.setSystemTime(Date.now() + 6_000); throw Error("timed out");
+    };
+    // One sweep a minute, each with the tick's forty seconds.
+    const start = Date.now();
+    for (let tick = 0; tick < 60 && !laterBatch!.cancelled; tick++) {
+      vi.setSystemTime(start + tick * 60_000);
+      await sweepQualityBatches(container, { deadlineAt: Date.now() + 40_000 });
+    }
+    expect(laterBatch!.cancelled).toBe(true);
+    expect(slowReads).toBeGreaterThan(0); expect(slowBatch!.cancelled).toBe(false);
   }, 300_000);
 });
 

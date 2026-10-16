@@ -88,7 +88,7 @@ The dual review buys its quality question under `self-repair:board:<board>:<fing
 
 So a batched question uses two keys:
 1. **The batch key**, `self-repair:batch:<board>:<fingerprint>`. It is reserved before the batch is created, at half the synchronous reservation, because every batch rate is half. It settles at the price of the tier that served the answer. The answer is retained under it.
-2. **The dual review's own key**, reserved at the synchronous amount and settled with the identical bill. The ledger records it as a **linked alias**, counted once. The same bytes are retained under it.
+2. **The dual review's own key**, written straight in as a **linked alias** of the batch key's charge (`WorldBudget.link`): the identical bill, counted once, with the dual review's own reservation terms but **holding no capacity**, since the answer is already paid for. The same bytes are retained under it, after the alias; a copy lost in between is written by the next pass. (Until the review this was a reservation settled at once, which could refuse a paid answer near the ceiling; see §7, P1-5.)
 3. The dual review then calls `buy` exactly as today. `purchaseOnce` replays the answer, and every check of a dual stage holds unchanged.
 
 Retained bytes have the synchronous shape:
@@ -96,7 +96,7 @@ Retained bytes have the synchronous shape:
 - `costUnknown: false` comes from the tier-aware price;
 - the provenance fields are `channel: "anthropic-message-batches"` and `batchId`.
 
-**The request.** It is the synchronous Messages body without `service_tier`, field for field (`anthropicVisualReviewBody`). A test pins that the synchronous body is unchanged: same fields, same order, `standard_only`.
+**The request.** It is the synchronous Messages body without `service_tier`, field for field (`anthropicVisualReviewBody`). A test pins the synchronous request byte for byte against the body written out by hand from the code before this branch (`921cf306`): prompt, labels, images and their order, and `standard_only`.
 
 ### Pricing by the tier that served it
 
@@ -117,10 +117,10 @@ intent ─► reserve batch key (half) ─► claim n ─► create ─► submi
 - The intent is durable before the reservation, and each claim before its create.
 - A create that did not answer (timeout, network, 5xx, an unreadable 2xx) is uncertain. It waits out a 15-minute grace.
 - After the grace, only a search of the provider's batches decides, newest first, back to the intent. It reads results only from the documented path built from a checked batch id.
-  - One batch found is recorded.
-  - Two found hold the round, with the charge unknown.
-  - A candidate that has not ended leaves the search undecided, and the round waits.
-  - Only proven absence allows a new claim and create.
+  - Two found hold the round, with the charge unknown and both batches named.
+  - A candidate that has not ended leaves the search undecided, and the round waits, **even when one batch is already proven**: recording that one could release the other's possible charge on the first one's outcome.
+  - One batch found, with nothing undecided, is recorded.
+  - Only proven absence allows a new claim and create. Absence is proven only by a complete inventory: every list page to its documented end (`has_more`, with a cursor whenever more follow), and every ended batch's results adding up to that batch's own `request_counts`, each id once. An empty or cut-off results file is an error, never "not there".
 - A documented 4xx refusal with Anthropic's error envelope proves nothing was created.
   - `429` waits 5 minutes and tries again.
   - Others are held at zero.
@@ -135,8 +135,9 @@ intent ─► reserve batch key (half) ─► claim n ─► create ─► submi
 
 **Interruptions.**
 - A crash after the bill and before its record replays to the same state, with no second bill.
-- So does a crash between the alias's reservation and its settlement.
-- Tests replay both and compare the ledger entries byte for byte.
+- So does a crash between the alias and its retained copy: the next pass writes the copy before the dual review buys.
+- An alias reservation left by the earlier code settles into the alias as before.
+- Tests replay each and compare the ledger entries byte for byte.
 
 **Throughput.** One question per batch.
 - Each slice polls every open round first (`advanceQualityBatches`), and never creates in that step.
@@ -145,13 +146,15 @@ intent ─► reserve batch key (half) ─► claim n ─► create ─► submi
 - At half the reservation, 27 questions in flight hold $3.375. A full world waits for capacity through the existing budget wait, rather than failing.
 
 **Deletion and stopped games.**
-- The batch key enters the deletion inventory before it is reserved, so a retained answer is purged with the game.
+- The batch key enters the deletion inventory immediately before it is reserved, in the same step, so every reservation has its entry whatever stopped a worker earlier, and a retained answer is purged with the game.
 - The scheduled tick sweeps rounds of games no longer generating (`sweepQualityBatches`):
   - running batches are cancelled;
   - ended ones are settled;
   - a deleted game's late answer has its bill recorded and its bytes not kept;
   - the provider's copies are deleted once acknowledged.
-- Finished rounds of generating games are deleted by their own slices. A held round keeps its batch for the person.
+  - Each tick starts one round further on (the tick runs every minute), so a round that is slow on every tick cannot keep the sweep from the others.
+- Finished rounds of generating games are deleted by their own slices.
+- A held round keeps its batches for the person, **unless its game was deleted**: then they are deleted at the provider too, while the unknown charge stays held in the ledger. The hold is the ledger's to keep; the imagery is the child's.
 - **Failure handling (`80d7de72`):**
   - One game's unreadable record never stops the sweep of the others.
   - A round the slice cannot advance stops the slice with the job's FAILED status and reason, exactly as a failing review does.
@@ -160,11 +163,12 @@ intent ─► reserve batch key (half) ─► claim n ─► create ─► submi
 
 | Suite | Result |
 | --- | --- |
-| `quality-batch.test.ts`: real SQLite, ledger, retained store, dual review and world slice, with a scripted provider | **23/23** (21 in `1df2e366`, plus 2 in `80d7de72`) |
-| `quality-batch-round.test.ts`: the pure rules | **16/16** |
-| `anthropic-message-batches.test.ts`: the transport on a scripted wire, plus pricing | **8/8** |
+| `quality-batch.test.ts`: real SQLite, ledger, retained store, dual review and world slice, with a scripted provider | **29/29** (21 in `1df2e366`, 2 in `80d7de72`, 6 for Codex's HOLD) |
+| `quality-batch-round.test.ts`: the pure rules | **21/21** (16, plus 5 for the HOLD) |
+| `anthropic-message-batches.test.ts`: the transport on a scripted wire, plus pricing | **9/9** (8, plus 1 for the HOLD; 3 updated) |
+| `world-budget.test.ts` and `board-wizard-budget.test.ts`: `WorldBudget.link` | 3 and 1 new |
 
-Among the 23:
+Among the first 23:
 - **A whole 27-appearance world** reaches READY with:
   - 27 published appearances;
   - 0 Opus questions asked synchronously, and 27 Sol questions;
@@ -196,7 +200,7 @@ Among the 23:
 | --- | --- |
 | Pricing by the tier actually served | `visualReviewBatchCharge`: batch at half, standard at standard, anything else held as unknown. Tests cover each tier, no tier and another model. |
 | Durable waiting beyond the worker window | AuditLog rounds plus the per-slice poller. The question waits across any number of invocations (deadline test: 6 h). |
-| Interruption or 5xx: no double purchase, no deletion of an uncertain charge | Claims, grace and search: one batch recorded, two held. Uncertain charges are only ever marked unknown, never settled or deleted. Both interruption replays are tested. |
+| Interruption or 5xx: no double purchase, no deletion of an uncertain charge | Claims, grace and a search that proves absence only from a complete inventory: one batch recorded only when no other could still carry the question, two held. Uncertain charges are only ever marked unknown, never settled or deleted. The interruption replays are tested. |
 | 27 valid approved results before READY | The whole-world test: READY only with 27 published appearances, each with a verified quality stage. A held world parks, and is never READY. |
 | A runner's `complete` with `money.held` is not readiness | In the product, a held charge holds the world: no reservation, no publication. The unpriced tests show this. |
 | The judges' questions and the quality requirement unchanged | Same params minus `service_tier`; same reader; same `verifiedDualStage`. Sol is untouched. |
@@ -241,12 +245,25 @@ Each mutant edits one anchor and runs only its targeted tests. Each counts only 
   - the poller's error left unsurfaced;
   - the sweep stopping at a bad game;
   - a corrupt intent raising a TypeError.
+- **Codex's HOLD (§7): 22/22,** each killed by the test it targets, with the tree restored and verified:
+  - P1-5 and the alias: the alias reserving capacity again; the guard counting aliases; the ledger's link needing room; linking to another operation; overwriting a row; attempt 2's canonical key unmapped; a lost copy never repaired;
+  - P1-1: results not counted; a page's end not required; a cursor not required; counts not required in the search; `processing` ignored; results read from a batch that has not ended;
+  - P1-2: one proven batch recorded before an undecided search;
+  - P1-3: no inventory before the reservation; the inventory after it;
+  - P1-4: held rounds never purged; a hold forgetting the batches it found; the sweep blind to deletion; the slice purging held rounds of a live game;
+  - P2-6: no rotation;
+  - P2-7: the shared helper drifting (labels after images).
 
 **The full suite (`npm run check`) on `1df2e366`:**
 - tsc is clean.
 - Vitest: 5,089 passed, 2 expected failures, 55 skipped, **2 failed**. The 2 failures are the same two tests that failed the same way on step 1 alone: `local-patch-incremental-review.test.ts` "retries malformed anatomy evidence…" and "asks a cut-off anatomy answer again…", each a 20-second timeout under full-suite load.
 - Alone, the file passes 79/79 at both stages.
 - Timed back to back with only those two tests, the code before step 2 (`ba8f620c`) and after it are the same: 13.07 / 12.84 / 13.06 / 12.80 s against 12.96 / 12.81 / 12.86 / 12.93 s. Step 2 adds nothing measurable; the timeouts belong to load.
+
+**The full suite on the HOLD fixes:**
+- tsc is clean.
+- Vitest: 5,107 passed, 2 expected failures, 55 skipped, **2 failed**: the same two load timeouts in `local-patch-incremental-review.test.ts`. Alone, that file passes 79/79.
+- The ledger commit `233c55e7` alone, on `fcf4c0ea`: tsc clean, and the three ledger test files pass 70/70.
 
 ## Commits
 
@@ -256,6 +273,9 @@ Each mutant edits one anchor and runs only its targeted tests. Each counts only 
 | `ba8f620c` | feat(qa): pin the LOW painter on new local-patch drafts |
 | `1df2e366` | feat(qa): Opus quality questions through Anthropic Message Batches |
 | `80d7de72` | fix(qa): a batch round that cannot be advanced is surfaced, not repeated |
+| `fcf4c0ea` | docs(qa): LOW painter and Opus on Message Batches, per new draft |
+| `233c55e7` | feat(budget): link a second key to a settled charge without capacity (Codex P1-5) |
+| the commit carrying this section | fix(qa): the batch channel's recovery, deletion and alias (Codex HOLD) |
 
 Each was verified on its own in a clean worktree:
 - `afbd8ee2`: tsc and its regression test;
@@ -275,3 +295,31 @@ The split was proven exact: replaying step 2's edits onto the step-1 versions re
 5. **Sol on Flex** (≈ $2.83 projected) is the next step toward $3. E6b's evidence is 3/4 at half price, with one 503 held.
 6. **The scheduled sweep's first query** (`action` across every game's AuditLog rows) has no index on `action`. It runs once a tick and is fine at QA's size; at a large size it would need an index, which is a schema change.
 7. **A world parked for a person** (NEEDS_RELEASE or exhausted) runs no slice, so its open rounds are neither polled nor cancelled at their deadline until it resumes. Each batch still ends within 24 h, and its reservation stays counted meanwhile.
+8. **The sweep reads every game's round record each minute** to find the rounds with work. Fine at QA's size; at scale it would want a cursor or an index (a schema change).
+9. **Batch ids.** Anthropic's reference says "The format and length of IDs may change over time." The transport accepts only `msgbatch_` followed by letters and digits. A new format fails closed: every create becomes uncertain and every batched question waits, so a deployment would show it at once, but it would stall the channel until the pattern is widened.
+
+## 7. Codex's review of `fcf4c0ea`: HOLD, and the fixes
+
+Codex reviewed `921cf306..fcf4c0ea` read-only and held it: five P1 findings and two P2, no P0. Every finding was accepted and fixed on this branch.
+
+Codex also confirmed, from source and offline probes:
+- pricing by the served tier, with a standard-tier answer recorded in full as an overrun;
+- the alias's accounting once established (`purchaseOnce`, `verifiedDualStage`, world totals, daily spend, the admin display);
+- the per-game pins;
+- the pick fix;
+- the synchronous transport, byte-identical for 1, 2 and 30 images;
+- no path from a held ledger to READY.
+
+| # | Finding | Fix | Regression test |
+| --- | --- | --- | --- |
+| P1-1 | The search took an empty or cut-off results file, or a list page without its end, as proof that a lost create made nothing. | A result set counts only when it adds up to the batch's own `request_counts`, with none still processing and each id once. A list page must say `has_more`, with a cursor whenever more follow. `results()` reads the batch's own record first. Anything less throws, and a throw never permits a create. | Transport: eight incomplete answers, each refused; the same file whole proves absence. |
+| P1-2 | One proven batch was recorded while another candidate still ran. A canceled first result then released the reservation and asked the question synchronously. | An undecided search waits, even with one batch proven. Two proven still hold. | Codex's scenario: no synchronous question, no terminal record, the reservation still pending; then held with both batches named. |
+| P1-3 | A crash between the intent and the batch key's inventory entry left the key out of deletion's inventory for good. | The entry is written in the step that reserves the key, immediately before the reservation. The separate write after the intent is gone. | A trigger stops the worker right after the intent; resumed, answered and deleted, both retained copies are gone. |
+| P1-4 | A deleted game's held round never had its provider batch deleted. | A hold names the batches it found but never recorded. A finished round's batches are deleted at the provider once kept, and a held round's too when its game is deleted (`qualityBatchCleanupDue`). The unknown charge stays held. | An unpriced answer: kept while the game lives, deleted with the game, the charge still unknown, nothing bought. The two-batch hold: both deleted. |
+| P1-5 | The alias needed a full synchronous reservation, so a paid answer near the ceiling was refused for good. | `WorldBudget.link` writes the alias straight in. It needs no capacity and grants no dispatch. It accepts only a settled, unconflicted charge of the same scope and operation, and is idempotent. The board wizard's ceiling no longer counts an alias, and attempt 2's keys map as for every other call. | Ledger (3 tests); the $4 board-wizard ceiling with Codex's numbers (191,000 left, alias 250,000, Sol 66,000); Codex's scenario end to end at the world's edge: the paid answer replays and Sol is asked, with no second Opus purchase. |
+| P2-6 | The sweep always started at the first round, so one slow round starved every round after it. | Each tick (every minute) starts one round further on. | Codex's scenario on a fake clock: the slow round fails on every tick, and the other game's round is still reached. |
+| P2-7 | The synchronous-body test derived its expectation from the helper both routes share. | The request is pinned byte for byte against a body written out by hand from `921cf306`. | Changing the shared helper now fails it. |
+
+**The new order's own window.** Writing the alias first means a worker that stops between the alias and its retained copy would leave a paid answer the dual review could not replay. The next pass writes the copy before the dual review buys. A trigger test stops that write once and checks the review goes on without a second purchase.
+
+**A record-format change, before any deployment.** The `deleted` event now names every batch it deleted (`batchIds`), and a `held` event may name the batches a hold found. Nothing has run on the old format outside tests.

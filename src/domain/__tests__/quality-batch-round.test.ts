@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   QUALITY_BATCH_CREATE_GRACE_MS, QUALITY_BATCH_REFUSAL_BACKOFF_MS, QUALITY_BATCH_VERSION, decideQualityBatchResults, nextQualityBatchStep,
-  qualityBatchEventName, qualityBatchReserveMicroUsd, qualityBatchRoundOf, type QualityBatchEvent, type QualityBatchIntent,
+  qualityBatchCleanupDue, qualityBatchEventName, qualityBatchReserveMicroUsd, qualityBatchRoundOf, type QualityBatchEvent, type QualityBatchIntent,
 } from "../generation/quality-batch-round";
 
 const T0 = Date.parse("2026-10-16T08:00:00.000Z"), HOUR = 60 * 60_000;
@@ -56,8 +56,35 @@ describe("a quality question's batch round, pure", () => {
     ["an answer from an unrecorded batch", [{ kind: "claim", n: 1, at: T0 }, { kind: "submitted", n: 1, batchId: "msgbatch_1", at: T0 }, { kind: "answered", batchId: "msgbatch_9", amountMicroUsd: 1, servedTier: "batch", at: T0 }]],
     ["an unsent fallback after a recorded batch", [{ kind: "claim", n: 1, at: T0 }, { kind: "submitted", n: 1, batchId: "msgbatch_1", at: T0 }, { kind: "fallback", batchId: null, resultType: "never-created", errorType: null, at: T0 }]],
     ["two terminal outcomes", [{ kind: "held", reason: "x", at: T0 }, { kind: "held", reason: "y", at: T0 }]],
+    ["a deletion of another batch", [{ kind: "claim", n: 1, at: T0 }, { kind: "submitted", n: 1, batchId: "msgbatch_1", at: T0 },
+      { kind: "answered", batchId: "msgbatch_1", amountMicroUsd: 1, servedTier: "batch", at: T0 }, { kind: "deleted", batchIds: ["msgbatch_9"], at: T0 }]],
+    ["a deletion of part of a hold's batches", [{ kind: "claim", n: 1, at: T0 }, { kind: "held", reason: "x", at: T0, batchIds: ["msgbatch_1", "msgbatch_2"] },
+      { kind: "deleted", batchIds: ["msgbatch_1"], at: T0 }]],
+    ["a deletion when nothing reached the provider", [{ kind: "claim", n: 1, at: T0 }, { kind: "refused", n: 1, at: T0, status: 400, errorType: null, transient: false },
+      { kind: "held", reason: "x", at: T0 }, { kind: "deleted", batchIds: [], at: T0 }]],
+    ["a hold naming one batch twice", [{ kind: "claim", n: 1, at: T0 }, { kind: "held", reason: "x", at: T0, batchIds: ["msgbatch_1", "msgbatch_1"] }]],
   ])("refuses an impossible record: %s", (_name, events) => {
     expect(() => round(...events)).toThrow("QUALITY_BATCH");
+  });
+
+  it("knows every batch it proved, and deletes them once finished: a held round's only for a deleted game", () => {
+    const recorded: QualityBatchEvent[] = [{ kind: "claim", n: 1, at: T0 }, { kind: "submitted", n: 1, batchId: "msgbatch_1", at: T0 }];
+    const answered = round(...recorded, { kind: "answered", batchId: "msgbatch_1", amountMicroUsd: 9000, servedTier: "batch", at: T0 });
+    expect(answered.batchIds).toEqual(["msgbatch_1"]);
+    expect([qualityBatchCleanupDue(answered, false), qualityBatchCleanupDue(answered, true)]).toEqual([true, true]);
+    const held = round(...recorded, { kind: "held", reason: "unpriced", at: T0 });
+    expect([qualityBatchCleanupDue(held, false), qualityBatchCleanupDue(held, true)]).toEqual([false, true]);
+    // Two batches found carrying the question, neither ever recorded: the hold names both.
+    const found = round({ kind: "claim", n: 1, at: T0 }, { kind: "held", reason: "two", at: T0, batchIds: ["msgbatch_1", "msgbatch_2"] });
+    expect(found.batchIds).toEqual(["msgbatch_1", "msgbatch_2"]);
+    expect(qualityBatchCleanupDue(found, true)).toBe(true);
+    expect(round({ kind: "claim", n: 1, at: T0 }, { kind: "held", reason: "two", at: T0, batchIds: ["msgbatch_2", "msgbatch_1"] },
+      { kind: "deleted", batchIds: ["msgbatch_1", "msgbatch_2"], at: T0 }).deleted).toBe(true);
+    // Nothing reached the provider; everything is already deleted; the round is still open.
+    expect(qualityBatchCleanupDue(round({ kind: "claim", n: 1, at: T0 }, { kind: "refused", n: 1, at: T0, status: 400, errorType: null, transient: false },
+      { kind: "held", reason: "refused", at: T0 }), true)).toBe(false);
+    expect(qualityBatchCleanupDue(round(...recorded, { kind: "held", reason: "x", at: T0 }, { kind: "deleted", batchIds: ["msgbatch_1"], at: T0 }), true)).toBe(false);
+    expect(qualityBatchCleanupDue(round(...recorded), true)).toBe(false);
   });
 
   it("reserves half of the synchronous reservation, rounded up", () => {

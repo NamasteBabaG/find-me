@@ -6,12 +6,12 @@ import { visualReviewBatchCharge } from "../../infra/generation/visual-review-pr
 import { QualityBatchRefused, type QualityBatchResult, type QualityBatchTransport } from "../../infra/generation/types";
 import { PrismaRetainedPurchaseStore } from "../../infra/db/prisma-retained-purchase-store";
 import {
-  QUALITY_BATCH_VERSION, decideQualityBatchResults, nextQualityBatchStep, qualityBatchEventName, qualityBatchReserveMicroUsd, qualityBatchRoundOf,
+  QUALITY_BATCH_VERSION, decideQualityBatchResults, nextQualityBatchStep, qualityBatchCleanupDue, qualityBatchEventName, qualityBatchReserveMicroUsd, qualityBatchRoundOf,
   type QualityBatchEvent, type QualityBatchIntent, type QualityBatchRound,
 } from "../../domain/generation/quality-batch-round";
 import { visualReviewPolicy } from "../../domain/generation/visual-review-policy";
 import type { PreparedVisualReview } from "./visual-review";
-import { canonicalChargeEvidence, WorldBudgetError, type BudgetJson, type WorldChargeEvidence } from "./world-budget";
+import { canonicalChargeEvidence, sameChargeEvidence, WorldBudgetError, type BudgetJson, type WorldChargeEvidence } from "./world-budget";
 import { boardWizardBudgetOf } from "./board-conditioned-wizard";
 import { fenceLocalPatchImages, LocalPatchDeleted, LocalPatchRetainedPurchaseStore } from "./local-patch-lifecycle";
 import { inventorySelfRepairRequest } from "./local-patch-self-repair";
@@ -27,9 +27,9 @@ import { qualityChannelOf } from "./quality-channel";
  *  - the BATCH key (`self-repair:batch:<board>:<fingerprint>`) is reserved before
  *    the batch is created and settles at the price of the tier that served it;
  *  - the dual review's own key (`self-repair:board:<board>:<fingerprint>`) is then
- *    settled with the identical bill, which the ledger records as a LINKED alias
- *    of the batch key's charge (counted once). `purchaseOnce` replays it like any
- *    answer already bought, and every check of a dual stage holds as it does today.
+ *    written as a LINKED alias of the batch key's charge: the identical bill,
+ *    counted once, holding no capacity. `purchaseOnce` replays it like any answer
+ *    already bought, and every check of a dual stage holds as it does today.
  * A batch result the provider documents as unbilled settles the batch key at zero
  * and leaves the dual review's key untouched, so the dual review asks the same
  * question synchronously, exactly as it does for every unpinned game.
@@ -116,6 +116,9 @@ async function readRound(ctx: Context, roundId: string): Promise<QualityBatchRou
 async function ensureReserved(ctx: Context, intent: QualityBatchIntent): Promise<QualityBatchGate | null> {
   const budget = boardWizardBudgetOf(ctx.c), held = await budget.readRequest(intent.worldId, intent.batchKey);
   if (!held) {
+    // In deletion's inventory before anything can be reserved, sent or kept under the key:
+    // a reservation always has its entry, whatever stopped a worker before this point.
+    await inventorySelfRepairRequest(ctx.c, ctx.gameId, intent.batchKey, ctx.fence ?? (async () => {}));
     await budget.reserve(intent.worldId, { requestKey: intent.batchKey, scope: "judge", operationFingerprint: intent.fingerprint, reserveMicroUsd: intent.batchReserveMicroUsd });
     return null;
   }
@@ -135,11 +138,12 @@ async function settleUnbilled(ctx: Context, intent: QualityBatchIntent, batchId:
     amountMicroUsd: 0, costBasis: "provider-billed" }));
 }
 
-/** Hold with the charge unknown: a person reconciles it; nothing is asked again automatically. */
-async function holdUnknown(ctx: Context, round: QualityBatchRound, reason: string) {
+/** Hold with the charge unknown: a person reconciles it; nothing is asked again automatically.
+ * `found`: batches proven to carry the question that the round never recorded, kept so they can be deleted. */
+async function holdUnknown(ctx: Context, round: QualityBatchRound, reason: string, found?: readonly string[]) {
   const budget = boardWizardBudgetOf(ctx.c), held = await budget.readRequest(round.intent.worldId, round.intent.batchKey);
   if (held && held.state === "pending") await budget.markUnknown(round.intent.worldId, round.intent.batchKey, `quality batch ${round.intent.roundId}: ${reason}`);
-  await writeEvent(ctx, round.intent.roundId, { kind: "held", reason, at: Date.now() });
+  await writeEvent(ctx, round.intent.roundId, { kind: "held", reason, at: Date.now(), ...(found?.length ? { batchIds: [...found] } : {}) });
 }
 
 async function create(ctx: Context, round: QualityBatchRound, claim: number): Promise<QualityBatchGate | "advanced"> {
@@ -205,25 +209,32 @@ async function reconcile(ctx: Context, round: QualityBatchRound, batchId: string
 }
 
 /**
- * The dual review's own key, settled with the batch key's bill: a linked alias the
- * ledger counts once, carrying the same retained answer under its own address.
+ * The dual review's own key as a linked alias of the batch key's charge: counted
+ * once, carrying the same retained answer under its own address, with the dual
+ * review's own reservation terms so its replay finds the purchase it would make.
+ *
+ * The alias holds no capacity: the answer is already paid for. (It used to be
+ * reserved first, which refused the answer whenever the world had less room left
+ * than the synchronous reservation - for good, with nothing pending to free it.)
+ * Ledger first, copy second: a copy lost in between is written by the next pass,
+ * and every dual review comes through here before it buys.
  */
 async function link(ctx: Context, round: QualityBatchRound) {
-  const { intent } = round, budget = boardWizardBudgetOf(ctx.c);
+  const { intent } = round, budget = boardWizardBudgetOf(ctx.c), store = new LocalPatchRetainedPurchaseStore(ctx.c, ctx.gameId, budget);
   const existing = await budget.readRequest(intent.worldId, intent.syncKey);
-  if (existing?.state === "settled" || existing?.state === "linked") return;
+  if (existing?.state === "settled" || existing?.state === "linked" && await store.get(intent.worldId, intent.syncKey)) return;
   const answer = await new PrismaRetainedPurchaseStore(ctx.c.db).get(intent.worldId, intent.batchKey);
   if (!answer?.evidence || answer.operationFingerprint !== intent.fingerprint) throw Error("QUALITY_BATCH: an answered round has no retained answer to deliver");
-  if (existing && (existing.state !== "pending" || existing.scope !== "judge" || existing.operationFingerprint !== intent.fingerprint
-    || existing.reserveMicroUsd !== intent.syncReserveMicroUsd)) throw Error(`QUALITY_BATCH: ${intent.syncKey} is ${existing.state} with other terms`);
+  if (existing && (existing.scope !== "judge" || existing.operationFingerprint !== intent.fingerprint || existing.reserveMicroUsd !== intent.syncReserveMicroUsd
+    || (existing.state === "linked" ? !sameChargeEvidence(existing.evidence, answer.evidence) : existing.state !== "pending")))
+    throw Error(`QUALITY_BATCH: ${intent.syncKey} is ${existing.state} with other terms`);
   await inventorySelfRepairRequest(ctx.c, ctx.gameId, intent.syncKey, ctx.fence ?? (async () => {}));
-  // The dual review's own reservation, so its replay finds the same terms. It is
-  // checked against capacity like any reservation and settles at once, below it.
-  if (!existing) await budget.reserve(intent.worldId, { requestKey: intent.syncKey, scope: "judge", operationFingerprint: intent.fingerprint, reserveMicroUsd: intent.syncReserveMicroUsd });
-  await new LocalPatchRetainedPurchaseStore(ctx.c, ctx.gameId, budget).put(intent.worldId, intent.syncKey, { version: RETAINED_PURCHASE_VERSION,
-    worldId: intent.worldId, requestKey: intent.syncKey, scope: "judge", operationFingerprint: intent.fingerprint, payloadSha256: answer.payloadSha256,
-    bytes: answer.bytes, evidence: answer.evidence, unknownReason: null });
-  await budget.settle(intent.worldId, intent.syncKey, answer.evidence);
+  // A reservation an earlier version made for the alias settles into it.
+  if (!existing) await budget.link(intent.worldId, { requestKey: intent.syncKey, scope: "judge", operationFingerprint: intent.fingerprint,
+    reserveMicroUsd: intent.syncReserveMicroUsd, canonicalRequestKey: intent.batchKey });
+  else if (existing.state === "pending") await budget.settle(intent.worldId, intent.syncKey, answer.evidence);
+  await store.put(intent.worldId, intent.syncKey, { version: RETAINED_PURCHASE_VERSION, worldId: intent.worldId, requestKey: intent.syncKey,
+    scope: "judge", operationFingerprint: intent.fingerprint, payloadSha256: answer.payloadSha256, bytes: answer.bytes, evidence: answer.evidence, unknownReason: null });
 }
 
 /** Move one round as far as it can go now. Transport failures wait; ledger and record failures are raised. */
@@ -258,12 +269,14 @@ async function advance(ctx: Context, roundId: string): Promise<QualityBatchGate>
       let found: { proven: string[]; undecided: boolean };
       try { found = await ctx.transport.find(round.intent.customId, step.sinceMs); }
       catch (error) { return waiting(`the provider could not be searched (${error instanceof Error ? error.message.slice(0, 200) : "unknown"})`); }
-      if (found.proven.length > 1) { await holdUnknown(ctx, round, `${found.proven.length} batches carry this one question`); continue; }
+      if (found.proven.length > 1) { await holdUnknown(ctx, round, `${found.proven.length} batches carry this one question`, found.proven); continue; }
+      // One proven batch is the round's only when no other could still carry the question:
+      // recording it while another runs could release that one's charge on the first's outcome.
+      if (found.undecided) return waiting("a batch that could carry this question has not ended yet");
       if (found.proven.length === 1) {
         await writeEvent(ctx, roundId, { kind: "submitted", n: round.claims.at(-1)!.n, batchId: found.proven[0]!, at: Date.now() });
         continue;
       }
-      if (found.undecided) return waiting("a batch that could carry this question has not ended yet");
       if (ctx.stopping) {
         // Proven never created, and the game is not generating: nothing to ask, nothing billed.
         await settleUnbilled(ctx, round.intent, null, "never-created", null);
@@ -296,12 +309,15 @@ async function advance(ctx: Context, roundId: string): Promise<QualityBatchGate>
   return waiting("the round is still advancing");
 }
 
-/** The provider's copy of a finished round, deleted once its result is kept. A held round keeps its batch for the person. */
-async function cleanup(ctx: Context, round: QualityBatchRound) {
-  if (!round.submitted || round.deleted || !round.terminal || round.terminal.kind === "held") return;
-  try { await ctx.transport.remove(round.submitted.batchId); }
-  catch { return; } // retried on a later slice; the round itself is finished
-  await writeEvent({ ...ctx, fence: null }, round.intent.roundId, { kind: "deleted", batchId: round.submitted.batchId, at: Date.now() });
+/** The provider's copies of a finished round, deleted once its outcome is kept. A held round
+ * keeps them for the person, unless its game was deleted (rule 5 of quality-batch-round.ts). */
+async function cleanup(ctx: Context, round: QualityBatchRound, gameDeleted: boolean) {
+  if (!qualityBatchCleanupDue(round, gameDeleted)) return;
+  for (const batchId of round.batchIds) {
+    try { await ctx.transport.remove(batchId); }
+    catch { return; } // retried on a later slice or tick; the round itself is finished
+  }
+  await writeEvent({ ...ctx, fence: null }, round.intent.roundId, { kind: "deleted", batchIds: round.batchIds, at: Date.now() });
 }
 
 /**
@@ -339,8 +355,6 @@ export async function askQualityThroughBatch(c: Container, input: {
     syncReserveMicroUsd: input.reserveMicroUsd, batchReserveMicroUsd: qualityBatchReserveMicroUsd(input.reserveMicroUsd),
     paramsSha256: sha(JSON.stringify(qualityBatchParams(input.question))), intentAt: now, deadlineAt: now + channel.deadlineMs };
   await writeEvent(ctx, roundId, { kind: "intent", intent });
-  // Deletion must find whatever this key ever retains, before anything is bought under it.
-  await inventorySelfRepairRequest(c, input.gameId, batchKey, input.fence);
   return advance(ctx, roundId);
 }
 
@@ -352,7 +366,7 @@ export async function advanceQualityBatches(c: Container, gameId: string, fence:
   for (const [roundId, events] of await gameRounds(c.db, gameId)) {
     if (deadlineAt !== undefined && deadlineAt - Date.now() < POLL_NEED_MS) return;
     const round = qualityBatchRoundOf(events), ctx: Context = { c, transport, gameId, fence, question: null, stopping: false, deadlineAt };
-    if (round.terminal) { await cleanup(ctx, round); continue; }
+    if (round.terminal) { await cleanup(ctx, round, false); continue; }
     try { await advance(ctx, roundId); }
     // A full world waits for capacity at the review that needs it, which parks or waits as it does today.
     catch (error) { if (!(error instanceof WorldBudgetError)) throw error; }
@@ -369,31 +383,48 @@ export async function qualityBatchWaiting(db: Pick<Prisma.TransactionClient, "au
   return waitingRows;
 }
 
+/** The scheduled tick runs every minute; each tick starts its sweep one round further on. */
+const SWEEP_ROTATION_MS = 60_000;
+
 /**
  * Rounds of games that are no longer generating (deleted, stopped, refunded,
- * finished): cancelled now, settled when their batch ends, the provider's copy
+ * finished): cancelled now, settled when their batch ends, the provider's copies
  * deleted. A deleted game's answer is not kept; its bill is. Never creates,
  * links or falls back. For the scheduled tick, within its own deadline.
  */
 export async function sweepQualityBatches(c: Container, options: { deadlineAt: number }): Promise<{ rounds: number; failed: number }> {
   const transport = c.qualityBatch;
   if (!transport) return { rounds: 0, failed: 0 };
-  const games = await c.db.auditLog.findMany({ where: { action: QUALITY_BATCH_ACTION, entityType: "Game" }, select: { entityId: true }, distinct: ["entityId"] });
+  const games = await c.db.auditLog.findMany({ where: { action: QUALITY_BATCH_ACTION, entityType: "Game" }, select: { entityId: true },
+    distinct: ["entityId"], orderBy: { entityId: "asc" } });
+  const work: { gameId: string; roundId: string; round: QualityBatchRound; gameDeleted: boolean }[] = [];
   let rounds = 0, failed = 0;
   for (const { entityId: gameId } of games) {
     if (!gameId) continue;
-    // One game's unreadable record or failed write never stops the sweep of the others;
-    // that game's rounds stay as they are, counted, for the next tick or a person.
+    // One game's unreadable record never stops the sweep of the others; that game's
+    // rounds stay as they are, counted, for the next tick or a person.
     try {
       const game = await c.db.game.findUnique({ where: { id: gameId }, select: { status: true, deletedAt: true } });
       if (game && game.status === "TARGETS_GENERATING" && !game.deletedAt) continue; // its own slices advance it
+      const gameDeleted = !game || !!game.deletedAt || game.status === "DELETED";
       for (const [roundId, events] of await gameRounds(c.db, gameId)) {
-        if (options.deadlineAt - Date.now() < POLL_NEED_MS) return { rounds, failed };
-        const round = qualityBatchRoundOf(events), ctx: Context = { c, transport, gameId, fence: null, question: null, stopping: true, deadlineAt: options.deadlineAt };
-        if (round.terminal) { if (!round.deleted && round.submitted && round.terminal.kind !== "held") { await cleanup(ctx, round); rounds++; } continue; }
-        await advance(ctx, roundId);
-        rounds++;
+        const round = qualityBatchRoundOf(events);
+        if (!round.terminal || qualityBatchCleanupDue(round, gameDeleted)) work.push({ gameId, roundId, round, gameDeleted });
       }
+    } catch { failed++; }
+  }
+  // Rotated: a round that is slow every time (a provider that answers late, then fails)
+  // took each tick's whole window, every tick, and the rounds after it were never reached.
+  const start = work.length ? Math.floor(Date.now() / SWEEP_ROTATION_MS) % work.length : 0;
+  for (let i = 0; i < work.length; i++) {
+    if (options.deadlineAt - Date.now() < POLL_NEED_MS) break;
+    const { gameId, roundId, round, gameDeleted } = work[(start + i) % work.length]!;
+    const ctx: Context = { c, transport, gameId, fence: null, question: null, stopping: true, deadlineAt: options.deadlineAt };
+    // A failed write or read leaves the round as it is, for the next tick or a person.
+    try {
+      if (round.terminal) await cleanup(ctx, round, gameDeleted);
+      else await advance(ctx, roundId);
+      rounds++;
     } catch { failed++; }
   }
   return { rounds, failed };

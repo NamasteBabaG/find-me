@@ -295,9 +295,11 @@ export interface QualityBatchTransport {
   /** Provider AND billing namespace of every answer this channel delivers. */
   readonly namespace: string;
   create(requests: readonly { customId: string; params: Record<string, unknown> }[]): Promise<{ batchId: string }>;
-  /** Batches created at or after `sinceMs` proven to carry `customId`; undecided while one could and has not ended. */
+  /** Batches created at or after `sinceMs` proven to carry `customId`; undecided while one could and has not ended.
+   * Throws when the provider's inventory cannot be shown complete: absence is never inferred from a partial answer. */
   find(customId: string, sinceMs: number): Promise<{ proven: string[]; undecided: boolean }>;
   status(batchId: string): Promise<"in_progress" | "canceling" | "ended">;
+  /** Every result of an ended batch, as many as the batch itself counts, or a throw. */
   results(batchId: string): Promise<QualityBatchResult[]>;
   cancel(batchId: string): Promise<void>;
   /** Deleted means acknowledged: already gone counts, anything else throws. */
