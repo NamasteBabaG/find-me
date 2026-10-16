@@ -74,9 +74,13 @@ export function qualityBatchParams(question: PreparedVisualReview): Record<strin
     maxOutputTokens: question.policy.maxOutputTokens }, null);
 }
 
+type RoundRow = { readonly id: string; readonly actorType: string; readonly actorId: string | null; readonly metaJson: string | null };
 /** Every round of one game, by round id, oldest event first. A record that cannot be read is refused, not skipped. */
 async function gameRounds(db: Pick<Prisma.TransactionClient, "auditLog">, gameId: string): Promise<Map<string, QualityBatchEvent[]>> {
-  const rows = await db.auditLog.findMany({ where: { action: QUALITY_BATCH_ACTION, entityType: "Game", entityId: gameId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+  return roundsOf(await db.auditLog.findMany({ where: { action: QUALITY_BATCH_ACTION, entityType: "Game", entityId: gameId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }), gameId);
+}
+/** The same, from one game's rows already read (oldest first). */
+function roundsOf(rows: readonly RoundRow[], gameId: string): Map<string, QualityBatchEvent[]> {
   const rounds = new Map<string, QualityBatchEvent[]>();
   for (const row of rows) {
     const match = EVENT_ID.exec(row.id);
@@ -138,12 +142,23 @@ async function settleUnbilled(ctx: Context, intent: QualityBatchIntent, batchId:
     amountMicroUsd: 0, costBasis: "provider-billed" }));
 }
 
+/** The batch key's charge held as unknown, in full: the world reserves nothing more until a person reconciles it. */
+async function holdCharge(ctx: Context, round: QualityBatchRound, reason: string) {
+  const budget = boardWizardBudgetOf(ctx.c), held = await budget.readRequest(round.intent.worldId, round.intent.batchKey);
+  if (held && held.state === "pending") await budget.markUnknown(round.intent.worldId, round.intent.batchKey, `quality batch ${round.intent.roundId}: ${reason}`);
+}
+
 /** Hold with the charge unknown: a person reconciles it; nothing is asked again automatically.
  * `found`: batches proven to carry the question that the round never recorded, kept so they can be deleted. */
 async function holdUnknown(ctx: Context, round: QualityBatchRound, reason: string, found?: readonly string[]) {
-  const budget = boardWizardBudgetOf(ctx.c), held = await budget.readRequest(round.intent.worldId, round.intent.batchKey);
-  if (held && held.state === "pending") await budget.markUnknown(round.intent.worldId, round.intent.batchKey, `quality batch ${round.intent.roundId}: ${reason}`);
+  await holdCharge(ctx, round, reason);
   await writeEvent(ctx, round.intent.roundId, { kind: "held", reason, at: Date.now(), ...(found?.length ? { batchIds: [...found] } : {}) });
+}
+
+/** Nothing of this round ever reached the provider: zero, and the round ends. */
+async function closeUnsent(ctx: Context, round: QualityBatchRound) {
+  await settleUnbilled(ctx, round.intent, null, "never-created", null);
+  await writeEvent(ctx, round.intent.roundId, { kind: "fallback", batchId: null, resultType: "never-created", errorType: null, at: Date.now() });
 }
 
 async function create(ctx: Context, round: QualityBatchRound, claim: number): Promise<QualityBatchGate | "advanced"> {
@@ -255,34 +270,38 @@ async function advance(ctx: Context, roundId: string): Promise<QualityBatchGate>
       await writeEvent(ctx, roundId, { kind: "held", reason: step.reason, at: Date.now() });
       continue;
     }
-    if (step.step === "fallback-unsent") {
-      await settleUnbilled(ctx, round.intent, null, "never-created", null);
-      await writeEvent(ctx, roundId, { kind: "fallback", batchId: null, resultType: "never-created", errorType: null, at: Date.now() });
-      continue;
-    }
+    if (step.step === "fallback-unsent") { await closeUnsent(ctx, round); continue; }
     if (step.step === "create") {
+      // Before any create, every earlier claim was refused outright or searched and found absent:
+      // nothing reached the provider. A game that is not generating sends nothing, so the round ends.
+      if (ctx.stopping) { await closeUnsent(ctx, round); continue; }
       const created = await create(ctx, round, step.claim);
       if (created !== "advanced") return created;
       continue;
     }
     if (step.step === "find") {
-      let found: { proven: string[]; undecided: boolean };
+      let found: Awaited<ReturnType<QualityBatchTransport["find"]>>;
       try { found = await ctx.transport.find(round.intent.customId, step.sinceMs); }
       catch (error) { return waiting(`the provider could not be searched (${error instanceof Error ? error.message.slice(0, 200) : "unknown"})`); }
-      if (found.proven.length > 1) { await holdUnknown(ctx, round, `${found.proven.length} batches carry this one question`, found.proven); continue; }
+      if (found.proven.length > 1) {
+        const reason = `${found.proven.length} batches carry this one question`;
+        // The charge is held at once. The round ends only when no other batch could still carry
+        // the question: a hold naming only the copies found so far would leave a later one out of
+        // the deletion of a deleted game's imagery.
+        if (found.undecided) { await holdCharge(ctx, round, reason); return { kind: "held", reason: `Quality question in Message Batches: ${reason}; still searching for every copy` }; }
+        await holdUnknown(ctx, round, reason, found.proven);
+        continue;
+      }
       // One proven batch is the round's only when no other could still carry the question:
       // recording it while another runs could release that one's charge on the first's outcome.
-      if (found.undecided) return waiting("a batch that could carry this question has not ended yet");
+      if (found.undecided) return waiting(found.truncated ? "the provider lists more batches than one search reads back to this question; nothing is created meanwhile"
+        : "a batch that could carry this question has not ended yet");
       if (found.proven.length === 1) {
         await writeEvent(ctx, roundId, { kind: "submitted", n: round.claims.at(-1)!.n, batchId: found.proven[0]!, at: Date.now() });
         continue;
       }
-      if (ctx.stopping) {
-        // Proven never created, and the game is not generating: nothing to ask, nothing billed.
-        await settleUnbilled(ctx, round.intent, null, "never-created", null);
-        await writeEvent(ctx, roundId, { kind: "fallback", batchId: null, resultType: "never-created", errorType: null, at: Date.now() });
-        continue;
-      }
+      // Proven never created, and the game is not generating: nothing to ask, nothing billed.
+      if (ctx.stopping) { await closeUnsent(ctx, round); continue; }
       const created = await create(ctx, round, step.nextClaim);
       if (created !== "advanced") return created;
       continue;
@@ -385,44 +404,60 @@ export async function qualityBatchWaiting(db: Pick<Prisma.TransactionClient, "au
 
 /** The scheduled tick runs every minute; each tick starts its sweep one round further on. */
 const SWEEP_ROTATION_MS = 60_000;
+/** The time a tick's sweep gives provider calls, counted from the end of reading the records. */
+export const QUALITY_BATCH_SWEEP_WINDOW_MS = 40_000;
+type GameState = { readonly status: string; readonly deletedAt: Date | null } | null;
+/** A generating game's rounds belong to its own slices. */
+const generating = (game: GameState) => !!game && game.status === "TARGETS_GENERATING" && !game.deletedAt;
+const deletedGame = (game: GameState) => !game || !!game.deletedAt || game.status === "DELETED";
 
 /**
  * Rounds of games that are no longer generating (deleted, stopped, refunded,
  * finished): cancelled now, settled when their batch ends, the provider's copies
  * deleted. A deleted game's answer is not kept; its bill is. Never creates,
- * links or falls back. For the scheduled tick, within its own deadline.
+ * links or falls back. For the scheduled tick: provider calls start only before
+ * `deadlineAt`, and within `windowMs` of the records being read.
  */
-export async function sweepQualityBatches(c: Container, options: { deadlineAt: number }): Promise<{ rounds: number; failed: number }> {
+export async function sweepQualityBatches(c: Container, options: { deadlineAt: number; windowMs?: number }): Promise<{ rounds: number; failed: number }> {
   const transport = c.qualityBatch;
   if (!transport) return { rounds: 0, failed: 0 };
-  const games = await c.db.auditLog.findMany({ where: { action: QUALITY_BATCH_ACTION, entityType: "Game" }, select: { entityId: true },
-    distinct: ["entityId"], orderBy: { entityId: "asc" } });
-  const work: { gameId: string; roundId: string; round: QualityBatchRound; gameDeleted: boolean }[] = [];
+  // Two reads for the whole inventory, however many games: every round record, then the games' states.
+  const rows = await c.db.auditLog.findMany({ where: { action: QUALITY_BATCH_ACTION, entityType: "Game" },
+    orderBy: [{ entityId: "asc" }, { createdAt: "asc" }, { id: "asc" }] });
+  const byGame = new Map<string, RoundRow[]>();
+  for (const row of rows) if (row.entityId) byGame.set(row.entityId, [...byGame.get(row.entityId) ?? [], row]);
+  const states = new Map((await c.db.game.findMany({ where: { id: { in: [...byGame.keys()] } }, select: { id: true, status: true, deletedAt: true } }))
+    .map(game => [game.id, game]));
+  const work: { gameId: string; roundId: string; round: QualityBatchRound }[] = [];
   let rounds = 0, failed = 0;
-  for (const { entityId: gameId } of games) {
-    if (!gameId) continue;
+  for (const [gameId, gameRows] of byGame) {
+    const game = states.get(gameId) ?? null;
+    if (generating(game)) continue;
     // One game's unreadable record never stops the sweep of the others; that game's
     // rounds stay as they are, counted, for the next tick or a person.
     try {
-      const game = await c.db.game.findUnique({ where: { id: gameId }, select: { status: true, deletedAt: true } });
-      if (game && game.status === "TARGETS_GENERATING" && !game.deletedAt) continue; // its own slices advance it
-      const gameDeleted = !game || !!game.deletedAt || game.status === "DELETED";
-      for (const [roundId, events] of await gameRounds(c.db, gameId)) {
+      for (const [roundId, events] of roundsOf(gameRows, gameId)) {
         const round = qualityBatchRoundOf(events);
-        if (!round.terminal || qualityBatchCleanupDue(round, gameDeleted)) work.push({ gameId, roundId, round, gameDeleted });
+        if (!round.terminal || qualityBatchCleanupDue(round, deletedGame(game))) work.push({ gameId, roundId, round });
       }
     } catch { failed++; }
   }
+  // The window opens once the records are read: reading them never takes the time the provider calls need.
+  const deadlineAt = Math.min(options.deadlineAt, Date.now() + (options.windowMs ?? QUALITY_BATCH_SWEEP_WINDOW_MS));
   // Rotated: a round that is slow every time (a provider that answers late, then fails)
   // took each tick's whole window, every tick, and the rounds after it were never reached.
   const start = work.length ? Math.floor(Date.now() / SWEEP_ROTATION_MS) % work.length : 0;
   for (let i = 0; i < work.length; i++) {
-    if (options.deadlineAt - Date.now() < POLL_NEED_MS) break;
-    const { gameId, roundId, round, gameDeleted } = work[(start + i) % work.length]!;
-    const ctx: Context = { c, transport, gameId, fence: null, question: null, stopping: true, deadlineAt: options.deadlineAt };
+    if (deadlineAt - Date.now() < POLL_NEED_MS) break;
+    const { gameId, roundId, round } = work[(start + i) % work.length]!;
     // A failed write or read leaves the round as it is, for the next tick or a person.
     try {
-      if (round.terminal) await cleanup(ctx, round, gameDeleted);
+      // The game as it is now: one resumed since the records were read is its own slices' again,
+      // and its batch must not be cancelled as a stopped game's.
+      const game = await c.db.game.findUnique({ where: { id: gameId }, select: { status: true, deletedAt: true } });
+      if (generating(game)) continue;
+      const ctx: Context = { c, transport, gameId, fence: null, question: null, stopping: true, deadlineAt };
+      if (round.terminal) await cleanup(ctx, round, deletedGame(game));
       else await advance(ctx, roundId);
       rounds++;
     } catch { failed++; }

@@ -13,8 +13,9 @@
  * 1. The intent is durable before the reservation, and every claim before its
  *    create. A create that did not answer is never "not created": it waits out
  *    the grace, and then only a search of the provider's batches that ends before
- *    the intent decides. Two batches found hold the round; one is recorded only
- *    when no other batch that could carry the question is still running.
+ *    the intent decides. Two batches found hold the charge at once, but the round
+ *    ends, naming every copy, only when no other batch that could carry the
+ *    question is still running; one batch is recorded only then too.
  * 2. A batch still running at the round's deadline is cancelled once (and again
  *    while it keeps running). What it finished is billed at the batch rate.
  * 3. Only a result the provider documents as unbilled (errored, canceled,

@@ -95,11 +95,11 @@ describe("Anthropic Message Batches transport", () => {
     const search = (...answers: Response[]) => new AnthropicMessageBatches("synthetic", wire(...answers)).find("q-mine", since);
     const other = line("q-other", { type: "succeeded", message: {} });
     // The batch counts one answered request; its results arrive empty, or as a prefix without it.
-    await expect(search(reply(200, { data: [ended("msgbatch_1", at)], has_more: false }), reply(200, null, ""))).rejects.toThrow("do not add up");
-    await expect(search(reply(200, { data: [ended("msgbatch_1", at, "ended", counts(2))], has_more: false }), reply(200, null, other))).rejects.toThrow("do not add up");
-    // Two lines for one id are not two results.
+    await expect(search(reply(200, { data: [ended("msgbatch_1", at)], has_more: false }), reply(200, null, ""))).rejects.toThrow("do not match its record");
+    await expect(search(reply(200, { data: [ended("msgbatch_1", at, "ended", counts(2))], has_more: false }), reply(200, null, other))).rejects.toThrow("do not match its record");
+    // Two lines for one id are not two results, even of the counted type.
     await expect(search(reply(200, { data: [ended("msgbatch_1", at, "ended", counts(2))], has_more: false }),
-      reply(200, null, [other, line("q-other", { type: "canceled" })].join("\n")))).rejects.toThrow("do not add up");
+      reply(200, null, [other, other].join("\n")))).rejects.toThrow("do not match its record");
     // A batch record that does not state its counts, or still counts one processing.
     await expect(search(reply(200, { data: [{ ...ended("msgbatch_1", at), request_counts: undefined }], has_more: false }))).rejects.toThrow("request counts");
     await expect(search(reply(200, { data: [ended("msgbatch_1", at, "ended", counts(1, { processing: 1 }))], has_more: false }))).rejects.toThrow("request counts");
@@ -109,6 +109,35 @@ describe("Anthropic Message Batches transport", () => {
     await expect(search(reply(200, { data: [], has_more: true, last_id: "msgbatch_1" }))).rejects.toThrow("promised more");
     // The same file, whole, proves the question absent.
     await expect(search(reply(200, { data: [ended("msgbatch_1", at)], has_more: false }), reply(200, null, other))).resolves.toEqual({ proven: [], undecided: false });
+  });
+
+  it("refuses results whose types contradict the batch's own counts: a counted success is never read as unbilled", async () => {
+    const record = (requestCounts: Record<string, number>) => ({ id: "msgbatch_1", processing_status: "ended", request_counts: requestCounts });
+    const results = (...answers: Response[]) => new AnthropicMessageBatches("synthetic", wire(...answers)).results("msgbatch_1");
+    const errored = { type: "errored", error: { type: "error", error: { type: "api_error", message: "x" } } };
+    // Codex's case: one counted success, returned as canceled (or expired, or errored).
+    for (const result of [{ type: "canceled" }, { type: "expired" }, errored])
+      await expect(results(reply(200, record(counts(1))), reply(200, null, line("q-mine", result)))).rejects.toThrow(/do not match its record.*succeeded/);
+    // The other way round, a type the record does not count at all, and one more line of such a type.
+    await expect(results(reply(200, record(counts(0, { canceled: 1 }))), reply(200, null, line("q-mine", { type: "succeeded", message: {} })))).rejects.toThrow("do not match its record");
+    await expect(results(reply(200, record(counts(1))), reply(200, null, line("q-mine", { type: "mystery" })))).rejects.toThrow("do not match its record");
+    await expect(results(reply(200, record(counts(1))), reply(200, null, [line("q-mine", { type: "succeeded", message: {} }), line("q-x", { type: "mystery" })].join("\n"))))
+      .rejects.toThrow("do not match its record");
+    // The search refuses the same contradiction rather than read it as proof.
+    const since = Date.parse("2026-10-16T08:00:00.000Z"), at = new Date(since + 60_000).toISOString();
+    await expect(new AnthropicMessageBatches("synthetic", wire(reply(200, { data: [ended("msgbatch_1", at)], has_more: false }),
+      reply(200, null, line("q-mine", { type: "canceled" })))).find("q-mine", since)).rejects.toThrow("do not match its record");
+    // Matching types, in any order, are read.
+    await expect(results(reply(200, record(counts(1, { canceled: 1 }))), reply(200, null, [line("q-x", { type: "canceled" }), line("q-mine", { type: "succeeded", message: {} })].join("\n"))))
+      .resolves.toHaveLength(2);
+  });
+
+  it("says when a search ran out of pages before the intent: undecided, and truncated", async () => {
+    const since = Date.parse("2026-10-16T08:00:00.000Z"), at = new Date(since + 60_000).toISOString();
+    const pages = Array.from({ length: 20 }, (_, i) => reply(200, { data: [ended(`msgbatch_p${i}`, at, "in_progress")], has_more: true, last_id: `msgbatch_p${i}` }));
+    const fetcher = wire(...pages);
+    await expect(new AnthropicMessageBatches("synthetic", fetcher).find("q-mine", since)).resolves.toEqual({ proven: [], undecided: true, truncated: true });
+    expect(fetcher).toHaveBeenCalledTimes(20);
   });
 
   it("reads every documented result type and keeps an unknown one as unrecognised, only from an ended batch whose counts it matches", async () => {
@@ -126,7 +155,7 @@ describe("Anthropic Message Batches transport", () => {
     const results = (...answers: Response[]) => new AnthropicMessageBatches("synthetic", wire(...answers)).results("msgbatch_1");
     const one = { id: "msgbatch_1", processing_status: "ended", request_counts: counts(1) };
     await expect(results(reply(200, one), reply(200, null, "{broken"))).rejects.toThrow("unreadable result line");
-    await expect(results(reply(200, one), reply(200, null, ""))).rejects.toThrow("do not add up");
+    await expect(results(reply(200, one), reply(200, null, ""))).rejects.toThrow("do not match its record");
     await expect(results(reply(200, { ...one, processing_status: "canceling" }))).rejects.toThrow("ended record");
     await expect(results(reply(200, { ...one, id: "msgbatch_2" }))).rejects.toThrow("ended record");
   });

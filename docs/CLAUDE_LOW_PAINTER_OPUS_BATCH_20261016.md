@@ -117,10 +117,10 @@ intent ─► reserve batch key (half) ─► claim n ─► create ─► submi
 - The intent is durable before the reservation, and each claim before its create.
 - A create that did not answer (timeout, network, 5xx, an unreadable 2xx) is uncertain. It waits out a 15-minute grace.
 - After the grace, only a search of the provider's batches decides, newest first, back to the intent. It reads results only from the documented path built from a checked batch id.
-  - Two found hold the round, with the charge unknown and both batches named.
+  - Two found hold the charge at once, as unknown. The round itself ends, naming every copy, only when no candidate still runs, so a deleted game's copies are all found and deleted.
   - A candidate that has not ended leaves the search undecided, and the round waits, **even when one batch is already proven**: recording that one could release the other's possible charge on the first one's outcome.
   - One batch found, with nothing undecided, is recorded.
-  - Only proven absence allows a new claim and create. Absence is proven only by a complete inventory: every list page to its documented end (`has_more`, with a cursor whenever more follow), and every ended batch's results adding up to that batch's own `request_counts`, each id once. An empty or cut-off results file is an error, never "not there".
+  - Only proven absence allows a new claim and create. Absence is proven only by a complete inventory: every list page to its documented end (`has_more`, with a cursor whenever more follow), and every ended batch's results matching that batch's own `request_counts` type by type, each id once. An empty, cut-off or self-contradicting results file is an error, never "not there" and never "unbilled".
 - A documented 4xx refusal with Anthropic's error envelope proves nothing was created.
   - `429` waits 5 minutes and tries again.
   - Others are held at zero.
@@ -153,6 +153,9 @@ intent ─► reserve batch key (half) ─► claim n ─► create ─► submi
   - a deleted game's late answer has its bill recorded and its bytes not kept;
   - the provider's copies are deleted once acknowledged.
   - Each tick starts one round further on (the tick runs every minute), so a round that is slow on every tick cannot keep the sweep from the others.
+  - The records are read in two queries, and the 40-second window for provider calls opens only after them.
+  - Each game's state is read again just before its rounds are touched: a game resumed meanwhile is left to its own slices.
+  - A round that never reached the provider (stopped after its intent, or every create refused) ends at zero rather than waiting for a create that a stopped game never makes.
 - Finished rounds of generating games are deleted by their own slices.
 - A held round keeps its batches for the person, **unless its game was deleted**: then they are deleted at the provider too, while the unknown charge stays held in the ledger. The hold is the ledger's to keep; the imagery is the child's.
 - **Failure handling (`80d7de72`):**
@@ -163,9 +166,9 @@ intent ─► reserve batch key (half) ─► claim n ─► create ─► submi
 
 | Suite | Result |
 | --- | --- |
-| `quality-batch.test.ts`: real SQLite, ledger, retained store, dual review and world slice, with a scripted provider | **29/29** (21 in `1df2e366`, 2 in `80d7de72`, 6 for Codex's HOLD) |
+| `quality-batch.test.ts`: real SQLite, ledger, retained store, dual review and world slice, with a scripted provider | **34/34** (21 in `1df2e366`, 2 in `80d7de72`, 6 for Codex's HOLD, 5 for the re-review) |
 | `quality-batch-round.test.ts`: the pure rules | **21/21** (16, plus 5 for the HOLD) |
-| `anthropic-message-batches.test.ts`: the transport on a scripted wire, plus pricing | **9/9** (8, plus 1 for the HOLD; 3 updated) |
+| `anthropic-message-batches.test.ts`: the transport on a scripted wire, plus pricing | **11/11** (8, plus 1 for the HOLD and 2 for the re-review; 3 updated) |
 | `world-budget.test.ts` and `board-wizard-budget.test.ts`: `WorldBudget.link` | 3 and 1 new |
 
 Among the first 23:
@@ -253,6 +256,13 @@ Each mutant edits one anchor and runs only its targeted tests. Each counts only 
   - P1-4: held rounds never purged; a hold forgetting the batches it found; the sweep blind to deletion; the slice purging held rounds of a live game;
   - P2-6: no rotation;
   - P2-7: the shared helper drifting (labels after images).
+- **Codex's re-review: 31/31,** each killed by the test it targets, with the tree restored and verified. The first round's 22 were run again as 23, re-anchored where the sweep and the transport changed: the completeness check is now two mutants (the total unchecked; ids not distinct), and the deletion mutant now blinds the sweep's shared `deletedGame`. The 8 new:
+  - F1: types not matched, killed both by the transport's test and end to end on the real transport;
+  - F2: the hold ending the search early; the search going on without holding the charge;
+  - F3: the window opening before the records are read;
+  - F4: the game's state not read again;
+  - F5: a stopped game's unsent round left waiting;
+  - F6: a search out of pages not saying so.
 
 **The full suite (`npm run check`) on `1df2e366`:**
 - tsc is clean.
@@ -265,6 +275,11 @@ Each mutant edits one anchor and runs only its targeted tests. Each counts only 
 - Vitest: 5,107 passed, 2 expected failures, 55 skipped, **2 failed**: the same two load timeouts in `local-patch-incremental-review.test.ts`. Alone, that file passes 79/79.
 - The ledger commit `233c55e7` alone, on `fcf4c0ea`: tsc clean, and the three ledger test files pass 70/70.
 
+**The full suite on the re-review fixes:**
+- tsc is clean.
+- Vitest: 5,112 passed, 2 expected failures, 55 skipped, **4 failed**, all timeouts under full-suite load: the same two in `local-patch-incremental-review.test.ts` (20 s), and two in `production-bootstrap.test.ts` (15 s), the pair that also timed out on step 1. Neither test file is changed by this branch, and nothing under `prisma/` or the bootstrap code is either.
+- Alone, the two files pass 96/96 (79 and 17).
+
 ## Commits
 
 | Commit | What |
@@ -275,7 +290,8 @@ Each mutant edits one anchor and runs only its targeted tests. Each counts only 
 | `80d7de72` | fix(qa): a batch round that cannot be advanced is surfaced, not repeated |
 | `fcf4c0ea` | docs(qa): LOW painter and Opus on Message Batches, per new draft |
 | `233c55e7` | feat(budget): link a second key to a settled charge without capacity (Codex P1-5) |
-| the commit carrying this section | fix(qa): the batch channel's recovery, deletion and alias (Codex HOLD) |
+| `b90d818d` | fix(qa): the batch channel's recovery, deletion and alias (Codex HOLD) |
+| the commit carrying this section | fix(qa): the batch channel after Codex's re-review (F1-F5) |
 
 Each was verified on its own in a clean worktree:
 - `afbd8ee2`: tsc and its regression test;
@@ -297,6 +313,8 @@ The split was proven exact: replaying step 2's edits onto the step-1 versions re
 7. **A world parked for a person** (NEEDS_RELEASE or exhausted) runs no slice, so its open rounds are neither polled nor cancelled at their deadline until it resumes. Each batch still ends within 24 h, and its reservation stays counted meanwhile.
 8. **The sweep reads every game's round record each minute** to find the rounds with work. Fine at QA's size; at scale it would want a cursor or an index (a schema change).
 9. **Batch ids.** Anthropic's reference says "The format and length of IDs may change over time." The transport accepts only `msgbatch_` followed by letters and digits. A new format fails closed: every create becomes uncertain and every batched question waits, so a deployment would show it at once, but it would stall the channel until the pattern is widened.
+10. **A dedicated Anthropic workspace (Codex F6).** A search after a lost create reads every batch the API key's workspace created after the round's intent, newest first, up to 20 pages of 1,000. Deeper than that it stays undecided, and so does the round: nothing is created or released, and the waiting reason says the list was too long. A workspace used only by this channel keeps the search to this product's own batches (27 per world), far below the limit. Making the search resumable across passes is the fix if that ever changes.
+11. **A provider answer that contradicts itself** (Codex F1) leaves its round waiting, with the charge pending, until a person looks. The stalled-generation alert reports the game.
 
 ## 7. Codex's review of `fcf4c0ea`: HOLD, and the fixes
 
@@ -323,3 +341,23 @@ Codex also confirmed, from source and offline probes:
 **The new order's own window.** Writing the alias first means a worker that stops between the alias and its retained copy would leave a paid answer the dual review could not replay. The next pass writes the copy before the dual review buys. A trigger test stops that write once and checks the review goes on without a second purchase.
 
 **A record-format change, before any deployment.** The `deleted` event now names every batch it deleted (`batchIds`), and a `held` event may name the batches a hold found. Nothing has run on the old format outside tests.
+
+### Codex's re-review of `b90d818d`: HOLD, and the second round
+
+Codex re-reviewed the two fix commits read-only. It closed P1-5 and P2-7 outright, and confirmed:
+- `WorldBudget.link`: it needs a settled, unconflicted charge of the same scope and operation; it overwrites nothing; the guard's exemption covers only linked rows; attempt 2 maps both keys; a held world stays held;
+- the alias's new order: no reader does anything irreversible between the alias and its copy, and deletion is covered in each window;
+- no retained-record key in the channel can be written before its inventory entry.
+
+It found two P1 and four P2 findings, each a sibling of a first-round fix:
+
+| # | Finding | Fix | Regression test |
+| --- | --- | --- | --- |
+| F1 (P1) | Results whose types contradict the batch's per-type counts were accepted. A counted success returned as "canceled" settled the reservation at zero and asked the question synchronously. | Results must match the batch's record type by type: every count it states, each id once. A contradiction throws, so the charge stays pending and the round waits. | Transport: a counted success returned as canceled, expired or errored; the reverse; a type the record does not count; one extra line of such a type; the search refusing the same. End to end, on the real transport with a scripted wire, Codex's reproduction stays pending, with no fallback and no synchronous question. |
+| F2 (P1) | Two proven copies ended the search while a third candidate still ran. That copy escaped a deleted game's deletion. | Two proven copies hold the charge at once, but the round ends, naming every copy, only when no candidate still runs. | Codex's three copies: held at once with the round still open; after the game's deletion nothing is deleted until the third ends; then all three are named and deleted. |
+| F3 (P2) | Reading the records before the first provider call could use up the sweep's whole window. | Two reads for the whole inventory, and the window opens once they are done. The tick gives the sweep until the generation slice's own reserve. | Eight seconds of reading on a fake clock: the deleted game's batch is still cancelled in the same tick. |
+| F4 (P2) | A game resumed after the records were read could have its running batch cancelled as a stopped game's. | The game's state is read again just before each of its rounds is touched. | Resumed between the reads and the processing: its batch is left running. |
+| F5 (P2) | A deleted game's round, stopped after its intent and before any reservation, stayed open forever. | A game that is not generating creates nothing. A round at its create step, where nothing has ever reached the provider, ends as never-created, at zero. | Codex's crash window: the round ends with nothing billed and drops out of later sweeps. |
+| F6 (P2) | A complete inventory deeper than 20 pages (20,000 batches newer than the round's intent) leaves the search undecided forever. | **Not fixed; documented (§6).** The search fails closed: nothing is created and nothing is released. It now says why (`truncated`). | Transport: a search that runs out of pages is undecided and says it was truncated. |
+
+**F4's remaining window.** A game resumed between that read and the cancel itself (milliseconds) can still have its batch cancelled. The question is then asked synchronously at the standard price; the ledger stays exact.

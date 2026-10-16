@@ -69,8 +69,9 @@ export async function POST(req: Request) {
       enter("generation-health");
       await alertStalledGeneration(c, { deadlineAt: Math.min(hardDeadlineAt, Date.now() + 15_000) });
       // Batch questions of games no longer generating: cancelled, settled, deleted at the provider.
+      // Its window opens once its records are read, and closes in time for the generation slice.
       enter("quality-batch-sweep");
-      await sweepQualityBatches(c, { deadlineAt: Math.min(hardDeadlineAt, Date.now() + 40_000) }).catch(() => {
+      await sweepQualityBatches(c, { deadlineAt: hardDeadlineAt - SLICE_MS }).catch(() => {
         console.error("[jobs/tick]", { requestId, event: "quality-batch-sweep-failed" });
       });
     }
