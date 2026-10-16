@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   QUALITY_BATCH_CREATE_GRACE_MS, QUALITY_BATCH_LATE_SEARCH_MS, QUALITY_BATCH_REFUSAL_BACKOFF_MS, QUALITY_BATCH_VERSION, decideQualityBatchResults, nextQualityBatchStep,
-  qualityBatchCanonicalJson, qualityBatchCleanupDue, qualityBatchCopyStart, qualityBatchDeletable, qualityBatchEventName, qualityBatchLateDue, qualityBatchOutcomeRead,
-  qualityBatchReserveMicroUsd, qualityBatchRoundOf, qualityBatchSearchWindow, qualityBatchSearching, type QualityBatchEvent, type QualityBatchIntent, type QualityBatchTerminal,
+  qualityBatchCanonicalJson, qualityBatchCleanupDue, qualityBatchCopyStart, qualityBatchDeletable, qualityBatchEventName, qualityBatchLateDue,
+  qualityBatchReserveMicroUsd, qualityBatchRoundOf, qualityBatchSearchWindow, qualityBatchSearching, type QualityBatchEvent, type QualityBatchIntent,
 } from "../generation/quality-batch-round";
 
 const T0 = Date.parse("2026-10-16T08:00:00.000Z"), HOUR = 60 * 60_000;
@@ -230,25 +230,34 @@ describe("a quality question's batch round, pure", () => {
     expect(qualityBatchCanonicalJson({ a: undefined, b: 1 })).toBe(qualityBatchCanonicalJson({ b: 1 }));
   });
 
-  it("knows the reading its outcome recorded: the same answer, or the same results, of the same batch", () => {
+  it("records a batch's reading once, for a batch the round knows, and a reread only as another reading of it (rule 6)", () => {
     const usage = { input_tokens: 2000, output_tokens: 500, service_tier: "batch" };
-    const receipt = { type: "succeeded", errorType: null, requestId: "msg_1", model: "claude-opus-5-5", usage };
-    const base = answered("b", 9_000) as Extract<QualityBatchEvent, { kind: "answered" }>;
-    const answer: QualityBatchTerminal = { ...base, evidence: { ...base.evidence, rawUsage: { service_tier: "batch", output_tokens: 500, input_tokens: 2000 } } };
-    expect(qualityBatchOutcomeRead(answer, "b", [receipt])).toBe(true);
-    // Another batch, receipt, usage or model, or more than one result, is another reading.
-    expect(qualityBatchOutcomeRead(answer, "c", [receipt])).toBe(false);
-    expect(qualityBatchOutcomeRead(answer, "b", [{ ...receipt, requestId: "msg_2" }])).toBe(false);
-    expect(qualityBatchOutcomeRead(answer, "b", [{ ...receipt, usage: { ...usage, output_tokens: 900 } }])).toBe(false);
-    expect(qualityBatchOutcomeRead(answer, "b", [{ ...receipt, model: "claude-opus-5" }])).toBe(false);
-    expect(qualityBatchOutcomeRead(answer, "b", [receipt, receipt])).toBe(false);
-    // A hold that read the batch: the same results, in any key order; a hold over copies read none of them.
-    const held = { ...heldUnknown("unpriced", "b"), results: [receipt] } as QualityBatchTerminal;
-    expect(qualityBatchOutcomeRead(held, "b", [{ usage: { service_tier: "batch", output_tokens: 500, input_tokens: 2000 }, model: "claude-opus-5-5", requestId: "msg_1", errorType: null, type: "succeeded" }])).toBe(true);
-    expect(qualityBatchOutcomeRead(held, "b", [{ ...receipt, requestId: "msg_2" }])).toBe(false);
-    expect(qualityBatchOutcomeRead(heldUnknown("2 batches carry this one question") as QualityBatchTerminal, "b", [receipt])).toBe(false);
-    // A fallback is counted as a copy would be: unbilled results add nothing, and billed ones are another charge.
-    expect(qualityBatchOutcomeRead({ kind: "fallback", batchId: "b", resultType: "canceled", errorType: null, at: T0 }, "b", [])).toBe(false);
+    const first = [{ type: "succeeded", errorType: null, requestId: "msg_1", model: "claude-opus-5-5", usage }];
+    const other = [{ ...first[0]!, requestId: "msg_2" }];
+    const sent: QualityBatchEvent[] = [{ kind: "claim", n: 1, at: T0 }, { kind: "submitted", n: 1, batchId: "b", at: T0 }];
+    const reading = (batchId: string, results: typeof first): QualityBatchEvent => ({ kind: "reading", batchId, results, at: T0 });
+    const reread = (results: typeof first, digest = "0123456789abcdef"): QualityBatchEvent => ({ kind: "reread", batchId: "b", digest, results, at: T0 });
+    expect(round(...sent, reading("b", first)).readings["b"]).toEqual(first);
+    expect(() => round(...sent, reading("z", first))).toThrow("a reading of a batch the round knows");
+    // Another reading of the batch, in any key order, is no reread; any other result is one, named by its digest.
+    expect(() => round(...sent, reading("b", first), reread([{ usage: { service_tier: "batch", output_tokens: 500, input_tokens: 2000 }, model: "claude-opus-5-5",
+      requestId: "msg_1", errorType: null, type: "succeeded" }]))).toThrow("a reread is another reading");
+    expect(round(...sent, reading("b", first), reread(other)).rereads).toHaveLength(1);
+    expect(() => round(...sent, reread(other))).toThrow("a reread is another reading");
+    expect(() => round(...sent, reading("b", first), reread(other, "not-a-digest"))).toThrow("a reread is another reading");
+  });
+
+  it("takes a copy's bill from its recorded reading, and names a reading after its batch in lower-case letters and digits", () => {
+    const receipt = { type: "succeeded", errorType: null, requestId: "msg_1", model: "claude-opus-5-5", usage: { input_tokens: 2000, output_tokens: 500, service_tier: "batch" } };
+    const copy = [...presumedLost, { kind: "found", n: 1, batchIds: ["c"], complete: true, at: T0 + HOUR } as QualityBatchEvent,
+      { kind: "reading", batchId: "c", results: [receipt], at: T0 + HOUR } as QualityBatchEvent];
+    expect(round(...copy, { ...late(1, "c", 9_000), results: [receipt] } as QualityBatchEvent).lates).toHaveLength(1);
+    expect(() => round(...copy, { ...late(1, "c", 9_000), results: [{ ...receipt, requestId: "msg_2" }] } as QualityBatchEvent)).toThrow("a copy's bill is its recorded reading");
+    const name = qualityBatchEventName({ kind: "reading", batchId: "msgbatch_01HkcTjaV5uDC8jWR4ZsDV8d", results: [], at: T0 });
+    expect(name).toMatch(/^reading-[a-f0-9]+$/);
+    expect(qualityBatchEventName({ kind: "reread", batchId: "msgbatch_01HkcTjaV5uDC8jWR4ZsDV8d", digest: "0123456789abcdef", results: [], at: T0 }))
+      .toBe(`${name.replace("reading", "reread")}-0123456789abcdef`);
+    expect(qualityBatchEventName({ kind: "reading", batchId: "msgbatch_A", results: [], at: T0 })).not.toBe(qualityBatchEventName({ kind: "reading", batchId: "msgbatch_a", results: [], at: T0 }));
   });
 
   it("reserves half of the synchronous reservation, rounded up", () => {

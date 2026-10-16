@@ -7,7 +7,7 @@ import { QualityBatchRefused, type QualityBatchResult, type QualityBatchTranspor
 import { PrismaRetainedPurchaseStore } from "../../infra/db/prisma-retained-purchase-store";
 import {
   QUALITY_BATCH_VERSION, decideQualityBatchResults, nextQualityBatchStep, qualityBatchCanonicalJson, qualityBatchCleanupDue, qualityBatchCopyStart, qualityBatchDeletable,
-  qualityBatchEventName, qualityBatchLateDue, qualityBatchOutcomeRead, qualityBatchReserveMicroUsd, qualityBatchRoundOf, qualityBatchSearchWindow, qualityBatchSearching,
+  qualityBatchEventName, qualityBatchLateDue, qualityBatchReserveMicroUsd, qualityBatchRoundOf, qualityBatchSearchWindow, qualityBatchSearching,
   type QualityBatchEvent, type QualityBatchIntent, type QualityBatchReceipt, type QualityBatchRound,
 } from "../../domain/generation/quality-batch-round";
 import { visualReviewPolicy } from "../../domain/generation/visual-review-policy";
@@ -279,18 +279,32 @@ const decide = (results: readonly QualityBatchResult[], customId: string) =>
  * (For a deleted game the store would settle or hold the charge itself, before any outcome existed.) */
 const OUTCOME_LEDGER: Pick<PurchaseLedger, "settle" | "markUnknown"> = { settle: async () => undefined, markUnknown: async () => undefined };
 
-/** One ended batch's result for this round, recorded as its terminal outcome (rule 0): answered, at zero, or
- * held. The ledger follows from the outcome; an answer is retained before it is recorded. Two passes may read
- * the batch at once: the outcome is one of their readings, and the other, if the provider answered it otherwise,
- * is another possible charge, counted as a copy's would be (rule 5). */
+/** One ended batch's result for this round: its reading recorded first (rule 6), then, from that reading only,
+ * its terminal outcome (rule 0): answered, at zero, or held. The ledger follows from the outcome; an answer is
+ * retained before it is recorded. A read that returned anything else than the batch's recorded reading is a
+ * provider fault: counted as a charge of its own, never decided from, and a round with no outcome yet is held. */
 async function reconcile(ctx: Context, round: QualityBatchRound, batchId: string, results: readonly QualityBatchResult[]): Promise<void> {
-  let failure: unknown = null;
-  try { await recordOutcome(ctx, round, batchId, results); }
-  catch (error) { failure = error; }
-  const terminal = (await readRound(ctx, round.intent.roundId)).terminal;
-  // With no outcome recorded, nothing was decided from this reading: it is read again, and the failure raised.
-  if (!terminal) { if (failure) throw failure; return; }
-  if (!qualityBatchOutcomeRead(terminal, batchId, receiptsOf(results, round.intent.customId))) await lateCharge(ctx, round, batchId, results);
+  const noted = await noteReading(ctx, round, batchId, receiptsOf(results, round.intent.customId));
+  if (!noted.anomaly) return recordOutcome(ctx, round, batchId, results);
+  if (!(await readRound(ctx, round.intent.roundId)).terminal)
+    await writeEvent(ctx, round.intent.roundId, { kind: "held", reason: `the provider returned other results for ${batchId} on another read`,
+      charge: "unknown", batchId, results: noted.recorded, at: Date.now() });
+}
+
+/**
+ * Records what a read of a batch returned for this question (rule 6): a batch's first reading, once and for good,
+ * before anything is decided from it. A later read that returned the same is that reading. One that returned
+ * anything else is a provider fault: recorded (`reread`), and counted at once as a charge of its own, under its
+ * own key (every pass that applies the record counts it again, idempotently); nothing is decided from it.
+ */
+async function noteReading(ctx: Context, round: QualityBatchRound, batchId: string, receipts: readonly QualityBatchReceipt[]) {
+  const roundId = round.intent.roundId;
+  const written = await writeEvent({ ...ctx, fence: null }, roundId, { kind: "reading", batchId, results: receipts, at: Date.now() });
+  const recorded = (written.event as Extract<QualityBatchEvent, { kind: "reading" }>).results;
+  if (qualityBatchCanonicalJson(recorded) === qualityBatchCanonicalJson(receipts)) return { recorded, anomaly: false };
+  await writeEvent({ ...ctx, fence: null }, roundId, { kind: "reread", batchId, digest: sha(qualityBatchCanonicalJson(receipts)).slice(0, 16), results: receipts, at: Date.now() });
+  await lateCharge(ctx, round, batchId, receipts);
+  return { recorded, anomaly: true };
 }
 
 async function recordOutcome(ctx: Context, round: QualityBatchRound, batchId: string, results: readonly QualityBatchResult[]): Promise<void> {
@@ -305,8 +319,10 @@ async function recordOutcome(ctx: Context, round: QualityBatchRound, batchId: st
     return;
   }
   const result = results.find(r => r.customId === intent.customId) as Extract<QualityBatchResult, { type: "succeeded" }>;
-  // Read exactly as the synchronous route reads its reply; priced by the tier the answer says served it.
-  const reading = readAnthropicVisualReview(POLICY, { ok: true, requestId: null }, result.message);
+  // Read exactly as the synchronous route reads its reply; priced by the tier the answer says served it. Its usage
+  // in canonical key order, so the same reading read twice is the same retained answer however it was serialised.
+  const read = readAnthropicVisualReview(POLICY, { ok: true, requestId: null }, result.message);
+  const reading = { ...read, usage: read.usage ? JSON.parse(qualityBatchCanonicalJson(read.usage)) as typeof read.usage : read.usage };
   const charge = visualReviewBatchCharge(POLICY, reading.model, reading.usage);
   const reply = { ...reading, costUnknown: charge.costUnknown, verdict: null };
   const bytes = Buffer.from(JSON.stringify({ ...reply, policy: POLICY, fingerprint: intent.fingerprint, channel: CHANNEL, batchId }));
@@ -325,7 +341,7 @@ async function recordOutcome(ctx: Context, round: QualityBatchRound, batchId: st
     return;
   }
   const evidence: WorldChargeEvidence = canonicalChargeEvidence({ providerNamespace: ctx.transport.namespace, providerRequestId: reply.requestId,
-    usageId: sha(JSON.stringify(reply.usage)), rawUsage: reply.usage as BudgetJson, model: reply.model!,
+    usageId: sha(qualityBatchCanonicalJson(reply.usage)), rawUsage: reply.usage as BudgetJson, model: reply.model!,
     amountMicroUsd: Math.ceil(charge.costCents * 10_000), costBasis: "conservative-upper-estimate" });
   await keep({ ...base, evidence, unknownReason: null });
   await writeEvent(ctx, intent.roundId, { kind: "answered", batchId, amountMicroUsd: evidence.amountMicroUsd,
@@ -341,32 +357,33 @@ async function recordOutcome(ctx: Context, round: QualityBatchRound, batchId: st
  * held for a person until reconciled, under a key bound to exactly what was read: a later read that
  * returns anything else is another charge, never one a person already reconciled. Nothing here reads or
  * changes the batch key, so no settlement of it, before or after, by a pass or a person, can change how a
- * copy is counted.
+ * copy is counted. It works from the reading's receipts alone (the record keeps them, never the answer).
+ * Its priced charge, 0 when unbilled, or null when it cannot be priced.
  */
-async function lateCharge(ctx: Context, round: QualityBatchRound, batchId: string, results: readonly QualityBatchResult[]) {
-  const { intent } = round, budget = boardWizardBudgetOf(ctx.c), decision = decide(results, intent.customId), receipts = receiptsOf(results, intent.customId);
+async function lateCharge(ctx: Context, round: QualityBatchRound, batchId: string, receipts: readonly QualityBatchReceipt[]): Promise<number | null> {
+  const { intent } = round, budget = boardWizardBudgetOf(ctx.c);
+  const decision = decideQualityBatchResults(receipts.map(r => ({ customId: intent.customId, type: r.type, errorType: r.errorType })), intent.customId);
   // Errored, canceled and expired requests are documented as unbilled.
-  if (decision.decision === "unbilled-fallback" || decision.decision === "unbilled-held") return { amountMicroUsd: 0, receipts };
+  if (decision.decision === "unbilled-fallback" || decision.decision === "unbilled-held") return 0;
   let priced: WorldChargeEvidence | null = null, reason = decision.decision === "held" ? decision.reason : "";
   if (decision.decision === "answer") {
-    const result = results.find(r => r.customId === intent.customId) as Extract<QualityBatchResult, { type: "succeeded" }>;
-    const reading = readAnthropicVisualReview(POLICY, { ok: true, requestId: null }, result.message);
-    const charge = visualReviewBatchCharge(POLICY, reading.model, reading.usage);
-    if (!charge.costUnknown && reading.requestId) priced = canonicalChargeEvidence({ providerNamespace: ctx.transport.namespace, providerRequestId: reading.requestId,
-      usageId: sha(JSON.stringify(reading.usage)), rawUsage: reading.usage as BudgetJson, model: reading.model!,
+    const answer = receipts[0]!, usage = answer.usage as Record<string, unknown> | null;
+    const charge = visualReviewBatchCharge(POLICY, answer.model, usage);
+    if (!charge.costUnknown && answer.requestId) priced = canonicalChargeEvidence({ providerNamespace: ctx.transport.namespace, providerRequestId: answer.requestId,
+      usageId: sha(qualityBatchCanonicalJson(usage)), rawUsage: usage as BudgetJson, model: answer.model!,
       amountMicroUsd: Math.ceil(charge.costCents * 10_000), costBasis: "conservative-upper-estimate" });
-    else reason = `the answer's charge cannot be stated (tier ${String(reading.usage?.service_tier ?? "none")}, model ${reading.model ?? "none"})`;
+    else reason = `the answer's charge cannot be stated (tier ${String(usage?.service_tier ?? "none")}, model ${answer.model ?? "none"})`;
   }
   if (priced) {
     // Imported in full, counted once by its receipt; a receipt already counted with other evidence is recorded as a conflict, which holds the world.
     try { await budget.importSettled(intent.worldId, { scope: "judge", operationFingerprint: intent.fingerprint, evidence: priced }); }
     catch (error) { if (!(error instanceof WorldBudgetError) || error.code !== "evidence_conflict") throw error; }
-    return { amountMicroUsd: priced.amountMicroUsd, receipts };
+    return priced.amountMicroUsd;
   }
   const receipt = receipts.find(item => item.requestId)?.requestId;
   await budget.recordUnknown(intent.worldId, { requestKey: qualityBatchCopyKeyOf(intent.batchKey, batchId, receipts), scope: "judge", operationFingerprint: intent.fingerprint,
     reserveMicroUsd: intent.syncReserveMicroUsd, reason: `quality batch ${intent.roundId}: copy ${batchId}${receipt ? ` (${receipt})` : ""}: ${reason}` });
-  return { amountMicroUsd: null, receipts };
+  return null;
 }
 /** The ledger key of a copy whose charge cannot be stated: its own unknown row beside the round's batch key, one per
  * distinct reading of the copy's bill (the digest of what the provider returned for the question, as `late-n` keeps it,
@@ -374,14 +391,12 @@ async function lateCharge(ctx: Context, round: QualityBatchRound, batchId: strin
 export const qualityBatchCopyKeyOf = (batchKey: string, batchId: string, receipts: readonly QualityBatchReceipt[]) =>
   `${batchKey}:copy:${batchId}:${sha(qualityBatchCanonicalJson(receipts))}`;
 
-/** Records a copy's bill once in the round's record (`late-n`); a pass that lost the number reads the round again.
- * Every reading of the copy is counted in the ledger, each under its own key, before anything else. */
-async function recordLate(ctx: Context, roundId: string, batchId: string, results: readonly QualityBatchResult[]) {
+/** Records a copy's bill once in the round's record (`late-n`), from the copy's recorded reading; a pass that lost
+ * the number reads the round again. The reading is counted in the ledger, under its own key, before anything else. */
+async function recordLate(ctx: Context, roundId: string, batchId: string, receipts: readonly QualityBatchReceipt[]) {
   for (let attempt = 0; attempt < 4; attempt++) {
     const round = await readRound(ctx, roundId);
-    // Counted first, under the ledger's own key for this reading (its receipt, or its digest): the same reading again
-    // is the same row, and another reading another charge, even when another pass recorded this copy since it was read.
-    const { amountMicroUsd, receipts } = await lateCharge(ctx, round, batchId, results);
+    const amountMicroUsd = await lateCharge(ctx, round, batchId, receipts);
     if (round.billedIds.includes(batchId)) return;
     if ((await writeEvent({ ...ctx, fence: null }, roundId, { kind: "late", n: round.lates.length + 1, batchId, amountMicroUsd, results: receipts, at: Date.now() })).won) return;
   }
@@ -389,7 +404,9 @@ async function recordLate(ctx: Context, roundId: string, batchId: string, result
 }
 
 /** Each copy of a finished round whose bill is not in the record yet, read before it may be deleted (rule 5).
- * It only reads the provider; a copy that cannot be read yet (one still running) is kept, and read later. */
+ * A copy is read from the provider once: its recorded reading is its bill from then on (rule 6), so a copy whose
+ * bill the ledger refuses costs no provider call again. A copy that cannot be read yet (one still running) is
+ * kept, and read later. */
 async function reconcileLate(ctx: Context, round: QualityBatchRound) {
   const due = qualityBatchLateDue(round);
   // A different copy first each minute: one whose reads keep timing out never keeps the others from theirs.
@@ -397,14 +414,19 @@ async function reconcileLate(ctx: Context, round: QualityBatchRound) {
   const failures: unknown[] = [];
   for (let i = 0; i < due.length; i++) {
     const batchId = due[(start + i) % due.length]!;
-    // Its record and then its results file: room for both reads before the first starts.
-    if (!roomFor(ctx, 2 * CALL_NEED_MS)) break;
-    let results: QualityBatchResult[];
-    try { results = await ctx.transport.results(batchId, ctx.deadlineAt); }
-    catch { continue; }
-    // A bill the ledger or the record refuses leaves its copy unread (and so undeletable); the others are read
-    // regardless, and the refusal is raised once they have been.
-    try { await recordLate(ctx, round.intent.roundId, batchId, results); }
+    let reading = round.readings[batchId];
+    if (!reading) {
+      // Its record and then its results file: room for both reads before the first starts.
+      if (!roomFor(ctx, 2 * CALL_NEED_MS)) continue;
+      let results: QualityBatchResult[];
+      try { results = await ctx.transport.results(batchId, ctx.deadlineAt); }
+      catch { continue; }
+      try { reading = (await noteReading(ctx, round, batchId, receiptsOf(results, round.intent.customId))).recorded; }
+      catch (error) { failures.push(error); continue; }
+    }
+    // A bill the ledger or the record refuses leaves its copy unbilled (and so undeletable); the others go on,
+    // and the refusal is raised once they have.
+    try { await recordLate(ctx, round.intent.roundId, batchId, reading); }
     catch (error) { failures.push(error); }
   }
   raise(failures);
@@ -485,7 +507,8 @@ async function advance(ctx: Context, roundId: string): Promise<QualityBatchGate>
     if (step.step === "find") {
       let found: Awaited<ReturnType<QualityBatchTransport["find"]>>;
       const searchedAt = Date.now();
-      try { found = await ctx.transport.find(round.intent.customId, step.sinceMs, ctx.deadlineAt, step.untilMs); }
+      // The batches already known are proven already: only new ones are read.
+      try { found = await ctx.transport.find(round.intent.customId, step.sinceMs, ctx.deadlineAt, step.untilMs, new Set(round.batchIds)); }
       catch (error) { return waiting(`the provider could not be searched (${error instanceof Error ? error.message.slice(0, 200) : "unknown"})`); }
       // Every batch proven to carry the question is kept before anything is decided from it: a
       // later search that no longer sees a copy cannot undo it. Two copies hold the round.
@@ -557,7 +580,8 @@ async function discover(ctx: Context, round: QualityBatchRound): Promise<boolean
   if (!qualityBatchSearching(round, searchedAt)) return false;
   const window = qualityBatchSearchWindow(round);
   let found: Awaited<ReturnType<QualityBatchTransport["find"]>>;
-  try { found = await ctx.transport.find(round.intent.customId, window.sinceMs, ctx.deadlineAt, window.untilMs); }
+  // The copies already known are proven already: a search reads only new ones, so one that cannot be read keeps no search waiting.
+  try { found = await ctx.transport.find(round.intent.customId, window.sinceMs, ctx.deadlineAt, window.untilMs, new Set(round.batchIds)); }
   catch { return true; } // the next slice or tick searches again
   await recordFound(ctx, round.intent.roundId, found.proven, !found.undecided, searchedAt);
   return true;
@@ -578,19 +602,37 @@ async function settleCopies(ctx: Context, round: QualityBatchRound, gameDeleted:
   raise(failures);
 }
 
+/** The ledger as the round's record says it must be (rules 0 and 6): its outcome applied, and every reread
+ * counted as a charge of its own. Idempotent: applied by any pass, as often as needed. */
+async function applyRecord(ctx: Context, round: QualityBatchRound, pendingKeys?: ReadonlySet<string>) {
+  const failures: unknown[] = [];
+  try { await applyTerminal(ctx, round, pendingKeys); }
+  catch (error) { failures.push(error); }
+  for (const reread of round.rereads) {
+    try { await lateCharge(ctx, round, reread.batchId, reread.results); }
+    catch (error) { failures.push(error); }
+  }
+  raise(failures);
+}
+
 /**
- * A finished round's housekeeping (rules 0 and 5), in the order the money comes first: the ledger made to
- * match its outcome, the bill of every known copy, their deletion where due, and only then the search for
- * further copies, which can take the rest of the time; what it finds is read and deleted in the same pass
- * when there is room, and on a later one otherwise. Each step runs whatever failed before it, and every
- * failure is raised at the end: a bill the ledger keeps refusing never keeps the search from further copies.
+ * A finished round's housekeeping (rules 0, 5 and 6). The ledger is made to match the record first; only once
+ * it does are copies read and deleted, so a copy bearing the outcome's own receipt is counted as the outcome's
+ * charge, and nothing is deleted that the ledger has not counted. Then the copies already known (their bills,
+ * their deletion where due) and the search for further copies, what it finds read and deleted in the same pass
+ * when there is room: the known copies first one minute and the search first another, so however slow the
+ * provider, neither keeps the other out for good. Each step runs whatever failed before it, and every failure
+ * is raised at the end.
  */
 async function maintain(ctx: Context, round: QualityBatchRound, gameDeleted: boolean, pendingKeys?: ReadonlySet<string>) {
   const failures: unknown[] = [];
   const step = async (work: () => Promise<unknown>) => { try { await work(); } catch (error) { failures.push(error); } };
-  await step(() => applyTerminal(ctx, round, pendingKeys));
-  await step(() => settleCopies(ctx, round, gameDeleted));
-  await step(async () => { if (await discover(ctx, round)) await settleCopies(ctx, await readRound(ctx, round.intent.roundId), gameDeleted); });
+  let applied = false;
+  await step(async () => { await applyRecord(ctx, round, pendingKeys); applied = true; });
+  const known = async () => { if (applied) await settleCopies(ctx, await readRound(ctx, round.intent.roundId), gameDeleted); };
+  const search = async () => { if (await discover(ctx, round) && applied) await settleCopies(ctx, await readRound(ctx, round.intent.roundId), gameDeleted); };
+  const searchFirst = qualityBatchCopyStart(`${round.intent.roundId}:search`, 2, Date.now()) === 1;
+  for (const phase of searchFirst ? [search, known] : [known, search]) await step(phase);
   raise(failures);
 }
 
@@ -714,7 +756,8 @@ export async function sweepQualityBatches(c: Container, options: { deadlineAt: n
       for (const [roundId, events] of roundsOf(gameRows, gameId)) {
         const round = qualityBatchRoundOf(events);
         if (round.terminal ? qualityBatchSearching(round, readAt) || qualityBatchLateDue(round).length > 0 || qualityBatchCleanupDue(round, deletedGame(game))
-          : !generating(game)) work.push({ gameId, roundId, terminal: !!round.terminal });
+          // A provider fault on record (rule 6) keeps its round's ledger matched to the record on every tick, whatever else is done.
+          || round.rereads.length > 0 : !generating(game)) work.push({ gameId, roundId, terminal: !!round.terminal });
       }
     } catch { failed++; }
   }

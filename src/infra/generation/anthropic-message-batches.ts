@@ -89,8 +89,10 @@ export class AnthropicMessageBatches implements QualityBatchTransport {
    * out of pages, or of time before `deadlineAt`, ahead of the intent is undecided,
    * and says so (`truncated`); what it proved by then is still returned. A batch
    * created after `untilMs` is no candidate: it neither proves nor keeps undecided.
+   * A batch the round already knows (`known`) to carry the question is proven already:
+   * its results are not read again, so one that cannot be read keeps no search waiting.
    */
-  async find(customId: string, sinceMs: number, deadlineAt?: number, untilMs?: number): Promise<{ proven: string[]; undecided: boolean; truncated?: true }> {
+  async find(customId: string, sinceMs: number, deadlineAt?: number, untilMs?: number, known?: ReadonlySet<string>): Promise<{ proven: string[]; undecided: boolean; truncated?: true }> {
     if (!CUSTOM_ID.test(customId) || !Number.isFinite(sinceMs) || untilMs !== undefined && !Number.isFinite(untilMs)) throw Error("QUALITY_BATCH: invalid search");
     const proven: string[] = [];
     let undecided = false, after: string | null = null;
@@ -107,6 +109,7 @@ export class AnthropicMessageBatches implements QualityBatchTransport {
         if (untilMs !== undefined && created > untilMs + QUALITY_BATCH_CLOCK_SKEW_MS) continue;
         // Newest first: everything from here on is older than the intent.
         if (created < sinceMs - QUALITY_BATCH_CLOCK_SKEW_MS) { reachedIntent = true; break; }
+        if (known?.has(batch.id)) continue;
         if (batch.processing_status !== "ended") { undecided = true; continue; }
         const counts = endedRequestCounts(batch);
         if (counts === null) throw Error(`QUALITY_BATCH: ${batch.id} does not state its request counts`);

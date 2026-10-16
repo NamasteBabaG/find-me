@@ -39,13 +39,19 @@
  *    that claimed it keeps its create and the close stands down.
  * 5. Once a round is finished, the provider's copies of its question are deleted,
  *    each only after its bill is in the record with its receipts: the round's own
- *    batch by the outcome that read it, every other copy afterwards (`late`). The
- *    bills read must fit in what the ledger counted for the round; one above it,
- *    or one that cannot be priced, holds the world. A held round keeps its copies
+ *    batch by the outcome that read it, every other copy afterwards (`late`). Every
+ *    other copy's bill is a charge of its own in the ledger, in full; one that
+ *    cannot be priced is held as unknown, which holds the world. A held round keeps its copies
  *    for the person reconciling it, unless its game was deleted: the hold is the
  *    ledger's to keep, the imagery is the child's. A round held over copies while
  *    another could still be running keeps searching until none could be, so every
  *    copy is found; a presumed-lost round searches once more a day later.
+ * 6. A batch's results are recorded the first time they are read (`reading`),
+ *    before anything is decided from them, and every decision about that batch is
+ *    taken from that reading: the outcome for the round's own batch, `late` for a
+ *    copy. A later read that returns anything else is a provider fault: it is
+ *    recorded (`reread`) and counted as a charge of its own, never decided from,
+ *    and a round with no outcome yet is held for a person.
  */
 import type { WorldChargeEvidence } from "./world-budget";
 
@@ -106,6 +112,12 @@ export type QualityBatchEvent =
   /** Another copy of a finished round, read before it may be deleted: its priced charge, 0 when the provider
    * documents it as unbilled, null when it cannot be priced; and what the provider returned. */
   | { readonly kind: "late"; readonly n: number; readonly batchId: string; readonly amountMicroUsd: number | null; readonly results: readonly QualityBatchReceipt[]; readonly at: number }
+  /** What the provider returned for this question the first time a batch's results were read (rule 6): every
+   * decision about that batch comes from this reading, the round's outcome for its own batch, `late` for a copy. */
+  | { readonly kind: "reading"; readonly batchId: string; readonly results: readonly QualityBatchReceipt[]; readonly at: number }
+  /** A later read of a batch that returned anything else: a provider fault, counted as a charge of its own and
+   * never decided from (rule 6). `digest` names it, so each distinct reading is recorded once. */
+  | { readonly kind: "reread"; readonly batchId: string; readonly digest: string; readonly results: readonly QualityBatchReceipt[]; readonly at: number }
   /** Batches of the round deleted at the provider in one pass. */
   | { readonly kind: "deleted"; readonly n: number; readonly batchIds: readonly string[]; readonly at: number };
 export type QualityBatchTerminal = Extract<QualityBatchEvent, { kind: "answered" | "fallback" | "held" }>;
@@ -136,6 +148,10 @@ export type QualityBatchRound = {
   /** Those deleted at the provider, and how many `deleted` events recorded them. */
   readonly deletedIds: readonly string[];
   readonly deletions: number;
+  /** Each batch's recorded reading (rule 6), by batch id. */
+  readonly readings: Readonly<Record<string, readonly QualityBatchReceipt[]>>;
+  /** Later reads that returned anything else, each a charge of its own (rule 6). */
+  readonly rereads: readonly Extract<QualityBatchEvent, { kind: "reread" }>[];
 };
 
 /**
@@ -147,12 +163,16 @@ export type QualityBatchRound = {
  */
 export const qualityBatchReserveMicroUsd = (syncReserveMicroUsd: number) => Math.ceil(syncReserveMicroUsd / 2);
 
-/** The event id suffix: one row per name, so writing it twice is refused by the store. */
+/** The event id suffix: one row per name, so writing it twice is refused by the store. A batch's
+ * reading is named after the batch (its id in hex, as event names are lower-case letters and digits). */
 export function qualityBatchEventName(event: QualityBatchEvent): string {
   return event.kind === "claim" || event.kind === "refused" || event.kind === "found" || event.kind === "late" || event.kind === "deleted" ? `${event.kind}-${event.n}`
     : event.kind === "answered" || event.kind === "fallback" || event.kind === "held" ? "terminal"
+    : event.kind === "reading" ? `reading-${hex(event.batchId)}`
+    : event.kind === "reread" ? `reread-${hex(event.batchId)}-${event.digest}`
     : event.kind === "presumed" ? "submitted" : event.kind;
 }
+const hex = (value: string) => Array.from(new TextEncoder().encode(value), byte => byte.toString(16).padStart(2, "0")).join("");
 
 const numbered = (events: readonly { n: number }[]) => events.every((e, i) => e.n === i + 1);
 const ids = (value: unknown, allowEmpty: boolean) => Array.isArray(value) && (allowEmpty || value.length > 0)
@@ -209,11 +229,23 @@ export function qualityBatchRoundOf(events: readonly QualityBatchEvent[]): Quali
   const billedIds = [...(own ? [own] : []), ...lateIds];
   if (!numbered(deletions) || deletions.some(d => !ids(d.batchIds, false) || d.batchIds.some(id => !billedIds.includes(id))))
     throw Error("QUALITY_BATCH: a deletion names a batch whose bill is not in the record");
+  // Rule 6: a batch is read once for good; a later read that returned anything else is a charge of its own, never a decision.
+  const readings: Record<string, readonly QualityBatchReceipt[]> = Object.create(null) as Record<string, readonly QualityBatchReceipt[]>;
+  for (const reading of of("reading")) {
+    if (!batchIds.includes(reading.batchId) || !Array.isArray(reading.results) || readings[reading.batchId]) throw Error("QUALITY_BATCH: a reading of a batch the round knows, once");
+    readings[reading.batchId] = reading.results;
+  }
+  const rereads = of("reread");
+  if (rereads.some(r => !readings[r.batchId] || !/^[a-f0-9]{16}$/.test(r.digest) || !Array.isArray(r.results)
+    || qualityBatchCanonicalJson(r.results) === qualityBatchCanonicalJson(readings[r.batchId])))
+    throw Error("QUALITY_BATCH: a reread is another reading of a batch already read");
+  if (lates.some(l => readings[l.batchId] && qualityBatchCanonicalJson(l.results) !== qualityBatchCanonicalJson(readings[l.batchId])))
+    throw Error("QUALITY_BATCH: a copy's bill is its recorded reading");
   const cancel = events.find((e): e is Extract<QualityBatchEvent, { kind: "cancel" }> => e.kind === "cancel");
   const completeAt = finds.filter(f => f.complete).map(f => f.at);
   return { intent, claims, refusals, submitted: submitted[0] ?? null, presumed: presumed[0] ?? null, cancelAt: cancel?.at ?? null, terminal, found,
     searches: finds.length, searchComplete: finds.at(-1)?.complete ?? false, completeSearchAt: completeAt.length ? Math.max(...completeAt) : null,
-    lates, lateIds, billedIds, batchIds, deletedIds: [...new Set(deletions.flatMap(d => d.batchIds))], deletions: deletions.length };
+    lates, lateIds, billedIds, batchIds, deletedIds: [...new Set(deletions.flatMap(d => d.batchIds))], deletions: deletions.length, readings, rereads };
 }
 
 export type QualityBatchStep =
@@ -312,21 +344,6 @@ export function qualityBatchCanonicalJson(value: unknown): string {
       .map(key => `${JSON.stringify(key)}:${qualityBatchCanonicalJson(record[key])}`).join(",")}}`;
   }
   return JSON.stringify(value) ?? "null";
-}
-
-/**
- * Whether the round's recorded outcome read exactly this reading of `batchId` (rule 5): its own batch, with the same
- * answer (an answered outcome, by its receipt, model and usage) or the same results (a hold that read it). Any other
- * reading of a batch, by a pass that lost the outcome to another reading, is another possible charge.
- */
-export function qualityBatchOutcomeRead(terminal: QualityBatchTerminal, batchId: string, receipts: readonly QualityBatchReceipt[]): boolean {
-  if (terminal.batchId !== batchId) return false;
-  if (terminal.kind === "answered") {
-    const [only] = receipts;
-    return receipts.length === 1 && only!.type === "succeeded" && only!.requestId === terminal.evidence.providerRequestId
-      && only!.model === terminal.evidence.model && qualityBatchCanonicalJson(only!.usage) === qualityBatchCanonicalJson(terminal.evidence.rawUsage);
-  }
-  return terminal.kind === "held" && !!terminal.results && qualityBatchCanonicalJson(terminal.results) === qualityBatchCanonicalJson(receipts);
 }
 
 /** Whether the provider's copies of a finished round are still to be deleted (rule 5). */

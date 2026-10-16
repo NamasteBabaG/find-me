@@ -304,7 +304,7 @@ export interface QualityBatchTransport {
    * or when the search ran out of pages or of time before the intent (`truncated`). No read starts that could
    * end after `deadlineAt`. Throws when the provider's inventory cannot be shown complete: absence is never
    * inferred from a partial answer. */
-  find(customId: string, sinceMs: number, deadlineAt?: number, untilMs?: number): Promise<{ proven: string[]; undecided: boolean; truncated?: true }>;
+  find(customId: string, sinceMs: number, deadlineAt?: number, untilMs?: number, known?: ReadonlySet<string>): Promise<{ proven: string[]; undecided: boolean; truncated?: true }>;
   /** The batch's state, and for an ended batch what its record counts by result type (null when the record does not state them all). */
   status(batchId: string): Promise<QualityBatchStatus>;
   /** Every result of an ended batch, exactly as the batch's own record counts them by type, or a throw;

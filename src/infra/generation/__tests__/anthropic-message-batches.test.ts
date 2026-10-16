@@ -103,6 +103,17 @@ describe("Anthropic Message Batches transport", () => {
     await expect(new AnthropicMessageBatches("synthetic", edge).find("q-mine", since, undefined, until)).resolves.toEqual({ proven: [], undecided: true });
   });
 
+  it("reads only batches the round does not know yet: a known one, proven already, is neither read again nor kept undecided", async () => {
+    const since = Date.parse("2026-10-16T08:00:00.000Z"), at = (minutes: number) => new Date(since + minutes * 60_000).toISOString();
+    // Codex's eleventh-pass case: a known copy whose results cannot be read would otherwise sink every search.
+    const page = { data: [ended("msgbatch_new", at(9)), ended("msgbatch_known", at(5)), ended("msgbatch_knownrunning", at(4), "in_progress")], has_more: false };
+    const fetcher = wire(reply(200, page), reply(200, null, line("q-mine", { type: "succeeded", message: {} })));
+    await expect(new AnthropicMessageBatches("synthetic", fetcher).find("q-mine", since, undefined, undefined, new Set(["msgbatch_known", "msgbatch_knownrunning"])))
+      .resolves.toEqual({ proven: ["msgbatch_new"], undecided: false });
+    expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual(["https://api.anthropic.com/v1/messages/batches?limit=1000",
+      "https://api.anthropic.com/v1/messages/batches/msgbatch_new/results"]);
+  });
+
   it("never infers absence from an incomplete answer: an empty or cut-off result file, a page without its end, a promise without a cursor", async () => {
     const since = Date.parse("2026-10-16T08:00:00.000Z"), at = new Date(since + 60_000).toISOString();
     const search = (...answers: Response[]) => new AnthropicMessageBatches("synthetic", wire(...answers)).find("q-mine", since);
