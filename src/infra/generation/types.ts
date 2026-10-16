@@ -296,12 +296,14 @@ export interface QualityBatchTransport {
   readonly namespace: string;
   create(requests: readonly { customId: string; params: Record<string, unknown> }[]): Promise<{ batchId: string }>;
   /** Batches created at or after `sinceMs` proven to carry `customId`; undecided while one could and has not ended,
-   * or when the search ran out of pages before the intent (`truncated`).
-   * Throws when the provider's inventory cannot be shown complete: absence is never inferred from a partial answer. */
-  find(customId: string, sinceMs: number): Promise<{ proven: string[]; undecided: boolean; truncated?: true }>;
+   * or when the search ran out of pages or of time before the intent (`truncated`). No read starts that could
+   * end after `deadlineAt`. Throws when the provider's inventory cannot be shown complete: absence is never
+   * inferred from a partial answer. */
+  find(customId: string, sinceMs: number, deadlineAt?: number): Promise<{ proven: string[]; undecided: boolean; truncated?: true }>;
   status(batchId: string): Promise<"in_progress" | "canceling" | "ended">;
-  /** Every result of an ended batch, exactly as the batch's own record counts them by type, or a throw. */
-  results(batchId: string): Promise<QualityBatchResult[]>;
+  /** Every result of an ended batch, exactly as the batch's own record counts them by type, or a throw;
+   * no read starts that could end after `deadlineAt`. */
+  results(batchId: string, deadlineAt?: number): Promise<QualityBatchResult[]>;
   cancel(batchId: string): Promise<void>;
   /** Deleted means acknowledged: already gone counts, anything else throws. */
   remove(batchId: string): Promise<void>;

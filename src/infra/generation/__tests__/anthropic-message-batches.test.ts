@@ -132,6 +132,36 @@ describe("Anthropic Message Batches transport", () => {
       .resolves.toHaveLength(2);
   });
 
+  it("starts no read that could end after the caller's deadline", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const t0 = Date.parse("2026-10-16T09:00:00.000Z"); vi.setSystemTime(t0);
+      const since = t0 - 3_600_000, at = new Date(t0 - 60_000).toISOString(), starts: number[] = [];
+      // Codex's case: one page of ten ended batches, and every answer takes 29 seconds.
+      const answers = [reply(200, { data: Array.from({ length: 10 }, (_, i) => ended(`msgbatch_s${i}`, at)), has_more: false }),
+        ...Array.from({ length: 10 }, () => reply(200, null, line("q-other", { type: "succeeded", message: {} })))];
+      const slow = vi.fn<typeof fetch>(async () => { starts.push(Date.now()); vi.setSystemTime(Date.now() + 29_000); return answers.shift()!; });
+      const deadlineAt = t0 + 240_000;
+      await expect(new AnthropicMessageBatches("synthetic", slow).find("q-mine", since, deadlineAt)).resolves.toEqual({ proven: [], undecided: true, truncated: true });
+      expect(starts.length).toBe(8);
+      expect(starts.every(start => deadlineAt - start >= 30_000)).toBe(true);
+      // Page after page of batches still running: the next page is asked for only with room for it.
+      const pageStarts: number[] = [];
+      const pages = vi.fn<typeof fetch>(async () => {
+        pageStarts.push(Date.now()); vi.setSystemTime(Date.now() + 29_000);
+        return reply(200, { data: [ended(`msgbatch_p${pageStarts.length}`, at, "in_progress")], has_more: true, last_id: `msgbatch_p${pageStarts.length}` });
+      });
+      const pagesDeadline = Date.now() + 100_000;
+      await expect(new AnthropicMessageBatches("synthetic", pages).find("q-mine", since, pagesDeadline)).resolves.toEqual({ proven: [], undecided: true, truncated: true });
+      expect(pageStarts.length).toBe(3);
+      expect(pageStarts.every(start => pagesDeadline - start >= 30_000)).toBe(true);
+      // A batch's results are two reads, its record and its file: each starts only with room for its timeout.
+      const record = vi.fn<typeof fetch>(async () => { vi.setSystemTime(Date.now() + 29_000); return reply(200, { id: "msgbatch_1", processing_status: "ended", request_counts: counts(1) }); });
+      await expect(new AnthropicMessageBatches("synthetic", record).results("msgbatch_1", Date.now() + 40_000)).rejects.toThrow("too little time");
+      expect(record).toHaveBeenCalledTimes(1);
+    } finally { vi.useRealTimers(); }
+  });
+
   it("says when a search ran out of pages before the intent: undecided, and truncated", async () => {
     const since = Date.parse("2026-10-16T08:00:00.000Z"), at = new Date(since + 60_000).toISOString();
     const pages = Array.from({ length: 20 }, (_, i) => reply(200, { data: [ended(`msgbatch_p${i}`, at, "in_progress")], has_more: true, last_id: `msgbatch_p${i}` }));

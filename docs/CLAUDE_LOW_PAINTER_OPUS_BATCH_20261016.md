@@ -117,9 +117,10 @@ intent ─► reserve batch key (half) ─► claim n ─► create ─► submi
 - The intent is durable before the reservation, and each claim before its create.
 - A create that did not answer (timeout, network, 5xx, an unreadable 2xx) is uncertain. It waits out a 15-minute grace.
 - After the grace, only a search of the provider's batches decides, newest first, back to the intent. It reads results only from the documented path built from a checked batch id.
-  - Two found hold the charge at once, as unknown. The round itself ends, naming every copy, only when no candidate still runs, so a deleted game's copies are all found and deleted.
+  - Every batch a search proves to carry the question is kept for good (`found-n`) before anything is decided; a later search that no longer sees it changes nothing.
+  - Two kept copies hold the round at once and for good, with the charge unknown. Its search for further copies goes on as housekeeping until no candidate could still carry the question, so a deleted game's copies are all found and deleted.
   - A candidate that has not ended leaves the search undecided, and the round waits, **even when one batch is already proven**: recording that one could release the other's possible charge on the first one's outcome.
-  - One batch found, with nothing undecided, is recorded.
+  - One kept copy, with nothing undecided, is recorded as the round's batch.
   - Only proven absence allows a new claim and create. Absence is proven only by a complete inventory: every list page to its documented end (`has_more`, with a cursor whenever more follow), and every ended batch's results matching that batch's own `request_counts` type by type, each id once. An empty, cut-off or self-contradicting results file is an error, never "not there" and never "unbilled".
 - A documented 4xx refusal with Anthropic's error envelope proves nothing was created.
   - `429` waits 5 minutes and tries again.
@@ -154,10 +155,12 @@ intent ─► reserve batch key (half) ─► claim n ─► create ─► submi
   - the provider's copies are deleted once acknowledged.
   - Each tick starts one round further on (the tick runs every minute), so a round that is slow on every tick cannot keep the sweep from the others.
   - The records are read in two queries, and the 40-second window for provider calls opens only after them.
-  - Each game's state is read again just before its rounds are touched: a game resumed meanwhile is left to its own slices.
-  - A round that never reached the provider (stopped after its intent, or every create refused) ends at zero rather than waiting for a create that a stopped game never makes.
+  - Each game's state is read again just before its rounds are touched, and again before a cancel or a close: a game resumed meanwhile is left to its own slices.
+  - A round that never reached the provider (stopped after its intent, or every create refused) ends at zero rather than waiting for a create that a stopped game never makes. The close first takes the claim a create would take, so a worker that resumed the game and claimed it keeps its create.
+  - A held round still searching for copies is searched for every game, generating or not: a held review parks its job, and a parked job runs no slice.
+- No provider call starts unless its whole timeout fits before the deadline of the slice or tick making it.
 - Finished rounds of generating games are deleted by their own slices.
-- A held round keeps its batches for the person, **unless its game was deleted**: then they are deleted at the provider too, while the unknown charge stays held in the ledger. The hold is the ledger's to keep; the imagery is the child's.
+- A held round keeps its batches for the person, **unless its game was deleted**: then they are deleted at the provider too, as they are found, each pass recorded (`deleted-n`), while the unknown charge stays held in the ledger. The hold is the ledger's to keep; the imagery is the child's.
 - **Failure handling (`80d7de72`):**
   - One game's unreadable record never stops the sweep of the others.
   - A round the slice cannot advance stops the slice with the job's FAILED status and reason, exactly as a failing review does.
@@ -166,9 +169,9 @@ intent ─► reserve batch key (half) ─► claim n ─► create ─► submi
 
 | Suite | Result |
 | --- | --- |
-| `quality-batch.test.ts`: real SQLite, ledger, retained store, dual review and world slice, with a scripted provider | **34/34** (21 in `1df2e366`, 2 in `80d7de72`, 6 for Codex's HOLD, 5 for the re-review) |
-| `quality-batch-round.test.ts`: the pure rules | **21/21** (16, plus 5 for the HOLD) |
-| `anthropic-message-batches.test.ts`: the transport on a scripted wire, plus pricing | **11/11** (8, plus 1 for the HOLD and 2 for the re-review; 3 updated) |
+| `quality-batch.test.ts`: real SQLite, ledger, retained store, dual review and world slice, with a scripted provider | **40/40** (21 in `1df2e366`, 2 in `80d7de72`, 6 for Codex's HOLD, 5 for the re-review, 6 for the third pass) |
+| `quality-batch-round.test.ts`: the pure rules | **31/31** (16, plus 5 for the HOLD and 10 for the third pass) |
+| `anthropic-message-batches.test.ts`: the transport on a scripted wire, plus pricing | **12/12** (8, plus 1 for the HOLD, 2 for the re-review and 1 for the third pass) |
 | `world-budget.test.ts` and `board-wizard-budget.test.ts`: `WorldBudget.link` | 3 and 1 new |
 
 Among the first 23:
@@ -263,6 +266,12 @@ Each mutant edits one anchor and runs only its targeted tests. Each counts only 
   - F4: the game's state not read again;
   - F5: a stopped game's unsent round left waiting;
   - F6: a search out of pages not saying so.
+- **Codex's third pass: 42/42,** each killed by the test it targets, with the tree restored and verified. 28 from the earlier rounds were run again, re-anchored; 3 were retired with the code they guarded (the hold naming its batches, and the second round's open-hold search). The 14 new:
+  - N1: a decision from the latest search instead of every kept copy; the duplicates step removed; a recorded batch beside another found; a round ending unsent after it found a copy; a search left open after a complete one;
+  - N2: a close without its claim;
+  - the F4 sibling: no game read before a cancel;
+  - N3: a cancel without room; a deletion without room; a search's results reads, and its pages, without room; the results file read without room;
+  - N4: the sweep skipping a live game's search; housekeeping that never searches.
 
 **The full suite (`npm run check`) on `1df2e366`:**
 - tsc is clean.
@@ -280,6 +289,10 @@ Each mutant edits one anchor and runs only its targeted tests. Each counts only 
 - Vitest: 5,112 passed, 2 expected failures, 55 skipped, **4 failed**, all timeouts under full-suite load: the same two in `local-patch-incremental-review.test.ts` (20 s), and two in `production-bootstrap.test.ts` (15 s), the pair that also timed out on step 1. Neither test file is changed by this branch, and nothing under `prisma/` or the bootstrap code is either.
 - Alone, the two files pass 96/96 (79 and 17).
 
+**The full suite on the third round:**
+- tsc is clean.
+- Vitest: 5,131 passed, 2 expected failures, 55 skipped, **2 failed**: the same two load timeouts in `local-patch-incremental-review.test.ts`. Alone, on this code, that file passes 79/79.
+
 ## Commits
 
 | Commit | What |
@@ -291,7 +304,8 @@ Each mutant edits one anchor and runs only its targeted tests. Each counts only 
 | `fcf4c0ea` | docs(qa): LOW painter and Opus on Message Batches, per new draft |
 | `233c55e7` | feat(budget): link a second key to a settled charge without capacity (Codex P1-5) |
 | `b90d818d` | fix(qa): the batch channel's recovery, deletion and alias (Codex HOLD) |
-| the commit carrying this section | fix(qa): the batch channel after Codex's re-review (F1-F5) |
+| `e086b10c` | fix(qa): the batch channel after Codex's re-review (F1-F5) |
+| the commit carrying this section | fix(qa): the batch channel's records hold under time and concurrency (Codex's third pass) |
 
 Each was verified on its own in a clean worktree:
 - `afbd8ee2`: tsc and its regression test;
@@ -311,9 +325,9 @@ The split was proven exact: replaying step 2's edits onto the step-1 versions re
 5. **Sol on Flex** (≈ $2.83 projected) is the next step toward $3. E6b's evidence is 3/4 at half price, with one 503 held.
 6. **The scheduled sweep's first query** (`action` across every game's AuditLog rows) has no index on `action`. It runs once a tick and is fine at QA's size; at a large size it would need an index, which is a schema change.
 7. **A world parked for a person** (NEEDS_RELEASE or exhausted) runs no slice, so its open rounds are neither polled nor cancelled at their deadline until it resumes. Each batch still ends within 24 h, and its reservation stays counted meanwhile.
-8. **The sweep reads every game's round record each minute** to find the rounds with work. Fine at QA's size; at scale it would want a cursor or an index (a schema change).
+8. **The sweep reads every game's round record each minute** to find the rounds with work, in two queries with no deadline of their own (its provider window opens only after them). Fine at QA's size; at scale it would want a cursor or an index (a schema change).
 9. **Batch ids.** Anthropic's reference says "The format and length of IDs may change over time." The transport accepts only `msgbatch_` followed by letters and digits. A new format fails closed: every create becomes uncertain and every batched question waits, so a deployment would show it at once, but it would stall the channel until the pattern is widened.
-10. **A dedicated Anthropic workspace (Codex F6).** A search after a lost create reads every batch the API key's workspace created after the round's intent, newest first, up to 20 pages of 1,000. Deeper than that it stays undecided, and so does the round: nothing is created or released, and the waiting reason says the list was too long. A workspace used only by this channel keeps the search to this product's own batches (27 per world), far below the limit. Making the search resumable across passes is the fix if that ever changes.
+10. **A dedicated Anthropic workspace (Codex F6).** A search after a lost create reads every batch the API key's workspace created after the round's intent, newest first, up to 20 pages of 1,000, and only while the request has time left. Beyond that it stays undecided, and so does the round: nothing is created or released, and the waiting reason says why. Codex accepted this for the QA channel. A workspace used only by this channel keeps the search to this product's own batches, but does not guarantee the limit: at 27 batches per world, 741 worlds already make 20,000. Making the search resumable across passes is the fix before that volume.
 11. **A provider answer that contradicts itself** (Codex F1) leaves its round waiting, with the charge pending, until a person looks. The stalled-generation alert reports the game.
 
 ## 7. Codex's review of `fcf4c0ea`: HOLD, and the fixes
@@ -360,4 +374,20 @@ It found two P1 and four P2 findings, each a sibling of a first-round fix:
 | F5 (P2) | A deleted game's round, stopped after its intent and before any reservation, stayed open forever. | A game that is not generating creates nothing. A round at its create step, where nothing has ever reached the provider, ends as never-created, at zero. | Codex's crash window: the round ends with nothing billed and drops out of later sweeps. |
 | F6 (P2) | A complete inventory deeper than 20 pages (20,000 batches newer than the round's intent) leaves the search undecided forever. | **Not fixed; documented (§6).** The search fails closed: nothing is created and nothing is released. It now says why (`truncated`). | Transport: a search that runs out of pages is undecided and says it was truncated. |
 
-**F4's remaining window.** A game resumed between that read and the cancel itself (milliseconds) can still have its batch cancelled. The question is then asked synchronously at the standard price; the ledger stays exact.
+**F4's remaining window.** See the third round below: the read is now repeated before the cancel itself.
+
+### Codex's third pass on `e086b10c`: HOLD, and the third round
+
+Codex closed F1 (it ran 605 two-line type and count combinations with no wrong acceptance or refusal) and accepted F6's disposition as "an acceptable disclosed QA liveness limitation". It found that the second round's fixes held in their own reproductions but not in sibling paths, all of them about time and concurrency:
+
+| # | Finding | Fix | Regression test |
+| --- | --- | --- | --- |
+| N1 (P1) | The open duplicate search kept only the ledger hold, not the copies it had proven. A later search that saw fewer copies (one deleted by someone else) could fall back and settle at zero, answer and link, or close as never created. | Every batch a search proves to carry the question is kept for good (`found-n` events) before anything is decided. Two kept copies hold the round at once and for good. One kept copy is the round's batch even when a later search no longer sees it, so it is never "proven absent". | A copy that vanishes from the list after it was proven: nothing is created again and nothing is released. The pure rules: two copies hold, and a later empty search changes nothing. |
+| N2 (P1) | The sweep's "never created" close could race a resumed worker's create, and settle the reservation at zero while that create was in flight. | A close first takes the claim the create would take (`claim-n`, marked closing). A worker that claimed it first keeps its create, and the close stands down; a worker that comes second is refused its claim. The game is also read again just before a close. | Codex's interleaving: a worker's claim lands right after the sweep read the round; the close stands down, the reservation stays, and the round goes on. |
+| F4, again | A game resumed while the sweep waited on a slow status read could still have its batch cancelled. | The game is read again after the status and before the cancel. | The game resumes during the status read: its batch runs on. |
+| N3 (P2) | The deadline admitted a round, but did not bound the calls after it: a search could make every list and results read, 30 s each, past the tick's limit. | No provider call starts unless its whole timeout fits before the deadline: each page and results read of a search, both reads of `results()`, the cancel, and each deletion. A search out of time is undecided and says so. | Codex's case on the real transport (ten ended batches, 29 s per answer): every read starts with 30 s to spare, and then the search stops. A slow status leaves the cancel to the next tick. Slow deletions spread over ticks, each recorded (`deleted-n`). |
+| N4 (P2) | A held review parks its job while the game stays TARGETS_GENERATING, so neither a slice nor the sweep went on searching for further copies. | The duplicate hold is terminal at once, and its search for further copies is housekeeping: the slices do it, and the sweep does it for every game, generating or not. It only reads the provider and records what it finds. | A live game whose job is parked: the sweep finds the third copy, and nothing is deleted (a live game's copies stay for the person), bought or released. |
+
+**The record format changed again, before any deployment.** `found-n` events keep the copies; `deleted-n` events record each pass's deletions (a round can be cleaned over several passes); a claim may be `closing`; `held` no longer names batches.
+
+**The windows that remain.** A game resumed after the last read and before the close's claim is safe: the claim decides, and the worst case is that a resumed game's question falls back to the synchronous price. A game resumed after the last read and before a cancel costs the same fallback, never money that is not counted.

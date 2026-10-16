@@ -24,6 +24,8 @@ export const QUALITY_BATCH_CLOCK_SKEW_MS = 5 * 60_000;
 /** Pages a search reads before it reports itself undecided, which blocks any new create. */
 const MAX_LIST_PAGES = 20;
 const CREATE_TIMEOUT_MS = 90_000, READ_TIMEOUT_MS = 30_000;
+/** A read starts only when its whole timeout fits before the caller's deadline. */
+const roomForRead = (deadlineAt: number | undefined) => deadlineAt === undefined || deadlineAt - Date.now() >= READ_TIMEOUT_MS;
 
 type Answer = { readonly status: number; readonly ok: boolean; readonly text: string };
 const parse = (text: string): Record<string, unknown> | null => {
@@ -85,13 +87,15 @@ export class AnthropicMessageBatches implements QualityBatchTransport {
    * Absence is proven only by a complete inventory: every page, to its documented
    * end, and every ended batch's results matching that batch's own request counts.
    * Anything less throws, and a throw never permits a create. A search that runs
-   * out of pages before the intent is undecided, and says so (`truncated`).
+   * out of pages, or of time before `deadlineAt`, ahead of the intent is undecided,
+   * and says so (`truncated`); what it proved by then is still returned.
    */
-  async find(customId: string, sinceMs: number): Promise<{ proven: string[]; undecided: boolean; truncated?: true }> {
+  async find(customId: string, sinceMs: number, deadlineAt?: number): Promise<{ proven: string[]; undecided: boolean; truncated?: true }> {
     if (!CUSTOM_ID.test(customId) || !Number.isFinite(sinceMs)) throw Error("QUALITY_BATCH: invalid search");
     const proven: string[] = [];
     let undecided = false, after: string | null = null;
     for (let page = 0; page < MAX_LIST_PAGES; page++) {
+      if (!roomForRead(deadlineAt)) break;
       const answer = await this.call(`/v1/messages/batches?limit=1000${after ? `&after_id=${encodeURIComponent(after)}` : ""}`, { method: "GET" }, READ_TIMEOUT_MS);
       const list = parse(answer.text), data = Array.isArray(list?.data) ? list.data as Record<string, unknown>[] : null;
       if (!answer.ok || !list || !data || typeof list.has_more !== "boolean") throw Error(`QUALITY_BATCH: list answered ${answer.status} without a complete page`);
@@ -104,6 +108,7 @@ export class AnthropicMessageBatches implements QualityBatchTransport {
         if (batch.processing_status !== "ended") { undecided = true; continue; }
         const counts = endedRequestCounts(batch);
         if (counts === null) throw Error(`QUALITY_BATCH: ${batch.id} does not state its request counts`);
+        if (!roomForRead(deadlineAt)) return { proven, undecided: true, truncated: true };
         if ((await this.resultsOf(batch.id, counts)).some(result => result.customId === customId)) proven.push(batch.id);
       }
       if (reachedIntent || !list.has_more) return { proven, undecided };
@@ -121,11 +126,14 @@ export class AnthropicMessageBatches implements QualityBatchTransport {
     return status;
   }
 
-  /** Every result of an ended batch, checked against the batch's own record. */
-  async results(batchId: string): Promise<QualityBatchResult[]> {
+  /** Every result of an ended batch, checked against the batch's own record; each read only with room before `deadlineAt`. */
+  async results(batchId: string, deadlineAt?: number): Promise<QualityBatchResult[]> {
+    const late = () => Error(`QUALITY_BATCH: too little time is left to read the results of ${batchId}`);
+    if (!roomForRead(deadlineAt)) throw late();
     const answer = await this.call(`/v1/messages/batches/${checkedBatch(batchId)}`, { method: "GET" }, READ_TIMEOUT_MS);
     const batch = parse(answer.text), counts = batch && batch.id === batchId ? endedRequestCounts(batch) : null;
     if (!answer.ok || counts === null) throw Error(`QUALITY_BATCH: ${batchId} answered ${answer.status} without an ended record and its request counts`);
+    if (!roomForRead(deadlineAt)) throw late();
     return this.resultsOf(batchId, counts);
   }
 

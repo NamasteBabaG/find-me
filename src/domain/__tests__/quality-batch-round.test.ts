@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   QUALITY_BATCH_CREATE_GRACE_MS, QUALITY_BATCH_REFUSAL_BACKOFF_MS, QUALITY_BATCH_VERSION, decideQualityBatchResults, nextQualityBatchStep,
-  qualityBatchCleanupDue, qualityBatchEventName, qualityBatchReserveMicroUsd, qualityBatchRoundOf, type QualityBatchEvent, type QualityBatchIntent,
+  qualityBatchCleanupDue, qualityBatchEventName, qualityBatchReserveMicroUsd, qualityBatchRoundOf, qualityBatchSearching, type QualityBatchEvent, type QualityBatchIntent,
 } from "../generation/quality-batch-round";
 
 const T0 = Date.parse("2026-10-16T08:00:00.000Z"), HOUR = 60 * 60_000;
@@ -57,33 +57,73 @@ describe("a quality question's batch round, pure", () => {
     ["an unsent fallback after a recorded batch", [{ kind: "claim", n: 1, at: T0 }, { kind: "submitted", n: 1, batchId: "msgbatch_1", at: T0 }, { kind: "fallback", batchId: null, resultType: "never-created", errorType: null, at: T0 }]],
     ["two terminal outcomes", [{ kind: "held", reason: "x", at: T0 }, { kind: "held", reason: "y", at: T0 }]],
     ["a deletion of another batch", [{ kind: "claim", n: 1, at: T0 }, { kind: "submitted", n: 1, batchId: "msgbatch_1", at: T0 },
-      { kind: "answered", batchId: "msgbatch_1", amountMicroUsd: 1, servedTier: "batch", at: T0 }, { kind: "deleted", batchIds: ["msgbatch_9"], at: T0 }]],
-    ["a deletion of part of a hold's batches", [{ kind: "claim", n: 1, at: T0 }, { kind: "held", reason: "x", at: T0, batchIds: ["msgbatch_1", "msgbatch_2"] },
-      { kind: "deleted", batchIds: ["msgbatch_1"], at: T0 }]],
-    ["a deletion when nothing reached the provider", [{ kind: "claim", n: 1, at: T0 }, { kind: "refused", n: 1, at: T0, status: 400, errorType: null, transient: false },
-      { kind: "held", reason: "x", at: T0 }, { kind: "deleted", batchIds: [], at: T0 }]],
-    ["a hold naming one batch twice", [{ kind: "claim", n: 1, at: T0 }, { kind: "held", reason: "x", at: T0, batchIds: ["msgbatch_1", "msgbatch_1"] }]],
+      { kind: "answered", batchId: "msgbatch_1", amountMicroUsd: 1, servedTier: "batch", at: T0 }, { kind: "deleted", n: 1, batchIds: ["msgbatch_9"], at: T0 }]],
+    ["a deletion with nothing in it", [{ kind: "claim", n: 1, at: T0 }, { kind: "refused", n: 1, at: T0, status: 400, errorType: null, transient: false },
+      { kind: "held", reason: "x", at: T0 }, { kind: "deleted", n: 1, batchIds: [], at: T0 }]],
+    ["deletions with a gap", [{ kind: "claim", n: 1, at: T0 }, { kind: "submitted", n: 1, batchId: "msgbatch_1", at: T0 },
+      { kind: "answered", batchId: "msgbatch_1", amountMicroUsd: 1, servedTier: "batch", at: T0 }, { kind: "deleted", n: 2, batchIds: ["msgbatch_1"], at: T0 }]],
+    ["a search naming one batch twice", [{ kind: "claim", n: 1, at: T0 }, { kind: "found", n: 1, batchIds: ["msgbatch_1", "msgbatch_1"], complete: true, at: T0 }]],
+    ["searches with a gap", [{ kind: "claim", n: 1, at: T0 }, { kind: "found", n: 2, batchIds: ["msgbatch_1"], complete: true, at: T0 }]],
+    ["one batch recorded and another found", [{ kind: "claim", n: 1, at: T0 }, { kind: "found", n: 1, batchIds: ["msgbatch_2"], complete: false, at: T0 },
+      { kind: "submitted", n: 1, batchId: "msgbatch_1", at: T0 }]],
+    ["two copies found and then not held", [{ kind: "claim", n: 1, at: T0 }, { kind: "found", n: 1, batchIds: ["msgbatch_1", "msgbatch_2"], complete: true, at: T0 },
+      { kind: "fallback", batchId: null, resultType: "never-created", errorType: null, at: T0 }]],
+    ["a closing claim that is not the last", [{ kind: "claim", n: 1, at: T0, closing: true }, { kind: "claim", n: 2, at: T0 }]],
+    ["a create sent under a closing claim", [{ kind: "claim", n: 1, at: T0, closing: true }, { kind: "submitted", n: 1, batchId: "msgbatch_1", at: T0 }]],
+    ["a closed round held", [{ kind: "claim", n: 1, at: T0, closing: true }, { kind: "held", reason: "x", at: T0 }]],
+    ["a round closed after it found a copy", [{ kind: "claim", n: 1, at: T0 }, { kind: "found", n: 1, batchIds: ["msgbatch_1"], complete: false, at: T0 },
+      { kind: "claim", n: 2, at: T0, closing: true }]],
+    ["a round falling back unsent after it found a copy", [{ kind: "claim", n: 1, at: T0 }, { kind: "found", n: 1, batchIds: ["msgbatch_1"], complete: true, at: T0 },
+      { kind: "fallback", batchId: null, resultType: "never-created", errorType: null, at: T0 }]],
   ])("refuses an impossible record: %s", (_name, events) => {
     expect(() => round(...events)).toThrow("QUALITY_BATCH");
   });
 
-  it("knows every batch it proved, and deletes them once finished: a held round's only for a deleted game", () => {
+  it("keeps every batch a search proved for good: two copies hold the round, whatever a later search sees", () => {
+    const claimed: QualityBatchEvent = { kind: "claim", n: 1, at: T0 }, later = T0 + QUALITY_BATCH_CREATE_GRACE_MS;
+    const one: QualityBatchEvent = { kind: "found", n: 1, batchIds: ["msgbatch_1"], complete: false, at: later };
+    // One copy proven while another might still run: the round keeps searching.
+    expect(round(claimed, one)).toMatchObject({ found: ["msgbatch_1"], searches: 1, searchComplete: false });
+    expect(step(later, claimed, one)).toEqual({ step: "find", sinceMs: T0, nextClaim: 2 });
+    // A second copy found later, even with nothing new after it: held, and the hold cannot be undone.
+    const two: QualityBatchEvent = { kind: "found", n: 2, batchIds: ["msgbatch_2"], complete: false, at: later };
+    expect(step(later, claimed, one, two)).toEqual({ step: "duplicates", reason: "2 batches carry this one question" });
+    const empty: QualityBatchEvent = { kind: "found", n: 3, batchIds: [], complete: true, at: later };
+    expect(step(later, claimed, one, two, empty)).toMatchObject({ step: "duplicates" });
+    expect(round(claimed, one, two, empty)).toMatchObject({ found: ["msgbatch_1", "msgbatch_2"], searches: 3, searchComplete: true });
+  });
+
+  it("closes a round unsent by taking the claim a create would take, and finishes a close it already took", () => {
+    const refused = (n: number): QualityBatchEvent[] => [{ kind: "claim", n, at: T0 }, { kind: "refused", n, at: T0, status: 429, errorType: "rate_limit_error", transient: true }];
+    expect(step(T0 + 6 * HOUR, ...refused(1))).toEqual({ step: "fallback-unsent", claim: 2, reason: expect.stringContaining("no batch was ever created") });
+    expect(step(T0, { kind: "claim", n: 1, at: T0, closing: true })).toEqual({ step: "fallback-unsent", claim: null, reason: expect.stringContaining("being closed") });
+    expect(round({ kind: "claim", n: 1, at: T0, closing: true }, { kind: "fallback", batchId: null, resultType: "never-created", errorType: null, at: T0 }).terminal)
+      .toMatchObject({ kind: "fallback", batchId: null });
+  });
+
+  it("knows every batch it proved, and deletes them once finished: a held round's only for a deleted game, a searching round's as found", () => {
     const recorded: QualityBatchEvent[] = [{ kind: "claim", n: 1, at: T0 }, { kind: "submitted", n: 1, batchId: "msgbatch_1", at: T0 }];
     const answered = round(...recorded, { kind: "answered", batchId: "msgbatch_1", amountMicroUsd: 9000, servedTier: "batch", at: T0 });
     expect(answered.batchIds).toEqual(["msgbatch_1"]);
     expect([qualityBatchCleanupDue(answered, false), qualityBatchCleanupDue(answered, true)]).toEqual([true, true]);
     const held = round(...recorded, { kind: "held", reason: "unpriced", at: T0 });
     expect([qualityBatchCleanupDue(held, false), qualityBatchCleanupDue(held, true)]).toEqual([false, true]);
-    // Two batches found carrying the question, neither ever recorded: the hold names both.
-    const found = round({ kind: "claim", n: 1, at: T0 }, { kind: "held", reason: "two", at: T0, batchIds: ["msgbatch_1", "msgbatch_2"] });
-    expect(found.batchIds).toEqual(["msgbatch_1", "msgbatch_2"]);
-    expect(qualityBatchCleanupDue(found, true)).toBe(true);
-    expect(round({ kind: "claim", n: 1, at: T0 }, { kind: "held", reason: "two", at: T0, batchIds: ["msgbatch_2", "msgbatch_1"] },
-      { kind: "deleted", batchIds: ["msgbatch_1", "msgbatch_2"], at: T0 }).deleted).toBe(true);
+    expect(qualityBatchSearching(held)).toBe(false);
+    // Two copies found while a third might still run: held, still searching; what is found is deleted as it is found.
+    const copies: QualityBatchEvent[] = [{ kind: "claim", n: 1, at: T0 }, { kind: "found", n: 1, batchIds: ["msgbatch_1", "msgbatch_2"], complete: false, at: T0 },
+      { kind: "held", reason: "two", at: T0 }];
+    const searching = round(...copies);
+    expect(searching.batchIds).toEqual(["msgbatch_1", "msgbatch_2"]);
+    expect([qualityBatchSearching(searching), qualityBatchCleanupDue(searching, true), qualityBatchCleanupDue(searching, false)]).toEqual([true, true, false]);
+    const partly = round(...copies, { kind: "deleted", n: 1, batchIds: ["msgbatch_1", "msgbatch_2"], at: T0 }, { kind: "found", n: 2, batchIds: ["msgbatch_3"], complete: true, at: T0 });
+    expect(partly).toMatchObject({ batchIds: ["msgbatch_1", "msgbatch_2", "msgbatch_3"], deletedIds: ["msgbatch_1", "msgbatch_2"], deletions: 1 });
+    expect([qualityBatchSearching(partly), qualityBatchCleanupDue(partly, true)]).toEqual([false, true]);
+    expect(qualityBatchCleanupDue(round(...copies, { kind: "deleted", n: 1, batchIds: ["msgbatch_2"], at: T0 },
+      { kind: "deleted", n: 2, batchIds: ["msgbatch_1"], at: T0 }), true)).toBe(false);
     // Nothing reached the provider; everything is already deleted; the round is still open.
     expect(qualityBatchCleanupDue(round({ kind: "claim", n: 1, at: T0 }, { kind: "refused", n: 1, at: T0, status: 400, errorType: null, transient: false },
       { kind: "held", reason: "refused", at: T0 }), true)).toBe(false);
-    expect(qualityBatchCleanupDue(round(...recorded, { kind: "held", reason: "x", at: T0 }, { kind: "deleted", batchIds: ["msgbatch_1"], at: T0 }), true)).toBe(false);
+    expect(qualityBatchCleanupDue(round(...recorded, { kind: "held", reason: "x", at: T0 }, { kind: "deleted", n: 1, batchIds: ["msgbatch_1"], at: T0 }), true)).toBe(false);
     expect(qualityBatchCleanupDue(round(...recorded), true)).toBe(false);
   });
 
@@ -94,6 +134,9 @@ describe("a quality question's batch round, pure", () => {
   it("names each event so a second writer of it is refused by the store", () => {
     expect(qualityBatchEventName({ kind: "claim", n: 3, at: T0 })).toBe("claim-3");
     expect(qualityBatchEventName({ kind: "refused", n: 3, at: T0, status: 429, errorType: null, transient: true })).toBe("refused-3");
+    expect(qualityBatchEventName({ kind: "found", n: 2, batchIds: [], complete: true, at: T0 })).toBe("found-2");
+    expect(qualityBatchEventName({ kind: "deleted", n: 1, batchIds: ["b"], at: T0 })).toBe("deleted-1");
+    expect(qualityBatchEventName({ kind: "claim", n: 4, at: T0, closing: true })).toBe("claim-4");
     // Answered, fallback and held share one name: only one can ever be written.
     expect(new Set([qualityBatchEventName({ kind: "answered", batchId: "b", amountMicroUsd: 1, servedTier: "batch", at: T0 }),
       qualityBatchEventName({ kind: "fallback", batchId: null, resultType: "never-created", errorType: null, at: T0 }),
