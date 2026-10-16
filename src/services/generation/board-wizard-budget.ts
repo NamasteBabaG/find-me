@@ -26,8 +26,9 @@ export function boardWizardBudget(repository: WorldBudgetRepository, attempt = 1
   };
   const guarded: WorldBudgetRepository = { transactWorld: (worldId, work) => repository.transactWorld(worldId, tx => work({ snapshot: tx.snapshot,
     createRequest: async request => {
-      // A linked alias holds no capacity: its charge is the canonical row's, counted once.
-      if (request.origin === "reserved" && request.state !== "linked" && auditWorldBudget(tx.snapshot).committedMicroUsd + request.reserveMicroUsd > await capFor(worldId)) {
+      // Only a new reservation asks for capacity. A linked alias's charge is the canonical row's, counted once;
+      // an unknown charge recorded as spent (`recordUnknown`) grants no dispatch and must be counted whatever the room.
+      if (request.origin === "reserved" && request.state === "pending" && auditWorldBudget(tx.snapshot).committedMicroUsd + request.reserveMicroUsd > await capFor(worldId)) {
         throw new WorldBudgetError("cap_exceeded", "Reservation exceeds the inclusive authorized QA world ceiling",
           { worldId, requestKey: request.requestKey, scope: request.scope, operationFingerprint: request.operationFingerprint,
             reserveMicroUsd: request.reserveMicroUsd });
@@ -48,6 +49,7 @@ export function boardWizardBudget(repository: WorldBudgetRepository, attempt = 1
     override settle(worldId: string, requestKey: string, evidence: WorldChargeEvidence, options?: { onlyPending?: boolean }) { return super.settle(worldId, key(requestKey), evidence, options); }
     override link(worldId: string, input: WorldLinkInput) { return super.link(worldId, { ...input, requestKey: key(input.requestKey), canonicalRequestKey: key(input.canonicalRequestKey) }); }
     override markUnknown(worldId: string, requestKey: string, reason: string) { return super.markUnknown(worldId, key(requestKey), reason); }
+    override recordUnknown(worldId: string, input: WorldReservationInput & { reason: string }) { return super.recordUnknown(worldId, { ...input, requestKey: key(input.requestKey) }); }
     override readContinuationApproval(worldId: string, requestKey: string) { return super.readContinuationApproval(worldId, key(requestKey)); }
     override authorizeUnknownContinuation(worldId: string, input: WorldUnknownContinuationInput) { return super.authorizeUnknownContinuation(worldId, { ...input, requestKey: key(input.requestKey) }); }
     override authorizeAutomaticImageRecovery(worldId: string, input: WorldAutomaticImageRecoveryInput) { return super.authorizeAutomaticImageRecovery(worldId, { ...input, requestKey: key(input.requestKey) }); }

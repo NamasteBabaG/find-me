@@ -512,6 +512,34 @@ export class WorldBudget {
     });
   }
 
+  /**
+   * Records a charge already incurred whose amount cannot be stated, as its own row held unknown at a
+   * conservative estimate (`reserveMicroUsd`). Like `link`, it grants no dispatch and needs no capacity,
+   * because the money is already spent, so a held or full world records it too. A person reconciles it
+   * like any unknown charge, by settling it or by a continuation approval. The same terms again are the
+   * same row, as it now stands; a key that holds anything else is refused.
+   */
+  async recordUnknown(worldId: string, input: WorldReservationInput & { reason: string }): Promise<WorldBudgetResult> {
+    nonempty(input.requestKey, "requestKey"); nonempty(input.operationFingerprint, "operationFingerprint"); nonempty(input.reason, "reason");
+    scope(input.scope); money(input.reserveMicroUsd, "reserveMicroUsd", false);
+    if (input.requestKey.startsWith(IMPORT_PREFIX)) fail("invalid_input", "Reserved import key prefix");
+    input = structuredClone(input);
+    return this.transact(worldId, async (tx, capMicroUsd) => {
+      const existing = tx.snapshot.requests.find(item => item.requestKey === input.requestKey);
+      if (existing) {
+        if (existing.origin !== "reserved" || existing.state === "pending" || existing.state === "linked" || existing.scope !== input.scope
+          || existing.operationFingerprint !== input.operationFingerprint || existing.reserveMicroUsd !== input.reserveMicroUsd)
+          return fail("key_conflict", "Request key already holds something other than this unknown charge");
+        return { request: structuredClone(existing), audit: auditWorldBudget(tx.snapshot, capMicroUsd) };
+      }
+      const { reason, ...terms } = input;
+      const request: WorldBudgetRequest = { ...terms, origin: "reserved", state: "unknown", unknownReasons: [reason], conflicts: [] };
+      const audit = auditWorldBudget(snapshotWith(tx.snapshot, request), capMicroUsd);
+      await tx.createRequest(structuredClone(request));
+      return { request, audit };
+    });
+  }
+
   async markUnknown(worldId: string, requestKey: string, reason: string): Promise<WorldBudgetResult> {
     nonempty(requestKey, "requestKey"); nonempty(reason, "reason");
     return this.transact(worldId, async (tx, capMicroUsd) => {

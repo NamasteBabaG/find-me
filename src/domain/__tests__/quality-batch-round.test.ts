@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   QUALITY_BATCH_CREATE_GRACE_MS, QUALITY_BATCH_LATE_SEARCH_MS, QUALITY_BATCH_REFUSAL_BACKOFF_MS, QUALITY_BATCH_VERSION, decideQualityBatchResults, nextQualityBatchStep,
-  qualityBatchCleanupDue, qualityBatchDeletable, qualityBatchEventName, qualityBatchLateDue, qualityBatchReserveMicroUsd, qualityBatchRoundOf, qualityBatchSearchWindow,
+  qualityBatchCleanupDue, qualityBatchCopyStart, qualityBatchDeletable, qualityBatchEventName, qualityBatchLateDue, qualityBatchReserveMicroUsd, qualityBatchRoundOf, qualityBatchSearchWindow,
   qualityBatchSearching, type QualityBatchEvent, type QualityBatchIntent,
 } from "../generation/quality-batch-round";
 
@@ -204,6 +204,19 @@ describe("a quality question's batch round, pure", () => {
     // Every copy found is read, each once; then each may be deleted.
     const two = round(...presumedLost, { ...foundLate, batchIds: ["msgbatch_1", "msgbatch_2"] }, late(1, "msgbatch_2", null, due));
     expect([qualityBatchLateDue(two), qualityBatchDeletable(two, true), two.lates.map(l => l.amountMicroUsd)]).toEqual([["msgbatch_1"], ["msgbatch_2"], [null]]);
+  });
+
+  it("starts a round's copies at a different one each minute, however a rotation of rounds comes back to it", () => {
+    const minute = 60_000, t = Math.floor(T0 / minute) * minute;
+    expect([qualityBatchCopyStart(intent.roundId, 0, t), qualityBatchCopyStart(intent.roundId, 1, t)]).toEqual([0, 0]);
+    // Codex's case: a sweep that comes back to the round every second minute with two copies (and every third with three, every
+    // second with four): a start tied to the minute alone would meet the same copy first each time.
+    for (const [every, length] of [[2, 2], [3, 3], [2, 4]] as const) {
+      const starts = new Set(Array.from({ length: 24 }, (_, visit) => qualityBatchCopyStart(intent.roundId, length, t + visit * every * minute)));
+      expect(starts.size).toBe(length);
+    }
+    // Within one minute, the same copy first.
+    expect(new Set(Array.from({ length: 60 }, (_, s) => qualityBatchCopyStart(intent.roundId, 5, t + s * 1000 + 999)))).toEqual(new Set([qualityBatchCopyStart(intent.roundId, 5, t)]));
   });
 
   it("reserves half of the synchronous reservation, rounded up", () => {

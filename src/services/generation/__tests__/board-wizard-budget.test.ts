@@ -45,6 +45,16 @@ describe("QA wizard four-dollar budget", () => {
     expect(await second.readRequest("w", "sync")).toMatchObject({ requestKey: "attempt-2:sync", canonicalRequestKey: "attempt-2:batch", state: "linked" });
     expect(await first.readRequest("w", "sync")).toMatchObject({ canonicalRequestKey: "batch", reserveMicroUsd: 250_000 });
   });
+  it("records an unknown charge already spent above the ceiling, where a new reservation is refused, under its attempt's keys", async () => {
+    const repo = repository(), first = boardWizardBudget(repo), second = boardWizardBudget(repo, 2);
+    await first.importSettled("w", { scope: "image", operationFingerprint: "earlier", evidence: evidence("earlier", 3_900_000) });
+    const copy = { requestKey: "batch:copy:b", scope: "judge" as const, operationFingerprint: "question", reserveMicroUsd: 250_000, reason: "a copy that cannot be priced" };
+    await expect(first.reserve("w", copy)).rejects.toMatchObject({ code: "cap_exceeded" });
+    const recorded = await first.recordUnknown("w", copy);
+    expect(recorded.audit).toMatchObject({ committedMicroUsd: 4_150_000, unknownRequestKeys: ["batch:copy:b"], held: true });
+    await second.recordUnknown("w", { ...copy, reserveMicroUsd: 1_000 });
+    expect(await second.readRequest("w", "batch:copy:b")).toMatchObject({ requestKey: "attempt-2:batch:copy:b", state: "unknown" });
+  });
   it("isolates attempt2 request keys without resetting the cumulative ledger", async () => {
     const repo = repository(), first = boardWizardBudget(repo), second = boardWizardBudget(repo, 2);
     await first.reserve("w", reserve("board:source:1", 20));

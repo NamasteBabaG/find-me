@@ -286,6 +286,19 @@ export function qualityBatchDeletable(round: QualityBatchRound, gameDeleted: boo
   return round.batchIds.filter(id => round.billedIds.includes(id) && !round.deletedIds.includes(id));
 }
 
+/**
+ * Which of a round's copies housekeeping starts with (`length` of them) at `now`: a different one each
+ * minute, by a hash of the round and the minute. A rotation of rounds that visits this one every k-th
+ * minute could otherwise meet the same copy first each time, and a copy whose calls keep timing out would
+ * then keep the others waiting for good.
+ */
+export function qualityBatchCopyStart(roundId: string, length: number, now: number): number {
+  if (length <= 1) return 0;
+  let hash = 0x811c9dc5;
+  for (const char of `${roundId}:${Math.floor(now / 60_000)}`) hash = Math.imul(hash ^ char.charCodeAt(0), 0x01000193) >>> 0;
+  return hash % length;
+}
+
 /** Whether the provider's copies of a finished round are still to be deleted (rule 5). */
 export function qualityBatchCleanupDue(round: QualityBatchRound, gameDeleted: boolean): boolean {
   return qualityBatchDeletable(round, gameDeleted).length > 0;

@@ -6,8 +6,8 @@ import { visualReviewBatchCharge } from "../../infra/generation/visual-review-pr
 import { QualityBatchRefused, type QualityBatchResult, type QualityBatchTransport } from "../../infra/generation/types";
 import { PrismaRetainedPurchaseStore } from "../../infra/db/prisma-retained-purchase-store";
 import {
-  QUALITY_BATCH_VERSION, decideQualityBatchResults, nextQualityBatchStep, qualityBatchCleanupDue, qualityBatchDeletable, qualityBatchEventName, qualityBatchLateDue,
-  qualityBatchPresumedLost, qualityBatchReserveMicroUsd, qualityBatchRoundOf, qualityBatchSearchWindow, qualityBatchSearching,
+  QUALITY_BATCH_VERSION, decideQualityBatchResults, nextQualityBatchStep, qualityBatchCleanupDue, qualityBatchCopyStart, qualityBatchDeletable, qualityBatchEventName,
+  qualityBatchLateDue, qualityBatchReserveMicroUsd, qualityBatchRoundOf, qualityBatchSearchWindow, qualityBatchSearching,
   type QualityBatchEvent, type QualityBatchIntent, type QualityBatchReceipt, type QualityBatchRound,
 } from "../../domain/generation/quality-batch-round";
 import { visualReviewPolicy } from "../../domain/generation/visual-review-policy";
@@ -320,20 +320,14 @@ async function reconcile(ctx: Context, round: QualityBatchRound, batchId: string
     servedTier: String(reading.usage?.service_tier), evidence, at: Date.now() });
 }
 
-/** Different evidence beside a settled charge: recorded as a conflict (committed before the error), which holds the world. */
-async function conflict(ctx: Context, intent: QualityBatchIntent, evidence: WorldChargeEvidence) {
-  try { await boardWizardBudgetOf(ctx.c).settle(intent.worldId, intent.batchKey, evidence); }
-  catch (error) { if (!(error instanceof WorldBudgetError) || error.code !== "evidence_conflict") throw error; }
-}
-
 /**
- * What another copy of a finished round was billed (rule 5), counted in the ledger, with what the provider
- * returned for it. The batch key stands for one batch: the round's own, when its outcome read one; else,
- * for a create presumed lost, the first copy read, whose bill must fit in the presumption. Every other
- * copy is a charge of its own, imported into the ledger in full whatever the batch key holds, so whoever
- * settles that key, now or later, settles it for its one batch. A bill the presumption cannot hold, and
- * any bill that cannot be stated, is also recorded against a settled charge as a conflict, which holds the
- * world for a person (a charge held as unknown holds it already): the ledger never understates.
+ * What another copy of a finished round was billed (rule 5), counted in the ledger as a charge of its own,
+ * with what the provider returned for it. The round's batch key stands for its one batch, the one its
+ * outcome counted; every other copy is another bill, a copy of a create presumed lost included (the
+ * presumption then counts on top of it: more, never less). A priced bill is imported in full by its
+ * receipt; one that cannot be stated is recorded as its own unknown charge at the synchronous reservation,
+ * held for a person until reconciled. Nothing here reads or changes the batch key, so no settlement of it,
+ * before or after, by a pass or a person, can change how a copy is counted.
  */
 async function lateCharge(ctx: Context, round: QualityBatchRound, batchId: string, results: readonly QualityBatchResult[]) {
   const { intent } = round, budget = boardWizardBudgetOf(ctx.c), decision = decide(results, intent.customId), receipts = receiptsOf(results, intent.customId);
@@ -349,23 +343,19 @@ async function lateCharge(ctx: Context, round: QualityBatchRound, batchId: strin
       amountMicroUsd: Math.ceil(charge.costCents * 10_000), costBasis: "conservative-upper-estimate" });
     else reason = `the answer's charge cannot be stated (tier ${String(reading.usage?.service_tier ?? "none")}, model ${reading.model ?? "none"})`;
   }
-  const amountMicroUsd = priced?.amountMicroUsd ?? null;
-  const rawUsage = { basis: "a copy whose bill cannot be stated: counted at the synchronous reservation for a person to reconcile",
-    batchId, customId: intent.customId, reason, results: receipts } as unknown as BudgetJson;
-  const evidence = priced ?? canonicalChargeEvidence({ providerNamespace: ctx.transport.namespace,
-    providerRequestId: receipts.find(receipt => receipt.requestId)?.requestId ?? `late/${batchId}/${intent.customId}`,
-    usageId: sha(JSON.stringify(rawUsage)), rawUsage, model: intent.model, amountMicroUsd: intent.syncReserveMicroUsd, costBasis: "conservative-upper-estimate" });
-  const counted = await budget.readRequest(intent.worldId, intent.batchKey), settled = counted?.state === "settled" && counted.evidence ? counted.evidence : null;
-  const standIn = qualityBatchPresumedLost(round) && round.lates.length === 0;
-  if (!standIn) {
-    // A charge of its own: imported in full, counted once by its receipt, whatever the batch key holds.
-    try { await budget.importSettled(intent.worldId, { scope: "judge", operationFingerprint: intent.fingerprint, evidence }); }
+  if (priced) {
+    // Imported in full, counted once by its receipt; a receipt already counted with other evidence is recorded as a conflict, which holds the world.
+    try { await budget.importSettled(intent.worldId, { scope: "judge", operationFingerprint: intent.fingerprint, evidence: priced }); }
     catch (error) { if (!(error instanceof WorldBudgetError) || error.code !== "evidence_conflict") throw error; }
+    return { amountMicroUsd: priced.amountMicroUsd, receipts };
   }
-  const held = standIn ? amountMicroUsd === null || !settled || amountMicroUsd > settled.amountMicroUsd : amountMicroUsd === null;
-  if (held && settled) await conflict(ctx, intent, evidence);
-  return { amountMicroUsd, receipts };
+  const receipt = receipts.find(item => item.requestId)?.requestId;
+  await budget.recordUnknown(intent.worldId, { requestKey: qualityBatchCopyKeyOf(intent.batchKey, batchId), scope: "judge", operationFingerprint: intent.fingerprint,
+    reserveMicroUsd: intent.syncReserveMicroUsd, reason: `quality batch ${intent.roundId}: copy ${batchId}${receipt ? ` (${receipt})` : ""}: ${reason}` });
+  return { amountMicroUsd: null, receipts };
 }
+/** The ledger key of a copy whose charge cannot be stated: its own unknown row, beside the round's batch key. */
+export const qualityBatchCopyKeyOf = (batchKey: string, batchId: string) => `${batchKey}:copy:${batchId}`;
 
 /** Records a copy's bill once. Priced against every copy already read, so the next number is written only
  * over the bills it counted; a pass that lost it reads the round again and prices it again. */
@@ -383,8 +373,8 @@ async function recordLate(ctx: Context, roundId: string, batchId: string, result
  * It only reads the provider; a copy that cannot be read yet (one still running) is kept, and read later. */
 async function reconcileLate(ctx: Context, round: QualityBatchRound) {
   const due = qualityBatchLateDue(round);
-  // Each tick starts one copy further on: one whose reads keep timing out never keeps the others from theirs.
-  const start = due.length ? Math.floor(Date.now() / SWEEP_ROTATION_MS) % due.length : 0;
+  // A different copy first each minute: one whose reads keep timing out never keeps the others from theirs.
+  const start = qualityBatchCopyStart(round.intent.roundId, due.length, Date.now());
   for (let i = 0; i < due.length; i++) {
     const batchId = due[(start + i) % due.length]!;
     // Its record and then its results file: room for both reads before the first starts.
@@ -523,8 +513,11 @@ async function advance(ctx: Context, roundId: string): Promise<QualityBatchGate>
 /** The provider's copies of a finished round, each deleted once its bill is in the record. A held
  * round keeps them for the person, unless its game was deleted (rule 5 of quality-batch-round.ts). */
 async function cleanup(ctx: Context, round: QualityBatchRound, gameDeleted: boolean) {
-  const removed: string[] = [];
-  for (const batchId of qualityBatchDeletable(round, gameDeleted)) {
+  const removed: string[] = [], deletable = qualityBatchDeletable(round, gameDeleted);
+  // A different copy first each minute: deletions the provider keeps refusing slowly never keep the others for good.
+  const start = qualityBatchCopyStart(round.intent.roundId, deletable.length, Date.now());
+  for (let i = 0; i < deletable.length; i++) {
+    const batchId = deletable[(start + i) % deletable.length]!;
     if (!roomFor(ctx, CALL_NEED_MS)) break;
     try { await ctx.transport.remove(batchId); removed.push(batchId); }
     catch { continue; } // retried on a later slice or tick, and never keeps the others from going

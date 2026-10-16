@@ -133,6 +133,25 @@ describe("settlement, unknown spend and holds", () => {
     expect((await budget.audit("world")).held).toBe(false);
   });
 
+  it("records a charge already spent whose amount is unknown, without capacity and in a held world, until a person settles it", async () => {
+    const { budget } = fixture();
+    // The world is full and held by another unknown charge: a new reservation is refused, the spent charge is recorded anyway.
+    await budget.reserve("world", reservation("pending", 1_000));
+    await budget.reserve("world", reservation("full", WORLD_BUDGET_CAP_MICRO_USD - 1_000)); await budget.markUnknown("world", "full", "Timeout");
+    await expect(budget.reserve("world", reservation("next", 1))).rejects.toMatchObject({ code: "world_held" });
+    const unknown = { ...reservation("copy", 250_000), reason: "a copy answered by a tier with no rate" };
+    const recorded = await budget.recordUnknown("world", unknown);
+    expect(recorded.request).toMatchObject({ requestKey: "copy", origin: "reserved", state: "unknown", reserveMicroUsd: 250_000, unknownReasons: [unknown.reason] });
+    expect(recorded.audit).toMatchObject({ held: true, unknownRequestKeys: ["full", "copy"] });
+    // The same terms again are the same row; other terms under the key are refused, and so is a reservation still pending.
+    expect((await budget.recordUnknown("world", unknown)).request.state).toBe("unknown");
+    await expect(budget.recordUnknown("world", { ...unknown, reserveMicroUsd: 1 })).rejects.toMatchObject({ code: "key_conflict" });
+    await expect(budget.recordUnknown("world", { ...reservation("pending", 1_000), reason: "x" })).rejects.toMatchObject({ code: "key_conflict" });
+    // A person reconciles it by settling it; recorded again, it stays as the person left it.
+    await budget.settle("world", "copy", charge("copy", 260_000));
+    expect((await budget.recordUnknown("world", unknown)).request).toMatchObject({ state: "settled", evidence: { amountMicroUsd: 260_000 } });
+  });
+
   it("settles only a request still pending when asked to, in the same transaction, leaving one already held or settled as it is", async () => {
     const { budget } = fixture();
     for (const key of ["a", "b", "c"]) await budget.reserve("world", reservation(key));
