@@ -90,6 +90,19 @@ describe("Anthropic Message Batches transport", () => {
     await expect(new AnthropicMessageBatches("synthetic", unreadable).find("q-mine", since)).rejects.toThrow("list answered 503");
   });
 
+  it("leaves out batches created after the window: a newer one, running or ended, neither proves nor keeps the search undecided", async () => {
+    const since = Date.parse("2026-10-16T08:00:00.000Z"), at = (minutes: number) => new Date(since + minutes * 60_000).toISOString(), until = since + 20 * 60_000;
+    // Codex's case: unrelated batches keep running in the workspace, every one created after the question's window.
+    const page = { data: [ended("msgbatch_newrun", at(90), "in_progress"), ended("msgbatch_newend", at(60)), ended("msgbatch_mine", at(5))], has_more: false };
+    const fetcher = wire(reply(200, page), reply(200, null, line("q-mine", { type: "succeeded", message: {} })));
+    await expect(new AnthropicMessageBatches("synthetic", fetcher).find("q-mine", since, undefined, until)).resolves.toEqual({ proven: ["msgbatch_mine"], undecided: false });
+    expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual(["https://api.anthropic.com/v1/messages/batches?limit=1000",
+      "https://api.anthropic.com/v1/messages/batches/msgbatch_mine/results"]);
+    // Within the clocks' allowance, a batch created just after the window is still a candidate.
+    const edge = wire(reply(200, { data: [ended("msgbatch_edge", new Date(until + QUALITY_BATCH_CLOCK_SKEW_MS).toISOString(), "in_progress")], has_more: false }));
+    await expect(new AnthropicMessageBatches("synthetic", edge).find("q-mine", since, undefined, until)).resolves.toEqual({ proven: [], undecided: true });
+  });
+
   it("never infers absence from an incomplete answer: an empty or cut-off result file, a page without its end, a promise without a cursor", async () => {
     const since = Date.parse("2026-10-16T08:00:00.000Z"), at = new Date(since + 60_000).toISOString();
     const search = (...answers: Response[]) => new AnthropicMessageBatches("synthetic", wire(...answers)).find("q-mine", since);

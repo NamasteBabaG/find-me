@@ -87,10 +87,11 @@ export class AnthropicMessageBatches implements QualityBatchTransport {
    * end, and every ended batch's results matching that batch's own request counts.
    * Anything less throws, and a throw never permits a create. A search that runs
    * out of pages, or of time before `deadlineAt`, ahead of the intent is undecided,
-   * and says so (`truncated`); what it proved by then is still returned.
+   * and says so (`truncated`); what it proved by then is still returned. A batch
+   * created after `untilMs` is no candidate: it neither proves nor keeps undecided.
    */
-  async find(customId: string, sinceMs: number, deadlineAt?: number): Promise<{ proven: string[]; undecided: boolean; truncated?: true }> {
-    if (!CUSTOM_ID.test(customId) || !Number.isFinite(sinceMs)) throw Error("QUALITY_BATCH: invalid search");
+  async find(customId: string, sinceMs: number, deadlineAt?: number, untilMs?: number): Promise<{ proven: string[]; undecided: boolean; truncated?: true }> {
+    if (!CUSTOM_ID.test(customId) || !Number.isFinite(sinceMs) || untilMs !== undefined && !Number.isFinite(untilMs)) throw Error("QUALITY_BATCH: invalid search");
     const proven: string[] = [];
     let undecided = false, after: string | null = null;
     for (let page = 0; page < MAX_LIST_PAGES; page++) {
@@ -102,6 +103,8 @@ export class AnthropicMessageBatches implements QualityBatchTransport {
       for (const batch of data) {
         const created = Date.parse(String(batch?.created_at));
         if (typeof batch?.id !== "string" || !BATCH_ID.test(batch.id) || !Number.isFinite(created)) throw Error("QUALITY_BATCH: unreadable batch in a list");
+        // Created after the window: not a copy of the question, whether or not it still runs.
+        if (untilMs !== undefined && created > untilMs + QUALITY_BATCH_CLOCK_SKEW_MS) continue;
         // Newest first: everything from here on is older than the intent.
         if (created < sinceMs - QUALITY_BATCH_CLOCK_SKEW_MS) { reachedIntent = true; break; }
         if (batch.processing_status !== "ended") { undecided = true; continue; }

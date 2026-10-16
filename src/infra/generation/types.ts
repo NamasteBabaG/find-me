@@ -300,11 +300,11 @@ export interface QualityBatchTransport {
   /** Provider AND billing namespace of every answer this channel delivers. */
   readonly namespace: string;
   create(requests: readonly { customId: string; params: Record<string, unknown> }[]): Promise<{ batchId: string }>;
-  /** Batches created at or after `sinceMs` proven to carry `customId`; undecided while one could and has not ended,
+  /** Batches created from `sinceMs` to `untilMs` proven to carry `customId`; undecided while one could and has not ended,
    * or when the search ran out of pages or of time before the intent (`truncated`). No read starts that could
    * end after `deadlineAt`. Throws when the provider's inventory cannot be shown complete: absence is never
    * inferred from a partial answer. */
-  find(customId: string, sinceMs: number, deadlineAt?: number): Promise<{ proven: string[]; undecided: boolean; truncated?: true }>;
+  find(customId: string, sinceMs: number, deadlineAt?: number, untilMs?: number): Promise<{ proven: string[]; undecided: boolean; truncated?: true }>;
   /** The batch's state, and for an ended batch what its record counts by result type (null when the record does not state them all). */
   status(batchId: string): Promise<QualityBatchStatus>;
   /** Every result of an ended batch, exactly as the batch's own record counts them by type, or a throw;
