@@ -12,7 +12,7 @@ Branch `claude/wiring-low-batch-20261016`, from `921cf306`.
 
 Codex's conditions for the wiring (closure of N1–N3) are mapped to evidence in §4.
 
-**Review status (17 October 2026):** after seventeen read-only Codex passes that each held the branch and were each answered (§7), the eighteenth, on `57b17f9a`, is **PASS WITH FINDINGS**: no P0 and no P1, and two P2s, both disclosed (the daily-spend date, §6 item 14; a lock cycle in the engine that predates this branch, §6 item 22). Deployment remains Codex's lane, and is not authorized.
+**Review status (17 October 2026):** after seventeen read-only Codex passes that each held the branch and were each answered (§7), the eighteenth, on `57b17f9a`, is **PASS WITH FINDINGS**: no P0 and no P1, and two P2s, both disclosed (the daily-spend date, §6 item 14; a lock cycle in the engine that predates this branch, §6 item 22). The round lock that pass took on trust is since shown on PostgreSQL itself, with two connections (§6 item 21, §7). Deployment remains Codex's lane, and is not authorized.
 
 ## 1. LOW as the painter of new games (step 1)
 
@@ -199,6 +199,7 @@ intent ─► reserve batch key (half) ─► claim n ─► create ─► submi
 | `quality-batch-round.test.ts`: the pure rules | **60/60** (16, plus 5 for the HOLD, 10 for the third pass, 5 for the fourth, 6 for the fifth, 7 for the sixth, 1 for the eighth, 2 for the tenth, 2 for the eleventh, 1 for the twelfth, 1 for the fourteenth, 4 for the fifteenth (two rules and two impossible records) and 1 for the sixteenth, with 2 extended for the twelfth and 1 for the seventeenth; 1 of the tenth's removed with the code it tested, and the twelfth's fault test replaced for the thirteenth) |
 | `anthropic-message-batches.test.ts`: the transport on a scripted wire, plus pricing | **17/17** (8, plus 1 for the HOLD, 2 for the re-review, 1 for the third pass, 1 for the fifth, 1 for the sixth, 1 for the eleventh, 1 for the thirteenth and 1 for the fifteenth; the search's assertions extended for the twelfth, to the results it returns, and for the fifteenth, to the batches it names: three to a named, undecided search where a read failed, one to the new fields) |
 | `world-budget.test.ts` and `board-wizard-budget.test.ts`: `WorldBudget.link`, `settle` with `onlyPending`, and `recordUnknown` | **51/51 and 5/5**, of which 5 and 2 are this branch's |
+| `quality-batch.postgres.test.ts`: the round lock on PostgreSQL, two connections at once, with a scripted provider | **3/3 on PostgreSQL 16.14, three runs in a row** (§7). Runs only with `FINDME_PG_LOCK_URL`, a disposable database on the machine; `npm run check` and CI have none, so there it reports 3 skipped |
 
 Among the first 23:
 - **A whole 27-appearance world** reaches READY with:
@@ -483,7 +484,8 @@ Each mutant edits one anchor and runs only its targeted tests. Each counts only 
 | `da3bcfa6` | fix(qa): a held answer's bill is counted in full, and what a search could not decide is kept by its id (Codex's fifteenth pass) |
 | `4e57f87d` | fix(qa): a bill is counted in full above another writer's hold, and the round's batch is decided in its search's slot (Codex's sixteenth pass) |
 | `57b17f9a` | fix(qa): a round's writes are serialized, and its decision is built inside its own write (Codex's seventeenth pass) |
-| the commit carrying this section | docs(qa): Codex's eighteenth pass, PASS WITH FINDINGS |
+| `5ae2b312` | docs(qa): Codex's eighteenth pass, PASS WITH FINDINGS |
+| the commit carrying this section | test(qa): the round lock on PostgreSQL, two connections at once |
 
 Each was verified on its own in a clean worktree:
 - `afbd8ee2`: tsc and its regression test;
@@ -551,10 +553,10 @@ The split was proven exact: replaying step 2's edits onto the step-1 versions re
     - **A fallback whose pending candidate is never decided** (a provider that never answers that batch consistently, item 19) waits for good: its board's review stays pending and the game stalls, as an open round already does on such a batch (item 11).
     - Records of the fifteenth round's commit decided by a `submitted` or `presumed` event after the search's own record; they are read as before.
 21. **Residuals of the seventeenth pass.**
-    - **The round's lock** is a write to its intent row that changes no stored value (the database still writes the row). On Postgres it holds that row until the write commits, so the writes of one round wait for each other (a few milliseconds each); a write of another round is not held by it, though fenced writes also take the game's and the job's rows, as they always did. The tests run on SQLite, which serializes all of its writers by itself, so they show the decision built inside its own write, not the lock's own effect; on Postgres that effect rests on the row lock an `UPDATE` takes, which no test here can show.
+    - **The round's lock** is a write to its intent row that changes no stored value (the database still writes the row). On Postgres it holds that row until the write commits, so the writes of one round wait for each other (a few milliseconds each); a write of another round is not held by it, though fenced writes also take the game's and the job's rows, as they always did. The suite runs on SQLite, which serializes all of its writers by itself, so it shows the decision built inside its own write, not the lock's own effect. That effect is shown on PostgreSQL 16.14 by `quality-batch.postgres.test.ts` (§7): on two connections, the second write of a round waits on the first's transaction, gets the intent row only once the first commits, and decides from what the first committed; without the lock it does not wait, and records "presumed lost" beside the batch's reading. That test needs a disposable local database, so CI does not run it.
     - **Two records of one decision** are read as that decision. Two that differ (a `presumed` beside a `submitted`, or two batches) make the record unreadable, and the round waits for a person; only writers of earlier revisions, which take no lock, could make them, and none ever ran outside tests.
     - A create's record of its batch is skipped when the round's batch is already decided. A create answers within its 90-second timeout, long before the 15-minute grace lets any search decide, so this never happens; if it did, its batch would be a copy, found, billed and deleted like any other.
-22. **Found outside this branch (Codex's eighteenth pass, P2).** The local-patch worker's own fence takes the job's row and then the game's (`local-patch-world.ts`, for example on the way to `parkExhausted`), while deletion takes the game's row and then the job's (`local-patch-deletion.ts`). On Postgres the two can wait for each other; the database then aborts one of them, which fails and is tried again, and nothing is half committed. It predates this branch (Codex checked the parent versions), and the batch channel's lock adds no new order: the round's intent row is always taken first, and nothing else takes it. Proposed as a separate fix, in the engine rather than here.
+22. **Found outside this branch (Codex's eighteenth pass, P2).** The local-patch worker's own fence takes the job's row and then the game's (`local-patch-world.ts`, for example on the way to `parkExhausted`), while deletion takes the game's row and then the job's (`local-patch-deletion.ts`). On Postgres the two can wait for each other; the database then aborts one of them, which fails and is tried again, and nothing is half committed. It predates this branch (Codex checked the parent versions), and the batch channel's lock adds no new order: the round's intent row is always taken first, and nothing else takes it. Fixed separately, in the engine rather than here: `d0720081` on `claude/game-job-lock-order-20261017`, outside this branch and its release.
 
 ## 7. Codex's review of `fcf4c0ea`: HOLD, and the fixes
 
@@ -845,3 +847,15 @@ No P0 and no P1: both of the seventeenth pass's P1 findings are closed. Codex co
 | P2 | The local-patch worker's fence takes the job's row, then the game's; deletion takes the game's, then the job's: a lock cycle that Postgres resolves by aborting one, which is retried. It predates this branch. | **Disclosed (§6, item 22)** and proposed as a separate fix in the engine; the batch channel's lock adds no new order. |
 
 Codex also sharpened two statements of §6 item 21, now corrected: the lock changes no stored value but is still a physical write, and fenced writes contend on the game's and the job's rows as well as on the round's.
+
+### The round lock on PostgreSQL (17 October)
+
+Codex's release review asked for the lock on PostgreSQL itself: two connections that really contend for one intent row. A probe of two requests through a connector had not overlapped. `quality-batch.postgres.test.ts` runs Codex's seventeenth-pass schedule through the product's own code on PostgreSQL 16.14 (a disposable local container; read committed, as on Supabase). It uses two clients of one connection each with `pgbouncer=true`, as production's runtime client, a third connection that only watches, and a scripted provider. W1 proves the batch and is held inside one of its round writes, its event written and not committed. W2's complete search was shown no batch, and its write records that and decides. Its schema is its own, dropped at the end. The file's PostgreSQL client is generated on the product's own Prisma runtime, so the product's own error checks see its errors.
+
+| Case | What PostgreSQL showed (three runs) |
+| --- | --- |
+| W1 held inside the batch's first reading | W2 `active`, waiting on `Lock`/`transactionid`; `pg_blocking_pids` = W1; its statement the round lock (`UPDATE "AuditLog" SET "actorType" = $1 WHERE id = $2 AND actorType = $3`); its `ShareLock` on W1's transaction not granted; W1 `idle in transaction` after its `INSERT`. W2 waited 527–549 ms against a 500 ms hold, got the row 4 ms after W1 was let go, and decided from W1's reading: `found-1` names the batch, `submitted`, one decision, answered at 9,000 micro-USD, no Opus question asked synchronously, one create. |
+| W1 held inside its own decision | The same wait (524–532 ms). W2 then recorded nothing: W1's `found-1` is the round's only decision. |
+| Control: W2's round lock left out, as before `57b17f9a` | W2 never waited. It committed `found-1` deciding "presumed lost" while W1's reading was still uncommitted, and the reading then committed beside it: the contradiction the lock prevents. |
+
+What this shows is the lock's own effect under PostgreSQL's row locks and read committed snapshots, on the code at `57b17f9a`. It does not cover Supavisor itself (a transaction pooler gives a transaction one server connection, which is all the lock needs), and it is not the engine's job/game lock cycle (§6 item 22), which remains a separate fix.
