@@ -284,6 +284,26 @@ describe("a quality question's batch round, pure", () => {
     expect(qualityBatchSearching(round(claimed, proven(true), heldUnknown("x")), T0 + HOUR)).toBe(false);
   });
 
+  it("searches on from a hold made while a search was unfinished: undecided, or with a batch read and never recorded (Codex's fourteenth pass)", () => {
+    const first = [{ type: "canceled", errorType: null, requestId: null, model: null, usage: null }];
+    const other = [{ type: "succeeded", errorType: null, requestId: "msg_2", model: "claude-opus-5-5", usage: { service_tier: "standard" } }];
+    const read = (batchId: string): QualityBatchEvent => ({ kind: "reading", batchId, results: first, at: T0 });
+    const claimed: QualityBatchEvent = { kind: "claim", n: 1, at: T0 };
+    const found = (n: number, batchIds: string[], complete: boolean): QualityBatchEvent => ({ kind: "found", n, batchIds, complete, at: T0 });
+    // The twelfth round's fault hold, as such a record reads: one known batch, its search undecided, held by no batch. It searches on.
+    const faultHold = round(claimed, found(1, ["a"], false), read("a"), { kind: "reread", batchId: "a", digest: "0123456789abcdef", results: other, at: T0 }, heldUnknown("fault"));
+    expect(qualityBatchSearching(faultHold, T0)).toBe(true);
+    // Codex's case: a complete search recorded A; a newer one read B and stopped before recording it. Unfinished, though the last recorded said complete.
+    const unfinished = round(claimed, found(1, ["a"], true), read("b"), heldUnknown("two"));
+    expect([unfinished.batchIds, unfinished.unfound, unfinished.searchComplete, qualityBatchSearching(unfinished, T0)]).toEqual([["a", "b"], ["b"], false, true]);
+    // The next search records B with what it found: then complete, and searching no more.
+    const adopted = round(claimed, found(1, ["a"], true), read("b"), heldUnknown("two"), found(2, ["b"], true));
+    expect([adopted.unfound, adopted.searchComplete, qualityBatchSearching(adopted, T0)]).toEqual([[], true, false]);
+    // The round's own batch, read by its poll, is no unfinished search; a hold no search came before has nothing to find.
+    const own = round(claimed, { kind: "submitted", n: 1, batchId: "a", at: T0 }, read("a"), heldUnknown("x", "a"));
+    expect([own.unfound, qualityBatchSearching(own, T0)]).toEqual([[], false]);
+  });
+
   it("takes a copy's bill from its recorded reading, and names a reading after its batch in lower-case letters and digits", () => {
     const receipt = { type: "succeeded", errorType: null, requestId: "msg_1", model: "claude-opus-5-5", usage: { input_tokens: 2000, output_tokens: 500, service_tier: "batch" } };
     const copy = [...presumedLost, { kind: "found", n: 1, batchIds: ["c"], complete: true, at: T0 + HOUR } as QualityBatchEvent,
