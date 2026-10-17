@@ -12,6 +12,8 @@ Branch `claude/wiring-low-batch-20261016`, from `921cf306`.
 
 Codex's conditions for the wiring (closure of N1–N3) are mapped to evidence in §4.
 
+**Review status (17 October 2026):** after seventeen read-only Codex passes that each held the branch and were each answered (§7), the eighteenth, on `57b17f9a`, is **PASS WITH FINDINGS**: no P0 and no P1, and two P2s, both disclosed (the daily-spend date, §6 item 14; a lock cycle in the engine that predates this branch, §6 item 22). Deployment remains Codex's lane, and is not authorized.
+
 ## 1. LOW as the painter of new games (step 1)
 
 **What changes.** A new QA local-patch draft created while `LOCAL_PATCH_PAINTER=low-v1` is set records an immutable pin, `aud_painter_release_<gameId>`, in the same transaction that creates the draft (`createDraft` and `beginWorldPurchase`), beside its review and budget pins. Every painting of that game is then bought at LOW: first pictures, repairs, quality-pilot images.
@@ -480,7 +482,8 @@ Each mutant edits one anchor and runs only its targeted tests. Each counts only 
 | `37149e36` | fix(qa): every bill beyond the batch key's is counted before it is recorded, and a reading binds its answer (Codex's fourteenth pass) |
 | `da3bcfa6` | fix(qa): a held answer's bill is counted in full, and what a search could not decide is kept by its id (Codex's fifteenth pass) |
 | `4e57f87d` | fix(qa): a bill is counted in full above another writer's hold, and the round's batch is decided in its search's slot (Codex's sixteenth pass) |
-| the commit carrying this section | fix(qa): a round's writes are serialized, and its decision is built inside its own write (Codex's seventeenth pass) |
+| `57b17f9a` | fix(qa): a round's writes are serialized, and its decision is built inside its own write (Codex's seventeenth pass) |
+| the commit carrying this section | docs(qa): Codex's eighteenth pass, PASS WITH FINDINGS |
 
 Each was verified on its own in a clean worktree:
 - `afbd8ee2`: tsc and its regression test;
@@ -548,9 +551,10 @@ The split was proven exact: replaying step 2's edits onto the step-1 versions re
     - **A fallback whose pending candidate is never decided** (a provider that never answers that batch consistently, item 19) waits for good: its board's review stays pending and the game stalls, as an open round already does on such a batch (item 11).
     - Records of the fifteenth round's commit decided by a `submitted` or `presumed` event after the search's own record; they are read as before.
 21. **Residuals of the seventeenth pass.**
-    - **The round's lock** is a write to its intent row that changes nothing. On Postgres it holds that row until the write commits, so the writes of one round wait for each other (a few milliseconds each); a write of another round, or of the game, is not held. The tests run on SQLite, which serializes all of its writers by itself, so they show the decision built inside its own write, not the lock's own effect; on Postgres that effect rests on the row lock an `UPDATE` takes, which no test here can show.
+    - **The round's lock** is a write to its intent row that changes no stored value (the database still writes the row). On Postgres it holds that row until the write commits, so the writes of one round wait for each other (a few milliseconds each); a write of another round is not held by it, though fenced writes also take the game's and the job's rows, as they always did. The tests run on SQLite, which serializes all of its writers by itself, so they show the decision built inside its own write, not the lock's own effect; on Postgres that effect rests on the row lock an `UPDATE` takes, which no test here can show.
     - **Two records of one decision** are read as that decision. Two that differ (a `presumed` beside a `submitted`, or two batches) make the record unreadable, and the round waits for a person; only writers of earlier revisions, which take no lock, could make them, and none ever ran outside tests.
     - A create's record of its batch is skipped when the round's batch is already decided. A create answers within its 90-second timeout, long before the 15-minute grace lets any search decide, so this never happens; if it did, its batch would be a copy, found, billed and deleted like any other.
+22. **Found outside this branch (Codex's eighteenth pass, P2).** The local-patch worker's own fence takes the job's row and then the game's (`local-patch-world.ts`, for example on the way to `parkExhausted`), while deletion takes the game's row and then the job's (`local-patch-deletion.ts`). On Postgres the two can wait for each other; the database then aborts one of them, which fails and is tried again, and nothing is half committed. It predates this branch (Codex checked the parent versions), and the batch channel's lock adds no new order: the round's intent row is always taken first, and nothing else takes it. Proposed as a separate fix, in the engine rather than here.
 
 ## 7. Codex's review of `fcf4c0ea`: HOLD, and the fixes
 
@@ -830,3 +834,14 @@ Codex confirmed the accounting: answered outcomes, known holds and priceable `37
 | P2 | Imported copy bills take the ledger's mutable date in the daily spend (reproduced again). | **Not fixed; disclosed (§6, item 14).** | None. |
 
 The record format is unchanged by the seventeenth round. Earlier tests were adjusted in five places, none weakened: four races that injected another pass's records, or held a pass, at a read of the round now do it where the code still makes that read, since the decision's own read now happens inside its write, uncounted (the stale search that stands down and the sixteenth round's slot test, now held just before the deciding write; the copy beside a presumption, and the hold that takes the outcome after it, one read earlier); and the sixteenth round's pure test of two records of one decision, which expected the record refused, now expects it read as one decision, with two that differ refused.
+
+### Codex's eighteenth pass on `57b17f9a`: PASS WITH FINDINGS
+
+No P0 and no P1: both of the seventeenth pass's P1 findings are closed. Codex confirmed that every write of the module goes through `writeEvent` or `writeFromRound` and takes the round's lock before the game's and the job's fences, the round read and the write; that the deciding search builds its event and its decision from the round read inside that transaction, so a reading committed before it gives its batch through the round's batches, and a candidate through its pending ones; that no path of the current code writes two different decisions, the create's included; that two records of one decision fold into one and two that differ are still refused; that the fallback waits for a pending candidate with no bypass beyond one named after the gate's own read; and that it found no other path that settles a possible charge at zero, releases it, drops a known bill or deletes a copy before its bill is in the record, nor any new create, cancel, link or deadline regression. On Postgres, with the production setup's Read Committed isolation and transaction pooling, an `UPDATE` takes the row lock even when it writes the value already there, and the round read after it sees every write committed before it. Its in-memory probes reproduced the two repaired schedules correctly; they do not stand for a run on Postgres, which no test here makes.
+
+| # | Finding | Answer |
+| --- | --- | --- |
+| P2 | Imported copy bills take the ledger's mutable date in the daily spend (reproduced again). | **Not fixed; disclosed (§6, item 14).** |
+| P2 | The local-patch worker's fence takes the job's row, then the game's; deletion takes the game's, then the job's: a lock cycle that Postgres resolves by aborting one, which is retried. It predates this branch. | **Disclosed (§6, item 22)** and proposed as a separate fix in the engine; the batch channel's lock adds no new order. |
+
+Codex also sharpened two statements of §6 item 21, now corrected: the lock changes no stored value but is still a physical write, and fenced writes contend on the game's and the job's rows as well as on the round's.
