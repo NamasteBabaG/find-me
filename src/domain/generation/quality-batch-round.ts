@@ -225,7 +225,10 @@ export function qualityBatchRoundOf(events: readonly QualityBatchEvent[]): Quali
   const terminals = events.filter((e): e is QualityBatchTerminal => e.kind === "answered" || e.kind === "fallback" || e.kind === "held");
   if (!numbered(claims)) throw Error("QUALITY_BATCH: claims are numbered from one without gaps");
   if ([...refusals, ...submitted, ...presumed].some(e => !claims.some(c => c.n === e.n))) throw Error("QUALITY_BATCH: an outcome names a claim that was never made");
-  if (submitted.length + presumed.length > 1 || terminals.length > 1 || of("cancel").length > 1) throw Error("QUALITY_BATCH: a round records each outcome once");
+  // One decision per round: two records of the same decision (a search's, and a `submitted` event of an earlier revision
+  // naming the same batch for the same claim) are that one decision; any two that differ make the record impossible.
+  const decisionsMade = new Set([...submitted.map(s => `submitted:${s.n}:${s.batchId}`), ...presumed.map(p => `presumed:${p.n}`)]);
+  if (decisionsMade.size > 1 || terminals.length > 1 || of("cancel").length > 1) throw Error("QUALITY_BATCH: a round records each outcome once");
   const decided = submitted[0] ?? presumed[0] ?? null;
   if (decided && refusals.some(r => r.n === decided.n)) throw Error("QUALITY_BATCH: one create was both refused and recorded");
   if (decided && claims.some(c => c.n > decided.n)) throw Error("QUALITY_BATCH: a claim after the round's batch was decided");

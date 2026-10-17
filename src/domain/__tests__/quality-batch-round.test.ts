@@ -369,8 +369,13 @@ describe("a quality question's batch round, pure", () => {
     expect(round(claimed, { kind: "reading", batchId: "b", results: [], at: T0 }, deciding(1, [], { kind: "submitted", claim: 1, batchId: "b" })).submitted?.batchId).toBe("b");
     // One decision per round, in either form; only a complete search decides, only a batch the round found or read, and only
     // for a claim that was made.
-    expect(() => round(claimed, deciding(1, ["a"], { kind: "submitted", claim: 1, batchId: "a" }), { kind: "submitted", n: 1, batchId: "a", at: T0 })).toThrow("each outcome once");
     expect(() => round(claimed, deciding(1, ["a"], { kind: "submitted", claim: 1, batchId: "a" }), deciding(2, [], { kind: "presumed", claim: 1 }))).toThrow("each outcome once");
+    expect(() => round(claimed, { kind: "reading", batchId: "b", results: [], at: T0 }, deciding(1, ["a"], { kind: "submitted", claim: 1, batchId: "a" }),
+      { kind: "submitted", n: 1, batchId: "b", at: T0 })).toThrow("each outcome once");
+    // Two records of the same decision (a search's, and a `submitted` of an earlier revision naming the same batch) are that
+    // one decision, and the round reads on (Codex's seventeenth pass).
+    const twice = round(claimed, deciding(1, ["a"], { kind: "submitted", claim: 1, batchId: "a" }), { kind: "submitted", n: 1, batchId: "a", at: T0 });
+    expect(nextQualityBatchStep(twice, T0 + HOUR)).toEqual({ step: "poll", batchId: "a", cancelDue: false });
     expect(() => round(claimed, deciding(1, ["a"], { kind: "submitted", claim: 1, batchId: "a" }, false))).toThrow("a search decides only");
     expect(() => round(claimed, deciding(1, ["a"], { kind: "submitted", claim: 1, batchId: "b" }))).toThrow("a search decides only");
     expect(() => round(claimed, deciding(1, ["a"], { kind: "submitted", claim: 2, batchId: "a" }))).toThrow("names a claim that was never made");

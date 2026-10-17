@@ -107,18 +107,48 @@ function roundsOf(rows: readonly RoundRow[], gameId: string): Map<string, Qualit
   return rounds;
 }
 
+/**
+ * Every write of a round takes the round's intent row first, with a write that changes nothing: the writes of one
+ * round are serialized in the database, so an event built in the same transaction (`writeFromRound`) is built from
+ * the round as every write committed before it left it, and no other write of the round can land between that read
+ * and its own write. (The intent row has no automatic timestamp; nothing about it changes.)
+ */
+async function lockRound(tx: Prisma.TransactionClient, roundId: string) {
+  await tx.auditLog.updateMany({ where: { id: eventId(roundId, "intent"), actorType: "SYSTEM" }, data: { actorType: "SYSTEM" } });
+}
+
 /** Written once. A second writer of the same event is refused by its id and gets the one that won. */
 async function writeEvent(ctx: Pick<Context, "c" | "gameId" | "fence">, roundId: string, event: QualityBatchEvent): Promise<{ event: QualityBatchEvent; won: boolean }> {
-  const id = eventId(roundId, qualityBatchEventName(event));
+  return (await writeFromRound(ctx, roundId, () => event, false))!;
+}
+
+/**
+ * Writes the event `build` makes from the round as it stands inside the write's own transaction, the round's writes
+ * serialized (`lockRound`): what it is built from cannot change before it is written. `build` returns null when there
+ * is nothing to write; `read`: whether it needs the round at all. The event's name is still its compare-and-set: a
+ * second writer of it gets the one that won.
+ */
+async function writeFromRound(ctx: Pick<Context, "c" | "gameId" | "fence">, roundId: string,
+  build: (round: QualityBatchRound) => QualityBatchEvent | null, read = true): Promise<{ event: QualityBatchEvent; won: boolean } | null> {
+  const built: { event: QualityBatchEvent | null } = { event: null };
   try {
     await ctx.c.db.$transaction(async tx => {
+      await lockRound(tx, roundId);
       if (ctx.fence) { await fenceLocalPatchImages(tx, ctx.gameId); await ctx.fence(tx); }
-      await tx.auditLog.create({ data: { id, actorType: "SYSTEM", action: QUALITY_BATCH_ACTION, entityType: "Game", entityId: ctx.gameId, metaJson: JSON.stringify(event) } });
+      let round: QualityBatchRound | null = null;
+      if (read) {
+        const events = (await gameRounds(tx, ctx.gameId)).get(roundId);
+        if (!events) throw Error("QUALITY_BATCH: the round disappeared");
+        round = qualityBatchRoundOf(events);
+      }
+      const event = built.event = build(round!);
+      if (event) await tx.auditLog.create({ data: { id: eventId(roundId, qualityBatchEventName(event)), actorType: "SYSTEM", action: QUALITY_BATCH_ACTION,
+        entityType: "Game", entityId: ctx.gameId, metaJson: JSON.stringify(event) } });
     });
-    return { event, won: true };
+    return built.event ? { event: built.event, won: true } : null;
   } catch (error) {
-    if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") throw error;
-    const existing = await ctx.c.db.auditLog.findUniqueOrThrow({ where: { id } });
+    if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002" || !built.event) throw error;
+    const existing = await ctx.c.db.auditLog.findUniqueOrThrow({ where: { id: eventId(roundId, qualityBatchEventName(built.event)) } });
     return { event: JSON.parse(existing.metaJson!) as QualityBatchEvent, won: false };
   }
 }
@@ -242,13 +272,14 @@ async function closeUnsent(ctx: Context, round: QualityBatchRound, claim: number
  * the search was complete (`complete` is recorded on its own only for a finished round still searching); `at`: when
  * the search started. A batch an earlier search read and stopped before recording is kept with it (its reading proved
  * it). `decide` (the open round's search): when the record it writes leaves one batch or none, with nothing pending
- * and the search complete, it records what the round's batch is with it, in the same slot (rule 1), so a record a
- * concurrent search made first can never go unseen by the decision. The next free number wins; a pass that lost it
- * reads the round again, records what is still new, and decides again from that. */
+ * and the search complete, it records what the round's batch is with it (rule 1). The record, and the decision, are
+ * built from the round as it stands inside their own write, the round's writes serialized: whatever any pass recorded
+ * before (a batch, its reading, a candidate, another decision) is in what the decision sees, and nothing can be recorded
+ * between that read and the decision. */
 async function recordFound(ctx: Context, roundId: string, found: QualityBatchFound, at: number, decide = false): Promise<QualityBatchRound> {
   const complete = !found.undecided;
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const round = await readRound(ctx, roundId), fresh = [...new Set([...found.proven, ...round.unfound])].filter(id => !round.found.includes(id));
+  const written = await writeFromRound(ctx, roundId, round => {
+    const fresh = [...new Set([...found.proven, ...round.unfound])].filter(id => !round.found.includes(id));
     const pending = [...new Set(found.pending ?? [])].filter(id => !round.batchIds.includes(id) && !fresh.includes(id) && !round.pending.includes(id));
     const cleared = [...new Set(found.cleared ?? [])].filter(id => round.pending.includes(id));
     // The round as this record leaves it: its batches, and those still pending.
@@ -257,12 +288,12 @@ async function recordFound(ctx: Context, roundId: string, found: QualityBatchFou
     const claim = round.claims.at(-1);
     const decision: QualityBatchDecision | null = decide && complete && claim && !round.submitted && !round.presumed && !undecided.length && batches.length <= 1
       ? batches.length === 1 ? { kind: "submitted", claim: claim.n, batchId: batches[0]! } : { kind: "presumed", claim: claim.n } : null;
-    if (!fresh.length && !pending.length && !cleared.length && !decision && !(complete && qualityBatchSearching(round, at))) return round;
-    const written = await writeEvent(ctx, roundId, { kind: "found", n: round.searches + 1, batchIds: fresh, complete, at,
-      ...pending.length ? { pending } : {}, ...cleared.length ? { cleared } : {}, ...decision ? { decision } : {} });
-    if (written.won) return readRound(ctx, roundId);
-  }
-  throw Error("QUALITY_BATCH: the batches a search found could not be recorded");
+    if (!fresh.length && !pending.length && !cleared.length && !decision && !(complete && qualityBatchSearching(round, at))) return null;
+    return { kind: "found", n: round.searches + 1, batchIds: fresh, complete, at,
+      ...pending.length ? { pending } : {}, ...cleared.length ? { cleared } : {}, ...decision ? { decision } : {} };
+  });
+  if (written && !written.won) throw Error("QUALITY_BATCH: the batches a search found could not be recorded");
+  return readRound(ctx, roundId);
 }
 
 /** Records batches deleted at the provider; the same numbering as `recordFound`. */
@@ -305,7 +336,9 @@ async function create(ctx: Context, round: QualityBatchRound, claim: number): Pr
     await writeEvent(ctx, round.intent.roundId, { kind: "refused", n: claim, at: Date.now(), status: error.status, errorType: error.errorType, transient: error.transient });
     return "advanced";
   }
-  await writeEvent(ctx, round.intent.roundId, { kind: "submitted", n: claim, batchId, at: Date.now() });
+  // Recorded only while nothing has decided what the round's batch is: one decision per round (rule 1), checked in the
+  // write's own transaction. (A create answers within its timeout, long before any search may decide; this never skips.)
+  await writeFromRound(ctx, round.intent.roundId, now => now.submitted || now.presumed ? null : { kind: "submitted", n: claim, batchId, at: Date.now() });
   return "advanced";
 }
 
