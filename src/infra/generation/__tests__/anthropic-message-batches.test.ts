@@ -115,6 +115,19 @@ describe("Anthropic Message Batches transport", () => {
       "https://api.anthropic.com/v1/messages/batches/msgbatch_new/results"]);
   });
 
+  it("keeps what a search proved when a later read fails: the proven batch comes back with its results, undecided, saying why (Codex's thirteenth pass)", async () => {
+    const since = Date.parse("2026-10-16T08:00:00.000Z"), at = (minutes: number) => new Date(since + minutes * 60_000).toISOString();
+    // Codex's case: batch A's results prove the question; reading candidate B's then answers 503.
+    const page = { data: [ended("msgbatch_a", at(9)), ended("msgbatch_b", at(5))], has_more: false };
+    const proving = line("q-mine", { type: "succeeded", message: { id: "msg_priced" } }), unavailable = { type: "error", error: { type: "api_error" } };
+    const fetcher = wire(reply(200, page), reply(200, null, proving), reply(503, unavailable));
+    await expect(new AnthropicMessageBatches("synthetic", fetcher).find("q-mine", since)).resolves.toEqual({ proven: ["msgbatch_a"], undecided: true,
+      results: { msgbatch_a: [{ customId: "q-mine", type: "succeeded", message: { id: "msg_priced" } }] }, failed: "QUALITY_BATCH: results of msgbatch_b answered 503" });
+    // A search that proved nothing before it failed throws, as before: absence is never inferred.
+    const nothing = wire(reply(200, { data: [ended("msgbatch_b", at(5)), ended("msgbatch_a", at(4))], has_more: false }), reply(503, unavailable));
+    await expect(new AnthropicMessageBatches("synthetic", nothing).find("q-mine", since)).rejects.toThrow("results of msgbatch_b answered 503");
+  });
+
   it("never infers absence from an incomplete answer: an empty or cut-off result file, a page without its end, a promise without a cursor", async () => {
     const since = Date.parse("2026-10-16T08:00:00.000Z"), at = new Date(since + 60_000).toISOString();
     const search = (...answers: Response[]) => new AnthropicMessageBatches("synthetic", wire(...answers)).find("q-mine", since);

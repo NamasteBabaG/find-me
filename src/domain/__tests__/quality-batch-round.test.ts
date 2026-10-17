@@ -256,24 +256,32 @@ describe("a quality question's batch round, pure", () => {
     expect(() => round(...sent, reading("b", first), reread(other, "not-a-digest"))).toThrow("a reread is another reading");
   });
 
-  it("holds an open round with a provider fault on record before anything else it could do (rule 6)", () => {
+  it("keeps a batch it read as one of its own, found or not, and decides nothing from another reading of it (rule 6)", () => {
     const first = [{ type: "canceled", errorType: null, requestId: null, model: null, usage: null }];
     const other = [{ type: "succeeded", errorType: null, requestId: "msg_2", model: "claude-opus-5-5", usage: { service_tier: "standard" } }];
-    const fault = (batchId: string): QualityBatchEvent[] => [{ kind: "reading", batchId, results: first, at: T0 },
-      { kind: "reread", batchId, digest: "0123456789abcdef", results: other, at: T0 }];
-    const sent: QualityBatchEvent[] = [{ kind: "claim", n: 1, at: T0 }, { kind: "submitted", n: 1, batchId: "b", at: T0 }];
-    // Its own batch's fault: held by that batch, at its deadline too (never polled, so never cancelled).
-    expect(step(T0 + 6 * HOUR, ...sent, ...fault("b"))).toEqual({ step: "fault", batchId: "b", reason: "the provider returned other results for b on another read" });
-    // Another batch's, or one read by a search before any batch was the round's: held by no batch, not searched again.
-    expect(step(T0 + HOUR, ...sent, ...fault("z"))).toEqual({ step: "fault", batchId: null, reason: "the provider returned other results for z on another read" });
-    expect(step(T0 + HOUR, { kind: "claim", n: 1, at: T0 }, ...fault("z"))).toMatchObject({ step: "fault", batchId: null });
-    // Once an outcome is recorded the round is done: the fault is counted, never decided from.
-    expect(step(T0 + HOUR, ...sent, ...fault("b"), heldUnknown("x", "b"))).toMatchObject({ step: "done" });
-    // Held while its search was undecided (one batch proven, another still running): it searches on, as a hold over two copies does,
-    // until a complete search; held after a complete one, it has nothing left to find.
-    const proven = (complete: boolean): QualityBatchEvent => ({ kind: "found", n: 1, batchIds: ["z"], complete, at: T0 });
-    expect(qualityBatchSearching(round({ kind: "claim", n: 1, at: T0 }, proven(false), ...fault("z"), heldUnknown("x")), T0 + HOUR)).toBe(true);
-    expect(qualityBatchSearching(round({ kind: "claim", n: 1, at: T0 }, proven(true), ...fault("z"), heldUnknown("x")), T0 + HOUR)).toBe(false);
+    const read = (batchId: string): QualityBatchEvent => ({ kind: "reading", batchId, results: first, at: T0 });
+    const reread = (batchId: string): QualityBatchEvent => ({ kind: "reread", batchId, digest: "0123456789abcdef", results: other, at: T0 });
+    const claimed: QualityBatchEvent = { kind: "claim", n: 1, at: T0 };
+    // Codex's thirteenth pass: a search recorded what proved a batch and stopped before recording the batch. The batch is the round's.
+    const orphan = round(claimed, read("z"));
+    expect([orphan.batchIds, orphan.found]).toEqual([["z"], []]);
+    // Its round searches on as before, and the reading counts for two copies, holds and late bills like any found batch.
+    expect(step(T0 + HOUR, claimed, read("z"))).toEqual({ step: "find", sinceMs: T0, untilMs: T0 + QUALITY_BATCH_CREATE_GRACE_MS });
+    expect(step(T0 + HOUR, claimed, read("z"), { kind: "found", n: 1, batchIds: ["y"], complete: false, at: T0 })).toMatchObject({ step: "duplicates" });
+    const presumedWithRead = round(...presumedLost, read("z"));
+    expect([qualityBatchLateDue(presumedWithRead), round(...presumedLost, read("z"), { ...late(1, "z", 0), results: first } as QualityBatchEvent).lates])
+      .toMatchObject([["z"], [{ batchId: "z" }]]);
+    // A round that read a copy of its question never ends unsent.
+    expect(() => round({ kind: "claim", n: 1, at: T0, closing: true }, read("z"))).toThrow("never ends unsent");
+    // Another reading of a batch decides nothing: an open round goes on as it would without it, and a finished one is done.
+    const sent: QualityBatchEvent[] = [claimed, { kind: "submitted", n: 1, batchId: "b", at: T0 }];
+    expect(step(T0 + HOUR, ...sent, read("b"), reread("b"))).toEqual({ step: "poll", batchId: "b", cancelDue: false });
+    expect(step(T0 + HOUR, claimed, read("z"), reread("z"))).toMatchObject({ step: "find" });
+    expect(step(T0 + HOUR, ...sent, read("b"), reread("b"), heldUnknown("x", "b"))).toMatchObject({ step: "done" });
+    // A hold made while its search was undecided searches on until a complete search; one after a complete search does not.
+    const proven = (complete: boolean): QualityBatchEvent => ({ kind: "found", n: 1, batchIds: ["y", "z"], complete, at: T0 });
+    expect(qualityBatchSearching(round(claimed, proven(false), heldUnknown("x")), T0 + HOUR)).toBe(true);
+    expect(qualityBatchSearching(round(claimed, proven(true), heldUnknown("x")), T0 + HOUR)).toBe(false);
   });
 
   it("takes a copy's bill from its recorded reading, and names a reading after its batch in lower-case letters and digits", () => {

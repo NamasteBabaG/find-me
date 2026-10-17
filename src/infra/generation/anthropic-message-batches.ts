@@ -85,44 +85,51 @@ export class AnthropicMessageBatches implements QualityBatchTransport {
   /**
    * Absence is proven only by a complete inventory: every page, to its documented
    * end, and every ended batch's results matching that batch's own request counts.
-   * Anything less throws, and a throw never permits a create. A search that runs
-   * out of pages, or of time before `deadlineAt`, ahead of the intent is undecided,
-   * and says so (`truncated`); what it proved by then is still returned. A batch
-   * created after `untilMs` is no candidate: it neither proves nor keeps undecided.
-   * A batch the round already knows (`known`) to carry the question is proven already:
-   * its results are not read again, so one that cannot be read keeps no search waiting.
+   * Anything less throws, and a throw never permits a create; a search that had
+   * already proven batches returns them instead, undecided, with why it stopped
+   * (`failed`). A search that runs out of pages, or of time before `deadlineAt`,
+   * ahead of the intent is undecided, and says so (`truncated`); what it proved by
+   * then is still returned. A batch created after `untilMs` is no candidate: it
+   * neither proves nor keeps undecided. A batch the round already knows (`known`) to
+   * carry the question is proven already: its results are not read again, so one
+   * that cannot be read keeps no search waiting.
    */
   async find(customId: string, sinceMs: number, deadlineAt?: number, untilMs?: number, known?: ReadonlySet<string>): Promise<QualityBatchFound> {
     if (!CUSTOM_ID.test(customId) || !Number.isFinite(sinceMs) || untilMs !== undefined && !Number.isFinite(untilMs)) throw Error("QUALITY_BATCH: invalid search");
-    // Every proven batch with the results that proved it: what was read is never thrown away.
+    // Every proven batch with the results that proved it: what was read is never thrown away, by a later failure either.
     const proven: string[] = [], results: Record<string, QualityBatchResult[]> = {};
     let undecided = false, after: string | null = null;
-    for (let page = 0; page < MAX_LIST_PAGES; page++) {
-      if (!roomForRead(deadlineAt)) break;
-      const answer = await this.call(`/v1/messages/batches?limit=1000${after ? `&after_id=${encodeURIComponent(after)}` : ""}`, { method: "GET" }, READ_TIMEOUT_MS);
-      const list = parse(answer.text), data = Array.isArray(list?.data) ? list.data as Record<string, unknown>[] : null;
-      if (!answer.ok || !list || !data || typeof list.has_more !== "boolean") throw Error(`QUALITY_BATCH: list answered ${answer.status} without a complete page`);
-      let reachedIntent = false;
-      for (const batch of data) {
-        const created = Date.parse(String(batch?.created_at));
-        if (typeof batch?.id !== "string" || !BATCH_ID.test(batch.id) || !Number.isFinite(created)) throw Error("QUALITY_BATCH: unreadable batch in a list");
-        // Created after the window: not a copy of the question, whether or not it still runs.
-        if (untilMs !== undefined && created > untilMs + QUALITY_BATCH_CLOCK_SKEW_MS) continue;
-        // Newest first: everything from here on is older than the intent.
-        if (created < sinceMs - QUALITY_BATCH_CLOCK_SKEW_MS) { reachedIntent = true; break; }
-        if (known?.has(batch.id)) continue;
-        if (batch.processing_status !== "ended") { undecided = true; continue; }
-        const counts = endedRequestCounts(batch);
-        if (counts === null) throw Error(`QUALITY_BATCH: ${batch.id} does not state its request counts`);
-        if (!roomForRead(deadlineAt)) return { proven, undecided: true, truncated: true, results };
-        const read = await this.resultsOf(batch.id, counts);
-        if (read.some(result => result.customId === customId)) { proven.push(batch.id); results[batch.id] = read; }
+    try {
+      for (let page = 0; page < MAX_LIST_PAGES; page++) {
+        if (!roomForRead(deadlineAt)) break;
+        const answer = await this.call(`/v1/messages/batches?limit=1000${after ? `&after_id=${encodeURIComponent(after)}` : ""}`, { method: "GET" }, READ_TIMEOUT_MS);
+        const list = parse(answer.text), data = Array.isArray(list?.data) ? list.data as Record<string, unknown>[] : null;
+        if (!answer.ok || !list || !data || typeof list.has_more !== "boolean") throw Error(`QUALITY_BATCH: list answered ${answer.status} without a complete page`);
+        let reachedIntent = false;
+        for (const batch of data) {
+          const created = Date.parse(String(batch?.created_at));
+          if (typeof batch?.id !== "string" || !BATCH_ID.test(batch.id) || !Number.isFinite(created)) throw Error("QUALITY_BATCH: unreadable batch in a list");
+          // Created after the window: not a copy of the question, whether or not it still runs.
+          if (untilMs !== undefined && created > untilMs + QUALITY_BATCH_CLOCK_SKEW_MS) continue;
+          // Newest first: everything from here on is older than the intent.
+          if (created < sinceMs - QUALITY_BATCH_CLOCK_SKEW_MS) { reachedIntent = true; break; }
+          if (known?.has(batch.id)) continue;
+          if (batch.processing_status !== "ended") { undecided = true; continue; }
+          const counts = endedRequestCounts(batch);
+          if (counts === null) throw Error(`QUALITY_BATCH: ${batch.id} does not state its request counts`);
+          if (!roomForRead(deadlineAt)) return { proven, undecided: true, truncated: true, results };
+          const read = await this.resultsOf(batch.id, counts);
+          if (read.some(result => result.customId === customId)) { proven.push(batch.id); results[batch.id] = read; }
+        }
+        if (reachedIntent || !list.has_more) return { proven, undecided, results };
+        if (!data.length || typeof list.last_id !== "string" || !BATCH_ID.test(list.last_id)) throw Error("QUALITY_BATCH: a list page promised more but gave no batch or no cursor");
+        after = list.last_id;
       }
-      if (reachedIntent || !list.has_more) return { proven, undecided, results };
-      if (!data.length || typeof list.last_id !== "string" || !BATCH_ID.test(list.last_id)) throw Error("QUALITY_BATCH: a list page promised more but gave no batch or no cursor");
-      after = list.last_id;
+      return { proven, undecided: true, truncated: true, results };
+    } catch (error) {
+      if (!proven.length) throw error;
+      return { proven, undecided: true, results, failed: (error instanceof Error ? error.message : String(error)).slice(0, 200) };
     }
-    return { proven, undecided: true, truncated: true, results };
   }
 
   /** The batch's state; an ended batch's record also says how many results of each type it has, which

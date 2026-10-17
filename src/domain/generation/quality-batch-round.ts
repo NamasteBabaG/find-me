@@ -48,13 +48,15 @@
  *    copy is found; a presumed-lost round searches once more a day later.
  * 6. A batch's results are recorded the first time they are read (`reading`),
  *    by a search that proved the batch or by any later read, before anything is
- *    decided from them; every decision about that batch is taken from that
- *    reading: the outcome for the round's own batch, `late` for a copy. A later
- *    read that returns anything else is a provider fault: it is recorded
- *    (`reread`) and counted as a charge of its own, never decided from; a round
- *    with no outcome yet is held for a person by its next step, whichever pass
- *    takes it, before that charge is counted. A copy whose reading is the
- *    outcome's own reading is the outcome's bill.
+ *    decided from them, and the batch is the round's from then on, found or not.
+ *    Every decision about that batch is taken from that reading: the outcome for
+ *    the round's own batch, `late` for a copy. A later read that returns anything
+ *    else is a provider fault, never decided from: counted as a charge of its own
+ *    before it is recorded (`reread`), so nothing on record is ever uncounted
+ *    (recorded all the same, and raised, when the count is refused). An answer
+ *    whose first reading is on record but whose content no pass kept cannot be
+ *    delivered once it is read otherwise: its round is held for a person. A copy
+ *    whose reading is the outcome's own reading is the outcome's bill.
  */
 import type { WorldChargeEvidence } from "./world-budget";
 
@@ -118,8 +120,8 @@ export type QualityBatchEvent =
   /** What the provider returned for this question the first time a batch's results were read (rule 6): every
    * decision about that batch comes from this reading, the round's outcome for its own batch, `late` for a copy. */
   | { readonly kind: "reading"; readonly batchId: string; readonly results: readonly QualityBatchReceipt[]; readonly at: number }
-  /** A later read of a batch that returned anything else: a provider fault, counted as a charge of its own and
-   * never decided from (rule 6). `digest` names it, so each distinct reading is recorded once. */
+  /** A later read of a batch that returned anything else: a provider fault, counted as a charge of its own before it
+   * is recorded, and never decided from (rule 6). `digest` names it, so each distinct reading is recorded once. */
   | { readonly kind: "reread"; readonly batchId: string; readonly digest: string; readonly results: readonly QualityBatchReceipt[]; readonly at: number }
   /** Batches of the round deleted at the provider in one pass. */
   | { readonly kind: "deleted"; readonly n: number; readonly batchIds: readonly string[]; readonly at: number };
@@ -146,7 +148,7 @@ export type QualityBatchRound = {
   readonly lateIds: readonly string[];
   /** Every batch whose bill is in the record: the one the terminal outcome read, and every late one. */
   readonly billedIds: readonly string[];
-  /** Every provider batch known to carry this question: the recorded one and every one found. */
+  /** Every provider batch known to carry this question: the recorded one, every one found, and every one read. */
   readonly batchIds: readonly string[];
   /** Those deleted at the provider, and how many `deleted` events recorded them. */
   readonly deletedIds: readonly string[];
@@ -205,6 +207,15 @@ export function qualityBatchRoundOf(events: readonly QualityBatchEvent[]): Quali
   if (!numbered(finds) || finds.some(f => !ids(f.batchIds, true) || typeof f.complete !== "boolean"))
     throw Error("QUALITY_BATCH: searches are numbered from one and name their batches once");
   const found = [...new Set(finds.flatMap(f => f.batchIds))];
+  // Rule 6: a batch is read once for good; a later read that returned anything else is a charge of its own, never a decision.
+  const readings: Record<string, readonly QualityBatchReceipt[]> = Object.create(null) as Record<string, readonly QualityBatchReceipt[]>;
+  for (const reading of of("reading")) {
+    // A search records what it read before the batch it proved, so a reading may stand before (or without) its `found`.
+    if (typeof reading.batchId !== "string" || !reading.batchId || !Array.isArray(reading.results) || readings[reading.batchId])
+      throw Error("QUALITY_BATCH: a batch is read once, for good");
+    readings[reading.batchId] = reading.results;
+  }
+  const read = Object.keys(readings);
   const terminal = terminals[0] ?? null;
   if (terminal?.kind === "answered" && (!submitted[0] || terminal.batchId !== submitted[0].batchId))
     throw Error("QUALITY_BATCH: an answer from a batch this round never recorded");
@@ -217,11 +228,12 @@ export function qualityBatchRoundOf(events: readonly QualityBatchEvent[]): Quali
   if (terminal?.kind === "held" && (terminal.charge !== "zero" && terminal.charge !== "unknown" || terminal.charge === "zero" && typeof terminal.resultType !== "string"
     || terminal.batchId !== undefined && terminal.batchId !== submitted[0]?.batchId))
     throw Error("QUALITY_BATCH: a hold states its charge, and reads only the round's batch");
-  // Unsent means no create reached the provider, so no search ever ran: a round that found a copy is never closed unsent.
-  if (found.length && (closing.length || terminal?.kind === "fallback" && terminal.batchId === null && terminal.resultType !== "presumed-lost"))
+  // Unsent means no create reached the provider, so no search ever ran: a round that found or read a copy is never closed unsent.
+  if ((found.length || read.length) && (closing.length || terminal?.kind === "fallback" && terminal.batchId === null && terminal.resultType !== "presumed-lost"))
     throw Error("QUALITY_BATCH: a round that found a copy of its question never ends unsent");
   if (closing.length && terminal && (terminal.kind !== "fallback" || terminal.batchId !== null)) throw Error("QUALITY_BATCH: a closed round can only fall back unsent");
-  const batchIds = [...new Set([...submitted.map(s => s.batchId), ...found])];
+  // A batch read is a batch of the round (rule 6), even one a search read and stopped before recording.
+  const batchIds = [...new Set([...submitted.map(s => s.batchId), ...found, ...read])];
   // Rule 5: every batch's bill is in the record, once, before it may be deleted: the round's own batch by the
   // outcome that read it, every other copy of a finished round afterwards.
   const own = terminal?.batchId ?? null;
@@ -232,14 +244,6 @@ export function qualityBatchRoundOf(events: readonly QualityBatchEvent[]): Quali
   const billedIds = [...(own ? [own] : []), ...lateIds];
   if (!numbered(deletions) || deletions.some(d => !ids(d.batchIds, false) || d.batchIds.some(id => !billedIds.includes(id))))
     throw Error("QUALITY_BATCH: a deletion names a batch whose bill is not in the record");
-  // Rule 6: a batch is read once for good; a later read that returned anything else is a charge of its own, never a decision.
-  const readings: Record<string, readonly QualityBatchReceipt[]> = Object.create(null) as Record<string, readonly QualityBatchReceipt[]>;
-  for (const reading of of("reading")) {
-    // A search records what it read before the batch it proved (rule 6), so a reading may come before its batch is known.
-    if (typeof reading.batchId !== "string" || !reading.batchId || !Array.isArray(reading.results) || readings[reading.batchId])
-      throw Error("QUALITY_BATCH: a batch is read once, for good");
-    readings[reading.batchId] = reading.results;
-  }
   const rereads = of("reread");
   if (rereads.some(r => !readings[r.batchId] || !/^[a-f0-9]{16}$/.test(r.digest) || !Array.isArray(r.results)
     || qualityBatchCanonicalJson(r.results) === qualityBatchCanonicalJson(readings[r.batchId])))
@@ -264,17 +268,11 @@ export type QualityBatchStep =
   /** The create is presumed lost: count its charge at the most it could be, then fall back. */
   | { readonly step: "presumed"; readonly reason: string }
   | { readonly step: "duplicates"; readonly reason: string }
-  | { readonly step: "hold"; readonly reason: string }
-  /** A provider fault on record before any outcome (rule 6): hold the round, its charge unknown; `batchId`: the round's
-   * own batch, when the fault is that batch's, whose first reading the hold then keeps as the round's bill. */
-  | { readonly step: "fault"; readonly batchId: string | null; readonly reason: string };
+  | { readonly step: "hold"; readonly reason: string };
 
 /** What this round may do now. */
 export function nextQualityBatchStep(round: QualityBatchRound, now: number): QualityBatchStep {
   if (round.terminal) return { step: "done", terminal: round.terminal };
-  // A provider fault on record holds an open round before anything else could be decided (rule 6).
-  const own = round.submitted?.batchId, fault = round.rereads.find(r => r.batchId === own) ?? round.rereads[0];
-  if (fault) return { step: "fault", batchId: fault.batchId === own ? own : null, reason: `the provider returned other results for ${fault.batchId} on another read` };
   // Once the create is presumed lost, copies found beside the presumption are read for their bills after it (rule 5).
   if (round.presumed) return { step: "presumed", reason: "the create did not answer and no complete search found its batch" };
   if (round.batchIds.length > 1) return { step: "duplicates", reason: `${round.batchIds.length} batches carry this one question` };
@@ -311,10 +309,8 @@ export const qualityBatchPresumedLost = (round: QualityBatchRound) =>
  * when any batch its create made has ended and is listed.
  */
 export function qualityBatchSearching(round: QualityBatchRound, now: number): boolean {
-  // A hold made while a search was undecided (over two copies, or over a provider fault while another batch could still
-  // carry the question) searches on until none could; a hold no search came before (a refused create, an answer that
-  // could not be priced) has nothing to find.
-  if (round.terminal?.kind === "held") return round.searches > 0 && !round.searchComplete;
+  // Every copy the round knows counts, the one its create recorded and every one it read included: the hold itself counted them all.
+  if (round.terminal?.kind === "held") return round.batchIds.length > 1 && !round.searchComplete;
   if (!qualityBatchPresumedLost(round)) return false;
   const due = round.presumed!.at + QUALITY_BATCH_LATE_SEARCH_MS;
   return now >= due && !(round.completeSearchAt !== null && round.completeSearchAt >= due);
