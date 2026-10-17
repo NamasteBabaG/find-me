@@ -2042,7 +2042,7 @@ describe("Opus scene-quality questions through Message Batches", () => {
     expect(fake.creates).toBe(1); expect(request).not.toHaveBeenCalled();
   }, 300_000);
 
-  it("holds an open round at once when its search reads a batch otherwise than its recorded reading, though another batch still runs (rule 6)", async () => {
+  it("holds an open round at once when its search reads a batch otherwise than its recorded reading, though another copy still runs, and searches on for that copy (rule 6)", async () => {
     const gameId = "batch-search-fault", w = await world(gameId); await paintFirst(gameId);
     const fake = new FakeBatches(opus(), "searchfault"), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
     fake.createPlan = ["lost-after-create"];
@@ -2051,8 +2051,8 @@ describe("Opus scene-quality questions through Message Batches", () => {
     await review(container, gameId);
     const intent = await syncKeyOf(gameId), [batch] = fake.batches as [FakeBatch];
     batch.status = "ended"; batch.results = batch.requests.map(r => fake.answer(r.params, r.customId));
-    // Another batch in the search's window still runs, so the search cannot tell which batch is the round's.
-    fake.batches.push({ ...structuredClone(batch), id: "msgbatch_searchfaultother", requests: [], status: "in_progress", results: null });
+    // Another copy of the question still runs, so the search cannot tell which batch is the round's.
+    fake.batches.push({ ...structuredClone(batch), id: "msgbatch_searchfaultother", status: "in_progress", results: null });
     // Another pass's search read the batch first, as canceled, and stopped before it recorded the batch.
     const roundId = /^aud_qb_(qb[a-f0-9]{30})_intent$/.exec((await events(gameId)).find(row => row.id.endsWith("_intent"))!.id)![1]!;
     await db.auditLog.create({ data: { id: `aud_qb_${roundId}_${readingName(batch.id)}`, actorType: "SYSTEM", action: QUALITY_BATCH_ACTION, entityType: "Game", entityId: gameId,
@@ -2066,6 +2066,15 @@ describe("Opus scene-quality questions through Message Batches", () => {
     expect(await w.budget.readRequest(w.worldId, intent.batchKey)).toMatchObject({ state: "unknown" });
     expect(await w.budget.readRequest(w.worldId, `@import/${JSON.stringify([fake.namespace, receiptOf(batch.results)])}`))
       .toMatchObject({ state: "settled", evidence: { amountMicroUsd: 9_000 } });
+    // The other copy then ends carrying the question too. The hold was made while the search was undecided, so it searches on:
+    // once the game is deleted, the tick finds that copy, reads its bill and deletes it, as it does the first.
+    const other = fake.batches[1]!;
+    other.status = "ended"; other.results = other.requests.map(r => fake.answer(r.params, r.customId));
+    expect(await deleteGame(c, gameId, { type: "USER", id: w.userId }, w.userId)).toBe(true);
+    await sweepQualityBatches(container, { deadlineAt: Date.now() + 230_000 });
+    expect(await foundOf(gameId)).toEqual([batch.id, other.id]);
+    expect((await latesOf(gameId)).map(bill => bill.batchId).sort()).toEqual([batch.id, other.id].sort());
+    expect([batch.deleted, other.deleted]).toEqual([true, true]);
     expect(fake.creates).toBe(1); expect(qualityCalls(request)).toBe(0);
   }, 300_000);
 

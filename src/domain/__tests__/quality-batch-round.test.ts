@@ -269,6 +269,11 @@ describe("a quality question's batch round, pure", () => {
     expect(step(T0 + HOUR, { kind: "claim", n: 1, at: T0 }, ...fault("z"))).toMatchObject({ step: "fault", batchId: null });
     // Once an outcome is recorded the round is done: the fault is counted, never decided from.
     expect(step(T0 + HOUR, ...sent, ...fault("b"), heldUnknown("x", "b"))).toMatchObject({ step: "done" });
+    // Held while its search was undecided (one batch proven, another still running): it searches on, as a hold over two copies does,
+    // until a complete search; held after a complete one, it has nothing left to find.
+    const proven = (complete: boolean): QualityBatchEvent => ({ kind: "found", n: 1, batchIds: ["z"], complete, at: T0 });
+    expect(qualityBatchSearching(round({ kind: "claim", n: 1, at: T0 }, proven(false), ...fault("z"), heldUnknown("x")), T0 + HOUR)).toBe(true);
+    expect(qualityBatchSearching(round({ kind: "claim", n: 1, at: T0 }, proven(true), ...fault("z"), heldUnknown("x")), T0 + HOUR)).toBe(false);
   });
 
   it("takes a copy's bill from its recorded reading, and names a reading after its batch in lower-case letters and digits", () => {
