@@ -8,7 +8,7 @@ import { PrismaRetainedPurchaseStore } from "../../infra/db/prisma-retained-purc
 import {
   QUALITY_BATCH_VERSION, decideQualityBatchResults, nextQualityBatchStep, qualityBatchBill, qualityBatchCanonicalJson, qualityBatchCleanupDue, qualityBatchCopyStart, qualityBatchDeletable,
   qualityBatchEventName, qualityBatchLateDue, qualityBatchReserveMicroUsd, qualityBatchRoundOf, qualityBatchSearchWindow, qualityBatchSearching,
-  type QualityBatchEvent, type QualityBatchIntent, type QualityBatchReceipt, type QualityBatchRound,
+  type QualityBatchDecision, type QualityBatchEvent, type QualityBatchIntent, type QualityBatchReceipt, type QualityBatchRound,
 } from "../../domain/generation/quality-batch-round";
 import { visualReviewPolicy } from "../../domain/generation/visual-review-policy";
 import type { PreparedVisualReview } from "./visual-review";
@@ -178,19 +178,49 @@ async function settlePresumed(ctx: Context, round: QualityBatchRound) {
  * never reopens a settled charge): once settled or held, the batch key is what it was made, so a pass
  * that decided otherwise from an older read never moves money. The reads before it only save writes.
  */
-async function applyTerminal(ctx: Context, round: QualityBatchRound, pendingKeys?: ReadonlySet<string>) {
+async function applyTerminal(ctx: Context, round: QualityBatchRound, keys?: ReadonlySet<string>) {
   const { intent } = round, terminal = round.terminal!, budget = boardWizardBudgetOf(ctx.c);
-  if (pendingKeys && !pendingKeys.has(intent.batchKey)) return;
-  if ((await budget.readRequest(intent.worldId, intent.batchKey))?.state !== "pending") return;
-  if (terminal.kind === "answered") await budget.settle(intent.worldId, intent.batchKey, terminal.evidence, ONLY_PENDING);
-  else if (terminal.kind === "fallback" && terminal.resultType === "presumed-lost") await settlePresumed(ctx, round);
-  else if (terminal.kind === "fallback") await settleUnbilled(ctx, intent, terminal.batchId, terminal.resultType, terminal.errorType);
-  else if (terminal.charge === "zero") await settleUnbilled(ctx, intent, terminal.batchId ?? null, terminal.resultType!, terminal.errorType ?? null);
-  // Held with its bill known (an answer that cannot be delivered): the bill its first reading states, in full.
-  else if (terminal.charge === "known") await budget.settle(intent.worldId, intent.batchKey, terminal.evidence!, ONLY_PENDING);
-  // Held with the charge unknown, in full: the world reserves nothing more until a person reconciles it.
-  else await budget.markUnknown(intent.worldId, intent.batchKey, `quality batch ${intent.roundId}: ${terminal.reason}`);
+  if (keys && !keys.has(intent.batchKey)) return;
+  const bill = outcomeBill(ctx, round);
+  if ((await budget.readRequest(intent.worldId, intent.batchKey))?.state === "pending") {
+    // An answer's charge, or a held answer's (one that cannot be delivered): the bill its reading states, in full.
+    if (bill) await budget.settle(intent.worldId, intent.batchKey, bill, ONLY_PENDING);
+    else if (terminal.kind === "fallback" && terminal.resultType === "presumed-lost") await settlePresumed(ctx, round);
+    else if (terminal.kind === "fallback") await settleUnbilled(ctx, intent, terminal.batchId, terminal.resultType, terminal.errorType);
+    else if (terminal.kind === "held" && terminal.charge === "zero") await settleUnbilled(ctx, intent, terminal.batchId ?? null, terminal.resultType!, terminal.errorType ?? null);
+    // Held with the charge unknown, in full: the world reserves nothing more until a person reconciles it.
+    else if (terminal.kind === "held") await budget.markUnknown(intent.worldId, intent.batchKey, `quality batch ${intent.roundId}: ${terminal.reason}`);
+  }
+  // A bill the outcome states is counted in full whoever holds the key: above a hold another writer made, by its own row.
+  if (bill) await countAboveHold(ctx, round, bill);
 }
+
+/** The bill a round's outcome states in full, if any: an answer's charge, or a held answer's first reading priced exactly
+ * as its delivery would be (a record of the fourteenth round held such an answer as unknown; its bill is the same). */
+function outcomeBill(ctx: Context, round: QualityBatchRound): WorldChargeEvidence | null {
+  const terminal = round.terminal!;
+  if (terminal.kind === "answered") return terminal.evidence;
+  if (terminal.kind !== "held" || !terminal.results || terminal.charge === "zero") return null;
+  if (terminal.charge === "known") return terminal.evidence!;
+  return decideReading(terminal.results, round.intent.customId).decision === "answer" ? answerCharge(ctx, terminal.results) : null;
+}
+
+/**
+ * A bill an outcome states, above what a hold another writer made on the batch key counts (rule 0): the difference is
+ * recorded as an unknown row of its own, named after the bill, so the ledger never counts less than the record states,
+ * and the other writer's hold stands as it was made. A person reconciles the row with the key. A key that is settled is
+ * a settlement of its one batch, whoever made it, and is left as it is.
+ */
+async function countAboveHold(ctx: Context, round: QualityBatchRound, bill: WorldChargeEvidence) {
+  const { intent } = round, budget = boardWizardBudgetOf(ctx.c);
+  const key = await budget.readRequest(intent.worldId, intent.batchKey);
+  if (key?.state !== "unknown" || key.reserveMicroUsd >= bill.amountMicroUsd) return;
+  await budget.recordUnknown(intent.worldId, { requestKey: qualityBatchAboveHoldKeyOf(intent.batchKey, bill), scope: "judge", operationFingerprint: intent.fingerprint,
+    reserveMicroUsd: bill.amountMicroUsd - key.reserveMicroUsd, reason: `quality batch ${intent.roundId}: its outcome's bill of ${bill.amountMicroUsd} micro-USD `
+      + `(${bill.providerRequestId}) is above the ${key.reserveMicroUsd} its batch key holds as unknown; reconcile this row with that key` });
+}
+/** The ledger key of the part of an outcome's bill above an unknown hold on its batch key: one per bill. */
+export const qualityBatchAboveHoldKeyOf = (batchKey: string, bill: WorldChargeEvidence) => `${batchKey}:above-hold:${sha(qualityBatchCanonicalJson(bill))}`;
 
 /**
  * Nothing of this round ever reached the provider: zero, and the round ends (rule 4).
@@ -211,16 +241,25 @@ async function closeUnsent(ctx: Context, round: QualityBatchRound, claim: number
  * its id, until a later search decides it), the pending batches it decided carry no copy (`cleared`), and whether
  * the search was complete (`complete` is recorded on its own only for a finished round still searching); `at`: when
  * the search started. A batch an earlier search read and stopped before recording is kept with it (its reading proved
- * it). The next free number wins; a pass that lost it reads the round again and records what is still new. */
-async function recordFound(ctx: Context, roundId: string, found: QualityBatchFound, at: number): Promise<QualityBatchRound> {
+ * it). `decide` (the open round's search): when the record it writes leaves one batch or none, with nothing pending
+ * and the search complete, it records what the round's batch is with it, in the same slot (rule 1), so a record a
+ * concurrent search made first can never go unseen by the decision. The next free number wins; a pass that lost it
+ * reads the round again, records what is still new, and decides again from that. */
+async function recordFound(ctx: Context, roundId: string, found: QualityBatchFound, at: number, decide = false): Promise<QualityBatchRound> {
   const complete = !found.undecided;
   for (let attempt = 0; attempt < 4; attempt++) {
     const round = await readRound(ctx, roundId), fresh = [...new Set([...found.proven, ...round.unfound])].filter(id => !round.found.includes(id));
     const pending = [...new Set(found.pending ?? [])].filter(id => !round.batchIds.includes(id) && !fresh.includes(id) && !round.pending.includes(id));
     const cleared = [...new Set(found.cleared ?? [])].filter(id => round.pending.includes(id));
-    if (!fresh.length && !pending.length && !cleared.length && !(complete && qualityBatchSearching(round, at))) return round;
+    // The round as this record leaves it: its batches, and those still pending.
+    const batches = [...new Set([...round.batchIds, ...fresh])];
+    const undecided = [...new Set([...round.pending, ...pending])].filter(id => !cleared.includes(id) && !batches.includes(id));
+    const claim = round.claims.at(-1);
+    const decision: QualityBatchDecision | null = decide && complete && claim && !round.submitted && !round.presumed && !undecided.length && batches.length <= 1
+      ? batches.length === 1 ? { kind: "submitted", claim: claim.n, batchId: batches[0]! } : { kind: "presumed", claim: claim.n } : null;
+    if (!fresh.length && !pending.length && !cleared.length && !decision && !(complete && qualityBatchSearching(round, at))) return round;
     const written = await writeEvent(ctx, roundId, { kind: "found", n: round.searches + 1, batchIds: fresh, complete, at,
-      ...pending.length ? { pending } : {}, ...cleared.length ? { cleared } : {} });
+      ...pending.length ? { pending } : {}, ...cleared.length ? { cleared } : {}, ...decision ? { decision } : {} });
     if (written.won) return readRound(ctx, roundId);
   }
   throw Error("QUALITY_BATCH: the batches a search found could not be recorded");
@@ -335,10 +374,11 @@ async function noteReading(ctx: Context, round: QualityBatchRound, batchId: stri
  * Records what a search proved and saw (rules 1 and 6): first the reading each proven batch was proved by, then the
  * batches, and the batches it could not decide. What a search read or saw is never thrown away: a later read of the
  * batch that says otherwise is a reread, and so is this one when another pass recorded the batch's reading otherwise;
- * a batch it could not decide stays pending until a later search decides it. A failure is raised once every reading
- * the search holds, and its batches, are recorded.
+ * a batch it could not decide stays pending until a later search decides it. `decide`: the open round's search, which
+ * may decide the round's batch with its record (`recordFound`). A failure is raised once every reading the search
+ * holds, and its batches, are recorded.
  */
-async function recordSearch(ctx: Context, roundId: string, found: QualityBatchFound, at: number): Promise<QualityBatchRound> {
+async function recordSearch(ctx: Context, roundId: string, found: QualityBatchFound, at: number, decide = false): Promise<QualityBatchRound> {
   const round = await readRound(ctx, roundId), failures: unknown[] = [];
   for (const batchId of found.proven) {
     const results = found.results?.[batchId];
@@ -346,7 +386,7 @@ async function recordSearch(ctx: Context, roundId: string, found: QualityBatchFo
     try { await noteReading(ctx, round, batchId, receiptsOf(results, round.intent.customId)); }
     catch (error) { failures.push(error); }
   }
-  const recorded = await recordFound(ctx, roundId, found, at);
+  const recorded = await recordFound(ctx, roundId, found, at, decide && !failures.length);
   raise(failures);
   return recorded;
 }
@@ -545,7 +585,11 @@ async function advance(ctx: Context, roundId: string): Promise<QualityBatchGate>
       // is counted now, or the refusal raised).
       await applyRecord(ctx, round);
       if (step.terminal.kind === "held") return { kind: "held", reason: `Quality question in Message Batches: ${step.terminal.reason}` };
-      if (step.terminal.kind === "fallback" || ctx.stopping) return proceed;
+      if (ctx.stopping) return proceed;
+      // The question is asked synchronously only once no batch that could carry it is pending (rule 1), even one a search
+      // named after the round's batch was decided: the round's housekeeping searches for it meanwhile.
+      if (step.terminal.kind === "fallback") return round.pending.length ? waiting("a batch another search saw could carry this question; "
+        + "it is asked synchronously once that batch is decided") : proceed;
       // An answer is delivered only on the charge it settled; one another writer held instead waits for a person.
       const charge = await boardWizardBudgetOf(ctx.c).readRequest(round.intent.worldId, round.intent.batchKey);
       if (charge?.state !== "settled") return { kind: "held", reason: `Quality question in Message Batches: its answered charge is ${charge?.state ?? "missing"}, not settled` };
@@ -588,21 +632,15 @@ async function advance(ctx: Context, roundId: string): Promise<QualityBatchGate>
       catch (error) { return waiting(`the provider could not be searched (${error instanceof Error ? error.message.slice(0, 200) : "unknown"})`); }
       // Every batch proven to carry the question is kept, with what it was proven by, before anything is decided
       // from it, and so is every batch the search could not decide: a later search that no longer sees one cannot
-      // undo it. Two copies hold the round.
-      const known = await recordSearch(ctx, roundId, found, searchedAt);
-      if (known.batchIds.length > 1) continue;
-      // One proven batch is the round's only when no other could still carry the question, by this search or any other
-      // recorded: recording it while another runs could release that one's charge on the first's outcome.
-      if (found.undecided || known.pending.length) return waiting(found.failed ? `the search stopped (${found.failed}); what it proved and saw is kept, and nothing is decided meanwhile`
+      // undo it. Two copies hold the round. What the round's batch is (one batch, or none: the create presumed lost) is
+      // decided with that record, in the same slot, and only once no other batch could still carry the question, by
+      // this search or any other recorded first: deciding while another runs could release that one's charge on the
+      // first's outcome. Nothing is sent again (rule 1).
+      const known = await recordSearch(ctx, roundId, found, searchedAt, true);
+      if (known.batchIds.length > 1 || known.submitted || known.presumed) continue;
+      return waiting(found.failed ? `the search stopped (${found.failed}); what it proved and saw is kept, and nothing is decided meanwhile`
         : found.truncated ? "the search did not reach back to this question (too many batches, or too little of this request left); nothing is decided meanwhile"
         : "a batch that could carry this question has not ended yet");
-      // What the round's batch is gets decided once (`submitted` and `presumed` share one name): a pass that read an
-      // older round and decides otherwise loses the write and reads again. A batch read is known (rule 6), found or not.
-      const n = round.claims.at(-1)!.n;
-      await writeEvent(ctx, roundId, known.batchIds.length === 1 ? { kind: "submitted", n, batchId: known.batchIds[0]!, at: Date.now() }
-        // None found: the create is presumed lost (rule 1). Nothing is sent again.
-        : { kind: "presumed", n, at: Date.now() });
-      continue;
     }
     // Its charge counted at the most it could be once the outcome is recorded; the question is then asked synchronously.
     if (step.step === "presumed") {
@@ -691,9 +729,9 @@ async function settleCopies(ctx: Context, round: QualityBatchRound, gameDeleted:
  * reading. Each was counted before it was recorded, unless the ledger refused it, or the round was not finished yet
  * when a copy was read; it is counted here before anything follows from the record. Idempotent: applied by any pass,
  * as often as needed. */
-async function applyRecord(ctx: Context, round: QualityBatchRound, pendingKeys?: ReadonlySet<string>) {
+async function applyRecord(ctx: Context, round: QualityBatchRound, keys?: ReadonlySet<string>) {
   const failures: unknown[] = [];
-  try { await applyTerminal(ctx, round, pendingKeys); }
+  try { await applyTerminal(ctx, round, keys); }
   catch (error) { failures.push(error); }
   try { await countBills(ctx, round); }
   catch (error) { failures.push(error); }
@@ -724,11 +762,11 @@ async function countBills(ctx: Context, round: QualityBatchRound) {
  * the known copies first one minute and the search first another, so however slow the provider, neither keeps the
  * other out for good. Each step runs whatever failed before it, and every failure is raised at the end.
  */
-async function maintain(ctx: Context, round: QualityBatchRound, gameDeleted: boolean, pendingKeys?: ReadonlySet<string>) {
+async function maintain(ctx: Context, round: QualityBatchRound, gameDeleted: boolean, keys?: ReadonlySet<string>) {
   const failures: unknown[] = [];
   const step = async (work: () => Promise<unknown>) => { try { await work(); } catch (error) { failures.push(error); } };
   let applied = false;
-  await step(async () => { await applyTerminal(ctx, round, pendingKeys); applied = true; });
+  await step(async () => { await applyTerminal(ctx, round, keys); applied = true; });
   await step(() => countBills(ctx, round));
   const known = async () => { if (applied) await settleCopies(ctx, await readRound(ctx, round.intent.roundId), gameDeleted); };
   const search = async () => { if (await discover(ctx, round) && applied) await settleCopies(ctx, await readRound(ctx, round.intent.roundId), gameDeleted); };
@@ -790,13 +828,15 @@ export async function advanceQualityBatches(c: Container, gameId: string, fence:
   const transport = c.qualityBatch;
   if (!transport) return;
   const rounds = [...await gameRounds(c.db, gameId)];
-  // One read of the ledger for the slice: only an outcome whose reservation is still pending has anything to apply.
+  // One read of the ledger for the slice: only an outcome whose reservation is still pending has anything to apply, or one
+  // held as unknown (by another writer, a bill above the hold counts).
   const worldId = rounds.length ? qualityBatchRoundOf(rounds[0]![1]).intent.worldId : null;
-  const pendingKeys = worldId ? new Set((await boardWizardBudgetOf(c).audit(worldId)).pendingRequestKeys) : new Set<string>();
+  const audit = worldId ? await boardWizardBudgetOf(c).audit(worldId) : null;
+  const keys = new Set([...audit?.pendingRequestKeys ?? [], ...audit?.unknownRequestKeys ?? []]);
   for (const [roundId, events] of rounds) {
     if (deadlineAt !== undefined && deadlineAt - Date.now() < POLL_NEED_MS) return;
     const round = qualityBatchRoundOf(events), ctx: Context = { c, transport, gameId, fence, question: null, stopping: false, deadlineAt };
-    if (round.terminal) { await maintain(ctx, round, false, pendingKeys); continue; }
+    if (round.terminal) { await maintain(ctx, round, false, keys); continue; }
     try { await advance(ctx, roundId); }
     // A full world waits for capacity at the review that needs it, which parks or waits as it does today.
     catch (error) { if (!(error instanceof WorldBudgetError)) throw error; }

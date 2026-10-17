@@ -367,10 +367,11 @@ describe("Opus scene-quality questions through Message Batches", () => {
     await review(container, gameId);
     vi.setSystemTime(start + QUALITY_BATCH_CREATE_GRACE_MS);
     await review(container, gameId);
-    // One create, ever: the search found nothing, and nothing is sent again.
+    // One create, ever: the search found nothing, and nothing is sent again. It records the presumption with what it found,
+    // in its own slot (Codex's sixteenth pass).
     expect(fake.calls).toEqual(["create", "find"]); expect(fake.batches).toHaveLength(0);
-    expect(await eventNames(gameId)).toEqual(["claim-1", "intent", "submitted", "terminal"]);
-    expect(JSON.parse((await events(gameId)).find(row => row.id.endsWith("_submitted"))!.metaJson!)).toMatchObject({ kind: "presumed", n: 1 });
+    expect(await eventNames(gameId)).toEqual(["claim-1", "found-1", "intent", "terminal"]);
+    expect(await eventOf(gameId, "found-1")).toMatchObject({ batchIds: [], complete: true, decision: { kind: "presumed", claim: 1 } });
     expect(JSON.parse((await events(gameId)).find(row => row.id.endsWith("_terminal"))!.metaJson!)).toMatchObject({ kind: "fallback", batchId: null, resultType: "presumed-lost" });
     // Its charge is counted at the most it could be, never released; the question is asked synchronously.
     const intent = await syncKeyOf(gameId);
@@ -380,8 +381,8 @@ describe("Opus scene-quality questions through Message Batches", () => {
     // A day later it is searched for once more, and a complete search that finds nothing ends the search.
     vi.setSystemTime(start + QUALITY_BATCH_CREATE_GRACE_MS + QUALITY_BATCH_LATE_SEARCH_MS);
     for (let i = 0; i < 2; i++) await sweepQualityBatches(container, { deadlineAt: Date.now() + 230_000 });
-    expect(await eventNames(gameId)).toEqual(["claim-1", "found-1", "intent", "submitted", "terminal"]);
-    expect(await eventOf(gameId, "found-1")).toMatchObject({ batchIds: [], complete: true, at: Date.now() });
+    expect(await eventNames(gameId)).toEqual(["claim-1", "found-1", "found-2", "intent", "terminal"]);
+    expect(await eventOf(gameId, "found-2")).toMatchObject({ batchIds: [], complete: true, at: Date.now() });
   }, 300_000);
 
   it("decides a round's batch once: a stale search that found nothing stands down when another recorded the batch", async () => {
@@ -847,9 +848,11 @@ describe("Opus scene-quality questions through Message Batches", () => {
     expect(fake.creates).toBe(1);
     const intent = await syncKeyOf(gameId);
     expect(await w.budget.readRequest(w.worldId, intent.batchKey)).toMatchObject({ state: "pending" });
-    // The other batch, undecided while it ran, was kept by its id until a later search cleared it (Codex's fifteenth pass).
-    expect(await eventNames(gameId)).toEqual(["claim-1", "found-1", "found-2", "intent", readingName(copy.id), "submitted"]);
+    // The other batch, undecided while it ran, was kept by its id until a later search cleared it (Codex's fifteenth pass);
+    // that search decided the round's batch with what it found, in its own slot (the sixteenth).
+    expect(await eventNames(gameId)).toEqual(["claim-1", "found-1", "found-2", "intent", readingName(copy.id)]);
     expect(await undecidedOf(gameId)).toEqual({ pending: [other.id], cleared: [other.id] });
+    expect(await eventOf(gameId, "found-2")).toMatchObject({ complete: true, decision: { kind: "submitted", claim: 1, batchId: copy.id } });
     expect(request).not.toHaveBeenCalled();
   }, 300_000);
 
@@ -1109,7 +1112,8 @@ describe("Opus scene-quality questions through Message Batches", () => {
     vi.setSystemTime(start + QUALITY_BATCH_CREATE_GRACE_MS + QUALITY_BATCH_LATE_SEARCH_MS);
     await sweepQualityBatches(container, { deadlineAt: Date.now() + 230_000 });
     expect(await foundOf(gameId)).toEqual([copy.id]);
-    expect(await eventOf(gameId, "found-1")).toMatchObject({ complete: true });
+    expect(await eventOf(gameId, "found-1")).toMatchObject({ batchIds: [], decision: { kind: "presumed" } });
+    expect(await eventOf(gameId, "found-2")).toMatchObject({ batchIds: [copy.id], complete: true });
     expect(await latesOf(gameId)).toMatchObject([{ batchId: copy.id, amountMicroUsd: 9_000 }]);
     expect(copy.deleted).toBe(true);
     // The presumption keeps its charge, without a conflict, and the copy is counted beside it by its own receipt: more than
@@ -1121,7 +1125,7 @@ describe("Opus scene-quality questions through Message Batches", () => {
       .toMatchObject({ state: "settled", origin: "imported", evidence: { amountMicroUsd: 9_000 } });
     // That search was complete: the round is not searched again.
     const recorded = await eventNames(gameId);
-    expect(recorded).toEqual(["claim-1", "deleted-1", "found-1", "intent", "late-1", readingName(copy.id), "submitted", "terminal"]);
+    expect(recorded).toEqual(["claim-1", "deleted-1", "found-1", "found-2", "intent", "late-1", readingName(copy.id), "terminal"]);
     vi.setSystemTime(Date.now() + 60_000);
     await sweepQualityBatches(container, { deadlineAt: Date.now() + 230_000 });
     expect(await eventNames(gameId)).toEqual(recorded);
@@ -1142,22 +1146,23 @@ describe("Opus scene-quality questions through Message Batches", () => {
     fake.end();
     await db.game.update({ where: { id: gameId }, data: { status: "GENERATION_FAILED" } });
     vi.setSystemTime(start + QUALITY_BATCH_CREATE_GRACE_MS);
-    // Codex's interleaving: two searches at once. The sweep's sees nothing; the other proves the copy and records it just
-    // after the sweep's last read of the round (its third: the step's, the search's, and the one recording what it found),
-    // then loses the decision to the sweep's presumption.
+    // Codex's interleaving: two searches at once. The sweep's sees nothing and presumes the create lost; the other proves the
+    // copy and records it right after the sweep's decision (the sweep's fourth read of the round: the step's, the search's, the
+    // one recording what it found and decided, and the one after it). Since Codex's sixteenth pass the presumption is decided in
+    // the slot its search records in, so the copy can only land beside it, after it.
     fake.find = async () => ({ proven: [], undecided: false });
     const roundId = /^aud_qb_(qb[a-f0-9]{30})_intent$/.exec((await events(gameId)).find(row => row.id.endsWith("_intent"))!.id)![1]!;
     let reads = 0;
     const container = { ...c, qualityBatch: fake, db: dbAround({ "auditLog.findMany": async (read, args) => {
       const rows = await read();
-      if ((args[0] as { where?: { entityId?: string } } | undefined)?.where?.entityId === gameId && ++reads === 3)
-        await db.auditLog.create({ data: { id: `aud_qb_${roundId}_found-1`, actorType: "SYSTEM", action: QUALITY_BATCH_ACTION, entityType: "Game",
-          entityId: gameId, metaJson: JSON.stringify({ kind: "found", n: 1, batchIds: [copy.id], complete: true, at: Date.now() }) } });
+      if ((args[0] as { where?: { entityId?: string } } | undefined)?.where?.entityId === gameId && ++reads === 4)
+        await db.auditLog.create({ data: { id: `aud_qb_${roundId}_found-2`, actorType: "SYSTEM", action: QUALITY_BATCH_ACTION, entityType: "Game",
+          entityId: gameId, metaJson: JSON.stringify({ kind: "found", n: 2, batchIds: [copy.id], complete: true, at: Date.now() }) } });
       return rows;
     } }) } as Container;
     await sweepQualityBatches(container, { deadlineAt: Date.now() + 230_000 });
-    expect(reads).toBeGreaterThanOrEqual(3);
-    expect(await eventOf(gameId, "submitted")).toMatchObject({ kind: "presumed" });
+    expect(reads).toBeGreaterThanOrEqual(4);
+    expect(await eventOf(gameId, "found-1")).toMatchObject({ batchIds: [], decision: { kind: "presumed" } });
     expect(await eventOf(gameId, "terminal")).toMatchObject({ kind: "fallback", resultType: "presumed-lost" });
     expect(await foundOf(gameId)).toEqual([copy.id]);
     // The next sweep reads the copy's bill before it deletes it, and counts it in full beside the presumption, by its own receipt.
@@ -1363,14 +1368,16 @@ describe("Opus scene-quality questions through Message Batches", () => {
     const roundId = /^aud_qb_(qb[a-f0-9]{30})_intent$/.exec((await events(gameId)).find(row => row.id.endsWith("_intent"))!.id)![1]!;
     const write = (name: string, event: unknown) => db.auditLog.create({ data: { id: `aud_qb_${roundId}_${name}`, actorType: "SYSTEM", action: QUALITY_BATCH_ACTION,
       entityType: "Game", entityId: gameId, metaJson: JSON.stringify(event) } });
-    // (The sweep's reads of the round: the step's, the search's, the one recording what it found, then the next step's.)
+    // (The sweep's reads of the round: the step's, the search's, the one recording what it found and deciding, the one after
+    // it, then the presumption step's. The other pass's copies land after the presumption, which is decided in its search's
+    // slot; its hold lands after the presumption step read the round, just before that step writes its fallback.)
     let reads = 0;
     const container = { ...c, qualityBatch: fake, db: dbAround({ "auditLog.findMany": async (read, args) => {
       const rows = await read();
       if ((args[0] as { where?: { entityId?: string } } | undefined)?.where?.entityId === gameId) {
         reads++;
-        if (reads === 3) await write("found-1", { kind: "found", n: 1, batchIds: [first.id, second.id], complete: true, at: Date.now() });
-        if (reads === 4) await write("terminal", { kind: "held", reason: "2 batches carry this one question", charge: "unknown", at: Date.now() });
+        if (reads === 4) await write("found-2", { kind: "found", n: 2, batchIds: [first.id, second.id], complete: true, at: Date.now() });
+        if (reads === 5) await write("terminal", { kind: "held", reason: "2 batches carry this one question", charge: "unknown", at: Date.now() });
       }
       return rows;
     } }) } as Container;
@@ -1378,7 +1385,7 @@ describe("Opus scene-quality questions through Message Batches", () => {
     // The presumption lost the outcome, so it moved no money: the charge is held as unknown, in full, never settled at the presumption.
     const intent = await syncKeyOf(gameId);
     expect(reads).toBeGreaterThanOrEqual(5);
-    expect(await eventOf(gameId, "submitted")).toMatchObject({ kind: "presumed" });
+    expect(await eventOf(gameId, "found-1")).toMatchObject({ batchIds: [], decision: { kind: "presumed" } });
     expect(await eventOf(gameId, "terminal")).toMatchObject({ kind: "held", charge: "unknown" });
     expect(await w.budget.readRequest(w.worldId, intent.batchKey)).toMatchObject({ state: "unknown" });
     expect((await w.budget.audit(w.worldId)).held).toBe(true);
@@ -2202,7 +2209,7 @@ describe("Opus scene-quality questions through Message Batches", () => {
     for (let i = 0; i < 3; i++) await review(container, gameId);
     expect(known.length).toBeGreaterThan(0);
     expect(known.every(set => set?.has(batch.id))).toBe(true);
-    expect(await eventOf(gameId, "submitted")).toMatchObject({ kind: "submitted", batchId: batch.id });
+    expect(await eventOf(gameId, "found-1")).toMatchObject({ batchIds: [batch.id], complete: true, decision: { kind: "submitted", claim: 1, batchId: batch.id } });
     expect(await eventOf(gameId, "terminal")).toMatchObject({ kind: "answered", batchId: batch.id, amountMicroUsd: 9_000 });
     expect(await w.budget.readRequest(w.worldId, intent.batchKey)).toMatchObject({ state: "settled", evidence: { amountMicroUsd: 9_000 } });
     // Its bill is in the record, so it goes with its game.
@@ -2366,13 +2373,16 @@ describe("Opus scene-quality questions through Message Batches", () => {
     await review(container, gameId);
     const [first] = fake.batches as [FakeBatch];
     first.status = "ended"; first.results = first.requests.map(r => fake.answer(r.params, r.customId));
-    // Codex's case: a complete search records the first batch, and its worker stops before recording it as the round's.
+    // Codex's case: a complete search recorded the first batch, and its worker stopped before recording it as the round's. (Since
+    // Codex's sixteenth pass a search decides in the slot it records in, so this is a record of the code before it: written here.)
     vi.setSystemTime(start + QUALITY_BATCH_CREATE_GRACE_MS);
+    const roundId = /^aud_qb_(qb[a-f0-9]{30})_intent$/.exec((await events(gameId)).find(row => row.id.endsWith("_intent"))!.id)![1]!;
+    await db.auditLog.create({ data: { id: `aud_qb_${roundId}_found-1`, actorType: "SYSTEM", action: QUALITY_BATCH_ACTION, entityType: "Game", entityId: gameId,
+      metaJson: JSON.stringify({ kind: "found", n: 1, batchIds: [first.id], complete: true, at: Date.now() }) } });
     const stop = async (name: string, run: () => Promise<unknown>) => {
       await db.$executeRawUnsafe(`CREATE TRIGGER stop_${name} BEFORE INSERT ON AuditLog WHEN NEW.id LIKE '%_${name}%' BEGIN SELECT RAISE(ABORT, 'the worker stopped'); END`);
       try { await expect(run()).rejects.toThrow(); } finally { await db.$executeRawUnsafe(`DROP TRIGGER stop_${name}`); }
     };
-    await stop("submitted", () => advanceQualityBatches(container, gameId, async () => {}));
     expect(await foundOf(gameId)).toEqual([first.id]);
     // A newer search proves a second copy while a third still runs, records the second's reading, and stops before recording it.
     for (const name of ["b", "c"]) fake.batches.push({ ...structuredClone(first), id: `msgbatch_unfoundsearch${name}` });
@@ -2457,7 +2467,7 @@ describe("Opus scene-quality questions through Message Batches", () => {
     vi.setSystemTime(start + QUALITY_BATCH_CREATE_GRACE_MS);
     await concurrentSearches(container, fake, gameId, [other], [1, 0]);
     // The complete search that landed second decides nothing: D, named by the other, is undecided.
-    expect(await eventNames(gameId)).not.toContain("submitted");
+    expect(await decisionsOf(gameId)).toEqual([]);
     expect(await undecidedOf(gameId)).toEqual({ pending: [other.id], cleared: [] });
     // D ends with another question's answer: the next search clears it, and only then is A the round's batch.
     other.status = "ended"; other.results = other.requests.map(r => fake.answer(r.params, r.customId));
@@ -2561,6 +2571,200 @@ describe("Opus scene-quality questions through Message Batches", () => {
     expect(await w.budget.readRequest(w.worldId, audit.unknownRequestKeys[0]!)).toMatchObject({ state: "unknown", reserveMicroUsd: intent.syncReserveMicroUsd });
     expect(await w.budget.readRequest(w.worldId, intent.batchKey)).toMatchObject({ state: "settled", evidence: { amountMicroUsd: intent.batchReserveMicroUsd } });
     expect(fake.creates).toBe(1); expect(qualityCalls(request)).toBe(0);
+  }, 300_000);
+
+  for (const moment of ["before", "during"] as const) it(`counts an answer's whole bill above a hold another writer made on its batch key ${moment === "before" ? "before the outcome was applied" : "while the outcome's application settled it"}, and leaves that hold as it was made (Codex's sixteenth pass)`, async () => {
+    const gameId = `batch-above-hold-${moment}`, w = await world(gameId); await paintFirst(gameId);
+    // Codex's numbers: the standard tier served the answer, 134,000 micro-USD against a 125,000 reservation.
+    const standard = opus(() => ({ usage: { input_tokens: 1000, output_tokens: 6500, service_tier: "standard" } }));
+    const fake = new FakeBatches(standard, `abovehold${moment}`), request = sol(gameId);
+    await review({ ...c, visualReview: { request }, qualityBatch: fake } as Container, gameId); fake.end();
+    const intent = await syncKeyOf(gameId);
+    const outcomeRecorded = async () => (await db.auditLog.count({ where: { entityId: gameId, id: { endsWith: "_terminal" } } })) > 0;
+    // Another writer holds the batch key as unknown: right before the application reads it, or right after it read it as pending.
+    let heldMeanwhile = false;
+    const container = { ...c, visualReview: { request }, qualityBatch: fake, db: dbAround({ "worldBudgetLedger.findUnique": async read => {
+      if (moment === "before" && !heldMeanwhile && await outcomeRecorded()) { heldMeanwhile = true; await w.budget.markUnknown(w.worldId, intent.batchKey, "held by another writer"); }
+      const rows = await read();
+      if (moment === "during" && !heldMeanwhile && await outcomeRecorded()) { heldMeanwhile = true; await w.budget.markUnknown(w.worldId, intent.batchKey, "held by another writer"); }
+      return rows;
+    } }) } as Container;
+    expect(await review(container, gameId)).toMatchObject({ state: "held", reason: expect.stringContaining("not settled") });
+    expect(heldMeanwhile).toBe(true);
+    expect(await eventOf(gameId, "terminal")).toMatchObject({ kind: "answered", amountMicroUsd: 134_000 });
+    // The other writer's hold stands as it was made, and the part of the bill above it is a row of its own: 134,000 in all.
+    const aboveHold = async () => (await w.budget.audit(w.worldId)).unknownRequestKeys.filter(key => key.startsWith(`${intent.batchKey}:above-hold:`));
+    expect(await w.budget.readRequest(w.worldId, intent.batchKey)).toMatchObject({ state: "unknown", reserveMicroUsd: 125_000 });
+    const [row] = await aboveHold();
+    expect(await w.budget.readRequest(w.worldId, row!)).toMatchObject({ state: "unknown", reserveMicroUsd: 9_000, unknownReasons: [expect.stringContaining("134000 micro-USD")] });
+    // Applied again, by a slice's housekeeping and by the tick, it is counted once.
+    const committed = (await w.budget.audit(w.worldId)).committedMicroUsd;
+    await advanceQualityBatches({ ...c, qualityBatch: fake } as Container, gameId, async () => {});
+    await sweepQualityBatches({ ...c, qualityBatch: fake } as Container, { deadlineAt: Date.now() + 230_000 });
+    expect(await aboveHold()).toEqual([row]);
+    expect((await w.budget.audit(w.worldId)).committedMicroUsd).toBe(committed);
+    expect(await w.budget.readRequest(w.worldId, intent.syncKey)).toBeNull();
+    expect(fake.creates).toBe(1); expect(qualityCalls(request)).toBe(0);
+  }, 300_000);
+
+  it("counts the part of a bill above another writer's hold at a slice's housekeeping when the gate could not (Codex's sixteenth pass)", async () => {
+    const gameId = "batch-above-hold-slice", w = await world(gameId); await paintFirst(gameId);
+    const standard = opus(() => ({ usage: { input_tokens: 1000, output_tokens: 6500, service_tier: "standard" } }));
+    const fake = new FakeBatches(standard, "aboveholdslice"), request = sol(gameId);
+    await review({ ...c, visualReview: { request }, qualityBatch: fake } as Container, gameId); fake.end();
+    const intent = await syncKeyOf(gameId);
+    const outcomeRecorded = async () => (await db.auditLog.count({ where: { entityId: gameId, id: { endsWith: "_terminal" } } })) > 0;
+    // Another writer holds the key as unknown once the answer is recorded, and the ledger refuses the row above it once.
+    let held = false, refused = false;
+    const container = { ...c, visualReview: { request }, qualityBatch: fake, db: dbAround({
+      "worldBudgetLedger.findUnique": async read => {
+        if (!held && await outcomeRecorded()) { held = true; await w.budget.markUnknown(w.worldId, intent.batchKey, "held by another writer"); }
+        return read();
+      },
+      "worldBudgetLedger.updateMany": async (write, args) => {
+        if (!refused && (args[0] as { data: { snapshotJson?: string } }).data.snapshotJson?.includes(":above-hold:")) { refused = true; throw Error("the ledger refuses this row"); }
+        return write();
+      } }) } as Container;
+    await expect(review(container, gameId)).rejects.toThrow("the ledger refuses this row");
+    expect([held, refused]).toEqual([true, true]);
+    // The next slice's housekeeping applies the record to the key it reads as unknown, and counts the part above the hold.
+    await advanceQualityBatches({ ...c, qualityBatch: fake } as Container, gameId, async () => {});
+    const rows = (await w.budget.audit(w.worldId)).unknownRequestKeys.filter(key => key.startsWith(`${intent.batchKey}:above-hold:`));
+    expect(rows).toHaveLength(1);
+    expect(await w.budget.readRequest(w.worldId, rows[0]!)).toMatchObject({ state: "unknown", reserveMicroUsd: 9_000 });
+    expect(await w.budget.readRequest(w.worldId, intent.batchKey)).toMatchObject({ state: "unknown", reserveMicroUsd: 125_000 });
+    expect(fake.creates).toBe(1); expect(qualityCalls(request)).toBe(0);
+  }, 300_000);
+
+  it("applies a hold the fourteenth round recorded over an undeliverable priced answer at the bill its first reading states (Codex's sixteenth pass)", async () => {
+    const gameId = "batch-legacy-known", w = await world(gameId); await paintFirst(gameId);
+    const standard = opus(() => ({ usage: { input_tokens: 1000, output_tokens: 6500, service_tier: "standard" } }));
+    const fake = new FakeBatches(standard, "legacyknown"), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    await review(container, gameId); fake.end();
+    const intent = await syncKeyOf(gameId), [own] = fake.batches as [FakeBatch], message = (own.results![0] as { message: Record<string, unknown> }).message;
+    const roundId = /^aud_qb_(qb[a-f0-9]{30})_intent$/.exec((await events(gameId)).find(row => row.id.endsWith("_intent"))!.id)![1]!;
+    // The record as `37149e36` wrote it: the first reading, priced at the standard tier, held with its charge unknown.
+    const results = [{ type: "succeeded", errorType: null, requestId: message.id, model: message.model, usage: message.usage,
+      answerSha256: createHash("sha256").update(canonical(message)).digest("hex") }];
+    for (const [name, event] of [[readingName(own.id), { kind: "reading", batchId: own.id, results, at: Date.now() }],
+      ["terminal", { kind: "held", charge: "unknown", batchId: own.id, results, at: Date.now(),
+        reason: `the provider returned other results for ${own.id} on another read, and the answer of its first reading cannot be delivered from them` }]] as const)
+      await db.auditLog.create({ data: { id: `aud_qb_${roundId}_${name}`, actorType: "SYSTEM", action: QUALITY_BATCH_ACTION, entityType: "Game", entityId: gameId,
+        metaJson: JSON.stringify(event) } });
+    await advanceQualityBatches(container, gameId, async () => {});
+    // Its bill is counted in full (an overrun, which holds the world), not left at the reservation.
+    expect(await w.budget.readRequest(w.worldId, intent.batchKey)).toMatchObject({ state: "settled", evidence: { amountMicroUsd: 134_000 } });
+    expect(await w.budget.audit(w.worldId)).toMatchObject({ held: true, overrunRequestKeys: [intent.batchKey] });
+    expect(await review(container, gameId)).toMatchObject({ state: "held" });
+    expect(fake.creates).toBe(1); expect(qualityCalls(request)).toBe(0);
+  }, 300_000);
+
+  it("decides the round's batch in the slot its search records in: a batch a concurrent search recorded first keeps the decision back (Codex's sixteenth pass)", async () => {
+    const gameId = "batch-decision-slot", w = await world(gameId); await paintFirst(gameId);
+    const fake = new FakeBatches(opus(), "decisionslot"), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    fake.createPlan = ["lost-after-create"];
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.now();
+    await review(container, gameId);
+    // The lost create made A, whose result for the question is canceled; C, a copy of it, still runs.
+    const [own] = fake.batches as [FakeBatch];
+    fake.batches.push({ ...structuredClone(own), id: "msgbatch_decisionslotc" });
+    const [, copy] = fake.batches as [FakeBatch, FakeBatch];
+    own.status = "ended"; own.results = own.requests.map(r => ({ customId: r.customId, type: "canceled" as const }));
+    // S1 is shown no C and completes with A; it reads the round to record what it found, and waits there while S2, which
+    // sees C running, records it. (S1's reads after its search: the search's, its reading's, and the one it records from.)
+    let searched = false, reads = 0, release!: () => void, waiting = false;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const s1: QualityBatchTransport = { namespace: fake.namespace, create: fake.create.bind(fake), status: fake.status.bind(fake), results: fake.results.bind(fake),
+      cancel: fake.cancel.bind(fake), remove: fake.remove.bind(fake), find: async (...args: Parameters<FakeBatches["find"]>) => {
+        copy.deleted = true;
+        try { return await fake.find(...args); } finally { copy.deleted = false; searched = true; }
+      } };
+    const s1db = dbAround({ "auditLog.findMany": async (read, args) => {
+      const rows = await read();
+      if (searched && (args[0] as { where?: { entityId?: string } } | undefined)?.where?.entityId === gameId && ++reads === 3) { waiting = true; await held; }
+      return rows;
+    } });
+    vi.setSystemTime(start + QUALITY_BATCH_CREATE_GRACE_MS);
+    const first = advanceQualityBatches({ ...container, db: s1db, qualityBatch: s1 } as Container, gameId, async () => {});
+    while (!waiting) await new Promise(resolve => setTimeout(resolve, 5));
+    await advanceQualityBatches(container, gameId, async () => {});
+    release(); await first;
+    // S1's record lost its slot to S2's, and it decided again from S2's: C is pending, so nothing is decided, nothing settled.
+    expect(await undecidedOf(gameId)).toEqual({ pending: [copy.id], cleared: [] });
+    expect(await decisionsOf(gameId)).toEqual([]);
+    expect(await w.budget.readRequest(w.worldId, (await syncKeyOf(gameId)).batchKey)).toMatchObject({ state: "pending" });
+    expect(await review(container, gameId)).toMatchObject({ state: "pending" });
+    // C ends carrying the question: two copies hold the round, and nothing is asked synchronously.
+    copy.status = "ended"; copy.results = copy.requests.map(r => fake.answer(r.params, r.customId));
+    await advanceQualityBatches(container, gameId, async () => {});
+    expect(await eventOf(gameId, "terminal")).toMatchObject({ kind: "held", reason: expect.stringContaining("2 batches carry") });
+    expect(fake.creates).toBe(1); expect(qualityCalls(request)).toBe(0);
+  }, 300_000);
+
+  it("decides nothing from a search cut short, though it proved a batch: what it did not reach could carry the question (Codex's sixteenth pass)", async () => {
+    const gameId = "batch-cut-short", w = await world(gameId); await paintFirst(gameId);
+    const fake = new FakeBatches(opus(), "cutshort"), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    fake.createPlan = ["lost-after-create"];
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.now();
+    await review(container, gameId);
+    // The lost create made A, whose result for the question is canceled (documented unbilled).
+    const [own] = fake.batches as [FakeBatch];
+    own.status = "ended"; own.results = own.requests.map(r => ({ customId: r.customId, type: "canceled" as const }));
+    // The search proves A, and stops short of the intent (too many newer batches, or too little time): it names nothing else.
+    const find = fake.find.bind(fake);
+    fake.find = async (...args: Parameters<FakeBatches["find"]>) => ({ ...(await find(...args)), undecided: true, truncated: true });
+    vi.setSystemTime(start + QUALITY_BATCH_CREATE_GRACE_MS);
+    expect(await review(container, gameId)).toMatchObject({ state: "pending", reason: expect.stringContaining("did not reach back") });
+    // A is kept, but nothing is decided, released or asked.
+    const intent = await syncKeyOf(gameId);
+    expect(await foundOf(gameId)).toEqual([own.id]);
+    expect(await decisionsOf(gameId)).toEqual([]);
+    expect(await w.budget.readRequest(w.worldId, intent.batchKey)).toMatchObject({ state: "pending" });
+    expect(qualityCalls(request)).toBe(0);
+    // The next search reaches the intent: A is the round's batch, its canceled result falls back at zero, and only then is
+    // the question asked synchronously.
+    fake.find = find;
+    await review(container, gameId);
+    expect(await eventOf(gameId, "found-2")).toMatchObject({ complete: true, decision: { kind: "submitted", batchId: own.id } });
+    expect(await eventOf(gameId, "terminal")).toMatchObject({ kind: "fallback", batchId: own.id, resultType: "canceled" });
+    expect(await w.budget.readRequest(w.worldId, intent.batchKey)).toMatchObject({ state: "settled", evidence: { amountMicroUsd: 0 } });
+    expect(qualityCalls(request)).toBe(1);
+    expect(fake.creates).toBe(1);
+  }, 300_000);
+
+  it("asks the question synchronously only once a batch named after the round's batch was decided is itself decided (Codex's sixteenth pass)", async () => {
+    const gameId = "batch-fallback-waits", w = await world(gameId); await paintFirst(gameId);
+    const fake = new FakeBatches(opus(), "fallbackwaits"), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    fake.createPlan = ["lost-after-create"];
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.now();
+    await review(container, gameId);
+    // The lost create made A, whose result for the question is canceled; C, a copy of it, still runs.
+    const [own] = fake.batches as [FakeBatch];
+    fake.batches.push({ ...structuredClone(own), id: "msgbatch_fallbackwaitsc" });
+    const [, copy] = fake.batches as [FakeBatch, FakeBatch];
+    own.status = "ended"; own.results = own.requests.map(r => ({ customId: r.customId, type: "canceled" as const }));
+    // Codex's schedule as it can still happen: S1, shown no C, decides A and falls back; then S2, whose search started before
+    // that decision, records C running.
+    vi.setSystemTime(start + QUALITY_BATCH_CREATE_GRACE_MS);
+    await concurrentSearches(container, fake, gameId, [copy], [0, 1]);
+    expect(await eventOf(gameId, "terminal")).toMatchObject({ kind: "fallback", batchId: own.id, resultType: "canceled" });
+    expect(await undecidedOf(gameId)).toEqual({ pending: [copy.id], cleared: [] });
+    // A's own charge is zero, as documented; but the question waits for C before it is asked synchronously.
+    const intent = await syncKeyOf(gameId);
+    expect(await w.budget.readRequest(w.worldId, intent.batchKey)).toMatchObject({ state: "settled", evidence: { amountMicroUsd: 0 } });
+    expect(await review(container, gameId)).toMatchObject({ state: "pending", reason: expect.stringContaining("asked synchronously once that batch is decided") });
+    expect(qualityCalls(request)).toBe(0);
+    // C ends carrying the question: the round's housekeeping finds it and counts its bill; only then is the question asked.
+    copy.status = "ended"; copy.results = copy.requests.map(r => fake.answer(r.params, r.customId));
+    await advanceQualityBatches(container, gameId, async () => {});
+    expect(await w.budget.readRequest(w.worldId, `@import/${JSON.stringify([fake.namespace, receiptOf(copy.results)])}`))
+      .toMatchObject({ state: "settled", evidence: { amountMicroUsd: 9_000 } });
+    await review(container, gameId);
+    expect(qualityCalls(request)).toBe(1);
+    expect(fake.creates).toBe(1);
   }, 300_000);
 
   it("counts at once a reread a finished round's search records, before the slice goes on to anything else (rule 6)", async () => {
@@ -2857,6 +3061,12 @@ async function concurrentSearches(container: Container, fake: FakeBatches, gameI
   const passes = [pass(0), pass(1)];
   while (!landing[0] || !landing[1]) await new Promise(resolve => setTimeout(resolve, 5));
   for (const k of order) { landing[k]!(); await passes[k]; }
+}
+
+/** Every record of what the round's batch is: a `submitted` or `presumed` event, or a search's decision. */
+async function decisionsOf(gameId: string) {
+  return (await events(gameId)).map(row => JSON.parse(row.metaJson!) as { kind: string; decision?: unknown })
+    .filter(event => event.kind === "submitted" || event.kind === "presumed" || event.decision);
 }
 
 /** Every batch the round's searches could not decide, and every one they cleared, in the order recorded. */

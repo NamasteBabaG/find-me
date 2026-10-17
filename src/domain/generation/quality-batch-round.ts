@@ -27,7 +27,10 @@
  *    that could carry the question undecided, is the round's batch. None, after a complete
  *    search, presumes the create lost: its charge is counted at the most it
  *    could be and is never released, and the question is asked synchronously.
- *    The batch and the presumption are one decision, made once. Two copies
+ *    The batch and the presumption are one decision, made once, by the search
+ *    that decides, in the slot it records what it found in: no record a
+ *    concurrent search made first goes unseen. A question falls back to its
+ *    synchronous price only once no batch that could carry it is pending. Two copies
  *    (which only the provider could make) hold the round, unless its create was
  *    already presumed lost.
  * 2. A batch still running at the round's deadline is cancelled once (and again
@@ -113,9 +116,11 @@ export type QualityBatchEvent =
   /** Batches a search proved to carry the question that were not yet recorded (possibly none);
    * `complete`: that search left no batch undecided; `at`: when it started. `pending`: batches it could not decide
    * (still running, or unreadable) that were not pending yet, by their ids; `cleared`: pending batches it decided carry
-   * no copy (read without the question, or missing from a listing of the whole window). */
+   * no copy (read without the question, or missing from a listing of the whole window). `decision`: what the round's
+   * batch is, decided by this search with what it found, in its own slot: the one batch (`submitted`), or none
+   * (`presumed`), for the create under claim `claim`. Read as the `submitted` or `presumed` it decides. */
   | { readonly kind: "found"; readonly n: number; readonly batchIds: readonly string[]; readonly complete: boolean; readonly at: number;
-      readonly pending?: readonly string[]; readonly cleared?: readonly string[] }
+      readonly pending?: readonly string[]; readonly cleared?: readonly string[]; readonly decision?: QualityBatchDecision }
   | { readonly kind: "cancel"; readonly at: number }
   /** The round's batch answered: the charge `evidence` settles the batch key. */
   | { readonly kind: "answered"; readonly batchId: string; readonly amountMicroUsd: number; readonly servedTier: string; readonly evidence: WorldChargeEvidence; readonly at: number }
@@ -140,6 +145,8 @@ export type QualityBatchEvent =
   /** Batches of the round deleted at the provider in one pass. */
   | { readonly kind: "deleted"; readonly n: number; readonly batchIds: readonly string[]; readonly at: number };
 export type QualityBatchTerminal = Extract<QualityBatchEvent, { kind: "answered" | "fallback" | "held" }>;
+/** What a deciding search records the round's batch to be (rule 1). */
+export type QualityBatchDecision = { readonly kind: "submitted"; readonly claim: number; readonly batchId: string } | { readonly kind: "presumed"; readonly claim: number };
 
 export type QualityBatchRound = {
   readonly intent: QualityBatchIntent;
@@ -209,8 +216,12 @@ export function qualityBatchRoundOf(events: readonly QualityBatchEvent[]): Quali
   const intent = (intents[0] as Extract<QualityBatchEvent, { kind: "intent" }>).intent;
   const of = <K extends QualityBatchEvent["kind"]>(kind: K) => events.filter((e): e is Extract<QualityBatchEvent, { kind: K }> => e.kind === kind);
   const claims = of("claim").sort((a, b) => a.n - b.n), refusals = of("refused").sort((a, b) => a.n - b.n);
-  const submitted = of("submitted"), presumed = of("presumed");
   const finds = of("found").sort((a, b) => a.n - b.n), deletions = of("deleted").sort((a, b) => a.n - b.n);
+  // Rule 1: a search that decides the round's batch records its decision with what it found, in its own slot, so no record
+  // a concurrent search made first goes unseen. It reads as the `submitted` or `presumed` it decides.
+  const decisions = finds.flatMap(f => f.decision ? [{ ...f.decision, at: f.at }] : []);
+  const submitted = [...of("submitted"), ...decisions.flatMap(d => d.kind === "submitted" ? [{ kind: d.kind, n: d.claim, batchId: d.batchId, at: d.at }] : [])];
+  const presumed = [...of("presumed"), ...decisions.flatMap(d => d.kind === "presumed" ? [{ kind: d.kind, n: d.claim, at: d.at }] : [])];
   const terminals = events.filter((e): e is QualityBatchTerminal => e.kind === "answered" || e.kind === "fallback" || e.kind === "held");
   if (!numbered(claims)) throw Error("QUALITY_BATCH: claims are numbered from one without gaps");
   if ([...refusals, ...submitted, ...presumed].some(e => !claims.some(c => c.n === e.n))) throw Error("QUALITY_BATCH: an outcome names a claim that was never made");
@@ -227,6 +238,11 @@ export function qualityBatchRoundOf(events: readonly QualityBatchEvent[]): Quali
     || f.pending !== undefined && !ids(f.pending, false) || f.cleared !== undefined && !ids(f.cleared, false)))
     throw Error("QUALITY_BATCH: searches are numbered from one and name their batches once");
   const found = [...new Set(finds.flatMap(f => f.batchIds))];
+  // Only a complete search decides, and only a batch the round found or read as its own.
+  const decides = (decision: QualityBatchDecision, complete: boolean) => complete && Number.isSafeInteger(decision.claim)
+    && (decision.kind === "presumed" || decision.kind === "submitted" && (found.includes(decision.batchId) || of("reading").some(r => r.batchId === decision.batchId)));
+  if (finds.some(f => f.decision && !decides(f.decision, f.complete)))
+    throw Error("QUALITY_BATCH: a search decides only when it is complete, and only a batch the round found");
   // Rule 6: a batch is read once for good; a later read that returned anything else is a charge of its own, never a decision.
   const readings: Record<string, readonly QualityBatchReceipt[]> = Object.create(null) as Record<string, readonly QualityBatchReceipt[]>;
   for (const reading of of("reading")) {

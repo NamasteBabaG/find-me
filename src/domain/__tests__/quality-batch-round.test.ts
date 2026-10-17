@@ -351,6 +351,31 @@ describe("a quality question's batch round, pure", () => {
     expect(() => round(...sent, known({ batchId: "a", results: [], evidence: { ...bill, amountMicroUsd: -1 } }))).toThrow("a hold states its charge");
   });
 
+  it("reads a search's decision as the round's batch or the presumption, one decision in either form (Codex's sixteenth pass)", () => {
+    const claimed: QualityBatchEvent = { kind: "claim", n: 1, at: T0 };
+    const deciding = (n: number, batchIds: string[], decision: unknown, complete = true): QualityBatchEvent =>
+      ({ kind: "found", n, batchIds, complete, at: T0 + n, decision }) as QualityBatchEvent;
+    // The search that found one batch decides it as the round's, in its own slot; one that found none presumes the create lost.
+    const submitted = round(claimed, deciding(1, ["a"], { kind: "submitted", claim: 1, batchId: "a" }));
+    expect(submitted.submitted).toEqual({ kind: "submitted", n: 1, batchId: "a", at: T0 + 1 });
+    expect(nextQualityBatchStep(submitted, T0 + HOUR)).toEqual({ step: "poll", batchId: "a", cancelDue: false });
+    const presumed = round(claimed, deciding(1, [], { kind: "presumed", claim: 1 }));
+    expect(presumed.presumed).toEqual({ kind: "presumed", n: 1, at: T0 + 1 });
+    expect(nextQualityBatchStep(presumed, T0 + HOUR)).toMatchObject({ step: "presumed" });
+    // A presumption decided so is searched for once more a day after it, as before.
+    const fellBack = round(claimed, deciding(1, [], { kind: "presumed", claim: 1 }), { kind: "fallback", batchId: null, resultType: "presumed-lost", errorType: null, at: T0 + 2 });
+    expect([qualityBatchSearching(fellBack, T0 + 1 + QUALITY_BATCH_LATE_SEARCH_MS - 1), qualityBatchSearching(fellBack, T0 + 1 + QUALITY_BATCH_LATE_SEARCH_MS)]).toEqual([false, true]);
+    // A batch read and recorded before its search's record counts as found by it.
+    expect(round(claimed, { kind: "reading", batchId: "b", results: [], at: T0 }, deciding(1, [], { kind: "submitted", claim: 1, batchId: "b" })).submitted?.batchId).toBe("b");
+    // One decision per round, in either form; only a complete search decides, only a batch the round found or read, and only
+    // for a claim that was made.
+    expect(() => round(claimed, deciding(1, ["a"], { kind: "submitted", claim: 1, batchId: "a" }), { kind: "submitted", n: 1, batchId: "a", at: T0 })).toThrow("each outcome once");
+    expect(() => round(claimed, deciding(1, ["a"], { kind: "submitted", claim: 1, batchId: "a" }), deciding(2, [], { kind: "presumed", claim: 1 }))).toThrow("each outcome once");
+    expect(() => round(claimed, deciding(1, ["a"], { kind: "submitted", claim: 1, batchId: "a" }, false))).toThrow("a search decides only");
+    expect(() => round(claimed, deciding(1, ["a"], { kind: "submitted", claim: 1, batchId: "b" }))).toThrow("a search decides only");
+    expect(() => round(claimed, deciding(1, ["a"], { kind: "submitted", claim: 2, batchId: "a" }))).toThrow("names a claim that was never made");
+  });
+
   it("takes a copy's bill from its recorded reading, and names a reading after its batch in lower-case letters and digits", () => {
     const receipt = { type: "succeeded", errorType: null, requestId: "msg_1", model: "claude-opus-5-5", usage: { input_tokens: 2000, output_tokens: 500, service_tier: "batch" } };
     const copy = [...presumedLost, { kind: "found", n: 1, batchIds: ["c"], complete: true, at: T0 + HOUR } as QualityBatchEvent,
