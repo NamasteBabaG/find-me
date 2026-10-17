@@ -21,8 +21,10 @@
  *    provider, so at most one copy of its question can exist. After the grace,
  *    only a search of the batches created from the intent to the grace after
  *    the last claim decides. Every batch it proves to carry the question is
- *    recorded at once, for good. One copy, with no other batch that could carry
- *    the question still running, is the round's batch. None, after a complete
+ *    recorded at once, for good, and so is every batch it could not decide (one
+ *    still running, or one whose results it could not read), by its id, until a
+ *    later search decides it (`pending`, `cleared`). One copy, with no other batch
+ *    that could carry the question undecided, is the round's batch. None, after a complete
  *    search, presumes the create lost: its charge is counted at the most it
  *    could be and is never released, and the question is asked synchronously.
  *    The batch and the presumption are one decision, made once. Two copies
@@ -43,9 +45,10 @@
  *    other copy's bill is a charge of its own in the ledger, in full; one that
  *    cannot be priced is held as unknown, which holds the world. A held round keeps its copies
  *    for the person reconciling it, unless its game was deleted: the hold is the
- *    ledger's to keep, the imagery is the child's. A round held over copies while
- *    another could still be running keeps searching until none could be, so every
- *    copy is found; a presumed-lost round searches once more a day later.
+ *    ledger's to keep, the imagery is the child's. A finished round keeps searching
+ *    while a batch a search could not decide is pending or a batch it read is
+ *    unrecorded, and a round held after an unfinished search until a complete one,
+ *    so every copy is found; a presumed-lost round searches once more a day later.
  * 6. A batch's results are recorded the first time they are read (`reading`),
  *    by a search that proved the batch or by any later read, before anything is
  *    decided from them, and the batch is the round's from then on, found or not.
@@ -56,8 +59,9 @@
  *    that returns another bill (`reread`, a provider fault, never decided from)
  *    before the reread; a count refused is recorded all the same, and raised. An
  *    answer whose first reading is on record but whose content no pass kept cannot
- *    be delivered once it is read otherwise: its round is held for a person. A
- *    copy whose bill is the outcome's own is the outcome's bill.
+ *    be delivered once it is read otherwise: its round is held for a person, at the
+ *    bill that reading states (unknown only when it cannot be priced). A copy whose
+ *    bill is the outcome's own is the outcome's bill.
  */
 import type { WorldChargeEvidence } from "./world-budget";
 
@@ -107,8 +111,11 @@ export type QualityBatchEvent =
    * It takes `submitted`'s name: what the round's batch is gets decided once. */
   | { readonly kind: "presumed"; readonly n: number; readonly at: number }
   /** Batches a search proved to carry the question that were not yet recorded (possibly none);
-   * `complete`: that search left no batch undecided; `at`: when it started. */
-  | { readonly kind: "found"; readonly n: number; readonly batchIds: readonly string[]; readonly complete: boolean; readonly at: number }
+   * `complete`: that search left no batch undecided; `at`: when it started. `pending`: batches it could not decide
+   * (still running, or unreadable) that were not pending yet, by their ids; `cleared`: pending batches it decided carry
+   * no copy (read without the question, or missing from a listing of the whole window). */
+  | { readonly kind: "found"; readonly n: number; readonly batchIds: readonly string[]; readonly complete: boolean; readonly at: number;
+      readonly pending?: readonly string[]; readonly cleared?: readonly string[] }
   | { readonly kind: "cancel"; readonly at: number }
   /** The round's batch answered: the charge `evidence` settles the batch key. */
   | { readonly kind: "answered"; readonly batchId: string; readonly amountMicroUsd: number; readonly servedTier: string; readonly evidence: WorldChargeEvidence; readonly at: number }
@@ -116,10 +123,11 @@ export type QualityBatchEvent =
    * created (`never-created`, zero), or with the create presumed lost (`presumed-lost`, the batch reservation). */
   | { readonly kind: "fallback"; readonly batchId: string | null; readonly resultType: string; readonly errorType: string | null; readonly at: number }
   /** Held for a person. `charge`: the batch key settled at zero (a result documented as unbilled, or a create
-   * refused outright: `resultType`, `errorType`), or held as unknown. `batchId` and `results`: the round's batch,
-   * when the hold came from reading it. */
-  | { readonly kind: "held"; readonly reason: string; readonly charge: "zero" | "unknown"; readonly batchId?: string; readonly resultType?: string;
-      readonly errorType?: string | null; readonly results?: readonly QualityBatchReceipt[]; readonly at: number }
+   * refused outright: `resultType`, `errorType`), settled at the bill its reading states (`known`, `evidence`: an
+   * answer that cannot be delivered), or held as unknown. `batchId` and `results`: the round's batch, when the
+   * hold came from reading it. */
+  | { readonly kind: "held"; readonly reason: string; readonly charge: "zero" | "unknown" | "known"; readonly batchId?: string; readonly resultType?: string;
+      readonly errorType?: string | null; readonly evidence?: WorldChargeEvidence; readonly results?: readonly QualityBatchReceipt[]; readonly at: number }
   /** Another copy of a finished round, read before it may be deleted: its priced charge, 0 when the provider
    * documents it as unbilled, null when it cannot be priced; and what the provider returned. */
   | { readonly kind: "late"; readonly n: number; readonly batchId: string; readonly amountMicroUsd: number | null; readonly results: readonly QualityBatchReceipt[]; readonly at: number }
@@ -145,7 +153,7 @@ export type QualityBatchRound = {
   readonly found: readonly string[];
   /** How many `found` events the round has: the next one is numbered after them. */
   readonly searches: number;
-  /** Whether the latest recorded search left no batch undecided, with no batch read that no search recorded. */
+  /** Whether the latest recorded search left no batch undecided, with no batch read that no search recorded and none pending. */
   readonly searchComplete: boolean;
   /** When the latest complete search started, if any. */
   readonly completeSearchAt: number | null;
@@ -159,6 +167,8 @@ export type QualityBatchRound = {
   /** Batches read by a search that stopped before recording them (not found, not the recorded one): that search may have
    * been undecided, so the round's search counts as unfinished until a later one records them. */
   readonly unfound: readonly string[];
+  /** Batches a search could not decide (rule 1), kept by their ids until a later search decides them: none of the round's. */
+  readonly pending: readonly string[];
   /** Those deleted at the provider, and how many `deleted` events recorded them. */
   readonly deletedIds: readonly string[];
   readonly deletions: number;
@@ -213,7 +223,8 @@ export function qualityBatchRoundOf(events: readonly QualityBatchEvent[]): Quali
   const closing = claims.filter(c => c.closing);
   if (closing.some(c => c !== claims.at(-1) || refusals.some(r => r.n === c.n) || decided?.n === c.n))
     throw Error("QUALITY_BATCH: only the last claim may close the round, and nothing is sent under it");
-  if (!numbered(finds) || finds.some(f => !ids(f.batchIds, true) || typeof f.complete !== "boolean"))
+  if (!numbered(finds) || finds.some(f => !ids(f.batchIds, true) || typeof f.complete !== "boolean"
+    || f.pending !== undefined && !ids(f.pending, false) || f.cleared !== undefined && !ids(f.cleared, false)))
     throw Error("QUALITY_BATCH: searches are numbered from one and name their batches once");
   const found = [...new Set(finds.flatMap(f => f.batchIds))];
   // Rule 6: a batch is read once for good; a later read that returned anything else is a charge of its own, never a decision.
@@ -234,7 +245,9 @@ export function qualityBatchRoundOf(events: readonly QualityBatchEvent[]): Quali
     throw Error("QUALITY_BATCH: a round falls back as presumed lost exactly when it presumed its create lost");
   if (terminal?.kind === "answered" && terminal.evidence?.amountMicroUsd !== terminal.amountMicroUsd)
     throw Error("QUALITY_BATCH: an answer settles the charge it states");
-  if (terminal?.kind === "held" && (terminal.charge !== "zero" && terminal.charge !== "unknown" || terminal.charge === "zero" && typeof terminal.resultType !== "string"
+  if (terminal?.kind === "held" && (!["zero", "unknown", "known"].includes(terminal.charge) || terminal.charge === "zero" && typeof terminal.resultType !== "string"
+    || terminal.charge === "known" && (terminal.batchId === undefined || !Array.isArray(terminal.results)
+      || !Number.isSafeInteger(terminal.evidence?.amountMicroUsd) || terminal.evidence!.amountMicroUsd < 0)
     || terminal.batchId !== undefined && terminal.batchId !== submitted[0]?.batchId))
     throw Error("QUALITY_BATCH: a hold states its charge, and reads only the round's batch");
   // Unsent means no create reached the provider, so no search ever ran: a round that found or read a copy is never closed unsent.
@@ -263,9 +276,15 @@ export function qualityBatchRoundOf(events: readonly QualityBatchEvent[]): Quali
   const completeAt = finds.filter(f => f.complete).map(f => f.at);
   // A batch read but never recorded was read by a search that stopped before recording what it found, maybe undecided.
   const unfound = read.filter(id => !found.includes(id) && id !== submitted[0]?.batchId);
+  // Rule 1: a batch a search could not decide stays pending, in the order the searches were recorded, until one decides it:
+  // proves it (it is then the round's), or clears it. Whatever order concurrent searches land in, none forgets it.
+  const undecided = new Set<string>();
+  for (const f of finds) { for (const id of f.pending ?? []) undecided.add(id); for (const id of f.cleared ?? []) undecided.delete(id); }
+  const pending = [...undecided].filter(id => !batchIds.includes(id));
   return { intent, claims, refusals, submitted: submitted[0] ?? null, presumed: presumed[0] ?? null, cancelAt: cancel?.at ?? null, terminal, found,
-    searches: finds.length, searchComplete: (finds.at(-1)?.complete ?? false) && !unfound.length, completeSearchAt: completeAt.length ? Math.max(...completeAt) : null,
-    lates, lateIds, billedIds, batchIds, unfound, deletedIds: [...new Set(deletions.flatMap(d => d.batchIds))], deletions: deletions.length, readings, rereads };
+    searches: finds.length, searchComplete: (finds.at(-1)?.complete ?? false) && !unfound.length && !pending.length,
+    completeSearchAt: completeAt.length ? Math.max(...completeAt) : null,
+    lates, lateIds, billedIds, batchIds, unfound, pending, deletedIds: [...new Set(deletions.flatMap(d => d.batchIds))], deletions: deletions.length, readings, rereads };
 }
 
 export type QualityBatchStep =
@@ -315,15 +334,20 @@ export const qualityBatchPresumedLost = (round: QualityBatchRound) =>
   !!round.presumed && round.terminal?.kind === "fallback" && round.terminal.resultType === "presumed-lost";
 
 /**
- * Whether a finished round still searches for copies of its question (rule 5): a held round over copies
- * while another could still be running; and a presumed-lost round once, a day after the presumption,
- * when any batch its create made has ended and is listed.
+ * Whether a finished round still searches for copies of its question (rule 5): any finished round while a batch a
+ * search could not decide is pending, or one a search read is unrecorded; a held round while its latest search was
+ * unfinished; and a presumed-lost round once, a day after the presumption, when any batch its create made has ended
+ * and is listed.
  */
 export function qualityBatchSearching(round: QualityBatchRound, now: number): boolean {
-  // A hold made while a search was unfinished (over two copies, or as the twelfth round's provider fault, or with a batch a
-  // search read and never recorded) searches on until a complete search; a hold no search came before (a refused create, an
-  // answer that could not be priced or delivered) has nothing to find.
-  if (round.terminal?.kind === "held") return (round.searches > 0 || round.unfound.length > 0) && !round.searchComplete;
+  if (!round.terminal) return false;
+  // What a search saw and could not decide is searched for until it is decided, whatever the round's outcome: a batch it
+  // could not decide, or one it read and stopped before recording (that search may have been undecided too).
+  if (round.pending.length > 0 || round.unfound.length > 0) return true;
+  // A hold made while a search was unfinished (over two copies, or as the twelfth round's provider fault) searches on until a
+  // complete search; a hold no search came before (a refused create, an answer that could not be priced or delivered) has
+  // nothing to find.
+  if (round.terminal.kind === "held") return round.searches > 0 && !round.searchComplete;
   if (!qualityBatchPresumedLost(round)) return false;
   const due = round.presumed!.at + QUALITY_BATCH_LATE_SEARCH_MS;
   return now >= due && !(round.completeSearchAt !== null && round.completeSearchAt >= due);

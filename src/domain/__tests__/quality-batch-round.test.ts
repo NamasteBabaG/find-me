@@ -100,6 +100,8 @@ describe("a quality question's batch round, pure", () => {
       answered("msgbatch_1", 1), { kind: "deleted", n: 2, batchIds: ["msgbatch_1"], at: T0 }]],
     ["a search naming one batch twice", [{ kind: "claim", n: 1, at: T0 }, { kind: "found", n: 1, batchIds: ["msgbatch_1", "msgbatch_1"], complete: true, at: T0 }]],
     ["searches with a gap", [{ kind: "claim", n: 1, at: T0 }, { kind: "found", n: 2, batchIds: ["msgbatch_1"], complete: true, at: T0 }]],
+    ["a search naming a batch it could not decide twice", [{ kind: "claim", n: 1, at: T0 }, { kind: "found", n: 1, batchIds: [], complete: false, at: T0, pending: ["c", "c"] }]],
+    ["a search clearing no batch by name", [{ kind: "claim", n: 1, at: T0 }, { kind: "found", n: 1, batchIds: [], complete: true, at: T0, cleared: [] }]],
     ["two copies found and then never created", [{ kind: "claim", n: 1, at: T0 }, { kind: "found", n: 1, batchIds: ["msgbatch_1", "msgbatch_2"], complete: true, at: T0 },
       { kind: "fallback", batchId: null, resultType: "never-created", errorType: null, at: T0 }]],
     ["a claim after a create that may have reached the provider", [{ kind: "claim", n: 1, at: T0 }, { kind: "claim", n: 2, at: T0 }]],
@@ -302,6 +304,51 @@ describe("a quality question's batch round, pure", () => {
     // The round's own batch, read by its poll, is no unfinished search; a hold no search came before has nothing to find.
     const own = round(claimed, { kind: "submitted", n: 1, batchId: "a", at: T0 }, read("a"), heldUnknown("x", "a"));
     expect([own.unfound, qualityBatchSearching(own, T0)]).toEqual([[], false]);
+  });
+
+  it("keeps a batch a search could not decide until a later search decides it, whatever order searches land in (Codex's fifteenth pass)", () => {
+    const claimed: QualityBatchEvent = { kind: "claim", n: 1, at: T0 };
+    const found = (n: number, batchIds: string[], complete: boolean, more: { pending?: string[]; cleared?: string[] } = {}): QualityBatchEvent =>
+      ({ kind: "found", n, batchIds, complete, at: T0, ...more });
+    // Codex's case: a complete search records A and B and the round is held over them; a concurrent search, landing after
+    // it, saw C still running. The hold searches on.
+    const completeFirst = round(claimed, found(1, ["a", "b"], true), heldUnknown("two"), found(2, [], false, { pending: ["c"] }));
+    expect([completeFirst.pending, completeFirst.searchComplete, qualityBatchSearching(completeFirst, T0)]).toEqual([["c"], false, true]);
+    // The other order: the search that saw C lands first, then the complete one, which did not watch C.
+    const runningFirst = round(claimed, found(1, ["a", "b"], false, { pending: ["c"] }), heldUnknown("two"), found(2, [], true));
+    expect([runningFirst.pending, runningFirst.searchComplete, qualityBatchSearching(runningFirst, T0)]).toEqual([["c"], false, true]);
+    // A later search decides C: proved, it is a copy of the round's; read without the question, or no longer listed, it is cleared.
+    const proven = round(claimed, found(1, ["a", "b"], true), heldUnknown("two"), found(2, [], false, { pending: ["c"] }), found(3, ["c"], true));
+    expect([proven.pending, proven.batchIds, qualityBatchLateDue(proven), qualityBatchSearching(proven, T0)]).toEqual([[], ["a", "b", "c"], ["a", "b", "c"], false]);
+    const cleared = round(claimed, found(1, ["a", "b"], true), heldUnknown("two"), found(2, [], false, { pending: ["c"] }), found(3, [], true, { cleared: ["c"] }));
+    expect([cleared.pending, cleared.searchComplete, qualityBatchSearching(cleared, T0)]).toEqual([[], true, false]);
+    // A stale search that saw C running after it was cleared names it again: more searching, never less.
+    expect(round(claimed, found(1, ["a", "b"], true), heldUnknown("two"), found(2, [], false, { pending: ["c"] }), found(3, [], true, { cleared: ["c"] }),
+      found(4, [], false, { pending: ["c"] })).pending).toEqual(["c"]);
+    // Whatever the outcome: an answered round, decided while a concurrent search named C, searches on until C is decided;
+    // so does a presumed-lost round before its day is out.
+    const answeredRound = round(claimed, found(1, ["a"], true), { kind: "submitted", n: 1, batchId: "a", at: T0 }, answered("a", 9000), found(2, [], false, { pending: ["c"] }));
+    expect(qualityBatchSearching(answeredRound, T0)).toBe(true);
+    expect(qualityBatchSearching(round(...presumedLost, found(1, [], false, { pending: ["c"] })), PRESUMED_AT)).toBe(true);
+    // So does any finished round with a batch read that no search recorded: the search that read it may have been undecided.
+    const unread = round(claimed, found(1, ["a"], true), { kind: "submitted", n: 1, batchId: "a", at: T0 }, answered("a", 9000),
+      { kind: "reading", batchId: "b", results: [], at: T0 });
+    expect([unread.unfound, qualityBatchSearching(unread, T0)]).toEqual([["b"], true]);
+    // An open round with C pending searches again rather than decide.
+    expect(step(T0 + HOUR, claimed, found(1, ["a"], true), found(2, [], false, { pending: ["c"] }))).toMatchObject({ step: "find" });
+  });
+
+  it("holds an answer it cannot deliver at the bill its reading states, and refuses a known hold without its bill or its batch (Codex's fifteenth pass)", () => {
+    const sent: QualityBatchEvent[] = [{ kind: "claim", n: 1, at: T0 }, { kind: "submitted", n: 1, batchId: "a", at: T0 }];
+    const bill = (answered("a", 134_000) as Extract<QualityBatchEvent, { kind: "answered" }>).evidence;
+    const known = (more: object): QualityBatchEvent => ({ kind: "held", reason: "cannot be delivered", charge: "known", at: T0, ...more }) as QualityBatchEvent;
+    const held = round(...sent, known({ batchId: "a", results: [], evidence: bill }));
+    expect(held.terminal).toMatchObject({ kind: "held", charge: "known", evidence: { amountMicroUsd: 134_000 } });
+    // Its batch's bill is the outcome's: nothing to read again, kept for the person, and no search came before it.
+    expect([held.billedIds, qualityBatchLateDue(held), qualityBatchCleanupDue(held, false), qualityBatchSearching(held, T0)]).toEqual([["a"], [], false, false]);
+    expect(() => round(...sent, known({ batchId: "a", results: [] }))).toThrow("a hold states its charge");
+    expect(() => round(...sent, known({ results: [], evidence: bill }))).toThrow("a hold states its charge");
+    expect(() => round(...sent, known({ batchId: "a", results: [], evidence: { ...bill, amountMicroUsd: -1 } }))).toThrow("a hold states its charge");
   });
 
   it("takes a copy's bill from its recorded reading, and names a reading after its batch in lower-case letters and digits", () => {

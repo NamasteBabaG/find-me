@@ -110,7 +110,7 @@ describe("Anthropic Message Batches transport", () => {
     const fetcher = wire(reply(200, page), reply(200, null, line("q-mine", { type: "succeeded", message: {} })));
     // What proved the new batch comes back with it (Codex's twelfth pass: it is the batch's first reading), and nothing else does.
     await expect(new AnthropicMessageBatches("synthetic", fetcher).find("q-mine", since, undefined, undefined, new Set(["msgbatch_known", "msgbatch_knownrunning"])))
-      .resolves.toEqual({ proven: ["msgbatch_new"], undecided: false, results: { msgbatch_new: [{ customId: "q-mine", type: "succeeded", message: {} }] } });
+      .resolves.toEqual({ proven: ["msgbatch_new"], undecided: false, results: { msgbatch_new: [{ customId: "q-mine", type: "succeeded", message: {} }] }, pending: [], cleared: [] });
     expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual(["https://api.anthropic.com/v1/messages/batches?limit=1000",
       "https://api.anthropic.com/v1/messages/batches/msgbatch_new/results"]);
   });
@@ -121,29 +121,68 @@ describe("Anthropic Message Batches transport", () => {
     const page = { data: [ended("msgbatch_a", at(9)), ended("msgbatch_b", at(5))], has_more: false };
     const proving = line("q-mine", { type: "succeeded", message: { id: "msg_priced" } }), unavailable = { type: "error", error: { type: "api_error" } };
     const fetcher = wire(reply(200, page), reply(200, null, proving), reply(503, unavailable));
+    // B, whose read failed, could carry the question too: it is named, undecided (Codex's fifteenth pass).
     await expect(new AnthropicMessageBatches("synthetic", fetcher).find("q-mine", since)).resolves.toEqual({ proven: ["msgbatch_a"], undecided: true,
-      results: { msgbatch_a: [{ customId: "q-mine", type: "succeeded", message: { id: "msg_priced" } }] }, failed: "QUALITY_BATCH: results of msgbatch_b answered 503" });
-    // A search that proved nothing before it failed throws, as before: absence is never inferred.
+      results: { msgbatch_a: [{ customId: "q-mine", type: "succeeded", message: { id: "msg_priced" } }] }, pending: ["msgbatch_b"], cleared: [],
+      failed: "QUALITY_BATCH: results of msgbatch_b answered 503" });
+    // A search that proved nothing before it failed names the batch it could not read, undecided: absence is never inferred.
     const nothing = wire(reply(200, { data: [ended("msgbatch_b", at(5)), ended("msgbatch_a", at(4))], has_more: false }), reply(503, unavailable));
-    await expect(new AnthropicMessageBatches("synthetic", nothing).find("q-mine", since)).rejects.toThrow("results of msgbatch_b answered 503");
+    await expect(new AnthropicMessageBatches("synthetic", nothing).find("q-mine", since)).resolves.toEqual({ proven: [], undecided: true, results: {},
+      pending: ["msgbatch_b"], cleared: [], failed: "QUALITY_BATCH: results of msgbatch_b answered 503" });
+    // One that failed before it saw any batch throws, as before.
+    const blind = wire(reply(503, unavailable));
+    await expect(new AnthropicMessageBatches("synthetic", blind).find("q-mine", since)).rejects.toThrow("list answered 503");
+  });
+
+  it("names every batch it could not decide, and clears a watched one only by reading it or by listing the whole window without it (Codex's fifteenth pass)", async () => {
+    const since = Date.parse("2026-10-16T08:00:00.000Z"), at = (minutes: number) => new Date(since + minutes * 60_000).toISOString();
+    // Watched: one now ended without the question, one still running, one no longer listed, and one ended with it; and an
+    // unwatched one ended without the question, which is nobody's to clear.
+    const watch = new Set(["msgbatch_wother", "msgbatch_wrun", "msgbatch_wgone", "msgbatch_wmine"]);
+    const page = { data: [ended("msgbatch_wother", at(9)), ended("msgbatch_unrelated", at(8)), ended("msgbatch_wrun", at(8), "in_progress"),
+      ended("msgbatch_run", at(7), "in_progress"), ended("msgbatch_wmine", at(6))], has_more: false };
+    const other = line("q-other", { type: "succeeded", message: {} });
+    const fetcher = wire(reply(200, page), reply(200, null, other), reply(200, null, other), reply(200, null, line("q-mine", { type: "succeeded", message: {} })));
+    await expect(new AnthropicMessageBatches("synthetic", fetcher).find("q-mine", since, undefined, undefined, undefined, watch)).resolves.toEqual({
+      proven: ["msgbatch_wmine"], undecided: true, results: { msgbatch_wmine: [{ customId: "q-mine", type: "succeeded", message: {} }] },
+      pending: ["msgbatch_wrun", "msgbatch_run"], cleared: ["msgbatch_wother", "msgbatch_wgone"] });
+    // A listing cut off before the window's end clears nothing by absence: the second page answers 503.
+    const cut = wire(reply(200, { data: [ended("msgbatch_wother", at(9))], has_more: true, last_id: "msgbatch_wother" }),
+      reply(200, null, line("q-other", { type: "succeeded", message: {} })), reply(503, { type: "error", error: { type: "api_error" } }));
+    await expect(new AnthropicMessageBatches("synthetic", cut).find("q-mine", since, undefined, undefined, undefined, watch)).rejects.toThrow("list answered 503");
+    const cutRunning = wire(reply(200, { data: [ended("msgbatch_wother", at(9)), ended("msgbatch_run", at(8), "in_progress")], has_more: true, last_id: "msgbatch_run" }),
+      reply(200, null, line("q-other", { type: "succeeded", message: {} })), reply(503, { type: "error", error: { type: "api_error" } }));
+    await expect(new AnthropicMessageBatches("synthetic", cutRunning).find("q-mine", since, undefined, undefined, undefined, watch)).resolves.toEqual({
+      proven: [], undecided: true, results: {}, pending: ["msgbatch_run"], cleared: ["msgbatch_wother"], failed: "QUALITY_BATCH: list answered 503 without a complete page" });
+    // Out of time before an ended batch's results: that batch is named, and nothing is cleared by absence.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const t0 = since + 3_600_000; vi.setSystemTime(t0);
+      const late = vi.fn<typeof fetch>(async () => { vi.setSystemTime(Date.now() + 29_000); return reply(200, { data: [ended("msgbatch_wother", at(9))], has_more: false }); });
+      await expect(new AnthropicMessageBatches("synthetic", late).find("q-mine", since, t0 + 50_000, undefined, undefined, watch)).resolves.toEqual({
+        proven: [], undecided: true, truncated: true, results: {}, pending: ["msgbatch_wother"], cleared: [] });
+      expect(late).toHaveBeenCalledTimes(1);
+    } finally { vi.useRealTimers(); }
   });
 
   it("never infers absence from an incomplete answer: an empty or cut-off result file, a page without its end, a promise without a cursor", async () => {
     const since = Date.parse("2026-10-16T08:00:00.000Z"), at = new Date(since + 60_000).toISOString();
     const search = (...answers: Response[]) => new AnthropicMessageBatches("synthetic", wire(...answers)).find("q-mine", since);
     const other = line("q-other", { type: "succeeded", message: {} });
+    // Each is undecided, naming the batch it could not decide and saying why; none proves anything absent.
+    const undecidedOver = (reason: string) => ({ proven: [], undecided: true, pending: ["msgbatch_1"], cleared: [], failed: expect.stringContaining(reason) });
     // The batch counts one answered request; its results arrive empty, or as a prefix without it.
-    await expect(search(reply(200, { data: [ended("msgbatch_1", at)], has_more: false }), reply(200, null, ""))).rejects.toThrow("do not match its record");
-    await expect(search(reply(200, { data: [ended("msgbatch_1", at, "ended", counts(2))], has_more: false }), reply(200, null, other))).rejects.toThrow("do not match its record");
+    await expect(search(reply(200, { data: [ended("msgbatch_1", at)], has_more: false }), reply(200, null, ""))).resolves.toMatchObject(undecidedOver("do not match its record"));
+    await expect(search(reply(200, { data: [ended("msgbatch_1", at, "ended", counts(2))], has_more: false }), reply(200, null, other))).resolves.toMatchObject(undecidedOver("do not match its record"));
     // Two lines for one id are not two results, even of the counted type.
     await expect(search(reply(200, { data: [ended("msgbatch_1", at, "ended", counts(2))], has_more: false }),
-      reply(200, null, [other, other].join("\n")))).rejects.toThrow("do not match its record");
+      reply(200, null, [other, other].join("\n")))).resolves.toMatchObject(undecidedOver("do not match its record"));
     // A batch record that does not state its counts, or still counts one processing.
-    await expect(search(reply(200, { data: [{ ...ended("msgbatch_1", at), request_counts: undefined }], has_more: false }))).rejects.toThrow("request counts");
-    await expect(search(reply(200, { data: [ended("msgbatch_1", at, "ended", counts(1, { processing: 1 }))], has_more: false }))).rejects.toThrow("request counts");
-    // A page that does not say whether more follow, or promises more without a cursor.
+    await expect(search(reply(200, { data: [{ ...ended("msgbatch_1", at), request_counts: undefined }], has_more: false }))).resolves.toMatchObject(undecidedOver("request counts"));
+    await expect(search(reply(200, { data: [ended("msgbatch_1", at, "ended", counts(1, { processing: 1 }))], has_more: false }))).resolves.toMatchObject(undecidedOver("request counts"));
+    // A page that does not say whether more follow, or promises more without a cursor: with no batch seen, a throw.
     await expect(search(reply(200, { data: [] }))).rejects.toThrow("complete page");
-    await expect(search(reply(200, { data: [ended("msgbatch_1", at, "in_progress")], has_more: true }))).rejects.toThrow("promised more");
+    await expect(search(reply(200, { data: [ended("msgbatch_1", at, "in_progress")], has_more: true }))).resolves.toMatchObject(undecidedOver("promised more"));
     await expect(search(reply(200, { data: [], has_more: true, last_id: "msgbatch_1" }))).rejects.toThrow("promised more");
     // The same file, whole, proves the question absent.
     await expect(search(reply(200, { data: [ended("msgbatch_1", at)], has_more: false }), reply(200, null, other))).resolves.toMatchObject({ proven: [], undecided: false });
@@ -161,10 +200,11 @@ describe("Anthropic Message Batches transport", () => {
     await expect(results(reply(200, record(counts(1))), reply(200, null, line("q-mine", { type: "mystery" })))).rejects.toThrow("do not match its record");
     await expect(results(reply(200, record(counts(1))), reply(200, null, [line("q-mine", { type: "succeeded", message: {} }), line("q-x", { type: "mystery" })].join("\n"))))
       .rejects.toThrow("do not match its record");
-    // The search refuses the same contradiction rather than read it as proof.
+    // The search refuses the same contradiction rather than read it as proof: the batch stays undecided, named.
     const since = Date.parse("2026-10-16T08:00:00.000Z"), at = new Date(since + 60_000).toISOString();
     await expect(new AnthropicMessageBatches("synthetic", wire(reply(200, { data: [ended("msgbatch_1", at)], has_more: false }),
-      reply(200, null, line("q-mine", { type: "canceled" })))).find("q-mine", since)).rejects.toThrow("do not match its record");
+      reply(200, null, line("q-mine", { type: "canceled" })))).find("q-mine", since)).resolves.toMatchObject({ proven: [], undecided: true,
+      pending: ["msgbatch_1"], failed: expect.stringContaining("do not match its record") });
     // Matching types, in any order, are read.
     await expect(results(reply(200, record(counts(1, { canceled: 1 }))), reply(200, null, [line("q-x", { type: "canceled" }), line("q-mine", { type: "succeeded", message: {} })].join("\n"))))
       .resolves.toHaveLength(2);

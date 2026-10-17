@@ -286,10 +286,13 @@ export type QualityBatchResult =
   | { readonly customId: string; readonly type: "unrecognized"; readonly resultType: string | null };
 /** What a search proved: the batches carrying the question, with the results each was proved by (a batch's first
  * reading: rule 6 of the round), whether any could still carry it, and whether the search stopped short: out of pages
- * or time (`truncated`), or failing after it had proven batches, which it still returns (`failed`, the reason). */
+ * or time (`truncated`), or failing after it had proven or seen batches, which it still returns (`failed`, the reason).
+ * `pending`: the batches it could not decide (still running, or unreadable), by their ids; `cleared`: the watched
+ * batches it decided carry no copy (read without the question, or missing from a listing of the whole window). */
 export type QualityBatchFound = {
   proven: string[]; undecided: boolean; truncated?: true; failed?: string;
   results?: Readonly<Record<string, readonly QualityBatchResult[]>>;
+  pending?: readonly string[]; cleared?: readonly string[];
 };
 /** How many results of each type an ended batch's own record says it has. */
 export type QualityBatchCounts = Readonly<Record<string, number>>;
@@ -310,8 +313,10 @@ export interface QualityBatchTransport {
   /** Batches created from `sinceMs` to `untilMs` proven to carry `customId`; undecided while one could and has not ended,
    * or when the search ran out of pages or of time before the intent (`truncated`). No read starts that could
    * end after `deadlineAt`. Throws when the provider's inventory cannot be shown complete: absence is never
-   * inferred from a partial answer. A search that had already proven batches returns them instead, undecided (`failed`). */
-  find(customId: string, sinceMs: number, deadlineAt?: number, untilMs?: number, known?: ReadonlySet<string>): Promise<QualityBatchFound>;
+   * inferred from a partial answer. A search that had already proven or seen batches returns them instead, undecided
+   * (`failed`). `watch`: batches an earlier search could not decide, each reported `cleared` once this one decides it
+   * carries no copy. */
+  find(customId: string, sinceMs: number, deadlineAt?: number, untilMs?: number, known?: ReadonlySet<string>, watch?: ReadonlySet<string>): Promise<QualityBatchFound>;
   /** The batch's state, and for an ended batch what its record counts by result type (null when the record does not state them all). */
   status(batchId: string): Promise<QualityBatchStatus>;
   /** Every result of an ended batch, exactly as the batch's own record counts them by type, or a throw;

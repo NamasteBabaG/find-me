@@ -85,20 +85,25 @@ export class AnthropicMessageBatches implements QualityBatchTransport {
   /**
    * Absence is proven only by a complete inventory: every page, to its documented
    * end, and every ended batch's results matching that batch's own request counts.
-   * Anything less throws, and a throw never permits a create; a search that had
-   * already proven batches returns them instead, undecided, with why it stopped
-   * (`failed`). A search that runs out of pages, or of time before `deadlineAt`,
-   * ahead of the intent is undecided, and says so (`truncated`); what it proved by
-   * then is still returned. A batch created after `untilMs` is no candidate: it
-   * neither proves nor keeps undecided. A batch the round already knows (`known`) to
-   * carry the question is proven already: its results are not read again, so one
-   * that cannot be read keeps no search waiting.
+   * Anything less never permits a create: a search that had proven or seen nothing
+   * throws, and one that had returns what it proved and saw instead, undecided, with
+   * why it stopped (`failed`). A search that runs out of pages, or of time before
+   * `deadlineAt`, ahead of the intent is undecided, and says so (`truncated`); what it
+   * proved and saw by then is still returned. A batch created after `untilMs` is no
+   * candidate: it neither proves nor keeps undecided. A batch the round already knows
+   * (`known`) to carry the question is proven already: its results are not read again,
+   * so one that cannot be read keeps no search waiting. A batch it could not decide
+   * (still running, or one whose results it could not read) is named (`pending`); a
+   * watched one (`watch`) it decides carries no copy, read without the question or
+   * missing from a listing of the whole window, is named too (`cleared`).
    */
-  async find(customId: string, sinceMs: number, deadlineAt?: number, untilMs?: number, known?: ReadonlySet<string>): Promise<QualityBatchFound> {
+  async find(customId: string, sinceMs: number, deadlineAt?: number, untilMs?: number, known?: ReadonlySet<string>, watch?: ReadonlySet<string>): Promise<QualityBatchFound> {
     if (!CUSTOM_ID.test(customId) || !Number.isFinite(sinceMs) || untilMs !== undefined && !Number.isFinite(untilMs)) throw Error("QUALITY_BATCH: invalid search");
-    // Every proven batch with the results that proved it: what was read is never thrown away, by a later failure either.
-    const proven: string[] = [], results: Record<string, QualityBatchResult[]> = {};
-    let undecided = false, after: string | null = null;
+    // Every proven batch with the results that proved it, and every batch it could not decide: what was read or seen is
+    // never thrown away, by a later failure either.
+    const proven: string[] = [], results: Record<string, QualityBatchResult[]> = {}, pending: string[] = [], cleared: string[] = [], listed = new Set<string>();
+    let undecided = false, after: string | null = null, reading: string | null = null;
+    const found = (stopped: Partial<QualityBatchFound> = {}): QualityBatchFound => ({ proven, undecided, results, pending, cleared, ...stopped });
     try {
       for (let page = 0; page < MAX_LIST_PAGES; page++) {
         if (!roomForRead(deadlineAt)) break;
@@ -113,22 +118,32 @@ export class AnthropicMessageBatches implements QualityBatchTransport {
           if (untilMs !== undefined && created > untilMs + QUALITY_BATCH_CLOCK_SKEW_MS) continue;
           // Newest first: everything from here on is older than the intent.
           if (created < sinceMs - QUALITY_BATCH_CLOCK_SKEW_MS) { reachedIntent = true; break; }
+          listed.add(batch.id);
           if (known?.has(batch.id)) continue;
-          if (batch.processing_status !== "ended") { undecided = true; continue; }
+          if (batch.processing_status !== "ended") { undecided = true; pending.push(batch.id); continue; }
+          // From here until its results are read, a failure leaves this batch undecided, named.
+          reading = batch.id;
           const counts = endedRequestCounts(batch);
           if (counts === null) throw Error(`QUALITY_BATCH: ${batch.id} does not state its request counts`);
-          if (!roomForRead(deadlineAt)) return { proven, undecided: true, truncated: true, results };
+          if (!roomForRead(deadlineAt)) { pending.push(batch.id); return found({ undecided: true, truncated: true }); }
           const read = await this.resultsOf(batch.id, counts);
+          reading = null;
           if (read.some(result => result.customId === customId)) { proven.push(batch.id); results[batch.id] = read; }
+          else if (watch?.has(batch.id)) cleared.push(batch.id);
         }
-        if (reachedIntent || !list.has_more) return { proven, undecided, results };
+        if (reachedIntent || !list.has_more) {
+          // The whole window listed: a watched batch it no longer shows is not there to carry the question.
+          for (const id of watch ?? []) if (!listed.has(id)) cleared.push(id);
+          return found();
+        }
         if (!data.length || typeof list.last_id !== "string" || !BATCH_ID.test(list.last_id)) throw Error("QUALITY_BATCH: a list page promised more but gave no batch or no cursor");
         after = list.last_id;
       }
-      return { proven, undecided: true, truncated: true, results };
+      return found({ undecided: true, truncated: true });
     } catch (error) {
-      if (!proven.length) throw error;
-      return { proven, undecided: true, results, failed: (error instanceof Error ? error.message : String(error)).slice(0, 200) };
+      if (reading !== null) pending.push(reading);
+      if (!proven.length && !pending.length) throw error;
+      return found({ undecided: true, failed: (error instanceof Error ? error.message : String(error)).slice(0, 200) });
     }
   }
 

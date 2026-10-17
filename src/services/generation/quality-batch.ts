@@ -186,6 +186,8 @@ async function applyTerminal(ctx: Context, round: QualityBatchRound, pendingKeys
   else if (terminal.kind === "fallback" && terminal.resultType === "presumed-lost") await settlePresumed(ctx, round);
   else if (terminal.kind === "fallback") await settleUnbilled(ctx, intent, terminal.batchId, terminal.resultType, terminal.errorType);
   else if (terminal.charge === "zero") await settleUnbilled(ctx, intent, terminal.batchId ?? null, terminal.resultType!, terminal.errorType ?? null);
+  // Held with its bill known (an answer that cannot be delivered): the bill its first reading states, in full.
+  else if (terminal.charge === "known") await budget.settle(intent.worldId, intent.batchKey, terminal.evidence!, ONLY_PENDING);
   // Held with the charge unknown, in full: the world reserves nothing more until a person reconciles it.
   else await budget.markUnknown(intent.worldId, intent.batchKey, `quality batch ${intent.roundId}: ${terminal.reason}`);
 }
@@ -205,16 +207,20 @@ async function closeUnsent(ctx: Context, round: QualityBatchRound, claim: number
   return "advanced";
 }
 
-/** Keeps for good every batch a search proved to carry the question, and whether the search was
- * complete (`complete` is recorded on its own only for a finished round still searching); `at`: when
- * the search started. A batch an earlier search read and stopped before recording is kept with it
- * (its reading proved it). The next free number wins; a pass that lost it reads the round again and
- * records what is still new. */
-async function recordFound(ctx: Context, roundId: string, proven: readonly string[], complete: boolean, at: number): Promise<QualityBatchRound> {
+/** Keeps for good every batch a search proved to carry the question, every batch it could not decide (`pending`, by
+ * its id, until a later search decides it), the pending batches it decided carry no copy (`cleared`), and whether
+ * the search was complete (`complete` is recorded on its own only for a finished round still searching); `at`: when
+ * the search started. A batch an earlier search read and stopped before recording is kept with it (its reading proved
+ * it). The next free number wins; a pass that lost it reads the round again and records what is still new. */
+async function recordFound(ctx: Context, roundId: string, found: QualityBatchFound, at: number): Promise<QualityBatchRound> {
+  const complete = !found.undecided;
   for (let attempt = 0; attempt < 4; attempt++) {
-    const round = await readRound(ctx, roundId), fresh = [...new Set([...proven, ...round.unfound])].filter(id => !round.found.includes(id));
-    if (!fresh.length && !(complete && qualityBatchSearching(round, at))) return round;
-    const written = await writeEvent(ctx, roundId, { kind: "found", n: round.searches + 1, batchIds: fresh, complete, at });
+    const round = await readRound(ctx, roundId), fresh = [...new Set([...found.proven, ...round.unfound])].filter(id => !round.found.includes(id));
+    const pending = [...new Set(found.pending ?? [])].filter(id => !round.batchIds.includes(id) && !fresh.includes(id) && !round.pending.includes(id));
+    const cleared = [...new Set(found.cleared ?? [])].filter(id => round.pending.includes(id));
+    if (!fresh.length && !pending.length && !cleared.length && !(complete && qualityBatchSearching(round, at))) return round;
+    const written = await writeEvent(ctx, roundId, { kind: "found", n: round.searches + 1, batchIds: fresh, complete, at,
+      ...pending.length ? { pending } : {}, ...cleared.length ? { cleared } : {} });
     if (written.won) return readRound(ctx, roundId);
   }
   throw Error("QUALITY_BATCH: the batches a search found could not be recorded");
@@ -326,10 +332,11 @@ async function noteReading(ctx: Context, round: QualityBatchRound, batchId: stri
 }
 
 /**
- * Records what a search proved (rules 1 and 6): first the reading each proven batch was proved by, then the batches.
- * What a search read is never thrown away: a later read of the batch that says otherwise is a reread, and so is this
- * one when another pass recorded the batch's reading otherwise. A failure is raised once every reading the search
- * holds, and its batches, are recorded.
+ * Records what a search proved and saw (rules 1 and 6): first the reading each proven batch was proved by, then the
+ * batches, and the batches it could not decide. What a search read or saw is never thrown away: a later read of the
+ * batch that says otherwise is a reread, and so is this one when another pass recorded the batch's reading otherwise;
+ * a batch it could not decide stays pending until a later search decides it. A failure is raised once every reading
+ * the search holds, and its batches, are recorded.
  */
 async function recordSearch(ctx: Context, roundId: string, found: QualityBatchFound, at: number): Promise<QualityBatchRound> {
   const round = await readRound(ctx, roundId), failures: unknown[] = [];
@@ -339,7 +346,7 @@ async function recordSearch(ctx: Context, roundId: string, found: QualityBatchFo
     try { await noteReading(ctx, round, batchId, receiptsOf(results, round.intent.customId)); }
     catch (error) { failures.push(error); }
   }
-  const recorded = await recordFound(ctx, roundId, found.proven, !found.undecided, at);
+  const recorded = await recordFound(ctx, roundId, found, at);
   raise(failures);
   return recorded;
 }
@@ -347,7 +354,8 @@ async function recordSearch(ctx: Context, roundId: string, found: QualityBatchFo
 /**
  * The round's terminal outcome, decided from its batch's recorded reading (rule 6): `results` is this pass's read when
  * it gave that reading, null when it read otherwise. An answer is kept and delivered only from a read that gave it; one
- * whose content this pass does not hold cannot be delivered, and is held for a person with its charge unknown.
+ * whose content this pass does not hold cannot be delivered, and is held for a person at the bill its reading states,
+ * in full (unknown only when that bill cannot be priced).
  */
 async function recordOutcome(ctx: Context, round: QualityBatchRound, batchId: string, receipts: readonly QualityBatchReceipt[],
   results: readonly QualityBatchResult[] | null): Promise<void> {
@@ -362,8 +370,11 @@ async function recordOutcome(ctx: Context, round: QualityBatchRound, batchId: st
     return;
   }
   if (!results) {
-    await writeEvent(ctx, intent.roundId, { kind: "held", charge: "unknown", batchId, results: receipts, at: Date.now(),
-      reason: `the provider returned other results for ${batchId} on another read, and the answer of its first reading cannot be delivered from them` });
+    const reason = `the provider returned other results for ${batchId} on another read, and the answer of its first reading cannot be delivered from them`;
+    // The answer is held; its bill is not: the one its first reading states, counted in full when it can be priced.
+    const evidence = answerCharge(ctx, receipts);
+    await writeEvent(ctx, intent.roundId, evidence ? { kind: "held", reason, charge: "known", evidence, batchId, results: receipts, at: Date.now() }
+      : { kind: "held", reason, charge: "unknown", batchId, results: receipts, at: Date.now() });
     return;
   }
   const result = results.find(r => r.customId === intent.customId) as Extract<QualityBatchResult, { type: "succeeded" }>;
@@ -419,11 +430,8 @@ async function lateCharge(ctx: Context, round: QualityBatchRound, batchId: strin
   let priced: WorldChargeEvidence | null = null, reason = decision.decision === "held" ? decision.reason : "";
   if (decision.decision === "answer") {
     const answer = receipts[0]!, usage = answer.usage as Record<string, unknown> | null;
-    const charge = visualReviewBatchCharge(POLICY, answer.model, usage);
-    if (!charge.costUnknown && answer.requestId) priced = canonicalChargeEvidence({ providerNamespace: ctx.transport.namespace, providerRequestId: answer.requestId,
-      usageId: sha(qualityBatchCanonicalJson(usage)), rawUsage: usage as BudgetJson, model: answer.model!,
-      amountMicroUsd: Math.ceil(charge.costCents * 10_000), costBasis: "conservative-upper-estimate" });
-    else reason = `the answer's charge cannot be stated (tier ${String(usage?.service_tier ?? "none")}, model ${answer.model ?? "none"})`;
+    priced = answerCharge(ctx, receipts);
+    if (!priced) reason = `the answer's charge cannot be stated (tier ${String(usage?.service_tier ?? "none")}, model ${answer.model ?? "none"})`;
   }
   if (priced) {
     // Imported in full, counted once by its receipt; a receipt already counted with other evidence is recorded as a conflict, which holds the world.
@@ -439,10 +447,22 @@ async function lateCharge(ctx: Context, round: QualityBatchRound, batchId: strin
   return null;
 }
 /** The ledger key of a copy whose charge cannot be stated: its own unknown row beside the round's batch key, one per
- * distinct reading of the copy's bill (the digest of what the provider returned for the question, as `late-n` keeps it,
- * in canonical form: the same values give the same key whatever order they were serialised in). */
+ * distinct bill read of the copy (the digest of what the provider returned for the question, as `late-n` keeps it, less
+ * the answer's digest, in canonical form: the same values give the same key whatever order they were serialised in, and
+ * another answer under the same bill is the same charge, one row however many passes count it at once). */
 export const qualityBatchCopyKeyOf = (batchKey: string, batchId: string, receipts: readonly QualityBatchReceipt[]) =>
-  `${batchKey}:copy:${batchId}:${sha(qualityBatchCanonicalJson(receipts))}`;
+  `${batchKey}:copy:${batchId}:${sha(qualityBatchCanonicalJson(qualityBatchBill(receipts)))}`;
+
+/** An answer's charge from its reading alone, priced by the tier its usage states exactly as its delivery settles it;
+ * null when it cannot be stated (a tier with no rate, another model, no receipt). */
+function answerCharge(ctx: Context, receipts: readonly QualityBatchReceipt[]): WorldChargeEvidence | null {
+  const answer = receipts[0]!, usage = answer.usage as Record<string, unknown> | null;
+  const charge = visualReviewBatchCharge(POLICY, answer.model, usage);
+  if (charge.costUnknown || !answer.requestId) return null;
+  return canonicalChargeEvidence({ providerNamespace: ctx.transport.namespace, providerRequestId: answer.requestId,
+    usageId: sha(qualityBatchCanonicalJson(usage)), rawUsage: usage as BudgetJson, model: answer.model!,
+    amountMicroUsd: Math.ceil(charge.costCents * 10_000), costBasis: "conservative-upper-estimate" });
+}
 
 /** Records a copy's bill once in the round's record (`late-n`), from the copy's recorded reading; a pass that lost
  * the number reads the round again. The reading is counted in the ledger, under its own key, before anything else. */
@@ -563,16 +583,17 @@ async function advance(ctx: Context, roundId: string): Promise<QualityBatchGate>
     if (step.step === "find") {
       let found: Awaited<ReturnType<QualityBatchTransport["find"]>>;
       const searchedAt = Date.now();
-      // The batches already known are proven already: only new ones are read.
-      try { found = await ctx.transport.find(round.intent.customId, step.sinceMs, ctx.deadlineAt, step.untilMs, new Set(round.batchIds)); }
+      // The batches already known are proven already: only new ones are read; those an earlier search could not decide are watched.
+      try { found = await ctx.transport.find(round.intent.customId, step.sinceMs, ctx.deadlineAt, step.untilMs, new Set(round.batchIds), new Set(round.pending)); }
       catch (error) { return waiting(`the provider could not be searched (${error instanceof Error ? error.message.slice(0, 200) : "unknown"})`); }
       // Every batch proven to carry the question is kept, with what it was proven by, before anything is decided
-      // from it: a later search that no longer sees a copy cannot undo it. Two copies hold the round.
+      // from it, and so is every batch the search could not decide: a later search that no longer sees one cannot
+      // undo it. Two copies hold the round.
       const known = await recordSearch(ctx, roundId, found, searchedAt);
       if (known.batchIds.length > 1) continue;
-      // One proven batch is the round's only when no other could still carry the question:
-      // recording it while another runs could release that one's charge on the first's outcome.
-      if (found.undecided) return waiting(found.failed ? `the search stopped (${found.failed}); what it proved is kept, and nothing is decided meanwhile`
+      // One proven batch is the round's only when no other could still carry the question, by this search or any other
+      // recorded: recording it while another runs could release that one's charge on the first's outcome.
+      if (found.undecided || known.pending.length) return waiting(found.failed ? `the search stopped (${found.failed}); what it proved and saw is kept, and nothing is decided meanwhile`
         : found.truncated ? "the search did not reach back to this question (too many batches, or too little of this request left); nothing is decided meanwhile"
         : "a batch that could carry this question has not ended yet");
       // What the round's batch is gets decided once (`submitted` and `presumed` share one name): a pass that read an
@@ -633,16 +654,18 @@ async function cleanup(ctx: Context, round: QualityBatchRound, gameDeleted: bool
   if (removed.length) await recordDeleted(ctx, round.intent.roundId, removed);
 }
 
-/** A finished round that could still have a copy it has not found searches again (rule 5): a held round
- * while another copy could run, a presumed-lost round once a day after the presumption. It only reads the
- * provider and records what it finds: no purchase, create, cancel or release follows from it. Whether it searched. */
+/** A finished round that could still have a copy it has not found searches again (rule 5): any round while a batch
+ * a search could not decide is pending, a held round while another copy could run, a presumed-lost round once a day
+ * after the presumption. It only reads the provider and records what it finds: no purchase, create, cancel or release
+ * follows from it. Whether it searched. */
 async function discover(ctx: Context, round: QualityBatchRound): Promise<boolean> {
   const searchedAt = Date.now();
   if (!qualityBatchSearching(round, searchedAt)) return false;
   const window = qualityBatchSearchWindow(round);
   let found: Awaited<ReturnType<QualityBatchTransport["find"]>>;
   // The copies already known are proven already: a search reads only new ones, so one that cannot be read keeps no search waiting.
-  try { found = await ctx.transport.find(round.intent.customId, window.sinceMs, ctx.deadlineAt, window.untilMs, new Set(round.batchIds)); }
+  // Those an earlier search could not decide are watched until one decides them.
+  try { found = await ctx.transport.find(round.intent.customId, window.sinceMs, ctx.deadlineAt, window.untilMs, new Set(round.batchIds), new Set(round.pending)); }
   catch { return true; } // the next slice or tick searches again
   await recordSearch(ctx, round.intent.roundId, found, searchedAt);
   return true;
