@@ -37,8 +37,10 @@ const sha = (value: string) => createHash("sha256").update(value).digest("hex");
 export const backgroundRoundIdOf = (worldId: string, requestKey: string) => `sb${sha(JSON.stringify([BACKGROUND_REVIEW_ROUND_VERSION, worldId, requestKey])).slice(0, 30)}`;
 const eventId = (roundId: string, name: string) => `aud_sb_${roundId}_${name}`;
 
-export type BackgroundGate = { readonly kind: "proceed" } | { readonly kind: "waiting" | "held"; readonly reason: string };
-const waiting = (reason: string): BackgroundGate => ({ kind: "waiting", reason: `Continuity question in the background: ${reason}` });
+/** `running`: the provider has just said the response still runs (a read, not an inference from the record). */
+export type BackgroundGate = { readonly kind: "proceed" } | { readonly kind: "waiting" | "held"; readonly reason: string; readonly running?: true };
+const waiting = (reason: string, running?: true): BackgroundGate =>
+  ({ kind: "waiting", reason: `Continuity question in the background: ${reason}`, ...(running ? { running } : {}) });
 const held = (reason: string): BackgroundGate => ({ kind: "held", reason: `Continuity question in the background: ${reason}` });
 type Fence = (tx: Prisma.TransactionClient) => Promise<void>;
 export type BackgroundAsk = {
@@ -205,7 +207,7 @@ async function poll(ctx: Ctx, transport: BackgroundReviewTransport, responseId: 
   try { state = await transport.retrieve(responseId); }
   catch (error) { return waiting(`the response could not be read (${error instanceof Error ? error.message.slice(0, 200) : "unknown"}); it is read again later`); }
   if (state.status === "queued" || state.status === "in_progress") {
-    if (!cancelDue) return waiting(`the response is ${state.status}`);
+    if (!cancelDue) return waiting(`the response is ${state.status}`, true);
     try { await transport.cancel(responseId); }
     catch (error) { return waiting(`the cancel was not acknowledged (${error instanceof Error ? error.message.slice(0, 200) : "unknown"})`); }
     await writeEvent(ctx, round => round.cancelAt === null && !round.terminal ? { kind: "cancel", at: Date.now() } : null);
@@ -274,9 +276,9 @@ export async function askContinuityInBackground(c: Container, ask: BackgroundAsk
  * It also runs while the job is held, so another known bill cannot expire merely
  * because an unrelated question held generation. The v1 intent's policy is fixed
  * by askContinuityInBackground; no image or prompt needs to be invented to poll.
- * `running` receives each response this pass polled that is still running
+ * `running` receives each response the provider has just said still runs
  * (`variantId:imageSha256`): its board's review has nothing to move until it ends
- * (local-patch-slice-pacing/v1); a round the pass did not reach is not named.
+ * (local-patch-slice-pacing/v1). A round the pass did not read is not named.
  */
 export async function advanceContinuityInBackground(c: Container, gameId: string,
   options: { deadlineAt?: number; running?: Set<string> } = {}): Promise<number> {
@@ -307,10 +309,11 @@ export async function advanceContinuityInBackground(c: Container, gameId: string
       binding: intent.binding, question: { fingerprint: intent.fingerprint, policy: visualReviewPolicy("head-continuity", "high", undefined, "responses-background") },
       fence: async () => {}, ...window };
     if (step.step === "lost") await recordLost(ctx, "the create was claimed and its answer never arrived within its grace");
-    else await poll(ctx, c.backgroundReview, step.responseId, step.cancelDue);
+    else {
+      const gate = await poll(ctx, c.backgroundReview, step.responseId, step.cancelDue);
+      if (running && gate?.kind === "waiting" && gate.running) running.add(`${intent.binding.variantId}:${intent.binding.imageSha256}`);
+    }
     advanced++;
-    if (running && nextBackgroundStep(backgroundRoundOf(await readEvents(c.db, gameId, intent.roundId)), Date.now()).step === "poll")
-      running.add(`${intent.binding.variantId}:${intent.binding.imageSha256}`);
   }
   return advanced;
 }

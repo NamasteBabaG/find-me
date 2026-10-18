@@ -351,11 +351,43 @@ describe("Opus scene-quality questions through Message Batches", () => {
     expect(fake.batches.every(b => b.deleted)).toBe(true);
   }, 600_000);
 
-  it("names only a batch its pass polled and found still running, never one whose create may still answer, one it did not reach or one that ended", async () => {
+  it("gives open rounds the whole slice: a later answer is settled behind reads that keep failing slowly, whatever the housekeeping deadline", async () => {
+    const gameId = "batch-open-fairness", w = await world(gameId), [first, second] = [BOARDS[0]!, BOARDS[1]!];
+    for (const hide of first.hides) await runLocalPatchHide(c, painter(gameId), { gameId, board: first, hide });
+    await runLocalPatchHide(c, painter(gameId), { gameId, board: second, hide: second.hides[0]! });
+    const fake = new FakeBatches(opus()), container = { ...c, visualReview: { request: sol(gameId) }, qualityBatch: fake } as Container;
+    for (let i = 0; i < 3; i++) await review(container, gameId, first);
+    await review(container, gameId, second);
+    expect(fake.batches).toHaveLength(4);
+    // The newest batch has ended; reading any of the three before it takes 30 s of the clock and fails, every time.
+    const last = fake.batches.at(-1)!;
+    last.status = "ended"; last.results = last.requests.map(r => fake.answer(r.params, r.customId));
+    let now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    const status = fake.status.bind(fake);
+    fake.status = async (id: string) => { if (id === last.id) return status(id); fake.calls.push("status"); now += 30_000; throw Error("read timed out"); };
+    try {
+      const running = new Set<string>();
+      await advanceQualityBatches(container, gameId, async () => {}, now + 270_000, { running, housekeepingDeadlineAt: now + 65_000 });
+      expect(running).toEqual(new Set());
+      expect(await w.budget.readRequest(w.worldId, (await syncKeyOf(gameId, second)).batchKey)).toMatchObject({ state: "settled" });
+    } finally { clock.mockRestore(); fake.status = status; }
+    // Nothing is left for a later sweep.
+    for (let pass = 0; pass < 3 && !fake.batches.every(b => b.deleted); pass++) {
+      fake.end();
+      await advanceQualityBatches(container, gameId, async () => {});
+      await sweepQualityBatches(container, { deadlineAt: Date.now() + 270_000 });
+    }
+    expect(fake.batches.every(b => b.deleted)).toBe(true);
+  }, 300_000);
+
+  it("names only a batch the provider has just said still runs: never one whose create may still answer, one not read, one whose read failed, or one that ended", async () => {
     const gameId = "batch-running-states", board = BOARDS[0]!; await world(gameId);
     for (const hide of board.hides.slice(0, 2)) await runLocalPatchHide(c, painter(gameId), { gameId, board, hide });
     const fake = new FakeBatches(opus()), container = { ...c, visualReview: { request: sol(gameId) }, qualityBatch: fake } as Container;
-    const pass = async (deadlineAt?: number) => { const running = new Set<string>(); await advanceQualityBatches(container, gameId, async () => {}, deadlineAt, running); return running; };
+    const pass = async (deadlineAt?: number) => {
+      const running = new Set<string>(); await advanceQualityBatches(container, gameId, async () => {}, deadlineAt, { running }); return running;
+    };
     const keyOf = async (hideId: string) => {
       const row = (await rows(gameId)).find(r => JSON.parse(r.judgeJson!).hide === hideId)!;
       return `${row.id}:${JSON.parse(row.judgeJson!).judgedSha256}`;
@@ -365,12 +397,20 @@ describe("Opus scene-quality questions through Message Batches", () => {
     fake.createPlan = ["lost-after-create", "ok"];
     await review(container, gameId);
     expect(await pass()).toEqual(new Set());
-    // The sibling's batch is created and runs. A pass with no room to poll it names nothing; one that polls it, it.
+    // The sibling's batch is created and runs. A pass with no room to read it names nothing, nor does a read that fails.
     await review(container, gameId);
     expect(await pass(Date.now() + 1_000)).toEqual(new Set());
+    const status = fake.status.bind(fake), results = fake.results.bind(fake);
+    fake.status = async () => { fake.calls.push("status"); throw Error("read timed out"); };
+    expect(await pass()).toEqual(new Set());
+    fake.status = status;
+    // A read that says it runs names it.
     expect(await pass()).toEqual(new Set([await keyOf(board.hides[1]!.id)]));
-    // Ended and settled by the next pass: its review decides it now.
+    // Ended, but its results cannot be read yet: nothing is named, and the next pass settles it.
     fake.end();
+    fake.results = async () => { fake.calls.push("results"); throw Error("results unavailable"); };
+    expect(await pass()).toEqual(new Set());
+    fake.results = results;
     expect(await pass()).toEqual(new Set());
     // The settled copy is deleted now; the lost round's own batch waits for its search, which only this game's slices run.
     await sweepQualityBatches(container, { deadlineAt: Date.now() + 270_000 });

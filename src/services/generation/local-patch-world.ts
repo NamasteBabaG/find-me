@@ -162,14 +162,13 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   if (game.scenes.length >= 9 && (game.scenes.length !== 9 || worldsOwned(game.scenes.map(scene => scene.sceneSlug)).length !== 1)) {
     throw new Error("LOCAL_PATCH_WORLD: all nine boards must belong to one complete world");
   }
-  // local-patch-slice-pacing/v1: the provider passes below leave this slice room for one board review, and name
-  // the questions they polled whose answers are still running; nothing in their boards can move before they end.
-  const passDeadline = options.hardDeadlineAt === undefined ? undefined : options.hardDeadlineAt - LOCAL_PATCH_BOARD_REVIEW_MIN_MS - LOCAL_PATCH_PHASE_MARGIN_MS;
+  // local-patch-slice-pacing/v1: the provider passes below name each question whose answer the provider has just
+  // said is still running; nothing in its board can move before it ends.
   const stillRunning = new Set<string>();
   // Existing provider work is reconciled before a held job or sibling scheduling can
   // defer it beyond the background response's short retention. No new request here.
   if (automatic && await subjectUpgradeOf(c.db, gameId))
-    await advanceContinuityInBackground(c, gameId, { ...(passDeadline === undefined ? {} : { deadlineAt: passDeadline }), running: stillRunning });
+    await advanceContinuityInBackground(c, gameId, { deadlineAt: options.hardDeadlineAt, running: stillRunning });
   // A v7 hide buys only its image. Reuse the dispatch boundary's conservative
   // minimum, then let it recheck after reservation and bound the actual call.
   const minHideMs = advisory ? LOCAL_PATCH_MIN_PROVIDER_MS.render + LOCAL_PATCH_PHASE_MARGIN_MS : LOCAL_PATCH_MIN_SLICE_MS;
@@ -446,7 +445,10 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     // deadline, or settled and linked once its batch has ended. Nothing is bought.
     // A round it cannot advance stops the slice with its reason, as a review does.
     if (dual) {
-      try { await advanceQualityBatches(c, gameId, fence, passDeadline, stillRunning); }
+      // Open rounds keep the whole slice; finished rounds' housekeeping stops with room for one review.
+      const housekeepingDeadlineAt = options.hardDeadlineAt === undefined ? undefined
+        : options.hardDeadlineAt - LOCAL_PATCH_BOARD_REVIEW_MIN_MS - LOCAL_PATCH_PHASE_MARGIN_MS;
+      try { await advanceQualityBatches(c, gameId, fence, options.hardDeadlineAt, { running: stillRunning, ...(housekeepingDeadlineAt === undefined ? {} : { housekeepingDeadlineAt }) }); }
       catch (error) {
         await c.db.generationJob.updateMany({ where: { id: job.id, attempts: claim, status: "RUNNING" },
           data: { status: "FAILED", lastError: (error instanceof Error ? error.message : String(error)).slice(0, 500) } });

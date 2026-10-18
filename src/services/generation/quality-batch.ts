@@ -59,9 +59,11 @@ const CHANNEL = "anthropic-message-batches";
 const POLICY = visualReviewPolicy("scene-quality", "high");
 
 type Fence = (tx: Prisma.TransactionClient) => Promise<void>;
-export type QualityBatchGate = { readonly kind: "proceed" } | { readonly kind: "waiting"; readonly reason: string } | { readonly kind: "held"; readonly reason: string };
+/** `running`: the provider has just said the batch still runs (a read, not an inference from the record). */
+export type QualityBatchGate = { readonly kind: "proceed" } | { readonly kind: "waiting"; readonly reason: string; readonly running?: true }
+  | { readonly kind: "held"; readonly reason: string };
 const proceed: QualityBatchGate = { kind: "proceed" };
-const waiting = (reason: string): QualityBatchGate => ({ kind: "waiting", reason: `Quality question in Message Batches: ${reason}` });
+const waiting = (reason: string, running?: true): QualityBatchGate => ({ kind: "waiting", reason: `Quality question in Message Batches: ${reason}`, ...(running ? { running } : {}) });
 type Context = {
   readonly c: Container; readonly transport: QualityBatchTransport; readonly gameId: string;
   /** The slice's lease fence; null only for a game that is no longer generating. */
@@ -690,7 +692,7 @@ async function advance(ctx: Context, roundId: string): Promise<QualityBatchGate>
     try { status = await ctx.transport.status(step.batchId); }
     catch (error) { return waiting(`the batch could not be read (${error instanceof Error ? error.message.slice(0, 200) : "unknown"})`); }
     if (status.status === "in_progress") {
-      if (!step.cancelDue && !ctx.stopping) return waiting("the batch is still running");
+      if (!step.cancelDue && !ctx.stopping) return waiting("the batch is still running", true);
       // A game resumed since it was read (perhaps while that status call took its time) keeps its batch.
       if (!step.cancelDue && !await stillStopped(ctx)) return waiting("the game is generating again; its batch runs on");
       if (!roomFor(ctx, CALL_NEED_MS)) return waiting("too little of this request is left to cancel the batch");
@@ -856,10 +858,13 @@ export async function askQualityThroughBatch(c: Container, input: {
 
 /** Every open round of one generating game, advanced once: polled, cancelled at its
  * deadline, or settled and linked when its batch has ended. It never creates. Every
- * finished round gets its housekeeping. `running` receives each round this pass polled
- * whose batch still runs (`variantId:imageSha256`): its board's review has nothing to
- * move until it ends (local-patch-slice-pacing/v1); a round the pass did not reach is not named. */
-export async function advanceQualityBatches(c: Container, gameId: string, fence: Fence, deadlineAt?: number, running?: Set<string>): Promise<void> {
+ * finished round gets its housekeeping. A world slice (local-patch-slice-pacing/v1)
+ * passes `slice`: `running` receives each round whose batch the provider has just said
+ * still runs (`variantId:imageSha256`), its board's review having nothing to move until
+ * it ends; and finished rounds' housekeeping stops by `housekeepingDeadlineAt`, leaving
+ * the slice room for a review. Open rounds keep the whole `deadlineAt`, before any housekeeping. */
+export async function advanceQualityBatches(c: Container, gameId: string, fence: Fence, deadlineAt?: number,
+  slice?: { readonly running: Set<string>; readonly housekeepingDeadlineAt?: number }): Promise<void> {
   const transport = c.qualityBatch;
   if (!transport) return;
   const rounds = [...await gameRounds(c.db, gameId)];
@@ -871,17 +876,19 @@ export async function advanceQualityBatches(c: Container, gameId: string, fence:
   // Open rounds first, each kind in its own order: an answer that has arrived is settled, and a running one polled,
   // before the housekeeping of finished rounds can take the pass's time (local-patch-slice-pacing/v1).
   const parsed = rounds.map(([roundId, events]) => ({ roundId, round: qualityBatchRoundOf(events) }));
-  for (const { roundId, round } of [...parsed.filter(entry => !entry.round.terminal), ...parsed.filter(entry => entry.round.terminal)]) {
+  for (const { roundId, round } of parsed.filter(entry => !entry.round.terminal)) {
     if (deadlineAt !== undefined && deadlineAt - Date.now() < POLL_NEED_MS) return;
     const ctx: Context = { c, transport, gameId, fence, question: null, stopping: false, deadlineAt };
-    if (round.terminal) { await maintain(ctx, round, false, keys); continue; }
-    try { await advance(ctx, roundId); }
+    let gate: QualityBatchGate | null = null;
+    try { gate = await advance(ctx, roundId); }
     // A full world waits for capacity at the review that needs it, which parks or waits as it does today.
     catch (error) { if (!(error instanceof WorldBudgetError)) throw error; }
-    if (running) {
-      const polled = await readRound(ctx, roundId);
-      if (nextQualityBatchStep(polled, Date.now()).step === "poll") running.add(`${polled.intent.variantId}:${polled.intent.imageSha256}`);
-    }
+    if (slice && gate?.kind === "waiting" && gate.running) slice.running.add(`${round.intent.variantId}:${round.intent.imageSha256}`);
+  }
+  const housekeepingDeadlineAt = slice?.housekeepingDeadlineAt ?? deadlineAt;
+  for (const { round } of parsed.filter(entry => entry.round.terminal)) {
+    if (housekeepingDeadlineAt !== undefined && housekeepingDeadlineAt - Date.now() < POLL_NEED_MS) return;
+    await maintain({ c, transport, gameId, fence, question: null, stopping: false, deadlineAt: housekeepingDeadlineAt }, round, false, keys);
   }
 }
 

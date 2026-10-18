@@ -123,12 +123,13 @@ describe("Sol continuity in the background: one create, polled by id, every char
     expect(await free.budget.readRequest(free.worldId, free.requestKey)).toMatchObject({ state: "unknown", reserveMicroUsd: 66_000 });
     expect(await free.replay()).toMatchObject({ kind: "unresolved" });
   });
-  it("names only a response its pass polled and found still running (local-patch-slice-pacing/v1)", async () => {
+  it("names only a response the provider has just said still runs (local-patch-slice-pacing/v1)", async () => {
     const key = `tva-synthetic:${"a".repeat(64)}`;
     let release!: () => void;
     const created = new Promise<void>(resolve => { release = resolve; });
     const { fake } = transport(async () => { await created; return { responseId: "resp_synthetic" }; },
-      [async () => ({ status: "in_progress" }), async () => ({ status: "in_progress" }), async () => completed("{\"cases\":[]}")]);
+      [async () => ({ status: "in_progress" }), async () => { throw Error("read timed out"); }, async () => ({ status: "in_progress" }),
+        async () => completed("{\"cases\":[]}")]);
     const { c, ask } = await setup("bg-running", fake);
     const pass = async (deadlineAt?: number) => { const running = new Set<string>();
       await advanceContinuityInBackground(c, ask.gameId, { ...(deadlineAt === undefined ? {} : { deadlineAt }), running }); return running; };
@@ -139,9 +140,10 @@ describe("Sol continuity in the background: one create, polled by id, every char
     expect(await pass()).toEqual(new Set());
     release();
     expect(await asked).toMatchObject({ kind: "waiting" });
-    // Created and running, but a pass with no room to poll it names nothing: its review still polls it.
+    // Created and running, but a pass with no room to read it names nothing, nor does a read that fails.
     expect(await pass(Date.now() + 1_000)).toEqual(new Set());
-    // Polled by this pass and still running: named by its appearance's current pixels.
+    expect(await pass()).toEqual(new Set());
+    // A read that says it runs names it, by its appearance's current pixels.
     expect(await pass()).toEqual(new Set([key]));
     // Complete: its review decides it now.
     expect(await pass()).toEqual(new Set());
