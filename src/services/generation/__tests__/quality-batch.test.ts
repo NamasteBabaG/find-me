@@ -270,6 +270,41 @@ describe("Opus scene-quality questions through Message Batches", () => {
     expect(fetch).not.toHaveBeenCalled();
   }, 900_000);
 
+  it("does not rebuild a board while every question it owes waits in a created batch, and decides it once the batch ends", async () => {
+    const gameId = "batch-awaiting", board = BOARDS[0]!; await world(gameId);
+    for (const hide of board.hides) await runLocalPatchHide(c, painter(gameId), { gameId, board, hide });
+    const fake = new FakeBatches(opus()), request = sol(gameId), renders: string[] = [];
+    const container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    const reviewed: string[] = [];
+    const log = vi.spyOn(console, "info").mockImplementation((...args: unknown[]) => {
+      if (args[0] === "[local-patch] board review") reviewed.push((args[1] as { board: string }).board);
+    });
+    const sent = () => fake.batches.filter(b => board.hides.some(h => h.id === boundHide(promptOf(b.requests[0]!.params)).hideId)).length;
+    const slice = () => runLocalPatchWorldSlice(container, painter(gameId, renders), gameId, { hardDeadlineAt: Date.now() + 270_000 });
+    try {
+      for (let tick = 0; tick < 6 && sent() < 3; tick++) expect((await slice()).attention).toBeNull();
+      expect(sent()).toBe(3);
+      // Nothing its review could move until an answer arrives: the board is neither rebuilt nor finished meanwhile.
+      reviewed.length = 0;
+      expect(await slice()).toMatchObject({ claimed: true, pending: true, attention: null });
+      expect(reviewed).not.toContain(board.board);
+      expect(await db.gameScene.findUniqueOrThrow({ where: { id: scene(gameId, board).sceneId } })).not.toMatchObject({ generationStatus: "GENERATED" });
+      // The provider answers between slices; the next slice decides the board.
+      fake.end();
+      reviewed.length = 0;
+      expect((await slice()).attention).toBeNull();
+      expect(reviewed).toContain(board.board);
+      expect(qualityCalls(request)).toBe(0);
+      // Nothing is left for a later sweep: every copy ended, kept and deleted at the provider.
+      for (let pass = 0; pass < 3 && !fake.batches.every(b => b.deleted); pass++) {
+        fake.end();
+        await advanceQualityBatches(container, gameId, async () => {});
+        await sweepQualityBatches(container, { deadlineAt: Date.now() + 270_000 });
+      }
+      expect(fake.batches.every(b => b.deleted)).toBe(true);
+    } finally { log.mockRestore(); }
+  }, 600_000);
+
   it("sends a board's three questions before any answer, buys nothing while they wait, then decides each at its own price", async () => {
     const gameId = "batch-board", w = await world(gameId), board = BOARDS[0]!;
     for (const hide of board.hides) await runLocalPatchHide(c, painter(gameId), { gameId, board, hide });

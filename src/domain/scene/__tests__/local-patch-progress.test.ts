@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { SUBJECT_V2_REPAIR_CYCLES, localPatchProgressOrder, localPatchRestDecision, localPatchRestOf, selfRepairProgress, type ProgressCandidate } from "../local-patch-progress";
+import { LOCAL_PATCH_BOARD_REVIEW_MIN_MS, SUBJECT_V2_REPAIR_CYCLES, localPatchBoardAwaitsProvider, localPatchProgressOrder, localPatchRestDecision,
+  localPatchRestOf, localPatchReviewFits, selfRepairProgress, type ProgressCandidate } from "../local-patch-progress";
 
 /**
  * local-patch-progress/v1. The pilot's failure: every started self-repair ran before any second
@@ -40,6 +41,31 @@ describe("local-patch-progress/v1", () => {
     expect(selfRepairProgress({ phase: "rejected", cycle: 3, subjectV2Cycles: SUBJECT_V2_REPAIR_CYCLES }, 2).exhausted).toBe(true);
     expect(selfRepairProgress({ phase: "awaiting-review", cycle: 3, subjectV2Cycles: SUBJECT_V2_REPAIR_CYCLES }, 2).exhausted).toBe(true);
     expect(selfRepairProgress({ phase: "rejected", cycle: 7 }, 2).exhausted).toBe(false);
+  });
+});
+
+describe("local-patch-slice-pacing/v1: a slice starts only the board reviews it can finish", () => {
+  it("starts a board only with room for the longest one seen, and twice the longest this slice has done", () => {
+    // QA, 18 October: a board took about 115 s and the next one started with 150 s left; the platform stopped the slice at 300 s.
+    expect(LOCAL_PATCH_BOARD_REVIEW_MIN_MS).toBe(180_000);
+    expect(localPatchReviewFits(265_000, 0)).toBe(true);
+    expect(localPatchReviewFits(179_999, 0)).toBe(false);
+    expect(localPatchReviewFits(150_000, 115_000)).toBe(false);
+    // A quick board (nothing to rebuild) leaves room for the next; a slow one does not.
+    expect(localPatchReviewFits(200_000, 40_000)).toBe(true);
+    expect(localPatchReviewFits(229_999, 115_000)).toBe(false);
+    expect(localPatchReviewFits(230_000, 115_000)).toBe(true);
+  });
+
+  it("skips a board only when every appearance with review work has its question sent and awaiting the provider", () => {
+    const awaiting = new Set(["row-a:sha-a", "row-b:sha-b"]);
+    expect(localPatchBoardAwaitsProvider(["row-a:sha-a"], awaiting)).toBe(true);
+    expect(localPatchBoardAwaitsProvider(["row-a:sha-a", "row-b:sha-b"], awaiting)).toBe(true);
+    // Another appearance still has work its review can do now; new pixels are a new question; nothing owed is nothing to skip.
+    expect(localPatchBoardAwaitsProvider(["row-a:sha-a", "row-c:sha-c"], awaiting)).toBe(false);
+    expect(localPatchBoardAwaitsProvider(["row-a:sha-new"], awaiting)).toBe(false);
+    expect(localPatchBoardAwaitsProvider(["row-a:sha-a", null], awaiting)).toBe(false);
+    expect(localPatchBoardAwaitsProvider([], awaiting)).toBe(false);
   });
 });
 

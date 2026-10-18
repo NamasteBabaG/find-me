@@ -17,7 +17,7 @@ import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wi
 import { reviewBoardWizardIdentity } from "../board-wizard-identity-gate";
 import { readBoardConditionedCatalog } from "../board-conditioned-catalog";
 import { reviewLocalPatchBoard } from "../local-patch-board-review";
-import { runLocalPatchHide, type LocalPatchHideDeps } from "../local-patch-hide";
+import { readShippedBoardArt, runLocalPatchHide, type LocalPatchHideDeps } from "../local-patch-hide";
 import { AGE_BODY_CONTRACT, LOCAL_PATCH_AGE_BODY_PROMPT_VERSION, LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION } from "../local-patch-prompt";
 import { LOCAL_PATCH_PUBLICATION_ACTION } from "../local-patch-publication-policy";
 import { LOCAL_PATCH_RECOVERY_BUDGET_WAIT, LOCAL_PATCH_RECOVERY_EXHAUSTED, LOCAL_PATCH_STYLE, runLocalPatchWorldSlice } from "../local-patch-world";
@@ -28,7 +28,7 @@ import { pinVisualReviewRelease } from "../visual-review-release";
 import { prepareVisualReview, visualReviewMaxCharge } from "../visual-review";
 import { sha256Bytes } from "../fixed-sprite";
 import { bill, paintedCrop, paintedOk, seedApprovedGame } from "./local-patch-fixtures";
-import { asDeployedReaderRefusal, atEvidenceRound, dualReviewer, longAnswer, prose, spendTo } from "./local-patch-dual-fixtures";
+import { asDeployedReaderRefusal, atEvidenceRound, boundHide, dualReviewer, longAnswer, prose, spendTo } from "./local-patch-dual-fixtures";
 import { localPatchEvidenceRecovery } from "../local-patch-review-recovery";
 
 const fakes = vi.hoisted(() => ({ testers: [] as string[], release: "v15" as "v15" | "v16" }));
@@ -247,6 +247,47 @@ describe("a whole v12 world under two independent HIGH reviews", () => {
     expect(request).not.toHaveBeenCalled();
     expect(await budget.readRequest(worldId, "in-flight-review")).toMatchObject({ state: "pending", reserveMicroUsd: 300_000 });
   }, 900_000);
+});
+
+describe("local-patch-slice-pacing/v1 on a whole v12 world", () => {
+  it("starts no board review a slice cannot finish, hands its claim back before the deadline, and leaves the rest to the next slice", async () => {
+    const gameId = "dual-world-pacing"; await world(gameId);
+    const renders: string[] = [], deps = painter(gameId, renders);
+    const request = dualReviewer(gameId, (hideId, call) => { const [head, body, occlusion] = OBSERVED[call % 3]!; return longAnswer(hideId, head, body, occlusion); });
+    const container = { ...c, visualReview: { request } } as Container;
+    // Two boards painted: six appearances await their first reviews.
+    const [first, second] = [BOARDS[0]!, BOARDS[1]!];
+    for (const board of [first, second]) for (const hide of board.hides) await runLocalPatchHide(c, deps, { gameId, board, hide });
+    let now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    const reviews: { board: string; kind: string; state: string }[] = [];
+    const log = vi.spyOn(console, "info").mockImplementation((...args: unknown[]) => {
+      if (args[0] === "[local-patch] board review") reviews.push(args[1] as (typeof reviews)[number]);
+    });
+    try {
+      // QA, 18 October: rebuilding one board's evidence took minutes. Here it takes 200 s of the clock, so the first
+      // board's question no longer fits its window and nothing is bought; the slice used to go on to the next board.
+      const slow: LocalPatchHideDeps = { ...deps, readBoardArt: async (art, sha) => { now += 200_000; return readShippedBoardArt(art, sha); } };
+      const deadline = now + 270_000;
+      const result = await runLocalPatchWorldSlice(container, slow, gameId, { hardDeadlineAt: deadline });
+      expect(now).toBeLessThanOrEqual(deadline);
+      expect(reviews).toEqual([expect.objectContaining({ board: first.board, kind: "first", state: "pending" })]);
+      expect(request).not.toHaveBeenCalled();
+      // The claim is handed back, not held for the six-minute lease: the next tick takes the world at once.
+      expect(result).toMatchObject({ claimed: true, pending: true, attention: null });
+      expect(await db.generationJob.findUniqueOrThrow({ where: { id: `job_${gameId}` } })).toMatchObject({ status: "QUEUED", currentStep: "local-patch" });
+
+      // At ordinary speed the following slices take up the rest, the board left over included.
+      reviews.length = 0;
+      for (let tick = 0; tick < 8 && !reviews.some(r => r.board === second.board); tick++)
+        expect(await runLocalPatchWorldSlice(container, deps, gameId, { hardDeadlineAt: now + 270_000 })).toMatchObject({ claimed: true, pending: true, attention: null });
+      expect(reviews[0]).toMatchObject({ board: first.board });
+      expect(reviews.map(r => r.board)).toContain(second.board);
+      const asked = new Set(request.mock.calls.map(([question]) => boundHide(question.prompt).hideId));
+      expect(second.hides.some(hide => asked.has(hide.id))).toBe(true);
+      expect(fetch).not.toHaveBeenCalled();
+    } finally { clock.mockRestore(); log.mockRestore(); }
+  }, 300_000);
 });
 
 describe("v16 on a real v12 world", () => {

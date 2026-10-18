@@ -886,6 +886,17 @@ export async function qualityBatchWaiting(db: Pick<Prisma.TransactionClient, "au
   return waitingRows;
 }
 
+/** Appearances whose question is in a batch already created and only awaiting it (`variantId:imageSha256`). Every slice
+ * polls such a round before its reviews (advanceQualityBatches); a round still to be created, found or closed is not one. */
+export async function qualityBatchAwaitingProvider(db: Pick<Prisma.TransactionClient, "auditLog">, gameId: string, now = Date.now()): Promise<Set<string>> {
+  const awaiting = new Set<string>();
+  for (const events of (await gameRounds(db, gameId)).values()) {
+    const round = qualityBatchRoundOf(events);
+    if (nextQualityBatchStep(round, now).step === "poll") awaiting.add(`${round.intent.variantId}:${round.intent.imageSha256}`);
+  }
+  return awaiting;
+}
+
 /** The scheduled tick runs every minute; each tick starts its sweep one round further on. */
 const SWEEP_ROTATION_MS = 60_000;
 /** The time a tick's sweep gives provider calls, counted from the end of reading the records. */

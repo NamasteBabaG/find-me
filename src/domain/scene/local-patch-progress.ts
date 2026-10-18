@@ -30,6 +30,26 @@ export function localPatchProgressOrder<T extends ProgressCandidate>(items: read
     .sort((a, b) => Number(b.inFlight) - Number(a.inFlight) || a.served - b.served || a.order - b.order);
 }
 
+/**
+ * local-patch-slice-pacing/v1. A board review rebuilds the board's evidence before anything is asked, and so does a
+ * free decision. On QA, 18 October, that took one to three minutes a board, and a slice that started another board
+ * after one of about two minutes was stopped by the platform at 300 s, holding the world for a six-minute lease: one
+ * step per eleven minutes. A review is started only while the slice has room for the longest seen there, and for
+ * twice the longest it has already done.
+ */
+export const LOCAL_PATCH_BOARD_REVIEW_MIN_MS = 180_000;
+export const localPatchReviewFits = (remainingMs: number, longestReviewMs: number) =>
+  remainingMs >= Math.max(LOCAL_PATCH_BOARD_REVIEW_MIN_MS, 2 * longestReviewMs);
+
+/**
+ * A board whose every appearance with review work has its question already sent and only awaiting the provider
+ * (a Message Batches round or a background response, polled at the start of every slice) has nothing its review
+ * can move until an answer arrives; rebuilding its evidence meanwhile only takes the slice from work that can.
+ * `keys` are the appearances with review work (null when one cannot be named); `awaiting`, the questions sent.
+ */
+export const localPatchBoardAwaitsProvider = (keys: readonly (string | null)[], awaiting: ReadonlySet<string>) =>
+  keys.length > 0 && keys.every(key => key !== null && awaiting.has(key));
+
 /** Why a remaining appearance has nothing automatic left to start, or null when it still has work. */
 export type LocalPatchRest = { readonly hideId: string; readonly rest: "spent" | "evidence" | "waiting" | null; readonly evidenceKind?: string };
 

@@ -308,3 +308,18 @@ export async function advanceContinuityInBackground(c: Container, gameId: string
   }
   return advanced;
 }
+
+/** Appearances whose continuity question is a response already created and only awaiting it (`variantId:imageSha256`),
+ * which advanceContinuityInBackground polls every slice. A record it cannot read names nothing: its review reads it. */
+export async function backgroundReviewAwaitingProvider(db: Pick<Prisma.TransactionClient, "auditLog">, gameId: string, now = Date.now()): Promise<Set<string>> {
+  const awaiting = new Set<string>();
+  const intents = await db.auditLog.findMany({ where: { action: SOL_BACKGROUND_ACTION, entityType: "Game", entityId: gameId, id: { endsWith: "_intent" } } });
+  for (const row of intents) {
+    try {
+      const intent = (JSON.parse(row.metaJson ?? "null") as Extract<BackgroundReviewEvent, { kind: "intent" }>).intent;
+      if (nextBackgroundStep(backgroundRoundOf(await readEvents(db, gameId, intent.roundId)), now).step === "poll")
+        awaiting.add(`${intent.binding.variantId}:${intent.binding.imageSha256}`);
+    } catch { /* not named: its board is reviewed */ }
+  }
+  return awaiting;
+}

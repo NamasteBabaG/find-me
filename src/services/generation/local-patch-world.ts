@@ -29,12 +29,13 @@ import { localPatchEvidenceRecovery, LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS } fro
 import { localPatchRetainedAnswerUndecided, localPatchContinuityPending } from "./local-patch-dual-evidence";
 import { hasDualVisualReview } from "./visual-review-release";
 import { localPatchPainterRelease, painterReleasePolicy, type LocalPatchPainterRelease } from "./painter-release";
-import { advanceQualityBatches } from "./quality-batch";
+import { advanceQualityBatches, qualityBatchAwaitingProvider } from "./quality-batch";
 import { subjectUpgradeOf } from "./subject-enrollment";
 import { subjectRejudgePending } from "./subject-rejudge";
-import { localPatchProgressOrder, localPatchRestDecision, localPatchRestOf, selfRepairProgress, type LocalPatchRest } from "../../domain/scene/local-patch-progress";
+import { localPatchBoardAwaitsProvider, localPatchProgressOrder, localPatchRestDecision, localPatchRestOf, localPatchReviewFits, selfRepairProgress,
+  type LocalPatchRest } from "../../domain/scene/local-patch-progress";
 import { recoverEnrolledReviewInterruptions } from "./subject-upgrade";
-import { advanceContinuityInBackground } from "./continuity-background";
+import { advanceContinuityInBackground, backgroundReviewAwaitingProvider } from "./continuity-background";
 import {
   LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, runLocalPatchHide,
   type LocalPatchHideDeps, type LocalPatchHideOutcome,
@@ -94,13 +95,6 @@ export const LOCAL_PATCH_EVIDENCE_RETRY_WAIT = "local-patch:evidence-retry-wait"
  */
 export const LOCAL_PATCH_RECOVERY_EXHAUSTED = "local-patch:recovery-exhausted";
 const PARKED_STEPS = [LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_RECOVERY_EXHAUSTED];
-/**
- * A free decision asks no provider, but it is not free of time: it rebuilds one
- * board's evidence (identity, original art, the patch and its panels) and
- * commits it. None starts with less than one phase margin before the worker's
- * hard deadline; the claim is handed back with that free work still runnable.
- */
-export const LOCAL_PATCH_FREE_DECISION_MS = LOCAL_PATCH_PHASE_MARGIN_MS;
 
 export type LocalPatchSliceResult = {
   readonly gameId: string;
@@ -380,6 +374,23 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const extraPlan = await readLocalPatchExtraAttemptPlan(c, gameId);
   const reviewedScenes = new Set<string>();
   let deferredBudgetError: WorldBudgetError | null = null;
+  // local-patch-slice-pacing/v1. A free decision asks no provider, and a review may only send a question, but neither is
+  // free of time: each rebuilds one board's evidence (identity, original art, the patch and its panels) and commits it.
+  // One is started only while this slice can finish it, the claim is handed back with the rest still runnable, and each
+  // is timed by board so a slow one shows in the logs. A board whose questions only await their provider is not rebuilt.
+  let longestReviewMs = 0;
+  const reviewFits = () => options.hardDeadlineAt === undefined || localPatchReviewFits(options.hardDeadlineAt - Date.now(), longestReviewMs);
+  const timedReview = async <T extends { readonly state: string }>(board: string, kind: "retained" | "first" | "complete", review: () => Promise<T>) => {
+    const started = Date.now();
+    let state = "failed";
+    try { const outcome = await review(); state = outcome.state; return outcome; }
+    finally {
+      const ms = Date.now() - started;
+      longestReviewMs = Math.max(longestReviewMs, ms);
+      console.info("[local-patch] board review", { gameId, board, kind, state, ms });
+    }
+  };
+  const awaitingBoards = new Set<string>();
   // Scheduling only: publication re-verifies every subject stage, bill and binding.
   const subjectUpgrade = automatic && !extraPlan ? await subjectUpgradeOf(c.db, gameId) : null;
   /** A v1 pose-plan refusal awaiting its v2 question about the same pixels (subject-rejudge/v1), read at the enrolled age. */
@@ -406,15 +417,15 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
         // Out of time is not out of options: yield the claim with the rest of the
         // free work runnable. The next tick starts here again, before anything
         // paid, and nothing is parked for a reason a later tick resolves.
-        if (options.hardDeadlineAt !== undefined && options.hardDeadlineAt - Date.now() < LOCAL_PATCH_FREE_DECISION_MS) {
+        if (!reviewFits()) {
           await c.db.$transaction(async tx => { await fence(tx); await tx.generationJob.update({ where: { id: job.id },
             data: { status: "QUEUED", currentStep: "local-patch", lastError: null } }); });
           return { ...empty, claimed: true, pending: true, paused: false };
         }
         let decided;
         try {
-          decided = await reviewLocalPatchBoard(c, { gameId, sceneId: scene.id },
-            { fence, apiKey: deps.apiKey, judge: options.boardJudge, readBoardArt: deps.readBoardArt }, { decideRetained: true });
+          decided = await timedReview(scene.sceneSlug, "retained", () => reviewLocalPatchBoard(c, { gameId, sceneId: scene.id },
+            { fence, apiKey: deps.apiKey, judge: options.boardJudge, readBoardArt: deps.readBoardArt }, { decideRetained: true }));
         } catch (error) {
           await c.db.generationJob.updateMany({ where: { id: job.id, attempts: claim, status: "RUNNING" },
             data: { status: "FAILED", lastError: (error instanceof Error ? error.message : String(error)).slice(0, 500) } });
@@ -444,6 +455,21 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     const reviewedOnce = (row: (typeof rows)[number]) => {
       try { return JSON.parse(row.judgeJson ?? "null")?.reviewState === "board-review-complete"; } catch { return false; }
     };
+    // Questions already sent and only awaiting their provider, both kinds polled above (local-patch-slice-pacing/v1).
+    const sent = dual ? new Set([...await qualityBatchAwaitingProvider(c.db, gameId), ...await backgroundReviewAwaitingProvider(c.db, gameId)])
+      : new Set<string>();
+    const reviewedAcceptable = (row: (typeof rows)[number]) => {
+      try { const receipt = JSON.parse(row.judgeJson ?? "null");
+        return receipt?.reviewState === "board-review-complete" && receipt.qualityDisposition?.state === "acceptable";
+      } catch { return false; }
+    };
+    /** Review work on an appearance's current pixels: exactly what gives its board firstWork or retry below. */
+    const reviewWork = (row: (typeof rows)[number]) => !!subjectUpgrade && row.status === "GENERATED" && !subjectStageCurrent(row)
+      || rejudgePending(row) || playerReviewEnabled() && needsPlayerReview(row) || row.status === "GENERATED" && !reviewedAcceptable(row)
+      || !!localPatchEvidenceRecovery(row)?.retry;
+    const sentKey = (row: (typeof rows)[number]) => {
+      try { const sha = JSON.parse(row.judgeJson ?? "null")?.judgedSha256; return typeof sha === "string" ? `${row.id}:${sha}` : null; } catch { return null; }
+    };
     const firstPassComplete = work.every(item => {
       const row = stateOf(item.sceneId, item.hide.targetId);
       return !!row && row.status !== "PENDING" && (row.status !== "GENERATED" || reviewedOnce(row));
@@ -464,15 +490,21 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
           return receipt?.reviewState !== "board-review-complete" || receipt.qualityDisposition?.state !== "acceptable";
         } catch { return true; }
       });
-      return { scene, ready, firstWork, continuityPending: sceneRows.some(localPatchContinuityPending), retry: sceneRows.some(row => localPatchEvidenceRecovery(row)?.retry) };
+      return { scene, ready, firstWork, continuityPending: sceneRows.some(localPatchContinuityPending), retry: sceneRows.some(row => localPatchEvidenceRecovery(row)?.retry),
+        awaiting: localPatchBoardAwaitsProvider(sceneRows.filter(reviewWork).map(sentKey), sent) };
     }).sort((a, b) => Number(!a.continuityPending) - Number(!b.continuityPending) || Number(!a.firstWork) - Number(!b.firstWork));
+    for (const plan of plans) if (plan.awaiting) awaitingBoards.add(plan.scene.id);
     for (const { scene, ready, firstWork, retry } of plans) {
       if (scene.sceneVersion !== 12 || scene.generationStatus === "GENERATED" && !subjectPending.has(scene.id)) continue;
       if (!(firstWork || retry) && ready.length !== localPatchBoardFor(scene.sceneSlug, scene.sceneVersion)?.hides.length) continue;
       if (!firstWork && retry && !firstPassComplete) continue;
+      // Every question it owes is sent: decided by a later slice, once its answer arrives.
+      if (awaitingBoards.has(scene.id)) continue;
+      // local-patch-slice-pacing/v1: no board is started that the slice cannot finish; the next tick takes the rest.
+      if (!reviewFits()) break;
       try {
-        const review = await reviewLocalPatchBoard(c, { gameId, sceneId: scene.id, deadlineAt: options.hardDeadlineAt },
-          { fence, apiKey: deps.apiKey, judge: options.boardJudge, readBoardArt: deps.readBoardArt });
+        const review = await timedReview(scene.sceneSlug, "first", () => reviewLocalPatchBoard(c, { gameId, sceneId: scene.id, deadlineAt: options.hardDeadlineAt },
+          { fence, apiKey: deps.apiKey, judge: options.boardJudge, readBoardArt: deps.readBoardArt }));
         reviewedScenes.add(scene.id);
         if (review.state === "held") {
           const attention = review.reason ?? "Review charge requires reconciliation";
@@ -663,6 +695,8 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   for (const scene of game.scenes) {
     const board = localPatchBoardFor(scene.sceneSlug, scene.sceneVersion);
     if (!board || localPatchBoardBlockedReason(board)) continue;
+    // Its questions await their provider: nothing to rebuild or decide yet, and the world is neither finished nor at rest.
+    if (awaitingBoards.has(scene.id)) { pendingReviews++; continue; }
     const mine = board.hides.map(hide => after.find(r => r.targetInstance.gameSceneId === scene.id && r.targetInstance.targetId === hide.targetId));
     if (!mine.every(settledHide)) continue;
     // A complete board of an enrolled world still owes subject approvals: never READY before them.
@@ -674,11 +708,13 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       if (scene.sceneVersion === 12 && continuityPending && !mine.some(row => row && localPatchContinuityPending(row))) { pendingReviews++; continue; }
       if (reviewedScenes.has(scene.id)) { pendingReviews++; continue; }
       if (attention || paused) { pendingReviews++; continue; }
+      // local-patch-slice-pacing/v1: a review this slice cannot finish is the next tick's.
+      if (!reviewFits()) { pendingReviews++; continue; }
       try {
-        const reviewed = await reviewLocalPatchBoard(c, { gameId, sceneId: scene.id,
+        const reviewed = await timedReview(scene.sceneSlug, "complete", () => reviewLocalPatchBoard(c, { gameId, sceneId: scene.id,
           ...(options.hardDeadlineAt === undefined ? {} : { deadlineAt: options.hardDeadlineAt }) }, {
           fence, apiKey: deps.apiKey, judge: options.boardJudge, readBoardArt: deps.readBoardArt,
-        });
+        }));
         if (automatic && !extraPlan && scene.sceneVersion === 12 && reviewed.costCents > 0) {
           after = await c.db.targetVariantAsset.findMany({ where: { variant: LOCAL_PATCH_VARIANT, targetInstance: { gameScene: { gameId } } },
             include: { targetInstance: { select: { targetId: true, gameSceneId: true } } } });
