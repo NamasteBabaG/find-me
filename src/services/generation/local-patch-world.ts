@@ -29,13 +29,13 @@ import { localPatchEvidenceRecovery, LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS } fro
 import { localPatchRetainedAnswerUndecided, localPatchContinuityPending } from "./local-patch-dual-evidence";
 import { hasDualVisualReview } from "./visual-review-release";
 import { localPatchPainterRelease, painterReleasePolicy, type LocalPatchPainterRelease } from "./painter-release";
-import { advanceQualityBatches, qualityBatchAwaitingProvider } from "./quality-batch";
+import { advanceQualityBatches } from "./quality-batch";
 import { subjectUpgradeOf } from "./subject-enrollment";
 import { subjectRejudgePending } from "./subject-rejudge";
-import { localPatchBoardAwaitsProvider, localPatchProgressOrder, localPatchRestDecision, localPatchRestOf, localPatchReviewFits, selfRepairProgress,
-  type LocalPatchRest } from "../../domain/scene/local-patch-progress";
+import { LOCAL_PATCH_BOARD_REVIEW_MIN_MS, localPatchBoardAwaitsProvider, localPatchProgressOrder, localPatchRestDecision, localPatchRestOf,
+  localPatchReviewFits, selfRepairProgress, type LocalPatchRest } from "../../domain/scene/local-patch-progress";
 import { recoverEnrolledReviewInterruptions } from "./subject-upgrade";
-import { advanceContinuityInBackground, backgroundReviewAwaitingProvider } from "./continuity-background";
+import { advanceContinuityInBackground } from "./continuity-background";
 import {
   LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, runLocalPatchHide,
   type LocalPatchHideDeps, type LocalPatchHideOutcome,
@@ -162,10 +162,14 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   if (game.scenes.length >= 9 && (game.scenes.length !== 9 || worldsOwned(game.scenes.map(scene => scene.sceneSlug)).length !== 1)) {
     throw new Error("LOCAL_PATCH_WORLD: all nine boards must belong to one complete world");
   }
+  // local-patch-slice-pacing/v1: the provider passes below leave this slice room for one board review, and name
+  // the questions they polled whose answers are still running; nothing in their boards can move before they end.
+  const passDeadline = options.hardDeadlineAt === undefined ? undefined : options.hardDeadlineAt - LOCAL_PATCH_BOARD_REVIEW_MIN_MS - LOCAL_PATCH_PHASE_MARGIN_MS;
+  const stillRunning = new Set<string>();
   // Existing provider work is reconciled before a held job or sibling scheduling can
   // defer it beyond the background response's short retention. No new request here.
   if (automatic && await subjectUpgradeOf(c.db, gameId))
-    await advanceContinuityInBackground(c, gameId, { deadlineAt: options.hardDeadlineAt });
+    await advanceContinuityInBackground(c, gameId, { ...(passDeadline === undefined ? {} : { deadlineAt: passDeadline }), running: stillRunning });
   // A v7 hide buys only its image. Reuse the dispatch boundary's conservative
   // minimum, then let it recheck after reservation and bound the actual call.
   const minHideMs = advisory ? LOCAL_PATCH_MIN_PROVIDER_MS.render + LOCAL_PATCH_PHASE_MARGIN_MS : LOCAL_PATCH_MIN_SLICE_MS;
@@ -442,7 +446,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     // deadline, or settled and linked once its batch has ended. Nothing is bought.
     // A round it cannot advance stops the slice with its reason, as a review does.
     if (dual) {
-      try { await advanceQualityBatches(c, gameId, fence, options.hardDeadlineAt); }
+      try { await advanceQualityBatches(c, gameId, fence, passDeadline, stillRunning); }
       catch (error) {
         await c.db.generationJob.updateMany({ where: { id: job.id, attempts: claim, status: "RUNNING" },
           data: { status: "FAILED", lastError: (error instanceof Error ? error.message : String(error)).slice(0, 500) } });
@@ -455,9 +459,6 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     const reviewedOnce = (row: (typeof rows)[number]) => {
       try { return JSON.parse(row.judgeJson ?? "null")?.reviewState === "board-review-complete"; } catch { return false; }
     };
-    // Questions already sent and only awaiting their provider, both kinds polled above (local-patch-slice-pacing/v1).
-    const sent = dual ? new Set([...await qualityBatchAwaitingProvider(c.db, gameId), ...await backgroundReviewAwaitingProvider(c.db, gameId)])
-      : new Set<string>();
     const reviewedAcceptable = (row: (typeof rows)[number]) => {
       try { const receipt = JSON.parse(row.judgeJson ?? "null");
         return receipt?.reviewState === "board-review-complete" && receipt.qualityDisposition?.state === "acceptable";
@@ -491,7 +492,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
         } catch { return true; }
       });
       return { scene, ready, firstWork, continuityPending: sceneRows.some(localPatchContinuityPending), retry: sceneRows.some(row => localPatchEvidenceRecovery(row)?.retry),
-        awaiting: localPatchBoardAwaitsProvider(sceneRows.filter(reviewWork).map(sentKey), sent) };
+        awaiting: localPatchBoardAwaitsProvider(sceneRows.filter(reviewWork).map(sentKey), stillRunning) };
     }).sort((a, b) => Number(!a.continuityPending) - Number(!b.continuityPending) || Number(!a.firstWork) - Number(!b.firstWork));
     for (const plan of plans) if (plan.awaiting) awaitingBoards.add(plan.scene.id);
     for (const { scene, ready, firstWork, retry } of plans) {

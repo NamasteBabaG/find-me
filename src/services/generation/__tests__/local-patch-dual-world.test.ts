@@ -30,6 +30,7 @@ import { sha256Bytes } from "../fixed-sprite";
 import { bill, paintedCrop, paintedOk, seedApprovedGame } from "./local-patch-fixtures";
 import { asDeployedReaderRefusal, atEvidenceRound, boundHide, dualReviewer, longAnswer, prose, spendTo } from "./local-patch-dual-fixtures";
 import { localPatchEvidenceRecovery } from "../local-patch-review-recovery";
+import { localPatchRetainedAnswerUndecided } from "../local-patch-dual-evidence";
 
 const fakes = vi.hoisted(() => ({ testers: [] as string[], release: "v15" as "v15" | "v16" }));
 vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: "qa", GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: 0, LOCAL_PATCH_PLAYER_REVIEW: "on",
@@ -286,6 +287,49 @@ describe("local-patch-slice-pacing/v1 on a whole v12 world", () => {
       const asked = new Set(request.mock.calls.map(([question]) => boundHide(question.prompt).hideId));
       expect(second.hides.some(hide => asked.has(hide.id))).toBe(true);
       expect(fetch).not.toHaveBeenCalled();
+    } finally { clock.mockRestore(); log.mockRestore(); }
+  }, 300_000);
+
+  it("decides free answers only while the slice can finish them, and hands back the rest", async () => {
+    const gameId = "dual-world-pacing-free"; await world(gameId);
+    const renders: string[] = [], deps = painter(gameId, renders);
+    const request = dualReviewer(gameId, (hideId, call) => { const [head, body, occlusion] = OBSERVED[call % 3]!; return longAnswer(hideId, head, body, occlusion); });
+    const container = { ...c, visualReview: { request } } as Container;
+    // One appearance on each of two boards, answered by both reviewers and then refused by the deployed reader:
+    // two retained answers that a free reading decides.
+    const [first, second] = [BOARDS[0]!, BOARDS[1]!];
+    for (const board of [first, second]) {
+      for (const hide of board.hides) await runLocalPatchHide(c, deps, { gameId, board, hide });
+      for (let question = 0; question < 2; question++) await reviewLocalPatchBoard(container, { gameId, sceneId: `gsc-${gameId}-${board.board}` }, { fence: async () => {} });
+    }
+    const answered = (await rows(gameId)).filter(row => row.status === "GENERATED" && JSON.parse(row.judgeJson!).boardReview?.dual);
+    expect(answered).toHaveLength(2);
+    for (const row of answered) await asDeployedReaderRefusal(db, gameId, row);
+    const undecided = async () => (await rows(gameId)).filter(localPatchRetainedAnswerUndecided).length;
+    expect(await undecided()).toBe(2);
+    const asked = request.mock.calls.length;
+    let now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    const reviews: { board: string; kind: string }[] = [];
+    const log = vi.spyOn(console, "info").mockImplementation((...args: unknown[]) => {
+      if (args[0] === "[local-patch] board review") reviews.push(args[1] as (typeof reviews)[number]);
+    });
+    try {
+      // Rebuilding a board's evidence takes 200 s of the clock: the second free decision would end after the deadline.
+      const slow: LocalPatchHideDeps = { ...deps, readBoardArt: async (art, sha) => { now += 200_000; return readShippedBoardArt(art, sha); } };
+      const deadline = now + 270_000;
+      expect(await runLocalPatchWorldSlice(container, slow, gameId, { hardDeadlineAt: deadline })).toMatchObject({ claimed: true, pending: true, attention: null });
+      expect(now).toBeLessThanOrEqual(deadline);
+      expect(reviews).toEqual([expect.objectContaining({ board: first.board, kind: "retained" })]);
+      expect(await undecided()).toBe(1);
+      expect(await db.generationJob.findUniqueOrThrow({ where: { id: `job_${gameId}` } })).toMatchObject({ status: "QUEUED", currentStep: "local-patch" });
+      // The next slice decides the other, still for free.
+      reviews.length = 0;
+      await runLocalPatchWorldSlice(container, deps, gameId, { hardDeadlineAt: now + 270_000 });
+      expect(reviews[0]).toMatchObject({ board: second.board, kind: "retained" });
+      expect(await undecided()).toBe(0);
+      expect(request.mock.calls.slice(asked).filter(([question]) => [first, second].some(b => b.hides.some(h => h.id === boundHide(question.prompt).hideId))
+        && answered.some(row => JSON.parse(row.judgeJson!).hide === boundHide(question.prompt).hideId))).toHaveLength(0);
     } finally { clock.mockRestore(); log.mockRestore(); }
   }, 300_000);
 });

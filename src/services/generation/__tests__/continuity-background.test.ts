@@ -123,6 +123,36 @@ describe("Sol continuity in the background: one create, polled by id, every char
     expect(await free.budget.readRequest(free.worldId, free.requestKey)).toMatchObject({ state: "unknown", reserveMicroUsd: 66_000 });
     expect(await free.replay()).toMatchObject({ kind: "unresolved" });
   });
+  it("names only a response its pass polled and found still running (local-patch-slice-pacing/v1)", async () => {
+    const key = `tva-synthetic:${"a".repeat(64)}`;
+    let release!: () => void;
+    const created = new Promise<void>(resolve => { release = resolve; });
+    const { fake } = transport(async () => { await created; return { responseId: "resp_synthetic" }; },
+      [async () => ({ status: "in_progress" }), async () => ({ status: "in_progress" }), async () => completed("{\"cases\":[]}")]);
+    const { c, ask } = await setup("bg-running", fake);
+    const pass = async (deadlineAt?: number) => { const running = new Set<string>();
+      await advanceContinuityInBackground(c, ask.gameId, { ...(deadlineAt === undefined ? {} : { deadlineAt }), running }); return running; };
+    expect(await pass()).toEqual(new Set());
+    // Claimed, its create still answering: the review that claimed it records the answer; nothing is named.
+    const asked = askContinuityInBackground(c, ask);
+    while (!await db.auditLog.count({ where: { entityId: ask.gameId, id: { endsWith: "_claim" } } })) await new Promise(resolve => setTimeout(resolve, 5));
+    expect(await pass()).toEqual(new Set());
+    release();
+    expect(await asked).toMatchObject({ kind: "waiting" });
+    // Created and running, but a pass with no room to poll it names nothing: its review still polls it.
+    expect(await pass(Date.now() + 1_000)).toEqual(new Set());
+    // Polled by this pass and still running: named by its appearance's current pixels.
+    expect(await pass()).toEqual(new Set([key]));
+    // Complete: its review decides it now.
+    expect(await pass()).toEqual(new Set());
+    // A lost create has finished as well.
+    const lost = await setup("bg-running-lost", transport(async () => { throw Error("socket hang up"); }).fake);
+    expect(await askContinuityInBackground(lost.c, lost.ask)).toEqual({ kind: "proceed" });
+    const none = new Set<string>();
+    await advanceContinuityInBackground(lost.c, lost.ask.gameId, { running: none });
+    expect(none).toEqual(new Set());
+  });
+
   it("lets only one of two racing workers create the response", async () => {
     const { fake, calls } = transport(async () => { await new Promise(resolve => setTimeout(resolve, 50)); return { responseId: "resp_synthetic" }; },
       [async () => ({ status: "in_progress" }), async () => ({ status: "in_progress" })]);

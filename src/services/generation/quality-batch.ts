@@ -856,8 +856,10 @@ export async function askQualityThroughBatch(c: Container, input: {
 
 /** Every open round of one generating game, advanced once: polled, cancelled at its
  * deadline, or settled and linked when its batch has ended. It never creates. Every
- * finished round gets its housekeeping. */
-export async function advanceQualityBatches(c: Container, gameId: string, fence: Fence, deadlineAt?: number): Promise<void> {
+ * finished round gets its housekeeping. `running` receives each round this pass polled
+ * whose batch still runs (`variantId:imageSha256`): its board's review has nothing to
+ * move until it ends (local-patch-slice-pacing/v1); a round the pass did not reach is not named. */
+export async function advanceQualityBatches(c: Container, gameId: string, fence: Fence, deadlineAt?: number, running?: Set<string>): Promise<void> {
   const transport = c.qualityBatch;
   if (!transport) return;
   const rounds = [...await gameRounds(c.db, gameId)];
@@ -866,13 +868,20 @@ export async function advanceQualityBatches(c: Container, gameId: string, fence:
   const worldId = rounds.length ? qualityBatchRoundOf(rounds[0]![1]).intent.worldId : null;
   const audit = worldId ? await boardWizardBudgetOf(c).audit(worldId) : null;
   const keys = new Set([...audit?.pendingRequestKeys ?? [], ...audit?.unknownRequestKeys ?? []]);
-  for (const [roundId, events] of rounds) {
+  // Open rounds first, each kind in its own order: an answer that has arrived is settled, and a running one polled,
+  // before the housekeeping of finished rounds can take the pass's time (local-patch-slice-pacing/v1).
+  const parsed = rounds.map(([roundId, events]) => ({ roundId, round: qualityBatchRoundOf(events) }));
+  for (const { roundId, round } of [...parsed.filter(entry => !entry.round.terminal), ...parsed.filter(entry => entry.round.terminal)]) {
     if (deadlineAt !== undefined && deadlineAt - Date.now() < POLL_NEED_MS) return;
-    const round = qualityBatchRoundOf(events), ctx: Context = { c, transport, gameId, fence, question: null, stopping: false, deadlineAt };
+    const ctx: Context = { c, transport, gameId, fence, question: null, stopping: false, deadlineAt };
     if (round.terminal) { await maintain(ctx, round, false, keys); continue; }
     try { await advance(ctx, roundId); }
     // A full world waits for capacity at the review that needs it, which parks or waits as it does today.
     catch (error) { if (!(error instanceof WorldBudgetError)) throw error; }
+    if (running) {
+      const polled = await readRound(ctx, roundId);
+      if (nextQualityBatchStep(polled, Date.now()).step === "poll") running.add(`${polled.intent.variantId}:${polled.intent.imageSha256}`);
+    }
   }
 }
 
@@ -884,17 +893,6 @@ export async function qualityBatchWaiting(db: Pick<Prisma.TransactionClient, "au
     if (!round.terminal) waitingRows.add(`${round.intent.variantId}:${round.intent.imageSha256}`);
   }
   return waitingRows;
-}
-
-/** Appearances whose question is in a batch already created and only awaiting it (`variantId:imageSha256`). Every slice
- * polls such a round before its reviews (advanceQualityBatches); a round still to be created, found or closed is not one. */
-export async function qualityBatchAwaitingProvider(db: Pick<Prisma.TransactionClient, "auditLog">, gameId: string, now = Date.now()): Promise<Set<string>> {
-  const awaiting = new Set<string>();
-  for (const events of (await gameRounds(db, gameId)).values()) {
-    const round = qualityBatchRoundOf(events);
-    if (nextQualityBatchStep(round, now).step === "poll") awaiting.add(`${round.intent.variantId}:${round.intent.imageSha256}`);
-  }
-  return awaiting;
 }
 
 /** The scheduled tick runs every minute; each tick starts its sweep one round further on. */

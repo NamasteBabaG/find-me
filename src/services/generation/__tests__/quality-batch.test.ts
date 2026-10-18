@@ -305,6 +305,78 @@ describe("Opus scene-quality questions through Message Batches", () => {
     } finally { log.mockRestore(); }
   }, 600_000);
 
+  it("leaves a slice room to decide a settled answer however long finished rounds' housekeeping keeps failing (Codex, 18 October)", async () => {
+    const gameId = "batch-slow-housekeeping", [first, second] = [BOARDS[0]!, BOARDS[1]!]; await world(gameId);
+    for (const board of [first, second]) for (const hide of board.hides) await runLocalPatchHide(c, painter(gameId), { gameId, board, hide });
+    const fake = new FakeBatches(opus()), request = sol(gameId), container = { ...c, visualReview: { request }, qualityBatch: fake } as Container;
+    // Six questions sent and answered; the answers settled, their copies not yet deleted at the provider.
+    for (const board of [first, second]) for (let i = 0; i < 3; i++) await review(container, gameId, board);
+    expect(fake.batches).toHaveLength(6);
+    fake.end();
+    await advanceQualityBatches(container, gameId, async () => {});
+    // From now on every deletion takes 30 s of the clock and fails, slice after slice.
+    let now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    const remove = fake.remove.bind(fake);
+    fake.remove = async () => { fake.calls.push("remove"); now += 30_000; throw Error("deletion timed out"); };
+    const reviewed: string[] = [];
+    const log = vi.spyOn(console, "info").mockImplementation((...args: unknown[]) => {
+      if (args[0] === "[local-patch] board review") reviewed.push((args[1] as { board: string }).board);
+    });
+    try {
+      for (let slice = 0; slice < 2; slice++) {
+        reviewed.length = 0;
+        const deadline = now + 270_000;
+        const result = await runLocalPatchWorldSlice(container, painter(gameId), gameId, { hardDeadlineAt: deadline });
+        expect(result).toMatchObject({ claimed: true, attention: null });
+        expect(now).toBeLessThanOrEqual(deadline);
+        // The housekeeping stopped with room for a review, and a settled answer was decided with no new question.
+        expect(reviewed.length).toBeGreaterThan(0);
+      }
+      expect(fake.calls.filter(call => call === "remove").length).toBeGreaterThan(0);
+      // No settled appearance was asked again; only newly painted ones have questions of their own.
+      const settled = new Set([...first.hides, ...second.hides].map(h => h.id));
+      expect(fake.batches.filter(b => settled.has(boundHide(promptOf(b.requests[0]!.params)).hideId))).toHaveLength(6);
+      expect(qualityCalls(request)).toBe(0);
+      expect(await db.auditLog.count({ where: { entityId: gameId, action: LOCAL_PATCH_PUBLICATION_ACTION } })).toBeGreaterThan(0);
+    } finally {
+      clock.mockRestore(); log.mockRestore(); fake.remove = remove;
+    }
+    // Deletion works again: nothing is left for a later sweep.
+    for (let pass = 0; pass < 3 && !fake.batches.every(b => b.deleted); pass++) {
+      fake.end();
+      await advanceQualityBatches(container, gameId, async () => {});
+      await sweepQualityBatches(container, { deadlineAt: Date.now() + 270_000 });
+    }
+    expect(fake.batches.every(b => b.deleted)).toBe(true);
+  }, 600_000);
+
+  it("names only a batch its pass polled and found still running, never one whose create may still answer, one it did not reach or one that ended", async () => {
+    const gameId = "batch-running-states", board = BOARDS[0]!; await world(gameId);
+    for (const hide of board.hides.slice(0, 2)) await runLocalPatchHide(c, painter(gameId), { gameId, board, hide });
+    const fake = new FakeBatches(opus()), container = { ...c, visualReview: { request: sol(gameId) }, qualityBatch: fake } as Container;
+    const pass = async (deadlineAt?: number) => { const running = new Set<string>(); await advanceQualityBatches(container, gameId, async () => {}, deadlineAt, running); return running; };
+    const keyOf = async (hideId: string) => {
+      const row = (await rows(gameId)).find(r => JSON.parse(r.judgeJson!).hide === hideId)!;
+      return `${row.id}:${JSON.parse(row.judgeJson!).judgedSha256}`;
+    };
+    expect(await pass()).toEqual(new Set());
+    // The first create's answer is lost: its round waits for it, then searches. Its review still has that to do.
+    fake.createPlan = ["lost-after-create", "ok"];
+    await review(container, gameId);
+    expect(await pass()).toEqual(new Set());
+    // The sibling's batch is created and runs. A pass with no room to poll it names nothing; one that polls it, it.
+    await review(container, gameId);
+    expect(await pass(Date.now() + 1_000)).toEqual(new Set());
+    expect(await pass()).toEqual(new Set([await keyOf(board.hides[1]!.id)]));
+    // Ended and settled by the next pass: its review decides it now.
+    fake.end();
+    expect(await pass()).toEqual(new Set());
+    // The settled copy is deleted now; the lost round's own batch waits for its search, which only this game's slices run.
+    await sweepQualityBatches(container, { deadlineAt: Date.now() + 270_000 });
+    expect(fake.batches.filter(b => b.deleted)).toHaveLength(1);
+  }, 300_000);
+
   it("sends a board's three questions before any answer, buys nothing while they wait, then decides each at its own price", async () => {
     const gameId = "batch-board", w = await world(gameId), board = BOARDS[0]!;
     for (const hide of board.hides) await runLocalPatchHide(c, painter(gameId), { gameId, board, hide });

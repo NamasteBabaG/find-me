@@ -274,16 +274,20 @@ export async function askContinuityInBackground(c: Container, ask: BackgroundAsk
  * It also runs while the job is held, so another known bill cannot expire merely
  * because an unrelated question held generation. The v1 intent's policy is fixed
  * by askContinuityInBackground; no image or prompt needs to be invented to poll.
+ * `running` receives each response this pass polled that is still running
+ * (`variantId:imageSha256`): its board's review has nothing to move until it ends
+ * (local-patch-slice-pacing/v1); a round the pass did not reach is not named.
  */
 export async function advanceContinuityInBackground(c: Container, gameId: string,
-  options: { deadlineAt?: number } = {}): Promise<number> {
+  options: { deadlineAt?: number; running?: Set<string> } = {}): Promise<number> {
+  const { running, ...window } = options;
   if (!c.backgroundReview) return 0;
   const intents = await c.db.auditLog.findMany({ where: { action: SOL_BACKGROUND_ACTION, entityType: "Game", entityId: gameId,
     id: { endsWith: "_intent" } }, orderBy: { createdAt: "asc" } });
   const worldId = `${gameId}:board-wizard`, budget = boardWizardBudgetOf(c);
   let advanced = 0;
   for (const row of intents) {
-    if (!roomFor(options, POLL_NEED_MS)) break;
+    if (!roomFor(window, POLL_NEED_MS)) break;
     let event: Extract<BackgroundReviewEvent, { kind: "intent" }>;
     try { event = JSON.parse(row.metaJson ?? "null"); } catch { throw Error("BACKGROUND_REVIEW: unreadable sweep intent"); }
     const intent = event?.intent;
@@ -301,25 +305,12 @@ export async function advanceContinuityInBackground(c: Container, gameId: string
       throw Error("BACKGROUND_REVIEW: recorded response has no matching reservation");
     const ctx: Ctx = { c, gameId, worldId, roundId: intent.roundId, requestKey: intent.requestKey, reserveMicroUsd: intent.reserveMicroUsd,
       binding: intent.binding, question: { fingerprint: intent.fingerprint, policy: visualReviewPolicy("head-continuity", "high", undefined, "responses-background") },
-      fence: async () => {}, ...options };
+      fence: async () => {}, ...window };
     if (step.step === "lost") await recordLost(ctx, "the create was claimed and its answer never arrived within its grace");
     else await poll(ctx, c.backgroundReview, step.responseId, step.cancelDue);
     advanced++;
+    if (running && nextBackgroundStep(backgroundRoundOf(await readEvents(c.db, gameId, intent.roundId)), Date.now()).step === "poll")
+      running.add(`${intent.binding.variantId}:${intent.binding.imageSha256}`);
   }
   return advanced;
-}
-
-/** Appearances whose continuity question is a response already created and only awaiting it (`variantId:imageSha256`),
- * which advanceContinuityInBackground polls every slice. A record it cannot read names nothing: its review reads it. */
-export async function backgroundReviewAwaitingProvider(db: Pick<Prisma.TransactionClient, "auditLog">, gameId: string, now = Date.now()): Promise<Set<string>> {
-  const awaiting = new Set<string>();
-  const intents = await db.auditLog.findMany({ where: { action: SOL_BACKGROUND_ACTION, entityType: "Game", entityId: gameId, id: { endsWith: "_intent" } } });
-  for (const row of intents) {
-    try {
-      const intent = (JSON.parse(row.metaJson ?? "null") as Extract<BackgroundReviewEvent, { kind: "intent" }>).intent;
-      if (nextBackgroundStep(backgroundRoundOf(await readEvents(db, gameId, intent.roundId)), now).step === "poll")
-        awaiting.add(`${intent.binding.variantId}:${intent.binding.imageSha256}`);
-    } catch { /* not named: its board is reviewed */ }
-  }
-  return awaiting;
 }

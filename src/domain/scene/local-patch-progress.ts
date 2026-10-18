@@ -42,10 +42,10 @@ export const localPatchReviewFits = (remainingMs: number, longestReviewMs: numbe
   remainingMs >= Math.max(LOCAL_PATCH_BOARD_REVIEW_MIN_MS, 2 * longestReviewMs);
 
 /**
- * A board whose every appearance with review work has its question already sent and only awaiting the provider
- * (a Message Batches round or a background response, polled at the start of every slice) has nothing its review
- * can move until an answer arrives; rebuilding its evidence meanwhile only takes the slice from work that can.
- * `keys` are the appearances with review work (null when one cannot be named); `awaiting`, the questions sent.
+ * A board whose every appearance with review work has its question already sent, polled by this slice and still
+ * running at the provider (a Message Batches round or a background response) has nothing its review can move
+ * until an answer arrives; rebuilding its evidence meanwhile only takes the slice from work that can. `keys` are
+ * the appearances with review work (null when one cannot be named); `awaiting`, the questions polled and running.
  */
 export const localPatchBoardAwaitsProvider = (keys: readonly (string | null)[], awaiting: ReadonlySet<string>) =>
   keys.length > 0 && keys.every(key => key !== null && awaiting.has(key));
