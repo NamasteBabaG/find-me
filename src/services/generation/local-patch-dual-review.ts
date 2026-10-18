@@ -11,6 +11,7 @@ import { CURRENT_CONTINUITY_READER, CURRENT_QUALITY_READER, qualityReaderReadsMo
 import { SUBJECT_CHECKS, SUBJECT_FORMAT_RECOVERY_V2, SUBJECT_POLICY_V2, SUBJECT_POLICY_VERSION, SUBJECT_READER, SUBJECT_READER_V2, poseOnlyV1Refusal, readSubjectAnswer,
   readSubjectAnswerV2, subjectCollectionRefusal, subjectHasOnlyOverlongObservations, type SubjectAppearance, type SubjectPlan } from "../../domain/generation/subject-policy";
 import { SUBJECT_QUALITY_BUNDLE_VERSION } from "../../domain/generation/subject-quality-bundle";
+import { localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
 import { subjectPlanOfHide, subjectPlanSha256, subjectUpgradeOf, type SubjectUpgradeReceipt } from "./subject-enrollment";
 import { loadSubjectPhoto, subjectQuestion, combinedQualitySubjectQuestion, SubjectEvidenceUnavailable, subjectV2RefusalCodes, withSubject, withSubjectV2 } from "./local-patch-subject-review";
 import { askContinuityInBackground } from "./continuity-background";
@@ -345,21 +346,26 @@ async function dualQuestions(prepared: Prepared, version: DualVisualReviewVersio
 }
 
 /**
- * The v2 descriptions of this board's already accepted siblings, for the collection's variety rule
- * (subjectCollectionRefusal). A sibling accepted under v1 followed its plan: described as null, never a copy.
+ * The v2 descriptions of every other appearance this world has accepted, and how many appearances the world
+ * has, for the collection's variety rule (subjectCollectionRefusal). An appearance counts while it stands
+ * accepted on its current pixels: by a v2 answer that passed without a collection refusal (its look), or under
+ * v1, which followed its plan and carries no description (null, no look).
  */
-function acceptedSiblingAppearances(prepared: Prepared, hideId: string, ageYears: number): { hideId: string; appearance: SubjectAppearance | null }[] {
-  return prepared.entries.filter(e => e.hide.id !== hideId && prepared.protectedRows.has(e.row.id)).map(e => {
-    let appearance: SubjectAppearance | null = null;
+async function acceptedWorldAppearances(db: Container["db"], gameId: string, hideId: string, ageYears: number) {
+  const scenes = await db.gameScene.findMany({ where: { gameId }, select: { sceneSlug: true, sceneVersion: true } });
+  const worldSize = scenes.reduce((sum, scene) => sum + (localPatchBoardForVersion(scene.sceneSlug, scene.sceneVersion)?.hides.length ?? 0), 0);
+  const rows = await db.targetVariantAsset.findMany({ where: { status: "GENERATED", targetInstance: { gameScene: { gameId } } }, select: { judgeJson: true } });
+  const accepted = rows.flatMap((row): { hideId: string; appearance: SubjectAppearance | null }[] => {
     try {
-      const stage = JSON.parse(e.row.judgeJson ?? "null")?.boardReview?.dual?.subject as SubjectStage | undefined, plan = subjectPlanOfHide(e.hide.id);
-      if (stage?.reader === SUBJECT_READER_V2 && plan) {
-        const reading = readSubjectAnswerV2(subjectStageRaw(stage), { hideId: e.hide.id, ageYears, plan });
-        if (reading.ok) appearance = reading.appearance;
-      }
-    } catch { appearance = null; }
-    return { hideId: e.hide.id, appearance };
+      const receipt = JSON.parse(row.judgeJson ?? "null"), proof = receipt?.boardReview?.dual as DualReviewProof | undefined, id: unknown = receipt?.hide;
+      if (typeof id !== "string" || id === hideId || receipt.reviewState !== "board-review-complete" || !proof?.subject
+        || proof.imageSha256 !== receipt.judgedSha256 || proof.subject.collectionRefusal !== undefined) return [];
+      if (proof.subject.reader !== SUBJECT_READER_V2) return [{ hideId: id, appearance: null }];
+      const plan = subjectPlanOfHide(id), reading = plan ? readSubjectAnswerV2(subjectStageRaw(proof.subject), { hideId: id, ageYears, plan }) : null;
+      return reading?.ok && reading.disposition === "pass" ? [{ hideId: id, appearance: reading.appearance }] : [];
+    } catch { return []; }
   });
+  return { accepted, worldSize };
 }
 
 /**
@@ -596,8 +602,8 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
         { attempt: evidenceReviewAttempt, role: "quality", kind: reading.fault.code, code: reading.fault.code, path: reading.fault.path || null,
           strategy: qualityStrategy, at: new Date().toISOString(), imageSha256: binding.imageSha256 }, null, hideId, false);
     }
-    const refusal = reading.disposition === "pass"
-      ? subjectCollectionRefusal({ hideId, appearance: reading.appearance }, acceptedSiblingAppearances(prepared, hideId, subjectContext.upgrade.ageYears)) : null;
+    const world = reading.disposition === "pass" ? await acceptedWorldAppearances(c.db, game.id, hideId, subjectContext.upgrade.ageYears) : null;
+    const refusal = world ? subjectCollectionRefusal({ hideId, appearance: reading.appearance }, world.accepted, world.worldSize) : null;
     if (reading.disposition !== "pass" || refusal) {
       subject.failedChecks = subjectV2RefusalCodes(reading, refusal);
       if (refusal) subject.collectionRefusal = refusal;
@@ -677,8 +683,8 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
       subject.readFault = reading.fault;
       return classify(next, entry.row, priorReceipt, attempt(reading.fault.code, reading.fault.code, reading.fault.path || null), null, hideId, false);
     }
-    const refusal = reading.disposition === "pass"
-      ? subjectCollectionRefusal({ hideId, appearance: reading.appearance }, acceptedSiblingAppearances(prepared, hideId, upgrade.ageYears)) : null;
+    const world = reading.disposition === "pass" ? await acceptedWorldAppearances(c.db, game.id, hideId, upgrade.ageYears) : null;
+    const refusal = world ? subjectCollectionRefusal({ hideId, appearance: reading.appearance }, world.accepted, world.worldSize) : null;
     if (reading.disposition === "pass" && !refusal) return { ...next, evidence: null, diagnosis: null };
     subject.failedChecks = subjectV2RefusalCodes(reading, refusal);
     if (refusal) subject.collectionRefusal = refusal;

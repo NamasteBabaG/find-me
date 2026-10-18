@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { localPatchBoardForVersion } from "../../scene/local-patch-catalog";
 import {
-  SUBJECT_POLICY_V2, SUBJECT_POLICY_VERSION, readSubjectAnswer, readSubjectAnswerV2, subjectCollectionRefusal, subjectCollectionSummary,
+  SUBJECT_POLICY_V2, SUBJECT_POLICY_VERSION, readSubjectAnswer, readSubjectAnswerV2, subjectCollectionLookLimit, subjectCollectionRefusal, subjectCollectionSummary,
   subjectPlanFor, subjectPlansForBoard, subjectReviewPromptV2, type SubjectAppearance, type SubjectPlan,
 } from "../subject-policy";
 import { SUBJECT_PAINTER_V3, locatedDefects, subjectRenderDirectionV3 } from "../subject-painter";
@@ -99,26 +99,44 @@ describe("local-patch-subject/v2: who the child is decides, not the pose", () =>
   });
 });
 
-describe("local-patch-subject/v2: variety belongs to the collection", () => {
+describe("local-patch-subject/v2: variety belongs to the whole collection", () => {
   const copy: SubjectAppearance = { head: "three-quarter", expression: "open-smile", engagement: "posing", portraitCopy: true };
-  it("allows the pasted portrait once per board, and never counts a v1 acceptance as a copy", () => {
-    expect(subjectCollectionRefusal({ hideId: "tokyo-v12-2", appearance: copy }, [{ hideId: "tokyo-v12-1", appearance: copy }]))
-      .toContain("tokyo-v12-1 on this board already shows");
-    expect(subjectCollectionRefusal({ hideId: "tokyo-v12-2", appearance: copy }, [{ hideId: "tokyo-v12-1", appearance: null }])).toBeNull();
-    expect(subjectCollectionRefusal({ hideId: "tokyo-v12-2", appearance: APPEARANCE }, [{ hideId: "tokyo-v12-1", appearance: copy }])).toBeNull();
-    expect(subjectCollectionRefusal({ hideId: "tokyo-v12-2", appearance: copy }, [{ hideId: "tokyo-v12-2", appearance: copy }])).toBeNull();
+  const WORLD = ["amazon", "antarctica", "giza", "greatwall", "marrakech", "newyork", "paris", "sydney", "tokyo"].flatMap(id => subjectPlansForBoard(board(id)).map(plan => plan.hideId));
+  const accept = (looks: (hideId: string, index: number) => SubjectAppearance) => {
+    const accepted: { hideId: string; appearance: SubjectAppearance }[] = [], refused: string[] = [];
+    WORLD.forEach((hideId, index) => { const appearance = looks(hideId, index);
+      if (subjectCollectionRefusal({ hideId, appearance }, accepted, WORLD.length)) refused.push(hideId); else accepted.push({ hideId, appearance }); });
+    return { accepted, refused };
+  };
+
+  it("accepts similar natural appearances: any look may repeat, the pasted portrait included, three times on one board", () => {
+    expect(WORLD).toHaveLength(27);
+    expect(subjectCollectionLookLimit(27)).toBe(9);
+    // Three pasted portraits on the same board: no per-board limit.
+    const tokyo = [{ hideId: "tokyo-v12-1", appearance: copy }, { hideId: "tokyo-v12-2", appearance: copy }];
+    expect(subjectCollectionRefusal({ hideId: "tokyo-v12-3", appearance: copy }, tokyo, 27)).toBeNull();
+    // A world of children who share heads, smiles and engagement in part, but never all three at once beyond a third.
+    const heads = ["three-quarter", "up", "profile", "down", "frontal"] as const, expressions = ["closed-smile", "focused", "open-smile"] as const;
+    const natural = accept((_, i) => ({ head: heads[i % 5]!, expression: expressions[i % 3]!, engagement: i % 2 ? "acting" : "watching", portraitCopy: i < 4 }));
+    expect(natural.refused).toEqual([]);
+    expect(subjectCollectionSummary(natural.accepted.map(a => a.appearance))).toMatchObject({ described: 27, portraitCopies: 4 });
+    // Nine of one exact look are still accepted; a look accepted under v1 (no description) counts for nothing.
+    expect(accept((_, i) => i < 9 ? copy : { ...APPEARANCE, head: heads[i % 5]! }).refused).toEqual([]);
+    expect(subjectCollectionRefusal({ hideId: "tokyo-v12-3", appearance: copy }, WORLD.slice(0, 20).map(hideId => ({ hideId, appearance: null })), 27)).toBeNull();
   });
 
-  it("sends a world that pastes the portrait everywhere back to repaint, one copy per board kept", () => {
-    const boards = ["amazon", "antarctica", "giza", "greatwall", "marrakech", "newyork", "paris", "sydney", "tokyo"];
-    const accepted: { hideId: string; board: string; appearance: SubjectAppearance }[] = [], refused: string[] = [];
-    for (const id of boards) for (const plan of subjectPlansForBoard(board(id))) {
-      const siblings = accepted.filter(a => a.board === id);
-      if (subjectCollectionRefusal({ hideId: plan.hideId, appearance: copy }, siblings)) refused.push(plan.hideId);
-      else accepted.push({ hideId: plan.hideId, board: id, appearance: copy });
-    }
-    expect(accepted).toHaveLength(9); expect(refused).toHaveLength(18);
-    expect(subjectCollectionSummary([...accepted.map(a => a.appearance), null])).toMatchObject({ described: 9, undescribed: 1, portraitCopies: 9 });
+  it("corrects a material repetition: past a third of the world, one look is repainted with the suggestion", () => {
+    // The pilot's failure, everywhere: every first painting pastes the portrait.
+    const pasted = accept(() => copy);
+    expect(pasted.accepted).toHaveLength(9); expect(pasted.refused).toHaveLength(18);
+    expect(subjectCollectionRefusal({ hideId: pasted.refused[0]!, appearance: copy }, pasted.accepted, 27))
+      .toContain("repeats a look (the pasted portrait) that 9 accepted appearances of this 27-hide world already show; at most 9 may share one look");
+    // Any one look, not only the portrait.
+    expect(accept(() => APPEARANCE).refused).toHaveLength(18);
+    // Repainted with other looks, the world is accepted, no look beyond a third.
+    const repainted = [...pasted.accepted, ...pasted.refused.map((hideId, i) => ({ hideId, appearance: { ...APPEARANCE, head: (["up", "down", "profile"] as const)[i % 3]! } }))];
+    expect(subjectCollectionSummary(repainted.map(a => a.appearance))).toMatchObject({ described: 27, largestLook: 9 });
+    expect(subjectCollectionLookLimit(9)).toBe(3); expect(subjectCollectionLookLimit(2)).toBe(1);
   });
 });
 

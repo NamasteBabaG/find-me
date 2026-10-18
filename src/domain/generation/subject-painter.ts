@@ -53,13 +53,13 @@ export function subjectRenderDirectionV3(plan: SubjectPlan, ageYears: number,
   const lines = [`SUBJECT DIRECTION ${SUBJECT_PAINTER_V3} (${SUBJECT_POLICY_V2}) for ${plan.hideId}.`,
     "WHO: the child of the original photograph, the same face as the canonical illustrated portrait: eye shape and spacing, nose, mouth, jaw, cheeks and hairline. Keep the canonical HAIR exactly: its length, fringe, layers and the strands over the ears and down the neck, in its own colour. Never crop, shorten, tidy or restyle the hair.",
     `AGE: the child is exactly ${ageYears} years old. A child's face for that age (rounder cheeks, shorter nose, larger eyes relative to the face, soft jaw) and a body of that age; never older, never a teenager or adult proportions.`,
-    `POSE: a natural pose for this moment in the scene, keeping the authored support and safe placement. One natural option, for variety: ${plan.action}; head ${plan.head}; ${plan.gaze}; expression ${plan.expression}. Relaxed arms at the sides are fine. Do not paste the portrait itself: never its own head angle together with its smile, facing the viewer, doing nothing in the scene.`,
+    `POSE: a natural pose for this moment in the scene, keeping the authored support and safe placement. One natural option, for variety: ${plan.action}; head ${plan.head}; ${plan.gaze}; expression ${plan.expression}. Relaxed arms at the sides are fine. Prefer a child taking part in the scene to a copy of the portrait facing the viewer.`,
     "Draw in the board's own illustration style and light; the photograph controls likeness and age only, never pose, clothing, texture or lighting."];
   if (plan.warmHat) lines.push("WARM HAT REQUIRED: a real fitted warm knit winter hat covering the crown and the top of the hair, with the visible face (eyes, nose, mouth, cheeks, chin) clear and recognisable at its angle. The hat never covers the eyes.");
   const codes = [...new Set(repair.codes)];
   if (codes.length) {
     lines.push(`REPAIR: the previous painting of this appearance was refused for ${codes.join(", ")}. Correct exactly that and keep every other requirement.`);
-    if (codes.includes("collectionVariety")) lines.push(`VARIETY REPAIR: this board already shows the portrait's own pose once. Use the suggested head (${plan.head}) and expression (${plan.expression}), engaged with the scene.`);
+    if (codes.includes("collectionVariety")) lines.push(`VARIETY REPAIR: this world already shows the refused painting's look on a third of its appearances. Use the suggested head (${plan.head}) and expression (${plan.expression}), engaged with the scene.`);
     if (codes.includes("perceivedAge")) lines.push(`AGE REPAIR: the refused painting looked older than ${ageYears}; draw a clearly younger face and body.`);
     for (const line of repair.located) lines.push(`The reviewer located on the refused painting: "${line}"`);
   }

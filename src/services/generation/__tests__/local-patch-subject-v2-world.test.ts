@@ -11,7 +11,7 @@ import { localPatchBoardsForVersion } from "../../../domain/scene/local-patch-ca
 import { maskForHide } from "../../../domain/scene/local-patch-hides";
 import { SUBJECT_V2_REPAIR_CYCLES } from "../../../domain/scene/local-patch-progress";
 import {
-  SUBJECT_POLICY_V2, SUBJECT_POLICY_VERSION, SUBJECT_READER, SUBJECT_READER_V2, readSubjectAnswerV2, subjectPlanFor,
+  SUBJECT_POLICY_V2, SUBJECT_POLICY_VERSION, SUBJECT_READER, SUBJECT_READER_V2, readSubjectAnswerV2, subjectCollectionSummary, subjectPlanFor,
 } from "../../../domain/generation/subject-policy";
 import { SUBJECT_QUALITY_BUNDLE_VERSION } from "../../../domain/generation/subject-quality-bundle";
 import type { Container } from "../../container";
@@ -45,7 +45,8 @@ import { GOOD_V12_VERDICT, boundHide, longAnswer, publicationBinding } from "./l
  * Four of the pilot's failures, each against its negative control:
  *  - a natural pose refused under v1 is asked the v2 question about the SAME pixels, never repainted,
  *    and keeps its v1 refusal in the record; a refusal that also named the face is repainted;
- *  - the pasted portrait itself is accepted once on a board; its siblings are repainted for variety;
+ *  - similar natural children are accepted; the pasted portrait is accepted up to a third of the world, three
+ *    times on one board too, and only the appearances past that are repainted for variety;
  *  - a diagnosis is told who the child is (the photograph, the refusal, its located defect), and a plan
  *    to recompose the very painting whose child was refused is refused before anything is bought;
  *  - an appearance that keeps failing stops after its bounded cycles; the world reports it by name and
@@ -61,12 +62,14 @@ const BOARDS = localPatchBoardsForVersion(12).filter(board => journey.has(board.
 const boardOf = (hideId: string) => BOARDS.find(b => b.hides.some(h => h.id === hideId))!;
 /** The paid-repair fixture's hide: its plan geometry is known to clear every sibling. */
 const EXHAUST = BOARDS.find(b => b.board === "antarctica")!.hides[2]!;
-const VARIETY = BOARDS.find(b => b.board === "paris")!;
-const EARLY = BOARDS.find(b => b.board !== "antarctica" && b.board !== "paris")!;
+const EARLY = BOARDS.find(b => b.board !== "antarctica")!;
 const REJUDGE = EARLY.hides[0]!, NEGATIVE = EARLY.hides[1]!;
 /** Three v1 questions bought before the switch to v2 whose answers were never recorded on their rows. */
-const EARLY2 = BOARDS.find(b => !["antarctica", "paris", EARLY.board].includes(b.board))!;
+const EARLY2 = BOARDS.find(b => !["antarctica", EARLY.board].includes(b.board))!;
 const V1_BUNDLE = EARLY2.hides[0]!, V1_FACE = EARLY2.hides[1]!, V1_POSE = EARLY2.hides[2]!;
+/** Four boards whose every first painting pastes the canonical portrait: twelve copies of one look in a 27-hide world. */
+const REPEAT_BOARDS = BOARDS.filter(b => !["antarctica", EARLY.board, EARLY2.board].includes(b.board)).slice(0, 4);
+const REPEAT_HIDES = REPEAT_BOARDS.flatMap(b => b.hides);
 const IDENTITY_DEFECT = "Kneeling child by the penguins: a different child's face, short dark hair instead of the photograph's long fringe";
 const HEADS = ["three-quarter", "profile", "down", "up", "away"] as const;
 const observed = (status: string) => ({ status, observation: "A specific synthetic observation of the drawn child." });
@@ -129,10 +132,11 @@ function painter(gameId: string, prompts: Map<string, string>): LocalPatchHideDe
 }
 
 /** What the drawn child looks like, answered to the v2 question: the exhausting hide is another child's face;
- * the first painting of every Paris hide is the canonical portrait itself, pasted. */
+ * the first painting of every hide of four boards is the canonical portrait itself, pasted. Every other answer
+ * describes a natural child sharing some of its head turn, expression or engagement with others. */
 function subjectAnswer(hideId: string, n: number) {
   const plan = subjectPlanFor(boardOf(hideId), hideId), index = HIDES.findIndex(h => h.id === hideId);
-  const stranger = hideId === EXHAUST.id, copy = VARIETY.hides.some(h => h.id === hideId) && n === 1;
+  const stranger = hideId === EXHAUST.id, copy = REPEAT_HIDES.some(h => h.id === hideId) && n === 1;
   return { hideId, subjectPolicy: SUBJECT_POLICY_V2, checks: { photoLikeness: observed(stranger ? "fail" : "pass"), canonicalAgreement: observed("pass"),
       faceVisible: observed("pass"), perceivedAge: { ...observed("pass"), estimatedMinYears: 7, estimatedMaxYears: 9 },
       requiredWardrobe: observed(plan.warmHat ? "pass" : "not-required") },
@@ -353,16 +357,24 @@ describe("local-patch-subject/v2 on a whole paid world", () => {
     expect(negativePrompt).toContain('The reviewer located on the refused painting: "photoLikeness: Short cropped hair above the ears instead of the long shaggy fringe"');
     expect(negativePrompt).not.toContain("ACTION REPAIR");
 
-    // Variety: the pasted portrait once on the board; each sibling repainted with the variety repair, then accepted.
-    const copies = VARIETY.hides.filter(hide => {
-      const proof = JSON.parse(rows.find(row => JSON.parse(row.judgeJson!).hide === hide.id)!.judgeJson!).boardReview.dual as DualReviewProof;
-      const reading = readSubjectAnswerV2(subjectStageRaw(proof.subject!), { hideId: hide.id, ageYears: 8, plan: subjectPlanFor(VARIETY, hide.id) });
-      return reading.ok && reading.appearance.portraitCopy;
-    });
-    expect(copies).toHaveLength(1);
-    const varietyRepaints = VARIETY.hides.filter(hide => [...prompts.entries()].some(([key, prompt]) => key.startsWith(`${hide.id}:`)
+    // Variety belongs to the whole world. Similar natural children (shared head turns, one expression for all) were
+    // never refused for variety; the pasted portrait itself was accepted up to a third of the world (9 of 27), three
+    // times on one board too; only the three appearances past that were repainted with the variety repair.
+    const lookOf = (row: (typeof rows)[number]) => {
+      const receipt = JSON.parse(row.judgeJson!), proof = receipt.boardReview.dual as DualReviewProof, hideId = receipt.hide as string;
+      const reading = proof.subject?.reader === SUBJECT_READER_V2
+        ? readSubjectAnswerV2(subjectStageRaw(proof.subject), { hideId, ageYears: 8, plan: subjectPlanFor(boardOf(hideId), hideId) }) : null;
+      return reading?.ok ? reading.appearance : null;
+    };
+    const acceptedRows = rows.filter(row => row.status === "GENERATED"), copies = acceptedRows.filter(row => lookOf(row)?.portraitCopy);
+    expect(copies).toHaveLength(9);
+    const copied = new Set(copies.map(row => JSON.parse(row.judgeJson!).hide as string));
+    expect(REPEAT_BOARDS.some(board => board.hides.every(hide => copied.has(hide.id)))).toBe(true);
+    const varietyRepaints = HIDES.filter(hide => [...prompts.entries()].some(([key, prompt]) => key.startsWith(`${hide.id}:`)
       && prompt.includes("VARIETY REPAIR") && prompt.includes("refused for collectionVariety")));
-    expect(varietyRepaints.map(hide => hide.id)).toEqual(VARIETY.hides.filter(hide => hide.id !== copies[0]!.id).map(hide => hide.id));
+    expect(varietyRepaints).toHaveLength(REPEAT_HIDES.length - 9);
+    expect(varietyRepaints.every(hide => REPEAT_HIDES.includes(hide) && !copied.has(hide.id))).toBe(true);
+    expect(subjectCollectionSummary(acceptedRows.map(lookOf))).toMatchObject({ portraitCopies: 9, largestLook: 9 });
 
     // The diagnosis saw the photograph and was told the refusal; recomposing the refused painting was refused unbought.
     for (const wire of diagnoses) {

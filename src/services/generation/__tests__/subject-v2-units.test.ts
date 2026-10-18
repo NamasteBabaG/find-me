@@ -97,9 +97,9 @@ describe("subject-diagnosis/v1: what the next painting and diagnosis are told ab
   });
 
   it("names a collection refusal without calling it intrinsic", () => {
-    const stage = v2Stage(v2Answer({}, [], true), ["collectionVariety"], { collectionRefusal: `${HIDE} repeats the canonical portrait itself, which newyork-v12-2 on this board already shows` });
-    expect(subjectRefusalOf(receipt(stage), plan, 7)).toMatchObject({ codes: ["collectionVariety"], intrinsic: false,
-      located: [`collectionVariety: ${HIDE} repeats the canonical portrait itself, which newyork-v12-2 on this board already shows`] });
+    const refusal = `${HIDE} repeats a look (the pasted portrait) that 9 accepted appearances of this 27-hide world already show; at most 9 may share one look`;
+    const stage = v2Stage(v2Answer({}, [], true), ["collectionVariety"], { collectionRefusal: refusal });
+    expect(subjectRefusalOf(receipt(stage), plan, 7)).toMatchObject({ codes: ["collectionVariety"], intrinsic: false, located: [`collectionVariety: ${refusal}`] });
   });
 
   it("drops a v1 pose-plan refusal from what v2 requires, and keeps it only for the historical painter", () => {

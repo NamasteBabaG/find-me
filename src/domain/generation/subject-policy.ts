@@ -187,16 +187,17 @@ const answerSchema = z.object({
  * enrolled worlds. A child standing naturally with relaxed arms is a valid appearance, and several
  * hides may share a pose, a head turn or a smile. What every hide must still show: the photograph's
  * child, at the stated age, with a readable face, and the required hat. The v1 plan stays as a
- * suggestion for variety; a different pose is never a failure. Variety belongs to the collection:
- * the canonical portrait itself, pasted (its head angle and its smile, facing the viewer, doing
- * nothing in the scene), appears at most once on a board (`subjectCollectionRefusal`).
+ * suggestion for variety; a different pose is never a failure. Variety belongs to the whole collection
+ * (`subjectCollectionRefusal`): any look may repeat, the pasted portrait included, on the same board
+ * or across boards; only a look that would cover more than a third of the world is a material
+ * repetition, and that appearance is repainted with the suggestion.
  * v1 answers keep their v1 reading; nothing here re-reads or relabels them.
  */
 export const SUBJECT_POLICY_V2 = "local-patch-subject/v2" as const;
 export const SUBJECT_READER_V2 = "subject-read/v2" as const;
 export const SUBJECT_CHECKS_V2 = Object.freeze(["photoLikeness", "canonicalAgreement", "faceVisible", "perceivedAge", "requiredWardrobe"] as const);
 export type SubjectCheckV2 = typeof SUBJECT_CHECKS_V2[number];
-/** Not a check: the board already shows the pasted portrait, so this one must look elsewhere. */
+/** Not a check: the world already shows this look on a third of its appearances, so this one must look elsewhere. */
 export const SUBJECT_COLLECTION_VARIETY = "collectionVariety" as const;
 export type SubjectRepairCodeV2 = SubjectCheckV2 | typeof SUBJECT_COLLECTION_VARIETY;
 export const SUBJECT_REPAIR_ROUTE_V2: Readonly<Record<SubjectRepairCodeV2, "faceLikeness" | "faceReadable" | "ageAppropriate" | "childPresent">> = Object.freeze({
@@ -316,24 +317,38 @@ export function readSubjectAnswerV2(raw: string | null, expected: { readonly hid
   return { ok: true, checks, faults, derived, appearance: answer.appearance, disposition };
 }
 
+/** The look a player sees repeated: the pasted portrait itself, or a head, expression and engagement together.
+ * A look shared only in part (the same smile, the same head turn) is a different look. */
+export const subjectLook = (a: SubjectAppearance) => a.portraitCopy ? "the pasted portrait" : `${a.head}, ${a.expression}, ${a.engagement}`;
+/** A look on more than this share of a world's appearances is a material repetition of the collection. */
+export const SUBJECT_COLLECTION_MAX_SHARE = 1 / 3;
+/** How many appearances of a world may share one look: a third of the world (9 of 27), at least one. */
+export const subjectCollectionLookLimit = (worldSize: number) => Math.max(1, Math.floor(worldSize * SUBJECT_COLLECTION_MAX_SHARE));
+
 /**
- * v2's variety rule for the collection: the canonical portrait itself, pasted, may appear once on a
- * board. A candidate that passes its own checks but repeats it beside a sibling already accepted as
- * that same copy is sent to repaint with the suggested pose; null when it may be accepted. Siblings
- * accepted under v1 followed its plan, which forbade the portrait's angle and smile: never a copy.
+ * v2's variety rule, judged on the whole collection. Any look may repeat, the pasted portrait included,
+ * on the same board or across boards: similar natural appearances are accepted. A candidate that passes its
+ * own checks is refused for variety only when its exact look is already shown by as many accepted
+ * appearances of the world as its limit allows (more than a third would be a material repetition); it is
+ * then repainted with the suggestion. Null when it may be accepted. Appearances accepted under v1 carry no
+ * description (null) and count for no look.
  */
 export function subjectCollectionRefusal(candidate: { readonly hideId: string; readonly appearance: SubjectAppearance },
-  acceptedSiblings: readonly { readonly hideId: string; readonly appearance: SubjectAppearance | null }[]): string | null {
-  if (!candidate.appearance.portraitCopy) return null;
-  const copy = acceptedSiblings.find(sibling => sibling.hideId !== candidate.hideId && sibling.appearance?.portraitCopy);
-  return copy ? `${candidate.hideId} repeats the canonical portrait itself, which ${copy.hideId} on this board already shows` : null;
+  acceptedInWorld: readonly { readonly hideId: string; readonly appearance: SubjectAppearance | null }[], worldSize: number): string | null {
+  const look = subjectLook(candidate.appearance), limit = subjectCollectionLookLimit(worldSize);
+  const same = acceptedInWorld.filter(other => other.hideId !== candidate.hideId && other.appearance && subjectLook(other.appearance) === look);
+  return same.length >= limit
+    ? `${candidate.hideId} repeats a look (${look}) that ${same.length} accepted appearances of this ${worldSize}-hide world already show; at most ${limit} may share one look`
+    : null;
 }
 
 /** Measured, not required: how varied the accepted appearances of a world actually are. */
 export function subjectCollectionSummary(appearances: readonly (SubjectAppearance | null)[]) {
   const described = appearances.filter((a): a is SubjectAppearance => a !== null);
   const count = (pick: (a: SubjectAppearance) => string) => described.reduce<Record<string, number>>((all, a) => ({ ...all, [pick(a)]: (all[pick(a)] ?? 0) + 1 }), {});
+  const looks = count(subjectLook);
   return { described: described.length, undescribed: appearances.length - described.length, portraitCopies: described.filter(a => a.portraitCopy).length,
+    distinctLooks: Object.keys(looks).length, largestLook: Math.max(0, ...Object.values(looks)),
     heads: count(a => a.head), expressions: count(a => a.expression), engagements: count(a => a.engagement) };
 }
 

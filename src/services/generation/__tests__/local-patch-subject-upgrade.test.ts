@@ -104,8 +104,11 @@ function subjectAnswer(hideId: string, hatMissing: boolean, policy: typeof SUBJE
     faceVisible: observed("pass"), perceivedAge: { ...observed("pass"), estimatedMinYears: 7, estimatedMaxYears: 9 },
     requiredWardrobe: observed(plan.warmHat ? hatMissing ? "fail" : "pass" : "not-required") };
   const faults = hatMissing ? [{ check: "requiredWardrobe", where: "Bare head with the hair exposed in the snow" }] : [];
+  // Natural children: some share a head turn or an expression, no single look covers a third of the world.
+  const index = HIDES.findIndex(h => h.id === hideId), heads = ["three-quarter", "up", "profile", "down", "away"] as const;
   return JSON.stringify(policy === SUBJECT_POLICY_V2
-    ? { hideId, subjectPolicy: policy, checks: shared, appearance: { head: "three-quarter", expression: "focused", engagement: "acting", portraitCopy: false }, faults }
+    ? { hideId, subjectPolicy: policy, checks: shared, appearance: { head: heads[index % 5], expression: index % 3 ? "focused" : "closed-smile",
+      engagement: index % 2 ? "acting" : "watching", portraitCopy: false }, faults }
     : { hideId, subjectPolicy: policy, checks: { ...shared, plannedAction: observed("pass"), plannedHead: observed("pass"), plannedExpression: observed("pass") }, faults });
 }
 const NO_REPLY = { verdict: null, raw: null, usage: null, requestId: null, model: null, finishReason: null, wireFault: "timeout" as const, costUnknown: true };

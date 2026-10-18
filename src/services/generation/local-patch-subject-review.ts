@@ -213,7 +213,7 @@ export function subjectV2RefusalCodes(reading: Extract<SubjectReadingV2, { ok: t
 /**
  * withSubject for a v2 reading: its located failures fail the checks that route their repair
  * (SUBJECT_REPAIR_ROUTE_V2), its uncertainty leaves them unsure for the bounded image route, and a
- * pass the collection refused (the board already shows the pasted portrait) fails childPresent
+ * pass the collection refused (its look already covers a third of the world) fails childPresent
  * with that reason. A pass the collection accepts leaves the verdict as the quality reader read it.
  */
 export function withSubjectV2(verdicts: LocalPatchBoardJudgeResult["verdicts"], hideId: string, reading: Extract<SubjectReadingV2, { ok: true }>,
@@ -230,7 +230,7 @@ export function withSubjectV2(verdicts: LocalPatchBoardJudgeResult["verdicts"], 
       : [{ check: "childPresent", where: `SUBJECT ${SUBJECT_COLLECTION_VARIETY}: ${collectionRefusal}`.slice(0, 300) }];
     return { ...verdicts, [hideId]: parseLocalPatchVerdict({ ...wire, ...Object.fromEntries(routed.map(k => [k, "fail"])), verdict: "fail",
       reason: reading.disposition === "repair" ? "Independent subject review found a located subject defect"
-        : "The board already shows the portrait's own pose; this appearance is repainted for variety",
+        : "This look already covers a third of the world; this appearance is repainted for variety",
       faults: [...current.faults, ...located].slice(0, 16) }, 12, reader) };
   }
   const uncertain = SUBJECT_CHECKS_V2.filter(k => reading.checks[k] !== "pass");
