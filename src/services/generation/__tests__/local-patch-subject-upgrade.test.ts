@@ -9,7 +9,7 @@ import { DbStorage } from "../../../infra/storage/db";
 import type { BackgroundReviewState, BackgroundReviewTransport } from "../../../infra/generation/types";
 import { GameConfigSchema } from "../../../domain/game/config";
 import { localPatchBoardsForVersion } from "../../../domain/scene/local-patch-catalog";
-import { cropOf, maskForHide } from "../../../domain/scene/local-patch-hides";
+import { maskForHide } from "../../../domain/scene/local-patch-hides";
 import { SUBJECT_POLICY_VERSION, readSubjectAnswer, subjectPlanFor } from "../../../domain/generation/subject-policy";
 import type { Container } from "../../container";
 import { boardsOfWorlds } from "../../world-catalog.service";
@@ -25,7 +25,7 @@ import { DUAL_VISUAL_REVIEW_V3, pinVisualReviewRelease } from "../visual-review-
 import { sha256Bytes } from "../fixed-sprite";
 import { applySubjectUpgrade, planSubjectUpgrade, SubjectUpgradeRefused } from "../subject-upgrade";
 import { subjectUpgradeOf } from "../subject-enrollment";
-import { bill, paintedCrop, paintedOk, seedApprovedGame } from "./local-patch-fixtures";
+import { bill, paintedOk, seedApprovedGame } from "./local-patch-fixtures";
 import { GOOD_V12_VERDICT, boundHide, longAnswer, publicationBinding } from "./local-patch-dual-fixtures";
 import { localPatchHideEvidenceIds } from "../local-patch-judge";
 
@@ -84,10 +84,15 @@ function painter(gameId: string, prompts: Map<string, string>): LocalPatchHideDe
       const hide = HIDES.find(h => requestKey.startsWith(`${h.id}:`));
       if (!hide) throw Error(`Unexpected synthetic request ${requestKey}`);
       prompts.set(requestKey, prompt);
-      const attempt = Number(requestKey.split(":").at(-1)), mask = maskForHide(hide), crop = cropOf(hide);
-      const png = await sharp(await paintedCrop(stylePng, hide)).composite([{ input: { create: { width: 6, height: 6, channels: 4,
-        background: { r: 40 * attempt, g: 60, b: 160, alpha: 1 } } }, left: mask.left - crop.left + Math.floor(mask.width / 2),
-        top: mask.top - crop.top + Math.floor(mask.height / 2) }]).png().toBuffer();
+      const attempt = Number(requestKey.split(":").at(-1)), mask = maskForHide(hide);
+      // Change the whole synthetic figure on a redraw, in crop coordinates.
+      // maskForHide is already crop-relative: subtracting the board crop origin
+      // clips the marker off-canvas and produces an unchanged fake appearance.
+      const figure = await sharp({ create: { width: Math.round(mask.width * 0.6), height: Math.round(mask.height * 0.8),
+        channels: 4, background: { r: 40 * attempt, g: 60, b: 160, alpha: 255 } } }).png().toBuffer();
+      const png = await sharp(stylePng).composite([{ input: figure,
+        left: mask.left + Math.round(mask.width * 0.2),
+        top: mask.top + Math.round(mask.height * 0.2) }]).png().toBuffer();
       return paintedOk(png, bill(`paint-${gameId}-${requestKey}`));
     } };
 }
