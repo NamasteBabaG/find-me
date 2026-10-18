@@ -32,7 +32,7 @@ import { localPatchPainterRelease, painterReleasePolicy, type LocalPatchPainterR
 import { advanceQualityBatches } from "./quality-batch";
 import { subjectUpgradeOf } from "./subject-enrollment";
 import { subjectRejudgePending } from "./subject-rejudge";
-import { localPatchProgressOrder, localPatchRestDecision, selfRepairProgress, type LocalPatchRest } from "../../domain/scene/local-patch-progress";
+import { localPatchProgressOrder, localPatchRestDecision, localPatchRestOf, selfRepairProgress, type LocalPatchRest } from "../../domain/scene/local-patch-progress";
 import { recoverEnrolledReviewInterruptions } from "./subject-upgrade";
 import { advanceContinuityInBackground } from "./continuity-background";
 import {
@@ -382,9 +382,11 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   let deferredBudgetError: WorldBudgetError | null = null;
   // Scheduling only: publication re-verifies every subject stage, bill and binding.
   const subjectUpgrade = automatic && !extraPlan ? await subjectUpgradeOf(c.db, gameId) : null;
+  /** A v1 pose-plan refusal awaiting its v2 question about the same pixels (subject-rejudge/v1), read at the enrolled age. */
+  const rejudgePending = (row: Parameters<typeof subjectRejudgePending>[0]) => !!subjectUpgrade && subjectRejudgePending(row, subjectUpgrade.ageYears);
   // A board also owes its v2 re-judgments (subject-rejudge/v1), whatever status the board itself carries.
   const subjectPendingScenes = (current: typeof rows) => new Set(subjectUpgrade ? game.scenes.filter(scene => current.some(row =>
-    row.targetInstance.gameSceneId === scene.id && (row.status === "GENERATED" && !subjectStageCurrent(row) || subjectRejudgePending(row))))
+    row.targetInstance.gameSceneId === scene.id && (row.status === "GENERATED" && !subjectStageCurrent(row) || rejudgePending(row))))
     .map(scene => scene.id) : []);
   const subjectPending = subjectPendingScenes(rows);
   // Review retained pixels before buying diagnostics or replacements. A failed
@@ -456,7 +458,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       // have no new evidence to review. Final assembly still validates every
       // actual image/geometry/identity binding, including tampered pixels.
       // A v1 pose-plan refusal awaits its v2 subject question about the same pixels (subject-rejudge/v1).
-      const firstWork = subjectWork || !!subjectUpgrade && sceneRows.some(subjectRejudgePending)
+      const firstWork = subjectWork || sceneRows.some(rejudgePending)
         || sceneRows.some(row => playerReviewEnabled() && needsPlayerReview(row)) || ready.some(row => {
         try { const receipt = JSON.parse(row.judgeJson ?? "null");
           return receipt?.reviewState !== "board-review-complete" || receipt.qualityDisposition?.state !== "acceptable";
@@ -534,7 +536,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     return needsSelfRepair(row) && !(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion === 12
       && (localPatchEvidenceRecovery(row!) || playerReviewEnabled() && needsPlayerReview(row!)))
       // Re-asked under v2 about the same pixels before any repair (subject-rejudge/v1).
-      && !(subjectUpgrade && subjectRejudgePending(row!));
+      && !rejudgePending(row!);
   }).sort((a, b) => {
     const cycle = (item: typeof a) => {
       try {
@@ -558,7 +560,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     const candidate = stateOf(item.sceneId, item.hide.targetId);
     if (automatic && game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion === 12 && candidate && localPatchEvidenceRecovery(candidate)) return false;
     if (playerReviewEnabled() && candidate && needsPlayerReview(candidate)) return false;
-    if (subjectUpgrade && candidate && subjectRejudgePending(candidate)) return false;
+    if (candidate && rejudgePending(candidate)) return false;
     // A ready appearance is reviewed, never repainted ahead of its review.
     if (progress && candidate?.status === "GENERATED") return false;
     if (!plan.finalRepair || !normalReviewsPending) return true;
@@ -794,10 +796,12 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     // and its reason; nothing more is bought for them.
     const rests: LocalPatchRest[] = left.map(item => {
       const row = after.find(r => r.targetInstance.gameSceneId === item.sceneId && r.targetInstance.targetId === item.hide.targetId);
-      if (progress && row && needsSelfRepair(row) && selfRepairProgress(selfRepairOf(row), row.attempts).exhausted) return { hideId: item.hide.id, rest: "spent" };
       const recovery = automatic && row ? localPatchEvidenceRecovery(row) : null, diagnosis = recovery?.step?.diagnosis;
-      return { hideId: item.hide.id, rest: recovery?.waiting ? "waiting" : recovery?.exhausted ? "evidence" : null,
-        ...(diagnosis ? { evidenceKind: `${diagnosis.role} ${diagnosis.kind}` } : {}) };
+      return localPatchRestOf({ hideId: item.hide.id,
+        evidence: recovery ? { retry: recovery.retry, waiting: recovery.waiting, exhausted: recovery.exhausted,
+          ...(diagnosis ? { kind: `${diagnosis.role} ${diagnosis.kind}` } : {}) } : null,
+        reviewOwed: !!row && (rejudgePending(row) || playerReviewEnabled() && needsPlayerReview(row)),
+        repairSpent: progress && !!row && needsSelfRepair(row) && selfRepairProgress(selfRepairOf(row), row.attempts).exhausted });
     });
     const rest = pendingReviews ? null : localPatchRestDecision(rests);
     if (rest?.action === "wait") {

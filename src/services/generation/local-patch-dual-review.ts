@@ -8,7 +8,7 @@ import { nextLocalPatchEvidenceStep, type EvidenceAttempt, type EvidenceDiagnosi
 import { CURRENT_CONTINUITY_READER, CURRENT_QUALITY_READER, qualityReaderReadsMore, qualityStageReader, qualityStageRaw, subjectStageRaw, readContinuityStage, readQualityStage, verifiedDualStage, visualStageReadable,
   type ContinuityReReading, type ContinuityStage, type DualReviewProof, type DualReviewStage, type DualStageBase, type QualityReReading, type QualityStage,
   type SubjectStage } from "./local-patch-dual-evidence";
-import { SUBJECT_CHECKS, SUBJECT_FORMAT_RECOVERY_V2, SUBJECT_POLICY_V2, SUBJECT_POLICY_VERSION, SUBJECT_READER, SUBJECT_READER_V2, poseOnlyRefusal, readSubjectAnswer,
+import { SUBJECT_CHECKS, SUBJECT_FORMAT_RECOVERY_V2, SUBJECT_POLICY_V2, SUBJECT_POLICY_VERSION, SUBJECT_READER, SUBJECT_READER_V2, poseOnlyV1Refusal, readSubjectAnswer,
   readSubjectAnswerV2, subjectCollectionRefusal, subjectHasOnlyOverlongObservations, type SubjectAppearance, type SubjectPlan } from "../../domain/generation/subject-policy";
 import { SUBJECT_QUALITY_BUNDLE_VERSION } from "../../domain/generation/subject-quality-bundle";
 import { subjectPlanOfHide, subjectPlanSha256, subjectUpgradeOf, type SubjectUpgradeReceipt } from "./subject-enrollment";
@@ -580,7 +580,7 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
     }
     if (reading.disposition !== "pass") {
       subject.failedChecks = SUBJECT_CHECKS.filter(k => reading.checks[k] !== "pass");
-      if (!poseOnlyRefusal(subject.failedChecks)) return { ...base, bought: qualityBought, wire: primaryWire,
+      if (!poseOnlyV1Refusal(reading)) return { ...base, bought: qualityBought, wire: primaryWire,
         verdicts: withSubject(verdicts, hideId, reading, CURRENT_QUALITY_READER), proof, newCostCents, evidence: null, diagnosis: null };
       proof.supersededSubject = subject;
       delete proof.subject;
@@ -667,7 +667,7 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
       }
       if (old.disposition === "pass") return { ...next, evidence: null, diagnosis: null };
       subject.failedChecks = SUBJECT_CHECKS.filter(k => old.checks[k] !== "pass");
-      if (!poseOnlyRefusal(subject.failedChecks)) return { ...next, verdicts: withSubject(next.verdicts, hideId, old,
+      if (!poseOnlyV1Refusal(old)) return { ...next, verdicts: withSubject(next.verdicts, hideId, old,
         qualityStageReader(next.proof.quality) ?? QUALITY_READER_STRICT), evidence: null, diagnosis: null };
       const { subject: _superseded, ...rest } = next.proof;
       return subjectGate({ ...reviewed, newCostCents: next.newCostCents, proof: { ...rest, supersededSubject: subject } });

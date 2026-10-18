@@ -6,7 +6,7 @@ import { CURRENT_QUALITY_READER, type DualReviewProof, type SubjectStage } from 
 import { integrationDiagnosisPrompt } from "../local-patch-integration-diagnosis";
 import { recomposeRefusedBySubject, refusedCompositionSource } from "../local-patch-self-repair";
 import { SELF_REPAIR_COMPOSITION_VERSION, type SelfRepairDecision } from "../../../domain/scene/local-patch-self-repair";
-import { poseOnlyRefusal } from "../../../domain/generation/subject-policy";
+import { poseOnlyV1Refusal, readSubjectAnswer } from "../../../domain/generation/subject-policy";
 import { localPatchHideEvidenceIds } from "../local-patch-judge";
 import { subjectRefusalOf } from "../local-patch-subject-review";
 import { subjectRejudgePending } from "../subject-rejudge";
@@ -51,21 +51,34 @@ const ARMS = v1Answer({ plannedAction: "fail" }, [{ check: "plannedAction", wher
 
 describe("subject-rejudge/v1: which v1 refusals are asked again on the same pixels", () => {
   it("re-asks a refusal for the pose plan alone, whose quality answer passed", () => {
-    expect(subjectRejudgePending(row(v1Stage(["plannedAction"], ARMS)))).toBe(true);
-    expect(subjectRejudgePending(row(v1Stage(["plannedAction", "plannedHead"], ARMS)))).toBe(true);
+    expect(subjectRejudgePending(row(v1Stage(["plannedAction"], ARMS)), 7)).toBe(true);
+    expect(subjectRejudgePending(row(v1Stage(["plannedAction", "plannedHead"], ARMS)), 7)).toBe(true);
   });
 
   it("never re-asks who the child is, their age, face or hat, a failed quality answer, other pixels, a paid repair in flight or a v2 stage", () => {
     const identity = v1Answer({ photoLikeness: "fail", plannedAction: "fail" }, [{ check: "photoLikeness", where: "Short cropped hair." }]);
-    expect(subjectRejudgePending(row(v1Stage(["photoLikeness", "plannedAction"], identity)))).toBe(false);
-    expect(subjectRejudgePending(row(v1Stage(["perceivedAge", "plannedAction"], ARMS)))).toBe(false);
-    expect(subjectRejudgePending(row(v1Stage(["plannedAction"], ARMS), { quality: qualityStage({ ...GOOD_V12_VERDICT, faceLikeness: "unsure" }) }))).toBe(false);
-    expect(subjectRejudgePending(row(v1Stage(["plannedAction"], ARMS), { receipt: { judgedSha256: "b".repeat(64) } }))).toBe(false);
-    expect(subjectRejudgePending(row(v1Stage(["plannedAction"], ARMS), { receipt: { selfRepair: { phase: "applying" } } }))).toBe(false);
-    expect(subjectRejudgePending(row(v1Stage(["plannedAction"], ARMS), { status: "GENERATED" }))).toBe(false);
-    expect(subjectRejudgePending(row({ ...v1Stage(["plannedAction"], ARMS), subjectPolicy: SUBJECT_POLICY_V2, reader: SUBJECT_READER_V2 }))).toBe(false);
+    expect(subjectRejudgePending(row(v1Stage(["photoLikeness", "plannedAction"], identity)), 7)).toBe(false);
+    expect(subjectRejudgePending(row(v1Stage(["perceivedAge", "plannedAction"], ARMS)), 7)).toBe(false);
+    expect(subjectRejudgePending(row(v1Stage(["plannedAction"], ARMS), { quality: qualityStage({ ...GOOD_V12_VERDICT, faceLikeness: "unsure" }) }), 7)).toBe(false);
+    expect(subjectRejudgePending(row(v1Stage(["plannedAction"], ARMS), { receipt: { judgedSha256: "b".repeat(64) } }), 7)).toBe(false);
+    expect(subjectRejudgePending(row(v1Stage(["plannedAction"], ARMS), { receipt: { selfRepair: { phase: "applying" } } }), 7)).toBe(false);
+    expect(subjectRejudgePending(row(v1Stage(["plannedAction"], ARMS), { status: "GENERATED" }), 7)).toBe(false);
+    expect(subjectRejudgePending(row({ ...v1Stage(["plannedAction"], ARMS), subjectPolicy: SUBJECT_POLICY_V2, reader: SUBJECT_READER_V2 }), 7)).toBe(false);
+  });
+
+  it("reads the complete v1 answer: a pose failure beside any other defect is not pose-only (Codex's case)", () => {
+    // Only the forearm was a failed check, but the answer also located the hair: that is a defect, not a pose.
+    expect(subjectRejudgePending(row(v1Stage(["plannedAction"], HAIR)), 7)).toBe(false);
+    expect(subjectRejudgePending(row(v1Stage(["plannedAction"], FACE_CONTRADICTED)), 7)).toBe(false);
+    expect(subjectRejudgePending(row(v1Stage(["plannedAction"], OLDER)), 7)).toBe(false);
+    // The same answer read at another enrolled age is not the same refusal.
+    expect(subjectRejudgePending(row(v1Stage(["plannedAction"], ARMS)), 11)).toBe(false);
   });
 });
+const ARMS_FAULT = { check: "plannedAction", where: "Child on the steps: both arms hang at the sides." };
+const HAIR = v1Answer({ plannedAction: "fail" }, [ARMS_FAULT, { check: "hair", where: "The photographed curls have become short straight hair on the painted child." }]);
+const FACE_CONTRADICTED = v1Answer({ plannedAction: "fail" }, [ARMS_FAULT, { check: "photoLikeness", where: "Child on the steps: a narrower jaw than the photograph." }]);
+const OLDER = JSON.stringify({ ...JSON.parse(ARMS), checks: { ...JSON.parse(ARMS).checks, perceivedAge: { ...observed("pass"), estimatedMinYears: 10, estimatedMaxYears: 12 } } });
 
 describe("subject-diagnosis/v1: what the next painting and diagnosis are told about the child", () => {
   const v2Stage = (raw: string, failedChecks: SubjectStage["failedChecks"], over: Partial<SubjectStage> = {}): SubjectStage =>
@@ -165,10 +178,21 @@ describe("subject-diagnosis/v1: the refused child's source painting is bound to 
     expect(recomposeRefusedBySubject(null, plan("recompose-retained", "k:render:2"))).toBeNull();
   });
 
-  it("calls a v1 refusal pose-only only when it names the plan alone", () => {
-    expect(poseOnlyRefusal(["plannedAction", "plannedHead"])).toBe(true);
-    expect(poseOnlyRefusal([])).toBe(false);
-    expect(poseOnlyRefusal(["plannedAction", "perceivedAge"])).toBe(false);
-    expect(poseOnlyRefusal(["requiredWardrobe"])).toBe(false);
+  it("calls a v1 refusal pose-only only from the complete answer", () => {
+    const newyork = subjectPlanFor(localPatchBoardForVersion("newyork", 12)!, HIDE);
+    const read = (raw: string) => readSubjectAnswer(raw, { hideId: HIDE, ageYears: 7, plan: newyork });
+    expect(poseOnlyV1Refusal(read(ARMS))).toBe(true);
+    expect(poseOnlyV1Refusal(read(v1Answer({}, [])))).toBe(false);
+    for (const raw of [HAIR, FACE_CONTRADICTED, OLDER]) expect(poseOnlyV1Refusal(read(raw))).toBe(false);
+    // An unreadable face needs no located fault: a forearm failure beside it is still not pose-only, and neither is an unlocated likeness fail.
+    expect(poseOnlyV1Refusal(read(JSON.stringify({ ...JSON.parse(ARMS), checks: { ...JSON.parse(ARMS).checks, faceVisible: observed("unsure") } })))).toBe(false);
+    expect(poseOnlyV1Refusal(read(v1Answer({ plannedAction: "fail", photoLikeness: "fail" }, [ARMS_FAULT])))).toBe(false);
+    expect(poseOnlyV1Refusal(read("{not json"))).toBe(false);
+    // Antarctica: a forearm refusal beside a missing hat is a hat refusal.
+    const antarctica = subjectPlanFor(localPatchBoardForVersion("antarctica", 12)!, "antarctica-v12-1");
+    const hatless = JSON.stringify({ ...JSON.parse(ARMS), hideId: antarctica.hideId,
+      checks: { ...JSON.parse(ARMS).checks, requiredWardrobe: observed("fail") },
+      faults: [ARMS_FAULT, { check: "requiredWardrobe", where: "Kneeling child by the penguins: no hat, bare hair." }] });
+    expect(poseOnlyV1Refusal(readSubjectAnswer(hatless, { hideId: antarctica.hideId, ageYears: 7, plan: antarctica }))).toBe(false);
   });
 });

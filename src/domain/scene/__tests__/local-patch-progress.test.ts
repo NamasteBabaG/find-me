@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SUBJECT_V2_REPAIR_CYCLES, localPatchProgressOrder, localPatchRestDecision, selfRepairProgress, type ProgressCandidate } from "../local-patch-progress";
+import { SUBJECT_V2_REPAIR_CYCLES, localPatchProgressOrder, localPatchRestDecision, localPatchRestOf, selfRepairProgress, type ProgressCandidate } from "../local-patch-progress";
 
 /**
  * local-patch-progress/v1. The pilot's failure: every started self-repair ran before any second
@@ -56,6 +56,21 @@ describe("a world with nothing automatic left to start", () => {
       `local-patch: 1 appearances spent their ${SUBJECT_V2_REPAIR_CYCLES} automatic repair cycles under local-patch-subject/v2 (tokyo-v12-1); nothing more is bought for them.${TAIL}` });
     expect(localPatchRestDecision([{ hideId: "a", rest: "evidence", evidenceKind: "quality syntax" }, { hideId: "b", rest: "evidence" }])).toEqual({ action: "park", reason:
       `local-patch: 2 appearances have no automatic evidence question left (quality syntax, unclassified); no image is redrawn for an unreadable answer.${TAIL}` });
+  });
+
+  it("never rests an appearance that still owes a review on its last picture, whatever its repair count (Codex's case)", () => {
+    const facts = (over: Partial<Parameters<typeof localPatchRestOf>[0]>) => ({ hideId: "a", evidence: null, reviewOwed: false, repairSpent: false, ...over });
+    const ask = { retry: true, waiting: false, exhausted: false }, wait = { retry: false, waiting: true, exhausted: false };
+    const none = { retry: false, waiting: false, exhausted: true, kind: "quality syntax" };
+    expect(localPatchRestOf(facts({ repairSpent: true, evidence: ask }))).toEqual({ hideId: "a", rest: null });
+    expect(localPatchRestOf(facts({ repairSpent: true, reviewOwed: true }))).toEqual({ hideId: "a", rest: null });
+    expect(localPatchRestOf(facts({ repairSpent: true, evidence: wait }))).toEqual({ hideId: "a", rest: "waiting" });
+    expect(localPatchRestOf(facts({ repairSpent: true, evidence: none }))).toEqual({ hideId: "a", rest: "evidence", evidenceKind: "quality syntax" });
+    expect(localPatchRestOf(facts({ repairSpent: true }))).toEqual({ hideId: "a", rest: "spent" });
+    expect(localPatchRestOf(facts({}))).toEqual({ hideId: "a", rest: null });
+    // Third cycle's candidate awaiting an evidence retry, beside an evidence-exhausted sibling: keep working.
+    expect(localPatchRestDecision([localPatchRestOf(facts({ repairSpent: true, evidence: ask })),
+      localPatchRestOf(facts({ hideId: "b", evidence: none }))])).toBeNull();
   });
 
   it("stops a mixture of spent repairs and exhausted evidence, naming each appearance with its reason", () => {

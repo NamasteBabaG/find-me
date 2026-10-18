@@ -33,6 +33,31 @@ export function localPatchProgressOrder<T extends ProgressCandidate>(items: read
 /** Why a remaining appearance has nothing automatic left to start, or null when it still has work. */
 export type LocalPatchRest = { readonly hideId: string; readonly rest: "spent" | "evidence" | "waiting" | null; readonly evidenceKind?: string };
 
+/** What a world knows about one remaining appearance when it decides whether that appearance is at rest. */
+export type LocalPatchRestFacts = {
+  readonly hideId: string;
+  /** Its evidence recovery, if any: a question still to ask, an outage being waited out, or none left. */
+  readonly evidence: { readonly retry: boolean; readonly waiting: boolean; readonly exhausted: boolean; readonly kind?: string } | null;
+  /** Review work owed on its current pixels: a v2 re-judgment, or a player review. */
+  readonly reviewOwed: boolean;
+  /** Its repair cycles under local-patch-subject/v2 are spent, so another cycle may not start. */
+  readonly repairSpent: boolean;
+};
+
+/**
+ * An appearance's rest, in precedence: any work still owed on its current pixels (an evidence question to ask,
+ * a re-judgment or player review) means it is not at rest, whatever its repair count; then an outage is waited
+ * out; then no evidence question left; then spent repair cycles. Spent cycles end new paintings, never a review
+ * still owed on the last one.
+ */
+export function localPatchRestOf(facts: LocalPatchRestFacts): LocalPatchRest {
+  const { hideId, evidence } = facts;
+  if (facts.reviewOwed || evidence?.retry) return { hideId, rest: null };
+  if (evidence?.waiting) return { hideId, rest: "waiting" };
+  if (evidence?.exhausted) return { hideId, rest: "evidence", ...(evidence.kind ? { evidenceKind: evidence.kind } : {}) };
+  return { hideId, rest: facts.repairSpent ? "spent" : null };
+}
+
 /**
  * What a world does when every remaining appearance is at rest: wait out a provider outage, or stop with every
  * name and its reason (spent repair cycles, no evidence question left, or any mixture). Null while any work

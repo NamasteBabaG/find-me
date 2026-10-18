@@ -260,11 +260,8 @@ const answerSchemaV2 = z.object({
 
 /** What v1 called a requirement and v2 only suggests: a fault naming one of these decides nothing. */
 const PLAN_ONLY_FAULTS: ReadonlySet<string> = new Set(["plannedAction", "plannedHead", "plannedExpression", "appearance", "pose", "head", "gaze", "expression"]);
-const V1_POSE_PLAN_CHECKS: ReadonlySet<string> = new Set(["plannedAction", "plannedHead", "plannedExpression"]);
-/** A v1 refusal that named the pose plan alone: every check of who the child is, their age, face and hat passed.
- * Under v2 it is no refusal; such pixels are asked the v2 question once (subject-rejudge/v1). */
-export const poseOnlyRefusal = (failedChecks: readonly unknown[]): boolean =>
-  failedChecks.length > 0 && failedChecks.every(code => typeof code === "string" && V1_POSE_PLAN_CHECKS.has(code));
+/** The v1 checks of the pose plan, which v2 only suggests. */
+export const V1_POSE_PLAN_CHECKS: ReadonlySet<string> = new Set(["plannedAction", "plannedHead", "plannedExpression"]);
 
 export type SubjectReadingV2 =
   | { readonly ok: false; readonly fault: SubjectReadFault }
@@ -408,4 +405,17 @@ export function readSubjectAnswer(raw: string | null, expected: { readonly hideI
   const disposition = SUBJECT_CHECKS.some(k => checks[k] === "fail") ? "repair"
     : SUBJECT_CHECKS.some(k => checks[k] !== "pass") || derived.includes("unclassified-fault") ? "uncertain" : "pass";
   return { ok: true, checks, faults, derived, disposition };
+}
+
+/**
+ * A complete v1 reading that refused the pose plan alone: every check of who the child is, their age, face and
+ * hat passed; at least one pose check did not; and every fault the answer located names a pose check (an
+ * unclassified fault such as the hair is a defect, never a pose). Under v2 that is no refusal: these pixels are
+ * asked the v2 question once (subject-rejudge/v1). Any other refusal stays the refusal v1 made.
+ */
+export function poseOnlyV1Refusal(reading: SubjectReading): boolean {
+  if (!reading.ok || reading.disposition === "pass") return false;
+  return SUBJECT_CHECKS.every(k => V1_POSE_PLAN_CHECKS.has(k) || reading.checks[k] === "pass")
+    && SUBJECT_CHECKS.some(k => V1_POSE_PLAN_CHECKS.has(k) && reading.checks[k] !== "pass")
+    && reading.faults.every(f => V1_POSE_PLAN_CHECKS.has(f.check)) && !reading.derived.includes("unclassified-fault");
 }

@@ -146,7 +146,7 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
     if (!row || !(row.status === "GENERATED" || incremental && (localPatchEvidenceRecovery(row)?.retry
       || options.includePlayerCandidates && needsPlayerReview(row) || options.decideRetained && localPatchRetainedAnswerUndecided(row)
       // The same pixels, asked the v2 subject question once (subject-rejudge/v1); never on a free re-reading.
-      || !options.decideRetained && subjectRejudgePending(row)) || (options.recovery && isLocalPatchAgeVersion(scene.sceneVersion)
+      || !options.decideRetained && subjectRejudgePending(row, child.ageYears)) || (options.recovery && isLocalPatchAgeVersion(scene.sceneVersion)
       || extraPlan?.reviewOnly.some(entry => entry.rowId === row.id)) && row.status === "FAILED") || !row.assetId)
       { if (incremental) continue; return { ready: false as const, reason: "Usable patches are not ready" }; }
     demand(row.provider === LOCAL_PATCH_PROVIDER && row.rectJson && row.hitRectJson && row.headAnchorJson, "Patch metadata is incomplete");
@@ -422,7 +422,8 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
       const current = await tx.targetVariantAsset.findUniqueOrThrow({ where: { id: e.row.id } });
       const reviewOnly = extraPlan?.reviewOnly.some(entry => entry.rowId === current.id);
       // A v1 pose-plan refusal re-judged under v2: the same pixels and attempt, decided by a new v2 answer.
-      const rejudged = request.reviewScope === "ready-only/v1" && !!evaluated && !options.decideRetained && subjectRejudgePending(e.row);
+      const rejudged = request.reviewScope === "ready-only/v1" && !!evaluated && !options.decideRetained && !!prepared.child.ageYears
+        && subjectRejudgePending(e.row, prepared.child.ageYears);
       const evidenceOnly = request.reviewScope === "ready-only/v1" && (localPatchEvidenceRecovery(e.row)?.retry
         || request.assessmentMode === PLAYER_REVIEW_MODE && needsPlayerReview(e.row) || rejudged);
       // A verified reading of an answer already paid for decides the round it

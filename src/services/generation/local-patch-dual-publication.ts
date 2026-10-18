@@ -7,7 +7,7 @@ import { qualityStageReader, readContinuityStage, readQualityStage, subjectStage
 import { PLAYER_REVIEW_MODE } from "./local-patch-player-review";
 import { LOCAL_PATCH_COMPOSITION_VERSION } from "./local-patch-seam";
 import type { LocalPatchPublicationBinding } from "./local-patch-publication-policy";
-import { poseOnlyRefusal, readSubjectAnswer, readSubjectAnswerV2, SUBJECT_CHECKS, SUBJECT_POLICY_V2, SUBJECT_POLICY_VERSION, SUBJECT_READER,
+import { poseOnlyV1Refusal, readSubjectAnswer, readSubjectAnswerV2, SUBJECT_POLICY_V2, SUBJECT_POLICY_VERSION, SUBJECT_READER,
   SUBJECT_READER_V2 } from "../../domain/generation/subject-policy";
 import { SUBJECT_QUALITY_BUNDLE_VERSION } from "../../domain/generation/subject-quality-bundle";
 import { subjectPlanOfHide, subjectPlanSha256, subjectUpgradeOf, type SubjectUpgradeReceipt } from "./subject-enrollment";
@@ -81,7 +81,7 @@ async function allowedSubject(db: Prisma.TransactionClient, worldId: string, upg
   // (subject-rejudge/v1): the inner answer of a separate bundle, and any answer kept as superseded.
   const v1Admits = (raw: string | null) => {
     const old = readSubjectAnswer(raw, expected);
-    return old.ok && (old.disposition === "pass" || poseOnlyRefusal(SUBJECT_CHECKS.filter(k => old.checks[k] !== "pass")));
+    return old.ok && (old.disposition === "pass" || poseOnlyV1Refusal(old));
   };
   const bundle = proof.quality.subjectBundle;
   if (bundle && !subject.combined) {
