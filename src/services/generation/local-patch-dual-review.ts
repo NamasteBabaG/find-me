@@ -8,11 +8,11 @@ import { nextLocalPatchEvidenceStep, type EvidenceAttempt, type EvidenceDiagnosi
 import { CURRENT_CONTINUITY_READER, CURRENT_QUALITY_READER, qualityReaderReadsMore, qualityStageReader, qualityStageRaw, subjectStageRaw, readContinuityStage, readQualityStage, verifiedDualStage, visualStageReadable,
   type ContinuityReReading, type ContinuityStage, type DualReviewProof, type DualReviewStage, type DualStageBase, type QualityReReading, type QualityStage,
   type SubjectStage } from "./local-patch-dual-evidence";
-import { SUBJECT_POLICY_V2, SUBJECT_POLICY_VERSION, SUBJECT_READER, SUBJECT_READER_V2, readSubjectAnswer, readSubjectAnswerV2,
-  subjectCollectionRefusal, subjectHasOnlyOverlongObservations, type SubjectAppearance, type SubjectPlan } from "../../domain/generation/subject-policy";
+import { SUBJECT_CHECKS, SUBJECT_FORMAT_RECOVERY_V2, SUBJECT_POLICY_V2, SUBJECT_POLICY_VERSION, SUBJECT_READER, SUBJECT_READER_V2, poseOnlyRefusal, readSubjectAnswer,
+  readSubjectAnswerV2, subjectCollectionRefusal, subjectHasOnlyOverlongObservations, type SubjectAppearance, type SubjectPlan } from "../../domain/generation/subject-policy";
 import { SUBJECT_QUALITY_BUNDLE_VERSION } from "../../domain/generation/subject-quality-bundle";
 import { subjectPlanOfHide, subjectPlanSha256, subjectUpgradeOf, type SubjectUpgradeReceipt } from "./subject-enrollment";
-import { loadSubjectPhoto, subjectQuestion, combinedQualitySubjectQuestion, SubjectEvidenceUnavailable, subjectV2RefusalCodes, withSubjectV2 } from "./local-patch-subject-review";
+import { loadSubjectPhoto, subjectQuestion, combinedQualitySubjectQuestion, SubjectEvidenceUnavailable, subjectV2RefusalCodes, withSubject, withSubjectV2 } from "./local-patch-subject-review";
 import { askContinuityInBackground } from "./continuity-background";
 import { localPatchCrowdContinuityPrompt, localPatchHeadContinuityPrompt } from "./local-patch-body-continuity";
 import { prepareVisualReview, sceneQualityQuestion, parseVisualSceneVerdicts, diagnoseVisualSceneAnswer, visualReviewMaxCharge, type PreparedVisualReview } from "./visual-review";
@@ -290,6 +290,12 @@ function dualBinding(prepared: Prepared, version: DualVisualReviewVersion) {
     identitySha256: sha256Bytes(prepared.sheet), attempts: entry.row.attempts };
 }
 
+/** Whether a question was already started: reserved, settled, unknown or linked, under its synchronous or its Batch key. */
+async function questionStarted(prepared: Pick<Prepared, "budget" | "worldId" | "board">, question: PreparedVisualReview): Promise<boolean> {
+  return !!await prepared.budget.readRequest(prepared.worldId, `self-repair:board:${prepared.board.board}:${question.fingerprint}`)
+    || !!await prepared.budget.readRequest(prepared.worldId, qualityBatchKeyOf(prepared.board.board, question.fingerprint));
+}
+
 /** The questions a dual review asks about one prepared appearance, built exactly
  * as they are bought. Read-only: the purchase and the dry-run planner share it. */
 type SubjectQuestionContext = { upgrade: SubjectUpgradeReceipt; plan: SubjectPlan; photoPng: Buffer };
@@ -321,8 +327,14 @@ async function dualQuestions(prepared: Prepared, version: DualVisualReviewVersio
   const quality = dualQualityQuestion(request, binding, qualityAttempt, qualityStrategy);
   // A reused bundle is rebuilt under the policy it was bought with, so it replays; a new one asks v2.
   const bundlePolicy = reuse && oldQuality?.subjectBundle ? oldQuality.subjectBundle.subjectPolicy ?? SUBJECT_POLICY_VERSION : SUBJECT_POLICY_V2;
-  const combined = subject && (!reuse || oldQuality?.subjectBundle)
+  let combined = subject && (!reuse || oldQuality?.subjectBundle)
     ? combinedQualitySubjectQuestion(quality, subject.plan, subject.photoPng, subject.upgrade, bundlePolicy) : null;
+  // A v1 bundle already started about these pixels in this round (bought before v2, its answer never
+  // recorded on the row) is resumed under v1: never bought a second time in its v2 form.
+  if (subject && (!reuse || oldQuality?.subjectBundle) && bundlePolicy === SUBJECT_POLICY_V2) {
+    const v1 = combinedQualitySubjectQuestion(quality, subject.plan, subject.photoPng, subject.upgrade, SUBJECT_POLICY_VERSION);
+    if (v1 && await questionStarted(prepared, v1.question)) combined = v1;
+  }
   const q = combined?.question ?? quality;
   const continuityStrategy = strategyFor("continuity");
   // An enrolled world's subject question follows a passing quality answer; a format or
@@ -360,8 +372,12 @@ export async function dualReviewQuestionCandidates(c: Pick<Container, "db" | "st
   const asked = { ...prepared, request: await dualQualityRequest(version, prepared.request) };
   const questions = await dualQuestions(asked, version);
   const key = (question: PreparedVisualReview) => `self-repair:board:${prepared.board.board}:${question.fingerprint}`;
-  const of = (question: PreparedVisualReview, role: EvidenceRole, strategy: EvidenceStrategy) => ({ requestKey: key(question), fingerprint: question.fingerprint, role, strategy });
-  const found = [of(questions.q, "quality", questions.qualityStrategy),
+  /** `form` and `subjectPolicy` say which question a key belongs to; they decide nothing. */
+  type Form = "quality" | "continuity" | "bundle" | "subject";
+  const of = (question: PreparedVisualReview, role: EvidenceRole, strategy: EvidenceStrategy, form: Form = role,
+    subjectPolicy?: typeof SUBJECT_POLICY_VERSION | typeof SUBJECT_POLICY_V2) => ({ requestKey: key(question), fingerprint: question.fingerprint, role, strategy, form,
+    ...(subjectPolicy ? { subjectPolicy } : {}) });
+  const found: ReturnType<typeof of>[] = [of(questions.q, "quality", questions.qualityStrategy),
     of(await questions.anatomy(), "continuity", questions.continuityStrategy),
     of(await questions.anatomy("responses-background"), "continuity", questions.continuityStrategy)];
   const upgrade = await subjectUpgradeOf(c.db, prepared.game.id), plan = subjectPlanOfHide(questions.binding.hideId);
@@ -372,9 +388,9 @@ export async function dualReviewQuestionCandidates(c: Pick<Container, "db" | "st
       // An interrupted question may have been bought under either subject policy: both forms are found.
       for (const policy of [SUBJECT_POLICY_VERSION, SUBJECT_POLICY_V2] as const) {
         const bundle = combinedQualitySubjectQuestion(combined.quality, plan, photoPng, upgrade, policy)?.question;
-        if (bundle && !found.some(f => f.fingerprint === bundle.fingerprint)) found.push(of(bundle, "quality", combined.qualityStrategy));
+        if (bundle && !found.some(f => f.fingerprint === bundle.fingerprint)) found.push(of(bundle, "quality", combined.qualityStrategy, "bundle", policy));
         found.push(of(subjectQuestion(asked, plan, photoPng, questions.binding, prepared.evidenceReviewAttempt, qualityAddendum(questions.subjectStrategy), upgrade, policy),
-          "quality", questions.subjectStrategy));
+          "quality", questions.subjectStrategy, "subject", policy));
       }
       if (!found.some(f => f.fingerprint === combined.q.fingerprint)) found.push(of(combined.q, "quality", combined.qualityStrategy));
     } catch (error) { if (!(error instanceof SubjectEvidenceUnavailable)) throw error; }
@@ -545,14 +561,30 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
       strategy: qualityStrategy, at: new Date().toISOString(), imageSha256: binding.imageSha256 };
     return classify({ ...base, bought: qualityBought, wire: primaryWire, verdicts, proof, newCostCents }, entry.row, priorReceipt, attempt, null, hideId, false);
   }
-  // A bundle bought under v1 replays as it was: its subject pass still stands (v1 asked more), while its
-  // refusal is superseded by local-patch-subject/v2 (subject-rejudge/v1): no subject stage is kept, and the
+  // A bundle bought under v1 is read under v1, exactly as when it was bought: its pass stands (v1 asked more),
+  // an unreadable answer takes the evidence route and a refusal is a refusal. Only a refusal for the pose plan
+  // alone, which v2 does not require, is superseded (subject-rejudge/v1): it is kept beside the proof, and the
   // separate v2 subject question about these same pixels follows continuity.
   if (subjectBundle && subjectContext && subjectBundle.subjectPolicy !== SUBJECT_POLICY_V2) {
     const subject: SubjectStage = { ...stage(qualityBought, q, qualityAttempt, qualityStrategy), subjectPolicy: SUBJECT_POLICY_VERSION,
       reader: SUBJECT_READER, photoSha256: subjectBundle.photoSha256, planSha256: subjectBundle.planSha256, combined: SUBJECT_QUALITY_BUNDLE_VERSION };
+    proof.subject = subject;
     const reading = readSubjectAnswer(subjectStageRaw(subject), { hideId, ageYears: subjectContext.upgrade.ageYears, plan: subjectContext.plan });
-    if (reading.ok && reading.disposition === "pass") proof.subject = subject;
+    if (!reading.ok) {
+      subject.readFault = reading.fault;
+      const overlong = subjectHasOnlyOverlongObservations(subjectStageRaw(subject));
+      return classify({ ...base, bought: qualityBought, wire: primaryWire, verdicts, proof, newCostCents }, entry.row, priorReceipt,
+        { attempt: evidenceReviewAttempt, role: "quality", kind: overlong ? "length" : reading.fault.code,
+          code: overlong ? SUBJECT_FORMAT_RECOVERY_V2 : reading.fault.code, path: reading.fault.path || null,
+          strategy: qualityStrategy, at: new Date().toISOString(), imageSha256: binding.imageSha256 }, null, hideId, false);
+    }
+    if (reading.disposition !== "pass") {
+      subject.failedChecks = SUBJECT_CHECKS.filter(k => reading.checks[k] !== "pass");
+      if (!poseOnlyRefusal(subject.failedChecks)) return { ...base, bought: qualityBought, wire: primaryWire,
+        verdicts: withSubject(verdicts, hideId, reading, CURRENT_QUALITY_READER), proof, newCostCents, evidence: null, diagnosis: null };
+      proof.supersededSubject = subject;
+      delete proof.subject;
+    }
   } else if (subjectBundle && subjectContext) {
     const subject: SubjectStage = { ...stage(qualityBought, q, qualityAttempt, qualityStrategy), subjectPolicy: SUBJECT_POLICY_V2,
       reader: SUBJECT_READER_V2, photoSha256: subjectBundle.photoSha256, planSha256: subjectBundle.planSha256, combined: SUBJECT_QUALITY_BUNDLE_VERSION };
@@ -602,7 +634,14 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
       if (!(error instanceof SubjectEvidenceUnavailable)) throw error;
       return { kind: "waiting", outcome: { state: "held", reason: error.message, replayed: false, costCents: reviewed.newCostCents } };
     }
-    const question = subjectQuestion(prepared, plan, photoPng, binding, evidenceReviewAttempt, qualityAddendum(subjectStrategy), upgrade, SUBJECT_POLICY_V2);
+    // A v1 question already started about these pixels in this round (bought before v2, its answer never
+    // recorded on the row) is resumed and read under v1; only its refusal for the pose plan alone goes on to
+    // the v2 question, once, with the v1 answer kept beside the proof. Never bought a second time as v2.
+    const v1Question = reviewed.proof.supersededSubject ? null
+      : subjectQuestion(prepared, plan, photoPng, binding, evidenceReviewAttempt, qualityAddendum(subjectStrategy), upgrade, SUBJECT_POLICY_VERSION);
+    const resumeV1 = !!v1Question && await questionStarted(prepared, v1Question);
+    const question = resumeV1 ? v1Question!
+      : subjectQuestion(prepared, plan, photoPng, binding, evidenceReviewAttempt, qualityAddendum(subjectStrategy), upgrade, SUBJECT_POLICY_V2);
     const admitted = await dualQuestionAdmission(budget, worldId, prepared.board.board, version, question);
     if (admitted.refused) return refused(admitted);
     const subjectBatch = await askQualityThroughBatch(c, { gameId: game.id, worldId, sceneId: prepared.scene.id, board: prepared.board.board,
@@ -612,13 +651,27 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
       reason: subjectBatch.reason, replayed: false, costCents: reviewed.newCostCents } };
     const bought = await buy(question, admitted.reserveMicroUsd);
     if (bought.kind !== "bought") return waiting(bought, question, subjectStrategy);
-    const subject: SubjectStage = { ...stage(bought, question, evidenceReviewAttempt, subjectStrategy), subjectPolicy: SUBJECT_POLICY_V2,
-      reader: SUBJECT_READER_V2, photoSha256: upgrade.photoSha256, planSha256: subjectPlanSha256(plan) };
+    const subject: SubjectStage = { ...stage(bought, question, evidenceReviewAttempt, subjectStrategy),
+      ...(resumeV1 ? { subjectPolicy: SUBJECT_POLICY_VERSION, reader: SUBJECT_READER } : { subjectPolicy: SUBJECT_POLICY_V2, reader: SUBJECT_READER_V2 }),
+      photoSha256: upgrade.photoSha256, planSha256: subjectPlanSha256(plan) };
     const next = { ...reviewed, proof: { ...reviewed.proof, subject },
       newCostCents: reviewed.newCostCents + (bought.replayed ? 0 : bought.evidence.amountMicroUsd / 10_000) };
     const attempt = (kind: EvidenceFaultKind, code: string, path: string | null): EvidenceAttempt => ({ attempt: evidenceReviewAttempt, role: "quality",
       kind, code, path, strategy: subjectStrategy, at: new Date().toISOString(), imageSha256: binding.imageSha256 });
     if (!visualStageReadable(subject)) return classify(next, entry.row, priorReceipt, attempt(wireKind(subject), subject.wireFault ?? wireKind(subject), null), null, hideId, false);
+    if (resumeV1) {
+      const old = readSubjectAnswer(subject.raw, { hideId, ageYears: upgrade.ageYears, plan });
+      if (!old.ok) {
+        subject.readFault = old.fault;
+        return classify(next, entry.row, priorReceipt, attempt(old.fault.code, old.fault.code, old.fault.path || null), null, hideId, false);
+      }
+      if (old.disposition === "pass") return { ...next, evidence: null, diagnosis: null };
+      subject.failedChecks = SUBJECT_CHECKS.filter(k => old.checks[k] !== "pass");
+      if (!poseOnlyRefusal(subject.failedChecks)) return { ...next, verdicts: withSubject(next.verdicts, hideId, old,
+        qualityStageReader(next.proof.quality) ?? QUALITY_READER_STRICT), evidence: null, diagnosis: null };
+      const { subject: _superseded, ...rest } = next.proof;
+      return subjectGate({ ...reviewed, newCostCents: next.newCostCents, proof: { ...rest, supersededSubject: subject } });
+    }
     const reading = readSubjectAnswerV2(subject.raw, { hideId, ageYears: upgrade.ageYears, plan });
     if (!reading.ok) {
       subject.readFault = reading.fault;

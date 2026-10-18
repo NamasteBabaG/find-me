@@ -4,6 +4,9 @@ import { visualReviewPolicy } from "../../../domain/generation/visual-review-pol
 import { SUBJECT_POLICY_V2, SUBJECT_POLICY_VERSION, SUBJECT_READER, SUBJECT_READER_V2, subjectPlanFor } from "../../../domain/generation/subject-policy";
 import { CURRENT_QUALITY_READER, type DualReviewProof, type SubjectStage } from "../local-patch-dual-evidence";
 import { integrationDiagnosisPrompt } from "../local-patch-integration-diagnosis";
+import { recomposeRefusedBySubject, refusedCompositionSource } from "../local-patch-self-repair";
+import { SELF_REPAIR_COMPOSITION_VERSION, type SelfRepairDecision } from "../../../domain/scene/local-patch-self-repair";
+import { poseOnlyRefusal } from "../../../domain/generation/subject-policy";
 import { localPatchHideEvidenceIds } from "../local-patch-judge";
 import { subjectRefusalOf } from "../local-patch-subject-review";
 import { subjectRejudgePending } from "../subject-rejudge";
@@ -111,5 +114,61 @@ describe("subject-diagnosis/v1: what the next painting and diagnosis are told ab
     // Everything else in the question is the historical text, in its order.
     expect(intrinsic.split("\n").filter(line => !without.split("\n").includes(line))).toHaveLength(3);
     expect(without.split("\n").every(line => intrinsic.includes(line))).toBe(true);
+    // A refused composition whose source is not recorded: no retained painting may be recomposed.
+    const unknown = integrationDiagnosisPrompt({ ...base, subject: { ...subject, failedSource: null, intrinsic: true } });
+    expect(unknown).toContain("the painting it came from is not recorded: recompose no retained RAW");
+  });
+});
+
+describe("subject-diagnosis/v1: the refused child's source painting is bound to the refused composition", () => {
+  const hide = { id: "newyork-v12-1", pose: "standing" as const };
+  const plan = (action: SelfRepairDecision["action"], sourceKey: string): SelfRepairDecision => ({ cause: "wrong-identity", explanation: "Synthetic plan for a binding test.",
+    action, sourceKey, returnWindow: { left: 16, top: 16, width: 480, height: 736 }, protectedCore: { left: 60, top: 40, width: 40, height: 60 },
+    faceRect: { left: 64, top: 44, width: 30, height: 30 } });
+  const context = (failedSource: string | null) => ({ version: "subject-diagnosis/v1" as const, codes: ["photoLikeness"], located: [], intrinsic: true, failedSource });
+
+  it("names an ordinary composition's recorded purchase, else its own attempt's render", () => {
+    expect(refusedCompositionSource({ hide: hide.id }, null, hide, 2)).toBe("newyork-v12-1:standing:render:2");
+    // A recomposition kept the high-water attempt but showed attempt 1's pixels.
+    expect(refusedCompositionSource({ renderPurchase: { requestKey: "newyork-v12-1:standing:render:1" } }, null, hide, 2)).toBe("newyork-v12-1:standing:render:1");
+    expect(refusedCompositionSource({ renderPurchase: { requestKey: "tokyo-v12-1:standing:render:1" } }, null, hide, 2)).toBe("newyork-v12-1:standing:render:2");
+  });
+
+  it("names a refused self-repair candidate's own source: recorded, else its own cycle's plan", () => {
+    const awaiting = (decision: SelfRepairDecision) => ({ phase: "awaiting-review" as const, cycle: 3, decision, subjectContext: context("newyork-v12-1:standing:render:2") });
+    expect(refusedCompositionSource({ compositionVersion: SELF_REPAIR_COMPOSITION_VERSION }, awaiting(plan("redraw-with-new-placement", "newyork-v12-1:standing:render:1")), hide, 2))
+      .toBe("newyork-v12-1:standing:self-repair:3");
+    expect(refusedCompositionSource({ compositionVersion: SELF_REPAIR_COMPOSITION_VERSION }, awaiting(plan("recompose-retained", "newyork-v12-1:standing:render:1")), hide, 2))
+      .toBe("newyork-v12-1:standing:render:1");
+    expect(refusedCompositionSource({ compositionSource: "newyork-v12-1:standing:self-repair:2" }, awaiting(plan("redraw-with-new-placement", "x")), hide, 2))
+      .toBe("newyork-v12-1:standing:self-repair:2");
+  });
+
+  it("keeps the binding when a plan was refused and the same composition stays in place", () => {
+    // Codex's case: self-repair:1 was refused for likeness; the next plan was rejected; the binding must survive.
+    const rejected = { phase: "rejected" as const, cycle: 2, decision: null, subjectContext: context("newyork-v12-1:standing:self-repair:1") };
+    expect(refusedCompositionSource({ compositionVersion: SELF_REPAIR_COMPOSITION_VERSION }, rejected, hide, 2)).toBe("newyork-v12-1:standing:self-repair:1");
+    expect(refusedCompositionSource({ compositionSource: "newyork-v12-1:standing:render:1" }, { ...rejected, subjectContext: undefined }, hide, 2)).toBe("newyork-v12-1:standing:render:1");
+    // A candidate written before the binding cannot say: unknown, never a guess.
+    expect(refusedCompositionSource({ compositionVersion: SELF_REPAIR_COMPOSITION_VERSION }, { ...rejected, subjectContext: undefined }, hide, 2)).toBeNull();
+    // A cycle that never produced a candidate leaves the ordinary composition, whose source is known.
+    expect(refusedCompositionSource({ renderPurchase: { requestKey: "newyork-v12-1:standing:render:1" } }, { ...rejected, subjectContext: undefined }, hide, 2))
+      .toBe("newyork-v12-1:standing:render:1");
+  });
+
+  it("refuses recomposing the refused child's painting, and any painting when its source is unknown", () => {
+    expect(recomposeRefusedBySubject(context("k:render:2"), plan("recompose-retained", "k:render:2"))).toContain("cannot be fixed by recomposing");
+    expect(recomposeRefusedBySubject(context("k:render:2"), plan("recompose-retained", "k:render:1"))).toBeNull();
+    expect(recomposeRefusedBySubject(context("k:render:2"), plan("redraw-with-new-placement", "k:render:2"))).toBeNull();
+    expect(recomposeRefusedBySubject(context(null), plan("recompose-retained", "k:render:1"))).toContain("not recorded");
+    expect(recomposeRefusedBySubject({ ...context("k:render:2"), intrinsic: false }, plan("recompose-retained", "k:render:2"))).toBeNull();
+    expect(recomposeRefusedBySubject(null, plan("recompose-retained", "k:render:2"))).toBeNull();
+  });
+
+  it("calls a v1 refusal pose-only only when it names the plan alone", () => {
+    expect(poseOnlyRefusal(["plannedAction", "plannedHead"])).toBe(true);
+    expect(poseOnlyRefusal([])).toBe(false);
+    expect(poseOnlyRefusal(["plannedAction", "perceivedAge"])).toBe(false);
+    expect(poseOnlyRefusal(["requiredWardrobe"])).toBe(false);
   });
 });

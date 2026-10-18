@@ -32,7 +32,7 @@ import { localPatchPainterRelease, painterReleasePolicy, type LocalPatchPainterR
 import { advanceQualityBatches } from "./quality-batch";
 import { subjectUpgradeOf } from "./subject-enrollment";
 import { subjectRejudgePending } from "./subject-rejudge";
-import { SUBJECT_V2_REPAIR_CYCLES, localPatchProgressOrder, selfRepairProgress } from "../../domain/scene/local-patch-progress";
+import { localPatchProgressOrder, localPatchRestDecision, selfRepairProgress, type LocalPatchRest } from "../../domain/scene/local-patch-progress";
 import { recoverEnrolledReviewInterruptions } from "./subject-upgrade";
 import { advanceContinuityInBackground } from "./continuity-background";
 import {
@@ -788,40 +788,28 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   if (!attention) {
     const deferred = deferredBudgetError ? await deferBudget(deferredBudgetError) : null;
     if (deferred) return { gameId, pending: !deferred.parked, claimed: true, paused: false, attention: deferred.parked, outcomes, blocked };
-    // local-patch-progress/v1: when all that is left is appearances whose repair cycles under the current
-    // subject policy are spent, nothing more is bought for them; the world stops with their names.
-    const spent = progress ? left.filter(item => {
+    // What is left when nothing automatic remains to start for any of it: appearances whose repair cycles under
+    // local-patch-subject/v2 are spent (local-patch-progress/v1), appearances with no evidence question left, or
+    // a transport outage still being waited out. Any mixture of the first two stops the world with every name
+    // and its reason; nothing more is bought for them.
+    const rests: LocalPatchRest[] = left.map(item => {
       const row = after.find(r => r.targetInstance.gameSceneId === item.sceneId && r.targetInstance.targetId === item.hide.targetId);
-      return !!row && needsSelfRepair(row) && selfRepairProgress(selfRepairOf(row), row.attempts).exhausted;
-    }) : [];
-    if (progress && left.length && !pendingReviews && spent.length === left.length) {
-      const reason = `local-patch: ${spent.length} appearances spent their ${SUBJECT_V2_REPAIR_CYCLES} automatic repair cycles under local-patch-subject/v2 `
-        + `(${spent.map(item => item.hide.id).join(", ")}); nothing more is bought for them. A service decision is required; no parent approval is requested.`;
-      await parkExhausted(reason);
-      return { gameId, pending: false, claimed: true, paused: false, attention: reason, outcomes, blocked };
-    }
-    // What is left, when it is only evidence recovery: a transport outage still
-    // being waited out, or appearances with no automatic question remaining.
-    const recoveries = left.map(item => {
-      const row = after.find(r => r.targetInstance.gameSceneId === item.sceneId && r.targetInstance.targetId === item.hide.targetId);
-      return row ? localPatchEvidenceRecovery(row) : null;
+      if (progress && row && needsSelfRepair(row) && selfRepairProgress(selfRepairOf(row), row.attempts).exhausted) return { hideId: item.hide.id, rest: "spent" };
+      const recovery = automatic && row ? localPatchEvidenceRecovery(row) : null, diagnosis = recovery?.step?.diagnosis;
+      return { hideId: item.hide.id, rest: recovery?.waiting ? "waiting" : recovery?.exhausted ? "evidence" : null,
+        ...(diagnosis ? { evidenceKind: `${diagnosis.role} ${diagnosis.kind}` } : {}) };
     });
-    if (automatic && left.length && !pendingReviews && recoveries.every(r => r && (r.waiting || r.exhausted))) {
-      if (recoveries.some(r => r!.waiting)) {
-        await c.db.$transaction(async tx => { await fence(tx); await tx.generationJob.update({ where: { id: job.id }, data: {
-          status: "QUEUED", currentStep: LOCAL_PATCH_EVIDENCE_RETRY_WAIT,
-          lastError: "Judge evidence is waiting out a provider outage; automatic retry follows service backoff within its fixed question limit. No image redraw or parent approval.",
-        } }); });
-        return { gameId, pending: true, claimed: true, paused: false, attention: null, outcomes, blocked };
-      }
-      const kinds = [...new Set(recoveries.map(r => {
-        const diagnosis = r?.step?.diagnosis;
-        return diagnosis ? `${diagnosis.role} ${diagnosis.kind}` : "unclassified";
-      }))];
-      const reason = `local-patch: ${left.length} appearances have no automatic evidence question left (${kinds.join(", ")}); `
-        + "no image is redrawn for an unreadable answer. A service decision is required; no parent approval is requested.";
-      await parkExhausted(reason);
-      return { gameId, pending: false, claimed: true, paused: false, attention: reason, outcomes, blocked };
+    const rest = pendingReviews ? null : localPatchRestDecision(rests);
+    if (rest?.action === "wait") {
+      await c.db.$transaction(async tx => { await fence(tx); await tx.generationJob.update({ where: { id: job.id }, data: {
+        status: "QUEUED", currentStep: LOCAL_PATCH_EVIDENCE_RETRY_WAIT,
+        lastError: "Judge evidence is waiting out a provider outage; automatic retry follows service backoff within its fixed question limit. No image redraw or parent approval.",
+      } }); });
+      return { gameId, pending: true, claimed: true, paused: false, attention: null, outcomes, blocked };
+    }
+    if (rest?.action === "park") {
+      await parkExhausted(rest.reason);
+      return { gameId, pending: false, claimed: true, paused: false, attention: rest.reason, outcomes, blocked };
     }
     await c.db.generationJob.updateMany({ where: { id: job.id, attempts: claim, status: "RUNNING", currentStep: "local-patch" },
       data: { status: left.length || pendingReviews ? "QUEUED" : "DONE", currentStep: left.length || pendingReviews ? "local-patch" : null } });

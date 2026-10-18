@@ -30,6 +30,13 @@ import { subjectPlanSha256 } from "../subject-enrollment";
 import { SUBJECT_REJUDGE_VERSION } from "../subject-rejudge";
 import type { SelfRepairWire } from "../local-patch-self-repair";
 import { localPatchHideEvidenceIds } from "../local-patch-judge";
+import { prepareLocalPatchBoardReview } from "../local-patch-board-review";
+import { dualReviewQuestionCandidates } from "../local-patch-dual-review";
+import { visualReviewPolicy } from "../../../domain/generation/visual-review-policy";
+import { visualReviewCharge } from "../../../infra/generation/visual-review-pricing";
+import { DUAL_REVIEW_V3_RESERVE_MICRO_USD } from "../../../domain/generation/dual-review-reserve";
+import { purchaseOnce } from "../paid-operation";
+import { LocalPatchRetainedPurchaseStore } from "../local-patch-lifecycle";
 import { bill, paintedOk, seedApprovedGame } from "./local-patch-fixtures";
 import { GOOD_V12_VERDICT, boundHide, longAnswer, publicationBinding } from "./local-patch-dual-fixtures";
 
@@ -57,6 +64,9 @@ const EXHAUST = BOARDS.find(b => b.board === "antarctica")!.hides[2]!;
 const VARIETY = BOARDS.find(b => b.board === "paris")!;
 const EARLY = BOARDS.find(b => b.board !== "antarctica" && b.board !== "paris")!;
 const REJUDGE = EARLY.hides[0]!, NEGATIVE = EARLY.hides[1]!;
+/** Three v1 questions bought before the switch to v2 whose answers were never recorded on their rows. */
+const EARLY2 = BOARDS.find(b => !["antarctica", "paris", EARLY.board].includes(b.board))!;
+const V1_BUNDLE = EARLY2.hides[0]!, V1_FACE = EARLY2.hides[1]!, V1_POSE = EARLY2.hides[2]!;
 const IDENTITY_DEFECT = "Kneeling child by the penguins: a different child's face, short dark hair instead of the photograph's long fringe";
 const HEADS = ["three-quarter", "profile", "down", "up", "away"] as const;
 const observed = (status: string) => ({ status, observation: "A specific synthetic observation of the drawn child." });
@@ -130,6 +140,13 @@ function subjectAnswer(hideId: string, n: number) {
       : { head: HEADS[index % HEADS.length], expression: "focused", engagement: index % 2 ? "acting" : "watching", portraitCopy: false },
     faults: stranger ? [{ check: "photoLikeness", where: IDENTITY_DEFECT }] : [] };
 }
+/** A v1 answer with every check passing unless named. */
+function v1Answer(hideId: string, failed: Record<string, string> = {}, faults: { check: string; where: string }[] = []) {
+  const plan = subjectPlanFor(boardOf(hideId), hideId);
+  return { hideId, subjectPolicy: SUBJECT_POLICY_VERSION, checks: { photoLikeness: observed(failed.photoLikeness ?? "pass"), canonicalAgreement: observed("pass"),
+    faceVisible: observed("pass"), perceivedAge: { ...observed("pass"), estimatedMinYears: 7, estimatedMaxYears: 9 }, plannedAction: observed(failed.plannedAction ?? "pass"),
+    plannedHead: observed("pass"), plannedExpression: observed("pass"), requiredWardrobe: observed(plan.warmHat ? "pass" : "not-required") }, faults };
+}
 /** The historical v1 answer that refused a hide, as the pilot's records hold it. */
 function v1Refusal(hideId: string, faceToo: boolean) {
   return JSON.stringify({ hideId, subjectPolicy: SUBJECT_POLICY_VERSION, checks: { photoLikeness: observed(faceToo ? "fail" : "pass"),
@@ -171,12 +188,14 @@ describe("local-patch-subject/v2 on a whole paid world", () => {
       return receipt.reviewState === "board-review-complete" && !!receipt.boardReview?.dual?.continuity;
     };
 
-    // 1. Before enrollment: the first board's appearances are accepted on quality and continuity alone.
-    for (let ticks = 0; ticks < 200 && !(accepted(await rowOf(REJUDGE.id).catch(() => undefined)) && accepted(await rowOf(NEGATIVE.id).catch(() => undefined))); ticks++) {
+    // 1. Before enrollment: two boards' appearances are accepted on quality and continuity alone.
+    const early = [...EARLY.hides, ...EARLY2.hides];
+    const allAccepted = async () => (await Promise.all(early.map(async hide => accepted(await rowOf(hide.id).catch(() => undefined))))).every(Boolean);
+    for (let ticks = 0; ticks < 300 && !await allAccepted(); ticks++) {
       const result = await runLocalPatchWorldSlice(before, painter(gameId, prompts), gameId, { hardDeadlineAt: Date.now() + 270_000 });
       expect(result.attention).toBeNull();
     }
-    expect(accepted(await rowOf(REJUDGE.id)) && accepted(await rowOf(NEGATIVE.id))).toBe(true);
+    expect(await allAccepted()).toBe(true);
 
     // 2. Enrollment, then the two appearances exactly as v1 left them: refused for the planned forearm alone,
     // and for the forearm and the face. Their quality and continuity answers are the ones already paid for.
@@ -201,6 +220,47 @@ describe("local-patch-subject/v2 on a whole paid world", () => {
         image: receipt.judgedSha256, renders: [...prompts.keys()].filter(key => key.startsWith(`${hide.id}:`)).length });
     }
     await db.gameScene.updateMany({ where: { gameId, sceneSlug: EARLY.board }, data: { generationStatus: "NEEDS_REGENERATION" } });
+
+    // The switchover (Codex P1): three v1 questions bought before v2 whose answers were never recorded on the row.
+    // A bundle about pixels whose review had not begun (it passes); a separate subject question about accepted pixels
+    // refusing the face; and one refusing only the planned forearm. None may be bought again in its v2 form.
+    const opus = visualReviewPolicy("scene-quality", "high");
+    const boughtBeforeV2 = async (hide: typeof V1_BUNDLE, form: "bundle" | "subject", raw: string) => {
+      const scene = await db.gameScene.findFirstOrThrow({ where: { gameId, sceneSlug: EARLY2.board } });
+      const prepared = await prepareLocalPatchBoardReview(after, { gameId, sceneId: scene.id }, {}, { includePlayerCandidates: true, playerReview: true, onlyHideId: hide.id });
+      if (!prepared.ready) throw Error(prepared.reason);
+      const candidates = await dualReviewQuestionCandidates(after, prepared, DUAL_VISUAL_REVIEW_V3);
+      const v1 = candidates.find(q => q.form === form && q.subjectPolicy === SUBJECT_POLICY_VERSION)!;
+      const v2 = candidates.find(q => q.form === form && q.subjectPolicy === SUBJECT_POLICY_V2)!;
+      const reply = { verdict: null, raw, usage: { input_tokens: 2000, output_tokens: 500 }, requestId: `req-${gameId}-v1-${form}-${hide.id}`,
+        model: "claude-opus-5-5", finishReason: "end_turn", wireFault: null, costUnknown: false };
+      const charge = visualReviewCharge(opus, reply.model, reply.usage);
+      expect(await purchaseOnce({ ledger: budget, store: new LocalPatchRetainedPurchaseStore(after, gameId, budget) }, { worldId, requestKey: v1.requestKey,
+        operationFingerprint: v1.fingerprint, scope: "judge", reserveMicroUsd: DUAL_REVIEW_V3_RESERVE_MICRO_USD.quality,
+        buy: async () => ({ bytes: Buffer.from(JSON.stringify({ ...reply, policy: opus, fingerprint: v1.fingerprint })), evidence: {
+          providerNamespace: "anthropic:find-me-existing", providerRequestId: reply.requestId, usageId: sha256Bytes(Buffer.from(JSON.stringify(reply.usage))),
+          rawUsage: reply.usage, model: reply.model, amountMicroUsd: Math.ceil(charge.costCents * 10_000), costBasis: "conservative-upper-estimate" as const } }) }))
+        .toMatchObject({ kind: "bought" });
+      const row = await rowOf(hide.id);
+      return { v1, v2, asset: row.assetId!, image: JSON.parse(row.judgeJson!).judgedSha256 as string, renders: [...prompts.keys()].filter(key => key.startsWith(`${hide.id}:`)).length };
+    };
+    {
+      // Its review never began: the row is a painted candidate awaiting its first review, as the old engine left it,
+      // with no answer of any kind recorded (a recorded plain quality answer would rightly be reused instead).
+      const row = await rowOf(V1_BUNDLE.id), receipt = JSON.parse(row.judgeJson!);
+      await db.targetVariantAsset.update({ where: { id: row.id }, data: { judgeJson: JSON.stringify({ ...receipt, reviewState: "pending-board-review",
+        verdict: null, boardReview: undefined, qualityDisposition: undefined, evidenceAttempts: undefined,
+        dualQualityCheckpoint: undefined, dualContinuityCheckpoint: undefined, reviewHistory: undefined }) } });
+    }
+    const switchover = {
+      bundle: await boughtBeforeV2(V1_BUNDLE, "bundle", JSON.stringify({ version: SUBJECT_QUALITY_BUNDLE_VERSION, quality: { hides: [{ hideId: V1_BUNDLE.id,
+        evidenceIds: localPatchHideEvidenceIds(V1_BUNDLE.id), verdict: GOOD_V12_VERDICT }] }, subject: v1Answer(V1_BUNDLE.id) })),
+      face: await boughtBeforeV2(V1_FACE, "subject", JSON.stringify(v1Answer(V1_FACE.id, { photoLikeness: "fail" },
+        [{ check: "photoLikeness", where: "Child by the stall: a rounder face and straight short hair, not the photograph's" }]))),
+      pose: await boughtBeforeV2(V1_POSE, "subject", JSON.stringify(v1Answer(V1_POSE.id, { plannedAction: "fail" },
+        [{ check: "plannedAction", where: "Both arms at the sides; the planned reaching hand is absent" }]))),
+    };
+    await db.gameScene.updateMany({ where: { gameId, sceneSlug: EARLY2.board }, data: { generationStatus: "NEEDS_REGENERATION" } });
     const subjectBefore = new Map(subjectCalls);
 
     // 3. The ordinary queue until it stops.
@@ -232,16 +292,44 @@ describe("local-patch-subject/v2 on a whole paid world", () => {
     expect(exhausted.status).toBe("FAILED");
     expect(JSON.parse(exhausted.judgeJson!).selfRepair).toMatchObject({ subjectV2Cycles: SUBJECT_V2_REPAIR_CYCLES, cycle: SUBJECT_V2_REPAIR_CYCLES });
     expect(diagnoses).toHaveLength(SUBJECT_V2_REPAIR_CYCLES);
-    // Every other appearance was finished first, each with a v2 pass bound to its own pixels.
+    // Every other appearance was finished first, each with a pass bound to its own pixels: v2, except the v1
+    // bundle bought before the switch, whose v1 pass stands (v1 asked more).
     for (const row of rows.filter(r => r.id !== exhausted.id)) {
       const receipt = JSON.parse(row.judgeJson!), proof = receipt.boardReview.dual as DualReviewProof, hideId = receipt.hide as string;
       expect(row.status, hideId).toBe("GENERATED");
       expect(proof.imageSha256).toBe(receipt.judgedSha256);
-      expect(proof.subject).toMatchObject({ subjectPolicy: SUBJECT_POLICY_V2, reader: SUBJECT_READER_V2 });
-      expect(readSubjectAnswerV2(subjectStageRaw(proof.subject!), { hideId, ageYears: 8, plan: subjectPlanFor(boardOf(hideId), hideId) }))
-        .toMatchObject({ ok: true, disposition: "pass" });
+      if (hideId !== V1_BUNDLE.id) {
+        expect(proof.subject).toMatchObject({ subjectPolicy: SUBJECT_POLICY_V2, reader: SUBJECT_READER_V2 });
+        expect(readSubjectAnswerV2(subjectStageRaw(proof.subject!), { hideId, ageYears: 8, plan: subjectPlanFor(boardOf(hideId), hideId) }))
+          .toMatchObject({ ok: true, disposition: "pass" });
+      }
       expect(await hasLocalPatchPublicationPolicy(c, publicationBinding(gameId, row))).toBe(true);
     }
+    // The switchover: each v1 question bought before v2 was read under v1, and nothing was bought a second time.
+    const finalOf = (hide: typeof V1_BUNDLE) => { const row = rows.find(r => JSON.parse(r.judgeJson!).hide === hide.id)!;
+      return { row, receipt: JSON.parse(row.judgeJson!), proof: JSON.parse(row.judgeJson!).boardReview.dual as DualReviewProof }; };
+    expect(await budget.readRequest(worldId, switchover.bundle.v2.requestKey), "the v1 bundle bought again as v2").toBeNull();
+    expect(await budget.readRequest(worldId, switchover.face.v2.requestKey), "the v1 face refusal re-asked under v2").toBeNull();
+    const bundled = finalOf(V1_BUNDLE);
+    expect(bundled.proof.subject).toMatchObject({ subjectPolicy: SUBJECT_POLICY_VERSION, reader: SUBJECT_READER, combined: SUBJECT_QUALITY_BUNDLE_VERSION,
+      requestKey: switchover.bundle.v1.requestKey, fingerprint: switchover.bundle.v1.fingerprint });
+    expect(bundled.row.assetId).toBe(switchover.bundle.asset);
+    expect(subjectCalls.get(V1_BUNDLE.id) ?? 0).toBe(subjectBefore.get(V1_BUNDLE.id) ?? 0);
+    // The face refusal stood: repainted with its located defect, never asked v2 about the refused pixels.
+    const face = finalOf(V1_FACE);
+    expect(face.row.assetId).not.toBe(switchover.face.asset);
+    expect(face.receipt.judgedSha256).not.toBe(switchover.face.image);
+    expect((subjectCalls.get(V1_FACE.id) ?? 0) - (subjectBefore.get(V1_FACE.id) ?? 0)).toBe(1);
+    expect([...prompts.entries()].filter(([key]) => key.startsWith(`${V1_FACE.id}:`)).at(-1)![1])
+      .toContain('The reviewer located on the refused painting: "photoLikeness: Child by the stall: a rounder face and straight short hair, not the photograph\'s"');
+    // The forearm refusal alone: the same pixels asked v2 once, the v1 answer kept beside the proof.
+    const pose = finalOf(V1_POSE);
+    expect(pose.row.assetId).toBe(switchover.pose.asset);
+    expect([...prompts.keys()].filter(key => key.startsWith(`${V1_POSE.id}:`))).toHaveLength(switchover.pose.renders);
+    expect((subjectCalls.get(V1_POSE.id) ?? 0) - (subjectBefore.get(V1_POSE.id) ?? 0)).toBe(1);
+    expect(pose.proof.supersededSubject).toMatchObject({ subjectPolicy: SUBJECT_POLICY_VERSION, requestKey: switchover.pose.v1.requestKey,
+      failedChecks: ["plannedAction"] });
+    expect(pose.proof.subject).toMatchObject({ subjectPolicy: SUBJECT_POLICY_V2, requestKey: switchover.pose.v2.requestKey });
     expect([...policiesAsked]).toEqual([SUBJECT_POLICY_V2]);
     expect(syncContinuityAfterEnrollment).toBe(0);
 

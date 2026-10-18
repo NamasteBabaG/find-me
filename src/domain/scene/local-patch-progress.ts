@@ -30,6 +30,27 @@ export function localPatchProgressOrder<T extends ProgressCandidate>(items: read
     .sort((a, b) => Number(b.inFlight) - Number(a.inFlight) || a.served - b.served || a.order - b.order);
 }
 
+/** Why a remaining appearance has nothing automatic left to start, or null when it still has work. */
+export type LocalPatchRest = { readonly hideId: string; readonly rest: "spent" | "evidence" | "waiting" | null; readonly evidenceKind?: string };
+
+/**
+ * What a world does when every remaining appearance is at rest: wait out a provider outage, or stop with every
+ * name and its reason (spent repair cycles, no evidence question left, or any mixture). Null while any work
+ * remains. The single-reason wording is the historical one, word for word.
+ */
+export function localPatchRestDecision(rests: readonly LocalPatchRest[]): { readonly action: "wait" } | { readonly action: "park"; readonly reason: string } | null {
+  if (!rests.length || rests.some(r => r.rest === null)) return null;
+  if (rests.some(r => r.rest === "waiting")) return { action: "wait" };
+  const spent = rests.filter(r => r.rest === "spent"), unanswered = rests.filter(r => r.rest === "evidence");
+  const kinds = [...new Set(unanswered.map(r => r.evidenceKind ?? "unclassified"))];
+  const spentText = `spent their ${SUBJECT_V2_REPAIR_CYCLES} automatic repair cycles under local-patch-subject/v2 (${spent.map(r => r.hideId).join(", ")}); nothing more is bought for them`;
+  const evidenceText = `no automatic evidence question left (${kinds.join(", ")}); no image is redrawn for an unreadable answer`;
+  const reason = !unanswered.length ? `local-patch: ${spent.length} appearances ${spentText}.`
+    : !spent.length ? `local-patch: ${rests.length} appearances have ${evidenceText}.`
+    : `local-patch: nothing automatic is left for ${rests.length} appearances: ${spent.length} ${spentText}; ${unanswered.length} have ${evidenceText} (${unanswered.map(r => r.hideId).join(", ")}).`;
+  return { action: "park", reason: `${reason} A service decision is required; no parent approval is requested.` };
+}
+
 /** A self-repair state's place in that order: its paid tries, whether a phase is in flight (a frozen cycle's
  * diagnosis or its plan: never abandoned for another one), and whether it may start another cycle. */
 export function selfRepairProgress(state: { readonly phase?: string; readonly cycle?: number; readonly subjectV2Cycles?: number } | null | undefined,

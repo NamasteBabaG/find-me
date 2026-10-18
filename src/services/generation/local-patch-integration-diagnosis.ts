@@ -17,7 +17,7 @@ export function integrationDiagnosisPrompt(input: {
     | { regions: readonly { what: string; role: "in-front" | "fixed"; bounds: Bounds | null }[]; clearancePx: number };
   /** subject-diagnosis/v1, enrolled worlds only (frozen per cycle): the last image is the child's original photograph;
    * what the last review refused about the child, under local-patch-subject/v2. Others keep their exact question. */
-  subject?: { codes: readonly string[]; located: readonly string[]; intrinsic: boolean; failedSource: string; suggestion: string; warmHat: boolean };
+  subject?: { codes: readonly string[]; located: readonly string[]; intrinsic: boolean; failedSource: string | null; suggestion: string; warmHat: boolean };
 }): string {
   const geometry = `returnWindow must close inside (1,1)-(511,767). protectedCore needs at least18px margin inside returnWindow. faceRect must be at least30x30 and wholly inside protectedCore. If source geometry cannot meet this without damage, redraw at a corrected placement. ${FIXED_AGE_SENTENCE}`;
   return [
@@ -35,7 +35,9 @@ export function integrationDiagnosisPrompt(input: {
     ...(input.subject ? [
       `CHILD (local-patch-subject/v2): the LAST image is the child's ORIGINAL PHOTOGRAPH, the authority for likeness (face and hair) and age only. A natural pose is valid; the suggested pose (${input.subject.suggestion}) is never a defect.${input.subject.warmHat ? " A real warm hat is required here." : ""}`,
       `What the last review refused about the child DATA: ${JSON.stringify({ codes: input.subject.codes, located: input.subject.located })}.`,
-      input.subject.intrinsic
+      input.subject.intrinsic && input.subject.failedSource === null
+        ? "That refusal is a defect INSIDE the painted child (who they are, their age, face or hat), and the painting it came from is not recorded: recompose no retained RAW. Choose redraw-with-new-placement."
+      : input.subject.intrinsic
         ? `That refusal is a defect INSIDE the painted child (who they are, their age, face or hat): recomposing the painting it came from (sourceKey ${JSON.stringify(input.subject.failedSource)}) cannot fix it. Choose redraw-with-new-placement, or recompose a DIFFERENT retained RAW only if that RAW already shows the photograph's face, hair and age.`
         : "No defect inside the painted child was named: if a retained RAW already shows the right child and only the join, seam, boundary or wholeness failed, prefer recompose-retained of that RAW over a new painting.",
     ] : []),

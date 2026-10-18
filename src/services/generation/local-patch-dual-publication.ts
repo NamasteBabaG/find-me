@@ -7,7 +7,9 @@ import { qualityStageReader, readContinuityStage, readQualityStage, subjectStage
 import { PLAYER_REVIEW_MODE } from "./local-patch-player-review";
 import { LOCAL_PATCH_COMPOSITION_VERSION } from "./local-patch-seam";
 import type { LocalPatchPublicationBinding } from "./local-patch-publication-policy";
-import { readSubjectAnswer, readSubjectAnswerV2, SUBJECT_POLICY_V2, SUBJECT_POLICY_VERSION, SUBJECT_READER, SUBJECT_READER_V2 } from "../../domain/generation/subject-policy";
+import { poseOnlyRefusal, readSubjectAnswer, readSubjectAnswerV2, SUBJECT_CHECKS, SUBJECT_POLICY_V2, SUBJECT_POLICY_VERSION, SUBJECT_READER,
+  SUBJECT_READER_V2 } from "../../domain/generation/subject-policy";
+import { SUBJECT_QUALITY_BUNDLE_VERSION } from "../../domain/generation/subject-quality-bundle";
 import { subjectPlanOfHide, subjectPlanSha256, subjectUpgradeOf, type SubjectUpgradeReceipt } from "./subject-enrollment";
 
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -74,5 +76,23 @@ async function allowedSubject(db: Prisma.TransactionClient, worldId: string, upg
     || subject.costMicroUsd !== proof.quality.costMicroUsd)) return false;
   const expected = { hideId: input.hideId, ageYears: upgrade.ageYears, plan };
   const reading = v2 ? readSubjectAnswerV2(subjectStageRaw(subject), expected) : readSubjectAnswer(subjectStageRaw(subject), expected);
-  return reading.ok && reading.disposition === "pass";
+  if (!reading.ok || reading.disposition !== "pass") return false;
+  // A v1 answer about these pixels that a v2 answer replaced may only have refused the pose plan
+  // (subject-rejudge/v1): the inner answer of a separate bundle, and any answer kept as superseded.
+  const v1Admits = (raw: string | null) => {
+    const old = readSubjectAnswer(raw, expected);
+    return old.ok && (old.disposition === "pass" || poseOnlyRefusal(SUBJECT_CHECKS.filter(k => old.checks[k] !== "pass")));
+  };
+  const bundle = proof.quality.subjectBundle;
+  if (bundle && !subject.combined) {
+    const inner = subjectStageRaw({ raw: proof.quality.raw, combined: SUBJECT_QUALITY_BUNDLE_VERSION });
+    if (bundle.subjectPolicy === SUBJECT_POLICY_V2) {
+      const own = readSubjectAnswerV2(inner, expected);
+      if (!own.ok || own.disposition !== "pass") return false;
+    } else if (!v1Admits(inner)) return false;
+  }
+  const superseded = proof.supersededSubject;
+  if (superseded && (superseded.subjectPolicy !== SUBJECT_POLICY_VERSION || superseded.reader !== SUBJECT_READER
+    || superseded.photoSha256 !== upgrade.photoSha256 || superseded.planSha256 !== subjectPlanSha256(plan) || !v1Admits(subjectStageRaw(superseded)))) return false;
+  return true;
 }

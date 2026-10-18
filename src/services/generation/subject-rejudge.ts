@@ -1,4 +1,4 @@
-import { SUBJECT_READER } from "../../domain/generation/subject-policy";
+import { SUBJECT_READER, poseOnlyRefusal } from "../../domain/generation/subject-policy";
 import { QUALITY_READER_STRICT, localPatchQualityDisposition } from "./local-patch-judge";
 import { qualityStageReader, readQualityStage, type DualReviewProof } from "./local-patch-dual-evidence";
 
@@ -11,7 +11,6 @@ import { qualityStageReader, readQualityStage, type DualReviewProof } from "./lo
  * bound to these pixels, can accept them.
  */
 export const SUBJECT_REJUDGE_VERSION = "subject-rejudge/v1" as const;
-const POSE_PLAN: ReadonlySet<string> = new Set(["plannedAction", "plannedHead", "plannedExpression"]);
 
 type Row = { readonly status: string; readonly assetId: string | null; readonly lastError: string | null; readonly judgeJson: string | null };
 
@@ -29,7 +28,7 @@ export function subjectRejudgePending(row: Row): boolean {
   const proof = receipt.boardReview?.dual, subject = proof?.subject;
   if (!proof?.quality || !subject || subject.reader !== SUBJECT_READER || proof.imageSha256 !== receipt.judgedSha256 || proof.hideId !== receipt.hide) return false;
   const failed = subject.failedChecks;
-  if (!Array.isArray(failed) || !failed.length || !failed.every(code => POSE_PLAN.has(code))) return false;
+  if (!Array.isArray(failed) || !poseOnlyRefusal(failed)) return false;
   if (receipt.selfRepair?.phase === "diagnosing" || receipt.selfRepair?.phase === "applying") return false;
   const verdict = readQualityStage(proof.quality, receipt.hide);
   return !!verdict && localPatchQualityDisposition(verdict, 12, { hideId: receipt.hide, reader: qualityStageReader(proof.quality) ?? QUALITY_READER_STRICT }).state === "acceptable";

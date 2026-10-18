@@ -260,6 +260,11 @@ const answerSchemaV2 = z.object({
 
 /** What v1 called a requirement and v2 only suggests: a fault naming one of these decides nothing. */
 const PLAN_ONLY_FAULTS: ReadonlySet<string> = new Set(["plannedAction", "plannedHead", "plannedExpression", "appearance", "pose", "head", "gaze", "expression"]);
+const V1_POSE_PLAN_CHECKS: ReadonlySet<string> = new Set(["plannedAction", "plannedHead", "plannedExpression"]);
+/** A v1 refusal that named the pose plan alone: every check of who the child is, their age, face and hat passed.
+ * Under v2 it is no refusal; such pixels are asked the v2 question once (subject-rejudge/v1). */
+export const poseOnlyRefusal = (failedChecks: readonly unknown[]): boolean =>
+  failedChecks.length > 0 && failedChecks.every(code => typeof code === "string" && V1_POSE_PLAN_CHECKS.has(code));
 
 export type SubjectReadingV2 =
   | { readonly ok: false; readonly fault: SubjectReadFault }

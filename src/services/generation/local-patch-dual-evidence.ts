@@ -57,7 +57,10 @@ export type DualReviewProof = { version: DualVisualReviewVersion; hideId: string
   imageSha256: string; geometrySha256: string; identitySha256: string;
   quality: QualityStage; continuity: ContinuityStage | null;
   /** Present only in an enrolled world; absent on every historical proof. */
-  subject?: SubjectStage | null };
+  subject?: SubjectStage | null;
+  /** A v1 answer bought before local-patch-subject/v2 about these same pixels, read under v1 and refused for the
+   * pose plan alone, kept beside the v2 answer that decided instead (subject-rejudge/v1). Never an approval. */
+  supersededSubject?: SubjectStage };
 
 /** The reader new scene-quality answers are decided by, under either pinned question. */
 export const CURRENT_QUALITY_READER: QualityReader = QUALITY_READER_LOCATED_V2;

@@ -51,10 +51,41 @@ const stateSchema = z.object({ version: z.literal(SELF_REPAIR_VERSION), cycle: z
   // Enrolled worlds, cycles started under local-patch-subject/v2: how many (local-patch-progress/v1 bounds them),
   // and what the last review refused about the child, as the diagnosis and the painter are told it.
   subjectV2Cycles: z.number().int().positive().optional(),
+  // `failedSource` null: the refused composition predates the binding and cannot say which paid painting it came from.
   subjectContext: z.object({ version: z.literal(SUBJECT_DIAGNOSIS_VERSION), codes: z.array(z.string().max(40)).max(8),
-    located: z.array(z.string().max(320)).max(4), intrinsic: z.boolean(), failedSource: z.string().max(240) }).strict().optional(),
+    located: z.array(z.string().max(320)).max(4), intrinsic: z.boolean(), failedSource: z.string().max(240).nullable() }).strict().optional(),
 }).strict();
 type State = z.infer<typeof stateSchema>;
+
+/**
+ * subject-diagnosis/v1: the paid RAW the row's refused composition was made from, bound to that composition;
+ * null when a composition written before this binding cannot say. A refused self-repair candidate names its own
+ * source (recorded on the candidate, else its own cycle's plan). A cycle whose plan or join was refused leaves the
+ * same composition in place, so the binding frozen with that cycle is kept. An ordinary composition names the
+ * purchase it records (a recomposition may select an earlier paid RAW), else its own attempt's render.
+ */
+export function refusedCompositionSource(previous: Record<string, unknown> | null,
+  state: Pick<State, "phase" | "cycle" | "decision" | "subjectContext"> | null, hide: Pick<LocalPatchHide, "id" | "pose">, attempts: number): string | null {
+  const recorded = typeof previous?.compositionSource === "string" ? previous.compositionSource : null;
+  if (state?.phase === "awaiting-review" && state.decision) return recorded
+    ?? (state.decision.action === "recompose-retained" ? state.decision.sourceKey : `${hide.id}:${hide.pose}:self-repair:${state.cycle}`);
+  if (state?.phase === "rejected") {
+    if (state.subjectContext) return state.subjectContext.failedSource;
+    if (recorded) return recorded;
+    if (previous?.compositionVersion === SELF_REPAIR_COMPOSITION_VERSION) return null;
+  }
+  const purchase = (previous?.renderPurchase as { requestKey?: unknown } | undefined)?.requestKey;
+  return typeof purchase === "string" && purchase.startsWith(`${hide.id}:${hide.pose}:render:`) ? purchase : `${hide.id}:${hide.pose}:render:${attempts}`;
+}
+
+/** The plan a refusal inside the painted child forbids: recomposing the painting it came from, or any retained
+ * painting when that source is not recorded. A redraw, a restyle or another retained RAW stays open. */
+export function recomposeRefusedBySubject(subject: { intrinsic: boolean; failedSource: string | null } | null, decision: SelfRepairDecision): string | null {
+  if (!subject?.intrinsic || decision.action !== "recompose-retained") return null;
+  if (subject.failedSource === null) return "The refused child's source painting is not recorded, so no retained painting may be recomposed; redraw";
+  return decision.sourceKey === subject.failedSource
+    ? "A defect inside the painted child cannot be fixed by recomposing the painting it came from; redraw, or choose another retained RAW" : null;
+}
 export type SelfRepairWire = { prompt: string; images: readonly Buffer[]; imageLabels: readonly string[];
   settings: ReturnType<typeof selfRepairSettingsForVersion>; timeoutMs: number };
 export type SelfRepairDeps = LocalPatchHideDeps & { fence(tx: Prisma.TransactionClient): Promise<void>;
@@ -116,10 +147,7 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
     const history = state?.history ?? [];
     if (state?.decision && state.phase === "awaiting-review") history.push({ recipe: selfRepairRecipe(state.decision),
       cause: state.decision.cause, result: row.lastError ?? "visual-review-refused", imageSha256: previous.judgedSha256 ?? null });
-    // The painting the refused composition came from: a recomposed source, this cycle's redraw, or the last attempt.
-    const failedSource = state?.decision && state.phase === "awaiting-review"
-      ? state.decision.action === "recompose-retained" ? state.decision.sourceKey : `${hide.id}:${hide.pose}:self-repair:${state.cycle}`
-      : `${hide.id}:${hide.pose}:render:${row.attempts}`;
+    const failedSource = refusedCompositionSource(previous, state, hide, row.attempts);
     const refusal = upgrade && plan ? subjectRefusalOf(previous, plan, upgrade.ageYears) : null;
     state = { version: SELF_REPAIR_VERSION, cycle: (state?.cycle ?? 0) + 1, phase: "diagnosing", contextSha256,
       decision: null, history, feedback: (state?.phase === "rejected" ? state.feedback : row.lastError ?? "Two completed attempts did not produce a publishable appearance").slice(0, 1200),
@@ -261,8 +289,8 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
       demand(!active.history.some(h => h.recipe === selfRepairRecipe(decision)), "Diagnosis repeated an already failed source and geometry; change approach");
       // A defect inside the painted child (who they are, their age, face or hat) is not in the join: recomposing
       // the very painting it came from can only reproduce it. A different RAW or a redraw may still fix it.
-      demand(!(subject?.intrinsic && decision.action === "recompose-retained" && decision.sourceKey === subject.failedSource),
-        "A defect inside the painted child cannot be fixed by recomposing the painting it came from; redraw, or choose another retained RAW");
+      const subjectConflict = recomposeRefusedBySubject(subject, decision);
+      demand(!subjectConflict, subjectConflict ?? "");
       if (decision.action === "redraw-with-new-placement") demand(JSON.stringify(decision.protectedCore) !== JSON.stringify(maskForHide(hide)), "Redraw must change the failed editable envelope");
       const r = decision.returnWindow, world = { ...r, left: crop.left + r.left, top: crop.top + r.top };
       demand(board.hides.filter(h => h.id !== hide.id).every(other => { const b = cropOf(other);
@@ -349,6 +377,8 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
       judgedSha256: joined.candidateSha256, geometrySha256: localPatchPublicationGeometryHash(geometry),
       hide: hide.id, pose: hide.pose, seam: joined.audit.originalRawSeamReport, renderFault: null,
       selfRepair: { ...active, phase: "awaiting-review", sourceKeys, imageCostCents }, recoveryComposition: joined.audit,
+      // The paid painting this composition was made from (subject-diagnosis/v1), bound to the candidate itself.
+      compositionSource: decision.action === "recompose-retained" ? decision.sourceKey : `${hide.id}:${hide.pose}:self-repair:${active.cycle}`,
       // Bound to this candidate; an earlier picture's record never survives the join.
       foreground: joined.foreground };
     await tx.targetVariantAsset.update({ where: { id: row.id }, data: { status: "GENERATED", lastError: null, assetId, ...geometry,

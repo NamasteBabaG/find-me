@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SUBJECT_V2_REPAIR_CYCLES, localPatchProgressOrder, selfRepairProgress, type ProgressCandidate } from "../local-patch-progress";
+import { SUBJECT_V2_REPAIR_CYCLES, localPatchProgressOrder, localPatchRestDecision, selfRepairProgress, type ProgressCandidate } from "../local-patch-progress";
 
 /**
  * local-patch-progress/v1. The pilot's failure: every started self-repair ran before any second
@@ -40,5 +40,29 @@ describe("local-patch-progress/v1", () => {
     expect(selfRepairProgress({ phase: "rejected", cycle: 3, subjectV2Cycles: SUBJECT_V2_REPAIR_CYCLES }, 2).exhausted).toBe(true);
     expect(selfRepairProgress({ phase: "awaiting-review", cycle: 3, subjectV2Cycles: SUBJECT_V2_REPAIR_CYCLES }, 2).exhausted).toBe(true);
     expect(selfRepairProgress({ phase: "rejected", cycle: 7 }, 2).exhausted).toBe(false);
+  });
+});
+
+describe("a world with nothing automatic left to start", () => {
+  const TAIL = " A service decision is required; no parent approval is requested.";
+  it("keeps working while any appearance has work, and waits out an outage", () => {
+    expect(localPatchRestDecision([])).toBeNull();
+    expect(localPatchRestDecision([{ hideId: "a", rest: "spent" }, { hideId: "b", rest: null }])).toBeNull();
+    expect(localPatchRestDecision([{ hideId: "a", rest: "spent" }, { hideId: "b", rest: "waiting" }])).toEqual({ action: "wait" });
+  });
+
+  it("stops with the historical words for a single reason", () => {
+    expect(localPatchRestDecision([{ hideId: "tokyo-v12-1", rest: "spent" }])).toEqual({ action: "park", reason:
+      `local-patch: 1 appearances spent their ${SUBJECT_V2_REPAIR_CYCLES} automatic repair cycles under local-patch-subject/v2 (tokyo-v12-1); nothing more is bought for them.${TAIL}` });
+    expect(localPatchRestDecision([{ hideId: "a", rest: "evidence", evidenceKind: "quality syntax" }, { hideId: "b", rest: "evidence" }])).toEqual({ action: "park", reason:
+      `local-patch: 2 appearances have no automatic evidence question left (quality syntax, unclassified); no image is redrawn for an unreadable answer.${TAIL}` });
+  });
+
+  it("stops a mixture of spent repairs and exhausted evidence, naming each appearance with its reason", () => {
+    // The loop Codex found: one appearance's repairs spent, another's evidence questions spent; neither alone matched.
+    const decision = localPatchRestDecision([{ hideId: "tokyo-v12-1", rest: "spent" }, { hideId: "paris-v12-2", rest: "evidence", evidenceKind: "continuity shape" }]);
+    expect(decision).toEqual({ action: "park", reason: "local-patch: nothing automatic is left for 2 appearances: 1 spent their "
+      + `${SUBJECT_V2_REPAIR_CYCLES} automatic repair cycles under local-patch-subject/v2 (tokyo-v12-1); nothing more is bought for them; 1 have no automatic `
+      + `evidence question left (continuity shape); no image is redrawn for an unreadable answer (paris-v12-2).${TAIL}` });
   });
 });
