@@ -7,7 +7,7 @@ import { qualityStageReader, readContinuityStage, readQualityStage, subjectStage
 import { PLAYER_REVIEW_MODE } from "./local-patch-player-review";
 import { LOCAL_PATCH_COMPOSITION_VERSION } from "./local-patch-seam";
 import type { LocalPatchPublicationBinding } from "./local-patch-publication-policy";
-import { readSubjectAnswer, SUBJECT_POLICY_VERSION, SUBJECT_READER } from "../../domain/generation/subject-policy";
+import { readSubjectAnswer, readSubjectAnswerV2, SUBJECT_POLICY_V2, SUBJECT_POLICY_VERSION, SUBJECT_READER, SUBJECT_READER_V2 } from "../../domain/generation/subject-policy";
 import { subjectPlanOfHide, subjectPlanSha256, subjectUpgradeOf, type SubjectUpgradeReceipt } from "./subject-enrollment";
 
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -53,11 +53,15 @@ export async function allowedDualPublication(db: Prisma.TransactionClient, input
 }
 
 /** The subject stage re-read on every publication/protection read: its own settled bill,
- * the enrolled photograph and age, this hide's plan, and an explicit pass of every check. */
+ * the enrolled photograph and age, this hide's plan, and an explicit pass of every check its
+ * policy decides by: all eight under v1; under v2 the five of who the child is, with no
+ * collection refusal. Each stage is read only by its own policy's reader. */
 async function allowedSubject(db: Prisma.TransactionClient, worldId: string, upgrade: SubjectUpgradeReceipt, proof: DualReviewProof,
   input: LocalPatchPublicationBinding): Promise<boolean> {
   const subject = proof.subject, plan = subjectPlanOfHide(input.hideId);
-  if (!subject || !plan || subject.subjectPolicy !== SUBJECT_POLICY_VERSION || subject.reader !== SUBJECT_READER
+  const v2 = subject?.subjectPolicy === SUBJECT_POLICY_V2 && subject.reader === SUBJECT_READER_V2;
+  if (!subject || !plan || !(v2 || subject.subjectPolicy === SUBJECT_POLICY_VERSION && subject.reader === SUBJECT_READER)
+    || subject.collectionRefusal !== undefined
     || subject.photoSha256 !== upgrade.photoSha256 || subject.planSha256 !== subjectPlanSha256(plan) || upgrade.identitySha256 !== input.identitySha256) return false;
   const game = await db.game.findUnique({ where: { id: input.gameId }, include: { childProfile: true } });
   if (!game || game.ownerId !== upgrade.ownerId || game.childProfile?.ageYears !== upgrade.ageYears
@@ -65,8 +69,10 @@ async function allowedSubject(db: Prisma.TransactionClient, worldId: string, upg
   if (!await verifiedDualStage(db, worldId, subject, "scene-quality")) return false;
   if (subject.combined && (!proof.quality.subjectBundle || proof.quality.subjectBundle.version !== subject.combined
     || proof.quality.subjectBundle.photoSha256 !== subject.photoSha256 || proof.quality.subjectBundle.planSha256 !== subject.planSha256
+    || (proof.quality.subjectBundle.subjectPolicy ?? SUBJECT_POLICY_VERSION) !== subject.subjectPolicy
     || subject.requestKey !== proof.quality.requestKey || subject.fingerprint !== proof.quality.fingerprint || subject.raw !== proof.quality.raw
     || subject.costMicroUsd !== proof.quality.costMicroUsd)) return false;
-  const reading = readSubjectAnswer(subjectStageRaw(subject), { hideId: input.hideId, ageYears: upgrade.ageYears, plan });
+  const expected = { hideId: input.hideId, ageYears: upgrade.ageYears, plan };
+  const reading = v2 ? readSubjectAnswerV2(subjectStageRaw(subject), expected) : readSubjectAnswer(subjectStageRaw(subject), expected);
   return reading.ok && reading.disposition === "pass";
 }

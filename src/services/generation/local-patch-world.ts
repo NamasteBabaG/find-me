@@ -31,6 +31,8 @@ import { hasDualVisualReview } from "./visual-review-release";
 import { localPatchPainterRelease, painterReleasePolicy, type LocalPatchPainterRelease } from "./painter-release";
 import { advanceQualityBatches } from "./quality-batch";
 import { subjectUpgradeOf } from "./subject-enrollment";
+import { subjectRejudgePending } from "./subject-rejudge";
+import { SUBJECT_V2_REPAIR_CYCLES, localPatchProgressOrder, selfRepairProgress } from "../../domain/scene/local-patch-progress";
 import { recoverEnrolledReviewInterruptions } from "./subject-upgrade";
 import { advanceContinuityInBackground } from "./continuity-background";
 import {
@@ -380,8 +382,10 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   let deferredBudgetError: WorldBudgetError | null = null;
   // Scheduling only: publication re-verifies every subject stage, bill and binding.
   const subjectUpgrade = automatic && !extraPlan ? await subjectUpgradeOf(c.db, gameId) : null;
+  // A board also owes its v2 re-judgments (subject-rejudge/v1), whatever status the board itself carries.
   const subjectPendingScenes = (current: typeof rows) => new Set(subjectUpgrade ? game.scenes.filter(scene => current.some(row =>
-    row.targetInstance.gameSceneId === scene.id && row.status === "GENERATED" && !subjectStageCurrent(row))).map(scene => scene.id) : []);
+    row.targetInstance.gameSceneId === scene.id && (row.status === "GENERATED" && !subjectStageCurrent(row) || subjectRejudgePending(row))))
+    .map(scene => scene.id) : []);
   const subjectPending = subjectPendingScenes(rows);
   // Review retained pixels before buying diagnostics or replacements. A failed
   // sibling is no reason to withhold the independent ready appearance.
@@ -451,7 +455,9 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       // Planning only: incomplete boards with exclusively concluded approvals
       // have no new evidence to review. Final assembly still validates every
       // actual image/geometry/identity binding, including tampered pixels.
-      const firstWork = subjectWork || sceneRows.some(row => playerReviewEnabled() && needsPlayerReview(row)) || ready.some(row => {
+      // A v1 pose-plan refusal awaits its v2 subject question about the same pixels (subject-rejudge/v1).
+      const firstWork = subjectWork || !!subjectUpgrade && sceneRows.some(subjectRejudgePending)
+        || sceneRows.some(row => playerReviewEnabled() && needsPlayerReview(row)) || ready.some(row => {
         try { const receipt = JSON.parse(row.judgeJson ?? "null");
           return receipt?.reviewState !== "board-review-complete" || receipt.qualityDisposition?.state !== "acceptable";
         } catch { return true; }
@@ -517,10 +523,18 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     && localPatchBoardFor(scene.sceneSlug, scene.sceneVersion)?.hides.every(hide => stateOf(scene.id, hide.targetId)?.status === "GENERATED"));
   // A rendered but not reviewed normal candidate may still require attempt2.
   // Finish those reviews before handing any earlier failure its last attempt.
+  // An enrolled world schedules by local-patch-progress/v1: paid work in flight first, then the
+  // appearance with the fewest paid tries, so every appearance advances before any gets another cycle.
+  const progress = !!subjectUpgrade && automatic && !extraPlan;
+  const selfRepairOf = (row: { judgeJson: string | null } | undefined) => {
+    try { return JSON.parse(row?.judgeJson ?? "{}").selfRepair as Parameters<typeof selfRepairProgress>[0]; } catch { return null; }
+  };
   const automaticWork = automatic && !extraPlan ? work.filter(item => {
     const row = stateOf(item.sceneId, item.hide.targetId);
     return needsSelfRepair(row) && !(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion === 12
-      && (localPatchEvidenceRecovery(row!) || playerReviewEnabled() && needsPlayerReview(row!)));
+      && (localPatchEvidenceRecovery(row!) || playerReviewEnabled() && needsPlayerReview(row!)))
+      // Re-asked under v2 about the same pixels before any repair (subject-rejudge/v1).
+      && !(subjectUpgrade && subjectRejudgePending(row!));
   }).sort((a, b) => {
     const cycle = (item: typeof a) => {
       try {
@@ -536,11 +550,17 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     const row = stateOf(item.sceneId, item.hide.targetId);
     return row && extraRows.has(row.id) && ((row.status === "FAILED" && row.attempts === 3)
       || (row.status === "PENDING" && row.attempts === 4));
-  }) : plan.indices.map(index => work[index]!).filter(item => {
+  }) : (progress
+    // Every unsettled appearance is a candidate; the progress order, not the tier, decides who goes first.
+    ? work.filter(item => !settledHide(stateOf(item.sceneId, item.hide.targetId)))
+    : plan.indices.map(index => work[index]!)).filter(item => {
     if (automaticWork.includes(item)) return false;
     const candidate = stateOf(item.sceneId, item.hide.targetId);
     if (automatic && game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion === 12 && candidate && localPatchEvidenceRecovery(candidate)) return false;
     if (playerReviewEnabled() && candidate && needsPlayerReview(candidate)) return false;
+    if (subjectUpgrade && candidate && subjectRejudgePending(candidate)) return false;
+    // A ready appearance is reviewed, never repainted ahead of its review.
+    if (progress && candidate?.status === "GENERATED") return false;
     if (!plan.finalRepair || !normalReviewsPending) return true;
     const row = stateOf(item.sceneId, item.hide.targetId);
     // Reviews gate a NEW final purchase, never recovery of one already started.
@@ -551,25 +571,47 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   let paused = false;
   let attention: string | null = null;
 
+  // local-patch-progress/v1: one order for repairs and renders; an appearance whose repair cycles
+  // under the current subject policy are spent is left out (and reported below, never repurchased).
+  const order = (item: (typeof work)[number]) => work.indexOf(item);
+  const ordered = progress ? localPatchProgressOrder([
+    ...automaticWork.map(item => { const row = stateOf(item.sceneId, item.hide.targetId);
+      return { item, kind: "repair" as const, order: order(item), ...selfRepairProgress(selfRepairOf(row), row?.attempts ?? 0) }; }),
+    ...todo.map(item => { const row = stateOf(item.sceneId, item.hide.targetId);
+      return { item, kind: "render" as const, order: order(item), inFlight: row?.status === "PENDING", served: row?.attempts ?? 0, exhausted: false }; }),
+  ]) : null;
+
   try {
     // A new failure after recovery returns here with its actual review evidence.
     // The engine diagnoses again; no terminal quality status or parent gate.
     let repairsStarted = 0;
-    for (const item of automaticWork) {
-      if (repairsStarted >= limit) break;
-      if (options.hardDeadlineAt !== undefined && options.hardDeadlineAt - Date.now() < minHideMs) break;
+    const repairOne = async (item: (typeof work)[number]) => {
       try {
         await runLocalPatchSelfRepair(c, { gameId, ...item, deadlineAt: options.hardDeadlineAt },
           { ...deps, fence, diagnose: options.diagnose });
         repairsStarted++;
       } catch (error) {
-        if (error instanceof WorldBudgetError && error.code === "cap_exceeded") { deferredBudgetError = error; continue; }
+        if (error instanceof WorldBudgetError && error.code === "cap_exceeded") { deferredBudgetError = error; return; }
         throw error;
       }
       game.scenes.find(scene => scene.id === item.sceneId)!.generationStatus = "NEEDS_REGENERATION";
+    };
+    // Historical order: every repair first, then the renders.
+    for (const item of ordered ? [] : automaticWork) {
+      if (repairsStarted >= limit) break;
+      if (options.hardDeadlineAt !== undefined && options.hardDeadlineAt - Date.now() < minHideMs) break;
+      await repairOne(item);
     }
-    for (const item of todo) {
-      if (outcomes.length >= limit) break;
+    // local-patch-progress/v1 takes repairs and renders as one ordered list.
+    for (const entry of ordered ?? todo.map(item => ({ item, kind: "render" as const }))) {
+      const item = entry.item;
+      if (entry.kind === "repair") {
+        if (repairsStarted >= limit) continue;
+        if (options.hardDeadlineAt !== undefined && options.hardDeadlineAt - Date.now() < minHideMs) break;
+        await repairOne(item);
+        continue;
+      }
+      if (outcomes.length >= limit) { if (ordered) continue; break; }
       if (options.hardDeadlineAt !== undefined && options.hardDeadlineAt - Date.now() < minHideMs) break;
       let outcome: LocalPatchHideOutcome;
       try { outcome = await runLocalPatchHide(c, { ...deps, fence }, { gameId, board: item.board, hide: item.hide,
@@ -746,6 +788,18 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   if (!attention) {
     const deferred = deferredBudgetError ? await deferBudget(deferredBudgetError) : null;
     if (deferred) return { gameId, pending: !deferred.parked, claimed: true, paused: false, attention: deferred.parked, outcomes, blocked };
+    // local-patch-progress/v1: when all that is left is appearances whose repair cycles under the current
+    // subject policy are spent, nothing more is bought for them; the world stops with their names.
+    const spent = progress ? left.filter(item => {
+      const row = after.find(r => r.targetInstance.gameSceneId === item.sceneId && r.targetInstance.targetId === item.hide.targetId);
+      return !!row && needsSelfRepair(row) && selfRepairProgress(selfRepairOf(row), row.attempts).exhausted;
+    }) : [];
+    if (progress && left.length && !pendingReviews && spent.length === left.length) {
+      const reason = `local-patch: ${spent.length} appearances spent their ${SUBJECT_V2_REPAIR_CYCLES} automatic repair cycles under local-patch-subject/v2 `
+        + `(${spent.map(item => item.hide.id).join(", ")}); nothing more is bought for them. A service decision is required; no parent approval is requested.`;
+      await parkExhausted(reason);
+      return { gameId, pending: false, claimed: true, paused: false, attention: reason, outcomes, blocked };
+    }
     // What is left, when it is only evidence recovery: a transport outage still
     // being waited out, or appearances with no automatic question remaining.
     const recoveries = left.map(item => {

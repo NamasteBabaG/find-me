@@ -16,7 +16,7 @@ import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wi
 import { activateLocalPatchEmergencyBudget, localPatchEmergencyBudgetAuditId, deferLocalPatchIdentityAtAuthorizedCap } from "../local-patch-budget-recovery";
 import { readNewQaWorldBudget, newQaWorldBudgetAuditId, pinNewQaWorldBudget } from "../local-patch-qa-budget";
 import { DUAL_VISUAL_REVIEW_VERSION, DUAL_VISUAL_REVIEW_V3 } from "../visual-review-release";
-import { newQaWorldBudgetEnabled } from "../../../domain/generation/qa-world-budget-policy";
+import { QA_PILOT_COMPLETION_WORLDS, newQaWorldBudgetEnabled } from "../../../domain/generation/qa-world-budget-policy";
 
 const fakes = vi.hoisted(() => ({ appEnv: "qa", release: "v19" }));
 vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: fakes.appEnv, LOCAL_PATCH_PROMPT_RELEASE: fakes.release }),
@@ -158,6 +158,29 @@ describe("new QA six-dollar world authorization, no provider calls", () => {
     await db.auditLog.update({ where: { id }, data: { metaJson: JSON.stringify(receipt) } });
     await expect(f.budget.reserve(f.worldId,reserve("forged"))).rejects.toThrow("policy");
     expect(await db.worldBudgetLedger.findUnique({ where: { worldId: f.worldId } })).toBeNull();
+  });
+  it("raises only the named pilot world to its inclusive completion frame, and only on its verified six-dollar pin", async () => {
+    // local-patch:qa-pilot-completion/v1 names exactly one world; this test borrows the name for a synthetic one.
+    expect([...QA_PILOT_COMPLETION_WORLDS]).toEqual(["game_j9mpft6aemfij36zegjk:board-wizard"]);
+    const named = await paidDraft(), other = await paidDraft(), worlds = QA_PILOT_COMPLETION_WORLDS as Set<string>;
+    worlds.add(named.worldId);
+    try {
+      expect(await readNewQaWorldBudget(c, named.worldId)).toMatchObject({ worldId: named.worldId, capMicroUsd: 12_000_000 });
+      expect(await readNewQaWorldBudget(c, other.worldId)).toMatchObject({ capMicroUsd: 6_000_000 });
+      for (const f of [named, other]) await f.budget.importSettled(f.worldId, { scope: "image", operationFingerprint: "history", evidence: evidence(f.gameId, 5_900_000) });
+      await named.budget.reserve(named.worldId, reserve("past-six"));
+      await expect(other.budget.reserve(other.worldId, reserve("past-six"))).rejects.toMatchObject({ code: "cap_exceeded" });
+      // History and open reservations count inside the frame, which is inclusive: twelve, and not a micro-dollar more.
+      await named.budget.importSettled(named.worldId, { scope: "image", operationFingerprint: "more-history", evidence: evidence(named.gameId + "-more", 5_600_000) });
+      expect(await named.budget.audit(named.worldId)).toMatchObject({ capMicroUsd: 12_000_000, committedMicroUsd: 11_800_000, reservedMicroUsd: 300_000 });
+      await expect(named.budget.reserve(named.worldId, reserve("past-twelve"))).rejects.toMatchObject({ code: "cap_exceeded" });
+      await named.budget.reserve(named.worldId, reserve("to-twelve", 200_000));
+      expect(await named.budget.audit(named.worldId)).toMatchObject({ committedMicroUsd: 12_000_000, remainingMicroUsd: 0, state: "exhausted" });
+      // The frame stands only on the verified pin: refunded, the named world has no budget extension at all.
+      await db.order.update({ where: { id: "ord-" + named.gameId }, data: { refundedAt: new Date(), paymentStatus: "REFUNDED" } });
+      expect(await readNewQaWorldBudget(c, named.worldId)).toBeNull();
+    } finally { worlds.delete(named.worldId); }
+    expect(fetch).not.toHaveBeenCalled();
   });
   it("refuses another world's receipt and revokes capacity after refund, deletion or ownership change", async () => {
     const a = await paidDraft(), b = await paidDraft();

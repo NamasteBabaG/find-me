@@ -1,5 +1,5 @@
 import { isCollectionVersion } from "../../domain/scene/local-patch-versions";
-import { SUBJECT_PAINTER_V2 } from "../../domain/generation/subject-painter";
+import { SUBJECT_PAINTER_V2, SUBJECT_PAINTER_V3, isPlanLedPainter, type SubjectPainterVersion } from "../../domain/generation/subject-painter";
 import { localPatchReturnRegion, AUTHORED_PATCH_COMPOSITION_VERSION, type LocalPatchCompositionVersion } from "../../domain/scene/local-patch-return-region";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
@@ -84,7 +84,7 @@ export type LocalPatchRenderDeps = {
 
 export type SubjectRenderDirection = { readonly text: string; readonly wardrobe?: string; readonly sha256: string;
   readonly photoPng: Buffer; readonly photoSha256: string; readonly policySha256: string; readonly quality: "low" | "medium";
-  readonly painterVersion?: typeof SUBJECT_PAINTER_V2 };
+  readonly painterVersion?: SubjectPainterVersion };
 
 export type LocalPatchAttemptInput = {
   /** Persisted recipe, checked before any paid operation or scene decoding. */
@@ -117,8 +117,8 @@ export type LocalPatchAttemptInput = {
   /** An enrolled world's subject plan for this appearance (subject-policy.ts), appended to the
    * pinned recipe and bound into the fingerprint. Absent: every historical purchase, byte for byte. */
   readonly subjectDirection?: SubjectRenderDirection & {
-    /** Exact former direction for replay only; never selected for a new purchase. */
-    readonly legacy?: SubjectRenderDirection };
+    /** Exact former directions (newest first) for replay only; never selected for a new purchase. */
+    readonly legacy?: SubjectRenderDirection | readonly SubjectRenderDirection[] };
   readonly apiKey: string;
   /**
    * When this worker's request is going to be taken away from it, absolute.
@@ -378,21 +378,23 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     throw Error("ADAPTIVE_RECOVERY: a diagnosis belongs only to its final normal attempt");
   }
   const restylePrompt = restyling ? retainedRestylePrompt(recovery) : null;
-  const recipeFor = (wardrobe: string | undefined, subjectPainter?: typeof SUBJECT_PAINTER_V2) => {
+  const recipeFor = (wardrobe: string | undefined, subjectPainter?: SubjectPainterVersion) => {
     const recipePrompt = restylePrompt !== null ? restylePrompt : localPatchPrompt({ ground: board.ground, pose: hide.pose, ageYears: input.ageYears, repairChecks: input.repairChecks, boardPeopleReference: !!input.boardPeoplePng,
       wardrobe, placement: hide.placement, mask, contentVersion: input.contentVersion,
       hideId: hide.id, recoveryDirective: input.recoveryDirective, paintRecipe: input.paintRecipe, ...(subjectPainter ? { subjectPainter } : {}) })
       + (input.adaptiveRecovery ? `\n\n${adaptiveRecoveryPrompt(input.adaptiveRecovery, hide)}` : "")
-      + (recovery ? `\n\n${selfRepairRenderInstructions(recovery, subjectPainter === SUBJECT_PAINTER_V2)}` : "");
+      // v2 keeps its own boolean wording byte for byte; v3 has its own.
+      + (recovery ? `\n\n${selfRepairRenderInstructions(recovery, subjectPainter === SUBJECT_PAINTER_V3 ? "v3" : subjectPainter === SUBJECT_PAINTER_V2)}` : "");
     return input.paintRecipe === "scene-integration-v4" ? referenceNeutralHairDirections(recipePrompt)
       : input.paintRecipe === "scene-integration-v5" || input.paintRecipe === "scene-integration-v6" || input.paintRecipe === "scene-integration-v7"
         || input.paintRecipe === "scene-integration-v8"
         ? ageBodyRequestDirections(recipePrompt) : recipePrompt;
   };
   const authoredWardrobe = hide.wardrobe ?? board.wardrobe;
-  const directions = input.subjectDirection ? [input.subjectDirection, ...(input.subjectDirection.legacy ? [input.subjectDirection.legacy] : [])] : [];
+  const legacy = input.subjectDirection?.legacy;
+  const directions = input.subjectDirection ? [input.subjectDirection, ...(Array.isArray(legacy) ? legacy : legacy ? [legacy as SubjectRenderDirection] : [])] : [];
   if (directions.some(direction => input.contentVersion !== 12 || restyling || !direction.text.trim()
-    || direction.painterVersion !== undefined && direction.painterVersion !== SUBJECT_PAINTER_V2
+    || direction.painterVersion !== undefined && !isPlanLedPainter(direction.painterVersion)
     || sha(direction.photoPng) !== direction.photoSha256 || !["low", "medium"].includes(direction.quality)
     || direction.policySha256 !== localPatchRenderPolicySha256(direction.quality === "low" ? LOCAL_PATCH_LOW_IMAGE_POLICY : LOCAL_PATCH_IMAGE_POLICY)
     || createHash("sha256").update(JSON.stringify([direction.text, direction.wardrobe ?? null,

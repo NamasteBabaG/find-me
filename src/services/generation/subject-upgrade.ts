@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import type { Container } from "../container";
 import { WORLD_AUTOMATIC_REVIEW_RECOVERY_V2_LIMIT } from "../../domain/generation/world-budget";
 import { BACKGROUND_REVIEW_TRANSPORT } from "../../domain/generation/background-review-round";
-import { SUBJECT_POLICY_VERSION, readSubjectAnswer, subjectPlanCanonical, subjectPlansForBoard } from "../../domain/generation/subject-policy";
+import { SUBJECT_POLICY_VERSION, SUBJECT_READER_V2, readSubjectAnswer, readSubjectAnswerV2, subjectPlanCanonical, subjectPlansForBoard } from "../../domain/generation/subject-policy";
 import { localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
 import { validChildAge } from "../../domain/child-appearance";
 import { worldsOwned } from "../world-catalog.service";
@@ -158,7 +158,8 @@ export async function planSubjectUpgrade(c: Container, input: { gameId: string; 
     let subjectApproved = false;
     try {
       const receipt = JSON.parse(row?.judgeJson ?? "null"), proof = receipt?.boardReview?.dual as DualReviewProof | undefined;
-      const reading = proof?.subject && plan && child?.ageYears ? readSubjectAnswer(subjectStageRaw(proof.subject), { hideId: hide.id, ageYears: child.ageYears, plan }) : null;
+      const read = proof?.subject?.reader === SUBJECT_READER_V2 ? readSubjectAnswerV2 : readSubjectAnswer;
+      const reading = proof?.subject && plan && child?.ageYears ? read(subjectStageRaw(proof.subject), { hideId: hide.id, ageYears: child.ageYears, plan }) : null;
       subjectApproved = row?.status === "GENERATED" && proof?.imageSha256 === receipt?.judgedSha256 && !!reading?.ok && reading.disposition === "pass";
     } catch { subjectApproved = false; }
     return { hideId: hide.id, status: row?.status ?? null, attempts: row?.attempts ?? 0, subjectApproved, warmHat: !!plan?.warmHat };

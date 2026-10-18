@@ -15,6 +15,9 @@ export function integrationDiagnosisPrompt(input: {
    * region of their fixed scenery, with its role. Others keep their exact question. */
   fixedForeground?: { what: string; bounds: Bounds; clearancePx: number }
     | { regions: readonly { what: string; role: "in-front" | "fixed"; bounds: Bounds | null }[]; clearancePx: number };
+  /** subject-diagnosis/v1, enrolled worlds only (frozen per cycle): the last image is the child's original photograph;
+   * what the last review refused about the child, under local-patch-subject/v2. Others keep their exact question. */
+  subject?: { codes: readonly string[]; located: readonly string[]; intrinsic: boolean; failedSource: string; suggestion: string; warmHat: boolean };
 }): string {
   const geometry = `returnWindow must close inside (1,1)-(511,767). protectedCore needs at least18px margin inside returnWindow. faceRect must be at least30x30 and wholly inside protectedCore. If source geometry cannot meet this without damage, redraw at a corrected placement. ${FIXED_AGE_SENTENCE}`;
   return [
@@ -29,6 +32,13 @@ export function integrationDiagnosisPrompt(input: {
     ...(input.fixedForeground && !("regions" in input.fixedForeground) ? [`Fixed foreground DATA: ${JSON.stringify(input.fixedForeground)}. This object stands in front of the child and is restored from the ORIGINAL board over every composition, whatever the returnWindow, so it may hide the child's feet or lower body as the scene intends. Keep faceRect, and protectedCore grown by ${input.fixedForeground.clearancePx}px, clear of the object (its bounds are given): a plan that touches it is refused before anything is painted.`] : []),
     ...(input.fixedForeground && "regions" in input.fixedForeground ? [`Fixed scenery DATA: ${JSON.stringify(input.fixedForeground)}. Every region is restored from the ORIGINAL board over every composition, whatever the returnWindow. An in-front region stands in front of the child and may hide the feet or lower body as the scene intends; a fixed region is never painted, and the child never reaches it. Keep faceRect, and protectedCore grown by ${input.fixedForeground.clearancePx}px, clear of every region (their bounds are given): a plan that touches one is refused before anything is painted.`] : []),
     input.exactAge ? geometry.replace(FIXED_AGE_SENTENCE, `Keep the ${input.ageYears}-year-old body of the BODY AGE CONTRACT: never change its age to fit the window, and never enlarge the head to make the face readable.`) : geometry,
+    ...(input.subject ? [
+      `CHILD (local-patch-subject/v2): the LAST image is the child's ORIGINAL PHOTOGRAPH, the authority for likeness (face and hair) and age only. A natural pose is valid; the suggested pose (${input.subject.suggestion}) is never a defect.${input.subject.warmHat ? " A real warm hat is required here." : ""}`,
+      `What the last review refused about the child DATA: ${JSON.stringify({ codes: input.subject.codes, located: input.subject.located })}.`,
+      input.subject.intrinsic
+        ? `That refusal is a defect INSIDE the painted child (who they are, their age, face or hat): recomposing the painting it came from (sourceKey ${JSON.stringify(input.subject.failedSource)}) cannot fix it. Choose redraw-with-new-placement, or recompose a DIFFERENT retained RAW only if that RAW already shows the photograph's face, hair and age.`
+        : "No defect inside the painted child was named: if a retained RAW already shows the right child and only the join, seam, boundary or wholeness failed, prefer recompose-retained of that RAW over a new painting.",
+    ] : []),
     `sourceKey must be one of ${JSON.stringify(input.sourceKeys.length ? input.sourceKeys : ["new-image"])}. Use recompose-retained only when the selected RAW has matching style/light, likeness, complete anatomy and intact neighbours. Final candidate still requires independent review.`,
     'Return ONLY JSON: {"cause":"composition-clipping|background-registration|wrong-identity|age-or-scale|unreadable-evidence|drawing-defect|paint-style|portrait-lighting|neighbor-damage","explanation":"specific observed cause and why the changed approach fixes it","action":"recompose-retained|redraw-with-new-placement|restyle-retained","sourceKey":"exact key","returnWindow":{"left":0,"top":0,"width":0,"height":0},"protectedCore":{"left":0,"top":0,"width":0,"height":0},"faceRect":{"left":0,"top":0,"width":0,"height":0}}.',
   ].join("\n");

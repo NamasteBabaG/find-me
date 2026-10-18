@@ -37,8 +37,11 @@ export const selfRepairDecisionSchema = z.object({
     message: "The whole child, face and 18px unblended guard must fit inside a closed 512x768 return" });
 });
 export type SelfRepairDecision = z.infer<typeof selfRepairDecisionSchema>;
-/** No model prose becomes an image prompt. Only this closed set of causes does. */
-export function selfRepairRenderInstructions(plan: SelfRepairDecision, subjectPainter = false): string {
+/** No model prose becomes an image prompt. Only this closed set of causes does.
+ * `subjectPainter`: true (or "v2", local-patch-subject-paint/v2) asks for the plan's arms, head and
+ * expression; "v3" (local-patch-subject-paint/v3) keeps the photograph's face and hair and lets the
+ * subject direction choose a natural pose. Without it: the historical wording, byte for byte. */
+export function selfRepairRenderInstructions(plan: SelfRepairDecision, subjectPainter: boolean | "v2" | "v3" = false): string {
   const reasons: Record<SelfRepairDecision["cause"], string> = {
     "composition-clipping": "Keep the complete head, hair and all naturally visible limbs inside the corrected envelope. No orphaned feet or remnants of a replaced bystander.",
     "background-registration": "Preserve the exact original positions of every background edge, support, neighbour and border. Paint a smaller local intervention; no camera shift, zoom or background reconstruction.",
@@ -53,7 +56,9 @@ export function selfRepairRenderInstructions(plan: SelfRepairDecision, subjectPa
   return `AUTONOMOUS RECOVERY ${SELF_REPAIR_VERSION}. The previous approach failed; use this corrected placement.\n`
     + `Maximum child envelope in the original 512x768 crop: ${JSON.stringify(plan.protectedCore)}. `
     + `Complete face and hair region: ${JSON.stringify(plan.faceRect)}. Return boundary: ${JSON.stringify(plan.returnWindow)}.\n`
-    + reasons[plan.cause] + (subjectPainter
+    + reasons[plan.cause] + (subjectPainter === "v3"
+      ? "\nKeep the canonical identity, face and hair exactly, and the authored depth and support; the pose follows the SUBJECT DIRECTION. Preserve background outside the corrected placement. Final visual review is still required."
+      : subjectPainter
       ? "\nKeep canonical identity, authored depth and support; correct arms, head and expression to the SUBJECT PLAN. Preserve background outside the corrected placement. Final visual review is still required."
       : "\nDo not change the canonical identity, pose, authored depth or support. Preserve background outside the corrected placement. Final visual review is still required.");
 }

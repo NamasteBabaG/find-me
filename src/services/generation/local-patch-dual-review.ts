@@ -8,10 +8,11 @@ import { nextLocalPatchEvidenceStep, type EvidenceAttempt, type EvidenceDiagnosi
 import { CURRENT_CONTINUITY_READER, CURRENT_QUALITY_READER, qualityReaderReadsMore, qualityStageReader, qualityStageRaw, subjectStageRaw, readContinuityStage, readQualityStage, verifiedDualStage, visualStageReadable,
   type ContinuityReReading, type ContinuityStage, type DualReviewProof, type DualReviewStage, type DualStageBase, type QualityReReading, type QualityStage,
   type SubjectStage } from "./local-patch-dual-evidence";
-import { SUBJECT_CHECKS, SUBJECT_POLICY_VERSION, SUBJECT_READER, SUBJECT_FORMAT_RECOVERY_V2, readSubjectAnswer, subjectHasOnlyOverlongObservations, type SubjectPlan } from "../../domain/generation/subject-policy";
+import { SUBJECT_POLICY_V2, SUBJECT_POLICY_VERSION, SUBJECT_READER, SUBJECT_READER_V2, readSubjectAnswer, readSubjectAnswerV2,
+  subjectCollectionRefusal, subjectHasOnlyOverlongObservations, type SubjectAppearance, type SubjectPlan } from "../../domain/generation/subject-policy";
 import { SUBJECT_QUALITY_BUNDLE_VERSION } from "../../domain/generation/subject-quality-bundle";
 import { subjectPlanOfHide, subjectPlanSha256, subjectUpgradeOf, type SubjectUpgradeReceipt } from "./subject-enrollment";
-import { loadSubjectPhoto, subjectQuestion, combinedQualitySubjectQuestion, SubjectEvidenceUnavailable, withSubject } from "./local-patch-subject-review";
+import { loadSubjectPhoto, subjectQuestion, combinedQualitySubjectQuestion, SubjectEvidenceUnavailable, subjectV2RefusalCodes, withSubjectV2 } from "./local-patch-subject-review";
 import { askContinuityInBackground } from "./continuity-background";
 import { localPatchCrowdContinuityPrompt, localPatchHeadContinuityPrompt } from "./local-patch-body-continuity";
 import { prepareVisualReview, sceneQualityQuestion, parseVisualSceneVerdicts, diagnoseVisualSceneAnswer, visualReviewMaxCharge, type PreparedVisualReview } from "./visual-review";
@@ -318,15 +319,35 @@ async function dualQuestions(prepared: Prepared, version: DualVisualReviewVersio
   const qualityAttempt = reuse ? oldQuality!.attempt : evidenceReviewAttempt;
   const qualityStrategy = reuse ? oldQuality!.strategy ?? STANDARD : strategyFor("quality");
   const quality = dualQualityQuestion(request, binding, qualityAttempt, qualityStrategy);
+  // A reused bundle is rebuilt under the policy it was bought with, so it replays; a new one asks v2.
+  const bundlePolicy = reuse && oldQuality?.subjectBundle ? oldQuality.subjectBundle.subjectPolicy ?? SUBJECT_POLICY_VERSION : SUBJECT_POLICY_V2;
   const combined = subject && (!reuse || oldQuality?.subjectBundle)
-    ? combinedQualitySubjectQuestion(quality, subject.plan, subject.photoPng, subject.upgrade) : null;
+    ? combinedQualitySubjectQuestion(quality, subject.plan, subject.photoPng, subject.upgrade, bundlePolicy) : null;
   const q = combined?.question ?? quality;
   const continuityStrategy = strategyFor("continuity");
   // An enrolled world's subject question follows a passing quality answer; a format or
   // size recovery of the quality role is that question's recovery too.
   const subjectStrategy = reuse ? strategyFor("quality") : STANDARD;
-  return { binding, entry, priorReceipt, reuse, q, subjectBundle: combined?.binding, qualityAttempt, qualityStrategy, continuityStrategy, subjectStrategy,
+  return { binding, entry, priorReceipt, reuse, quality, q, subjectBundle: combined?.binding, qualityAttempt, qualityStrategy, continuityStrategy, subjectStrategy,
     anatomy: (via: VisualReviewTransport | undefined = transport) => runtimeContinuityQuestion(prepared, binding, evidenceReviewAttempt, version, continuityStrategy, via) };
+}
+
+/**
+ * The v2 descriptions of this board's already accepted siblings, for the collection's variety rule
+ * (subjectCollectionRefusal). A sibling accepted under v1 followed its plan: described as null, never a copy.
+ */
+function acceptedSiblingAppearances(prepared: Prepared, hideId: string, ageYears: number): { hideId: string; appearance: SubjectAppearance | null }[] {
+  return prepared.entries.filter(e => e.hide.id !== hideId && prepared.protectedRows.has(e.row.id)).map(e => {
+    let appearance: SubjectAppearance | null = null;
+    try {
+      const stage = JSON.parse(e.row.judgeJson ?? "null")?.boardReview?.dual?.subject as SubjectStage | undefined, plan = subjectPlanOfHide(e.hide.id);
+      if (stage?.reader === SUBJECT_READER_V2 && plan) {
+        const reading = readSubjectAnswerV2(subjectStageRaw(stage), { hideId: e.hide.id, ageYears, plan });
+        if (reading.ok) appearance = reading.appearance;
+      }
+    } catch { appearance = null; }
+    return { hideId: e.hide.id, appearance };
+  });
 }
 
 /**
@@ -348,9 +369,14 @@ export async function dualReviewQuestionCandidates(c: Pick<Container, "db" | "st
     try {
       const photoPng = await loadSubjectPhoto(c, prepared, upgrade);
       const combined = await dualQuestions(asked, version, "responses-background", { upgrade, plan, photoPng });
-      if (combined.q.fingerprint !== questions.q.fingerprint) found.push(of(combined.q, "quality", combined.qualityStrategy));
-      found.push(of(subjectQuestion(asked, plan, photoPng, questions.binding, prepared.evidenceReviewAttempt, qualityAddendum(questions.subjectStrategy), upgrade),
-        "quality", questions.subjectStrategy));
+      // An interrupted question may have been bought under either subject policy: both forms are found.
+      for (const policy of [SUBJECT_POLICY_VERSION, SUBJECT_POLICY_V2] as const) {
+        const bundle = combinedQualitySubjectQuestion(combined.quality, plan, photoPng, upgrade, policy)?.question;
+        if (bundle && !found.some(f => f.fingerprint === bundle.fingerprint)) found.push(of(bundle, "quality", combined.qualityStrategy));
+        found.push(of(subjectQuestion(asked, plan, photoPng, questions.binding, prepared.evidenceReviewAttempt, qualityAddendum(questions.subjectStrategy), upgrade, policy),
+          "quality", questions.subjectStrategy));
+      }
+      if (!found.some(f => f.fingerprint === combined.q.fingerprint)) found.push(of(combined.q, "quality", combined.qualityStrategy));
     } catch (error) { if (!(error instanceof SubjectEvidenceUnavailable)) throw error; }
   }
   return found;
@@ -519,23 +545,32 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
       strategy: qualityStrategy, at: new Date().toISOString(), imageSha256: binding.imageSha256 };
     return classify({ ...base, bought: qualityBought, wire: primaryWire, verdicts, proof, newCostCents }, entry.row, priorReceipt, attempt, null, hideId, false);
   }
-  if (subjectBundle && subjectContext) {
+  // A bundle bought under v1 replays as it was: its subject pass still stands (v1 asked more), while its
+  // refusal is superseded by local-patch-subject/v2 (subject-rejudge/v1): no subject stage is kept, and the
+  // separate v2 subject question about these same pixels follows continuity.
+  if (subjectBundle && subjectContext && subjectBundle.subjectPolicy !== SUBJECT_POLICY_V2) {
     const subject: SubjectStage = { ...stage(qualityBought, q, qualityAttempt, qualityStrategy), subjectPolicy: SUBJECT_POLICY_VERSION,
       reader: SUBJECT_READER, photoSha256: subjectBundle.photoSha256, planSha256: subjectBundle.planSha256, combined: SUBJECT_QUALITY_BUNDLE_VERSION };
-    proof.subject = subject;
     const reading = readSubjectAnswer(subjectStageRaw(subject), { hideId, ageYears: subjectContext.upgrade.ageYears, plan: subjectContext.plan });
+    if (reading.ok && reading.disposition === "pass") proof.subject = subject;
+  } else if (subjectBundle && subjectContext) {
+    const subject: SubjectStage = { ...stage(qualityBought, q, qualityAttempt, qualityStrategy), subjectPolicy: SUBJECT_POLICY_V2,
+      reader: SUBJECT_READER_V2, photoSha256: subjectBundle.photoSha256, planSha256: subjectBundle.planSha256, combined: SUBJECT_QUALITY_BUNDLE_VERSION };
+    proof.subject = subject;
+    const reading = readSubjectAnswerV2(subjectStageRaw(subject), { hideId, ageYears: subjectContext.upgrade.ageYears, plan: subjectContext.plan });
     if (!reading.ok) {
       subject.readFault = reading.fault;
-      const overlong = subjectHasOnlyOverlongObservations(subjectStageRaw(subject));
       return classify({ ...base, bought: qualityBought, wire: primaryWire, verdicts, proof, newCostCents }, entry.row, priorReceipt,
-        { attempt: evidenceReviewAttempt, role: "quality", kind: overlong ? "length" : reading.fault.code,
-          code: overlong ? SUBJECT_FORMAT_RECOVERY_V2 : reading.fault.code, path: reading.fault.path || null,
+        { attempt: evidenceReviewAttempt, role: "quality", kind: reading.fault.code, code: reading.fault.code, path: reading.fault.path || null,
           strategy: qualityStrategy, at: new Date().toISOString(), imageSha256: binding.imageSha256 }, null, hideId, false);
     }
-    if (reading.disposition !== "pass") {
-      subject.failedChecks = SUBJECT_CHECKS.filter(k => reading.checks[k] !== "pass");
+    const refusal = reading.disposition === "pass"
+      ? subjectCollectionRefusal({ hideId, appearance: reading.appearance }, acceptedSiblingAppearances(prepared, hideId, subjectContext.upgrade.ageYears)) : null;
+    if (reading.disposition !== "pass" || refusal) {
+      subject.failedChecks = subjectV2RefusalCodes(reading, refusal);
+      if (refusal) subject.collectionRefusal = refusal;
       return { ...base, bought: qualityBought, wire: primaryWire,
-        verdicts: withSubject(verdicts, hideId, reading, CURRENT_QUALITY_READER), proof, newCostCents, evidence: null, diagnosis: null };
+        verdicts: withSubjectV2(verdicts, hideId, reading, refusal, CURRENT_QUALITY_READER), proof, newCostCents, evidence: null, diagnosis: null };
     }
   }
   if (!qualityBought.replayed) {
@@ -557,6 +592,7 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
    * evidence policy. Without the owned photograph nothing is accepted.
    */
   const subjectGate = async (reviewed: Omit<Reviewed, "evidence" | "diagnosis">): Promise<Reviewed | Waiting> => {
+    // A bundle's subject stage is kept only when it passed (v2, or v1 which asked more); otherwise v2 is asked here.
     if (reviewed.proof.subject?.combined === SUBJECT_QUALITY_BUNDLE_VERSION) return { ...reviewed, evidence: null, diagnosis: null };
     const plan = subjectPlanOfHide(hideId);
     if (!upgrade || !plan || plan.board !== prepared.board.board) throw Error(`SUBJECT_REVIEW: ${hideId} has no enrolled subject plan`);
@@ -566,7 +602,7 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
       if (!(error instanceof SubjectEvidenceUnavailable)) throw error;
       return { kind: "waiting", outcome: { state: "held", reason: error.message, replayed: false, costCents: reviewed.newCostCents } };
     }
-    const question = subjectQuestion(prepared, plan, photoPng, binding, evidenceReviewAttempt, qualityAddendum(subjectStrategy), upgrade);
+    const question = subjectQuestion(prepared, plan, photoPng, binding, evidenceReviewAttempt, qualityAddendum(subjectStrategy), upgrade, SUBJECT_POLICY_V2);
     const admitted = await dualQuestionAdmission(budget, worldId, prepared.board.board, version, question);
     if (admitted.refused) return refused(admitted);
     const subjectBatch = await askQualityThroughBatch(c, { gameId: game.id, worldId, sceneId: prepared.scene.id, board: prepared.board.board,
@@ -576,23 +612,24 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
       reason: subjectBatch.reason, replayed: false, costCents: reviewed.newCostCents } };
     const bought = await buy(question, admitted.reserveMicroUsd);
     if (bought.kind !== "bought") return waiting(bought, question, subjectStrategy);
-    const subject: SubjectStage = { ...stage(bought, question, evidenceReviewAttempt, subjectStrategy), subjectPolicy: SUBJECT_POLICY_VERSION,
-      reader: SUBJECT_READER, photoSha256: upgrade.photoSha256, planSha256: subjectPlanSha256(plan) };
+    const subject: SubjectStage = { ...stage(bought, question, evidenceReviewAttempt, subjectStrategy), subjectPolicy: SUBJECT_POLICY_V2,
+      reader: SUBJECT_READER_V2, photoSha256: upgrade.photoSha256, planSha256: subjectPlanSha256(plan) };
     const next = { ...reviewed, proof: { ...reviewed.proof, subject },
       newCostCents: reviewed.newCostCents + (bought.replayed ? 0 : bought.evidence.amountMicroUsd / 10_000) };
     const attempt = (kind: EvidenceFaultKind, code: string, path: string | null): EvidenceAttempt => ({ attempt: evidenceReviewAttempt, role: "quality",
       kind, code, path, strategy: subjectStrategy, at: new Date().toISOString(), imageSha256: binding.imageSha256 });
     if (!visualStageReadable(subject)) return classify(next, entry.row, priorReceipt, attempt(wireKind(subject), subject.wireFault ?? wireKind(subject), null), null, hideId, false);
-    const reading = readSubjectAnswer(subject.raw, { hideId, ageYears: upgrade.ageYears, plan });
+    const reading = readSubjectAnswerV2(subject.raw, { hideId, ageYears: upgrade.ageYears, plan });
     if (!reading.ok) {
       subject.readFault = reading.fault;
-      const overlong = subjectHasOnlyOverlongObservations(subject.raw);
-      return classify(next, entry.row, priorReceipt, attempt(overlong ? "length" : reading.fault.code,
-        overlong ? SUBJECT_FORMAT_RECOVERY_V2 : reading.fault.code, reading.fault.path || null), null, hideId, false);
+      return classify(next, entry.row, priorReceipt, attempt(reading.fault.code, reading.fault.code, reading.fault.path || null), null, hideId, false);
     }
-    if (reading.disposition === "pass") return { ...next, evidence: null, diagnosis: null };
-    subject.failedChecks = SUBJECT_CHECKS.filter(k => reading.checks[k] !== "pass");
-    return { ...next, verdicts: withSubject(next.verdicts, hideId, reading, qualityStageReader(next.proof.quality) ?? QUALITY_READER_STRICT),
+    const refusal = reading.disposition === "pass"
+      ? subjectCollectionRefusal({ hideId, appearance: reading.appearance }, acceptedSiblingAppearances(prepared, hideId, upgrade.ageYears)) : null;
+    if (reading.disposition === "pass" && !refusal) return { ...next, evidence: null, diagnosis: null };
+    subject.failedChecks = subjectV2RefusalCodes(reading, refusal);
+    if (refusal) subject.collectionRefusal = refusal;
+    return { ...next, verdicts: withSubjectV2(next.verdicts, hideId, reading, refusal, qualityStageReader(next.proof.quality) ?? QUALITY_READER_STRICT),
       evidence: null, diagnosis: null };
   };
   // An enrolled world re-assessing an appearance keeps the continuity answer it already

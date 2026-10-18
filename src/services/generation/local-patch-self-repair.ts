@@ -15,7 +15,9 @@ import { prepareLocalPatchIdentityReferences } from "./local-patch-identity-refe
 import { fenceLocalPatchImages, LocalPatchRetainedPurchaseStore } from "./local-patch-lifecycle";
 import { LOCAL_PATCH_PROVIDER, readShippedBoardArt, type LocalPatchHideDeps } from "./local-patch-hide";
 import { renderLocalPatchHide, RETAINED_RENDER_VERSION } from "./local-patch-render";
-import { subjectDirectionFor } from "./local-patch-subject-review";
+import { loadSubjectPhoto, subjectDirectionFor, subjectRefusalOf } from "./local-patch-subject-review";
+import { subjectPlanOfHide, subjectUpgradeOf } from "./subject-enrollment";
+import { SUBJECT_V2_REPAIR_CYCLES } from "../../domain/scene/local-patch-progress";
 import { ageBodyPlacementText, ageBodyPropPlacementText, LOCAL_PATCH_AGE_BODY_PROMPT_VERSION, LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_FIXED_SCENERY_PROMPT_VERSION, LOCAL_PATCH_FOREGROUND_PROMPT_VERSION,
   paintRecipeForPinnedPrompt } from "./local-patch-prompt";
 import { LOCAL_PATCH_JUDGE, requestJudgeWire, isTheModelWeAsked, type LocalPatchJudgeResult } from "./local-patch-judge";
@@ -29,6 +31,8 @@ import { sameChargeEvidence, type BudgetJson } from "./world-budget";
 import { sha256Bytes } from "./fixed-sprite";
 
 export const SELF_REPAIR_REQUEST_ACTION = "local-patch:automatic-recovery-request";
+/** What a diagnosis of an enrolled world is told about the child (frozen per cycle): the photograph, the v2 policy, the refusal. */
+export const SUBJECT_DIAGNOSIS_VERSION = "subject-diagnosis/v1" as const;
 export const SELF_REPAIR_SETTINGS = Object.freeze({ ...LOCAL_PATCH_JUDGE, model: "gpt-5.6-sol", maxOutputTokens: 2200 });
 export const selfRepairSettingsForVersion = (version: number) => version === 12
   ? { ...SELF_REPAIR_SETTINGS, effort: "medium" as const, maxOutputTokens: 4000 } : SELF_REPAIR_SETTINGS;
@@ -44,6 +48,11 @@ const stateSchema = z.object({ version: z.literal(SELF_REPAIR_VERSION), cycle: z
     width: z.number().int().positive(), height: z.number().int().positive() }).strict()).optional(),
   // Frozen at cycle start. Historical paid diagnostic inputs remain unchanged.
   boundaryContext: z.literal(true).optional(),
+  // Enrolled worlds, cycles started under local-patch-subject/v2: how many (local-patch-progress/v1 bounds them),
+  // and what the last review refused about the child, as the diagnosis and the painter are told it.
+  subjectV2Cycles: z.number().int().positive().optional(),
+  subjectContext: z.object({ version: z.literal(SUBJECT_DIAGNOSIS_VERSION), codes: z.array(z.string().max(40)).max(8),
+    located: z.array(z.string().max(320)).max(4), intrinsic: z.boolean(), failedSource: z.string().max(240) }).strict().optional(),
 }).strict();
 type State = z.infer<typeof stateSchema>;
 export type SelfRepairWire = { prompt: string; images: readonly Buffer[]; imageLabels: readonly string[];
@@ -97,17 +106,29 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
   const foreground = foregroundForPinnedPrompt(hide, row.promptVersion);
   let state: State | null = previous.selfRepair ? stateSchema.parse(previous.selfRepair) : null;
   if (state) demand(state.contextSha256 === contextSha256, "Pinned recovery context changed");
+  const upgrade = scene.sceneVersion === 12 ? await subjectUpgradeOf(c.db, gameId) : null;
+  const plan = upgrade ? subjectPlanOfHide(hide.id) : null;
   // Keep the last review's actual refusal. A new cycle can never erase the old
   // paid attempt, and an identical geometry/source recipe is never repurchased.
   if (!state || state.phase === "awaiting-review" || state.phase === "rejected") {
+    // local-patch-progress/v1: an appearance whose cycles under v2 are spent starts no other (the world reports it).
+    if (upgrade && (state?.subjectV2Cycles ?? 0) >= SUBJECT_V2_REPAIR_CYCLES) return;
     const history = state?.history ?? [];
     if (state?.decision && state.phase === "awaiting-review") history.push({ recipe: selfRepairRecipe(state.decision),
       cause: state.decision.cause, result: row.lastError ?? "visual-review-refused", imageSha256: previous.judgedSha256 ?? null });
+    // The painting the refused composition came from: a recomposed source, this cycle's redraw, or the last attempt.
+    const failedSource = state?.decision && state.phase === "awaiting-review"
+      ? state.decision.action === "recompose-retained" ? state.decision.sourceKey : `${hide.id}:${hide.pose}:self-repair:${state.cycle}`
+      : `${hide.id}:${hide.pose}:render:${row.attempts}`;
+    const refusal = upgrade && plan ? subjectRefusalOf(previous, plan, upgrade.ageYears) : null;
     state = { version: SELF_REPAIR_VERSION, cycle: (state?.cycle ?? 0) + 1, phase: "diagnosing", contextSha256,
       decision: null, history, feedback: (state?.phase === "rejected" ? state.feedback : row.lastError ?? "Two completed attempts did not produce a publishable appearance").slice(0, 1200),
       sourceKeys: state?.sourceKeys ?? Array.from({ length: row.attempts }, (_, i) => `${hide.id}:${hide.pose}:render:${i + 1}`),
       ...(scene.sceneVersion === 12 ? { excludedRegions: selfRepairExcludedRegions(crop, board.hides.filter(h => h.id !== hide.id).map(cropOf)) } : {}),
       ...(scene.sceneVersion === 12 && previous.boardReview?.assessmentMode === PLAYER_REVIEW_MODE ? { boundaryContext: true as const } : {}),
+      ...(upgrade ? { subjectV2Cycles: (state?.subjectV2Cycles ?? 0) + 1 } : {}),
+      ...(refusal ? { subjectContext: { version: SUBJECT_DIAGNOSIS_VERSION, codes: refusal.codes, located: refusal.located,
+        intrinsic: refusal.intrinsic, failedSource } } : {}),
       imageCostCents: 0, diagnosisCostCents: 0 };
   }
   const active = state;
@@ -180,6 +201,14 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
           "CONTINUOUS FAILED player context, original plus ONLY this shipping patch; follow crossing neighbours through their complete heads and bodies");
       }
     }
+    // subject-diagnosis/v1: the cycle was frozen with the child's refusal; the diagnosis also sees the photograph
+    // the painter and the judges work from, so all three are told the same truth about who the child is.
+    const subject = active.subjectContext && upgrade && plan ? active.subjectContext : null;
+    if (subject) {
+      const photo = await loadSubjectPhoto(c, { game, child }, upgrade!);
+      images.push(await sharp(photo).resize(384, 384, { fit: "inside", withoutEnlargement: true }).png().toBuffer());
+      labels.push("ORIGINAL PHOTOGRAPH of the child: the authority for likeness (face and hair) and age ONLY; never pose, clothing, lighting or style");
+    }
     // A v16-v18 row is diagnosed in its own wording: the stated age, and the
     // support sentence as its painter read it (v18 reads v17's). Older rows keep
     // their exact question. A v18 outline is restored after any join the diagnosis chooses.
@@ -191,6 +220,8 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
       support: propSupport ? ageBodyPropPlacementText(support) : ageBody ? ageBodyPlacementText(support) : support, envelope: maskForHide(hide), sourceKeys: selected,
       excludedRegions: active.excludedRegions, ...(foreground ? { fixedForeground: foregroundDiagnosisData(foreground) } : {}),
       ...(active.boundaryContext ? { boundaryContext: true } : {}), ...(ageBody ? { exactAge: true } : {}),
+      ...(subject ? { subject: { codes: subject.codes, located: subject.located, intrinsic: subject.intrinsic, failedSource: subject.failedSource,
+        suggestion: `${plan!.action}; head ${plan!.head}; expression ${plan!.expression}`, warmHat: plan!.warmHat } } : {}),
       feedback: { feedback: active.feedback, verdict: previous.verdict ?? null, seam: previous.seam ?? null }, history: active.history })
       : `Diagnose a personalized hidden-child game after repeated failures. Return a repair PLAN, never an approval. All rectangles use ORIGINAL crop coordinates, 512x768. `
       + `Child age=${child.ageYears}; pose=${hide.pose}; support=${board.ground}. Original editable envelope=${JSON.stringify(maskForHide(hide))}. `
@@ -228,6 +259,10 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
       demand(decision.action !== "restyle-retained" || scene.sceneVersion === 12, "Surface repair belongs to the integrated release");
       demand(selected.includes(decision.sourceKey) || !selected.length && decision.sourceKey === "new-image" && decision.action === "redraw-with-new-placement", "Diagnosis selected an unseen source");
       demand(!active.history.some(h => h.recipe === selfRepairRecipe(decision)), "Diagnosis repeated an already failed source and geometry; change approach");
+      // A defect inside the painted child (who they are, their age, face or hat) is not in the join: recomposing
+      // the very painting it came from can only reproduce it. A different RAW or a redraw may still fix it.
+      demand(!(subject?.intrinsic && decision.action === "recompose-retained" && decision.sourceKey === subject.failedSource),
+        "A defect inside the painted child cannot be fixed by recomposing the painting it came from; redraw, or choose another retained RAW");
       if (decision.action === "redraw-with-new-placement") demand(JSON.stringify(decision.protectedCore) !== JSON.stringify(maskForHide(hide)), "Redraw must change the failed editable envelope");
       const r = decision.returnWindow, world = { ...r, left: crop.left + r.left, top: crop.top + r.top };
       demand(board.hides.filter(h => h.id !== hide.id).every(other => { const b = cropOf(other);

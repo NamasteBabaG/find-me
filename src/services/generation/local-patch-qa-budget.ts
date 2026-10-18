@@ -1,7 +1,8 @@
 import type { Prisma } from "@prisma/client";
 import type { Container } from "../container";
 import { env } from "../../lib/env";
-import { NEW_QA_WORLD_BUDGET_POLICY, NEW_QA_WORLD_CAP_MICRO_USD, NEW_QA_WORLD_BUDGET_AUTHORIZATION, newQaWorldBudgetEnabled } from "../../domain/generation/qa-world-budget-policy";
+import { NEW_QA_WORLD_BUDGET_POLICY, NEW_QA_WORLD_CAP_MICRO_USD, NEW_QA_WORLD_BUDGET_AUTHORIZATION, QA_PILOT_COMPLETION_AUTHORIZATION, QA_PILOT_COMPLETION_CAP_MICRO_USD,
+  QA_PILOT_COMPLETION_POLICY, QA_PILOT_COMPLETION_WORLDS, newQaWorldBudgetEnabled } from "../../domain/generation/qa-world-budget-policy";
 import { boardConditioningHash } from "./board-conditioned-source";
 import { DUAL_VISUAL_REVIEW_V3, dualVisualReviewVersion, type DualVisualReviewVersion } from "./visual-review-release";
 import type { BoardWizardBudgetExtension } from "./board-wizard-budget";
@@ -44,5 +45,8 @@ export async function readNewQaWorldBudget(c: Container, worldId: string): Promi
     || game.scenes.length !== 9 || game.scenes.some(s => s.sceneVersion !== 12)
     || !game.orders.some(o => o.userId === game.ownerId && o.paymentStatus === "PAID" && o.paidAt && !o.refundedAt)
     || game.orders.some(o => o.paymentStatus === "REFUNDED" || o.refundedAt)) return null;
+  // The named pilot world's completion frame (QA_PILOT_COMPLETION_POLICY), on top of this verified pin only.
+  if (QA_PILOT_COMPLETION_WORLDS.has(worldId)) return { worldId, capMicroUsd: QA_PILOT_COMPLETION_CAP_MICRO_USD,
+    authorizationSha256: boardConditioningHash({ policy: QA_PILOT_COMPLETION_POLICY, worldId, authorization: QA_PILOT_COMPLETION_AUTHORIZATION, pin: expected }) };
   return { worldId, capMicroUsd: NEW_QA_WORLD_CAP_MICRO_USD, authorizationSha256: boardConditioningHash(expected) };
 }

@@ -114,7 +114,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
       // The ceiling the ledger itself enforces, in the engine's own order: a new
       // QA world's six-dollar policy, then the standing five-dollar grant, else four.
       const extension = await readNewQaWorldBudget(c, worldId) ?? await readLocalPatchEmergencyBudget(c, worldId);
-      const audit = applyBoardWizardBudgetCap(auditWorldBudget(snapshot, extension?.capMicroUsd === 6_000_000 ? 6_000_000 : undefined), extension?.capMicroUsd);
+      const ledgerCap = extension?.capMicroUsd === 6_000_000 || extension?.capMicroUsd === 12_000_000 ? extension.capMicroUsd : undefined;
+      const audit = applyBoardWizardBudgetCap(auditWorldBudget(snapshot, ledgerCap), extension?.capMicroUsd);
       qaCost = { spentCents: audit.settledMicroUsd / 10_000, reservedCents: audit.reservedMicroUsd / 10_000,
         capCents: audit.capMicroUsd / 10_000, held: audit.held };
       localPatchBudgetHeld = audit.held;

@@ -15,7 +15,7 @@ import { QUALITY_FAULT_LOCATION_MAX, QUALITY_READER_LOCATED_V2, QUALITY_READER_S
   type LocalPatchVerdict, type QualityReader } from "./local-patch-judge";
 import { parseVisualSceneVerdicts } from "./visual-review";
 import { PLAYER_REVIEW_MODE } from "./local-patch-player-review";
-import type { SUBJECT_POLICY_VERSION, SUBJECT_READER, SubjectCheck } from "../../domain/generation/subject-policy";
+import type { SUBJECT_POLICY_V2, SUBJECT_POLICY_VERSION, SUBJECT_READER, SUBJECT_READER_V2, SubjectCheck, SubjectRepairCodeV2 } from "../../domain/generation/subject-policy";
 import { SUBJECT_QUALITY_BUNDLE_VERSION, readSubjectQualityBundle, type SubjectQualityBundleBinding } from "../../domain/generation/subject-quality-bundle";
 
 /** A later reading of the SAME retained answer: recorded beside the original,
@@ -43,11 +43,15 @@ export type DualStageBase = { requestKey: string; fingerprint: string; attempt: 
 export type ContinuityStage = DualStageBase & { reader?: ContinuityReader; reading?: ContinuityReReading };
 export type QualityStage = DualStageBase & { reader?: QualityReader; reading?: QualityReReading; subjectBundle?: SubjectQualityBundleBinding };
 /** An enrolled world's subject review (subject-policy.ts): an Opus HIGH answer about the
- * same pixels against the owned photograph and the canonical face, bound to both and to the plan. */
-export type SubjectStage = DualStageBase & { subjectPolicy: typeof SUBJECT_POLICY_VERSION; reader: typeof SUBJECT_READER;
+ * same pixels against the owned photograph and the canonical face, bound to both and to the plan.
+ * A v1 stage is read by subject-read/v1 for good; a v2 stage (local-patch-subject/v2) by v2. */
+export type SubjectStage = DualStageBase & { subjectPolicy: typeof SUBJECT_POLICY_VERSION | typeof SUBJECT_POLICY_V2;
+  reader: typeof SUBJECT_READER | typeof SUBJECT_READER_V2;
   photoSha256: string; planSha256: string;
   /** Check codes a refusal named, for the next painting's fixed repair line; never answer text. */
-  failedChecks?: SubjectCheck[]; combined?: typeof SUBJECT_QUALITY_BUNDLE_VERSION };
+  failedChecks?: (SubjectCheck | SubjectRepairCodeV2)[]; combined?: typeof SUBJECT_QUALITY_BUNDLE_VERSION;
+  /** v2 only: why the collection refused an appearance that passed its own checks (subjectCollectionRefusal). */
+  collectionRefusal?: string };
 export type DualReviewStage = ContinuityStage | QualityStage | SubjectStage;
 export type DualReviewProof = { version: DualVisualReviewVersion; hideId: string;
   imageSha256: string; geometrySha256: string; identitySha256: string;

@@ -10,7 +10,8 @@ import { interruptedLocalPatchReviewRequest } from "../scene/local-patch-review-
 import { DUAL_REVIEW_RESERVES_MICRO_USD } from "./dual-review-reserve";
 export const WORLD_BUDGET_CAP_MICRO_USD = 5_000_000;
 /** Six dollars requires a trusted per-world QA authorization resolver; default remains five. */
-export type WorldBudgetCapMicroUsd = typeof WORLD_BUDGET_CAP_MICRO_USD | 6_000_000;
+/** 12_000_000: the named QA pilot completion ceiling (qa-world-budget-policy.ts), one world only. */
+export type WorldBudgetCapMicroUsd = typeof WORLD_BUDGET_CAP_MICRO_USD | 6_000_000 | 12_000_000;
 export const WORLD_BUDGET_SCOPES = ["identity", "sheet", "image", "judge", "repair"] as const;
 export type WorldBudgetScope = typeof WORLD_BUDGET_SCOPES[number];
 export type BudgetJson = null | boolean | number | string | readonly BudgetJson[] | { readonly [key: string]: BudgetJson };
@@ -348,7 +349,7 @@ export function getMatchingUnknownContinuationApproval(snapshot: WorldBudgetSnap
 
 /** Pure audit; corrupt/duplicate canonical rows fail closed instead of undercounting. */
 export function auditWorldBudget(snapshot: WorldBudgetSnapshot, capMicroUsd: WorldBudgetCapMicroUsd = WORLD_BUDGET_CAP_MICRO_USD): WorldBudgetAudit {
-  if (capMicroUsd !== WORLD_BUDGET_CAP_MICRO_USD && capMicroUsd !== 6_000_000) fail("invalid_input", "Unsupported verified world budget ceiling");
+  if (capMicroUsd !== WORLD_BUDGET_CAP_MICRO_USD && capMicroUsd !== 6_000_000 && capMicroUsd !== 12_000_000) fail("invalid_input", "Unsupported verified world budget ceiling");
   nonempty(snapshot.worldId, "worldId");
   validateWorldUnknownContinuationApprovals(snapshot);
   const byScope = Object.fromEntries(WORLD_BUDGET_SCOPES.map(item => [item, { settledMicroUsd: 0, reservedMicroUsd: 0 }])) as WorldBudgetAudit["byScope"];

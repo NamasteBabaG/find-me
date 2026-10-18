@@ -25,11 +25,11 @@ import { runGenerationPipeline } from "../pipeline";
  * created. No provider is called: the painter's one request goes to a fake wire.
  */
 
-const fakes = vi.hoisted(() => ({ appEnv: "qa", release: "v19" }));
+const fakes = vi.hoisted(() => ({ appEnv: "qa", release: "v19", testers: [] as string[] }));
 vi.mock("../../../lib/env", () => ({
   env: () => ({ APP_ENV: fakes.appEnv, LOCAL_PATCH_PROMPT_RELEASE: fakes.release, GENERATION_ENABLED: "on",
     GENERATION_PROVIDER: "openai", GENERATION_MODEL: "gpt-image-2", GENERATION_QUALITY: "medium", OPENAI_API_KEY: "synthetic-never-live" }),
-  spendGuard: () => ({ appEnv: fakes.appEnv, realGeneration: true, testers: [] }), flag: () => false, adminEmails: () => [],
+  spendGuard: () => ({ appEnv: fakes.appEnv, realGeneration: true, testers: fakes.testers }), flag: () => false, adminEmails: () => [],
 }));
 
 const LOW_SHA = localPatchRenderPolicySha256(LOCAL_PATCH_LOW_IMAGE_POLICY), MEDIUM_SHA = localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY);
@@ -60,6 +60,8 @@ async function paintingGame(container: Container = c, contentVersion = 12) {
   const draft = await createDraft(container, null, "he");
   const ownerId = "usr-" + draft.gameId, childId = "chl-" + draft.gameId;
   await db.user.create({ data: { id: ownerId, email: draft.gameId + "@example.invalid" } });
+  // A painting QA world's owner is a permitted tester; otherwise the queue parks it before any slice.
+  fakes.testers.push((draft.gameId + "@example.invalid").toLowerCase());
   await db.childProfile.create({ data: { id: childId, ownerId, displayName: "Synthetic", ageYears: 6 } });
   await db.game.update({ where: { id: draft.gameId }, data: { ownerId, childProfileId: childId, status: "TARGETS_GENERATING", paidAt: new Date(), sceneCount: 9 } });
   await db.gameScene.createMany({ data: boardsOfWorlds(["journey"]).map((slug, orderIndex) => ({ id: `${draft.gameId}-s-${orderIndex}`,

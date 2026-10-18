@@ -10,7 +10,7 @@ import type { BackgroundReviewState, BackgroundReviewTransport } from "../../../
 import { GameConfigSchema } from "../../../domain/game/config";
 import { localPatchBoardsForVersion } from "../../../domain/scene/local-patch-catalog";
 import { maskForHide } from "../../../domain/scene/local-patch-hides";
-import { SUBJECT_POLICY_VERSION, readSubjectAnswer, subjectPlanFor } from "../../../domain/generation/subject-policy";
+import { SUBJECT_POLICY_V2, SUBJECT_POLICY_VERSION, SUBJECT_READER_V2, readSubjectAnswer, readSubjectAnswerV2, subjectPlanFor } from "../../../domain/generation/subject-policy";
 import type { Container } from "../../container";
 import { boardsOfWorlds } from "../../world-catalog.service";
 import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wizard";
@@ -97,14 +97,16 @@ function painter(gameId: string, prompts: Map<string, string>): LocalPatchHideDe
     } };
 }
 const observed = (status: string) => ({ status, observation: "A specific synthetic observation of the drawn child." });
-/** Synthetic subject answer for a hide: every check passes unless the hat is missing. */
-function subjectAnswer(hideId: string, hatMissing: boolean) {
+/** Synthetic subject answer for a hide, in the policy the question asked: every check passes unless the hat is missing. */
+function subjectAnswer(hideId: string, hatMissing: boolean, policy: typeof SUBJECT_POLICY_VERSION | typeof SUBJECT_POLICY_V2) {
   const board = BOARDS.find(b => b.hides.some(h => h.id === hideId))!, plan = subjectPlanFor(board, hideId);
-  return JSON.stringify({ hideId, subjectPolicy: SUBJECT_POLICY_VERSION, checks: { photoLikeness: observed("pass"), canonicalAgreement: observed("pass"),
-    faceVisible: observed("pass"), perceivedAge: { ...observed("pass"), estimatedMinYears: 7, estimatedMaxYears: 9 }, plannedAction: observed("pass"),
-    plannedHead: observed("pass"), plannedExpression: observed("pass"),
-    requiredWardrobe: observed(plan.warmHat ? hatMissing ? "fail" : "pass" : "not-required") },
-    faults: hatMissing ? [{ check: "requiredWardrobe", where: "Bare head with the hair exposed in the snow" }] : [] });
+  const shared = { photoLikeness: observed("pass"), canonicalAgreement: observed("pass"),
+    faceVisible: observed("pass"), perceivedAge: { ...observed("pass"), estimatedMinYears: 7, estimatedMaxYears: 9 },
+    requiredWardrobe: observed(plan.warmHat ? hatMissing ? "fail" : "pass" : "not-required") };
+  const faults = hatMissing ? [{ check: "requiredWardrobe", where: "Bare head with the hair exposed in the snow" }] : [];
+  return JSON.stringify(policy === SUBJECT_POLICY_V2
+    ? { hideId, subjectPolicy: policy, checks: shared, appearance: { head: "three-quarter", expression: "focused", engagement: "acting", portraitCopy: false }, faults }
+    : { hideId, subjectPolicy: policy, checks: { ...shared, plannedAction: observed("pass"), plannedHead: observed("pass"), plannedExpression: observed("pass") }, faults });
 }
 const NO_REPLY = { verdict: null, raw: null, usage: null, requestId: null, model: null, finishReason: null, wireFault: "timeout" as const, costUnknown: true };
 
@@ -115,12 +117,14 @@ describe("the same paid world, upgraded: three interrupted reviews, subject requ
     const timedOut = new Set<string>(), subjectCalls = new Map<string, number>();
     let enrolled = false, syncContinuityAfterEnrollment = 0, calls = 0, lastTimeoutHide: string | null = null;
     let ageFailureCombined: boolean | null = null;
+    const askedPolicies = new Set<string>();
     // Negative controls describe the pixels, independently of how the complete
     // inspections are packaged. Neither path may turn the missing hat/older face
     // into a pass merely because the question is combined or split.
-    const syntheticSubject = (hideId: string, combined: boolean) => {
+    const syntheticSubject = (hideId: string, combined: boolean, prompt: string) => {
       const n = (subjectCalls.get(hideId) ?? 0) + 1; subjectCalls.set(hideId, n);
-      const child = JSON.parse(subjectAnswer(hideId, hideId === HATLESS && n === 1));
+      const policy = prompt.includes(SUBJECT_POLICY_V2) ? SUBJECT_POLICY_V2 : SUBJECT_POLICY_VERSION; askedPolicies.add(policy);
+      const child = JSON.parse(subjectAnswer(hideId, hideId === HATLESS && n === 1, policy));
       if (hideId === lastTimeoutHide && n === 1) {
         ageFailureCombined = combined;
         child.checks.perceivedAge = { ...observed("fail"), estimatedMinYears: 10, estimatedMaxYears: 11 };
@@ -131,14 +135,14 @@ describe("the same paid world, upgraded: three interrupted reviews, subject requ
     const request = vi.fn<NonNullable<Container["visualReview"]>["request"]>(async question => {
       const bound = boundHide(question.prompt), id = `subject-${gameId}-${++calls}`;
       if (question.prompt.includes(SUBJECT_QUALITY_BUNDLE_VERSION)) {
-        const child = syntheticSubject(bound.hideId, true);
+        const child = syntheticSubject(bound.hideId, true, question.prompt);
         return { verdict: null, model: "claude-opus-5-5", requestId: id, finishReason: "end_turn", wireFault: null, costUnknown: false,
           usage: { input_tokens: 2000, output_tokens: 500 }, raw: JSON.stringify({ version: SUBJECT_QUALITY_BUNDLE_VERSION,
             quality: { hides: [{ hideId: bound.hideId, evidenceIds: localPatchHideEvidenceIds(bound.hideId), verdict: GOOD_V12_VERDICT }] }, subject: child }) };
       }
-      if (question.prompt.includes(SUBJECT_POLICY_VERSION)) {
+      if (question.prompt.includes(SUBJECT_POLICY_VERSION) || question.prompt.includes(SUBJECT_POLICY_V2)) {
         return { verdict: null, model: "claude-opus-5-5", requestId: id, finishReason: "end_turn", wireFault: null, costUnknown: false,
-          usage: { input_tokens: 2000, output_tokens: 500 }, raw: JSON.stringify(syntheticSubject(bound.hideId, false)) };
+          usage: { input_tokens: 2000, output_tokens: 500 }, raw: JSON.stringify(syntheticSubject(bound.hideId, false, question.prompt)) };
       }
       if (question.role === "scene-quality") return { verdict: null, model: "claude-opus-5-5", requestId: id, finishReason: "end_turn", wireFault: null,
         costUnknown: false, usage: { input_tokens: 2000, output_tokens: 500 },
@@ -215,21 +219,28 @@ describe("the same paid world, upgraded: three interrupted reviews, subject requ
     expect(GameConfigSchema.parse(JSON.parse(game.configJson!)).scenes.flatMap(scene => scene.targets)).toHaveLength(27);
     const rows = await db.targetVariantAsset.findMany({ where: { targetInstance: { gameScene: { gameId } } } });
     expect(rows).toHaveLength(27);
+    // Every question bought after enrollment is v2 (local-patch-subject/v2); nothing was asked under v1.
+    expect([...askedPolicies]).toEqual([SUBJECT_POLICY_V2]);
     for (const row of rows) {
       const receipt = JSON.parse(row.judgeJson!), proof = receipt.boardReview.dual as DualReviewProof, hideId = receipt.hide as string;
       const board = BOARDS.find(b => b.hides.some(h => h.id === hideId))!;
       expect(proof.subject && proof.imageSha256 === receipt.judgedSha256).toBe(true);
-      expect(readSubjectAnswer(subjectStageRaw(proof.subject!), { hideId, ageYears: 8, plan: subjectPlanFor(board, hideId) })).toMatchObject({ ok: true, disposition: "pass" });
+      expect(proof.subject).toMatchObject({ subjectPolicy: SUBJECT_POLICY_V2, reader: SUBJECT_READER_V2 });
+      expect(readSubjectAnswerV2(subjectStageRaw(proof.subject!), { hideId, ageYears: 8, plan: subjectPlanFor(board, hideId) })).toMatchObject({ ok: true, disposition: "pass" });
+      // A v2 answer is not a v1 answer: the v1 reader never reads it as a pass.
+      expect(readSubjectAnswer(subjectStageRaw(proof.subject!), { hideId, ageYears: 8, plan: subjectPlanFor(board, hideId) }).ok).toBe(false);
       expect(await hasLocalPatchPublicationPolicy(c, publicationBinding(gameId, row))).toBe(true);
     }
     expect(await db.auditLog.count({ where: { entityId: gameId, action: LOCAL_PATCH_PUBLICATION_ACTION } })).toBeGreaterThanOrEqual(27);
-    // The hatless appearance was refused on its subject alone and painted again with the plan and its fixed repair line.
+    // The hatless appearance was refused on its subject alone and painted again with the v3 direction:
+    // its fixed repair line and the defect the reviewer located, quoted.
     const hatless = rows.find(row => JSON.parse(row.judgeJson!).hide === HATLESS)!;
     const repaint = [...prompts.entries()].filter(([key]) => key.startsWith(`${HATLESS}:`)).at(-1)!;
     expect(subjectCalls.get(HATLESS)).toBe(2);
     expect(JSON.parse(hatless.rejectedAssetIdsJson ?? "[]").length).toBeGreaterThanOrEqual(1);
     expect(repaint[1]).toContain("WARM HAT REQUIRED");
-    expect(repaint[1]).toContain("SUBJECT REPAIR: the previous painting failed requiredWardrobe");
+    expect(repaint[1]).toContain("REPAIR: the previous painting of this appearance was refused for requiredWardrobe");
+    expect(repaint[1]).toContain('The reviewer located on the refused painting: "requiredWardrobe: Bare head with the hair exposed in the snow"');
     expect(repaint[1]).toContain("warm knit winter hat");
     const older = rows.find(row => JSON.parse(row.judgeJson!).hide === lastTimeoutHide)!;
     expect(subjectCalls.get(lastTimeoutHide!)).toBe(2);

@@ -5,6 +5,7 @@ import { FIXED_WORLD_STYLE_PREFIX, isFixedWorldStyle } from "./fixed-world-stage
 import { BOARD_WIZARD_STYLE, boardWizardEnabled, runBoardConditionedWizardSlice } from "./board-conditioned-wizard";
 import { LOCAL_PATCH_LEASE_MS, LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_QUALITY_FAILED, LOCAL_PATCH_RECOVERY_EXHAUSTED, LOCAL_PATCH_RECOVERY_BUDGET_WAIT, LOCAL_PATCH_RECOVERY_BACKOFF_MS, LOCAL_PATCH_EVIDENCE_RETRY_WAIT, LOCAL_PATCH_STYLE, localPatchPainterForGame, runLocalPatchWorldSlice } from "./local-patch-world";
 import { LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS } from "./local-patch-review-recovery";
+import { LOCAL_PATCH_SPEND_PAUSED, LOCAL_PATCH_SPEND_PAUSE_RECHECK_MS, pauseLocalPatchForSpendGuard } from "./local-patch-spend-pause";
 import { selfRepairEnabled } from "../../domain/scene/local-patch-self-repair";
 import { transitionGame } from "../game-status";
 import { SYSTEM } from "../audit.service";
@@ -59,6 +60,8 @@ export async function nextPendingGame(c: Container): Promise<string | null> {
         } }] },
         { NOT: { jobs: { some: { currentStep: LOCAL_PATCH_RECOVERY_BUDGET_WAIT, updatedAt: { gt: new Date(Date.now() - LOCAL_PATCH_RECOVERY_BACKOFF_MS) } } } } },
         { NOT: { jobs: { some: { currentStep: LOCAL_PATCH_EVIDENCE_RETRY_WAIT, updatedAt: { gt: new Date(Date.now() - LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS) } } } } },
+        // Paused by this deployment's spend guard: looked at again every ten minutes, never claimed meanwhile.
+        { NOT: { jobs: { some: { currentStep: LOCAL_PATCH_SPEND_PAUSED, updatedAt: { gt: new Date(Date.now() - LOCAL_PATCH_SPEND_PAUSE_RECHECK_MS) } } } } },
         { NOT: { jobs: { some: { currentStep: LOCAL_PATCH_QUALITY_FAILED } }, OR: [
           { scenes: { none: {} } }, { scenes: { some: { sceneVersion: { notIn: [10, 11, 12] } } } },
         ] } },
@@ -106,6 +109,11 @@ export async function tickGeneration(c: Container, gameId: string | null, budget
     // through to the legacy painter and quietly generate a different game.
     const painter = await localPatchPainterForGame(c, id, before.scenes[0]?.sceneVersion);
     if (!painter) return { gameId: id, status: statusOf(before), pending: false };
+    // An owner this deployment may not spend for parks the world, unclaimed (local-patch-spend-pause/v1).
+    if (before.status === "TARGETS_GENERATING") {
+      const paused = await pauseLocalPatchForSpendGuard(c, id, LOCAL_PATCH_LEASE_MS, [LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_RECOVERY_EXHAUSTED, LOCAL_PATCH_QUALITY_FAILED]);
+      if (paused) return { gameId: id, status: statusOf(before), pending: false, attention: paused };
+    }
     const result = await runLocalPatchWorldSlice(c, painter, id, { hardDeadlineAt: now + hardMs });
     const after = await c.db.game.findUnique({ where: { id }, select: { status: true } });
     return { gameId: id, status: after ? statusOf(after) : null, pending: result.pending, attention: result.attention };
