@@ -109,23 +109,31 @@ describe("the same paid world, upgraded: three interrupted reviews, subject requ
     const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(gameId), prompts = new Map<string, string>();
     const timedOut = new Set<string>(), subjectCalls = new Map<string, number>();
     let enrolled = false, syncContinuityAfterEnrollment = 0, calls = 0, lastTimeoutHide: string | null = null;
+    let ageFailureCombined: boolean | null = null;
+    // Negative controls describe the pixels, independently of how the complete
+    // inspections are packaged. Neither path may turn the missing hat/older face
+    // into a pass merely because the question is combined or split.
+    const syntheticSubject = (hideId: string, combined: boolean) => {
+      const n = (subjectCalls.get(hideId) ?? 0) + 1; subjectCalls.set(hideId, n);
+      const child = JSON.parse(subjectAnswer(hideId, hideId === HATLESS && n === 1));
+      if (hideId === lastTimeoutHide && n === 1) {
+        ageFailureCombined = combined;
+        child.checks.perceivedAge = { ...observed("fail"), estimatedMinYears: 10, estimatedMaxYears: 11 };
+        child.faults.push({ check: "perceivedAge", where: "An older schoolchild's face and body rather than the stated eight-year-old" });
+      }
+      return child;
+    };
     const request = vi.fn<NonNullable<Container["visualReview"]>["request"]>(async question => {
       const bound = boundHide(question.prompt), id = `subject-${gameId}-${++calls}`;
       if (question.prompt.includes(SUBJECT_QUALITY_BUNDLE_VERSION)) {
-        const n = (subjectCalls.get(bound.hideId) ?? 0) + 1; subjectCalls.set(bound.hideId, n);
-        const child = JSON.parse(subjectAnswer(bound.hideId, false));
-        if (bound.hideId === lastTimeoutHide && n === 1) {
-          child.checks.perceivedAge = { ...observed("fail"), estimatedMinYears: 10, estimatedMaxYears: 11 };
-          child.faults.push({ check: "perceivedAge", where: "An older schoolchild's face and body rather than the stated eight-year-old" });
-        }
+        const child = syntheticSubject(bound.hideId, true);
         return { verdict: null, model: "claude-opus-5-5", requestId: id, finishReason: "end_turn", wireFault: null, costUnknown: false,
           usage: { input_tokens: 2000, output_tokens: 500 }, raw: JSON.stringify({ version: SUBJECT_QUALITY_BUNDLE_VERSION,
             quality: { hides: [{ hideId: bound.hideId, evidenceIds: localPatchHideEvidenceIds(bound.hideId), verdict: GOOD_V12_VERDICT }] }, subject: child }) };
       }
       if (question.prompt.includes(SUBJECT_POLICY_VERSION)) {
-        const n = (subjectCalls.get(bound.hideId) ?? 0) + 1; subjectCalls.set(bound.hideId, n);
         return { verdict: null, model: "claude-opus-5-5", requestId: id, finishReason: "end_turn", wireFault: null, costUnknown: false,
-          usage: { input_tokens: 2000, output_tokens: 500 }, raw: subjectAnswer(bound.hideId, bound.hideId === HATLESS && n === 1) };
+          usage: { input_tokens: 2000, output_tokens: 500 }, raw: JSON.stringify(syntheticSubject(bound.hideId, false)) };
       }
       if (question.role === "scene-quality") return { verdict: null, model: "claude-opus-5-5", requestId: id, finishReason: "end_turn", wireFault: null,
         costUnknown: false, usage: { input_tokens: 2000, output_tokens: 500 },
@@ -218,11 +226,18 @@ describe("the same paid world, upgraded: three interrupted reviews, subject requ
     expect(repaint[1]).toContain("WARM HAT REQUIRED");
     expect(repaint[1]).toContain("SUBJECT REPAIR: the previous painting failed requiredWardrobe");
     expect(repaint[1]).toContain("warm knit winter hat");
+    const older = rows.find(row => JSON.parse(row.judgeJson!).hide === lastTimeoutHide)!;
+    expect(subjectCalls.get(lastTimeoutHide!)).toBe(2);
+    expect(JSON.parse(older.rejectedAssetIdsJson ?? "[]").length).toBeGreaterThanOrEqual(1);
+    expect(JSON.parse(older.judgeJson!).judgedSha256).not.toBe(interruptedReceipt.judgedSha256);
     // Every new continuity question went to the background, once per question; none synchronously.
     expect(syncContinuityAfterEnrollment).toBe(0);
     expect(background.creates.length).toBeGreaterThan(0);
     expect(new Set(background.creates).size).toBe(background.creates.length);
-    expect(background.creates.every(body => !body.includes(interruptedReceipt.judgedSha256))).toBe(true);
+    // A combined rejection happens before Sol. A split inspection has already
+    // bought one continuity answer before its subject-only rejection; never two.
+    expect(ageFailureCombined).not.toBeNull();
+    expect(background.creates.filter(body => body.includes(interruptedReceipt.judgedSha256))).toHaveLength(ageFailureCombined ? 0 : 1);
     // The three interrupted charges stay counted; nothing else is left reserved; the cap holds.
     const final = await budget.audit(worldId);
     expect(final).toMatchObject({ held: false, reservedMicroUsd: 198_000, pendingRequestKeys: [] });
