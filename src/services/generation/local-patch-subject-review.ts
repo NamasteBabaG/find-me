@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import { SUBJECT_PAINTER_V2, subjectRenderDirectionV2 } from "../../domain/generation/subject-painter";
 import type { Container } from "../container";
 import {
   SUBJECT_CHECKS, SUBJECT_POLICY_VERSION, SUBJECT_REPAIR_ROUTE, subjectRenderDirection, subjectReviewLabels, subjectReviewPrompt, subjectWardrobe,
@@ -114,11 +115,12 @@ export async function subjectDirectionFor(c: Pick<Container, "db" | "storage">, 
     || painter.basePolicySha256 !== localPatchRenderPolicySha256(LOCAL_PATCH_LOW_IMAGE_POLICY);
   const quality = medium ? "medium" as const : "low" as const;
   const policySha256 = localPatchRenderPolicySha256(medium ? LOCAL_PATCH_IMAGE_POLICY : LOCAL_PATCH_LOW_IMAGE_POLICY);
-  const text = subjectRenderDirection(plan, upgrade.ageYears, codes)
-    + "\nREFERENCE ROLES, in image order: image 1 is the actual scene crop and controls style, lighting and geometry. Image 2 is the canonical illustrated face and corroborates identity only. Image 3 is the original photograph and controls facial likeness and age only. Never copy the photograph's pose, smile, clothing, photographic texture or lighting. Render the planned action and expression in the scene's illustration style.";
+  const references = "\nREFERENCE ROLES, in image order: image 1 is the actual scene crop and controls style, lighting and geometry. Image 2 is the canonical illustrated face and corroborates identity only. Image 3 is the original photograph and controls facial likeness and age only. Never copy the photograph's pose, smile, clothing, photographic texture or lighting. Render the planned action and expression in the scene's illustration style.";
   const wardrobe = subjectWardrobe(plan);
-  return { text, ...(wardrobe ? { wardrobe } : {}), photoPng, photoSha256, policySha256, quality,
-    sha256: sha256Bytes(Buffer.from(JSON.stringify([text, wardrobe ?? null, photoSha256, policySha256, quality]))) };
+  const direction = (text: string) => ({ text, ...(wardrobe ? { wardrobe } : {}), photoPng, photoSha256, policySha256, quality,
+    sha256: sha256Bytes(Buffer.from(JSON.stringify([text, wardrobe ?? null, photoSha256, policySha256, quality]))) });
+  return { ...direction(subjectRenderDirectionV2(plan, upgrade.ageYears, codes) + references), painterVersion: SUBJECT_PAINTER_V2,
+    legacy: direction(subjectRenderDirection(plan, upgrade.ageYears, codes) + references) };
 }
 
 /**

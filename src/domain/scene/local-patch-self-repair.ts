@@ -38,7 +38,7 @@ export const selfRepairDecisionSchema = z.object({
 });
 export type SelfRepairDecision = z.infer<typeof selfRepairDecisionSchema>;
 /** No model prose becomes an image prompt. Only this closed set of causes does. */
-export function selfRepairRenderInstructions(plan: SelfRepairDecision): string {
+export function selfRepairRenderInstructions(plan: SelfRepairDecision, subjectPainter = false): string {
   const reasons: Record<SelfRepairDecision["cause"], string> = {
     "composition-clipping": "Keep the complete head, hair and all naturally visible limbs inside the corrected envelope. No orphaned feet or remnants of a replaced bystander.",
     "background-registration": "Preserve the exact original positions of every background edge, support, neighbour and border. Paint a smaller local intervention; no camera shift, zoom or background reconstruction.",
@@ -53,7 +53,9 @@ export function selfRepairRenderInstructions(plan: SelfRepairDecision): string {
   return `AUTONOMOUS RECOVERY ${SELF_REPAIR_VERSION}. The previous approach failed; use this corrected placement.\n`
     + `Maximum child envelope in the original 512x768 crop: ${JSON.stringify(plan.protectedCore)}. `
     + `Complete face and hair region: ${JSON.stringify(plan.faceRect)}. Return boundary: ${JSON.stringify(plan.returnWindow)}.\n`
-    + reasons[plan.cause] + "\nDo not change the canonical identity, pose, authored depth or support. Preserve background outside the corrected placement. Final visual review is still required.";
+    + reasons[plan.cause] + (subjectPainter
+      ? "\nKeep canonical identity, authored depth and support; correct arms, head and expression to the SUBJECT PLAN. Preserve background outside the corrected placement. Final visual review is still required."
+      : "\nDo not change the canonical identity, pose, authored depth or support. Preserve background outside the corrected placement. Final visual review is still required.");
 }
 export function selfRepairRecipe(plan: SelfRepairDecision): string {
   // Different explanatory prose is not a different approach.

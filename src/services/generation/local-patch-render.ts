@@ -1,4 +1,5 @@
 import { isCollectionVersion } from "../../domain/scene/local-patch-versions";
+import { SUBJECT_PAINTER_V2 } from "../../domain/generation/subject-painter";
 import { localPatchReturnRegion, AUTHORED_PATCH_COMPOSITION_VERSION, type LocalPatchCompositionVersion } from "../../domain/scene/local-patch-return-region";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
@@ -81,6 +82,10 @@ export type LocalPatchRenderDeps = {
   readonly judge?: (request: LocalPatchJudgeRequest) => Promise<LocalPatchJudgeResult>;
 };
 
+export type SubjectRenderDirection = { readonly text: string; readonly wardrobe?: string; readonly sha256: string;
+  readonly photoPng: Buffer; readonly photoSha256: string; readonly policySha256: string; readonly quality: "low" | "medium";
+  readonly painterVersion?: typeof SUBJECT_PAINTER_V2 };
+
 export type LocalPatchAttemptInput = {
   /** Persisted recipe, checked before any paid operation or scene decoding. */
   readonly expectedPromptVersion?: string;
@@ -111,8 +116,9 @@ export type LocalPatchAttemptInput = {
   readonly restyleSourcePng?: Buffer;
   /** An enrolled world's subject plan for this appearance (subject-policy.ts), appended to the
    * pinned recipe and bound into the fingerprint. Absent: every historical purchase, byte for byte. */
-  readonly subjectDirection?: { readonly text: string; readonly wardrobe?: string; readonly sha256: string;
-    readonly photoPng: Buffer; readonly photoSha256: string; readonly policySha256: string; readonly quality: "low" | "medium" };
+  readonly subjectDirection?: SubjectRenderDirection & {
+    /** Exact former direction for replay only; never selected for a new purchase. */
+    readonly legacy?: SubjectRenderDirection };
   readonly apiKey: string;
   /**
    * When this worker's request is going to be taken away from it, absolute.
@@ -372,28 +378,29 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     throw Error("ADAPTIVE_RECOVERY: a diagnosis belongs only to its final normal attempt");
   }
   const restylePrompt = restyling ? retainedRestylePrompt(recovery) : null;
-  const recipeFor = (wardrobe: string | undefined) => {
+  const recipeFor = (wardrobe: string | undefined, subjectPainter?: typeof SUBJECT_PAINTER_V2) => {
     const recipePrompt = restylePrompt !== null ? restylePrompt : localPatchPrompt({ ground: board.ground, pose: hide.pose, ageYears: input.ageYears, repairChecks: input.repairChecks, boardPeopleReference: !!input.boardPeoplePng,
       wardrobe, placement: hide.placement, mask, contentVersion: input.contentVersion,
-      hideId: hide.id, recoveryDirective: input.recoveryDirective, paintRecipe: input.paintRecipe })
+      hideId: hide.id, recoveryDirective: input.recoveryDirective, paintRecipe: input.paintRecipe, ...(subjectPainter ? { subjectPainter } : {}) })
       + (input.adaptiveRecovery ? `\n\n${adaptiveRecoveryPrompt(input.adaptiveRecovery, hide)}` : "")
-      + (recovery ? `\n\n${selfRepairRenderInstructions(recovery)}` : "");
+      + (recovery ? `\n\n${selfRepairRenderInstructions(recovery, subjectPainter === SUBJECT_PAINTER_V2)}` : "");
     return input.paintRecipe === "scene-integration-v4" ? referenceNeutralHairDirections(recipePrompt)
       : input.paintRecipe === "scene-integration-v5" || input.paintRecipe === "scene-integration-v6" || input.paintRecipe === "scene-integration-v7"
         || input.paintRecipe === "scene-integration-v8"
         ? ageBodyRequestDirections(recipePrompt) : recipePrompt;
   };
   const authoredWardrobe = hide.wardrobe ?? board.wardrobe;
-  if (input.subjectDirection && (input.contentVersion !== 12 || restyling || !input.subjectDirection.text.trim()
-    || sha(input.subjectDirection.photoPng) !== input.subjectDirection.photoSha256
-    || !["low", "medium"].includes(input.subjectDirection.quality)
-    || input.subjectDirection.policySha256 !== localPatchRenderPolicySha256(input.subjectDirection.quality === "low" ? LOCAL_PATCH_LOW_IMAGE_POLICY : LOCAL_PATCH_IMAGE_POLICY)
-    || createHash("sha256").update(JSON.stringify([input.subjectDirection.text, input.subjectDirection.wardrobe ?? null,
-      input.subjectDirection.photoSha256, input.subjectDirection.policySha256, input.subjectDirection.quality])).digest("hex") !== input.subjectDirection.sha256))
+  const directions = input.subjectDirection ? [input.subjectDirection, ...(input.subjectDirection.legacy ? [input.subjectDirection.legacy] : [])] : [];
+  if (directions.some(direction => input.contentVersion !== 12 || restyling || !direction.text.trim()
+    || direction.painterVersion !== undefined && direction.painterVersion !== SUBJECT_PAINTER_V2
+    || sha(direction.photoPng) !== direction.photoSha256 || !["low", "medium"].includes(direction.quality)
+    || direction.policySha256 !== localPatchRenderPolicySha256(direction.quality === "low" ? LOCAL_PATCH_LOW_IMAGE_POLICY : LOCAL_PATCH_IMAGE_POLICY)
+    || createHash("sha256").update(JSON.stringify([direction.text, direction.wardrobe ?? null,
+      direction.photoSha256, direction.policySha256, direction.quality])).digest("hex") !== direction.sha256))
     throw Error("LOCAL_PATCH: a subject plan belongs only to a v12 painting and must match its digest");
   /** The pinned recipe alone, or with the subject plan (and its wardrobe in place of the authored one). */
-  const promptWith = (plan: LocalPatchAttemptInput["subjectDirection"]) => plan
-    ? `${recipeFor(plan.wardrobe ?? authoredWardrobe)}\n\n${plan.text}` : recipeFor(authoredWardrobe);
+  const promptWith = (plan: SubjectRenderDirection | undefined) => plan
+    ? `${recipeFor(plan.wardrobe ?? authoredWardrobe, plan.painterVersion)}\n\n${plan.text}` : recipeFor(authoredWardrobe);
 
   const meta = await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).metadata();
   const stylePng = restyling ? await sharp(input.restyleSourcePng!, { limitInputPixels: 8_294_400 }).resize(512, 768, { fit: "fill" }).png().toBuffer()
@@ -407,7 +414,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   const renderKey = input.selfRepair ? `${hide.id}:${hide.pose}:self-repair:${input.selfRepair.cycle}` : `${hide.id}:${hide.pose}:render:${attempt}`;
   // Everything that decides what is being bought. A different photograph,
   // prompt, mask or crop is a different purchase and must never replay this one.
-  const fingerprintFor = (prompt: string, plan: LocalPatchAttemptInput["subjectDirection"]) => fingerprintOf({
+  const fingerprintFor = (prompt: string, plan: SubjectRenderDirection | undefined) => fingerprintOf({
     version: promptVersion, hide: hide.id, pose: hide.pose, crop,
     prompt: sha(Buffer.from(prompt)), style: sha(stylePng), identity: sha(renderIdentityPng), mask: sha(maskPng),
     ...(restyling ? { canonicalGeometry: sha(input.identityPng) } : {}),
@@ -428,12 +435,12 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     ...(input.selfRepair ? { selfRepair: input.selfRepair } : {}),
     ...(plan ? { subject: plan.sha256 } : {}),
   });
-  // A purchase already started under this key without the subject plan (before its
-  // world was enrolled) resumes exactly as it was bought; it never becomes a second one.
-  let subject = input.subjectDirection;
+  // A started purchase keeps its exact v1 subject or pre-enrollment fingerprint.
+  // Only a genuinely new key gets v2. Foreign fingerprints still stop at purchaseOnce.
+  let subject: SubjectRenderDirection | undefined = input.subjectDirection;
   if (subject) {
     const started = await deps.ledger.readRequest(worldId, renderKey);
-    if (started && started.operationFingerprint !== fingerprintFor(promptWith(subject), subject)) subject = undefined;
+    if (started) subject = directions.find(direction => started.operationFingerprint === fingerprintFor(promptWith(direction), direction));
   }
   const prompt = promptWith(subject);
   const renderFingerprint = fingerprintFor(prompt, subject);

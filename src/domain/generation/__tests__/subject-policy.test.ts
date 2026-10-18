@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { localPatchBoardsForVersion } from "../../scene/local-patch-catalog";
 import {
   SUBJECT_CHECKS, SUBJECT_POLICY_VERSION, readSubjectAnswer, subjectPlanFor, subjectPlansForBoard, subjectRenderDirection,
-  subjectReviewLabels, subjectReviewPrompt, subjectWardrobe, type SubjectPlan,
+  subjectReviewLabels, subjectReviewPrompt, subjectWardrobe, subjectHasOnlyOverlongObservations, type SubjectPlan,
 } from "../subject-policy";
 
 const BOARDS = localPatchBoardsForVersion(12);
@@ -63,6 +63,19 @@ describe("versioned subject plans", () => {
 });
 
 describe("the subject reader decides; the model's summary never does", () => {
+  it("routes only wholly valid-but-overlong text to compact recovery without accepting or changing the v1 reading", () => {
+    const plan = subjectPlansForBoard(newyork)[0]!, raw = answer(plan, { checks: { plannedAction: { status: "fail", observation: "x".repeat(401) } }, faults: [{ check: "plannedAction", where: "The hand remains at the hip." }] });
+    expect(subjectHasOnlyOverlongObservations(raw)).toBe(true);
+    expect(readSubjectAnswer(raw, { hideId: plan.hideId, ageYears: 7, plan })).toMatchObject({ ok: false, fault: { code: "shape" } });
+    const broken = JSON.parse(raw); delete broken.checks.photoLikeness;
+    expect(subjectHasOnlyOverlongObservations(JSON.stringify(broken))).toBe(false);
+    broken.checks.photoLikeness = { status: "invented", observation: "A synthetic observation." };
+    expect(subjectHasOnlyOverlongObservations(JSON.stringify(broken))).toBe(false);
+    expect(subjectHasOnlyOverlongObservations(raw.slice(0, -1))).toBe(false);
+    expect(subjectHasOnlyOverlongObservations(answer(plan))).toBe(false);
+    expect(subjectHasOnlyOverlongObservations(null)).toBe(false);
+  });
+
   const plan = subjectPlanFor(newyork, newyork.hides[0]!.id), hat = subjectPlanFor(antarctica, antarctica.hides[0]!.id);
   const read = (raw: string, p = plan, ageYears = 7) => readSubjectAnswer(raw, { hideId: p.hideId, ageYears, plan: p });
   it("passes only an explicit, observed pass of every check", () => {

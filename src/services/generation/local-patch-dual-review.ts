@@ -8,7 +8,7 @@ import { nextLocalPatchEvidenceStep, type EvidenceAttempt, type EvidenceDiagnosi
 import { CURRENT_CONTINUITY_READER, CURRENT_QUALITY_READER, qualityReaderReadsMore, qualityStageReader, qualityStageRaw, subjectStageRaw, readContinuityStage, readQualityStage, verifiedDualStage, visualStageReadable,
   type ContinuityReReading, type ContinuityStage, type DualReviewProof, type DualReviewStage, type DualStageBase, type QualityReReading, type QualityStage,
   type SubjectStage } from "./local-patch-dual-evidence";
-import { SUBJECT_CHECKS, SUBJECT_POLICY_VERSION, SUBJECT_READER, readSubjectAnswer, type SubjectPlan } from "../../domain/generation/subject-policy";
+import { SUBJECT_CHECKS, SUBJECT_POLICY_VERSION, SUBJECT_READER, SUBJECT_FORMAT_RECOVERY_V2, readSubjectAnswer, subjectHasOnlyOverlongObservations, type SubjectPlan } from "../../domain/generation/subject-policy";
 import { SUBJECT_QUALITY_BUNDLE_VERSION } from "../../domain/generation/subject-quality-bundle";
 import { subjectPlanOfHide, subjectPlanSha256, subjectUpgradeOf, type SubjectUpgradeReceipt } from "./subject-enrollment";
 import { loadSubjectPhoto, subjectQuestion, combinedQualitySubjectQuestion, SubjectEvidenceUnavailable, withSubject } from "./local-patch-subject-review";
@@ -299,7 +299,14 @@ async function dualQuestions(prepared: Prepared, version: DualVisualReviewVersio
   const prior = (priorReceipt.boardReview?.dual ?? priorReceipt.dualQualityCheckpoint) as DualReviewProof | undefined;
   // The recovery policy chose this round's question for the role that failed.
   const recovery = localPatchEvidenceRecovery(entry.row);
-  const strategyFor = (role: EvidenceRole) => recovery?.retry && recovery.role === role && recovery.strategy ? recovery.strategy : STANDARD;
+  const strategyFor = (role: EvidenceRole): EvidenceStrategy => {
+    const strategy = recovery?.retry && recovery.role === role && recovery.strategy ? recovery.strategy : STANDARD;
+    // subject-format-recovery/v2: inspect the complete retained subject object,
+    // not only its first path. Original answer/fault/history and round cap stay fixed.
+    return subject && role === "quality" && strategy === "strict-json/v1"
+      && prior?.imageSha256 === binding.imageSha256 && prior.subject
+      && subjectHasOnlyOverlongObservations(subjectStageRaw(prior.subject)) ? "compact/v1" : strategy;
+  };
   // An unreadable Sol reply does not buy a second good Opus assessment: the
   // identical earlier question (same attempt and strategy) is replayed.
   const oldQuality = prior?.quality;
@@ -519,8 +526,10 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
     const reading = readSubjectAnswer(subjectStageRaw(subject), { hideId, ageYears: subjectContext.upgrade.ageYears, plan: subjectContext.plan });
     if (!reading.ok) {
       subject.readFault = reading.fault;
+      const overlong = subjectHasOnlyOverlongObservations(subjectStageRaw(subject));
       return classify({ ...base, bought: qualityBought, wire: primaryWire, verdicts, proof, newCostCents }, entry.row, priorReceipt,
-        { attempt: evidenceReviewAttempt, role: "quality", kind: reading.fault.code, code: reading.fault.code, path: reading.fault.path || null,
+        { attempt: evidenceReviewAttempt, role: "quality", kind: overlong ? "length" : reading.fault.code,
+          code: overlong ? SUBJECT_FORMAT_RECOVERY_V2 : reading.fault.code, path: reading.fault.path || null,
           strategy: qualityStrategy, at: new Date().toISOString(), imageSha256: binding.imageSha256 }, null, hideId, false);
     }
     if (reading.disposition !== "pass") {
@@ -577,7 +586,9 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
     const reading = readSubjectAnswer(subject.raw, { hideId, ageYears: upgrade.ageYears, plan });
     if (!reading.ok) {
       subject.readFault = reading.fault;
-      return classify(next, entry.row, priorReceipt, attempt(reading.fault.code, reading.fault.code, reading.fault.path || null), null, hideId, false);
+      const overlong = subjectHasOnlyOverlongObservations(subject.raw);
+      return classify(next, entry.row, priorReceipt, attempt(overlong ? "length" : reading.fault.code,
+        overlong ? SUBJECT_FORMAT_RECOVERY_V2 : reading.fault.code, reading.fault.path || null), null, hideId, false);
     }
     if (reading.disposition === "pass") return { ...next, evidence: null, diagnosis: null };
     subject.failedChecks = SUBJECT_CHECKS.filter(k => reading.checks[k] !== "pass");

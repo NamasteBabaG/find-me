@@ -58,3 +58,14 @@ Residual limits:
 - Evidence rounds, repaint attempts and automatic continuation counts remain bounded. The engine may safely stop when evidence, quality or funds are insufficient. An estimate is not permission to exceed a reservation or world cap.
 - Restyle/recompose keeps existing subject pixels; the enrolled subject gate still has to approve them. A redraw receives the new subject/photo direction.
 - Combining Opus inspections and selective MEDIUM is intended to reduce redundant purchases. Actual usage, quality and cost of all 27 successes must be measured. One pilot cannot establish a USD3 population average.
+
+
+## Subject painter correction after actual art review
+
+`local-patch-subject-paint/v2` is a distinct painter direction for new purchases in already enrolled worlds. The historical v19 support recipe asks for relaxed arms, while the subject plan requires another gesture; the historical diagnosis also asks to preserve the faulty pose. The new recipe keeps authored support, depth and safe geometry and lets the immutable subject plan alone specify the arms, head, gaze and expression. A planned-action repair now repeats the actual action rather than only its check code. The enrolled subject policy, plan digest, strict acceptance reader, age checks, hat requirement and full-27 publication gate are unchanged.
+
+Started image requests are matched against their exact current, v1-subject or pre-enrollment fingerprints. A new recipe is never substituted under a started key, a foreign fingerprint still refuses, and an unknown without a retained receipt remains unknown. New attempts retain distinct request identities.
+
+`subject-format-recovery/v2` is a recovery diagnostic, not an acceptance-reader replacement. It checks every strict-schema issue in a retained subject answer. Only otherwise complete answers whose sole errors are observation/location strings over the existing 400-character maximum select the existing `compact/v1` question. The raw answer, original fault and previous history are retained unchanged. A newly overlong reply records the length category, so the existing compact escalation limit and total evidence-round cap still retire repeated failures. The same models, evidence, output caps and reservations remain in force.
+
+This corrects a cause of repeated paid refusals; it does not establish successful art, a complete live world or a lower average price. Real generation must still pass the exact-commit release checks and the unchanged engine gates.

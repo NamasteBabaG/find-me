@@ -182,6 +182,20 @@ const answerSchema = z.object({
   faults: z.array(z.object({ check: z.string().trim().min(1).max(40), where: z.string().trim().min(1).max(400) }).strict()).max(12),
 }).strict();
 
+/** Recovery classification only: the strict v1 acceptance reader below is unchanged. */
+export const SUBJECT_FORMAT_RECOVERY_V2 = "subject-format-recovery/v2" as const;
+export function subjectHasOnlyOverlongObservations(raw: string | null): boolean {
+  const text = raw?.trim() ?? "";
+  const body = text.match(/^```(?:json)?[\t ]*\r?\n([\s\S]*?)\r?\n```$/i)?.[1] ?? text;
+  let value: unknown;
+  try { value = JSON.parse(body); } catch { return false; }
+  const parsed = answerSchema.safeParse(value);
+  return !parsed.success && parsed.error.issues.length > 0 && parsed.error.issues.every(issue =>
+    issue.code === "too_big" && issue.type === "string" && issue.maximum === 400
+    && (issue.path.length === 3 && issue.path[0] === "checks" && issue.path[2] === "observation"
+      || issue.path.length === 3 && issue.path[0] === "faults" && issue.path[2] === "where"));
+}
+
 export type SubjectReadFault = { readonly code: "empty" | "syntax" | "shape" | "ids"; readonly path: string };
 export type SubjectReading =
   | { readonly ok: false; readonly fault: SubjectReadFault }

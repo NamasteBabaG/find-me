@@ -12,6 +12,8 @@ import { WorldBudgetError } from "../world-budget";
 import type { WorldBudgetRequest, WorldChargeEvidence } from "../world-budget";
 import { LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, localPatchImagePolicyForVersion, localPatchRenderPolicySha256 } from "../../../infra/generation/openai-local-patch";
 import type { SelfRepairDecision } from "../../../domain/scene/local-patch-self-repair";
+import { SUBJECT_PAINTER_V2, subjectRenderDirectionV2 } from "../../../domain/generation/subject-painter";
+import { subjectPlanFor, subjectRenderDirection } from "../../../domain/generation/subject-policy";
 
 const BOARD = { width: 3072, height: 2048 };
 const board: LocalPatchBoard = {
@@ -98,6 +100,43 @@ async function attempt(deps: LocalPatchRenderDeps, over: Record<string, unknown>
 }
 
 describe("one paid attempt at one hide", () => {
+  it.each(["subject-v1", "before-enrollment", "subject-v2", "unknown-v1"] as const)("keeps %s purchases immutable and buys v2 only under new keys", async kind => {
+    const b = localPatchBoardsForVersion(12).find(b => b.board === "newyork")!, h = b.hides[0]!;
+    const w = world(), bytes = await small(), policySha256 = localPatchRenderPolicySha256(localPatchImagePolicyForVersion(12));
+    const digest = (b: Buffer) => createHash("sha256").update(b).digest("hex");
+    const photoSha256 = digest(bytes), plan = subjectPlanFor(b, h.id), quality = "medium" as const;
+    const direction = (text: string) => ({ text, photoPng: bytes, photoSha256, policySha256, quality,
+      sha256: digest(Buffer.from(JSON.stringify([text, null, photoSha256, policySha256, quality]))) });
+    const legacy = direction(subjectRenderDirection(plan, 7, ["plannedAction"]));
+    const v2 = { ...direction(subjectRenderDirectionV2(plan, 7, ["plannedAction"])), painterVersion: SUBJECT_PAINTER_V2, legacy };
+    const render = vi.fn(async (_input: Parameters<LocalPatchRenderDeps["render"]>[0]) => ({ png: null, quarantined: null, rejected: "synthetic paid rejection", evidence: evidence(`synthetic-versioned-render-${render.mock.calls.length}`), unknownReason: null }));
+    const worker = w.process({ render, renderPolicySha256: policySha256 });
+    const input = { worldId: "synthetic-subject-version", board: b, hide: h, composedPng: await sharp({ create: { width: 3840, height: 2160, channels: 3, background: "#ccbbaa" } }).png().toBuffer(),
+      identityPng: bytes, judgeIdentityPng: bytes, contentVersion: 12, paintRecipe: "scene-integration-v8" as const,
+      referenceMode: LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, ageYears: 7, attempt: 2, apiKey: "synthetic-never-live" };
+    const first = kind === "before-enrollment" ? undefined : kind === "subject-v2" ? v2 : legacy;
+    await renderLocalPatchHide(worker.deps, { ...input, subjectDirection: first });
+    const rowKey = w.at(input.worldId, `${h.id}:${h.pose}:render:2`), original = structuredClone(w.rows.get(rowKey)!);
+    if (kind === "unknown-v1") {
+      if (original.state !== "settled") throw Error("Synthetic purchase did not settle");
+      const { evidence: _receipt, ...unsettled } = original;
+      w.rows.set(rowKey, { ...unsettled, state: "unknown", unknownReasons: ["synthetic uncertain bill"] });
+      w.retained.delete(rowKey); // genuinely no retained supplier receipt is available
+    }
+    const before = structuredClone(w.rows.get(rowKey)!);
+    await renderLocalPatchHide(worker.deps, { ...input, subjectDirection: v2 });
+    expect(render).toHaveBeenCalledTimes(1);
+    expect(w.rows.get(rowKey)).toEqual(before);
+    expect(render.mock.calls[0]![0].prompt.includes(SUBJECT_PAINTER_V2)).toBe(kind === "subject-v2");
+    await renderLocalPatchHide(worker.deps, { ...input, attempt: 3, subjectDirection: v2 });
+    expect(render).toHaveBeenCalledTimes(2);
+    expect(render.mock.calls[1]![0].prompt).toContain(SUBJECT_PAINTER_V2);
+    expect(render.mock.calls[1]![0].prompt).not.toContain("arms relaxed at their sides");
+    const newRow = w.rows.get(w.at(input.worldId, `${h.id}:${h.pose}:render:3`))!;
+    if (kind === "subject-v2") expect(newRow.operationFingerprint).toBe(original.operationFingerprint);
+    else expect(newRow.operationFingerprint).not.toBe(original.operationFingerprint);
+  });
+
   it("refuses unsafe authored windows before decoding pixels, reserving or dispatching", async () => {
     const worker=world().process();
     const reserve=vi.spyOn(worker.deps.ledger,"reserve");
