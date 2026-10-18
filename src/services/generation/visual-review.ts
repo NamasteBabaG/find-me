@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { visualReviewPolicy, VISUAL_REVIEW_DEFAULT_EFFORT, type VisualReviewEffort, type VisualReviewJudge, type VisualReviewPolicy, type VisualReviewRole } from "../../domain/generation/visual-review-policy";
+import { isBackgroundReviewPolicy, visualReviewPolicy, VISUAL_REVIEW_DEFAULT_EFFORT, type VisualReviewEffort, type VisualReviewJudge, type VisualReviewPolicy, type VisualReviewRole, type VisualReviewTransport } from "../../domain/generation/visual-review-policy";
 import { visualReviewInputBound } from "../../domain/generation/visual-review-input-bound";
 import { requestAnthropicVisualReview } from "../../infra/generation/anthropic-visual-review";
 import { visualReviewCharge } from "../../infra/generation/visual-review-pricing";
@@ -13,6 +13,8 @@ export type VisualReviewQuestion = {
   readonly effort: VisualReviewEffort;
   /** Absent: the role's standing judge, as every historical question. */
   readonly judge?: VisualReviewJudge;
+  /** Absent: one synchronous request, as every historical question. */
+  readonly transport?: VisualReviewTransport;
   readonly prompt: string;
   readonly images: readonly Buffer[];
   readonly labels: readonly string[];
@@ -23,7 +25,7 @@ const sha = (value: string | Buffer) => createHash("sha256").update(value).diges
 /** Policy, labels and every image participate in the paid identity. A new
  * model/effort must never replay a historical judgement under its new name. */
 export function prepareVisualReview(question: VisualReviewQuestion): PreparedVisualReview {
-  const policy = visualReviewPolicy(question.role, question.effort, question.judge);
+  const policy = visualReviewPolicy(question.role, question.effort, question.judge, question.transport);
   if (!question.prompt.trim() || question.images.length < 1 || question.images.length > 30
     || question.labels.length !== question.images.length || question.labels.some(l => !l.trim())
     || question.images.some(b => !b.length || b.length > 5 * 1024 * 1024)) throw Error("Invalid visual review evidence");
@@ -45,7 +47,7 @@ export function visualReviewMaxCharge(question: PreparedVisualReview): VisualRev
   const bound = visualReviewInputBound({ provider: policy.provider, model: policy.model, detail: policy.provider === "openai" ? JUDGE_IMAGE_DETAIL : null,
     prompt: question.prompt, labels: question.labels, images: question.images });
   if (!bound.ok) return bound;
-  const charge = visualReviewCharge(policy, policy.model, policy.provider === "anthropic"
+  const charge = visualReviewCharge(policy, policy.model, policy.provider === "anthropic" || isBackgroundReviewPolicy(policy)
     ? { input_tokens: bound.inputTokens, output_tokens: policy.maxOutputTokens }
     : { prompt_tokens: bound.inputTokens, completion_tokens: policy.maxOutputTokens });
   if (charge.costUnknown) return { ok: false, reason: `The rate card cannot price ${bound.inputTokens} input tokens for ${policy.model}` };
@@ -63,6 +65,9 @@ export function sceneQualityQuestion(request: LocalPatchBoardJudgeRequest, effor
 export async function requestVisualReview(apiKey: string, question: VisualReviewQuestion,
   fetchOnce: typeof fetch = fetch, timeoutMs?: number): Promise<LocalPatchJudgeResult> {
   const q = prepareVisualReview(question);
+  // Asked once in the background and polled (continuity-background.ts); a
+  // synchronous send would be a second purchase of the same question.
+  if (isBackgroundReviewPolicy(q.policy)) throw Error("A background review question is never sent synchronously");
   if (!apiKey.trim()) throw Error(`${q.policy.provider === "anthropic" ? "ANTHROPIC" : "OPENAI"}_API_KEY is required for ${q.policy.model}`);
   const wire = q.policy.provider === "anthropic"
     ? { ...await requestAnthropicVisualReview(apiKey, { prompt: q.prompt, images: q.images, imageLabels: q.labels,

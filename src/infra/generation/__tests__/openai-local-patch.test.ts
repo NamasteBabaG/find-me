@@ -1,7 +1,7 @@
 import sharp from "sharp";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import {
-  LOCAL_PATCH_IMAGE_POLICY, LOCAL_PATCH_LOW_IMAGE_POLICY, LOCAL_PATCH_MINI_IMAGE_POLICY, LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, buyLocalPatch,
+  LOCAL_PATCH_IMAGE_POLICY, LOCAL_PATCH_LOW_IMAGE_POLICY, LOCAL_PATCH_MINI_IMAGE_POLICY, LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, LOCAL_PATCH_PHOTO_REFERENCE_MODE, buyLocalPatch,
   localPatchImagePolicyForVersion, localPatchRenderPolicySha256,
 } from "../openai-local-patch";
 
@@ -39,6 +39,23 @@ const request = () => ({
 });
 
 describe("buying one local patch", () => {
+  it("uses the explicit MEDIUM subject redraw with scene, native portrait and photo in that order; the LOW receipt stays historical", async () => {
+    const fetchOnce = vi.fn<typeof fetch>(async () => answer());
+    const photo = await sharp({ create: { width: 200, height: 260, channels: 4, background: "#c07b63" } }).png().toBuffer();
+    await buyLocalPatch("synthetic-never-live", { ...request(), referenceMode: LOCAL_PATCH_PHOTO_REFERENCE_MODE, subjectPhotoPng: photo, subjectQuality: "medium" },
+      { policy: LOCAL_PATCH_IMAGE_POLICY, fetchOnce });
+    const form = fetchOnce.mock.calls[0]![1]!.body as FormData, images = form.getAll("image[]") as Blob[];
+    expect(form.get("quality")).toBe("medium"); expect(form.get("model")).toBe("gpt-image-2");
+    expect(images).toHaveLength(3);
+    expect(Buffer.from(await images[0]!.arrayBuffer())).toEqual(crop);
+    expect(Buffer.from(await images[1]!.arrayBuffer())).toEqual(identity);
+    expect(Buffer.from(await images[2]!.arrayBuffer())).toEqual(photo);
+    expect(LOCAL_PATCH_LOW_IMAGE_POLICY.quality).toBe("low");
+    fetchOnce.mockClear();
+    await expect(buyLocalPatch("synthetic-never-live", { ...request(), referenceMode: LOCAL_PATCH_PHOTO_REFERENCE_MODE, subjectPhotoPng: photo, subjectQuality: "medium" },
+      { policy: LOCAL_PATCH_LOW_IMAGE_POLICY, fetchOnce })).rejects.toThrow(/declared quality/);
+    expect(fetchOnce).not.toHaveBeenCalled();
+  });
   it("sends exactly scene then native canonical portrait in v9, with the mask on the scene and no competing reference", async () => {
     const fetchOnce = vi.fn<typeof fetch>(async () => answer());
     const result = await buyLocalPatch("synthetic-never-live", { ...request(), referenceMode: LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE },

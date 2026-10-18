@@ -15,6 +15,8 @@ import { QUALITY_FAULT_LOCATION_MAX, QUALITY_READER_LOCATED_V2, QUALITY_READER_S
   type LocalPatchVerdict, type QualityReader } from "./local-patch-judge";
 import { parseVisualSceneVerdicts } from "./visual-review";
 import { PLAYER_REVIEW_MODE } from "./local-patch-player-review";
+import type { SUBJECT_POLICY_VERSION, SUBJECT_READER, SubjectCheck } from "../../domain/generation/subject-policy";
+import { SUBJECT_QUALITY_BUNDLE_VERSION, readSubjectQualityBundle, type SubjectQualityBundleBinding } from "../../domain/generation/subject-quality-bundle";
 
 /** A later reading of the SAME retained answer: recorded beside the original,
  * never in place of it, and bound to its request, fingerprint and exact text. */
@@ -39,11 +41,19 @@ export type DualStageBase = { requestKey: string; fingerprint: string; attempt: 
   readFault?: ContinuityReadFault | null };
 /** Each role names the reader that decided it. Absent on stages written before readers were named. */
 export type ContinuityStage = DualStageBase & { reader?: ContinuityReader; reading?: ContinuityReReading };
-export type QualityStage = DualStageBase & { reader?: QualityReader; reading?: QualityReReading };
-export type DualReviewStage = ContinuityStage | QualityStage;
+export type QualityStage = DualStageBase & { reader?: QualityReader; reading?: QualityReReading; subjectBundle?: SubjectQualityBundleBinding };
+/** An enrolled world's subject review (subject-policy.ts): an Opus HIGH answer about the
+ * same pixels against the owned photograph and the canonical face, bound to both and to the plan. */
+export type SubjectStage = DualStageBase & { subjectPolicy: typeof SUBJECT_POLICY_VERSION; reader: typeof SUBJECT_READER;
+  photoSha256: string; planSha256: string;
+  /** Check codes a refusal named, for the next painting's fixed repair line; never answer text. */
+  failedChecks?: SubjectCheck[]; combined?: typeof SUBJECT_QUALITY_BUNDLE_VERSION };
+export type DualReviewStage = ContinuityStage | QualityStage | SubjectStage;
 export type DualReviewProof = { version: DualVisualReviewVersion; hideId: string;
   imageSha256: string; geometrySha256: string; identitySha256: string;
-  quality: QualityStage; continuity: ContinuityStage | null };
+  quality: QualityStage; continuity: ContinuityStage | null;
+  /** Present only in an enrolled world; absent on every historical proof. */
+  subject?: SubjectStage | null };
 
 /** The reader new scene-quality answers are decided by, under either pinned question. */
 export const CURRENT_QUALITY_READER: QualityReader = QUALITY_READER_LOCATED_V2;
@@ -64,13 +74,22 @@ export function qualityStageReader(stage: Pick<QualityStage, "reader" | "reading
 export function readQualityStage(stage: QualityStage, hideId: string): LocalPatchVerdict | null {
   const reader = qualityStageReader(stage);
   if (!reader || !visualStageReadable(stage)) return null;
-  const verdict = parseVisualSceneVerdicts(stage.raw, [hideId], 12, "ready-only/v1", PLAYER_REVIEW_MODE, reader)[hideId] ?? null;
+  const verdict = parseVisualSceneVerdicts(qualityStageRaw(stage), [hideId], 12, "ready-only/v1", PLAYER_REVIEW_MODE, reader)[hideId] ?? null;
   const reading = stage.reading;
   if (reading && (reading.version !== "quality-reading/v1" || reading.previousReader !== (stage.reader ?? QUALITY_READER_STRICT)
     || reading.reader === reading.previousReader || reading.sourceRequestKey !== stage.requestKey
     || reading.sourceFingerprint !== stage.fingerprint || reading.rawSha256 !== sha256Bytes(Buffer.from(stage.raw ?? ""))
     || reading.disposition !== localPatchQualityDisposition(verdict, 12, { hideId, reader }).state)) return null;
   return verdict;
+}
+
+export function qualityStageRaw(stage: Pick<QualityStage, "raw" | "subjectBundle">): string | null {
+  if (!stage.subjectBundle) return stage.raw;
+  return stage.subjectBundle.version === SUBJECT_QUALITY_BUNDLE_VERSION ? readSubjectQualityBundle(stage.raw)?.quality ?? null : null;
+}
+export function subjectStageRaw(stage: Pick<SubjectStage, "raw" | "combined">): string | null {
+  return stage.combined === undefined ? stage.raw : stage.combined === SUBJECT_QUALITY_BUNDLE_VERSION
+    ? readSubjectQualityBundle(stage.raw)?.subject ?? null : null;
 }
 
 /** Which readers may decide an answer to each pinned question. The strict
@@ -166,9 +185,13 @@ export function localPatchContinuityPending(row: { status: string; judgeJson?: s
  * answer even when the world has no capacity left for a new one.
  */
 export async function verifiedDualStage(db: Prisma.TransactionClient, worldId: string, stage: DualReviewStage,
-  role: "scene-quality" | "head-continuity"): Promise<{ bytes: Buffer; evidence: WorldChargeEvidence } | null> {
+  role: "scene-quality" | "head-continuity",
+  /** An enrolled world's continuity may also be the background question's answer. */
+  options: { allowBackground?: boolean } = {}): Promise<{ bytes: Buffer; evidence: WorldChargeEvidence } | null> {
   const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-  if (!equal(stage.policy, visualReviewPolicy(role, "high")) || !visualStageReadable(stage)
+  const allowed = [visualReviewPolicy(role, "high"), ...(options.allowBackground && role === "head-continuity"
+    ? [visualReviewPolicy(role, "high", undefined, "responses-background")] : [])];
+  if (!allowed.some(policy => equal(stage.policy, policy)) || !visualStageReadable(stage)
     || !Number.isSafeInteger(stage.attempt) || stage.attempt < 1
     || !/^self-repair:board:[a-z]+:[a-f0-9]{64}$/.test(stage.requestKey)
     || !stage.requestKey.endsWith(`:${stage.fingerprint}`)) return null;

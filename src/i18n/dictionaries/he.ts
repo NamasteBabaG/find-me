@@ -3,6 +3,14 @@ import { worldPurchaseHe, worldSelectorHe, friendsHe } from "./world-features";
 
 /** עברית — ניטרלית מגדרית: ״מצאו את {name}״, הילד מדבר בגוף ראשון. */
 export const he: Dictionary = {
+  qaSubjectUpgrade: {
+    title: "QA · בדיקות נראות מעודכנות",
+    description: "ממשיכים באותו עולם ששולם, עם בדיקות מחמירות יותר לדמיון, לגיל, לגיוון בתנועה וללבוש הנדרש. כל 27 המחבואים חייבים לעבור. התקציב הקיים והחיובים הלא ודאיים נשמרים.",
+    budget: "התחייבות / תקציב מאושר בדולר", reviews: "מחבואים שצריכים לעבור את הבדיקות המעודכנות",
+    apply: "מעדכנים את הבדיקות וממשיכים", blocked: "עדיין אי אפשר להמשיך את העולם",
+    tester: "נדרשת הרשאת הבודק הזמנית הקיימת לחשבון QA זה לפני ההמשך.",
+    back: "חזרה למצב ההכנה",
+  },
   worldPurchase: worldPurchaseHe,
   worldSelector: worldSelectorHe,
   friends: friendsHe,

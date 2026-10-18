@@ -1,4 +1,4 @@
-import type { VisualReviewPolicy } from "../../domain/generation/visual-review-policy";
+import { isBackgroundReviewPolicy, type VisualReviewPolicy } from "../../domain/generation/visual-review-policy";
 
 const whole = (v: unknown): v is number => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -9,6 +9,17 @@ const unknown = () => ({ costCents: 0, costUnknown: true });
  * https://platform.claude.com/docs/en/models/opus-5-5/overview */
 export function visualReviewCharge(policy: VisualReviewPolicy, model: string | null, usage: Record<string, unknown> | null) {
   if (model !== policy.model || !usage || policy.pricingVersion !== "visual-review-standard-2026-10-08") return unknown();
+  if (policy.provider === "openai" && model === "gpt-6.1-sol" && isBackgroundReviewPolicy(policy)) {
+    // A Responses usage object names the same tokens differently; the same rate card
+    // prices them. Reasoning is inside output_tokens, as in a chat completion.
+    const input = usage.input_tokens, output = usage.output_tokens;
+    if (usage.input_tokens_details != null && !record(usage.input_tokens_details)) return unknown();
+    const cached = (usage.input_tokens_details as Record<string, unknown> | undefined)?.cached_tokens ?? 0;
+    if (!whole(input) || !whole(output) || !whole(cached) || cached > input || input > 272_000) return unknown();
+    const total = (input - cached) * 250 + cached * 10 + output * 1000;
+    if (!Number.isSafeInteger(total)) return unknown();
+    return { costCents: total / 1_000_000, costUnknown: false };
+  }
   if (policy.provider === "openai" && model === "gpt-6.1-sol") {
     const input = usage.prompt_tokens, output = usage.completion_tokens;
     if (usage.prompt_tokens_details != null && !record(usage.prompt_tokens_details)) return unknown();

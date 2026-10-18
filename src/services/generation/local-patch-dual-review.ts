@@ -5,8 +5,14 @@ import { PLAYER_REVIEW_MODE } from "./local-patch-player-review";
 import { visualReviewCharge } from "../../infra/generation/visual-review-pricing";
 import { CONTINUITY_READER_STRICT, localPatchRuntimeContinuityVerdict, readLocalPatchBodyContinuity, type ContinuityReading } from "../../domain/scene/local-patch-body-continuity";
 import { nextLocalPatchEvidenceStep, type EvidenceAttempt, type EvidenceDiagnosis, type EvidenceFaultKind, type EvidenceRole, type EvidenceStrategy } from "../../domain/scene/local-patch-evidence-policy";
-import { CURRENT_CONTINUITY_READER, CURRENT_QUALITY_READER, qualityReaderReadsMore, qualityStageReader, readQualityStage, verifiedDualStage, visualStageReadable,
-  type ContinuityReReading, type DualReviewProof, type DualReviewStage, type DualStageBase, type QualityReReading, type QualityStage } from "./local-patch-dual-evidence";
+import { CURRENT_CONTINUITY_READER, CURRENT_QUALITY_READER, qualityReaderReadsMore, qualityStageReader, qualityStageRaw, subjectStageRaw, readContinuityStage, readQualityStage, verifiedDualStage, visualStageReadable,
+  type ContinuityReReading, type ContinuityStage, type DualReviewProof, type DualReviewStage, type DualStageBase, type QualityReReading, type QualityStage,
+  type SubjectStage } from "./local-patch-dual-evidence";
+import { SUBJECT_CHECKS, SUBJECT_POLICY_VERSION, SUBJECT_READER, readSubjectAnswer, type SubjectPlan } from "../../domain/generation/subject-policy";
+import { SUBJECT_QUALITY_BUNDLE_VERSION } from "../../domain/generation/subject-quality-bundle";
+import { subjectPlanOfHide, subjectPlanSha256, subjectUpgradeOf, type SubjectUpgradeReceipt } from "./subject-enrollment";
+import { loadSubjectPhoto, subjectQuestion, combinedQualitySubjectQuestion, SubjectEvidenceUnavailable, withSubject } from "./local-patch-subject-review";
+import { askContinuityInBackground } from "./continuity-background";
 import { localPatchCrowdContinuityPrompt, localPatchHeadContinuityPrompt } from "./local-patch-body-continuity";
 import { prepareVisualReview, sceneQualityQuestion, parseVisualSceneVerdicts, diagnoseVisualSceneAnswer, visualReviewMaxCharge, type PreparedVisualReview } from "./visual-review";
 import type { LocalPatchJudgeResult, LocalPatchBoardJudgeResult, QualityReader, QualityReadFault } from "./local-patch-judge";
@@ -21,7 +27,7 @@ import { recoverPreparedLocalPatchReview } from "./local-patch-review-interrupti
 import { localPatchEvidenceHistory, localPatchEvidenceRecovery, evidenceKindOfWireFault } from "./local-patch-review-recovery";
 import { DUAL_VISUAL_REVIEW_V2, DUAL_VISUAL_REVIEW_V3, DUAL_VISUAL_REVIEW_VERSION, dualVisualReviewVersion, qualityQuestionFor, QUALITY_QUESTION_OBJECT_JOINS, type DualVisualReviewVersion } from "./visual-review-release";
 import { prepareJoinDetails } from "./local-patch-integration-evidence";
-import type { VisualReviewEffort, VisualReviewJudge } from "../../domain/generation/visual-review-policy";
+import { isBackgroundReviewPolicy, type VisualReviewEffort, type VisualReviewJudge, type VisualReviewTransport } from "../../domain/generation/visual-review-policy";
 import type { BudgetJson } from "./world-budget";
 import type { WorldBudgetRequest } from "../../domain/generation/world-budget";
 import { dualQuestionReserveMicroUsd, type DualReviewRole } from "../../domain/generation/dual-review-reserve";
@@ -54,7 +60,9 @@ function qualityAddendum(strategy: EvidenceStrategy): string {
 /** Same FINAL pixels at each join, with a head detail. No BEFORE/portrait may
  * supply an imagined missing head. The context disambiguates evidence borders. */
 export async function runtimeContinuityQuestion(prepared: Prepared, binding: object, attempt: number,
-  version: DualVisualReviewVersion = DUAL_VISUAL_REVIEW_VERSION, strategy: EvidenceStrategy = STANDARD) {
+  version: DualVisualReviewVersion = DUAL_VISUAL_REVIEW_VERSION, strategy: EvidenceStrategy = STANDARD,
+  /** An enrolled world's new question is asked in the background: the same words, a different operation. */
+  transport?: VisualReviewTransport) {
   const hide = prepared.request.hides[0]!;
   if (!hide.closeupPng || hide.boundaryComparisons?.length !== 4) throw Error("Dual review requires all four continuous joins and the final head detail");
   const id = `${hide.hideId}:people`;
@@ -70,7 +78,7 @@ export async function runtimeContinuityQuestion(prepared: Prepared, binding: obj
   }
   const question = version === DUAL_VISUAL_REVIEW_V2 ? localPatchCrowdContinuityPrompt(id, CROWD_FOCUS)
     : localPatchHeadContinuityPrompt([{ id, focus: CROWD_FOCUS }]) + V1_CROWD_INSPECTION;
-  return prepareVisualReview({ role: "head-continuity", effort: "high", images, labels,
+  return prepareVisualReview({ role: "head-continuity", effort: "high", images, labels, ...(transport ? { transport } : {}),
     prompt: question + continuityAddendum(strategy, version) + `\nImmutable candidate binding: ${JSON.stringify(binding)}. Evidence attempt: ${attempt}.` });
 }
 
@@ -283,7 +291,8 @@ function dualBinding(prepared: Prepared, version: DualVisualReviewVersion) {
 
 /** The questions a dual review asks about one prepared appearance, built exactly
  * as they are bought. Read-only: the purchase and the dry-run planner share it. */
-async function dualQuestions(prepared: Prepared, version: DualVisualReviewVersion) {
+type SubjectQuestionContext = { upgrade: SubjectUpgradeReceipt; plan: SubjectPlan; photoPng: Buffer };
+async function dualQuestions(prepared: Prepared, version: DualVisualReviewVersion, transport?: VisualReviewTransport, subject?: SubjectQuestionContext) {
   const { request, entries, evidenceReviewAttempt } = prepared;
   const binding = dualBinding(prepared, version), hideId = binding.hideId, entry = entries.find(e => e.hide.id === hideId)!;
   const priorReceipt = JSON.parse(entry.row.judgeJson!);
@@ -297,13 +306,59 @@ async function dualQuestions(prepared: Prepared, version: DualVisualReviewVersio
   // Read as its own decision was made: under its named reader, or its verified re-reading.
   const oldVerdict = oldQuality ? readQualityStage(oldQuality, hideId) : null;
   const reuse = prior?.imageSha256 === binding.imageSha256 && !!oldQuality && Number.isSafeInteger(oldQuality.attempt)
-    && oldQuality.attempt > 0 && localPatchQualityDisposition(oldVerdict ?? null, 12, { hideId, reader: qualityStageReader(oldQuality) ?? QUALITY_READER_STRICT }).state === "acceptable";
+    && oldQuality.attempt > 0 && localPatchQualityDisposition(oldVerdict ?? null, 12, { hideId, reader: qualityStageReader(oldQuality) ?? QUALITY_READER_STRICT }).state === "acceptable"
+    && !(oldQuality.subjectBundle && recovery?.retry && recovery.role === "quality");
   const qualityAttempt = reuse ? oldQuality!.attempt : evidenceReviewAttempt;
   const qualityStrategy = reuse ? oldQuality!.strategy ?? STANDARD : strategyFor("quality");
-  const q = dualQualityQuestion(request, binding, qualityAttempt, qualityStrategy);
+  const quality = dualQualityQuestion(request, binding, qualityAttempt, qualityStrategy);
+  const combined = subject && (!reuse || oldQuality?.subjectBundle)
+    ? combinedQualitySubjectQuestion(quality, subject.plan, subject.photoPng, subject.upgrade) : null;
+  const q = combined?.question ?? quality;
   const continuityStrategy = strategyFor("continuity");
-  return { binding, entry, priorReceipt, reuse, q, qualityAttempt, qualityStrategy, continuityStrategy,
-    anatomy: () => runtimeContinuityQuestion(prepared, binding, evidenceReviewAttempt, version, continuityStrategy) };
+  // An enrolled world's subject question follows a passing quality answer; a format or
+  // size recovery of the quality role is that question's recovery too.
+  const subjectStrategy = reuse ? strategyFor("quality") : STANDARD;
+  return { binding, entry, priorReceipt, reuse, q, subjectBundle: combined?.binding, qualityAttempt, qualityStrategy, continuityStrategy, subjectStrategy,
+    anatomy: (via: VisualReviewTransport | undefined = transport) => runtimeContinuityQuestion(prepared, binding, evidenceReviewAttempt, version, continuityStrategy, via) };
+}
+
+/**
+ * Read-only: every question a dual review of this prepared appearance could have
+ * bought under its current evidence round, with its ledger key, so an interrupted
+ * one can be found again: the quality question, the synchronous and background
+ * continuity questions and, in an enrolled world, the subject question.
+ */
+export async function dualReviewQuestionCandidates(c: Pick<Container, "db" | "storage">, prepared: Prepared, version: DualVisualReviewVersion) {
+  const asked = { ...prepared, request: await dualQualityRequest(version, prepared.request) };
+  const questions = await dualQuestions(asked, version);
+  const key = (question: PreparedVisualReview) => `self-repair:board:${prepared.board.board}:${question.fingerprint}`;
+  const of = (question: PreparedVisualReview, role: EvidenceRole, strategy: EvidenceStrategy) => ({ requestKey: key(question), fingerprint: question.fingerprint, role, strategy });
+  const found = [of(questions.q, "quality", questions.qualityStrategy),
+    of(await questions.anatomy(), "continuity", questions.continuityStrategy),
+    of(await questions.anatomy("responses-background"), "continuity", questions.continuityStrategy)];
+  const upgrade = await subjectUpgradeOf(c.db, prepared.game.id), plan = subjectPlanOfHide(questions.binding.hideId);
+  if (upgrade && plan) {
+    try {
+      const photoPng = await loadSubjectPhoto(c, prepared, upgrade);
+      const combined = await dualQuestions(asked, version, "responses-background", { upgrade, plan, photoPng });
+      if (combined.q.fingerprint !== questions.q.fingerprint) found.push(of(combined.q, "quality", combined.qualityStrategy));
+      found.push(of(subjectQuestion(asked, plan, photoPng, questions.binding, prepared.evidenceReviewAttempt, qualityAddendum(questions.subjectStrategy), upgrade),
+        "quality", questions.subjectStrategy));
+    } catch (error) { if (!(error instanceof SubjectEvidenceUnavailable)) throw error; }
+  }
+  return found;
+}
+
+/** A continuity answer already paid for about exactly these pixels, geometry and identity,
+ * that still proves its own settled bill and passes under the reader its stage names. */
+async function reusableContinuity(db: Prisma.TransactionClient, worldId: string, version: DualVisualReviewVersion,
+  prior: DualReviewProof | undefined, binding: RetainedBinding): Promise<{ stage: ContinuityStage; bought: Bought } | null> {
+  if (!prior?.continuity || prior.version !== version || prior.hideId !== binding.hideId || prior.imageSha256 !== binding.imageSha256
+    || prior.geometrySha256 !== binding.geometrySha256 || prior.identitySha256 !== binding.identitySha256) return null;
+  const verified = await verifiedDualStage(db, worldId, prior.continuity, "head-continuity", { allowBackground: true });
+  const read = verified ? readContinuityStage(prior.continuity, binding.hideId, version) : null;
+  if (!verified || !read || localPatchRuntimeContinuityVerdict(read).disposition !== "pass") return null;
+  return { stage: prior.continuity, bought: { kind: "bought", bytes: verified.bytes, evidence: verified.evidence, replayed: true, settledFromRetained: false } };
 }
 
 export type DualQuestionAdmission = {
@@ -359,8 +414,26 @@ export async function nextDualReviewPurchase(prepared: Prepared, version: DualVi
 async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoardReviewDeps, version: DualVisualReviewVersion, deadlineAt: number | undefined,
   options: { decideRetained?: boolean }): Promise<Waiting | Reviewed> {
   const { request, game, budget, worldId, evidenceReviewAttempt } = prepared;
-  if (options.decideRetained) return decideRetainedAnswer(c, prepared, version, dualBinding(prepared, version));
-  const { binding, entry, priorReceipt, q, qualityAttempt, qualityStrategy, continuityStrategy, anatomy: anatomyQuestion } = await dualQuestions(prepared, version);
+  if (options.decideRetained) {
+    // A corrected free reading cannot carry a subject stage; an enrolled world decides on its paid route.
+    if (await subjectUpgradeOf(c.db, game.id)) return { kind: "waiting", outcome: { state: "pending",
+      reason: "An enrolled world decides retained answers together with their subject review", replayed: true, costCents: 0 } };
+    return decideRetainedAnswer(c, prepared, version, dualBinding(prepared, version));
+  }
+  // An enrolled world asks its new continuity questions in the background and adds the subject stage.
+  const upgrade = await subjectUpgradeOf(c.db, game.id);
+  let subjectContext: SubjectQuestionContext | undefined;
+  if (upgrade) {
+    const plan = subjectPlanOfHide(request.hides[0]!.hideId);
+    if (!plan) throw Error("SUBJECT_REVIEW: missing enrolled subject plan");
+    try { subjectContext = { upgrade, plan, photoPng: await loadSubjectPhoto(c, prepared, upgrade) }; }
+    catch (error) {
+      if (!(error instanceof SubjectEvidenceUnavailable)) throw error;
+      return { kind: "waiting", outcome: { state: "held", reason: error.message, replayed: false, costCents: 0 } };
+    }
+  }
+  const { binding, entry, priorReceipt, q, subjectBundle, qualityAttempt, qualityStrategy, continuityStrategy, subjectStrategy, anatomy: anatomyQuestion }
+    = await dualQuestions(prepared, version, upgrade ? "responses-background" : undefined, subjectContext);
   const hideId = binding.hideId;
   const makeKey = (question: PreparedVisualReview) => `self-repair:board:${prepared.board.board}:${question.fingerprint}`;
   // Refused before its request is recorded, reserved or sent: the world parks
@@ -369,6 +442,9 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
     reason: `${admitted.requestKey}: ${admitted.refused}; nothing was reserved or sent`, replayed: false, costCents: 0 } });
   const buy = async (question: PreparedVisualReview, reserveMicroUsd: number) => {
     const requestKey = makeKey(question);
+    // A background question is only ever replayed here, from what its round kept.
+    if (isBackgroundReviewPolicy(question.policy) && !await budget.readRequest(worldId, requestKey))
+      throw Error(`${requestKey}: a background question is never bought synchronously`);
     await c.db.$transaction(async tx => { await fenceLocalPatchImages(tx, game.id); await deps.fence(tx); });
     await inventorySelfRepairRequest(c, game.id, requestKey, deps.fence);
     return purchaseOnce({ ledger: budget, store: new LocalPatchRetainedPurchaseStore(c, game.id, budget) }, {
@@ -414,9 +490,9 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
   const qualityBought = await buy(q, qualityAdmitted.reserveMicroUsd);
   if (qualityBought.kind !== "bought") return waiting(qualityBought, q, qualityStrategy);
   // Decided now, so read by the current reader, which the stage names for every later reading.
-  const qualityStage: QualityStage = { ...stage(qualityBought, q, qualityAttempt, qualityStrategy), reader: CURRENT_QUALITY_READER };
-  const verdicts = parseVisualSceneVerdicts(visualStageReadable(qualityStage) ? qualityStage.raw : null,
-    [hideId], 12, request.reviewScope, request.assessmentMode, CURRENT_QUALITY_READER);
+  const qualityStage: QualityStage = { ...stage(qualityBought, q, qualityAttempt, qualityStrategy), reader: CURRENT_QUALITY_READER,
+    ...(subjectBundle ? { subjectBundle } : {}) };
+  const verdicts: LocalPatchBoardJudgeResult["verdicts"] = { [hideId]: readQualityStage(qualityStage, hideId) };
   const proof: DualReviewProof = { version, hideId, imageSha256: binding.imageSha256,
     geometrySha256: binding.geometrySha256, identitySha256: binding.identitySha256, quality: qualityStage, continuity: null };
   const primaryWire = JSON.parse(qualityBought.bytes.toString()) as LocalPatchJudgeResult;
@@ -429,12 +505,29 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
     // reply the reader refused. Which field, and why, decides the next question:
     // a field over its bound is a size failure, never a request for stricter JSON.
     const fault = visualStageReadable(qualityStage)
-      ? diagnoseVisualSceneAnswer(qualityStage.raw, [hideId], 12, request.reviewScope, request.assessmentMode, CURRENT_QUALITY_READER) : null;
+      ? diagnoseVisualSceneAnswer(qualityStageRaw(qualityStage), [hideId], 12, request.reviewScope, request.assessmentMode, CURRENT_QUALITY_READER) : null;
     if (fault) qualityStage.readFault = fault;
     const kind: EvidenceFaultKind = fault?.code ?? wireKind(qualityStage);
     const attempt: EvidenceAttempt = { attempt: qualityAttempt, role: "quality", kind, code: qualityStage.wireFault ?? kind, path: fault?.path || null,
       strategy: qualityStrategy, at: new Date().toISOString(), imageSha256: binding.imageSha256 };
     return classify({ ...base, bought: qualityBought, wire: primaryWire, verdicts, proof, newCostCents }, entry.row, priorReceipt, attempt, null, hideId, false);
+  }
+  if (subjectBundle && subjectContext) {
+    const subject: SubjectStage = { ...stage(qualityBought, q, qualityAttempt, qualityStrategy), subjectPolicy: SUBJECT_POLICY_VERSION,
+      reader: SUBJECT_READER, photoSha256: subjectBundle.photoSha256, planSha256: subjectBundle.planSha256, combined: SUBJECT_QUALITY_BUNDLE_VERSION };
+    proof.subject = subject;
+    const reading = readSubjectAnswer(subjectStageRaw(subject), { hideId, ageYears: subjectContext.upgrade.ageYears, plan: subjectContext.plan });
+    if (!reading.ok) {
+      subject.readFault = reading.fault;
+      return classify({ ...base, bought: qualityBought, wire: primaryWire, verdicts, proof, newCostCents }, entry.row, priorReceipt,
+        { attempt: evidenceReviewAttempt, role: "quality", kind: reading.fault.code, code: reading.fault.code, path: reading.fault.path || null,
+          strategy: qualityStrategy, at: new Date().toISOString(), imageSha256: binding.imageSha256 }, null, hideId, false);
+    }
+    if (reading.disposition !== "pass") {
+      subject.failedChecks = SUBJECT_CHECKS.filter(k => reading.checks[k] !== "pass");
+      return { ...base, bought: qualityBought, wire: primaryWire,
+        verdicts: withSubject(verdicts, hideId, reading, CURRENT_QUALITY_READER), proof, newCostCents, evidence: null, diagnosis: null };
+    }
   }
   if (!qualityBought.replayed) {
     await c.db.$transaction(async tx => {
@@ -447,9 +540,70 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
     return { kind: "waiting", outcome: { state: "pending", reason: "Quality receipt retained; independent anatomy review is next",
       replayed: false, costCents: newCostCents } };
   }
+  /**
+   * The enrolled world's third stage: the subject question about these same pixels,
+   * after quality and continuity both pass. Only an explicit, observed pass of every
+   * subject check leaves the appearance acceptable; a located failure goes to the
+   * repaint route, uncertainty to the bounded image route, an unreadable answer to the
+   * evidence policy. Without the owned photograph nothing is accepted.
+   */
+  const subjectGate = async (reviewed: Omit<Reviewed, "evidence" | "diagnosis">): Promise<Reviewed | Waiting> => {
+    if (reviewed.proof.subject?.combined === SUBJECT_QUALITY_BUNDLE_VERSION) return { ...reviewed, evidence: null, diagnosis: null };
+    const plan = subjectPlanOfHide(hideId);
+    if (!upgrade || !plan || plan.board !== prepared.board.board) throw Error(`SUBJECT_REVIEW: ${hideId} has no enrolled subject plan`);
+    let photoPng: Buffer;
+    try { photoPng = await loadSubjectPhoto(c, prepared, upgrade); }
+    catch (error) {
+      if (!(error instanceof SubjectEvidenceUnavailable)) throw error;
+      return { kind: "waiting", outcome: { state: "held", reason: error.message, replayed: false, costCents: reviewed.newCostCents } };
+    }
+    const question = subjectQuestion(prepared, plan, photoPng, binding, evidenceReviewAttempt, qualityAddendum(subjectStrategy), upgrade);
+    const admitted = await dualQuestionAdmission(budget, worldId, prepared.board.board, version, question);
+    if (admitted.refused) return refused(admitted);
+    const subjectBatch = await askQualityThroughBatch(c, { gameId: game.id, worldId, sceneId: prepared.scene.id, board: prepared.board.board,
+      hideId, variantId: entry.row.id, imageSha256: binding.imageSha256, question, syncKey: makeKey(question),
+      reserveMicroUsd: admitted.reserveMicroUsd, fence: deps.fence, deadlineAt });
+    if (subjectBatch.kind !== "proceed") return { kind: "waiting", outcome: { state: subjectBatch.kind === "held" ? "held" : "pending",
+      reason: subjectBatch.reason, replayed: false, costCents: reviewed.newCostCents } };
+    const bought = await buy(question, admitted.reserveMicroUsd);
+    if (bought.kind !== "bought") return waiting(bought, question, subjectStrategy);
+    const subject: SubjectStage = { ...stage(bought, question, evidenceReviewAttempt, subjectStrategy), subjectPolicy: SUBJECT_POLICY_VERSION,
+      reader: SUBJECT_READER, photoSha256: upgrade.photoSha256, planSha256: subjectPlanSha256(plan) };
+    const next = { ...reviewed, proof: { ...reviewed.proof, subject },
+      newCostCents: reviewed.newCostCents + (bought.replayed ? 0 : bought.evidence.amountMicroUsd / 10_000) };
+    const attempt = (kind: EvidenceFaultKind, code: string, path: string | null): EvidenceAttempt => ({ attempt: evidenceReviewAttempt, role: "quality",
+      kind, code, path, strategy: subjectStrategy, at: new Date().toISOString(), imageSha256: binding.imageSha256 });
+    if (!visualStageReadable(subject)) return classify(next, entry.row, priorReceipt, attempt(wireKind(subject), subject.wireFault ?? wireKind(subject), null), null, hideId, false);
+    const reading = readSubjectAnswer(subject.raw, { hideId, ageYears: upgrade.ageYears, plan });
+    if (!reading.ok) {
+      subject.readFault = reading.fault;
+      return classify(next, entry.row, priorReceipt, attempt(reading.fault.code, reading.fault.code, reading.fault.path || null), null, hideId, false);
+    }
+    if (reading.disposition === "pass") return { ...next, evidence: null, diagnosis: null };
+    subject.failedChecks = SUBJECT_CHECKS.filter(k => reading.checks[k] !== "pass");
+    return { ...next, verdicts: withSubject(next.verdicts, hideId, reading, qualityStageReader(next.proof.quality) ?? QUALITY_READER_STRICT),
+      evidence: null, diagnosis: null };
+  };
+  // An enrolled world re-assessing an appearance keeps the continuity answer it already
+  // paid for about exactly these pixels; it is never asked again, and never reused for others.
+  if (upgrade) {
+    const reused = await reusableContinuity(c.db, worldId, version, priorReceipt.dualContinuityCheckpoint as DualReviewProof | undefined, binding)
+      ?? await reusableContinuity(c.db, worldId, version, priorReceipt.boardReview?.dual as DualReviewProof | undefined, binding);
+    if (reused) {
+      proof.continuity = reused.stage;
+      return subjectGate({ ...base, bought: reused.bought, wire: primaryWire, verdicts, proof, newCostCents });
+    }
+  }
   const anatomy = await anatomyQuestion();
   const anatomyAdmitted = await dualQuestionAdmission(budget, worldId, prepared.board.board, version, anatomy);
   if (anatomyAdmitted.refused) return refused(anatomyAdmitted);
+  if (isBackgroundReviewPolicy(anatomy.policy)) {
+    const asked = await askContinuityInBackground(c, { gameId: game.id, worldId, requestKey: makeKey(anatomy), question: anatomy,
+      reserveMicroUsd: anatomyAdmitted.reserveMicroUsd, fence: deps.fence, ...(deadlineAt === undefined ? {} : { deadlineAt }),
+      binding: { hideId, variantId: entry.row.id, imageSha256: binding.imageSha256, geometrySha256: binding.geometrySha256, identitySha256: binding.identitySha256 } });
+    if (asked.kind !== "proceed") return { kind: "waiting", outcome: { state: asked.kind === "held" ? "held" : "pending", reason: asked.reason,
+      replayed: false, costCents: newCostCents } };
+  }
   const anatomyBought = await buy(anatomy, anatomyAdmitted.reserveMicroUsd);
   if (anatomyBought.kind !== "bought") return waiting(anatomyBought, anatomy, continuityStrategy);
   const reader = CURRENT_CONTINUITY_READER[version];
@@ -465,7 +619,20 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
   const read = readLocalPatchBodyContinuity(proof.continuity.raw, [`${hideId}:people`], reader);
   if (!read.ok) proof.continuity.readFault = read.fault;
   const verdict = localPatchRuntimeContinuityVerdict(read);
-  if (verdict.disposition === "pass") return { ...result, evidence: null, diagnosis: null };
+  if (verdict.disposition === "pass") {
+    if (!upgrade) return { ...result, evidence: null, diagnosis: null };
+    // Persist the independently paid continuity before starting a subject question.
+    // A waiting batch, unreadable subject answer or interrupted worker must reuse it.
+    await c.db.$transaction(async tx => {
+      await fenceLocalPatchImages(tx, game.id); await deps.fence(tx);
+      const saved = await tx.targetVariantAsset.updateMany({ where: { id: entry.row.id, status: entry.row.status,
+        assetId: entry.asset.id, attempts: entry.row.attempts, judgeJson: entry.row.judgeJson },
+        data: { judgeJson: JSON.stringify({ ...priorReceipt, dualContinuityCheckpoint: proof }) } });
+      if (saved.count !== 1) throw Error("Candidate changed before the continuity checkpoint");
+    });
+    return { kind: "waiting", outcome: { state: "pending", reason: "Independent continuity retained; subject review is next",
+      replayed: false, costCents: newCostCents } };
+  }
   if (verdict.disposition === "repair") return { ...result, verdicts: withAnatomy(verdicts, hideId, "repair", read, CURRENT_QUALITY_READER), evidence: null, diagnosis: null };
   const { kind, code, path } = readKind(read, verdict.reason);
   return classify(result, entry.row, priorReceipt, { attempt: evidenceReviewAttempt, role: "continuity", kind, code, path,

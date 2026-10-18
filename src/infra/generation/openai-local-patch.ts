@@ -41,7 +41,8 @@ import type { FixedSourceFailureReceipt } from "./fixed-source-diagnostics";
 /** How long one paint may take. Published so a caller can budget a slice around it. */
 export const LOCAL_PATCH_IMAGE_TIMEOUT_MS = 240_000;
 export const LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE = "canonical-portrait-only/v1" as const;
-export type LocalPatchReferenceMode = typeof LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE;
+export const LOCAL_PATCH_PHOTO_REFERENCE_MODE = "photo-and-canonical-portrait/v1" as const;
+export type LocalPatchReferenceMode = typeof LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE | typeof LOCAL_PATCH_PHOTO_REFERENCE_MODE;
 
 export const LOCAL_PATCH_IMAGE_POLICY: FixedSourcePolicy = Object.freeze({
   quality: "medium",
@@ -93,6 +94,9 @@ export type LocalPatchRenderInput = {
   readonly identityPng: Buffer;
   /** Explicit v9 recipe: the scene and approved portrait are the only two images. */
   readonly referenceMode?: LocalPatchReferenceMode;
+  /** Enrolled subject redraw only: an owned, hash-checked, bounded original photo. */
+  readonly subjectPhotoPng?: Buffer;
+  readonly subjectQuality?: "low" | "medium";
   /** v8 only: full approved sheet corroborates the high-resolution portrait. */
   readonly canonicalIdentityPng?: Buffer;
   readonly boardPeoplePng?: Buffer;
@@ -185,10 +189,15 @@ export async function buyLocalPatch(apiKey: string, input: LocalPatchRenderInput
     : { ...chosen, timeoutMs: Math.max(1_000, Math.min(chosen.timeoutMs, input.timeoutMs)) };
   // The crop goes as the reference at its own size - references are capped at
   // 1024 square and 512x768 is inside that. Only the OUTPUT is asked for larger.
-  if (input.referenceMode !== undefined && input.referenceMode !== LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE) {
+  if (input.referenceMode !== undefined && input.referenceMode !== LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE
+    && input.referenceMode !== LOCAL_PATCH_PHOTO_REFERENCE_MODE) {
     throw new Error("LOCAL_PATCH_PAINTER: unsupported reference mode");
   }
-  const portraitOnly = input.referenceMode === LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE;
+  const photoReference = input.referenceMode === LOCAL_PATCH_PHOTO_REFERENCE_MODE;
+  if (photoReference && (!input.subjectPhotoPng || !input.subjectQuality || chosen.quality !== input.subjectQuality || chosen.size !== "768x1152"
+    || chosen.model && chosen.model !== "gpt-image-2")) throw new Error("LOCAL_PATCH_PAINTER: subject redraw requires its photograph and declared quality policy");
+  if (!photoReference && (input.subjectPhotoPng || input.subjectQuality)) throw new Error("LOCAL_PATCH_PAINTER: photograph requires its explicit reference mode");
+  const portraitOnly = input.referenceMode === LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE || photoReference;
   if (portraitOnly && (input.boardPeoplePng || input.canonicalIdentityPng)) {
     throw new Error("LOCAL_PATCH_PAINTER: portrait-only mode forbids additional face or body references");
   }
@@ -203,7 +212,8 @@ export async function buyLocalPatch(apiKey: string, input: LocalPatchRenderInput
   const request = {
     sourceGroupKey: `local-patch:${input.requestKey}`,
     prompt: input.prompt, stylePng: input.stylePng, identityPng, maskPng: input.maskPng,
-    ...(input.boardPeoplePng ? { referencePngs: [input.boardPeoplePng, ...(canonical ? [canonical] : [])] } : {}),
+    ...(photoReference ? { referencePngs: [input.subjectPhotoPng!] }
+      : input.boardPeoplePng ? { referencePngs: [input.boardPeoplePng, ...(canonical ? [canonical] : [])] } : {}),
   };
   const prepared = await prepareFixedSource(request, policy);
   const charge = new CapturedCharge();

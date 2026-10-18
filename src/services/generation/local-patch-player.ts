@@ -20,6 +20,7 @@ import { hasLocalPatchHumanApproval, localPatchGeometryDigest } from "./local-pa
 import { hasLocalPatchPublicationPolicy, localPatchPublicationGeometryHash } from "./local-patch-publication-policy";
 import { enqueueLocalPatchNotifications } from "../local-patch-notifications";
 import { readLocalPatchPartialRelease } from "./local-patch-partial-release";
+import { subjectUpgradeOf } from "./subject-enrollment";
 import { getDict, tf } from "../../i18n";
 import { WIZARD_ADVENTURE_CATALOG } from "../../../content/adventures/wizard-release";
 import { attachAdventureBook } from "../../domain/adventure/compose";
@@ -143,7 +144,7 @@ export async function finishLocalPatchGame(c: Container, gameId: string, fence: 
     const contentVersion = contentVersions[0]?.sceneVersion;
     demand(contentVersions.length === 9 && contentVersions.every(scene => scene.sceneVersion === contentVersion), "publication needs one pinned content version");
     const budget = boardWizardBudgetOf({ ...c, db: tx as unknown as Container["db"] }), worldId = boardWizardWorldId(gameId);
-    demand(await localPatchBudgetReadyForPublication(budget, worldId, contentVersion),
+    demand(await localPatchBudgetReadyForPublication(budget, worldId, contentVersion, { reviewRecoveryV2: !!await subjectUpgradeOf(tx, gameId) }),
       "unresolved spending must be reconciled before publication");
     const audit = await budget.audit(worldId);
     // QA uses durable FileBlob storage. Honor the parent's original-photo

@@ -15,6 +15,7 @@ import { prepareLocalPatchIdentityReferences } from "./local-patch-identity-refe
 import { fenceLocalPatchImages, LocalPatchRetainedPurchaseStore } from "./local-patch-lifecycle";
 import { LOCAL_PATCH_PROVIDER, readShippedBoardArt, type LocalPatchHideDeps } from "./local-patch-hide";
 import { renderLocalPatchHide, RETAINED_RENDER_VERSION } from "./local-patch-render";
+import { subjectDirectionFor } from "./local-patch-subject-review";
 import { ageBodyPlacementText, ageBodyPropPlacementText, LOCAL_PATCH_AGE_BODY_PROMPT_VERSION, LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_FIXED_SCENERY_PROMPT_VERSION, LOCAL_PATCH_FOREGROUND_PROMPT_VERSION,
   paintRecipeForPinnedPrompt } from "./local-patch-prompt";
 import { LOCAL_PATCH_JUDGE, requestJudgeWire, isTheModelWeAsked, type LocalPatchJudgeResult } from "./local-patch-judge";
@@ -257,12 +258,16 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
     await inventorySelfRepairRequest(c, gameId, key, fenced);
     await assertGenerationSpendAllowed(c, game.ownerId);
     const references = await prepareLocalPatchIdentityReferences(sheet, scene.sceneVersion);
+    // A redraw in an enrolled world carries the appearance's subject plan; a surface-only repair keeps its own pixels.
+    const subjectDirection = decision.action === "redraw-with-new-placement"
+      ? await subjectDirectionFor(c, gameId, hide.id, scene.sceneVersion, row.judgeJson, { forceMedium: true }) : undefined;
     const result = await renderLocalPatchHide({ ledger: budget, store, render: deps.render, renderPolicySha256: deps.renderPolicySha256 }, {
       worldId, board, hide, composedPng: original, contentVersion: scene.sceneVersion, ...references, ageYears: child.ageYears,
       expectedPromptVersion: row.promptVersion ?? LOCAL_PATCH_AGE_PROMPT_VERSION,
       ...(paintRecipeForPinnedPrompt(row.promptVersion) ? { paintRecipe: paintRecipeForPinnedPrompt(row.promptVersion) } : {}),
       attempt: row.attempts, apiKey: deps.apiKey ?? "", selfRepair: { cycle: active.cycle, decision }, deadlineAt: input.deadlineAt,
       ...(decision.action === "restyle-retained" ? { restyleSourcePng: raw! } : {}),
+      ...(subjectDirection ? { subjectDirection } : {}),
     });
     if (result.refusedBecause === "stopped") return;
     imageCostCents = result.renderCents;

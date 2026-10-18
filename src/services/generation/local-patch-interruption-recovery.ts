@@ -15,14 +15,17 @@ const hash = (value: unknown) => sha256Bytes(Buffer.from(JSON.stringify(value)))
  * reserve remains open. A live request, ordinary operator grant, billing
  * conflict or an unapproved unknown never crosses this publication boundary. */
 export async function localPatchBudgetReadyForPublication(budget: Pick<WorldBudget, "audit" | "readContinuationApproval">,
-  worldId: string, contentVersion: number | undefined): Promise<boolean> {
+  worldId: string, contentVersion: number | undefined,
+  /** Only a world enrolled in the subject upgrade may also carry v2 review continuations. */
+  options: { reviewRecoveryV2?: boolean } = {}): Promise<boolean> {
   const audit = await budget.audit(worldId);
   if (audit.held || audit.pendingRequestKeys.length) return false;
   if (audit.reservedMicroUsd === 0) return true;
   if (contentVersion !== 12 || !audit.unknownRequestKeys.length) return false;
   for (const key of audit.unknownRequestKeys) {
     const version = (await budget.readContinuationApproval(worldId, key))?.version;
-    if (version !== "world-automatic-image-recovery/v1" && version !== "world-automatic-review-recovery/v1") return false;
+    if (version !== "world-automatic-image-recovery/v1" && version !== "world-automatic-review-recovery/v1"
+      && !(options.reviewRecoveryV2 && version === "world-automatic-review-recovery/v2")) return false;
   }
   return true;
 }

@@ -328,6 +328,42 @@ export interface QualityBatchTransport {
   remove(batchId: string): Promise<void>;
 }
 
+/** What a background response says about one review, read exactly once per poll. */
+export type BackgroundReviewReading = {
+  readonly responseId: string; readonly raw: string | null; readonly usage: Record<string, unknown> | null;
+  readonly model: string | null;
+  /** "stop" for a completed message, "length" for a max-output cut, else the provider's reason or null. */
+  readonly finishReason: string | null;
+  readonly serviceTier: string | null;
+};
+export type BackgroundReviewState =
+  | { readonly status: "queued" | "in_progress" }
+  | { readonly status: "completed" | "failed" | "cancelled" | "incomplete"; readonly reading: BackgroundReviewReading }
+  /** The provider no longer has (or never had) this response id: documented 404. */
+  | { readonly status: "missing" };
+
+/**
+ * A review question asked as an OpenAI background response (`background: true`) and
+ * polled by id (GET /v1/responses/{id}). One HTTP request per call, no hidden retry,
+ * `redirect: "error"`. A create that threw anything but `BackgroundReviewRefused` may
+ * have created a response whose id never arrived: only an unknown charge can describe it.
+ */
+export interface BackgroundReviewTransport {
+  /** Provider AND billing namespace of every answer this channel delivers. */
+  readonly namespace: string;
+  create(body: Readonly<Record<string, unknown>>): Promise<{ responseId: string }>;
+  retrieve(responseId: string): Promise<BackgroundReviewState>;
+  cancel(responseId: string): Promise<void>;
+}
+
+/** A background create refused with the provider's error envelope before anything was created. */
+export class BackgroundReviewRefused extends Error {
+  constructor(readonly status: number, readonly errorType: string | null) {
+    super(`BACKGROUND_REVIEW: create refused (${status}${errorType ? ` ${errorType}` : ""}); nothing was created`);
+    this.name = "BackgroundReviewRefused";
+  }
+}
+
 /** A create the provider refused outright, so nothing was created. `transient`: the same request may be sent later. */
 export class QualityBatchRefused extends Error {
   constructor(readonly status: number, readonly errorType: string | null, readonly transient: boolean) {

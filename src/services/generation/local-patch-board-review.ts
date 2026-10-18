@@ -93,6 +93,8 @@ export type LocalPatchBoardReviewDeps = {
  * v9 rows, but gets no authority to dispatch, settle or publish from this API. */
 export async function prepareLocalPatchBoardReview(c: Container, input: { gameId: string; sceneId: string },
   deps: Pick<LocalPatchBoardReviewDeps, "readBoardArt">, options: { recovery?: boolean; includePlayerCandidates?: boolean; playerReview?: boolean; skipApprovedEvidence?: boolean;
+    /** Recovery reconstructs this exact hide's question, independently of sibling scheduling. */
+    onlyHideId?: string;
     /** Select only an appearance whose retained dual answer awaits a corrected reading. */
     decideRetained?: boolean } = {}) {
   const scene = await c.db.gameScene.findUniqueOrThrow({ where: { id: input.sceneId },
@@ -110,6 +112,8 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
   const stagedExtra = isLocalPatchAgeVersion(scene.sceneVersion) ? await readLocalPatchExtraAttemptPlan(c, game.id) : null;
   const extraPlan = stagedExtra && [...stagedExtra.selected, ...stagedExtra.reviewOnly].some(entry => entry.sceneId === scene.id) ? stagedExtra : null;
   const incremental = scene.sceneVersion === 12 && !extraPlan && !options.recovery;
+  if (options.onlyHideId && (!incremental || !board?.hides.some(hide => hide.id === options.onlyHideId)))
+    return { ready: false as const, reason: "The selected hide is not an ordinary v12 candidate of this board" };
   demand(!options.playerReview || incremental, "Player calibration requires an ordinary v12 review");
   const versions = await c.db.gameScene.findMany({ where: { gameId: game.id }, select: { sceneVersion: true } });
   demand(versions.length > 0 && versions.every(row => row.sceneVersion === scene.sceneVersion), "Mixed content versions cannot acquire an advisory review");
@@ -193,10 +197,12 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
   let requestEntries = entries;
   let readyScope = false;
   // A corrected reading decides the round it re-reads; it is not a new round.
-  const eligible = (e: typeof entries[number]) => !protectedRows.has(e.row.id) && (!options.decideRetained || localPatchRetainedAnswerUndecided(e.row));
+  const eligible = (e: typeof entries[number]) => !protectedRows.has(e.row.id) && (!options.onlyHideId || e.hide.id === options.onlyHideId)
+    && (!options.decideRetained || localPatchRetainedAnswerUndecided(e.row));
   const roundOf = (row: TargetVariantAsset) => options.decideRetained ? Math.max(1, Number(JSON.parse(row.judgeJson!).boardReview?.evidenceReviewAttempt ?? 1))
     : localPatchEvidenceRecovery(row)?.nextAttempt ?? 1;
   if (options.decideRetained && !entries.some(eligible)) return { ready: false as const, reason: "No retained answer awaits a corrected reading" };
+  if (options.onlyHideId && !entries.some(eligible)) return { ready: false as const, reason: "The selected appearance is not eligible for this review" };
   // An appearance whose question already waits in a Message Batches round goes
   // last, so its siblings' questions are sent meanwhile. No round: no change.
   const inBatch = incremental ? await qualityBatchWaiting(c.db, game.id) : new Set<string>();
@@ -461,7 +467,9 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
           ...(isLocalPatchAgeVersion(scene.sceneVersion) ? { evidenceIds: localPatchBoardEvidenceIds(evaluated?.asked ?? request),
             imageLabels: localPatchBoardJudgeImageLabels(evaluated?.asked ?? request) } : {}),
           model: keep.model, effort: evaluated ? "high" : settings.effort, raw: keep.raw, costMicroUsd: evaluated
-            ? evaluated.proof.quality.costMicroUsd + (evaluated.proof.continuity?.costMicroUsd ?? 0) : bought.evidence.amountMicroUsd },
+            ? evaluated.proof.quality.costMicroUsd + (evaluated.proof.continuity?.costMicroUsd ?? 0)
+              + (evaluated.proof.subject?.requestKey !== evaluated.proof.quality.requestKey ? evaluated.proof.subject?.costMicroUsd ?? 0 : 0)
+            : bought.evidence.amountMicroUsd },
       });
       const rejected = disposition.state !== "acceptable";
       const retainedIds: unknown = JSON.parse(current.rejectedAssetIdsJson ?? "[]");

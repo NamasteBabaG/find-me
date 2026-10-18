@@ -5,20 +5,37 @@ import { boardWizardBudgetOf } from "./board-conditioned-wizard";
 import type { prepareLocalPatchBoardReview } from "./local-patch-board-review";
 import { fenceLocalPatchImages, LocalPatchRetainedPurchaseStore } from "./local-patch-lifecycle";
 import { sha256Bytes } from "./fixed-sprite";
-import { WorldBudgetError, type WorldAutomaticReviewRecovery } from "./world-budget";
+import { WorldBudgetError, type WorldAutomaticReviewRecovery, type WorldAutomaticReviewRecoveryV2 } from "./world-budget";
 import type { EvidenceRole, EvidenceStrategy } from "../../domain/scene/local-patch-evidence-policy";
 import { dualReviewReserves } from "../../domain/generation/dual-review-reserve";
+import { SUBJECT_REVIEW_RECOVERY, subjectUpgradeOf } from "./subject-enrollment";
 
 export const REVIEW_INTERRUPTION_POLICY = "local-patch-review-interruption/v1" as const;
+/** The same rules for a world enrolled in the subject upgrade, once its two v1 records are spent. */
+export const REVIEW_INTERRUPTION_POLICY_V2 = "local-patch-review-interruption/v2" as const;
 type Prepared = Extract<Awaited<ReturnType<typeof prepareLocalPatchBoardReview>>, { ready: true }>;
+type Question = { role: EvidenceRole; strategy: EvidenceStrategy };
 
 /** A new evidence question, never a re-buy or a quality approval. Only an exact
  * retained no-response transport failure qualifies. The full unknown charge
- * stays reserved; at most two such continuations fit the unchanged world cap. */
+ * stays reserved; at most two such continuations fit the unchanged world cap,
+ * and an enrolled world (subject-enrollment.ts) at most four more (v2). */
 export async function recoverPreparedLocalPatchReview(c: Container, prepared: Prepared,
   fence?: (tx: Prisma.TransactionClient) => Promise<void>,
   /** The interrupted question's role and variant, for the image's evidence log. */
-  question: { role: EvidenceRole; strategy: EvidenceStrategy } = { role: "quality", strategy: "standard/v1" }): Promise<boolean> {
+  question: Question = { role: "quality", strategy: "standard/v1" }): Promise<boolean> {
+  const upgrade = await subjectUpgradeOf(c.db, prepared.game.id);
+  const enrolled = upgrade?.reviewRecovery === SUBJECT_REVIEW_RECOVERY && upgrade.ownerId === prepared.game.ownerId;
+  if (await recoverInterruptedReview(c, prepared, fence, question, "v1", enrolled)) return true;
+  return enrolled && recoverInterruptedReview(c, prepared, fence, question, "v2", true);
+}
+
+async function recoverInterruptedReview(c: Container, prepared: Prepared, fence: ((tx: Prisma.TransactionClient) => Promise<void>) | undefined,
+  question: Question, release: "v1" | "v2",
+  /** An enrolled world keeps the last complete proof beside the interruption, so its paid
+   * continuity answer about the same pixels can still be reused; a historical world's bytes are unchanged. */
+  keepProof: boolean): Promise<boolean> {
+  const policyId = release === "v1" ? REVIEW_INTERRUPTION_POLICY : REVIEW_INTERRUPTION_POLICY_V2;
   const { game, scene, request, requestKey, fingerprint, worldId, budget } = prepared;
   if (scene.sceneVersion !== 12 || prepared.extraPlan || request.reviewScope !== "ready-only/v1"
     || request.hides.length !== 1 || !interruptedLocalPatchReviewRequest(requestKey, fingerprint)) return false;
@@ -45,21 +62,30 @@ export async function recoverPreparedLocalPatchReview(c: Container, prepared: Pr
   // models and malformed successful replies are not transport interruptions.
   if (!reply || reply.wireFault !== "timeout" || reply.costUnknown !== true
     || ["raw", "usage", "requestId", "model", "finishReason"].some(key => reply[key] !== null)) return false;
-  const proof = { policyId: REVIEW_INTERRUPTION_POLICY, gameId: game.id, ownerId: game.ownerId, sceneId: scene.id,
+  const proof = { policyId, gameId: game.id, ownerId: game.ownerId, sceneId: scene.id,
     variantId: selected.row.id, hideId: selected.hide.id, assetId: selected.asset.id, imageSha256: selected.imageSha256,
     geometrySha256: selected.geometrySha256, identitySha256: sha256Bytes(prepared.sheet), attempts: selected.row.attempts,
     evidenceReviewAttempt: prepared.evidenceReviewAttempt, requestKey, operationFingerprint: fingerprint,
     unknownReasons: held.unknownReasons, retainedPayloadSha256: retained.payloadSha256, wireFault: "timeout" };
-  const proofHash = sha256Bytes(Buffer.from(JSON.stringify(proof))), approvalId = `auto-review-${proofHash}`;
+  const proofHash = sha256Bytes(Buffer.from(JSON.stringify(proof))), approvalId = release === "v1" ? `auto-review-${proofHash}` : `auto-review-v2-${proofHash}`;
   const prior = await budget.readContinuationApproval(worldId, requestKey);
-  const recovery: WorldAutomaticReviewRecovery = { version: "world-automatic-review-recovery/v1", worldId, approvalId,
-    requestKey, scope: "judge", operationFingerprint: fingerprint, reserveMicroUsd: held.reserveMicroUsd,
-    unknownReasons: held.unknownReasons, policyId: REVIEW_INTERRUPTION_POLICY, authorizationSha256: proofHash,
-    authorizedAt: prior?.version === "world-automatic-review-recovery/v1" ? prior.authorizedAt : selected.row.updatedAt.toISOString() };
-  const recoveringBudget = boardWizardBudgetOf(c, 1,
-    { authorizeAutomaticReviewRecovery: async captured => JSON.stringify(captured) === JSON.stringify(recovery) });
-  try { await recoveringBudget.authorizeAutomaticReviewRecovery(worldId, recovery); }
-  catch (error) {
+  try {
+    if (release === "v1") {
+      const recovery: WorldAutomaticReviewRecovery = { version: "world-automatic-review-recovery/v1", worldId, approvalId,
+        requestKey, scope: "judge", operationFingerprint: fingerprint, reserveMicroUsd: held.reserveMicroUsd,
+        unknownReasons: held.unknownReasons, policyId: REVIEW_INTERRUPTION_POLICY, authorizationSha256: proofHash,
+        authorizedAt: prior?.version === "world-automatic-review-recovery/v1" ? prior.authorizedAt : selected.row.updatedAt.toISOString() };
+      await boardWizardBudgetOf(c, 1, { authorizeAutomaticReviewRecovery: async captured => JSON.stringify(captured) === JSON.stringify(recovery) })
+        .authorizeAutomaticReviewRecovery(worldId, recovery);
+    } else {
+      const recovery: WorldAutomaticReviewRecoveryV2 = { version: "world-automatic-review-recovery/v2", worldId, approvalId,
+        requestKey, scope: "judge", operationFingerprint: fingerprint, reserveMicroUsd: held.reserveMicroUsd,
+        unknownReasons: held.unknownReasons, policyId: REVIEW_INTERRUPTION_POLICY_V2, authorizationSha256: proofHash,
+        authorizedAt: prior?.version === "world-automatic-review-recovery/v2" ? prior.authorizedAt : selected.row.updatedAt.toISOString() };
+      await boardWizardBudgetOf(c, 1, { authorizeAutomaticReviewRecoveryV2: async captured => JSON.stringify(captured) === JSON.stringify(recovery) })
+        .authorizeAutomaticReviewRecoveryV2(worldId, recovery);
+    }
+  } catch (error) {
     if (error instanceof WorldBudgetError && ["invalid_input", "invalid_snapshot", "world_held"].includes(error.code)) return false;
     throw error;
   }
@@ -83,11 +109,12 @@ export async function recoverPreparedLocalPatchReview(c: Container, prepared: Pr
           boardReview: { version: prepared.reviewVersion, fingerprint, requestKey, reviewScope: "ready-only/v1",
             ...(request.assessmentMode ? { assessmentMode: request.assessmentMode } : {}),
             reviewedHideIds: [selected.hide.id], evidenceReviewAttempt: prepared.evidenceReviewAttempt,
-            evidenceReviewedAt: new Date().toISOString(), raw: null, model: null, costUnknown: true } }) } });
+            evidenceReviewedAt: new Date().toISOString(), raw: null, model: null, costUnknown: true,
+            ...(keepProof && prior.boardReview?.dual ? { dual: prior.boardReview.dual } : {}) } }) } });
     if (changed.count !== 1) return false;
     await tx.targetInstance.update({ where: { id: selected.row.targetInstanceId }, data: { status: "FAILED" } });
     await tx.auditLog.upsert({ where: { id: approvalId }, update: {}, create: { id: approvalId, actorType: "SYSTEM",
-      action: REVIEW_INTERRUPTION_POLICY, entityType: "Game", entityId: game.id, metaJson: JSON.stringify(proof) } });
+      action: policyId, entityType: "Game", entityId: game.id, metaJson: JSON.stringify(proof) } });
     await tx.generationJob.updateMany({ where: { id: `job_${game.id}`, status: "FAILED", currentStep: "local-patch:needs-release" },
       data: { status: "QUEUED", currentStep: "local-patch", lastError: null } });
     return true;

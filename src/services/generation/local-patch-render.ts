@@ -14,7 +14,7 @@ import {
 import { judgeCharge } from "../../infra/generation/judge";
 import { LOCAL_PATCH_POSE_WORDING, LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_CANONICAL_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION, LOCAL_PATCH_INTEGRATED_PROMPT_VERSION, LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION, LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION, localPatchPrompt, type LocalPatchRepairCheck, type LocalPatchPaintRecipe } from "./local-patch-prompt";
 import { purchaseOnce, type PurchaseLedger, type RetainedPurchaseStore } from "./paid-operation";
-import { LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, type LocalPatchPurchase, type LocalPatchReferenceMode } from "../../infra/generation/openai-local-patch";
+import { LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, LOCAL_PATCH_PHOTO_REFERENCE_MODE, LOCAL_PATCH_IMAGE_POLICY, LOCAL_PATCH_LOW_IMAGE_POLICY, localPatchRenderPolicySha256, type LocalPatchPurchase, type LocalPatchReferenceMode } from "../../infra/generation/openai-local-patch";
 import type { BudgetJson } from "./world-budget";
 import { isLocalPatchAdvisoryVersion, isLocalPatchAgeVersion, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
 import type { LocalPatchRecoveryDirective } from "../../domain/scene/local-patch-recovery-directive";
@@ -70,6 +70,8 @@ export type LocalPatchRenderDeps = {
     readonly worldId: string; readonly requestKey: string; readonly prompt: string;
     readonly stylePng: Buffer; readonly identityPng: Buffer; readonly maskPng: Buffer;
     readonly referenceMode?: LocalPatchReferenceMode;
+    readonly subjectPhotoPng?: Buffer;
+    readonly subjectQuality?: "low" | "medium";
     readonly canonicalIdentityPng?: Buffer;
     readonly boardPeoplePng?: Buffer;
     /** What is left of the caller's request. An adapter that ignores it can outlive it. */
@@ -107,6 +109,10 @@ export type LocalPatchAttemptInput = {
   readonly selfRepair?: { readonly cycle: number; readonly decision: SelfRepairDecision };
   /** Authenticated retained source for a v12 surface-only recovery. */
   readonly restyleSourcePng?: Buffer;
+  /** An enrolled world's subject plan for this appearance (subject-policy.ts), appended to the
+   * pinned recipe and bound into the fingerprint. Absent: every historical purchase, byte for byte. */
+  readonly subjectDirection?: { readonly text: string; readonly wardrobe?: string; readonly sha256: string;
+    readonly photoPng: Buffer; readonly photoSha256: string; readonly policySha256: string; readonly quality: "low" | "medium" };
   readonly apiKey: string;
   /**
    * When this worker's request is going to be taken away from it, absolute.
@@ -365,15 +371,29 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   if (input.adaptiveRecovery && (attempt !== 3 || !isLocalPatchStrictVersion(input.contentVersion) || input.recoveryDirective)) {
     throw Error("ADAPTIVE_RECOVERY: a diagnosis belongs only to its final normal attempt");
   }
-  const recipePrompt = restyling ? retainedRestylePrompt(recovery) : localPatchPrompt({ ground: board.ground, pose: hide.pose, ageYears: input.ageYears, repairChecks: input.repairChecks, boardPeopleReference: !!input.boardPeoplePng,
-    wardrobe: hide.wardrobe ?? board.wardrobe, placement: hide.placement, mask, contentVersion: input.contentVersion,
-    hideId: hide.id, recoveryDirective: input.recoveryDirective, paintRecipe: input.paintRecipe })
-    + (input.adaptiveRecovery ? `\n\n${adaptiveRecoveryPrompt(input.adaptiveRecovery, hide)}` : "")
-    + (recovery ? `\n\n${selfRepairRenderInstructions(recovery)}` : "");
-  const prompt = input.paintRecipe === "scene-integration-v4" ? referenceNeutralHairDirections(recipePrompt)
-    : input.paintRecipe === "scene-integration-v5" || input.paintRecipe === "scene-integration-v6" || input.paintRecipe === "scene-integration-v7"
-      || input.paintRecipe === "scene-integration-v8"
-      ? ageBodyRequestDirections(recipePrompt) : recipePrompt;
+  const restylePrompt = restyling ? retainedRestylePrompt(recovery) : null;
+  const recipeFor = (wardrobe: string | undefined) => {
+    const recipePrompt = restylePrompt !== null ? restylePrompt : localPatchPrompt({ ground: board.ground, pose: hide.pose, ageYears: input.ageYears, repairChecks: input.repairChecks, boardPeopleReference: !!input.boardPeoplePng,
+      wardrobe, placement: hide.placement, mask, contentVersion: input.contentVersion,
+      hideId: hide.id, recoveryDirective: input.recoveryDirective, paintRecipe: input.paintRecipe })
+      + (input.adaptiveRecovery ? `\n\n${adaptiveRecoveryPrompt(input.adaptiveRecovery, hide)}` : "")
+      + (recovery ? `\n\n${selfRepairRenderInstructions(recovery)}` : "");
+    return input.paintRecipe === "scene-integration-v4" ? referenceNeutralHairDirections(recipePrompt)
+      : input.paintRecipe === "scene-integration-v5" || input.paintRecipe === "scene-integration-v6" || input.paintRecipe === "scene-integration-v7"
+        || input.paintRecipe === "scene-integration-v8"
+        ? ageBodyRequestDirections(recipePrompt) : recipePrompt;
+  };
+  const authoredWardrobe = hide.wardrobe ?? board.wardrobe;
+  if (input.subjectDirection && (input.contentVersion !== 12 || restyling || !input.subjectDirection.text.trim()
+    || sha(input.subjectDirection.photoPng) !== input.subjectDirection.photoSha256
+    || !["low", "medium"].includes(input.subjectDirection.quality)
+    || input.subjectDirection.policySha256 !== localPatchRenderPolicySha256(input.subjectDirection.quality === "low" ? LOCAL_PATCH_LOW_IMAGE_POLICY : LOCAL_PATCH_IMAGE_POLICY)
+    || createHash("sha256").update(JSON.stringify([input.subjectDirection.text, input.subjectDirection.wardrobe ?? null,
+      input.subjectDirection.photoSha256, input.subjectDirection.policySha256, input.subjectDirection.quality])).digest("hex") !== input.subjectDirection.sha256))
+    throw Error("LOCAL_PATCH: a subject plan belongs only to a v12 painting and must match its digest");
+  /** The pinned recipe alone, or with the subject plan (and its wardrobe in place of the authored one). */
+  const promptWith = (plan: LocalPatchAttemptInput["subjectDirection"]) => plan
+    ? `${recipeFor(plan.wardrobe ?? authoredWardrobe)}\n\n${plan.text}` : recipeFor(authoredWardrobe);
 
   const meta = await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).metadata();
   const stylePng = restyling ? await sharp(input.restyleSourcePng!, { limitInputPixels: 8_294_400 }).resize(512, 768, { fit: "fill" }).png().toBuffer()
@@ -387,16 +407,17 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   const renderKey = input.selfRepair ? `${hide.id}:${hide.pose}:self-repair:${input.selfRepair.cycle}` : `${hide.id}:${hide.pose}:render:${attempt}`;
   // Everything that decides what is being bought. A different photograph,
   // prompt, mask or crop is a different purchase and must never replay this one.
-  const renderFingerprint = fingerprintOf({
+  const fingerprintFor = (prompt: string, plan: LocalPatchAttemptInput["subjectDirection"]) => fingerprintOf({
     version: promptVersion, hide: hide.id, pose: hide.pose, crop,
     prompt: sha(Buffer.from(prompt)), style: sha(stylePng), identity: sha(renderIdentityPng), mask: sha(maskPng),
     ...(restyling ? { canonicalGeometry: sha(input.identityPng) } : {}),
     ...(input.boardPeoplePng ? { boardPeople: sha(input.boardPeoplePng) } : {}),
     ...(input.canonicalIdentityPng ? { canonicalIdentity: sha(input.canonicalIdentityPng) } : {}),
-    ...(input.referenceMode ? { referenceMode: input.referenceMode } : {}),
+    ...(plan ? { referenceMode: LOCAL_PATCH_PHOTO_REFERENCE_MODE }
+      : input.referenceMode ? { referenceMode: input.referenceMode } : {}),
     ...(isLocalPatchStrictVersion(input.contentVersion) ? { composition: "bounded-return/v1" } : {}),
     ...(hide.returnRect ? { authoredReturn: { version: AUTHORED_PATCH_COMPOSITION_VERSION, rect: hide.returnRect } } : {}),
-    policy: deps.renderPolicySha256,
+    policy: plan?.policySha256 ?? deps.renderPolicySha256,
     // The SHAPE of what is kept, not only what was bought. A record written
     // before this envelope existed would otherwise be read under this same
     // fingerprint and come out "cannot be read" - a good paid picture called a
@@ -405,7 +426,17 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     retained: RETAINED_RENDER_VERSION,
     ...(input.adaptiveRecovery ? { adaptiveRecovery: input.adaptiveRecovery.sha256 } : {}),
     ...(input.selfRepair ? { selfRepair: input.selfRepair } : {}),
+    ...(plan ? { subject: plan.sha256 } : {}),
   });
+  // A purchase already started under this key without the subject plan (before its
+  // world was enrolled) resumes exactly as it was bought; it never becomes a second one.
+  let subject = input.subjectDirection;
+  if (subject) {
+    const started = await deps.ledger.readRequest(worldId, renderKey);
+    if (started && started.operationFingerprint !== fingerprintFor(promptWith(subject), subject)) subject = undefined;
+  }
+  const prompt = promptWith(subject);
+  const renderFingerprint = fingerprintFor(prompt, subject);
 
   // The window goes INTO the purchase, not around it: a replay costs no time and
   // needs no check, and a dispatch is refused by the thing that reserves for it.
@@ -421,7 +452,8 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
       const result = await deps.render({ worldId, requestKey: renderKey, prompt, stylePng, identityPng: renderIdentityPng, maskPng,
         ...(input.boardPeoplePng ? { boardPeoplePng: input.boardPeoplePng } : {}),
         ...(input.canonicalIdentityPng ? { canonicalIdentityPng: input.canonicalIdentityPng } : {}),
-        ...(input.referenceMode ? { referenceMode: input.referenceMode } : {}),
+        ...(subject ? { referenceMode: LOCAL_PATCH_PHOTO_REFERENCE_MODE, subjectPhotoPng: subject.photoPng, subjectQuality: subject.quality }
+          : input.referenceMode ? { referenceMode: input.referenceMode } : {}),
         ...(timeoutMs === null ? {} : { timeoutMs }) });
       const kept = result.png ?? result.quarantined;
       const keep: RetainedRender = {

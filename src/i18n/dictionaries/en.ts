@@ -5,6 +5,14 @@
 import { worldPurchaseEn, worldSelectorEn, friendsEn } from "./world-features";
 
 export const en = {
+  qaSubjectUpgrade: {
+    title: "QA · Updated child appearance checks",
+    description: "Continue this existing paid world with stricter likeness, age, varied actions and required clothing checks. All 27 hiding spots must pass. The existing budget and uncertain charges are preserved.",
+    budget: "Committed / authorized budget (USD)", reviews: "Appearances needing the updated checks",
+    apply: "Apply updated checks and continue", blocked: "The world cannot continue yet",
+    tester: "This QA account needs its existing temporary tester authorization before continuing.",
+    back: "Back to creation status",
+  },
   worldPurchase: worldPurchaseEn,
   worldSelector: worldSelectorEn,
   friends: friendsEn,

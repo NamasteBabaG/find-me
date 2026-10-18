@@ -18,6 +18,7 @@ import { identityStyleCatalogSha256 } from "./local-patch-identity-catalog";
 import { assertGenerationSpendAllowed, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { localPatchGeometry, type LocalPatchGeometry } from "./local-patch-geometry";
 import { renderLocalPatchHide, type LocalPatchRenderDeps } from "./local-patch-render";
+import { subjectDirectionFor } from "./local-patch-subject-review";
 import { LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_CANONICAL_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION, LOCAL_PATCH_INTEGRATED_PROMPT_VERSION, LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION, LOCAL_PATCH_AGE_BODY_PROMPT_VERSION, LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION, LOCAL_PATCH_FOREGROUND_PROMPT_VERSION, LOCAL_PATCH_FIXED_SCENERY_PROMPT_VERSION, LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION, pinnedLocalPatchPromptVersion, paintRecipeForPinnedPrompt, localPatchRepairChecks, type LocalPatchRepairCheck } from "./local-patch-prompt";
 import { prepareLocalPatchIdentityReferences } from "./local-patch-identity-reference";
 import { buildBoardPeopleStyle } from "./board-wizard-identity-style";
@@ -354,6 +355,9 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   const started = { ...base, attempts: attempt };
 
   const identityReferences = await prepareLocalPatchIdentityReferences(sheet, scene.sceneVersion);
+  // An enrolled world's subject plan for this appearance; absent for every other world.
+  const subjectDirection = await subjectDirectionFor(c, gameId, hide.id, scene.sceneVersion, row.judgeJson,
+    { basePolicySha256: deps.renderPolicySha256, attemptNumber: attempt });
   const attemptResult = await renderLocalPatchHide({
     ledger: budget, store: new LocalPatchRetainedPurchaseStore(c, gameId, budget),
     renderPolicySha256: deps.renderPolicySha256, render: deps.render, ...(deps.judge ? { judge: deps.judge } : {}),
@@ -368,6 +372,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     ...(extra ? { recoveryDirective: extra.directive } : {}),
     ...(attempt === 3 && adaptiveRecovery?.plan ? { adaptiveRecovery: adaptiveRecovery.plan } : {}),
     ...(input.deadlineAt === undefined ? {} : { deadlineAt: input.deadlineAt }),
+    ...(subjectDirection ? { subjectDirection } : {}),
   });
 
   const money = {

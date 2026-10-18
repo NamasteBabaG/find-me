@@ -12,6 +12,9 @@ import { dualQualityQuestion, QUALITY_ANSWER_SHORT_WHEN_PASSING, runtimeContinui
 import type { LocalPatchBoardJudgeRequest } from "../local-patch-judge";
 import { visualReviewMaxCharge, type PreparedVisualReview } from "../visual-review";
 import { DUAL_VISUAL_REVIEW_V3, QUALITY_QUESTION_OBJECT_JOINS, QUALITY_QUESTION_OBJECT_JOINS_LEAN } from "../visual-review-release";
+import { subjectPlansForBoard } from "../../../domain/generation/subject-policy";
+import { combinedQualitySubjectQuestion, subjectQuestion } from "../local-patch-subject-review";
+import type { SubjectUpgradeReceipt } from "../subject-enrollment";
 
 const opus = visualReviewPolicy("scene-quality", "high"), sol = visualReviewPolicy("head-continuity", "high");
 const micro = (charge: { costCents: number; costUnknown: boolean }) => { expect(charge.costUnknown).toBe(false); return Math.ceil(charge.costCents * 10_000); };
@@ -51,6 +54,36 @@ async function largestQuestions(role: DualReviewRole): Promise<PreparedVisualRev
 }
 
 describe("bounded dual review reservations", () => {
+  it("admits complete quality and subject inspections at maximal sizes, splitting oversized bundles before purchase", async () => {
+    const largest = await largestRequest(), photo = await blank(768, 768);
+    const upgrade = { ageYears: 10, photoSha256: "d".repeat(64) } as SubjectUpgradeReceipt;
+    let maximum = 0, maximumCase = "", bareMaximum = 0, split = 0;
+    for (const board of V12) for (const plan of subjectPlansForBoard(board)) for (const strategy of STRATEGIES.quality) {
+      const request = { ...largest, boardId: BOARD_ID, hides: [{ ...largest.hides[0]!, hideId: plan.hideId }] };
+      const quality = dualQualityQuestion(request, { ...BINDING, hideId: plan.hideId }, 99, strategy);
+      const combined = combinedQualitySubjectQuestion(quality, plan, photo, upgrade);
+      const questions = combined ? [combined.question] : [quality, subjectQuestion({ request }, plan, photo,
+        { ...BINDING, hideId: plan.hideId }, 99, "Return the complete exact subject JSON; never omit a failed check or its location to save space.", upgrade)];
+      if (!combined) split++;
+      for (const question of questions) {
+      const most = visualReviewMaxCharge(question); if (!most.ok) throw Error(most.reason);
+      const bare = visualReviewMaxCharge(quality);
+      if (bare.ok) bareMaximum = Math.max(bareMaximum, bare.microUsd);
+      if (most.microUsd > maximum) { maximum = most.microUsd; maximumCase = `${plan.hideId}, ${strategy}: ${most.inputTokens} input tokens`; }
+      expect(most.outputTokens).toBe(6_500);
+      expect(question.policy.model).toBe("claude-opus-5-5");
+      if (combined || question !== quality) expect(question.labels.join("\n")).toContain(`EVIDENCE_ID=${plan.hideId}:closeup`);
+      }
+    }
+    console.info(JSON.stringify({ admittedMaximumMicroUsd: maximum, bareMaximumMicroUsd: bareMaximum, maximumCase, splitCases: split, cases: V12.length * 3 * STRATEGIES.quality.length }));
+    expect(maximum, maximumCase).toBeLessThanOrEqual(DUAL_REVIEW_V3_RESERVE_MICRO_USD.quality);
+    expect(maximum).toBeGreaterThan(0);
+    expect(split).toBeGreaterThan(0);
+    const small = await blank(128, 128), plan = subjectPlansForBoard(V12[0]!)[0]!;
+    const quality = dualQualityQuestion({ ...largest, boardId: V12[0]!.board, hides: [{ ...largest.hides[0]!, hideId: plan.hideId }],
+      boardPng: small, identityPng: small }, { ...BINDING, hideId: plan.hideId }, 1, "standard/v1");
+    expect(combinedQualitySubjectQuestion(quality, plan, small, upgrade)).not.toBeNull();
+  });
   it("admit the largest request any current appearance can produce, in every evidence variant", async () => {
     for (const role of ["quality", "continuity"] as const) for (const question of await largestQuestions(role)) {
       // The maximal joins really are magnified 3x, at their largest.

@@ -30,6 +30,9 @@ import { localPatchRetainedAnswerUndecided, localPatchContinuityPending } from "
 import { hasDualVisualReview } from "./visual-review-release";
 import { localPatchPainterRelease, painterReleasePolicy, type LocalPatchPainterRelease } from "./painter-release";
 import { advanceQualityBatches } from "./quality-batch";
+import { subjectUpgradeOf } from "./subject-enrollment";
+import { recoverEnrolledReviewInterruptions } from "./subject-upgrade";
+import { advanceContinuityInBackground } from "./continuity-background";
 import {
   LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, runLocalPatchHide,
   type LocalPatchHideDeps, type LocalPatchHideOutcome,
@@ -127,6 +130,14 @@ export function localPatchBoardFor(sceneSlug: string, version = 6): LocalPatchBo
   return localPatchBoardForVersion(sceneSlug, version);
 }
 
+/** Scheduling hint: an accepted row already carries a subject stage for its current pixels. */
+function subjectStageCurrent(row: { judgeJson: string | null }): boolean {
+  try {
+    const receipt = JSON.parse(row.judgeJson ?? "null"), dual = receipt?.boardReview?.dual;
+    return !!dual?.subject && dual.imageSha256 === receipt.judgedSha256;
+  } catch { return false; }
+}
+
 export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHideDeps, gameId: string, options: {
   readonly hardDeadlineAt?: number;
   readonly maxHides?: number;
@@ -155,6 +166,10 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   if (game.scenes.length >= 9 && (game.scenes.length !== 9 || worldsOwned(game.scenes.map(scene => scene.sceneSlug)).length !== 1)) {
     throw new Error("LOCAL_PATCH_WORLD: all nine boards must belong to one complete world");
   }
+  // Existing provider work is reconciled before a held job or sibling scheduling can
+  // defer it beyond the background response's short retention. No new request here.
+  if (automatic && await subjectUpgradeOf(c.db, gameId))
+    await advanceContinuityInBackground(c, gameId, { deadlineAt: options.hardDeadlineAt });
   // A v7 hide buys only its image. Reuse the dispatch boundary's conservative
   // minimum, then let it recheck after reservation and bound the actual call.
   const minHideMs = advisory ? LOCAL_PATCH_MIN_PROVIDER_MS.render + LOCAL_PATCH_PHASE_MARGIN_MS : LOCAL_PATCH_MIN_SLICE_MS;
@@ -179,6 +194,9 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
             await recoverPreparedLocalPatchReview(c, calibrated);
         }
       }
+      // An enrolled world's dual questions have their own keys (quality, continuity, subject);
+      // the ordinary recovery continues each one it can find again, within its bounds.
+      if (await subjectUpgradeOf(c.db, gameId)) await recoverEnrolledReviewInterruptions(c, gameId, { readBoardArt: deps.readBoardArt });
     }
     job = await c.db.generationJob.findUniqueOrThrow({ where: { id: job.id } });
   }
@@ -360,6 +378,11 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const extraPlan = await readLocalPatchExtraAttemptPlan(c, gameId);
   const reviewedScenes = new Set<string>();
   let deferredBudgetError: WorldBudgetError | null = null;
+  // Scheduling only: publication re-verifies every subject stage, bill and binding.
+  const subjectUpgrade = automatic && !extraPlan ? await subjectUpgradeOf(c.db, gameId) : null;
+  const subjectPendingScenes = (current: typeof rows) => new Set(subjectUpgrade ? game.scenes.filter(scene => current.some(row =>
+    row.targetInstance.gameSceneId === scene.id && row.status === "GENERATED" && !subjectStageCurrent(row))).map(scene => scene.id) : []);
+  const subjectPending = subjectPendingScenes(rows);
   // Review retained pixels before buying diagnostics or replacements. A failed
   // sibling is no reason to withhold the independent ready appearance.
   if (automatic && !extraPlan) {
@@ -422,10 +445,13 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     const plans = game.scenes.map(scene => {
       const sceneRows = rows.filter(row => row.targetInstance.gameSceneId === scene.id);
       const ready = sceneRows.filter(row => row.status === "GENERATED");
+      // An enrolled world re-assesses every accepted appearance that has no subject stage
+      // for its current pixels, even on a board already marked complete.
+      const subjectWork = subjectPending.has(scene.id);
       // Planning only: incomplete boards with exclusively concluded approvals
       // have no new evidence to review. Final assembly still validates every
       // actual image/geometry/identity binding, including tampered pixels.
-      const firstWork = sceneRows.some(row => playerReviewEnabled() && needsPlayerReview(row)) || ready.some(row => {
+      const firstWork = subjectWork || sceneRows.some(row => playerReviewEnabled() && needsPlayerReview(row)) || ready.some(row => {
         try { const receipt = JSON.parse(row.judgeJson ?? "null");
           return receipt?.reviewState !== "board-review-complete" || receipt.qualityDisposition?.state !== "acceptable";
         } catch { return true; }
@@ -433,7 +459,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       return { scene, ready, firstWork, continuityPending: sceneRows.some(localPatchContinuityPending), retry: sceneRows.some(row => localPatchEvidenceRecovery(row)?.retry) };
     }).sort((a, b) => Number(!a.continuityPending) - Number(!b.continuityPending) || Number(!a.firstWork) - Number(!b.firstWork));
     for (const { scene, ready, firstWork, retry } of plans) {
-      if (scene.sceneVersion !== 12 || scene.generationStatus === "GENERATED") continue;
+      if (scene.sceneVersion !== 12 || scene.generationStatus === "GENERATED" && !subjectPending.has(scene.id)) continue;
       if (!(firstWork || retry) && ready.length !== localPatchBoardFor(scene.sceneSlug, scene.sceneVersion)?.hides.length) continue;
       if (!firstWork && retry && !firstPassComplete) continue;
       try {
@@ -589,11 +615,14 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // Do not open fresh Opus work while a saved quality receipt still needs Sol,
   // including a checkpoint created in the first review phase of THIS slice.
   let continuityPending = automatic && !extraPlan && after.some(localPatchContinuityPending);
+  const subjectAfter = subjectPendingScenes(after);
   for (const scene of game.scenes) {
     const board = localPatchBoardFor(scene.sceneSlug, scene.sceneVersion);
     if (!board || localPatchBoardBlockedReason(board)) continue;
     const mine = board.hides.map(hide => after.find(r => r.targetInstance.gameSceneId === scene.id && r.targetInstance.targetId === hide.targetId));
     if (!mine.every(settledHide)) continue;
+    // A complete board of an enrolled world still owes subject approvals: never READY before them.
+    if (scene.generationStatus === "GENERATED" && subjectAfter.has(scene.id)) { pendingReviews++; continue; }
     let good = mine.every(row => row && (row.status === "GENERATED" || row.status === "APPROVED"));
     const reviewOnlyReady = !!extraPlan && mine.every(row => row && (row.status === "GENERATED"
       || row.status === "FAILED" && extraPlan.reviewOnly.some(entry => entry.rowId === row.id)));
@@ -772,7 +801,8 @@ export function localPatchPainterDeps(_c: Container, contentVersion = 6, release
   return {
     apiKey,
     renderPolicySha256: localPatchRenderPolicySha256(policy),
-    render: async input => buyLocalPatch(apiKey, input, { policy }),
+    render: async input => buyLocalPatch(apiKey, input, { policy: input.subjectPhotoPng
+      ? input.subjectQuality === "low" ? painterReleasePolicy("local-patch-painter/low-v1", 12) : localPatchImagePolicyForVersion(12) : policy }),
   };
 }
 

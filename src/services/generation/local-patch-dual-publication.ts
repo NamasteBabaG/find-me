@@ -3,10 +3,12 @@ import { localPatchRuntimeContinuityVerdict } from "../../domain/scene/local-pat
 import { SELF_REPAIR_COMPOSITION_VERSION, SELF_REPAIR_VERSION, selfRepairDecisionSchema } from "../../domain/scene/local-patch-self-repair";
 import { localPatchQualityDisposition, QUALITY_READER_STRICT } from "./local-patch-judge";
 import { dualVisualReviewVersion } from "./visual-review-release";
-import { qualityStageReader, readContinuityStage, readQualityStage, verifiedDualStage, type DualReviewProof } from "./local-patch-dual-evidence";
+import { qualityStageReader, readContinuityStage, readQualityStage, subjectStageRaw, verifiedDualStage, type DualReviewProof } from "./local-patch-dual-evidence";
 import { PLAYER_REVIEW_MODE } from "./local-patch-player-review";
 import { LOCAL_PATCH_COMPOSITION_VERSION } from "./local-patch-seam";
 import type { LocalPatchPublicationBinding } from "./local-patch-publication-policy";
+import { readSubjectAnswer, SUBJECT_POLICY_VERSION, SUBJECT_READER } from "../../domain/generation/subject-policy";
+import { subjectPlanOfHide, subjectPlanSha256, subjectUpgradeOf, type SubjectUpgradeReceipt } from "./subject-enrollment";
 
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -34,8 +36,12 @@ export async function allowedDualPublication(db: Prisma.TransactionClient, input
     }
     if (review.compositionVersion !== receipt.compositionVersion) return false;
     const worldId = `${input.gameId}:board-wizard`;
+    // An enrolled world: its continuity may be a background answer, and every appearance
+    // also needs its own subject approval. A pass written before the enrollment has none.
+    const upgrade = await subjectUpgradeOf(db, input.gameId);
     if (!await verifiedDualStage(db, worldId, proof.quality, "scene-quality")
-      || !await verifiedDualStage(db, worldId, proof.continuity, "head-continuity")) return false;
+      || !await verifiedDualStage(db, worldId, proof.continuity, "head-continuity", { allowBackground: !!upgrade })) return false;
+    if (upgrade && !await allowedSubject(db, worldId, upgrade, proof, input)) return false;
     // Each answer is read by the reader its decision names, never a newer one.
     const quality = readQualityStage(proof.quality, input.hideId);
     const continuity = readContinuityStage(proof.continuity, input.hideId, version);
@@ -44,4 +50,23 @@ export async function allowedDualPublication(db: Prisma.TransactionClient, input
       && localPatchQualityDisposition(quality ?? null, 12, { hideId: input.hideId, reader: qualityStageReader(proof.quality) ?? QUALITY_READER_STRICT }).state === "acceptable"
       && !!continuity && localPatchRuntimeContinuityVerdict(continuity).disposition === "pass";
   } catch { return false; }
+}
+
+/** The subject stage re-read on every publication/protection read: its own settled bill,
+ * the enrolled photograph and age, this hide's plan, and an explicit pass of every check. */
+async function allowedSubject(db: Prisma.TransactionClient, worldId: string, upgrade: SubjectUpgradeReceipt, proof: DualReviewProof,
+  input: LocalPatchPublicationBinding): Promise<boolean> {
+  const subject = proof.subject, plan = subjectPlanOfHide(input.hideId);
+  if (!subject || !plan || subject.subjectPolicy !== SUBJECT_POLICY_VERSION || subject.reader !== SUBJECT_READER
+    || subject.photoSha256 !== upgrade.photoSha256 || subject.planSha256 !== subjectPlanSha256(plan) || upgrade.identitySha256 !== input.identitySha256) return false;
+  const game = await db.game.findUnique({ where: { id: input.gameId }, include: { childProfile: true } });
+  if (!game || game.ownerId !== upgrade.ownerId || game.childProfile?.ageYears !== upgrade.ageYears
+    || game.childProfile.identityAssetId !== upgrade.identityAssetId) return false;
+  if (!await verifiedDualStage(db, worldId, subject, "scene-quality")) return false;
+  if (subject.combined && (!proof.quality.subjectBundle || proof.quality.subjectBundle.version !== subject.combined
+    || proof.quality.subjectBundle.photoSha256 !== subject.photoSha256 || proof.quality.subjectBundle.planSha256 !== subject.planSha256
+    || subject.requestKey !== proof.quality.requestKey || subject.fingerprint !== proof.quality.fingerprint || subject.raw !== proof.quality.raw
+    || subject.costMicroUsd !== proof.quality.costMicroUsd)) return false;
+  const reading = readSubjectAnswer(subjectStageRaw(subject), { hideId: input.hideId, ageYears: upgrade.ageYears, plan });
+  return reading.ok && reading.disposition === "pass";
 }

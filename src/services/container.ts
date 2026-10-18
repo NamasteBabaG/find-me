@@ -25,8 +25,9 @@ import type { LocalPatchJudgeResult } from "./generation/local-patch-judge";
 import { DUAL_VISUAL_REVIEW_V2, DUAL_VISUAL_REVIEW_V3, DUAL_VISUAL_REVIEW_VERSION, type DualVisualReviewVersion } from "./generation/visual-review-release";
 import { LOCAL_PATCH_LOW_PAINTER, type LocalPatchPainterRelease } from "./generation/painter-release";
 import { QUALITY_BATCH_CHANNEL, type QualityChannelRelease } from "./generation/quality-channel";
-import type { QualityBatchTransport } from "@/infra/generation/types";
+import type { BackgroundReviewTransport, QualityBatchTransport } from "@/infra/generation/types";
 import { AnthropicMessageBatches } from "@/infra/generation/anthropic-message-batches";
+import { OpenAiBackgroundReviews } from "@/infra/generation/openai-background-review";
 
 /**
  * Composition root. Every provider is chosen here, by env, exactly once.
@@ -74,6 +75,9 @@ export interface Container {
   /** Message Batches, for games pinned to it. Kept whenever credentials exist, so a
    * pinned game is never stranded by a later change to new-draft enrollment. */
   qualityBatch?: QualityBatchTransport;
+  /** OpenAI background Responses, used only by a world enrolled in the subject upgrade
+   * (`local-patch-subject-upgrade/v1`) for its new Sol continuity questions. */
+  backgroundReview?: BackgroundReviewTransport;
 }
 
 /**
@@ -138,6 +142,8 @@ function build(): Container {
     ...(e.LOCAL_PATCH_PAINTER === "low-v1" ? { localPatchPainter: LOCAL_PATCH_LOW_PAINTER } : {}),
     ...(e.LOCAL_PATCH_QUALITY_CHANNEL === "anthropic-batch-v1" ? { qualityChannel: QUALITY_BATCH_CHANNEL } : {}),
     ...(e.GENERATION_PROVIDER === "openai" && e.ANTHROPIC_API_KEY?.trim() ? { qualityBatch: new AnthropicMessageBatches(e.ANTHROPIC_API_KEY) } : {}),
+    // Kept whenever the credential exists, so an enrolled world is never stranded mid-poll.
+    ...(e.GENERATION_PROVIDER === "openai" && e.OPENAI_API_KEY?.trim() ? { backgroundReview: new OpenAiBackgroundReviews(e.OPENAI_API_KEY) } : {}),
     // Keep the transport available for a pinned game even when new enrollment
     // is disabled. Missing credentials fail before a paid reservation.
     ...(e.GENERATION_PROVIDER === "openai" && e.ANTHROPIC_API_KEY?.trim() && e.OPENAI_API_KEY?.trim()
