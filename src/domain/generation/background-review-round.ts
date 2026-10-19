@@ -21,12 +21,25 @@
  *     polled on; whatever it ends as is recorded honestly. One the provider no
  *     longer has (expired, never read) is `missing`: unknown, held.
  */
+import { leanReviewPolicyOf } from "./visual-review-policy";
+
 export const BACKGROUND_REVIEW_ROUND_VERSION = "sol-background-round/v1" as const;
 export const BACKGROUND_REVIEW_TRANSPORT = "openai-responses-background/v1" as const;
 /** A create's own timeout and the room to record its answer. */
 export const BACKGROUND_CREATE_GRACE_MS = 3 * 60_000;
 /** A background HIGH review normally finishes in minutes; past this it is cancelled. */
 export const BACKGROUND_CANCEL_AFTER_MS = 25 * 60_000;
+/**
+ * A lean world's Flex question (local-patch-lean/v1). On the first lean QA world (19 October) eleven of twelve
+ * Flex answers took 0:29 to 2:50, and one was still queued at 25 minutes. Past ten minutes it is cancelled, and its
+ * appearance's evidence question is asked again, so a stalled answer costs one appearance minutes, not half an hour.
+ */
+export const LEAN_FLEX_CANCEL_AFTER_MS = 10 * 60_000;
+/** The cancel deadline of the policy a round was created with: a lean Flex question's, else the historical one. */
+export function backgroundCancelAfterMs(intent: Pick<BackgroundReviewIntent, "policyVersion">): number {
+  return intent.policyVersion !== undefined && leanReviewPolicyOf(intent.policyVersion)?.serviceTier === "flex"
+    ? LEAN_FLEX_CANCEL_AFTER_MS : BACKGROUND_CANCEL_AFTER_MS;
+}
 
 export type BackgroundReviewBinding = { readonly hideId: string; readonly variantId: string; readonly imageSha256: string;
   readonly geometrySha256: string; readonly identitySha256: string };
@@ -95,5 +108,6 @@ export function nextBackgroundStep(round: BackgroundReviewRound, now: number): B
   if (round.claimAt === null) return { step: "create" };
   if (!round.submitted) return now - round.claimAt < BACKGROUND_CREATE_GRACE_MS
     ? { step: "wait", reason: "another worker's create may still be answering" } : { step: "lost" };
-  return { step: "poll", responseId: round.submitted.responseId, cancelDue: round.cancelAt === null && now - round.submitted.at >= BACKGROUND_CANCEL_AFTER_MS };
+  return { step: "poll", responseId: round.submitted.responseId,
+    cancelDue: round.cancelAt === null && now - round.submitted.at >= backgroundCancelAfterMs(round.intent) };
 }

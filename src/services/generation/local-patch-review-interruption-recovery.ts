@@ -9,15 +9,37 @@ import { WorldBudgetError, type WorldAutomaticReviewRecovery, type WorldAutomati
 import type { EvidenceRole, EvidenceStrategy } from "../../domain/scene/local-patch-evidence-policy";
 import { dualReviewReserves } from "../../domain/generation/dual-review-reserve";
 import { SUBJECT_REVIEW_RECOVERY, subjectUpgradeOf } from "./subject-enrollment";
+import { BACKGROUND_REVIEW_TRANSPORT } from "../../domain/generation/background-review-round";
+import { backgroundRoundTerminal } from "./continuity-background";
 
 export const REVIEW_INTERRUPTION_POLICY = "local-patch-review-interruption/v1" as const;
 /** The same rules for a world enrolled in the subject upgrade, once its two v1 records are spent. */
 export const REVIEW_INTERRUPTION_POLICY_V2 = "local-patch-review-interruption/v2" as const;
 type Prepared = Extract<Awaited<ReturnType<typeof prepareLocalPatchBoardReview>>, { ready: true }>;
 type Question = { role: EvidenceRole; strategy: EvidenceStrategy };
+/** A background response the provider itself ended `failed`, with no text and no usage (first seen 19 October, Flex). */
+export const PROVIDER_FAILED_SHAPE = "background-provider-failed/v1" as const;
+
+/**
+ * The retained shapes an automatic continuation admits, and nothing else:
+ *  - `timeout`: no answer at all (a synchronous transport timeout: every field empty);
+ *  - `provider-failed`: a background response its provider ended `failed`, with no answer text and no usage, read once
+ *    from its own response id. Whether it was billed cannot be stated, so it stays an unknown charge, counted in full.
+ * A provider-failed reply that carries usage or text, another status, or another reason is not an interruption.
+ */
+export function interruptionShape(unknownReason: string | null, reply: Record<string, unknown> | null): "timeout" | "provider-failed" | null {
+  if (!reply) return null;
+  if (unknownReason === "Grouped review charge could not be verified" && reply.wireFault === "timeout" && reply.costUnknown === true
+    && ["raw", "usage", "requestId", "model", "finishReason"].every(key => reply[key] === null)) return "timeout";
+  if (unknownReason === "Background review charge could not be verified" && reply.transport === BACKGROUND_REVIEW_TRANSPORT
+    && reply.providerStatus === "failed" && reply.wireFault === "http" && reply.costUnknown === true && reply.finishReason === "failed"
+    && reply.raw === null && reply.usage === null && typeof reply.requestId === "string" && reply.requestId === reply.responseId) return "provider-failed";
+  return null;
+}
 
 /** A new evidence question, never a re-buy or a quality approval. Only an exact
- * retained no-response transport failure qualifies. The full unknown charge
+ * retained no-response transport failure, or a background response its provider
+ * ended `failed` with no text and no usage, qualifies (`interruptionShape`). The full unknown charge
  * stays reserved; at most two such continuations fit the unchanged world cap,
  * and an enrolled world (subject-enrollment.ts) at most four more (v2). */
 export async function recoverPreparedLocalPatchReview(c: Container, prepared: Prepared,
@@ -54,19 +76,26 @@ async function recoverInterruptedReview(c: Container, prepared: Prepared, fence:
   if (!held || held.state !== "unknown" || held.origin !== "reserved" || held.scope !== "judge"
     || held.operationFingerprint !== fingerprint || !dualReviewReserves(question.role).includes(held.reserveMicroUsd) || held.conflicts.length) return false;
   const retained = await new LocalPatchRetainedPurchaseStore(c, game.id, budget).get(worldId, requestKey);
-  if (!retained || retained.evidence || retained.operationFingerprint !== fingerprint
-    || retained.unknownReason !== "Grouped review charge could not be verified") return false;
+  if (!retained || retained.evidence || retained.operationFingerprint !== fingerprint) return false;
   let reply: Record<string, unknown>;
   try { reply = JSON.parse(retained.bytes.toString()); } catch { return false; }
   // HTTP errors, authentication/quota refusals, unpriced usable answers, wrong
   // models and malformed successful replies are not transport interruptions.
-  if (!reply || reply.wireFault !== "timeout" || reply.costUnknown !== true
-    || ["raw", "usage", "requestId", "model", "finishReason"].some(key => reply[key] !== null)) return false;
+  const shape = interruptionShape(retained.unknownReason, reply);
+  if (!shape) return false;
+  // A background response the provider ended `failed` is admitted only as its round recorded it: that response, unpriced.
+  if (shape === "provider-failed") {
+    const terminal = await backgroundRoundTerminal(c.db, game.id, worldId, requestKey);
+    if (terminal?.kind !== "outcome" || terminal.state !== "unpriced" || terminal.providerStatus !== "failed"
+      || terminal.responseId !== reply.requestId) return false;
+  }
+  const wireFault = shape === "timeout" ? "timeout" : "http";
   const proof = { policyId, gameId: game.id, ownerId: game.ownerId, sceneId: scene.id,
     variantId: selected.row.id, hideId: selected.hide.id, assetId: selected.asset.id, imageSha256: selected.imageSha256,
     geometrySha256: selected.geometrySha256, identitySha256: sha256Bytes(prepared.sheet), attempts: selected.row.attempts,
     evidenceReviewAttempt: prepared.evidenceReviewAttempt, requestKey, operationFingerprint: fingerprint,
-    unknownReasons: held.unknownReasons, retainedPayloadSha256: retained.payloadSha256, wireFault: "timeout" };
+    unknownReasons: held.unknownReasons, retainedPayloadSha256: retained.payloadSha256, wireFault,
+    ...(shape === "provider-failed" ? { providerFailed: PROVIDER_FAILED_SHAPE, responseId: reply.requestId } : {}) };
   const proofHash = sha256Bytes(Buffer.from(JSON.stringify(proof))), approvalId = release === "v1" ? `auto-review-${proofHash}` : `auto-review-v2-${proofHash}`;
   const prior = await budget.readContinuationApproval(worldId, requestKey);
   try {
@@ -99,13 +128,14 @@ async function recoverInterruptedReview(c: Container, prepared: Prepared, fence:
     const prior = JSON.parse(selected.row.judgeJson!);
     // The interrupted round counts against this image's fixed evidence total.
     const evidenceAttempts = [...(Array.isArray(prior.evidenceAttempts) ? prior.evidenceAttempts : []), { attempt: prepared.evidenceReviewAttempt,
-      role: question.role, kind: "transport", code: "timeout", path: null, strategy: question.strategy, at: new Date().toISOString(), imageSha256: selected.imageSha256 }];
+      role: question.role, kind: "transport", code: wireFault, path: null, strategy: question.strategy, at: new Date().toISOString(), imageSha256: selected.imageSha256 }];
     const changed = await tx.targetVariantAsset.updateMany({ where: { id: selected.row.id, status: selected.row.status,
       assetId: selected.asset.id, attempts: selected.row.attempts, judgeJson: selected.row.judgeJson,
       rectJson: selected.row.rectJson, hitRectJson: selected.row.hitRectJson, headAnchorJson: selected.row.headAnchorJson },
-      data: { status: "FAILED", lastError: "quality-unresolved: review transport interrupted; inspect the same pixels again",
+      data: { status: "FAILED", lastError: shape === "timeout" ? "quality-unresolved: review transport interrupted; inspect the same pixels again"
+          : "quality-unresolved: the provider ended the review failed; inspect the same pixels again",
         judgeJson: JSON.stringify({ ...prior, reviewState: "board-review-complete", verdict: null, evidenceAttempts,
-          wireFault: "timeout", reviewInterruption: { ...proof, recoveryId: approvalId, reservedMicroUsd: held.reserveMicroUsd },
+          wireFault, reviewInterruption: { ...proof, recoveryId: approvalId, reservedMicroUsd: held.reserveMicroUsd },
           boardReview: { version: prepared.reviewVersion, fingerprint, requestKey, reviewScope: "ready-only/v1",
             ...(request.assessmentMode ? { assessmentMode: request.assessmentMode } : {}),
             reviewedHideIds: [selected.hide.id], evidenceReviewAttempt: prepared.evidenceReviewAttempt,

@@ -28,6 +28,7 @@ import { SYSTEM_ENROLLMENT_OPERATOR, subjectUpgradeOf } from "../subject-enrollm
 import type { SelfRepairWire } from "../local-patch-self-repair";
 import { localPatchHideEvidenceIds } from "../local-patch-judge";
 import { LOCAL_PATCH_LEAN_ACTION, leanReleaseAuditId, leanReleaseReceipt } from "../lean-release";
+import { interruptionShape, PROVIDER_FAILED_SHAPE } from "../local-patch-review-interruption-recovery";
 import { bill, paintedOk, seedApprovedGame } from "./local-patch-fixtures";
 import { GOOD_V12_VERDICT, boundHide, longAnswer, publicationBinding } from "./local-patch-dual-fixtures";
 
@@ -117,11 +118,14 @@ function painter(gameId: string, prompts: Map<string, string>, qualities: Map<st
 }
 
 /** Sol, answering in the background: the bundle (quality and subject together) or the continuity question.
- * `lose`: that appearance's first bundle create never answers (a lost create: an unknown charge). */
-function sol(options: { lose?: string } = {}) {
+ * `lose`: that appearance's first bundle create never answers (a lost create: an unknown charge).
+ * `slow`: that appearance's first continuity answer keeps running until `released()` (19 October: one Flex answer ran 25 minutes).
+ * `fail`: the provider ends that appearance's first bundle `failed`, with no text and no usage (19 October, Flex). */
+function sol(options: { lose?: string; slow?: string; released?: () => boolean; fail?: string } = {}) {
   const creates: { hideId: string; kind: "bundle" | "continuity"; tier: unknown; attempts: number }[] = [];
   const polls = new Map<string, { hideId: string; kind: "bundle" | "continuity"; tier: unknown; n: number; reads: number }>();
   const bundles = new Map<string, number>(), refused = new Set<string>(), lost = new Set<string>();
+  let slowResponse: string | null = null, slowReads = 0;
   const fake: BackgroundReviewTransport = { namespace: "openai:find-me-existing",
     create: async body => {
       const prompt = (body.input as { content: { text?: string }[] }[])[0]!.content[0]!.text!, bound = boundHide(prompt);
@@ -136,17 +140,21 @@ function sol(options: { lose?: string } = {}) {
       if (kind === "bundle") bundles.set(bound.hideId, n);
       const responseId = `resp_lean${creates.length}`;
       polls.set(responseId, { hideId: bound.hideId, kind, tier: body.service_tier, n, reads: 0 });
+      if (kind === "continuity" && bound.hideId === options.slow && slowResponse === null) slowResponse = responseId;
       return { responseId };
     },
     retrieve: async (responseId): Promise<BackgroundReviewState> => {
       const state = polls.get(responseId);
       if (!state) return { status: "missing" };
+      if (responseId === slowResponse && !options.released?.()) { slowReads++; return { status: "in_progress" }; }
       if (++state.reads === 1) return { status: "in_progress" };
+      if (state.hideId === options.fail && state.kind === "bundle" && state.n === 1)
+        return { status: "failed", reading: { responseId, raw: null, usage: null, model: "gpt-6.1-sol", finishReason: "failed", serviceTier: String(state.tier) } };
       return { status: "completed", reading: { responseId, raw: state.kind === "bundle" ? bundleAnswer(state.hideId, state.n) : longAnswer(state.hideId, 400, 400, 160),
         usage: { input_tokens: 2000, output_tokens: 500 }, model: "gpt-6.1-sol", finishReason: "stop", serviceTier: String(state.tier) } };
     },
     cancel: async () => {} };
-  return { fake, creates, bundles };
+  return { fake, creates, bundles, slowReads: () => slowReads };
 }
 
 /** The n-th bundle answer about one appearance: every look its own; THIRD's first two show another child's face; SEAM's first two a broken join. */
@@ -285,6 +293,99 @@ describe("local-patch-lean/v1 on a whole paid world", () => {
     expect(await boardWizardBudgetOf(c).readRequest(worldId, lostKey!)).toMatchObject({ state: "unknown", reserveMicroUsd: 200_000 });
     expect((await boardWizardBudgetOf(c).readContinuationApproval(worldId, lostKey!))?.version).toMatch(/^world-automatic-review-recovery\/v[12]$/);
   }, 1_500_000);
+
+  it("keeps no appearance waiting on a sibling's slow answer: the rest of its board is asked and decided meanwhile (19 October)", async () => {
+    const gameId = "lean-world-slow"; await leanWorld(gameId);
+    const busy = new Set([boardOf(THIRD.id).board, boardOf(REFUSED.id).board, boardOf(SEAM.id).board]);
+    const board = BOARDS.find(b => !busy.has(b.board))!, [SLOW, ...siblings] = board.hides as [typeof board.hides[number], ...typeof board.hides];
+    let released = false;
+    const provider = sol({ slow: SLOW.id, released: () => released });
+    const container = { ...c, visualReview: { request: vi.fn() }, backgroundReview: provider.fake } as Container;
+    const diagnose = vi.fn(async (wire: SelfRepairWire) => {
+      const mask = maskForHide(SEAM), core = { left: mask.left + 12, top: 40, width: 40, height: 60 };
+      return { verdict: null, raw: JSON.stringify({ cause: "composition-clipping", action: "recompose-retained", sourceKey: `${SEAM.id}:${SEAM.pose}:render:1`,
+        returnWindow: { left: 16, top: 16, width: 480, height: 736 }, protectedCore: core, faceRect: { left: core.left + 4, top: core.top + 4, width: 30, height: 30 },
+        explanation: "Synthetic diagnosis of the broken join." }), usage: { prompt_tokens: 9000, completion_tokens: 500 },
+        requestId: `req-${gameId}-diagnosis-${wire.prompt.length}`, model: "gpt-5.6-sol", finishReason: "stop", wireFault: null, costUnknown: false };
+    });
+    const slice = () => runLocalPatchWorldSlice(container, painter(gameId, new Map(), new Map()), gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose });
+    const decided = async (hideId: string) => {
+      const hide = board.hides.find(h => h.id === hideId)!;
+      const row = await db.targetVariantAsset.findFirst({ where: { variant: "A", targetInstance: { targetId: hide.targetId, gameScene: { gameId, sceneSlug: board.board } } } });
+      return row?.status === "GENERATED" && JSON.parse(row.judgeJson ?? "null")?.reviewState === "board-review-complete";
+    };
+    let ticks = 0;
+    while (ticks++ < 200 && !(await Promise.all(siblings.map(h => decided(h.id)))).every(Boolean)) await slice();
+    // The slow appearance was asked first, and its continuity answer still runs; both siblings were asked after it and are already decided.
+    const firstCreate = (hideId: string) => provider.creates.findIndex(cr => cr.hideId === hideId);
+    expect(firstCreate(SLOW.id)).toBeGreaterThanOrEqual(0);
+    for (const sibling of siblings) expect(firstCreate(sibling.id)).toBeGreaterThan(firstCreate(SLOW.id));
+    expect(await Promise.all(siblings.map(h => decided(h.id)))).toEqual(siblings.map(() => true));
+    expect(await decided(SLOW.id)).toBe(false);
+    expect(provider.slowReads()).toBeGreaterThan(0);
+    expect(provider.creates.filter(cr => cr.hideId === SLOW.id && cr.kind === "continuity")).toHaveLength(1);
+    // Once it answers, it is read and decided like any other answer: never asked twice.
+    released = true;
+    while (ticks++ < 400 && !await decided(SLOW.id)) await slice();
+    expect(await decided(SLOW.id)).toBe(true);
+    expect(provider.creates.filter(cr => cr.hideId === SLOW.id && cr.kind === "continuity")).toHaveLength(1);
+  }, 1_500_000);
+
+  it("continues by itself when the provider ends a Flex answer failed: its charge stays unknown in full, the same pixels are asked again (19 October)", async () => {
+    const gameId = "lean-world-failed"; await leanWorld(gameId);
+    const busy = new Set([boardOf(THIRD.id).board, boardOf(REFUSED.id).board, boardOf(SEAM.id).board]);
+    const FAILED = BOARDS.find(b => !busy.has(b.board))!.hides[1]!;
+    const provider = sol({ fail: FAILED.id }), container = { ...c, visualReview: { request: vi.fn() }, backgroundReview: provider.fake } as Container;
+    const diagnose = vi.fn(async (wire: SelfRepairWire) => {
+      const mask = maskForHide(SEAM), core = { left: mask.left + 12, top: 40, width: 40, height: 60 };
+      return { verdict: null, raw: JSON.stringify({ cause: "composition-clipping", action: "recompose-retained", sourceKey: `${SEAM.id}:${SEAM.pose}:render:1`,
+        returnWindow: { left: 16, top: 16, width: 480, height: 736 }, protectedCore: core, faceRect: { left: core.left + 4, top: core.top + 4, width: 30, height: 30 },
+        explanation: "Synthetic diagnosis of the broken join." }), usage: { prompt_tokens: 9000, completion_tokens: 500 },
+        requestId: `req-${gameId}-diagnosis-${wire.prompt.length}`, model: "gpt-5.6-sol", finishReason: "stop", wireFault: null, costUnknown: false };
+    });
+    // Only the scheduled ticks, as production runs them: no person acts. The held ledger parks the world for at most the
+    // tick that found it; the next one continues the failed answer and the world goes on.
+    const ready = async () => (await db.game.findUniqueOrThrow({ where: { id: gameId } })).configJson !== null;
+    let result = { pending: true, attention: null as string | null }, parked = 0;
+    for (let ticks = 0; ticks < 900 && !await ready(); ticks++) {
+      result = await runLocalPatchWorldSlice(container, painter(gameId, new Map(), new Map()), gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose });
+      if (result.attention) parked++;
+    }
+    expect(await ready()).toBe(true);
+    expect(result.attention).toBeNull();
+    expect(parked).toBeLessThanOrEqual(1);
+    // The failed answer's charge is unknown and counted in full, continued by the ordinary automatic recovery.
+    const worldId = boardWizardWorldId(gameId), budget = boardWizardBudgetOf(c), audit = await budget.audit(worldId);
+    expect(audit.unknownRequestKeys).toHaveLength(1);
+    const [failedKey] = audit.unknownRequestKeys;
+    expect(await budget.readRequest(worldId, failedKey!)).toMatchObject({ state: "unknown", reserveMicroUsd: 200_000 });
+    expect((await budget.readContinuationApproval(worldId, failedKey!))?.version).toMatch(/^world-automatic-review-recovery\/v[12]$/);
+    expect(audit.committedMicroUsd).toBeLessThanOrEqual(audit.capMicroUsd);
+    // Asked again about the same pixels, and published; the record names the provider's failure.
+    expect(provider.creates.filter(cr => cr.hideId === FAILED.id && cr.kind === "bundle").length).toBeGreaterThanOrEqual(2);
+    const board = boardOf(FAILED.id);
+    const row = (await db.targetVariantAsset.findFirst({ where: { variant: "A", targetInstance: { targetId: FAILED.targetId, gameScene: { gameId, sceneSlug: board.board } } } }))!;
+    expect(row.status).toBe("GENERATED");
+    const receipt = JSON.parse(row.judgeJson!);
+    expect(receipt.reviewInterruption).toMatchObject({ providerFailed: PROVIDER_FAILED_SHAPE, wireFault: "http", responseId: expect.stringMatching(/^resp_lean/) });
+    expect(receipt.evidenceAttempts).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "transport", code: "http" })]));
+  }, 1_500_000);
+
+  it("admits only no answer at all, or a background response its provider ended failed with no text and no usage", () => {
+    const BG = "Background review charge could not be verified", SYNC = "Grouped review charge could not be verified";
+    const failed = { transport: "openai-responses-background/v1", providerStatus: "failed", wireFault: "http", costUnknown: true, finishReason: "failed",
+      raw: null, usage: null, requestId: "resp_synthetic", responseId: "resp_synthetic", model: "gpt-6.1-sol" };
+    const timeout = { wireFault: "timeout", costUnknown: true, raw: null, usage: null, requestId: null, model: null, finishReason: null };
+    expect(interruptionShape(SYNC, timeout)).toBe("timeout");
+    expect(interruptionShape(BG, failed)).toBe("provider-failed");
+    for (const change of [{ usage: { input_tokens: 10, output_tokens: 0 } }, { raw: "{}" }, { providerStatus: "incomplete" }, { providerStatus: "cancelled" },
+      { finishReason: "stop" }, { wireFault: "timeout" }, { costUnknown: false }, { requestId: "resp_other" }, { requestId: null }, { transport: "batch" }])
+      expect(interruptionShape(BG, { ...failed, ...change })).toBeNull();
+    expect(interruptionShape(SYNC, failed)).toBeNull();
+    expect(interruptionShape(BG, timeout)).toBeNull();
+    expect(interruptionShape(null, failed)).toBeNull();
+    expect(interruptionShape(BG, null)).toBeNull();
+  });
 
   it("enrolls only a lean world with its child's live photograph, and only before anything is painted", async () => {
     const provider = sol(), container = { ...c, visualReview: { request: vi.fn() }, backgroundReview: provider.fake } as Container;

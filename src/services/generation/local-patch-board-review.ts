@@ -35,6 +35,7 @@ import { buyDualLocalPatchReview } from "./local-patch-dual-review";
 import { localPatchRetainedAnswerUndecided, localPatchContinuityPending, qualityStageReader } from "./local-patch-dual-evidence";
 import { SUBJECT_REJUDGE_VERSION, subjectRejudgePending } from "./subject-rejudge";
 import { qualityBatchWaiting } from "./quality-batch";
+import { backgroundReviewWaiting } from "./continuity-background";
 
 export const LOCAL_PATCH_BOARD_REVIEW_VERSION = "local-patch-board-five-luna-low/v1";
 export const LOCAL_PATCH_STRICT_BOARD_REVIEW_VERSION = "local-patch-board-five-quality/v3-head-safe";
@@ -206,9 +207,10 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
     : localPatchEvidenceRecovery(row)?.nextAttempt ?? 1;
   if (options.decideRetained && !entries.some(eligible)) return { ready: false as const, reason: "No retained answer awaits a corrected reading" };
   if (options.onlyHideId && !entries.some(eligible)) return { ready: false as const, reason: "The selected appearance is not eligible for this review" };
-  // An appearance whose question already waits in a Message Batches round goes
-  // last, so its siblings' questions are sent meanwhile. No round: no change.
-  const inBatch = incremental ? await qualityBatchWaiting(c.db, game.id) : new Set<string>();
+  // An appearance whose question already waits, in a Message Batches round or as a
+  // background response, goes last, so its siblings' questions are sent meanwhile.
+  // No round: no change.
+  const inBatch = incremental ? new Set([...await qualityBatchWaiting(c.db, game.id), ...await backgroundReviewWaiting(c.db, game.id)]) : new Set<string>();
   const nextFirst = (a: typeof entries[number], b: typeof entries[number]) =>
     Number(inBatch.has(`${a.row.id}:${a.imageSha256}`)) - Number(inBatch.has(`${b.row.id}:${b.imageSha256}`))
     || (localPatchEvidenceRecovery(a.row)?.nextAttempt ?? 1) - (localPatchEvidenceRecovery(b.row)?.nextAttempt ?? 1);

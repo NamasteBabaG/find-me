@@ -218,9 +218,41 @@ Measured on the pilot ledger:
 - The lean fallback to the default tier requires that reconciliation to have settled the Flex reservation.
 - `continuity-background.test.ts` stops a create after its refusal was recorded, and after its receipt was kept, and shows each finished: once by the round asked again, once by the sweep, with nothing sent twice.
 
+## The first lean QA world (19 October): three engine gaps it found, and the fixes
+
+QA world `game_hzju9scobvssvl0tojca` ran on 1360a90b from 11:27 UTC. Flex in background mode works: answers came back at exactly half the standard price, most within 0:29–2:50 (median about 1:30). Three things a synthetic world had not shown:
+
+**1. One slow answer held back its whole board.**
+- New York hide 1's continuity answer was still queued at Flex when its 25-minute deadline cancelled it (11:31–11:57, charged nothing).
+- Its two siblings, painted at the same time, got no question for the whole half hour. The board review picks one appearance per pass, and it kept picking hide 1: its quality answer was saved, so `continuityFirst` put it first. The rule that sends a waiting appearance last ("its siblings' questions are sent meanwhile") covered Message Batches rounds only.
+- Every pass also rebuilt the board's evidence (40–70 s) just to find the answer still pending.
+- **Fix:** `backgroundReviewWaiting` names every appearance whose background question has not ended, read in one query, and `prepareLocalPatchBoardReview` sends it last with the Message Batches ones. When every appearance of a board waits, the world loop's existing check skips the board without rebuilding it.
+
+**2. Twenty-five minutes is too long to wait on Flex.**
+- **Fix:** a lean Flex question is cancelled after 10 minutes (`LEAN_FLEX_CANCEL_AFTER_MS`); its appearance's evidence question is asked again. Default-tier and historical questions keep 25 minutes.
+
+**3. A provider-declared failure parked the world for a person.**
+- At 12:21 a Paris bundle came back `failed` from the provider: no text, no usage.
+- Whether it was billed cannot be stated, so the engine kept it as an unknown charge (correct). But the automatic recovery admitted only one unknown shape: no answer at all (a synchronous timeout). The world parked as `local-patch:needs-release`, and QA has no release button.
+- **Fix:** the recovery (`interruptionShape`) also admits a background response its provider ended `failed`, with no text and no usage. The shape must match exactly what its round recorded: the same response id, `unpriced`, provider status `failed`.
+- The charge stays unknown and counted in full, under the same per-world limits (two continuations under v1, four more under v2), and the same pixels are asked again.
+- Anything else stays parked: a failure with usage or text, another status, another reason.
+
+**Tests:**
+- a world whose one continuity answer stays running: both siblings are asked after it and decided before it answers;
+- a world whose bundle the provider ends `failed`: only scheduled ticks run, the world parks for at most one tick, finishes READY, and keeps the $0.20 unknown;
+- the shape rules, one by one;
+- the deadline per policy.
+
+For fixes 1 and 2, each of five mutants is caught by its own test: the fix removed, the deadline swapped or applied to all, an ended round still named, an unreadable record skipped. The mutants of fix 3 are run after this commit.
+
+**Still open:**
+- **The provider's error code for a failed response is not kept.** The adapter reads status and usage only, so a Flex capacity failure cannot be told from any other.
+- **The ready email's provider error is not kept either** (`local-patch-notifications.ts`). On QA the pilot world's mail failed only for its non-Guy recipient, and the cause is unrecorded.
+
 ## Known limits
 
-- Flex in background mode is undocumented. The first verification question tells.
+- Flex in background mode is undocumented. On the first QA world it worked at half price, but one answer in about fifteen was still queued at 25 minutes and one ended `failed`.
 - The waiting and held reasons of a lean quality round still read "Continuity question in the background: …". This is cosmetic.
 - A lean world's continuity answer is bought even when its quality answer refuses (about $0.016). That is the price of deciding in one slice.
 - The read-only evidence planner (`local-patch-evidence-plan.ts`, `nextDualReviewPurchase`) still describes a non-lean world's next question (Opus quality, then continuity) for a lean world. It decides nothing and buys nothing, but its figures for a lean world are not the lean ones.

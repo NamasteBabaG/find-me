@@ -69,6 +69,10 @@ export function backgroundPolicyOfIntent(intent: Pick<BackgroundReviewIntent, "p
 /** Every event of one round, in rule order. A record that cannot be read is refused, not skipped. */
 async function readEvents(db: Pick<Prisma.TransactionClient, "auditLog">, gameId: string, roundId: string): Promise<BackgroundReviewEvent[]> {
   const rows = await db.auditLog.findMany({ where: { action: SOL_BACKGROUND_ACTION, entityType: "Game", entityId: gameId, id: { startsWith: `aud_sb_${roundId}_` } } });
+  return eventsOfRows(rows, gameId, roundId);
+}
+type RoundRow = { id: string; actorType: string; actorId: string | null; metaJson: string | null };
+function eventsOfRows(rows: readonly RoundRow[], gameId: string, roundId: string): BackgroundReviewEvent[] {
   const events = rows.map(row => {
     let event: BackgroundReviewEvent | null = null;
     try { event = JSON.parse(row.metaJson ?? "null"); } catch { event = null; }
@@ -78,6 +82,35 @@ async function readEvents(db: Pick<Prisma.TransactionClient, "auditLog">, gameId
     return event;
   });
   return events.sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind));
+}
+
+/**
+ * Every appearance whose background question has not ended (`variantId:imageSha256`), read from the record alone
+ * in one query. Its board reviews its other appearances first, so one slow answer never keeps a sibling's question
+ * unsent: the rule a Message Batches round already follows (`qualityBatchWaiting`). On the first lean QA world
+ * (19 October) one Flex answer ran 25 minutes, and its two siblings, painted beside it, waited the whole time.
+ */
+export async function backgroundReviewWaiting(db: Pick<Prisma.TransactionClient, "auditLog">, gameId: string): Promise<Set<string>> {
+  const rows = await db.auditLog.findMany({ where: { action: SOL_BACKGROUND_ACTION, entityType: "Game", entityId: gameId },
+    select: { id: true, actorType: true, actorId: true, metaJson: true } });
+  const byRound = new Map<string, RoundRow[]>();
+  for (const row of rows) {
+    const roundId = /^aud_sb_(sb[0-9a-f]{30})_[a-z]+$/.exec(row.id)?.[1];
+    if (!roundId) throw Error("BACKGROUND_REVIEW: a round record cannot be read; refusing to guess");
+    byRound.set(roundId, [...(byRound.get(roundId) ?? []), row]);
+  }
+  const waitingRows = new Set<string>();
+  for (const [roundId, roundRows] of byRound) {
+    const round = backgroundRoundOf(eventsOfRows(roundRows, gameId, roundId));
+    if (!round.terminal) waitingRows.add(`${round.intent.binding.variantId}:${round.intent.binding.imageSha256}`);
+  }
+  return waitingRows;
+}
+
+/** How the round under this request key ended, as recorded; null while it runs or when the key has no round. */
+export async function backgroundRoundTerminal(db: Pick<Prisma.TransactionClient, "auditLog">, gameId: string, worldId: string, requestKey: string) {
+  const events = await readEvents(db, gameId, backgroundRoundIdOf(worldId, requestKey));
+  return events.length ? backgroundRoundOf(events).terminal : null;
 }
 
 /** Written once, from the round as it stands inside the write (its intent row locked first). A loser gets nothing. */

@@ -8,7 +8,7 @@ import { DbStorage } from "../../../infra/storage/db";
 import { BackgroundReviewRefused, type BackgroundReviewState, type BackgroundReviewTransport } from "../../../infra/generation/types";
 import type { Container } from "../../container";
 import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wizard";
-import { askContinuityInBackground, advanceContinuityInBackground, reconcileRefusedBackgroundRound } from "../continuity-background";
+import { askContinuityInBackground, advanceContinuityInBackground, backgroundReviewWaiting, reconcileRefusedBackgroundRound } from "../continuity-background";
 import { WorldBudget } from "../world-budget";
 import { LocalPatchRetainedPurchaseStore } from "../local-patch-lifecycle";
 import { purchaseOnce } from "../paid-operation";
@@ -154,6 +154,30 @@ describe("Sol continuity in the background: one create, polled by id, every char
     const none = new Set<string>();
     await advanceContinuityInBackground(lost.c, lost.ask.gameId, { running: none });
     expect(none).toEqual(new Set());
+  });
+
+  it("names every appearance whose question has not ended, from the record alone, so its board asks its siblings first", async () => {
+    const key = `tva-synthetic:${"a".repeat(64)}`;
+    const { fake } = transport(async () => ({ responseId: "resp_synthetic" }), [async () => ({ status: "in_progress" }), async () => completed("{\"cases\":[]}")]);
+    const { c, ask } = await setup("bg-waiting", fake);
+    expect(await backgroundReviewWaiting(db, ask.gameId)).toEqual(new Set());
+    // Created and not yet answered: named, by its appearance's current pixels, whether or not a pass has read it.
+    expect(await askContinuityInBackground(c, ask)).toMatchObject({ kind: "waiting" });
+    expect(await backgroundReviewWaiting(db, ask.gameId)).toEqual(new Set([key]));
+    // Answered: its review decides it now.
+    expect(await askContinuityInBackground(c, ask)).toEqual({ kind: "proceed" });
+    expect(await backgroundReviewWaiting(db, ask.gameId)).toEqual(new Set());
+    // A lost create and a refusal have ended too.
+    const lost = await setup("bg-waiting-lost", transport(async () => { throw Error("socket hang up"); }).fake);
+    expect(await askContinuityInBackground(lost.c, lost.ask)).toEqual({ kind: "proceed" });
+    expect(await backgroundReviewWaiting(db, lost.ask.gameId)).toEqual(new Set());
+    const refused = await setup("bg-waiting-refused", transport(async () => { throw new BackgroundReviewRefused(429, "insufficient_quota"); }).fake);
+    expect(await askContinuityInBackground(refused.c, refused.ask)).toMatchObject({ kind: "held" });
+    expect(await backgroundReviewWaiting(db, refused.ask.gameId)).toEqual(new Set());
+    // A record that cannot be read is refused, not skipped.
+    await db.auditLog.create({ data: { id: "aud_sb_not-a-round", actorType: "SYSTEM", action: "generation:sol-background-review",
+      entityType: "Game", entityId: ask.gameId, metaJson: "{}" } });
+    await expect(backgroundReviewWaiting(db, ask.gameId)).rejects.toThrow(/cannot be read/);
   });
 
   it("lets only one of two racing workers create the response", async () => {
